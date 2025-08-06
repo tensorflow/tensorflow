@@ -173,7 +173,7 @@ absl::Status RunHloBenchmark(benchmark::State& state,
   }
   std::unique_ptr<PjRtLoadedExecutable> executable;
   if (benchmark_options.aot_options) {
-    auto* cpu_client = tsl::down_cast<TfrtCpuClient*>(client.get());
+    auto* cpu_client = tsl::down_cast<PjRtCpuClient*>(client.get());
     TF_ASSIGN_OR_RETURN(executable, cpu_client->CompileAheadOfTimeAndLoad(
                                         computation, compile_options,
                                         *benchmark_options.aot_options));
@@ -305,14 +305,20 @@ absl::Status CompileHloBenchmark(benchmark::State& state,
                                  absl::string_view hlo_module,
                                  StrToStrMapping replacements,
                                  const HloBenchmarkOptions& benchmark_options) {
-  xla::CpuClientOptions client_options;
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
-                      xla::GetXlaPjrtCpuClient(client_options));
-
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                       ParseAndReturnUnverifiedModule(
                           absl::StrReplaceAll(hlo_module, replacements),
                           HloModuleConfig() /* unused */));
+
+  return CompileHloBenchmark(state, std::move(module), benchmark_options);
+}
+
+absl::Status CompileHloBenchmark(benchmark::State& state,
+                                 std::unique_ptr<HloModule> module,
+                                 const HloBenchmarkOptions& benchmark_options) {
+  xla::CpuClientOptions client_options;
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
+                      xla::GetXlaPjrtCpuClient(client_options));
 
   XlaComputation computation(module->ToProto());
 

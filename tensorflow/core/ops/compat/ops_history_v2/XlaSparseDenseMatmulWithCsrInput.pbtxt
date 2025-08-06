@@ -111,3 +111,76 @@ op {
     }
   }
 }
+op {
+  name: "XlaSparseDenseMatmulWithCsrInput"
+  input_arg {
+    name: "row_pointers"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_sample_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_token_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_gains"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "embedding_table"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "num_minibatches_per_physical_sparse_core"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "activations"
+    type_attr: "T"
+  }
+  attr {
+    name: "input_size"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "quantization_config_low"
+    type: "float"
+  }
+  attr {
+    name: "quantization_config_high"
+    type: "float"
+  }
+  attr {
+    name: "quantization_config_num_buckets"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "table_name"
+    type: "string"
+  }
+  attr {
+    name: "num_sparsecores_per_device"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_FLOAT
+      }
+    }
+  }
+}

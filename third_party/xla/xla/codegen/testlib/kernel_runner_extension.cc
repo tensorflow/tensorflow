@@ -39,6 +39,10 @@ limitations under the License.
 #include "xla/codegen/kernel_source.h"
 #include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/llvm_ir_kernel_source.h"
+#include "xla/codegen/llvm_kernel_definition.h"
+#include "xla/codegen/llvm_kernel_emitter.h"
+#include "xla/codegen/mlir_kernel_definition.h"
+#include "xla/codegen/mlir_kernel_emitter.h"
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/codegen/testlib/kernel_runner.h"
 #include "xla/comparison_util.h"
@@ -192,20 +196,30 @@ NB_MODULE(_extension, kernel_runner_module) {
 
   nb::class_<KernelSpec> kernel_spec(kernel_runner_module, "KernelSpec");
 
-  nb::class_<KernelDefinition>(kernel_runner_module, "KernelDefinition")
-      .def("spec", &KernelDefinition::spec, nb::rv_policy::reference_internal)
-      .def("source", &KernelDefinition::source,
+  nb::class_<KernelDefinitionBase>(kernel_runner_module, "KernelDefinitionBase")
+      .def("spec", &KernelDefinitionBase::spec,
+           nb::rv_policy::reference_internal)
+      .def("source", &KernelDefinitionBase::source,
            nb::rv_policy::reference_internal);
 
-  nb::class_<KernelEmitter>(kernel_runner_module, "KernelEmitter")
-      .def("emit_kernel_definition", [](KernelEmitter* self) {
-        absl::StatusOr<KernelDefinition> definition =
-            self->EmitKernelDefinition();
+  nb::class_<MlirKernelDefinition, KernelDefinitionBase>(
+      kernel_runner_module, "MlirKernelDefinition");
+  nb::class_<LlvmKernelDefinition, KernelDefinitionBase>(
+      kernel_runner_module, "LlvmKernelDefinition");
+
+  nb::class_<KernelEmitterBase>(kernel_runner_module, "KernelEmitterBase")
+      .def("emit_kernel_definition", [](KernelEmitterBase* self) {
+        absl::StatusOr<std::unique_ptr<KernelDefinitionBase>> definition =
+            self->EmitBaseKernelDefinition();
         if (!definition.ok()) {
           throw std::runtime_error(std::string(definition.status().message()));
         }
         return std::move(definition).value();
       });
+  nb::class_<MlirKernelEmitter, KernelEmitterBase>(kernel_runner_module,
+                                                   "MlirKernelEmitter");
+  nb::class_<LlvmKernelEmitter, KernelEmitterBase>(kernel_runner_module,
+                                                   "LlvmKernelEmitter");
 
   nb::class_<KernelRunner>(kernel_runner_module, "KernelRunner")
       .def("call", &KernelRunnerCall);

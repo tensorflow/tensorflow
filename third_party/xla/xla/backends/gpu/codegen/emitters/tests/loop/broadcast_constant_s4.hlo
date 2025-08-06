@@ -7,7 +7,8 @@ bcast {
   ROOT broadcast = s4[3]{0} broadcast(x), dimensions={}
 }
 // CHECK: func.func @main(%[[ARG0:.*]]: tensor<3xi4>
+// CHECK: scf.forall {{.*}} shared_outs(%[[FORALL_ARG0:.*]] = %[[ARG0]])
 // CHECK:   xla.loop ({{.*}})[{{.*}}] -> (%[[RA:.*]]) in
-// CHECK-SAME: iter_args(%[[ITER:.*]] = %[[ARG0]])
+// CHECK-SAME: iter_args(%[[ITER:.*]] = %[[FORALL_ARG0]])
 // CHECK:     %[[CST:.*]] = arith.constant -2
 // CHECK:     %[[INSERTED:.*]] = tensor.insert %[[CST]] into %[[ITER]][%[[RA]]]

@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/pass/hlo_pass_fix.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/layout_util.h"
@@ -1363,11 +1364,12 @@ absl::Status MemoryUsageTracker::AddHostOffloadCopyInstructions(
   original_buffer.unfinished_user_count = 1;
 
   // Create new buffers for all of the newly created instructions.
-  CHECK_EQ(copy_start_to_host_item->instruction->shape().tuple_shapes_size(), 3)
+  CHECK_EQ(copy_start_to_host_item->instruction->shape().tuple_shapes().size(),
+           3)
       << "copy_start_to_host_item's shape is "
       << copy_start_to_host_item->instruction->shape().ToString();
-  CHECK_EQ(copy_start_to_device_item->instruction->shape().tuple_shapes_size(),
-           3)
+  CHECK_EQ(
+      copy_start_to_device_item->instruction->shape().tuple_shapes().size(), 3)
       << "copy_start_to_device_item's shape is "
       << copy_start_to_device_item->instruction->shape().ToString();
 
@@ -2989,7 +2991,7 @@ absl::StatusOr<bool> HloRematerialization::Run(
   // while the module is in flux.
   HloSchedule saved_schedule = module->schedule();
   module->clear_schedule();
-  TF_ASSIGN_OR_RETURN(bool dead_code_removed, HloDCE().Run(module));
+  TF_ASSIGN_OR_RETURN(bool dead_code_removed, HloPassFix<HloDCE>().Run(module));
   changed |= dead_code_removed;
 
   // After DCE, the module sequence may include instructions which no longer

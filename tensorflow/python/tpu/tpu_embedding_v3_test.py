@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+import contextlib
 import itertools
 import logging
 
@@ -35,6 +36,7 @@ from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import test
+from tensorflow.python.tpu import embedding_context_utils as ecu
 from tensorflow.python.tpu import tpu_embedding_for_serving
 from tensorflow.python.tpu import tpu_embedding_v2_utils
 from tensorflow.python.tpu import tpu_embedding_v3
@@ -852,13 +854,18 @@ class TPUEmbeddingV3Test(parameterized.TestCase, test.TestCase):
         )
 
   @parameterized.parameters(
-      *list(itertools.product([True, False], [True, False], [True, False]))
+      *list(
+          itertools.product(
+              [True, False], [True, False], [True, False], [True, False]
+          )
+      )
   )
   def test_pipelining_and_summary_recording(
       self,
       record_summaries,
       is_enqueue_separated,
       use_predicate_function,
+      use_sequential_embedding_context,
   ):
     """Test that pipelining is disabled when summaries are recorded and vice versa."""
     num_steps = 10
@@ -958,12 +965,19 @@ class TPUEmbeddingV3Test(parameterized.TestCase, test.TestCase):
     else:
       should_record_summaries = record_summaries
       should_be_pipelined = not record_summaries
+
+    sequential_embedding_context = contextlib.nullcontext()
+    if use_sequential_embedding_context:
+      should_be_pipelined = False
+      sequential_embedding_context = ecu.SequentialEmbeddingContext()
+
     with MockSummaryWriter().as_default():
-      with summary_ops_v2.record_if(should_record_summaries):
-        is_pipelined = self.is_function_pipelined(tpu_test_fn, tpu_iter)
-        # If we are recording summaries the function should not be pipelined and
-        # vice versa.
-        self.assertEqual(is_pipelined, should_be_pipelined)
+      with sequential_embedding_context:
+        with summary_ops_v2.record_if(should_record_summaries):
+          is_pipelined = self.is_function_pipelined(tpu_test_fn, tpu_iter)
+          # If we are recording summaries the function should not be pipelined
+          # and vice versa.
+          self.assertEqual(is_pipelined, should_be_pipelined)
 
   def is_function_pipelined(self, tf_function, *args):
     """Returns whether the tf_function is flagged for embedding pipelining.

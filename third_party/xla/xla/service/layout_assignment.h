@@ -565,6 +565,11 @@ class LayoutAssignment : public HloModulePass {
   // layout in the ComputationLayout.
   absl::Status CheckCallLayout(HloInstruction* call,
                                const ComputationLayout& computation_layout);
+  // For a custom-call user, propagates the operand constraint to the result
+  // based on output-to-operand aliasing.
+  absl::Status PropagateOperandConstraintToResultForCustomCall(
+      const HloInstruction* user,
+      const OperandLayoutConstraint& operand_constraint);
 
  private:
   // Initializes the layout assignment object for a new Run() call.

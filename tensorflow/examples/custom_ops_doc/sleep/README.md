@@ -389,6 +389,8 @@ tf_custom_op_library(
         "sleep_op.cc",
     ],
     deps = [
+        "//third_party/absl/log",
+        "//third_party/absl/status",
         "//third_party/absl/time",
     ],
 )

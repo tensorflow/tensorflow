@@ -364,7 +364,7 @@ class SqueezeOp : public XlaOpKernel {
             ctx, !shape.is_dynamic_dimension(i),
             errors::InvalidArgument("Squeeze op does not support bounded "
                                     "dynamic dimensions. Input shape: ",
-                                    shape.DebugString()));
+                                    shape.ToString()));
         // Copy over all non-1-length dimensions.
         if (existing_dim != 1) {
           new_shape.push_back(existing_dim);

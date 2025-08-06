@@ -97,7 +97,7 @@ absl::StatusOr<LoadedExecutableRef> PjRtCompiler::CompileAndLoad(
   TF_RETURN_IF_ERROR(
       TranslateDeviceIds(client_, xla_compile_options->compile_options));
   return PjRtLoadedExecutable::Create(
-      client_, xla_program->mlir_module,
+      client_, xla_program->mlir_module(),
       std::move(xla_compile_options->compile_options),
       std::move(xla_compile_options->loaded_host_callbacks),
       std::move(xla_compile_options->devices));
@@ -122,7 +122,7 @@ absl::StatusOr<ExecutableRef> PjRtCompiler::Compile(
   TF_ASSIGN_OR_RETURN(
       auto executable,
       PjRtCompile(xla_compile_options->compile_options,
-                  xla_program->mlir_module, *pjrt_topology->description()));
+                  xla_program->mlir_module(), *pjrt_topology->description()));
   return PjRtExecutable::Create(std::move(executable));
 }
 

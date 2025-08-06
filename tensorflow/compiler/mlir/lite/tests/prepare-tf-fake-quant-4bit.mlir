@@ -1,5 +1,5 @@
-// RUN: tf-opt %s -tfl-raise-custom-ops="test-raise-tf-targets=tf.FakeQuantWithMinMaxVarsPerChannel,tf.FakeQuantWithMinMaxVars" -tfl-prepare-tf | FileCheck --dump-input=always %s
-// RUN: tf-opt %s -tfl-raise-custom-ops="test-raise-tf-targets=tf.FakeQuantWithMinMaxVarsPerChannel,tf.FakeQuantWithMinMaxVars" -tfl-prepare-tf=use-fake-quant-num-bits=true | FileCheck --check-prefix LOBIT --dump-input=always %s
+// RUN: litert-opt %s -tfl-raise-custom-ops="test-raise-tf-targets=tf.FakeQuantWithMinMaxVarsPerChannel,tf.FakeQuantWithMinMaxVars" -tfl-prepare-tf | FileCheck --dump-input=always %s
+// RUN: litert-opt %s -tfl-raise-custom-ops="test-raise-tf-targets=tf.FakeQuantWithMinMaxVarsPerChannel,tf.FakeQuantWithMinMaxVars" -tfl-prepare-tf=use-fake-quant-num-bits=true | FileCheck --check-prefix LOBIT --dump-input=always %s
 
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
 

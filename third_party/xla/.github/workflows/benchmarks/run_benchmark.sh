@@ -12,21 +12,31 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-# .github/workflows/benchmarks/prepare_artifact.sh
+# .github/workflows/benchmarks/run_benchmark.sh
 # TODO(juliagmt): convert this to a python script.
 #!/bin/bash
+
+# This script encapsulates the logic to run a benchmark and generate results.json.
+
 set -u # Treat unset variables as an error when substituting.
 # IMPORTANT: pipefail is handled specifically around the runner command.
 set -e # Exit on errors, EXCEPT where explicitly handled.
 
-echo "--- Running Benchmark ---"
+echo "--- Running Benchmark Script ---"
+echo "Benchmark Name: $BENCHMARK_NAME"
+echo "Config ID: $CONFIG_ID"
+echo "Hardware Category: $HARDWARE_CATEGORY"
+echo "Output Directory: $OUTPUT_DIR"
+echo "Runner Binary: $RUNNER_BINARY"
+echo "Stats Binary: $STATS_BINARY"
+echo "Device Type Flag: $DEVICE_TYPE_FLAG"
+echo "Local Artifact Path: $LOCAL_ARTIFACT_PATH"
+echo "Input Format: $INPUT_FORMAT"
+echo "XLA Flags JSON: $XLA_FLAGS_JSON"
+echo "Runtime Flags JSON: $RUNTIME_FLAGS_JSON"
+echo "Commit SHA: $COMMIT_SHA"
+echo "Workflow Run ID: $WORKFLOW_RUN_ID"
 
-# Reads ENVs from the Step:
-#   RUNNER_BINARY, STATS_BINARY, DEVICE_TYPE_FLAG, LOCAL_ARTIFACT_PATH
-# Reads ENVs from the Job:
-#   BENCHMARK_NAME, CONFIG_ID, HARDWARE_CATEGORY, OUTPUT_DIR,
-#   XLA_FLAGS_JSON, RUNTIME_FLAGS_JSON, 
-#   COMMIT_SHA, WORKFLOW_RUN_ID
 
 # --- Validate Inputs ---
 if [ -z "$LOCAL_ARTIFACT_PATH" ] || [ ! -f "$LOCAL_ARTIFACT_PATH" ]; then echo "::error::LOCAL_ARTIFACT_PATH path is invalid or file not found: '$LOCAL_ARTIFACT_PATH'"; exit 1; fi
@@ -51,21 +61,13 @@ if echo "$RUNTIME_FLAGS_JSON" | jq -e '. | arrays and length > 0' > /dev/null; t
    mapfile -t runtime_flags_array < <(echo "$RUNTIME_FLAGS_JSON" | jq -r '.[]')
 fi
 
-# Conditionally add profile flag if needed for stats
-needs_profile_flag=true
-for flag in "${runtime_flags_array[@]}"; do
-    if [[ "$flag" == "--profile_execution"* ]]; then
-        needs_profile_flag=false; break
-    fi
-done
-needs_xspace_dump_flag=true # Assume we always want stats if possible
-if $needs_profile_flag && $needs_xspace_dump_flag; then
-    runtime_flags_array+=("--profile_execution=True")
-     echo "INFO: Added --profile_execution=True for stats generation."
-fi
+needs_xspace_dump_flag=true # By default, we enable profiler and xspace dump.
 
 # --- Build Runner Command ---
-declare -a runner_command_array=("$RUNNER_BINARY" "--device_type=$DEVICE_TYPE_FLAG")
+declare -a runner_command_array=(
+    "$RUNNER_BINARY"
+    "--device_type=$DEVICE_TYPE_FLAG"
+)
 if [ ${#runtime_flags_array[@]} -gt 0 ]; then runner_command_array+=("${runtime_flags_array[@]}"); fi
 if [ ${#xla_flags_array[@]} -gt 0 ]; then runner_command_array+=("${xla_flags_array[@]}"); fi
 if $needs_xspace_dump_flag; then
@@ -74,8 +76,8 @@ fi
 runner_command_array+=("$LOCAL_ARTIFACT_PATH")
 
 # --- Execute Runner ---
-echo "Executing HLO Runner command:" 
-printf "%q " "${runner_command_array[@]}"; echo # Print quoted command
+echo "Executing HLO Runner command:"
+printf "%q " "${runner_command_array[@]}"; echo
 
 set +e # Disable exit-on-error temporarily to capture exit code
 set -o pipefail # Ensure tee doesn't mask the runner's exit code
@@ -87,66 +89,180 @@ set -e # Re-enable exit-on-error
 echo "Runner stdout/stderr saved to $RUNNER_STDOUT_FILE"
 echo "Runner exited with code: $RUNNER_EXIT_CODE"
 
-# --- Execute Stats or Generate Fallback JSON ---
-STATS_EXIT_CODE=0
+
+# --- Process Stats and Generate results.json ---
+STATS_RUN_SUCCESSFUL=false
+METRICS_JSON_CONTENT="{}" # Initialize as an empty JSON object
+
 if [ -f "$XSPACE_FILE_PATH" ] && [ $RUNNER_EXIT_CODE -eq 0 ]; then
-  echo "Running compute_xspace_stats_main..."
+  echo "XSpace file found. Running compute_xspace_stats_main..."
   STATS_PLATFORM_TYPE=$([[ "$HARDWARE_CATEGORY" == GPU* ]] && echo "GPU" || echo "CPU")
-  declare -a stats_command_array=("$STATS_BINARY" "--input=$XSPACE_FILE_PATH" "--device_type=$STATS_PLATFORM_TYPE" "--output_json=$RESULTS_JSON_FILE")
 
-  echo "Executing Stats command:"; printf "%q " "${stats_command_array[@]}"; echo
+  # Capture the output of compute_xspace_stats_main to parse it
+  # Do not write its output directly to results.json yet
+  echo "Executing Stats command and capturing its output:"
 
-  set +e # Disable exit-on-error temporarily
-  "${stats_command_array[@]}" >> "$RUNNER_STDOUT_FILE" # Append stats stdout to runner log
+  set +e # Temporarily disable exit-on-error for stats command
+  STATS_OUTPUT=$("$STATS_BINARY" --input="$XSPACE_FILE_PATH" --device_type="$STATS_PLATFORM_TYPE" 2>&1)
   STATS_EXIT_CODE=$?
-  set -e # Re-enable
+  set -e
 
-  if [ $STATS_EXIT_CODE -ne 0 ]; then
-     echo "::warning::compute_xspace_stats_main failed with code $STATS_EXIT_CODE."
-      # Fallback to creating JSON with run status and error message for stats failure
-      jq -n \
-        --arg bn "$BENCHMARK_NAME" --arg cid "$CONFIG_ID" --arg hc "$HARDWARE_CATEGORY" \
-        --arg rs "STATS_FAILURE" \
-        --arg em "compute_xspace_stats_main failed with code $STATS_EXIT_CODE. Runner was successful." \
-        --arg cs "$COMMIT_SHA" --arg wrid "$WORKFLOW_RUN_ID" \
-        '{ benchmark_name: $bn, config_id: $cid, hardware_category: $hc, run_status: $rs, error_message: $em, commit_sha: $cs, workflow_run_id: $wrid }' \
-        > "$RESULTS_JSON_FILE"
-     echo "Fallback results JSON created at $RESULTS_JSON_FILE due to stats failure."
+  echo "compute_xspace_stats_main output:"
+  echo "$STATS_OUTPUT"
+  echo "compute_xspace_stats_main exited with code: $STATS_EXIT_CODE"
+
+  # Append stats tool's raw output to the main runner log for complete record
+  echo -e "\n--- compute_xspace_stats_main Raw Output ---" >> "$RUNNER_STDOUT_FILE"
+  echo "$STATS_OUTPUT" >> "$RUNNER_STDOUT_FILE"
+  echo "--- End compute_xspace_stats_main Raw Output ---" >> "$RUNNER_STDOUT_FILE"
+
+
+  if [ $STATS_EXIT_CODE -eq 0 ]; then
+    STATS_RUN_SUCCESSFUL=true
+    metrics_obj_str="{"
+    first_metric=true
+
+    # Process each line of STATS_OUTPUT
+    while IFS=':' read -r key value; do
+        # Trim leading/trailing whitespace from key and value
+        key=$(echo "$key" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        value=$(echo "$value" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+
+        # Expecting lines like "Metric Name: 123.45 us"
+        if [[ "$value" == *us ]]; then
+            num_value=$(echo "$value" | sed 's/ us$//')
+            # Convert microseconds to milliseconds using awk
+            ms_value=$(LC_ALL=C awk -v num="$num_value" 'BEGIN { printf "%.3f", num / 1000 }')
+
+            # Sanitize base metric key (e.g., "Device Time" -> "DEVICE_TIME")
+            base_metric_key=$(echo "$key" | tr ' ' '_' | tr '[:lower:]' '[:upper:]')
+            final_metric_key=""
+
+            # Determine the final metric key based on HARDWARE_CATEGORY for baseline matching
+            if [[ "$HARDWARE_CATEGORY" == GPU* ]]; then
+                if [[ "$base_metric_key" == "DEVICE_TIME" ]]; then
+                    final_metric_key="GPU_DEVICE_TIME"
+                elif [[ "$base_metric_key" == "DEVICE_MEMCPY_TIME" ]]; then
+                    final_metric_key="GPU_DEVICE_MEMCPY_TIME"
+                # Add other specific GPU mappings here if needed
+                # else
+                #    final_metric_key="GPU_${base_metric_key}" # Generic prefix
+                else
+                    final_metric_key="$base_metric_key" # If no specific GPU mapping, use base
+                fi
+            elif [[ "$HARDWARE_CATEGORY" == CPU* ]]; then
+                if [[ "$base_metric_key" == "CPU_TIME" ]] || [[ "$base_metric_key" == "TIME" ]]; then # Handle "CPU Time" or just "Time"
+                    final_metric_key="CPU_TIME"
+                elif [[ "$base_metric_key" == "WALL_TIME" ]]; then
+                    final_metric_key="WALL_TIME" # Wall time is generic
+                # Add other specific CPU mappings here if needed
+                # else
+                #    final_metric_key="CPU_${base_metric_key}" # Generic prefix
+                else
+                    final_metric_key="$base_metric_key" # If no specific CPU mapping, use base
+                fi
+            else
+                final_metric_key="$base_metric_key" # For unknown/other categories
+            fi
+
+            echo "INFO: Parsed metric: OriginalKey='$key', BaseKey='$base_metric_key', FinalKey='$final_metric_key', ValueMs='$ms_value'"
+
+            if ! $first_metric; then metrics_obj_str+=","; fi
+            metrics_obj_str+="\"$final_metric_key\": {\"value_ms\": $ms_value, \"unit\": \"ms\"}"
+            first_metric=false
+        fi
+    done <<< "$STATS_OUTPUT"
+    metrics_obj_str+="}"
+
+    if echo "$metrics_obj_str" | jq -e . > /dev/null 2>&1; then
+        METRICS_JSON_CONTENT=$(echo "$metrics_obj_str" | jq '.')
+        echo "Successfully parsed metrics from stats output."
+    else
+        echo "::warning::Could not construct valid JSON from stats output. Metrics object will be empty."
+        echo "Problematic metrics string constructed: $metrics_obj_str"
+        METRICS_JSON_CONTENT="{}"
+        STATS_RUN_SUCCESSFUL=false 
+    fi
   else
-      echo "Stats computed and saved to $RESULTS_JSON_FILE"
+    echo "::warning::compute_xspace_stats_main failed with code $STATS_EXIT_CODE. No metrics will be parsed from its output."
   fi
 else
-   # Create fallback JSON if Runner failed OR if Runner succeeded but produced no XSpace file
    if [ $RUNNER_EXIT_CODE -ne 0 ]; then 
-      echo "::warning::Runner failed (Exit Code: $RUNNER_EXIT_CODE), skipping stats."
+      echo "::warning::Runner failed (Exit Code: $RUNNER_EXIT_CODE), skipping stats processing."
    else 
-     echo "::warning::XSpace file missing at $XSPACE_FILE_PATH, skipping stats."
+     echo "::warning::XSpace file missing at $XSPACE_FILE_PATH, skipping stats processing."
    fi
-
-   RUN_STATUS=$([ $RUNNER_EXIT_CODE -eq 0 ] && echo "SUCCESS_NO_PROFILE" || echo "FAILURE")
-   ERROR_MSG=$([ $RUNNER_EXIT_CODE -ne 0 ] && echo "Runner failed with code $RUNNER_EXIT_CODE" || echo "XSpace file not generated by successful run.")
-
-    jq -n \
-      --arg bn "$BENCHMARK_NAME" --arg cid "$CONFIG_ID" --arg hc "$HARDWARE_CATEGORY" \
-      --arg rs "$RUN_STATUS" --arg em "$ERROR_MSG" \
-       --arg cs "$COMMIT_SHA" --arg wrid "$WORKFLOW_RUN_ID" \
-      '{ benchmark_name: $bn, config_id: $cid, hardware_category: $hc, run_status: $rs, error_message: $em, commit_sha: $cs, workflow_run_id: $wrid }' \
-       > "$RESULTS_JSON_FILE"
-
-     if [ $? -eq 0 ]; then
-        echo "Basic results JSON created at $RESULTS_JSON_FILE."
-     else
-        # Should not happen if jq is present, but a safety-net
-        echo "::error::FATAL: Failed to create basic results JSON using jq."
-        echo "Fallback error: Benchmark Name: $BENCHMARK_NAME, Run Status: $RUN_STATUS, Error: $ERROR_MSG" > "$RESULTS_JSON_FILE.txt"
-        exit 1 # Make sure this failure is noted
-     fi
 fi
 
-# --- Final Exit Status ---
-if [ $RUNNER_EXIT_CODE -ne 0 ]; then 
-  echo "::error::Benchmark run failed (Runner Exit Code: $RUNNER_EXIT_CODE)."
-  exit $RUNNER_EXIT_CODE # Propagate the runner's failure code
+# --- Construct Final results.json ---
+RUN_STATUS_MSG=""
+ERROR_MSG_CONTENT=""
+
+if [ $RUNNER_EXIT_CODE -ne 0 ]; then
+    RUN_STATUS_MSG="FAILURE"
+    ERROR_MSG_CONTENT="Runner failed with code $RUNNER_EXIT_CODE"
+elif [ ! -f "$XSPACE_FILE_PATH" ]; then
+    RUN_STATUS_MSG="SUCCESS_NO_PROFILE"
+    ERROR_MSG_CONTENT="XSpace file not generated by successful run."
+elif [ $STATS_EXIT_CODE -ne 0 ] || [ "$STATS_RUN_SUCCESSFUL" = false ] ; then
+    RUN_STATUS_MSG="STATS_FAILURE"
+    ERROR_MSG_CONTENT="compute_xspace_stats_main failed (code $STATS_EXIT_CODE) or metrics parsing failed. Runner was successful."
+else
+    RUN_STATUS_MSG="SUCCESS"
+    ERROR_MSG_CONTENT=""
 fi
 
-echo "--- Run Benchmark Script Finished Successfully ---"
+# Use jq to build the final JSON, incorporating the parsed metrics
+jq -n \
+  --arg bn "$BENCHMARK_NAME" \
+  --arg cid "$CONFIG_ID" \
+  --arg hc "$HARDWARE_CATEGORY" \
+  --arg rs "$RUN_STATUS_MSG" \
+  --arg em "$ERROR_MSG_CONTENT" \
+  --arg cs "$COMMIT_SHA" \
+  --arg wrid "$WORKFLOW_RUN_ID" \
+  --argjson metrics "$METRICS_JSON_CONTENT" \
+  '{
+     benchmark_name: $bn,
+     config_id: $cid,
+     hardware_category: $hc,
+     run_status: $rs,
+     error_message: $em,
+     commit_sha: $cs,
+     workflow_run_id: $wrid,
+     metrics: $metrics
+   }' > "$RESULTS_JSON_FILE"
+
+if [ $? -eq 0 ]; then
+    echo "Final results.json created at $RESULTS_JSON_FILE."
+else
+    echo "::error::FATAL: Failed to create final results.json using jq."
+    echo "FATAL JQ ERROR. Benchmark Name: $BENCHMARK_NAME, Run Status: $RUN_STATUS_MSG, Error: $ERROR_MSG_CONTENT" > "$RESULTS_JSON_FILE.txt"
+    exit 1 
+fi
+
+# --- Debug: Verify file creation ---
+echo "DEBUG: Listing contents of OUTPUT_DIR ($OUTPUT_DIR):"
+ls -la "$OUTPUT_DIR"
+echo "DEBUG: Checking for RESULTS_JSON_FILE ($RESULTS_JSON_FILE):"
+if [ -f "$RESULTS_JSON_FILE" ]; then
+  echo "DEBUG: RESULTS_JSON_FILE exists. Content (first 20 lines):"
+  head -n 20 "$RESULTS_JSON_FILE"
+else
+  echo "DEBUG: RESULTS_JSON_FILE does NOT exist."
+  if [ -f "${RESULTS_JSON_FILE}.txt" ]; then
+    echo "DEBUG: RESULTS_JSON_FILE.txt exists. Content:"
+    cat "${RESULTS_JSON_FILE}.txt"
+  else
+    echo "DEBUG: RESULTS_JSON_FILE.txt also does NOT exist."
+  fi
+fi
+echo "DEBUG: End of file check."
+
+# --- Final Exit Status of the script ---
+if [ $RUNNER_EXIT_CODE -ne 0 ]; then
+  echo "::error::Benchmark run failed (HLO Runner Exit Code: $RUNNER_EXIT_CODE)."
+  exit $RUNNER_EXIT_CODE
+fi
+
+echo "--- Run Benchmark Script Finished ---"

@@ -108,10 +108,7 @@ TEST_F(ComplexUnaryOpTest, Log1pTest) {
       [](XlaOp x) { return Log1p(x); });
 }
 
-XLA_TEST_F(ComplexUnaryOpTest, TanTest) {
-#if TENSORFLOW_USE_ROCM
-    GTEST_SKIP() << "Temporarily skipped for ROCm.";
-#endif
+TEST_F(ComplexUnaryOpTest, TanTest) {
   UnaryTestHelper<complex_unary_op_samples::Tan<float>>(
       [](XlaOp x) { return Tan(x); });
   UnaryTestHelper<complex_unary_op_samples::Tan<double>>(

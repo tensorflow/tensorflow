@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/tsl/lib/gtl/iterator_range.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/tsl/platform/status.h"
+#include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -1132,8 +1133,6 @@ class HloTransposeInstruction : public HloDimensionsInstruction {
  public:
   explicit HloTransposeInstruction(const Shape& shape, HloInstruction* operand,
                                    absl::Span<const int64_t> dimensions);
-  // Returns whether this instruction does a rank-2 transposition.
-  bool IsRank2Transpose() const;
 
   static bool ClassOf(const HloInstruction* hlo) {
     return hlo->opcode() == HloOpcode::kTranspose;
@@ -2013,6 +2012,20 @@ class HloReduceWindowInstruction : public HloInstruction {
     }
     return shapes;
   }
+  // Returns the indices of the non-trivial dimensions in the window.
+  std::vector<int64_t> non_trivial_window_dimensions() const {
+    std::vector<int64_t> non_trivial_dimensions;
+    const Shape& operand_shape = inputs().front()->shape();
+
+    int64_t rank = operand_shape.dimensions().size();
+    for (int dimension_index = 0; dimension_index < rank; ++dimension_index) {
+      const WindowDimension& window_dim = window_.dimensions(dimension_index);
+      if (!window_util::IsTrivialWindowDimension(window_dim)) {
+        non_trivial_dimensions.push_back(dimension_index);
+      }
+    }
+    return non_trivial_dimensions;
+  }
 
   static bool ClassOf(const HloInstruction* hlo) {
     return hlo->opcode() == HloOpcode::kReduceWindow;
@@ -2091,6 +2104,16 @@ class HloCustomCallInstruction : public HloCallableInstruction {
   // 'operands_with_layout' must all have layouts.
   HloCustomCallInstruction(const Shape& shape,
                            absl::Span<HloInstruction* const> operands,
+                           absl::string_view custom_call_target,
+                           std::string opaque,
+                           absl::Span<const Shape> operand_shapes_with_layout,
+                           CustomCallApiVersion api_version);
+
+  // Constructor for a custom call with constrained layout and a to_apply
+  // computation. 'shape' and 'operands_with_layout' must all have layouts.
+  HloCustomCallInstruction(const Shape& shape,
+                           absl::Span<HloInstruction* const> operands,
+                           HloComputation* to_apply,
                            absl::string_view custom_call_target,
                            std::string opaque,
                            absl::Span<const Shape> operand_shapes_with_layout,
@@ -2849,6 +2872,11 @@ class HloRngBitGeneratorInstruction : public HloInstruction {
 
   RandomAlgorithm algorithm_;
 };
+
+inline constexpr absl::string_view kPinCustomCallTarget = "Pin";
+inline constexpr absl::string_view kUnpinCustomCallTarget = "Unpin";
+inline constexpr absl::string_view kCreateBufferCustomCallTarget =
+    "CreateBuffer";
 
 }  // namespace xla
 

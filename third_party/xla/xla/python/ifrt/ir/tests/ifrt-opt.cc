@@ -144,7 +144,7 @@ int main(int argc, char** argv) {
       std::make_shared<xla::ifrt::AtomExecutableMap>();
 
   mlir::registerAllPasses();
-  xla::ifrt::RegisterIfrtPassesAndPipelines(
+  xla::ifrt::registerIfrtPassesAndPipelines(
       compiler, compile_options, atom_executable_map, bound_executable_map);
   mlir::DialectRegistry registry;
   xla::ifrt::support::InitializeMlirDialectRegistry(registry);

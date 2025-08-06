@@ -228,6 +228,7 @@ DebugOptions HloHardwareIndependentTestBase::GetDebugOptionsForTest() const {
   // TODO(b/38354253): Change tests to use Parameters instead of Constants.
   debug_options.add_xla_disable_hlo_passes("constant_folding");
   debug_options.set_xla_hlo_evaluator_use_fast_path(true);
+  debug_options.set_xla_cpu_emitter_verification_level(1);
   return debug_options;
 }
 

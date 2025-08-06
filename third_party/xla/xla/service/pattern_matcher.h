@@ -898,7 +898,7 @@ class ShapePatternIsDenseArrayImpl {
   explicit constexpr ShapePatternIsDenseArrayImpl() = default;
 
   bool Match(const ::xla::Shape* shape, MatchOption option) const {
-    if (!LayoutUtil::IsDenseArray(*shape)) {
+    if (!shape->IsArray()) {
       EXPLAIN << "Shape is not a dense array";
       return false;
     }

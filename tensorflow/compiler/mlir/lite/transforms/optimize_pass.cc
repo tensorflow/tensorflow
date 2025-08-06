@@ -471,14 +471,16 @@ bool CanOptimizeIdentitySliceOp(Value input, Attribute begin, Attribute size) {
 // convolution.
 Value GetBiasMultiplier(OpBuilder &builder, Value binary_op,
                         DenseFPElementsAttr base) {
-  ShapedType shaped_type =
-      RankedTensorType::get({}, base.getType().getElementType());
+  Type element_type = base.getType().getElementType();
 
   float multiplier =
       (llvm::isa<mlir::TFL::AddOp>(binary_op.getDefiningOp()) ? 1.0 : -1.0);
+  Attribute constant_attr = FloatAttr::get(element_type, multiplier);
 
-  auto constant_attr = DenseFPElementsAttr::get(shaped_type, multiplier);
-  return builder.create<arith::ConstantOp>(binary_op.getLoc(), constant_attr);
+  return builder.create<arith::ConstantOp>(
+      binary_op.getLoc(),
+      DenseFPElementsAttr::get(RankedTensorType::get({}, element_type),
+                               constant_attr));
 }
 
 bool HasOneTailUnitDimension(Attribute attr) {

@@ -236,6 +236,8 @@ cc_library(
         ":stream",
         ":stream_executor_h",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
@@ -258,8 +260,35 @@ cc_library(
 
 cc_library(
     name = "launch_dim",
+    srcs = ["launch_dim.cc"],
     hdrs = ["launch_dim.h"],
-    deps = ["@com_google_absl//absl/strings"],
+    deps = [
+        ":launch_dim_proto_cc",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+tf_proto_library(
+    name = "launch_dim_proto",
+    srcs = ["launch_dim.proto"],
+)
+
+xla_cc_test(
+    name = "launch_dim_test",
+    srcs = ["launch_dim_test.cc"],
+    deps = [
+        ":launch_dim",
+        "//xla/tsl/platform:status_matchers",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:protobuf",
+    ],
 )
 
 cc_library(
@@ -506,11 +535,35 @@ cc_library(
     srcs = ["kernel_spec.cc"],
     hdrs = ["kernel_spec.h"],
     deps = [
+        ":kernel",
+        ":kernel_spec_proto_cc",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:logging",
+    ],
+)
+
+tf_proto_library(
+    name = "kernel_spec_proto",
+    srcs = ["kernel_spec.proto"],
+)
+
+xla_cc_test(
+    name = "kernel_spec_test",
+    srcs = ["kernel_spec_test.cc"],
+    deps = [
+        ":kernel_spec",
+        ":kernel_spec_proto_cc",
+        "//xla/tsl/platform:status_matchers",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -520,7 +573,6 @@ cc_library(
     hdrs = ["kernel.h"],
     deps = [
         ":device_memory",
-        ":kernel_spec",
         ":launch_dim",
         ":stream",
         "@com_google_absl//absl/container:inlined_vector",
@@ -529,7 +581,6 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:logging",
     ],
     alwayslink = True,
 )
@@ -541,10 +592,10 @@ cc_library(
         ":kernel",
         ":kernel_spec",
         ":stream_executor_h",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -614,6 +665,7 @@ cc_library(
         ":dnn",
         ":kernel",
         ":launch_dim",
+        ":platform",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -669,6 +721,7 @@ cc_library(
         ":stream",
         ":stream_executor_h",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",

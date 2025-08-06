@@ -45,7 +45,9 @@ static std::string GetNameFromLocImpl(Location loc) {
       // in functions where the op's name is first.
       auto name = name_loc.getName().strref().split('@').first;
       // Skip if the name is for op type.
-      if (!name.ends_with(":")) {
+      if (name.ends_with(":")) {
+        locs.push_back(name_loc.getChildLoc());
+      } else {
         loc_names.push_back(name);
       }
     } else if (auto call_loc = mlir::dyn_cast<CallSiteLoc>(curr_loc)) {
@@ -77,6 +79,8 @@ static std::string GetOpTypeFromLoc(Location loc) {
       if (op_type.ends_with(":")) {
         op_type = op_type.substr(0, op_type.size() - 1);
         loc_op_types.push_back(op_type);
+      } else {
+        locs.push_back(name_loc.getChildLoc());
       }
     } else if (auto call_loc = mlir::dyn_cast<CallSiteLoc>(curr_loc)) {
       // Use location of the Callee to generate the name.
@@ -102,6 +106,11 @@ static void SetSourceFileAndLine(Location loc, xla::OpMetadata& metadata) {
   }
 }
 
+static bool IsFrameNameLocation(mlir::Location location) {
+  return isa<mlir::NameLoc>(location) &&
+         isa<mlir::FileLineColLoc>(cast<mlir::NameLoc>(location).getChildLoc());
+}
+
 xla::OpMetadata CreateOpMetadataFromLocation(
     mlir::Operation* op, mlir::StackFrameIndexBuilder* frame_index_builder) {
   xla::OpMetadata metadata;
@@ -113,16 +122,27 @@ xla::OpMetadata CreateOpMetadataFromLocation(
   std::string op_type = GetOpTypeFromLoc(loc);
   metadata.set_op_type(op_type);
 
-  if (auto name_loc = mlir::dyn_cast<mlir::NameLoc>(loc)) {
+  // Skip all leading names that are not frame names, e.g., op name and op type
+  // attributes found above.
+  while (auto name_loc = mlir::dyn_cast<mlir::NameLoc>(loc)) {
+    if (IsFrameNameLocation(name_loc)) {
+      break;
+    }
     loc = name_loc.getChildLoc();
-    if (isa<mlir::UnknownLoc>(loc)) return metadata;
+  }
 
-    if (frame_index_builder != nullptr) {
-      auto result = frame_index_builder->AddCallStackAndGetFirstFrameId(loc);
+  if (isa<mlir::UnknownLoc>(loc)) {
+    return metadata;
+  }
+
+  if (frame_index_builder != nullptr) {
+    auto result = frame_index_builder->AddCallStackAndGetFirstFrameId(loc);
+    if (result.last_frame_id != mlir::StackFrameIndexBuilder::kInvalidIndex) {
       metadata.set_stack_frame_id(result.last_frame_id);
       // TODO(b/311155137): Remove when profiler will support stack traces.
       metadata.set_source_file(result.last_frame_file);
       metadata.set_source_line(result.last_frame_line);
+      return metadata;
     }
   }
 

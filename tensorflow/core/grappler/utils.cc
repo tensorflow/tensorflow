@@ -30,6 +30,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/synchronization/notification.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -45,7 +47,6 @@ limitations under the License.
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/platform/types.h"
@@ -130,14 +131,13 @@ bool ExecuteWithTimeout(std::function<void()> fn, const int64_t timeout_in_ms,
     fn();
     return true;
   }
-  auto done = std::make_shared<Notification>();
+  auto done = std::make_shared<absl::Notification>();
   thread_pool->Schedule([done, fn]() {
     fn();
     done->Notify();
   });
-  const bool notified =
-      WaitForNotificationWithTimeout(done.get(), timeout_in_ms * 1000);
-  return notified;
+  return done->WaitForNotificationWithTimeout(
+      absl::Milliseconds(timeout_in_ms));
 }
 
 string AsControlDependency(const NodeDef& node) {

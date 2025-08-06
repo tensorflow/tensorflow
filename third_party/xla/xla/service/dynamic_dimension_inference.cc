@@ -964,7 +964,7 @@ absl::Status DynamicDimensionInferenceVisitor::HandleSetDimensionSize(
     // s32[2, 5] = set-dimension-size(s32[2,<=5]{1,0} %param, s32[] %size),
     //                                                        dimensions={1}
     // The result shape has no dynamic dimension.
-    TF_RET_CHECK(size->shape().dimensions().size() == 0);
+    TF_RET_CHECK(size->shape().dimensions().empty());
     if (size->literal().Get<int32_t>({}) ==
             hlo->shape().dimensions(hlo->dimension()) &&
         !hlo->shape().is_dynamic_dimension(hlo->dimension())) {
@@ -1458,7 +1458,7 @@ absl::Status DynamicDimensionInferenceVisitor::HandleReshape(
           int64_t input_dynamic_dimension, int64_t operand_index,
           HloInstruction* operand_dynamic_size) -> absl::Status {
         HloInstruction* const reshape = hlo;
-        if (reshape->shape().dimensions().size() == 0) {
+        if (reshape->shape().dimensions().empty()) {
           VLOG(0) << "Reshaping a dynamic dimension into a scalar, which has "
                      "undefined behavior when input size is 0. The offending "
                      "instruction is: "
@@ -1498,7 +1498,7 @@ absl::Status DynamicDimensionInferenceVisitor::HandleReshape(
 
         if (output_dynamic_dimension == -1 &&
             output_dim_end - output_dim_start > 1) {
-          // One input dimension is splitted into multiple output dimensions.
+          // One input dimension is split into multiple output dimensions.
           // Output dimension is decomposed from input most major dimension.
           // In this case, we don't know which one is dynamic, e.g., when we
           // have:
@@ -1511,7 +1511,7 @@ absl::Status DynamicDimensionInferenceVisitor::HandleReshape(
           //
           // Any dimension from the first '1' to 'a/c' can be dynamic.
           //
-          // We use the following logics to disambiguate:
+          // We use the following logic to disambiguate:
           // 1. If the user sets "inferred_dimension", then use that as
           // dynamic dimension.
           // 2. If the one dimension in the reshape is dynamic, use that as
@@ -1524,7 +1524,7 @@ absl::Status DynamicDimensionInferenceVisitor::HandleReshape(
           //   [1, <=2, 2]
           // We use second dim as dynamic dimension.
           //
-          // 3. If all logics above cannot disambiguate, e.g.,:
+          // 3. If all logic above cannot disambiguate, e.g.,:
           //
           //     [<=1]
           //      |
@@ -2761,12 +2761,10 @@ DynamicDimensionInference::DynamicDimensionInference(
       execution_threads_(execution_threads) {}
 
 absl::Status DynamicDimensionInference::AnalyzeDynamicDimensions() {
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<HloDataflowAnalysis> dataflow_analysis,
-      HloDataflowAnalysis::Run(*module_, /*ssa_form=*/false,
-                               /*bitcast_defines_value=*/true,
-                               /*can_share_buffer=*/nullptr,
-                               /*forwards_value=*/nullptr, execution_threads_));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloDataflowAnalysis> dataflow_analysis,
+                      HloDataflowAnalysis::Run(*module_, /*ssa_form=*/false,
+                                               /*bitcast_defines_value=*/true,
+                                               execution_threads_));
   for (HloComputation* computation : module_->MakeComputationPostOrder()) {
     if (!HloInstruction::IsThreadIncluded(computation->execution_thread(),
                                           execution_threads_)) {

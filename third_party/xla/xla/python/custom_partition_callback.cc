@@ -161,7 +161,7 @@ class CApiCustomCallPartitioner : public xla::CustomCallPartitioner {
                              partitioner->MakePartitioningState())
             .Reshard(instruction->sharding());
 
-    partitioner->SetPartitionedHlo(instruction, result_partitioned);
+    partitioner->SetPartitionedHlo(instruction, std::move(result_partitioned));
     return absl::OkStatus();
   }
   HloSharding PropagateUserSharding(

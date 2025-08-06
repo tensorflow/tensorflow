@@ -63,6 +63,9 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocm_solver_context.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -134,12 +137,10 @@ absl::Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
   // tf2xla bridge, DepthwiseConvolutionConverter and ConvRewriter
   // introduces reshapes and transposes that can be eliminated using
   // AlgebraicSimplifier  We run algsimp to a fixed point.
-  AlgebraicSimplifierOptions algsimp_options =
-      GetAlgebraicSimplifierOptions(hlo_module->config());
-  algsimp_options.set_supports_non_canonical_dots(false);
-  algsimp_options.set_enable_conv_operand_swap(false);
-  algsimp_options.set_enable_conv_add_multiply_reorder(true);
-  algsimp_options.set_enable_unconditional_reduce_of_concat_replacement(false);
+  AlgebraicSimplifierOptions algsimp_options = GetAlgebraicSimplifierOptions(
+      AlgebraicSimplifierMode::kGpuConvoluationCanonicalization,
+      hlo_module->config().debug_options(),
+      /*is_rocm=*/true);
   pipeline.AddPass<HloPassFix<GpuAlgebraicSimplifier>>(algsimp_options,
                                                        gpu_version);
 
@@ -272,7 +273,8 @@ absl::Status AMDGPUCompiler::AddGemmFusionAutotuningPasses(
     HloPassPipeline* pipeline, HloModule* hlo_module,
     AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool,
     const MultiProcessKeyValueStore& key_value_store,
-    const se::SemanticVersion& toolkit_version) {
+    const se::SemanticVersion& toolkit_version,
+    se::StreamExecutor* stream_executor) {
   pipeline->AddPass<GemmFusionAutotuner>(autotune_config, toolkit_version,
                                          thread_pool, key_value_store);
   return absl::OkStatus();

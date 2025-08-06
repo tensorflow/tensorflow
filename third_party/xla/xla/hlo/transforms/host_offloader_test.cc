@@ -4370,6 +4370,72 @@ ENTRY main.5_spmd {
   EXPECT_TRUE(host_offload_utils::ComputeTypeIsHost(dynamic_update_slice));
 }
 
+TEST_F(HostOffloaderTest, Conditional) {
+  const absl::string_view hlo_string = R"(
+HloModule jit_conditional_update, input_output_alias={ {0}: (0, {}, may-alias), {1}: (1, {}, may-alias), {2}: (2, {}, may-alias) }, entry_computation_layout={(f32[1,128]{1,0:T(1,128)S(5)}, f32[1,128]{1,0:T(1,128)S(5)}, f32[1,128]{1,0:T(1,128)}, s32[]{:T(128)})->(f32[1,128]{1,0:T(1,128)S(5)}, f32[1,128]{1,0:T(1,128)S(5)}, f32[1,128]{1,0:T(1,128)})}, allow_spmd_sharding_propagation_to_parameters={false,false,false,false}, allow_spmd_sharding_propagation_to_output={false,false,false}, num_partitions=4
+
+%region_0.15_spmd (param: (f32[1,128], f32[1,128], f32[1,128])) -> (f32[1,128], f32[1,128], f32[1,128]) {
+  %param = (f32[1,128]{1,0:T(1,128)}, f32[1,128]{1,0:T(1,128)}, f32[1,128]{1,0:T(1,128)}) parameter(0)
+  %get-tuple-element = f32[1,128]{1,0:T(1,128)} get-tuple-element(%param), index=1
+  %get-tuple-element.1 = f32[1,128]{1,0:T(1,128)} get-tuple-element(%param), index=2
+  %get-tuple-element.2 = f32[1,128]{1,0:T(1,128)} get-tuple-element(%param), index=0
+  %custom-call.10 = f32[1,128]{1,0:T(1,128)} custom-call(%get-tuple-element.2), custom_call_target="MoveToHost"
+  ROOT %tuple = (f32[1,128]{1,0:T(1,128)}, f32[1,128]{1,0:T(1,128)}, f32[1,128]{1,0:T(1,128)}) tuple(%get-tuple-element, %get-tuple-element.1, %custom-call.10)
+}
+
+%region_1.32_spmd (param.1: (f32[1,128], f32[1,128], f32[1,128])) -> (f32[1,128], f32[1,128], f32[1,128]) {
+  %param.1 = (f32[1,128]{1,0:T(1,128)}, f32[1,128]{1,0:T(1,128)}, f32[1,128]{1,0:T(1,128)}) parameter(0)
+  %get-tuple-element.3 = f32[1,128]{1,0:T(1,128)} get-tuple-element(%param.1), index=0
+  %custom-call.11 = f32[1,128]{1,0:T(1,128)} custom-call(%get-tuple-element.3), custom_call_target="MoveToDevice"
+  %get-tuple-element.4 = f32[1,128]{1,0:T(1,128)} get-tuple-element(%param.1), index=1
+  %custom-call.12 = f32[1,128]{1,0:T(1,128)} custom-call(%get-tuple-element.4), custom_call_target="MoveToDevice"
+  %add.0 = f32[1,128]{1,0:T(1,128)} add(%custom-call.11, %custom-call.12)
+  %custom-call.14 = f32[1,128]{1,0:T(1,128)} custom-call(%add.0), custom_call_target="MoveToHost"
+  %get-tuple-element.5 = f32[1,128]{1,0:T(1,128)} get-tuple-element(%param.1), index=2
+  %custom-call.15 = f32[1,128]{1,0:T(1,128)} custom-call(%get-tuple-element.5), custom_call_target="MoveToDevice"
+  %add.1 = f32[1,128]{1,0:T(1,128)} add(%custom-call.12, %custom-call.15)
+  %custom-call.16 = f32[1,128]{1,0:T(1,128)} custom-call(%add.1), custom_call_target="MoveToHost"
+  %add.2 = f32[1,128]{1,0:T(1,128)} add(%add.0, %custom-call.15)
+  %custom-call.17 = f32[1,128]{1,0:T(1,128)} custom-call(%add.2), custom_call_target="MoveToHost"
+  ROOT %tuple.1 = (f32[1,128]{1,0:T(1,128)}, f32[1,128]{1,0:T(1,128)}, f32[1,128]{1,0:T(1,128)}) tuple(%custom-call.14, %custom-call.16, %custom-call.17)
+}
+
+ENTRY %main.44_spmd (param.4: f32[1,128], param.5: f32[1,128], param.3: f32[1,128], param.2: s32[]) -> (f32[1,128], f32[1,128], f32[1,128]) {
+  %param.2 = s32[]{:T(128)} parameter(3), sharding={replicated}
+  %constant = s32[]{:T(128)} constant(0)
+  %compare.0 = pred[]{:T(512)} compare(%param.2, %constant), direction=GE
+  %convert.0 = s32[]{:T(128)} convert(%compare.0)
+  %param.3 = f32[1,128]{1,0:T(1,128)} parameter(2), sharding={devices=[4,1]<=[4]}
+  %param.4 = f32[1,128]{1,0:T(1,128)} parameter(0), sharding={devices=[4,1]<=[4]}
+  %param.5 = f32[1,128]{1,0:T(1,128)} parameter(1), sharding={devices=[4,1]<=[4]}
+  %tuple.2 = (f32[1,128]{1,0:T(1,128)}, f32[1,128]{1,0:T(1,128)}, f32[1,128]{1,0:T(1,128)}) tuple(%param.3, %param.4, %param.5)
+  %tuple.3 = (f32[1,128]{1,0:T(1,128)}, f32[1,128]{1,0:T(1,128)}, f32[1,128]{1,0:T(1,128)}) tuple(%param.4, %param.5, %param.3)
+  %conditional = (f32[1,128]{1,0:T(1,128)}, f32[1,128]{1,0:T(1,128)}, f32[1,128]{1,0:T(1,128)}) conditional(%convert.0, %tuple.2, %tuple.3), branch_computations={%region_0.15_spmd, %region_1.32_spmd}
+  %get-tuple-element.6 = f32[1,128]{1,0:T(1,128)} get-tuple-element(%conditional), index=0
+  %custom-call.18 = f32[1,128]{1,0:T(1,128)} custom-call(%get-tuple-element.6), custom_call_target="MoveToHost"
+  %get-tuple-element.7 = f32[1,128]{1,0:T(1,128)} get-tuple-element(%conditional), index=1
+  %custom-call.19 = f32[1,128]{1,0:T(1,128)} custom-call(%get-tuple-element.7), custom_call_target="MoveToHost"
+  %get-tuple-element.8 = f32[1,128]{1,0:T(1,128)} get-tuple-element(%conditional), index=2
+  %custom-call.20 = f32[1,128]{1,0:T(1,128)} custom-call(%get-tuple-element.8), custom_call_target="MoveToDevice"
+  ROOT %tuple.4 = (f32[1,128]{1,0:T(1,128)}, f32[1,128]{1,0:T(1,128)}, f32[1,128]{1,0:T(1,128)}) tuple(%custom-call.18, %custom-call.19, %custom-call.20)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  EXPECT_TRUE(changed);
+  VLOG(1) << module->ToString();
+
+  // We expect that all the results of the conditional are in host memory space.
+  HloInstruction* conditional = FindInstruction(module.get(), "conditional");
+  ASSERT_NE(conditional, nullptr);
+  ShapeUtil::ForEachLeafShape(
+      conditional->shape(), [](const Shape& shape, const ShapeIndex& index) {
+        EXPECT_EQ(shape.layout().memory_space(), Layout::kHostMemorySpace);
+      });
+}
+
 }  // namespace
 
 }  // namespace xla

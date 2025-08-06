@@ -33,7 +33,9 @@ limitations under the License.
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/layout.pb.h"
 #include "xla/python/ifrt/serdes.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/tsl/lib/core/bitmap.h"
@@ -51,10 +53,13 @@ absl::StatusOr<CustomLayoutRef> Layout::FromProto(
                              /*options=*/nullptr);
 }
 
-absl::StatusOr<LayoutProto> Layout::ToProto() const {
+absl::StatusOr<LayoutProto> Layout::ToProto(SerDesVersion version) const {
   LayoutProto layout_proto;
+  // `LayoutProto` does not store its own version. It delegates the details to
+  // SerDes of the `Layout` subclasses.
+  auto options = std::make_unique<SerializeOptions>(version);
   TF_ASSIGN_OR_RETURN(*layout_proto.mutable_serialized_layout(),
-                      Serialize(*this, /*options=*/nullptr));
+                      Serialize(*this, std::move(options)));
   return layout_proto;
 }
 

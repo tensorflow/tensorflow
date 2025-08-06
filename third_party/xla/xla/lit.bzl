@@ -3,7 +3,8 @@
 load("@bazel_skylib//lib:paths.bzl", "paths")
 load("@rules_python//python:defs.bzl", "py_binary")
 load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
-load("//xla/tsl:tsl.bzl", "if_cuda_tools", "if_google", "if_oss")
+load("//xla/tsl:tsl.bzl", "if_google", "if_oss")
+load("//xla/tsl:tsl.default.bzl", "if_cuda_tools")
 load("//xla/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 
 visibility(DEFAULT_LOAD_VISIBILITY)

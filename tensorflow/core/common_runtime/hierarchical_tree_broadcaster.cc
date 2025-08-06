@@ -410,8 +410,7 @@ void HierarchicalTreeBroadcaster::DispatchSend(int subdiv, int dst_rank,
                                                const Tensor* src_tensor,
                                                const StatusCallback& done) {
   tsl::profiler::ScopedMemoryDebugAnnotation op_annotation(
-      col_params_->name.data(), col_ctx_->step_id, "dynamic",
-      src_tensor->dtype(),
+      col_params_->name, col_ctx_->step_id, "dynamic", src_tensor->dtype(),
       [src_tensor]() { return src_tensor->shape().DebugString(); });
   string send_buf_key =
       BroadcastBufKey(col_ctx_->exec_key, subdiv, src_rank, dst_rank);

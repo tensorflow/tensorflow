@@ -1,72 +1,164 @@
-diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
---- stablehlo/stablehlo/dialect/StablehloOps.cpp
-+++ stablehlo/stablehlo/dialect/StablehloOps.cpp
-@@ -2635,6 +2635,38 @@
-                           inferredReturnTypes);
+diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/MapStablehloToScalarOp.h b/stablehlo/stablehlo/conversions/linalg/transforms/MapStablehloToScalarOp.h
+--- stablehlo/stablehlo/conversions/linalg/transforms/MapStablehloToScalarOp.h
++++ stablehlo/stablehlo/conversions/linalg/transforms/MapStablehloToScalarOp.h
+@@ -499,7 +499,7 @@
+   expBitsMask = ((expBitsMask << srcExponentBits) - 1) << srcMantissaBits;
+ 
+   auto createConstant = [&](const APInt &v) {
+-    return b.create<arith::ConstantIntOp>(v.getZExtValue(), intType)
++    return b.create<arith::ConstantIntOp>(intType, v.getZExtValue())
+         .getResult();
+   };
+ 
+@@ -520,7 +520,7 @@
+     APInt baseRoundingBias = lastMantissaBitMask.lshr(1) - 1;
+ 
+     Value mantissaDiff = b.create<arith::ConstantIntOp>(
+-        srcMantissaBits - destMantissaBits, intType);
++        intType, srcMantissaBits - destMantissaBits);
+     Value highestMantissaMaskVal = createConstant(lastMantissaBitMask);
+     Value baseRoundingBiasVal = createConstant(baseRoundingBias);
+     Value xLastMantissaBit = b.create<arith::ShRUIOp>(
+diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgConvolution.cpp b/stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgConvolution.cpp
+--- stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgConvolution.cpp
++++ stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgConvolution.cpp
+@@ -579,8 +579,9 @@
+                 /*bodyBuild=*/
+                 [&](OpBuilder &nestedBuilder, Location nestedLoc, ValueRange) {
+                   ImplicitLocOpBuilder builder(nestedLoc, nestedBuilder);
+-                  linalg::Conv2DOp::regionBuilder(
+-                      builder, *builder.getInsertionBlock(), {});
++                  linalg::Conv2DOp::regionBuilder(builder,
++                                                  *builder.getInsertionBlock(),
++                                                  {}, /*emitError=*/{});
+                 },
+                 linalg::getPrunedAttributeList(op))
+             .getResult(0);
+diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgDotProduct.cpp b/stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgDotProduct.cpp
+--- stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgDotProduct.cpp
++++ stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgDotProduct.cpp
+@@ -299,7 +299,8 @@
+             /*nReduction=*/numContracting),
+         [](OpBuilder &b, Location loc, ValueRange) {
+           ImplicitLocOpBuilder builder(loc, b);
+-          linalg::MatmulOp::regionBuilder(builder, *b.getInsertionBlock(), {});
++          linalg::MatmulOp::regionBuilder(builder, *b.getInsertionBlock(), {},
++                                          /*emitError=*/{});
+         },
+         linalg::getPrunedAttributeList(op));
+ 
+diff --ruN a/stablehlo/stablehlo/dialect/AssemblyFormat.cpp b/stablehlo/stablehlo/dialect/AssemblyFormat.cpp
+--- stablehlo/stablehlo/dialect/AssemblyFormat.cpp
++++ stablehlo/stablehlo/dialect/AssemblyFormat.cpp
+@@ -655,7 +655,7 @@
+   }
+   p.printOptionalAttrDictWithKeyword(op->getAttrs());
+   p.printNewline();
+-  p << " cond ";
++  p << "cond ";
+   p.printRegion(cond, /*printEntryBlockArgs=*/false);
+   p << " do ";
+   p.printRegion(body, /*printEntryBlockArgs=*/false);
+diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo/dialect/TypeInference.cpp
+--- stablehlo/stablehlo/dialect/TypeInference.cpp
++++ stablehlo/stablehlo/dialect/TypeInference.cpp
+@@ -2248,6 +2248,22 @@
+   return success();
  }
  
-+class FoldConstantCaseOp : public OpRewritePattern<CaseOp> {
-+ public:
-+  explicit FoldConstantCaseOp(MLIRContext* context)
-+      : OpRewritePattern<CaseOp>(context) {}
-+  LogicalResult matchAndRewrite(CaseOp op,
-+                                PatternRewriter& rewriter) const override {
-+    DenseIntElementsAttr branch;
-+    if (!matchPattern(op.getIndex(), m_Constant(&branch))) return failure();
++namespace {
 +
-+    int index = *branch.getValues<int>().begin();
-+    if (index >= op.getBranches().size() || index < 0) {
-+      return failure();
-+    }
++// Infer dim sizes with bounds accounted for
++void pushDimensionAndBoundSize(SmallVector<int64_t>& inferredSizes,
++                               SmallVector<int64_t>& inferredBounds,
++                               int64_t dimension, ShapedType type,
++                               ArrayRef<int64_t> bounds) {
++  inferredSizes.push_back(type.getDimSize(dimension));
 +
-+    Block &block = op.getBranches()[index].back();
-+    IRMapping mapping;
-+    for (auto &block_op : block.without_terminator()) {
-+      rewriter.clone(block_op, mapping);
-+    }
-+    rewriter.replaceOp(
-+        op, llvm::to_vector(llvm::map_range(
-+            block.getTerminator()->getOperands(),
-+            [&](Value v) { return mapping.lookupOrDefault(v); })));
-+      return success();
-+  }
-+};
-+
-+void CaseOp::getCanonicalizationPatterns(RewritePatternSet& results,
-+                                         MLIRContext* context) {
-+  results.add<FoldConstantCaseOp>(context);
++  // Has bounds and is bounded
++  auto bound = bounds.empty() ? ShapedType::kDynamic : bounds[dimension];
++  inferredBounds.push_back(bound);
 +}
 +
- //===----------------------------------------------------------------------===//
- // SliceOp
- //===----------------------------------------------------------------------===//
-diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/dialect/StablehloOps.td
---- stablehlo/stablehlo/dialect/StablehloOps.td
-+++ stablehlo/stablehlo/dialect/StablehloOps.td
-@@ -1392,7 +1392,7 @@
-   );
++}  // namespace
++
+ LogicalResult inferDotOp(
+     std::optional<Location> location, RankedTensorType lhsType,
+     RankedTensorType rhsType, std::optional<ArrayAttr> precisionConfig,
+@@ -2256,6 +2272,9 @@
+     return failure();
  
-   let regions = (region VariadicRegion<SizedRegion<1>>:$branches /*case_i2*/);
--
-+  let hasCanonicalizer = 1;
-   let results = (outs Variadic<HLO_TensorOrPerAxisQuantizedTensorOrToken>);
+   SmallVector<int64_t> dimensions;
++  SmallVector<int64_t> bounds;
++  auto lhsBounds = to_vector(encodingToBounds(lhsType.getEncoding()));
++  auto rhsBounds = to_vector(encodingToBounds(rhsType.getEncoding()));
+   if (1 == lhsType.getRank() && 1 == rhsType.getRank() &&
+       // vector dot vector
+       verifyCompatibleDims(lhsType.getDimSize(0), rhsType.getDimSize(0))) {
+@@ -2263,25 +2282,29 @@
+              verifyCompatibleDims(lhsType.getDimSize(1),
+                                   rhsType.getDimSize(0))) {
+     // matrix dot vector
+-    dimensions.push_back(lhsType.getDimSize(0));
++    pushDimensionAndBoundSize(dimensions, bounds, 0, lhsType, lhsBounds);
+   } else if (1 == lhsType.getRank() && 2 == rhsType.getRank() &&
+              verifyCompatibleDims(lhsType.getDimSize(0),
+                                   rhsType.getDimSize(0))) {
+     // vector dot matrix
+-    dimensions.push_back(rhsType.getDimSize(1));
++    pushDimensionAndBoundSize(dimensions, bounds, 1, rhsType, rhsBounds);
+   } else if (2 == lhsType.getRank() && 2 == rhsType.getRank() &&
+              verifyCompatibleDims(lhsType.getDimSize(1),
+                                   rhsType.getDimSize(0))) {
+     // matrix dot matrix
+-    dimensions.push_back(lhsType.getDimSize(0));
+-    dimensions.push_back(rhsType.getDimSize(1));
++    pushDimensionAndBoundSize(dimensions, bounds, 0, lhsType, lhsBounds);
++    pushDimensionAndBoundSize(dimensions, bounds, 1, rhsType, rhsBounds);
+   } else {
+     return emitOptionalError(location,
+                              "expected both lhs/rhs ranks to be "
+                              "either 1 or 2");
+   }
+ 
+-  inferredReturnShapes.emplace_back(dimensions);
++  auto encoding =
++      lhsType.getEncoding() ? lhsType.getEncoding() : rhsType.getEncoding();
++  auto boundsAttr = boundsToEncoding(encoding, bounds);
++  inferredReturnShapes.emplace_back(dimensions, /*elementType=*/nullptr,
++                                    boundsAttr);
+   return success();
  }
  
-diff --ruN a/stablehlo/stablehlo/tests/canonicalize.mlir b/stablehlo/stablehlo/tests/canonicalize.mlir
---- stablehlo/stablehlo/tests/canonicalize.mlir
-+++ stablehlo/stablehlo/tests/canonicalize.mlir
-@@ -0,0 +1,13 @@
-+// RUN: stablehlo-opt %s -pass-pipeline='builtin.module(func.func(canonicalize{test-convergence}))' -split-input-file -allow-unregistered-dialect | FileCheck %s
-+
-+func.func @fold_constant_case(%arg0: tensor<i32>, %arg1: tensor<i32>) -> (tensor<i32>) {
-+ %0 = "stablehlo.constant"() <{value = dense<1> : tensor<i32>}> : () -> tensor<i32>
-+ %1 = "stablehlo.case"(%0) ({
-+   "stablehlo.return"(%arg0) : (tensor<i32>) -> ()
-+ }, {
-+  "stablehlo.return"(%arg1) : (tensor<i32>) -> ()
-+ }) : (tensor<i32>) -> tensor<i32>
-+ return %1 : tensor<i32>
-+
-+// CHECK: return %arg1
+diff --ruN a/stablehlo/stablehlo/dialect/Version.cpp b/stablehlo/stablehlo/dialect/Version.cpp
+--- stablehlo/stablehlo/dialect/Version.cpp
++++ stablehlo/stablehlo/dialect/Version.cpp
+@@ -83,7 +83,7 @@
+     case CompatibilityRequirement::NONE:
+       return Version::getCurrentVersion();
+     case CompatibilityRequirement::WEEK_4:
+-      return Version(1, 10, 9);  // WEEK_4 ANCHOR: DO NOT MODIFY
++      return Version(1, 11, 0);  // WEEK_4 ANCHOR: DO NOT MODIFY
+     case CompatibilityRequirement::WEEK_12:
+       return Version(1, 10, 3);  // WEEK_12 ANCHOR: DO NOT MODIFY
+     case CompatibilityRequirement::MAX:
+diff --ruN a/stablehlo/stablehlo/tests/infer_stablehlo.mlir b/stablehlo/stablehlo/tests/infer_stablehlo.mlir
+--- stablehlo/stablehlo/tests/infer_stablehlo.mlir
++++ stablehlo/stablehlo/tests/infer_stablehlo.mlir
+@@ -1804,6 +1804,15 @@
+ 
+ // -----
+ 
++// CHECK-LABEL: func @dot_bounds
++func.func @dot_bounds(%arg0: tensor<?x12xf32, #stablehlo.bounds<64, ?>>, %arg1: tensor<12x?xf32, #stablehlo.bounds<?, 64>>) -> tensor<?x?xf32, #stablehlo.bounds<64, 64>> {
++  %0 = stablehlo.dot %arg0, %arg1, precision = [HIGHEST, HIGHEST] : (tensor<?x12xf32, #stablehlo.bounds<64, ?>>, tensor<12x?xf32, #stablehlo.bounds<?, 64>>) -> tensor<?x?xf32, #stablehlo.bounds<64, 64>>
++  // CHECK: return {{.*}} : tensor<?x?xf32, #stablehlo.bounds<64, 64>>
++  return %0 : tensor<?x?xf32, #stablehlo.bounds<64, 64>>
 +}
++
++// -----
++
+ // CHECK-LABEL: func @dot_general_c12
+ // CHECK-SAME: (%[[ARG0:.*]]: tensor<?x?x?xf32>, %[[ARG1:.*]]: tensor<?x?x?xf32>
+ func.func @dot_general_c12(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>) -> tensor<3xindex> {
 

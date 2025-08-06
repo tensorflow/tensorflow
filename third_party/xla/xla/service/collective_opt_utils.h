@@ -34,6 +34,11 @@ struct ReduceScatterSpec {
   HloInstruction* dynamic_slice;
 };
 
+struct SplitDimSpec {
+  int64_t split_dim = -1;
+  std::vector<int64_t> split_dims = {};
+};
+
 // Matches the given all-reduce operation to a reduce-scatter pattern.
 std::optional<ReduceScatterSpec> MatchReduceScatter(
     const HloAllReduceInstructionBase* ar, int64_t num_partitions,
@@ -63,6 +68,21 @@ std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
     bool is_constrain_layout = false, bool use_global_device_ids = false,
     bool is_cross_module = false, bool allow_intervening_bitcast = false,
     bool allow_multiple_users = false);
+
+// Extracts the split dimension spec from a `DynamicSlice` instruction. This
+// spec identifies the dimension(s) being operated on by a collective operation
+// that is fused with the slice.
+//
+// The function first attempts a fast path by finding a single dimension where
+// the input and output shapes of the `DynamicSlice` differ.
+//
+// If more than one dimension differs, it re-computes the split dimension by
+// examining the slice's offsets. It identifies non-trivial dimensions being
+// sliced. A dimension is considered trivial and skipped if its size is 1, or if
+// the slice offset along it is a constant zero. This prevents misidentifying a
+// dimension that isn't actually being scattered as the split dimension.
+std::optional<SplitDimSpec> ExtractSplitDimSpec(
+    const HloInstruction& dynamic_slice, bool allow_multiple_split_dims);
 
 }  // namespace xla
 

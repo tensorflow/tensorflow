@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/execution_engine.h"
 #include "xla/backends/cpu/codegen/ir_compiler.h"
 #include "xla/backends/cpu/codegen/jit_compiler.h"
+#include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/service/cpu/executable.pb.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -122,6 +123,7 @@ TEST_P(ObjectLoaderTest, Load) {
                         size_t dylib_index) -> absl::Status {
     TF_ASSIGN_OR_RETURN(llvm::orc::ThreadSafeModule tsm,
                         ParseModule(tsc, ir, name));
+    SetModuleMemoryRegionName(*tsm.getModuleUnlocked(), "object_loader_test");
     TF_RETURN_IF_ERROR(compiler.AddModule(std::move(tsm), dylib_index));
     return absl::OkStatus();
   };

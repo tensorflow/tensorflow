@@ -1,5 +1,24 @@
 # PJRT C API changelog
 
+## 0.72
+
+* Added `peak_memory_in_bytes` to `CompiledMemoryStats`.
+
+## 0.71
+
+*   Added `overridden_serialized_compile_options` and
+    `overridden_serialized_compile_options_size` fields to
+    `PJRT_Executable_DeserializeAndLoad_Args`.
+
+## 0.70
+
+* Sharding ops may appear directly in the payload (previously they were
+  serialized in `custom_calls`).
+
+## 0.69
+
+*   Implemented PjRtClient::CreateUninitializedBuffer
+
 ## 0.68
 
 * Changed the type of ``topology`` in

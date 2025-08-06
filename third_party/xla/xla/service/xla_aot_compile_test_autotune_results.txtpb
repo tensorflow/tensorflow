@@ -42,7 +42,6 @@ results {
         key: 3
         value: 0
       }
-      is_cudnn_frontend: true
       workspace_size {
       }
     }

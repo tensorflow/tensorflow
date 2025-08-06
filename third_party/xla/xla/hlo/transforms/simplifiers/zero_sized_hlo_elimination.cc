@@ -37,22 +37,33 @@ absl::StatusOr<bool> ZeroSizedHloElimination::Run(
   for (HloComputation* comp :
        module->MakeNonfusionComputations(execution_threads)) {
     for (HloInstruction* instruction : comp->MakeInstructionPostOrder()) {
+      if (!ShapeUtil::IsZeroElementArray(instruction->shape())) {
+        continue;
+      }
       if (instruction->HasSideEffect() || !instruction->shape().IsArray() ||
+          !instruction->shape().is_static() ||
           instruction->opcode() == HloOpcode::kConstant) {
         continue;
       }
-      if (comp->IsSafelyRemovable(instruction) &&
-          ShapeUtil::IsZeroElementArray(instruction->shape()) &&
-          instruction->shape().is_static()) {
-        // If the instruction doesn't have a layout, use a default layout for
-        // the literal.
-        Shape shape = instruction->shape();
-        if (!LayoutUtil::HasLayout(shape)) {
-          LayoutUtil::SetToDefaultLayout(&shape);
-        }
+      // If the instruction doesn't have a layout, use a default layout for
+      // the literal.
+      Shape shape = instruction->shape();
+      if (!LayoutUtil::HasLayout(shape)) {
+        LayoutUtil::SetToDefaultLayout(&shape);
+      }
+
+      if (comp->IsSafelyRemovable(instruction)) {
         TF_RETURN_IF_ERROR(comp->ReplaceWithNewInstruction(
             instruction,
             HloInstruction::CreateConstant(Literal::CreateFromShape(shape))));
+        changed = true;
+      } else if (instruction->opcode() == HloOpcode::kParameter &&
+                 !instruction->HasControlDependencies() &&
+                 !instruction->IsDead()) {
+        HloInstruction* constant =
+            comp->AddInstruction(HloInstruction::CreateConstant(
+                Literal::CreateFromShape(instruction->shape())));
+        TF_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(constant));
         changed = true;
       }
     }

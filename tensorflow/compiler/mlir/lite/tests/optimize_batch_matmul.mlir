@@ -1,5 +1,5 @@
 // Run optimize-batch-matmul pass only and check the results.
-// RUN: tf-opt %s -tfl-optimize-batch-matmul | FileCheck %s
+// RUN: litert-opt %s -tfl-optimize-batch-matmul | FileCheck %s
 
 // CHECK-LABEL: FuseTransposeFCRhsToBatchMatmul
 func.func @FuseTransposeFCRhsToBatchMatmul(%arg0: tensor<16x1024xf32>, %arg1: tensor<1024x128xf32>, %arg2: none) -> tensor<16x128xf32> {

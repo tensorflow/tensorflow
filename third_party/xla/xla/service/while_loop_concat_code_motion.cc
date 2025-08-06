@@ -955,6 +955,13 @@ absl::Status RewriteLoopWithConcatGroups(
 absl::StatusOr<bool> RunOnLoop(HloInstruction* loop,
                                int64_t min_operand_count_to_optimize) {
   auto body = loop->while_body();
+  // TODO(b/260601110) : Bail if the body computations of the while_op is
+  // used by anything else.  In theory, we could handle this case more
+  // cleanly, but that'd require restructuring the pass, and there's no need
+  // to do it right now, so just add a bail-out to be conservative.
+  if (body->caller_instructions().size() > 1) {
+    return false;
+  }
   auto param = body->parameter_instruction(0);
   auto root = body->root_instruction();
   if (!param->shape().IsTuple() || root->opcode() != HloOpcode::kTuple) {

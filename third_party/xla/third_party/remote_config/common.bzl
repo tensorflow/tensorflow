@@ -17,6 +17,8 @@ def which(repository_ctx, program_name, allow_failure = False):
     Args:
       repository_ctx: the repository_ctx
       program_name: name of the program on the PATH
+      allow_failure: if True, an empty stdout result or output to stderr
+        is fine, otherwise either of these is an error
 
     Returns:
       The full path to a program on the execution platform.
@@ -165,10 +167,15 @@ def get_host_environ(repository_ctx, name, default_value = None):
     Args:
       repository_ctx: the repository_ctx
       name: the name of environment variable
+      default_value: the value to return if not set
 
     Returns:
       The value of the environment variable 'name' on the host platform.
     """
+    if repository_ctx.getenv(name):
+        return repository_ctx.getenv(name).strip()
+
+    # Keep here for backward compatibility. Deprecated method.
     if name in repository_ctx.os.environ:
         return repository_ctx.os.environ.get(name).strip()
 

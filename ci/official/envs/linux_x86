@@ -16,7 +16,7 @@ TFCI_BAZEL_COMMON_ARGS="--repo_env=HERMETIC_PYTHON_VERSION=$TFCI_PYTHON_VERSION 
 TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX=linux_cpu
 TFCI_BUILD_PIP_PACKAGE_WHEEL_NAME_ARG="--repo_env=WHEEL_NAME=tensorflow_cpu"
 TFCI_DOCKER_ENABLE=1
-TFCI_DOCKER_IMAGE=us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest
+TFCI_DOCKER_IMAGE=us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest
 TFCI_DOCKER_PULL_ENABLE=1
 TFCI_DOCKER_REBUILD_ARGS="--target=devel ci/official/containers/ml_build"
 TFCI_INDEX_HTML_ENABLE=1

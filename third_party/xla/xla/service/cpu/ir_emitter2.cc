@@ -319,14 +319,18 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitDotFusionHostKernel(
   llvm_ir::IrArray addend_array = kernel_prototype.arguments[addend_pnum];
   llvm_ir::IrArray target_array = kernel_prototype.results[0];
 
-  TF_RETURN_IF_ERROR(EmitDotOperation(
-      *dot, target_array, lhs_array, rhs_array, &addend_array,
-      /*executable_run_options_value=*/nullptr, &b, hlo_module_.config(),
-      nested_ir_emitter_->target_machine_features(),
-      /*allow_runtime_calls=*/false));
+  TF_ASSIGN_OR_RETURN(
+      DotOpWorkGroupDim num_workgroups,
+      EmitDotOperation(
+          *dot, target_array, lhs_array, rhs_array, &addend_array,
+          {kernel_prototype.workgroup_id.x, kernel_prototype.workgroup_id.y},
+          /*executable_run_options_value=*/nullptr, &b, hlo_module_.config(),
+          nested_ir_emitter_->target_machine_features(),
+          /*allow_runtime_calls=*/false, /*allow_parallelism=*/false));
 
-  return kernels_.emplace_back(
-      KernelInfo(std::move(kernel_prototype), se::BlockDim(), se::ThreadDim()));
+  return kernels_.emplace_back(KernelInfo(
+      std::move(kernel_prototype),
+      se::BlockDim(num_workgroups.x, num_workgroups.y), se::ThreadDim()));
 }
 
 absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitSliceToDynamicHostKernel(
@@ -412,7 +416,7 @@ absl::StatusOr<IrEmitter2::ComparatorInfo> IrEmitter2::EmitSortComparator(
 absl::StatusOr<IrEmitter2::KernelPrototype> IrEmitter2::EmitKernelPrototype(
     const HloInstruction* instr) {
   return kernel_api_ir_builder_.EmitKernelPrototype(
-      *module_, instr, &nested_ir_emitter_->assignment());
+      *module_, instr, &nested_ir_emitter_->assignment(), "ir_emitter2");
 }
 
 std::optional<IrEmitter2::ParallelConfig> IrEmitter2::GetParallelConfig(
@@ -485,7 +489,7 @@ IrEmitter2::ParallelPartitionBounds IrEmitter2::EmitParallelPartitionBounds(
   // Construct IR to load bounds for all parallel dimensions.
   ParallelPartitionBounds bounds;
   for (size_t i = 0; i < num_parallel_dimensions; ++i) {
-    llvm::Value* partition = kernel_prototype.thread_id.x;
+    llvm::Value* partition = kernel_prototype.workgroup_id.x;
     llvm::Value* parallel_dim = b.getInt32(i);
 
     llvm::Value* lower_gep = b.CreateInBoundsGEP(

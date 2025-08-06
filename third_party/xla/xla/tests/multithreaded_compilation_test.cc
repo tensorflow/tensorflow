@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/test_macros.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
@@ -45,7 +44,7 @@ class MultithreadedCompilation : public HloTestBase {};
 //  is to verify this fix. The return status along with the contents of HLO
 //  output is checked to make sure they are identical (since the input is the
 //  same).
-XLA_TEST_F(MultithreadedCompilation, EightModuleCompilation) {
+TEST_F(MultithreadedCompilation, EightModuleCompilation) {
   std::string hlo_text = R"(
   HloModule m1, entry_computation_layout={(f32[3,3,45,1]{3,2,1,0})->f32[3,3,45,1]{3,2,1,0}}
   ENTRY m1 {

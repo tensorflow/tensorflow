@@ -67,9 +67,9 @@ absl::Status SendThunk::Initialize(const InitializeParams& params) {
   return absl::OkStatus();
 }
 
-absl::Status SendThunk::RunCollective(const ExecuteParams& params,
-                                      se::Stream& stream,
-                                      CommunicatorHandle comm_handle) {
+absl::StatusOr<bool> SendThunk::RunCollective(const ExecuteParams& params,
+                                              se::Stream& stream,
+                                              CommunicatorHandle comm_handle) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, {buffer_},
@@ -99,9 +99,8 @@ absl::Status SendThunk::RunCollective(const ExecuteParams& params,
           << CollectiveOpGroupModeToString(config_.config.group_mode) << " ("
           << hlo_name_ << ")";
 
-  TF_ASSIGN_OR_RETURN(GpuCollectives * collectives, GetGpuCollectives(params));
-  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(collectives, stream.parent(),
-                                          {buffer}, comm_handle.comm));
+  TF_RETURN_IF_ERROR(
+      MaybeRegisterBuffers(stream.parent(), {buffer}, comm_handle.comm));
 
   const std::optional<int64_t> target_id = source_target.target;
   se::DeviceMemoryBase src_addr = buffer.source_buffer;
@@ -145,7 +144,7 @@ absl::Status SendThunk::RunCollective(const ExecuteParams& params,
     }
   }
 
-  return absl::OkStatus();
+  return false;
 }
 
 }  // namespace gpu

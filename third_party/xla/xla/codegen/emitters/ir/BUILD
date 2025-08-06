@@ -83,7 +83,10 @@ cc_library(
         "xla_dialect.cc",
         "xla_ops.cc",
     ],
-    hdrs = ["xla_ops.h"],
+    hdrs = [
+        "xla_dialect.h",
+        "xla_ops.h",
+    ],
     deps = [
         ":xla_attrs_inc_gen",
         ":xla_dialect_inc_gen",

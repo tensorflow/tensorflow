@@ -40,8 +40,7 @@ limitations under the License.
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
-#include "xla/debug_options_flags.h"
-#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
+#include "xla/backends/gpu/autotuner/factory.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_fix.h"
@@ -51,24 +50,25 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/dot_dimension_merger.h"
 #include "xla/hlo/transforms/simplifiers/float_normalization.h"
 #include "xla/hlo/transforms/simplifiers/hlo_constant_folding.h"
-#include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/transforms/simplifiers/reshape_mover.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/dump.h"
 #include "xla/service/float_support.h"
+#include "xla/service/gpu/alias_info.h"
+#include "xla/service/gpu/autotuning/autotuner_pass.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/autotuning/conv_algorithm_picker.h"
 #include "xla/service/gpu/autotuning/gemm_algorithm_picker.h"
 #include "xla/service/gpu/autotuning/gemm_fusion_autotuner.h"
-#include "xla/service/gpu/buffer_sharing.h"
 #include "xla/service/gpu/cublas_padding_requirements.h"
 #include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/llvm_gpu_backend/nvptx_backend.h"
 #include "xla/service/gpu/llvm_gpu_backend/nvptx_utils.h"
 #include "xla/service/gpu/metrics.h"
+#include "xla/service/gpu/nvptx_alias_info.h"
 #include "xla/service/gpu/ptx_compile_options_from_debug_options.h"
 #include "xla/service/gpu/target_constants.h"
 #include "xla/service/gpu/transforms/algebraic_simplifier.h"
@@ -86,15 +86,14 @@ limitations under the License.
 #include "xla/service/gpu/transforms/dot_sparsity_rewriter.h"
 #include "xla/service/gpu/transforms/gpusolver_rewriter.h"
 #include "xla/service/gpu/transforms/triangular_solve_rewriter.h"
-#include "xla/service/hlo_cse.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/stream_executor/cuda/assemble_compilation_provider.h"
-#include "xla/stream_executor/cuda/caching_compilation_provider.h"
 #include "xla/stream_executor/cuda/compilation_options.h"
 #include "xla/stream_executor/cuda/compilation_provider.h"
 #include "xla/stream_executor/cuda/compilation_provider_options.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/cuda/cuda_solver_context.h"
@@ -102,15 +101,14 @@ limitations under the License.
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/threadpool.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 #include "tsl/profiler/lib/traceme.h"
 
@@ -212,12 +210,10 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   pipeline.AddPass<CallInliner>();
   pipeline.AddPass<TupleSimplifier>();
 
-  AlgebraicSimplifierOptions algsimp_options =
-      GetAlgebraicSimplifierOptions(hlo_module->config());
-  algsimp_options.set_supports_non_canonical_dots(false);
-  algsimp_options.set_enable_conv_operand_swap(false);
-  algsimp_options.set_enable_conv_add_multiply_reorder(true);
-  algsimp_options.set_enable_unconditional_reduce_of_concat_replacement(false);
+  AlgebraicSimplifierOptions algsimp_options = GetAlgebraicSimplifierOptions(
+      AlgebraicSimplifierMode::kGpuConvoluationCanonicalization,
+      hlo_module->config().debug_options(),
+      /*is_rocm=*/false);
   pipeline.AddPass<HloPassFix<GpuAlgebraicSimplifier>>(algsimp_options,
                                                        gpu_version);
 
@@ -363,9 +359,22 @@ absl::Status NVPTXCompiler::AddGemmFusionAutotuningPasses(
     HloPassPipeline* pipeline, HloModule* hlo_module,
     AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool,
     const MultiProcessKeyValueStore& key_value_store,
-    const se::SemanticVersion& toolkit_version) {
-  pipeline->AddPass<GemmFusionAutotuner>(autotune_config, toolkit_version,
-                                         thread_pool, key_value_store);
+    const se::SemanticVersion& toolkit_version,
+    se::StreamExecutor* stream_executor) {
+  if (hlo_module->config()
+          .debug_options()
+          .xla_gpu_experimental_use_autotuner_pass()) {
+    const DebugOptions& debug_options = hlo_module->config().debug_options();
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<AutotunerPass> autotuner_pass,
+        AutotunerPass::Create(
+            GetAllGpuCodegenBackends(stream_executor, &debug_options, this),
+            stream_executor, thread_pool));
+    pipeline->AddPass(std::move(autotuner_pass));
+  } else {
+    pipeline->AddPass<GemmFusionAutotuner>(autotune_config, toolkit_version,
+                                           thread_pool, key_value_store);
+  }
   return absl::OkStatus();
 }
 
@@ -528,12 +537,9 @@ NVPTXCompiler::NVPTXCompiler()
     : GpuCompiler(stream_executor::cuda::kCudaPlatformId, nvptx::TargetTriple(),
                   nvptx::DataLayout()) {}
 
-HloDataflowAnalysis::CanShareBuffer NVPTXCompiler::GetCanShareBuffer(
+std::unique_ptr<GpuAliasInfo> NVPTXCompiler::GetAliasInfo(
     const se::DeviceDescription& device_description) const {
-  return [&](const HloInstruction* user, const HloInstruction* operand,
-             const ShapeIndex& user_index) {
-    return CanShareBufferHint(user, operand, user_index, device_description);
-  };
+  return std::make_unique<NVPTXAliasInfo>(device_description);
 }
 
 absl::StatusOr<GpuCompiler::BackendCompileResult>

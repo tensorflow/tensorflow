@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/Pass/PassOptions.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "shardy/dialect/sdy/ir/dialect.h"  // from @shardy  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 
 namespace mlir {

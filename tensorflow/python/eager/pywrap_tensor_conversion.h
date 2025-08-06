@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/hash/hash.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -70,7 +71,13 @@ struct TFE_TensorHandleCache {
   static TFE_TensorHandleCache* Get();
 
   TFE_TensorHandleCache() { cache.reserve(64); }
-  ~TFE_TensorHandleCache() { DecrefUnrefAll(); }
+  ~TFE_TensorHandleCache() {
+#ifdef Py_GIL_DISABLED
+    absl::MutexLock lock(&mu_);
+#endif  // Py_GIL_DISABLED
+
+    DecrefUnrefAll();
+  }
 
   TFE_TensorHandle* Lookup(PyObject* value, tensorflow::DataType dtype,
                            TFE_Context* ctx,
@@ -95,8 +102,12 @@ struct TFE_TensorHandleCache {
     }
   }
 
-  // Not guarded by a mutex because the code is only used while the
-  // GIL is held.
+#ifdef Py_GIL_DISABLED
+  mutable absl::Mutex mu_;
+#endif  // Py_GIL_DISABLED
+
+  // Under a GIL-enabled Python, guarded by the GIL. Under a no-GIL Python,
+  // guarded by mu_.
   absl::flat_hash_map<Key, TFE_TensorHandle*> cache;
 };
 

@@ -87,7 +87,7 @@ class DenseBincountOp : public XlaOpKernel {
                     "`weights` must be the same shape as `arr` or a length-0 "
                     "`Tensor`, in which case it acts as all weights equal to "
                     "1. Received ",
-                    weights_shape.DebugString()));
+                    weights_shape.ToString()));
 
     auto size = input_shape.dimensions(0);
 

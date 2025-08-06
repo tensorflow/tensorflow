@@ -716,7 +716,8 @@ class IteratorContext {
           thread_pool(ctx->thread_pool()),
           id_registry(ctx->id_registry()),
           warm_start(ctx->warm_start()),
-          index_mapper(ctx->index_mapper()) {}
+          index_mapper(ctx->index_mapper()),
+          data_service_address(ctx->data_service_address()) {}
 
     explicit Params(OpKernelContext* ctx)
         : collective_executor(ctx->collective_executor()),
@@ -835,6 +836,9 @@ class IteratorContext {
     // checkpoint. This is set by globally shuffled iterators so that upstream
     // iterators can restore the element counts in the random access mode.
     std::optional<size_t> restored_element_count = std::nullopt;
+
+    // The address of the tf.data service job.
+    std::string data_service_address;
   };
 
   explicit IteratorContext(IteratorContext* ctx)
@@ -936,6 +940,8 @@ class IteratorContext {
   std::optional<int64_t> restored_element_count() const {
     return params_.restored_element_count;
   }
+
+  std::string data_service_address() { return params_.data_service_address; }
 
   void SetModel(std::shared_ptr<model::Model> model) { params_.model = model; }
 

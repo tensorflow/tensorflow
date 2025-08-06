@@ -925,10 +925,12 @@ TEST(AsyncValueRefTest, CountDownSuccess) {
 
   EXPECT_FALSE(ref.IsAvailable());
 
-  EXPECT_FALSE(count_down_ref.CountDown());
+  EXPECT_FALSE(count_down_ref.CountDown(1));
+  EXPECT_FALSE(count_down_ref.CountDown(0));
   EXPECT_FALSE(ref.IsAvailable());
 
-  EXPECT_TRUE(count_down_ref_copy.CountDown());
+  EXPECT_TRUE(count_down_ref_copy.CountDown(1));
+  EXPECT_TRUE(count_down_ref_copy.CountDown(0));
   EXPECT_TRUE(ref.IsAvailable());
   EXPECT_EQ(*ref, 42);
 }
@@ -944,7 +946,7 @@ TEST(AsyncValueRefTest, CountDownError) {
   EXPECT_FALSE(count_down_ref.CountDown(absl::InternalError("error")));
   EXPECT_FALSE(ref.IsAvailable());
 
-  EXPECT_TRUE(count_down_ref_copy.CountDown());
+  EXPECT_TRUE(count_down_ref_copy.CountDown(1));
   EXPECT_TRUE(ref.IsError());
   EXPECT_EQ(ref.GetError(), absl::InternalError("error"));
 }
@@ -977,7 +979,7 @@ static void BM_CountDownSuccess(benchmark::State& state) {
     auto ref = MakeConstructedAsyncValueRef<int32_t>(42);
     CountDownAsyncValueRef<int32_t> count_down_ref(ref, n);
     for (size_t i = 0; i < n; ++i) {
-      count_down_ref.CountDown();
+      count_down_ref.CountDown(1);
     }
   }
 }

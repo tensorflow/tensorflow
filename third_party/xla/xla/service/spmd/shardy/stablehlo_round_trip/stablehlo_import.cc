@@ -20,6 +20,7 @@ limitations under the License.
 #include <functional>
 #include <iterator>
 #include <memory>
+#include <numeric>
 #include <optional>
 #include <string>
 #include <tuple>
@@ -34,6 +35,8 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Casting.h"
+#include "llvm/Support/LogicalResult.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
@@ -222,9 +225,10 @@ SmallVector<int64_t> shortestCommonFactorization(ArrayRef<int64_t> array1,
 // returns an empty vector, such as {devices=[2,3]<=[2,3]T(1,0)}.
 SmallVector<SubDimInfo> getOrderedSubDimsFromIotaTileAssignment(
     const xla::IotaTileAssignment& iota) {
-  SmallVector<int64_t> deviceShape(iota.transpose_perm().size());
-  for (auto [index, perm_i] : llvm::enumerate(iota.transpose_perm())) {
-    deviceShape[index] = iota.reshape_dims()[perm_i];
+  SmallVector<int64_t> deviceShape;
+  deviceShape.reserve(iota.transpose_perm().size());
+  for (const int permIndex : iota.transpose_perm()) {
+    deviceShape.emplace_back(iota.reshape_dims()[permIndex]);
   }
 
   const SmallVector<int64_t> axisSizes = shortestCommonFactorization(
@@ -277,7 +281,7 @@ SmallVector<SubDimInfo> getOrderedSubDimsFromIotaTileAssignment(
 // Analyze the input tile assignment to obtain the information on the mesh and
 // sub dimensions.
 AnalyzeTileAssignmentResult analyzeTileAssignment(
-    const xla::TileAssignment& tileAssignment) {
+    const TileAssignment& tileAssignment) {
   // If the input has iota tile assignment (the corresponding HloSharding is in
   // V2 format), we use getOrderedSubDimsFromIotaTileAssignment.
   // TODO(zixuanjiang). We may handle HloShardingV1 in the future.
@@ -382,11 +386,12 @@ MeshAxesAndIds findMeshAxesAndIds(ModuleOp moduleOp) {
     // TODO(zixuanjiang). Support cases without common factorizations.
   }
 
-  // 3. Create a mesh.
+  // 3. Create a mesh with fake axis names that starts with and underscore so
+  //    that we can replace the fake axis names with real axis names later.
   namedAxes.reserve(axes.size());
   for (auto [axisIndex, axisSize] : llvm::enumerate(axes)) {
     auto name = StringAttr::get(moduleOp->getContext(),
-                                absl::StrCat("axis_", axisIndex));
+                                absl::StrCat("_axis_", axisIndex));
     namedAxes.push_back(
         MeshAxisAttr::get(moduleOp->getContext(), name, axisSize));
   }
@@ -397,6 +402,10 @@ MeshAxesAndIds findMeshAxesAndIds(ModuleOp moduleOp) {
 }
 
 }  // namespace
+
+SmallVector<int64_t> getAxisSizes(const TileAssignment& tileAssignment) {
+  return analyzeTileAssignment(tileAssignment).localMesh;
+}
 
 // Convert the `hloSharding` into a `TensorShardingAttr` based on the
 // `globalMesh`.
@@ -427,25 +436,41 @@ TensorShardingAttr convertToSdySharding(
   const AnalyzeTileAssignmentResult result =
       analyzeTileAssignment(hloSharding.tile_assignment());
 
-  // 1. Create a mapping from local axis to global axes.
+  // 1. Create a mapping from local axis to global axis refs.
+  CHECK_EQ(Product(result.localMesh), globalMesh.getTotalSize());
   SmallVector<SmallVector<AxisRefAttr>> localAxisIndexToGlobalAxes;
   localAxisIndexToGlobalAxes.reserve(result.localMesh.size());
-  int64_t globalAxisIndex = 0;
-  for (int64_t localAxisSize : result.localMesh) {
+  ArrayRef<MeshAxisAttr> remainingGlobalAxes = globalMesh.getAxes();
+  int64_t globalAxisPreSize = 1;
+  for (int64_t localAxisRemainingSize : result.localMesh) {
     SmallVector<AxisRefAttr>& globalAxes =
         localAxisIndexToGlobalAxes.emplace_back();
-    int64_t product = 1;
-    // The local axis size can correspond to multiple global axes since we may
-    // break it when we find common mesh axes.
-    while (product < localAxisSize) {
-      MeshAxisAttr axisAttr = globalMesh.getAxes()[globalAxisIndex++];
-      if (axisAttr.getSize() == 1) {
+    // The local axis size can correspond to multiple global axes or sub-axes.
+    while (localAxisRemainingSize > 1) {
+      CHECK(!remainingGlobalAxes.empty());
+      int64_t globalAxisRemainingSize =
+          remainingGlobalAxes.front().getSize() / globalAxisPreSize;
+      if (globalAxisRemainingSize == 1) {
+        remainingGlobalAxes = remainingGlobalAxes.drop_front();
+        globalAxisPreSize = 1;
         continue;
       }
-      globalAxes.push_back(AxisRefAttr::get(ctx, axisAttr.getName()));
-      product *= axisAttr.getSize();
+      int64_t gcd = std::gcd(localAxisRemainingSize, globalAxisRemainingSize);
+      CHECK_NE(gcd, 1) << "Incompatible local and global axis sizes: "
+                       << localAxisRemainingSize << " vs "
+                       << globalAxisRemainingSize;
+      StringRef globalAxisName = remainingGlobalAxes.front().getName();
+      if (gcd == globalAxisRemainingSize && globalAxisPreSize == 1) {
+        // The full global axis is used.
+        globalAxes.push_back(AxisRefAttr::get(ctx, globalAxisName));
+      } else {
+        // We use a sub-axis of the global axis.
+        globalAxes.push_back(
+            AxisRefAttr::get(ctx, globalAxisName, globalAxisPreSize, gcd));
+      }
+      globalAxisPreSize *= gcd;
+      localAxisRemainingSize /= gcd;
     }
-    CHECK_EQ(product, localAxisSize);
   }
 
   // 2. Create a mapping from dim and nested sub-dim to local axis index.
@@ -480,7 +505,8 @@ TensorShardingAttr convertToSdySharding(
         DimensionShardingAttr::get(ctx, axes, /*is_closed=*/!openDims));
   }
   return TensorShardingAttr::get(ctx, StringAttr::get(ctx, kGlobalMeshName),
-                                 dimShardings, /*replicated_axes=*/{});
+                                 dimShardings, /*replicated_axes=*/{},
+                                 /*unreduced_axes=*/{});
 }
 
 namespace {
@@ -501,6 +527,14 @@ bool shouldOpenDims(ArrayRef<bool> allowPropagationToTensors, int64_t index) {
   return allowPropagationToTensors[index];
 }
 
+// TODO(bixia): Use the function getTensorRank() from sdy/utils/utils.h.
+int64_t getRank(mlir::Type type) {
+  if (auto tensorType = llvm::dyn_cast<mlir::ShapedType>(type)) {
+    return tensorType.getRank();
+  }
+  return 0;
+}
+
 // Convert the shardings in `funcOp` from kXlaShardingAttr into kShardingAttr.
 LogicalResult importShardings(
     FuncOp funcOp, MeshAttr globalMesh,
@@ -513,8 +547,7 @@ LogicalResult importShardings(
       funcOp.setArgAttr(
           argNum, kShardingAttr,
           convertToSdySharding(parseShardingFromString(oldSharding), globalMesh,
-                               deviceIdToMaximalMeshName,
-                               mlir::cast<ShapedType>(argType).getRank(),
+                               deviceIdToMaximalMeshName, getRank(argType),
                                shouldOpenDims(allowPropagationToArgs, argNum)));
       funcOp.removeArgAttr(argNum, kXlaShardingAttr);
     }
@@ -527,8 +560,7 @@ LogicalResult importShardings(
           resNum, kShardingAttr,
           convertToSdySharding(
               parseShardingFromString(oldSharding), globalMesh,
-              deviceIdToMaximalMeshName,
-              mlir::cast<ShapedType>(resType).getRank(),
+              deviceIdToMaximalMeshName, getRank(resType),
               shouldOpenDims(allowPropagationToResults, resNum)));
       funcOp.removeResultAttr(
           resNum, StringAttr::get(funcOp.getContext(), kXlaShardingAttr));
@@ -546,10 +578,10 @@ LogicalResult importShardings(
       newShardings.reserve(op->getNumResults());
       for (const auto& [resHloSharding, resType] :
            llvm::zip_equal(flatHloSharding, op->getResultTypes())) {
-        newShardings.push_back(convertToSdySharding(
-            resHloSharding, globalMesh, deviceIdToMaximalMeshName,
-            mlir::cast<ShapedType>(resType).getRank(),
-            /*openDims=*/false));
+        newShardings.push_back(convertToSdySharding(resHloSharding, globalMesh,
+                                                    deviceIdToMaximalMeshName,
+                                                    getRank(resType),
+                                                    /*openDims=*/false));
       }
       mlir::sdy::setShardings(op, newShardings);
       op->removeAttr(kXlaShardingAttr);
@@ -629,14 +661,14 @@ class ImportShardingsPass
   ArrayRef<bool> allowPropagationToResults;
 };
 
+}  // namespace
+
 std::unique_ptr<mlir::Pass> createImportShardingsPass(
     ArrayRef<bool> allowPropagationToArgs,
     ArrayRef<bool> allowPropagationToResults) {
   return std::make_unique<ImportShardingsPass>(allowPropagationToArgs,
                                                allowPropagationToResults);
 }
-
-}  // namespace
 
 void registerStablehloImportShardingsPass() {
   mlir::registerPass(

@@ -29,6 +29,8 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/c/pjrt_c_api_layouts_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_memory_descriptions_extension.h"
+#include "xla/pjrt/c/pjrt_c_api_phase_compile_extension.h"
+#include "xla/pjrt/c/pjrt_c_api_phase_compile_internal.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
@@ -90,11 +92,16 @@ const PJRT_Api* GetCpuPjrtApi() {
   static PJRT_FFI_Extension ffi_extension =
       pjrt::CreateFfiExtension(&memory_descriptions_extension.base);
 
+  static PJRT_PhaseCompile_Extension phase_compile_extension =
+      pjrt::CreatePhaseCompileExtension(&ffi_extension.base,
+                                        /*get_compiler=*/nullptr,
+                                        /*destroy_compiler=*/nullptr);
+
   static const PJRT_Api pjrt_api = pjrt::CreatePjrtApi(
       pjrt::cpu_plugin::PJRT_Client_Create,
       pjrt::cpu_plugin::PJRT_ExecuteContext_Create,
       pjrt::cpu_plugin::PJRT_CpuDeviceTopology_Create,
-      pjrt::PJRT_Plugin_Initialize_NoOp, &ffi_extension.base,
+      pjrt::PJRT_Plugin_Initialize_NoOp, &phase_compile_extension.base,
       pjrt::PJRT_Plugin_Attributes_Xla);
 
   return &pjrt_api;

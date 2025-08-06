@@ -1,4 +1,4 @@
-// RUN: stablehlo-quant-opt %s -split-input-file -optimize-graph | FileCheck %s
+// RUN: stablehlo-quant-opt %s -split-input-file -tf-optimize-graph | FileCheck %s
 
 // CHECK-LABEL: @merge_requantization_followed_by_dequantization
 // CHECK-SAME: %[[ARG_0:.*]]: tensor<1x3x4x3xf32>

@@ -24,10 +24,12 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/memory_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/status_matchers.h"
@@ -66,8 +68,10 @@ TEST(RocmExecutorTest, GetRocmKernel) {
                           PlatformManager::PlatformWithName("ROCM"));
   TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
                           platform->ExecutorForDevice(0));
+  TF_ASSERT_OK_AND_ASSIGN(KernelLoaderSpec add_kernel,
+                          GetAddI32TestKernelSpec(rocm::kROCmPlatformId));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Kernel> kernel,
-                          executor->LoadKernel(GetAddI32KernelSpec()));
+                          executor->LoadKernel(add_kernel));
 
   auto rocm_executor = dynamic_cast<RocmExecutor*>(executor);
   ASSERT_NE(rocm_executor, nullptr);

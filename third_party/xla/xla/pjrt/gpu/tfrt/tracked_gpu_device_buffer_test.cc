@@ -167,7 +167,7 @@ TEST(TrackedGpuDeviceBufferTest, TrackedDeviceBufferUsageEndToEnd) {
                                       /*num_threads=*/4);
 
   TrackedGpuDeviceBuffer tracked_buffer(test_buffer, definition_event,
-                                        /*on_delete_callback_=*/nullptr);
+                                        definition_event);
   tracked_buffer.SetUnOwned();
   {
     MarkGpuEventReadyOnExit ready_on_exit(usage_event);

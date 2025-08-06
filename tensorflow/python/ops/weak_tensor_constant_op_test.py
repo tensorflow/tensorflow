@@ -207,7 +207,7 @@ class WeakTensorConstantOpTest(test.TestCase, parameterized.TestCase):
       dtypes.half,
   )
   def test_constant_python_float_with_dtype_arg(self, dtype):
-    # Test that python float can be implicity casted to any float/complex types.
+    # Test that python float can be implicitly casted to any float/complex types.
     a = constant_op.constant([1.0, 2.0, 3.0], dtype)
     self.assertIsInstance(a, tensor.Tensor)
     self.assertEqual(a.dtype, dtype)

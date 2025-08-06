@@ -200,7 +200,6 @@ class GemmFusionAutotunerImpl {
                      std::vector<BackendConfig>& configs);
 
   std::vector<TritonGemmConfig> GetDefaultTritonConfigs() const;
-  std::vector<TritonGemmConfig> GetExhaustiveTritonConfigs() const;
 
   AutotuneConfig config_;
   se::SemanticVersion toolkit_version_;

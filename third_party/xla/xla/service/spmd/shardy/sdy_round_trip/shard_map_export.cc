@@ -106,14 +106,6 @@ class SdyRoundTripShardMapExportPass
 
       auto callOp =
           rewriter.create<CallOp>(loc, localResultTypes, funcName, operands);
-      // TODO(b/409855903): old code path. Remove after 3 weeks of cl/745735176
-      // being submitted.
-      setFrontendAttribute(callOp, kInShardings,
-                           manualComputation.getInShardings());
-      setFrontendAttribute(callOp, kOutShardings,
-                           manualComputation.getOutShardings());
-      setFrontendAttribute(callOp, kManualAxes,
-                           manualComputation.getManualAxesAttr());
 
       mlir::ResultRange results = manualComputation->getResults();
       if (!results.empty()) {

@@ -30,7 +30,6 @@ limitations under the License.
 #include "xla/service/spmd/shardy/sdy_round_trip/export_ops.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/export_shardy_attrs.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/import_shardy_attrs.h"
-#include "xla/service/spmd/shardy/sdy_round_trip/remove_size_one_axes.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/shard_map_export.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/shard_map_import.h"
 #include "xla/service/spmd/shardy/stablehlo_round_trip/export_shardings.h"
@@ -58,7 +57,6 @@ void addSdyRoundTripImportPipeline(mlir::OpPassManager& pm,
   addCommonPreImportPasses(pm, enableConstantImport);
   pm.addPass(createSdyRoundTripImportShardyAttrsPass());
   pm.addPass(createSdyRoundTripShardMapImportPass());
-  pm.addPass(createSdyRoundTripRemoveSizeOneAxesPass());
   addCommonPostImportPasses(pm);
 }
 

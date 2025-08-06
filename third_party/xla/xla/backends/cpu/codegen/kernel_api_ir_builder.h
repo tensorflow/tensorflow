@@ -38,6 +38,18 @@ limitations under the License.
 
 namespace xla::cpu {
 
+inline constexpr absl::string_view kMemoryRegionNameMetadataName =
+    "xla_cpu_memory_region_name";
+
+// Builds the memory region name for the given module by using the
+// generating emitter name and the opcode of the HLO instruction.
+std::string BuildModuleMemoryRegionName(
+    absl::string_view generating_emitter_name, const HloInstruction* instr);
+
+// Sets the memory region name metadata for the given module.
+void SetModuleMemoryRegionName(llvm::Module& llvm_module,
+                               absl::string_view name);
+
 class KernelApiIrBuilder {
  public:
   struct Options {
@@ -54,15 +66,15 @@ class KernelApiIrBuilder {
                 // arguments and results is the same buffer)
   };
 
-  // Thread dimensions of the kernel invocation.
-  struct ThreadDims {
+  // Number of the kernel invocation work groups.
+  struct NumWorkGroups {
     llvm::Value* x;
     llvm::Value* y;
     llvm::Value* z;
   };
 
-  // Thread coordinates of the kernel invocation.
-  struct ThreadId {
+  // Work group id of the kernel invocation.
+  struct WorkGroupId {
     llvm::Value* x;
     llvm::Value* y;
     llvm::Value* z;
@@ -82,9 +94,9 @@ class KernelApiIrBuilder {
     llvm::Function* function;
     llvm::BasicBlock* return_block;
 
-    // LLVM values identifying kernel invocation thread coordinates.
-    ThreadDims thread_dims;
-    ThreadId thread_id;
+    // LLVM values identifying kernel invocation workgroup parameters.
+    NumWorkGroups num_workgroups;
+    WorkGroupId workgroup_id;
 
     // LLVM values corresponding to the kernel arguments and results arrays. All
     // tuples are flattened as we do not have any tuples at run time and only
@@ -111,12 +123,15 @@ class KernelApiIrBuilder {
   // metadata.
   absl::StatusOr<KernelPrototype> EmitKernelPrototype(
       llvm::Module& module, const HloInstruction* instr,
-      const BufferAssignment* buffer_assignment, absl::string_view suffix = "");
+      const BufferAssignment* buffer_assignment,
+      const std::string& generating_emitter_name,
+      absl::string_view suffix = "");
 
   absl::StatusOr<KernelPrototype> EmitKernelPrototype(
       llvm::Module& module, absl::string_view name,
       absl::Span<const KernelParameter> arguments,
-      absl::Span<const KernelParameter> results);
+      absl::Span<const KernelParameter> results,
+      const std::string& module_memory_region_name);
 
   // Get the kernel name for the given HLO instruction.
   // If generate_unique_c_style_kernel_entry_points is enabled, the name will
@@ -140,13 +155,16 @@ class KernelApiIrBuilder {
   void SetKernelFunctionAttributes(llvm::Function* function);
 
  private:
-  ThreadDims EmitKernelThreadDims(llvm::IRBuilderBase& builder,
-                                  llvm::Value* call_frame);
-  ThreadId EmitKernelThread(llvm::IRBuilderBase& builder,
-                            llvm::Value* call_frame);
+  NumWorkGroups EmitKernelNumWorkGroups(llvm::IRBuilderBase& builder,
+                                        llvm::Value* call_frame);
+
+  WorkGroupId EmitKernelWorkGroupId(llvm::IRBuilderBase& builder,
+                                    llvm::Value* call_frame);
+
   llvm_ir::IrArray EmitKernelArgument(llvm::IRBuilderBase& builder,
                                       llvm::Value* call_frame, int64_t index,
                                       const Shape& shape);
+
   llvm::Function* EmitKernelFunction(llvm::Module& module,
                                      absl::string_view name);
 
@@ -157,8 +175,8 @@ class KernelApiIrBuilder {
 
   BufferValidation buffer_validation_;
 
-  llvm::StructType* thread_dim_ty_;
-  llvm::StructType* thread_ty_;
+  llvm::StructType* num_workgroups_ty_;
+  llvm::StructType* workgroup_id_ty_;
   llvm::StructType* arg_ty_;
   llvm::StructType* call_frame_ty_;
   llvm::FunctionType* kernel_function_ty_;

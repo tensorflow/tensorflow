@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "absl/time/time.h"
 #include "tensorflow/core/framework/local_rendezvous.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
@@ -131,8 +132,8 @@ absl::Status RendezvousInterface::Recv(const ParsedKey& key,
               n.Notify();
             });
   if (timeout_ms > 0) {
-    int64_t timeout_us = timeout_ms * 1000;
-    bool notified = WaitForNotificationWithTimeout(&n, timeout_us);
+    bool notified =
+        n.WaitForNotificationWithTimeout(absl::Milliseconds(timeout_ms));
     if (!notified) {
       return absl::Status(absl::StatusCode::kDeadlineExceeded,
                           "Timed out waiting for notification");

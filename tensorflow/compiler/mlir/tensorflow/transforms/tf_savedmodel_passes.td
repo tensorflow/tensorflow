@@ -44,6 +44,19 @@ def FreezeGlobalTensorsPass : Pass<"tf-saved-model-freeze-global-tensors", "Modu
   ];
 }
 
+def UnfreezeMutableGlobalTensorsPass : Pass<"tf-saved-model-unfreeze-mutable-global-tensors", "ModuleOp"> {
+  let summary = "Unfreeze mutable global tensors.";
+
+  let description = [{
+    This pass "unfreezes" the use of global constant tensor ops found in the
+    module and converts them to tf.VarHandleOps. Also, an initialization pattern
+    tf.AssignVariableOp(tf.VarHandleOp, tf.ConstOp) is inserted to the
+    initializer function of type "init_op" for each of the unfrozen constants.
+  }];
+
+  let constructor = "::mlir::tf_saved_model::CreateUnfreezeMutableGlobalTensorsPass()";
+}
+
 def OptimizeGlobalTensorsPass : Pass<"tf-saved-model-optimize-global-tensors", "ModuleOp"> {
   let summary = "Optimize tf_saved_model.global_tensor's.";
 

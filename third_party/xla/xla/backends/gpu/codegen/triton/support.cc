@@ -151,7 +151,8 @@ CodegenDecision IsTritonSupportedConversion(
     return error_message();
   }
 
-  if (input == S4 && output != S8) {
+  if (input == S4 && output != S8 && output != F16 && output != BF16 &&
+      output != F32 && output != F64) {
     return error_message();
   }
   if (output == S4) {
@@ -583,6 +584,25 @@ CodegenDecision IsTritonSupportedInstructionImpl(
     return IsTritonSupportedConcatenate(instr);
   }
 
+  // Special handling for the kPad instruction. Right now we only support "high"
+  // padding. "Interior" and "low" padding are not supported.
+  if (instr.opcode() == HloOpcode::kPad) {
+    auto pad = Cast<HloPadInstruction>(&instr);
+    bool no_op = true;
+    for (const auto& dim_config : pad->padding_config().dimensions()) {
+      if (dim_config.edge_padding_low() != 0 ||
+          dim_config.interior_padding() != 0) {
+        return CodegenDecision::Forbid("Only high padding is supported.");
+      }
+      no_op = no_op && dim_config.edge_padding_high() == 0;
+    }
+    if (no_op) {
+      return CodegenDecision::Forbid("No-op pad ops are not allowed.");
+    }
+    return CodegenDecision(pad->shape().element_type() != S4,
+                           "S4 is not supported.");
+  }
+
   // Const is technically an elementwise op, so this check must be before the
   // elementwise check.
   if (instr.opcode() == HloOpcode::kConstant) {
@@ -609,6 +629,11 @@ CodegenDecision IsTritonSupportedInstructionImpl(
     }
     case HloOpcode::kParameter:
       return CodegenDecision::Allow();
+    case HloOpcode::kDynamicSlice:
+      // TODO(b/417172838): enable this once we confirm that no benchmarks were
+      // regressed.
+      return CodegenDecision::Forbid(
+          "dynamic slice is supported but not enabled yet");
     case HloOpcode::kBitcast:
     case HloOpcode::kBroadcast:
     case HloOpcode::kReshape:
@@ -648,22 +673,14 @@ CodegenDecision IsTritonSupportedInstructionImpl(
 namespace internal {
 bool IsTritonUnsupportedOpcode(HloOpcode opcode) {
   switch (opcode) {
-    case HloOpcode::kConvolution:
     case HloOpcode::kDynamicReshape:
-    case HloOpcode::kDynamicSlice:
     case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kGather:
-    case HloOpcode::kPad:
     case HloOpcode::kRaggedDot:
-    case HloOpcode::kRecv:
-    case HloOpcode::kRecvDone:
     case HloOpcode::kReduceWindow:
     case HloOpcode::kScatter:
     case HloOpcode::kSelectAndScatter:
-    case HloOpcode::kSend:
-    case HloOpcode::kSendDone:
     case HloOpcode::kSetDimensionSize:
-    case HloOpcode::kSort:
       return true;
     default:
       return false;

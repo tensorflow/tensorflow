@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <numeric>
+#include <tuple>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -29,15 +30,15 @@ limitations under the License.
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
-#include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/device_test_util.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.pb.h"
+#include "xla/python/ifrt/serdes_test_util.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
-#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
@@ -52,8 +53,16 @@ using ::testing::HasSubstr;
 using ::testing::SizeIs;
 using ::tsl::testing::StatusIs;
 
-class RemapPlanTest : public test_util::DeviceTest {
+class RemapPlanTest
+    : public testing::TestWithParam<test_util::DeviceTestParam> {
  public:
+  RemapPlanTest() : fixture_(GetParam()) {}
+
+  Client* client() { return fixture_.client(); }
+  DeviceListRef GetDevices(absl::Span<const int> device_indices) {
+    return fixture_.GetDevices(device_indices);
+  }
+
   ArraySpec GetDummySpec() {
     return ArraySpec{
         /*dtype=*/DType(DType::kS32),
@@ -63,69 +72,10 @@ class RemapPlanTest : public test_util::DeviceTest {
                                      /*shape=*/Shape({4, 3}),
                                      /*shard_shape=*/Shape({2, 3}))};
   }
+
+ private:
+  test_util::DeviceTestFixture fixture_;
 };
-
-TEST_P(RemapPlanTest, ToFromProto) {
-  RemapPlan plan;
-
-  Shape shape({20, 20});
-  Shape shard_shape({5, 20});
-  DeviceListRef devices = GetDevices({0, 1, 2, 3});
-  ShardingRef sharding =
-      ConcreteEvenSharding::Create(devices, MemoryKind(), /*shape=*/shape,
-                                   /*shard_shape=*/shard_shape);
-
-  plan.input_specs.reserve(2);
-  plan.input_specs.push_back(ArraySpec{/*dtype=*/DType(DType::kF32),
-                                       /*shape=*/shape, /*sharding=*/sharding});
-  plan.input_specs.push_back(ArraySpec{/*dtype=*/DType(DType::kF32),
-                                       /*shape=*/shape, /*sharding=*/sharding});
-
-  plan.output_specs.reserve(2);
-  plan.output_specs.push_back(ArraySpec{
-      /*dtype=*/DType(DType::kF32), /*shape=*/shape, /*sharding=*/sharding});
-  plan.output_specs.push_back(ArraySpec{
-      /*dtype=*/DType(DType::kF32), /*shape=*/shape, /*sharding=*/sharding});
-
-  plan.mappings = std::make_shared<std::vector<RemapPlan::Mapping>>();
-  plan.mappings->reserve(2);
-  plan.mappings->push_back(RemapPlan::Mapping{
-      /*in_array=*/0, /*out_array=*/1,
-      /*from=*/{RemapPlan::Interval{0, 2, 1}, RemapPlan::Interval{2, 4, 1}},
-      /*to=*/{RemapPlan::Interval{1, 4, 2}, RemapPlan::Interval{0, 4, 2}}});
-  plan.mappings->push_back(RemapPlan::Mapping{
-      /*in_array=*/1, /*out_array=*/0,
-      /*from=*/{RemapPlan::Interval{0, 4, 2}, RemapPlan::Interval{1, 4, 2}},
-      /*to=*/{RemapPlan::Interval{0, 2, 1}, RemapPlan::Interval{2, 4, 1}}});
-
-  TF_ASSERT_OK_AND_ASSIGN(RemapPlanProto plan_proto, plan.ToProto());
-  TF_ASSERT_OK_AND_ASSIGN(RemapPlan plan_copy,
-                          RemapPlan::FromProto(client(), plan_proto));
-
-  EXPECT_THAT(*plan_copy.mappings, ElementsAreArray(*plan.mappings));
-
-  EXPECT_THAT(plan_copy.output_specs, SizeIs(2));
-  for (const auto& spec : plan_copy.input_specs) {
-    EXPECT_EQ(spec.dtype, DType(DType::kF32));
-    EXPECT_EQ(spec.shape, shape);
-    const auto* sharding_copy =
-        llvm::dyn_cast<ConcreteEvenSharding>(spec.sharding.get());
-    ASSERT_NE(sharding_copy, nullptr);
-    EXPECT_EQ(*sharding_copy->devices(), *devices);
-    EXPECT_EQ(sharding_copy->shape(), shape);
-    EXPECT_EQ(sharding_copy->shard_shape(), shard_shape);
-  }
-  for (const auto& spec : plan_copy.output_specs) {
-    EXPECT_EQ(spec.dtype, DType(DType::kF32));
-    EXPECT_EQ(spec.shape, shape);
-    const auto* sharding_copy =
-        llvm::dyn_cast<ConcreteEvenSharding>(spec.sharding.get());
-    ASSERT_NE(sharding_copy, nullptr);
-    EXPECT_EQ(*sharding_copy->devices(), *devices);
-    EXPECT_EQ(sharding_copy->shape(), shape);
-    EXPECT_EQ(sharding_copy->shard_shape(), shard_shape);
-  }
-}
 
 TEST_P(RemapPlanTest, EmptyMappings) {
   RemapPlan plan;
@@ -631,6 +581,96 @@ INSTANTIATE_TEST_SUITE_P(NumDevices, RemapPlanTest,
                          testing::Values(test_util::DeviceTestParam{
                              /*num_devices=*/4,
                              /*num_addressable_devices=*/4}));
+
+using RemapPlanSerDesTestParam =
+    std::tuple<SerDesVersion, test_util::DeviceTestParam>;
+
+class RemapPlanSerDesTest
+    : public testing::TestWithParam<RemapPlanSerDesTestParam> {
+ public:
+  RemapPlanSerDesTest()
+      : version_(std::get<0>(GetParam())), fixture_(std::get<1>(GetParam())) {}
+
+  SerDesVersion version() const { return version_; }
+
+  Client* client() { return fixture_.client(); }
+  DeviceListRef GetDevices(absl::Span<const int> device_indices) {
+    return fixture_.GetDevices(device_indices);
+  }
+
+ private:
+  SerDesVersion version_;
+  test_util::DeviceTestFixture fixture_;
+};
+
+TEST_P(RemapPlanSerDesTest, ToFromProto) {
+  RemapPlan plan;
+
+  Shape shape({20, 20});
+  Shape shard_shape({5, 20});
+  DeviceListRef devices = GetDevices({0, 1, 2, 3});
+  ShardingRef sharding =
+      ConcreteEvenSharding::Create(devices, MemoryKind(), /*shape=*/shape,
+                                   /*shard_shape=*/shard_shape);
+
+  plan.input_specs.reserve(2);
+  plan.input_specs.push_back(ArraySpec{/*dtype=*/DType(DType::kF32),
+                                       /*shape=*/shape, /*sharding=*/sharding});
+  plan.input_specs.push_back(ArraySpec{/*dtype=*/DType(DType::kF32),
+                                       /*shape=*/shape, /*sharding=*/sharding});
+
+  plan.output_specs.reserve(2);
+  plan.output_specs.push_back(ArraySpec{
+      /*dtype=*/DType(DType::kF32), /*shape=*/shape, /*sharding=*/sharding});
+  plan.output_specs.push_back(ArraySpec{
+      /*dtype=*/DType(DType::kF32), /*shape=*/shape, /*sharding=*/sharding});
+
+  plan.mappings = std::make_shared<std::vector<RemapPlan::Mapping>>();
+  plan.mappings->reserve(2);
+  plan.mappings->push_back(RemapPlan::Mapping{
+      /*in_array=*/0, /*out_array=*/1,
+      /*from=*/{RemapPlan::Interval{0, 2, 1}, RemapPlan::Interval{2, 4, 1}},
+      /*to=*/{RemapPlan::Interval{1, 4, 2}, RemapPlan::Interval{0, 4, 2}}});
+  plan.mappings->push_back(RemapPlan::Mapping{
+      /*in_array=*/1, /*out_array=*/0,
+      /*from=*/{RemapPlan::Interval{0, 4, 2}, RemapPlan::Interval{1, 4, 2}},
+      /*to=*/{RemapPlan::Interval{0, 2, 1}, RemapPlan::Interval{2, 4, 1}}});
+
+  TF_ASSERT_OK_AND_ASSIGN(RemapPlanProto plan_proto, plan.ToProto(version()));
+  TF_ASSERT_OK_AND_ASSIGN(RemapPlan plan_copy,
+                          RemapPlan::FromProto(client(), plan_proto));
+
+  EXPECT_THAT(*plan_copy.mappings, ElementsAreArray(*plan.mappings));
+
+  EXPECT_THAT(plan_copy.output_specs, SizeIs(2));
+  for (const auto& spec : plan_copy.input_specs) {
+    EXPECT_EQ(spec.dtype, DType(DType::kF32));
+    EXPECT_EQ(spec.shape, shape);
+    const auto* sharding_copy =
+        llvm::dyn_cast<ConcreteEvenSharding>(spec.sharding.get());
+    ASSERT_NE(sharding_copy, nullptr);
+    EXPECT_EQ(*sharding_copy->devices(), *devices);
+    EXPECT_EQ(sharding_copy->shape(), shape);
+    EXPECT_EQ(sharding_copy->shard_shape(), shard_shape);
+  }
+  for (const auto& spec : plan_copy.output_specs) {
+    EXPECT_EQ(spec.dtype, DType(DType::kF32));
+    EXPECT_EQ(spec.shape, shape);
+    const auto* sharding_copy =
+        llvm::dyn_cast<ConcreteEvenSharding>(spec.sharding.get());
+    ASSERT_NE(sharding_copy, nullptr);
+    EXPECT_EQ(*sharding_copy->devices(), *devices);
+    EXPECT_EQ(sharding_copy->shape(), shape);
+    EXPECT_EQ(sharding_copy->shard_shape(), shard_shape);
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    SerDesVersion_NumDevices, RemapPlanSerDesTest,
+    testing::Combine(testing::ValuesIn(test_util::AllSupportedSerDesVersions()),
+                     testing::Values(test_util::DeviceTestParam{
+                         /*num_devices=*/4,
+                         /*num_addressable_devices=*/4})));
 
 }  // namespace
 }  // namespace ifrt

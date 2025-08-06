@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <string>
 #include <utility>
 #include <vector>
 
@@ -116,7 +115,7 @@ void ConvertGpuXSpaceToStepStats(const XSpace& xspace, StepStats* step_stats) {
           }
           NodeExecStats* ns = sync_dev_stats->add_node_stats();
           SetNodeTimes(start_time, event, ns);
-          ns->set_node_name(std::string(event.Name()));
+          ns->set_node_name(event.Name());
           ns->set_timeline_label(absl::StrCat("ThreadId ", thread_id));
           ns->set_thread_id(thread_id);
         }
@@ -157,7 +156,7 @@ void ConvertGpuXSpaceToStepStats(const XSpace& xspace, StepStats* step_stats) {
 
         absl::string_view node_name =
             stats.IsTfOp() ? stats.tf_op_fullname : event.Name();
-        ns->set_node_name(std::string(node_name));
+        ns->set_node_name(node_name);
 
         if (stats.IsKernel()) {
           absl::string_view kernel_name = event.Name();
@@ -201,7 +200,7 @@ void ConvertGpuXSpaceToStepStats(const XSpace& xspace, StepStats* step_stats) {
           memcpy_dev_stats->add_node_stats()->Swap(ns.get());
 
         } else {
-          ns->set_timeline_label(std::string(node_name));
+          ns->set_timeline_label(node_name);
           if (unknown_stream_dev_stats == nullptr) {
             unknown_stream_dev_stats = step_stats->add_dev_stats();
             unknown_stream_dev_stats->set_device(

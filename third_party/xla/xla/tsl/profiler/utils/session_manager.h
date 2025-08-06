@@ -32,6 +32,23 @@ absl::Status ValidateRemoteProfilerSessionManagerOptions(
 
 // Get RemoteSessionManagerOptions from logdir and opts.
 tensorflow::RemoteProfilerSessionManagerOptions
+GetRemoteSessionManagerOptionsLockedWithBoolOpts(
+    absl::string_view logdir,
+    const absl::flat_hash_map<std::string,
+                              std::variant<bool, int, std::string>>& opts);
+
+// Get RemoteSessionManagerOptions from provided options.
+tensorflow::RemoteProfilerSessionManagerOptions
+GetRemoteSessionManagerOptionsLockedWithBoolOpts(
+    absl::string_view service_addresses, absl::string_view logdir,
+    absl::string_view worker_list, bool include_dataset_ops,
+    int32_t duration_ms,
+    const absl::flat_hash_map<std::string,
+                              std::variant<bool, int, std::string>>& opts,
+    bool* is_cloud_tpu_session);
+
+// Get RemoteSessionManagerOptions from logdir and opts.
+tensorflow::RemoteProfilerSessionManagerOptions
 GetRemoteSessionManagerOptionsLocked(
     absl::string_view logdir,
     const absl::flat_hash_map<std::string, std::variant<int, std::string>>&
@@ -44,7 +61,7 @@ GetRemoteSessionManagerOptionsLocked(
     absl::string_view worker_list, bool include_dataset_ops,
     int32_t duration_ms,
     const absl::flat_hash_map<std::string, std::variant<int, std::string>>&
-        opts,
+        options,
     bool* is_cloud_tpu_session);
 
 // Validate Host Port pair.

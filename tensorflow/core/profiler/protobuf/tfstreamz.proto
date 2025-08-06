@@ -4,4 +4,4 @@ syntax = "proto3";
 
 package tensorflow.profiler.tfstreamz;
 
-import public "plugin/tensorboard_plugin_profile/protobuf/tfstreamz.proto";
+import public "plugin/xprof/protobuf/tfstreamz.proto";

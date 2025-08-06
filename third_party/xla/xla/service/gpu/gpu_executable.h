@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <variant>
 #include <vector>
 
@@ -30,7 +31,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "absl/types/variant.h"
 #include "xla/backends/gpu/runtime/annotation.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -38,11 +38,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/executable.h"
+#include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/buffer_allocations.h"
+#include "xla/service/gpu/gpu_executable.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
-#include "xla/service/xla_debug_info_manager.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
@@ -77,6 +78,19 @@ class GpuExecutable : public Executable {
     // Whether this output is hinted to alias a parameter (BufferAllocation*
     // would indicate the aliased parameter), and what kind of alias it is.
     std::optional<HloInputOutputAliasConfig::Alias> alias_config;
+
+    OutputInfoProto ToProto() const;
+    static absl::StatusOr<OutputInfo> FromProto(const OutputInfoProto& proto);
+
+    friend bool operator==(const OutputInfo& lhs, const OutputInfo& rhs) {
+      return std::tie(lhs.allocation_index, lhs.passthrough,
+                      lhs.alias_config) ==
+             std::tie(rhs.allocation_index, rhs.passthrough, rhs.alias_config);
+    }
+
+    friend bool operator!=(const OutputInfo& lhs, const OutputInfo& rhs) {
+      return !(lhs == rhs);
+    }
   };
 
   struct Params {
@@ -91,6 +105,7 @@ class GpuExecutable : public Executable {
     xla::Shape output_shape;
     std::optional<std::vector<BufferAllocation>> mlir_allocations;
     std::unique_ptr<const BufferAssignment> buffer_assignment;
+    std::unique_ptr<GpuAliasInfo> alias_info;
     int64_t debug_buffer_assignment_show_max;
     std::unique_ptr<HloModule> debug_module = nullptr;
     bool enable_debug_info_manager = true;
@@ -172,6 +187,8 @@ class GpuExecutable : public Executable {
   const BufferAssignment* buffer_assignment() const {
     return buffer_assignment_.get();
   }
+
+  const GpuAliasInfo* alias_info() const { return alias_info_.get(); }
 
   const SequentialThunk& GetThunk() { return *thunks_; }
 
@@ -261,6 +278,10 @@ class GpuExecutable : public Executable {
   //
   // This object is also used for dumping debug info.
   std::unique_ptr<const xla::BufferAssignment> buffer_assignment_;
+
+  // Backend specific aliasing information whether operands can/should share the
+  // buffer with the user.
+  std::unique_ptr<GpuAliasInfo> alias_info_;
 
   ModuleAnnotations module_annotations_ = [this] {
     if (has_module()) {

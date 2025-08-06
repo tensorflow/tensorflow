@@ -30,7 +30,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
-#include "xla/backends/cpu/onednn_fusion.h"
+#include "xla/backends/cpu/onednn_fusion_graph.h"
 #include "xla/backends/cpu/runtime/onednn/onednn_threadpool.h"
 #include "xla/backends/cpu/runtime/parallel_loop_runner.h"
 #include "xla/backends/cpu/runtime/thunk.h"
@@ -45,19 +45,17 @@ namespace xla::cpu {
 
 // oneDNN runtime instantiated for the fusion operation.
 struct OneDnnFusionThunk::OneDnnRuntime {
-  OneDnnRuntime(OneDnnFusion fusion, const Eigen::ThreadPoolDevice* device);
+  OneDnnRuntime(OneDnnFusion fusion, Eigen::ThreadPoolInterface* thread_pool);
 
   OneDnnRuntime(OneDnnRuntime&&) = default;
   OneDnnRuntime& operator=(OneDnnRuntime&&) = default;
 
-  tsl::AsyncValueRef<OneDnnFusionThunk::ExecuteEvent> Invoke(
-      const Eigen::ThreadPoolDevice* device,
-      absl::Span<se::DeviceMemoryBase> arguments,
-      absl::Span<se::DeviceMemoryBase> results);
+  absl::Status Invoke(Eigen::ThreadPoolInterface* thread_pool,
+                      absl::Span<se::DeviceMemoryBase> arguments,
+                      absl::Span<se::DeviceMemoryBase> results);
 
   OneDnnFusion fusion;
 
-  std::unique_ptr<ParallelLoopRunner> runner;
   std::unique_ptr<OneDnnThreadPool> threadpool;
 
   dnnl::engine engine;
@@ -66,16 +64,14 @@ struct OneDnnFusionThunk::OneDnnRuntime {
 };
 
 OneDnnFusionThunk::OneDnnRuntime::OneDnnRuntime(
-    OneDnnFusion fusion, const Eigen::ThreadPoolDevice* device)
+    OneDnnFusion fusion, Eigen::ThreadPoolInterface* thread_pool)
     : fusion(std::move(fusion)),
-      runner(std::make_unique<ParallelLoopRunner>(device)),
-      threadpool(std::make_unique<OneDnnThreadPool>(runner.get())),
+      threadpool(std::make_unique<OneDnnThreadPool>(thread_pool)),
       engine(dnnl::engine::kind::cpu, 0),
       stream(dnnl::threadpool_interop::make_stream(engine, threadpool.get())) {}
 
-tsl::AsyncValueRef<OneDnnFusionThunk::ExecuteEvent>
-OneDnnFusionThunk::OneDnnRuntime::Invoke(
-    const Eigen::ThreadPoolDevice* device,
+absl::Status OneDnnFusionThunk::OneDnnRuntime::Invoke(
+    Eigen::ThreadPoolInterface* thread_pool,
     absl::Span<se::DeviceMemoryBase> arguments,
     absl::Span<se::DeviceMemoryBase> results) {
   // Number of arguments and results must match the number of logical tensors.
@@ -83,6 +79,9 @@ OneDnnFusionThunk::OneDnnRuntime::Invoke(
       << "Arguments size mismatch";
   TF_RET_CHECK(results.size() == fusion.results.size())
       << "Results size mismatch";
+
+  // Update the underlying Eigen thread pool.
+  threadpool->set_thread_pool(thread_pool);
 
   // Create tensors for arguments.
   std::vector<dnnl::graph::tensor> argument_data;
@@ -105,12 +104,12 @@ OneDnnFusionThunk::OneDnnRuntime::Invoke(
     partition.execute(stream, argument_data, result_data);
   }
 
-  return runner->done_event();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<OneDnnFusionThunk::OneDnnRuntime>
 OneDnnFusionThunk::CreateOneDnnRuntime(
-    const Eigen::ThreadPoolDevice* device,
+    Eigen::ThreadPoolInterface* thread_pool,
     absl::FunctionRef<absl::StatusOr<OneDnnFusion>()> builder) {
   VLOG(3) << absl::StreamFormat(
       "Create oneDNN runtime for `%s` operation: num_created=%d",
@@ -119,7 +118,7 @@ OneDnnFusionThunk::CreateOneDnnRuntime(
   // Construct oneDNN fusion using user-provided builder function.
   TF_ASSIGN_OR_RETURN(OneDnnFusion fusion, builder());
 
-  OneDnnRuntime runtime(std::move(fusion), device);
+  OneDnnRuntime runtime(std::move(fusion), thread_pool);
 
   // Compile constructed graph for given engine.
   for (const auto& partition : runtime.fusion.graph.get_partitions()) {
@@ -145,9 +144,9 @@ OneDnnFusionThunk::OneDnnFusionThunk(Info info, std::vector<Argument> arguments,
       arguments_(std::move(arguments)),
       results_(std::move(results)),
       builder_(std::move(builder)),
-      onednn_runtime_pool_([this](const Eigen::ThreadPoolDevice* device) {
+      onednn_runtime_pool_([this](Eigen::ThreadPoolInterface* thread_pool) {
         return CreateOneDnnRuntime(
-            device, [this] { return builder_(arguments_, results_); });
+            thread_pool, [this] { return builder_(arguments_, results_); });
       }) {}
 
 OneDnnFusionThunk::~OneDnnFusionThunk() = default;
@@ -204,17 +203,17 @@ tsl::AsyncValueRef<OneDnnFusionThunk::ExecuteEvent> OneDnnFusionThunk::Execute(
                                   results_buffers[i].opaque());
   }
 
-  const Eigen::ThreadPoolDevice* device = params.intra_op_threadpool;
+  Eigen::ThreadPoolInterface* thread_pool =
+      params.intra_op_threadpool->getPool();
 
   // Borrow oneDNN runtime from the pool.
-  TF_ASSIGN_OR_RETURN(auto runtime, onednn_runtime_pool_.GetOrCreate(device));
-  auto executed = runtime->Invoke(params.intra_op_threadpool,
-                                  absl::MakeSpan(arguments_buffers),
-                                  absl::MakeSpan(results_buffers));
+  TF_ASSIGN_OR_RETURN(auto runtime,
+                      onednn_runtime_pool_.GetOrCreate(thread_pool));
+  TF_RETURN_IF_ERROR(runtime->Invoke(thread_pool,
+                                     absl::MakeSpan(arguments_buffers),
+                                     absl::MakeSpan(results_buffers)));
 
-  // Do not return runtime to the pool until the execution is done.
-  executed.AndThen([runtime = std::move(runtime)] {});
-  return executed;
+  return OkExecuteEvent();
 }
 
 }  // namespace xla::cpu

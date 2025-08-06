@@ -393,6 +393,8 @@ struct Options {
   // If set, this is the size of scoped alternate memory that we require MSA to
   // allocate for post-module operations.
   uint64_t post_module_scoped_alternate_memory_size_in_bytes = 0;
+
+  std::string ToString() const;
 };
 
 }  // namespace memory_space_assignment

@@ -86,6 +86,7 @@ absl::StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
     std::vector<xla::XlaOp> elements;
     for (int i = 0; i < original_shape.tuple_shapes().size(); ++i) {
       auto subsharding = sharding ? sharding->tuple_shardings(i) : sharding;
+      xla::XlaScopedShardingAssignment scoped_sharding(builder, subsharding);
       TF_ASSIGN_OR_RETURN(
           auto element,
           ReshapeWithCorrectRepresentationAndSharding(
@@ -94,6 +95,7 @@ absl::StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
               shape_representation_fn, subsharding, fast_mem));
       elements.push_back(element);
     }
+    xla::XlaScopedShardingAssignment scoped_sharding(builder, sharding);
     return xla::Tuple(builder, elements);
   }
   if (!original_shape.IsArray()) return original;

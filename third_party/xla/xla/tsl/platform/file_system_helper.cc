@@ -269,7 +269,7 @@ absl::Status GetMatchingPaths(FileSystem* fs, Env* env, const string& pattern,
 
 absl::StatusOr<bool> FileExists(Env* env, const string& fname) {
   absl::Status status = env->FileExists(fname);
-  if (errors::IsNotFound(status)) {
+  if (absl::IsNotFound(status)) {
     return false;
   }
   TF_RETURN_IF_ERROR(status);

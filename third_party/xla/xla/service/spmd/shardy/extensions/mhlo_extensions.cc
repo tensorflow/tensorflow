@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/enums.h"
+#include "shardy/dialect/sdy/ir/utils.h"
 #include "shardy/dialect/sdy/transforms/propagation/op_sharding_rule_builder.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
@@ -38,6 +39,7 @@ namespace {
 
 using ::mlir::ArrayRef;
 using ::mlir::sdy::FactorType;
+using ::mlir::sdy::getTensorShape;
 using ::mlir::sdy::kNullDim;
 using ::mlir::sdy::OpShardingRuleBuilder;
 
@@ -186,12 +188,27 @@ struct RaggedDotShardingRuleOpInterface
   }
 };
 
+struct TopKShardingRuleOpInterface
+    : public mlir::sdy::ShardingRuleOpInterface::ExternalModel<
+          TopKShardingRuleOpInterface, mhlo::TopKOp> {
+  mlir::sdy::OpShardingRuleAttr getShardingRule(mlir::Operation* op) const {
+    mhlo::TopKOp topK = llvm::cast<mhlo::TopKOp>(op);
+    return OpShardingRuleBuilder(topK)
+        .addPointwiseWithDiffTypeForMismatch(getTensorShape(topK.getOperand()),
+                                             getTensorShape(topK.getResult(0)),
+                                             FactorType::kNeedReplication,
+                                             /*mismatchFactorIsBlocked=*/true)
+        .build();
+  }
+};
+
 }  // namespace
 
 void registerMhloExtensions(mlir::DialectRegistry& registry) {
   registry.addExtension(+[](mlir::MLIRContext* ctx, mhlo::MhloDialect*) {
     mhlo::CopyOp::attachInterface<CopyShardingRuleOpInterface>(*ctx);
     mhlo::RaggedDotOp::attachInterface<RaggedDotShardingRuleOpInterface>(*ctx);
+    mhlo::TopKOp::attachInterface<TopKShardingRuleOpInterface>(*ctx);
   });
 }
 

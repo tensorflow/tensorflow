@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/types/span.h"
@@ -85,12 +86,9 @@ class TrackedGpuDeviceBuffer {
  public:
   TrackedGpuDeviceBuffer(
       tsl::AsyncValueRef<GpuDeviceMemory> buffer,
-      absl::InlinedVector<tsl::AsyncValueRef<GpuEvent>, 4> definition_events,
-      std::function<void()> on_delete_callback = nullptr);
-
-  TrackedGpuDeviceBuffer(tsl::AsyncValueRef<GpuDeviceMemory> buffer,
-                         tsl::AsyncValueRef<GpuEvent> definition_event,
-                         std::function<void()> on_delete_callback = nullptr);
+      tsl::AsyncValueRef<GpuEvent> definition_event,
+      tsl::AsyncValueRef<GpuEvent> ready_event,
+      absl::AnyInvocable<void() &&> on_delete_callback = nullptr);
 
   TrackedGpuDeviceBuffer(TrackedGpuDeviceBuffer&&) = default;
   TrackedGpuDeviceBuffer& operator=(TrackedGpuDeviceBuffer&&) = default;
@@ -103,8 +101,8 @@ class TrackedGpuDeviceBuffer {
     return definition_event_;
   }
 
-  const tsl::AsyncValueRef<GpuEvent>& deallocation_event() const {
-    return deallocation_event_;
+  const tsl::AsyncValueRef<GpuEvent>& ready_event() const {
+    return ready_event_;
   }
 
   // Adds usage events to the buffer. This usage events could be any device
@@ -133,9 +131,13 @@ class TrackedGpuDeviceBuffer {
  private:
   tsl::AsyncValueRef<GpuDeviceMemory> buffer_;
 
-  // The definition event are associated with GPU operations that write to the
-  // buffers.
+  // The definition event are resolved when the GPU operations that write to the
+  // buffers are enqueued to the stream.
   tsl::AsyncValueRef<GpuEvent> definition_event_;
+
+  // The ready event is resolved when the GPU operations that write to the
+  // buffers are done executing on the stream.
+  tsl::AsyncValueRef<GpuEvent> ready_event_;
 
   // Usage events are associated with GPU operations that read from the buffers.
   TfrtEventSet usage_events_;
@@ -147,7 +149,7 @@ class TrackedGpuDeviceBuffer {
 
   // A callback to call when the TrackedGpuDeviceBuffer is about to be
   // destroyed.
-  std::function<void()> on_delete_callback_;
+  absl::AnyInvocable<void() &&> on_delete_callback_;
 };
 
 }  // namespace xla

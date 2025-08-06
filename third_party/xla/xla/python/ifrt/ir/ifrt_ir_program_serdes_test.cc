@@ -31,6 +31,8 @@ limitations under the License.
 #include "xla/python/ifrt/ir/version.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes.pb.h"
+#include "xla/python/ifrt/serdes_test_util.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/support/module_parsing.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
@@ -50,7 +52,17 @@ std::string PrintModule(mlir::ModuleOp module) {
   return module_str;
 }
 
-TEST(IfrtIRProgramSerDesTest, RoundTrip) {
+class IfrtIRProgramSerDesTest : public testing::TestWithParam<SerDesVersion> {
+ public:
+  IfrtIRProgramSerDesTest() : version_(GetParam()) {}
+
+  SerDesVersion version() const { return version_; }
+
+ private:
+  SerDesVersion version_;
+};
+
+TEST_P(IfrtIRProgramSerDesTest, RoundTrip) {
   static constexpr absl::string_view kMlirModuleStr = R"(
 !array = !ifrt.array<tensor<2xi32>, #ifrt.sharding_param<1 to [0] on 1>, [0]>
 module {
@@ -77,6 +89,9 @@ module {
       support::ParseMlirModuleString(kMlirModuleStr, *context));
   auto initial_program =
       std::make_unique<IfrtIRProgram>(std::move(context), std::move(module));
+
+  // TODO(hyeontaek): Use `version()` to fill in
+  // `SerializeIfrtIRProgramOptions::ifrt_version`.
   TF_ASSERT_OK_AND_ASSIGN(serialized,
                           Serialize(*initial_program, /*options=*/nullptr));
 
@@ -88,7 +103,7 @@ module {
             PrintModule(deserialized_program->mlir_module));
 }
 
-TEST(IfrtIRProgramSerDesTest, VersioningRoundTrip) {
+TEST_P(IfrtIRProgramSerDesTest, VersioningRoundTrip) {
   static constexpr absl::string_view kMlirModuleStr = R"(
 !array = !ifrt.array<tensor<2x2xi32>,
                      #ifrt.sharding_param<2x1 to [0] on 2>, [0,1]>
@@ -121,14 +136,14 @@ module @multiple_calls_of_same_module {
   auto initial_program =
       std::make_unique<IfrtIRProgram>(std::move(context), std::move(module));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      serialized,
-      Serialize(*initial_program,
-                std::make_unique<SerializeIfrtIRProgramOptions>(
-                    Version::getCurrentVersion().toString(),
-                    ::mlir::vhlo::Version::getCurrentVersion().toString(),
-                    /*version_in_place=*/false)));
-
+  // TODO(hyeontaek): Use `version()` to fill in
+  // `SerializeIfrtIRProgramOptions::ifrt_version`.
+  auto options = std::make_unique<SerializeIfrtIRProgramOptions>(
+      Version::getCurrentVersion().toString(),
+      ::mlir::vhlo::Version::getCurrentVersion().toString(),
+      /*version_in_place=*/false);
+  TF_ASSERT_OK_AND_ASSIGN(serialized,
+                          Serialize(*initial_program, std::move(options)));
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<IfrtIRProgram> deserialized_program,
       Deserialize<IfrtIRProgram>(serialized, /*options=*/nullptr));
@@ -137,7 +152,7 @@ module @multiple_calls_of_same_module {
             PrintModule(deserialized_program->mlir_module));
 }
 
-TEST(IfrtIRProgramSerDesTest, VersioningOfAtomProgramInMhloShouldFail) {
+TEST_P(IfrtIRProgramSerDesTest, VersioningOfAtomProgramInMhloShouldFail) {
   static constexpr absl::string_view kMlirModuleStr = R"(
 !array = !ifrt.array<tensor<2xi32>, #ifrt.sharding_param<1 to [0] on 1>, [0]>
 module {
@@ -165,16 +180,17 @@ module {
   auto initial_program =
       std::make_unique<IfrtIRProgram>(std::move(context), std::move(module));
 
-  EXPECT_THAT(
-      Serialize(*initial_program,
-                std::make_unique<SerializeIfrtIRProgramOptions>(
-                    Version::getCurrentVersion().toString(),
-                    ::mlir::vhlo::Version::getCurrentVersion().toString())),
-      StatusIs(absl::StatusCode::kInvalidArgument,
-               HasSubstr("Failed to version IFRT IR program")));
+  // TODO(hyeontaek): Use `version()` to fill in
+  // `SerializeIfrtIRProgramOptions::ifrt_version`.
+  auto options = std::make_unique<SerializeIfrtIRProgramOptions>(
+      Version::getCurrentVersion().toString(),
+      ::mlir::vhlo::Version::getCurrentVersion().toString());
+  EXPECT_THAT(Serialize(*initial_program, std::move(options)),
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Failed to version IFRT IR program")));
 }
 
-TEST(IfrtIRProgramSerDesTest, DeserializationError) {
+TEST_P(IfrtIRProgramSerDesTest, DeserializationError) {
   static constexpr absl::string_view kMlirModuleStr = R"(
 !array = !ifrt.array<tensor<2xi32>, #ifrt.sharding_param<1 to [0] on 1>, [0]>
 module {
@@ -201,6 +217,8 @@ module {
         support::ParseMlirModuleString(kMlirModuleStr, *context));
     auto program =
         std::make_unique<IfrtIRProgram>(std::move(context), std::move(module));
+    // TODO(hyeontaek): Use `version()` to fill in
+    // `SerializeIfrtIRProgramOptions::ifrt_version`.
     TF_ASSERT_OK_AND_ASSIGN(serialized,
                             Serialize(*program, /*options=*/nullptr));
   }
@@ -211,6 +229,10 @@ module {
               StatusIs(Not(absl::StatusCode::kOk),
                        HasSubstr("Failed to parse IfrtIrProgramProto")));
 }
+
+INSTANTIATE_TEST_SUITE_P(
+    SerDesVersion, IfrtIRProgramSerDesTest,
+    testing::ValuesIn(test_util::Week4OldOrLaterSerDesVersions()));
 
 }  // namespace
 }  // namespace ifrt

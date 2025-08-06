@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/base/no_destructor.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/strings/match.h"
@@ -168,12 +169,8 @@ template <typename T>
     const std::vector<typename FixedOptionSetFlagParser<T>::FlagOption>&
         options,
     const FixedOptionSetFlagParserConfig& config = {}) {
-  // Per Google C++ style guide, we use a function-local static
-  // variable to ensure that the parser is only created once and never
-  // destroyed. We cannot use absl::NoDestructor here because it is not
-  // available in the version of Abseil that openxla uses.
-  static const auto* const parser =
-      new FixedOptionSetFlagParser<T>(options, config);
+  static absl::NoDestructor<FixedOptionSetFlagParser<T>> parser(options,
+                                                                config);
   return *parser;
 }
 

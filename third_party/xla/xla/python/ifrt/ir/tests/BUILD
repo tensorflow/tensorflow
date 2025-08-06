@@ -1,5 +1,6 @@
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("//xla:lit.bzl", "lit_test_suite")
-load("//xla:xla.default.bzl", "xla_cc_binary", "xla_cc_test")
+load("//xla:xla.default.bzl", "xla_cc_binary")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 
 package_group(
@@ -144,11 +145,7 @@ cc_library(
     alwayslink = True,
 )
 
-xla_cc_test(
+build_test(
     name = "executable_test_no_impl",
-    srcs = [],
-    deps = [
-        ":executable_impl_test_lib",
-        "//xla/python/ifrt:no_impl_test_main",
-    ],
+    targets = [":executable_impl_test_lib"],
 )

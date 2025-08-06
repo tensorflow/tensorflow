@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/statusor.h"
-#include "xla/backends/cpu/onednn_fusion.h"
+#include "xla/backends/cpu/onednn_fusion_graph.h"
 #include "xla/hlo/ir/hlo_computation.h"
 
 namespace xla::cpu {

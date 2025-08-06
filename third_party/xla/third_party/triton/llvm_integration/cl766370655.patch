@@ -1,0 +1,64 @@
+
+--- a/lib/Conversion/TritonGPUToLLVM/ElementwiseOpToLLVM.cpp	2025-03-25 07:48:50.000000000 -0700
++++ b/lib/Conversion/TritonGPUToLLVM/ElementwiseOpToLLVM.cpp	2025-06-02 16:08:03.000000000 -0700
+@@ -298,7 +298,7 @@
+                 /*asm_string=*/op.getAsmString(),
+                 /*constraints=*/op.getConstraints(),
+                 /*has_side_effects=*/!op.getPure(),
+-                /*is_align_stack=*/false,
++                /*is_align_stack=*/false, LLVM::TailCallKind::None,
+                 /*asm_dialect=*/
+                 LLVM::AsmDialectAttr::get(rewriter.getContext(),
+                                           LLVM::AsmDialect::AD_ATT),
+
+--- a/third_party/amd/lib/TritonAMDGPUToLLVM/GCNAsmFormat.cpp	2025-01-21 05:40:49.000000000 -0800
++++ b/third_party/amd/lib/TritonAMDGPUToLLVM/GCNAsmFormat.cpp	2025-06-02 16:08:04.000000000 -0700
+@@ -77,14 +77,15 @@
+                                ArrayRef<Attribute> attrs) const {
+   auto *ctx = rewriter.getContext();
+   auto inlineAsm = rewriter.create<LLVM::InlineAsmOp>(
+-      loc, resTy, getAllMLIRArgs(), // operands
+-      dump(),                       // asm_string
+-      getConstraints(),             // constraints
+-      hasSideEffect,                // has_side_effects
+-      isAlignStack,                 // is_align_stack
++      loc, resTy, getAllMLIRArgs(),  // operands
++      dump(),                        // asm_string
++      getConstraints(),              // constraints
++      hasSideEffect,                 // has_side_effects
++      isAlignStack,                  // is_align_stack
++      LLVM::TailCallKind::None,
+       LLVM::AsmDialectAttr::get(ctx,
+-                                LLVM::AsmDialect::AD_ATT), // asm_dialect
+-      ArrayAttr::get(ctx, attrs)                           // operand_attrs
++                                LLVM::AsmDialect::AD_ATT),  // asm_dialect
++      ArrayAttr::get(ctx, attrs)                            // operand_attrs
+   );
+ 
+   return inlineAsm.getRes();
+
+--- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/PTXAsmFormat.cpp	2024-11-07 04:49:10.000000000 -0800
++++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/PTXAsmFormat.cpp	2025-06-02 16:08:04.000000000 -0700
+@@ -100,14 +100,15 @@
+                                ArrayRef<Attribute> attrs) const {
+   auto *ctx = rewriter.getContext();
+   auto inlineAsm = rewriter.create<LLVM::InlineAsmOp>(
+-      loc, resTy, getAllMLIRArgs(), // operands
+-      dump(),                       // asm_string
+-      getConstraints(),             // constraints
+-      hasSideEffect,                // has_side_effects
+-      isAlignStack,                 // is_align_stack
++      loc, resTy, getAllMLIRArgs(),  // operands
++      dump(),                        // asm_string
++      getConstraints(),              // constraints
++      hasSideEffect,                 // has_side_effects
++      isAlignStack,                  // is_align_stack
++      LLVM::TailCallKind::None,
+       LLVM::AsmDialectAttr::get(ctx,
+-                                LLVM::AsmDialect::AD_ATT), // asm_dialect
+-      ArrayAttr::get(ctx, attrs)                           // operand_attrs
++                                LLVM::AsmDialect::AD_ATT),  // asm_dialect
++      ArrayAttr::get(ctx, attrs)                            // operand_attrs
+   );
+ 
+   return inlineAsm.getRes();

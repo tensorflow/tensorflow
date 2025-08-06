@@ -1,7 +1,7 @@
 load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
-load("@local_xla//xla/tsl:tsl.bzl", "if_cuda_libs")
+load("@local_xla//xla/tsl:tsl.default.bzl", "if_cuda_libs")
 load(
     "//tensorflow:tensorflow.bzl",
     "clean_dep",
@@ -349,8 +349,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/common_runtime:core_cpu_internal",
         "//tensorflow/core/common_runtime:direct_session_internal",
         "//tensorflow/core/kernels:ops_util",
-        "@local_xla//xla/stream_executor/gpu:gpu_cudamallocasync_allocator_header",
-        "@local_xla//xla/tests:test_macros_header",
+        "@local_xla//xla/stream_executor/gpu:gpu_cudamallocasync_allocator",
         "@local_xla//xla/tsl/framework:device_id",
     ],
 )
@@ -412,9 +411,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/common_runtime:core_cpu_internal",
         "//tensorflow/core/common_runtime:direct_session_internal",
         "//tensorflow/core/kernels:ops_util",
-        "//tensorflow/core/platform:test",
-        "@local_xla//xla/stream_executor/gpu:gpu_cudamallocasync_allocator_header",
-        "@local_xla//xla/tests:test_macros_header",
+        "@local_xla//xla/stream_executor/gpu:gpu_cudamallocasync_allocator",
     ],
 )
 

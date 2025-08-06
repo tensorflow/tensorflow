@@ -50,6 +50,7 @@ cc_library(
         "flatten_tensors.cc",
         "lower_tensors.cc",
         "lower_to_llvm.cc",
+        "lower_xla_math_lib.cc",
         "lower_xla_to_scf.cc",
         "merge_pointers_to_same_slice.cc",
         "propagate_slice_indices.cc",
@@ -61,6 +62,7 @@ cc_library(
         ":atomic_rmw_utils",
         ":convert_pure_call_ops_pass",
         ":passes_inc_gen",
+        ":propagate_alias_scopes",
         ":simplify_affine_pass",
         ":simplify_arith_pass",
         "//xla:shape_util",
@@ -70,6 +72,7 @@ cc_library(
         "//xla/backends/gpu/codegen/emitters/ir:xla_gpu",
         "//xla/codegen:device_spec",
         "//xla/codegen/emitters:elemental_hlo_to_mlir",
+        "//xla/codegen/emitters:implicit_arith_op_builder",
         "//xla/codegen/emitters/ir:xla",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/mlir_hlo",
@@ -185,5 +188,24 @@ cc_library(
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
+    ],
+)
+
+cc_library(
+    name = "propagate_alias_scopes",
+    srcs = ["propagate_alias_scopes.cc"],
+    deps = [
+        ":passes_inc_gen",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:CallOpInterfaces",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMDialect",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TensorDialect",
     ],
 )

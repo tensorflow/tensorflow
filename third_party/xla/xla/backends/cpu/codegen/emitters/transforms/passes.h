@@ -16,16 +16,23 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_CODEGEN_EMITTERS_TRANSFORMS_PASSES_H_
 #define XLA_BACKENDS_CPU_CODEGEN_EMITTERS_TRANSFORMS_PASSES_H_
 
+#include <cstdint>
 #include <memory>
 
 #include "mlir/Pass/Pass.h"
+#include "xla/codegen/emitters/ir/xla_dialect.h"  // IWYU pragma: keep
 
 namespace xla::cpu {
 
 #define GEN_PASS_DECL
 #include "xla/backends/cpu/codegen/emitters/transforms/passes.h.inc"
 
-std::unique_ptr<mlir::Pass> CreateLowerToLLVMPass();
+std::unique_ptr<mlir::Pass> CreateLowerXlaSharedPass();
+std::unique_ptr<mlir::Pass> CreateExpandFloatOpsPass();
+std::unique_ptr<mlir::Pass> CreateAddReductionFastMathFlagsPass();
+std::unique_ptr<mlir::Pass> CreateAddLoopUnrollFlagsPass(
+    int32_t max_nested_bits = 256);
+std::unique_ptr<mlir::Pass> CreatePeelWorkgroupLoopPass();
 
 #define GEN_PASS_REGISTRATION
 #include "xla/backends/cpu/codegen/emitters/transforms/passes.h.inc"

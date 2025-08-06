@@ -23,7 +23,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "xla/pjrt/compile_options.pb.h"
+#include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/test_compilation_environment.pb.h"
 #include "xla/shape.h"

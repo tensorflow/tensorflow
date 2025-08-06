@@ -132,8 +132,7 @@ void handleFuncResultSharding(CustomCallOp funcResultSharding, FuncOp funcOp,
   bool hasNonFuncReturnUses = false;
   for (mlir::OpOperand& use : llvm::make_early_inc_range(resultUses)) {
     if (mlir::isa<mlir::func::ReturnOp>(use.getOwner())) {
-      funcOp.setResultAttr(use.getOperandNumber(), kShardingAttr,
-                           shardingPerValueAttr.getSharding(0));
+      funcOp.setResultAttr(use.getOperandNumber(), kShardingAttr, sharding);
     } else if (use.getOwner() != funcResultSharding &&
                !dynCastX64CombineCustomCall(use.getOwner())) {
       hasNonFuncReturnUses = true;
@@ -187,20 +186,21 @@ void convertShardyAttrs(FuncOp funcOp, IRRewriter& rewriter) {
         resNum, StringAttr::get(funcOp.getContext(), kXlaShardingAttr));
   }
 
-  // Extract the round-tripped SDY shardy attributes from the operations.
+  // Extract the round-tripped shardy attributes from the operations.
   funcOp.front().walk([&](Operation* op) {
     op->removeAttr(kXlaShardingAttr);
     DictionaryAttr dictAttr = getFrontendAttrs(op);
     if (!dictAttr) {
       return;
     }
-    // `SendOp` and `RecvOp` can have a sharding when doing TPU callbacks
-    // through JAX.
-    if (mlir::isa<stablehlo::SendOp, stablehlo::RecvOp>(op)) {
-      auto sharding = parseStringAttr<TensorShardingPerValueAttr>(
-          dictAttr, kShardingRoundTripAttr);
-      CHECK(sharding) << "Expect sharding to exist for SendOp/RecvOp.";
-      op->setAttr(kShardingAttr, sharding);
+    // `SendOp`, `RecvOp`, and `AfterAllOp` can have a sharding when doing TPU
+    // callbacks through JAX.
+    if (mlir::isa<stablehlo::SendOp, stablehlo::RecvOp, stablehlo::AfterAllOp>(
+            op)) {
+      if (auto sharding = parseStringAttr<TensorShardingPerValueAttr>(
+              dictAttr, kShardingRoundTripAttr)) {
+        op->setAttr(kShardingAttr, sharding);
+      }
     }
     // NOTE: we are only setting the sharding on known custom-calls. For any
     // other op that has a `kShardingRoundTripAttr` we discard it. XLA sometimes

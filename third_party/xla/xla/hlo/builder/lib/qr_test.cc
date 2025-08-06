@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/client_library_test_base.h"
-#include "xla/tests/test_macros.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
@@ -38,7 +37,7 @@ namespace {
 
 using QrTest = xla::ClientLibraryTestBase;
 
-XLA_TEST_F(QrTest, Simple) {
+TEST_F(QrTest, Simple) {
   xla::Array2D<float> data({
       {4, 6, 8, 10},
       {6, 45, 54, 63},
@@ -78,7 +77,7 @@ XLA_TEST_F(QrTest, Simple) {
   }
 }
 
-XLA_TEST_F(QrTest, ZeroDiagonal) {
+TEST_F(QrTest, ZeroDiagonal) {
   xla::XlaBuilder builder(TestName());
 
   xla::Array2D<float> a_vals({
@@ -103,7 +102,7 @@ XLA_TEST_F(QrTest, ZeroDiagonal) {
                              xla::ErrorSpec(1e-4, 1e-4));
 }
 
-XLA_TEST_F(QrTest, SimpleBatched) {
+TEST_F(QrTest, SimpleBatched) {
   xla::XlaBuilder builder(TestName());
 
   xla::Array3D<float> a_vals({
@@ -131,7 +130,7 @@ XLA_TEST_F(QrTest, SimpleBatched) {
                              xla::ErrorSpec(1e-4, 1e-4));
 }
 
-XLA_TEST_F(QrTest, SubnormalComplex) {
+TEST_F(QrTest, SubnormalComplex) {
   // Verifies that we don't get NaNs in the case that the norm of a complex
   // number would be denormal but its imaginary value is not exactly 0.
   xla::Array2D<xla::complex64> a_vals({
@@ -149,7 +148,7 @@ XLA_TEST_F(QrTest, SubnormalComplex) {
                                     xla::ErrorSpec(1e-4, 1e-4));
 }
 
-XLA_TEST_F(QrTest, DuplicateHouseholderExpansion) {
+TEST_F(QrTest, DuplicateHouseholderExpansion) {
   xla::XlaBuilder builder(TestName());
 
   xla::Array2D<float> a0_vals({

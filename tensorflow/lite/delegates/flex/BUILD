@@ -65,6 +65,7 @@ cc_library(
     deps = [
         ":util",
         "//tensorflow/lite:string_util",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/experimental/resource",
     ] + if_mobile([

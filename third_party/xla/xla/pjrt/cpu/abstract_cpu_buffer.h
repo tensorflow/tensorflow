@@ -98,7 +98,8 @@ class AbstractCpuBuffer : public CommonPjRtBuffer {
   };
   AbstractCpuBuffer(
       Shape on_device_shape,
-      std::unique_ptr<TrackedCpuDeviceBuffer> tracked_device_buffer);
+      std::unique_ptr<TrackedCpuDeviceBuffer> tracked_device_buffer,
+      PjRtMemorySpace* memory_space);
   ~AbstractCpuBuffer() override;
 
   const Shape& on_device_shape() const override { return on_device_shape_; }

@@ -108,6 +108,7 @@ class TraceMeWrapper {
 tensorflow::ProfileOptions DefaultPythonProfileOptions() {
   tensorflow::ProfileOptions options = tsl::ProfilerSession::DefaultOptions();
   options.set_python_tracer_level(1);
+  options.set_host_tracer_level(1);
   options.set_enable_hlo_proto(true);
   return options;
 }

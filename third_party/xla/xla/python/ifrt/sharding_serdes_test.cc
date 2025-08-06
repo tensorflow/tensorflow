@@ -14,16 +14,22 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <tuple>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/types/span.h"
 #include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/device_test_util.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes.pb.h"
+#include "xla/python/ifrt/serdes_test_util.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/tsl/platform/statusor.h"
@@ -34,14 +40,34 @@ namespace {
 
 using ::testing::ElementsAreArray;
 
-class ShardingSerDesTest : public test_util::DeviceTest {};
+using ShardingSerDesTestParam =
+    std::tuple<SerDesVersion, test_util::DeviceTestParam>;
+
+class ShardingSerDesTest
+    : public testing::TestWithParam<ShardingSerDesTestParam> {
+ public:
+  ShardingSerDesTest()
+      : version_(std::get<0>(GetParam())), fixture_(std::get<1>(GetParam())) {}
+
+  SerDesVersion version() const { return version_; }
+
+  Client* client() { return fixture_.client(); }
+  DeviceListRef GetDevices(absl::Span<const int> device_indices) {
+    return fixture_.GetDevices(device_indices);
+  }
+
+ private:
+  SerDesVersion version_;
+  test_util::DeviceTestFixture fixture_;
+};
 
 TEST_P(ShardingSerDesTest, SingleDeviceShardingRoundTrip) {
   auto sharding = SingleDeviceSharding::Create(
       GetDevices({0})->devices().front(), MemoryKind("abc"));
 
+  auto options = std::make_unique<SerializeOptions>(version());
   TF_ASSERT_OK_AND_ASSIGN(auto serialized,
-                          Serialize(*sharding, /*options=*/nullptr));
+                          Serialize(*sharding, std::move(options)));
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto out_sharding,
@@ -55,8 +81,9 @@ TEST_P(ShardingSerDesTest, SingleDeviceShardingRoundTrip) {
 TEST_P(ShardingSerDesTest, OpaqueShardingRoundTrip) {
   auto sharding = OpaqueSharding::Create(GetDevices({0, 1}), MemoryKind("abc"));
 
+  auto options = std::make_unique<SerializeOptions>(version());
   TF_ASSERT_OK_AND_ASSIGN(auto serialized,
-                          Serialize(*sharding, /*options=*/nullptr));
+                          Serialize(*sharding, std::move(options)));
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto out_sharding,
@@ -73,8 +100,9 @@ TEST_P(ShardingSerDesTest, ConcreteShardingRoundTrip) {
       /*shape=*/Shape({10, 20}),
       /*shard_shapes=*/{Shape({3, 20}), Shape({7, 20})});
 
+  auto options = std::make_unique<SerializeOptions>(version());
   TF_ASSERT_OK_AND_ASSIGN(auto serialized,
-                          Serialize(*sharding, /*options=*/nullptr));
+                          Serialize(*sharding, std::move(options)));
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto out_sharding,
@@ -106,8 +134,9 @@ TEST_P(ShardingSerDesTest, ConcreteShardingWithDynamicShapeRoundTrip) {
       /*dynamic_shape=*/dynamic_shape,
       /*shard_dynamic_shapes=*/{shard_dynamic_shape1, shard_dynamic_shape2});
 
+  auto options = std::make_unique<SerializeOptions>(version());
   TF_ASSERT_OK_AND_ASSIGN(Serialized serialized,
-                          Serialize(*sharding, /*options=*/nullptr));
+                          Serialize(*sharding, std::move(options)));
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto out_sharding,
@@ -127,8 +156,9 @@ TEST_P(ShardingSerDesTest, ConcreteEvenShardingRoundTrip) {
       /*shape=*/Shape({10, 20}),
       /*shard_shape=*/Shape({5, 20}), /*is_fully_replicated=*/true);
 
+  auto options = std::make_unique<SerializeOptions>(version());
   TF_ASSERT_OK_AND_ASSIGN(auto serialized,
-                          Serialize(*sharding, /*options=*/nullptr));
+                          Serialize(*sharding, std::move(options)));
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto out_sharding,
@@ -147,8 +177,10 @@ TEST_P(ShardingSerDesTest, ShardingParamShardingRoundTrip) {
       auto sharding,
       ShardingParamSharding::Create(ShardingParam({2, 1}, {{0}, {2}}),
                                     GetDevices({0, 1}), MemoryKind("abc")));
+
+  auto options = std::make_unique<SerializeOptions>(version());
   TF_ASSERT_OK_AND_ASSIGN(auto serialized,
-                          Serialize(*sharding, /*options=*/nullptr));
+                          Serialize(*sharding, std::move(options)));
   TF_ASSERT_OK_AND_ASSIGN(
       auto out_sharding,
       Deserialize<ShardingParamSharding>(
@@ -158,10 +190,12 @@ TEST_P(ShardingSerDesTest, ShardingParamShardingRoundTrip) {
   EXPECT_THAT(out_sharding->sharding_param(), sharding->sharding_param());
 }
 
-INSTANTIATE_TEST_SUITE_P(NumDevices, ShardingSerDesTest,
-                         testing::Values(test_util::DeviceTestParam{
-                             /*num_devices=*/2,
-                             /*num_addressable_devices=*/2}));
+INSTANTIATE_TEST_SUITE_P(
+    SerDesVersion_NumDevices, ShardingSerDesTest,
+    testing::Combine(testing::ValuesIn(test_util::AllSupportedSerDesVersions()),
+                     testing::Values(test_util::DeviceTestParam{
+                         /*num_devices=*/2,
+                         /*num_addressable_devices=*/2})));
 
 }  // namespace
 }  // namespace ifrt

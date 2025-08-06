@@ -1,4 +1,4 @@
-// RUN: tf-opt %s --tfl-default-quant --tfl-quantize | FileCheck %s
+// RUN: litert-opt %s --tfl-default-quant --tfl-quantize | FileCheck %s
 
 // CHECK-LABEL: hardcode_all
 func.func @hardcode_all(%arg0: tensor<2x2xf32>, %arg1: tensor<2x1xf32>) -> tensor<2x2xf32> {

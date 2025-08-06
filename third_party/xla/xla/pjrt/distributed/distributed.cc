@@ -53,6 +53,8 @@ std::shared_ptr<::grpc::Channel> GetDistributedRuntimeClientChannel(
   if (use_compression) {
     args.SetCompressionAlgorithm(GRPC_COMPRESS_GZIP);
   }
+  args.SetMaxReceiveMessageSize(-1);
+  args.SetMaxSendMessageSize(-1);
   return ::grpc::CreateCustomChannel(address, creds, args);
 }
 

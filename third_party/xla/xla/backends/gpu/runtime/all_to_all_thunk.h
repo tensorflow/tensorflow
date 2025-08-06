@@ -23,10 +23,10 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
-#include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -66,8 +66,9 @@ class AllToAllStartThunk : public CollectiveThunk {
   absl::Span<const Buffer> buffers() const { return buffers_; }
 
  protected:
-  absl::Status RunCollective(const ExecuteParams& params, se::Stream& stream,
-                             CommunicatorHandle comm_handle) override;
+  absl::StatusOr<bool> RunCollective(const ExecuteParams& params,
+                                     se::Stream& stream,
+                                     CommunicatorHandle comm) override;
 
   AsyncStreamKind GetAsyncStreamKind() const override;
 
@@ -78,29 +79,34 @@ class AllToAllStartThunk : public CollectiveThunk {
   const std::vector<Buffer> buffers_;
   int64_t device_count_ = 1;
   bool p2p_memcpy_enabled_ = false;
+
   absl::Mutex pointer_maps_mutex_;
   // Maps from a device to a uint64_t array of size num_devices. The array is
-  // written to and used in each call to RunCollective(), but is
-  // preallocated as CUDA host memory in the first call to Initialize(), since
-  // allocating CUDA host memory every call to RunCollective() is expensive.
-  absl::flat_hash_map<se::StreamExecutor*,
-                      std::unique_ptr<se::MemoryAllocation>>
-      send_pointer_maps_ ABSL_GUARDED_BY(pointer_maps_mutex_);
+  // used in each call to RunCollective(), but is preallocated as CUDA host
+  // memory and written to in the first call to Initialize(), since addresses
+  // won't change across calls to RunCollective().
   absl::flat_hash_map<se::StreamExecutor*,
                       std::unique_ptr<se::MemoryAllocation>>
       receive_pointer_maps_ ABSL_GUARDED_BY(pointer_maps_mutex_);
+
+  absl::Mutex events_mutex_;
+  // Events to synchronize steams on different devices at the start/end of the
+  // kernel.
+  absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<se::Event>> events_
+      ABSL_GUARDED_BY(events_mutex_);
 };
 
-absl::Status RunAllToAll(GpuCollectives* collectives, bool has_split_dimension,
+absl::Status RunAllToAll(bool has_split_dimension,
                          std::vector<DeviceBufferPair>& buffers,
                          se::Stream& stream, Communicator* comm);
 
-absl::Status RunMemCpyAllToAll(GpuCollectives* collectives,
-                               bool has_split_dimension,
+absl::Status RunMemCpyAllToAll(bool has_split_dimension,
                                std::vector<DeviceBufferPair>& buffers,
                                se::Stream& stream, Communicator* comm,
-                               uint64_t send_pointer_map[],
-                               uint64_t receive_pointer_map[]);
+                               uint64_t receive_pointer_map[],
+                               const GpuCliqueKey& clique_key, RankId rank,
+                               se::Event* event,
+                               std::vector<se::Event*>& events);
 
 }  // namespace gpu
 }  // namespace xla

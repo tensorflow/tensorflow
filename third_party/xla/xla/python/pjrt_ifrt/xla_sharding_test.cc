@@ -49,7 +49,18 @@ using ::testing::SizeIs;
 using ::tsl::testing::IsOkAndHolds;
 using ::tsl::testing::StatusIs;
 
-class HloShardingTest : public test_util::DeviceTest {};
+class HloShardingTest
+    : public testing::TestWithParam<test_util::DeviceTestParam> {
+ public:
+  HloShardingTest() : fixture_(GetParam()) {}
+
+  DeviceListRef GetDevices(absl::Span<const int> device_indices) {
+    return fixture_.GetDevices(device_indices);
+  }
+
+ private:
+  test_util::DeviceTestFixture fixture_;
+};
 
 TEST_P(HloShardingTest, CreateWithBadDeviceList) {
   auto xla_hlo_sharding = xla::HloSharding::Replicate();
@@ -826,6 +837,23 @@ TEST_P(HloShardingTest, DisassembleWithSubgroupMaximalSlowPath) {
       EXPECT_EQ(*sharding, *SingleDeviceSharding::Create(
                                device_list->devices()[i], MemoryKind()));
     }
+  }
+}
+
+TEST_P(HloShardingTest, IndexDomainsWithTileTranspose) {
+  auto device_list = GetDevices({0, 1, 2, 3});
+  auto xla_hlo_sharding =
+      xla::HloSharding::IotaTile(/*tile_assignment_dims=*/{2, 2},
+                                 /*reshape_dims=*/{2, 2},
+                                 /*transpose_perm=*/{1, 0});
+  std::shared_ptr<const HloSharding> sharding =
+      HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
+  Shape shape({4, 4});
+  {
+    TF_ASSERT_OK_AND_ASSIGN(auto index_domains, sharding->IndexDomains(shape));
+    EXPECT_THAT(index_domains,
+                ElementsAreArray(TEST_HloShardingIndexDomainsSlowPath(
+                    *sharding, shape, SingleDeviceShardSemantics::kAllShards)));
   }
 }
 

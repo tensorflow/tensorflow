@@ -65,3 +65,9 @@ cc_library(
         "@com_google_googletest//:gtest_for_library",
     ],
 )
+
+cc_library(
+    name = "bidirectional_map",
+    hdrs = ["bidirectional_map.h"],
+    deps = ["@com_google_absl//absl/container:flat_hash_map"],
+)

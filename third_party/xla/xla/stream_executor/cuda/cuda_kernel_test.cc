@@ -21,9 +21,8 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor::gpu {
 namespace {
@@ -36,8 +35,7 @@ TEST(CudaKernelTest, GetMaxOccupiedBlocksPerCore) {
   TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
                           platform->ExecutorForDevice(0));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto cuda_kernel,
-                          executor->LoadKernel(GetAddI32KernelSpec()));
+  TF_ASSERT_OK_AND_ASSIGN(auto cuda_kernel, LoadAddI32TestKernel(executor));
 
   EXPECT_EQ(cuda_kernel->Arity(), 3);
   EXPECT_THAT(cuda_kernel->GetMaxOccupiedBlocksPerCore(

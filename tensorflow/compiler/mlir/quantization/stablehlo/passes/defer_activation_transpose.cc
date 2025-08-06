@@ -17,7 +17,6 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/nullability.h"
-#include "llvm/Support/LogicalResult.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -160,7 +159,7 @@ class DeferActivationTransposeForMaxPoolReduceWindowOp
 
     const auto result_type = mlir::cast<TensorType>(op.getResult(0).getType());
     const SmallVector<int64_t> new_result_shape =
-        Permute<int64_t>(result_type.getShape(), kNchwToNhwcPermutation);
+        quant::Permute<int64_t>(result_type.getShape(), kNchwToNhwcPermutation);
 
     const TensorType new_result_type =
         result_type.cloneWith(new_result_shape, result_type.getElementType());
@@ -209,7 +208,7 @@ class DeferActivationTransposeForMaxPoolReduceWindowOp
     if (!array_attr.has_value()) return DenseI64ArrayAttr(nullptr);
 
     return rewriter.getDenseI64ArrayAttr(
-        Permute<int64_t>(array_attr.value(), permutation));
+        quant::Permute<int64_t>(array_attr.value(), permutation));
   }
 
   LogicalResult MatchMaxPoolReduceWindowOp(

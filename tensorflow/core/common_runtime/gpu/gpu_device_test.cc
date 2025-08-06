@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
-#include "xla/tests/test_macros.h"
 #include "xla/tsl/framework/device_id.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 
@@ -201,10 +200,10 @@ TEST_F(GPUDeviceTest, CudaMallocAsync) {
   EXPECT_EQ(status.code(), error::OK);
 }
 
-TEST_F(GPUDeviceTest, DISABLED_ON_GPU_ROCM(CudaMallocAsyncPreallocate)) {
-#ifndef GOOGLE_CUDA
-  return;
-#endif
+TEST_F(GPUDeviceTest, CudaMallocAsyncPreallocate) {
+  if (IsRocm()) {
+    GTEST_SKIP() << "CUDA only test.";
+  }
   SessionOptions opts = MakeSessionOptions("0", 0, 1, {}, {}, {}, 0,
                                            /*use_cuda_malloc_async=*/true);
   setenv("TF_CUDA_MALLOC_ASYNC_SUPPORTED_PREALLOC", "2048", 1);

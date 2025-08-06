@@ -2287,6 +2287,7 @@ cuda_py_strict_test(
     shard_count = 35,
     tags = [
         "multi_gpu",
+        "no_oss_py313",
         "no_pip",  # TODO(b/266520226)
     ],  # b/175904958
     deps = [

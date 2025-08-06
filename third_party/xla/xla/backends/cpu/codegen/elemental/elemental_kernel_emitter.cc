@@ -40,10 +40,12 @@ limitations under the License.
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/llvm_ir_kernel_source.h"
+#include "xla/codegen/llvm_kernel_definition.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/runtime/work_group.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/elemental_ir_emitter.h"
@@ -56,7 +58,6 @@ limitations under the License.
 #include "xla/service/llvm_ir/loop_emitter.h"
 #include "xla/shape.h"
 #include "xla/shape_partition.h"
-#include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -101,7 +102,7 @@ ParallelPartitionBounds EmitParallelPartitionBounds(
       parallel_config.outer_dimension_partitions.size();
 
   // Create a constant array of all partition bounds. We will be indexing into
-  // this array using block and thread dimension indices passed in a call frame.
+  // this array using workgroup id passed in a call frame.
   //
   // Type: [#partitions x [#outer_dimensions x [lower_bound, upper_bound]]]
   //
@@ -138,7 +139,7 @@ ParallelPartitionBounds EmitParallelPartitionBounds(
   // Construct IR to load bounds for all parallel dimensions.
   ParallelPartitionBounds bounds;
   for (size_t i = 0; i < num_parallel_dimensions; ++i) {
-    llvm::Value* partition = kernel_prototype.thread_id.x;
+    llvm::Value* partition = kernel_prototype.workgroup_id.x;
     llvm::Value* parallel_dim = b.getInt32(i);
 
     llvm::Value* lower_gep = b.CreateInBoundsGEP(
@@ -168,7 +169,7 @@ ElementalKernelEmitter::ElementalKernelEmitter(
       buffer_assignment_(buffer_assignment),
       target_machine_(target_machine) {}
 
-absl::StatusOr<KernelDefinition>
+absl::StatusOr<LlvmKernelDefinition>
 ElementalKernelEmitter::EmitKernelDefinition() {
   VLOG(2) << "Emit elemental host kernel: " << instr_->name();
 
@@ -186,9 +187,10 @@ ElementalKernelEmitter::EmitKernelDefinition() {
   std::unique_ptr<llvm::Module> llvm_module = KernelApiIrBuilder::CreateModule(
       absl::StrCat(instr_->name(), "_elemental_kernel_module"), *ctx);
 
-  TF_ASSIGN_OR_RETURN(KernelApiIrBuilder::KernelPrototype kernel_prototype,
-                      kernel_api_ir_builder.EmitKernelPrototype(
-                          *llvm_module, instr_, buffer_assignment_, "_kernel"));
+  TF_ASSIGN_OR_RETURN(
+      KernelApiIrBuilder::KernelPrototype kernel_prototype,
+      kernel_api_ir_builder.EmitKernelPrototype(
+          *llvm_module, instr_, buffer_assignment_, name(), "_kernel"));
 
   llvm::IRBuilder<> ir_builder(*ctx);
   ir_builder.SetInsertPoint(
@@ -218,22 +220,21 @@ ElementalKernelEmitter::EmitKernelDefinition() {
   llvm_ir::ElementGenerator element_generator =
       elemental_ir_emitter.MakeElementGenerator(instr_, operand_to_generator);
 
-  TF_ASSIGN_OR_RETURN(se::ThreadDim thread_dims,
+  TF_ASSIGN_OR_RETURN(NumWorkGroups num_workgroups,
                       EmitElementalLoops(ir_builder, instr_, kernel_prototype,
                                          element_generator));
 
-  auto source = std::make_unique<LlvmIrKernelSource>(std::move(ctx),
-                                                     std::move(llvm_module));
+  LlvmIrKernelSource source(std::move(ctx), std::move(llvm_module));
 
-  KernelSpec spec(kernel_prototype.function->getName(), thread_dims,
+  KernelSpec spec(kernel_prototype.function->getName(), num_workgroups,
                   std::move(kernel_prototype.argument_buffers),
                   std::move(kernel_prototype.result_buffers),
                   std::move(kernel_prototype.invariant_arguments));
 
-  return KernelDefinition(std::move(spec), std::move(source));
+  return LlvmKernelDefinition(std::move(spec), std::move(source));
 }
 
-absl::StatusOr<se::ThreadDim> ElementalKernelEmitter::EmitElementalLoops(
+absl::StatusOr<NumWorkGroups> ElementalKernelEmitter::EmitElementalLoops(
     llvm::IRBuilderBase& b, const HloInstruction* instr,
     const KernelApiIrBuilder::KernelPrototype& kernel_prototype,
     const llvm_ir::ElementGenerator& element_generator) {
@@ -258,27 +259,28 @@ absl::StatusOr<se::ThreadDim> ElementalKernelEmitter::EmitElementalLoops(
     TF_RETURN_IF_ERROR(
         llvm_ir::LoopEmitter(element_generator, kernel_prototype.results, &b)
             .EmitLoop(llvm_ir::IrName(instr)));
-    return se::ThreadDim();
+    return NumWorkGroups();
   }
 
   const llvm_ir::IrArray& result = kernel_prototype.results.front();
 
   // Emit a loop for a single parallel partition with dynamic bounds computed
-  // from thread index.
+  // from workgroup id.
   if (has_parallel_config) {
     ParallelPartitionBounds parallel_bounds = EmitParallelPartitionBounds(
         b, kernel_prototype, *parallel_config, instr->shape(), instr->name());
     TF_RETURN_IF_ERROR(
         ParallelLoopEmitter(element_generator, result, &parallel_bounds, &b)
             .EmitLoop(llvm_ir::IrName(instr)));
-    return se::ThreadDim(ShapePartitionAssigner::GetTotalPartitionCount(
-        parallel_config->outer_dimension_partitions));
+    return NumWorkGroups{
+        static_cast<uint64_t>(ShapePartitionAssigner::GetTotalPartitionCount(
+            parallel_config->outer_dimension_partitions))};
   }
 
   // Emit a whole loop for the instruction.
   TF_RETURN_IF_ERROR(llvm_ir::LoopEmitter(element_generator, result, &b)
                          .EmitLoop(llvm_ir::IrName(instr)));
-  return se::ThreadDim();
+  return NumWorkGroups();
 }
 
 absl::StatusOr<CpuElementalIrEmitter::ThreadLocalCallCallback>

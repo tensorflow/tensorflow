@@ -45,10 +45,12 @@ limitations under the License.
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/llvm_ir_kernel_source.h"
+#include "xla/codegen/llvm_kernel_definition.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/runtime/work_group.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/ir_emitter.h"
@@ -56,7 +58,6 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -132,7 +133,7 @@ ComputationKernelEmitter::ComputationKernelEmitter(
       buffer_assignment_(buffer_assignment),
       target_machine_(target_machine) {}
 
-absl::StatusOr<KernelDefinition>
+absl::StatusOr<LlvmKernelDefinition>
 ComputationKernelEmitter::EmitKernelDefinition() {
   VLOG(2) << "Emit Computation host kernel: " << instr_->name();
 
@@ -166,7 +167,8 @@ ComputationKernelEmitter::EmitKernelDefinition() {
                           std::vector<KernelApiIrBuilder::KernelParameter>(
                               arguments.begin(), arguments.end()),
                           std::vector<KernelApiIrBuilder::KernelParameter>(
-                              results.begin(), results.end())));
+                              results.begin(), results.end()),
+                          BuildModuleMemoryRegionName(name(), instr_)));
 
   llvm::IRBuilder<> ir_builder(*ctx);
   ir_builder.SetInsertPoint(
@@ -213,15 +215,14 @@ ComputationKernelEmitter::EmitKernelDefinition() {
                                     buffer_table, llvm_nullptr, llvm_nullptr};
   ir_builder.CreateCall(computation_function, args);
 
-  auto source = std::make_unique<LlvmIrKernelSource>(std::move(ctx),
-                                                     std::move(llvm_module));
+  LlvmIrKernelSource source(std::move(ctx), std::move(llvm_module));
 
-  KernelSpec spec(kernel_prototype.function->getName(), se::ThreadDim(),
+  KernelSpec spec(kernel_prototype.function->getName(), NumWorkGroups(),
                   std::move(kernel_prototype.argument_buffers),
                   std::move(kernel_prototype.result_buffers),
                   std::move(kernel_prototype.invariant_arguments));
 
-  return KernelDefinition(std::move(spec), std::move(source));
+  return LlvmKernelDefinition(std::move(spec), std::move(source));
 }
 
 absl::StatusOr<llvm::Function*> ComputationKernelEmitter::EmitNestedComputation(

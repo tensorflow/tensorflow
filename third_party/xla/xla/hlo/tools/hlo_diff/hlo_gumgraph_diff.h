@@ -25,6 +25,7 @@
 #include "xla/hlo/tools/hlo_diff/hlo_diff_eval.h"
 #include "xla/hlo/tools/hlo_diff/hlo_diff_result.h"
 #include "xla/hlo/tools/hlo_diff/hlo_diff_summary.h"
+#include "xla/hlo/tools/hlo_diff/matchers/gumgraph_matcher.h"
 
 namespace xla {
 namespace hlo_diff {
@@ -32,6 +33,7 @@ namespace hlo_diff {
 // Options for computing the diff between two HLO modules.
 struct DiffOptions {
   HloGumgraphFingerprintOptions fingerprint_options;
+  MatchOptions match_options;
 };
 
 struct HloGumgraphDiffResults {

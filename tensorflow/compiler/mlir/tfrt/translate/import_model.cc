@@ -345,6 +345,8 @@ std::unique_ptr<tensorflow::TfrtPipelineOptions> GetTfrtPipelineOptions(
   pipeline_options->cost_threshold = options.cost_threshold;
   pipeline_options->min_num_batch_threads = options.min_num_batch_threads;
   pipeline_options->min_max_enqueued_batches = options.min_max_enqueued_batches;
+  pipeline_options->batch_queue_global_prioritization_num_threads =
+      options.batch_queue_global_prioritization_num_threads;
   pipeline_options->batch_padding_policy = options.batch_padding_policy;
   pipeline_options->num_batch_threads =
       options.batch_options.num_batch_threads();

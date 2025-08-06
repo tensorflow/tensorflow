@@ -255,7 +255,8 @@ size_t RamFileBlockCache::CacheSize() const {
 }
 
 void RamFileBlockCache::Prune() {
-  while (!WaitForNotificationWithTimeout(&stop_pruning_thread_, 1000000)) {
+  while (
+      !stop_pruning_thread_.WaitForNotificationWithTimeout(absl::Seconds(1))) {
     absl::MutexLock lock(&mu_);
     uint64 now = env_->NowSeconds();
     while (!lra_list_.empty()) {

@@ -51,6 +51,15 @@ MATCHER_P(MatchIndexingMap, indexing_string, "") {
       true, ApproximateMatch(indexing_string, ToString(arg)), result_listener);
 }
 
+MATCHER_P(MatchOperandIndexing, indexing_string, "") {
+  if (arg.IsUndefined()) {
+    return false;
+  }
+  return ExplainMatchResult(
+      true, ApproximateMatch(indexing_string, ToString(arg.map())),
+      result_listener);
+}
+
 MATCHER_P(MatchIndexingString, indexing_string, "") {
   return ExplainMatchResult(true, ApproximateMatch(indexing_string, arg),
                             result_listener);

@@ -26,7 +26,8 @@ absl::Status ByteSwapArray(char* array, size_t bytes_per_elem, int array_len) {
   if (bytes_per_elem == 1) {
     // No-op
     return absl::OkStatus();
-  } else if (bytes_per_elem == 2) {
+  }
+  if (bytes_per_elem == 2) {
     auto array_16 = safe_reinterpret_cast<uint16_t*>(array);
     for (int i = 0; i < array_len; i++) {
       array_16[i] = BYTE_SWAP_16(array_16[i]);

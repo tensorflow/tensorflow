@@ -95,7 +95,7 @@ absl::StatusOr<OwningOpRef<ModuleOp>> DeserializeStablehlo(MLIRContext *context,
           context, static_cast<int>(op.getVersion()), op.getModule(),
           std::move(disabled_checks), std::move(platforms),
           /*num_invocation_args=*/op.getArgs().size(),
-          op.getHasTokenInputOutput()));
+          op.getHasTokenInputOutput(), op.getUseShardyPartitioner()));
   return std::move(*loader).module();
 }
 

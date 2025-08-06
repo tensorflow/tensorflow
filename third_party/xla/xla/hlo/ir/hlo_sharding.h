@@ -30,6 +30,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
@@ -313,12 +314,17 @@ class HloSharding {
   // index.size() should be the same as tile_assignment()'s rank and specifies
   // the member of the replication subgroup.
   // REQUIRES: !IsTuple()
+  // REQUIRES: !IsManual()
+  // REQUIRES: !IsUnknown()
+  // REQUIRES: !maximal_
   int64_t DeviceForTileIndex(absl::Span<const int64_t> index) const;
 
   // Given a device ID, returns the offset within the specified shape of the
   // tile that should be executed on the given core. This returns the lower
   // extent of the tile in the input space.
   // REQUIRES: !IsTuple()
+  // REQUIRES: !IsManual()
+  // REQUIRES: !IsUnknown()
   std::vector<int64_t> TileOffsetForDevice(const Shape& shape,
                                            int64_t device) const;
 
@@ -326,8 +332,24 @@ class HloSharding {
   // tile that should be executed on the given core. This returns the upper
   // extent of the tile in the input space.
   // REQUIRES: !IsTuple()
+  // REQUIRES: !IsManual()
+  // REQUIRES: !IsUnknown()
   std::vector<int64_t> TileLimitForDevice(const Shape& shape,
                                           int64_t device) const;
+
+  // Invokes a callback with the (device_index, tile_offset, tile_limit) for
+  // each tile in the sharding. tile_offset is the offset within the specified
+  // shape dims of the tile that should be executed on device_index, tile_limit
+  // is the respective limit.
+  // REQUIRES: !IsTuple()
+  // REQUIRES: !IsManual()
+  // REQUIRES: !IsUnknown()
+  // REQUIRES: !maximal_
+  absl::Status EachTile(
+      absl::Span<const int64_t> dims,
+      absl::FunctionRef<void(int64_t, absl::Span<const int64_t>,
+                             absl::Span<const int64_t>)>
+          f) const;
 
   // Returns the single device this op operates on. If the sharding does not
   // span a single device, the return value will be empty.

@@ -22,6 +22,8 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "xla/python/ifrt/dtype.pb.h"
+#include "xla/python/ifrt/serdes_default_version_accessor.h"
+#include "xla/python/ifrt/serdes_version.h"
 
 namespace xla {
 namespace ifrt {
@@ -132,7 +134,8 @@ class DType {
   static absl::StatusOr<DType> FromProto(const DTypeProto& proto);
 
   // Returns a `DTypeProto` representation.
-  DTypeProto ToProto() const;
+  DTypeProto ToProto(
+      SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const;
 
   // TODO(hyeontaek): Remove this method in favor of AbslStringify.
   std::string DebugString() const;

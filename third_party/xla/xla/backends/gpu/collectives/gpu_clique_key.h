@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/hash/hash.h"
+#include "absl/types/span.h"
 #include "xla/core/collectives/clique_key.h"
 #include "xla/service/global_device_id.h"
 #include "xla/tsl/lib/gtl/int_type.h"
@@ -49,7 +50,8 @@ TSL_LIB_GTL_DEFINE_INT_TYPE(CollectiveStreamId, uint64_t);
 // Assigns a unique ID to a stream for asynchronous or synchronous execution.
 // These IDs can be used, for example, to look up the NCCL communicator.
 CollectiveStreamId GetCollectiveStreamId(
-    bool is_async, AsyncStreamKind stream_kind = AsyncStreamKind::kCollective);
+    bool is_async, CollectiveStreamId stream_id = CollectiveStreamId(1),
+    AsyncStreamKind stream_kind = AsyncStreamKind::kCollective);
 
 // Clique key for identifying a particular collectives clique on a GPU backend.
 class GpuCliqueKey : public CliqueKey {
@@ -59,7 +61,8 @@ class GpuCliqueKey : public CliqueKey {
       CollectiveStreamId stream_id = CollectiveStreamId(0),
       AsyncStreamKind stream_kind = AsyncStreamKind::kCollective,
       std::vector<std::vector<GlobalDeviceId>> participant_groups = {},
-      GlobalDeviceId root_device = GlobalDeviceId(-1));
+      GlobalDeviceId root_device = GlobalDeviceId(-1),
+      std::vector<IncarnationId> incarnations = {});
 
   GpuCliqueKey(const GpuCliqueKey&) = default;
   GpuCliqueKey& operator=(const GpuCliqueKey&) = default;
@@ -96,6 +99,9 @@ class GpuCliqueKey : public CliqueKey {
   // environments this likely to be all devices on the same host).
   bool is_local() const { return num_local_participants_ == devices().size(); }
 
+  // Returns the incarnation ids of the participating processes.
+  absl::Span<const IncarnationId> incarnations() const { return incarnations_; }
+
   std::string ToString() const final;
 
   // GPU clique keys have a total order on which we rely on for acquiring
@@ -130,10 +136,9 @@ class GpuCliqueKey : public CliqueKey {
   std::vector<std::vector<GlobalDeviceId>> participant_groups_;
 
   GlobalDeviceId root_device_;
-};
 
-bool operator==(const GpuCliqueKey& a, const GpuCliqueKey& b);
-bool operator<(const GpuCliqueKey& a, const GpuCliqueKey& b);
+  std::vector<IncarnationId> incarnations_;
+};
 
 }  // namespace xla::gpu
 

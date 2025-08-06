@@ -51,6 +51,7 @@ message OneDnnFusionConfig {
     RELU6 = 9;
     SIGMOID = 10;
     SUM = 11;  // This represents in-place accumulation.
+    SWISH = 12;
   }
   repeated FusionKind ops = 1;
   // To avoid protobuf failures for specific decimal values,

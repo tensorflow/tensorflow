@@ -59,7 +59,12 @@ void HloGumgraphDfs(
     if (!expand_node_fn(*node)) {
       continue;
     }
-    for (auto* child : node->children) {
+    // Push children in reverse order (right-to-left) onto the stack.
+    // This is to ensure that nodes are processed in a left-to-right order,
+    // aligning with the intended traversal logic and consistency
+    // with the BFS.
+    for (auto it = node->children.rbegin(); it != node->children.rend(); ++it) {
+      auto* child = *it;
       if (visited[child->unique_node_index] == VisitState::kNew) {
         stack.push_back(child);
       } else {

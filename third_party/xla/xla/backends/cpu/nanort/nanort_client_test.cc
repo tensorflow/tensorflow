@@ -319,10 +319,8 @@ ENTRY ReplicaAndPartitionId {
       auto execute_options = NanoRtExecutable::ExecuteOptions();
       execute_options.set_device_assignment(&device_assignment);
 
-      TF_ASSERT_OK_AND_ASSIGN(
-          auto device_id,
-          computation_placer.DeviceId(i, j, kReplicaCount, kComputationCount));
-      execute_options.set_global_device_id(GlobalDeviceId(device_id));
+      execute_options.set_global_device_id(
+          GlobalDeviceId(device_assignment.DeviceId(i, j)));
 
       auto event = executable->Execute({}, results, {}, execute_options);
       tsl::BlockUntilReady(event);
@@ -403,6 +401,37 @@ TEST(NanoRtClientTest, CustomCallTest) {
 
   EXPECT_TRUE(event.IsConcrete());
   EXPECT_EQ(result, 3.0f);
+}
+
+TEST(NanoRtClientTest, ProgramShapeTestInt4) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule int4_function
+
+    ENTRY %main.4 (Arg_0.1: s4[4], Arg_1.2: s4[4]) -> s4[4] {
+      %Arg_0.1 = s4[4]{0} parameter(0)
+      %Arg_1.2 = s4[4]{0} parameter(1)
+      ROOT %add.3 = s4[4]{0} add(%Arg_0.1, %Arg_1.2)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr));
+  XlaComputation computation(module->ToProto());
+
+  NanoRtClient client;
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<NanoRtExecutable> executable,
+                          client.Compile(computation));
+  ASSERT_TRUE(executable->program_shape().has_value());
+
+  auto program_shape = executable->program_shape();
+
+  for (size_t i = 0; i < program_shape->parameters_size(); ++i) {
+    EXPECT_EQ(program_shape->parameters()[i].layout().element_size_in_bits(),
+              4);
+  }
+
+  EXPECT_EQ(
+      executable->program_shape()->result().layout().element_size_in_bits(), 4);
 }
 
 //===----------------------------------------------------------------------===//

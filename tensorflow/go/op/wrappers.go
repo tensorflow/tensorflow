@@ -52564,6 +52564,14 @@ func TPUReplicateMetadataUseSpmdForXlaPartitioning(value bool) TPUReplicateMetad
 	}
 }
 
+// TPUReplicateMetadataUseShardyPartitioner sets the optional use_shardy_partitioner attribute to value.
+// If not specified, defaults to false
+func TPUReplicateMetadataUseShardyPartitioner(value bool) TPUReplicateMetadataAttr {
+	return func(m optionalAttr) {
+		m["use_shardy_partitioner"] = value
+	}
+}
+
 // TPUReplicateMetadataTpuCompileOptionsProto sets the optional tpu_compile_options_proto attribute to value.
 // If not specified, defaults to ""
 func TPUReplicateMetadataTpuCompileOptionsProto(value string) TPUReplicateMetadataAttr {

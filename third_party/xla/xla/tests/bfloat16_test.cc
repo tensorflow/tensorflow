@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "xla/tests/xla_test_backend_predicates.h"
 #include "xla/array4d.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/builder/xla_builder.h"
@@ -20,7 +21,6 @@ limitations under the License.
 #include "xla/tests/client_library_test_runner_mixin.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
-#include "xla/tests/test_macros.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/types.h"
 
@@ -61,7 +61,10 @@ TEST_F(Bfloat16Test, NegateScalarF16) {
 
 // Disabled on interpreter since BatchNormExpander is not run by default on the
 // interpreter backend.
-TEST_F(Bfloat16Test, DISABLED_ON_INTERPRETER(BatchNormTraining)) {
+TEST_F(Bfloat16Test, BatchNormTraining) {
+  if (test::DeviceIs(test::kInterpreter)) {
+    GTEST_SKIP();
+  }
   const int kFeatureIndex = 2;
   XlaBuilder builder(TestName());
 
@@ -97,7 +100,10 @@ TEST_F(Bfloat16Test, DISABLED_ON_INTERPRETER(BatchNormTraining)) {
 
 // Disabled on interpreter since BatchNormExpander is not run by default on the
 // interpreter backend.
-TEST_F(Bfloat16Test, DISABLED_ON_INTERPRETER(BatchNormGrad)) {
+TEST_F(Bfloat16Test, BatchNormGrad) {
+  if (test::DeviceIs(test::kInterpreter)) {
+    GTEST_SKIP();
+  }
   const int kFeatureIndex = 2;
   XlaBuilder builder(TestName());
 

@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tfl-prepare-quantize -canonicalize -tfl-quantize -canonicalize -tfl-optimize -canonicalize | FileCheck %s
+// RUN: litert-opt %s -tfl-prepare-quantize -canonicalize -tfl-quantize -canonicalize -tfl-optimize -canonicalize | FileCheck %s
 
 // CHECK-LABEL: fuseMulIntoPerTensorConv2dWithQDQs
 func.func @fuseMulIntoPerTensorConv2dWithQDQs(%arg0: tensor<256x32x32x3xf32>) -> tensor<256x8x7x3xf32> {

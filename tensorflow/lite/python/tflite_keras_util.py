@@ -221,7 +221,12 @@ def trace_model_call(model, input_signature=None):
     inputs = args[0] if len(input_signature) == 1 else list(args)
 
     with keras_deps.get_call_context_function()().enter(
-        model, inputs=inputs, build_graph=False, training=False, saving=True):
+        model,
+        inputs=inputs,
+        build_graph=False,
+        call_context_args={'training': False},
+        saving=True,
+    ):
       outputs = model(inputs, training=False)
 
     return outputs

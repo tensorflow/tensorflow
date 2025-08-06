@@ -17,6 +17,7 @@ limitations under the License.
 #include <optional>
 
 #include "xla/stream_executor/blas.h"
+#include "xla/stream_executor/gpu/gpu_blas_lt.pb.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"

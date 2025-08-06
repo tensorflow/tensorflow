@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/tuple_points_to_analysis.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -411,7 +412,8 @@ absl::StatusOr<HloSchedule> ComputationSchedulerAlgorithm::Run(
   }
   if (peak_memory) {
     TF_ASSIGN_OR_RETURN(*peak_memory, HeapSimulator::MinimumMemoryForModule(
-                                          schedule, size_function_));
+                                          schedule, alias_analysis, alias_info_,
+                                          size_function_));
   }
   return schedule;
 }
@@ -636,10 +638,12 @@ absl::StatusOr<HloSchedule> ScheduleModule(
 }
 
 absl::StatusOr<HloSchedule> ScheduleModule(
-    const HloModule* module, const BufferValue::SizeFunction& size_function,
+    const HloModule* module, const AliasInfo* alias_info,
+    const BufferValue::SizeFunction& size_function,
     const absl::flat_hash_set<absl::string_view>& execution_threads,
     int64_t* peak_memory) {
-  return ScheduleModule(module, DefaultMemoryScheduler(size_function),
+  return ScheduleModule(module,
+                        DefaultMemoryScheduler(alias_info, size_function),
                         execution_threads, peak_memory);
 }
 

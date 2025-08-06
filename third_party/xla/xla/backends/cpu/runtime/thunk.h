@@ -31,11 +31,11 @@ limitations under the License.
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
 #include "xla/backends/cpu/runtime/function_library.h"
+#include "xla/backends/cpu/runtime/xfeed_manager.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/runtime/resource_use.h"
-#include "xla/service/cpu/xfeed_manager.h"
 #include "xla/service/global_device_id.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
@@ -254,7 +254,7 @@ class Thunk {
   struct ExecuteParams {
     FunctionLibrary* function_library = nullptr;
     const BufferAllocations* buffer_allocations = nullptr;
-    runtime::XfeedManager* xfeed = nullptr;
+    XfeedManager* xfeed = nullptr;
     const Eigen::ThreadPoolDevice* intra_op_threadpool = nullptr;
     TaskRunner* task_runner = nullptr;
     CollectiveExecuteParams* collective_params = nullptr;

@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
 #include <utility>
 
 #include "llvm/ADT/STLExtras.h"
@@ -23,7 +22,6 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/Visitors.h"
-#include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -35,10 +33,10 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 
-namespace {
-
 #define GEN_PASS_DEF_IFRTRESHARDTOCOPYARRAYSPASS
 #include "xla/python/ifrt/ir/transforms/passes.h.inc"
+
+namespace {
 
 class ReshardToCopyArraysOpPattern
     : public mlir::OpRewritePattern<xla::ifrt::ReshardOp> {
@@ -178,11 +176,5 @@ class IfrtReshardToCopyArraysPass
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateIfrtReshardToCopyArraysPass() {
-  return std::make_unique<IfrtReshardToCopyArraysPass>();
-}
-
 }  // namespace ifrt
 }  // namespace xla

@@ -154,6 +154,7 @@ cc_library(
         "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/delegates/nnapi:acceleration_test_util",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
+        "//tensorflow/lite/kernels/internal:tensor_ctypes",
         "//tensorflow/lite/kernels/internal:tensor_utils",
         "//tensorflow/lite/kernels/internal/utils:sparsity_format_converter",
         "//tensorflow/lite/nnapi:nnapi_implementation",
@@ -163,6 +164,7 @@ cc_library(
         "//tensorflow/lite/tools:logging",
         "//tensorflow/lite/tools/optimize:quantization_utils",
         "//tensorflow/lite/tools/versioning",
+        "@FP16",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/types:span",
@@ -816,6 +818,7 @@ cc_library(
     ],
     deps = BUILTIN_KERNEL_DEPS + [
         ":variable_op_kernels",
+        "@FP16",
         "@fft2d",
         "@ruy//ruy/profiler:instrumentation",
         "//tensorflow/lite/c:c_api_types",

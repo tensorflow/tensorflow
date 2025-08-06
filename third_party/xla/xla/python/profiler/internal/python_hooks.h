@@ -114,6 +114,8 @@ struct PythonTraceEntry {
 struct PerThreadEvents {
   std::deque<PythonTraceEntry> completed;
   std::stack<PythonTraceEntry> active;
+  // Track C Functions call in its own stack.
+  std::stack<PythonTraceEntry> active_c;
 };
 
 class PythonHooks;
@@ -153,7 +155,9 @@ class PythonHooks {
   static PythonHooks* GetSingleton();
 
   void Start(const PythonHooksOptions& option) {
-    if (active_context_) return;
+    if (active_context_) {
+      return;
+    }
     active_context_ = std::make_unique<PythonHookContext>();
     active_context_->Start(option);
   }
@@ -165,7 +169,9 @@ class PythonHooks {
       return absl::WrapUnique(e2e_context);
     }
 
-    if (!active_context_) return nullptr;
+    if (!active_context_) {
+      return nullptr;
+    }
     active_context_->Stop();
     std::unique_ptr<PythonHookContext> output = std::move(active_context_);
     active_context_.reset();

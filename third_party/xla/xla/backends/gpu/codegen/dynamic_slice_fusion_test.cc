@@ -13,15 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include "absl/algorithm/container.h"
 #include "absl/status/status.h"
+#include "absl/strings/ascii.h"
 #include "xla/backends/gpu/runtime/dynamic_slice_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -34,7 +37,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/filecheck.h"
-#include "xla/service/custom_call_target_registry.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -42,10 +44,10 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner_interface.h"
+#include "xla/service/platform_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/errors.h"
@@ -54,35 +56,14 @@ limitations under the License.
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
-#define PLATFORM "CUDA"
-#if GOOGLE_CUDA
-#include "third_party/gpus/cuda/include/cuda.h"  // IWYU pragma: keep
-#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
-#include "third_party/gpus/cuda/include/driver_types.h"
-#elif TENSORFLOW_USE_ROCM
-#include "rocm/include/hip/hip_runtime.h"
-#define PLATFORM "ROCM"
-#endif
-
-#if GOOGLE_CUDA
-#define gpuSuccess cudaSuccess
-#define gpuMemcpyAsync cudaMemcpyAsync
-#define gpuMemcpyDeviceToDevice cudaMemcpyDeviceToDevice
-#define gpuMemcpy cudaMemcpy
-#define gpuMemcpyDeviceToHost cudaMemcpyDeviceToHost
-#define gpuMemcpyHostToDevice cudaMemcpyHostToDevice
-#elif TENSORFLOW_USE_ROCM
-#define gpuSuccess hipSuccess
-#define gpuMemcpyAsync hipMemcpyAsync
-#define gpuMemcpyDeviceToDevice hipMemcpyDeviceToDevice
-#define gpuMemcpy hipMemcpy
-#define gpuMemcpyDeviceToHost hipMemcpyDeviceToHost
-#define gpuMemcpyHostToDevice hipMemcpyHostToDevice
-#endif
-
 namespace xla {
 namespace gpu {
 namespace {
+
+std::string GetPlatformName() {
+  return absl::AsciiStrToUpper(
+      PlatformUtil::CanonicalPlatformName("gpu").value());
+}
 
 using ::testing::ElementsAre;
 using ::testing::Optional;
@@ -320,10 +301,7 @@ TEST_F(DynamicSliceFusionTest, NestedTupleOutputForCublasGemmWithWorkspace) {
         "grad_x":false,
         "grad_y":false
       }}
-    result = f16[8,8]{1,0} get-tuple-element(custom-call), index=0
-    workspace = s8[256]{0} get-tuple-element(custom-call), index=1
-    nested_tuple = (s8[256]{0}) tuple(workspace)
-    ROOT tuple = (f16[8,8]{1,0}, (s8[256]{0})) tuple(result, nested_tuple)
+    ROOT result = f16[8,8]{1,0} get-tuple-element(custom-call), index=0
   })";
 
   const char* hlo_opt = R"(
@@ -356,16 +334,13 @@ TEST_F(DynamicSliceFusionTest, NestedTupleOutputForCublasGemmWithWorkspace) {
         "grad_x":false,
         "grad_y":false
       }}
-    result = f16[8,8]{1,0} get-tuple-element(custom-call), index=0
-    workspace = s8[256]{0} get-tuple-element(custom-call), index=1
-    nested_tuple = (s8[256]{0}) tuple(workspace)
-    ROOT tuple = (f16[8,8]{1,0}, (s8[256]{0})) tuple(result, nested_tuple)
+    ROOT result = f16[8,8]{1,0} get-tuple-element(custom-call), index=0
   }
 
   ENTRY main.9 {
     p0 = f16[2,8,8]{2,1,0} parameter(0)
     p1 = f16[2,8,8]{2,1,0} parameter(1)
-    ROOT fusion = (f16[8,8]{1,0}, (s8[256]{0})) fusion(p0, p1), kind=kCustom, calls=fused_computation,
+    ROOT fusion = f16[8,8]{1,0} fusion(p0, p1), kind=kCustom, calls=fused_computation,
         backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}}}
   })";
 
@@ -986,7 +961,9 @@ XLA_FFI_DEFINE_HANDLER(kMemcpy, Memcpy,
                            .Arg<ffi::AnyBuffer>()  // src
                            .Ret<ffi::AnyBuffer>()  // dst
 );
-XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$memcpy", PLATFORM,
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$memcpy", "CUDA",
+                         kMemcpy);
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$memcpy", "ROCM",
                          kMemcpy);
 
 TEST_F(DynamicSliceFusionTest, CustomCallSimple) {
@@ -1016,7 +993,7 @@ TEST_F(DynamicSliceFusionTest, CustomCallSimple) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
                                             computation.proto(), hlo_config));
-  DynamicSliceFusionRewriter pass(PLATFORM);
+  DynamicSliceFusionRewriter pass(GetPlatformName());
   TF_ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
   EXPECT_TRUE(changed);
 
@@ -1097,8 +1074,10 @@ XLA_FFI_DEFINE_HANDLER(kSubBuffers, SubBuffers,
                            .Ret<ffi::AnyBuffer>()  // dst5
                            .Ret<ffi::AnyBuffer>()  // dst6
 );
-XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$subbuffers",
-                         PLATFORM, kSubBuffers);
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$subbuffers", "CUDA",
+                         kSubBuffers);
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$subbuffers", "ROCM",
+                         kSubBuffers);
 
 TEST_F(DynamicSliceFusionTest, CustomCallWithTuple) {
   XlaBuilder b(TestName());
@@ -1164,7 +1143,7 @@ TEST_F(DynamicSliceFusionTest, CustomCallWithTuple) {
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
                                             computation.proto(), hlo_config));
 
-  DynamicSliceFusionRewriter pass(PLATFORM);
+  DynamicSliceFusionRewriter pass(GetPlatformName());
   TF_ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
   EXPECT_TRUE(changed);
 
@@ -1181,7 +1160,9 @@ XLA_FFI_DEFINE_HANDLER(kNoOp, NoOp,
                            .Ctx<ffi::Stream>()     // stream
                            .Arg<ffi::AnyBuffer>()  // operand
 );
-XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$noop", PLATFORM,
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$noop", "CUDA",
+                         kNoOp);
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$noop", "ROCM",
                          kNoOp);
 
 TEST_F(DynamicSliceFusionTest, NilTuple) {
@@ -1215,7 +1196,7 @@ TEST_F(DynamicSliceFusionTest, NilTuple) {
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
                                             computation.proto(), hlo_config));
 
-  DynamicSliceFusionRewriter pass(PLATFORM);
+  DynamicSliceFusionRewriter pass(GetPlatformName());
   TF_ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
   EXPECT_TRUE(changed);
 
@@ -2532,7 +2513,7 @@ TEST_F(DynamicSliceFusionTest, DynamicCustomCallSimple) {
                                             computation.proto(), hlo_config));
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
                                             computation.proto(), hlo_config));
-  DynamicSliceFusionRewriter pass(PLATFORM);
+  DynamicSliceFusionRewriter pass(GetPlatformName());
   TF_ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
   EXPECT_TRUE(changed);
 
@@ -2605,7 +2586,7 @@ TEST_F(DynamicSliceFusionTest, DynamicCustomCallWithTuple) {
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
                                             computation.proto(), hlo_config));
 
-  DynamicSliceFusionRewriter pass(PLATFORM);
+  DynamicSliceFusionRewriter pass(GetPlatformName());
   TF_ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
   EXPECT_TRUE(changed);
   EXPECT_TRUE(*RunFileCheck(hlo_opt->ToString(), R"(
@@ -2688,8 +2669,10 @@ XLA_FFI_DEFINE_HANDLER(kSubBuffers2, SubBuffers2,
                            .Ret<ffi::AnyBuffer>()  // dst5
                            .Ret<ffi::AnyBuffer>()  // dst6
 );
-XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$subbuffers2",
-                         PLATFORM, kSubBuffers2);
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$subbuffers2", "CUDA",
+                         kSubBuffers2);
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$subbuffers2", "ROCM",
+                         kSubBuffers2);
 
 TEST_F(DynamicSliceFusionTest, CustomCallDUSTuple) {
   XlaBuilder b(TestName());
@@ -2780,7 +2763,7 @@ TEST_F(DynamicSliceFusionTest, CustomCallDUSTuple) {
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
                                             computation.proto(), hlo_config));
 
-  DynamicSliceFusionRewriter pass(PLATFORM);
+  DynamicSliceFusionRewriter pass(GetPlatformName());
   TF_ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
   EXPECT_TRUE(changed);
 
@@ -3528,47 +3511,47 @@ TEST_F(DynamicSliceFusionTest,
   const char* hlo = R"(
     HloModule test, replica_count=2
     add {
-      a = s32[] parameter(0)
-      b = s32[] parameter(1)
-      ROOT add = s32[] add(a, b)
+      a = s64[] parameter(0)
+      b = s64[] parameter(1)
+      ROOT add = s64[] add(a, b)
     }
     body {
-      param.1 = (s32[], s32[8,8,8], s32[8,8,8], s32[8,4,8], s32[8,4,8]) parameter(0)
-      iter.1 = s32[] get-tuple-element(param.1), index=0
-      c1 = s32[] constant(1)
-      c0 = s32[] constant(0)
-      src1 = s32[8,8,8] get-tuple-element(param.1), index=1
-      src2 = s32[8,8,8] get-tuple-element(param.1), index=2
-      dst1 = s32[8,4,8] get-tuple-element(param.1), index=3
-      dst2 = s32[8,4,8] get-tuple-element(param.1), index=4
-      ds1 = s32[1,8,8]{2,1,0} dynamic-slice(src1, iter.1, c0, c0), dynamic_slice_sizes={1,8,8}
-      ds2 = s32[1,8,8]{2,1,0} dynamic-slice(src2, iter.1, c0, c0), dynamic_slice_sizes={1,8,8}
-      rs1 = s32[8,8] reshape(ds1)
-      rs2 = s32[8,8] reshape(ds2)
-      rs = (s32[4,8], s32[4,8]) reduce-scatter(rs1, rs2), dimensions={0}, replica_groups={{0,1}}, to_apply=add
-      reduce-scatter1 = s32[4,8] get-tuple-element(rs), index=0
-      reduce-scatter2 = s32[4,8] get-tuple-element(rs), index=1
-      reshape1 = s32[1,4,8] reshape(reduce-scatter1)
-      reshape2 = s32[1,4,8] reshape(reduce-scatter2)
-      dus1 = s32[8,4,8] dynamic-update-slice(dst1, reshape1, iter.1, c0, c0)
-      dus2 = s32[8,4,8] dynamic-update-slice(dst2, reshape2, iter.1, c0, c0)
-      add = s32[] add(iter.1, c1)
+      param.1 = (s64[], s64[8,8,8], s64[8,8,8], s64[8,4,8], s64[8,4,8]) parameter(0)
+      iter.1 = s64[] get-tuple-element(param.1), index=0
+      c1 = s64[] constant(1)
+      c0 = s64[] constant(0)
+      src1 = s64[8,8,8] get-tuple-element(param.1), index=1
+      src2 = s64[8,8,8] get-tuple-element(param.1), index=2
+      dst1 = s64[8,4,8] get-tuple-element(param.1), index=3
+      dst2 = s64[8,4,8] get-tuple-element(param.1), index=4
+      ds1 = s64[1,8,8]{2,1,0} dynamic-slice(src1, iter.1, c0, c0), dynamic_slice_sizes={1,8,8}
+      ds2 = s64[1,8,8]{2,1,0} dynamic-slice(src2, iter.1, c0, c0), dynamic_slice_sizes={1,8,8}
+      rs1 = s64[8,8] reshape(ds1)
+      rs2 = s64[8,8] reshape(ds2)
+      rs = (s64[4,8], s64[4,8]) reduce-scatter(rs1, rs2), dimensions={0}, replica_groups={{0,1}}, to_apply=add
+      reduce-scatter1 = s64[4,8] get-tuple-element(rs), index=0
+      reduce-scatter2 = s64[4,8] get-tuple-element(rs), index=1
+      reshape1 = s64[1,4,8] reshape(reduce-scatter1)
+      reshape2 = s64[1,4,8] reshape(reduce-scatter2)
+      dus1 = s64[8,4,8] dynamic-update-slice(dst1, reshape1, iter.1, c0, c0)
+      dus2 = s64[8,4,8] dynamic-update-slice(dst2, reshape2, iter.1, c0, c0)
+      add = s64[] add(iter.1, c1)
       ROOT tuple = tuple(add, src1, src2, dus1, dus2)
     }
     condition {
-      param.2 = (s32[], s32[8,8,8], s32[8,8,8], s32[8,4,8], s32[8,4,8]) parameter(0)
-      iter.2 = s32[] get-tuple-element(param.2), index=0
-      c8 = s32[] constant(8)
+      param.2 = (s64[], s64[8,8,8], s64[8,8,8], s64[8,4,8], s64[8,4,8]) parameter(0)
+      iter.2 = s64[] get-tuple-element(param.2), index=0
+      c8 = s64[] constant(8)
       ROOT compare = pred[] compare(iter.2, c8), direction=LT
     }
     ENTRY main {
-      c0 = s32[] constant(0)
-      p1 = s32[8,8,8] parameter(0)
-      p2 = s32[8,8,8] parameter(1)
-      p3 = s32[8,4,8] parameter(2)
-      p4 = s32[8,4,8] parameter(3)
-      tuple = (s32[], s32[8,8,8], s32[8,8,8], s32[8,4,8], s32[8,4,8]) tuple(c0, p1, p2, p3, p4)
-      ROOT while = (s32[], s32[8,8,8], s32[8,8,8], s32[8,4,8], s32[8,4,8]) while(tuple), body=body, condition=condition
+      c0 = s64[] constant(0)
+      p1 = s64[8,8,8] parameter(0)
+      p2 = s64[8,8,8] parameter(1)
+      p3 = s64[8,4,8] parameter(2)
+      p4 = s64[8,4,8] parameter(3)
+      tuple = (s64[], s64[8,8,8], s64[8,8,8], s64[8,4,8], s64[8,4,8]) tuple(c0, p1, p2, p3, p4)
+      ROOT while = (s64[], s64[8,8,8], s64[8,8,8], s64[8,4,8], s64[8,4,8]) while(tuple), body=body, condition=condition
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,

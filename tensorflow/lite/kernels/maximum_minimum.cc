@@ -58,6 +58,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
   OpContext op_context(context, node);
+  TF_LITE_ENSURE(context, op_context.input1 != nullptr);
+  TF_LITE_ENSURE(context, op_context.input2 != nullptr);
   TF_LITE_ENSURE_TYPES_EQ(context, op_context.input1->type,
                           op_context.input2->type);
   op_context.output->type = op_context.input1->type;

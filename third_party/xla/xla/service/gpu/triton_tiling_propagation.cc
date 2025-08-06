@@ -850,7 +850,9 @@ DimOrderMapOrError GetPropagatedDimOrdersForDimAlteringOp(
         dst_dim_fragments_order[dim_index].push_back(it->second);
       }
       for (auto* alive_fragment : alive_dst_fragments) {
-        alive_fragment->set_broadcast_multiplier(broadcast_multiplier);
+        int old_multiplier = alive_fragment->broadcast_multiplier();
+        alive_fragment->set_broadcast_multiplier(broadcast_multiplier *
+                                                 old_multiplier);
       }
     }
   }

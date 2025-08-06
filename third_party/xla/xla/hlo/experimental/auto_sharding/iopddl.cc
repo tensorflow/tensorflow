@@ -19,7 +19,6 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <optional>
-#include <string>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -87,47 +86,6 @@ absl::StatusOr<TotalCost> Evaluate(const Problem& problem,
     }
   }
   return cost;
-}
-
-// TODO(moffitt): Re-implement this using an XLA-friendly library (eg, jsoncpp).
-absl::StatusOr<Problem> ReadProblem(const std::string& filename) {
-/*
-  const nlohmann::json data = nlohmann::json::parse(std::ifstream(filename));
-  Problem problem = {.name = data["problem"]["name"]};
-  const auto& nodes = data["problem"]["nodes"];
-  for (const auto& node_interval : nodes["intervals"]) {
-    problem.nodes.push_back({.interval = {node_interval[0], node_interval[1]}});
-  }
-  for (NodeIdx node_idx = 0; node_idx < problem.nodes.size(); ++node_idx) {
-    Node& node = problem.nodes[node_idx];
-    const auto& costs = nodes["costs"][node_idx];
-    const auto& usages = nodes["usages"][node_idx];
-    node.strategies.reserve(costs.size());
-    for (StrategyIdx strategy_idx = 0; strategy_idx < costs.size();
-         ++strategy_idx) {
-      node.strategies.push_back(
-          {.cost = costs[strategy_idx], .usage = usages[strategy_idx]});
-    }
-  }
-  const auto& edges = data["problem"]["edges"];
-  for (const auto& node_list : edges["nodes"]) {
-    problem.edges.push_back({});
-    for (const NodeIdx node_idx : node_list) {
-      problem.edges.back().nodes.push_back(node_idx);
-    }
-  }
-  for (EdgeIdx edge_idx = 0; edge_idx < problem.edges.size(); ++edge_idx) {
-    Edge& edge = problem.edges[edge_idx];
-    for (const Cost cost : edges["costs"][edge_idx]) {
-      edge.strategies.push_back({.cost = cost, .usage = 0});
-    }
-  }
-  if (data["problem"].contains("usage_limit")) {
-    problem.usage_limit = data["problem"]["usage_limit"];
-  }
-  return problem;
-*/
-  return absl::UnimplementedError("ReadProblem is not implemented");
 }
 
 }  // namespace iopddl

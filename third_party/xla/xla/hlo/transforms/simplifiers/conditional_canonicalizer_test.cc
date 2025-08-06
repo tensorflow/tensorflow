@@ -36,6 +36,7 @@ namespace {
 namespace op = xla::testing::opcode_matchers;
 
 using ::testing::ElementsAre;
+using ::testing::UnorderedElementsAre;
 
 class ConditionalCanonicalizerTest : public HloHardwareIndependentTestBase {
  protected:
@@ -105,6 +106,97 @@ ENTRY entry {
   }
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::GetTupleElement(op::Conditional()));
+}
+
+TEST_F(ConditionalCanonicalizerTest, MultipleConditionalRewrite) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule CanonicalizeArgumentsToTuples
+true_branch {
+  true_param = s32[3,2] parameter(0)
+  ROOT root = s32[] constant(0)
+}
+
+false_branch {
+  false_param = s32[3,2] parameter(0)
+  ROOT root = s32[] constant(1)
+}
+
+ENTRY entry {
+  param0 = s32[3,2] parameter(0)
+  branch = pred[] parameter(1)
+  conditional.0 = s32[] conditional(branch, param0, param0),
+    true_computation=true_branch, false_computation=false_branch
+  conditional.1 = s32[] conditional(branch, param0, param0),
+    true_computation=true_branch, false_computation=false_branch
+  ROOT root = tuple(conditional.0, conditional.1)
+}
+)")
+                    .value();
+  ConditionalCanonicalizer pass;
+  EXPECT_TRUE(pass.Run(module.get()).value());
+  EXPECT_THAT(module->entry_computation()->parameter_instruction(0)->users(),
+              ElementsAre(op::Tuple(), op::Tuple(), op::Tuple(), op::Tuple()));
+  EXPECT_THAT(module->entry_computation()->parameter_instruction(1)->users(),
+              ElementsAre(op::Conditional(), op::Conditional()));
+  for (auto* computation : module->computations()) {
+    if (computation == module->entry_computation()) {
+      continue;
+    }
+    EXPECT_TRUE(computation->parameter_instruction(0)->shape().IsTuple());
+    EXPECT_THAT(computation->root_instruction(), op::Tuple());
+  }
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Tuple(op::GetTupleElement(op::Conditional()),
+                        op::GetTupleElement(op::Conditional())));
+}
+
+TEST_F(ConditionalCanonicalizerTest, ConditionalAndCallRewrite) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule CanonicalizeArgumentsToTuples
+true_branch {
+  true_param = s32[3,2] parameter(0)
+  ROOT root = s32[] constant(0)
+}
+
+false_branch {
+  false_param = s32[3,2] parameter(0)
+  ROOT root = s32[] constant(1)
+}
+
+ENTRY entry {
+  param0 = s32[3,2] parameter(0)
+  branch = pred[] parameter(1)
+  conditional = s32[] conditional(branch, param0, param0),
+    true_computation=true_branch, false_computation=false_branch
+  call = s32[] call(param0), to_apply=false_branch
+  ROOT root = tuple(conditional, call)
+}
+)")
+                    .value();
+  ConditionalCanonicalizer pass;
+  EXPECT_TRUE(pass.Run(module.get()).value());
+  EXPECT_THAT(module->entry_computation()->parameter_instruction(0)->users(),
+              UnorderedElementsAre(op::Tuple(), op::Tuple(), op::Call()));
+  EXPECT_THAT(module->entry_computation()->parameter_instruction(1)->users(),
+              ElementsAre(op::Conditional()));
+
+  for (auto* computation : module->computations()) {
+    if (computation == module->entry_computation()) {
+      continue;
+    }
+    EXPECT_EQ(computation->caller_instructions().size(), 1);
+    const auto* caller = computation->caller_instructions()[0];
+    if (caller->opcode() == HloOpcode::kConditional) {
+      EXPECT_TRUE(computation->parameter_instruction(0)->shape().IsTuple());
+      EXPECT_THAT(computation->root_instruction(), op::Tuple());
+    } else {
+      EXPECT_TRUE(caller->opcode() == HloOpcode::kCall);
+      EXPECT_FALSE(computation->parameter_instruction(0)->shape().IsTuple());
+      EXPECT_THAT(computation->root_instruction(), op::Constant());
+    }
+  }
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Tuple(op::GetTupleElement(op::Conditional()), op::Call()));
 }
 
 }  // namespace

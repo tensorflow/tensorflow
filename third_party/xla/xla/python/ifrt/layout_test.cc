@@ -140,7 +140,7 @@ TEST(LayoutTest, EquivalentLayouts) {
   ON_CALL(*device1, DefaultMemory()).WillByDefault(Return(memory1.get()));
   ON_CALL(*device2, DefaultMemory()).WillByDefault(Return(memory2.get()));
 
-  ON_CALL(*client, GetDefaultLayout)
+  ON_CALL(*client, GetDefaultPjRtLayout)
       .With(std::make_tuple(DType(DType::kS32), shape.dims(),
                             static_cast<Device*>(device0.get()), memory_kind0))
       .WillByDefault(
@@ -150,7 +150,7 @@ TEST(LayoutTest, EquivalentLayouts) {
             return std::make_shared<xla::PjRtLayout>(
                 xla::LayoutUtil::MakeDescendingLayout(2));
           });
-  ON_CALL(*client, GetDefaultLayout)
+  ON_CALL(*client, GetDefaultPjRtLayout)
       .With(std::make_tuple(DType(DType::kS32), shape.dims(),
                             static_cast<Device*>(device1.get()), memory_kind0))
       .WillByDefault(
@@ -161,7 +161,7 @@ TEST(LayoutTest, EquivalentLayouts) {
                 xla::LayoutUtil::MakeDescendingLayout(2));
           });
 
-  ON_CALL(*client, GetDefaultLayout)
+  ON_CALL(*client, GetDefaultPjRtLayout)
       .With(std::make_tuple(DType(DType::kS32), shape.dims(),
                             static_cast<Device*>(device2.get()), memory_kind0))
       .WillByDefault(

@@ -104,38 +104,6 @@ void TfLiteVarArrayFree(T* a) {
 
 #ifndef TF_LITE_STATIC_MEMORY
 
-TfLiteQuantization TfLiteQuantizationClone(const TfLiteQuantization& src) {
-  TfLiteQuantization dst;
-  dst.type = src.type;
-  switch (src.type) {
-    case kTfLiteNoQuantization:
-      break;
-    case kTfLiteAffineQuantization: {
-      dst.params = calloc(1, sizeof(TfLiteAffineQuantization));
-      const TfLiteAffineQuantization* const src_params =
-          reinterpret_cast<TfLiteAffineQuantization*>(src.params);
-      TfLiteAffineQuantization* const dst_params =
-          reinterpret_cast<TfLiteAffineQuantization*>(dst.params);
-      dst_params->quantized_dimension = src_params->quantized_dimension;
-      dst_params->scale = TfLiteFloatArrayCopy(src_params->scale);
-      dst_params->zero_point = TfLiteIntArrayCopy(src_params->zero_point);
-      break;
-    }
-    case kTfLiteBlockwiseQuantization: {
-      dst.params = calloc(1, sizeof(TfLiteBlockwiseQuantization));
-      const TfLiteBlockwiseQuantization* const src_params =
-          (TfLiteBlockwiseQuantization*)(src.params);
-      TfLiteBlockwiseQuantization* const dst_params =
-          (TfLiteBlockwiseQuantization*)(dst.params);
-      dst_params->blocksize = src_params->blocksize;
-      dst_params->scale = src_params->scale;
-      dst_params->zero_point = src_params->zero_point;
-      break;
-    }
-  }
-  return dst;
-}
-
 TfLiteSparsity TfLiteSparsityClone(const TfLiteSparsity& src) {
   TfLiteSparsity dst = src;
   dst.traversal_order = TfLiteIntArrayCopy(src.traversal_order);
@@ -168,6 +136,42 @@ TfLiteSparsity* TfLiteSparsityClone(const TfLiteSparsity* const src) {
 #endif  // TF_LITE_STATIC_MEMORY
 
 }  // namespace
+
+#ifndef TF_LITE_STATIC_MEMORY
+
+TfLiteQuantization TfLiteQuantizationClone(const TfLiteQuantization& src) {
+  TfLiteQuantization dst;
+  dst.type = src.type;
+  switch (src.type) {
+    case kTfLiteNoQuantization:
+      break;
+    case kTfLiteAffineQuantization: {
+      dst.params = calloc(1, sizeof(TfLiteAffineQuantization));
+      const TfLiteAffineQuantization* const src_params =
+          reinterpret_cast<TfLiteAffineQuantization*>(src.params);
+      TfLiteAffineQuantization* const dst_params =
+          reinterpret_cast<TfLiteAffineQuantization*>(dst.params);
+      dst_params->quantized_dimension = src_params->quantized_dimension;
+      dst_params->scale = TfLiteFloatArrayCopy(src_params->scale);
+      dst_params->zero_point = TfLiteIntArrayCopy(src_params->zero_point);
+      break;
+    }
+    case kTfLiteBlockwiseQuantization: {
+      dst.params = calloc(1, sizeof(TfLiteBlockwiseQuantization));
+      const TfLiteBlockwiseQuantization* const src_params =
+          (TfLiteBlockwiseQuantization*)(src.params);
+      TfLiteBlockwiseQuantization* const dst_params =
+          (TfLiteBlockwiseQuantization*)(dst.params);
+      dst_params->blocksize = src_params->blocksize;
+      dst_params->scale = src_params->scale;
+      dst_params->zero_point = src_params->zero_point;
+      break;
+    }
+  }
+  return dst;
+}
+
+#endif  // TF_LITE_STATIC_MEMORY
 
 extern "C" {
 
@@ -245,6 +249,11 @@ void TfLiteQuantizationFree(TfLiteQuantization* quantization) {
       TfLiteIntArrayFree(q_params->zero_point);
       q_params->zero_point = nullptr;
     }
+    free(q_params);
+  }
+  if (quantization->type == kTfLiteBlockwiseQuantization) {
+    TfLiteBlockwiseQuantization* q_params =
+        reinterpret_cast<TfLiteBlockwiseQuantization*>(quantization->params);
     free(q_params);
   }
   quantization->params = nullptr;

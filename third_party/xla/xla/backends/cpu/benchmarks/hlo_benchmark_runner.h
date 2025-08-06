@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
 #include "xla/service/compiler.h"
 #include "xla/tsl/platform/test_benchmark.h"
@@ -76,6 +77,10 @@ absl::Status CompileHloBenchmark(
     benchmark::State& state, absl::string_view hlo_module,
     StrToStrMapping replacements = {},
     const HloBenchmarkOptions& benchmark_options = {});
+
+absl::Status CompileHloBenchmark(benchmark::State& state,
+                                 std::unique_ptr<HloModule> module,
+                                 const HloBenchmarkOptions& benchmark_options);
 
 }  // namespace xla::cpu
 

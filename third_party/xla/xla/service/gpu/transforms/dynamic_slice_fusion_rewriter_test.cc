@@ -49,14 +49,14 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemm) {
     HloModule test
 
     ENTRY %main.9 {
-      %p0 = f16[2,8,8]{2,1,0} parameter(0)
-      %p1 = f16[2,8,8]{2,1,0} parameter(1)
-      %slice.13 = f16[1,8,8]{2,1,0} slice(%p0), slice={[1:2], [0:8], [0:8]}
-      %bitcast.41 = f16[8,8]{1,0} bitcast(%slice.13)
-      %slice.14 = f16[1,8,8]{2,1,0} slice(%p1), slice={[1:2], [0:8], [0:8]}
-      %bitcast.42 = f16[8,8]{1,0} bitcast(%slice.14)
+      %p0 = f32[2,8,8]{2,1,0} parameter(0)
+      %p1 = f32[2,8,8]{2,1,0} parameter(1)
+      %slice.13 = f32[1,8,8]{2,1,0} slice(%p0), slice={[1:2], [0:8], [0:8]}
+      %bitcast.41 = f32[8,8]{1,0} bitcast(%slice.13)
+      %slice.14 = f32[1,8,8]{2,1,0} slice(%p1), slice={[1:2], [0:8], [0:8]}
+      %bitcast.42 = f32[8,8]{1,0} bitcast(%slice.14)
 
-      ROOT %custom-call.1 = f16[8,8]{1,0} custom-call(%bitcast.41, %bitcast.42),
+      ROOT %custom-call.1 = f32[8,8]{1,0} custom-call(%bitcast.41, %bitcast.42),
         custom_call_target="__cublas$gemm",
         backend_config={"gemm_backend_config":{
           "alpha_real":1,
@@ -80,18 +80,18 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemm) {
 
   const char* expected = R"(
     ; CHECK:     %dynamic-slice-fusion{{.*}} {
-    ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(0)
-    ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(1)
-    ; CHECK-DAG:   [[S0:%[^ ]+]] = f16[1,8,8]{2,1,0} slice([[P0]]), slice={[1:2], [0:8], [0:8]}
-    ; CHECK-DAG:   [[B0:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S0]])
-    ; CHECK-DAG:   [[S1:%[^ ]+]] = f16[1,8,8]{2,1,0} slice([[P1]]), slice={[1:2], [0:8], [0:8]}
-    ; CHECK-DAG:   [[B1:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S1]])
-    ; CHECK:       ROOT [[CC:%[^ ]+]] = f16[8,8]{1,0} custom-call([[B0]], [[B1]]),
+    ; CHECK-DAG:   [[P0:%[^ ]+]] = f32[2,8,8]{2,1,0} parameter(0)
+    ; CHECK-DAG:   [[P1:%[^ ]+]] = f32[2,8,8]{2,1,0} parameter(1)
+    ; CHECK-DAG:   [[S0:%[^ ]+]] = f32[1,8,8]{2,1,0} slice([[P0]]), slice={[1:2], [0:8], [0:8]}
+    ; CHECK-DAG:   [[B0:%[^ ]+]] = f32[8,8]{1,0} bitcast([[S0]])
+    ; CHECK-DAG:   [[S1:%[^ ]+]] = f32[1,8,8]{2,1,0} slice([[P1]]), slice={[1:2], [0:8], [0:8]}
+    ; CHECK-DAG:   [[B1:%[^ ]+]] = f32[8,8]{1,0} bitcast([[S1]])
+    ; CHECK:       ROOT [[CC:%[^ ]+]] = f32[8,8]{1,0} custom-call([[B0]], [[B1]]),
     ; CHECK:              custom_call_target="__cublas$gemm"
     ; CHECK:     }
 
     ; CHECK:     ENTRY %main{{.*}} {
-    ; CHECK:       ROOT [[FUSION:%[^ ]+]] = f16[8,8]{1,0} fusion
+    ; CHECK:       ROOT [[FUSION:%[^ ]+]] = f32[8,8]{1,0} fusion
     ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
@@ -109,14 +109,14 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmWithWorkspace) {
     HloModule test
 
     ENTRY %main.9 {
-      %p0 = f16[2,8,8]{2,1,0} parameter(0)
-      %p1 = f16[2,8,8]{2,1,0} parameter(1)
-      %slice.13 = f16[1,8,8]{2,1,0} slice(%p0), slice={[1:2], [0:8], [0:8]}
-      %bitcast.41 = f16[8,8]{1,0} bitcast(%slice.13)
-      %slice.14 = f16[1,8,8]{2,1,0} slice(%p1), slice={[1:2], [0:8], [0:8]}
-      %bitcast.42 = f16[8,8]{1,0} bitcast(%slice.14)
+      %p0 = f32[2,8,8]{2,1,0} parameter(0)
+      %p1 = f32[2,8,8]{2,1,0} parameter(1)
+      %slice.13 = f32[1,8,8]{2,1,0} slice(%p0), slice={[1:2], [0:8], [0:8]}
+      %bitcast.41 = f32[8,8]{1,0} bitcast(%slice.13)
+      %slice.14 = f32[1,8,8]{2,1,0} slice(%p1), slice={[1:2], [0:8], [0:8]}
+      %bitcast.42 = f32[8,8]{1,0} bitcast(%slice.14)
 
-      ROOT %custom-call.1 = (f16[8,8]{1,0}, s8[256]{0}) custom-call(%bitcast.41, %bitcast.42),
+      ROOT %custom-call.1 = (f32[8,8]{1,0}, s8[256]{0}) custom-call(%bitcast.41, %bitcast.42),
         custom_call_target="__cublas$gemm",
         backend_config={"gemm_backend_config":{
           "alpha_real":1,
@@ -140,22 +140,22 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmWithWorkspace) {
 
   const char* expected = R"(
     ; CHECK:     %dynamic-slice-fusion{{.*}} {
-    ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(0)
-    ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(1)
-    ; CHECK-DAG:   [[S0:%[^ ]+]] = f16[1,8,8]{2,1,0} slice([[P0]]), slice={[1:2], [0:8], [0:8]}
-    ; CHECK-DAG:   [[B0:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S0]])
-    ; CHECK-DAG:   [[S1:%[^ ]+]] = f16[1,8,8]{2,1,0} slice([[P1]]), slice={[1:2], [0:8], [0:8]}
-    ; CHECK-DAG:   [[B1:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S1]])
-    ; CHECK:       [[CC:%[^ ]+]] = (f16[8,8]{1,0}, s8[256]{0}) custom-call([[B0]], [[B1]]),
+    ; CHECK-DAG:   [[P0:%[^ ]+]] = f32[2,8,8]{2,1,0} parameter(0)
+    ; CHECK-DAG:   [[P1:%[^ ]+]] = f32[2,8,8]{2,1,0} parameter(1)
+    ; CHECK-DAG:   [[S0:%[^ ]+]] = f32[1,8,8]{2,1,0} slice([[P0]]), slice={[1:2], [0:8], [0:8]}
+    ; CHECK-DAG:   [[B0:%[^ ]+]] = f32[8,8]{1,0} bitcast([[S0]])
+    ; CHECK-DAG:   [[S1:%[^ ]+]] = f32[1,8,8]{2,1,0} slice([[P1]]), slice={[1:2], [0:8], [0:8]}
+    ; CHECK-DAG:   [[B1:%[^ ]+]] = f32[8,8]{1,0} bitcast([[S1]])
+    ; CHECK:       [[CC:%[^ ]+]] = (f32[8,8]{1,0}, s8[256]{0}) custom-call([[B0]], [[B1]]),
     ; CHECK:              custom_call_target="__cublas$gemm"
-    ; CHECK:       [[DOT:%[^ ]+]] = f16[8,8]{1,0} get-tuple-element([[CC]]), index=0
+    ; CHECK:       [[DOT:%[^ ]+]] = f32[8,8]{1,0} get-tuple-element([[CC]]), index=0
     ; CHECK:       [[WORKSPACE:%[^ ]+]] = s8[256]{0} get-tuple-element([[CC]]), index=1
-    ; CHECK:       ROOT [[TUPLE:%[^ ]+]] = (f16[8,8]{1,0}, s8[256]{0})
+    ; CHECK:       ROOT [[TUPLE:%[^ ]+]] = (f32[8,8]{1,0}, s8[256]{0})
     ; CHECK:              tuple([[DOT]], [[WORKSPACE]])
     ; CHECK:     }
 
     ; CHECK:     ENTRY %main{{.*}} {
-    ; CHECK:       ROOT [[FUSION:%[^ ]+]] = (f16[8,8]{1,0}, s8[256]{0}) fusion
+    ; CHECK:       ROOT [[FUSION:%[^ ]+]] = (f32[8,8]{1,0}, s8[256]{0}) fusion
     ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
@@ -173,14 +173,14 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmWorkspaceIgnored) {
     HloModule test
 
     ENTRY %main.9 {
-      %p0 = f16[2,8,8]{2,1,0} parameter(0)
-      %p1 = f16[2,8,8]{2,1,0} parameter(1)
-      %slice.13 = f16[1,8,8]{2,1,0} slice(%p0), slice={[1:2], [0:8], [0:8]}
-      %bitcast.41 = f16[8,8]{1,0} bitcast(%slice.13)
-      %slice.14 = f16[1,8,8]{2,1,0} slice(%p1), slice={[1:2], [0:8], [0:8]}
-      %bitcast.42 = f16[8,8]{1,0} bitcast(%slice.14)
+      %p0 = f32[2,8,8]{2,1,0} parameter(0)
+      %p1 = f32[2,8,8]{2,1,0} parameter(1)
+      %slice.13 = f32[1,8,8]{2,1,0} slice(%p0), slice={[1:2], [0:8], [0:8]}
+      %bitcast.41 = f32[8,8]{1,0} bitcast(%slice.13)
+      %slice.14 = f32[1,8,8]{2,1,0} slice(%p1), slice={[1:2], [0:8], [0:8]}
+      %bitcast.42 = f32[8,8]{1,0} bitcast(%slice.14)
 
-      %custom-call.1 = (f16[8,8]{1,0}, s8[256]{0}) custom-call(%bitcast.41, %bitcast.42),
+      %custom-call.1 = (f32[8,8]{1,0}, s8[256]{0}) custom-call(%bitcast.41, %bitcast.42),
         custom_call_target="__cublas$gemm",
         backend_config={"gemm_backend_config":{
           "alpha_real":1,
@@ -199,34 +199,34 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmWorkspaceIgnored) {
           "grad_x":false,
           "grad_y":false
         }}
-      ROOT %get-tuple-element.0 = f16[8,8]{1,0} get-tuple-element(%custom-call.1), index=0
+      ROOT %get-tuple-element.0 = f32[8,8]{1,0} get-tuple-element(%custom-call.1), index=0
     }
   )";
 
   const char* expected = R"(
     ; CHECK:     %dynamic-slice-fusion{{.*}} {
-    ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(0)
-    ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(1)
-    ; CHECK-DAG:   [[S0:%[^ ]+]] = f16[1,8,8]{2,1,0} slice([[P0]]), slice={[1:2], [0:8], [0:8]}
-    ; CHECK-DAG:   [[B0:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S0]])
-    ; CHECK-DAG:   [[S1:%[^ ]+]] = f16[1,8,8]{2,1,0} slice([[P1]]), slice={[1:2], [0:8], [0:8]}
-    ; CHECK-DAG:   [[B1:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S1]])
-    ; CHECK:       [[CC:%[^ ]+]] = (f16[8,8]{1,0}, s8[256]{0}) custom-call([[B0]], [[B1]]),
+    ; CHECK-DAG:   [[P0:%[^ ]+]] = f32[2,8,8]{2,1,0} parameter(0)
+    ; CHECK-DAG:   [[P1:%[^ ]+]] = f32[2,8,8]{2,1,0} parameter(1)
+    ; CHECK-DAG:   [[S0:%[^ ]+]] = f32[1,8,8]{2,1,0} slice([[P0]]), slice={[1:2], [0:8], [0:8]}
+    ; CHECK-DAG:   [[B0:%[^ ]+]] = f32[8,8]{1,0} bitcast([[S0]])
+    ; CHECK-DAG:   [[S1:%[^ ]+]] = f32[1,8,8]{2,1,0} slice([[P1]]), slice={[1:2], [0:8], [0:8]}
+    ; CHECK-DAG:   [[B1:%[^ ]+]] = f32[8,8]{1,0} bitcast([[S1]])
+    ; CHECK:       [[CC:%[^ ]+]] = (f32[8,8]{1,0}, s8[256]{0}) custom-call([[B0]], [[B1]]),
     ; CHECK:              custom_call_target="__cublas$gemm"
-    ; CHECK:       [[DOT:%[^ ]+]] = f16[8,8]{1,0} get-tuple-element([[CC]]), index=0
+    ; CHECK:       [[DOT:%[^ ]+]] = f32[8,8]{1,0} get-tuple-element([[CC]]), index=0
     ; CHECK:       [[WORKSPACE:%[^ ]+]] = s8[256]{0} get-tuple-element([[CC]]), index=1
-    ; CHECK:       ROOT [[TUPLE:%[^ ]+]] = (f16[8,8]{1,0}, s8[256]{0})
+    ; CHECK:       ROOT [[TUPLE:%[^ ]+]] = (f32[8,8]{1,0}, s8[256]{0})
     ; CHECK:              tuple([[DOT]], [[WORKSPACE]])
     ; CHECK:     }
 
     ; CHECK:     ENTRY %main{{.*}} {
-    ; CHECK:       [[FUSION:%[^ ]+]] = (f16[8,8]{1,0}, s8[256]{0}) fusion
+    ; CHECK:       [[FUSION:%[^ ]+]] = (f32[8,8]{1,0}, s8[256]{0}) fusion
     ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
     ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
     ; CHECK:         }
-    ; CHECK:       ROOT [[DOT_MAIN:%[^ ]+]] = f16[8,8]{1,0} get-tuple-element([[FUSION]]), index=0
+    ; CHECK:       ROOT [[DOT_MAIN:%[^ ]+]] = f32[8,8]{1,0} get-tuple-element([[FUSION]]), index=0
     ; CHECK:     }
   )";
 
@@ -239,14 +239,14 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmNotRoot) {
     HloModule test
 
     ENTRY %main.9 {
-      %p0 = f16[2,8,8]{2,1,0} parameter(0)
-      %p1 = f16[2,8,8]{2,1,0} parameter(1)
-      %slice.13 = f16[1,8,8]{2,1,0} slice(%p0), slice={[1:2], [0:8], [0:8]}
-      %bitcast.41 = f16[8,8]{1,0} bitcast(%slice.13)
-      %slice.14 = f16[1,8,8]{2,1,0} slice(%p1), slice={[1:2], [0:8], [0:8]}
-      %bitcast.42 = f16[8,8]{1,0} bitcast(%slice.14)
+      %p0 = f32[2,8,8]{2,1,0} parameter(0)
+      %p1 = f32[2,8,8]{2,1,0} parameter(1)
+      %slice.13 = f32[1,8,8]{2,1,0} slice(%p0), slice={[1:2], [0:8], [0:8]}
+      %bitcast.41 = f32[8,8]{1,0} bitcast(%slice.13)
+      %slice.14 = f32[1,8,8]{2,1,0} slice(%p1), slice={[1:2], [0:8], [0:8]}
+      %bitcast.42 = f32[8,8]{1,0} bitcast(%slice.14)
 
-      %custom-call.1 = f16[8,8]{1,0} custom-call(%bitcast.41, %bitcast.42),
+      %custom-call.1 = f32[8,8]{1,0} custom-call(%bitcast.41, %bitcast.42),
         custom_call_target="__cublas$gemm",
         backend_config={"gemm_backend_config":{
           "alpha_real":1,
@@ -265,30 +265,30 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmNotRoot) {
           "grad_x":false,
           "grad_y":false
         }}
-      ROOT %res = f16[8,8]{1,0} add(%custom-call.1, %custom-call.1)
+      ROOT %res = f32[8,8]{1,0} add(%custom-call.1, %custom-call.1)
     }
   )";
 
   const char* expected = R"(
     ; CHECK:     %dynamic-slice-fusion{{.*}} {
-    ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(0)
-    ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(1)
-    ; CHECK-DAG:   [[S0:%[^ ]+]] = f16[1,8,8]{2,1,0} slice([[P0]]), slice={[1:2], [0:8], [0:8]}
-    ; CHECK-DAG:   [[B0:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S0]])
-    ; CHECK-DAG:   [[S1:%[^ ]+]] = f16[1,8,8]{2,1,0} slice([[P1]]), slice={[1:2], [0:8], [0:8]}
-    ; CHECK-DAG:   [[B1:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S1]])
-    ; CHECK:       ROOT [[CC:%[^ ]+]] = f16[8,8]{1,0} custom-call([[B0]], [[B1]]),
+    ; CHECK-DAG:   [[P0:%[^ ]+]] = f32[2,8,8]{2,1,0} parameter(0)
+    ; CHECK-DAG:   [[P1:%[^ ]+]] = f32[2,8,8]{2,1,0} parameter(1)
+    ; CHECK-DAG:   [[S0:%[^ ]+]] = f32[1,8,8]{2,1,0} slice([[P0]]), slice={[1:2], [0:8], [0:8]}
+    ; CHECK-DAG:   [[B0:%[^ ]+]] = f32[8,8]{1,0} bitcast([[S0]])
+    ; CHECK-DAG:   [[S1:%[^ ]+]] = f32[1,8,8]{2,1,0} slice([[P1]]), slice={[1:2], [0:8], [0:8]}
+    ; CHECK-DAG:   [[B1:%[^ ]+]] = f32[8,8]{1,0} bitcast([[S1]])
+    ; CHECK:       ROOT [[CC:%[^ ]+]] = f32[8,8]{1,0} custom-call([[B0]], [[B1]]),
     ; CHECK:              custom_call_target="__cublas$gemm"
     ; CHECK:     }
 
     ; CHECK:     ENTRY %main{{.*}} {
-    ; CHECK:       [[FUSION:%[^ ]+]] = f16[8,8]{1,0} fusion
+    ; CHECK:       [[FUSION:%[^ ]+]] = f32[8,8]{1,0} fusion
     ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
     ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
     ; CHECK:         }
-    ; CHECK:       ROOT {{.*}} = f16[8,8]{1,0} add([[FUSION]], [[FUSION]])
+    ; CHECK:       ROOT {{.*}} = f32[8,8]{1,0} add([[FUSION]], [[FUSION]])
     ; CHECK:     }
   )";
 
@@ -301,14 +301,14 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmOperandHasMultipleUsers) {
     HloModule test
 
     ENTRY %main.9 {
-      %p0 = f16[2,8,8]{2,1,0} parameter(0)
-      %p1 = f16[4,8,8]{2,1,0} parameter(1)
-      %slice.13 = f16[1,8,8]{2,1,0} slice(%p0), slice={[1:2], [0:8], [0:8]}
-      %bitcast.41 = f16[8,8]{1,0} bitcast(%slice.13)
-      %slice.14 = f16[1,8,8]{2,1,0} slice(%p1), slice={[2:3], [0:8], [0:8]}
-      %bitcast.42 = f16[8,8]{1,0} bitcast(%slice.14)
+      %p0 = f32[2,8,8]{2,1,0} parameter(0)
+      %p1 = f32[4,8,8]{2,1,0} parameter(1)
+      %slice.13 = f32[1,8,8]{2,1,0} slice(%p0), slice={[1:2], [0:8], [0:8]}
+      %bitcast.41 = f32[8,8]{1,0} bitcast(%slice.13)
+      %slice.14 = f32[1,8,8]{2,1,0} slice(%p1), slice={[2:3], [0:8], [0:8]}
+      %bitcast.42 = f32[8,8]{1,0} bitcast(%slice.14)
 
-      %custom-call.1 = f16[8,8]{1,0} custom-call(%bitcast.41, %bitcast.42),
+      %custom-call.1 = f32[8,8]{1,0} custom-call(%bitcast.41, %bitcast.42),
         custom_call_target="__cublas$gemm",
         backend_config={"gemm_backend_config":{
           "alpha_real":1,
@@ -327,34 +327,34 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmOperandHasMultipleUsers) {
           "grad_x":false,
           "grad_y":false
         }}
-      ROOT %res = f16[8,8]{1,0} add(%custom-call.1, %bitcast.41)
+      ROOT %res = f32[8,8]{1,0} add(%custom-call.1, %bitcast.41)
     }
   )";
 
   const char* expected = R"(
     ; CHECK:     %dynamic-slice-fusion{{.*}} {
-    ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(0)
-    ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[4,8,8]{2,1,0} parameter(1)
-    ; CHECK-DAG:   [[S0:%[^ ]+]] = f16[1,8,8]{2,1,0} slice([[P0]]), slice={[1:2], [0:8], [0:8]}
-    ; CHECK-DAG:   [[B0:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S0]])
-    ; CHECK-DAG:   [[S1:%[^ ]+]] = f16[1,8,8]{2,1,0} slice([[P1]]), slice={[2:3], [0:8], [0:8]}
-    ; CHECK-DAG:   [[B1:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S1]])
-    ; CHECK:       ROOT [[CC:%[^ ]+]] = f16[8,8]{1,0} custom-call([[B0]], [[B1]]),
+    ; CHECK-DAG:   [[P0:%[^ ]+]] = f32[2,8,8]{2,1,0} parameter(0)
+    ; CHECK-DAG:   [[P1:%[^ ]+]] = f32[4,8,8]{2,1,0} parameter(1)
+    ; CHECK-DAG:   [[S0:%[^ ]+]] = f32[1,8,8]{2,1,0} slice([[P0]]), slice={[1:2], [0:8], [0:8]}
+    ; CHECK-DAG:   [[B0:%[^ ]+]] = f32[8,8]{1,0} bitcast([[S0]])
+    ; CHECK-DAG:   [[S1:%[^ ]+]] = f32[1,8,8]{2,1,0} slice([[P1]]), slice={[2:3], [0:8], [0:8]}
+    ; CHECK-DAG:   [[B1:%[^ ]+]] = f32[8,8]{1,0} bitcast([[S1]])
+    ; CHECK:       ROOT [[CC:%[^ ]+]] = f32[8,8]{1,0} custom-call([[B0]], [[B1]]),
     ; CHECK:              custom_call_target="__cublas$gemm"
     ; CHECK:     }
 
     ; CHECK:     ENTRY %main{{.*}} {
-    ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(0)
-    ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[4,8,8]{2,1,0} parameter(1)
-    ; CHECK-DAG:   [[FUSION:%[^ ]+]] = f16[8,8]{1,0} fusion([[P0]], [[P1]])
+    ; CHECK-DAG:   [[P0:%[^ ]+]] = f32[2,8,8]{2,1,0} parameter(0)
+    ; CHECK-DAG:   [[P1:%[^ ]+]] = f32[4,8,8]{2,1,0} parameter(1)
+    ; CHECK-DAG:   [[FUSION:%[^ ]+]] = f32[8,8]{1,0} fusion([[P0]], [[P1]])
     ; CHECK-DAG:     kind=kCustom, calls=%dynamic-slice-fusion,
     ; CHECK-DAG:     backend_config={
     ; CHECK-DAG:       "kind":"__custom_fusion",
     ; CHECK-DAG:       "custom_fusion_config":{"name":"address_computation","kernel_index":0}
     ; CHECK-DAG:     }
-    ; CHECK-DAG:   [[S0:%[^ ]+]] = f16[1,8,8]{2,1,0} slice([[P0]]), slice={[1:2], [0:8], [0:8]}
-    ; CHECK-DAG:   [[B0:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S0]])
-    ; CHECK:       ROOT {{.*}} = f16[8,8]{1,0} add([[FUSION]], [[B0]])
+    ; CHECK-DAG:   [[S0:%[^ ]+]] = f32[1,8,8]{2,1,0} slice([[P0]]), slice={[1:2], [0:8], [0:8]}
+    ; CHECK-DAG:   [[B0:%[^ ]+]] = f32[8,8]{1,0} bitcast([[S0]])
+    ; CHECK:       ROOT {{.*}} = f32[8,8]{1,0} add([[FUSION]], [[B0]])
     ; CHECK:     }
   )";
 
@@ -367,14 +367,14 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmOperandsHaveMultipleUsers) {
     HloModule test
 
     ENTRY %main.9 {
-      %p0 = f16[2,8,8]{2,1,0} parameter(0)
-      %p1 = f16[2,8,8]{2,1,0} parameter(1)
-      %slice.13 = f16[1,8,8]{2,1,0} slice(%p0), slice={[1:2], [0:8], [0:8]}
-      %bitcast.41 = f16[8,8]{1,0} bitcast(%slice.13)
-      %slice.14 = f16[1,8,8]{2,1,0} slice(%p1), slice={[1:2], [0:8], [0:8]}
-      %bitcast.42 = f16[8,8]{1,0} bitcast(%slice.14)
+      %p0 = f32[2,8,8]{2,1,0} parameter(0)
+      %p1 = f32[2,8,8]{2,1,0} parameter(1)
+      %slice.13 = f32[1,8,8]{2,1,0} slice(%p0), slice={[1:2], [0:8], [0:8]}
+      %bitcast.41 = f32[8,8]{1,0} bitcast(%slice.13)
+      %slice.14 = f32[1,8,8]{2,1,0} slice(%p1), slice={[1:2], [0:8], [0:8]}
+      %bitcast.42 = f32[8,8]{1,0} bitcast(%slice.14)
 
-      %custom-call.0 = f16[8,8]{1,0} custom-call(%bitcast.41, %bitcast.42),
+      %custom-call.0 = f32[8,8]{1,0} custom-call(%bitcast.41, %bitcast.42),
         custom_call_target="__cublas$gemm",
         backend_config={"gemm_backend_config":{
           "alpha_real":1,
@@ -394,7 +394,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmOperandsHaveMultipleUsers) {
           "grad_y":false
         }}
 
-      ROOT %custom-call.1 = f16[8,8]{1,0} custom-call(%bitcast.42, %bitcast.41),
+      ROOT %custom-call.1 = f32[8,8]{1,0} custom-call(%bitcast.42, %bitcast.41),
         custom_call_target="__cublas$gemm",
         backend_config={"gemm_backend_config":{
           "alpha_real":1,
@@ -418,23 +418,23 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmOperandsHaveMultipleUsers) {
 
   const char* expected = R"(
     ; CHECK:     %dynamic-slice-fusion{{.*}} {
-    ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(0)
-    ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(1)
-    ; CHECK-DAG:   [[S0:%[^ ]+]] = f16[1,8,8]{2,1,0} slice([[P0]]), slice={[1:2], [0:8], [0:8]}
-    ; CHECK-DAG:   [[B0:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S0]])
-    ; CHECK-DAG:   [[S1:%[^ ]+]] = f16[1,8,8]{2,1,0} slice([[P1]]), slice={[1:2], [0:8], [0:8]}
-    ; CHECK-DAG:   [[B1:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S1]])
-    ; CHECK:       ROOT [[CC:%[^ ]+]] = f16[8,8]{1,0} custom-call([[B0]], [[B1]]),
+    ; CHECK-DAG:   [[P0:%[^ ]+]] = f32[2,8,8]{2,1,0} parameter(0)
+    ; CHECK-DAG:   [[P1:%[^ ]+]] = f32[2,8,8]{2,1,0} parameter(1)
+    ; CHECK-DAG:   [[S0:%[^ ]+]] = f32[1,8,8]{2,1,0} slice([[P0]]), slice={[1:2], [0:8], [0:8]}
+    ; CHECK-DAG:   [[B0:%[^ ]+]] = f32[8,8]{1,0} bitcast([[S0]])
+    ; CHECK-DAG:   [[S1:%[^ ]+]] = f32[1,8,8]{2,1,0} slice([[P1]]), slice={[1:2], [0:8], [0:8]}
+    ; CHECK-DAG:   [[B1:%[^ ]+]] = f32[8,8]{1,0} bitcast([[S1]])
+    ; CHECK:       ROOT [[CC:%[^ ]+]] = f32[8,8]{1,0} custom-call([[B0]], [[B1]]),
     ; CHECK:              custom_call_target="__cublas$gemm"
     ; CHECK:     }
     ; CHECK:     %dynamic-slice-fusion{{.*}} {
-    ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(0)
-    ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(1)
-    ; CHECK-DAG:   [[S0:%[^ ]+]] = f16[1,8,8]{2,1,0} slice([[P0]]), slice={[1:2], [0:8], [0:8]}
-    ; CHECK-DAG:   [[B0:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S0]])
-    ; CHECK-DAG:   [[S1:%[^ ]+]] = f16[1,8,8]{2,1,0} slice([[P1]]), slice={[1:2], [0:8], [0:8]}
-    ; CHECK-DAG:   [[B1:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S1]])
-    ; CHECK:       ROOT [[CC:%[^ ]+]] = f16[8,8]{1,0} custom-call([[B0]], [[B1]]),
+    ; CHECK-DAG:   [[P0:%[^ ]+]] = f32[2,8,8]{2,1,0} parameter(0)
+    ; CHECK-DAG:   [[P1:%[^ ]+]] = f32[2,8,8]{2,1,0} parameter(1)
+    ; CHECK-DAG:   [[S0:%[^ ]+]] = f32[1,8,8]{2,1,0} slice([[P0]]), slice={[1:2], [0:8], [0:8]}
+    ; CHECK-DAG:   [[B0:%[^ ]+]] = f32[8,8]{1,0} bitcast([[S0]])
+    ; CHECK-DAG:   [[S1:%[^ ]+]] = f32[1,8,8]{2,1,0} slice([[P1]]), slice={[1:2], [0:8], [0:8]}
+    ; CHECK-DAG:   [[B1:%[^ ]+]] = f32[8,8]{1,0} bitcast([[S1]])
+    ; CHECK:       ROOT [[CC:%[^ ]+]] = f32[8,8]{1,0} custom-call([[B0]], [[B1]]),
     ; CHECK:              custom_call_target="__cublas$gemm"
     ; CHECK:     }
   )";
@@ -448,15 +448,15 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmSlicingNotParameter) {
     HloModule test
 
     ENTRY %main.9 {
-      %p0 = f16[4,8,8]{2,1,0} parameter(0)
-      %p1 = f16[2,8,8]{2,1,0} parameter(1)
-      %slice.12 = f16[2,8,8]{2,1,0} slice(%p0), slice={[0:2], [0:8], [0:8]}
-      %slice.13 = f16[1,8,8]{2,1,0} slice(%slice.12), slice={[1:2], [0:8], [0:8]}
-      %bitcast.41 = f16[8,8]{1,0} bitcast(%slice.13)
-      %slice.14 = f16[1,8,8]{2,1,0} slice(%p1), slice={[1:2], [0:8], [0:8]}
-      %bitcast.42 = f16[8,8]{1,0} bitcast(%slice.14)
+      %p0 = f32[4,8,8]{2,1,0} parameter(0)
+      %p1 = f32[2,8,8]{2,1,0} parameter(1)
+      %slice.12 = f32[2,8,8]{2,1,0} slice(%p0), slice={[0:2], [0:8], [0:8]}
+      %slice.13 = f32[1,8,8]{2,1,0} slice(%slice.12), slice={[1:2], [0:8], [0:8]}
+      %bitcast.41 = f32[8,8]{1,0} bitcast(%slice.13)
+      %slice.14 = f32[1,8,8]{2,1,0} slice(%p1), slice={[1:2], [0:8], [0:8]}
+      %bitcast.42 = f32[8,8]{1,0} bitcast(%slice.14)
 
-      %custom-call.1 = f16[8,8]{1,0} custom-call(%bitcast.41, %bitcast.42),
+      %custom-call.1 = f32[8,8]{1,0} custom-call(%bitcast.41, %bitcast.42),
         custom_call_target="__cublas$gemm",
         backend_config={"gemm_backend_config":{
           "alpha_real":1,
@@ -475,33 +475,33 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmSlicingNotParameter) {
           "grad_x":false,
           "grad_y":false
         }}
-      ROOT %res = f16[8,8]{1,0} add(%custom-call.1, %custom-call.1)
+      ROOT %res = f32[8,8]{1,0} add(%custom-call.1, %custom-call.1)
     }
   )";
 
   const char* expected = R"(
     ; CHECK:     %dynamic-slice-fusion{{.*}} {
-    ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(0)
-    ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(1)
-    ; CHECK-DAG:   [[S0:%[^ ]+]] = f16[1,8,8]{2,1,0} slice([[P0]]), slice={[1:2], [0:8], [0:8]}
-    ; CHECK-DAG:   [[B0:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S0]])
-    ; CHECK-DAG:   [[S1:%[^ ]+]] = f16[1,8,8]{2,1,0} slice([[P1]]), slice={[1:2], [0:8], [0:8]}
-    ; CHECK-DAG:   [[B1:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S1]])
-    ; CHECK:       ROOT [[CC:%[^ ]+]] = f16[8,8]{1,0} custom-call([[B0]], [[B1]]),
+    ; CHECK-DAG:   [[P0:%[^ ]+]] = f32[2,8,8]{2,1,0} parameter(0)
+    ; CHECK-DAG:   [[P1:%[^ ]+]] = f32[2,8,8]{2,1,0} parameter(1)
+    ; CHECK-DAG:   [[S0:%[^ ]+]] = f32[1,8,8]{2,1,0} slice([[P0]]), slice={[1:2], [0:8], [0:8]}
+    ; CHECK-DAG:   [[B0:%[^ ]+]] = f32[8,8]{1,0} bitcast([[S0]])
+    ; CHECK-DAG:   [[S1:%[^ ]+]] = f32[1,8,8]{2,1,0} slice([[P1]]), slice={[1:2], [0:8], [0:8]}
+    ; CHECK-DAG:   [[B1:%[^ ]+]] = f32[8,8]{1,0} bitcast([[S1]])
+    ; CHECK:       ROOT [[CC:%[^ ]+]] = f32[8,8]{1,0} custom-call([[B0]], [[B1]]),
     ; CHECK:              custom_call_target="__cublas$gemm"
     ; CHECK:     }
 
     ; CHECK:     ENTRY %main{{.*}} {
-    ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[4,8,8]{2,1,0} parameter(0)
-    ; CHECK-DAG:   [[S0:%[^ ]+]] = f16[2,8,8]{2,1,0} slice([[P0]]), slice={[0:2], [0:8], [0:8]}
-    ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(1)
-    ; CHECK:       [[FUSION:%[^ ]+]] = f16[8,8]{1,0} fusion([[S0]], [[P1]])
+    ; CHECK-DAG:   [[P0:%[^ ]+]] = f32[4,8,8]{2,1,0} parameter(0)
+    ; CHECK-DAG:   [[S0:%[^ ]+]] = f32[2,8,8]{2,1,0} slice([[P0]]), slice={[0:2], [0:8], [0:8]}
+    ; CHECK-DAG:   [[P1:%[^ ]+]] = f32[2,8,8]{2,1,0} parameter(1)
+    ; CHECK:       [[FUSION:%[^ ]+]] = f32[8,8]{1,0} fusion([[S0]], [[P1]])
     ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
     ; CHECK:           "custom_fusion_config":{"name":"address_computation","kernel_index":0}
     ; CHECK:         }
-    ; CHECK:       ROOT {{.*}} = f16[8,8]{1,0} add([[FUSION]], [[FUSION]])
+    ; CHECK:       ROOT {{.*}} = f32[8,8]{1,0} add([[FUSION]], [[FUSION]])
     ; CHECK:     }
   )";
 
@@ -674,14 +674,14 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmReverseOperandOrder) {
     HloModule test
 
     ENTRY %main.9 {
-      %p0 = f16[2,8,8]{2,1,0} parameter(1)
-      %slice.13 = f16[1,8,8]{2,1,0} slice(%p0), slice={[0:1], [0:8], [0:8]}
-      %bitcast.41 = f16[8,8]{1,0} bitcast(%slice.13)
-      %p1 = f16[2,8,8]{2,1,0} parameter(0)
-      %slice.14 = f16[1,8,8]{2,1,0} slice(%p1), slice={[1:2], [0:8], [0:8]}
-      %bitcast.42 = f16[8,8]{1,0} bitcast(%slice.14)
+      %p0 = f32[2,8,8]{2,1,0} parameter(1)
+      %slice.13 = f32[1,8,8]{2,1,0} slice(%p0), slice={[0:1], [0:8], [0:8]}
+      %bitcast.41 = f32[8,8]{1,0} bitcast(%slice.13)
+      %p1 = f32[2,8,8]{2,1,0} parameter(0)
+      %slice.14 = f32[1,8,8]{2,1,0} slice(%p1), slice={[1:2], [0:8], [0:8]}
+      %bitcast.42 = f32[8,8]{1,0} bitcast(%slice.14)
 
-      ROOT %custom-call.1 = f16[8,8]{1,0} custom-call(%bitcast.41, %bitcast.42),
+      ROOT %custom-call.1 = f32[8,8]{1,0} custom-call(%bitcast.41, %bitcast.42),
         custom_call_target="__cublas$gemm",
         backend_config={"gemm_backend_config":{
           "alpha_real":1,
@@ -705,20 +705,20 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmReverseOperandOrder) {
 
   const char* expected = R"(
     ; CHECK:     %dynamic-slice-fusion{{.*}} {
-    ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(0)
-    ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(1)
-    ; CHECK-DAG:   [[S0:%[^ ]+]] = f16[1,8,8]{2,1,0} slice([[P0]]), slice={[0:1], [0:8], [0:8]}
-    ; CHECK-DAG:   [[B0:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S0]])
-    ; CHECK-DAG:   [[S1:%[^ ]+]] = f16[1,8,8]{2,1,0} slice([[P1]]), slice={[1:2], [0:8], [0:8]}
-    ; CHECK-DAG:   [[B1:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S1]])
-    ; CHECK:       ROOT [[CC:%[^ ]+]] = f16[8,8]{1,0} custom-call([[B0]], [[B1]]),
+    ; CHECK-DAG:   [[P0:%[^ ]+]] = f32[2,8,8]{2,1,0} parameter(0)
+    ; CHECK-DAG:   [[P1:%[^ ]+]] = f32[2,8,8]{2,1,0} parameter(1)
+    ; CHECK-DAG:   [[S0:%[^ ]+]] = f32[1,8,8]{2,1,0} slice([[P0]]), slice={[0:1], [0:8], [0:8]}
+    ; CHECK-DAG:   [[B0:%[^ ]+]] = f32[8,8]{1,0} bitcast([[S0]])
+    ; CHECK-DAG:   [[S1:%[^ ]+]] = f32[1,8,8]{2,1,0} slice([[P1]]), slice={[1:2], [0:8], [0:8]}
+    ; CHECK-DAG:   [[B1:%[^ ]+]] = f32[8,8]{1,0} bitcast([[S1]])
+    ; CHECK:       ROOT [[CC:%[^ ]+]] = f32[8,8]{1,0} custom-call([[B0]], [[B1]]),
     ; CHECK:              custom_call_target="__cublas$gemm"
     ; CHECK:     }
 
     ; CHECK:     ENTRY %main{{.*}} {
-    ; CHECK-DAG:   [[A0:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(1)
-    ; CHECK-DAG:   [[A1:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(0)
-    ; CHECK:       ROOT [[FUSION:%[^ ]+]] = f16[8,8]{1,0} fusion([[A0]], [[A1]])
+    ; CHECK-DAG:   [[A0:%[^ ]+]] = f32[2,8,8]{2,1,0} parameter(1)
+    ; CHECK-DAG:   [[A1:%[^ ]+]] = f32[2,8,8]{2,1,0} parameter(0)
+    ; CHECK:       ROOT [[FUSION:%[^ ]+]] = f32[8,8]{1,0} fusion([[A0]], [[A1]])
     ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
@@ -736,14 +736,14 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmReverseOperandOrder2) {
     HloModule test
 
     ENTRY %main.9 {
-      %p0 = f16[2,8,8]{2,1,0} parameter(0)
-      %slice.13 = f16[1,8,8]{2,1,0} slice(%p0), slice={[0:1], [0:8], [0:8]}
-      %bitcast.41 = f16[8,8]{1,0} bitcast(%slice.13)
-      %p1 = f16[2,8,8]{2,1,0} parameter(1)
-      %slice.14 = f16[1,8,8]{2,1,0} slice(%p1), slice={[1:2], [0:8], [0:8]}
-      %bitcast.42 = f16[8,8]{1,0} bitcast(%slice.14)
+      %p0 = f32[2,8,8]{2,1,0} parameter(0)
+      %slice.13 = f32[1,8,8]{2,1,0} slice(%p0), slice={[0:1], [0:8], [0:8]}
+      %bitcast.41 = f32[8,8]{1,0} bitcast(%slice.13)
+      %p1 = f32[2,8,8]{2,1,0} parameter(1)
+      %slice.14 = f32[1,8,8]{2,1,0} slice(%p1), slice={[1:2], [0:8], [0:8]}
+      %bitcast.42 = f32[8,8]{1,0} bitcast(%slice.14)
 
-      ROOT %custom-call.1 = f16[8,8]{1,0} custom-call(%bitcast.42, %bitcast.41),
+      ROOT %custom-call.1 = f32[8,8]{1,0} custom-call(%bitcast.42, %bitcast.41),
         custom_call_target="__cublas$gemm",
         backend_config={"gemm_backend_config":{
           "alpha_real":1,
@@ -767,20 +767,20 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleGemmReverseOperandOrder2) {
 
   const char* expected = R"(
     ; CHECK:     %dynamic-slice-fusion{{.*}} {
-    ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(0)
-    ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(1)
-    ; CHECK-DAG:   [[S0:%[^ ]+]] = f16[1,8,8]{2,1,0} slice([[P0]]), slice={[1:2], [0:8], [0:8]}
-    ; CHECK-DAG:   [[B0:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S0]])
-    ; CHECK-DAG:   [[S1:%[^ ]+]] = f16[1,8,8]{2,1,0} slice([[P1]]), slice={[0:1], [0:8], [0:8]}
-    ; CHECK-DAG:   [[B1:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S1]])
-    ; CHECK:       ROOT [[CC:%[^ ]+]] = f16[8,8]{1,0} custom-call([[B0]], [[B1]]),
+    ; CHECK-DAG:   [[P0:%[^ ]+]] = f32[2,8,8]{2,1,0} parameter(0)
+    ; CHECK-DAG:   [[P1:%[^ ]+]] = f32[2,8,8]{2,1,0} parameter(1)
+    ; CHECK-DAG:   [[S0:%[^ ]+]] = f32[1,8,8]{2,1,0} slice([[P0]]), slice={[1:2], [0:8], [0:8]}
+    ; CHECK-DAG:   [[B0:%[^ ]+]] = f32[8,8]{1,0} bitcast([[S0]])
+    ; CHECK-DAG:   [[S1:%[^ ]+]] = f32[1,8,8]{2,1,0} slice([[P1]]), slice={[0:1], [0:8], [0:8]}
+    ; CHECK-DAG:   [[B1:%[^ ]+]] = f32[8,8]{1,0} bitcast([[S1]])
+    ; CHECK:       ROOT [[CC:%[^ ]+]] = f32[8,8]{1,0} custom-call([[B0]], [[B1]]),
     ; CHECK:              custom_call_target="__cublas$gemm"
     ; CHECK:     }
 
     ; CHECK:     ENTRY %main{{.*}} {
-    ; CHECK-DAG:   [[A0:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(1)
-    ; CHECK-DAG:   [[A1:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(0)
-    ; CHECK:       ROOT [[FUSION:%[^ ]+]] = f16[8,8]{1,0} fusion([[A0]], [[A1]])
+    ; CHECK-DAG:   [[A0:%[^ ]+]] = f32[2,8,8]{2,1,0} parameter(1)
+    ; CHECK-DAG:   [[A1:%[^ ]+]] = f32[2,8,8]{2,1,0} parameter(0)
+    ; CHECK:       ROOT [[FUSION:%[^ ]+]] = f32[8,8]{1,0} fusion([[A0]], [[A1]])
     ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
@@ -1217,16 +1217,16 @@ TEST_F(DynamicSliceFusionRewriterTest, DynamicSimpleGemm) {
     HloModule test
 
     ENTRY main.9 {
-      p0 = f16[2,8,8]{2,1,0} parameter(0)
-      p1 = f16[2,8,8]{2,1,0} parameter(1)
+      p0 = f32[2,8,8]{2,1,0} parameter(0)
+      p1 = f32[2,8,8]{2,1,0} parameter(1)
       c1_s32 = s32[] constant(1)
       c0_s32 = s32[] constant(0)
-      slice.13 = f16[1,8,8]{2,1,0} dynamic-slice(p0, c1_s32, c0_s32, c0_s32), dynamic_slice_sizes={1,8,8}
-      bitcast.41 = f16[8,8]{1,0} bitcast(slice.13)
-      slice.14 = f16[1,8,8]{2,1,0} dynamic-slice(p1, c1_s32, c0_s32, c0_s32), dynamic_slice_sizes={1,8,8}
-      bitcast.42 = f16[8,8]{1,0} bitcast(slice.14)
+      slice.13 = f32[1,8,8]{2,1,0} dynamic-slice(p0, c1_s32, c0_s32, c0_s32), dynamic_slice_sizes={1,8,8}
+      bitcast.41 = f32[8,8]{1,0} bitcast(slice.13)
+      slice.14 = f32[1,8,8]{2,1,0} dynamic-slice(p1, c1_s32, c0_s32, c0_s32), dynamic_slice_sizes={1,8,8}
+      bitcast.42 = f32[8,8]{1,0} bitcast(slice.14)
 
-      ROOT custom-call.1 = f16[8,8]{1,0} custom-call(bitcast.41, bitcast.42),
+      ROOT custom-call.1 = f32[8,8]{1,0} custom-call(bitcast.41, bitcast.42),
         custom_call_target="__cublas$gemm",
         backend_config={"gemm_backend_config":{
           "alpha_real":1,
@@ -1250,20 +1250,20 @@ TEST_F(DynamicSliceFusionRewriterTest, DynamicSimpleGemm) {
 
   const char* expected = R"(
     ; CHECK:     dynamic-slice-fusion{{.*}} {
-    ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(0)
-    ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(3)
+    ; CHECK-DAG:   [[P0:%[^ ]+]] = f32[2,8,8]{2,1,0} parameter(0)
+    ; CHECK-DAG:   [[P1:%[^ ]+]] = f32[2,8,8]{2,1,0} parameter(3)
     ; CHECK-DAG:   [[C1:%[^ ]+]] = s32[] parameter(1)
     ; CHECK-DAG:   [[C0:%[^ ]+]] = s32[] parameter(2)
-    ; CHECK-DAG:   [[S0:%[^ ]+]] = f16[1,8,8]{2,1,0} dynamic-slice([[P0]], [[C1]], [[C0]], [[C0]]), dynamic_slice_sizes={1,8,8}
-    ; CHECK-DAG:   [[B0:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S0]])
-    ; CHECK-DAG:   [[S1:%[^ ]+]] = f16[1,8,8]{2,1,0} dynamic-slice([[P1]], [[C1]], [[C0]], [[C0]]), dynamic_slice_sizes={1,8,8}
-    ; CHECK-DAG:   [[B1:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S1]])
-    ; CHECK:       ROOT [[CC:%[^ ]+]] = f16[8,8]{1,0} custom-call([[B0]], [[B1]]),
+    ; CHECK-DAG:   [[S0:%[^ ]+]] = f32[1,8,8]{2,1,0} dynamic-slice([[P0]], [[C1]], [[C0]], [[C0]]), dynamic_slice_sizes={1,8,8}
+    ; CHECK-DAG:   [[B0:%[^ ]+]] = f32[8,8]{1,0} bitcast([[S0]])
+    ; CHECK-DAG:   [[S1:%[^ ]+]] = f32[1,8,8]{2,1,0} dynamic-slice([[P1]], [[C1]], [[C0]], [[C0]]), dynamic_slice_sizes={1,8,8}
+    ; CHECK-DAG:   [[B1:%[^ ]+]] = f32[8,8]{1,0} bitcast([[S1]])
+    ; CHECK:       ROOT [[CC:%[^ ]+]] = f32[8,8]{1,0} custom-call([[B0]], [[B1]]),
     ; CHECK:              custom_call_target="__cublas$gemm"
     ; CHECK:     }
 
     ; CHECK:     ENTRY %main{{.*}} {
-    ; CHECK:       ROOT [[FUSION:%[^ ]+]] = f16[8,8]{1,0} fusion
+    ; CHECK:       ROOT [[FUSION:%[^ ]+]] = f32[8,8]{1,0} fusion
     ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
@@ -1281,16 +1281,16 @@ TEST_F(DynamicSliceFusionRewriterTest, DynamicSimpleGemmWithWorkspace) {
     HloModule test
 
     ENTRY main.9 {
-      p0 = f16[2,8,8]{2,1,0} parameter(0)
-      p1 = f16[2,8,8]{2,1,0} parameter(1)
+      p0 = f32[2,8,8]{2,1,0} parameter(0)
+      p1 = f32[2,8,8]{2,1,0} parameter(1)
       c1_s32 = s32[] constant(1)
       c0_s32 = s32[] constant(0)
-      slice.13 = f16[1,8,8]{2,1,0} dynamic-slice(p0, c1_s32, c0_s32, c0_s32), dynamic_slice_sizes={1,8,8}
-      bitcast.41 = f16[8,8]{1,0} bitcast(slice.13)
-      slice.14 = f16[1,8,8]{2,1,0} dynamic-slice(p1, c1_s32, c0_s32, c0_s32), dynamic_slice_sizes={1,8,8}
-      bitcast.42 = f16[8,8]{1,0} bitcast(slice.14)
+      slice.13 = f32[1,8,8]{2,1,0} dynamic-slice(p0, c1_s32, c0_s32, c0_s32), dynamic_slice_sizes={1,8,8}
+      bitcast.41 = f32[8,8]{1,0} bitcast(slice.13)
+      slice.14 = f32[1,8,8]{2,1,0} dynamic-slice(p1, c1_s32, c0_s32, c0_s32), dynamic_slice_sizes={1,8,8}
+      bitcast.42 = f32[8,8]{1,0} bitcast(slice.14)
 
-      ROOT custom-call.1 = (f16[8,8]{1,0}, s8[256]{0}) custom-call(bitcast.41, bitcast.42),
+      ROOT custom-call.1 = (f32[8,8]{1,0}, s8[256]{0}) custom-call(bitcast.41, bitcast.42),
         custom_call_target="__cublas$gemm",
         backend_config={"gemm_backend_config":{
           "alpha_real":1,
@@ -1314,25 +1314,25 @@ TEST_F(DynamicSliceFusionRewriterTest, DynamicSimpleGemmWithWorkspace) {
 
   const char* expected = R"(
     ; CHECK:     dynamic-slice-fusion{{.*}} {
-    ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(0)
-    ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(3)
+    ; CHECK-DAG:   [[P0:%[^ ]+]] = f32[2,8,8]{2,1,0} parameter(0)
+    ; CHECK-DAG:   [[P1:%[^ ]+]] = f32[2,8,8]{2,1,0} parameter(3)
     ; CHECK-DAG:   [[C1:%[^ ]+]] = s32[] parameter(1)
     ; CHECK-DAG:   [[C0:%[^ ]+]] = s32[] parameter(2)
-    ; CHECK-DAG:   [[S0:%[^ ]+]] = f16[1,8,8]{2,1,0} dynamic-slice([[P0]], [[C1]], [[C0]], [[C0]]), dynamic_slice_sizes={1,8,8}
-    ; CHECK-DAG:   [[B0:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S0]])
-    ; CHECK-DAG:   [[S1:%[^ ]+]] = f16[1,8,8]{2,1,0} dynamic-slice([[P1]], [[C1]], [[C0]], [[C0]]), dynamic_slice_sizes={1,8,8}
-    ; CHECK-DAG:   [[B1:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S1]])
-    ; CHECK:       [[CC:%[^ ]+]] = (f16[8,8]{1,0}, s8[256]{0}) custom-call([[B0]], [[B1]]),
+    ; CHECK-DAG:   [[S0:%[^ ]+]] = f32[1,8,8]{2,1,0} dynamic-slice([[P0]], [[C1]], [[C0]], [[C0]]), dynamic_slice_sizes={1,8,8}
+    ; CHECK-DAG:   [[B0:%[^ ]+]] = f32[8,8]{1,0} bitcast([[S0]])
+    ; CHECK-DAG:   [[S1:%[^ ]+]] = f32[1,8,8]{2,1,0} dynamic-slice([[P1]], [[C1]], [[C0]], [[C0]]), dynamic_slice_sizes={1,8,8}
+    ; CHECK-DAG:   [[B1:%[^ ]+]] = f32[8,8]{1,0} bitcast([[S1]])
+    ; CHECK:       [[CC:%[^ ]+]] = (f32[8,8]{1,0}, s8[256]{0}) custom-call([[B0]], [[B1]]),
     ; CHECK:              custom_call_target="__cublas$gemm"
-    ; CHECK:       [[DOT:%[^ ]+]] = f16[8,8]{1,0} get-tuple-element([[CC]]), index=0
+    ; CHECK:       [[DOT:%[^ ]+]] = f32[8,8]{1,0} get-tuple-element([[CC]]), index=0
     ; CHECK:       [[WORKSPACE:%[^ ]+]] = s8[256]{0} get-tuple-element([[CC]]), index=1
-    ; CHECK:       ROOT [[TUPLE:%[^ ]+]] = (f16[8,8]{1,0}, s8[256]{0})
+    ; CHECK:       ROOT [[TUPLE:%[^ ]+]] = (f32[8,8]{1,0}, s8[256]{0})
     ; CHECK:              tuple([[DOT]], [[WORKSPACE]])
     ; CHECK:     }
 
 
     ; CHECK:     ENTRY %main{{.*}} {
-    ; CHECK:       ROOT [[FUSION:%[^ ]+]] = (f16[8,8]{1,0}, s8[256]{0}) fusion
+    ; CHECK:       ROOT [[FUSION:%[^ ]+]] = (f32[8,8]{1,0}, s8[256]{0}) fusion
     ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
@@ -1350,16 +1350,16 @@ TEST_F(DynamicSliceFusionRewriterTest, DynamicSimpleGemmWorkspaceIgnored) {
     HloModule test
 
     ENTRY main.9 {
-      p0 = f16[2,8,8]{2,1,0} parameter(0)
-      p1 = f16[2,8,8]{2,1,0} parameter(1)
+      p0 = f32[2,8,8]{2,1,0} parameter(0)
+      p1 = f32[2,8,8]{2,1,0} parameter(1)
       c1_s32 = s32[] constant(1)
       c0_s32 = s32[] constant(0)
-      slice.13 = f16[1,8,8]{2,1,0} dynamic-slice(p0, c1_s32, c0_s32, c0_s32), dynamic_slice_sizes={1,8,8}
-      bitcast.41 = f16[8,8]{1,0} bitcast(slice.13)
-      slice.14 = f16[1,8,8]{2,1,0} dynamic-slice(p1, c1_s32, c0_s32, c0_s32), dynamic_slice_sizes={1,8,8}
-      bitcast.42 = f16[8,8]{1,0} bitcast(slice.14)
+      slice.13 = f32[1,8,8]{2,1,0} dynamic-slice(p0, c1_s32, c0_s32, c0_s32), dynamic_slice_sizes={1,8,8}
+      bitcast.41 = f32[8,8]{1,0} bitcast(slice.13)
+      slice.14 = f32[1,8,8]{2,1,0} dynamic-slice(p1, c1_s32, c0_s32, c0_s32), dynamic_slice_sizes={1,8,8}
+      bitcast.42 = f32[8,8]{1,0} bitcast(slice.14)
 
-      custom-call.1 = (f16[8,8]{1,0}, s8[256]{0}) custom-call(bitcast.41, bitcast.42),
+      custom-call.1 = (f32[8,8]{1,0}, s8[256]{0}) custom-call(bitcast.41, bitcast.42),
         custom_call_target="__cublas$gemm",
         backend_config={"gemm_backend_config":{
           "alpha_real":1,
@@ -1378,36 +1378,36 @@ TEST_F(DynamicSliceFusionRewriterTest, DynamicSimpleGemmWorkspaceIgnored) {
           "grad_x":false,
           "grad_y":false
         }}
-      ROOT get-tuple-element.0 = f16[8,8]{1,0} get-tuple-element(custom-call.1), index=0
+      ROOT get-tuple-element.0 = f32[8,8]{1,0} get-tuple-element(custom-call.1), index=0
     }
   )";
 
   const char* expected = R"(
     ; CHECK:     dynamic-slice-fusion{{.*}} {
-    ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(0)
-    ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(3)
+    ; CHECK-DAG:   [[P0:%[^ ]+]] = f32[2,8,8]{2,1,0} parameter(0)
+    ; CHECK-DAG:   [[P1:%[^ ]+]] = f32[2,8,8]{2,1,0} parameter(3)
     ; CHECK-DAG:   [[C1:%[^ ]+]] = s32[] parameter(1)
     ; CHECK-DAG:   [[C0:%[^ ]+]] = s32[] parameter(2)
-    ; CHECK-DAG:   [[S0:%[^ ]+]] = f16[1,8,8]{2,1,0} dynamic-slice([[P0]], [[C1]], [[C0]], [[C0]]), dynamic_slice_sizes={1,8,8}
-    ; CHECK-DAG:   [[B0:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S0]])
-    ; CHECK-DAG:   [[S1:%[^ ]+]] = f16[1,8,8]{2,1,0} dynamic-slice([[P1]], [[C1]], [[C0]], [[C0]]), dynamic_slice_sizes={1,8,8}
-    ; CHECK-DAG:   [[B1:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S1]])
-    ; CHECK:       [[CC:%[^ ]+]] = (f16[8,8]{1,0}, s8[256]{0}) custom-call([[B0]], [[B1]]),
+    ; CHECK-DAG:   [[S0:%[^ ]+]] = f32[1,8,8]{2,1,0} dynamic-slice([[P0]], [[C1]], [[C0]], [[C0]]), dynamic_slice_sizes={1,8,8}
+    ; CHECK-DAG:   [[B0:%[^ ]+]] = f32[8,8]{1,0} bitcast([[S0]])
+    ; CHECK-DAG:   [[S1:%[^ ]+]] = f32[1,8,8]{2,1,0} dynamic-slice([[P1]], [[C1]], [[C0]], [[C0]]), dynamic_slice_sizes={1,8,8}
+    ; CHECK-DAG:   [[B1:%[^ ]+]] = f32[8,8]{1,0} bitcast([[S1]])
+    ; CHECK:       [[CC:%[^ ]+]] = (f32[8,8]{1,0}, s8[256]{0}) custom-call([[B0]], [[B1]]),
     ; CHECK:              custom_call_target="__cublas$gemm"
-    ; CHECK:       [[DOT:%[^ ]+]] = f16[8,8]{1,0} get-tuple-element([[CC]]), index=0
+    ; CHECK:       [[DOT:%[^ ]+]] = f32[8,8]{1,0} get-tuple-element([[CC]]), index=0
     ; CHECK:       [[WORKSPACE:%[^ ]+]] = s8[256]{0} get-tuple-element([[CC]]), index=1
-    ; CHECK:       ROOT [[TUPLE:%[^ ]+]] = (f16[8,8]{1,0}, s8[256]{0})
+    ; CHECK:       ROOT [[TUPLE:%[^ ]+]] = (f32[8,8]{1,0}, s8[256]{0})
     ; CHECK:              tuple([[DOT]], [[WORKSPACE]])
     ; CHECK:     }
 
     ; CHECK:     ENTRY %main{{.*}} {
-    ; CHECK:       [[FUSION:%[^ ]+]] = (f16[8,8]{1,0}, s8[256]{0}) fusion
+    ; CHECK:       [[FUSION:%[^ ]+]] = (f32[8,8]{1,0}, s8[256]{0}) fusion
     ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
     ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation","kernel_index":0}
     ; CHECK:         }
-    ; CHECK:       ROOT [[DOT_MAIN:%[^ ]+]] = f16[8,8]{1,0} get-tuple-element([[FUSION]]), index=0
+    ; CHECK:       ROOT [[DOT_MAIN:%[^ ]+]] = f32[8,8]{1,0} get-tuple-element([[FUSION]]), index=0
     ; CHECK:     }
   )";
 
@@ -1420,16 +1420,16 @@ TEST_F(DynamicSliceFusionRewriterTest, DynamicSimpleGemmNotRoot) {
     HloModule test
 
     ENTRY main.9 {
-      p0 = f16[2,8,8]{2,1,0} parameter(0)
-      p1 = f16[2,8,8]{2,1,0} parameter(1)
+      p0 = f32[2,8,8]{2,1,0} parameter(0)
+      p1 = f32[2,8,8]{2,1,0} parameter(1)
       c1_s32 = s32[] constant(1)
       c0_s32 = s32[] constant(0)
-      slice.13 = f16[1,8,8]{2,1,0} dynamic-slice(p0, c1_s32, c0_s32, c0_s32), dynamic_slice_sizes={1,8,8}
-      bitcast.41 = f16[8,8]{1,0} bitcast(slice.13)
-      slice.14 = f16[1,8,8]{2,1,0} dynamic-slice(p1, c1_s32, c0_s32, c0_s32), dynamic_slice_sizes={1,8,8}
-      bitcast.42 = f16[8,8]{1,0} bitcast(slice.14)
+      slice.13 = f32[1,8,8]{2,1,0} dynamic-slice(p0, c1_s32, c0_s32, c0_s32), dynamic_slice_sizes={1,8,8}
+      bitcast.41 = f32[8,8]{1,0} bitcast(slice.13)
+      slice.14 = f32[1,8,8]{2,1,0} dynamic-slice(p1, c1_s32, c0_s32, c0_s32), dynamic_slice_sizes={1,8,8}
+      bitcast.42 = f32[8,8]{1,0} bitcast(slice.14)
 
-      custom-call.1 = f16[8,8]{1,0} custom-call(bitcast.41, bitcast.42),
+      custom-call.1 = f32[8,8]{1,0} custom-call(bitcast.41, bitcast.42),
         custom_call_target="__cublas$gemm",
         backend_config={"gemm_backend_config":{
           "alpha_real":1,
@@ -1448,32 +1448,32 @@ TEST_F(DynamicSliceFusionRewriterTest, DynamicSimpleGemmNotRoot) {
           "grad_x":false,
           "grad_y":false
         }}
-      ROOT res = f16[8,8]{1,0} add(custom-call.1, custom-call.1)
+      ROOT res = f32[8,8]{1,0} add(custom-call.1, custom-call.1)
     }
   )";
 
   const char* expected = R"(
     ; CHECK:     dynamic-slice-fusion{{.*}} {
-    ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(0)
-    ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(3)
+    ; CHECK-DAG:   [[P0:%[^ ]+]] = f32[2,8,8]{2,1,0} parameter(0)
+    ; CHECK-DAG:   [[P1:%[^ ]+]] = f32[2,8,8]{2,1,0} parameter(3)
     ; CHECK-DAG:   [[C1:%[^ ]+]] = s32[] parameter(1)
     ; CHECK-DAG:   [[C0:%[^ ]+]] = s32[] parameter(2)
-    ; CHECK-DAG:   [[S0:%[^ ]+]] = f16[1,8,8]{2,1,0} dynamic-slice([[P0]], [[C1]], [[C0]], [[C0]]), dynamic_slice_sizes={1,8,8}
-    ; CHECK-DAG:   [[B0:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S0]])
-    ; CHECK-DAG:   [[S1:%[^ ]+]] = f16[1,8,8]{2,1,0} dynamic-slice([[P1]], [[C1]], [[C0]], [[C0]]), dynamic_slice_sizes={1,8,8}
-    ; CHECK-DAG:   [[B1:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S1]])
-    ; CHECK:       ROOT [[CC:%[^ ]+]] = f16[8,8]{1,0} custom-call([[B0]], [[B1]]),
+    ; CHECK-DAG:   [[S0:%[^ ]+]] = f32[1,8,8]{2,1,0} dynamic-slice([[P0]], [[C1]], [[C0]], [[C0]]), dynamic_slice_sizes={1,8,8}
+    ; CHECK-DAG:   [[B0:%[^ ]+]] = f32[8,8]{1,0} bitcast([[S0]])
+    ; CHECK-DAG:   [[S1:%[^ ]+]] = f32[1,8,8]{2,1,0} dynamic-slice([[P1]], [[C1]], [[C0]], [[C0]]), dynamic_slice_sizes={1,8,8}
+    ; CHECK-DAG:   [[B1:%[^ ]+]] = f32[8,8]{1,0} bitcast([[S1]])
+    ; CHECK:       ROOT [[CC:%[^ ]+]] = f32[8,8]{1,0} custom-call([[B0]], [[B1]]),
     ; CHECK:              custom_call_target="__cublas$gemm"
     ; CHECK:     }
 
     ; CHECK:     ENTRY %main{{.*}} {
-    ; CHECK:       [[FUSION:%[^ ]+]] = f16[8,8]{1,0} fusion
+    ; CHECK:       [[FUSION:%[^ ]+]] = f32[8,8]{1,0} fusion
     ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
     ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation","kernel_index":0}
     ; CHECK:         }
-    ; CHECK:       ROOT {{.*}} = f16[8,8]{1,0} add([[FUSION]], [[FUSION]])
+    ; CHECK:       ROOT {{.*}} = f32[8,8]{1,0} add([[FUSION]], [[FUSION]])
     ; CHECK:     }
   )";
 
@@ -1486,15 +1486,15 @@ TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemm) {
     HloModule test
 
     ENTRY main.9 {
-      p0 = f16[1,8,8]{2,1,0} parameter(0)
-      p1 = f16[1,8,8]{2,1,0} parameter(1)
-      p2 = f16[4,8,8]{2,1,0} parameter(2)
+      p0 = f32[1,8,8]{2,1,0} parameter(0)
+      p1 = f32[1,8,8]{2,1,0} parameter(1)
+      p2 = f32[4,8,8]{2,1,0} parameter(2)
       c1_s32 = s32[] constant(1)
       c0_s32 = s32[] constant(0)
-      bitcast.41 = f16[8,8]{1,0} bitcast(p0)
-      bitcast.42 = f16[8,8]{1,0} bitcast(p1)
+      bitcast.41 = f32[8,8]{1,0} bitcast(p0)
+      bitcast.42 = f32[8,8]{1,0} bitcast(p1)
 
-      custom-call.1 = f16[8,8]{1,0} custom-call(bitcast.41, bitcast.42),
+      custom-call.1 = f32[8,8]{1,0} custom-call(bitcast.41, bitcast.42),
         custom_call_target="__cublas$gemm",
         backend_config={"gemm_backend_config":{
           "alpha_real":1,
@@ -1513,25 +1513,25 @@ TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemm) {
           "grad_x":false,
           "grad_y":false
         }}
-      bitcast.43 = f16[1,8,8]{2,1,0} bitcast(custom-call.1)
-      ROOT dus = f16[4,8,8]{2,1,0} dynamic-update-slice(p2, bitcast.43, c1_s32, c0_s32, c0_s32)
+      bitcast.43 = f32[1,8,8]{2,1,0} bitcast(custom-call.1)
+      ROOT dus = f32[4,8,8]{2,1,0} dynamic-update-slice(p2, bitcast.43, c1_s32, c0_s32, c0_s32)
     }
   )";
 
   const char* expected = R"(
-    ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[8,8]{1,0} parameter(0)
-    ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[8,8]{1,0} parameter(1)
-    ; CHECK-DAG:   [[P2:%[^ ]+]] = f16[4,8,8]{2,1,0} parameter(2)
+    ; CHECK-DAG:   [[P0:%[^ ]+]] = f32[8,8]{1,0} parameter(0)
+    ; CHECK-DAG:   [[P1:%[^ ]+]] = f32[8,8]{1,0} parameter(1)
+    ; CHECK-DAG:   [[P2:%[^ ]+]] = f32[4,8,8]{2,1,0} parameter(2)
     ; CHECK-DAG:   [[C1:%[^ ]+]] = s32[] parameter(3)
     ; CHECK-DAG:   [[C0:%[^ ]+]] = s32[] parameter(4)
-    ; CHECK-DAG:   [[CC:%[^ ]+]] = f16[8,8]{1,0} custom-call([[P0]], [[P1]]),
+    ; CHECK-DAG:   [[CC:%[^ ]+]] = f32[8,8]{1,0} custom-call([[P0]], [[P1]]),
     ; CHECK-DAG:          custom_call_target="__cublas$gemm"
-    ; CHECK-DAG:   [[BC:%[^ ]+]] = f16[1,8,8]{2,1,0} bitcast([[CC]])
-    ; CHECK:       ROOT {{.*}} = f16[4,8,8]{2,1,0} dynamic-update-slice([[P2]], [[BC]], [[C1]], [[C0]], [[C0]])
+    ; CHECK-DAG:   [[BC:%[^ ]+]] = f32[1,8,8]{2,1,0} bitcast([[CC]])
+    ; CHECK:       ROOT {{.*}} = f32[4,8,8]{2,1,0} dynamic-update-slice([[P2]], [[BC]], [[C1]], [[C0]], [[C0]])
     ; CHECK:     }
 
     ; CHECK:     ENTRY %main{{.*}} {
-    ; CHECK:       ROOT [[FUSION:%[^ ]+]] = f16[4,8,8]{2,1,0} fusion
+    ; CHECK:       ROOT [[FUSION:%[^ ]+]] = f32[4,8,8]{2,1,0} fusion
     ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
@@ -1549,17 +1549,17 @@ TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmNotRoot) {
     HloModule test
 
     ENTRY main.9 {
-      p0 = f16[2,8,8]{2,1,0} parameter(0)
-      p1 = f16[2,8,8]{2,1,0} parameter(1)
-      p2 = f16[4,8,8]{2,1,0} parameter(2)
+      p0 = f32[2,8,8]{2,1,0} parameter(0)
+      p1 = f32[2,8,8]{2,1,0} parameter(1)
+      p2 = f32[4,8,8]{2,1,0} parameter(2)
       c1_s32 = s32[] constant(1)
       c0_s32 = s32[] constant(0)
-      slice.13 = f16[1,8,8]{2,1,0} dynamic-slice(p0, c1_s32, c0_s32, c0_s32), dynamic_slice_sizes={1,8,8}
-      bitcast.41 = f16[8,8]{1,0} bitcast(slice.13)
-      slice.14 = f16[1,8,8]{2,1,0} dynamic-slice(p1, c1_s32, c0_s32, c0_s32), dynamic_slice_sizes={1,8,8}
-      bitcast.42 = f16[8,8]{1,0} bitcast(slice.14)
+      slice.13 = f32[1,8,8]{2,1,0} dynamic-slice(p0, c1_s32, c0_s32, c0_s32), dynamic_slice_sizes={1,8,8}
+      bitcast.41 = f32[8,8]{1,0} bitcast(slice.13)
+      slice.14 = f32[1,8,8]{2,1,0} dynamic-slice(p1, c1_s32, c0_s32, c0_s32), dynamic_slice_sizes={1,8,8}
+      bitcast.42 = f32[8,8]{1,0} bitcast(slice.14)
 
-      custom-call.1 = f16[8,8]{1,0} custom-call(bitcast.41, bitcast.42),
+      custom-call.1 = f32[8,8]{1,0} custom-call(bitcast.41, bitcast.42),
         custom_call_target="__cublas$gemm",
         backend_config={"gemm_backend_config":{
           "alpha_real":1,
@@ -1578,37 +1578,37 @@ TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmNotRoot) {
           "grad_x":false,
           "grad_y":false
         }}
-      bitcast.43 = f16[1,8,8]{2,1,0} bitcast(custom-call.1)
-      dus = f16[4,8,8]{2,1,0} dynamic-update-slice(p2, bitcast.43, c1_s32, c0_s32, c0_s32)
-      ROOT res = f16[4,8,8]{2,1,0} log(dus)
+      bitcast.43 = f32[1,8,8]{2,1,0} bitcast(custom-call.1)
+      dus = f32[4,8,8]{2,1,0} dynamic-update-slice(p2, bitcast.43, c1_s32, c0_s32, c0_s32)
+      ROOT res = f32[4,8,8]{2,1,0} log(dus)
     }
   )";
 
   const char* expected = R"(
     ; CHECK:     dynamic-slice-fusion{{.*}} {
-    ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(0)
-    ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(3)
-    ; CHECK-DAG:   [[P2:%[^ ]+]] = f16[4,8,8]{2,1,0} parameter(4)
+    ; CHECK-DAG:   [[P0:%[^ ]+]] = f32[2,8,8]{2,1,0} parameter(0)
+    ; CHECK-DAG:   [[P1:%[^ ]+]] = f32[2,8,8]{2,1,0} parameter(3)
+    ; CHECK-DAG:   [[P2:%[^ ]+]] = f32[4,8,8]{2,1,0} parameter(4)
     ; CHECK-DAG:   [[C1:%[^ ]+]] = s32[] parameter(1)
     ; CHECK-DAG:   [[C0:%[^ ]+]] = s32[] parameter(2)
-    ; CHECK-DAG:   [[S0:%[^ ]+]] = f16[1,8,8]{2,1,0} dynamic-slice([[P0]], [[C1]], [[C0]], [[C0]]), dynamic_slice_sizes={1,8,8}
-    ; CHECK-DAG:   [[B0:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S0]])
-    ; CHECK-DAG:   [[S1:%[^ ]+]] = f16[1,8,8]{2,1,0} dynamic-slice([[P1]], [[C1]], [[C0]], [[C0]]), dynamic_slice_sizes={1,8,8}
-    ; CHECK-DAG:   [[B1:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S1]])
-    ; CHECK-DAG:   [[CC:%[^ ]+]] = f16[8,8]{1,0} custom-call([[B0]], [[B1]]),
+    ; CHECK-DAG:   [[S0:%[^ ]+]] = f32[1,8,8]{2,1,0} dynamic-slice([[P0]], [[C1]], [[C0]], [[C0]]), dynamic_slice_sizes={1,8,8}
+    ; CHECK-DAG:   [[B0:%[^ ]+]] = f32[8,8]{1,0} bitcast([[S0]])
+    ; CHECK-DAG:   [[S1:%[^ ]+]] = f32[1,8,8]{2,1,0} dynamic-slice([[P1]], [[C1]], [[C0]], [[C0]]), dynamic_slice_sizes={1,8,8}
+    ; CHECK-DAG:   [[B1:%[^ ]+]] = f32[8,8]{1,0} bitcast([[S1]])
+    ; CHECK-DAG:   [[CC:%[^ ]+]] = f32[8,8]{1,0} custom-call([[B0]], [[B1]]),
     ; CHECK-DAG:          custom_call_target="__cublas$gemm"
-    ; CHECK-DAG:   [[BC:%[^ ]+]] = f16[1,8,8]{2,1,0} bitcast([[CC]])
-    ; CHECK:       ROOT {{.*}} = f16[4,8,8]{2,1,0} dynamic-update-slice([[P2]], [[BC]], [[C1]], [[C0]], [[C0]])
+    ; CHECK-DAG:   [[BC:%[^ ]+]] = f32[1,8,8]{2,1,0} bitcast([[CC]])
+    ; CHECK:       ROOT {{.*}} = f32[4,8,8]{2,1,0} dynamic-update-slice([[P2]], [[BC]], [[C1]], [[C0]], [[C0]])
     ; CHECK:     }
 
     ; CHECK:     ENTRY %main{{.*}} {
-    ; CHECK:       [[FUSION:%[^ ]+]] = f16[4,8,8]{2,1,0} fusion
+    ; CHECK:       [[FUSION:%[^ ]+]] = f32[4,8,8]{2,1,0} fusion
     ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
     ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation","kernel_index":0}
     ; CHECK:         }
-    ; CHECK:       ROOT {{.*}} = f16[4,8,8]{2,1,0} log([[FUSION]])
+    ; CHECK:       ROOT {{.*}} = f32[4,8,8]{2,1,0} log([[FUSION]])
     ; CHECK:     }
   )";
 
@@ -1621,17 +1621,17 @@ TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmWithWorkspace) {
     HloModule test
 
     ENTRY main.9 {
-      p0 = f16[2,8,8]{2,1,0} parameter(0)
-      p1 = f16[2,8,8]{2,1,0} parameter(1)
-      p2 = f16[4,8,8]{2,1,0} parameter(2)
+      p0 = f32[2,8,8]{2,1,0} parameter(0)
+      p1 = f32[2,8,8]{2,1,0} parameter(1)
+      p2 = f32[4,8,8]{2,1,0} parameter(2)
       c1_s32 = s32[] constant(1)
       c0_s32 = s32[] constant(0)
-      slice.13 = f16[1,8,8]{2,1,0} dynamic-slice(p0, c1_s32, c0_s32, c0_s32), dynamic_slice_sizes={1,8,8}
-      bitcast.41 = f16[8,8]{1,0} bitcast(slice.13)
-      slice.14 = f16[1,8,8]{2,1,0} dynamic-slice(p1, c1_s32, c0_s32, c0_s32), dynamic_slice_sizes={1,8,8}
-      bitcast.42 = f16[8,8]{1,0} bitcast(slice.14)
+      slice.13 = f32[1,8,8]{2,1,0} dynamic-slice(p0, c1_s32, c0_s32, c0_s32), dynamic_slice_sizes={1,8,8}
+      bitcast.41 = f32[8,8]{1,0} bitcast(slice.13)
+      slice.14 = f32[1,8,8]{2,1,0} dynamic-slice(p1, c1_s32, c0_s32, c0_s32), dynamic_slice_sizes={1,8,8}
+      bitcast.42 = f32[8,8]{1,0} bitcast(slice.14)
 
-      custom-call.1 = (f16[8,8]{1,0}, s8[256]{0}) custom-call(bitcast.41, bitcast.42),
+      custom-call.1 = (f32[8,8]{1,0}, s8[256]{0}) custom-call(bitcast.41, bitcast.42),
         custom_call_target="__cublas$gemm",
         backend_config={"gemm_backend_config":{
           "alpha_real":1,
@@ -1651,45 +1651,45 @@ TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmWithWorkspace) {
           "grad_y":false
         }}
 
-    get-tuple-element.0 = f16[8,8]{1,0} get-tuple-element(custom-call.1), index=0
-    bitcast.43 = f16[1,8,8]{2,1,0} bitcast(get-tuple-element.0)
-    dus = f16[4,8,8]{2,1,0} dynamic-update-slice(p2, bitcast.43, c1_s32, c0_s32, c0_s32)
+    get-tuple-element.0 = f32[8,8]{1,0} get-tuple-element(custom-call.1), index=0
+    bitcast.43 = f32[1,8,8]{2,1,0} bitcast(get-tuple-element.0)
+    dus = f32[4,8,8]{2,1,0} dynamic-update-slice(p2, bitcast.43, c1_s32, c0_s32, c0_s32)
     get-tuple-element.1 = s8[256]{0} get-tuple-element(custom-call.1), index=1
-    ROOT tuple = (f16[4,8,8]{2,1,0}, s8[256]{0}) tuple(dus, get-tuple-element.1)
+    ROOT tuple = (f32[4,8,8]{2,1,0}, s8[256]{0}) tuple(dus, get-tuple-element.1)
     }
   )";
 
   const char* expected = R"(
     ; CHECK:     dynamic-slice-fusion{{.*}} {
-    ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(0)
-    ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[2,8,8]{2,1,0} parameter(3)
-    ; CHECK-DAG:   [[P2:%[^ ]+]] = f16[4,8,8]{2,1,0} parameter(4)
+    ; CHECK-DAG:   [[P0:%[^ ]+]] = f32[2,8,8]{2,1,0} parameter(0)
+    ; CHECK-DAG:   [[P1:%[^ ]+]] = f32[2,8,8]{2,1,0} parameter(3)
+    ; CHECK-DAG:   [[P2:%[^ ]+]] = f32[4,8,8]{2,1,0} parameter(4)
     ; CHECK-DAG:   [[C1:%[^ ]+]] = s32[] parameter(1)
     ; CHECK-DAG:   [[C0:%[^ ]+]] = s32[] parameter(2)
-    ; CHECK-DAG:   [[S0:%[^ ]+]] = f16[1,8,8]{2,1,0} dynamic-slice([[P0]], [[C1]], [[C0]], [[C0]]), dynamic_slice_sizes={1,8,8}
-    ; CHECK-DAG:   [[B0:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S0]])
-    ; CHECK-DAG:   [[S1:%[^ ]+]] = f16[1,8,8]{2,1,0} dynamic-slice([[P1]], [[C1]], [[C0]], [[C0]]), dynamic_slice_sizes={1,8,8}
-    ; CHECK-DAG:   [[B1:%[^ ]+]] = f16[8,8]{1,0} bitcast([[S1]])
-    ; CHECK:       [[CC:%[^ ]+]] = (f16[8,8]{1,0}, s8[256]{0}) custom-call([[B0]], [[B1]]),
+    ; CHECK-DAG:   [[S0:%[^ ]+]] = f32[1,8,8]{2,1,0} dynamic-slice([[P0]], [[C1]], [[C0]], [[C0]]), dynamic_slice_sizes={1,8,8}
+    ; CHECK-DAG:   [[B0:%[^ ]+]] = f32[8,8]{1,0} bitcast([[S0]])
+    ; CHECK-DAG:   [[S1:%[^ ]+]] = f32[1,8,8]{2,1,0} dynamic-slice([[P1]], [[C1]], [[C0]], [[C0]]), dynamic_slice_sizes={1,8,8}
+    ; CHECK-DAG:   [[B1:%[^ ]+]] = f32[8,8]{1,0} bitcast([[S1]])
+    ; CHECK:       [[CC:%[^ ]+]] = (f32[8,8]{1,0}, s8[256]{0}) custom-call([[B0]], [[B1]]),
     ; CHECK:              custom_call_target="__cublas$gemm"
-    ; CHECK:       [[DOT:%[^ ]+]] = f16[8,8]{1,0} get-tuple-element([[CC]]), index=0
-    ; CHECK:       [[BC:%[^ ]+]] = f16[1,8,8]{2,1,0} bitcast([[DOT]])
-    ; CHECK:       [[DUS:%[^ ]+]] = f16[4,8,8]{2,1,0} dynamic-update-slice([[P2]], [[BC]], [[C1]], [[C0]], [[C0]])
+    ; CHECK:       [[DOT:%[^ ]+]] = f32[8,8]{1,0} get-tuple-element([[CC]]), index=0
+    ; CHECK:       [[BC:%[^ ]+]] = f32[1,8,8]{2,1,0} bitcast([[DOT]])
+    ; CHECK:       [[DUS:%[^ ]+]] = f32[4,8,8]{2,1,0} dynamic-update-slice([[P2]], [[BC]], [[C1]], [[C0]], [[C0]])
     ; CHECK:       [[WORKSPACE:%[^ ]+]] = s8[256]{0} get-tuple-element([[CC]]), index=1
-    ; CHECK:       ROOT [[TUPLE:%[^ ]+]] = (f16[4,8,8]{2,1,0}, s8[256]{0})
+    ; CHECK:       ROOT [[TUPLE:%[^ ]+]] = (f32[4,8,8]{2,1,0}, s8[256]{0})
     ; CHECK:              tuple([[DUS]], [[WORKSPACE]])
     ; CHECK:     }
 
     ; CHECK:     ENTRY %main{{.*}} {
-    ; CHECK:       [[FUSION:%[^ ]+]] = (f16[4,8,8]{2,1,0}, s8[256]{0}) fusion
+    ; CHECK:       [[FUSION:%[^ ]+]] = (f32[4,8,8]{2,1,0}, s8[256]{0}) fusion
     ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
     ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation","kernel_index":0}
     ; CHECK:         }
-    ; CHECK:       [[DUS_MAIN:%[^ ]+]] = f16[4,8,8]{2,1,0} get-tuple-element([[FUSION]]), index=0
+    ; CHECK:       [[DUS_MAIN:%[^ ]+]] = f32[4,8,8]{2,1,0} get-tuple-element([[FUSION]]), index=0
     ; CHECK:       [[WORKSPACE_MAIN:%[^ ]+]] = s8[256]{0} get-tuple-element([[FUSION]]), index=1
-    ; CHECK:       ROOT {{.*}} = (f16[4,8,8]{2,1,0}, s8[256]{0})
+    ; CHECK:       ROOT {{.*}} = (f32[4,8,8]{2,1,0}, s8[256]{0})
     ; CHECK:              tuple([[DUS_MAIN]], [[WORKSPACE_MAIN]])
     ; CHECK:     }
   )";
@@ -1703,13 +1703,13 @@ TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmWorkspaceIgnored) {
     HloModule test
 
     ENTRY %main.9 {
-      %p0 = f16[8,8]{1,0} parameter(0)
-      %p1 = f16[8,8]{1,0} parameter(1)
-      %p2 = f16[4,8,8]{2,1,0} parameter(2)
+      %p0 = f32[8,8]{1,0} parameter(0)
+      %p1 = f32[8,8]{1,0} parameter(1)
+      %p2 = f32[4,8,8]{2,1,0} parameter(2)
       %c1_s32 = s32[] constant(1)
       %c0_s32 = s32[] constant(0)
 
-      %custom-call.1 = (f16[8,8]{1,0}, s8[256]{0}) custom-call(%p0, %p1),
+      %custom-call.1 = (f32[8,8]{1,0}, s8[256]{0}) custom-call(%p0, %p1),
         custom_call_target="__cublas$gemm",
         backend_config={"gemm_backend_config":{
           "alpha_real":1,
@@ -1728,36 +1728,36 @@ TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmWorkspaceIgnored) {
           "grad_x":false,
           "grad_y":false
         }}
-      %get-tuple-element.0 = f16[8,8]{1,0} get-tuple-element(%custom-call.1), index=0
-      %bitcast.43 = f16[1,8,8]{2,1,0} bitcast(%get-tuple-element.0)
-      ROOT %dus = f16[4,8,8]{2,1,0} dynamic-update-slice(%p2, %bitcast.43, %c1_s32, %c0_s32, %c0_s32)
+      %get-tuple-element.0 = f32[8,8]{1,0} get-tuple-element(%custom-call.1), index=0
+      %bitcast.43 = f32[1,8,8]{2,1,0} bitcast(%get-tuple-element.0)
+      ROOT %dus = f32[4,8,8]{2,1,0} dynamic-update-slice(%p2, %bitcast.43, %c1_s32, %c0_s32, %c0_s32)
     })";
 
   const char* expected = R"(
     ; CHECK:     dynamic-slice-fusion{{.*}} {
-    ; CHECK-DAG:   [[P0:%[^ ]+]] = f16[8,8]{1,0} parameter(0)
-    ; CHECK-DAG:   [[P1:%[^ ]+]] = f16[8,8]{1,0} parameter(1)
-    ; CHECK-DAG:   [[P2:%[^ ]+]] = f16[4,8,8]{2,1,0} parameter(2)
+    ; CHECK-DAG:   [[P0:%[^ ]+]] = f32[8,8]{1,0} parameter(0)
+    ; CHECK-DAG:   [[P1:%[^ ]+]] = f32[8,8]{1,0} parameter(1)
+    ; CHECK-DAG:   [[P2:%[^ ]+]] = f32[4,8,8]{2,1,0} parameter(2)
     ; CHECK-DAG:   [[C1:%[^ ]+]] = s32[] parameter(3)
     ; CHECK-DAG:   [[C0:%[^ ]+]] = s32[] parameter(4)
-    ; CHECK-DAG:   [[CC:%[^ ]+]] = (f16[8,8]{1,0}, s8[256]{0}) custom-call([[P0]], [[P1]]),
+    ; CHECK-DAG:   [[CC:%[^ ]+]] = (f32[8,8]{1,0}, s8[256]{0}) custom-call([[P0]], [[P1]]),
     ; CHECK-DAG:          custom_call_target="__cublas$gemm"
-    ; CHECK-DAG:   [[DOT:%[^ ]+]] = f16[8,8]{1,0} get-tuple-element([[CC]]), index=0
-    ; CHECK-DAG:   [[BC:%[^ ]+]] = f16[1,8,8]{2,1,0} bitcast([[DOT]])
-    ; CHECK-DAG:   [[DUS:%[^ ]+]] = f16[4,8,8]{2,1,0} dynamic-update-slice([[P2]], [[BC]], [[C1]], [[C0]], [[C0]])
+    ; CHECK-DAG:   [[DOT:%[^ ]+]] = f32[8,8]{1,0} get-tuple-element([[CC]]), index=0
+    ; CHECK-DAG:   [[BC:%[^ ]+]] = f32[1,8,8]{2,1,0} bitcast([[DOT]])
+    ; CHECK-DAG:   [[DUS:%[^ ]+]] = f32[4,8,8]{2,1,0} dynamic-update-slice([[P2]], [[BC]], [[C1]], [[C0]], [[C0]])
     ; CHECK-DAG:   [[WORKSPACE:%[^ ]+]] = s8[256]{0} get-tuple-element([[CC]]), index=1
-    ; CHECK:       ROOT [[TUPLE:%[^ ]+]] = (f16[4,8,8]{2,1,0}, s8[256]{0})
+    ; CHECK:       ROOT [[TUPLE:%[^ ]+]] = (f32[4,8,8]{2,1,0}, s8[256]{0})
     ; CHECK:              tuple([[DUS]], [[WORKSPACE]])
     ; CHECK:     }
 
     ; CHECK:     ENTRY %main{{.*}} {
-    ; CHECK:       [[FUSION:%[^ ]+]] = (f16[4,8,8]{2,1,0}, s8[256]{0}) fusion
+    ; CHECK:       [[FUSION:%[^ ]+]] = (f32[4,8,8]{2,1,0}, s8[256]{0}) fusion
     ; CHECK:         kind=kCustom, calls=%dynamic-slice-fusion,
     ; CHECK:         backend_config={
     ; CHECK:           "kind":"__custom_fusion",
     ; CHECK:           "custom_fusion_config":{"name":"dynamic_address_computation","kernel_index":0}
     ; CHECK:         }
-    ; CHECK:       ROOT [[DOT_MAIN:%[^ ]+]] = f16[4,8,8]{2,1,0} get-tuple-element([[FUSION]]), index=0
+    ; CHECK:       ROOT [[DOT_MAIN:%[^ ]+]] = f32[4,8,8]{2,1,0} get-tuple-element([[FUSION]]), index=0
     ; CHECK:     }
   )";
 
@@ -1886,15 +1886,15 @@ TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmLoopIteration) {
   HloModule test
 
   %Body {
-    param = (f16[1,8,8]{2,1,0}, f16[1,8,8]{2,1,0}, f16[4,8,8]{2,1,0}, u32[]) parameter(0)
+    param = (f32[1,8,8]{2,1,0}, f32[1,8,8]{2,1,0}, f32[4,8,8]{2,1,0}, u32[]) parameter(0)
     p0 = get-tuple-element(param), index=0
     p1 = get-tuple-element(param), index=1
     p2 = get-tuple-element(param), index=2
     loop_iter = get-tuple-element(param), index=3
 
-    bitcast.41 = f16[8,8]{1,0} bitcast(p0)
-    bitcast.42 = f16[8,8]{1,0} bitcast(p1)
-    custom-call.1 = f16[8,8]{1,0} custom-call(bitcast.41, bitcast.42), custom_call_target="__cublas$gemm", backend_config={"gemm_backend_config":{
+    bitcast.41 = f32[8,8]{1,0} bitcast(p0)
+    bitcast.42 = f32[8,8]{1,0} bitcast(p1)
+    custom-call.1 = f32[8,8]{1,0} custom-call(bitcast.41, bitcast.42), custom_call_target="__cublas$gemm", backend_config={"gemm_backend_config":{
           "alpha_real":1,
           "beta":0,
           "dot_dimension_numbers":{
@@ -1911,29 +1911,29 @@ TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmLoopIteration) {
           "grad_x":false,
           "grad_y":false
       }}
-    bitcast.43 = f16[1,8,8]{2,1,0} bitcast(custom-call.1)
+    bitcast.43 = f32[1,8,8]{2,1,0} bitcast(custom-call.1)
     c0 = u32[] constant(0)
     c_trip_count = u32[] constant(11)
     compare = pred[] compare(loop_iter, c0), direction=LT
     add = u32[] add(loop_iter, c_trip_count)
     offset = u32[] select(compare, add, loop_iter)
-    dus = f16[4,8,8]{2,1,0} dynamic-update-slice(p2, bitcast.43, offset, c0, c0)
+    dus = f32[4,8,8]{2,1,0} dynamic-update-slice(p2, bitcast.43, offset, c0, c0)
     c1 = u32[] constant(1)
     add2 = u32[] add(loop_iter, c1)
     ROOT tuple = tuple(p0, p1, dus, u32[] add2)
   }
 
   %Cond {
-    %param.1 = (f16[1,8,8]{2,1,0}, f16[1,8,8]{2,1,0}, f16[4,8,8]{2,1,0}, u32[]) parameter(0)
+    %param.1 = (f32[1,8,8]{2,1,0}, f32[1,8,8]{2,1,0}, f32[4,8,8]{2,1,0}, u32[]) parameter(0)
     %i.1 = u32[] get-tuple-element(%param.1), index=3
     %trip_count = u32[] constant(11)
     ROOT %done = pred[] compare(u32[] %i.1, u32[] %trip_count), direction=LT
   }
 
   ENTRY %test {
-    %p0.1 = f16[1,8,8]{2,1,0} parameter(0)
-    %p1.1 = f16[1,8,8]{2,1,0} parameter(1)
-    %p2.1 = f16[4,8,8]{2,1,0} parameter(2)
+    %p0.1 = f32[1,8,8]{2,1,0} parameter(0)
+    %p1.1 = f32[1,8,8]{2,1,0} parameter(1)
+    %p2.1 = f32[4,8,8]{2,1,0} parameter(2)
     %c0.1 = u32[] constant(0)
     %initial_tuple = tuple(%p0.1, %p1.1, %p2.1, u32[] %c0.1)
     ROOT %while = while(%initial_tuple), condition=%Cond, body=%Body, backend_config={"known_trip_count":{"n":"11"}}
@@ -2142,10 +2142,10 @@ TEST_F(DynamicSliceFusionRewriterTest,
       ROOT add = s32[] add(a, b)
     }
     body {
-      param.1 = (s32[], s32[32,32], s32[32,32]) parameter(0)
+      param.1 = (s32[], s32[32,64], s32[32,64]) parameter(0)
       iter.1 = s32[] get-tuple-element(param.1), index=0
-      src = s32[32,32] get-tuple-element(param.1), index=1
-      dest = s32[32,32] get-tuple-element(param.1), index=2
+      src = s32[32,64] get-tuple-element(param.1), index=1
+      dest = s32[32,64] get-tuple-element(param.1), index=2
 
       // offset as a function of only the loop induction variable.
       add.1 = s32[] add(iter.1, iter.1)
@@ -2155,24 +2155,24 @@ TEST_F(DynamicSliceFusionRewriterTest,
       offset.1 = s32[] subtract(multiply.1, c16)
 
       c0 = s32[] constant(0)
-      rs = s32[16,32] reduce-scatter(src), dimensions={0}, replica_groups={{0,1}}, to_apply=add
-      dus = s32[32,32] dynamic-update-slice(dest, rs, offset.1, c0)
+      rs = s32[16,64] reduce-scatter(src), dimensions={0}, replica_groups={{0,1}}, to_apply=add
+      dus = s32[32,64] dynamic-update-slice(dest, rs, offset.1, c0)
       c1 = s32[] constant(1)
       add.2 = s32[] add(iter.1, c1)
       ROOT tuple = tuple(add.2, src, dus)
     }
     condition {
-      param.2 = (s32[], s32[32,32], s32[32,32]) parameter(0)
+      param.2 = (s32[], s32[32,64], s32[32,64]) parameter(0)
       iter.2 = s32[] get-tuple-element(param.2), index=0
       c16 = s32[] constant(16)
       ROOT compare = pred[] compare(iter.2, c16), direction=LT
     }
     ENTRY main {
-      src = s32[32,32] parameter(0)
-      dest = s32[32,32] parameter(1)
+      src = s32[32,64] parameter(0)
+      dest = s32[32,64] parameter(1)
       c0 = s32[] constant(0)
-      tuple = (s32[], s32[32,32], s32[32,32]) tuple(c0, src, dest)
-      ROOT while = (s32[], s32[32,32], s32[32,32]) while(tuple), body=body, condition=condition
+      tuple = (s32[], s32[32,64], s32[32,64]) tuple(c0, src, dest)
+      ROOT while = (s32[], s32[32,64], s32[32,64]) while(tuple), body=body, condition=condition
     }
   )";
   RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), R"(
@@ -2195,45 +2195,43 @@ TEST_F(DynamicSliceFusionRewriterTest,
       ROOT add = s32[] add(a, b)
     }
     body {
-      param.1 = (s32[], s32[8,8,8], s32[8,8,8], s32[8,4,8], s32[8,4,8]) parameter(0)
+      param.1 = (s32[], s32[8,8,16], s32[8,8,16], s32[8,4,16], s32[8,4,16]) parameter(0)
       iter.1 = s32[] get-tuple-element(param.1), index=0
       c1 = s32[] constant(1)
       c0 = s32[] constant(0)
-      src1 = s32[8,8,8] get-tuple-element(param.1), index=1
-      src2 = s32[8,8,8] get-tuple-element(param.1), index=2
-      dst1 = s32[8,4,8] get-tuple-element(param.1), index=3
-      dst2 = s32[8,4,8] get-tuple-element(param.1), index=4
-      ds1 = s32[1,8,8]{2,1,0} dynamic-slice(src1, iter.1, c0, c0), dynamic_slice_sizes={1,8,8}
-      ds2 = s32[1,8,8]{2,1,0} dynamic-slice(src2, iter.1, c0, c0), dynamic_slice_sizes={1,8,8}
-      rs1 = s32[8,8] bitcast(ds1)
-      rs2 = s32[8,8] bitcast(ds2)
-      rs = (s32[4,8], s32[4,8]) reduce-scatter(rs1, rs2), dimensions={0}, replica_groups={{0,1}}, to_apply=add
-      reduce-scatter1 = s32[4,8] get-tuple-element(rs), index=0
-      reduce-scatter2 = s32[4,8] get-tuple-element(rs), index=1
-      bitcast1 = s32[1,4,8] bitcast(reduce-scatter1)
-      bitcast2 = s32[1,4,8] bitcast(reduce-scatter2)
-      dus1 = s32[8,4,8] dynamic-update-slice(dst1, bitcast1, iter.1, c0, c0)
-      dus2 = s32[8,4,8] dynamic-update-slice(dst2, bitcast2, iter.1, c0, c0)
-      add = s32[] add(iter.1, c1)
-      ROOT tuple = tuple(add, src1, src2, dus1, dus2)
+      src1 = s32[8,8,16] get-tuple-element(param.1), index=1
+      src2 = s32[8,8,16] get-tuple-element(param.1), index=2
+      dst1 = s32[8,4,16] get-tuple-element(param.1), index=3
+      dst2 = s32[8,4,16] get-tuple-element(param.1), index=4
+      ds1 = s32[1,8,16]{2,1,0} dynamic-slice(src1, iter.1, c0, c0), dynamic_slice_sizes={1,8,16}
+      ds2 = s32[1,8,16]{2,1,0} dynamic-slice(src2, iter.1, c0, c0), dynamic_slice_sizes={1,8,16}
+      rs1 = s32[8,16] bitcast(ds1)
+      rs2 = s32[8,16] bitcast(ds2)
+      rs = (s32[4,16], s32[4,16]) reduce-scatter(rs1, rs2), dimensions={0}, replica_groups={{0,1}}, to_apply=add
+      reduce-scatter1 = s32[4,16] get-tuple-element(rs), index=0
+      reduce-scatter2 = s32[4,16] get-tuple-element(rs), index=1
+      bitcast1 = s32[1,4,16] bitcast(reduce-scatter1)
+      bitcast2 = s32[1,4,16] bitcast(reduce-scatter2)
+      dus1 = s32[8,4,16] dynamic-update-slice(dst1, bitcast1, iter.1, c0, c0)
+      dus2 = s32[8,4,16] dynamic-update-slice(dst2, bitcast2, iter.1, c0, c0)
+      add = s32[] add(iter.1, c1)                                                                                                                           ROOT tuple = tuple(add, src1, src2, dus1, dus2)
     }
     condition {
-      param.2 = (s32[], s32[8,8,8], s32[8,8,8], s32[8,4,8], s32[8,4,8]) parameter(0)
+      param.2 = (s32[], s32[8,8,16], s32[8,8,16], s32[8,4,16], s32[8,4,16]) parameter(0)
       iter.2 = s32[] get-tuple-element(param.2), index=0
       c8 = s32[] constant(8)
       ROOT compare = pred[] compare(iter.2, c8), direction=LT
     }
     ENTRY main {
       c0 = s32[] constant(0)
-      p1 = s32[8,8,8] parameter(0)
-      p2 = s32[8,8,8] parameter(1)
-      p3 = s32[8,4,8] parameter(2)
-      p4 = s32[8,4,8] parameter(3)
-      tuple = (s32[], s32[8,8,8], s32[8,8,8], s32[8,4,8], s32[8,4,8]) tuple(c0, p1, p2, p3, p4)
-      ROOT while = (s32[], s32[8,8,8], s32[8,8,8], s32[8,4,8], s32[8,4,8]) while(tuple), body=body, condition=condition
+      p1 = s32[8,8,16] parameter(0)
+      p2 = s32[8,8,16] parameter(1)
+      p3 = s32[8,4,16] parameter(2)
+      p4 = s32[8,4,16] parameter(3)
+      tuple = (s32[], s32[8,8,16], s32[8,8,16], s32[8,4,16], s32[8,4,16]) tuple(c0, p1, p2, p3, p4)
+      ROOT while = (s32[], s32[8,8,16], s32[8,8,16], s32[8,4,16], s32[8,4,16]) while(tuple), body=body, condition=condition
     }
   )";
-
   // Checking for 2 dynamic-slices, their uses in reduce-scatter and their
   // update via dus inside the fusion.
   RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), R"(

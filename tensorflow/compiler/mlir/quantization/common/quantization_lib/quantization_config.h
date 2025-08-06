@@ -28,7 +28,6 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/compiler/mlir/lite/tools/optimize/reduced_precision_metadata.h"
 #include "tensorflow/core/framework/types.pb.h"
 
 namespace mlir {
@@ -132,10 +131,6 @@ struct QuantizationSpecs {
   // A serialized "QuantizationInfo" object to specify value ranges for some of
   // the tensors with known names.
   std::string serialized_quant_stats = "";
-
-  // A bitmask to encode support for reduced precision inference in the model.
-  tflite::optimize::ReducedPrecisionSupport support_mask =
-      tflite::optimize::ReducedPrecisionSupport::None;
 
   // Whether to run the passes to propagate the quantization parameters and
   // graph rewrites. Returns false if the inference_type is DT_FLOAT or

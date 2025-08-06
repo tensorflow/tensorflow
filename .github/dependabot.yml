@@ -32,14 +32,6 @@ updates:
         update-types: ["version-update:semver-major", "version-update:semver-minor"]
 
   - package-ecosystem: docker
-    directory: /ci/official/containers/linux_arm64
-    schedule:
-      interval: monthly
-    ignore:
-      - dependency-name: "*"
-        update-types: ["version-update:semver-major", "version-update:semver-minor"]
-    
-  - package-ecosystem: docker
     directory: /tensorflow/tools/gcs_test
     schedule:
       interval: monthly

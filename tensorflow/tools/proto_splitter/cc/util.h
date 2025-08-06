@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "riegeli/bytes/fd_reader.h"  // from @riegeli
+#include "riegeli/bytes/string_reader.h"  // from @riegeli
 #include "riegeli/records/record_reader.h"  // from @riegeli
 #include "tensorflow/tools/proto_splitter/chunk.pb.h"
 #include "tsl/platform/protobuf.h"
@@ -145,6 +146,10 @@ std::string HumanReadableDuration(int64_t microseconds);
 // Construct a reader object to read in records from the .cpb file.
 absl::StatusOr<riegeli::RecordReader<riegeli::FdReader<>>> GetRiegeliReader(
     absl::string_view cpb_file);
+
+// Construct a reader object to read in records from a string.
+absl::StatusOr<riegeli::RecordReader<riegeli::StringReader<>>>
+GetRiegeliStringReader(absl::string_view cpb_data);
 
 // Read the last chunk, which contains metadata necessary for reading the
 // remaining chunks.

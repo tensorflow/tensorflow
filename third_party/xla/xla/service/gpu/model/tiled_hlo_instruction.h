@@ -21,12 +21,14 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
+#include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 
@@ -37,23 +39,24 @@ namespace gpu {
 //
 // The class contains information required to emit this instruction in
 // block-level codegen. Tile sizes and strides are constants and do not depend
-// on the multidimensional tile index. Tile offsets are computed using an
-// indexing map of the form:
-//   `(d0, d1, ...) -> (tile_offset0, tile_offset1, ...)`
-// where (d0, d1, ...) is the tile multi-index.
+// on the block id. Tile offsets are computed using an indexing map of the form:
+// `(block_id) -> (tile_offset0, tile_offset1, ...)`
 class TiledHloInstruction {
  public:
   virtual ~TiledHloInstruction() = default;
 
   // Creates an instance of TiledHloInstruction. Returns an error if any of the
   // following preconditions is not met:
-  // * Number of tile sizes, strides should match HLO shape rank.
-  // * Number of results of `tile_offsets_indexing` should match HLO shape rank.
-  // * `tile_offsets_indexing` should have the number of dimensions equal to the
-  //   rank of the output tile and 0 symbols.
+  // * Number of tile sizes, strides should match the rank of the HLO.
+  // * If `tile_offsets_indexing` is provided then it must satisfy:
+  // - The number of results must match the rank of the HLO.
+  // - Input should have exactly 1 dimension.
+  // - The number of runtime variables must match the number of runtime
+  //   variables in tile_offsets_indexing map.
   static absl::StatusOr<std::unique_ptr<TiledHloInstruction>> Create(
       const HloInstruction* hlo,
       llvm::SmallVector<const TiledHloInstruction*> operands,
+      llvm::SmallVector<const TiledHloInstruction*> runtime_variables,
       llvm::SmallVector<int64_t> tile_sizes,
       llvm::SmallVector<int64_t> tile_strides,
       std::optional<IndexingMap> tile_offsets_indexing);
@@ -70,6 +73,11 @@ class TiledHloInstruction {
     return operands_;
   }
 
+  const llvm::SmallVector<const TiledHloInstruction*>& runtime_variables()
+      const {
+    return runtime_variables_;
+  }
+
   // Returns the tile sizes. The number of tile sizes is equal to the rank of
   // the output shape.
   const llvm::SmallVector<int64_t>& tile_sizes() const { return tile_sizes_; }
@@ -82,10 +90,9 @@ class TiledHloInstruction {
   }
   int64_t tile_stride(int64_t dim_idx) const { return tile_strides_[dim_idx]; }
 
-  // Returns the indexing map from tile multi-index to tile offsets. The map has
-  // a form of `(d0, d1, ...) -> (tile_offset0, tile_offset1, ...)`. The number
-  // of input dimensions is equal to the rank of output tile of the computation.
-  // The number of tile offsets is equal to the rank of the tiled hlo.
+  // Returns the indexing map from block_id to tile offsets. The map has a form
+  // of `(block_id) -> (tile_offset0, tile_offset1, ...)`. The number of tile
+  // offsets is equal to the rank of the tiled hlo.
   //
   // The indexing map is not computed by default.
   absl::StatusOr<IndexingMap> tile_offsets_indexing() const {
@@ -107,16 +114,25 @@ class TiledHloInstruction {
   }
 
  protected:
-  TiledHloInstruction(const HloInstruction* hlo,
-                      llvm::SmallVector<const TiledHloInstruction*> operands,
-                      llvm::SmallVector<int64_t> tile_sizes,
-                      llvm::SmallVector<int64_t> tile_strides,
-                      std::optional<IndexingMap> tile_offsets_indexing)
+  TiledHloInstruction(
+      const HloInstruction* hlo,
+      llvm::SmallVector<const TiledHloInstruction*> operands,
+      llvm::SmallVector<const TiledHloInstruction*> runtime_variables,
+      llvm::SmallVector<int64_t> tile_sizes,
+      llvm::SmallVector<int64_t> tile_strides,
+      std::optional<IndexingMap> tile_offsets_indexing)
       : hlo_(hlo),
         operands_(std::move(operands)),
+        runtime_variables_(std::move(runtime_variables)),
         tile_sizes_(std::move(tile_sizes)),
         tile_strides_(std::move(tile_strides)),
-        tile_offsets_indexing_(std::move(tile_offsets_indexing)) {}
+        tile_offsets_indexing_(std::move(tile_offsets_indexing)) {
+    if (tile_offsets_indexing_.has_value()) {
+      CHECK_EQ(tile_offsets_indexing_->GetDimVarsCount(), 1);
+      CHECK_EQ(tile_offsets_indexing_->GetRTVarsCount(),
+               runtime_variables_.size());
+    }
+  }
 
  private:
   // Pointer to the original HLO instruction.
@@ -124,6 +140,7 @@ class TiledHloInstruction {
 
   // Operands of the instruction in the tiled computation graph.
   llvm::SmallVector<const TiledHloInstruction*> operands_;
+  llvm::SmallVector<const TiledHloInstruction*> runtime_variables_;
 
   // Tile sizes and strides.
   llvm::SmallVector<int64_t> tile_sizes_;
@@ -146,7 +163,8 @@ inline bool operator==(const TiledHloInstruction& lhs,
     return lhs.tile_offsets_indexing() == rhs.tile_offsets_indexing();
   }
 
-  return lhs.operands() == rhs.operands();
+  return lhs.operands() == rhs.operands() &&
+         lhs.runtime_variables() == rhs.runtime_variables();
 }
 
 inline bool operator!=(const TiledHloInstruction& lhs,
@@ -164,7 +182,9 @@ H AbslHashValue(H h, const TiledHloInstruction& tiled_hlo_instruction) {
       absl::Span<int64_t const>(tiled_hlo_instruction.tile_sizes()),
       absl::Span<int64_t const>(tiled_hlo_instruction.tile_strides()),
       absl::Span<const TiledHloInstruction* const>(
-          tiled_hlo_instruction.operands()));
+          tiled_hlo_instruction.operands()),
+      absl::Span<const TiledHloInstruction* const>(
+          tiled_hlo_instruction.runtime_variables()));
 }
 
 class TiledHloComputation;
@@ -182,6 +202,7 @@ class TiledHloFusionInstruction : public TiledHloInstruction {
   static absl::StatusOr<std::unique_ptr<TiledHloFusionInstruction>> Create(
       const HloInstruction* hlo,
       llvm::SmallVector<const TiledHloInstruction*> operands,
+      llvm::SmallVector<const TiledHloInstruction*> runtime_variables,
       std::unique_ptr<TiledHloComputation> called_computation,
       llvm::SmallVector<int64_t> tile_sizes,
       llvm::SmallVector<int64_t> tile_strides,
@@ -196,6 +217,7 @@ class TiledHloFusionInstruction : public TiledHloInstruction {
   TiledHloFusionInstruction(
       const HloInstruction* hlo,
       llvm::SmallVector<const TiledHloInstruction*> operands,
+      llvm::SmallVector<const TiledHloInstruction*> runtime_variables,
       std::unique_ptr<TiledHloComputation> called_computation,
       llvm::SmallVector<int64_t> tile_sizes,
       llvm::SmallVector<int64_t> tile_strides,

@@ -24,7 +24,6 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/test_macros.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
@@ -41,7 +40,7 @@ class NcclGroupExecutionTest : public HloTestBase {
   }
 };
 
-XLA_TEST_F(NcclGroupExecutionTest, NcclGroupSendRecvNoWhileLoop) {
+TEST_F(NcclGroupExecutionTest, NcclGroupSendRecvNoWhileLoop) {
   // TODO (rosiezou): remove the channel_id=0 workaround once it is optional.
   const absl::string_view kModuleStr = R"(
   HloModule module_main, entry_computation_layout={()->(f32[], f32[])}
@@ -125,7 +124,7 @@ XLA_TEST_F(NcclGroupExecutionTest, NcclGroupSendRecvNoWhileLoop) {
   EXPECT_EQ(results[3].ToStringWithoutShapeOneline(), "( 0, 2000 )");
 }
 
-XLA_TEST_F(NcclGroupExecutionTest, BidirectionalCommunication) {
+TEST_F(NcclGroupExecutionTest, BidirectionalCommunication) {
   const absl::string_view kModuleStr = R"(
   HloModule module_main, entry_computation_layout={()->(u32[], u32[])}, num_partitions=4
 

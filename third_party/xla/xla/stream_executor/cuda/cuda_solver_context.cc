@@ -31,13 +31,13 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/library_types.h"
 #include "xla/primitive_util.h"
 #include "xla/stream_executor/blas.h"
+#include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu_solver_context.h"
+#include "xla/stream_executor/platform/platform_object_registry.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
 
 namespace stream_executor {
 
@@ -263,5 +263,10 @@ absl::Status CudaSolverContext::Potrf(
       workspace.ElementCount(), nullptr, 0, ToDevicePointer(lapack_info)));
   return status;
 }
+
+STREAM_EXECUTOR_REGISTER_OBJECT_STATICALLY(CudaSolverContextFactory,
+                                           GpuSolverContextFactory,
+                                           cuda::kCudaPlatformId,
+                                           CudaSolverContext::Create);
 
 }  // namespace stream_executor

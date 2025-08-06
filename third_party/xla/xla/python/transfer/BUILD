@@ -4,6 +4,7 @@ load(
     "if_oss",
     "internal_visibility",
 )
+load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load(
     "//xla/tsl/platform:build_config.bzl",
     "tf_proto_library",
@@ -29,6 +30,7 @@ cc_library(
     name = "streaming",
     srcs = ["streaming.cc"],
     hdrs = ["streaming.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":transfer_socket_proto_cc",
         "//xla/pjrt:pjrt_future",
@@ -65,6 +67,7 @@ cc_library(
     name = "event_loop",
     srcs = ["event_loop.cc"],
     hdrs = ["event_loop.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
@@ -100,11 +103,15 @@ cc_library(
     name = "streaming_ifrt",
     srcs = ["streaming_ifrt.cc"],
     hdrs = ["streaming_ifrt.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":streaming",
+        ":transfer_socket_proto_cc",
+        "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_compiler",
+        "//xla/pjrt:pjrt_future",
+        "//xla/pjrt:raw_buffer",
         "//xla/python/ifrt",
-        "//xla/python/pjrt_ifrt",
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
@@ -115,6 +122,7 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
     ],
@@ -151,9 +159,11 @@ xla_cc_test(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:casts",
     ],
 )
 
@@ -161,6 +171,7 @@ cc_library(
     name = "socket_bulk_transport",
     srcs = ["socket_bulk_transport.cc"],
     hdrs = ["socket_bulk_transport.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":event_loop",
         ":streaming",
@@ -198,6 +209,7 @@ cc_library(
     name = "socket-server",
     srcs = ["socket-server.cc"],
     hdrs = ["socket-server.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":event_loop",
         ":streaming",
@@ -208,9 +220,12 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -228,5 +243,39 @@ xla_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "pjrt_transfer_server",
+    srcs = ["pjrt_transfer_server.cc"],
+    hdrs = ["pjrt_transfer_server.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":event_loop",
+        ":socket-server",
+        ":socket_bulk_transport",
+        ":streaming",
+        ":streaming_ifrt",
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla/pjrt:pjrt_client",
+        "//xla/pjrt/distributed:key_value_store_interface",
+        "//xla/python/ifrt",
+        "//xla/python/pjrt_ifrt",
+        "//xla/python/pjrt_ifrt:pjrt_dtype",
+        "//xla/python/pjrt_ifrt:transfer_server_interface",
+        "//xla/tsl/concurrency:ref_count",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+        "@local_tsl//tsl/platform:casts",
     ],
 )

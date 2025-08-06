@@ -525,7 +525,7 @@ string XlaCompiler::Argument::ShapeHumanString() const {
   if (absl::holds_alternative<TensorShape>(shape)) {
     return std::get<TensorShape>(shape).DebugString();
   } else {
-    return std::get<xla::Shape>(shape).DebugString();
+    return std::get<xla::Shape>(shape).ToProto().DebugString();
   }
 }
 

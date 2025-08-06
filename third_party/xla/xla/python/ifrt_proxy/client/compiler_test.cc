@@ -33,6 +33,7 @@
 #include "xla/python/ifrt/mock.h"
 #include "xla/python/ifrt/program.h"
 #include "xla/python/ifrt/serdes.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt_proxy/client/client_session.h"
 #include "xla/python/ifrt_proxy/client/host_buffer.h"
 #include "xla/python/ifrt_proxy/client/mock_client_session.h"
@@ -126,6 +127,8 @@ class TestCompileOptionsSerDes
 IfrtProxyVersion Version() {
   IfrtProxyVersion version;
   version.set_protocol_version(kClientMinVersion);
+  version.set_ifrt_serdes_version_number(
+      SerDesAnyVersionAccessor::GetMinimum().version_number().value());
   return version;
 }
 

@@ -24,6 +24,7 @@ limitations under the License.
 #include <optional>
 #include <random>
 #include <sstream>
+#include <string>
 #include <tuple>
 #include <type_traits>
 #include <utility>
@@ -52,20 +53,20 @@ limitations under the License.
 #include "xla/stream_executor/data_type.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/gpu/gpu_kernel_registry.h"
+#include "xla/stream_executor/gpu/repeat_buffer_kernel.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/typed_kernel_factory.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/tsl/util/proto/proto_utils.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/ml_dtypes.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -368,15 +369,28 @@ absl::Mutex& GetGpuMutex(const se::StreamExecutor* stream_exec) {
 }
 
 absl::StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
-    absl::string_view kernel_name, uint64_t num_args, absl::string_view ptx,
+    std::string kernel_name, uint64_t num_args, absl::string_view ptx,
+    se::StreamExecutor* stream_exec, uint32_t shared_mem_bytes) {
+  se::KernelLoaderSpec loader_spec =
+      se::KernelLoaderSpec::CreateCudaPtxInMemorySpec(
+          ptx, std::move(kernel_name), num_args);
+
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Kernel> kernel,
+                      stream_exec->LoadKernel(loader_spec));
+
+  se::KernelMetadata m;
+  m.set_shared_memory_bytes(shared_mem_bytes);
+  kernel->set_metadata(m);
+  return kernel;
+}
+
+absl::StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
+    std::string kernel_name, uint64_t num_args,
     absl::Span<const uint8_t> cubin_data, se::StreamExecutor* stream_exec,
     uint32_t shared_mem_bytes) {
-  se::MultiKernelLoaderSpec loader_spec(num_args);
-  loader_spec.AddCudaPtxInMemory(ptx, kernel_name);
-
-  if (!cubin_data.empty()) {
-    loader_spec.AddCudaCubinInMemory(cubin_data, kernel_name);
-  }
+  se::KernelLoaderSpec loader_spec =
+      se::KernelLoaderSpec::CreateCudaCubinInMemorySpec(
+          cubin_data, std::move(kernel_name), num_args);
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Kernel> kernel,
                       stream_exec->LoadKernel(loader_spec));
@@ -415,10 +429,6 @@ typename std::enable_if<std::is_floating_point<T>::value,
                         T>::type static UniformDistribution(T lhs, T rhs,
                                                             Generator* gen) {
   return std::uniform_real_distribution<T>(lhs, rhs)(*gen);
-}
-
-namespace repeat_buffer_kernel {
-void* kernel();
 }
 
 template <typename T>
@@ -489,10 +499,10 @@ static void InitializeTypedBuffer(se::Stream* stream,
   CHECK_EQ(elements_to_fill, buffer.size() / sizeof(T) - host_buffer_size);
   se::StreamExecutor* executor = stream->parent();
   auto kernel =
-      se::TypedKernelFactory<se::DeviceMemoryBase, int64_t, int64_t>::Create(
-          executor, "RepeatBufferKernel", repeat_buffer_kernel::kernel());
+      stream_executor::gpu::GpuKernelRegistry::GetGlobalRegistry()
+          .LoadKernel<stream_executor::gpu::RepeatBufferKernel>(executor);
   if (!kernel.ok()) {
-    LOG(FATAL) << "Could not create RepeatBufferKernel: " << kernel.status();
+    LOG(FATAL) << "Could not load RepeatBufferKernel: " << kernel.status();
   }
   // Launch the kernel with at least host_buffer_bytes threads. Each thread
   // will read one byte of `host_buffer` from the start of `buffer`, where the

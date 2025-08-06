@@ -57,6 +57,14 @@ namespace {
 absl::Status StablehloToMhlo(mlir::ModuleOp module, bool run_canonicalizer) {
   mlir::MLIRContext* context = module->getContext();
   mlir::PassManager pm(context);
+
+  // Only enable verifier in debug builds.
+  bool enableVerifier = false;
+#ifndef NDEBUG
+  enableVerifier = true;
+#endif
+  pm.enableVerifier(enableVerifier);
+
   // CHLO -> MHLO for high level ops (TopK, Erf, RaggedDot, etc.)
   // CHLO -> StableHLO otherwise
   pm.addNestedPass<mlir::func::FuncOp>(
@@ -151,6 +159,20 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertHloToStablehlo(
       llvm_ir::CreateMlirModuleOp(mlir::UnknownLoc::get(&ctx));
   TF_RETURN_IF_ERROR(HloModuleImporter(mlir_module.get(),
                                        /*import_all_computation=*/true,
+                                       /*flatten_computation_args_result=*/true,
+                                       /*emit_stablehlo=*/true)
+                         .Import(*hlo_module_proto));
+  return mlir_module;
+}
+
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
+ConvertHloToStablehloWithOptions(mlir::MLIRContext& ctx,
+                                 const xla::HloModuleProto* hlo_module_proto,
+                                 bool import_all_computations) {
+  mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
+      llvm_ir::CreateMlirModuleOp(mlir::UnknownLoc::get(&ctx));
+  TF_RETURN_IF_ERROR(HloModuleImporter(mlir_module.get(),
+                                       import_all_computations,
                                        /*flatten_computation_args_result=*/true,
                                        /*emit_stablehlo=*/true)
                          .Import(*hlo_module_proto));

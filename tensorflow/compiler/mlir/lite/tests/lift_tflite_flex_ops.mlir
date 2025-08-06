@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tfl-lift-tflite-flex-ops | FileCheck %s
+// RUN: litert-opt %s -tfl-lift-tflite-flex-ops | FileCheck %s
 
 // CHECK-LABEL: TfAdd
 func.func @TfAdd(%arg0: tensor<4xf64>, %arg1: tensor<4xf64>) -> tensor<4xf64> {

@@ -40,14 +40,18 @@ using ::tensorflow::profiler::ToolOptions;
 ToolOptions ToolOptionsFromPythonDict(const py::dict& dictionary) {
   ToolOptions map;
   for (const auto& item : dictionary) {
-    std::variant<int, std::string> value;
+    std::variant<bool, int, std::string> value;
     try {
-      value = item.second.cast<int>();
+      value = item.second.cast<bool>();
     } catch (...) {
       try {
-        value = item.second.cast<std::string>();
+        value = item.second.cast<int>();
       } catch (...) {
-        continue;
+        try {
+          value = item.second.cast<std::string>();
+        } catch (...) {
+          continue;
+        }
       }
     }
     map.emplace(item.first.cast<std::string>(), value);
@@ -66,7 +70,7 @@ PYBIND11_MODULE(_pywrap_profiler_plugin, m) {
         ToolOptions tool_options = ToolOptionsFromPythonDict(options);
         {
           py::gil_scoped_release release;
-          status = tsl::profiler::CaptureRemoteTrace(
+          status = tsl::profiler::CaptureRemoteTraceWithBoolOpts(
               service_addr, logdir, worker_list, include_dataset_ops,
               duration_ms, num_tracing_attempts, tool_options);
         }

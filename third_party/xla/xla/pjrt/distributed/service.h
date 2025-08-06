@@ -45,13 +45,9 @@ class CoordinationServiceImpl {
 
     tsl::Env* env = tsl::Env::Default();
 
-    // Interval at which the service should check for missed heartbeat RPCs
-    // from the clients.
-    absl::Duration heartbeat_interval = absl::Seconds(10);
-
-    // Number of heartbeats that a client may miss in a row before the
-    // coordinator concludes that a client has vanished.
-    int max_missing_heartbeats = 10;
+    // The duration after which the service concludes a client has vanished if
+    // it hasn't received any heartbeats from the client.
+    absl::Duration heartbeat_timeout = absl::Seconds(100);
 
     // How long should we wait for all clients to call Connect() before
     // giving up?

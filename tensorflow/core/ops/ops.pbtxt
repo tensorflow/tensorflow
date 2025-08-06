@@ -41070,6 +41070,7 @@ op {
         type: DT_INT64
         type: DT_UINT16
         type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -61123,6 +61124,13 @@ op {
     }
   }
   attr {
+    name: "use_shardy_partitioner"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
     name: "tpu_compile_options_proto"
     type: "string"
     default_value {
@@ -67300,6 +67308,48 @@ op {
   is_stateful: true
 }
 op {
+  name: "XlaSparseActivationsUnstack"
+  input_arg {
+    name: "stacked_activations"
+    type_attr: "input_dtype"
+  }
+  output_arg {
+    name: "unstacked_activations"
+    type_attr: "dtype"
+    number_attr: "num_tables"
+  }
+  attr {
+    name: "num_tables"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "sample_counts"
+    type: "list(int)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "features"
+    type: "list(int)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "interleaved"
+    type: "bool"
+  }
+  attr {
+    name: "input_dtype"
+    type: "type"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+}
+op {
   name: "XlaSparseCoreAdagrad"
   input_arg {
     name: "indices"
@@ -67715,6 +67765,13 @@ op {
     name: "table_name"
     type: "string"
   }
+  attr {
+    name: "num_sparsecores_per_device"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
 }
 op {
   name: "XlaSparseDenseMatmulCustomCombinerOnTcGradWithAdagradMomentumAndCsrInput"
@@ -67850,6 +67907,13 @@ op {
     name: "table_name"
     type: "string"
   }
+  attr {
+    name: "num_sparsecores_per_device"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
 }
 op {
   name: "XlaSparseDenseMatmulCustomCombinerOnTcGradWithAdamAndCsrInput"
@@ -67981,6 +68045,13 @@ op {
     name: "table_name"
     type: "string"
   }
+  attr {
+    name: "num_sparsecores_per_device"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
 }
 op {
   name: "XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInput"
@@ -68084,6 +68155,13 @@ op {
   attr {
     name: "table_name"
     type: "string"
+  }
+  attr {
+    name: "num_sparsecores_per_device"
+    type: "int"
+    default_value {
+      i: -1
+    }
   }
 }
 op {
@@ -68220,6 +68298,13 @@ op {
     name: "table_name"
     type: "string"
   }
+  attr {
+    name: "num_sparsecores_per_device"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
 }
 op {
   name: "XlaSparseDenseMatmulCustomCombinerOnTcGradWithSgdAndCsrInput"
@@ -68318,6 +68403,13 @@ op {
   attr {
     name: "table_name"
     type: "string"
+  }
+  attr {
+    name: "num_sparsecores_per_device"
+    type: "int"
+    default_value {
+      i: -1
+    }
   }
 }
 op {
@@ -69002,7 +69094,7 @@ op {
   }
   input_arg {
     name: "tables"
-    type: DT_FLOAT
+    type_attr: "T"
     number_attr: "N"
   }
   input_arg {
@@ -69016,7 +69108,7 @@ op {
   }
   output_arg {
     name: "updated_tables"
-    type: DT_FLOAT
+    type_attr: "T"
     number_attr: "N"
   }
   attr {
@@ -69044,6 +69136,19 @@ op {
     type: "int"
     default_value {
       i: -1
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_FLOAT
+      }
     }
   }
 }
@@ -69419,7 +69524,7 @@ op {
   }
   input_arg {
     name: "embedding_table"
-    type: DT_FLOAT
+    type_attr: "T"
   }
   input_arg {
     name: "num_minibatches_per_physical_sparse_core"
@@ -69427,7 +69532,7 @@ op {
   }
   output_arg {
     name: "activations"
-    type: DT_FLOAT
+    type_attr: "T"
   }
   attr {
     name: "input_size"
@@ -69456,6 +69561,19 @@ op {
     type: "int"
     default_value {
       i: -1
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_FLOAT
+      }
     }
   }
 }
@@ -69529,6 +69647,36 @@ op {
     default_value {
       i: -1
     }
+  }
+}
+op {
+  name: "XlaSparseGradientsStack"
+  input_arg {
+    name: "unstacked_gradients"
+    type_attr: "input_dtype"
+    number_attr: "num_tables"
+  }
+  output_arg {
+    name: "stacked_gradients"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "num_tables"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "interleaved"
+    type: "bool"
+  }
+  attr {
+    name: "input_dtype"
+    type: "type"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
   }
 }
 op {

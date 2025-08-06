@@ -15,45 +15,55 @@ limitations under the License.
 
 #include "xla/service/tpu_computation_placer.h"
 
+#include <memory>
+
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "xla/array2d.h"
+#include "xla/service/computation_placer.h"
 #include "xla/stream_executor/tpu/status_helper.h"
-#include "xla/stream_executor/tpu/tpu_api.h"
-#include "xla/stream_executor/tpu/tpu_platform.h"
+#include "xla/stream_executor/tpu/tpu_executor_api.h"
 #include "xla/stream_executor/tpu/tpu_platform_id.h"
+#include "xla/stream_executor/tpu/tpu_topology.h"
 
 namespace tensorflow {
 namespace tpu {
+using stream_executor::tpu::ExecutorApiFn;
 
 TpuComputationPlacer::TpuComputationPlacer() {
-  placer_ = stream_executor::tpu::ExecutorApiFn()->TpuComputationPlacer_NewFn();
+  placer_ = ExecutorApiFn()->TpuComputationPlacer_NewFn();
 }
 
 TpuComputationPlacer::~TpuComputationPlacer() {
-  stream_executor::tpu::ExecutorApiFn()->TpuComputationPlacer_FreeFn(placer_);
+  ExecutorApiFn()->TpuComputationPlacer_FreeFn(placer_);
 }
 
-absl::StatusOr<int> TpuComputationPlacer::DeviceId(int replica, int computation,
-                                                   int replica_count,
-                                                   int computation_count) {
-  LOG(FATAL) << "Unimplemented.";
+namespace {
+absl::StatusOr<xla::DeviceAssignment> ToAssignment(
+    int replica_count, int computation_count,
+    const xla::Array2D<int>& result_int32, const StatusHelper& status) {
+  if (!status.ok()) {
+    return status.status();
+  }
+  xla::DeviceAssignment result(replica_count, computation_count);
+  // Upcast to 64-bit.
+  for (int i = 0; i < replica_count; ++i) {
+    for (int j = 0; j < computation_count; ++j) {
+      result(i, j) = result_int32(i, j);
+    }
+  }
+  return result;
 }
+}  // namespace
 
 absl::StatusOr<xla::DeviceAssignment> TpuComputationPlacer::AssignDevices(
     int replica_count, int computation_count) {
   StatusHelper status;
-  xla::DeviceAssignment result(replica_count, computation_count);
   xla::Array2D<int> result_int32(replica_count, computation_count);
-  stream_executor::tpu::ExecutorApiFn()->TpuComputationPlacer_AssignDevicesFn(
+  ExecutorApiFn()->TpuComputationPlacer_AssignDevicesFn(
       placer_, replica_count, computation_count, result_int32.data(),
       status.c_status);
-  if (!status.ok()) {
-    return status.status();
-  }
-  // Upcast to 64-bit.
-  for (int i = 0; i < replica_count; ++i) {
-    for (int j = 0; j < computation_count; ++j)
-      result(i, j) = result_int32(i, j);
-  }
-  return result;
+  return ToAssignment(replica_count, computation_count, result_int32, status);
 }
 
 /*static*/ absl::StatusOr<xla::DeviceAssignment>
@@ -61,33 +71,25 @@ TpuComputationPlacer::AssignLocalDevices(TpuHostLocationExternal host_location,
                                          int replica_count,
                                          int computation_count) {
   StatusHelper status;
-  xla::DeviceAssignment result(replica_count, computation_count);
   xla::Array2D<int> result_int32(replica_count, computation_count);
-  stream_executor::tpu::ExecutorApiFn()
-      ->TpuComputationPlacer_AssignLocalDevicesFn(
-          host_location.impl(), replica_count, computation_count,
-          result_int32.data(), status.c_status);
-  if (!status.ok()) {
-    return status.status();
-  }
-  // Upcast to 64-bit.
-  for (int i = 0; i < replica_count; ++i) {
-    for (int j = 0; j < computation_count; ++j)
-      result(i, j) = result_int32(i, j);
-  }
-  return result;
+  ExecutorApiFn()->TpuComputationPlacer_AssignLocalDevicesFn(
+      host_location.impl(), replica_count, computation_count,
+      result_int32.data(), status.c_status);
+  return ToAssignment(replica_count, computation_count, result_int32, status);
 }
 
-static std::unique_ptr<xla::ComputationPlacer> CreateTpuComputationPlacer() {
+namespace {
+std::unique_ptr<xla::ComputationPlacer> CreateTpuComputationPlacer() {
   return std::make_unique<TpuComputationPlacer>();
 }
 
-static bool InitModule() {
+bool InitModule() {
   xla::ComputationPlacer::RegisterComputationPlacer(GetTpuPlatformId(),
                                                     CreateTpuComputationPlacer);
   return true;
 }
-static bool module_initialized = InitModule();
+bool module_initialized = InitModule();
+}  //  namespace
 
 }  // namespace tpu
 }  // namespace tensorflow

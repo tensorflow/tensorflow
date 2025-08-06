@@ -228,7 +228,10 @@ cc_library(
     name = "status_macros",
     hdrs = ["status_macros.h"],
     visibility = ["//visibility:public"],
-    deps = ["@com_google_absl//absl/status"],
+    deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 cc_library(

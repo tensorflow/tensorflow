@@ -20,6 +20,7 @@ limitations under the License.
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/buffer_assignment.h"
@@ -51,7 +52,7 @@ class IRBuilderGuardTest : public HloHardwareIndependentTestBase {
             [](const BufferValue& buffer) {
               return CpuExecutable::ShapeSizeBytes(buffer.shape());
             },
-            [](LogicalBuffer::Color) { return /*alignment=*/1; })
+            &alias_info_, [](LogicalBuffer::Color) { return /*alignment=*/1; })
             .value();
 
     TargetMachineFeaturesStub target_machine([](int64_t size) { return 1; });
@@ -64,6 +65,9 @@ class IRBuilderGuardTest : public HloHardwareIndependentTestBase {
                      /*target_machine=*/&target_machine,
                      /*emit_code_for_msan=*/false);
   }
+
+ protected:
+  AliasInfo alias_info_;
 };
 
 TEST_F(IRBuilderGuardTest, OverwriteBuilder) {

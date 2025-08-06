@@ -22,8 +22,11 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_future.h"
 
 namespace xla {
 
@@ -54,7 +57,7 @@ absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
 TfPjRtExecutable::Execute(
     absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
     const ExecuteOptions& options,
-    std::optional<std::vector<PjRtFuture<>>>& returned_futures) {
+    std::optional<std::vector<PjRtFuture<>>>& returned_futures) const {
   std::vector<std::vector<PjRtBuffer*>> unwrapped_argument_handles;
   unwrapped_argument_handles.reserve(argument_handles.size());
   for (auto& handles : argument_handles) {
@@ -81,7 +84,7 @@ TfPjRtExecutable::ExecuteSharded(absl::Span<PjRtBuffer* const> argument_handles,
                                  PjRtDevice* device,
                                  const ExecuteOptions& options,
                                  std::optional<PjRtFuture<>>& returned_future,
-                                 bool fill_future) {
+                                 bool fill_future) const {
   std::vector<PjRtBuffer*> unwrapped_argument_handles;
   unwrapped_argument_handles.reserve(argument_handles.size());
   for (PjRtBuffer* buffer : argument_handles) {
@@ -100,7 +103,7 @@ absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 TfPjRtExecutable::ExecutePortable(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
     const ExecuteOptions& options, std::optional<PjRtFuture<>>& returned_future,
-    bool fill_future) {
+    bool fill_future) const {
   std::vector<PjRtBuffer*> unwrapped_argument_handles;
   unwrapped_argument_handles.reserve(argument_handles.size());
   for (PjRtBuffer* buffer : argument_handles) {
@@ -184,6 +187,13 @@ void TfPjRtClient::DestroyWrappedBuffersAndClient() {
   }
   wrapped_.reset(nullptr);
   LOG(INFO) << "TfPjRtClient::DestroyWrappedBuffersAndClient completed.";
+}
+
+std::optional<PjRtPluginAttributes> TfPjRtClient::plugin_attributes() const {
+  PjRtPluginAttributes attributes =
+      PjRtClient::plugin_attributes().value_or(PjRtPluginAttributes());
+  attributes.attributes["serialize_with_sdy"] = true;
+  return attributes;
 }
 
 std::unique_ptr<TfPjRtClient> TfPjRtClient::CreateTfPjRtClient(

@@ -70,6 +70,16 @@ static constexpr bool UseBlockingThunkExecutor() {
 
 namespace {
 
+class ThunkOperation;
+
+// Converts a ThunkSequence to a vector of ThunkOperations.
+static std::vector<ThunkOperation> CreateThunkOperations(
+    const ThunkSequence& thunk_sequence);
+
+// Converts a ThunkSequence to a vector of ThunkOperations.
+static std::vector<std::unique_ptr<ExecutionGraph::Operation>>
+CreateThunkOperationsAsPtrs(const ThunkSequence& thunk_sequence);
+
 // An adaptor from Thunk to ExecutionGraph::Operation for building an execution
 // graph from a thunk sequence.
 class ThunkOperation : public ExecutionGraph::Operation {
@@ -79,7 +89,12 @@ class ThunkOperation : public ExecutionGraph::Operation {
                               thunk->kind())),
         op_type_id_(static_cast<int64_t>(thunk->kind())),
         buffer_uses_(thunk->buffer_uses()),
-        resource_uses_(thunk->resource_uses()) {}
+        resource_uses_(thunk->resource_uses()) {
+    for (const auto& [name, thunk_sequence] : thunk->nested_thunks()) {
+      named_nested_operations().emplace_back(
+          name, CreateThunkOperationsAsPtrs(*thunk_sequence));
+    }
+  }
 
   absl::string_view name() const final { return name_; }
   int64_t op_type_id() const final { return op_type_id_; }
@@ -95,10 +110,7 @@ class ThunkOperation : public ExecutionGraph::Operation {
   Thunk::ResourceUses resource_uses_;
 };
 
-}  // namespace
-
-// Converts a ThunkSequence to a vector of ThunkOperations.
-static std::vector<ThunkOperation> CreateThunkOperations(
+std::vector<ThunkOperation> CreateThunkOperations(
     const ThunkSequence& thunk_sequence) {
   std::vector<ThunkOperation> operations;
   operations.reserve(thunk_sequence.size());
@@ -107,6 +119,18 @@ static std::vector<ThunkOperation> CreateThunkOperations(
   }
   return operations;
 }
+
+std::vector<std::unique_ptr<ExecutionGraph::Operation>>
+CreateThunkOperationsAsPtrs(const ThunkSequence& thunk_sequence) {
+  std::vector<std::unique_ptr<ExecutionGraph::Operation>> operations;
+  operations.reserve(thunk_sequence.size());
+  for (const auto& thunk : thunk_sequence) {
+    operations.push_back(std::make_unique<ThunkOperation>(thunk.get()));
+  }
+  return operations;
+}
+
+}  // namespace
 
 ThunkExecutor::ThunkExecutor(ThunkSequence thunk_sequence,
                              ExecutionGraph execution_graph,

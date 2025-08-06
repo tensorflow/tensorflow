@@ -788,6 +788,7 @@ TfLiteStatus TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor);
 /// If all dimensions are known, this is the same as `t->dims`.
 /// (`dims_signature` is NULL or empty if all dimensions are known.)
 const TfLiteIntArray* TfLiteTensorGetDimsSignature(const TfLiteTensor* t);
+
 #endif  // TF_LITE_STATIC_MEMORY
 
 /// WARNING: This is an experimental interface that is subject to change.
@@ -1632,6 +1633,9 @@ TfLiteStatus TfLiteTensorVariantRealloc(TfLiteTensor* t,
   t->allocation_type = kTfLiteVariantObject;
   return kTfLiteOk;
 }
+
+// Returns a copy of the quantization parameters of the tensor.
+TfLiteQuantization TfLiteQuantizationClone(const TfLiteQuantization& src);
 
 #endif  // __cplusplus
 #endif  // TENSORFLOW_LITE_CORE_C_COMMON_H_

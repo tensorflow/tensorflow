@@ -32,6 +32,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/distributed_runtime:error_payloads",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service_agent",
     ],

@@ -2,4 +2,4 @@ syntax = "proto3";
 
 package tensorflow.profiler;
 
-import public "plugin/tensorboard_plugin_profile/protobuf/tpu_input_pipeline.proto";
+import public "plugin/xprof/protobuf/tpu_input_pipeline.proto";

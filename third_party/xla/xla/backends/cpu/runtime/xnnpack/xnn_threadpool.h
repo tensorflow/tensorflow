@@ -19,6 +19,14 @@ limitations under the License.
 #include "pthreadpool.h"
 #include "xla/backends/cpu/runtime/parallel_loop_runner.h"
 
+namespace Eigen {
+
+class ThreadPoolInterface;
+
+}  // namespace Eigen
+
+struct xnn_scheduler;
+
 namespace xla::cpu {
 
 // Creates a `pthreadpool` that uses the given `runner` to execute work.
@@ -33,6 +41,14 @@ void DestroyCustomPthreadpool(pthreadpool_t threadpool);
 //
 // IMPORTANT: Thread pool must be created with `CreateCustomPthreadpool`.
 xla::cpu::ParallelLoopRunner* GetParallelLoopRunner(pthreadpool_t threadpool);
+
+// A wrapper to redirect xnn_scheduler operations to Eigen::ThreadPoolInterface.
+using XnnSchedulerPtr =
+    std::unique_ptr<xnn_scheduler, void (*)(xnn_scheduler*)>;
+XnnSchedulerPtr CreateXnnEigenScheduler(
+    Eigen::ThreadPoolInterface* eigen_thread_pool);
+XnnSchedulerPtr CreateXnnEigenScheduler(
+    const Eigen::ThreadPoolDevice* eigen_thread_pool);
 
 }  // namespace xla::cpu
 

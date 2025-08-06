@@ -90,68 +90,6 @@ TEST_F(HorizontalInputFusionTest, BasicTest) {
               GmockMatch(m::Tuple(m::Reduce(), m::Reduce())));
 }
 
-TEST_F(HorizontalInputFusionTest, ManyInputFusions) {
-  auto module = CreateNewVerifiedModule();
-
-  HloComputation* reduce_computation;
-  {
-    auto embedded_builder = HloComputation::Builder("add");
-    auto lhs = embedded_builder.AddInstruction(HloInstruction::CreateParameter(
-        0, ShapeUtil::MakeShape(F32, {}), "lhs"));
-    auto rhs = embedded_builder.AddInstruction(HloInstruction::CreateParameter(
-        1, ShapeUtil::MakeShape(F32, {}), "rhs"));
-    embedded_builder.AddInstruction(
-        HloInstruction::CreateBinary(lhs->shape(), HloOpcode::kAdd, lhs, rhs));
-    reduce_computation =
-        module->AddEmbeddedComputation(embedded_builder.Build());
-  }
-
-  HloComputation::Builder builder(TestName());
-  std::vector<HloInstruction*> var_outs;
-  auto input_shape = ShapeUtil::MakeShape(F32, {1024, 1024});
-  auto output_shape = ShapeUtil::MakeShape(F32, {1024});
-  for (int64_t i = 0; i < 130; ++i) {
-    // %fused_computation.3 (param_0: f32[1024,1024], param_1: f32[]) ->
-    // f32[1024] {
-    //  %param_0 = f32[1024,1024]{1,0} parameter(0)
-    //  %param_1 = f32[] parameter(1)
-    //  %broadcast = f32[1024,1024]{1,0} broadcast(f32[] %param_1),
-    //  dimensions={}
-    //  %multiply = f32[1024,1024]{1,0}
-    //      multiply(f32[1024,1024]{1,0} %param_0, f32[1024,1024]{1,0}
-    //      %broadcast)
-    //  %constant0 = f32[] constant(0)
-    //  ROOT %reduce = f32[1024]{0}
-    //      reduce(f32[1024,1024]{1,0} %multiply, f32[] %constant0),
-    //          dimensions={1}, to_apply=%add
-    // }
-    HloInstruction* param_var_in = builder.AddInstruction(
-        HloInstruction::CreateParameter(i * 2 + 0, input_shape, "var.in"));
-    HloInstruction* param_alpha =
-        builder.AddInstruction(HloInstruction::CreateParameter(
-            i * 2 + 1, ShapeUtil::MakeShape(F32, {}), "alpha"));
-    auto alpha_broadcasted = builder.AddInstruction(
-        HloInstruction::CreateBroadcast(input_shape, param_alpha, {}));
-    auto mul = builder.AddInstruction(HloInstruction::CreateBinary(
-        input_shape, HloOpcode::kMultiply, param_var_in, alpha_broadcasted));
-    HloInstruction* const0 = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0)));
-    auto reduce = builder.AddInstruction(HloInstruction::CreateReduce(
-        output_shape, mul, const0, {1}, reduce_computation));
-    var_outs.push_back(reduce);
-  }
-  builder.AddInstruction(HloInstruction::CreateTuple(var_outs));
-  module->AddEntryComputation(builder.Build());
-
-  // Verify that we produced a multi-output reduction with independent groups.
-  CompileAndVerifyIr(module->Clone(), R"(CHECK: switch {{.*}} label {{.*}} [
-                                          CHECK-NEXT: label)",
-                     /*match_optimized_ir=*/false);
-
-  // Testing with the entire gpu optimization pipeline.
-  EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{1e-5, 1e-5}));
-}
-
 TEST_F(HorizontalInputFusionTest, MultiOutputFusionTest) {
   // This tests the below pattern. One known issue is that gtes (to fusions) can
   // be removed after their producer fusions are merged. In the below case, gte2

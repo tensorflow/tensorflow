@@ -84,7 +84,7 @@ TEST(NanoIfrtClientTest, BigResult) {
       &a, dtype, shape, std::nullopt, client->default_sharding(),
       ifrt::Client::HostBufferSemantics::kImmutableZeroCopy,
       /*on_done_with_host_buffer=*/nullptr,
-      tsl::RCReference<xla::ifrt::UserContext>());
+      tsl::RCReference<ifrt::UserContext>());
   CHECK_OK(a_array);
 
   auto result =
@@ -140,8 +140,7 @@ static absl::StatusOr<ifrt::ArrayRef> MakeArrayFromLiteral(
       ifrt::Shape(literal.shape().dimensions()),
       /*byte_strides=*/std::nullopt, std::move(sharding),
       ifrt::Client::HostBufferSemantics::kImmutableZeroCopy,
-      /*on_done_with_host_buffer=*/{},
-      tsl::RCReference<xla::ifrt::UserContext>());
+      /*on_done_with_host_buffer=*/{}, tsl::RCReference<ifrt::UserContext>());
 }
 
 static void BM_IfRtAddScalars(benchmark::State& state) {

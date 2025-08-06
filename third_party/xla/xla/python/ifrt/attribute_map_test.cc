@@ -20,6 +20,8 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "xla/python/ifrt/serdes_test_util.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -46,7 +48,17 @@ TEST(AttributeMapTest, MapElements) {
       << map.DebugString();
 }
 
-TEST(AttributeMapTest, ToFromProto) {
+class AttributeMapSerDesTest : public testing::TestWithParam<SerDesVersion> {
+ public:
+  AttributeMapSerDesTest() : version_(GetParam()) {}
+
+  SerDesVersion version() const { return version_; }
+
+ private:
+  SerDesVersion version_;
+};
+
+TEST_P(AttributeMapSerDesTest, ToFromProto) {
   AttributeMap map({
       {"string", AttributeMap::StringValue("value")},
       {"bool", AttributeMap::BoolValue(true)},
@@ -56,9 +68,13 @@ TEST(AttributeMapTest, ToFromProto) {
   });
 
   TF_ASSERT_OK_AND_ASSIGN(auto map_copy,
-                          AttributeMap::FromProto(map.ToProto()));
+                          AttributeMap::FromProto(map.ToProto(version())));
   EXPECT_EQ(map_copy.map(), map.map()) << map_copy.DebugString();
 }
+
+INSTANTIATE_TEST_SUITE_P(
+    SerDesVersion, AttributeMapSerDesTest,
+    testing::ValuesIn(test_util::AllSupportedSerDesVersions()));
 
 }  // namespace
 }  // namespace ifrt

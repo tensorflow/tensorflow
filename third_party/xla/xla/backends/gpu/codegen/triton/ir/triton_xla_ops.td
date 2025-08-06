@@ -195,4 +195,13 @@ def TTXLA_InsertOp : TTXLA_OpWithOffsetSizesAndStrides<"insert", [
   }];
 }
 
+def TTXLA_SqueezeDimsOp : TTXLA_Op<"squeeze_dims", [
+    Pure, SameOperandsAndResultElementType
+  ]> {
+    let summary = "Remove a size-1 dimension from a tensor.";
+    let arguments = (ins TT_Tensor:$src, I32Attr:$axis);
+    let results = (outs TT_Tensor:$result);
+    let assemblyFormat = "$src attr-dict `:` type($src) `->` type($result)";
+}
+
 #endif // XLA_BACKENDS_GPU_CODEGEN_TRITON_IR_TRITON_XLA_OPS_TD_

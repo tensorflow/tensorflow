@@ -43,6 +43,7 @@ static GpuCliqueKey GetBaseCliqueKey() {
                           {GlobalDeviceId(2), GlobalDeviceId(3)}},
                       /*root_device=*/GlobalDeviceId(0));
 }
+
 TEST(GpuCliqueKeyTest, IsSubsetOf) {
   GlobalDeviceId id0 = GlobalDeviceId(0);
   GlobalDeviceId id1 = GlobalDeviceId(1);
@@ -198,7 +199,7 @@ TEST(GpuCliqueKeyGettersTest, StreamId) {
 TEST(GpuCliqueKeyGetterTest, ToString) {
   EXPECT_EQ(GetBaseCliqueKey().ToString(),
             "devices=[0,1]; stream=0; groups=[[0,1],[2,3]]; root_device=0; "
-            "num_local_participants=2");
+            "num_local_participants=2; incarnations=[]");
 }
 
 TEST(GpuCliqueIdGettersTest, Data) {
@@ -217,6 +218,24 @@ TEST(GpuCliqueIdStringTest, ToString) {
   for (int i = 0; i < 128; ++i) {
     EXPECT_EQ(clique_id.ToString()[i], id[i]);
   }
+}
+
+TEST(GpuCliqueKeyTest, GetCollectiveStreamId) {
+  EXPECT_EQ(GetCollectiveStreamId(false, CollectiveStreamId(0),
+                                  AsyncStreamKind::kP2P0),
+            CollectiveStreamId(0));
+  EXPECT_EQ(GetCollectiveStreamId(true, CollectiveStreamId(0),
+                                  AsyncStreamKind::kCollective),
+            CollectiveStreamId(1));
+  EXPECT_EQ(GetCollectiveStreamId(true, CollectiveStreamId(0),
+                                  AsyncStreamKind::kP2P0),
+            CollectiveStreamId(2));
+  EXPECT_EQ(GetCollectiveStreamId(true, CollectiveStreamId(2),
+                                  AsyncStreamKind::kCollective),
+            CollectiveStreamId(2));
+  EXPECT_EQ(GetCollectiveStreamId(true, CollectiveStreamId(1),
+                                  AsyncStreamKind::kP2P0),
+            CollectiveStreamId(1));
 }
 
 }  // namespace xla::gpu

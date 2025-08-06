@@ -56,6 +56,14 @@ absl::Status CaptureRemoteTrace(
     const absl::flat_hash_map<std::string, std::variant<int, std::string>>&
         options);
 
+// Generates RemoteProfilerSessionManagerOptions from inputs and calls
+// CaptureRemoteTrace.
+absl::Status CaptureRemoteTraceWithBoolOpts(
+    const char* service_addr, const char* logdir, const char* worker_list,
+    bool include_dataset_ops, int duration_ms, int num_tracing_attempts,
+    const absl::flat_hash_map<std::string,
+                              std::variant<bool, int, std::string>>& options);
+
 }  // namespace profiler
 }  // namespace tsl
 

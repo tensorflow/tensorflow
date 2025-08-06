@@ -20,7 +20,9 @@ limitations under the License.
 
 #include "llvm/ADT/StringMap.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
 
 namespace mlir::quant {

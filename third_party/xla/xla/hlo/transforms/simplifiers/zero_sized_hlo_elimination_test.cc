@@ -16,21 +16,27 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/zero_sized_hlo_elimination.h"
 
 #include <memory>
-#include <vector>
 
+#include <gmock/gmock.h>
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/literal_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
+
+using ::testing::Each;
+using ::testing::Eq;
+using ::testing::Property;
+
 class ZeroSizedHloEliminationTest : public HloHardwareIndependentTestBase {
  protected:
   ZeroSizedHloEliminationTest()
@@ -41,13 +47,14 @@ class ZeroSizedHloEliminationTest : public HloHardwareIndependentTestBase {
                 0, ShapeUtil::MakeShape(F32, {3, 0}), "zero sized param"))) {}
 
   absl::StatusOr<bool> RunZeroSizedElimination() {
-    auto module = CreateNewVerifiedModule("zero_sized_elimination_test_module");
-    module->AddEntryComputation(builder_.Build());
-    return ZeroSizedHloElimination{}.Run(module.get());
+    module_ = CreateNewVerifiedModule("zero_sized_elimination_test_module");
+    module_->AddEntryComputation(builder_.Build());
+    return ZeroSizedHloElimination{}.Run(module_.get());
   }
 
   HloComputation::Builder builder_;
   HloInstruction* zero_sized_param_;
+  std::unique_ptr<HloModule> module_;
 };
 
 TEST_F(ZeroSizedHloEliminationTest, EliminatedZeroSizedOp) {
@@ -55,21 +62,31 @@ TEST_F(ZeroSizedHloEliminationTest, EliminatedZeroSizedOp) {
       zero_sized_param_->shape(), HloOpcode::kTanh, zero_sized_param_));
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunZeroSizedElimination());
   EXPECT_TRUE(changed);
+  EXPECT_EQ(module_->entry_computation()->root_instruction()->opcode(),
+            HloOpcode::kConstant);
 }
 
-TEST_F(ZeroSizedHloEliminationTest, DoesNotEliminateParameter) {
+TEST_F(ZeroSizedHloEliminationTest, ReplacesParameterUsesWithConstant) {
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunZeroSizedElimination());
-  EXPECT_FALSE(changed);
+  EXPECT_TRUE(changed);
+  const HloComputation* entry = module_->entry_computation();
+  ASSERT_EQ(entry->num_parameters(), 1);
+  EXPECT_EQ(entry->parameter_instruction(0)->user_count(), 0);
+  EXPECT_EQ(entry->root_instruction()->opcode(), HloOpcode::kConstant)
+      << module_->ToString();
 }
 
 TEST_F(ZeroSizedHloEliminationTest, DoesNotEliminateSideEffects) {
-  auto token = builder_.AddInstruction(HloInstruction::CreateToken());
-  auto send = builder_.AddInstruction(HloInstruction::CreateSend(
-      zero_sized_param_, token, /*channel_id*/ 0, /*is_host_transfer=*/false));
-  builder_.AddInstruction(HloInstruction::CreateSendDone(
-      send, send->channel_id(), /*is_host_transfer=*/false));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunZeroSizedElimination());
-  EXPECT_FALSE(changed);
+  HloInstruction* token =
+      builder_.AddInstruction(HloInstruction::CreateToken());
+  HloInstruction* send = builder_.AddInstruction(
+      HloInstruction::CreateSend(zero_sized_param_, token, /*channel_id*/ 0,
+                                 /*is_host_transfer=*/false));
+  HloInstruction* send_done =
+      builder_.AddInstruction(HloInstruction::CreateSendDone(
+          send, send->channel_id(), /*is_host_transfer=*/false));
+  ASSERT_TRUE(RunZeroSizedElimination().status().ok());
+  EXPECT_EQ(send_done->operand(0), send);
 }
 
 TEST_F(ZeroSizedHloEliminationTest, DoesNotEliminateConstant) {
@@ -90,6 +107,10 @@ TEST_F(ZeroSizedHloEliminationTest, ZeroSizedInstructionWithoutLayoutFolded) {
       HloInstruction::CreateBinary(op_shape, HloOpcode::kAdd, param1, param2));
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunZeroSizedElimination());
   EXPECT_TRUE(changed);
+  const HloComputation* entry = module_->entry_computation();
+  EXPECT_THAT(entry->parameter_instructions(),
+              Each(Property(&HloInstruction::user_count, Eq(0))));
+  EXPECT_EQ(entry->root_instruction()->opcode(), HloOpcode::kConstant);
 }
 
 }  // namespace

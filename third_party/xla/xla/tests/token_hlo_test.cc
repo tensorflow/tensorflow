@@ -26,7 +26,6 @@ limitations under the License.
 #include "xla/service/hlo_module_util.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tests/test_macros.h"
 #include "xla/tests/test_utils.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
@@ -36,7 +35,7 @@ namespace {
 
 class TokenHloTest : public HloTestBase {};
 
-XLA_TEST_F(TokenHloTest, SingleTokenInstruction) {
+TEST_F(TokenHloTest, SingleTokenInstruction) {
   std::unique_ptr<HloModule> module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
   builder.AddInstruction(HloInstruction::CreateToken());
@@ -47,7 +46,7 @@ XLA_TEST_F(TokenHloTest, SingleTokenInstruction) {
   EXPECT_TRUE(LiteralTestUtil::Equal(result, LiteralUtil::CreateToken()));
 }
 
-XLA_TEST_F(TokenHloTest, TokenInTuple) {
+TEST_F(TokenHloTest, TokenInTuple) {
   std::unique_ptr<HloModule> module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
   auto token = builder.AddInstruction(HloInstruction::CreateToken());
@@ -61,7 +60,7 @@ XLA_TEST_F(TokenHloTest, TokenInTuple) {
       LiteralTestUtil::Equal(result, LiteralUtil::MakeTuple({&token_literal})));
 }
 
-XLA_TEST_F(TokenHloTest, TokenTree) {
+TEST_F(TokenHloTest, TokenTree) {
   std::unique_ptr<HloModule> module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
   auto token0 = builder.AddInstruction(HloInstruction::CreateToken());
@@ -76,7 +75,7 @@ XLA_TEST_F(TokenHloTest, TokenTree) {
   EXPECT_TRUE(LiteralTestUtil::Equal(result, LiteralUtil::CreateToken()));
 }
 
-XLA_TEST_F(TokenHloTest, TokenInWhileLoop) {
+TEST_F(TokenHloTest, TokenInWhileLoop) {
   // Thread a token around a while loop. Token is created and consumed by a
   // AfterAll instruction in the while body.
   std::string module_string = R"(
@@ -117,7 +116,7 @@ ENTRY %TokenInWhileLoop () -> s32[] {
   EXPECT_TRUE(RunAndCompare(std::move(module), error_spec_));
 }
 
-XLA_TEST_F(TokenHloTest, TokenInConditional) {
+TEST_F(TokenHloTest, TokenInConditional) {
   std::string module_string = R"(
 HloModule TokenInConditional
 
@@ -167,7 +166,7 @@ ENTRY %TokenInConditional (param.3: pred[]) -> s32[] {
   }
 }
 
-XLA_TEST_F(TokenHloTest, AddDependencyOfParameter) {
+TEST_F(TokenHloTest, AddDependencyOfParameter) {
   std::string module_string = R"(
 HloModule AddDependency, is_scheduled=true
 
@@ -195,7 +194,7 @@ ENTRY %AddDependency (p0: f32[], p1: f32[]) -> f32[] {
   EXPECT_EQ(expected, ExecuteNoHloPasses(std::move(module), {&p0, &p1}));
 }
 
-XLA_TEST_F(TokenHloTest, AddDependencyOfOperation) {
+TEST_F(TokenHloTest, AddDependencyOfOperation) {
   std::string module_string = R"(
 HloModule AddDependency, is_scheduled=true
 
@@ -225,7 +224,7 @@ ENTRY %AddDependency (p0: f32[], p1: f32[]) -> f32[] {
   EXPECT_EQ(expected, ExecuteNoHloPasses(std::move(module), {&p0, &p1}));
 }
 
-XLA_TEST_F(TokenHloTest, AddDependencyOfConstant) {
+TEST_F(TokenHloTest, AddDependencyOfConstant) {
   std::string module_string = R"(
 HloModule AddDependencyOfConstant, is_scheduled=true
 
@@ -245,7 +244,7 @@ ENTRY %AddDependency (p0: f32[]) -> f32[] {
   EXPECT_EQ(expected, ExecuteNoHloPasses(std::move(module), {&p0}));
 }
 
-XLA_TEST_F(TokenHloTest, AddDependencyAsRoot) {
+TEST_F(TokenHloTest, AddDependencyAsRoot) {
   std::string module_string = R"(
 HloModule AddDependencyAsRoot, is_scheduled=true
 ENTRY %AddDependency (p: f32[3]) -> f32[3] {
@@ -263,7 +262,7 @@ ENTRY %AddDependency (p: f32[3]) -> f32[3] {
   EXPECT_EQ(expected, ExecuteNoHloPasses(std::move(module), {&input}));
 }
 
-XLA_TEST_F(TokenHloTest, TupleShapedAddDependency) {
+TEST_F(TokenHloTest, TupleShapedAddDependency) {
   std::string module_string = R"(
 HloModule TupleShapedAddDependency, is_scheduled=true
 ENTRY %TupleShapedAddDependency (p0: f32[3], p1: f32[3]) -> f32[3] {

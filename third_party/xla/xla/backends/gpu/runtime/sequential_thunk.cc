@@ -114,7 +114,9 @@ void SequentialThunk::ForAllThunks(
 }
 
 absl::StatusOr<ThunkProto> SequentialThunk::ToProto() const {
-  TF_ASSIGN_OR_RETURN(ThunkProto proto, Thunk::ToProto());
+  ThunkProto proto;
+  TF_ASSIGN_OR_RETURN(*proto.mutable_thunk_info(), GetThunkInfoProto());
+
   // This sets the oneof-type to the sequential thunk, even if the thunk list is
   // empty.
   proto.mutable_sequential_thunk();

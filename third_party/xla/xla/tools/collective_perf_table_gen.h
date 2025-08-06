@@ -53,6 +53,7 @@ class CollectivePerfTableGen {
     ALL_REDUCE,
     ALL_GATHER,
     REDUCE_SCATTER,
+    ALL_TO_ALL,
   };
 
   struct Config {
@@ -64,6 +65,7 @@ class CollectivePerfTableGen {
         CollectiveType::ALL_REDUCE,
         CollectiveType::ALL_GATHER,
         CollectiveType::REDUCE_SCATTER,
+        CollectiveType::ALL_TO_ALL,
     };
     std::vector<std::string> replica_groups_list;
 

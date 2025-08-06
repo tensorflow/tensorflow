@@ -1,3 +1,4 @@
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/python/ifrt:ifrt.bzl", "ifrt_package_groups")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
@@ -84,6 +85,8 @@ cc_library(
         ":ref_wrapper",
         ":remap_plan_proto_cc",
         ":serdes",
+        ":serdes_default_version_accessor",
+        ":serdes_version",
         ":shape_proto_cc",
         ":sharding_proto_cc",
         ":user_context",
@@ -151,7 +154,10 @@ cc_library(
     ]),
     deps = [
         ":attribute_map_proto_cc",
+        ":serdes_default_version_accessor",
+        ":serdes_version",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -164,6 +170,8 @@ xla_cc_test(
     srcs = ["attribute_map_test.cc"],
     deps = [
         ":attribute_map",
+        ":serdes_test_util",
+        ":serdes_version",
         "//xla/tsl/platform:statusor",
         "@com_google_googletest//:gtest_main",
     ],
@@ -210,6 +218,8 @@ xla_cc_test(
         ":attribute_map",
         ":execute_options_proto_cc",
         ":ifrt",
+        ":serdes_test_util",
+        ":serdes_version",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_googletest//:gtest_main",
@@ -295,8 +305,10 @@ cc_library(
         ":ifrt",
         ":layout_serdes_proto_cc",
         ":serdes",
+        ":serdes_version",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Support",
     ],
@@ -311,6 +323,8 @@ xla_cc_test(
         ":ifrt",
         ":layout_serdes",
         ":serdes",
+        ":serdes_test_util",
+        ":serdes_version",
         "//xla/tsl/platform:statusor",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
@@ -362,6 +376,8 @@ xla_cc_test(
     srcs = ["shape_test.cc"],
     deps = [
         ":ifrt",
+        ":serdes_test_util",
+        ":serdes_version",
         ":shape_proto_cc",
         "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
@@ -383,6 +399,7 @@ xla_cc_test(
         "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/hash:hash_testing",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
     ],
@@ -430,25 +447,11 @@ cc_library(
         ":mock",
         ":test_util",
         "//xla:util",
-        "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
-    ],
-)
-
-cc_library(
-    name = "no_impl_test_main",
-    testonly = True,
-    srcs = ["no_impl_test_main.cc"],
-    visibility = internal_visibility([
-        ":friends",
-        ":internal",
-    ]),
-    deps = [
-        "@com_google_googletest//:gtest_for_library",
     ],
 )
 
@@ -482,13 +485,9 @@ cc_library(
     alwayslink = True,
 )
 
-xla_cc_test(
+build_test(
     name = "array_test_no_impl",
-    srcs = [],
-    deps = [
-        ":array_impl_test_lib",
-        ":no_impl_test_main",
-    ],
+    targets = [":array_impl_test_lib"],
 )
 
 tf_proto_library(
@@ -520,14 +519,9 @@ cc_library(
     alwayslink = True,
 )
 
-xla_cc_test(
+build_test(
     name = "client_test_no_impl",
-    srcs = [],
-    deps = [
-        ":client_impl_test_lib",
-        ":no_impl_test_main",
-        "@com_google_googletest//:gtest",
-    ],
+    targets = [":client_impl_test_lib"],
 )
 
 cc_library(
@@ -551,13 +545,9 @@ cc_library(
     alwayslink = True,
 )
 
-xla_cc_test(
+build_test(
     name = "tuple_test_no_impl",
-    srcs = [],
-    deps = [
-        ":no_impl_test_main",
-        ":tuple_impl_test_lib",
-    ],
+    targets = [":tuple_impl_test_lib"],
 )
 
 cc_library(
@@ -593,6 +583,68 @@ cc_library(
 )
 
 cc_library(
+    name = "serdes_version",
+    hdrs = ["serdes_version.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = internal_visibility([
+        ":friends",
+        ":internal",
+    ]),
+    deps = [
+        "//xla/tsl/lib/gtl:int_type",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "serdes_any_version_accessor",
+    hdrs = ["serdes_any_version_accessor.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = internal_visibility([":serdes_any_version_users"]),
+    deps = [":serdes_version"],
+)
+
+cc_library(
+    name = "serdes_default_version_accessor",
+    hdrs = ["serdes_default_version_accessor.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = internal_visibility([
+        ":friends",
+        ":internal",
+    ]),
+    deps = [
+        ":serdes_version",
+        "@com_google_absl//absl/log:check",
+    ],
+)
+
+cc_library(
+    name = "serdes_week_4_old_version_accessor",
+    hdrs = ["serdes_week_4_old_version_accessor.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = internal_visibility([":serdes_week_4_old_version_users"]),
+    deps = [":serdes_version"],
+)
+
+cc_library(
+    name = "serdes_test_util",
+    testonly = True,
+    srcs = ["serdes_test_util.cc"],
+    hdrs = ["serdes_test_util.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = internal_visibility([
+        ":friends",
+        ":internal",
+        ":users",
+    ]),
+    deps = [
+        ":serdes_any_version_accessor",
+        ":serdes_version",
+        ":serdes_week_4_old_version_accessor",
+    ],
+)
+
+cc_library(
     name = "serdes",
     srcs = ["serdes.cc"],
     hdrs = ["serdes.h"],
@@ -603,7 +655,9 @@ cc_library(
         ":users",
     ]),
     deps = [
+        ":serdes_default_version_accessor",
         ":serdes_proto_cc",
+        ":serdes_version",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -674,11 +728,13 @@ cc_library(
     deps = [
         ":ifrt",
         ":serdes",
+        ":serdes_version",
         ":sharding_serdes_proto_cc",
         "//xla/python/ifrt/ir:sharding_param",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Support",
     ],
@@ -693,9 +749,12 @@ xla_cc_test(
         ":ifrt",
         ":serdes",
         ":serdes_proto_cc",
+        ":serdes_test_util",
+        ":serdes_version",
         ":sharding_serdes",
         "//xla/python/ifrt/ir:sharding_param",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -723,11 +782,14 @@ xla_cc_test(
         ":array_spec_proto_cc",
         ":device_test_util",
         ":ifrt",
+        ":serdes_test_util",
+        ":serdes_version",
         ":sharding_serdes",
         "//xla:shape_util",
         "//xla/pjrt:pjrt_layout",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/hash:hash_testing",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
     ],
@@ -751,6 +813,8 @@ xla_cc_test(
         ":device_proto_cc",
         ":device_test_util",
         ":ifrt",
+        ":serdes_test_util",
+        ":serdes_version",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/types:span",
@@ -799,6 +863,8 @@ xla_cc_test(
     deps = [
         ":dtype_proto_cc",
         ":ifrt",
+        ":serdes_test_util",
+        ":serdes_version",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_googletest//:gtest_main",
@@ -824,10 +890,11 @@ xla_cc_test(
         ":device_test_util",
         ":ifrt",
         ":remap_plan_proto_cc",
+        ":serdes_test_util",
+        ":serdes_version",
         ":sharding_serdes",
         "//xla:shape_util",
         "//xla/pjrt:pjrt_layout",
-        "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
@@ -946,6 +1013,7 @@ xla_cc_test(
         ":plugin_program_serdes",
         ":serdes",
         ":serdes_proto_cc",
+        ":serdes_version",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/protobuf:error_codes_proto_impl_cc",
@@ -1002,12 +1070,13 @@ cc_library(
         ":ifrt",
         ":program_serdes",
         ":serdes",
+        ":serdes_version",
         ":sharding_proto_cc",
         ":sharding_serdes",
-        "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Support",
@@ -1041,13 +1110,15 @@ xla_cc_test(
         ":program_serdes",
         ":serdes",
         ":serdes_proto_cc",
-        "//xla/tsl/concurrency:ref_count",
+        ":serdes_test_util",
+        ":serdes_version",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:cord",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
     ],

@@ -786,38 +786,32 @@ absl::StatusOr<ModuleHandle> CudaExecutor::LoadModuleFromPtx(const char* ptx) {
 }
 
 absl::StatusOr<std::unique_ptr<Kernel>> CudaExecutor::LoadKernel(
-    const MultiKernelLoaderSpec& spec) {
+    const KernelLoaderSpec& spec) {
   auto cuda_kernel = std::make_unique<CudaKernel>(this);
-  const std::string* kernel_name;
+  const std::string& kernel_name = spec.kernel_name();
 
   if (spec.has_cuda_cubin_in_memory()) {
     absl::MutexLock lock{&in_memory_modules_mu_};
-    kernel_name = &spec.cuda_cubin_in_memory().kernel_name();
     const char* cubin = reinterpret_cast<const char*>(
-        spec.cuda_cubin_in_memory().cubin_bytes().data());
+        spec.cuda_cubin_in_memory()->cubin_bytes.data());
     TF_ASSIGN_OR_RETURN(ModuleHandle module_handle, LoadModuleFromCuBin(cubin));
     kernel_to_gpu_binary_[cuda_kernel.get()] = module_handle;
 
     CUmodule module = gpu_binary_to_module_.at(module_handle).first;
-    VLOG(2) << "getting function " << *kernel_name << " from module " << module;
+    VLOG(2) << "getting function " << kernel_name << " from module " << module;
     TF_ASSIGN_OR_RETURN(
         CUfunction function,
-        GetModuleFunction(cuda_context_, module, kernel_name->c_str()));
+        GetModuleFunction(cuda_context_, module, kernel_name.c_str()));
     cuda_kernel->set_gpu_function(function);
 
   } else if (spec.has_cuda_ptx_in_memory()) {
-    kernel_name = &spec.cuda_ptx_in_memory().kernel_name();
-
     if (cc_major_ == 0 && cc_minor_ == 0) {
       return absl::InternalError("Compute capability not set");
     }
 
-    const char* ptx = spec.cuda_ptx_in_memory().text(cc_major_, cc_minor_);
+    const char* ptx = spec.cuda_ptx_in_memory()->ptx.data();
     if (ptx == nullptr) {
-      ptx = spec.cuda_ptx_in_memory().default_text();
-    }
-    if (ptx == nullptr) {
-      LOG(FATAL) << "Loader spec has no ptx for kernel " << *kernel_name;
+      LOG(FATAL) << "Loader spec has no ptx for kernel " << kernel_name;
     }
 
     absl::MutexLock lock{&in_memory_modules_mu_};
@@ -825,17 +819,16 @@ absl::StatusOr<std::unique_ptr<Kernel>> CudaExecutor::LoadKernel(
     kernel_to_gpu_binary_[cuda_kernel.get()] = module_handle;
 
     CUmodule module = gpu_binary_to_module_.at(module_handle).first;
-    VLOG(2) << "getting function " << *kernel_name << " from module " << module;
+    VLOG(2) << "getting function " << kernel_name << " from module " << module;
     TF_ASSIGN_OR_RETURN(
         CUfunction function,
-        GetModuleFunction(cuda_context_, module, kernel_name->c_str()));
+        GetModuleFunction(cuda_context_, module, kernel_name.c_str()));
     cuda_kernel->set_gpu_function(function);
 
   } else if (spec.has_in_process_symbol()) {
-    kernel_name = &spec.in_process_symbol().kernel_name();
-    void* symbol = spec.in_process_symbol().symbol();
+    void* symbol = spec.in_process_symbol()->symbol;
 
-    VLOG(2) << "Resolve CUDA kernel " << *kernel_name
+    VLOG(2) << "Resolve CUDA kernel " << kernel_name
             << " from symbol pointer: " << symbol;
     cudaFunction_t func;
     TF_RETURN_IF_ERROR(cuda::ToStatus(cudaGetFuncBySymbol(&func, symbol),
@@ -845,7 +838,7 @@ absl::StatusOr<std::unique_ptr<Kernel>> CudaExecutor::LoadKernel(
   } else {
     return absl::InternalError("No method of loading CUDA kernel provided");
   }
-  VLOG(3) << "LoadKernel on kernel : " << *kernel_name;
+  VLOG(3) << "LoadKernel on kernel : " << kernel_name;
 
   {
     // Keep track of loaded kernels.
@@ -854,7 +847,7 @@ absl::StatusOr<std::unique_ptr<Kernel>> CudaExecutor::LoadKernel(
   }
 
   // Update CUDA kernel properties after it was loaded in the CUDA context.
-  cuda_kernel->set_name(*kernel_name);
+  cuda_kernel->set_name(kernel_name);
 
   // We have to trust the kernel loader spec arity because there doesn't appear
   // to be a way to reflect on the number of expected arguments w/the CUDA API.
@@ -863,7 +856,6 @@ absl::StatusOr<std::unique_ptr<Kernel>> CudaExecutor::LoadKernel(
   TF_ASSIGN_OR_RETURN(KernelMetadata kernel_metadata,
                       cuda_kernel->GetKernelMetadata());
   cuda_kernel->set_metadata(kernel_metadata);
-  cuda_kernel->set_name(*kernel_name);
   cuda_kernel->set_args_packing(spec.kernel_args_packing());
   return std::move(cuda_kernel);
 }
@@ -1477,8 +1469,8 @@ absl::StatusOr<TensorMap> CudaExecutor::CreateTensorMap(TmaDescriptor tma_desc,
   CUtensorMap tensor_map;
   auto result = cuTensorMapEncodeTiled(
       &tensor_map, data_type, tma_desc.num_dimensions(), global_address,
-      &tma_desc.global_dims()[0], &tma_desc.global_strides()[0],
-      &tma_desc.box_dims()[0], &tma_desc.element_strides()[0], interleave,
+      tma_desc.global_dims().data(), tma_desc.global_strides().data(),
+      tma_desc.box_dims().data(), tma_desc.element_strides().data(), interleave,
       swizzle, l2_promotion, float_oob_fill);
   if (result != CUDA_SUCCESS) {
     const char* error_message;

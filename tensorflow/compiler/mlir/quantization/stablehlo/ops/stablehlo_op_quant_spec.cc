@@ -30,8 +30,8 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
-#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
+#include "tensorflow/compiler/mlir/quantization/common/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
@@ -105,8 +105,7 @@ std::unique_ptr<OpQuantSpec> GetStableHloOpQuantSpec(Operation* op) {
       PopulateCoeffOpQuantDimIfPerChannelQuantized(call_op, *spec);
 
       if (function_name.contains("with_bias")) {
-        spec->biases_params[2] = {{0, 1},
-                                  quant::GetUniformQuantizedTypeForBias};
+        spec->biases_params[2] = {{0, 1}, GetUniformQuantizedTypeForBias};
       }
     } else if (function_name.contains("dot_general")) {
       const auto module_op = call_op->getParentOfType<ModuleOp>();
@@ -122,8 +121,7 @@ std::unique_ptr<OpQuantSpec> GetStableHloOpQuantSpec(Operation* op) {
         spec->coeff_op_quant_dim[1] = -1;
       }
       if (function_name.contains("with_bias")) {
-        spec->biases_params[2] = {{0, 1},
-                                  quant::GetUniformQuantizedTypeForBias};
+        spec->biases_params[2] = {{0, 1}, GetUniformQuantizedTypeForBias};
       }
     }
     for (const auto [operand_idx, per_channel_dim] : spec->coeff_op_quant_dim) {
@@ -157,7 +155,8 @@ bool IsOpQuantizableStableHlo(Operation* op) {
     // quantized.
     return true;
   } else if (op->hasTrait<OpTrait::IsTerminator>() ||
-             isa<quantfork::QuantizeCastOp, quantfork::DequantizeCastOp>(op)) {
+             isa<mlir::quant::ir::QuantizeCastOp,
+                 mlir::quant::ir::DequantizeCastOp>(op)) {
     // Terminators, qcast and decast are not quantizable.
     return false;
   }

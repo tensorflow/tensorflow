@@ -54,7 +54,7 @@ class MockStreamExecutor : public StreamExecutor {
   MOCK_METHOD(absl::Status, Init, (), (override));
   MOCK_METHOD(int, device_ordinal, (), (const, override));
   MOCK_METHOD(absl::StatusOr<std::unique_ptr<Kernel>>, LoadKernel,
-              (const MultiKernelLoaderSpec& spec), (override));
+              (const KernelLoaderSpec& spec), (override));
   MOCK_METHOD(std::unique_ptr<ActivateContext>, Activate, (), (override));
   MOCK_METHOD(bool, UnloadModule, (ModuleHandle module_handle), (override));
   MOCK_METHOD(absl::StatusOr<ModuleHandle>, LoadModule,

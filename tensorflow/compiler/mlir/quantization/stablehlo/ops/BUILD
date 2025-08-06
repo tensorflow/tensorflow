@@ -10,31 +10,6 @@ package(
 )
 
 cc_library(
-    name = "tf_stablehlo_op_quant_spec",
-    srcs = [
-        "tf_stablehlo_op_quant_spec.cc",
-    ],
-    hdrs = ["tf_stablehlo_op_quant_spec.h"],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        "//tensorflow/compiler/mlir/quantization/common:tf_attrs_and_constraints",
-        "//tensorflow/compiler/mlir/quantization/common:tf_lift_as_function_call",
-        "//tensorflow/compiler/mlir/quantization/common/ir:QuantOps",
-        "//tensorflow/compiler/mlir/quantization/common/tf_quantization_lib",
-        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
-        "//tensorflow/compiler/mlir/tensorflow",
-        "@com_google_absl//absl/status:statusor",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:protobuf",
-        "@stablehlo//:stablehlo_ops",
-    ],
-)
-
-cc_library(
     name = "stablehlo_op_quant_spec",
     srcs = [
         "stablehlo_op_quant_spec.cc",
@@ -42,9 +17,9 @@ cc_library(
     hdrs = ["stablehlo_op_quant_spec.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/quantization/common:attrs_and_constraints",
         "//tensorflow/compiler/mlir/quantization/common:lift_as_function_call",
+        "//tensorflow/compiler/mlir/quantization/common/ir:QuantOps",
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
@@ -64,10 +39,10 @@ tf_cc_test(
     srcs = ["stablehlo_op_quant_spec_test.cc"],
     deps = [
         ":stablehlo_op_quant_spec",
-        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/quantization/common:attrs_and_constraints",
         "//tensorflow/compiler/mlir/quantization/common:func",
         "//tensorflow/compiler/mlir/quantization/common:test_base",
+        "//tensorflow/compiler/mlir/quantization/common/ir:QuantOps",
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/core:test",

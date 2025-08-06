@@ -34,7 +34,7 @@ jobs:
     timeout-minutes: 6
     steps:
       - name: "Checking out repository"
-        uses: actions/checkout@e2f20e631ae6d7dd3b768f56a5d2af784dd54791 # v2.5.0
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: "Install buildifier"
         run: parallel --ungroup --retries 3 --delay 15 --nonall -- go install github.com/bazelbuild/buildtools/buildifier@433ea85 # 6.4.0
       - name: "Run buildifier"

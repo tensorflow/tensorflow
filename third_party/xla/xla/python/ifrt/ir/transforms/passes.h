@@ -21,7 +21,6 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "llvm/Support/CommandLine.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
@@ -37,49 +36,11 @@ namespace xla {
 namespace ifrt {
 
 #define GEN_PASS_DECL
+#define GEN_PASS_REGISTRATION
 #include "xla/python/ifrt/ir/transforms/passes.h.inc"  // IWYU pragma: export
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateSpmdExpandableInterfaceVerificationPass(
-    SpmdExpandableInterfaceVerificationPassOptions options = {});
-
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> CreateSpmdExpansionPass();
-
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateIfrtDuplicatedCalleeEliminationPass();
-
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-CreateIfrtMergeReshardsPass();
-
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateIfrtOutlineAtomProgramToModulePass();
-
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-CreateIfrtVerifyDonationPass();
-
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateIfrtVerifyShardingSpecifiedPass();
-
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateIfrtPopulateAtomProgramMetadataPass();
-
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateIfrtReshardToCopyArraysPass();
-
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateIfrtLowerAtomProgramMetadataToXlaPass();
-
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateIfrtRemoveIfrtAttrsPass();
-
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateIfrtRemoveAttrsFromOtherDialectsPass();
-
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateIfrtLowerMpmdReshardToCallPass();
-
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateIfrtVerifyBoundExternalLoadedExecutablePass(
+createIfrtVerifyBoundExternalLoadedExecutablePass(
     std::shared_ptr<AtomExecutableMap> bound_executable_map);
 
 // Compiles every atom program ModuleOp into LoadedExecutableOp, and
@@ -106,7 +67,7 @@ CreateIfrtVerifyBoundExternalLoadedExecutablePass(
 // ```
 // }
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateIfrtCompileAtomProgramPass(
+createIfrtCompileAtomProgramPass(
     std::shared_ptr<AtomProgramCompiler> compiler,
     std::shared_ptr<
         absl::flat_hash_map<std::string, std::unique_ptr<CompileOptions>>>
@@ -114,36 +75,26 @@ CreateIfrtCompileAtomProgramPass(
     std::shared_ptr<AtomExecutableMap> atom_executable_map);
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateIfrtCompileAndPropagateShardingsPass(
+createIfrtCompileAndPropagateShardingsPass(
     std::shared_ptr<AtomProgramCompiler> compiler,
     std::shared_ptr<
         absl::flat_hash_map<std::string, std::unique_ptr<CompileOptions>>>
         compile_options,
     std::shared_ptr<AtomExecutableMap> atom_executable_map);
 
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateIfrtPrecompileAtomProgramPreprocessingPass(
-    IfrtPrecompileAtomProgramPreprocessingPassOptions options = {});
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> createIfrtToDotPass(
+    IfrtToDotPassOptions options,
+    std::shared_ptr<AtomExecutableMap> atom_executable_map);
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateIfrtVerifyDeviceTypeConsistencyPass(
-    IfrtVerifyDeviceTypeConsistencyPassOptions options = {});
-
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateIfrtDumpAtomProgramsPass(IfrtDumpAtomProgramsPassOptions options = {});
-
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateIfrtAtomProgramsToVhloPass(
+createIfrtAtomProgramsToVhloPass(
     tsl::protobuf::RepeatedPtrField<IfrtIrAtomProgramProto>* atom_programs,
     std::string vhlo_target_version);
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateIfrtAtomProgramsFromVhloPass(
+createIfrtAtomProgramsFromVhloPass(
     const tsl::protobuf::RepeatedPtrField<IfrtIrAtomProgramProto>&
         atom_programs);
-
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> CreateVifrtToVersionPass(
-    VifrtToVersionPassOptions options = {});
 
 void populateIfrtToVifrtPatterns(mlir::RewritePatternSet* patterns,
                                  mlir::TypeConverter* converter,
@@ -157,12 +108,8 @@ void populateVifrtToVersionPatterns(mlir::RewritePatternSet* patterns,
                                     mlir::TypeConverter* converter,
                                     mlir::MLIRContext* context);
 
-// Generated definitions. This should be placed after all Pass creations.
-#define GEN_PASS_REGISTRATION
-#include "xla/python/ifrt/ir/transforms/passes.h.inc"  // IWYU pragma: export
-
 // Registers IfrtCompileAtomProgramPass to ifrt-opt.
-void RegisterIfrtCompileAtomProgramPass(
+void registerIfrtCompileAtomProgramPass(
     std::shared_ptr<AtomProgramCompiler> compiler,
     std::shared_ptr<
         absl::flat_hash_map<std::string, std::unique_ptr<CompileOptions>>>
@@ -170,7 +117,7 @@ void RegisterIfrtCompileAtomProgramPass(
     std::shared_ptr<AtomExecutableMap> atom_executable_map);
 
 // Registers IfrtCompileAndPropagateShardingsPass to ifrt-opt.
-void RegisterIfrtCompileAndPropagateShardingsPass(
+void registerIfrtCompileAndPropagateShardingsPass(
     std::shared_ptr<AtomProgramCompiler> compiler,
     std::shared_ptr<
         absl::flat_hash_map<std::string, std::unique_ptr<CompileOptions>>>
@@ -178,8 +125,13 @@ void RegisterIfrtCompileAndPropagateShardingsPass(
     std::shared_ptr<AtomExecutableMap> atom_executable_map);
 
 // Registers IfrtVerifyBoundExternalLoadedExecutablePass to ifrt-opt.
-void RegisterIfrtVerifyBoundExternalLoadedExecutablePass(
+void registerIfrtVerifyBoundExternalLoadedExecutablePass(
     std::shared_ptr<AtomExecutableMap> bound_executable_map);
+
+// Registers IfrtToDotPass to ifrt-opt.
+void registerIfrtToDotPass(
+    IfrtToDotPassOptions options,
+    std::shared_ptr<AtomExecutableMap> atom_executable_map);
 
 struct IfrtToOutlinedAtomProgramsPipelineOptions
     : mlir::PassPipelineOptions<IfrtToOutlinedAtomProgramsPipelineOptions> {
@@ -191,19 +143,19 @@ struct IfrtToOutlinedAtomProgramsPipelineOptions
 
 // Creates pipeline of all the IFRT IR passes that do not require
 // compilation-time information (e.g., device assignments).
-void CreateIfrtToOutlinedAtomProgramsPipeline(
+void createIfrtToOutlinedAtomProgramsPipeline(
     mlir::OpPassManager& pm,
     const IfrtToOutlinedAtomProgramsPipelineOptions& options);
 
 // Creates a pipeline that populates metadata info for each atom program.
-void CreateIfrtPopulateAtomProgramMetadataPipeline(mlir::OpPassManager& pm);
+void createIfrtPopulateAtomProgramMetadataPipeline(mlir::OpPassManager& pm);
 
 // Creates pipeline to lower an IFRT XLA program to be ready for compilation.
-void CreateIfrtCompileXlaPreprocessingPipeline(mlir::OpPassManager& pm);
+void createIfrtCompileXlaPreprocessingPipeline(mlir::OpPassManager& pm);
 
 // Creates a pipeline that converts an IFRT IR program to a versioned IFRT IR
 // program, and a versioned VHLO programs populated within `IfrtIrProgramProto`.
-void CreateIfrtToVersionedPipeline(mlir::OpPassManager& pm,
+void createIfrtToVersionedPipeline(mlir::OpPassManager& pm,
                                    std::string ifrt_target_version,
                                    std::string vhlo_target_version,
                                    IfrtIrProgramProto& ifrt_ir_program);
@@ -215,11 +167,11 @@ void CreateIfrtToVersionedPipeline(mlir::OpPassManager& pm,
 // versioned in the given `ifrt_ir_program`. The pipeline will convert these
 // atom programs (i.e., from VHLO to StableHLO) and add them to the IFRT IR
 // program.
-void CreateIfrtFromVersionedPipeline(mlir::OpPassManager& pm,
+void createIfrtFromVersionedPipeline(mlir::OpPassManager& pm,
                                      const IfrtIrProgramProto& ifrt_ir_program);
 
 // Registers passes and pipelines to ifrt-opt.
-void RegisterIfrtPassesAndPipelines(
+void registerIfrtPassesAndPipelines(
     std::shared_ptr<AtomProgramCompiler> compiler,
     std::shared_ptr<
         absl::flat_hash_map<std::string, std::unique_ptr<CompileOptions>>>

@@ -139,7 +139,7 @@ Value EmitBoundsCheck(ImplicitLocOpBuilder& b,
                       absl::Span<const int64_t> slice_shape,
                       absl::Span<const int64_t> operand_shape,
                       ValueRange offsets) {
-  Value in_bounds = b.create<arith::ConstantIntOp>(1, b.getI1Type());
+  Value in_bounds = b.create<arith::ConstantIntOp>(b.getI1Type(), 1);
   for (auto [update_dim, operand_dim, offset] :
        llvm::zip(slice_shape, operand_shape, offsets)) {
     Value ub = b.create<arith::ConstantIndexOp>(operand_dim - update_dim);
@@ -154,7 +154,7 @@ Value EmitBoundsCheck(ImplicitLocOpBuilder& b,
 
 Value EmitInequalityCheck(ImplicitLocOpBuilder& b, ValueRange lhs,
                           ValueRange rhs) {
-  Value not_equal = b.create<arith::ConstantIntOp>(0, b.getI1Type());
+  Value not_equal = b.create<arith::ConstantIntOp>(b.getI1Type(), 0);
   for (auto [lhs_elem, rhs_elem] : llvm::zip(lhs, rhs)) {
     not_equal = b.createOrFold<arith::OrIOp>(
         not_equal, b.createOrFold<arith::CmpIOp>(arith::CmpIPredicate::ne,
@@ -684,7 +684,7 @@ absl::Status ScatterWithDistributedIndices::EmitEntryFunctionImpl(
 
   // Prepare loop initial values. Inits are packed as
   // [index_changed, is_inbounds, index_0,  ..., accumulator].
-  Value is_inbounds_init = b.create<arith::ConstantIntOp>(0, b.getI1Type());
+  Value is_inbounds_init = b.create<arith::ConstantIntOp>(b.getI1Type(), 0);
   Value slice_id_init = b.create<arith::ConstantIndexOp>(0);
   std::vector<Value> indices_init(description_.index_vector_length,
                                   b.create<arith::ConstantIndexOp>(-1));
@@ -894,44 +894,40 @@ std::unique_ptr<ScatterFusion> CreateScatterFusion(
   int64_t max_vectorized_elements = kMaxVectorizedBits / elem_type_bits;
   int64_t vector_size = GetSingleSliceVectorSize(
       num_elements_per_slice, max_vectorized_elements, warp_size);
-  int64_t num_active_threads_per_warp =
-      std::min(warp_size, num_elements_per_slice / vector_size);
-
   int64_t max_active_warps =
       kNumWarpsPerBlock * analysis.device_info().core_count();
-  // If we have enough data, we assign each warp to process a single
-  // slice.
-  if (num_slices > max_active_warps &&
-      num_active_threads_per_warp > warp_size / 2) {
+
+  // If indices are sorted and not unique, we can use the distributed indices
+  // implementation to accumulate the updates before writing them to the output
+  // tensor.
+  if (description.scatter->indices_are_sorted() &&
+      !description.scatter->unique_indices() && num_slices > max_active_warps) {
     int64_t num_indices_per_warp = 1;
     int64_t indices_vector_size = 1;
     int64_t num_warps_per_slice = 1;
-    // For sorted scatter, we try to estimate the number of updates per warp by
-    // computing the ratio of the number of the given updates to the number of
-    // the possible valid indices. If we do not have multiple updates per warp,
-    // there is no reason to use this algorithm.
-    if (description.scatter->indices_are_sorted()) {
-      num_indices_per_warp = CeilOfRatio(
-          num_slices,
-          std::max(max_active_warps,
-                   GetNumPossibleValidIndices(
-                       description.slice_shape, description.output_shape,
-                       description.index_vector_length)));
+    // We try to estimate the number of updates per warp by computing the ratio
+    // of the number of the given updates to the number of the possible valid
+    // indices. If we do not have multiple updates per warp, there is no reason
+    // to use this algorithm.
+    num_indices_per_warp = CeilOfRatio(
+        num_slices,
+        std::max(max_active_warps,
+                 GetNumPossibleValidIndices(description.slice_shape,
+                                            description.output_shape,
+                                            description.index_vector_length)));
 
-      // If the index_vector_length is 1, we can vectorize the indices read.
-      int64_t index_elem_type_bits = primitive_util::BitWidth(
-          description.scatter->scatter_indices()->shape().element_type());
-      int64_t max_vectorized_indices =
-          kMaxVectorizedBits / index_elem_type_bits;
-      if (description.index_vector_length == 1 &&
-          num_indices_per_warp > max_vectorized_indices) {
-        // Pad num_indices_per_warp to the next multiple of
-        // max_vectorized_indices.
-        num_indices_per_warp =
-            CeilOfRatio(num_indices_per_warp, max_vectorized_indices) *
-            max_vectorized_indices;
-        indices_vector_size = max_vectorized_indices;
-      }
+    // If the index_vector_length is 1, we can vectorize the indices read.
+    int64_t index_elem_type_bits = primitive_util::BitWidth(
+        description.scatter->scatter_indices()->shape().element_type());
+    int64_t max_vectorized_indices = kMaxVectorizedBits / index_elem_type_bits;
+    if (description.index_vector_length == 1 &&
+        num_indices_per_warp > max_vectorized_indices) {
+      // Pad num_indices_per_warp to the next multiple of
+      // max_vectorized_indices.
+      num_indices_per_warp =
+          CeilOfRatio(num_indices_per_warp, max_vectorized_indices) *
+          max_vectorized_indices;
+      indices_vector_size = max_vectorized_indices;
     }
     return std::make_unique<ScatterWithDistributedIndices>(
         analysis, description, vector_size, num_warps_per_slice,

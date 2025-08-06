@@ -70,13 +70,17 @@ absl::StatusOr<std::unique_ptr<NanoRtExecutable>> NanoRtClient::Compile(
                                                         /*stream_exec=*/nullptr,
                                                         compile_options));
 
+  auto optimized_hlo_program_shape =
+      hlo_module->entry_computation_layout().ComputeProgramShape();
+
   // Compile optimized HLO module to CPU executable.
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
       compiler.RunBackend(std::move(hlo_module), /*stream_exec=*/nullptr,
                           compile_options));
 
-  return NanoRtExecutable::Create(std::move(executable));
+  return NanoRtExecutable::Create(std::move(executable),
+                                  optimized_hlo_program_shape);
 }
 
 }  // namespace xla::cpu

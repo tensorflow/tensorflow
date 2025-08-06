@@ -155,7 +155,8 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
   const Shape& shape() const override { return shape_; }
   const Sharding& sharding() const override { return *sharding_; }
   ShardingRef shared_ptr_sharding() const override { return sharding_; }
-  absl::StatusOr<std::shared_ptr<const PjRtLayout>> layout() const override;
+  absl::StatusOr<std::shared_ptr<const PjRtLayout>> pjrt_layout()
+      const override;
 
   absl::StatusOr<std::vector<xla::ifrt::ArrayRef>>
   DisassembleIntoSingleDeviceArrays(
@@ -206,6 +207,8 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
     kAlive     // IsDeleted() will return false.
   };
   mutable DeletionState deleted_ ABSL_GUARDED_BY(mu_) = DeletionState::kAlive;
+
+  mutable Future<> ready_future_ ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace proxy

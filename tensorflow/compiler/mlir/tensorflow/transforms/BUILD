@@ -50,6 +50,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
     ],
 )
 
@@ -323,6 +324,7 @@ cc_library(
         "optimize_global_tensors.cc",
         "remove_vars_in_session_initializer.cc",
         "strip_saved_module_metadata.cc",
+        "unfreeze_mutable_global_tensors.cc",
     ],
     hdrs = [
         "tf_saved_model_passes.h",
@@ -655,10 +657,12 @@ cc_library(
         "@local_xla//xla:xla_proto_cc",
         "@local_xla//xla/hlo/builder:sharding_builder",
         "@local_xla//xla/mlir_hlo",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
         "@stablehlo//:chlo_ops",
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//:stablehlo_portable_api",
         "@stablehlo//:stablehlo_serialization",
+        "@stablehlo//:version",
         "@stablehlo//:vhlo_ops",
     ],
 )
@@ -733,6 +737,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
     ],
 )
 
@@ -801,6 +806,7 @@ cc_library(
         "@local_xla//xla/service:shape_inference",
         "@local_xla//xla/tsl/platform:errors",
         "@local_xla//xla/tsl/util:env_var",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
         "@stablehlo//:stablehlo_serialization",
         "@stablehlo//:version",
     ],
@@ -956,13 +962,11 @@ cc_library(
     hdrs = ["tf_graph_optimization_pass.h"],
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/compiler/mlir/tf2xla/api/v2:graph_to_tf_executor",
         "//tensorflow/compiler/mlir/tf2xla/api/v2:tf_executor_to_graph",
         "//tensorflow/compiler/tf2xla:functionalize_control_flow_pass_registration",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
         "//tensorflow/core:ops",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/container:flat_hash_set",

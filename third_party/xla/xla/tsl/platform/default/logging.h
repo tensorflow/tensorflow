@@ -81,11 +81,6 @@ namespace tsl {
 
 namespace internal {
 
-// Emit "message" as a log message to the log for the specified
-// "severity" as if it came from a LOG call at "fname:line"
-void LogString(const char* fname, int line, absl::LogSeverity severity,
-               const std::string& message);
-
 class LogMessage : public std::basic_ostringstream<char> {
  public:
   LogMessage(const char* fname, int line, absl::LogSeverity severity);

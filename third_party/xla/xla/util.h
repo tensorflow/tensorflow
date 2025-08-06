@@ -374,8 +374,8 @@ XLA_ERROR_WITH_STRCAT_AND_BACKTRACE(Internal);
 // uniformly replaced with "indentation".
 std::string Reindent(absl::string_view original, absl::string_view indentation);
 
-template <typename Container>
-int64_t PositionInContainer(const Container& container, int64_t value) {
+template <typename Container, typename Value>
+int64_t PositionInContainer(const Container& container, const Value& value) {
   return std::distance(container.begin(), absl::c_find(container, value));
 }
 
@@ -765,7 +765,7 @@ std::vector<int64_t> ElemwiseProduct(absl::Span<const int64_t> a,
 // and `b` with the same product, i.e. `(i, j)` so
 // • a = {a[0 = i_0], ..., a[i_1 - 1], a[i_1], ... , a[i_2 - 1], ...}
 // • b = {b[0 = j_0], ..., b[j_1 - 1], b[j_1], ... , b[j_2 - 1], ...}
-// • ∀ k . 0 <= k < CommonFactors(a, b).size - 1 =>
+// • ∀ k . 0 <= k < CommonFactors(a, b).size =>
 //         a[i_k] × a[i_k + 1] × ... × a[i_(k+1) - 1] =
 //         b[j_k] × b[j_k + 1] × ... × b[j_(k+1) - 1]
 // where `CommonFactors(a, b)[CommonFactors(a, b).size - 1] = (a.size, b.size)`
@@ -840,14 +840,16 @@ bool IsInt32(T x) {
   return static_cast<int32_t>(x) == x;
 }
 
-template <typename T>
-absl::Status EraseElementFromVector(std::vector<T>* container, const T& value) {
+template <typename Container, typename T>
+bool EraseElementFromVector(Container* container, const T& value) {
   // absl::c_find returns a const_iterator which does not seem to work on
   // gcc 4.8.4, and this breaks the ubuntu/xla_gpu build bot.
   auto it = std::find(container->begin(), container->end(), value);
-  TF_RET_CHECK(it != container->end());
+  if (it == container->end()) {
+    return false;
+  }
   container->erase(it);
-  return absl::OkStatus();
+  return true;
 }
 
 // Takes a sequence of unpacked kBitsPerElement-bit values (kBitsPerElement must

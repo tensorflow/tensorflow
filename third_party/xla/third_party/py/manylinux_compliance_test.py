@@ -15,6 +15,7 @@
 
 import argparse
 import io
+import pathlib
 import platform
 import re
 import sys
@@ -67,10 +68,12 @@ def get_auditwheel_output(wheel_path: str) -> None:
   sub_parsers = auditwheel_parser.add_subparsers(metavar="command", dest="cmd")
   main_show.configure_parser(sub_parsers)
   auditwheel_args = argparse.Namespace(
-      WHEEL_FILE=wheel_path,
+      WHEEL_FILE=pathlib.Path(wheel_path),
+      DISABLE_ISA_EXT_CHECK=True,
       verbose=1,
   )
-  main_show.execute(args=auditwheel_args, p=auditwheel_parser)
+
+  main_show.execute(auditwheel_args, auditwheel_parser)
 
   sys.stdout = previous_stdout
   return stringio.getvalue()

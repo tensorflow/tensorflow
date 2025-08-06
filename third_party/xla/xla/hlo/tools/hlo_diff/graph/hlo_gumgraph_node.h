@@ -24,6 +24,7 @@
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/call_graph.h"
+#include "xla/service/hlo_value.h"
 
 namespace xla {
 namespace hlo_diff {
@@ -39,9 +40,11 @@ struct HloInstructionNodeProps {
   int64_t generation = 0;
   int64_t height = 0;
   uint64_t subgraph_fingerprint = 0;
+  // fingerprint is used to determine if two instructions should be matched.
   uint64_t fingerprint = 0;
-  ListPosition sibling_position;
-  ListPosition pre_order_graph_position;
+  // canonical_fingerprint is used to determine if two mapped instructions are
+  // changed.
+  uint64_t canonical_fingerprint = 0;
 };
 
 // Properties of a computation node in a HloGumgraph.
@@ -59,9 +62,15 @@ struct HloInstructionNode {
   const HloInstruction* instruction;
   int unique_node_index = 0;
   std::vector<HloInstructionNode*> children;
+  std::vector<int> i_th_parents;
   std::vector<HloInstructionNode*> parents;
+  std::vector<int> i_th_children;
   HloInstructionNodeProps props;
   bool is_root = false;
+  // All HloValues that this instruction consumes as input.
+  std::vector<const HloValue*> used_values;
+  // All uses of the HloValues that are present in this instruction's output.
+  std::vector<HloUse> value_uses;
   absl::string_view GetName() const {
     return is_root ? "root" : instruction->name();
   }

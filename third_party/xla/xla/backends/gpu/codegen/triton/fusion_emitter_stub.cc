@@ -13,13 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cstdint>
 #include <string>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Module.h"
 #include "mlir/IR/Builders.h"
@@ -81,16 +79,6 @@ std::string GetLibdevicePath(const HloModuleConfig& hlo_config,
                              const se::DeviceDescription& device_info) {
   return "";
 }
-
-namespace ir_emitter_triton_internal {
-
-llvm::SmallVector<mlir::Value, 3> ComputeDelinearizedTileIndex(
-    EmitterLocOpBuilder& b,
-    absl::Span<const int64_t> num_output_tiles_per_dim) {
-  return {};
-}
-
-}  // namespace ir_emitter_triton_internal
 
 }  // namespace gpu
 }  // namespace xla

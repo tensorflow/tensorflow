@@ -40,8 +40,8 @@ limitations under the License.
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -141,12 +141,12 @@ class DeterminismTest : public GpuCodegenTest {
     EXPECT_TRUE(filecheck_result.value());
   }
 
-  bool IsVoltaOrLater() const {
+  bool IsAmpereOrLater() const {
     return backend()
         .default_stream_executor()
         ->GetDeviceDescription()
         .cuda_compute_capability()
-        .IsAtLeastVolta();
+        .IsAtLeastAmpere();
   }
 
   bool IsRocm() const {
@@ -193,9 +193,9 @@ ENTRY e {
 }
 
 TEST_F(DeterminismTest, DeterministicTritonGemmUsesDefaultConfig) {
-  if (!IsVoltaOrLater()) {
+  if (!IsAmpereOrLater()) {
     GTEST_SKIP() << "Triton is not supported on non-NVIDIA and "
-                    "pre-Volta NVIDIA GPUs.";
+                    "pre-Ampere NVIDIA GPUs.";
   }
 
   constexpr absl::string_view kHloText = R"(
@@ -209,19 +209,23 @@ ENTRY e {
   // Disable autotuning.
   debug_options_.set_xla_gpu_deterministic_ops(true);
   // Check that triton is used but without autotuning (default config).
+  // TODO: b/407494653 - This is a bad test because it relies on particular
+  // implementation details to succeed. Thus, it tests that there is no
+  // autotuning happening in a brittle way. Fix this when refactoring the
+  // autotuner.
   AutotunerUtil::ClearAutotuneResults();
   MatchOptimizedHlo(kHloText, R"(
     CHECK: __triton_gemm
-    CHECK: {"block_m":"32","block_n":"32","block_k":"32","split_k":"1","num_stages":"1","num_warps":"4","num_ctas":"1"}
+    CHECK: {"block_m":"16","block_n":"16","block_k":"64","split_k":"1","num_stages":"4","num_warps":"2","num_ctas":"1"
   )",
                     TimerCreation::kForbidden);
   AssertDeterminism(kHloText, /*num_runs=*/3);
 }
 
 TEST_F(DeterminismTest, ExcludingNonDeterministicOpsDoesNotDisableAutotuning) {
-  if (!IsVoltaOrLater()) {
+  if (!IsAmpereOrLater()) {
     GTEST_SKIP() << "Triton is not supported on non-NVIDIA and "
-                    "pre-Volta NVIDIA GPUs.";
+                    "pre-Ampere NVIDIA GPUs.";
   }
 
   debug_options_.set_xla_gpu_cublas_fallback(false);

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/base/no_destructor.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
@@ -26,6 +27,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_value.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/hlo_value.h"
 
@@ -42,8 +44,8 @@ inline BufferAssigner::Colorer CollectiveColorer(bool use_user_buffers,
                                                  bool use_nvshmem) {
   return [use_user_buffers, use_nvshmem](HloAliasAnalysis* alias_analysis,
                                          const HloOrdering&) {
-    static const auto* const kSupportedOpcodes =
-        new absl::flat_hash_set<HloOpcode>{
+    static const absl::NoDestructor<absl::flat_hash_set<HloOpcode>>
+        kSupportedOpcodes({
             HloOpcode::kAllReduce,
             HloOpcode::kAllReduceStart,
             HloOpcode::kAllReduceDone,
@@ -55,7 +57,7 @@ inline BufferAssigner::Colorer CollectiveColorer(bool use_user_buffers,
             HloOpcode::kCollectivePermuteStart,
             HloOpcode::kCollectivePermuteDone,
             HloOpcode::kAllToAll,
-        };
+        });
 
     auto is_nvshmem_op = [](const HloInstruction* inst) {
       bool is_nvshmem_collective = false;

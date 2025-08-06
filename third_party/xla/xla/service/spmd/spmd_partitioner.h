@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/literal.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/custom_call_sharding_helper.h"
@@ -109,6 +110,10 @@ struct SpmdPartitionerOptions {
   // Whether disable rewrite for dots that share the same
   // operand as an already rewritten windowed einsum loop.
   bool disable_ag_rewrite_for_multiple_consumers = false;
+
+  // Enables partially windowed einsums with more than one sharded operand
+  // dimension as seen in simultaneous data and tensor parallelism.
+  bool partial_windowed_einsum = false;
 
   // Partitioning method to prioritize for gather operations.
   std::vector<GatherScatterPartitioningMethod>
@@ -472,6 +477,12 @@ class PartitionedHlo {
         << "PartitionedHlo is missing sharding:" << hlo->ToString();
   }
 
+  PartitionedHlo(PartitionedHlo&& other) = default;
+  PartitionedHlo(const PartitionedHlo& other) = default;
+
+  PartitionedHlo& operator=(PartitionedHlo&& other) = default;
+  PartitionedHlo& operator=(const PartitionedHlo& other) = default;
+
   PartitionedHlo CloneWithNewHlo(HloInstruction* hlo) const {
     PartitionedHlo new_phlo = *this;
     new_phlo.hlo_ = hlo;
@@ -686,7 +697,7 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
 
   // Sets the PartitionedHlo for the original hlo.
   void SetPartitionedHlo(const HloInstruction* hlo,
-                         const PartitionedHlo& partitioned_hlo) {
+                         PartitionedHlo&& partitioned_hlo) {
     CHECK_EQ(partitioned_instructions_.count(hlo), 0);
     partitioned_instructions_.emplace(hlo, partitioned_hlo);
     changed_ = true;
@@ -718,17 +729,20 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   }
 
   virtual double GetCommunicationTimeInMilliSec(
-      int64_t bytes, absl::Span<const ReplicaGroup> device_groups) {
+      int64_t bytes, const CollectiveDeviceList& collective_device_list) {
     return 0.0;
   }
 
   virtual int GetCommunicationMultiplier(
-      absl::Span<const ReplicaGroup> device_groups) {
+      const CollectiveDeviceList& collective_device_list) {
     return 1;
   }
 
   std::vector<ReplicaGroup> CreateReplicaGroups(
       std::vector<std::vector<int64_t>>& groups);
+
+  std::vector<ReplicaGroup> CreateReplicaGroups(
+      const hlo_sharding_util::DeviceGroupTileAssignment& groups);
 
   const CallGraph& call_graph() { return call_graph_; }
   int64_t num_partitions() const { return num_partitions_; }
@@ -803,7 +817,7 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   std::optional<SPMDCollectiveOpsCreator> visiting_collective_ops_creator_;
   std::optional<HloInstruction*> visiting_partition_id_;
   std::vector<PartitionedHlo::PartitioningState> visiting_state_;
-  std::vector<std::vector<int64_t>> device_groups_;
+  std::optional<hlo_sharding_util::DeviceGroupTileAssignment> device_groups_;
   const CallGraph& call_graph_;
 };
 

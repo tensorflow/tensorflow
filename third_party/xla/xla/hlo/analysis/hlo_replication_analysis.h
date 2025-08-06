@@ -36,10 +36,28 @@ limitations under the License.
 namespace xla {
 
 // A wrapper around absl::Span<const ReplicaGroup> that allows us to hash it
-class HashableReplicaGroupSpan : absl::Span<const ReplicaGroup> {
+class HashableReplicaGroupSpan : public absl::Span<const ReplicaGroup> {
  public:
   explicit HashableReplicaGroupSpan(const absl::Span<const ReplicaGroup> groups)
       : absl::Span<const ReplicaGroup>(groups) {}
+
+  bool operator==(const HashableReplicaGroupSpan& other) const {
+    if (size() != other.size()) {
+      return false;
+    }
+    for (int i = 0; i < size(); ++i) {
+      if (this->at(i).replica_ids().size() !=
+          other.at(i).replica_ids().size()) {
+        return false;
+      }
+      for (int j = 0; j < this->at(i).replica_ids().size(); ++j) {
+        if (this->at(i).replica_ids()[j] != other.at(i).replica_ids()[j]) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
 
   template <typename H>
   friend H AbslHashValue(H h, const HashableReplicaGroupSpan& a) {
@@ -239,7 +257,8 @@ class HloReplicationAnalysis {
   absl::flat_hash_map<std::pair<HloReplication, HloReplication>, HloReplication>
       replication_merge_map_;
   std::vector<std::optional<HloReplication>> unique_replications_;
-  absl::flat_hash_map<size_t, std::vector<std::vector<std::vector<int64_t>>>>
+  absl::flat_hash_map<HashableReplicaGroupSpan,
+                      std::vector<std::vector<std::vector<int64_t>>>>
       device_sets_per_replica_map_;
 };
 

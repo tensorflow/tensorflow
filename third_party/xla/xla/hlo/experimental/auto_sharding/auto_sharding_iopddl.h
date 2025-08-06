@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_IOPDDL_H_
 
 #include <cstdint>
+#include <vector>
 
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.pb.h"
 #include "xla/hlo/experimental/auto_sharding/iopddl.h"
@@ -28,10 +29,22 @@ constexpr int64_t kInfinityInt = 1e18;
 
 iopddl::Cost ConvertCost(double cost);
 
-iopddl::Problem ConvertToProblem(const AutoShardingSolverRequest& request);
+iopddl::Problem ConvertToProblem(const AutoShardingSolverRequest& request,
+                                 bool use_follower_constraints = true);
 
 AutoShardingSolverRequest ConvertToSolverRequest(
     const iopddl::Problem& problem);
+
+std::vector<int64_t> GetFollowers(const iopddl::Problem& problem);
+
+std::vector<iopddl::Edge> GetAliases(const iopddl::Problem& problem);
+
+std::vector<iopddl::Edge> GetDeduplicatedEdges(const iopddl::Problem& problem);
+
+// Returns true if the edge contains some infinite costs, but no other non-zero
+// costs (these represent "aliases" that require special treatment in the
+// solver).
+bool IsEdgeAlias(const iopddl::Edge& edge);
 
 void RandomizeCosts(iopddl::Problem& problem);
 

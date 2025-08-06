@@ -61,7 +61,8 @@ std::string MemoryKind::ToString() const {
   return "(default)";
 }
 
-MemoryKind CanonicalizeMemoryKind(MemoryKind memory_kind, Device* device) {
+MemoryKind CanonicalizeMemoryKind(MemoryKind memory_kind,
+                                  const Device* device) {
   if (memory_kind.memory_kind().has_value()) {
     return memory_kind;
   }

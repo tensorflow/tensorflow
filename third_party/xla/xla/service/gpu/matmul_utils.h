@@ -81,12 +81,19 @@ struct MatrixLayout : public se::gpu::MatrixLayout {
 };
 
 struct GemmConfig : public se::gpu::GemmConfig {
+  GemmConfig() = default;
+  explicit GemmConfig(const se::gpu::GemmConfig& base)
+      : se::gpu::GemmConfig(base) {}
+  explicit GemmConfig(se::gpu::GemmConfig&& base)
+      : se::gpu::GemmConfig(std::move(base)) {}
+
   // For legacy Gemm operations XLA:GPU allocates its own workspace and passes
   // it to all BLAS API calls.
   //
   // Size of the workspace based on NVIDIA recommendation:
   // https://docs.nvidia.com/cuda/cublas/#cublassetworkspace
   static constexpr int64_t kHopperWorkspace = 32 * 1024 * 1024;  // 32 MiB
+  static constexpr int64_t kGFX942Workspace = 76 * 1024 * 1024;  // 76 MiB
   static constexpr int64_t kGFX950Workspace = 64 * 1024 * 1024;  // 64 MiB
   static constexpr int64_t kDefaultWorkspace = 4 * 1024 * 1024;  // 4 MiB
   // the number of algorithms to consider for autotuning by default
@@ -164,14 +171,16 @@ absl::StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
 struct TritonGemmConfig {
   constexpr TritonGemmConfig() = default;
   constexpr TritonGemmConfig(int block_m, int block_n, int block_k, int split_k,
-                             int num_stages, int num_warps, int num_ctas = 1)
+                             int num_stages, int num_warps, int num_ctas = 1,
+                             bool is_tma_allowed = false)
       : block_m(block_m),
         block_n(block_n),
         block_k(block_k),
         split_k(split_k),
         num_stages(num_stages),
         num_warps(num_warps),
-        num_ctas(num_ctas) {}
+        num_ctas(num_ctas),
+        is_tma_allowed(is_tma_allowed) {}
   int block_m = 0;
   int block_n = 0;
   int block_k = 0;
@@ -180,18 +189,20 @@ struct TritonGemmConfig {
   int num_warps = 0;
   // Number of blocks in a block cluster.
   int num_ctas = 0;
+  // Allow/disallow TMA usage for all arguments of the kernel (where possible).
+  bool is_tma_allowed = false;
 
   // When adding new members, please update all methods, such as ToTuple,
   // FromProto, ToProto, ToString, etc. Updating ToTuple is not enough.
   // Please also add new members to AutotuneResult::TritonGemmKey in
-  // autotuning.proto. Also kVersion has to be incremented in autotuner_util.cc
-  // and all the autotuning results stored in tests, repos, etc. will have to
-  // be updated.
+  // autotuning.proto. When the change is not backward compatible, kVersion has
+  // to be incremented in autotuner_util.cc and all the autotuning results
+  // stored in tests, repos, etc. will have to be updated.
 
  private:
   auto ToTuple() const {
     return std::make_tuple(block_m, block_n, block_k, split_k, num_stages,
-                           num_warps, num_ctas);
+                           num_warps, num_ctas, is_tma_allowed);
   }
 
  public:

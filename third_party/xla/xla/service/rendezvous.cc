@@ -127,8 +127,9 @@ void AwaitAndLogIfStuck(RendezvousStateSynchronization& state, int32_t id,
     LOG(FATAL) << absl::StreamFormat(
         "[id=%d] Termination timeout for `%s` of %d seconds exceeded. Exiting "
         "to ensure a consistent program state. Expected %d threads to join the "
-        "rendezvous, but not all of them arrived on time.",
-        id, name, absl::ToInt64Seconds(terminate_timeout), state.num_threads);
+        "rendezvous, but only %d of them arrived on time.",
+        id, name, absl::ToInt64Seconds(terminate_timeout), state.num_threads,
+        state.ack.load());
   }
 }
 

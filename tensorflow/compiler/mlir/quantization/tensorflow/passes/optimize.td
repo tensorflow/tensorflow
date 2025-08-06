@@ -59,4 +59,3 @@ foreach BinaryOpPair = [[TF_AddV2Op, TF_SubOp],
     (BinaryOpPair[0]
       $x, (TF_SubOp  $cst2, $cst1))>;
 }
-

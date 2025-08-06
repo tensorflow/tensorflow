@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_cost_graph.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_device_mesh.h"
@@ -52,7 +53,8 @@ namespace xla {
 
 class AutoShardingImplementation {
  public:
-  explicit AutoShardingImplementation(const AutoShardingOption& option);
+  AutoShardingImplementation(const AutoShardingOption& option,
+                             const AliasInfo* alias_info);
   ~AutoShardingImplementation() = default;
 
   absl::StatusOr<bool> RunAutoSharding(
@@ -93,6 +95,9 @@ class AutoShardingImplementation {
  private:
   AutoShardingOption option_;
 
+  // Backend specific aliasing information.
+  const AliasInfo* alias_info_;
+
   // Stores the optimal value of the objective the solver found. This is used to
   // choose the best mesh shape when the try_multiple_mesh_shapes option is on.
   double solver_optimal_objective_value_ = -1.0;
@@ -100,7 +105,7 @@ class AutoShardingImplementation {
 
 class AutoSharding : public HloModulePass {
  public:
-  explicit AutoSharding(const AutoShardingOption& option);
+  AutoSharding(const AutoShardingOption& option, const AliasInfo* alias_info);
   ~AutoSharding() override = default;
   absl::string_view name() const override { return "auto_sharding"; }
 
@@ -117,6 +122,8 @@ class AutoSharding : public HloModulePass {
 
  protected:
   AutoShardingOption option_;
+  // Backend-specific aliasing information.
+  const AliasInfo* alias_info_;
 
  private:
   // Stores the optimal value of the objective the solver found.

@@ -22,6 +22,7 @@ limitations under the License.
 #include <memory>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -214,17 +215,6 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
     return logical_buffer_analysis_->num_logical_buffers();
   }
 
-  // Return a the logical buffer with id "id" in the module. Iteration
-  // over all logical buffers is usually done with something like:
-  //
-  // for (LogicalBuffer:Id id = 0; id < points_to.num_logical_buffers(); id++){
-  //   const auto& buffer = points_to.logical_buffer(id);
-  //   ... do something with buffer ...
-  // }
-  LogicalBuffer& logical_buffer(LogicalBuffer::Id id) const {
-    return logical_buffer_analysis_->GetBuffer(id);
-  }
-
   // Returns a vector of buffers that the instruction produces. Most
   // instructions produce a single buffer (the top-level buffer), some produce
   // no buffers (eg bitcast), and some produce more than one buffer (eg,
@@ -323,9 +313,8 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
     auto iter = per_instruction_.find(id);
     if (iter == per_instruction_.end()) {
       LOG(FATAL) << "Expected per-instruction information to already exist";
-    } else {
-      return iter->second.get();
     }
+    return iter->second.get();
   }
   PerInstruction* PerInst(const HloInstruction* inst) {
     int id = inst->unique_id();
@@ -334,18 +323,9 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
     if (iter == per_instruction_.end()) {
       return per_instruction_.emplace(id, std::make_unique<PerInstruction>())
           .first->second.get();
-    } else {
-      return iter->second.get();
     }
+    return iter->second.get();
   }
-
-  std::vector<std::pair<HloInstruction*, int64_t>>
-  GetAllUsesOfInstructionAtIndex(HloInstruction* instruction,
-                                 const ShapeIndex& index) const;
-  bool HasUniqueFusedUseOfOperandAt(HloInstruction* operand,
-                                    const ShapeIndex& operand_index,
-                                    HloInstruction* fusion,
-                                    const int64_t use_operand_index) const;
 
   // The module this analysis is performed on.
   const HloModule* module_;
