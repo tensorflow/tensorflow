@@ -389,32 +389,32 @@ TEST_F(RaggedTensorToVariantKernelTest,
   BuildEncodeRaggedTensorGraph<int, int64_t>({splits}, TensorShape({0}), {},
                                              true);
   EXPECT_THAT(RunOpKernel(),
-              testing::StatusIs(error::INVALID_ARGUMENT,
-                                "Invalid ragged splits: first element of "
-                                "ragged splits  must be 0 but is 1"));
+              absl_testing::StatusIs(error::INVALID_ARGUMENT,
+                                     "Invalid ragged splits: first element of "
+                                     "ragged splits  must be 0 but is 1"));
 }
 
 TEST_F(RaggedTensorToVariantKernelTest, NestedRowSplitsIncreasingError) {
   const std::vector<int64_t> splits = {0, 2, -1};
   BuildEncodeRaggedTensorGraph<int, int64_t>({splits}, TensorShape({0}), {},
                                              true);
-  EXPECT_THAT(RunOpKernel(),
-              testing::StatusIs(error::INVALID_ARGUMENT,
-                                "Invalid ragged splits: ragged splits must be "
-                                "monotonically increasing, but "
-                                "ragged_splits[2]=-1 is smaller than "
-                                "row_splits[1]=2"));
+  EXPECT_THAT(RunOpKernel(), absl_testing::StatusIs(
+                                 error::INVALID_ARGUMENT,
+                                 "Invalid ragged splits: ragged splits must be "
+                                 "monotonically increasing, but "
+                                 "ragged_splits[2]=-1 is smaller than "
+                                 "row_splits[1]=2"));
 }
 
 TEST_F(RaggedTensorToVariantKernelTest, NestedRowSplitsSizeMismatchError) {
   const std::vector<int64_t> splits = {0, 2, 3};
   BuildEncodeRaggedTensorGraph<int, int64_t>({splits}, TensorShape({5}),
                                              {0, 1, 2, 3, 4}, true);
-  EXPECT_THAT(
-      RunOpKernel(),
-      testing::StatusIs(error::INVALID_ARGUMENT,
-                        "Invalid ragged splits: last element of ragged splits "
-                        "must be the number of ragged values(5) but is 3"));
+  EXPECT_THAT(RunOpKernel(),
+              absl_testing::StatusIs(
+                  error::INVALID_ARGUMENT,
+                  "Invalid ragged splits: last element of ragged splits "
+                  "must be the number of ragged values(5) but is 3"));
 }
 
 TEST_F(RaggedTensorToVariantKernelTest,
@@ -423,11 +423,11 @@ TEST_F(RaggedTensorToVariantKernelTest,
   const std::vector<int64_t> splits2 = {0, 3, 3, 4};
   BuildEncodeRaggedTensorGraph<int, int64_t>(
       {splits1, splits2}, TensorShape({5}), {0, 1, 2, 3, 4}, true);
-  EXPECT_THAT(
-      RunOpKernel(),
-      testing::StatusIs(error::INVALID_ARGUMENT,
-                        "Invalid ragged splits: last element of ragged splits "
-                        "must be the number of ragged values(5) but is 4"));
+  EXPECT_THAT(RunOpKernel(),
+              absl_testing::StatusIs(
+                  error::INVALID_ARGUMENT,
+                  "Invalid ragged splits: last element of ragged splits "
+                  "must be the number of ragged values(5) but is 4"));
 }
 
 TEST_F(RaggedTensorToVariantKernelTest,
@@ -436,31 +436,31 @@ TEST_F(RaggedTensorToVariantKernelTest,
   const std::vector<int64_t> splits2 = {0, 3, 3, 5};
   BuildEncodeRaggedTensorGraph<int, int64_t>(
       {splits1, splits2}, TensorShape({5}), {0, 1, 2, 3, 4}, true);
-  EXPECT_THAT(
-      RunOpKernel(),
-      testing::StatusIs(error::INVALID_ARGUMENT,
-                        "Invalid ragged splits: last element of ragged splits "
-                        "must be the number of ragged values(3) but is 2"));
+  EXPECT_THAT(RunOpKernel(),
+              absl_testing::StatusIs(
+                  error::INVALID_ARGUMENT,
+                  "Invalid ragged splits: last element of ragged splits "
+                  "must be the number of ragged values(3) but is 2"));
 }
 
 TEST_F(RaggedTensorToVariantKernelTest, NestedRowSplitsEmptySplitsError) {
   const std::vector<int64_t> splits = {};
   BuildEncodeRaggedTensorGraph<int, int64_t>({splits}, TensorShape({5}),
                                              {0, 1, 2, 3, 4}, true);
-  EXPECT_THAT(RunOpKernel(),
-              testing::StatusIs(error::INVALID_ARGUMENT,
-                                "Invalid ragged splits: ragged splits must "
-                                "have at least one splits, but is empty"));
+  EXPECT_THAT(RunOpKernel(), absl_testing::StatusIs(
+                                 error::INVALID_ARGUMENT,
+                                 "Invalid ragged splits: ragged splits must "
+                                 "have at least one splits, but is empty"));
 }
 
 TEST_F(RaggedTensorToVariantKernelTest, NestedRowSplitsScalarValueError) {
   const std::vector<int64_t> splits = {0, 2};
   BuildEncodeRaggedTensorGraph<int, int64_t>({splits}, TensorShape({}), 1,
                                              true);
-  EXPECT_THAT(RunOpKernel(),
-              testing::StatusIs(error::INVALID_ARGUMENT,
-                                "Requires flat_values to have rank>=1 when "
-                                "nested_row_splits is not empty, but is 0."));
+  EXPECT_THAT(RunOpKernel(), absl_testing::StatusIs(
+                                 error::INVALID_ARGUMENT,
+                                 "Requires flat_values to have rank>=1 when "
+                                 "nested_row_splits is not empty, but is 0."));
 }
 
 TEST_F(RaggedTensorToVariantGradientKernelTest, RowSplitsMatch) {
@@ -508,9 +508,9 @@ TEST_F(RaggedTensorToVariantGradientKernelTest,
       {1, 3, 3, 5, 6}, {6});
 
   EXPECT_THAT(RunOpKernel(),
-              testing::StatusIs(error::INVALID_ARGUMENT,
-                                "Invalid ragged splits: first element of "
-                                "ragged splits  must be 0 but is 1"));
+              absl_testing::StatusIs(error::INVALID_ARGUMENT,
+                                     "Invalid ragged splits: first element of "
+                                     "ragged splits  must be 0 but is 1"));
 }
 
 TEST_F(RaggedTensorToVariantGradientKernelTest, RowSplitsIncreasingError) {
@@ -533,12 +533,12 @@ TEST_F(RaggedTensorToVariantGradientKernelTest, RowSplitsIncreasingError) {
        encoded_variant_grad_4},
       {0, 3, 2, 5, 6}, {6});
 
-  EXPECT_THAT(RunOpKernel(),
-              testing::StatusIs(error::INVALID_ARGUMENT,
-                                "Invalid ragged splits: ragged splits must be "
-                                "monotonically increasing, but "
-                                "ragged_splits[2]=2 is smaller than "
-                                "row_splits[1]=3"));
+  EXPECT_THAT(RunOpKernel(), absl_testing::StatusIs(
+                                 error::INVALID_ARGUMENT,
+                                 "Invalid ragged splits: ragged splits must be "
+                                 "monotonically increasing, but "
+                                 "ragged_splits[2]=2 is smaller than "
+                                 "row_splits[1]=3"));
 }
 
 }  // namespace
