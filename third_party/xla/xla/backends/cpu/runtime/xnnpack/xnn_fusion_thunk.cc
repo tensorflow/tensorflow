@@ -83,7 +83,6 @@ struct XnnFusionThunk::XnnRuntime {
   void Destroy();
 
   XnnScheduler scheduler = {nullptr, nullptr};
-  xnn_workspace_t workspace = nullptr;
 
   xnn_subgraph_t subgraph = nullptr;
   xnn_runtime_t runtime = nullptr;
@@ -103,11 +102,9 @@ auto XnnFusionThunk::XnnRuntime::operator=(XnnRuntime&& other) -> XnnRuntime& {
   Destroy();
 
   subgraph = other.subgraph;
-  workspace = other.workspace;
   runtime = other.runtime;
 
   other.subgraph = nullptr;
-  other.workspace = nullptr;
   other.runtime = nullptr;
 
   captured_arguments = std::move(other.captured_arguments);
@@ -166,9 +163,6 @@ void XnnFusionThunk::XnnRuntime::Destroy() {
   }
   if (subgraph != nullptr) {
     XNN_LOG_IF_ERROR(xnn_delete_subgraph(subgraph));
-  }
-  if (workspace != nullptr) {
-    XNN_LOG_IF_ERROR(xnn_release_workspace(workspace));
   }
 }
 
