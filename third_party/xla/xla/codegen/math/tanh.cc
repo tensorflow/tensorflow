@@ -163,7 +163,9 @@ absl::StatusOr<llvm::Function*> Tanh::CreateDefinition(llvm::Module* module,
 
   llvm::Value* result;
   if (type.element_type() == F64) {
-    result = EmitFastTanhF64(&builder, input_x_arg, /*with_fma=*/true);
+    // Need increased precision for F64.
+    // See https://github.com/jax-ml/jax/issues/23590
+    result = EmitFastTanhF64(&builder, input_x_arg, /*with_fma=*/false);
   } else if (type.element_type() == F32) {
     result = EmitFastTanh(&builder, input_x_arg, /*with_fma=*/true);
   } else if (type.element_type() == F16) {

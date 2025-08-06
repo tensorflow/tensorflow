@@ -45,10 +45,10 @@ absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAtan2(
 
 absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitTanh(
     PrimitiveType prim_type, llvm::Value* value) {
-  if (prim_type == F32 || prim_type == F16) {
+  if (prim_type == F32 || prim_type == F64 || prim_type == F16) {
     llvm::Function* tanh =
         xla::codegen::intrinsics::Tanh::GetOrInsertDeclaration(
-            module(), Type::TypeFromIrType(value->getType()));
+            module(), Type::S(prim_type));
     return b()->CreateCall(tanh, value);
   }
   return xla::cpu::EmitTanh(module(), *b(), prim_type, value);

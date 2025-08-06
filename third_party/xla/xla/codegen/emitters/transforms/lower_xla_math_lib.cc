@@ -253,10 +253,9 @@ class LowerTanhOpPattern : public mlir::OpRewritePattern<mlir::math::TanhOp> {
       mlir::math::TanhOp op, mlir::PatternRewriter& rewriter) const override {
     mlir::Type type = op.getType();
 
-    if (!type.isF32() || !type.isF16()) {
+    if (!type.isF32() || !type.isF64() || !type.isF16()) {
       return rewriter.notifyMatchFailure(op, "unsupported type");
     }
-
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
 
     auto tanh_decl = codegen::intrinsics::Tanh::GetOrInsertDeclaration(
