@@ -335,10 +335,13 @@ static absl::StatusOr<uint32_t> DefineBatchMatMul(xnn_subgraph_t subgraph,
   const Shape& rhs_shape = instr->operand(1)->shape();
   TF_ASSIGN_OR_RETURN(
       bool is_supported,
-      IsDotSupportedByXnn(dnums, lhs_shape, rhs_shape, instr->shape()));
+      IsDotSupportedByXnn(dnums, lhs_shape, rhs_shape, instr->shape(),
+                          /*cpu_features=*/nullptr, /*use_cost_model=*/false));
 
   if (!is_supported) {
-    if (subgraph != nullptr) XNN_LOG_IF_ERROR(xnn_delete_subgraph(subgraph));
+    if (subgraph != nullptr) {
+      XNN_LOG_IF_ERROR(xnn_delete_subgraph(subgraph));
+    }
     return InvalidArgument("Unsupported XNNPACK Dot op variation: %s",
                            instr->ToString());
   }
