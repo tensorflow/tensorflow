@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/backends/autotuner/autotune_config.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -35,18 +36,6 @@ limitations under the License.
 using InstructionFilterFn = absl::FunctionRef<bool(const xla::HloInstruction&)>;
 
 namespace xla {
-
-struct AutotuneConfig {
-  // Whether to skip configs that failed to compile.
-  bool skip_failing_configs = true;
-  // Whether to check the correctness of the output buffers and OOM reads on
-  // Input Buffers.
-  bool check_buffers = false;
-  // Relative tolerance for correctness check.
-  float relative_tolerance = 1e-6;
-  // Whether to crash the process on check failure.
-  bool crash_on_check_failure = false;
-};
 
 class Autotuner {
  public:
