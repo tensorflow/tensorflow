@@ -68,6 +68,14 @@ absl::Status ResourceRequests::AddClique(const GpuCliqueKey& clique_key) {
   return absl::OkStatus();
 }
 
+std::vector<GpuCliqueKey> ResourceRequests::CliqueKeys() const {
+  std::vector<GpuCliqueKey> clique_keys;
+  for (const auto& [key, unused] : cliques_) {
+    clique_keys.push_back(key);
+  }
+  return clique_keys;
+}
+
 absl::StatusOr<Thunk::CollectiveCliques>
 ResourceRequests::AcquireCollectiveCliques(
     const Thunk::CollectiveExecuteParams& params, bool use_persistent_cliques) {

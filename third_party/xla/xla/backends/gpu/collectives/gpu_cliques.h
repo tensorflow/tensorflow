@@ -69,6 +69,11 @@ absl::StatusOr<std::shared_ptr<LockableGpuClique::Lock>> AcquireGpuClique(
     const GpuCollectives::CliqueIdCallback& clique_id_callback, RankId rank,
     const AcquiredCliquesMap& acquired_cliques, int64_t max_nchannels = 0);
 
+// Returns a non-ok status if the provided clique key is "stale". A clique key
+// is stale if its incarnations don't match the latest incarnations or if any of
+// the tasks specified in the clique key have failed.
+absl::Status CheckCliqueKeyIsntStale(const GpuCliqueKey& clique_key);
+
 // Updates the global set of task state information. This function aborts and
 // invalidates all cliques that were created via AcquireGpuClique with
 // incarnations that have become stale.
