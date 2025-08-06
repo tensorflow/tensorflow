@@ -29,12 +29,6 @@
 namespace xla {
 namespace hlo_diff {
 
-enum DiffCode : uint8_t {
-  kUnchanged,
-  kChanged,
-  kUnmatched,
-};
-
 enum class DiffSide : std::uint8_t { kLeft, kRight };
 
 struct ComputationSummary {
@@ -83,14 +77,16 @@ struct ComputationDiffPattern {
 // Teach the gunit to print the diff pattern.
 void PrintTo(const ComputationDiffPattern& diff_pattern, std::ostream* os);
 
+using ComputationSummaryMap =
+    absl::flat_hash_map<const HloComputation*, const ComputationSummary>;
+
 //  Summary of the diff result of the left and right HLO modules.
 struct DiffSummary {
   // The computation diff patterns found in the diff result.
   std::vector<ComputationDiffPattern> computation_diff_patterns;
 
   // Summary of each computation.
-  absl::flat_hash_map<const HloComputation*, const ComputationSummary>
-      computation_summary;
+  ComputationSummaryMap computation_summary;
 };
 
 // Constructs the diff summary from the diff result.
