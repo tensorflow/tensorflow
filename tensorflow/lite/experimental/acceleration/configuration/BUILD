@@ -15,6 +15,8 @@
 
 # buildifier: disable=out-of-order-load
 
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
 # Placeholder: load proto_library
 load("@flatbuffers//:build_defs.bzl", "DEFAULT_FLATC_ARGS", "flatbuffer_android_library", "flatbuffer_cc_library", "flatbuffer_java_library")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
