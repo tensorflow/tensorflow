@@ -18,6 +18,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -2804,6 +2805,205 @@ TEST_F(IndexingAnalysisTest, NestedDotFusionWithDynamicUpdateSlice) {
     operand id = 4 (d0, d1) -> (),
       domain: d0 in [0, 3], d1 in [0, 4]
   )"));
+}
+
+TEST_F(IndexingAnalysisTest, AllGatherOp) {
+  auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
+    HloModule m, replica_count=4
+    ENTRY e {
+      p0 = f32[128, 128] parameter(0)
+      ROOT all-gather = f32[128, 256] all-gather(p0),
+        replica_groups={{0,1}, {2,3}}, dimensions={1}
+    }
+  )"));
+  EXPECT_THAT(input_indexing.ToString(), MatchIndexingString(R"(
+    operand id = 0
+      (d0, d1) -> (d0, d1 mod 128),
+      domain:
+        d0 in [0, 127],
+        d1 in [0, 255]
+      replica id:
+        (d0, d1) -> (d1 floordiv 128),
+        domain:
+          d0 in [0, 127],
+          d1 in [0, 255]
+  )"));
+}
+
+TEST_F(IndexingAnalysisTest, AllGatherFusionWithTranspose) {
+  auto root = ParseAndGetRoot(R"(
+    HloModule m
+
+    fusion_computation {
+      p0 = f32[16384] parameter(0)
+      p1 = f32[128, 256] parameter(1)
+      bitcast = f32[128, 128] bitcast(p0)
+      all-gather = f32[256, 128] all-gather(bitcast), replica_groups={{0,1}},
+        dimensions={0}
+      transpose = f32[128, 256] transpose(all-gather), dimensions={1, 0}
+      ROOT add = f32[128, 256] add(transpose, p1)
+    }
+
+    ENTRY e {
+      p0 = f32[16384] parameter(0)
+      p1 = f32[128, 256] parameter(1)
+      ROOT fusion = f32[128, 256] fusion(p0, p1), kind=kLoop, calls=fusion_computation
+    }
+  )");
+  EXPECT_THAT(GetOutputToInputIndexing(root).ToString(), MatchIndexingString(R"(
+    operand id = 0
+      (d0, d1) -> ((d1 mod 128) * 128 + d0),
+      domain:
+        d0 in [0, 127],
+        d1 in [0, 255]
+      replica id:
+        (d0, d1) -> (d1 floordiv 128),
+        domain:
+          d0 in [0, 127],
+          d1 in [0, 255]
+    operand id = 1
+      (d0, d1) -> (d0, d1),
+      domain:
+        d0 in [0, 127],
+        d1 in [0, 255]
+  )"));
+}
+
+TEST_F(IndexingAnalysisTest, AllGatherFusionWithReshape) {
+  auto root = ParseAndGetRoot(R"(
+    HloModule m
+
+    ENTRY e {
+      p0 = f32[128, 128] parameter(0)
+      all-gather = f32[256, 128] all-gather(p0), replica_groups={{0,1}}, dimensions={0}
+      ROOT reshape = f32[32768] reshape(all-gather)
+    }
+  )");
+
+  auto all_gather = root->operand(0);
+  auto parameter = all_gather->operand(0);
+
+  auto fusion_adaptor = HloFusionAdaptor::ForProducerConsumer(all_gather, root);
+
+  auto grouped_indexing = ComputeGroupedOutputToInputIndexing(
+      *fusion_adaptor, fusion_adaptor->GetRoots()[0], &mlir_context_);
+
+  EXPECT_THAT(grouped_indexing[root], ElementsAre(MatchOperandIndexing(R"(
+    (d0) -> (d0),
+    domain:
+      d0 in [0, 32767]
+  )")));
+
+  EXPECT_THAT(grouped_indexing[all_gather], ElementsAre(MatchOperandIndexing(R"(
+    (d0) -> (d0 floordiv 128, d0 mod 128),
+    domain:
+      d0 in [0, 32767]
+  )")));
+
+  EXPECT_THAT(grouped_indexing[parameter], ElementsAre(MatchOperandIndexing(R"(
+    (d0) -> ((d0 floordiv 128) mod 128, d0 mod 128),
+    domain:
+      d0 in [0, 32767]
+    replica id:
+      (d0) -> ((d0 floordiv 128) floordiv 128),
+      domain:
+        d0 in [0, 32767],
+        d0 floordiv 128 in [0, 255],
+        d0 mod 128 in [0, 127]
+  )")));
+}
+
+TEST_F(IndexingAnalysisTest, ChainedAllGatherFusion) {
+  auto root = ParseAndGetRoot(R"(
+    HloModule m
+
+    ENTRY e {
+      p0 = f32[128] parameter(0)
+      all-gather.0 = f32[256] all-gather(p0), replica_groups={{0,1}}, dimensions={0}
+      ROOT all-gather.1 = f32[512] all-gather(all-gather.0), replica_groups={{0,1}}, dimensions={0}
+    }
+  )");
+
+  auto all_gather = root->operand(0);
+  auto parameter = all_gather->operand(0);
+
+  auto fusion_adaptor = HloFusionAdaptor::ForProducerConsumer(all_gather, root);
+
+  auto grouped_indexing = ComputeGroupedOutputToInputIndexing(
+      *fusion_adaptor, fusion_adaptor->GetRoots()[0], &mlir_context_);
+
+  EXPECT_THAT(grouped_indexing[parameter],
+              ElementsAre(UndefinedOperandIndexing()));
+}
+
+TEST_F(IndexingAnalysisTest, AllGatherDotFusion_GatherNonContractingDim) {
+  auto root = ParseAndGetRoot(R"(
+    HloModule m
+
+    ENTRY e {
+      p0 = f32[64, 256] parameter(0)
+      p1 = f32[256, 128] parameter(1)
+      all-gather = f32[128, 256] all-gather(p0), replica_groups={{0,1}}, dimensions={0}
+      ROOT dot = f32[128, 128] dot(all-gather, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+  )");
+
+  auto all_gather = root->operand(0);
+  auto parameter = all_gather->operand(0);
+
+  auto fusion_adaptor = HloFusionAdaptor::ForProducerConsumer(all_gather, root);
+
+  auto grouped_indexing = ComputeGroupedOutputToInputIndexing(
+      *fusion_adaptor, fusion_adaptor->GetRoots()[0], &mlir_context_);
+
+  EXPECT_THAT(grouped_indexing[parameter], ElementsAre(MatchOperandIndexing(R"(
+    (d0, d1)[s0] -> (d0 mod 64, s0),
+    domain:
+      d0 in [0, 127],
+      d1 in [0, 127],
+      s0 in [0, 255]
+    replica id:
+      (d0, d1)[s0] -> (d0 floordiv 64),
+      domain:
+        d0 in [0, 127],
+        d1 in [0, 127],
+        s0 in [0, 255]
+  )")));
+}
+
+TEST_F(IndexingAnalysisTest, AllGatherDotFusion_GatherContractingDim) {
+  auto root = ParseAndGetRoot(R"(
+    HloModule m
+
+    ENTRY e {
+      p0 = f32[128, 128] parameter(0)
+      p1 = f32[256, 128] parameter(1)
+      all-gather = f32[128, 256] all-gather(p0), replica_groups={{0,1}}, dimensions={1}
+      ROOT dot = f32[128, 128] dot(all-gather, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+  )");
+
+  auto all_gather = root->operand(0);
+  auto parameter = all_gather->operand(0);
+
+  auto fusion_adaptor = HloFusionAdaptor::ForProducerConsumer(all_gather, root);
+
+  auto grouped_indexing = ComputeGroupedOutputToInputIndexing(
+      *fusion_adaptor, fusion_adaptor->GetRoots()[0], &mlir_context_);
+
+  EXPECT_THAT(grouped_indexing[parameter], ElementsAre(MatchOperandIndexing(R"(
+    (d0, d1)[s0] -> (d0, s0 mod 128),
+    domain:
+      d0 in [0, 127],
+      d1 in [0, 127],
+      s0 in [0, 255]
+    replica id:
+      (d0, d1)[s0] -> (s0 floordiv 128),
+      domain:
+        d0 in [0, 127],
+        d1 in [0, 127],
+        s0 in [0, 255]
+  )")));
 }
 
 }  // namespace
