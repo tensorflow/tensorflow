@@ -1,3 +1,6 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
+
 # StableHLO Reference Library
 load("build_def.bzl", "shlo_ref_linkopts")
 
