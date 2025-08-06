@@ -285,32 +285,6 @@ cc_library(
     ]),
 )
 
-cc_library(
-    name = "logging",
-    srcs = ["logging.cc"],
-    hdrs = ["//xla/tsl/platform:logging.h"],
-    tags = [
-        "manual",
-        "no_oss",
-        "nobuilder",
-    ],
-    textual_hdrs = ["logging.h"],
-    deps = [
-        "//xla/tsl/platform:env_time",
-        "//xla/tsl/platform:macros",
-        "//xla/tsl/platform:types",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/base:log_severity",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform",
-    ],
-)
-
 filegroup(
     name = "xla_cpu_runtime_srcs",
     srcs = [
@@ -656,7 +630,6 @@ exports_files(
         ["*"],
         exclude = [
             "integral_types.h",
-            "logging.h",
             "test.cc",
         ],
     ),
@@ -666,7 +639,6 @@ exports_files(
 exports_files(
     srcs = [
         "integral_types.h",
-        "logging.h",
         "test.cc",
     ],
     visibility = internal_visibility([
