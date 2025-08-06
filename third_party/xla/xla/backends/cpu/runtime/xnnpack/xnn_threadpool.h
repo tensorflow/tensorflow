@@ -16,39 +16,25 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_RUNTIME_XNNPACK_XNN_THREADPOOL_H_
 #define XLA_BACKENDS_CPU_RUNTIME_XNNPACK_XNN_THREADPOOL_H_
 
-#include "pthreadpool.h"
+#include <memory>
+
 #include "xla/backends/cpu/runtime/parallel_loop_runner.h"
-
-namespace Eigen {
-
-class ThreadPoolInterface;
-
-}  // namespace Eigen
 
 struct xnn_scheduler;
 
+namespace Eigen {
+class ThreadPoolInterface;
+}  // namespace Eigen
+
 namespace xla::cpu {
 
-// Creates a `pthreadpool` that uses the given `runner` to execute work.
-pthreadpool_t CreateCustomPthreadpool(xla::cpu::ParallelLoopRunner* runner);
-
-// Destroys the given `pthreadpool`.
-//
-// IMPORTANT: Thread pool must be created with `CreateCustomPthreadpool`.
-void DestroyCustomPthreadpool(pthreadpool_t threadpool);
-
-// Returns the parallel loop runner associated with the given `pthreadpool`.
-//
-// IMPORTANT: Thread pool must be created with `CreateCustomPthreadpool`.
-xla::cpu::ParallelLoopRunner* GetParallelLoopRunner(pthreadpool_t threadpool);
-
 // A wrapper to redirect xnn_scheduler operations to Eigen::ThreadPoolInterface.
-using XnnSchedulerPtr =
-    std::unique_ptr<xnn_scheduler, void (*)(xnn_scheduler*)>;
-XnnSchedulerPtr CreateXnnEigenScheduler(
-    Eigen::ThreadPoolInterface* eigen_thread_pool);
-XnnSchedulerPtr CreateXnnEigenScheduler(
-    const Eigen::ThreadPoolDevice* eigen_thread_pool);
+using XnnScheduler = std::unique_ptr<xnn_scheduler, void (*)(xnn_scheduler*)>;
+
+// Creates an XnnScheduler that uses the given Eigen thread pool to launch tasks
+// submitted by the XNNPACK.
+XnnScheduler CreateXnnEigenScheduler(Eigen::ThreadPoolInterface* threads);
+XnnScheduler CreateXnnEigenScheduler(const Eigen::ThreadPoolDevice* device);
 
 }  // namespace xla::cpu
 
