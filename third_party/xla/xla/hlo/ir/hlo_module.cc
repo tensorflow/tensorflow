@@ -320,13 +320,6 @@ void HloModule::ReplaceComputations(
     HloComputation* old_computation = iter.first;
     HloComputation* new_computation = iter.second;
     for (auto* caller_instruction : old_computation->caller_instructions()) {
-      // TODO(b/434814814): This check shouldn't be necessary, since it's
-      // illegal to refer to a computation in a different module. But it can
-      // happen in practice. Temporarily adding a guard, should be removed when
-      // the code that creates these invalid modules is fixed.
-      if (caller_instruction->parent()->parent() != this) {
-        continue;
-      }
       caller_instruction->ReplaceCalledComputations(
           [&](HloComputation* callee) {
             if (callee == old_computation) {
