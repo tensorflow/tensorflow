@@ -157,6 +157,7 @@ xla_cc_binary(
         "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MlirOptLib",
+        "@llvm-project//mlir:RegisterAllPasses",
         "@shardy//shardy/dialect/sdy/ir:register",
         "@shardy//shardy/dialect/sdy/transforms:passes",
     ],

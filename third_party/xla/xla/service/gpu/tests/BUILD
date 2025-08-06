@@ -662,6 +662,7 @@ lit_test_suite(
 #         "@llvm-project//mlir:AllExtensions",
 #         "@llvm-project//mlir:FuncDialect",
 #         "@llvm-project//mlir:MlirOptLib",
+#         "@llvm-project//mlir:RegisterAllExtensions",
 #         "@llvm-project//mlir:TensorDialect",
 #         "//xla/backends/gpu/codegen/emitters/transforms:passes",
 #         "//xla/backends/gpu/codegen/triton/ir:triton_xla",
