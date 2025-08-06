@@ -327,6 +327,7 @@ proto::EdgeTpuSettings ConvertEdgeTpuSettings(const EdgeTpuSettings& settings) {
       proto_config->set_inactive_timeout_us(config->inactive_timeout_us());
     }
   }
+  proto_settings.set_use_tpu_server(settings.use_tpu_server());
 
   return proto_settings;
 }
