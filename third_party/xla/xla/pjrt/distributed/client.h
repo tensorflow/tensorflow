@@ -89,6 +89,10 @@ class DistributedRuntimeClient {
     // coordination service at the startup.
     // TODO(b/355706798): eventually remove this option.
     bool poll_for_error_from_service_at_startup = true;
+
+    // If true, a multi-controller JAX job can continue even if this client
+    // fails. Otherwise, the job will fail when the task failes.
+    bool recoverable = false;
   };
 
   virtual ~DistributedRuntimeClient() = default;
