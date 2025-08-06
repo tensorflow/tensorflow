@@ -48,7 +48,11 @@ absl::StatusOr<std::unique_ptr<Executable>> CompileHloModule(
                              compile_options);
 }
 
-class CpuProfilerTest : public HloHardwareIndependentTestBase {};
+class CpuProfilerTest : public HloHardwareIndependentTestBase {
+ public:
+  CpuProfilerTest() { profile_options_.should_populate_output_buffer = false; }
+  ProfileOptions profile_options_;
+};
 
 TEST_F(CpuProfilerTest, ProfileWithSharedBuffers) {
   constexpr absl::string_view kHloModule = R"(
@@ -65,7 +69,7 @@ TEST_F(CpuProfilerTest, ProfileWithSharedBuffers) {
   TF_ASSERT_OK_AND_ASSIGN(executables.emplace_back(),
                           CompileHloModule(std::move(hlo_module)));
 
-  auto profiler = CpuProfiler::Create(ProfileOptions());
+  auto profiler = CpuProfiler::Create(profile_options_);
   TF_ASSERT_OK_AND_ASSIGN(auto profiles, profiler->ProfileWithSharedBuffers(
                                              std::move(executables)));
 
@@ -75,7 +79,7 @@ TEST_F(CpuProfilerTest, ProfileWithSharedBuffers) {
 }
 
 TEST_F(CpuProfilerTest, ProfileWithSharedBuffersWithoutExecutable) {
-  auto profiler = CpuProfiler::Create(ProfileOptions());
+  auto profiler = CpuProfiler::Create(profile_options_);
   TF_ASSERT_OK_AND_ASSIGN(auto profiles,
                           profiler->ProfileWithSharedBuffers({}));
 
@@ -94,7 +98,7 @@ TEST_F(CpuProfilerTest, CreateInputBuffersAndProfile) {
                           ParseAndReturnVerifiedModule(kHloModule));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
                           CompileHloModule(std::move(hlo_module)));
-  auto profiler = CpuProfiler::Create(ProfileOptions());
+  auto profiler = CpuProfiler::Create(profile_options_);
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<InputBuffers> buffers,
                           profiler->CreateInputBuffers(executable.get()));
   TF_ASSERT_OK_AND_ASSIGN(ProfileResult profile,
