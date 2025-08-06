@@ -18,6 +18,7 @@ limitations under the License.
 #define XLA_HLO_ANALYSIS_INDEXING_ANALYSIS_H_
 
 #include <cstdint>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <vector>
@@ -129,15 +130,21 @@ bool operator==(const RuntimeVarIndexing& lhs, const RuntimeVarIndexing& rhs);
 // the number of runtime variables it holds.
 class OperandIndexing {
  public:
-  OperandIndexing(IndexingMap map, std::vector<RuntimeVarIndexing> rt_vars)
-      : map_(map), rt_vars_(rt_vars) {
+  OperandIndexing(IndexingMap map, std::vector<RuntimeVarIndexing> rt_vars,
+                  std::optional<IndexingMap> replica_id_map = std::nullopt)
+      : map_(map), rt_vars_(rt_vars), replica_id_map_(replica_id_map) {
     VerifyOrDie();
   }
+
   explicit OperandIndexing(IndexingMap map) : map_(map) { VerifyOrDie(); }
 
   const IndexingMap& map() const { return map_; }
   const std::vector<RuntimeVarIndexing>& runtime_variables() const {
     return rt_vars_;
+  }
+
+  const std::optional<IndexingMap>& replica_id_map() const {
+    return replica_id_map_;
   }
 
   std::string ToString() const;
@@ -161,6 +168,11 @@ class OperandIndexing {
  private:
   IndexingMap map_;
   std::vector<RuntimeVarIndexing> rt_vars_;
+
+  // Replica id map is only set for indexings that involve collective
+  // operations. Replica id map has the same inputs as the main map and one
+  // result. The result tells from which replica to read the data.
+  std::optional<IndexingMap> replica_id_map_;
 };
 
 // Compose two operand indexings.
