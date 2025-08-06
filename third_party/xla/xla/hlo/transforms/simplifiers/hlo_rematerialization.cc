@@ -1734,6 +1734,8 @@ absl::StatusOr<int64_t> RematerializeInstructions(
     HloCloneContext context(computation->parent());
     HloInstruction* remat =
         computation->AddInstruction(best->Clone(/*suffix=*/"remat", &context));
+    // Call the callback on the original and rematerialized instruction.
+    TF_RETURN_IF_ERROR(rematerialization->on_rematerialized(best, remat));
     for (auto& cloned_computation_pair : context.cloned_computations()) {
       if (!schedule->is_computation_scheduled(cloned_computation_pair.first)) {
         continue;

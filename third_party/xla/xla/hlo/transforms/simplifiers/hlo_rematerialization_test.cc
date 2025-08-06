@@ -16,16 +16,20 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/hlo_rematerialization.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/any_invocable.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
@@ -55,8 +59,12 @@ namespace op = xla::testing::opcode_matchers;
 
 using ::testing::_;
 using ::testing::Contains;
+using ::testing::ElementsAre;
 using ::testing::Eq;
+using ::testing::HasSubstr;
 using ::testing::Not;
+using ::testing::Pair;
+using ::testing::UnorderedElementsAre;
 using tsl::testing::IsOkAndHolds;
 
 class AsyncRematerializationTest : public RematerializationTestBase {
@@ -149,7 +157,9 @@ class RecomputeAndCompressHloRematerializationTest
   absl::StatusOr<bool> RunHloRematerialization(
       int64_t memory_limit_bytes, HloModule* module, int64_t min_remat_size = 0,
       HloRematerialization::RematAlgorithm remat_algorithm =
-          HloRematerialization::RematAlgorithm::kAlwaysRemat) {
+          HloRematerialization::RematAlgorithm::kAlwaysRemat,
+      absl::AnyInvocable<absl::Status(HloInstruction*, HloInstruction*)>
+          on_rematerialized = nullptr) {
     TF_EXPECT_OK(verifier().Run(module).status());
     if (!module->has_schedule()) {
       HloMemoryScheduler scheduler(&alias_info_, [](const BufferValue& buffer) {
@@ -179,7 +189,7 @@ class RecomputeAndCompressHloRematerializationTest
         /*async_computation_parallelism=*/{},
         /*remat_algorithm=*/remat_algorithm);
     HloRematerialization::RematerializationSizes sizes;
-    HloRematerialization remat(options, sizes);
+    HloRematerialization remat(options, sizes, std::move(on_rematerialized));
     absl::StatusOr<bool> result = remat.Run(module);
 
     // Finally, get a set of instruction names after running remat.
@@ -494,64 +504,9 @@ TEST_F(RecomputeAndCompressHloRematerializationTest, RngNotRematerialized) {
 
 TEST_F(RecomputeAndCompressHloRematerializationTest,
        InstructionRematerializedMultipleTimes) {
-  // Test that a single instruction is rematerialized several times. Module:
-  //
-  // Entry computation:
-  //   F32[] %param = {...}
-  //   F32[1024] %bcast = broadcast(%param)
-  //   F32[1024] %add_1 = add(%bcast, bcast)
-  //   F32[1024] %call_1 = call(Subcomputation, {%add_1})
-  //   F32[1024] %add_2 = add(%bcast, call_1)
-  //   F32[1024] %call_2 = call(SubComputation, {%add_2})
-  //   F32[1024] %add_3 = add(%bcast, call_2)
-  //   F32[1024] %call_3 = call(Subcomputation, {%add_3})
-  //   F32[1024] %add_4 = add(%bcast, call_3)
-  //
-  // Subcomputation:
-  //   F32[1024] %param = {...}
-  //   F32[2048] %concat = concat({%param, %param})
-  //   F32[1024] %slice = slice(%concat)
-  //
-  // The value %bcast is live across each call of Subcomputation (which requires
-  // 8KB) though the value is not used in the calls. Rematerializing %bcast
-  // across these calls reduces peak memory use from ~20KB down to ~16KB.
   auto module = CreateNewVerifiedModule();
-
-  HloComputation* subcomputation = nullptr;
-  {
-    auto builder = HloComputation::Builder(TestName() + ".subcomputation");
-    auto param = builder.AddInstruction(
-        HloInstruction::CreateParameter(0, vec1024_shape_, "param"));
-    auto concat = builder.AddInstruction(HloInstruction::CreateConcatenate(
-        ShapeUtil::MakeShape(xla::F32, {2048}), {param, param},
-        /*dimension=*/0));
-    builder.AddInstruction(HloInstruction::CreateSlice(
-        vec1024_shape_, concat, /*start_indices=*/{0},
-        /*limit_indices=*/{1024}, /*strides=*/{1}));
-    subcomputation = module->AddEmbeddedComputation(builder.Build());
-  }
-
-  auto builder = HloComputation::Builder(TestName());
-  auto param = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, scalar_shape_, "param"));
-  auto bcast = builder.AddInstruction(
-      HloInstruction::CreateBroadcast(vec1024_shape_, param, {}));
-  auto add_1 = builder.AddInstruction(HloInstruction::CreateBinary(
-      vec1024_shape_, HloOpcode::kAdd, bcast, bcast));
-  auto call_1 = builder.AddInstruction(
-      HloInstruction::CreateCall(vec1024_shape_, {add_1}, subcomputation));
-  auto add_2 = builder.AddInstruction(HloInstruction::CreateBinary(
-      vec1024_shape_, HloOpcode::kAdd, bcast, call_1));
-  auto call_2 = builder.AddInstruction(
-      HloInstruction::CreateCall(vec1024_shape_, {add_2}, subcomputation));
-  auto add_3 = builder.AddInstruction(HloInstruction::CreateBinary(
-      vec1024_shape_, HloOpcode::kAdd, bcast, call_2));
-  auto call_3 = builder.AddInstruction(
-      HloInstruction::CreateCall(vec1024_shape_, {add_3}, subcomputation));
-  auto add_4 = builder.AddInstruction(HloInstruction::CreateBinary(
-      vec1024_shape_, HloOpcode::kAdd, bcast, call_3));
-  HloComputation* entry_computation =
-      module->AddEntryComputation(builder.Build());
+  InstrRemattedMultipleTimesGraph graph =
+      MakeInstrRemattedMultipleTimesComputation(module.get());
 
   auto count_broadcasts = [](const HloComputation* computation) {
     int64_t bcast_count = 0;
@@ -565,12 +520,12 @@ TEST_F(RecomputeAndCompressHloRematerializationTest,
 
   // Before rematerialization there should be a single broadcast instruction in
   // the graph.
-  EXPECT_EQ(count_broadcasts(entry_computation), 1);
-  EXPECT_EQ(entry_computation->instruction_count(), 9);
+  EXPECT_EQ(count_broadcasts(graph.entry_computation), 1);
+  EXPECT_EQ(graph.entry_computation->instruction_count(), 9);
 
-  EXPECT_EQ(add_2->operand(0), bcast);
-  EXPECT_EQ(add_3->operand(0), bcast);
-  EXPECT_EQ(add_4->operand(0), bcast);
+  EXPECT_EQ(graph.add_2->operand(0), graph.bcast);
+  EXPECT_EQ(graph.add_3->operand(0), graph.bcast);
+  EXPECT_EQ(graph.add_4->operand(0), graph.bcast);
 
   // Pick a memory limit some where between 24KB (initial peak memory including
   // parameter and output) and 20KB (peak memory possible with
@@ -581,17 +536,17 @@ TEST_F(RecomputeAndCompressHloRematerializationTest,
   EXPECT_TRUE(changed);
 
   // The broadcast should have been rematerialized 3 times.
-  EXPECT_EQ(count_broadcasts(entry_computation), 4);
-  EXPECT_EQ(entry_computation->instruction_count(), 12);
+  EXPECT_EQ(count_broadcasts(graph.entry_computation), 4);
+  EXPECT_EQ(graph.entry_computation->instruction_count(), 12);
 
   // The operands of add_2, add_3, and add_4 should all be rematerialized
   // broadcasts.
-  EXPECT_NE(add_2->operand(0), bcast);
-  EXPECT_THAT(add_2->operand(0), op::Broadcast(param));
-  EXPECT_NE(add_3->operand(0), bcast);
-  EXPECT_THAT(add_3->operand(0), op::Broadcast(param));
-  EXPECT_NE(add_4->operand(0), bcast);
-  EXPECT_THAT(add_4->operand(0), op::Broadcast(param));
+  EXPECT_NE(graph.add_2->operand(0), graph.bcast);
+  EXPECT_THAT(graph.add_2->operand(0), op::Broadcast(graph.param));
+  EXPECT_NE(graph.add_3->operand(0), graph.bcast);
+  EXPECT_THAT(graph.add_3->operand(0), op::Broadcast(graph.param));
+  EXPECT_NE(graph.add_4->operand(0), graph.bcast);
+  EXPECT_THAT(graph.add_4->operand(0), op::Broadcast(graph.param));
   CheckForRematInInstructionNames(
       ::testing::UnitTest::GetInstance()->current_test_info()->name());
 }
@@ -1830,6 +1785,126 @@ ENTRY %entry (param.0: f32[], param.1: f32[]) -> f32[1024] {
                         HloRematerialization::RematAlgorithm::kPeakPriority));
 
   EXPECT_TRUE(changed);
+}
+
+// Test that the rematerialization callback is called on the original and
+// rematerialized instructions.
+TEST_F(RecomputeAndCompressHloRematerializationTest, RematCallbackIsCalled) {
+  const std::string& hlo_string = R"(
+HloModule fusion, is_scheduled=true
+
+%call_convoluted (param_0: f32[1024], param_1: f32[1024]) -> f32[1024] {
+  %constant_source_8 = f32[] constant(8)
+  %constant_source_8_user = f32[1024]{0} broadcast(%constant_source_8), dimensions={}
+  %param_0 = f32[1024]{0} parameter(0)
+  %param_1 = f32[1024]{0} parameter(1)
+  %res_param_add = f32[1024]{0} add(%param_0, %param_1)
+  %constant.anon = f32[] constant(1)
+  %constant_0 = f32[16384]{0} broadcast(%constant.anon), dimensions={}
+  %op_1 = f32[16384]{0} tanh(%constant_0)
+  %op_2 = f32[16384]{0} tanh(%op_1)
+  %op_3 = f32[16384]{0} tanh(%op_2)
+  %op_4 = f32[16384]{0} tanh(%op_3)
+  %tan_res = f32[1024]{0} slice(%op_4), slice={[0:1024]}
+  %res_1 = f32[1024]{0} add(%res_param_add, %tan_res)
+  %res_3 = f32[1024]{0} add(%constant_source_8_user, %res_1)
+  %constant_x = f32[1024]{0} broadcast(%constant_source_8), dimensions={}
+  %constant_x_and_res_param_add = f32[1024]{0} add(%constant_x, %res_param_add)
+  ROOT %res = f32[1024]{0} add(%res_3, %constant_x_and_res_param_add)
+}
+
+%call_comp (p: f32[1024], p_2: f32[1024]) -> f32[1024] {
+  %p = f32[1024]{0} parameter(0)
+  %p_2 = f32[1024]{0} parameter(1)
+  %call_convoluted = f32[1024]{0} call(%p, %p_2), to_apply=%call_convoluted
+  ROOT %n = f32[1024]{0} negate(%call_convoluted)
+}
+
+%add_mul_comp (p0: f32[], p1: f32[]) -> f32[1024] {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  %p0_bcast = f32[1024]{0} broadcast(%p0), dimensions={}
+  %p1_bcast = f32[1024]{0} broadcast(%p1), dimensions={}
+  %res_comp = f32[1024]{0} call(%p0_bcast, %p1_bcast), to_apply=%call_comp
+  ROOT %res_mul = f32[1024]{0} multiply(%res_comp, %res_comp)
+}
+
+ENTRY %entry (param.0: f32[], param.1: f32[]) -> f32[1024] {
+  %param.0 = f32[] parameter(0)
+  %param.1 = f32[] parameter(1)
+  %res = f32[1024]{0} call(%param.0, %param.1), to_apply=%add_mul_comp
+  ROOT %res_2 = f32[1024]{0} negate(%res)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  int64_t remat_group_id = 0;
+  absl::flat_hash_map<std::string, int64_t> remat_group_id_map;
+  absl::AnyInvocable<absl::Status(HloInstruction*, HloInstruction*)>
+      rematerialization_callback =
+          [&](HloInstruction* original, HloInstruction* remat) -> absl::Status {
+    auto [it, inserted] =
+        remat_group_id_map.try_emplace(original->name(), remat_group_id);
+    const int64_t current_group_id = it->second;
+    if (inserted) {
+      remat_group_id++;
+    }
+    remat_group_id_map[remat->name()] = current_group_id;
+    return absl::OkStatus();
+  };
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      RunHloRematerialization(
+          /*memory_limit_bytes=*/14 * 1024, module.get(),
+          /*min_remat_size=*/0,
+          /*remat_algorithm=*/
+          HloRematerialization::RematAlgorithm::kAlwaysRemat,
+          /*on_rematerialized=*/std::move(rematerialization_callback)));
+  EXPECT_TRUE(changed);
+
+  // Hash map of original instruction name to vector of its rematerialized
+  // instruction names.
+  absl::flat_hash_map<std::string, std::vector<std::string>> remat_groups = {};
+  for (const HloComputation* computation : module->computations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      absl::string_view instruction_name = instruction->name();
+
+      size_t remat_pos = instruction_name.find(".remat");
+
+      if (remat_pos != absl::string_view::npos) {
+        // Extract the original name by taking the substring before ".remat".
+        absl::string_view original_name = instruction_name.substr(0, remat_pos);
+        remat_groups[original_name].push_back(std::string(instruction_name));
+      }
+    }
+  }
+
+  EXPECT_THAT(
+      remat_groups,
+      UnorderedElementsAre(
+          Pair("constant_x", ElementsAre(HasSubstr("constant_x.remat"))),
+          Pair("constant_source_8_user",
+               ElementsAre(HasSubstr("constant_source_8_user.remat"))),
+          Pair("res_param_add", ElementsAre(HasSubstr("res_param_add.remat"),
+                                            HasSubstr("res_param_add.remat"))),
+          Pair("p1_bcast", ElementsAre(HasSubstr("p1_bcast.remat"))),
+          Pair("p0_bcast", ElementsAre(HasSubstr("p0_bcast.remat")))));
+
+  // Check that the original and rematerialized instructions have the same
+  // group id.
+  for (const auto& [original_name, remat_names] : remat_groups) {
+    auto original_it = remat_group_id_map.find(original_name);
+    for (const auto& remat_name : remat_names) {
+      auto remat_it = remat_group_id_map.find(remat_name);
+      EXPECT_NE(original_it, remat_group_id_map.end())
+          << "original: " << original_name;
+      EXPECT_NE(remat_it, remat_group_id_map.end()) << "remat: " << remat_name;
+      EXPECT_EQ(original_it->second, remat_it->second)
+          << "original: " << original_name << " remat: " << remat_name;
+    }
+  }
 }
 
 }  // namespace
