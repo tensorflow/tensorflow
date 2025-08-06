@@ -15,6 +15,8 @@
 
 # buildifier: disable=out-of-order-load
 
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
 # Placeholder: load proto_library
