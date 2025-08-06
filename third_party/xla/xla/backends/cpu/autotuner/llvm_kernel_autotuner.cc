@@ -45,8 +45,9 @@ absl::StatusOr<bool> LlvmKernelAutotuner::Run(
   TF_ASSIGN_OR_RETURN(auto compiler,
                       CpuCodegenBackend::CreateBackendCompiler());
   TF_ASSIGN_OR_RETURN(auto backend, LlvmKernelBackend::Create(compiler.get()));
-
-  std::unique_ptr<Profiler> profiler = CpuProfiler::Create(ProfileOptions());
+  ProfileOptions profile_options;
+  profile_options.should_populate_output_buffer = false;
+  std::unique_ptr<Profiler> profiler = CpuProfiler::Create(profile_options);
 
   std::vector<std::unique_ptr<CodegenBackend>> codegen_backends;
   codegen_backends.push_back(std::move(backend));

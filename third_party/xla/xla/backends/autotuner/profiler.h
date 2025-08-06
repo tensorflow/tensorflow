@@ -38,7 +38,7 @@ struct ProfileOptions {
   // Whether to populate the output_buffer in the ProfileResult with the result
   // of the execution. This is to avoid data copies if the caller doesn't need
   // the output buffer.
-  bool should_populate_output_buffer = false;
+  bool should_populate_output_buffer = true;
 };
 
 struct ProfileResult {
