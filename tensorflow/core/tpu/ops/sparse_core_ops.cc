@@ -997,7 +997,7 @@ REGISTER_OP("XlaSparseGradientsStack")
       std::vector<int> features(num_tables);
       for (int i = 0; i < num_tables; ++i) {
         features[i] = c->Value(c->Dim(c->input(i), 1));
-        total_sample_count += c->Value(c->Dim(c->input(0), 0));
+        total_sample_count += c->Value(c->Dim(c->input(i), 0));
       }
       DataType dtype;
       TF_RETURN_IF_ERROR(c->GetAttr("dtype", &dtype));
