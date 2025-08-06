@@ -37,11 +37,8 @@ class Tanh : public Intrinsic<Tanh> {
         {Type::S(xla::F32)},
 
         {Type::V(xla::F32, 4)}, {Type::V(xla::F32, 8)}, {Type::V(xla::F32, 16)},
-        // TODO(penporn): Re-enable after fixing JAX issue #23590.
-        // {Type::S(xla::F64)},
-        // {Type::V(xla::F64, 2)},
-        // {Type::V(xla::F64, 4)},
-        // {Type::V(xla::F64, 8)},
+        {Type::S(xla::F64)},    {Type::V(xla::F64, 2)}, {Type::V(xla::F64, 4)},
+        {Type::V(xla::F64, 8)},
     };
   }
   static absl::StatusOr<llvm::Function*> CreateDefinition(llvm::Module* module,
