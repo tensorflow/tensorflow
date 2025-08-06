@@ -669,6 +669,7 @@ def standardize_input_data(data,
   return data
 
 
+
 def standardize_sample_or_class_weights(x_weight, output_names, weight_type):
   """Maps `sample_weight` or `class_weight` to model outputs.
 
@@ -687,32 +688,82 @@ def standardize_sample_or_class_weights(x_weight, output_names, weight_type):
   if x_weight is None or (isinstance(x_weight, (list, tuple)) and
                           len(x_weight) == 0):  # pylint: disable=g-explicit-length-test
     return [None for _ in output_names]
+  
   if len(output_names) == 1:
     if isinstance(x_weight, (list, tuple)) and len(x_weight) == 1:
       return x_weight
-    if isinstance(x_weight, dict) and output_names[0] in x_weight:
-      return [x_weight[output_names[0]]]
+    if isinstance(x_weight, dict):
+      # Validate class_weight keys
+      if weight_type == 'class_weight':
+        for key in x_weight.keys():
+          # Allow integer keys (class indices)
+          if isinstance(key, (int, type(0))):
+            continue
+          # Allow output names for single-output models
+          elif isinstance(key, str) and key in output_names:
+            continue
+          # Allow string representations of integers
+          elif isinstance(key, str):
+            try:
+              int(key)  # Valid if it's a string number like "0", "1"
+              continue
+            except ValueError:
+              pass
+          # Reject everything else
+          raise ValueError(f"Invalid class_weight key: '{key}'. "
+                         f"Class weight keys must be integers representing class indices, "
+                         f"or valid output names for single-output models. "
+                         f"Got key of type {type(key).__name__}.")
+      
+      if output_names[0] in x_weight:
+        return [x_weight[output_names[0]]]
+      else:
+        return [x_weight]
     else:
       return [x_weight]
+
+  # For multiple outputs
   if isinstance(x_weight, (list, tuple)):
     if len(x_weight) != len(output_names):
-      raise ValueError('Provided `' + weight_type + '` was a list of ' +
-                       str(len(x_weight)) + ' elements, but the model has ' +
+      raise ValueError('Provided `' + weight_type + '` was a list of length ' +
+                       str(len(x_weight)) + ', but the model has ' +
                        str(len(output_names)) + ' outputs. '
                        'You should provide one `' + weight_type + '`'
                        'array per model output.')
     return x_weight
-  if isinstance(x_weight, collections.abc.Mapping):
-    generic_utils.check_for_unexpected_keys(weight_type, x_weight, output_names)
-    x_weights = []
+  if isinstance(x_weight, dict):
+    # Validate class_weight keys for multiple outputs
+    if weight_type == 'class_weight':
+      for name in output_names:
+        if name in x_weight and isinstance(x_weight[name], dict):
+          for key in x_weight[name].keys():
+            if not isinstance(key, (int, type(0))):
+              try:
+                if isinstance(key, str):
+                  int(key)
+                else:
+                  raise ValueError()
+              except (ValueError, TypeError):
+                raise ValueError(f"Invalid class_weight key: '{key}' for output '{name}'. "
+                               f"Class weight keys must be integers representing class indices, "
+                               f"got key of type {type(key).__name__}.")
+    
     for name in output_names:
-      x_weights.append(x_weight.get(name))
-    return x_weights
+      if name not in x_weight:
+        raise ValueError('Output "' + name + '" missing from `' +
+                         weight_type + '` dictionary. You should provide '
+                         'a `' + weight_type + '` value '
+                         'for each model output.')
+    return [x_weight[name] for name in output_names]
   else:
-    raise TypeError('The model has multiple outputs, so `' + weight_type + '` '
-                    'should be either a list or a dict. '
-                    'Provided `' + weight_type + '` type not understood: ' +
-                    str(x_weight))
+    if len(output_names) == 1:
+      return x_weight
+    else:
+      raise ValueError('The model has multiple outputs, so `' + weight_type +
+                       '` '
+                       'should be either a list or a dict. '
+                       'Provided `' + weight_type + '` type: ' +
+                       str(type(x_weight)))
 
 
 def standardize_class_weights(class_weight, output_names):
