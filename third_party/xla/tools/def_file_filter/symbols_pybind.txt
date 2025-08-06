@@ -434,7 +434,6 @@ tsl::AsyncValue::CreateTypeInfoAndReturnTypeIdImpl
 tsl::AsyncValue::TypeInfo
 tsl::internal::ConcreteAsyncValue
 tsl::DummyValueForErrorAsyncValue
-tsl::AsyncValue::NotifyAvailable
 tsl::internal::ConcreteAsyncValue
 
 [//external/local_xla/xla:status_macros] # tfcompile
