@@ -1,4 +1,4 @@
-// RUN: sdy_opt --split-input-file %s -xla-sdy-import-uninlineable-func-calls  2>&1 | FileCheck %s
+// RUN: sdy_opt --split-input-file %s -xla-sdy-import-uninlineable-func-calls | FileCheck %s
 // RUN: sdy_opt %s -split-input-file -xla-sdy-import-uninlineable-func-calls -verify-diagnostics
 
 sdy.mesh @mesh = #sdy.mesh<["x"=2, "y"=2]>
