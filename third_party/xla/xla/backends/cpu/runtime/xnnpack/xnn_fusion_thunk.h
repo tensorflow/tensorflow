@@ -59,8 +59,9 @@ class XnnFusionThunk : public Thunk {
   ~XnnFusionThunk() override;
 
   struct Options {
+    // Pass xnn_scheduler_t constructed from the intra-op threadpool to the
+    // XNNPACK runtime to allow XNNPACK to parallelize the execution.
     bool use_threadpool = true;
-    bool use_slinky = false;
   };
 
   struct Argument {

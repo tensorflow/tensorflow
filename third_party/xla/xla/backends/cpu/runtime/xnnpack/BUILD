@@ -31,14 +31,6 @@ cc_library(
     name = "xnn_threadpool",
     srcs = ["xnn_threadpool.cc"],
     hdrs = ["xnn_threadpool.h"],
-    # copybara:uncomment_begin(google-only)
-    # local_defines = select({
-    # "//xla/tsl:linux_any": [
-    # "XLA_CPU_USE_CUSTOM_PTHREADPOOL",
-    # ],
-    # "//conditions:default": [],
-    # }),
-    # copybara:uncomment_end
     deps = [
         "//xla/backends/cpu/runtime:parallel_loop_runner",
         "//xla/tsl/concurrency:async_value",
@@ -51,14 +43,12 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:platform_port",
-        "@pthreadpool",
     ],
 )
 
 xla_cc_test(
     name = "xnn_threadpool_test",
     srcs = ["xnn_threadpool_test.cc"],
-    linkstatic = True,  # required to override pthreadpool symbols
     deps = [
         ":xnn_threadpool",
         "//xla/backends/cpu/runtime:parallel_loop_runner",
@@ -69,7 +59,6 @@ xla_cc_test(
         "@XNNPACK",
         "@com_google_absl//absl/algorithm:container",
         "@eigen_archive//:eigen3",
-        "@pthreadpool",
     ],
 )
 
@@ -102,7 +91,6 @@ cc_library(
 xla_cc_test(
     name = "xnn_convolution_thunk_test",
     srcs = ["xnn_convolution_thunk_test.cc"],
-    linkstatic = True,  # required to override pthreadpool symbols
     deps = [
         ":xnn_convolution_thunk",
         "//xla:error_spec",
@@ -161,7 +149,6 @@ cc_library(
 xla_cc_test(
     name = "xnn_dot_thunk_test",
     srcs = ["xnn_dot_thunk_test.cc"],
-    linkstatic = True,  # required to override pthreadpool symbols
     deps = [
         ":xnn_dot_thunk",
         "//xla:literal_util",
@@ -212,14 +199,12 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
-        "@pthreadpool",
     ],
 )
 
 xla_cc_test(
     name = "xnn_fusion_thunk_test",
     srcs = ["xnn_fusion_thunk_test.cc"],
-    linkstatic = True,  # required to override pthreadpool symbols
     deps = [
         ":xnn_fusion_thunk",
         ":xnn_interop",

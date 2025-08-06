@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 #include <string>
-#include <tuple>
 #include <vector>
 
 #include "xnnpack.h"
@@ -86,21 +85,14 @@ static absl::StatusOr<xnn_subgraph_t> CreateBinaryAdd(
   return subgraph;
 }
 
-using XnnFusionThunkTestSpec = std::tuple<bool, bool>;
-
-class XnnFusionThunkTest
-    : public testing::TestWithParam<XnnFusionThunkTestSpec> {
+class XnnFusionThunkTest : public testing::TestWithParam<bool> {
  public:
-  static std::string Name(
-      const ::testing::TestParamInfo<XnnFusionThunkTestSpec>& info) {
-    return absl::StrCat(
-        std::get<0>(info.param) ? "threadpool" : "single_threaded", "_",
-        std::get<1>(info.param) ? "slinky" : "xnnpack");
+  static std::string Name(const ::testing::TestParamInfo<bool>& info) {
+    return absl::StrCat(info.param ? "threadpool" : "single_threaded");
   }
 
  protected:
-  bool use_threadpool() const { return std::get<0>(GetParam()); }
-  bool use_slinky() const { return std::get<1>(GetParam()); }
+  bool use_threadpool() const { return GetParam(); }
 };
 
 TEST_P(XnnFusionThunkTest, ElementwiseAdd) {
@@ -126,10 +118,9 @@ TEST_P(XnnFusionThunkTest, ElementwiseAdd) {
   XnnFusionThunk::Result out_res = {out_slice, shape};
 
   TF_ASSERT_OK_AND_ASSIGN(
-      auto thunk,
-      XnnFusionThunk::Create(
-          XnnFusionThunk::Options{use_threadpool(), use_slinky()}, {"fusion"},
-          {lhs_arg, rhs_arg}, {out_res}, &CreateBinaryAdd));
+      auto thunk, XnnFusionThunk::Create(
+                      XnnFusionThunk::Options{use_threadpool()}, {"fusion"},
+                      {lhs_arg, rhs_arg}, {out_res}, &CreateBinaryAdd));
 
   Thunk::ExecuteParams params;
   params.buffer_allocations = &allocations;
@@ -142,9 +133,8 @@ TEST_P(XnnFusionThunkTest, ElementwiseAdd) {
   EXPECT_EQ(out, LiteralUtil::CreateR1<float>({5.0, 5.0, 5.0, 5.0}));
 }
 
-INSTANTIATE_TEST_SUITE_P(XnnFusion, XnnFusionThunkTest,
-                         ::testing::Combine(::testing::Bool(),
-                                            ::testing::Bool()),
+INSTANTIATE_TEST_SUITE_P(XnnFusion, XnnFusionThunkTest, ::testing::Bool(),
                          XnnFusionThunkTest::Name);
+
 }  // namespace
 }  // namespace xla::cpu

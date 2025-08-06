@@ -20,11 +20,9 @@ limitations under the License.
 #include <limits>
 #include <vector>
 
+#include "experimental.h"  // xnnpack
 #include "xnnpack.h"
 #include "absl/algorithm/container.h"
-#include "pthreadpool.h"
-#include "xla/backends/cpu/runtime/parallel_loop_runner.h"
-#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -130,40 +128,11 @@ static xnn_status CreateDotSubgraph(xnn_subgraph_t subgraph, size_t m, size_t n,
   return xnn_status_success;
 }
 
-class XnnThreadPoolTest : public testing::TestWithParam<bool> {
- public:
-  XnnThreadPoolTest()
-      : thread_pool_(tsl::Env::Default(), "xnn-threadpool-test", 8),
-        device_(thread_pool_.AsEigenThreadPool(), thread_pool_.NumThreads()),
-        runner_(&device_) {}
-
-  pthreadpool_t CreateThreadPool() {
-    return GetParam() ? pthreadpool_create(8)
-                      : CreateCustomPthreadpool(&runner_);
-  }
-
-  void DestroyThreadPool(pthreadpool_t threadpool) {
-    if (GetParam()) {
-      pthreadpool_destroy(threadpool);
-    } else {
-      DestroyCustomPthreadpool(threadpool);
-    }
-  }
-
- private:
-  tsl::thread::ThreadPool thread_pool_;
-  Eigen::ThreadPoolDevice device_;
-  ParallelLoopRunner runner_;
-};
-
-TEST_P(XnnThreadPoolTest, Binary) {
-  pthreadpool_t threadpool = CreateThreadPool();
-  ASSERT_NE(threadpool, nullptr);
+TEST(XnnThreadPoolTest, Binary) {
+  tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test", 4);
+  auto scheduler = CreateXnnEigenScheduler(thread_pool.AsEigenThreadPool());
 
   ASSERT_EQ(xnn_initialize(/*allocator=*/nullptr), xnn_status_success);
-
-  xnn_workspace_t workspace = nullptr;
-  ASSERT_EQ(xnn_create_workspace(&workspace), xnn_status_success);
 
   xnn_subgraph_t subgraph = nullptr;
 
@@ -180,9 +149,10 @@ TEST_P(XnnThreadPoolTest, Binary) {
   std::vector<float> out1(d0 * d0, 0.0f);
 
   xnn_runtime_t runtime = nullptr;
-  ASSERT_EQ(xnn_create_runtime_v4(subgraph, nullptr, workspace, threadpool, 0,
-                                  &runtime),
-            xnn_status_success);
+  ASSERT_EQ(
+      xnn_create_runtime_with_scheduler(subgraph, nullptr, scheduler.get(),
+                                        XNN_FLAG_SLINKY_ENABLED, &runtime),
+      xnn_status_success);
 
   std::vector<xnn_external_value> external_values = {
       xnn_external_value{0, lhs.data()},
@@ -197,29 +167,18 @@ TEST_P(XnnThreadPoolTest, Binary) {
 
   ASSERT_EQ(xnn_invoke_runtime(runtime), xnn_status_success);
 
-  if (ParallelLoopRunner* runner = GetParallelLoopRunner(threadpool)) {
-    tsl::BlockUntilReady(runner->done_event());
-    ASSERT_TRUE(runner->done_event().IsConcrete());
-  }
-
   ASSERT_TRUE(absl::c_all_of(out0, [](float v) { return v == 5.0f; }));
   ASSERT_TRUE(absl::c_all_of(out1, [](float v) { return v == 6.0f; }));
 
   ASSERT_EQ(xnn_delete_runtime(runtime), xnn_status_success);
   ASSERT_EQ(xnn_delete_subgraph(subgraph), xnn_status_success);
-  ASSERT_EQ(xnn_release_workspace(workspace), xnn_status_success);
-
-  DestroyThreadPool(threadpool);
 }
 
-TEST_P(XnnThreadPoolTest, Dot) {
-  pthreadpool_t threadpool = CreateThreadPool();
-  ASSERT_NE(threadpool, nullptr);
+TEST(XnnThreadPoolTest, Dot) {
+  tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test", 4);
+  auto scheduler = CreateXnnEigenScheduler(thread_pool.AsEigenThreadPool());
 
   ASSERT_EQ(xnn_initialize(/*allocator=*/nullptr), xnn_status_success);
-
-  xnn_workspace_t workspace = nullptr;
-  ASSERT_EQ(xnn_create_workspace(&workspace), xnn_status_success);
 
   xnn_subgraph_t subgraph = nullptr;
 
@@ -235,8 +194,8 @@ TEST_P(XnnThreadPoolTest, Dot) {
   std::vector<float> out(m * n, 0.0f);
 
   xnn_runtime_t runtime = nullptr;
-  ASSERT_EQ(xnn_create_runtime_v4(subgraph, nullptr, workspace, threadpool, 0,
-                                  &runtime),
+  ASSERT_EQ(xnn_create_runtime_with_scheduler(subgraph, nullptr,
+                                              scheduler.get(), 0, &runtime),
             xnn_status_success);
 
   std::vector<xnn_external_value> external_values = {
@@ -251,22 +210,11 @@ TEST_P(XnnThreadPoolTest, Dot) {
 
   ASSERT_EQ(xnn_invoke_runtime(runtime), xnn_status_success);
 
-  if (ParallelLoopRunner* runner = GetParallelLoopRunner(threadpool)) {
-    tsl::BlockUntilReady(runner->done_event());
-    ASSERT_TRUE(runner->done_event().IsConcrete());
-  }
-
   ASSERT_TRUE(absl::c_all_of(out, [&](float v) { return v == k; }));
 
   ASSERT_EQ(xnn_delete_runtime(runtime), xnn_status_success);
   ASSERT_EQ(xnn_delete_subgraph(subgraph), xnn_status_success);
-  ASSERT_EQ(xnn_release_workspace(workspace), xnn_status_success);
-
-  DestroyThreadPool(threadpool);
 }
-
-INSTANTIATE_TEST_SUITE_P(XnnThreadPool, XnnThreadPoolTest, testing::Bool(),
-                         testing::PrintToStringParamName());
 
 }  // namespace
 }  // namespace xla::cpu
