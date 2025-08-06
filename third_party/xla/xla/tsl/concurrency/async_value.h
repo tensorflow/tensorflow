@@ -33,7 +33,6 @@ limitations under the License.
 #include "xla/tsl/concurrency/concurrent_vector.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "tsl/platform/context.h"
 
 namespace tsl {
@@ -746,16 +745,11 @@ class ConcreteAsyncValue : public AsyncValue {
   void Destroy() { data_store_.Destroy(state()); }
   bool HasData() const { return data_store_.HasData(state()); }
 
-  void VerifyOffsets() {
-    // ConcreteAsyncValue<T> is not a standard layout type, so we can't rely
-    // on `offsetof` to verify data offset at compile time without compile time
-    // warnings, so we do it at run time. If this property doesn't hold, any use
-    // of async value will lead to undefined behavior.
-    uintptr_t self = tsl::safe_reinterpret_cast<uintptr_t>(this);
-    uintptr_t data = tsl::safe_reinterpret_cast<uintptr_t>(&data_store_.data_);
-    DCHECK(data - self == AsyncValue::kDataOffset)
-        << "Offset of ConcreteAsyncValue data payload must be equal to "
-           "AsyncValue::kDataOffset";
+  static void VerifyOffsets() {
+    static_assert(offsetof(ConcreteAsyncValue<T>, data_store_.data_) ==
+                      AsyncValue::kDataOffset,
+                  "Offset of ConcreteAsyncValue data payload is assumed to be "
+                  "AsyncValue::kDataOffset == 64");
   }
 };
 
