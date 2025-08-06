@@ -50,7 +50,7 @@ class ExecutionStreamAssignmentTest : public HloHardwareIndependentTestBase {
     for (const HloInstruction* instruction : computation->instructions()) {
       if (instruction->IsAsynchronous()) continue;
       EXPECT_THAT(assignment.GetSyncExecutionStreamId(instruction),
-                  IsOkAndHolds(stream));
+                  absl_testing::IsOkAndHolds(stream));
     }
   }
 };
@@ -109,21 +109,21 @@ TEST_F(ExecutionStreamAssignmentTest, AsyncFusion) {
   for (absl::string_view instruction : {"start1", "update1", "done1"}) {
     EXPECT_THAT(assignment.GetAsyncExecutionStreamIds(Cast<HloAsyncInstruction>(
                     FindInstruction(module.get(), instruction))),
-                IsOkAndHolds(AsyncExecutionStreamIds{
+                absl_testing::IsOkAndHolds(AsyncExecutionStreamIds{
                     /*source_stream_id=*/ExecutionStreamId(0),
                     /*destination_stream_id=*/ExecutionStreamId(1)}));
   }
   for (absl::string_view instruction : {"start2", "update2", "done2"}) {
     EXPECT_THAT(assignment.GetAsyncExecutionStreamIds(Cast<HloAsyncInstruction>(
                     FindInstruction(module.get(), instruction))),
-                IsOkAndHolds(AsyncExecutionStreamIds{
+                absl_testing::IsOkAndHolds(AsyncExecutionStreamIds{
                     /*source_stream_id=*/ExecutionStreamId(0),
                     /*destination_stream_id=*/ExecutionStreamId(2)}));
   }
   for (absl::string_view instruction : {"start3", "update3", "done3"}) {
     EXPECT_THAT(assignment.GetAsyncExecutionStreamIds(Cast<HloAsyncInstruction>(
                     FindInstruction(module.get(), instruction))),
-                IsOkAndHolds(AsyncExecutionStreamIds{
+                absl_testing::IsOkAndHolds(AsyncExecutionStreamIds{
                     /*source_stream_id=*/ExecutionStreamId(0),
                     /*destination_stream_id=*/ExecutionStreamId(1)}));
   }
@@ -161,7 +161,7 @@ TEST_F(ExecutionStreamAssignmentTest, CopyStartStreamIdTest) {
     EXPECT_THAT(
         assignment.GetAsyncExecutionStreamIds(Cast<HloCopyStartInstruction>(
             FindInstruction(module.get(), instruction))),
-        IsOkAndHolds(AsyncExecutionStreamIds{
+        absl_testing::IsOkAndHolds(AsyncExecutionStreamIds{
             /*source_stream_id=*/ExecutionStreamId(0),
             /*destination_stream_id=*/ExecutionStreamId(1)}));
   }
@@ -203,7 +203,7 @@ TEST_F(ExecutionStreamAssignmentTest, FusionComputations) {
     for (const HloInstruction* instruction :
          FindComputation(module.get(), computation)->instructions()) {
       EXPECT_THAT(assignment.GetSyncExecutionStreamId(instruction),
-                  StatusIs(absl::StatusCode::kNotFound));
+                  absl_testing::StatusIs(absl::StatusCode::kNotFound));
     }
   }
 }
@@ -236,7 +236,7 @@ TEST_F(ExecutionStreamAssignmentTest, UnreachableComputation) {
   for (const HloInstruction* instruction :
        FindComputation(module.get(), "unreachable")->instructions()) {
     EXPECT_THAT(assignment.GetSyncExecutionStreamId(instruction),
-                StatusIs(absl::StatusCode::kNotFound));
+                absl_testing::StatusIs(absl::StatusCode::kNotFound));
   }
 }
 
@@ -287,7 +287,7 @@ TEST_F(ExecutionStreamAssignmentTest, ExplicitStreams) {
   // the asynchronous stream.
   EXPECT_THAT(assignment.GetSyncExecutionStreamId(
                   FindInstruction(module.get(), "custom-call.1")),
-              IsOkAndHolds(ExecutionStreamId(1)));
+              absl_testing::IsOkAndHolds(ExecutionStreamId(1)));
 
   // Same checks as above but now on stream #2.
   ExpectExecutionStreamForSyncInstructions(
@@ -297,7 +297,7 @@ TEST_F(ExecutionStreamAssignmentTest, ExplicitStreams) {
       ExecutionStreamId(2));
   EXPECT_THAT(assignment.GetSyncExecutionStreamId(
                   FindInstruction(module.get(), "custom-call.2")),
-              IsOkAndHolds(ExecutionStreamId(2)));
+              absl_testing::IsOkAndHolds(ExecutionStreamId(2)));
 }
 
 TEST_F(ExecutionStreamAssignmentTest, AsyncCollectiveTest) {
