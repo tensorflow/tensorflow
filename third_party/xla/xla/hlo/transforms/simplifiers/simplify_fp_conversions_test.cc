@@ -52,7 +52,7 @@ TEST_F(SimplifyFPConversionsTest, DoesNotChangeSingleConvert) {
                           ParseAndReturnVerifiedModule(kModuleStr));
 
   SimplifyFPConversions simplifier;
-  EXPECT_THAT(simplifier.Run(module.get()), IsOkAndHolds(false));
+  EXPECT_THAT(simplifier.Run(module.get()), absl_testing::IsOkAndHolds(false));
 }
 
 TEST_F(SimplifyFPConversionsTest, SimplifiesF32ToBF16ToF32) {
@@ -70,7 +70,7 @@ TEST_F(SimplifyFPConversionsTest, SimplifiesF32ToBF16ToF32) {
                           ParseAndReturnVerifiedModule(kModuleStr));
 
   SimplifyFPConversions simplifier;
-  EXPECT_THAT(simplifier.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(simplifier.Run(module.get()), absl_testing::IsOkAndHolds(true));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Tuple(op::Parameter(0)));
 }
@@ -91,7 +91,7 @@ TEST_F(SimplifyFPConversionsTest, SimplifiesF64ToF16ToF32ToBF16) {
                           ParseAndReturnVerifiedModule(kModuleStr));
 
   SimplifyFPConversions simplifier;
-  EXPECT_THAT(simplifier.Run(module.get()), IsOkAndHolds(true));
+  EXPECT_THAT(simplifier.Run(module.get()), absl_testing::IsOkAndHolds(true));
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
       op::Tuple(AllOf(op::Shape("bf16[2,3]"), op::Convert(op::Parameter(0)))));
