@@ -187,8 +187,13 @@ class HloRematerialization : public HloModulePass {
     RematAlgorithm remat_algorithm;
   };
 
-  explicit HloRematerialization(Options options, RematerializationSizes& sizes)
-      : options_(std::move(options)), sizes_(sizes) {}
+  explicit HloRematerialization(
+      Options options, RematerializationSizes& sizes,
+      absl::AnyInvocable<absl::Status(HloInstruction*, HloInstruction*)>
+          on_rematerialized = nullptr)
+      : options_(std::move(options)),
+        sizes_(sizes),
+        on_rematerialized_(std::move(on_rematerialized)) {}
 
   ~HloRematerialization() override = default;
 
@@ -261,6 +266,14 @@ class HloRematerialization : public HloModulePass {
     int64_t memory_usage;
     const HloInstruction* instruction;
   };
+
+  absl::Status on_rematerialized(HloInstruction* original,
+                                 HloInstruction* remat) {
+    if (on_rematerialized_ != nullptr) {
+      return on_rematerialized_(original, remat);
+    }
+    return absl::OkStatus();
+  }
 
  protected:
   // Updates the schedule to mirror the provided instruction sequence. This is
@@ -387,6 +400,11 @@ class HloRematerialization : public HloModulePass {
   // Tracking available channel id numbers to use to apply to rematerialized
   // channel instructions
   int64_t next_channel_id_;
+
+  // Callback set by the user to be called when an instruction is
+  // rematerialized.
+  absl::AnyInvocable<absl::Status(HloInstruction*, HloInstruction*)>
+      on_rematerialized_;
 };
 
 }  // namespace xla

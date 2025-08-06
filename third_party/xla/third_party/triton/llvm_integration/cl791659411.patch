@@ -1,0 +1,11 @@
+
+--- a/BUILD	2025-07-31 00:13:23.000000000 -0700
++++ b/BUILD	2025-08-06 06:15:37.000000000 -0700
+@@ -949,6 +949,7 @@
+         ":triton_conversion_triton_to_triton_gpu_passes_inc_gen",
+         ":triton_nvidia_gpu_transforms_inc_gen",
+         "@llvm-project//mlir:AllPassesAndDialects",
++        "@llvm-project//mlir:RegisterAllPasses",
+         "///test:TritonTestAnalysis",
+         "///test:TritonTestDialect",
+         "///third_party/amd:TritonAMDGPU",
