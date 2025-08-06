@@ -44,7 +44,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 #include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
-#include "xla/mlir_hlo/mhlo/IR/register.h"
+#include "xla/hlo/translate/register.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_proto_util.h"
@@ -208,8 +208,7 @@ mlir::LogicalResult MlirHloToHloTextMain(
   source_mgr->AddNewSourceBuffer(std::move(buffer), llvm::SMLoc());
 
   mlir::DialectRegistry registry;
-  mlir::mhlo::registerAllMhloDialects(registry);
-  registry.insert<mlir::func::FuncDialect>();
+  xla::RegisterMlirToHloDependentDialects(registry);
 
   mlir::MLIRContext context(registry);
   mlir::OwningOpRef<mlir::ModuleOp> module =

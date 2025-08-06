@@ -1,4 +1,4 @@
-/* Copyright 2025 The OpenXLA Authors.
+/* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,11 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_PYTHON_VERSION_H_
-#define XLA_PYTHON_VERSION_H_
+#ifndef XLA_HLO_TRANSLATE_REGISTER_H_
+#define XLA_HLO_TRANSLATE_REGISTER_H_
 
-// An increasing version number to protect jax code against breaking changes.
-// In JAX, reference this via jax._src.lib.ifrt_version.
-#define JAX_IFRT_VERSION_NUMBER 22
+#include "mlir/IR/DialectRegistry.h"
+#include "mlir/IR/MLIRContext.h"
 
-#endif  // XLA_PYTHON_VERSION_H_
+namespace xla {
+
+// Register all dialects used by XLA plugins
+// This is needed to ensure that XLA PJRT plugins work in async environment
+// where all registrations must take place before any async compilation.
+void RegisterMlirToHloDependentDialects(mlir::DialectRegistry& registry);
+
+}  // namespace xla
+
+#endif  // XLA_HLO_TRANSLATE_REGISTER_H_

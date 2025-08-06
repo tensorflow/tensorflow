@@ -2223,6 +2223,24 @@ def TF_XlaSparseDenseMatmulWithCsrInputOp : TF_Op<"XlaSparseDenseMatmulWithCsrIn
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<4>;
 }
 
+def TF_XlaLocalSparseDenseMatmulOp : TF_Op<"XlaLocalSparseDenseMatmul", [Pure]> {
+  let summary = "Performs embedding lookup on SparseCore for a single table.";
+
+  let arguments = (ins
+    TF_Int32Tensor:$embedding_ids,
+    TF_Int32Tensor:$sample_ids,
+    TF_Float32Tensor:$gains,
+    TF_Tensor:$embedding_table,
+
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$batch_size,
+    TypeAttr:$T
+  );
+
+  let results = (outs
+    TF_Tensor:$result
+  );
+}
+
 def TF_XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInputOp : TF_Op<"XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInput", [Pure]> {
   let summary = "This op looks up the embedding vectors on SparseCores and performs the given combiner computation on TensorCores.";
 

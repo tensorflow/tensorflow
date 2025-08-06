@@ -17,13 +17,11 @@ limitations under the License.
 
 #include <string>
 
-#include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Parser/Parser.h"
-#include "stablehlo/dialect/Register.h"
+#include "xla/hlo/translate/register.h"
 #include "xla/mlir/utils/error_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/status_matchers.h"
@@ -50,8 +48,7 @@ func.func @main(%arg0: tensor<?xf32>, %arg1: tensor<1xindex>, %arg2: tensor<1xin
 )mlir";
 
   mlir::DialectRegistry registry;
-  registry.insert<mlir::func::FuncDialect, mlir::shape::ShapeDialect>();
-  mlir::stablehlo::registerAllDialects(registry);
+  xla::RegisterMlirToHloDependentDialects(registry);
   mlir::MLIRContext context(registry);
   mlir::OwningOpRef<mlir::ModuleOp> module;
   {
@@ -75,8 +72,7 @@ func.func @main(%arg0: tensor<5x10xbf16>, %arg1: tensor<10x5xbf16>) -> tensor<5x
 )mlir";
 
   mlir::DialectRegistry registry;
-  registry.insert<mlir::func::FuncDialect, mlir::shape::ShapeDialect>();
-  mlir::stablehlo::registerAllDialects(registry);
+  xla::RegisterMlirToHloDependentDialects(registry);
   mlir::MLIRContext context(registry);
   mlir::OwningOpRef<mlir::ModuleOp> module;
   {
@@ -96,8 +92,7 @@ func.func @main(%arg0: tensor<3x3x3x3xf32>, %arg1: tensor<3x3x3x3xf32>) -> tenso
 )mlir";
 
   mlir::DialectRegistry registry;
-  registry.insert<mlir::func::FuncDialect, mlir::shape::ShapeDialect>();
-  mlir::stablehlo::registerAllDialects(registry);
+  xla::RegisterMlirToHloDependentDialects(registry);
   mlir::MLIRContext context(registry);
   mlir::OwningOpRef<mlir::ModuleOp> module;
   {
