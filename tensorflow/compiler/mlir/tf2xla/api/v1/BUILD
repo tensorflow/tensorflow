@@ -68,7 +68,7 @@ cc_library(
         "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/hlo/builder:xla_computation",
         "@local_xla//xla/hlo/ir:hlo",
-        "@local_xla//xla/hlo/translate:stablehlo",
+        "@local_xla//xla/hlo/translate:register",
         "@local_xla//xla/hlo/translate/mhlo_to_hlo:layout_util",
         "@local_xla//xla/hlo/translate/mhlo_to_hlo:mlir_hlo_to_hlo",
         "@local_xla//xla/hlo/translate/mhlo_to_hlo:type_to_shape",
