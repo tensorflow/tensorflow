@@ -4,13 +4,6 @@
 
 * Fix save_model.save for Serving embedding and add SparseCore Reshard. 
 
-# Release 2.17.1
-
-### Bug Fixes and Other Changes
-
-* Add necessary header files in the aar library. These are needed if developers build apps with header files unpacked from tflite aar files from maven.
-* Implement Name() for GCSWritableFile to fix the profiler trace viewer cache file generation.
-* Fix `cstring.h` missing file issue with the Libtensorflow archive.
 # Release 2.19.0
 
 ## TensorFlow
