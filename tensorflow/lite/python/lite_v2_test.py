@@ -1356,7 +1356,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
       disable_per_channel=False,
       enable_mlir_quantizer=False,
   ):
-    k_conv_name = 'tfl.pseudo_qconst' if enable_mlir_quantizer else 'Conv2D'
+    k_conv_name = 'Conv2D'
     # Dynamic range quant requires total num elements of filters > 1024.
     k_num_filters = 38
     root, func, calib_gen = self._getIntegerQuantizeModel(k_num_filters)
@@ -1425,7 +1425,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
       enable_mlir_quantizer=False,
       representative_dataset=False,
   ):
-    k_dense_name = 'tfl.pseudo_qconst' if representative_dataset else 'MatMul'
+    k_dense_name = 'MatMul'
     # Dynamic range quant requires total num elements of filters > 1024.
     k_num_filters = 64
     root, func, calib_gen = self._getIntegerQuantizeDenseModel(k_num_filters)
@@ -2338,11 +2338,11 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     def representative_dataset_gen():
       for _ in range(2):
         yield {
-            'x': np.random.uniform(low=0, high=1, size=(1, 1)).astype(
-                np.float32
+            'x': (
+                np.random.uniform(low=0, high=1, size=(1, 1)).astype(np.float32)
             ),
-            'y': np.random.uniform(low=0, high=1, size=(1, 1)).astype(
-                np.float32
+            'y': (
+                np.random.uniform(low=0, high=1, size=(1, 1)).astype(np.float32)
             ),
         }
 
@@ -2441,8 +2441,10 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
         yield (
             'add',
             {
-                'x': np.random.uniform(low=0, high=1, size=(1,)).astype(
-                    np.float32
+                'x': (
+                    np.random.uniform(low=0, high=1, size=(1,)).astype(
+                        np.float32
+                    )
                 ),
             },
         )
@@ -2450,8 +2452,10 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
         yield (
             'sub',
             {
-                'x': np.random.uniform(low=0, high=1, size=(1,)).astype(
-                    np.float32
+                'x': (
+                    np.random.uniform(low=0, high=1, size=(1,)).astype(
+                        np.float32
+                    )
                 ),
             },
         )
@@ -2798,7 +2802,8 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
 
       def call(self, x):
         return tf.quantization.fake_quant_with_min_max_vars(
-            x, -3.0, 3.0, narrow_range=True)
+            x, -3.0, 3.0, narrow_range=True
+        )
 
     inp = tf.keras.Input(shape=(6, 8, 48), batch_size=1)
     x = _FakeQuantVarsLayer()(inp)
@@ -2923,11 +2928,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     model.build(input_shape=(1, 5, 5, 3))
     saved_model_dir = os.path.join(self.get_temp_dir(), 'conv_saved_model')
     save.save(model, saved_model_dir)
-    k_conv_name = (
-        'tfl.pseudo_qconst'
-        if enable_mlir_quantizer
-        else 'sequential/conv2d/Conv2D'
-    )
+    k_conv_name = 'sequential/conv2d/Conv2D'
     quantized_converter = lite.TFLiteConverterV2.from_saved_model(
         saved_model_dir
     )
@@ -2989,11 +2990,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     ])
     saved_model_dir = os.path.join(self.get_temp_dir(), 'dense_saved_model')
     save.save(model, saved_model_dir)
-    k_dense_bias_name = (
-        'sequential/dense/BiasAdd'
-        if is_int16_quantize
-        else 'tfl.pseudo_qconst'
-    )
+    k_dense_bias_name = 'sequential/dense/BiasAdd'
     quantized_converter = lite.TFLiteConverterV2.from_saved_model(
         saved_model_dir
     )
@@ -3587,7 +3584,8 @@ class FromKerasModelTest(lite_v2_test_util.ModelTest):
 
       def call(self, x):
         return tf.quantization.fake_quant_with_min_max_vars(
-            x, -3.0, 3.0, narrow_range=True)
+            x, -3.0, 3.0, narrow_range=True
+        )
 
     inp = tf.keras.Input(shape=(6, 8, 6), batch_size=1)
     x = _FakeQuantVarsLayer()(inp)
@@ -3645,7 +3643,7 @@ class FromKerasModelTest(lite_v2_test_util.ModelTest):
       enable_mlir_quantizer=False,
       representative_dataset=False,
   ):
-    k_dense_name = 'tfl.pseudo_qconst' if representative_dataset else 'MatMul'
+    k_dense_name = 'MatMul'
     # Dynamic range quant requires total num elements of filters > 1024.
     k_num_filters = 64
     model = tf.keras.models.Sequential([
