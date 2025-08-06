@@ -2892,8 +2892,15 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
       HloPassPipeline& pipeline =
           main_pipeline.AddPass<HloPassPipeline>("command-buffer-scheduling");
       pipeline.AddPass<CommandBufferScheduling>(gpu_device_info);
-      pipeline.AddPass<SanitizeConstantNames>();
     }
+  }
+
+  // Sanitize constant names. This is in its own pipeline to ensure it always
+  // runs, as the preceding pipeline is conditional.
+  {
+    auto& pipeline =
+        main_pipeline.AddPass<HloPassPipeline>("sanitize-constant-names");
+    pipeline.AddPass<SanitizeConstantNames>();
   }
 
   if (module->config().debug_options().xla_gpu_pgle_accuracy_checker() ==
