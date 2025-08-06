@@ -150,6 +150,13 @@ class HloModule {
       const std::string& suffix = "clone",
       std::optional<const HloModuleConfig> config = std::nullopt) const;
 
+  // Performs a deep clone of the module and also returns clone context with
+  // the cloned object mappings.
+  std::pair<std::unique_ptr<HloModule>, std::unique_ptr<HloCloneContext>>
+  CloneWithContext(
+      const std::string& suffix,
+      std::optional<const HloModuleConfig> config = std::nullopt) const;
+
   // Performs a deep clone of the computation, by recursively cloning all
   // the called computations as well. If the clone context is specified, it
   // will be populated with the cloned object mappings.
@@ -710,6 +717,11 @@ class HloModule {
   HloComputation* AddComputationInternal(
       std::unique_ptr<HloComputation> computation, bool is_entry,
       bool uniquify_identifiers, bool preserve_entry_layouts);
+
+  // Performs a deep clone of current module to context->module, and populate
+  // the context with the cloned object mappings.
+  void Clone(const std::string& suffix, HloCloneContext* context,
+             std::optional<const HloModuleConfig> config) const;
 
   std::string name_;
 

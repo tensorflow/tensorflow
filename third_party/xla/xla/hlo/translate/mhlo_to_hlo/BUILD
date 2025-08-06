@@ -235,6 +235,7 @@ xla_cc_test(
         "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/status:status_matchers",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",

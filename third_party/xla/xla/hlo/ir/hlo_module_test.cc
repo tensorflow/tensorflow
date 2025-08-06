@@ -214,6 +214,50 @@ TEST(HloModuleTest, CloneGeneral) {
   }
 }
 
+TEST(HloModuleTest, CloneWithContextGeneral) {
+  HloModule m1("temp_module", HloModuleConfig());
+  HloSchedule schedule(&m1);
+  CreateComputation(m1, "TestComputation1", true, schedule);
+  CreateComputation(m1, "TestComputation3", false, schedule);
+  CreateComputation(m1, "TestComputation2", false, schedule);
+  TF_CHECK_OK(m1.set_schedule(schedule));
+  m1.AddCrossProgramPrefetch(7, ShapeIndex({8}), 100);
+
+  auto [m2, clone_context] = m1.CloneWithContext(kCloneSuffix);
+
+  EXPECT_EQ(&m1.config(), &m2->config());
+  EXPECT_EQ(GetCloneName(m1.entry_computation()->name()),
+            m2->entry_computation()->name());
+
+  EXPECT_EQ(m1.schedule()
+                .sequence(m1.entry_computation())
+                .instructions()
+                .front()
+                ->name(),
+            m2->schedule()
+                .sequence(m2->entry_computation())
+                .instructions()
+                .front()
+                ->name());
+
+  EXPECT_EQ(m1.CrossProgramPrefetches().front().alt_memory_offset,
+            m2->CrossProgramPrefetches().front().alt_memory_offset);
+
+  EXPECT_EQ(m1.computation_count(), m2->computation_count());
+  size_t i = 0;
+  for (auto it1 = m1.computations().begin(), it2 = m2->computations().begin();
+       it1 != m1.computations().end() && it2 != m2->computations().end();
+       ++it1, ++it2) {
+    const HloComputation *c1 = *it1, *c2 = *it2;
+    EXPECT_EQ(GetCloneName(c1->name()), c2->name())
+        << "Computation sequence mismatch at " << i;
+    EXPECT_EQ(GetCloneName(m1.mutable_computation(i)->name()),
+              m2->mutable_computation(i)->name())
+        << "Indexing computation sequence mismatch at " << i;
+    EXPECT_EQ(clone_context->FindComputation(c1), c2);
+  }
+}
+
 TEST(HloModuleTest, CloneAndShareConfig) {
   HloModule m1("-", HloModuleConfig());
   std::unique_ptr<HloModule> pm2 = m1.Clone(kCloneSuffix);

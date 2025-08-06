@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status_matchers.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/IR/BuiltinOps.h"

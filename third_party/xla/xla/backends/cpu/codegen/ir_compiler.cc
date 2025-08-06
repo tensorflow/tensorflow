@@ -68,6 +68,7 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/polynomial_approximations.h"
 #include "xla/codegen/math/math_compiler_lib.h"
 #include "xla/codegen/math_lib.h"
+#include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/cpu_options.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/llvm_util.h"
