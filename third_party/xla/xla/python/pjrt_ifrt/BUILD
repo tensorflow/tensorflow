@@ -414,6 +414,7 @@ tf_proto_library(
 cc_library(
     name = "pjrt_layout_serdes",
     srcs = ["pjrt_layout_serdes.cc"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":pjrt_layout",
         ":pjrt_layout_serdes_proto_cc",
