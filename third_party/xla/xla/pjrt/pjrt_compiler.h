@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/proto/pjrt_partial_program.pb.h"
+#include "xla/pjrt/proto/topology_description.pb.h"
 #include "tsl/platform/fingerprint.h"
 
 namespace xla {
@@ -82,6 +83,9 @@ inline PjRtPlatformId TpuId() {
 }
 
 class PjRtCompiler;
+// Thread-safe. Returns a pointer to the registered compiler for the given
+// platform.
+absl::StatusOr<PjRtCompiler*> GetPjRtCompiler(absl::string_view platform_name);
 class PjRtClient;
 
 // Abstract interface to represent device topology that is used by the compiler.
@@ -171,6 +175,12 @@ class PjRtCompiler {
   virtual absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       CompileOptions options, mlir::ModuleOp module,
       const PjRtTopologyDescription& topology, PjRtClient* client) = 0;
+
+  virtual absl::StatusOr<std::unique_ptr<PjRtTopologyDescription>>
+  DeserializePjRtTopologyDescription(const std::string& serialized_topology) {
+    return absl::UnimplementedError(
+        "DeserializePjRtTopologyDescription is not implemented.");
+  }
 };
 
 // Registers a compiler to compile programs for 'platform_name'.
@@ -259,6 +269,14 @@ class PjRtPhaseCompiler : public PjRtCompiler {
   // compilation stage with its corresponding `compiler` and `validator`
   // functions.
   virtual absl::Status RegisterAllPhases() = 0;
+
+  // PhaseCompiler does not support topology deserialization for now.
+  absl::StatusOr<std::unique_ptr<PjRtTopologyDescription>>
+  DeserializePjRtTopologyDescription(
+      const std::string& serialized_topology) override {
+    return absl::UnimplementedError(
+        "DeserializePjRtTopologyDescription is not implemented.");
+  }
 
  protected:
   // Registers a new compilation phase with its corresponding compiler and

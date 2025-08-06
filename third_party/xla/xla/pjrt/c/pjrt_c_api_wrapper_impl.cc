@@ -58,6 +58,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
+#include "xla/pjrt/proto/topology_description.pb.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
@@ -2477,6 +2478,31 @@ PJRT_Error* PJRT_Compile(PJRT_Compile_Args* args) {
                             },
                             module_or_hlo));
   args->executable = new PJRT_Executable(std::move(executable));
+  return nullptr;
+}
+
+PJRT_Error* PJRT_TopologyDescription_Deserialize(
+    PJRT_TopologyDescription_Deserialize_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_TopologyDescription_Attributes_Args",
+      PJRT_TopologyDescription_Attributes_Args_STRUCT_SIZE, args->struct_size));
+
+  xla::PjRtTopologyDescriptionProto proto;
+  if (!proto.ParseFromString(args->serialized_topology)) {
+    return new PJRT_Error{
+        xla::InvalidArgument("Failed to parse PjRtTopologyDescriptionProto "
+                             "from serialized topology string.")};
+  }
+
+  PJRT_ASSIGN_OR_RETURN(xla::PjRtCompiler * compiler,
+                        xla::GetPjRtCompiler(proto.platform_name()));
+
+  PJRT_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::PjRtTopologyDescription> deserialized_topology,
+      compiler->DeserializePjRtTopologyDescription(args->serialized_topology));
+
+  args->topology =
+      pjrt::CreateWrapperDeviceTopology(std::move(deserialized_topology));
   return nullptr;
 }
 
