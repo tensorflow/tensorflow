@@ -447,27 +447,40 @@ PjRtCApiClient::CompileAndLoad(const XlaComputation& computation,
                                   module_str, format);
 }
 
+namespace {
+
+std::string GetPluginStablehloVersionOrDefault(PjRtClient* client) {
+  // If the plugin is not set, use the default.
+  if (!client) {
+    return xla::GetDefaultStablehloVersion();
+  }
+
+  // If the plugin doesn't have attributes, use the default.
+  auto attributes = client->plugin_attributes();
+  if (!attributes.has_value()) {
+    return xla::GetDefaultStablehloVersion();
+  }
+
+  // If plugin doesn't report it StableHLO version, use the default.
+  auto attr_map = attributes->attributes;
+  auto version = attr_map.find("stablehlo_current_version");
+  if (version == attr_map.end()) {
+    return xla::GetDefaultStablehloVersion();
+  }
+
+  std::vector<int64_t> v = std::get<std::vector<int64_t>>(version->second);
+  return absl::StrFormat("%d.%d.%d", v[0], v[1], v[2]);
+}
+
+}  // namespace
+
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 PjRtCApiClient::CompileAndLoad(mlir::ModuleOp module, CompileOptions options) {
   if (!pjrt_c_api()) llvm::report_fatal_error("pjrt_c_api is null");
 
-  auto attributes = plugin_attributes()->attributes;
-  std::string version_string;
-  auto version = attributes.find("stablehlo_current_version");
-  if (version != attributes.end()) {
-    std::vector<int64_t> v = std::get<std::vector<int64_t>>(version->second);
-    version_string = absl::StrFormat("%d.%d.%d", v[0], v[1], v[2]);
-  } else {
-    version_string = xla::GetDefaultStablehloVersion(
-        plugin_attributes()->pjrt_c_api_minor_version);
-  }
-  TF_ASSIGN_OR_RETURN(
-      std::string serialized,
-      xla::Serialize(module, version_string,
-                     /*plugin_version=*/plugin_attributes().has_value()
-                         ? std::make_optional(
-                               plugin_attributes()->pjrt_c_api_minor_version)
-                         : std::nullopt));
+  std::string version_string = GetPluginStablehloVersionOrDefault(this);
+  TF_ASSIGN_OR_RETURN(std::string serialized,
+                      xla::Serialize(module, version_string));
   std::string format(pjrt::kMlirFormat);
   return InitializeArgsAndCompile(this, c_api_, c_client_.get(), options,
                                   serialized, format);
@@ -2829,14 +2842,9 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCApiCompiler::Compile(
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCApiCompiler::Compile(
     CompileOptions options, mlir::ModuleOp module,
     const PjRtTopologyDescription& topology, PjRtClient* client) {
-  std::optional<int64_t> plugin_version;
-  if (client) {
-    plugin_version = client->plugin_attributes()->pjrt_c_api_minor_version;
-  }
-  TF_ASSIGN_OR_RETURN(
-      std::string serialized,
-      xla::Serialize(module, xla::GetDefaultStablehloVersion(plugin_version),
-                     /*plugin_version=*/plugin_version));
+  std::string target_version = GetPluginStablehloVersionOrDefault(client);
+  TF_ASSIGN_OR_RETURN(std::string serialized,
+                      xla::Serialize(module, target_version));
   std::string format(pjrt::kMlirFormat);
   return InitializeArgsAndCompileAot(c_api_, client, options, topology,
                                      serialized, format);
