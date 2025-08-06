@@ -2183,6 +2183,11 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
   pm.addPass(mlir::triton::xla::CreateTritonXLASqueezeDimsPass());
   pm.addPass(mlir::triton::xla::CreateTritonXLAFoldTransposePass());
 
+  // We need LICM before unswitching loops because loop unwitcher relies on
+  // having loop invariant code to be outside of the loop.
+  pm.addPass(mlir::createLoopInvariantCodeMotionPass());
+  pm.addPass(mlir::triton::xla::CreateTritonXLAUnswitchLoopsPass());
+
   if (is_xla_fusion) {
     pm.addPass(
         mlir::triton::xla::CreateInt4ToPackedInt4RewritePass(device_info));
