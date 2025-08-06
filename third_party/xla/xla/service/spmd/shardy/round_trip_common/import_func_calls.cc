@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/spmd/shardy/round_trip_common/import_uninlineable_func_calls.h"
+#include "xla/service/spmd/shardy/round_trip_common/import_func_calls.h"
 
 #include <iterator>
 #include <memory>
@@ -22,6 +22,7 @@ limitations under the License.
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/Threading.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -109,14 +110,24 @@ void importCallOp(
   rewriter.replaceOp(callOp, namedCompOp);
 }
 
-class ImportUninlineableFuncCallsPass
-    : public mlir::PassWrapper<ImportUninlineableFuncCallsPass,
+class ImportFuncCallsPass
+    : public mlir::PassWrapper<ImportFuncCallsPass,
                                mlir::OperationPass<mlir::ModuleOp>> {
+  using Base = mlir::PassWrapper<ImportFuncCallsPass,
+                                 mlir::OperationPass<mlir::ModuleOp>>;
+
  public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ImportUninlineableFuncCallsPass)
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ImportFuncCallsPass)
 
   void runOnOperation() final {
     mlir::ModuleOp moduleOp = getOperation();
+    // TODO(enver): Support also for all func calls, beyond uninlineable ones.
+    if (!onlyUninlineable) {
+      moduleOp.emitError() << "ImportFuncCalls pass does support only for "
+                              "unlineable func calls.";
+      return;
+    }
+
     IRRewriter rewriter(moduleOp.getContext());
     SymbolTable symbolTable(moduleOp);
     // For every callee name, the first CallOp encountered with that symbol will
@@ -138,29 +149,48 @@ class ImportUninlineableFuncCallsPass
     }
   }
 
-  StringRef getArgument() const override {
-    return "xla-sdy-import-uninlineable-func-calls";
-  }
+  StringRef getArgument() const override { return "xla-sdy-import-func-calls"; }
 
   StringRef getDescription() const override {
-    return "Creates a pass that converts a `CallOp` with a `backend_config` "
-           "or `inlineable=false` frontend attr to a `NamedComputationOp` with "
-           "the function body inlined and the name of the callee.";
+    return "Creates a pass to convert a CallOp to a NamedComputationOp with "
+           "the function body inlined and the name of the callee. If "
+           "onlyUninlineable is true, handle only CallOps with a "
+           "backend_config or inlineable=false frontend attr. Otherwise, "
+           "handle call CallOps.";
   }
 
   void getDependentDialects(mlir::DialectRegistry& registry) const final {
     registry.insert<mlir::sdy::SdyDialect>();
   }
+
+  ImportFuncCallsPass() : Base() {}
+  ImportFuncCallsPass(const ImportFuncCallsPass& other) : Base(other) {}
+  ImportFuncCallsPass& operator=(const ImportFuncCallsPass&) = delete;
+  ImportFuncCallsPass(ImportFuncCallsPass&&) = delete;
+  ImportFuncCallsPass& operator=(ImportFuncCallsPass&&) = delete;
+  ~ImportFuncCallsPass() override = default;
+  ImportFuncCallsPass(bool onlyUninlineable) : ImportFuncCallsPass() {
+    this->onlyUninlineable = onlyUninlineable;
+  }
+
+ protected:
+  ::mlir::Pass::Option<bool> onlyUninlineable{
+      *this, "only-uninlineable",
+      ::llvm::cl::desc(
+          "Whether to convert only unlineable func calls, that is, the ones "
+          "with a `backend_config` or `inlineable=false` frontend attr."),
+      ::llvm::cl::init(true)};
 };
 
 }  // namespace
 
-std::unique_ptr<mlir::Pass> createImportUninlineableFuncCallsPass() {
-  return std::make_unique<ImportUninlineableFuncCallsPass>();
+std::unique_ptr<mlir::Pass> createImportFuncCallsPass(bool onlyUninlineable) {
+  return std::make_unique<ImportFuncCallsPass>(onlyUninlineable);
 }
 
-void registerImportUninlineableFuncCallsPass() {
-  mlir::registerPass(createImportUninlineableFuncCallsPass);
+void registerImportFuncCallsPass() {
+  mlir::registerPass(
+      [] { return createImportFuncCallsPass(/*onlyUninlineable=*/true); });
 }
 
 }  // namespace sdy

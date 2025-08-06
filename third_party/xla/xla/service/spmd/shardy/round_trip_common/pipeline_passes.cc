@@ -20,8 +20,8 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"
 #include "xla/mlir_hlo/stablehlo_ext/transforms/passes.h"
 #include "xla/service/spmd/shardy/round_trip_common/import_constants.h"
+#include "xla/service/spmd/shardy/round_trip_common/import_func_calls.h"
 #include "xla/service/spmd/shardy/round_trip_common/import_sdy_custom_calls.h"
-#include "xla/service/spmd/shardy/round_trip_common/import_uninlineable_func_calls.h"
 #include "xla/service/spmd/shardy/round_trip_common/open_while_free_vars_sharding.h"
 
 namespace xla {
@@ -54,7 +54,7 @@ void addCommonPreImportPasses(mlir::OpPassManager& pm,
 void addCommonPostImportPasses(mlir::OpPassManager& pm) {
   pm.addPass(createImportSdyCustomCallsPass());
   pm.addNestedPass<FuncOp>(createOpenWhileFreeVarsShardingPass());
-  pm.addPass(createImportUninlineableFuncCallsPass());
+  pm.addPass(createImportFuncCallsPass(/*onlyUninlineable=*/true));
 }
 
 }  // namespace sdy
