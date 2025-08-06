@@ -58,19 +58,6 @@ absl::Status CanonicalizeDot(HloDotInstruction* original_dot) {
   const int64_t num_contracting_dims =
       original_dnums.lhs_contracting_dimensions_size();
 
-  // Sparse dimension (if present), must be at the end of the contracting
-  // dimensions list.
-  int lhs_sparse_dim = -1, rhs_sparse_dim = -1;
-  for (const SparsityDescriptor& descriptor : original_dot->sparsity()) {
-    (descriptor.index() == 0 ? lhs_sparse_dim : rhs_sparse_dim) =
-        descriptor.dimension();
-  }
-  auto move_dim_to_end = [&](std::vector<int64_t>& dims, int sparse_dim) {
-    if (sparse_dim < 0) return;
-    auto it = std::remove(dims.begin(), dims.end(), sparse_dim);
-    *it = sparse_dim;  // Effectively the same as erase+push_back.
-  };
-
   const auto& lhs_shape = original_dot->operand(0)->shape();
   const int64_t lhs_rank = lhs_shape.dimensions().size();
   const int64_t num_lhs_non_contracting_dims =
@@ -113,7 +100,6 @@ absl::Status CanonicalizeDot(HloDotInstruction* original_dot) {
   lhs_transpose.insert(lhs_transpose.end(),
                        original_dnums.lhs_contracting_dimensions().begin(),
                        original_dnums.lhs_contracting_dimensions().end());
-  move_dim_to_end(lhs_transpose, lhs_sparse_dim);
   HloInstruction* lhs_operand = original_dot->mutable_operand(0);
   HloInstruction* transposed_lhs = computation->AddInstruction(
       HloInstruction::CreateTranspose(
@@ -170,7 +156,6 @@ absl::Status CanonicalizeDot(HloDotInstruction* original_dot) {
   rhs_transpose.insert(rhs_transpose.end(),
                        original_dnums.rhs_contracting_dimensions().begin(),
                        original_dnums.rhs_contracting_dimensions().end());
-  move_dim_to_end(rhs_transpose, rhs_sparse_dim);
   rhs_transpose.insert(rhs_transpose.end(), rhs_non_contracting_dims.begin(),
                        rhs_non_contracting_dims.end());
   HloInstruction* rhs_operand = original_dot->mutable_operand(1);
@@ -216,47 +201,10 @@ absl::Status CanonicalizeDot(HloDotInstruction* original_dot) {
       num_batch_dims + (lhs_non_contracting_size != 1 ? 1 : 0));
   dot_dnums.add_rhs_contracting_dimensions(num_batch_dims);
 
-  // Build sparsity data for the new dot.
-  std::vector<SparsityDescriptor> sparsity;
-  std::vector<HloInstruction*> sparse_meta;
-  sparsity.reserve(original_dot->sparse_operands());
-  sparse_meta.reserve(original_dot->sparse_operands());
-  auto transpose_meta = [&](HloInstruction* original_meta,
-                            absl::Span<const int64_t> transpose) {
-    return computation->AddInstruction(
-        HloInstruction::CreateTranspose(
-            ShapeUtil::PermuteDimensions(transpose, original_meta->shape()),
-            original_meta, transpose),
-        &original_meta->metadata());
-  };
-  for (int i = 0; i < original_dot->sparse_operands(); ++i) {
-    SparsityDescriptor descriptor = original_dot->sparsity()[i];
-    descriptor.set_dimension(num_batch_dims + (descriptor.index() == 0 &&
-                                               lhs_non_contracting_size != 1));
-    sparsity.push_back(descriptor);
-    HloInstruction* meta =
-        original_dot->mutable_operand(HloDotInstruction::kOperands + i);
-    HloInstruction* meta_operand;
-    if (descriptor.index() == 0) {
-      meta = transpose_meta(meta, lhs_transpose);
-      meta_operand = reshaped_lhs;
-    } else {
-      meta = transpose_meta(meta, rhs_transpose);
-      meta_operand = reshaped_rhs;
-    }
-    TF_ASSIGN_OR_RETURN(Shape result_shape,
-                        ShapeInference::InferSparseDotMetadataShape(
-                            meta_operand->shape(), dot_dnums, descriptor));
-    meta = computation->AddInstruction(
-        HloInstruction::CreateReshape(result_shape, meta), &meta->metadata());
-    sparse_meta.push_back(meta);
-  }
-
   HloInstruction* dot = computation->AddInstruction(HloInstruction::CreateDot(
       ShapeUtil::MakeShape(original_dot->shape().element_type(), dot_dims,
                            dot_dynamic_dims),
-      reshaped_lhs, reshaped_rhs, dot_dnums, original_dot->precision_config(),
-      sparsity, sparse_meta));
+      reshaped_lhs, reshaped_rhs, dot_dnums, original_dot->precision_config()));
   original_dot->SetupDerivedInstruction(dot);
 
   std::unique_ptr<HloInstruction> replacement =

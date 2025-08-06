@@ -381,8 +381,8 @@ message HloInstructionProto {
   // Used to be wait_on_operation_queues.
   reserved 84;
 
-  // Sparsity descriptor for dot operation.
-  repeated xla.SparsityDescriptor dot_sparsity = 86;
+  // Used to be dot_sparsity.
+  reserved 86;
 
   // Represents the list of devices that participate in a collective operation.
   xla.CollectiveDeviceListProto collective_device_list = 87;
