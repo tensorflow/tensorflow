@@ -874,6 +874,8 @@ tf_cc_binary(
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:RegisterAllDialects",
+        "@llvm-project//mlir:RegisterAllPasses",
         "@llvm-project//mlir:Support",
         "@local_xla//xla/mlir/framework/transforms:passes",
         "@local_xla//xla/mlir_hlo:all_passes",
