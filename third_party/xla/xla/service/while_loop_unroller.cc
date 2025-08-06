@@ -1233,21 +1233,7 @@ std::optional<int64_t> AdvancedMatchShapeCoveringDynamicIndexInstruction(
 
   // TODO(b/300668690): Add support for unrolling loops with control dependency.
   // For now, we bail.
-  //
-  // Finding all the while loops where other instructions have explicit control
-  // dependencies on them.
-  std::vector<HloInstruction*> while_dependees;
-  for (HloComputation* comp : while_op->GetModule()->computations()) {
-    for (HloInstruction* instr : comp->instructions()) {
-      for (HloInstruction* control_dep : instr->control_predecessors()) {
-        if (control_dep->opcode() == HloOpcode::kWhile) {
-          while_dependees.push_back(control_dep);
-        }
-      }
-    }
-  }
-  if (absl::linear_search(while_dependees.begin(), while_dependees.end(),
-                          while_op)) {
+  if (!while_op->control_successors().empty()) {
     VLOG(2) << "Not attempting to unroll " << while_op->name()
             << " due to control dependency: " << while_op->ToShortString();
     return std::nullopt;
