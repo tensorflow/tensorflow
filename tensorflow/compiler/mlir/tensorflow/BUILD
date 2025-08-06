@@ -1223,6 +1223,8 @@ tf_cc_test(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MlirOptLib",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:RegisterAllDialects",
+        "@llvm-project//mlir:RegisterAllPasses",
         "@llvm-project//mlir:Support",
     ],
 )
