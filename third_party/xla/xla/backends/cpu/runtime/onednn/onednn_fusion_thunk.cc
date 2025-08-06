@@ -32,7 +32,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/cpu/onednn_fusion_graph.h"
 #include "xla/backends/cpu/runtime/onednn/onednn_threadpool.h"
-#include "xla/backends/cpu/runtime/parallel_loop_runner.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/status_macros.h"

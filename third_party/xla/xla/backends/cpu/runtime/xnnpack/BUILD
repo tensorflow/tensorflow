@@ -32,7 +32,6 @@ cc_library(
     srcs = ["xnn_threadpool.cc"],
     hdrs = ["xnn_threadpool.h"],
     deps = [
-        "//xla/backends/cpu/runtime:parallel_loop_runner",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:logging",
@@ -51,7 +50,6 @@ xla_cc_test(
     srcs = ["xnn_threadpool_test.cc"],
     deps = [
         ":xnn_threadpool",
-        "//xla/backends/cpu/runtime:parallel_loop_runner",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:test",
@@ -176,7 +174,6 @@ cc_library(
         ":xnn_interop",
         ":xnn_threadpool",
         "//xla:shape_util",
-        "//xla/backends/cpu/runtime:parallel_loop_runner",
         "//xla/backends/cpu/runtime:thunk",
         "//xla/runtime:buffer_use",
         "//xla/runtime:object_pool",
