@@ -2912,17 +2912,17 @@ ENTRY entry {
   TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, hlo_text, "fdot", R"(
 CHECK:      func.func @triton_fn(%[[ARG0:[A-Za-z0-9_]*]]: tensor<32x123xf32>
 CHECK-SAME:                    %[[ARG1:[A-Za-z0-9_]*]]: tensor<123x512xf32>
-CHECK-SAME:                    %[[ARG2:[A-Za-z0-9_]*]]: tensor<32x512xf32>
-CHECK-DAG:  %[[C0:.*]] = arith.constant 0 : i64
-CHECK-DAG:  %[[C4:.*]] = arith.constant 4 : i64
-CHECK-DAG:  %[[C1:.*]] = arith.constant 1 : i64
-CHECK:      {{.*}} = scf.for {{.*}} = %[[C0]] to %[[C4]] step %[[C1]]
-CHECK-SAME: iter_args({{.*}}) -> (tensor<16x64xf32>)  : i64 {
+CHECK-SAME:                    %[[ARG2:[A-Za-z0-9_]*]]: tensor<32x512xf32>)
+CHECK-DAG:  %[[C0:.*]] = arith.constant 0 : index
+CHECK-DAG:  %[[C4:.*]] = arith.constant 4 : index
+CHECK-DAG:  %[[C1:.*]] = arith.constant 1 : index
+CHECK:      {{.*}} = scf.for %{{.*}} = %[[C0]] to %[[C4]] step %[[C1]]
+CHECK-SAME: iter_args({{.*}}) -> (tensor<16x64xf32>) {
 CHECK-DAG:  triton_xla.extract %[[ARG0]]
 CHECK-DAG:  triton_xla.extract %[[ARG1]]
 CHECK-DAG:  arith.subf {{.*}} : tensor<16x32xf32>
 CHECK-DAG:  math.absf {{.*}} : tensor<32x64xf32>
-CHECK-DAG:  tt.dot {{.*}} tensor<16x32xf32> * tensor<32x64xf32> -> tensor<16x64xf32>
+CHECK:      tt.dot {{.*}} tensor<16x32xf32> * tensor<32x64xf32> -> tensor<16x64xf32>
 CHECK:      scf.yield {{.*}} : tensor<16x64xf32>
 CHECK-COUNT-1: triton_xla.insert
 )"));
