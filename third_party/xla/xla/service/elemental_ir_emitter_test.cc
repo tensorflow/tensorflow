@@ -779,32 +779,5 @@ ENTRY e {
                                                 /*arel=*/1e-3}));
 }
 
-class ElementalIrEmitterInternalTest : public HloTestBase {};
-
-TEST_F(ElementalIrEmitterInternalTest, SparseDotIsUnsupported) {
-  constexpr absl::string_view kHloText = R"(
-HloModule test
-
-ENTRY main {
-  lhs = f16[5,16] parameter(0)
-  rhs = f16[32,10] parameter(1)
-  meta = u16[5,2] parameter(2)
-  ROOT dot = f32[5,10] dot(lhs, rhs, meta),
-      lhs_contracting_dims={1}, rhs_contracting_dims={0}, sparsity=L.1@2:4
-})";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloText));
-  HloInstruction* root = module->entry_computation()->root_instruction();
-
-  llvm::LLVMContext llvm_context;
-  llvm::Module llvm_module("", llvm_context);
-  llvm::IRBuilder<> builder(llvm_context);
-  ElementalIrEmitterForTests emitter(&llvm_module, &builder);
-
-  llvm_ir::IrArray::Index test_index{builder.getInt64Ty()};
-  auto result = emitter.TestElementalDot(root, test_index);
-  EXPECT_FALSE(result.ok());
-}
-
 }  // namespace
 }  // namespace xla

@@ -77,10 +77,6 @@ bool IsSupportedCudnnFusion(const HloInstruction& instr,
     LOG(ERROR) << "Fusion does not contain a dot.";
     return false;
   }
-  if (dot->sparse_operands()) {
-    LOG(ERROR) << "Fusion contains a sparse dot.";
-    return false;
-  }
   if (!algorithm_util::IsSupportedByCudnn(
           dot->precision_config().algorithm())) {
     LOG(ERROR) << "Fusion contains a precision config not supported by cudnn.";

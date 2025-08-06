@@ -820,7 +820,7 @@ GemmFusionAutotunerImpl::GenerateConfigs(const HloFusionInstruction& fusion) {
     if (algorithm_util::IsSupportedByCublasOrCublasLt(
             dot->precision_config().algorithm(), GetComputeCapability(), dot,
             rhs_contracting_index) &&
-        !dot->sparse_operands() && IsAutotuningEnabled()) {
+        IsAutotuningEnabled()) {
       configs.push_back(CuBlasConfig{});
     }
 

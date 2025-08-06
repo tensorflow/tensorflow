@@ -599,10 +599,6 @@ absl::StatusOr<SmallVector<Value, 1>> EmitDot(
   }
   auto* dot = DynCast<HloDotInstruction>(instr);
   TF_RET_CHECK(dot != nullptr);
-  if (dot->sparse_operands()) {
-    return absl::UnimplementedError(
-        "Sparse dot is supported by Triton emitter only.");
-  }
 
   return EmitDotLoop(instr, indices, operand_provider, b);
 }

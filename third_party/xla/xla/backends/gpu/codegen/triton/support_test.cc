@@ -2151,49 +2151,6 @@ ENTRY triton_computation {
                  se::CudaComputeCapability::Ampere());
 }
 
-TEST_F(DotTest, SparsityConfiguration) {
-  // Note that support rejects this HLO as u16 is not supported.
-  const std::string kHloTestTemplate = R"(
-flhs {
-  ROOT result = $0[128,128] parameter(0)
-}
-
-frhs {
-  ROOT result = $0[256,512] parameter(0)
-}
-
-ENTRY triton_computation {
-  p0 = $0[128,128] parameter(0)
-  p1 = $0[256,512] parameter(1)
-  lhs = $0[128,128] fusion(p0), kind=kCustom, calls=flhs, backend_config={
-    "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
-        "output_tiles":[{"sizes":["16", "64"]}]
-      }
-    }
-  }
-  rhs = $0[256,512] fusion(p1), kind=kCustom, calls=frhs, backend_config={
-    "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
-        "output_tiles":[{"sizes":["64", "32"]}]
-      }
-    }
-  }
-  meta = u16[128,16] parameter(2)
-  ROOT result = $0[128,512] dot(lhs, rhs, meta),
-    lhs_contracting_dims={1},
-    rhs_contracting_dims={0},
-    sparsity=L.1@2:4
-}
-)";
-  TF_ASSERT_OK_AND_ASSIGN(
-      TestedInstruction ti,
-      ParseTemplateAndGetInstruction(kHloTestTemplate, F32, HloOpcode::kDot,
-                                     /* use_nested_gemm_fusions=*/true));
-  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{16, 32},
-                 se::CudaComputeCapability::Ampere());
-}
-
 class DotPrecisionTest
     : public DotTest,
       public ::testing::WithParamInterface<

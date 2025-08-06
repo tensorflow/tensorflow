@@ -101,25 +101,6 @@ ENTRY e {
 )");
 }
 
-TEST_F(LegacyCublasGemmRewriteTest, SparseDotNotSupported) {
-  const char* hlo_text = R"(
-HloModule test
-
-ENTRY main {
-  lhs = f16[5,16] parameter(0)
-  rhs = f16[32,10] parameter(1)
-  meta = u16[5,2] parameter(2)
-  ROOT dot = f32[5,10] dot(lhs, rhs, meta),
-      lhs_contracting_dims={1}, rhs_contracting_dims={0}, sparsity=L.1@2:4
-})";
-  auto hlo_pass = GemmRewriter(
-      se::CudaComputeCapability{se::CudaComputeCapability::kAmpere, 0},
-      /*toolkit_version=*/stream_executor::SemanticVersion{12, 4, 0});
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&hlo_pass, module.get()));
-  EXPECT_FALSE(changed);
-}
-
 // Test that the alpha and beta fields of the GemmBackendConfig are updated.
 // A bias must be present for the beta value to be set.
 // In order to have a bias add fused, the bias term must be overwritable.
@@ -2182,7 +2163,7 @@ ENTRY test {
   x = f32[2,3] parameter(0)
   y = f32[3,4] parameter(1)
   dot = f32[2,4] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-  neg = f32[2,4] negate(dot) 
+  neg = f32[2,4] negate(dot)
   exp = f32[2,4] exponential(neg)
   one = f32[] constant(1)
   one_bcast = f32[2,4] broadcast(one), dimensions={}

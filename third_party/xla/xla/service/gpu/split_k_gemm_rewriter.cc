@@ -107,26 +107,6 @@ absl::Status UncompilableMatmul(absl::string_view explanation) {
   return s;
 }
 
-absl::StatusOr<HloInstruction*> MakeSparseMetaOperand(
-    HloDotInstruction& dot, const TritonGemmConfig& config) {
-  CHECK_EQ(dot.sparse_operands(), 1);
-  CHECK_EQ(dot.sparsity().front().index(), 0);
-
-  HloInstruction* meta = dot.mutable_operand(2);
-  const Shape& shape = meta->shape();
-  if (shape.dimensions().back() % config.split_k != 0) {
-    return UncompilableMatmul("Sparsity metadata has incorrect shape.");
-  }
-
-  std::vector<int64_t> dimensions(shape.dimensions().begin(),
-                                  shape.dimensions().end() - 1);
-  dimensions.push_back(config.split_k);
-  dimensions.push_back(shape.dimensions().back() / config.split_k);
-  Shape new_shape = ShapeUtil::MakeShapeWithDescendingLayout(
-      shape.element_type(), dimensions);
-  return MakeBitcastHlo(meta, new_shape);
-}
-
 }  // namespace
 
 absl::StatusOr<HloInstruction*> MakeSplitKOperand(
@@ -265,13 +245,6 @@ absl::Status MakeDotComputationSplitKBatch(HloComputation* computation,
       old_dim_numbers.rhs_batch_dimensions(),
       *new_dim_numbers.mutable_rhs_batch_dimensions(), rhs_contracting_idx);
 
-  // Make sure we have a supported sparse dot.
-  if (dot->sparse_operands()) {
-    if (dot->sparsity().size() != 1 || dot->sparsity().front().index() != 0) {
-      return UncompilableMatmul("Sparsity is only supported on left operand.");
-    }
-  }
-
   // Collect HLOs to transform between dot output and root. These will
   // get a new major most batch dimension sized as split K factor. Other inputs
   // of these HLOs will get broadcasted.
@@ -311,18 +284,9 @@ absl::Status MakeDotComputationSplitKBatch(HloComputation* computation,
         CHECK_EQ(rhs->operand(0)->opcode(), HloOpcode::kPad);
         did_pad = true;
       }
-      std::vector<SparsityDescriptor> sparsity(dot->sparsity().begin(),
-                                               dot->sparsity().end());
-      std::vector<HloInstruction*> sparse_meta(sparsity.size());
-      for (int i = 0; i < sparsity.size(); ++i) {
-        // This is only correct for LHS sparse operand after dot decomposition.
-        sparsity[i].set_dimension(sparsity[i].dimension() + 1);
-        TF_ASSIGN_OR_RETURN(sparse_meta[i],
-                            MakeSparseMetaOperand(*dot, config));
-      }
       // Keep the precision of the accumulator type for the dot output.
       expanded = MakeDotHlo(lhs, rhs, new_dim_numbers, dot->precision_config(),
-                            accumulator_dtype, sparsity, sparse_meta)
+                            accumulator_dtype)
                      .value();
       // Make the added batch dimension the major-most, keep the order of the
       // original dimensions.

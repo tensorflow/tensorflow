@@ -671,11 +671,6 @@ absl::StatusOr<Decision> CreateDotFusion(
     return Decision::Deny(is_supported.Explain());
   }
 
-  // Verify not sparse.
-  if (dot.sparse_operands()) {
-    return InvalidArgument("Sparsity is not supported");
-  }
-
   TF_ASSIGN_OR_RETURN(HlosAndRequirements lhs_hlos_and_reqs,
                       FuseDotOperand(dot, /*operand_index=*/0, gpu_version,
                                      builder, fusion_inputs));

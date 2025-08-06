@@ -40,7 +40,6 @@ bool GpuFloatSupport::SupportsMixedPrecisions(const HloInstruction& hlo) const {
   switch (hlo.opcode()) {
     // Handled by Triton GEMM or cuBLAS.
     case HloOpcode::kDot: {
-      CHECK_GE(hlo.operand_count(), HloDotInstruction::kOperands);
       const PrimitiveType lhs_type = hlo.operand(0)->shape().element_type();
       const PrimitiveType rhs_type = hlo.operand(1)->shape().element_type();
       const PrimitiveType result_type = hlo.shape().element_type();

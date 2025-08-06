@@ -62,7 +62,7 @@ bool GemmFusionAutotunerImpl::AddLibConfigs(
       (IsFusionKind(fusion, kTritonGemmFusionKind) && is_cudnn_enabled &&
        algorithm_util::IsSupportedByCudnn(
            dot->precision_config().algorithm()) &&
-       !dot->sparse_operands() && IsAutotuningEnabled())) {
+       IsAutotuningEnabled())) {
     const int plan_count = GetCuDnnPlanCount(fusion, config_);
     for (int plan_id = 0; plan_id < plan_count; ++plan_id) {
       configs.push_back(CuDnnConfig{plan_id});

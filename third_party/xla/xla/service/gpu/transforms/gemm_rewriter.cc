@@ -589,10 +589,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     if (!is_supported_matmul) {
       return absl::OkStatus();
     }
-    // Sparse dot is not supported.
-    if (Cast<HloDotInstruction>(instr)->sparse_operands()) {
-      return absl::OkStatus();
-    }
 
     int64_t gemm_rewrite_size_threshold =
         instr->GetModule()

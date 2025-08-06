@@ -281,7 +281,7 @@ absl::StatusOr<HloInstruction*> SplitKDimensionOfDot(HloDotInstruction* src_dot,
   TF_ASSIGN_OR_RETURN(
       HloInstruction * new_dot,
       MakeDotHlo(lhs, rhs, new_dnums, src_dot->precision_config(),
-                 accumulator_type, {}, {}, &src_dot->metadata()));
+                 accumulator_type, &src_dot->metadata()));
 
   // Reduce along the new batch dimension.
   const int64_t splitk_dim_idx = new_dnums.lhs_batch_dimensions_size() - 1;
@@ -302,9 +302,6 @@ class SplitkRewriterVisitor : public DfsHloRewriteVisitor {
  private:
   absl::Status HandleDot(HloInstruction* instr) override {
     HloDotInstruction* dot = DynCast<HloDotInstruction>(instr);
-    if (dot->sparse_operands()) {
-      return absl::OkStatus();
-    }
     if (dot->dot_dimension_numbers().lhs_contracting_dimensions_size() != 1 ||
         dot->dot_dimension_numbers().rhs_contracting_dimensions_size() != 1) {
       // In theory we could support it, but it's rare and adds complexity.
