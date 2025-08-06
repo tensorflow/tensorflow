@@ -18,11 +18,10 @@ limitations under the License.
 
 #include <memory>
 
-#include "xla/backends/cpu/runtime/parallel_loop_runner.h"
-
 struct xnn_scheduler;
 
 namespace Eigen {
+struct ThreadPoolDevice;
 class ThreadPoolInterface;
 }  // namespace Eigen
 
