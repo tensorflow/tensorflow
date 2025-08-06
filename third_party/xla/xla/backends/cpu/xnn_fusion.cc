@@ -119,7 +119,7 @@ bool AreDtypesSupported(const Shape& lhs_shape, const Shape& rhs_shape,
 absl::StatusOr<bool> IsDotSupportedByXnn(
     const DotDimensionNumbers& dot_dimensions, const Shape& lhs_shape,
     const Shape& rhs_shape, const Shape& out_shape,
-    const TargetMachineFeatures* cpu_features) {
+    const TargetMachineFeatures* cpu_features, bool use_cost_model) {
   // Check data types.
   if (!AreDtypesSupported(lhs_shape, rhs_shape, out_shape, cpu_features)) {
     return false;
@@ -131,7 +131,6 @@ absl::StatusOr<bool> IsDotSupportedByXnn(
 
   TF_ASSIGN_OR_RETURN(DotCanonicalDims dot_canonical_dims,
                       GetDotCanonicalDims(dot_dimensions, dot_shape));
-
 
   if (dot_canonical_dims.m == 1 && dot_canonical_dims.n == 1 &&
       dot_shape.batch_size > 1) {
@@ -147,6 +146,10 @@ absl::StatusOr<bool> IsDotSupportedByXnn(
       dot_canonical_dims.lhs_column_major ||
       dot_canonical_dims.rhs_column_major) {
     return false;
+  }
+
+  if (!use_cost_model) {
+    return true;
   }
 
   const XnnGemm gemm{/*dot_canonical_dims=*/dot_canonical_dims,

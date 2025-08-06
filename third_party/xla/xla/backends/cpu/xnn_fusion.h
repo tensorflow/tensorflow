@@ -42,7 +42,8 @@ bool XnnShouldUseThreadPool(const HloComputation* computation);
 absl::StatusOr<bool> IsDotSupportedByXnn(
     const DotDimensionNumbers& dot_dimensions, const Shape& lhs_shape,
     const Shape& rhs_shape, const Shape& out_shape,
-    const TargetMachineFeatures* cpu_features = nullptr);
+    const TargetMachineFeatures* cpu_features = nullptr,
+    bool use_cost_model = true);
 
 absl::StatusOr<xnn_datatype> XnnDatatype(const PrimitiveType& type);
 
