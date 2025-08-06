@@ -863,8 +863,7 @@ PjRtCpuClient::CompileInternal(
 }
 
 static bool IsAlignedData(void* ptr) {
-  return (absl::bit_cast<std::uintptr_t>(ptr) &
-          (cpu_function_runtime::MinAlign() - 1)) == 0;
+  return (absl::bit_cast<std::uintptr_t>(ptr) & (cpu::MinAlign() - 1)) == 0;
 }
 
 absl::StatusOr<tsl::RCReference<CommonPjRtRawBuffer>>
