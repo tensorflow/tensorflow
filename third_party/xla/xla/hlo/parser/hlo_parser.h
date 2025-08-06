@@ -138,7 +138,7 @@ class HloParser {
   // Runs the parser and constructs the resulting HLO in the given (empty)
   // HloModule. Returns the error status in case an error occurred.
   virtual absl::Status Run(HloModule* module) = 0;
-  virtual ~HloParser() {}
+  virtual ~HloParser() = default;
 
  private:
   static std::unique_ptr<HloParser> CreateHloParserForTests(
