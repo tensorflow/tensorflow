@@ -33,15 +33,12 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
-#include "shardy/dialect/sdy/ir/register.h"
-#include "stablehlo/dialect/Register.h"
 #include "stablehlo/transforms/Passes.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_module_importer.h"
 #include "xla/hlo/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 #include "xla/hlo/translate/mhlo_to_hlo/module_attributes_exporter.h"
 #include "xla/mlir/utils/error_util.h"
-#include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/mlir_hlo/stablehlo_ext/transforms/passes.h"
 #include "xla/service/hlo.pb.h"
@@ -134,15 +131,6 @@ absl::StatusOr<std::unique_ptr<xla::HloModule>> ConvertStablehloToHloInternal(
 }
 
 }  // namespace
-
-void RegisterMlirToHloDependentDialects(mlir::DialectRegistry& registry) {
-  mlir::stablehlo::registerAllDialects(registry);
-  mlir::func::registerAllExtensions(registry);
-  mlir::mhlo::registerAllMhloDialects(registry);
-  mlir::sdy::registerAllDialects(registry);
-  registry.insert<mlir::tensor::TensorDialect, mlir::arith::ArithDialect,
-                  mlir::shape::ShapeDialect, mlir::ub::UBDialect>();
-}
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertHloToStablehlo(
     mlir::MLIRContext& ctx, const xla::HloModule* hlo_module) {
