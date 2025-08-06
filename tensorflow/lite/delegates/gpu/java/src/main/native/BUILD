@@ -2,6 +2,7 @@
 # Java Native Interface (JNI) library intended for implementing the
 # TensorFlow Lite GPU delegate Java API using the TensorFlow Lite CC library.
 
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
 
