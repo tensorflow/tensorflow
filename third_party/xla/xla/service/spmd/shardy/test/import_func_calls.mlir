@@ -131,3 +131,82 @@ func.func private @foobar(%arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@
   %0 = stablehlo.multiply %arg0, %arg0 {mhlo.frontend_attributes = {_xla_compute_type = "host"}} : tensor<8x2xi32>
   return %0 : tensor<8x2xi32>
 }
+
+// -----
+
+// CHECK-LABEL: func @non_flat_call_graph_all_uninlineable
+func.func @non_flat_call_graph_all_uninlineable(%arg0: tensor<8xf32>) -> tensor<8xf32> {
+  // CHECK-NEXT: %[[NC1:.*]] = sdy.named_computation<"foo">(%arg0) (%arg1: tensor<8xf32>) {
+  // CHECK-NEXT:   %[[ADD:.*]] = stablehlo.add %arg1, %arg1 : tensor<8xf32>
+  // CHECK-NEXT:   %[[NC2:.*]] = sdy.named_computation<"bar">(%[[ADD]]) (%arg2: tensor<8xf32>) {
+  // CHECK-NEXT:     %[[ABS1:.*]] = stablehlo.abs %arg2 : tensor<8xf32>
+  // CHECK-NEXT:     sdy.return %[[ABS1]] : tensor<8xf32>
+  // CHECK-NEXT:   }
+  // CHECK-SAME:   {mhlo.frontend_attributes = {inlineable = "false"}}
+  // CHECK-SAME:   (tensor<8xf32>) -> tensor<8xf32>
+  // CHECK-NEXT:   sdy.return %[[NC2]] : tensor<8xf32>
+  // CHECK-NEXT: }
+  // CHECK-SAME: {mhlo.frontend_attributes = {inlineable = "false"}}
+  // CHECK-SAME: (tensor<8xf32>) -> tensor<8xf32>
+  // CHECK-NEXT: %[[NEGATE:.*]] = stablehlo.negate %[[NC1]] : tensor<8xf32>
+  // CHECK-NEXT: %[[NC3:.*]] = sdy.named_computation<"baz">(%[[NEGATE]]) (%arg1: tensor<8xf32>) {
+  // CHECK-NEXT:   %[[ABS2:.*]] = stablehlo.abs %arg1 : tensor<8xf32>
+  // CHECK-NEXT:   sdy.return %[[ABS2]] : tensor<8xf32>
+  // CHECK-NEXT: }
+  // CHECK-SAME: {mhlo.frontend_attributes = {inlineable = "false"}}
+  // CHECK-SAME: (tensor<8xf32>) -> tensor<8xf32>
+  // CHECK-NEXT: return %[[NC3]] : tensor<8xf32>
+  %0 = call @foo(%arg0) {mhlo.frontend_attributes = {inlineable = "false"}} : (tensor<8xf32>) -> tensor<8xf32>
+  %1 = stablehlo.negate %0 : tensor<8xf32>
+  %2 = call @baz(%1) {mhlo.frontend_attributes = {inlineable = "false"}} : (tensor<8xf32>) -> tensor<8xf32>
+  return %2 : tensor<8xf32>
+}
+
+// CHECK-NOT: func private @foo
+func.func private @foo(%arg0: tensor<8xf32>) -> tensor<8xf32> {
+  %0 = stablehlo.add %arg0, %arg0 : tensor<8xf32>
+  %1 = call @bar(%0) {mhlo.frontend_attributes = {inlineable = "false"}} : (tensor<8xf32>) -> tensor<8xf32>
+  return %1 : tensor<8xf32>
+}
+
+// CHECK-NOT: func private @bar
+func.func private @bar(%arg0: tensor<8xf32>) -> tensor<8xf32> {
+  %0 = stablehlo.abs %arg0 : tensor<8xf32>
+  return %0 : tensor<8xf32>
+}
+
+// CHECK-NOT: func private @baz
+func.func private @baz(%arg0: tensor<8xf32>) -> tensor<8xf32> {
+  %0 = stablehlo.abs %arg0 : tensor<8xf32>
+  return %0 : tensor<8xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @non_flat_call_graph_all_inlineable
+// CHECK-NOT: sdy.named_computation
+func.func @non_flat_call_graph_all_inlineable(%arg0: tensor<8xf32>) -> tensor<8xf32> {
+  %0 = call @foo(%arg0) {mhlo.frontend_attributes = {inlineable = "true"}} : (tensor<8xf32>) -> tensor<8xf32>
+  %1 = stablehlo.negate %0 : tensor<8xf32>
+  %2 = call @baz(%1) {mhlo.frontend_attributes = {inlineable = "true"}} : (tensor<8xf32>) -> tensor<8xf32>
+  return %2 : tensor<8xf32>
+}
+
+// CHECK: func private @foo
+func.func private @foo(%arg0: tensor<8xf32>) -> tensor<8xf32> {
+  %0 = stablehlo.add %arg0, %arg0 : tensor<8xf32>
+  %1 = call @bar(%0) {mhlo.frontend_attributes = {inlineable = "true"}} : (tensor<8xf32>) -> tensor<8xf32>
+  return %1 : tensor<8xf32>
+}
+
+// CHECK: func private @bar
+func.func private @bar(%arg0: tensor<8xf32>) -> tensor<8xf32> {
+  %0 = stablehlo.abs %arg0 : tensor<8xf32>
+  return %0 : tensor<8xf32>
+}
+
+// CHECK: func private @baz
+func.func private @baz(%arg0: tensor<8xf32>) -> tensor<8xf32> {
+  %0 = stablehlo.abs %arg0 : tensor<8xf32>
+  return %0 : tensor<8xf32>
+}

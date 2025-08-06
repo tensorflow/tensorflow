@@ -20,11 +20,13 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/PostOrderIterator.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/Threading.h"
+#include "mlir/Analysis/CallGraph.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -136,12 +138,17 @@ class ImportFuncCallsPass
     // will clone the mapped region.
     llvm::SmallDenseMap<StringRef, mlir::Region*> calleeNameToMovedRegion;
 
-    moduleOp->walk([&](CallOp op) {
-      if (isInlineableCallOp(op)) {
-        return;
-      }
-      importCallOp(op, calleeNameToMovedRegion, rewriter, symbolTable);
-    });
+    mlir::CallGraph callGraph(moduleOp);
+    llvm::ReversePostOrderTraversal<const mlir::CallGraph*> rpo(&callGraph);
+    for (mlir::CallGraphNode* node : llvm::reverse(rpo)) {
+      if (node->isExternal()) continue;
+      node->getCallableRegion()->walk([&](CallOp op) {
+        if (isInlineableCallOp(op)) {
+          return;
+        }
+        importCallOp(op, calleeNameToMovedRegion, rewriter, symbolTable);
+      });
+    }
 
     // Erase all func ops that now have no call ops.
     for (auto [calleeName, _] : calleeNameToMovedRegion) {
