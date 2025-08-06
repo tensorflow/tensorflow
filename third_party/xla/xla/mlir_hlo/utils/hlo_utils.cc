@@ -242,7 +242,7 @@ Value getConstantLikeSmallestFiniteValue(OpBuilder& b, Location loc,
 Value getConstantLike(OpBuilder& b, Location loc, const APFloat& constant,
                       Value val) {
   Type ty = getElementTypeOrSelf(val.getType());
-  return b.create<ConstantLikeOp>(loc, b.getFloatAttr(ty, constant), val);
+  return ConstantLikeOp::create(b, loc, b.getFloatAttr(ty, constant), val);
 }
 
 }  // namespace chlo

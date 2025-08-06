@@ -329,20 +329,18 @@ struct ConstCoreRTTensorHandleToFallbackTensorCanonicalization
     for (auto operand : op.getArgs()) {
       if (auto corert_const_dense_tensor_op =
               operand.getDefiningOp<corert::ConstDenseTensorOp>()) {
-        new_values.push_back(
-            rewriter.create<fallback_async::ConstDenseTensorOp>(
-                op.getLoc(), rewriter.getType<fallback::TFTensorType>(),
-                corert_const_dense_tensor_op.getValue()));
+        new_values.push_back(fallback_async::ConstDenseTensorOp::create(
+            rewriter, op.getLoc(), rewriter.getType<fallback::TFTensorType>(),
+            corert_const_dense_tensor_op.getValue()));
         should_rewrite = true;
         continue;
       }
       if (auto corert_const_string_tensor_op =
               operand.getDefiningOp<corert::ConstStringTensorOp>()) {
-        new_values.push_back(
-            rewriter.create<fallback_async::ConstStringTensorOp>(
-                op.getLoc(), rewriter.getType<fallback::TFTensorType>(),
-                corert_const_string_tensor_op.getShape(),
-                corert_const_string_tensor_op.getValue()));
+        new_values.push_back(fallback_async::ConstStringTensorOp::create(
+            rewriter, op.getLoc(), rewriter.getType<fallback::TFTensorType>(),
+            corert_const_string_tensor_op.getShape(),
+            corert_const_string_tensor_op.getValue()));
         should_rewrite = true;
         continue;
       }
@@ -351,10 +349,9 @@ struct ConstCoreRTTensorHandleToFallbackTensorCanonicalization
       // For simplicity, we don't consolidate these ops when all the
       // non-canonicalizable operands are adjacent.
       new_values.push_back(
-          rewriter
-              .create<fallback_async::CoreRTTensorHandleToFallbackTensorOp>(
-                  op.getLoc(), rewriter.getType<fallback::TFTensorType>(),
-                  operand, op->getAttrOfType<mlir::StringAttr>("device"))
+          fallback_async::CoreRTTensorHandleToFallbackTensorOp::create(
+              rewriter, op.getLoc(), rewriter.getType<fallback::TFTensorType>(),
+              operand, op->getAttrOfType<mlir::StringAttr>("device"))
               .getResult(0));
     }
 
