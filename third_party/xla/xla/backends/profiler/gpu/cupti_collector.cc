@@ -991,28 +991,5 @@ std::unique_ptr<CuptiTraceCollector> CreateCuptiCollector(
                                                    start_gputime_ns);
 }
 
-// The strings are parser friendly and have no whitespaces in them.
-absl::string_view GetMemoryKindName(int8_t memory_kind) {
-  switch (memory_kind) {
-    case CUPTI_ACTIVITY_MEMORY_KIND_ARRAY:
-      return "array";
-    case CUPTI_ACTIVITY_MEMORY_KIND_DEVICE:
-      return "device";
-    case CUPTI_ACTIVITY_MEMORY_KIND_DEVICE_STATIC:
-      return "device_static";
-    case CUPTI_ACTIVITY_MEMORY_KIND_MANAGED:
-      return "managed";
-    case CUPTI_ACTIVITY_MEMORY_KIND_MANAGED_STATIC:
-      return "managed_static";
-    case CUPTI_ACTIVITY_MEMORY_KIND_PAGEABLE:
-      return "pageable";
-    case CUPTI_ACTIVITY_MEMORY_KIND_PINNED:
-      return "pinned";
-    case CUPTI_ACTIVITY_MEMORY_KIND_UNKNOWN:
-    default:
-      return "unknown";
-  }
-}
-
 }  // namespace profiler
 }  // namespace xla
