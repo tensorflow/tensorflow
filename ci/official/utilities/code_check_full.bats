@@ -56,6 +56,7 @@ do_external_licenses_check(){
 @ml_dtypes_py//ml_dtypes
 @ruy//
 @rules_java_builtin//toolchains
+@rules_ml_toolchain//
 @rules_python//
 @stablehlo//stablehlo/experimental
 EOF
@@ -80,6 +81,7 @@ EOF
 ^//$
 @ml_dtypes_py//
 @ruy//
+@rules_ml_toolchain//
 EOF
 
   license_query "attr('licenses', 'notice', deps($BUILD_TARGET))" > $BATS_TEST_TMPDIR/expected_licenses
