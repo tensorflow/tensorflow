@@ -1086,6 +1086,7 @@ class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
         call_graph_(call_graph),
         compute_capability_(compute_capability) {}
 
+ private:
   absl::Status AcceptDotInstruction(const HloDotInstruction* dot) {
     auto dims = dot->dot_dimension_numbers();
 
@@ -1122,15 +1123,13 @@ class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
     switch (instruction->opcode()) {
       case HloOpcode::kParameter:
       case HloOpcode::kConstant:
-        break;
+        return absl::OkStatus();
+      case HloOpcode::kBroadcast:
+        return absl::OkStatus();
       case HloOpcode::kFusion:
-        TF_RETURN_IF_ERROR(this->AcceptResultingFusion(
-            Cast<HloFusionInstruction>(instruction), /*top_level=*/false));
-        break;
+        return AcceptResultingFusion(Cast<HloFusionInstruction>(instruction));
       case HloOpcode::kDot:
-        TF_RETURN_IF_ERROR(
-            this->AcceptDotInstruction(Cast<HloDotInstruction>(instruction)));
-        break;
+        return AcceptDotInstruction(Cast<HloDotInstruction>(instruction));
       default:
         if (!IsFeatureEnabled(
                 instruction->GetModule(),
@@ -1140,34 +1139,20 @@ class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
               "Instruction ", HloOpcodeString(instruction->opcode()),
               " is not allowed in nested GEMM fusion."));
         }
+        return absl::OkStatus();
     }
-    return absl::OkStatus();
   }
 
-  // Checks if we should accept the resulting fusion:
-  // - triton can codegen the computation;
-  // - all operations are from the "tested" set that we confirmed to not cause
-  //   regressions.
+  // Checks whether all operations are from the "tested" set that we confirmed
+  // to not cause regressions.
   // That enables a progressive rollout of the new emitter. Eventually we should
   // remove this check completely as all computations will be supported by the
   // generic emitter and performance regressions will be addressed.
-  absl::Status AcceptResultingFusion(const HloFusionInstruction* fusion,
-                                     bool top_level) {
+  absl::Status AcceptResultingFusion(const HloFusionInstruction* fusion) {
     VLOG(3) << absl::StrCat("CheckResultingFusion ", fusion->ToString());
-    HloComputation* computation = fusion->called_computation();
-
-    if (top_level) {
-      CodegenDecision can_codegen_computation =
-          IsTritonSupportedComputation(*computation, compute_capability_);
-      if (!can_codegen_computation) {
-        return absl::InternalError(
-            absl::StrCat("Computation of fusion ", fusion->ToString(),
-                         " is not supported by Triton: ",
-                         can_codegen_computation.Explain()));
-      }
-    }
+    const HloComputation* computation = fusion->called_computation();
     for (const HloInstruction* instruction : computation->instructions()) {
-      TF_RETURN_IF_ERROR(this->AcceptNestedInstruction(instruction));
+      TF_RETURN_IF_ERROR(AcceptNestedInstruction(instruction));
     }
     return absl::OkStatus();
   }
@@ -1195,8 +1180,17 @@ class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
     TF_RETURN_IF_ERROR(
         MakeNestedFusionFromGemmFusion(fusion, config.value(), dot, ctx_));
 
-    this->MarkAsChanged();
-    return this->AcceptResultingFusion(fusion, /*top_level=*/true);
+    MarkAsChanged();
+
+    if (CodegenDecision can_codegen_computation = IsTritonSupportedComputation(
+            *fusion->called_computation(), compute_capability_);
+        !can_codegen_computation) {
+      return absl::InternalError(absl::StrCat(
+          "Computation of fusion ", fusion->ToString(),
+          " is not supported by Triton: ", can_codegen_computation.Explain()));
+    }
+
+    return AcceptResultingFusion(fusion);
   }
 
  private:
