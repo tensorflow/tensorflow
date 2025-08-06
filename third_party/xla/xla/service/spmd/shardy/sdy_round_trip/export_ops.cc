@@ -157,7 +157,8 @@ class SdyRoundTripExportOpsPass
   void runOnOperation() final {
     mlir::MLIRContext& context = getContext();
     mlir::ConversionTarget target(context);
-    target.addIllegalOp<ConstantOp, ShardingConstraintOp>();
+    target.addIllegalOp<ConstantOp, PropagationBarrierOp, ShardingConstraintOp,
+                        ShardingGroupOp>();
     target.addLegalOp<stablehlo::ConstantOp, stablehlo::CustomCallOp>();
     mlir::RewritePatternSet patterns(&context);
     patterns.add<ConstantPattern, ShardingConstraintPattern,

@@ -109,6 +109,17 @@ struct RsqrtIntrinsic {
     }
   }
 
+  static RsqrtIntrinsic For(Type type) {
+    switch (type.element_type()) {
+      case F32:
+        return ForF32(type.vector_width().value_or(1));
+      case F64:
+        return ForF64(type.vector_width().value_or(1));
+      default:
+        LOG(FATAL) << "Unsupported type for rsqrt: " << type.name();
+    }
+  }
+
   llvm::Value* CreateCall(llvm::IRBuilder<>& builder, llvm::Value* x) {
     llvm::Module* module = builder.GetInsertBlock()->getModule();
     llvm::Function* rsqrt_intrinsic =
@@ -152,11 +163,6 @@ absl::StatusOr<llvm::Function*> Rsqrt::CreateDefinition(
   llvm::LLVMContext& context = module->getContext();
   llvm::IRBuilder<> builder(context);
 
-  int num_elements = 1;
-  if (llvm::VectorType* vec_ty = llvm::dyn_cast<llvm::VectorType>(input_type)) {
-    num_elements = vec_ty->getElementCount().getKnownMinValue();
-  }
-
   llvm::FunctionType* function_type =
       llvm::FunctionType::get(input_type, {input_type}, false);
   llvm::Function* func = llvm::dyn_cast<llvm::Function>(
@@ -183,9 +189,7 @@ absl::StatusOr<llvm::Function*> Rsqrt::CreateDefinition(
     return func;
   }
 
-  RsqrtIntrinsic rsqrt_intrinsic = input_type->getScalarType()->isFloatTy()
-                                       ? RsqrtIntrinsic::ForF32(num_elements)
-                                       : RsqrtIntrinsic::ForF64(num_elements);
+  RsqrtIntrinsic rsqrt_intrinsic = RsqrtIntrinsic::For(type);
   llvm::Value* y_approx = rsqrt_intrinsic.CreateCall(builder, x);
 
   // Eigen only does 1 step for F32, but that only gives within 2 ULPs and we

@@ -33,23 +33,10 @@ namespace xla::codegen::intrinsics {
 class Rsqrt : public Intrinsic<Rsqrt> {
  public:
   static constexpr absl::string_view kName = "rsqrt";
-  static std::vector<std::vector<Type>> SupportedVectorTypes(
-      llvm::TargetMachine* target_machine) {
-    // Always include scalars so that we're able to vectorize from elemental
-    // IR.
-    std::vector<std::vector<Type>> supported_types = {{Type::S(F32)},
-                                                      {Type::S(F64)}};
-    const auto& features = target_machine->getTargetFeatureString();
-    if (features.contains("+avx")) {
-      supported_types.push_back({Type::V(F32, 8)});
-    }
-    if (features.contains("+avx512f")) {
-      supported_types.push_back({Type::V(F32, 16)});
-      supported_types.push_back({Type::V(F64, 2)});
-      supported_types.push_back({Type::V(F64, 4)});
-      supported_types.push_back({Type::V(F64, 8)});
-    }
-    return supported_types;
+  static std::vector<std::vector<Type>> SupportedVectorTypes() {
+    return {{Type::S(F32)},     {Type::S(F64)},    {Type::V(F32, 8)},
+            {Type::V(F32, 16)}, {Type::V(F64, 2)}, {Type::V(F64, 4)},
+            {Type::V(F64, 8)}};
   }
 
   // Creates an LLVM function that computes the reciprocal square root

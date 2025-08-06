@@ -294,6 +294,19 @@ config_setting(
 )
 
 config_setting(
+    name = "linux_x86_64_with_onednn_async",
+    constraint_values =
+        [
+            "@platforms//cpu:x86_64",
+            "@platforms//os:linux",
+        ],
+    define_values = {
+        "build_with_onednn_async": "true",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "linux_ppc64le",
     constraint_values =
         [

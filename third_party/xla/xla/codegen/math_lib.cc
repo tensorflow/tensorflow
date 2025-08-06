@@ -117,14 +117,8 @@ template <typename Intrinsic>
 class IntrinsicAdapter : public MathFunction {
  public:
   absl::string_view FunctionName() const override { return Intrinsic::kName; }
-  std::vector<std::vector<Type>> SupportedVectorTypes(
-      llvm::TargetMachine* target_machine) const override {
-    if constexpr (std::is_invocable_v<decltype(Intrinsic::SupportedVectorTypes),
-                                      llvm::TargetMachine*>) {
-      return Intrinsic::SupportedVectorTypes(target_machine);
-    } else {
-      return Intrinsic::SupportedVectorTypes();
-    }
+  std::vector<std::vector<Type>> SupportedVectorTypes() const override {
+    return Intrinsic::SupportedVectorTypes();
   }
 
   llvm::Function* CreateDefinition(llvm::Module& module,
@@ -232,10 +226,8 @@ std::vector<llvm::VecDesc> MathFunctionLib::Vectorizations() {
   for (const auto& math_func : math_functions_) {
     // For each floating point type supported, we add all vector widths to every
     // other vector width as a possible vectorization.
-    for (const auto& target_types :
-         math_func->SupportedVectorTypes(target_machine_)) {
-      for (const auto& vector_types :
-           math_func->SupportedVectorTypes(target_machine_)) {
+    for (const auto& target_types : math_func->SupportedVectorTypes()) {
+      for (const auto& vector_types : math_func->SupportedVectorTypes()) {
         if (target_types.front().element_type() !=
             vector_types.front().element_type()) {
           continue;

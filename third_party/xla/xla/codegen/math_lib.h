@@ -45,8 +45,8 @@ class MathFunction {
   virtual absl::string_view FunctionName() const = 0;
 
   // Returns the vector types supported well by this approximation.
-  virtual std::vector<std::vector<intrinsics::Type>> SupportedVectorTypes(
-      llvm::TargetMachine* target_machine) const = 0;
+  virtual std::vector<std::vector<intrinsics::Type>> SupportedVectorTypes()
+      const = 0;
 
   // Returns the LLVM IR function definition for the approximation.
   // Reads the target machine and features from the LLVM module.
