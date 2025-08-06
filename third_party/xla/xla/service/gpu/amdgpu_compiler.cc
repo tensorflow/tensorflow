@@ -244,14 +244,10 @@ absl::Status AMDGPUCompiler::AddConvAndGemmAutotuningPasses(
     return absl::OkStatus();
   }
 
-  // TODO(b/407495801): Cached Gemm as well as Conv autotuning results are
-  // loaded in the GpuConvAlgorithmPicker but should be loaded in the autotuner.
-  pipeline->AddPass<GpuConvAlgorithmPicker>(autotune_config);
-
   std::vector<std::unique_ptr<CodegenBackend>> backends;
-  // TODO: b/407494793 - Add proper support for ROCM. Currently the Cublas
-  // backend uses the same API as rocBLAS.
   if (debug_options.xla_gpu_experimental_use_autotuner_pass()) {
+    // TODO: b/407494793 - Add proper support for ROCM. Currently the Cublas
+    // backend uses the same API as rocBLAS.
     backends.push_back(
         std::make_unique<CublasBackend>(stream_exec, &debug_options, this));
     TF_ASSIGN_OR_RETURN(
@@ -259,6 +255,8 @@ absl::Status AMDGPUCompiler::AddConvAndGemmAutotuningPasses(
         AutotunerPass::Create(std::move(backends), stream_exec, thread_pool));
     pipeline->AddPass(std::move(autotuner_pass));
   } else {
+    pipeline->AddPass<GpuConvAlgorithmPicker>(autotune_config);
+
     pipeline->AddPass<GemmAlgorithmPicker>(autotune_config);
   }
 

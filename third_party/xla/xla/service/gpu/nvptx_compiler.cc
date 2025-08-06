@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/autotuner/cublas.h"
 #include "xla/backends/gpu/autotuner/cublaslt.h"
+#include "xla/backends/gpu/autotuner/cudnn.h"
 #include "xla/backends/gpu/autotuner/factory.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -65,6 +66,7 @@ limitations under the License.
 #include "xla/service/gpu/autotuning/conv_algorithm_picker.h"
 #include "xla/service/gpu/autotuning/gemm_algorithm_picker.h"
 #include "xla/service/gpu/autotuning/gemm_fusion_autotuner.h"
+#include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/cublas_padding_requirements.h"
 #include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -343,14 +345,13 @@ absl::Status NVPTXCompiler::AddConvAndGemmAutotuningPasses(
   if (hlo_module->config()
           .debug_options()
           .xla_gpu_experimental_disable_binary_libraries() ||
+      hlo_module->config()
+          .debug_options()
+          .xla_gpu_experimental_disable_binary_libraries() ||
       debug_options.xla_gpu_autotune_level() == 0 ||
       debug_options.xla_gpu_exclude_nondeterministic_ops()) {
     return absl::OkStatus();
   }
-
-  // TODO(b/407495801): Cached Gemm as well as Conv autotuning results are
-  // loaded in the GpuConvAlgorithmPicker but should be loaded in the autotuner.
-  pipeline->AddPass<GpuConvAlgorithmPicker>(autotune_config);
 
   if (debug_options.xla_gpu_experimental_use_autotuner_pass()) {
     std::vector<std::unique_ptr<CodegenBackend>> backends;
@@ -358,11 +359,15 @@ absl::Status NVPTXCompiler::AddConvAndGemmAutotuningPasses(
         std::make_unique<CublasBackend>(stream_exec, &debug_options, this));
     backends.push_back(
         std::make_unique<CublasLtBackend>(stream_exec, &debug_options, this));
+    backends.push_back(
+        std::make_unique<CudnnBackend>(stream_exec, &debug_options, this));
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<AutotunerPass> autotuner_pass,
         AutotunerPass::Create(std::move(backends), stream_exec, thread_pool));
     pipeline->AddPass(std::move(autotuner_pass));
   } else {
+    pipeline->AddPass<GpuConvAlgorithmPicker>(autotune_config);
+
     // On Ampere or later, GemmAlgorithmPicker just provides a way to "warmup"
     // the
     // execution. But we already do that during GemmFusionAutotuner pass. In
