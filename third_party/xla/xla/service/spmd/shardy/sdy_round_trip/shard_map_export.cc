@@ -106,6 +106,10 @@ class SdyRoundTripShardMapExportPass
 
       auto callOp =
           CallOp::create(rewriter, loc, localResultTypes, funcName, operands);
+      if (!manualComputation.getManualAxesAttr().empty()) {
+        setFrontendAttribute(callOp, kXlaInlineableAttr,
+                             rewriter.getBoolAttr(false));
+      }
 
       mlir::ResultRange results = manualComputation->getResults();
       if (!results.empty()) {
@@ -136,10 +140,13 @@ class SdyRoundTripShardMapExportPass
   }
 
   StringRef getDescription() const override {
-    return "Converts the body of a ManualComputationOp to a separate function "
-           "with a CallOp and a pair of CustomCallOps that change the shape of "
-           "the arguments/results. The CallOp saves the in/out shardings and "
-           "manual axes as frontend attrs.";
+    return "Converts a `ManualComputationOp` to the following."
+           "1. A separate function for the body of the `ManualComputationOp`."
+           "2. A `CallOp` calling the function in 1. It is marked as not "
+           "inlineable if manual axes are not empty."
+           "3. A pair of `CustomCallOp`s that change the shape of the "
+           "arguments/results. They save the in/out shardings and manual axes "
+           "as frontend attrs.";
   }
   void getDependentDialects(mlir::DialectRegistry& registry) const final {
     registry.insert<stablehlo::StablehloDialect>();

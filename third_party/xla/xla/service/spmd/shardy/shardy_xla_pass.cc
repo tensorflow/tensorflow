@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/hlo/translate/stablehlo.h"
@@ -385,6 +386,29 @@ absl::Status runShardingPropagation(HloModule* hloModule,
   return diagnosticHandler.consumeStatus(pm.run(mlirModule));
 }
 
+bool eraseInlineableAttrForShardyManualComputations(HloModule* hloModule) {
+  bool changed = false;
+  for (HloComputation* computation : hloModule->computations()) {
+    for (HloInstruction* instruction : computation->instructions()) {
+      if (instruction->opcode() != HloOpcode::kCall) {
+        continue;
+      }
+      if (!instruction->frontend_attributes().map().contains(
+              kXlaInlineableAttr)) {
+        continue;
+      }
+      absl::string_view calleeName = instruction->to_apply()->name();
+      if (absl::StrContains(calleeName, "shmap_body") ||
+          absl::StrContains(calleeName,
+                            sdy::kManualComputationBodyFuncName.str())) {
+        instruction->erase_frontend_attribute(kXlaInlineableAttr);
+        changed = true;
+      }
+    }
+  }
+  return changed;
+}
+
 }  // namespace
 
 absl::StatusOr<bool> ShardyXLA::Run(
@@ -394,10 +418,11 @@ absl::StatusOr<bool> ShardyXLA::Run(
   bool useTupleArgs = moduleFrontendAttrs.contains(kUseTupleArgs);
   bool importMhloShardings = moduleFrontendAttrs.contains(kImportMhloShardings);
 
+  bool changed = eraseInlineableAttrForShardyManualComputations(hloModule);
   if (!runSdyShardingPropagation && !useTupleArgs) {
-    // Nothing to do.
-    return false;
+    return changed;
   }
+
   // The auto-spmd flag is present in both the HLO module and the config. Apply
   // auto spmd partitioning if either is true.
   if (hloModule->use_auto_spmd_partitioning() ||

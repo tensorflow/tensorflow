@@ -23,10 +23,12 @@ limitations under the License.
 namespace xla {
 namespace sdy {
 
-// Creates the pass that converts `ManualComputationOp`s to a separate function
-// with a CallOp and a pair of `CustomCallOp`s that change the shape of the
-// arguments/results. The CallOp saves the in/out shardings and manual axes as
-// frontend attrs.
+// Creates the pass that converts a `ManualComputationOp` to the following.
+// 1. A separate function for the body of the `ManualComputationOp`.
+// 2. A `CallOp` calling the function in 1. It is marked as not inlineable if
+//    manual axes are not empty.
+// 3. A pair of `CustomCallOp`s that change the shape of the arguments/results.
+//    They save the in/out shardings and manual axes as frontend attrs.
 std::unique_ptr<mlir::Pass> createSdyRoundTripShardMapExportPass();
 
 // Registers the xla-sdy-round-trip-shard-map-export pass.
