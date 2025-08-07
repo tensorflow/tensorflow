@@ -137,6 +137,18 @@ bool HasKeepOriginalSequenceOrderInGroupAttribute(const HloInstruction* instr) {
   return attr.has_value() && attr.value() == "true";
 }
 
+bool IsCustomCallWithForceEarlyAttribute(const HloInstruction* instr) {
+  auto attr = instr->get_frontend_attribute("scheduler_hint");
+  return instr->opcode() == HloOpcode::kCustomCall && attr.has_value() &&
+         attr.value() == "force_early";
+}
+
+bool IsCustomCallWithForceDelayAttribute(const HloInstruction* instr) {
+  auto attr = instr->get_frontend_attribute("scheduler_hint");
+  return instr->opcode() == HloOpcode::kCustomCall && attr.has_value() &&
+         attr.value() == "force_delay";
+}
+
 absl::flat_hash_map<int64_t, int64_t>
 GetNumResourcesNeededForAnnotationWithKeepOriginalOrderAttrs(
     const DefaultSchedulerCore::SchedulingState& sched_state,
@@ -2487,6 +2499,13 @@ HloScheduleGraph::HloScheduleGraph(
     // Gather while instructions for subsequent send-done dependency checks.
     if (instr->opcode() == HloOpcode::kWhile) {
       while_instrs.push_back(instr);
+    }
+
+    if (IsCustomCallWithForceEarlyAttribute(instr)) {
+      n->SetForceEarly(true);
+    }
+    if (IsCustomCallWithForceDelayAttribute(instr)) {
+      n->SetForceDelay(true);
     }
   }
 
