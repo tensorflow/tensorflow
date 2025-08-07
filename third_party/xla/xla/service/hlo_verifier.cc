@@ -1268,8 +1268,10 @@ absl::Status ShapeVerifier::HandleFusion(HloInstruction* fusion) {
     if (!ShapesSame(fused_param->shape(), fusion->operand(param_no)->shape())) {
       return Internal(
           "Shape mismatch between parameter number %d and its operand in "
-          "%s.",
-          param_no, fusion->ToString().c_str());
+          "%s. (%s != %s)",
+          param_no, fusion->ToString().c_str(),
+          fused_param->shape().ToString(true),
+          fusion->operand(param_no)->shape().ToString(true));
     }
   }
   const HloFusionInstruction* casted_fusion =
