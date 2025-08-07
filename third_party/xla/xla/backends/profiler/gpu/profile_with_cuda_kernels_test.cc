@@ -16,11 +16,16 @@ limitations under the License.
 #include "xla/backends/profiler/gpu/profile_with_cuda_kernels.h"
 
 #include <atomic>
+#include <cstdint>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "xla/backends/profiler/gpu/cupti_collector.h"
 #include "xla/backends/profiler/gpu/cupti_error_manager.h"
