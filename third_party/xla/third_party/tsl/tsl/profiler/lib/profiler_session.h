@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/status.h"
@@ -79,15 +80,16 @@ class ProfilerSession {
   // Collects profile data into XSpace without post-processsing.
   absl::Status CollectDataInternal(tensorflow::profiler::XSpace* space);
 
-  profiler::ProfilerLock profiler_lock_ TF_GUARDED_BY(mutex_);
+  profiler::ProfilerLock profiler_lock_ ABSL_GUARDED_BY(mutex_);
 
-  std::unique_ptr<profiler::ProfilerInterface> profilers_ TF_GUARDED_BY(mutex_);
+  std::unique_ptr<profiler::ProfilerInterface> profilers_
+      ABSL_GUARDED_BY(mutex_);
 
   uint64 start_time_ns_;
   uint64 stop_time_ns_;
   tensorflow::ProfileOptions options_;
 #endif
-  absl::Status status_ TF_GUARDED_BY(mutex_);
+  absl::Status status_ ABSL_GUARDED_BY(mutex_);
   absl::Mutex mutex_;
 };
 
