@@ -16,12 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_TF_GRAPH_TO_HLO_COMPILER_H_
 #define TENSORFLOW_COMPILER_JIT_TF_GRAPH_TO_HLO_COMPILER_H_
 
-#include <memory>
-#include <vector>
-
+#include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/jit/tf_to_hlo_compiler.h"
+#include "tensorflow/compiler/tf2xla/xla_argument.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
 
