@@ -886,7 +886,7 @@ bool IsDotSupportedByClassicalEmitters(const HloInstruction& dot) {
   }
 }
 
-PrimitiveType GetGemmAccumulatorType(HloDotInstruction* dot) {
+PrimitiveType GetGemmAccumulatorType(const HloDotInstruction* dot) {
   // Return the accumulator type if it is explicitly specified as dot algorithm.
   auto accumulator_type = algorithm_util::GetDotAccumulatorType(
       dot->precision_config().algorithm());
