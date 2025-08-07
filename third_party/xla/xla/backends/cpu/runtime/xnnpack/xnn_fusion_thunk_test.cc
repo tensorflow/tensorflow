@@ -45,12 +45,15 @@ limitations under the License.
 namespace xla::cpu {
 namespace {
 
-static absl::StatusOr<xnn_subgraph_t> CreateBinaryAdd(
+static absl::StatusOr<XnnSubgraph> BuildBinaryAddSubgraph(
     absl::Span<const XnnFusionThunk::Argument> arguments,
     absl::Span<const XnnFusionThunk::Result> results) {
-  xnn_subgraph_t subgraph = nullptr;
-  XNN_RETURN_IF_ERROR(xnn_create_subgraph(/*external_value_ids=*/3,
-                                          /*flags=*/0, &subgraph));
+  TF_ASSIGN_OR_RETURN(XnnSubgraph subgraph,
+                      CreateXnnSubgraph([&](xnn_subgraph_t* subgraph) {
+                        return xnn_create_subgraph(
+                            /*external_value_ids=*/3,
+                            /*flags=*/0, subgraph);
+                      }));
 
   auto dims = [](absl::Span<const int64_t> dims) -> std::vector<size_t> {
     return {dims.begin(), dims.end()};
@@ -65,21 +68,24 @@ static absl::StatusOr<xnn_subgraph_t> CreateBinaryAdd(
   std::vector<size_t> out_dims = dims(results[0].shape.dimensions());
 
   XNN_RETURN_IF_ERROR(xnn_define_tensor_value(
-      subgraph, xnn_datatype_fp32, lhs_dims.size(), lhs_dims.data(), nullptr,
+      subgraph.get(), xnn_datatype_fp32, lhs_dims.size(), lhs_dims.data(),
+      nullptr,
       /*external_id=*/0, XNN_VALUE_FLAG_EXTERNAL_INPUT, &lhs_id));
 
   XNN_RETURN_IF_ERROR(xnn_define_tensor_value(
-      subgraph, xnn_datatype_fp32, rhs_dims.size(), rhs_dims.data(), nullptr,
+      subgraph.get(), xnn_datatype_fp32, rhs_dims.size(), rhs_dims.data(),
+      nullptr,
       /*external_id=*/1, XNN_VALUE_FLAG_EXTERNAL_INPUT, &rhs_id));
 
   XNN_RETURN_IF_ERROR(xnn_define_tensor_value(
-      subgraph, xnn_datatype_fp32, out_dims.size(), out_dims.data(), nullptr,
+      subgraph.get(), xnn_datatype_fp32, out_dims.size(), out_dims.data(),
+      nullptr,
       /*external_id=*/2, XNN_VALUE_FLAG_EXTERNAL_OUTPUT, &out_id));
 
   xnn_binary_params params = {-std::numeric_limits<float>::infinity(),
                               std::numeric_limits<float>::infinity()};
 
-  XNN_RETURN_IF_ERROR(xnn_define_binary(subgraph, xnn_binary_add, &params,
+  XNN_RETURN_IF_ERROR(xnn_define_binary(subgraph.get(), xnn_binary_add, &params,
                                         lhs_id, rhs_id, out_id, /*flags=*/0));
 
   return subgraph;
@@ -120,7 +126,7 @@ TEST_P(XnnFusionThunkTest, ElementwiseAdd) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto thunk, XnnFusionThunk::Create(
                       XnnFusionThunk::Options{use_threadpool()}, {"fusion"},
-                      {lhs_arg, rhs_arg}, {out_res}, &CreateBinaryAdd));
+                      {lhs_arg, rhs_arg}, {out_res}, &BuildBinaryAddSubgraph));
 
   Thunk::ExecuteParams params;
   params.buffer_allocations = &allocations;

@@ -16,14 +16,14 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_XNN_EMITTER_H_
 #define XLA_BACKENDS_CPU_XNN_EMITTER_H_
 
-#include "xnnpack.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/statusor.h"
+#include "xla/backends/cpu/runtime/xnnpack/xnn_interop.h"
 #include "xla/hlo/ir/hlo_computation.h"
 
 namespace xla::cpu {
 
-absl::StatusOr<absl::AnyInvocable<absl::StatusOr<xnn_subgraph_t>()>>
+absl::StatusOr<absl::AnyInvocable<absl::StatusOr<XnnSubgraph>()>>
 EmitXnnFusionBuilder(const HloComputation* computation);
 
 }  // namespace xla::cpu

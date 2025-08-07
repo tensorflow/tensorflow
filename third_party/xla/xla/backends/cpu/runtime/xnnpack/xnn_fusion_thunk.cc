@@ -62,30 +62,20 @@ std::ostream& operator<<(std::ostream& os, XnnFusionThunk::XnnFusionKind kind) {
   return os << XnnFusionThunk::XnnFusionKindToString(kind);
 }
 
-// XNNPACK runtime instantiated for the fusion operation.
-struct XnnFusionThunk::XnnRuntime {
-  XnnRuntime() = default;
-  ~XnnRuntime() { Destroy(); }
-
-  XnnRuntime(XnnRuntime&&);
-  XnnRuntime& operator=(XnnRuntime&&);
-
+// XNNPACK executable instantiated for the fusion operation.
+struct XnnFusionThunk::XnnExecutable {
   tsl::AsyncValueRef<XnnFusionThunk::ExecuteEvent> Invoke(
       const Eigen::ThreadPoolDevice* device,
       absl::Span<se::DeviceMemoryBase> arguments,
       absl::Span<se::DeviceMemoryBase> results,
       absl::FunctionRef<bool(size_t)> is_captured_argument);
 
-  // Releases XNNPACK runtime and subgraph.
-  absl::Status Release();
+  // Resets XNNPACK runtime and subgraph.
+  absl::Status Reset();
 
-  // Destroys all XNNPACK resources.
-  void Destroy();
-
-  XnnScheduler scheduler = {nullptr, nullptr};
-
-  xnn_subgraph_t subgraph = nullptr;
-  xnn_runtime_t runtime = nullptr;
+  XnnScheduler scheduler = nullptr;
+  XnnSubgraph subgraph = nullptr;
+  XnnRuntime runtime = nullptr;
 
   // TODO(ezhulenev): Today we rely on device memory as an identity of the
   // captured argument, and this is not correct as we can have multiple
@@ -94,27 +84,8 @@ struct XnnFusionThunk::XnnRuntime {
   std::vector<se::DeviceMemoryBase> captured_arguments;
 };
 
-XnnFusionThunk::XnnRuntime::XnnRuntime(XnnRuntime&& other) {
-  *this = std::move(other);
-}
-
-auto XnnFusionThunk::XnnRuntime::operator=(XnnRuntime&& other) -> XnnRuntime& {
-  Destroy();
-
-  subgraph = other.subgraph;
-  runtime = other.runtime;
-
-  other.subgraph = nullptr;
-  other.runtime = nullptr;
-
-  captured_arguments = std::move(other.captured_arguments);
-  scheduler = std::move(other.scheduler);
-
-  return *this;
-}
-
 tsl::AsyncValueRef<XnnFusionThunk::ExecuteEvent>
-XnnFusionThunk::XnnRuntime::Invoke(
+XnnFusionThunk::XnnExecutable::Invoke(
     const Eigen::ThreadPoolDevice* device,
     absl::Span<se::DeviceMemoryBase> arguments,
     absl::Span<se::DeviceMemoryBase> results,
@@ -139,58 +110,46 @@ XnnFusionThunk::XnnRuntime::Invoke(
   }
 
   DCHECK_NE(runtime, nullptr) << "XNNPACK runtime is not initialized";
-  XNN_RETURN_IF_ERROR(xnn_setup_runtime_v2(runtime, external_values.size(),
-                                           external_values.data()));
+  XNN_RETURN_IF_ERROR(xnn_setup_runtime_v2(
+      runtime.get(), external_values.size(), external_values.data()));
 
   // Execute XNNPACK runtime in the caller thread.
-  XNN_RETURN_IF_ERROR(xnn_invoke_runtime(runtime));
+  XNN_RETURN_IF_ERROR(xnn_invoke_runtime(runtime.get()));
   return OkExecuteEvent();
 }
 
-absl::Status XnnFusionThunk::XnnRuntime::Release() {
-  if (runtime != nullptr) {
-    XNN_RETURN_IF_ERROR(xnn_delete_runtime(runtime));
-  }
-  if (subgraph != nullptr) {
-    XNN_RETURN_IF_ERROR(xnn_delete_subgraph(subgraph));
-  }
+absl::Status XnnFusionThunk::XnnExecutable::Reset() {
+  runtime.reset();
+  subgraph.reset();
   return absl::OkStatus();
 }
 
-void XnnFusionThunk::XnnRuntime::Destroy() {
-  if (runtime != nullptr) {
-    XNN_LOG_IF_ERROR(xnn_delete_runtime(runtime));
-  }
-  if (subgraph != nullptr) {
-    XNN_LOG_IF_ERROR(xnn_delete_subgraph(subgraph));
-  }
-}
-
-absl::StatusOr<XnnFusionThunk::XnnRuntime> XnnFusionThunk::CreateXnnRuntime(
+absl::StatusOr<XnnFusionThunk::XnnExecutable>
+XnnFusionThunk::CreateXnnExecutable(
     const Eigen::ThreadPoolDevice* device,
     absl::Span<const se::DeviceMemoryBase> arguments_buffers) {
   bool capturing = !captured_arguments_ids_.empty();
   VLOG(3) << absl::StreamFormat(
-      "Create %s XNN runtime for `%s` operation: num_created=%d",
+      "Create %s XNN executable for `%s` operation: num_created=%d",
       capturing ? "capturing" : "pooled", info().op_name,
       capturing ? num_capturing_created_.fetch_add(1)
-                : xnn_runtime_pool_.num_created());
+                : xnn_executable_pool_.num_created());
 
-  XnnRuntime runtime;
+  XnnExecutable executable;
 
   // Keep track of the arguments captured by value.
-  runtime.captured_arguments = CaptureArguments(arguments_buffers);
+  executable.captured_arguments = CaptureArguments(arguments_buffers);
 
   // Configure XNNPACK scheduler if the use of thread pool is enabled.
   if (options_.use_threadpool && device) {
-    runtime.scheduler = CreateXnnEigenScheduler(device);
+    executable.scheduler = CreateXnnEigenScheduler(device);
   }
 
   if (builder_) {
-    TF_ASSIGN_OR_RETURN(runtime.subgraph, builder_(arguments_, results_));
+    TF_ASSIGN_OR_RETURN(executable.subgraph, builder_(arguments_, results_));
   } else {
     TF_ASSIGN_OR_RETURN(
-        runtime.subgraph,
+        executable.subgraph,
         capturing_builder_(arguments_, results_, arguments_buffers));
   }
 
@@ -199,52 +158,58 @@ absl::StatusOr<XnnFusionThunk::XnnRuntime> XnnFusionThunk::CreateXnnRuntime(
   flags |= XNN_FLAG_SLINKY_NO_CHECKS;
 #endif
 
-  XNN_RETURN_IF_ERROR(xnn_create_runtime_with_scheduler(
-      runtime.subgraph, /*weights_cache=*/nullptr, runtime.scheduler.get(),
-      flags, &runtime.runtime));
+  TF_ASSIGN_OR_RETURN(
+      executable.runtime, CreateXnnRuntime([&](xnn_runtime_t* runtime) {
+        return xnn_create_runtime_with_scheduler(
+            executable.subgraph.get(), /*weights_cache=*/nullptr,
+            executable.scheduler.get(), flags, runtime);
+      }));
+  XNN_RETURN_IF_ERROR(xnn_reshape_runtime(executable.runtime.get()));
 
-  XNN_RETURN_IF_ERROR(xnn_reshape_runtime(runtime.runtime));
-
-  return {std::move(runtime)};
+  return {std::move(executable)};
 }
 
-absl::Status XnnFusionThunk::UpdateXnnRuntime(
-    XnnRuntime& runtime,
+absl::Status XnnFusionThunk::UpdateXnnExecutable(
+    XnnExecutable& executable,
     absl::Span<const se::DeviceMemoryBase> arguments_buffers) {
-  DCHECK(capturing_builder_) << "XNN runtime is not capturing arguments";
-  DCHECK_EQ(runtime.captured_arguments.size(), captured_arguments_ids_.size())
+  DCHECK(capturing_builder_) << "XNN executable is not capturing arguments";
+  DCHECK_EQ(executable.captured_arguments.size(),
+            captured_arguments_ids_.size())
       << "Unexpected number of captured arguments";
 
   // If all arguments captured by value are the same as the last execution,
-  // we can reuse the XNN runtime.
+  // we can reuse the XNN executable.
   auto capture_arguments = CaptureArguments(arguments_buffers);
-  if (runtime.captured_arguments == capture_arguments) {
-    VLOG(3) << absl::StreamFormat("Reuse XNN runtime for `%s` operation",
+  if (executable.captured_arguments == capture_arguments) {
+    VLOG(3) << absl::StreamFormat("Reuse XNN executable for `%s` operation",
                                   info().op_name);
     return absl::OkStatus();
   }
 
-  VLOG(3) << absl::StreamFormat("Update XNN runtime for `%s` operation",
+  VLOG(3) << absl::StreamFormat("Update XNN executable for `%s` operation",
                                 info().op_name);
 
-  TF_RETURN_IF_ERROR(runtime.Release());
+  TF_RETURN_IF_ERROR(executable.Reset());
 
   // Keep track of the updated arguments captured by value.
-  runtime.captured_arguments = std::move(capture_arguments);
+  executable.captured_arguments = std::move(capture_arguments);
 
-  TF_ASSIGN_OR_RETURN(runtime.subgraph, capturing_builder_(arguments_, results_,
-                                                           arguments_buffers));
+  TF_ASSIGN_OR_RETURN(
+      executable.subgraph,
+      capturing_builder_(arguments_, results_, arguments_buffers));
 
   uint32_t flags = XNN_FLAG_SLINKY_ENABLED | XNN_FLAG_SLINKY_STATIC_BOUNDS;
 #ifdef NDEBUG
   flags |= XNN_FLAG_SLINKY_NO_CHECKS;
 #endif
 
-  XNN_RETURN_IF_ERROR(xnn_create_runtime_with_scheduler(
-      runtime.subgraph, /*weights_cache=*/nullptr, runtime.scheduler.get(),
-      flags, &runtime.runtime));
-
-  XNN_RETURN_IF_ERROR(xnn_reshape_runtime(runtime.runtime));
+  TF_ASSIGN_OR_RETURN(
+      executable.runtime, CreateXnnRuntime([&](xnn_runtime_t* runtime) {
+        return xnn_create_runtime_with_scheduler(
+            executable.subgraph.get(), /*weights_cache=*/nullptr,
+            executable.scheduler.get(), flags, runtime);
+      }));
+  XNN_RETURN_IF_ERROR(xnn_reshape_runtime(executable.runtime.get()));
 
   return absl::OkStatus();
 }
@@ -291,8 +256,8 @@ XnnFusionThunk::XnnFusionThunk(XnnFusionKind kind, Options options, Info info,
       arguments_(std::move(arguments)),
       results_(std::move(results)),
       builder_(std::move(builder)),
-      xnn_runtime_pool_(
-          absl::bind_front(&XnnFusionThunk::CreateXnnRuntime, this)) {}
+      xnn_executable_pool_(
+          absl::bind_front(&XnnFusionThunk::CreateXnnExecutable, this)) {}
 
 XnnFusionThunk::XnnFusionThunk(XnnFusionKind kind, Options options, Info info,
                                std::vector<Argument> arguments,
@@ -307,8 +272,8 @@ XnnFusionThunk::XnnFusionThunk(XnnFusionKind kind, Options options, Info info,
       capturing_builder_(std::move(capturing_builder)),
       captured_arguments_ids_(captured_arguments_ids.begin(),
                               captured_arguments_ids.end()),
-      xnn_runtime_pool_(
-          absl::bind_front(&XnnFusionThunk::CreateXnnRuntime, this)) {}
+      xnn_executable_pool_(
+          absl::bind_front(&XnnFusionThunk::CreateXnnExecutable, this)) {}
 
 XnnFusionThunk::~XnnFusionThunk() = default;
 
@@ -369,33 +334,33 @@ tsl::AsyncValueRef<XnnFusionThunk::ExecuteEvent> XnnFusionThunk::Execute(
 
   DCHECK(builder_ || capturing_builder_) << "One of the builders must be set.";
 
-  auto invoke = [&](typename XnnRuntimePool::BorrowedObject runtime) {
-    auto executed = runtime->Invoke(
+  auto invoke = [&](typename XnnExecutablePool::BorrowedObject executable) {
+    auto executed = executable->Invoke(
         params.intra_op_threadpool, absl::MakeSpan(arguments_buffers),
         absl::MakeSpan(results_buffers), [&](size_t id) {
           return absl::c_linear_search(captured_arguments_ids_, id);
         });
 
-    // Do not return runtime to the pool until the execution is done.
-    executed.AndThen([runtime = std::move(runtime)] {});
+    // Do not return executable to the pool until the execution is done.
+    executed.AndThen([executable = std::move(executable)] {});
     return executed;
   };
 
   const Eigen::ThreadPoolDevice* device = params.intra_op_threadpool;
 
-  // Borrow XnnRuntime from the pool.
-  TF_ASSIGN_OR_RETURN(auto runtime,
-                      xnn_runtime_pool_.GetOrCreate(device, arguments_buffers));
+  // Borrow XnnExecutable from the pool.
+  TF_ASSIGN_OR_RETURN(auto executable, xnn_executable_pool_.GetOrCreate(
+                                           device, arguments_buffers));
 
   // If XNN graph doesn't capture any of the arguments by value, we can execute
-  // XnnRuntime immediately.
+  // XnnExecutable immediately.
   if (captured_arguments_ids_.empty()) {
-    return invoke(std::move(runtime));
+    return invoke(std::move(executable));
   }
 
-  // Otherwise reset XnnRuntime to capture new arguments buffers.
-  TF_RETURN_IF_ERROR(UpdateXnnRuntime(*runtime, arguments_buffers));
-  return invoke(std::move(runtime));
+  // Otherwise reset XnnExecutable to capture new arguments buffers.
+  TF_RETURN_IF_ERROR(UpdateXnnExecutable(*executable, arguments_buffers));
+  return invoke(std::move(executable));
 }
 
 }  // namespace xla::cpu

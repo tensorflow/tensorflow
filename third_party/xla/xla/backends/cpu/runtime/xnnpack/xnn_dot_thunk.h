@@ -62,7 +62,7 @@ class XnnDotThunk final : public XnnFusionThunk {
               DotSlices dot_slices, DotShape dot_shape,
               DotCanonicalDims dot_canonical_dims, bool capture_rhs);
 
-  absl::StatusOr<xnn_subgraph_t> BuildDotSubgraph(
+  absl::StatusOr<XnnSubgraph> BuildDotSubgraph(
       absl::Span<const Argument> arguments, absl::Span<const Result> results,
       absl::Span<const se::DeviceMemoryBase> arguments_buffers);
 
