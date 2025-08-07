@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/shape_inference_utils.h"
 
+#include <cassert>
+#include <cstdint>
 #include <optional>
 
 #include "mlir/IR/Location.h"  // from @llvm-project
