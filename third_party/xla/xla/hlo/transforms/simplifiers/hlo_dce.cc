@@ -333,12 +333,17 @@ absl::StatusOr<bool> RemoveDanglingComputations(
       }
     }
   }
-  for (auto computation : to_remove) {
+  for (auto iterator = module->computations().begin();
+       iterator != module->computations().end(); ++iterator) {
     // Only remove computations from the specified execution threads.
-    if (execution_threads.empty() ||
-        execution_threads.contains(computation->execution_thread())) {
-      TF_RETURN_IF_ERROR(module->RemoveEmbeddedComputation(computation));
-      changed = true;
+    auto computation = *iterator;
+    if (to_remove.contains(computation)) {
+      if (execution_threads.empty() ||
+          execution_threads.contains(computation->execution_thread())) {
+        TF_RETURN_IF_ERROR(module->RemoveEmbeddedComputation(
+            iterator.underlying_iterator().underlying_iterator()));
+        changed = true;
+      }
     }
   }
   return changed;

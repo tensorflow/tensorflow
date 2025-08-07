@@ -92,6 +92,8 @@ class UnwrappingIterator {
     return !(a == b);
   }
 
+  NestedIter underlying_iterator() const { return iter_; }
+
  private:
   NestedIter iter_;
 };
@@ -144,6 +146,8 @@ class FilteringIterator {
                          const FilteringIterator& b) {
     return !(a == b);
   }
+
+  NestedIter underlying_iterator() const { return iter_; }
 
  private:
   NestedIter iter_;

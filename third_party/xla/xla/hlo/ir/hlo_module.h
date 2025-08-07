@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_HLO_IR_HLO_MODULE_H_
 
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -113,6 +114,8 @@ class HloModule {
       std::unique_ptr<HloComputation> computation);
 
   // Removes an embedded computation.
+  absl::Status RemoveEmbeddedComputation(
+      std::vector<std::unique_ptr<HloComputation>>::iterator to_remove);
   absl::Status RemoveEmbeddedComputation(HloComputation* to_remove);
 
   // Removes unused computations.
@@ -256,17 +259,27 @@ class HloModule {
   //
   //   for (HloComputation* c : module->computations()) { ... }
   //
-  tsl::gtl::iterator_range<UnwrappingIterator<
-      std::vector<std::unique_ptr<HloComputation>>::const_iterator>>
+  tsl::gtl::iterator_range<FilteringUnwrappingIterator<
+      std::vector<std::unique_ptr<HloComputation>>::const_iterator,
+      bool (*)(const HloComputation*)>>
   computations() const {
-    return {MakeUnwrappingIterator(computations_.begin()),
-            MakeUnwrappingIterator(computations_.end())};
+    bool (*not_deleted)(const HloComputation*) =
+        +[](const HloComputation* computation) {
+          return computation != nullptr;
+        };
+    return MakeFilteringUnwrappingIteratorRange(
+        computations_.begin(), computations_.end(), not_deleted);
   }
-  tsl::gtl::iterator_range<UnwrappingIterator<
-      std::vector<std::unique_ptr<HloComputation>>::iterator>>
+  tsl::gtl::iterator_range<FilteringUnwrappingIterator<
+      std::vector<std::unique_ptr<HloComputation>>::iterator,
+      bool (*)(const HloComputation*)>>
   computations() {
-    return {MakeUnwrappingIterator(computations_.begin()),
-            MakeUnwrappingIterator(computations_.end())};
+    bool (*not_deleted)(const HloComputation*) =
+        +[](const HloComputation* computation) {
+          return computation != nullptr;
+        };
+    return MakeFilteringUnwrappingIteratorRange(
+        computations_.begin(), computations_.end(), not_deleted);
   }
 
   // Similar as above, but return a filtered view of computations for specified
@@ -281,6 +294,10 @@ class HloModule {
     // beyond this function.
     std::function<bool(const HloComputation*)> pred =
         [execution_threads](const HloComputation* computation) {
+          // This computation was deleted.
+          if (computation == nullptr) {
+            return false;
+          }
           if (execution_threads.empty()) {
             return true;
           }
@@ -295,20 +312,25 @@ class HloModule {
   HloComputation* GetComputationWithName(absl::string_view name) const;
 
   // Gets the number of computations in this module.
-  int64_t computation_count() const { return computations_.size(); }
-
-  // Returns the mutable computation for the given index.
-  HloComputation* mutable_computation(int64_t idx) {
-    CHECK(idx >= 0 && idx < computations_.size());
-    return computations_[idx].get();
+  int64_t computation_count() const {
+    const size_t all_computations = computations_.size();
+    const size_t deleted_computations = to_be_deleted_computations_.size();
+    CHECK_GE(all_computations, deleted_computations);
+    return all_computations - deleted_computations;
   }
 
   // Gets the number of instructions in this module.
   int64_t instruction_count() const;
 
-  // Deallocate removed instructions in each computation.
+  // Deallocates computations that were marked for deletion during
+  // RemoveEmbeddedComputation.
+  void CleanupComputations();
+
+  // Runs HloModule::CleanupComputations() and HloComputation::Cleanup() on all
+  // computations.
   void Cleanup() {
-    for (auto& comp : computations_) {
+    CleanupComputations();
+    for (HloComputation* comp : computations()) {
       comp->Cleanup();
     }
   }
@@ -731,6 +753,7 @@ class HloModule {
 
   HloComputation* entry_computation_ = nullptr;
   std::vector<std::unique_ptr<HloComputation>> computations_;
+  std::vector<std::unique_ptr<HloComputation>> to_be_deleted_computations_;
 
   // Random number generator engine to use when generating random numbers per
   // HloModule compilation.
