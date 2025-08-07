@@ -30,9 +30,9 @@ cc_library(
 )
 
 cc_library(
-    name = "xnn_threadpool",
-    srcs = ["xnn_threadpool.cc"],
-    hdrs = ["xnn_threadpool.h"],
+    name = "xnn_scheduler",
+    srcs = ["xnn_scheduler.cc"],
+    hdrs = ["xnn_scheduler.h"],
     deps = [
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:env",
@@ -48,10 +48,10 @@ cc_library(
 )
 
 xla_cc_test(
-    name = "xnn_threadpool_test",
-    srcs = ["xnn_threadpool_test.cc"],
+    name = "xnn_scheduler_test",
+    srcs = ["xnn_scheduler_test.cc"],
     deps = [
-        ":xnn_threadpool",
+        ":xnn_scheduler",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:test",
@@ -174,7 +174,7 @@ cc_library(
     hdrs = ["xnn_fusion_thunk.h"],
     deps = [
         ":xnn_interop",
-        ":xnn_threadpool",
+        ":xnn_scheduler",
         "//xla:shape_util",
         "//xla/backends/cpu/runtime:thunk",
         "//xla/runtime:buffer_use",

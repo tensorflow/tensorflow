@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/cpu/runtime/xnnpack/xnn_interop.h"
 
+#include "experimental.h"  // xnnpack
 #include "xnnpack.h"
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
@@ -43,6 +44,13 @@ absl::StatusOr<XnnRuntime> CreateXnnRuntime(
   xnn_runtime_t runtime = nullptr;
   XNN_RETURN_IF_ERROR(builder(&runtime));
   return XnnRuntime(runtime);
+}
+
+absl::StatusOr<XnnThreadpool> CreateXnnThreadpool(
+    absl::FunctionRef<xnn_status(xnn_threadpool_t*)> builder) {
+  xnn_threadpool_t threadpool = nullptr;
+  XNN_RETURN_IF_ERROR(builder(&threadpool));
+  return XnnThreadpool(threadpool);
 }
 
 }  // namespace xla::cpu

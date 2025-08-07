@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "experimental.h"  // xnnpack
 #include "xnnpack.h"
 #include "absl/base/optimization.h"
 #include "absl/functional/function_ref.h"
@@ -87,24 +88,31 @@ inline absl::Status XnnStatusToStatus(xnn_status status) {
 //===----------------------------------------------------------------------===//
 
 namespace internal {
-struct XnnInteropDeleter {
+struct XnnDeleter {
   void operator()(xnn_subgraph* subgraph) {
     XNN_LOG_IF_ERROR(xnn_delete_subgraph(subgraph));
   }
   void operator()(xnn_runtime* runtime) {
     XNN_LOG_IF_ERROR(xnn_delete_runtime(runtime));
   }
+  void operator()(xnn_threadpool* threadpool) {
+    XNN_LOG_IF_ERROR(xnn_delete_threadpool(threadpool));
+  }
 };
 }  // namespace internal
 
-using XnnSubgraph = std::unique_ptr<xnn_subgraph, internal::XnnInteropDeleter>;
-using XnnRuntime = std::unique_ptr<xnn_runtime, internal::XnnInteropDeleter>;
+using XnnSubgraph = std::unique_ptr<xnn_subgraph, internal::XnnDeleter>;
+using XnnRuntime = std::unique_ptr<xnn_runtime, internal::XnnDeleter>;
+using XnnThreadpool = std::unique_ptr<xnn_threadpool, internal::XnnDeleter>;
 
 absl::StatusOr<XnnSubgraph> CreateXnnSubgraph(
     absl::FunctionRef<xnn_status(xnn_subgraph_t*)> builder);
 
 absl::StatusOr<XnnRuntime> CreateXnnRuntime(
     absl::FunctionRef<xnn_status(xnn_runtime_t*)> builder);
+
+absl::StatusOr<XnnThreadpool> CreateXnnThreadpool(
+    absl::FunctionRef<xnn_status(xnn_threadpool_t*)> builder);
 
 }  // namespace xla::cpu
 
