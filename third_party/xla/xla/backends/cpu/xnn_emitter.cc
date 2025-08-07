@@ -36,7 +36,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
-#include "xla/primitive_util.h"
 #include "xla/shape.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
@@ -253,9 +252,11 @@ static absl::StatusOr<uint32_t> DefineReduceOp(xnn_subgraph_t subgraph,
   const HloReduceInstruction* reduce_instr = Cast<HloReduceInstruction>(instr);
   const HloInstruction* input = instr->operand(0);
   CHECK_EQ(input->shape().element_type(), instr->shape().element_type());
+
   xnn_reduce_operator xnn_reduce_op = xnn_reduce_invalid;
   CHECK_EQ(reduce_instr->to_apply()->num_parameters(), 2);
   CHECK_EQ(reduce_instr->to_apply()->instruction_count(), 3);
+
   switch (reduce_instr->to_apply()->root_instruction()->opcode()) {
     case HloOpcode::kAdd:
       xnn_reduce_op = xnn_reduce_sum;
@@ -269,6 +270,7 @@ static absl::StatusOr<uint32_t> DefineReduceOp(xnn_subgraph_t subgraph,
     default:
       LOG(FATAL) << "Unsupported reduction: " << instr->to_apply()->ToString();
   }
+
   const absl::Span<const int64_t> dims = reduce_instr->dimensions();
   TF_ASSIGN_OR_RETURN(auto in, FindTensorValue(tensor_ids, input));
   TF_ASSIGN_OR_RETURN(auto out, DefineTensorValue(subgraph, instr));
@@ -339,9 +341,6 @@ static absl::StatusOr<uint32_t> DefineBatchMatMul(xnn_subgraph_t subgraph,
                           /*cpu_features=*/nullptr, /*use_cost_model=*/false));
 
   if (!is_supported) {
-    if (subgraph != nullptr) {
-      XNN_LOG_IF_ERROR(xnn_delete_subgraph(subgraph));
-    }
     return InvalidArgument("Unsupported XNNPACK Dot op variation: %s",
                            instr->ToString());
   }
@@ -376,15 +375,17 @@ static absl::StatusOr<uint32_t> DefineBatchMatMul(xnn_subgraph_t subgraph,
 // Emit XNNPACK subgraph for the given HLO computation.
 //===----------------------------------------------------------------------===//
 
-static absl::StatusOr<xnn_subgraph_t> EmitXnnSubgraph(
+static absl::StatusOr<XnnSubgraph> EmitXnnSubgraph(
     const HloComputation* computation,
     std::vector<std::unique_ptr<Literal>>& literals) {
   VLOG(3) << "Emit XNNPACK subgraph for computation: " << computation->name();
 
-  xnn_subgraph_t subgraph = nullptr;
-  XNN_RETURN_IF_ERROR(xnn_create_subgraph(
-      /*external_value_ids=*/computation->num_parameters() + 1,
-      /*flags=*/0, &subgraph));
+  TF_ASSIGN_OR_RETURN(
+      XnnSubgraph subgraph, CreateXnnSubgraph([&](xnn_subgraph_t* subgraph) {
+        return xnn_create_subgraph(
+            /*external_value_ids=*/computation->num_parameters() + 1,
+            /*flags=*/0, subgraph);
+      }));
 
   // Traverse fused computation in post-order and define XNNPACK operations
   // corresponding to each HLO instruction.
@@ -393,7 +394,6 @@ static absl::StatusOr<xnn_subgraph_t> EmitXnnSubgraph(
 
   for (const HloInstruction* instr : instructions) {
     if (!IsLayoutSupportedByXnn(instr->shape())) {
-      XNN_LOG_IF_ERROR(xnn_delete_subgraph(subgraph));
       return InvalidArgument(
           "Instruction with unsupported layout in XNN fusion: %s",
           instr->ToString());
@@ -401,29 +401,27 @@ static absl::StatusOr<xnn_subgraph_t> EmitXnnSubgraph(
 
     if (instr->IsConstant()) {
       if (!IsConstantSupportedByXnn(instr)) {
-        XNN_LOG_IF_ERROR(xnn_delete_subgraph(subgraph));
         return InvalidArgument(
             "Unsupported constant instruction in XNN fusion: %s",
             instr->ToString());
       }
       TF_ASSIGN_OR_RETURN(tensor_ids[instr],
-                          DefineConstant(subgraph, literals, instr));
+                          DefineConstant(subgraph.get(), literals, instr));
       continue;
     }
 
     if (instr->IsElementwise()) {
       if (!IsElementwiseOpSupportedByXnn(instr)) {
-        XNN_LOG_IF_ERROR(xnn_delete_subgraph(subgraph));
         return InvalidArgument(
             "Unsupported elementwise instruction in XNN fusion: %s",
             instr->ToString());
       }
       if (instr->operand_count() == 1) {
         TF_ASSIGN_OR_RETURN(tensor_ids[instr],
-                            DefineUnaryOp(subgraph, tensor_ids, instr));
+                            DefineUnaryOp(subgraph.get(), tensor_ids, instr));
       } else if (instr->operand_count() == 2) {
         TF_ASSIGN_OR_RETURN(tensor_ids[instr],
-                            DefineBinaryOp(subgraph, tensor_ids, instr));
+                            DefineBinaryOp(subgraph.get(), tensor_ids, instr));
       } else {
         LOG(FATAL) << "Unexpected operand count " << instr->operand_count();
       }
@@ -433,49 +431,47 @@ static absl::StatusOr<xnn_subgraph_t> EmitXnnSubgraph(
     switch (instr->opcode()) {
       case HloOpcode::kParameter: {
         TF_ASSIGN_OR_RETURN(tensor_ids[instr],
-                            DefineParameter(subgraph, instr));
+                            DefineParameter(subgraph.get(), instr));
       } break;
 
       case HloOpcode::kBitcast: {
         if (!IsBitcastOpSupportedByXnn(instr)) {
-          XNN_LOG_IF_ERROR(xnn_delete_subgraph(subgraph));
           return InvalidArgument(
               "Unsupported bitcast instruction in XNN fusion: %s",
               instr->ToString());
         }
         TF_ASSIGN_OR_RETURN(tensor_ids[instr],
-                            DefineBitcastOp(subgraph, tensor_ids, instr));
+                            DefineBitcastOp(subgraph.get(), tensor_ids, instr));
       } break;
 
       case HloOpcode::kBroadcast: {
         if (!IsBroadcastOpSupportedByXnn(instr)) {
-          XNN_LOG_IF_ERROR(xnn_delete_subgraph(subgraph));
           return InvalidArgument(
               "Unsupported broadcast instruction in XNN fusion: %s",
               instr->ToString());
         }
-        TF_ASSIGN_OR_RETURN(tensor_ids[instr],
-                            DefineBroadcastOp(subgraph, tensor_ids, instr));
+        TF_ASSIGN_OR_RETURN(
+            tensor_ids[instr],
+            DefineBroadcastOp(subgraph.get(), tensor_ids, instr));
       } break;
 
       case HloOpcode::kReduce: {
         if (!IsReduceOpSupportedByXnn(instr)) {
-          XNN_LOG_IF_ERROR(xnn_delete_subgraph(subgraph));
           return InvalidArgument(
               "Unsupported reduce instruction in XNN fusion: %s",
               instr->ToString());
         }
         TF_ASSIGN_OR_RETURN(tensor_ids[instr],
-                            DefineReduceOp(subgraph, tensor_ids, instr));
+                            DefineReduceOp(subgraph.get(), tensor_ids, instr));
       } break;
 
       case HloOpcode::kDot: {
-        TF_ASSIGN_OR_RETURN(tensor_ids[instr],
-                            DefineBatchMatMul(subgraph, tensor_ids, instr));
+        TF_ASSIGN_OR_RETURN(
+            tensor_ids[instr],
+            DefineBatchMatMul(subgraph.get(), tensor_ids, instr));
       } break;
 
       default: {
-        XNN_LOG_IF_ERROR(xnn_delete_subgraph(subgraph));
         return InvalidArgument("Unsupported XNNPACK fusion instruction: %s",
                                instr->ToString());
       }
@@ -485,7 +481,7 @@ static absl::StatusOr<xnn_subgraph_t> EmitXnnSubgraph(
   return subgraph;
 }
 
-absl::StatusOr<absl::AnyInvocable<absl::StatusOr<xnn_subgraph_t>()>>
+absl::StatusOr<absl::AnyInvocable<absl::StatusOr<XnnSubgraph>()>>
 EmitXnnFusionBuilder(const HloComputation* computation) {
   // We do not support non-array parameters for XNNPACK operations.
   for (auto& param : computation->parameter_instructions()) {

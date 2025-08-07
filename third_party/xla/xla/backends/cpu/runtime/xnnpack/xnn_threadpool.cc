@@ -52,16 +52,14 @@ void XnnEigenScheduler::Schedule(xnn_scheduler* self, void* context,
       [task, context]() { (*task)(context); });
 }
 
-namespace {
-
-void DestroyXnnEigenScheduler(xnn_scheduler* scheduler) {
+namespace internal {
+void XnnSchedulerDeleter::operator()(xnn_scheduler* scheduler) {
   delete reinterpret_cast<XnnEigenScheduler*>(scheduler);
 }
-
-}  // namespace
+}  // namespace internal
 
 XnnScheduler CreateXnnEigenScheduler(Eigen::ThreadPoolInterface* threads) {
-  return XnnScheduler(new XnnEigenScheduler(threads), DestroyXnnEigenScheduler);
+  return XnnScheduler(new XnnEigenScheduler(threads));
 }
 
 XnnScheduler CreateXnnEigenScheduler(const Eigen::ThreadPoolDevice* device) {

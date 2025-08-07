@@ -16,7 +16,9 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/xnnpack/xnn_interop.h"
 
 #include "xnnpack.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/util.h"
 
 namespace xla::cpu {
@@ -27,6 +29,20 @@ absl::Status InitializeXnnPack() {
     return Internal("XNNPACK initialization failed");
   }
   return absl::OkStatus();
+}
+
+absl::StatusOr<XnnSubgraph> CreateXnnSubgraph(
+    absl::FunctionRef<xnn_status(xnn_subgraph_t*)> builder) {
+  xnn_subgraph_t subgraph = nullptr;
+  XNN_RETURN_IF_ERROR(builder(&subgraph));
+  return XnnSubgraph(subgraph);
+}
+
+absl::StatusOr<XnnRuntime> CreateXnnRuntime(
+    absl::FunctionRef<xnn_status(xnn_runtime_t*)> builder) {
+  xnn_runtime_t runtime = nullptr;
+  XNN_RETURN_IF_ERROR(builder(&runtime));
+  return XnnRuntime(runtime);
 }
 
 }  // namespace xla::cpu

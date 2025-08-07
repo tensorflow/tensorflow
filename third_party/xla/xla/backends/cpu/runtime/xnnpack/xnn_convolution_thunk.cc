@@ -45,12 +45,15 @@ limitations under the License.
 
 namespace xla::cpu {
 
-absl::StatusOr<xnn_subgraph_t> XnnConvolutionThunk::BuildConvolutionSubgraph(
+absl::StatusOr<XnnSubgraph> XnnConvolutionThunk::BuildConvolutionSubgraph(
     absl::Span<const Argument> arguments, absl::Span<const Result> results,
     absl::Span<const se::DeviceMemoryBase> arguments_buffers) {
-  xnn_subgraph_t subgraph = nullptr;
-  XNN_RETURN_IF_ERROR(xnn_create_subgraph(/*external_value_ids=*/3,
-                                          /*flags=*/0, &subgraph));
+  TF_ASSIGN_OR_RETURN(XnnSubgraph subgraph,
+                      CreateXnnSubgraph([&](xnn_subgraph_t* subgraph) {
+                        return xnn_create_subgraph(
+                            /*external_value_ids=*/3,
+                            /*flags=*/0, subgraph);
+                      }));
 
   uint32_t input_id = XNN_INVALID_VALUE_ID;
   uint32_t kernel_id = XNN_INVALID_VALUE_ID;
@@ -74,22 +77,23 @@ absl::StatusOr<xnn_subgraph_t> XnnConvolutionThunk::BuildConvolutionSubgraph(
       dims(convolution_slices_.output_shape.dimensions());
 
   XNN_RETURN_IF_ERROR(xnn_define_tensor_value(
-      subgraph, xnn_datatype_fp32, input_dims.size(), input_dims.data(),
+      subgraph.get(), xnn_datatype_fp32, input_dims.size(), input_dims.data(),
       nullptr,
       /*external_id=*/0, XNN_VALUE_FLAG_EXTERNAL_INPUT, &input_id));
 
   XNN_RETURN_IF_ERROR(xnn_define_tensor_value(
-      subgraph, xnn_datatype_fp32, kernel_dims.size(), kernel_dims.data(),
+      subgraph.get(), xnn_datatype_fp32, kernel_dims.size(), kernel_dims.data(),
       /*data=*/arguments_buffers[1].opaque(),
       /*external_id=*/1, /*flags=*/0, &kernel_id));
 
   XNN_RETURN_IF_ERROR(xnn_define_tensor_value(
-      subgraph, xnn_datatype_fp32, out_dims.size(), out_dims.data(), nullptr,
+      subgraph.get(), xnn_datatype_fp32, out_dims.size(), out_dims.data(),
+      nullptr,
       /*external_id=*/2, XNN_VALUE_FLAG_EXTERNAL_OUTPUT, &out_id));
 
   auto& ds = convolution_canonical_dims_;
   XNN_RETURN_IF_ERROR(xnn_define_convolution_2d(
-      subgraph,  //
+      subgraph.get(),  //
       /*input_padding_top=*/ds.padding_before.x,
       /*input_padding_right=*/ds.padding_before.y,
       /*input_padding_bottom=*/ds.padding_after.x,

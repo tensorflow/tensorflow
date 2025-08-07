@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <memory>
 
-struct xnn_scheduler;
+#include "experimental.h"  // xnnpack
 
 namespace Eigen {
 struct ThreadPoolDevice;
@@ -27,8 +27,15 @@ class ThreadPoolInterface;
 
 namespace xla::cpu {
 
+namespace internal {
+struct XnnSchedulerDeleter {
+  void operator()(xnn_scheduler* scheduler);
+};
+}  // namespace internal
+
 // A wrapper to redirect xnn_scheduler operations to Eigen::ThreadPoolInterface.
-using XnnScheduler = std::unique_ptr<xnn_scheduler, void (*)(xnn_scheduler*)>;
+using XnnScheduler =
+    std::unique_ptr<xnn_scheduler, internal::XnnSchedulerDeleter>;
 
 // Creates an XnnScheduler that uses the given Eigen thread pool to launch tasks
 // submitted by the XNNPACK.
