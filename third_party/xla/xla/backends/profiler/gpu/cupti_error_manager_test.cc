@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -79,7 +80,9 @@ class CuptiErrorManagerTest : public ::testing::Test {
   }
 
   void EnableProfiling(const CuptiTracerOptions& option) {
-    cupti_tracer_->Enable(option, cupti_collector_.get()).IgnoreError();
+    std::vector<std::unique_ptr<tensorflow::profiler::XPlane>> xplanes;
+    cupti_tracer_->Enable(option, cupti_collector_.get(), xplanes)
+        .IgnoreError();
   }
 
   void DisableProfiling() { cupti_tracer_->Disable(); }
