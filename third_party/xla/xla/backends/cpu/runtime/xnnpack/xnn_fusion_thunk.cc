@@ -37,7 +37,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/xnnpack/xnn_interop.h"
-#include "xla/backends/cpu/runtime/xnnpack/xnn_threadpool.h"
+#include "xla/backends/cpu/runtime/xnnpack/xnn_scheduler.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -74,6 +74,7 @@ struct XnnFusionThunk::XnnExecutable {
   absl::Status Reset();
 
   std::unique_ptr<XnnScheduler> scheduler;
+  XnnThreadpool threadpool = nullptr;
   XnnSubgraph subgraph = nullptr;
   XnnRuntime runtime = nullptr;
 
@@ -140,9 +141,14 @@ XnnFusionThunk::CreateXnnExecutable(
   // Keep track of the arguments captured by value.
   executable.captured_arguments = CaptureArguments(arguments_buffers);
 
-  // Configure XNNPACK scheduler if the use of thread pool is enabled.
+  // Configure XNNPACK threadpool if the use of thread pool is enabled.
   if (options_.use_threadpool && device) {
     executable.scheduler = std::make_unique<XnnScheduler>(device);
+    TF_ASSIGN_OR_RETURN(executable.threadpool,
+                        CreateXnnThreadpool([&](xnn_threadpool_t* threadpool) {
+                          return xnn_create_threadpool(
+                              executable.scheduler.get(), threadpool);
+                        }));
   }
 
   if (builder_) {
@@ -160,9 +166,9 @@ XnnFusionThunk::CreateXnnExecutable(
 
   TF_ASSIGN_OR_RETURN(
       executable.runtime, CreateXnnRuntime([&](xnn_runtime_t* runtime) {
-        return xnn_create_runtime_with_scheduler(
+        return xnn_create_runtime_with_threadpool(
             executable.subgraph.get(), /*weights_cache=*/nullptr,
-            executable.scheduler.get(), flags, runtime);
+            executable.threadpool.get(), flags, runtime);
       }));
   XNN_RETURN_IF_ERROR(xnn_reshape_runtime(executable.runtime.get()));
 
@@ -205,9 +211,9 @@ absl::Status XnnFusionThunk::UpdateXnnExecutable(
 
   TF_ASSIGN_OR_RETURN(
       executable.runtime, CreateXnnRuntime([&](xnn_runtime_t* runtime) {
-        return xnn_create_runtime_with_scheduler(
+        return xnn_create_runtime_with_threadpool(
             executable.subgraph.get(), /*weights_cache=*/nullptr,
-            executable.scheduler.get(), flags, runtime);
+            executable.threadpool.get(), flags, runtime);
       }));
   XNN_RETURN_IF_ERROR(xnn_reshape_runtime(executable.runtime.get()));
 

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_CPU_RUNTIME_XNNPACK_XNN_THREADPOOL_H_
-#define XLA_BACKENDS_CPU_RUNTIME_XNNPACK_XNN_THREADPOOL_H_
+#ifndef XLA_BACKENDS_CPU_RUNTIME_XNNPACK_XNN_SCHEDULER_H_
+#define XLA_BACKENDS_CPU_RUNTIME_XNNPACK_XNN_SCHEDULER_H_
 
 #include "experimental.h"  // xnnpack
 
@@ -43,4 +43,4 @@ class XnnScheduler : public xnn_scheduler {
 
 }  // namespace xla::cpu
 
-#endif  // XLA_BACKENDS_CPU_RUNTIME_XNNPACK_XNN_THREADPOOL_H_
+#endif  // XLA_BACKENDS_CPU_RUNTIME_XNNPACK_XNN_SCHEDULER_H_
