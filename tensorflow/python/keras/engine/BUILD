@@ -264,6 +264,7 @@ py_library(
         "//third_party/py/numpy",
     ],
 )
+
 tf_py_test(
     name = "training_utils_v1_test",
     srcs = ["training_utils_v1_test.py"],
