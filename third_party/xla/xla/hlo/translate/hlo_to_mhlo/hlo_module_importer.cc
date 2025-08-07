@@ -76,6 +76,8 @@ absl::Status HloModuleImporter::Import(const HloModule& hlo_module) {
 
   ImportCrossProgramPrefetches(hlo_module, module,
                                flatten_computation_args_result_, builder_);
+  ImportEntryComputationLayoutAndTiles(
+      hlo_module, module, flatten_computation_args_result_, builder_);
   ImportFrontendAttributes(hlo_module, module, builder_);
   ImportInputOutputAlias(hlo_module, module, builder_);
   ImportIsDynamic(hlo_module, module, builder_);
@@ -92,7 +94,7 @@ absl::Status HloModuleImporter::Import(const HloModule& hlo_module) {
     TF_RETURN_IF_ERROR(HloFunctionImporter::ImportAsFunc(
                            *hlo_module.entry_computation(), symbol_table_,
                            &function_map_, &builder_,
-                           /*is_main*/ true, flatten_computation_args_result_)
+                           /*is_main=*/true, flatten_computation_args_result_)
                            .status());
 
     // Convert all ops to MHLO
@@ -108,7 +110,7 @@ absl::Status HloModuleImporter::Import(const HloModule& hlo_module) {
     TF_RETURN_IF_ERROR(HloFunctionImporter::ImportAsFunc(
                            *computation, symbol_table_, &function_map_,
                            &builder_,
-                           /*is_main*/ computation == module_entry_computation,
+                           /*is_main=*/computation == module_entry_computation,
                            flatten_computation_args_result_)
                            .status());
   }
