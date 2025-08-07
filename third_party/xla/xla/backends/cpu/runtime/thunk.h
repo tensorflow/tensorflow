@@ -101,22 +101,6 @@ class Thunk {
     int64_t module_id;
   };
 
-  using Task = std::function<void()>;
-
-  // An abstract task runner that can be used by a ThunkExecutor (including
-  // thunk executors for nested computations in conditional or while thunks) for
-  // running tasks corresponding to thunk execution. It can be a simple inline
-  // executor that runs tasks on the same thread, or a runner backed by a thread
-  // pool. By default XLA:CPU uses task runner that shares underlying thread
-  // pool with the intra-op thread pool used for compute tasks. We deliberately
-  // do not prescribe task runner to be Eigen or any other particular thread
-  // pool, and let users make the choice.
-  class TaskRunner {
-   public:
-    virtual ~TaskRunner() = default;
-    virtual void operator()(Task task) = 0;
-  };
-
   Thunk(Kind kind, Info info);
 
   Thunk(const Thunk&) = delete;
@@ -146,51 +130,27 @@ class Thunk {
   virtual std::vector<NamedThunkSequence> nested_thunks() const { return {}; }
 
   //===--------------------------------------------------------------------===//
-  // CollectiveExecuteParams
+  // TaskRunner
   //===--------------------------------------------------------------------===//
 
-  // Parameters capturing all the details required for collective execution
-  // of XLA executables (multiple partitions and replicas).
-  struct CollectiveExecuteParams {
-    static absl::StatusOr<CollectiveExecuteParams> Create(
-        const ExecutableRunOptions* run_options);
+  using Task = std::function<void()>;
 
-    RunId run_id;
-
-    int64_t local_device_ordinal;
-    GlobalDeviceId global_device_id;
-
-    const DeviceAssignment* device_assignment = nullptr;
-    CpuCollectives* collectives = nullptr;
-
-    CollectiveExecuteParams(RunId run_id, int64_t local_device_ordinal,
-                            GlobalDeviceId global_device_id,
-                            const DeviceAssignment* device_assignment,
-                            CpuCollectives* collectives);
+  // An abstract task runner that can be used by a ThunkExecutor (including
+  // thunk executors for nested computations in conditional or while thunks) for
+  // running tasks corresponding to thunk execution. It can be a simple inline
+  // executor that runs tasks on the same thread, or a runner backed by a thread
+  // pool. By default XLA:CPU uses task runner that shares underlying thread
+  // pool with the intra-op thread pool used for compute tasks. We deliberately
+  // do not prescribe task runner to be Eigen or any other particular thread
+  // pool, and let users make the choice.
+  class TaskRunner {
+   public:
+    virtual ~TaskRunner() = default;
+    virtual void operator()(Task task) = 0;
   };
 
   //===--------------------------------------------------------------------===//
-  // CustomCallExecuteParams
-  //===--------------------------------------------------------------------===//
-
-  // Parameters capturing all the details required for custom call execution of
-  // XLA executables.
-  struct CustomCallExecuteParams {
-    static absl::StatusOr<CustomCallExecuteParams> Create(
-        const ExecutableRunOptions* run_options);
-
-    RunId run_id;
-    int32_t device_ordinal;
-    const Eigen::ThreadPoolDevice* intra_op_thread_pool = nullptr;
-    const ffi::ExecutionContext* ffi_execution_context = nullptr;
-
-    CustomCallExecuteParams(RunId run_id, int32_t device_ordinal,
-                            const Eigen::ThreadPoolDevice* intra_op_thread_pool,
-                            const ffi::ExecutionContext* ffi_execution_context);
-  };
-
-  //===--------------------------------------------------------------------===//
-  // ExecuteParams
+  // ExecuteSession
   //===--------------------------------------------------------------------===//
 
   // ExecuteSession controls the number of task runner threads that can
@@ -241,6 +201,54 @@ class Thunk {
     int64_t max_workers_;
     int64_t split_threshold_;
   };
+
+  //===--------------------------------------------------------------------===//
+  // CollectiveExecuteParams
+  //===--------------------------------------------------------------------===//
+
+  // Parameters capturing all the details required for collective execution
+  // of XLA executables (multiple partitions and replicas).
+  struct CollectiveExecuteParams {
+    static absl::StatusOr<CollectiveExecuteParams> Create(
+        const ExecutableRunOptions* run_options);
+
+    RunId run_id;
+
+    int64_t local_device_ordinal;
+    GlobalDeviceId global_device_id;
+
+    const DeviceAssignment* device_assignment = nullptr;
+    CpuCollectives* collectives = nullptr;
+
+    CollectiveExecuteParams(RunId run_id, int64_t local_device_ordinal,
+                            GlobalDeviceId global_device_id,
+                            const DeviceAssignment* device_assignment,
+                            CpuCollectives* collectives);
+  };
+
+  //===--------------------------------------------------------------------===//
+  // CustomCallExecuteParams
+  //===--------------------------------------------------------------------===//
+
+  // Parameters capturing all the details required for custom call execution of
+  // XLA executables.
+  struct CustomCallExecuteParams {
+    static absl::StatusOr<CustomCallExecuteParams> Create(
+        const ExecutableRunOptions* run_options);
+
+    RunId run_id;
+    int32_t device_ordinal;
+    const Eigen::ThreadPoolDevice* intra_op_thread_pool = nullptr;
+    const ffi::ExecutionContext* ffi_execution_context = nullptr;
+
+    CustomCallExecuteParams(RunId run_id, int32_t device_ordinal,
+                            const Eigen::ThreadPoolDevice* intra_op_thread_pool,
+                            const ffi::ExecutionContext* ffi_execution_context);
+  };
+
+  //===--------------------------------------------------------------------===//
+  // ExecuteParams
+  //===--------------------------------------------------------------------===//
 
   // Parameters passed to Execute. Execute is responsible for launching "work"
   // on device, i.e., it launches host kernels, calls into libraries, etc.
