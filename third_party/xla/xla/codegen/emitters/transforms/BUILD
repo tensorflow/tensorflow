@@ -215,3 +215,15 @@ cc_library(
         "@llvm-project//mlir:TensorDialect",
     ],
 )
+
+cc_library(
+    name = "pass_pipelines",
+    srcs = ["pass_pipelines.cc"],
+    hdrs = ["pass_pipelines.h"],
+    deps = [
+        ":convert_pure_call_ops_pass",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Transforms",
+    ],
+)

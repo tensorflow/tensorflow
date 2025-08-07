@@ -66,6 +66,7 @@ limitations under the License.
 #include "xla/codegen/emitters/ir/xla_attrs.h.inc"
 #include "xla/codegen/emitters/ir/xla_dialect.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
+#include "xla/codegen/emitters/transforms/pass_pipelines.h"
 #include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/codegen/llvm_ir_kernel_source.h"
 #include "xla/codegen/mlir_kernel_source.h"
@@ -113,19 +114,11 @@ static std::unique_ptr<::mlir::Pass> CreateInlinerAndCsePass() {
       });
 }
 
-static void AddXlaOpsOptimizationPasses(mlir::OpPassManager& pm) {
-  pm.addNestedPass<mlir::func::FuncOp>(emitters::CreateSimplifyArithPass());
-  pm.addPass(CreateAddReductionFastMathFlagsPass());
-  pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::createCSEPass());
-  pm.addPass(emitters::CreateEraseDeadFunctionsPass());
-  pm.addPass(mlir::createCSEPass());
-  pm.addPass(CreateInlinerAndCsePass());
-  pm.addNestedPass<mlir::func::FuncOp>(CreatePeelWorkgroupLoopPass());
-}
-
 static void AddLoopTransformationPasses(mlir::OpPassManager& pm,
                                         int32_t vector_width) {
+  pm.addPass(CreateAddReductionFastMathFlagsPass());
+  pm.addPass(CreateInlinerAndCsePass());
+  pm.addNestedPass<mlir::func::FuncOp>(CreatePeelWorkgroupLoopPass());
   pm.addNestedPass<mlir::func::FuncOp>(CreateLowerXlaSharedPass());
   pm.addNestedPass<mlir::func::FuncOp>(emitters::CreateLowerXlaToScfPass());
   pm.addPass(mlir::createCanonicalizerPass());
@@ -225,7 +218,7 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> FusionCompiler::Compile(
     hooks_.pre_optimization(mlir_module);
   }
 
-  AddXlaOpsOptimizationPasses(optimization_pass_manager);
+  emitters::RegisterOptimizationPasses(optimization_pass_manager);
   AddLoopTransformationPasses(optimization_pass_manager, options_.vector_width);
 
   TF_RETURN_IF_ERROR(RunPassPipeline(mlir_module, optimization_pass_manager,

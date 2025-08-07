@@ -123,9 +123,6 @@ class EmitterBase : public KernelFusionInterface {
                         const HloFusionInstruction& fusion) const;
 };
 
-// Adds passes that simplify arithmetic operations and remove dead code.
-void AddXlaGpuOpsOptimizationPasses(mlir::OpPassManager& pm);
-
 // Adds passes that transform XLA_GPU and SCF loops, e.g. peel, pipeline,
 // vectorize.
 void AddLoopTransformationPasses(mlir::OpPassManager& pm,
