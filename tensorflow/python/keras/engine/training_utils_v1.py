@@ -669,7 +669,6 @@ def standardize_input_data(data,
   return data
 
 
-
 def standardize_sample_or_class_weights(x_weight, output_names, weight_type):
   """Maps `sample_weight` or `class_weight` to model outputs.
 

@@ -16,7 +16,7 @@
 
 import tensorflow as tf
 from tensorflow.python.keras.engine import training_utils_v1
-
+from tensorflow.python.keras.engine import data_adapter
 
 class TrainingUtilsV1Test(tf.test.TestCase):
 
@@ -65,6 +65,21 @@ class TrainingUtilsV1Test(tf.test.TestCase):
     with self.assertRaisesRegex(ValueError, "Invalid class_weight key.*invalid_key.*output1"):
       training_utils_v1.standardize_sample_or_class_weights(
           class_weight, ['output1', 'output2'], 'class_weight')
+      
+  def test_data_adapter_valid_class_weight(self):
+    """Test valid integer and string keys in class_weight are processed correctly."""
+    fn = data_adapter._make_class_weight_map_fn({'0': 0.5, 1: 1.5})
+    self.assertTrue(callable(fn))  # Should return a function
+
+  def test_data_adapter_invalid_key_type(self):
+    """Test that float class_weight key raises ValueError."""
+    with self.assertRaisesRegex(ValueError, "Invalid class_weight key.*0.5"):
+      data_adapter._make_class_weight_map_fn({0.5: 1.0})
+
+  def test_data_adapter_non_contiguous_keys(self):
+    """Test that non-contiguous integer keys raise ValueError."""
+    with self.assertRaisesRegex(ValueError, "Expected `class_weight` to be a dict.*"):
+      data_adapter._make_class_weight_map_fn({0: 0.3, 2: 0.7}) 
 
 
 if __name__ == '__main__':
