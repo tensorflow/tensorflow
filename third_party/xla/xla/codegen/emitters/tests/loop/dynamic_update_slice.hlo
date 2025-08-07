@@ -3,6 +3,7 @@
 // RUN: cpu_fusion_to_mlir %s |\
 // RUN:   emitters_opt --xla-test-optimize | FileCheck %s
 // RUN: gpu_test_correctness %s
+// RUN: cpu_test_correctness %s
 
 fusion {
   in = c64[2,3] parameter(0)
