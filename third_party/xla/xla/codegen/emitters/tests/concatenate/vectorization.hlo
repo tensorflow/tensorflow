@@ -7,4 +7,4 @@ fusion {
   param1 = f32[640000] parameter(1)
   ROOT concat = f32[1280002] concatenate(param0, param1), dimensions={0}
 }
-// CHECK-COUNT-2: xla.loop ({{.*}})[%{{.*}}, %{{.*}}] ->
+// CHECK-COUNT-2: xla.loop ({{.*}})[%{{.+}}] ->

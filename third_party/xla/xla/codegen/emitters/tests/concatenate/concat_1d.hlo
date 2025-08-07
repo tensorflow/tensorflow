@@ -8,10 +8,11 @@ fusion {
   param2 = f32[300] parameter(2)
   ROOT concat = f32[900] concatenate(param0, param1, param2), dimensions={0}
 }
+
+// The first loop mapping is the same as the output indexing map so it it CSE'd.
 // CHECK-DAG: #[[MAP:.*]] = #xla.indexing_map<"(th_x, bl_x) -> (bl_x * 128 + th_x)
-// CHECK-DAG: #[[LOOPMAP_1:.*]] = #xla.indexing_map<"(th_x, bl_x)[s0, s1] -> (bl_x * 128 + th_x)
-// CHECK-DAG: #[[LOOPMAP_2:.*]] = #xla.indexing_map<"(th_x, bl_x)[s0, s1] -> (bl_x * 128 + th_x + 200)
-// CHECK-DAG: #[[LOOPMAP_3:.*]] = #xla.indexing_map<"(th_x, bl_x)[s0, s1] -> (bl_x * 128 + th_x + 600)
+// CHECK-DAG: #[[LOOPMAP_2:.*]] = #xla.indexing_map<"(th_x, bl_x) -> (bl_x * 128 + th_x + 200)
+// CHECK-DAG: #[[LOOPMAP_3:.*]] = #xla.indexing_map<"(th_x, bl_x) -> (bl_x * 128 + th_x + 600)
 
 // CHECK:       func.func @main
 // CHECK-SAME:    %[[ARG_0:[a-zA-Z0-9]*]]: {{[^,]*}},
@@ -22,7 +23,7 @@ fusion {
 // CHECK: %[[WORKGROUP_ID:.*]] = xla.workgroup_id x
 // CHECK: scf.forall (%[[THREAD_ID:.*]]) in (128)
 
-// CHECK: xla.loop ({{.*}})[{{.*}}] -> (%[[RA:.*]]) in #[[LOOPMAP_1]]
+// CHECK: xla.loop ({{.*}})[{{.*}}] -> (%[[RA:.*]]) in #[[MAP]]
 // CHECK:   xla.apply_indexing #[[MAP]]
 // CHECK:   %[[VAL_1:.*]] = xla.pure_call @fusion_param0
 // CHECK:   %[[INSERTED_1:.*]] = tensor.insert %[[VAL_1:.*]] into {{.*}}[%[[RA]]]

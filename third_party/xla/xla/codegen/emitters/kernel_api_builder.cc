@@ -300,6 +300,7 @@ IndexingMap GetDefaultWorkItemIndexingMap(const WorkDimensions& work_dimensions,
       std::move(dim_vars), std::move(range_vars), /*rt_vars=*/{});
   indexing_map.AddConstraint(linear_index, Interval{0, num_elements - 1});
   indexing_map.Simplify();
+  indexing_map.RemoveUnusedSymbols();
   return indexing_map;
 }
 
