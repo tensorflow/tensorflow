@@ -46,7 +46,7 @@ class ExecutionEngine {
       const llvm::DataLayout& data_layout,
       DefinitionGenerator definition_generator = nullptr);
 
-  ExecutionEngine(ExecutionEngine&& other) = default;
+  ExecutionEngine(ExecutionEngine&& other) noexcept = default;
   ExecutionEngine& operator=(ExecutionEngine&& other) = default;
 
   void AllocateDylibs(size_t num_dylibs);
