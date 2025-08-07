@@ -2567,16 +2567,14 @@ absl::Status HandleRecvInstruction(const HloInstruction* instruction,
 absl::Status VerifyNoCollectiveDeadlocks(const HloModule& module) {
   DfaState current_state = DfaState::kNoException;
   const HloInstruction* current_instruction = nullptr;
-  // TODO: b/434020459 - start the static verification in ENTRY and run the
-  // function recursively instead of iterating through all computations
-  // serially
-
-  for (auto& [computation_id, sequence] : module.schedule().sequences()) {
-    for (const HloInstruction* instruction : sequence.instructions()) {
+  for (const HloComputation* computation : module.computations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
       switch (instruction->opcode()) {
         case HloOpcode::kSend:
           TF_RETURN_IF_ERROR(HandleSendInstruction(instruction, current_state,
                                                    current_instruction));
+          break;
+          // Handles Recv instructions.
           break;
         case HloOpcode::kRecv:
           TF_RETURN_IF_ERROR(HandleRecvInstruction(instruction, current_state,
