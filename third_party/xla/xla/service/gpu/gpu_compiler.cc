@@ -697,7 +697,6 @@ absl::Status RunOptimizationPasses(
   pipeline.AddPass<TopkSpecializer>();
   pipeline.AddPass<TopkDecomposer>();
 
-  pipeline.AddPass<SplitkRewriter>(gpu_target_config.device_description);
   pipeline.AddPass<DotDimensionSorter>();
   pipeline.AddPass<DotDecomposer>();
 
@@ -900,6 +899,7 @@ absl::Status RunOptimizationPasses(
                                              gpu_version);
   }();
 
+  pipeline.AddPass<SplitkRewriter>(gpu_target_config.device_description);
   pipeline.AddPass<HloComputationDeduplicator>(
       /*mark_fusion_duplications=*/false);
   return pipeline.Run(hlo_module).status();

@@ -16,8 +16,11 @@ limitations under the License.
 #include "xla/service/gpu/transforms/splitk_rewriter.h"
 
 #include <algorithm>
+#include <climits>
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
@@ -53,12 +56,29 @@ struct DotDimensions {
   int64_t m;  // lhs non-contracting dimensions
   int64_t n;  // rhs non-contracting dimensions
   int64_t k;  // contracting dimensions
-  int64_t lhs_el_size_in_bits;
-  int64_t rhs_el_size_in_bits;
-  int64_t result_el_size_in_bits;
+  int64_t lhs_element_bits;
+  int64_t rhs_element_bits;
+  int64_t acc_element_bits;
+  int64_t out_element_bits;
+  int64_t flops_per_element;
 };
 
-DotDimensions GetDotDimensions(const HloInstruction* dot) {
+int64_t GetAlgoritmFlopsPerElement(const HloDotInstruction* dot) {
+  switch (dot->precision_config().algorithm()) {
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3:
+    case PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3:
+      return 12;
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6:
+      return 20;
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9:
+      return 28;
+    default:
+      return 2;  // Multiplication and addition.
+  }
+}
+
+DotDimensions GetDotDimensions(const HloInstruction* instr) {
+  const HloDotInstruction* dot = Cast<HloDotInstruction>(instr);
   const Shape& lhs_shape = dot->operand(0)->shape();
   const Shape& rhs_shape = dot->operand(1)->shape();
   DotDimensionNumbers dnums = dot->dot_dimension_numbers();
@@ -94,78 +114,98 @@ DotDimensions GetDotDimensions(const HloInstruction* dot) {
       product_dimensions(lhs_shape, dnums.lhs_contracting_dimensions()),
       /* .lhs_el_size_in_bits = */ get_side_size(dot->operand(0)),
       /* .rhs_el_size_in_bits = */ get_side_size(dot->operand(1)),
+      /* .acc_el_size_in_bits = */
+      ShapeUtil::ByteSizeOfPrimitiveType(GetGemmAccumulatorType(dot)) *
+          CHAR_BIT,
       /* .result_el_size_in_bits = */
       ShapeUtil::ElementSizeInBits(dot->shape()),
+      /* .flops_per_element = */ GetAlgoritmFlopsPerElement(dot),
   };
 }
 
-size_t ChooseSplitK(const DotDimensions& dims, int num_cores) {
-  // Compute the computational intensity in FLOPs per 256 bits of memory I/O
-  // (instead of FLOPs per byte to avoid the need for floating point).
-  size_t computational_intensity =
-      256 * dims.m * dims.n * dims.k /
-      (dims.m * dims.k * dims.lhs_el_size_in_bits +
-       dims.n * dims.k * dims.rhs_el_size_in_bits +
-       dims.m * dims.n * dims.result_el_size_in_bits);
+namespace {
 
-  // The constants below were tuned the following way:
-  // 1. Generated random GEMM kernels.
-  //    * M, N, K and B dimensions are exponentially distributed between 1 and
-  //    200000
-  //    * M, N and K are rounded up to the multiple of 16.
-  //    * B is set to 1 in the half of samples.
-  //    * Use combinations (that make sense)of s32, s8, s4, fp8, bf16, f32 and
-  //    f16 as op and result types.
-  // 2. Every of these kernels were run on H100 with exhaustive tiling search
-  //    enabled.
-  // 3. The best values of the constants were picked using brute force search.
-  // 4. Two functions were used as a loss function, converging to the same
-  //    result (performance of the best splitK was taken as 1.0, and
-  //    performance of other splitK value as a fraction of it):
-  //    * Geomean.
-  //    * Mean square loss.
-  constexpr int64_t kIntensityThreshold = 240;
-  // The minimum K dimension size for the dot after splitting.
-  constexpr int64_t kMemoryBoundMinK = 768;
-  constexpr int64_t kComputeBoundMinK = 1220;
-  constexpr size_t kMaxSplitK = 128;
-  // The target number tiles of num_cores×1.55 was tuned to be the best, but
-  // let's keep it more sane-looking 1.5.
-  const int64_t kTargetNumTiles = num_cores + num_cores / 2;
-  const int64_t kMTileSize = 64;
-  const int64_t kNTileSize = 128;
+constexpr int64_t kMTileSize = 212;
+constexpr int64_t kNTileSize = 212;
+constexpr int64_t kKLoopStepBytes = 442;
+constexpr double kExtraFlopsPerElement = 4.73313;
+constexpr double kFlopsPerByteHbm = 2842.3;
+constexpr double kFlopsPerByteCached = 1846.31;
+constexpr double kCacheThreshold = 2.19872;
+constexpr double kReductionLaunchOverheadFlops = 2.74228e9;
+constexpr double kReductionFlopsPerByteHbm = 677.076;
+constexpr double kReductionFlopsPerByteCached = 0;
+constexpr double kReductionCacheThreshold = 0;
 
-  VLOG(3) << "ChooseSplitK(), b=" << dims.b << " m=" << dims.m
-          << " n=" << dims.n << " k=" << dims.k
-          << " lhs_sz=" << dims.lhs_el_size_in_bits
-          << " rhs_size=" << dims.rhs_el_size_in_bits
-          << " result_size=" << dims.result_el_size_in_bits
-          << " intensity=" << computational_intensity;
+}  // namespace
 
-  if (computational_intensity < kIntensityThreshold) {
-    // Assume memory throughput bound, choose as high splitK as possible, but
-    // keep the resulting K >= kMemoryBoundMinK.
-    size_t splitk = std::min(
-        kMaxSplitK, size_t{1} << Log2Ceiling(static_cast<uint64_t>(
-                        std::max(int64_t{1}, dims.k / kMemoryBoundMinK))));
-    VLOG(3) << "Memory throughput bound, splitK=" << splitk;
-    return splitk;
+double EstimateGemmCostAfterSplitK(const DotDimensions& gemm, int64_t splitk,
+                                   int num_cores, int64_t l2_cache_size) {
+  // Effective dimensions after split
+  int64_t effective_k = CeilOfRatio(gemm.k, splitk);
+  int64_t effective_batch = gemm.b * splitk;
+
+  // Number of tiles in each dimension
+  int64_t m_tiles = CeilOfRatio(gemm.m, kMTileSize);
+  int64_t n_tiles = CeilOfRatio(gemm.n, kNTileSize);
+  int64_t num_waves = CeilOfRatio(effective_batch * m_tiles * n_tiles,
+                                  static_cast<int64_t>(num_cores));
+
+  // Compute per tile.
+  const int64_t num_k_iterations = CeilOfRatio(
+      effective_k * std::max(gemm.lhs_element_bits, gemm.rhs_element_bits) / 8,
+      kKLoopStepBytes);
+  const int64_t dot_output_element_size =
+      splitk > 1 ? gemm.acc_element_bits : gemm.out_element_bits;
+  int64_t flops_per_tile = (gemm.flops_per_element + kExtraFlopsPerElement) *
+                           kMTileSize * kNTileSize * num_k_iterations *
+                           kKLoopStepBytes * gemm.acc_element_bits / 8;
+  // Memory per tile.
+  int64_t bytes_read_lhs_per_tile =
+      kMTileSize * effective_k * gemm.lhs_element_bits / 8;
+  int64_t bytes_read_rhs_per_tile =
+      kNTileSize * effective_k * gemm.rhs_element_bits / 8;
+  int64_t bytes_write_per_tile =
+      kMTileSize * kNTileSize * dot_output_element_size / 8;
+  int64_t bytes_per_tile =
+      bytes_read_lhs_per_tile + bytes_read_rhs_per_tile + bytes_write_per_tile;
+  int64_t bytes_per_wave = bytes_per_tile * num_cores;
+  int64_t memory_time_per_tile =
+      bytes_per_tile * (bytes_per_wave < kCacheThreshold * l2_cache_size
+                            ? kFlopsPerByteCached
+                            : kFlopsPerByteHbm);
+
+  int64_t wave_cost = std::max(flops_per_tile, memory_time_per_tile);
+  int64_t total_dot_cost = wave_cost * num_waves;
+
+  // Reduction cost.
+  if (splitk == 1) {
+    return total_dot_cost;
   }
 
-  // Assume compute bound, try to fill target number of tiles.
-  const int64_t m_tiles = CeilOfRatio(dims.m, kMTileSize);
-  const int64_t n_tiles = CeilOfRatio(dims.n, kNTileSize);
-  const int64_t num_tiles = dims.b * m_tiles * n_tiles;
-  const uint64_t max_splitk = 1 << Log2Floor(static_cast<uint64_t>(std::max(
-                                  int64_t{1}, dims.k / kComputeBoundMinK)));
-  const uint64_t desired_splitk = CeilOfRatio(kTargetNumTiles, num_tiles);
-  const size_t splitk = 1 << Log2Ceiling(std::min(max_splitk, desired_splitk));
+  int64_t reduction_read_bytes =
+      effective_batch * gemm.m * gemm.n * gemm.acc_element_bits / 8;
+  int64_t reduction_write_bytes =
+      gemm.b * gemm.m * gemm.n * gemm.out_element_bits / 8;
+  int64_t reduction_bytes = reduction_read_bytes + reduction_write_bytes;
+  int64_t reduction_time =
+      reduction_bytes *
+      (reduction_read_bytes < kReductionCacheThreshold * l2_cache_size
+           ? kReductionFlopsPerByteCached
+           : kReductionFlopsPerByteHbm);
 
-  VLOG(3) << "Compute throughput bound, m_tiles=" << m_tiles
-          << " n_tiles=" << n_tiles << " num_tiles=" << num_tiles
-          << " max_splitk=" << max_splitk
-          << " desired_splitk=" << desired_splitk << " splitk=" << splitk;
-  return splitk;
+  return total_dot_cost + kReductionLaunchOverheadFlops + reduction_time;
+}
+
+size_t ChooseSplitK(const DotDimensions& dims, int num_cores,
+                    int64_t l2_cache_size) {
+  std::vector<int64_t> candidates = {1, 2, 4, 8, 16, 32, 64, 128};
+  std::vector<double> costs;
+  costs.reserve(candidates.size());
+  absl::c_transform(candidates, std::back_inserter(costs), [&](int64_t splitk) {
+    return EstimateGemmCostAfterSplitK(dims, splitk, num_cores, l2_cache_size);
+  });
+  return candidates[absl::c_min_element(costs) - costs.begin()];
 }
 
 // Pads the given instruction with zeros along the given dimension to the given
@@ -315,7 +355,8 @@ class SplitkRewriterVisitor : public DfsHloRewriteVisitor {
       return absl::OkStatus();
     }
     const size_t split_k =
-        ChooseSplitK(GetDotDimensions(dot), device_description_.core_count());
+        ChooseSplitK(GetDotDimensions(dot), device_description_.core_count(),
+                     device_description_.l2_cache_size());
     if (split_k == 1) {
       return absl::OkStatus();
     }

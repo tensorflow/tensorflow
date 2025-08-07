@@ -129,16 +129,15 @@ CHECK: bf16[16,128]{1,0} convert(
 }
 
 TEST_F(SplitkRewriterTest, NoSplitKIfEnoughWork) {
-  // Huge K dimension to trigger 128 which is the largest possible splitK
-  // (hoping to make the test less fragile as heuristic changes).
+  // Small K is not profitable to split.
   const char* hlo_string = R"(
     HloModule module
 
     ENTRY test {
-      lhs = f32[1024,10240]{1,0} parameter(0)
-      rhs = f32[10240,2048]{1,0} parameter(1)
+      lhs = f32[1024,512]{1,0} parameter(0)
+      rhs = f32[512,2048]{1,0} parameter(1)
       ROOT dot = f32[1024,2048]{1,0} dot(lhs, rhs),
-                                  lhs_contracting_dims={1}, rhs_contracting_dims={0}
+                             lhs_contracting_dims={1}, rhs_contracting_dims={0}
     })";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
