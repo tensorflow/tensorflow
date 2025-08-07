@@ -52,7 +52,6 @@ limitations under the License.
 #include "llvm/Passes/StandardInstrumentations.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/TypeSize.h"
-#include "llvm/Target/TargetMachine.h"
 #include "llvm/Transforms/IPO/AlwaysInliner.h"
 #include "llvm/Transforms/IPO/GlobalDCE.h"
 #include "llvm/Transforms/IPO/SCCP.h"
@@ -118,26 +117,26 @@ class IntrinsicAdapter : public MathFunction {
  public:
   absl::string_view FunctionName() const override { return Intrinsic::kName; }
   std::vector<std::vector<Type>> SupportedVectorTypes(
-      llvm::TargetMachine* target_machine) const override {
+      absl::string_view features) const override {
     if constexpr (std::is_invocable_v<decltype(Intrinsic::SupportedVectorTypes),
-                                      llvm::TargetMachine*>) {
-      return Intrinsic::SupportedVectorTypes(target_machine);
+                                      absl::string_view>) {
+      return Intrinsic::SupportedVectorTypes(features);
     } else {
       return Intrinsic::SupportedVectorTypes();
     }
   }
 
   llvm::Function* CreateDefinition(llvm::Module& module,
-                                   llvm::TargetMachine* target_machine,
+                                   absl::string_view features,
                                    absl::string_view name) const override {
     std::vector<Type> types = ParseTypesFromFunctionName(name);
     return apply_vector<Intrinsic::kNumArgs>(
                [&](auto... args) {
                  if constexpr (std::is_invocable_v<
                                    decltype(Intrinsic::CreateDefinition),
-                                   llvm::Module*, llvm::TargetMachine*,
+                                   llvm::Module*, absl::string_view,
                                    decltype(args)...>) {
-                   return Intrinsic::CreateDefinition(&module, target_machine,
+                   return Intrinsic::CreateDefinition(&module, features,
                                                       args...);
                  } else {
                    return Intrinsic::CreateDefinition(&module, args...);
@@ -173,8 +172,8 @@ class IntrinsicAdapter : public MathFunction {
   }
 };
 
-MathFunctionLib::MathFunctionLib(llvm::TargetMachine* target_machine)
-    : target_machine_(target_machine) {
+MathFunctionLib::MathFunctionLib(absl::string_view features)
+    : features_(features) {
   math_functions_.push_back(
       std::make_unique<IntrinsicAdapter<intrinsics::Ldexp>>());
   math_functions_.push_back(
@@ -233,9 +232,9 @@ std::vector<llvm::VecDesc> MathFunctionLib::Vectorizations() {
     // For each floating point type supported, we add all vector widths to every
     // other vector width as a possible vectorization.
     for (const auto& target_types :
-         math_func->SupportedVectorTypes(target_machine_)) {
+         math_func->SupportedVectorTypes(features_)) {
       for (const auto& vector_types :
-           math_func->SupportedVectorTypes(target_machine_)) {
+           math_func->SupportedVectorTypes(features_)) {
         if (target_types.front().element_type() !=
             vector_types.front().element_type()) {
           continue;
@@ -266,7 +265,7 @@ std::vector<llvm::VecDesc> MathFunctionLib::Vectorizations() {
 
 void CreateDefinitionAndReplaceDeclaration(llvm::Module& module,
                                            absl::string_view name,
-                                           llvm::TargetMachine* target_machine,
+                                           absl::string_view features,
                                            MathFunction& math_func) {
   // The Vectorization pass may have already inserted a declaration
   // of this function that we need to rename and later remove to avoid
@@ -276,7 +275,7 @@ void CreateDefinitionAndReplaceDeclaration(llvm::Module& module,
     existing_func->setName(std::string(name) + ".old_decl");
   }
   llvm::Function* definition =
-      math_func.CreateDefinition(module, target_machine, name);
+      math_func.CreateDefinition(module, features, name);
   definition->setLinkage(llvm::Function::InternalLinkage);
   definition->addFnAttr(llvm::Attribute::AlwaysInline);
   llvm::verifyFunction(*definition);
@@ -300,8 +299,8 @@ absl::flat_hash_set<absl::string_view> MathFunctionLib::RewriteMathFunctions(
     for (const auto& math_func : math_functions_) {
       if (math_func->FunctionName() == function_name) {
         for (const auto& signature : signatures) {
-          CreateDefinitionAndReplaceDeclaration(module, signature,
-                                                target_machine_, *math_func);
+          CreateDefinitionAndReplaceDeclaration(module, signature, features_,
+                                                *math_func);
           replaced_functions.insert(signature);
         }
       }

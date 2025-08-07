@@ -79,7 +79,9 @@ JitRunner CreateJitRunnerWithRsqrt(Type type) {
   std::unique_ptr<llvm::TargetMachine> target_machine =
       xla::codegen::math::CreateHostTargetMachine();
   llvm::Function* rsqrt_func =
-      Rsqrt::CreateDefinition(module.get(), target_machine.get(), type).value();
+      Rsqrt::CreateDefinition(
+          module.get(), target_machine->getTargetFeatureString().str(), type)
+          .value();
   rsqrt_func->setLinkage(llvm::Function::ExternalLinkage);
   EXPECT_FALSE(llvm::verifyFunction(*rsqrt_func));
 

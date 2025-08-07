@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Module.h"
@@ -34,16 +35,15 @@ class Rsqrt : public Intrinsic<Rsqrt> {
  public:
   static constexpr absl::string_view kName = "rsqrt";
   static std::vector<std::vector<Type>> SupportedVectorTypes(
-      llvm::TargetMachine* target_machine) {
+      absl::string_view features) {
     // Always include scalars so that we're able to vectorize from elemental
     // IR.
     std::vector<std::vector<Type>> supported_types = {{Type::S(F32)},
                                                       {Type::S(F64)}};
-    const auto& features = target_machine->getTargetFeatureString();
-    if (features.contains("+avx")) {
+    if (absl::StrContains(features, "+avx")) {
       supported_types.push_back({Type::V(F32, 8)});
     }
-    if (features.contains("+avx512f")) {
+    if (absl::StrContains(features, "+avx512f")) {
       supported_types.push_back({Type::V(F32, 16)});
       supported_types.push_back({Type::V(F64, 2)});
       supported_types.push_back({Type::V(F64, 4)});
@@ -59,7 +59,7 @@ class Rsqrt : public Intrinsic<Rsqrt> {
   // https://eigen.tuxfamily.org/dox-devel/arch_2AVX512_2MathFunctions_8h_source.html
   // Assumes AVX512 is available for F64 and <16 x float> inputs.
   static absl::StatusOr<llvm::Function*> CreateDefinition(
-      llvm::Module* module, llvm::TargetMachine* target_machine, Type type);
+      llvm::Module* module, absl::string_view features, Type type);
 };
 
 }  // namespace xla::codegen::intrinsics
