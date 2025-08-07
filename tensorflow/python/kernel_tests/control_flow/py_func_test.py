@@ -482,12 +482,14 @@ class PyFuncAndEagerPyFuncTest(PyFuncTestBase):
   def verifyPyFuncsNoIncrease(self, make_graph):
     ops.reset_default_graph()
     gc.collect()
+    gc.collect()
     initial_size = script_ops._py_funcs.size()
 
     for _ in range(1000):
       make_graph()
 
     ops.reset_default_graph()
+    gc.collect()
     gc.collect()
     self.assertEqual(initial_size, script_ops._py_funcs.size())
 
