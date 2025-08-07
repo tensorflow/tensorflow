@@ -12,12 +12,15 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "absl/strings/string_view.h"
+#include "mlir/Conversion/LLVMCommon/LoweringOptions.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Math/IR/Math.h"
+#include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
@@ -72,64 +75,6 @@ mlir::func::FuncOp GetOrInsertDeclaration(mlir::PatternRewriter& rewriter,
   func_decl.setPrivate();
   return func_decl;
 }
-
-class LowerExpOpPattern : public mlir::OpRewritePattern<mlir::math::ExpOp> {
- public:
-  LowerExpOpPattern(mlir::MLIRContext* context, mlir::ModuleOp& module_op)
-      : OpRewritePattern(context), module_op_(module_op) {}
-
-  mlir::LogicalResult matchAndRewrite(
-      mlir::math::ExpOp op, mlir::PatternRewriter& rewriter) const override {
-    // Only convert F64 (or vectorized F64) exp operations
-    auto op_type = op.getOperand().getType();
-    bool op_is_f64 = mlir::isa<mlir::FloatType>(op_type) &&
-                     mlir::dyn_cast<mlir::FloatType>(op_type).isF64();
-    bool op_is_f64_vector =
-        mlir::isa<mlir::VectorType>(op_type) &&
-        mlir::dyn_cast<mlir::VectorType>(op_type).getElementType().isF64();
-    if (!(op_is_f64 || op_is_f64_vector)) {
-      return rewriter.notifyMatchFailure(op, "not an f64 exp operation");
-    }
-
-    mlir::ImplicitLocOpBuilder builder(op.getLoc(), rewriter);
-
-    mlir::func::FuncOp xla_exp_func =
-        codegen::intrinsics::Exp::GetOrInsertDeclaration(
-            rewriter, module_op_, Type::TypeFromIrType(op_type));
-
-    // Replace math.exp with call to xla.exp.f64
-    auto call_op =
-        builder.create<mlir::func::CallOp>(xla_exp_func, op.getOperand());
-
-    rewriter.replaceOp(op, call_op);
-    return mlir::success();
-  }
-
- private:
-  mlir::ModuleOp& module_op_;
-};
-
-class LowerLog1pPattern : public mlir::OpRewritePattern<mlir::math::Log1pOp> {
- public:
-  LowerLog1pPattern(mlir::MLIRContext* context, mlir::ModuleOp& module_op)
-      : OpRewritePattern(context), module_op_(module_op) {}
-
-  mlir::LogicalResult matchAndRewrite(
-      mlir::math::Log1pOp op, mlir::PatternRewriter& rewriter) const override {
-    mlir::Type type = op.getType();
-
-    mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
-
-    auto log1p_decl = codegen::intrinsics::Log1p::GetOrInsertDeclaration(
-        rewriter, module_op_, Type::TypeFromIrType(type));
-    auto call_op = b.create<mlir::func::CallOp>(log1p_decl, op.getOperand());
-    rewriter.replaceOp(op, call_op->getResults());
-    return mlir::success();
-  }
-
- private:
-  mlir::ModuleOp& module_op_;
-};
 
 class LowerErfPattern : public mlir::OpRewritePattern<mlir::math::ErfOp> {
  public:
@@ -218,49 +163,27 @@ class LowerTruncF32BF16FPattern
   mlir::ModuleOp& module_op_;
 };
 
-class RsqrtPattern : public mlir::OpRewritePattern<mlir::math::RsqrtOp> {
+template <typename Intrinsic, typename Op>
+class LowerIntrinsicPattern : public mlir::OpRewritePattern<Op> {
  public:
-  RsqrtPattern(mlir::MLIRContext* context, mlir::ModuleOp& module_op)
-      : OpRewritePattern(context), module_op_(module_op) {}
+  LowerIntrinsicPattern(mlir::MLIRContext* context, mlir::ModuleOp& module_op)
+      : mlir::OpRewritePattern<Op>(context), module_op_(module_op) {}
 
   mlir::LogicalResult matchAndRewrite(
-      mlir::math::RsqrtOp op, mlir::PatternRewriter& rewriter) const override {
-    // Don't change if not f32 or f64:
-    auto src_type = op.getOperand().getType();
-    if (!mlir::isa<mlir::Float32Type>(src_type) &&
-        !mlir::isa<mlir::Float64Type>(src_type)) {
-      return rewriter.notifyMatchFailure(op, "Not f32 or f64");
-    }
-
-    mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
-    auto rsqrt_decl = codegen::intrinsics::Rsqrt::GetOrInsertDeclaration(
-        rewriter, module_op_, Type::TypeFromIrType(op.getOperand().getType()));
-    auto call_op = b.create<mlir::func::CallOp>(rsqrt_decl, op.getOperand());
-    rewriter.replaceOp(op, call_op->getResults());
-    return mlir::success();
-  }
-
- private:
-  mlir::ModuleOp& module_op_;
-};
-
-class LowerTanhOpPattern : public mlir::OpRewritePattern<mlir::math::TanhOp> {
- public:
-  LowerTanhOpPattern(mlir::MLIRContext* context, mlir::ModuleOp& module_op)
-      : OpRewritePattern(context), module_op_(module_op) {}
-
-  mlir::LogicalResult matchAndRewrite(
-      mlir::math::TanhOp op, mlir::PatternRewriter& rewriter) const override {
-    mlir::Type type = op.getType();
-
-    if (!type.isF32() || !type.isF64() || !type.isF16()) {
+      Op op, mlir::PatternRewriter& rewriter) const override {
+    Type type = Type::TypeFromIrType(op.getType());
+    mlir::StringAttr features =
+        module_op_->getAttrOfType<mlir::StringAttr>("mhlo.cpu_features");
+    const std::string features_str = !features ? "" : features.getValue().str();
+    if (!Intrinsic::IsSupported(features_str, type)) {
       return rewriter.notifyMatchFailure(op, "unsupported type");
     }
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
 
-    auto tanh_decl = codegen::intrinsics::Tanh::GetOrInsertDeclaration(
-        rewriter, module_op_, Type::TypeFromIrType(type));
-    auto call_op = b.create<mlir::func::CallOp>(tanh_decl, op.getOperand());
+    auto intrinsic_decl =
+        Intrinsic::GetOrInsertDeclaration(rewriter, module_op_, type);
+    auto call_op =
+        b.create<mlir::func::CallOp>(intrinsic_decl, op.getOperand());
     rewriter.replaceOp(op, call_op->getResults());
     return mlir::success();
   }
@@ -278,9 +201,12 @@ class LowerXlaMathLibPass
   void runOnOperation() override {
     mlir::ModuleOp module_op = getOperation();
     mlir::RewritePatternSet patterns(&getContext());
-    patterns.add<LowerExpOpPattern, LowerLog1pPattern, LowerErfPattern,
-                 LowerTruncF32BF16FPattern, RsqrtPattern, LowerTanhOpPattern>(
-        &getContext(), module_op);
+    patterns.add<
+        LowerIntrinsicPattern<codegen::intrinsics::Exp, mlir::math::ExpOp>,
+        LowerIntrinsicPattern<codegen::intrinsics::Log1p, mlir::math::Log1pOp>,
+        LowerIntrinsicPattern<codegen::intrinsics::Rsqrt, mlir::math::RsqrtOp>,
+        LowerIntrinsicPattern<codegen::intrinsics::Tanh, mlir::math::TanhOp>,
+        LowerErfPattern, LowerTruncF32BF16FPattern>(&getContext(), module_op);
 
     if (mlir::failed(
             mlir::applyPatternsGreedily(module_op, std::move(patterns)))) {
@@ -288,12 +214,10 @@ class LowerXlaMathLibPass
     }
   }
 };
-
 }  // namespace
 
 std::unique_ptr<mlir::Pass> CreateLowerXlaMathLibPass() {
   return std::make_unique<LowerXlaMathLibPass>();
 }
-
 }  // namespace emitters
 }  // namespace xla

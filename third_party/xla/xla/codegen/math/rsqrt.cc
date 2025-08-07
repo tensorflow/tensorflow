@@ -21,6 +21,8 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/match.h"
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/IR/Argument.h"
 #include "llvm/IR/BasicBlock.h"
@@ -143,7 +145,7 @@ struct RsqrtIntrinsic {
 };
 
 absl::StatusOr<llvm::Function*> Rsqrt::CreateDefinition(
-    llvm::Module* module, llvm::TargetMachine* target_machine, Type type) {
+    llvm::Module* module, absl::string_view features, Type type) {
   CHECK(type.element_type() == F64 || type.element_type() == F32)
       << type.name();
   llvm::Type* input_type = Type::TypeToIrType(type, module->getContext());
@@ -169,8 +171,8 @@ absl::StatusOr<llvm::Function*> Rsqrt::CreateDefinition(
   builder.SetInsertPoint(entry_bb);
 
   if ((type.element_type() == F64 &&
-       !target_machine->getTargetFeatureString().contains("+avx512f")) ||
-      !target_machine->getTargetFeatureString().contains("+avx")) {
+       !absl::StrContains(features, "+avx512f")) ||
+      !absl::StrContains(features, "+avx")) {
     LOG_EVERY_N(INFO, 1000)
         << "Falling back to 1 / sqrt(x) for " << type.name();
     // We can't use the same approximation algorithm for F64 without AVX512 or

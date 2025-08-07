@@ -202,6 +202,24 @@ class Intrinsic {
     return llvm::cast<llvm::Function>(
         module->getOrInsertFunction(Name(args...), function_type).getCallee());
   }
+
+  static bool IsSupported(absl::string_view features, Type type) {
+    std::vector<std::vector<Type>> supported_types;
+    if constexpr (std::is_invocable_v<decltype(Derived::SupportedVectorTypes),
+                                      absl::string_view>) {
+      supported_types = Derived::SupportedVectorTypes(features);
+    } else {
+      supported_types = Derived::SupportedVectorTypes();
+    }
+    for (const auto& supported_args : supported_types) {
+      const Type& first_arg = supported_args.front();
+      if (first_arg.element_type() == type.element_type() &&
+          first_arg.vector_width() == type.vector_width()) {
+        return true;
+      }
+    }
+    return false;
+  }
 };
 }  // namespace xla::codegen::intrinsics
 

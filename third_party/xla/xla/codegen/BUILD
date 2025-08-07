@@ -208,7 +208,6 @@ cc_library(
         "@llvm-project//llvm:Passes",
         "@llvm-project//llvm:Scalar",
         "@llvm-project//llvm:Support",
-        "@llvm-project//llvm:Target",
         "@llvm-project//llvm:TransformUtils",
         "@llvm-project//llvm:ir_headers",
     ],

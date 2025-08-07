@@ -27,7 +27,6 @@ limitations under the License.
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Module.h"
-#include "llvm/Target/TargetMachine.h"
 #include "xla/codegen/math/intrinsic.h"
 #include "xla/xla_data.pb.h"
 
@@ -46,12 +45,11 @@ class MathFunction {
 
   // Returns the vector types supported well by this approximation.
   virtual std::vector<std::vector<intrinsics::Type>> SupportedVectorTypes(
-      llvm::TargetMachine* target_machine) const = 0;
+      absl::string_view features) const = 0;
 
   // Returns the LLVM IR function definition for the approximation.
-  // Reads the target machine and features from the LLVM module.
   virtual llvm::Function* CreateDefinition(llvm::Module& module,
-                                           llvm::TargetMachine* target_machine,
+                                           absl::string_view features,
                                            absl::string_view name) const = 0;
 
   // The vectorized function name, e.g. "xla.ldexp.v8f64.v8i32".
@@ -75,7 +73,7 @@ class MathFunction {
 // Retains storage of the strings required for VecDescs in the instance.
 class MathFunctionLib {
  public:
-  explicit MathFunctionLib(llvm::TargetMachine* target_machine);
+  explicit MathFunctionLib(absl::string_view features);
 
   // Returns a vector of vectorization information for functions that have
   // vectorized approximations. This enables LLVM vectorization
@@ -93,7 +91,7 @@ class MathFunctionLib {
  private:
   std::vector<std::unique_ptr<MathFunction>> math_functions_;
   absl::flat_hash_map<absl::string_view, absl::string_view> targets_;
-  llvm::TargetMachine* target_machine_;
+  std::string features_;
 };
 
 }  // namespace xla::codegen
