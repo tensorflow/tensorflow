@@ -163,7 +163,7 @@ func.func @main(%arg0: tensor<2x2xf32>, %arg1: tensor<2x2xf32>) -> tensor<2x2xf3
 // CHECK:       ENTRY %[[$main_3:[^ ]+]]
 // CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = f32[128,32] parameter(0)
 // CHECK-NEXT:  ROOT %[[all_gather_2:[^ ]+]] = f32[128,128] all-gather(%[[Arg_0_1]]), channel_id=1,
-// CHECK-SAME{{LITERAL}}: replica_groups={{0,2,4,6},{1,3,5,7}},
+// CHECK-SAME{LITERAL}: replica_groups={{0,2,4,6},{1,3,5,7}},
 // CHECK-SAME: dimensions={1},
 func.func @main(%arg0: tensor<128x32xf32>) -> tensor<128x128xf32> {
 %0 = "stablehlo.all_gather"(%arg0) <{all_gather_dim = 1 : i64, channel_handle = #stablehlo.channel_handle<handle = 1, type = 0>, replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>}> {shard_count = 4 : i64} : (tensor<128x32xf32>) -> tensor<128x128xf32>
@@ -178,7 +178,7 @@ return %0 : tensor<128x128xf32>
 // CHECK:       ENTRY %[[$main_3:[^ ]+]]
 // CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = f32[128,32] parameter(0)
 // CHECK-NEXT:  ROOT %[[all_gather_2:[^ ]+]] = f32[128,128] all-gather(%[[Arg_0_1]]), channel_id=1,
-// CHECK-SAME{{LITERAL}}: replica_groups={{0,2,4,6},{1,3,5,7}},
+// CHECK-SAME{LITERAL}: replica_groups={{0,2,4,6},{1,3,5,7}},
 // CHECK-SAME: dimensions={1}, use_global_device_ids=true,
 func.func @main(%arg0: tensor<128x32xf32>) -> tensor<128x128xf32> {
   %0 = "stablehlo.all_gather"(%arg0) <{all_gather_dim = 1 : i64, channel_handle = #stablehlo.channel_handle<handle = 1, type = 0>, replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>, use_global_device_ids}> {shard_count = 4 : i64} : (tensor<128x32xf32>) -> tensor<128x128xf32>
@@ -197,7 +197,7 @@ func.func @main(%arg0: tensor<128x32xf32>) -> tensor<128x128xf32> {
 // CHECK-NEXT:  %[[get_tuple_element_4:[^ ]+]] = f32[8,2] get-tuple-element(%[[tuple_3]]), index=0,
 // CHECK-NEXT:  %[[get_tuple_element_5:[^ ]+]] = f32[8,4] get-tuple-element(%[[tuple_3]]), index=1,
 // CHECK-NEXT:  %[[all_gather_6:[^ ]+]] = (f32[8,8], f32[8,16]) all-gather(%[[get_tuple_element_4]], %[[get_tuple_element_5]]), channel_id=1,
-// CHECK-SAME{{LITERAL}}: replica_groups={{0,2,4,6},{1,3,5,7}},
+// CHECK-SAME{LITERAL}: replica_groups={{0,2,4,6},{1,3,5,7}},
 // CHECK-SAME:  dimensions={1}, use_global_device_ids=true,
 // CHECK-NEXT:  %[[get_tuple_element_7:[^ ]+]] = f32[8,8] get-tuple-element(%[[all_gather_6]]), index=0,
 // CHECK-NEXT:  %[[get_tuple_element_8:[^ ]+]] = f32[8,16] get-tuple-element(%[[all_gather_6]]), index=1,
@@ -263,7 +263,7 @@ func.func @main(%arg0: tensor<3x3xf32>) -> tensor<3x3xf32> {
 // CHECK:       ENTRY %[[$main_3:[^ ]+]]
 // CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = f32[16,8] parameter(0)
 // CHECK-NEXT:  ROOT %[[collective_permute_2:[^ ]+]] = f32[16,8] collective-permute(%[[Arg_0_1]]),
-// CHECK-SAME{{LITERAL}}: source_target_pairs={{0,1},{1,2},{2,3}},
+// CHECK-SAME{LITERAL}: source_target_pairs={{0,1},{1,2},{2,3}},
 func.func @main(%arg0: tensor<16x8xf32>) -> tensor<16x8xf32> {
   %0 = "stablehlo.collective_permute"(%arg0) {
   source_target_pairs = dense<[[0, 1], [1, 2], [2, 3]]> : tensor<3x2xi64>,
@@ -302,7 +302,7 @@ func.func @main(%arg0: tensor<8xf32>, %arg1: tensor<8xf32>) -> tensor<16xf32> {
 // CHECK:       ENTRY %[[$main_7:[^ ]+]]
 // CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = f32[] parameter(0)
 // CHECK-NEXT:  ROOT %[[all_reduce_6:[^ ]+]] = f32[] all-reduce(%[[Arg_0_1]]),
-// CHECK-SAME{{LITERAL}}: replica_groups={{0},{1}},
+// CHECK-SAME{LITERAL}: replica_groups={{0},{1}},
 // CHECK-SAME: to_apply=%[[$sum_2]],
 func.func @main(%arg0: tensor<f32>) -> tensor<f32> {
   %0 = "stablehlo.cross-replica-sum"(%arg0) {
@@ -782,10 +782,10 @@ func.func @main(%arg0: tensor<3xi32>, %arg1: !stablehlo.token) -> !stablehlo.tok
 // CHECK-NEXT:  %[[custom_call_3:[^ ]+]] = s32[3,2] custom-call(%[[Arg_0_1]]), custom_call_target="Sharding", sharding={devices=[1,2]0,1}, metadata=
 // CHECK-NEXT:  %[[custom_call_4:[^ ]+]] = s32[6,2] custom-call(%[[custom_call_3]]), custom_call_target="SPMDShardToFullShape", sharding={devices=[1,2]0,1}, metadata=
 // CHECK-NEXT:  %[[tuple_5:[^ ]+]] = (s32[6,2]) tuple(%[[custom_call_4]]),
-// CHECK-SAME{{LITERAL}} : sharding={{devices=[2,1]0,1}}, metadata=
+// CHECK-SAME{LITERAL}: sharding={{devices=[1,2]0,1}}, metadata=
 // CHECK-NEXT:  %[[Arg_1_2:[^ ]+]] = token[] parameter(1)
 // CHECK-NEXT:  ROOT %[[outfeed_6:[^ ]+]] = token[] outfeed(%[[tuple_5]], %[[Arg_1_2]]), outfeed_shape=(s32[6,2]{1,0}), outfeed_config="foobar",
-// CHECK-SAME{{LITERAL}} : sharding={{devices=[2,1]0,1}, {maximal device=0}},
+// CHECK-SAME{LITERAL}: sharding={{devices=[2,1]0,1}, {maximal device=0}},
 func.func @main(%arg0: tensor<3x2xi32>, %arg1: !stablehlo.token) -> !stablehlo.token {
   %0 = stablehlo.custom_call @Sharding(%arg0) {backend_config = "", mhlo.sharding = "\08\03\1A\02\01\02\22\02\00\01"} : (tensor<3x2xi32>) -> tensor<3x2xi32>
   %1 = stablehlo.custom_call @SPMDShardToFullShape(%0) {backend_config = "", mhlo.sharding = "\08\03\1A\02\01\02\22\02\00\01"} : (tensor<3x2xi32>) -> tensor<6x2xi32>
@@ -914,7 +914,8 @@ func.func @main(%arg0: tensor<i32>, %arg1: tensor<f32>) -> tensor<f32> {
 // CHECK:       ENTRY %[[$main_7:[^ ]+]]
 // CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = f32[10] parameter(0)
 // CHECK-NEXT:  ROOT %[[all_reduce_6:[^ ]+]] = f32[10] all-reduce(%[[Arg_0_1]]), channel_id=5,
-// CHECK-SAME{{LITERAL}}:  replica_groups={{0,2,4,6},{1,3,5,7}}, to_apply=%[[$region_0_2]], metadata=
+// CHECK-SAME{LITERAL}: replica_groups={{0,2,4,6},{1,3,5,7}},
+// CHECK-SAME:  to_apply=%[[$region_0_2]], metadata=
 
 module {
   func.func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
@@ -940,7 +941,8 @@ module {
 // CHECK:       ENTRY %[[$main_7:[^ ]+]]
 // CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = f32[10] parameter(0)
 // CHECK-NEXT:  ROOT %[[all_reduce_6:[^ ]+]] = f32[10] all-reduce(%[[Arg_0_1]]), channel_id=5,
-// CHECK-SAME{{LITERAL}}:  replica_groups={{0,2,4},{1,3,5,6}}, to_apply=%[[$region_0_2]], metadata=
+// CHECK-SAME{LITERAL}: replica_groups={{0,2,4},{1,3,5,6}},
+// CHECK-SAME:  to_apply=%[[$region_0_2]], metadata=
 
 module {
   func.func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
@@ -966,7 +968,8 @@ module {
 // CHECK:       ENTRY %[[$main_7:[^ ]+]]
 // CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = f32[10] parameter(0)
 // CHECK-NEXT:  ROOT %[[all_reduce_6:[^ ]+]] = f32[10] all-reduce(%[[Arg_0_1]]), channel_id=5,
-// CHECK-SAME{{LITERAL}}:  replica_groups={{0,2,4,6},{1,3,5,7}}, use_global_device_ids=true, to_apply=%[[$region_0_2]], metadata=
+// CHECK-SAME{LITERAL}: replica_groups={{0,2,4,6},{1,3,5,7}}, use_global_device_ids=true,
+// CHECK-SAME:  to_apply=%[[$region_0_2]], metadata=
 
 module {
   func.func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
@@ -1079,7 +1082,7 @@ module {
 // CHECK:       ENTRY %[[$main_3:[^ ]+]]
 // CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = s32[2,2] parameter(0)
 // CHECK-NEXT:  ROOT %[[all_to_all_2:[^ ]+]] = s32[2,2] all-to-all(%[[Arg_0_1]]), channel_id=1,
-// CHECK-SAME{{LITERAL}}:  replica_groups={{1,2},{0,3}}, dimensions={1}, metadata=
+// CHECK-SAME{LITERAL}: replica_groups={{1,2},{0,3}}, dimensions={1}, metadata=
 
 func.func @main(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
   %0 = "stablehlo.all_to_all"(%arg0) <{channel_handle = #stablehlo.channel_handle<handle = 1, type = 1>, concat_dimension = 1 : i64, replica_groups = dense<[[1, 2], [0, 3]]> : tensor<2x2xi64>, split_count = 2 : i64, split_dimension = 1 : i64}> : (tensor<2x2xi32>) -> tensor<2x2xi32>
@@ -1168,7 +1171,7 @@ func.func @main(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> t
 // CHECK:       ENTRY %[[$main_3:[^ ]+]]
 // CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = f32[128,32] parameter(0)
 // CHECK-NEXT:  ROOT %[[collective_broadcast_2:[^ ]+]] = f32[128,32] collective-broadcast(%[[Arg_0_1]]), channel_id=1,
-// CHECK-SAME{{LITERAL}} : replica_groups={{0,1},{2,3}}, metadata=
+// CHECK-SAME{LITERAL}: replica_groups={{0,1},{2,3}}, metadata=
 
 func.func @main(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> {
   %0 = "stablehlo.collective_broadcast"(%arg0) <{channel_handle = #stablehlo.channel_handle<handle = 1, type = 0>, replica_groups = dense<[[0, 1], [2, 3]]> : tensor<2x2xi64>}> : (tensor<128x32xf32>) -> tensor<128x32xf32>
@@ -1629,7 +1632,8 @@ module {
 // CHECK:       ENTRY %[[$main_7:[^ ]+]]
 // CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = f32[10] parameter(0)
 // CHECK-NEXT:  ROOT %[[reduce_scatter_6:[^ ]+]] = f32[5] reduce-scatter(%[[Arg_0_1]]), channel_id=5,
-// CHECK-SAME{{LITERAL}} : replica_groups={{0,2},{1,3}}, dimensions={0}, to_apply=%[[$region_0_2]], metadata=
+// CHECK-SAME{LITERAL}: replica_groups={{0,2},{1,3}}, dimensions={0},
+// CHECK-SAME:  to_apply=%[[$region_0_2]], metadata=
 
 module {
   func.func @main(%arg0: tensor<10xf32>) -> tensor<5xf32> {
@@ -1655,7 +1659,8 @@ module {
 // CHECK:       ENTRY %[[$main_7:[^ ]+]]
 // CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = f32[10] parameter(0)
 // CHECK-NEXT:  ROOT %[[reduce_scatter_6:[^ ]+]] = f32[5] reduce-scatter(%[[Arg_0_1]]), channel_id=5,
-// CHECK-SAME{{LITERAL}} : replica_groups={{0,2},{1,3}}, dimensions={0}, to_apply=%[[$region_0_2]], metadata=
+// CHECK-SAME{LITERAL}: replica_groups={{0,2},{1,3}}, dimensions={0},
+// CHECK-SAME:  to_apply=%[[$region_0_2]], metadata=
 
 module {
   func.func @main(%arg0: tensor<10xf32>) -> tensor<5xf32> {
@@ -1681,7 +1686,8 @@ module {
 // CHECK:       ENTRY %[[$main_7:[^ ]+]]
 // CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = f32[10] parameter(0)
 // CHECK-NEXT:  ROOT %[[reduce_scatter_6:[^ ]+]] = f32[5] reduce-scatter(%[[Arg_0_1]]), channel_id=5,
-// CHECK-SAME{{LITERAL}} : replica_groups={{0,2},{1,3}}, use_global_device_ids=true, dimensions={0}, to_apply=%[[$region_0_2]], metadata=
+// CHECK-SAME{LITERAL}: replica_groups={{0,2},{1,3}}, use_global_device_ids=true, dimensions={0},
+// CHECK-SAME: to_apply=%[[$region_0_2]], metadata=
 
 module {
   func.func @main(%arg0: tensor<10xf32>) -> tensor<5xf32> {
@@ -1706,7 +1712,8 @@ module {
 // CHECK:       ENTRY %[[$main_6:[^ ]+]]
 // CHECK:  %[[Arg_0_1:[^ ]+]] = f32[4,16] parameter(0)
 // CHECK-NEXT:  ROOT %[[reduce_scatter_5:[^ ]+]] = f32[4,4] reduce-scatter(%[[Arg_0_1]]), channel_id=1,
-// CHECK-SAME{{LITERAL}} : replica_groups={{0,1,2,3}}, use_global_device_ids=true, dimensions={1}, to_apply=%[[$region_0_2]], metadata=
+// CHECK-SAME{LITERAL}: replica_groups={{0,1,2,3}}, use_global_device_ids=true, dimensions={1},
+// CHECK-SAME:  to_apply=%[[$region_0_2]], metadata=
 
 module {
   func.func @main(%arg0: tensor<4x16xf32>) -> tensor<4x4xf32> {
