@@ -289,33 +289,28 @@ CoordinationService::GetCountOfOutOfSyncTasksPerBarrier() {
   for (absl::string_view barrier_id : ongoing_barriers_) {
     out_of_sync_tasks_per_barrier[barrier_id] = 0;
   }
+  if (unsynced_recoverable_jobs_.empty()) {
+    return out_of_sync_tasks_per_barrier;
+  }
+  VLOG(1) << "unsynced_recoverable_jobs_: "
+          << absl::StrJoin(unsynced_recoverable_jobs_, ",");
+  for (absl::string_view barrier_id : ongoing_barriers_) {
+    auto* barrier = &barriers_[barrier_id];
+    for (const auto& [task, at_barrier] : barrier->tasks_at_barrier) {
+      if (at_barrier) {
+        continue;
+      }
+      const auto& task_name = GetTaskName(task);
+      if (unsynced_recoverable_jobs_.find(task_name) !=
+          unsynced_recoverable_jobs_.end()) {
+        out_of_sync_tasks_per_barrier[barrier_id]++;
+      }
+    }
+  }
+  VLOG(1) << "out_of_sync_tasks_per_barrier: "
+          << absl::StrJoin(out_of_sync_tasks_per_barrier, ",",
+                           absl::PairFormatter("="));
 
-  for (const auto& task_name : unsynced_recoverable_jobs_) {
-    const std::unique_ptr<TaskState>& task_state = cluster_state_[task_name];
-    for (const auto& ongoing_barrier : task_state->GetOngoingBarriers()) {
-      if (barriers_[ongoing_barrier]
-              .tasks_at_barrier[GetTaskFromName(task_name)]) {
-        // Task is waiting on this barrier.
-        unsynced_tasks_to_barriers[task_name].insert(ongoing_barrier);
-      }
-    }
-  }
-  for (const auto& task_name : unsynced_recoverable_jobs_) {
-    const std::unique_ptr<TaskState>& task_state = cluster_state_[task_name];
-    for (const auto& ongoing_barrier : task_state->GetOngoingBarriers()) {
-      if (task_state->IsDisconnectedBeyondGracePeriod()) {
-        // Task is disconnected beyond grace period, so is out of sync with the
-        // rest of the cluster.
-        out_of_sync_tasks_per_barrier[ongoing_barrier]++;
-      } else if (!unsynced_tasks_to_barriers[task_name].empty() &&
-                 !unsynced_tasks_to_barriers[task_name].contains(
-                     ongoing_barrier)) {
-        // Unsynced task is waiting on some other barrier, so is out of sync
-        // with the rest of the cluster.
-        out_of_sync_tasks_per_barrier[ongoing_barrier]++;
-      }
-    }
-  }
   return out_of_sync_tasks_per_barrier;
 }
 
@@ -352,17 +347,14 @@ void CoordinationService::CheckBarrierStatusWithRecoverableTasks() {
   // leave_barriers_on_recoverable_agent_restart is set, the recoverable tasks
   // will be removed from the barrier and the barrier will be passed.
   absl::flat_hash_set<BarrierState*> passing_barriers;
+
   for (absl::string_view barrier_id : ongoing_barriers_) {
     auto* barrier = &barriers_[barrier_id];
-    int ignore_restarted_tasks_count =
-        barrier->recoverable_tasks_restarted_during_barrier.size();
-    // If the restarted task is waiting on some other barrier, we should ignore
-    // the recoverable tasks in this barrier.
+    // We should ignore out of sync restarted task in this barrier.
     // The restarted task will continue to wait on the other barrier till
-    // synced
-    ignore_restarted_tasks_count += out_of_sync_tasks_per_barrier[barrier_id];
-
-    if (barrier->num_pending_tasks == ignore_restarted_tasks_count) {
+    // synced.
+    if (barrier->num_pending_tasks ==
+        out_of_sync_tasks_per_barrier[barrier_id]) {
       LOG(INFO) << "Barrier " << barrier_id << " has no pending tasks, this "
                 << "might be because recoverable tasks have disconnected/"
                 << "restarted and were removed from the barrier.";
