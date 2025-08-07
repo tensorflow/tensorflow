@@ -234,48 +234,67 @@ def if_with_tpu_support(if_true, if_false = []):
         "//conditions:default": if_false,
     })
 
-def get_win_copts(is_external = False):
-    WINDOWS_COPTS = [
-        # copybara:uncomment_begin(no MSVC flags in google)
-        # "-DPLATFORM_WINDOWS",
-        # "-DEIGEN_HAS_C99_MATH",
-        # "-DTENSORFLOW_USE_EIGEN_THREADPOOL",
-        # "-DEIGEN_AVOID_STL_ARRAY",
-        # "-Iexternal/gemmlowp",
-        # "-DNOGDI",
-        # copybara:uncomment_end_and_comment_begin
-        "/DPLATFORM_WINDOWS",
-        "/DEIGEN_HAS_C99_MATH",
-        "/DTENSORFLOW_USE_EIGEN_THREADPOOL",
-        "/DEIGEN_AVOID_STL_ARRAY",
-        "/Iexternal/gemmlowp",
-        "/wd4018",  # -Wno-sign-compare
-        # Bazel's CROSSTOOL currently pass /EHsc to enable exception by
-        # default. We can't pass /EHs-c- to disable exception, otherwise
-        # we will get a waterfall of flag conflict warnings. Wait for
-        # Bazel to fix this.
-        # "/D_HAS_EXCEPTIONS=0",
-        # "/EHs-c-",
-        "/wd4577",
-        "/DNOGDI",
-        # copybara:comment_end
-        # Also see build:windows lines in tensorflow/opensource_only/.bazelrc
-        # where we set some other options globally.
-    ]
+def get_win_copts(
+        is_external = False,
+        is_msvc = False):
+    """Get the corresponding windows-specific build flags
+
+    Args:
+        is_external: sets dllexport
+        is_msvc: whether the compiler expects msvc-style flags.
+
+    Returns:
+        A list of copts to pass to the cc_library.
+    """
+    WINDOWS_COPTS = []
+    if is_msvc:
+        WINDOWS_COPTS += [
+            "/DPLATFORM_WINDOWS",
+            "/DEIGEN_HAS_C99_MATH",
+            "/DTENSORFLOW_USE_EIGEN_THREADPOOL",
+            "/DEIGEN_AVOID_STL_ARRAY",
+            "/Iexternal/gemmlowp",
+            "/wd4018",  # -Wno-sign-compare
+            # Bazel's CROSSTOOL currently pass /EHsc to enable exception by
+            # default. We can't pass /EHs-c- to disable exception, otherwise
+            # we will get a waterfall of flag conflict warnings. Wait for
+            # Bazel to fix this.
+            # "/D_HAS_EXCEPTIONS=0",
+            # "/EHs-c-",
+            "/wd4577",
+            "/DNOGDI",
+            # Also see build:windows lines in tensorflow/opensource_only/.bazelrc
+            # where we set some other options globally.
+        ]
+    else:
+        WINDOWS_COPTS += [
+            "-DPLATFORM_WINDOWS",
+            "-DEIGEN_HAS_C99_MATH",
+            "-DTENSORFLOW_USE_EIGEN_THREADPOOL",
+            "-DEIGEN_AVOID_STL_ARRAY",
+            "-Iexternal/gemmlowp",
+            "-Wno-sign-compare",
+            "-DNOGDI",
+        ]
 
     if is_external:
-        # copybara:uncomment_begin(no MSVC flags in google)
-        # return WINDOWS_COPTS + ["-UTF_COMPILE_LIBRARY"]
-        # copybara:uncomment_end_and_comment_begin
-        return WINDOWS_COPTS + ["/UTF_COMPILE_LIBRARY"]
-        # copybara:comment_end
-
+        if is_msvc:
+            WINDOWS_COPTS.append(
+                "/UTF_COMPILE_LIBRARY",
+            )
+        else:
+            WINDOWS_COPTS.append(
+                "-UTF_COMPILE_LIBRARY",
+            )
+    elif is_msvc:
+        WINDOWS_COPTS.append(
+            "/DTF_COMPILE_LIBRARY",
+        )
     else:
-        # copybara:uncomment_begin(no MSVC flags in google)
-        # return WINDOWS_COPTS + ["-DTF_COMPILE_LIBRARY"]
-        # copybara:uncomment_end_and_comment_begin
-        return WINDOWS_COPTS + ["/DTF_COMPILE_LIBRARY"]
-        # copybara:comment_end
+        WINDOWS_COPTS.append(
+            "-DTF_COMPILE_LIBRARY",
+        )
+    return WINDOWS_COPTS
 
 # TODO(b/356020232): cleanup non-use_pywrap_rules part once migration is done
 # buildozer: disable=function-docstring-args
@@ -337,7 +356,7 @@ def tsl_copts(
             clean_dep("//xla/tsl:android"): android_copts,
             clean_dep("//xla/tsl:emscripten"): [],
             clean_dep("//xla/tsl:macos"): [],
-            clean_dep("//xla/tsl:windows"): get_win_copts(is_external),
+            clean_dep("//xla/tsl:windows"): get_win_copts(is_external, is_msvc = False),
             clean_dep("//xla/tsl:ios"): [],
             clean_dep("//xla/tsl:no_lgpl_deps"): ["-D__TENSORFLOW_NO_LGPL_DEPS__", "-pthread"],
             "//conditions:default": ["-pthread"],
