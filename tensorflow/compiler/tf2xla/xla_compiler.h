@@ -203,6 +203,9 @@ class XlaCompiler {
 
     // Enable detailed logging of compilation metadata.
     bool detailed_logging = true;
+
+    // If true, use Shardy (go/shardy) partitioner. If false, use GSPMD.
+    bool use_shardy_partitioner = false;
   };
 
   // Argument for compiling a single op.
@@ -332,7 +335,7 @@ class XlaCompiler {
       const std::map<int, xla::OpSharding>& arg_shardings,
       std::vector<XlaExpression>* arg_expressions,
       std::vector<int>* input_to_args, std::vector<xla::Shape>* input_shapes,
-      bool is_entry_computation);
+      std::string& args_tuple_sharding, bool is_entry_computation);
 
   xla::ChannelHandle NewChannel(xla::ChannelHandle::ChannelType type);
 

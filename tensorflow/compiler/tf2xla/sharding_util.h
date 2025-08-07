@@ -18,6 +18,8 @@ limitations under the License.
 #include <string>
 
 #include "xla/hlo/builder/sharding_builder.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/shape.h"
 #include "xla/status_macros.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -53,6 +55,9 @@ void SetShardingDeviceAssignmentFromNode(const Node& src, Node* dst);
 absl::StatusOr<std::optional<xla::OpSharding>> GetShardingFromNodeDef(
     const NodeDef& node_def, bool add_metadata);
 
+void addSdyShardingFrontendAttribute(xla::XlaBuilder* builder, xla::XlaOp op,
+                                     xla::Shape shape,
+                                     bool non_tuple_args = false);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_TF2XLA_SHARDING_UTIL_H_

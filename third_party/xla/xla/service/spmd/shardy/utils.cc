@@ -370,17 +370,22 @@ bool hasGspmdAttrsOrOps(mlir::ModuleOp module) {
     // even get false positives as we've previously seen where IFRT was once
     // adding replicated `mhlo.sharding`s on all the inputs/outputs.
     if (func.getSymName() != "main") {
-      for (int64_t argIndex = 0; argIndex < func.getNumArguments();
-           ++argIndex) {
-        if (func.getArgAttr(argIndex, sdy::kXlaShardingAttr) &&
-            !func.getArgAttr(argIndex, mlir::sdy::kShardingAttr) &&
-            !hasKey(sdy::getFuncArgFrontendAttrs(func, argIndex),
-                    sdy::kShardingRoundTripAttr)) {
-          return true;
+      if (!hasKey(sdy::getFrontendAttrs(module), sdy::kInTupleShardings)) {
+        for (int64_t argIndex = 0; argIndex < func.getNumArguments();
+             ++argIndex) {
+          if (func.getArgAttr(argIndex, sdy::kXlaShardingAttr) &&
+              !func.getArgAttr(argIndex, mlir::sdy::kShardingAttr) &&
+              !hasKey(sdy::getFuncArgFrontendAttrs(func, argIndex),
+                      sdy::kShardingRoundTripAttr)) {
+            return true;
+          }
         }
       }
-      if (areFuncResultShardingsForGspmd(func)) {
-        return true;
+
+      if (!hasKey(sdy::getFrontendAttrs(module), sdy::kOutTupleShardings)) {
+        if (areFuncResultShardingsForGspmd(func)) {
+          return true;
+        }
       }
     }
     bool hasGspmd = false;

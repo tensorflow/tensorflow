@@ -58,6 +58,8 @@ limitations under the License.
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/protobuf_util.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/spmd/shardy/constants.h"
+#include "xla/service/spmd/shardy/stablehlo_round_trip/stablehlo_import.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -211,7 +213,8 @@ absl::Status BuildComputation(
     int* num_computation_outputs, int* num_nonconst_outputs,
     std::vector<XlaCompiler::OutputDescription>* outputs,
     std::vector<XlaCompiler::ResourceUpdate>* resource_updates,
-    xla::Shape* output_shape, absl::Span<int const> input_mapping) {
+    xla::Shape* output_shape, absl::Span<int const> input_mapping,
+    std::string& resultTupleSharding, bool use_shardy_partitioner) {
   // Attach a common operator name as metadata. This has no semantic effect — it
   // merely makes the HLO graph more readable when visualized via TensorBoard,
   // since TensorBoard forms groups out of operators with similar names.
@@ -224,10 +227,16 @@ absl::Status BuildComputation(
   // Builds a no-op XLA computation. We need to set the sharding of outputs, but
   // cannot change the sharding of the existing output op. To do this, we build
   // a new identity op to which shardings can be applied.
-  auto identity_op = [builder](xla::XlaOp op,
-                               const std::optional<xla::OpSharding>& sharding) {
+  auto identity_op = [builder, is_entry_computation, use_shardy_partitioner](
+                         xla::XlaOp op,
+                         const std::optional<xla::OpSharding>& sharding) {
     xla::XlaScopedShardingAssignment assign_sharding(builder, sharding);
-    return xla::Copy(op);
+    xla::XlaOp copy_op = xla::Copy(op);
+    if (is_entry_computation && use_shardy_partitioner) {
+      addSdyShardingFrontendAttribute(builder, copy_op,
+                                      builder->GetShape(copy_op).value());
+    }
+    return copy_op;
   };
 
   std::vector<xla::XlaOp> elems;
@@ -432,6 +441,11 @@ absl::Status BuildComputation(
     // Assign proper sharding to the tuple instruction.
     xla::XlaScopedShardingAssignment assign_sharding(builder, op_sharding);
     tuple = xla::Tuple(builder, elems);
+    if (use_shardy_partitioner && builder->sharding().has_value()) {
+      resultTupleSharding = xla::sdy::convertToSdySharding(op_sharding, shape,
+                                                           /*openDims=*/false,
+                                                           /*inlineMesh=*/true);
+    }
   }
   bool returns_tuple = always_return_tuple || elems.size() != 1;
   VLOG(3) << "Computation returns a tuple=" << returns_tuple;
@@ -1062,7 +1076,7 @@ absl::Status XlaCompiler::BuildArguments(
     const std::map<int, xla::OpSharding>& arg_shardings,
     std::vector<XlaExpression>* arg_expressions,
     std::vector<int>* input_to_args, std::vector<xla::Shape>* input_shapes,
-    bool is_entry_computation) {
+    std::string& args_tuple_sharding, bool is_entry_computation) {
   arg_expressions->resize(args.size());
 
   // Argument numbers of arguments and resources that are to be passed to the
@@ -1181,6 +1195,12 @@ absl::Status XlaCompiler::BuildArguments(
                                           : tuple_sharding);
       tuple = xla::Parameter(builder, 0, (*input_shapes)[0], "arg_tuple",
                              is_same_across_replicas);
+      if (options_.use_shardy_partitioner && builder->sharding().has_value()) {
+        args_tuple_sharding =
+            xla::sdy::convertToSdySharding(tuple_sharding, (*input_shapes)[0],
+                                           /*openDims=*/false,
+                                           /*inlineMesh=*/true);
+      }
     } else {
       tuple = xla::Parameter(builder, 0, (*input_shapes)[0], "arg_tuple");
     }
@@ -1196,6 +1216,9 @@ absl::Status XlaCompiler::BuildArguments(
       arg_metadata.set_op_name(arg.node_name);
       builder->SetOneShotOpMetadata(arg_metadata);
       arg_handles[i] = xla::GetTupleElement(tuple, i);
+      if (is_entry_computation && options_.use_shardy_partitioner) {
+        addSdyShardingFrontendAttribute(builder, arg_handles[i], arg_shapes[i]);
+      }
     }
   } else {
     for (std::vector<int>::size_type i = 0; i < input_to_args->size(); ++i) {
@@ -1211,6 +1234,11 @@ absl::Status XlaCompiler::BuildArguments(
         arg_handles[i] =
             xla::Parameter(builder, i, (*input_shapes)[i],
                            absl::StrCat("arg", i), is_same_across_replicas);
+        if (options_.use_shardy_partitioner) {
+          addSdyShardingFrontendAttribute(builder, arg_handles[i],
+                                          (*input_shapes)[i],
+                                          /*non_tuple_args=*/true);
+        }
       } else {
         arg_handles[i] = xla::Parameter(builder, i, (*input_shapes)[i],
                                         absl::StrCat("arg", i));
@@ -1503,10 +1531,12 @@ absl::Status XlaCompiler::CompileGraph(
                       ComputeArgAndRetvalShardings(*graph));
 
   std::vector<XlaExpression> arg_expressions;
-  TF_RETURN_IF_ERROR(BuildArguments(
-      *graph, real_args, options.use_tuple_arg, builder.get(), context,
-      arg_shardings, &arg_expressions, &result->input_mapping,
-      &result->xla_input_shapes, options.is_entry_computation));
+  std::string args_tuple_sharding;
+  TF_RETURN_IF_ERROR(
+      BuildArguments(*graph, real_args, options.use_tuple_arg, builder.get(),
+                     context, arg_shardings, &arg_expressions,
+                     &result->input_mapping, &result->xla_input_shapes,
+                     args_tuple_sharding, options.is_entry_computation));
   context->set_args(std::move(arg_expressions));
 
   PushNodeTokenMapping();
@@ -1562,6 +1592,10 @@ absl::Status XlaCompiler::CompileGraph(
                                 absl::Span<XlaExpression>(retvals));
   XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns{
       UseNoPreferenceLayoutFn(), IdentityShapeRepresentationFn()};
+  LOG(INFO) << "is_entry_computation: " << options.is_entry_computation;
+  LOG(INFO) << "Computation result: "
+            << result->computation->proto().DebugString();
+  std::string result_tuple_sharding;
   TF_RETURN_IF_ERROR(BuildComputation(
       real_args, retvals, arg_shardings, retval_shardings, context->resources(),
       std::move(token_output),
@@ -1573,7 +1607,23 @@ absl::Status XlaCompiler::CompileGraph(
       options.alias_resource_update, builder.get(), result->computation.get(),
       &num_computation_outputs, &num_nonconst_outputs, &result->outputs,
       &result->resource_updates, &result->xla_output_shape,
-      result->input_mapping));
+      result->input_mapping, result_tuple_sharding,
+      options_.use_shardy_partitioner));
+  if (!args_tuple_sharding.empty()) {
+    result->computation->mutable_proto()
+        ->mutable_frontend_attributes()
+        ->mutable_map()
+        ->insert({{xla::sdy::kInTupleShardings.str(), args_tuple_sharding},
+                  {xla::sdy::kUseTupleArgs.str(), "True"}});
+  }
+  if (!result_tuple_sharding.empty()) {
+    result->computation->mutable_proto()
+        ->mutable_frontend_attributes()
+        ->mutable_map()
+        ->insert({xla::sdy::kOutTupleShardings.str(), result_tuple_sharding});
+  }
+  LOG(INFO) << "Computation result after : "
+            << result->computation->proto().DebugString();
 
   for (const auto& [key, send] : host_compute_sends_) {
     auto* d2h = result->host_compute_metadata.add_device_to_host();

@@ -21,6 +21,10 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_sharding_util.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/service/spmd/shardy/constants.h"
+#include "xla/service/spmd/shardy/stablehlo_round_trip/stablehlo_import.h"
+#include "xla/shape.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -221,6 +225,20 @@ absl::StatusOr<std::optional<xla::OpSharding>> GetShardingFromNodeDef(
         shardingv2.value().DebugString()));
   }
   return shardingv2;
+}
+
+void addSdyShardingFrontendAttribute(xla::XlaBuilder* builder, xla::XlaOp op,
+                                     xla::Shape shape, bool non_tuple_args) {
+  if (!builder->sharding().has_value()) {
+    return;
+  }
+
+  // TODO: Check if it already has frontend attribute, return error ?
+  (void)builder->SetInstructionFrontendAttribute(
+      op, xla::sdy::kShardingRoundTripAttr.str(),
+      xla::sdy::convertToSdySharding(builder->sharding().value(), shape,
+                                     /*openDims=*/false,
+                                     /*inlineMesh=*/true, non_tuple_args));
 }
 
 }  // namespace tensorflow

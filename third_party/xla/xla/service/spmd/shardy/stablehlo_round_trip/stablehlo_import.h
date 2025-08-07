@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_SPMD_SHARDY_STABLEHLO_ROUND_TRIP_STABLEHLO_IMPORT_H_
 
 #include <cstdint>
+#include <string>
 
 #include "absl/status/status.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -27,6 +28,7 @@ limitations under the License.
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/tile_assignment.h"
+#include "xla/shape.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -45,6 +47,9 @@ mlir::sdy::TensorShardingAttr convertToSdySharding(
     const llvm::SmallDenseMap<int64_t, mlir::StringRef>&
         deviceIdToMaximalMeshName,
     int64_t rank, bool openDims = false, bool inlineMesh = false);
+std::string convertToSdySharding(const xla::OpSharding& opSharding,
+                                 xla::Shape shape, bool openDims,
+                                 bool inlineMesh, bool nonTupleArgs = false);
 
 // Returns the axis sizes from the tile assignment. For example, given the input
 // {devices=[6,35]<=[7,10,3]T(2,1,0)}, the function returns [7, 2, 5, 3].

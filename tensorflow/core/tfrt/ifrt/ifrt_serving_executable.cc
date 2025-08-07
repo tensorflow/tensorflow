@@ -260,11 +260,13 @@ absl::StatusOr<bool> GetUseShardyPartitioner(mlir::ModuleOp module) {
 // perform that.
 absl::Status ImportShardingsAndLiftInlinedMeshes(mlir::ModuleOp module) {
   mlir::PassManager sdy_roundtrip(module->getContext());
-  sdy_roundtrip.addPass(xla::sdy::createImportShardingsPass(
-      /*allowPropagationToArgs=*/false, /*allowPropagationToResults=*/false));
-  xla::sdy::addSdyRoundTripImportPipeline(sdy_roundtrip,
-                                          /*enableConstantImport=*/false);
-  sdy_roundtrip.addPass(mlir::sdy::createLiftInlinedMeshesPass());
+  // sdy_roundtrip.addPass(xla::sdy::createImportShardingsPass(
+  //     /*allowPropagationToArgs=*/false,
+  //     /*allowPropagationToResults=*/false));
+  // xla::sdy::addSdyRoundTripImportPipeline(sdy_roundtrip,
+  //                                         /*enableConstantImport=*/false);
+  // sdy_roundtrip.addPass(mlir::sdy::createLiftInlinedMeshesPass());
+  // sdy_roundtrip.addPass(xla::sdy::createSdyRoundTripDedupMeshesPass());
 
   tsl::StatusScopedDiagnosticHandler diagnosticHandler(module->getContext());
   absl::Status status =
@@ -520,12 +522,13 @@ IfrtServingExecutable::CreateExecutableSynchronously(
                                  mlir_hlo_module.get());
   }
 
-  if (use_shardy_partitioner) {
-    // We have inlined meshes to build the module for the cluster, but Shardy
-    // expects lifted meshes.
-    TF_RETURN_IF_ERROR(
-        ImportShardingsAndLiftInlinedMeshes(mlir_hlo_module.get()));
-  }
+  // TODO: Inspect if even this can become part of BuildComputation
+  // if (use_shardy_partitioner) {
+  //   // We have inlined meshes to build the module for the cluster, but Shardy
+  //   // expects lifted meshes.
+  //   TF_RETURN_IF_ERROR(
+  //       ImportShardingsAndLiftInlinedMeshes(mlir_hlo_module.get()));
+  // }
 
   const int num_replicas = tf2hlo_result.compile_metadata.num_replicas();
   const int num_partitions =

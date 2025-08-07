@@ -47,6 +47,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "shardy/dialect/sdy/transforms/import/passes.h"  // from @shardy
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
@@ -62,8 +63,10 @@ limitations under the License.
 #include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/hlo/translate/stablehlo.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/spmd/shardy/stablehlo_round_trip/stablehlo_import.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/framework/mlir/status_scoped_diagnostic_handler.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -77,12 +80,28 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+absl::Status ImportShardingsAndInlineMeshes(mlir::ModuleOp module) {
+  mlir::PassManager sdy_roundtrip(module->getContext());
+  sdy_roundtrip.addPass(xla::sdy::createImportShardingsPass(
+      /*allowPropagationToArgs=*/false, /*allowPropagationToResults=*/false));
+  sdy_roundtrip.addPass(mlir::sdy::createInlineMeshesPass());
+
+  tsl::StatusScopedDiagnosticHandler diagnosticHandler(module->getContext());
+  absl::Status status =
+      diagnosticHandler.consumeStatus(sdy_roundtrip.run(module));
+  if (status.ok() && VLOG_IS_ON(1)) {
+    tensorflow::DumpMlirOpToFile(
+        "xla_call_module.imported_tf_func_after_sdy_roundtrip", module);
+  }
+  return status;
+}
+
 // Imports the given `XlaComputation` into StableHLO functions the MLIR module.
 // Returns the MLIR function in the imported module that represents the entry
 // function of the imported computation.
 absl::StatusOr<mlir::func::FuncOp> ImportXlaComputation(
     mlir::SymbolTableCollection &symbol_table_collection, mlir::ModuleOp module,
-    const xla::XlaComputation &computation) {
+    const xla::XlaComputation &computation, bool use_shardy_partitioner) {
   mlir::MLIRContext *context = module.getContext();
   mlir::SymbolTable &symbol_table =
       symbol_table_collection.getSymbolTable(module);
@@ -90,6 +109,11 @@ absl::StatusOr<mlir::func::FuncOp> ImportXlaComputation(
   TF_ASSIGN_OR_RETURN(
       mlir::OwningOpRef<mlir::ModuleOp> imported,
       xla::ConvertHloToStablehlo(*context, &computation.proto()));
+
+  if (use_shardy_partitioner) {
+    TF_RETURN_IF_ERROR(ImportShardingsAndInlineMeshes(imported.get()));
+  }
+
   if (VLOG_IS_ON(5)) {
     DumpMlirOpToFile("xla_call_module.imported_tf_func", *imported);
   }
@@ -255,10 +279,10 @@ class XlaCallModuleOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, loader_->SetPlatformIndex(compilation_platform_));
     OP_REQUIRES_OK(ctx, loader_->RefineDynamicShapes(input_shapes));
     OP_REQUIRES_OK(ctx, loader_->ValidateStaticShapes());
-    OP_REQUIRES_OK(ctx, loader_->PrepareStablehloForLowering());
     if (!function_list_.empty()) {
       OP_REQUIRES_OK(ctx, LowerTfFunctionCalls(ctx));
     }
+    OP_REQUIRES_OK(ctx, loader_->PrepareStablehloForLowering());
 
     xla::XlaOp token_input;
     if (!op_token_input_nodes_.empty()) {
@@ -467,9 +491,11 @@ class XlaCallModuleOp : public XlaOpKernel {
       // Import the lowered HLO module into StableHLO functions in `module`.
       // The main function accepts variadic arguments and returns variadic
       // results.
-      TF_ASSIGN_OR_RETURN(mlir::func::FuncOp main_func,
-                          ImportXlaComputation(symbol_table_collection, module,
-                                               *result.computation));
+      TF_ASSIGN_OR_RETURN(
+          mlir::func::FuncOp main_func,
+          ImportXlaComputation(
+              symbol_table_collection, module, *result.computation,
+              ctx->compiler()->options().use_shardy_partitioner));
 
       // Replace the custom call with ops that call the imported main function.
       mlir::OpBuilder builder(custom_call);

@@ -474,6 +474,48 @@ SmallVector<int64_t> getAxisSizes(const TileAssignment& tileAssignment) {
   return analyzeTileAssignment(tileAssignment).localMesh;
 }
 
+// TODO: Check dedup mesh
+std::string convertToSdySharding(const xla::OpSharding& opSharding,
+                                 xla::Shape shape, bool openDims,
+                                 bool inlineMesh, bool nonTupleArgs) {
+  mlir::MLIRContext context;
+  context.loadDialect<SdyDialect>();
+
+  absl::StatusOr<xla::HloSharding> hloSharding =
+      xla::HloSharding::FromProto(opSharding);
+  CHECK_OK(hloSharding) << "Failed to parse sharding: "
+                        << opSharding.DebugString();
+
+  if (hloSharding->IsTuple()) {
+    CHECK(shape.IsTuple());
+    SmallVector<TensorShardingAttr> sdyShardings;
+    for (auto [shape, elementSharding] :
+         llvm::zip(shape.tuple_shapes(), hloSharding->tuple_elements())) {
+      auto [namedAxes, _] = findMeshAxesAndIds({elementSharding}, &context);
+      sdyShardings.push_back(convertToSdySharding(
+          elementSharding, MeshAttr::get(&context, namedAxes),
+          llvm::SmallDenseMap<int64_t, mlir::StringRef>(),
+          shape.dimensions().size(), openDims, inlineMesh));
+    }
+
+    return mlir::sdy::attributeToString(
+        TensorShardingPerValueAttr::get(&context, sdyShardings));
+  }
+
+  auto [namedAxes, _] = findMeshAxesAndIds({hloSharding.value()}, &context);
+  if (nonTupleArgs) {
+    return mlir::sdy::attributeToString(convertToSdySharding(
+        hloSharding.value(), MeshAttr::get(&context, namedAxes),
+        llvm::SmallDenseMap<int64_t, mlir::StringRef>(),
+        shape.dimensions().size(), openDims, inlineMesh));
+  }
+  return mlir::sdy::attributeToString(TensorShardingPerValueAttr::get(
+      &context, convertToSdySharding(
+                    hloSharding.value(), MeshAttr::get(&context, namedAxes),
+                    llvm::SmallDenseMap<int64_t, mlir::StringRef>(),
+                    shape.dimensions().size(), openDims, inlineMesh)));
+}
+
 // Convert the `hloSharding` into a `TensorShardingAttr` based on the
 // `globalMesh`.
 TensorShardingAttr convertToSdySharding(
@@ -779,6 +821,8 @@ void registerStablehloImportPipeline() {
 }
 
 absl::Status addSdyShardingsToEntryComputation(xla::HloModule* module) {
+  LOG(INFO) << "addSdyShardingsToEntryComputation module: "
+            << module->ToString();
   mlir::MLIRContext context;
   context.loadDialect<SdyDialect>();
   MeshAttr mesh = getMeshAttr(module, &context);
@@ -917,6 +961,8 @@ absl::Status addSdyShardingsToEntryComputation(xla::HloModule* module) {
               &context, convertSharding(hloSharding, rank))));
     }
   }
+
+  LOG(INFO) << "module after adding sdy.shardings: " << module->ToString();
 
   return absl::OkStatus();
 }

@@ -621,6 +621,8 @@ cc_library(
         "@local_xla//xla/hlo/translate/mhlo_to_hlo:layout_util",
         "@local_xla//xla/service:computation_placer_hdr",
         "@local_xla//xla/service:hlo_proto_cc",
+        "@local_xla//xla/service/spmd/shardy:constants",
+        "@local_xla//xla/service/spmd/shardy/stablehlo_round_trip:stablehlo_import",
     ] + if_libtpu([
         ":xla_tpu_backend_registration",
     ]) + if_static(["@local_tsl//tsl/platform:tensor_float_32_utils"]),
@@ -943,8 +945,12 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@local_xla//xla:shape_util",
         "@local_xla//xla:status_macros",
         "@local_xla//xla/hlo/builder:sharding_builder",
+        "@local_xla//xla/hlo/builder:xla_builder",
+        "@local_xla//xla/service/spmd/shardy:constants",
+        "@local_xla//xla/service/spmd/shardy/stablehlo_round_trip:stablehlo_import",
     ],
 )
 
