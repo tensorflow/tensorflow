@@ -16,8 +16,6 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_RUNTIME_XNNPACK_XNN_THREADPOOL_H_
 #define XLA_BACKENDS_CPU_RUNTIME_XNNPACK_XNN_THREADPOOL_H_
 
-#include <memory>
-
 #include "experimental.h"  // xnnpack
 
 namespace Eigen {
@@ -27,20 +25,21 @@ class ThreadPoolInterface;
 
 namespace xla::cpu {
 
-namespace internal {
-struct XnnSchedulerDeleter {
-  void operator()(xnn_scheduler* scheduler);
+// An adaptor from Eigen thread pool to XNNPACK scheduler.
+class XnnScheduler : public xnn_scheduler {
+ public:
+  explicit XnnScheduler(const Eigen::ThreadPoolDevice* device);
+  explicit XnnScheduler(Eigen::ThreadPoolInterface* thread_pool);
+
+  void set_thread_pool(Eigen::ThreadPoolInterface* thread_pool) {
+    thread_pool_ = thread_pool;
+  }
+
+  Eigen::ThreadPoolInterface* thread_pool() const { return thread_pool_; }
+
+ private:
+  Eigen::ThreadPoolInterface* thread_pool_ = nullptr;
 };
-}  // namespace internal
-
-// A wrapper to redirect xnn_scheduler operations to Eigen::ThreadPoolInterface.
-using XnnScheduler =
-    std::unique_ptr<xnn_scheduler, internal::XnnSchedulerDeleter>;
-
-// Creates an XnnScheduler that uses the given Eigen thread pool to launch tasks
-// submitted by the XNNPACK.
-XnnScheduler CreateXnnEigenScheduler(Eigen::ThreadPoolInterface* threads);
-XnnScheduler CreateXnnEigenScheduler(const Eigen::ThreadPoolDevice* device);
 
 }  // namespace xla::cpu
 

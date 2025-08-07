@@ -130,7 +130,7 @@ static xnn_status CreateDotSubgraph(xnn_subgraph_t subgraph, size_t m, size_t n,
 
 TEST(XnnThreadPoolTest, Binary) {
   tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test", 4);
-  auto scheduler = CreateXnnEigenScheduler(thread_pool.AsEigenThreadPool());
+  XnnScheduler scheduler(thread_pool.AsEigenThreadPool());
 
   ASSERT_EQ(xnn_initialize(/*allocator=*/nullptr), xnn_status_success);
 
@@ -150,7 +150,7 @@ TEST(XnnThreadPoolTest, Binary) {
 
   xnn_runtime_t runtime = nullptr;
   ASSERT_EQ(
-      xnn_create_runtime_with_scheduler(subgraph, nullptr, scheduler.get(),
+      xnn_create_runtime_with_scheduler(subgraph, nullptr, &scheduler,
                                         XNN_FLAG_SLINKY_ENABLED, &runtime),
       xnn_status_success);
 
@@ -176,7 +176,7 @@ TEST(XnnThreadPoolTest, Binary) {
 
 TEST(XnnThreadPoolTest, Dot) {
   tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test", 4);
-  auto scheduler = CreateXnnEigenScheduler(thread_pool.AsEigenThreadPool());
+  XnnScheduler scheduler(thread_pool.AsEigenThreadPool());
 
   ASSERT_EQ(xnn_initialize(/*allocator=*/nullptr), xnn_status_success);
 
@@ -194,8 +194,8 @@ TEST(XnnThreadPoolTest, Dot) {
   std::vector<float> out(m * n, 0.0f);
 
   xnn_runtime_t runtime = nullptr;
-  ASSERT_EQ(xnn_create_runtime_with_scheduler(subgraph, nullptr,
-                                              scheduler.get(), 0, &runtime),
+  ASSERT_EQ(xnn_create_runtime_with_scheduler(subgraph, nullptr, &scheduler, 0,
+                                              &runtime),
             xnn_status_success);
 
   std::vector<xnn_external_value> external_values = {

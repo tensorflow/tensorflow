@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/backends/cpu/runtime/xnnpack/xnn_threadpool.h"
 
+#include <cstdint>
+
 #include "experimental.h"  // xnnpack
 
 #define EIGEN_USE_THREADS
@@ -22,48 +24,23 @@ limitations under the License.
 
 namespace xla::cpu {
 
-class XnnEigenScheduler : public xnn_scheduler {
- public:
-  explicit XnnEigenScheduler(Eigen::ThreadPoolInterface* eigen_thread_pool);
-
- private:
-  static int NumThreads(xnn_scheduler* self);
-  static void Schedule(xnn_scheduler* self, void* context,
-                       void (*task)(void* context));
-
-  Eigen::ThreadPoolInterface* eigen_thread_pool_ = nullptr;
-};
-
-XnnEigenScheduler::XnnEigenScheduler(
-    Eigen::ThreadPoolInterface* eigen_thread_pool) {
-  eigen_thread_pool_ = eigen_thread_pool;
-  num_threads = &NumThreads;
-  schedule = &Schedule;
+static int32_t NumThreads(xnn_scheduler* self) {
+  return reinterpret_cast<XnnScheduler*>(self)->thread_pool()->NumThreads();
 }
 
-int XnnEigenScheduler::NumThreads(xnn_scheduler* self) {
-  return reinterpret_cast<XnnEigenScheduler*>(self)
-      ->eigen_thread_pool_->NumThreads();
-}
-
-void XnnEigenScheduler::Schedule(xnn_scheduler* self, void* context,
-                                 void (*task)(void* context)) {
-  reinterpret_cast<XnnEigenScheduler*>(self)->eigen_thread_pool_->Schedule(
+static void Schedule(xnn_scheduler* self, void* context,
+                     void (*task)(void* context)) {
+  reinterpret_cast<XnnScheduler*>(self)->thread_pool()->Schedule(
       [task, context]() { (*task)(context); });
 }
 
-namespace internal {
-void XnnSchedulerDeleter::operator()(xnn_scheduler* scheduler) {
-  delete reinterpret_cast<XnnEigenScheduler*>(scheduler);
-}
-}  // namespace internal
+XnnScheduler::XnnScheduler(const Eigen::ThreadPoolDevice* device)
+    : XnnScheduler(device->getPool()) {}
 
-XnnScheduler CreateXnnEigenScheduler(Eigen::ThreadPoolInterface* threads) {
-  return XnnScheduler(new XnnEigenScheduler(threads));
-}
-
-XnnScheduler CreateXnnEigenScheduler(const Eigen::ThreadPoolDevice* device) {
-  return CreateXnnEigenScheduler(device->getPool());
+XnnScheduler::XnnScheduler(Eigen::ThreadPoolInterface* thread_pool)
+    : thread_pool_(thread_pool) {
+  xnn_scheduler::num_threads = &NumThreads;
+  xnn_scheduler::schedule = &Schedule;
 }
 
 }  // namespace xla::cpu

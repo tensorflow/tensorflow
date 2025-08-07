@@ -73,7 +73,7 @@ struct XnnFusionThunk::XnnExecutable {
   // Resets XNNPACK runtime and subgraph.
   absl::Status Reset();
 
-  XnnScheduler scheduler = nullptr;
+  std::unique_ptr<XnnScheduler> scheduler;
   XnnSubgraph subgraph = nullptr;
   XnnRuntime runtime = nullptr;
 
@@ -142,7 +142,7 @@ XnnFusionThunk::CreateXnnExecutable(
 
   // Configure XNNPACK scheduler if the use of thread pool is enabled.
   if (options_.use_threadpool && device) {
-    executable.scheduler = CreateXnnEigenScheduler(device);
+    executable.scheduler = std::make_unique<XnnScheduler>(device);
   }
 
   if (builder_) {
