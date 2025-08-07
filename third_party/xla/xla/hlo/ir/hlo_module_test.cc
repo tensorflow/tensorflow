@@ -202,15 +202,14 @@ TEST(HloModuleTest, CloneGeneral) {
 
   EXPECT_EQ(m1.computation_count(), m2->computation_count());
   size_t i = 0;
-  for (auto it1 = m1.computations().begin(), it2 = m2->computations().begin();
-       it1 != m1.computations().end() && it2 != m2->computations().end();
+  auto m1_computations = m1.computations();
+  auto m2_computations = m2->computations();
+  for (auto it1 = m1_computations.begin(), it2 = m2_computations.begin();
+       it1 != m1_computations.end() && it2 != m2_computations.end();
        ++it1, ++it2) {
     const HloComputation *c1 = *it1, *c2 = *it2;
     EXPECT_EQ(GetCloneName(c1->name()), c2->name())
         << "Computation sequence mismatch at " << i;
-    EXPECT_EQ(GetCloneName(m1.mutable_computation(i)->name()),
-              m2->mutable_computation(i)->name())
-        << "Indexing computation sequence mismatch at " << i;
   }
 }
 
@@ -245,15 +244,14 @@ TEST(HloModuleTest, CloneWithContextGeneral) {
 
   EXPECT_EQ(m1.computation_count(), m2->computation_count());
   size_t i = 0;
-  for (auto it1 = m1.computations().begin(), it2 = m2->computations().begin();
-       it1 != m1.computations().end() && it2 != m2->computations().end();
+  auto m1_computations = m1.computations();
+  auto m2_computations = m2->computations();
+  for (auto it1 = m1_computations.begin(), it2 = m2_computations.begin();
+       it1 != m1_computations.end() && it2 != m2_computations.end();
        ++it1, ++it2) {
     const HloComputation *c1 = *it1, *c2 = *it2;
     EXPECT_EQ(GetCloneName(c1->name()), c2->name())
         << "Computation sequence mismatch at " << i;
-    EXPECT_EQ(GetCloneName(m1.mutable_computation(i)->name()),
-              m2->mutable_computation(i)->name())
-        << "Indexing computation sequence mismatch at " << i;
     EXPECT_EQ(clone_context->FindComputation(c1), c2);
   }
 }

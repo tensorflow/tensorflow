@@ -326,7 +326,7 @@ TEST_F(XlaCompilerTest, SimpleDynamicShapeParameter) {
   auto hlo = result.computation->proto();
   TF_ASSERT_OK_AND_ASSIGN(auto module, LoadModuleFromHloProto(hlo));
   EXPECT_EQ(module->computation_count(), 1);
-  EXPECT_TRUE(module->mutable_computation(0)
+  EXPECT_TRUE((*module->computations().begin())
                   ->parameter_instruction(0)
                   ->shape()
                   .is_dynamic());

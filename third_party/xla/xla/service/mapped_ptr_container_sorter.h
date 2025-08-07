@@ -79,7 +79,7 @@ class MappedPtrContainerSorter {
   using UnmappedPtrIndexFn = absl::FunctionRef<size_t(const PointedToTy*)>;
 
   // Functions that return an UnmappedElementIndexFn that indicates that
-  // ummapped elements (from an unordered container) should be placed before or
+  // unmapped elements (from an unordered container) should be placed before or
   // after all mapped elements, respectively.
   static UnmappedPtrIndexFn IndexBeforeMappedElementsFn();
   static UnmappedPtrIndexFn IndexAfterMappedElementsFn();
