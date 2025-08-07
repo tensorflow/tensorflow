@@ -60,11 +60,12 @@ void addSdyRoundTripExportPipeline(mlir::OpPassManager& pm,
 }
 
 void addSdyRoundTripImportPipeline(mlir::OpPassManager& pm,
-                                   bool enableConstantImport) {
+                                   bool enableConstantImport,
+                                   bool importOnlyUninlineableFuncCalls) {
   addCommonPreImportPasses(pm, enableConstantImport);
   pm.addPass(createSdyRoundTripImportShardyAttrsPass());
   pm.addPass(createSdyRoundTripShardMapImportPass());
-  addCommonPostImportPasses(pm);
+  addCommonPostImportPasses(pm, importOnlyUninlineableFuncCalls);
 }
 
 namespace {
@@ -99,11 +100,16 @@ struct SdyRoundTripImportPipelineOptions
   Option<bool> enableConstantImport{*this, "enable-constant-import",
                                     llvm::cl::desc("Enable constant import."),
                                     llvm::cl::init(true)};
+  Option<bool> importOnlyUninlineableFuncCalls{
+      *this, "import-only-uninlineable-func-calls",
+      llvm::cl::desc("Import only unlineable func calls."),
+      llvm::cl::init(true)};
 };
 
 void sdyRoundTripImportPipeline(
     mlir::OpPassManager& pm, const SdyRoundTripImportPipelineOptions& options) {
-  addSdyRoundTripImportPipeline(pm, options.enableConstantImport);
+  addSdyRoundTripImportPipeline(pm, options.enableConstantImport,
+                                options.importOnlyUninlineableFuncCalls);
 }
 
 }  // namespace
