@@ -441,7 +441,7 @@ absl::StatusOr<bool> RunOnInstruction(HloInstruction* gemm,
   }
 
   const AutotuneConfig& config = autotuner.config();
-  AutotuneCacheKey key(config.GetModelStr(), *gemm);
+  AutotuneCacheKey key(config.GetDeviceDescription(), *gemm);
   TF_ASSIGN_OR_RETURN(AutotuneResult algorithm,
                       AutotunerUtil::Autotune(
                           gemm, config, [&] { return autotuner(gemm, key); }));
