@@ -23,8 +23,8 @@ limitations under the License.
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
 #include "llvm/Support/Casting.h"
-#include "xla/codegen/math/erf.h"
-#include "xla/codegen/math/intrinsic.h"
+#include "xla/codegen/intrinsic/erf.h"
+#include "xla/codegen/intrinsic/intrinsic.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::cpu {

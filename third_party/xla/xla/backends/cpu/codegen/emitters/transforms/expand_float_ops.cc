@@ -36,8 +36,6 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/codegen/emitters/implicit_arith_op_builder.h"
-#include "xla/codegen/math/fptrunc.h"
-#include "xla/codegen/math/log1p.h"
 #include "xla/mlir/utils/type_util.h"
 
 namespace xla::cpu {

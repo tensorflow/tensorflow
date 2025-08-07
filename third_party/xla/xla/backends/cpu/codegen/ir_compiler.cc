@@ -66,8 +66,8 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/cpu_features.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/backends/cpu/codegen/polynomial_approximations.h"
-#include "xla/codegen/math/math_compiler_lib.h"
-#include "xla/codegen/math_lib.h"
+#include "xla/codegen/intrinsic/intrinsic_compiler_lib.h"
+#include "xla/codegen/intrinsic_lib.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/cpu_options.h"
 #include "xla/service/hlo_module_config.h"
@@ -320,7 +320,7 @@ llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> IrCompiler::operator()(
 llvm::Error IrCompiler::RunIrPasses(llvm::Module& module,
                                     llvm::TargetMachine* target_machine) const {
   if (absl::c_any_of(module.getFunctionList(), FunctionHasInternalLinkage)) {
-    codegen::math::RunInlineAndOptPasses(module);
+    codegen::intrinsic::RunInlineAndOptPasses(module);
   }
 
   llvm::PipelineTuningOptions pto =
@@ -342,9 +342,10 @@ llvm::Error IrCompiler::RunIrPasses(llvm::Module& module,
       std::make_unique<llvm::TargetLibraryInfoImpl>(target_triple);
   target_library_info_impl->addVectorizableFunctions(
       PolynomialApproximationsVectorization());
-  codegen::MathFunctionLib math_lib(
+  codegen::IntrinsicFunctionLib intrinsic_lib(
       target_machine->getTargetFeatureString().str());
-  target_library_info_impl->addVectorizableFunctions(math_lib.Vectorizations());
+  target_library_info_impl->addVectorizableFunctions(
+      intrinsic_lib.Vectorizations());
 
   fam.registerPass(
       [&] { return llvm::TargetLibraryAnalysis(*target_library_info_impl); });
@@ -392,11 +393,11 @@ llvm::Error IrCompiler::RunIrPasses(llvm::Module& module,
     }
   }
 
-  auto replaced_functions = math_lib.RewriteMathFunctions(module);
+  auto replaced_functions = intrinsic_lib.RewriteIntrinsicFunctions(module);
   RewriteToPolynomialApproximations(&module, options_.fast_math_flags);
   if (!replaced_functions.empty()) {
-    codegen::math::RemoveFromCompilerUsed(module, replaced_functions);
-    codegen::math::RunInlineAndOptPasses(module);
+    codegen::intrinsic::RemoveFromCompilerUsed(module, replaced_functions);
+    codegen::intrinsic::RunInlineAndOptPasses(module);
   }
 
   return llvm::Error::success();
