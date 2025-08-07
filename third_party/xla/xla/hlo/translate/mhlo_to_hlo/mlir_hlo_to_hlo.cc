@@ -1665,17 +1665,34 @@ LogicalResult ExportXlaOp(InfeedOp op, OpLoweringContext ctx) {
   xla::Shape data_shape = xla::ShapeUtil::MakeTupleShape(subshapes);
   auto xla_result = xla::InfeedWithToken(token, data_shape,
                                          std::string(op.getInfeedConfig()));
+  std::optional<xla::OpSharding> data_sharding = ctx.builder->sharding();
   ctx.builder->ClearSharding();
+  std::optional<xla::OpSharding> last_sharding;
+  if (data_sharding.has_value()) {
+    last_sharding = *data_sharding->mutable_tuple_shardings()->ReleaseLast();
+  }
 
   if (!subshapes.empty()) {
+    xla::XlaScopedShardingAssignment sharding_scope(ctx.builder, data_sharding);
     auto data_tuple_element = xla::GetTupleElement(xla_result, 0);
+
     for (const auto& item : llvm::enumerate(op.getResults())) {
-      if (item.index() == num_results - 1) break;
+      if (item.index() == num_results - 1) {
+        break;
+      }
+
+      xla::XlaScopedShardingAssignment sharding_scope(
+          ctx.builder,
+          data_sharding.has_value()
+              ? std::make_optional(
+                    data_sharding->tuple_shardings().at(item.index()))
+              : std::nullopt);
       value_map[item.value()] =
           xla::GetTupleElement(data_tuple_element, item.index());
     }
   }
 
+  xla::XlaScopedShardingAssignment sharding_scope(ctx.builder, last_sharding);
   value_map[op.getResult(num_results - 1)] =
       xla::GetTupleElement(xla_result, 1);
 
@@ -1691,13 +1708,12 @@ LogicalResult ExportXlaOp(OutfeedOp op, OpLoweringContext ctx) {
   const auto sharding = ctx.builder->sharding();
   xla::XlaOp operand;
 
-  if (sharding.has_value() &&
-      sharding->tuple_shardings_size() != operands.size()) {
-    xla::XlaScopedShardingAssignment scoped_sharding(ctx.builder, std::nullopt);
-    operand = Tuple(ctx.builder, operands);
-  } else {
+  {
+    xla::XlaScopedShardingAssignment scoped_sharding(
+        ctx.builder, CreateTupleSharding(GetXlaOpShardings(operands)));
     operand = Tuple(ctx.builder, operands);
   }
+
   std::vector<xla::Shape> subshapes;
   for (auto operand : op.getInputs())
     subshapes.push_back(xla::TypeToShape(operand.getType()));
@@ -4358,17 +4374,31 @@ LogicalResult ExportXlaOp(InfeedOp op, OpLoweringContext ctx) {
   xla::Shape data_shape = xla::ShapeUtil::MakeTupleShape(subshapes);
   auto xla_result = xla::InfeedWithToken(token, data_shape,
                                          std::string(op.getInfeedConfig()));
+
+  std::optional<xla::OpSharding> data_sharding = ctx.builder->sharding();
   ctx.builder->ClearSharding();
+  std::optional<xla::OpSharding> last_sharding;
+  if (data_sharding.has_value()) {
+    last_sharding = *data_sharding->mutable_tuple_shardings()->ReleaseLast();
+  }
 
   if (!subshapes.empty()) {
+    xla::XlaScopedShardingAssignment sharding_scope(ctx.builder, data_sharding);
     auto data_tuple_element = xla::GetTupleElement(xla_result, 0);
     for (const auto& item : llvm::enumerate(op.getResults())) {
       if (item.index() == num_results - 1) break;
+      xla::XlaScopedShardingAssignment sharding_scope(
+          ctx.builder,
+          data_sharding.has_value()
+              ? std::make_optional(
+                    data_sharding->tuple_shardings().at(item.index()))
+              : std::nullopt);
       value_map[item.value()] =
           xla::GetTupleElement(data_tuple_element, item.index());
     }
   }
 
+  xla::XlaScopedShardingAssignment sharding_scope(ctx.builder, last_sharding);
   value_map[op.getResult(num_results - 1)] =
       xla::GetTupleElement(xla_result, 1);
 
@@ -4405,11 +4435,9 @@ LogicalResult ExportXlaOp(OutfeedOp op, OpLoweringContext ctx) {
   const auto sharding = ctx.builder->sharding();
   xla::XlaOp operand;
 
-  if (sharding.has_value() &&
-      sharding->tuple_shardings_size() != operands.size()) {
-    xla::XlaScopedShardingAssignment scoped_sharding(ctx.builder, std::nullopt);
-    operand = Tuple(ctx.builder, operands);
-  } else {
+  {
+    xla::XlaScopedShardingAssignment scoped_sharding(
+        ctx.builder, CreateTupleSharding(GetXlaOpShardings(operands)));
     operand = Tuple(ctx.builder, operands);
   }
   std::vector<xla::Shape> subshapes;
