@@ -1,3 +1,9 @@
+# Release 2.19.1
+
+### Bug Fixes and Other Changes
+
+* Fix save_model.save for Serving embedding and add SparseCore Reshard. 
+
 # Release 2.19.0
 
 ## TensorFlow
