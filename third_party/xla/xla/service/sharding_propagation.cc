@@ -337,6 +337,7 @@ const HloInstruction* PickRepresentativeOperand(
     case HloOpcode::kRng:
     case HloOpcode::kRngGetAndUpdateState:
     case HloOpcode::kRngBitGenerator:
+    case HloOpcode::kScaledDot:
     case HloOpcode::kScatter:
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kSend:

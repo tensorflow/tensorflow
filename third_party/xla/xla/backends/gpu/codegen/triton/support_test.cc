@@ -3418,6 +3418,7 @@ absl::flat_hash_set<HloOpcode> AllTestedOpcodes() {
   ret.emplace(HloOpcode::kReverse);
   ret.emplace(HloOpcode::kRngBitGenerator);
   ret.emplace(HloOpcode::kRngGetAndUpdateState);
+  ret.emplace(HloOpcode::kScaledDot);
   ret.emplace(HloOpcode::kSort);
   ret.emplace(HloOpcode::kStochasticConvert);
   ret.emplace(HloOpcode::kTopK);

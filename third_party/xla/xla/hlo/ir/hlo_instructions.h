@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_domain_metadata.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/literal_pool.h"
@@ -2701,6 +2702,69 @@ class HloRaggedDotInstruction : public HloInstruction {
 
   // Describes the dimension numbers used for a ragged dot.
   RaggedDotDimensionNumbers ragged_dot_dimension_numbers_;
+
+  // Information used to communicate to the implementation about the algorithm
+  // used to produce results. See the documentation on precision_config().
+  PrecisionConfig precision_config_;
+};
+
+class HloScaledDotInstruction : public HloInstruction {
+ public:
+  static const int kOperands = 4;
+
+  // Creates a dot op with operands 'lhs' and 'rhs' with contracting and batch
+  // dimensions specified in 'dimension_numbers' and with 'lhs_scale' and
+  // 'rhs_scale' as the scale factors. Dimensions of the scale factors should
+  // have the same order as the dimensions of the dot operation.
+  explicit HloScaledDotInstruction(const Shape& shape, HloInstruction* lhs,
+                                   HloInstruction* lhs_scale,
+                                   HloInstruction* rhs,
+                                   HloInstruction* rhs_scale,
+                                   const DotDimensionNumbers& dimension_numbers,
+                                   const PrecisionConfig& precision_config);
+
+  // Returns data on the dimension numbers used for a dot operation.
+  const DotDimensionNumbers& dot_dimension_numbers() const {
+    return dot_dimension_numbers_;
+  }
+
+  // Sets dimension numbers used for a dot operation.
+  DotDimensionNumbers* mutable_dot_dimension_numbers() {
+    return &dot_dimension_numbers_;
+  }
+
+  // Returns the information used to tell the implementation information about
+  // what sort of precision is requested. The meaning of the field is backend
+  // specific. At the moment, it is only supported for kConvolution, kDot, and
+  // kRaggedDot. Transformations on one k(Ragged)Dot or kConvolution to another
+  // will preserve this information. Transformations to other HLOs will not
+  // preserve this information but it is presumed that the alternate lowering is
+  // strictly superior.
+  const PrecisionConfig& precision_config() const { return precision_config_; }
+  PrecisionConfig* mutable_precision_config() { return &precision_config_; }
+
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const override;
+
+  static bool ClassOf(const HloInstruction* hlo) {
+    return hlo->opcode() == HloOpcode::kScaledDot;
+  }
+
+ private:
+  void PrintExtraAttributesImpl(AttributePrinter& printer,
+                                const HloPrintOptions& options) const override;
+
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
+          eq_computations) const override;
+  // Implementation for non-common logic of CloneWithNewOperands.
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+      HloCloneContext* context) const override;
+
+  // Describes the dimension numbers used for a dot.
+  DotDimensionNumbers dot_dimension_numbers_;
 
   // Information used to communicate to the implementation about the algorithm
   // used to produce results. See the documentation on precision_config().
