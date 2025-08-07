@@ -16,8 +16,6 @@
 #define XLA_HLO_TRANSFORMS_HOST_OFFLOADER_H_
 
 #include <cstdint>
-#include <memory>
-#include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -26,10 +24,8 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/alias_info.h"
-#include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
-#include "xla/service/hlo_buffer.h"
 #include "xla/service/host_offload_utils.h"
 
 namespace xla {
@@ -70,6 +66,10 @@ class HostOffloader : public HloModulePass {
   absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+ protected:
+  virtual absl::StatusOr<std::vector<int64_t>>
+  GetPallasCustomCallOutputMemorySpaces(HloInstruction* instruction) const;
 
  private:
   // Process the next "MoveToHost" instruction that resides at the beginning of
@@ -121,6 +121,14 @@ class HostOffloader : public HloModulePass {
   // Walks down the graph and does "host memory offloading" starting from every
   // host memory parameter in the entry computation.
   absl::StatusOr<bool> HandleInputStreaming(HloComputation* entry_computation);
+
+  // If a Pallas kernel has an output in host memory space, we will set the
+  // output to host memory space and walk down the graph setting all users to
+  // host memory space. Returns true if the module was changed.
+  absl::StatusOr<bool> HandlePallasKernels(HloModule* module);
+
+  // Handles a single Pallas kernel.
+  absl::StatusOr<bool> HandlePallasKernel(HloInstruction* instruction);
 
   // Walks down the graph and does "host memory offloading" starting from every
   // MoveToHost custom call.
