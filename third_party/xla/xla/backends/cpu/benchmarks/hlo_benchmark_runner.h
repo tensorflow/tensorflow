@@ -22,11 +22,13 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
 #include "xla/service/compiler.h"
+#include "xla/tools/run_hlo_module.pb.h"
 #include "xla/tsl/platform/test_benchmark.h"
 
 namespace xla::cpu {
@@ -81,6 +83,12 @@ absl::Status CompileHloBenchmark(
 absl::Status CompileHloBenchmark(benchmark::State& state,
                                  std::unique_ptr<HloModule> module,
                                  const HloBenchmarkOptions& benchmark_options);
+
+// Loads an HLO module. If the user provides an HloSnapshot or a
+// HloUnoptimizedSnapshot the iteration literals will be loaded as well.
+absl::StatusOr<std::pair<std::unique_ptr<HloModule>,
+                         std::unique_ptr<RunHloModuleIterationLiterals>>>
+LoadHloModuleAndMaybeIterationLiterals(absl::string_view hlo_path);
 
 }  // namespace xla::cpu
 
