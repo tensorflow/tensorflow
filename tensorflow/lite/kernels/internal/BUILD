@@ -818,7 +818,7 @@ cc_library(
         ":common",
         ":compatibility",
         ":cppmath",
-        "@gemmlowp",
+        "@gemmlowp//:fixedpoint",
     ],
 )
 
