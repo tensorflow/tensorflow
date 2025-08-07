@@ -32,18 +32,19 @@ class XnnEigenScheduler : public xnn_scheduler {
                        void (*task)(void* context));
 
   Eigen::ThreadPoolInterface* eigen_thread_pool_ = nullptr;
+  int num_threads_cache_ = 0;
 };
 
 XnnEigenScheduler::XnnEigenScheduler(
     Eigen::ThreadPoolInterface* eigen_thread_pool) {
   eigen_thread_pool_ = eigen_thread_pool;
+  num_threads_cache_ = eigen_thread_pool->NumThreads();
   num_threads = &NumThreads;
   schedule = &Schedule;
 }
 
 int XnnEigenScheduler::NumThreads(xnn_scheduler* self) {
-  return reinterpret_cast<XnnEigenScheduler*>(self)
-      ->eigen_thread_pool_->NumThreads();
+  return reinterpret_cast<XnnEigenScheduler*>(self)->num_threads_cache_;
 }
 
 void XnnEigenScheduler::Schedule(xnn_scheduler* self, void* context,
