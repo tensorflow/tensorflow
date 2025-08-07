@@ -178,6 +178,12 @@ tsl::RCReference<ChunkDestination> MakeDmaDestination(
     std::shared_ptr<xla::PjRtClient::AsyncHostToDeviceTransferManager> atm,
     int buffer_index, size_t transfer_size);
 
+// Creates a ChunkDestination for a sliced offset into
+// a PjRtRawBuffer.
+absl::StatusOr<std::pair<tsl::RCReference<ChunkDestination>, xla::PjRtFuture<>>>
+CreateSlicedRawBufferDest(tsl::RCReference<xla::PjRtRawBuffer> raw_buffer,
+                          size_t offset, size_t size);
+
 namespace internal {
 
 // A semaphore which calls a callback with [false]*N + [true]

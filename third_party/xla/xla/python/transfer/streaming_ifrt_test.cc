@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "xla/pjrt/pjrt_compiler.h"
+#include "xla/pjrt/raw_buffer.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/test_util.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
@@ -42,6 +43,7 @@ limitations under the License.
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/casts.h"
 
@@ -93,26 +95,19 @@ absl::StatusOr<SingleBufferCopyPlan> SetupTransferDestList(
   return results;
 }
 
-TEST(PremappedCopierState, RoundTrip) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, xla::ifrt::test_util::GetClient());
-  size_t xfer_size = 1024 * 1024;
-  auto test_pattern = tests::CreateTestPattern(0, 16l * 1024 * 1024);
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto arr, tests::CopyTestPatternToDevice(
-                    client.get(), client->devices()[0], test_pattern));
+void CopyIntoDest(tsl::RCReference<ChunkDestination> dest,
+                  tsl::RCReference<xla::ifrt::Array> arr, size_t xfer_size,
+                  size_t buffer_id) {
   std::shared_ptr<xla::PjRtClient> pjrt_client =
       tensorflow::down_cast<xla::ifrt::PjRtClient*>(arr->client())
           ->shared_ptr_pjrt_client();
+
+  auto* array = static_cast<xla::ifrt::PjRtCompatibleArray*>(arr.get());
   TF_ASSERT_OK_AND_ASSIGN(
       auto scratch, AllocateAndMapPjrtMemory(pjrt_client, 1024 * 1024 * 16));
-  auto* array = static_cast<xla::ifrt::PjRtCompatibleArray*>(arr.get());
   TF_ASSERT_OK_AND_ASSIGN(auto src_work_units,
                           DmaCopyChunk::DivideBufferCopiesEvenly(
                               array->pjrt_buffers()[0], xfer_size, 0));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto dest_copy_plan,
-      SetupTransferDestList(ShapeFromIfrt(arr), GetOtherDevice(arr),
-                            GetIfrtClient(arr), xfer_size));
   auto cstate = std::make_shared<PremappedCopierState>(scratch, 4, xfer_size);
 
   absl::Mutex mu;
@@ -140,21 +135,91 @@ TEST(PremappedCopierState, RoundTrip) {
     auto state = local_queue.front();
     local_queue.pop_front();
     mu.Unlock();
-    TF_ASSERT_OK(dest_copy_plan.dests[0]->Put(
-        state.buff, state.offset, state.size,
-        [cstate, buf = state.buff]() { cstate->ReturnBuffer(buf); }));
+    TF_ASSERT_OK(
+        dest->Put(state.buff, state.offset, state.size,
+                  [cstate, buf = state.buff]() { cstate->ReturnBuffer(buf); }));
   }
+}
 
-  auto pull_result_arr = dest_copy_plan.arrays[0];
-
+absl::StatusOr<std::vector<int32_t>> FetchResult(
+    tsl::RCReference<xla::ifrt::Array> arr, size_t result_size) {
   std::vector<int32_t> result;
-  result.resize(test_pattern.size());
-  TF_ASSERT_OK(
-      pull_result_arr
-          ->CopyToHostBuffer(result.data(), std::nullopt,
-                             xla::ifrt::ArrayCopySemantics::kReuseInput)
+  result.resize(result_size);
+  TF_RETURN_IF_ERROR(
+      arr->CopyToHostBuffer(result.data(), std::nullopt,
+                            xla::ifrt::ArrayCopySemantics::kReuseInput)
           .Await());
+  return result;
+}
+
+TEST(PremappedCopierState, RoundTrip) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, xla::ifrt::test_util::GetClient());
+  size_t xfer_size = 1024 * 1024;
+  auto test_pattern = tests::CreateTestPattern(0, 16l * 1024 * 1024);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto arr, tests::CopyTestPatternToDevice(
+                    client.get(), client->devices()[0], test_pattern));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto dest_copy_plan,
+      SetupTransferDestList(ShapeFromIfrt(arr), GetOtherDevice(arr),
+                            GetIfrtClient(arr), xfer_size));
+  CopyIntoDest(dest_copy_plan.dests[0], arr, xfer_size, 0);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto result, FetchResult(dest_copy_plan.arrays[0], test_pattern.size()));
   EXPECT_EQ(result, test_pattern);
+}
+
+TEST(PremappedCopierState, RoundTripSlicedRaw) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, xla::ifrt::test_util::GetClient());
+  size_t xfer_size = 1024 * 1024;
+  auto test_pattern = tests::CreateTestPattern(0, 16l * 1024 * 1024);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto dest_arr, tests::CopyTestPatternToDevice(
+                         client.get(), client->devices()[0],
+                         std::vector<int32_t>(test_pattern.size() * 3 / 2, 0)));
+  TF_ASSERT_OK(dest_arr->GetReadyFuture().Await());
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto arr, tests::CopyTestPatternToDevice(
+                    client.get(), client->devices()[0], test_pattern));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto dest_raw_buffer,
+      xla::PjRtRawBuffer::CreateRawAliasOfBuffer(
+          static_cast<xla::ifrt::PjRtCompatibleArray*>(dest_arr.get())
+              ->pjrt_buffers()[0]
+              .get()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto fut_and_dest,
+      CreateSlicedRawBufferDest(
+          dest_raw_buffer, dest_raw_buffer->GetOnDeviceSizeInBytes() / 3,
+          dest_raw_buffer->GetOnDeviceSizeInBytes() * 2 / 3));
+  CopyIntoDest(std::move(fut_and_dest.first), arr, xfer_size, 0);
+  TF_ASSERT_OK(fut_and_dest.second.Await());
+
+  TF_ASSERT_OK_AND_ASSIGN(auto result,
+                          FetchResult(dest_arr, test_pattern.size() * 3 / 2));
+  std::vector<int32_t> padded_test_pattern(test_pattern.size() / 2, 0);
+  padded_test_pattern.insert(padded_test_pattern.end(), test_pattern.begin(),
+                             test_pattern.end());
+  EXPECT_EQ(result, padded_test_pattern);
+}
+
+TEST(PremappedCopierState, PoisonSlicedRaw) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, xla::ifrt::test_util::GetClient());
+  TF_ASSERT_OK_AND_ASSIGN(auto dest_arr, tests::CopyTestPatternToDevice(
+                                             client.get(), client->devices()[0],
+                                             std::vector<int32_t>(4096, 0)));
+  TF_ASSERT_OK(dest_arr->GetReadyFuture().Await());
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto dest_raw_buffer,
+      xla::PjRtRawBuffer::CreateRawAliasOfBuffer(
+          static_cast<xla::ifrt::PjRtCompatibleArray*>(dest_arr.get())
+              ->pjrt_buffers()[0]
+              .get()));
+  TF_ASSERT_OK_AND_ASSIGN(auto fut_and_dest,
+                          CreateSlicedRawBufferDest(dest_raw_buffer, 0, 4096));
+  fut_and_dest.first->Poison(absl::InternalError("Poisoning."));
+  ASSERT_FALSE(fut_and_dest.second.Await().ok());
 }
 
 TEST(Semaphore, Basic) {
