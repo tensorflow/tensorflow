@@ -95,7 +95,7 @@ void importCallOp(
     static llvm::once_flag onceFlag;
     mlir::sdy::emitOpWarningOnce(
         onceFlag, callOp,
-        llvm::formatv("uninlineable function @{0} has multiple call ops, we "
+        llvm::formatv("function @{0} has multiple call ops, we "
                       "need to clone the function body for each call",
                       calleeName)
             .str());
@@ -123,12 +123,6 @@ class ImportFuncCallsPass
 
   void runOnOperation() final {
     mlir::ModuleOp moduleOp = getOperation();
-    // TODO(enver): Support also for all func calls, beyond uninlineable ones.
-    if (!onlyUninlineable) {
-      moduleOp.emitError() << "ImportFuncCalls pass does support only for "
-                              "unlineable func calls.";
-      return;
-    }
 
     IRRewriter rewriter(moduleOp.getContext());
     SymbolTable symbolTable(moduleOp);
@@ -143,7 +137,7 @@ class ImportFuncCallsPass
     for (mlir::CallGraphNode* node : llvm::reverse(rpo)) {
       if (node->isExternal()) continue;
       node->getCallableRegion()->walk([&](CallOp op) {
-        if (isInlineableCallOp(op)) {
+        if (onlyUninlineable && isInlineableCallOp(op)) {
           return;
         }
         importCallOp(op, calleeNameToMovedRegion, rewriter, symbolTable);
