@@ -111,6 +111,7 @@ std::string FindMinimumRuntimeVersionForOp(tflite::BuiltinOperator op_code,
               {{BuiltinOperator_CAST, 4}, "2.9.0"},
               {{BuiltinOperator_CAST, 5}, "2.12.0"},
               {{BuiltinOperator_CAST, 6}, "2.15.0"},
+              {{BuiltinOperator_CAST, 7}, "2.17.0"},
               {{BuiltinOperator_CONCATENATION, 1}, "1.5.0"},
               {{BuiltinOperator_CONCATENATION, 2}, "1.14.0"},
               {{BuiltinOperator_CONCATENATION, 3}, "2.3.0"},
@@ -203,6 +204,7 @@ std::string FindMinimumRuntimeVersionForOp(tflite::BuiltinOperator op_code,
               {{BuiltinOperator_TRANSPOSE, 4}, "2.3.0"},
               {{BuiltinOperator_TRANSPOSE, 5}, "2.4.0"},
               {{BuiltinOperator_TRANSPOSE, 6}, "2.12.0"},
+              {{BuiltinOperator_TRANSPOSE, 7}, "2.14.4"},
               {{BuiltinOperator_LSTM, 1}, "1.7.0"},
               {{BuiltinOperator_LSTM, 2}, "1.10.0"},
               {{BuiltinOperator_LSTM, 3}, "1.14.0"},
@@ -384,6 +386,7 @@ std::string FindMinimumRuntimeVersionForOp(tflite::BuiltinOperator op_code,
               {{BuiltinOperator_LOG, 1}, "1.14.0"},
               {{BuiltinOperator_LOG, 2}, "2.15.0"},
               {{BuiltinOperator_SQRT, 1}, "1.10.0"},
+              {{BuiltinOperator_SQRT, 2}, "2.21.0"},
               {{BuiltinOperator_RSQRT, 1}, "1.10.0"},
               {{BuiltinOperator_RSQRT, 2}, "2.5.0"},
               {{BuiltinOperator_RSQRT, 3}, "2.15.0"},
@@ -430,6 +433,8 @@ std::string FindMinimumRuntimeVersionForOp(tflite::BuiltinOperator op_code,
               {{BuiltinOperator_GELU, 2}, "2.9.0"},
               {{BuiltinOperator_DYNAMIC_UPDATE_SLICE, 1}, "2.9.0"},
               {{BuiltinOperator_DYNAMIC_UPDATE_SLICE, 2}, "2.17.0"},
+              {{BuiltinOperator_DYNAMIC_UPDATE_SLICE, 3}, "2.19.0"},
+              {{BuiltinOperator_DYNAMIC_UPDATE_SLICE, 4}, "2.20.0"},
               {{BuiltinOperator_UNSORTED_SEGMENT_PROD, 1}, "2.10.0"},
               {{BuiltinOperator_UNSORTED_SEGMENT_MAX, 1}, "2.10.0"},
               {{BuiltinOperator_UNSORTED_SEGMENT_MIN, 1}, "2.11.0"},
@@ -470,9 +475,9 @@ void UpdateMinimumRuntimeVersionForModel(uint8_t* model_buffer_pointer) {
   auto model = GetMutableModel(model_buffer_pointer);
   std::string model_min_version;
   auto subgraphs = model->subgraphs();
-  for (int i = 0; i < subgraphs->size(); ++i) {
+  for (int i = 0; i < subgraphs->Length(); ++i) {
     const SubGraph* subgraph = subgraphs->Get(i);
-    for (int j = 0; j < subgraph->operators()->size(); ++j) {
+    for (int j = 0; j < subgraph->operators()->Length(); ++j) {
       const Operator* op = subgraph->operators()->Get(j);
       const OperatorCode* op_code =
           model->operator_codes()->Get(op->opcode_index());

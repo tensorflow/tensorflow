@@ -25,6 +25,7 @@ cc_test(
     srcs = ["register_test.cc"],
     deps = [
         ":builtin_ops",
+        "//tensorflow/compiler/mlir/lite/tools/versioning",
         "//tensorflow/lite:mutable_op_resolver",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",

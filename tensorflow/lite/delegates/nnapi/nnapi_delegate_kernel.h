@@ -159,7 +159,7 @@ enum class NNAPIValidationFailureType : int {
   // is specified in the validation failure message.
   // For more details on each operator version see
   // the GetBuiltinOperatorVersion function in
-  // tensorflow/lite/tools/versioning/op_version.cc.
+  // tensorflow/compiler/mlir/lite/tools/versioning/op_version.cc.
   kUnsupportedOperatorVersion = 2,
   // The given input operand type is not supported for the current combination
   // of operator type and sdk version.
