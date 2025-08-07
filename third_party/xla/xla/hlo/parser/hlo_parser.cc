@@ -6822,6 +6822,10 @@ bool HloParserImpl::ParseOpShardingType(OpSharding::Type* type) {
       *type = OpSharding::MANUAL;
       lexer_.Lex();
       break;
+    case TokKind::kw_unreduced:
+      *type = OpSharding::UNREDUCED;
+      lexer_.Lex();
+      break;
     default:
       return false;
   }

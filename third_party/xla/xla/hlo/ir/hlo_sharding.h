@@ -288,6 +288,16 @@ class HloSharding {
     });
   }
 
+  // Returns whether the sharding represents unreduced subgroup sharding.
+  bool IsUnReducedSubgroup() const {
+    if (!IsTuple()) {
+      return absl::c_linear_search(subgroup_types_, OpSharding::UNREDUCED);
+    }
+    return absl::c_all_of(tuple_elements_, [](const HloSharding& s) {
+      return s.IsUnReducedSubgroup();
+    });
+  }
+
   // Returns weather the sharding represents a tiled sharding where the mapping
   // between devices and tiles is represented through 'tile_assignment()'.
   bool IsTiled() const {
