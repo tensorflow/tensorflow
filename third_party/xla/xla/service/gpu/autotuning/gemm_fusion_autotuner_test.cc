@@ -733,7 +733,7 @@ ENTRY main {
       DeviceOrDevicelessConfig{DeviceConfig{backend().default_stream_executor(),
                                             backend().memory_allocator()}},
       opts);
-  AutotuneCacheKey cache_key(autotune_config.GetModelStr(),
+  AutotuneCacheKey cache_key(autotune_config.GetDeviceDescription(),
                              *module->entry_computation()->root_instruction());
 
   TF_ASSERT_OK_AND_ASSIGN(AutotuneResults autotune_results_override,
@@ -1469,7 +1469,7 @@ TEST_F(
 
   const int kProcessCount = 2;
   AutotuneConfig autotune_config = GetAutotuneConfigForTest();
-  AutotuneCacheKey cache_key(autotune_config.GetModelStr(),
+  AutotuneCacheKey cache_key(autotune_config.GetDeviceDescription(),
                              *module->entry_computation()->root_instruction());
   TF_ASSERT_OK_AND_ASSIGN(AutotuneResults autotune_results_override,
                           GetDummyAutotuneResultsForCacheKey(cache_key));
@@ -1553,7 +1553,7 @@ TEST_F(
 
   const int kProcessCount = 2;
   AutotuneConfig autotune_config = GetAutotuneConfigForTest();
-  AutotuneCacheKey cache_key(autotune_config.GetModelStr(),
+  AutotuneCacheKey cache_key(autotune_config.GetDeviceDescription(),
                              *module1->entry_computation()->root_instruction());
   TF_ASSERT_OK_AND_ASSIGN(AutotuneResults autotune_results_override,
                           GetDummyAutotuneResultsForCacheKey(cache_key));
@@ -1610,7 +1610,7 @@ TEST_F(GemmFusionAutotunerTest, RewritesGemmFusionToCustomKernelFusion) {
       DeviceOrDevicelessConfig{DeviceConfig{backend().default_stream_executor(),
                                             backend().memory_allocator()}},
       opts);
-  AutotuneCacheKey cache_key(autotune_config.GetModelStr(),
+  AutotuneCacheKey cache_key(autotune_config.GetDeviceDescription(),
                              *module->entry_computation()->root_instruction());
   TF_ASSERT_OK_AND_ASSIGN(AutotuneResults autotune_results_override,
                           GetDummyAutotuneResultsForCacheKey(cache_key));
