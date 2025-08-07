@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -28,6 +29,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/blocking_counter.h"
 #include "absl/types/span.h"
+#include "xla/debug_options_flags.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
@@ -43,6 +45,7 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape_util.h"
 #include "xla/tests/test_utils.h"
+#include "xla/tools/hlo_module_loader.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -50,6 +53,7 @@ limitations under the License.
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
 #include "tsl/platform/casts.h"
+#include "tsl/platform/path.h"
 
 namespace xla::cpu {
 
@@ -341,6 +345,72 @@ absl::Status CompileHloBenchmark(benchmark::State& state,
   }
 
   return absl::OkStatus();
+}
+
+namespace {
+
+absl::StatusOr<std::pair<std::unique_ptr<HloModule>,
+                         std::unique_ptr<RunHloModuleIterationLiterals>>>
+LoadFromHloSnapshotOrHloModuleProto(const std::string& hlo_data,
+                                    absl::string_view extension) {
+  auto iteration_literals_proto =
+      std::make_unique<RunHloModuleIterationLiterals>();
+  if (extension == "pb" || extension == "pbtxt") {
+    TF_ASSIGN_OR_RETURN(iteration_literals_proto,
+                        LoadInputFromData(hlo_data, extension));
+  }
+
+  TF_ASSIGN_OR_RETURN(auto hlo_module, LoadModuleFromData(hlo_data, extension));
+
+  return std::make_pair(std::move(hlo_module),
+                        std::move(iteration_literals_proto));
+}
+
+absl::StatusOr<std::pair<std::unique_ptr<HloModule>,
+                         std::unique_ptr<RunHloModuleIterationLiterals>>>
+LoadFromHloUnoptimizedSnapshot(
+    const HloUnoptimizedSnapshot& unoptimized_snapshot) {
+  TF_ASSIGN_OR_RETURN(
+      HloModuleConfig config,
+      HloModule::CreateModuleConfigFromProto(unoptimized_snapshot.hlo_module(),
+                                             xla::GetDebugOptionsFromFlags()));
+
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloModule> hlo_module,
+      HloModule::CreateFromProto(unoptimized_snapshot.hlo_module(), config));
+
+  auto iteration_literals_proto =
+      std::make_unique<RunHloModuleIterationLiterals>();
+
+  if (unoptimized_snapshot.partitions_size() > 1) {
+    return absl::InvalidArgumentError(
+        "HLO snapshot has multiple partitions which is not currently "
+        "supported.");
+  }
+  for (const auto& arg : unoptimized_snapshot.partitions(0).arguments()) {
+    *iteration_literals_proto->add_arguments() = arg;
+  }
+
+  return std::make_pair(std::move(hlo_module),
+                        std::move(iteration_literals_proto));
+}
+
+}  // namespace
+
+absl::StatusOr<std::pair<std::unique_ptr<HloModule>,
+                         std::unique_ptr<RunHloModuleIterationLiterals>>>
+LoadHloModuleAndMaybeIterationLiterals(absl::string_view hlo_path) {
+  std::string hlo_data;
+  TF_RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(),
+                                           std::string(hlo_path), &hlo_data));
+
+  HloUnoptimizedSnapshot unoptimized_snapshot;
+  if (unoptimized_snapshot.ParseFromString(hlo_data)) {
+    return LoadFromHloUnoptimizedSnapshot(unoptimized_snapshot);
+  }
+
+  return LoadFromHloSnapshotOrHloModuleProto(hlo_data,
+                                             tsl::io::Extension(hlo_path));
 }
 
 }  // namespace xla::cpu

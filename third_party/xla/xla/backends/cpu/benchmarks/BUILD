@@ -46,6 +46,7 @@ cc_library(
     srcs = ["hlo_benchmark_runner.cc"],
     hdrs = ["hlo_benchmark_runner.h"],
     deps = [
+        "//xla:debug_options_flags",
         "//xla:literal",
         "//xla:shape_util",
         "//xla:util",
@@ -61,6 +62,8 @@ cc_library(
         "//xla/service:compiler",
         "//xla/service:hlo_module_config",
         "//xla/tests:test_utils",
+        "//xla/tools:hlo_module_loader",
+        "//xla/tools:run_hlo_module_proto_cc",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
@@ -68,11 +71,13 @@ cc_library(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:casts",
+        "@local_tsl//tsl/platform:path",
     ],
 )
 
@@ -596,5 +601,24 @@ xla_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "snapshot_loading_test",
+    srcs = ["snapshot_loading_test.cc"],
+    deps = [
+        ":hlo_benchmark_runner",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/service:hlo_module_config",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
     ],
 )
