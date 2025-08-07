@@ -335,7 +335,9 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> EmitterBase::CreateLLVMModule(
       auto module, CreateMLIRModule(mlir_context, fusion, entry_function_name,
                                     buffer_assignment));
 
-  mlir::PassManager pm(&mlir_context);
+  thread_local mlir::PassManager pm(&mlir_context);
+  TF_RET_CHECK(pm.getContext() == &mlir_context)
+      << "Pass manager context mismatch.";
   emitters::RegisterOptimizationPasses(pm);
   AddLoopTransformationPasses(pm, device);
   AddLoweringPasses(pm, device);
