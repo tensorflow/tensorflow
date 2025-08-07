@@ -1257,6 +1257,54 @@ diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalg
          /*inputs=*/ValueRange{adaptor.getLhs(), adaptor.getRhs()},
          /*outputBuffers=*/ValueRange{zeroTensor}, indexingMaps,
          getParallelAndReductionIterators(
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
+--- stablehlo/stablehlo/dialect/StablehloOps.cpp
++++ stablehlo/stablehlo/dialect/StablehloOps.cpp
+@@ -3852,14 +3852,19 @@
+ //
+ // Note that this right now only does comparision on the first pair of block
+ // arguments.
+-static void buildSortComparisonBody(llvm::ArrayRef<Type> elementTypes,
+-                                    ComparisonDirection direction,
+-                                    std::optional<StringRef> compareType,
+-                                    Region* body, OpBuilder* builder) {
++void buildSortComparisonBody(llvm::ArrayRef<Type> elementTypes,
++                             ComparisonDirection direction,
++                             std::optional<StringRef> compareType, Region* body,
++                             OpBuilder* builder) {
+   OpBuilder::InsertionGuard insertionPointGuard(*builder);
+ 
+   Location loc = body->getLoc();
+-  Block* block = builder->createBlock(body);
++  Block* block;
++  if (body->empty()) {
++    block = builder->createBlock(body);
++  } else {
++    block = &body->front();
++  }
+   // Add two arguments for each element type.
+   for (Type elementType : elementTypes) {
+     ShapedType shapedType = RankedTensorType::get({}, elementType);
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.h b/stablehlo/stablehlo/dialect/StablehloOps.h
+--- stablehlo/stablehlo/dialect/StablehloOps.h
++++ stablehlo/stablehlo/dialect/StablehloOps.h
+@@ -172,6 +172,16 @@
+ // a DotOp, given the LHS of such an operation.
+ DotDimensionNumbersAttr getDefaultDotDimensionNumbers(mlir::Value lhs);
+ 
++// Builds the region `body` for stablehlo.sort's comparator: for each type in
++// `element_types`, create two block arguments, one for lhs and one for rhs, and
++// generates stablehlo.compare op to compare them with the given `direction`.
++// Note that this right now only does comparision on the first pair of block
++// arguments.
++void buildSortComparisonBody(llvm::ArrayRef<Type> elementTypes,
++                             ComparisonDirection direction,
++                             std::optional<StringRef> compareType, Region *body,
++                             OpBuilder *builder);
++
+ SortOp createSortOp(PatternRewriter *rewriter, const Location &loc,
+                     const llvm::ArrayRef<Value> &operands,
+                     const llvm::ArrayRef<Type> &elementTypes, int64_t dimension,
 diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/dialect/StablehloOps.td
 --- stablehlo/stablehlo/dialect/StablehloOps.td
 +++ stablehlo/stablehlo/dialect/StablehloOps.td
