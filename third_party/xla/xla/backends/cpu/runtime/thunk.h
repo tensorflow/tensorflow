@@ -28,6 +28,7 @@ limitations under the License.
 
 #include "absl/base/no_destructor.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
@@ -335,6 +336,9 @@ std::ostream& operator<<(std::ostream& os, Thunk::Kind kind);
 // A sequence of thunks to execute.
 class ThunkSequence : public std::vector<std::unique_ptr<Thunk>> {
  public:
+  using BufferUses = Thunk::BufferUses;
+  using ResourceUses = Thunk::ResourceUses;
+
   ThunkSequence() = default;
 
   // Returns an empty thunk sequence.
@@ -350,12 +354,18 @@ class ThunkSequence : public std::vector<std::unique_ptr<Thunk>> {
     return ThunkSequence(std::move(thunk));
   }
 
-  using BufferUses = Thunk::BufferUses;
   BufferUses buffer_uses() const;
-
-  using ResourceUses = Thunk::ResourceUses;
   ResourceUses resource_uses() const;
 
+  // Invokes `fn` on each thunk in the sequence, recursing into nested thunks.
+  void ForEach(absl::FunctionRef<void(const Thunk&)> fn) const;
+
+  // Invokes `fn` on each thunk in the sequence, recursing into nested thunks.
+  // Returns early if `fn` returns an error status on any of the thunks.
+  absl::Status ForEachWithStatus(
+      absl::FunctionRef<absl::Status(const Thunk&)> fn) const;
+
+  // Appends the given thunk sequence to the end of this one.
   void Append(ThunkSequence other);
 
  private:

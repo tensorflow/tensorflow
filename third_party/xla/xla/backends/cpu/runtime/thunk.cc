@@ -23,6 +23,8 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/no_destructor.h"
+#include "absl/functional/function_ref.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
@@ -33,6 +35,7 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "tsl/profiler/lib/traceme_encode.h"
@@ -198,6 +201,36 @@ ThunkSequence::ResourceUses ThunkSequence::resource_uses() const {
     resource_uses.insert(resource_uses.end(), uses.begin(), uses.end());
   }
   return resource_uses;
+}
+
+static void ForEach(const ThunkSequence& sequence,
+                    absl::FunctionRef<void(const Thunk&)> fn) {
+  for (auto& thunk : sequence) {
+    fn(*thunk);
+    for (auto& [name, nested] : thunk->nested_thunks()) {
+      ForEach(*nested, fn);
+    }
+  }
+}
+
+static absl::Status ForEach(const ThunkSequence& sequence,
+                            absl::FunctionRef<absl::Status(const Thunk&)> fn) {
+  for (auto& thunk : sequence) {
+    TF_RETURN_IF_ERROR(fn(*thunk));
+    for (auto& [name, nested] : thunk->nested_thunks()) {
+      TF_RETURN_IF_ERROR(ForEach(*nested, fn));
+    }
+  }
+  return absl::OkStatus();
+}
+
+void ThunkSequence::ForEach(absl::FunctionRef<void(const Thunk&)> fn) const {
+  xla::cpu::ForEach(*this, fn);
+}
+
+absl::Status ThunkSequence::ForEachWithStatus(
+    absl::FunctionRef<absl::Status(const Thunk&)> fn) const {
+  return xla::cpu::ForEach(*this, fn);
 }
 
 }  // namespace xla::cpu
