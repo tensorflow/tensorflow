@@ -994,6 +994,16 @@ PjRtFuture<> StreamExecutorGpuClient::CopyRawDeviceToHost(
       });
 }
 
+absl::Status StreamExecutorGpuClient::UpdateCompileOptionsInternal(
+    CompileOptions* options, ExecutableExtras* returned_extras,
+    bool lookup_addressable_devices) {
+  TF_RETURN_IF_ERROR(PjRtStreamExecutorClient::UpdateCompileOptionsInternal(
+      options, returned_extras, lookup_addressable_devices));
+  options->executable_build_options.set_slice_size(
+      topology_.gpu_topology().slice_size());
+  return absl::OkStatus();
+}
+
 void StreamExecutorGpuClient::CopyToRemoteDevice(
     PjRtBuffer* buffer, absl::string_view serialized_descriptor,
     PjRtBuffer::RemoteSendCallback on_done) {

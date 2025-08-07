@@ -58,6 +58,9 @@ class GpuTopology {
   int32_t num_slices() const { return num_slices_; }
   int32_t num_hosts_per_slice() const { return num_hosts_per_slice_; }
   int32_t num_devices_per_host() const { return num_devices_per_host_; }
+  int32_t slice_size() const {
+    return num_hosts_per_slice() * num_devices_per_host();
+  }
 
  private:
   const std::string platform_version_;
