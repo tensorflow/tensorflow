@@ -51,10 +51,11 @@ void addCommonPreImportPasses(mlir::OpPassManager& pm,
       mlir::stablehlo_ext::createStablehloCanonicalizeFromHloImportPass());
 }
 
-void addCommonPostImportPasses(mlir::OpPassManager& pm) {
+void addCommonPostImportPasses(mlir::OpPassManager& pm,
+                               bool importOnlyUninlineableFuncCalls) {
   pm.addPass(createImportSdyCustomCallsPass());
   pm.addNestedPass<FuncOp>(createOpenWhileFreeVarsShardingPass());
-  pm.addPass(createImportFuncCallsPass(/*onlyUninlineable=*/true));
+  pm.addPass(createImportFuncCallsPass(importOnlyUninlineableFuncCalls));
 }
 
 }  // namespace sdy

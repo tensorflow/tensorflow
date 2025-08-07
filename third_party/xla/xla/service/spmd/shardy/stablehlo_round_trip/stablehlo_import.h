@@ -69,7 +69,8 @@ void registerStablehloImportPipeline();
 // - have the same number of elements as the number of args/results.
 void addStablehloImportPipeline(mlir::OpPassManager& pm,
                                 mlir::ArrayRef<bool> allowPropagationToArgs,
-                                mlir::ArrayRef<bool> allowPropagationToResults);
+                                mlir::ArrayRef<bool> allowPropagationToResults,
+                                bool importOnlyUninlineableFuncCalls = true);
 
 // Creates ImportShardingsPass that converts `mhlo.sharding` to `mesh` and
 // `sdy.sharding`.
