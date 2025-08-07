@@ -131,6 +131,12 @@ absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
       executable->thunks_,
       ThunkExecutor::Create(std::move(thunks), thunk_executor_options));
 
+  // Find if the thunk sequence contains any XNN fusion thunks. If we do have
+  // any, we will prepare the XNNPACK thread pool for them at run time.
+  executable->thunks_->thunk_sequence().ForEach([&](const Thunk& thunk) {
+    executable->has_xnn_fusions_ |= thunk.kind() == Thunk::Kind::kXnnFusion;
+  });
+
   // Re-index constants by their allocation index to allow efficient lookup.
   for (auto& constant : constants) {
     if (executable->constants_.size() <= constant.index) {
