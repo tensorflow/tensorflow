@@ -87,5 +87,21 @@ std::optional<xla::OriginalValueProto> ConvertOriginalValue(
 std::optional<xla::HloInputOutputAliasProto> ConvertInputOutputAlias(
     llvm::ArrayRef<mlir::Attribute> aliasing);
 
+template <typename OutputOperandAliasAttrTy>
+absl::StatusOr<
+    std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>>
+ConvertOutputOperandAliasing(mlir::ArrayAttr aliasArrayAttr) {
+  std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>> aliasInfo;
+  for (auto attr : aliasArrayAttr.getValue()) {
+    auto alias = mlir::cast<OutputOperandAliasAttrTy>(attr);
+    ShapeIndex outputShapeIndex(alias.getOutputTupleIndices());
+    ShapeIndex operandShapeIndex(alias.getOperandTupleIndices());
+    aliasInfo.push_back(std::make_pair(
+        outputShapeIndex,
+        std::make_pair(alias.getOperandIndex(), operandShapeIndex)));
+  }
+  return aliasInfo;
+}
+
 }  // namespace xla
 #endif  // XLA_HLO_TRANSLATE_MHLO_TO_HLO_ATTRIBUTE_EXPORTER_H_

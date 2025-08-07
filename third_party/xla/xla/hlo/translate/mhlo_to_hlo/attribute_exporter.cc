@@ -304,21 +304,6 @@ absl::StatusOr<xla::CustomCallApiVersion> ConvertCustomCallApiVersion(
   }
 }
 
-absl::StatusOr<
-    std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>>
-ConvertOutputOperandAliasing(mlir::ArrayAttr aliasArrayAttr) {
-  std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>> aliasInfo;
-  for (auto attr : aliasArrayAttr.getValue()) {
-    auto alias = mlir::cast<mlir::mhlo::OutputOperandAliasAttr>(attr);
-    ShapeIndex outputShapeIndex(alias.getOutputTupleIndices());
-    ShapeIndex operandShapeIndex(alias.getOperandTupleIndices());
-    aliasInfo.push_back(std::make_pair(
-        outputShapeIndex,
-        std::make_pair(alias.getOperandIndex(), operandShapeIndex)));
-  }
-  return aliasInfo;
-}
-
 std::optional<xla::OpSharding> ConvertSharding(llvm::StringRef sharding) {
   xla::OpSharding sharding_proto;
   if (sharding_proto.ParseFromString(sharding.str())) return sharding_proto;

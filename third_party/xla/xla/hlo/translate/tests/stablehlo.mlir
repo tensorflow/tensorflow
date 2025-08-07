@@ -1969,3 +1969,21 @@ func.func @main() -> tensor<128x2048xf32> {
   %2 = stablehlo.transpose %1#0, dims = [1, 0] {mhlo.sharding = "{manual}", result_layout = dense<[0, 1]> : tensor<2xindex>, xla_shape = "f32[128,2048]{0,1}"} : (tensor<2048x128xf32>) -> tensor<128x2048xf32>
   return %2 : tensor<128x2048xf32>
 }
+
+// -----
+
+// CHECK-LABLE: HloModule main
+//       CHECK: ENTRY
+func.func @main(%arg0: tensor<2x4xf32>) -> tensor<2x4xf32> {
+  //               CHECK: custom-call({{.*}}), custom_call_target="foo",
+  // CHECK-SAME{LITERAL}: output_to_operand_aliasing={{}: (0, {})}
+  %0 = "stablehlo.custom_call"(%arg0) {
+    call_target_name = "foo",
+    api_version = 4 : i32,
+    output_operand_aliases = [
+      #stablehlo.output_operand_alias<output_tuple_indices = [],
+        operand_index = 0,
+        operand_tuple_indices = []>]
+  } : (tensor<2x4xf32>) -> tensor<2x4xf32>
+  func.return %0 : tensor<2x4xf32>
+}

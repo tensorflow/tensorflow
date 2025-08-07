@@ -2592,8 +2592,8 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
     literal_ptr = &*literal;
   }
 
-  auto aliasInfo =
-      xla::ConvertOutputOperandAliasing(op.getOutputOperandAliases());
+  auto aliasInfo = xla::ConvertOutputOperandAliasing<
+      mlir::stablehlo::OutputOperandAliasAttr>(op.getOutputOperandAliases());
   auto output_operand_aliasing = absl::MakeSpan(*aliasInfo);
 
   auto custom_call_schedule = xla::SCHEDULE_NONE;
@@ -4281,7 +4281,8 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   }
 
   auto aliasInfo =
-      xla::ConvertOutputOperandAliasing(op.getOutputOperandAliases());
+      xla::ConvertOutputOperandAliasing<mlir::mhlo::OutputOperandAliasAttr>(
+          op.getOutputOperandAliases());
   auto output_operand_aliasing = absl::MakeSpan(*aliasInfo);
   auto custom_call_schedule =
       xla::ConvertCustomCallSchedule(op.getCustomCallSchedule());
@@ -5062,7 +5063,8 @@ LogicalResult ExportXlaOp(FusionOp op, OpLoweringContext ctx) {
 
   auto& values = *ctx.values;
   auto aliasInfo =
-      xla::ConvertOutputOperandAliasing(op.getOutputOperandAliases());
+      xla::ConvertOutputOperandAliasing<mlir::mhlo::OutputOperandAliasAttr>(
+          op.getOutputOperandAliases());
   auto output_operand_aliasing = absl::MakeSpan(*aliasInfo);
   llvm::SmallVector<xla::XlaOp, 4> operands;
   for (auto operand : op.getInputs()) operands.push_back(values[operand]);
