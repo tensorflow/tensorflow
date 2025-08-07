@@ -91,6 +91,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/const_tensor_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/control_edges.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
+#include "tensorflow/compiler/mlir/lite/utils/metadata_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/shape_and_size_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
@@ -99,13 +100,13 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 using absl::Status;
 using absl::StatusOr;
@@ -346,25 +347,51 @@ Location OpLoc(const OperatorT& op, Builder builder,
                DebugMetadata& debug_metadata, const tflite::SubGraphT& subgraph,
                Location base) {
   const int subgraph_debug_metadata_idx = subgraph.debug_metadata_index;
+
+  // Check if we have specific debug metadata for this op.
   if (debug_metadata.operator_location_map.contains(
           subgraph_debug_metadata_idx) &&
-      debug_metadata.operator_location_map[subgraph_debug_metadata_idx]
+      debug_metadata.operator_location_map.at(subgraph_debug_metadata_idx)
           .contains(op.debug_metadata_index)) {
+    // SCENARIO 1: Debug metadata exists.
+    // Create the marked wrapper to ensure roundtrip consistency.
     int location_idx =
         debug_metadata.operator_location_map[subgraph_debug_metadata_idx]
                                             [op.debug_metadata_index];
-    return debug_metadata.debug_metadata_locations[location_idx];
-  }
+    Location child_loc = debug_metadata.debug_metadata_locations[location_idx];
 
-  if (op.outputs.empty()) return base;
+    llvm::SmallVector<Location, 4> locations;
+    if (!op.outputs.empty()) {
+      locations.reserve(op.outputs.size());
+      for (auto tensor_index : op.outputs) {
+        locations.push_back(
+            TensorLoc(*subgraph.tensors[tensor_index], builder, child_loc));
+      }
+    } else {
+      // For ops with no outputs, we can't create a TensorLoc.
+      // We'll just wrap the original location directly to carry the marker.
+      mlir::Attribute marker =
+          builder.getStringAttr(mlir::TFL::kImporterWrapper);
+      return mlir::FusedLoc::get(builder.getContext(), child_loc, marker);
+    }
 
-  llvm::SmallVector<Location, 4> locations;
-  locations.reserve(op.outputs.size());
-  for (auto tensor_index : op.outputs) {
-    locations.push_back(
-        TensorLoc(*subgraph.tensors[tensor_index], builder, base));
+    mlir::Attribute marker = builder.getStringAttr(mlir::TFL::kImporterWrapper);
+    return mlir::FusedLoc::get(builder.getContext(), locations, marker);
+
+  } else {
+    // SCENARIO 2: No debug metadata for this op.
+    // This is the "clean import" path. Create the simple location structure
+    // without any special wrappers or markers.
+    if (op.outputs.empty()) return base;
+
+    llvm::SmallVector<Location, 4> locations;
+    locations.reserve(op.outputs.size());
+    for (auto tensor_index : op.outputs) {
+      locations.push_back(
+          TensorLoc(*subgraph.tensors[tensor_index], builder, base));
+    }
+    return mlir::FusedLoc::get(builder.getContext(), locations);
   }
-  return mlir::FusedLoc::get(builder.getContext(), locations);
 }
 
 // Extract the min max information in the tensor and create the quant stats op.
@@ -1732,8 +1759,7 @@ OwningOpRef<mlir::ModuleOp> tflite::FlatBufferToMlir(
 
   context->loadDialect<
       mlir::arith::ArithDialect, mlir::func::FuncDialect,
-      mlir::quant::QuantDialect,
-      mlir::quantfork::QuantizationForkDialect,
+      mlir::quant::QuantDialect, mlir::quantfork::QuantizationForkDialect,
       mlir::TFL::TensorFlowLiteDialect, mlir::TF::TensorFlowDialect,
       mlir::stablehlo::StablehloDialect, mlir::vhlo::VhloDialect>();
 

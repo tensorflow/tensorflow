@@ -137,6 +137,22 @@ class TrackedCpuDeviceBuffer : public AbstractTrackedDeviceBuffer {
 
   bool owns_buffers() const { return owns_buffers_; }
 
+  std::vector<tsl::RCReference<tsl::AsyncValue>> GetAsyncValueDefinitionEvents()
+      override;
+
+  tsl::RCReference<CommonPjRtRawBuffer> GetRawBuffer(
+      PjRtMemorySpace* memory_space) override;
+
+  void AddUsageEvent(tsl::RCReference<PjRtDeviceEvent> event) override;
+
+  void Delete(PjRtMemorySpace* memory_space) override;
+
+  PjRtFuture<>::Promise GetReadyFuturePromise(
+      PjRtMemorySpace* memory_space) override;
+
+  absl::Status BlockForOperationsToComplete(
+      PjRtMemorySpace* memory_space) override;
+
  private:
   // Relinquishes ownership of the buffer's device memory, e.g., after the
   // buffer is passed to a computation that aliases its inputs to outputs.

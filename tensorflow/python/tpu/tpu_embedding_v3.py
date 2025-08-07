@@ -34,6 +34,7 @@ from tensorflow.python.distribute import tpu_util
 from tensorflow.python.distribute import tpu_values
 from tensorflow.python.distribute import values
 from tensorflow.python.distribute import values_util
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import dtypes
@@ -50,6 +51,7 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.tpu import _pywrap_sparse_core_layout
+from tensorflow.python.tpu import embedding_context_utils as ecu
 from tensorflow.python.tpu import tpu_embedding_base
 from tensorflow.python.tpu import tpu_embedding_v2_utils
 from tensorflow.python.tpu import tpu_embedding_v3_checkpoint_adapter
@@ -68,6 +70,7 @@ _PIPELINE_ATTRIBUTE = "_embedding_pipelining"
 _PIPELINE_MODE_FORWARD = "forward"
 _PIPELINE_MODE_BACKWARD = "backward"
 _PIPELINE_MODEL_SEQUENTIAL = "_sequential"
+_PARAMETER_NAME = "parameters"
 
 
 TableConfig = tpu_embedding_v2_utils.TableConfig
@@ -103,11 +106,19 @@ class EmbeddingPipeliningContext(control_flow_ops.ControlFlowContext):
       # special casing of summary recording because, presumably, this is not
       # a single step loop so pipelining is still valid.
       recording_summaries = False
-    if enable and recording_summaries:
+
+    if enable and (
+        recording_summaries or not ecu.embedding_pipelining_state.enabled
+    ):
       # We'll still flag these ops for the SC forward/backward pass, but we'll
       # run them sequentially. This has to be handled in the MLIR passes
       # embedding_pipelining.cc and embedding_sequencing.cc.
-      logging.info("Summary recording detected, disabling pipelining.")
+      disable_reason = (
+          "Summary recording"
+          if recording_summaries
+          else "_embedding_pipelining_state.enabled = False"
+      )
+      logging.info("%s detected, disabling pipelining.", disable_reason)
       self._mode = attr_value_pb2.AttrValue(
           s=compat.as_bytes(mode + _PIPELINE_MODEL_SEQUENTIAL)
       )
@@ -600,6 +611,7 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
     self._update_sparse_core_buffer_size_after_table_stacking()
 
     self._pipelining = pipeline_execution_with_tensor_core
+    self._initializers_shard_info_by_default = True
 
   def _compute_sc_shard_info(
       self,
@@ -641,78 +653,6 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
     num_sc = num_devices * self._num_sc_per_chip
 
     return shard_index, num_sc
-
-  def _host_table_initializer(
-      self,
-      stacked_tables: List[TableConfig],
-      total_vocab_size: int,
-      partition_shape: tuple[int, int],
-      dtype: dtypes.DType,
-  ) -> Dict[int, List[Dict[str, tensor.Tensor]]]:
-    cpu_table_tensors = {}
-
-    tpu_devices = self._strategy.extended._tpu_devices  # pylint:disable=protected-access
-    num_replicas, num_cores_per_replica = tpu_devices.shape
-    num_devices = num_replicas * num_cores_per_replica
-
-    partition_shape = (partition_shape[0] // num_devices, partition_shape[1])
-    partition_offset = [0] * len(partition_shape)
-
-    for rid in range(num_replicas):
-      for cid in range(num_cores_per_replica):
-        device_cpu = (
-            tf_device.DeviceSpec.from_string(tpu_devices[rid][cid])
-            .replace(device_type="CPU", device_index=0)
-            .to_string()
-        )
-
-        shard_dim_offset = (
-            (rid * num_cores_per_replica) + cid
-        ) * partition_shape[0]
-        cpu_table_tensors[shard_dim_offset] = []
-
-        for i in range(self._num_sc_per_chip):
-          # Each underlying table has column lookups rotated by 1 to avoid hot
-          # spots on core 0 for id=0. We shift the initializer as well to help
-          # with comparisons against CPU.
-          full_tables = {}
-          cpu_table_tensors[shard_dim_offset].append({})
-          for table in stacked_tables:
-            arg_spec = tf_inspect.getfullargspec(table.initializer)
-            sharding_aware = (
-                "shard_info" in arg_spec.args
-                or "shard_info" in arg_spec.kwonlyargs
-            )
-
-            if (
-                self._sparse_core_embedding_config.initialize_tables_on_host
-                and not sharding_aware
-            ):
-              # When the user-initializer is not sharding aware but includes
-              # shard info, we pre-construct the full initial table on the host
-              # and then slice out the individual shards.
-              partition_offset[0] = shard_dim_offset
-              sc_shard_info = self._compute_sc_shard_info(
-                  table,
-                  partition_shape,
-                  partition_offset,
-                  total_vocab_size,
-                  i,
-              )
-              shard_index, shard_offset = self._compute_sc_shard_idx_and_offset(
-                  table.name, sc_shard_info
-              )
-
-              with ops.device(device_cpu):
-                if table.name not in full_tables:
-                  full_tables[table.name] = table.initializer(
-                      shape=(table.vocabulary_size, table.dim),
-                      dtype=dtype,
-                  )
-                sc_shard = full_tables[table.name][shard_index::shard_offset, :]
-                cpu_table_tensors[shard_dim_offset][i][table.name] = sc_shard
-
-    return cpu_table_tensors
 
   def _update_sparse_core_buffer_size_after_table_stacking(self):
     """Update the sparse core buffer size after table stacking."""
@@ -759,8 +699,8 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
   @property
   def embedding_tables(
       self,
-  ) -> Dict[tpu_embedding_v2_utils.TableConfig, tf_variables.Variable]:
-    """Returns a dict of embedding tables, keyed by `TableConfig`."""
+  ) -> Dict[str, tf_variables.Variable]:
+    """Returns a dict of embedding tables, keyed by stacked table name."""
     self._maybe_build()
     # Only return the tables and not the slot variables.
     return {
@@ -810,10 +750,173 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
     self._maybe_build()
     return self._variables
 
+  def _variable_creator(
+      self,
+      next_creator: Callable[..., tf_variables.Variable],
+      **kwargs,
+  ) -> Callable[..., Any]:
+    return make_sharded_variable_creator(self._strategy)(next_creator, **kwargs)
+
+  def _wrap_initializer(self, initializer):
+    """Wraps the initializer to ensure that it is sharding aware."""
+    arg_spec = tf_inspect.getfullargspec(initializer)
+    sharding_aware = (
+        "shard_info" in arg_spec.args or "shard_info" in arg_spec.kwonlyargs
+    )
+    if sharding_aware:
+      return initializer
+
+    def wrapper(shape, dtype, shard_info: base.ShardInfo):
+      del shape
+      return initializer(shape=shard_info.shape, dtype=dtype)
+
+    return wrapper
+
+  def _get_shard_info_for_table(
+      self,
+      table: TableConfig,
+      device_idx: int,
+      num_devices: int,
+  ) -> base.ShardInfo:
+    """Returns the shard info for the given table."""
+    device_shard_len = table.vocabulary_size // num_devices
+    sc_shard_len = device_shard_len // self._num_sc_per_chip
+    shift = self._s.table_to_stacked_table_offset[table.name][2]
+    shift_rows = shift * sc_shard_len
+    row_offset = (
+        device_idx * device_shard_len - shift_rows
+    ) % table.vocabulary_size
+    return base.ShardInfo(
+        (device_shard_len, table.dim),
+        (row_offset, 0),
+    )
+
+  def _initialize_stacked_table_for_device(
+      self,
+      stacked_tables: List[TableConfig],
+      device_idx: int,
+      num_devices: int,
+  ) -> dict[str, tensor.Tensor]:
+    """Initializes the stacked tables and slots shards for a single device."""
+    table_dim = stacked_tables[0].dim
+    variable_dtype = stacked_tables[0].dtype
+    slot_shards = {}
+    replicated_slot_shards = {}
+    for table in stacked_tables:
+      if table.optimizer is not None:
+        initializers = {
+            slot: initializer
+            for slot, initializer in zip(
+                table.optimizer._slot_names(),  # pylint:disable=protected-access
+                table.optimizer._slot_initializers(),  # pylint:disable=protected-access
+            )
+        }
+      else:
+        initializers = {}
+
+      initializers[_PARAMETER_NAME] = table.initializer
+
+      shard_info = self._get_shard_info_for_table(
+          table, device_idx, num_devices
+      )
+      for slot, initializer in initializers.items():
+        device_shard = self._wrap_initializer(initializer)(
+            shape=(table.vocabulary_size, table.dim),
+            dtype=variable_dtype,
+            shard_info=shard_info,
+        )
+        sc_shards = array_ops.reshape(
+            device_shard, (self._num_sc_per_chip, -1, table.dim)
+        )
+        slot_shards.setdefault(slot, []).append(sc_shards)
+
+      # Keep track of the replicated slot variable shards required by the custom
+      # combiner.
+      if isinstance(table.combiner, tpu_embedding_v2_utils.CustomCombiner):
+        combiner_weights_shape = (table.combiner.num_weights,)
+        replicated_slot_shards = {
+            slot: self._wrap_initializer(initializer)(
+                shape=combiner_weights_shape,
+                dtype=dtypes.float32,
+                shard_info=base.ShardInfo(
+                    shape=combiner_weights_shape,
+                    offset=device_idx,
+                ),
+            )
+            for slot, initializer in zip(
+                table.combiner._slot_names(),  # pylint:disable=protected-access
+                table.combiner._slot_initializers(),  # pylint:disable=protected-access
+                strict=True,  # number of names and initializers must match.
+            )
+        }
+
+    slots = {}
+    for slot, shards in slot_shards.items():
+      concated_shards = array_ops.concat(shards, axis=1)
+      concated_shards = array_ops.reshape(concated_shards, (-1, table_dim))
+      slots[slot] = concated_shards
+    slots.update(replicated_slot_shards)
+    return slots
+
+  def _initialize_stacked_table_all_devices(
+      self,
+      stacked_tables: List[TableConfig],
+      stacked_table_name: str,
+  ) -> dict[str, tensor.Tensor]:
+    """Initializes the stacked tables and slots shards for all devices."""
+    table_dim = stacked_tables[0].dim
+
+    tpu_devices = self._strategy.extended._tpu_devices  # pylint:disable=protected-access
+    num_devices = tpu_devices.size
+    num_scs = num_devices * self._num_sc_per_chip
+
+    for table in stacked_tables:
+      if table.vocabulary_size % num_scs != 0:
+        raise ValueError(
+            "Only evenly sharding across devices is currently supported. "
+            f"Got vocab size {table.vocabulary_size} and {num_scs} sparse cores"
+        )
+      if table.dim != table_dim:
+        raise ValueError(
+            "Only tables with the same dimension are currently supported. "
+            f"Got table {table.name} with dimension {table.dim} in stacked "
+            f"table {stacked_table_name} with dimension {table_dim}"
+        )
+
+    parameters = {}
+    for idx, device in enumerate(tpu_devices.flatten()):
+      with ops.device(device):
+        device_parameters = self._initialize_stacked_table_for_device(
+            stacked_tables, idx, num_devices
+        )
+        for slot, shard in device_parameters.items():
+          parameters.setdefault(slot, []).append(shard)
+    return parameters
+
+  @def_function.function
+  def _batch_initialize_tables_fn(
+      self,
+  ) -> Dict[str, Dict[str, List[tensor.Tensor]]]:
+    tensors = {}
+    for stacked_table_name, tables in self._s.stacked_table_to_tables.items():
+      tensors[stacked_table_name] = self._initialize_stacked_table_all_devices(
+          tables, stacked_table_name=stacked_table_name
+      )
+    return tensors
+
+  def _batch_initialize_tables(
+      self,
+  ) -> Dict[str, Dict[str, List[tensor.Tensor]]]:
+    logging.info("Batch initializing embedding tables.")
+    tpu_devices = self._strategy.extended._tpu_devices  # pylint:disable=protected-access
+    with ops.device(device_util.get_host_for_device(tpu_devices[0][0])):
+      return self._batch_initialize_tables_fn()
+
   def _create_variables(
       self,
       stacked_tables: List[tpu_embedding_v2_utils.TableConfig],
       stacked_table_name: str,
+      initialized_tensors: dict[str, dict[str, List[tensor.Tensor]]],
   ) -> Dict[str, tf_variables.Variable]:
     """Create all variables including table variables and slot variables."""
     total_vocab_size = sum([table.vocabulary_size for table in stacked_tables])
@@ -822,13 +925,7 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
     variable_dtype = dtypes.float32
     optimizer = stacked_tables[0].optimizer
 
-    # Compute those table shards early on host that might otherwise saturate
-    # device HBM from needing to initialize full embedding tables.
-    host_table_tensors = self._host_table_initializer(
-        stacked_tables, total_vocab_size, variable_shape, variable_dtype,
-    )
-
-    def table_initialize_fn(shape, dtype, shard_info=None):
+    def table_initialize_fn_non_batch(shape, dtype, shard_info=None):
       # If enable fast table initialization, we will initialize the table
       # directly on the device and use the initializer from the first table.
       if self._sparse_core_embedding_config.enable_fast_table_initialization:
@@ -863,23 +960,12 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
                 i,
             )
             if not sharding_aware:
-              if (
-                  host_table_tensors
-                  and table.name in host_table_tensors[shard_info.offset[0]][i]
-              ):
-                sc_shard = host_table_tensors[shard_info.offset[0]][i][
-                    table.name
-                ]
-              else:
-                shard_index, shard_offset = (
-                    self._compute_sc_shard_idx_and_offset(
-                        table.name, sc_shard_info
-                    )
-                )
-                sc_shard = table.initializer(
-                    shape=(table.vocabulary_size, table.dim), dtype=dtype
-                )[shard_index::shard_offset, :]
-
+              shard_index, shard_offset = self._compute_sc_shard_idx_and_offset(
+                  table.name, sc_shard_info
+              )
+              sc_shard = table.initializer(
+                  shape=(table.vocabulary_size, table.dim), dtype=dtype
+              )[shard_index::shard_offset, :]
             else:
               sc_shard = table.initializer(
                   shape=(table.vocabulary_size, table.dim),
@@ -899,50 +985,91 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
           concat_tensors.append(sc_shard)
       return array_ops.concat(concat_tensors, axis=0)
 
+    def batch_initialize_fn(name, shard_info, replicated=False):
+      if not initialized_tensors:
+        initialized_tensors.update(self._batch_initialize_tables())
+      if not replicated:
+        # This is the path for the table and optimizer slot variables (which
+        # currently have the same shape as the table).
+        shard_id = shard_info.offset[0] // shard_info.shape[0]
+      else:
+        # This is the path for the combiner slot variable (1D and is of size
+        # combiner.num_weights). The device ID on which this shard is
+        # initialized is passed via the first element of shard_info.offset.
+        shard_id = shard_info.offset[0]
+      res = initialized_tensors[stacked_table_name][name][shard_id]
+      assert shard_info.shape == res.shape
+      return res
+
+    def table_initialize_fn(shape, dtype, shard_info=None):
+      if not shard_info or not self._initializers_shard_info_by_default:
+        # This is the legacy loading path.
+        return table_initialize_fn_non_batch(shape, dtype, shard_info)
+      return batch_initialize_fn(_PARAMETER_NAME, shard_info)
+
+    def slot_initialize_fn(
+        name, shape, dtype, initializer, shard_info=None, replicated=False
+    ):
+      if not shard_info or not self._initializers_shard_info_by_default:
+        # This is the legacy loading path.
+        return initializer(shape, dtype)
+      return batch_initialize_fn(name, shard_info, replicated)
+
     def getter(name, shape, dtype, initializer, trainable):
-      del shape
-      initial_value = functools.partial(
-          initializer, shape=variable_shape, dtype=dtype
-      )
+      initial_value = functools.partial(initializer, shape=shape, dtype=dtype)
       # _add_variable_with_custom_getter clears the shape sometimes, so we
       # take the global shape from outside the getter.
       return tf_variables.Variable(
           name=name,
           initial_value=initial_value,
-          shape=variable_shape,
+          shape=shape,
           dtype=dtype,
           trainable=trainable,
       )
 
-    def variable_creator(name, initializer):
+    def variable_creator(name, initializer, shape, dtype):
       # Use add_variable_with_custom_getter here so that we take advantage of
       # the checkpoint loading to allow restore before the variables get
       # created which avoids double initialization.
       return self._add_variable_with_custom_getter(
           name=name,
           initializer=initializer,
-          shape=variable_shape,
-          dtype=variable_dtype,
+          shape=shape,
+          dtype=dtype,
           getter=getter,
           trainable=False,
       )
 
-    with variable_scope.variable_creator_scope(
-        make_sharded_variable_creator(self._strategy)
-    ):
-      parameters = variable_creator(stacked_table_name, table_initialize_fn)
+    with variable_scope.variable_creator_scope(self._variable_creator):
+      parameters = variable_creator(
+          stacked_table_name,
+          table_initialize_fn,
+          variable_shape,
+          variable_dtype,
+      )
 
-    def slot_creator(name, initializer):
-      return variable_creator(stacked_table_name + "/" + name, initializer)
+    def slot_creator(name, initializer, shape, dtype):
+      return variable_creator(
+          stacked_table_name + "/" + name, initializer, shape, dtype
+      )
 
+    slot_vars = {}
     if optimizer is not None:
-      with variable_scope.variable_creator_scope(
-          make_sharded_variable_creator(self._strategy)
-      ):
-        slot_vars = optimizer._create_slots(parameters, slot_creator)  # pylint: disable=protected-access
-    else:
-      slot_vars = {}
-    slot_vars["parameters"] = parameters
+      with variable_scope.variable_creator_scope(self._variable_creator):
+        slot_vars = optimizer._create_slots(  # pylint: disable=protected-access
+            parameters,
+            variable_creator=functools.partial(
+                slot_creator, shape=variable_shape, dtype=variable_dtype
+            ),
+            initializer_wrapper=lambda slot, initializer: functools.partial(
+                slot_initialize_fn,
+                name=slot,
+                initializer=initializer,
+                replicated=False,
+            ),
+        )
+
+    slot_vars[_PARAMETER_NAME] = parameters
     return slot_vars
 
   def _create_variables_and_slots(
@@ -955,9 +1082,14 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
       dicts are keyed by 'parameters' and the slot variable names.
     """
     variables = {}
-    for stacked_table_name, tables in self._stacked_table_to_tables.items():
+    # Batch initialized table and slot variables. It will be lazily initialized
+    # when it is first used inside the variable initializers.
+    table_tensors = {}
+    for stacked_table_name, tables in self._s.stacked_table_to_tables.items():
       variables[stacked_table_name] = self._create_variables(
-          tables, stacked_table_name=stacked_table_name
+          tables,
+          stacked_table_name=stacked_table_name,
+          initialized_tensors=table_tensors,
       )
     return variables
 
@@ -965,7 +1097,7 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
     layouts = sparse_core_layout_pb2.SparseCoreTableLayouts()
     layouts.tables.extend(self.embedding_layouts.values())
     logging.info(
-        "Saving sparse core layouts for %s tables", len(layouts.tables)
+        "Adding sparse core layouts for %s tables", len(layouts.tables)
     )
     with ops.device("/cpu:0"):
       self._track_trackable(
@@ -1000,6 +1132,7 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
     self._variables = self._create_variables_and_slots()
     self._track_restore_info_for_cpu()
     self._built = True
+    logging.info("TPUEmbedding built.")
 
   def apply_gradients(
       self,

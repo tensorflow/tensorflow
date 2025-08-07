@@ -208,7 +208,7 @@ TEST(Status, SaveEmptyStatusToProto) {
 TEST(Status, MakeOKStatusFromProto) {
   tensorflow::StatusProto status_proto;
   status_proto.set_code(error::OK);
-  EXPECT_THAT(StatusFromProto(status_proto), IsOk());
+  EXPECT_THAT(StatusFromProto(status_proto), absl_testing::IsOk());
 }
 
 TEST(Status, MakeErrorStatusFromProto) {
@@ -217,12 +217,13 @@ TEST(Status, MakeErrorStatusFromProto) {
   status_proto.set_message("Invalid argument");
   status_proto.mutable_payload()->insert({"foo", "bar"});
   absl::Status s = StatusFromProto(status_proto);
-  EXPECT_THAT(s, StatusIs(error::INVALID_ARGUMENT, "Invalid argument"));
+  EXPECT_THAT(
+      s, absl_testing::StatusIs(error::INVALID_ARGUMENT, "Invalid argument"));
   EXPECT_EQ(s.GetPayload("foo"), "bar");
 }
 
 TEST(Status, MakeStatusFromEmptyProto) {
-  EXPECT_THAT(StatusFromProto(tensorflow::StatusProto()), IsOk());
+  EXPECT_THAT(StatusFromProto(tensorflow::StatusProto()), absl_testing::IsOk());
 }
 
 }  // namespace

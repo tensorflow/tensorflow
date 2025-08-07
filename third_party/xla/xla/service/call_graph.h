@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {
@@ -199,6 +200,8 @@ class CallGraphNode {
 class CallGraph {
  public:
   using VisitorFunction = absl::FunctionRef<absl::Status(const CallGraphNode&)>;
+  using ChangedVisitorFunction =
+      absl::FunctionRef<absl::StatusOr<bool>(const CallGraphNode&)>;
 
   // Builds and returns a call graph for the given HLO module. If a non-empty
   // execution_threads is provided, only computations that are in
@@ -220,6 +223,12 @@ class CallGraph {
   // reachable from the entry computation are visited.
   absl::Status VisitNodes(VisitorFunction visitor_func,
                           bool visit_unreachable_nodes = true) const;
+
+  // Same as above, except the visitor function returns a StatusOr<bool>. The
+  // visit returns true if any of the visitor functions returned true.
+  absl::StatusOr<bool> VisitNodesWithReturn(
+      ChangedVisitorFunction visitor_func,
+      bool visit_unreachable_nodes = true) const;
 
   // Returns true if 'a' dominates 'b' in the call graph. Computation 'a'
   // dominates computation 'b' iff all callgraph paths in the caller-to-callee
@@ -372,6 +381,9 @@ class CallGraph {
   // 'visited'.
   absl::Status VisitNodesInternal(
       VisitorFunction visitor_func, const CallGraphNode& node,
+      absl::flat_hash_set<const CallGraphNode*>* visited) const;
+  absl::StatusOr<bool> VisitNodesInternal(
+      ChangedVisitorFunction visitor_func, const CallGraphNode& node,
       absl::flat_hash_set<const CallGraphNode*>* visited) const;
 
   // Recursive helper for computing whether 'a' dominates 'b' in the call

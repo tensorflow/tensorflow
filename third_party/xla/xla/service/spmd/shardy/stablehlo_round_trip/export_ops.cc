@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/LogicalResult.h"
 #include "mlir/IR/AffineMap.h"
@@ -40,7 +41,8 @@ limitations under the License.
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/utils.h"
 #include "stablehlo/dialect/StablehloOps.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"  // for CopyOp
+#include "xla/service/spmd/shardy/constants.h"
 
 namespace xla {
 namespace sdy {
@@ -114,25 +116,44 @@ class PropagationBarrierPattern
   }
 };
 
+// If `keepHloShardingConstraints` is true, the method will export the
+// collective to StableHLO @Sharding custom calls. Else, they will export
+// sharding constraints to MHLO copy ops.
 void rewriteCollectiveOp(mlir::Operation* op, mlir::Value input,
                          TensorShardingAttr sharding,
-                         ConversionPatternRewriter& rewriter) {
-  auto copyOp = rewriter.replaceOpWithNewOp<mhlo::CopyOp>(op, input);
-  mlir::sdy::setShardings(copyOp, sharding);
+                         ConversionPatternRewriter& rewriter,
+                         bool keepHloShardingConstraints) {
+  mlir::Operation* newOp;
+  if (keepHloShardingConstraints) {
+    auto customCallOp = rewriter.replaceOpWithNewOp<stablehlo::CustomCallOp>(
+      op, op->getResultTypes(), input);
+    customCallOp.setCallTargetName(kShardingCustomCallTargetName);
+    newOp = customCallOp;
+  } else {
+    newOp = rewriter.replaceOpWithNewOp<mhlo::CopyOp>(op, input);
+  }
+  mlir::sdy::setShardings(newOp, sharding);
 }
 
-class ReshardPattern : public OpConversionPattern<ReshardOp> {
+template <class OpTy>
+class ShardingPattern : public OpConversionPattern<OpTy> {
  public:
-  using OpConversionPattern::OpConversionPattern;
+  using OpConversionPattern<OpTy>::OpConversionPattern;
+
+  explicit ShardingPattern(mlir::MLIRContext* context,
+                           bool keepHloShardingConstraints)
+      : OpConversionPattern<OpTy>(context),
+        keepHloShardingConstraints(keepHloShardingConstraints) {}
 
  private:
   LogicalResult matchAndRewrite(
-      ReshardOp op, OpAdaptor adaptor,
+      OpTy op, typename OpTy::Adaptor adaptor,
       ConversionPatternRewriter& rewriter) const override {
-    rewriteCollectiveOp(op, adaptor.getInput(), adaptor.getSharding(),
-                        rewriter);
+    rewriteCollectiveOp(op, adaptor.getInput(), adaptor.getSharding(), rewriter,
+                        keepHloShardingConstraints);
     return success();
   }
+  bool keepHloShardingConstraints;
 };
 
 template <class OpTy>
@@ -145,7 +166,8 @@ class CollectivePattern : public OpConversionPattern<OpTy> {
       OpTy op, typename OpTy::Adaptor adaptor,
       ConversionPatternRewriter& rewriter) const override {
     rewriteCollectiveOp(op, adaptor.getTensor(), adaptor.getOutSharding(),
-                        rewriter);
+                        rewriter,
+                        /*keepHloShardingConstraints=*/false);
     return success();
   }
 };
@@ -154,6 +176,16 @@ class ExportOpsPass
     : public mlir::PassWrapper<ExportOpsPass, OperationPass<mlir::ModuleOp>> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ExportOpsPass)
+
+  explicit ExportOpsPass(bool keepHloShardingConstraints) {
+    this->keepHloShardingConstraints = keepHloShardingConstraints;
+  }
+
+  ExportOpsPass() = default;
+
+  explicit ExportOpsPass(const ExportOpsPass& other) {
+    this->keepHloShardingConstraints = other.keepHloShardingConstraints;
+  }
 
   void runOnOperation() final {
     mlir::MLIRContext& context = getContext();
@@ -165,17 +197,21 @@ class ExportOpsPass
                         AllSliceOp, AllToAllOp, CollectivePermuteOp,
                         ReduceScatterOp, ShardingConstraintOp,
                         PropagationBarrierOp>();
-    target.addLegalOp<stablehlo::ConstantOp, mhlo::CopyOp>();
+    target.addLegalOp<stablehlo::ConstantOp, mhlo::CopyOp,
+                      stablehlo::CustomCallOp>();
     mlir::RewritePatternSet patterns(&context);
     // After converting `sdy.constant` into `stablehlo.constant`, the constants
     // should not be deduped via folding. Fortunately, folding only happens in
     // greedy pattern rewriters. ExportHloShardingsPass does a simple walk,
     // which keeps the constants as is.
-    patterns.add<ConstantPattern, AllReducePattern, ReshardPattern,
-                 PropagationBarrierPattern, CollectivePattern<AllGatherOp>,
-                 CollectivePattern<AllSliceOp>, CollectivePattern<AllToAllOp>,
+    patterns.add<ConstantPattern, AllReducePattern, PropagationBarrierPattern,
+                 CollectivePattern<AllGatherOp>, CollectivePattern<AllSliceOp>,
+                 CollectivePattern<AllToAllOp>,
                  CollectivePattern<CollectivePermuteOp>,
                  CollectivePattern<ReduceScatterOp>>(&context);
+    patterns
+        .add<ShardingPattern<ShardingConstraintOp>, ShardingPattern<ReshardOp>>(
+            &context, keepHloShardingConstraints);
     if (mlir::failed(mlir::applyPartialConversion(getOperation(), target,
                                                   std::move(patterns)))) {
       signalPassFailure();
@@ -192,15 +228,26 @@ class ExportOpsPass
   void getDependentDialects(mlir::DialectRegistry& registry) const final {
     registry.insert<mlir::sdy::SdyDialect, mlir::mhlo::MhloDialect>();
   }
+
+  Option<bool> keepHloShardingConstraints{
+      *this, "keep-hlo-sharding-constraints",
+      llvm::cl::desc(
+          "Whether to convert SDY sharding constraints to @Sharding custom "
+          "calls - the HLO sharding constraint op. Else export "
+          "them to MHLO copy ops. By default, export to MHLO copy ops."),
+      llvm::cl::init(false)};
 };
 
 }  // namespace
 
-std::unique_ptr<Pass> createExportOpsPass() {
-  return std::make_unique<ExportOpsPass>();
+std::unique_ptr<Pass> createExportOpsPass(
+    bool keepHloShardingConstraints) {
+  return std::make_unique<ExportOpsPass>(keepHloShardingConstraints);
 }
 
-void registerExportOpsPass() { mlir::registerPass(createExportOpsPass); }
+void registerExportOpsPass() {
+  mlir::registerPass(std::make_unique<ExportOpsPass>);
+}
 
 }  // namespace sdy
 }  // namespace xla

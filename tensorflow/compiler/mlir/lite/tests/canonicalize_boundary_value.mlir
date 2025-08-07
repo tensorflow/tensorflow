@@ -1,4 +1,4 @@
-// RUN: tf-opt %s --tfl-canonicalize-boundary-value --split-input-file | FileCheck %s
+// RUN: litert-opt %s --tfl-canonicalize-boundary-value --split-input-file | FileCheck %s
 
 // CHECK-LABEL:   func.func @clamp_neg_inf_f32() -> tensor<f32> {
 // CHECK:           %[[CONST:.*]] = stablehlo.constant dense<-3.40282347E+38> : tensor<f32>

@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/map_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 
@@ -379,6 +380,28 @@ absl::Status CallGraph::VisitNodesInternal(
   return visitor_func(node);
 }
 
+absl::StatusOr<bool> CallGraph::VisitNodesInternal(
+    ChangedVisitorFunction visitor_func, const CallGraphNode& node,
+    absl::flat_hash_set<const CallGraphNode*>* visited) const {
+  auto pair = visited->insert(&node);
+  if (!pair.second) {
+    // Node was not inserted. Node has already been visited.
+    return false;
+  }
+
+  bool changed = false;
+  for (const HloComputation* computation : node.callees()) {
+    TF_ASSIGN_OR_RETURN(
+        bool node_changed,
+        VisitNodesInternal(visitor_func, GetNode(computation), visited));
+    changed |= node_changed;
+  }
+
+  TF_ASSIGN_OR_RETURN(bool node_changed, visitor_func(node));
+  changed |= node_changed;
+  return changed;
+}
+
 absl::Status CallGraph::VisitNodes(VisitorFunction visitor_func,
                                    bool visit_unreachable_nodes) const {
   absl::flat_hash_set<const CallGraphNode*> visited;
@@ -396,6 +419,30 @@ absl::Status CallGraph::VisitNodes(VisitorFunction visitor_func,
   }
 
   return absl::OkStatus();
+}
+
+absl::StatusOr<bool> CallGraph::VisitNodesWithReturn(
+    ChangedVisitorFunction visitor_func, bool visit_unreachable_nodes) const {
+  absl::flat_hash_set<const CallGraphNode*> visited;
+  bool changed = false;
+  if (visit_unreachable_nodes) {
+    // Traverse from all roots in the call graph.
+    for (const CallGraphNode& node : nodes()) {
+      if (node.callers().empty()) {
+        TF_ASSIGN_OR_RETURN(bool node_changed,
+                            VisitNodesInternal(visitor_func, node, &visited));
+        changed |= node_changed;
+      }
+    }
+  } else {
+    // Traverse only from the entry computation.
+    TF_ASSIGN_OR_RETURN(
+        changed,
+        VisitNodesInternal(visitor_func, GetNode(module_->entry_computation()),
+                           &visited));
+  }
+
+  return changed;
 }
 
 bool CallGraph::IsFlattened() const {

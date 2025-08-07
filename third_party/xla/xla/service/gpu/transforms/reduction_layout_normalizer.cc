@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/statusor.h"
 
@@ -147,7 +148,9 @@ class EnforceMinorToMajorReduceOpVisitor : public DfsHloRewriteVisitor {
       }
     }
 
-    Shape new_reduce_shape = ShapeUtil::MakeMaybeTupleShape(new_reduce_shapes);
+    TF_ASSIGN_OR_RETURN(
+        auto new_reduce_shape,
+        ShapeUtil::MakeValidatedMaybeTupleShape(new_reduce_shapes));
 
     std::unique_ptr<HloInstruction> new_reduce = HloInstruction::CreateReduce(
         new_reduce_shape, canonical_reduce_inputs, reduce->init_values(),

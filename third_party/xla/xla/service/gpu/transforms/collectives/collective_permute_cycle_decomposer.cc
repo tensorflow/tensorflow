@@ -37,7 +37,6 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/literal_util.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/collective_permute_cycle.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/source_target_pairs.h"
 #include "xla/shape.h"
@@ -52,6 +51,67 @@ namespace xla {
 namespace {
 
 using CycleType = collective_permute_cycle::CycleType;
+
+using SourceTargetPairType = std::pair<int64_t, int64_t>;
+using SourceTargetPairsType = std::vector<SourceTargetPairType>;
+
+// Returns the cycle type and indices of the vertices that form cycles. For
+// example, GetCycleTypeAndIndices({{0,3},{1,0},{2,1},{3,2}}) returns
+// {kBackward, {0}}, since the communication pattern contains a backward cycle
+// with the cycle-inducing vertex at index 0 in the input source-target pairs
+// array. This function uses the assumption that, in practice, in forward
+// cycles, most edges will have the target replica ID greater than the source
+// replica ID except for the back edges that form cycles (similar logic applies
+// to backward cycles).
+std::pair<CycleType, std::set<int>> GetCycleTypeAndIndices(
+    const SourceTargetPairsType& pairs) {
+  std::set<int> seen_replica_ids;
+  std::set<std::pair<int64_t, int64_t>> tentative_results;
+  // first figure out if we're dealing with a potential forward or backward
+  // cycle.
+  int forward_edge_counter = 0;
+  int backward_edge_counter = 0;
+  for (auto pair : pairs) {
+    pair.first < pair.second ? forward_edge_counter++ : backward_edge_counter++;
+  }
+  bool is_forward_cycle = forward_edge_counter > backward_edge_counter;
+  for (int64_t i = 0; i < pairs.size(); ++i) {
+    const SourceTargetPairType& pair = pairs[i];
+    if (is_forward_cycle) {
+      // check if the source of the current pair is smaller than the target
+      if (pair.first < pair.second) {
+        seen_replica_ids.insert(pair.first);
+      } else {
+        // the source of the current pair is larger than the target, so the
+        // current pair may be part of a cycle. We keep track of the target ID
+        // and the index of the pair in the original pairs array.
+        tentative_results.insert(std::make_pair(pair.second, i));
+      }
+    } else {
+      // The backward cycle check uses similar logic but in reverse.
+      if (pair.first > pair.second) {
+        seen_replica_ids.insert(pair.second);
+      } else {
+        tentative_results.insert(std::make_pair(pair.first, i));
+      }
+    }
+  }
+  std::set<int> final_results;
+  // Iterate over the tentative results and only keep the indices that form an
+  // actual cycle. This is done by checking if the target replica ID of the
+  // pair is in the set of seen replica IDs. Note that the tentative results
+  // array will be fairly small in practice, so this is not adding too much to
+  // the runtime.
+  for (auto& [replica_id, index] : tentative_results) {
+    if (seen_replica_ids.find(replica_id) != seen_replica_ids.end()) {
+      final_results.insert(index);
+    }
+  }
+  CycleType cycle_type = final_results.empty() ? CycleType::kNone
+                         : is_forward_cycle    ? CycleType::kForward
+                                               : CycleType::kBackward;
+  return std::make_pair(cycle_type, final_results);
+}
 
 // Returns the cycle type and indices of the vertices that form cycles. If the
 // cycle type is kUnknown, the set of indices will be empty.

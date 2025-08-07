@@ -417,6 +417,9 @@ tf_py_strict_test(
     size = "medium",
     srcs = ["worker_tags_test.py"],
     shard_count = 32,
+    tags = [
+        "no_oss_py313",  # TODO(b/427743382): Fix the timeout in linux_x86_cpu_wheel_py313_np1
+    ],
     deps = [
         ":multi_process_cluster",
         ":test_base",

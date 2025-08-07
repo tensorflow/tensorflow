@@ -614,7 +614,7 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
         /*out_buffer=*/
         CreateBufferAllocationSlice(
             buffer_allocations_[buffer_allocations_.size() - 1]),
-        /*out_shape=*/literals_[buffer_allocations_.size() - 1].shape());
+        /*out_shape=*/literals_[buffer_allocations_.size() - 1].shape(), true);
   }
 
   absl::StatusOr<std::unique_ptr<Thunk>> CreateXnnConvolutionThunk() {
@@ -1118,7 +1118,11 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
     const bool are_options_equal =
         thunk_1.options().use_threadpool == thunk_2.options().use_threadpool;
 
+    const bool is_capturing_rhs_equal =
+        thunk_1.capture_rhs() == thunk_2.capture_rhs();
+
     return are_options_equal && are_dot_dimensions_equal &&
+           is_capturing_rhs_equal &&
            VerifySliceShapeEquality(thunk_1.dot_slices().lhs_buffer,
                                     thunk_1.dot_slices().lhs_shape,
                                     thunk_2.dot_slices().lhs_buffer,

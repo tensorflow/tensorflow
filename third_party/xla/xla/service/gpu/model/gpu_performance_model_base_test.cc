@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -128,7 +129,6 @@ f1 {
 
 ENTRY entry_computation {
   param_0 = f32[128] parameter(0)
-  param_1 = f32[4,4] parameter(1)
   ROOT fusion = f32[128] fusion(param_0), kind=kLoop, calls=f1
 }
 )";
@@ -146,6 +146,38 @@ ENTRY entry_computation {
   EXPECT_EQ(GpuPerformanceModelBase::GetOperandBytesAccessed(
                 analysis_.get(), root, root->operand(0)),
             /*4*128*256=*/131072);
+}
+
+TEST_F(GpuPerformanceModelBaseTest,
+       GetOperandBytesAccessedReturnsZeroForUnusedOperand) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+f1 {
+  p0 = f32[128] parameter(0)
+  ROOT reduce = f32[128] exponential(p0)
+}
+
+ENTRY entry_computation {
+  p0 = f32[128] parameter(0)
+  p1 = f32[128] parameter(1)
+  fusion = f32[128] fusion(p0), kind=kLoop, calls=f1
+  ROOT add = f32[128] add(p1, fusion)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloComputation* computation = module->entry_computation();
+  ASSERT_IS_OK(computation->Accept(analysis_.get()));
+
+  HloInstruction* root = computation->root_instruction();
+  HloInstruction* p1 = root->mutable_operand(0);
+  HloInstruction* fusion = root->mutable_operand(1);
+
+  EXPECT_EQ(GpuPerformanceModelBase::GetOperandBytesAccessed(analysis_.get(),
+                                                             fusion, p1),
+            0);
 }
 
 // This test documents current behaviour. See comments below how the correct

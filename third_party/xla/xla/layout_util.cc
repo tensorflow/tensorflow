@@ -28,7 +28,6 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -231,11 +230,11 @@ Layout CreateDefaultLayoutForRank(int64_t num_dims) {
     return absl::OkStatus();
   }
 
-  if (layout.minor_to_major_size() != shape.dimensions().size()) {
+  if (layout.minor_to_major().size() != shape.dimensions().size()) {
     return InvalidArgument(
         "layout minor_to_major field contains %d elements, "
         "but shape has %d dimensions: {%s}; shape: %s",
-        layout.minor_to_major_size(), shape.dimensions().size(),
+        layout.minor_to_major().size(), shape.dimensions().size(),
         absl::StrJoin(layout.minor_to_major(), ", "), shape.ToString());
   }
 
@@ -337,7 +336,8 @@ Layout CreateDefaultLayoutForRank(int64_t num_dims) {
     // Tuple shape: all subshapes must have a layout.
     return absl::c_all_of(shape.tuple_shapes(),
                           [](const Shape& s) { return HasLayout(s); });
-  } else if (!shape.IsArray()) {
+  }
+  if (!shape.IsArray()) {
     // Opaque, token types etc. ignore layout.
     return true;
   }
@@ -349,7 +349,8 @@ Layout CreateDefaultLayoutForRank(int64_t num_dims) {
     // Tuple shape: all subshapes must have a layout.
     return absl::c_any_of(shape.tuple_shapes(),
                           [](const Shape& s) { return HasAnyLayout(s); });
-  } else if (!shape.IsArray()) {
+  }
+  if (!shape.IsArray()) {
     // Opaque, token types etc. ignore layout.
     return true;
   }
@@ -382,7 +383,7 @@ Layout CreateDefaultLayoutForRank(int64_t num_dims) {
 
 /* static */ std::vector<int64_t> LayoutUtil::MakeLogicalToPhysical(
     const Layout& layout) {
-  std::vector<int64_t> logical_to_physical(layout.minor_to_major_size());
+  std::vector<int64_t> logical_to_physical(layout.minor_to_major().size());
   for (int64_t physical = 0, end = logical_to_physical.size(); physical < end;
        ++physical) {
     const int64_t logical = Major(layout, physical);
@@ -610,8 +611,8 @@ absl::Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src, Shape* dst) {
 
 /*static*/ std::optional<SplitConfig> LayoutUtil::GetSplitConfig(
     const Shape& shape) {
-  CHECK_LE(shape.layout().split_configs_size(), 1);
-  return shape.layout().split_configs_size() > 0
+  CHECK_LE(shape.layout().split_configs().size(), 1);
+  return shape.layout().split_configs().size() > 0
              ? std::make_optional(shape.layout().split_configs(0))
              : std::nullopt;
 }

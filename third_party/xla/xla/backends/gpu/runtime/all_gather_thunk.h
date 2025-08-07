@@ -65,8 +65,7 @@ class AllGatherStartThunk : public CollectiveThunk {
   const std::vector<Buffer> buffers_;
 };
 
-absl::Status RunAllGather(GpuCollectives* collectives,
-                          std::vector<DeviceBufferPair>& buffers,
+absl::Status RunAllGather(std::vector<DeviceBufferPair>& buffers,
                           se::Stream& stream, Communicator* comm);
 
 }  // namespace gpu

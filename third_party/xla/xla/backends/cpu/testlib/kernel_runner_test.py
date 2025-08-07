@@ -52,7 +52,9 @@ class LLvmKernelRunnerTest(absltest.TestCase):
           ret ptr null
         }
     """
-    llvm_emitter = cpu_testlib.LlvmIrKernelEmitter(ir, "LlvmAddI32", (4, 1, 1))
+    llvm_emitter = cpu_testlib.LlvmTestKernelEmitter(
+        ir, "LlvmAddI32", (4, 1, 1)
+    )
 
     kernel_definition = llvm_emitter.emit_kernel_definition()
 
@@ -74,8 +76,8 @@ class MlirKernelRunnerTest(absltest.TestCase):
     ir = """
       #indexing_map = #xla.indexing_map<"()[s0, s1] -> (s0, s1), domain: s0 in [0, 1023], s1 in [0, 31]">
       module attributes {dlti.dl_spec = #dlti.dl_spec<index = 32 : i32>} {
-        func.func private
-        @sum_kernel_entry(%input_buffer: tensor<1024x32xf32>,
+        func.func
+        @sum(%input_buffer: tensor<1024x32xf32>,
                           %output_buffer: tensor<1xf32>) -> tensor<1xf32>
                             attributes {xla.backend_kind = #xla.backend_kind<cpu>, xla.entry} {
           // Initial sum set to 0.
@@ -100,19 +102,9 @@ class MlirKernelRunnerTest(absltest.TestCase):
 
           return %inserted : tensor<1xf32>
         }
-        func.func @sum_kernel(%call_frame: !xla_cpu.call_frame) -> !xla_cpu.error {
-          %thread_idx = xla_cpu.thread_id %call_frame : index
-          %input_buffer = xla_cpu.load %call_frame, 0 : tensor<1024x32xf32>
-          %output_buffer = xla_cpu.load %call_frame, 1 : tensor<1xf32>
-          %sum = xla.pure_call @sum_kernel_entry(%input_buffer, %output_buffer)
-            {noinline} : (tensor<1024x32xf32>, tensor<1xf32>) -> tensor<1xf32>
-          xla_cpu.store %sum into %call_frame, 1 : tensor<1xf32>
-          %success = xla_cpu.success : !xla_cpu.error
-          return %success : !xla_cpu.error
-        }
       }
     """
-    mlir_emitter = cpu_testlib.MlirKernelEmitter(ir, "sum_kernel", (1, 1, 1))
+    mlir_emitter = cpu_testlib.MlirTestKernelEmitter(ir, "sum", (1, 1, 1))
 
     kernel_definition = mlir_emitter.emit_kernel_definition()
 

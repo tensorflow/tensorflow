@@ -55,6 +55,7 @@ limitations under the License.
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
 #include "xla/tsl/framework/allocator.h"
+#include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -285,6 +286,9 @@ class PjRtCApiClient : public PjRtClient {
   absl::StatusOr<PjRtDevice*> LookupAddressableDevice(
       PjRtLocalDeviceId local_device_id) const override;
 
+  void UpdateGlobalProcessInfo(
+      absl::Span<tensorflow::CoordinatedTaskStateInfo> infos) override;
+
   absl::Span<PjRtMemorySpace* const> memory_spaces() const override;
 
   PjRtPlatformId platform_id() const override { return platform_id_; }
@@ -315,19 +319,14 @@ class PjRtCApiClient : public PjRtClient {
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
       mlir::ModuleOp module, CompileOptions options) override;
 
-  // `PjRtCApiClient::LoadSerializedExecutable()` ignores `CompileOptions` arg
+  // `PjRtCApiClient::LoadSerializedExecutable()` ignores `LoadOptions` arg
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
   LoadSerializedExecutable(absl::string_view serialized,
                            std::optional<CompileOptions> options,
                            const LoadOptions& load_options) override;
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
-      const Shape& shape, PjRtMemorySpace* memory_space) override {
-    return Unimplemented(
-        "PJRT C API does not support CreateUninitializedBuffer. Please report "
-        "an issue at https://github.com/google/jax/issues if you need this "
-        "feature.");
-  }
+      const Shape& shape, PjRtMemorySpace* memory_space) override;
 
   absl::StatusOr<const PjRtTopologyDescription*> GetTopologyDescription()
       const override;
@@ -365,12 +364,7 @@ class PjRtCApiClient : public PjRtClient {
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
   MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
                               PjRtDevice* device,
-                              PjRtCrossHostRecvNotifier notifier) override {
-    return Unimplemented(
-        "PJRT C API does not support MakeCrossHostReceiveBuffers. Please "
-        "report an issue at https://github.com/google/jax/issues if you need "
-        "this feature.");
-  }
+                              PjRtCrossHostRecvNotifier notifier) override;
 
   absl::Status DmaMap(void* data, size_t size) override;
 
@@ -396,6 +390,9 @@ class PjRtCApiClient : public PjRtClient {
       const override {
     return nullptr;
   }
+
+  using CrossHostRecvNotifierFunction =
+      std::function<void(PJRT_Error*, const char**, size_t*, size_t)>;
 
  private:
   void InitDevicesAndMemorySpaces();
@@ -464,7 +461,7 @@ class PjRtCApiBuffer : public PjRtBuffer {
 
   PjRtFuture<> ToLiteral(MutableLiteralBase* literal) override;
   PjRtFuture<> LazyToLiteral(
-      absl::AnyInvocable<absl::StatusOr<MutableLiteralBase*>() &&> generator)
+      absl::AnyInvocable<PjRtFuture<MutableLiteralBase*>() &&> generator)
       override;
 
   absl::StatusOr<size_t> GetOnDeviceSizeInBytes() const override;
@@ -480,17 +477,13 @@ class PjRtCApiBuffer : public PjRtBuffer {
         "PJRT C API does not support ReleaseDeviceMemoryOwnership");
   }
 
-  bool IsDeleted() override;
+  bool IsDeleted() const override;
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToMemorySpace(
       PjRtMemorySpace* dst_memory_space) override;
 
   void CopyToRemoteDevice(PjRtFuture<std::string> serialized_descriptor,
-                          RemoteSendCallback on_done) override {
-    LOG(ERROR) << "PJRT C API does not support CopyToRemoteDevice. Please "
-                  "report an issue at https://github.com/google/jax/issues if "
-                  "you need this feature.";
-  }
+                          RemoteSendCallback on_done) override;
 
   PjRtFuture<> GetReadyFuture() override;
 
@@ -658,20 +651,23 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
   absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
       absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
       const ExecuteOptions& options,
-      std::optional<std::vector<PjRtFuture<>>>& returned_futures) override;
+      std::optional<std::vector<PjRtFuture<>>>& returned_futures)
+      const override;
 
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options,
-      std::optional<PjRtFuture<>>& returned_future, bool fill_future) override;
+      std::optional<PjRtFuture<>>& returned_future,
+      bool fill_future) const override;
 
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options,
-      std::optional<PjRtFuture<>>& returned_future, bool fill_future) override;
+      std::optional<PjRtFuture<>>& returned_future,
+      bool fill_future) const override;
 
   void Delete() override;
-  bool IsDeleted() override;
+  bool IsDeleted() const override;
 
   absl::StatusOr<std::string> SerializeExecutable() const override {
     return executable_->SerializeExecutable();
@@ -717,13 +713,13 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
       std::vector<PJRT_Buffer**>& c_output_lists,
       std::optional<std::vector<PJRT_Event*>>& device_complete_events,
       SendRecvCallbackData& send_recv_callback_data,
-      std::vector<int64_t>& non_donatable_input_indices_storage);
+      std::vector<int64_t>& non_donatable_input_indices_storage) const;
 
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
   ExecuteWithSingleDevice(absl::Span<PjRtBuffer* const> argument_handles,
                           PjRtDevice* device, const ExecuteOptions& options,
                           std::optional<PjRtFuture<>>& returned_future,
-                          bool fill_future);
+                          bool fill_future) const;
 
   PjRtCApiClient* client_;
   std::unique_ptr<PJRT_LoadedExecutable, ::pjrt::PJRT_LoadedExecutableDeleter>
@@ -768,6 +764,11 @@ absl::StatusOr<std::unique_ptr<PjRtTopologyDescription>> GetCApiTopology(
 absl::StatusOr<std::unique_ptr<PjRtTopologyDescription>> GetCApiTopology(
     absl::string_view device_type, absl::string_view topology_name,
     const absl::flat_hash_map<std::string, PjRtValueType>& create_options = {});
+
+absl::StatusOr<std::unique_ptr<PjRtCompiler>> GetCApiCompiler(
+    absl::string_view device_type);
+
+absl::StatusOr<std::unique_ptr<PjRtCompiler>> GetCApiCompiler();
 
 }  // namespace xla
 

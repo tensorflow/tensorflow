@@ -99,6 +99,7 @@ class EinsumDepthAnalysis : public DfsHloVisitorWithDefault {
   absl::Status HandleGetTupleElement(
       HloInstruction* get_tuple_element) override;
   absl::Status HandleDot(HloInstruction* dot) override;
+  absl::Status HandleCustomCall(HloInstruction* custom_call) override;
   absl::Status HandleConvolution(HloInstruction* convolution) override {
     return HandleDot(convolution);
   }
@@ -160,6 +161,7 @@ class EinsumHeightAnalysis : public DfsHloVisitorWithDefault {
   absl::Status HandleGetTupleElement(
       HloInstruction* get_tuple_element) override;
   absl::Status HandleDot(HloInstruction* dot) override;
+  absl::Status HandleCustomCall(HloInstruction* custom_call) override;
   absl::Status HandleConvolution(HloInstruction* convolution) override {
     return HandleDot(convolution);
   }
@@ -351,6 +353,7 @@ class HloValueSemanticsPropagation : public DfsHloVisitorWithDefault {
   absl::Status HandleCall(HloInstruction* call) override;
   absl::Status HandleFusion(HloInstruction* fusion) override;
   absl::Status HandleCustomCall(HloInstruction* custom_call) override;
+  absl::Status HandleSparseDenseMatmul(HloInstruction* instruction);
   absl::Status HandleWhile(HloInstruction* xla_while) override;
   absl::Status HandleConditional(HloInstruction* conditional) override;
   absl::Status HandleSelect(HloInstruction* select) override;

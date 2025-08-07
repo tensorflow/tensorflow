@@ -36,6 +36,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/hlo/analysis/alias_info.h"
+#include "xla/hlo/analysis/hlo_operand_index.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -47,64 +49,9 @@ limitations under the License.
 
 namespace xla {
 
-// Identifies one array input of an HloInstruction.
-struct HloOperandIndex {
-  using MyTuple = std::tuple<int64_t, const ShapeIndex&>;
-
-  template <typename H>
-  friend H AbslHashValue(H h, const HloOperandIndex& hlo_operand_index) {
-    return H::combine(std::move(h), hlo_operand_index.ToTuple());
-  }
-
-  friend bool operator==(const HloOperandIndex& lhs,
-                         const HloOperandIndex& rhs) {
-    return lhs.ToTuple() == rhs.ToTuple();
-  }
-
-  bool operator!=(const HloOperandIndex& other) const {
-    return !(*this == other);
-  }
-
-  MyTuple ToTuple() const {
-    return std::make_tuple(operand_number, std::cref(operand_index));
-  }
-
-  // The operand number in which the array value appears.
-  int64_t operand_number;
-
-  // The shape index within the operand in which the array value appears.
-  ShapeIndex operand_index;
-};
-
 // Analysis which identifies all HLO values and their uses in an HLO module.
 class HloDataflowAnalysis {
  public:
-  // Infrastructure for passing may-alias hints: HLO passes can populate the
-  // may-alias table. If an empty optional is returned, default rules are used.
-  //
-  // Must-alias rules (as defined by GetInPlaceInputOutputPairs) cannot be
-  // overriden using backend-specific overrides.
-  //
-  // The first parameter of the function should be the instruction, the
-  // second parameter should be an operand of the instruction. The third
-  // parameter should be the output index of the instruction.
-  using CanShareBuffer = std::function<std::optional<bool>(
-      const HloInstruction* instr, const HloInstruction* operand,
-      const ShapeIndex& user_index)>;
-
-  // Infrastructure for overriding whether an instruction defines a new value.
-  //
-  // The first parameter is the instruction and the second parameter is the
-  // output index. If an empty optional is used, default rules are used. If a
-  // ForwardedOperand object is returned, the value at the corresponding
-  // operand's index is used for the output, overriding all default logic.
-  struct ForwardedOperand {
-    int64_t operand_number;
-    ShapeIndex operand_index;
-  };
-  using ForwardsValue = std::function<std::optional<ForwardedOperand>(
-      const HloInstruction* instr, const ShapeIndex& index)>;
-
   // Runs dataflow analysis on the given module. Parameters:
   //
   //   ssa_form : If true then new values are defined at the merge points of
@@ -126,8 +73,6 @@ class HloDataflowAnalysis {
   static absl::StatusOr<std::unique_ptr<HloDataflowAnalysis>> Run(
       const HloModule& module, bool ssa_form = false,
       bool bitcast_defines_value = false,
-      const CanShareBuffer& can_share_buffer = nullptr,
-      const ForwardsValue& forwards_value = nullptr,
       absl::flat_hash_set<absl::string_view> execution_threads = {});
 
   // Returns true if 'instruction' defines an HLO value at the given shape index
@@ -159,9 +104,6 @@ class HloDataflowAnalysis {
   const HloValueSet& GetValueSet(const HloInstruction* instruction,
                                  const ShapeIndex& index = {}) const;
   const HloValueSet& GetValueSet(const HloPosition& position) const;
-  HloValueSet& GetValueSet(const HloPosition& position);
-  HloValueSet& GetValueSet(const HloInstruction* instruction,
-                           const ShapeIndex& index = {});
 
   // Returns the unique value in the HloValueSet at the given instruction and
   // shape index. CHECKs if the value set does not contain a exactly one value.
@@ -205,13 +147,10 @@ class HloDataflowAnalysis {
   bool CanShareOperandBufferWithUser(HloInstruction* operand,
                                      const ShapeIndex& operand_index,
                                      HloInstruction* user,
-                                     const ShapeIndex& user_index) const;
+                                     const ShapeIndex& user_index,
+                                     const AliasInfo* alias_info) const;
 
   const HloModule& module() const { return module_; }
-
-  // Returns true if the operation is an in-place operation and its operand 0
-  // must alias with the output.
-  static bool IsInPlaceOperation(HloOpcode opcode);
 
   // Returns true if the operation is the start/done of an asynchronous
   // operation, where the buffer used/produced by the op needs to stay alive
@@ -235,6 +174,7 @@ class HloDataflowAnalysis {
   //
   // ... the results can include any of the 3 * 3 = 9 possible pairs of
   // input and output arrays.
+  // TODO(b/424109294): Move this to AliasInfo class.
   static std::vector<std::pair<HloOperandIndex, ShapeIndex>>
   GetInPlaceInputOutputPairs(const HloInstruction* instruction);
 
@@ -246,9 +186,10 @@ class HloDataflowAnalysis {
 
   HloDataflowAnalysis(const HloModule& module, bool ssa_form,
                       bool bitcast_defines_value,
-                      const CanShareBuffer& can_share_buffer,
-                      const ForwardsValue& forwards_value,
                       absl::flat_hash_set<absl::string_view> execution_threads);
+
+  // Runs dataflow analysis on the module attached to this HloDataflowAnalysis.
+  absl::Status RunImpl();
 
   // 1. During value propagation (Propagate function), always create phi
   // values once it see multiple inputs merging at the same point. It then
@@ -282,6 +223,10 @@ class HloDataflowAnalysis {
   // Updates the value set of the given instruction based on the values flowing
   // into the instruction (operands and cross-computation dataflow).
   bool UpdateInstructionValueSet(HloInstruction* instruction);
+
+  // Returns the HloValueSet for the given instruction at the given index.
+  HloValueSet& GetMutableValueSet(const HloInstruction* instruction,
+                                  const ShapeIndex& index = {});
 
   // Updates the value set for a particular instruction type. Returns whether
   // the instruction value set changed.
@@ -373,33 +318,7 @@ class HloDataflowAnalysis {
 
   // An explicit graph holding phi values and edges.
   PhiGraph phi_graph_;
-
-  // Backend specific function that decides whether an instruction can share
-  // a buffer with its operand.
-  CanShareBuffer can_share_buffer_ = nullptr;
-
-  ForwardsValue forwards_value_ = nullptr;
 };
-
-// Removes layers of tuple indirection introduced via 'tuple' and
-// 'get-tuple-element' instructions to more directly identify the source of the
-// given HLO value (identified by the given `ShapeIndex` into the output of the
-// given `HloInstruction`).
-//
-// e.g. for the following:
-//    %x = some-op(...)
-//    %foo = get-tuple-element(%x), index=0
-//    %bar = tuple(%y, %foo)
-//
-// ... FollowTupleIndirection(%bar, {1}) == {%x, {0}} (output 1 of 'bar' comes
-// from output 0 of %x).
-//
-// Note that all 'tuple' instructions are followed before all
-// 'get-tuple-element' instructions are followed. This is because it is assumed
-// that tupling a value and then extracting it from the tuple again will not
-// occur in properly-optimized IR.
-std::pair<const HloInstruction*, ShapeIndex> FollowTupleIndirection(
-    const HloInstruction* instruction, ShapeIndex operand_index);
 
 }  // namespace xla
 

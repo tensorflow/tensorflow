@@ -21,13 +21,17 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/call_once.h"
 #include "absl/base/nullability.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
@@ -57,17 +61,42 @@ limitations under the License.
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/TargetParser/Host.h"
 #include "llvm/TargetParser/Triple.h"
+#include "llvm/Transforms/IPO/AlwaysInliner.h"
 #include "llvm/Transforms/Instrumentation/DataFlowSanitizer.h"
 #include "xla/backends/cpu/codegen/cpu_features.h"
+#include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/backends/cpu/codegen/polynomial_approximations.h"
+#include "xla/codegen/math/math_compiler_lib.h"
+#include "xla/codegen/math_lib.h"
+#include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/cpu_options.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/cpu_info.h"
 
 namespace xla::cpu {
+
+void SetXlaCpuBackendOptions(llvm::Module& llvm_module,
+                             const LlvmKernelOptions& options) {
+  std::vector<std::string> llvm_kernel_options;
+  if (options.optimize_for_size()) {
+    llvm_kernel_options.emplace_back(options::kXlaOptimizeForSizeCpuOption);
+  }
+  if (options.disable_loop_unrolling()) {
+    llvm_kernel_options.emplace_back(options::kDisableLoopUnrolling);
+  }
+  if (options.slp_vectorizer_disabled()) {
+    llvm_kernel_options.emplace_back(options::kDisableSlpVectorizer);
+  }
+
+  llvm::MDString* options_mdstring = llvm::MDString::get(
+      llvm_module.getContext(), absl::StrJoin(llvm_kernel_options, ","));
+  llvm_module.addModuleFlag(llvm::Module::Error, "xla_backend_extra_options",
+                            options_mdstring);
+}
 
 static llvm::OptimizationLevel GetOptimizationLevel(
     IrCompiler::Options options) {
@@ -117,8 +146,9 @@ static absl_nullable std::unique_ptr<HloModuleConfig> GetXlaBackendExtraOptions(
 }
 
 static llvm::PipelineTuningOptions GetPipelineTuningOptions(
-    const llvm::Module& module, IrCompiler::Options options) {
-  auto pto_from_options = [](const IrCompiler::Options opts) {
+    const llvm::Module& module, IrCompiler::Options options,
+    const llvm::TargetMachine* target_machine) {
+  auto pto_from_options = [&](const IrCompiler::Options opts) {
     llvm::PipelineTuningOptions pto;
     pto.LoopVectorization = !opts.optimize_for_size;
     pto.SLPVectorization =
@@ -148,6 +178,10 @@ static llvm::PipelineTuningOptions GetPipelineTuningOptions(
     with_overrides.disable_loop_unrolling = true;
   }
   return pto_from_options(with_overrides);
+}
+
+static bool FunctionHasInternalLinkage(const llvm::Function& function) {
+  return function.hasInternalLinkage();
 }
 
 std::unique_ptr<IrCompiler> IrCompiler::Create(
@@ -220,6 +254,10 @@ IrCompiler::TargetMachineBuilder IrCompiler::InferTargetMachineBuilder(
 
 llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> IrCompiler::operator()(
     llvm::Module& module) {
+  absl::string_view module_name = module.getName();
+  XLA_SCOPED_LOGGING_TIMER_LEVEL(
+      absl::StrCat("Compiled LLVM module: ", module_name), 1);
+
   VLOG(2) << "IR before optimizations";
   XLA_VLOG_LINES(2, llvm_ir::DumpToString(&module));
 
@@ -281,7 +319,12 @@ llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> IrCompiler::operator()(
 
 llvm::Error IrCompiler::RunIrPasses(llvm::Module& module,
                                     llvm::TargetMachine* target_machine) const {
-  llvm::PipelineTuningOptions pto = GetPipelineTuningOptions(module, options_);
+  if (absl::c_any_of(module.getFunctionList(), FunctionHasInternalLinkage)) {
+    codegen::math::RunInlineAndOptPasses(module);
+  }
+
+  llvm::PipelineTuningOptions pto =
+      GetPipelineTuningOptions(module, options_, target_machine);
   llvm::LoopAnalysisManager lam;
   llvm::FunctionAnalysisManager fam;
   llvm::CGSCCAnalysisManager cgam;
@@ -299,6 +342,8 @@ llvm::Error IrCompiler::RunIrPasses(llvm::Module& module,
       std::make_unique<llvm::TargetLibraryInfoImpl>(target_triple);
   target_library_info_impl->addVectorizableFunctions(
       PolynomialApproximationsVectorization());
+  codegen::MathFunctionLib math_lib(target_machine);
+  target_library_info_impl->addVectorizableFunctions(math_lib.Vectorizations());
 
   fam.registerPass(
       [&] { return llvm::TargetLibraryAnalysis(*target_library_info_impl); });
@@ -341,12 +386,17 @@ llvm::Error IrCompiler::RunIrPasses(llvm::Module& module,
     if (llvm::verifyModule(module, &error_stream)) {
       return llvm::make_error<llvm::StringError>(
           llvm::errc::invalid_argument,
-          absl::StrFormat("Invalid LLVM IR after optimizations:\n%s",
+          absl::StrFormat("Invalid LLVM IR after optimizations:\n%s\n",
                           error_stream.str()));
     }
   }
 
+  auto replaced_functions = math_lib.RewriteMathFunctions(module);
   RewriteToPolynomialApproximations(&module, options_.fast_math_flags);
+  if (!replaced_functions.empty()) {
+    codegen::math::RemoveFromCompilerUsed(module, replaced_functions);
+    codegen::math::RunInlineAndOptPasses(module);
+  }
 
   return llvm::Error::success();
 }
@@ -363,8 +413,20 @@ std::unique_ptr<llvm::MemoryBuffer> IrCompiler::EmitMachineCode(
   target_machine->addPassesToEmitMC(codegen_passes, mc_context, ostream);
   codegen_passes.run(module);
 
+  llvm::NamedMDNode* memory_region_name_md =
+      module.getNamedMetadata(std::string(kMemoryRegionNameMetadataName));
+  CHECK(memory_region_name_md != nullptr)
+      << "Memory region name metadata not found in LLVM module.";
+  CHECK_GT(memory_region_name_md->getNumOperands(), 0);
+  llvm::MDNode* node = memory_region_name_md->getOperand(0);
+  CHECK(node != nullptr);
+  CHECK_GT(node->getNumOperands(), 0);
+  llvm::MDString* md_str = llvm::dyn_cast<llvm::MDString>(node->getOperand(0));
+  CHECK(md_str != nullptr);
+  llvm::StringRef mem_region_name_str = md_str->getString();
+
   return std::make_unique<llvm::SmallVectorMemoryBuffer>(
-      std::move(mc_stream_buffer));
+      std::move(mc_stream_buffer), mem_region_name_str);
 }
 
 llvm::CodeGenOptLevel IrCompiler::GetCodeGenOptLevel(
@@ -379,6 +441,35 @@ llvm::CodeGenOptLevel IrCompiler::GetCodeGenOptLevel(
     default:
       return llvm::CodeGenOptLevel::None;
   }
+}
+
+absl::StatusOr<std::unique_ptr<llvm::TargetMachine>>
+IrCompiler::build_target_machine() const {
+  TF_ASSIGN_OR_RETURN(auto target_machine, target_machine_builder_());
+
+  absl::string_view current_features(target_machine->getTargetFeatureString());
+
+  std::vector<std::string> additional_features;
+  for (absl::string_view feature : absl::StrSplit(current_features, ',')) {
+    // Scatter & gather can result in very poor performance.
+    if (absl::StartsWith(feature, "+avx512")) {
+      additional_features.push_back("+prefer-no-scatter");
+      additional_features.push_back("+prefer-no-gather");
+    }
+  }
+
+  if (additional_features.empty()) {
+    return target_machine;
+  }
+  std::string additional_features_str = absl::StrJoin(additional_features, ",");
+  if (current_features.empty()) {
+    target_machine->setTargetFeatureString(additional_features_str);
+  } else {
+    target_machine->setTargetFeatureString(
+        absl::StrCat(current_features, ",", additional_features_str));
+  }
+
+  return target_machine;
 }
 
 }  // namespace xla::cpu

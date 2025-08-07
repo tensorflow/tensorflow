@@ -2084,13 +2084,18 @@ def ReorderGatherAndCast : Pat<
 // Replace division by a constant with a multiplication by a reciprocal of that
 // constant. Floating point division can be ~10x more expensive than a
 // multiplication.
+// Only do the replacement when arg0 is not a constant, otherwise the newly
+// generated div will be converted to mul again if the const div is not
+// folded (that could happen when const tensor is very large), and that will
+// cause infinite recursion.
 def RealDivWithF32ConstDivisor : Pat<
   (TFL_DivOp:$src $arg0, (Arith_ConstantOp FloatElementsAttr<32>:$value), $activation),
   (TFL_MulOp:$dest1 $arg0,
     (TFL_DivOp (Arith_ConstantOp
       (GetScalarOfType<1> (Arith_ConstantOp $value))),
       (Arith_ConstantOp $value),  TFL_AF_None),
-    $activation)>;
+    $activation),
+  [(NotConstantLike $arg0)]>;
 
 // Replace casting a boolean tensor to a numeric type, followed by comparing
 // with zero. Note it doesn't matter what type we're casting to. HasSameType
@@ -2215,3 +2220,20 @@ def DegenerateFCtoMul : Pat<
    (IsLastDimensionEqualOne $input),
    (SameElementType $input, $filter),
    (IsNoneType $bias)]>;
+
+// Reorder operands of BMM with LHS constant input to the RHS.
+def BMMMoveConstantInputToRHS : Pat<
+  (TFL_BatchMatMulOp:$bmm_out
+    (Arith_ConstantOp:$const_input $constInputVal),
+    $filter, ConstBoolAttrFalse, ConstBoolAttrFalse, $asymmetric_quantize_inputs),
+  (TFL_TransposeOp
+    (TFL_BatchMatMulOp
+      $filter,
+      $const_input,
+      ConstBoolAttrTrue, ConstBoolAttrTrue, $asymmetric_quantize_inputs,
+       (returnType (GetTransposedType<"{1, 0}"> $bmm_out))),
+    (Arith_ConstantOp ConstantAttr<RankedI32ElementsAttr<[2]>, "{1,0}">)),
+  [(HasRank<2> $const_input),
+   (HasRank<2> $filter),
+   (IsLastDimensionEqualOne $const_input),
+   (SameElementType $const_input, $filter)]>;

@@ -26,7 +26,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/executable.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/service/hlo_runner.h"
 #include "xla/service/hlo_runner_interface.h"
@@ -68,7 +67,7 @@ class MatmulPerfTableGen {
   };
 
   explicit MatmulPerfTableGen(Config config)
-      : runner_(PlatformUtil::GetPlatform("cuda").value()),
+      : runner_(PlatformUtil::GetPlatform("gpu").value()),
         config_(std::move(config)) {};
 
   // Computes a performance table for a given `config`.
@@ -77,10 +76,16 @@ class MatmulPerfTableGen {
   // Dumps a performance `table` to a given `output_file` from `Config`.
   absl::Status Dump(const DeviceHloInstructionProfiles& table);
 
+  // Dumps a performance `table` to a given `output_file` from `Config`.
+  absl::Status Dump(const GemmPerfTable& table);
+
   // Reads, deduplicates and merges multiple `xla.gpu.DeviceInstructionProfiles`
   // residing in a given `filepath`.
   absl::StatusOr<DeviceHloInstructionProfiles> Merge(
       absl::string_view filepath);
+
+  static absl::StatusOr<GemmPerfTable> Compact(
+      const DeviceHloInstructionProfiles& profiles);
 
  private:
   std::unique_ptr<OpaqueExecutable> Compile(std::unique_ptr<HloModule> module);

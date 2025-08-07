@@ -27,7 +27,7 @@ limitations under the License.
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor {
 
@@ -38,7 +38,7 @@ class TypedKernelFactory {
  public:
   // Creates a typed kernel on a given executor from a kernel specification.
   static absl::StatusOr<TypedKernel<Params...>> Create(
-      StreamExecutor *executor, const MultiKernelLoaderSpec &spec) {
+      StreamExecutor *executor, const KernelLoaderSpec &spec) {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<Kernel> kernel,
                         executor->LoadKernel(spec));
     return TypedKernel<Params...>(std::move(kernel));
@@ -49,27 +49,35 @@ class TypedKernelFactory {
   // launch would have to match types of the arguments provided at creation
   // time. The canonical storage for both ptx and cubin_data should outlive the
   // lifetime of the kernel.
-  static absl::StatusOr<TypedKernel<Params...>> Create(
-      StreamExecutor *executor, absl::string_view kernel_name,
-      absl::string_view ptx, absl::Span<const uint8_t> cubin_data) {
-    MultiKernelLoaderSpec loader_spec(
+  static absl::StatusOr<TypedKernel<Params...>> Create(StreamExecutor *executor,
+                                                       std::string kernel_name,
+                                                       absl::string_view ptx) {
+    KernelLoaderSpec loader_spec = KernelLoaderSpec::CreateCudaPtxInMemorySpec(
+        ptx, std::move(kernel_name),
         TypedKernel<Params...>::kNumberOfParameters);
-    loader_spec.AddCudaPtxInMemory(ptx, kernel_name);
 
-    if (!cubin_data.empty()) {
-      loader_spec.AddCudaCubinInMemory(cubin_data, kernel_name);
-    }
+    return Create(executor, loader_spec);
+  }
+
+  static absl::StatusOr<TypedKernel<Params...>> Create(
+      StreamExecutor *executor, std::string kernel_name,
+      absl::Span<const uint8_t> cubin_data) {
+    KernelLoaderSpec loader_spec =
+        KernelLoaderSpec::CreateCudaCubinInMemorySpec(
+            cubin_data, std::move(kernel_name),
+            TypedKernel<Params...>::kNumberOfParameters);
 
     return Create(executor, loader_spec);
   }
 
   // Creates a kernel which can be launched on a stream from
   // an in-process symbol pointer.
-  static absl::StatusOr<TypedKernel<Params...>> Create(
-      StreamExecutor *executor, absl::string_view kernel_name, void *symbol) {
-    MultiKernelLoaderSpec loader_spec(
+  static absl::StatusOr<TypedKernel<Params...>> Create(StreamExecutor *executor,
+                                                       std::string kernel_name,
+                                                       void *symbol) {
+    KernelLoaderSpec loader_spec = KernelLoaderSpec::CreateInProcessSymbolSpec(
+        symbol, std::move(kernel_name),
         TypedKernel<Params...>::kNumberOfParameters);
-    loader_spec.AddInProcessSymbol(symbol, kernel_name);
 
     return Create(executor, loader_spec);
   }

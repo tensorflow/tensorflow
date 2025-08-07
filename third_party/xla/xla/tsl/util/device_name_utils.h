@@ -81,7 +81,9 @@ class DeviceNameUtils {
     }
 
     bool operator<(const ParsedName& other) const {
-      if (has_job != other.has_job) return !has_job;
+      if (has_job != other.has_job) {
+        return !has_job;
+      }
       if (has_job) {
         if (job < other.job) {
           return true;
@@ -90,7 +92,9 @@ class DeviceNameUtils {
           return false;
         }
       }
-      if (has_replica != other.has_replica) return !has_replica;
+      if (has_replica != other.has_replica) {
+        return !has_replica;
+      }
       if (has_replica) {
         if (replica < other.replica) {
           return true;
@@ -99,7 +103,9 @@ class DeviceNameUtils {
           return false;
         }
       }
-      if (has_task != other.has_task) return !has_task;
+      if (has_task != other.has_task) {
+        return !has_task;
+      }
       if (has_task) {
         if (task < other.task) {
           return true;
@@ -108,7 +114,9 @@ class DeviceNameUtils {
           return false;
         }
       }
-      if (has_type != other.has_type) return !has_type;
+      if (has_type != other.has_type) {
+        return !has_type;
+      }
       if (has_type) {
         if (type < other.type) {
           return true;
@@ -117,7 +125,9 @@ class DeviceNameUtils {
           return false;
         }
       }
-      if (has_id != other.has_id) return !has_id;
+      if (has_id != other.has_id) {
+        return !has_id;
+      }
       if (has_id) {
         if (id < other.id) {
           return true;
@@ -282,8 +292,12 @@ class DeviceNameUtils {
     bool a_status = ParseFullName(a, &parsed_a);
     bool b_status = ParseFullName(b, &parsed_b);
     // Orders unparsable names first.
-    if (a_status != b_status) return !a_status;
-    if (!a_status) return a < b;
+    if (a_status != b_status) {
+      return !a_status;
+    }
+    if (!a_status) {
+      return a < b;
+    }
     return parsed_a < parsed_b;
   }
 };

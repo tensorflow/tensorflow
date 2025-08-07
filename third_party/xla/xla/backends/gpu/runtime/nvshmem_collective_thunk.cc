@@ -13,16 +13,11 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/nvshmem_collective_thunk.h"
 
 #include <cstdint>
-#include <cstdlib>
 #include <memory>
 #include <optional>
-#include <string>
-#include <tuple>
 #include <utility>
-#include <vector>
 
-#include "absl/algorithm/container.h"
-#include "absl/base/thread_annotations.h"
+#include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
@@ -30,35 +25,27 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
-#include "absl/time/time.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/core/collectives/collectives.h"
 #include "xla/core/collectives/collectives_registry.h"
 #include "xla/core/collectives/communicator.h"
-#include "xla/core/collectives/rank_id.h"
-#include "xla/debug_options_flags.h"
-#include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/layout_util.h"
 #include "xla/primitive_util.h"
-#include "xla/service/collective_ops_utils.h"
-#include "xla/service/computation_placer.h"
-#include "xla/service/global_device_id.h"
-#include "xla/service/gpu/buffer_allocations.h"
-#include "xla/service/rendezvous.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
-namespace {
 
+namespace {
 static constexpr CollectiveStreamId kNoStreamId = CollectiveStreamId(0);
 
 bool IsTypeSupportedByNvshmem(PrimitiveType element_type,
@@ -119,15 +106,10 @@ absl::Status NvshmemCollectiveThunk::Initialize(
   if (async_events_) {
     TF_RETURN_IF_ERROR(async_events_->Initialize(params.executor));
   }
-  if (!barrier_called_) {
-    TF_ASSIGN_OR_RETURN(auto* collectives, GetNvshmemCollectivesFromRegistry());
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<Communicator> nvshmem_comm,
-                        collectives->CreateCommunicator());
-
-    TF_RETURN_IF_ERROR(
-        nvshmem_comm->Barrier(GpuCollectives::On(*params.stream)));
-    barrier_called_ = true;
-  }
+  // Any nvshmem collective will need to require a barrier at the end of
+  // graph execution to make sure all reads and writes to symmetrics buffers
+  // are finished and ready for the next iteration of executable.
+  params.collective_params->need_barrier = true;
   return absl::OkStatus();
 }
 
@@ -157,10 +139,6 @@ absl::Status NvshmemCollectiveThunk::ExecuteOnStream(
     // Launch collective operation on a main stream.
     TF_RETURN_IF_ERROR(RunNvshmemCollective(params, *params.stream));
   }
-
-  if (barrier_called_) {
-    barrier_called_ = false;
-  }
   return absl::OkStatus();
 }
 
@@ -180,7 +158,7 @@ absl::Status NvshmemCollectiveDoneThunk::ExecuteOnStream(
 }
 
 absl::Status IsValidNvshmemOperand(Shape shape, Thunk::Kind reduction_op) {
-  if (!LayoutUtil::IsDenseArray(shape)) {
+  if (!shape.IsArray()) {
     return absl::AbortedError(
         absl::StrFormat("input is not a dense array: %s",
                         shape.ToString(/*print_layout=*/true)));
@@ -191,6 +169,40 @@ absl::Status IsValidNvshmemOperand(Shape shape, Thunk::Kind reduction_op) {
         primitive_util::LowercasePrimitiveTypeName(shape.element_type())));
   }
   return absl::OkStatus();
+}
+
+absl::StatusOr<void*> NvshmemBufferAddresses::GetNvshmemPtr(
+    int device_ordinal) {
+  absl::MutexLock lock(&mu_);
+  auto it = buffer_addrs_.find(device_ordinal);
+  if (it != buffer_addrs_.end()) {
+    return it->second;
+  }
+  return absl::NotFoundError("Buffer address not found for device");
+}
+
+void NvshmemBufferAddresses::StoreNvshmemPtr(int device_ordinal,
+                                             void* buffer_addr) {
+  absl::MutexLock lock(&mu_);
+  buffer_addrs_[device_ordinal] = buffer_addr;
+}
+
+std::optional<AsyncEventsUniqueId>
+NvshmemCollectiveThunk::GetAsyncEventsUniqueId() const {
+  if (!async_events_) {
+    return std::nullopt;
+  }
+  // We rely on the fact that the pointer to async_events_ is unique.
+  return absl::bit_cast<AsyncEventsUniqueId>(async_events_.get());
+}
+
+std::optional<AsyncEventsUniqueId>
+NvshmemCollectiveDoneThunk::GetAsyncEventsUniqueId() const {
+  if (!async_events_) {
+    return std::nullopt;
+  }
+  // We rely on the fact that the pointer to async_events_ is unique.
+  return absl::bit_cast<AsyncEventsUniqueId>(async_events_.get());
 }
 
 }  // namespace gpu

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_IR_TRANSFORMS_UTILS_H_
 #define XLA_PYTHON_IFRT_IR_TRANSFORMS_UTILS_H_
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -71,6 +72,9 @@ absl::StatusOr<std::vector<std::string>> ExpandPlatformNames(
 
 // Returns a pretty string representation of the location.
 std::string GetPrettyLocation(mlir::Location loc);
+
+// Returns a fingerprint of the provided module.
+uint64_t MlirModuleFingerprint(mlir::ModuleOp module);
 
 }  // namespace ifrt
 }  // namespace xla

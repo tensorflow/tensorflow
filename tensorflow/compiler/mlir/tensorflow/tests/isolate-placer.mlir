@@ -1,4 +1,4 @@
-// RUN: tf-opt %s --run-tf-graph-optimization --graph-passes=IsolatePlacerInspectionRequiredOpsPass | FileCheck %s
+// RUN: tf-opt %s --run-tf-graph-optimization="graph-passes=IsolatePlacerInspectionRequiredOpsPass" | FileCheck %s
 
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 130 : i32}} {
 func.func @main() {

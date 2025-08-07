@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/fusion_block_level_rewriter.h"
 
-#include <string>
+#include <cstdint>
 #include <utility>
 #include <variant>
 
@@ -26,6 +26,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "llvm/Support/MathExtras.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -33,16 +35,20 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
+#include "xla/layout_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/instruction_fusion.h"
+#include "xla/service/pattern_matcher.h"
 #include "xla/stream_executor/device_description.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -50,11 +56,93 @@ namespace gpu {
 namespace {
 
 using ::mlir::MLIRContext;
+namespace m = ::xla::match;
+
+// Pattern-matches slow loop fusions that can likely be handled better by
+// Triton than by other emitters.
+// TODO(b/370690811,b/372187266): generalize this to other slow transposes.
+bool ShouldRewriteLoopTransposeFusion(
+    const HloFusionInstruction* fusion,
+    const se::DeviceDescription& device_description) {
+  const HloInstruction* root =
+      fusion->fused_instructions_computation()->root_instruction();
+
+  bool is_loop_transpose_fusion =
+      fusion->fusion_kind() == HloInstruction::FusionKind::kLoop &&
+      root->opcode() == HloOpcode::kTranspose;
+
+  if (!is_loop_transpose_fusion) {
+    return false;
+  }
+
+  // The slow transposes are those when the minormost dimension in the input
+  // is neither the minormost nor the second minormost dimension in the output,
+  // and the output minormost dimension is swapped with the new minormost
+  // dimension.
+  int64_t rank = root->shape().dimensions().size();
+
+  // The transpose dimension grouper has run, so it should be enough to check
+  // that the minormost dimension's index within the result is smaller than
+  // rank - 2, and that the new minormost dimension is swapped with it.
+  // This only triggers for transposes with major-to-minor layout.
+  bool has_major_to_minor_layout =
+      LayoutUtil::IsMonotonicWithDim0Major(root->shape().layout());
+  absl::Span<int64_t const> transpose_dimensions = root->dimensions();
+  int64_t result_minormost_dim_in_operand = transpose_dimensions.back();
+
+  if (!(has_major_to_minor_layout &&
+        transpose_dimensions[result_minormost_dim_in_operand] == rank - 1 &&
+        transpose_dimensions[rank - 1] < rank - 2)) {
+    return false;
+  }
+
+  // Because of Triton's power-of-two restriction, we're only guaranteed to
+  // handle the bitcast case when the bitcast's minor dimension is a power of
+  // two. This ensures that we can tile it reasonably even if the bitcast's
+  // input has that dimension collapsed. (See comments in `symbolic_tile.cc`
+  // around destructuring summations to understand why this is important.)
+  auto can_bitcast_input_be_tiled_efficiently =
+      [](const HloInstruction* bitcast) {
+        return llvm::isPowerOf2_64(bitcast->shape().dimensions_minor(0));
+      };
+
+  bool is_pure_transpose = ::xla::Match(root, m::Transpose(m::Parameter()));
+  bool is_bitcasted_transpose_with_power_of_two_minor_dim = ::xla::Match(
+      root,
+      m::Transpose(m::Bitcast(m::Parameter())
+                       .WithPredicate(can_bitcast_input_be_tiled_efficiently)));
+  return is_pure_transpose ||
+         is_bitcasted_transpose_with_power_of_two_minor_dim;
+}
+
+absl::StatusOr<bool> ShouldTryRewriteFusion(
+    const HloFusionInstruction* fusion,
+    const se::DeviceDescription& device_description) {
+  if (fusion->GetModule()
+          ->config()
+          .debug_options()
+          .xla_gpu_experimental_enable_fusion_block_level_rewriter()) {
+    return true;
+  }
+
+  // TODO(b/370690811): this rewrite may no longer be necessary once MLIR
+  // emitters transposes are faster.
+  if (ShouldRewriteLoopTransposeFusion(fusion, device_description)) {
+    return true;
+  }
+  return false;
+}
 
 absl::StatusOr<bool> ProcessFusionInstruction(
     HloFusionInstruction* fusion_instruction,
     const se::DeviceDescription& device_info,
     HloCostAnalysis::ShapeSizeFunction shape_size, MLIRContext* ctx) {
+  TF_ASSIGN_OR_RETURN(bool should_try_rewrite,
+                      ShouldTryRewriteFusion(fusion_instruction, device_info));
+  if (!should_try_rewrite) {
+    return false;
+  }
+
   const HloComputation* fusion_computation =
       fusion_instruction->fused_instructions_computation();
   if (CodegenDecision can_codegen = IsTritonSupportedComputation(
@@ -111,8 +199,7 @@ absl::StatusOr<bool> ProcessFusionInstruction(
   *backend_config.mutable_fusion_backend_config()
        ->mutable_block_level_fusion_config() =
       tiled_runtime_data.block_level_parameters.ToBlockLevelFusionConfig();
-  backend_config.mutable_fusion_backend_config()->set_kind(
-      std::string(kTritonFusionKind));
+  backend_config.mutable_fusion_backend_config()->set_kind(kTritonFusionKind);
   TF_RETURN_IF_ERROR(fusion_instruction->set_backend_config(backend_config));
   fusion_instruction->set_fusion_kind(HloInstruction::FusionKind::kCustom);
   return true;
@@ -134,16 +221,8 @@ absl::StatusOr<bool> FusionBlockLevelRewriter::Run(
     if (!computation->IsFusionComputation()) {
       continue;
     }
-
     HloFusionInstruction* fusion_instruction =
         ::xla::Cast<HloFusionInstruction>(computation->FusionInstruction());
-
-    TF_ASSIGN_OR_RETURN(bool should_try_rewrite,
-                        should_try_rewrite_if_(fusion_instruction));
-    if (!should_try_rewrite) {
-      continue;
-    }
-
     TF_ASSIGN_OR_RETURN(
         bool changed, ProcessFusionInstruction(fusion_instruction, device_info_,
                                                shape_size_, &ctx));

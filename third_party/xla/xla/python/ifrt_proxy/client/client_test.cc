@@ -16,6 +16,7 @@
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -30,9 +31,11 @@
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt_proxy/client/array.h"
@@ -46,12 +49,10 @@
 #include "xla/python/ifrt_proxy/common/types.h"
 #include "xla/service/computation_placer.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/platform.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace ifrt {
@@ -84,6 +85,10 @@ class ClientTest : public ::testing::TestWithParam</*protocol_version=*/int> {
   IfrtProxyVersion Version() {
     IfrtProxyVersion version;
     version.set_protocol_version(GetParam());
+    // TODO(hyeontaek): For a more realistic test setup, the IFRT SerDes version
+    // should vary by the IFRT Proxy protocol version.
+    version.set_ifrt_serdes_version_number(
+        SerDesVersion::current().version_number().value());
     return version;
   }
 
@@ -95,7 +100,7 @@ class ClientTest : public ::testing::TestWithParam</*protocol_version=*/int> {
     rpc_helper_->set_host_buffer_store(host_buffer_store_);
 
     InitResponse response;
-    if (Version().protocol_version() <= 3) {
+    if (rpc_helper_->protocol_version() <= 3) {
       ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
           R"pb(
             platform_name: "ifrt-service"
@@ -140,7 +145,7 @@ class ClientTest : public ::testing::TestWithParam</*protocol_version=*/int> {
             }
           )pb",
           &response));
-    } else if (Version().protocol_version() < 7) {
+    } else if (rpc_helper_->protocol_version() < 7) {
       ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
           R"pb(
             platform_name: "ifrt-service"
@@ -240,6 +245,13 @@ class ClientTest : public ::testing::TestWithParam</*protocol_version=*/int> {
           )pb",
           &response));
     }
+
+    AttributeMap::Map client_attributes(
+        {{"test_key", AttributeMap::StringValue("test_value")}});
+    *response.mutable_client_attributes() =
+        AttributeMap(client_attributes)
+            .ToProto(rpc_helper_->ifrt_serdes_version());
+
     TF_ASSERT_OK_AND_ASSIGN(client_, Client::Create(rpc_helper_, response));
     TF_ASSERT_OK_AND_ASSIGN(device_, client_->LookupDevice(DeviceId(0)));
   }
@@ -259,6 +271,9 @@ TEST_P(ClientTest, Init) {
   EXPECT_EQ(client_->platform_id(), 42);
   EXPECT_EQ(client_->process_index(), 1);
   EXPECT_EQ(client_->runtime_type(), "proxy/ifrt-service");
+  EXPECT_THAT(
+      client_->Attributes().map(),
+      ElementsAre(Pair("test_key", AttributeMap::StringValue("test_value"))));
 
   ASSERT_EQ(client_->device_count(), 2);
   ASSERT_EQ(client_->addressable_device_count(), 1);
@@ -275,7 +290,7 @@ TEST_P(ClientTest, Init) {
   EXPECT_EQ(memory0->Id(), 0);
   EXPECT_EQ(memory0->Kind().memory_kind(), "mock");
   EXPECT_THAT(memory0->Devices(), UnorderedElementsAre(device0));
-  EXPECT_THAT(device0->DefaultMemory(), IsOkAndHolds(memory0));
+  EXPECT_THAT(device0->DefaultMemory(), absl_testing::IsOkAndHolds(memory0));
 
   TF_ASSERT_OK_AND_ASSIGN(auto* const device1,
                           client_->LookupDevice(DeviceId(1)));
@@ -289,7 +304,7 @@ TEST_P(ClientTest, Init) {
   EXPECT_EQ(memory1->Id(), 1);
   EXPECT_EQ(memory1->Kind().memory_kind(), "mock");
   EXPECT_THAT(memory1->Devices(), UnorderedElementsAre(device1));
-  EXPECT_THAT(device1->DefaultMemory(), IsOkAndHolds(memory1));
+  EXPECT_THAT(device1->DefaultMemory(), absl_testing::IsOkAndHolds(memory1));
 
   EXPECT_THAT(client_->addressable_devices(), ElementsAre(device1));
 }
@@ -338,7 +353,7 @@ TEST_P(ClientTest, GetDefaultLayoutFailure) {
 
   EXPECT_THAT(client_->GetDefaultLayout(DType(DType::kF64), {1, 2, 3}, device_,
                                         MemoryKind("mock")),
-              Not(IsOk()));
+              Not(absl_testing::IsOk()));
 }
 
 TEST_P(ClientTest, CopyArraysDefaultLayoutSuccess) {
@@ -364,10 +379,11 @@ TEST_P(ClientTest, CopyArraysDefaultLayoutSuccess) {
       .WillRepeatedly(MockClientSessionReturnResponse(IfrtResponse()));
 
   std::vector<tsl::RCReference<xla::ifrt::Array>> arrays = {array0, array1};
+  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
+                          client_->MakeDeviceList({device_}));
   TF_ASSERT_OK_AND_ASSIGN(
       auto copied_arrays,
-      client_->CopyArrays(absl::MakeSpan(arrays),
-                          client_->MakeDeviceList({device_}),
+      client_->CopyArrays(absl::MakeSpan(arrays), std::move(device_list),
                           MemoryKind("mock"), ArrayCopySemantics::kAlwaysCopy));
   ASSERT_THAT(copied_arrays, SizeIs(2));
   EXPECT_EQ(llvm::cast<Array>(copied_arrays[0].get())->custom_layout(),
@@ -399,10 +415,11 @@ TEST_P(ClientTest, CopyArraysCustomLayoutSuccess) {
       .WillRepeatedly(MockClientSessionReturnResponse(IfrtResponse()));
 
   std::vector<tsl::RCReference<xla::ifrt::Array>> arrays = {array0, array1};
+  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
+                          client_->MakeDeviceList({device_}));
   TF_ASSERT_OK_AND_ASSIGN(
       auto copied_arrays,
-      client_->CopyArrays(absl::MakeSpan(arrays),
-                          client_->MakeDeviceList({device_}),
+      client_->CopyArrays(absl::MakeSpan(arrays), std::move(device_list),
                           MemoryKind("mock"), ArrayCopySemantics::kAlwaysCopy));
   ASSERT_THAT(copied_arrays, SizeIs(2));
   EXPECT_EQ(
@@ -451,7 +468,8 @@ TEST_P(ClientTest, GetDefaultDeviceAssignmentFailure) {
       .WillOnce(Return(Future<ClientSession::Response>(
           absl::InternalError("injected from test"))));
 
-  EXPECT_THAT(client_->GetDefaultDeviceAssignment(1, 3), Not(IsOk()));
+  EXPECT_THAT(client_->GetDefaultDeviceAssignment(1, 3),
+              Not(absl_testing::IsOk()));
 }
 #endif
 

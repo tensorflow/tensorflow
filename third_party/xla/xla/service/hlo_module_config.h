@@ -451,6 +451,13 @@ class HloModuleConfig {
     use_shardy_partitioner_ = use_shardy_partitioner;
   }
 
+  // Do channel IDs in this module carry semantic information.
+  bool ChannelIdSensitive() const {
+    // TODO(b/430952564): Base this on num_partitions / num_replicas instead
+    // of use_spmd_partitioning.
+    return !use_spmd_partitioning_;
+  }
+
  private:
   // If you add new members, be sure to update compilation_cache_key and the
   // HloModuleConfigProto.

@@ -155,10 +155,10 @@ static bufferization::BufferizationOptions getPartialBufferizationOptions() {
   options.allowUnknownOps = true;
   options.copyBeforeWrite = true;
   options.unknownTypeConverterFn =
-      [](Value value, Attribute memorySpace,
+      [](TensorType type, Attribute memorySpace,
          const bufferization::BufferizationOptions& options) {
         return bufferization::getMemRefTypeWithStaticIdentityLayout(
-            cast<TensorType>(value.getType()), memorySpace);
+            type, memorySpace);
       };
   options.opFilter.allowDialect<bufferization::BufferizationDialect>();
   return options;
@@ -190,8 +190,9 @@ struct ComputeOpAndFuncBufferizePass
     options.opFilter.allowDialect<bufferization::BufferizationDialect,
                                   linalg::LinalgDialect, mhlo::MhloDialect,
                                   shape::ShapeDialect, vector::VectorDialect>();
-
-    if (failed(bufferization::bufferizeOp(getOperation(), options))) {
+    bufferization::BufferizationState bufferizationState;
+    if (failed(bufferization::bufferizeOp(getOperation(), options,
+                                          bufferizationState))) {
       signalPassFailure();
       return;
     }
@@ -286,7 +287,9 @@ struct OneShotBufferizePass
     opts.bufferAlignment = 64;
 
     ModuleOp module = getOperation();
-    if (failed(bufferization::runOneShotModuleBufferize(module, opts))) {
+    bufferization::BufferizationState bufferizationState;
+    if (failed(bufferization::runOneShotModuleBufferize(module, opts,
+                                                        bufferizationState))) {
       signalPassFailure();
     }
   }
@@ -302,7 +305,7 @@ class BufferizeToTensorOp
   LogicalResult matchAndRewrite(
       bufferization::ToTensorOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const override {
-    rewriter.replaceOp(op, adaptor.getMemref());
+    rewriter.replaceOp(op, adaptor.getBuffer());
     return success();
   }
 };
@@ -365,7 +368,9 @@ struct FinalBufferizePass
         arith::ArithDialect, bufferization::BufferizationDialect,
         linalg::LinalgDialect, func::FuncDialect, shape::ShapeDialect,
         tensor::TensorDialect, vector::VectorDialect>();
-    if (failed(bufferization::bufferizeOp(getOperation(), options))) {
+    bufferization::BufferizationState bufferizationState;
+    if (failed(bufferization::bufferizeOp(getOperation(), options,
+                                          bufferizationState))) {
       signalPassFailure();
       return;
     }

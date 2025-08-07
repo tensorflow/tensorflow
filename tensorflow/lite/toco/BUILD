@@ -1,3 +1,5 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
 # Placeholder: load py_proto_library
 load(
     "//tensorflow:tensorflow.bzl",

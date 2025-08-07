@@ -139,16 +139,17 @@ absl::Status CalibrationComponent::ExportToSavedModel(
 
   // `duplicate_shape_determining_constants = false` because the
   // resulting graph of this step is not expected to be loaded on TPU.
-  const ExportOptions export_opts = {
+  const quant::stablehlo::ExportOptions export_opts = {
       /*duplicate_shape_determining_constants=*/false,
       /*unfreeze_constants=*/false, checkpoint_dir,
-      /*debug_name=*/absl::StrCat(kName, kExportStepSuffix)};
+      /*debug_name=*/
+      absl::StrCat(kName, quant::stablehlo::kExportStepSuffix)};
 
   TF_ASSIGN_OR_RETURN(const SmallVector<AssetFileDef> asset_file_defs,
                       RunExportPasses(export_opts, *ctx_, *cloned_module_ref));
 
   TF_ASSIGN_OR_RETURN(ExportedModel exported_model,
-                      ConvertMlirModuleToExportedModel(
+                      quant::stablehlo::ConvertMlirModuleToExportedModel(
                           *cloned_module_ref, checkpoint_dir, function_aliases_,
                           {asset_file_defs.begin(), asset_file_defs.end()}));
 

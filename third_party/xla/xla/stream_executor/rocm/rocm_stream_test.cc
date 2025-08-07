@@ -31,14 +31,12 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/kernel.h"
-#include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/rocm/rocm_event.h"
 #include "xla/stream_executor/rocm/rocm_executor.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
-#include "xla/stream_executor/typed_kernel_factory.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
@@ -62,7 +60,7 @@ class RocmStreamTest : public ::testing::Test {
                             stream_executor::PlatformManager::PlatformWithId(
                                 stream_executor::rocm::kROCmPlatformId));
     executor_.emplace(platform, 0);
-    ASSERT_THAT(executor_->Init(), IsOk());
+    ASSERT_THAT(executor_->Init(), absl_testing::IsOk());
   }
 };
 
@@ -78,24 +76,25 @@ TEST_F(RocmStreamTest, Memset32) {
   // Should fail due to the invalid size parameter.
   EXPECT_THAT(stream->Memset32(&buffer, 0xDEADBEEF,
                                kBufferNumElements * sizeof(uint32_t) + 1),
-              ::tsl::testing::StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 
   // Should fail due to the non-4-byte-aligned pointer.
   DeviceMemoryBase unaligned_pointer =
       buffer.GetByteSlice(/*offset_bytes=*/1, /*size_bytes=*/0);
   EXPECT_THAT(stream->Memset32(&unaligned_pointer, 0xDEADBEEF,
                                kBufferNumElements * sizeof(uint32_t) + 1),
-              ::tsl::testing::StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 
   // Correct call. Should succeed.
   EXPECT_THAT(stream->Memset32(&buffer, 0xDEADBEEF,
                                kBufferNumElements * sizeof(uint32_t)),
-              IsOk());
+              absl_testing::IsOk());
 
   std::array<uint32_t, kBufferNumElements> host_buffer;
-  EXPECT_THAT(stream->MemcpyD2H(buffer, absl::MakeSpan(host_buffer)), IsOk());
+  EXPECT_THAT(stream->MemcpyD2H(buffer, absl::MakeSpan(host_buffer)),
+              absl_testing::IsOk());
 
-  EXPECT_THAT(stream->BlockHostUntilDone(), IsOk());
+  EXPECT_THAT(stream->BlockHostUntilDone(), absl_testing::IsOk());
   EXPECT_THAT(host_buffer, Each(0xDEADBEEF));
 }
 
@@ -110,17 +109,18 @@ TEST_F(RocmStreamTest, MemZero) {
 
   EXPECT_THAT(stream->Memset32(&buffer, 0xDEADBEEF,
                                kBufferNumElements * sizeof(uint32_t)),
-              IsOk());
+              absl_testing::IsOk());
 
   // We overwrite half the buffer with zeros.
   EXPECT_THAT(
       stream->MemZero(&buffer, kBufferNumElements / 2 * sizeof(uint32_t)),
-      IsOk());
+      absl_testing::IsOk());
 
   std::array<uint32_t, kBufferNumElements> host_buffer;
-  EXPECT_THAT(stream->MemcpyD2H(buffer, absl::MakeSpan(host_buffer)), IsOk());
+  EXPECT_THAT(stream->MemcpyD2H(buffer, absl::MakeSpan(host_buffer)),
+              absl_testing::IsOk());
 
-  EXPECT_THAT(stream->BlockHostUntilDone(), IsOk());
+  EXPECT_THAT(stream->BlockHostUntilDone(), absl_testing::IsOk());
   // We expect the first half of the buffer to be zeros.
   EXPECT_THAT(
       absl::MakeConstSpan(host_buffer).subspan(0, kBufferNumElements / 2),
@@ -145,12 +145,13 @@ TEST_F(RocmStreamTest, MemcpyHostToDeviceAndBack) {
                 [i = 0]() mutable { return i++; });
 
   EXPECT_THAT(stream->MemcpyH2D(absl::MakeConstSpan(src_buffer), &buffer),
-              IsOk());
+              absl_testing::IsOk());
 
   std::array<uint32_t, kBufferNumElements> host_buffer;
-  EXPECT_THAT(stream->MemcpyD2H(buffer, absl::MakeSpan(host_buffer)), IsOk());
+  EXPECT_THAT(stream->MemcpyD2H(buffer, absl::MakeSpan(host_buffer)),
+              absl_testing::IsOk());
 
-  EXPECT_THAT(stream->BlockHostUntilDone(), IsOk());
+  EXPECT_THAT(stream->BlockHostUntilDone(), absl_testing::IsOk());
   EXPECT_THAT(host_buffer, ElementsAreArray(src_buffer));
 }
 
@@ -167,16 +168,17 @@ TEST_F(RocmStreamTest, MemcpyDeviceToDevice) {
 
   EXPECT_THAT(stream->Memset32(&buffer1, 0xDEADBEEF,
                                kBufferNumElements * sizeof(uint32_t)),
-              IsOk());
+              absl_testing::IsOk());
 
   EXPECT_THAT(stream->MemcpyD2D(&buffer2, buffer1,
                                 kBufferNumElements * sizeof(uint32_t)),
-              IsOk());
+              absl_testing::IsOk());
 
   std::array<uint32_t, kBufferNumElements> host_buffer;
-  EXPECT_THAT(stream->MemcpyD2H(buffer2, absl::MakeSpan(host_buffer)), IsOk());
+  EXPECT_THAT(stream->MemcpyD2H(buffer2, absl::MakeSpan(host_buffer)),
+              absl_testing::IsOk());
 
-  EXPECT_THAT(stream->BlockHostUntilDone(), IsOk());
+  EXPECT_THAT(stream->BlockHostUntilDone(), absl_testing::IsOk());
   EXPECT_THAT(host_buffer, Each(0xDEADBEEF));
 }
 
@@ -188,9 +190,9 @@ TEST_F(RocmStreamTest, DoHostCallback) {
   bool callback_called = false;
   EXPECT_THAT(
       stream->DoHostCallback([&callback_called]() { callback_called = true; }),
-      IsOk());
+      absl_testing::IsOk());
 
-  EXPECT_THAT(stream->BlockHostUntilDone(), IsOk());
+  EXPECT_THAT(stream->BlockHostUntilDone(), absl_testing::IsOk());
   EXPECT_TRUE(callback_called);
 }
 
@@ -199,13 +201,7 @@ TEST_F(RocmStreamTest, LaunchKernel) {
                           RocmStream::Create(&executor_.value(),
                                              /*priority=*/std::nullopt));
 
-  MultiKernelLoaderSpec spec(/*arity=*/3);
-  spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "AddI32");
-  using AddI32Kernel =
-      TypedKernelFactory<DeviceMemory<int32_t>, DeviceMemory<int32_t>,
-                         DeviceMemory<int32_t>>;
-  TF_ASSERT_OK_AND_ASSIGN(auto add,
-                          AddI32Kernel::Create(&executor_.value(), spec));
+  TF_ASSERT_OK_AND_ASSIGN(auto add, LoadAddI32TestKernel(&executor_.value()));
 
   constexpr int64_t kLength = 4;
   constexpr int64_t kByteLength = sizeof(int32_t) * kLength;
@@ -215,16 +211,17 @@ TEST_F(RocmStreamTest, LaunchKernel) {
   DeviceMemory<int32_t> b = executor_->AllocateArray<int32_t>(kLength, 0);
   DeviceMemory<int32_t> c = executor_->AllocateArray<int32_t>(kLength, 0);
 
-  EXPECT_THAT(stream->Memset32(&a, 1, kByteLength), IsOk());
-  EXPECT_THAT(stream->Memset32(&b, 2, kByteLength), IsOk());
-  EXPECT_THAT(stream->MemZero(&c, kByteLength), IsOk());
+  EXPECT_THAT(stream->Memset32(&a, 1, kByteLength), absl_testing::IsOk());
+  EXPECT_THAT(stream->Memset32(&b, 2, kByteLength), absl_testing::IsOk());
+  EXPECT_THAT(stream->MemZero(&c, kByteLength), absl_testing::IsOk());
   EXPECT_THAT(add.Launch(ThreadDim(), BlockDim(kLength), stream.get(), a, b, c),
-              IsOk());
+              absl_testing::IsOk());
 
-  EXPECT_THAT(stream->BlockHostUntilDone(), IsOk());
+  EXPECT_THAT(stream->BlockHostUntilDone(), absl_testing::IsOk());
 
   std::array<int32_t, kLength> host_buffer;
-  EXPECT_THAT(stream->MemcpyD2H(c, absl::MakeSpan(host_buffer)), IsOk());
+  EXPECT_THAT(stream->MemcpyD2H(c, absl::MakeSpan(host_buffer)),
+              absl_testing::IsOk());
   EXPECT_THAT(host_buffer, Each(3));
 }
 
@@ -247,15 +244,15 @@ TEST_F(RocmStreamTest, WaitForEvent) {
       RocmEvent event,
       RocmEvent::Create(&executor_.value(), /*allow_timing=*/false));
 
-  EXPECT_THAT(stream->WaitFor(&event), IsOk());
+  EXPECT_THAT(stream->WaitFor(&event), absl_testing::IsOk());
 
   bool callback_called = false;
   EXPECT_THAT(
       stream->DoHostCallback([&callback_called]() { callback_called = true; }),
-      IsOk());
+      absl_testing::IsOk());
 
-  EXPECT_THAT(stream->RecordEvent(&event), IsOk());
-  EXPECT_THAT(stream->BlockHostUntilDone(), IsOk());
+  EXPECT_THAT(stream->RecordEvent(&event), absl_testing::IsOk());
+  EXPECT_THAT(stream->BlockHostUntilDone(), absl_testing::IsOk());
   EXPECT_TRUE(callback_called);
 }
 
@@ -285,20 +282,20 @@ TEST_F(RocmStreamTest, WaitForOtherStream) {
   EXPECT_THAT(stream1->DoHostCallback([&execution_order]() {
     execution_order.push_back(ExecutionStage::kBeforeWaitForEvent);
   }),
-              IsOk());
-  EXPECT_THAT(stream1->WaitFor(&event), IsOk());
+              absl_testing::IsOk());
+  EXPECT_THAT(stream1->WaitFor(&event), absl_testing::IsOk());
   EXPECT_THAT(stream1->DoHostCallback([&execution_order]() {
     execution_order.push_back(ExecutionStage::kAfterWaitForEvent);
   }),
-              IsOk());
-  EXPECT_THAT(stream2->WaitFor(stream1.get()), IsOk());
+              absl_testing::IsOk());
+  EXPECT_THAT(stream2->WaitFor(stream1.get()), absl_testing::IsOk());
   EXPECT_THAT(stream2->DoHostCallback([&execution_order]() {
     execution_order.push_back(ExecutionStage::kAfterWaitForStream);
   }),
-              IsOk());
+              absl_testing::IsOk());
 
-  EXPECT_THAT(stream1->RecordEvent(&event), IsOk());
-  EXPECT_THAT(stream2->BlockHostUntilDone(), IsOk());
+  EXPECT_THAT(stream1->RecordEvent(&event), absl_testing::IsOk());
+  EXPECT_THAT(stream2->BlockHostUntilDone(), absl_testing::IsOk());
   EXPECT_THAT(execution_order,
               ElementsAre(ExecutionStage::kBeforeWaitForEvent,
                           ExecutionStage::kAfterWaitForEvent,

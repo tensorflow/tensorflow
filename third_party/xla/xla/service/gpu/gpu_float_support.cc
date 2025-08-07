@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -39,7 +40,6 @@ bool GpuFloatSupport::SupportsMixedPrecisions(const HloInstruction& hlo) const {
   switch (hlo.opcode()) {
     // Handled by Triton GEMM or cuBLAS.
     case HloOpcode::kDot: {
-      CHECK_GE(hlo.operand_count(), HloDotInstruction::kOperands);
       const PrimitiveType lhs_type = hlo.operand(0)->shape().element_type();
       const PrimitiveType rhs_type = hlo.operand(1)->shape().element_type();
       const PrimitiveType result_type = hlo.shape().element_type();
@@ -87,6 +87,7 @@ bool GpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kConcatenate:
     case HloOpcode::kCopy:
+    case HloOpcode::kConstant:
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kGather:
@@ -101,7 +102,11 @@ bool GpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
     case HloOpcode::kTranspose:
     // Other special ops.
     case HloOpcode::kBitcast:
+    case HloOpcode::kBitcastConvert:
+    case HloOpcode::kConvert:
+    case HloOpcode::kCompare:
     case HloOpcode::kReducePrecision:
+    case HloOpcode::kXor:
       return true;
     // Elementwise ops.
     case HloOpcode::kExp:
@@ -110,6 +115,15 @@ bool GpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
         auto* cuda_compute_capability =
             std::get_if<se::CudaComputeCapability>(&compute_capability_);
         return cuda_compute_capability != nullptr;
+      }
+      return false;
+    case HloOpcode::kMaximum:
+    case HloOpcode::kMinimum:
+      if (LowPrecisionType() == BF16) {
+        auto* cuda_compute_capability =
+            std::get_if<se::CudaComputeCapability>(&compute_capability_);
+        return cuda_compute_capability != nullptr &&
+               cuda_compute_capability->IsAtLeastAmpere();
       }
       return false;
     case HloOpcode::kAdd:
@@ -126,6 +140,15 @@ bool GpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
     // Reduction.
     case HloOpcode::kReduce:
       return absl::c_all_of(hlo.called_computations().front()->instructions(),
+                            [this](const HloInstruction* hlo) {
+                              return hlo->opcode() == HloOpcode::kParameter ||
+                                     this->IsSupported(*hlo);
+                            });
+    // Sort
+    case HloOpcode::kSort:
+      VLOG(10) << "Sort: " << hlo.ToString();
+      VLOG(10) << "Comparator: " << hlo.to_apply()->ToString();
+      return absl::c_all_of(hlo.to_apply()->instructions(),
                             [this](const HloInstruction* hlo) {
                               return hlo->opcode() == HloOpcode::kParameter ||
                                      this->IsSupported(*hlo);

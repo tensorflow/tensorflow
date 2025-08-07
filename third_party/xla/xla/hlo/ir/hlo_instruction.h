@@ -451,16 +451,11 @@ class HloInstruction {
       const Shape& shape, HloInstruction* a, const CholeskyOptions& options);
 
   // Creates a dot op with operands 'lhs' and 'rhs' with contracting and batch
-  // dimensions specified in 'dimension_numbers'. If 'sparsity' is set, then
-  // 'sparse_meta' must also be present (and have the same size).
-  // Note: 'sparsity' argument is eventually moved in the HloDotInstruction
-  // constructor, so no extra copies are created.
+  // dimensions specified in 'dimension_numbers'.
   static std::unique_ptr<HloInstruction> CreateDot(
       const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
       const DotDimensionNumbers& dimension_numbers,
-      const PrecisionConfig& precision_config,
-      std::vector<SparsityDescriptor> sparsity = {},
-      absl::Span<HloInstruction* const> sparse_meta = {});
+      const PrecisionConfig& precision_config);
 
   // Creates a ragged dot op with operands 'lhs', 'rhs', and 'group_sizes', with
   // contracting, batch, ragged, and group dimensions specified in
@@ -1133,6 +1128,15 @@ class HloInstruction {
       std::string opaque = "",
       CustomCallApiVersion api_version = API_VERSION_ORIGINAL);
 
+  // Overload which constrains the layouts of the operand and result and apply a
+  // computation.
+  static std::unique_ptr<HloInstruction> CreateCustomCall(
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      HloComputation* to_apply, absl::string_view custom_call_target,
+      absl::Span<const Shape> operand_shapes_with_layout,
+      std::string opaque = "",
+      CustomCallApiVersion api_version = API_VERSION_ORIGINAL);
+
   // Creates a tuple instruction with the given elements. This is a convenience
   // wrapper around CreateVariadic.
   static std::unique_ptr<HloInstruction> CreateTuple(
@@ -1335,8 +1339,9 @@ class HloInstruction {
                              /*ignore_commutative_operand_order=*/true);
   }
 
-  // Same as Identical() but ignores channel ID value mismatches, as long as
-  // both have channel IDs or neither has a channel ID.
+  // Same as IdenticalIgnoringCommutativeOperandOrder() but ignores channel ID
+  // value mismatches, as long as both have channel IDs or neither has a channel
+  // ID.
   bool IdenticalIgnoringChannelIdValues(
       const HloInstruction& other,
       absl::FunctionRef<bool(const HloInstruction*, const HloInstruction*)>
@@ -1501,7 +1506,11 @@ class HloInstruction {
   // Returns true whether this instruction is effectively a bitcast. Currently,
   // this means it either is a bitcast, or it is a transpose that is effectively
   // a bitcast.
-  bool IsEffectiveBitcast() const;
+  bool IsEffectiveBitcast() const { return IsEffectiveBitcast(opcode_); }
+  // Like zero-argument IsEffectiveBitcast, except can be faster if the client
+  // already has the opcode for "*this" available.
+  // REQUIRES: opcode == this->opcode()
+  bool IsEffectiveBitcast(HloOpcode opcode) const;
 
   // Returns true if this instruction is asynchronous with the
   // async_execution_thread set to `execution_thread`.
@@ -1631,7 +1640,8 @@ class HloInstruction {
   // Returns the sharding applied to this operator.
   // REQUIRES: has_sharding() is true.
   const HloSharding& sharding() const {
-    CHECK(has_sharding());
+    CHECK(has_sharding()) << "Sharding instruction expected for: "
+                          << ToString();
     return *sharding_;
   }
   std::shared_ptr<const HloSharding> sharding_ptr() const { return sharding_; }
@@ -1822,7 +1832,11 @@ class HloInstruction {
   void ClearUniqueIdInternal() { unique_id_ = -1; }
 
   // Set the unique id for this instruction to "id"
-  void SetUniqueId(int id) {
+  // TODO(b/399394039): Remove this function once the bug is fixed.
+  void SetUniqueId(int id) { SetUniqueId(static_cast<int64_t>(id)); }
+
+  // Set the unique id for this instruction to "id"
+  void SetUniqueId(int64_t id) {
     CHECK_EQ(unique_id_, -1);  // Should not be assigned already
     CHECK_GE(id, 0);
     unique_id_ = id;
@@ -1830,7 +1844,19 @@ class HloInstruction {
 
   // Return the unique ID assigned to this node via SetUniqueId (or -1
   // if no id has been assigned yet).
-  int unique_id() const { return unique_id_; }
+  int unique_id() const {
+    CHECK_LT(unique_id_, INT32_MAX)
+        << "int32_t unique_id was requested but unique_id was written as a "
+           "64-bit integer: "
+        << unique_id_;
+    return static_cast<int>(unique_id_);
+  }
+
+  // Return the unique ID assigned to this node via SetUniqueId (or -1
+  // if no id has been assigned yet).Returns the entire unique ID as a 64-bit
+  // integer.
+  // TODO(b/399394039): Remove this function once the bug is fixed.
+  int64_t unique_id_64_bits() const { return unique_id_; }
 
   bool has_backend_config() const { return !backend_config_.empty(); }
 
@@ -1866,7 +1892,7 @@ class HloInstruction {
     return it.second;
   }
 
-  size_t erase_frontend_attribute(const std::string& key) {
+  size_t erase_frontend_attribute(absl::string_view key) {
     return mutable_rare()->frontend_attributes.mutable_map()->erase(key);
   }
 
@@ -2081,9 +2107,6 @@ class HloInstruction {
 
   // Delegates to HloReshapeInstruction::inferred_dimension.
   int64_t inferred_dimension() const;
-
-  // Returns whether this instruction does a rank-2 transposition.
-  bool IsRank2Transpose() const;
 
   // Delegates to HloSliceInstruction::slice_start.
   int64_t slice_starts(int64_t dimension) const;
@@ -2377,6 +2400,10 @@ class HloInstruction {
   std::shared_ptr<OriginalValue> original_value() const;
   void set_original_value(std::shared_ptr<OriginalValue> original_value);
 
+  // Copy original value from the input instruction. This performs a deep copy
+  // if clone is set to true. Otherwise, it performs a shallow copy.
+  void CopyOriginalValue(const HloInstruction* instruction, bool clone);
+
  protected:
   // Internal constructor for a given opcode/shape, other fields must be filled
   // by factory methods.
@@ -2415,7 +2442,7 @@ class HloInstruction {
   };
 
   // Change instruction's name to have a given suffix.
-  void AddSuffixToInstructionName(const absl::string_view suffix);
+  void AddSuffixToInstructionName(absl::string_view suffix);
 
  private:
   friend class HloComputation;
@@ -2576,7 +2603,7 @@ class HloInstruction {
         user_map_;
   };
 
-  int unique_id_;  // Unique to this HloInstruction within a HloModule
+  int64_t unique_id_;  // Unique to this HloInstruction within a HloModule
   uint32_t index_in_parent_;  // Index that identifies inst in HloComputation
 
   // Opcode for this instruction.

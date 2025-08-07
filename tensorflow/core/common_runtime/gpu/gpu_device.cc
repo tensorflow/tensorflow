@@ -786,8 +786,8 @@ void BaseGPUDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
   }
   std::unique_ptr<stream_executor::ActivateContext> scoped_activation =
       stream->parent()->Activate();
-  profiler::ScopedMemoryDebugAnnotation op_annotation(
-      op_kernel->name_view().data(), context->step_id());
+  profiler::ScopedMemoryDebugAnnotation op_annotation(op_kernel->name_view(),
+                                                      context->step_id());
   bool should_log_inputs_and_outputs = ShouldLogInputsAndOutputs(op_kernel);
 
   if (should_log_inputs_and_outputs) {
@@ -1397,17 +1397,34 @@ Status BaseGPUDeviceFactory::CreateDevices(
   if (gpu_manager == nullptr) {
     return OkStatus();
   }
-  // If there are no GPUs visible, do nothing.
-  if (gpu_manager->VisibleDeviceCount() <= 0) {
-    return OkStatus();
-  }
 
+  // This has to be checked first because calling `VisibleDeviceCount()` may
+  // result in initializing the platform and holding onto it in memory. This is
+  // the case for `stream_executor::gpu::CudaPlatform::VisibleDeviceCount`.
   size_t num_gpus_to_use = INT_MAX;
   auto iter = options.config.device_count().find("GPU");
   if (iter != options.config.device_count().end()) {
     num_gpus_to_use = iter->second;
   }
+  // Now if num_gpus_to_use is zero, we need to check if virtual devices are
+  // specified, in which case it is an error.
   const auto& gpu_options = options.config.gpu_options();
+  const auto& virtual_devices = gpu_options.experimental().virtual_devices();
+  if (num_gpus_to_use == 0) {
+    if (virtual_devices.empty()) {
+      return OkStatus();
+    }
+    // The verification below will obviously fail. Use this function to reuse
+    // the same error messages as when num_gpus_to_use is not zero.
+    TF_RETURN_IF_ERROR(
+        VerifyVirtualDeviceSettings(num_gpus_to_use, gpu_options, {}, {}, {}));
+  }
+
+  // If there are no GPUs visible, do nothing.
+  if (gpu_manager->VisibleDeviceCount() <= 0) {
+    return OkStatus();
+  }
+
   bool populate_pjrt_gpu_client_creation_info =
       gpu_options.experimental().populate_pjrt_gpu_client_creation_info();
 
@@ -1591,7 +1608,6 @@ Status BaseGPUDeviceFactory::CreateDevices(
     }
   }
 
-  const auto& virtual_devices = gpu_options.experimental().virtual_devices();
   if (!virtual_devices.empty()) {
     TF_RETURN_IF_ERROR(VerifyVirtualDeviceSettings(
         num_gpus_to_use, gpu_options, visible_gpu_order,
@@ -1927,7 +1943,9 @@ Status BaseGPUDeviceFactory::CreateDevices(
               /*host_memory_allocator=*/std::move(pjrt_gpu_host_allocator),
               /*should_stage_host_to_device_transfers=*/true,
               /*gpu_run_options=*/std::move(gpu_run_options),
-              /*kv_store=*/nullptr, /*gpu_topology=*/nullptr);
+              /*kv_store=*/nullptr, /*distributed_client=*/nullptr,
+              /*abort_collectives_on_failure=*/false, /*gpu_topology=*/nullptr,
+              /*num_nodes=*/std::nullopt);
 
       return SetPjRtClientInTFGlobalResourceManager(DeviceType(DEVICE_GPU),
                                                     std::move(pjrt_client));

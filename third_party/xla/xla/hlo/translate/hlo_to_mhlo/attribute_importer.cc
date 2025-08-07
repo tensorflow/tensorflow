@@ -36,7 +36,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/layout.h"
-#include "xla/layout_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
@@ -420,18 +419,6 @@ mlir::ArrayAttr ConvertOutputOperandAliasing(
   return builder->getArrayAttr(attrs);
 }
 
-absl::StatusOr<mlir::mhlo::SparsityDescriptorAttr> ConvertSparsityDescriptor(
-    xla::SparsityDescriptor sparsity_descriptor, mlir::Builder* builder) {
-  switch (sparsity_descriptor.type()) {
-    case SPARSITY_STRUCTURED_N_M:
-      return mlir::mhlo::SparsityDescriptorAttr::get(
-          builder->getContext(), sparsity_descriptor.dimension(),
-          sparsity_descriptor.n(), sparsity_descriptor.m());
-    default:
-      return InvalidArgument("Unknown sparsity descriptor type");
-  }
-}
-
 absl::StatusOr<mlir::mhlo::CustomCallApiVersion> ConvertCustomCallApiVersion(
     xla::CustomCallApiVersion api_version) {
   TF_ASSIGN_OR_RETURN(auto stablehlo_api_version,
@@ -519,7 +506,7 @@ absl::StatusOr<mlir::ArrayAttr> ExtractLayoutsFromShapes(
     // currently. The layout has to be dense, and only specify the order of
     // dimensions. Sparse, tiled layout or non-default memory space fields
     // cannot be expressed in MHLO layout yet.
-    if (!xla::LayoutUtil::IsDenseArray(shape_and_layout)) {
+    if (!shape_and_layout.IsArray()) {
       return Unimplemented("Only dense arrays are supported.");
     }
 

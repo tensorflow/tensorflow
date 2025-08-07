@@ -32,6 +32,7 @@ TEST(ConversionTest, EdgeTpuSettings) {
   const tflite::proto::EdgeTpuSettings_UseLayerIrTgcBackend
       kUseLayerIrTgcBackend =
           tflite::proto::EdgeTpuSettings::USE_LAYER_IR_TGC_BACKEND_YES;
+  const bool kUseTpuServer = true;
 
   // Create the proto settings.
   proto::ComputeSettings input_settings;
@@ -42,6 +43,7 @@ TEST(ConversionTest, EdgeTpuSettings) {
   flatbuffers::FlatBufferBuilder flatbuffers_builder;
   *edgetpu_settings->mutable_hardware_cluster_ids() = {
       kHardwareClusterIds.begin(), kHardwareClusterIds.end()};
+  edgetpu_settings->set_use_tpu_server(kUseTpuServer);
 
   // Convert.
   auto output_settings = ConvertFromProto(input_settings, &flatbuffers_builder)
@@ -56,6 +58,7 @@ TEST(ConversionTest, EdgeTpuSettings) {
   EXPECT_EQ(output_settings->use_layer_ir_tgc_backend(),
             tflite::EdgeTpuSettings_::
                 UseLayerIrTgcBackend_USE_LAYER_IR_TGC_BACKEND_YES);
+  EXPECT_EQ(output_settings->use_tpu_server(), kUseTpuServer);
 }
 
 // Tests converting TFLiteSettings from proto to flatbuffer format.

@@ -99,9 +99,8 @@ absl::StatusOr<bool> RecvThunk::RunCollective(const ExecuteParams& params,
           << CollectiveOpGroupModeToString(config_.config.group_mode) << " ("
           << hlo_name_ << ")";
 
-  TF_ASSIGN_OR_RETURN(GpuCollectives * collectives, GetGpuCollectives(params));
-  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(collectives, stream.parent(),
-                                          {buffer}, comm_handle.comm));
+  TF_RETURN_IF_ERROR(
+      MaybeRegisterBuffers(stream.parent(), {buffer}, comm_handle.comm));
 
   const std::optional<int64_t> source_id = source_target.source;
   se::DeviceMemoryBase dest_addr = buffer.destination_buffer;

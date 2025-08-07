@@ -22,6 +22,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/backends/profiler/gpu/cupti_interface.h"
+#include "xla/backends/profiler/gpu/cupti_utils.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/mem.h"
 
@@ -640,6 +641,8 @@ const char *GetTraceEventTypeName(const CuptiTracerEventType &type) {
       return "ThreadMarkerStart";
     case CuptiTracerEventType::ThreadMarkerEnd:
       return "ThreadMarkerEnd";
+    case CuptiTracerEventType::CudaGraphNodeMap:
+      return "CudaGraphNodeMap";
     case CuptiTracerEventType::Unsupported:
       return "";
   }
@@ -731,6 +734,29 @@ void CallbackAnnotationsAndEvents::Clear() {
   num_dropped_events_ = 0;
   event_queue_.Clear();
   scope_range_id_tree_.clear();
+}
+
+// The strings are parser friendly and have no whitespaces in them.
+absl::string_view GetMemoryKindName(int8_t memory_kind) {
+  switch (memory_kind) {
+    case CUPTI_ACTIVITY_MEMORY_KIND_ARRAY:
+      return "array";
+    case CUPTI_ACTIVITY_MEMORY_KIND_DEVICE:
+      return "device";
+    case CUPTI_ACTIVITY_MEMORY_KIND_DEVICE_STATIC:
+      return "device_static";
+    case CUPTI_ACTIVITY_MEMORY_KIND_MANAGED:
+      return "managed";
+    case CUPTI_ACTIVITY_MEMORY_KIND_MANAGED_STATIC:
+      return "managed_static";
+    case CUPTI_ACTIVITY_MEMORY_KIND_PAGEABLE:
+      return "pageable";
+    case CUPTI_ACTIVITY_MEMORY_KIND_PINNED:
+      return "pinned";
+    case CUPTI_ACTIVITY_MEMORY_KIND_UNKNOWN:
+    default:
+      return "unknown";
+  }
 }
 
 }  // namespace profiler

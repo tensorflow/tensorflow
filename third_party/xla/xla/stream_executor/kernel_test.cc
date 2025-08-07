@@ -21,6 +21,7 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/types/span.h"
 #include "benchmark/benchmark.h"
 #include "xla/stream_executor/device_memory.h"
@@ -118,14 +119,6 @@ TEST(KernelTest, PackTupleArguments) {
   ASSERT_EQ(i32, 1);
   ASSERT_EQ(f32, 2.0f);
   ASSERT_EQ(f64, 3.0);
-}
-
-TEST(KernelTest, FailToCreateTypedKernelFromEmptySpec) {
-  MultiKernelLoaderSpec empty_spec(/*arity=*/0);
-
-  auto executor = NewStreamExecutor();
-  auto kernel = TypedKernelFactory<>::Create(executor, empty_spec);
-  EXPECT_FALSE(kernel.ok());
 }
 
 //===----------------------------------------------------------------------===//

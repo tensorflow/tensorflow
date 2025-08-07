@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
+#include "xla/hlo/translate/register.h"
 #include "xla/hlo/translate/stablehlo.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/service/hlo.pb.h"
@@ -82,7 +83,8 @@ llvm::cl::opt<bool> print_sugar(
 // Error collector that simply ignores errors reported.
 class NoOpErrorCollector : public tsl::protobuf::io::ErrorCollector {
  public:
-  void AddError(int line, int column, const std::string& message) override {}
+  void RecordError(int line, tsl::protobuf::io::ColumnNumber column,
+                   absl::string_view message) override {}
 };
 
 bool LoadHloProto(const std::string& contents, xla::HloProto* hlo_proto) {

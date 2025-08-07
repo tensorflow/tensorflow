@@ -14,7 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/acceleration/compatibility/gpu_compatibility.h"
 
-#include <cctype>
+#include <cstdint>
+#include <cstdio>
 #include <map>
 #include <memory>
 #include <string>
@@ -142,10 +143,10 @@ std::map<std::string, std::string> GPUCompatibilityList::InfosToMap(
   variables[kManufacturer] = android_info.manufacturer;
   const auto& gl_info = gpu_info.opengl_info;
   variables[kGPUModel] = gl_info.renderer_name;
+
   char buffer[128];
-  int len = snprintf(buffer, 128 - 1, "%d.%d", gl_info.major_version,
-                     gl_info.minor_version);
-  buffer[len] = '\0';
+  snprintf(buffer, 128 - 1, "%d.%d", gl_info.major_version,
+           gl_info.minor_version);
   variables[kOpenGLESVersion] = std::string(buffer);
   return variables;
 }

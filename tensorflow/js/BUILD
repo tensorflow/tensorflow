@@ -1,6 +1,7 @@
 # Description:
 # JavaScript/TypeScript code generation for TensorFlow.js
 
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",

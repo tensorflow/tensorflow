@@ -71,10 +71,9 @@ class XnnConvolutionThunk final : public XnnFusionThunk {
                       ConvolutionCanonicalDims convolution_canonical_dims,
                       ConvolutionDimensionNumbers dnums, Window window);
 
-  absl::StatusOr<xnn_subgraph_t> BuildConvolutionSubgraph(
+  absl::StatusOr<XnnSubgraph> BuildConvolutionSubgraph(
       absl::Span<const Argument> arguments, absl::Span<const Result> results,
-      absl::Span<const se::DeviceMemoryBase> arguments_buffers,
-      absl::Span<const se::DeviceMemoryBase> results_buffers);
+      absl::Span<const se::DeviceMemoryBase> arguments_buffers);
 
   ConvolutionSlices convolution_slices_;
   ConvolutionCanonicalDims convolution_canonical_dims_;

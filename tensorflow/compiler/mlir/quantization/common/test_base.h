@@ -30,8 +30,6 @@ limitations under the License.
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
-#include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
-#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/quantization/common/func.h"
 #include "tensorflow/compiler/mlir/quantization/common/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/context.h"
@@ -49,12 +47,11 @@ class QuantizationTestBase : public Test {
   QuantizationTestBase()
       : ctx_(stablehlo::CreateMlirContextForQuantization()),
         builder_(ctx_.get()) {
-    ctx_->loadDialect<
-        arith::ArithDialect, mlir::stablehlo::StablehloDialect,
-        func::FuncDialect, TF::TensorFlowDialect, TFL::TensorFlowLiteDialect,
-        tf_saved_model::TensorFlowSavedModelDialect,
-        tf_executor::TensorFlowExecutorDialect, quant::QuantDialect,
-        quantfork::QuantizationForkDialect, ir::TFQuantDialect>();
+    ctx_->loadDialect<arith::ArithDialect, mlir::stablehlo::StablehloDialect,
+                      func::FuncDialect, TF::TensorFlowDialect,
+                      tf_saved_model::TensorFlowSavedModelDialect,
+                      tf_executor::TensorFlowExecutorDialect,
+                      quant::QuantDialect, ir::TFQuantDialect>();
   }
 
   // Parses `module_op_str` to create a `ModuleOp`.

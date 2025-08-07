@@ -3606,6 +3606,8 @@ tf_cc_fuzz_test(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:tensorflow",
         "//tensorflow/core/ops",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_protobuf//:protobuf",
     ],
 )
 

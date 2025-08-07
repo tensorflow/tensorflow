@@ -19,7 +19,7 @@ limitations under the License.
 #include "xla/tsl/framework/contraction/eigen_contraction_kernel.h"  // IWYU pragma: keep
 #endif
 
-template void ::xla::cpu::DotThunk::TypedMatMul<float>(
+template void ::xla::cpu::DotThunk::TypedMatMul<float, float, float>(
     const Eigen::ThreadPoolDevice* device, void* out, void* lhs, void* rhs,
     int64_t m, int64_t n, int64_t k, bool transpose_lhs, bool transpose_rhs,
     DoneCallback done);

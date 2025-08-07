@@ -81,18 +81,13 @@ namespace tsl {
 
 namespace internal {
 
-// Emit "message" as a log message to the log for the specified
-// "severity" as if it came from a LOG call at "fname:line"
-void LogString(const char* fname, int line, absl::LogSeverity severity,
-               const std::string& message);
-
 class LogMessage : public std::basic_ostringstream<char> {
  public:
   LogMessage(const char* fname, int line, absl::LogSeverity severity);
   ~LogMessage() override;
 
   // Change the location of the log message.
-  LogMessage& AtLocation(const char* fname, int line);
+  LogMessage& AtLocation(absl::string_view fname, int line);
 
   // Returns the maximum log level for VLOG statements.
   // E.g., if MaxVLogLevel() is 2, then VLOG(2) statements will produce output,
@@ -114,7 +109,7 @@ class LogMessage : public std::basic_ostringstream<char> {
   void GenerateLogMessage();
 
  private:
-  const char* fname_;
+  absl::string_view fname_;
   int line_;
   absl::LogSeverity severity_;
 };

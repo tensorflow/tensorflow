@@ -222,8 +222,8 @@ absl::Status HloInputOutputAliasConfig::Verify(
         ShapeUtil::GetSubshape(param_shape, alias.parameter_index);
     const Shape& output_subshape =
         ShapeUtil::GetSubshape(output_shape, output_index);
-    TF_RET_CHECK(LayoutUtil::IsDenseArray(param_subshape));
-    TF_RET_CHECK(LayoutUtil::IsDenseArray(output_subshape));
+    TF_RET_CHECK(param_subshape.IsArray());
+    TF_RET_CHECK(output_subshape.IsArray());
 
     if (size_func(param_subshape) != size_func(output_subshape)) {
       return Internal(
@@ -336,7 +336,7 @@ absl::Status HloBufferDonorConfig::Verify(const HloModule& module) const {
 
     const Shape& param_subshape =
         ShapeUtil::GetSubshape(param_shape, donor.param_index);
-    TF_RET_CHECK(LayoutUtil::IsDenseArray(param_subshape));
+    TF_RET_CHECK(param_subshape.IsArray());
 
     if (alias_config.ParameterHasAlias(donor.param_number, donor.param_index)) {
       return Internal(

@@ -55,6 +55,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   OpContext op_context(context, node);
 
+  TF_LITE_ENSURE(context, op_context.input != nullptr);
+
   TF_LITE_ENSURE(context, op_context.input->type == kTfLiteInt4 ||
                               op_context.input->type == kTfLiteUInt8 ||
                               op_context.input->type == kTfLiteInt8 ||

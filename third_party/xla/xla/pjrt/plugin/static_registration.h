@@ -16,10 +16,30 @@ limitations under the License.
 #ifndef XLA_PJRT_PLUGIN_STATIC_REGISTRATION_H_
 #define XLA_PJRT_PLUGIN_STATIC_REGISTRATION_H_
 
-#define REGISTER_PJRT_PLUGIN(plugin_name, get_plugin_api)        \
-  [[maybe_unused]] static bool already_registered = []() {       \
-    pjrt::SetPjrtApi(plugin_name, get_plugin_api).IgnoreError(); \
-    return true;                                                 \
-  }();
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
+#include "xla/pjrt/c/pjrt_c_api.h"
+#include "xla/pjrt/pjrt_api.h"  // IWYU pragma: keep
+
+absl::Status RegisterStaticPjrtPlugin(absl::string_view plugin_name,
+                                      const PJRT_Api* plugin_api);
+
+// Registers a static PJRT plugin.
+//
+// Example:
+//
+//   #include
+//   "third_party/tensorflow/compiler/xla/pjrt/plugin/static_registration.h"
+//
+//   REGISTER_PJRT_PLUGIN("my_plugin", GetMyPluginPjrtApi);
+//   // this will register a plugin named "my_plugin" that is loaded from the
+//   // static function GetMyPluginPjrtApi (which returns a PJRT_Api*).
+#define REGISTER_PJRT_PLUGIN(plugin_name, get_plugin_fn)          \
+  [[maybe_unused]] static bool already_registered_##plugin_name = \
+      [](auto plugin_name, const PJRT_Api* plugin_api) -> bool {  \
+    QCHECK_OK(RegisterStaticPjrtPlugin(plugin_name, plugin_api)); \
+    return true;                                                  \
+  }(plugin_name, get_plugin_fn);
 
 #endif  // XLA_PJRT_PLUGIN_STATIC_REGISTRATION_H_

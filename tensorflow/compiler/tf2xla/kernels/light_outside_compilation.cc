@@ -355,9 +355,9 @@ absl::Status LightOutsideCompilationOp::CompileToCustomCallCallingTfKernel(
     output_xla_shapes.push_back(output_shape);
   }
 
-  xla::Shape output_shape =
-      xla::ShapeUtil::MakeMaybeTupleShape(output_xla_shapes);
-
+  TF_ASSIGN_OR_RETURN(
+      auto output_shape,
+      xla::ShapeUtil::MakeValidatedMaybeTupleShape(output_xla_shapes));
   VLOG(1) << "Created output shape: " << output_shape.ToString();
 
   TF_ASSIGN_OR_RETURN(std::string opaque, MakeOpaque(std::move(callback_data)));

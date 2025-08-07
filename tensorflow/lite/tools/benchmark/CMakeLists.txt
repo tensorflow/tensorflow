@@ -95,9 +95,16 @@ if(TFLITE_ENABLE_GPU)
 endif()  # TFLITE_ENABLE_GPU
 
 add_executable(benchmark_model
-  EXCLUDE_FROM_ALL
   ${TFLITE_BENCHMARK_SRCS}
 )
+if(TFLITE_ENABLE_BENCHMARK_MODEL)
+  set_target_properties(benchmark_model PROPERTIES EXCLUDE_FROM_ALL FALSE)
+  if(TFLITE_ENABLE_INSTALL)
+    install(TARGETS benchmark_model)
+  endif()  # TFLITE_ENABLE_INSTALL
+else()
+  set_target_properties(benchmark_model PROPERTIES EXCLUDE_FROM_ALL TRUE)
+endif()  # TFLITE_ENABLE_BENCHMARK_MODEL
 target_compile_options(benchmark_model
   PRIVATE
     ${TFLITE_BENCHMARK_CC_OPTIONS}

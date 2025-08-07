@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/status.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/tools/hlo_module_loader.h"
@@ -40,7 +41,9 @@ absl::Status RunAutoShardingPassFromFile(const std::string& file_name) {
   option.device_mesh_ids = {0, 1, 2, 3};
   option.device_mesh_alpha = {1.0, 1.0};
   option.device_mesh_beta = {0.01, 1.0};
-  TF_ASSIGN_OR_RETURN(bool changed, AutoSharding(option).Run(hlo_module.get()));
+  AliasInfo alias_info;
+  TF_ASSIGN_OR_RETURN(bool changed,
+                      AutoSharding(option, &alias_info).Run(hlo_module.get()));
   CHECK(changed);
   std::cout << hlo_module->ToString() << std::endl;
   return absl::OkStatus();

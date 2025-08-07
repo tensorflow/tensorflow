@@ -132,10 +132,12 @@ absl::StatusOr<ArrayRef> CreateArray(Client* client,
             /*on_done_with_host_buffer=*/{}));
   }
 
-  ShardingRef assembled_sharding = ConcreteEvenSharding::Create(
-      client->MakeDeviceList(devices), MemoryKind(),
-      /*shape=*/shape,
-      /*shard_shape=*/std::move(shard_shape));
+  TF_ASSIGN_OR_RETURN(DeviceListRef device_list,
+                      client->MakeDeviceList(devices));
+  ShardingRef assembled_sharding =
+      ConcreteEvenSharding::Create(std::move(device_list), MemoryKind(),
+                                   /*shape=*/shape,
+                                   /*shard_shape=*/std::move(shard_shape));
   absl::Span<ArrayRef> arrays = absl::MakeSpan(shards);
   return client->AssembleArrayFromSingleDeviceArrays(
       arrays.at(0)->dtype(), std::move(shape), std::move(assembled_sharding),
@@ -318,9 +320,10 @@ TEST(RemapImplTest, InterleaveArraysReuse) {
 
   EXPECT_THAT(client->RemapArrays(plan, absl::MakeSpan(arrays),
                                   ArrayCopySemantics::kReuseInput),
-              StatusIs(absl::StatusCode::kInvalidArgument,
-                       HasSubstr("kDonateInput is required if multiple inputs "
-                                 "are mapped to one output")));
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInvalidArgument,
+                  HasSubstr("kDonateInput is required if multiple inputs "
+                            "are mapped to one output")));
 }
 
 TEST(RemapImplTest, DeinterleaveArrays) {
@@ -565,8 +568,9 @@ TEST(RemapImplTest, DetectBadInput) {
     EXPECT_THAT(
         client->RemapArrays(plan, absl::MakeSpan(arrays),
                             ArrayCopySemantics::kReuseInput),
-        StatusIs(absl::StatusCode::kInvalidArgument,
-                 HasSubstr("RemapArrays expects 1 input arrays, but got 2")));
+        absl_testing::StatusIs(
+            absl::StatusCode::kInvalidArgument,
+            HasSubstr("RemapArrays expects 1 input arrays, but got 2")));
   }
 
   {
@@ -575,11 +579,11 @@ TEST(RemapImplTest, DetectBadInput) {
         arrays.emplace_back(),
         CreateArray<float>(client.get(), /*base_values=*/{0},
                            /*device_indices=*/{0}));
-    EXPECT_THAT(
-        client->RemapArrays(plan, absl::MakeSpan(arrays),
-                            ArrayCopySemantics::kReuseInput),
-        StatusIs(absl::StatusCode::kInvalidArgument,
-                 HasSubstr("RemapArrays expects input #0 to have dtype")));
+    EXPECT_THAT(client->RemapArrays(plan, absl::MakeSpan(arrays),
+                                    ArrayCopySemantics::kReuseInput),
+                absl_testing::StatusIs(
+                    absl::StatusCode::kInvalidArgument,
+                    HasSubstr("RemapArrays expects input #0 to have dtype")));
   }
 
   {
@@ -589,11 +593,11 @@ TEST(RemapImplTest, DetectBadInput) {
         CreateArray<int32_t>(client.get(), /*base_values=*/{0},
                              /*device_indices=*/{0},
                              /*shard_shape=*/Shape({20, 30})));
-    EXPECT_THAT(
-        client->RemapArrays(plan, absl::MakeSpan(arrays),
-                            ArrayCopySemantics::kReuseInput),
-        StatusIs(absl::StatusCode::kInvalidArgument,
-                 HasSubstr("RemapArrays expects input #0 to have shape")));
+    EXPECT_THAT(client->RemapArrays(plan, absl::MakeSpan(arrays),
+                                    ArrayCopySemantics::kReuseInput),
+                absl_testing::StatusIs(
+                    absl::StatusCode::kInvalidArgument,
+                    HasSubstr("RemapArrays expects input #0 to have shape")));
   }
 
   {
@@ -604,8 +608,9 @@ TEST(RemapImplTest, DetectBadInput) {
                              /*device_indices=*/{1}));
     EXPECT_THAT(client->RemapArrays(plan, absl::MakeSpan(arrays),
                                     ArrayCopySemantics::kReuseInput),
-                StatusIs(absl::StatusCode::kInvalidArgument,
-                         HasSubstr("RemapArrays expects input #0 to be on")));
+                absl_testing::StatusIs(
+                    absl::StatusCode::kInvalidArgument,
+                    HasSubstr("RemapArrays expects input #0 to be on")));
   }
 }
 

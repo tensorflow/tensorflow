@@ -21,6 +21,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
+#include "xla/stream_executor/platform/platform_object_registry.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/status_matchers.h"
@@ -43,104 +44,117 @@ using tsl::testing::IsOkAndHolds;
 using tsl::testing::StatusIs;
 
 TEST(GpuKernelRegistryTest, RegisterKernel) {
-  GpuKernelRegistry registry;
-  MultiKernelLoaderSpec cuda_spec(1);
-  MultiKernelLoaderSpec rocm_spec(42);
+  PlatformObjectRegistry object_registry;
+  GpuKernelRegistry registry{&object_registry};
+  KernelLoaderSpec cuda_spec =
+      KernelLoaderSpec::CreateInProcessSymbolSpec(nullptr, "kernel_name", 1);
+  KernelLoaderSpec rocm_spec =
+      KernelLoaderSpec::CreateInProcessSymbolSpec(nullptr, "kernel_name", 42);
 
   // Can register a simple kernel
   EXPECT_THAT(registry.RegisterKernel<TestKernelTrait>(
                   stream_executor::cuda::kCudaPlatformId, cuda_spec),
-              IsOk());
+              absl_testing::IsOk());
 
   // Can register another simple kernel - no clash
   EXPECT_THAT(registry.RegisterKernel<OtherTestKernelTrait>(
                   stream_executor::cuda::kCudaPlatformId, cuda_spec),
-              IsOk());
+              absl_testing::IsOk());
 
   // Can register a different kernel under the same trait for a different
   // platform.
   EXPECT_THAT(registry.RegisterKernel<TestKernelTrait>(
                   stream_executor::rocm::kROCmPlatformId, rocm_spec),
-              IsOk());
+              absl_testing::IsOk());
 
   // Can't register a kernel if it already exists in the registry.
   EXPECT_THAT(registry.RegisterKernel<TestKernelTrait>(
                   stream_executor::cuda::kCudaPlatformId, cuda_spec),
-              StatusIs(absl::StatusCode::kAlreadyExists));
+              absl_testing::StatusIs(absl::StatusCode::kAlreadyExists));
 }
 
 TEST(GpuKernelRegistryTest, RegisterKernelConcurrently) {
   // This test will show races in the registry implementation when run with
   // `--config=tsan`.
 
-  GpuKernelRegistry registry;
+  PlatformObjectRegistry object_registry;
+  GpuKernelRegistry registry{&object_registry};
 
   tsl::thread::ThreadPool pool(tsl::Env::Default(), "test_pool", 2);
 
   pool.Schedule([&] {
-    MultiKernelLoaderSpec cuda_spec(1);
+    KernelLoaderSpec cuda_spec =
+        KernelLoaderSpec::CreateInProcessSymbolSpec(nullptr, "kernel_name", 1);
     // Can register a simple kernel
     EXPECT_THAT(registry.RegisterKernel<TestKernelTrait>(
                     stream_executor::cuda::kCudaPlatformId, cuda_spec),
-                IsOk());
+                absl_testing::IsOk());
   });
 
   pool.Schedule([&] {
-    MultiKernelLoaderSpec rocm_spec(42);
+    KernelLoaderSpec rocm_spec =
+        KernelLoaderSpec::CreateInProcessSymbolSpec(nullptr, "kernel_name", 42);
     // Can register a different kernel under the same trait for a different
     // platform.
     EXPECT_THAT(registry.RegisterKernel<TestKernelTrait>(
                     stream_executor::rocm::kROCmPlatformId, rocm_spec),
-                IsOk());
+                absl_testing::IsOk());
   });
 }
 
 TEST(GpuKernelRegistryTest, FindKernel) {
-  GpuKernelRegistry registry;
-  MultiKernelLoaderSpec spec(333);
+  PlatformObjectRegistry object_registry;
+  GpuKernelRegistry registry{&object_registry};
+  KernelLoaderSpec spec =
+      KernelLoaderSpec::CreateInProcessSymbolSpec(nullptr, "kernel_name", 333);
 
   ASSERT_THAT(registry.RegisterKernel<TestKernelTrait>(
                   stream_executor::cuda::kCudaPlatformId, spec),
-              IsOk());
+              absl_testing::IsOk());
 
-  EXPECT_THAT(registry.FindKernel<TestKernelTrait>(
-                  stream_executor::cuda::kCudaPlatformId),
-              IsOkAndHolds(Property(&MultiKernelLoaderSpec::arity, 333)));
+  EXPECT_THAT(
+      registry.FindKernel<TestKernelTrait>(
+          stream_executor::cuda::kCudaPlatformId),
+      absl_testing::IsOkAndHolds(Property(&KernelLoaderSpec::arity, 333)));
 
   // No registered kernel for ROCM.
   EXPECT_THAT(registry.FindKernel<TestKernelTrait>(
                   stream_executor::rocm::kROCmPlatformId),
-              StatusIs(absl::StatusCode::kNotFound));
+              absl_testing::StatusIs(absl::StatusCode::kNotFound));
 
   // No registered kernel for the other trait.
   EXPECT_THAT(registry.FindKernel<OtherTestKernelTrait>(
                   stream_executor::cuda::kCudaPlatformId),
-              StatusIs(absl::StatusCode::kNotFound));
+              absl_testing::StatusIs(absl::StatusCode::kNotFound));
 }
 
 TEST(GpuKernelRegistryTest, FindKernelConcurrently) {
   // This test will show races in the registry implementation when run with
   // `--config=tsan`.
 
-  GpuKernelRegistry registry;
-  MultiKernelLoaderSpec spec(333);
+  PlatformObjectRegistry object_registry;
+  GpuKernelRegistry registry{&object_registry};
+  KernelLoaderSpec spec =
+      KernelLoaderSpec::CreateInProcessSymbolSpec(nullptr, "kernel_name", 333);
 
   ASSERT_THAT(registry.RegisterKernel<TestKernelTrait>(
                   stream_executor::cuda::kCudaPlatformId, spec),
-              IsOk());
+              absl_testing::IsOk());
 
   tsl::thread::ThreadPool pool(tsl::Env::Default(), "test_pool", 2);
 
   pool.Schedule([&] {
-    EXPECT_THAT(registry.FindKernel<TestKernelTrait>(
-                    stream_executor::cuda::kCudaPlatformId),
-                IsOkAndHolds(Property(&MultiKernelLoaderSpec::arity, 333)));
+    EXPECT_THAT(
+        registry.FindKernel<TestKernelTrait>(
+            stream_executor::cuda::kCudaPlatformId),
+        absl_testing::IsOkAndHolds(Property(&KernelLoaderSpec::arity, 333)));
   });
 
   pool.Schedule([&] {
-    EXPECT_THAT(registry.FindKernel<TestKernelTrait>(
-                    stream_executor::cuda::kCudaPlatformId),
-                IsOkAndHolds(Property(&MultiKernelLoaderSpec::arity, 333)));
+    EXPECT_THAT(
+        registry.FindKernel<TestKernelTrait>(
+            stream_executor::cuda::kCudaPlatformId),
+        absl_testing::IsOkAndHolds(Property(&KernelLoaderSpec::arity, 333)));
   });
 }
 

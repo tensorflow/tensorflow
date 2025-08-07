@@ -1,4 +1,4 @@
-// RUN: stablehlo-quant-opt %s -split-input-file -stablehlo-restore-function-name | FileCheck %s
+// RUN: stablehlo-quant-opt %s -split-input-file -tf-stablehlo-restore-function-name | FileCheck %s
 
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, producer = 1646 : i32}, tf_saved_model.semantics} {
   // CHECK-LABEL: @serving_default

@@ -18,13 +18,33 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/pjrt/c/pjrt_c_api.h"
-#include "tsl/platform/test.h"
+#include "xla/pjrt/c/pjrt_c_api_helpers.h"
+#include "xla/pjrt/extensions/example/example_extension.h"
 
 namespace {
 
 TEST(MypluginCPjRtTest, CreatesPjRtAPI) {
   const PJRT_Api* myplugin = GetPjrtApi();
   EXPECT_THAT(myplugin, ::testing::NotNull());
+}
+
+TEST(MypluginCPjRtTest, CallsExampleExtension) {
+  const PJRT_Api* myplugin = GetPjrtApi();
+  EXPECT_THAT(myplugin, ::testing::NotNull());
+  PJRT_Example_Extension* ext_api = pjrt::FindExtension<PJRT_Example_Extension>(
+      myplugin, PJRT_Extension_Type::PJRT_Extension_Type_Unknown);
+  EXPECT_THAT(ext_api, ::testing::NotNull());
+
+  PJRT_ExampleExtension_CreateExampleExtensionCpp_Args get_args = {};
+  ext_api->create(&get_args);
+
+  PJRT_ExampleExtension_ExampleMethod_Args args = {
+      /*extension=*/get_args.extension_cpp,
+      /*value=*/42,
+  };
+  ext_api->example_method(&args);
+
+  ext_api->destroy(&get_args);
 }
 
 }  // namespace

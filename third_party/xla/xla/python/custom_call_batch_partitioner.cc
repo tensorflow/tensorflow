@@ -220,7 +220,7 @@ absl::Status CustomCallBatchPartitioner::Partition(
     }
     spmd::PartitionedHlo result_partitioned = spmd::PartitionedHlo(
         partitioned_hlo, hlo->shape(), partitioner->MakePartitioningState());
-    partitioner->SetPartitionedHlo(hlo, result_partitioned);
+    partitioner->SetPartitionedHlo(hlo, std::move(result_partitioned));
     return absl::OkStatus();
   }
 
@@ -270,7 +270,7 @@ absl::Status CustomCallBatchPartitioner::Partition(
       spmd::PartitionedHlo(partitioned_hlo, hlo->shape(),
                            partitioner->MakePartitioningState())
           .Reshard(hlo->sharding());
-  partitioner->SetPartitionedHlo(hlo, result_partitioned);
+  partitioner->SetPartitionedHlo(hlo, std::move(result_partitioned));
 
   return absl::OkStatus();
 }

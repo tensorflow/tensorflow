@@ -1,4 +1,4 @@
-// RUN: stablehlo-quant-opt %s -split-input-file -stablehlo-xla-call-module-to-call | FileCheck %s
+// RUN: stablehlo-quant-opt %s -split-input-file -tf-stablehlo-xla-call-module-to-call | FileCheck %s
 
 // -----
 

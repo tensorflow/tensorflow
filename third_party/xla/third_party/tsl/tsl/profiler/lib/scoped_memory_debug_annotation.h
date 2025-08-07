@@ -20,6 +20,8 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/strings/string_view.h"
+
 namespace tsl {
 namespace profiler {
 
@@ -29,9 +31,9 @@ std::string DefaultPendingShapeFunc();
 // ScopedMemoryDebugAnnotation will cache the annotations in thread-local
 // memory, and some allocators will try to tag allocations with the annotations.
 struct MemoryDebugAnnotation {
-  const char* pending_op_name = nullptr;
+  absl::string_view pending_op_name;
   int64_t pending_step_id = 0;
-  const char* pending_region_type = nullptr;
+  absl::string_view pending_region_type;
   int32_t pending_data_type = 0;
   // A lambda function, when invoked, it will generate the string that describe
   // the shape of the pending tensor. By default, the TensorShape string is an
@@ -46,7 +48,7 @@ class ScopedMemoryDebugAnnotation {
     return *ThreadMemoryDebugAnnotation();
   }
 
-  explicit ScopedMemoryDebugAnnotation(const char* op_name) {
+  explicit ScopedMemoryDebugAnnotation(absl::string_view op_name) {
     MemoryDebugAnnotation* thread_local_annotation =
         ThreadMemoryDebugAnnotation();
     last_annotation_ = *thread_local_annotation;
@@ -54,7 +56,8 @@ class ScopedMemoryDebugAnnotation {
     thread_local_annotation->pending_op_name = op_name;
   }
 
-  explicit ScopedMemoryDebugAnnotation(const char* op_name, int64_t step_id) {
+  explicit ScopedMemoryDebugAnnotation(absl::string_view op_name,
+                                       int64_t step_id) {
     MemoryDebugAnnotation* thread_local_annotation =
         ThreadMemoryDebugAnnotation();
     last_annotation_ = *thread_local_annotation;
@@ -66,12 +69,12 @@ class ScopedMemoryDebugAnnotation {
   // This constructor keeps the pending_op_name and pending_step_id from parent
   // (if any).  Otherwise it overwrites with op_name.
   explicit ScopedMemoryDebugAnnotation(
-      const char* op_name, const char* region_type, int32_t data_type,
-      std::function<std::string()>&& pending_shape_func) {
+      absl::string_view op_name, absl::string_view region_type,
+      int32_t data_type, std::function<std::string()>&& pending_shape_func) {
     MemoryDebugAnnotation* thread_local_annotation =
         ThreadMemoryDebugAnnotation();
     last_annotation_ = *thread_local_annotation;
-    if (!thread_local_annotation->pending_op_name) {
+    if (thread_local_annotation->pending_op_name.empty()) {
       thread_local_annotation->pending_op_name = op_name;
     }
     thread_local_annotation->pending_region_type = region_type;
@@ -80,7 +83,7 @@ class ScopedMemoryDebugAnnotation {
   }
 
   explicit ScopedMemoryDebugAnnotation(
-      const char* op_name, int64_t step_id, const char* region_type,
+      absl::string_view op_name, int64_t step_id, absl::string_view region_type,
       int32_t data_type, std::function<std::string()>&& pending_shape_func) {
     MemoryDebugAnnotation* thread_local_annotation =
         ThreadMemoryDebugAnnotation();

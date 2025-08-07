@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
@@ -47,8 +48,8 @@ limitations under the License.
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
-#include "tsl/platform/errors.h"
 
 namespace xla {
 
@@ -80,7 +81,7 @@ class TfPjRtBuffer : public PjRtBuffer {
     return wrapped_->ToLiteral(literal);
   }
   PjRtFuture<> LazyToLiteral(
-      absl::AnyInvocable<absl::StatusOr<MutableLiteralBase*>() &&> generator)
+      absl::AnyInvocable<PjRtFuture<MutableLiteralBase*>() &&> generator)
       override {
     return wrapped_->LazyToLiteral(std::move(generator));
   }
@@ -97,7 +98,7 @@ class TfPjRtBuffer : public PjRtBuffer {
     return wrapped_->ReleaseDeviceMemoryOwnership(
         wait_for_operations_to_complete);
   }
-  bool IsDeleted() override { return wrapped_->IsDeleted(); }
+  bool IsDeleted() const override { return wrapped_->IsDeleted(); }
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToMemorySpace(
       PjRtMemorySpace* dst_memory_space) override;
   void CopyToRemoteDevice(PjRtFuture<std::string> serialized_descriptor,
@@ -157,20 +158,23 @@ class TfPjRtExecutable : public PjRtLoadedExecutable {
   absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
       absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
       const ExecuteOptions& options,
-      std::optional<std::vector<PjRtFuture<>>>& returned_futures) override;
+      std::optional<std::vector<PjRtFuture<>>>& returned_futures)
+      const override;
   using PjRtLoadedExecutable::ExecuteSharded;
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options,
-      std::optional<PjRtFuture<>>& returned_future, bool fill_future) override;
+      std::optional<PjRtFuture<>>& returned_future,
+      bool fill_future) const override;
   using PjRtLoadedExecutable::ExecutePortable;
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options,
-      std::optional<PjRtFuture<>>& returned_future, bool fill_future) override;
+      std::optional<PjRtFuture<>>& returned_future,
+      bool fill_future) const override;
 
   void Delete() override { return wrapped_->Delete(); }
-  bool IsDeleted() override { return wrapped_->IsDeleted(); }
+  bool IsDeleted() const override { return wrapped_->IsDeleted(); }
 
   absl::StatusOr<std::string> SerializeExecutable() const override {
     return wrapped_->SerializeExecutable();
@@ -215,7 +219,7 @@ class TfPjRtClient : public PjRtClient {
   absl::StatusOr<PjRtDevice*> LookupAddressableDevice(
       PjRtLocalDeviceId local_device_id) const override {
     if (wrapped_ == nullptr) {
-      return tsl::errors::Internal(
+      return absl::InternalError(
           "Wrapped PJRT client in TfPjRtClient is already destroyed.");
     }
     return wrapped_->LookupAddressableDevice(local_device_id);
@@ -232,6 +236,7 @@ class TfPjRtClient : public PjRtClient {
   absl::string_view platform_version() const override {
     return wrapped_->platform_version();
   }
+  std::optional<PjRtPluginAttributes> plugin_attributes() const override;
   absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override {
     return wrapped_->GetDefaultDeviceAssignment(num_replicas, num_partitions);

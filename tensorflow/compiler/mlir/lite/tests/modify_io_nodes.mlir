@@ -1,6 +1,6 @@
-// RUN: tf-opt %s -tfl-modify-io-nodes="test-io-types=float32,float32" | FileCheck %s
-// RUN: tf-opt %s -tfl-modify-io-nodes="test-io-types=int8,int8" | FileCheck --check-prefix=INT8 %s
-// RUN: tf-opt %s -tfl-modify-io-nodes="test-io-types=uint8,uint8" | FileCheck --check-prefix=UINT8 %s
+// RUN: litert-opt %s -tfl-modify-io-nodes="test-io-types=float32,float32" | FileCheck %s
+// RUN: litert-opt %s -tfl-modify-io-nodes="test-io-types=int8,int8" | FileCheck --check-prefix=INT8 %s
+// RUN: litert-opt %s -tfl-modify-io-nodes="test-io-types=uint8,uint8" | FileCheck --check-prefix=UINT8 %s
 
 func.func @modified(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x401408xf32> attributes {tf.entry_function = {control_outputs = "", inputs = "input", outputs = "output"}} {
   %cst = arith.constant dense<[1, 401408]> : tensor<2xi32>

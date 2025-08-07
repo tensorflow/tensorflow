@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -430,7 +429,7 @@ absl::Status SpmdPartitioningVisitor::HandleFft(HloInstruction* hlo) {
   result->set_sharding(hlo->sharding());
   auto partitioned_fft =
       PartitionedHlo(result, hlo->shape(), partitioned_input.state());
-  SetPartitionedHlo(hlo, partitioned_fft);
+  SetPartitionedHlo(hlo, std::move(partitioned_fft));
   return absl::OkStatus();
 }
 

@@ -55,8 +55,8 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/quantization/common/ir/FakeQuantSupport.h"
+#include "tensorflow/compiler/mlir/quantization/common/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_traits.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -100,7 +100,7 @@ using RequiredSameOperandsAndResultsScaleFunc = std::function<bool(bool, int)>;
 // bool RequiredSameQuantizedAxes()
 using RequiredSameQuantizedAxesFunc = std::function<bool()>;
 
-using CustomMap = quant::CustomOpMap;
+using CustomMap = CustomOpMap;
 
 // Quantization spec of an op, driving the quantization algorithm.
 struct OpQuantSpec {
@@ -207,16 +207,17 @@ inline std::string GetTensorNameFromLoc(Location loc) {
 }
 
 template <typename QuantizeOpT, typename DequantizeOpT>
-struct ConvertStatsToQDQs : public OpRewritePattern<quantfork::StatisticsOp> {
+struct ConvertStatsToQDQs
+    : public OpRewritePattern<mlir::quant::ir::StatisticsOp> {
   ConvertStatsToQDQs(int num_bits, bool narrow_range, bool is_signed,
                      bool legacy_float_scale, MLIRContext* context)
-      : OpRewritePattern<quantfork::StatisticsOp>(context),
+      : OpRewritePattern<mlir::quant::ir::StatisticsOp>(context),
         num_bits(num_bits),
         narrow_range(narrow_range),
         is_signed(is_signed),
         legacy_float_scale(legacy_float_scale) {}
 
-  LogicalResult matchAndRewrite(quantfork::StatisticsOp op,
+  LogicalResult matchAndRewrite(mlir::quant::ir::StatisticsOp op,
                                 PatternRewriter& rewriter) const override {
     Type expressed = llvm::cast<ShapedType>(op.getType()).getElementType();
     quant::QuantizedType quant_type;
@@ -306,7 +307,7 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quantfork::StatisticsOp> {
 
   // Emits an op warning message if the calibrated range is larger than 10.0 and
   // the storage type is less than or equal to 8 bits.
-  void TensorRangeSanityCheck(quantfork::StatisticsOp op, double& min,
+  void TensorRangeSanityCheck(mlir::quant::ir::StatisticsOp op, double& min,
                               double& max) const {
     double range = std::fabs(max - min);
     if (num_bits <= 8 && range >= 10.0) {
@@ -504,7 +505,7 @@ class QuantizationPattern : public RewritePattern {
       inputs.reserve(quantizing_op->getNumOperands());
       for (auto operand : quantizing_op->getOperands()) {
         Type operand_type = operand.getType();
-        if (llvm::isa<NoneType>(operand_type)) {
+        if (isa<NoneType>(operand_type)) {
           inputs.push_back(operand);
           continue;
         }
@@ -570,7 +571,7 @@ class QuantizationPattern : public RewritePattern {
           Type result_type = result.getType();
           // Add this to the test coverage once we create test ops with none
           // type results.
-          if (llvm::isa<NoneType>(result_type)) {
+          if (isa<NoneType>(result_type)) {
             outputs_replaced.insert({result, enumerated_result.index()});
             output_types.push_back(result_type);
             continue;
@@ -650,8 +651,8 @@ class QuantizationPattern : public RewritePattern {
         }
 
         for (int i = 0, e = quantized_op->getNumResults(); i < e; ++i) {
-          if (!llvm::isa<FloatType>(
-                  llvm::cast<ShapedType>(quantizing_op->getResult(i).getType())
+          if (!isa<FloatType>(
+                  cast<ShapedType>(quantizing_op->getResult(i).getType())
                       .getElementType())) {
             continue;
           }

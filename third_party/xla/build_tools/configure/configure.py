@@ -215,6 +215,10 @@ class RocmCompiler(ArgparseableEnum):
   HIPCC = enum.auto()
 
 
+class SyclCompiler(ArgparseableEnum):
+  ICPX = enum.auto()
+
+
 class OS(ArgparseableEnum):
   """Modeled after the values returned by `platform.system()`."""
   LINUX = enum.auto()
@@ -299,6 +303,9 @@ class XLAConfigOptions:
   # ROCM specific
   rocm_compiler: RocmCompiler
 
+  # SYCL specific
+  sycl_compiler: SyclCompiler
+
   def to_bazelrc_lines(
       self,
       dpav: DiscoverablePathsAndVersions,
@@ -339,7 +346,7 @@ class XLAConfigOptions:
 
     elif self.backend == Backend.CUDA:
       build_and_test_tag_filters.append("-rocm-only")
-      build_and_test_tag_filters.append("-sycl-only")
+      build_and_test_tag_filters.append("-oneapi-only")
 
       compiler_pair = self.cuda_compiler, self.host_compiler
 
@@ -390,7 +397,7 @@ class XLAConfigOptions:
         rc.append("build --config nonccl")
     elif self.backend == Backend.ROCM:
       build_and_test_tag_filters.append("-cuda-only")
-      build_and_test_tag_filters.append("-sycl-only")
+      build_and_test_tag_filters.append("-oneapi-only")
 
       compiler_pair = self.rocm_compiler, self.host_compiler
 
@@ -405,8 +412,17 @@ class XLAConfigOptions:
     elif self.backend == Backend.SYCL:
       build_and_test_tag_filters.append("-cuda-only")
       build_and_test_tag_filters.append("-rocm-only")
+      build_and_test_tag_filters.append("-no-oneapi")
 
-      rc.append("build --config sycl")
+      compiler_pair = self.sycl_compiler, self.host_compiler
+
+      if compiler_pair == (SyclCompiler.ICPX, HostCompiler.CLANG):
+        rc.append("build --config sycl")
+        rc.append("build --config icpx_clang")
+      elif compiler_pair == (SyclCompiler.ICPX, HostCompiler.GCC):
+        rc.append("build --config sycl")
+      else:
+        raise NotImplementedError(" Sycl with host compiler not supported")
 
     # Lines that are added for every backend
     if dpav.ld_library_path:
@@ -486,6 +502,12 @@ def _parse_args():
       default="hipcc",
   )
   parser.add_argument(
+      "--sycl_compiler",
+      type=SyclCompiler.from_str,
+      choices=list(SyclCompiler),
+      default="icpx",
+  )
+  parser.add_argument(
       "--cuda_compute_capabilities",
       type=comma_separated_list,
       default=None,
@@ -561,6 +583,7 @@ def main():
       compiler_options=args.compiler_options,
       using_nccl=args.nccl,
       rocm_compiler=args.rocm_compiler,
+      sycl_compiler=args.sycl_compiler,
   )
 
   bazelrc_lines = config.to_bazelrc_lines(

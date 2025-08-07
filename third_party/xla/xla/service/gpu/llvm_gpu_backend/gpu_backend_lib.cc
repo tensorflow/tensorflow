@@ -233,7 +233,7 @@ auto DumpCallbackForModule(std::string module_identifier,
 
     const std::string basename = ReplaceFilenameExtension(
         absl::string_view(tsl::io::Basename(module_identifier)),
-        absl::StrFormat("pass-%02d.before.%s.ll", i++,
+        absl::StrFormat("pass-%03d.before.%s.ll", i++,
                         absl::string_view(pass.str())));
     DumpModule(tsl::io::JoinPath(outputs_dir, basename), module);
   };

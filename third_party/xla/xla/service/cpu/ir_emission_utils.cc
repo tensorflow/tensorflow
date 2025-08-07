@@ -30,7 +30,7 @@ namespace cpu {
 
 int64_t GetMinimumAlignmentForArray(
     const Shape& shape, const TargetMachineFeatures& target_machine_features) {
-  CHECK(LayoutUtil::IsDenseArray(shape));
+  CHECK(shape.IsArray());
 
   // We don't require a layout to be set on `shape`.  This only works on CPU
   // because we don't pad our tensors or otherwise have complicated data tiling

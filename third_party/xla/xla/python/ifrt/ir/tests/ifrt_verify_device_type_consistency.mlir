@@ -90,24 +90,3 @@ module @multiple_tpu_and_gpu{
     return %0 : tensor<2x2xi32>
   }
 }
-
-// -----
-
-module @hlo_with_cpu_type{
-  func.func @main() -> !ifrt.array<tensor<2x2xi32>,
-                                   #ifrt.sharding_param<2x1 to [0] on 2>,
-                                   [2, 4]>
-      attributes {ifrt.function} {
-    // expected-error @+1 {{'ifrt.Call' op has platform: cpu, which is incompatible with the module type inferred from callee.}}
-    %0, %ctrl_0 = ifrt.Call @hlo() on devices [2,4]
-        : () -> !ifrt.array<tensor<2x2xi32>,
-                            #ifrt.sharding_param<2x1 to [0] on 2>, [2,4]>
-    return %0 : !ifrt.array<tensor<2x2xi32>,
-                            #ifrt.sharding_param<2x1 to [0] on 2>, [2,4]>
-  }
-
-  func.func private @hlo() -> tensor<2x2xi32> {
-    %0 = mhlo.constant dense<1> : tensor<2x2xi32>
-    return %0 : tensor<2x2xi32>
-  }
-}

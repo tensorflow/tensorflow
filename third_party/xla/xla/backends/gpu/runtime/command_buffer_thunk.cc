@@ -66,6 +66,16 @@ CommandBufferThunk::CommandBufferThunk(
       enable_command_buffers_during_profiling_(
           enable_command_buffers_during_profiling),
       state_(std::make_shared<State>()) {
+  if (VLOG_IS_ON(5)) {
+    absl::StatusOr<std::string> graph = commands_.RenderExecutionGraph();
+    if (graph.ok()) {
+      VLOG(5) << "Rendered command buffer execution graph: " << *graph;
+    } else {
+      VLOG(5) << "Failed to render command buffer execution graph: "
+              << graph.status();
+    }
+  }
+
   // When we create a new command buffer thunk (which happens when we
   // instantiate a new Gpu executable) we evict command buffers for all
   // previously instantiated executables. If previously instantiated executable
@@ -163,8 +173,13 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
   // before execution, because command buffers when instantiated will allocate
   // memory on device and this might lead to deadlocks when we have concurrent
   // NCCL operations in flight.
+  //
+  // If commands require initialization, we also record them into the command
+  // buffer before execution. This is required to guarantee that collective
+  // commands recorded on all participating ranks to avoid deadlocks.
   if (cmd_buffer->command_buffer->state() ==
-      se::CommandBuffer::State::kCreate) {
+          se::CommandBuffer::State::kCreate ||
+      commands_.requires_initialization()) {
     VLOG(3) << "Initialize command buffer on device #"
             << params.executor->device_ordinal()
             << " by recoding command buffer cmd sequence"
@@ -178,7 +193,13 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
 
     uint64_t start_micros = tsl::Env::Default()->NowMicros();
 
-    CommandBufferCmd::RecordParams record_params = {cmd_buffer->state};
+    // Update recorded buffer allocations.
+    auto updated_allocs =
+        cmd_buffer->UpdateBufferAllocations(commands_, execute_params);
+
+    CommandBufferCmd::RecordParams record_params = {cmd_buffer->state,
+                                                    std::move(updated_allocs),
+                                                    /*is_initialization=*/true};
     TF_RETURN_IF_ERROR(commands_.Record(execute_params, record_params,
                                         cmd_buffer->command_buffer.get()));
 
@@ -188,9 +209,6 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
             << (end_micros - start_micros)
             << " μs; num_commands=" << commands_.size();
     cmd_buffer->num_executions = 0;
-
-    // Update recorded buffer allocations.
-    cmd_buffer->UpdateBufferAllocations(commands_, execute_params);
   }
 
   return absl::OkStatus();

@@ -26,20 +26,19 @@ limitations under the License.
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/Dialect/UB/IR/UBOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
-#include "stablehlo/dialect/Register.h"
 #include "stablehlo/transforms/Passes.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_module_importer.h"
 #include "xla/hlo/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 #include "xla/hlo/translate/mhlo_to_hlo/module_attributes_exporter.h"
 #include "xla/mlir/utils/error_util.h"
-#include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/mlir_hlo/stablehlo_ext/transforms/passes.h"
 #include "xla/service/hlo.pb.h"
@@ -57,6 +56,14 @@ namespace {
 absl::Status StablehloToMhlo(mlir::ModuleOp module, bool run_canonicalizer) {
   mlir::MLIRContext* context = module->getContext();
   mlir::PassManager pm(context);
+
+  // Only enable verifier in debug builds.
+  bool enableVerifier = false;
+#ifndef NDEBUG
+  enableVerifier = true;
+#endif
+  pm.enableVerifier(enableVerifier);
+
   // CHLO -> MHLO for high level ops (TopK, Erf, RaggedDot, etc.)
   // CHLO -> StableHLO otherwise
   pm.addNestedPass<mlir::func::FuncOp>(
@@ -125,14 +132,6 @@ absl::StatusOr<std::unique_ptr<xla::HloModule>> ConvertStablehloToHloInternal(
 
 }  // namespace
 
-void RegisterMlirToHloDependentDialects(mlir::DialectRegistry& registry) {
-  mlir::stablehlo::registerAllDialects(registry);
-  mlir::func::registerAllExtensions(registry);
-  mlir::mhlo::registerAllMhloDialects(registry);
-  registry.insert<mlir::tensor::TensorDialect, mlir::arith::ArithDialect,
-                  mlir::shape::ShapeDialect>();
-}
-
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertHloToStablehlo(
     mlir::MLIRContext& ctx, const xla::HloModule* hlo_module) {
   mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
@@ -151,6 +150,20 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertHloToStablehlo(
       llvm_ir::CreateMlirModuleOp(mlir::UnknownLoc::get(&ctx));
   TF_RETURN_IF_ERROR(HloModuleImporter(mlir_module.get(),
                                        /*import_all_computation=*/true,
+                                       /*flatten_computation_args_result=*/true,
+                                       /*emit_stablehlo=*/true)
+                         .Import(*hlo_module_proto));
+  return mlir_module;
+}
+
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
+ConvertHloToStablehloWithOptions(mlir::MLIRContext& ctx,
+                                 const xla::HloModuleProto* hlo_module_proto,
+                                 bool import_all_computations) {
+  mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
+      llvm_ir::CreateMlirModuleOp(mlir::UnknownLoc::get(&ctx));
+  TF_RETURN_IF_ERROR(HloModuleImporter(mlir_module.get(),
+                                       import_all_computations,
                                        /*flatten_computation_args_result=*/true,
                                        /*emit_stablehlo=*/true)
                          .Import(*hlo_module_proto));
@@ -185,9 +198,6 @@ absl::Status ConvertStablehloWithManyArgsToHloProto(mlir::ModuleOp module,
                                                     bool use_tuple_args) {
   if (!module) return absl::InvalidArgumentError("Module is null");
 
-  // TODO: Why are we removing attributes.
-  module->removeAttr("mhlo.xla_entry_computation_parameter_layouts");
-  module->removeAttr("mhlo.xla_entry_computation_parameter_tiles");
   return ConvertStablehloToHloProtoInternal(module, hlo_proto, use_tuple_args,
                                             /*return_tuple=*/false,
                                             /*run_canonicalizer=*/false);

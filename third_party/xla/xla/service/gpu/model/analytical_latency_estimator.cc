@@ -61,7 +61,7 @@ LatencyEstimator::TimeCost AnalyticalLatencyEstimator::NodeCost(
   }
 
   absl::Duration total_estimated_time =
-      gpu_performance_model_
+      gpu_performance_model_.Get()
           .EstimateRunTimeForInstruction(instr, &*cost_analysis_)
           .exec_time;
   LatencyEstimator::TimeCost cost_in_us =

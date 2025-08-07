@@ -68,10 +68,43 @@ cc_library(
         ":pjrt_c_api_helpers",
         ":pjrt_c_api_wrapper_impl",
         "//xla/ffi:execution_context",
+        "//xla/ffi:ffi_api",
         "//xla/ffi:type_id_registry",
+        "//xla/ffi/api:c_api",
+        "//xla/ffi/api:ffi",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
     ],
+)
+
+cc_library(
+    name = "pjrt_c_api_phase_compile_extension_hdrs",
+    hdrs = ["pjrt_c_api_phase_compile_extension.h"],
+    visibility = ["//visibility:public"],
+    deps = [":pjrt_c_api_hdrs"],
+)
+
+cc_library(
+    name = "pjrt_c_api_phase_compile_internal",
+    srcs = ["pjrt_c_api_phase_compile_internal.cc"],
+    hdrs = ["pjrt_c_api_phase_compile_internal.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pjrt_c_api_hdrs",
+        ":pjrt_c_api_helpers",
+        ":pjrt_c_api_phase_compile_extension_hdrs",
+        ":pjrt_c_api_wrapper_impl",
+        "//xla/pjrt:pjrt_compiler",
+        "//xla/pjrt:pjrt_executable",
+        "//xla/pjrt/proto:compile_options_proto_cc",
+        "//xla/pjrt/proto:pjrt_partial_program_proto_cc",
+        "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+    alwayslink = True,
 )
 
 cc_library(
@@ -155,6 +188,7 @@ cc_library(
     name = "pjrt_c_api_raw_buffer_external",
     srcs = ["pjrt_c_api_raw_buffer_external.cc"],
     hdrs = ["pjrt_c_api_raw_buffer_external.h"],
+    visibility = internal_visibility(["//xla/pjrt:friends"]),
     deps = [
         ":pjrt_c_api_hdrs",
         ":pjrt_c_api_helpers",
@@ -229,6 +263,7 @@ cc_library(
         "//xla/tsl/framework:allocator",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
+        "//xla/tsl/protobuf:coordination_service_proto_cc",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -278,6 +313,7 @@ cc_library(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -301,6 +337,8 @@ cc_library(
         ":pjrt_c_api_helpers",
         ":pjrt_c_api_layouts_extension_hdrs",
         ":pjrt_c_api_memory_descriptions_extension_hdrs",
+        ":pjrt_c_api_phase_compile_extension_hdrs",
+        ":pjrt_c_api_phase_compile_internal",
         ":pjrt_c_api_wrapper_impl",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_common",
@@ -333,6 +371,7 @@ xla_cc_binary(
     linkopts = if_macos(
         [
             "-Wl,-exported_symbol,_GetPjrtApi",
+            "-Wl,-install_name,@rpath/pjrt_c_api_cpu_plugin.dylib",
             "-Wl,-undefined,error",
         ],
         [
@@ -386,10 +425,12 @@ cc_library(
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_device_description",
         "//xla/pjrt:pjrt_executable",
+        "//xla/pjrt/extensions/cross_host_transfers:pjrt_c_api_cross_host_transfer_extension",
         "//xla/pjrt/gpu:gpu_helpers",
         "//xla/pjrt/gpu:gpu_topology",
         "//xla/pjrt/gpu:se_gpu_pjrt_client",
         "//xla/pjrt/gpu:se_gpu_pjrt_compiler",  # buildcleaner: keep to register GPU AOT compiler
+        "//xla/pjrt/plugin/xla_gpu:xla_gpu_pjrt_client",
         "//xla/python:custom_call_batch_partitioner",
         "//xla/python:custom_partition_callback",
         "//xla/python:debug_callback_partitioner",  # To register "DebugCallbackCustomCallPartitioner" custom partitioning handler.
@@ -501,6 +542,7 @@ xla_test(
         "//xla/ffi:ffi_api",
         "//xla/ffi:type_id_registry",
         "//xla/ffi/api:ffi",
+        "//xla/pjrt:pjrt_c_api_client",
         "//xla/pjrt:pjrt_common",
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_future",
@@ -595,4 +637,10 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_for_library",
     ],
+)
+
+cc_library(
+    name = "pjrt_c_api_tpu_internal",
+    hdrs = ["pjrt_c_api_tpu_internal.h"],
+    deps = [":pjrt_c_api_hdrs"],
 )

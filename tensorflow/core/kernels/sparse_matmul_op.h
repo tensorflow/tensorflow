@@ -54,6 +54,40 @@ EIGEN_DEVICE_FUNC inline Packet pexpand_bf16_u(const Packet& from) {
 }
 
 // Specialization non-scalar version on non-sse.
+// SVE vector implementation for PacketXf
+#if defined(__ARM_FEATURE_SVE) && defined(EIGEN_ARM64_USE_SVE)
+template <typename Packet>
+EIGEN_DEVICE_FUNC inline PacketXf pexpand_bf16_l(const PacketXf& from) {
+  svbool_t pg = svptrue_b32();
+
+  // Reinterpret float32 as uint16 (so we can unpack half words)
+  svuint16_t from_u16 = svreinterpret_u16_f32(from);
+
+  // Unpack lower 16-bit halves to 32-bit ints, shift into float32 format
+  svuint32_t unpacked_lo = svunpklo_u32(from_u16);
+  svuint32_t widened =
+      svlsl_n_u32_x(pg, unpacked_lo, 16);  // shift left to match float layout
+
+  return svreinterpret_f32_u32(widened);
+}
+
+// Expand the upper BF16s (i.e., second 16-bit half of each 32-bit float)
+template <typename Packet>
+EIGEN_DEVICE_FUNC inline PacketXf pexpand_bf16_u(const PacketXf& from) {
+  svbool_t pg = svptrue_b32();
+
+  // Reinterpret float32 as uint16 (so we can unpack half words)
+  svuint16_t from_u16 = svreinterpret_u16_f32(from);
+
+  // Unpack upper 16-bit halves to 32-bit ints, shift into float32 format
+  svuint32_t unpacked_hi = svunpkhi_u32(from_u16);
+  svuint32_t widened =
+      svlsl_n_u32_x(pg, unpacked_hi, 16);  // shift left to match float layout
+
+  return svreinterpret_f32_u32(widened);
+}
+#endif
+
 // Enable vectorization on z13 and higher
 #if defined(EIGEN_VECTORIZE_ALTIVEC) || defined(EIGEN_VECTORIZE_VSX) || \
     defined(EIGEN_VECTORIZE_NEON) || defined(EIGEN_VECTORIZE_ZVECTOR)

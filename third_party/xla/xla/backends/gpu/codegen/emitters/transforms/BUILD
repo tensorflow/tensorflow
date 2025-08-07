@@ -1,5 +1,6 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load(
     "//xla/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
@@ -36,7 +37,6 @@ cc_library(
         "convert_float_amd.cc",
         "convert_float_nvidia.cc",
         "convert_index_type.cc",
-        "fuse_loops.cc",
         "lower_xla_shared.cc",
         "optimize_loops.cc",
         "peel_loops.cc",

@@ -18,12 +18,13 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/Support/LogicalResult.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/BuiltinAttributes.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 
@@ -34,6 +35,8 @@ namespace emitters {
 #include "xla/codegen/emitters/transforms/passes.h.inc"
 
 namespace {
+
+static constexpr absl::string_view kXlaEntryAttr = "xla.entry";
 
 class MergePointersToSameSlicePass
     : public impl::MergePointersToSameSlicePassBase<
@@ -56,6 +59,10 @@ struct PackedArgs {
       replacement_args.push_back(i);
     }
 
+    // Do not erase arguments for the entry function, because that will change
+    // kernel launch interface.
+    bool is_entry_func = func->hasAttr(kXlaEntryAttr);
+
     for (auto [idx, operand] : llvm::enumerate(func.getArguments())) {
       auto slice_index = func.getArgAttr(idx, "xla.slice_index");
       if (!slice_index) {
@@ -66,7 +73,7 @@ struct PackedArgs {
           mlir::cast<mlir::IntegerAttr>(slice_index).getInt())];
       if (target_index) {
         replacement_args[idx] = *target_index;
-        args_to_erase[idx] = true;
+        args_to_erase[idx] = !is_entry_func;
       } else {
         target_index = idx;
       }
@@ -80,9 +87,9 @@ struct PackedArgs {
       }
     }
 
-    auto res = op.eraseArguments(args_to_erase);
-    (void)res;
+    [[maybe_unused]] auto res = op.eraseArguments(args_to_erase);
     assert(llvm::succeeded(res));
+
     for (int i = 0; i < op.getNumArguments(); ++i) {
       if (op.getArgAttr(i, "xla.slice_index")) {
         op.removeArgAttr(i, "xla.slice_index");
@@ -96,8 +103,6 @@ struct PackedArgs {
 };
 
 void MergePointersToSameSlicePass::runOnOperation() {
-  mlir::func::FuncOp entry;
-
   absl::flat_hash_map<std::string, PackedArgs> args_to_pack;
   getOperation()->walk([&](mlir::func::FuncOp func) {
     args_to_pack[func.getName()] = PackedArgs(func);

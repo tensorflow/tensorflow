@@ -28,7 +28,6 @@ limitations under the License.
 #include "xla/service/cpu/onednn_util.h"
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/test_macros.h"
 #include "tsl/platform/cpu_info.h"
 
 namespace op = xla::testing::opcode_matchers;
@@ -207,6 +206,10 @@ TEST_F(MatmulTest, SimpleTestBF16) {
   })";
 
   EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-2, 1e-4}));
+  // For BF16, we match the optimized HLO with HLO containing
+  // BINARY_ADD instead of SUM as SUM post-op does not work for
+  // BF16 because element-wise addition is not allowed due to
+  // precision constraints by oneDNN.
   MatchOptimizedHlo(matmul_module_str, matmul_rewrite_str_);
 }
 
@@ -1711,6 +1714,39 @@ TEST_F(MatmulTest, BroadcastedAddAfterFusion) {
   )");
 }
 
+TEST_F(MatmulTest, SimpleTestF32BiasAndSwish) {
+  const char* matmul_module_str = R"(
+  ENTRY matmul.add.swish.test.f32 {
+    arg.0 = f32[128,512] parameter(0)
+    arg.1 = f32[256,512] parameter(1)
+    constant.1 = f32[] constant(1)
+    broadcast.1 = f32[128,256] broadcast(constant.1), dimensions={}
+    dot.0 = f32[128,256] dot(arg.0, arg.1), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+    constant.0 = f32[256]{0} constant({...})
+    broadcast.0 = f32[128,256] broadcast(constant.0), dimensions={1}
+    add.0 = f32[128,256] add(dot.0, broadcast.0)
+    negate.0 = f32[128,256] negate(add.0)
+    exponential.0 = f32[128,256] exponential(negate.0)
+    add.1 = f32[128,256] add(broadcast.1, exponential.0)
+    divide.0 = f32[128,256] divide(broadcast.1, add.1)
+    ROOT multiply.0 = f32[128,256] multiply(divide.0, add.0)
+})";
+
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
+  MatchOptimizedHlo(matmul_module_str,
+                    R"(
+    ; CHECK:     custom_call_target="__onednn$matmul",
+    ; CHECK:       backend_config={
+    ; CHECK-DAG:     "outer_dimension_partitions":[],
+    ; CHECK-DAG:     "onednn_matmul_config":{
+    ; CHECK-DAG:       "fusions":{
+    ; CHECK-DAG:         "ops":["BIAS","SWISH"]
+    ; CHECK-DAG:     }
+    ; CHECK-DAG:   }
+    ; CHECK:     }
+    )");
+}
+
 std::string CreateMatmulBiasAddAndAddModuleText(std::string dtype1,
                                                 std::string dtype2) {
   const std::string matmul_module_str = R"(
@@ -1763,7 +1799,7 @@ TEST_F(MatmulTest, SimpleTestF16WithBiasAndAddFusion) {
   const std::string matmul_module_str =
       CreateMatmulBiasAddAndAddModuleText("f16", "f16");
   EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-2, 1e-4}));
-  MatchOptimizedHlo(matmul_module_str, fused_matmul_bias_add_str_);
+  MatchOptimizedHlo(matmul_module_str, fused_matmul_bias_add_sum_str_);
 }
 
 TEST_F(MatmulTest, SimpleTestF32WithAddFusion_2) {

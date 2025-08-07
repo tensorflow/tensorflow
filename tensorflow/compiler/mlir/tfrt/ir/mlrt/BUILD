@@ -1,4 +1,5 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -12,9 +13,7 @@ td_library(
         "mlrt_ops.td",
     ],
     includes = ["."],
-    visibility = [
-        # copybara:uncomment "//learning/brain/tfrt/mlir:__subpackages__",
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         "@llvm-project//mlir:OpBaseTdFiles",
         "@llvm-project//mlir:SideEffectInterfacesTdFiles",
@@ -42,10 +41,7 @@ cc_library(
         "mlrt_dialect.h",
         "mlrt_ops.h",
     ],
-    visibility = [
-        # copybara:uncomment "//learning/brain/tfrt/mlir:__subpackages__",
-        "//tensorflow/compiler/mlir/tfrt:__subpackages__",
-    ],
+    visibility = ["//tensorflow/compiler/mlir/tfrt:__subpackages__"],
     deps = [
         ":mlrt_ops_inc_gen",
         "@llvm-project//mlir:FuncDialect",

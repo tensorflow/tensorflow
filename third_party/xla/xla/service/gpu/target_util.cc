@@ -63,7 +63,9 @@ using absl::StrCat;
 // intrinsics. Therefore a variant type is used to wrap the lambda to call
 // those device functions.
 struct TargetIntrinsics {
-  llvm::Intrinsic::ID nvptx_intrinsic;
+  std::variant<llvm::Intrinsic::ID,
+               std::function<llvm::CallInst*(llvm::IRBuilderBase*)>>
+      nvptx_intrinsic_or_function;
   std::variant<llvm::Intrinsic::ID,
                std::function<llvm::CallInst*(llvm::IRBuilderBase*)>>
       amdgpu_intrinsic_or_function;
@@ -143,7 +145,19 @@ struct TargetIntrinsics GetIntrinsic(TargetIntrinsicID intrin) {
       };
     }
     case TargetIntrinsicID::kBarrierId: {
-      return {llvm::Intrinsic::nvvm_barrier0, llvm::Intrinsic::amdgcn_s_barrier,
+      return {[](llvm::IRBuilderBase* b_) -> llvm::CallInst* {
+                // We need to use the callback mechanism here, because the
+                // barrier intrinsics expects a constant 0 as operand, whereas
+                // for AMD no operand is expected. We don't want to distinguish
+                // at the call site.
+                llvm::Module* module = b_->GetInsertBlock()->getModule();
+                llvm::Function* intrinsic =
+                    llvm::Intrinsic::getOrInsertDeclaration(
+                        module,
+                        llvm::Intrinsic::nvvm_barrier_cta_sync_aligned_all, {});
+                return b_->CreateCall(intrinsic, {b_->getInt32(0)});
+              },
+              llvm::Intrinsic::amdgcn_s_barrier,
               [](llvm::IRBuilderBase* b_) -> llvm::CallInst* {
                 return EmitDeviceFunctionCall(
                     "_Z22__spirv_ControlBarrierjjj",
@@ -421,41 +435,31 @@ llvm::CallInst* EmitCallToTargetIntrinsic(
     absl::Span<llvm::Type* const> overloaded_types, llvm::IRBuilderBase* b) {
   llvm::Module* module = b->GetInsertBlock()->getModule();
   struct TargetIntrinsics gpu_intrinsic_id = GetIntrinsic(intrinsic_id);
+  std::variant<llvm::Intrinsic::ID,
+               std::function<llvm::CallInst*(llvm::IRBuilderBase*)>>
+      llvm_intrinsic_or_function;
   llvm::Triple target_triple = llvm::Triple(module->getTargetTriple());
-  llvm::Intrinsic::ID llvm_intrinsic_id = llvm::Intrinsic::not_intrinsic;
   if (target_triple.isNVPTX()) {
-    llvm_intrinsic_id = gpu_intrinsic_id.nvptx_intrinsic;
+    llvm_intrinsic_or_function = gpu_intrinsic_id.nvptx_intrinsic_or_function;
   } else if (target_triple.getArch() == llvm::Triple::amdgcn) {
-    llvm::Intrinsic::ID* llvm_intrinsic_id_ptr =
-        std::get_if<llvm::Intrinsic::ID>(
-            &gpu_intrinsic_id.amdgpu_intrinsic_or_function);
-    if (llvm_intrinsic_id_ptr) {
-      llvm_intrinsic_id = *llvm_intrinsic_id_ptr;
-    } else {
-      std::function<llvm::CallInst*(llvm::IRBuilderBase*)>* builder_func =
-          std::get_if<std::function<llvm::CallInst*(llvm::IRBuilderBase*)>>(
-              &gpu_intrinsic_id.amdgpu_intrinsic_or_function);
-      return (*builder_func)(b);
-    }
+    llvm_intrinsic_or_function = gpu_intrinsic_id.amdgpu_intrinsic_or_function;
   } else if (target_triple.isSPIR()) {
-    llvm::Intrinsic::ID* llvm_intrinsic_id_ptr =
-        std::get_if<llvm::Intrinsic::ID>(
-            &gpu_intrinsic_id.spir_intrinsic_or_function);
-    if (llvm_intrinsic_id_ptr) {
-      llvm_intrinsic_id = *llvm_intrinsic_id_ptr;
-    } else {
-      std::function<llvm::CallInst*(llvm::IRBuilderBase*)>* builder_func =
-          std::get_if<std::function<llvm::CallInst*(llvm::IRBuilderBase*)>>(
-              &gpu_intrinsic_id.spir_intrinsic_or_function);
-      return (*builder_func)(b);
-    }
+    llvm_intrinsic_or_function = gpu_intrinsic_id.spir_intrinsic_or_function;
   } else {
     LOG(FATAL) << "Invalid triple " << target_triple.str();
   }
-
-  llvm::Function* intrinsic = llvm::Intrinsic::getOrInsertDeclaration(
-      module, llvm_intrinsic_id, llvm_ir::AsArrayRef(overloaded_types));
-  return b->CreateCall(intrinsic, llvm_ir::AsArrayRef(operands));
+  llvm::Intrinsic::ID* llvm_intrinsic_id_ptr =
+      std::get_if<llvm::Intrinsic::ID>(&llvm_intrinsic_or_function);
+  if (llvm_intrinsic_id_ptr) {
+    llvm::Intrinsic::ID llvm_intrinsic_id = *llvm_intrinsic_id_ptr;
+    llvm::Function* intrinsic = llvm::Intrinsic::getOrInsertDeclaration(
+        module, llvm_intrinsic_id, llvm_ir::AsArrayRef(overloaded_types));
+    return b->CreateCall(intrinsic, llvm_ir::AsArrayRef(operands));
+  }
+  std::function<llvm::CallInst*(llvm::IRBuilderBase*)>* builder_func =
+      std::get_if<std::function<llvm::CallInst*(llvm::IRBuilderBase*)>>(
+          &llvm_intrinsic_or_function);
+  return (*builder_func)(b);
 }
 
 void AnnotateFunctionAsGpuKernel(llvm::Module* module, llvm::Function* func,
@@ -468,7 +472,7 @@ void AnnotateFunctionAsGpuKernel(llvm::Module* module, llvm::Function* func,
   } else if (target_triple.getArch() == llvm::Triple::amdgcn) {
     // Attach information so AMDGPU can recognize function as a AMDGPU kernel.
     func->setCallingConv(llvm::CallingConv::AMDGPU_KERNEL);
-    func->addFnAttr("amdgpu-flat-work-group-size", "1, 1024");
+    func->addFnAttr("uniform-work-group-size", "true");
   } else if (target_triple.isSPIR()) {
     // Attach information so that it can be recognized as a SPIR kernel.
     func->setCallingConv(llvm::CallingConv::SPIR_KERNEL);

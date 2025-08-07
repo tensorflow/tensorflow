@@ -333,8 +333,8 @@ class AddCustomAggregationOp : public RewritePattern {
 
       // Insert custom aggregation op between operand and operator.
       rewriter.setInsertionPointAfterValue(value);
-      Operation *aggregator_op = rewriter.create<TF::CustomAggregatorOp>(
-          op->getLoc(), output_types, value, attributes);
+      Operation *aggregator_op = TF::CustomAggregatorOp::create(
+          rewriter, op->getLoc(), output_types, value, attributes);
 
       Value aggregator_op_result = aggregator_op->getOpResult(0);
       value.replaceAllUsesExcept(aggregator_op_result, aggregator_op);

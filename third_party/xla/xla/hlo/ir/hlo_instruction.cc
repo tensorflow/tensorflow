@@ -30,6 +30,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/no_destructor.h"
 #include "absl/base/optimization.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -85,6 +86,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -97,19 +99,6 @@ using absl::StrJoin;
 const HloInstruction::Rare* const HloInstruction::kEmptyRare =
     new HloInstruction::Rare;
 
-namespace {
-// Specialization for erasing from PtrVec<T>.
-template <typename T>
-absl::Status EraseElementFromVector(PtrVec<T>* container, T value) {
-  // absl::c_find returns a const_iterator which does not seem to work on
-  // gcc 4.8.4, and this breaks the ubuntu/xla_gpu build bot.
-  auto it = std::find(container->begin(), container->end(), value);
-  TF_RET_CHECK(it != container->end());
-  container->erase(it);
-  return absl::OkStatus();
-}
-}  // namespace
-
 HloInstruction::Users::~Users() = default;
 
 void HloInstruction::Users::Clear() {
@@ -121,9 +110,8 @@ void HloInstruction::Users::Clear() {
 bool HloInstruction::Users::Contains(const HloInstruction* instruction) const {
   if (user_map_ == nullptr) {
     return std::find(users_.begin(), users_.end(), instruction) != users_.end();
-  } else {
-    return user_map_->contains(instruction);
   }
+  return user_map_->contains(instruction);
 }
 
 void HloInstruction::Users::AddUser(HloInstruction* user) {
@@ -150,11 +138,10 @@ int64_t HloInstruction::Users::UserId(HloInstruction* user) {
     auto it = std::find(users_.begin(), users_.end(), user);
     CHECK(it != users_.end());
     return it - users_.begin();
-  } else {
-    auto result = user_map_->find(user);
-    CHECK(result != user_map_->end());
-    return result->second;
   }
+  auto result = user_map_->find(user);
+  CHECK(result != user_map_->end());
+  return result->second;
 }
 
 void HloInstruction::Users::MaybeRemoveUser(HloInstruction* user) {
@@ -248,7 +235,7 @@ const PtrVec<HloComputation*>& HloInstruction::called_computations() const {
     return rare()->called_computations;
   }
 
-  static PtrVec<HloComputation*>* empty = new PtrVec<HloComputation*>;
+  static const absl::NoDestructor<PtrVec<HloComputation*>> empty;
   return *empty;
 }
 
@@ -1008,9 +995,17 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
         for (const ShapeProto& shape_proto : operand_shapes_with_layout) {
           operand_shapes.emplace_back(shape_proto);
         }
-        instruction =
-            CreateCustomCall(shape, all_operands(), proto.custom_call_target(),
-                             operand_shapes, proto.backend_config());
+        TF_RET_CHECK(proto.called_computation_ids_size() <= 1);
+        if (proto.called_computation_ids_size() == 1) {
+          instruction =
+              CreateCustomCall(shape, all_operands(), computations(0),
+                               proto.custom_call_target(), operand_shapes,
+                               proto.backend_config());
+        } else {
+          instruction = CreateCustomCall(
+              shape, all_operands(), proto.custom_call_target(), operand_shapes,
+              proto.backend_config());
+        }
       } else {
         if (proto.called_computation_ids_size() == 1) {
           instruction = CreateCustomCall(shape, all_operands(), computations(0),
@@ -1151,27 +1146,17 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       instruction = CreateIota(shape, proto.dimensions(0));
       break;
     case HloOpcode::kDot: {
-      int expected_operands =
-          HloDotInstruction::kOperands + proto.dot_sparsity_size();
-      TF_RET_CHECK(proto.dot_sparsity_size() <= HloDotInstruction::kOperands)
-          << "Too many sparse dot descriptors: " << proto.dot_sparsity_size();
-      TF_RET_CHECK(proto.operand_ids_size() == expected_operands)
-          << proto.opcode() << " instruction should have " << expected_operands
-          << " operands but sees " << proto.operand_ids_size();
       TF_RET_CHECK(proto.has_dot_dimension_numbers())
           << "Dot instruction should have dot_dimension_numbers.";
       TF_RET_CHECK(absl::c_all_of(proto.precision_config().operand_precision(),
                                   PrecisionConfig::Precision_IsValid));
       PrecisionConfig precision_config = proto.precision_config();
       precision_config.mutable_operand_precision()->Resize(
-          HloDotInstruction::kOperands, PrecisionConfig::DEFAULT);
-      std::vector<SparsityDescriptor> sparsity(proto.dot_sparsity().begin(),
-                                               proto.dot_sparsity().end());
+          proto.operand_ids_size(), PrecisionConfig::DEFAULT);
       auto operand_vector = all_operands();
       instruction = std::make_unique<HloDotInstruction>(
           shape, operands(0), operands(1), proto.dot_dimension_numbers(),
-          precision_config, std::move(sparsity),
-          absl::MakeSpan(operand_vector).subspan(HloDotInstruction::kOperands));
+          precision_config);
       break;
     }
     case HloOpcode::kRaggedDot: {
@@ -1357,8 +1342,12 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
 
   TF_RET_CHECK(proto.id() >= 0)
       << "Instruction with negative id: " << proto.id();
-  TF_RET_CHECK(proto.id() <= INT_MAX)
-      << "Instruction with id > INT_MAX: " << proto.id();
+  // TODO(b/399394039): Reinforce the condition on INT64_MAX when upgrading
+  // unique_id_ to int64_t.
+  LOG_IF(INFO, proto.id() > INT_MAX)
+      << "Instruction with id > INT_MAX: " << proto.id()
+      << " this is not intended behavior and might indicate a bug in the HLO "
+         "proto serialization.";
   instruction->unique_id_ = proto.id();
 
   if (proto.has_sharding()) {
@@ -1632,12 +1621,9 @@ HloInstruction::CreateTriangularSolve(const Shape& shape, HloInstruction* a,
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateDot(
     const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
     const DotDimensionNumbers& dimension_numbers,
-    const PrecisionConfig& precision_config,
-    std::vector<SparsityDescriptor> sparsity,
-    absl::Span<HloInstruction* const> sparse_meta) {
+    const PrecisionConfig& precision_config) {
   return std::make_unique<HloDotInstruction>(shape, lhs, rhs, dimension_numbers,
-                                             precision_config,
-                                             std::move(sparsity), sparse_meta);
+                                             precision_config);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateRaggedDot(
@@ -2407,7 +2393,7 @@ bool HloInstruction::HasSideEffectNoRecurse() const {
       // Collective instructions with channel_id are side effecting only if
       // they are used in non-spmd context.
       return Cast<HloChannelInstruction>(this)->channel_id().has_value() &&
-             !GetModule()->config().use_spmd_partitioning();
+             GetModule()->config().ChannelIdSensitive();
 
     case HloOpcode::kCustomCall:
       return Cast<HloCustomCallInstruction>(this)
@@ -2496,6 +2482,16 @@ HloInstruction::CreateCompositeCall(const Shape& shape,
     CustomCallApiVersion api_version) {
   return std::make_unique<HloCustomCallInstruction>(
       shape, operands, custom_call_target, std::move(opaque),
+      operand_shapes_with_layout, api_version);
+}
+
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCustomCall(
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
+    HloComputation* to_apply, absl::string_view custom_call_target,
+    absl::Span<const Shape> operand_shapes_with_layout, std::string opaque,
+    CustomCallApiVersion api_version) {
+  return std::make_unique<HloCustomCallInstruction>(
+      shape, operands, to_apply, custom_call_target, std::move(opaque),
       operand_shapes_with_layout, api_version);
 }
 
@@ -2819,6 +2815,9 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
   if (!suffix.empty()) {
     clone->AddSuffixToInstructionName(suffix);
   }
+  if (shape == this->shape()) {
+    clone->CopyOriginalValue(this, /*clone=*/false);
+  }
   return clone;
 }
 
@@ -2950,12 +2949,11 @@ absl::Status HloInstruction::RemoveControlDependencyTo(
     HloInstruction* instruction) {
   TF_RET_CHECK(instruction->parent() == parent());
   if (has_rare()) {
-    TF_RETURN_IF_ERROR(EraseElementFromVector(
-        &mutable_rare()->control_successors, instruction));
+    EraseElementFromVector(&mutable_rare()->control_successors, instruction);
   }
   if (instruction->has_rare()) {
-    TF_RETURN_IF_ERROR(EraseElementFromVector(
-        &instruction->mutable_rare()->control_predecessors, this));
+    EraseElementFromVector(&instruction->mutable_rare()->control_predecessors,
+                           this);
   }
   return absl::OkStatus();
 }
@@ -2963,12 +2961,12 @@ absl::Status HloInstruction::RemoveControlDependencyTo(
 absl::Status HloInstruction::DropAllControlDeps() {
   if (has_rare()) {
     for (auto* ctrl_succ : rare()->control_successors) {
-      TF_RETURN_IF_ERROR(EraseElementFromVector(
-          &ctrl_succ->mutable_rare()->control_predecessors, this));
+      EraseElementFromVector(&ctrl_succ->mutable_rare()->control_predecessors,
+                             this);
     }
     for (auto* ctrl_pred : rare()->control_predecessors) {
-      TF_RETURN_IF_ERROR(EraseElementFromVector(
-          &ctrl_pred->mutable_rare()->control_successors, this));
+      EraseElementFromVector(&ctrl_pred->mutable_rare()->control_successors,
+                             this);
     }
     Rare* r = mutable_rare();
     r->control_successors.clear();
@@ -3540,9 +3538,10 @@ absl::Status HloInstruction::ReplaceAllUsesWithDifferentShape(
   return absl::OkStatus();
 }
 
-bool HloInstruction::IsEffectiveBitcast() const {
-  return opcode_ == HloOpcode::kBitcast ||
-         (opcode_ == HloOpcode::kTranspose &&
+bool HloInstruction::IsEffectiveBitcast(HloOpcode opcode) const {
+  DCHECK_EQ(opcode, opcode_);
+  return opcode == HloOpcode::kBitcast ||
+         (opcode == HloOpcode::kTranspose &&
           ShapeUtil::TransposeIsBitcast(operand(0)->shape(), shape(),
                                         dimensions()));
 }
@@ -3670,15 +3669,14 @@ std::string HloInstruction::SignatureString() const {
 absl::string_view PrintName(absl::string_view name, bool print_ids) {
   if (print_ids) {
     return name;
-  } else {
-    auto dot_position = name.find_first_of('.');
-    return name.substr(0, dot_position);
   }
+  auto dot_position = name.find_first_of('.');
+  return name.substr(0, dot_position);
 }
 
 namespace {
 
-using DFSStack = absl::InlinedVector<std::pair<int, HloInstruction*>, 16>;
+using DFSStack = absl::InlinedVector<std::pair<int64_t, HloInstruction*>, 16>;
 
 void PrintNameInternal(Printer* printer, absl::string_view name,
                        const HloPrintOptions& options) {
@@ -3842,7 +3840,8 @@ bool HloInstruction::IsCrossModuleAllReduce() const {
   if (opcode() == HloOpcode::kAllReduce ||
       opcode() == HloOpcode::kAllReduceStart) {
     return channel_id() != std::nullopt;
-  } else if (opcode() == HloOpcode::kAllReduceDone) {
+  }
+  if (opcode() == HloOpcode::kAllReduceDone) {
     CHECK_EQ(operand_count(), 1);
     const HloInstruction* operand = this->operand(0);
     CHECK_EQ(operand->opcode(), HloOpcode::kAllReduceStart);
@@ -3855,7 +3854,8 @@ bool HloInstruction::IsCrossReplicaAllReduce() const {
   if (opcode() == HloOpcode::kAllReduce ||
       opcode() == HloOpcode::kAllReduceStart) {
     return channel_id() == std::nullopt;
-  } else if (opcode() == HloOpcode::kAllReduceDone) {
+  }
+  if (opcode() == HloOpcode::kAllReduceDone) {
     CHECK_EQ(operand_count(), 1);
     const HloInstruction* operand = this->operand(0);
     CHECK_EQ(operand->opcode(), HloOpcode::kAllReduceStart);
@@ -3966,7 +3966,9 @@ void HloInstruction::PrintWithCanonicalNameMap(
 void HloInstruction::PrintOperandsWithCanonicalNameMap(
     Printer* printer, const HloPrintOptions& options,
     CanonicalNameMap* canonical_name_map) const {
-  if (operands_.empty()) return;
+  if (operands_.empty()) {
+    return;
+  }
   absl::Span<HloInstruction* const> slice(operands_);
   constexpr int64_t kMaxOperandsToShowIfCompact = 4;
   if (options.compact_operands() &&
@@ -3993,12 +3995,16 @@ void HloInstruction::PrintOperandsWithCanonicalNameMap(
         // In a top-level HloInstruction::ToString() call, the operand name is
         // not part of the canonical string.
         DCHECK(!options.print_percent());  // no need to call PrintNameInternal
-        if (add_space) printer->Append(" ");
+        if (add_space) {
+          printer->Append(" ");
+        }
         printer->Append(
             canonical_name_map->LookupOrInsert(operand->unique_id()));
       }
     } else if (options.print_operand_names()) {
-      if (add_space) printer->Append(" ");
+      if (add_space) {
+        printer->Append(" ");
+      }
       PrintNameInternal(printer, operand->name(), options);
     }
   };
@@ -4329,10 +4335,10 @@ HloInstructionProto HloInstruction::ToProto() const {
   *proto.mutable_opcode() = std::string(HloOpcodeString(opcode_));
   *proto.mutable_shape() = shape_.ToProto();
   for (const HloInstruction* operand : operands_) {
-    proto.add_operand_ids(operand->unique_id());
+    proto.add_operand_ids(operand->unique_id_64_bits());
   }
   for (const HloInstruction* control : control_predecessors()) {
-    proto.add_control_predecessor_ids(control->unique_id());
+    proto.add_control_predecessor_ids(control->unique_id_64_bits());
   }
 
   *proto.mutable_metadata() = *metadata_;
@@ -4712,7 +4718,7 @@ template <typename Visitor>
 inline bool PushDFSChild(Visitor* visitor, DFSStack* dfs_stack,
                          HloInstruction* child) {
   CHECK(child != nullptr);
-  const int id = child->unique_id();
+  const int64_t id = child->unique_id_64_bits();
   CHECK_GE(id, 0) << "instruction may not have a parent computation";
   switch (visitor->GetVisitState(id)) {
     case Visitor::kVisiting:
@@ -4745,7 +4751,7 @@ static absl::Status PostOrderDFS(
   // can't always use the (potentially dead) instruction object to grab
   // its id.
   DFSStack dfs_stack;
-  dfs_stack.emplace_back(root->unique_id(), root);
+  dfs_stack.emplace_back(root->unique_id_64_bits(), root);
 
   do {
     DCHECK(!dfs_stack.empty());
@@ -4878,9 +4884,11 @@ const Shape& HloInstruction::shape() const { return shape_; }
 
 absl::InlinedVector<int64_t, 4> HloInstruction::OperandIndices(
     const HloInstruction* operand) const {
+  const size_t num_operands = operand_count();
+  const HloInstruction* const* operand_ptr = operands_.data();
   absl::InlinedVector<int64_t, 4> result;
-  for (int64_t i = 0; i < operand_count(); ++i) {
-    if (this->operand(i) == operand) {
+  for (size_t i = 0; i < num_operands; ++i) {
+    if (operand_ptr[i] == operand) {
       result.push_back(i);
     }
   }
@@ -5079,7 +5087,9 @@ std::string StatisticsVizToString(const StatisticsViz& statistics_viz) {
   // of attribute=value pairs,
   // e.g., statistics={visualizing_index=0, count_nan=100, count_inf=200}.
 
-  if (statistics_viz.statistics().empty()) return "{}";
+  if (statistics_viz.statistics().empty()) {
+    return "{}";
+  }
 
   std::vector<Statistic> all_statistics(statistics_viz.statistics().begin(),
                                         statistics_viz.statistics().end());
@@ -5256,147 +5266,72 @@ std::string ConvolutionDimensionNumbersToString(
                 StrJoin(output_dims, ""));
 }
 
-absl::StatusOr<RandomAlgorithm> StringToRandomAlgorithm(
-    const std::string& name) {
-  static absl::flat_hash_map<std::string, RandomAlgorithm>* map = [] {
-    static auto* const map =
-        new absl::flat_hash_map<std::string, RandomAlgorithm>;
-    for (int i = 0; i < RandomAlgorithm_ARRAYSIZE; i++) {
-      if (RandomAlgorithm_IsValid(i)) {
-        auto value = static_cast<RandomAlgorithm>(i);
-        (*map)[RandomAlgorithmToString(value)] = value;
-      }
-    }
-    return map;
-  }();
-  auto found = map->find(absl::AsciiStrToLower(name));
+namespace {
+
+// Converts a string to a protobuf enum value.
+template <typename T, typename F>
+absl::StatusOr<T> StringToEnum(absl::string_view value_name, F enum_to_string,
+                               const char* type_name) {
+  static const absl::NoDestructor<absl::flat_hash_map<std::string, T>> map(
+      [enum_to_string] {
+        absl::flat_hash_map<std::string, T> map;
+        const tsl::protobuf::EnumDescriptor* enum_descriptor =
+            tsl::protobuf::GetEnumDescriptor<T>();
+        for (int i = 0; i < enum_descriptor->value_count(); ++i) {
+          T value = static_cast<T>(enum_descriptor->value(i)->number());
+          map[enum_to_string(value)] = value;
+        }
+        return map;
+      }());
+  auto found = map->find(absl::AsciiStrToLower(value_name));
   if (found == map->end()) {
-    return InvalidArgument("Unknown algorithm");
+    return InvalidArgument("Unknown %s", type_name);
   }
   return found->second;
+}
+
+}  // namespace
+
+absl::StatusOr<RandomAlgorithm> StringToRandomAlgorithm(
+    const std::string& name) {
+  return StringToEnum<RandomAlgorithm>(name, RandomAlgorithmToString,
+                                       "algorithm");
 }
 
 absl::StatusOr<RandomDistribution> StringToRandomDistribution(
     const std::string& name) {
-  static absl::flat_hash_map<std::string, RandomDistribution>* map = [] {
-    static auto* const map =
-        new absl::flat_hash_map<std::string, RandomDistribution>;
-    for (int i = 0; i < RandomDistribution_ARRAYSIZE; i++) {
-      if (RandomDistribution_IsValid(i)) {
-        auto value = static_cast<RandomDistribution>(i);
-        (*map)[RandomDistributionToString(value)] = value;
-      }
-    }
-    return map;
-  }();
-  auto found = map->find(absl::AsciiStrToLower(name));
-  if (found == map->end()) {
-    return InvalidArgument("Unknown distribution");
-  }
-  return found->second;
+  return StringToEnum<RandomDistribution>(name, RandomDistributionToString,
+                                          "distribution");
 }
 
 absl::StatusOr<PrecisionConfig::Precision> StringToPrecision(
     const std::string& name) {
-  static absl::flat_hash_map<std::string, PrecisionConfig::Precision>* map =
-      [] {
-        static auto* const map =
-            new absl::flat_hash_map<std::string, PrecisionConfig::Precision>;
-        for (int i = 0; i < PrecisionConfig::Precision_ARRAYSIZE; i++) {
-          if (PrecisionConfig::Precision_IsValid(i)) {
-            auto value = static_cast<PrecisionConfig::Precision>(i);
-            (*map)[PrecisionToString(value)] = value;
-          }
-        }
-        return map;
-      }();
-  auto found = map->find(absl::AsciiStrToLower(name));
-  if (found == map->end()) {
-    return InvalidArgument("Unknown precision");
-  }
-  return found->second;
+  return StringToEnum<PrecisionConfig::Precision>(name, PrecisionToString,
+                                                  "precision");
 }
 
 absl::StatusOr<ResultAccuracy::Mode> StringToResultAccuracy(
     absl::string_view name) {
-  static const absl::flat_hash_map<std::string, ResultAccuracy::Mode>* map =
-      [] {
-        auto* map = new absl::flat_hash_map<std::string, ResultAccuracy::Mode>;
-        for (int i = 0; i < ResultAccuracy::Mode_ARRAYSIZE; i++) {
-          if (ResultAccuracy::Mode_IsValid(i)) {
-            auto value = static_cast<ResultAccuracy::Mode>(i);
-            (*map)[ResultAccuracyToString(value)] = value;
-          }
-        }
-        return map;
-      }();
-  auto found = map->find(absl::AsciiStrToLower(name));
-  if (found == map->end()) {
-    return InvalidArgument("Unknown accuracy mode");
-  }
-  return found->second;
+  return StringToEnum<ResultAccuracy::Mode>(name, ResultAccuracyToString,
+                                            "accuracy mode");
 }
 
 absl::StatusOr<PrecisionConfig::Algorithm> StringToAlgorithm(
     const std::string& name) {
-  static absl::flat_hash_map<std::string, PrecisionConfig::Algorithm>* map =
-      [] {
-        static auto* const map =
-            new absl::flat_hash_map<std::string, PrecisionConfig::Algorithm>;
-        for (int i = 0; i < PrecisionConfig::Algorithm_ARRAYSIZE; i++) {
-          if (PrecisionConfig::Algorithm_IsValid(i)) {
-            auto value = static_cast<PrecisionConfig::Algorithm>(i);
-            (*map)[AlgorithmToString(value)] = value;
-          }
-        }
-        return map;
-      }();
-  auto found = map->find(absl::AsciiStrToLower(name));
-  if (found == map->end()) {
-    return InvalidArgument("Unknown algorithm");
-  }
-  return found->second;
+  return StringToEnum<PrecisionConfig::Algorithm>(name, AlgorithmToString,
+                                                  "algorithm");
 }
 
 absl::StatusOr<CustomCallSchedule> StringToCustomCallSchedule(
     absl::string_view name) {
-  static const absl::flat_hash_map<std::string, CustomCallSchedule>* map = [] {
-    static auto* const map =
-        new absl::flat_hash_map<std::string, CustomCallSchedule>;
-    for (int i = 0; i < CustomCallSchedule_ARRAYSIZE; i++) {
-      if (CustomCallSchedule_IsValid(i)) {
-        auto value = static_cast<CustomCallSchedule>(i);
-        (*map)[CustomCallScheduleToString(value)] = value;
-      }
-    }
-    return map;
-  }();
-  auto found = map->find(absl::AsciiStrToLower(name));
-  if (found == map->end()) {
-    return InvalidArgument("Unknown schedule");
-  }
-  return found->second;
+  return StringToEnum<CustomCallSchedule>(name, CustomCallScheduleToString,
+                                          "schedule");
 }
 
 absl::StatusOr<CustomCallApiVersion> StringToCustomCallApiVersion(
     absl::string_view name) {
-  static const absl::flat_hash_map<std::string, CustomCallApiVersion>* map =
-      [] {
-        static auto* const map =
-            new absl::flat_hash_map<std::string, CustomCallApiVersion>;
-        for (int i = 0; i < CustomCallApiVersion_ARRAYSIZE; i++) {
-          if (CustomCallApiVersion_IsValid(i)) {
-            auto value = static_cast<CustomCallApiVersion>(i);
-            (*map)[CustomCallApiVersionToString(value)] = value;
-          }
-        }
-        return map;
-      }();
-  auto found = map->find(absl::AsciiStrToLower(name));
-  if (found == map->end()) {
-    return InvalidArgument("Unknown API version");
-  }
-  return found->second;
+  return StringToEnum<CustomCallApiVersion>(name, CustomCallApiVersionToString,
+                                            "API version");
 }
 
 std::ostream& operator<<(std::ostream& os, HloInstruction::FusionKind kind) {
@@ -5420,7 +5355,7 @@ bool HloPtrComparator::operator()(const HloInstruction* const& lhs,
       lhs_module->unique_id() != rhs_module->unique_id()) {
     return lhs_module->unique_id() < rhs_module->unique_id();
   }
-  return lhs->unique_id() < rhs->unique_id();
+  return lhs->unique_id_64_bits() < rhs->unique_id_64_bits();
 }
 
 const PrecisionConfig& HloInstruction::precision_config() const {
@@ -5532,11 +5467,6 @@ int64_t HloInstruction::dimension() const {
 
 int64_t HloInstruction::inferred_dimension() const {
   return Cast<HloReshapeInstruction>(this)->inferred_dimension();
-}
-
-bool HloInstruction::IsRank2Transpose() const {
-  auto transpose = DynCast<HloTransposeInstruction>(this);
-  return transpose != nullptr && transpose->IsRank2Transpose();
 }
 
 int64_t HloInstruction::slice_starts(int64_t dimension) const {
@@ -5972,6 +5902,12 @@ std::shared_ptr<OriginalValue> HloInstruction::original_value() const {
 void HloInstruction::set_original_value(
     std::shared_ptr<OriginalValue> original_value) {
   original_value_ = original_value;
+}
+
+void HloInstruction::CopyOriginalValue(const HloInstruction* instruction,
+                                       bool clone) {
+  ::xla::CopyOriginalValue(/*src_instruction=*/instruction,
+                           /*dest_instruction=*/this, clone);
 }
 
 }  // namespace xla

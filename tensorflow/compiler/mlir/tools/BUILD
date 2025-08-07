@@ -1,3 +1,5 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
@@ -48,4 +50,9 @@ cc_library(
         "@local_xla//xla/stream_executor/host:host_platform_id",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "safe_cast",
+    hdrs = ["safe_cast.h"],
 )

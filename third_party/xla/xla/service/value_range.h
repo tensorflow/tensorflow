@@ -29,7 +29,8 @@ namespace xla {
 // Class keeping track of the range of an HLO value. A range is typically
 // defined by a minimum value, a maximum value, and a step value. The step and
 // maximum values are optional. If the maximum value is missing, the range is
-// unbounded. The default step value is nullopt.
+// unbounded. The default step value is nullopt. Non-null steps are expected to
+// be non-zero although this is not enforced by the constructor.
 class Range {
  public:
   Range()

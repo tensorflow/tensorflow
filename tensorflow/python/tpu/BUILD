@@ -21,6 +21,7 @@ visibility = [
     "//smartass/brain/configure:__subpackages__",
     "//third_party/py/jax_tpu_embedding:__subpackages__",
     "//third_party/py/lingvo:__subpackages__",
+    "//third_party/py/orbit:__subpackages__",
     "//third_party/py/medical_research_foundations:__subpackages__",
     "//tensorflow:__subpackages__",
     "//waymo/ml/deploy/sync_test/tools:__subpackages__",
@@ -45,6 +46,14 @@ py_strict_library(
     deps = [
         "//tensorflow/python/platform:flags",
         "//tensorflow/python/util:tf_inspect",
+    ],
+)
+
+py_strict_library(
+    name = "embedding_context_utils",
+    srcs = ["embedding_context_utils.py"],
+    deps = [
+        "@absl_py//absl/logging",
     ],
 )
 
@@ -1043,8 +1052,9 @@ py_strict_library(
     name = "tpu_embedding_v3",
     srcs = ["tpu_embedding_v3.py"],
     deps = [
-        ":_pywrap_sparse_core_layout",
-        ":_pywrap_tpu_embedding",
+        ":_pywrap_sparse_core_layout",  # buildcleaner: keep
+        ":_pywrap_tpu_embedding",  # buildcleaner: keep
+        ":embedding_context_utils",
         ":tpu_embedding_base",
         ":tpu_embedding_v2_utils",
         ":tpu_embedding_v3_checkpoint_adapter",
@@ -1060,6 +1070,7 @@ py_strict_library(
         "//tensorflow/python/distribute:tpu_values",
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/distribute:values_util",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:device",
         "//tensorflow/python/framework:dtypes",
@@ -1100,9 +1111,11 @@ tpu_py_strict_test(
     shard_count = 4,
     # copybara:uncomment use_tpu_plugin_and_capi = True,
     deps = [
+        ":embedding_context_utils",
         ":tpu_embedding_for_serving",
         ":tpu_embedding_v2_utils",
         ":tpu_embedding_v3",
+        ":tpu_embedding_v3_utils",
         ":tpu_replication",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/data/ops:dataset_ops",
@@ -1140,6 +1153,7 @@ tpu_py_strict_test(
     # copybara:uncomment disable_v4i = True,
     # copybara:uncomment disable_v5 = False,
     # copybara:uncomment disable_v5_grm = True,
+    # copybara:uncomment disable_v6e = False,
     env = {
         "TF_XLA_FLAGS": (
             "--tf_mlir_enable_mlir_bridge=true " +
@@ -1158,6 +1172,7 @@ tpu_py_strict_test(
         ":tpu_embedding_for_serving",
         ":tpu_embedding_v2_utils",
         ":tpu_embedding_v3",
+        ":tpu_embedding_v3_utils",
         "//tensorflow/python/checkpoint",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/distribute:distribute_lib",
@@ -1190,6 +1205,7 @@ tpu_py_strict_test(
     # copybara:uncomment disable_v4i = True,
     # copybara:uncomment disable_v5 = False,
     # copybara:uncomment disable_v5_grm = True,
+    # copybara:uncomment disable_v6e = False,
     deps = [
         ":tpu_embedding_v2_utils",
         ":tpu_embedding_v3",

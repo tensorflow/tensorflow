@@ -1,0 +1,7 @@
+syntax = "proto3";
+
+package xla.cpu;
+
+message XnnFusionBackendConfig {
+  bool use_threadpool = 1;
+}

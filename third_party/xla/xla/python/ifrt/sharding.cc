@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/serdes.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.pb.h"
 #include "xla/tsl/platform/statusor.h"
@@ -189,10 +190,13 @@ absl::StatusOr<ShardingRef> Sharding::FromProto(
       std::make_unique<DeserializeShardingOptions>(client));
 }
 
-absl::StatusOr<ShardingProto> Sharding::ToProto() const {
+absl::StatusOr<ShardingProto> Sharding::ToProto(SerDesVersion version) const {
   ShardingProto sharding_proto;
+  // `ShardingProto` does not store its own version. It delegates the details to
+  // SerDes of the `Sharding` subclasses.
+  auto options = std::make_unique<SerializeOptions>(version);
   TF_ASSIGN_OR_RETURN(*sharding_proto.mutable_serialized_sharding(),
-                      Serialize(*this, /*options=*/nullptr));
+                      Serialize(*this, std::move(options)));
   return sharding_proto;
 }
 
@@ -203,15 +207,18 @@ std::ostream& operator<<(std::ostream& os, const Sharding& sharding) {
 std::unique_ptr<SingleDeviceSharding> SingleDeviceSharding::Create(
     Device* device, MemoryKind memory_kind) {
   CHECK(device != nullptr);
+  absl::StatusOr<DeviceListRef> device_list =
+      device->client()->MakeDeviceList({device});
+  CHECK_OK(device_list);
   memory_kind = CanonicalizeMemoryKind(memory_kind, device);
   return std::unique_ptr<SingleDeviceSharding>(
-      new SingleDeviceSharding(device, memory_kind));
+      new SingleDeviceSharding(*std::move(device_list), memory_kind));
 }
 
-SingleDeviceSharding::SingleDeviceSharding(Device* device,
+SingleDeviceSharding::SingleDeviceSharding(DeviceListRef device_list,
                                            MemoryKind memory_kind)
     : llvm::RTTIExtends<SingleDeviceSharding, Sharding>(
-          device->client()->MakeDeviceList({device}), memory_kind,
+          std::move(device_list), memory_kind,
           /*is_fully_replicated=*/true) {}
 
 absl::StatusOr<Shape> SingleDeviceSharding::GetShardShape(
@@ -405,11 +412,12 @@ void OpaqueSharding::Hash(absl::HashState state) const {
 
 std::unique_ptr<ConcreteSharding> ConcreteSharding::Create(
     DeviceListRef devices, MemoryKind memory_kind, Shape shape,
-    std::vector<Shape> shard_shapes) {
+    std::vector<Shape> shard_shapes,
+    std::optional<std::vector<xla::ifrt::IndexDomain>> index_domains) {
   memory_kind = CanonicalizeMemoryKindWithDevices(memory_kind, devices);
   return std::unique_ptr<ConcreteSharding>(
       new ConcreteSharding(std::move(devices), memory_kind, std::move(shape),
-                           std::move(shard_shapes)));
+                           std::move(shard_shapes), std::move(index_domains)));
 }
 
 std::unique_ptr<ConcreteSharding> ConcreteSharding::Create(
@@ -421,13 +429,15 @@ std::unique_ptr<ConcreteSharding> ConcreteSharding::Create(
       std::move(shard_dynamic_shapes)));
 }
 
-ConcreteSharding::ConcreteSharding(DeviceListRef devices,
-                                   MemoryKind memory_kind, Shape shape,
-                                   std::vector<Shape> shard_shapes)
+ConcreteSharding::ConcreteSharding(
+    DeviceListRef devices, MemoryKind memory_kind, Shape shape,
+    std::vector<Shape> shard_shapes,
+    std::optional<std::vector<xla::ifrt::IndexDomain>> index_domains)
     : llvm::RTTIExtends<ConcreteSharding, Sharding>(
           std::move(devices), memory_kind, /*is_fully_replicated=*/false),
       shape_(std::move(shape)),
-      shard_shapes_(std::move(shard_shapes)) {
+      shard_shapes_(std::move(shard_shapes)),
+      index_domains_(std::move(index_domains)) {
   // If all per-shard shapes are the same, cache this shape for
   // `GetShardShape()`. Ideally, users should have used `ConcreteEvenSharding`
   // for such a case, but there are existing use cases that instantiate
@@ -616,8 +626,31 @@ absl::StatusOr<std::vector<IndexDomain>> ConcreteSharding::IndexDomains(
     const Shape& shape,
     SingleDeviceShardSemantics single_device_shard_semantics) const {
   DCHECK(this);
-  return InvalidArgument(
-      "ConcreteSharding does not have index domain information");
+  if (!index_domains_.has_value()) {
+    return InvalidArgument(
+        "ConcreteSharding does not have index domain information");
+  }
+
+  if (single_device_shard_semantics == SingleDeviceShardSemantics::kAllShards &&
+      devices_->size() != index_domains_->size()) {
+    return InvalidArgument(
+        "SingleDeviceShardSemantics::kAllShards was requested, but the "
+        "ConcreteSharding contains index domains from non-addressable devices. "
+        "Saw %d devices, with %d addressable devices.",
+        devices_->size(), index_domains_->size());
+  }
+
+  const absl::Span<Device* const> addressable_devices =
+      devices_->AddressableDeviceList()->devices();
+  if (index_domains_->size() != addressable_devices.size()) {
+    return InvalidArgument(
+        "ConcreteSharding must have the same number of "
+        "index domains and addressable devices. Saw %d index domains, with %d "
+        "addressable devices.",
+        index_domains_->size(), addressable_devices.size());
+  }
+
+  return *index_domains_;
 }
 
 std::string ConcreteSharding::DebugString() const {
@@ -625,13 +658,16 @@ std::string ConcreteSharding::DebugString() const {
   return std::visit(
       [this](const auto& shape, const auto& shard_shapes) {
         return absl::StrFormat(
-            "ConcreteSharding(devices: %v, shape: %s, shard_shapes: %s, "
-            "memory_kind: %v)",
+            "ConcreteSharding(devices: %v, shape: %s, shard_shapes: [%s], "
+            "index_domains: %s, memory_kind: %v)",
             *devices_, shape.DebugString(),
             absl::StrJoin(shard_shapes, ",",
                           [](std::string* out, const auto& shard_shape) {
                             absl::StrAppend(out, shard_shape.DebugString());
                           }),
+            index_domains_.has_value()
+                ? absl::StrCat("[", absl::StrJoin(*index_domains_, ","), "]")
+                : "<nullopt>",
             memory_kind_);
       },
       shape_, shard_shapes_);

@@ -22,8 +22,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "xla/client/local_client.h"
 #include "xla/pjrt/host_memory_spaces.h"
+#include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/pjrt/stream_executor_executable.pb.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"

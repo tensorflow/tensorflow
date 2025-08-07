@@ -17,44 +17,40 @@ limitations under the License.
 #define XLA_CODEGEN_KERNEL_EMITTER_H_
 
 #include <memory>
+#include <string>
 
 #include "absl/status/statusor.h"
 #include "xla/codegen/kernel_definition.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 
-// TODO(ezhulenev): Do we need virtual KernelEmitterContext in API?
+class KernelEmitterBase {
+ public:
+  virtual ~KernelEmitterBase() = default;
+
+  virtual absl::StatusOr<std::unique_ptr<KernelDefinitionBase>>
+  EmitBaseKernelDefinition() = 0;
+};
 
 // KernelEmitter is an API that emits kernel definition from a given input
 // (i.e. it emits kernels compiled from HLO fusions).
-class KernelEmitter {
+template <typename KernelDefinitionType>
+class KernelEmitter : public KernelEmitterBase {
  public:
   virtual ~KernelEmitter() = default;
 
-  virtual absl::StatusOr<KernelDefinition> EmitKernelDefinition() = 0;
-};
+  virtual absl::StatusOr<KernelDefinitionType> EmitKernelDefinition() = 0;
 
-// A base class for backend-specific kernel emitters.
-//
-// Example: XLA:GPU backend kernel emitter.
-//
-//   class xla::gpu::GpuPlatform;
-//
-//   class xla::gpu::HloFusionEmitter :
-//     public KernelEmitter<GpuPlatform, const HloFusionInstruction*>;
-//
-template <typename Platform, typename Operation>
-class KernelEmitterBase {
- public:
-  KernelEmitterBase(std::shared_ptr<Platform> platform, Operation operation)
-      : platform_(std::move(platform)), operation_(std::move(operation)) {}
-
-  const Operation& operation() const { return operation_; }
-  const Platform& platform() const { return *platform_; }
+  virtual std::string name() const = 0;
 
  private:
-  std::shared_ptr<Platform> platform_;
-  Operation operation_;
+  absl::StatusOr<std::unique_ptr<KernelDefinitionBase>>
+  EmitBaseKernelDefinition() final {
+    TF_ASSIGN_OR_RETURN(KernelDefinitionType kernel_definition,
+                        EmitKernelDefinition());
+    return std::make_unique<KernelDefinitionType>(std::move(kernel_definition));
+  }
 };
 
 }  // namespace xla

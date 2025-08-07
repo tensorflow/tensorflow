@@ -386,6 +386,41 @@ def BatchFunctionOp : TensorflowMlrt_Op<"batch_function", [Pure]> {
   let assemblyFormat = "`(` $args `)` attr-dict `:` functional-type($args, $results)";
 }
 
+def BatchFunctionWithDeviceOp : TensorflowMlrt_Op<"batch_function.device", [Pure]> {
+  let summary = "Fallback ExecuteOp specialized for tf.BatchFunction with custom device.";
+
+  let description = [{
+    This kernel executes a variant tf.BatchFunction kernel that supports having
+    the `f` attribute as a bytecode function with a custom device.
+
+    Example:
+      %res = tf_mlrt.batch_function.device(%custom_device, %input, %captured_input)  {
+          device = "/device:CPU:0",
+          f = @batch_function,
+          node_def = "..."
+        } : (!tf_mlrt.tensor,!tf_mlrt.tensor) -> (!tf_mlrt.tensor)
+
+    Note that the trailing number indicates the number of results.
+    Also note that the custom device argument is not the same as the device attribute. 
+    The latter is just the name in which the enclosure graph is executed.
+  }];
+
+  let arguments = (ins
+    TFDeviceType:$custom_device,
+    Variadic<TFTensorType>:$args,
+    StrAttr:$device,
+    SymbolRefAttr:$f,
+    StrAttr:$node_def
+  );
+
+  let results = (outs
+    Variadic<MlrtFutureType>:$results
+  );
+
+  let assemblyFormat = " `(` $custom_device`)` `(` $args `)` attr-dict `:` functional-type($args, $results)";
+}
+
+
 def CancelOp: TensorflowMlrt_Op<"cancel", []> {
   let summary = "Handle cancellation request.";
 

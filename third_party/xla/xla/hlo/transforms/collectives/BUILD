@@ -282,6 +282,42 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "all_gather_remove_degenerate_dims",
+    srcs = ["all_gather_remove_degenerate_dims.cc"],
+    hdrs = ["all_gather_remove_degenerate_dims.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/service:shape_inference",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "all_gather_remove_degenerate_dims_test",
+    srcs = ["all_gather_remove_degenerate_dims_test.cc"],
+    deps = [
+        ":all_gather_remove_degenerate_dims",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/utils:hlo_matchers",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
     name = "all_reduce_combiner",
     srcs = ["all_reduce_combiner.cc"],
     hdrs = ["all_reduce_combiner.h"],
@@ -479,6 +515,8 @@ xla_cc_test(
         "//xla/hlo/testlib:verified_hlo_module",
         "//xla/hlo/utils:hlo_matchers",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],
@@ -493,6 +531,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/transforms/expanders:op_expander_pass",
+        "//xla/service:collective_ops_utils",
         "//xla/service:hlo_creation_utils",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -507,6 +546,7 @@ xla_cc_test(
     srcs = ["while_loop_all_reduce_code_motion_setup_test.cc"],
     deps = [
         ":while_loop_all_reduce_code_motion_setup",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/utils:hlo_matchers",

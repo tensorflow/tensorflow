@@ -44,8 +44,11 @@ class TritonDotFusionSearchSpace {
   // Generates the list of promising configs in the search space for the
   // autotuner to try. If `force_contracting_split` is set, the search space
   // will be restricted to only include configs with the given split_k factor.
+  // If `autotune_tma` is set, the search space will be extended with TMA
+  // parameterization.
   std::vector<TritonGemmConfig> GenerateConfigs(
-      std::optional<int64_t> force_contracting_split = std::nullopt) const;
+      std::optional<int64_t> force_contracting_split = std::nullopt,
+      bool autotune_tma = false) const;
 
   // Restrict the set of configs to the ones compatible with the hints list.
   // Generally, this will mean that configs are restricted to the ones that
@@ -207,6 +210,10 @@ class TritonDotFusionSearchSpace {
   void EliminateLowOccupancyConfigs(
       std::vector<ConfigWithNotes>& configs) const;
 
+  // Extend the passed configs with TMA parameterization.
+  void AddTmaParameter(const ConfigWithNotes& config,
+                       std::vector<ConfigWithNotes>& updated_configs) const;
+
   // The order of these fields is important: the values of those defined earlier
   // are used to compute the values of later ones.
   se::DeviceDescription device_description_;
@@ -225,6 +232,7 @@ class TritonDotFusionSearchSpace {
   int min_warps_per_cta_;
   int min_contracting_tile_size_;
   int max_contracting_split_;
+  bool exhaustive_tiling_search_;
 };
 
 }  // namespace xla::gpu

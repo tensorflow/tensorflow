@@ -1,5 +1,5 @@
 // Run optimize-batch-matmul pass only and check the results.
-// RUN: tf-opt %s -tfl-optimize-batch-matmul | FileCheck %s
+// RUN: litert-opt %s -tfl-optimize-batch-matmul | FileCheck %s
 
 // CHECK-LABEL: FuseTransposeFCRhsToBatchMatmul
 func.func @FuseTransposeFCRhsToBatchMatmul(%arg0: tensor<16x1024xf32>, %arg1: tensor<1024x128xf32>, %arg2: none) -> tensor<16x128xf32> {
@@ -117,6 +117,18 @@ func.func @Batchmatmul2FullyconnectedQDQ(%arg0: tensor<4x128x2xf32>, %arg1: tens
   // CHECK-NEXT: return %[[FC_RES]]
 }
 
+// CHECK-LABEL: Batchmatmul2FullyconnectedQDQReshape
+// CHECK-NOT: "tfl.batch_matmul"
+func.func @Batchmatmul2FullyconnectedQDQReshape(%arg0: tensor<4x128x2xf32>) -> (tensor<4x128x1xf32>) {
+  %0 = arith.constant dense<[[1.0], [2.0]]> : tensor<2x1xf32>
+  %1 = "tfl.quantize"(%0) {qtype = tensor<2x1x!quant.uniform<i8:f32, 0.024986599940879671:92>>} : (tensor<2x1xf32>) -> tensor<2x1x!quant.uniform<i8:f32, 0.024986599940879671:92>>
+  %2 = "tfl.dequantize"(%1) : (tensor<2x1x!quant.uniform<i8:f32, 0.024986599940879671:92>>) -> tensor<2x1xf32>
+  %cst_shape = arith.constant dense<[2, 1]> : tensor<2xi32>
+  %3 = "tfl.reshape"(%2, %cst_shape) : (tensor<2x1xf32>, tensor<2xi32>) -> tensor<2x1xf32>
+  %4 = "tfl.batch_matmul"(%arg0, %3) {adj_x = false, adj_y = false, asymmetric_quantize_inputs = false} : (tensor<4x128x2xf32>, tensor<2x1xf32>) -> tensor<4x128x1xf32>
+  func.return %4 : tensor<4x128x1xf32>
+  // CHECK: "tfl.fully_connected"
+}
 
 // CHECK-LABEL: Batchmatmul2Fullyconnected_qint4_per_channel
 // CHECK-NOT: "tfl.batch_matmul"
@@ -191,6 +203,19 @@ func.func @FuseBatchMatmulToTransposeWithBatchDims(%arg0: tensor<2048x1x8x32x32x
   %204 = "tfl.batch_matmul"(%arg1, %203) <{adj_x = false, adj_y = false, asymmetric_quantize_inputs = false}> : (tensor<2048x1x2x32xf32>, tensor<2048x1x32x256xf32>) -> tensor<2048x1x2x256xf32>
   return %204 : tensor<2048x1x2x256xf32>
   // CHECK-NOT: "tfl.transpose"
+}
+
+// CHECK-LABEL: FuseTransposeFCRhsToBatchMatmulDequantReshape
+func.func @FuseTransposeFCRhsToBatchMatmulDequantReshape(%arg0: tensor<16x1024xf32>, %arg1: tensor<1024x128x!quant.uniform<i8:f32, 0.024986599940879671:92>>, %arg2: none) -> tensor<16x128xf32> {
+  %cst = arith.constant dense<[1, 0]> : tensor<2xi32>
+  %cst_shape = arith.constant dense<[1024, 128]> : tensor<2xi32>
+  %0 = "tfl.dequantize"(%arg1) : (tensor<1024x128x!quant.uniform<i8:f32, 0.024986599940879671:92>>) -> tensor<1024x128xf32>
+  %1 = "tfl.reshape"(%0, %cst_shape) : (tensor<1024x128xf32>, tensor<2xi32>) -> tensor<1024x128xf32>
+  %2 = "tfl.transpose"(%1, %cst) : (tensor<1024x128xf32>, tensor<2xi32>) -> tensor<128x1024xf32>
+  // CHECK: "tfl.fully_connected"
+  // CHECK-NOT: "tfl.batch_matmul"
+  %3 = "tfl.fully_connected"(%arg0, %2, %arg2) {asymmetric_quantize_inputs = false, fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<16x1024xf32>, tensor<128x1024xf32>, none) -> tensor<16x128xf32>
+  func.return %3 : tensor<16x128xf32>
 }
 
 // CHECK-LABEL: FuseBatchMatmulToTransposeNegative

@@ -87,7 +87,7 @@ REQUIRED_PACKAGES = [
     'libclang >= 13.0.0',
     'opt_einsum >= 2.3.2',
     'packaging',
-    'protobuf>=4.21.6',
+    'protobuf >= 6.31.1, < 8.0.0',
     'requests >= 2.21.0, < 3',
     'setuptools',
     'six >= 1.12.0',
@@ -107,9 +107,9 @@ REQUIRED_PACKAGES = [
     # dependencies on the release branch is updated to the stable releases (RC
     # or final). For example, 'keras-nightly ~= 2.14.0.dev' will be replaced by
     # 'keras >= 2.14.0rc0, < 2.15' on the release branch after the branch cut.
-    'tb-nightly ~= 2.19.0.a',
-    'keras-nightly >= 3.6.0.dev',
-    'numpy >= 1.26.0, < 2.2.0',
+    'tb-nightly ~= 2.20.0.a',
+    'keras-nightly >= 3.10.0.dev',
+    'numpy >= 1.26.0',
     'h5py >= 3.11.0',
     'ml_dtypes >= 0.5.1, < 1.0.0',
 ]
@@ -122,8 +122,6 @@ FAKE_REQUIRED_PACKAGES = [
     # different architectures having different requirements.
     # The entries here should be a simple duplicate of those in the collaborator
     # build section.
-    standard_or_nightly('tensorflow-intel', 'tf-nightly-intel') + '==' +
-    _VERSION + ';platform_system=="Windows"',
 ]
 
 if platform.system() == 'Linux' and platform.machine() == 'x86_64':
@@ -157,7 +155,7 @@ EXTRA_PACKAGES = {
         'nvidia-curand-cu12 >= 10.3.6.82, < 11.0',
         'nvidia-cusolver-cu12 >= 11.6.3.83, < 12.0',
         'nvidia-cusparse-cu12 >= 12.5.1.3, < 13.0',
-        'nvidia-nccl-cu12 >= 2.25.1, < 3.0',
+        'nvidia-nccl-cu12 >= 2.26.5, < 3.0',
         'nvidia-nvjitlink-cu12 >= 12.5.82, < 13.0',
     ],
     'gcs-filesystem': [

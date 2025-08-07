@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_GPU_TRANSFORMS_COLLECTIVES_COLLECTIVE_COMBINER_ANNOTATOR_H_
 
 #include <cstdint>
+#include <optional>
 #include <utility>
 
 #include "absl/container/flat_hash_set.h"
@@ -25,16 +26,21 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/service/gpu/alias_info.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla::gpu {
 
-// Annotates collective operations with metadata used by collective combiners.
+// Annotates collective instructions and HLO module with metadata used by
+// collective combiners.
 class CollectiveCombinerAnnotator : public HloModulePass {
  public:
   CollectiveCombinerAnnotator(se::DeviceDescription device_info,
+                              const GpuAliasInfo* alias_info,
                               int64_t pointer_size)
-      : device_info_(std::move(device_info)), pointer_size_(pointer_size) {}
+      : device_info_(std::move(device_info)),
+        alias_info_(alias_info),
+        pointer_size_(pointer_size) {}
 
   absl::StatusOr<bool> Run(
       HloModule* module,
@@ -45,8 +51,9 @@ class CollectiveCombinerAnnotator : public HloModulePass {
   }
 
  private:
-  se::DeviceDescription device_info_;
-  int64_t pointer_size_;
+  const se::DeviceDescription device_info_;
+  const GpuAliasInfo* alias_info_;
+  const int64_t pointer_size_;
 };
 
 // Returns true if `instr` is a combinable sync collective. False otherwise.
@@ -55,6 +62,13 @@ bool IsCombinableSyncCollective(const HloInstruction& instr);
 // Returns true if module contains any combinable sync collective. False
 // otherwise.
 bool ContainsCombinableSyncCollective(const HloModule& module);
+
+// Annotates the module with the suggested combiner threshold.
+void AnnotateWithSuggestedCombinerThreshold(HloModule* module,
+                                            int64_t combiner_threshold);
+
+// Returns the suggested combiner threshold for the module.
+std::optional<int64_t> SuggestedCombinerThreshold(const HloModule& module);
 
 }  // namespace xla::gpu
 

@@ -122,33 +122,6 @@ func.func @predicated_extract(
 
 // -----
 
-func.func private @exp(%p0: tensor<32x64xf32>, %i: index, %j: index) -> f32
-
-#map = #xla.indexing_map<"(d0, d1)[s0, s1] -> (d1*32+d0*2+s0, s1), domain: d0 in [0, 32], d1 in [0, 8], s0 in [0, 1], s1 in [0, 1]">
-#map1 = #xla.indexing_map<"(d0, d1)[s0, s1] -> (d0*2+s0, s1), domain: d0 in [0, 32], d1 in [0, 2], s0 in [0, 1], s1 in [0, 1]">
-
-func.func @materialize(%input: tensor<32x64xf32>, %i: index, %j: index)
-    -> !xla_gpu.indexed_vector<32x2x2xf32, #map1> {
-  %0 = xla_gpu.materialize @exp(%input) at #map(%i, %j)
-    : (tensor<32x64xf32>) -> !xla_gpu.indexed_vector<32x2x2xf32, #map1>
-  func.return %0 : !xla_gpu.indexed_vector<32x2x2xf32, #map1>
-}
-// CHECK-DAG: #[[$MAP:.*]] = #xla.indexing_map<"(d0, d1)[s0, s1] -> (d1 * 32 + d0 * 2 + s0, s1)
-// CHECK-DAG: #[[$MAP1:.*]] = #xla.indexing_map<"(d0, d1)[s0, s1] -> (d0 * 2 + s0, s1)
-
-// CHECK: @materialize(%[[INPUT:.*]]: tensor<32x64xf32>, %[[INDEX1:.*]]: index, %[[INDEX2:.*]]: index)
-
-// CHECK:      %[[INIT_VEC:.*]] = arith.constant {{.*}} : vector<2x2xf32>
-// CHECK:      xla.loop (%[[INDEX1]], %[[INDEX2]])[%[[S0:.*]], %[[S1:.*]]]
-// CHECK-SAME:   -> (%[[MAP_RESULT1:.*]], %[[MAP_RESULT2:.*]]) in
-// CHECK-SAME:   #[[$MAP]] iter_args(%[[ITER_ARG:.*]] = %[[INIT_VEC]])
-
-// CHECK: %[[PURE_CALL:.*]] = xla.pure_call @exp(%[[INPUT]], %[[MAP_RESULT1]], %[[MAP_RESULT2]])
-// CHECK: vector.insert %[[PURE_CALL]], %[[ITER_ARG]] [%[[S0]], %[[S1]]]
-// CHECK xla.yield %{{.*}} : vector<2x2xf32>
-
-// -----
-
 #map = #xla.indexing_map<"(d0, d1)[s0, s1] -> (d1*32+d0*2+s0, s1), domain: d0 in [0, 32], d1 in [0, 8], s0 in [0, 1], s1 in [0, 1]">
 #map1 = #xla.indexing_map<"(d0, d1) -> (d0 mod 16, d1), domain: d0 in [0, 32], d1 in [0, 2]">
 
@@ -176,54 +149,6 @@ func.func @insert(%input: !xla_gpu.indexed_vector<32x64xf32, #map>,
 // CHECK: %[[NEW_TENSOR:.*]] = tensor.insert %[[SCALAR]]
 // CHECK-SAME: into %[[TENSOR]][%[[MAP1_RESULT]]#0, %[[MAP1_RESULT]]#1]
 // CHECK: xla.yield %[[NEW_TENSOR]]
-
-// -----
-
-func.func private @exp(%p0: tensor<32x64xf32>, %i: index, %j: index) -> f32
-
-#map = #xla.indexing_map<"(d0, d1)[s0, s1] -> (d1*32+d0*2+s0, s1), domain: d0 in [0, 32], d1 in [0, 8], s0 in [0, 1], s1 in [0, 1]">
-#map1 = #xla.indexing_map<"(d0, d1)[s0, s1] -> (d0*2+s0, s1), domain: d0 in [0, 32], d1 in [0, 2], s0 in [0, 1], s1 in [0, 1]">
-#map2 = #xla.indexing_map<"(d0, d1) -> (d0, d1), domain: d0 in [0, 32], d1 in [0, 2]">
-
-func.func @materialize_and_insert(%input: tensor<32x64xf32>, %i: index,
-    %j: index, %output: tensor<32x64xf32>) -> tensor<32x64xf32> {
-  %0 = xla_gpu.materialize @exp(%input) at #map(%i, %j)
-    : (tensor<32x64xf32>) -> !xla_gpu.indexed_vector<32x2x2xf32, #map1>
-  %1 = xla_gpu.insert %0(%i, %j) into %output at #map2
-    : !xla_gpu.indexed_vector<32x2x2xf32, #map1> -> tensor<32x64xf32>
-  func.return %1 : tensor<32x64xf32>
-}
-// CHECK-LABEL: @materialize_and_insert
-// CHECK-NOT: unrealized_conversion_cast
-
-// -----
-
-func.func private @exp(%p0: tensor<32x64xcomplex<f32>>, %i: index, %j: index) -> complex<f32>
-
-#map = #xla.indexing_map<"(d0, d1)[s0, s1] -> (d1*32+d0*2+s0, s1), domain: d0 in [0, 32], d1 in [0, 8], s0 in [0, 2], s1 in [0, 3]">
-#map1 = #xla.indexing_map<"(d0, d1)[s0, s1] -> (d0*2+s0, s1), domain: d0 in [0, 32], d1 in [0, 2], s0 in [0, 2], s1 in [0, 3]">
-func.func @materialize_complex(
-  %input: tensor<32x64xcomplex<f32>>,
-  %output: tensor<32x64xcomplex<f32>>,
-  %d0: index,
-  %d1: index) -> !xla_gpu.indexed_vector<32x3x4xcomplex<f32>, #map1> {
-
-  %0 = xla_gpu.materialize @exp(%input) at #map(%d0, %d1)
-    : (tensor<32x64xcomplex<f32>>)
-    -> !xla_gpu.indexed_vector<32x3x4xcomplex<f32>, #map1>
-  func.return %0 : !xla_gpu.indexed_vector<32x3x4xcomplex<f32>, #map1>
-}
-
-// CHECK-LABEL: @materialize_complex
-// CHECK: xla.loop ({{.*}})[%[[I:.*]], %[[J:.*]]]
-// CHECK-SAME: iter_args(%[[ITER:.*]] = {{.*}})
-// CHECK: %[[PURE_CALL:.*]] = xla.pure_call
-// CHECK-SAME: complex<f32>
-// CHECK: %[[REAL:.*]] = complex.re %[[PURE_CALL]]
-// CHECK: %[[IMAG:.*]] = complex.im %[[PURE_CALL]]
-// CHECK: %[[TEMP:.*]] = vector.insert %[[REAL]], %[[ITER]] [0, %[[I]], %[[J]]]
-// CHECK: %[[FINAL:.*]] = vector.insert %[[IMAG]], %[[TEMP]] [1, %[[I]], %[[J]]]
-// CHECK: xla.yield %[[FINAL]] : vector<2x3x4xf32>
 
 // -----
 

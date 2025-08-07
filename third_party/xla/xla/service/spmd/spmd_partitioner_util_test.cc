@@ -119,14 +119,6 @@ TEST(SPMDPartitionerUtilTest, GetIotaPartitionGroupsForReplication2) {
               testing::ElementsAre(1, 0));
 }
 
-TEST(SPMDPartitionerUtilTest,
-     GetIotaPartitionGroupsForReplicationSkipWhenNotUsingAllPartitions) {
-  HloSharding simple_sharding = HloSharding::IotaTile({2, 2, 2});
-  std::optional<IotaReplicaGroupList> actual_partition_group_list =
-      GetIotaPartitionGroupsForReplication(simple_sharding, {1}, 16);
-  EXPECT_FALSE(actual_partition_group_list.has_value());
-}
-
 TEST(SPMDPartitionerUtilTest, ExpandPartitionGroupListAcrossReplicas) {
   IotaReplicaGroupList partition_group_list =
       IotaReplicaGroupList(10, 5, {2, 5, 5}, {0, 2, 1});

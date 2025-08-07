@@ -69,6 +69,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/hlo_sharding_metadata.h"
+#include "xla/hlo/translate/attributes.h"
 #include "xla/hlo/translate/hlo_to_mhlo/async_importer.h"
 #include "xla/hlo/translate/hlo_to_mhlo/attribute_importer.h"
 #include "xla/hlo/translate/hlo_to_mhlo/custom_call_importer.h"
@@ -102,10 +103,6 @@ using mlir::func::FuncOp;
 namespace xla {
 
 namespace {
-
-constexpr char kFrontendAttributesAttr[] = "mhlo.frontend_attributes";
-constexpr char kShardingAttr[] = "mhlo.sharding";
-constexpr char kParameterReplicationAttr[] = "mhlo.parameter_replication";
 
 // Note: This sanitization function causes an irreversible many-to-one mapping
 // and any solution to mitigate this would cause issues with the reverse
@@ -719,6 +716,13 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
         kShardingAttr, ConvertSharding(instruction->sharding(), builder_)));
   }
 
+  if (instruction->original_value()) {
+    attributes.push_back(builder_->getNamedAttr(
+        kOriginalValueAttr,
+        builder_->getStringAttr(
+            "{" + instruction->original_value()->ToString() + "}")));
+  }
+
   llvm::SmallVector<NamedAttribute, 4> frontend_attributes;
   for (const auto& [k, v] : instruction->frontend_attributes().map()) {
     frontend_attributes.push_back(
@@ -855,31 +859,6 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       }
 
     case HloOpcode::kDot: {
-      auto dot = Cast<HloDotInstruction>(instruction);
-      if (dot->sparse_operands()) {
-        attributes.push_back(builder_->getNamedAttr(
-            "precision_config",
-            ConvertPrecisionConfig(&instruction->precision_config(),
-                                   builder_)));
-        attributes.push_back(builder_->getNamedAttr(
-            "dot_dimension_numbers",
-            ConvertDotDimensionNumbers(instruction->dot_dimension_numbers(),
-                                       builder_)));
-        for (const SparsityDescriptor& descriptor : dot->sparsity()) {
-          TF_ASSIGN_OR_RETURN(auto sparsity,
-                              ConvertSparsityDescriptor(descriptor, builder_));
-          attributes.push_back(builder_->getNamedAttr(
-              descriptor.index() == 0 ? "lhs_sparsity" : "rhs_sparsity",
-              sparsity));
-        }
-        // XLA Feature -- MHLO Only
-        return func_builder
-            ->create<mlir::mhlo::SparseDotOp>(loc, result_type, operands,
-                                              attributes)
-            .getOperation();
-      }
-
-      // Dot or DotGeneral
       attributes.push_back(builder_->getNamedAttr(
           "precision_config", stablehlo::ConvertPrecisionConfig(
                                   &instruction->precision_config(), builder_)));
@@ -891,7 +870,7 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
                 instruction->precision_config().algorithm(), builder_)));
       }
       // Consider consolidating DotOps together.
-      if (DotIsDefault(instruction) && !dot->sparse_operands()) {
+      if (DotIsDefault(instruction)) {
         return func_builder
             ->create<mlir::stablehlo::DotOp>(loc, result_type, operands,
                                              attributes)
@@ -1021,11 +1000,18 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
         const std::string& raw_backend_config =
             instruction->raw_backend_config_string();
         if (!raw_backend_config.empty()) {
-          llvm::SmallVector<NamedAttribute, 1> frontend_attributes;
           frontend_attributes.push_back(builder_->getNamedAttr(
               "backend_config", builder_->getStringAttr(raw_backend_config)));
-          call->setAttr(kFrontendAttributesAttr,
-                        builder_->getDictionaryAttr(frontend_attributes));
+          if (frontend_attributes.size() == 1) {
+            frontend_attributes_index = attributes.size();
+            attributes.push_back(builder_->getNamedAttr(
+                kFrontendAttributesAttr,
+                builder_->getDictionaryAttr(frontend_attributes)));
+          } else {
+            attributes[frontend_attributes_index] = builder_->getNamedAttr(
+                kFrontendAttributesAttr,
+                builder_->getDictionaryAttr(frontend_attributes));
+          }
         }
         for (auto attr : attributes) {
           call->setAttr(attr.getName(), attr.getValue());

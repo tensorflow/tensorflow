@@ -85,11 +85,25 @@ build --repo_env=ML_WHEEL_VERSION_SUFFIX=""
 build --define framework_shared_object=true
 build --define tsl_protobuf_header_only=true
 
-build --define=use_fast_cpp_protos=true
 build --define=allow_oversize_protos=true
 
 build --spawn_strategy=standalone
 build -c opt
+
+build --repo_env=USE_PYWRAP_RULES=True
+build --copt=-DGRPC_BAZEL_BUILD
+build --host_copt=-DGRPC_BAZEL_BUILD
+build --action_env=GRPC_BAZEL_RUNTIME=1
+build --repo_env=PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=upb
+build --action_env=PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=upb
+build --repo_env=RULES_PYTHON_ENABLE_PYSTAR=0
+
+# Do not do this. If enabled protobuf's core internal target 
+# @com_google_protobuf//python:protobuf_python will start depending on a bunch
+# of cc_binary shared libraries artifacts, which will mess with how we link 
+# protobuf dependencies ourselves. By default this value is false, but some 
+# projects enable it, which we don't want here.
+# build --define=use_fast_cpp_protos=true
 
 # Make Bazel print out all options from rc files.
 common --announce_rc
@@ -145,9 +159,13 @@ common --incompatible_enforce_config_setting_visibility
 # TODO: Enable Bzlmod
 common --noenable_bzlmod
 
+build --incompatible_enable_cc_toolchain_resolution
+build --repo_env USE_HERMETIC_CC_TOOLCHAIN=1
+
 # TODO: Migrate for https://github.com/bazelbuild/bazel/issues/7260
-common --noincompatible_enable_cc_toolchain_resolution
-common --noincompatible_enable_android_toolchain_resolution
+build:clang_local --noincompatible_enable_cc_toolchain_resolution
+build:clang_local --noincompatible_enable_android_toolchain_resolution
+build:clang_local --repo_env USE_HERMETIC_CC_TOOLCHAIN=0
 
 # Print a stacktrace when a test is killed
 test --test_env="GTEST_INSTALL_FAILURE_SIGNAL_HANDLER=1"
@@ -158,6 +176,7 @@ test --test_env="GTEST_INSTALL_FAILURE_SIGNAL_HANDLER=1"
 # Android configs. Bazel needs to have --cpu and --fat_apk_cpu both set to the
 # target CPU to build transient dependencies correctly. See
 # https://docs.bazel.build/versions/master/user-manual.html#flag--fat_apk_cpu
+build:android --config=clang_local
 build:android --crosstool_top=//external:android/crosstool
 build:android --host_crosstool_top=@bazel_tools//tools/cpp:toolchain
 build:android_arm --config=android
@@ -196,7 +215,8 @@ build:macos --features=archive_param_file
 build:macos --linkopt=-Wl,-undefined,dynamic_lookup
 build:macos --host_linkopt=-Wl,-undefined,dynamic_lookup
 
-# Use the Apple toolchain for MacOS builds.
+# Use the old Apple toolchain for MacOS builds.
+build:macos --config=clang_local
 build:macos --config=apple-toolchain
 
 # Use cc toolchains from apple_support for Apple builds (ios, macos, etc).
@@ -208,12 +228,14 @@ build:apple-toolchain --host_crosstool_top=@local_config_apple_cc//:toolchain
 # Settings for MacOS on ARM CPUs.
 build:macos_arm64 --cpu=darwin_arm64
 build:macos_arm64 --macos_minimum_os=11.0
+build:macos_arm64 --config=clang_local
 build:macos_arm64 --platforms=@build_bazel_apple_support//configs/platforms:darwin_arm64
 
 # iOS configs for each architecture and the fat binary builds.
 build:ios --apple_platform_type=ios
 build:ios --copt=-fembed-bitcode
 build:ios --copt=-Wno-c++11-narrowing
+build:ios --config=clang_local
 build:ios --config=apple-toolchain
 build:ios_armv7 --config=ios
 build:ios_armv7 --cpu=ios_armv7
@@ -256,17 +278,20 @@ build:mkl_threadpool --define=build_with_mkl_opensource=true
 build:mkl_threadpool -c opt
 
 # Config setting to build oneDNN with Compute Library for the Arm Architecture (ACL).
+build:mkl_aarch64 --define=build_with_mkl_aarch64=true
+build:mkl_aarch64 --define=build_with_openmp=true
+build:mkl_aarch64 --define=build_with_acl=true
+build:mkl_aarch64 -c opt
+
+# Config setting to build oneDNN with Compute Library for the Arm Architecture (ACL).
 # with Eigen threadpool support
 build:mkl_aarch64_threadpool --define=build_with_mkl_aarch64=true
-build:mkl_aarch64_threadpool --define=build_with_acl=true
 build:mkl_aarch64_threadpool -c opt
 
-# This is an alias for the mkl_aarch64_threadpool build.
-build:mkl_aarch64 --config=mkl_aarch64_threadpool
-
-# Default CUDA and CUDNN versions.
+# Default CUDA, CUDNN and NVSHMEM versions.
 build:cuda_version --repo_env=HERMETIC_CUDA_VERSION="12.5.1"
 build:cuda_version --repo_env=HERMETIC_CUDNN_VERSION="9.3.0"
+build:cuda_version --repo_env=HERMETIC_NVSHMEM_VERSION="3.2.5"
 
 # CUDA: This config refers to building CUDA op kernels with nvcc.
 build:cuda --repo_env TF_NEED_CUDA=1
@@ -337,6 +362,7 @@ build:tpu --copt=-DLIBTPU_ON_GCE
 build:tpu --define=enable_mlir_bridge=true
 
 build:rocm --copt=-Wno-gnu-offsetof-extensions
+build:rocm --config=clang_local
 build:rocm --crosstool_top=@local_config_rocm//crosstool:toolchain
 build:rocm --define=using_rocm_hipcc=true
 build:rocm --define=tensorflow_mkldnn_contraction_kernel=0
@@ -356,6 +382,7 @@ build:rocm_ci_hermetic --repo_env="OS=ubuntu_22.04"
 build:rocm_ci_hermetic --repo_env="ROCM_VERSION=6.2.0"
 build:rocm_ci_hermetic --@local_config_rocm//rocm:use_rocm_hermetic_rpath=True
 
+build:sycl --config=clang_local
 build:sycl --crosstool_top=@local_config_sycl//crosstool:toolchain
 build:sycl --define=using_sycl=true
 build:sycl --define=tensorflow_mkldnn_contraction_kernel=0
@@ -488,6 +515,9 @@ build:windows --verbose_failures
 # See: https://github.com/bazelbuild/bazel/issues/5163
 build:windows --features=compiler_param_file
 
+# Use old toolchains for Windows builds.
+build:windows --config=clang_local
+
 # Do not risk cache corruption. See:
 # https://github.com/bazelbuild/bazel/issues/3360
 build:linux --experimental_guard_against_concurrent_changes
@@ -503,8 +533,8 @@ build:avx_linux --copt=-mavx
 build:avx_linux --host_copt=-mavx
 build:avx_win --copt=/arch:AVX
 
-build:win_clang_base --@com_google_protobuf//:use_dlls=True
-build:win_clang_base --@com_google_absl//absl:use_dlls
+build:win_clang_base --@com_google_protobuf//build_defs:use_dlls=True
+build:win_clang_base --@com_google_absl//absl:use_dlls=True
 build:win_clang_base --linkopt=/demangle:no --host_linkopt=/demangle:no
 build:win_clang_base --linkopt=/errorlimit:0 --host_linkopt=/errorlimit:0
 build:win_clang_base --copt=/clang:-Weverything
@@ -518,6 +548,7 @@ test:win_clang_base --host_linkopt=/FORCE:MULTIPLE
 test:win_clang_base --build_tests_only --keep_going --test_output=errors --verbose_failures=true --test_summary=short
 
 build:win_clang --config=win_clang_base
+build:win_clang --config=clang_local
 build:win_clang --extra_toolchains=@local_config_cc//:cc-toolchain-x64_windows-clang-cl
 build:win_clang --extra_execution_platforms=//tensorflow/tools/toolchains/win:x64_windows-clang-cl
 build:win_clang --host_platform=//tensorflow/tools/toolchains/win:x64_windows-clang-cl
@@ -580,12 +611,6 @@ build:rbe_linux --linkopt=-lm
 build:rbe_linux --host_linkopt=-lm
 
 build:rbe_linux_cpu --config=rbe_linux
-# Linux cpu and cuda builds share the same toolchain now.
-build:rbe_linux_cpu --host_crosstool_top="@local_config_cuda//crosstool:toolchain"
-build:rbe_linux_cpu --crosstool_top="@local_config_cuda//crosstool:toolchain"
-build:rbe_linux_cpu --extra_toolchains="@local_config_cuda//crosstool:toolchain-linux-x86_64"
-build:rbe_linux_cpu --repo_env=CC="/usr/lib/llvm-18/bin/clang"
-build:rbe_linux_cpu --repo_env=TF_SYSROOT="/dt9"
 build:rbe_linux_cpu --extra_execution_platforms="@ml_build_config_platform//:platform"
 build:rbe_linux_cpu --host_platform="@ml_build_config_platform//:platform"
 build:rbe_linux_cpu --platforms="@ml_build_config_platform//:platform"
@@ -607,6 +632,15 @@ common:rbe_linux_cpu --remote_instance_name=projects/tensorflow-testing/instance
 # build:rbe_linux_cpu --repo_env USE_CUDA_REDISTRIBUTIONS=1
 # build:rbe_linux_cpu --config=cuda_version
 
+# Deprecated RBE config with non-hermetic toolchains.
+build:rbe_linux_cpu_clang_local --config=rbe_linux_cpu
+build:rbe_linux_cpu_clang_local --config=clang_local
+build:rbe_linux_cpu_clang_local --host_crosstool_top="@local_config_cuda//crosstool:toolchain"
+build:rbe_linux_cpu_clang_local --crosstool_top="@local_config_cuda//crosstool:toolchain"
+build:rbe_linux_cpu_clang_local --extra_toolchains="@local_config_cuda//crosstool:toolchain-linux-x86_64"
+build:rbe_linux_cpu_clang_local --repo_env=CC="/usr/lib/llvm-18/bin/clang"
+build:rbe_linux_cpu_clang_local --repo_env=TF_SYSROOT="/dt9"
+
 # TODO(kanglan): Remove it after toolchain update is complete.
 build:rbe_linux_cpu_old --config=rbe_linux
 build:rbe_linux_cpu_old --host_crosstool_top="@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain"
@@ -621,6 +655,7 @@ common:rbe_linux_cpu_old --remote_instance_name=projects/tensorflow-testing/inst
 build:rbe_linux_cuda --config=cuda_clang_official
 build:rbe_linux_cuda --config=rbe_linux_cpu
 build:rbe_linux_cuda --repo_env=USE_CUDA_TAR_ARCHIVE_FILES=1
+build:rbe_linux_cuda --repo_env=USE_NVSHMEM_TAR_ARCHIVE_FILES=1
 # For Remote build execution -- GPU configuration
 build:rbe_linux_cuda --repo_env=REMOTE_GPU_TESTING=1
 
@@ -629,6 +664,7 @@ build:rbe_linux_cuda_nvcc --config=cuda_nvcc
 build:rbe_linux_cuda_nvcc --repo_env TF_NCCL_USE_STUB=1
 
 build:rbe_win_base --config=rbe_base
+build:rbe_win_base --config=clang_local
 build:rbe_win_base --shell_executable=C:\\tools\\msys64\\usr\\bin\\bash.exe
 build:rbe_win_base --remote_instance_name=projects/tensorflow-testing/instances/windows
 # Don't build the python zip archive in the RBE build.
@@ -644,6 +680,7 @@ build:rbe_windows_x86_cpu_2022 --config=rbe_win_base --config=windows_x86_cpu_20
 # END TF REMOTE BUILD EXECUTION OPTIONS
 
 # TFLite build configs for generic embedded Linux
+build:elinux --config=clang_local
 build:elinux --crosstool_top=@local_config_embedded_arm//:toolchain
 build:elinux --host_crosstool_top=@bazel_tools//tools/cpp:toolchain
 build:elinux_aarch64 --config=elinux
@@ -689,13 +726,6 @@ build:release_linux_base --linkopt="-lm"
 build:release_linux_base --linkopt=-Wl,--undefined-version
 
 # Container environment settings below this point.
-# Use Python 3.X as installed in container image
-build:release_linux_base --action_env PYTHON_BIN_PATH="/usr/bin/python3"
-build:release_linux_base --action_env PYTHON_LIB_PATH="/usr/lib/tf_python"
-build:release_linux_base --python_path="/usr/bin/python3"
-# Set Clang as compiler. Use the actual path to clang installed in container.
-build:release_linux_base --repo_env=CC="/usr/lib/llvm-18/bin/clang"
-build:release_linux_base --repo_env=BAZEL_COMPILER="/usr/lib/llvm-18/bin/clang"
 # Test-related settings below this point.
 test:release_linux_base --build_tests_only --keep_going --test_output=errors --verbose_failures=true
 test:release_linux_base --local_test_jobs=HOST_CPUS
@@ -704,8 +734,6 @@ test:release_linux_base --test_summary=short
 
 # Use the Clang toolchain to compile
 build:release_cpu_linux --config=release_linux_base
-build:release_cpu_linux --crosstool_top="@local_config_cuda//crosstool:toolchain"
-build:release_cpu_linux --repo_env=TF_SYSROOT="/dt9"
 # Target the AVX instruction set
 build:release_cpu_linux --config=avx_linux
 
@@ -716,8 +744,23 @@ build:release_gpu_linux --config=cuda_clang_official
 # Local test jobs has to be 4 because parallel_gpu_execute is fragile, I think
 test:release_gpu_linux --test_timeout=300,450,1200,3600 --local_test_jobs=4 --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute
 
+# Deprecated release CPU config with non-hermetic toolchains.
+build:release_cpu_linux_clang_local --config=release_cpu_linux
+build:release_cpu_linux_clang_local --config=clang_local
+build:release_cpu_linux_clang_local --repo_env=CC="/usr/lib/llvm-18/bin/clang"
+build:release_cpu_linux_clang_local --repo_env=BAZEL_COMPILER="/usr/lib/llvm-18/bin/clang"
+build:release_cpu_linux_clang_local --crosstool_top="@local_config_cuda//crosstool:toolchain"
+build:release_cpu_linux_clang_local --repo_env=TF_SYSROOT="/dt9"
+
+# Deprecated release GPU config with non-hermetic toolchains.
+build:release_gpu_linux_clang_local --config=release_gpu_linux
+build:release_gpu_linux_clang_local --config=release_cpu_linux_clang_local
+
 build:release_arm64_linux --config=release_linux_base
 build:release_arm64_linux --config=linux_arm64
+build:release_arm64_linux --config=clang_local
+build:release_arm64_linux --repo_env=CC="/usr/lib/llvm-18/bin/clang"
+build:release_arm64_linux --repo_env=BAZEL_COMPILER="/usr/lib/llvm-18/bin/clang"
 build:release_arm64_linux --crosstool_top="@ml2014_clang_aarch64_config_aarch64//crosstool:toolchain"
 build:release_arm64_linux --config=mkl_aarch64_threadpool
 build:release_arm64_linux --copt=-flax-vector-conversions
@@ -726,6 +769,7 @@ test:release_arm64_linux --flaky_test_attempts=3
 build:release_cpu_macos --config=avx_linux
 
 # Base build configs for macOS
+build:release_macos_base --config=clang_local
 build:release_macos_base --action_env  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 build:release_macos_base --define=no_nccl_support=true --output_filter=^$
 
@@ -798,28 +842,28 @@ build:tf_public_macos_cache_push --config=tf_public_macos_cache --remote_upload_
 # PYTHON TESTS run a suite of Python tests intended for verifying that the Python wheel
 # will work properly. These are usually run Nightly or upon Release.
 # CPU WHEEL
-test:linux_cpu_wheel_test_filters --test_tag_filters=-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only,-no_oss_py38,-no_oss_py39,-no_oss_py310
-test:linux_cpu_wheel_test_filters --build_tag_filters=-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only,-no_oss_py38,-no_oss_py39,-no_oss_py310
+test:linux_cpu_wheel_test_filters --test_tag_filters=-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only,-no_oss_py38,-no_oss_py39,-no_oss_py310,-no_oss_py313
+test:linux_cpu_wheel_test_filters --build_tag_filters=-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only,-no_oss_py38,-no_oss_py39,-no_oss_py310,-no_oss_py313
 test:linux_cpu_wheel_test_filters --test_lang_filters=py --test_size_filters=small,medium
 test:linux_cpu_wheel_test --@local_xla//third_party/py:wheel_dependency=true --config=linux_cpu_wheel_test_filters -- //tensorflow/... //tensorflow/tools/pip_package:prebuilt_wheel_import_api_packages_test_cpu -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
 # CUDA WHEEL
-test:linux_cuda_wheel_test_filters --test_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-benchmark-test,-no_cuda11,-no_oss_py38,-no_oss_py39,-no_oss_py310
-test:linux_cuda_wheel_test_filters --build_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-benchmark-test,-no_cuda11,-no_oss_py38,-no_oss_py39,-no_oss_py310
+test:linux_cuda_wheel_test_filters --test_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-benchmark-test,-no_cuda11,-no_oss_py38,-no_oss_py39,-no_oss_py310,-no_oss_py313
+test:linux_cuda_wheel_test_filters --build_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-benchmark-test,-no_cuda11,-no_oss_py38,-no_oss_py39,-no_oss_py310,-no_oss_py313
 test:linux_cuda_wheel_test_filters --test_lang_filters=py --test_size_filters=small,medium
 test:linux_cuda_wheel_test --@local_xla//third_party/py:wheel_dependency=true --config=linux_cuda_wheel_test_filters -- //tensorflow/... //tensorflow/tools/pip_package:prebuilt_wheel_import_api_packages_test_gpu -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
 # ARM64 WHEEL
-test:linux_arm64_wheel_test_filters --test_tag_filters=-no_oss,-tf_tosa,-no_aarch64,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only,-no_oss_py38,-no_oss_py39,-no_oss_py310
-test:linux_arm64_wheel_test_filters --build_tag_filters=-no_oss,-tf_tosa,-no_aarch64,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only,-no_oss_py38,-no_oss_py39,-no_oss_py310
+test:linux_arm64_wheel_test_filters --test_tag_filters=-no_oss,-tf_tosa,-no_aarch64,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only,-no_oss_py38,-no_oss_py39,-no_oss_py310,-no_oss_py313
+test:linux_arm64_wheel_test_filters --build_tag_filters=-no_oss,-tf_tosa,-no_aarch64,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only,-no_oss_py38,-no_oss_py39,-no_oss_py310,-no_oss_py313
 test:linux_arm64_wheel_test_filters --test_lang_filters=py --test_size_filters=small,medium
 test:linux_arm64_wheel_test --@local_xla//third_party/py:wheel_dependency=true --config=linux_arm64_wheel_test_filters -- //tensorflow/... //tensorflow/tools/pip_package:prebuilt_wheel_import_api_packages_test_cpu -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...  -//tensorflow/go/... -//tensorflow/java/... -//tensorflow/core/grappler/optimizers:auto_mixed_precision_test_cpu -//tensorflow/core/grappler/optimizers:remapper_test_cpu -//tensorflow/core/kernels/image:resize_bicubic_op_test
 # MACOS ARM64 WHEEL
-test:macos_arm64_wheel_test_filters --test_tag_filters=-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-no_oss_py39,-no_oss_py310,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test,-no_mac_arm64,-no_aarch64
-test:macos_arm64_wheel_test_filters --build_tag_filters=-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-no_oss_py39,-no_oss_py310,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test,-no_mac_arm64,-no_aarch64
+test:macos_arm64_wheel_test_filters --test_tag_filters=-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-no_oss_py39,-no_oss_py310,-no_oss_py313,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test,-no_mac_arm64,-no_aarch64
+test:macos_arm64_wheel_test_filters --build_tag_filters=-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-no_oss_py39,-no_oss_py310,-no_oss_py313,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test,-no_mac_arm64,-no_aarch64
 test:macos_arm64_wheel_test_filters --test_lang_filters=py --test_size_filters=small,medium
 test:macos_arm64_wheel_test --@local_xla//third_party/py:wheel_dependency=true --config=macos_arm64_wheel_test_filters -- //tensorflow/... //tensorflow/tools/pip_package:prebuilt_wheel_import_api_packages_test_cpu -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/... -//tensorflow/go/... -//tensorflow/java/... -//tensorflow/compiler/aot/...
 # MACOS X86 WHEEL
-test:macos_x86_wheel_test_filters --test_tag_filters=-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-no_oss_py38,-no_oss_py39,-no_oss_py310,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test
-test:macos_x86_wheel_test_filters --build_tag_filters=-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-no_oss_py38,-no_oss_py39,-no_oss_py310,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test
+test:macos_x86_wheel_test_filters --test_tag_filters=-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-no_oss_py38,-no_oss_py39,-no_oss_py310,-no_oss_py313,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test
+test:macos_x86_wheel_test_filters --build_tag_filters=-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-no_oss_py38,-no_oss_py39,-no_oss_py310,-no_oss_py313,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test
 test:macos_x86_wheel_test_filters --test_lang_filters=py --test_size_filters=small,medium
 test:macos_x86_wheel_test --@local_xla//third_party/py:wheel_dependency=true --config=macos_x86_wheel_test_filters -- //tensorflow/... //tensorflow/tools/pip_package:prebuilt_wheel_import_api_packages_test_cpu -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/... -//tensorflow/go/... -//tensorflow/java/... -//tensorflow/compiler/aot/...
 # WINDOWS X86 WHEEL
@@ -831,14 +875,14 @@ test:windows_x86_cpu_2022_wheel_test --build_tests_only --config=windows_x86_cpu
 # PYCPP TESTS run a suite of Python and C++ tests to verify general correctness over
 # the whole TF code base. These are usually run continuously or upon presubmit.
 # LINUX CPU PYCPP:
-test:linux_cpu_pycpp_test_filters --test_tag_filters=-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only
-test:linux_cpu_pycpp_test_filters --build_tag_filters=-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only
+test:linux_cpu_pycpp_test_filters --test_tag_filters=-no_oss,-no_oss_py313,-tf_tosa,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only
+test:linux_cpu_pycpp_test_filters --build_tag_filters=-no_oss,-no_oss_py313,-tf_tosa,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only
 test:linux_cpu_pycpp_test_filters --test_lang_filters=cc,py --test_size_filters=small,medium
 test:linux_cpu_pycpp_test --config=linux_cpu_pycpp_test_filters -- //tensorflow/... //tensorflow/tools/pip_package:import_api_packages_test_cpu -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
 
 # LINUX CUDA PYCPP:
-test:linux_cuda_pycpp_test_filters --test_tag_filters=-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-benchmark-test,-v1only,gpu,-no_gpu,-no_gpu_presubmit,-no_cuda11
-test:linux_cuda_pycpp_test_filters --build_tag_filters=-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-benchmark-test,-v1only,gpu,-no_gpu,-no_gpu_presubmit,-no_cuda11
+test:linux_cuda_pycpp_test_filters --test_tag_filters=-no_oss,-no_oss_py313,-tf_tosa,-oss_excluded,-oss_serial,-benchmark-test,-v1only,gpu,-no_gpu,-no_gpu_presubmit,-no_cuda11
+test:linux_cuda_pycpp_test_filters --build_tag_filters=-no_oss,-no_oss_py313,-tf_tosa,-oss_excluded,-oss_serial,-benchmark-test,-v1only,gpu,-no_gpu,-no_gpu_presubmit,-no_cuda11
 test:linux_cuda_pycpp_test_filters --test_lang_filters=cc,py --test_size_filters=small,medium
 test:linux_cuda_pycpp_test --config=linux_cuda_pycpp_test_filters -- //tensorflow/... //tensorflow/tools/pip_package:import_api_packages_test_gpu -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
 
@@ -851,8 +895,8 @@ test:linux_cuda_pycpp_test --config=linux_cuda_pycpp_test_filters -- //tensorflo
 # do not run them. By prefixing the configs with "build", we can run both
 # `bazel build` and `bazel test` commands with the same config as test configs
 # inherit from build.
-build:linux_arm64_pycpp_test_filters --test_tag_filters=-no_oss,-tf_tosa,-no_aarch64,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only
-build:linux_arm64_pycpp_test_filters --build_tag_filters=-no_oss,-tf_tosa,-no_aarch64,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only
+build:linux_arm64_pycpp_test_filters --test_tag_filters=-no_oss,-no_oss_py313,-tf_tosa,-no_aarch64,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only
+build:linux_arm64_pycpp_test_filters --build_tag_filters=-no_oss,-no_oss_py313,-tf_tosa,-no_aarch64,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only
 build:linux_arm64_pycpp_test_filters --test_lang_filters=cc,py --test_size_filters=small,medium --flaky_test_attempts=3
 # TODO(michaelhudgins): Why do we need to specifically omit go and java here?
 build:linux_arm64_pycpp_test --config=linux_arm64_pycpp_test_filters -- //tensorflow/... //tensorflow/tools/pip_package:import_api_packages_test_cpu -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/... -//tensorflow/go/... -//tensorflow/java/... -//tensorflow/core/grappler/optimizers:auto_mixed_precision_test_cpu -//tensorflow/core/grappler/optimizers:remapper_test_cpu -//tensorflow/core/kernels/image:resize_bicubic_op_test -//tensorflow/python/tools:aot_compiled_test
@@ -861,8 +905,8 @@ build:cross_compile_linux_arm64_pycpp_test --config=linux_arm64_pycpp_test
 # Tests that fail only when cross-compiled
 build:cross_compile_linux_arm64_pycpp_test -//tensorflow/compiler/mlir/quantization/stablehlo:convert_tf_quant_to_mhlo_int_test
 # MACOS ARM64 PYCPP
-test:macos_arm64_pycpp_test_filters --test_tag_filters=-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-no_oss_py39,-no_oss_py310,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test,-no_mac_arm64,-no_aarch64
-test:macos_arm64_pycpp_test_filters --build_tag_filters=-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-no_oss_py39,-no_oss_py310,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test,-no_mac_arm64,-no_aarch64
+test:macos_arm64_pycpp_test_filters --test_tag_filters=-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-no_oss_py39,-no_oss_py310,-no_oss_py313,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test,-no_mac_arm64,-no_aarch64
+test:macos_arm64_pycpp_test_filters --build_tag_filters=-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-no_oss_py39,-no_oss_py310,-no_oss_py313,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test,-no_mac_arm64,-no_aarch64
 test:macos_arm64_pycpp_test_filters --test_lang_filters=cc,py --test_size_filters=small,medium
 test:macos_arm64_pycpp_test --config=macos_arm64_pycpp_test_filters -- //tensorflow/... //tensorflow/tools/pip_package:import_api_packages_test_cpu -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/... -//tensorflow/go/... -//tensorflow/java/... -//tensorflow/compiler/aot/... -//tensorflow/core/kernels/image:resize_bicubic_op_test
 # MACOS X86 PYCPP
@@ -891,6 +935,7 @@ test:windows_x86_cpu_2022_pycpp_test --config=windows_x86_cpu_2022_pycpp_test_op
 # flags seem to be actually used to specify the execution platform details. It
 # seems it is this way because these flags are old and predate the distinction
 # between host and execution platform.
+build:cross_compile_base --config=clang_local
 build:cross_compile_base --host_cpu=k8
 build:cross_compile_base --host_crosstool_top=//tensorflow/tools/toolchains/cross_compile/cc:cross_compile_toolchain_suite
 build:cross_compile_base --extra_execution_platforms=//tensorflow/tools/toolchains/cross_compile/config:linux_x86_64

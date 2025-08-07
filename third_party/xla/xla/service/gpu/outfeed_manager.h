@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
+#include "absl/synchronization/notification.h"
 #include "xla/literal.h"
 #include "xla/service/gpu/xfeed_queue.h"
 #include "xla/shape_tree.h"
@@ -55,7 +56,7 @@ class OutfeedBuffer {
  private:
   std::unique_ptr<MutableBorrowingLiteral> destination_;
   const int64_t length_;
-  tsl::Notification done_;
+  absl::Notification done_;
 };
 
 // Manages a thread-safe queue of buffers. The buffers are supposed to be

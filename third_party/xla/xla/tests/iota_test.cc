@@ -28,7 +28,6 @@ limitations under the License.
 #include "xla/tests/client_library_test_runner_mixin.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
-#include "xla/tests/test_macros.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
@@ -75,7 +74,7 @@ class IotaR1Test
           HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>,
       public ::testing::WithParamInterface<std::tuple<PrimitiveType, int>> {};
 
-XLA_TEST_P(IotaR1Test, DoIt) {
+TEST_P(IotaR1Test, DoIt) {
   const auto& spec = GetParam();
   const auto element_type = std::get<0>(spec);
   const int64_t num_elements = std::get<1>(spec);
@@ -123,16 +122,11 @@ class IotaR2Test : public ClientLibraryTestRunnerMixin<
                    public ::testing::WithParamInterface<
                        std::tuple<PrimitiveType, int, int>> {};
 
-XLA_TEST_P(IotaR2Test, DoIt) {
+TEST_P(IotaR2Test, DoIt) {
   const auto& spec = GetParam();
   const auto element_type = std::get<0>(spec);
   const int64_t num_elements = std::get<1>(spec);
   const int64_t iota_dim = std::get<2>(spec);
-#ifdef XLA_BACKEND_DOES_NOT_SUPPORT_BFLOAT16
-  if (element_type == BF16) {
-    return;
-  }
-#endif
   XlaBuilder builder(TestName() + "_" + PrimitiveType_Name(element_type));
   std::vector<int64_t> dimensions = {42};
   dimensions.insert(dimensions.begin() + iota_dim, num_elements);
@@ -162,16 +156,11 @@ class IotaR3Test : public ClientLibraryTestRunnerMixin<
                    public ::testing::WithParamInterface<
                        std::tuple<PrimitiveType, int, int>> {};
 
-XLA_TEST_P(IotaR3Test, DoIt) {
+TEST_P(IotaR3Test, DoIt) {
   const auto& spec = GetParam();
   const auto element_type = std::get<0>(spec);
   const int64_t num_elements = std::get<1>(spec);
   const int64_t iota_dim = std::get<2>(spec);
-#ifdef XLA_BACKEND_DOES_NOT_SUPPORT_BFLOAT16
-  if (element_type == BF16) {
-    return;
-  }
-#endif
   XlaBuilder builder(TestName() + "_" + PrimitiveType_Name(element_type));
   std::vector<int64_t> dimensions = {42, 19};
   dimensions.insert(dimensions.begin() + iota_dim, num_elements);

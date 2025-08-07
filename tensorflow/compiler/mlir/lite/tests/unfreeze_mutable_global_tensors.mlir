@@ -1,4 +1,4 @@
-// RUN: tf-opt -unfreeze-mutable-global-tensors -split-input-file %s | FileCheck %s
+// RUN: litert-opt -unfreeze-mutable-global-tensors -split-input-file %s | FileCheck %s
 
 module attributes {tf_saved_model.semantics} {
 

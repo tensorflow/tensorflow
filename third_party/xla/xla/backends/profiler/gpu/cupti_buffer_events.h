@@ -140,6 +140,8 @@ struct CudaGraphDetails {
                            // instantiated. Note graph_id is put into general
                            // fields as if trace in node mode, many activity
                            // events will contains graph id.
+  uint64_t orig_graph_node_id;  // The original graph node from which new graph
+                                // node is cloned.
 };
 
 inline std::string ToXStat(const KernelDetails& kernel_info,
@@ -177,6 +179,7 @@ enum class CuptiTracerEventType {
   ThreadMarkerRange = 16,
   ThreadMarkerStart = 17,
   ThreadMarkerEnd = 18,
+  CudaGraphNodeMap = 19,
   Generic = 100,
 };
 
@@ -217,6 +220,7 @@ struct CuptiTracerEvent {
   int64_t stream_id = kInvalidStreamId;
   uint32_t graph_id = 0;
   int64_t scope_range_id = 0;
+  uint64_t graph_node_id = 0;
   union {
     // For Memcpy API and activities. `type` must be Memcpy*.
     MemcpyDetails memcpy_info;

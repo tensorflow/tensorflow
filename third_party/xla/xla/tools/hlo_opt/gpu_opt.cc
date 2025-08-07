@@ -13,25 +13,33 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <set>
 #include <string>
 #include <utility>
+#include <variant>
 
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/IR/LLVMContext.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/transforms/host_offloader.h"
+#include "xla/hlo/transforms/simplifiers/hlo_memory_scheduler.h"
+#include "xla/service/buffer_value.h"
 #include "xla/service/compiler.h"
+#include "xla/service/copy_insertion.h"
 #include "xla/service/dump.h"
 #include "xla/service/executable.h"
+#include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/compile_module_to_llvm_ir.h"
 #include "xla/service/gpu/executable.pb.h"
 #include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/gpu_hlo_schedule.h"
+#include "xla/service/gpu/nvptx_alias_info.h"
 #include "xla/service/gpu/transforms/collectives/all_gather_optimizer.h"
 #include "xla/service/gpu/transforms/cudnn_custom_call_converter.h"
 #include "xla/service/gpu/transforms/dot_algorithm_rewriter.h"
@@ -53,6 +61,8 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/spmd/schedule_aware_collective_ops_cse.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
@@ -90,9 +100,9 @@ class GpuOptProvider : public CompiledOptProvider {
     } else if (s == "buffer-assignment") {
       TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
                           GetExecutable(std::move(module)));
-      return static_cast<gpu::GpuExecutable*>(executable.get())
-          ->buffer_assignment()
-          ->ToVerboseString(9999);
+      auto gpu_executable = static_cast<gpu::GpuExecutable*>(executable.get());
+      return gpu_executable->buffer_assignment()->ToVerboseString(
+          gpu_executable->alias_info(), 9999);
     } else {
       // Delegate to base class.
       TF_ASSIGN_OR_RETURN(
@@ -124,13 +134,31 @@ class GpuOptProvider : public CompiledOptProvider {
     se::GpuComputeCapability gpu_compute_capability;
     if (device_description.ok()) {
       gpu_compute_capability = device_description->gpu_compute_capability();
+      if (std::holds_alternative<se::CudaComputeCapability>(
+              gpu_compute_capability)) {
+        alias_info_ =
+            std::make_unique<gpu::NVPTXAliasInfo>(*device_description);
+      } else {
+        alias_info_ = std::make_unique<gpu::GpuAliasInfo>(*device_description);
+      }
     } else {
       LOG(WARNING)
           << "No compute capability specified, defaulting to Hopper. Use "
              "--xla_gpu_target_config_filename= to specify a target config.";
       gpu_compute_capability = stream_executor::CudaComputeCapability::Hopper();
     }
+    BufferValue::SizeFunction size_func = [](const BufferValue& buffer) {
+      const Shape& shape = buffer.shape();
+      if (shape.has_layout() &&
+          shape.layout().memory_space() == Layout::kHostMemorySpace) {
+        return static_cast<int64_t>(0);
+      }
+      return ShapeUtil::ByteSizeOf(shape, sizeof(void*));
+    };
     // go/keep-sorted start
+    RegisterPass<CopyInsertion>(alias_info_.get());
+    RegisterPass<HloMemoryScheduler>(alias_info_.get(), size_func);
+    RegisterPass<HostOffloader>(alias_info_.get());
     RegisterPass<gpu::AllGatherOptimizer>();
     RegisterPass<gpu::CuDnnCustomCallConverter>();
     RegisterPass<gpu::DotAlgorithmRewriter>();
@@ -179,14 +207,16 @@ class GpuOptProvider : public CompiledOptProvider {
                         Compiler::GetForPlatform(platform));
 
     auto* gpu_compiler = static_cast<gpu::GpuCompiler*>(compiler.get());
+    std::unique_ptr<gpu::GpuAliasInfo> alias_info =
+        gpu_compiler->GetAliasInfo(device_description);
     if (!optimized_module->has_schedule()) {
       TF_ASSIGN_OR_RETURN(gpu::ScheduleMetadata schedule_metadata,
-                          gpu::ScheduleGpuModule(optimized_module,
-                                                 gpu_compiler->GetPointerSize(),
-                                                 device_description));
+                          gpu::ScheduleGpuModule(
+                              optimized_module, gpu_compiler->GetPointerSize(),
+                              device_description, alias_info.get()));
       TF_RETURN_IF_ERROR(gpu_compiler->RunPostSchedulingPipelines(
           optimized_module, schedule_metadata.scheduler_mem_limit,
-          device_description));
+          device_description, alias_info.get()));
     }
 
     llvm::LLVMContext llvm_context;
@@ -195,8 +225,7 @@ class GpuOptProvider : public CompiledOptProvider {
         xla::gpu::CompileModuleToLlvmIr(
             optimized_module, &llvm_context, gpu_compiler->GetTargetTriple(),
             gpu_compiler->GetDataLayout(), platform, device_description,
-            gpu_compiler->GetCanShareBuffer(device_description),
-            gpu_compiler->BufferSizeBytesFunction()));
+            alias_info.get(), gpu_compiler->BufferSizeBytesFunction()));
     return llvm_ir::DumpToString(results.llvm_module.get());
   }
 };

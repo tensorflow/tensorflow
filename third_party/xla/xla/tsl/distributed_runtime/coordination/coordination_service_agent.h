@@ -20,6 +20,7 @@ limitations under the License.
 #include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -36,6 +37,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/tsl/distributed_runtime/call_options.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
+#include "xla/tsl/distributed_runtime/coordination/coordination_service.h"
 #include "xla/tsl/framework/cancellation.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/status.h"
@@ -75,15 +77,6 @@ class CoordinationServiceAgent {
       const absl::StatusOr<std::vector<tensorflow::KeyValueEntry>>&)>;
   using ChangedKeyValuesCallback =
       std::function<void(const std::map<std::string, std::string>&)>;
-
-  // A JobStateCallback is a callback that receives the current and previous job
-  // state. If there is no previous job state, previous_state is empty. The
-  // provided states are only valid for the duration of the callback.
-  struct JobStateUpdate {
-    absl::Span<const tensorflow::CoordinatedTaskStateInfo> previous_state;
-    absl::Span<const tensorflow::CoordinatedTaskStateInfo> current_state;
-  };
-  using JobStateCallback = absl::AnyInvocable<void(const JobStateUpdate&)>;
 
   CoordinationServiceAgent() = default;
 
@@ -153,9 +146,16 @@ class CoordinationServiceAgent {
   absl::StatusOr<std::vector<tensorflow::CoordinatedTaskStateInfo>>
   GetTaskState(const std::vector<tensorflow::CoordinatedTask>& task);
 
-  // Gets status of a remote job.
-  absl::StatusOr<std::vector<tensorflow::CoordinatedTaskStateInfo>> GetJobState(
-      absl::string_view job_name);
+  // Watches the status of a remote job.
+  absl::StatusOr<tensorflow::WatchJobStateResponse> WatchJobState(
+      absl::string_view job_name, std::optional<int64_t> version_number);
+
+  // Note: Cancel the underlying RPC call with `call_opts->StartCancel()` and
+  // `call_opts->ClearCancelCallback()`.
+  std::shared_ptr<CallOptions> WatchJobStateAsync(
+      absl::string_view job_name, std::optional<int64_t> version_number,
+      std::function<void(absl::StatusOr<tensorflow::WatchJobStateResponse>)>
+          callback);
 
   // Report error to coordination service. This will invoke the error callback.
   // Note that the error payload will set `is_reported_error` to true, to
@@ -318,10 +318,15 @@ class CoordinationServiceAgent {
   absl::StatusOr<std::vector<tensorflow::CoordinatedTask>> GetAliveTasks(
       const std::vector<tensorflow::CoordinatedTask>& tasks);
 
-  // Registers a JobStateCallback that will be invoked when the state of the job
-  // changes. Multiple changes to the job state may be coalesced into a single
-  // call to the provided callback. Callback invocations may also be delayed.
-  void AddJobStateCallback(JobStateCallback callback);
+  // Returns the latest known set of incarnation ids for the provided
+  // tasks. Incarnation ids can be refreshed by calling GetAliveTasks.
+  //
+  // When a task starts executing, it generates a random 64 bit incarnation id.
+  // If a task fails and restarts, for example, it will have a different
+  // incarnation id before and after it fails. This allows us to distinguish
+  // different executions of the same task.
+  absl::StatusOr<std::vector<IncarnationId>> Incarnations(
+      absl::Span<const int> tasks) const;
 
   // Get unowned Env* that the agent was initialized with.
   absl::StatusOr<Env*> GetEnv();
@@ -357,13 +362,8 @@ class CoordinationServiceAgent {
   // Resets the cancellation manager for error polling.
   void ResetCancellationManager();
 
-  // Watches the state of this job.
-  void WatchJobState();
-  // Stops watching the state of this job.
-  void StopWatchingJobState();
-
   Env* env_ = nullptr;  // Not owned.
-  const uint64_t incarnation_id_ = random::New64();
+  const IncarnationId incarnation_id_{random::New64()};
   tensorflow::CoordinatedTask task_;
   tensorflow::CoordinationServiceConfig configs_;
   StatusCallback error_fn_;
@@ -377,18 +377,17 @@ class CoordinationServiceAgent {
       ABSL_GUARDED_BY(state_mu_);
   absl::flat_hash_set<std::string> ongoing_barriers_ ABSL_GUARDED_BY(state_mu_);
 
-  uint64_t leader_incarnation_ = 0;
+  IncarnationId leader_incarnation_{0};
   tensorflow::DeviceInfo cluster_devices_;
 
   absl::Mutex shutdown_mu_;
   bool shutting_down_ ABSL_GUARDED_BY(shutdown_mu_) = false;
   std::unique_ptr<Thread> heartbeat_thread_;
 
-  absl::Mutex job_state_watcher_mu_;
-  std::vector<JobStateCallback> job_state_callbacks_
-      ABSL_GUARDED_BY(job_state_watcher_mu_);
-  std::unique_ptr<Thread> job_state_watcher_thread_
-      ABSL_GUARDED_BY(job_state_watcher_mu_);
+  // The latest known incarnation ids for all alive tasks, keyed by task id.
+  mutable absl::Mutex incarnations_mu_;
+  absl::flat_hash_map<int, IncarnationId> incarnations_
+      ABSL_GUARDED_BY(incarnations_mu_);
 
   // Must outlive coordination client which may need to access it within
   // GetKeyValueAsync() callbacks.

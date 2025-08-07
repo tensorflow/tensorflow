@@ -1,4 +1,4 @@
-// RUN: stablehlo-quant-opt %s -stablehlo-defer-activation-transpose \
+// RUN: stablehlo-quant-opt %s -tf-stablehlo-defer-activation-transpose \
 // RUN:   -split-input-file -verify-diagnostics | FileCheck %s
 
 // Tests that an `add(transpose(arg0), arg1)` pattern is converted to

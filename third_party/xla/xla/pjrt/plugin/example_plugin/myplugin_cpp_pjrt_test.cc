@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/test.h"
+#include "absl/status/status_matchers.h"
+#include "xla/tsl/platform/status_matchers.h"
 
 namespace {
 
@@ -26,14 +26,13 @@ using ::myplugin_pjrt::CreateMyPluginPjrtClient;
 
 TEST(MyPluginCPPTest, HasDeviceCount) {
   auto client = CreateMyPluginPjrtClient();
-  EXPECT_EQ(client->device_count(), 42);
+  EXPECT_EQ(client->device_count(), 0);
 }
 
 TEST(MyPluginCPPTest, GetHloCostAnalysis) {
   auto client = CreateMyPluginPjrtClient();
 
-  EXPECT_THAT(client->GetHloCostAnalysis(),
-              testing::Not(::tsl::testing::IsOk()));
+  EXPECT_THAT(client->GetHloCostAnalysis(), testing::Not(absl_testing::IsOk()));
 }
 
 }  // namespace

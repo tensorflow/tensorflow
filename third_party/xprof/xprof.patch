@@ -1,0 +1,56 @@
+diff --git a/plugin/xprof/protobuf/BUILD b/plugin/xprof/protobuf/BUILD
+--- a/plugin/xprof/protobuf/BUILD
++++ b/plugin/xprof/protobuf/BUILD
+@@ -1,7 +1,6 @@
+ # Description:
+ #  Protobufs used by TensorBoard profile plugin.
+ 
+-load("@com_google_protobuf//:protobuf.bzl", "py_proto_library")
+ load("@xla//xla/tsl/platform:build_config.bzl", xprof_proto_library = "tf_proto_library")
+ 
+ package(
+diff --git a/xprof/convert/hlo_to_tools_data.cc b/xprof/convert/hlo_to_tools_data.cc
+--- a/xprof/convert/hlo_to_tools_data.cc
++++ b/xprof/convert/hlo_to_tools_data.cc
+@@ -62,7 +62,7 @@ absl::StatusOr<std::string> ConvertHloProtoToMemoryViewer(
+ 
+   std::string json_output;
+   tsl::protobuf::util::JsonPrintOptions options;
+-  options.always_print_primitive_fields = true;
++  options.always_print_fields_with_no_presence = true;
+   auto encoded_status = tsl::protobuf::util::MessageToJsonString(
+       result_or.value(), &json_output, options);
+   if (!encoded_status.ok()) {
+diff --git a/xprof/convert/xplane_to_memory_profile.cc b/xprof/convert/xplane_to_memory_profile.cc
+--- a/xprof/convert/xplane_to_memory_profile.cc
++++ b/xprof/convert/xplane_to_memory_profile.cc
+@@ -533,7 +533,7 @@ template <typename Proto>
+ absl::Status ConvertProtoToJson(const Proto& proto_output,
+                                 std::string* json_output) {
+   tsl::protobuf::util::JsonPrintOptions json_options;
+-  json_options.always_print_primitive_fields = true;
++  json_options.always_print_fields_with_no_presence = true;
+   auto status = tsl::protobuf::util::MessageToJsonString(
+       proto_output, json_output, json_options);
+   if (!status.ok()) {
+diff --git a/xprof/convert/xplane_to_tools_data.cc b/xprof/convert/xplane_to_tools_data.cc
+--- a/xprof/convert/xplane_to_tools_data.cc
++++ b/xprof/convert/xplane_to_tools_data.cc
+@@ -248,7 +248,7 @@ absl::StatusOr<std::string> ConvertMultiXSpacesToPodViewer(
+ 
+   std::string json_output;
+   tsl::protobuf::util::JsonPrintOptions opts;
+-  opts.always_print_primitive_fields = true;
++  opts.always_print_fields_with_no_presence = true;
+   auto encode_status = tsl::protobuf::util::MessageToJsonString(
+       ConvertOpStatsToPodViewer(combined_op_stats), &json_output, opts);
+   if (!encode_status.ok()) {
+@@ -325,7 +325,7 @@ absl::StatusOr<std::string> ConvertMultiXSpacesToOpProfileViewer(
+       profile);
+   std::string json_output;
+   tsl::protobuf::util::JsonPrintOptions opts;
+-  opts.always_print_primitive_fields = true;
++  opts.always_print_fields_with_no_presence = true;
+ 
+   auto encode_status =
+       tsl::protobuf::util::MessageToJsonString(profile, &json_output, opts);

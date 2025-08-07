@@ -27,7 +27,6 @@ namespace xla {
 
 absl::StatusOr<std::unique_ptr<PjRtClient>> GetXlaPjrtGpuClient(
     GpuClientOptions options) {
-  // TODO(masonchang): Wrap the GPU Client inside the PJRT Sandwich
   if (options.use_tfrt_gpu_client) {
     return GetTfrtGpuClient(options);
   }

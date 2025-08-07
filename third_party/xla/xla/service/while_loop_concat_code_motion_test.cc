@@ -15,10 +15,11 @@ limitations under the License.
 
 #include "xla/service/while_loop_concat_code_motion.h"
 
-#include <algorithm>
-#include <iterator>
+#include <memory>
 
-#include "absl/algorithm/container.h"
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -96,6 +98,54 @@ TEST_F(WhileLoopConcatCodeMotionTest, SimpleMotion) {
               op::Tuple(op::Add(),
                         op::Add(op::CustomCall(),
                                 op::Reshape(op::Broadcast(op::CustomCall())))));
+}
+
+TEST_F(WhileLoopConcatCodeMotionTest, SimpleMotionMultipleUses) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule test
+
+    %cond {
+      %param = (s32[], f32[1024,1024], f32[1024,1024]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %constant = s32[] constant(5)
+      ROOT result = pred[] compare(%gte.0, %constant), direction=LT
+    }
+
+    %body {
+      %param = (s32[], f32[1024,1024], f32[1024,1024]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = f32[1024,1024] get-tuple-element(%param), index=1
+      %gte.2 = f32[1024,1024] get-tuple-element(%param), index=2
+      %concat = f32[2048,1024] concatenate(%gte.1, %gte.2), dimensions={0}
+      %ccall = f32[2048,1024] custom-call(%concat), custom_call_target="test"
+      %slice.0 = f32[1024,1024] slice(%ccall), slice={[0:1024], [0:1024]}
+      %slice.1 = f32[1024,1024] slice(%ccall), slice={[1024:2048], [0:1024]}
+      %ccall2 = f32[1024,1024] custom-call(), custom_call_target="test2"
+      %add.0 = f32[1024,1024] add(%slice.0, %ccall2)
+      %add.1 = f32[1024,1024] add(%slice.1, %ccall2)
+      %t0 = token[] after-all()
+      %outfeed = token[] outfeed(%slice.1, %t0)
+      %constant = s32[] constant(1)
+      %increment_iteration = s32[] add(s32[] %gte.0, s32[] %constant)
+      ROOT %loop_result = (s32[], f32[1024,1024], f32[1024,1024])
+        tuple(%increment_iteration, %add.0, %add.1)
+    }
+
+    ENTRY test_main {
+      %param.0 = f32[1024,1024] parameter(0)
+      %param.1 = f32[1024,1024] parameter(1)
+      %constant.0 = s32[] constant(0)
+      %while_init = (s32[], f32[1024,1024], f32[1024,1024]) tuple(%constant.0, %param.0, %param.1)
+      %while.0 = (s32[], f32[1024,1024], f32[1024,1024]) while(%while_init), condition=%cond, body=%body
+      ROOT %while.1 = (s32[], f32[1024,1024], f32[1024,1024]) while(%while.0), condition=%cond, body=%body
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, WhileLoopConcatCodeMotion(
+                                            /*min_operand_count_to_optimize=*/2)
+                                            .Run(module.get()));
+  EXPECT_FALSE(changed);
 }
 
 TEST_F(WhileLoopConcatCodeMotionTest, NoMotionWithChangedElementOrder) {

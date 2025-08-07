@@ -37,6 +37,7 @@ namespace {
 
 using ::testing::ExplainMatchResult;
 using ::testing::FieldsAre;
+using ::testing::IsEmpty;
 using ::testing::Pair;
 using ::testing::Pointee;
 using ::testing::Property;
@@ -373,6 +374,75 @@ TEST_F(HloDiffTest, FindConnectedComponentsWorks) {
                     FieldsAre(/*changed_instruction_count=*/0,
                               /*left_unmatched_instruction_count=*/6,
                               /*right_unmatched_instruction_count=*/6))));
+}
+
+TEST_F(HloDiffTest, FindConnectedComponentsWorksForIsolatedComputations) {
+  // Create left module with entry computation containing the following
+  // structure:
+  // [Param 0] ---> ┌-------┐
+  //                | add_0 |
+  // [Param 1] ---> └-------┘
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_l,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+parameter.0 = f32[] parameter(0)
+parameter.1 = f32[] parameter(1)
+add.0 = f32[] add(parameter.0, parameter.1)
+}
+)"));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_l,
+                          HloGumgraph::Create(module_l.get()));
+  // Create left module with entry computation containing the following
+  // structure:
+  // [Const 0] ---> ┌-------┐
+  //                | sub_0 |
+  // [Const 1] ---> └-------┘
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_r,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+constant.0 = f32[] constant(0)
+constant.1 = f32[] constant(1)
+subtract.0 = f32[] subtract(constant.0, constant.1)
+}
+)"));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_r,
+                          HloGumgraph::Create(module_r.get()));
+  auto mappings = std::make_unique<HloGumgraphMappings>();
+  // Root nodes are matched by default before the matcher is called.
+  mappings->MapInstructionsIfAbsent(&graph_l->GetRoot(), &graph_r->GetRoot(),
+                                    MatcherType::kManual);
+  std::unique_ptr<const DiffResult> diff_result =
+      ConstructDiffResult(*graph_l, *graph_r, *mappings);
+  std::unique_ptr<const DiffSummary> diff_summary =
+      ConstructDiffSummary(*module_l, *module_r, *diff_result);
+  EXPECT_THAT(diff_summary->computation_diff_patterns,
+              UnorderedElementsAre(
+                  FieldsAre(
+                      /*fingerprint=*/619838372110990418U,
+                      /*computation_groups=*/
+                      UnorderedElementsAre(FieldsAre(
+                          /*left_computations=*/UnorderedElementsAre(Pointee(
+                              Property(&HloComputation::name, "entry"))),
+                          /*right_computations=*/IsEmpty())),
+                      /*diff_metrics=*/
+                      FieldsAre(/*changed_instruction_count=*/0,
+                                /*left_unmatched_instruction_count=*/3,
+                                /*right_unmatched_instruction_count=*/0)),
+                  FieldsAre(
+                      /*fingerprint=*/591642684880638740U,
+                      /*computation_groups=*/
+                      UnorderedElementsAre(FieldsAre(
+                          /*left_computations=*/IsEmpty(),
+                          /*right_computations=*/UnorderedElementsAre(Pointee(
+                              Property(&HloComputation::name, "entry"))))),
+                      /*diff_metrics=*/
+                      FieldsAre(/*changed_instruction_count=*/0,
+                                /*left_unmatched_instruction_count=*/0,
+                                /*right_unmatched_instruction_count=*/3))));
 }
 
 MATCHER(EqualsComputationGroup, "") {

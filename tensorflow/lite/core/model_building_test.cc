@@ -30,9 +30,11 @@ namespace tflite {
 namespace model_builder {
 namespace {
 
-using testing::ElementsAre;
-using testing::ElementsAreArray;
-using testing::Eq;
+using ::testing::ElementsAre;
+using ::testing::ElementsAreArray;
+using ::testing::Eq;
+using ::testing::FloatEq;
+using ::testing::Pointwise;
 
 TEST(ModelBuilderTest,
      SingleGraphDefinitionWithoutFinalBuildDoesNotLeakMemory) {
@@ -120,6 +122,59 @@ TEST(ModelBuilderTest, AbsGraphWorks) {
       reinterpret_cast<int32_t*>(interpreter.output_tensor(0)->data.data), 6);
 
   EXPECT_THAT(output, ElementsAre(3, 2, 1, 0, 1, 2));
+}
+
+TEST(ModelBuilderTest, ConstantTensorsCanBeAdded) {
+  ModelBuilder builder;
+  Buffer buffer0 = NewConstantBuffer<kTfLiteInt32>(
+      builder, /*shape=*/{2, 1},
+      /*data=*/std::vector<int>{3, 4}, NoQuantization());
+  Buffer buffer1 = NewConstantBuffer<kTfLiteInt32>(
+      builder, /*shape=*/{2, 1},
+      /*data=*/std::vector<int>{7, 3}, NoQuantization());
+
+  Graph graph = NewGraph(builder);
+  const Tensor in0 = NewConstantTensor(graph, buffer0);
+  const Tensor in1 = NewConstantTensor(graph, buffer1);
+  const Tensor out = Add(in0, in1);
+  MarkOutput(out);
+
+  tflite::Interpreter interpreter;
+  builder.Build(interpreter);
+
+  interpreter.AllocateTensors();
+  interpreter.Invoke();
+
+  absl::Span<int32_t> output(
+      reinterpret_cast<int32_t*>(interpreter.output_tensor(0)->data.data), 2);
+
+  EXPECT_THAT(output, ElementsAre(10, 7));
+}
+
+TEST(ModelBuilderTest, FullyConnectedWorks) {
+  ModelBuilder builder;
+  Buffer input = NewConstantBuffer<kTfLiteFloat32>(
+      builder, /*shape=*/{3, 2},
+      /*data=*/std::vector<int>{1, 2, 3, 4, 5, 6}, NoQuantization());
+  Buffer weights = NewConstantBuffer<kTfLiteFloat32>(
+      builder, /*shape=*/{1, 2},
+      /*data=*/std::vector<int>{7, 3}, NoQuantization());
+
+  Graph graph = NewGraph(builder);
+  const Tensor in0 = NewConstantTensor(graph, input);
+  const Tensor out = FullyConnected(in0, weights);
+  MarkOutput(out);
+
+  tflite::Interpreter interpreter;
+  builder.Build(interpreter);
+
+  interpreter.AllocateTensors();
+  interpreter.Invoke();
+
+  absl::Span<float> output(
+      reinterpret_cast<float*>(interpreter.output_tensor(0)->data.data), 3);
+
+  EXPECT_THAT(output, Pointwise(FloatEq(), {13, 33, 53}));
 }
 
 }  // namespace

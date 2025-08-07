@@ -60,9 +60,40 @@ class UnicodeEncodeOpTest(test.TestCase, parameterized.TestCase):
         ragged_string_ops.unicode_encode(encoding="UTF-8")  # pylint: disable=no-value-for-parameter,unexpected-keyword-arg
 
   @parameterized.parameters("UTF-8", "UTF-16-BE", "UTF-32-BE")
-  def testStrictErrors(self, encoding):
-    test_value = np.array([ord('H'), ord('e'), 0x7FFFFFFF, -1, ord('o')],
+  def testStrictErrorsValid(self, encoding):
+    # Noncharacters are not errors.
+    # See https://www.unicode.org/versions/corrigendum9.html.
+    test_value = np.array([ord("H"), ord("e"), ord("o"), 0, ord("\b"), 0x1F600,
+                           0xFDD0,  # noncharacter
+                           0xFFFE, 0xFFFF,  # last two in BMP
+                           0x10FFFF],  # largest valid
                           np.int32)
+    expected_value = (
+        u"Heo\0\b\U0001f600\ufdd0\ufffe\uffff\U0010ffff"
+    ).encode(encoding)
+    unicode_encode_op = ragged_string_ops.unicode_encode(test_value, encoding,
+                                                         "strict")
+    self.assertAllEqual(unicode_encode_op, expected_value)
+
+  @parameterized.parameters("UTF-8", "UTF-16-BE", "UTF-32-BE")
+  def testStrictErrorsNegative(self, encoding):
+    test_value = np.array([-1], np.int32)
+    with self.cached_session() as session:
+      with self.assertRaises(errors.InvalidArgumentError):
+        session.run(
+            ragged_string_ops.unicode_encode(test_value, encoding, "strict"))
+
+  @parameterized.parameters("UTF-8", "UTF-16-BE", "UTF-32-BE")
+  def testStrictErrorsTooLarge(self, encoding):
+    test_value = np.array([0x110000], np.int32)
+    with self.cached_session() as session:
+      with self.assertRaises(errors.InvalidArgumentError):
+        session.run(
+            ragged_string_ops.unicode_encode(test_value, encoding, "strict"))
+
+  @parameterized.parameters("UTF-8", "UTF-16-BE", "UTF-32-BE")
+  def testStrictErrorsSurrogatePair(self, encoding):
+    test_value = np.array([0xD83D, 0xDE00], np.int32)
     with self.cached_session() as session:
       with self.assertRaises(errors.InvalidArgumentError):
         session.run(
@@ -71,9 +102,28 @@ class UnicodeEncodeOpTest(test.TestCase, parameterized.TestCase):
   @parameterized.parameters("UTF-8", "UTF-16-BE", "UTF-32-BE")
   @test_util.run_v1_only("b/120545219")
   def testIgnoreErrors(self, encoding):
-    test_value = np.array([ord('H'), ord('e'), 0x7FFFFFFF, -1, ord('o')],
+    # Noncharacters are not errors.
+    # See https://www.unicode.org/versions/corrigendum9.html.
+    test_value = np.array([ord('H'), ord('e'), 0x7FFFFFFF, -1, ord('o'),
+                           0, ord('\b'), 0x1F600,  # valid
+                           0xD83D, 0xDE00,  # invalid, surrogate code points
+                           0xFDD0,  # noncharacter
+                           0xFFFE, 0xFFFF,  # last two in BMP
+                           0x10FFFF,  # last in plane 16 = last in Unicode
+                           0x110000],  # invalid, beyond Unicode
                           np.int32)
-    expected_value = u"Heo".encode(encoding)
+    expected_value = (
+        u"Heo\0\b\U0001F600\ufdd0\ufffe\uffff\U0010ffff"
+    ).encode(encoding)
+    unicode_encode_op = ragged_string_ops.unicode_encode(test_value, encoding,
+                                                         "ignore")
+    self.assertAllEqual(unicode_encode_op, expected_value)
+
+  @parameterized.parameters("UTF-8", "UTF-16-BE", "UTF-32-BE")
+  @test_util.run_v1_only("b/120545219")
+  def testIgnoreErrorsSurrogate(self, encoding):
+    test_value = np.array([0xD83D, 0xDE00], np.int32)
+    expected_value = b""
     unicode_encode_op = ragged_string_ops.unicode_encode(test_value, encoding,
                                                          "ignore")
     self.assertAllEqual(unicode_encode_op, expected_value)
@@ -81,9 +131,18 @@ class UnicodeEncodeOpTest(test.TestCase, parameterized.TestCase):
   @parameterized.parameters("UTF-8", "UTF-16-BE", "UTF-32-BE")
   @test_util.run_v1_only("b/120545219")
   def testReplaceErrors(self, encoding):
-    test_value = np.array([ord('H'), ord('e'), 0x7FFFFFFF, -1, ord('o')],
+    # Noncharacters are not errors.
+    # See https://www.unicode.org/versions/corrigendum9.html.
+    test_value = np.array([ord('H'), ord('e'), 0x7FFFFFFF, -1, ord('o'),
+                           0, ord('\b'), 0x1F600,  # valid
+                           0xD83D, 0xDE00,  # invalid, surrogate code points
+                           0xFDD0,  # noncharacter
+                           0xFFFE, 0xFFFF,  # last two in BMP
+                           0x10FFFF,  # last in plane 16 = last in Unicode
+                           0x110000],  # invalid, beyond Unicode
                           np.int32)
-    expected_value = u"He\U0000fffd\U0000fffdo".encode(encoding)
+    expected_value = (u"He\ufffd\ufffdo\0\b\U0001F600\ufffd\ufffd"
+                      u"\ufdd0\ufffe\uffff\U0010ffff\ufffd").encode(encoding)
     unicode_encode_op = ragged_string_ops.unicode_encode(test_value, encoding,
                                                          "replace")
     self.assertAllEqual(unicode_encode_op, expected_value)
@@ -105,14 +164,15 @@ class UnicodeEncodeOpTest(test.TestCase, parameterized.TestCase):
 
     # Verify non-default replacement with an unpaired surrogate.
     test_value = np.array([0xD801], np.int32)
-    expected_value = u"A".encode(encoding)
+    expected_value = "\u0041".encode(encoding)
     unicode_encode_op = ragged_string_ops.unicode_encode(test_value, encoding,
                                                          "replace", 0x41)
     self.assertAllEqual(unicode_encode_op, expected_value)
 
-    # Test with a noncharacter code point.
+    # Test with a noncharacter code point.  These are not errors.
+    # See https://www.unicode.org/versions/corrigendum9.html.
     test_value = np.array([0x1FFFF], np.int32)
-    expected_value = u"A".encode(encoding)
+    expected_value = u"\U0001ffff".encode(encoding)
     unicode_encode_op = ragged_string_ops.unicode_encode(test_value, encoding,
                                                          "replace", 0x41)
     self.assertAllEqual(unicode_encode_op, expected_value)

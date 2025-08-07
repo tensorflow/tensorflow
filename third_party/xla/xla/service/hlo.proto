@@ -381,8 +381,8 @@ message HloInstructionProto {
   // Used to be wait_on_operation_queues.
   reserved 84;
 
-  // Sparsity descriptor for dot operation.
-  repeated xla.SparsityDescriptor dot_sparsity = 86;
+  // Used to be dot_sparsity.
+  reserved 86;
 
   // Represents the list of devices that participate in a collective operation.
   xla.CollectiveDeviceListProto collective_device_list = 87;
@@ -523,8 +523,12 @@ message StackFrameIndexProto {
     int32 function_name_id = 2;
     // Line number.
     int32 line = 3;
+    // End line number.
+    int32 end_line = 5;
     // Column number.
     int32 column = 4;
+    // End column number.
+    int32 end_column = 6;
   }
 
   // Serialization of frame.
@@ -632,6 +636,8 @@ message HloModuleProto {
 
   // Frontend attributes to pass to the XLA backend.
   xla.FrontendAttributes frontend_attributes = 19;
+
+  xla.OriginalValueRecoveryTableProto original_value_recovery_table = 20;
 
   reserved 9;
   reserved "dynamic_parameter_binding";
@@ -859,4 +865,13 @@ message HloPassMetadata {
 
   // Used to log any number of key, value pair stats per pass.
   repeated KeyValueMetric kv_metrics = 11;
+}
+
+message OriginalValueRecoveryTableProto {
+  message Entry {
+    OriginalArrayProto replaced_original_array = 1;
+    OriginalArrayProto replacing_original_array = 2;
+    HloModuleProto recovery_module = 3;
+  }
+  repeated Entry entries = 1;
 }

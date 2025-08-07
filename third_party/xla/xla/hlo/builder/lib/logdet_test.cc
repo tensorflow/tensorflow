@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <limits>
 
+#include <gtest/gtest.h>
 #include "xla/array.h"
 #include "xla/array2d.h"
 #include "xla/array3d.h"
@@ -25,13 +26,12 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/tests/client_library_test_base.h"
-#include "xla/tests/test_macros.h"
 
 namespace {
 
 using LogDetTest = xla::ClientLibraryTestBase;
 
-XLA_TEST_F(LogDetTest, Simple) {
+TEST_F(LogDetTest, Simple) {
   xla::XlaBuilder builder(TestName());
 
   xla::Array2D<float> a_vals({
@@ -54,7 +54,7 @@ XLA_TEST_F(LogDetTest, Simple) {
                            xla::ErrorSpec(1e-4));
 }
 
-XLA_TEST_F(LogDetTest, SimpleTriangle) {
+TEST_F(LogDetTest, SimpleTriangle) {
   xla::XlaBuilder builder(TestName());
 
   xla::Array2D<float> a_vals({
@@ -78,7 +78,7 @@ XLA_TEST_F(LogDetTest, SimpleTriangle) {
                            xla::ErrorSpec(1e-4));
 }
 
-XLA_TEST_F(LogDetTest, SimpleBatched) {
+TEST_F(LogDetTest, SimpleBatched) {
   xla::XlaBuilder builder(TestName());
 
   xla::Array3D<float> a_vals({
@@ -116,7 +116,7 @@ XLA_TEST_F(LogDetTest, SimpleBatched) {
                            xla::ErrorSpec(1e-4));
 }
 
-XLA_TEST_F(LogDetTest, LogdetOfLargerMatricesBatched) {
+TEST_F(LogDetTest, LogdetOfLargerMatricesBatched) {
   xla::XlaBuilder builder(TestName());
 
   xla::Array<float> a_vals = {

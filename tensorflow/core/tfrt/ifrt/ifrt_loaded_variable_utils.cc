@@ -85,28 +85,29 @@ std::string GetRuntimeNameFromVarHandle(const ResourceHandle& handle) {
 }
 
 absl::Status AsyncLoadRestoredTensorAsIfrtLoadedVariable(
-    absl::string_view runtime_name,
+    absl::string_view tensor_name,
     std::shared_ptr<xla::ifrt::Client> ifrt_client,
     const tsl::thread::ThreadPool& thread_pool,
-    const ifrt_serving::IfrtRestoreTensorRegistry& ifrt_restore_tensor_registry,
-    ifrt_serving::IfrtLoadedVariableRegistry& ifrt_loaded_variable_registry,
+    const ifrt_serving::IfrtRestoreTensorRegistry& restore_tensor_registry,
+    ifrt_serving::IfrtLoadedVariableRegistry& loaded_variable_registry,
     tfrt::ConcurrentWorkQueue* checkpoint_loader_queue,
     const VariableDeviceShardingConfig& sharding_config) {
-  IfrtLoadedVariableRegistry::Key loaded_variable_key{
+  IfrtLoadedVariableRegistry::Key key{
       .device_ids = sharding_config.device_ids,
-      .input_name = std::string(runtime_name),
+      .input_name = std::string(tensor_name),
       .hlo_sharding = sharding_config.hlo_sharding,
   };
-  if (ifrt_loaded_variable_registry.GetLoadedVariable(loaded_variable_key)
-          .ok()) {
-    VLOG(1) << "Found alread registered variable for " << runtime_name;
+
+  if (loaded_variable_registry.GetLoadedVariable(key).ok()) {
+    VLOG(1) << "Found alread registered variable for " << tensor_name;
     return absl::OkStatus();
   }
+
   xla::ifrt::Future<tensorflow::Tensor> restored_tensor_future =
-      ifrt_restore_tensor_registry.GetRestoredTensor(runtime_name);
+      restore_tensor_registry.GetRestoredTensor(tensor_name);
   if (!restored_tensor_future.IsValid()) {
     return absl::InternalError(absl::StrCat(
-        "LoadVariableOp: failed to fetch variable tensor: ", runtime_name));
+        "LoadVariableOp: failed to fetch variable tensor: ", tensor_name));
   }
   auto loaded_variable_promise =
       xla::ifrt::Future<xla::ifrt::ArrayRef>::CreatePromise();
@@ -114,14 +115,15 @@ absl::Status AsyncLoadRestoredTensorAsIfrtLoadedVariable(
       xla::ifrt::Future<xla::ifrt::ArrayRef>(loaded_variable_promise);
   TF_ASSIGN_OR_RETURN(
       absl::StatusOr<ifrt_serving::DtypeAndShape> dtype_and_shape,
-      ifrt_restore_tensor_registry.GetDtypeAndShape(runtime_name));
-  TF_RETURN_IF_ERROR(ifrt_loaded_variable_registry.TryRegisterLoadedVariable(
-      loaded_variable_key,
+      restore_tensor_registry.GetDtypeAndShape(tensor_name));
+  TF_RETURN_IF_ERROR(loaded_variable_registry.TryRegisterLoadedVariable(
+      key,
       [&]() -> absl::StatusOr<
                 ifrt_serving::IfrtLoadedVariableRegistry::LoadedVariable> {
         return ifrt_serving::IfrtLoadedVariableRegistry::LoadedVariable(
             {.array = loaded_variable_future});
       }));
+
   restored_tensor_future.OnReady(
       [ifrt_client = std::move(ifrt_client), &thread_pool = thread_pool,
        checkpoint_loader_queue = checkpoint_loader_queue,

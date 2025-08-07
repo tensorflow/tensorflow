@@ -29,6 +29,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/blocking_counter.h"
@@ -549,8 +550,9 @@ TEST(FfiTest, MissingBufferArgument) {
       [](auto) { return Error::Success(); });
   auto status = Call(*handler, call_frame);
 
-  EXPECT_THAT(status, StatusIs(absl::StatusCode::kInvalidArgument,
-                               HasSubstr("Wrong number of arguments")));
+  EXPECT_THAT(status,
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     HasSubstr("Wrong number of arguments")));
 }
 
 TEST(FfiTest, WrongRankBufferArgument) {
@@ -566,8 +568,9 @@ TEST(FfiTest, WrongRankBufferArgument) {
   auto status = Call(*handler, call_frame);
 
   EXPECT_THAT(status,
-              StatusIs(absl::StatusCode::kInvalidArgument,
-                       HasSubstr("Wrong buffer rank: expected 1 but got 2")));
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInvalidArgument,
+                  HasSubstr("Wrong buffer rank: expected 1 but got 2")));
 }
 
 TEST(FfiTest, WrongTypeBufferArgument) {
@@ -582,10 +585,10 @@ TEST(FfiTest, WrongTypeBufferArgument) {
       [](auto) { return Error::Success(); });
   auto status = Call(*handler, call_frame);
 
-  EXPECT_THAT(
-      status,
-      StatusIs(absl::StatusCode::kInvalidArgument,
-               HasSubstr("Wrong buffer dtype: expected F32 but got S32")));
+  EXPECT_THAT(status,
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInvalidArgument,
+                  HasSubstr("Wrong buffer dtype: expected F32 but got S32")));
 }
 
 TEST(FfiTest, WrongNumberOfArguments) {
@@ -601,8 +604,9 @@ TEST(FfiTest, WrongNumberOfArguments) {
       Ffi::Bind().Attr<int>("foo").To([](int foo) { return Error::Success(); });
   auto status = Call(*handler, call_frame);
 
-  EXPECT_THAT(status, StatusIs(absl::StatusCode::kInvalidArgument,
-                               HasSubstr("Wrong number of attributes")));
+  EXPECT_THAT(status,
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     HasSubstr("Wrong number of attributes")));
   EXPECT_THAT(status.message(), HasSubstr("foo"));
   EXPECT_THAT(status.message(), HasSubstr("bar"));
 }

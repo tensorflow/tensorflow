@@ -20,13 +20,16 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/platform_util.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 namespace {
@@ -190,6 +193,42 @@ TEST_F(RedzoneBuffersTest, VerifyOutputTupleTwoElements) {
   EXPECT_EQ(rzb3.output_buffers().size(), 1);
   EXPECT_FALSE(rzb3.output_shape().IsTuple());
   EXPECT_EQ(rzb3.output_shape(), root.shape().tuple_shapes(0));
+}
+
+TEST_F(RedzoneBuffersTest, FromExecutable) {
+  constexpr absl::string_view kHlo = R"(
+  HloModule hlo
+  ENTRY main {
+    p0 = f32[2,2] parameter(0)
+    p1 = f32[4,4] parameter(1)
+    p2 = f32[6,6] parameter(2)
+    ROOT root = (f32[1,2,3], u8[1,2]) custom-call(p0, p1, p2),
+    custom_call_target="fake"
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          GetOptimizedModule(kHlo));
+  TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                          PlatformUtil::GetDefaultPlatform());
+  TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_executor,
+                          platform->ExecutorForDevice(0));
+  auto allocator =
+      std::make_unique<se::StreamExecutorMemoryAllocator>(stream_executor);
+  TF_ASSERT_OK_AND_ASSIGN(se::Stream * stream, allocator->GetStream(0));
+
+  HloComputation* computation = module->entry_computation();
+  TF_ASSERT_OK_AND_ASSIGN(
+      RedzoneBuffers rzb,
+      RedzoneBuffers::FromComputation(*computation, allocator.get(), stream,
+                                      RedzoneBuffers::kAllInputs, true, true,
+                                      kRedzonePaddingBytes));
+
+  EXPECT_EQ(rzb.input_shapes().size(), 3);
+  EXPECT_EQ(rzb.input_shapes()[0], ShapeUtil::MakeShape(F32, {2, 2}));
+  EXPECT_EQ(rzb.input_shapes()[1], ShapeUtil::MakeShape(F32, {4, 4}));
+  EXPECT_EQ(rzb.input_shapes()[2], ShapeUtil::MakeShape(F32, {6, 6}));
+  EXPECT_EQ(rzb.input_buffers().size(), 3);
+  EXPECT_EQ(rzb.output_buffers().size(), 0);
+  EXPECT_NE(rzb.output_shape(), ShapeUtil::MakeShape(F32, {1, 2, 3}));
 }
 
 }  // namespace

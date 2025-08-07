@@ -1,5 +1,7 @@
 # This package is a shim layer over TF and TFLite op kernels.
 
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("//tensorflow:tensorflow.bzl", "if_android", "if_mobile", "if_not_mobile", "tf_cc_test", "tf_copts")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
@@ -228,7 +230,10 @@ cc_library(
     name = "status_macros",
     hdrs = ["status_macros.h"],
     visibility = ["//visibility:public"],
-    deps = ["@com_google_absl//absl/status"],
+    deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 cc_library(

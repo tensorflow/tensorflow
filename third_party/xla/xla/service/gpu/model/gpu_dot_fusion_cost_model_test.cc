@@ -35,8 +35,8 @@ namespace {
 
 class GpuDotFusionCostModelTest : public HloHardwareIndependentTestBase {
  protected:
-  se::DeviceDescription device_description_{
-      TestGpuDeviceInfo::RTXA6000DeviceInfo()};
+  se::DeviceDescription dda6000_{TestGpuDeviceInfo::RTXA6000DeviceInfo()};
+  se::DeviceDescription ddh100_{TestGpuDeviceInfo::RTXH100SXMDeviceInfo()};
 };
 
 TEST_F(GpuDotFusionCostModelTest, GpuDotComputeBoundBf16) {
@@ -50,22 +50,33 @@ lhs_contracting_dims={1}, rhs_contracting_dims={0}, algorithm=dot_bf16_bf16_bf16
 })"));
 
   BlockLevelParameters block_params;
-  block_params.output_tile_sizes = {{64, 64}};
+  block_params.output_tile_sizes = {{16, 16}};
   block_params.num_warps = 4;
   block_params.num_ctas = 1;
   block_params.num_stages = 1;
   auto* dot =
       Cast<HloDotInstruction>(module->entry_computation()->root_instruction());
   ASSERT_IS_OK(GpuDotFusionCostModel::IsSupported(dot));
-  absl::Duration runtime =
+  absl::Duration runtime_a6000 =
       GpuDotFusionCostModel::EstimateRunTimeForDotOpWithBlockParameters(
-          dot, block_params, device_description_)
+          dot, block_params, dda6000_)
           .value();
-  absl::Duration expected_runtime_compute_bound =
+  absl::Duration expected_runtime_compute_bound_a6000 =
       detail::CalculateComputeTimeWithTileAndWaveQuantization(
-          dot, block_params.output_tile_sizes[0], device_description_)
+          dot, block_params.output_tile_sizes[0], dda6000_)
           .value();
-  ASSERT_EQ(runtime, expected_runtime_compute_bound);
+  ASSERT_EQ(runtime_a6000, expected_runtime_compute_bound_a6000);
+
+  block_params.output_tile_sizes = {{64, 64}};
+  absl::Duration runtime_h100 =
+      GpuDotFusionCostModel::EstimateRunTimeForDotOpWithBlockParameters(
+          dot, block_params, ddh100_)
+          .value();
+  absl::Duration expected_runtime_compute_bound_h100 =
+      detail::CalculateComputeTimeWithTileAndWaveQuantization(
+          dot, block_params.output_tile_sizes[0], ddh100_)
+          .value();
+  ASSERT_EQ(runtime_h100, expected_runtime_compute_bound_h100);
 }
 
 }  // namespace

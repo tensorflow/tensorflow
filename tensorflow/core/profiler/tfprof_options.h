@@ -104,7 +104,7 @@ struct Options {
  public:
   static absl::Status FromProtoStr(const string& opts_proto_str, Options* opts);
 
-  virtual ~Options() {}
+  virtual ~Options() = default;
   Options()
       : Options(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, "", {}, {}, {}, {}, {},
                 false, {}, "", {}) {}

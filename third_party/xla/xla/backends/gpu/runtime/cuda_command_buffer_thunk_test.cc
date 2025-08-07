@@ -60,7 +60,7 @@ limitations under the License.
 namespace xla::gpu {
 
 using MemoryAccess = BufferUse::MemoryAccess;
-using KernelArgsPacking = se::MultiKernelLoaderSpec::KernelArgsPacking;
+using KernelArgsPacking = se::KernelLoaderSpec::KernelArgsPacking;
 
 namespace {
 
@@ -70,9 +70,6 @@ se::StreamExecutor* GpuExecutor() {
   auto* platform = se::PlatformManager::PlatformWithName(name).value();
   return platform->ExecutorForDevice(0).value();
 }
-
-// Give a short aliases to execution threads.
-constexpr auto s0 = ExecutionStreamId(0);
 
 // Give a short alias to synchronization mode.
 static constexpr auto serialize =
@@ -120,7 +117,7 @@ TEST(CommandBufferThunkTest, CuDnnCmd) {
   TF_ASSERT_OK(graph.Prepare(dnn_support, se::NumericOptions{}));
   TF_ASSERT_OK(graph.Build(dnn_support, /*plan_id=*/std::nullopt));
   EXPECT_THAT(graph.SupportsExplicitCommandBufferConstruction(),
-              tsl::testing::IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
 
   std::vector<BufferAllocation::Slice> args;
   BufferAllocation alloc_input(/*index=*/0, kTotalElements, /*color=*/0);
@@ -147,7 +144,7 @@ TEST(CommandBufferThunkTest, CuDnnCmd) {
   auto dnn_graph = std::make_unique<se::gpu::CudnnGraph>(std::move(graph));
   CommandBufferCmdSequence commands;
   commands.Emplace<CuDnnCmd>(
-      s0, args, std::make_shared<se::dnn::LazyDnnGraph>(std::move(dnn_graph)));
+      args, std::make_shared<se::dnn::LazyDnnGraph>(std::move(dnn_graph)));
   TF_ASSERT_OK_AND_ASSIGN(
       CommandBufferCmdExecutor executor,
       CommandBufferCmdExecutor::Create(std::move(commands), serialize));

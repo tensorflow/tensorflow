@@ -46,7 +46,6 @@
 #include "xla/python/ifrt/mock.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
-#include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/ifrt_proxy/client/client.h"
 #include "xla/python/ifrt_proxy/client/registry.h"
@@ -122,8 +121,7 @@ class MockArrayTest : public testing::Test {
                 const void* data, DType dtype, Shape shape,
                 std::optional<absl::Span<const int64_t>> byte_strides,
                 ShardingRef sharding, Client::HostBufferSemantics semantics,
-                std::function<void()> on_done_with_host_buffer,
-                tsl::RCReference<UserContext> user_context)
+                std::function<void()> on_done_with_host_buffer)
                 -> absl::StatusOr<xla::ifrt::ArrayRef> {
               TF_ASSIGN_OR_RETURN(
                   auto delegated,
@@ -191,7 +189,7 @@ TEST_F(MockArrayTest, ReadyFutureWaitsUntilReady) {
   EXPECT_FALSE(ready.IsReady());
 
   wait_ready.Notify();
-  EXPECT_THAT(ready.Await(), IsOk());
+  EXPECT_THAT(ready.Await(), absl_testing::IsOk());
 }
 
 TEST_F(MockArrayTest, ReadyFuturePropagatesError) {
@@ -204,7 +202,7 @@ TEST_F(MockArrayTest, ReadyFuturePropagatesError) {
     get_ready_hook_ = [&]() { return absl::InternalError("testing"); };
   }
 
-  EXPECT_THAT(arr->GetReadyFuture().Await(), StatusIs(kInternal));
+  EXPECT_THAT(arr->GetReadyFuture().Await(), absl_testing::StatusIs(kInternal));
 }
 
 TEST_F(MockArrayTest, CopyToHostFutureWaitsUntilCopied) {
@@ -228,7 +226,7 @@ TEST_F(MockArrayTest, CopyToHostFutureWaitsUntilCopied) {
   EXPECT_FALSE(copied.IsReady());
 
   wait_ready.Notify();
-  EXPECT_THAT(copied.Await(), IsOk());
+  EXPECT_THAT(copied.Await(), absl_testing::IsOk());
 }
 
 TEST_F(MockArrayTest, CopyToHostFuturePropagatesError) {
@@ -245,7 +243,7 @@ TEST_F(MockArrayTest, CopyToHostFuturePropagatesError) {
   auto copied = arr->CopyToHostBuffer(data, /*byte_strides=*/std::nullopt,
                                       ArrayCopySemantics::kAlwaysCopy);
 
-  EXPECT_THAT(copied.Await(), StatusIs(kInternal));
+  EXPECT_THAT(copied.Await(), absl_testing::StatusIs(kInternal));
 }
 
 }  // namespace

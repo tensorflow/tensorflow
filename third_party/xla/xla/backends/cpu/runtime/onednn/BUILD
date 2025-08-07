@@ -1,4 +1,6 @@
+load("//xla/tsl:tsl.bzl", "tsl_copts")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
+load("//xla/tsl/mkl:build_defs.bzl", "mkl_deps")
 load(
     "//xla/tsl/mkl:graph.bzl",
     "onednn_graph_cc_library",
@@ -18,16 +20,23 @@ package_group(
     ],
 )
 
+# Workaround to use an intermediate target as bazel
+# does not support nested select() statements.
+cc_library(
+    name = "onednn_deps",
+    deps = mkl_deps(),
+)
+
 onednn_graph_cc_library(
     name = "onednn_interop",
     hdrs = ["onednn_interop.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        ":onednn_deps",
         "//xla:util",
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
-        "@onednn//:mkl_dnn",
     ],
 )
 
@@ -36,7 +45,9 @@ onednn_graph_cc_library(
     srcs = ["onednn_fusion_thunk.cc"],
     hdrs = ["onednn_fusion_thunk.h"],
     compatible_with = get_compatible_with_portable(),
+    copts = tsl_copts(),
     deps = [
+        ":onednn_deps",
         ":onednn_interop",
         ":onednn_threadpool",
         "//xla:shape_util",
@@ -44,9 +55,8 @@ onednn_graph_cc_library(
         "//xla:types",
         "//xla:util",
         "//xla:xla_data_proto_cc",
-        "//xla/backends/cpu:onednn_fusion",
+        "//xla/backends/cpu:onednn_fusion_graph",
         "//xla/backends/cpu/runtime:dot_lib",
-        "//xla/backends/cpu/runtime:parallel_loop_runner",
         "//xla/backends/cpu/runtime:thunk",
         "//xla/runtime:buffer_use",
         "//xla/runtime:object_pool",
@@ -71,7 +81,6 @@ onednn_graph_cc_library(
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/profiler/lib:traceme",
-        "@onednn//:mkl_dnn",
     ],
 )
 
@@ -79,9 +88,10 @@ onednn_graph_cc_library(
     name = "onednn_threadpool",
     hdrs = ["onednn_threadpool.h"],
     deps = [
+        ":onednn_deps",
         ":onednn_interop",
-        "//xla/backends/cpu/runtime:parallel_loop_runner",
-        "@onednn//:mkl_dnn",
+        "//xla/backends/cpu/runtime:work_queue",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -89,9 +99,10 @@ onednn_graph_cc_test(
     name = "onednn_threadpool_test",
     srcs = ["onednn_threadpool_test.cc"],
     deps = [
+        ":onednn_deps",
         ":onednn_interop",
         ":onednn_threadpool",
-        "//xla/backends/cpu/runtime:parallel_loop_runner",
+        "//xla/backends/cpu/runtime:work_queue",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env",
@@ -104,6 +115,5 @@ onednn_graph_cc_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
         "@eigen_archive//:eigen3",
-        "@onednn//:mkl_dnn",
     ],
 )

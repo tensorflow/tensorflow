@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "xla/codegen/emitters/implicit_arith_op_builder.h"
 #include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/map_mhlo_to_scalar_op.h"
@@ -58,54 +59,7 @@ using mlir::Value;
 
 namespace {
 
-// Wraps a Value to provide operator overloading for more readable expressions.
-struct Val {
-  Value value;
-  mlir::ImplicitLocOpBuilder* b;
-
-  operator Value() const { return value; }  // NOLINT
-
-  Val operator+(int64_t rhs) const { return Binop<ma::AddIOp>(rhs); }
-  Val operator+(Value rhs) const { return Binop<ma::AddIOp>(rhs); }
-  Val operator-(int64_t rhs) const { return Binop<ma::SubIOp>(rhs); }
-  Val operator-(Value rhs) const { return Binop<ma::SubIOp>(rhs); }
-  Val operator*(int64_t rhs) const { return Binop<ma::MulIOp>(rhs); }
-  Val operator*(Value rhs) const { return Binop<ma::MulIOp>(rhs); }
-  Val operator&(Value rhs) const { return Binop<ma::AndIOp>(rhs); }
-  Val operator&(int64_t rhs) const { return Binop<ma::AndIOp>(rhs); }
-  Val operator|(Value rhs) const { return Binop<ma::OrIOp>(rhs); }
-  Val operator|(int64_t rhs) const { return Binop<ma::OrIOp>(rhs); }
-  Val operator^(Value rhs) const { return Binop<ma::XOrIOp>(rhs); }
-  Val shl(Value rhs) const { return Binop<ma::ShLIOp>(rhs); }
-  Val shl(int64_t rhs) const { return Binop<ma::ShLIOp>(rhs); }
-  Val shrui(Value rhs) const { return Binop<ma::ShRUIOp>(rhs); }
-  Val shrui(int64_t rhs) const { return Binop<ma::ShRUIOp>(rhs); }
-
-  Val cmp(ma::CmpIPredicate pred, Value rhs) const {
-    return {b->create<ma::CmpIOp>(pred, value, rhs), b};
-  }
-  Val cmp(ma::CmpIPredicate pred, int64_t rhs) const {
-    return cmp(pred, MakeConstant(rhs));
-  }
-  Val operator==(Value rhs) const { return cmp(ma::CmpIPredicate::eq, rhs); }
-  Val operator==(int64_t rhs) const { return cmp(ma::CmpIPredicate::eq, rhs); }
-  Val operator!=(int64_t rhs) const { return cmp(ma::CmpIPredicate::ne, rhs); }
-
-  Val MakeConstant(int64_t c) const {
-    return {b->create<ma::ConstantIntOp>(c, value.getType()), b};
-  }
-
- private:
-  template <typename Op>
-  Val Binop(Value rhs) const {
-    return {b->create<Op>(value, rhs), b};
-  }
-
-  template <typename Op>
-  Val Binop(int64_t rhs) const {
-    return Binop<Op>(MakeConstant(rhs));
-  }
-};
+using Val = ImplicitArithOpBuilder;
 
 struct RewriteErf32Pattern : public mlir::OpRewritePattern<mlir::math::ErfOp> {
   using OpRewritePattern::OpRewritePattern;
@@ -134,8 +88,8 @@ struct RewriteErf32Pattern : public mlir::OpRewritePattern<mlir::math::ErfOp> {
 
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
     auto c = [&](float v) -> Value {
-      return b.create<ma::ConstantFloatOp>(llvm::APFloat(v),
-                                           rewriter.getF32Type());
+      return b.create<ma::ConstantFloatOp>(rewriter.getF32Type(),
+                                           llvm::APFloat(v));
     };
 
     auto poly = [&](auto x, auto coefficients) -> Value {
@@ -177,7 +131,7 @@ Value IsInf(Value value, mlir::ImplicitLocOpBuilder& b) {
   if (mlir::LLVM::isCompatibleOuterType(ty)) {
     value = b.create<mlir::math::AbsFOp>(value);
     Value inf = b.create<ma::ConstantFloatOp>(
-        llvm::APFloat::getInf(ty.getFloatSemantics()), ty);
+        ty, llvm::APFloat::getInf(ty.getFloatSemantics()));
     return b.create<ma::CmpFOp>(ma::CmpFPredicate::OEQ, value, inf);
   }
 
@@ -193,7 +147,7 @@ Value IsInf(Value value, mlir::ImplicitLocOpBuilder& b) {
     Val bits{b.create<ma::BitcastOp>(b.getI8Type(), value), &b};
     return (bits & 0x7F) == 0x70;
   } else {
-    return b.create<ma::ConstantIntOp>(false, b.getI1Type());
+    return b.create<ma::ConstantIntOp>(b.getI1Type(), false);
   }
 }
 
@@ -203,7 +157,7 @@ Value IsNaN(Value value, mlir::ImplicitLocOpBuilder& b) {
     return b.create<ma::CmpFOp>(ma::CmpFPredicate::UNO, value, value);
   }
   if (llvm::isa<mlir::Float4E2M1FNType>(ty)) {
-    return b.create<ma::ConstantIntOp>(false, b.getI1Type());
+    return b.create<ma::ConstantIntOp>(b.getI1Type(), false);
   }
 
   assert(ty.getIntOrFloatBitWidth() == 8);
@@ -231,7 +185,7 @@ Value EmitReducePrecision(Value value, int exponent_bits, int mantissa_bits,
       mlir::mhlo::ReducePrecisionOp>(
       b.getLoc(), value.getType(), {value.getType()},
       mlir::mhlo::ReducePrecisionOp::Adaptor(value, nullptr, properties),
-      /*attributes=*/std::nullopt, &b);
+      /*attributes=*/{}, &b);
 }
 
 Value EmitF16ToF8e5m2(Value in, mlir::ImplicitLocOpBuilder& b) {
@@ -243,12 +197,12 @@ Value EmitF16ToF8e5m2(Value in, mlir::ImplicitLocOpBuilder& b) {
   Value value = EmitReducePrecision(in, 5, 2, b);
   value = b.create<ma::BitcastOp>(b.getI16Type(), value);
   value = b.create<ma::ShRUIOp>(value,
-                                b.create<ma::ConstantIntOp>(8, b.getI16Type()));
+                                b.create<ma::ConstantIntOp>(b.getI16Type(), 8));
   value = b.create<ma::TruncIOp>(b.getI8Type(), value);
   // When the input is NaN, just truncating can turn a NaN into an inf if the
   // mantissa becomes 0.
   value = b.create<ma::SelectOp>(
-      is_nan, b.create<ma::ConstantIntOp>(0x7F, value.getType()), value);
+      is_nan, b.create<ma::ConstantIntOp>(value.getType(), 0x7F), value);
   return b.create<ma::BitcastOp>(b.getType<mlir::Float8E5M2Type>(), value);
 }
 
@@ -327,7 +281,7 @@ Value EmitFloatConversion(Value value, mlir::FloatType to_ty,
   }
 
   auto cst = [&](mlir::Type ty, int64_t n) -> Val {
-    return {b.create<ma::ConstantIntOp>(n, ty), &b};
+    return {b.create<ma::ConstantIntOp>(ty, n), &b};
   };
 
   // Shift bits to destination type, without sign bit.
@@ -362,7 +316,7 @@ Value EmitFloatConversion(Value value, mlir::FloatType to_ty,
 
   auto round_bits_to_nearest_even = [&](Val bits, Val roundoff,
                                         bool use_implicit_bit = false) {
-    assert(bits.value.getType() == roundoff.value.getType());
+    assert(bits.value().getType() == roundoff.value().getType());
     // Round to nearest even by adding a bias term.
     // Consider a bit pattern
     //   FFF...FLRTT...T,
@@ -453,8 +407,9 @@ Value EmitFloatConversion(Value value, mlir::FloatType to_ty,
         convert_int(wide_int_ty, biased_exponent).shl(from_mantissa);
 
     Value biased_exp_sle_zero = biased_exponent.cmp(CmpIPredicate::sle, 0);
-    bits.value =
-        b.create<SelectOp>(biased_exp_sle_zero, subnormal_bits, normal_bits);
+    bits = Val(
+        b.create<SelectOp>(biased_exp_sle_zero, subnormal_bits, normal_bits),
+        &b);
     if (digit_shift >= 0) {
       bits = bits.shl(digit_shift);
     } else {
@@ -496,9 +451,11 @@ Value EmitFloatConversion(Value value, mlir::FloatType to_ty,
             .shrui(exponent_shift_from_ty));
     // To avoid UB, limit rounding and shifting to the full mantissa plus
     // leading 1.
-    positive_bits.value = b.create<SelectOp>(
-        exponent_shift_i32.cmp(CmpIPredicate::sle, from_mantissa + 1),
-        positive_bits, to_zero);
+    positive_bits =
+        Val(b.create<SelectOp>(
+                exponent_shift_i32.cmp(CmpIPredicate::sle, from_mantissa + 1),
+                positive_bits, to_zero),
+            &b);
 
     Val negative_bits = convert_int(to_int_ty, rounded_from_bits)
                             .shl(to_zero - exponent_shift_to_ty);
@@ -606,7 +563,7 @@ struct RewriteF8Cst : public mlir::OpRewritePattern<ma::CmpFOp> {
         int_value = int_value & mask;
         constant &= mask;
       }
-      auto cst = b.create<ma::ConstantIntOp>(constant, int_ty);
+      auto cst = b.create<ma::ConstantIntOp>(int_ty, constant);
       rewriter.replaceOpWithNewOp<ma::CmpIOp>(op, ma::CmpIPredicate::ne,
                                               int_value, cst);
       return mlir::success();
@@ -695,7 +652,9 @@ class ExpandFloatOpsPass
                  RewriteIToFpPattern<ma::UIToFPOp>,
                  RewriteFpToIPattern<ma::FPToSIOp>,
                  RewriteFpToIPattern<ma::FPToUIOp>>(&getContext());
-    mlir::populatePolynomialApproximateTanhPattern(patterns);
+    if (approximate_tanh_) {
+      mlir::populatePolynomialApproximateTanhPattern(patterns);
+    }
     patterns.add<RewriteErf32Pattern>(&getContext());
     if (mlir::failed(
             mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {
@@ -706,8 +665,10 @@ class ExpandFloatOpsPass
 
 }  // namespace
 
-std::unique_ptr<mlir::Pass> CreateExpandFloatOpsPass() {
-  return std::make_unique<ExpandFloatOpsPass>();
+std::unique_ptr<mlir::Pass> CreateExpandFloatOpsPass(bool aproximate_tanh) {
+  ExpandFloatOpsPassOptions options;
+  options.approximate_tanh_ = aproximate_tanh;
+  return std::make_unique<ExpandFloatOpsPass>(options);
 }
 
 }  // namespace emitters

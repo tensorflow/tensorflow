@@ -40,11 +40,6 @@ namespace xla {
 absl::StatusOr<bool>
 BatchDotSimplification::ElideDegenerateBatchDimensionFromBatchDot(
     HloInstruction* batch_dot) {
-  // Sparse dots are not supported on CPU.
-  if (Cast<HloDotInstruction>(batch_dot)->sparse_operands()) {
-    return false;
-  }
-
   // This pass assumes the lhs and rhs batch dimensions are equal and strictly
   // ascending.
   const auto& is_iota = [](absl::Span<const int64_t> dims) {

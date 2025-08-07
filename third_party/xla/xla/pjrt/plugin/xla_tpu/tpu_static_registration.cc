@@ -13,9 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/pjrt/c/pjrt_c_api_tpu.h"
-#include "xla/pjrt/pjrt_api.h"
+#include "xla/pjrt/c/pjrt_c_api_tpu_internal.h"
 #include "xla/pjrt/plugin/plugin_names.h"
 #include "xla/pjrt/plugin/static_registration.h"
 
-REGISTER_PJRT_PLUGIN(kTpuPjrtName, GetPjrtApi())
+REGISTER_PJRT_PLUGIN(kTpuPjrtName, pjrt::tpu_plugin::GetTpuPjrtApi())

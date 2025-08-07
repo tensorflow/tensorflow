@@ -18,9 +18,12 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/LLVMIR/LLVMAttrs.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // IWYU pragma: keep
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
@@ -71,7 +74,9 @@ struct LowerForall : mlir::OpRewritePattern<mlir::scf::ForallOp> {
     llvm::SmallVector<mlir::Value, 3> steps(
         num_dims, builder.create<mlir::arith::ConstantIndexOp>(1));
     llvm::SmallVector<mlir::Value, 3> ubs;
-    for (int64_t size : op.getStaticUpperBound()) {
+    // The induction variables x-y-z should be in minor-to-major order so we
+    // must reverse the order.
+    for (int64_t size : llvm::reverse(op.getStaticUpperBound())) {
       ubs.push_back(builder.create<mlir::arith::ConstantIndexOp>(size));
     }
 
@@ -82,12 +87,18 @@ struct LowerForall : mlir::OpRewritePattern<mlir::scf::ForallOp> {
                          mlir::ValueRange iter_args) {
           mlir::ImplicitLocOpBuilder nested_b(nested_loc, nested_builder);
           mlir::IRMapping mapping;
-          for (const auto& [old_arg, iv] :
-               llvm::zip(old_block->getArguments(), ivs)) {
-            mapping.map(old_arg, iv);
+
+          llvm::SmallVector<mlir::Value> old_induction_vars =
+              op.getInductionVars();
+          // Map the reversed IVs to the new IVs.
+          for (const auto& [old_iv, iv] :
+               llvm::zip(llvm::reverse(old_induction_vars), ivs)) {
+            mapping.map(old_iv, iv);
           }
+
+          mlir::Block::BlockArgListType region_out_args = op.getRegionOutArgs();
           for (const auto& [region_arg, operand] :
-               llvm::zip(op.getRegionOutArgs(), iter_args)) {
+               llvm::zip(region_out_args, iter_args)) {
             mapping.map(region_arg, operand);
           }
 
@@ -105,6 +116,29 @@ struct LowerForall : mlir::OpRewritePattern<mlir::scf::ForallOp> {
 
           return new_results;
         });
+
+    // Disable unrolling for all loops except the innermost.
+    auto loop_unroll = rewriter.getAttr<mlir::LLVM::LoopUnrollAttr>(
+        /*disable=*/rewriter.getBoolAttr(true), /*count=*/nullptr,
+        /*runtimeDisable=*/nullptr,
+        /*full=*/nullptr,
+        /*followupUnrolled=*/nullptr, /*followupRemainder=*/nullptr,
+        /*followupAll=*/nullptr);
+    auto loop_annotation = rewriter.getAttr<mlir::LLVM::LoopAnnotationAttr>(
+        /*disableNonforced=*/nullptr, /*vectorize=*/nullptr,
+        /*interleave=*/nullptr, loop_unroll,
+        /*unrollAndJam=*/nullptr, /*licm=*/nullptr, /*distribute=*/nullptr,
+        /*pipeline=*/nullptr, /*peeled=*/nullptr, /*unswitch=*/nullptr,
+        /*mustProgress=*/nullptr,
+        /*isVectorized=*/nullptr,
+        /*startLoc=*/nullptr,
+        /*endLoc=*/nullptr,
+        /*parallelAccesses=*/llvm::ArrayRef<mlir::LLVM::AccessGroupAttr>());
+
+    for (auto& for_op : absl::MakeSpan(loop_nest.loops).first(num_dims - 1)) {
+      for_op->setAttr(mlir::LLVM::LoopAnnotationAttr::getMnemonic(),
+                      loop_annotation);
+    }
 
     rewriter.replaceOp(op, loop_nest.results);
     return mlir::success();

@@ -88,6 +88,31 @@ TEST(TileAssignmentTest, CopyAssignment) {
   EXPECT_EQ(absl::HashOf(tile), absl::HashOf(copied));
 }
 
+TEST(IotaTileAssignmentTest, TransposeCase1) {
+  IotaTileAssignment tile =
+      IotaTileAssignment::Create({4, 5, 24}, {15, 4, 8}, {1, 0, 2});
+  auto transposed = tile.Transpose({0, 2, 1});
+  EXPECT_EQ(transposed.has_value(), true);
+  EXPECT_EQ(transposed->ToString(), "[4,24,5]<=[5,3,4,8]T(2,1,3,0)");
+}
+
+TEST(IotaTileAssignmentTest, TransposeCase2) {
+  IotaTileAssignment tile = IotaTileAssignment::Create(
+      {1, 32, 82, 1, 1, 128}, {1312, 32, 8}, {1, 0, 2});
+  auto transposed = tile.Transpose({1, 3, 4, 5, 0, 2});
+  EXPECT_EQ(transposed.has_value(), true);
+  EXPECT_EQ(transposed->ToString(),
+            "[32,1,1,128,1,82]<=[82,16,32,8]T(2,1,3,0)");
+}
+
+TEST(IotaTileAssignmentTest, TransposeCase3) {
+  IotaTileAssignment tile =
+      IotaTileAssignment::Create({1, 32, 82, 128}, {1312, 32, 8}, {1, 0, 2});
+  auto transposed = tile.Transpose({0, 1, 3, 2});
+  EXPECT_EQ(transposed.has_value(), true);
+  EXPECT_EQ(transposed->ToString(), "[1,32,128,82]<=[82,16,32,8]T(2,1,3,0)");
+}
+
 class FormattedTileAssignmentTest : public ::testing::TestWithParam<bool> {
  protected:
   bool ShouldConvertToV1() { return GetParam(); }

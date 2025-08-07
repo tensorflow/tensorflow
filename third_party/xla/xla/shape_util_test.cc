@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <numeric>
 #include <optional>
@@ -243,8 +244,9 @@ TEST(ShapeUtilTest, CompatibleTuples) {
 }
 
 TEST(ShapeUtilTest, MakeMaybeTupleShape) {
-  Shape s1 =
-      ShapeUtil::MakeMaybeTupleShape({ShapeUtil::MakeShape(F32, {3, 2})});
+  Shape s1 = ShapeUtil::MakeValidatedMaybeTupleShape(
+                 {ShapeUtil::MakeValidatedShape(F32, {3, 2}).value()})
+                 .value();
   EXPECT_TRUE(ShapeUtil::Compatible(s1, ShapeUtil::MakeShape(F32, {3, 2})));
 }
 
@@ -1098,6 +1100,58 @@ TEST(ShapeUtilTest, AppendMinorDimension) {
                                                        {3, 0, 2, 1}));
 }
 
+TEST(ShapeUtilTest, InsertDimensionAtIndex) {
+  Shape shape = ShapeUtil::MakeShape(F32, {});
+  EXPECT_EQ(ShapeUtil::InsertDimensionAtIndex(shape, 0, 10),
+            ShapeUtil::MakeShape(F32, {10}));
+
+  shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 20, 30}, {2, 1, 0});
+  EXPECT_EQ(
+      ShapeUtil::InsertDimensionAtIndex(shape, 3, 40),
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 20, 30, 40}, {3, 2, 1, 0}));
+
+  shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 20, 30}, {2, 1, 0});
+  EXPECT_EQ(
+      ShapeUtil::InsertDimensionAtIndex(shape, 1, 40),
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 40, 20, 30}, {3, 2, 1, 0}));
+
+  shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 20, 30}, {0, 2, 1});
+  EXPECT_EQ(
+      ShapeUtil::InsertDimensionAtIndex(shape, 1, 40),
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 40, 20, 30}, {0, 3, 2, 1}));
+
+  shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 20, 30}, {2, 1, 0});
+  EXPECT_EQ(
+      ShapeUtil::InsertDimensionAtIndex(shape, 0, 40),
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {40, 10, 20, 30}, {3, 2, 1, 0}));
+}
+
+TEST(ShapeUtilTest, InsertDimensionsAtIndex) {
+  Shape shape = ShapeUtil::MakeShape(F32, {});
+  EXPECT_EQ(ShapeUtil::InsertDimensionsAtIndex(shape, 0, {10, 20}),
+            ShapeUtil::MakeShape(F32, {10, 20}));
+
+  shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 20, 30}, {2, 1, 0});
+  EXPECT_EQ(ShapeUtil::InsertDimensionsAtIndex(shape, 3, {40, 50}),
+            ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 20, 30, 40, 50},
+                                                {4, 3, 2, 1, 0}));
+
+  shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 20, 30}, {2, 1, 0});
+  EXPECT_EQ(ShapeUtil::InsertDimensionsAtIndex(shape, 1, {40, 50}),
+            ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 40, 50, 20, 30},
+                                                {4, 3, 2, 1, 0}));
+
+  shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 20, 30}, {0, 2, 1});
+  EXPECT_EQ(ShapeUtil::InsertDimensionsAtIndex(shape, 1, {40, 50}),
+            ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 40, 50, 20, 30},
+                                                {0, 4, 3, 2, 1}));
+
+  shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 20, 30}, {2, 1, 0});
+  EXPECT_EQ(ShapeUtil::InsertDimensionsAtIndex(shape, 0, {40, 50}),
+            ShapeUtil::MakeShapeWithDenseLayout(F32, {40, 50, 10, 20, 30},
+                                                {4, 3, 2, 1, 0}));
+}
+
 TEST(ShapeUtilTest, MoveDimToMajor) {
   Shape shape = ShapeUtil::MakeShape(F32, {10, 10, 10});  // implicit {2, 1, 0}
   Shape new_shape = ShapeUtil::MoveDimToMajor(shape, 0);
@@ -1304,6 +1358,17 @@ TEST(ShapeUtilTest, Int4ShapeSize) {
   EXPECT_EQ(u8_shape.layout().element_size_in_bits(), 0);
   Shape u4_shape = ShapeUtil::ChangeElementType(int4_shape, U4);
   EXPECT_EQ(u4_shape.layout().element_size_in_bits(), 4);
+}
+
+TEST(ShapeUtilTest, Int4ShapeToHostShape) {
+  Shape int4_shape = ShapeUtil::MakeShape(S4, {64, 128});
+  int4_shape.mutable_layout()->set_element_size_in_bits(4);
+
+  EXPECT_FALSE(ShapeUtil::DeviceShapeIsHostShape(int4_shape));
+  Shape host_shape = ShapeUtil::DeviceShapeToHostShape(int4_shape);
+
+  EXPECT_TRUE(ShapeUtil::DeviceShapeIsHostShape(host_shape));
+  EXPECT_EQ(host_shape.layout().element_size_in_bits(), 0);
 }
 
 TEST(XlaShapeUtilTest, ZeroSize) {
@@ -1574,11 +1639,38 @@ TEST(ShapeUtilTest, ShapeIndexProtoSerialization) {
   EXPECT_EQ(multi_index, ShapeIndex::FromProto(multi_index.ToProto()));
 }
 
+//===----------------------------------------------------------------------===//
+// Performance benchmarks below.
+//===----------------------------------------------------------------------===//
+
+void BM_ShapeCount(::testing::benchmark::State& state) {
+  const int depth = state.range(0);
+  const int fan_out = state.range(1);
+
+  Shape shape = ShapeUtil::MakeShape(F32, {32, 64, 128});
+  for (int i = 0; i < depth; ++i) {
+    std::vector<xla::Shape> shapes(fan_out, shape);
+    shape = ShapeUtil::MakeTupleShape(shapes);
+  }
+
+  for (auto s : state) {
+    size_t count = ShapeUtil::SubshapeCount(shape);
+    benchmark::DoNotOptimize(count);
+  }
+}
+
+BENCHMARK(BM_ShapeCount)
+    ->ArgPair(0, 0)
+    ->ArgPair(2, 8)
+    ->ArgPair(4, 8)
+    ->ArgPair(1, 1000);
+
 void BM_MakeShape(::testing::benchmark::State& state) {
   for (auto s : state) {
     ShapeUtil::MakeShape(F32, {2});
   }
 }
+
 BENCHMARK(BM_MakeShape);
 
 void BM_MakeValidatedShape(::testing::benchmark::State& state) {
@@ -1586,6 +1678,7 @@ void BM_MakeValidatedShape(::testing::benchmark::State& state) {
     ShapeUtil::MakeValidatedShape(F32, {2}).value();
   }
 }
+
 BENCHMARK(BM_MakeValidatedShape);
 
 Shape ShapeForBenchmark(::testing::benchmark::State& state) {
@@ -1620,6 +1713,7 @@ void BM_ForEachIndex(::testing::benchmark::State& state) {
     ShapeUtil::ForEachIndex(shape, increment_func);
   }
 }
+
 BENCHMARK(BM_ForEachIndex)->Arg(0)->Arg(1)->Arg(2);
 
 void BM_ForEachIndexNoStatus(::testing::benchmark::State& state) {
@@ -1633,6 +1727,7 @@ void BM_ForEachIndexNoStatus(::testing::benchmark::State& state) {
     ShapeUtil::ForEachIndexNoStatus(shape, increment_func);
   }
 }
+
 BENCHMARK(BM_ForEachIndexNoStatus)->Arg(0)->Arg(1)->Arg(2);
 
 }  // namespace

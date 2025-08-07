@@ -782,7 +782,7 @@ TEST_F(QuantizeAndDequantizeTest, Invalid_axis_given_V3) {
 
   EXPECT_THAT(
       RunOpKernel(),
-      StatusIs(
+      absl_testing::StatusIs(
           error::INVALID_ARGUMENT,
           MatchesRegex("Axis requested is larger than input dimensions.*")));
 }

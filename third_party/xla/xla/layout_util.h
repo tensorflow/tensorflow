@@ -174,9 +174,9 @@ class LayoutUtil {
   static int64_t Major(const Layout& layout,
                        int64_t physical_dimension_number) {
     DCHECK_LE(0, physical_dimension_number);
-    DCHECK_LT(physical_dimension_number, layout.minor_to_major_size());
-    return Minor(layout,
-                 layout.minor_to_major_size() - 1 - physical_dimension_number);
+    DCHECK_LT(physical_dimension_number, layout.minor_to_major().size());
+    return Minor(
+        layout, layout.minor_to_major().size() - 1 - physical_dimension_number);
   }
 
   // Minor(0) is the most minor logical dimension number, minor(1) is the
@@ -184,7 +184,7 @@ class LayoutUtil {
   static inline int64_t Minor(const Layout& layout,
                               int64_t physical_dimension_number) {
     DCHECK_LE(0, physical_dimension_number);
-    DCHECK_LT(physical_dimension_number, layout.minor_to_major_size());
+    DCHECK_LT(physical_dimension_number, layout.minor_to_major().size());
     return layout.minor_to_major(physical_dimension_number);
   }
 

@@ -1,7 +1,7 @@
 // Run optimize pass only and check the results.
 // Tests in this file for optimization patterns that doesn't match
 // TFLite runtime restrictions.
-// RUN: tf-opt %s -tfl-optimize | FileCheck %s
+// RUN: litert-opt %s -tfl-optimize | FileCheck %s
 
 // CHECK-LABEL: fuseScalarAddIntoConv2dHalf
 func.func @fuseScalarAddIntoConv2dHalf(%arg0: tensor<256x32x32x3xf16>, %arg1: tensor<16x3x3x3xf16>) -> tensor<256x8x7x16xf16> {

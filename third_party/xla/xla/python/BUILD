@@ -49,6 +49,7 @@ pytype_strict_library(
         ":_hlo_pass",
         ":_ops",
         ":_profiler",
+        ":_profile_data",
         ":_xla_builder",
         "//third_party/py/jax/jaxlib:xla_client",
         "@ml_dtypes_py//ml_dtypes",
@@ -90,7 +91,10 @@ py_strict_test(
 cc_library(
     name = "types",
     srcs = ["types.cc"],
-    hdrs = ["types.h"],
+    hdrs = [
+        "types.h",
+        "version.h",
+    ],
     compatible_with = [],
     copts = [
         "-fexceptions",
@@ -118,6 +122,25 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@local_config_python//:python_headers",  # buildcleaner: keep
+        "@nanobind",
+    ],
+)
+
+cc_library(
+    name = "literal_type_casters",
+    hdrs = ["literal_type_casters.h"],
+    compatible_with = [],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    visibility = internal_visibility([":friends"]),
+    deps = [
+        ":types",
+        "//xla:literal",
+        "//xla:shape_util",
+        "@com_google_absl//absl/container:inlined_vector",
         "@nanobind",
     ],
 )
@@ -271,6 +294,7 @@ nanobind_pywrap_extension(
     ],
     pytype_srcs = ["_ops.pyi"],
     deps = [
+        ":literal_type_casters",
         ":nb_absl_span",
         ":nb_helpers",
         ":types",
@@ -306,6 +330,7 @@ cc_library(
         "//xla/mlir/utils:error_util",
         "//xla/mlir_hlo:mhlo_passes",
         "//xla/mlir_hlo:stablehlo_extension_passes",
+        "//xla/service/spmd/shardy:utils",
         "//xla/service/spmd/shardy/round_trip_common:import_constants",
         "//xla/service/spmd/shardy/sdy_round_trip:pipelines",
         "//xla/tsl/platform:errors",
@@ -331,8 +356,11 @@ cc_library(
 cc_library(
     name = "safe_static_init",
     hdrs = ["safe_static_init.h"],
+    copts = ["-fexceptions"],
+    features = ["-use_header_modules"],
     deps = [
         "@com_google_absl//absl/synchronization",
+        "@nanobind",
     ],
 )
 
@@ -385,6 +413,38 @@ nanobind_pywrap_extension(
         "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
+)
+
+nanobind_pywrap_extension(
+    name = "_profile_data",
+    srcs = ["profile_data.cc"],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    pytype_srcs = ["_profile_data.pyi"],
+    deps = [
+        "//xla/python/profiler:profile_data_lib",
+        "@local_tsl//tsl/platform:protobuf",
+        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
+        "@nanobind",
+    ],
+)
+
+py_strict_test(
+    name = "profile_data_test",
+    srcs = ["profile_data_test.py"],
+    main = "profile_data_test.py",
+    tags = [
+        "no_oss",
+        "optonly",
+    ],
+    deps =
+        if_google([
+            "//third_party/py/jax",
+            "//pyglib:gfile",
+            "@absl_py//absl/testing:absltest",
+        ]),
 )
 
 cc_library(

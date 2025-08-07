@@ -267,65 +267,6 @@ mlir::VectorType getThreadLevelVectorType(
   return mlir::VectorType::get(vector_dims, data_type);
 }
 
-struct RewriteMaterialize : mlir::OpRewritePattern<gpu::MaterializeOp> {
-  RewriteMaterialize(mlir::MLIRContext* context,
-                     const LowerXlaToScfPassOptions& options)
-      : OpRewritePattern(context) {}
-
-  mlir::LogicalResult matchAndRewrite(
-      gpu::MaterializeOp op, mlir::PatternRewriter& rewriter) const override {
-    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
-    auto i0 = b.create<mlir::arith::ConstantIndexOp>(0);
-    auto i1 = b.create<mlir::arith::ConstantIndexOp>(1);
-
-    auto vec_type = getThreadLevelVectorType(op.getResult().getType());
-    auto maybe_complex_data_type = op.getResult().getType().getElementType();
-    auto data_type = vec_type.getElementType();
-    Value init_vec;
-    if (mlir::isa<mlir::IntegerType>(data_type)) {
-      init_vec = b.create<mlir::arith::ConstantOp>(mlir::DenseElementsAttr::get(
-          vec_type, b.getIntegerAttr(data_type, 0)));
-    } else if (mlir::isa<mlir::FloatType>(data_type)) {
-      init_vec = b.create<mlir::arith::ConstantOp>(
-          mlir::DenseElementsAttr::get(vec_type, b.getFloatAttr(data_type, 0)));
-    } else {
-      return op->emitOpError("invalid data type");
-    }
-
-    auto loop = b.create<LoopOp>(
-        op.getMapAttr(), op.getIndices(), ValueRange{init_vec},
-        [&](OpBuilder&, Location, ValueRange ivs, ValueRange map_results,
-            ValueRange iter_args) {
-          auto args = SmallVector<Value, 4>(op.getInput());
-          args.insert(args.end(), map_results.begin(), map_results.end());
-          SmallVector<mlir::Type, 1> types{maybe_complex_data_type};
-          auto call_result =
-              b.create<PureCallOp>(op.getCalleeAttr(), ValueRange{args}, types)
-                  .getResult(0);
-          SmallVector<mlir::OpFoldResult> offset(ivs);
-          auto old_vec = iter_args.back();
-          Value new_vec;
-          if (mlir::isa<mlir::ComplexType>(call_result.getType())) {
-            auto real = b.create<mlir::complex::ReOp>(call_result);
-            auto imag = b.create<mlir::complex::ImOp>(call_result);
-            offset.insert(offset.begin(), i0.getResult());
-            new_vec = b.create<mlir::vector::InsertOp>(real, old_vec, offset);
-            offset.front() = i1.getResult();
-            new_vec = b.create<mlir::vector::InsertOp>(imag, new_vec, offset);
-          } else {
-            new_vec =
-                b.create<mlir::vector::InsertOp>(call_result, old_vec, offset);
-          }
-          b.create<YieldOp>(new_vec);
-        });
-    auto convert = b.create<mlir::UnrealizedConversionCastOp>(
-                        op.getResult().getType(), loop->getResults())
-                       .getResult(0);
-    rewriter.replaceOp(op, convert);
-    return success();
-  }
-};
-
 struct RewriteInsert : mlir::OpRewritePattern<gpu::InsertOp> {
   RewriteInsert(mlir::MLIRContext* context,
                 const LowerXlaToScfPassOptions& options)
@@ -388,8 +329,7 @@ class LowerXlaToScfPass
     auto* ctx = &getContext();
     mlir::RewritePatternSet patterns(ctx);
     patterns.add<RewritePredicatedInsert, RewritePredicatedExtract,
-                 RewriteShuffleReduce, RewriteMaterialize, RewriteInsert>(
-        ctx, options_);
+                 RewriteShuffleReduce, RewriteInsert>(ctx, options_);
     if (mlir::failed(
             mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {
       signalPassFailure();

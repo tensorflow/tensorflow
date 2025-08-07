@@ -32,14 +32,13 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 namespace xla {
 
-namespace {
 
 // WrapMultipleSendRecvInstructions is a side-effecting function that
 // creates a single computation that wraps all the send/recv instructions.
 // As a side effect, the function populates the async_start_inputs
 // and async_start_input_shapes vectors with the operands and operand shapes of
 // the cloned instruction.
-HloComputation* WrapMultipleSendRecvInstructions(
+static HloComputation* WrapMultipleSendRecvInstructions(
     std::vector<HloInstruction*>& send_recv_instructions,
     std::vector<HloInstruction*>& async_start_inputs,
     std::vector<Shape>& async_start_input_shapes,
@@ -65,8 +64,8 @@ HloComputation* WrapMultipleSendRecvInstructions(
   return module->AddEmbeddedComputation(builder.Build(root));
 }
 
-absl::Status UpdateControlDependencies(HloInstruction* old_instruction,
-                                       HloInstruction* new_instruction) {
+static absl::Status UpdateControlDependencies(HloInstruction* old_instruction,
+                                              HloInstruction* new_instruction) {
   for (HloInstruction* predecessor : old_instruction->control_predecessors()) {
     TF_RETURN_IF_ERROR(predecessor->RemoveControlDependencyTo(old_instruction));
     TF_RETURN_IF_ERROR(predecessor->AddControlDependencyTo(new_instruction));
@@ -78,7 +77,7 @@ absl::Status UpdateControlDependencies(HloInstruction* old_instruction,
   return absl::OkStatus();
 }
 
-absl::Status CreateAsyncStartAndAsyncDone(
+static absl::Status CreateAsyncStartAndAsyncDone(
     std::vector<HloInstruction*>& send_recv_instructions,
     HloComputation* async_computation, HloComputation* computation,
     HloModule* module, std::vector<HloInstruction*>& async_start_inputs,
@@ -144,8 +143,6 @@ absl::Status CreateAsyncStartAndAsyncDone(
   }
   return absl::OkStatus();
 }
-
-}  // namespace
 
 absl::StatusOr<bool> CollectiveSendRecvCombiner::Run(
     HloModule* module,

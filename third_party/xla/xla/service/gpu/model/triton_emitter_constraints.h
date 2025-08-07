@@ -23,7 +23,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/AffineMap.h"
 #include "xla/hlo/utils/hlo_traversal.h"
-#include "xla/service/gpu/model/symbolic_tile.h"
+#include "xla/service/gpu/model/constraint_expression.h"
 #include "xla/service/gpu/model/symbolic_tile_analysis.h"
 #include "xla/service/gpu/model/symbolic_tiled_hlo_instruction.h"
 #include "xla/shape.h"
@@ -47,8 +47,8 @@ class TritonEmitterConstraints : public EmitterSpecificConstraints {
   bool HasCustomConstraints() const { return !custom_constraints_.empty(); }
 
  private:
-  // Holds a constraint expression over derived parameters (s'0, ..., s'm) where
-  //   (s'0, ..., s'm) = tile_parameters_transform(tile_parameters).
+  // Holds a constraint expression over derived parameters (d'0, ..., d'm) where
+  //   (d'0, ..., d'm) = tile_parameters_transform(tile_parameters).
   struct CustomConstraints {
     mlir::AffineMap tile_parameters_transform;
     ConstraintExpression constraints;
@@ -95,9 +95,10 @@ class TritonEmitterConstraints : public EmitterSpecificConstraints {
           instructions,
       const HloFusionAdaptor& fusion_adaptor);
 
-  // A collection of unique size maps from all the SymbolicTiledHloInstructions.
+  // A collection of unique size maps from all the
+  // `SymbolicTiledHloInstruction`s.
   //
-  // Different TiledHloInstructions often have the same size map, so we keep a
+  // Different `TiledHloInstruction`s often have the same size map, so we keep a
   // collection of unique maps to improve compilation time.
   llvm::SmallVector<mlir::AffineMap, 4> tile_size_maps_;
 

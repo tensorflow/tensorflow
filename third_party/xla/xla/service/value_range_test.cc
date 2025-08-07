@@ -96,6 +96,36 @@ TEST_F(ValueRangeTest, MultiplyValue) {
   EXPECT_EQ(range.step()->GetSignedValue(), 2 * 1024);
 }
 
+TEST_F(ValueRangeTest, MultiplyValueWithZero) {
+  constexpr absl::string_view hlo_string = R"(
+  HloModule module
+
+  ENTRY entry {
+    c0 = s32[] constant(0)
+    p0 = s32[] parameter(0)
+    ROOT %a = s32[] multiply(p0, c0)
+  }
+  )";
+  auto module =
+      ParseAndReturnUnverifiedModule(hlo_string, HloModuleConfig{}).value();
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  const HloInstruction* p0 = root->operand(0);
+  absl::flat_hash_map<const HloInstruction*, Range> fs;
+  // p0 has range min = 0, max = 32, step = 2.
+  fs.insert(std::make_pair(
+      p0, Range{/*min=*/ConstantValue::GetSigned(0, /*bitwidth=*/32),
+                /*max=*/ConstantValue::GetSigned(32, /*bitwidth=*/32),
+                /*step=*/ConstantValue::GetUnsigned(2, /*bitwidth=*/32),
+                /*is_linear=*/true}));
+  auto range = RecursivelyIdentifyRange(root, fs);
+  EXPECT_FALSE(range.IsEmpty());
+  EXPECT_TRUE(range.IsLinear());
+  EXPECT_EQ(range.min().GetSignedValue(), 0);
+  EXPECT_EQ(range.max()->GetSignedValue(), 0);
+  // Step is 1 even though multiplier is zero.
+  EXPECT_EQ(range.step()->GetSignedValue(), 1);
+}
+
 TEST_F(ValueRangeTest, MultiplyValuePassedToLoop) {
   constexpr absl::string_view hlo_string = R"(
   HloModule module

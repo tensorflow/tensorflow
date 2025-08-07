@@ -1,9 +1,12 @@
 # Automatic sharding annotation
 
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
+load("//xla:py_strict.bzl", "py_strict_test")
 load("//xla:xla.default.bzl", "xla_cc_binary", "xla_cc_test", "xla_internal")
 load("//xla/tsl:tsl.bzl", "if_google")
-load("//xla/tsl:tsl.default.bzl", "get_compatible_with_libtpu_portable")
+load("//xla/tsl:tsl.default.bzl", "get_compatible_with_libtpu_portable", "tsl_pybind_extension")
 load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
 
 package(
@@ -16,6 +19,7 @@ package_group(
     packages = xla_internal(["..."]) + [
         "//xla/hlo/experimental/auto_sharding/...",
         "//xla/service/gpu/...",
+        "//xla/service/spmd/...",
     ],
 )
 
@@ -49,6 +53,7 @@ cc_library(
         "//xla:status_macros",
         "//xla:util",
         "//xla:xla_data_proto_cc",
+        "//xla/hlo/analysis:alias_info",
         "//xla/hlo/analysis:hlo_alias_analysis",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
@@ -97,6 +102,7 @@ cc_library(
     deps = [
         ":auto_sharding_proto_cc",
         ":auto_sharding_strategy",
+        ":iopddl_lib",
         "@com_google_absl//absl/log:check",
     ] + if_google(
         ["@com_google_ortools//ortools/linear_solver:linear_solver_wrapper"],
@@ -107,6 +113,11 @@ cc_library(
 cc_library(
     name = "auto_sharding_solver",
     srcs = [
+        "auto_sharding_cpsat_for_problem.cc",
+        "auto_sharding_cpsat_for_request.cc",
+        "auto_sharding_evaluator_for_problem.cc",
+        "auto_sharding_evaluator_for_request.cc",
+        "auto_sharding_heuristic_for_problem.cc",
         "auto_sharding_memory.cc",
         "auto_sharding_solver.cc",
     ],
@@ -114,8 +125,10 @@ cc_library(
     compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
         ":auto_sharding_device_mesh",
+        ":auto_sharding_iopddl",
         ":auto_sharding_proto_cc",
         ":auto_sharding_strategy",
+        ":iopddl_lib",
         "//xla:status_macros",
         "//xla:util",
         "@com_google_absl//absl/container:btree",
@@ -123,6 +136,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/numeric:int128",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -155,6 +169,7 @@ cc_library(
     deps = [
         ":auto_sharding_device_mesh",
         ":auto_sharding_proto_cc",
+        ":iopddl_lib",
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_value",
@@ -333,6 +348,7 @@ xla_cc_binary(
     compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
         ":auto_sharding",
+        "//xla/hlo/analysis:alias_info",
         "//xla/hlo/ir:hlo",
         "//xla/tools:hlo_module_loader",
         "@com_google_absl//absl/status",
@@ -388,6 +404,7 @@ xla_cc_test(
         ":auto_sharding_option",
         ":auto_sharding_strategy",
         ":auto_sharding_util",
+        "//xla/hlo/analysis:alias_info",
         "//xla/hlo/analysis:hlo_alias_analysis",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
@@ -416,6 +433,8 @@ xla_cc_test(
 xla_cc_test(
     name = "auto_sharding_solver_test",
     srcs = [
+        "auto_sharding_cpsat_for_problem_test.cc",
+        "auto_sharding_cpsat_for_request_test.cc",
         "auto_sharding_memory_test.cc",
         "auto_sharding_solver_test.cc",
     ],
@@ -425,9 +444,11 @@ xla_cc_test(
         "no_oss",
     ],
     deps = [
+        ":auto_sharding_iopddl",
         ":auto_sharding_proto_cc",
         ":auto_sharding_solver",  # build_cleaner: keep
         ":auto_sharding_strategy",
+        ":iopddl_lib",
         "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -464,7 +485,6 @@ cc_test(
     # CC_TEST_OK=tests imported from the IOPDDL library.
     name = "iopddl_test",
     srcs = ["iopddl_test.cc"],
-    data = ["example.json"],
     deps = [
         ":iopddl_lib",
         "//xla/tsl/platform:status_matchers",
@@ -480,9 +500,134 @@ cc_library(
     hdrs = ["auto_sharding_iopddl.h"],
     compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
+        ":auto_sharding_proto_cc",
+        ":auto_sharding_strategy",
         ":iopddl_lib",
-        "//xla/hlo/experimental/auto_sharding:auto_sharding_proto_cc",
-        "//xla/hlo/experimental/auto_sharding:auto_sharding_strategy",
         "@com_google_absl//absl/log:check",
+    ],
+)
+
+cc_library(
+    name = "stablehlo_utils",
+    srcs = ["stablehlo_utils.cc"],
+    hdrs = ["stablehlo_utils.h"],
+    compatible_with = get_compatible_with_libtpu_portable(),
+    deps = [
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/translate:stablehlo",
+        "//xla/mlir/utils:error_util",
+        "//xla/service/spmd/shardy/stablehlo_round_trip:stablehlo_export",
+        "//xla/service/spmd/shardy/stablehlo_round_trip:stablehlo_import",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@shardy//shardy/dialect/sdy/transforms/export:passes",
+    ],
+)
+
+xla_cc_test(
+    name = "stablehlo_utils_test",
+    srcs = ["stablehlo_utils_test.cc"],
+    deps = [
+        ":stablehlo_utils",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/testlib:filecheck",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/mlir_hlo",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
+        "@stablehlo//:stablehlo_ops",
+    ],
+)
+
+cc_library(
+    name = "auto_sharding_stablehlo_pass",
+    srcs = ["auto_sharding_stablehlo_pass.cc"],
+    hdrs = ["auto_sharding_stablehlo_pass.h"],
+    compatible_with = get_compatible_with_libtpu_portable(),
+    deps = [
+        ":auto_sharding",
+        ":auto_sharding_option",
+        ":stablehlo_utils",
+        "//xla/hlo/analysis:alias_info",
+        "//xla/hlo/ir:hlo",
+        "//xla/mlir_hlo",
+        "//xla/mlir_hlo:hlo_dialect_registration",
+        "//xla/service/spmd/shardy/sdy_round_trip:dedup_meshes",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:FuncExtensions",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:ShapeDialect",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:UBDialect",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
+        "@shardy//shardy/dialect/sdy/transforms/propagation:auto_partitioner_registry",
+        "@stablehlo//:chlo_ops",
+        "@stablehlo//:register",
+        "@stablehlo//:stablehlo_ops",
+    ],
+)
+
+xla_cc_test(
+    name = "auto_sharding_stablehlo_pass_test",
+    srcs = [
+        "auto_sharding_stablehlo_pass_test.cc",
+    ],
+    tags = [
+        # Disabled until autosharding is fully supported for CPU and x86 GPU
+        "no_oss",
+    ],
+    deps = [
+        ":auto_sharding_stablehlo_pass",
+        "//xla/hlo/testlib:filecheck",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+tsl_pybind_extension(
+    name = "auto_sharding_python_extension",
+    srcs = ["auto_sharding_python_extension.cc"],
+    deps = [
+        ":auto_sharding_stablehlo_pass",
+        "@nanobind",
+        "@shardy//shardy/dialect/sdy/transforms/propagation:auto_partitioner_registry",
+    ],
+)
+
+py_strict_test(
+    name = "auto_sharding_python_extension_test",
+    size = "small",
+    srcs = ["auto_sharding_python_extension_test.py"],
+    deps = [
+        ":auto_sharding_python_extension",
+        "@absl_py//absl/testing:absltest",
     ],
 )

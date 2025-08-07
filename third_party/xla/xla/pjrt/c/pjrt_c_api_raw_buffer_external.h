@@ -32,6 +32,9 @@ PJRT_Memory* PjRtCApiRawBuffer_GetMemorySpace(
     const PJRT_Api* c_api, const PJRT_RawBuffer_Extension* extension,
     PJRT_RawBuffer* buffer);
 
+void* PjRtCApiRawBuffer_GetHostPointer(
+    PJRT_RawBuffer_GetHostPointer_Args* args);
+
 size_t PjRtCApiRawBuffer_GetOnDeviceSizeInBytes(
     const PJRT_Api* c_api, const PJRT_RawBuffer_Extension* extension,
     PJRT_RawBuffer* buffer);
@@ -65,6 +68,7 @@ class PjRtCApiRawBuffer : public PjRtRawBuffer {
   ~PjRtCApiRawBuffer() override;
 
   PjRtMemorySpace* memory_space() const override;
+  void* GetHostPointer() const override;
   size_t GetOnDeviceSizeInBytes() const override;
   PjRtFuture<> CopyRawHostToDevice(const void* src, int64_t offset,
                                    int64_t transfer_size) override;

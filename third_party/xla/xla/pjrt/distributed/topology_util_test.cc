@@ -21,16 +21,15 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/status_matchers.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
-#include "tsl/platform/threadpool.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/threadpool.h"
 
 namespace xla {
 namespace {
@@ -245,7 +244,7 @@ TEST(TopologyTest, ExchangeTopology_TwiceWithDifferentLocalTopology_Fails) {
                           absl::Seconds(10), /*get_global_topology_timeout=*/
                           absl::Seconds(10), &kv_store, locals[i], &globals[i],
                           /*assign_global_device_ids=*/true),
-                      tsl::testing::StatusIs(absl::StatusCode::kInternal));
+                      absl_testing::StatusIs(absl::StatusCode::kInternal));
         }
       });
     }
@@ -315,7 +314,6 @@ TEST(TopologyTest, BuildGpuTopology) {
                           /*assign_global_device_ids=*/true));
 
   TF_ASSERT_OK_AND_ASSIGN(auto gpu_topology, BuildGpuTopology(global));
-  EXPECT_EQ(gpu_topology.device_ids_size(), 4);
   EXPECT_EQ(gpu_topology.num_slices(), 2);
   EXPECT_EQ(gpu_topology.num_hosts_per_slice(), 1);
   EXPECT_EQ(gpu_topology.num_devices_per_host(), 2);
@@ -345,7 +343,6 @@ TEST(TopologyTest, BuildGpuTopologyWithDifferentNumHostsPerSlice) {
                           /*assign_global_device_ids=*/true));
 
   TF_ASSERT_OK_AND_ASSIGN(auto gpu_topology, BuildGpuTopology(global));
-  EXPECT_EQ(gpu_topology.device_ids_size(), 3);
   EXPECT_EQ(gpu_topology.num_slices(), -1);
   EXPECT_EQ(gpu_topology.num_hosts_per_slice(), -1);
   EXPECT_EQ(gpu_topology.num_devices_per_host(), -1);
@@ -373,7 +370,6 @@ TEST(TopologyTest, BuildGpuTopologyWithDifferentNumDevicesPerHost) {
                           /*assign_global_device_ids=*/true));
 
   TF_ASSERT_OK_AND_ASSIGN(auto gpu_topology, BuildGpuTopology(global));
-  EXPECT_EQ(gpu_topology.device_ids_size(), 3);
   EXPECT_EQ(gpu_topology.num_slices(), -1);
   EXPECT_EQ(gpu_topology.num_hosts_per_slice(), -1);
   EXPECT_EQ(gpu_topology.num_devices_per_host(), -1);

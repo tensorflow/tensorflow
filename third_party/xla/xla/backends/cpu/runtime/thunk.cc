@@ -22,6 +22,9 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/base/no_destructor.h"
+#include "absl/functional/function_ref.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
@@ -32,11 +35,17 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "tsl/profiler/lib/traceme_encode.h"
 
 namespace xla::cpu {
+
+// Ok execute event allocated with the static storage duration.
+static tsl::internal::AsyncValueStorage<Thunk::ExecuteEvent> ok_storage;
+absl::NoDestructor<tsl::AsyncValueOwningRef<Thunk::ExecuteEvent>>
+    Thunk::ok_event_(tsl::MakeAvailableAsyncValueRef<ExecuteEvent>(ok_storage));
 
 absl::string_view Thunk::KindToString(Kind kind) {
   switch (kind) {
@@ -81,10 +90,7 @@ absl::string_view Thunk::KindToString(Kind kind) {
   }
 }
 
-Thunk::Thunk(Kind kind, Info info)
-    : kind_(kind),
-      info_(std::move(info)),
-      ok_event_(OkExecuteEventSingleton()) {}
+Thunk::Thunk(Kind kind, Info info) : kind_(kind), info_(std::move(info)) {}
 
 absl::StatusOr<Thunk::CollectiveExecuteParams>
 Thunk::CollectiveExecuteParams::Create(
@@ -149,15 +155,6 @@ Thunk::CustomCallExecuteParams::CustomCallExecuteParams(
       intra_op_thread_pool(intra_op_thread_pool),
       ffi_execution_context(ffi_execution_context) {}
 
-tsl::AsyncValueRef<Thunk::ExecuteEvent> Thunk::OkExecuteEventSingleton() {
-  static tsl::AsyncValueOwningRef<ExecuteEvent>* singleton = [] {
-    auto* storage = new tsl::internal::AsyncValueStorage<ExecuteEvent>();
-    return new tsl::AsyncValueOwningRef<ExecuteEvent>(
-        tsl::MakeAvailableAsyncValueRef<ExecuteEvent>(*storage));
-  }();
-  return singleton->AsRef();
-}
-
 Thunk::ExecuteSession::ExecuteSession(int64_t max_workers,
                                       int64_t split_threshold)
     : lock_(std::make_shared<std::nullopt_t>(std::nullopt)),
@@ -204,6 +201,36 @@ ThunkSequence::ResourceUses ThunkSequence::resource_uses() const {
     resource_uses.insert(resource_uses.end(), uses.begin(), uses.end());
   }
   return resource_uses;
+}
+
+static void ForEach(const ThunkSequence& sequence,
+                    absl::FunctionRef<void(const Thunk&)> fn) {
+  for (auto& thunk : sequence) {
+    fn(*thunk);
+    for (auto& [name, nested] : thunk->nested_thunks()) {
+      ForEach(*nested, fn);
+    }
+  }
+}
+
+static absl::Status ForEach(const ThunkSequence& sequence,
+                            absl::FunctionRef<absl::Status(const Thunk&)> fn) {
+  for (auto& thunk : sequence) {
+    TF_RETURN_IF_ERROR(fn(*thunk));
+    for (auto& [name, nested] : thunk->nested_thunks()) {
+      TF_RETURN_IF_ERROR(ForEach(*nested, fn));
+    }
+  }
+  return absl::OkStatus();
+}
+
+void ThunkSequence::ForEach(absl::FunctionRef<void(const Thunk&)> fn) const {
+  xla::cpu::ForEach(*this, fn);
+}
+
+absl::Status ThunkSequence::ForEachWithStatus(
+    absl::FunctionRef<absl::Status(const Thunk&)> fn) const {
+  return xla::cpu::ForEach(*this, fn);
 }
 
 }  // namespace xla::cpu

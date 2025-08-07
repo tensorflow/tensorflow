@@ -87,7 +87,7 @@ limitations under the License.
 #include "xla/hlo/translate/mhlo_to_hlo/layout_util.h"
 #include "xla/hlo/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 #include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
-#include "xla/hlo/translate/stablehlo.h"
+#include "xla/hlo/translate/register.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/mlir_hlo/stablehlo_ext/transforms/passes.h"

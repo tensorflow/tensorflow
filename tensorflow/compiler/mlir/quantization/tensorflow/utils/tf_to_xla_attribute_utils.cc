@@ -21,8 +21,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/core/c/builtin_op_data.h"
-#include "tensorflow/compiler/mlir/lite/kernels/padding.h"
+#include "tensorflow/compiler/mlir/kernels/padding.h"
 #include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/constant_fold.h"
 #include "xla/xla_data.pb.h"

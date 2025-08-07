@@ -31,6 +31,7 @@ limitations under the License.
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/user_context.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
@@ -47,6 +48,11 @@ class PjRtTuple final : public llvm::RTTIExtends<PjRtTuple, Tuple> {
   PjRtCompatibleClient* client() const override {
     DCHECK(this);
     return client_;
+  }
+
+  UserContextRef user_context() const override {
+    DCHECK(this);
+    return {};
   }
 
   Future<> GetReadyFuture() const override;

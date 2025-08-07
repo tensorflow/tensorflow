@@ -44,19 +44,25 @@ jobs:
         job_info: [
           {
             pool: "linux-x86-n2-16",
-            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
+            container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest",
             name: "XLA Linux x86 CPU",
             repo: "openxla/xla",
           },
           {
+            pool: "linux-x86-n2-16",
+            container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest",
+            name: "XLA Linux X86 GPU ONEAPI",
+            repo: "openxla/xla",
+          },
+          {
             pool: "linux-x86-g2-16-l4-1gpu",
-            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
+            container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest",
             name: "XLA Linux x86 GPU T4",
             repo: "openxla/xla",
           },
           {
             pool: "linux-arm64-c4a-16",
-            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build-arm64:latest",
+            container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build-arm64:latest",
             name: "XLA Linux ARM64 CPU",
             repo: "openxla/xla",
           },
@@ -74,13 +80,13 @@ jobs:
           },
           {
             pool: "linux-x86-n2-16",
-            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
+            container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest",
             name: "TensorFlow Linux x86 CPU",
             repo: "tensorflow/tensorflow",
           },
           {
             pool: "linux-x86-g2-16-l4-1gpu",
-            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
+            container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest",
             name: "TensorFlow Linux x86 GPU T4",
             repo: "tensorflow/tensorflow",
           },
@@ -94,17 +100,17 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: "Checking out openxla/xla"
-        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           path: "openxla/xla"
       - name: Checking out ${{ matrix.job_info.repo }}
         if: ${{ matrix.job_info.repo != 'openxla/xla' }}
-        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           repository: ${{ matrix.job_info.repo }}
           path: ${{ matrix.job_info.repo }}
       - name: "Wait For Connection"
-        uses: google-ml-infra/actions/ci_connection@main
+        uses: google-ml-infra/actions/ci_connection@7f5ca0c263a81ed09ea276524c1b9192f1304e3c
         with:
           halt-dispatch-input: ${{ inputs.halt-for-connection }}
       - name: "Run build.py"

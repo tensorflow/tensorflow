@@ -398,18 +398,7 @@ class AlgebraicSimplifierOptions {
   bool enable_fast_math_{false};
   bool enable_broadcast_degenerate_dimension_{true};
   bool enable_remove_no_op_reduce_precision_{false};
-  bool enable_onednn_support_{
-#ifdef INTEL_MKL
-      // Deprecation warning: This config-dependent default value is a temporary
-      // measure to preserve existing behavior until downstream users can update
-      // their code. The option will default to `false` in a future version;
-      // please explicitly call `set_enable_onednn_support(true)` if you depend
-      // on it being `true`.
-      true
-#else   // INTEL_MKL
-      false
-#endif  // INTEL_MKL
-  };
+  bool enable_onednn_support_{false};
   bool rewrite_reshape_transpose_as_slice_concatenate_{true};
   bool run_to_fixed_point_{true};
   Metadata metadata_;

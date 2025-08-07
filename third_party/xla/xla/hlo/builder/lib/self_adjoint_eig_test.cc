@@ -20,6 +20,7 @@ limitations under the License.
 #include <numeric>
 #include <vector>
 
+#include "xla/tests/xla_test_backend_predicates.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
@@ -40,7 +41,6 @@ limitations under the License.
 #include "xla/tests/client_library_test_runner_mixin.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
-#include "xla/tests/test_macros.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
@@ -288,7 +288,7 @@ class RandomEighTest : public ClientLibraryTestRunnerMixin<
                            HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>,
                        public ::testing::WithParamInterface<EighTestCase> {};
 
-XLA_TEST_P(RandomEighTest, Random) {
+TEST_P(RandomEighTest, Random) {
   XlaBuilder builder(TestName());
   int64_t size = GetParam();
   Array2D<float> a_val = GenerateRandomSymmetricMatrix(size);
@@ -303,26 +303,24 @@ XLA_TEST_P(RandomEighTest, Random) {
                              ErrorSpec(kExpected, 0));
 }
 
-#ifndef XLA_TEST_BACKEND_CPU
+std::vector<EighTestCase> MakeTestCases() {
+  std::vector<EighTestCase> testcases = {0,   1,   2,   3,   8,   16,  32, 77,
+                                         129, 203, 256, 257, 493, 511, 512};
+  if (!test::DeviceTypeIs(test::kCpu)) {
+    // These take too long on CPU.
+    testcases.push_back(513);
+    testcases.push_back(1000);
+  }
+
+  return testcases;
+}
+
 INSTANTIATE_TEST_SUITE_P(
     RandomEighTestInstantiation, RandomEighTest,
-    ::testing::Values(0, 1, 2, 3, 8, 16, 32, 77, 129, 203, 256, 257, 493, 511,
-                      512,
-                      // Large tests are slow on CPU.
-                      513, 1000),
+    ::testing::ValuesIn(MakeTestCases()),
     [](const ::testing::TestParamInfo<EighTestCase>& info) {
       const int64_t size = info.param;
       return absl::StrCat(size);
     });
-#else
-INSTANTIATE_TEST_SUITE_P(
-    RandomEighTestInstantiation, RandomEighTest,
-    ::testing::Values(0, 1, 2, 3, 8, 16, 32, 77, 129, 203, 256, 257, 493, 511,
-                      512),
-    [](const ::testing::TestParamInfo<EighTestCase>& info) {
-      const int64_t size = info.param;
-      return absl::StrCat(size);
-    });
-#endif  // XLA_TEST_BACKEND_CPU
 
 }  // namespace xla

@@ -22,8 +22,6 @@ limitations under the License.
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
-#include "xla/tsl/concurrency/ref_count.h"
-#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace ifrt {
@@ -38,9 +36,10 @@ struct DeviceTestParam {
 };
 
 // Test fixture for device tests.
-class DeviceTest : public testing::TestWithParam<DeviceTestParam> {
+class DeviceTestFixture {
  public:
-  void SetUp() override;
+  explicit DeviceTestFixture(const DeviceTestParam& param);
+
   Client* client() { return client_.get(); }
 
   // Returns `DeviceList` containing devices at given indexes (not ids) within

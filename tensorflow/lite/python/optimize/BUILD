@@ -1,3 +1,4 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
 
@@ -44,11 +45,16 @@ pybind_extension(
     additional_stubgen_deps = [
         "//third_party/py/numpy:numpy",
     ],
+    common_lib_packages = [
+        "litert/python",
+        "tensorflow/lite/python",
+    ],
     enable_stub_generation = True,
     link_in_framework = True,
     pytype_srcs = [
         "_pywrap_tensorflow_lite_calibration_wrapper.pyi",
     ],
+    wrap_py_init = True,
     deps = [
         ":calibration_wrapper_lib",
         "//tensorflow/lite:framework",

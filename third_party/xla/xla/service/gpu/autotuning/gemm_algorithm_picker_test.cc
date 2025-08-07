@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <variant>
 
+#include "absl/functional/overload.h"
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "xla/autotune_results.pb.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/transforms/gemm_rewriter.h"
-#include "xla/service/overload.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
@@ -74,7 +74,7 @@ class GemmAlgorithmPickerTest : public HloTestBase,
     bool blas_get_version = name.rfind("BlasGetVersion") == 0;
 
     std::visit(
-        Overload{
+        absl::Overload(
             [&](const se::CudaComputeCapability& cc) {
               if (!blas_get_version && cc.IsAtLeastAmpere()) {
                 GTEST_SKIP()
@@ -93,7 +93,7 @@ class GemmAlgorithmPickerTest : public HloTestBase,
                          !cc.has_hipblaslt()) {
                 GTEST_SKIP() << "No gpublas-lt support on this architecture!";
               }
-            }},
+            }),
         gpu_comp());
   }
 };

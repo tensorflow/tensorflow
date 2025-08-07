@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_SHIM_STATUS_MACROS_H_
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 
 // A few macros to help with propagating status.
 // They are mainly adapted from the ones in  tensorflow/core/platform/errors.h

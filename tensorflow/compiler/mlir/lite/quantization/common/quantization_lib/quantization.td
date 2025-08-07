@@ -137,9 +137,28 @@ def SameOperandsAndResultsScale : OpInterface<"SameScalesOpInterface"> {
   ];
 
   let verify = [{
-    return TFL::VerifySameScales($_op);
+    return mlir::TFL::VerifySameScales($_op);
   }];
 }
+
+def RequiresQuantizedBiasInterface : OpInterface<"RequiresQuantizedBiasInterface"> {
+  let description = [{
+    Interface for ops that require the converter to quantize their bias based on
+    the scales of the other operands.
+  }];
+
+  let methods = [
+    InterfaceMethod<
+      [{Returns the bias operand index.}],
+      "int", "GetBiasOperandIndex",
+      (ins), [{}], [{return -1;}]>,
+    InterfaceMethod<
+      [{Returns the non-bias operand indices.}],
+      "std::vector<int>", "GetNonBiasOperandIndices",
+      (ins), [{}], [{return {};}]>,
+  ];
+}
+
 
 def DynamicRangeQuantizedOpInterface : OpInterface<
   "DynamicRangeQuantizedOpInterface"> {

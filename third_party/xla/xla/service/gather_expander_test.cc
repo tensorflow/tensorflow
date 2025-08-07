@@ -24,7 +24,6 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/utils/hlo_query.h"
-#include "xla/tests/test_macros.h"
 
 namespace xla {
 namespace {

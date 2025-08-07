@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/annotation.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
@@ -114,7 +115,9 @@ void SequentialThunk::ForAllThunks(
 }
 
 absl::StatusOr<ThunkProto> SequentialThunk::ToProto() const {
-  TF_ASSIGN_OR_RETURN(ThunkProto proto, Thunk::ToProto());
+  ThunkProto proto;
+  *proto.mutable_thunk_info() = thunk_info().ToProto();
+
   // This sets the oneof-type to the sequential thunk, even if the thunk list is
   // empty.
   proto.mutable_sequential_thunk();

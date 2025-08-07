@@ -27,6 +27,7 @@
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -49,7 +50,6 @@
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
-#include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/ifrt_proxy/client/array.h"
 #include "xla/python/ifrt_proxy/client/device.h"
@@ -92,7 +92,7 @@ absl::StatusOr<std::unique_ptr<Client>> Client::Create(
       init_response.addressable_device_ids().begin(),
       init_response.addressable_device_ids().end());
   absl::flat_hash_set<int> primary_device_ids;
-  if (rpc_helper->version().protocol_version() < 7) {
+  if (rpc_helper->protocol_version() < 7) {
     // Legacy implementation for servers do not support Client::GetAllDevices()
     // and thus do not provide device_ids(). Assume that it contains all device
     // ids from devices().
@@ -122,7 +122,7 @@ absl::StatusOr<std::unique_ptr<Client>> Client::Create(
   for (const auto& d : init_response.all_devices()) {
     absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute>
         pjrt_device_attributes;
-    if (rpc_helper->version().protocol_version() <= 3) {
+    if (rpc_helper->protocol_version() <= 3) {
       for (const auto& [key, attr] : d.deprecated_attributes()) {
         TF_ASSIGN_OR_RETURN(xla::PjRtDeviceAttribute value,
                             FromVariantProto(attr));
@@ -189,13 +189,20 @@ absl::StatusOr<std::unique_ptr<Client>> Client::Create(
   std::string runtime_type =
       absl::StrCat("proxy/", init_response.runtime_type());
 
+  AttributeMap client_attributes({});
+  if (init_response.has_client_attributes()) {
+    TF_ASSIGN_OR_RETURN(
+        client_attributes,
+        AttributeMap::FromProto(init_response.client_attributes()));
+  }
+
   auto client = absl::WrapUnique(new Client(
       std::move(rpc_helper), init_response.session_id(),
       init_response.platform_name(), init_response.platform_version(),
       init_response.platform_id(), init_response.process_index(), runtime_type,
       std::move(devices), std::move(primary_device_ptrs),
-      std::move(addressable_device_ptrs), all_device_ptrs,
-      std::move(memories)));
+      std::move(addressable_device_ptrs), all_device_ptrs, std::move(memories),
+      std::move(client_attributes)));
   for (ifrt::Device* device : all_device_ptrs) {
     tensorflow::down_cast<Device*>(device)->client_ = client.get();
   }
@@ -210,15 +217,15 @@ Client::Client(std::shared_ptr<RpcHelper> rpc_helper, uint64_t session_id,
                std::vector<xla::ifrt::Device*> primary_device_ptrs,
                std::vector<xla::ifrt::Device*> addressable_device_ptrs,
                std::vector<xla::ifrt::Device*> all_device_ptrs,
-               absl::flat_hash_map<int, std::unique_ptr<Memory>> memories)
+               absl::flat_hash_map<int, std::unique_ptr<Memory>> memories,
+               AttributeMap attributes)
     : rpc_helper_(rpc_helper),
       platform_name_(std::move(platform_name)),
       platform_version_(std::move(platform_version)),
       platform_id_(platform_id),
       process_index_(process_index),
       runtime_type_(std::move(runtime_type)),
-      // TODO(b/309059940): Forward the backend attributes to the client.
-      attributes_(AttributeMap::Map()),
+      attributes_(std::move(attributes)),
       devices_(std::move(devices)),
       primary_device_ptrs_(primary_device_ptrs),
       addressable_device_ptrs_(std::move(addressable_device_ptrs)),
@@ -226,7 +233,11 @@ Client::Client(std::shared_ptr<RpcHelper> rpc_helper, uint64_t session_id,
       memories_(std::move(memories)),
       default_compiler_(this, rpc_helper) {}
 
-Client::~Client() { rpc_helper_->Disconnect(); }
+Client::~Client() {
+  LOG(INFO) << "Client::~Client() starting.";
+  rpc_helper_->Disconnect();
+  LOG(INFO) << "Client::~Client(): rpc_helper_->Disconnect() is done.";
+}
 
 absl::StatusOr<xla::ifrt::Device*> Client::LookupDevice(
     DeviceId device_id) const {
@@ -242,9 +253,7 @@ absl::StatusOr<xla::ifrt::ArrayRef> Client::MakeArrayFromHostBuffer(
     const void* data, DType dtype, Shape shape,
     std::optional<absl::Span<const int64_t>> byte_strides, ShardingRef sharding,
     xla::ifrt::Client::HostBufferSemantics semantics,
-    std::function<void()> on_done_with_host_buffer,
-    tsl::RCReference<xla::ifrt::UserContext> user_context) {
-  // TODO(b/407104769): Handle `user_context`.
+    std::function<void()> on_done_with_host_buffer) {
   return Array::MakeArrayFromHostBuffer(
       this, rpc_helper_, data, dtype, std::move(shape), std::move(byte_strides),
       std::move(sharding), semantics, std::move(on_done_with_host_buffer));
@@ -253,18 +262,15 @@ absl::StatusOr<xla::ifrt::ArrayRef> Client::MakeArrayFromHostBuffer(
 absl::StatusOr<std::vector<xla::ifrt::ArrayRef>>
 Client::MakeArraysFromHostBufferShards(
     absl::Span<MakeArraysFromHostBufferShardsSpec> specs,
-    xla::ifrt::Client::HostBufferSemantics semantics,
-    tsl::RCReference<UserContext> user_context) {
-  return Array::MakeArraysFromHostBufferShards(
-      this, rpc_helper_, specs, semantics, std::move(user_context));
+    xla::ifrt::Client::HostBufferSemantics semantics) {
+  return Array::MakeArraysFromHostBufferShards(this, rpc_helper_, specs,
+                                               semantics);
 }
 
 absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::MakeErrorArrays(
     const absl::Status& error,
-    absl::Span<const xla::ifrt::ArraySpec> array_specs,
-    tsl::RCReference<xla::ifrt::UserContext> user_context) {
-  return Array::MakeErrorArrays(this, rpc_helper_, error, array_specs,
-                                std::move(user_context));
+    absl::Span<const xla::ifrt::ArraySpec> array_specs) {
+  return Array::MakeErrorArrays(this, rpc_helper_, error, array_specs);
 }
 
 absl::StatusOr<xla::ifrt::ArrayRef> Client::AssembleArrayFromSingleDeviceArrays(
@@ -318,12 +324,14 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::CopyArrays(
   }
   if (memory_kind.has_value()) {
     // Use an empty string to indicate the default memory kind.
+    // OSS requires explicit string conversion
+    // NOLINTNEXTLINE(*-redundant-string-conversions)
     req->set_memory_kind(std::string(memory_kind->memory_kind().value_or("")));
   }
   req->set_copy_semantics(ToArrayCopySemanticsProto(semantics));
 
   std::vector<uint64_t> result_handles;
-  if (rpc_helper_->version().protocol_version() <
+  if (rpc_helper_->protocol_version() <
       protocol_version::kClientHandlesOptimization2) {
     TF_ASSIGN_OR_RETURN(auto response,
                         rpc_helper_->CopyArrays(std::move(req)).Await());
@@ -425,14 +433,16 @@ absl::StatusOr<DeviceAssignment> Client::GetDefaultDeviceAssignment(
   return *std::move(assignment_to_return);
 }
 
-xla::ifrt::DeviceListRef Client::MakeDeviceList(
+absl::StatusOr<xla::ifrt::DeviceListRef> Client::MakeDeviceList(
     absl::Span<xla::ifrt::Device* const> devices) const {
   return xla::ifrt::BasicDeviceList::Create(devices);
 }
 
-absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> Client::GetDefaultLayout(
-    xla::ifrt::DType dtype, absl::Span<const int64_t> dims,
-    xla::ifrt::Device* device, xla::ifrt::MemoryKind memory_kind) const {
+absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>>
+Client::GetDefaultPjRtLayout(xla::ifrt::DType dtype,
+                             absl::Span<const int64_t> dims,
+                             xla::ifrt::Device* device,
+                             xla::ifrt::MemoryKind memory_kind) const {
   tsl::profiler::TraceMe traceme_ifrt_entrypoint(
       "IfrtProxyEntrypointGetDefaultLayout");
   auto req = std::make_unique<GetDefaultLayoutRequest>();
@@ -450,12 +460,14 @@ absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> Client::GetDefaultLayout(
     }
   }
 
-  *req->mutable_dtype() = dtype.ToProto();
+  *req->mutable_dtype() = dtype.ToProto(rpc_helper_->ifrt_serdes_version());
   req->mutable_dims()->Reserve(dims.size());
   for (int64_t dim : dims) {
     req->add_dims(dim);
   }
   req->set_device_id(device->Id().value());
+  // OSS requires explicit string conversion
+  // NOLINTNEXTLINE(*-redundant-string-conversions)
   req->set_memory_kind(std::string(memory_kind.memory_kind().value_or("")));
 
   auto future = rpc_helper_->GetDefaultLayout(std::move(req));

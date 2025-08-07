@@ -31,7 +31,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/compiler.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_proto_util.h"
 
 namespace xla {
@@ -52,11 +54,13 @@ class StreamExecutorExecutable : public PjRtExecutable {
 
   StreamExecutorExecutable(
       const CompileOptions& compile_options,
+      std::optional<HloModuleProto> unoptimized_hlo_module_proto,
       std::vector<std::unique_ptr<LocalExecutable>> local_executables,
       LocalClient* local_client, int num_replicas, int num_partitions,
       absl::string_view name, absl::string_view fingerprint,
       absl::string_view default_memory_kind)
       : compile_options_(compile_options),
+        unoptimized_hlo_module_proto_(std::move(unoptimized_hlo_module_proto)),
         executables_(std::move(local_executables)),
         local_client_(local_client),
         num_replicas_(num_replicas),
@@ -103,9 +107,11 @@ class StreamExecutorExecutable : public PjRtExecutable {
       TF_ASSIGN_OR_RETURN(std::unique_ptr<BufferAssignment> buffers,
                           aot_executable->buffer_assignment());
 
-      memory_stats.serialized_buffer_assignment =
-          buffers->ToProto().SerializeAsString();
+      BufferAssignmentProto proto = buffers->ToProto();
+      memory_stats.serialized_buffer_assignment = proto.SerializeAsString();
       memory_stats.PopulateBufferStatsFromAllocations(buffers->Allocations());
+      TF_ASSIGN_OR_RETURN(int64_t peak_memory, ComputePeakMemory(proto));
+      memory_stats.peak_memory_in_bytes = peak_memory;
       return memory_stats;
     } else {
       const auto& local_executables =
@@ -119,6 +125,8 @@ class StreamExecutorExecutable : public PjRtExecutable {
           local_executables[0]->executable()->buffer_assignment_proto();
       if (proto != nullptr) {
         memory_stats.serialized_buffer_assignment = proto->SerializeAsString();
+        TF_ASSIGN_OR_RETURN(int64_t peak_memory, ComputePeakMemory(*proto));
+        memory_stats.peak_memory_in_bytes = peak_memory;
       }
       memory_stats.PopulateBufferStatsFromAllocations(
           local_executables[0]->executable()->GetAllocations());
@@ -159,8 +167,15 @@ class StreamExecutorExecutable : public PjRtExecutable {
     return fingerprint_;
   }
 
+  const std::optional<HloModuleProto>& unoptimized_hlo_module_proto() const {
+    return unoptimized_hlo_module_proto_;
+  }
+
  private:
   CompileOptions compile_options_;
+  // The unoptimized HLO module proto is necessary for HLO debug dumping. It is
+  // not available for deserialized executables.
+  std::optional<HloModuleProto> unoptimized_hlo_module_proto_;
   std::variant<std::vector<std::unique_ptr<xla::AotCompilationResult>>,
                std::vector<std::unique_ptr<LocalExecutable>>>
       executables_;

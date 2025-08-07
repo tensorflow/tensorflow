@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/instruction_fusion.h"
 
@@ -39,9 +40,13 @@ class XnnGraphFusion : public InstructionFusion {
   HloInstruction* Fuse(HloInstruction* producer, HloInstruction* consumer,
                        HloComputation* computation) override;
 
-  bool IsOpSupported(HloInstruction* instr) const;
+  std::vector<HloComputation*> GetNonFusionComputations(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
-  bool IsXnnGraphFusion(const HloInstruction* instr) const;
+  static bool IsOpSupported(const HloInstruction* instr);
+
+  static bool IsXnnGraphFusion(const HloInstruction* instr);
 };
 
 }  // namespace cpu

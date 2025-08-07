@@ -84,6 +84,11 @@ def XLA_ExtraBackendOptionsAttr
                 "mlir::StringAttr"> {
 }
 
+def XLA_CpuMemoryRegionNameAttr
+  : AttrDef<XlaDialect, "CpuMemoryRegionName", [], "mlir::StringAttr"> {
+  let mnemonic = "cpu_memory_region_name";
+}
+
 def WorkGroupDimension : I32EnumAttr<"WorkGroupDimension",
     "a dimension, either 'x', 'y', or 'z'",
     [

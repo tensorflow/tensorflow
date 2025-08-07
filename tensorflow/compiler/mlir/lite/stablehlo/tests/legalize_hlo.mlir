@@ -5096,9 +5096,9 @@ func.func @lowered_cumprod(%arg0: tensor<4x12xf32>) -> tensor<4x12xf32> {
 }
 
 // CHECK-LABEL: reduce_window_trivial_window_dims
+// CHECK-NOT:       "tf.Cumprod"
 func.func @reduce_window_trivial_window_dims(%arg0: tensor<4x12xf32>) -> tensor<4x12xf32> {
   %0 = mhlo.constant dense<1.000000e+00> : tensor<f32>
-  // expected-error @+1 {{no reduced dimension is found.}}
   %1 = "mhlo.reduce_window"(%arg0, %0) ({
   ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
     %2 = mhlo.multiply %arg1, %arg2 : tensor<f32>

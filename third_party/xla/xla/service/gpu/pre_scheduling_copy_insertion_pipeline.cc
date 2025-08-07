@@ -19,16 +19,16 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/service/copy_insertion.h"
 #include "xla/service/cpu_gpu_shape_verifier.h"
+#include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/transforms/alias_passthrough_params.h"
 #include "xla/service/gpu/transforms/copy_fusion.h"
-#include "xla/service/gpu/transforms/horizontal_loop_fusion.h"
 #include "xla/service/gpu/transforms/sanitize_constant_names.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/layout_assignment.h"
 #include "xla/service/loop_schedule_linearizer.h"
@@ -39,8 +39,7 @@ namespace xla {
 namespace gpu {
 
 HloPassPipeline PreSchedulingCopyInsertionPipeline(
-    const HloModuleConfig& config,
-    HloDataflowAnalysis::CanShareBuffer can_share_buffer,
+    const HloModuleConfig& config, const GpuAliasInfo* alias_info,
     const se::DeviceDescription& device_description) {
   const DebugOptions& debug_options = config.debug_options();
 
@@ -69,27 +68,17 @@ HloPassPipeline PreSchedulingCopyInsertionPipeline(
   if (config.alias_passthrough_params()) {
     pipeline.AddPass<AliasPassthroughParams>();
   }
-  pipeline.AddPass<LoopScheduleLinearizer>(can_share_buffer);
+  pipeline.AddPass<LoopScheduleLinearizer>(alias_info);
 
   if (debug_options.xla_gpu_copy_insertion_use_region_analysis()) {
     constexpr int64_t kNoRegionBasedLiveRangeAnalysisLimit = -1;
-    pipeline.AddPass<CopyInsertion>(can_share_buffer,
+    pipeline.AddPass<CopyInsertion>(alias_info,
                                     kNoRegionBasedLiveRangeAnalysisLimit);
   } else {
-    pipeline.AddPass<CopyInsertion>(can_share_buffer);
+    pipeline.AddPass<CopyInsertion>(alias_info);
   }
 
-  // We are using a sub-pipeline here, so that the verifier only runs after both
-  // HorizontalLoopFusion and HloDCE.
-  auto& sub_pipeline =
-      pipeline.AddPass<HloPassPipeline>("horizontal-loop-fusion-for-copy");
-  // To fuse the copy.
-  sub_pipeline.AddPass<CopyFusion>(device_description);
-  // Make sure to run HorizontalLoopFusion only inside the entry computation.
-  // Fusing copies outside of the entry computation can break buffer assignment!
-  sub_pipeline.AddPass<HorizontalLoopFusion>(device_description, "copy_",
-                                             /*only_entry_computation=*/true);
-  sub_pipeline.AddPass<HloDCE>();
+  pipeline.AddPass<CopyFusion>(device_description);
   pipeline.AddPass<SanitizeConstantNames>();
   return pipeline;
 }

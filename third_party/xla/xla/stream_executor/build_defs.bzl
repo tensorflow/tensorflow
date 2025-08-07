@@ -28,6 +28,10 @@ def if_gpu_is_configured(if_true, if_false = []):
 def if_cuda_or_rocm(if_true, if_false = []):
     return _if_cuda_or_rocm(if_true, if_false)
 
+# Helps differentiate targets for sycl build from other gpu build targets
+def if_cuda_or_rocm_is_configured(if_true, if_false = []):
+    return _if_cuda_or_rocm(if_true, if_false)
+
 # nvlink is not available via the pip wheels, disable it since it will create
 # unnecessary dependency
 def tf_additional_gpu_compilation_copts():

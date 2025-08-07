@@ -871,13 +871,20 @@ Example:
 def TF_XlaShardingOp : TF_Op<"XlaSharding", [Pure, TF_NoConstantFold]> {
   let summary = [{
 An op which shards the input based on the given sharding attribute.
+
+Since TF runtime still relies on V1 sharding but the compiler requires V2
+Sharding to support the new partitioner Shardy, when the op can reach both the
+compiler and the runtime, we record V1 sharding attribute in _XlaSharding and V2
+sharding attribute in _XlaShardingV2, and verify that they are equivalent when
+they both exist and _XlaShardingV2 is used.
   }];
 
   let arguments = (ins
     TF_Tensor:$input,
 
     DefaultValuedStrAttr<StrAttr, "">:$sharding,
-    OptionalAttr<StrAttr>:$_XlaSharding
+    OptionalAttr<StrAttr>:$_XlaSharding,
+    OptionalAttr<StrAttr>:$_XlaShardingV2
   );
 
   let results = (outs
@@ -1540,7 +1547,8 @@ An op that groups a list of partitioned inputs together. This op
     Variadic<TF_Tensor>:$inputs,
 
     DefaultValuedOptionalAttr<I64Attr, "0">:$partition_dim,
-    OptionalAttr<StrAttr>:$_XlaSharding
+    OptionalAttr<StrAttr>:$_XlaSharding,
+    OptionalAttr<StrAttr>:$_XlaShardingV2
   );
 
   let results = (outs
@@ -1560,7 +1568,8 @@ An op that groups a list of partitioned inputs together. Supports ND sharding.
     Variadic<TF_Tensor>:$inputs,
     I64ArrayAttr:$partition_dims,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$is_packed,
-    OptionalAttr<StrAttr>:$_XlaSharding
+    OptionalAttr<StrAttr>:$_XlaSharding,
+    OptionalAttr<StrAttr>:$_XlaShardingV2
   );
 
   let results = (outs
@@ -1586,7 +1595,8 @@ outputs outside the XLA computation.
     TF_Tensor:$inputs,
 
     DefaultValuedOptionalAttr<I64Attr, "0">:$partition_dim,
-    OptionalAttr<StrAttr>:$_XlaSharding
+    OptionalAttr<StrAttr>:$_XlaSharding,
+    OptionalAttr<StrAttr>:$_XlaShardingV2
   );
 
   let results = (outs
@@ -1610,7 +1620,8 @@ outputs outside the XLA computation. Supports ND sharding.
     TF_Tensor:$inputs,
 
     I64ArrayAttr:$partition_dims,
-    OptionalAttr<StrAttr>:$_XlaSharding
+    OptionalAttr<StrAttr>:$_XlaSharding,
+    OptionalAttr<StrAttr>:$_XlaShardingV2
   );
 
   let results = (outs
@@ -1967,12 +1978,12 @@ Op that copies host tensors to device with bounded dynamic shape support.
   }];
 
   let description = [{
-This op copies the padded tensor on cpu to TPU without the padded data. `tensors` 
+This op copies the padded tensor on cpu to TPU without the padded data. `tensors`
 is a list of cpu tensors with padded data. `unpadded_sizes` is a list of shape
-tensors which describes unpadded size of each dimension for each cpu tensor. 
+tensors which describes unpadded size of each dimension for each cpu tensor.
 The size of the `unpadded_sizes` should be the same as `tensors`. They are both
 on host. `tpu_tensors` are list of tpu device tensors without the padded data.
-`tpu_tensors` also has the same size of the `tensors` and the shapes of 
+`tpu_tensors` also has the same size of the `tensors` and the shapes of
 `tpu_tensors` are determined by the `unpadded_sizes`.
   }];
 
@@ -2210,6 +2221,24 @@ def TF_XlaSparseDenseMatmulWithCsrInputOp : TF_Op<"XlaSparseDenseMatmulWithCsrIn
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<4>;
+}
+
+def TF_XlaLocalSparseDenseMatmulOp : TF_Op<"XlaLocalSparseDenseMatmul", [Pure]> {
+  let summary = "Performs embedding lookup on SparseCore for a single table.";
+
+  let arguments = (ins
+    TF_Int32Tensor:$embedding_ids,
+    TF_Int32Tensor:$sample_ids,
+    TF_Float32Tensor:$gains,
+    TF_Tensor:$embedding_table,
+
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$batch_size,
+    TypeAttr:$T
+  );
+
+  let results = (outs
+    TF_Tensor:$result
+  );
 }
 
 def TF_XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInputOp : TF_Op<"XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInput", [Pure]> {
@@ -3175,5 +3204,51 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
       return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(*this, getF());
     }
   }];
+}
+
+def TF_XlaSparseActivationsUnstackOp : TF_Op<"XlaSparseActivationsUnstack", [Pure]> {
+  let summary = [{
+    XlaSparseActivationsUnstackOp attempts to fuse transpose, relayout,
+    conversion, stacking and optionally interleaving of the embedding
+    activations, while also offloading this work to SparseCore.
+
+    The op assumes its operand is in SparseCore layout, while also being F32.
+    The output is a tuple of tensors in TensorCore layout, in any data type.
+  }];
+
+  let arguments = (ins
+    TF_Float32Tensor:$stacked_activations,
+
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$num_tables,
+    ConfinedAttr<I64ArrayAttr, [ArrayMinCount<1>]>:$sample_counts,
+    ConfinedAttr<I64ArrayAttr, [ArrayMinCount<1>]>:$features,
+    BoolAttr:$interleaved
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$unstacked_embedding_activations
+  );
+}
+
+def TF_XlaSparseGradientsStackOp : TF_Op<"XlaSparseGradientsStack", [Pure]> {
+  let summary = [{
+    XlaSparseGradientsStackOp attempts to fuse transpose, relayout, conversion,
+    unstacking and optionally interleaving of the embedding gradients, while
+    also offloading this work to SparseCore.
+
+    The op assumes its operands are in TensoreCore layout and in any data type.
+    The output is in SparseCore layout and is expected to be F32.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$unstacked_gradients,
+
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$num_tables,
+    BoolAttr:$interleaved
+  );
+
+  let results = (outs
+    TF_Float32Tensor:$stacked_gradients
+  );
 }
 #endif // TF_OPS

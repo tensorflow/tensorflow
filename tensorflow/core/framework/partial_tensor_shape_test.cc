@@ -309,7 +309,7 @@ TEST(PartialTensorShapeTest, PartialShapeMergeWith) {
   EXPECT_EQ(test.dim_size(2), 1);
 
   test = PartialTensorShape();
-  EXPECT_TRUE(errors::IsInvalidArgument(a.MergeWith(d, &test)));
+  EXPECT_TRUE(absl::IsInvalidArgument(a.MergeWith(d, &test)));
 
   test = PartialTensorShape();
   EXPECT_EQ(absl::OkStatus(), a.MergeWith(c, &test));

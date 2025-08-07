@@ -29,11 +29,15 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/service/gpu/alias_info.h"
+#include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/gpu_hlo_schedule.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/latency_hiding_scheduler.h"
 #include "xla/service/profile_guided_latency_estimator.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -58,23 +62,23 @@ int GetIndexByName(absl::Span<HloInstruction* const> instruction_sequence,
 // into broader GPU scheduling related tests vs. tests related to components of
 // GPU LHS.
 
-class GpuLatencyHidingSchedulerBaseTest : public HloTestBase {
+class GpuLatencyHidingSchedulerBaseTest
+    : public HloHardwareIndependentTestBase {
  protected:
   absl::StatusOr<HloModule*> ScheduleModule(
       HloModule* module, int64_t num_parallel_resources = 1,
       DebugOptions::PGLEStrictnessLevel strictness =
           DebugOptions::PGLE_STRICTNESS_LEVEL_ERROR) {
-    auto& test_backend = backend();
-    const auto& gpu_device_info =
-        test_backend.default_stream_executor()->GetDeviceDescription();
+    auto gpu_device_info = TestGpuDeviceInfo::CudaOrRocmDeviceInfo();
+    GpuAliasInfo alias_info(gpu_device_info);
     DebugOptions& options = module->mutable_config().mutable_debug_options();
     options.set_xla_gpu_experimental_parallel_collective_overlap_limit(
         num_parallel_resources);
     options.set_xla_gpu_pgle_accuracy_checker(strictness);
 
-    TF_RETURN_IF_ERROR(
-        ScheduleGpuModule(module, /*pointer_size=*/8, gpu_device_info)
-            .status());
+    TF_RETURN_IF_ERROR(ScheduleGpuModule(module, /*pointer_size=*/8,
+                                         gpu_device_info, &alias_info)
+                           .status());
     return module;
   }
 
@@ -402,6 +406,10 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
 
 TEST_F(GpuLatencyHidingSchedulerBaseTest,
        OverlappingRanksPreventOverlappingCollectives) {
+  // TODO TJ re-enable this test when the multi-streamed
+  // collective feature is fully upstreamed.
+  GTEST_SKIP() << "Overlap avoidance logic is disabled";
+
   absl::string_view kFdoProfile = R"pb(
     costs { name: "add_0" cost_us: 100000.0 }
     costs { name: "ar_0" cost_us: 10.0 }
@@ -831,6 +839,175 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
             GetIndexByName(main_instructions, "add_2"));
   EXPECT_LT(GetIndexByName(main_instructions, "add_2"),
             GetIndexByName(main_instructions, "recv_done"));
+}
+
+TEST_F(GpuLatencyHidingSchedulerBaseTest,
+       ScheduleMultipleParallelResourcesShouldNotCrash) {
+  absl::string_view kHloModule = R"(
+HloModule test, num_partitions=4
+
+region_1 (Arg_0.2: bf16[], Arg_1.1: bf16[]) -> bf16[] {
+  Arg_1.1 = bf16[] parameter(1)
+  Arg_0.2 = bf16[] parameter(0)
+  ROOT add.0 = bf16[] add(Arg_0.2, Arg_1.1)
+}
+
+ENTRY main {
+ p0 = f32[64] parameter(0)
+ p1 = f32[64] parameter(1)
+ p2 = f32[64] parameter(2)
+ p3 = f32[64] parameter(3)
+
+ // Allreduce
+ all-reduce-start = f32[64] all-reduce-start(p0), channel_id=2, replica_groups={{0,1,2,3}}, to_apply=region_1
+ all-reduce-done = f32[64] all-reduce-done(all-reduce-start)
+
+ // Collective-permute
+ cp_start = (f32[64], f32[64], u32[], u32[]) collective-permute-start(p1), source_target_pairs={{0,1},{1,2},{2,3},{3,0}}, channel_id=1
+ cp_done = f32[64] collective-permute-done(cp_start)
+
+ // Multiple "expensive" ops to overlap with.
+ add_0 = f32[64] add(p2, p2)
+ add_1 = f32[64] add(add_0, add_0)
+ add_2 = f32[64] add(add_1, add_1)
+
+ // All-gather
+ ag_start = (f32[64], f32[256]) all-gather-start(p3), replica_groups={{0,1,2,3}}, dimensions={0}
+ ag_done = f32[256] all-gather-done(ag_start)
+
+ ROOT tuple = (f32[64], f32[64], f32[64], f32[256]) tuple(all-reduce-done, cp_done, add_2, ag_done)
+}
+)";
+
+  // Set the expense for adds so that they will overlap with the send,
+  // collective-permute, and recv of these same latency cost.
+  absl::string_view kFdoProfile = R"pb(
+    costs { name: "add_0" cost_us: 5120000.0 }
+    costs { name: "add_1" cost_us: 160000.0 }
+    costs { name: "add_2" cost_us: 30000.0 }
+  )pb";
+  auto config = GetModuleConfig(
+      kFdoProfile, /*pipeline_parallelism_opt_level=*/DebugOptions::
+          PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloModule, config));
+
+  TF_EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/4,
+                              DebugOptions::PGLE_STRICTNESS_LEVEL_OFF));
+  auto schedule = module->schedule();
+
+  HloComputation* main_computation = FindComputation(module.get(), "main");
+  std::vector<HloInstruction*> main_instructions =
+      schedule.sequence(main_computation).instructions();
+
+  EXPECT_LT(GetIndexByName(main_instructions, "all-reduce-start"),
+            GetIndexByName(main_instructions, "cp_done"));
+  EXPECT_LT(GetIndexByName(main_instructions, "all-reduce-start"),
+            GetIndexByName(main_instructions, "ag_done"));
+
+  EXPECT_LT(GetIndexByName(main_instructions, "cp_start"),
+            GetIndexByName(main_instructions, "all-reduce-done"));
+  EXPECT_LT(GetIndexByName(main_instructions, "cp_start"),
+            GetIndexByName(main_instructions, "ag_done"));
+
+  EXPECT_LT(GetIndexByName(main_instructions, "ag_start"),
+            GetIndexByName(main_instructions, "cp_done"));
+  EXPECT_LT(GetIndexByName(main_instructions, "all-reduce-start"),
+            GetIndexByName(main_instructions, "all-reduce-done"));
+}
+
+TEST_F(GpuLatencyHidingSchedulerBaseTest, ScheduleDynamicSliceIfMemcpy) {
+  absl::string_view kHloModule = R"(
+HloModule test, num_partitions=4
+
+%wrapped_dynamic-slice_computation (param_0.45: f32[2,2,2], param_1.42: s32[], param_2.30: s32[], param_3.21: s32[]) -> f32[1,2,2] {
+  %param_0.45 = f32[2,2,2]{2,1,0:S(5)} parameter(0)
+  %param_1.42 = s32[] parameter(1)
+  %param_2.30 = s32[] parameter(2)
+  %param_3.21 = s32[] parameter(3)
+  ROOT %dynamic-slice.12.1 = f32[1,2,2]{2,1,0} dynamic-slice(%param_0.45, %param_1.42, %param_2.30, %param_3.21), dynamic_slice_sizes={1,2,2}
+}
+
+%async_computation (param_0: f32[2,2,2], param_1: s32[], param_2: s32[], param_3: s32[]) -> f32[1,2,2] {
+  %param_0 = f32[2,2,2]{2,1,0:S(5)} parameter(0)
+  %param_1 = s32[] parameter(1)
+  %param_2 = s32[] parameter(2)
+  %param_3 = s32[] parameter(3)
+  ROOT %wrapped_dynamic-slice = f32[1,2,2]{2,1,0} fusion(%param_0, %param_1, %param_2, %param_3), kind=kLoop, calls=%wrapped_dynamic-slice_computation
+}
+
+ENTRY main {
+ p0 = f32[1,2,2]{2,1,0} parameter(0)
+ %host_buf = f32[2,2,2]{2,1,0:S(5)} custom-call(), custom_call_target="AllocateBuffer"
+ %c0 = s32[] constant(0)
+ %dynamic-slice-start = ((f32[2,2,2]{2,1,0:S(5)}, s32[], s32[], s32[]), f32[1,2,2]{2,1,0}, u32[]) async-start(
+      %host_buf, %c0, %c0, %c0), calls=%async_computation
+ %dynamic-slice-done = f32[1,2,2]{2,1,0} async-done(%dynamic-slice-start)
+ %add = f32[1,2,2]{2,1,0} add(p0, p0)
+ ROOT tuple = (f32[1,2,2]{2,1,0}, f32[1,2,2]{2,1,0}) tuple(%dynamic-slice-done, %add)
+})";
+
+  absl::string_view kFdoProfile = "";
+  auto config = GetModuleConfig(kFdoProfile);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloModule, config));
+
+  TF_EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/2));
+  auto schedule = module->schedule();
+  std::vector<HloInstruction*> instruction_sequence =
+      schedule.sequence(module->entry_computation()).instructions();
+  EXPECT_TRUE(GetIndexByName(instruction_sequence, "dynamic-slice-start") <
+                  GetIndexByName(instruction_sequence, "add") ||
+              GetIndexByName(instruction_sequence, "add") <
+                  GetIndexByName(instruction_sequence, "dynamic-slice-done"));
+}
+
+TEST_F(GpuLatencyHidingSchedulerBaseTest, DynamicSliceStartDoneCheck) {
+  absl::string_view kHloModule = R"(
+HloModule test, num_partitions=4
+
+%wrapped_dynamic-slice_computation (param_0.45: f32[2,2,2], param_1.42: s32[], param_2.30: s32[], param_3.21: s32[]) -> f32[1,2,2] {
+  %param_0.45 = f32[2,2,2]{2,1,0:S(5)} parameter(0)
+  %param_1.42 = s32[] parameter(1)
+  %param_2.30 = s32[] parameter(2)
+  %param_3.21 = s32[] parameter(3)
+  ROOT %dynamic-slice.12.1 = f32[1,2,2]{2,1,0} dynamic-slice(%param_0.45, %param_1.42, %param_2.30, %param_3.21), dynamic_slice_sizes={1,2,2}
+}
+
+%async_computation (param_0: f32[2,2,2], param_1: s32[], param_2: s32[], param_3: s32[]) -> f32[1,2,2] {
+  %param_0 = f32[2,2,2]{2,1,0:S(5)} parameter(0)
+  %param_1 = s32[] parameter(1)
+  %param_2 = s32[] parameter(2)
+  %param_3 = s32[] parameter(3)
+  ROOT %wrapped_dynamic-slice = f32[1,2,2]{2,1,0} fusion(%param_0, %param_1, %param_2, %param_3), kind=kLoop, calls=%wrapped_dynamic-slice_computation
+}
+
+ENTRY main {
+ p0 = f32[1,2,2]{2,1,0} parameter(0)
+ %host_buf = f32[2,2,2]{2,1,0:S(5)} custom-call(), custom_call_target="AllocateBuffer"
+ %c0 = s32[] constant(0)
+ %dynamic-slice-start = ((f32[2,2,2]{2,1,0:S(5)}, s32[], s32[], s32[]), f32[1,2,2]{2,1,0}, u32[]) async-start(
+      %host_buf, %c0, %c0, %c0), calls=%async_computation
+ %dynamic-slice-done = f32[1,2,2]{2,1,0} async-done(%dynamic-slice-start)
+ %add = f32[1,2,2]{2,1,0} add(p0, p0)
+ ROOT tuple = (f32[1,2,2]{2,1,0}, f32[1,2,2]{2,1,0}) tuple(%dynamic-slice-done, %add)
+})";
+
+  absl::string_view kFdoProfile = "";
+  auto config = GetModuleConfig(kFdoProfile);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloModule, config));
+  HloComputation* comp = module->entry_computation();
+  SchedulerConfig sched_config;
+  GpuAsyncTracker async_tracker(sched_config);
+  HloInstruction* dynamic_slice_start =
+      comp->GetInstructionWithName("dynamic-slice-start");
+  HloInstruction* dynamic_slice_done =
+      comp->GetInstructionWithName("dynamic-slice-done");
+  EXPECT_TRUE(async_tracker.IsSupportedAsyncStart(*dynamic_slice_start));
+  EXPECT_FALSE(async_tracker.IsSupportedAsyncDone(*dynamic_slice_start));
+  EXPECT_TRUE(async_tracker.IsSupportedAsyncDone(*dynamic_slice_done));
+  EXPECT_FALSE(async_tracker.IsSupportedAsyncStart(*dynamic_slice_done));
 }
 
 }  // namespace

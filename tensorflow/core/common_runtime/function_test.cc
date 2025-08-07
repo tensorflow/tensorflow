@@ -785,9 +785,10 @@ TEST_F(FunctionLibraryRuntimeTest,
   TF_CHECK_OK(flr0_->Finalize());
   FunctionLibraryRuntime::Handle handle;
   EXPECT_THAT(Instantiate(flr0_, "XTimesTwo", {{"T", DT_FLOAT}}, &handle),
-              StatusIs(absl::StatusCode::kFailedPrecondition,
-                       HasSubstr("FunctionLibraryRuntimeImpl is finalized and "
-                                 "cannot instantiate a new function handle.")));
+              absl_testing::StatusIs(
+                  absl::StatusCode::kFailedPrecondition,
+                  HasSubstr("FunctionLibraryRuntimeImpl is finalized and "
+                            "cannot instantiate a new function handle.")));
 }
 
 namespace {

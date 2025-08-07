@@ -58,7 +58,8 @@ absl::Status ValidateInputs(const Tensor& indices_or_row_splits,
 absl::Status ComputeRowIdsBeforePadding(const Tensor& indices_or_row_splits,
                                         int32 total_id_count,
                                         int32 sample_count,
-                                        int32* row_ids_before_padding);
+                                        int32* row_ids_before_padding,
+                                        std::vector<int> shape_strides = {});
 
 class GetMinibatchesInCsrWithPhysicalReplicaOp : public OpKernel {
  public:

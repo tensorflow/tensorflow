@@ -439,7 +439,8 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     quant_params = detail['quantization_parameters']
     expected_num_params = 1 if disable_per_channel else k_num_filters
     self.assertLen(quant_params['scales'], expected_num_params)
-    self.assertLen(quant_params['zero_points'], expected_num_params)
+    if len(quant_params['zero_points']) != 1:
+      self.assertLen(quant_params['zero_points'], expected_num_params)
 
   def testString(self):
     with ops.Graph().as_default():

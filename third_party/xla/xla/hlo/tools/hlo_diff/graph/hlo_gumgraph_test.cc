@@ -25,6 +25,7 @@
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph_node.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/hlo_value.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -33,6 +34,7 @@ namespace {
 
 using ::testing::Field;
 using ::testing::FieldsAre;
+using ::testing::IsEmpty;
 using ::testing::Pair;
 using ::testing::Pointee;
 using ::testing::Property;
@@ -100,9 +102,9 @@ ENTRY entry {
 
   EXPECT_THAT(
       graph->AllComputationProps(),
-      UnorderedElementsAre(Pair(
-          Pointee(Property(&HloComputation::name, "entry")),
-          Field(&CallGraphNodeProps::fingerprint, 10150663182810228731U))));
+      UnorderedElementsAre(
+          Pair(Pointee(Property(&HloComputation::name, "entry")),
+               Field(&CallGraphNodeProps::fingerprint, 3120016136002281788U))));
 }
 
 TEST_F(HloGumgraphTest, CreateHloModuleWithFusionInstructionWorks) {
@@ -197,7 +199,7 @@ ENTRY entry {
       graph->AllComputationProps(),
       UnorderedElementsAre(
           Pair(Pointee(Property(&HloComputation::name, "entry")),
-               Field(&CallGraphNodeProps::fingerprint, 9646443073508437215U)),
+               Field(&CallGraphNodeProps::fingerprint, 829319826030692921U)),
           Pair(Pointee(Property(&HloComputation::name, "Identity")),
                Field(&CallGraphNodeProps::fingerprint, 7593821242743477274U)),
           Pair(
@@ -228,44 +230,36 @@ ENTRY entry {
       HloGumgraph::Create(module.get(), {.ignore_shape = true}));
 
   const auto* entry = graph->GetRoot().children[0];
-  EXPECT_THAT(
-      entry->props,
-      FieldsAre(
-          /*generation=*/1,
-          /*height=*/3, /*subgraph_fingerprint=*/8543065396480500811U,
-          /*fingerprint=*/7968662072287666665U,
-          /*sibling_position=*/FieldsAre(/*index=*/0, /*size=*/1),
-          /*pre_order_graph_position=*/FieldsAre(/*index=*/1, /*size=*/5)));
-  EXPECT_THAT(
-      entry->children[0]->props,
-      FieldsAre(
-          /*generation=*/2,
-          /*height=*/2, /*subgraph_fingerprint=*/12467718903949982030U,
-          /*fingerprint=*/7968662072287666665U,
-          /*sibling_position=*/FieldsAre(/*index=*/0, /*size=*/1),
-          /*pre_order_graph_position=*/FieldsAre(/*index=*/3, /*size=*/5)));
-  EXPECT_THAT(
-      entry->children[1]->props,
-      FieldsAre(
-          /*generation=*/3,
-          /*height=*/1, /*subgraph_fingerprint=*/3183718271480206887U,
-          /*fingerprint=*/3183718271480206887U,
-          /*sibling_position=*/FieldsAre(/*index=*/1, /*size=*/2),
-          /*pre_order_graph_position=*/FieldsAre(/*index=*/2, /*size=*/5)));
-  EXPECT_THAT(
-      entry->children[0]->children[0]->props,
-      FieldsAre(
-          /*generation=*/3,
-          /*height=*/1, /*subgraph_fingerprint=*/856105463456541506U,
-          /*fingerprint=*/856105463456541506U,
-          /*sibling_position=*/FieldsAre(/*index=*/0, /*size=*/2),
-          /*pre_order_graph_position=*/FieldsAre(/*index=*/4, /*size=*/5)));
+  EXPECT_THAT(entry->props,
+              FieldsAre(
+                  /*generation=*/1,
+                  /*height=*/3, /*subgraph_fingerprint=*/10174981490612213786U,
+                  /*fingerprint=*/7968662072287666665U,
+                  /*canonical_fingerprint=*/962574172336760684U));
+  EXPECT_THAT(entry->children[0]->props,
+              FieldsAre(
+                  /*generation=*/2,
+                  /*height=*/2, /*subgraph_fingerprint=*/12866517545790127195U,
+                  /*fingerprint=*/7968662072287666665U,
+                  /*canonical_fingerprint=*/962574172336760684U));
+  EXPECT_THAT(entry->children[1]->props,
+              FieldsAre(
+                  /*generation=*/3,
+                  /*height=*/1, /*subgraph_fingerprint=*/3741348072536313129U,
+                  /*fingerprint=*/3741348072536313129U,
+                  /*canonical_fingerprint=*/12841472793063608770U));
+  EXPECT_THAT(entry->children[0]->children[0]->props,
+              FieldsAre(
+                  /*generation=*/3,
+                  /*height=*/1, /*subgraph_fingerprint=*/856105463456541506U,
+                  /*fingerprint=*/856105463456541506U,
+                  /*canonical_fingerprint=*/1668459129586447343U));
 
   EXPECT_THAT(
       graph->AllComputationProps(),
-      UnorderedElementsAre(
-          Pair(Pointee(Property(&HloComputation::name, "entry")),
-               Field(&CallGraphNodeProps::fingerprint, 8543065396480500811U))));
+      UnorderedElementsAre(Pair(
+          Pointee(Property(&HloComputation::name, "entry")),
+          Field(&CallGraphNodeProps::fingerprint, 10174981490612213786U))));
 }
 
 TEST_F(HloGumgraphTest, PreComputationsWorksWithShapeInFingerprint) {
@@ -291,45 +285,43 @@ ENTRY entry {
       HloGumgraph::Create(module.get(), {.ignore_shape = false}));
 
   const auto* entry = graph->GetRoot().children[0];
-  EXPECT_THAT(
-      entry->props,
-      FieldsAre(
-          /*generation=*/1,
-          /*height=*/3, /*subgraph_fingerprint=*/11491866794545709423U,
-          /*fingerprint=*/13023796333337170182U,
-          /*sibling_position=*/FieldsAre(/*index=*/0, /*size=*/1),
-          /*pre_order_graph_position=*/FieldsAre(/*index=*/1, /*size=*/5)));
+  EXPECT_THAT(entry->props,
+              FieldsAre(
+                  /*generation=*/1,
+                  /*height=*/3, /*subgraph_fingerprint=*/9049644343945734616U,
+                  /*fingerprint=*/13023796333337170182U,
+                  /*canonical_fingerprint=*/962574172336760684U));
 
-  EXPECT_THAT(
-      entry->children[0]->props,
-      FieldsAre(
-          /*generation=*/2,
-          /*height=*/2, /*subgraph_fingerprint=*/11413025457497517292U,
-          /*fingerprint=*/13023796333337170182U,
-          /*sibling_position=*/FieldsAre(/*index=*/0, /*size=*/1),
-          /*pre_order_graph_position=*/FieldsAre(/*index=*/3, /*size=*/5)));
-  EXPECT_THAT(
-      entry->children[1]->props,
-      FieldsAre(
-          /*generation=*/3,
-          /*height=*/1, /*subgraph_fingerprint=*/18045659843081992748U,
-          /*fingerprint=*/18045659843081992748U,
-          /*sibling_position=*/FieldsAre(/*index=*/1, /*size=*/2),
-          /*pre_order_graph_position=*/FieldsAre(/*index=*/2, /*size=*/5)));
-  EXPECT_THAT(
-      entry->children[0]->children[0]->props,
-      FieldsAre(
-          /*generation=*/3,
-          /*height=*/1, /*subgraph_fingerprint=*/7851455295828926644U,
-          /*fingerprint=*/7851455295828926644U,
-          /*sibling_position=*/FieldsAre(/*index=*/0, /*size=*/2),
-          /*pre_order_graph_position=*/FieldsAre(/*index=*/4, /*size=*/5)));
+  EXPECT_THAT(entry->children[0]->props,
+              FieldsAre(
+                  /*generation=*/2,
+                  /*height=*/2, /*subgraph_fingerprint=*/15554496862711682373U,
+                  /*fingerprint=*/13023796333337170182U,
+                  /*canonical_fingerprint=*/962574172336760684U));
+  EXPECT_THAT(entry->children[1]->props,
+              FieldsAre(
+                  /*generation=*/3,
+                  /*height=*/1, /*subgraph_fingerprint=*/15638894998427861693U,
+                  /*fingerprint=*/15638894998427861693U,
+                  /*canonical_fingerprint=*/12841472793063608770U));
+  EXPECT_EQ(entry->children[0]->children[0]->props.subgraph_fingerprint,
+            7851455295828926644U);
+  EXPECT_EQ(entry->children[0]->children[0]->props.fingerprint,
+            7851455295828926644U);
+  EXPECT_EQ(entry->children[0]->children[0]->props.canonical_fingerprint,
+            1668459129586447343U);
+  EXPECT_THAT(entry->children[0]->children[0]->props,
+              FieldsAre(
+                  /*generation=*/3,
+                  /*height=*/1, /*subgraph_fingerprint=*/7851455295828926644U,
+                  /*fingerprint=*/7851455295828926644U,
+                  /*canonical_fingerprint=*/1668459129586447343U));
 
   EXPECT_THAT(
       graph->AllComputationProps(),
-      UnorderedElementsAre(Pair(
-          Pointee(Property(&HloComputation::name, "entry")),
-          Field(&CallGraphNodeProps::fingerprint, 11491866794545709423U))));
+      UnorderedElementsAre(
+          Pair(Pointee(Property(&HloComputation::name, "entry")),
+               Field(&CallGraphNodeProps::fingerprint, 9049644343945734616U))));
 }
 
 TEST_F(HloGumgraphTest, PreComputationsWorksMultiRoot) {
@@ -426,6 +418,101 @@ ENTRY entry {
   //           graph_r->GetRoot().props.subgraph_fingerprint);
   EXPECT_EQ(graph_l->GetRoot().props.subgraph_fingerprint,
             graph_r->GetRoot().props.subgraph_fingerprint);
+}
+
+TEST_F(HloGumgraphTest, PrecomputeInstructionDependenciesWorks) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  foo = f32[8,2048]{1,0:T(8,128)} parameter(0)
+  bar = f32[8,2048]{1,0:T(8,128)} constant(0)
+  baz = f32[8,2048]{1,0:T(8,128)} parameter(1)
+  add_1 = f32[8,2048]{1,0:T(8,128)} add(foo, bar)
+  add_0 = f32[8,2048]{1,0:T(8,128)} add(add_1, baz)
+}
+)"));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph,
+                          HloGumgraph::Create(module.get()));
+
+  const auto* foo_node = SelectNodeByName(*graph, "foo");
+  const auto* bar_node = SelectNodeByName(*graph, "bar");
+  const auto* baz_node = SelectNodeByName(*graph, "baz");
+  const auto* add_1_node = SelectNodeByName(*graph, "add_1");
+  const auto* add_0_node = SelectNodeByName(*graph, "add_0");
+
+  EXPECT_THAT(foo_node->used_values, IsEmpty());
+  EXPECT_THAT(
+      foo_node->value_uses,
+      ElementsAre(AllOf(Field(&HloUse::instruction, add_1_node->instruction),
+                        Field(&HloUse::operand_number, 0))));
+
+  EXPECT_THAT(bar_node->used_values, IsEmpty());
+  EXPECT_THAT(
+      bar_node->value_uses,
+      ElementsAre(AllOf(Field(&HloUse::instruction, add_1_node->instruction),
+                        Field(&HloUse::operand_number, 1))));
+
+  EXPECT_THAT(baz_node->used_values, IsEmpty());
+  EXPECT_THAT(
+      baz_node->value_uses,
+      ElementsAre(AllOf(Field(&HloUse::instruction, add_0_node->instruction),
+                        Field(&HloUse::operand_number, 1))));
+
+  EXPECT_THAT(
+      add_1_node->used_values,
+      UnorderedElementsAre(Pointee(Property(&HloValue::defining_instruction,
+                                            foo_node->instruction)),
+                           Pointee(Property(&HloValue::defining_instruction,
+                                            bar_node->instruction))));
+  EXPECT_THAT(
+      add_1_node->value_uses,
+      ElementsAre(AllOf(Field(&HloUse::instruction, add_0_node->instruction),
+                        Field(&HloUse::operand_number, 0))));
+
+  EXPECT_THAT(
+      add_0_node->used_values,
+      UnorderedElementsAre(Pointee(Property(&HloValue::defining_instruction,
+                                            add_1_node->instruction)),
+                           Pointee(Property(&HloValue::defining_instruction,
+                                            baz_node->instruction))));
+  EXPECT_THAT(add_0_node->value_uses, IsEmpty());
+}
+
+TEST_F(HloGumgraphTest, CalledComputationWithMultipleCallsitesAreNotInlined) {
+  const absl::string_view hlo_string = R"(
+    HloModule MultipleCallerComputationChainedExecution
+  
+    _where_26.3690 (Arg_0.3686: pred[], Arg_1.3687: s32[], Arg_2.3688: s32[]) -> s32[] {
+      Arg_0.3686 = pred[] parameter(0)
+      Arg_1.3687 = s32[] parameter(1)
+      Arg_2.3688 = s32[] parameter(2)
+      ROOT select.3689 = s32[] select(Arg_0.3686, Arg_1.3687, Arg_2.3688)
+    }
+  
+    ENTRY main {
+      parameter.1 = pred[] parameter(0)
+      parameter.2 = s32[] parameter(1)
+      parameter.3 = s32[] parameter(2)
+      parameter.4 = pred[] parameter(3)
+      parameter.5 = s32[] parameter(4)
+      call.1 = s32[] call(parameter.1, parameter.2, parameter.3), to_apply=_where_26.3690
+      ROOT call.2 = s32[] call(parameter.4, parameter.5, call.1), to_apply=_where_26.3690
+    }
+    )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph,
+                          HloGumgraph::Create(module.get()));
+  EXPECT_EQ(SelectNodeByName(*graph, "parameter.1")->parents.size(), 1);
+  EXPECT_EQ(SelectNodeByName(*graph, "parameter.4")->parents.size(), 1);
+  EXPECT_EQ(
+      SelectNodeByName(*graph, "parameter.1")->parents[0]->instruction->name(),
+      "call.1");
+  EXPECT_EQ(
+      SelectNodeByName(*graph, "parameter.4")->parents[0]->instruction->name(),
+      "call.2");
 }
 
 using HloGumgraphDeathTest = HloGumgraphTest;

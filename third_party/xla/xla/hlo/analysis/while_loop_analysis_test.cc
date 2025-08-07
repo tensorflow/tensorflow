@@ -1124,5 +1124,47 @@ TEST_F(WhileLoopAnalysisTest,
                                 LiteralUtil::CreateR0<int32_t>(0));
   EXPECT_EQ(trip_count_without_constant, std::nullopt);
 }
+
+TEST_F(WhileLoopAnalysisTest,
+       MatchTrivialLoopCountWithSimpleArithmeticOnIndvar) {
+  absl::string_view hlo_string = R"(
+HloModule ModuleWithWhile
+body {
+  p_body = (f32[2], s32[]) parameter(0)
+  val = f32[2] get-tuple-element(p_body), index=0
+  index = s32[] get-tuple-element(p_body), index=1
+  one = s32[] constant(1)
+  inc = s32[] add(index, one)
+  ROOT root = (f32[2], s32[]) tuple(val, inc)
+}
+condition {
+  p_cond = (f32[2], s32[]) parameter(0)
+  gte = s32[] get-tuple-element(p_cond), index=1
+  const = s32[] constant(10)
+  ROOT result = pred[] compare(gte, const), direction=LE
+}
+ENTRY entry {
+  param.0 = f32[2] parameter(0)
+  const.0 = s32[] constant(1)
+  const.1 = s32[] constant(1)
+  add.0 = s32[] add(const.0, const.1)
+  while_init = (f32[2], s32[]) tuple(param.0, add.0)
+  ROOT while = (f32[2], s32[]) while(while_init), condition=condition, body=body
+}
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  HloInstruction* while_op = m->entry_computation()->root_instruction();
+  std::optional<Range> range = MatchTrivialLoopRange(while_op);
+
+  EXPECT_TRUE(range.has_value());
+  EXPECT_EQ(range->min().GetSignedValue(), 2);
+  EXPECT_TRUE(range->max().has_value());
+  EXPECT_EQ(range->max().value().GetSignedValue(), 10);
+  EXPECT_TRUE(range->step().has_value());
+  EXPECT_EQ(range->step().value().GetSignedValue(), 1);
+}
 }  // namespace
 }  // namespace xla

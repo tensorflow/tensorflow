@@ -33,7 +33,6 @@ cc_library(
         # copybara:uncomment "//tensorflow/core/profiler:internal",
     ]),
     deps = [
-        "//xla/tsl/platform:errors",
         "//xla/tsl/profiler/backends/cpu:host_tracer_utils",
         "//xla/tsl/profiler/backends/cpu:threadpool_listener",
         "//xla/tsl/profiler/backends/cpu:traceme_recorder",
@@ -76,7 +75,6 @@ cc_library(
     ]),
     deps = [
         "//xla/python/profiler/internal:python_hooks",
-        "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",

@@ -1,3 +1,5 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//xla:internal"],
@@ -38,6 +40,7 @@ cc_library(
         "//xla:literal_pool",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
+        "//xla/hlo/analysis:alias_info",
         "//xla/hlo/analysis:indexed_array_analysis",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass_pipeline",
@@ -48,7 +51,6 @@ cc_library(
         "//xla/hlo/transforms:defuser",
         "//xla/hlo/transforms:despecializer",
         "//xla/hlo/transforms:host_offload_legalize",
-        "//xla/hlo/transforms:host_offloader",
         "//xla/hlo/transforms:host_offloading_prepare",
         "//xla/hlo/transforms:literal_canonicalizer",
         "//xla/hlo/transforms:memory_space_propagation",

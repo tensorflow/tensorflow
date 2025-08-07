@@ -114,7 +114,7 @@ xla_test(
     srcs = ["cutlass_gemm_fusion_test.cc"],
     backends = ["gpu"],
     # TODO(b/332820384): Enable when it passes on H100.
-    disabled_backends = DEFAULT_DISABLED_BACKENDS + ["gpu_h100"],
+    disabled_backends = DEFAULT_DISABLED_BACKENDS + ["h100"],
     tags = ["cuda-only"],
     deps = [
         ":custom_kernel_fusion_pattern",

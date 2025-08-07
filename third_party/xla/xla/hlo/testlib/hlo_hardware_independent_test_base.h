@@ -82,7 +82,8 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
   explicit HloHardwareIndependentTestBase(
       bool verifier_layout_sensitive = false,
       bool allow_mixed_precision_in_hlo_verifier = true,
-      HloPredicate instruction_can_change_layout_func = {});
+      HloPredicate instruction_can_change_layout_func = {},
+      bool verify_no_collective_deadlocks = false);
 
   // Creates a new HLO module for a test. The module created will have
   // TestName() for its name; it will also automatically populate its debug
@@ -268,7 +269,6 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
         ->Clear();
   }
 
-
   bool verifier_layout_sensitive() const { return verifier_layout_sensitive_; }
   void set_verifier_layout_sensitive(bool verifier_layout_sensitive) {
     verifier_layout_sensitive_ = verifier_layout_sensitive;
@@ -291,7 +291,8 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
   }
 
   static std::string TestName() {
-    return ::testing::UnitTest::GetInstance()->current_test_info()->name();
+    auto* test_info = ::testing::UnitTest::GetInstance()->current_test_info();
+    return test_info ? test_info->name() : std::string("unknown_test_name");
   }
 
   // Updates the entry computation layout to match the program shape. Useful

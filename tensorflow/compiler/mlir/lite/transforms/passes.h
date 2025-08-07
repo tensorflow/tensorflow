@@ -120,6 +120,12 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateDefaultQuantizePass();
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateLowerQuantAnnotationsPass();
 
+// Creates an instance of the TFLite PropagateQsv pass which propagates scale
+// and zero point (QSV) information through the graph.
+std::unique_ptr<OperationPass<ModuleOp>> CreatePropagateQsvPass();
+
+std::unique_ptr<OperationPass<mlir::ModuleOp>> CreateBiasQuantizerPass();
+
 // Overloading of CreateQuantizePass which takes only necessary flags to reduce
 // the binary size.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizePass(

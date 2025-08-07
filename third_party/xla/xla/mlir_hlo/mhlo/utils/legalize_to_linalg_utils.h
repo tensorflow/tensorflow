@@ -166,8 +166,7 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
           auto argvec = llvm::to_vector<2>(args.take_front(inputs.size()));
           auto semiring = preSparsify(op, argvec, innerResultTy, &rewriter);
           Value innerResult = mhlo::MhloOpToStdScalarOp::mapOp(
-              op, innerResultTy, argvec, /*attributes=*/std::nullopt,
-              &rewriter);
+              op, innerResultTy, argvec, /*attributes=*/{}, &rewriter);
           if (innerResult == nullptr) {
             failed = true;
           } else {

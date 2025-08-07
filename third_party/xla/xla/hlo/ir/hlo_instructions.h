@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/tsl/lib/gtl/iterator_range.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/tsl/platform/status.h"
+#include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -277,6 +278,10 @@ class HloAsyncInstruction : public HloInstruction {
                       absl::Span<HloInstruction* const> operands,
                       HloOpcode async_wrapped_opcode);
 
+  // Updates all future instructions in the async chain to match the shape of
+  // the current instruction.
+  void UpdateChainShapes();
+
  private:
   // async-{update,done} inherit all their attributes from async-start,
   // so they shouldn't print any.
@@ -301,6 +306,9 @@ class HloAsyncStartInstruction : public HloAsyncInstruction {
       absl::Span<HloInstruction* const> operands,
       HloComputation* async_computation,
       absl::string_view async_execution_thread = kMainExecutionThread);
+
+  // Adds a new operand to the async-start instruction.
+  HloInstruction* AddCallOperand(HloInstruction* new_operand);
 
   absl::string_view async_execution_thread() const override {
     return async_execution_thread_;
@@ -1132,8 +1140,6 @@ class HloTransposeInstruction : public HloDimensionsInstruction {
  public:
   explicit HloTransposeInstruction(const Shape& shape, HloInstruction* operand,
                                    absl::Span<const int64_t> dimensions);
-  // Returns whether this instruction does a rank-2 transposition.
-  bool IsRank2Transpose() const;
 
   static bool ClassOf(const HloInstruction* hlo) {
     return hlo->opcode() == HloOpcode::kTranspose;
@@ -2013,6 +2019,20 @@ class HloReduceWindowInstruction : public HloInstruction {
     }
     return shapes;
   }
+  // Returns the indices of the non-trivial dimensions in the window.
+  std::vector<int64_t> non_trivial_window_dimensions() const {
+    std::vector<int64_t> non_trivial_dimensions;
+    const Shape& operand_shape = inputs().front()->shape();
+
+    int64_t rank = operand_shape.dimensions().size();
+    for (int dimension_index = 0; dimension_index < rank; ++dimension_index) {
+      const WindowDimension& window_dim = window_.dimensions(dimension_index);
+      if (!window_util::IsTrivialWindowDimension(window_dim)) {
+        non_trivial_dimensions.push_back(dimension_index);
+      }
+    }
+    return non_trivial_dimensions;
+  }
 
   static bool ClassOf(const HloInstruction* hlo) {
     return hlo->opcode() == HloOpcode::kReduceWindow;
@@ -2091,6 +2111,16 @@ class HloCustomCallInstruction : public HloCallableInstruction {
   // 'operands_with_layout' must all have layouts.
   HloCustomCallInstruction(const Shape& shape,
                            absl::Span<HloInstruction* const> operands,
+                           absl::string_view custom_call_target,
+                           std::string opaque,
+                           absl::Span<const Shape> operand_shapes_with_layout,
+                           CustomCallApiVersion api_version);
+
+  // Constructor for a custom call with constrained layout and a to_apply
+  // computation. 'shape' and 'operands_with_layout' must all have layouts.
+  HloCustomCallInstruction(const Shape& shape,
+                           absl::Span<HloInstruction* const> operands,
+                           HloComputation* to_apply,
                            absl::string_view custom_call_target,
                            std::string opaque,
                            absl::Span<const Shape> operand_shapes_with_layout,
@@ -2554,17 +2584,12 @@ class HloIotaInstruction : public HloInstruction {
 
 class HloDotInstruction : public HloInstruction {
  public:
-  static const int kOperands = 2;
-
   // Creates a dot op with operands 'lhs' and 'rhs' with contracting and batch
-  // dimensions specified in 'dimension_numbers'. If 'sparsity' is set, then
-  // 'sparse_meta' must also be present (and have the same size).
-  explicit HloDotInstruction(
-      const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
-      const DotDimensionNumbers& dimension_numbers,
-      const PrecisionConfig& precision_config,
-      std::vector<SparsityDescriptor> sparsity = {},
-      absl::Span<HloInstruction* const> sparse_meta = {});
+  // dimensions specified in 'dimension_numbers'.
+  explicit HloDotInstruction(const Shape& shape, HloInstruction* lhs,
+                             HloInstruction* rhs,
+                             const DotDimensionNumbers& dimension_numbers,
+                             const PrecisionConfig& precision_config);
 
   // Returns data on the dimension numbers used for a dot operation.
   const DotDimensionNumbers& dot_dimension_numbers() const {
@@ -2585,13 +2610,6 @@ class HloDotInstruction : public HloInstruction {
   // strictly superior.
   const PrecisionConfig& precision_config() const { return precision_config_; }
   PrecisionConfig* mutable_precision_config() { return &precision_config_; }
-
-  // Sparsity descriptors are optional. If present, additional operands define
-  // how the data is read for the dot inputs.
-  int sparse_operands() const { return sparsity_.size(); }
-  absl::Span<const SparsityDescriptor> sparsity() const {
-    return absl::MakeSpan(sparsity_);
-  }
 
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
@@ -2618,11 +2636,6 @@ class HloDotInstruction : public HloInstruction {
   // Information used to communicate to the implementation about the algorithm
   // used to produce results. See the documentation on precision_config().
   PrecisionConfig precision_config_;
-
-  // Sparsity descriptors are set if some operands are sparse. In this case, the
-  // additional metadata operands contain the information that defines how
-  // the data is read.
-  std::vector<SparsityDescriptor> sparsity_;
 };
 
 class HloRaggedDotInstruction : public HloInstruction {

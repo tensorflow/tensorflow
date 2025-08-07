@@ -1,5 +1,6 @@
 # TODO(b/356020232): remove entire file and all usages after migration is done
 load("@python_version_repo//:py_version.bzl", "USE_PYWRAP_RULES")
+load("@rules_cc//cc:cc_import.bzl", "cc_import")
 load(
     "//third_party/py/rules_pywrap:pywrap.impl.bzl",
     _pybind_extension = "pybind_extension",
@@ -9,6 +10,7 @@ load(
     _stripped_cc_info = "stripped_cc_info",
 )
 
+# buildifier: disable=function-docstring-args
 def pybind_extension(
         name,  # original
         deps,  # original
@@ -20,11 +22,12 @@ def pybind_extension(
         compatible_with = None,  # original
         additional_exported_symbols = [],
         data = None,  # original
-        # Garbage parameters, exist only to maingain backward compatibility for
-        # a while. Will be removed once migration is fully completed
-
         # To patch top-level deps lists in sophisticated cases
         pywrap_ignored_deps_filter = ["@pybind11", "@pybind11//:pybind11"],
+        local_defines = [],
+
+        # Garbage parameters, exist only to maingain backward compatibility for
+        # a while. Will be removed once migration is fully completed
         pytype_srcs = None,  # alias for data
         hdrs = [],  # merge into sources
         pytype_deps = None,  # ignore?
@@ -36,6 +39,10 @@ def pybind_extension(
         link_in_framework = None,  # ignore
         additional_stubgen_deps = None,  # ignore
         **kwargs):
+    """
+    TensorFlow-specific wrapper around pybind_extension.
+    """
+
     _ignore = [
         ignore_link_in_framework,
         dynamic_deps,
@@ -80,6 +87,7 @@ def pybind_extension(
         additional_exported_symbols = additional_exported_symbols,
         data = actual_data,
         default_deps = actual_default_deps,
+        local_defines = local_defines + ["PROTOBUF_USE_DLLS", "ABSL_CONSUME_DLL"],
         **kwargs
     )
 
@@ -129,7 +137,7 @@ def pywrap_aware_cc_import(name, **kwargs):
     if use_pywrap_rules():
         pass
     else:
-        native.cc_import(
+        cc_import(
             name = name,
             **kwargs
         )

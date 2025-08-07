@@ -1,4 +1,4 @@
-// RUN: tf-opt --tfl-decompose-hybrid-quantization --verify-each %s | FileCheck %s
+// RUN: litert-opt --tfl-decompose-hybrid-quantization --verify-each %s | FileCheck %s
 
 // CHECK-LABEL: @test_conv2d_float
 func.func @test_conv2d_float(%arg0: tensor<1x32x32x8xf32>) -> tensor<1x32x32x16xf32> {

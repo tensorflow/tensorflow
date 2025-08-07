@@ -19,6 +19,8 @@ package xla.ifrt;
 
 // Proto equivalent of C++ `DType`.
 message DTypeProto {
+  int32 version_number = 2;
+
   // LINT.IfChange(DTypeProtoKind)
   enum Kind {
     KIND_UNSPECIFIED = 0;

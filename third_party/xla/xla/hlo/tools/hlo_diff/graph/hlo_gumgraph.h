@@ -25,6 +25,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -67,8 +68,19 @@ class HloGumgraph {
   // nullptr if the instruction is not in the graph.
   inline HloInstructionNode* GetNode(
       const HloInstruction* absl_nonnull instruction) const {
-    if (auto it = instruction_to_node_.find(instruction);
-        it != instruction_to_node_.end()) {
+    if (auto it = instruction_name_to_node_.find(instruction->name());
+        it != instruction_name_to_node_.end()) {
+      return it->second.get();
+    }
+    return nullptr;
+  }
+
+  // Returns graph node corresponding to the given HloInstruction name. Returns
+  // nullptr if the instruction is not in the graph.
+  inline HloInstructionNode* GetNode(
+      const absl::string_view instruction) const {
+    if (auto it = instruction_name_to_node_.find(instruction);
+        it != instruction_name_to_node_.end()) {
       return it->second.get();
     }
     return nullptr;
@@ -77,14 +89,16 @@ class HloGumgraph {
   // Returns all nodes in the graph excluding the dummy root node.
   inline std::vector<HloInstructionNode*> AllNodes() const {
     std::vector<HloInstructionNode*> nodes;
-    for (const auto& [_, node] : instruction_to_node_) {
+    for (const auto& [_, node] : instruction_name_to_node_) {
       nodes.push_back(node.get());
     }
     return nodes;
   }
 
   // Returns the number of nodes in the graph including the dummy root node.
-  inline int GetNodeCount() const { return instruction_to_node_.size() + 1; }
+  inline int GetNodeCount() const {
+    return instruction_name_to_node_.size() + 1;
+  }
 
   // Returns all properties of computations in the graph.
   inline const absl::flat_hash_map<const HloComputation*, CallGraphNodeProps>&
@@ -116,6 +130,17 @@ class HloGumgraph {
         call_graph_(std::move(call_graph)),
         hlo_value_tracing_(std::move(hlo_value_tracing)) {}
 
+  // Connects the provided callsite instruction to the called computation by
+  // connecting the  computation's parameters with the operands of the callsite
+  // instructions. This can be thought of as inlining the called computation at
+  // the callsite.
+  absl::Status ConnectCalledComputation(
+      const HloInstruction::InstructionVector& callsite_operands,
+      const HloInstruction::InstructionVector& called_computation_parameters);
+
+  // Connects the provided node to its operands.
+  absl::Status ConnectOperands(HloInstructionNode* node);
+
   // Adds a HloInstructionNode for the given HloInstruction to the graph.
   // Returns a pair of the node and a boolean indicating whether the node was
   // already in the graph.
@@ -138,16 +163,14 @@ class HloGumgraph {
   // instructions in the computation are hashed to compute the fingerprint.
   absl::Status PrecomputeComputationFingerprint();
 
-  // Precomputes the index of each node in a pre-order DFS traversal of the
-  // graph.
-  void PrecomputeDfsPosition();
+  // Precomputes and caches HLO value dependencies for every instruction node.
+  void PrecomputeInstructionDependencies();
 
   const HloModule& hlo_module_;
   const HloGumgraphFingerprintOptions& fingerprint_options_;
   HloInstructionNode root_;
-  absl::flat_hash_map<const HloInstruction*,
-                      std::unique_ptr<HloInstructionNode>>
-      instruction_to_node_;
+  absl::flat_hash_map<absl::string_view, std::unique_ptr<HloInstructionNode>>
+      instruction_name_to_node_;
   absl::flat_hash_map<const HloComputation*, CallGraphNodeProps>
       computation_to_props_;
   std::vector<std::vector<HloInstructionNode*>> nodes_by_generation_;

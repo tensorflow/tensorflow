@@ -16,6 +16,14 @@ limitations under the License.
 #ifndef XLA_SERVICE_HLO_CSE_H_
 #define XLA_SERVICE_HLO_CSE_H_
 
+#include <utility>
+
+#include "absl/container/flat_hash_set.h"
+#include "absl/functional/any_invocable.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 
@@ -32,13 +40,18 @@ class HloCSE : public HloModulePass {
   // If ignore_control_dependencies is true, the pass will ignore control deps
   // when replacing instructions with their equivalents.
   explicit HloCSE(bool is_layout_sensitive,
-                  bool only_fusion_computations = false,
                   bool ignore_control_dependencies = false,
-                  bool only_scalars = false)
+                  absl::AnyInvocable<bool(const HloComputation*)>
+                      should_eliminate_computation = nullptr,
+                  absl::AnyInvocable<bool(const HloInstruction*)>
+                      should_eliminate_instruction = nullptr,
+                  absl::AnyInvocable<bool(const HloInstruction*)>
+                      should_combine_constant = nullptr)
       : is_layout_sensitive_(is_layout_sensitive),
-        only_fusion_computations_(only_fusion_computations),
         ignore_control_dependencies_(ignore_control_dependencies),
-        only_scalars_(only_scalars) {}
+        should_eliminate_computation_(std::move(should_eliminate_computation)),
+        should_eliminate_instruction_(std::move(should_eliminate_instruction)),
+        should_combine_constant_(std::move(should_combine_constant)) {}
   ~HloCSE() override = default;
   absl::string_view name() const override { return "cse"; }
 
@@ -53,11 +66,14 @@ class HloCSE : public HloModulePass {
   // changed.
   absl::StatusOr<bool> RunOnComputation(HloComputation* computation);
 
+  static bool ShouldEliminateInstruction(const HloInstruction* instruction);
+
  private:
   const bool is_layout_sensitive_;
-  const bool only_fusion_computations_;
   const bool ignore_control_dependencies_;
-  const bool only_scalars_;
+  absl::AnyInvocable<bool(const HloComputation*)> should_eliminate_computation_;
+  absl::AnyInvocable<bool(const HloInstruction*)> should_eliminate_instruction_;
+  absl::AnyInvocable<bool(const HloInstruction*)> should_combine_constant_;
 };
 
 }  // namespace xla

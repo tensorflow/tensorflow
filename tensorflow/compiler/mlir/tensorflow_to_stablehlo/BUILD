@@ -1,3 +1,4 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("//tensorflow:tensorflow.default.bzl", "filegroup", "get_compatible_with_portable")
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
@@ -33,8 +34,8 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:tf_saved_model_import",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:tf_quantize_preprocess",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:saved_model_import",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantize_preprocess",
         "//tensorflow/compiler/mlir/tensorflow/transforms:shape_inference_pass",
         "//tensorflow/core:core_cpu_base",
         "@com_google_absl//absl/algorithm:container",

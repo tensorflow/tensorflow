@@ -73,6 +73,9 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
   // specified.
   explicit HloEvaluator(int64_t max_loop_iterations = -1);
 
+  // Returns true if the opcode is implemented by HloEvaluator. False otherwise.
+  static bool IsOpcodeImplemented(HloOpcode opcode);
+
   // Called by the evaluator to create an embedded evaluator to execute a
   // sub-region of control flow. Subclasses should override this to return an
   // instance of the subclass instead.

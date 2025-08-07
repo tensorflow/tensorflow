@@ -1,4 +1,5 @@
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:lit.bzl", "enforce_glob", "lit_test_suite")
 load("//xla:py_strict.bzl", "py_strict_test")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
@@ -25,6 +26,7 @@ lit_test_suite(
         [
             # go/keep-sorted start
             "hlo_opt_all_passes_smoke_test.hlo",
+            "hlo_opt_debug_options_parse_test.hlo",
             "hlo_opt_dump.hlo",
             "hlo_opt_emit_proto.hlo",
             "hlo_opt_hlo_protobinary_to_hlotext.hlo",

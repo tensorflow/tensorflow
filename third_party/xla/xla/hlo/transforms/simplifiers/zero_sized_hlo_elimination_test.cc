@@ -19,12 +19,16 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include "absl/status/statusor.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/literal_util.h"
+#include "xla/service/spmd/shardy/constants.h"
+#include "xla/service/spmd/shardy/utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/statusor.h"
@@ -87,6 +91,19 @@ TEST_F(ZeroSizedHloEliminationTest, DoesNotEliminateSideEffects) {
           send, send->channel_id(), /*is_host_transfer=*/false));
   ASSERT_TRUE(RunZeroSizedElimination().status().ok());
   EXPECT_EQ(send_done->operand(0), send);
+}
+
+TEST_F(ZeroSizedHloEliminationTest,
+       EliminatedSdyLocalToGlobalCustomCallWithSideEffects) {
+  auto* custom_call = Cast<HloCustomCallInstruction>(
+      builder_.AddInstruction(HloInstruction::CreateCustomCall(
+          zero_sized_param_->shape(), {zero_sized_param_},
+          sdy::toStringView(sdy::kLocalToGlobalShapeCallTargetName))));
+  custom_call->set_custom_call_has_side_effect(true);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunZeroSizedElimination());
+  EXPECT_TRUE(changed);
+  EXPECT_EQ(module_->entry_computation()->root_instruction()->opcode(),
+            HloOpcode::kConstant);
 }
 
 TEST_F(ZeroSizedHloEliminationTest, DoesNotEliminateConstant) {

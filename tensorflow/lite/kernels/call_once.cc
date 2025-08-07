@@ -58,6 +58,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   Subgraph* this_subgraph = reinterpret_cast<Subgraph*>(context->impl_);
 
+  // The CALL_ONCE op cannot call the same subgraph recursively or it will cause
+  // an infinite recursion.
+  TF_LITE_ENSURE(context, op_data->init_subgraph_index !=
+                              this_subgraph->GetSubgraphIndex());
+
   // Return early if the initialization graph is already invoked.
   resource::InitializationStatusMap* map =
       &this_subgraph->initialization_status_map();

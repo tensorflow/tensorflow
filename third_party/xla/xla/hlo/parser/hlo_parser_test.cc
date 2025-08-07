@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
@@ -1546,6 +1547,28 @@ ENTRY %test (v1: f32[], v2: f32[3], v3: f32[2,3]) -> ((f32[], f32[3]), f32[2,3])
 
 )"
 },
+
+{
+"OriginalValueRecoveryTable",
+R"(HloModule test, entry_computation_layout={(f32[192]{0})->f32[1,17,17,192]{3,2,1,0}}, origin_recovery_table={
+  {"broadcast.2340"} : {"reshape.2341"}
+  {"reshape.2341"} : {"placeholder_reshape.201"},
+  "
+    ENTRY %recovery_computation.3 (p.1: f32[192]) -> f32[1,192] {
+      %p.1 = f32[192]{0} parameter(0)
+      ROOT %reshape.2 = f32[1,192]{1,0} reshape(%p.1)
+    }
+  "
+}
+
+
+ENTRY %main (Arg_0: f32[192]) -> f32[1,17,17,192] {
+  %Arg_0 = f32[192]{0} parameter(0)
+  ROOT %broadcast.2342 = f32[1,17,17,192]{3,2,1,0} broadcast(f32[192]{0} %Arg_0), dimensions={3}, origin={{"broadcast.2342"}}
+}
+
+)"
+},
 });
   // clang-format on
 }
@@ -1916,33 +1939,6 @@ ENTRY dot {
   a = f32[2,10]{1,0} parameter(0)
   b = f32[10,2]{1,0} parameter(1)
   ROOT dot = f32[2]{0} dot(a, b), lhs_batch_dims={0}, lhs_contracting_dims={1}, rhs_batch_dims={1}, rhs_contracting_dims={0}
-}
-
-)"
-},
-{
-"DotSparseOperand",
-R"(HloModule dot, entry_computation_layout={(f16[32,32]{1,0}, f16[64,32]{1,0}, u16[32,4]{1,0})->f16[32,32]{1,0}}
-
-ENTRY dot {
-  a = f16[32,32]{1,0} parameter(0)
-  b = f16[64,32]{1,0} parameter(1)
-  meta = u16[32,4]{1,0} parameter(2)
-  ROOT dot = f16[32,32]{1,0} dot(a, b, meta), lhs_contracting_dims={1}, rhs_contracting_dims={0}, sparsity=L.1@2:4
-}
-
-)"
-},
-{
-"DotSparseOperands",
-R"(HloModule dot, entry_computation_layout={(f16[32,32]{1,0}, f16[32,32]{1,0}, u16[32,4]{1,0}, u16[4,32]{1,0})->f16[32,32]{1,0}}
-
-ENTRY dot {
-  a = f16[32,32]{1,0} parameter(0)
-  b = f16[32,32]{1,0} parameter(1)
-  a_meta = u16[32,4]{1,0} parameter(2)
-  b_meta = u16[4,32]{1,0} parameter(3)
-  ROOT dot = f16[32,32]{1,0} dot(a, b, a_meta, b_meta), lhs_contracting_dims={1}, rhs_contracting_dims={0}, sparsity=L.1@2:4_R.0@2:4
 }
 
 )"
@@ -4862,7 +4858,7 @@ ENTRY TupleTypo {
 )";
   auto result = ParseAndReturnVerifiedModule(text);
   EXPECT_THAT(result.status(),
-              tsl::testing::StatusIs(tsl::error::INVALID_ARGUMENT,
+              absl_testing::StatusIs(tsl::error::INVALID_ARGUMENT,
                                      HasSubstr("instruction does not exist")));
 }
 
@@ -4872,21 +4868,6 @@ ENTRY InferDotShape {
   a = f32[2,10]{1,0} parameter(0)
   b = f32[10,2]{1,0} parameter(1)
   ROOT dot = dot(a, b), lhs_batch_dims={0}, lhs_contracting_dims={1}, rhs_batch_dims={1}, rhs_contracting_dims={0}
-}
-)";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(text));
-  EXPECT_TRUE(ShapeUtil::Equal(
-      module->entry_computation()->ComputeProgramShape().result(),
-      ShapeUtil::MakeShape(F32, {2}, {0})));
-}
-
-TEST_F(HloParserTest, InferSparseDotShape) {
-  constexpr char text[] = R"(HloModule InferSparseDotShapeTest
-ENTRY InferSparseDotShape {
-  a = f32[2,16]{1,0} parameter(0)
-  b = f32[32,2]{1,0} parameter(1)
-  meta = u16[2,2]{1,0} parameter(2)
-  ROOT dot = dot(a, b, meta), lhs_batch_dims={0}, lhs_contracting_dims={1}, rhs_batch_dims={1}, rhs_contracting_dims={0}, sparsity=L.1@2:4
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(text));
@@ -5104,7 +5085,7 @@ ENTRY test {
   ROOT root = f32[10,10]{1,0:D(X,C)} parameter(0)
 })";
   EXPECT_THAT(ParseAndReturnUnverifiedModule(original).status(),
-              tsl::testing::StatusIs(
+              absl_testing::StatusIs(
                   tsl::error::INVALID_ARGUMENT,
                   HasSubstr("expected a DimLevelType abbreviation")));
 }
@@ -5117,7 +5098,7 @@ ENTRY test {
 })";
   EXPECT_THAT(
       ParseAndReturnUnverifiedModule(original).status(),
-      tsl::testing::StatusIs(
+      absl_testing::StatusIs(
           tsl::error::INVALID_ARGUMENT,
           HasSubstr(
               "Layout has physical shape, but is not for a sparse array")));
@@ -5299,7 +5280,7 @@ ENTRY AsyncStartMissingOperandWrapper {
   )";
   EXPECT_THAT(
       ParseAndReturnUnverifiedModule(hlo_string).status(),
-      tsl::testing::StatusIs(
+      absl_testing::StatusIs(
           tsl::error::INVALID_ARGUMENT,
           HasSubstr("AsyncStart and AsyncUpdate expect the op shape to be "
                     "in the form of "
@@ -5324,7 +5305,7 @@ ENTRY AsyncUpdateMissingOperandWrapper {
   )";
   EXPECT_THAT(
       ParseAndReturnUnverifiedModule(hlo_string).status(),
-      tsl::testing::StatusIs(
+      absl_testing::StatusIs(
           tsl::error::INVALID_ARGUMENT,
           HasSubstr("AsyncStart and AsyncUpdate expect the op shape to be "
                     "in the form of "
@@ -5348,7 +5329,7 @@ ENTRY AsyncStartAndAsyncDone {
   )";
   EXPECT_THAT(
       ParseAndReturnUnverifiedModule(hlo_string).status(),
-      tsl::testing::StatusIs(
+      absl_testing::StatusIs(
           tsl::error::INVALID_ARGUMENT,
           HasSubstr("AsyncStart and AsyncUpdate expect the op shape to be "
                     "in the form of "
@@ -5368,7 +5349,7 @@ ENTRY AsyncStartAndAsyncDone {
   )";
   EXPECT_THAT(
       ParseAndReturnUnverifiedModule(hlo_string).status(),
-      tsl::testing::StatusIs(
+      absl_testing::StatusIs(
           tsl::error::INVALID_ARGUMENT,
           HasSubstr("AsyncUpdate and AsyncDone expect their operand to be "
                     "the previous async op.")));
@@ -5388,7 +5369,7 @@ ENTRY AsyncStartAndAsyncDone {
   )";
   EXPECT_THAT(
       ParseAndReturnUnverifiedModule(hlo_string).status(),
-      tsl::testing::StatusIs(
+      absl_testing::StatusIs(
           tsl::error::INVALID_ARGUMENT,
           HasSubstr("AsyncUpdate and AsyncDone expect their operand to be "
                     "the previous async op.")));
@@ -5406,7 +5387,7 @@ ENTRY %Entry (p0: f32[10]) -> f32[20] {
 }
   )";
   EXPECT_THAT(ParseAndReturnUnverifiedModule(hlo_string).status(),
-              tsl::testing::StatusIs(
+              absl_testing::StatusIs(
                   tsl::error::INVALID_ARGUMENT,
                   HasSubstr("Expect async wrapped opcode to be custom-call, "
                             "but got add")));
@@ -5424,7 +5405,7 @@ ENTRY %Entry (p0: f32[10]) -> f32[20] {
 }
   )";
   EXPECT_THAT(ParseAndReturnUnverifiedModule(hlo_string).status(),
-              tsl::testing::StatusIs(
+              absl_testing::StatusIs(
                   tsl::error::INVALID_ARGUMENT,
                   HasSubstr("Expect async wrapped opcode to be custom-call, "
                             "but got add")));
@@ -5449,7 +5430,7 @@ ENTRY %Entry (p0: f32[10]) -> f32[20] {
   )";
   EXPECT_THAT(
       ParseAndReturnUnverifiedModule(hlo_string).status(),
-      tsl::testing::StatusIs(tsl::error::INVALID_ARGUMENT,
+      absl_testing::StatusIs(tsl::error::INVALID_ARGUMENT,
                              HasSubstr("Computation async_wrapped is called by "
                                        "more than one async op")));
 }
@@ -5477,7 +5458,7 @@ ENTRY %Entry (p0: f32[10]) -> f32[20] {
   )";
   EXPECT_THAT(
       ParseAndReturnUnverifiedModule(hlo_string).status(),
-      tsl::testing::StatusIs(
+      absl_testing::StatusIs(
           tsl::error::INVALID_ARGUMENT,
           HasSubstr("Expect async_wrapped_computation to be async_wrapped.0, "
                     "but got async_wrapped.1")));
@@ -5506,7 +5487,7 @@ ENTRY %Entry (p0: f32[10]) -> f32[20] {
   )";
   EXPECT_THAT(
       ParseAndReturnUnverifiedModule(hlo_string).status(),
-      tsl::testing::StatusIs(
+      absl_testing::StatusIs(
           tsl::error::INVALID_ARGUMENT,
           HasSubstr("Expect async_wrapped_computation to be async_wrapped.0, "
                     "but got async_wrapped.1")));
@@ -5524,7 +5505,7 @@ ENTRY %Entry (p0: f32[10]) -> f32[20] {
 }
   )";
   EXPECT_THAT(ParseAndReturnUnverifiedModule(hlo_string).status(),
-              tsl::testing::StatusIs(
+              absl_testing::StatusIs(
                   tsl::error::INVALID_ARGUMENT,
                   HasSubstr("Expect async_execution_thread to be main, "
                             "but got foo_thread")));
@@ -5542,7 +5523,7 @@ ENTRY %Entry (p0: f32[10]) -> f32[20] {
 }
   )";
   EXPECT_THAT(ParseAndReturnUnverifiedModule(hlo_string).status(),
-              tsl::testing::StatusIs(
+              absl_testing::StatusIs(
                   tsl::error::INVALID_ARGUMENT,
                   HasSubstr("Expect async_execution_thread to be main, "
                             "but got foo_thread")));
@@ -5666,7 +5647,7 @@ ENTRY %test {
 
 )";
   EXPECT_THAT(ParseAndReturnUnverifiedModule(hlo_string).status(),
-              tsl::testing::StatusIs(tsl::error::INVALID_ARGUMENT,
+              absl_testing::StatusIs(tsl::error::INVALID_ARGUMENT,
                                      HasSubstr("expects instruction shape")));
 }
 
@@ -5682,6 +5663,31 @@ ENTRY %test {
 
   ExpectHasSubstr(module->ToString(HloPrintOptions::ShortParsable()),
                   "origin={(({}, {\"v2\"}), {\"v3\"})}");
+}
+
+TEST_F(HloParserTest, DeduplicateOriginalValues) {
+  const std::string hlo_string =
+      R"(HloModule test, entry_computation_layout={(s32[])->s32[]}
+
+%fused_computation (param_0: s32[]) -> s32[] {
+  %param_0 = s32[] parameter(0)
+  %constant = s32[] constant(32)
+  ROOT %add = s32[] add(%param_0, %constant), origin={{"concatenate"}}
+}
+
+ENTRY %test (Arg_0: s32[]) -> s32[] {
+  %Arg_0 = s32[] parameter(0), origin={{"Arg_0"}}
+  ROOT %pad_add_fusion = s32[] fusion(%Arg_0), kind=kLoop, calls=%fused_computation, origin={{"concatenate"}}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  auto fusion_inst = static_cast<HloFusionInstruction*>(
+      module->entry_computation()->root_instruction());
+
+  ASSERT_EQ(
+      fusion_inst->original_value(),
+      fusion_inst->called_computation()->root_instruction()->original_value());
 }
 
 TEST_F(HloParserTest, TranscendentalAccuracyMode) {
@@ -5711,7 +5717,7 @@ TEST_F(HloParserTest, TranscendentalAccuracyModeError) {
   }
   )";
   ASSERT_THAT(ParseAndReturnUnverifiedModule(hlo_string).status(),
-              ::tsl::testing::StatusIs(
+              absl_testing::StatusIs(
                   absl::StatusCode::kInvalidArgument,
                   HasSubstr("expects ResultAccuracy type but sees: high")));
 }
@@ -5806,7 +5812,7 @@ TEST_F(HloParserTest,
     a = s32[] parameter(0), origin={{"v1"}}
     b = s32[] parameter(1), origin={{"v2"}}
     add-start = ((s32[], s32[]), s32[], s32[]) add-start(a, b),
-                metadata={op_type="add" op_name="sample name" source_file="path/to/test.cc" source_line=68},
+                metadata={op_type="add" op_name="sample name" source_file="path/to/test.cc" source_line=68, source_end_line=70, source_column=4, source_end_column=8},
                 backend_config="foo\" bar",
                 frontend_attributes={attr_a="test_a",attr_b="b"},
                 statistics={visualizing_index=1,stat-1=33,stat-2=44}
@@ -5821,6 +5827,9 @@ TEST_F(HloParserTest,
   EXPECT_EQ(wrapped_instr->metadata().op_type(), "add");
   EXPECT_EQ(wrapped_instr->metadata().source_file(), "path/to/test.cc");
   EXPECT_EQ(wrapped_instr->metadata().source_line(), 68);
+  EXPECT_EQ(wrapped_instr->metadata().source_end_line(), 70);
+  EXPECT_EQ(wrapped_instr->metadata().source_column(), 4);
+  EXPECT_EQ(wrapped_instr->metadata().source_end_column(), 8);
   EXPECT_EQ(wrapped_instr->raw_backend_config_string(), "foo\" bar");
   EXPECT_EQ(wrapped_instr->frontend_attributes().map().size(), 2);
   EXPECT_EQ(wrapped_instr->frontend_attributes().map().at("attr_a"), "test_a");
@@ -5885,7 +5894,7 @@ TEST_F(HloParserTest, ParseBufferMoreThanOneElement) {
 TEST_F(HloParserTest, ParseBufferScalar) {
   std::string shape_string = "b(s32[])";
   TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
-  Shape expected = ShapeUtil::MakeBufferShape(S32, {});
+  Shape expected = ShapeUtil::MakeValidatedBufferShape(S32, {}).value();
   ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
       << "expected: " << ShapeUtil::HumanString(expected)
       << "actual:   " << ShapeUtil::HumanString(actual);
@@ -5894,10 +5903,39 @@ TEST_F(HloParserTest, ParseBufferScalar) {
 TEST_F(HloParserTest, ParseBufferArray) {
   std::string shape_string = "b(f32[8,16]{1,0})";
   TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
-  Shape expected = ShapeUtil::MakeBufferShape(F32, {8, 16});
+  Shape expected = ShapeUtil::MakeValidatedBufferShape(F32, {8, 16}).value();
   ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
       << "expected: " << ShapeUtil::HumanString(expected)
       << "actual:   " << ShapeUtil::HumanString(actual);
+}
+
+TEST_F(HloParserTest, AllReduceWithMode) {
+  // The mode attribute is parsed but ignored for now. Test it makes no
+  // difference whether the attribute is present.
+  const char* const hlo_template = R"(
+HloModule m
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY entry {
+  input = f32[8]{0} parameter(0)
+  ROOT ar = f32[8]{0} all-reduce(input), %s replica_groups={}, to_apply=add
+}
+)";
+  const std::string hlo_with_mode =
+      absl::StrFormat(hlo_template, "mode=cross_replica,");
+  const std::string hlo_without_mode = absl::StrFormat(hlo_template, "");
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module_with_mode,
+                          ParseAndReturnVerifiedModule(hlo_with_mode));
+  TF_ASSERT_OK_AND_ASSIGN(auto module_without_mode,
+                          ParseAndReturnVerifiedModule(hlo_without_mode));
+  EXPECT_EQ(*module_with_mode->entry_computation(),
+            *module_without_mode->entry_computation());
 }
 
 }  // namespace

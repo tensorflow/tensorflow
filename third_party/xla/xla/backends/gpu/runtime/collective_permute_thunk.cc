@@ -57,6 +57,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/casts.h"
 
 namespace xla {
 namespace gpu {
@@ -261,7 +262,6 @@ absl::StatusOr<bool> CollectivePermuteStartThunk::RunCollective(
   bool use_memcpy = is_local_peer && recv_ptr_map_.IsInitialized(current_id) &&
                     p2p_memcpy_enabled_;
 
-  TF_ASSIGN_OR_RETURN(GpuCollectives * collectives, GetGpuCollectives(params));
   if (use_memcpy) {
     std::optional<int64_t> source_id = source_target.source;
     std::optional<int64_t> target_id = source_target.target;
@@ -301,8 +301,8 @@ absl::StatusOr<bool> CollectivePermuteStartThunk::RunCollective(
   }
 
   TF_RETURN_IF_ERROR(::xla::gpu::RunCollectivePermute(
-      collectives, source_target, device_buffers, stream, comm_handle.comm,
-      device_string, current_id, use_memcpy, recv_ptr_map_));
+      source_target, device_buffers, stream, comm_handle.comm, device_string,
+      current_id, use_memcpy, recv_ptr_map_));
 
   if (use_memcpy) {
     std::optional<int64_t> source_id = source_target.source;
@@ -345,7 +345,7 @@ absl::StatusOr<bool> CollectivePermuteStartThunk::RunCollective(
 }
 
 absl::Status RunCollectivePermute(
-    GpuCollectives* collectives, P2PConfig::SourceTargetMapEntry source_target,
+    P2PConfig::SourceTargetMapEntry source_target,
     std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
     Communicator* comm, absl::string_view device_string, int64_t current_id,
     bool use_memcpy, CollectivePermuteStartThunk::RecvPtrMap& recv_ptr_map) {
@@ -376,8 +376,7 @@ absl::Status RunCollectivePermute(
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing collective permute from device ordinal: "
           << device_ordinal << " current_id " << current_id;
-  TF_RETURN_IF_ERROR(
-      MaybeRegisterBuffers(collectives, stream.parent(), buffers, comm));
+  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(stream.parent(), buffers, comm));
 
   std::optional<int64_t> source_id = source_target.source;
   std::optional<int64_t> target_id = source_target.target;
@@ -418,8 +417,7 @@ absl::Status RunCollectivePermute(
         }
       }
     } else {
-      TF_ASSIGN_OR_RETURN(GpuCommunicator * gpu_comm,
-                          collectives->TryCast(comm));
+      auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(comm);
       tsl::AsyncValueRef<Communicator::Event> event = gpu_comm->GroupExecute(
           [source_rank, &buffers, &src_addrs, &dest_addrs, &target_ranks,
            &stream](GpuCommunicator* comm) -> absl::Status {

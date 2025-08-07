@@ -6,6 +6,7 @@ load(
     "@local_xla//xla/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 
@@ -660,6 +661,7 @@ py_strict_library(
         # Import will fail, indicating no global dlopen flags
         otherwise = [],
     ),  # b/153585257
+    visibility = ["//visibility:public"],
     deps = [
         ":pywrap_tensorflow_internal",
         "//tensorflow/python/platform:self_check",
@@ -1489,13 +1491,16 @@ cc_library(
     }),
     deps = [
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/core/framework:attr_value_proto_cc",
+        "//tensorflow/core/framework:device_attributes_proto_cc",
         "//tensorflow/core/framework:function_proto_cc",
         "//tensorflow/core/framework:graph_proto_cc",
         "//tensorflow/core/grappler/costs:op_performance_data_cc",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/dtensor/proto:layout_proto_cc",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
+        "@local_xla//xla/tsl/protobuf:coordination_service_proto_cc",
     ],
 )
 
@@ -1513,6 +1518,7 @@ cc_library(
         if_true = (
             if_cuda_is_configured([
                 "@local_xla//xla/tsl/cuda:cupti",
+                "@local_xla//xla/tsl/cuda:nvshmem_stub",
             ]) + if_nccl([
                 "@local_config_nccl//:nccl",
             ])
@@ -1629,10 +1635,6 @@ pywrap_library(
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:pywrap_quantize_model",
         "//tensorflow/compiler/mlir/tensorflow_to_stablehlo/python:pywrap_tensorflow_to_stablehlo",
         "//tensorflow/compiler/tf2tensorrt:_pywrap_py_utils",
-        "//tensorflow/lite/python/analyzer_wrapper:_pywrap_analyzer_wrapper",
-        "//tensorflow/lite/python/interpreter_wrapper:_pywrap_tensorflow_interpreter_wrapper",
-        "//tensorflow/lite/python/metrics:_pywrap_tensorflow_lite_metrics_wrapper",
-        "//tensorflow/lite/python/optimize:_pywrap_tensorflow_lite_calibration_wrapper",
         "//tensorflow/python:_pywrap_dtensor_device",
         "//tensorflow/python:_pywrap_mlir",
         "//tensorflow/python:_pywrap_parallel_device",
@@ -1695,12 +1697,14 @@ pywrap_common_library(
     name = "pywrap_tensorflow_framework",
     dep = ":_pywrap_tensorflow",
     filter_name = "tensorflow_framework",
+    visibility = ["//visibility:public"],
 )
 
 pywrap_common_library(
     name = "pywrap_tensorflow_common",
     dep = ":_pywrap_tensorflow",
     filter_name = "_pywrap_tensorflow_common",
+    visibility = ["//visibility:public"],
 )
 
 alias(
@@ -1710,6 +1714,7 @@ alias(
         "//tensorflow:macos": ":pywrap_tensorflow_framework",
         "//tensorflow:windows": ":pywrap_tensorflow_common",
     }),
+    visibility = ["//visibility:public"],
 )
 
 pywrap_binaries(

@@ -17,18 +17,19 @@ limitations under the License.
 #define XLA_SERVICE_SPMD_SHARDY_UTILS_H_
 
 #include <cstdint>
-#include <functional>
 #include <optional>
 #include <string>
 
 #include "absl/log/check.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "mlir/AsmParser/AsmParser.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeRange.h"
@@ -78,6 +79,12 @@ bool hasFrontendAttr(mlir::Operation* op, mlir::StringRef key);
 bool hasKey(mlir::DictionaryAttr dictAttr, mlir::StringRef key);
 
 void loadAllRequiredDialects(mlir::MLIRContext* context);
+
+// Adjusts the output sharding based on allowSpmdShardingPropagationToOutput
+// flag.
+void adjustOutputSharding(
+    mlir::func::FuncOp func, int idx, mlir::sdy::TensorShardingAttr sharding,
+    int64_t rank, absl::Span<const bool> allowSpmdShardingPropagationToOutput);
 
 // Parses `escapedValue` to an attribute of type `AttrTy`.
 template <typename AttrTy>
@@ -138,6 +145,18 @@ std::string duplicateShardingsAtIndices(
 // would return ["x", "y":1(2), "y":2(2), "y":4(4), "z"].
 mlir::SmallVector<mlir::sdy::AxisRefAttr> getOrderedAxisRefs(
     mlir::Attribute shardingOrAxisList, mlir::sdy::MeshAttr mesh);
+
+// Returns true if the module has at least one GSPMD attribute or op, like an
+// `mhlo.sharding` attribute or `Sharding` custom call.
+// TODO(b/420837831): delete this once we don't fall back to GSPMD.
+bool hasGspmdAttrsOrOps(mlir::ModuleOp module);
+
+// Check if the module has any sort of Shardy mesh:
+// - `mesh`
+// - `maximal_mesh_{X}`
+// - `empty_mesh`
+// TODO(b/420837831): delete this once we don't fall back to GSPMD.
+bool hasShardyMesh(mlir::ModuleOp module);
 
 }  // namespace sdy
 }  // namespace xla

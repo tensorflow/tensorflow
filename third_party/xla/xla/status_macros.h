@@ -297,6 +297,7 @@ class StatusAdaptorForMacros {
 // included in the error message. The caller can optionally stream more error
 // messages after the macro.
 #define TF_RET_CHECK(condition)                                      \
+  /* NOLINTNEXTLINE(readability-simplify-boolean-expr) */            \
   while (ABSL_PREDICT_FALSE(!(condition)))                           \
   return xla::status_macros::MakeErrorStream(__FILE__, __LINE__,     \
                                              ::tsl::error::INTERNAL) \

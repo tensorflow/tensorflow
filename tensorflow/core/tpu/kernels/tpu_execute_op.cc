@@ -679,7 +679,8 @@ absl::Status TPUExecuteOp::DoWork(OpKernelContext* context) {
 
   TF_RET_CHECK(executable.input_shapes_size() == 1);
 
-  xla::Shape host_shape(executable.input_shapes(0));
+  TF_ASSIGN_OR_RETURN(xla::Shape host_shape,
+                      xla::Shape::FromProto(executable.input_shapes(0)));
 
   TF_ASSIGN_OR_RETURN(
       auto variable_update_map,

@@ -33,7 +33,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tests/client_library_test_runner_mixin.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/test_macros.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
 
@@ -208,13 +207,9 @@ TEST_F(ParamsTest, HundredLargeR1Parameters) {
     sum_handle = Add(sum_handle, param);
   }
 
-  std::vector<const Literal*> param_data;
-  param_data.reserve(param_data_owner.size());
-  for (const Literal& data : param_data_owner) {
-    param_data.push_back(&data);
-  }
-
-  ComputeAndCompareR1<float>(&builder, sum, param_data, ErrorSpec(0.0001f));
+  ComputeAndCompareR1<float>(&builder, sum,
+                             LiteralUtil::MakePointers(param_data_owner),
+                             ErrorSpec(0.0001f));
 }
 
 // Only run the 3,000-parameter tests in opt mode to avoid test timeouts.
@@ -446,7 +441,7 @@ TEST_F(ParamsTest, R2_2x2_Layout_10) {
 // reflect the layout of the original literal, so it does not pass. This seems
 // to be a niche behavior that is not worth fixing.
 TEST_F(ParamsTest, R2_2x2_TryToPassReverseLayoutToParameter) {
-  if (test::DeviceIsOneOf({test::kCpu, test::kGpu, test::kInterpreter})) {
+  if (test::DeviceTypeIsOneOf({test::kCpu, test::kGpu, test::kInterpreter})) {
     GTEST_SKIP();
   }
   Literal literal = LiteralUtil::CreateR2<float>({

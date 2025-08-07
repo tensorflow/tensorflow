@@ -16,9 +16,10 @@ limitations under the License.
 #include <variant>
 
 #include <gtest/gtest.h>
+#include "absl/functional/overload.h"
 #include "absl/strings/string_view.h"
 #include "xla/error_spec.h"
-#include "xla/service/overload.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/xla.pb.h"
@@ -74,12 +75,13 @@ ENTRY e {
 }
 
 TEST_F(FloatSupportTestWithTriton, MixedTypeDotWithBF16IsNotUpcasted) {
-  bool skip_test = std::visit(
-      Overload{[](const se::CudaComputeCapability& cc) {
-                 return !cc.IsAtLeast(se::CudaComputeCapability::kAmpere);
-               },
-               [](const se::RocmComputeCapability&) { return true; }},
-      GetGpuComputeCapability());
+  bool skip_test =
+      std::visit(absl::Overload(
+                     [](const se::CudaComputeCapability& cc) {
+                       return !cc.IsAtLeast(se::CudaComputeCapability::kAmpere);
+                     },
+                     [](const se::RocmComputeCapability&) { return true; }),
+                 GetGpuComputeCapability());
 
   if (skip_test) {
     GTEST_SKIP() << "Not supported on this GPU architecture";

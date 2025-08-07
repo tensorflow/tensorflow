@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <cstdlib>
+#include <ctime>
 #include <functional>
 #include <iterator>
 #include <memory>
@@ -32,20 +33,26 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/debug_options_flags.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/hlo/transforms/collectives/async_collective_creator.h"
+#include "xla/service/computation_placer.h"
 #include "xla/service/hlo_cost_analysis.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/legalize_scheduling_annotations.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test_benchmark.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -146,7 +153,9 @@ absl::StatusOr<bool> RunScheduler(
     HloModule* module, SchedulerConfig sched_config = GetDefaultSchedConfig(),
     std::unique_ptr<LatencyEstimator> latency_estimator =
         std::make_unique<ApproximateLatencyEstimator>(),
-    std::unique_ptr<AsyncTracker> async_tracker = nullptr) {
+    std::unique_ptr<AsyncTracker> async_tracker = nullptr,
+    std::unique_ptr<LegalizeSchedulingAnnotations::Config> legalizer_config =
+        nullptr) {
   AsyncCollectiveCreator::CollectiveCreatorConfig config{
       /*convert_all_reduce=*/HloPredicateTrue,
       /*convert_all_gather=*/HloPredicateTrue,
@@ -154,9 +163,13 @@ absl::StatusOr<bool> RunScheduler(
       /*convert_collective_permute=*/HloPredicateTrue};
   TF_ASSIGN_OR_RETURN(bool value,
                       AsyncCollectiveCreator(std::move(config)).Run(module));
-  TF_ASSIGN_OR_RETURN(value, LegalizeSchedulingAnnotations(
-                                 LegalizeSchedulingAnnotations::Config())
-                                 .Run(module));
+  if (!legalizer_config) {
+    legalizer_config =
+        std::make_unique<LegalizeSchedulingAnnotations::Config>();
+  }
+  TF_ASSIGN_OR_RETURN(
+      value,
+      LegalizeSchedulingAnnotations(std::move(*legalizer_config)).Run(module));
   HloCostAnalysis::ShapeSizeFunction shape_size_bytes =
       [&shape_size_bytes](const Shape& shape) -> int64_t {
     int64_t shape_size = 0;
@@ -174,19 +187,33 @@ absl::StatusOr<bool> RunScheduler(
   if (!async_tracker) {
     async_tracker = std::make_unique<AsyncTracker>(sched_config);
   }
-  auto scheduler_core = std::make_unique<DefaultSchedulerCore>(
-      shape_size_bytes, async_tracker.get(), latency_estimator.get(),
-      sched_config);
-  TF_ASSIGN_OR_RETURN(
-      value, LatencyHidingScheduler(std::move(latency_estimator),
-                                    std::move(async_tracker),
-                                    std::move(scheduler_core), shape_size_bytes)
-                 .Run(module));
+  AliasInfo alias_info;
+  std::shared_ptr<const SchedulingContext> scheduling_context =
+      std::make_shared<const SchedulingContext>(
+          module, std::move(latency_estimator), std::move(async_tracker),
+          &alias_info, shape_size_bytes);
+  auto scheduler_core =
+      std::make_unique<DefaultSchedulerCore>(scheduling_context, sched_config);
+  TF_ASSIGN_OR_RETURN(value, LatencyHidingScheduler(scheduling_context,
+                                                    std::move(scheduler_core))
+                                 .Run(module));
 
   return value;
 }
 
-}  // namespace
+int64_t ShapeSizeBytes(const Shape& shape) {
+  int64_t shape_size = 0;
+  if (shape.IsToken()) {
+    return 0;
+  }
+  if (shape.IsTuple()) {
+    for (auto& sub_shape : shape.tuple_shapes()) {
+      shape_size += ShapeSizeBytes(sub_shape);
+    }
+    return shape_size;
+  }
+  return ShapeUtil::ByteSizeOfElements(shape);
+}
 
 class LatencyHidingSchedulerTest : public HloHardwareIndependentTestBase {
  public:
@@ -194,6 +221,37 @@ class LatencyHidingSchedulerTest : public HloHardwareIndependentTestBase {
       absl::string_view hlo_string) {
     return ParseAndReturnVerifiedModule(hlo_string, GetModuleConfigForTest());
   }
+
+ protected:
+  absl::StatusOr<std::unique_ptr<LatencyHidingScheduler>> SetupScheduler(
+      HloModule* module, SchedulerConfig sched_config = GetDefaultSchedConfig(),
+      std::unique_ptr<LatencyEstimator> latency_estimator =
+          std::make_unique<ApproximateLatencyEstimator>(),
+      std::unique_ptr<AsyncTracker> async_tracker = nullptr) {
+    AsyncCollectiveCreator::CollectiveCreatorConfig config{
+        /*convert_all_reduce=*/HloPredicateTrue,
+        /*convert_all_gather=*/HloPredicateTrue,
+        /*convert_collective_broadcast=*/HloPredicateTrue,
+        /*convert_collective_permute=*/HloPredicateTrue};
+    TF_ASSIGN_OR_RETURN(bool value,
+                        AsyncCollectiveCreator(std::move(config)).Run(module));
+    TF_ASSIGN_OR_RETURN(value, LegalizeSchedulingAnnotations(
+                                   LegalizeSchedulingAnnotations::Config())
+                                   .Run(module));
+
+    if (!async_tracker) {
+      async_tracker = std::make_unique<AsyncTracker>(sched_config);
+    }
+    std::shared_ptr<const SchedulingContext> scheduling_context =
+        std::make_shared<const SchedulingContext>(
+            module, std::move(latency_estimator), std::move(async_tracker),
+            &alias_info_, ShapeSizeBytes);
+    auto scheduler_core = std::make_unique<DefaultSchedulerCore>(
+        scheduling_context, sched_config);
+    return std::make_unique<LatencyHidingScheduler>(scheduling_context,
+                                                    std::move(scheduler_core));
+  }
+  AliasInfo alias_info_;
 };
 
 TEST_F(LatencyHidingSchedulerTest, AllGatherAsyncSimple) {
@@ -3689,6 +3747,63 @@ ENTRY entry {
             GetIndex(new_instruction_sequence, "cp2d"));
 }
 
+TEST_F(LatencyHidingSchedulerTest, DeannotateUnsupportedGroups) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[16,64,256]{2,1,0} parameter(0)
+  p1 = f32[128,2048,2048]{2,1,0} parameter(1)
+  p2 = f32[512,2048,2048]{2,1,0} parameter(2)
+  cp1s = (f32[512,2048,2048]{2,1,0}, f32[512,2048,2048]{2,1,0}, u32[], u32[]) collective-permute-start(p2), source_target_pairs={{1,0},{0,3},{3,2}}, frontend_attributes={_scheduling_group_id="0"}
+  cp1d = f32[512,2048,2048]{2,1,0} collective-permute-done(cp1s), frontend_attributes={_scheduling_group_id="0"}
+  cp2s = (f32[128,2048,2048]{2,1,0}, f32[128,2048,2048]{2,1,0}, u32[], u32[]) collective-permute-start(p1), source_target_pairs={{1,0},{0,3},{3,2}}, frontend_attributes={_scheduling_group_id="1"}
+  cp2d = f32[128,2048,2048]{2,1,0} collective-permute-done(cp2s), frontend_attributes={_scheduling_group_id="1"}
+  cp3s = (f32[128,2048,2048]{2,1,0}, f32[128,2048,2048]{2,1,0}, u32[], u32[]) collective-permute-start(cp2d), source_target_pairs={{1,0},{0,3},{3,2}}, frontend_attributes={_scheduling_group_id="0"}
+  cp3d = f32[128,2048,2048]{2,1,0} collective-permute-done(cp3s), frontend_attributes={_scheduling_group_id="0"}
+  p0_x1 = f32[16,64,256]{2,1,0} copy(p0), frontend_attributes={_scheduling_group_id="1"}
+  cp1d_x1 = f32[16,64,256]{2,1,0} slice(cp1d), slice={[0:16], [0:64], [0:256]}, frontend_attributes={_scheduling_group_id="1"}
+  p0_x2 = f32[16,64,256]{2,1,0} add(p0_x1, cp1d_x1), frontend_attributes={_scheduling_group_id="1"}
+  c0 = f32[16,256,256]{2,1,0} convolution(p0, p0_x2),
+    window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb, frontend_attributes={_scheduling_group_id="0"}
+  ROOT tuple.2 = (f32[16,256,256]{2,1,0}, f32[512,2048,2048]{2,1,0}, f32[128,2048,2048]{2,1,0}) tuple(c0, cp1d, cp3d)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  HloSchedule& module_schedule = hlo_module->schedule();
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  auto sched_config = GetDefaultSchedConfig();
+  sched_config.aggressive_scheduling_policies = true;
+  auto legalizer_config =
+      std::make_unique<LegalizeSchedulingAnnotations::Config>();
+  legalizer_config->deannotate_unsupported_groups = true;
+  TF_EXPECT_OK(RunScheduler(
+      hlo_module.get(), sched_config, std::make_unique<TestLatencyEstimator>(),
+      /*async_tracker=*/nullptr, std::move(legalizer_config)));
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+
+  std::vector<HloInstruction*> new_instruction_sequence =
+      module_schedule.sequence(hlo_module->entry_computation()).instructions();
+  if (VLOG_IS_ON(1)) {
+    for (auto* new_i : new_instruction_sequence) {
+      VLOG(1) << new_i->ToString();
+    }
+  }
+
+  // Check that scheduling group 0 has been de-annotated because it
+  // contain gaps, but group 1 is still annotated.
+  const HloInstruction* cp1s = FindInstruction(hlo_module.get(), "cp1s");
+  const HloInstruction* cp2s = FindInstruction(hlo_module.get(), "cp2s");
+  const HloInstruction* cp3s = FindInstruction(hlo_module.get(), "cp3s");
+  EXPECT_FALSE(
+      cp1s->frontend_attributes().map().contains("_scheduling_group_id"));
+  EXPECT_TRUE(
+      cp2s->frontend_attributes().map().contains("_scheduling_group_id"));
+  EXPECT_FALSE(
+      cp3s->frontend_attributes().map().contains("_scheduling_group_id"));
+}
+
 TEST_F(LatencyHidingSchedulerTest, SchedulingAnnotationMakesAnotherGroupReady) {
   absl::string_view hlo_string = R"(
 HloModule module, is_scheduled=true
@@ -4059,7 +4174,9 @@ TEST_F(LatencyHidingSchedulerTest, RaggedAllToAll) {
             GetIndex(new_instruction_sequence, "ra2a-done"));
 }
 
-TEST_F(LatencyHidingSchedulerTest, InvalidAnnotationOverlap) {
+// Check that the scheduler respects the resource limit when scheduling
+// instructions in the same annotation group.
+TEST_F(LatencyHidingSchedulerTest, ResourceLimitWithinAnnotationGroup) {
   constexpr absl::string_view hlo_string = R"(
   HloModule module, is_scheduled=true
 
@@ -4103,11 +4220,18 @@ TEST_F(LatencyHidingSchedulerTest, InvalidAnnotationOverlap) {
   auto status = RunScheduler(hlo_module.get(), sched_config,
                              std::make_unique<TestLatencyEstimator>())
                     .status();
-  EXPECT_IS_NOT_OK(status);
-  EXPECT_EQ(status.message(),
-            "There is a scheduling group which exceeds the overlap limits. "
-            "Annotation id: 1. It needs 2 kAllGather resources, but the limit "
-            "is 1. ");
+  VLOG(1) << "module after: " << hlo_module->ToString();
+  TF_EXPECT_OK(status);
+  // Check that ag0 and ag1 do not overlap with each other.
+  std::vector<HloInstruction*> new_instruction_sequence =
+      hlo_module->schedule()
+          .sequence(hlo_module->entry_computation())
+          .instructions();
+  auto ags0 = GetIndex(new_instruction_sequence, "ags0");
+  auto ags1 = GetIndex(new_instruction_sequence, "ags1");
+  auto agd0 = GetIndex(new_instruction_sequence, "agd0");
+  auto agd1 = GetIndex(new_instruction_sequence, "agd1");
+  EXPECT_TRUE(agd0 < ags1 || agd1 < ags0);
 }
 
 TEST_F(LatencyHidingSchedulerTest, AnnotatedProducerOpNotReady) {
@@ -4279,4 +4403,419 @@ TEST_F(LatencyHidingSchedulerTest, WhileWithCompleteResourceList) {
             GetIndex(new_instruction_sequence, "while"));
 }
 
+// Check that "keep_original_sequence_order_in_group" frontend attribute takes
+// effect.
+TEST_F(LatencyHidingSchedulerTest, KeepOriginalSequenceOrderInAnnotationGroup) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[16,64,256]{2,1,0} parameter(0)
+  p1 = f32[128,2048,2048]{2,1,0} parameter(1)
+  p2 = f32[512,2048,2048]{2,1,0} parameter(2)
+  cp1s = (f32[512,2048,2048]{2,1,0}, f32[512,2048,2048]{2,1,0}, u32[], u32[]) collective-permute-start(p2), source_target_pairs={{1,0},{0,3},{3,2}}, frontend_attributes={_scheduling_group_id="0", keep_original_sequence_order_in_group="true"}
+  cp1d = f32[512,2048,2048]{2,1,0} collective-permute-done(cp1s), frontend_attributes={_scheduling_group_id="0", keep_original_sequence_order_in_group="true"}
+  cp2s = (f32[128,2048,2048]{2,1,0}, f32[128,2048,2048]{2,1,0}, u32[], u32[]) collective-permute-start(p1), source_target_pairs={{1,0},{0,3},{3,2}}, frontend_attributes={_scheduling_group_id="0", keep_original_sequence_order_in_group="true"}
+  c0 = f32[16,256,256]{2,1,0} convolution(p0, p0),
+    window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb, frontend_attributes={_scheduling_group_id="0", keep_original_sequence_order_in_group="true"}
+  cp2d = f32[128,2048,2048]{2,1,0} collective-permute-done(cp2s), frontend_attributes={_scheduling_group_id="0", keep_original_sequence_order_in_group="true"}
+  cp3s = (f32[128,2048,2048]{2,1,0}, f32[128,2048,2048]{2,1,0}, u32[], u32[]) collective-permute-start(cp2d), source_target_pairs={{1,0},{0,3},{3,2}}
+  cp3d = f32[128,2048,2048]{2,1,0} collective-permute-done(cp3s)
+  ROOT tuple.2 = (f32[16,256,256]{2,1,0}, f32[512,2048,2048]{2,1,0}, f32[128,2048,2048]{2,1,0}) tuple(c0, cp1d, cp3d)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  HloSchedule& module_schedule = hlo_module->schedule();
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  auto sched_config = GetDefaultSchedConfig();
+  sched_config.aggressive_scheduling_policies = true;
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config,
+                            std::make_unique<TestLatencyEstimator>()));
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+
+  std::vector<HloInstruction*> new_instruction_sequence =
+      module_schedule.sequence(hlo_module->entry_computation()).instructions();
+  if (VLOG_IS_ON(1)) {
+    for (auto* new_i : new_instruction_sequence) {
+      VLOG(1) << new_i->ToString();
+    }
+  }
+
+  // Check that the original sequence order is kept in the annotation group.
+  EXPECT_LT(GetIndex(new_instruction_sequence, "cp1s"),
+            GetIndex(new_instruction_sequence, "cp1d"));
+  EXPECT_LT(GetIndex(new_instruction_sequence, "cp1d"),
+            GetIndex(new_instruction_sequence, "cp2s"));
+  EXPECT_LT(GetIndex(new_instruction_sequence, "cp2s"),
+            GetIndex(new_instruction_sequence, "c0"));
+  EXPECT_LT(GetIndex(new_instruction_sequence, "c0"),
+            GetIndex(new_instruction_sequence, "cp2d"));
+}
+
+// Check that we precisely calculate the resource usage for the
+// "keep_original_sequence_order_in_group" attribute with 2 overlapping CPs.
+TEST_F(LatencyHidingSchedulerTest,
+       ResourceCacluationWithKeepOriginalSequenceOrderAttributeOverlappingCPs) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[16,64,256]{2,1,0} parameter(0)
+  p1 = f32[128,2048,2048]{2,1,0} parameter(1)
+  p2 = f32[512,2048,2048]{2,1,0} parameter(2)
+  cp1s = (f32[512,2048,2048]{2,1,0}, f32[512,2048,2048]{2,1,0}, u32[], u32[]) collective-permute-start(p2), source_target_pairs={{1,0},{0,3},{3,2}}, frontend_attributes={_scheduling_group_id="0", keep_original_sequence_order_in_group="true"}
+  cp2s = (f32[128,2048,2048]{2,1,0}, f32[128,2048,2048]{2,1,0}, u32[], u32[]) collective-permute-start(p1), source_target_pairs={{1,0},{0,3},{3,2}}, frontend_attributes={_scheduling_group_id="0", keep_original_sequence_order_in_group="true"}
+  c0 = f32[16,256,256]{2,1,0} convolution(p0, p0),
+    window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb, frontend_attributes={_scheduling_group_id="0", keep_original_sequence_order_in_group="true"}
+  cp1d = f32[512,2048,2048]{2,1,0} collective-permute-done(cp1s), frontend_attributes={_scheduling_group_id="0", keep_original_sequence_order_in_group="true"}
+  cp2d = f32[128,2048,2048]{2,1,0} collective-permute-done(cp2s), frontend_attributes={_scheduling_group_id="0", keep_original_sequence_order_in_group="true"}
+  ROOT tuple.2 = (f32[128,2048,2048]{2,1,0}, f32[512,2048,2048]{2,1,0}) tuple(cp2d, cp1d)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  HloSchedule& module_schedule = hlo_module->schedule();
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  auto sched_config = GetDefaultSchedConfig();
+  sched_config.aggressive_scheduling_policies = true;
+  sched_config.collective_permute_overlap_limit = 1;
+  // The annotation requires CP1 and CP2 to overlap, which requires 2
+  // collective permute resources. Check that the scheduler fails with a
+  // resource limit of 1.
+  auto status = RunScheduler(hlo_module.get(), sched_config,
+                             std::make_unique<TestLatencyEstimator>());
+  EXPECT_FALSE(status.ok());
+  // Check that the scheduler succeeds with a resource limit of 2.
+  sched_config.collective_permute_overlap_limit = 2;
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config,
+                            std::make_unique<TestLatencyEstimator>()));
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+
+  std::vector<HloInstruction*> new_instruction_sequence =
+      module_schedule.sequence(hlo_module->entry_computation()).instructions();
+  if (VLOG_IS_ON(1)) {
+    for (auto* new_i : new_instruction_sequence) {
+      VLOG(1) << new_i->ToString();
+    }
+  }
+
+  // Check that the original sequence order is kept in the annotation group.
+  EXPECT_LT(GetIndex(new_instruction_sequence, "cp1s"),
+            GetIndex(new_instruction_sequence, "cp2s"));
+  EXPECT_LT(GetIndex(new_instruction_sequence, "cp2s"),
+            GetIndex(new_instruction_sequence, "c0"));
+  EXPECT_LT(GetIndex(new_instruction_sequence, "c0"),
+            GetIndex(new_instruction_sequence, "cp1d"));
+  EXPECT_LT(GetIndex(new_instruction_sequence, "cp1d"),
+            GetIndex(new_instruction_sequence, "cp2d"));
+}
+
+// Check that we precisely calculate the resource usage for the
+// "keep_original_sequence_order_in_group" attribute with non-overlapping CPs.
+TEST_F(
+    LatencyHidingSchedulerTest,
+    ResourceCacluationWithKeepOriginalSequenceOrderAttributeNonOverlappingCPs) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[16,64,256]{2,1,0} parameter(0)
+  p1 = f32[128,2048,2048]{2,1,0} parameter(1)
+  p2 = f32[512,2048,2048]{2,1,0} parameter(2)
+  cp1s = (f32[512,2048,2048]{2,1,0}, f32[512,2048,2048]{2,1,0}, u32[], u32[]) collective-permute-start(p2), source_target_pairs={{1,0},{0,3},{3,2}}, frontend_attributes={_scheduling_group_id="0", keep_original_sequence_order_in_group="true"}
+  cp1d = f32[512,2048,2048]{2,1,0} collective-permute-done(cp1s), frontend_attributes={_scheduling_group_id="0", keep_original_sequence_order_in_group="true"}
+  cp2s = (f32[128,2048,2048]{2,1,0}, f32[128,2048,2048]{2,1,0}, u32[], u32[]) collective-permute-start(p1), source_target_pairs={{1,0},{0,3},{3,2}}, frontend_attributes={_scheduling_group_id="0", keep_original_sequence_order_in_group="true"}
+  c0 = f32[16,256,256]{2,1,0} convolution(p0, p0),
+    window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb, frontend_attributes={_scheduling_group_id="0", keep_original_sequence_order_in_group="true"}
+  cp2d = f32[128,2048,2048]{2,1,0} collective-permute-done(cp2s), frontend_attributes={_scheduling_group_id="0", keep_original_sequence_order_in_group="true"}
+  ROOT tuple.2 = (f32[128,2048,2048]{2,1,0}, f32[512,2048,2048]{2,1,0}) tuple(cp2d, cp1d)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  HloSchedule& module_schedule = hlo_module->schedule();
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  auto sched_config = GetDefaultSchedConfig();
+  sched_config.aggressive_scheduling_policies = true;
+  sched_config.collective_permute_overlap_limit = 1;
+  // Check that the scheduler succeeds with a resource limit of 1.
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config,
+                            std::make_unique<TestLatencyEstimator>()));
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+
+  std::vector<HloInstruction*> new_instruction_sequence =
+      module_schedule.sequence(hlo_module->entry_computation()).instructions();
+  if (VLOG_IS_ON(1)) {
+    for (auto* new_i : new_instruction_sequence) {
+      VLOG(1) << new_i->ToString();
+    }
+  }
+
+  // Check that the original sequence order is kept in the annotation group.
+  EXPECT_LT(GetIndex(new_instruction_sequence, "cp1s"),
+            GetIndex(new_instruction_sequence, "cp1d"));
+  EXPECT_LT(GetIndex(new_instruction_sequence, "cp1d"),
+            GetIndex(new_instruction_sequence, "cp2s"));
+  EXPECT_LT(GetIndex(new_instruction_sequence, "cp2s"),
+            GetIndex(new_instruction_sequence, "c0"));
+  EXPECT_LT(GetIndex(new_instruction_sequence, "c0"),
+            GetIndex(new_instruction_sequence, "cp2d"));
+}
+
+TEST_F(LatencyHidingSchedulerTest, ValidScheduleWithRandomPreferences) {
+  constexpr absl::string_view hlo_string = R"(
+    HloModule module, is_scheduled=true
+    ENTRY %module {
+      %constant.19 = u32[] constant(1)
+      %replica_id = u32[]{:T(128)} replica-id()
+      %add.1 = u32[]{:T(128)} add(replica_id, constant.19)
+      %convert = f32[]{:T(128)} convert(u32[]{:T(128)} %replica_id)
+      %convert.1 = f32[]{:T(128)} convert(u32[]{:T(128)} %add.1)
+      %color_operand.1 = f32[8,256,256]{2,1,0:T(8,128)} broadcast(f32[]{:T(128)} %convert), dimensions={}
+      %color_operand.2 = f32[8,256,256]{2,1,0:T(8,128)} broadcast(f32[]{:T(128)} %convert.1), dimensions={}
+      %ag-start = (f32[8,256,256], f32[16,256,256]) all-gather-start(f32[8,256,256] %color_operand.1), replica_groups={{0,1}}, dimensions={0},
+        metadata={op_type="AllGather" op_name="ag0"}
+      %ag-start.2 = (f32[8,256,256], f32[16,256,256]) all-gather-start(f32[8,256,256] %color_operand.2), replica_groups={{0,1}}, dimensions={0},
+        metadata={op_type="AllGather" op_name="ag1"}
+      %ag-done = f32[16,256,256] all-gather-done((f32[8,256,256], f32[16,256,256]) %ag-start),
+        metadata={op_type="AllGather" op_name="ag0"}
+      %ag-done.2 = f32[16,256,256] all-gather-done((f32[8,256,256], f32[16,256,256]) %ag-start.2),
+        metadata={op_type="AllGather" op_name="ag1"}
+      p0 = f32[16,64,256]{2,1,0} parameter(0)
+      p1 = f32[16,64,256]{2,1,0} parameter(1)
+      p2 = f32[16,256,256]{2,1,0} parameter(2)
+      p3 = f32[16,256,256]{2,1,0} parameter(3)
+      c0 = f32[16,256,256]{2,1,0} convolution(p0, p1),
+        window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb
+      c1 = f32[16,256,256]{2,1,0} convolution(p0, p1),
+        window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb
+      ROOT a2 = f32[16,256,256]{2,1,0} add(%ag-done, %ag-done.2)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  std::unique_ptr<LatencyHidingScheduler> scheduler =
+      SetupScheduler(hlo_module.get()).value();
+
+  // Save the old schedule before running the LHS.
+  HloComputation* computation = hlo_module->entry_computation();
+  uint64_t instruction_count = computation->instruction_count();
+
+  std::vector<HloInstruction*> original_order =
+      hlo_module->schedule().sequence(computation).instructions();
+
+  // We need to run the scheduler once to initialize some of the global state.
+  TF_EXPECT_OK(scheduler->Run(hlo_module.get()));
+
+  std::vector<double> random_preferences(instruction_count, 0.0);
+  std::srand(static_cast<unsigned int>(std::time(nullptr)));
+  for (size_t i = 0; i < instruction_count; ++i) {
+    random_preferences[i] = static_cast<double>(std::rand()) / RAND_MAX;
+  }
+
+  // Restore original order.
+  hlo_module->schedule().set_sequence(computation, original_order);
+
+  auto result = scheduler->ScheduleWithPreferences(
+      hlo_module.get(), random_preferences, computation);
+
+  // Set the new schedule.
+  hlo_module->schedule().set_sequence(computation, result->first);
+
+  // Even with random preferences values LHS will always produce a valid
+  // schedule.
+  TF_EXPECT_OK(hlo_module->schedule().Verify());
+}
+// Check that "keep_original_sequence_order_in_group" frontend attribute takes
+// effect.
+TEST_F(LatencyHidingSchedulerTest, FlexibleSchedulingAnnotationScheduling) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[16,64,256]{2,1,0} parameter(0)
+  p1 = f32[128,2048,2048]{2,1,0} parameter(1)
+  p2 = f32[512,2048,2048]{2,1,0} parameter(2)
+  p3 = f32[16,256,256]{2,1,0} parameter(3)
+  cp1s = (f32[512,2048,2048]{2,1,0}, f32[512,2048,2048]{2,1,0}, u32[], u32[]) collective-permute-start(p2), source_target_pairs={{1,0},{0,3},{3,2}}, frontend_attributes={_scheduling_group_id="0", keep_original_sequence_order_in_group="true"}
+  cp1d = f32[512,2048,2048]{2,1,0} collective-permute-done(cp1s), frontend_attributes={_scheduling_group_id="0", keep_original_sequence_order_in_group="true"}
+  cp2s = (f32[128,2048,2048]{2,1,0}, f32[128,2048,2048]{2,1,0}, u32[], u32[]) collective-permute-start(p1), source_target_pairs={{1,0},{0,3},{3,2}}, frontend_attributes={_scheduling_group_id="0", keep_original_sequence_order_in_group="true"}
+  c0 = f32[16,256,256]{2,1,0} convolution(p0, p0),
+    window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb, frontend_attributes={_scheduling_group_id="0", keep_original_sequence_order_in_group="true"}
+  c1 = f32[16,256,256]{2,1,0} convolution(p3, p3),
+    window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb
+  cp2d = f32[128,2048,2048]{2,1,0} collective-permute-done(cp2s), frontend_attributes={_scheduling_group_id="0", keep_original_sequence_order_in_group="true"}
+  ROOT tuple.2 = (f32[16,256,256]{2,1,0}, f32[512,2048,2048]{2,1,0}, f32[16,256,256]{2,1,0}) tuple(c0, cp1d, c1)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  HloSchedule& module_schedule = hlo_module->schedule();
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  auto sched_config = GetDefaultSchedConfig();
+  sched_config.flexible_scheduling_annotation_scheduling = true;
+  sched_config.aggressive_scheduling_policies = true;
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config,
+                            std::make_unique<TestLatencyEstimator>()));
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+
+  std::vector<HloInstruction*> new_instruction_sequence =
+      module_schedule.sequence(hlo_module->entry_computation()).instructions();
+  if (VLOG_IS_ON(1)) {
+    for (auto* new_i : new_instruction_sequence) {
+      VLOG(1) << new_i->ToString();
+    }
+  }
+
+  // Check that the original sequence order is kept in the annotation group.
+  EXPECT_LT(GetIndex(new_instruction_sequence, "cp1s"),
+            GetIndex(new_instruction_sequence, "c1"));
+  EXPECT_LT(GetIndex(new_instruction_sequence, "c1"),
+            GetIndex(new_instruction_sequence, "c0"));
+  EXPECT_LT(GetIndex(new_instruction_sequence, "cp1s"),
+            GetIndex(new_instruction_sequence, "cp1d"));
+  EXPECT_LT(GetIndex(new_instruction_sequence, "cp1d"),
+            GetIndex(new_instruction_sequence, "cp2s"));
+  EXPECT_LT(GetIndex(new_instruction_sequence, "cp2s"),
+            GetIndex(new_instruction_sequence, "c0"));
+  EXPECT_LT(GetIndex(new_instruction_sequence, "c0"),
+            GetIndex(new_instruction_sequence, "cp2d"));
+}
+
+TEST_F(LatencyHidingSchedulerTest,
+       FlexibleAggressiveSchedulingAnnotationScheduling) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+p0 = f32[16,512,2048]{2,1,0} parameter(0)
+p1 = f32[8,128,128]{2,1,0} parameter(1)
+p2 = f32[8,128,128]{2,1,0} parameter(2)
+p3 = f32[16,2048,2048]{2,1,0} parameter(3)
+cp0s = (f32[8,128,128]{2,1,0}, f32[8,128,128]{2,1,0}, u32[], u32[]) collective-permute-start(p2), source_target_pairs={{1,0},{0,3},{3,2}}
+cp0d = f32[8,128,128]{2,1,0} collective-permute-done(cp0s)
+c0 = f32[16,2048,2048]{2,1,0} convolution(p0, p0),
+window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb, frontend_attributes={_scheduling_group_id="0"}
+c1 = f32[16,2048,2048]{2,1,0} convolution(p3, p3),
+window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb
+cp1s = (f32[8,128,128]{2,1,0}, f32[8,128,128]{2,1,0}, u32[], u32[]) collective-permute-start(cp0d), source_target_pairs={{1,0},{0,3},{3,2}}, frontend_attributes={_scheduling_group_id="0"}
+cp1d = f32[8,128,128]{2,1,0} collective-permute-done(cp1s), frontend_attributes={_scheduling_group_id="0"}
+ROOT tuple.2 = (f32[16,2048,2048]{2,1,0}, f32[8,128,128]{2,1,0}, f32[16,2048,2048]{2,1,0}) tuple(c0, cp1d, c1)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  HloSchedule& module_schedule = hlo_module->schedule();
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  auto sched_config = GetDefaultSchedConfig();
+  sched_config.flexible_scheduling_annotation_scheduling = true;
+  sched_config.aggressive_flexible_annotation_scheduling = true;
+  sched_config.aggressive_scheduling_policies = true;
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config,
+                            std::make_unique<TestLatencyEstimator>()));
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+
+  std::vector<HloInstruction*> new_instruction_sequence =
+      module_schedule.sequence(hlo_module->entry_computation()).instructions();
+  if (VLOG_IS_ON(1)) {
+    for (auto* new_i : new_instruction_sequence) {
+      VLOG(1) << new_i->ToString();
+    }
+  }
+
+  // Check that the original sequence order is kept in the annotation group.
+  EXPECT_LT(GetIndex(new_instruction_sequence, "cp1s"),
+            GetIndex(new_instruction_sequence, "c1"));
+  EXPECT_LT(GetIndex(new_instruction_sequence, "c1"),
+            GetIndex(new_instruction_sequence, "c0"));
+  EXPECT_LT(GetIndex(new_instruction_sequence, "cp1s"),
+            GetIndex(new_instruction_sequence, "cp1d"));
+  EXPECT_LT(GetIndex(new_instruction_sequence, "c0"),
+            GetIndex(new_instruction_sequence, "cp1d"));
+}
+
+class LatencyHidingSchedulerBenchmark : public LatencyHidingSchedulerTest {
+ public:
+  void TestBody() override {}
+};
+
+class BMHelper : public HloHardwareIndependentTestBase {
+ public:
+  void TestBody() override {}
+  absl::StatusOr<std::unique_ptr<VerifiedHloModule>> ParseForBM(
+      absl::string_view hlo, const HloModuleConfig& config) {
+    return ParseAndReturnVerifiedModule(hlo, config);
+  }
+};
+
+static void BM_FindAndExtractBestNodeAvailable(
+    ::testing::benchmark::State& state) {
+  // This benchmark takes a parameter, and we make an HLO graph with
+  // approximately this many independent instructions that are all
+  // schedulable simultaneously.  This exercises the scheduling code
+  // with a large number of candidates in the ready set, which is not
+  // uncommon when compiling large Hlo programs.
+  std::string hlo = R"(
+    HloModule serial_collective_permute_test, is_scheduled=true
+    ENTRY after_optimizations_test {
+    %parameter.1 = bf16[8]{0} parameter(0)
+    after-all = token[] after-all()
+    send = (bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)}, u32[], token[]) send(%parameter.1, after-all), channel_id=1246
+    recv = (bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)}, u32[], token[]) recv(after-all), channel_id=1247
+    recv-done = (bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)}, token[]) recv-done(recv), channel_id=1247
+    get-tuple-element = bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)} get-tuple-element(recv-done), index=0
+    send-done = token[] send-done(send), channel_id=1246, control-predecessors={recv-done}
+)";
+  for (int i = 0; i < state.range(0); i++) {
+    absl::StrAppend(&hlo, "%add.", i + 2,
+                    " = bf16[8]{0} add(%parameter.1, %parameter.1)\n");
+  }
+  hlo +=
+      "ROOT %collective-permute.1 = bf16[8]{0} collective-permute(bf16[8]{0} "
+      "parameter.1), source_target_pairs={{0,1},{1,2},{2,3}}, channel_id=1\n";
+  hlo += "}\n";
+
+  const int replica_count = 1;
+  const int num_partitions = 1;
+
+  auto debug_options = GetDebugOptionsFromFlags();
+  // TODO(b/38354253): Change tests to use Parameters instead of Constants.
+  debug_options.add_xla_disable_hlo_passes("constant_folding");
+  debug_options.set_xla_hlo_evaluator_use_fast_path(true);
+  debug_options.set_xla_cpu_emitter_verification_level(1);
+
+  DeviceAssignment device_assignment(replica_count, num_partitions);
+  device_assignment.FillIota(0);
+
+  HloModuleConfig config;
+  config.set_debug_options(debug_options);
+  config.set_replica_count(replica_count);
+  config.set_num_partitions(num_partitions);
+  std::unique_ptr<DeviceAssignment> default_device_assignment =
+      std::make_unique<DeviceAssignment>(device_assignment);
+  config.set_static_device_assignment(*default_device_assignment);
+  LOG_FIRST_N(INFO, 1) << "sizeof(HloGraphNode) " << sizeof(HloGraphNode)
+                       << " sizeof(HloEdge) " << sizeof(HloEdge);
+
+  BMHelper bm;
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, bm.ParseForBM(hlo, config));
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  for (auto s : state) {
+    auto sched_config = GetDefaultSchedConfig();
+    sched_config.flexible_scheduling_annotation_scheduling = true;
+    sched_config.aggressive_scheduling_policies = true;
+    TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config,
+                              std::make_unique<TestLatencyEstimator>()));
+    EXPECT_TRUE(hlo_module->has_entry_computation());
+  }
+}
+BENCHMARK(BM_FindAndExtractBestNodeAvailable)
+    ->Arg(1)
+    ->Arg(100)
+    ->Arg(1000)
+    ->Arg(10000)
+    ->Arg(40000);
+
+}  // namespace
 }  // namespace xla

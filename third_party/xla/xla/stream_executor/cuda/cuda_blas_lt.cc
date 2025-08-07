@@ -139,6 +139,11 @@ absl::StatusOr<cublasLtEpilogue_t> AsCublasLtEpilogue(
     case gpu::BlasLt::Epilogue::kBiasThenGELUWithAux:
       return absl::InternalError("GELU epilogues require cublasLt >= 11.4");
 #endif
+    case gpu::BlasLt::Epilogue::kSILU:
+    case gpu::BlasLt::Epilogue::kSILUWithAux:
+    case gpu::BlasLt::Epilogue::kBiasThenSILU:
+    case gpu::BlasLt::Epilogue::kBiasThenSILUWithAux:
+      return absl::InternalError("SILU epilogues are not supported.");
   }
 }
 

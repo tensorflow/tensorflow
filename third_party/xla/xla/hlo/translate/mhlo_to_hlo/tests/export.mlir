@@ -19,7 +19,7 @@ func.func @main(%arg0: tensor<2xi1>) -> tensor<2xi1> {
 
 // CHECK:  ENTRY
 // CHECK:  %[[ARG:.*]] = pred[2] parameter(0)
-// CHECK:  ROOT %[[RESULT:.*]] = pred[2] xor(%[[ARG]], %[[ARG]])
+// CHECK:  ROOT %[[RESULT:.*]] = pred[2] add(%[[ARG]], %[[ARG]])
 
 // -----
 
@@ -435,7 +435,7 @@ func.func @empty_callee() {
 
 // CHECK:       ENTRY [[MAIN:%.*]] ([[ARG:.*]]: s32[4]) -> s32[4] {
 // CHECK-NEXT:    ROOT %[[ARG]] = s32[4] parameter(0)
-// CHECK-NEXT:    [[CALL:%.*]] = () call(), to_apply=[[CALLEE]]
+// CHECK-NEXT:    [[CALL:%.*]] = () call(), to_apply=[[CALLEE]]{{.*}}
 // CHECK-NEXT:  }
 
 // -----
@@ -458,17 +458,11 @@ func.func @callee(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
 // CHECK:  ROOT
 // CHECK-SAME:  s32[4] add(%[[ARG_1]], %[[ARG_2]])
 
-// CHECK:  [[CALLEE_2:%.*]] ([[ARG_3:.*]]: s32[4], [[ARG_4:.*]]: s32[4]) -> s32[4] {
-// CHECK:  %[[ARG_3]] = s32[4] parameter(0)
-// CHECK:  %[[ARG_4]] = s32[4] parameter(1)
-// CHECK:  ROOT
-// CHECK-SAME:  s32[4] add(%[[ARG_3]], %[[ARG_4]])
-
 // CHECK:  ENTRY [[MAIN:%.*]] ([[ARG:.*]]: s32[4]) -> s32[4] {
 // CHECK:  %[[ARG]] = s32[4] parameter(0)
 // CHECK:  [[CALL_OUT:%.*]] = s32[4] call(%[[ARG]], %[[ARG]]), to_apply=[[CALLEE_1]]
 // CHECK:  ROOT
-// CHECK-SAME:  s32[4] call([[CALL_OUT]], [[CALL_OUT]]), to_apply=[[CALLEE_2]]
+// CHECK-SAME:  s32[4] call([[CALL_OUT]], [[CALL_OUT]]), to_apply=[[CALLEE_1]]
 
 // -----
 
@@ -1697,24 +1691,6 @@ func.func @main(%arg0: tensor<2x2x2xi8>, %arg1: tensor<2x2x3xi8>) -> tensor<2x2x
 // -----
 
 // CHECK:  HloModule
-func.func @main(%arg0: tensor<10x16xbf16>, %arg1: tensor<32x20xbf16>, %meta: tensor<10x2xui16>) -> tensor<10x20xf32> {
-  // CHECK:  [[ARG0:%.*]] = bf16[10,16] parameter(0)
-  // CHECK:  [[ARG1:%.*]] = bf16[32,20] parameter(1)
-  // CHECK:  [[META:%.*]] = u16[10,2] parameter(2)
-  // CHECK:  dot([[ARG0]], [[ARG1]], [[META]]), lhs_contracting_dims={1}, rhs_contracting_dims={0}, sparsity=L.1@2:4
-  %0 = "mhlo.sparse_dot"(%arg0, %arg1, %meta) {
-    lhs_sparsity = #mhlo.sparsity<dimension=1, n=2, m=4>,
-    dot_dimension_numbers = #mhlo.dot<
-      lhs_contracting_dimensions = [1],
-      rhs_contracting_dimensions = [0]
-    >,
-    precision_config = []} : (tensor<10x16xbf16>, tensor<32x20xbf16>, tensor<10x2xui16>) -> tensor<10x20xf32>
-  func.return %0 : tensor<10x20xf32>
-}
-
-// -----
-
-// CHECK:  HloModule
 func.func @main(%arg0: tensor<3x4xi32>, %arg1: tensor<4x5xi32>) -> tensor<3x5xi32> {
   // Simple einsum is lowered to HLO dot op.
   // CHECK:  [[ARG0:%.*]] = s32[3,4] parameter(0)
@@ -2060,6 +2036,7 @@ func.func @main(%token: !mhlo.token) -> tuple<tensor<3x4xi32>, !mhlo.token> {
 // CHECK:  HloModule
 func.func @main(%token: !mhlo.token) -> tuple<tensor<3x4xi32>, !mhlo.token> {
   %0:2 = "mhlo.recv"(%token) {
+    source_target_pairs = dense<[[0,1],[1,2]]> : tensor<2x2xi64>,
     channel_handle = #mhlo.channel_handle<
       handle = 5,
       type = 1  // Device to device channel
@@ -2073,7 +2050,10 @@ func.func @main(%token: !mhlo.token) -> tuple<tensor<3x4xi32>, !mhlo.token> {
 // CHECK:  ENTRY
 // CHECK:  [[TOKEN:%.*]] = token[] parameter(0)
 // CHECK:  [[RECV:%.*]] = (s32[3,4], u32[], token[]) recv([[TOKEN]]), channel_id=5
-// CHECK:  (s32[3,4], token[]) recv-done([[RECV]]), channel_id=5
+// CHECK-SAME: frontend_attributes
+// CHECK-SAME: _xla_send_recv_source_target_pairs
+// CHECK-SAME{LITERAL}: {{0,1},{1,2}}
+// CHECK-NEXT:  (s32[3,4], token[]) recv-done([[RECV]]), channel_id=5
 
 
 // -----
@@ -2081,6 +2061,7 @@ func.func @main(%token: !mhlo.token) -> tuple<tensor<3x4xi32>, !mhlo.token> {
 // CHECK:  HloModule
 func.func @main(%token: !mhlo.token) -> !mhlo.token {
   %0 = "mhlo.recv"(%token) {
+    source_target_pairs = dense<[[0,1],[1,2]]> : tensor<2x2xi64>,
     channel_handle = #mhlo.channel_handle<
       handle = 5,
       type = 1  // Device to device channel
@@ -2093,6 +2074,9 @@ func.func @main(%token: !mhlo.token) -> !mhlo.token {
 // CHECK:  ENTRY
 // CHECK-NEXT:  [[ARG:%.*]] = token[] parameter(0)
 // CHECK-NEXT:  [[RECV:%.*]] = ((), u32[], token[]) recv([[ARG]]), channel_id=5
+// CHECK-SAME: frontend_attributes
+// CHECK-SAME: _xla_send_recv_source_target_pairs
+// CHECK-SAME{LITERAL}: {{0,1},{1,2}}
 // CHECK-NEXT:  [[RECV_DONE:%.*]] = ((), token[]) recv-done([[RECV]]), channel_id=5
 // CHECK-NEXT:  [[DATA:%.*]] =   () get-tuple-element([[RECV_DONE]]), index=0
 // CHECK-NEXT:  ROOT [[TOKEN:%.*]] =   token[] get-tuple-element([[RECV_DONE]]), index=1
@@ -2368,7 +2352,8 @@ func.func @main(%arg: tensor<3x4xi32>, %token: !mhlo.token) -> !mhlo.token {
       handle = 5,
       type = 1  // Device to device channel
     >,
-    is_host_transfer = false
+    is_host_transfer = false,
+    source_target_pairs = dense<[[0,1],[1,2]]> : tensor<2x2xi64>
   } : (tensor<3x4xi32>, !mhlo.token) -> !mhlo.token
   func.return %0 : !mhlo.token
 }
@@ -2377,7 +2362,10 @@ func.func @main(%arg: tensor<3x4xi32>, %token: !mhlo.token) -> !mhlo.token {
 // CHECK:  [[ARG:%.*]] = s32[3,4] parameter(0)
 // CHECK:  [[TOKEN:%.*]] = token[] parameter(1)
 // CHECK:  [[SEND:%.*]] = (s32[3,4], u32[], token[]) send([[ARG]], [[TOKEN]]), channel_id=5
-// CHECK:  ROOT
+// CHECK-SAME: frontend_attributes
+// CHECK-SAME: _xla_send_recv_source_target_pairs
+// CHECK-SAME{LITERAL}: {{0,1},{1,2}}
+// CHECK-NEXT:  ROOT
 // CHECK-SAME:  token[] send-done([[SEND]]), channel_id=5
 
 // -----
@@ -2389,7 +2377,9 @@ func.func @main(%token: !mhlo.token) -> !mhlo.token {
       handle = 5,
       type = 1
     >,
-    is_host_transfer = false
+    is_host_transfer = false,
+    source_target_pairs = dense<[[0,1],[1,2]]> : tensor<2x2xi64>,
+    mhlo.frontend_attributes = {_xla_host_transfer_rendezvous = "fe_attr_just_for_testing"}
   } : (!mhlo.token) -> !mhlo.token
   func.return %0 : !mhlo.token
 }
@@ -2398,7 +2388,36 @@ func.func @main(%token: !mhlo.token) -> !mhlo.token {
 // CHECK-DAG:   [[ARG:%.*]] = () tuple()
 // CHECK-DAG:   [[TOKEN:%.*]] = token[] parameter(0)
 // CHECK:   [[SEND:%.*]] = ((), u32[], token[]) send([[ARG]], [[TOKEN]]), channel_id=5
-// CHECK:  ROOT
+// CHECK-SAME: frontend_attributes
+// CHECK-SAME{LITERAL}: _xla_host_transfer_rendezvous="fe_attr_just_for_testing",
+// CHECK-SAME: _xla_send_recv_source_target_pairs
+// CHECK-SAME{LITERAL}: {{0,1},{1,2}}
+// CHECK-NEXT:  ROOT
+// CHECK-SAME:   token[] send-done([[SEND]]), channel_id=5
+
+// -----
+
+// CHECK:  HloModule
+func.func @main(%token: !mhlo.token) -> !mhlo.token {
+  %0 = "mhlo.send"(%token) {
+    channel_handle = #mhlo.channel_handle<
+      handle = 5,
+      type = 1
+    >,
+    is_host_transfer = false,
+    source_target_pairs = dense<[[0,1],[1,2]]> : tensor<2x2xi64>
+  } : (!mhlo.token) -> !mhlo.token
+  func.return %0 : !mhlo.token
+}
+
+// CHECK: ENTRY
+// CHECK-DAG:   [[ARG:%.*]] = () tuple()
+// CHECK-DAG:   [[TOKEN:%.*]] = token[] parameter(0)
+// CHECK:   [[SEND:%.*]] = ((), u32[], token[]) send([[ARG]], [[TOKEN]]), channel_id=5
+// CHECK-SAME: frontend_attributes
+// CHECK-SAME: _xla_send_recv_source_target_pairs
+// CHECK-SAME{LITERAL}: {{0,1},{1,2}}
+// CHECK-NEXT:  ROOT
 // CHECK-SAME:   token[] send-done([[SEND]]), channel_id=5
 
 // -----
@@ -3148,4 +3167,15 @@ func.func @main(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
     "mhlo.return"(%7) : (tensor<i1>) -> ()
   }) {dimension = 1 : i64, is_stable = true} : (tensor<16x16xf32>, tensor<16x16xi32>) -> (tensor<16x16xf32>, tensor<16x16xi32>)
   func.return
+}
+
+// -----
+// CHECK: HloModule
+// CHECK: ENTRY
+// CHECK: %[[ARG0:.*]] = f32[192] parameter(0)
+// CHECK: ROOT %[[RESULT:.*]] = f32[1,17,17,192] broadcast(%[[ARG0]]), dimensions={3}, origin={{[{][{]}}"broadcast.2342"{{[}][}]}}
+
+func.func @main(%arg0: tensor<192xf32>) -> tensor<1x17x17x192xf32> {
+  %0 = "mhlo.broadcast_in_dim"(%arg0) <{broadcast_dimensions = dense<3> : tensor<1xi64>}> {mhlo.original_value = "{{\22broadcast.2342\22}}"} : (tensor<192xf32>) -> tensor<1x17x17x192xf32>
+  return %0 : tensor<1x17x17x192xf32>
 }

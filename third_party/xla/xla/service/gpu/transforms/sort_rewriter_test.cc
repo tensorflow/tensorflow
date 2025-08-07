@@ -426,6 +426,44 @@ ENTRY %main {
   EXPECT_TRUE(changed);
 }
 
+TEST_F(SortRewriterTest, A100Heuristic) {
+  SortRewriter::SetSortModeForTestingOnly(SortRewriter::Mode::kAuto);
+  constexpr char kHloTmpl[] = R"(
+HloModule TestModule
+
+%compare {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  ROOT %lt = pred[] compare(%lhs, %rhs), direction=LT
+}
+
+ENTRY %main {
+  %input = f32[$0,100000] parameter(0)
+  ROOT %sort = f32[$0,100000] sort(%input), dimensions={1}, to_apply=%compare
+})";
+
+  auto pass = SortRewriter(TestGpuDeviceInfo::RTXA6000DeviceInfo(), "CUDA");
+
+  // Batch 1
+  std::string hlo = absl::Substitute(kHloTmpl, "1");
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, module.get()));
+  EXPECT_TRUE(changed);
+
+  // Batch 3
+  hlo = absl::Substitute(kHloTmpl, "3");
+  TF_ASSERT_OK_AND_ASSIGN(module, ParseAndReturnVerifiedModule(hlo));
+  TF_ASSERT_OK_AND_ASSIGN(changed, RunHloPass(&pass, module.get()));
+  EXPECT_FALSE(changed);
+
+  // Batch 31
+  hlo = absl::Substitute(kHloTmpl, "31");
+  TF_ASSERT_OK_AND_ASSIGN(module, ParseAndReturnVerifiedModule(hlo));
+  TF_ASSERT_OK_AND_ASSIGN(changed, RunHloPass(&pass, module.get()));
+  EXPECT_TRUE(changed);
+}
+
 // Basic sort: with batch dimension.
 TEST_F(SortRewriterTest, SortWithBatchDim) {
   constexpr char kHlo[] = R"(

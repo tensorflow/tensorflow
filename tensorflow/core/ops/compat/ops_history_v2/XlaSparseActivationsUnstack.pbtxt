@@ -1,0 +1,42 @@
+op {
+  name: "XlaSparseActivationsUnstack"
+  input_arg {
+    name: "stacked_activations"
+    type_attr: "input_dtype"
+  }
+  output_arg {
+    name: "unstacked_activations"
+    type_attr: "dtype"
+    number_attr: "num_tables"
+  }
+  attr {
+    name: "num_tables"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "sample_counts"
+    type: "list(int)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "features"
+    type: "list(int)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "interleaved"
+    type: "bool"
+  }
+  attr {
+    name: "input_dtype"
+    type: "type"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+}

@@ -133,6 +133,58 @@ TEST_F(DotDecomposerTest, DontAddRhsNonContractingDimIfOne) {
                                 op::Shape("f32[64,2]"))));
 }
 
+TEST_F(DotDecomposerTest, AddLhsNonContractingDimIfZero) {
+  absl::string_view module_string = R"(
+  HloModule module
+
+  ENTRY main {
+    p0 = f32[64,4,2,0]{3,2,1,0} parameter(0)
+    p1 = f32[64,4]{1,0} parameter(1)
+    ROOT dot = f32[64,2,0]{2,1,0} dot(p0, p1), lhs_batch_dims={0},
+                                               lhs_contracting_dims={1},
+                                               rhs_batch_dims={0},
+                                               rhs_contracting_dims={1}
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool canonicalized,
+                          DotDecomposer().Run(module.get()));
+  EXPECT_TRUE(canonicalized);
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Reshape(AllOf(op::Dot(op::Reshape(), op::Reshape(),
+                                        /*lhs_contracting_dim=*/2,
+                                        /*rhs_contracting_dim=*/1),
+                                op::Shape("f32[64,0]"))));
+}
+
+TEST_F(DotDecomposerTest, AddRhsNonContractingDimIfZero) {
+  absl::string_view module_string = R"(
+  HloModule module
+
+  ENTRY main {
+    p0 = f32[64,4]{1,0} parameter(0)
+    p1 = f32[64,4,2,0]{3,2,1,0} parameter(1)
+    ROOT dot = f32[64,2,0]{2,1,0} dot(p0, p1), lhs_batch_dims={0},
+                                                 lhs_contracting_dims={1},
+                                                 rhs_batch_dims={0},
+                                                 rhs_contracting_dims={1}
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool canonicalized,
+                          DotDecomposer().Run(module.get()));
+  EXPECT_TRUE(canonicalized);
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Reshape(AllOf(op::Dot(op::Reshape(), op::Reshape(),
+                                        /*lhs_contracting_dim=*/1,
+                                        /*rhs_contracting_dim=*/1),
+                                op::Shape("f32[64,0]"))));
+}
+
 template <typename Arg0, typename Arg1, typename Arg2>
 auto SparseDotMatcher(Arg0&& arg0, Arg1&& arg1, Arg2&& arg2) {
   return match::Op()
@@ -140,64 +192,6 @@ auto SparseDotMatcher(Arg0&& arg0, Arg1&& arg1, Arg2&& arg2) {
       .WithOperand(0, std::forward<Arg0>(arg0))
       .WithOperand(1, std::forward<Arg1>(arg1))
       .WithOperand(2, std::forward<Arg2>(arg2));
-}
-
-TEST_F(DotDecomposerTest, CanonicalizeSparseLhs) {
-  absl::string_view kHlo = R"(
-  HloModule module
-
-  ENTRY main {
-    lhs = f32[16,4,3,7] parameter(0)
-    rhs = f32[32,4,5,7] parameter(1)
-    meta = u16[2,4,3,7] parameter(2)
-    ROOT dot = f32[7,3,5] dot(lhs, rhs, meta), sparsity=L.0@2:4,
-        lhs_contracting_dims={0,1}, rhs_contracting_dims={0,1},
-        lhs_batch_dims={3}, rhs_batch_dims={3}
-  })";
-
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHlo));
-  TF_ASSERT_OK_AND_ASSIGN(bool canonicalized,
-                          DotDecomposer().Run(module.get()));
-  EXPECT_TRUE(canonicalized);
-  HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, GmockMatch(m::Reshape(SparseDotMatcher(
-                        m::Reshape(m::Transpose(m::Parameter(0))),
-                        m::Reshape(m::Transpose(m::Parameter(1))),
-                        m::Reshape(m::Transpose(m::Parameter(2)))))));
-  auto dot = Cast<HloDotInstruction>(root->operand(0));
-  auto descriptor = dot->sparsity().front();
-  EXPECT_EQ(descriptor.index(), 0);
-  EXPECT_EQ(descriptor.dimension(), 2);
-}
-
-TEST_F(DotDecomposerTest, CanonicalizeSparseRhs) {
-  absl::string_view kHlo = R"(
-  HloModule module
-
-  ENTRY main {
-    lhs = f32[32,4,3,7] parameter(0)
-    rhs = f32[16,4,5,7] parameter(1)
-    meta = u16[2,4,5,7] parameter(2)
-    ROOT dot = f32[7,3,5] dot(lhs, rhs, meta), sparsity=R.0@2:4,
-        lhs_contracting_dims={0,1}, rhs_contracting_dims={0,1},
-        lhs_batch_dims={3}, rhs_batch_dims={3}
-  })";
-
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHlo));
-  TF_ASSERT_OK_AND_ASSIGN(bool canonicalized,
-                          DotDecomposer().Run(module.get()));
-  EXPECT_TRUE(canonicalized);
-  HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, GmockMatch(m::Reshape(SparseDotMatcher(
-                        m::Reshape(m::Transpose(m::Parameter(0))),
-                        m::Reshape(m::Transpose(m::Parameter(1))),
-                        m::Reshape(m::Transpose(m::Parameter(2)))))));
-  auto dot = Cast<HloDotInstruction>(root->operand(0));
-  auto descriptor = dot->sparsity().front();
-  EXPECT_EQ(descriptor.index(), 1);
-  EXPECT_EQ(descriptor.dimension(), 1);
 }
 
 }  // namespace

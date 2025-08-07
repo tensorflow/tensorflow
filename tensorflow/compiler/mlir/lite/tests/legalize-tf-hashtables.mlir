@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -split-input-file -tfl-legalize-hashtables-tf --cse | FileCheck %s
+// RUN: litert-opt %s -split-input-file -tfl-legalize-hashtables-tf --cse | FileCheck %s
 
 // Test for case with string -> int64 hashtable.
 func.func @hashtable_string_to_int64(%arg0: tensor<i64>) -> tensor<*xi64> {

@@ -46,7 +46,9 @@ namespace {
 absl::Status VerifyTiledHloInstructionConstructorPreconditions(
     const HloInstruction* hlo, llvm::SmallVector<int64_t> tile_sizes,
     llvm::SmallVector<int64_t> tile_strides,
-    std::optional<IndexingMap> tile_offsets_indexing) {
+    std::optional<IndexingMap> tile_offsets_indexing,
+    const llvm::SmallVector<const TiledHloInstruction*>& runtime_variables) {
+  // * Number of tile sizes, strides should match the rank of the HLO.
   const int rank =
       hlo->shape().IsArray() ? hlo->shape().dimensions().size() : 0;
 
@@ -64,20 +66,39 @@ absl::Status VerifyTiledHloInstructionConstructorPreconditions(
                      tile_strides.size(), ", hlo = ", hlo->ToString()));
   }
 
-  if (tile_offsets_indexing.has_value() &&
-      tile_offsets_indexing->GetDimensionCount() != 1) {
+  // * If `tile_offsets_indexing` is provided then it must satisfy:
+  if (!tile_offsets_indexing.has_value()) {
+    return absl::OkStatus();
+  }
+
+  // - The number of results must match the rank of the HLO.
+  if (tile_offsets_indexing->GetAffineMap().getNumResults() != rank) {
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "tile_offsets_indexing must have the same number of results as the "
+        "rank of the hlo shape. tile_offsets_indexing = %s, hlo = %s",
+        ToString(*tile_offsets_indexing), hlo->ToString()));
+  }
+  // - Input should have exactly 1 dimension.
+  if (tile_offsets_indexing->GetDimensionCount() != 1) {
     return absl::InvalidArgumentError(
         absl::StrCat("tile_offsets_indexing must have 1 dim. "
                      "tile_offsets_indexing = ",
                      ToString(*tile_offsets_indexing)));
   }
 
-  if (tile_offsets_indexing.has_value() &&
-      tile_offsets_indexing->GetAffineMap().getNumResults() != rank) {
+  // - The number of runtime variables must match the number of runtime
+  // variables in tile_offsets_indexing map.
+  if (tile_offsets_indexing->GetRTVars().size() != runtime_variables.size()) {
     return absl::InvalidArgumentError(absl::StrFormat(
-        "tile_offsets_indexing must have the same number of results as the "
-        "rank of the hlo shape. tile_offsets_indexing = %s, hlo = %s",
-        ToString(*tile_offsets_indexing), hlo->ToString()));
+        "tile_offsets_indexing has %zu runtime variables, but %zu runtime "
+        "variables were provided. tile_offsets_indexing = %s, "
+        "runtime_variables = %s",
+        tile_offsets_indexing->GetRTVars().size(), runtime_variables.size(),
+        ToString(*tile_offsets_indexing),
+        absl::StrJoin(runtime_variables, ", ",
+                      [](std::string* out, const TiledHloInstruction* x) {
+                        absl::StrAppend(out, x->ToString());
+                      })));
   }
 
   return absl::OkStatus();
@@ -90,14 +111,16 @@ absl::StatusOr<std::unique_ptr<TiledHloInstruction>>
 TiledHloInstruction::Create(
     const HloInstruction* hlo,
     llvm::SmallVector<const TiledHloInstruction*> operands,
+    llvm::SmallVector<const TiledHloInstruction*> runtime_variables,
     llvm::SmallVector<int64_t> tile_sizes,
     llvm::SmallVector<int64_t> tile_strides,
     std::optional<IndexingMap> tile_offsets_indexing) {
   TF_RETURN_IF_ERROR(VerifyTiledHloInstructionConstructorPreconditions(
-      hlo, tile_sizes, tile_strides, tile_offsets_indexing));
+      hlo, tile_sizes, tile_strides, tile_offsets_indexing, runtime_variables));
 
   return absl::WrapUnique(new TiledHloInstruction(
-      hlo, std::move(operands), std::move(tile_sizes), std::move(tile_strides),
+      hlo, std::move(operands), std::move(runtime_variables),
+      std::move(tile_sizes), std::move(tile_strides),
       std::move(tile_offsets_indexing)));
 }
 
@@ -110,6 +133,16 @@ std::string TiledHloInstruction::ToString() const {
      << (tile_offsets_indexing_.has_value()
              ? ::xla::ToString(*tile_offsets_indexing_)
              : "nullopt");
+  ss << "\toperands: \n";
+  for (const auto* x : operands_) {
+    ss << x->hlo()->ToShortString() << "\n";
+  }
+  if (!runtime_variables_.empty()) {
+    ss << "\truntime variables: \n";
+    for (const auto* x : runtime_variables_) {
+      ss << x->ToString() << "\n";
+    }
+  }
   return ss.str();
 }
 
@@ -118,27 +151,30 @@ absl::StatusOr<std::unique_ptr<TiledHloFusionInstruction>>
 TiledHloFusionInstruction::Create(
     const HloInstruction* hlo,
     llvm::SmallVector<const TiledHloInstruction*> operands,
+    llvm::SmallVector<const TiledHloInstruction*> runtime_variables,
     std::unique_ptr<TiledHloComputation> called_computation,
     llvm::SmallVector<int64_t> tile_sizes,
     llvm::SmallVector<int64_t> tile_strides,
     std::optional<IndexingMap> tile_offsets_indexing) {
   TF_RETURN_IF_ERROR(VerifyTiledHloInstructionConstructorPreconditions(
-      hlo, tile_sizes, tile_strides, tile_offsets_indexing));
+      hlo, tile_sizes, tile_strides, tile_offsets_indexing, runtime_variables));
 
   return absl::WrapUnique(new TiledHloFusionInstruction(
-      hlo, std::move(operands), std::move(called_computation),
-      std::move(tile_sizes), std::move(tile_strides),
-      std::move(tile_offsets_indexing)));
+      hlo, std::move(operands), std::move(runtime_variables),
+      std::move(called_computation), std::move(tile_sizes),
+      std::move(tile_strides), std::move(tile_offsets_indexing)));
 }
 
 TiledHloFusionInstruction::TiledHloFusionInstruction(
     const HloInstruction* hlo,
     llvm::SmallVector<const TiledHloInstruction*> operands,
+    llvm::SmallVector<const TiledHloInstruction*> runtime_variables,
     std::unique_ptr<TiledHloComputation> called_computation,
     llvm::SmallVector<int64_t> tile_sizes,
     llvm::SmallVector<int64_t> tile_strides,
     std::optional<IndexingMap> tile_offsets_indexing)
-    : TiledHloInstruction(hlo, std::move(operands), std::move(tile_sizes),
+    : TiledHloInstruction(hlo, std::move(operands),
+                          std::move(runtime_variables), std::move(tile_sizes),
                           std::move(tile_strides),
                           std::move(tile_offsets_indexing)),
       called_computation_(std::move(called_computation)) {}

@@ -22,6 +22,8 @@ import "xla/python/ifrt/device.proto";
 
 // Proto equivalent of C++ `CustomCallProgram`.
 message CustomCallProgramProto {
+  int32 version_number = 7;
+
   string type = 1;
   string name = 2;
   // TODO(hyeontaek): Use CTYPE=CORD once protobuf generates `absl::Cord`

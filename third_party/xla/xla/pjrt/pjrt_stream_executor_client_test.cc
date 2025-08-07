@@ -50,6 +50,9 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using ::testing::HasSubstr;
+using ::tsl::testing::StatusIs;
+
 absl::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>> GetClient() {
   LocalClient* local_client = xla::ClientLibrary::LocalClientOrDie();
   TF_ASSIGN_OR_RETURN(se::Platform * platform,
@@ -60,9 +63,11 @@ absl::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>> GetClient() {
       executor, local_client, LocalDeviceState::kSynchronous,
       /*max_inflight_computations=*/32,
       /*allow_event_reuse=*/false, /*use_callback_stream=*/false);
+  int local_device_id = device_state->local_device_id().value();
   std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices;
   devices.emplace_back(std::make_unique<PjRtStreamExecutorDevice>(
-      0, std::move(device_state), /*process_index=*/0, "cpu"));
+      0, std::move(device_state), local_device_id, /*process_index=*/0,
+      /*slice_index=*/0, "cpu"));
   std::vector<std::unique_ptr<PjRtMemorySpace>> memory_spaces;
   memory_spaces.emplace_back(std::make_unique<PjRtStreamExecutorMemorySpace>(
       0, devices.back().get(), "cpu", 0));
@@ -173,6 +178,36 @@ TEST(PjRtStreamExecutorClientTest, DonateWithControlDependency) {
   }
 
   TF_ASSERT_OK(literal_comparison::Equal(literal, *result_literal));
+}
+
+TEST(PjRtStreamExecutorClientTest, ExecuteWithInputError) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtStreamExecutorClient> client,
+                          GetClient());
+  Shape shape = xla::ShapeUtil::MakeScalarShape(F32);
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> in_buffer,
+      client->CreateErrorBuffer(
+          absl::InternalError("test error"), shape,
+          *client->addressable_devices()[0]->default_memory_space()));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtLoadedExecutable> executable,
+      ToyExecutable(*client, shape, [](XlaBuilder& builder) {}));
+
+  // Call Execute with the error buffer.
+  ExecuteOptions options;
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> result,
+      executable->Execute({{in_buffer.get(), in_buffer.get()}}, options));
+  ASSERT_EQ(result.size(), 1);
+  ASSERT_EQ(result[0].size(), 2);
+
+  for (const auto& buf : result[0]) {
+    EXPECT_EQ(buf->on_device_shape(), shape);
+    EXPECT_THAT(buf->GetReadyFuture().Await(),
+                absl_testing::StatusIs(absl::StatusCode::kInternal,
+                                       HasSubstr("test error")));
+  }
 }
 
 }  // namespace

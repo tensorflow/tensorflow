@@ -306,10 +306,10 @@ RankedTensorType DropFirstDimension(Type type) {
 Operation* InsertCast(OpBuilder& b, Location loc, Type dst_type, Value input) {
   Type element_type = getElementTypeOrSelf(dst_type);
   if (mlir::isa<IndexType>(element_type))
-    return b.create<tensor::CastOp>(loc, dst_type, input);
+    return tensor::CastOp::create(b, loc, dst_type, input);
   if (isa<TensorFlowDialect, BuiltinDialect>(element_type.getDialect()))
-    return b.create<TF::CastOp>(loc, dst_type, input,
-                                /*truncate=*/b.getBoolAttr(false));
+    return TF::CastOp::create(b, loc, dst_type, input,
+                              /*truncate=*/b.getBoolAttr(false));
   return nullptr;
 }
 
@@ -1285,7 +1285,7 @@ bool ShapeInference::InferShapeForXlaCallModule(XlaCallModuleOp op) {
         xla_call_module_context_.get(), op.getVersion(), op.getModule(),
         std::move(disabled_checks), std::move(platforms),
         /*num_invocation_args=*/op.getArgs().size(),
-        op.getHasTokenInputOutput());
+        op.getHasTokenInputOutput(), op.getUseShardyPartitioner());
     if (!l.ok()) {
       llvm::errs() << "Parsing error in XlaCallModule: "
                    << l.status().ToString() << "\n";

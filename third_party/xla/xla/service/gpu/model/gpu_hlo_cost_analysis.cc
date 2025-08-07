@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -318,25 +319,15 @@ absl::Status GpuHloCostAnalysis::HandleCustomCall(
     // possible", and if we were to include temp memory in here, we'd
     // essentially be *rewarding* convs that use additional temp memory!
     if (custom_call->shape().IsTuple()) {
-      int64_t output_0_size =
+      float output_size =
           options_.shape_size(custom_call->shape().tuple_shapes(0));
-      int64_t total_output_size = 0;
-      ShapeUtil::ForEachLeafShape(
-          custom_call->shape(),
-          [&](const Shape& sub_shape, const ShapeIndex& index) {
-            int64_t bytes_written = GetShapeSize(sub_shape);
-            total_output_size += bytes_written;
-            if (index != ShapeIndex{0}) {
-              // reset to 0 on output bytes accessed for non-first output.
-              current_properties_.set_output_bytes_accessed(index, 0);
-            }
-          });
-
       // 'Bytes accessed' are estimated in HloCostAnalysis::Preprocess() as
       // input + output. As the output size is being adjusted here it has
       // to propagate to the total bytes accessed.
       current_properties_[kBytesAccessedKey] -=
-          static_cast<float>(total_output_size - output_0_size);
+          current_properties_.output_bytes_accessed();
+      current_properties_[kBytesAccessedKey] += output_size;
+      current_properties_.set_output_bytes_accessed(output_size);
     }
     return absl::OkStatus();
   }
@@ -542,12 +533,14 @@ absl::Status GpuHloCostAnalysis::HandleAllGatherStart(
 
 absl::Status GpuHloCostAnalysis::HandleAsyncStart(const HloInstruction* hlo) {
   auto* async_start = DynCast<HloAsyncStartInstruction>(hlo);
-  if (async_start->async_wrapped_opcode() != HloOpcode::kReduceScatter) {
-    VLOG(2) << "Only Reduce Scatter is supported.";
-    return absl::OkStatus();
+  TF_RETURN_IF_ERROR(hlo->async_wrapped_instruction()->Accept(this));
+  if (async_start->async_wrapped_opcode() == HloOpcode::kReduceScatter) {
+    return HandleReduceScatter(async_start->async_wrapped_instruction());
   }
-
-  return HandleReduceScatter(async_start->async_wrapped_instruction());
+  if (async_start->async_wrapped_opcode() == HloOpcode::kAllToAll) {
+    return HandleAllToAll(async_start->async_wrapped_instruction());
+  }
+  return absl::OkStatus();
 }
 
 absl::Status GpuHloCostAnalysis::HandleReduceScatter(
@@ -568,6 +561,12 @@ absl::Status GpuHloCostAnalysis::HandleReduceScatter(
   current_properties_[kFlopsKey] = GetFlopsForElementwiseOp(
       hlo->to_apply()->root_instruction()->opcode(), hlo->shape());
 
+  return absl::OkStatus();
+}
+
+absl::Status GpuHloCostAnalysis::HandleAllToAll(const HloInstruction* hlo) {
+  int64_t bytes_transferred = ShapeSize(hlo->shape(), options_.shape_size);
+  current_properties_[kCollBytesTransferred] = bytes_transferred;
   return absl::OkStatus();
 }
 

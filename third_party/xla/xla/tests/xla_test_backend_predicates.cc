@@ -26,6 +26,17 @@ limitations under the License.
 
 namespace xla::test {
 namespace {
+
+absl::string_view GetXlaTestDevice() { return GetEnvOrDie("XLA_TEST_DEVICE"); }
+absl::string_view GetXlaTestDeviceType() {
+  return GetEnvOrDie("XLA_TEST_DEVICE_TYPE");
+}
+
+std::vector<absl::string_view> GetXlaTestModifiers() {
+  return absl::StrSplit(GetEnvOrDie("XLA_TEST_MODIFIERS"), ',');
+}
+}  // namespace
+
 absl::string_view GetEnvOrDie(const char* key) {
   const char* val = std::getenv(key);
   CHECK_NE(val, nullptr)
@@ -35,18 +46,24 @@ absl::string_view GetEnvOrDie(const char* key) {
   return val;
 }
 
-absl::string_view GetXlaTestDevice() { return GetEnvOrDie("XLA_TEST_DEVICE"); }
-
-std::vector<absl::string_view> GetXlaTestModifiers() {
-  return absl::StrSplit(GetEnvOrDie("XLA_TEST_MODIFIERS"), ',');
-}
-}  // namespace
-
 bool DeviceIs(absl::string_view device) { return device == GetXlaTestDevice(); }
 
 bool DeviceIsOneOf(absl::Span<const absl::string_view> devices) {
   for (const absl::string_view device : devices) {
     if (DeviceIs(device)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool DeviceTypeIs(absl::string_view device) {
+  return device == GetXlaTestDeviceType();
+}
+
+bool DeviceTypeIsOneOf(absl::Span<const absl::string_view> devices) {
+  for (const absl::string_view device : devices) {
+    if (DeviceTypeIs(device)) {
       return true;
     }
   }
@@ -92,5 +109,8 @@ bool BackendIsStrict(absl::string_view device) {
                                 modifiers[0] == kIss || modifiers[0] == kGrm);
   return device_matches && modifiers_match;
 }
+
+bool BackendSupportsFloat64() { return !DeviceTypeIs(kTpu); }
+bool BackendSupportsComplex128() { return !DeviceTypeIs(kTpu); }
 
 }  // namespace xla::test

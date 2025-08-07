@@ -13,25 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
-
 #include <stdlib.h>
 
+#include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
 
-#include "absl/container/fixed_array.h"
-#include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/backends/profiler/gpu/cupti_collector.h"
 #include "xla/backends/profiler/gpu/cupti_tracer.h"
-#include "xla/backends/profiler/gpu/cupti_wrapper.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/profiler/utils/time_utils.h"
 #include "xla/tsl/util/env_var.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/macros.h"
-#include "tsl/platform/thread_annotations.h"
 #include "tsl/profiler/lib/profiler_factory.h"
 #include "tsl/profiler/lib/profiler_interface.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
@@ -79,77 +76,7 @@ absl::Status GpuTracer::DoStart() {
     return tsl::errors::Unavailable("Another profile session running.");
   }
 
-  options_.cbids_selected = {
-      // KERNEL
-      CUPTI_DRIVER_TRACE_CBID_cuLaunchKernel,
-#if CUDA_VERSION >= 11080  // CUDA 11.8
-      CUPTI_DRIVER_TRACE_CBID_cuLaunchKernelEx,
-#endif  // CUDA_VERSION >= 11080
-      // MEMCPY
-      CUPTI_DRIVER_TRACE_CBID_cuMemcpy,
-      CUPTI_DRIVER_TRACE_CBID_cuMemcpyAsync,
-      CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoD_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoDAsync_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoH_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoHAsync_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoD_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoDAsync_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoH_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoHAsync_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoD_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoA_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoA_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuMemcpy2D_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuMemcpy2DUnaligned_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuMemcpy2DAsync_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuMemcpy3D_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuMemcpy3DAsync_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoA_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoAAsync_v2,
-      // MemAlloc
-      CUPTI_DRIVER_TRACE_CBID_cuMemAlloc_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuMemAllocPitch_v2,
-      // MemFree
-      CUPTI_DRIVER_TRACE_CBID_cuMemFree_v2,
-      // Memset
-      CUPTI_DRIVER_TRACE_CBID_cuMemsetD8_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuMemsetD16_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuMemsetD32_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D8_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D16_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D32_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuMemsetD8Async,
-      CUPTI_DRIVER_TRACE_CBID_cuMemsetD16Async,
-      CUPTI_DRIVER_TRACE_CBID_cuMemsetD32Async,
-      CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D8Async,
-      CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D16Async,
-      CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D32Async,
-      // GENERIC
-      CUPTI_DRIVER_TRACE_CBID_cuStreamSynchronize,
-#if CUDA_VERSION >= 12080  // CUDA 12.8
-      // CUDA graph related callbacks need to be specially specified in new
-      // versions of CUDA, otherwise CUPTI did not send their callback.
-      // More cuda graph callback need to be added when we need mapping internal
-      // cuda graph node to xla ops, like cuGraphAddKernelNode_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuGraphCreate,
-      CUPTI_DRIVER_TRACE_CBID_cuGraphInstantiate,
-      CUPTI_DRIVER_TRACE_CBID_cuGraphLaunch,
-      CUPTI_DRIVER_TRACE_CBID_cuGraphLaunch_ptsz,
-      CUPTI_DRIVER_TRACE_CBID_cuGraphClone,
-      CUPTI_DRIVER_TRACE_CBID_cuGraphInstantiate_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuGraphInstantiateWithFlags,
-      CUPTI_DRIVER_TRACE_CBID_cuGraphInstantiateWithParams,
-      CUPTI_DRIVER_TRACE_CBID_cuGraphInstantiateWithParams_ptsz,
-      // Following callbacks are treated as general cuda function, not cuda
-      // graph
-      // specific treatment will be applied to them from profiler side. They are
-      // added here to avoid missing events heavily used in the
-      // command_buffer::update().
-      CUPTI_DRIVER_TRACE_CBID_cuGraphExecMemcpyNodeSetParams,
-      CUPTI_DRIVER_TRACE_CBID_cuGraphExecKernelNodeSetParams_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuFuncSetAttribute,
-#endif  // CUDA_VERSION >= 12080
-  };
+  options_.cbids_selected = CuptiTracer::CreateDefaultCallbackIds();
 
   bool trace_concurrent_kernels = false;
   ReadBoolFromEnvVar("TF_GPU_CUPTI_FORCE_CONCURRENT_KERNEL", true,
@@ -184,10 +111,9 @@ absl::Status GpuTracer::Start() {
   if (status.ok()) {
     profiling_state_ = State::kStartedOk;
     return absl::OkStatus();
-  } else {
-    profiling_state_ = State::kStartedError;
-    return status;
   }
+  profiling_state_ = State::kStartedError;
+  return status;
 }
 
 absl::Status GpuTracer::DoStop() {
@@ -234,16 +160,20 @@ absl::Status GpuTracer::CollectData(XSpace* space) {
       return absl::OkStatus();
     }
   }
-  return tsl::errors::Internal("Invalid profiling state: ", profiling_state_);
+  return absl::InternalError(
+      absl::StrCat("Invalid profiling state: ", profiling_state_));
 }
 
 // Not in anonymous namespace for testing purposes.
 std::unique_ptr<tsl::profiler::ProfilerInterface> CreateGpuTracer(
     const ProfileOptions& options) {
-  if (options.device_tracer_level() == 0) return nullptr;
-  if (options.device_type() != ProfileOptions::GPU &&
-      options.device_type() != ProfileOptions::UNSPECIFIED)
+  if (options.device_tracer_level() == 0) {
     return nullptr;
+  }
+  if (options.device_type() != ProfileOptions::GPU &&
+      options.device_type() != ProfileOptions::UNSPECIFIED) {
+    return nullptr;
+  }
   profiler::CuptiTracer* cupti_tracer =
       profiler::CuptiTracer::GetCuptiTracerSingleton();
   if (!cupti_tracer->IsAvailable()) {
@@ -259,5 +189,3 @@ auto register_gpu_tracer_factory = [] {
 
 }  // namespace profiler
 }  // namespace xla
-
-#endif  // GOOGLE_CUDA

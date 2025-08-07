@@ -67,8 +67,8 @@ EstimateRunTimeData GpuPerformanceModel::EstimateRunTimeForInstructionImpl(
       ComputeTime(device_info_, flops, num_blocks,
                   launch_dimensions.num_threads_per_block());
 
-  CoalescingAnalysis coalescing_analysis(instr, instr->operands(),
-                                         fusion_analysis);
+  CoalescingAnalysis coalescing_analysis =
+      CoalescingAnalysis::Create(instr, instr->operands(), fusion_analysis);
 
   absl::Duration read_time;
   int64_t bytes_read = 0;
@@ -152,8 +152,8 @@ absl::Duration GpuPerformanceModel::EstimateRunTimeForFusionImpl(
                   launch_dimensions.num_threads_per_block());
 
   auto fusion_operands = fusion_analysis.fusion().GetParameters();
-  CoalescingAnalysis coalescing_analysis(producer, consumer, fusion_operands,
-                                         fusion_analysis);
+  CoalescingAnalysis coalescing_analysis = CoalescingAnalysis::Create(
+      producer, consumer, fusion_operands, fusion_analysis);
 
   absl::Duration read_time;
   int64_t bytes_read = 0;
@@ -308,33 +308,6 @@ void GpuPerformanceModel::RecordEstimatedRunTime(
   VLOG(8) << "RecordEstimatedRunTime: " << instruction->ToString();
 }
 
-GpuPerformanceModelOwning::GpuPerformanceModelOwning(
-    const se::DeviceDescription& device_info)
-    : fusion_analysis_cache_(device_info),
-      gpu_performance_model_(std::make_unique<GpuPerformanceModel>(
-          device_info, fusion_analysis_cache_, gpu_performance_model_cache_)) {
-      };
-
-void GpuPerformanceModelOwning::RecordEstimatedRunTime(
-    HloInstruction* instruction,
-    const GpuHloCostAnalysis* cost_analysis) const {
-  gpu_performance_model_->RecordEstimatedRunTime(instruction, cost_analysis);
-}
-
-EstimateRunTimeData GpuPerformanceModelOwning::EstimateRunTimeForInstruction(
-    const HloInstruction* instr,
-    const GpuHloCostAnalysis* cost_analysis) const {
-  return gpu_performance_model_->EstimateRunTimeForInstruction(instr,
-                                                               cost_analysis);
-}
-
-GpuPerformanceModel::RunTimes
-GpuPerformanceModelOwning::EstimateRunTimesForMultiOutputFusion(
-    const HloInstruction* producer, const HloInstruction* consumer,
-    const GpuHloCostAnalysis* cost_analysis) const {
-  return gpu_performance_model_->EstimateRunTimesForMultiOutputFusion(
-      producer, consumer, cost_analysis);
-}
 
 }  // namespace gpu
 }  // namespace xla

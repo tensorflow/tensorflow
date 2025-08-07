@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/matmul_utils.h"
@@ -51,12 +52,12 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/test_macros.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "xla/xla.pb.h"
 
 namespace xla::gpu {
 
@@ -68,6 +69,7 @@ class GpuBlasLtMatmulThunkTest : public HloTestBase {
     auto debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_cublaslt(true);
     debug_options.set_xla_gpu_enable_triton_gemm(false);
+    debug_options.set_xla_gpu_autotune_level(0);
     return debug_options;
   }
   se::StreamExecutor* default_exec() {
@@ -272,7 +274,7 @@ ENTRY test {
   ROOT abc = f32[101,400] subtract(mul_ab, dot_c)
 })";
 
-XLA_TEST_F(GpuBlasLtMatmulThunkTest, SharedMatmulPlansUnit) {
+TEST_F(GpuBlasLtMatmulThunkTest, SharedMatmulPlansUnit) {
   auto* exec = default_exec();
   auto* blas_lt = exec->AsBlas()->GetBlasLt();
   EXPECT_NE(blas_lt, nullptr);
@@ -288,7 +290,7 @@ XLA_TEST_F(GpuBlasLtMatmulThunkTest, SharedMatmulPlansUnit) {
 }
 
 // Same as above but instead of creating thunks manually, we use XLA runtime
-XLA_TEST_F(GpuBlasLtMatmulThunkTest, SharedMatmulPlansFunctional) {
+TEST_F(GpuBlasLtMatmulThunkTest, SharedMatmulPlansFunctional) {
   auto* exec = default_exec();
   auto* blas_lt = exec->AsBlas()->GetBlasLt();
   EXPECT_NE(blas_lt, nullptr);
@@ -314,7 +316,7 @@ struct MockBlasLt : public se::gpu::BlasLt {
   ~MockBlasLt() override = default;
 };
 
-XLA_TEST_F(GpuBlasLtMatmulThunkTest, CacheUnitTest) {
+TEST_F(GpuBlasLtMatmulThunkTest, CacheUnitTest) {
   auto thread_func = [&](MockBlasLt* blas_lt, const std::string& key,
                          int sleep_ms) -> absl::Status {
     auto create_func = [&]() -> absl::StatusOr<se::gpu::BlasLt::MatmulPlanPtr> {

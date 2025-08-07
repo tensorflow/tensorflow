@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -quant-import-stats --quant-test-stats='entries { name: "op" params { min_max { min: -1 max: 1 } } } entries { name: "op_0:0" params { min_max { min: -2 max: 2 } } }  entries { name_regex: "op_*" params { min_max { min: -3 max: 3 } } }' | FileCheck %s
+// RUN: litert-opt %s -quant-import-stats --quant-test-stats='entries { name: "op" params { min_max { min: -1 max: 1 } } } entries { name: "op_0:0" params { min_max { min: -2 max: 2 } } }  entries { name_regex: "op_*" params { min_max { min: -3 max: 3 } } }' | FileCheck %s
 
 
 // CHECK-LABEL: import_stats_skip

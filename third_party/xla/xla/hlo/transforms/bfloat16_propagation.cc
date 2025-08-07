@@ -28,12 +28,14 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
+#include "xla/hlo/analysis/hlo_operand_index.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
+#include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/map_util.h"
 #include "xla/service/float_support.h"
@@ -304,7 +306,7 @@ bool BFloat16Propagation::AllUsersConsumeBF16(const HloInstruction& hlo,
     return false;
   }
 
-  auto& value_set = dataflow_->GetValueSet(&hlo, index);
+  const auto& value_set = dataflow_->GetValueSet(&hlo, index);
   for (const HloValue* value : value_set.values()) {
     if (ContainsKey(values_that_must_be_kept_as_f32_, value)) {
       return false;
@@ -543,9 +545,10 @@ void BFloat16Propagation::DetermineInstructionPrecision(HloInstruction* hlo,
 
   ShapeUtil::ForEachSubshape(
       hlo->shape(),
-      [hlo, this](const Shape& /* subshape */, const ShapeIndex& index) {
+      [hlo, this](const Shape& subshape, const ShapeIndex& index) {
         if (OutputTypeAfterChange(hlo, index) == F32 &&
-            AllUsersConsumeBF16(*hlo, index)) {
+            AllUsersConsumeBF16(*hlo, index) && subshape.has_layout() &&
+            subshape.layout().memory_space() != Layout::kHostMemorySpace) {
           AddToOrRemoveFromBF16ChangeSet(hlo, index, BF16);
           VLOG(2) << "HloInstruction output at shape index " << index
                   << " changed to BF16 precision: " << hlo->ToString();
@@ -566,6 +569,16 @@ bool BFloat16Propagation::InstructionIsCandidateForBF16Output(
           !ContainsKey(consider_using_bfloat16_, hlo->operand(i))) {
         return false;
       }
+    }
+  }
+  if (hlo->opcode() == HloOpcode::kDynamicSlice ||
+      hlo->opcode() == HloOpcode::kCopy) {
+    // These two instructions are not candidates for BF16 output if their
+    // source operand is in host memory space.
+    if (hlo->operand(0)->shape().has_layout() &&
+        hlo->operand(0)->shape().layout().memory_space() ==
+            Layout::kHostMemorySpace) {
+      return false;
     }
   }
   return true;

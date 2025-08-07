@@ -43,14 +43,15 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/fusion_emitter_legacy_matmul.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
-#include "xla/service/gpu/kernel_arguments.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
@@ -146,7 +147,8 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
   std::string suggested_kernel_name = std::string(fusion.name());
   TF_ASSIGN_OR_RETURN(
       auto kernel_arguments,
-      KernelArguments::Create(ir_emitter_context.buffer_assignment(), &fusion));
+      emitters::KernelArguments::Create(ir_emitter_context.buffer_assignment(),
+                                        GetDefaultBufferAlignment(), &fusion));
 
   const HloComputation* hlo_computation =
       fusion.fused_instructions_computation();
@@ -216,14 +218,11 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
         ir_emitter_context.llvm_module()->getFunction(impl_fn_name);
     TF_RET_CHECK(impl_fn);
 
-    llvm::Function* kernel;
-    std::vector<llvm_ir::IrArray> inputs;
-    std::vector<llvm_ir::IrArray> outputs;
     TF_ASSIGN_OR_RETURN(
-        std::tie(kernel, inputs, outputs),
+        llvm::Function * kernel,
         BuildKernelPrototype(ir_emitter_context, impl_fn_name,
-                             suggested_kernel_name, kernel_arguments.args(),
-                             impl_fn->arg_size(), launch_dimensions, &builder));
+                             suggested_kernel_name, kernel_arguments,
+                             launch_dimensions, &builder));
 
     PopulateNvvmAnnotations(ir_emitter_context.llvm_module(), kernel,
                             triton_wrapper_result);
@@ -231,8 +230,9 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
     // Move function body into kernel prototype.
     llvm::Function* prototype_func = builder.GetInsertBlock()->getParent();
     prototype_func->splice(prototype_func->begin(), impl_fn);
-    for (const auto& [arg, ir_array] : llvm::zip(impl_fn->args(), inputs)) {
-      arg.replaceAllUsesWith(ir_array.GetBasePointer());
+    for (const auto& [impl_fn_arg, kernel_arg] :
+         llvm::zip(impl_fn->args(), kernel->args())) {
+      impl_fn_arg.replaceAllUsesWith(&kernel_arg);
     }
     // Triton's kernel ABI expects an additional scratchpad global memory.
     // For now it is only used for on-device creation of TMA descriptors, which
@@ -259,7 +259,7 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
   FusionEmissionResult result;
   result.thunks.emplace_back(std::make_unique<KernelThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(&fusion), entry->kernel_name,
-      kernel_arguments.args(), entry->launch_dimensions, entry->cluster_dim,
+      kernel_arguments, entry->launch_dimensions, entry->cluster_dim,
       entry->shmem_bytes, entry->tma_metadata));
 
   return result;

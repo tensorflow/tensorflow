@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <iterator>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -63,9 +64,9 @@ void CoordinationServiceRpcHandler::RegisterTaskAsync(
     return;
   }
   const CoordinatedTask& task = request->source_task();
-  const uint64_t incarnation = request->incarnation();
-  const uint64_t leader_incarnation = service_->GetServiceIncarnation();
-  response->set_leader_incarnation(leader_incarnation);
+  const IncarnationId incarnation(request->incarnation());
+  const IncarnationId leader_incarnation = service_->GetServiceIncarnation();
+  response->set_leader_incarnation(leader_incarnation.value());
   service_->RegisterTaskAsync(task, incarnation, done);
 }
 
@@ -79,14 +80,14 @@ void CoordinationServiceRpcHandler::HeartbeatAsync(
     return;
   }
   const CoordinatedTask& task = request->source_task();
-  const uint64_t incarnation = request->incarnation();
-  const uint64_t leader_incarnation = service_->GetServiceIncarnation();
+  const IncarnationId incarnation(request->incarnation());
+  const IncarnationId leader_incarnation = service_->GetServiceIncarnation();
   absl::Status s = service_->RecordHeartbeat(task, incarnation);
   if (!s.ok()) {
     done(s);
     return;
   }
-  response->set_leader_incarnation(leader_incarnation);
+  response->set_leader_incarnation(leader_incarnation.value());
   done(absl::OkStatus());
 }
 
@@ -190,20 +191,29 @@ void CoordinationServiceRpcHandler::GetTaskStateAsync(
   done(absl::OkStatus());
 }
 
-void CoordinationServiceRpcHandler::GetJobStateAsync(
-    const tensorflow::GetJobStateRequest* request,
-    tensorflow::GetJobStateResponse* response, StatusCallback done) {
+void CoordinationServiceRpcHandler::WatchJobStateAsync(
+    const tensorflow::WatchJobStateRequest* request,
+    tensorflow::WatchJobStateResponse* response, StatusCallback done) {
   absl::ReaderMutexLock l(&mu_);
   if (service_ == nullptr) {
     done(MakeCoordinationError(
         absl::InternalError("Coordination service is not enabled.")));
     return;
   }
-  std::vector<tensorflow::CoordinatedTaskStateInfo> result =
-      service_->GetJobState(request->job_name());
-  absl::c_move(result, tsl::protobuf::RepeatedFieldBackInserter(
-                           response->mutable_task_state()));
-  done(absl::OkStatus());
+
+  std::optional<int64_t> version_number;
+  if (request->version_number() >= 0) {
+    version_number.emplace(request->version_number());
+  }
+  service_->WatchJobState(
+      request->job_name(), version_number,
+      [response, done](std::vector<tensorflow::CoordinatedTaskStateInfo> info,
+                       int64_t version_number) {
+        absl::c_move(info, tsl::protobuf::RepeatedFieldBackInserter(
+                               response->mutable_task_state()));
+        response->set_version_number(version_number);
+        done(absl::OkStatus());
+      });
 }
 
 void CoordinationServiceRpcHandler::InsertKeyValueAsync(
@@ -338,9 +348,13 @@ void CoordinationServiceRpcHandler::GetAliveTasksAsync(
       request->requesting_task(), tasks,
       [done = std::move(done), response](
           const absl::Status& status,
-          const std::vector<tensorflow::CoordinatedTask>& alive_tasks) {
+          const std::vector<tensorflow::CoordinatedTask>& alive_tasks,
+          const std::vector<IncarnationId>& incarnations) {
         *response->mutable_alive_tasks() = {alive_tasks.begin(),
                                             alive_tasks.end()};
+        for (IncarnationId id : incarnations) {
+          response->add_incarnations(id.value());
+        }
         done(status);
       });
 }

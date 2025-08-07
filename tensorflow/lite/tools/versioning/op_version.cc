@@ -847,6 +847,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
 
     case BuiltinOperator_PAD:
     case BuiltinOperator_PADV2:
+      if (op_sig.inputs.at(0).type == kTfLiteBool) {
+        return 5;
+      }
       if (op_sig.inputs.at(0).dims.size() > 4) {
         return 4;
       }
@@ -1042,6 +1045,7 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     case BuiltinOperator_EXP:
     case BuiltinOperator_LOG:
     case BuiltinOperator_REDUCE_PROD:
+    case BuiltinOperator_SQRT:
       if (op_sig.inputs.at(0).type == kTfLiteInt8 ||
           op_sig.inputs.at(0).type == kTfLiteInt16) {
         return 2;

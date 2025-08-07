@@ -47,7 +47,7 @@ def ragged_binary_elementwise_op(op, x, y):
   if x_is_ragged and y_is_ragged:
     x, y = ragged_tensor.match_row_splits_dtypes(x, y)
 
-  # Perform broadcasting, when appropraite
+  # Perform broadcasting, when appropriate
   if ((x_is_ragged and y_is_ragged) or
       (x_is_ragged and x.flat_values.shape.ndims <= y.shape.ndims) or
       (y_is_ragged and y.flat_values.shape.ndims <= x.shape.ndims)):

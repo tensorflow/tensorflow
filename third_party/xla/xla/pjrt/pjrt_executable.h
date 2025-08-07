@@ -270,6 +270,11 @@ struct ExecuteOptions {
   // specific input buffers.
   absl::flat_hash_set<int> non_donatable_input_indices;
 
+  // Execution stream ID identifies the series of executions that must be
+  // executed in program order.  Executions with different execution stream IDs
+  // may be executed in any order and concurrently.
+  int64_t execution_stream_id = 0;
+
   absl::StatusOr<ExecuteOptionsProto> ToProto() const;
   static absl::StatusOr<ExecuteOptions> FromProto(
       const ExecuteOptionsProto& proto);
@@ -285,6 +290,7 @@ struct CompiledMemoryStats {
   int64_t generated_code_size_in_bytes = 0;
   int64_t argument_size_in_bytes = 0;
   int64_t output_size_in_bytes = 0;
+  int64_t peak_memory_in_bytes = 0;
   // How much argument is reused for output.
   int64_t alias_size_in_bytes = 0;
   int64_t temp_size_in_bytes = 0;

@@ -44,6 +44,7 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Support/raw_ostream.h"
+#include "xla/codegen/ir_emission_utils.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -57,6 +58,7 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/service/matmul_indexing_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -69,80 +71,67 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-namespace {
-
-// Return whether the given shape is rank 2 excluding the batch dimensions.
-bool IsRank2(const Shape& shape, int64_t batch_dimensions_size) {
-  return shape.dimensions().size() == batch_dimensions_size + 2;
-}
-
-// Return whether the given shape is rank 1 excluding the batch dimensions.
-bool IsRank1(const Shape& shape, int64_t batch_dimensions_size) {
-  return shape.dimensions().size() == batch_dimensions_size + 1;
-}
-
-}  // namespace
-
-bool IsMatrixMultiplication(const HloInstruction& dot) {
+absl::StatusOr<bool> IsCublasSupportedMatMul(
+    const HloInstruction& dot, bool allow_matrix_vector_multiplication) {
   if (dot.opcode() != HloOpcode::kDot) {
     return false;
   }
-  const Shape& lhs_shape = dot.operand(0)->shape();
-  const Shape& rhs_shape = dot.operand(1)->shape();
-  const DotDimensionNumbers& dim_numbers = dot.dot_dimension_numbers();
 
-  PrimitiveType output_primitive_type = dot.shape().element_type();
-  bool type_is_allowed =
-      (output_primitive_type == F8E3M4 || output_primitive_type == F8E4M3 ||
-       output_primitive_type == F8E4M3FN || output_primitive_type == F8E5M2 ||
-       output_primitive_type == F8E4M3FNUZ ||
-       output_primitive_type == F8E5M2FNUZ || output_primitive_type == F16 ||
-       output_primitive_type == BF16 || output_primitive_type == F32 ||
-       output_primitive_type == F64 || output_primitive_type == C64 ||
-       output_primitive_type == C128) ||
-      (output_primitive_type == S32 && lhs_shape.element_type() == S8 &&
-       rhs_shape.element_type() == S8);
-  bool shapes_are_valid =
-      type_is_allowed &&
-      IsRank2(lhs_shape, dim_numbers.lhs_batch_dimensions_size()) &&
-      IsRank2(rhs_shape, dim_numbers.lhs_batch_dimensions_size()) &&
-      IsRank2(dot.shape(), dim_numbers.lhs_batch_dimensions_size()) &&
-      !ShapeUtil::IsZeroElementArray(lhs_shape) &&
-      !ShapeUtil::IsZeroElementArray(rhs_shape);
+  // Number of operands that have non-trivial non-contracting dimension.
+  int num_matrix_operands = 0;
+  for (int operand : {0, 1}) {
+    TF_ASSIGN_OR_RETURN(DotOperandDims dims,
+                        DotOperandDims::FromDotOperand(&dot, operand));
+    // cuBLAS only supports single contracting dimension.
+    if (dims.DimensionCount(DotOperandDims::kContracting) != 1) {
+      return false;
+    }
+    // cuBLAS doesn't support minor batch dimension.
+    if (absl::c_any_of(dims.DimensionIndices(DotOperandDims::kBatch),
+                       [&](int64_t dim) {
+                         return dim == dims.shape().dimensions().size() - 1;
+                       })) {
+      return false;
+    }
+    // cuBLAS supports up to one non-contracting dimension.
+    const auto& nc_dims = dims.DimensionSizes(DotOperandDims::kNonContracting);
+    if (nc_dims.size() > 1) {
+      return false;
+    }
+    if (nc_dims.size() == 1) {
+      num_matrix_operands += (nc_dims[0] != 1);
+    }
+  }
 
-  return shapes_are_valid;
-}
-
-bool IsMatrixVectorMultiplication(const HloInstruction& dot) {
-  if (dot.opcode() != HloOpcode::kDot) {
+  if (num_matrix_operands == 0 ||
+      (num_matrix_operands == 1 && !allow_matrix_vector_multiplication)) {
     return false;
   }
-  const Shape& lhs_shape = dot.operand(0)->shape();
-  const Shape& rhs_shape = dot.operand(1)->shape();
-  const DotDimensionNumbers& dim_numbers = dot.dot_dimension_numbers();
 
-  PrimitiveType output_primitive_type = dot.shape().element_type();
-  bool type_is_allowed =
-      (output_primitive_type == F8E4M3FN || output_primitive_type == F8E5M2 ||
-       output_primitive_type == F16 || output_primitive_type == BF16 ||
-       output_primitive_type == F32 || output_primitive_type == F64 ||
-       output_primitive_type == C64 || output_primitive_type == C128) ||
-      (output_primitive_type == S32 && lhs_shape.element_type() == S8 &&
-       rhs_shape.element_type() == S8);
-
-  bool shapes_are_valid =
-      type_is_allowed &&
-      ((IsRank2(lhs_shape, dim_numbers.lhs_batch_dimensions_size()) &&
-        IsRank1(rhs_shape, dim_numbers.lhs_batch_dimensions_size())) ||
-       (IsRank1(lhs_shape, dim_numbers.lhs_batch_dimensions_size()) &&
-        IsRank2(rhs_shape, dim_numbers.lhs_batch_dimensions_size()))) &&
-      IsRank1(dot.shape(), dim_numbers.lhs_batch_dimensions_size()) &&
-      !ShapeUtil::IsZeroElementArray(lhs_shape) &&
-      !ShapeUtil::IsZeroElementArray(rhs_shape);
-
-  return shapes_are_valid;
+  switch (dot.shape().element_type()) {
+    // Types allowed for both matmul and matmul-vector.
+    case F8E4M3FN:
+    case F8E5M2:
+    case F16:
+    case BF16:
+    case F32:
+    case F64:
+    case C64:
+      return true;
+    case S32:
+      return (dot.operand(0)->shape().element_type() == S8 &&
+              dot.operand(1)->shape().element_type() == S8);
+    // Only allowed for matmul.
+    case F8E3M4:
+    case F8E4M3:
+    case F8E4M3FNUZ:
+    case F8E5M2FNUZ:
+    case C128:
+      return num_matrix_operands == 2;
+    default:
+      return false;
+  }
 }
-
 const char* const kCusolverCholeskyCallTarget = "__cusolver$cholesky";
 
 bool IsCustomCallToCusolver(const HloInstruction& hlo) {
@@ -391,13 +380,6 @@ absl::StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
   return true;
 }
 
-int GetBitwidth(PrimitiveType type) {
-  if (type == PRED) {
-    return 8;
-  }
-  return primitive_util::BitWidth(type);
-}
-
 bool IsNormalized(const HloTransposeInstruction& transpose) {
   const auto& permutation = transpose.dimensions();
   for (int i = 0; i < permutation.size() - 1; ++i) {
@@ -443,33 +425,36 @@ std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
     return TransposeDescription{&hero, dimensions, permutation,
                                 shmem_usage_bytes};
   }
-  int64_t num_elements_after_transposed_dims = 1;
-  std::pair<int64_t, int64_t> transposed_dims;
   if (permutation.back() == dimensions.size() - 1) {
-    if (bit_width * dimensions.back() > kMaxBitsInMostMinorDimension) {
-      return std::nullopt;
+    operand_most_minor_dim =
+        hero.operand(0)->shape().dimensions(dimensions.size() - 2);
+    if (bit_width * dimensions.back() <= kMaxBitsInMostMinorDimension &&
+        bit_width * dimensions.back() *
+                std::min(operand_most_minor_dim,
+                         dimensions[dimensions.size() - 2]) >=
+            8 * kMinDimensionToTransposeTiled) {
+      // Tile size for transposition.
+      int64_t shmem_usage_bytes =
+          CeilOfRatio(kNumShmemBanks * (kNumShmemBanks + 1LL) * bit_width *
+                          dimensions.back(),
+                      8LL);
+      return TransposeDescription{&hero, dimensions, permutation,
+                                  shmem_usage_bytes};
     }
-    num_elements_after_transposed_dims = dimensions.back();
-    transposed_dims = {
-        hero.operand(0)->shape().dimensions(dimensions.size() - 2),
-        dimensions[dimensions.size() - 2]};
-  } else {
+  } else if ((operand_most_minor_dim >= kMinDimensionToTransposeTiled &&
+              dimensions.back() >= kMinDimensionToTransposeTiled) ||
+             (operand_most_minor_dim >= kMinDimensionToTransposeTiled2 &&
+              dimensions.back() >= kMinDimensionToTransposeTiled2 &&
+              operand_most_minor_dim * dimensions.back() >=
+                  kMinTotalDimensionsToTransposeTiled)) {
     // TODO(b/415741994): TransposeEmitter is regressing for S4 when the last
     // dimension is being transposed. The issue seems to be related to bank
     // conflicts but a proper investigation is needed.
     if (bit_width == 4) {
       return std::nullopt;
     }
-    transposed_dims = {operand_most_minor_dim, dimensions.back()};
-  }
-  if ((std::min(transposed_dims.first, transposed_dims.second) >=
-       kMinDimensionToTransposeTiled) &&
-      (transposed_dims.first * transposed_dims.second >=
-       kMinTotalDimensionsToTransposeTiled)) {
     int64_t shmem_usage_bytes =
-        CeilOfRatio(kNumShmemBanks * (kNumShmemBanks + 1LL) * bit_width *
-                        num_elements_after_transposed_dims,
-                    8LL);
+        CeilOfRatio(kNumShmemBanks * (kNumShmemBanks + 1LL) * bit_width, 8LL);
     return TransposeDescription{&hero, dimensions, permutation,
                                 shmem_usage_bytes};
   }
@@ -577,78 +562,6 @@ absl::StatusOr<absl::InlinedVector<int64_t, 3>> GetPackedTransposeTileSizes(
   return tile_sizes;
 }
 
-bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count) {
-  // Number of operands should be in range [1, allowed_operand_count].
-  if (instr->operand_count() == 0 ||
-      instr->operand_count() > allowed_operand_count) {
-    return false;
-  }
-
-  if (instr->IsElementwise()) {
-    // All elementwise ops are considered intermediate, except for copies that
-    // modify the layout. Copies that do not modify the layout are used in
-    // CopyFusion.
-    if (instr->opcode() == HloOpcode::kCopy) {
-      return instr->shape() == instr->operand(0)->shape();
-    }
-    return true;
-  }
-
-  // `instr` is a bitcast or a bitcast-like operation.
-  switch (instr->opcode()) {
-    case HloOpcode::kBitcast:
-      return true;
-    case HloOpcode::kReshape:
-      return ShapeUtil::ReshapeIsBitcast(instr->operand(0)->shape(),
-                                         instr->shape());
-    case HloOpcode::kTranspose:
-      return ShapeUtil::TransposeIsBitcast(instr->operand(0)->shape(),
-                                           instr->shape(), instr->dimensions());
-    default:
-      return false;
-  }
-}
-
-static std::optional<HloInstructionAdaptor> FindNonTrivialHero(
-    const HloInstructionAdaptor& root,
-    const std::function<bool(const HloInstruction&)>& predicate) {
-  std::optional<HloInstructionAdaptor> hero = std::nullopt;
-  auto visitor = [&](HloInstructionAdaptor node) {
-    if (predicate(node.instruction())) {
-      if (hero) {  // Bail out if we found multiple potential heros.
-        hero = std::nullopt;
-        return TraversalResult::kInterrupt;
-      }
-      hero = node;
-      return TraversalResult::kSkip;
-    }
-
-    if (!IsIntermediate(&node.instruction(), /*allowed_operand_count=*/3)) {
-      return TraversalResult::kSkip;
-    }
-    return TraversalResult::kAdvance;
-  };
-  HloBfsConsumersFirstTraversal({root}, root.parent(), visitor);
-  if (!hero) {
-    return std::nullopt;
-  }
-
-  // Make sure that no non-elementwise op is reachable from the transpose.
-  auto is_nontrivial = [](HloInstructionAdaptor node) {
-    return node.instruction().opcode() != HloOpcode::kTuple &&
-           node.instruction().opcode() != HloOpcode::kParameter &&
-           !IsIntermediate(&node.instruction(),
-                           /*allowed_operand_count=*/3);
-  };
-  bool visit_operands = false;
-  if (HloBfsAnyOf(hero->GetUsers(), hero->parent(), is_nontrivial,
-                  visit_operands)) {
-    return std::nullopt;
-  }
-
-  return hero;
-}
-
 HloInstructionAdaptor FindNonTrivialHero(const HloInstructionAdaptor& instr) {
   HloInstructionAdaptor hero = instr;
 
@@ -666,13 +579,13 @@ HloInstructionAdaptor FindNonTrivialHero(const HloInstructionAdaptor& instr) {
   auto is_transpose = [](const HloInstruction& node) {
     return GetDescriptionForTiledTransposeEmitter(node).has_value();
   };
-  if (auto transpose = FindNonTrivialHero(hero, is_transpose)) {
+  if (auto transpose = FindHero(hero, std::move(is_transpose))) {
     return *transpose;
   }
   auto is_concatenate = [](const HloInstruction& node) {
     return node.opcode() == HloOpcode::kConcatenate;
   };
-  if (auto concatenate = FindNonTrivialHero(hero, is_concatenate)) {
+  if (auto concatenate = FindHero(hero, std::move(is_concatenate))) {
     return *concatenate;
   }
   if (hero.opcode() != HloOpcode::kReduce) {

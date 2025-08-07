@@ -25,7 +25,6 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/types.h"
 
 namespace xla {
 
@@ -52,35 +51,66 @@ std::vector<typename Container::value_type> Permute(
   }
   return output;
 }
+
 // Applies the inverse of `permutation` on `input` and returns the permuted
 // array. For each i, output[permutation[i]] = input[i].
 //
 // Precondition:
 // 1. `permutation` is a permutation of 0..permutation.size()-1.
 // 2. permutation.size() == input.size().
+template <typename Container = std::vector<int64_t>>
+Container PermuteInverse(absl::Span<const typename Container::value_type> input,
+                         absl::Span<const int64_t> permutation);
+
+// Inverts a permutation, i.e., output_permutation[input_permutation[i]] = i.
+template <typename Container = std::vector<int64_t>>
+Container InversePermutation(absl::Span<const int64_t> input_permutation);
+
+// Composes two permutations: output[i] = p1[p2[i]].
+template <typename Container = std::vector<int64_t>>
+Container ComposePermutations(absl::Span<const int64_t> p1,
+                              absl::Span<const int64_t> p2);
+
+// Returns true iff permutation == {0, 1, 2, ...}.
+template <typename Container = std::vector<int64_t>>
+bool IsIdentityPermutation(const Container& permutation);
+
+// Implementation details only below here
+
 template <typename Container>
-std::vector<typename Container::value_type> PermuteInverse(
-    const Container& input, absl::Span<const int64_t> permutation) {
-  using T = typename Container::value_type;
-  absl::Span<const T> data(input);
-  CHECK_EQ(permutation.size(), data.size());
+Container PermuteInverse(absl::Span<const typename Container::value_type> input,
+                         absl::Span<const int64_t> permutation) {
+  CHECK_EQ(permutation.size(), input.size());
   CHECK(IsPermutation(permutation));
-  std::vector<T> output(data.size());
+  Container output(input.size());
   for (size_t i = 0; i < permutation.size(); ++i) {
-    output[permutation[i]] = data[i];
+    output[permutation[i]] = input[i];
   }
   return output;
 }
 
-// Inverts a permutation, i.e., output_permutation[input_permutation[i]] = i.
-std::vector<int64_t> InversePermutation(
-    absl::Span<const int64_t> input_permutation);
+template <typename Container>
+Container InversePermutation(absl::Span<const int64_t> input_permutation) {
+  DCHECK(IsPermutation(input_permutation));
+  Container output_permutation(input_permutation.size());
+  for (size_t i = 0; i < input_permutation.size(); ++i) {
+    output_permutation[input_permutation[i]] = i;
+  }
+  return output_permutation;
+}
 
-// Composes two permutations: output[i] = p1[p2[i]].
-std::vector<int64_t> ComposePermutations(absl::Span<const int64_t> p1,
-                                         absl::Span<const int64_t> p2);
+template <typename Container>
+Container ComposePermutations(absl::Span<const int64_t> p1,
+                              absl::Span<const int64_t> p2) {
+  CHECK_EQ(p1.size(), p2.size());
+  Container output;
+  output.reserve(p1.size());
+  for (size_t i = 0; i < p1.size(); ++i) {
+    output.push_back(p1[p2[i]]);
+  }
+  return output;
+}
 
-// Returns true iff permutation == {0, 1, 2, ...}.
 template <typename Container>
 bool IsIdentityPermutation(const Container& permutation) {
   for (int64_t i = 0; i < permutation.size(); ++i) {

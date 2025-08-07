@@ -348,6 +348,7 @@ cc_library(
         ":lib_internal",
         ":protos_all_cc",
         "//tensorflow/core/kernels:required",
+        "@com_google_absl//absl/status:status_matchers",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_benchmark",
     ] + tf_additional_test_deps(),
@@ -1473,10 +1474,6 @@ cc_library(
     }) +
     # The TF proto implementations that we will statically link here.
     [
-        "//tensorflow/compiler/mlir/lite:model_flags_proto_cc_impl",
-        "//tensorflow/compiler/mlir/lite:converter_flags_proto_cc_impl",
-        "//tensorflow/compiler/mlir/lite:types_proto_cc_impl",
-        "//tensorflow/compiler/mlir/lite/debug:debug_options_proto_cc_impl",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc_impl",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_options_proto_cc_impl",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc_impl",
@@ -1499,10 +1496,19 @@ cc_library(
         "@local_xla//xla/service/gpu/model:hlo_op_profile_proto_cc_impl",
         "@local_xla//xla/stream_executor:device_description_proto_cc_impl",
         "@local_xla//xla/stream_executor/cuda:cuda_compute_capability_proto_cc_impl",
-        "//tensorflow/lite/toco:toco_flags_proto_cc_impl",
-        "//tensorflow/lite/toco:model_flags_proto_cc_impl",
-        "//tensorflow/lite/toco:types_proto_cc_impl",
-    ] + tf_protos_grappler_impl() + tf_monitoring_framework_deps(),
+    ] + tf_protos_grappler_impl() + tf_monitoring_framework_deps() + select({
+        # Disable the TF Lite proto implementations in the OSS build for LiteRT repository.
+        "//tensorflow:disable_tf_lite_py": [],
+        "//conditions:default": [
+            "//tensorflow/compiler/mlir/lite:converter_flags_proto_cc_impl",
+            "//tensorflow/compiler/mlir/lite:model_flags_proto_cc_impl",
+            "//tensorflow/compiler/mlir/lite:types_proto_cc_impl",
+            "//tensorflow/compiler/mlir/lite/debug:debug_options_proto_cc_impl",
+            "//tensorflow/lite/toco:model_flags_proto_cc_impl",
+            "//tensorflow/lite/toco:toco_flags_proto_cc_impl",
+            "//tensorflow/lite/toco:types_proto_cc_impl",
+        ],
+    }),
     # Alwayslink causes a cc_binary to "always link" in the
     # srcs for a given cc_library, even if they are unreferenced, see:
     # https://docs.bazel.build/versions/master/be/c-cpp.html#cc_library.alwayslink
@@ -1831,12 +1837,7 @@ tf_cuda_library(
         "//tensorflow/core/public:session.h",
     ],
     copts = tf_copts(),
-    visibility = [
-        ":dependency_allowlist",
-        "//learning/gemini/gemax/core/models/gemini3/vision/vision_decoder:__pkg__",
-        "//tensorflow:internal",
-        "//tensorflow_models:__subpackages__",
-    ],
+    visibility = ["//visibility:public"],
     deps = ["//tensorflow/core/common_runtime:core_cpu_base_no_ops"] + if_static([
         ":function_ops_op_lib",
         ":functional_grad",
@@ -1900,14 +1901,13 @@ cc_library(
 alias(
     name = "test_main",
     actual = "@local_xla//xla/tsl/platform:test_main",
-    visibility = ["//tensorflow:internal"],
+    visibility = ["//visibility:public"],
 )
 
 tf_cc_tests(
     name = "low_level_library_tests",
     size = "small",
     srcs = [
-        "//tensorflow/core/lib/core:legacy_lib_core_all_tests",
         "//tensorflow/core/lib/gtl:legacy_lib_gtl_tests",
         "//tensorflow/core/lib/monitoring:collection_registry_test.cc",
         "//tensorflow/core/lib/monitoring:counter_test.cc",

@@ -30,7 +30,7 @@ inline void DivCheckArithmeticParams(const ArithmeticParams& params) {
   // Input offset is negative input zero point. Activation tensors are
   // asymmetric quantized so they span the full int8 range.
   constexpr int32_t max_value =
-      static_cast<int32_t>(std::numeric_limits<T>::max());
+      (static_cast<int32_t>(std::numeric_limits<T>::max()) + 1);
   TFLITE_DCHECK_GE(params.input1_offset, -max_value);
   TFLITE_DCHECK_LE(params.input1_offset, max_value);
   TFLITE_DCHECK_GE(params.input2_offset, -max_value);
@@ -91,6 +91,18 @@ inline void Div(const ArithmeticParams& params,
                 const RuntimeShape& input1_shape, const int8_t* input1_data,
                 const RuntimeShape& input2_shape, const int8_t* input2_data,
                 const RuntimeShape& output_shape, int8_t* output_data) {
+  TFLITE_DCHECK_LE(params.quantized_activation_min,
+                   params.quantized_activation_max);
+  const int flat_size =
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
+
+  DivElementwise(flat_size, params, input1_data, input2_data, output_data);
+}
+
+inline void Div(const ArithmeticParams& params,
+                const RuntimeShape& input1_shape, const int16_t* input1_data,
+                const RuntimeShape& input2_shape, const int16_t* input2_data,
+                const RuntimeShape& output_shape, int16_t* output_data) {
   TFLITE_DCHECK_LE(params.quantized_activation_min,
                    params.quantized_activation_max);
   const int flat_size =
@@ -173,6 +185,19 @@ inline void BroadcastDivSlow(const ArithmeticParams& params,
                              const RuntimeShape& unextended_output_shape,
                              int8_t* output_data) {
   BroadcastDivSlowQuantized<int8_t, N>(
+      params, unextended_input1_shape, input1_data, unextended_input2_shape,
+      input2_data, unextended_output_shape, output_data);
+}
+
+template <int N = 5>
+inline void BroadcastDivSlow(const ArithmeticParams& params,
+                             const RuntimeShape& unextended_input1_shape,
+                             const int16_t* input1_data,
+                             const RuntimeShape& unextended_input2_shape,
+                             const int16_t* input2_data,
+                             const RuntimeShape& unextended_output_shape,
+                             int16_t* output_data) {
+  BroadcastDivSlowQuantized<int16_t, N>(
       params, unextended_input1_shape, input1_data, unextended_input2_shape,
       input2_data, unextended_output_shape, output_data);
 }

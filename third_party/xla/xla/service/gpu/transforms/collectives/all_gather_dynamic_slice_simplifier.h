@@ -48,7 +48,7 @@ class AllGatherDynamicSliceSimplifier : public OpExpanderPass {
   static Config DefaultConfig() { return {}; }
 
   explicit AllGatherDynamicSliceSimplifier(
-      Config config = AllGatherDynamicSliceSimplifier::DefaultConfig())
+      const Config config = AllGatherDynamicSliceSimplifier::DefaultConfig())
       : config_(std::move(config)) {}
 
   absl::string_view name() const override {
@@ -62,7 +62,7 @@ class AllGatherDynamicSliceSimplifier : public OpExpanderPass {
       HloInstruction* instruction) override;
 
  private:
-  Config config_;
+  const Config config_;
 };
 
 }  // namespace xla

@@ -291,6 +291,14 @@ absl::Status Merger::ProcessField(
     merged_message = curr_message;
     field_desc = merged_message->GetDescriptor()->FindFieldByNumber(
         std::get<int>(field.first));
+
+    if (field_desc == nullptr) {
+      return absl::FailedPreconditionError(
+          absl::StrCat("Field with number ", std::get<int>(field.first),
+                       " not found in message descriptor.",
+                       merged_message->GetDescriptor()->full_name(), ".\n"));
+    }
+
     auto res = GetMutableField(merged_message, field);
     if (!res.ok()) {
       if (!absl::IsNotFound(res.status())) return res.status();

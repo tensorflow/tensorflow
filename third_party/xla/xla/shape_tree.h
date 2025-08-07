@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <type_traits>
 #include <utility>
 
@@ -30,6 +31,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "absl/utility/utility.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/gtl/iterator_range.h"
@@ -55,14 +57,25 @@ class IndexTable {
   IndexTable() = default;
   explicit IndexTable(const Shape& shape);
 
-  bool empty() const { return entries_.empty(); }
+  const Entry& operator[](ShapeIndexView index) const {
+    static constexpr Entry kRootEntry = {0, -1};
 
-  const Entry& operator[](ShapeIndexView index) const;
+    if (!entries_.has_value()) {
+      DCHECK(index.empty());
+      return kRootEntry;
+    }
+
+    const Entry* result = &entries_->front();
+    for (int64_t i : index) {
+      DCHECK_GE(result->children_start_id, 0);
+      result = &(*entries_)[result->children_start_id + i];
+    }
+    return *result;
+  }
 
  private:
-  void CreateEntry(Entry& entry, const Shape& shape, size_t& next_node_id);
-
-  absl::InlinedVector<Entry, 1> entries_;
+  // Entries are computed only if the shape is a tuple.
+  std::optional<absl::InlinedVector<Entry, 1>> entries_;
 };
 
 }  // namespace internal
@@ -113,14 +126,14 @@ class ShapeTree {
       : ShapeTree(std::make_shared<Shape>(std::move(shape))) {}
 
   explicit ShapeTree(const Shape* shape)
-      : ShapeTree(shape, CreateNodes(*shape)) {}
+      : ShapeTree(absl::in_place_t{}, shape) {}
 
   // Create ShapeTree with the given shape, and init_value for all nodes.
   ShapeTree(Shape shape, const T& init_value)
       : ShapeTree(std::make_shared<Shape>(std::move(shape)), init_value) {}
 
   ShapeTree(const Shape* shape, const T& init_value)
-      : ShapeTree(shape, CreateNodes(*shape, init_value)) {}
+      : ShapeTree(absl::in_place_t{}, shape, init_value) {}
 
   // Returns the data element associated with the array in the shape at the
   // given index (see ShapeUtil::GetSubshape for how indexes are defined).
@@ -287,7 +300,7 @@ class ShapeTree {
     typename ShapeTree<U>::Nodes result_nodes;
     result_nodes.reserve(nodes_.size());
     for (const Node& node : nodes_) {
-      result_nodes.push_back({node.first, func(node.second)});
+      result_nodes.emplace_back(node.first, func(node.second));
     }
 
     ShapeTree<U> result(shape_, std::move(result_nodes));
@@ -303,7 +316,7 @@ class ShapeTree {
     result_nodes.reserve(nodes_.size());
     for (const Node& node : nodes_) {
       TF_ASSIGN_OR_RETURN(U result, func(node.second));
-      result_nodes.push_back({node.first, std::move(result)});
+      result_nodes.emplace_back(node.first, std::move(result));
     }
 
     ShapeTree<U> result(shape_, std::move(result_nodes));
@@ -377,20 +390,24 @@ class ShapeTree {
   }
 
   template <typename... Ts>
-  static Nodes CreateNodes(const Shape& shape, Ts&&... args) {
-    Nodes nodes;
-    ShapeUtil::ForEachSubshape(
-        shape, [&](const Shape&, const ShapeIndex& index) {
-          nodes.push_back({index, T(std::forward<Ts>(args)...)});
-        });
-    return nodes;
+  ShapeTree(absl::in_place_t, const Shape* shape, Ts&&... args)
+      : index_table_(*shape), shape_(shape) {
+    if (!shape->IsTuple()) {
+      nodes_.emplace_back(ShapeIndex(), T(std::forward<Ts>(args)...));
+    } else {
+      nodes_.reserve(ShapeUtil::SubshapeCount(*shape));
+      ShapeUtil::ForEachSubshape(
+          *shape, [&](const Shape&, const ShapeIndex& index) {
+            nodes_.emplace_back(index, T(std::forward<Ts>(args)...));
+          });
+    }
   }
 
   // The nodes in this shape tree.
   Nodes nodes_;
 
   // Index table for node lookups. Each entry contains the index of the first
-  // child of the node at that index, or -1 for leaf nodes. Evaluated lazily.
+  // child of the node at that index, or -1 for leaf nodes.
   IndexTable index_table_;
 
   // If we own our Shape, this field contains it, and shape_ is a pointer into

@@ -354,6 +354,31 @@ def LowerQuantAnnotationsPass : Pass<"tfl-lower-quant-annotations", "mlir::Modul
   ];
 }
 
+def PropagateQsvPass : Pass<"tfl-propagate-qsv", "mlir::ModuleOp"> {
+  let summary = "Propagates Quantization Scale/Value (QSV) information through the graph.";
+  let description = [{
+      This transformation pass propagates the QSV data across operations in the
+      TensorFlow Lite dialect.
+  }];
+  let constructor = "CreatePropagateQsvPass()";
+  let dependentDialects = [
+    "TFL::TensorFlowLiteDialect",
+    "mlir::quant::QuantDialect"
+  ];
+}
+
+def BiasQuantizerPass : Pass<"tfl-bias-quantizer", "mlir::ModuleOp"> {
+  let summary = "Quantizes bias tensors with respect to other tensors.";
+  let description = [{
+      This pass quantizes bias tensors based on the quantization parameters of
+      other tensors in the same op.
+  }];
+  let constructor = "CreateBiasQuantizerPass()";
+  let dependentDialects = [
+    "TFL::TensorFlowLiteDialect",
+  ];
+}
+
 def QuantizeVariablesPass : Pass<"tfl-quantize-variables", "mlir::ModuleOp"> {
   let summary = "Quantize variables";
   let constructor = "CreatePrepareQuantizeVariablesPass()";

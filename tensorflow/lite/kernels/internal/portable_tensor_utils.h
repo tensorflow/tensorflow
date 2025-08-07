@@ -170,6 +170,7 @@ inline void BatchQuantizeFloats(const float* float_data_ptr, int n_batch,
       tensor_utils::SymmetricQuantizeFloats(
           float_data_ptr + offset, n_data, quantized_data_ptr + offset,
           &unused_min, &unused_max, &scaling_factors[b]);
+      if (zero_points) zero_points[b] = 0;
     }
   }
 }

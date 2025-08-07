@@ -52,21 +52,6 @@ cc_library(
     ],
 )
 
-xla_cc_test(
-    name = "alias_analysis_test",
-    srcs = ["alias_analysis_test.cc"],
-    deps = [
-        "//xla:xla_proto_cc",
-        "//xla/ffi",
-        "//xla/ffi:ffi_api",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/service/cpu/tests:cpu_codegen_test_main",
-        "//xla/tsl/platform:test",
-        "@com_google_absl//absl/status",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
 cc_library(
     name = "llvm_util",
     srcs = ["llvm_util.cc"],
@@ -254,6 +239,7 @@ cc_library(
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
+        "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu:launch_dimensions",
         "//xla/service/gpu:parallel_loop_emitter",
         "//xla/service/gpu:target_util",
@@ -317,16 +303,6 @@ cc_library(
         "//xla/service:buffer_value",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
-    name = "math_ops",
-    srcs = ["math_ops.cc"],
-    hdrs = ["math_ops.h"],
-    deps = [
-        ":llvm_util",
-        "@llvm-project//llvm:Core",
     ],
 )
 

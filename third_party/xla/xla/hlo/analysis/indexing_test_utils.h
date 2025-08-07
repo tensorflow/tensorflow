@@ -43,12 +43,22 @@ bool ApproximateMatch(absl::string_view lhs, absl::string_view rhs);
 
 MATCHER(UndefinedMap, "") { return arg.IsUndefined(); }
 
+MATCHER(UndefinedOperandIndexing, "") { return arg.IsUndefined(); }
+
 MATCHER_P(MatchIndexingMap, indexing_string, "") {
   if (arg.IsUndefined()) {
     return false;
   }
   return ExplainMatchResult(
       true, ApproximateMatch(indexing_string, ToString(arg)), result_listener);
+}
+
+MATCHER_P(MatchOperandIndexing, indexing_string, "") {
+  if (arg.IsUndefined()) {
+    return false;
+  }
+  return ExplainMatchResult(
+      true, ApproximateMatch(indexing_string, arg.ToString()), result_listener);
 }
 
 MATCHER_P(MatchIndexingString, indexing_string, "") {

@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <functional>
-#include <iterator>
 #include <memory>
 #include <optional>
 #include <type_traits>
@@ -34,6 +33,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/shape.h"
 #include "xla/tests/hlo_runner_agnostic_test_base.h"
@@ -106,7 +106,7 @@ class HloRunnerAgnosticReferenceMixin : public T {
   // optimization.
   ::testing::AssertionResult RunAndCompareNoHloPasses(
       std::unique_ptr<HloModule> module,
-      const absl::Span<const Literal* const> arguments,
+      absl::Span<const Literal* const> arguments,
       const std::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr,
       const std::function<void(HloModule*)>& test_preprocessor = nullptr) {
@@ -134,12 +134,8 @@ class HloRunnerAgnosticReferenceMixin : public T {
     if (!fake_arguments.ok()) {
       return ::testing::AssertionFailure() << fake_arguments.status().message();
     }
-    std::vector<Literal*> fake_argument_ptrs;
-    absl::c_transform(
-        *fake_arguments, std::back_inserter(fake_argument_ptrs),
-        [](const Literal& literal) { return const_cast<Literal*>(&literal); });
-
-    return RunAndCompare(std::move(module), fake_argument_ptrs, error,
+    return RunAndCompare(std::move(module),
+                         LiteralUtil::MakePointers(*fake_arguments), error,
                          reference_preprocessor, test_preprocessor);
   }
 
@@ -154,13 +150,9 @@ class HloRunnerAgnosticReferenceMixin : public T {
     if (!fake_arguments.ok()) {
       return ::testing::AssertionFailure() << fake_arguments.status().message();
     }
-    std::vector<Literal*> fake_argument_ptrs;
-    absl::c_transform(
-        *fake_arguments, std::back_inserter(fake_argument_ptrs),
-        [](const Literal& literal) { return const_cast<Literal*>(&literal); });
-    return RunAndCompareNoHloPasses(std::move(module), fake_argument_ptrs,
-                                    error, reference_preprocessor,
-                                    test_preprocessor);
+    return RunAndCompareNoHloPasses(
+        std::move(module), LiteralUtil::MakePointers(*fake_arguments), error,
+        reference_preprocessor, test_preprocessor);
   }
 
   // Convenient wrapper for executing and comparing an hlo module with fake
@@ -238,18 +230,30 @@ class HloRunnerAgnosticReferenceMixin : public T {
       test_preprocessor(module.get());
     }
     // Execute on two backends.
-    TF_ASSIGN_OR_RETURN(const Literal test,
-                        this->test_runner().Execute(std::move(module),
-                                                    arguments, run_hlo_passes));
-    TF_ASSIGN_OR_RETURN(const Literal reference,
-                        reference_runner_->Execute(std::move(reference_module),
-                                                   arguments, run_hlo_passes));
-    if (reference.IsAll(0)) {
+    const absl::StatusOr<Literal> test = this->test_runner().Execute(
+        std::move(module), arguments, run_hlo_passes);
+    if (!this->swallow_execution_errors() && !test.ok()) {
+      // Exit early if we aren't swallowing errors.
+      return test.status();
+    }
+    const absl::StatusOr<Literal> reference = reference_runner_->Execute(
+        std::move(reference_module), arguments, run_hlo_passes);
+    if (this->swallow_execution_errors() && !test.ok()) {
+      return ::testing::AssertionSuccess();
+    }
+    if (!reference.ok()) {
+      if (this->swallow_execution_errors()) {
+        return ::testing::AssertionSuccess();
+      }
+      return reference.status();
+    }
+
+    if (reference->IsAll(0)) {
       LOG(WARNING) << "Reference value is only zeros.";
     }
 
-    return LiteralTestUtil::NearOrEqual(/*expected=*/reference, /*actual=*/test,
-                                        error);
+    return LiteralTestUtil::NearOrEqual(/*expected=*/*reference,
+                                        /*actual=*/*test, error);
   }
 
   std::unique_ptr<HloRunnerInterface> reference_runner_;

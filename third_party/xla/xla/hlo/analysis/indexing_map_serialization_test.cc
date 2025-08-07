@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "tsl/platform/test.h"
@@ -41,6 +42,18 @@ class IndexingMapSerializationTest : public HloHardwareIndependentTestBase {
 };
 
 TEST_F(IndexingMapSerializationTest, EmptyMap) { ParseAndCheck("() -> ()"); }
+
+TEST_F(IndexingMapSerializationTest, UndefinedMap) {
+  EXPECT_THAT(ToString(IndexingMap::GetUndefined()),
+              MatchIndexingString("UNDEFINED"));
+}
+
+TEST_F(IndexingMapSerializationTest, KnownEmptyMap) {
+  auto map =
+      ParseIndexingMap("(d0) -> (), domain: d0 in [1, 0]", &mlir_context_);
+  EXPECT_TRUE(map->IsKnownEmpty());
+  EXPECT_THAT(ToString(*map), MatchIndexingString("KNOWN EMPTY"));
+}
 
 TEST_F(IndexingMapSerializationTest, DimsOnly) {
   ParseAndCheck(R"(

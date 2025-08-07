@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <functional>
-#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
@@ -27,7 +26,6 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/llvm_ir/ir_array.h"
-#include "xla/tsl/platform/status.h"
 
 namespace xla {
 namespace llvm_ir {
@@ -38,10 +36,11 @@ using EmitCallToNestedComputationCallback =
 // as-is. This implements the inner loop of BitonicSort. It is assumed that
 // 'xor_masks' contains only powers of 2, or values 2^k - 1 (k > 0).
 absl::Status EmitSortInPlace(
-    int64_t dimension_to_sort, const std::vector<IrArray>& values_arrays,
+    int64_t dimension_to_sort, absl::Span<const IrArray> values_arrays,
     absl::string_view name, absl::Span<const int64_t> xor_masks,
     llvm::IRBuilderBase* b, const gpu::LaunchDimensions& launch_dimensions,
     int64_t num_iterations_in_sort_dim, int64_t tile_size,
+    int64_t unroll_factor,
     const EmitCallToNestedComputationCallback& emit_compare_callback);
 }  // namespace llvm_ir
 }  // namespace xla

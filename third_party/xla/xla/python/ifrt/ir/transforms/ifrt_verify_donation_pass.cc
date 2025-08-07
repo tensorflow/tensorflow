@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
-
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/TypeSwitch.h"
@@ -23,20 +21,20 @@ limitations under the License.
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/Visitors.h"
-#include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
+#include "mlir/Support/WalkResult.h"
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
-#include "xla/python/ifrt/ir/transforms/passes.h"
+#include "xla/python/ifrt/ir/transforms/passes.h"  // IWYU pragma: keep
 
 namespace xla {
 namespace ifrt {
 
-namespace {
-
 #define GEN_PASS_DEF_IFRTVERIFYDONATIONPASS
 #include "xla/python/ifrt/ir/transforms/passes.h.inc"
+
+namespace {
 
 // Verifies that if the value is an input to the IR, then it has been donated.
 mlir::LogicalResult VerifyIfInputAndDonated(mlir::Operation* op, int idx,
@@ -193,11 +191,5 @@ void IfrtVerifyDonationPass::runOnOperation() {
 }
 
 }  // namespace
-
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-CreateIfrtVerifyDonationPass() {
-  return std::make_unique<IfrtVerifyDonationPass>();
-}
-
 }  // namespace ifrt
 }  // namespace xla

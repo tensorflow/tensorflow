@@ -55,7 +55,7 @@ TEST(GenericMemoryAllocatorTest, AllocateReturnsError) {
       [](uint64_t size) -> absl::StatusOr<std::unique_ptr<MemoryAllocation>> {
         return absl::InternalError("Failed to allocate memory");
       });
-  EXPECT_THAT(allocator.Allocate(64), testing::Not(tsl::testing::IsOk()));
+  EXPECT_THAT(allocator.Allocate(64), testing::Not(absl_testing::IsOk()));
 }
 
 }  // namespace

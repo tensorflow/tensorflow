@@ -26,6 +26,8 @@ limitations under the License.
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/remap_plan.pb.h"
+#include "xla/python/ifrt/serdes_default_version_accessor.h"
+#include "xla/python/ifrt/serdes_version.h"
 
 namespace xla {
 namespace ifrt {
@@ -100,7 +102,8 @@ struct RemapPlan {
                                              const RemapPlanProto& proto);
 
   // Returns a `RemapPlanProto` representation.
-  absl::StatusOr<RemapPlanProto> ToProto() const;
+  absl::StatusOr<RemapPlanProto> ToProto(
+      SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const;
 
   std::string DebugString() const;
 

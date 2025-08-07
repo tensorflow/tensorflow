@@ -101,6 +101,44 @@ AffineExpr SimplifyAffineExpr(const AffineExpr& expr,
   return tmp_indexing_map.GetAffineMap().getResults().back();
 }
 
+// Returns a boolean indicating whether the constraints of the parameter
+// indexing maps are known to be irrelevant with regards to symbolic tile
+// derivation.
+bool IndexingMapConstraintsCanBeIgnored(const IndexingMap& indexing_map) {
+  for (const auto& [expr, range] : indexing_map.GetConstraints()) {
+    bool range_has_no_offset = range.lower == 0;
+    bool constrains_result =
+        absl::c_linear_search(indexing_map.GetAffineMap().getResults(), expr);
+    // In this case, we know that the constraint we found here is
+    //   1. directly restricting the range of a result of the input indexing
+    //      map, and
+    //   2. the restricted range may only invalidate "high values" (i.e., the
+    //      range has a lower bound of 0)
+    //
+    // Since indexing map constraints only allow expressing continuous
+    // intervals, 1. tells us that we are restricting the continuous range of
+    // an output (i.e. we're not constraining as a way to express some kind of
+    // interior padding), and 2. tells us that, if we are inserting padding
+    // (i.e. the constraint is not redundant), then that padding applies to
+    // high values.
+    //
+    // This essentially falls into the use case of "constructing a tile size
+    // that spans indices outside of the input space", which is a use case we
+    // intend for `SymbolicTile` to support. Therefore, we should be able to
+    // safely ignore this constraint.
+    //
+    // Note that the same should hold for low padding, but we leave that for
+    // future work in order to not overcomplicate things.
+    if (range_has_no_offset && constrains_result) {
+      continue;
+    }
+
+    return false;
+  }
+
+  return true;
+}
+
 }  // anonymous namespace
 
 /*static*/ std::optional<SymbolicTile> SymbolicTile::FromIndexingMap(
@@ -114,7 +152,7 @@ AffineExpr SimplifyAffineExpr(const AffineExpr& expr,
   bool did_simplify =
       indexing_map.Simplify(IndexingMap::SimplifyPointDimensions::kPreserve);
   VLOG(1) << "did_simplify: " << did_simplify;
-  if (indexing_map.GetConstraintsCount() != 0) {
+  if (!IndexingMapConstraintsCanBeIgnored(indexing_map)) {
     VLOG(1) << "Deriving symbolic tile from indexing map with pre-existing "
             << "constraints might produce spurious constraints. Bailing out. "
             << indexing_map;

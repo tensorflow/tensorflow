@@ -35,6 +35,7 @@
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/mock.h"
 #include "xla/python/ifrt/remap_plan.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/user_context.h"
@@ -67,6 +68,8 @@ namespace {
 IfrtProxyVersion Version() {
   IfrtProxyVersion version;
   version.set_protocol_version(kClientMaxVersion);
+  version.set_ifrt_serdes_version_number(
+      SerDesVersion::current().version_number().value());
   return version;
 }
 
@@ -121,7 +124,7 @@ TEST_F(ArrayTest, Destruction) {
   EXPECT_CALL(*session_,
               Enqueue(IfrtRequestOfType(IfrtRequest::kDestructArrayRequest)))
       .WillOnce(MockClientCaptureAndReturn(&requests_queue, IfrtResponse()));
-  ON_CALL(*mock_client_, GetDefaultLayout).WillByDefault(Return(kLayout1));
+  ON_CALL(*mock_client_, GetDefaultPjRtLayout).WillByDefault(Return(kLayout1));
 
   tsl::MakeRef<Array>(mock_client_.get(), rpc_helper_,
                       DType(DType::Kind::kBF16), Shape({}),
@@ -143,21 +146,21 @@ TEST_F(ArrayTest, FullyReplicatedShard) {
       *session_,
       Enqueue(IfrtRequestOfType(IfrtRequest::kFullyReplicatedShardRequest)))
       .WillOnce(MockClientCaptureAndReturn(&requests_queue, response));
-  ON_CALL(*mock_client_, GetDefaultLayout).WillByDefault(Return(kLayout1));
+  ON_CALL(*mock_client_, GetDefaultPjRtLayout).WillByDefault(Return(kLayout1));
 
   auto array = tsl::MakeRef<Array>(
       mock_client_.get(), rpc_helper_, DType(DType::Kind::kBF16), Shape({}),
       sharding_, ArrayHandle{1234}, /*layout=*/nullptr);
 
   EXPECT_THAT(array->FullyReplicatedShard(ArrayCopySemantics::kAlwaysCopy),
-              IsOk());
+              absl_testing::IsOk());
   auto req = requests_queue.Pop().fully_replicated_shard_request();
   EXPECT_EQ(req.array_handle(), 1234);
   EXPECT_EQ(req.result_handle(), 1);
 }
 
-TEST_F(ArrayTest, GetDefaultLayoutSuccess) {
-  ON_CALL(*mock_client_, GetDefaultLayout).WillByDefault(Return(kLayout1));
+TEST_F(ArrayTest, GetDefaultPjRtLayoutSuccess) {
+  ON_CALL(*mock_client_, GetDefaultPjRtLayout).WillByDefault(Return(kLayout1));
 
   auto array = tsl::MakeRef<Array>(
       mock_client_.get(), rpc_helper_, DType(DType::Kind::kBF16), Shape({}),
@@ -211,8 +214,7 @@ TEST_F(ArrayTest, MakeArraysFromHostBufferShardsSuccess) {
 
   auto result = Array::MakeArraysFromHostBufferShards(
       mock_client_.get(), rpc_helper_, absl::MakeSpan(specs),
-      xla::ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall,
-      /*user_context=*/tsl::RCReference<xla::ifrt::UserContext>());
+      xla::ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall);
   TF_ASSERT_OK(result.status());
   TF_ASSERT_OK_AND_ASSIGN(auto layout_1, result.value().at(0)->layout());
   EXPECT_EQ(*layout_1, *kLayout1);
@@ -233,10 +235,9 @@ TEST_F(ArrayTest, MakeErrorArraysSuccess) {
   specs.push_back(xla::ifrt::ArraySpec{DType(DType::Kind::kBF16), Shape({}),
                                        sharding_, kLayout1});
 
-  auto result = Array::MakeErrorArrays(
-      mock_client_.get(), rpc_helper_, absl::InternalError("test error"),
-      absl::MakeSpan(specs),
-      /*user_context=*/tsl::RCReference<xla::ifrt::UserContext>());
+  auto result = Array::MakeErrorArrays(mock_client_.get(), rpc_helper_,
+                                       absl::InternalError("test error"),
+                                       absl::MakeSpan(specs));
   TF_ASSERT_OK(result.status());
   TF_ASSERT_OK_AND_ASSIGN(auto layout, result.value().at(0)->layout());
   EXPECT_EQ(*layout, *kLayout1);
@@ -271,7 +272,7 @@ TEST_F(ArrayTest, AssembleArrayFromSingleDeviceArraysSuccess) {
   EXPECT_EQ(*layout, *kLayout1);
 }
 
-TEST_F(ArrayTest, AssembleArrayFromSingleDeviceArraysDefaultLayoutSuccess) {
+TEST_F(ArrayTest, AssembleArrayFromSingleDeviceArraysDefaultPjRtLayoutSuccess) {
   IfrtResponse response;
   ASSERT_TRUE(
       TextFormat::ParseFromString(
@@ -284,7 +285,7 @@ TEST_F(ArrayTest, AssembleArrayFromSingleDeviceArraysDefaultLayoutSuccess) {
               Enqueue(IfrtRequestOfType(
                   IfrtRequest::kAssembleArrayFromSingleDeviceArraysRequest)))
       .WillOnce(MockClientSessionReturnResponse(response));
-  ON_CALL(*mock_client_, GetDefaultLayout).WillByDefault(Return(kLayout1));
+  ON_CALL(*mock_client_, GetDefaultPjRtLayout).WillByDefault(Return(kLayout1));
 
   auto array = tsl::MakeRef<Array>(
       mock_client_.get(), rpc_helper_, DType(DType::Kind::kBF16), Shape({}),

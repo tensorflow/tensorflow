@@ -1,6 +1,7 @@
 # Description:
 #   Utilities to perform MLIR TFG graph transformations.
 
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_binary",

@@ -34,7 +34,6 @@ limitations under the License.
 #include "xla/tests/client_library_test_runner_mixin.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
-#include "xla/tests/test_macros.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
 
@@ -258,7 +257,7 @@ TEST_F(SVDTest, Various_Size_Random_Matrix_512x256) {
 
 // Too slow on the CPU, GPU and interpreter backends.
 TEST_F(SVDTest, Various_Size_Random_Matrix_512x512) {
-  if (test::DeviceIsOneOf({test::kCpu, test::kGpu, test::kInterpreter})) {
+  if (test::DeviceTypeIsOneOf({test::kCpu, test::kGpu, test::kInterpreter})) {
     GTEST_SKIP();
   }
   XlaBuilder builder(TestName());

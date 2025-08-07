@@ -34,7 +34,6 @@ limitations under the License.
 #include "xla/core/collectives/rank_id.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/stream.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/env.h"
@@ -133,8 +132,6 @@ class NcclCommunicator : public GpuCommunicator {
 
  private:
   class NcclRegisteredBufferHandle;
-
-  static absl::StatusOr<se::Stream*> ToStream(const Executor& executor);
 
   explicit NcclCommunicator(ncclComm_t comm,
                             std::unique_ptr<tsl::AsyncValue::Executor> executor)

@@ -737,7 +737,6 @@ class AlgorithmDesc {
       : AlgorithmDesc(algo_id, use_tensor_ops, std::nullopt) {}
   AlgorithmDesc(Index algo_id, bool use_tensor_ops,
                 std::optional<uint64_t> workspace_size) {
-    proto_.set_is_cudnn_frontend(false);
     proto_.set_algo_id(algo_id);
     proto_.set_math_type(use_tensor_ops ? AlgorithmProto::TENSOR_OP_MATH
                                         : AlgorithmProto::DEFAULT_MATH);
@@ -748,8 +747,6 @@ class AlgorithmDesc {
   AlgorithmDesc(int64_t engine_id,
                 const std::vector<std::pair<int64_t, int64_t>>& tuning_knobs,
                 std::optional<uint64_t> workspace_size);
-  bool is_cudnn_frontend() const { return proto_.is_cudnn_frontend(); }
-
   bool tensor_ops_enabled() const {
     return proto_.math_type() == AlgorithmProto::TENSOR_OP_MATH;
   }

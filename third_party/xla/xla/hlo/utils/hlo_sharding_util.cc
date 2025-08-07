@@ -3076,7 +3076,7 @@ absl::Status CanonicalizeLayoutAfterShardingPropagation(
     HloModule* module, const std::vector<bool>& update_output_layout,
     const std::vector<bool>& update_parameters_layout) {
   if (!module->layout_canonicalization_callback()) {
-    LOG(INFO) << "There is no registered layout_canonicalization_callback.";
+    VLOG(4) << "There is no registered layout_canonicalization_callback.";
     return absl::OkStatus();
   }
   TF_ASSIGN_OR_RETURN(auto shapes_with_layout,

@@ -39,7 +39,8 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/algorithm_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/matmul_indexing_utils.h"
+#include "xla/service/gpu/transforms/dot_algorithm_rewriter.h"
+#include "xla/service/matmul_indexing_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -73,8 +74,9 @@ absl::StatusOr<Shape> GetBatchRowColumnShape(
         [&](absl::Span<const int64_t> dims) -> absl::Status {
       for (auto it = dims.rbegin(); it != dims.rend(); ++it) {
         // NOTE: `i` is incremented as we check the dimensions.
-        if (*it != shape.layout().minor_to_major()[i++])
+        if (*it != shape.layout().minor_to_major()[i++]) {
           return InvalidArgument("dims not physically_sequential");
+        }
       }
       return absl::OkStatus();
     };
@@ -94,9 +96,15 @@ absl::StatusOr<Shape> GetBatchRowColumnShape(
     }
   }
 
-  if (col_dims.empty()) minor_to_major.push_back(2);
-  if (row_dims.empty()) minor_to_major.push_back(1);
-  if (batch_dims.empty()) minor_to_major.push_back(0);
+  if (col_dims.empty()) {
+    minor_to_major.push_back(2);
+  }
+  if (row_dims.empty()) {
+    minor_to_major.push_back(1);
+  }
+  if (batch_dims.empty()) {
+    minor_to_major.push_back(0);
+  }
 
   auto dim_size = [&](absl::Span<const int64_t> dims) {
     return absl::c_accumulate(dims, 1, [&](int64_t size, int64_t dim) {
@@ -206,9 +214,6 @@ std::vector<int64_t> NormalizedRelativeOrder(absl::Span<const int64_t> dims) {
 
 absl::StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
                                                     int64_t operand_idx) {
-  if (Cast<HloDotInstruction>(&dot)->sparse_operands()) {
-    return false;
-  }
   TF_RET_CHECK(dot.opcode() == HloOpcode::kDot);
   TF_RET_CHECK(dot.operand_count() > operand_idx);
 
@@ -557,13 +562,12 @@ absl::Status DoGemmWithAlgorithm(const se::gpu::MatrixDescriptor& lhs,
         &output_data, output.leading_dim_stride, output.batch_stride,
         output.batch_size, computation_type, algorithm, numeric_options,
         profile_result, context);
-  } else {
-    return blas->BlasGemmWithAlgorithm(
-        stream, lhs.transpose, rhs.transpose, output.m, output.n, output.k,
-        alpha, lhs.cast<Input>(), lhs.leading_dim_stride, rhs.cast<Input>(),
-        rhs.leading_dim_stride, beta, &output_data, output.leading_dim_stride,
-        computation_type, algorithm, numeric_options, profile_result, context);
   }
+  return blas->BlasGemmWithAlgorithm(
+      stream, lhs.transpose, rhs.transpose, output.m, output.n, output.k, alpha,
+      lhs.cast<Input>(), lhs.leading_dim_stride, rhs.cast<Input>(),
+      rhs.leading_dim_stride, beta, &output_data, output.leading_dim_stride,
+      computation_type, algorithm, numeric_options, profile_result, context);
 }
 
 template <typename Scale, typename Input, typename Output>
@@ -631,7 +635,9 @@ absl::Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
       /*allow_tf32=*/IsTf32Allowed(config.precision_algorithm,
                                    config.compute_precision)};
 
-  if (!algorithm) algorithm = config.algorithm;
+  if (!algorithm) {
+    algorithm = config.algorithm;
+  }
 
   se::blas::CallContext context = se::blas::CallContext::kNone;
   if (config.grad_x) {
@@ -685,7 +691,9 @@ absl::Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
   }
 
   if (config.output_layout.dtype == S32) {
-    if (!algorithm) algorithm = se::blas::kDefaultGemmAlgo;
+    if (!algorithm) {
+      algorithm = se::blas::kDefaultGemmAlgo;
+    }
     // TODO(tdanyluk): Investigate why don't we use the actual precision (and
     // algorithm) here? Why do we use the default?
     return DoGemmWithAlgorithm<int32_t, int8_t, int32_t>(
@@ -724,11 +732,13 @@ absl::StatusOr<bool> EpilogueAddsVectorBias(
     case GemmBackendConfig::RELU:
     case GemmBackendConfig::GELU:
     case GemmBackendConfig::GELU_AUX:
+    case GemmBackendConfig::SILU:
       return false;
     case GemmBackendConfig::BIAS:
     case GemmBackendConfig::BIAS_RELU:
     case GemmBackendConfig::BIAS_GELU:
     case GemmBackendConfig::BIAS_GELU_AUX:
+    case GemmBackendConfig::BIAS_SILU:
       return true;
     default:
       return Internal("Unknown Epilogue.");
@@ -744,6 +754,8 @@ absl::StatusOr<bool> EpilogueHasAuxiliaryOutput(
     case GemmBackendConfig::BIAS:
     case GemmBackendConfig::BIAS_RELU:
     case GemmBackendConfig::BIAS_GELU:
+    case GemmBackendConfig::SILU:
+    case GemmBackendConfig::BIAS_SILU:
       return false;
     case GemmBackendConfig::GELU_AUX:
     case GemmBackendConfig::BIAS_GELU_AUX:
@@ -764,6 +776,8 @@ absl::StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
       return se::gpu::BlasLt::Epilogue::kGELU;
     case GemmBackendConfig::GELU_AUX:
       return se::gpu::BlasLt::Epilogue::kGELUWithAux;
+    case GemmBackendConfig::SILU:
+      return se::gpu::BlasLt::Epilogue::kSILU;
     case GemmBackendConfig::BIAS:
       return se::gpu::BlasLt::Epilogue::kBias;
     case GemmBackendConfig::BIAS_RELU:
@@ -772,6 +786,8 @@ absl::StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
       return se::gpu::BlasLt::Epilogue::kBiasThenGELU;
     case GemmBackendConfig::BIAS_GELU_AUX:
       return se::gpu::BlasLt::Epilogue::kBiasThenGELUWithAux;
+    case GemmBackendConfig::BIAS_SILU:
+      return se::gpu::BlasLt::Epilogue::kBiasThenSILU;
     default:
       return Internal("unexpected epilogue value");
   }
@@ -792,7 +808,8 @@ absl::StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
 
   return TritonGemmConfig(proto.block_m(), proto.block_n(), proto.block_k(),
                           proto.split_k(), proto.num_stages(),
-                          proto.num_warps(), proto.num_ctas());
+                          proto.num_warps(), proto.num_ctas(),
+                          proto.is_tma_allowed());
 }
 
 AutotuneResult::TritonGemmKey TritonGemmConfig::ToProto() const {
@@ -804,6 +821,7 @@ AutotuneResult::TritonGemmKey TritonGemmConfig::ToProto() const {
   key.set_num_stages(num_stages);
   key.set_num_warps(num_warps);
   key.set_num_ctas(num_ctas);
+  key.set_is_tma_allowed(is_tma_allowed);
   return key;
 }
 
@@ -811,7 +829,8 @@ std::string TritonGemmConfig::ToString() const {
   return absl::StrCat("{block_m:", block_m, ",block_n:", block_n,
                       ",block_k:", block_k, ",split_k:", split_k,
                       ",num_stages:", num_stages, ",num_warps:", num_warps,
-                      ",num_ctas:", num_ctas, "}");
+                      ",num_ctas:", num_ctas,
+                      ",is_tma_allowed:", is_tma_allowed, "}");
 }
 
 absl::StatusOr<bool> IsMatrixMultiplicationTooSmallForRewriting(
@@ -874,17 +893,40 @@ PrimitiveType GetGemmAccumulatorType(HloDotInstruction* dot) {
   if (accumulator_type.ok()) {
     return accumulator_type.value();
   }
-  // Otherwise, return the default accumulator type for the output type.
-  PrimitiveType output_type = dot->shape().element_type();
-  switch (output_type) {
-    case PrimitiveType::F16:
-    case PrimitiveType::BF16:
-      return PrimitiveType::F32;
-    case PrimitiveType::F32:
-    case PrimitiveType::F64:
-    case PrimitiveType::S32:
+
+  PrimitiveType shape_type = dot->shape().element_type();
+  // If the output type is a floating point type with less than or equal to 32
+  // bits, use f32 as the accumulator type.
+  if (primitive_util::IsFloatingPointType(shape_type) &&
+      primitive_util::BitWidth(shape_type) <= primitive_util::BitWidth(F32)) {
+    return F32;
+  }
+  return shape_type;
+}
+
+absl::StatusOr<HloInstruction*> MakeMultiplyForDotPrecisionAlgorithm(
+    HloInstruction* lhs, HloInstruction* rhs,
+    const PrecisionConfig::Algorithm& algorithm) {
+  switch (algorithm) {
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32:
+      return DotAlgorithmRewriter::MakeMultiplyForBF16BF16F32(lhs, rhs);
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3:
+      return DotAlgorithmRewriter::MakeMultiplyForBF16BF16F32X3(lhs, rhs);
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6:
+      return DotAlgorithmRewriter::MakeMultiplyForBF16BF16F32X6(lhs, rhs);
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9:
+      return DotAlgorithmRewriter::MakeMultiplyForBF16BF16F32X9(lhs, rhs);
+    case PrecisionConfig::ALG_DOT_TF32_TF32_F32:
+      return DotAlgorithmRewriter::MakeMultiplyForTF32TF32F32(lhs, rhs);
+    case PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3:
+      return DotAlgorithmRewriter::MakeMultiplyForTF32TF32F32X3(lhs, rhs);
+    case PrecisionConfig::ALG_DOT_F32_F32_F32:
+    case PrecisionConfig::ALG_UNSET:
+      return lhs->parent()->AddInstruction(HloInstruction::CreateBinary(
+          lhs->shape(), HloOpcode::kMultiply, lhs, rhs));
     default:
-      return output_type;
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unsupported dot precision algorithm: ", algorithm));
   }
 }
 

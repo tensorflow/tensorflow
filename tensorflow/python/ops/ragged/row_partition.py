@@ -753,7 +753,7 @@ class RowPartition(composite_tensor.CompositeTensor):
   def value_rowids(self):
     """Returns the row indices for this row partition.
 
-    `value_rowids` specifies the row index fo reach value.  In particular,
+    `value_rowids` specifies the row index for each value.  In particular,
     `value_rowids[i]` is the row index for `values[i]`.
 
     Returns:

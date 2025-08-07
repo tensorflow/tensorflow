@@ -30,8 +30,10 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/permutation_util.h"
 #include "xla/service/hlo_creation_utils.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
@@ -234,21 +236,25 @@ bool ReshapeMover::IsReshapeMoveCandidate(HloInstruction* instruction) {
 // `rearrange`.
 //
 // This will often create redundant operations that we expect to be eliminated
-// by algsimp.  For example, if we have an operand rearrange(x), this will
-// produce rearrange'(rearrange(x)), which can be simplified to x.
+// by algsimp.  For example, if we have an operand transpose(x), this will
+// produce transpose'(transpose(x)), which can be simplified to x.
 absl::StatusOr<HloInstruction*> ReshapeMover::ApplyInverseRearrange(
     const HloInstruction* rearrange, HloInstruction* operand) {
   switch (rearrange->opcode()) {
     case HloOpcode::kReshape: {
-      // To make algsimp's life a little easier, don't insert a nop reshape.
+      // To make algsimp's life a little easier, don't create a nop reshape, or
+      // a nop 2-reshape chain.
       Shape new_shape = ShapeUtil::ChangeElementType(
           rearrange->operand(0)->shape(), operand->shape().element_type());
       UpdateLayout(&new_shape);
-      if (operand->shape() != new_shape) {
-        return MakeReshapeHlo(new_shape, operand);
-      } else {
+      if (operand->shape() == new_shape) {
         return operand;
       }
+      if (operand->opcode() == HloOpcode::kReshape &&
+          ShapeUtil::Equal(new_shape, operand->operand(0)->shape())) {
+        return operand->mutable_operand(0);
+      }
+      return MakeReshapeHlo(new_shape, operand);
     }
     case HloOpcode::kTranspose: {
       // To make algsimp's life a little easier, don't insert a nop transpose.

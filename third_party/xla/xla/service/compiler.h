@@ -328,7 +328,8 @@ class Compiler {
   // Returns a MetricsHookInterface object used to instrument Compiler's
   // compilation stages.
   virtual std::unique_ptr<MetricsHookInterface> CreateMetricsHook(
-      absl::string_view filename_prefix) const;
+      absl::string_view filename_prefix,
+      absl::string_view hlo_module_name) const;
 
   virtual absl::StatusOr<std::unique_ptr<Executable>> DeserializeExecutable(
       const absl::string_view serialized) const {
@@ -365,6 +366,7 @@ class AotCompilationOptions {
   virtual int64_t replica_count() const { return 0; }
   virtual int64_t num_cores() const { return 0; }
   virtual bool use_spmd_partitioning() const { return false; }
+  virtual bool use_shardy_partitioner() const { return false; }
   virtual bool use_auto_spmd_partitioning() const { return false; }
   virtual std::vector<int64_t> auto_spmd_partitioning_mesh_shape() const {
     return {};

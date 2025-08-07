@@ -92,6 +92,8 @@ absl::StatusOr<std::vector<InstructionAndShapeIndex>> GetSuccessors(
       }
     } else if (user->opcode() == HloOpcode::kGetTupleElement) {
       ShapeIndex tmp_shape_index = instruction_and_shape_index.shape_index;
+      CHECK(!tmp_shape_index.empty())
+          << "Expected shape index to be non-empty.";
       const auto index = tmp_shape_index.front();
       if (index == user->tuple_index()) {
         // This GTE is for the buffer we're tracking.
@@ -124,6 +126,18 @@ absl::StatusOr<std::vector<InstructionAndShapeIndex>> GetSuccessors(
             while_condition_computation->parameter_instruction(i);
         result.push_back(
             {condition_instruction, instruction_and_shape_index.shape_index});
+      }
+    } else if (user->opcode() == HloOpcode::kConditional) {
+      auto operand_indices = user->OperandIndices(instruction);
+      for (const int64_t index : operand_indices) {
+        CHECK(user->branch_computations().size() >= index)
+            << "Not enough branch computations for conditional";
+        HloComputation* branch_computation =
+            user->branch_computation(index - 1);
+        HloInstruction* parameter_instruction =
+            branch_computation->parameter_instruction(0);
+        result.push_back(
+            {parameter_instruction, instruction_and_shape_index.shape_index});
       }
     } else if (user->opcode() == HloOpcode::kAsyncStart) {
       auto operand_indices = user->OperandIndices(instruction);
@@ -219,15 +233,11 @@ std::vector<InstructionAndShapeIndex> GetPredecessors(
 
 bool IsValidDuringPureMemoryOffload(const HloInstruction* instruction) {
   static constexpr std::array allowed_opcodes = {
-      HloOpcode::kGetTupleElement,
-      HloOpcode::kBitcast,
-      HloOpcode::kTuple,
-      HloOpcode::kCall,
-      HloOpcode::kWhile,
-      HloOpcode::kParameter,
-      HloOpcode::kOptimizationBarrier,
-      HloOpcode::kAsyncStart,
-      HloOpcode::kAsyncDone,
+      HloOpcode::kGetTupleElement, HloOpcode::kBitcast,
+      HloOpcode::kTuple,           HloOpcode::kCall,
+      HloOpcode::kWhile,           HloOpcode::kConditional,
+      HloOpcode::kParameter,       HloOpcode::kOptimizationBarrier,
+      HloOpcode::kAsyncStart,      HloOpcode::kAsyncDone,
       HloOpcode::kCustomCall};
   return absl::c_linear_search(allowed_opcodes, instruction->opcode());
 }

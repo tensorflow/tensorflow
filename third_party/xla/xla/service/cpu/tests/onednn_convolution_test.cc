@@ -25,7 +25,6 @@ limitations under the License.
 #include "xla/service/cpu/onednn_util.h"
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/test_macros.h"
 #include "tsl/platform/cpu_info.h"
 
 namespace xla {
@@ -227,6 +226,7 @@ TEST_P(ConvolutionTest, Conv3DWithBiasTest) {
 TEST_P(ConvolutionTest, Conv2DWithSmallBiasTest) {
   const absl::string_view outline = R"(
   HloModule convolution.test.with.constant.bias
+
   ENTRY convolution.test.with.bias {
     arg.0 = $dtype[1,10,10,32] parameter(0)
     arg.1 = $dtype[10,10,32,64] parameter(1)
@@ -370,6 +370,31 @@ TEST_P(ConvolutionTest, Conv2DWithBiasAndBinaryAddTest) {
   }
 }
 
+TEST_P(ConvolutionTest, Conv2DWithReluSumAndBinaryAddTest) {
+  const absl::string_view outline = R"(
+  HloModule convolution.relu.sum.add.test
+
+  ENTRY convolution.relu.sum.add.test {
+    arg0.1 = $dtype[1,22,22,1] parameter(0)
+    arg0.2 = $dtype[8,8,1,10] parameter(1)
+    arg0.3 = $dtype[1,11,11,10] parameter(2)
+    convolution.0 = $dtype[1,11,11,10] convolution(arg0.1, arg0.2),
+          window={size=8x8 stride=2x2 pad=3_3x3_3}, dim_labels=b01f_01io->b01f
+    const.1 = $pdtype[] constant(0)
+    convert.0 = $dtype[] convert(const.1)
+    bcast.2 = $dtype[1,11,11,10] broadcast(convert.0), dimensions={}
+    maximum.1 = $dtype[1,11,11,10] maximum(convolution.0, bcast.2)
+    const.2 = $dtype[1,11,11,10] constant({...})
+    add.1 = $dtype[1,11,11,10] add(maximum.1, const.2)
+    ROOT add.2 = $dtype[1,11,11,10] add(add.1, arg0.3)
+  })";
+
+  // Optimized HLO must match "SUM" only for precisions that support Elementwise
+  // Add operations
+  RunCompareAndMatchOptimizedHlo(
+      outline, {"RELU", dtype_ == BF16 ? "BINARY_ADD" : "SUM", "BINARY_ADD"});
+}
+
 TEST_P(ConvolutionTest, ToeplitzConstrcutionTest) {
   if (dtype_ == BF16 || dtype_ == F16) {
     GTEST_SKIP() << "Skipping test for " << dtypeString_
@@ -407,6 +432,7 @@ TEST_P(ConvolutionTest, ToeplitzConstrcutionTest) {
 TEST_P(ConvolutionTest, Conv2DWithSumTest) {
   const absl::string_view outline = R"(
   HloModule convolution.test.with.sum
+
   ENTRY convolution.test.with.sum {
     arg0.1 = $dtype[1,22,22,1] parameter(0)
     arg0.2 = $dtype[1,11,11,1] parameter(1)
@@ -700,6 +726,31 @@ TEST_P(ConvolutionTest, Conv2DWithBiasAndGeluExactPattern2Test) {
 })";
 
   RunCompareAndMatchOptimizedHlo(outline, {"BIAS", "GELU_ERF"});
+}
+
+TEST_P(ConvolutionTest, Conv2DWithBiasAndSwishTest) {
+  const absl::string_view outline = R"(
+  HloModule convolution.test.with.bias.swish
+
+  ENTRY convolution.test.with.bias.swish {
+    arg.0 = $dtype[2,40,40,128] parameter(0)
+    arg.1 = $dtype[1,1,128,128] parameter(1)
+    constant.1 = $pdtype[] constant(1)
+    broadcast.1 = $pdtype[2,40,40,128] broadcast(constant.1), dimensions={}
+    convert.1 = $dtype[2,40,40,128] convert(broadcast.1)
+    convolution.0 = $dtype[2,40,40,128] convolution(arg.0, arg.1),
+                      window={size=1x1}, dim_labels=b01f_01io->b01f
+    constant.0 = $dtype[128]{0} constant({...})
+    broadcast.0 = $dtype[2,40,40,128] broadcast(constant.0), dimensions={3}
+    add.0 = $dtype[2,40,40,128] add(convolution.0, broadcast.0)
+    negate.0 = $dtype[2,40,40,128] negate(add.0)
+    exponential.0 = $dtype[2,40,40,128] exponential(negate.0)
+    add.1 = $dtype[2,40,40,128] add(convert.1, exponential.0)
+    divide.0 = $dtype[2,40,40,128] divide(convert.1, add.1)
+    ROOT multiply.0 = $dtype[2,40,40,128] multiply(divide.0, add.0)
+})";
+
+  RunCompareAndMatchOptimizedHlo(outline, {"BIAS", "SWISH"});
 }
 
 INSTANTIATE_TEST_SUITE_P(

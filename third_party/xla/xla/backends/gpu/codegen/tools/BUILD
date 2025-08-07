@@ -2,6 +2,7 @@ load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
 )
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:py_strict.bzl", "py_strict_binary", "py_strict_library", "py_strict_test")
 load("//xla:xla.default.bzl", "xla_cc_binary")
 load(
@@ -12,6 +13,14 @@ load(
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
+)
+
+package_group(
+    name = "codegen_tests",
+    packages = [
+        "//xla/backends/gpu/codegen/emitters/tests",
+        "//xla/codegen/emitters/tests",
+    ],
 )
 
 cc_library(
@@ -57,7 +66,7 @@ xla_cc_binary(
     # set linkopts in such a way that dynamic libraries are found, which are
     # symlinked from the lit_lib directory.
     linkopts = ["-Wl,-rpath,$$ORIGIN/../lit_lib"],
-    visibility = ["//xla/backends/gpu/codegen:__subpackages__"],
+    visibility = [":codegen_tests"],
     deps = [
         ":test_lib",
         "@com_google_absl//absl/log:check",
@@ -76,7 +85,7 @@ xla_cc_binary(
     # set linkopts in such a way that dynamic libraries are found, which are
     # symlinked from the lit_lib directory.
     linkopts = ["-Wl,-rpath,$$ORIGIN/../lit_lib"],
-    visibility = ["//xla/backends/gpu/codegen:__subpackages__"],
+    visibility = [":codegen_tests"],
     deps = [
         ":test_lib",
         "@com_google_googletest//:gtest",
@@ -112,7 +121,7 @@ xla_cc_binary(
     name = "fusion_wrapper",
     testonly = 1,
     srcs = ["fusion_wrapper.cc"],
-    visibility = ["//xla/backends/gpu/codegen:__subpackages__"],
+    visibility = [":codegen_tests"],
     deps = [
         ":test_lib",
         "//xla/tsl/platform:statusor",

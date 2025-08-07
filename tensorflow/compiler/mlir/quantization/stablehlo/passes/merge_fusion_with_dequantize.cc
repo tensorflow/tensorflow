@@ -19,19 +19,20 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
-#include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 
 namespace mlir::quant::stablehlo {
 
@@ -69,7 +70,7 @@ class MergeFusionWithUniformDequantizePattern
     auto func_name = call_op.getCallee();
     if (!func_name.starts_with("quantized_")) return failure();
     if (call_op->getNumResults() != 1) return failure();
-    if (!mlir::isa<UniformQuantizedType>(
+    if (!mlir::isa<quant::UniformQuantizedType>(
             getElementTypeOrSelf(call_op->getResult(0).getType())))
       return failure();
 
@@ -103,10 +104,13 @@ class MergeFusionWithUniformDequantizePattern
     }
     for (auto user : users_to_erase) rewriter.eraseOp(user);
     rewriter.eraseOp(call_op);
-    if (failed(func_op.eraseResult(0))) return failure();
-    if (failed(func_op.insertResult(0, new_call_op.getResult(0).getType(),
-                                    /*resultAttrs=*/nullptr)))
+    if (failed(func_op.eraseResult(0))) {
       return failure();
+    }
+    if (failed(func_op.insertResult(0, new_call_op.getResult(0).getType(),
+                                    /*resultAttrs=*/nullptr))) {
+      return failure();
+    }
 
     // Modify the quantized fused function to do dequantize+relu(6).
     rewriter.setInsertionPoint(req_op);

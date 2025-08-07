@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -72,14 +73,17 @@ absl::StatusOr<bool> RunScheduler(
     return ShapeUtil::ByteSizeOfElements(shape);
   };
   auto async_tracker = std::make_unique<AsyncTracker>(sched_config);
-  auto scheduler_core = std::make_unique<DefaultSchedulerCore>(
-      shape_size_bytes, async_tracker.get(), latency_estimator.get(),
-      sched_config);
+  AliasInfo alias_info;
+  std::shared_ptr<const SchedulingContext> scheduling_context =
+      std::make_shared<const SchedulingContext>(
+          module, std::move(latency_estimator), std::move(async_tracker),
+          &alias_info, shape_size_bytes);
+  auto scheduler_core =
+      std::make_unique<DefaultSchedulerCore>(scheduling_context, sched_config);
   TF_ASSIGN_OR_RETURN(
-      bool value, LatencyHidingScheduler(
-                      std::move(latency_estimator), std::move(async_tracker),
-                      std::move(scheduler_core), shape_size_bytes)
-                      .Run(module));
+      bool value,
+      LatencyHidingScheduler(scheduling_context, std::move(scheduler_core))
+          .Run(module));
 
   return value;
 }
@@ -294,7 +298,7 @@ TEST_F(ProfileGuidedLatencyEstimatorTest,
       sched_config, std::make_unique<ApproximateLatencyEstimator>(),
       fdo_profile);
   EXPECT_THAT(latency_estimator->CheckAccuracy(*hlo_module),
-              StatusIs(absl::StatusCode::kFailedPrecondition));
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 }  // namespace xla

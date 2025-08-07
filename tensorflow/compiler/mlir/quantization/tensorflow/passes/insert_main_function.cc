@@ -13,31 +13,41 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <algorithm>
+#include <cstdint>
 #include <iterator>
 #include <memory>
 #include <string>
-#include <tuple>
-#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/ADT/StringSet.h"
+#include "llvm/ADT/StringSet.h"  // IWYU pragma: keep
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/IR/TypeRange.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Interfaces/FunctionInterfaces.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
-#include "tensorflow/core/platform/macros.h"
 
 namespace mlir {
 namespace quant {
@@ -237,8 +247,8 @@ bool CreateMainFunction(ModuleOp module_op) {
 
   // Creates a new main function.
   auto func_type = FunctionType::get(context, arg_types, result_types);
-  auto main_func = builder.create<func::FuncOp>(
-      module_op.getLoc(), kImportModelDefaultGraphFuncName, func_type);
+  auto main_func = func::FuncOp::create(
+      builder, module_op.getLoc(), kImportModelDefaultGraphFuncName, func_type);
   builder.createBlock(&main_func.getBody(), main_func.begin(), arg_types,
                       arg_locs);
   SmallVector<NamedAttribute> func_attrs;
@@ -294,8 +304,9 @@ bool CreateMainFunction(ModuleOp module_op) {
         result_types.begin() + result_idx, func_op.getNumResults());
     result_idx += func_op.getNumResults();
 
-    auto call_op = builder.create<TF::PartitionedCallOp>(
-        module_op.getLoc(), new_types, new_args, /*args_attrs=*/nullptr,
+    auto call_op = TF::PartitionedCallOp::create(
+        builder, module_op.getLoc(), new_types, new_args,
+        /*args_attrs=*/nullptr,
         /*res_attrs=*/nullptr,
         SymbolRefAttr::get(context, func_op.getSymName()),
         /*config=*/builder.getStringAttr(""),
@@ -343,8 +354,8 @@ bool CreateMainFunction(ModuleOp module_op) {
     Operation* identity_op;
     if (max_tensor_index == 0) {
       Value output_value = node_output_tensors.front().value;
-      identity_op = builder.create<TF::IdentityOp>(
-          new_loc, output_value.getType(), output_value);
+      identity_op = TF::IdentityOp::create(
+          builder, new_loc, output_value.getType(), output_value);
     } else {
       llvm::SmallVector<Value> input_values(node_output_tensors.size(),
                                             scalar_one);
@@ -352,8 +363,8 @@ bool CreateMainFunction(ModuleOp module_op) {
            node_output_tensors) {
         input_values[tensor_index] = tensor_value;
       }
-      identity_op = builder.create<TF::IdentityNOp>(
-          new_loc, TypeRange(ValueRange(input_values)), input_values);
+      identity_op = TF::IdentityNOp::create(
+          builder, new_loc, TypeRange(ValueRange(input_values)), input_values);
     }
 
     for (const auto& [output_index, tensor_index, tensor_value] :
@@ -361,8 +372,8 @@ bool CreateMainFunction(ModuleOp module_op) {
       returning_values[output_index] = identity_op->getResult(tensor_index);
     }
   }
-  builder.create<func::ReturnOp>(main_func.getBody().getLoc(),
-                                 returning_values);
+  func::ReturnOp::create(builder, main_func.getBody().getLoc(),
+                         returning_values);
 
   // Adds the new function to symbol table.
   SymbolTable symbol_table(module_op);

@@ -3,4 +3,4 @@ syntax = "proto2";
 
 package tensorflow.profiler;
 
-import public "plugin/tensorboard_plugin_profile/protobuf/inference_stats.proto";
+import public "plugin/xprof/protobuf/inference_stats.proto";

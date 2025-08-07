@@ -323,7 +323,7 @@ ENTRY main {
   // overwritten inside the autotuner utils and returns a generic error.
   EXPECT_FALSE(compilation_result.ok());
   EXPECT_THAT(compilation_result.status(),
-              tsl::testing::StatusIs(absl::StatusCode::kInternal));
+              absl_testing::StatusIs(absl::StatusCode::kInternal));
   EXPECT_THAT(compilation_result.status().message(),
               ::testing::HasSubstr("Failed to compile Triton fusion"));
 }

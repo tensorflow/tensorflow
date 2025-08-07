@@ -6,11 +6,17 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     # By default, these targets should only be used within the quantization library.
+    # copybara:uncomment_begin(google-only)
+    # default_visibility = [
+    # "//learning/brain/mlir/quantization:__subpackages__",
+    # "//platforms/darwinn/compiler:__subpackages__",
+    # "//tensorflow:__subpackages__",
+    # ],
+    # copybara:uncomment_end_and_comment_begin
     default_visibility = [
-        "//learning/brain/mlir/quantization:__subpackages__",
-        "//platforms/darwinn/compiler:__subpackages__",
-        "//tensorflow:__subpackages__",
+        "//visibility:public",
     ],
+    # copybara:comment_end
     licenses = ["notice"],
 )
 
@@ -78,10 +84,10 @@ tf_cc_test(
     srcs = ["quantization_driver_test.cc"],
     deps = [
         ":quantization_lib",
+        "//tensorflow/compiler/mlir/lite/quantization/common:test_base",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/quantization/common:attrs_and_constraints",
         "//tensorflow/compiler/mlir/quantization/common:func",
-        "//tensorflow/compiler/mlir/quantization/common:test_base",
         "//tensorflow/compiler/mlir/tensorflow",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",

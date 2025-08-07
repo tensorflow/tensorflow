@@ -23,7 +23,6 @@ limitations under the License.
 
 #include "xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
-#include "xla/tests/test_macros.h"
 #include "xla/tsl/framework/device_id.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"

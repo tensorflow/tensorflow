@@ -13,9 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/pjrt/c/pjrt_c_api_cpu.h"
-#include "xla/pjrt/pjrt_api.h"
+#include "xla/pjrt/c/pjrt_c_api_cpu_internal.h"
 #include "xla/pjrt/plugin/plugin_names.h"
 #include "xla/pjrt/plugin/static_registration.h"
 
-REGISTER_PJRT_PLUGIN(kCpuPjrtName, GetPjrtApi())
+REGISTER_PJRT_PLUGIN(kCpuPjrtName, pjrt::cpu_plugin::GetCpuPjrtApi())

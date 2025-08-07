@@ -32,7 +32,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -98,6 +97,7 @@ using mlir::func::ReturnOp;
 namespace mt = ::mlir::tensor;
 namespace mv = ::mlir::vector;
 
+constexpr int kTileSize = 32;
 constexpr int kNumRows = 4;
 constexpr int kNumThreadsPerBlock = 128;
 constexpr int kMaxVectorizedBytes = 4;
@@ -117,7 +117,8 @@ Value ReadVectorTileFromShmem(ImplicitLocOpBuilder& b, Value shmem,
   auto vector_type = mlir::VectorType::get({vector_size}, elem_type);
   for (int64_t i = 0; i < vector_size; ++i) {
     Value loaded_vector = b.create<mv::TransferReadOp>(
-        vector_type, shmem, shmem_indices_vec, llvm::ArrayRef<bool>{true});
+        vector_type, shmem, shmem_indices_vec, /*padding=*/std::nullopt,
+        llvm::ArrayRef<bool>{true});
     for (int64_t j = 0; j < vector_size; ++j) {
       Value elem =
           b.create<mv::ExtractOp>(loaded_vector, SmallVector<int64_t>{j});
@@ -140,13 +141,48 @@ AffineExpr Swizzle(AffineExpr shmem_row, AffineExpr shmem_col,
 
 }  // namespace
 
+absl::Status TransposeFusionBase::EmitEntryFunction(
+    const emitters::PartitionedComputations& computations,
+    const emitters::CallTargetProvider& call_targets,
+    mlir::func::FuncOp entry_function,
+    const HloFusionInstruction& fusion) const {
+  const auto& root_computation = computations.FindPartitionedComputation(
+      fusion.fused_instructions_computation());
+  // Write intermediate results to shmem.
+  mlir::ImplicitLocOpBuilder builder(entry_function.getLoc(), entry_function);
+  builder.setInsertionPointToStart(entry_function.addEntryBlock());
+  auto thread_and_block_ids = EmitThreadAndBlockIds(builder);
+  auto written = EmitWriteToShMemMlir(
+      builder, entry_function, fusion, root_computation, call_targets,
+      entry_function.getArguments().take_back(analysis_.fusion_roots().size()),
+      thread_and_block_ids);
+  // Read intermediate results from shmem and compute epilogues.
+  EmitReadFromShMemMlir(builder, entry_function, fusion, computations, written,
+                        thread_and_block_ids);
+  return absl::OkStatus();
+}
+
+std::vector<emitters::EpilogueSpecification> TransposeFusionBase::GetEpilogues(
+    const HloFusionInstruction& fusion, MLIRContext* mlir_context) const {
+  std::vector<emitters::EpilogueSpecification> epilogues{
+      GetEpilogueForOutputIndexing(analysis_, shmem_transposes_,
+                                   shmem_transpose_roots_, mlir_context)};
+  // Add empty epilogues for the side outputs. This ensures their roots don't
+  // get "fused" into the tuple function.
+  for (const auto* root : side_output_roots_) {
+    epilogues.push_back(emitters::EpilogueSpecification::FromIdentityIndexing(
+        root, root, mlir_context));
+  }
+  return epilogues;
+}
+
 TransposeFusion::TransposeFusion(const HloFusionAnalysis& analysis)
-    : analysis_(analysis),
+    : TransposeFusionBase(analysis),
       transpose_(analysis.tiled_transpose()),
       permutation_(transpose_.permutation),
       input_shape_(
           Permute(transpose_.dimensions, InversePermutation(permutation_))),
-      base_block_size_(WarpSize(analysis_.device_info())) {
+      base_block_size_(kTileSize) {
   ConstHloInstructionSet transposes_to_tile;
   int index = 0;
   int64_t shmem_usage = 0;
@@ -241,10 +277,11 @@ std::optional<IndexingMap> TransposeFusion::ComputeThreadIdToInputIndexing(
   if (!GetDescriptionForTiledTransposeEmitter(hero)) {
     auto map = ComposeIndexingMaps(
         *ComputeThreadIdToOutputIndexing(root_index, mlir_context),
-        *ComputeOutputToInputIndexing(
-             &analysis_.fusion_root(root_index).instruction(), 0, mlir_context)
-             .indexing_maps[hero_operand_index]
-             .begin());
+        ComputeOutputToInputIndexing(
+            &analysis_.fusion_root(root_index).instruction(), 0, mlir_context)
+            .indexing_maps[hero_operand_index]
+            .begin()
+            ->map());
     map.Simplify();
     return map;
   }
@@ -296,65 +333,23 @@ TransposeFusion::WriteResult TransposeFusion::EmitWriteToShMemMlir(
   } else {
     ++shmem_tensor_size.back();
   }
-  int num_inputs = fusion.fused_instructions_computation()->num_parameters();
-  SmallVector<Value> callee_operands(
-      entry_function.getArguments().take_front(num_inputs));
-  auto tids_and_bids = EmitThreadAndBlockIds(builder);
-  auto identity_map =
-      IndexingMapAttr::get(ctx, CreateIdentityMap(shmem_tensor_size, ctx));
 
-  // We can assume that all transpose operands have the same shape.
-  Shape operand_shape = shmem_transposes_.front()->operand(0)->shape();
-
-  // Indexing for MaterializeOp to read from input.
-  auto indexing = GetIndexing(/*input=*/true, operand_shape, ctx);
-
-  // Indexing for InsertOp to write into shared memory.
-  IndexingMap write_indexing = GetSharedMemoryIndexing(/*read=*/false, ctx);
-  // As we are writing the same elements that we are reading, any read
-  // constraints can also be constraints for the write.
-  for (auto constraint : indexing.GetConstraints()) {
-    write_indexing.AddConstraint(constraint.first, constraint.second);
-  }
-  for (auto [index, bound] : llvm::enumerate(indexing.GetSymbolBounds())) {
-    write_indexing.GetMutableSymbolBound(index) = bound;
-  }
-  write_indexing.Simplify();
-  auto dimensions = SmallVector<int64_t>(operand_shape.dimensions().begin(),
-                                         operand_shape.dimensions().end());
-  SmallVector<Value> shmem_tensors;
+  // Allocate shared memory.
+  SmallVector<Value> inits;
   for (auto* transpose : shmem_transposes_) {
     auto elem_type = emitters::PrimitiveTypeToMlirType(
         transpose->shape().element_type(), builder);
-    auto shmem = builder.create<AllocateSharedOp>(
-        RankedTensorType::get(shmem_tensor_size, elem_type));
-    auto indexed_vector =
-        IndexedVectorType::get(ctx, shmem_tensor_size, elem_type,
-                               IndexingMapAttr::get(ctx, write_indexing));
-    auto callee =
-        mlir::SymbolRefAttr::get(call_target_provider(transpose->operand(0)));
-
-    auto materialized = builder.create<MaterializeOp>(
-        /* result_type=*/indexed_vector,
-        /*input=*/callee_operands,
-        /*indices(dimensions)=*/tids_and_bids,
-        /*callee=*/callee,
-        /*map=*/IndexingMapAttr::get(ctx, indexing));
-
-    auto insert = builder.create<InsertOp>(
-        /*result_type=*/shmem.getType(),
-        /*source=*/materialized.getResult(),
-        /*indices(dimensions)=*/tids_and_bids,
-        /*dest=*/shmem,
-        /*map=*/identity_map);
-    shmem_tensors.push_back(insert.getResult());
+    inits.push_back(builder.create<AllocateSharedOp>(
+        RankedTensorType::get(shmem_tensor_size, elem_type)));
   }
 
-  // Produce all side outputs and then write them.
-  SmallVector<Value> side_output_inits;
+  // Add output arguments for side outputs.
+  int num_inputs = fusion.fused_instructions_computation()->num_parameters();
   for (int index : side_output_root_indices_) {
-    side_output_inits.push_back(entry_function.getArgument(num_inputs + index));
+    inits.push_back(entry_function.getArgument(num_inputs + index));
   }
+
+  IndexingMap write_indexing = GetSharedMemoryIndexing(/*read=*/false, ctx);
   auto body_builder = [&](ImplicitLocOpBuilder& nested_b,
                           ValueRange symbol_values, ValueRange map_results,
                           ValueRange output_tensors) -> SmallVector<Value> {
@@ -363,6 +358,21 @@ TransposeFusion::WriteResult TransposeFusion::EmitWriteToShMemMlir(
                            thread_and_block_ids, symbol_values, nested_b);
     };
 
+    SmallVector<Value> result_tensors;
+    auto shmem_indices = ApplyIndexing(write_indexing, thread_and_block_ids,
+                                       symbol_values, builder);
+    for (auto [transpose, output] :
+         llvm::zip(shmem_transposes_, output_tensors)) {
+      // Emit loop that writes subgraphs of transpose operands to shmem.
+      auto result_scalar = emitters::ProvideParameter(
+          root_computation, transpose,
+          /*operand_index=*/0, input_indices(transpose->operand(0)),
+          call_target_provider, entry_function, builder)[0];
+      result_tensors.push_back(builder.create<mlir::tensor::InsertOp>(
+          result_scalar, output, shmem_indices));
+    }
+
+    // Produce all side outputs and then write them.
     SmallVector<Value> side_outputs;
     SmallVector<SmallVector<Value>> side_output_indices;
     auto* root_tuple = fusion.fused_expression_root();
@@ -375,21 +385,22 @@ TransposeFusion::WriteResult TransposeFusion::EmitWriteToShMemMlir(
       side_outputs.append(param_values.begin(), param_values.end());
     }
 
-    SmallVector<Value> result_tensors;
     for (const auto& [value, indices, output] :
-         llvm::zip(side_outputs, side_output_indices, output_tensors)) {
+         llvm::zip(side_outputs, side_output_indices,
+                   output_tensors.take_back(side_output_roots_.size()))) {
       result_tensors.push_back(
           nested_b.create<mt::InsertOp>(value, output, indices));
     }
 
     return result_tensors;
   };
-  mlir::ValueRange side_output_vector;
-  if (!side_output_inits.empty()) {
-    side_output_vector =
-        emitters::EmitXlaLoopOp(builder, thread_and_block_ids,
-                                side_output_inits, indexing, body_builder);
-  }
+
+  auto indexing = GetIndexing(
+      /*input=*/true, shmem_transposes_.front()->operand(0)->shape(), ctx);
+  auto written_vector = emitters::EmitXlaLoopOp(builder, thread_and_block_ids,
+                                                inits, indexing, body_builder);
+  ValueRange written = written_vector;
+  auto shmem_tensors = written.take_front(shmem_transposes_.size());
 
   WriteResult result;
   result.shmem_tensors =
@@ -398,7 +409,8 @@ TransposeFusion::WriteResult TransposeFusion::EmitWriteToShMemMlir(
           .getResults();
   result.updated_outputs = output_args;
   for (auto [index, side_output_result] :
-       llvm::zip(side_output_root_indices_, side_output_vector)) {
+       llvm::zip(side_output_root_indices_,
+                 written.take_back(side_output_roots_.size()))) {
     result.updated_outputs[index] = side_output_result;
   }
   return result;
@@ -447,41 +459,6 @@ void TransposeFusion::EmitReadFromShMemMlir(
       });
 
   builder.create<ReturnOp>(result_tensors);
-}
-
-std::vector<emitters::EpilogueSpecification> TransposeFusion::GetEpilogues(
-    const HloFusionInstruction& fusion, MLIRContext* mlir_context) const {
-  std::vector<emitters::EpilogueSpecification> epilogues{
-      GetEpilogueForOutputIndexing(analysis_, shmem_transposes_,
-                                   shmem_transpose_roots_, mlir_context)};
-  // Add empty epilogues for the side outputs. This ensures their roots don't
-  // get "fused" into the tuple function.
-  for (const auto* root : side_output_roots_) {
-    epilogues.push_back(emitters::EpilogueSpecification::FromIdentityIndexing(
-        root, root, mlir_context));
-  }
-  return epilogues;
-}
-
-absl::Status TransposeFusion::EmitEntryFunction(
-    const emitters::PartitionedComputations& computations,
-    const emitters::CallTargetProvider& call_targets,
-    mlir::func::FuncOp entry_function,
-    const HloFusionInstruction& fusion) const {
-  const auto& root_computation = computations.FindPartitionedComputation(
-      fusion.fused_instructions_computation());
-  // Write intermediate results to shmem.
-  mlir::ImplicitLocOpBuilder builder(entry_function.getLoc(), entry_function);
-  builder.setInsertionPointToStart(entry_function.addEntryBlock());
-  auto thread_and_block_ids = EmitThreadAndBlockIds(builder);
-  auto written = EmitWriteToShMemMlir(
-      builder, entry_function, fusion, root_computation, call_targets,
-      entry_function.getArguments().take_back(analysis_.fusion_roots().size()),
-      thread_and_block_ids);
-  // Read intermediate results from shmem and compute epilogues.
-  EmitReadFromShMemMlir(builder, entry_function, fusion, computations, written,
-                        thread_and_block_ids);
-  return absl::OkStatus();
 }
 
 llvm::SmallVector<mlir::AffineExpr, 4> TransposeFusion::GetThreadOffsets(
@@ -555,7 +532,7 @@ PackedTranspose::PackedTranspose(const HloFusionAnalysis& analysis,
                                  const TransposeSpec& spec,
                                  absl::Span<const int64_t> output_block_tile,
                                  int64_t num_warps)
-    : analysis_(analysis),
+    : TransposeFusionBase(analysis),
       spec_(spec),
       output_tile_(output_block_tile.begin(), output_block_tile.end()),
       input_tile_(Permute(output_tile_, spec_.canonical_inv_permutation)),
@@ -795,48 +772,13 @@ void PackedTranspose::EmitReadFromShMemMlir(
   builder.create<ReturnOp>(outer_loop_results);
 }
 
-std::vector<emitters::EpilogueSpecification> PackedTranspose::GetEpilogues(
-    const HloFusionInstruction& fusion, MLIRContext* mlir_context) const {
-  std::vector<emitters::EpilogueSpecification> epilogues{
-      GetEpilogueForOutputIndexing(analysis_, shmem_transposes_,
-                                   shmem_transpose_roots_, mlir_context)};
-  // Add empty epilogues for the side outputs. This ensures their roots don't
-  // get "fused" into the tuple function.
-  for (const auto* root : side_output_roots_) {
-    epilogues.push_back(emitters::EpilogueSpecification::FromIdentityIndexing(
-        root, root, mlir_context));
-  }
-  return epilogues;
-}
-
-absl::Status PackedTranspose::EmitEntryFunction(
-    const emitters::PartitionedComputations& computations,
-    const emitters::CallTargetProvider& call_targets,
-    mlir::func::FuncOp entry_function,
-    const HloFusionInstruction& fusion) const {
-  const auto& root_computation = computations.FindPartitionedComputation(
-      fusion.fused_instructions_computation());
-  // Write intermediate results to shmem.
-  mlir::ImplicitLocOpBuilder builder(entry_function.getLoc(), entry_function);
-  builder.setInsertionPointToStart(entry_function.addEntryBlock());
-  auto thread_and_block_ids = EmitThreadAndBlockIds(builder);
-  auto written = EmitWriteToShMemMlir(
-      builder, entry_function, fusion, root_computation, call_targets,
-      entry_function.getArguments().take_back(analysis_.fusion_roots().size()),
-      thread_and_block_ids);
-  // Read intermediate results from shmem and compute epilogues.
-  EmitReadFromShMemMlir(builder, entry_function, fusion, computations, written,
-                        thread_and_block_ids);
-  return absl::OkStatus();
-}
-
 IndexingMap PackedTranspose::GetInputIndexing(MLIRContext* ctx) const {
   // Dimensions variables.
   auto thread_id = getAffineDimExpr(
       KernelFusionInterface::kIndexingMapThreadIdxDims[0], ctx);
   auto block_id =
       getAffineDimExpr(KernelFusionInterface::kIndexingMapBlockIdxDims[0], ctx);
-  auto warp_size = WarpSize(analysis_.device_info());
+  auto warp_size = kNumShmemBanks;
   auto lane_id = thread_id % warp_size;
   auto warp_id = thread_id.floorDiv(warp_size);
   std::vector<IndexingMap::Variable> dim_vars = DimVarsFromGPUGrid(
@@ -897,7 +839,7 @@ IndexingMap PackedTranspose::GetShmemWriteIndexing(
   // Dimensions variables.
   auto thread_id = getAffineDimExpr(
       KernelFusionInterface::kIndexingMapThreadIdxDims[0], ctx);
-  auto warp_size = WarpSize(analysis_.device_info());
+  auto warp_size = kNumShmemBanks;
   auto lane_id = thread_id % warp_size;
   auto warp_id = thread_id.floorDiv(warp_size);
   std::vector<IndexingMap::Variable> dim_vars = DimVarsFromGPUGrid(
@@ -929,7 +871,7 @@ IndexingMap PackedTranspose::GetShmemReadIndexing(
   // Dimensions variables.
   auto thread_id = getAffineDimExpr(
       KernelFusionInterface::kIndexingMapThreadIdxDims[0], ctx);
-  auto warp_size = WarpSize(analysis_.device_info());
+  auto warp_size = kNumShmemBanks;
   auto lane_id = thread_id % warp_size;
   auto warp_id = thread_id.floorDiv(warp_size);
   std::vector<IndexingMap::Variable> dim_vars = DimVarsFromGPUGrid(
@@ -966,7 +908,7 @@ IndexingMap PackedTranspose::GetOutputIndexing(mlir::MLIRContext* ctx) const {
       KernelFusionInterface::kIndexingMapThreadIdxDims[0], ctx);
   auto block_id =
       getAffineDimExpr(KernelFusionInterface::kIndexingMapBlockIdxDims[0], ctx);
-  auto warp_size = WarpSize(analysis_.device_info());
+  auto warp_size = kNumShmemBanks;
   auto lane_id = thread_id % warp_size;
   auto warp_id = thread_id.floorDiv(warp_size);
   std::vector<IndexingMap::Variable> dim_vars = DimVarsFromGPUGrid(
@@ -1024,18 +966,12 @@ IndexingMap PackedTranspose::GetOutputIndexing(mlir::MLIRContext* ctx) const {
 
 std::unique_ptr<EmitterBase> CreateTransposeFusion(
     const HloFusionAnalysis& analysis) {
-  auto transpose_it = absl::c_find_if(
-      analysis.fusion_heroes(), [](const HloInstructionAdaptor& hero) {
-        return hero.opcode() == HloOpcode::kTranspose;
-      });
-  if (transpose_it != analysis.fusion_heroes().end()) {
-    auto spec = GetTransposeSpec(
-        Cast<HloTransposeInstruction>(&transpose_it->instruction()));
-    auto packed_transpose_tile = GetPackedTransposeTileSizes(spec);
-    if (packed_transpose_tile.ok()) {
-      return std::make_unique<PackedTranspose>(
-          analysis, spec, *packed_transpose_tile, /* num_warps= */ 4);
-    }
+  auto spec = GetTransposeSpec(
+      Cast<HloTransposeInstruction>(analysis.tiled_transpose().instr));
+  auto packed_transpose_tile = GetPackedTransposeTileSizes(spec);
+  if (packed_transpose_tile.ok()) {
+    return std::make_unique<PackedTranspose>(
+        analysis, spec, *packed_transpose_tile, /* num_warps= */ 4);
   }
   return std::make_unique<TransposeFusion>(analysis);
 }

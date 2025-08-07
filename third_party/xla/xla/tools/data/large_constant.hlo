@@ -1,0 +1,8 @@
+HloModule f
+ENTRY f {
+  p0 = s32[12] parameter(0)
+  c1 = s32[12] constant({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11})
+  c2 = s32[12] constant({10, 6, 3, 2, 5, 3, 7, 4, 2, 3, 1, 0})
+  x = s32[12] multiply(p0, c1)
+  ROOT y = s32[12] add(x, c2)
+}

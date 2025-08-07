@@ -42,6 +42,7 @@ limitations under the License.
 namespace mlir {
 namespace quant {
 namespace {
+
 constexpr StringRef kDequantizeFunctionName = "composite_dequantize";
 constexpr StringRef kUniformQuantizationFunctionName = "uniform";
 

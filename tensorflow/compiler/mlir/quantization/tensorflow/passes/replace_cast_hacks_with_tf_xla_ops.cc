@@ -16,28 +16,39 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/Traits.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/constant_fold.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/utils/tf_to_xla_attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "xla/xla_data.pb.h"
@@ -110,12 +121,12 @@ Value CreateZeroPointPartialOffset(OpBuilder &builder, Location loc,
   auto zp = CreateScalarConstValue<int32_t>(builder, loc, other_tensor_zp);
 
   TensorType tensor_type = mlir::dyn_cast<TensorType>(tensor.getType());
-  Value tensor_i32 = builder.create<TF::CastOp>(
-      loc, tensor_type.clone(builder.getIntegerType(32)), tensor);
+  Value tensor_i32 = TF::CastOp::create(
+      builder, loc, tensor_type.clone(builder.getIntegerType(32)), tensor);
   auto reduced =
-      builder.create<TF::SumOp>(loc, tensor_i32, reduction_indices_value,
-                                /*keep_dims=*/builder.getBoolAttr(true));
-  auto mul_op = builder.create<TF::MulOp>(loc, zp, reduced);
+      TF::SumOp::create(builder, loc, tensor_i32, reduction_indices_value,
+                        /*keep_dims=*/builder.getBoolAttr(true));
+  auto mul_op = TF::MulOp::create(builder, loc, zp, reduced);
 
   SmallVector<Value> folded_results = ConstantFoldOpIfPossible(mul_op);
   return folded_results.front();
@@ -158,21 +169,22 @@ Value MergeZeroPointOffset(OpBuilder &builder, Location loc, Value weight,
 
   if (!weight_non_output_dynamic_indices.empty()) {
     // Has dynamic shapes.
-    auto weight_shape_op = builder.create<TF::ShapeOp>(
-        loc, weight, /*use32Bit=*/builder.getBoolAttr(false));
+    auto weight_shape_op = TF::ShapeOp::create(
+        builder, loc, weight, /*use32Bit=*/builder.getBoolAttr(false));
 
     auto slice_output_type = RankedTensorType::get({1}, builder.getI64Type());
     auto slice_stride = CreateConstValue<int64_t>(builder, loc, {1}, {1});
     for (int64_t weight_idx : weight_non_output_dynamic_indices) {
       auto start = CreateConstValue<int64_t>(builder, loc, {1}, {weight_idx});
       auto end = CreateConstValue<int64_t>(builder, loc, {1}, {weight_idx + 1});
-      auto sliced_shape_op = builder.create<TF::StridedSliceOp>(
-          loc, slice_output_type, weight_shape_op, start, end, slice_stride);
+      auto sliced_shape_op =
+          TF::StridedSliceOp::create(builder, loc, slice_output_type,
+                                     weight_shape_op, start, end, slice_stride);
       if (accum_dynamic_dim == nullptr) {
         accum_dynamic_dim = sliced_shape_op->getResults().front();
       } else {
         accum_dynamic_dim =
-            builder.create<TF::MulOp>(loc, accum_dynamic_dim, sliced_shape_op)
+            TF::MulOp::create(builder, loc, accum_dynamic_dim, sliced_shape_op)
                 ->getResults()
                 .front();
       }
@@ -186,20 +198,19 @@ Value MergeZeroPointOffset(OpBuilder &builder, Location loc, Value weight,
       CreateScalarConstValue<int32_t>(builder, loc, zp_constant_offset);
   if (accum_dynamic_dim != nullptr) {
     accum_dynamic_dim =
-        builder
-            .create<TF::CastOp>(
-                loc, RankedTensorType::get({1}, builder.getI32Type()),
-                accum_dynamic_dim)
+        TF::CastOp::create(builder, loc,
+                           RankedTensorType::get({1}, builder.getI32Type()),
+                           accum_dynamic_dim)
             ->getResults()
             .front();
     auto mul_op =
-        builder.create<TF::MulOp>(loc, accum_dynamic_dim, zp_offset_value);
+        TF::MulOp::create(builder, loc, accum_dynamic_dim, zp_offset_value);
     zp_offset_value = mul_op->getResults().front();
   }
 
-  auto offset_sum = builder.create<TF::AddOp>(loc, zp_input_contribution,
-                                              zp_weight_contribution);
-  auto offset_op = builder.create<TF::SubOp>(loc, offset_sum, zp_offset_value);
+  auto offset_sum = TF::AddOp::create(builder, loc, zp_input_contribution,
+                                      zp_weight_contribution);
+  auto offset_op = TF::SubOp::create(builder, loc, offset_sum, zp_offset_value);
 
   SmallVector<Value> folded_results = ConstantFoldOpIfPossible(offset_op);
   return folded_results.front();
@@ -304,8 +315,8 @@ Operation *Create1sMatrix(OpBuilder &builder, Location loc,
                           const SmallVector<int64_t> &shape) {
   SmallVector<int64_t> shape_ones(/*Size=*/shape.size(), /*Value=*/1);
 
-  return builder.create<TF::BroadcastToOp>(
-      loc, RankedTensorType::get(shape, builder.getIntegerType(32)),
+  return TF::BroadcastToOp::create(
+      builder, loc, RankedTensorType::get(shape, builder.getIntegerType(32)),
       CreateConstValue<int32_t>(builder, loc, shape_ones, {1}),
       Create1DConstValue(builder, loc, shape));
 }
@@ -508,8 +519,8 @@ Value CreateZeroPointPartialOffsetXlaDotV2(
   auto zp = CreateScalarConstValue<int32_t>(builder, loc, other_tensor_zp);
 
   TensorType tensor_type = mlir::dyn_cast<TensorType>(tensor.getType());
-  Value tensor_i32 = builder.create<TF::CastOp>(
-      loc, tensor_type.clone(builder.getIntegerType(32)), tensor);
+  Value tensor_i32 = TF::CastOp::create(
+      builder, loc, tensor_type.clone(builder.getIntegerType(32)), tensor);
 
   // Figure out the shape of einsum opponent pseudo-input.
   SmallVector<int64_t> opponent_shape;
@@ -567,14 +578,15 @@ Value CreateZeroPointPartialOffsetXlaDotV2(
                                         out_dims);
   }
 
-  Value reduced = builder.create<TF::EinsumOp>(
-      loc, RankedTensorType::get(output_shape, builder.getIntegerType(32)),
+  Value reduced = TF::EinsumOp::create(
+      builder, loc,
+      RankedTensorType::get(output_shape, builder.getIntegerType(32)),
       input_arguments, builder.getStringAttr(einsum_equation));
 
   reduced.getDefiningOp()->setAttr(
       kTfQuantCreatedEinsum,
       BoolAttr::get(reduced.getDefiningOp()->getContext(), true));
-  auto mul_op = builder.create<TF::MulOp>(loc, zp, reduced);
+  auto mul_op = TF::MulOp::create(builder, loc, zp, reduced);
   SmallVector<Value> folded_results = ConstantFoldOpIfPossible(mul_op);
   return folded_results.front();
 }
@@ -674,14 +686,12 @@ Value CreateXlaConvOp(OpBuilder &builder, Location loc, Value input,
 
   std::string precision_config_str;
   Value xla_conv_output =
-      builder
-          .create<TF::XlaConvV2Op>(
-              loc, /*output_type=*/conv_output.getType(),
-              /*lhs=*/input,
-              /*rhs=*/filter, window_strides, padding, lhs_dilation,
-              rhs_dilation, feature_group_count,
-              builder.getStringAttr(dnums.SerializeAsString()),
-              /*precision_config=*/builder.getStringAttr(precision_config_str))
+      TF::XlaConvV2Op::create(
+          builder, loc, /*output_type=*/conv_output.getType(),
+          /*lhs=*/input,
+          /*rhs=*/filter, window_strides, padding, lhs_dilation, rhs_dilation,
+          feature_group_count, builder.getStringAttr(dnums.SerializeAsString()),
+          /*precision_config=*/builder.getStringAttr(precision_config_str))
           .getOutput();
 
   // Dynamic-range quantization wil always fall into this case.
@@ -692,7 +702,7 @@ Value CreateXlaConvOp(OpBuilder &builder, Location loc, Value input,
       /*weight_zp=*/0,
       /*input_output_dims=*/ArrayRef<int64_t>({0}),
       /*weight_output_dims=*/ArrayRef<int64_t>({num_dims - 1}));
-  return builder.create<TF::SubOp>(loc, xla_conv_output, zp_offset).getZ();
+  return TF::SubOp::create(builder, loc, xla_conv_output, zp_offset).getZ();
 }
 
 // Creates a XlaConvV2Op from TF Conv2DOp and returns its output. The returned
@@ -736,8 +746,8 @@ Value CreateXlaConvOpFromTfDepthwiseConv2dOp(
   SmallVector<int64_t> new_filter_shape{
       filter_shape.getDimSize(0), filter_shape.getDimSize(1), 1,
       filter_shape.getDimSize(2) * filter_shape.getDimSize(3)};
-  Value new_filter = builder.create<TF::ReshapeOp>(
-      loc,
+  Value new_filter = TF::ReshapeOp::create(
+      builder, loc,
       RankedTensorType::get(new_filter_shape, filter_shape.getElementType()),
       filter, Create1DConstValue(builder, loc, new_filter_shape));
   return CreateXlaConvOp(builder, loc, input, new_filter, input_zp, conv_output,
@@ -788,14 +798,13 @@ Value CreateXlaDotV2Op(OpBuilder &builder, Location loc, Value input,
   std::string precision_config_str;
 
   Value dot_result =
-      builder
-          .create<TF::XlaDotV2Op>(
-              loc, /*output=*/output.getType(),
-              /*lhs=*/input,
-              /*rhs=*/weight,
-              /*dimension_numbers=*/
-              builder.getStringAttr(dnums.SerializeAsString()),
-              /*precision_config=*/builder.getStringAttr(precision_config_str))
+      TF::XlaDotV2Op::create(
+          builder, loc, /*output=*/output.getType(),
+          /*lhs=*/input,
+          /*rhs=*/weight,
+          /*dimension_numbers=*/
+          builder.getStringAttr(dnums.SerializeAsString()),
+          /*precision_config=*/builder.getStringAttr(precision_config_str))
           .getResult();
 
   if (input_zp_value == 0) return dot_result;
@@ -804,7 +813,7 @@ Value CreateXlaDotV2Op(OpBuilder &builder, Location loc, Value input,
       builder, loc, input, weight, input_zp_value, weight_zp_value, dnums,
       mlir::cast<ShapedType>(output.getType()).getRank());
 
-  return builder.create<TF::SubOp>(loc, dot_result, zp_offset);
+  return TF::SubOp::create(builder, loc, dot_result, zp_offset);
 }
 
 Value CreateXlaDotV2OpFromTfMatMulOp(OpBuilder &builder, Location loc,
@@ -815,7 +824,7 @@ Value CreateXlaDotV2OpFromTfMatMulOp(OpBuilder &builder, Location loc,
   // Transpose and constant-fold the weight if needed.
   if (transpose_b.getValue()) {
     Value perm = Create1DConstValue<int32_t>(builder, loc, {1, 0});
-    auto transpose_op = builder.create<TF::TransposeOp>(loc, weight, perm);
+    auto transpose_op = TF::TransposeOp::create(builder, loc, weight, perm);
     weight = ConstantFoldOpIfPossible(transpose_op).front();
   }
 
@@ -897,11 +906,11 @@ void BroadcastBatchDimensionsForBatchMatMul(OpBuilder &builder, Location loc,
 
   if (broadcasted_input_type.hasStaticShape() &&
       broadcasted_weight_type.hasStaticShape()) {
-    input = builder.create<TF::BroadcastToOp>(
-        loc, broadcasted_input_type, input,
+    input = TF::BroadcastToOp::create(
+        builder, loc, broadcasted_input_type, input,
         Create1DConstValue(builder, loc, broadcasted_shapes_or->first));
-    weight = builder.create<TF::BroadcastToOp>(
-        loc, broadcasted_weight_type, weight,
+    weight = TF::BroadcastToOp::create(
+        builder, loc, broadcasted_weight_type, weight,
         Create1DConstValue(builder, loc, broadcasted_shapes_or->second));
     return;
   }
@@ -915,27 +924,31 @@ void BroadcastBatchDimensionsForBatchMatMul(OpBuilder &builder, Location loc,
       Create1DConstValue<int32_t>(builder, loc, {num_weight_batch_dim});
 
   // Decompose the input and weight shape into batch and matmul dimensions.
-  Value input_shape = builder.create<TF::ShapeOp>(
-      loc, input, /*use32Bit=*/builder.getBoolAttr(false));
-  Value input_batch_dims = builder.create<TF::SliceOp>(
-      loc, RankedTensorType::get({num_input_batch_dim}, builder.getI64Type()),
+  Value input_shape = TF::ShapeOp::create(
+      builder, loc, input, /*use32Bit=*/builder.getBoolAttr(false));
+  Value input_batch_dims = TF::SliceOp::create(
+      builder, loc,
+      RankedTensorType::get({num_input_batch_dim}, builder.getI64Type()),
       input_shape, zero, num_input_batch_dim_value);
-  Value input_matmul_dims = builder.create<TF::SliceOp>(
-      loc, RankedTensorType::get({num_matmul_dim}, builder.getI64Type()),
+  Value input_matmul_dims = TF::SliceOp::create(
+      builder, loc,
+      RankedTensorType::get({num_matmul_dim}, builder.getI64Type()),
       input_shape, num_input_batch_dim_value, num_matmul_dim_value);
 
-  Value weight_shape = builder.create<TF::ShapeOp>(
-      loc, weight, /*use32Bit=*/builder.getBoolAttr(false));
-  Value weight_batch_dims = builder.create<TF::SliceOp>(
-      loc, RankedTensorType::get({num_weight_batch_dim}, builder.getI64Type()),
+  Value weight_shape = TF::ShapeOp::create(
+      builder, loc, weight, /*use32Bit=*/builder.getBoolAttr(false));
+  Value weight_batch_dims = TF::SliceOp::create(
+      builder, loc,
+      RankedTensorType::get({num_weight_batch_dim}, builder.getI64Type()),
       weight_shape, zero, num_weight_batch_dim_value);
-  Value weight_matmul_dims = builder.create<TF::SliceOp>(
-      loc, RankedTensorType::get({num_matmul_dim}, builder.getI64Type()),
+  Value weight_matmul_dims = TF::SliceOp::create(
+      builder, loc,
+      RankedTensorType::get({num_matmul_dim}, builder.getI64Type()),
       weight_shape, num_weight_batch_dim_value, num_matmul_dim_value);
 
   // Calculate the broadcasted shapes.
-  Value broadcasted_batch_dims = builder.create<TF::BroadcastArgsOp>(
-      loc,
+  Value broadcasted_batch_dims = TF::BroadcastArgsOp::create(
+      builder, loc,
       RankedTensorType::get({broadcasted_rank - num_matmul_dim},
                             builder.getI64Type()),
       input_batch_dims, weight_batch_dims);
@@ -943,18 +956,18 @@ void BroadcastBatchDimensionsForBatchMatMul(OpBuilder &builder, Location loc,
       RankedTensorType::get({broadcasted_rank}, builder.getI64Type());
 
   const Value zero_scalar = CreateScalarConstValue<int32_t>(builder, loc, 0);
-  Value broacasted_input_shape = builder.create<TF::ConcatOp>(
-      loc, broadcasted_shape_type, /*concat_dim=*/zero_scalar,
+  Value broacasted_input_shape = TF::ConcatOp::create(
+      builder, loc, broadcasted_shape_type, /*concat_dim=*/zero_scalar,
       ValueRange{broadcasted_batch_dims, input_matmul_dims});
-  Value broacasted_weight_shape = builder.create<TF::ConcatOp>(
-      loc, broadcasted_shape_type, /*concat_dim=*/zero_scalar,
+  Value broacasted_weight_shape = TF::ConcatOp::create(
+      builder, loc, broadcasted_shape_type, /*concat_dim=*/zero_scalar,
       ValueRange{broadcasted_batch_dims, weight_matmul_dims});
 
   // Broadcast input and weight with the calculated shapes.
-  input = builder.create<TF::BroadcastToOp>(loc, broadcasted_input_type, input,
-                                            broacasted_input_shape);
-  weight = builder.create<TF::BroadcastToOp>(loc, broadcasted_weight_type,
-                                             weight, broacasted_weight_shape);
+  input = TF::BroadcastToOp::create(builder, loc, broadcasted_input_type, input,
+                                    broacasted_input_shape);
+  weight = TF::BroadcastToOp::create(builder, loc, broadcasted_weight_type,
+                                     weight, broacasted_weight_shape);
 }
 
 Value CreateXlaDotV2OpFromTfBatchMatMulOp(OpBuilder &builder, Location loc,
@@ -977,7 +990,7 @@ Value CreateXlaDotV2OpFromTfBatchMatMulOp(OpBuilder &builder, Location loc,
     perm_values.push_back(num_batch_dim + 1);
     perm_values.push_back(num_batch_dim);
     Value perm = Create1DConstValue<int32_t>(builder, loc, perm_values);
-    auto transpose_op = builder.create<TF::TransposeOp>(loc, weight, perm);
+    auto transpose_op = TF::TransposeOp::create(builder, loc, weight, perm);
     weight = ConstantFoldOpIfPossible(transpose_op).front();
   }
 

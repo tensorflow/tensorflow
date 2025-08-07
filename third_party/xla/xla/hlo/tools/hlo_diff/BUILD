@@ -20,8 +20,9 @@ cc_library(
     hdrs = ["hlo_gumgraph_mappings.h"],
     deps = [
         "//xla/hlo/tools/hlo_diff/graph:hlo_gumgraph_node",
+        "//xla/hlo/tools/hlo_diff/utils:bidirectional_map",
         "//xla/service:call_graph",
-        "@boost//:bimap",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -36,7 +37,6 @@ cc_library(
         "//xla/hlo/tools/hlo_diff/graph:hlo_gumgraph_node",
         "//xla/hlo/tools/hlo_diff/graph/utils:hlo_gumgraph_bfs",
         "//xla/hlo/tools/hlo_diff/proto:diff_result_proto_cc",
-        "//xla/hlo/tools/hlo_diff/utils:hlo_diff_util",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
@@ -70,9 +70,10 @@ cc_library(
     hdrs = ["hlo_diff_summary.h"],
     deps = [
         ":hlo_diff_result",
+        ":hlo_gumgraph_mappings",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/tools/hlo_diff/utils:bidirectional_map",
         "//xla/hlo/tools/hlo_diff/utils:connected_components",
-        "@boost//:bimap",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
@@ -114,9 +115,13 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/tools/hlo_diff/graph:hlo_gumgraph",
         "//xla/hlo/tools/hlo_diff/graph:hlo_gumgraph_node",
+        "//xla/hlo/tools/hlo_diff/matchers:bottom_up_matcher",
+        "//xla/hlo/tools/hlo_diff/matchers:exact_subgraph_matcher",
+        "//xla/hlo/tools/hlo_diff/matchers:gumgraph_matcher",
         "//xla/hlo/tools/hlo_diff/matchers:hlo_call_graph_matcher",
         "//xla/hlo/tools/hlo_diff/matchers:hlo_computation_graph_matcher",
-        "//xla/hlo/tools/hlo_diff/matchers:hlo_gumgraph_matcher",
+        "//xla/hlo/tools/hlo_diff/matchers:manual_matcher",
+        "//xla/hlo/tools/hlo_diff/matchers:top_down_matcher",
         "//xla/service:call_graph",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
@@ -124,6 +129,8 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

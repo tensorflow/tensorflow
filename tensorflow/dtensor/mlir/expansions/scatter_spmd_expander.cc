@@ -152,8 +152,9 @@ StatusOr<mlir::Operation*> TensorScatterOpExpand(mlir::Operation* op) {
                                    new_updates_layout));
 
   mlir::OpBuilder builder(op);
-  OpType new_scatter = builder.create<OpType>(
-      op->getLoc(), new_tensor.getType(), new_tensor, new_indices, new_updates);
+  OpType new_scatter =
+      OpType::create(builder, op->getLoc(), new_tensor.getType(), new_tensor,
+                     new_indices, new_updates);
 
   TF_ASSIGN_OR_RETURN(
       mlir::Value new_output,
@@ -367,8 +368,9 @@ StatusOr<mlir::Operation*> ScatterNdOpSPMDExpander::ExpandOp(
       output_layout.LocalShapeFromGlobalShape(global_shape);
 
   mlir::OpBuilder builder(op);
-  mlir::Operation* new_scatter = builder.create<mlir::TF::ScatterNdOp>(
-      op->getLoc(), op->getResult(0).getType(), new_indices, new_updates,
+  mlir::Operation* new_scatter = mlir::TF::ScatterNdOp::create(
+      builder, op->getLoc(), op->getResult(0).getType(), new_indices,
+      new_updates,
       /*shape=*/
       ::mlir::TF::collection_ops_util::GetR1Const(local_shape, builder,
                                                   op->getLoc()));

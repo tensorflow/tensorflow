@@ -23,12 +23,10 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <optional>
-#include <ostream>
 #include <set>
 #include <string>
 #include <tuple>
 #include <utility>
-#include <variant>
 #include <vector>
 
 // TODO(b/210891274): Use btree_map after build issue in Windows is resolved.
@@ -37,8 +35,6 @@ limitations under the License.
 #endif
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/container/inlined_vector.h"
-#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -53,7 +49,6 @@ limitations under the License.
 #include "xla/service/hlo_value.h"
 #include "xla/service/memory_space_assignment/allocation.h"
 #include "xla/service/memory_space_assignment/allocation_value.h"
-#include "xla/service/memory_space_assignment/buffer_interval_comparator.h"
 #include "xla/service/memory_space_assignment/memory_space_assignment.pb.h"
 #include "xla/service/memory_space_assignment/options.h"
 #include "xla/service/memory_space_assignment/slice.h"
@@ -210,11 +205,7 @@ class AsynchronousCopyResource {
   // order specified.
   bool HasEnoughResourceMultiCheck(const std::vector<ResourceSpec>& specs);
 
-  int64_t GetScaledIntegerResource(float resource) const {
-    float scaled_value = resource * kCopyResourceIntScale;
-    int64_t scaled_value_int = static_cast<int64_t>(scaled_value);
-    return scaled_value_int;
-  }
+  int64_t GetScaledIntegerResource(float resource) const;
 
   float GetDescaledFloatResource(int64_t scaled_resource) const {
     return scaled_resource / kCopyResourceIntScale;
@@ -240,7 +231,7 @@ class AsynchronousCopyResource {
   // The scale factor to convert a float resource to an integer resource. Note
   // that is a power of 2 to avoid introducing noise when casting the scaled
   // value to an int64_t.
-  static constexpr int64_t kCopyResourceIntScale = 1ULL << 50;
+  static constexpr int64_t kCopyResourceIntScale = 1ULL << 40;
 
  private:
   // Internal helper method to implement adding/removing/checking resources.
@@ -342,6 +333,22 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   bool RepackAllocationsIncludeConvertedSyncMemOp();
 
   absl::StatusOr<HeapSimulator::Result<HloValue>> Finish() override;
+
+  // Finalizes allocations for block-allocated weights.
+  void AllocateBlockAllocatedWeights();
+
+  // Returns the maximum amount of scoped memory that is reserved at any time in
+  // the program.
+  int64_t MaxReservedScopedMemory();
+
+  // Returns the earliest time that chunk can be reserved for a block-allocated
+  // weight where the start time is between [definition_time, use_time] and
+  // use_time and the end time is the use_time. The chunk.end() should be less
+  // than the block_allocated_weights_bytes_limit.
+  std::optional<int64_t> EarliestBlockAllocatedWeightStartTime(
+      int64_t definition_time, int64_t use_time, int64_t buffer_size,
+      int64_t block_allocated_weights_bytes_limit,
+      std::vector<int64_t>& prefetch_end_times);
 
  protected:
   // Given a buffer interval, returns the colocated intervals. Unlike the
@@ -1061,16 +1068,18 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
       int exclusive_start_time, int end_time, int64_t size) const;
 
   // Creates and returns a RepackAllocationBlock.
-  static RepackAllocationBlock MakeRepackAllocationBlock(
-      int64_t start_time, int64_t end_time, int64_t size,
-      int64_t initial_offset, int64_t id, Allocation* allocation) {
+  RepackAllocationBlock MakeRepackAllocationBlock(int64_t start_time,
+                                                  int64_t end_time,
+                                                  int64_t size,
+                                                  int64_t initial_offset,
+                                                  Allocation* allocation) {
     RepackAllocationBlock allocation_block;
     allocation_block.inclusive_start_time = start_time;
     allocation_block.end_time = end_time;
     allocation_block.size = size;
     allocation_block.offset = -1;
     allocation_block.initial_offset = initial_offset;
-    allocation_block.id = id;
+    allocation_block.id = next_repack_allocation_block_id_++;
     allocation_block.next_colocated = nullptr;
     allocation_block.allocation = allocation;
     return allocation_block;
@@ -1123,8 +1132,31 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   void UpdateRequestWithDefaultMemoryColoringRequirements(
       AllocationRequest& request);
 
+  // Whether an hlo position is colored in alternate memory.
+  bool IsPositionColoredInAlternateMemory(const HloPosition& position) const;
+
+  // Whether an hlo use is colored in alternate memory.
+  bool IsUseColoredInAlternateMemory(const HloUse& use) const;
+
+  // Whether an hlo position is colored in default memory.
+  bool IsPositionColoredInDefaultMemory(const HloPosition& position) const;
+
+  // Whether an hlo use is colored in default memory.
+  bool IsUseColoredInDefaultMemory(const HloUse& use) const;
+
+  // Whether an hlo position is colored in alternate memory at the given time.
+  bool IsPositionColoredInAlternateMemoryAtTime(const HloPosition& position,
+                                                int64_t time) const;
+
+  // Whether an hlo position is colored in default memory at the given time.
+  bool IsPositionColoredInDefaultMemoryAtTime(const HloPosition& position,
+                                              int64_t time) const;
+
   HloModule* module_ = nullptr;
   AllocationSequence* allocations_;
+  // Edge time indices store start and end times allocations in alternate
+  // memory. We can use this to skip redundant calls to FindChunkCandidate.
+  absl::flat_hash_set<int64_t> edge_time_indices_;
   const Options& options_;
   const HloAliasAnalysis& alias_analysis_;
   const HloLiveRange& hlo_live_range_;
@@ -1140,6 +1172,7 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // used for repacking. We use a list here because we need pointer stability
   // for aliased allocations.
   std::list<RepackAllocationBlock> repack_allocation_blocks_;
+  int64_t next_repack_allocation_block_id_ = 0;
   int64_t num_repacks_ = 0;
   int64_t num_repacks_successful_ = 0;
   std::vector<std::pair<MsaBufferInterval, Chunk>> pending_chunks_;
@@ -1212,13 +1245,13 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   std::string allocation_info_str_;
   std::string instruction_schedule_str_;
 
-  // Maps an HloPosition to the chunk intervals that are reserved for it in
-  // alternate memory, in order to satisfy buffer coloring requirements.
+  // Maps defining HloPositions to the chunk intervals that are reserved for it
+  // in alternate memory, in order to satisfy buffer coloring requirements.
   absl::flat_hash_map<HloPosition,
                       std::vector<std::unique_ptr<ReservedAllocation>>>
       reserved_allocations_for_alt_mem_colorings_;
 
-  // Maps an HloPosition to the list of times it is required to be in
+  // Maps defining HloPositions to the list of times it is required to be in
   // default memory, to meet buffer coloring requirements.
   absl::flat_hash_map<HloPosition, std::vector<int64_t>>
       default_memory_coloring_requirements_;

@@ -156,7 +156,8 @@ OperandLayoutConstraint::OperandLayoutConstraint(
       operand_no_(operand_no) {
   CHECK(shape_layout.LayoutIsSet());
   CHECK(ShapeUtil::CompatibleKind(shape_layout.shape(),
-                                  instruction->operand(operand_no)->shape()))
+                                  instruction->operand(operand_no)->shape(),
+                                  /*ignore_buffer=*/true))
       << shape_layout.shape() << " is not compatible with "
       << instruction->operand(operand_no)->shape() << " (for operand "
       << operand_no << " of instruction " << instruction->ToString() << ")";
@@ -334,7 +335,7 @@ absl::Status LayoutAssignment::SetBufferLayout(const Layout& layout,
 absl::Status LayoutAssignment::SetOperandLayout(
     const Shape& shape_with_layout, const HloInstruction* instruction,
     int64_t operand_no, bool mandatory, bool dfs, int64_t priority) {
-  if (shape_with_layout.IsArray() && shape_with_layout.dimensions_size() == 0) {
+  if (shape_with_layout.IsArray() && shape_with_layout.dimensions().empty()) {
     return absl::OkStatus();
   }
   LayoutConstraints& constraints =
@@ -507,8 +508,8 @@ absl::Status LayoutAssignment::SetInstructionLayout(
       !InstructionCanChangeLayoutInstance(instruction)) {
     VLOG(3) << "Setting operand layout: " << instruction->ToString();
     for (int i = 0; i < instruction->operand_count(); ++i) {
-      if (instruction->operand(i)->shape().dimensions_size() ==
-          shape_with_layout.dimensions_size()) {
+      if (instruction->operand(i)->shape().dimensions().size() ==
+          shape_with_layout.dimensions().size()) {
         TF_RETURN_IF_ERROR(SetArrayOperandLayout(
             shape_with_layout.layout(), instruction, /*operand_no=*/i,
             /*mandatory=*/mandatory, /*dfs=*/dfs, priority));
@@ -732,7 +733,7 @@ absl::Status LayoutAssignment::AddMandatoryConstraints(
       for (int64_t i = 0; i < instruction->operand_count(); ++i) {
         CHECK(instruction->shape().IsArray() ||
               instruction->shape().IsTuple() &&
-                  instruction->shape().tuple_shapes_size() > i);
+                  instruction->shape().tuple_shapes().size() > i);
         const Shape& shape = instruction->shape().IsTuple()
                                  ? instruction->shape().tuple_shapes(i)
                                  : instruction->shape();
@@ -1135,7 +1136,8 @@ absl::StatusOr<HloInstruction*> LayoutAssignment::CreateCopyWithNewLayout(
     TF_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
         shape_with_layout, tuple_copy->mutable_shape()));
     return tuple_copy;
-  } else if (instruction->shape().IsArray()) {
+  }
+  if (instruction->shape().IsArray()) {
     HloInstruction* copy =
         instruction->parent()->AddInstruction(HloInstruction::CreateUnary(
             instruction->shape(), HloOpcode::kCopy, instruction));
@@ -1146,10 +1148,10 @@ absl::StatusOr<HloInstruction*> LayoutAssignment::CreateCopyWithNewLayout(
         shape_with_layout, copy->mutable_shape()));
 
     return copy;
-  } else {
+  }
+
     return FailedPrecondition(
         "Can only copy array and tuple shaped instructions");
-  }
 }
 
 // Creates a copy of the given operand if the operand's layout does not match
@@ -1264,6 +1266,7 @@ absl::Status LayoutAssignment::CheckLayouts(
               for (const LogicalBuffer* buffer : buffers) {
                 if (!Shape::Equal()
                          .IgnoreDynamicDimension()
+                         .IgnoreBuffer()
                          .MinorToMajorOnlyInLayout()(instruction_subshape,
                                                      buffer->shape())) {
                   return Internal(
@@ -1372,8 +1375,8 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
   CHECK(instruction->shape().IsArray());
   CHECK(operand->shape().IsArray());
   if (!ShapeUtil::IsScalar(operand->shape()) &&
-      operand->shape().dimensions_size() ==
-          instruction->shape().dimensions_size() &&
+      operand->shape().dimensions().size() ==
+          instruction->shape().dimensions().size() &&
       !InstructionCanChangeLayoutInstance(instruction)) {
     // Propagate the result layout to the operand layout if the instruction
     // requires the same layout out for the result and the operand.
@@ -1417,7 +1420,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
 
   if (instruction->opcode() == HloOpcode::kTranspose) {
     // Pick the operand layout that makes the transpose a bitcast.
-    int64_t rank = instruction->shape().dimensions_size();
+    int64_t rank = instruction->shape().dimensions().size();
     std::vector<int64_t> new_minor_to_major(rank);
     for (int64_t i = 0; i < rank; ++i) {
       int64_t output_dim = LayoutUtil::Minor(output_layout, i);
@@ -1434,8 +1437,8 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
       !instruction->shape().IsTuple() &&
       PropagateReductionLayoutToOperand(instruction)) {
     // Pick the operand layout that makes the reduce a row reduction.
-    int64_t rank = instruction->shape().dimensions_size();
-    int64_t operand_rank = instruction->operand(0)->shape().dimensions_size();
+    int64_t rank = instruction->shape().dimensions().size();
+    int64_t operand_rank = instruction->operand(0)->shape().dimensions().size();
     std::vector<int64_t> new_minor_to_major;
     new_minor_to_major.reserve(operand_rank);
     new_minor_to_major.insert(new_minor_to_major.begin(),
@@ -1519,7 +1522,8 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
       << "Fails on instruction: " << user->ToString();
 
   if (!ShapeUtil::IsScalar(operand->shape()) &&
-      operand->shape().dimensions_size() == user->shape().dimensions_size() &&
+      operand->shape().dimensions().size() ==
+          user->shape().dimensions().size() &&
       !InstructionCanChangeLayoutInstance(user)) {
     // Assign users the same layout as the operand.
     return std::make_unique<Layout>(operand_layout);
@@ -1555,7 +1559,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
 
   if (user->opcode() == HloOpcode::kTranspose) {
     // Pick the user layout that makes the transpose a bitcast.
-    int64_t rank = user->shape().dimensions_size();
+    int64_t rank = user->shape().dimensions().size();
     std::vector<int64_t> new_minor_to_major(rank);
     auto inverse_dimensions = InversePermutation(user->dimensions());
     for (int64_t i = 0; i < rank; ++i) {
@@ -1694,7 +1698,7 @@ bool InstructionShouldPropagateDepthFirst(const HloInstruction& hlo) {
     case HloOpcode::kGather:
       return true;
     case HloOpcode::kReshape:
-      return hlo.operand(0)->shape().dimensions_size() == 1 ||
+      return hlo.operand(0)->shape().dimensions().size() == 1 ||
              hlo.ReshapeMerelyInsertsOrDeletes1SizedDimensions().has_value();
     case HloOpcode::kScatter:
     case HloOpcode::kTranspose:
@@ -1705,6 +1709,33 @@ bool InstructionShouldPropagateDepthFirst(const HloInstruction& hlo) {
 }
 
 }  // namespace
+
+absl::Status LayoutAssignment::PropagateOperandConstraintToResultForCustomCall(
+    const HloInstruction* user,
+    const OperandLayoutConstraint& operand_constraint) {
+  int64_t operand_no = operand_constraint.operand_no();
+  for (const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>&
+           output_operand_pair : user->output_operand_aliasing()) {
+    if (output_operand_pair.second.first != operand_no) {
+      continue;
+    }
+    ShapeIndex shape_index = output_operand_pair.first;
+    if (!points_to_analysis_->InstructionDefinesBufferAtIndex(user,
+                                                              shape_index)) {
+      return absl::OkStatus();
+    }
+    TF_ASSIGN_OR_RETURN(
+        const LogicalBuffer* buffer,
+        points_to_analysis_->GetBufferDefinedAt(user, shape_index));
+
+    return SetBufferLayout(
+        operand_constraint.shape_layout().layout(), *buffer,
+        /*mandatory=*/OperandLayoutAlwaysPropagateForward(user),
+        /*dfs=*/InstructionShouldPropagateDepthFirst(*user),
+        operand_constraint.priority());
+  }
+  return absl::OkStatus();
+}
 
 absl::Status LayoutAssignment::PropagateOperandConstraint(
     const OperandLayoutConstraint& operand_constraint,
@@ -1722,6 +1753,13 @@ absl::Status LayoutAssignment::PropagateOperandConstraint(
       constraints, operand_constraint.priority(),
       operand_constraint.instruction()));
 
+  const HloInstruction* user = operand_constraint.instruction();
+  if (user->opcode() == HloOpcode::kCustomCall) {
+    TF_RETURN_IF_ERROR(PropagateOperandConstraintToResultForCustomCall(
+        user, operand_constraint));
+  }
+  // CustomCall that can't change layout, such as TopK, are handled below.
+
   // For array-shaped operands and user instructions try to pick a minimum cost
   // layout. For example, if the operand of an elementwise instruction is
   // constrained to a certain layout we want the output of the instruction to
@@ -1732,7 +1770,6 @@ absl::Status LayoutAssignment::PropagateOperandConstraint(
   // the information that non-layout-changing instructions should have the same
   // layout for the operands with the same ranks.
   const HloInstruction* operand = operand_constraint.operand();
-  const HloInstruction* user = operand_constraint.instruction();
   if (!operand->shape().IsArray() || IsLayoutConstrainedCollective(user)) {
     return absl::OkStatus();
   }
@@ -1761,7 +1798,7 @@ absl::Status LayoutAssignment::PropagateOperandConstraint(
     return absl::OkStatus();
   }
 
-  int64_t operand_rank = operand->shape().dimensions_size();
+  int64_t operand_rank = operand->shape().dimensions().size();
   if (operand_rank <= 1) {
     return absl::OkStatus();
   }
@@ -1793,7 +1830,7 @@ absl::Status LayoutAssignment::PropagateOperandConstraint(
       if (!sibling->shape().IsArray()) {
         continue;
       }
-      const int64_t sibling_rank = sibling->shape().dimensions_size();
+      const int64_t sibling_rank = sibling->shape().dimensions().size();
       if (sibling_rank <= 1) {
         continue;
       }
@@ -1810,14 +1847,14 @@ absl::Status LayoutAssignment::PropagateOperandConstraint(
           if (subshape.IsTuple()) {
             return absl::OkStatus();
           }
-          if (subshape.dimensions_size() <= 1) {
+          if (subshape.dimensions().size() <= 1) {
             return absl::OkStatus();
           }
 
           // Assign the right layout to input fusion of higher rank reduce
           // operations.
-          if (subshape.dimensions_size() !=
-              operand->shape().dimensions_size()) {
+          if (subshape.dimensions().size() !=
+              operand->shape().dimensions().size()) {
             return absl::OkStatus();
           }
           if (!points_to_analysis_->InstructionDefinesBufferAtIndex(
@@ -1846,7 +1883,7 @@ absl::Status LayoutAssignment::PropagateOperandConstraint(
         if (subshape.IsTuple()) {
           return absl::OkStatus();
         }
-        if (subshape.dimensions_size() <= 1) {
+        if (subshape.dimensions().size() <= 1) {
           return absl::OkStatus();
         }
         if (!points_to_analysis_->InstructionDefinesBufferAtIndex(
@@ -1899,7 +1936,7 @@ absl::Status LayoutAssignment::PropagateBufferConstraintToOperands(
     if (!InstructionCanChangeLayoutInstance(instruction)) {
       // Copy the layout to the operand.
       if (buffer.IsArray() && operand->shape().IsArray() &&
-          operand->shape().dimensions_size() ==
+          operand->shape().dimensions().size() ==
               LayoutUtil::MinorToMajor(buffer_constraint.layout()).size()) {
         TF_RETURN_IF_ERROR(SetArrayOperandLayout(
             buffer_constraint.layout(), instruction, operand_no,
@@ -2228,7 +2265,7 @@ absl::Status LayoutAssignment::AssignLayouts(LayoutConstraints& constraints) {
         if (subshape->IsArray()) {
           const Shape& result_shape =
               ShapeUtil::GetSubshape(result_layout.shape(), index);
-          if (result_shape.layout().tiles_size() != 0) {
+          if (result_shape.layout().tiles().size() != 0) {
             subshape->mutable_layout()->mutable_tiles()->assign(
                 result_shape.layout().tiles().begin(),
                 result_shape.layout().tiles().end());
@@ -2939,7 +2976,7 @@ bool LayoutAssignment::InstructionCanChangeLayoutInstance(
 /* static */
 bool LayoutAssignment::IsAtMostRank1(const Shape& shape) {
   if (shape.IsArray()) {
-    return shape.dimensions_size() <= 1;
+    return shape.dimensions().size() <= 1;
   }
   if (shape.IsTuple()) {
     return absl::c_all_of(shape.tuple_shapes(), [](const Shape& subshape) {

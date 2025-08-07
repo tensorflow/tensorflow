@@ -16,17 +16,31 @@ limitations under the License.
 #include "xla/pjrt/cpu/tracked_cpu_device_buffer.h"
 
 #include <cstddef>
+#include <memory>
 #include <utility>
+#include <vector>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/alignment.h"
+#include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/cpu/cpu_event.h"
+#include "xla/pjrt/cpu/raw_buffer.h"
+#include "xla/pjrt/device_event.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_future.h"
+#include "xla/pjrt/raw_buffer.h"
+#include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
+#include "tsl/platform/casts.h"
 #include "tsl/platform/mem.h"
 
 namespace xla {
@@ -194,6 +208,87 @@ void TrackedCpuDeviceBuffer::ReleaseDeviceMemory() {
   buffer_ = tsl::AsyncValueRef<CpuDeviceMemory>();
   definition_event_.reset();
   usage_events_.clear();
+}
+
+std::vector<tsl::RCReference<tsl::AsyncValue>>
+TrackedCpuDeviceBuffer::GetAsyncValueDefinitionEvents() {
+  std::vector<tsl::RCReference<tsl::AsyncValue>> result;
+  result.push_back(definition_event_.CopyRCRef());
+  return result;
+}
+
+tsl::RCReference<CommonPjRtRawBuffer> TrackedCpuDeviceBuffer::GetRawBuffer(
+    PjRtMemorySpace* memory_space) {
+  if (!buffer_) {
+    return tsl::RCReference<CommonPjRtRawBuffer>();
+  }
+  return tsl::MakeRef<CpuRawBuffer>(memory_space, buffer_);
+}
+
+void TrackedCpuDeviceBuffer::AddUsageEvent(
+    tsl::RCReference<PjRtDeviceEvent> event) {
+  if (event) {
+    auto cpu_event =
+        tensorflow::down_cast<CpuTrackedDeviceEvent*>(event.get())->event();
+    AddUsageEvents({&cpu_event, 1});
+  }
+}
+
+void TrackedCpuDeviceBuffer::Delete(PjRtMemorySpace* memory_space) {
+  std::unique_ptr<TrackedCpuDeviceBuffer> device_buffer(this);
+  // Now that all holds have completed and no more can be added, we can get
+  // the final set of usage events.
+  absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> usage_events =
+      device_buffer->LockUseAndTransferUsageEvents();
+
+  std::vector<tsl::AsyncValue*> event_avs;
+  event_avs.reserve(usage_events.size() + 1);
+  for (auto& event : usage_events) {
+    event_avs.push_back(event.GetAsyncValue());
+  }
+
+  // We should also wait for the definition event.
+  event_avs.push_back(device_buffer->definition_event().GetAsyncValue());
+
+  RunWhenReady(event_avs, [device_buffer = std::move(device_buffer)]() mutable {
+    device_buffer.reset();
+  });
+}
+
+PjRtFuture<>::Promise TrackedCpuDeviceBuffer::GetReadyFuturePromise(
+    PjRtMemorySpace* memory_space) {
+  PjRtFuture<>::Promise promise =
+      tensorflow::down_cast<CommonPjRtClient*>(memory_space->client())
+          ->CreateUserPromise(memory_space, "BufferDefinitionEvent");
+  definition_event().AndThen(
+      [definition_event = definition_event().AsPtr(), promise]() mutable {
+        if (definition_event.IsError()) {
+          const absl::Status& s = definition_event.GetError();
+          promise.Set(tsl::errors::CreateWithUpdatedMessage(
+              s, absl::StrCat("Buffer Definition Event: ", s.message())));
+        } else {
+          promise.Set();
+        }
+      });
+  return promise;
+}
+
+absl::Status TrackedCpuDeviceBuffer::BlockForOperationsToComplete(
+    PjRtMemorySpace* memory_space) {
+  // Block the host until all usage events have completed. We do not return
+  // the error of a usage event because it does not matter if these usages
+  // failed.
+  for (const auto& av : usage_events_) {
+    BlockUntilReady(av.GetAsyncValue());
+  }
+
+  // Fetch the error from the definition event (if an error is present).
+  BlockUntilReady(definition_event_.GetAsyncValue());
+  if (auto* error = definition_event_.GetErrorIfPresent()) {
+    return absl::InternalError(
+        absl::StrFormat("Error Execute: %s", error->message()));
+  }
+  return absl::OkStatus();
 }
 
 }  // namespace xla

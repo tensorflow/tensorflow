@@ -86,4 +86,8 @@ const char kFuseLimitAttr[] = "FUSE_LIMIT";
 const char kMaximalFuseAttr[] = "MAXIMAL_FUSE";
 
 const char kCollectivesGroupAttr[] = "_collectives_group";
+
+const char kNumSlotVariables[] = "_num_slot_variables";
+
+const char kNumHyperparameters[] = "_num_hyperparameters";
 }  // namespace xla

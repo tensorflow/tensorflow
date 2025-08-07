@@ -379,6 +379,8 @@ absl::Status LaunchCudaKernel(
                            CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
                            shared_mem_bytes),
         "Failed to set shared memory size"));
+    TF_RETURN_IF_ERROR(cuda::ToStatus(
+        cuFuncSetCacheConfig(function, CU_FUNC_CACHE_PREFER_SHARED)));
   }
 
   return cuda::ToStatus(
@@ -417,6 +419,8 @@ absl::Status LaunchCudaKernel(
                            CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
                            shared_mem_bytes),
         "Failed to set shared memory size"));
+    TF_RETURN_IF_ERROR(cuda::ToStatus(
+        cuFuncSetCacheConfig(function, CU_FUNC_CACHE_PREFER_SHARED)));
   }
 
   CUlaunchConfig launch_config;

@@ -28,7 +28,6 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -74,16 +73,14 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
       const void* data, xla::ifrt::DType dtype, xla::ifrt::Shape shape,
       std::optional<absl::Span<const int64_t>> byte_strides,
       xla::ifrt::ShardingRef sharding, HostBufferSemantics semantics,
-      std::function<void()> on_done_with_host_buffer,
-      tsl::RCReference<xla::ifrt::UserContext> user_context) override;
+      std::function<void()> on_done_with_host_buffer) override;
   absl::StatusOr<std::vector<xla::ifrt::ArrayRef>>
   MakeArraysFromHostBufferShards(
       absl::Span<MakeArraysFromHostBufferShardsSpec> specs,
-      HostBufferSemantics semantics,
-      tsl::RCReference<xla::ifrt::UserContext> user_context) override;
+      HostBufferSemantics semantics) override;
   absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> MakeErrorArrays(
-      const absl::Status& error, absl::Span<const ArraySpec> array_specs,
-      tsl::RCReference<UserContext> user_context) override;
+      const absl::Status& error,
+      absl::Span<const ArraySpec> array_specs) override;
   absl::StatusOr<xla::ifrt::ArrayRef> AssembleArrayFromSingleDeviceArrays(
       DType dtype, Shape shape, ShardingRef sharding,
       absl::Span<xla::ifrt::ArrayRef> arrays,
@@ -136,7 +133,7 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
     return absl::UnimplementedError(
         "LookupAddressableDevice is not supported for the IFRT proxy client.");
   }
-  xla::ifrt::DeviceListRef MakeDeviceList(
+  absl::StatusOr<xla::ifrt::DeviceListRef> MakeDeviceList(
       absl::Span<xla::ifrt::Device* const> devices) const override;
   xla::ifrt::Compiler* GetDefaultCompiler() override {
     return &default_compiler_;
@@ -146,7 +143,7 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
     return absl::UnimplementedError(
         "GetTopologyForDevices is not supported for the IFRT proxy client.");
   }
-  absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> GetDefaultLayout(
+  absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> GetDefaultPjRtLayout(
       xla::ifrt::DType dtype, absl::Span<const int64_t> dims,
       xla::ifrt::Device* device,
       xla::ifrt::MemoryKind memory_kind) const override;
@@ -187,7 +184,8 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
          std::vector<xla::ifrt::Device*> primary_device_ptrs,
          std::vector<xla::ifrt::Device*> addressable_device_ptrs,
          std::vector<xla::ifrt::Device*> all_device_ptrs,
-         absl::flat_hash_map<int, std::unique_ptr<Memory>> memories);
+         absl::flat_hash_map<int, std::unique_ptr<Memory>> memories,
+         AttributeMap attributes);
 
   // rpc_helper_ will be referenced by various IFRT objects whose lifetime is
   // managed by the layer above the IFRT interface, so shared_ptr is

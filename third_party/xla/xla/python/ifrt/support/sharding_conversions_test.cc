@@ -250,8 +250,9 @@ TEST_P(ShardingConversionsTest, ErrorOnDeviceAssignment) {
   TF_EXPECT_OK(sharding_param.verify());
   EXPECT_THAT(
       ToHloShardingViaOpSharding(sharding_param, GetDevices({6, 5, 4, 3, 2})),
-      StatusIs(absl::StatusCode::kOutOfRange,
-               ::testing::HasSubstr("Can't map device with logical id 5")));
+      absl_testing::StatusIs(
+          absl::StatusCode::kOutOfRange,
+          ::testing::HasSubstr("Can't map device with logical id 5")));
 }
 
 TEST_P(ShardingConversionsTest, ShardingParamFullySharded) {

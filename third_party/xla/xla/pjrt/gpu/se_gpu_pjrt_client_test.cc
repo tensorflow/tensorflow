@@ -27,6 +27,7 @@ limitations under the License.
 #include <set>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -45,7 +46,9 @@ limitations under the License.
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OwningOpRef.h"
 #include "xla/debug_options_flags.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
@@ -55,10 +58,10 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/pjrt/compile_options.pb.h"
 #include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/distributed/distributed.h"
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
+#include "xla/pjrt/distributed/service.h"
 #include "xla/pjrt/gpu/gpu_topology.h"
 #include "xla/pjrt/gpu/gpu_topology.pb.h"
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
@@ -74,6 +77,7 @@ limitations under the License.
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/pjrt/profiling/device_time_measurement.h"
 #include "xla/pjrt/profiling/test_util/mock_device_time_measurement.h"
+#include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/service/gpu/gpu_memory_space_assignment.h"
 #include "xla/service/platform_util.h"
@@ -86,6 +90,7 @@ limitations under the License.
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/subprocess.h"
@@ -103,7 +108,6 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 using ::testing::Eq;
 using ::testing::FloatEq;
@@ -185,12 +189,12 @@ TEST(StreamExecutorGpuClientTest, MemorySpace) {
               StreamExecutorGpuHbmMemorySpace::kKindId);
     EXPECT_THAT(
         device->memory_space_by_kind(StreamExecutorGpuHbmMemorySpace::kKind),
-        IsOkAndHolds(memory_space));
+        absl_testing::IsOkAndHolds(memory_space));
     EXPECT_EQ(device->memory_spaces().size(), 2);
     auto* pinned = device->memory_spaces()[1];
     EXPECT_EQ(pinned->kind_id(), PinnedHostMemorySpace::kKindId);
     EXPECT_THAT(device->memory_space_by_kind(PinnedHostMemorySpace::kKind),
-                IsOkAndHolds(pinned));
+                absl_testing::IsOkAndHolds(pinned));
   }
 }
 
@@ -291,8 +295,10 @@ ENTRY %Add.6 (a.1: f32[], b.2: f32[]) -> (f32[], f32[]) {
       executable->Execute({{buffer.get(), buffer.get()}}, /*options=*/{}));
 
   ASSERT_EQ(result.size(), 1);
-  ASSERT_EQ(result[0].size(), 1);
-  EXPECT_EQ(result[0][0]->GetReadyFuture().Await(), input_error);
+  ASSERT_EQ(result[0].size(), 2);
+  for (const auto& b : result[0]) {
+    EXPECT_EQ(b->GetReadyFuture().Await(), input_error);
+  }
 }
 
 // TODO(b/372735047): Fix and reenable.
@@ -1030,8 +1036,9 @@ TEST(StreamExecutorGpuClientTest, CopyRawToHostOutOfRange) {
       tsl::port::AlignedMalloc(size, tsl::Allocator::kAllocatorAlignment);
 
   auto result = buffer->CopyRawToHost(dst, 1, size);
-  EXPECT_THAT(result.Await(), StatusIs(absl::StatusCode::kInvalidArgument,
-                                       HasSubstr("invalid offset 1")));
+  EXPECT_THAT(result.Await(),
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     HasSubstr("invalid offset 1")));
   tsl::port::AlignedSizedFree(dst, tsl::Allocator::kAllocatorAlignment, size);
 }
 
@@ -1160,7 +1167,6 @@ TEST(GpuTopology, FromProto) {
   GpuTopologyProto msg;
   ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
       R"pb(
-        device_ids: [ 3, 2, 1 ]
         platform_version: "platform_version"
         num_slices: 2
         num_hosts_per_slice: 1
@@ -1169,7 +1175,6 @@ TEST(GpuTopology, FromProto) {
       &msg));
 
   std::unique_ptr<const GpuTopology> gpu_topology = GpuTopology::FromProto(msg);
-  EXPECT_THAT(gpu_topology->device_ids(), ElementsAre(3, 2, 1));
   EXPECT_THAT(gpu_topology->platform_version(), "platform_version");
   EXPECT_THAT(gpu_topology->num_slices(), 2);
   EXPECT_THAT(gpu_topology->num_hosts_per_slice(), 1);
@@ -1177,13 +1182,12 @@ TEST(GpuTopology, FromProto) {
 }
 
 TEST(GpuTopology, ToProto) {
-  GpuTopology gpu_topology(/*gpu_device_ids=*/{3, 2, 1},
-                           /*platform_version=*/"platform_version",
-                           /*num_slices=*/2,
-                           /*num_hosts_per_slice=*/1,
-                           /*num_devices_per_host=*/3);
+  GpuTopology gpu_topology(
+      /*platform_version=*/"platform_version",
+      /*num_slices=*/2,
+      /*num_hosts_per_slice=*/1,
+      /*num_devices_per_host=*/3);
   GpuTopologyProto msg = gpu_topology.ToProto();
-  EXPECT_THAT(msg.device_ids(), ElementsAre(3, 2, 1));
   EXPECT_THAT(msg.platform_version(), "platform_version");
   EXPECT_THAT(msg.num_slices(), 2);
   EXPECT_THAT(msg.num_hosts_per_slice(), 1);
@@ -1228,11 +1232,20 @@ TEST(StreamExecutorGpuClientTest, GetDeviceFabricInfo) {
                 ->local_device_state();
         if (local_device_state != nullptr) {
           se::StreamExecutor* executor = local_device_state->executor();
-          if (std::stoi(MakeComputeCapabilityString(
-                  &executor->GetDeviceDescription())) == 9) {
-            auto fabric_info = GetDeviceFabricInfo(executor->device_ordinal());
-            if (fabric_info.ok()) {
-              ADD_FAILURE();
+          if (auto* cc = std::get_if<se::CudaComputeCapability>(
+                  &executor->GetDeviceDescription().gpu_compute_capability())) {
+            if (cc->IsAtLeastHopper()) {
+              auto fabric_info =
+                  GetDeviceFabricInfo(executor->device_ordinal());
+              if (!fabric_info.ok()) {
+                // Only allow failures due to insufficient CUDA driver version.
+                EXPECT_THAT(
+                    fabric_info.status().message(),
+                    AnyOf(
+                        HasSubstr("Failed to initialize NVML library."),
+                        HasSubstr(
+                            "NVML library doesn't have required functions.")));
+              }
             }
           }
         }
@@ -1273,6 +1286,20 @@ TEST(StreamExecutorGpuClientTest, GpuDeviceDescriptionTest) {
   }
 }
 
+TEST(StreamExecutorGpuClientTest, GpuDeviceSharedMemoryInfo) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(DefaultOptions()));
+  for (const auto& device : client->devices()) {
+    auto value = static_cast<PjRtStreamExecutorDevice*>(device)
+                     ->description()
+                     .Attributes()
+                     .find("shared_memory_per_block_optin")
+                     ->second;
+    int64_t shared_memory_per_block_optin = std::get<int64_t>(value);
+    EXPECT_GT(shared_memory_per_block_optin, 0);
+  }
+}
+
 TEST(StreamExecutorGpuClientTest, GetTopologyDescriptionWithGlobalDevicesTest) {
   const int num_nodes = 4;
   GpuClientOptions options;
@@ -1296,7 +1323,7 @@ TEST(StreamExecutorGpuClientTest, GetTopologyDescriptionWithGlobalDevicesTest) {
   }
 }
 
-TEST(TfrtCpuClientTest, CopyToMemorySpace) {
+TEST(PjRtCpuClientTest, CopyToMemorySpace) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
                           GetStreamExecutorGpuClient(DefaultOptions()));
   for (auto* memory_space : client->memory_spaces()) {
@@ -1614,8 +1641,9 @@ TEST(StreamExecutorGpuClientTest, OpaqueDeviceMemoryDataPointer) {
           buf_sz),
       /*on_done=*/[]() {}));
   std::unique_ptr<PjRtBuffer> hbm_buf = txm->RetrieveBuffer(0);
-  EXPECT_THAT(hbm_buf->GetOnDeviceSizeInBytes(), IsOkAndHolds(buf_sz));
-  EXPECT_THAT(hbm_buf->HostShape(), IsOkAndHolds(shape));
+  EXPECT_THAT(hbm_buf->GetOnDeviceSizeInBytes(),
+              absl_testing::IsOkAndHolds(buf_sz));
+  EXPECT_THAT(hbm_buf->HostShape(), absl_testing::IsOkAndHolds(shape));
   TF_ASSERT_OK(hbm_buf->GetReadyFuture().Await());
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::Literal> literal,
                           hbm_buf->ToLiteralSync());
@@ -1702,6 +1730,7 @@ TEST(StreamExecutorGpuClientTest, ExecutePinnedHostOutputTest) {
       auto memory_stats, executable->GetExecutable()->GetCompiledMemoryStats());
   EXPECT_EQ(memory_stats.output_size_in_bytes, 0);
   EXPECT_EQ(memory_stats.host_output_size_in_bytes, 16);
+  EXPECT_GE(memory_stats.peak_memory_in_bytes, 0);
 }
 
 TEST(StreamExecutorGpuClientTest, ExecutePinnedHostOutputTupleTest) {
@@ -2049,9 +2078,10 @@ ENTRY %Add.6 (a.1: f32[], b.2: f32[]) -> (f32[], f32[]) {
   serialized = proto.SerializeAsString();
 
   EXPECT_THAT(client->DeserializeExecutable(serialized, std::nullopt),
-              StatusIs(absl::StatusCode::kInternal,
-                       HasSubstr("PjRt client type expected by the serialized "
-                                 "executable: SomeGpuClient")));
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInternal,
+                  HasSubstr("PjRt client type expected by the serialized "
+                            "executable: SomeGpuClient")));
 }
 
 TEST(StreamExecutorGpuClientTest, MlirParameterLayoutIsSetInHlo) {
@@ -2617,7 +2647,7 @@ absl::Status ShardedAutotuningWorksTestBody(const int node_id,
     TF_RETURN_IF_ERROR(MlirToXlaComputation(*module, computation,
                                             /*use_tuple_args=*/false,
                                             /*return_tuple=*/false,
-                                            /*use_shardy=*/false));
+                                            /*exec_build_options=*/nullptr));
     TF_ASSIGN_OR_RETURN(executable,
                         client->CompileAndLoad(computation, compile_options));
   } else {

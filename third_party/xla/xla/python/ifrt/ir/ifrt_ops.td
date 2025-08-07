@@ -64,7 +64,7 @@ def Ifrt_CopyArraysOp
     Copies the input arrays to the output arrays.
 
     This op requires that all input arrays have use the same devices and memory
-    king, and all the output arrays use the same devices and memory king. Note
+    kind, and all the output arrays use the same devices and memory kind. Note
     that the devices and memory kind used by the input and output arrays might
     not be the same. Moreover, the corresponding output array of an input array
     must have the same sharding as the op can not reshard.

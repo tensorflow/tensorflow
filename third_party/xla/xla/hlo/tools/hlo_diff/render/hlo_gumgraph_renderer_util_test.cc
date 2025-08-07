@@ -24,6 +24,7 @@
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
+#include "xla/hlo/tools/hlo_diff/hlo_diff_result.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -85,6 +86,55 @@ ENTRY test_computation {
               UnorderedElementsAre(Pair(HloOpcode::kParameter, SizeIs(2)),
                                    Pair(HloOpcode::kAdd, SizeIs(1)),
                                    Pair(HloOpcode::kSubtract, SizeIs(1))));
+}
+
+TEST_F(HloDiffRendererUtilTest, FilterDiffResultByOpcode) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule test_module
+
+ENTRY test_computation {
+  param1 = s32[10] parameter(0)
+  param2 = s32[10] parameter(1)
+  add = s32[10] add(param1, param2)
+  ROOT sub = s32[10] subtract(add, param2)
+}
+  )"));
+  DiffResult diff_result;
+  for (const HloComputation* computation : module->computations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      diff_result.left_module_unmatched_instructions.insert(instruction);
+      diff_result.right_module_unmatched_instructions.insert(instruction);
+      diff_result.changed_instructions[instruction] = instruction;
+      diff_result.unchanged_instructions[instruction] = instruction;
+    }
+  }
+  absl::flat_hash_set<HloOpcode> ignored_opcodes = {HloOpcode::kParameter};
+  auto filtered_diff_result =
+      FilterDiffResultByOpcode(diff_result, ignored_opcodes);
+  EXPECT_THAT(filtered_diff_result.left_module_unmatched_instructions,
+              SizeIs(2));
+  for (const HloInstruction* instruction :
+       filtered_diff_result.left_module_unmatched_instructions) {
+    EXPECT_NE(instruction->opcode(), HloOpcode::kParameter);
+  }
+  EXPECT_THAT(filtered_diff_result.right_module_unmatched_instructions,
+              SizeIs(2));
+  for (const HloInstruction* instruction :
+       filtered_diff_result.right_module_unmatched_instructions) {
+    EXPECT_NE(instruction->opcode(), HloOpcode::kParameter);
+  }
+  EXPECT_THAT(filtered_diff_result.changed_instructions, SizeIs(2));
+  for (const auto& [left, right] : filtered_diff_result.changed_instructions) {
+    EXPECT_NE(left->opcode(), HloOpcode::kParameter);
+    EXPECT_NE(right->opcode(), HloOpcode::kParameter);
+  }
+  EXPECT_THAT(filtered_diff_result.unchanged_instructions, SizeIs(2));
+  for (const auto& [left, right] :
+       filtered_diff_result.unchanged_instructions) {
+    EXPECT_NE(left->opcode(), HloOpcode::kParameter);
+    EXPECT_NE(right->opcode(), HloOpcode::kParameter);
+  }
 }
 
 }  // namespace

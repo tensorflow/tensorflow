@@ -743,7 +743,7 @@ module @jit_fun.1 attributes {jax.uses_shape_polymorphism = true} {
     )
 
     one_subtest(
-        'expects has_side_effect=true',
+        '`shape_assertion` custom calls must set `has_side_effect = true`.',
         """
 module @jit_fun.1 attributes {jax.uses_shape_polymorphism = true} {
   func.func public @main(%arg_i1: tensor<i1>, %arg_i32: tensor<i32>) -> tensor<i32> {

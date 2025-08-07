@@ -119,6 +119,13 @@ inline constexpr llvm::StringRef kImportMhloShardings =
 // XLA pipeline, so no HLO<->MLIR round-tripping.
 inline constexpr llvm::StringRef kUseTupleArgs = "xla.sdy.use_tuple_args";
 
+// Attribute name for the input tuple shardings.
+inline const llvm::StringRef kInTupleShardings = "xla.sdy.tuple_args_shardings";
+
+// Attribute name for the output tuple shardings.
+inline const llvm::StringRef kOutTupleShardings =
+    "xla.sdy.tuple_results_shardings";
+
 // Attribute name for the in shardings of a `ManualComputationOp`.
 inline constexpr llvm::StringRef kInShardings = "xla.sdy.in_shardings";
 
@@ -127,6 +134,10 @@ inline constexpr llvm::StringRef kOutShardings = "xla.sdy.out_shardings";
 
 // Attribute name for the manual axes of a `ManualComputationOp`.
 inline constexpr llvm::StringRef kManualAxes = "xla.sdy.manual_axes";
+
+// Attribute name for indicating whether a value has unreduced axes. Is either
+// `true` or not set.
+inline constexpr char kHasUnreducedAxes[] = "xla.sdy.has_unreduced_axes";
 
 // The function name of the of the body of a `ManualComputationOp` during Shardy
 // round tripping. Used
@@ -145,6 +156,9 @@ inline constexpr llvm::StringRef kLocalToGlobalShapeCallTargetName =
 
 // The name of the global mesh.
 inline constexpr llvm::StringRef kGlobalMeshName = "mesh";
+
+// Keyword for enabling the dumping of propagation debug information.
+inline constexpr llvm::StringRef kShardyVerbose = "shardy-verbose";
 
 }  //  namespace sdy
 }  //  namespace xla

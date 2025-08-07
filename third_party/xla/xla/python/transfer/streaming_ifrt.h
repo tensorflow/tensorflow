@@ -15,7 +15,8 @@ limitations under the License.
 #ifndef XLA_PYTHON_TRANSFER_STREAMING_IFRT_H_
 #define XLA_PYTHON_TRANSFER_STREAMING_IFRT_H_
 
-#include <atomic>
+#include <cstddef>
+#include <cstdint>
 #include <deque>
 #include <memory>
 #include <vector>
@@ -24,16 +25,16 @@ limitations under the License.
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/python/ifrt/array.h"
-#include "xla/python/ifrt/device.h"
-#include "xla/python/pjrt_ifrt/pjrt_array.h"
-#include "xla/python/pjrt_ifrt/pjrt_client.h"
-#include "xla/python/pjrt_ifrt/pjrt_device.h"
 #include "xla/python/transfer/streaming.h"
+#include "xla/python/transfer/transfer_socket.pb.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
 namespace aux {
@@ -42,11 +43,11 @@ inline constexpr uint64_t kCpuPageSize = 4096;
 
 // Maps a preallocated buffer into device memory and i
 absl::StatusOr<std::shared_ptr<absl::Span<uint8_t>>> MapPjrtMemory(
-    xla::ifrt::Client* client, void* data, size_t buffer_size,
+    std::shared_ptr<xla::PjRtClient> client, void* data, size_t buffer_size,
     std::shared_ptr<void> owner);
 
 absl::StatusOr<std::shared_ptr<absl::Span<uint8_t>>> AllocateAndMapPjrtMemory(
-    xla::ifrt::Client* client, size_t buffer_size);
+    std::shared_ptr<xla::PjRtClient> client, size_t buffer_size);
 
 // An structure which represents a single copy of a chunk out of a buffer
 // with an assigned 'buffer_id'.
@@ -70,12 +71,14 @@ struct DmaCopyChunk {
 
   // Divides an IFRT array up evenly for copying.
   static absl::StatusOr<std::vector<DmaCopyChunk>> DivideBufferCopiesEvenly(
-      xla::ifrt::ArrayRef arr, size_t xfer_size, size_t buffer_id);
+      std::shared_ptr<xla::PjRtBuffer> buffer, size_t xfer_size,
+      size_t buffer_id);
 };
 
 // Copies into subdivisions of scratch asyncly in parallel calling on_done
 // sequentially when the copy has finished.
-class PremappedCopierState {
+class PremappedCopierState
+    : public std::enable_shared_from_this<PremappedCopierState> {
  public:
   PremappedCopierState(std::shared_ptr<absl::Span<uint8_t>> scratch,
                        size_t max_num_parallel_copies, size_t xfer_size);
@@ -84,7 +87,9 @@ class PremappedCopierState {
     void* dest_buffer;
     size_t seq_id;
     bool is_ready;
-    absl::AnyInvocable<void(PremappedCopierState* state, void* buf,
+    absl::Status result_status;
+    absl::AnyInvocable<void(PremappedCopierState* state,
+                            absl::StatusOr<void*> buf,
                             const DmaCopyChunk& chunk) &&>
         on_done;
   };
@@ -92,11 +97,11 @@ class PremappedCopierState {
   // on_done callback must schedule a call to ReturnBuffer at some point in the
   // future. Since on_done can be called from the TPU thread, avoid doing any
   // serious work (or even calling ReturnBuffer).
-  void ScheduleCopy(
-      DmaCopyChunk blob,
-      absl::AnyInvocable<void(PremappedCopierState* state, void* buf,
-                              const DmaCopyChunk& chunk) &&>
-          on_done);
+  void ScheduleCopy(DmaCopyChunk blob,
+                    absl::AnyInvocable<void(PremappedCopierState* state,
+                                            absl::StatusOr<void*> buf,
+                                            const DmaCopyChunk& chunk) &&>
+                        on_done);
 
   // Allows buffer to be reused.
   void ReturnBuffer(void* buffer);
@@ -150,6 +155,7 @@ class PjRtBufferEntry : public PullTable::Entry {
   struct BufferRef {
     std::shared_ptr<xla::PjRtBuffer> buffer;
     size_t buf_size;
+    xla::PjRtFuture<> ready_future;
   };
   explicit PjRtBufferEntry(std::vector<BufferRef> arrs,
                            std::shared_ptr<PremappedCopierState> state,
@@ -183,27 +189,47 @@ class IsLastSemaphore {
       : guard_counter_(value), counter_(value) {}
 
   template <typename T>
-  auto DoWork(size_t value, T&& cb) -> decltype(cb(false)) {
-    bool is_last = guard_counter_.fetch_sub(value) - value == 0;
-    if (is_last && counter_.fetch_sub(value) - value != 0) {
-      // Wait if we happen to slip in between guard_counter and counter.
+  auto DoWork(size_t value, T&& cb) -> absl::Status {
+    bool is_last;
+    {
       absl::MutexLock l(&mu_);
-      auto cond = [this]() { return counter_.load() == 0; };
-      mu_.Await(absl::Condition(&cond));
+      if (is_done_) {
+        return absl::OkStatus();
+      }
+      guard_counter_ -= value;
+      is_last = guard_counter_ == 0;
+      if (is_last) {
+        // Wait if we happen to slip in between guard_counter and counter.
+        is_done_ = true;
+        auto cond = [this, value]() { return counter_ == value; };
+        mu_.Await(absl::Condition(&cond));
+        // Prevent racing calls to poison.
+      }
     }
     auto cleanup = absl::MakeCleanup([&]() {
-      if (!is_last && (counter_.fetch_sub(value) - value) == 0) {
-        // Wake any waiters.
-        absl::MutexLock l(&mu_);
-      }
+      absl::MutexLock l(&mu_);
+      counter_ -= value;
     });
     return cb(is_last);
   }
 
+  // Return true if this is the first call to poison.
+  bool Poison() {
+    absl::MutexLock l(&mu_);
+    if (is_done_) {
+      return false;
+    }
+    is_done_ = true;
+    auto cond = [this]() { return counter_ == guard_counter_; };
+    mu_.Await(absl::Condition(&cond));
+    return true;
+  }
+
  private:
   absl::Mutex mu_;
-  std::atomic<ssize_t> guard_counter_;
-  std::atomic<ssize_t> counter_;
+  bool is_done_ = false;
+  ssize_t guard_counter_;
+  ssize_t counter_;
 };
 
 }  // namespace internal

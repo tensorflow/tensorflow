@@ -12,6 +12,7 @@ load(
     "if_mkl",
     "mkl_deps",
 )
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
@@ -5171,6 +5172,7 @@ tf_kernel_library(
     prefix = "sparse_reshape_op",
     deps = SPARSE_DEPS + [
         ":reshape_util",
+        "@com_google_absl//absl/status",
     ],
 )
 

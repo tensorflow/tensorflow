@@ -71,7 +71,7 @@ absl::Status TransferManager::TransferLiteralFromDevice(
   absl::Cleanup cleanup = [&]() { stream->ReturnSubStream(substream); };
 
   absl::Status ret;
-  tsl::Notification n;
+  absl::Notification n;
   TransferLiteralFromDevice(
       substream, device_buffer, literal,
       [&](absl::Status status) {
@@ -177,7 +177,9 @@ absl::Status TransferManager::ReadDynamicShapes(
             auto metadata,
             TransferArrayFromDevice(
                 stream,
-                ShapeUtil::MakeShape(S32, {buffer_shape.dimensions_size()}),
+                ShapeUtil::MakeShape(
+                    S32,
+                    {static_cast<int64_t>(buffer_shape.dimensions().size())}),
                 metadata_buffer));
 
         // Update shape size from metadata.

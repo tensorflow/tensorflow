@@ -42,6 +42,8 @@ struct CuptiTracerCollectorOptions {
   uint64_t max_annotation_strings = 1024 * 1024;
   // Number of GPUs involved.
   uint32_t num_gpus;
+  // Whether to dump the graph nope mapping.
+  bool dump_graph_nope_mapping = false;
 };
 // This struct will be used to store the PM Sampling data.
 // Same as CUDA 12.6.2 extras/CUPTI/samples/pm_sampling/pm_sampling.h
@@ -63,6 +65,9 @@ class PmSamples {
       : metrics_(std::move(metrics)),
         sampler_ranges_(std::move(sampler_ranges)) {}
   void PopulateCounterLine(tsl::profiler::XPlaneBuilder* plane);
+  size_t GetNumSamples() const;
+  const std::vector<std::string>& GetMetrics() const;
+  const std::vector<SamplerRange>& GetSamplerRanges() const;
 
  private:
   std::vector<std::string> metrics_;

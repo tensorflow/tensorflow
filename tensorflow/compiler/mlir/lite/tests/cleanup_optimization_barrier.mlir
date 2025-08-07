@@ -1,4 +1,4 @@
-// RUN: tf-opt %s --tfl-cleanup-optimization-barrier --split-input-file | FileCheck %s
+// RUN: litert-opt %s --tfl-cleanup-optimization-barrier --split-input-file | FileCheck %s
 
 // CHECK-LABEL:   func.func @cleanup_barrier(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
 // CHECK:           %0 = tfl.add(%arg0, %cst) <{fused_activation_function = "NONE"}> : (tensor<2x2xf32>, tensor<f32>) -> tensor<2x2xf32>

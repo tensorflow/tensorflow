@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 
-#include <optional>
-
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
@@ -33,67 +31,65 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
-using ::testing::Optional;
 using ::testing::Test;
 using ::tsl::testing::IsOkAndHolds;
 
-std::optional<bool> IsMultiHostTopology(
-    se::CudaComputeCapability compute_capability, int num_partitions,
-    int replica_count) {
+GPUTopologyType GetTopologyType(se::CudaComputeCapability compute_capability,
+                                int num_partitions, int replica_count) {
   HloModuleConfig config;
   config.set_num_partitions(num_partitions);
   config.set_replica_count(replica_count);
   se::DeviceDescription device_description;
   device_description.set_gpu_compute_capability(compute_capability);
-  return xla::gpu::IsMultiHostTopology(config, device_description);
+  return xla::gpu::GetTopologyType(config, device_description);
 }
 
-TEST(IsMultiHostTopologyTest, SingleHostSingleDevice) {
-  EXPECT_THAT(IsMultiHostTopology(se::CudaComputeCapability::Ampere(),
-                                  /*num_partitions=*/1, /*replica_count=*/1),
-              Optional(false));
-  EXPECT_THAT(IsMultiHostTopology(se::CudaComputeCapability::Hopper(),
-                                  /*num_partitions=*/1, /*replica_count=*/1),
-              Optional(false));
+TEST(GetTopologyTypeTest, SingleHostSingleDevice) {
+  EXPECT_THAT(GetTopologyType(se::CudaComputeCapability::Ampere(),
+                              /*num_partitions=*/1, /*replica_count=*/1),
+              GPUTopologyType::SINGLE_HOST);
+  EXPECT_THAT(GetTopologyType(se::CudaComputeCapability::Hopper(),
+                              /*num_partitions=*/1, /*replica_count=*/1),
+              GPUTopologyType::SINGLE_HOST);
 }
 
-TEST(IsMultiHostTopologyTest, SingleHostMultiDevices) {
-  EXPECT_THAT(IsMultiHostTopology(se::CudaComputeCapability::Ampere(),
-                                  /*num_partitions=*/16, /*replica_count=*/1),
-              Optional(false));
-  EXPECT_THAT(IsMultiHostTopology(se::CudaComputeCapability::Ampere(),
-                                  /*num_partitions=*/1, /*replica_count=*/16),
-              Optional(false));
-  EXPECT_THAT(IsMultiHostTopology(se::CudaComputeCapability::Hopper(),
-                                  /*num_partitions=*/8, /*replica_count=*/1),
-              Optional(false));
-  EXPECT_THAT(IsMultiHostTopology(se::CudaComputeCapability::Hopper(),
-                                  /*num_partitions=*/1, /*replica_count=*/8),
-              Optional(false));
+TEST(GetTopologyTypeTest, SingleHostMultiDevices) {
+  EXPECT_THAT(GetTopologyType(se::CudaComputeCapability::Ampere(),
+                              /*num_partitions=*/16, /*replica_count=*/1),
+              GPUTopologyType::SINGLE_HOST);
+  EXPECT_THAT(GetTopologyType(se::CudaComputeCapability::Ampere(),
+                              /*num_partitions=*/1, /*replica_count=*/16),
+              GPUTopologyType::SINGLE_HOST);
+  EXPECT_THAT(GetTopologyType(se::CudaComputeCapability::Hopper(),
+                              /*num_partitions=*/8, /*replica_count=*/1),
+              GPUTopologyType::SINGLE_HOST);
+  EXPECT_THAT(GetTopologyType(se::CudaComputeCapability::Hopper(),
+                              /*num_partitions=*/1, /*replica_count=*/8),
+              GPUTopologyType::SINGLE_HOST);
 }
 
-TEST(IsMultiHostTopologyTest, MultiHosts) {
-  EXPECT_THAT(IsMultiHostTopology(se::CudaComputeCapability::Ampere(),
-                                  /*num_partitions=*/32, /*replica_count=*/1),
-              Optional(true));
-  EXPECT_THAT(IsMultiHostTopology(se::CudaComputeCapability::Ampere(),
-                                  /*num_partitions=*/1, /*replica_count=*/32),
-              Optional(true));
-  EXPECT_THAT(IsMultiHostTopology(se::CudaComputeCapability::Hopper(),
-                                  /*num_partitions=*/16, /*replica_count=*/1),
-              Optional(true));
-  EXPECT_THAT(IsMultiHostTopology(se::CudaComputeCapability::Hopper(),
-                                  /*num_partitions=*/1, /*replica_count=*/16),
-              Optional(true));
+TEST(GetTopologyTypeTest, MultiHosts) {
+  EXPECT_THAT(GetTopologyType(se::CudaComputeCapability::Ampere(),
+                              /*num_partitions=*/32, /*replica_count=*/1),
+              GPUTopologyType::MULTI_HOST);
+  EXPECT_THAT(GetTopologyType(se::CudaComputeCapability::Ampere(),
+                              /*num_partitions=*/1, /*replica_count=*/32),
+              GPUTopologyType::MULTI_HOST);
+  EXPECT_THAT(GetTopologyType(se::CudaComputeCapability::Hopper(),
+                              /*num_partitions=*/16, /*replica_count=*/1),
+              GPUTopologyType::MULTI_HOST);
+  EXPECT_THAT(GetTopologyType(se::CudaComputeCapability::Hopper(),
+                              /*num_partitions=*/1, /*replica_count=*/16),
+              GPUTopologyType::MULTI_HOST);
 }
 
-TEST(IsMultiHostTopologyTest, NonAmpereAndHopper) {
-  EXPECT_EQ(IsMultiHostTopology(se::CudaComputeCapability::Volta(),
-                                /*num_partitions=*/1, /*replica_count=*/1),
-            std::nullopt);
-  EXPECT_EQ(IsMultiHostTopology(se::CudaComputeCapability::Blackwell(),
-                                /*num_partitions=*/1, /*replica_count=*/1),
-            std::nullopt);
+TEST(GetTopologyTypeTest, NonAmpereAndHopper) {
+  EXPECT_EQ(GetTopologyType(se::CudaComputeCapability::Volta(),
+                            /*num_partitions=*/1, /*replica_count=*/1),
+            GPUTopologyType::UNKNOWN);
+  EXPECT_EQ(GetTopologyType(se::CudaComputeCapability::Blackwell(),
+                            /*num_partitions=*/1, /*replica_count=*/1),
+            GPUTopologyType::UNKNOWN);
 }
 
 class CommunicationTypeTest : public Test {
@@ -123,8 +119,9 @@ TEST_F(CommunicationTypeTest, DetectsSingleHost8Devices) {
 
   HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
       module->entry_computation()->root_instruction());
-  EXPECT_THAT(CommunicationType(*instr, device_info().gpu_compute_capability()),
-              IsOkAndHolds(GPUCommunicationType::SINGLE_HOST));
+  EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
+                                device_info().gpu_compute_capability()),
+              absl_testing::IsOkAndHolds(GPUCommunicationType::SINGLE_HOST));
 }
 
 TEST_F(CommunicationTypeTest, DetectsSingleHost4Devices) {
@@ -145,8 +142,9 @@ TEST_F(CommunicationTypeTest, DetectsSingleHost4Devices) {
 
   HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
       module->entry_computation()->root_instruction());
-  EXPECT_THAT(CommunicationType(*instr, device_info().gpu_compute_capability()),
-              IsOkAndHolds(GPUCommunicationType::SINGLE_HOST));
+  EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
+                                device_info().gpu_compute_capability()),
+              absl_testing::IsOkAndHolds(GPUCommunicationType::SINGLE_HOST));
 }
 
 TEST_F(CommunicationTypeTest, DetectsSingleHost16Devices) {
@@ -167,8 +165,9 @@ TEST_F(CommunicationTypeTest, DetectsSingleHost16Devices) {
 
   HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
       module->entry_computation()->root_instruction());
-  EXPECT_THAT(CommunicationType(*instr, device_info().gpu_compute_capability()),
-              IsOkAndHolds(GPUCommunicationType::SINGLE_HOST));
+  EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
+                                device_info().gpu_compute_capability()),
+              absl_testing::IsOkAndHolds(GPUCommunicationType::SINGLE_HOST));
 }
 
 TEST_F(CommunicationTypeTest, DetectRailAlignedAllDevices) {
@@ -189,8 +188,9 @@ TEST_F(CommunicationTypeTest, DetectRailAlignedAllDevices) {
 
   HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
       module->entry_computation()->root_instruction());
-  EXPECT_THAT(CommunicationType(*instr, device_info().gpu_compute_capability()),
-              IsOkAndHolds(GPUCommunicationType::RAIL_ALIGNED));
+  EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
+                                device_info().gpu_compute_capability()),
+              absl_testing::IsOkAndHolds(GPUCommunicationType::RAIL_ALIGNED));
 }
 
 TEST_F(CommunicationTypeTest, DetectRailAlignedHalfMesh) {
@@ -199,7 +199,7 @@ TEST_F(CommunicationTypeTest, DetectRailAlignedHalfMesh) {
 
     ENTRY e {
       p = f32[128] parameter(0)
-      ROOT _ = f32[512] all-gather(p),
+      ROOT _ = f32[2048] all-gather(p),
         dimensions={0},
         use_global_device_ids=true,
         channel_id=1,
@@ -214,8 +214,9 @@ TEST_F(CommunicationTypeTest, DetectRailAlignedHalfMesh) {
 
   HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
       module->entry_computation()->root_instruction());
-  EXPECT_THAT(CommunicationType(*instr, device_info().gpu_compute_capability()),
-              IsOkAndHolds(GPUCommunicationType::RAIL_ALIGNED));
+  EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
+                                device_info().gpu_compute_capability()),
+              absl_testing::IsOkAndHolds(GPUCommunicationType::RAIL_ALIGNED));
 }
 
 TEST_F(CommunicationTypeTest, DetectNonRailAligned) {
@@ -224,7 +225,7 @@ TEST_F(CommunicationTypeTest, DetectNonRailAligned) {
 
     ENTRY e {
       p = f32[128] parameter(0)
-      ROOT _ = f32[512] all-gather(p),
+      ROOT _ = f32[256] all-gather(p),
         dimensions={0},
         use_global_device_ids=true,
         channel_id=1,
@@ -236,8 +237,136 @@ TEST_F(CommunicationTypeTest, DetectNonRailAligned) {
 
   HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
       module->entry_computation()->root_instruction());
-  EXPECT_THAT(CommunicationType(*instr, device_info().gpu_compute_capability()),
-              IsOkAndHolds(GPUCommunicationType::NON_RAIL_ALIGNED));
+  EXPECT_THAT(
+      CommunicationType(/*num_devices_per_host=*/8, *instr,
+                        device_info().gpu_compute_capability()),
+      absl_testing::IsOkAndHolds(GPUCommunicationType::NON_RAIL_ALIGNED));
+}
+
+TEST_F(CommunicationTypeTest, DetectsSingleHost16DevicesForEmptyReplicaGroups) {
+  absl::string_view kHlo = R"(
+    HloModule m, replica_count=16
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[512] all-gather(p),
+        dimensions={0},
+        replica_groups={}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
+      module->entry_computation()->root_instruction());
+  EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/16, *instr,
+                                device_info().gpu_compute_capability()),
+              absl_testing::IsOkAndHolds(GPUCommunicationType::SINGLE_HOST));
+}
+
+TEST_F(CommunicationTypeTest, DetectsRailAligned8DevicesForEmptyReplicaGroups) {
+  absl::string_view kHlo = R"(
+    HloModule m, replica_count=16
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[2048] all-gather(p),
+        dimensions={0},
+        replica_groups={}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
+      module->entry_computation()->root_instruction());
+  EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
+                                device_info().gpu_compute_capability()),
+              absl_testing::IsOkAndHolds(GPUCommunicationType::RAIL_ALIGNED));
+}
+
+TEST_F(CommunicationTypeTest, DetectsNonRailAligned16Devices) {
+  absl::string_view kHlo = R"(
+    HloModule m, replica_count=16
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[256] all-gather(p),
+        dimensions={0},
+        replica_groups={{0,8},{1,9},{2,10},{3,11},{4,12},{5,13},{6,14},{7,15}}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
+      module->entry_computation()->root_instruction());
+  EXPECT_THAT(
+      CommunicationType(/*num_devices_per_host=*/8, *instr,
+                        device_info().gpu_compute_capability()),
+      absl_testing::IsOkAndHolds(GPUCommunicationType::NON_RAIL_ALIGNED));
+}
+
+TEST_F(CommunicationTypeTest, DetectsSingleHostCollectivePermute) {
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=8
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[128] collective-permute(p),
+        source_target_pairs={{0,1},{1,2},{2,3},{3,4},{4,5},{5,6},{6,7},{7,0}}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloChannelInstruction* instr = Cast<HloChannelInstruction>(
+      module->entry_computation()->root_instruction());
+  EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
+                                device_info().gpu_compute_capability()),
+              absl_testing::IsOkAndHolds(GPUCommunicationType::SINGLE_HOST));
+}
+
+TEST_F(CommunicationTypeTest, DetectsNonRailAlignedCollectivePermute) {
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=16
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[128] collective-permute(p),
+        source_target_pairs={{0,8},{8,0},{1,9},{9,1},{2,10},{10,2},{3,11},{11,3},
+                             {4,12},{12,4},{5,13},{13,5},{6,14},{14,6},{7,15},{15,7}}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloChannelInstruction* instr = Cast<HloChannelInstruction>(
+      module->entry_computation()->root_instruction());
+  EXPECT_THAT(
+      CommunicationType(/*num_devices_per_host=*/8, *instr,
+                        device_info().gpu_compute_capability()),
+      absl_testing::IsOkAndHolds(GPUCommunicationType::NON_RAIL_ALIGNED));
+}
+
+TEST_F(CommunicationTypeTest, DetectsRailAlignedCollectivePermute) {
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=16
+
+    ENTRY e {
+      p = f32[128] parameter(0)
+      ROOT _ = f32[128] collective-permute(p),
+       source_target_pairs={{0,8},{1,9},{2,10},{3,11},{4,12},{5,13},{6,14},{7,15}}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+
+  HloChannelInstruction* instr = Cast<HloChannelInstruction>(
+      module->entry_computation()->root_instruction());
+  EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
+                                device_info().gpu_compute_capability()),
+              absl_testing::IsOkAndHolds(GPUCommunicationType::RAIL_ALIGNED));
 }
 
 }  // namespace

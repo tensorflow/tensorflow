@@ -23,6 +23,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
@@ -107,11 +108,9 @@ TEST(GemmThunkTest, ProtoRoundTrip) {
   const GemmThunkProto& original_gemm_thunk_proto =
       original_thunk_proto.gemm_thunk();
 
-  Thunk::ThunkInfo thunk_info_from_proto;
-  thunk_info_from_proto.execution_stream_id =
-      original_thunk_proto.thunk_info().execution_stream_id();
-  thunk_info_from_proto.profile_annotation =
-      original_thunk_proto.thunk_info().profile_annotation();
+  TF_ASSERT_OK_AND_ASSIGN(
+      Thunk::ThunkInfo thunk_info_from_proto,
+      Thunk::ThunkInfo::FromProto(original_thunk_proto.thunk_info()));
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GemmThunk> gemm_thunk,

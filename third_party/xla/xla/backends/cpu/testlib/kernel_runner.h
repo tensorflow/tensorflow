@@ -25,8 +25,9 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/backends/cpu/runtime/kernel.h"
 #include "xla/codegen/kernel_definition.h"
-#include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/llvm_ir_kernel_source.h"
+#include "xla/codegen/llvm_kernel_definition.h"
+#include "xla/codegen/mlir_kernel_definition.h"
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/codegen/testlib/kernel_runner.h"
 #include "xla/runtime/work_group.h"
@@ -37,11 +38,10 @@ namespace xla::cpu {
 // Kernel runner for XLA:CPU backend.
 class KernelRunner final : public xla::KernelRunner {
  public:
-  // Create a KernelRunner from a KernelSpec, this factory takes care of the
-  // downcasting to supported kernel source types, currently only
-  // LLVM IR is supported.
-  static absl::StatusOr<KernelRunner> Create(KernelDefinition kernel_definition,
-                                             JitCompiler compiler);
+  static absl::StatusOr<KernelRunner> Create(
+      LlvmKernelDefinition kernel_definition, JitCompiler compiler);
+  static absl::StatusOr<KernelRunner> Create(
+      MlirKernelDefinition kernel_definition, JitCompiler compiler);
 
   KernelRunner(KernelRunner&&) = default;
   KernelRunner& operator=(KernelRunner&&) = default;
@@ -50,14 +50,6 @@ class KernelRunner final : public xla::KernelRunner {
 
   static absl::StatusOr<JitCompiler> CreateJitCompiler(
       const HloModuleConfig& config);
-
- private:
-  static absl::StatusOr<KernelRunner> Create(
-      const KernelSpec& kernel_spec, LlvmIrKernelSource llvm_ir_kernel_source,
-      JitCompiler compiler);
-  static absl::StatusOr<KernelRunner> Create(
-      const KernelSpec& kernel_spec, MlirKernelSource mlir_kernel_source,
-      JitCompiler compiler);
 
   KernelRunner(std::unique_ptr<FunctionLibrary> library, Kernel kernel,
                NumWorkGroups num_workgroups);

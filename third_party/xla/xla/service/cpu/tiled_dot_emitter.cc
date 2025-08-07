@@ -27,10 +27,13 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/Value.h"
 #include "xla/backends/cpu/codegen/vector_ir_builder.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/kernel_support_library.h"
+#include "xla/tsl/lib/math/math_util.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -141,24 +144,26 @@ class GemvConfig {
   int64_t m() const { return m_; }
   int64_t k() const { return k_; }
   bool has_addend() const { return has_addend_; }
+  int64_t num_tasks() const { return num_tasks_; }
 
   std::string GetCacheKey() const {
     return absl::StrCat(name_, "_", PrimitiveType_Name(scalar_type()), "_",
                         tile_rows(), "_", tile_cols(), "_", m(), "_", k(),
-                        has_addend() ? "_with_addend" : "");
+                        has_addend() ? "_with_addend" : "", "_", num_tasks());
   }
 
  protected:
   explicit GemvConfig(std::string name, PrimitiveType scalar_type,
                       int64_t tile_rows, int64_t tile_cols, int64_t m,
-                      int64_t k, bool has_addend)
+                      int64_t k, bool has_addend, int64_t num_tasks)
       : name_(std::move(name)),
         scalar_type_(scalar_type),
         tile_rows_(tile_rows),
         tile_cols_(tile_cols),
         m_(m),
         k_(k),
-        has_addend_(has_addend) {}
+        has_addend_(has_addend),
+        num_tasks_(num_tasks) {}
 
  private:
   std::string name_;
@@ -168,6 +173,7 @@ class GemvConfig {
   int64_t m_;
   int64_t k_;
   bool has_addend_;
+  int64_t num_tasks_;
 };
 
 // Computes a dot product between "[M,K]{0,1} lhs" with a [K,1] vector (the
@@ -236,22 +242,24 @@ class ColumnMajorMatrixVectorProductEmitter
  public:
   class Config : public GemvConfig {
    public:
-    explicit Config(PrimitiveType scalar_type, int64_t tile_rows,
-                    int64_t tile_cols, int64_t m, int64_t k, bool has_addend)
+    Config(PrimitiveType scalar_type, int64_t tile_rows, int64_t tile_cols,
+           int64_t m, int64_t k, bool has_addend, int64_t num_tasks)
         : GemvConfig(/*name=*/"col_major_gemv", scalar_type,
                      /*tile_rows=*/tile_rows, /*tile_cols=*/tile_cols, /*m=*/m,
-                     /*k=*/k, /*has_addend=*/has_addend) {}
+                     /*k=*/k, /*has_addend=*/has_addend, num_tasks) {}
   };
 
   ColumnMajorMatrixVectorProductEmitter(const Config& config, llvm::Value* lhs,
                                         llvm::Value* rhs, llvm::Value* addend,
                                         llvm::Value* result,
+                                        llvm::Value* work_group_id,
                                         llvm::IRBuilderBase* b)
       : config_(config),
         lhs_(lhs),
         rhs_(rhs),
         addend_(addend),
         result_(result),
+        work_group_id_(work_group_id),
         b_(b),
         ksl_(b_),
         vb_(config.scalar_type(), /*vector_size=*/config.tile_rows(), b_, "") {
@@ -299,6 +307,7 @@ class ColumnMajorMatrixVectorProductEmitter
   llvm::Value* rhs_;
   llvm::Value* addend_;
   llvm::Value* result_;
+  llvm::Value* work_group_id_;
   llvm::IRBuilderBase* b_;
   KernelSupportLibrary ksl_;
   VectorIrBuilder vb_;
@@ -313,7 +322,15 @@ void ColumnMajorMatrixVectorProductEmitter::EmitOuterLoopBody(
       LoadRhsTile(column, /*count=*/column_count);
   EmitInnerLoopTiled(&lhs_memory_tile, rhs_tile,
                      /*columns=*/column_count, is_first_column);
-  EmitInnerLoopEpilogue(column, /*columns=*/column_count, is_first_column);
+
+  // We emit the epilogue loop only for the first work group.
+  ksl_.If(
+      /*condition=*/b_->CreateICmpEQ(work_group_id_, b_->getInt64(0)),
+      /*true_block_generator=*/
+      [&] {
+        EmitInnerLoopEpilogue(column, /*columns=*/column_count,
+                              is_first_column);
+      });
 }
 
 void ColumnMajorMatrixVectorProductEmitter::Emit() {
@@ -337,8 +354,17 @@ void ColumnMajorMatrixVectorProductEmitter::EmitInnerLoopTiled(
     MemoryTile* lhs_memory_tile, const std::vector<llvm::Value*>& rhs_tile,
     int64_t columns, bool is_first_column) {
   int64_t row_limit = m() - (m() % tile_rows());
+  int64_t row_per_task = RoundUpTo(
+      tsl::MathUtil::CeilOfRatio(row_limit, config_.num_tasks()), tile_rows());
 
-  ksl_.For("dot.inner.tiled", /*start=*/0, /*end=*/row_limit,
+  llvm::Value* row_start =
+      b_->CreateMul(work_group_id_, b_->getInt64(row_per_task));
+  llvm::Value* row_end = b_->CreateAdd(row_start, b_->getInt64(row_per_task));
+  llvm::Value* row_cmp =
+      b_->CreateCmp(llvm::CmpInst::ICMP_SLT, row_end, b_->getInt64(row_limit));
+  row_end = b_->CreateSelect(row_cmp, row_end, b_->getInt64(row_limit));
+
+  ksl_.For("dot.inner.tiled", row_start, row_end,
            /*step=*/tile_rows(), [&](llvm::Value* row) {
              std::vector<llvm::Value*> lhs_tile =
                  lhs_memory_tile->LoadTile(/*minor_dim_offset=*/row);
@@ -464,22 +490,24 @@ class RowMajorMatrixVectorProductEmitter
  public:
   class Config : public GemvConfig {
    public:
-    explicit Config(PrimitiveType scalar_type, int64_t tile_rows,
-                    int64_t tile_cols, int64_t m, int64_t k, bool has_addend)
+    Config(PrimitiveType scalar_type, int64_t tile_rows, int64_t tile_cols,
+           int64_t m, int64_t k, bool has_addend, int64_t num_tasks)
         : GemvConfig(/*name=*/"row_major_gemv", scalar_type,
                      /*tile_rows=*/tile_rows, /*tile_cols=*/tile_cols, /*m=*/m,
-                     /*k=*/k, /*has_addend=*/has_addend) {}
+                     /*k=*/k, /*has_addend=*/has_addend, num_tasks) {}
   };
 
   RowMajorMatrixVectorProductEmitter(const Config& config, llvm::Value* lhs,
                                      llvm::Value* rhs, llvm::Value* addend,
                                      llvm::Value* result,
+                                     llvm::Value* work_group_id,
                                      llvm::IRBuilderBase* b)
       : config_(config),
         lhs_(lhs),
         rhs_(rhs),
         addend_(addend),
         result_(result),
+        work_group_id_(work_group_id),
         b_(b),
         ksl_(b_),
         vb_(scalar_type(), /*vector_size=*/tile_cols(), b_, "") {
@@ -513,6 +541,7 @@ class RowMajorMatrixVectorProductEmitter
   llvm::Value* rhs_;
   llvm::Value* addend_;
   llvm::Value* result_;
+  llvm::Value* work_group_id_;
   llvm::IRBuilderBase* b_;
   KernelSupportLibrary ksl_;
   VectorIrBuilder vb_;
@@ -570,12 +599,24 @@ void RowMajorMatrixVectorProductEmitter::Emit() {
   int64_t row_remainder = m() % tile_rows();
   int64_t row_limit = m() - row_remainder;
 
-  ksl_.For("dot.outer.tiled",
-           /*start=*/0, /*end=*/row_limit, /*step=*/tile_rows(),
+  int64_t row_per_task = RoundUpTo(
+      tsl::MathUtil::CeilOfRatio(row_limit, config_.num_tasks()), tile_rows());
+
+  llvm::Value* row_start =
+      b_->CreateMul(work_group_id_, b_->getInt64(row_per_task));
+  llvm::Value* row_end = b_->CreateAdd(row_start, b_->getInt64(row_per_task));
+  llvm::Value* row_cmp =
+      b_->CreateCmp(llvm::CmpInst::ICMP_SLT, row_end, b_->getInt64(row_limit));
+  row_end = b_->CreateSelect(row_cmp, row_end, b_->getInt64(row_limit));
+
+  ksl_.For("dot.outer.tiled", row_start, row_end, /*step=*/tile_rows(),
            [&](llvm::Value* row) { EmitOuterLoopBody(row, tile_rows()); });
 
+  // Emit the epilogue only in the first work group.
   if (row_remainder != 0) {
-    EmitOuterLoopBody(b_->getInt64(row_limit), row_remainder);
+    ksl_.If(
+        /*condition=*/b_->CreateICmpEQ(work_group_id_, b_->getInt64(0)),
+        [&] { EmitOuterLoopBody(b_->getInt64(row_limit), row_remainder); });
   }
 }
 
@@ -965,7 +1006,8 @@ void TiledSmallGemmEmitter::EmitTiledGemm(
 
 }  // namespace
 
-void EmitRowMajorGemv(PrimitiveType scalar_type, int64_t tile_rows,
+void EmitRowMajorGemv(PrimitiveType scalar_type, int64_t num_tasks,
+                      llvm::Value* work_group_id, int64_t tile_rows,
                       int64_t tile_cols, int64_t m, int64_t k, llvm::Value* lhs,
                       llvm::Value* rhs, llvm::Value* addend,
                       llvm::Value* result, llvm::IRBuilderBase* b,
@@ -973,19 +1015,21 @@ void EmitRowMajorGemv(PrimitiveType scalar_type, int64_t tile_rows,
   RowMajorMatrixVectorProductEmitter::Config config(
       /*scalar_type=*/scalar_type,
       /*tile_rows=*/tile_rows, /*tile_cols=*/tile_cols,
-      /*m=*/m, /*k=*/k, /*has_addend=*/addend != nullptr);
+      /*m=*/m, /*k=*/k, /*has_addend=*/addend != nullptr, num_tasks);
 
   KernelSupportLibrary::EmitAndCallOutlinedKernel(
       module_config, b, config.GetCacheKey(), lhs, rhs, addend, result,
+      work_group_id,
       [&config, b](llvm::Value* lhs, llvm::Value* rhs, llvm::Value* addend,
-                   llvm::Value* result) {
+                   llvm::Value* result, llvm::Value* work_group_id) {
         RowMajorMatrixVectorProductEmitter emitter(config, lhs, rhs, addend,
-                                                   result, b);
+                                                   result, work_group_id, b);
         emitter.Emit();
       });
 }
 
-void EmitColumnMajorGemv(PrimitiveType scalar_type, int64_t tile_rows,
+void EmitColumnMajorGemv(PrimitiveType scalar_type, int64_t num_tasks,
+                         llvm::Value* work_group_id, int64_t tile_rows,
                          int64_t tile_cols, int64_t m, int64_t k,
                          llvm::Value* lhs, llvm::Value* rhs,
                          llvm::Value* addend, llvm::Value* result,
@@ -994,14 +1038,15 @@ void EmitColumnMajorGemv(PrimitiveType scalar_type, int64_t tile_rows,
   ColumnMajorMatrixVectorProductEmitter::Config config(
       /*scalar_type=*/scalar_type,
       /*tile_rows=*/tile_rows, /*tile_cols=*/tile_cols,
-      /*m=*/m, /*k=*/k, /*has_addend=*/addend != nullptr);
+      /*m=*/m, /*k=*/k, /*has_addend=*/addend != nullptr, num_tasks);
 
   KernelSupportLibrary::EmitAndCallOutlinedKernel(
       module_config, b, config.GetCacheKey(), lhs, rhs, addend, result,
+      work_group_id,
       [&config, b](llvm::Value* lhs, llvm::Value* rhs, llvm::Value* addend,
-                   llvm::Value* result) {
+                   llvm::Value* result, llvm::Value* work_group_id) {
         ColumnMajorMatrixVectorProductEmitter emitter(config, lhs, rhs, addend,
-                                                      result, b);
+                                                      result, work_group_id, b);
         emitter.Emit();
       });
 }

@@ -19,22 +19,28 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <type_traits>
 #include <utility>
+#include <variant>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/service/gpu/alias_info.h"
+#include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/latency_hiding_scheduler.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/statusor.h"
+#include "tsl/platform/casts.h"
 
 namespace xla {
 
@@ -58,6 +64,7 @@ SchedulerConfig GetDefaultSchedulerConfig() {
 
 absl::StatusOr<bool> RunScheduler(
     HloModule* module, const SchedulerConfig& sched_config,
+    const GpuAliasInfo* alias_info,
     std::unique_ptr<LatencyEstimator> latency_estimator =
         std::make_unique<ApproximateLatencyEstimator>()) {
   HloCostAnalysis::ShapeSizeFunction shape_size_bytes =
@@ -72,14 +79,16 @@ absl::StatusOr<bool> RunScheduler(
     return ShapeUtil::ByteSizeOfElements(shape);
   };
   auto async_tracker = std::make_unique<AsyncTracker>(sched_config);
-  auto scheduler_core = std::make_unique<DefaultSchedulerCore>(
-      shape_size_bytes, async_tracker.get(), latency_estimator.get(),
-      sched_config);
+  std::shared_ptr<const SchedulingContext> scheduling_context =
+      std::make_shared<const SchedulingContext>(
+          module, std::move(latency_estimator), std::move(async_tracker),
+          alias_info, shape_size_bytes);
+  auto scheduler_core =
+      std::make_unique<DefaultSchedulerCore>(scheduling_context, sched_config);
   TF_ASSIGN_OR_RETURN(
-      bool value, LatencyHidingScheduler(
-                      std::move(latency_estimator), std::move(async_tracker),
-                      std::move(scheduler_core), shape_size_bytes)
-                      .Run(module));
+      bool value,
+      LatencyHidingScheduler(scheduling_context, std::move(scheduler_core))
+          .Run(module));
 
   return value;
 }
@@ -90,19 +99,32 @@ class AnalyticalLatencyHidingSchedulerTest : public GpuCodegenTest {
       absl::string_view hlo_string) {
     return ParseAndReturnVerifiedModule(hlo_string, GetModuleConfigForTest());
   }
-  se::CudaComputeCapability GetCudaComputeCapability() {
-    return backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .cuda_compute_capability();
+  const se::DeviceDescription& GetDeviceDescription() {
+    return backend().default_stream_executor()->GetDeviceDescription();
+  }
+  se::GpuComputeCapability GetGpuComputeCapability() {
+    return GetDeviceDescription().gpu_compute_capability();
+  }
+  std::unique_ptr<GpuAliasInfo> GetAliasInfo() {
+    return tensorflow::down_cast<GpuCompiler*>(backend().compiler())
+        ->GetAliasInfo(GetDeviceDescription());
   }
 };
 
 TEST_F(AnalyticalLatencyHidingSchedulerTest, TestAnalyticalLatencyEstimator) {
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::kPascal)) {
-    GTEST_SKIP() << "This test is for Pascal+ GPUs.";
-  }
+  auto gpu_compute_capability = GetGpuComputeCapability();
+  auto visitor = [](const auto& c) {
+    using cc = std::remove_const_t<std::remove_reference_t<decltype(c)>>;
+    if constexpr (std::is_same_v<stream_executor::CudaComputeCapability, cc>) {
+      if (!c.IsAtLeast(se::CudaComputeCapability::kPascal)) {
+        GTEST_SKIP() << "This test is for Pascal+ GPUs.";
+      }
+    } else if (!std::is_same_v<stream_executor::RocmComputeCapability, cc>) {
+      GTEST_SKIP() << "This test is for Pascal+ GPUs.";
+    }
+  };
+
+  std::visit(visitor, gpu_compute_capability);
   const se::DeviceDescription dev_info =
       backend().default_stream_executor()->GetDeviceDescription();
 
@@ -145,7 +167,8 @@ ENTRY entry {
       scheduler_config, std::make_unique<ApproximateLatencyEstimator>(),
       dev_info, HloCostAnalysis::DefaultShapeSize,
       hlo_module->entry_computation());
-  EXPECT_TRUE(RunScheduler(hlo_module.get(), scheduler_config,
+  auto alias_info = GetAliasInfo();
+  EXPECT_TRUE(RunScheduler(hlo_module.get(), scheduler_config, alias_info.get(),
                            std::move(latency_estimator))
                   .ok());
   EXPECT_TRUE(hlo_module->has_entry_computation());

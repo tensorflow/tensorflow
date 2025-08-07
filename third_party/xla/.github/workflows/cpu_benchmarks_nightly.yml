@@ -29,7 +29,7 @@ jobs:
         job_info: [
            {
             pool: "linux-arm64-t2a-48",
-            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build-arm64:latest",
+            container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build-arm64:latest",
             pretty_name: "XLA Linux ARM64 CPU 48 vcpu Presubmit",
             bazel_arch_dir: "aarch64-opt",
             platform: "CPU",
@@ -37,7 +37,7 @@ jobs:
           },
           {
             pool: "linux-x86-n2-128",
-            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
+            container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest",
             pretty_name: "XLA Linux x86 CPU 128 vcpu Presubmit",
             bazel_arch_dir: "k8-opt",
             platform: "CPU",
@@ -75,7 +75,7 @@ jobs:
           fi
 
       - name: Checkout OpenXLA
-        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Create results directory
         run:
@@ -207,7 +207,7 @@ jobs:
           gsutil cp "$OUTPUT_DIR/$FILENAME_GEMMA3" "$GCS_BUCKET/$GEMMA3_GCS_OBJECT_NAME"
 
       - name: Upload XSpace artifacts
-        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: cpu-xla-benchmarks-xspace-${{ matrix.job_info.pool }}
           path: ${{ github.workspace }}/${{ matrix.job_info.output_dir }}/*_xspace.pb

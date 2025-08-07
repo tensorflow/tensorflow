@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/host_memory_pool.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/stream_executor.h"
 
@@ -73,6 +74,20 @@ class ConditionalThunk : public Thunk {
   bool branch_index_is_bool() const { return branch_index_is_bool_; }
 
   absl::StatusOr<ThunkProto> ToProto() const override;
+
+  // Deserializes a ConditionalThunk from its proto representation.
+  // Parameters:
+  // - thunk_info: Metadata about the thunk
+  // - thunk_proto: Serialized ConditionalThunk proto message.
+  // - buffer_allocations: Buffer allocations available for use by the thunk.
+  // - deserializer: Callable (e.g., lambda) for deserializing nested thunks.
+  //
+  // Returns a unique_ptr to a ConditionalThunk on success, or an error status
+  // on failure.
+  static absl::StatusOr<std::unique_ptr<ConditionalThunk>> FromProto(
+      ThunkInfo thunk_info, const ConditionalThunkProto& thunk_proto,
+      absl::Span<const BufferAllocation> buffer_allocations,
+      const Deserializer& deserializer);
 
  private:
   const BufferAllocation::Slice branch_index_buffer_index_;

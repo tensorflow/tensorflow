@@ -156,8 +156,9 @@ TEST_P(PrefetchedSplitProviderParamTest, GetSplits) {
   PrefetchedSplitProvider prefetched_split_provider(
       std::move(split_provider), test_dirs[0], tsl::Env::Default(),
       NumWriteThreads(), BufferSizePerThread());
-  EXPECT_THAT(GetSplits<int64_t>(prefetched_split_provider, test_dirs[1]),
-              IsOkAndHolds(ElementsAreArray(Range(NumElements()))));
+  EXPECT_THAT(
+      GetSplits<int64_t>(prefetched_split_provider, test_dirs[1]),
+      absl_testing::IsOkAndHolds(ElementsAreArray(Range(NumElements()))));
 }
 
 TEST_P(PrefetchedSplitProviderParamTest, ConcurrentGetSplits) {
@@ -200,8 +201,9 @@ TEST_P(PrefetchedSplitProviderParamTest, Reset) {
 
   // The split provider produces elements from the beginning after being reset.
   for (int i = 0; i < 3; ++i) {
-    EXPECT_THAT(GetSplits<int64_t>(prefetched_split_provider, test_dirs[1]),
-                IsOkAndHolds(ElementsAreArray(Range(NumElements()))));
+    EXPECT_THAT(
+        GetSplits<int64_t>(prefetched_split_provider, test_dirs[1]),
+        absl_testing::IsOkAndHolds(ElementsAreArray(Range(NumElements()))));
     TF_EXPECT_OK(prefetched_split_provider.Reset());
   }
 }
@@ -260,7 +262,7 @@ TEST(PrefetchedSplitProviderTest, Cancellation) {
           [&prefetched_split_provider, &test_dirs]() {
             EXPECT_THAT(
                 GetSplits<int64_t>(prefetched_split_provider, test_dirs[1]),
-                StatusIs(absl::StatusCode::kCancelled));
+                absl_testing::StatusIs(absl::StatusCode::kCancelled));
           }));
 
   prefetched_split_provider.Cancel();

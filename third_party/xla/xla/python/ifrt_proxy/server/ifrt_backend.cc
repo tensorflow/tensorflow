@@ -61,8 +61,11 @@
 #include "xla/python/ifrt/program_serdes.h"
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/serdes.h"
+#include "xla/python/ifrt/serdes_any_version_accessor.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/ifrt_proxy/common/array_util.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
@@ -310,7 +313,7 @@ struct IfrtBackend::LoadedExecutableWithInfo {
       ABSL_GUARDED_BY(mu);
   const xla::ifrt::LoadedExecutableRef executable;
 
-  absl::flat_hash_set<int> donatable_indices ABSL_GUARDED_BY(mu);
+  std::optional<absl::flat_hash_set<int>> donatable_indices ABSL_GUARDED_BY(mu);
 };
 
 class IfrtBackend::InOrderRequestsProcessor {
@@ -364,8 +367,9 @@ class IfrtBackend::InOrderRequestsProcessor {
           "InOrderRequestsProcessor already stopped: ", *shutdown_msg_)));
       return result;
     }
+    absl::string_view req_name = GetRequestName(request.get());
     Entry entry{/*req=*/std::move(request), /*promise=*/std::move(promise),
-                XFlowHelper(GetRequestName(request.get()))};
+                XFlowHelper(req_name)};
     entry.xflow.InstantActivity<XFlowHelper::kSend>();
     entries_.push_back(std::move(entry));
     return result;
@@ -461,6 +465,17 @@ absl::StatusOr<std::unique_ptr<IfrtBackend>> IfrtBackend::Create(
         "Protocol version ", version.protocol_version(),
         " is unsupported by IFRT Proxy server; supported versions: [",
         kServerMinVersion, ",", kServerMaxVersion, "]"));
+  }
+  const SerDesVersionNumber ifrt_serdes_version_number(
+      SerDesVersion::current().version_number());
+  if (ifrt_serdes_version_number <
+          SerDesAnyVersionAccessor::GetMinimum().version_number() ||
+      ifrt_serdes_version_number > SerDesVersion::current().version_number()) {
+    return absl::FailedPreconditionError(absl::StrCat(
+        "IFRT SerDes ", ifrt_serdes_version_number,
+        " is unsupported by IFRT Proxy server; supported versions: [",
+        SerDesAnyVersionAccessor::GetMinimum().version_number(), ",",
+        SerDesVersion::current().version_number(), "]"));
   }
   return absl::WrapUnique<IfrtBackend>(
       new IfrtBackend(std::move(version), session_id, std::move(ifrt_client),
@@ -687,7 +702,7 @@ absl::StatusOr<BackendInterface::Response> IfrtBackend::HandleInit(
   init_resp->set_process_index(client_->process_index());
 
   absl::Span<xla::ifrt::Device* const> all_devices;
-  if (version_.protocol_version() < 7) {
+  if (protocol_version() < 7) {
     all_devices = client_->devices();
   } else {
     all_devices = client_->GetAllDevices();
@@ -704,7 +719,7 @@ absl::StatusOr<BackendInterface::Response> IfrtBackend::HandleInit(
     }
     d->set_debug_string(AsProtoStringData(device->DebugString()));
     d->set_to_string(AsProtoStringData(device->ToString()));
-    if (version_.protocol_version() <= 3) {
+    if (protocol_version() <= 3) {
       for (const auto& [name, attr] : device->Attributes().map()) {
         TF_ASSIGN_OR_RETURN(
             (*d->mutable_deprecated_attributes())[name],
@@ -713,7 +728,8 @@ absl::StatusOr<BackendInterface::Response> IfrtBackend::HandleInit(
                 attr));
       }
     } else {
-      *d->mutable_attributes() = device->Attributes().ToProto();
+      *d->mutable_attributes() =
+          device->Attributes().ToProto(ifrt_serdes_version());
     }
 
     if (device->IsAddressable()) {
@@ -746,6 +762,8 @@ absl::StatusOr<BackendInterface::Response> IfrtBackend::HandleInit(
     m->set_debug_string(AsProtoStringData(memory->DebugString()));
     m->set_to_string(AsProtoStringData(memory->ToString()));
   }
+  *init_resp->mutable_client_attributes() =
+      client_->Attributes().ToProto(ifrt_serdes_version());
 
   return response;
 }
@@ -919,12 +937,12 @@ IfrtBackend::HandleMakeArraysFromHostBufferShardsRequest(
 
   std::move(cleanup).Invoke();
 
-  TF_ASSIGN_OR_RETURN(std::vector<xla::ifrt::ArrayRef> arrays,
-                      client_->MakeArraysFromHostBufferShards(
-                          absl::MakeSpan(specs),
-                          xla::ifrt::Client::HostBufferSemantics::
-                              kImmutableUntilTransferCompletes,
-                          client_->CreateUserContext()));
+  UserContextScope user_context_scope(client_->CreateUserContext());
+  TF_ASSIGN_OR_RETURN(
+      std::vector<xla::ifrt::ArrayRef> arrays,
+      client_->MakeArraysFromHostBufferShards(
+          absl::MakeSpan(specs), xla::ifrt::Client::HostBufferSemantics::
+                                     kImmutableUntilTransferCompletes));
 
   std::vector<uint64_t> handles;
   handles.reserve(make_arrays_request->specs_size());
@@ -970,9 +988,9 @@ IfrtBackend::HandleMakeErrorArraysRequest(
     array_specs.push_back(std::move(array_spec));
   }
 
+  UserContextScope user_context_scope(client_->CreateUserContext());
   TF_ASSIGN_OR_RETURN(std::vector<IfrtArrayRef> arrays,
-                      client_->MakeErrorArrays(error, array_specs,
-                                               client_->CreateUserContext()));
+                      client_->MakeErrorArrays(error, array_specs));
 
   std::unique_ptr<IfrtResponse> response =
       NewIfrtResponse(request->request_metadata().op_id());
@@ -1002,7 +1020,7 @@ IfrtBackend::HandleAssembleArrayFromSingleDeviceArraysRequest(
       auto array_copy_semantics,
       FromArrayCopySemanticsProto(assemble_request.copy_semantics()));
   SingleDeviceShardSemantics single_device_shard_semantics;
-  if (version_.protocol_version() < 8) {
+  if (protocol_version() < 8) {
     single_device_shard_semantics = SingleDeviceShardSemantics::kAllShards;
   } else {
     TF_ASSIGN_OR_RETURN(single_device_shard_semantics,
@@ -1010,7 +1028,7 @@ IfrtBackend::HandleAssembleArrayFromSingleDeviceArraysRequest(
                             assemble_request.single_device_shard_semantics()));
   }
   IfrtArrayRef array;
-  if (version_.protocol_version() <
+  if (protocol_version() <
       protocol_version::kAssembleArrayFromSingleDeviceArraysWithDType) {
     if (arrays.empty()) {
       return absl::InvalidArgumentError(
@@ -1193,7 +1211,7 @@ IfrtBackend::HandleDisassembleIntoSingleDeviceArraysRequest(
   TF_ASSIGN_OR_RETURN(IfrtArrayRef array,
                       array_store_.Find(disassemble_request.array_handle()));
   SingleDeviceShardSemantics single_device_shard_semantics;
-  if (version_.protocol_version() < 8) {
+  if (protocol_version() < 8) {
     single_device_shard_semantics = SingleDeviceShardSemantics::kAllShards;
   } else {
     TF_ASSIGN_OR_RETURN(
@@ -1232,7 +1250,7 @@ absl::StatusOr<BackendInterface::Response> IfrtBackend::HandleCopyArraysRequest(
       TF_ASSIGN_OR_RETURN(ds.emplace_back(),
                           client_->LookupDevice(DeviceId(device_id)));
     }
-    devices.emplace(BasicDeviceList::Create(std::move(ds)));
+    TF_ASSIGN_OR_RETURN(devices, client_->MakeDeviceList(std::move(ds)));
   }
   std::optional<MemoryKind> memory_kind;
   if (copy_arrays_request.has_memory_kind()) {
@@ -1446,6 +1464,9 @@ Future<BackendInterface::Response> IfrtBackend::HandleCompileRequest(
     for (const auto* device : executable->addressable_devices()) {
       compile_resp->add_addressable_device_ids(device->Id().value());
     }
+    for (const auto* device : executable->devices()->devices()) {
+      compile_resp->add_device_ids(device->Id().value());
+    }
     // TODO(b/282757875): Consider making fingerprint calculation asynchronous
     // if it is expected to take long.
     auto fingerprint = executable->Fingerprint();
@@ -1567,6 +1588,25 @@ IfrtBackend::HandleLoadedExecutableMetadataRequest(
           tsl::StatusToProto(donated_input_indices.status());
     }
 
+    auto compiled_memory_stats = executable->GetCompiledMemoryStats();
+    if (compiled_memory_stats.ok()) {
+      *metadata_resp->mutable_compiled_memory_stats() =
+          compiled_memory_stats->ToProto();
+
+      // `serialized_buffer_assignment` is a legacy field that is undocumented,
+      // not semantically well-defined across HLO versions, and is used only by
+      // one Google-internal library as of Jul 2025. Do not send it across to
+      // the proxy-client.
+      metadata_resp->mutable_compiled_memory_stats()
+          ->clear_serialized_buffer_assignment();
+    } else {
+      *metadata_resp->mutable_compiled_memory_stats_error() =
+          tsl::StatusToProto(compiled_memory_stats.status());
+    }
+
+    metadata_resp->set_size_of_generated_code_in_bytes(
+        executable->SizeOfGeneratedCodeInBytes());
+
     return ifrt_resp;
   });
 }
@@ -1588,7 +1628,7 @@ IfrtBackend::HandleLoadedExecutableExecuteRequest(
   // Force the old behavior where `fill_status` was implicitly true before
   // protocol version 6. Can be cleaned up once version 6 is outside the
   // compatibility window.
-  if (version_.protocol_version() < 6) {
+  if (protocol_version() < 6) {
     execute_options.fill_status = true;
   }
 
@@ -1604,7 +1644,7 @@ IfrtBackend::HandleLoadedExecutableExecuteRequest(
       TF_ASSIGN_OR_RETURN(d.emplace_back(),
                           client_->LookupDevice(DeviceId(device_id)));
     }
-    devices = BasicDeviceList::Create(std::move(d));
+    TF_ASSIGN_OR_RETURN(devices, client_->MakeDeviceList(std::move(d)));
   }
 
   TF_ASSIGN_OR_RETURN(xla::ifrt::LoadedExecutable::ExecuteResult result,
@@ -1637,7 +1677,8 @@ IfrtBackend::HandleLoadedExecutableExecuteRequest(
       // sequence, so this assumption is satisfied.
       for (int i = 0; i < args.size(); ++i) {
         if (execute_options.non_donatable_input_indices.contains(i) ||
-            !executable_info->donatable_indices.contains(i)) {
+            (executable_info->donatable_indices.has_value() &&
+             !executable_info->donatable_indices->contains(i))) {
           CHECK(!args[i]->IsDeleted());
         }
       }
@@ -1650,15 +1691,17 @@ IfrtBackend::HandleLoadedExecutableExecuteRequest(
             ArraySpec{/*dtype=*/output->dtype(), /*shape=*/output->shape(),
                       /*sharding=*/output->shared_ptr_sharding()});
       }
-      executable_info->donatable_indices = [&] {
-        absl::flat_hash_set<int> result;
+      executable_info->donatable_indices =
+          [&]() -> std::optional<absl::flat_hash_set<int>> {
         absl::StatusOr<absl::Span<const int>> donatable_input_indices =
             executable_info->executable->GetDonatableInputIndices();
         if (donatable_input_indices.ok()) {
+          absl::flat_hash_set<int> result;
           result.insert(donatable_input_indices->begin(),
                         donatable_input_indices->end());
+          return result;
         }
-        return result;
+        return std::nullopt;
       }();
     }
   }
@@ -1669,8 +1712,9 @@ IfrtBackend::HandleLoadedExecutableExecuteRequest(
   if (execute.result_array_handle().empty()) {
     output_sharding_protos.reserve(result.outputs.size());
     for (int i = 0; i < result.outputs.size(); ++i) {
-      TF_ASSIGN_OR_RETURN(output_sharding_protos.emplace_back(),
-                          result.outputs[i]->sharding().ToProto());
+      TF_ASSIGN_OR_RETURN(
+          output_sharding_protos.emplace_back(),
+          result.outputs[i]->sharding().ToProto(ifrt_serdes_version()));
     }
   }
 
@@ -1702,8 +1746,10 @@ IfrtBackend::HandleLoadedExecutableExecuteRequest(
       for (int i = 0; i < result.outputs.size(); ++i) {
         LoadedExecutableExecuteResponse::Output* output =
             execute_response->add_outputs();
-        *output->mutable_dtype() = result.outputs[i]->dtype().ToProto();
-        *output->mutable_shape() = result.outputs[i]->shape().ToProto();
+        *output->mutable_dtype() =
+            result.outputs[i]->dtype().ToProto(ifrt_serdes_version());
+        *output->mutable_shape() =
+            result.outputs[i]->shape().ToProto(ifrt_serdes_version());
         *output->mutable_sharding() = std::move(output_sharding_protos[i]);
         output->set_array_handle(result_handles[i]);
       }

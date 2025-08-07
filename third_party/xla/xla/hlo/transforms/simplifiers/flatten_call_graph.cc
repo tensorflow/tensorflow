@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/call_graph.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -36,7 +37,9 @@ namespace xla {
 namespace {
 
 // Flatten a single call graph node. Expects to visit nodes in postorder.
-absl::Status FlattenNode(const CallGraphNode& node) {
+// Returns true if the module was changed, false otherwise.
+absl::StatusOr<bool> FlattenNode(const CallGraphNode& node) {
+  bool changed = false;
   HloComputation* computation = node.computation();
   HloModule* module = computation->parent();
   for (int i = 0; i < node.caller_callsites().size(); ++i) {
@@ -55,6 +58,8 @@ absl::Status FlattenNode(const CallGraphNode& node) {
         continue;
       }
     }
+
+    changed = true;
     call_site.instruction()->ReplaceCalledComputations(
         [&](HloComputation* callee) {
           if (callee == computation) {
@@ -80,7 +85,7 @@ absl::Status FlattenNode(const CallGraphNode& node) {
       }
     }
   }
-  return absl::OkStatus();
+  return changed;
 }
 
 // Annotates flatten computations with callee instruction types.
@@ -112,10 +117,17 @@ absl::StatusOr<bool> FlattenCallGraph::Run(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(3, "Before flatten call graph:\n" + module->ToString());
 
+  bool changed = false;
   {  // Flatten original call graph.
     std::unique_ptr<CallGraph> call_graph =
         CallGraph::Build(module, execution_threads);
-    TF_RETURN_IF_ERROR(call_graph->VisitNodes(FlattenNode));
+    TF_ASSIGN_OR_RETURN(bool flattened,
+                        call_graph->VisitNodesWithReturn(FlattenNode));
+    changed |= flattened;
+  }
+
+  if (!changed) {
+    return false;
   }
 
   // TODO(b/418034360): Remove this step once the fusion instruction is

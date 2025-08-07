@@ -121,7 +121,7 @@ XLA_CPU_WorkGroupId Kernel::ParallelTask<num_workgroups_x_only>::Delinearize(
     uint64_t task_index) const {
   // In the most common case we parallelize only over the `x` dimension.
   if constexpr (num_workgroups_x_only) {
-    return XLA_CPU_WorkGroupId{task_index, 1, 1};
+    return XLA_CPU_WorkGroupId{task_index, 0, 0};
   }
 
   // Convert linear task index to (x, y, z) coordinate.
@@ -198,12 +198,12 @@ tsl::AsyncValueRef<LaunchEvent> Kernel::Launch(
 
   if (ABSL_PREDICT_TRUE(num_workgroups.y == 1 && num_workgroups.z == 1)) {
     return Worker::Parallelize(
-        device, num_workers, num_tasks,
+        device->getPool(), num_workers, num_tasks,
         ParallelTask<true>(kernel_, num_workgroups, args));
   }
 
   return Worker::Parallelize(
-      device, num_workers, num_tasks,
+      device->getPool(), num_workers, num_tasks,
       ParallelTask<false>(kernel_, num_workgroups, args));
 }
 

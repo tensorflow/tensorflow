@@ -293,6 +293,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":common",
+        ":device_compilation_cluster_signature",
         ":device_compilation_profiler",
         ":device_compiler",
         ":device_executable_persistor",
@@ -354,6 +355,7 @@ cc_library(
         "//tensorflow/core/tpu:tpu_defs",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
@@ -397,6 +399,7 @@ cc_library(
     # Public visibility is needed for external TF/XLA backends.
     visibility = ["//visibility:public"],
     deps = [
+        ":device_compilation_cluster_signature",
         ":device_compilation_profiler",
         ":jit_compilation_passes",
         ":variable_info",
@@ -639,6 +642,7 @@ cc_library(
         "//tensorflow/core/tfrt/common:async_value_tensor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
@@ -1645,7 +1649,14 @@ cc_library(
     name = "device_compilation_cluster_signature",
     srcs = ["device_compilation_cluster_signature.cc"],
     hdrs = ["device_compilation_cluster_signature.h"],
-    deps = ["//tensorflow/compiler/tf2xla:xla_compiler"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/platform:types",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+    ],
 )
 
 cc_library(

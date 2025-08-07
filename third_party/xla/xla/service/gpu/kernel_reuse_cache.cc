@@ -21,75 +21,20 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/codegen/emitters/computation_fingerprint.h"
+#include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/executable.pb.h"
-#include "xla/service/gpu/kernel_arguments.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/util.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
 
 namespace xla {
 namespace gpu {
-namespace {
-
-// Calculates a fingerprint of the kernel arguments, which can be used for
-// checking reusability.
-//
-// For example 2 arguments that are aligned to 16 bytes, aliased and also
-// written by the kernel will be represented as "16aw,16aw".
-//
-// Overlapping arguments are only marked aliased, if at least one of them is
-// written and their buffers are not exactly the same. If 2 arguments'
-// buffers are exactly the same, then they are not marked aliased, but marked
-// as duplicates, for example like this: "16,=0,16w,=2". The example means
-// that the 1st argument is the same as the 0th and the 3rd is the same as
-// the 2nd. These duplicated parameters are passed to the kernel only once.
-std::string GetArgumentFingerprint(
-    absl::Span<const KernelArgument> kernel_arguments) {
-  return absl::StrJoin(
-      kernel_arguments, ",", [](std::string* s, const KernelArgument& arg) {
-        if (arg.first_with_same_slice().has_value()) {
-          absl::StrAppend(s, "=", arg.first_with_same_slice().value());
-          return;
-        }
-        absl::StrAppend(s, arg.alignment());
-        if (arg.aliased()) {
-          absl::StrAppend(s, "a");
-        }
-        if (arg.written()) {
-          absl::StrAppend(s, "w");
-        }
-      });
-}
-
-}  // namespace
-
-std::string GetComputationFingerprint(
-    const HloComputation* fused_computation,
-    absl::Span<const KernelArgument> kernel_arguments,
-    absl::string_view discriminator) {
-  // We have to print constants, because otherwise we would accidentally reuse
-  // kernels which have different builtin constants.
-  //
-  // It is not a problem to recursively print sub-computations, because we don't
-  // have them at this point.
-  auto print_options = HloPrintOptions::Fingerprint()
-                           .set_print_only_essential_constants(false)
-                           .set_print_operand_shape(false);
-
-  return absl::StrCat(discriminator, "(",
-                      GetArgumentFingerprint(kernel_arguments), ")",
-                      fused_computation->ToString(print_options));
-}
 
 absl::Status KernelReuseCache::Load(const CompilationCacheProto& proto) {
   for (const auto& [name, entry] : proto.entries()) {
@@ -126,14 +71,14 @@ CompilationCacheProto KernelReuseCache::Export() const {
     CHECK(inserted) << cache_entry.kernel_name;
     CompilationCacheEntryProto& proto_entry = it->second;
     proto_entry.set_fingerprint(fingerprint);
-    LaunchDimensionsProto launch_dimensions_proto;
+    CompilationCacheEntryProto::LaunchDimensionsProto launch_dimensions_proto;
     launch_dimensions_proto.set_num_blocks(
         cache_entry.launch_dimensions.num_blocks());
     launch_dimensions_proto.set_num_threads_per_block(
         cache_entry.launch_dimensions.num_threads_per_block());
     *proto_entry.mutable_launch_dimensions() = launch_dimensions_proto;
     if (cache_entry.cluster_dim.has_value()) {
-      ClusterDimProto cluster_dim_proto;
+      CompilationCacheEntryProto::ClusterDimProto cluster_dim_proto;
       cluster_dim_proto.set_x(cache_entry.cluster_dim->x);
       cluster_dim_proto.set_y(cache_entry.cluster_dim->y);
       cluster_dim_proto.set_z(cache_entry.cluster_dim->z);
@@ -184,10 +129,10 @@ absl::Status UpdateDiskKernelCache(
 std::pair<absl::StatusOr<const KernelReuseCache::Entry*>, bool>
 KernelReuseCache::GetWithStatus(
     const HloComputation* fused_computation,
-    absl::Span<const KernelArgument> kernel_arguments,
+    absl::Span<const emitters::KernelArgument> kernel_arguments,
     absl::string_view discriminator,
     const std::function<absl::StatusOr<KernelReuseCache::Entry>()>& generator) {
-  std::string fingerprint = GetComputationFingerprint(
+  std::string fingerprint = emitters::GetComputationFingerprint(
       fused_computation, kernel_arguments, discriminator);
   VLOG(4) << "Fingerprint: ";
   XLA_VLOG_LINES(4, fingerprint);
