@@ -142,6 +142,56 @@ struct ApproximateEqual<GPUDevice, T> {
   }
 };
 
+// IEEE 754 compliant complex abs specializations for GPU
+// Fix for TensorFlow issue #98410: inconsistent inf/nan handling
+template <>
+struct UnaryFunctor<GPUDevice, functor::abs<complex64>> {
+  void operator()(const GPUDevice& d, typename TTypes<complex64>::ConstFlat& in,
+                  typename TTypes<float>::Flat& out) {
+    auto ieee754_abs = [] __device__ (const complex64& x) -> float {
+      float real_part = x.real();
+      float imag_part = x.imag();
+      
+      // IEEE 754: if either component is inf, result is inf
+      if (isinf(real_part) || isinf(imag_part)) {
+        return INFINITY;
+      }
+      
+      return hypot(real_part, imag_part);
+    };
+    
+    MaybeWith32BitIndexing<GPUDevice>(
+        [&](auto out32, auto in32) {
+          out32.device(d) = in32.unaryExpr(ieee754_abs);
+        },
+        out, in);
+  }
+};
+
+template <>
+struct UnaryFunctor<GPUDevice, functor::abs<complex128>> {
+  void operator()(const GPUDevice& d, typename TTypes<complex128>::ConstFlat& in,
+                  typename TTypes<double>::Flat& out) {
+    auto ieee754_abs = [] __device__ (const complex128& x) -> double {
+      double real_part = x.real();
+      double imag_part = x.imag();
+      
+      // IEEE 754: if either component is inf, result is inf
+      if (isinf(real_part) || isinf(imag_part)) {
+        return INFINITY;
+      }
+      
+      return hypot(real_part, imag_part);
+    };
+    
+    MaybeWith32BitIndexing<GPUDevice>(
+        [&](auto out32, auto in32) {
+          out32.device(d) = in32.unaryExpr(ieee754_abs);
+        },
+        out, in);
+  }
+};
+
 // Macros to explicitly instantiate kernels on GPU for multiple types
 // (T0, T1, etc.) for UnaryFunctor (e.g., functor::sqrt).
 #define DEFINE_UNARY1(F, T) template struct UnaryFunctor<GPUDevice, F<T> >
