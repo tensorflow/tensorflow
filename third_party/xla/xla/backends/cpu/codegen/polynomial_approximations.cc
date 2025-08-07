@@ -39,8 +39,8 @@ limitations under the License.
 #include "llvm/Support/TypeSize.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "xla/backends/cpu/codegen/vector_ir_builder.h"
-#include "xla/codegen/math/string_interner.h"
-#include "xla/codegen/math/vec_name_mangler.h"
+#include "xla/codegen/intrinsic/string_interner.h"
+#include "xla/codegen/intrinsic/vec_name_mangler.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/xla_data.pb.h"
 
@@ -49,9 +49,9 @@ namespace {
 
 // Returns the Intel VFABI prefix for a function with the given vector width.
 absl::string_view GetVfabiPrefix(size_t width) {
-  return codegen::math::StringInterner::Get().Intern(
-      codegen::math::GetMangledNamePrefix(
-          false, width, {codegen::math::VecParamCardinality::kVector}));
+  return codegen::intrinsic::StringInterner::Get().Intern(
+      codegen::intrinsic::GetMangledNamePrefix(
+          false, width, {codegen::intrinsic::VecParamCardinality::kVector}));
 }
 
 // Removes 'fn' from the list of symbols to keep in 'module'.

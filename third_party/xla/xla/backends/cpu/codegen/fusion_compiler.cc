@@ -176,7 +176,7 @@ static void AddLoweringPasses(mlir::OpPassManager& pm, int32_t vector_width,
   pm.addPass(emitters::CreateEraseDeadFunctionsPass());
   pm.addPass(mlir::createLowerAffinePass());
   pm.addPass(mlir::createSCFToControlFlowPass());
-  pm.addPass(emitters::CreateLowerXlaMathLibPass());
+  pm.addPass(emitters::CreateLowerXlaIntrinsicLibPass());
   pm.addNestedPass<mlir::func::FuncOp>(CreateConvertMathToLLVMPass());
   pm.addPass(emitters::CreateLowerToLLVMPass(/*target_type=*/"cpu"));
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
