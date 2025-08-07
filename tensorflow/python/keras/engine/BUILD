@@ -1,8 +1,7 @@
 # Description:
 #   Contains the Keras engine API (internal TensorFlow version).
 
-load("//tensorflow:py.default.bzl", "py_library")
-
+load("//tensorflow:py.default.bzl", "py_library","tf_py_test")
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     # TODO(scottzhu): Remove non-keras deps from TF.
@@ -263,5 +262,16 @@ py_library(
         "//tensorflow/python/keras/utils:tf_utils",
         "//tensorflow/python/util:nest",
         "//third_party/py/numpy",
+    ],
+)
+tf_py_test(
+    name = "training_utils_v1_test",
+    srcs = ["training_utils_v1_test.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":engine",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:test",
     ],
 )
