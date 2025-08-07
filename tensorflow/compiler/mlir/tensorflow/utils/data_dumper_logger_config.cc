@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/log/log.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 
 namespace tensorflow {
