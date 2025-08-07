@@ -1,4 +1,4 @@
-// RUN: fusion_to_mlir %s | emitters_opt -xla-gpu-test-optimize --inline |\
+// RUN: fusion_to_mlir %s | emitters_opt -xla-test-optimize --inline |\
 // RUN: FileCheck %s
 // RUN: test_correctness %s --bijection_inputs=scatter:2
 

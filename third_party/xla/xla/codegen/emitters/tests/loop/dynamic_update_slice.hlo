@@ -1,5 +1,5 @@
 // RUN: gpu_fusion_to_mlir %s |\
-// RUN:   emitters_opt --xla-gpu-test-optimize | FileCheck %s
+// RUN:   emitters_opt --xla-test-optimize | FileCheck %s
 // RUN: gpu_test_correctness %s
 
 fusion {

@@ -59,6 +59,7 @@ cc_library(
         "//xla/codegen/emitters:kernel_api_builder",
         "//xla/codegen/emitters:kernel_arguments",
         "//xla/codegen/emitters/ir:xla",
+        "//xla/codegen/emitters/transforms:pass_pipelines",
         "//xla/codegen/emitters/transforms:passes",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/ir:hlo",
