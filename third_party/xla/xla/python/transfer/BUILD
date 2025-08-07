@@ -260,6 +260,7 @@ cc_library(
         ":streaming_ifrt",
         "//xla:shape_util",
         "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/python/ifrt",
