@@ -281,14 +281,14 @@ MIRRORED_TARS_NVSHMEM_REDIST_JSON_DICT = {
 
 CUDA_12_NCCL_WHEEL_DICT = {
     "x86_64-unknown-linux-gnu": {
-        "version": "2.26.5",
-        "url": "https://files.pythonhosted.org/packages/48/fb/ec4ac065d9b0d56f72eaf1d9b0df601e33da28197b32ca351dc05b342611/nvidia_nccl_cu12-2.26.5-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
-        "sha256": "ea5ed3e053c735f16809bee7111deac62ac35b10128a8c102960a0462ce16cbe",
+        "version": "2.27.7",
+        "url": "https://files.pythonhosted.org/packages/c4/cb/2cf5b8e6a669c90ac6410c3a9d86881308492765b6744de5d0ce75089999/nvidia_nccl_cu12-2.27.7-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+        "sha256": "de5ba5562f08029a19cb1cd659404b18411ed0d6c90ac5f52f30bf99ad5809aa",
     },
     "aarch64-unknown-linux-gnu": {
         "version": "2.26.5",
-        "url": "https://files.pythonhosted.org/packages/55/66/ed9d28946ead0fe1322df2f4fc6ea042340c0fe73b79a1419dc1fdbdd211/nvidia_nccl_cu12-2.26.5-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",
-        "sha256": "adb1bf4adcc5a47f597738a0700da6aef61f8ea4251b375540ae138c7d239588",
+        "url": "https://files.pythonhosted.org/packages/b3/66/ac1f588af222bf98dfb55ce0efeefeab2a612d6d93ef60bd311d176a8346/nvidia_nccl_cu12-2.27.7-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",
+        "sha256": "4617839f3bb730c3845bf9adf92dbe0e009bc53ca5022ed941f2e23fb76e6f17",
     },
 }
 
