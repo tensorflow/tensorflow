@@ -110,6 +110,7 @@ class DfsHloVisitorBase {
   }
   virtual absl::Status HandleDot(HloInstructionPtr hlo) = 0;
   virtual absl::Status HandleRaggedDot(HloInstructionPtr hlo) = 0;
+  virtual absl::Status HandleScaledDot(HloInstructionPtr hlo) = 0;
   virtual absl::Status HandlePower(HloInstructionPtr hlo) {
     return HandleElementwiseBinary(hlo);
   }

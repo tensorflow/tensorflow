@@ -236,6 +236,38 @@ absl::Status ShapeVerifier::HandleRaggedDot(HloInstruction* ragged_dot) {
   return CheckShape(ragged_dot, expected);
 }
 
+absl::Status ShapeVerifier::HandleScaledDot(HloInstruction* scaled_dot) {
+  TF_RETURN_IF_ERROR(
+      CheckOperandCount(scaled_dot, HloScaledDotInstruction::kOperands));
+  auto lhs_shape = scaled_dot->operand(0)->shape();
+  auto lhs_scale_shape = scaled_dot->operand(1)->shape();
+  auto rhs_shape = scaled_dot->operand(2)->shape();
+  auto rhs_scale_shape = scaled_dot->operand(3)->shape();
+  auto dot_dimension_numbers = scaled_dot->dot_dimension_numbers();
+  if (dot_dimension_numbers.lhs_contracting_dimensions_size() != 1) {
+    return Internal(
+        "lhs_contracting_dimensions must have exactly one dimension but got %s "
+        "in instruction %s",
+        absl::StrJoin(dot_dimension_numbers.lhs_contracting_dimensions(), ", "),
+        scaled_dot->ToString());
+  }
+  if (dot_dimension_numbers.rhs_contracting_dimensions_size() != 1) {
+    return Internal(
+        "rhs_contracting_dimensions must have exactly one dimension but got %s "
+        "in instruction %s",
+        absl::StrJoin(dot_dimension_numbers.rhs_contracting_dimensions(), ", "),
+        scaled_dot->ToString());
+  }
+  TF_ASSIGN_OR_RETURN(
+      const Shape expected,
+      ShapeInference::InferDotOpShape(
+          scaled_dot->operand(0)->shape(), scaled_dot->operand(2)->shape(),
+          scaled_dot->dot_dimension_numbers(),
+          /*preferred_element_type=*/scaled_dot->shape().element_type()));
+  // TODO(b/436988479): Check the shapes against the scale shapes.
+  return CheckShape(scaled_dot, expected);
+}
+
 absl::Status ShapeVerifier::HandleConvolution(HloInstruction* convolution) {
   TF_ASSIGN_OR_RETURN(
       Shape expected,

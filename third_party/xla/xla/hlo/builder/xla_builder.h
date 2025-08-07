@@ -702,6 +702,12 @@ class XlaBuilder {
       const PrecisionConfig* precision_config = nullptr,
       std::optional<PrimitiveType> preferred_element_type = std::nullopt);
 
+  XlaOp ScaledDot(
+      XlaOp lhs, XlaOp lhs_scale, XlaOp rhs, XlaOp rhs_scale,
+      const DotDimensionNumbers& dimension_number,
+      const PrecisionConfig* precision_config = nullptr,
+      std::optional<PrimitiveType> preferred_element_type = std::nullopt);
+
   XlaOp Conv(
       XlaOp lhs, XlaOp rhs, absl::Span<const int64_t> window_strides,
       Padding padding, int64_t feature_group_count = 1,
@@ -1400,6 +1406,14 @@ class XlaBuilder {
                           const DotDimensionNumbers& dimension_number,
                           const PrecisionConfig* precision_config,
                           std::optional<PrimitiveType> preferred_element_type);
+  friend XlaOp RaggedDot(XlaOp lhs, XlaOp rhs, XlaOp group_sizes,
+                         const RaggedDotDimensionNumbers& dimension_numbers,
+                         const PrecisionConfig* precision_config,
+                         std::optional<PrimitiveType> preferred_element_type);
+  friend XlaOp ScaledDot(XlaOp lhs, XlaOp lhs_scale, XlaOp rhs, XlaOp rhs_scale,
+                         const DotDimensionNumbers& dimension_number,
+                         const PrecisionConfig* precision_config,
+                         std::optional<PrimitiveType> preferred_element_type);
   virtual absl::StatusOr<XlaOp> DotGeneralInternal(
       const Shape& shape, XlaOp lhs, XlaOp rhs,
       const DotDimensionNumbers& dimension_number,

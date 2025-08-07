@@ -2104,6 +2104,30 @@ XlaOp XlaBuilder::DotGeneral(
   });
 }
 
+XlaOp XlaBuilder::ScaledDot(
+    XlaOp lhs, XlaOp lhs_scale, XlaOp rhs, XlaOp rhs_scale,
+    const DotDimensionNumbers& dimension_numbers,
+    const PrecisionConfig* precision_config,
+    std::optional<PrimitiveType> preferred_element_type) {
+  return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(const Shape* lhs_shape, GetShapePtr(lhs));
+    TF_ASSIGN_OR_RETURN(const Shape* rhs_shape, GetShapePtr(rhs));
+    TF_ASSIGN_OR_RETURN(
+        Shape shape,
+        ShapeInference::InferDotOpShape(
+            *lhs_shape, *rhs_shape, dimension_numbers, preferred_element_type));
+
+    HloInstructionProto instr;
+    *instr.mutable_shape() = shape.ToProto();
+    *instr.mutable_dot_dimension_numbers() = dimension_numbers;
+    if (precision_config != nullptr) {
+      *instr.mutable_precision_config() = *precision_config;
+    }
+    return AddInstruction(std::move(instr), HloOpcode::kScaledDot,
+                          {lhs, lhs_scale, rhs, rhs_scale});
+  });
+}
+
 absl::StatusOr<XlaOp> XlaBuilder::DotGeneralInternal(
     const Shape& shape, XlaOp lhs, XlaOp rhs,
     const DotDimensionNumbers& dimension_numbers,
@@ -2115,6 +2139,16 @@ absl::StatusOr<XlaOp> XlaBuilder::DotGeneralInternal(
     *instr.mutable_precision_config() = *precision_config;
   }
   return AddInstruction(std::move(instr), HloOpcode::kDot, {lhs, rhs});
+}
+
+XlaOp ScaledDot(const XlaOp lhs, const XlaOp lhs_scale, const XlaOp rhs,
+                const XlaOp rhs_scale,
+                const DotDimensionNumbers& dimension_numbers,
+                const PrecisionConfig* precision_config,
+                std::optional<PrimitiveType> preferred_element_type) {
+  return lhs.builder()->ScaledDot(lhs, lhs_scale, rhs, rhs_scale,
+                                  dimension_numbers, precision_config,
+                                  preferred_element_type);
 }
 
 XlaOp XlaBuilder::RaggedAllToAll(
