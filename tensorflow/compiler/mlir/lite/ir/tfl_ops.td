@@ -6098,4 +6098,4 @@ def TFL_ControlNodeOp : Op<TFL_Dialect, "control_node",
 #endif // TFL_OPS
 
 // LINT.ThenChange()
-// LINT.ThenChange(//tensorflow/lite/tools/versioning/op_version.cc)
+// LINT.ThenChange(//tensorflow/compiler/mlir/lite/tools/versioning/op_version.cc)
