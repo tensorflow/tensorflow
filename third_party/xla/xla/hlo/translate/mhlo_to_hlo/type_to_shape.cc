@@ -15,11 +15,9 @@ limitations under the License.
 
 #include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <numeric>
 #include <optional>
-#include <utility>
 #include <vector>
 
 #include "llvm/ADT/ArrayRef.h"

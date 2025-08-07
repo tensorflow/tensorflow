@@ -18,10 +18,8 @@ limitations under the License.
 #include <cstdint>
 #include <iostream>
 #include <string>
-#include <utility>
 
 #include <gtest/gtest.h>
-#include "absl/status/statusor.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
