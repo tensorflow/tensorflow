@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <memory>
 #include <optional>
+#include <tuple>
+#include <utility>
 
 #include "absl/log/check.h"
 #include "llvm/ADT/STLExtras.h"
@@ -51,10 +53,44 @@ using ::mlir::SymbolTable;
 using ::mlir::func::CallOp;
 using ::mlir::func::FuncOp;
 
+using ::mlir::StringAttr;
 using ::mlir::sdy::kShardingAttr;
 using ::mlir::sdy::ManualAxesAttr;
 using ::mlir::sdy::NamedComputationOp;
 using ::mlir::sdy::TensorShardingPerValueAttr;
+
+using ComputationKey = std::tuple<StringRef, TensorShardingPerValueAttr,
+                                  TensorShardingPerValueAttr>;
+
+TensorShardingPerValueAttr getShardingsOrEmpty(
+    std::optional<TensorShardingPerValueAttr> shardings) {
+  return shardings.has_value() ? shardings.value()
+                               : TensorShardingPerValueAttr();
+}
+
+std::pair<FuncOp, StringAttr> maybeGetCachedFuncOp(
+    NamedComputationOp namedComputationOp,
+    llvm::DenseMap<ComputationKey, std::pair<FuncOp, StringAttr>>& funcCache,
+    mlir::IRRewriter& rewriter, SymbolTable& symbolTable) {
+  auto key = std::make_tuple(
+      namedComputationOp.getName(),
+      getShardingsOrEmpty(namedComputationOp.getInShardings()),
+      getShardingsOrEmpty(namedComputationOp.getOutShardings()));
+  auto it = funcCache.find(key);
+  if (it == funcCache.end()) {
+    auto funcOp = rewriter.create<FuncOp>(
+        namedComputationOp.getLoc(), namedComputationOp.getName(),
+        rewriter.getFunctionType(
+            namedComputationOp.getBody().getArgumentTypes(),
+            namedComputationOp.getResultTypes()),
+        rewriter.getStringAttr("private"),
+        /*argAttrs=*/ArrayAttr(), /*resultAttrs=*/ArrayAttr());
+    bool inserted;
+    std::tie(it, inserted) = funcCache.try_emplace(
+        key, std::make_pair(funcOp, symbolTable.insert(funcOp)));
+  }
+  return it->second;
+}
 
 // Converts a `NamedComputationOp` into a `CallOp`.
 class ExportNamedComputationsPass
@@ -67,16 +103,15 @@ class ExportNamedComputationsPass
     ModuleOp moduleOp = getOperation();
     SymbolTable symbolTable(moduleOp);
     mlir::Block& moduleBlock = moduleOp.getRegion().front();
-    getOperation()->walk([&](NamedComputationOp namedComputationOp) {
+    llvm::DenseMap<ComputationKey, std::pair<FuncOp, StringAttr>> funcCache;
+    // NOTE: The walk needs to be in post order, which is the default order.
+    moduleOp.walk([&](NamedComputationOp namedComputationOp) {
       mlir::IRRewriter rewriter(namedComputationOp);
       rewriter.setInsertionPointToEnd(&moduleBlock);
-      auto funcOp = rewriter.create<FuncOp>(
-          namedComputationOp.getLoc(), namedComputationOp.getName(),
-          rewriter.getFunctionType(
-              namedComputationOp.getBody().getArgumentTypes(),
-              namedComputationOp.getResultTypes()),
-          rewriter.getStringAttr("private"),
-          /*argAttrs=*/ArrayAttr(), /*resultAttrs=*/ArrayAttr());
+
+      auto [funcOp, funcSymName] = maybeGetCachedFuncOp(
+          namedComputationOp, funcCache, rewriter, symbolTable);
+
       rewriter.setInsertionPointToStart(funcOp->getBlock());
       mlir::sdy::inlineRegionAndConvertTerminatorOp<mlir::func::ReturnOp>(
           namedComputationOp.getBody(), funcOp.getBody());
@@ -121,8 +156,8 @@ class ExportNamedComputationsPass
       mlir::SmallVector<NamedAttribute> callOpAttrs(
           namedComputationOp->getDiscardableAttrs());
       auto callOp = rewriter.replaceOpWithNewOp<CallOp>(
-          namedComputationOp, namedComputationOp.getResultTypes(),
-          symbolTable.insert(funcOp), namedComputationOp.getOperands());
+          namedComputationOp, namedComputationOp.getResultTypes(), funcSymName,
+          namedComputationOp.getOperands());
       callOp->setAttrs(callOpAttrs);
 
       // Copy the output shardings to the call op.
