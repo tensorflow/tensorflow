@@ -586,7 +586,12 @@ build:resultstore --bes_timeout=600s
 # Flag to enable remote config
 common --experimental_repo_remote_exec
 
+build:use_tar_archive_files --repo_env=USE_CUDA_TAR_ARCHIVE_FILES=1
+build:use_tar_archive_files --repo_env=USE_NVSHMEM_TAR_ARCHIVE_FILES=1
+build:use_tar_archive_files --repo_env=USE_LLVM_TAR_ARCHIVE_FILES=1
+
 # Make Bazel not try to probe the host system for a C++ toolchain.
+build:rbe_base --config=use_tar_archive_files
 build:rbe_base --config=resultstore
 build:rbe_base --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1
 build:rbe_base --define=EXECUTOR=remote
@@ -654,8 +659,6 @@ common:rbe_linux_cpu_old --remote_instance_name=projects/tensorflow-testing/inst
 
 build:rbe_linux_cuda --config=cuda_clang_official
 build:rbe_linux_cuda --config=rbe_linux_cpu
-build:rbe_linux_cuda --repo_env=USE_CUDA_TAR_ARCHIVE_FILES=1
-build:rbe_linux_cuda --repo_env=USE_NVSHMEM_TAR_ARCHIVE_FILES=1
 # For Remote build execution -- GPU configuration
 build:rbe_linux_cuda --repo_env=REMOTE_GPU_TESTING=1
 
