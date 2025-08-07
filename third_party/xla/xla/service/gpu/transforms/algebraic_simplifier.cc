@@ -15,7 +15,11 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/algebraic_simplifier.h"
 
+#include <cstdint>
+#include <functional>
+
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "xla/backends/gpu/codegen/triton/support_legacy.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -27,7 +31,10 @@ limitations under the License.
 #include "xla/service/gpu/transforms/dot_algorithm_rewriter.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -102,6 +109,88 @@ GpuAlgebraicSimplifierVisitor::MakeMultiplyForPrecisionAlgorithm(
     HloInstruction* dot, HloInstruction* lhs, HloInstruction* rhs) {
   return MakeMultiplyForDotPrecisionAlgorithm(
       lhs, rhs, dot->precision_config().algorithm());
+}
+
+bool GpuAlgebraicSimplifierVisitor::ShouldStrengthReduceDotToReduce(
+    const HloInstruction* hlo) {
+  if (hlo->opcode() != HloOpcode::kDot) {
+    return false;
+  }
+
+  if (hlo->operand(0)->shape().dimensions().size() <= 1 ||
+      hlo->operand(1)->shape().dimensions().size() <= 1) {
+    return true;
+  }
+
+  // Here we conservatively assume the operand is extracted from a tuple,
+  // it is aliased and likely will require copy to resolve conflicting layout.
+  auto may_require_copy = HloPredicateIsOp<HloOpcode::kGetTupleElement>;
+  if (hlo->user_count() > 1 && (may_require_copy(hlo->operand(0)) ||
+                                may_require_copy(hlo->operand(1)))) {
+    VLOG(2) << "Layout Inefficient dot possibly incurring extra copies.\n";
+    return true;
+  }
+
+  std::function<bool(const HloInstruction*, int)> layout_restrictive =
+      [&](const HloInstruction* op, int level = 0) -> bool {
+    switch (op->opcode()) {
+      case HloOpcode::kCustomCall:
+      case HloOpcode::kReshape:
+        return true;
+      default:
+        // Use level to control how far to follow the operand chains to
+        // identify layout restrictive ops. Choose to go < 5 recursive calls.
+        if (level > 5) {
+          return false;
+        }
+        for (const HloInstruction* operand : op->operands()) {
+          if (layout_restrictive(operand, level + 1)) {
+            return true;
+          }
+        }
+        return false;
+    }
+  };
+
+  if (layout_restrictive(hlo, 0)) {
+    return true;
+  }
+
+  // TODO(appujee): Add support for DotCanonicalizer::SetConvDimNumbersFromDot.
+  ConvolutionDimensionNumbers dnums;
+  auto dimension_acceptable = [](int64_t dim, const Shape& shape) {
+    if (dim >= shape.dimensions().size()) {
+      // Added dimension has size 1.
+      return false;
+    }
+    // TODO(appujee): TransferSizeUtil::LaneCount() not available for GPUs.
+    return shape.dimensions()[dim] >= 128 / 2;
+  };
+  const Shape& output_shape = hlo->shape();
+  if (!dimension_acceptable(dnums.output_batch_dimension(), output_shape) &&
+      !dimension_acceptable(dnums.output_feature_dimension(), output_shape)) {
+    VLOG(2) << "Layout inefficient dot whose output shape has small "
+               "lane/sublane dimensions\n";
+    return true;
+  }
+  const Shape& input_shape = hlo->operand(0)->shape();
+  if (!dimension_acceptable(dnums.input_batch_dimension(), input_shape) &&
+      !dimension_acceptable(dnums.input_feature_dimension(), input_shape)) {
+    VLOG(2) << "Layout inefficient dot whose input shape has small "
+               "lane/sublane dimensions\n";
+    return true;
+  }
+  const Shape& kernel_shape = hlo->operand(1)->shape();
+  if (!dimension_acceptable(dnums.kernel_input_feature_dimension(),
+                            kernel_shape) &&
+      !dimension_acceptable(dnums.kernel_output_feature_dimension(),
+                            kernel_shape)) {
+    VLOG(2) << "Layout inefficient dot whose kernel shape has small "
+               "lane/sublane dimensions\n";
+    return true;
+  }
+
+  return false;
 }
 
 }  // namespace xla::gpu

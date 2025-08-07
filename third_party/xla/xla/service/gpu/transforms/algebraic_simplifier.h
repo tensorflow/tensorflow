@@ -62,6 +62,8 @@ class GpuAlgebraicSimplifierVisitor : public AlgebraicSimplifierVisitor {
   absl::StatusOr<bool> TryToSinkBroadcastOperandsOfChainedAdds(
       HloInstruction* add);
 
+  bool ShouldStrengthReduceDotToReduce(const HloInstruction* hlo) override;
+
   se::GpuComputeCapability compute_capability_;
 };
 
