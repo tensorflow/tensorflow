@@ -20,6 +20,7 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.grpc.pb.h"
 #include "xla/tsl/platform/status_matchers.h"
