@@ -84,10 +84,9 @@ class ManualComputationPattern : public OpConversionPattern<CallOp> {
     auto shmapBodyFunc = symbolTable.lookup<FuncOp>(callOp.getCallee());
     if (shmapBodyFunc.empty()) {
       return callOp->emitOpError(
-          "expected a unique FuncOp per "
-          "@local_xla.sdy.manual_computation_body call. Were "
-          "functions maybe somehow shared/de-duped between "
-          "two ManualComputations?");
+          "expected a unique FuncOp per @local_xla.sdy.manual_computation_body call. "
+          "Were functions maybe somehow shared/de-duped between two "
+          "ManualComputations?");
     }
 
     // If the callOp has no uses, but has at least one result, then it means
@@ -138,7 +137,7 @@ class ManualComputationPattern : public OpConversionPattern<CallOp> {
       localToGlobalShape = mlir::dyn_cast<CustomCallOp>(*callOp->user_begin());
       if (!localToGlobalShape) {
         return callOp->emitOpError("expected the first use of ")
-               << callOp.getCalleeAttr() << " to be by a "
+               << callOp.getCalleeAttr() << " to be a "
                << kLocalToGlobalShapeCallTargetName << " CustomCallOp";
       }
       CHECK(localToGlobalShape.getCallTargetName() ==
