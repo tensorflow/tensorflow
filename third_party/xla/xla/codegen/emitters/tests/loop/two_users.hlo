@@ -1,4 +1,5 @@
 // RUN: gpu_fusion_to_mlir %s | FileCheck %s
+// RUN: cpu_fusion_to_mlir %s | FileCheck %s
 // RUN: gpu_test_correctness %s
 
 // We have two users of add and sub, but they use consistent indexing, so they

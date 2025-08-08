@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "xla/backends/gpu/codegen/tools/test_lib.h"
+#include "xla/codegen/tools/test_lib.h"
 #include "xla/debug_options_flags.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/analysis/indexing_map.h"

@@ -53,3 +53,21 @@ xla_cc_binary(
         ":ir_compiler_opt_main",
     ],
 )
+
+xla_cc_binary(
+    name = "fusion_to_mlir",
+    testonly = True,
+    srcs = ["fusion_to_mlir.cc"],
+    deps = [
+        "//xla/backends/cpu/codegen:fusion_compiler",
+        "//xla/backends/cpu/codegen:fusion_emitter",
+        "//xla/codegen:mlir_kernel_definition",
+        "//xla/codegen/tools:test_lib",
+        "//xla/hlo/ir:hlo",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@llvm-project//llvm:Support",
+        "@local_tsl//tsl/platform:platform_port",
+    ],
+)
