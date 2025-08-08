@@ -631,7 +631,8 @@ BufferAllocation* BufferAssignment::NewEmptyAllocation(
 
 absl::StatusOr<BufferAllocation*> BufferAssignment::NewAllocation(
     const HloBuffer& buffer, int64_t size) {
-  BufferAllocation* allocation = NewEmptyAllocation(size, buffer.color());
+  TF_ASSIGN_OR_RETURN(auto color, buffer.color());
+  BufferAllocation* allocation = NewEmptyAllocation(size, color);
   TF_RETURN_IF_ERROR(AddAssignment(allocation, buffer, /*offset=*/0, size));
   allocation->peak_buffers_.push_back(buffer.values()[0]);
   return allocation;
@@ -1405,8 +1406,9 @@ absl::StatusOr<bool> BufferAssigner::MaybeAssignBuffer(
           << assignment->HloBufferSize(hlo_buffer)
           << " to allocation: " << *allocation;
 
-  if (hlo_buffer.color() != allocation->color()) {
-    VLOG(4) << "Can't assign: buffer has color " << hlo_buffer.color()
+  TF_ASSIGN_OR_RETURN(auto buffer_color, hlo_buffer.color());
+  if (buffer_color != allocation->color()) {
+    VLOG(4) << "Can't assign: buffer has color " << buffer_color
             << " and allocation has color " << allocation->color() << ".";
     return false;
   }
