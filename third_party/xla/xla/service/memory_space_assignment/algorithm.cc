@@ -6198,7 +6198,8 @@ AllocationResult MsaAlgorithm::Evict(const AllocationRequest& request,
   for (; eviction_mem_interval.end > eviction_end_time;
        eviction_mem_interval.end = next_eviction_end_time_candidate()) {
     Chunk chunk_candidate =
-        FindChunkCandidate(eviction_mem_interval, preferred_offset);
+        FindChunkCandidate(eviction_mem_interval, preferred_offset,
+                           /*eviction_end_time=*/&eviction_mem_interval.end);
     if (chunk_candidate.offset == preferred_offset) {
       AddToPendingChunks(eviction_mem_interval, chunk_candidate);
       break;
