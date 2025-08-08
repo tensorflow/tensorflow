@@ -1340,6 +1340,46 @@ TEST_F(CollectiveOpsTestE2E, NoAsyncCollectives) {
   EXPECT_FALSE(IsAsync(all_reduce));
 }
 
+TEST_F(CollectiveOpsTestE2E, HostMemoryOffloadingWithDonation) {
+  const absl::string_view kModuleStr = R"(
+  HloModule test, entry_computation_layout={(f32[128,128]{1,0})->f32[128,128]{1,0:S(5)}}
+
+  ENTRY test_computation {
+    p0 = f32[128,128] parameter(0)
+    ROOT copy.4 = f32[128,128]{1,0:S(5)} copy(p0)
+  }
+  )";
+
+  const int64_t kNumReplicas = 1;
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+
+  config.mutable_debug_options().set_xla_gpu_enable_host_memory_offloading(
+      true);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr, config));
+
+  TF_ASSERT_OK(module->input_output_alias_config().SetUpAlias(
+      /*output_index=*/{},
+      /*param_number=*/0,
+      /*param_index=*/{},
+      /*kind=*/HloInputOutputAliasConfig::AliasKind::kMustAlias));
+
+  auto executable_or =
+      CreateExecutable(std::move(module), /*run_hlo_passes=*/false);
+
+  EXPECT_FALSE(executable_or.ok())
+      << "Expected buffer assignment error but compilation succeeded";
+
+  std::string error_message = executable_or.status().ToString();
+  EXPECT_TRUE(error_message.find("Buffer color") != std::string::npos &&
+              error_message.find("does not match allocation color") !=
+                  std::string::npos)
+      << "Got error but not the expected buffer color mismatch: "
+      << error_message;
+}
+
 // E2E tests comparing the results of windowed einsum and non-windowed cases.
 class CollectiveOpsTestE2EWindowedNonWindowed : public CollectiveOpsTestE2E {
  public:
