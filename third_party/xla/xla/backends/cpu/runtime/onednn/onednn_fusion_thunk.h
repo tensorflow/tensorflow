@@ -26,7 +26,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
-#include "xla/backends/cpu/onednn_fusion_graph.h"
+#include "xla/backends/cpu/onednn_fusion.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/runtime/object_pool.h"
 #include "xla/service/buffer_assignment.h"

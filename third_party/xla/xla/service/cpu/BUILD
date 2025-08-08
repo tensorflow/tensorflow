@@ -938,7 +938,7 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/backends/cpu:onednn_emitter",
-        "//xla/backends/cpu:onednn_fusion",
+        "//xla/backends/cpu:onednn_support",
         "//xla/backends/cpu:xnn_emitter",
         "//xla/backends/cpu:xnn_fusion",
         "//xla/backends/cpu/codegen:computation_kernel_emitter",
