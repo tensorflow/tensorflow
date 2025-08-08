@@ -165,8 +165,7 @@ int64_t ParallelTaskAssignment::GetTargetParallelTaskCount(
   // TODO(b/27458679) Parallelize instructions which are skipped here.
   auto opcode = instruction->opcode();
   if (llvm_ir::MayBeImplementedAsInPlaceDynamicUpdateSlice(instruction) ||
-      instruction->shape().IsTuple() || opcode == HloOpcode::kRng ||
-      opcode == HloOpcode::kConstant) {
+      opcode == HloOpcode::kRng || opcode == HloOpcode::kConstant) {
     return 1;
   }
 
@@ -174,7 +173,13 @@ int64_t ParallelTaskAssignment::GetTargetParallelTaskCount(
   if (opcode == HloOpcode::kFusion) {
     const HloFusionInstruction* fusion =
         Cast<HloFusionInstruction>(instruction);
-    if (fusion->fusion_kind() == HloInstruction::FusionKind::kCustom) return 1;
+    if (fusion->fusion_kind() == HloInstruction::FusionKind::kCustom) {
+      return 1;
+    }
+  }
+
+  if (instruction->shape().IsTuple() && !instruction->IsLoopFusion()) {
+    return 1;
   }
 
   // Only allow instructions that can be trivially parallelized (where all
@@ -266,9 +271,11 @@ bool ParallelTaskAssigner::AssignParallelTasksHelper(
     }
     // Get target parallel task count computed for 'instruction'.
     const int64_t target_parallel_task_count = (*it).second;
+    const Shape& shape = instruction->shape();
+    const Shape& index_shape = shape.IsTuple() ? shape.tuple_shapes(0) : shape;
     // Assign feasible dimension partitions (based on actual dimension sizes).
-    auto dim_partition_counts = ShapePartitionAssigner(instruction->shape())
-                                    .Run(target_parallel_task_count);
+    auto dim_partition_counts =
+        ShapePartitionAssigner(index_shape).Run(target_parallel_task_count);
     const int64_t total_partition_count =
         ShapePartitionAssigner::GetTotalPartitionCount(dim_partition_counts);
     if (total_partition_count <= 1) {
