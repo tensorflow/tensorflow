@@ -147,6 +147,7 @@ cc_library(
         "//xla/backends/cpu/codegen/emitters/transforms:passes",
         "//xla/codegen:llvm_ir_kernel_source",
         "//xla/codegen:mlir_kernel_source",
+        "//xla/codegen:trace_pass_instrumentation",
         "//xla/codegen/emitters/ir:xla",
         "//xla/codegen/emitters/ir:xla_attrs_inc_gen",
         "//xla/codegen/emitters/transforms:pass_pipelines",
@@ -190,6 +191,8 @@ cc_library(
         "@llvm-project//mlir:ToLLVMIRTranslation",
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:VectorDialect",
+        "@local_tsl//tsl/profiler/lib:traceme",
+        "@local_tsl//tsl/profiler/lib:traceme_encode",
     ],
 )
 

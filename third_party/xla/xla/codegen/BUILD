@@ -222,3 +222,16 @@ cc_library(
         "@com_google_absl//absl/types:span",
     ],
 )
+
+cc_library(
+    name = "trace_pass_instrumentation",
+    srcs = ["trace_pass_instrumentation.cc"],
+    hdrs = ["trace_pass_instrumentation.h"],
+    deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@local_tsl//tsl/profiler/lib:traceme",
+    ],
+)
