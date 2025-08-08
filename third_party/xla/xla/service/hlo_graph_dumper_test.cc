@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/hlo_graph_dumper.h"
 
 #include <string>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
@@ -29,6 +30,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
