@@ -83,7 +83,7 @@ cc_library(
     hdrs = ["onednn_matcher.h"],
     deps = [
         ":library_matcher",
-        "//xla/backends/cpu:onednn_fusion",
+        "//xla/backends/cpu:onednn_support",
         "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/container:flat_hash_set",

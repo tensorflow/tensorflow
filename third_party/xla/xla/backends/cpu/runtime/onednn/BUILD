@@ -46,7 +46,7 @@ onednn_graph_cc_library(
         "//xla:types",
         "//xla:util",
         "//xla:xla_data_proto_cc",
-        "//xla/backends/cpu:onednn_fusion_graph",
+        "//xla/backends/cpu:onednn_fusion",
         "//xla/backends/cpu/runtime:dot_lib",
         "//xla/backends/cpu/runtime:thunk",
         "//xla/runtime:buffer_use",
