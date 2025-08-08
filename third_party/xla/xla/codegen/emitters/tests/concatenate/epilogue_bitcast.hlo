@@ -1,4 +1,5 @@
 // RUN: gpu_test_correctness %s
+// RUN: cpu_test_correctness %s
 
 fusion {
   p0 = pred[1] parameter(0)

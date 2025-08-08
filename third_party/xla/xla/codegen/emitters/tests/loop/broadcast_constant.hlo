@@ -5,6 +5,7 @@
 // RUN:   --inline="default-pipeline='cse'" \
 // RUN:   | FileCheck %s --check-prefixes=CHECK,CHECK-CPU
 // RUN: gpu_test_correctness %s --bijection_outputs=broadcast
+// RUN: cpu_test_correctness %s
 
 bcast {
   zero = bf16[] constant(0)
