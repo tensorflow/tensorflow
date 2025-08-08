@@ -3,6 +3,7 @@
 // RUN: cpu_fusion_to_mlir %s | emitters_opt --xla-test-optimize \
 // RUN:   --inline="default-pipeline='cse'" | FileCheck %s
 // RUN: gpu_test_correctness %s --bijection_outputs=broadcast
+// RUN: cpu_test_correctness %s
 
 bcast {
   x = s4[] constant(-2)

@@ -13,34 +13,27 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/cpu/onednn_fusion.h"
+#ifndef XLA_BACKENDS_CPU_ONEDNN_SUPPORT_H_
+#define XLA_BACKENDS_CPU_ONEDNN_SUPPORT_H_
+
+// oneDNN-fusion-related defines that don't depend on oneDNN Graph API.
+// For anything dependent on Graph API, put it in onednn_fusion.h.
 
 #include "absl/status/statusor.h"
-#include "xla/backends/cpu/runtime/dot_lib.h"
+#include "absl/strings/string_view.h"
 #include "xla/shape.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
 
+inline constexpr absl::string_view kOneDnnFusionKind = "__onednn_fusion";
+
+// Returns true if the dot operation is supported by oneDNN. Returns an error
+// if the dot operation shape is invalid.
 absl::StatusOr<bool> IsOneDnnDotSupported(
     const DotDimensionNumbers& dot_dimensions, const Shape& lhs_shape,
-    const Shape& rhs_shape, const Shape& out_shape) {
-  // TODO(penporn): Support other element types.
-  if (lhs_shape.element_type() != F32 || rhs_shape.element_type() != F32 ||
-      out_shape.element_type() != F32) {
-    return false;
-  }
-
-  TF_ASSIGN_OR_RETURN(DotShape dot_shape, GetDotShape(dot_dimensions, lhs_shape,
-                                                      rhs_shape, out_shape));
-
-  TF_ASSIGN_OR_RETURN(DotCanonicalDims dot_canonical_dims,
-                      GetDotCanonicalDims(dot_dimensions, dot_shape));
-
-  // Restrict support to no transposes and row-major layouts for now.
-  return dot_canonical_dims.lhs_canonical && dot_canonical_dims.rhs_canonical &&
-         !dot_canonical_dims.lhs_column_major &&
-         !dot_canonical_dims.rhs_column_major;
-}
+    const Shape& rhs_shape, const Shape& out_shape);
 
 }  // namespace xla::cpu
+
+#endif  // XLA_BACKENDS_CPU_ONEDNN_SUPPORT_H_

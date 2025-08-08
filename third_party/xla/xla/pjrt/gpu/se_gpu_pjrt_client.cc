@@ -612,12 +612,14 @@ StreamExecutorGpuClient::StreamExecutorGpuClient(
           should_stage_host_to_device_transfers, std::move(gpu_run_options)),
       num_nodes_(num_nodes),
       abort_collectives_on_failure_(abort_collectives_on_failure),
-      topology_(xla::StreamExecutorGpuTopologyDescription(
-          tsl::Fingerprint64(platform_name), platform_name,
-          std::move(gpu_topology), GetAttrsForDevices(addressable_devices()),
-          GetTargetConfigForDevices(addressable_devices()))),
       kv_store_(std::move(kv_store)),
       distributed_client_(std::move(distributed_client)) {
+  if (gpu_topology != nullptr) {
+    topology_.emplace(tsl::Fingerprint64(platform_name), platform_name,
+                      std::move(gpu_topology),
+                      GetAttrsForDevices(addressable_devices()),
+                      GetTargetConfigForDevices(addressable_devices()));
+  }
   const int basePinnedId = device_count();
   for (auto* device : addressable_devices()) {
     // Use the device id to construct a globally unique memory space id. We do
@@ -1207,9 +1209,20 @@ StreamExecutorGpuClient::MakeCrossHostReceiveBuffers(
   return buffers;
 }
 
+absl::StatusOr<const xla::PjRtTopologyDescription*>
+StreamExecutorGpuClient::GetTopologyDescription() const {
+  if (!topology_.has_value()) {
+    return absl::FailedPreconditionError("GPU Topology is missing");
+  }
+  return &*topology_;
+}
+
 absl::StatusOr<Layout> StreamExecutorGpuClient::GetDefaultLayout(
     PrimitiveType element_type, absl::Span<const int64_t> dims) {
-  return topology_.GetDefaultLayout(element_type, dims);
+  if (!topology_.has_value()) {
+    return absl::FailedPreconditionError("GPU Topology is missing");
+  }
+  return topology_->GetDefaultLayout(element_type, dims);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
@@ -1736,13 +1749,13 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
   auto gpu_topology = std::shared_ptr<const GpuTopology>(
       GpuTopology::FromProto(device_topology_pair.second));
 
-  return std::unique_ptr<PjRtClient>(std::make_unique<StreamExecutorGpuClient>(
+  return std::make_unique<StreamExecutorGpuClient>(
       pjrt_platform_name, xla_client, std::move(device_topology_pair.first),
       options.node_id, std::move(allocator), std::move(host_memory_allocator),
       options.should_stage_host_to_device_transfers, std::move(gpu_run_options),
       std::move(kv_store), std::move(options.distributed_runtime_client),
       options.abort_collectives_on_failure, std::move(gpu_topology),
-      options.num_nodes));
+      options.num_nodes);
 }
 
 std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
