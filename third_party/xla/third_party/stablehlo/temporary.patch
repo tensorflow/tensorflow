@@ -2221,6 +2221,21 @@ diff --ruN a/stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.1_
 -
 +}
 +
+diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
+--- stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
++++ stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp
+@@ -6,6 +6,11 @@
+ 
+ // Implements logic for lowering CHLO ops to StableHLO and Shape dialect ops,
+ // taking care of CHLO's broadcasting semantics
++
++// This must preceed all other headers, otherwise during Windows cross
++// compilation, M_PI will not be defined.
++#define _USE_MATH_DEFINES
++
+ #include <algorithm>
+ #include <array>
+ #include <cassert>
 diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
 --- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
 +++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
