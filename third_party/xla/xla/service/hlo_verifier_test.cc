@@ -3281,22 +3281,6 @@ TEST_F(HloVerifierTest, InconsistentConditionSharding) {
       HasSubstr("Inconsistent conditional sharding among instructions"));
 }
 
-TEST_F(HloVerifierTest, DisableS4Veridication) {
-  const char* const hlo = R"(
-  HloModule Module
-
-  ENTRY entry {
-    param0 = s32[] parameter(0)
-    x = s4[] convert(param0)
-    ROOT add = s4[] add(x, x)
-  }
-  )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
-  HloVerifier verifier{HloVerifierOpts{}.WithVerifyS4U4Usage(false)};
-  auto status = verifier.Run(module.get()).status();
-  ASSERT_TRUE(status.ok());
-}
-
 TEST(MetadataTrackerTest, MetadataTrackerLogsInfo) {
   if (tsl::kIsOpenSource) {
     return;

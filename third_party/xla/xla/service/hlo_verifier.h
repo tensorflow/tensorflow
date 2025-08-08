@@ -93,10 +93,6 @@ struct HloVerifierOpts {
     return std::move(*this);
   }
 
-  HloVerifierOpts&& WithVerifyS4U4Usage(bool verify) {
-    return std::move(*this);
-  }
-
   HloVerifierOpts&& WithAllowUnboundedDynamism(bool allow) {
     allow_unbounded_dynamism = allow;
     return std::move(*this);
