@@ -94,7 +94,7 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
           {"use_tfrt_gpu_client", PJRT_NamedValue_Type::PJRT_NamedValue_kBool},
           {"enable_mock_nccl", PJRT_NamedValue_Type::PJRT_NamedValue_kBool},
           {"mock_gpu_topology", PJRT_NamedValue_Type::PJRT_NamedValue_kString},
-          {"slice_index", PJRT_NamedValue_Type::PJRT_NamedValue_kInt64},
+          {"partition_index", PJRT_NamedValue_Type::PJRT_NamedValue_kInt64},
       });
   PJRT_RETURN_IF_ERROR(
       ValidateCreateOptions(create_options, kExpectedOptionNameAndTypes));
@@ -174,10 +174,10 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
       it != create_options.end()) {
     mock_gpu_topology = std::get<std::string>(it->second);
   }
-  std::optional<int64_t> slice_index;
-  if (auto it = create_options.find("slice_index");
+  std::optional<int64_t> partition_index;
+  if (auto it = create_options.find("partition_index");
       it != create_options.end()) {
-    slice_index = std::get<int64_t>(it->second);
+    partition_index = std::get<int64_t>(it->second);
   }
 
   xla::GpuClientOptions options;
@@ -195,7 +195,7 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
   options.use_tfrt_gpu_client = use_tfrt_gpu_client;
   options.enable_mock_nccl = enable_mock_nccl;
   options.mock_gpu_topology = mock_gpu_topology;
-  options.slice_index = slice_index;
+  options.partition_index = partition_index;
   PJRT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtClient> client,
                         xla::GetXlaPjrtGpuClient(options));
   args->client = pjrt::CreateWrapperClient(std::move(client));
@@ -303,8 +303,8 @@ PJRT_Error* PJRT_GpuDeviceTopology_Create(
   }
 
   auto gpu_topology = std::make_shared<const xla::GpuTopology>(
-      target_config_proto.device_description_str(), sizes.num_slices,
-      sizes.num_hosts_per_slice, sizes.num_devices_per_host);
+      target_config_proto.device_description_str(), sizes.num_partitions,
+      sizes.num_hosts_per_partition, sizes.num_devices_per_host);
 
   std::string target_config_attr;
   if (!tsl::protobuf::TextFormat::PrintToString(target_config_proto,

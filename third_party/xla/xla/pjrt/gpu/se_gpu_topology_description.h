@@ -65,7 +65,8 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
   static void SetupDeviceDescription(
       PjRtStreamExecutorDeviceDescription& description,
       const std::string& device_vendor, const std::string& compute_capability,
-      int core_count, int64_t shared_memory_per_block_optin, int slice_index);
+      int core_count, int64_t shared_memory_per_block_optin,
+      int partition_index);
 
   std::vector<std::unique_ptr<const PjRtDeviceDescription>> DeviceDescriptions()
       const override;

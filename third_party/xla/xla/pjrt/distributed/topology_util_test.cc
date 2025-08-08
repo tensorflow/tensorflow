@@ -76,10 +76,10 @@ TEST(TopologyTest, BuildGlobalTopologyWithFabricUuid) {
   EXPECT_EQ(global.nodes_size(), 2);
   EXPECT_EQ(global.nodes()[0].devices_size(), 2);
   EXPECT_EQ(global.nodes()[1].devices_size(), 2);
-  EXPECT_EQ(global.nodes()[0].devices()[0].slice_index(), 0);
-  EXPECT_EQ(global.nodes()[0].devices()[1].slice_index(), 0);
-  EXPECT_EQ(global.nodes()[1].devices()[0].slice_index(), 0);
-  EXPECT_EQ(global.nodes()[1].devices()[1].slice_index(), 0);
+  EXPECT_EQ(global.nodes()[0].devices()[0].partition_index(), 0);
+  EXPECT_EQ(global.nodes()[0].devices()[1].partition_index(), 0);
+  EXPECT_EQ(global.nodes()[1].devices()[0].partition_index(), 0);
+  EXPECT_EQ(global.nodes()[1].devices()[1].partition_index(), 0);
 }
 
 TEST(TopologyTest, BuildGlobalTopologyMultipleFabricUuid) {
@@ -118,14 +118,14 @@ TEST(TopologyTest, BuildGlobalTopologyMultipleFabricUuid) {
   EXPECT_EQ(global.nodes()[1].devices_size(), 2);
   EXPECT_EQ(global.nodes()[2].devices_size(), 2);
   EXPECT_EQ(global.nodes()[3].devices_size(), 2);
-  EXPECT_EQ(global.nodes()[0].devices()[0].slice_index(), 0);
-  EXPECT_EQ(global.nodes()[0].devices()[1].slice_index(), 0);
-  EXPECT_EQ(global.nodes()[1].devices()[0].slice_index(), 0);
-  EXPECT_EQ(global.nodes()[1].devices()[1].slice_index(), 0);
-  EXPECT_EQ(global.nodes()[2].devices()[0].slice_index(), 1);
-  EXPECT_EQ(global.nodes()[2].devices()[1].slice_index(), 1);
-  EXPECT_EQ(global.nodes()[3].devices()[0].slice_index(), 1);
-  EXPECT_EQ(global.nodes()[3].devices()[1].slice_index(), 1);
+  EXPECT_EQ(global.nodes()[0].devices()[0].partition_index(), 0);
+  EXPECT_EQ(global.nodes()[0].devices()[1].partition_index(), 0);
+  EXPECT_EQ(global.nodes()[1].devices()[0].partition_index(), 0);
+  EXPECT_EQ(global.nodes()[1].devices()[1].partition_index(), 0);
+  EXPECT_EQ(global.nodes()[2].devices()[0].partition_index(), 1);
+  EXPECT_EQ(global.nodes()[2].devices()[1].partition_index(), 1);
+  EXPECT_EQ(global.nodes()[3].devices()[0].partition_index(), 1);
+  EXPECT_EQ(global.nodes()[3].devices()[1].partition_index(), 1);
 }
 
 TEST(TopologyTest, ExchangeTopology) {
@@ -252,15 +252,15 @@ TEST(TopologyTest, ExchangeTopology_TwiceWithDifferentLocalTopology_Fails) {
 }
 
 TEST(TopologyTest, BuildGlobalTopologyWithExplicitSliceIndices) {
-  // Set slice_index explicitly, and expect boot id to be ignored.
+  // Set partition_index explicitly, and expect boot id to be ignored.
   std::string boot_id = "foo";
   std::vector<LocalTopologyProto> locals(2);
   locals[0].set_boot_id(boot_id);
   locals[1].set_boot_id(boot_id);
   locals[0].set_node_id(0);
   locals[1].set_node_id(1);
-  locals[0].set_slice_index(1);
-  locals[1].set_slice_index(0);
+  locals[0].set_partition_index(1);
+  locals[1].set_partition_index(0);
   // Adds 2 devices to each host.
   DeviceProto* d0 = locals[0].add_devices();
   d0->set_local_device_ordinal(0);
@@ -278,20 +278,20 @@ TEST(TopologyTest, BuildGlobalTopologyWithExplicitSliceIndices) {
 
   EXPECT_EQ(global.nodes_size(), 2);
   EXPECT_EQ(global.nodes()[0].devices_size(), 2);
-  EXPECT_EQ(global.nodes()[0].devices()[0].slice_index(), 1);
-  EXPECT_EQ(global.nodes()[0].devices()[1].slice_index(), 1);
+  EXPECT_EQ(global.nodes()[0].devices()[0].partition_index(), 1);
+  EXPECT_EQ(global.nodes()[0].devices()[1].partition_index(), 1);
   EXPECT_EQ(global.nodes()[1].devices_size(), 2);
-  EXPECT_EQ(global.nodes()[1].devices()[0].slice_index(), 0);
-  EXPECT_EQ(global.nodes()[1].devices()[1].slice_index(), 0);
+  EXPECT_EQ(global.nodes()[1].devices()[0].partition_index(), 0);
+  EXPECT_EQ(global.nodes()[1].devices()[1].partition_index(), 0);
 }
 
 TEST(TopologyTest, BuildGpuTopology) {
-  std::string slice_0_boot_id = "foo";
-  std::string slice_1_boot_id = "bar";
+  std::string partition_0_boot_id = "foo";
+  std::string partition_1_boot_id = "bar";
   std::vector<LocalTopologyProto> locals(2);
-  // Adds 1 host to slice 0 and 1 host to slice 1.
-  locals[0].set_boot_id(slice_0_boot_id);
-  locals[1].set_boot_id(slice_1_boot_id);
+  // Adds 1 host to partition 0 and 1 host to partition 1.
+  locals[0].set_boot_id(partition_0_boot_id);
+  locals[1].set_boot_id(partition_1_boot_id);
   locals[0].set_node_id(0);
   locals[1].set_node_id(1);
   // Adds 2 devices to host 0 and 2 devices to host 1.
@@ -314,19 +314,19 @@ TEST(TopologyTest, BuildGpuTopology) {
                           /*assign_global_device_ids=*/true));
 
   TF_ASSERT_OK_AND_ASSIGN(auto gpu_topology, BuildGpuTopology(global));
-  EXPECT_EQ(gpu_topology.num_slices(), 2);
-  EXPECT_EQ(gpu_topology.num_hosts_per_slice(), 1);
+  EXPECT_EQ(gpu_topology.num_partitions(), 2);
+  EXPECT_EQ(gpu_topology.num_hosts_per_partition(), 1);
   EXPECT_EQ(gpu_topology.num_devices_per_host(), 2);
 }
 
 TEST(TopologyTest, BuildGpuTopologyWithDifferentNumHostsPerSlice) {
-  std::string slice_0_boot_id = "foo";
-  std::string slice_1_boot_id = "bar";
+  std::string partition_0_boot_id = "foo";
+  std::string partition_1_boot_id = "bar";
   std::vector<LocalTopologyProto> locals(3);
-  // Adds 2 hosts to slice 0 and 1 host to slice 1.
-  locals[0].set_boot_id(slice_0_boot_id);
-  locals[1].set_boot_id(slice_0_boot_id);
-  locals[2].set_boot_id(slice_1_boot_id);
+  // Adds 2 hosts to partition 0 and 1 host to partition 1.
+  locals[0].set_boot_id(partition_0_boot_id);
+  locals[1].set_boot_id(partition_0_boot_id);
+  locals[2].set_boot_id(partition_1_boot_id);
   locals[0].set_node_id(0);
   locals[1].set_node_id(1);
   locals[2].set_node_id(2);
@@ -343,17 +343,17 @@ TEST(TopologyTest, BuildGpuTopologyWithDifferentNumHostsPerSlice) {
                           /*assign_global_device_ids=*/true));
 
   TF_ASSERT_OK_AND_ASSIGN(auto gpu_topology, BuildGpuTopology(global));
-  EXPECT_EQ(gpu_topology.num_slices(), -1);
-  EXPECT_EQ(gpu_topology.num_hosts_per_slice(), -1);
+  EXPECT_EQ(gpu_topology.num_partitions(), -1);
+  EXPECT_EQ(gpu_topology.num_hosts_per_partition(), -1);
   EXPECT_EQ(gpu_topology.num_devices_per_host(), -1);
 }
 
 TEST(TopologyTest, BuildGpuTopologyWithDifferentNumDevicesPerHost) {
-  std::string slice_0_boot_id = "foo";
-  std::string slice_1_boot_id = "bar";
+  std::string partition_0_boot_id = "foo";
+  std::string partition_1_boot_id = "bar";
   std::vector<LocalTopologyProto> locals(2);
-  locals[0].set_boot_id(slice_0_boot_id);
-  locals[1].set_boot_id(slice_1_boot_id);
+  locals[0].set_boot_id(partition_0_boot_id);
+  locals[1].set_boot_id(partition_1_boot_id);
   locals[0].set_node_id(0);
   locals[1].set_node_id(1);
   // Adds 2 devices to host 0 and 1 device to host 1.
@@ -370,8 +370,8 @@ TEST(TopologyTest, BuildGpuTopologyWithDifferentNumDevicesPerHost) {
                           /*assign_global_device_ids=*/true));
 
   TF_ASSERT_OK_AND_ASSIGN(auto gpu_topology, BuildGpuTopology(global));
-  EXPECT_EQ(gpu_topology.num_slices(), -1);
-  EXPECT_EQ(gpu_topology.num_hosts_per_slice(), -1);
+  EXPECT_EQ(gpu_topology.num_partitions(), -1);
+  EXPECT_EQ(gpu_topology.num_hosts_per_partition(), -1);
   EXPECT_EQ(gpu_topology.num_devices_per_host(), -1);
 }
 }  // namespace

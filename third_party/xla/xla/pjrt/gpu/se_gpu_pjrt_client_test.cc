@@ -1168,29 +1168,29 @@ TEST(GpuTopology, FromProto) {
   ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
       R"pb(
         platform_version: "platform_version"
-        num_slices: 2
-        num_hosts_per_slice: 1
+        num_partitions: 2
+        num_hosts_per_partition: 1
         num_devices_per_host: 3
       )pb",
       &msg));
 
   std::unique_ptr<const GpuTopology> gpu_topology = GpuTopology::FromProto(msg);
   EXPECT_THAT(gpu_topology->platform_version(), "platform_version");
-  EXPECT_THAT(gpu_topology->num_slices(), 2);
-  EXPECT_THAT(gpu_topology->num_hosts_per_slice(), 1);
+  EXPECT_THAT(gpu_topology->num_partitions(), 2);
+  EXPECT_THAT(gpu_topology->num_hosts_per_partition(), 1);
   EXPECT_THAT(gpu_topology->num_devices_per_host(), 3);
 }
 
 TEST(GpuTopology, ToProto) {
   GpuTopology gpu_topology(
       /*platform_version=*/"platform_version",
-      /*num_slices=*/2,
-      /*num_hosts_per_slice=*/1,
+      /*num_partitions=*/2,
+      /*num_hosts_per_partition=*/1,
       /*num_devices_per_host=*/3);
   GpuTopologyProto msg = gpu_topology.ToProto();
   EXPECT_THAT(msg.platform_version(), "platform_version");
-  EXPECT_THAT(msg.num_slices(), 2);
-  EXPECT_THAT(msg.num_hosts_per_slice(), 1);
+  EXPECT_THAT(msg.num_partitions(), 2);
+  EXPECT_THAT(msg.num_hosts_per_partition(), 1);
   EXPECT_THAT(msg.num_devices_per_host(), 3);
 }
 
@@ -1351,10 +1351,10 @@ TEST(StreamExecutorGpuClientTest, MockNcclClientTest) {
   EXPECT_EQ(client->device_count(), devices_per_host * num_nodes);
   for (int i = 0; i < client->device_count(); i++) {
     auto device = client->devices()[i];
-    auto slice_index =
-        std::get<int64_t>(device->Attributes().at("slice_index"));
+    auto partition_index =
+        std::get<int64_t>(device->Attributes().at("partition_index"));
     auto host_index = device->process_index();
-    EXPECT_EQ(slice_index, host_index);
+    EXPECT_EQ(partition_index, host_index);
   }
 }
 
@@ -1432,8 +1432,8 @@ TEST(StreamExecutorGpuClientTest, MockNcclClientWithGpuTopologyTest) {
       tensorflow::down_cast<const xla::StreamExecutorGpuTopologyDescription&>(
           *topology);
 
-  EXPECT_EQ(gpu_topology.gpu_topology().num_slices(), 2);
-  EXPECT_EQ(gpu_topology.gpu_topology().num_hosts_per_slice(), 4);
+  EXPECT_EQ(gpu_topology.gpu_topology().num_partitions(), 2);
+  EXPECT_EQ(gpu_topology.gpu_topology().num_hosts_per_partition(), 4);
   EXPECT_EQ(gpu_topology.gpu_topology().num_devices_per_host(), 2);
 }
 

@@ -40,22 +40,26 @@ namespace xla {
 /*static*/ void StreamExecutorGpuTopologyDescription::SetupDeviceDescription(
     PjRtStreamExecutorDeviceDescription& description,
     const std::string& device_vendor, const std::string& compute_capability,
-    int core_count, int64_t shared_memory_per_block_optin, int slice_index) {
+    int core_count, int64_t shared_memory_per_block_optin,
+    int partition_index) {
   std::vector<int64_t> v_coords(description.coords().begin(),
                                 description.coords().end());
 
   description.SetAttributes(
       {{"coords", xla::PjRtDeviceAttribute(v_coords)},
        {"device_vendor", device_vendor},
-       {"slice_index", static_cast<int64_t>(slice_index)},
+       // TODO - b/435521225: `slice_index` is deprecated. Use
+       // `partition_index`, which better aligns with NVIDIA's terminology.
+       {"slice_index", static_cast<int64_t>(partition_index)},
+       {"partition_index", static_cast<int64_t>(partition_index)},
        {"compute_capability", xla::PjRtDeviceAttribute(compute_capability)},
        {"shared_memory_per_block_optin", shared_memory_per_block_optin},
        {"core_count", static_cast<int64_t>(core_count)}});
   description.SetToString(absl::StrFormat(
       "StreamExecutorGpuDevice(device_kind=%s, id=%i, process_index=%i, "
-      "slice_index=%i))",
+      "partition_index=%i))",
       description.device_kind(), description.id(), description.process_index(),
-      slice_index));
+      partition_index));
   description.SetDebugString(absl::StrFormat(
       "%s_%i(process=%i,(%i))", description.device_kind(), description.id(),
       description.process_index(), v_coords[0]));
@@ -72,14 +76,15 @@ StreamExecutorGpuTopologyDescription::DeviceDescriptions() const {
   // with PjRt terminology. In a multi-process setting, a host can have multiple
   // processes, e.g., one process per GPU.
   const int32_t num_devices_per_process = gpu_topology_->num_devices_per_host();
-  const int32_t num_processes_per_slice = gpu_topology_->num_hosts_per_slice();
+  const int32_t num_processes_per_partition =
+      gpu_topology_->num_hosts_per_partition();
   for (int device_id = 0; device_id < gpu_topology_->number_of_devices();
        ++device_id) {
-    // The local_device_id, process_index and slice_index are inferred from the
-    // global device id. It requires the global topology is symmetric:
-    //  - all slices have the same number of processes.
+    // The local_device_id, process_index and partition_index are inferred from
+    // the global device id. It requires the global topology is symmetric:
+    //  - all partitions have the same number of processes.
     //  - all processes have the same number of devices.
-    //  - processes of the same slice are adjacent to each other.
+    //  - processes of the same partition are adjacent to each other.
     //
     // And it also requires the ids assignments follows the PjRt topology
     // exchange protocol in xla/pjrt/distributed/topology_util.cc:
@@ -95,11 +100,12 @@ StreamExecutorGpuTopologyDescription::DeviceDescriptions() const {
     const int process_index = num_devices_per_process == -1
                                   ? 0
                                   : (device_id / num_devices_per_process);
-    const int slice_index = num_processes_per_slice == -1
-                                ? 0
-                                : (process_index / num_processes_per_slice);
+    const int partition_index =
+        num_processes_per_partition == -1
+            ? 0
+            : (process_index / num_processes_per_partition);
     auto description = std::make_unique<PjRtStreamExecutorDeviceDescription>(
-        device_id, local_device_id, process_index, slice_index,
+        device_id, local_device_id, process_index, partition_index,
         std::string(platform_version()));
     if (target_config_.has_value()) {
       std::string compute_capability = "<unknown compute-capability>";

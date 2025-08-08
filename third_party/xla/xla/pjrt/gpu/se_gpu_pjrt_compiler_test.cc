@@ -76,10 +76,12 @@ absl::StatusOr<xla::XlaComputation> GetXlaComputation(
 }
 
 std::shared_ptr<xla::GpuTopology> GetGpuTopology(
-    absl::string_view platform_version, int num_slices, int num_hosts_per_slice,
-    int num_devices_per_host, int core_count_per_chip) {
-  return std::make_shared<xla::GpuTopology>(
-      platform_version, num_slices, num_hosts_per_slice, num_devices_per_host);
+    absl::string_view platform_version, int num_partitions,
+    int num_hosts_per_partition, int num_devices_per_host,
+    int core_count_per_chip) {
+  return std::make_shared<xla::GpuTopology>(platform_version, num_partitions,
+                                            num_hosts_per_partition,
+                                            num_devices_per_host);
 }
 
 TEST(StreamExecutorGpuCompilerTest, NoClientXla) {

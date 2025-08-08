@@ -1263,29 +1263,29 @@ TEST(GpuTopology, FromProto) {
   ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
       R"pb(
         platform_version: "platform_version"
-        num_slices: 2
-        num_hosts_per_slice: 1
+        num_partitions: 2
+        num_hosts_per_partition: 1
         num_devices_per_host: 3
       )pb",
       &msg));
 
   std::unique_ptr<const GpuTopology> gpu_topology = GpuTopology::FromProto(msg);
   EXPECT_THAT(gpu_topology->platform_version(), "platform_version");
-  EXPECT_THAT(gpu_topology->num_slices(), 2);
-  EXPECT_THAT(gpu_topology->num_hosts_per_slice(), 1);
+  EXPECT_THAT(gpu_topology->num_partitions(), 2);
+  EXPECT_THAT(gpu_topology->num_hosts_per_partition(), 1);
   EXPECT_THAT(gpu_topology->num_devices_per_host(), 3);
 }
 
 TEST(GpuTopology, ToProto) {
   GpuTopology gpu_topology(
       /*platform_version=*/"platform_version",
-      /*num_slices=*/2,
-      /*num_hosts_per_slice=*/1,
+      /*num_partitions=*/2,
+      /*num_hosts_per_partition=*/1,
       /*num_devices_per_host=*/3);
   GpuTopologyProto msg = gpu_topology.ToProto();
   EXPECT_THAT(msg.platform_version(), "platform_version");
-  EXPECT_THAT(msg.num_slices(), 2);
-  EXPECT_THAT(msg.num_hosts_per_slice(), 1);
+  EXPECT_THAT(msg.num_partitions(), 2);
+  EXPECT_THAT(msg.num_hosts_per_partition(), 1);
   EXPECT_THAT(msg.num_devices_per_host(), 3);
 }
 
@@ -1720,10 +1720,10 @@ TEST(TfrtGpuClientTest, DeviceAttributes) {
         std::get<std::string>(device->Attributes().at("device_vendor"));
     EXPECT_EQ(device_vendor, desc->device_vendor());
 
-    // Attribute `slice_index`.
-    auto slice_index =
-        std::get<int64_t>(device->Attributes().at("slice_index"));
-    EXPECT_EQ(slice_index, 0);
+    // Attribute `partition_index`.
+    auto partition_index =
+        std::get<int64_t>(device->Attributes().at("partition_index"));
+    EXPECT_EQ(partition_index, 0);
 
     // Attribute `core_count`.
     auto core_count = std::get<int64_t>(device->Attributes().at("core_count"));
