@@ -279,7 +279,6 @@ cc_library(
         "//xla:shape_util",
         "//xla/backends/gpu/codegen/emitters:concatenate",
         "//xla/backends/gpu/codegen/emitters:in_place_dynamic_update_slice",
-        "//xla/backends/gpu/codegen/emitters:input_slices",
         "//xla/backends/gpu/codegen/emitters:loop",
         "//xla/backends/gpu/codegen/emitters:reduction",
         "//xla/backends/gpu/codegen/emitters:scatter",

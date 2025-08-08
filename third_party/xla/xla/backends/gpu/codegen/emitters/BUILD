@@ -189,34 +189,6 @@ cc_library(
 )
 
 cc_library(
-    name = "input_slices",
-    srcs = ["input_slices.cc"],
-    hdrs = ["input_slices.h"],
-    deps = [
-        ":emitter_base",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/backends/gpu/codegen/emitters/ir:xla_gpu",
-        "//xla/codegen/emitters:computation_partitioner",
-        "//xla/codegen/emitters:elemental_hlo_to_mlir",
-        "//xla/hlo/analysis:indexing_analysis",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/utils:hlo_traversal",
-        "//xla/service/gpu:hlo_fusion_analysis",
-        "//xla/service/gpu:launch_dimensions",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:TensorDialect",
-    ],
-)
-
-cc_library(
     name = "loop",
     srcs = ["loop.cc"],
     hdrs = ["loop.h"],

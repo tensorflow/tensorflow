@@ -47,25 +47,6 @@ namespace xla {
 namespace gpu {
 namespace {
 
-// Returns true if the fusion output contains non-strided slices only.
-bool IsInputFusibleNonStridedSlices(
-    const absl::Span<const HloInstructionAdaptor> fusion_roots) {
-  return absl::c_all_of(fusion_roots, [&](const HloInstructionAdaptor& root) {
-    return IsSliceWithUnitStrides(&root.instruction());
-  });
-}
-
-// Returns true if all slice inputs in a tuple are equal (ignoring type).
-bool AllSliceInputsAreCompatible(
-    const absl::Span<const HloInstructionAdaptor> fusion_roots) {
-  const Shape& first_slice_operand_shape =
-      fusion_roots[0].GetOperand(0).shape();
-  return absl::c_all_of(fusion_roots, [&](const HloInstructionAdaptor& slice) {
-    return ShapeUtil::EqualIgnoringElementType(slice.GetOperand(0).shape(),
-                                               first_slice_operand_shape);
-  });
-}
-
 // Returns a description of a transpose hero, that is compatible with all roots.
 //
 // A root is compatible with the transpose hero if:
@@ -185,10 +166,6 @@ HloFusionAnalysis::EmitterFusionKind GetEmitterFusionKind(
   }
 
   if (fusion_roots.size() > 1) {
-    if (IsInputFusibleNonStridedSlices(fusion_roots) &&
-        AllSliceInputsAreCompatible(fusion_roots)) {
-      return HloFusionAnalysis::EmitterFusionKind::kInputSlices;
-    }
     return HloFusionAnalysis::EmitterFusionKind::kLoop;
   }
 
