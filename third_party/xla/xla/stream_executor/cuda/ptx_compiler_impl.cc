@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/base/optimization.h"
 #include "absl/cleanup/cleanup.h"
+#include "absl/debugging/leak_check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -34,13 +35,12 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/nvPTXCompiler.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/ptx_compiler.h"
 #include "xla/stream_executor/cuda/ptx_compiler_helpers.h"
-#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/semantic_version.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor {
 
@@ -132,7 +132,7 @@ absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingLibNvPtxCompiler(
     RETURN_IF_NVPTXCOMPILER_ERROR(
         nvPTXCompilerGetErrorLog(compiler_handle, error_log.data()));
 
-    //  It happens when the linked version of ntvptxcompiler is too old for the
+    //  It happens when the linked version of nvptxcompiler is too old for the
     //  current GPU. Example error message associated with this error code:
     //      ptxas fatal   : Value 'sm_80' is not defined for option 'gpu-name'
     if (absl::StrContains(error_log, "ptxas fatal   : Value '") &&
@@ -190,6 +190,39 @@ absl::StatusOr<SemanticVersion> GetLibNvPtxCompilerVersion() {
   RETURN_IF_NVPTXCOMPILER_ERROR(nvPTXCompilerGetVersion(&major, &minor));
 
   return SemanticVersion{major, minor, 0};
+}
+
+absl::StatusOr<int> GetLatestPtxIsaVersionForNvptxCompiler() {
+  absl::string_view ptx_contents = ".version 99.99";
+  nvPTXCompilerHandle compiler_handle{};
+  RETURN_IF_NVPTXCOMPILER_ERROR(nvPTXCompilerCreate(
+      &compiler_handle, ptx_contents.size(), ptx_contents.data()));
+  absl::Cleanup compiler_cleaner = [&compiler_handle] {
+    nvPTXCompilerDestroy(&compiler_handle);
+  };
+
+  // TODO(b/437088681): Re-enable heap checking when calling
+  // nvPTXCompilerCompile. The compiler does not seem to free resources properly
+  // on error.
+  absl::LeakCheckDisabler disabler;
+  std::vector<const char*> opts{};
+  nvPTXCompileResult compile_result =
+      nvPTXCompilerCompile(compiler_handle, opts.size(), opts.data());
+
+  if (compile_result == NVPTXCOMPILE_SUCCESS) {
+    return absl::InternalError(
+        "nvptxcompiler succeeded where it was expected to fail");
+  }
+
+  size_t error_log_size{};
+  RETURN_IF_NVPTXCOMPILER_ERROR(
+      nvPTXCompilerGetErrorLogSize(compiler_handle, &error_log_size));
+
+  std::string error_log(error_log_size, '\0');
+  RETURN_IF_NVPTXCOMPILER_ERROR(
+      nvPTXCompilerGetErrorLog(compiler_handle, error_log.data()));
+
+  return GetLatestPtxIsaVersionFromUnsupportedVersionErrorLog(error_log);
 }
 
 }  // namespace stream_executor
