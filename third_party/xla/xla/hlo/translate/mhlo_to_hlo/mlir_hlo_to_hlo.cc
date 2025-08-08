@@ -103,7 +103,8 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/source_target_pairs.h"
+#include "xla/service/spmd/shardy/constants.h"
+#include "xla/service/spmd/shardy/utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -881,7 +882,9 @@ static xla::ResultAccuracy Convert_result_accuracy(
 static std::optional<xla::OpSharding> CreateOpShardingFromAttribute(
     mlir::Operation* op) {
   auto shardingAttr = op->getAttrOfType<mlir::StringAttr>(kShardingAttr);
-  if (!shardingAttr) return std::nullopt;
+  if (!shardingAttr) {
+    return std::nullopt;
+  }
   return xla::ConvertSharding(shardingAttr.getValue());
 }
 
@@ -941,22 +944,46 @@ static bool SomeOptionalShardingsAreSet(
 static void ExtractShardingsFromFunction(
     mlir::func::FuncOp function,
     llvm::SmallVectorImpl<std::optional<xla::OpSharding>>* arg_shardings,
-    llvm::SmallVectorImpl<std::optional<xla::OpSharding>>* ret_shardings) {
+    llvm::SmallVectorImpl<std::optional<xla::OpSharding>>* ret_shardings,
+    bool is_entry_function) {
   arg_shardings->resize(function.getNumArguments(),
                         std::optional<xla::OpSharding>());
-  for (int i = 0, end = function.getNumArguments(); i < end; ++i)
+  auto module = function->getParentOfType<mlir::ModuleOp>();
+  std::optional<mlir::DictionaryAttr> sdy_meshes =
+      xla::sdy::tryGetFrontendAttr<mlir::DictionaryAttr>(
+          module, xla::sdy::kMeshesRoundTripAttr);
+
+  for (int i = 0, end = function.getNumArguments(); i < end; ++i) {
     if (auto sharding =
             function.getArgAttrOfType<mlir::StringAttr>(i, kShardingAttr)) {
       (*arg_shardings)[i] = xla::ConvertSharding(sharding.getValue());
+      // Due to limitations with accurately getting OpShardings from manual
+      // computation bodies with Shardy shardings, only extract OpShardings from
+      // the entry function for now. This is ok since only the entry function
+      // uses the extracted OpShardings to modify layouts/create reshapes, other
+      // functions just use the OpShardings to populate the HloInstructionProto
+      // sharding field.
+    } else if (is_entry_function) {
+      if (auto sharding = xla::ExtractShardyArgShardingFromFrontendAttrs(
+              function, i, sdy_meshes)) {
+        (*arg_shardings)[i] = sharding;
+      }
     }
+  }
 
   ret_shardings->resize(function.getNumResults(),
                         std::optional<xla::OpSharding>());
-  for (int i = 0, end = function.getNumResults(); i < end; ++i)
+  for (int i = 0, end = function.getNumResults(); i < end; ++i) {
     if (auto sharding =
             function.getResultAttrOfType<mlir::StringAttr>(i, kShardingAttr)) {
       (*ret_shardings)[i] = xla::ConvertSharding(sharding.getValue());
+    } else if (is_entry_function) {
+      if (auto sharding = xla::ExtractShardyResultShardingFromFrontendAttrs(
+              function, i, sdy_meshes)) {
+        (*ret_shardings)[i] = sharding;
+      }
     }
+  }
 }
 
 // Creates a tuple sharding with the given shardings if at least one is present.
@@ -5842,7 +5869,8 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::func::FuncOp f) {
     if (!any_arg_replicated) entry_args_same_across_replicas.clear();
     ExtractFrontendAttributesFromFunction(f, &arg_fe_attrs);
   }
-  ExtractShardingsFromFunction(f, &arg_shardings, &ret_shardings);
+  ExtractShardingsFromFunction(f, &arg_shardings, &ret_shardings,
+                               entry_function);
   xla::XlaComputationId computation;
   if (failed(LowerBasicBlockAsFunction(
           &f.front(), builder.get(), entry_function, false,
