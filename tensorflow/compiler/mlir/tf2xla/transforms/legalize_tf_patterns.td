@@ -617,7 +617,7 @@ foreach Mapping = [
 
 foreach Mapping = [
                    [TF_AcosOp, CHLO_AcosOp],
-                   [TF_AcoshOp, CHLO_AcoshOp],
+                   [TF_AcoshOp, MHLO_AcoshOp],
                    [TF_AsinOp, CHLO_AsinOp],
                    [TF_AsinhOp, CHLO_AsinhOp],
                    [TF_AtanOp, CHLO_AtanOp],

@@ -2838,6 +2838,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     const HloInstruction* instruction) {
   switch (instruction->opcode()) {
     case HloOpcode::kAbs:
+    case HloOpcode::kAcosh:
     case HloOpcode::kAdd:
     case HloOpcode::kAddDependency:
     case HloOpcode::kAnd:

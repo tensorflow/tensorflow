@@ -113,6 +113,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/pass/hlo_pass_fix.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/transforms/expanders/acosh_expander.h"
 #include "xla/hlo/transforms/expanders/bitcast_dtypes_expander.h"
 #include "xla/hlo/transforms/expanders/cholesky_expander.h"
 #include "xla/hlo/transforms/expanders/comparison_expander.h"
@@ -463,6 +464,8 @@ std::unique_ptr<HloPassFix<HloPassPipeline>> CreateSimplificationPipeline(
       std::make_unique<HloPassFix<HloPassPipeline>>(std::string(name));
   AddHloVerifier(pipeline.get(), HloVerifierOpts{},
                  /*debug_only=*/true);
+
+  pipeline->AddPass<AcoshExpander>();
 
   AlgebraicSimplifierOptions options;
   options.set_enable_dot_strength_reduction(false);

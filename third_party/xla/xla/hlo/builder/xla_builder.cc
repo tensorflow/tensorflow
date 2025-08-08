@@ -6003,6 +6003,12 @@ XlaOp Abs(const XlaOp operand) {
   return operand.builder()->UnaryOp(HloOpcode::kAbs, operand);
 }
 
+XlaOp Acosh(const XlaOp operand,
+            const std::optional<ResultAccuracy>& result_accuracy) {
+  return operand.builder()->UnaryOp(HloOpcode::kAcosh, operand,
+                                    result_accuracy);
+}
+
 XlaOp Atan2(const XlaOp y, const XlaOp x,
             absl::Span<const int64_t> broadcast_dimensions) {
   return y.builder()->BinaryOp(HloOpcode::kAtan2, y, x, broadcast_dimensions);

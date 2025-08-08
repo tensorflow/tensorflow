@@ -1701,6 +1701,8 @@ class XlaBuilder {
       absl::Span<const std::pair<int64_t, int64_t>> padding, XlaOp source,
       XlaOp init_value, XlaComputationId scatter);
   friend XlaOp Abs(XlaOp operand);
+  friend XlaOp Acosh(XlaOp operand,
+                     const std::optional<ResultAccuracy>& result_accuracy);
   friend XlaOp Atan2(XlaOp y, XlaOp x,
                      absl::Span<const int64_t> broadcast_dimensions);
   friend XlaOp Erf(XlaOp operand,
@@ -2905,6 +2907,11 @@ XlaOp SelectAndScatterWithGeneralPadding(
     XlaOp init_value, XlaComputationId scatter);
 // Enqueues an abs instruction onto the computation.
 XlaOp Abs(XlaOp operand);
+
+// Enqueues a acosh instruction onto the computation.
+XlaOp Acosh(
+    XlaOp operand,
+    const std::optional<ResultAccuracy>& result_accuracy = std::nullopt);
 
 // Enqueues a atan2 instruction onto the computation.
 XlaOp Atan2(XlaOp y, XlaOp x,

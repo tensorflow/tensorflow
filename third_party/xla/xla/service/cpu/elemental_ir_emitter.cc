@@ -54,6 +54,11 @@ absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitTanh(
   return xla::cpu::EmitTanh(module(), *b(), prim_type, value);
 }
 
+absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAcosh(
+    PrimitiveType prim_type, llvm::Value* value) {
+  return Unimplemented("acosh");
+}
+
 absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitErf(
     PrimitiveType prim_type, llvm::Value* value) {
   return xla::cpu::EmitErf(module(), *b(), prim_type, value);

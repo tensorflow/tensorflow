@@ -2299,7 +2299,7 @@ func.func @abs_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
 // CHECK-LABEL: @acos
 // CHLO-LABEL: @acos
 func.func @acos(%arg0: tensor<2xf32>) -> tensor<2xf32> {
-  // CHECK:  chlo.acos %arg0 : tensor<2xf32>
+  // CHECK:  mhlo.acos %arg0 : tensor<2xf32>
   // CHLO: %[[TEMP_0:.*]] = mhlo.constant dense<1.000000e+00> : tensor<2xf32>
   // CHLO: %[[TEMP_1:.*]] = mhlo.subtract %[[TEMP_0]], %arg0 : tensor<2xf32>
   // CHLO: %[[TEMP_2:.*]] = mhlo.add %[[TEMP_0]], %arg0 : tensor<2xf32>

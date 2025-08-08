@@ -48,6 +48,7 @@ namespace xla {
 #define HLO_OPCODE_LIST(V)                                                     \
   /* go/keep-sorted start */                                                   \
   V(kAbs, "abs", 1)                                                            \
+  V(kAcosh, "acosh", 1)                                                        \
   V(kAdd, "add", 2)                                                            \
   V(kAddDependency, "add-dependency", 2)                                       \
   V(kAfterAll, "after-all", kHloOpcodeIsVariadic)                              \
