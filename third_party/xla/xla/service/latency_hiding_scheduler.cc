@@ -64,6 +64,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -862,16 +863,36 @@ void ModulePressureState::InitializePressureStates() {
   process_computation(module_->entry_computation(), {});
 }
 
-void MemoryPressureTracker::Initialize(
-    const HloComputation* computation,
-    const LiveBufferSet& initial_live_buffers) {
+void MemoryPressureTracker::Reset(const HloComputation* computation,
+                                  const LiveBufferSet& initial_live_buffers) {
   live_memory_usage_ = 0;
   initial_memory_pressure_ = 0;
   pressure_state_ = MemoryPressureState{};
+  live_buffers_set_.clear();
+
+  if (!initial_live_buffers.empty()) {
+    for (HloBuffer::Id id : initial_live_buffers) {
+      auto& buffer = buffer_tracker_.GetBufferInfo(id);
+      if (buffer.non_default_memory_space_layout) {
+        continue;
+      }
+      live_buffers_[buffer.value->id()] = 1;
+      initial_memory_pressure_ += buffer.buffer_size;
+    }
+    live_buffers_set_ = initial_live_buffers;
+  } else {
+    absl::c_fill(live_buffers_, 0);
+  }
+  pressure_state_.live_ids_at_bottom = live_buffers_set_;
+}
+
+void MemoryPressureTracker::Initialize(
+    const HloComputation* computation,
+    const LiveBufferSet& initial_live_buffers) {
+  int32_t next_id = 0;
   output_buffers_.clear();
   defined_buffers_.clear();
-  live_buffers_set_.clear();
-  int32_t next_id = 0;
+
   for (auto* instruction : computation->instructions()) {
     instruction_ids_[instruction] = next_id++;
     auto& output_values = this->output_buffers_[instruction];
@@ -892,22 +913,7 @@ void MemoryPressureTracker::Initialize(
           }
         });
   }
-  if (!initial_live_buffers.empty()) {
-    for (HloBuffer::Id id : initial_live_buffers) {
-      auto& buffer = buffer_tracker_.GetBufferInfo(id);
-      if (buffer.non_default_memory_space_layout) {
-        continue;
-      }
-      live_buffers_[buffer.value->id()] = 1;
-      initial_memory_pressure_ += buffer.buffer_size;
-    }
-    live_buffers_set_ = initial_live_buffers;
-  } else {
-    absl::c_fill(live_buffers_, 0);
-  }
-  pressure_state_.live_ids_at_bottom = live_buffers_set_;
 
-  // Precompute allocated and released buffers per instruction.
   alloc_release_spans_.resize(next_id);
   for (auto* instruction : computation->instructions()) {
     NodeAllocReleaseSpan s;
@@ -916,6 +922,9 @@ void MemoryPressureTracker::Initialize(
     s.num_release = ComputeBufferReleases(instruction, &alloc_release_ids_);
     alloc_release_spans_[instruction_ids_[instruction]] = s;
   }
+
+  // Call reset to set-up the mutable state.
+  Reset(computation, initial_live_buffers);
 }
 
 int32_t MemoryPressureTracker::ComputeBufferAllocations(
@@ -2981,66 +2990,94 @@ bool DefaultSchedulerCore::SchedulingAnnotationCrossesOverlapLimit(
   }
   return false;
 }
+absl::StatusOr<std::shared_ptr<SchedulerCore::SchedulingState>>
+DefaultSchedulerCore::MakeSchedulingState(const HloComputation* computation) {
+  const HloSchedule& module_schedule = computation->parent()->schedule();
+  std::unique_ptr<MemoryPressureTracker> memory_pressure_tracker =
+      std::make_unique<MemoryPressureTracker>(
+          scheduling_context_->GetAliasAnalysis().get(),
+          module_pressure_state_->buffer_tracker(),
+          module_pressure_state_->pressure_state_cache());
+  memory_pressure_tracker->Initialize(
+      computation,
+      module_pressure_state_->GetPressureStateForComputation(computation)
+          .live_ids_at_bottom);
+  std::shared_ptr<SchedulingState> sched_state =
+      std::make_shared<SchedulingState>(
+          &module_schedule.sequence(computation), scheduling_context_,
+          std::move(memory_pressure_tracker), config_);
+  sched_state->sched_graph.InitializeGraphAnalysis();
+  return sched_state;
+}
 absl::StatusOr<std::vector<HloInstruction*>>
 DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
-  const HloSchedule& module_schedule = computation->parent()->schedule();
-  MemoryPressureTracker memory_pressure_tracker(
-      scheduling_context_->GetAliasAnalysis().get(),
-      module_pressure_state_->buffer_tracker(),
-      module_pressure_state_->pressure_state_cache());
-  memory_pressure_tracker.Initialize(
+  TF_ASSIGN_OR_RETURN(auto sched_state, MakeSchedulingState(computation));
+  return ScheduleComputation(computation, sched_state);
+}
+absl::StatusOr<std::vector<HloInstruction*>>
+DefaultSchedulerCore::ScheduleComputation(
+    const HloComputation* computation,
+    std::shared_ptr<SchedulerCore::SchedulingState> _sched_state) {
+  // Up-cast the scheduling state DefaultSchedulerCore::SchedulingState.
+  std::shared_ptr<DefaultSchedulerCore::SchedulingState> sched_state =
+      std::dynamic_pointer_cast<DefaultSchedulerCore::SchedulingState>(
+          _sched_state);
+
+  CHECK_NE(sched_state, nullptr)
+      << "ScheduleComputation must be called with a "
+      << "DefaultSchedulerCore::SchedulingState object.";
+
+  // Reset the scheduling graph.
+  sched_state->sched_graph.InitializeGraphAnalysis();
+  sched_state->sched_graph.ResetScheduling();
+
+  sched_state->memory_pressure_tracker->Reset(
       computation,
       module_pressure_state_->GetPressureStateForComputation(computation)
           .live_ids_at_bottom);
 
-  // TODO: b/417942271 - Cache and Re-use the postprocessed scheduling graph
-  // for brkga.
-  SchedulingState sched_state(&module_schedule.sequence(computation),
-                              scheduling_context_, &memory_pressure_tracker,
-                              config_);
-
-  sched_state.sched_graph.InitializeGraphAnalysis();
-
   if (graph_processing_hook_) {
-    TF_RETURN_IF_ERROR(graph_processing_hook_(&sched_state.sched_graph));
+    TF_RETURN_IF_ERROR(graph_processing_hook_(&sched_state->sched_graph));
   }
 
   VLOG(5) << "Just built graph:";
 
+  auto& memory_pressure_tracker = *sched_state->memory_pressure_tracker;
+
   if (annotation_tracker_->HasAnnotations(computation)) {
-    sched_state.sched_graph.AnnotateGraph(annotation_tracker_.get());
+    sched_state->sched_graph.AnnotateGraph(annotation_tracker_.get());
     for (int64_t annotation :
          annotation_tracker_->GetAnnotations(computation)) {
       int64_t num_successors =
-          GetNumSuccessorsForAnnotation(sched_state, annotation);
-      sched_state.num_successors_for_annotation[annotation].all =
+          GetNumSuccessorsForAnnotation(*sched_state, annotation);
+      sched_state->num_successors_for_annotation[annotation].all =
           num_successors;
       if (num_successors == 0) {
         VLOG(3) << "Annotation " << annotation
                 << " does not have any successors, is ready to be scheduled";
-        sched_state.ready_annotations.push_back(annotation);
+        sched_state->ready_annotations.push_back(annotation);
       }
     }
   }
 
-  XLA_VLOG_LINES(5, sched_state.sched_graph.ToString());
+  XLA_VLOG_LINES(5, sched_state->sched_graph.ToString());
   scheduling_context_->GetAsyncTracker()->SetConcurrentResourceLimits(
-      sched_state.max_concurrent_resource);
+      sched_state->max_concurrent_resource);
   // Collect the bottom roots of the graph (nodes that don't have any
   // successor)
   // We are going to use them as starting point for scheduling.
-  auto roots = sched_state.sched_graph.FindBottomRoots();
+  auto roots = sched_state->sched_graph.FindBottomRoots();
   for (HloGraphNode* root : roots) {
     // Set ready time for the roots 0.
     root->SetReadyTime(0.0);
   }
   VLOG(5) << "Initial memory pressure for " << computation->name() << ": "
           << memory_pressure_tracker.memory_usage();
-  sched_state.ready_set.insert(sched_state.ready_set.end(), roots.begin(),
-                               roots.end());
+  sched_state->ready_set.insert(sched_state->ready_set.end(), roots.begin(),
+                                roots.end());
   // Schedule in order bottom up.
-  while (!sched_state.ready_set.empty() || !sched_state.nop_set.empty()) {
-    VLOG(10) << "Current ready time: " << sched_state.current_time;
+  while (!sched_state->ready_set.empty() || !sched_state->nop_set.empty()) {
+    VLOG(10) << "Current ready time: " << sched_state->current_time;
     VLOG(2) << "Current ready queue:";
     XLA_VLOG_LINES(2, [&sched_state]() {
       struct LogFormatter {
@@ -3050,42 +3087,42 @@ DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
                                    " Depth: ", n->GetGraphDepth()));
         }
       };
-      return absl::StrJoin(sched_state.ready_set, "\n", LogFormatter());
+      return absl::StrJoin(sched_state->ready_set, "\n", LogFormatter());
     }());
-    if (!sched_state.ready_annotations.empty() &&
-        sched_state.nodes_holding_annotations.empty()) {
+    if (!sched_state->ready_annotations.empty() &&
+        sched_state->nodes_holding_annotations.empty()) {
       // Pick the first ready annotation whose scheduling will not cross the
       // overlap limit. If there is no such annotation, continue with
       // scheduling non-annotated ops.
       int64_t annotation_index = -1;
-      for (int64_t i = 0; i < sched_state.ready_annotations.size(); ++i) {
+      for (int64_t i = 0; i < sched_state->ready_annotations.size(); ++i) {
         if (SchedulingAnnotationCrossesOverlapLimit(
-                sched_state, sched_state.ready_annotations[i])) {
+                *sched_state, sched_state->ready_annotations[i])) {
           continue;
         }
         annotation_index = i;
         break;
       }
       if (annotation_index != -1) {
-        std::swap(sched_state.ready_annotations[annotation_index],
-                  sched_state.ready_annotations.back());
-        int64_t annotation = sched_state.ready_annotations.back();
-        sched_state.ready_annotations.pop_back();
+        std::swap(sched_state->ready_annotations[annotation_index],
+                  sched_state->ready_annotations.back());
+        int64_t annotation = sched_state->ready_annotations.back();
+        sched_state->ready_annotations.pop_back();
         VLOG(2) << "------- BEGIN ANNOTATION: " << annotation << " -------";
-        sched_state.ongoing_annotation = annotation;
+        sched_state->ongoing_annotation = annotation;
         TF_RETURN_IF_ERROR(
-            ScheduleAnnotation(computation, annotation, &sched_state));
+            ScheduleAnnotation(computation, annotation, sched_state.get()));
         VLOG(2) << "-------  END ANNOTATION: " << annotation << " --------";
-        sched_state.ongoing_annotation = -1;
+        sched_state->ongoing_annotation = -1;
         continue;
       }
     }
-    TF_RETURN_IF_ERROR(SchedulingStep(&sched_state));
+    TF_RETURN_IF_ERROR(SchedulingStep(sched_state.get()));
   }
   if (VLOG_IS_ON(5)) {
     VLOG(5) << "New order";
-    for (auto r_it = sched_state.new_sequence_reversed.rbegin(),
-              e_it = sched_state.new_sequence_reversed.rend();
+    for (auto r_it = sched_state->new_sequence_reversed.rbegin(),
+              e_it = sched_state->new_sequence_reversed.rend();
          r_it != e_it; ++r_it) {
       LogInstruction(*r_it);
     }
@@ -3093,26 +3130,26 @@ DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
 
   module_pressure_state_->UpdatePressureStateForComputation(
       computation, memory_pressure_tracker.pressure_state());
-  absl::c_reverse(sched_state.new_sequence_reversed);
+  absl::c_reverse(sched_state->new_sequence_reversed);
   if (post_processing_fn_) {
-    post_processing_fn_(sched_state);
+    post_processing_fn_(*sched_state);
   }
-  CHECK_EQ(sched_state.new_sequence_reversed.size(),
-           sched_state.sched_graph.GetOriginalInstrList().size())
+  CHECK_EQ(sched_state->new_sequence_reversed.size(),
+           sched_state->sched_graph.GetOriginalInstrList().size())
       << "Not all instructions have been scheduled "
-      << sched_state.new_sequence_reversed.size() << " vs "
-      << sched_state.sched_graph.GetOriginalInstrList().size();
+      << sched_state->new_sequence_reversed.size() << " vs "
+      << sched_state->sched_graph.GetOriginalInstrList().size();
   VLOG(2) << "Total time: "
-          << sched_state.sched_graph
-                 .GetNode(sched_state.new_sequence_reversed.front())
+          << sched_state->sched_graph
+                 .GetNode(sched_state->new_sequence_reversed.front())
                  .GetReadyTime();
 
   if (schedule_proto_.has_value()) {
     *schedule_proto_->add_computation_schedules() = ComputationScheduleToProto(
-        computation, sched_state, *scheduling_context_->GetLatencyEstimator(),
-        sched_state.new_sequence_reversed);
+        computation, *sched_state, *scheduling_context_->GetLatencyEstimator(),
+        sched_state->new_sequence_reversed);
   }
-  return std::move(sched_state.new_sequence_reversed);
+  return std::move(sched_state->new_sequence_reversed);
 }
 
 ScheduleProto::ComputationScheduleProto
@@ -3156,7 +3193,7 @@ LatencyHidingScheduler::LatencyHidingStatistics(
     const HloComputation* computation,
     std::shared_ptr<const SchedulingContext> scheduling_context,
     const ModulePressureState* module_pressure_state,
-    const MemoryPressureTracker* memory_pressure_tracker) {
+    MemoryPressureTracker* memory_pressure_tracker) {
   const HloModule* module = computation->parent();
   // A map keyed by outstanding collective op's opcode, with value of a tuple
   // including {instruction, scheduled_time, position in the original order}.
@@ -3272,28 +3309,25 @@ LatencyHidingScheduler::LatencyHidingStatistics(
         module, scheduling_context->GetAliasAnalysis().get(),
         scheduling_context->GetShapeSizeBytes());
     module_pressure_state_ptr->InitializePressureStates();
+    module_pressure_state = module_pressure_state_ptr.get();
   }
   bool memory_tracked =
-      module_pressure_state
-          ? module_pressure_state->ComputationIsMemoryTracked(computation)
-          : module_pressure_state_ptr->ComputationIsMemoryTracked(computation);
+      module_pressure_state->ComputationIsMemoryTracked(computation);
   const MemoryPressureTracker::MemoryPressureState& computation_pressure_state =
-      module_pressure_state
-          ? module_pressure_state->GetPressureStateForComputation(computation)
-          : module_pressure_state_ptr->GetPressureStateForComputation(
-                computation);
+      module_pressure_state->GetPressureStateForComputation(computation);
   const MemoryPressureTracker::MemoryPressureState* memory_pressure_state =
       memory_tracked ? &computation_pressure_state : nullptr;
-  MemoryPressureTracker mem_pressure_tracker(
-      scheduling_context->GetAliasAnalysis().get(),
-      module_pressure_state ? module_pressure_state->buffer_tracker()
-                            : module_pressure_state_ptr->buffer_tracker(),
-      module_pressure_state
-          ? module_pressure_state->pressure_state_cache()
-          : module_pressure_state_ptr->pressure_state_cache());
-  if (memory_pressure_state != nullptr) {
-    mem_pressure_tracker.Initialize(computation,
-                                    memory_pressure_state->live_ids_at_bottom);
+  std::unique_ptr<MemoryPressureTracker> memory_pressure_tracker_ptr;
+  if (memory_pressure_tracker == nullptr) {
+    memory_pressure_tracker_ptr = std::make_unique<MemoryPressureTracker>(
+        scheduling_context->GetAliasAnalysis().get(),
+        module_pressure_state->buffer_tracker(),
+        module_pressure_state->pressure_state_cache());
+    if (memory_pressure_state != nullptr) {
+      memory_pressure_tracker_ptr->Initialize(
+          computation, memory_pressure_state->live_ids_at_bottom);
+    }
+    memory_pressure_tracker = memory_pressure_tracker_ptr.get();
   }
   return LatencyHidingScheduler::SchedulerStatistics{
       /*computation=*/computation,
@@ -3315,9 +3349,10 @@ LatencyHidingScheduler::LatencyHidingStatistics(
       /*recv_wasted_cycles=*/wasted_time_per_collective[AsyncKind::kRecv],
       /*total_cycles=*/current_time,
       /*memory_pressure_peak=*/
-      memory_pressure_state ? mem_pressure_tracker.initial_memory_pressure() +
-                                  memory_pressure_state->memory_peak
-                            : 0};
+      memory_pressure_state
+          ? memory_pressure_tracker->initial_memory_pressure() +
+                memory_pressure_state->memory_peak
+          : 0};
 }
 
 // Prints a SchedulerStatistics object.

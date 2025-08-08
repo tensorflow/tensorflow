@@ -381,6 +381,11 @@ class AsyncTracker {
 // Base class for the core scheduling algorithm.
 class SchedulerCore {
  public:
+  // Abstract base class for scheduling state.
+  struct SchedulingState {
+    virtual ~SchedulingState() = default;
+  };
+
   // Hook function to modify scheduling graph before scheduler runs.
   using GraphProcessingHook = std::function<absl::Status(HloScheduleGraph*)>;
 
@@ -390,8 +395,19 @@ class SchedulerCore {
 
   virtual absl::StatusOr<ScheduleProto> GetCapturedScheduleProto() = 0;
 
+  virtual absl::StatusOr<std::shared_ptr<SchedulerCore::SchedulingState>>
+  MakeSchedulingState(const HloComputation* computation) {
+    return absl::UnimplementedError("Not implemented.");
+  }
   virtual absl::StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
-      const HloComputation* computation) = 0;
+      const HloComputation* computation) {
+    return absl::UnimplementedError("Not implemented.");
+  }
+  virtual absl::StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
+      const HloComputation* computation,
+      std::shared_ptr<SchedulingState> sched_state) {
+    return absl::UnimplementedError("Not implemented.");
+  }
 
   virtual ~SchedulerCore() = default;
   virtual int64_t GetMemoryPeak() = 0;
@@ -633,6 +649,13 @@ class HloGraphNode {
   static void AddDependency(HloGraphNode* from, HloGraphNode* to,
                             const LatencyEstimator* latency_estimator) {
     AddDependency(from, to, latency_estimator->GetLatencyBetween(*from, *to));
+  }
+  // Reset the node to a state where it's ready to be scheduled again.
+  void ResetScheduling() {
+    scheduled_ = false;
+    indegree_ = predecessors_.size();
+    outdegree_ = successors_.size();
+    ready_time_ = std::numeric_limits<TimeCost>::max();
   }
   size_t GetReadyNodesIfScheduled() const { return ready_nodes_if_scheduled_; }
   void UpdateReadyNodesIfScheduled() {
@@ -1119,6 +1142,14 @@ class HloScheduleGraph {
       GetNodePtr(original_order_[i])->SetPreference(preferences[i]);
     }
   }
+  void ResetScheduling() {
+    for (auto& pair : nodes_) {
+      node_storage_[pair.second].ResetScheduling();
+    }
+    for (auto& pair : nodes_) {
+      node_storage_[pair.second].UpdateReadyNodesIfScheduled();
+    }
+  }
 
  private:
   friend class HloEdge;
@@ -1238,6 +1269,9 @@ class MemoryPressureTracker {
   // Initialize object to be ready to start tracking of computation.
   void Initialize(const HloComputation* computation,
                   const LiveBufferSet& initial_live_buffers);
+  // Reset the memory pressure tracker to the initialized state.
+  void Reset(const HloComputation* computation,
+             const LiveBufferSet& initial_live_buffers);
   // After an instruction is scheduled, update the memory pressure effect on
   // other instructions.
   void UpdateBuffers(const HloInstruction* instruction);
@@ -1519,7 +1553,7 @@ class DefaultSchedulerCore : public SchedulerCore {
   // over the scheduling state can directly operate on the state contained into
   // this struct instead of having to pass many individual pointers to elements
   // of the state.
-  struct SchedulingState {
+  struct SchedulingState : public SchedulerCore::SchedulingState {
     HloScheduleGraph sched_graph;
     // Ready set for the nodes. Its ordered by our heuristic defined in
     // ReadySetLt.
@@ -1554,7 +1588,7 @@ class DefaultSchedulerCore : public SchedulerCore {
     // states related to the async instructions.
     const AsyncTracker* async_tracker;
     // Tracker of memory pressure for the computation.
-    MemoryPressureTracker* memory_pressure_tracker;
+    std::unique_ptr<MemoryPressureTracker> memory_pressure_tracker;
     // Vector containing a list of nodes that aren't ready to schedule yet in
     // order of time when they are going to become ready.
     std::vector<const HloGraphNode*> next_ready_stack;
@@ -1589,12 +1623,12 @@ class DefaultSchedulerCore : public SchedulerCore {
     SchedulingState(
         const HloInstructionSequence* instr_sequence,
         std::shared_ptr<const SchedulingContext>& scheduling_context,
-        MemoryPressureTracker* memory_pressure_tracker,
+        std::unique_ptr<MemoryPressureTracker> memory_pressure_tracker,
         const SchedulerConfig& config)
         : sched_graph(&instr_sequence->instructions(), scheduling_context),
           latency_estimator(scheduling_context->GetLatencyEstimator().get()),
           async_tracker(scheduling_context->GetAsyncTracker().get()),
-          memory_pressure_tracker(memory_pressure_tracker),
+          memory_pressure_tracker(std::move(memory_pressure_tracker)),
           config(config) {}
   };
 
@@ -1633,8 +1667,13 @@ class DefaultSchedulerCore : public SchedulerCore {
     return schedule_proto_.value();
   }
 
+  absl::StatusOr<std::shared_ptr<SchedulerCore::SchedulingState>>
+  MakeSchedulingState(const HloComputation* computation) override;
   absl::StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
       const HloComputation* computation) override;
+  absl::StatusOr<std::vector<HloInstruction*>> ScheduleComputation(
+      const HloComputation* computation,
+      std::shared_ptr<SchedulerCore::SchedulingState> sched_state) override;
   static bool AddOccupierToResource(
       HloGraphNode::TimeCost current_time, HloEdge& new_edge,
       std::vector<std::pair<HloEdge*, HloGraphNode::TimeCost>>& occupiers);
@@ -1733,7 +1772,7 @@ class LatencyHidingScheduler : public HloModulePass {
 
   LatencyHidingScheduler(
       std::shared_ptr<const SchedulingContext> scheduling_context,
-      std::unique_ptr<SchedulerCore> scheduler_core)
+      std::shared_ptr<SchedulerCore> scheduler_core)
       : scheduling_context_(std::move(scheduling_context)),
         scheduler_core_(std::move(scheduler_core)) {}
   constexpr static absl::string_view kName = "latency-hiding-scheduler";
@@ -1750,7 +1789,7 @@ class LatencyHidingScheduler : public HloModulePass {
       const HloComputation* computation,
       std::shared_ptr<const SchedulingContext> scheduling_context,
       const ModulePressureState* pressure_state = nullptr,
-      const MemoryPressureTracker* memory_pressure_tracker = nullptr);
+      MemoryPressureTracker* memory_pressure_tracker = nullptr);
 
   // Even with random preferences this function will always return a schedule
   // that obeys overlap constraints.
@@ -1770,7 +1809,7 @@ class LatencyHidingScheduler : public HloModulePass {
 
  protected:
   std::shared_ptr<const SchedulingContext> scheduling_context_;
-  std::unique_ptr<SchedulerCore> scheduler_core_;
+  std::shared_ptr<SchedulerCore> scheduler_core_;
   std::vector<HloComputation*> computations_to_schedule_;
 };
 
