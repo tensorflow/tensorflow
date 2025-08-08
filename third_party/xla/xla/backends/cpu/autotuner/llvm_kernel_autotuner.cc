@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/autotuner/autotune_config.h"
 #include "xla/backends/autotuner/autotuner.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/autotuner/profiler.h"
@@ -54,7 +55,8 @@ absl::StatusOr<bool> LlvmKernelAutotuner::Run(
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Autotuner> autotuner,
                       Autotuner::Create(std::move(codegen_backends),
-                                        std::move(profiler), AutotuneConfig()));
+                                        std::move(profiler), AutotuneConfig(),
+                                        /*cache=*/nullptr));
 
   bool hlo_changed = false;
   for (HloComputation* computation : module->computations()) {

@@ -96,6 +96,7 @@ cc_library(
     name = "cublas",
     srcs = ["cublas.cc"],
     hdrs = ["cublas.h"],
+    tags = ["gpu"],
     deps = [
         ":gpu_codegen_backend",
         "//xla:autotuning_proto_cc",
@@ -120,6 +121,7 @@ cc_library(
         "//xla/stream_executor:semantic_version",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor:stream_executor_memory_allocator",
+        "//xla/stream_executor/cuda:cublas_plugin",
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/stream_executor/gpu:redzone_allocator",
         "//xla/tools:hlo_decomposer_lib",
@@ -629,6 +631,7 @@ xla_cc_binary(
         "//xla:debug_options_flags",
         "//xla:xla_proto_cc",
         "//xla/backends/autotuner",
+        "//xla/backends/autotuner:autotune_config",
         "//xla/backends/autotuner:profiler",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",

@@ -27,8 +27,9 @@ limitations under the License.
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
-#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -37,6 +38,7 @@ class AutotunerPass : public HloModulePass {
  public:
   static absl::StatusOr<std::unique_ptr<AutotunerPass>> Create(
       std::vector<std::unique_ptr<CodegenBackend>> backends,
+      const DebugOptions& debug_options,
       stream_executor::StreamExecutor* stream_executor,
       tsl::thread::ThreadPool* thread_pool);
 
