@@ -325,7 +325,8 @@ class BufferAllocation {
   friend class BufferAssignment;
 
   // Adds a LogicalBuffer to the set assigned to this buffer.
-  void AddAssignment(const HloValue& buffer, int64_t offset, int64_t size);
+  absl::Status AddAssignment(const HloValue& buffer, int64_t offset,
+                             int64_t size);
 
   void set_index(Index index) { index_ = index; }
   void set_size(int64_t size) { size_ = size; }
@@ -580,14 +581,17 @@ class BufferAssignment {
 
   // Helper that calls NewEmptyAllocation and AddAssignment in one call,
   // creating an allocation containing a single LogicalBuffer.
-  BufferAllocation* NewAllocation(const HloBuffer& buffer, int64_t size);
+  absl::StatusOr<BufferAllocation*> NewAllocation(const HloBuffer& buffer,
+                                                  int64_t size);
 
   // Adds a LogicalBuffer to the set assigned to the given allocation.
-  void AddAssignment(BufferAllocation* allocation, const HloBuffer& buffer,
-                     int64_t offset, int64_t size);
+  absl::Status AddAssignment(BufferAllocation* allocation,
+                             const HloBuffer& buffer, int64_t offset,
+                             int64_t size);
 
-  void AddAssignment(BufferAllocation* allocation, const HloValue& value,
-                     int64_t offset, int64_t size);
+  absl::Status AddAssignment(BufferAllocation* allocation,
+                             const HloValue& value, int64_t offset,
+                             int64_t size);
 
   // Returns the HloModule used to construct this assignment.
   const HloModule& module() const { return *module_; }
@@ -608,7 +612,7 @@ class BufferAssignment {
   }
 
   // Combines allocations of temporary buffers into one big BufferAllocation.
-  void CombineTempAllocations(
+  absl::Status CombineTempAllocations(
       const absl::flat_hash_set<BufferValue::Color>& private_stack_colors,
       std::optional<BufferValue::Color> temp_buffer_color);
 
@@ -783,7 +787,7 @@ class BufferAssigner {
 
   // Uses the results of the heap simulator to create a single allocation, with
   // LogicalBuffers packed to specific offsets.
-  void AssignBuffersFromHeapSimulator(
+  absl::Status AssignBuffersFromHeapSimulator(
       HeapSimulator::Result<HloValue>& result, BufferAssignment* assignment,
       LogicalBuffer::Color color,
       std::optional<BufferAssignment::BufferIsolationOptions>
@@ -791,8 +795,9 @@ class BufferAssigner {
 
   // Tries to assign the given instruction to the given buffer. Returns if the
   // assignment was successful.
-  bool MaybeAssignBuffer(BufferAllocation* allocation, const HloBuffer& buffer,
-                         BufferAssignment* assignment);
+  absl::StatusOr<bool> MaybeAssignBuffer(BufferAllocation* allocation,
+                                         const HloBuffer& buffer,
+                                         BufferAssignment* assignment);
 
   // Split a set of buffers into several sets, each of which contains buffers
   // colored with the same color.
