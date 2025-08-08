@@ -29,6 +29,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/log/log.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -12935,6 +12936,237 @@ ENTRY main {
   TF_EXPECT_OK(VerifyHloModule(m.get(),
                                /*layout_sensitive=*/true,
                                /*allow_mixed_precision=*/true));
+}
+
+TEST_F(AlgebraicSimplifierTest, OutOfOrderHoistElementwiseConcat) {
+  constexpr absl::string_view hlo = R"(
+HloModule module
+
+ENTRY main {
+  arg.0 = f32[4096,10]{1,0} parameter(0)
+  arg.1 = f32[4096,20]{1,0} parameter(1)
+  arg.2 = f32[4096,30]{1,0} parameter(2)
+  arg.3 = f32[4096,40]{1,0} parameter(3)
+  arg.4 = f32[4096,50]{1,0} parameter(4)
+
+  concat.0 = concatenate(arg.0, arg.1), dimensions={1}
+  concat.1 = concatenate(arg.2, arg.3), dimensions={1}
+
+  abs.0 = abs(concat.0)
+  rsqrt.0 = rsqrt(abs.0)
+  rsqrt.1 = rsqrt(concat.1)
+  abs.1 = abs(rsqrt.1)
+
+  ROOT concat.2 = concatenate(rsqrt.0, abs.1, arg.4), dimensions={1}
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(false);
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_THAT(simplifier.Run(module.get()), absl_testing::IsOkAndHolds(false));
+}
+
+TEST_F(AlgebraicSimplifierTest, HoistElementwiseConcatMissingSandwich) {
+  constexpr absl::string_view hlo = R"(
+HloModule module
+
+ENTRY main {
+  arg.0 = f32[4096,10]{1,0} parameter(0)
+  arg.1 = f32[4096,20]{1,0} parameter(1)
+  arg.2 = f32[4096,30]{1,0} parameter(2)
+  arg.3 = f32[4096,40]{1,0} parameter(3)
+  arg.4 = f32[4096,50]{1,0} parameter(4)
+
+  abs.0 = abs(arg.0)
+  rsqrt.0 = rsqrt(abs.0)
+  abs.1 = abs(arg.1)
+  rsqrt.1 = rsqrt(abs.1)
+  abs.2 = abs(arg.2)
+  rsqrt.2 = rsqrt(abs.2)
+  abs.3 = abs(arg.3)
+  rsqrt.3 = rsqrt(abs.3)
+
+  ROOT concat.2 = concatenate(rsqrt.0, rsqrt.1, rsqrt.2, rsqrt.3, arg.4), dimensions={1}
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(false);
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_THAT(simplifier.Run(module.get()), absl_testing::IsOkAndHolds(false));
+}
+
+TEST_F(AlgebraicSimplifierTest, HoistElementwiseUnaryConcat) {
+  constexpr absl::string_view hlo = R"(
+HloModule module
+
+ENTRY main {
+  arg.0 = f32[4096,10]{1,0} parameter(0)
+  arg.1 = f32[4096,20]{1,0} parameter(1)
+  arg.2 = f32[4096,30]{1,0} parameter(2)
+  arg.3 = f32[4096,40]{1,0} parameter(3)
+  arg.4 = f32[4096,50]{1,0} parameter(4)
+
+  concat.0 = concatenate(arg.0, arg.1), dimensions={1}
+  concat.1 = concatenate(arg.2, arg.3), dimensions={1}
+
+  abs.0 = abs(concat.0)
+  rsqrt.0 = rsqrt(abs.0)
+  abs.1 = abs(concat.1)
+  rsqrt.1 = rsqrt(abs.1)
+
+  ROOT concat.2 = concatenate(rsqrt.0, rsqrt.1, arg.4), dimensions={1}
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(false);
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_THAT(simplifier.Run(module.get()), absl_testing::IsOkAndHolds(true));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Concatenate(
+          m::Rsqrt(m::Abs(m::Concatenate(m::Parameter(0), m::Parameter(1),
+                                         m::Parameter(2), m::Parameter(3)))),
+          m::Parameter(4))));
+}
+
+TEST_F(AlgebraicSimplifierTest, HoistBinaryElementwiseBinaryConcat) {
+  constexpr absl::string_view hlo = R"(
+HloModule module
+
+ENTRY main {
+  arg.0 = f32[4096,10]{1,0} parameter(0)
+  arg.1 = f32[4096,20]{1,0} parameter(1)
+  arg.2 = f32[4096,30]{1,0} parameter(2)
+  arg.3 = f32[4096,40]{1,0} parameter(3)
+  arg.4 = f32[4096,50]{1,0} parameter(4)
+
+  concat.0 = concatenate(arg.0, arg.1), dimensions={1}
+  concat.1 = concatenate(arg.2, arg.3), dimensions={1}
+
+  one.0 = f32[] constant(1.0)
+  ones.0 = f32[4096,30]{1,0} broadcast(one.0), dimensions={}
+  add.0 = add(concat.0, ones.0)
+  ones.1 = f32[4096,70]{1,0} broadcast(one.0), dimensions={}
+  add.1 = add(concat.1, ones.1)
+
+  ROOT concat.2 = concatenate(add.0, add.1, arg.4), dimensions={1}
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(false);
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_THAT(simplifier.Run(module.get()), absl_testing::IsOkAndHolds(true));
+}
+
+TEST_F(AlgebraicSimplifierTest,
+       HoistBinaryElementwiseNonCommutativeBinaryConcat) {
+  constexpr absl::string_view hlo = R"(
+HloModule module
+
+ENTRY main {
+  arg.0 = f32[4096,10]{1,0} parameter(0)
+  arg.1 = f32[4096,20]{1,0} parameter(1)
+  arg.2 = f32[4096,30]{1,0} parameter(2)
+  arg.3 = f32[4096,40]{1,0} parameter(3)
+  arg.4 = f32[4096,50]{1,0} parameter(4)
+
+  concat.0 = concatenate(arg.0, arg.1), dimensions={1}
+  concat.1 = concatenate(arg.2, arg.3), dimensions={1}
+
+  seven.0 = f32[] constant(7.0)
+  sevens.0 = f32[4096,30]{1,0} broadcast(seven.0), dimensions={}
+  atan2.0 = atan2(concat.0, sevens.0)
+  sevens.1 = f32[4096,70]{1,0} broadcast(seven.0), dimensions={}
+  atan2.1 = atan2(sevens.1, concat.1)
+
+  ROOT concat.2 = concatenate(atan2.0, atan2.1, arg.4), dimensions={1}
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(false);
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_THAT(simplifier.Run(module.get()), absl_testing::IsOkAndHolds(false));
+}
+
+TEST_F(AlgebraicSimplifierTest, HoistBinaryElementwiseCommutativeBinaryConcat) {
+  constexpr absl::string_view hlo = R"(
+HloModule module
+
+ENTRY main {
+  arg.0 = f32[4096,10]{1,0} parameter(0)
+  arg.1 = f32[4096,20]{1,0} parameter(1)
+  arg.2 = f32[4096,30]{1,0} parameter(2)
+  arg.3 = f32[4096,40]{1,0} parameter(3)
+  arg.4 = f32[4096,50]{1,0} parameter(4)
+
+  concat.0 = concatenate(arg.0, arg.1), dimensions={1}
+  concat.1 = concatenate(arg.2, arg.3), dimensions={1}
+
+  seven.0 = f32[] constant(7.0)
+  sevens.0 = f32[4096,30]{1,0} broadcast(seven.0), dimensions={}
+  mul.0 = multiply(concat.0, sevens.0)
+  sevens.1 = f32[4096,70]{1,0} broadcast(seven.0), dimensions={}
+  mul.1 = multiply(sevens.1, concat.1)
+
+  ROOT concat.2 = concatenate(mul.0, mul.1, arg.4), dimensions={1}
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(false);
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_THAT(simplifier.Run(module.get()), absl_testing::IsOkAndHolds(true));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Concatenate(
+                  m::Multiply(m::Concatenate(m::Parameter(0), m::Parameter(1),
+                                             m::Parameter(2), m::Parameter(3)),
+                              m::Broadcast(m::Constant())),
+                  m::Parameter(4))));
+}
+
+TEST_F(AlgebraicSimplifierTest, HoistElementwiseClampConcat) {
+  constexpr absl::string_view hlo = R"(
+HloModule module
+
+ENTRY main {
+  arg.0 = f32[4096,10]{1,0} parameter(0)
+  arg.1 = f32[4096,20]{1,0} parameter(1)
+  arg.2 = f32[4096,30]{1,0} parameter(2)
+  arg.3 = f32[4096,40]{1,0} parameter(3)
+  arg.4 = f32[4096,50]{1,0} parameter(4)
+
+  concat.0 = concatenate(arg.0, arg.1), dimensions={1}
+  concat.1 = concatenate(arg.2, arg.3), dimensions={1}
+
+  min.0 = f32[] constant(-0.123)
+  max.0 = f32[] constant(0.123)
+  maxs.0 = f32[4096,30]{1,0} broadcast(max.0), dimensions={}
+  mins.0 = f32[4096,30]{1,0} broadcast(min.0), dimensions={}
+  clamp.0 = clamp(mins.0, concat.0, maxs.0)
+  mins.1 = f32[4096,70]{1,0} broadcast(min.0), dimensions={}
+  maxs.1 = f32[4096,70]{1,0} broadcast(max.0), dimensions={}
+  clamp.1 = clamp(mins.1, concat.1, maxs.1)
+
+  ROOT concat.2 = concatenate(clamp.0, clamp.1, arg.4), dimensions={1}
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(false);
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_THAT(simplifier.Run(module.get()), absl_testing::IsOkAndHolds(true));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Concatenate(
+                  m::Clamp(m::Broadcast(m::Constant()),
+                           m::Concatenate(m::Parameter(0), m::Parameter(1),
+                                          m::Parameter(2), m::Parameter(3)),
+                           m::Broadcast(m::Constant())),
+                  m::Parameter(4))));
 }
 
 }  // namespace

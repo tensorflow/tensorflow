@@ -1513,6 +1513,8 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
         return instruction;
       }
       return CreateNary(shape, opcode, {operand});
+    case HloOpcode::kConvert:
+      return CreateConvert(shape, operand);
     default:
       LOG(FATAL) << "Invalid unary instruction opcode " << opcode;
   }
@@ -3799,9 +3801,9 @@ std::string HloInstruction::ToString() const {
   return ToString(options);
 }
 
-bool HloInstruction::IsOpElementwise(HloOpcode opcode) {
+/*static*/
+bool HloInstruction::IsOpElementwiseUnary(HloOpcode opcode) {
   switch (opcode) {
-    // Unary elementwise operations.
     case HloOpcode::kAbs:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kRoundNearestEven:
@@ -3833,8 +3835,14 @@ bool HloInstruction::IsOpElementwise(HloOpcode opcode) {
     case HloOpcode::kTan:
     case HloOpcode::kTanh:
       return true;
+    default:
+      return false;
+  }
+}
 
-    // Binary elementwise operations, the same as in IsElementwiseBinary().
+/*static*/
+bool HloInstruction::IsOpElementwiseBinary(HloOpcode opcode) {
+  switch (opcode) {
     case HloOpcode::kAdd:
     case HloOpcode::kAtan2:
     case HloOpcode::kCompare:
@@ -3854,12 +3862,17 @@ bool HloInstruction::IsOpElementwise(HloOpcode opcode) {
     case HloOpcode::kShiftRightLogical:
     case HloOpcode::kStochasticConvert:
       return true;
+    default:
+      return false;
+  }
+}
 
-    // Ternary elementwise operations.
+/*static*/
+bool HloInstruction::IsOpElementwiseTernary(HloOpcode opcode) {
+  switch (opcode) {
     case HloOpcode::kSelect:
     case HloOpcode::kClamp:
       return true;
-
     default:
       return false;
   }
