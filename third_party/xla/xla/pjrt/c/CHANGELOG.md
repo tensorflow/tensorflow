@@ -1,5 +1,9 @@
 # PJRT C API changelog
 
+## 0.75
+
+* Add incarnations to `PJRT_ExecuteOptions`.
+
 ## 0.74
 
 * Added `PJRT_Extension_Type::PJRT_Extension_Type_CrossHostTransfers.`
