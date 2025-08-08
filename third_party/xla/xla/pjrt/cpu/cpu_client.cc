@@ -838,12 +838,12 @@ PjRtCpuClient::CompileInternal(
 
   std::unique_ptr<HloModule> unoptimized_hlo_module = nullptr;
 
-  const bool xla_cpu_dump_unoptimized_hlo_snapshots =
+  const bool xla_dump_hlo_unoptimized_snapshots =
       options.executable_build_options.has_debug_options() &&
       options.executable_build_options.debug_options()
-          .xla_cpu_dump_unoptimized_hlo_snapshots();
+          .xla_dump_hlo_unoptimized_snapshots();
 
-  if (xla_cpu_dump_unoptimized_hlo_snapshots) {
+  if (xla_dump_hlo_unoptimized_snapshots) {
     TF_ASSIGN_OR_RETURN(
         unoptimized_hlo_module,
         HloModule::CreateFromProto(computation.proto(),
@@ -1879,8 +1879,19 @@ PjRtCpuExecutable::Execute(
     MaybeDumpHloSnapshot(cpu_executable_->module(), run_id, argument_handles[0],
                          {});
     if (unoptimized_hlo_module_ != nullptr) {
-      MaybeDumpHloSnapshot(*unoptimized_hlo_module_, run_id,
-                           argument_handles[0], {}, "unoptimized_hlo_");
+      HloUnoptimizedSnapshot hlo_snapshot;
+      *hlo_snapshot.mutable_hlo_module() = unoptimized_hlo_module_->ToProto();
+      for (const auto& argument_handle : argument_handles) {
+        HloInputs hlo_inputs;
+        for (const auto& buffer : argument_handle) {
+          TF_ASSIGN_OR_RETURN(auto literal, buffer->ToLiteralSync());
+          *hlo_inputs.add_arguments() = literal->ToProto();
+        }
+        *hlo_snapshot.add_partitions() = std::move(hlo_inputs);
+      }
+
+      DumpHloUnoptimizedSnapshotIfEnabled(
+          hlo_snapshot, cpu_executable_->module().config().debug_options());
     }
     auto statusor = ExecuteHelper(
         argument_handles[0], replica, partition, run_id, options,
@@ -1897,11 +1908,6 @@ PjRtCpuExecutable::Execute(
 
     MaybeDumpHloSnapshot(cpu_executable_->module(), run_id, argument_handles[0],
                          wrapped_results[0]);
-    if (unoptimized_hlo_module_ != nullptr) {
-      MaybeDumpHloSnapshot(*unoptimized_hlo_module_, run_id,
-                           argument_handles[0], wrapped_results[0],
-                           "unoptimized_hlo_");
-    }
   } else {
     // Gang schedule collectives to ensure that collectives with the same RunId
     // are run at the same time. We conservatively run only one collective at a

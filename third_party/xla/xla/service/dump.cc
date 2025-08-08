@@ -153,8 +153,7 @@ struct CanonicalDebugOptions {
         dump_as_url(opts.xla_dump_hlo_as_url()),
         dump_fusion_visualization(opts.xla_dump_fusion_visualization()),
         dump_snapshots(opts.xla_dump_hlo_snapshots()),
-        dump_unoptimized_snapshots(
-            opts.xla_gpu_dump_hlo_unoptimized_snapshots()),
+        dump_unoptimized_snapshots(opts.xla_dump_hlo_unoptimized_snapshots()),
         dump_include_timestamp(opts.xla_dump_include_timestamp()),
         dump_max_hlo_modules(opts.xla_dump_max_hlo_modules()),
         dump_compress_protos(opts.xla_dump_compress_protos()),
@@ -171,7 +170,7 @@ struct CanonicalDebugOptions {
         opts.xla_dump_hlo_as_text() || opts.xla_dump_hlo_as_proto() ||
         opts.xla_dump_hlo_as_dot() || opts.xla_dump_hlo_as_html() ||
         opts.xla_dump_hlo_snapshots() ||
-        opts.xla_gpu_dump_hlo_unoptimized_snapshots();
+        opts.xla_dump_hlo_unoptimized_snapshots();
     bool output_format_specified =
         output_format_other_than_url_specified || opts.xla_dump_hlo_as_url();
 

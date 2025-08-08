@@ -826,7 +826,7 @@ TEST_F(FunctionalHloRunnerTest, DumpsUnoptimizedHLOInUnoptimizedSnapshot) {
   DebugOptions debug_options = xla::DefaultDebugOptionsIgnoringFlags();
   debug_options.set_xla_dump_to(std::getenv("TEST_UNDECLARED_OUTPUTS_DIR"));
   debug_options.set_xla_dump_hlo_as_proto(true);
-  debug_options.set_xla_gpu_dump_hlo_unoptimized_snapshots(true);
+  debug_options.set_xla_dump_hlo_unoptimized_snapshots(true);
   FunctionalHloRunner::PreprocessingOptions preproc_options;
   FunctionalHloRunner::RunningOptions running_options;
   CompileOptions compile_options;
