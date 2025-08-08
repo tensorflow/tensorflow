@@ -663,6 +663,10 @@ cc_library(
             "LIBNVPTXCOMPILER_SUPPORT=false",
         ],
     }),
+    visibility = internal_visibility([
+        "//third_party/py/jax:__subpackages__",
+        ":friends",
+    ]),
 )
 
 cc_library(
@@ -1528,6 +1532,10 @@ xla_cc_test(
 cc_library(
     name = "compilation_provider",
     hdrs = ["compilation_provider.h"],
+    visibility = internal_visibility([
+        "//third_party/py/jax:__subpackages__",
+        ":friends",
+    ]),
     deps = [
         ":compilation_options",
         ":cuda_compute_capability",
@@ -1865,6 +1873,10 @@ cc_library(
         "cuda-only",
         "gpu",
     ],
+    visibility = internal_visibility([
+        "//third_party/py/jax:__subpackages__",
+        ":friends",
+    ]),
     deps = [
         ":compilation_provider",
         ":compilation_provider_options",
@@ -1955,6 +1967,10 @@ cc_library(
     name = "cuda_compute_capability",
     srcs = ["cuda_compute_capability.cc"],
     hdrs = ["cuda_compute_capability.h"],
+    visibility = internal_visibility([
+        "//third_party/py/jax:__subpackages__",
+        ":friends",
+    ]),
     deps = [
         ":cuda_compute_capability_proto_cc",
         "@com_google_absl//absl/status",
