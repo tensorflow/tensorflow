@@ -177,6 +177,7 @@ absl::Status BFloat16ConversionFoldingVisitor::DefaultAction(
       hlo->opcode() == HloOpcode::kConstant ||                          //
       hlo->opcode() == HloOpcode::kParameter ||                         //
       hlo->opcode() == HloOpcode::kFusion ||                            //
+      hlo->opcode() == HloOpcode::kBitcast ||                           //
       hlo->opcode() == HloOpcode::kBitcastConvert ||                    //
       hlo->opcode() == HloOpcode::kConvert ||                           //
       hlo->opcode() == HloOpcode::kCall ||                              //
