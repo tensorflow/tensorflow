@@ -1,8 +1,6 @@
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
-load(
-    "@local_xla//xla/tsl:tsl.bzl",
-    "clean_dep",
-)
+load("@local_xla//xla/tsl:tsl.bzl", "clean_dep")
+load("@local_xla//xla/tsl/mkl:build_defs.bzl", "mkl_deps")
 
 licenses(["notice"])  # 3-Clause BSD
 
@@ -161,6 +159,12 @@ cc_library(
         ],
         "//conditions:default": [],
     }),
+)
+
+cc_library(
+    name = "onednn",
+    visibility = ["//visibility:public"],
+    deps = mkl_deps(),
 )
 
 bzl_library(

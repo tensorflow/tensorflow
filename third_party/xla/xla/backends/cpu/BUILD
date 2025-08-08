@@ -2,7 +2,6 @@ load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/backends/cpu:package_groups.bzl", "xla_cpu_backend_access")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
-load("//xla/tsl/mkl:build_defs.bzl", "mkl_deps")
 load("//xla/tsl/mkl:graph.bzl", "onednn_graph_cc_library")
 load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
@@ -28,13 +27,6 @@ filegroup(
     visibility = internal_visibility([":friends"]),
 )
 
-# Workaround to use an intermediate target as bazel
-# does not support nested select() statements.
-cc_library(
-    name = "onednn_deps",
-    deps = mkl_deps(),
-)
-
 cc_library(
     name = "alignment",
     hdrs = ["alignment.h"],
@@ -48,7 +40,6 @@ onednn_graph_cc_library(
     hdrs = ["onednn_emitter.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        ":onednn_deps",
         ":onednn_fusion",
         ":onednn_fusion_graph",
         "//xla:shape_util",
@@ -56,6 +47,7 @@ onednn_graph_cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/backends/cpu/runtime/onednn:onednn_interop",
         "//xla/hlo/ir:hlo",
+        "//xla/tsl/mkl:onednn",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -68,12 +60,9 @@ onednn_graph_cc_library(
 
 onednn_graph_cc_library(
     name = "onednn_fusion_graph",
-    srcs = [],
     hdrs = ["onednn_fusion_graph.h"],
     compatible_with = get_compatible_with_portable(),
-    deps = [
-        ":onednn_deps",
-    ],
+    deps = ["//xla/tsl/mkl:onednn"],
 )
 
 cc_library(

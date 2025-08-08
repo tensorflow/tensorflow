@@ -1,6 +1,5 @@
 load("//xla/tsl:tsl.bzl", "tsl_copts")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
-load("//xla/tsl/mkl:build_defs.bzl", "mkl_deps")
 load(
     "//xla/tsl/mkl:graph.bzl",
     "onednn_graph_cc_library",
@@ -20,20 +19,13 @@ package_group(
     ],
 )
 
-# Workaround to use an intermediate target as bazel
-# does not support nested select() statements.
-cc_library(
-    name = "onednn_deps",
-    deps = mkl_deps(),
-)
-
 onednn_graph_cc_library(
     name = "onednn_interop",
     hdrs = ["onednn_interop.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        ":onednn_deps",
         "//xla:util",
+        "//xla/tsl/mkl:onednn",
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
@@ -47,7 +39,6 @@ onednn_graph_cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tsl_copts(),
     deps = [
-        ":onednn_deps",
         ":onednn_interop",
         ":onednn_threadpool",
         "//xla:shape_util",
@@ -63,6 +54,7 @@ onednn_graph_cc_library(
         "//xla/service:buffer_assignment",
         "//xla/stream_executor:device_memory",
         "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/mkl:onednn",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:statusor",
@@ -88,9 +80,9 @@ onednn_graph_cc_library(
     name = "onednn_threadpool",
     hdrs = ["onednn_threadpool.h"],
     deps = [
-        ":onednn_deps",
         ":onednn_interop",
         "//xla/backends/cpu/runtime:work_queue",
+        "//xla/tsl/mkl:onednn",
         "@eigen_archive//:eigen3",
     ],
 )
@@ -99,12 +91,12 @@ onednn_graph_cc_test(
     name = "onednn_threadpool_test",
     srcs = ["onednn_threadpool_test.cc"],
     deps = [
-        ":onednn_deps",
         ":onednn_interop",
         ":onednn_threadpool",
         "//xla/backends/cpu/runtime:work_queue",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/mkl:onednn",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
