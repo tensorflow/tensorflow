@@ -298,7 +298,7 @@ class HloSharding {
     });
   }
 
-  // Returns weather the sharding represents a tiled sharding where the mapping
+  // Returns whether the sharding represents a tiled sharding where the mapping
   // between devices and tiles is represented through 'tile_assignment()'.
   bool IsTiled() const {
     return !IsTileMaximal() && !IsManual() && !IsUnknown();
@@ -692,7 +692,7 @@ class HloSharding {
   friend class HloShardingTestHelper;
 
   // Checks that the number of elements in tuple_elements_ is consistent with
-  // the tuple shape passes as argument.
+  // the argument `shape`.
   absl::Status CheckLeafCount(const Shape& shape) const;
 
   // Internal helper to validate a tuple sharding.
@@ -723,9 +723,8 @@ class HloSharding {
   std::vector<HloSharding> tuple_elements_;
   // This field is used to track the source of this sharding, usually derived
   // from instructions. Multiple metadata may be populated if sharding is
-  // combined with other shardings. Metadata are to not be populated when
-  // tuple_ == true and instead metadata should be set on individual tuple
-  // elements.
+  // combined with other shardings. Metadata are not populated when tuple_ is
+  // true. Instead, metadata should be set on individual tuple elements.
   std::vector<OpMetadata> metadata_;
   // This field is used to represented the sharding type of each subgroup.
   // For example, sharding={devices=[2,2,2,2]0,1,2,...,15 last_tile_dims={
@@ -750,7 +749,7 @@ class HloSharding {
   // replications, i.e., elements in slice [..., :] will be replicated.
   bool replicate_on_last_tile_dim_ : 1;
   // This field is used to store the shard group information. Instructions
-  // within the same shard group(i.e. under the same shard_group_id) will be
+  // within the same shard group (i.e. under the same shard_group_id) will be
   // sharded alike or exactly the same as each other.
   ShardGroup shard_group_ = NotShardGroup();
 };
