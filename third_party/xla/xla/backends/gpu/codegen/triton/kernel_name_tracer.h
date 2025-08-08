@@ -20,6 +20,9 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/statusor.h"
+#include "xla/stream_executor/platform.h"
+
 namespace xla::gpu {
 
 // In some cases we need to know what exact kernel was used. It happens when we
@@ -28,7 +31,10 @@ namespace xla::gpu {
 // This class allows to get the names of the kernels that were used.
 class KernelNameTracer {
  public:
-  static std::unique_ptr<KernelNameTracer> Create();
+  // Creates a KernelNameTracer for the given platform. If the given platform is
+  // not supported, kNotFound error is returned.
+  static absl::StatusOr<std::unique_ptr<KernelNameTracer>> Create(
+      const stream_executor::Platform::Id& platform_id);
 
   virtual void start() = 0;
 
