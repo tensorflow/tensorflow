@@ -994,6 +994,24 @@ PjRtFuture<> StreamExecutorGpuClient::CopyRawDeviceToHost(
       });
 }
 
+absl::Status StreamExecutorGpuClient::UpdateCompileOptionsInternal(
+    CompileOptions* options, ExecutableExtras* returned_extras,
+    bool lookup_addressable_devices) {
+  auto status = PjRtStreamExecutorClient::UpdateCompileOptionsInternal(
+      options, returned_extras, lookup_addressable_devices);
+  if (!status.ok()) {
+    return status;
+  }
+  TF_ASSIGN_OR_RETURN(const auto* topology_description,
+                      GetTopologyDescription());
+  const auto& gpu_topology =
+      tensorflow::down_cast<const xla::StreamExecutorGpuTopologyDescription&>(
+          *topology_description);
+  options->executable_build_options.set_slice_size(
+      gpu_topology.gpu_topology().slice_size());
+  return absl::OkStatus();
+}
+
 void StreamExecutorGpuClient::CopyToRemoteDevice(
     PjRtBuffer* buffer, absl::string_view serialized_descriptor,
     PjRtBuffer::RemoteSendCallback on_done) {

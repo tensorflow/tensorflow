@@ -60,7 +60,8 @@ class StatefulRngSpmdPartitioner : public spmd::SpmdPartitioner {
       bool disable_ag_rewrite_for_multiple_consumers = false,
       bool enable_partial_windowed_einsums = false,
       std::optional<int64_t> total_bytes_windowed_einsum_threshold =
-          std::nullopt)
+          std::nullopt,
+      int64_t max_windowed_einsum_iteration = 32)
       : spmd::SpmdPartitioner(
             num_partitions, num_replicas,
             GetSpmdPartitionerOptions(threshold_for_windowed_einsum_mib,
@@ -68,7 +69,8 @@ class StatefulRngSpmdPartitioner : public spmd::SpmdPartitioner {
                                       skip_checking_windowed_einsum_users,
                                       disable_ag_rewrite_for_multiple_consumers,
                                       enable_partial_windowed_einsums,
-                                      total_bytes_windowed_einsum_threshold)) {}
+                                      total_bytes_windowed_einsum_threshold,
+                                      max_windowed_einsum_iteration)) {}
 
  protected:
   std::unique_ptr<spmd::SpmdPartitioningVisitor> CreateVisitor(
@@ -93,7 +95,8 @@ class StatefulRngSpmdPartitioner : public spmd::SpmdPartitioner {
       bool disable_ag_rewrite_for_multiple_consumers = false,
       bool enable_partial_windowed_einsums = false,
       std::optional<int64_t> total_bytes_windowed_einsum_threshold =
-          std::nullopt) {
+          std::nullopt,
+      int64_t max_windowed_einsum_iteration = 32) {
     spmd::SpmdPartitionerOptions options;
     options.allow_module_signature_change = true;
     options.threshold_for_windowed_einsum_mib =
@@ -105,6 +108,9 @@ class StatefulRngSpmdPartitioner : public spmd::SpmdPartitioner {
         disable_ag_rewrite_for_multiple_consumers;
     options.total_bytes_windowed_einsum_threshold =
         total_bytes_windowed_einsum_threshold;
+    options.max_windowed_einsum_iteration = max_windowed_einsum_iteration;
+    VLOG(3) << "Set SPMD max windowed einsum iteration to "
+            << options.max_windowed_einsum_iteration;
     options.partial_windowed_einsum = enable_partial_windowed_einsums;
     return options;
   }
