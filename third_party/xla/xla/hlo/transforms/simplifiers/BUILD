@@ -853,6 +853,45 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "hlo_identity_computation_remover",
+    srcs = ["hlo_identity_computation_remover.cc"],
+    hdrs = ["hlo_identity_computation_remover.h"],
+    visibility = internal_visibility([":friends"]),
+    deps = [
+        ":hlo_dce",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/service:call_graph",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_cc_test(
+    name = "hlo_identity_computation_remover_test",
+    srcs = ["hlo_identity_computation_remover_test.cc"],
+    deps = [
+        ":hlo_dce",
+        ":hlo_identity_computation_remover",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "hlo_rematerialization_test_utils",
     testonly = 1,
     hdrs = ["hlo_rematerialization_test_utils.h"],
