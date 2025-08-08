@@ -1423,7 +1423,8 @@ def _make_class_weight_map_fn(class_weight):
           raise ValueError()
       except (ValueError, TypeError):
         raise ValueError(f"Invalid class_weight key: '{key}'. "
-                        f"Class weight keys must be integers representing class indices, "
+                        f"Class weight keys must be integers representing "
+                        f"class indices,"
                         f"got key of type {type(key).__name__}.")
   
   # Convert string keys to integers
