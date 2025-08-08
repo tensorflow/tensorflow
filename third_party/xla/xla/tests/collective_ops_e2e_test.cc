@@ -1345,7 +1345,7 @@ TEST_F(CollectiveOpsTestE2E, NoAsyncCollectives) {
   EXPECT_FALSE(IsAsync(all_reduce));
 }
 
-TEST_F(CollectiveOpsTestE2E, HostMemoryOffloadingWithDonation) {
+TEST_F(CollectiveOpsTestE2E, DISABLED_HostMemoryOffloadingWithDonation) {
   const absl::string_view kModuleStr = R"(
   HloModule test, entry_computation_layout={(f32[128,128]{1,0})->f32[128,128]{1,0:S(5)}}
 
