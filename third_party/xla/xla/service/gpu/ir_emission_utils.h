@@ -156,9 +156,6 @@ bool IsCustomCallToTopK(const HloInstruction& hlo);
 // is a success/failure code per batch element.
 extern const char* const kCusolverCholeskyCallTarget;
 
-// Returns true if `instr` is a non-strided slice.
-bool IsSliceWithUnitStrides(const HloInstruction* instr);
-
 // Returns true if `instr` is a slice (or dynamic slice) instruction and
 // operates on a contiguous slice of the input buffer.
 bool IsContiguousSlice(const HloInstruction& instr);

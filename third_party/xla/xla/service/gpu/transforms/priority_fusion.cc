@@ -1281,7 +1281,6 @@ HloInstruction::FusionKind PriorityFusion::ChooseKind(
     case HloFusionAnalysis::EmitterFusionKind::kConcatenate:
     case HloFusionAnalysis::EmitterFusionKind::kReduction:
     case HloFusionAnalysis::EmitterFusionKind::kTranspose:
-    case HloFusionAnalysis::EmitterFusionKind::kInputSlices:
     case HloFusionAnalysis::EmitterFusionKind::kScatter:
       return HloInstruction::FusionKind::kInput;
   }

@@ -146,12 +146,6 @@ bool IsCustomCallToTopK(const HloInstruction& hlo) {
          hlo.custom_call_target() == kTopKCustomCallTarget;
 }
 
-bool IsSliceWithUnitStrides(const HloInstruction* instr) {
-  auto slice = DynCast<HloSliceInstruction>(instr);
-  return slice && absl::c_all_of(slice->slice_strides(),
-                                 [](int64_t stride) { return stride == 1; });
-}
-
 static bool IsContiguousSlice(
     const Shape& orig, const Shape& sliced,
     std::optional<absl::Span<const int64_t>> slice_strides) {
