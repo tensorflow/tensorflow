@@ -29,7 +29,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/stream_executor/cuda/compilation_options.h"
 #include "xla/stream_executor/cuda/compilation_provider.h"
-#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 
 namespace stream_executor::cuda {
 
@@ -105,6 +105,12 @@ absl::StatusOr<Assembly> CompositeCompilationProvider::CompileAndLink(
   }
   return compile_and_link_compilation_provider_->CompileAndLink(cc, inputs,
                                                                 options);
+}
+
+absl::StatusOr<int> CompositeCompilationProvider::GetLatestPtxIsaVersion()
+    const {
+  return absl::UnimplementedError(
+      "GetLatestPtxIsaVersion is not implemented for " + name() + ".");
 }
 
 }  // namespace stream_executor::cuda

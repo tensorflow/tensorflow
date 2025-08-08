@@ -47,6 +47,8 @@ class NvJitLinkCompilationProvider : public CompilationProvider {
       absl::Span<const RelocatableModuleOrPtx> inputs,
       const CompilationOptions& options) const override;
 
+  absl::StatusOr<int> GetLatestPtxIsaVersion() const override;
+
   std::string name() const override { return "NvJitLinkCompilationProvider"; }
 };
 
