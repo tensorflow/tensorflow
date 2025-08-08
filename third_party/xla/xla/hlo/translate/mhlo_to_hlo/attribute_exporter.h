@@ -16,11 +16,14 @@ limitations under the License.
 #ifndef XLA_HLO_TRANSLATE_MHLO_TO_HLO_ATTRIBUTE_EXPORTER_H_
 #define XLA_HLO_TRANSLATE_MHLO_TO_HLO_ATTRIBUTE_EXPORTER_H_
 
+#include <cstdint>
+#include <optional>
 #include <utility>
 
 #include "absl/status/statusor.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/Support/LLVM.h"
@@ -78,6 +81,20 @@ ConvertOutputOperandAliasing(mlir::ArrayAttr aliasArrayAttr);
 // first, as serialized protobuf, and then as prettyprinted representation.
 // Will fail if both attempts at parsing failed.
 std::optional<xla::OpSharding> ConvertSharding(mlir::StringRef sharding);
+
+// Returns an OpSharding that represents the Shardy sharding contained within
+// the frontend attributes of the argument at `arg_num` in `function`. Returns
+// std::nullopt if no sharding is found.
+std::optional<xla::OpSharding> ExtractShardyArgShardingFromFrontendAttrs(
+    mlir::func::FuncOp function, int64_t arg_num,
+    std::optional<mlir::DictionaryAttr> sdy_meshes);
+
+// Returns an OpSharding that represents the Shardy sharding contained within
+// the frontend attributes of the result at `res_num` in `function`. Returns
+// std::nullopt if no sharding is found.
+std::optional<xla::OpSharding> ExtractShardyResultShardingFromFrontendAttrs(
+    mlir::func::FuncOp function, int64_t res_num,
+    std::optional<mlir::DictionaryAttr> sdy_meshes);
 
 // Returns an OriginalValueProto that represents a value in the unoptimized HLO
 // graph.
