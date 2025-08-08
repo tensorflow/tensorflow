@@ -1,3 +1,4 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_binary")
 
 package(
@@ -49,5 +50,24 @@ xla_cc_binary(
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:VectorDialect",
+    ],
+)
+
+cc_library(
+    name = "test_lib",
+    testonly = True,
+    srcs = ["test_lib.cc"],
+    hdrs = ["test_lib.h"],
+    visibility = [
+        "//xla/backends/cpu/codegen/tools:__subpackages__",
+        "//xla/backends/gpu/codegen/tools:__subpackages__",
+    ],
+    deps = [
+        "//xla:status_macros",
+        "//xla/hlo/ir:hlo",
+        "//xla/tools:hlo_module_loader",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )

@@ -12,30 +12,25 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <string>
 
-#include "absl/log/check.h"
-#include "absl/status/status.h"
-#include "llvm/Support/raw_ostream.h"
-#include "xla/codegen/tools/test_lib.h"
-#include "xla/tsl/platform/statusor.h"
-#include "tsl/platform/init_main.h"
+#ifndef XLA_CODEGEN_TOOLS_TEST_LIB_H_
+#define XLA_CODEGEN_TOOLS_TEST_LIB_H_
+
+#include <memory>
+
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_module.h"
 
 namespace xla {
-namespace gpu {
 
-absl::Status Run(const std::string& filename) {
-  TF_ASSIGN_OR_RETURN(auto module, LoadTestModule(filename));
-  llvm::outs() << module->ToString();
-  return absl::OkStatus();
-}
+// Loads a test module from the given filename, ensuring it has a single fusion.
+// If the file contains more than one fusion, the function fails. If the file
+// contains no fusions, the function generates a fusion from the entry
+// computation.
+absl::StatusOr<std::unique_ptr<HloModule>> LoadTestModule(
+    absl::string_view filename);
 
-}  // namespace gpu
 }  // namespace xla
 
-int main(int argc, char** argv) {
-  tsl::port::InitMain(argv[0], &argc, &argv);
-  CHECK_EQ(argc, 2) << "Must specify an input file";
-  CHECK_OK(xla::gpu::Run(argv[1]));
-  return 0;
-}
+#endif  // XLA_CODEGEN_TOOLS_TEST_LIB_H_

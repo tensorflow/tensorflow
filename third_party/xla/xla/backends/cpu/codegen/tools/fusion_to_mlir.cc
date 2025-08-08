@@ -12,30 +12,40 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
 #include <string>
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "llvm/Support/raw_ostream.h"
+#include "xla/backends/cpu/codegen/fusion_compiler.h"
+#include "xla/backends/cpu/codegen/fusion_emitter.h"
+#include "xla/codegen/mlir_kernel_definition.h"
 #include "xla/codegen/tools/test_lib.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/init_main.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::cpu {
 
 absl::Status Run(const std::string& filename) {
+  auto context = FusionCompiler::CreateContext();
   TF_ASSIGN_OR_RETURN(auto module, LoadTestModule(filename));
-  llvm::outs() << module->ToString();
+  auto fusion = DynCast<HloFusionInstruction>(
+      module->entry_computation()->root_instruction());
+  fusion->SetAndSanitizeName("main");
+  TF_ASSIGN_OR_RETURN(MlirKernelDefinition kernel_definition,
+                      EmitFusionKernel(*context, *fusion, nullptr, false));
+  llvm::outs() << kernel_definition.source().ToString();
   return absl::OkStatus();
 }
 
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::cpu
 
 int main(int argc, char** argv) {
   tsl::port::InitMain(argv[0], &argc, &argv);
   CHECK_EQ(argc, 2) << "Must specify an input file";
-  CHECK_OK(xla::gpu::Run(argv[1]));
+  CHECK_OK(xla::cpu::Run(argv[1]));
   return 0;
 }
