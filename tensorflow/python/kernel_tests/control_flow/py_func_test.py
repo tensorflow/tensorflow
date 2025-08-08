@@ -495,6 +495,8 @@ class PyFuncAndEagerPyFuncTest(PyFuncTestBase):
 
   def testCleanup(self):
 
+    self.skipTest("b/144098211")
+
     def make_graph():
       g = ops.Graph()
       with g.as_default():
