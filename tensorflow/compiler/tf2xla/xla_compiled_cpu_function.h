@@ -110,9 +110,6 @@ class XlaCompiledCpuFunction {
     std::optional<size_t> temp_allocation_index_ = std::nullopt;
     // end thunk execution specific
 
-    // The raw function to call.
-    RawFunction raw_function_ = nullptr;
-
     // Serialized thunk execution specific (used for AOT to avoid binary size
     // issues)
     std::function<bool(void** buffer_table, xla::ExecutableRunOptions*,
@@ -358,7 +355,7 @@ class XlaCompiledCpuFunction {
   const xla::ExecutableRunOptions* run_options() const { return &run_options_; }
 
  protected:
-  virtual bool is_thunk_mode() const { return false; }
+  virtual bool is_thunk_mode() const { return true; }
 
   std::optional<size_t> temp_allocation_index() const {
     return temp_allocation_index_;
@@ -393,11 +390,6 @@ class XlaCompiledCpuFunction {
       StaticData* static_data,
       const xla::cpu::CompilationResultProto* compilation_result_proto) {
     static_data->compilation_result_proto_ = compilation_result_proto;
-  }
-
-  static void set_static_data_raw_function(StaticData* static_data,
-                                           RawFunction raw_function) {
-    static_data->raw_function_ = raw_function;
   }
 
   static void set_static_data_thunk_run_impl(
@@ -525,7 +517,6 @@ class XlaCompiledCpuFunction {
 
   const std::optional<size_t> temp_allocation_index_;
 
-  const RawFunction raw_function_ = nullptr;
   std::function<bool(void** buffer_table, xla::ExecutableRunOptions*,
                      std::vector<std::unique_ptr<xla::cpu::RngState>>&)>
       thunk_run_impl_ = nullptr;

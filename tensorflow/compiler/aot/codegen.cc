@@ -820,10 +820,7 @@ absl::Status ExtendRewrites(
       {"{{NANORT_SPECIFIC_STATIC_DATA_SETTERS}}",
        nanort_specific_static_data_setters},
       {"{{IS_THUNK_MODE}}", "true"},
-      {"{{COMPUTATION_CLASS_BASE}}", computation_class_base},
-      // TODO(basioli): Remove these once legacy runtime is removed.
-      {"{{LEGACY_SPECIFIC_STATIC_DATA_SETTERS}}", ""},
-      {"{{LEGACY_SPECIFIC_STATIC_DATA_GENERATORS}}", ""}};
+      {"{{COMPUTATION_CLASS_BASE}}", computation_class_base}};
 
   rewrites.insert(rewrites.end(), rewrites_thunks.begin(),
                   rewrites_thunks.end());
@@ -833,105 +830,12 @@ absl::Status ExtendRewrites(
 
 }  // namespace
 
-absl::Status ExtendRewrites(
-    std::vector<std::pair<std::string, std::string>>& rewrites,
-    const xla::cpu::CpuAotCompilationResultLegacy* aot_legacy,
-    const MetadataResult& metadata_result, const CodegenOpts& opts,
-    const std::string& raw_function_entry_identifier) {
-  const int64_t result_index = aot_legacy->result_buffer_index();
-  const int64_t buffer_infos_size = aot_legacy->buffer_infos().size();
-  if (result_index < 0 || result_index >= buffer_infos_size) {
-    return errors::InvalidArgument("result index: ", result_index,
-                                   " is outside the range of temp sizes: [0,",
-                                   buffer_infos_size, ")");
-  }
-
-  const string include_hlo_profile_printer_data_proto =
-      opts.gen_hlo_profile_printer_data
-          ? R"(#include "xla/service/hlo_profile_printer_data.pb.h")"
-          : "";
-
-  // When HLO profiling is disabled we only forward declare the
-  // HloProfilePrinter protobuf.  So we can only conditionally emit this code
-  // calling HloProfilePrinter::profile_counters_size.
-  const string assign_profile_counters_size =
-      opts.gen_hlo_profile_printer_data
-          ? "set_static_data_profile_counters_size(data, "
-            "get_static_data_hlo_profile_printer_data(data)->"
-            "profile_counters_size());"
-          : "";
-
-  const std::string function_declarations_from_obj_files = absl::StrReplaceAll(
-      R"(// (Implementation detail) Entry point to the function in the object file.
-extern "C" void {{ENTRY}}(
-   void* result, const ::xla::ExecutableRunOptions* run_options,
-   const void** args, void** temps, XlaCustomCallStatus* status,
-   int64_t* profile_counters);
-)",
-      {{"{{ENTRY}}", raw_function_entry_identifier}});
-
-  const std::string legacy_specific_static_data_setters = absl::StrReplaceAll(
-      R"(
-set_static_data_raw_function(data, {{RAW_FUNCTION_ENTRY_IDENTIFIER}});
-set_static_data_hlo_profile_printer_data(data, StaticHloProfilePrinterData());
-{{ASSIGN_PROFILE_COUNTERS_SIZE}}
-)",
-      {
-          {"{{RAW_FUNCTION_ENTRY_IDENTIFIER}}", raw_function_entry_identifier},
-          {"{{ASSIGN_PROFILE_COUNTERS_SIZE}}", assign_profile_counters_size},
-      });
-
-  const std::string legacy_specific_static_data_generators =
-      absl::StrReplaceAll(
-          R"(
-// Metadata that can be used to pretty-print profile counters.
- static const ::xla::HloProfilePrinterData* StaticHloProfilePrinterData() {
-   static const ::xla::HloProfilePrinterData* kHloProfilePrinterData =
-     {{HLO_PROFILE_PRINTER_DATA_SHIM_EXPRESSION}};
-   return kHloProfilePrinterData;
-}
-)",
-          {
-              {"{{HLO_PROFILE_PRINTER_DATA_SHIM_EXPRESSION}}",
-               metadata_result.hlo_profile_printer_data_access_shim},
-          });
-
-  std::vector<std::pair<std::string, std::string>> rewrites_legacy = {
-      {"{{SYMBOL_MAP_INITIALIZER}}", "{}"},
-      {"{{FUNCTION_DECLARATIONS_FROM_OBJ_FILES}}",
-       function_declarations_from_obj_files},
-      {"{{TEMP_ALLOCATION_INDEX}}", "std::nullopt"},
-      {"{{RUNTIME_SPECIFIC_INCLUDES}}", include_hlo_profile_printer_data_proto},
-      {"{{EXECUTABLE_PROTO_GETTER}}", ""},
-      {"{{THUNK_SPECIFIC_STATIC_DATA_SETTERS}}",
-       "set_static_data_thunk_run_impl(data, nullptr);"},
-      {"{{THUNK_RUN_IMPL_GETTER}}", ""},
-      {"{{EMBEDDED_CONSTANT_BUFFERS_INITIALIZER_GETTER}}", ""},
-      {"{{RNG_DELTAS_INITIALIZER_GETTER}}", ""},
-      {"{{NANORT_SPECIFIC_STATIC_DATA_SETTERS}}",
-       "set_static_data_compilation_result_proto(data, nullptr);"},
-      {"{{COMPUTATION_CLASS_BASE}}", "XlaCompiledCpuFunction"},
-      {"{{IS_THUNK_MODE}}", "false"},
-      {"{{LEGACY_SPECIFIC_STATIC_DATA_SETTERS}}",
-       legacy_specific_static_data_setters},
-      {"{{LEGACY_SPECIFIC_STATIC_DATA_GENERATORS}}",
-       legacy_specific_static_data_generators},
-  };
-
-  rewrites.insert(rewrites.end(), rewrites_legacy.begin(),
-                  rewrites_legacy.end());
-
-  return absl::OkStatus();
-}
-
 absl::Status GenerateHeader(
     const CodegenOpts& opts, const tf2xla::Config& config,
     const CompileResult& compile_result, const MetadataResult& metadata_result,
     const EmbeddedConstantBuffers& embedded_constant_buffers, string* header) {
   TF_RETURN_IF_ERROR(ValidateConfig(config));
   TF_RETURN_IF_ERROR(ValidateFeedFetchCppNames(config));
-
-  const bool is_aot_thunks = compile_result.is_aot_thunks();
 
   const std::vector<BufferInfo>& buffer_infos =
       compile_result.get_aot()->buffer_infos();
@@ -1102,7 +1006,6 @@ class {{CLASS}} final : public tensorflow::{{COMPUTATION_CLASS_BASE}} {
       set_static_data_program_shape(data, StaticProgramShape());
       {{THUNK_SPECIFIC_STATIC_DATA_SETTERS}}
       {{NANORT_SPECIFIC_STATIC_DATA_SETTERS}}
-      {{LEGACY_SPECIFIC_STATIC_DATA_SETTERS}}
       return data;
     }();
     return *kStaticData;
@@ -1229,7 +1132,6 @@ class {{CLASS}} final : public tensorflow::{{COMPUTATION_CLASS_BASE}} {
   {{THUNK_RUN_IMPL_GETTER}}
   {{EMBEDDED_CONSTANT_BUFFERS_INITIALIZER_GETTER}}
   {{RNG_DELTAS_INITIALIZER_GETTER}}
-  {{LEGACY_SPECIFIC_STATIC_DATA_GENERATORS}}
 
   static absl::flat_hash_map<std::string, void*> FunctionLibrarySymbolMap() {
     return {{SYMBOL_MAP_INITIALIZER}};
@@ -1284,15 +1186,9 @@ class {{CLASS}} final : public tensorflow::{{COMPUTATION_CLASS_BASE}} {
        absl::StrJoin(buffer_infos_as_strings, ",\n")},
   };
 
-  if (is_aot_thunks) {
-    TF_RETURN_IF_ERROR(
-        ExtendRewrites(rewrites, compile_result.get_aot_thunks().value(),
-                       metadata_result, opts, embedded_constant_buffers));
-  } else {
-    TF_RETURN_IF_ERROR(
-        ExtendRewrites(rewrites, compile_result.get_aot_legacy().value(),
-                       metadata_result, opts, compile_result.entry_point));
-  }
+  TF_RETURN_IF_ERROR(
+      ExtendRewrites(rewrites, compile_result.get_aot_thunks().value(),
+                     metadata_result, opts, embedded_constant_buffers));
   absl::StrReplaceAll(rewrites, header);
   return absl::OkStatus();
 }
@@ -1368,8 +1264,6 @@ absl::Status GenerateMetadata(const CodegenOpts& opts,
     program_shape->clear_parameter_names();
   }
 
-  const bool is_aot_thunks = compile_result.is_aot_thunks();
-
   // When asked to serialize a null protobuf, CreateEmbeddedProtocolBuffer
   // gives a shim that evaluates to nullptr, which is what we want.
   std::vector<ProtobufToEmbed> protobufs_to_embed;
@@ -1377,24 +1271,13 @@ absl::Status GenerateMetadata(const CodegenOpts& opts,
       ProtobufToEmbed{CreateUniqueIdentifier(opts, "ProgramShapeProto"),
                       "::xla::ProgramShapeProto", program_shape.get()});
 
-  if (is_aot_thunks) {
-    protobufs_to_embed.push_back(
-        ProtobufToEmbed{CreateUniqueIdentifier(opts, "HloProfilePrinterData"),
-                        "::xla::HloProfilePrinterData", nullptr});
-    protobufs_to_embed.push_back(
-        ProtobufToEmbed{CreateUniqueIdentifier(opts, "CompilationResultProto"),
-                        "::xla::cpu::CompilationResultProto",
-                        &compile_result.get_aot_thunks().value()->proto()});
-  } else {
-    protobufs_to_embed.push_back(ProtobufToEmbed{
-        CreateUniqueIdentifier(opts, "HloProfilePrinterData"),
-        "::xla::HloProfilePrinterData",
-        compile_result.get_aot_legacy().value()->hlo_profile_printer_data()});
-
-    protobufs_to_embed.push_back(
-        ProtobufToEmbed{CreateUniqueIdentifier(opts, "CompilationResultProto"),
-                        "::xla::cpu::CompilationResultProto", nullptr});
-  }
+  protobufs_to_embed.push_back(
+      ProtobufToEmbed{CreateUniqueIdentifier(opts, "HloProfilePrinterData"),
+                      "::xla::HloProfilePrinterData", nullptr});
+  protobufs_to_embed.push_back(
+      ProtobufToEmbed{CreateUniqueIdentifier(opts, "CompilationResultProto"),
+                      "::xla::cpu::CompilationResultProto",
+                      &compile_result.get_aot_thunks().value()->proto()});
 
   TF_ASSIGN_OR_RETURN(
       EmbeddedProtocolBuffers embedded_protobufs,
