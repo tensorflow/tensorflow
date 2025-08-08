@@ -2470,7 +2470,7 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
       options.id = device_proto.global_device_id();
       options.process_index = node.node_id();
       options.slice_index = device_proto.slice_index();
-      options.max_inflight_computations = 32;
+      options.max_inflight_computations = 8;
       options.platform_version = device_proto.name();
       options.device_vendor = device_proto.vendor();
       options.compute_capability = device_proto.compute_capability();
