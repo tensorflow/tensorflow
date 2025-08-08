@@ -13,8 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <tuple>
@@ -40,6 +42,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -59,6 +63,7 @@ limitations under the License.
 #include "xla/tsl/platform/test.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/regexp.h"
 
 namespace xla {
 namespace {
@@ -1378,6 +1383,293 @@ TEST_F(CollectiveOpsTestE2E, HostMemoryOffloadingWithDonation) {
                   std::string::npos)
       << "Got error but not the expected buffer color mismatch: "
       << error_message;
+}
+
+// E2E tests comparing the results of sharded and unsharded execution.
+class CollectiveOpsTestE2EShardedUnsharded : public CollectiveOpsTestE2E {
+ public:
+  void CollectiveOpsCompareShardedUnsharded(const std::string& hlo_text,
+                                            const int64_t num_partitions = 2) {
+    const int64_t num_replicas = 1;
+    if (test_runner().device_count() < num_replicas * num_partitions) {
+      GTEST_SKIP() << "Test requires at least " << num_replicas * num_partitions
+                   << " devices (" << test_runner().device_count()
+                   << " available)";
+    }
+
+    TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> ref_results,
+                            ExecuteUnsharded(hlo_text));
+    ASSERT_EQ(ref_results.size(), 1);
+
+    TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                            ExecuteSharded(hlo_text, num_partitions));
+    ASSERT_EQ(results.size(), num_partitions);
+
+    ErrorSpec error_spec{1e-4, 1e-4};
+    CompareShardedUnsharded(hlo_text, num_partitions, ref_results, results,
+                            error_spec);
+  }
+
+ private:
+  // Execute the unsharded case.
+  absl::StatusOr<std::vector<Literal>> ExecuteUnsharded(
+      const std::string& hlo_text) {
+    // Create the unsharded reference case by removing the sharding metadata
+    // from the HLO string.
+    std::string hlo_text_ref = hlo_text;
+    RE2::GlobalReplace(&hlo_text_ref, R"(, sharding=\{devices=\[[0-9,]*\].*\})",
+                       "");
+    RE2::GlobalReplace(&hlo_text_ref, R"(, sharding=\{replicated\})", "");
+
+    HloModuleConfig ref_config = GetModuleConfigForTest();
+    DebugOptions ref_opts = GetDebugOptionsForTest();
+    ref_opts.set_xla_gpu_enable_triton_gemm(false);
+    ref_config.set_debug_options(ref_opts);
+    ref_config.set_num_partitions(1);
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> ref_module,
+                        ParseAndReturnVerifiedModule(hlo_text_ref, ref_config));
+    const int64_t num_params =
+        ref_module->entry_computation()->num_parameters();
+
+    auto fake_args = xla::MakeFakeArguments(ref_module.get()).value();
+    std::vector<Literal*> ref_fake_ptrs(num_params);
+    for (int i = 0; i < num_params; ++i) {
+      ref_fake_ptrs[i] = &fake_args[i];
+    }
+
+    DeviceAssignment ref_assn(/*replica_count=*/1,
+                              /*computation_count=*/1);
+    ref_assn(0, 0) = 0;
+    return HloTestBase::ExecuteReplicated(std::move(ref_module), ref_fake_ptrs,
+                                          /*num_replicas=*/1, &ref_assn,
+                                          /*run_hlo_passes=*/true,
+                                          /*use-threads=*/true);
+  }
+
+  // Execute the sharded case.
+  absl::StatusOr<std::vector<Literal>> ExecuteSharded(
+      const std::string& hlo_text, int64_t num_partitions) {
+    HloModuleConfig config = GetModuleConfigForTest();
+    DebugOptions opts = GetDebugOptionsForTest();
+    opts.set_xla_gpu_enable_triton_gemm(false);
+    config.set_debug_options(opts);
+    config.set_num_partitions(num_partitions);
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
+                        ParseAndReturnVerifiedModule(hlo_text, config));
+    const int64_t num_params = module->entry_computation()->num_parameters();
+
+    std::vector<std::vector<int64_t>> param_dims(num_params);
+    std::vector<std::vector<int64_t>> param_dims_per_shard(num_params);
+    std::vector<std::vector<int64_t>> param_sharded_dims(num_params);
+    for (int i = 0; i < num_params; ++i) {
+      auto dimensions = module->entry_computation()
+                            ->parameter_instruction(i)
+                            ->shape()
+                            .dimensions();
+      param_dims[i] = std::vector(dimensions.begin(), dimensions.end());
+      param_dims_per_shard[i] = param_dims[i];
+      HloSharding parameter_sharding =
+          module->entry_computation()->parameter_instruction(i)->sharding();
+      EvaluateShardedDims(param_dims_per_shard[i], param_sharded_dims[i],
+                          parameter_sharding);
+    }
+
+    // Slice the tiled inputs to match the prescribed sharding.
+    auto fake_args = xla::MakeFakeArguments(module.get()).value();
+    std::vector<std::vector<Literal>> fake_args_sliced(num_params);
+    std::vector<std::vector<Literal*>> fake_ptrs(num_partitions);
+    for (int k = 0; k < num_params; ++k) {
+      if (!param_sharded_dims[k].empty()) {
+        std::vector<int64_t> lower(param_dims_per_shard[k].size(), 0);
+        std::vector<int64_t> upper(param_dims_per_shard[k].begin(),
+                                   param_dims_per_shard[k].end());
+        for (int i = 0; i < num_partitions; ++i) {
+          fake_args_sliced[k].push_back(fake_args[k].Slice(lower, upper));
+          for (int m = param_sharded_dims[k].size() - 1; m >= 0; --m) {
+            if (upper[param_sharded_dims[k][m]] <
+                param_dims[k][param_sharded_dims[k][m]]) {
+              upper[param_sharded_dims[k][m]] +=
+                  param_dims_per_shard[k][param_sharded_dims[k][m]];
+              break;
+            }
+            upper[param_sharded_dims[k][m]] =
+                param_dims_per_shard[k][param_sharded_dims[k][m]];
+          }
+          std::transform(upper.begin(), upper.end(),
+                         param_dims_per_shard[k].begin(), lower.begin(),
+                         std::minus<int64_t>());
+        }
+      } else {
+        fake_args_sliced[k].push_back(fake_args[k].Clone());
+      }
+    }
+    for (int k = 0; k < num_params; ++k) {
+      for (int i = 0; i < num_partitions; ++i) {
+        if (!param_sharded_dims[k].empty()) {
+          fake_ptrs[i].push_back(&fake_args_sliced[k][i]);
+        } else {
+          fake_ptrs[i].push_back(&fake_args_sliced[k][0]);
+        }
+      }
+    }
+
+    DeviceAssignment assn(/*replica_count=*/1,
+                          /*computation_count=*/num_partitions);
+    for (int64_t i = 0; i < num_partitions; ++i) {
+      assn(0, i) = i;
+    }
+    return HloTestBase::ExecuteReplicated(std::move(module), fake_ptrs,
+                                          num_partitions,
+                                          /*run_hlo_passes=*/true, &assn);
+  }
+
+  // Slice the unsharded reference results and compare to the sharded case.
+  void CompareShardedUnsharded(const std::string& hlo_text,
+                               int64_t num_partitions,
+                               std::vector<Literal>& ref_results,
+                               std::vector<Literal>& results,
+                               ErrorSpec& error_spec) {
+    HloModuleConfig config = GetModuleConfigForTest();
+    DebugOptions opts = GetDebugOptionsForTest();
+    opts.set_xla_gpu_enable_triton_gemm(false);
+    config.set_debug_options(opts);
+    config.set_num_partitions(num_partitions);
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                            ParseAndReturnVerifiedModule(hlo_text, config));
+    auto dimensions =
+        module->entry_computation()->root_instruction()->shape().dimensions();
+    std::vector<int64_t> root_dims(dimensions.begin(), dimensions.end());
+    std::vector<int64_t> root_dims_per_shard = root_dims;
+    std::vector<int64_t> root_sharded_dims;
+    {
+      HloSharding root_sharding =
+          module->entry_computation()->root_instruction()->sharding();
+      EvaluateShardedDims(root_dims_per_shard, root_sharded_dims,
+                          root_sharding);
+    }
+    if (!root_sharded_dims.empty()) {
+      std::vector<int64_t> lower(root_dims_per_shard.size(), 0);
+      std::vector<int64_t> upper(root_dims_per_shard.begin(),
+                                 root_dims_per_shard.end());
+      for (const Literal& result : results) {
+        Literal ref_results_slice = ref_results[0].Slice(lower, upper);
+        EXPECT_TRUE(
+            LiteralTestUtil::Near(ref_results_slice, result, error_spec));
+        for (int m = root_sharded_dims.size() - 1; m >= 0; --m) {
+          if (upper[root_sharded_dims[m]] < root_dims[root_sharded_dims[m]]) {
+            upper[root_sharded_dims[m]] +=
+                root_dims_per_shard[root_sharded_dims[m]];
+            break;
+          }
+          upper[root_sharded_dims[m]] =
+              root_dims_per_shard[root_sharded_dims[m]];
+        }
+        std::transform(upper.begin(), upper.end(), root_dims_per_shard.begin(),
+                       lower.begin(), std::minus<int64_t>());
+      }
+    } else {
+      EXPECT_TRUE(
+          LiteralTestUtil::Near(ref_results[0], results[0], error_spec));
+    }
+  }
+
+  void EvaluateShardedDims(std::vector<int64_t>& dims_per_shard,
+                           std::vector<int64_t>& sharded_dims,
+                           const HloSharding& sharding) {
+    if (!sharding.IsReplicated()) {
+      for (int k = 0; k < sharding.tile_assignment().num_dimensions(); ++k) {
+        if (sharding.tile_assignment().dim(k) > 1) {
+          dims_per_shard[k] /= sharding.tile_assignment().dim(k);
+          sharded_dims.push_back(k);
+        }
+      }
+    }
+  }
+};
+
+TEST_F(CollectiveOpsTestE2EShardedUnsharded, DotBatchAndBatch) {
+  const std::string hlo_text = R"(
+HloModule module, entry_computation_layout={(f32[4,16,8]{2,1,0}, f32[4,4,8]{2,1,0})->f32[4,16,4]{2,1,0}}, num_partitions=2
+
+ENTRY entry {
+  lhs = f32[4,16,8]{2,1,0} parameter(0), sharding={devices=[2,1,1]<=[2]}
+  rhs = f32[4,4,8]{2,1,0} parameter(1), sharding={devices=[2,1,1]<=[2]}
+  ROOT dot = f32[4,16,4]{2,1,0} dot(lhs, rhs), lhs_batch_dims={0}, rhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_contracting_dims={2}, sharding={devices=[1,2,1]<=[2]}
+})";
+  CollectiveOpsCompareShardedUnsharded(hlo_text);
+}
+
+TEST_F(CollectiveOpsTestE2EShardedUnsharded, DotBatchAndNonContracting) {
+  const std::string hlo_text = R"(
+HloModule module, entry_computation_layout={(f32[4,16,8]{2,1,0}, f32[4,4,8]{2,1,0})->f32[4,16,4]{2,1,0}}, num_partitions=2
+
+ENTRY entry {
+  lhs = f32[4,16,8]{2,1,0} parameter(0), sharding={devices=[2,1,1]<=[2]}
+  rhs = f32[4,4,8]{2,1,0} parameter(1), sharding={devices=[1,2,1]<=[2]}
+  ROOT dot = f32[4,16,4]{2,1,0} dot(lhs, rhs), lhs_batch_dims={0}, rhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_contracting_dims={2}, sharding={devices=[2,1,1]<=[2]}
+})";
+  CollectiveOpsCompareShardedUnsharded(hlo_text);
+}
+
+TEST_F(CollectiveOpsTestE2EShardedUnsharded, DotContractingAndContracting) {
+  const std::string hlo_text = R"(
+HloModule module, entry_computation_layout={(f32[16,8]{1,0}, f32[4,8]{1,0})->f32[16,4]{1,0}}, num_partitions=2
+
+ENTRY entry {
+  lhs = f32[16,8]{1,0} parameter(0), sharding={devices=[1,2]<=[2]}
+  rhs = f32[4,8]{1,0} parameter(1), sharding={devices=[1,2]<=[2]}
+  ROOT dot = f32[16,4]{1,0} dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={1}, sharding={devices=[2,1]<=[2]}
+})";
+  CollectiveOpsCompareShardedUnsharded(hlo_text);
+}
+
+TEST_F(CollectiveOpsTestE2EShardedUnsharded, DotNonContractingAndContracting) {
+  const std::string hlo_text = R"(
+HloModule module, entry_computation_layout={(f32[16,8]{1,0}, f32[4,8]{1,0})->f32[16,4]{1,0}}, num_partitions=2
+
+ENTRY entry {
+  lhs = f32[16,8]{1,0} parameter(0), sharding={devices=[2,1]<=[2]}
+  rhs = f32[4,8]{1,0} parameter(1), sharding={devices=[1,2]<=[2]}
+  ROOT dot = f32[16,4]{1,0} dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={1}, sharding={devices=[2,1]<=[2]}
+})";
+  CollectiveOpsCompareShardedUnsharded(hlo_text);
+}
+
+TEST_F(CollectiveOpsTestE2EShardedUnsharded, DotContractingAndReplicated) {
+  const std::string hlo_text = R"(
+HloModule module, entry_computation_layout={(f32[16,8]{1,0}, f32[4,8]{1,0})->f32[16,4]{1,0}}, num_partitions=2
+
+ENTRY entry {
+  lhs = f32[16,8]{1,0} parameter(0), sharding={devices=[1,2]<=[2]}
+  rhs = f32[4,8]{1,0} parameter(1), sharding={replicated}
+  ROOT dot = f32[16,4]{1,0} dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={1}, sharding={devices=[2,1]<=[2]}
+})";
+  CollectiveOpsCompareShardedUnsharded(hlo_text);
+}
+
+TEST_F(CollectiveOpsTestE2EShardedUnsharded, DotReplicatedAndReplicated) {
+  const std::string hlo_text = R"(
+HloModule module, entry_computation_layout={(f32[4,4]{1,0}, f32[1,4]{1,0})->f32[4,1]{1,0}}, num_partitions=2
+
+ENTRY entry {
+  lhs = f32[4,4]{1,0} parameter(0), sharding={replicated}
+  rhs = f32[1,4]{1,0} parameter(1), sharding={replicated}
+  ROOT dot = f32[4,1]{1,0} dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={1}, sharding={devices=[2,1]<=[2]}
+})";
+  CollectiveOpsCompareShardedUnsharded(hlo_text);
+}
+
+TEST_F(CollectiveOpsTestE2EShardedUnsharded,
+       DotContractingNonContractingAndContractingNonContracting) {
+  const std::string hlo_text = R"(
+HloModule module, entry_computation_layout={(f32[16,8]{1,0}, f32[4,8]{1,0})->f32[16,4]{1,0}}, num_partitions=4
+
+ENTRY entry {
+  lhs = f32[16,8]{1,0} parameter(0), sharding={devices=[2,2]<=[4]}
+  rhs = f32[4,8]{1,0} parameter(1), sharding={devices=[2,2]<=[4]}
+  ROOT dot = f32[16,4]{1,0} dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={1}, sharding={devices=[2,2]<=[4]}
+})";
+  CollectiveOpsCompareShardedUnsharded(hlo_text, /*num_partitions=*/4);
 }
 
 // E2E tests comparing the results of windowed einsum and non-windowed cases.
