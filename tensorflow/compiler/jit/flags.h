@@ -298,6 +298,7 @@ struct MlirCommonFlags {
   // TODO(pineapplejuice233): Revisit this flag once the performance impact is verified
   // with different local CPU devices settings.
   bool tf_mlir_enable_multiple_local_cpu_devices;
+  bool tf_mlir_enable_debug_info_serialization;
 };
 
 // Flags for the JitRt pipeline -- see tf_jitrt_pipeline.h for details.

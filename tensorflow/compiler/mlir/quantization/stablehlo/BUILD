@@ -400,7 +400,7 @@ tf_cc_test(
         ":bridge_passes",
         "//tensorflow/compiler/mlir:register_common_dialects",
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:serialize_mlir_module_utils",
+        "//tensorflow/compiler/mlir/tensorflow:deserialize_mlir_module_utils",
         "//tensorflow/core:test",
         "//tensorflow/core/lib/monitoring:cell_reader",
         "@com_google_absl//absl/strings",

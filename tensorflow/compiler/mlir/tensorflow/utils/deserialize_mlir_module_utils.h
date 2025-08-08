@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2025 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,18 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_SERIALIZE_MLIR_MODULE_UTILS_H_
-#define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_SERIALIZE_MLIR_MODULE_UTILS_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_DESERIALIZE_MLIR_MODULE_UTILS_H_
+#define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_DESERIALIZE_MLIR_MODULE_UTILS_H_
 
-#include <string>
-
+#include "absl/status/status.h"
+#include "llvm/ADT/StringRef.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 
 namespace tensorflow {
 
-// Prints a MLIR module `module_op` and returns it as a string.
-std::string SerializeMlirModule(mlir::ModuleOp module_op);
+// Deserializes a MLIR module from a string.
+absl::Status DeserializeMlirModule(
+    llvm::StringRef serialized_mlir_module, mlir::MLIRContext* mlir_context,
+    mlir::OwningOpRef<mlir::ModuleOp>* mlir_module);
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_SERIALIZE_MLIR_MODULE_UTILS_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_DESERIALIZE_MLIR_MODULE_UTILS_H_
