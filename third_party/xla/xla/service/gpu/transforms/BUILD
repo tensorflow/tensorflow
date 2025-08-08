@@ -190,14 +190,11 @@ cc_library(
     srcs = ["fusion_block_level_rewriter.cc"],
     hdrs = ["fusion_block_level_rewriter.h"],
     deps = [
-        ":fusion_dynamic_memcpy_rewriter",
         "//xla:shape_util",
         "//xla:xla_proto_cc",
         "//xla/backends/gpu/codegen/triton:support",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
-        "//xla/hlo/pass:hlo_pass_pipeline",
-        "//xla/hlo/transforms/simplifiers:hlo_dce",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service:hlo_cost_analysis",
         "//xla/service:instruction_fusion",
@@ -217,8 +214,6 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

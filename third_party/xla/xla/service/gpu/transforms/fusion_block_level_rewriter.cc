@@ -115,6 +115,35 @@ bool ShouldRewriteLoopTransposeFusion(
          is_bitcasted_transpose_with_power_of_two_minor_dim;
 }
 
+// Pattern matches reduction fusions that can likely be handled better by
+// Triton than by other emitters.
+// At present we try to match closely for s32 dots that have been rewritten as
+// reductions.
+bool ShouldRewriteReductionFusion(
+    const HloFusionInstruction* fusion,
+    const se::DeviceDescription& device_description) {
+  if (fusion->IsMultiOutputFusion()) {
+    return false;
+  }
+  const HloInstruction* root =
+      fusion->fused_instructions_computation()->root_instruction();
+  if (const bool is_reduce_fusion = root->opcode() == HloOpcode::kReduce;
+      !is_reduce_fusion) {
+    return false;
+  }
+  // All inputs are s32.
+  for (const auto* operand : root->operands()) {
+    if (operand->shape().element_type() != S32) {
+      return false;
+    }
+  }
+  if (const bool is_output_s32 = root->shape().element_type() == S32;
+      !is_output_s32) {
+    return false;
+  }
+  return true;
+}
+
 absl::StatusOr<bool> ShouldTryRewriteFusion(
     const HloFusionInstruction* fusion,
     const se::DeviceDescription& device_description) {
@@ -125,12 +154,10 @@ absl::StatusOr<bool> ShouldTryRewriteFusion(
     return true;
   }
 
-  // TODO(b/370690811): this rewrite may no longer be necessary once MLIR
-  // emitters transposes are faster.
-  if (ShouldRewriteLoopTransposeFusion(fusion, device_description)) {
-    return true;
-  }
-  return false;
+  // TODO(b/370690811): ShouldRewriteLoopTransposeFusion rewrite may no longer
+  // be necessary once MLIR emitters transposes are faster.
+  return ShouldRewriteLoopTransposeFusion(fusion, device_description) ||
+         ShouldRewriteReductionFusion(fusion, device_description);
 }
 
 absl::StatusOr<bool> ProcessFusionInstruction(
@@ -140,6 +167,8 @@ absl::StatusOr<bool> ProcessFusionInstruction(
   TF_ASSIGN_OR_RETURN(bool should_try_rewrite,
                       ShouldTryRewriteFusion(fusion_instruction, device_info));
   if (!should_try_rewrite) {
+    VLOG(2) << "Not rewriting fusion " << fusion_instruction->ToString()
+            << " because it is not supported.";
     return false;
   }
 

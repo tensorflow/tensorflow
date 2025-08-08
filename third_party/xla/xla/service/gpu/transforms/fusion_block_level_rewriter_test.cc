@@ -7,10 +7,10 @@ You may obtain a copy of the License at
     http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License
+for the specific language governing permissions and limitations under the
+License.
 ==============================================================================*/
 
 #include "xla/service/gpu/transforms/fusion_block_level_rewriter.h"
@@ -166,6 +166,45 @@ ENTRY entry {
       FusionBlockLevelRewriter(device_info_, HloCostAnalysis::DefaultShapeSize)
           .Run(module.get()),
       absl_testing::IsOkAndHolds(false));
+}
+
+TEST_F(HloHardwareIndependentTestBase, RewritesS32ReductionFusions) {
+  constexpr absl::string_view kHloText = R"(
+
+%scalar_add_computation {
+  %scalar_lhs = s32[] parameter(0)
+  %scalar_rhs = s32[] parameter(1)
+  ROOT %add.1 = s32[] add(%scalar_lhs, %scalar_rhs)
+}
+
+%fused_reduce {
+  %param.1 = s32[32,4096] parameter(1)
+  %broadcast.0 = s32[32,4096,4096] broadcast(%param.1), dimensions={0,2}
+  %param.0 = s32[4096,4096] parameter(0)
+  %broadcast.1 = s32[32,4096,4096] broadcast(%param.0), dimensions={1,2}
+  %multiply.2 = s32[32,4096,4096] multiply(%broadcast.0, %broadcast.1)
+  %constant_2 = s32[] constant(0)
+  ROOT %reduce.2 = s32[32,4096] reduce(%multiply.2, %constant_2), dimensions={2}, to_apply=%scalar_add_computation
+}
+
+ENTRY entry  {
+  %param.0 = s32[32,4096] parameter(0)
+  %param.1 = s32[4096,4096] parameter(1)
+  ROOT %input_reduce_fusion = s32[32,4096]{1,0} fusion(%param.1, %param.0), kind=kInput, calls=%fused_reduce
+}
+
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloText));
+  se::DeviceDescription device_info{TestGpuDeviceInfo::RTXA6000DeviceInfo(
+      se::CudaComputeCapability::Ampere())};
+  FusionBlockLevelRewriter rewriter(device_info,
+                                    HloCostAnalysis::DefaultShapeSize);
+  EXPECT_THAT(rewriter.Run(module.get()), absl_testing::IsOkAndHolds(true));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kFusion);
+  EXPECT_EQ(root->fusion_kind(), HloInstruction::FusionKind::kCustom);
+  EXPECT_TRUE(HasTritonBlockLevelFusionConfig(root));
 }
 
 }  // namespace

@@ -333,6 +333,50 @@ TEST_F(DotStrengthReductionTest, DotStrengthReductionMixedOperandTypes) {
   EXPECT_TRUE(filecheck_result);
 }
 
+TEST_F(DotStrengthReductionTest, S32MatrixMatrixDotShouldBeStrengthReduced) {
+  const std::string& hlo_string = R"(
+HloModule m
+
+ENTRY entry {
+  p0 = s32[32, 50] parameter(0)
+  p1 = s32[70, 50] parameter(1)
+  ROOT dot = s32[32, 70] dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  DotStrengthReduction pass{
+      se::GpuComputeCapability(se::CudaComputeCapability::Ampere())};
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
+  EXPECT_TRUE(changed);
+  CHECK_OK(module->Verify());
+
+  const char* filecheck_pattern = R"(
+// CHECK: s32[32,70,50]{{[^ ]*}} multiply
+// CHECK: s32[32,70]{{[^ ]*}} reduce
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(bool filecheck_result,
+                          RunFileCheck(module->ToString(), filecheck_pattern));
+  EXPECT_TRUE(filecheck_result);
+}
+
+TEST_F(DotStrengthReductionTest, F32MatrixMatrixDotShouldNotBeStrengthReduced) {
+  const std::string& hlo_string = R"(
+HloModule m
+
+ENTRY entry {
+  p0 = f32[32, 500] parameter(0)
+  p1 = f32[700, 500] parameter(1)
+  ROOT dot = f32[32, 700] dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  DotStrengthReduction pass{
+      se::GpuComputeCapability(se::CudaComputeCapability::Ampere())};
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
+  EXPECT_FALSE(changed);
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
