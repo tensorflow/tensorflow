@@ -22,7 +22,7 @@ class TrainingUtilsV1Test(tf.test.TestCase):
 
   def test_invalid_string_class_weight_keys(self):
     """Test that invalid string keys in class_weight raise ValueError."""
-    with self.assertRaisesRegex(ValueError, 
+    with self.assertRaisesRegex(ValueError,
                                 "Invalid class_weight key.*invalid_key"):
       training_utils_v1.standardize_sample_or_class_weights(
           {'invalid_key': 1.0}, ['output'], 'class_weight')
@@ -63,14 +63,14 @@ class TrainingUtilsV1Test(tf.test.TestCase):
         'output1': {'invalid_key': 1.0, 0: 2.0},
         'output2': {0: 1.0, 1: 2.0}
     }
-    with self.assertRaisesRegex(ValueError, 
+    with self.assertRaisesRegex(ValueError,
                                 "Invalid class_weight key.*invalid_key.*"
                                 "output1"):
       training_utils_v1.standardize_sample_or_class_weights(
           class_weight, ['output1', 'output2'], 'class_weight')
-      
+
   def test_data_adapter_valid_class_weight(self):
-    """Test valid integer and string keys in class_weight are processed 
+    """Test valid integer and string keys in class_weight are processed
     correctly."""
     fn = data_adapter._make_class_weight_map_fn({'0': 0.5, 1: 1.5})
     self.assertTrue(callable(fn))  # Should return a function
@@ -82,11 +82,10 @@ class TrainingUtilsV1Test(tf.test.TestCase):
 
   def test_data_adapter_non_contiguous_keys(self):
     """Test that non-contiguous integer keys raise ValueError."""
-    with self.assertRaisesRegex(ValueError, 
+    with self.assertRaisesRegex(ValueError,
                                 "Expected `class_weight` to be a dict.*"):
-      data_adapter._make_class_weight_map_fn({0: 0.3, 2: 0.7}) 
+      data_adapter._make_class_weight_map_fn({0: 0.3, 2: 0.7})
 
 
 if __name__ == '__main__':
   tf.test.main()
-  
