@@ -1446,16 +1446,16 @@ GetStreamExecutorGpuDeviceAllocator(
 void NameDeviceAndLauncherThread(const LocalTopologyProto& node,
                                  const DeviceProto& device_proto,
                                  WorkerThread* launcher_thread) {
-  auto suffix = absl::StrFormat(":#global=%d,local=%d,process=%d,slice=%d#",
+  auto suffix = absl::StrFormat(":#global=%d,local=%d,process=%d,partition=%d#",
                                 device_proto.global_device_id(),
                                 device_proto.local_device_ordinal(),
-                                node.node_id(), device_proto.slice_index());
+                                node.node_id(), device_proto.partition_index());
   // Name the device.
   tsl::profiler::NameDevice(device_proto.local_device_ordinal(),
                             absl::StrCat("Xla", suffix));
   // Name the thread that launches work on this device. This is deferred
   // until after ExchangeTopologies has been called so the global device
-  // id and slice index are known. These are not available when the thread
+  // id and partition index are known. These are not available when the thread
   // is created.
   launcher_thread->Schedule([name = absl::StrCat("XlaLauncher", suffix)] {
     tsl::profiler::NameCurrentThread(name);
@@ -1471,7 +1471,8 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
     gpu::GpuExecutableRunOptions* gpu_executable_run_options,
     std::shared_ptr<KeyValueStoreInterface> kv_store, bool enable_mock_nccl,
     std::optional<absl::string_view> mock_gpu_topology,
-    std::optional<int> slice_index, absl::Duration get_local_topology_timeout,
+    std::optional<int> partition_index,
+    absl::Duration get_local_topology_timeout,
     absl::Duration get_global_topology_timeout) {
   std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices;
   LocalTopologyProto local_topology;
@@ -1484,8 +1485,8 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
     boot_id_str = boot_id_str_or_status.value();
   }
   local_topology.set_boot_id(boot_id_str);
-  if (slice_index.has_value()) {
-    local_topology.set_slice_index(*slice_index);
+  if (partition_index.has_value()) {
+    local_topology.set_partition_index(*partition_index);
   }
   for (const auto& ordinal_and_device : local_device_states) {
     const se::Platform* platform =
@@ -1519,11 +1520,11 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
     if (mock_gpu_topology.has_value()) {
       TF_ASSIGN_OR_RETURN(sizes, TopologySizes::FromString(*mock_gpu_topology));
     } else {
-      // If there is no topology spec, we assume that each node is a slice,
-      // there is one process (host) on each slice and each host
+      // If there is no topology spec, we assume that each node is a partition,
+      // there is one process (host) on each partition and each host
       // has all the local devices.
-      sizes.num_slices = num_nodes;
-      sizes.num_hosts_per_slice = 1;
+      sizes.num_partitions = num_nodes;
+      sizes.num_hosts_per_partition = 1;
       sizes.num_devices_per_host = local_topology.devices().size();
     }
 
@@ -1533,16 +1534,16 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
           "must be the same as the number of devices in the local topology");
     }
 
-    if (sizes.num_slices * sizes.num_hosts_per_slice != num_nodes) {
+    if (sizes.num_partitions * sizes.num_hosts_per_partition != num_nodes) {
       return absl::InternalError(
           "The number of hosts in 'mock_gpu_topology' "
           "must be the same as 'num_nodes'");
     }
 
     std::vector<LocalTopologyProto> local_topologies(num_nodes, local_topology);
-    for (int i = 0; i < sizes.num_slices; ++i) {
-      for (int j = 0; j < sizes.num_hosts_per_slice; j++) {
-        int node_id = i * sizes.num_hosts_per_slice + j;
+    for (int i = 0; i < sizes.num_partitions; ++i) {
+      for (int j = 0; j < sizes.num_hosts_per_partition; j++) {
+        int node_id = i * sizes.num_hosts_per_partition + j;
         local_topologies[node_id].set_node_id(node_id);
         local_topologies[node_id].set_boot_id(absl::StrCat(i));
       }
@@ -1581,7 +1582,7 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
           device_proto.compute_capability(), device_proto.core_count(),
           device_proto.shared_memory_per_block_optin(),
           device_proto.local_device_ordinal(), node.node_id(),
-          device_proto.slice_index());
+          device_proto.partition_index());
       devices.push_back(std::move(device));
     }
   }
@@ -1627,18 +1628,15 @@ StreamExecutorGpuDevice::StreamExecutorGpuDevice(
     std::string device_kind, std::string device_vendor,
     std::string compute_capability, int core_count,
     int shared_memory_per_block_optin, int local_device_id, int node_id,
-    int slice_index)
+    int partition_index)
     : PjRtStreamExecutorDevice(
           id, std::move(local_device_state), local_device_id,
-          /*process_index=*/node_id, slice_index, std::move(device_kind)),
-      device_vendor_(std::move(device_vendor)),
-      slice_index_(slice_index) {
+          /*process_index=*/node_id, partition_index, std::move(device_kind)),
+      device_vendor_(std::move(device_vendor)) {
   StreamExecutorGpuTopologyDescription::SetupDeviceDescription(
       description(), device_vendor_, compute_capability, core_count,
-      static_cast<int64_t>(shared_memory_per_block_optin), slice_index);
+      static_cast<int64_t>(shared_memory_per_block_optin), partition_index);
 }
-
-int StreamExecutorGpuDevice::slice_index() const { return slice_index_; }
 
 absl::string_view StreamExecutorGpuDevice::device_vendor() const {
   return device_vendor_;
@@ -1727,11 +1725,11 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
   TF_RET_CHECK(options.num_nodes == 1 || kv_store != nullptr);
   TF_ASSIGN_OR_RETURN(
       DeviceTopologyPair device_topology_pair,
-      BuildDistributedDevices(pjrt_platform_name,
-                              std::move(local_device_states), options.node_id,
-                              options.num_nodes, gpu_run_options.get(),
-                              kv_store, options.enable_mock_nccl,
-                              options.mock_gpu_topology, options.slice_index));
+      BuildDistributedDevices(
+          pjrt_platform_name, std::move(local_device_states), options.node_id,
+          options.num_nodes, gpu_run_options.get(), kv_store,
+          options.enable_mock_nccl, options.mock_gpu_topology,
+          options.partition_index));
 
   auto gpu_topology = std::shared_ptr<const GpuTopology>(
       GpuTopology::FromProto(device_topology_pair.second));

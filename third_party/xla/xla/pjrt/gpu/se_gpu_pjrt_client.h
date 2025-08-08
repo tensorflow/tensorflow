@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_PJRT_GPU_SE_GPU_PJRT_CLIENT_H_
 #define XLA_PJRT_GPU_SE_GPU_PJRT_CLIENT_H_
 
-#include <cstddef>
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -27,7 +26,6 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/memory/memory.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
@@ -35,8 +33,10 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/client/local_client.h"
+#include "xla/executable_run_options.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/layout.h"
+#include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/gpu/gpu_topology.h"
 #include "xla/pjrt/gpu/gpu_topology.pb.h"
@@ -71,9 +71,7 @@ class StreamExecutorGpuDevice : public PjRtStreamExecutorDevice {
                           std::string compute_capability, int core_count,
                           int shared_memory_per_block_optin,
                           int local_device_id, int node_id,
-                          int slice_index = 0);
-
-  int slice_index() const;
+                          int partition_index = 0);
 
   absl::string_view device_vendor() const;
 
@@ -85,7 +83,6 @@ class StreamExecutorGpuDevice : public PjRtStreamExecutorDevice {
 
  private:
   std::string device_vendor_;
-  int slice_index_;
 };
 
 class StreamExecutorGpuHbmMemorySpace : public PjRtStreamExecutorMemorySpace {
@@ -212,7 +209,7 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
     gpu::GpuExecutableRunOptions* gpu_executable_run_options,
     std::shared_ptr<KeyValueStoreInterface> kv_store, bool enable_mock_nccl,
     std::optional<absl::string_view> mock_gpu_topology = std::nullopt,
-    std::optional<int> slice_index = std::nullopt,
+    std::optional<int> partition_index = std::nullopt,
     absl::Duration get_local_topology_timeout = absl::Minutes(2),
     absl::Duration get_global_topology_timeout = absl::Minutes(5));
 

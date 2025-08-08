@@ -362,9 +362,9 @@ absl::StatusOr<GlobalTopology> MakeGlobalTopologyFromPjRtClient(
           // NOLINTNEXTLINE(*-redundant-string-conversions)
           std::string(pjrt_client->addressable_devices()[0]->device_kind()));
 
-      // TODO(hyeontaek): Take optional device->slice_index mapping in
-      // GlobalDeviceMapping and generate the `slice_index` attribute for both
-      // addressable and non-addressable devices.
+      // TODO(hyeontaek): Take optional device->partition_index mapping in
+      // GlobalDeviceMapping and generate the `partition_index` attribute for
+      // both addressable and non-addressable devices.
       if (pjrt_device == nullptr) {
         device.set_to_string("NonAddressable");
         device.set_debug_string("NonAddressable");
@@ -473,26 +473,26 @@ MakePjRtDevicesFromGlobalTopology(PjRtClient* client,
                                   const GlobalTopology& global_topology) {
   std::vector<std::unique_ptr<PjRtDevice>> devices;
 
-  // Some PJRT implementations (e.g., TPU) assign their own "slice_index"
+  // Some PJRT implementations (e.g., GPU) assign their own "partition_index"
   // values. If these are present, leave them alone. Otherwise, we assign
-  // the same slice_index to all devices of the same host, as determined by
+  // the same partition_index to all devices of the same host, as determined by
   // the boot_id.
-  int next_slice_index = 0;
-  absl::flat_hash_map<std::string, int> boot_id_to_slice_index;
+  int next_partition_index = 0;
+  absl::flat_hash_map<std::string, int> boot_id_to_partition_index;
   for (int process_index = 0;
        process_index < global_topology.global_topology_proto.nodes_size();
        ++process_index) {
     const LocalTopologyProto& node =
         global_topology.global_topology_proto.nodes(process_index);
-    int64_t slice_index = -1;
+    int64_t partition_index = -1;
     if (!node.boot_id().empty()) {
-      // Every new boot_id seen is treated as a new host/slice.
+      // Every new boot_id seen is treated as a new host/partition.
       absl::string_view boot_id = node.boot_id();
       auto [it, inserted] =
-          boot_id_to_slice_index.try_emplace(boot_id, next_slice_index);
-      slice_index = it->second;
+          boot_id_to_partition_index.try_emplace(boot_id, next_partition_index);
+      partition_index = it->second;
       if (inserted) {
-        ++next_slice_index;
+        ++next_partition_index;
       }
     }
 
@@ -501,11 +501,16 @@ MakePjRtDevicesFromGlobalTopology(PjRtClient* client,
       absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes;
       TF_RETURN_IF_ERROR(
           DeserializePjRtDeviceAttributes(device_proto, attributes));
-      if (slice_index != -1) {
-        // Sets a generated `slice_index` attribute if not already present.
+      if (partition_index != -1) {
+        // Sets a generated `partition_index` attribute if not already present.
+        attributes.insert(
+            {"partition_index",
+             xla::PjRtDeviceAttribute(static_cast<int64_t>(partition_index))});
+        // TODO - b/435521225: `slice_index` is deprecated. Use
+        // `partition_index`, which better aligns with NVIDIA's terminology.
         attributes.insert(
             {"slice_index",
-             xla::PjRtDeviceAttribute(static_cast<int64_t>(slice_index))});
+             xla::PjRtDeviceAttribute(static_cast<int64_t>(partition_index))});
       }
       const DeviceId ifrt_device_id(device_proto.global_device_id());
       xla::PjRtDevice* pjrt_device = nullptr;
