@@ -1881,6 +1881,52 @@ func.func @InvalidL2NormalizePattern(%arg0: tensor<2xf32>, %arg1: tensor<2xf32>)
   // CHECK: return %3
 }
 
+// CHECK-LABEL: @L2NormalizePattern4_Mul
+func.func @L2NormalizePattern4_Mul(%arg0: tensor<1x2xf32>) -> tensor<1x2xf32> {
+  %cst = arith.constant dense<[1]> : tensor<1xi32>
+  %cst_shape = arith.constant dense<[1, 1]> : tensor<2xi32>
+  %0 = "tfl.mul"(%arg0, %arg0) {fused_activation_function = "NONE"} : (tensor<1x2xf32>, tensor<1x2xf32>) -> tensor<1x2xf32>
+  %1 = "tfl.sum"(%0, %cst) {keep_dims = false} : (tensor<1x2xf32>, tensor<1xi32>) -> tensor<1xf32>
+  %2 = "tfl.rsqrt"(%1) : (tensor<1xf32>) -> tensor<1xf32>
+  %3 = "tfl.reshape"(%2, %cst_shape) : (tensor<1xf32>, tensor<2xi32>) -> tensor<1x1xf32>
+  %4 = "tfl.mul"(%arg0, %3) {fused_activation_function = "NONE"} : (tensor<1x2xf32>, tensor<1x1xf32>) -> tensor<1x2xf32>
+  func.return %4: tensor<1x2xf32>
+  // CHECK: %[[RES:[0-9].*]] = "tfl.l2_normalization"([[INPUT:%.*]]) <{fused_activation_function = "NONE"}> : (tensor<1x2xf32>) -> tensor<1x2xf32>
+  // CHECK: return %[[RES]]
+}
+
+// CHECK-LABEL: @L2NormalizePattern5_Mul
+func.func @L2NormalizePattern5_Mul(%arg0: tensor<1x2xf32>) -> tensor<1x2xf32> {
+  %cst = arith.constant dense<[1]> : tensor<1xi32>
+  %cst_1 = arith.constant dense<[1.0e-4]> : tensor<1xf32>
+  %cst_shape = arith.constant dense<[1, 1]> : tensor<2xi32>
+  %0 = "tfl.mul"(%arg0, %arg0) {fused_activation_function = "NONE"} : (tensor<1x2xf32>, tensor<1x2xf32>) -> tensor<1x2xf32>
+  %1 = "tfl.sum"(%0, %cst) {keep_dims = false} : (tensor<1x2xf32>, tensor<1xi32>) -> tensor<1xf32>
+  %2 = "tfl.rsqrt"(%1) : (tensor<1xf32>) -> tensor<1xf32>
+  %3 = "tfl.add"(%2, %cst_1) {fused_activation_function = "NONE"} : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+  %4 = "tfl.reshape"(%3, %cst_shape) : (tensor<1xf32>, tensor<2xi32>) -> tensor<1x1xf32>
+  %5 = "tfl.mul"(%arg0, %4) {fused_activation_function = "NONE"} : (tensor<1x2xf32>, tensor<1x1xf32>) -> tensor<1x2xf32>
+  func.return %5: tensor<1x2xf32>
+  // CHECK: %[[RES:[0-9].*]] = "tfl.l2_normalization"([[INPUT:%.*]]) <{fused_activation_function = "NONE"}> : (tensor<1x2xf32>) -> tensor<1x2xf32>
+  // CHECK: return %[[RES]]
+}
+
+// CHECK-LABEL: @L2NormalizePattern6_Mul
+func.func @L2NormalizePattern6_Mul(%arg0: tensor<1x2xf32>) -> tensor<1x2xf32> {
+  %cst = arith.constant dense<[1]> : tensor<1xi32>
+  %cst_1 = arith.constant dense<[1.0e-4]> : tensor<1xf32>
+  %cst_shape = arith.constant dense<[1, 1]> : tensor<2xi32>
+  %0 = "tfl.mul"(%arg0, %arg0) {fused_activation_function = "NONE"} : (tensor<1x2xf32>, tensor<1x2xf32>) -> tensor<1x2xf32>
+  %1 = "tfl.sum"(%0, %cst) {keep_dims = false} : (tensor<1x2xf32>, tensor<1xi32>) -> tensor<1xf32>
+  %2 = "tfl.rsqrt"(%1) : (tensor<1xf32>) -> tensor<1xf32>
+  %3 = "tfl.maximum"(%2, %cst_1) : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+  %4 = "tfl.reshape"(%3, %cst_shape) : (tensor<1xf32>, tensor<2xi32>) -> tensor<1x1xf32>
+  %5 = "tfl.mul"(%arg0, %4) {fused_activation_function = "NONE"} : (tensor<1x2xf32>, tensor<1x1xf32>) -> tensor<1x2xf32>
+  func.return %5: tensor<1x2xf32>
+  // CHECK: %[[RES:[0-9].*]] = "tfl.l2_normalization"([[INPUT:%.*]]) <{fused_activation_function = "NONE"}> : (tensor<1x2xf32>) -> tensor<1x2xf32>
+  // CHECK: return %[[RES]]
+}
+
 // CHECK-LABEL: @InvalidL2NormalizePattern2
 // Epsilon in the add must be < 1e-3
 func.func @InvalidL2NormalizePattern2(%arg0: tensor<2xf32>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
