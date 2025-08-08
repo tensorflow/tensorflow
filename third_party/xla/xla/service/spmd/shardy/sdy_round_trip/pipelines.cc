@@ -64,6 +64,10 @@ void addSdyRoundTripImportPipeline(mlir::OpPassManager& pm,
                                    bool importOnlyUninlineableFuncCalls) {
   addCommonPreImportPasses(pm, enableConstantImport);
   pm.addPass(createSdyRoundTripImportShardyAttrsPass());
+  // Lift and dedup meshes required here because of sdy shardings added directly
+  // to hlo in tf2xla.
+  pm.addPass(mlir::sdy::createLiftInlinedMeshesPass());
+  pm.addPass(createSdyRoundTripDedupMeshesPass());
   pm.addPass(createSdyRoundTripShardMapImportPass());
   addCommonPostImportPasses(pm, importOnlyUninlineableFuncCalls);
 }

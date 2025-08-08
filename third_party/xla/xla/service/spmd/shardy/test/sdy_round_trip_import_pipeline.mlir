@@ -3,9 +3,11 @@
 // CHECK-LABEL: module @multiple_func_result_shardings
 module @multiple_func_result_shardings attributes {mhlo.frontend_attributes = {xla.sdy.meshes =
     "{mesh = #sdy.mesh<[\"a\"=8, \"b\"=8, \"c\"=8]>, mesh2 = #sdy.mesh<[\"a\"=1, \"b\"=4, \"c\"=1]>, maximal_mesh = #sdy.mesh<[], device_ids=[0]>}"}} {
+  // CHECK: sdy.mesh @maximal_mesh = <[], device_ids=[0]>
   // CHECK: sdy.mesh @mesh = <["a"=8, "b"=8, "c"=8]>
-
   // CHECK: sdy.mesh @mesh2 = <["a"=1, "b"=4, "c"=1]>
+  // CHECK: sdy.mesh @maximal_mesh_5 = <[], device_ids=[5]>
+
 
   // CHECK-LABEL: func @func_results_with_sharding
   // CHECK-SAME:    %arg0: tensor<32xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"b"}p2]>},
@@ -182,12 +184,12 @@ module @multiple_func_result_shardings attributes {mhlo.frontend_attributes = {x
   }
 
   // CHECK-LABEL: func @inlined_mesh(
-  // CHECK-SAME: %arg0: tensor<32xi32> {sdy.sharding = #sdy.sharding<mesh<["a"=2, "b"=2]>, [{"a"}]>})
-  // CHECK-SAME: -> (tensor<32xi32> {sdy.sharding = #sdy.sharding<mesh<[], device_ids=[5]>, []>}) {
+  // CHECK-SAME: %arg0: tensor<32xi32> {sdy.sharding = #sdy.sharding<@mesh2, [{"b":(1)2}]>})
+  // CHECK-SAME: -> (tensor<32xi32> {sdy.sharding = #sdy.sharding<@maximal_mesh_5, []>}) {
   func.func @inlined_mesh(
     %arg0: tensor<32xi32> {mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding<mesh<[\"a\"=2, \"b\"=2]>, [{\"a\"}]>"}}
   ) -> tensor<32xi32> {
-    // CHECK-NEXT: %[[SHARDING:.*]] = sdy.sharding_constraint %arg0 <mesh<["c"=4]>, [{"c"}]> : tensor<32xi32>
+    // CHECK-NEXT: %[[SHARDING:.*]] = sdy.sharding_constraint %arg0 <@mesh2, [{"b"}]> : tensor<32xi32>
     // CHECK-NEXT: return %[[SHARDING]]
     %0 = stablehlo.custom_call @Sharding(%arg0) {mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding_per_value<[<mesh<[\"c\"=4]>, [{\"c\"}]>]>"}} : (tensor<32xi32>) -> tensor<32xi32>
     %1 = stablehlo.custom_call @local_xla.sdy.FuncResultSharding(%0) {mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding_per_value<[<mesh<[], device_ids=[5]>, []>]>"}} : (tensor<32xi32>) -> tensor<32xi32>
