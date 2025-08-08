@@ -1638,8 +1638,6 @@ StreamExecutorGpuDevice::StreamExecutorGpuDevice(
       static_cast<int64_t>(shared_memory_per_block_optin), slice_index);
 }
 
-int StreamExecutorGpuDevice::slice_index() const { return slice_index_; }
-
 absl::string_view StreamExecutorGpuDevice::device_vendor() const {
   return device_vendor_;
 }

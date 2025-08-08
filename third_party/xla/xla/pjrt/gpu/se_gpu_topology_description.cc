@@ -47,13 +47,13 @@ namespace xla {
   description.SetAttributes(
       {{"coords", xla::PjRtDeviceAttribute(v_coords)},
        {"device_vendor", device_vendor},
-       {"slice_index", static_cast<int64_t>(slice_index)},
+       {"partition_index", static_cast<int64_t>(slice_index)},
        {"compute_capability", xla::PjRtDeviceAttribute(compute_capability)},
        {"shared_memory_per_block_optin", shared_memory_per_block_optin},
        {"core_count", static_cast<int64_t>(core_count)}});
   description.SetToString(absl::StrFormat(
       "StreamExecutorGpuDevice(device_kind=%s, id=%i, process_index=%i, "
-      "slice_index=%i))",
+      "partition_index=%i))",
       description.device_kind(), description.id(), description.process_index(),
       slice_index));
   description.SetDebugString(absl::StrFormat(
