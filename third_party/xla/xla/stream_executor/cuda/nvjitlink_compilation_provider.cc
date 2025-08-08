@@ -27,10 +27,10 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/stream_executor/cuda/compilation_options.h"
 #include "xla/stream_executor/cuda/compilation_provider.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/nvjitlink.h"
-#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
-#include "tsl/platform/statusor.h"
+#include "tsl/platform/statusor.h"  // IWYU pragma: keep
 
 namespace stream_executor::cuda {
 
@@ -83,6 +83,12 @@ stream_executor::cuda::NvJitLinkCompilationProvider::CompileAndLink(
                                       cc, nvjitlink_inputs, asm_opts,
                                       options.cancel_if_reg_spill));
   return Assembly{std::move(cubin)};
+}
+
+absl::StatusOr<int> NvJitLinkCompilationProvider::GetLatestPtxIsaVersion()
+    const {
+  return absl::UnimplementedError(
+      "GetLatestPtxIsaVersion is not implemented for " + name() + ".");
 }
 
 }  // namespace stream_executor::cuda

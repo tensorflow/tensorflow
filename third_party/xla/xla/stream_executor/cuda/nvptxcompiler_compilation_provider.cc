@@ -26,10 +26,10 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/stream_executor/cuda/compilation_options.h"
 #include "xla/stream_executor/cuda/compilation_provider.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/ptx_compiler.h"
-#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor::cuda {
 absl::StatusOr<std::vector<uint8_t>>
@@ -80,4 +80,11 @@ absl::StatusOr<Assembly> NvptxcompilerCompilationProvider::CompileAndLink(
   return absl::UnimplementedError(
       "Compilation and linking is not supported by nvptxcompiler.");
 }
+
+absl::StatusOr<int> NvptxcompilerCompilationProvider::GetLatestPtxIsaVersion()
+    const {
+  return absl::UnimplementedError(
+      "GetLatestPtxIsaVersion is not implemented for " + name() + ".");
+}
+
 }  // namespace stream_executor::cuda
