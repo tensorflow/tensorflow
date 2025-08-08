@@ -37,9 +37,7 @@ static const int kOneDnnMaxNDims = DNNL_MAX_NDIMS;
 struct StackAlloca {
   llvm::IRBuilderBase* builder;
   llvm::Value* value;
-  void EmitLifetimeEnd() {
-    builder->CreateLifetimeEnd(value, builder->getInt64(-1));
-  }
+  void EmitLifetimeEnd() { builder->CreateLifetimeEnd(value); }
 };
 
 // Declare as opaque to put structure definition together with dependant code.
