@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/gpu/codegen/triton/kernel_name_tracer.h"
+#include "xla/backends/gpu/profiler/kernel_name_tracer.h"
 
 #include <cstdint>
 #include <memory>
