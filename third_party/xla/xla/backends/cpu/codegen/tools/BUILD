@@ -46,6 +46,24 @@ cc_library(
 )
 
 xla_cc_binary(
+    name = "test_correctness",
+    testonly = True,
+    srcs = ["test_correctness.cc"],
+    deps = [
+        "//xla:debug_options_flags",
+        "//xla:error_spec",
+        "//xla/codegen/tools:test_lib",
+        "//xla/service:cpu_plugin",
+        "//xla/tests:hlo_test_base",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/util:command_line_flags",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_googletest//:gtest_for_library",
+    ],
+)
+
+xla_cc_binary(
     name = "ir-compiler-opt",
     testonly = True,
     linkopts = ["-Wl,-rpath,$$ORIGIN/../lit_lib"],

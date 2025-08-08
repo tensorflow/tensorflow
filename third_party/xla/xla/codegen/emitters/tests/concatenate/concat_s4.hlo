@@ -3,6 +3,7 @@
 // RUN: cpu_fusion_to_mlir %s | emitters_opt -xla-test-optimize |\
 // RUN:   FileCheck %s
 // RUN: gpu_test_correctness %s
+// RUN: cpu_test_correctness %s
 
 fusion {
   param0 = s4[200] parameter(0)
