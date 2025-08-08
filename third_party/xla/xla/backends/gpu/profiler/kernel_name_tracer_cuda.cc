@@ -18,8 +18,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "xla/backends/gpu/codegen/triton/kernel_name_tracer.h"
-#include "xla/backends/gpu/codegen/triton/kernel_name_tracer_factory.h"
+#include "xla/backends/gpu/profiler/kernel_name_tracer.h"
+#include "xla/backends/gpu/profiler/kernel_name_tracer_factory.h"
 #include "xla/backends/profiler/gpu/cupti_collector.h"
 #include "xla/backends/profiler/gpu/cupti_tracer.h"
 #include "xla/stream_executor/cuda/cuda_platform.h"

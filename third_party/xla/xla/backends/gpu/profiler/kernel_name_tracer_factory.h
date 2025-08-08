@@ -13,25 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/gpu/codegen/triton/kernel_name_tracer.h"
+#ifndef XLA_BACKENDS_GPU_PROFILER_KERNEL_NAME_TRACER_FACTORY_H_
+#define XLA_BACKENDS_GPU_PROFILER_KERNEL_NAME_TRACER_FACTORY_H_
 
 #include <memory>
 
-#include "absl/status/statusor.h"
-#include "xla/backends/gpu/codegen/triton/kernel_name_tracer_factory.h"
-#include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/platform/platform_object_registry.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/backends/gpu/profiler/kernel_name_tracer.h"
 
 namespace xla::gpu {
 
-absl::StatusOr<std::unique_ptr<KernelNameTracer>> KernelNameTracer::Create(
-    const stream_executor::Platform::Id& platform_id) {
-  auto& registry = stream_executor::PlatformObjectRegistry::GetGlobalRegistry();
-  TF_ASSIGN_OR_RETURN(
-      KernelNameTracerFactory::Type func,
-      registry.FindObject<KernelNameTracerFactory>(platform_id));
-  return func();
-}
+// This trait identifies the factory function that creates a platform-specific
+// KernelNameTracer in the platform object registry.
+// Don't use it directly. Use KernelNameTracer::Create instead.
+struct KernelNameTracerFactory {
+  using Type = std::unique_ptr<KernelNameTracer> (*)();
+};
 
 }  // namespace xla::gpu
+
+#endif  // XLA_BACKENDS_GPU_PROFILER_KERNEL_NAME_TRACER_FACTORY_H_
