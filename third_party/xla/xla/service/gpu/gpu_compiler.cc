@@ -1121,6 +1121,17 @@ absl::Status RunFusionPasses(HloModule* hlo_module,
                          .Run(hlo_module)
                          .status());
 
+  const auto* cuda_cc = std::get_if<se::CudaComputeCapability>(
+      &gpu_device_info.gpu_compute_capability());
+  if (cuda_cc != nullptr && cuda_cc->IsAtLeastAmpere()) {
+    HloPassPipeline post_fusion("fusion-dispatch");
+    TF_RETURN_IF_ERROR(post_fusion
+                           .AddPass<HloPassPipeline>(FusionDispatchPipeline(
+                               gpu_device_info, shape_size_fn))
+                           .Run(hlo_module)
+                           .status());
+  }
+
   if (VLOG_IS_ON(2)) {
     HloFusionStatsVisitor stats;
     TF_RETURN_IF_ERROR(hlo_module->entry_computation()->Accept(&stats));
@@ -2877,15 +2888,6 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
     HloPassPipeline& pipeline =
         main_pipeline.AddPass<HloPassPipeline>("fusion-wrapper");
     pipeline.AddPass<FusionWrapper>(gpu_device_info);
-  }
-
-  const auto* cuda_cc = std::get_if<se::CudaComputeCapability>(
-      &gpu_device_info.gpu_compute_capability());
-  if (cuda_cc != nullptr && cuda_cc->IsAtLeastAmpere()) {
-    // This needs to run after every pass affecting fusions. The last passes
-    // that create new fusions are FusionWrapper and StreamAttributeAnnotator.
-    main_pipeline.AddPass<HloPassPipeline>(
-        FusionDispatchPipeline(gpu_device_info, ShapeSizeBytesFunction()));
   }
 
   // Pipeline with passes which wrap a scheduled module into command buffers.
