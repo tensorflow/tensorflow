@@ -82,6 +82,13 @@ tf_export(
 
 # File name for SavedModel chunked protocol buffer (experimental).
 SAVED_MODEL_FILENAME_CPB = constants.SAVED_MODEL_FILENAME_CPB
+tf_export(
+    "saved_model.SAVED_MODEL_FILENAME_CPB",
+    v1=[
+        "saved_model.SAVED_MODEL_FILENAME_CPB",
+        "saved_model.constants.SAVED_MODEL_FILENAME_CPB",
+    ],
+).export_constant(__name__, "SAVED_MODEL_FILENAME_CPB")
 
 # File name for text version of SavedModel protocol buffer.
 SAVED_MODEL_FILENAME_PBTXT = constants.SAVED_MODEL_FILENAME_PBTXT

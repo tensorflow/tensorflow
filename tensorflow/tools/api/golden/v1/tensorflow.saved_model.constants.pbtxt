@@ -25,6 +25,10 @@ tf_module {
     mtype: "<type \'str\'>"
   }
   member {
+    name: "SAVED_MODEL_FILENAME_CPB"
+    mtype: "<type \'str\'>"
+  }
+  member {
     name: "SAVED_MODEL_FILENAME_PB"
     mtype: "<type \'str\'>"
   }
