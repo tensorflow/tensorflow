@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <iostream>
 #include <limits>
 #include <memory>
@@ -1426,16 +1427,19 @@ class PassOrderTest : public GpuCompilerTest {
         << " did not run before passes matching " << other_pass_regex;
   }
 
-  // Fails if any of the passes with names matching the regular expression
-  // `first_pass_regex` run after any of the passes matching `last_pass_regex`
-  // or if none of the executed passes matches `first_pass_regex` or
-  // `last_pass_regex`. Returns a PassRange with the latest run index of any
-  // passes with names matching `first_pass_regex` and the earliest run index of
-  // any passes with names matching 'last_pass_regex'. Passes matching both
-  // regexes will be counted towards last_pass (i.e., overlap of the two ranges
-  // is allowed).
-  PassRange VerifyPassOrder(absl::string_view first_pass_regex,
-                            absl::string_view last_pass_regex,
+  // Matching means returning true given a pass name.
+  using MatchPassFunction = std::function<bool(absl::string_view)>;
+
+  // Fails if any of the passes matching the `first_pass_func` run after any of
+  // the passes matching the `last_pass_func` or if none of the executed passes
+  // matches `first_pass_func` or `last_pass_func`.
+  //
+  // Returns a PassRange with the latest run index of any passes matching the
+  // `first_pass_func` and the earliest run index of any passes matching the
+  // `last_pass_func`. Passes matching both functions will be counted towards
+  // last_pass (i.e., overlap of the two ranges is allowed).
+  PassRange VerifyPassOrder(MatchPassFunction first_pass_func,
+                            MatchPassFunction last_pass_func,
                             bool include_pipeline_name = false) {
     if (!optimized_module_) {
       CompileModule(GetModuleConfigForTest());
@@ -1450,11 +1454,11 @@ class PassOrderTest : public GpuCompilerTest {
         name = absl::StrCat(pass_metadata.pipeline_name(), ".",
                             pass_metadata.pass_name());
       }
-      if (RE2::FullMatch(name, last_pass_regex)) {
+      if (last_pass_func(name)) {
         VLOG(2) << "Pass " << pass_metadata.pass_name()
                 << " matches last_pass_regex." << std::endl;
         last_pass_earliest_run = std::min(last_pass_earliest_run, run_index);
-      } else if (RE2::FullMatch(name, first_pass_regex)) {
+      } else if (first_pass_func(name)) {
         VLOG(2) << "Pass " << pass_metadata.pass_name()
                 << " matches first_pass_regex." << std::endl;
         first_pass_latest_run = std::max(first_pass_latest_run, run_index);
@@ -1463,13 +1467,34 @@ class PassOrderTest : public GpuCompilerTest {
     }
 
     EXPECT_GT(first_pass_latest_run, -1)
-        << "Did not run a pass matching " << first_pass_regex;
+        << "Did not run a pass matching first matching function";
     EXPECT_LT(last_pass_earliest_run, std::numeric_limits<int>::max())
-        << "Did not run a pass matching " << last_pass_regex;
+        << "Did not run a pass matching last matching function";
     EXPECT_LT(first_pass_latest_run, last_pass_earliest_run)
-        << "One or more passes matching " << first_pass_regex
-        << " ran after passes matching " << last_pass_regex;
+        << "One or more passes matching first function ran after passes "
+           "matching last function";
     return {first_pass_latest_run, last_pass_earliest_run};
+  }
+
+  // Fails if any of the passes with names matching the regular expression
+  // `first_pass_regex` run after any of the passes matching `last_pass_regex`
+  // or if none of the executed passes matches `first_pass_regex` or
+  // `last_pass_regex`. Returns a PassRange with the latest run index of any
+  // passes with names matching `first_pass_regex` and the earliest run index of
+  // any passes with names matching 'last_pass_regex'. Passes matching both
+  // regexes will be counted towards last_pass (i.e., overlap of the two ranges
+  // is allowed).
+  PassRange VerifyPassOrder(absl::string_view first_pass_regex,
+                            absl::string_view last_pass_regex,
+                            bool include_pipeline_name = false) {
+    return VerifyPassOrder(
+        [first_pass_regex](absl::string_view name) {
+          return RE2::FullMatch(name, first_pass_regex);
+        },
+        [last_pass_regex](absl::string_view name) {
+          return RE2::FullMatch(name, last_pass_regex);
+        },
+        include_pipeline_name);
   }
 
   // Checks that no pass that matches `pass_regex` runs strictly in between
@@ -1539,9 +1564,18 @@ TEST_F(PassOrderTest, FusionDispatchRunsAfterAllFusionPasses) {
       true);
   SetDebugOptions(debug_options);
 
+  // We don't want any fusion passes to run after fusion-dispatch because
+  // changing the fusion afterwards can break what fusion-dispatch does.
   VerifyPassOrder(
-      /*first_pass_regex=*/".*(fusion|stream-attribute-annotator).*",
-      /*last_pass_regex=*/"fusion-dispatch-pipeline.*",
+      [](absl::string_view name) {
+        // Fusion-wrapper is an exception as it's fine to create unrelated new
+        // fusions as long as we don't change the existing ones.
+        return !RE2::FullMatch(name, ".*fusion-wrapper.*") &&
+               RE2::FullMatch(name, ".*fusion.*");
+      },
+      [](absl::string_view name) {
+        return RE2::FullMatch(name, "fusion-dispatch-pipeline.*");
+      },
       /*include_pipeline_name=*/true);
 }
 
