@@ -3651,8 +3651,10 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
       tracked_buffers.push_back(tracked_buffer);
       prepare_input_deps.push_back(tracked_buffer->buffer().CopyRCRef());
 
-      VLOG(3) << "argument_handles[" << i
-              << "]: addr = " << tracked_buffer->buffer()->buffer().opaque()
+      VLOG(3) << "argument_handles[" << i << "]: addr = "
+              << (tracked_buffer->buffer().IsAvailable()
+                      ? tracked_buffer->buffer()->buffer().opaque()
+                      : "NotReady")
               << ", logical shape = "
               << tfrt_buffer->logical_on_device_shape()->ToString();
 
