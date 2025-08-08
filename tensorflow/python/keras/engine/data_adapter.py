@@ -1412,37 +1412,27 @@ def _make_class_weight_map_fn(class_weight):
     A function that can be used with `tf.data.Dataset.map` to apply class
     weighting.
   """
-  # Validate that all keys are integers
-  for key in class_weight.keys():
-    if not isinstance(key, (int, numpy_compat.integer_types)):
-      try:
-        # Try to convert to int if it's a string representation
-        if isinstance(key, str):
-          int(key)
-        else:
-          raise ValueError()
-      except (ValueError, TypeError):
-        raise ValueError(f"Invalid class_weight key: '{key}'. "
-                        f"Class weight keys must be integers representing "
-                        f"class indices,"
-                        f"got key of type {type(key).__name__}.")
-  
   # Convert string keys to integers
   converted_class_weight = {}
   for key, value in class_weight.items():
-    if isinstance(key, str):
-      converted_class_weight[int(key)] = value
+    if isinstance(key, (int, numpy_compat.integer_types)):
+        converted_class_weight[key] = value
+    elif isinstance(key, str):
+        try:
+            int_key = int(key)
+            converted_class_weight[int_key] = value
+        except ValueError:
+            raise ValueError(f"Invalid class_weight key: '{key}'. "
+                            f"Class weight keys must be integers representing "
+                            f"class indices, "
+                            f"got key of type {type(key).__name__}.")
     else:
-      converted_class_weight[key] = value
-  
-  class_ids = list(sorted(converted_class_weight.keys()))
-  expected_class_ids = list(range(len(class_ids)))
-  if class_ids != expected_class_ids:
-    error_msg = (
-        "Expected `class_weight` to be a dict with keys from 0 to one less "
-        "than the number of classes, found {}").format(class_weight)
-    raise ValueError(error_msg)
+        raise ValueError(f"Invalid class_weight key: '{key}'. "
+                        f"Class weight keys must be integers representing "
+                        f"class indices, "
+                        f"got key of type {type(key).__name__}.")
 
+  cclass_ids = sorted(converted_class_weight.keys())
   class_weight_tensor = tensor_conversion.convert_to_tensor_v2_with_dispatch(
       [converted_class_weight[int(c)] for c in class_ids]
   )
