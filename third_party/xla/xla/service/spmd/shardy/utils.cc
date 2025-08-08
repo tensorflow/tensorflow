@@ -379,9 +379,15 @@ bool hasGspmdAttrsOrOps(mlir::ModuleOp module) {
           return true;
         }
       }
-      if (areFuncResultShardingsForGspmd(func)) {
-        return true;
-      }
+    }
+    // We check for the module level kOutTupleShardings attribute because there
+    // are cases where Shardy shardings are not added to the results of
+    // XlaCallModule function. This is likely acceptable as these functions are
+    // intended to be inlined. If kOutTupleShardings is set, it indicates that
+    // we have added support for Shardy shardings on the wrapper main in tf2xla.
+    if (!hasKey(sdy::getFrontendAttrs(module), sdy::kOutTupleShardings) &&
+        areFuncResultShardingsForGspmd(func)) {
+      return true;
     }
     bool hasGspmd = false;
     // Check the func for a `Sharding` custom call.
