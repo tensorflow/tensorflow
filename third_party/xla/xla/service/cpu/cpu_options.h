@@ -48,6 +48,8 @@ inline constexpr absl::string_view kDisableNewFusionEmitters =
     "xla_cpu_disable_new_fusion_emitters";
 inline constexpr absl::string_view kFlattenAfterFusion =
     "xla_cpu_flatten_after_fusion";
+inline constexpr absl::string_view kUseMultiOutputFusion =
+    "xla_cpu_use_multi_output_fusion";
 
 bool OptimizeForSizeRequested(const HloModuleConfig& config);
 bool VectorizedReduceDisabled(const HloModuleConfig& config);
@@ -62,6 +64,7 @@ absl::StatusOr<int64_t> SmallWhileLoopByteThreshold(
     const HloModuleConfig& config);
 bool UseExperimentalLoopFusion(const HloModuleConfig& config);
 bool FlattenAfterFusion(const HloModuleConfig& config);
+bool UseMultiOutputFusion(const HloModuleConfig& config);
 
 }  // namespace xla::cpu::options
 

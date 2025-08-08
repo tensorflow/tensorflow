@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/test.h"
 

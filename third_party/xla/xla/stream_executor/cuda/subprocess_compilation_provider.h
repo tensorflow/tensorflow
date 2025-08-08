@@ -55,6 +55,8 @@ class SubprocessCompilationProvider : public CompilationProvider {
   bool SupportsCompileToRelocatableModule() const override { return true; }
   bool SupportsCompileAndLink() const override { return true; }
 
+  absl::StatusOr<int> GetLatestPtxIsaVersion() const override;
+
   std::string name() const override;
 
  private:

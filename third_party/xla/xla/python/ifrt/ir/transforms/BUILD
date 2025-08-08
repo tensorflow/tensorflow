@@ -196,6 +196,7 @@ xla_cc_test(
         "//xla/python/ifrt/support:module_parsing",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",

@@ -308,6 +308,8 @@ class InstructionFusion : public HloModulePass {
       absl::Span<HloInstruction* const> post_order,
       const HloReachabilityMap& reachability);
 
+  bool may_duplicate() const { return may_duplicate_; }
+
  private:
   // Returns the reused operands of `instruction` from reused_fusion_operands_,
   // computing them if they have not previously been computed for that
