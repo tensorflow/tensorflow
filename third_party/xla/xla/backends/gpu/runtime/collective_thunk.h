@@ -265,6 +265,10 @@ class CollectiveDoneThunk : public Thunk {
 
   bool IsAsyncDone() const override { return async_events_ != nullptr; }
 
+  std::shared_ptr<CollectiveThunk::AsyncEvents> async_events() const {
+    return async_events_;
+  }
+
  private:
   std::shared_ptr<CollectiveThunk::AsyncEvents> async_events_;
   AsyncStreamKind stream_kind_ = AsyncStreamKind::kCollective;
