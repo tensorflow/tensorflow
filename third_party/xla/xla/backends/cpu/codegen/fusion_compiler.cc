@@ -70,6 +70,7 @@ limitations under the License.
 #include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/codegen/llvm_ir_kernel_source.h"
 #include "xla/codegen/mlir_kernel_source.h"
+#include "xla/codegen/trace_pass_instrumentation.h"
 #include "xla/mlir/tools/mlir_replay/public/compiler_trace.pb.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
@@ -78,6 +79,8 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "tsl/profiler/lib/traceme.h"
+#include "tsl/profiler/lib/traceme_encode.h"
 
 namespace xla::cpu {
 
@@ -207,9 +210,13 @@ FusionCompiler::FusionCompiler(mlir::MLIRContext* context, Options options,
   emitters::RegisterOptimizationPasses(optimization_pass_manager_);
   AddLoopTransformationPasses(optimization_pass_manager_,
                               options_.vector_width);
+  optimization_pass_manager_.addInstrumentation(
+      std::make_unique<TraceInstrumentation>());
 
   AddLoweringPasses(lowering_pass_manager_, options_.vector_width,
                     options_.fast_min_max);
+  lowering_pass_manager_.addInstrumentation(
+      std::make_unique<TraceInstrumentation>());
 }
 
 absl::StatusOr<std::unique_ptr<llvm::Module>> FusionCompiler::Compile(
@@ -230,6 +237,12 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> FusionCompiler::Compile(
           << get_module_op_count() << " operations.";
   XLA_SCOPED_LOGGING_TIMER_LEVEL(
       absl::StrCat("Compiled MLIR module: ", module_name), 1);
+
+  tsl::profiler::TraceMe trace([&] {
+    return tsl::profiler::TraceMeEncode(
+        "FusionCompiler::Compile",
+        {{"module", module_name}, {"op_count", get_module_op_count()}});
+  });
 
   if (hooks_.pre_optimization) {
     hooks_.pre_optimization(mlir_module);
