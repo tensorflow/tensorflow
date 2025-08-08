@@ -1,4 +1,4 @@
-/* Copyright 2024 The OpenXLA Authors.
+/* Copyright 2025 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,12 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#ifndef XLA_BACKENDS_GPU_CODEGEN_TRITON_KERNEL_NAME_TRACER_FACTORY_H_
+#define XLA_BACKENDS_GPU_CODEGEN_TRITON_KERNEL_NAME_TRACER_FACTORY_H_
+
 #include <memory>
 
 #include "xla/backends/gpu/codegen/triton/kernel_name_tracer.h"
 
 namespace xla::gpu {
 
-std::unique_ptr<KernelNameTracer> KernelNameTracer::Create() { return nullptr; }
+// This trait identifies the factory function that creates a platform-specific
+// KernelNameTracer in the platform object registry.
+// Don't use it directly. Use KernelNameTracer::Create instead.
+struct KernelNameTracerFactory {
+  using Type = std::unique_ptr<KernelNameTracer> (*)();
+};
 
 }  // namespace xla::gpu
+
+#endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_KERNEL_NAME_TRACER_FACTORY_H_

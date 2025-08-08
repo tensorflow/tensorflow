@@ -19,8 +19,11 @@ limitations under the License.
 #include <vector>
 
 #include "xla/backends/gpu/codegen/triton/kernel_name_tracer.h"
+#include "xla/backends/gpu/codegen/triton/kernel_name_tracer_factory.h"
 #include "xla/backends/profiler/gpu/cupti_collector.h"
 #include "xla/backends/profiler/gpu/cupti_tracer.h"
+#include "xla/stream_executor/cuda/cuda_platform.h"
+#include "xla/stream_executor/platform/platform_object_registry.h"
 #include "xla/tsl/profiler/utils/time_utils.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
@@ -42,10 +45,6 @@ class KernelNameTracerCuda : public KernelNameTracer {
   std::unique_ptr<profiler::CuptiTraceCollector> cupti_collector_;
 };
 
-std::unique_ptr<KernelNameTracer> KernelNameTracer::Create() {
-  return std::make_unique<KernelNameTracerCuda>();
-}
-
 void KernelNameTracerCuda::start() {
   profiler::CuptiTracerCollectorOptions collector_options;
   collector_options.num_gpus = profiler::CuptiTracer::NumGpus();
@@ -64,15 +63,28 @@ std::vector<std::string> KernelNameTracerCuda::stop() {
   auto space = std::make_unique<tensorflow::profiler::XSpace>();
   cupti_collector_->Export(space.get(), end_gpu_ns);
   for (const auto& plane : space->planes()) {
-    std::vector<std::string> names;
     if (plane.name() == "/device:GPU:0") {
-      for (const auto& metadata : plane.event_metadata()) {
-        names.push_back(metadata.second.name());
+      std::vector<std::string> names;
+      for (const auto& line : plane.lines()) {
+        for (const auto& event : line.events()) {
+          if (auto it = plane.event_metadata().find(event.metadata_id());
+              it != plane.event_metadata().end()) {
+            names.push_back(it->second.name());
+          }
+        }
       }
       return names;
     }
   }
+
   return {};
 }
+
+STREAM_EXECUTOR_REGISTER_OBJECT_STATICALLY(
+    CudaKernelNameTracerFactory, KernelNameTracerFactory,
+    stream_executor::cuda::kCudaPlatformId,
+    []() -> std::unique_ptr<KernelNameTracer> {
+      return std::make_unique<KernelNameTracerCuda>();
+    });
 
 }  // namespace xla::gpu

@@ -201,13 +201,15 @@ TEST_F(BlasAlgorithmTest, Algorithm_BF16_BF16_F32) {
   TF_ASSERT_OK_AND_ASSIGN(auto ok, RunFileCheck(module->ToString(), kPattern));
   ASSERT_TRUE(ok);
 
-  auto tracer = KernelNameTracer::Create();
-  if (tracer == nullptr) {
+  absl::StatusOr<std::unique_ptr<KernelNameTracer>> tracer =
+      KernelNameTracer::Create(
+          backend().default_stream_executor()->GetPlatform()->id());
+  if (!tracer.ok()) {
     GTEST_SKIP() << "KernelNameTracer is not implemented.";
   }
-  tracer->start();
+  tracer.value()->start();
   EXPECT_TRUE(Run(std::move(module), /*run_hlo_passes=*/false));
-  auto kernel_names = tracer->stop();
+  auto kernel_names = tracer.value()->stop();
 
   auto cc = GetCudaComputeCapability();
   using CudaComputeCapabilities =
@@ -296,13 +298,15 @@ TEST_F(BlasAlgorithmTest, Algorithm_BF16_BF16_F32_X3) {
   TF_ASSERT_OK_AND_ASSIGN(auto ok, RunFileCheck(module->ToString(), kPattern));
   ASSERT_TRUE(ok);
 
-  auto tracer = KernelNameTracer::Create();
-  if (tracer == nullptr) {
+  absl::StatusOr<std::unique_ptr<KernelNameTracer>> tracer =
+      KernelNameTracer::Create(
+          backend().default_stream_executor()->GetPlatform()->id());
+  if (!tracer.ok()) {
     GTEST_SKIP() << "KernelNameTracer is not implemented.";
   }
-  tracer->start();
+  tracer.value()->start();
   EXPECT_TRUE(Run(std::move(module), /*run_hlo_passes=*/false));
-  auto kernel_names = tracer->stop();
+  auto kernel_names = tracer.value()->stop();
 
   auto cc = GetCudaComputeCapability();
   using CudaComputeCapabilities =
@@ -358,13 +362,15 @@ TEST_F(BlasAlgorithmTest, Algorithm_BF16_BF16_F32_X6) {
   TF_ASSERT_OK_AND_ASSIGN(auto ok, RunFileCheck(module->ToString(), kPattern));
   ASSERT_TRUE(ok);
 
-  auto tracer = KernelNameTracer::Create();
-  if (tracer == nullptr) {
+  absl::StatusOr<std::unique_ptr<KernelNameTracer>> tracer =
+      KernelNameTracer::Create(
+          backend().default_stream_executor()->GetPlatform()->id());
+  if (!tracer.ok()) {
     GTEST_SKIP() << "KernelNameTracer is not implemented.";
   }
-  tracer->start();
+  tracer.value()->start();
   EXPECT_TRUE(Run(std::move(module), /*run_hlo_passes=*/false));
-  auto kernel_names = tracer->stop();
+  auto kernel_names = tracer.value()->stop();
 
   auto cc = GetCudaComputeCapability();
   using CudaComputeCapabilities =
@@ -423,13 +429,15 @@ TEST_F(BlasAlgorithmTest, Algorithm_TF32_TF32_F32_X3) {
   TF_ASSERT_OK_AND_ASSIGN(auto ok, RunFileCheck(module->ToString(), kPattern));
   ASSERT_TRUE(ok);
 
-  auto tracer = KernelNameTracer::Create();
-  if (tracer == nullptr) {
+  absl::StatusOr<std::unique_ptr<KernelNameTracer>> tracer =
+      KernelNameTracer::Create(
+          backend().default_stream_executor()->GetPlatform()->id());
+  if (!tracer.ok()) {
     GTEST_SKIP() << "KernelNameTracer is not implemented.";
   }
-  tracer->start();
+  tracer.value()->start();
   EXPECT_TRUE(Run(std::move(module), /*run_hlo_passes=*/false));
-  auto kernel_names = tracer->stop();
+  auto kernel_names = tracer.value()->stop();
 
   auto cc = GetCudaComputeCapability();
   using CudaComputeCapabilities =
@@ -452,12 +460,14 @@ TEST_F(BlasAlgorithmTest, Algorithm_TF32_TF32_F32_X3) {
                       ::testing::HasSubstr("cutlass_80")));
       break;
     case CudaComputeCapabilities::kHopper:
-      EXPECT_THAT(kernel_names,
-                  ::testing::UnorderedElementsAre(
-                      ::testing::HasSubstr("bitcast_convert_subtract"),
-                      ::testing::HasSubstr("bitcast_convert_subtract"),
-                      ::testing::HasSubstr("loop_select_fusion"),
-                      ::testing::HasSubstr("tf32f32")));
+      EXPECT_THAT(
+          kernel_names,
+          ::testing::UnorderedElementsAre(
+              ::testing::HasSubstr("bitcast_convert_subtract"),
+              ::testing::HasSubstr("bitcast_convert_subtract"),
+              ::testing::HasSubstr("loop_select_fusion"),
+              ::testing::HasSubstr("tf32f32"), ::testing::HasSubstr("tf32f32"),
+              ::testing::HasSubstr("tf32f32")));
       break;
     default:
       GTEST_SKIP() << "Unsupported compute capability: " << cc.major
