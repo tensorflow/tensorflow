@@ -23,16 +23,21 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/cuda/compilation_options.h"
 #include "xla/stream_executor/cuda/compilation_provider.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/subprocess_compilation.h"
-#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/subprocess.h"
 
 namespace stream_executor::cuda {
 
@@ -96,6 +101,61 @@ absl::StatusOr<Assembly> SubprocessCompilationProvider::CompileAndLink(
 
   TF_ASSIGN_OR_RETURN(auto cubin, LinkUsingNvlink(path_to_nvlink_, cc, images));
   return Assembly{std::move(cubin)};
+}
+
+absl::StatusOr<int> SubprocessCompilationProvider::GetLatestPtxIsaVersion()
+    const {
+  std::vector<std::string> ptxas_args = {path_to_ptxas_, "--input-as-string",
+                                         ".version 99.99"};
+  tsl::SubProcess ptxas_info_dumper;
+  ptxas_info_dumper.SetProgram(path_to_ptxas_, ptxas_args);
+  ptxas_info_dumper.SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_PIPE);
+  if (!ptxas_info_dumper.Start()) {
+    return absl::InternalError("Failed to launch ptxas");
+  }
+  std::string stderr_output;
+  int exit_status = ptxas_info_dumper.Communicate(
+      /*stdin_input=*/nullptr, /*stdout_output=*/nullptr, &stderr_output);
+  if (exit_status == 0) {
+    return absl::InternalError("ptxas succeeded where it was expected to fail");
+  }
+  // Output message is of the form:
+  // ptxas application ptx input, line 1; fatal   :
+  // Unsupported .version 99.99; current version is '8.8'
+  std::vector<absl::string_view> chunks = absl::StrSplit(stderr_output, '\'');
+  if (chunks.size() != 3) {
+    return absl::InternalError(absl::StrCat(
+        "Failed to locate PTX ISA version in ptxas error message: ",
+        stderr_output));
+  }
+  std::vector<std::string> major_minor = absl::StrSplit(chunks[1], '.');
+  if (major_minor.size() != 2) {
+    return absl::InternalError(
+        absl::StrFormat("Expected PTX ISA version to be formatted as "
+                        "MAJOR.MINOR, instead got: %s",
+                        chunks[1]));
+  }
+  int major;
+  if (!absl::SimpleAtoi(major_minor[0], &major)) {
+    return absl::InternalError(
+        absl::StrFormat("Failed to parse PTX ISA major version, expected a "
+                        "parsable integer, instead got: %s",
+                        major_minor[0]));
+  }
+  int minor;
+  if (!absl::SimpleAtoi(major_minor[1], &minor)) {
+    return absl::InternalError(
+        absl::StrFormat("Failed to parse PTX ISA minor version, expected a "
+                        "parsable integer, instead got: %s",
+                        major_minor[1]));
+  }
+  if (minor >= 10) {
+    return absl::InternalError(
+        absl::StrFormat("PTX ISA minor version %d is not less than or equal to "
+                        "9, which is assumed for version comparison",
+                        minor));
+  }
+  return major * 10 + minor;
 }
 
 std::string SubprocessCompilationProvider::name() const {

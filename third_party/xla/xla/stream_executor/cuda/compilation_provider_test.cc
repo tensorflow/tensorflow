@@ -22,11 +22,14 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
+#include "absl/strings/string_view.h"
 #include "xla/stream_executor/cuda/compilation_options.h"
 #include "xla/stream_executor/cuda/compilation_provider_test.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/driver_compilation_provider.h"
 #include "xla/stream_executor/cuda/nvjitlink_compilation_provider.h"
 #include "xla/stream_executor/cuda/nvjitlink_support.h"
@@ -34,12 +37,9 @@ limitations under the License.
 #include "xla/stream_executor/cuda/ptx_compiler_support.h"
 #include "xla/stream_executor/cuda/subprocess_compilation.h"
 #include "xla/stream_executor/cuda/subprocess_compilation_provider.h"
-#include "xla/stream_executor/device_description.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
-#include "tsl/platform/threadpool.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/threadpool.h"
 
 namespace stream_executor::cuda {
 using ::testing::_;
@@ -47,9 +47,6 @@ using ::testing::AnyOf;
 using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::Not;
-using ::tsl::testing::IsOk;
-using ::tsl::testing::IsOkAndHolds;
-using ::tsl::testing::StatusIs;
 
 void CompilationProviderTest::SetUp() {
 #ifdef ABSL_HAVE_MEMORY_SANITIZER
@@ -155,8 +152,8 @@ constexpr const char kDependentPtx[] = R"(
         { // callseq 0, 0
         .reg .b32 temp_param_reg;
         .param .b32 retval0;
-        call.uni (retval0), 
-        _Z5magicv, 
+        call.uni (retval0),
+        _Z5magicv,
         (
         );
         ld.param.b32    %r1, [retval0+0];
@@ -475,6 +472,21 @@ TEST_P(CompilationProviderTest, ParallelCompileAndLinkReturnsSameResult) {
                       CompilationOptions()),
                   absl_testing::IsOkAndHolds(reference_assembly));
     });
+  }
+}
+
+TEST_P(CompilationProviderTest,
+       QueryLatestPtxIsaVersionReturnsAValidPtxIsaVersion) {
+  CompilationProvider* provider = compilation_provider();
+  if (dynamic_cast<SubprocessCompilationProvider*>(provider)) {
+    TF_ASSERT_OK_AND_ASSIGN(int latest_ptx_isa_version,
+                            provider->GetLatestPtxIsaVersion());
+    EXPECT_GE(latest_ptx_isa_version, 80);
+    // Update when PTX 20.0 comes out.
+    EXPECT_LE(latest_ptx_isa_version, 200);
+  } else {
+    EXPECT_THAT(provider->GetLatestPtxIsaVersion(),
+                absl_testing::StatusIs(absl::StatusCode::kUnimplemented));
   }
 }
 
