@@ -544,6 +544,84 @@ cc_library(
 )
 
 cc_library(
+    name = "ondevice_trace_events",
+    hdrs = ["ondevice_trace_events.h"],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
+    name = "ondevice_event_collector",
+    srcs = ["ondevice_event_collector.cc"],
+    hdrs = ["ondevice_event_collector.h"],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":cupti_buffer_events",
+        ":ondevice_trace_events",
+        "//xla/tsl/profiler/utils:lock_free_queue",
+        "//xla/tsl/profiler/utils:trace_utils",
+        "//xla/tsl/profiler/utils:xplane_builder",
+        "//xla/tsl/profiler/utils:xplane_schema",
+        "//xla/tsl/profiler/utils:xplane_utils",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
+        "@local_tsl//tsl/platform:thread_annotations",
+        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
+    ],
+)
+
+cc_library(
+    name = "ondevice_event_receiver",
+    srcs = ["ondevice_event_receiver.cc"],
+    hdrs = ["ondevice_event_receiver.h"],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":ondevice_event_collector",
+        ":ondevice_trace_events",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/synchronization",
+        "@local_tsl//tsl/platform:thread_annotations",
+    ],
+)
+
+xla_cc_test(
+    name = "ondevice_event_collector_test",
+    srcs = ["ondevice_event_collector_test.cc"],
+    tags = [
+        "cuda-only",
+        "gpu",
+        "no_mac",
+    ],
+    deps = [
+        ":ondevice_event_collector",
+        ":ondevice_event_receiver",
+        ":ondevice_trace_events",
+        "//xla/tsl/profiler/utils:xplane_builder",
+        "//xla/tsl/profiler/utils:xplane_schema",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
+    ],
+)
+
+cc_library(
     name = "cupti_status",
     srcs = ["cupti_status.cc"],
     hdrs = ["cupti_status.h"],
