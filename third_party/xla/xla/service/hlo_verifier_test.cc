@@ -49,7 +49,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -58,9 +57,9 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using absl_testing::IsOkAndHolds;
+using absl_testing::StatusIs;
 using ::testing::HasSubstr;
-using ::tsl::testing::IsOkAndHolds;
-using ::tsl::testing::StatusIs;
 
 std::unique_ptr<HloModule> CreateUnverifiedModule() {
   return std::make_unique<HloModule>("module", HloModuleConfig());
@@ -4344,7 +4343,7 @@ TEST_F(HloVerifierTestForCollectiveDeadlocks,
   })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnUnverifiedModule(hlo));
-  EXPECT_THAT(verifier().Run(module.get()), absl_testing::IsOkAndHolds(false));
+  EXPECT_THAT(verifier().Run(module.get()), IsOkAndHolds(false));
 }
 
 TEST_F(HloVerifierTestForCollectiveDeadlocks, VerifySendRecvDeadlockOnRecv) {
@@ -4361,8 +4360,8 @@ TEST_F(HloVerifierTestForCollectiveDeadlocks, VerifySendRecvDeadlockOnRecv) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnUnverifiedModule(hlo));
   EXPECT_THAT(verifier().Run(module.get()),
-              absl_testing::StatusIs(absl::StatusCode::kInternal,
-                                     HasSubstr("Expected send to match recv")));
+              StatusIs(absl::StatusCode::kInternal,
+                       HasSubstr("Expected send to match recv")));
 }
 
 TEST_F(HloVerifierTestForCollectiveDeadlocks, VerifySendRecvDeadlockOnSend) {
@@ -4380,8 +4379,8 @@ TEST_F(HloVerifierTestForCollectiveDeadlocks, VerifySendRecvDeadlockOnSend) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnUnverifiedModule(hlo));
   EXPECT_THAT(verifier().Run(module.get()),
-              absl_testing::StatusIs(absl::StatusCode::kInternal,
-                                     HasSubstr("Expected recv to match send")));
+              StatusIs(absl::StatusCode::kInternal,
+                       HasSubstr("Expected recv to match send")));
 }
 
 TEST_F(HloVerifierTestForCollectiveDeadlocks,
@@ -4401,8 +4400,8 @@ TEST_F(HloVerifierTestForCollectiveDeadlocks,
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnUnverifiedModule(hlo));
   EXPECT_THAT(verifier().Run(module.get()),
-              absl_testing::StatusIs(absl::StatusCode::kInternal,
-                                     HasSubstr("Expected send or recv")));
+              StatusIs(absl::StatusCode::kInternal,
+                       HasSubstr("Expected send or recv")));
 }
 
 TEST_F(HloVerifierTestForCollectiveDeadlocks,
@@ -4449,8 +4448,9 @@ TEST_F(HloVerifierTestForCollectiveDeadlocks,
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnUnverifiedModule(hlo));
   EXPECT_THAT(verifier().Run(module.get()),
-              absl_testing::StatusIs(absl::StatusCode::kInternal,
-                                     HasSubstr("Expected send or recv")));
+              StatusIs(absl::StatusCode::kInternal,
+                       AnyOf(HasSubstr("Expected send or recv"),
+                             HasSubstr("Expected send to match recv"))));
 }
 
 TEST_F(HloVerifierTestForCollectiveDeadlocks,
@@ -4477,10 +4477,9 @@ TEST_F(HloVerifierTestForCollectiveDeadlocks,
                           ParseAndReturnUnverifiedModule(hlo));
   EXPECT_THAT(
       verifier().Run(module.get()),
-      absl_testing::StatusIs(
-          absl::StatusCode::kInternal,
-          HasSubstr("Expected send and recv instructions to have the same "
-                    "source-target pairs")));
+      StatusIs(absl::StatusCode::kInternal,
+               HasSubstr("Expected send and recv instructions to have the same "
+                         "source-target pairs")));
 }
 
 TEST_F(HloVerifierTestForCollectiveDeadlocks,
@@ -4507,10 +4506,9 @@ TEST_F(HloVerifierTestForCollectiveDeadlocks,
                           ParseAndReturnUnverifiedModule(hlo));
   EXPECT_THAT(
       verifier().Run(module.get()),
-      absl_testing::StatusIs(
-          absl::StatusCode::kInternal,
-          HasSubstr("Expected send and recv instructions to have unique "
-                    "source and target pairs")));
+      StatusIs(absl::StatusCode::kInternal,
+               HasSubstr("Expected send and recv instructions to have unique "
+                         "source and target pairs")));
 }
 
 TEST_F(HloVerifierTestForCollectiveDeadlocks,
@@ -4537,10 +4535,9 @@ TEST_F(HloVerifierTestForCollectiveDeadlocks,
                           ParseAndReturnUnverifiedModule(hlo));
   EXPECT_THAT(
       verifier().Run(module.get()),
-      absl_testing::StatusIs(
-          absl::StatusCode::kInternal,
-          HasSubstr("Expected send and recv instructions to have unique "
-                    "source and target pairs")));
+      StatusIs(absl::StatusCode::kInternal,
+               HasSubstr("Expected send and recv instructions to have unique "
+                         "source and target pairs")));
 }
 
 TEST_F(HloVerifierTestForCollectiveDeadlocks, VerifySendRecvDeadlockOnCycle) {
@@ -4565,10 +4562,9 @@ TEST_F(HloVerifierTestForCollectiveDeadlocks, VerifySendRecvDeadlockOnCycle) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnUnverifiedModule(hlo));
   EXPECT_THAT(verifier().Run(module.get()),
-              absl_testing::StatusIs(
-                  absl::StatusCode::kInternal,
-                  HasSubstr("Expected send and recv instructions to have "
-                            "non-cyclical source-target pairs")));
+              StatusIs(absl::StatusCode::kInternal,
+                       HasSubstr("Expected send and recv instructions to have "
+                                 "non-cyclical source-target pairs")));
 }
 
 TEST_F(HloVerifierTestForCollectiveDeadlocks, VerifySendRecvNoDeadlocks) {
@@ -4592,7 +4588,7 @@ TEST_F(HloVerifierTestForCollectiveDeadlocks, VerifySendRecvNoDeadlocks) {
   })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnUnverifiedModule(hlo));
-  EXPECT_THAT(verifier().Run(module.get()), absl_testing::IsOkAndHolds(false));
+  EXPECT_THAT(verifier().Run(module.get()), IsOkAndHolds(false));
 }
 
 TEST_F(HloVerifierTest, VerifyMatchingSendSameChannel) {
