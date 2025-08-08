@@ -26,6 +26,7 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/Pass/PassManager.h"
 #include "xla/codegen/llvm_ir_kernel_source.h"
 #include "xla/codegen/mlir_kernel_source.h"
 
@@ -47,8 +48,8 @@ class FusionCompiler {
     bool fast_min_max;
   };
 
-  explicit FusionCompiler(Options options, CompilationHooks hooks = {})
-      : options_(std::move(options)), hooks_(std::move(hooks)) {}
+  FusionCompiler(mlir::MLIRContext* context, Options options,
+                 CompilationHooks hooks = {});
 
   // Compile a given MLIR module to LLVM, using the provided LLVM context.
   absl::StatusOr<std::unique_ptr<llvm::Module>> Compile(
@@ -64,6 +65,11 @@ class FusionCompiler {
  private:
   Options options_;
   CompilationHooks hooks_;
+  // Pass manager that holds the optimization & loop transformation passes.
+  mlir::PassManager optimization_pass_manager_;
+  // Pass manager that holds the passes responsible for lowering the module from
+  // MLIR to LLVM.
+  mlir::PassManager lowering_pass_manager_;
 };
 
 }  // namespace xla::cpu
