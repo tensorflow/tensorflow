@@ -124,8 +124,7 @@ cc_library(
         "//xla/tsl:linux_ppc64le": [],
         "//xla/tsl:linux_s390x": [],
         "//xla/tsl:macos_arm64": [],
-        "//xla/tsl:linux_x86_64_with_onednn_async": ["@onednn_async//:mkl_dnn"],
-        "//conditions:default": ["@onednn//:mkl_dnn"],
+        "//conditions:default": ["//xla/tsl/mkl:onednn"],
     }),
 )
 
