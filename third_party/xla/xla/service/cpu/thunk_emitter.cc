@@ -34,6 +34,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/IR/Module.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/DebugStringHelper.h"
 #include "xla/backends/cpu/codegen/computation_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/dot/dot_kernel_emitter.h"
@@ -221,7 +222,8 @@ absl::StatusOr<std::string> GetFusionFingerprint(
 
 }  // namespace
 
-static FusionCompiler FusionCompilerFactory(const HloModule& hlo_module) {
+static FusionCompiler FusionCompilerFactory(mlir::MLIRContext* context,
+                                            const HloModule& hlo_module) {
   const DebugOptions& debug_options = hlo_module.config().debug_options();
   FusionCompiler::Options options{
       debug_options.xla_cpu_prefer_vector_width(),
@@ -249,7 +251,7 @@ static FusionCompiler FusionCompilerFactory(const HloModule& hlo_module) {
     hooks.post_lowering = callback_factory("post-lowering");
   }
 
-  return FusionCompiler(std::move(options), std::move(hooks));
+  return FusionCompiler(context, std::move(options), std::move(hooks));
 }
 
 ThunkEmitter::ThunkEmitter(IrEmitter2& ir_emitter,
@@ -263,8 +265,9 @@ ThunkEmitter::ThunkEmitter(IrEmitter2& ir_emitter,
       options_(options),
       communicator_resource_(
           Resource::Create(Resource::kCollectiveCommunicator)),
-      fusion_compiler_(FusionCompilerFactory(hlo_module)),
-      mlir_context_(FusionCompiler::CreateContext()) {}
+      mlir_context_(FusionCompiler::CreateContext()),
+      fusion_compiler_(FusionCompilerFactory(mlir_context_.get(), hlo_module)) {
+}
 
 static Thunk::Info ThunkInfo(const HloInstruction* instruction) {
   const HloModule* module = instruction->GetModule();
@@ -879,8 +882,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusionKernelThunk(
 
   if (ir_emitter_.IsSupportedByFusionEmitter(fusion) &&
       fusion->fused_expression_root()->opcode() == HloOpcode::kScatter) {
-    auto kernel_emitter =
-        std::make_unique<CpuScatterFusion>(buffer_assignment_, fusion);
+    auto kernel_emitter = std::make_unique<CpuScatterFusion>(
+        buffer_assignment_, fusion, mlir_context_.get());
 
     TF_ASSIGN_OR_RETURN(MlirKernelDefinition kernel_definition,
                         kernel_emitter->EmitKernelDefinition());

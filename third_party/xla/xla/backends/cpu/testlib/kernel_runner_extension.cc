@@ -193,10 +193,13 @@ NB_MODULE(_extension, kernel_runner_module) {
       .def(
           "__init__",
           [](CpuScatterFusion* self, const HloFusionInstruction* instruction,
-             const BufferAssignment* bufffer_assignment) {
-            new (self) CpuScatterFusion(*bufffer_assignment, instruction);
+             const BufferAssignment* bufffer_assignment,
+             mlir::MLIRContext* context) {
+            new (self)
+                CpuScatterFusion(*bufffer_assignment, instruction, context);
           },
-          nb::keep_alive<1, 2>(), nb::keep_alive<1, 3>());
+          nb::keep_alive<1, 2>(), nb::keep_alive<1, 3>(),
+          nb::keep_alive<1, 3>());
 
   kernel_runner_module.def(
       "emit_fusion_kernel",

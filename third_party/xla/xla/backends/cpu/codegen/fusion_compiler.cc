@@ -92,6 +92,7 @@ static absl::Status RunPassPipeline(
 
 #if NDEBUG
   pm.enableVerifier(verification_level > 0);
+  module.getContext()->printOpOnDiagnostic(verification_level > 0);
 #endif
 
   tsl::StatusScopedDiagnosticHandler diagnostic_handler(module.getContext());
@@ -196,8 +197,25 @@ static int GetLlvmFunctionDefCount(mlir::ModuleOp m) {
   return count;
 };
 
+FusionCompiler::FusionCompiler(mlir::MLIRContext* context, Options options,
+                               CompilationHooks hooks)
+    : options_(std::move(options)),
+      hooks_(std::move(hooks)),
+      optimization_pass_manager_(
+          mlir::PassManager::on<mlir::ModuleOp>(context)),
+      lowering_pass_manager_(mlir::PassManager::on<mlir::ModuleOp>(context)) {
+  emitters::RegisterOptimizationPasses(optimization_pass_manager_);
+  AddLoopTransformationPasses(optimization_pass_manager_,
+                              options_.vector_width);
+
+  AddLoweringPasses(lowering_pass_manager_, options_.vector_width,
+                    options_.fast_min_max);
+}
+
 absl::StatusOr<std::unique_ptr<llvm::Module>> FusionCompiler::Compile(
     llvm::LLVMContext& llvm_context, mlir::ModuleOp mlir_module) {
+  absl::string_view module_name =
+      mlir_module.getName() ? *mlir_module.getName() : "UnknownFusionModule";
   auto get_module_op_count = [&mlir_module]() {
     // Count the number of leaf ops, i.e those without a sub-region.
     int64_t count = 0;
@@ -208,32 +226,22 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> FusionCompiler::Compile(
     });
     return count;
   };
-  VLOG(1) << "Compiling MLIR module: "
-          << absl::string_view(mlir_module.getName().value_or("Unknown"))
-          << ", with " << get_module_op_count() << " operations.";
-
-  mlir::PassManager optimization_pass_manager(mlir_module.getContext());
+  VLOG(1) << "Compiling MLIR module: " << module_name << ", with "
+          << get_module_op_count() << " operations.";
+  XLA_SCOPED_LOGGING_TIMER_LEVEL(
+      absl::StrCat("Compiled MLIR module: ", module_name), 1);
 
   if (hooks_.pre_optimization) {
     hooks_.pre_optimization(mlir_module);
   }
-
-  emitters::RegisterOptimizationPasses(optimization_pass_manager);
-  AddLoopTransformationPasses(optimization_pass_manager, options_.vector_width);
-
-  TF_RETURN_IF_ERROR(RunPassPipeline(mlir_module, optimization_pass_manager,
+  TF_RETURN_IF_ERROR(RunPassPipeline(mlir_module, optimization_pass_manager_,
                                      nullptr, options_.verification_level));
 
   if (hooks_.post_optimization) {
     hooks_.post_optimization(mlir_module);
   }
 
-  mlir::PassManager lowering_pass_manager(mlir_module.getContext());
-
-  AddLoweringPasses(lowering_pass_manager, options_.vector_width,
-                    options_.fast_min_max);
-
-  TF_RETURN_IF_ERROR(RunPassPipeline(mlir_module, lowering_pass_manager,
+  TF_RETURN_IF_ERROR(RunPassPipeline(mlir_module, lowering_pass_manager_,
                                      nullptr, options_.verification_level));
 
   if (hooks_.post_lowering) {
@@ -249,8 +257,6 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> FusionCompiler::Compile(
   }
 
   constexpr absl::string_view kXlaModuleIdentifier = "__compute_module";
-  absl::string_view module_name =
-      mlir_module.getName() ? *mlir_module.getName() : "UnknownFusionModule";
   std::unique_ptr<llvm::Module> llvm_module = mlir::translateModuleToLLVMIR(
       mlir_module, llvm_context,
       absl::StrCat(kXlaModuleIdentifier, "_", module_name));
