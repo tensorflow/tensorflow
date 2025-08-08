@@ -99,6 +99,24 @@ absl::Status MlirToXlaComputation(mlir::ModuleOp module,
   {
     mlir::PassManager pm(context);
 
+    // TODO(b/420837831): Remove this once we don't need to fall back to GSPMD.
+    if (exec_build_options && exec_build_options->use_shardy_partitioner() &&
+        xla::sdy::hasGspmdAttrsOrOps(module)) {
+      LOG(WARNING)
+          << "Module has GSPMD attrs or ops, but Shardy is enabled. Disabling "
+             "Shardy and falling back to using GSPMD propagation.";
+      exec_build_options->set_use_shardy_partitioner(false);
+      TF_RETURN_IF_ERROR(ExportShardyForGSPMD(module));
+    }
+
+    // Export a StableHLO + Shardy module into a pure StableHLO module, to
+    // prepare for a round trip to HLO, such that the Shardy ops and attributes
+    // are preserved when going back to MLIR for Shardy propagation. This is a
+    // no-op if the module is already pure StableHLO.
+    // NOTE: we don't use `use_shardy` because it isn't guaranteed to be true if
+    // the module has Shardy artifacts.
+    xla::sdy::addSdyRoundTripExportPipeline(pm);
+
     // CHLO -> MHLO for high level ops (TopK, Erf, RaggedDot, etc.)
     // CHLO -> StableHLO otherwise
     pm.addNestedPass<mlir::func::FuncOp>(
@@ -117,24 +135,6 @@ absl::Status MlirToXlaComputation(mlir::ModuleOp module,
     // regions, since XLA uses functional control flow.
     pm.addNestedPass<mlir::func::FuncOp>(
         mlir::stablehlo_ext::createSinkConstantsToControlFlowPass());
-
-    // TODO(b/420837831): Remove this once we don't need to fall back to GSPMD.
-    if (exec_build_options && exec_build_options->use_shardy_partitioner() &&
-        xla::sdy::hasGspmdAttrsOrOps(module)) {
-      LOG(WARNING)
-          << "Module has GSPMD attrs or ops, but Shardy is enabled. Disabling "
-             "Shardy and falling back to using GSPMD propagation.";
-      exec_build_options->set_use_shardy_partitioner(false);
-      TF_RETURN_IF_ERROR(ExportShardyForGSPMD(module));
-    }
-
-    // Export a StableHLO + Shardy module into a pure StableHLO module, to
-    // prepare for a round trip to HLO, such that the Shardy ops and attributes
-    // are preserved when going back to MLIR for Shardy propagation. This is a
-    // no-op if the module is already pure StableHLO.
-    // NOTE: we don't use `use_shardy` because it isn't guaranteed to be true if
-    // the module has Shardy artifacts.
-    xla::sdy::addSdyRoundTripExportPipeline(pm);
 
     if (failed(pm.run(module))) {
       VLOG(1) << "MHLO->HLO lowering passes failed.";
