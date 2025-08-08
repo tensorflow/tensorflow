@@ -1420,8 +1420,8 @@ absl::Status PjRtClient::WatchGlobalProcessInfo(
   int64_t version_number = -1;  // latest job state version
   while (true) {
     // Call WatchJobStateAsync.
-    VLOG(3) << "Calling WatchJobStateAsync for task "
-            << task.ShortDebugString();
+    VLOG(3) << "Calling WatchJobStateAsync for task " << task.ShortDebugString()
+            << " with version number " << version_number;
     absl::StatusOr<tensorflow::WatchJobStateResponse> response;
     bool done = false;
     std::shared_ptr<tsl::CallOptions> call_opts = agent.WatchJobStateAsync(
