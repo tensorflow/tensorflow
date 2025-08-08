@@ -376,7 +376,7 @@ class HloModule {
   // Gets the computations in this module which aren't for fusion nodes.
   //
   // Postcondition: All computations in the returned list have
-  // !IsFusionComputation().
+  // !IsFusionComputation() and !IsDeadComputation().
   //
   // Note: Callers can and do rely on the return value here being a *snapshot*
   // of the module's non-fusion computations -- that is, it's OK to add or
