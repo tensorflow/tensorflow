@@ -325,8 +325,16 @@ class CoordinationServiceAgent {
   // If a task fails and restarts, for example, it will have a different
   // incarnation id before and after it fails. This allows us to distinguish
   // different executions of the same task.
+  //
+  // DO_NOT_SUBMIT: mwhittaker - Delete.
   absl::StatusOr<std::vector<IncarnationId>> Incarnations(
       absl::Span<const int> tasks) const;
+
+  // DO_NOT_SUBMIT: mwhittaker - Document.
+  absl::flat_hash_map<int, IncarnationId> Incarnations() const {
+    absl::MutexLock lock(&incarnations_mu_);
+    return incarnations_;
+  }
 
   // Get unowned Env* that the agent was initialized with.
   absl::StatusOr<Env*> GetEnv();
