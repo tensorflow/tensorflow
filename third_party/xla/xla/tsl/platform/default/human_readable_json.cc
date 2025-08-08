@@ -20,9 +20,11 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/errors.h"
+#include "absl/strings/str_cat.h"
+#include "third_party/protobuf/message.h"
+#include "third_party/protobuf/message_lite.h"
+#include "third_party/protobuf/util/json_util.h"
 #include "xla/tsl/platform/types.h"
-#include "tsl/platform/strcat.h"
 #include "tsl/platform/stringpiece.h"
 
 namespace tsl {
@@ -40,9 +42,9 @@ absl::StatusOr<std::string> ProtoToHumanReadableJson(
     // Convert error_msg google::protobuf::StringPiece to
     // tsl::StringPiece.
     auto error_msg = status.message();
-    return errors::Internal(strings::StrCat(
-        "Could not convert proto to JSON string: ",
-        absl::string_view(error_msg.data(), error_msg.length())));
+    return absl::InternalError(absl::StrCat(
+        "Could not convert proto to JSON string: ", error_msg.data(),
+        error_msg.length()));
   }
   return std::move(result);
 }
@@ -52,7 +54,7 @@ absl::StatusOr<std::string> ProtoToHumanReadableJson(
   return std::string("[human readable output not available for lite protos]");
 }
 
-absl::Status HumanReadableJsonToProto(const string& str,
+absl::Status HumanReadableJsonToProto(const std::string& str,
                                       protobuf::Message* proto) {
   proto->Clear();
   auto status = protobuf::util::JsonStringToMessage(str, proto);
@@ -60,16 +62,16 @@ absl::Status HumanReadableJsonToProto(const string& str,
     // Convert error_msg google::protobuf::StringPiece to
     // tsl::StringPiece.
     auto error_msg = status.message();
-    return errors::Internal(strings::StrCat(
-        "Could not convert JSON string to proto: ",
-        absl::string_view(error_msg.data(), error_msg.length())));
+    return absl::InternalError(absl::StrCat(
+        "Could not convert JSON string to proto: ", error_msg.data(),
+        error_msg.length(), " json: ", str));
   }
   return absl::OkStatus();
 }
 
 absl::Status HumanReadableJsonToProto(const string& str,
                                       protobuf::MessageLite* proto) {
-  return errors::Internal("Cannot parse JSON protos on Android");
+  return absl::InternalError("Cannot parse JSON protos on Android");
 }
 
 }  // namespace tsl
