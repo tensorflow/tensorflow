@@ -146,4 +146,13 @@ bool FlattenAfterFusion(const HloModuleConfig& config) {
   return extra_options_map.count(kFlattenAfterFusion) > 0;
 }
 
+bool UseMultiOutputFusion(const HloModuleConfig& config) {
+  if (!options::UseExperimentalLoopFusion(config)) {
+    return false;
+  }
+  const auto& extra_options_map =
+      config.debug_options().xla_backend_extra_options();
+  return extra_options_map.count(kUseMultiOutputFusion) > 0;
+}
+
 }  // namespace xla::cpu::options

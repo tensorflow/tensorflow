@@ -173,6 +173,7 @@ limitations under the License.
 #include "xla/service/cpu/cpu_float_support.h"
 #include "xla/service/cpu/cpu_instruction_fusion.h"
 #include "xla/service/cpu/cpu_layout_assignment.h"
+#include "xla/service/cpu/cpu_multi_output_fusion.h"
 #include "xla/service/cpu/cpu_options.h"
 #include "xla/service/cpu/dot_op_emitter.h"
 #include "xla/service/cpu/executable.pb.h"
@@ -905,8 +906,15 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     pipeline.AddPass<XnnGraphFusion>();
   }
 
-  // Add a fusion pass now that layout assignment is done.
-  pipeline.AddPass<CpuInstructionFusion>();
+  bool use_multi_output_fusion =
+      options::UseMultiOutputFusion(module->config());
+  pipeline.AddPass<CpuInstructionFusion>(
+      /*may_duplicate=*/!use_multi_output_fusion);
+  if (use_multi_output_fusion) {
+    pipeline.AddPass<CpuMultiOutputFusion>();
+    pipeline.AddPass<TupleSimplifier>();
+  }
+
   if (is_fusion_emitters) {
     pipeline.AddPass<FusionWrapper>();
   }

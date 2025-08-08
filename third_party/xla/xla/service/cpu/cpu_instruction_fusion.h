@@ -31,8 +31,8 @@ namespace cpu {
 
 class CpuInstructionFusion : public InstructionFusion {
  public:
-  CpuInstructionFusion()
-      : InstructionFusion(CpuInstructionFusion::IsExpensive) {}
+  explicit CpuInstructionFusion(bool may_duplicate = true)
+      : InstructionFusion(CpuInstructionFusion::IsExpensive, may_duplicate) {}
   ~CpuInstructionFusion() override = default;
 
   using HloPassInterface::Run;
