@@ -49,7 +49,6 @@ XlaCompiledCpuFunction::XlaCompiledCpuFunction(const StaticData& static_data,
                                                AllocMode alloc_mode)
     : function_library_symbol_map_(&static_data.function_library_symbol_map_),
       temp_allocation_index_(static_data.temp_allocation_index_),
-      raw_function_(static_data.raw_function_),
       thunk_run_impl_(static_data.thunk_run_impl_),
       result_index_(GetResultIndex(static_data.result_index_table_,
                                    static_data.num_results_)),
@@ -115,14 +114,7 @@ XlaCompiledCpuFunction::XlaCompiledCpuFunction(const StaticData& static_data,
 }
 
 bool XlaCompiledCpuFunction::Run() {
-  if (thunk_run_impl_ != nullptr) {
-    return thunk_run_impl_(buffer_table_, &run_options_, rng_states_);
-  }
-
-  XlaCustomCallStatus status;
-  raw_function_(buffer_table_[result_index_], &run_options_, nullptr,
-                buffer_table_, &status, profile_counters_);
-  return !xla::CustomCallStatusGetMessage(&status).has_value();
+  return thunk_run_impl_(buffer_table_, &run_options_, rng_states_);
 }
 
 XlaCompiledCpuFunction::~XlaCompiledCpuFunction() {
