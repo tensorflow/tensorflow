@@ -1042,6 +1042,7 @@ package_group(
 package_group(
     name = "ndarray_tensor_allow_list",
     packages = [
+        "//learning/gemini/gemax/...",
         "//third_party/py/courier/...",
         "//third_party/py/tensorfn/...",
     ],
