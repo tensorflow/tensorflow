@@ -3857,6 +3857,7 @@ INSTANTIATE_TEST_SUITE_P(
     UnboundedDynamism, XlaBuilderUnboundedUnaryOpTest,
     ::testing::ValuesIn<UnaryOpTestCase>(
         {{"f32[?]", "f32[?]", &Abs},
+         {"f32[?]", "f32[?]", [](XlaOp x) { return Acosh(x); }},
          {"f32[?]", "f32[?]", [](XlaOp x) { return Cbrt(x); }},
          {"f32[?]", "f32[?]", &Ceil},
          {"u32[?]", "u32[?]", &Clz},

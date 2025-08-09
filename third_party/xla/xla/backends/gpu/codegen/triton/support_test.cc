@@ -75,6 +75,7 @@ bool DoesOpSupportType(HloOpcode opcode, PrimitiveType type) {
     case HloOpcode::kXor:
     case HloOpcode::kNot:
       return type == PRED || pu::IsIntegralType(type);
+    case HloOpcode::kAcosh:
     case HloOpcode::kAtan2:
     case HloOpcode::kCos:
     case HloOpcode::kExp:

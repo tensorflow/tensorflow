@@ -27,6 +27,10 @@ include "stablehlo/dialect/ChloOps.td"
 // Direct CHLO->MHLO conversions
 //===----------------------------------------------------------------------===//
 
+def : Pat<(CHLO_AcoshOp $v),
+          (MHLO_AcoshOp $v),
+          [], [], (addBenefit 10)>;
+
 def : Pat<(CHLO_ErfOp $v),
           (MHLO_ErfOp $v),
           [], [], (addBenefit 10)>;
