@@ -22,8 +22,10 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/tma_metadata.pb.h"
 
 namespace stream_executor {
@@ -204,6 +206,17 @@ struct TmaMetadata {
     return !(lhs == rhs);
   }
 };
+
+// Returns true if the device supports TMA.
+bool IsTmaAvailableForDevice(
+    const stream_executor::DeviceDescription& device_info);
+
+// Checks TMA's physical constraints for the given tensor and tile properties.
+absl::Status IsTmaCompatible(absl::Span<const int64_t> global_shape,
+                             absl::Span<const int64_t> tile_shape,
+                             absl::Span<const int64_t> tile_strides,
+                             absl::Span<const int64_t> minor_to_major_layout,
+                             int element_byte_size);
 
 }  // namespace gpu
 }  // namespace stream_executor

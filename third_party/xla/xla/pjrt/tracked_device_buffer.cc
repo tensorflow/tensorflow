@@ -52,7 +52,7 @@ namespace xla {
 void BufferSequencingEvent::SetSequencingEvent(EventPool::Handle event,
                                                se::Stream* stream) {
   {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     CHECK(!event_.event());
     event_ = std::move(event);
     CHECK(streams_defined_on_.empty());
@@ -72,7 +72,7 @@ uint64_t BufferSequencingEvent::sequence_number() const {
 }
 
 void BufferSequencingEvent::WaitForEventOnStream(se::Stream* stream) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
 
   // We cannot wait for an event until ThenRecordEvent has been called; on GPU
   // newly created events are deemed to have already happened past.
@@ -93,7 +93,7 @@ void BufferSequencingEvent::WaitForEventOnStream(se::Stream* stream) {
 
 absl::Status BufferSequencingEvent::WaitForEventOnExternalStream(
     std::intptr_t stream) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
 
   // We cannot wait for an event until ThenRecordEvent has been called; on GPU
   // newly created events are deemed to have already happened past.
@@ -117,12 +117,12 @@ bool BufferSequencingEvent::IsPredeterminedErrorOrDefinedOn(
 
   // The set of defined streams is expected to be very small indeed (usually
   // 1-2), so a simple linear scan should be fast enough.
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   return absl::c_find(streams_defined_on_, stream) != streams_defined_on_.end();
 }
 
 bool BufferSequencingEvent::IsComplete() {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
 
   // We cannot wait for an event until ThenRecordEvent has been called; on
   // GPU newly created events are deemed to have already happened past.

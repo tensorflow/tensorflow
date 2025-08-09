@@ -758,6 +758,8 @@ cc_library(
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
     deps = [
         ":tma_metadata_proto_cc",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
@@ -770,6 +772,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -783,6 +786,7 @@ xla_cc_test(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:protobuf",

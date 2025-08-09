@@ -22,6 +22,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "xla/stream_executor/gpu/tma_metadata.pb.h"
 #include "xla/tsl/platform/status_matchers.h"
@@ -290,17 +291,20 @@ TEST(TmaMetadataTest, CreateInvalidBoxDimsFailsGracefully) {
 }
 
 TEST(TmaMetadataTest, CreateInvalidElementStridesFailsGracefully) {
-  auto kExpectedError =
+  auto kOutOfValidRangeError =
       absl_testing::StatusIs(StatusCode::kInvalidArgument,
                              AllOf(HasSubstr("element_strides"),
                                    HasSubstr("must be non-zero and <= 8")));
+  auto kNotContiguousError = absl_testing::StatusIs(
+      StatusCode::kInvalidArgument,
+      HasSubstr("element_strides[0] must be 1 for TMA."));
   constexpr uint64_t kZeroElementStride = 0;
   EXPECT_THAT(TmaDescriptor::Create(/*global_dims=*/{500, 360},
                                     /*global_strides=*/{1600},
                                     /*box_dims=*/{128, 128},
-                                    /*element_strides=*/{kZeroElementStride, 1},
+                                    /*element_strides=*/{1, kZeroElementStride},
                                     /*element_byte_width=*/1),
-              kExpectedError);
+              kOutOfValidRangeError);
   constexpr uint64_t kOverMaxElementStride = 9;
   EXPECT_THAT(
       TmaDescriptor::Create(/*global_dims=*/{500, 360},
@@ -308,7 +312,13 @@ TEST(TmaMetadataTest, CreateInvalidElementStridesFailsGracefully) {
                             /*box_dims=*/{128, 128},
                             /*element_strides=*/{1, kOverMaxElementStride},
                             /*element_byte_width=*/1),
-      kExpectedError);
+      kOutOfValidRangeError);
+  EXPECT_THAT(TmaDescriptor::Create(/*global_dims=*/{500, 360},
+                                    /*global_strides=*/{1600},
+                                    /*box_dims=*/{128, 128},
+                                    /*element_strides=*/{2, 1},
+                                    /*element_byte_width=*/1),
+              kNotContiguousError);
 }
 
 TEST(TmaMetadataTest, CreateInvalidInterleaveSwizzleComboFailsGracefully) {
