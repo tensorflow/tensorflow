@@ -145,7 +145,7 @@ TEST(BasicStringArrayTest, CreateFailureWithInvalidFuture) {
   // Create fails if with invalid future.
   EXPECT_THAT(CreateTestArray(client.get(), Future<BasicStringArray::Buffers>(),
                               /*on_done_with_buffer=*/nullptr),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(BasicStringArrayTest, Destruction) {
@@ -206,10 +206,10 @@ TEST(BasicStringArrayTest, InvalidBuffersAreHandledCorrectly) {
   tsl::Env::Default()->SchedClosure([&]() { promise.Set(buffers); });
 
   EXPECT_THAT(basic_string_array->GetReadyFuture().Await(),
-              StatusIs(absl::StatusCode::kFailedPrecondition));
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
 
   EXPECT_THAT(basic_string_array->buffers().Await(),
-              StatusIs(absl::StatusCode::kFailedPrecondition));
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 TEST(BasicStringArrayTest, Delete) {
@@ -271,7 +271,8 @@ TEST(GetReadyFutureTest, FailureCases) {
   tsl::Env::Default()->SchedClosure(
       [&]() { promise.Set(absl::InternalError("injected error")); });
 
-  EXPECT_THAT(ready_future.Await(), StatusIs(absl::StatusCode::kInternal));
+  EXPECT_THAT(ready_future.Await(),
+              absl_testing::StatusIs(absl::StatusCode::kInternal));
 }
 
 TEST(MakeArrayFromHostBufferTest, SuccessCase) {
@@ -314,7 +315,7 @@ TEST(MakeArrayFromHostBufferTest, FailureCases) {
           single_device_sharding,
           Client::HostBufferSemantics::kImmutableOnlyDuringCall,
           on_done_with_host_buffer),
-      StatusIs(absl::StatusCode::kInvalidArgument));
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 
   // MakeArrayFromHostBuffer should check and fail if the sharding is not a
   // SingleDeviceSharding.
@@ -327,7 +328,7 @@ TEST(MakeArrayFromHostBufferTest, FailureCases) {
                   /*byte_strides=*/std::nullopt, opaque_sharding,
                   Client::HostBufferSemantics::kImmutableOnlyDuringCall,
                   on_done_with_host_buffer),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 
   // MakeArrayFromHostBuffer should check and fail if the requested
   // HostBufferSemantics is not supported.
@@ -340,7 +341,7 @@ TEST(MakeArrayFromHostBufferTest, FailureCases) {
                     data, DType(DType::kString), shape,
                     /*byte_strides=*/std::nullopt, single_device_sharding,
                     host_buffer_semantics, on_done_with_host_buffer),
-                StatusIs(absl::StatusCode::kInvalidArgument));
+                absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
   }
 }
 
@@ -472,7 +473,7 @@ TEST(AssembleArrayFromSingleDeviceArraysTest, FailsWithNonStringArrays) {
   EXPECT_THAT(client->AssembleArrayFromSingleDeviceArrays(
                   Shape({2}), std::move(opaque_sharding),
                   absl::MakeSpan(arrays), ArrayCopySemantics::kAlwaysCopy),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(AssembleArrayFromSingleDeviceArraysTest,
@@ -497,7 +498,7 @@ TEST(AssembleArrayFromSingleDeviceArraysTest,
   EXPECT_THAT(client->AssembleArrayFromSingleDeviceArrays(
                   Shape({2}), std::move(opaque_sharding),
                   absl::MakeSpan(arrays), ArrayCopySemantics::kAlwaysCopy),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(AssembleArrayFromSingleDeviceArraysTest,
@@ -598,8 +599,8 @@ TEST(AssembleArrayFromSingleDeviceArraysTest,
 
   auto buffers_future = basic_string_array->buffers();
   EXPECT_THAT(buffers_future.Await(),
-              StatusIs(absl::StatusCode::kInternal,
-                       HasSubstr("injected from the test")));
+              absl_testing::StatusIs(absl::StatusCode::kInternal,
+                                     HasSubstr("injected from the test")));
 
   // Make sure to wait for the Closure to complete its work and set both
   // promises before returning from the test. The consequent destruction of the
@@ -673,7 +674,7 @@ TEST(DisassembleArrayIntoSingleDeviceArrays, FailsIfTheArrayHasBeenDeleted) {
   EXPECT_THAT(array->DisassembleIntoSingleDeviceArrays(
                   ArrayCopySemantics::kAlwaysCopy,
                   SingleDeviceShardSemantics::kAddressableShards),
-              StatusIs(absl::StatusCode::kFailedPrecondition));
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 TEST(CopyTest, SuccessSingleDeviceShardedArray) {
@@ -763,7 +764,7 @@ TEST(CopyTest, FailsAfterDeletion) {
                           client->MakeDeviceList({devices[1]}));
   EXPECT_THAT(client->CopyArrays(absl::MakeSpan(arrays), std::move(device_list),
                                  MemoryKind(), ArrayCopySemantics::kAlwaysCopy),
-              StatusIs(absl::StatusCode::kFailedPrecondition));
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 TEST(CopyTest, FailsWithDifferentNumbersDevices) {
@@ -782,7 +783,7 @@ TEST(CopyTest, FailsWithDifferentNumbersDevices) {
                           client->MakeDeviceList({devices[0], devices[1]}));
   EXPECT_THAT(client->CopyArrays(absl::MakeSpan(arrays), std::move(device_list),
                                  MemoryKind(), ArrayCopySemantics::kAlwaysCopy),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(CopyTest, NonReadySourceArraySuccessfullyBecomesReadyAfterCopy) {
@@ -857,8 +858,8 @@ TEST(CopyTest, NonReadySourceArrayFailsToBecomeReadyAfterCopy) {
 
   auto buffers_future = basic_string_array->buffers();
   EXPECT_THAT(buffers_future.Await(),
-              StatusIs(absl::StatusCode::kInternal,
-                       HasSubstr("injected from the test")));
+              absl_testing::StatusIs(absl::StatusCode::kInternal,
+                                     HasSubstr("injected from the test")));
 
   // Make sure to wait for the Closure to complete its work and set both
   // promises before returning from the test. The consequent destruction of the
@@ -925,7 +926,7 @@ TEST(FullyReplicatedShardTest, FailsAfterDeletion) {
   array->Delete();
 
   EXPECT_THAT(array->FullyReplicatedShard(ArrayCopySemantics::kAlwaysCopy),
-              StatusIs(absl::StatusCode::kFailedPrecondition));
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 TEST(LayoutTest, Success) {
@@ -995,7 +996,7 @@ TEST(CopyToHostBufferTest, FailsAfterDeletion) {
                                      /*byte_strides=*/std::nullopt,
                                      ArrayCopySemantics::kAlwaysCopy)
                   .Await(),
-              StatusIs(absl::StatusCode::kFailedPrecondition));
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 TEST(CopyToHostBufferTest, FailsWithMultiDeviceShardedArray) {
@@ -1014,7 +1015,7 @@ TEST(CopyToHostBufferTest, FailsWithMultiDeviceShardedArray) {
                                      /*byte_strides=*/std::nullopt,
                                      ArrayCopySemantics::kAlwaysCopy)
                   .Await(),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(CopytoHostBufferTest,
@@ -1073,7 +1074,7 @@ TEST(CopytoHostBufferTest,
   done_readying_single_device_arrays.WaitForNotification();
 
   EXPECT_THAT(copy_completion_future.Await(),
-              StatusIs(absl::StatusCode::kInternal));
+              absl_testing::StatusIs(absl::StatusCode::kInternal));
 }
 
 }  // namespace
