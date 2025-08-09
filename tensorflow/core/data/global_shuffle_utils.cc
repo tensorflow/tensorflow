@@ -69,7 +69,7 @@ absl::Status GlobalShuffleIterator::GetNext(IteratorContext* ctx,
         " which is not globally shuffled."));
   }
 
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   absl::StatusOr<int64_t> shuffled_index =
       absl::NotFoundError("Default not found");
 
@@ -98,7 +98,7 @@ absl::Status GlobalShuffleIterator::GetNext(IteratorContext* ctx,
 absl::Status GlobalShuffleIterator::Save(
     const std::string& parent_iterator_prefix, SerializationContext* ctx,
     IteratorStateWriter* writer) {
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   TF_RETURN_IF_ERROR(writer->WriteScalar(
       parent_iterator_prefix, kGlobalShuffleIteratorNextIndex, element_count_));
   return absl::OkStatus();
@@ -113,7 +113,7 @@ absl::Status GlobalShuffleIterator::Restore(
         dataset_->DebugString(), " which is not globally shuffled."));
   }
 
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   TF_RETURN_IF_ERROR(reader->ReadScalar(parent_iterator_prefix,
                                         kGlobalShuffleIteratorNextIndex,
                                         &element_count_));
