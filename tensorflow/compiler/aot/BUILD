@@ -135,6 +135,7 @@ cc_library(
         "@local_xla//xla/service/cpu:cpu_aot_compilation_result",
         "@local_xla//xla/service/cpu:cpu_compiler",
         "@local_xla//xla/service/cpu:cpu_executable",
+        "@local_xla//xla/service/cpu:executable_proto_cc",
         "@local_xla//xla/stream_executor:platform",
         "@local_xla//xla/stream_executor:platform_manager",
     ],
@@ -150,16 +151,19 @@ tf_cc_test(
     defines = if_llvm_x86_available(["TF_LLVM_X86_AVAILABLE=1"]),
     deps = [
         ":tfcompile_lib",
+        "//tensorflow/compiler/tf2xla:tf2xla_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:resource_loader",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",  # fixdeps: keep
         "@local_xla//xla:cpu_function_runtime",
         "@local_xla//xla:shape_util",
+        "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/service/cpu:cpu_aot_compilation_result",
     ] + if_llvm_x86_available([
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
@@ -359,6 +363,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:lib",
+        "//third_party/protobuf:protobuf_lite",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -423,6 +428,8 @@ cc_library(
         "//tensorflow/compiler/tf2xla:xla_context",
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/status",
     ],
     alwayslink = 1,
 )
