@@ -320,6 +320,9 @@ class AsyncValue {
   // starting for the head of the linked list.
   void RunWaiters(WaiterListNode* list);
 
+  // Slow path for when there are many waiters.
+  static void RunWaitersSlow(WaiterListNode* list);
+
   // IsTypeIdCompatible returns true if the type value stored in this AsyncValue
   // instance can be safely cast to `T`. This is a conservative check. I.e.
   // IsTypeIdCompatible may return true even if the value cannot be safely cast
@@ -1083,11 +1086,23 @@ inline void AsyncValue::NotifyAvailable(State available_state) {
 }
 
 inline void AsyncValue::RunWaiters(WaiterListNode* list) {
+  constexpr int kNumFastPathWaiters = 8;
+  // Collect nodes into waiter_list so that they run in order.
+  std::array<WaiterListNode*, kNumFastPathWaiters> waiter_list;
+  size_t n_waiters = 0;
   while (ABSL_PREDICT_FALSE(list)) {
-    WaiterListNode* node = list;
+    if (ABSL_PREDICT_FALSE(n_waiters >= kNumFastPathWaiters)) {
+      RunWaitersSlow(list);
+      break;
+    }
+    waiter_list[n_waiters] = list;
+    ++n_waiters;
+    list = list->next;
+  }
+  while (n_waiters) {
+    --n_waiters;
+    WaiterListNode* node = waiter_list[n_waiters];
     (*node)();
-    list = node->next;
-
     // Waiter destruction may perform work that needs to run in the same context
     // that created the waiter.
     WithContext wc(std::move(node->context));
