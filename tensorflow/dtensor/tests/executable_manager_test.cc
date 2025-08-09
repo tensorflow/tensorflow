@@ -30,7 +30,6 @@ namespace {
 
 using ::testing::HasSubstr;
 using ::tsl::error::UNAVAILABLE;
-using ::tsl::testing::StatusIs;
 
 class ExecutableManagerTest : public ::testing::Test {
  protected:
