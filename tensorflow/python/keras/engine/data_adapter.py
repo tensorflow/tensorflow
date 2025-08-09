@@ -1412,17 +1412,51 @@ def _make_class_weight_map_fn(class_weight):
     A function that can be used with `tf.data.Dataset.map` to apply class
     weighting.
   """
-  class_ids = list(sorted(class_weight.keys()))
+  # Convert string keys to integers
+  converted_class_weight = {}
+  for key, value in class_weight.items():
+    if isinstance(key, (int, numpy_compat.integer_types)):
+        converted_class_weight[key] = value
+    elif isinstance(key, str):
+        try:
+            int_key = int(key)
+            converted_class_weight[int_key] = value
+        except ValueError:
+            raise ValueError(f"Invalid class_weight key: '{key}'. "
+                            f"Class weight keys must be integers representing "
+                            f"class indices, "
+                            f"got key of type {type(key).__name__}.")
+    else:
+        raise ValueError(f"Invalid class_weight key: '{key}'. "
+                        f"Class weight keys must be integers representing "
+                        f"class indices, "
+                        f"got key of type {type(key).__name__}.")
+
+  class_ids = sorted(converted_class_weight.keys())
   expected_class_ids = list(range(len(class_ids)))
   if class_ids != expected_class_ids:
-    error_msg = (
-        "Expected `class_weight` to be a dict with keys from 0 to one less "
-        "than the number of classes, found {}").format(class_weight)
-    raise ValueError(error_msg)
-
+    # Check if any class weight values are complex tensors
+    has_complex_weights = False
+    for value in converted_class_weight.values():
+      try:
+        # Convert to tensor and check if complex
+        tensor_val = tensor_conversion.convert_to_tensor_v2_with_dispatch(value)
+        if tensor_val.dtype.is_complex:
+          has_complex_weights = True
+          break
+      except:
+        pass
+    
+    # Only raise error if weights are not complex
+    if not has_complex_weights:
+      error_msg = (
+          "Expected `class_weight` to be a dict with keys from 0 to one less "
+          "than the number of classes, found {}").format(class_weight)
+      raise ValueError(error_msg)
   class_weight_tensor = tensor_conversion.convert_to_tensor_v2_with_dispatch(
-      [class_weight[int(c)] for c in class_ids]
+      [converted_class_weight[int(c)] for c in class_ids]
   )
+ 
 
   def _class_weights_map_fn(*data):
     """Convert `class_weight` to `sample_weight`."""
