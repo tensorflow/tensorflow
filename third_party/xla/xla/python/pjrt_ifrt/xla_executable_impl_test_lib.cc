@@ -149,7 +149,7 @@ TEST(LoadedExecutableImplTest, GetDonatableInputIndices) {
   }
 
   EXPECT_THAT(donatable_input_indices,
-              IsOkAndHolds(UnorderedElementsAre(0, 2)));
+              absl_testing::IsOkAndHolds(UnorderedElementsAre(0, 2)));
 }
 
 TEST(LoadedExecutableImplTest, CompileAndExecute) {
