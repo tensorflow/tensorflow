@@ -20,9 +20,11 @@ limitations under the License.
 #include <stdlib.h>
 #include <string.h>
 
+#include <cstdint>
 #include <memory>
 
 #include "absl/base/casts.h"
+#include "absl/log/check.h"
 #include "jpeglib.h"  // from @libjpeg_turbo
 #include "tensorflow/core/lib/jpeg/jpeg_handle.h"
 #include "tensorflow/core/platform/env.h"
