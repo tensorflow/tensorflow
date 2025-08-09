@@ -67,7 +67,7 @@ RemoteProfilerSessionManager::~RemoteProfilerSessionManager() {
 }
 
 absl::Status RemoteProfilerSessionManager::Init() {
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   VLOG(1) << "SessionManager initializing.";
 
   const absl::Time session_created_ts =
@@ -103,7 +103,7 @@ absl::Status RemoteProfilerSessionManager::Init() {
 
 std::vector<RemoteProfilerSessionManager::Response>
 RemoteProfilerSessionManager::WaitForCompletion() {
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   std::vector<RemoteProfilerSessionManager::Response> remote_responses(
       clients_.size());
 
