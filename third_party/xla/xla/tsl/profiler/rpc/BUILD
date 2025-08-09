@@ -28,6 +28,7 @@ cc_library(
         "//tensorflow_serving/model_servers:__pkg__",
         "//tensorflow/python/profiler/internal:__pkg__",
         "//third_party/xprof/pywrap:__pkg__",
+        "//xla/tsl/profiler:friends",
     ]),
     deps = [
         "//xla/tsl/platform:env",
