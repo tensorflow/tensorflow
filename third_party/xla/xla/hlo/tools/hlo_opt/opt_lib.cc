@@ -143,7 +143,7 @@ static ProviderMap& GetProviderMap() {
 
 /*static*/ void OptProvider::RegisterForPlatform(
     std::string platform, std::unique_ptr<OptProvider> translate_provider) {
-  absl::MutexLock l(&provider_mu);
+  absl::MutexLock l(provider_mu);
   CHECK(!GetProviderMap().contains(platform));
   absl::StatusOr<std::string> canonical_name =
       xla::PlatformUtil::CanonicalPlatformName(platform);
@@ -153,7 +153,7 @@ static ProviderMap& GetProviderMap() {
 
 /*static*/ absl::StatusOr<OptProvider*> OptProvider::GetProviderForPlatform(
     std::string platform) {
-  absl::MutexLock l(&provider_mu);
+  absl::MutexLock l(provider_mu);
 
   TF_ASSIGN_OR_RETURN(std::string canonical_name,
                       xla::PlatformUtil::CanonicalPlatformName(platform));
