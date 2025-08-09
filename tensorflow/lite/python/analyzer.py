@@ -15,6 +15,7 @@
 """This tool analyzes a TensorFlow Lite graph."""
 
 import os
+from tensorflow.python.util import deprecation
 
 # pylint: disable=g-import-not-at-top
 if not os.path.splitext(__file__)[0].endswith(
@@ -61,6 +62,8 @@ class ModelAnalyzer():
   """
 
   @staticmethod
+  @deprecation.deprecated_arg_value(
+      None, "GPU compatibility check is deprecated.", "gpu_compatibility")
   def analyze(model_path=None,
               model_content=None,
               gpu_compatibility=False,
@@ -94,6 +97,9 @@ class ModelAnalyzer():
       print("=== TFLite ModelAnalyzer ===\n")
       tflite_model = model_content
       input_is_filepath = False
+
+    if gpu_compatibility:
+      print("Skipping GPU compatibility check as it is deprecated.\n")
 
     if kwargs.get("experimental_use_mlir", False):
       print(
