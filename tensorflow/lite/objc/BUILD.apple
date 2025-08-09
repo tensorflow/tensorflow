@@ -11,6 +11,7 @@ package(
     licenses = ["notice"],
 )
 
+# TODO: b425991613 - Provide a way to disable CoreML Delegate with `--define=use_coreml_delegate=0`.
 SOURCES = glob([
     "sources/*.h",
     "sources/*.m",

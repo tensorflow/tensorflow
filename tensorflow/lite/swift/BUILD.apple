@@ -93,6 +93,30 @@ swift_library(
     ],
 )
 
+swift_library(
+    name = "TensorFlowLiteMetalDelegate",
+    testonly = 1,
+    srcs = glob(
+        [
+            "Sources/*.swift",
+        ],
+        exclude = [
+            "Sources/CoreMLDelegate.swift",
+        ],
+    ),
+    linkopts = [
+        "-Wl,-weak_framework,Metal",
+    ],
+    module_name = "TensorFlowLite",
+    tags = TFL_DEFAULT_TAGS + ["builder_default_ios_arm64"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu:metal_delegate",
+        "//tensorflow/lite/ios:tensorflow_lite_c",
+        "//third_party/apple_frameworks:Darwin",
+        "//third_party/apple_frameworks:Foundation",
+    ],
+)
+
 # bazel build -c opt --config=ios_fat //tensorflow/lite/swift:TensorFlowLite_framework
 ios_static_framework(
     name = "TensorFlowLite_framework",
@@ -146,7 +170,7 @@ swift_library(
     tags = TFL_DEFAULT_TAGS + ["nobuilder"],
     deps = [
         ":Resources",
-        ":TensorFlowLiteAllDelegates",
+        ":TensorFlowLiteMetalDelegate",  # The test only needs Metal delegate.
     ],
 )
 
