@@ -115,7 +115,7 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
   ~Array() override { Destruct(rpc_helper_.get(), handle_); }
 
   absl::StatusOr<ArrayHandle> GetHandle(ArrayCopySemantics semantics) {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     if (deleted_ == DeletionState::kDeleted) {
       return absl::InvalidArgumentError("Array already deleted.");
     }
@@ -132,7 +132,7 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
   // synchronous RPC to the proxy-server. To avoid such performance overhead,
   // prefer using `GetHandle(semantics)` whenever the semantics are known.
   absl::StatusOr<ArrayHandle> GetHandleUnknownIfBeingDonated() {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     if (deleted_ == DeletionState::kDeleted) {
       return absl::InvalidArgumentError("Array already deleted.");
     }

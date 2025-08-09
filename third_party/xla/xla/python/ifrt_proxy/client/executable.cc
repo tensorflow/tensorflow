@@ -291,7 +291,7 @@ class LoadedExecutable::OutputSpecCache {
 
   // Returns the cached output spec if already cached, and std::nullopt if not.
   std::optional<absl::Span<const ArraySpec>> Retrieve() {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     if (!data_.has_value()) {
       return std::nullopt;
     }
@@ -304,7 +304,7 @@ class LoadedExecutable::OutputSpecCache {
   absl::Status Cache(const tsl::protobuf::RepeatedPtrField<
                      LoadedExecutableExecuteResponse_Output>& outputs) {
     {
-      absl::MutexLock l(&mu_);
+      absl::MutexLock l(mu_);
       if (data_.has_value()) {
         return absl::OkStatus();
       }
@@ -320,7 +320,7 @@ class LoadedExecutable::OutputSpecCache {
                                /*sharding=*/std::move(sharding)});
     }
     {
-      absl::MutexLock l(&mu_);
+      absl::MutexLock l(mu_);
       if (!data_.has_value()) {
         data_.emplace(std::move(data));
       }
