@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_phase_compile_extension.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/proto/pjrt_partial_program.pb.h"
 
 // This file defines the C++ convenience wrappers and internal functions for
 // the PJRT Phase Compile C API extension. It provides higher-level interfaces
