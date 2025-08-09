@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/hash/hash_testing.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
