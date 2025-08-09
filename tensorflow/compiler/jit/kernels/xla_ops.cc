@@ -431,9 +431,13 @@ absl::Status CompileToLocalExecutable(
 
   *client = static_cast<xla::LocalClient*>(xla_device_compiler->client());
 
+  const std::string dump_dir =
+      ctx->session_config()
+          ? ctx->session_config()->experimental().tf2xla_dump_dir()
+          : "";
   XlaCompiler::Options options = GenerateCompilerOptions(
       *xla_device_compiler, *ctx->function_library(), ctx->device(),
-      GetStream(ctx), platform_info, has_ref_vars);
+      GetStream(ctx), platform_info, has_ref_vars, dump_dir);
 
   XlaCompiler::CompileOptions compile_options =
       GenerateCompileOptions(has_ref_vars, may_alias_resource_update);

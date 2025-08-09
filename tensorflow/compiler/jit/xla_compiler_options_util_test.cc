@@ -267,6 +267,48 @@ TEST_F(XlaCompilerOptionsTest, XlaOptions) {
   EXPECT_EQ(options.shape_determination_fns.layout_preference_fn(
                 TensorShape(), DT_FLOAT, std::nullopt),
             tensorflow::XlaLayoutPreference::kTpuPreferLinearLayout);
+  EXPECT_EQ(options.dump_dir, "");
+}
+
+TEST_F(XlaCompilerOptionsTest, XlaOptionsWithDumpDir) {
+  device_setup_.AddDevicesAndSetUp({DEVICE_XLA_GPU});
+  Device* device = device_setup_.GetDevice(DEVICE_XLA_GPU);
+
+  xla::LocalClient* client = xla::ClientLibrary::LocalClientOrDie();
+  DeviceType device_type = DeviceType(DEVICE_XLA_GPU);
+  DeviceType compilation_device_type = DeviceType(DEVICE_GPU_XLA_JIT);
+
+  auto xla_device_compiler =
+      CreateXlaDeviceCompiler(compilation_device_type, client);
+  core::ScopedUnref xla_device_compiler_ref(xla_device_compiler);
+
+  se::Platform::Id platform_id = se::host::kHostPlatformId;
+  auto xla_device_metadata = CreateXlaDeviceMetadata(compilation_device_type);
+  std::shared_ptr<se::DeviceMemoryAllocator> custom_allocator;
+  XlaPlatformInfo platform_info(
+      device_type, platform_id, xla_device_metadata.get(),
+      /*pjrt_device_metadata=*/nullptr, custom_allocator);
+
+  XlaCompiler::Options options = GenerateCompilerOptions(
+      *xla_device_compiler, *device_setup_.flr(), device, nullptr,
+      platform_info, false, "/some/dump/dir");
+
+  EXPECT_EQ(options.device_type, compilation_device_type);
+  EXPECT_NE(options.flib_def, nullptr);
+  EXPECT_EQ(options.graph_def_version, TF_GRAPH_DEF_VERSION);
+  EXPECT_TRUE(options.allow_cpu_custom_calls);
+  EXPECT_NE(options.device_allocator, nullptr);
+  EXPECT_FALSE(options.alias_passthrough_params);
+  // Check if options have the supplied shape determination functions set.
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto shape, options.shape_determination_fns.shape_representation_fn(
+                      TensorShape(), DT_FLOAT, false,
+                      tensorflow::XlaLayoutPreference::kTpuPreferLinearLayout));
+  EXPECT_EQ(shape, xla::Shape());
+  EXPECT_EQ(options.shape_determination_fns.layout_preference_fn(
+                TensorShape(), DT_FLOAT, std::nullopt),
+            tensorflow::XlaLayoutPreference::kTpuPreferLinearLayout);
+  EXPECT_EQ(options.dump_dir, "/some/dump/dir");
 }
 
 TEST_F(XlaCompilerOptionsTest, XlaOptionsHasRefVarsNoXlaDeviceMetadata) {
@@ -311,6 +353,7 @@ TEST_F(XlaCompilerOptionsTest, XlaOptionsHasRefVarsNoXlaDeviceMetadata) {
   EXPECT_EQ(options.shape_determination_fns.layout_preference_fn(
                 TensorShape(), DT_FLOAT, std::nullopt),
             tensorflow::XlaLayoutPreference::kNoPreference);
+  EXPECT_EQ(options.dump_dir, "");
 }
 
 TEST_F(XlaCompilerOptionsTest, TfRtTpuOptions) {

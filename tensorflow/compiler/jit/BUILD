@@ -773,6 +773,13 @@ tf_proto_library(
     visibility = ["//visibility:public"],
 )
 
+tf_proto_library(
+    name = "tf_graph_to_hlo_compiler_proto",
+    srcs = ["tf_graph_to_hlo_compiler.proto"],
+    protodeps = tf_additional_all_protos(),
+    visibility = ["//visibility:public"],
+)
+
 cc_library(
     name = "device_compiler",
     hdrs = ["device_compiler.h"],
@@ -1552,13 +1559,19 @@ cc_library(
     srcs = ["tf_graph_to_hlo_compiler.cc"],
     hdrs = ["tf_graph_to_hlo_compiler.h"],
     deps = [
+        ":tf_graph_to_hlo_compiler_proto_cc",
         ":tf_to_hlo_compiler",
         "//tensorflow/compiler/tf2xla:xla_argument",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:path",
+        "@local_xla//xla/tsl/lib/strings:proto_serialization",
     ],
 )
 
