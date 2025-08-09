@@ -1,4 +1,4 @@
-// RUN: stablehlo-quant-opt %s -split-input-file -stablehlo-lift-quantizable-spots-as-functions | FileCheck %s
+// RUN: stablehlo-quant-opt %s -split-input-file -tf-stablehlo-lift-quantizable-spots-as-functions | FileCheck %s
 
 // CHECK-LABEL: @conv_fn(
 // CHECK-SAME:          %[[ARG_0:.*]]: tensor<1x3x3x4xf32>

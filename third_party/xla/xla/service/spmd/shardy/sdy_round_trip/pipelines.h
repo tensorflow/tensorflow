@@ -32,7 +32,10 @@ namespace sdy {
 // JAX to integrate with Shardy while the Shardy team works on a more
 // long-term solution moving the HLO passes either after propagation or into
 // MLIR (see b/335666088). So this pass will eventually be removed.
-void addSdyRoundTripExportPipeline(mlir::OpPassManager& pm);
+//
+// If `keepMeshesInlined` is true, the pipeline will not lift inlined meshes.
+void addSdyRoundTripExportPipeline(mlir::OpPassManager& pm,
+                                   bool keepMeshesInlined = false);
 
 // Add the xla-sdy-round-trip-import-pipeline in `pm`. The pipeline,
 // including a sequence of passes, imports an StableHLO module into the
@@ -41,7 +44,8 @@ void addSdyRoundTripExportPipeline(mlir::OpPassManager& pm);
 // The module is assumed to have `kShardingRoundTripAttr` and
 // `kMeshesRoundTripAttr`.
 void addSdyRoundTripImportPipeline(mlir::OpPassManager& pm,
-                                   bool enableConstantImport = true);
+                                   bool enableConstantImport = true,
+                                   bool importOnlyUninlineableFuncCalls = true);
 
 // Register the xla-sdy-round-trip-export-pipeline.
 void registerSdyRoundTripExportPipeline();

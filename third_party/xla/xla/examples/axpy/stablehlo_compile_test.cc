@@ -104,15 +104,15 @@ TEST_F(StableHloAxpyTest, UsePjrtCppWrapper) {
 
 TEST_F(StableHloAxpyTest, RegisterAPIAndRetrieve) {
   const char* device = "MyFancyCPUDevice";
-  EXPECT_THAT(GetCApiClient(device), ::testing::Not(::tsl::testing::IsOk()));
-  EXPECT_THAT(pjrt::PjrtApi(device), ::testing::Not(::tsl::testing::IsOk()));
+  EXPECT_THAT(GetCApiClient(device), ::testing::Not(absl_testing::IsOk()));
+  EXPECT_THAT(pjrt::PjrtApi(device), ::testing::Not(absl_testing::IsOk()));
 
   const PJRT_Api* c_api = GetPjrtApi();
   EXPECT_THAT(c_api, NotNull());
   TF_EXPECT_OK(pjrt::SetPjrtApi(device, c_api));
 
-  EXPECT_THAT(GetCApiClient(device), ::tsl::testing::IsOk());
-  EXPECT_THAT(pjrt::PjrtApi(device), ::tsl::testing::IsOk());
+  EXPECT_THAT(GetCApiClient(device), absl_testing::IsOk());
+  EXPECT_THAT(pjrt::PjrtApi(device), absl_testing::IsOk());
 }
 
 TEST_F(StableHloAxpyTest, CompileCPUTestProgram) {
@@ -123,11 +123,11 @@ TEST_F(StableHloAxpyTest, CompileCPUTestProgram) {
 
   // Use our client to compile our StableHLO program to an executable.
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
-                          client->Compile(*program, CompileOptions{}));
+                          client->CompileAndLoad(*program, CompileOptions{}));
 }
 
 TEST_F(StableHloAxpyTest, CompileAndExecuteCPUTestProgram) {
-  // TODO(masonchang): Use GetCpuClient() once the C API supports
+  // TODO(b/375660658): Use GetCpuClient() once the C API supports
   // BufferFromHostLiteral.
   xla::CpuClientOptions options;
   options.cpu_device_count = 4;
@@ -139,7 +139,7 @@ TEST_F(StableHloAxpyTest, CompileAndExecuteCPUTestProgram) {
 
   // Use our client to compile our StableHLO program to an executable.
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
-                          client->Compile(*program, CompileOptions{}));
+                          client->CompileAndLoad(*program, CompileOptions{}));
 
   // Create inputs to our computation.
   auto alpha_literal = xla::LiteralUtil::CreateR0<float>(3.14f);

@@ -19,15 +19,14 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
-#include <vector>
 
-#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
+#include "absl/types/span.h"
+#include "xla/codegen/hlo_fusion_spec.h"
+#include "xla/codegen/ir_emission_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla {
@@ -43,9 +42,9 @@ class HloFusionAnalysis {
     kReduction,
     kTranspose,
     kConcatenate,
-    kInputSlices,
     kScatter,
     kCuDnn,
+    kDynamicMemcpy,
   };
 
   // Precomputed information about inputs (arguments) and outputs (roots) of the
@@ -70,25 +69,25 @@ class HloFusionAnalysis {
                                   const HloInstruction& consumer,
                                   const se::DeviceDescription& device_info);
 
-  const HloFusionAdaptor& fusion() const { return *fusion_; }
+  const HloFusionAdaptor& fusion() const { return fusion_spec_.fusion(); }
+  const HloFusionSpec& fusion_spec() const { return fusion_spec_; }
 
-  const absl::InlinedVector<HloInstructionAdaptor, 2>& fusion_roots() const {
-    return fusion_roots_;
+  absl::Span<const HloInstructionAdaptor> fusion_roots() const {
+    return fusion_spec_.fusion_roots();
   }
   HloInstructionAdaptor fusion_root(int64_t i) const {
-    return fusion_roots_[i];
+    return fusion_spec_.fusion_root(i);
   }
-  int64_t fusion_root_count() const { return fusion_roots_.size(); }
+  int64_t fusion_root_count() const { return fusion_spec_.fusion_root_count(); }
 
-  const absl::InlinedVector<HloInstructionAdaptor, 2>& fusion_heroes() const {
-    return fusion_heroes_;
+  absl::Span<const HloInstructionAdaptor> fusion_heroes() const {
+    return fusion_spec_.fusion_heroes();
   }
   HloInstructionAdaptor fusion_hero(int64_t i) const {
-    return fusion_heroes_[i];
+    return fusion_spec_.fusion_hero(i);
   }
 
-  // Determines the fusion type for the emitter.
-  EmitterFusionKind GetEmitterFusionKind() const;
+  EmitterFusionKind emitter_fusion_kind() const { return emitter_fusion_kind_; }
 
   // Returns the hero reduction of the computation.
   const HloInstruction* FindHeroReduction() const;
@@ -99,8 +98,8 @@ class HloFusionAnalysis {
     return fusion_backend_config_;
   }
 
-  // Returns the tiled transpose description. Requires that GetEmitterFusionKind
-  // returns kTranspose.
+  // Returns the tiled transpose description. Requires that emitter_fusion_kind_
+  // is kTranspose.
   const TransposeDescription& tiled_transpose() const {
     CHECK(tiled_transpose_.has_value());
     return *tiled_transpose_;
@@ -112,9 +111,8 @@ class HloFusionAnalysis {
 
  private:
   HloFusionAnalysis(FusionBackendConfig fusion_backend_config,
-                    std::unique_ptr<HloFusionAdaptor> fusion,
-                    absl::InlinedVector<HloInstructionAdaptor, 2> fusion_roots,
-                    absl::InlinedVector<HloInstructionAdaptor, 2> fusion_heroes,
+                    HloFusionSpec fusion_spec,
+                    EmitterFusionKind emitter_fusion_kind,
                     const se::DeviceDescription* device_info,
                     std::optional<TransposeDescription> tiled_transpose,
                     InputOutputInfo input_output_info);
@@ -123,16 +121,8 @@ class HloFusionAnalysis {
 
   FusionBackendConfig fusion_backend_config_;
 
-  // Owning pointer to the fusion adaptor object.
-  std::unique_ptr<HloFusionAdaptor> fusion_;
-
-  // A list of all roots of the fusion. The instruction adaptors have `fusion_`
-  // as their parent and should not outlive `fusion_`.
-  absl::InlinedVector<HloInstructionAdaptor, 2> fusion_roots_;
-
-  // A list of all heroes of the fusion. The instruction adaptors have `fusion_`
-  // as their parent and should not outlive `fusion_`.
-  absl::InlinedVector<HloInstructionAdaptor, 2> fusion_heroes_;
+  HloFusionSpec fusion_spec_;
+  EmitterFusionKind emitter_fusion_kind_;
 
   const se::DeviceDescription* device_info_;
   std::optional<TransposeDescription> tiled_transpose_;

@@ -38,8 +38,12 @@ namespace xla::gpu {
 
 GpuClique::GpuClique(
     GpuCliqueKey key, std::optional<CliqueIds> ids,
-    absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators)
-    : Clique(std::move(communicators)), key_(key), ids_(ids) {}
+    absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators,
+    bool peer_access_enabled)
+    : Clique(std::move(communicators)),
+      key_(key),
+      ids_(ids),
+      peer_access_enabled_(peer_access_enabled) {}
 
 std::string GpuClique::DebugString() const {
   std::string out = absl::StrFormat(
@@ -65,18 +69,35 @@ absl::Status GpuClique::HealthCheck() const {
   return health_check;
 }
 
+absl::Status GpuClique::Abort() {
+  VLOG(1) << "Aborting GpuClique " << key().ToString();
+  absl::Status result = absl::OkStatus();
+  ForEachComm([this, &result](RankId rank, Communicator* comm) {
+    if (absl::Status s = comm->Abort(); !s.ok()) {
+      LOG(ERROR) << "Error aborting GPU communicator (rank " << rank
+                 << ") for clique " << key().ToString() << ": " << s;
+      result = std::move(s);
+    }
+  });
+  return result;
+}
+
 std::string GpuClique::LockableName::ToString(const GpuClique& clique) {
   return absl::StrFormat("lockable clique %s", clique.key().ToString());
 }
 
 LockableGpuClique::LockableGpuClique(
     GpuCliqueKey clique_key, std::optional<CliqueIds> clique_ids,
-    absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators)
-    : Lockable(std::move(clique_key), clique_ids, std::move(communicators)) {}
+    absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators,
+    bool peer_access_enabled)
+    : Lockable(std::move(clique_key), clique_ids, std::move(communicators),
+               peer_access_enabled) {}
 
 absl::Status LockableGpuClique::HealthCheck() const {
   return value().HealthCheck();
 }
+
+absl::Status LockableGpuClique::Abort() { return mutable_value().Abort(); }
 
 std::string LockableGpuClique::DebugString() const {
   return absl::StrFormat("LockableGpuClique: %s", value().DebugString());

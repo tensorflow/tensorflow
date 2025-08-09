@@ -15,29 +15,33 @@ limitations under the License.
 
 #include "xla/service/conditional_code_motion.h"
 
+#include <cstdint>
 #include <optional>
 #include <sstream>
 #include <string>
-#include <utility>
 
 #include <gmock/gmock.h>
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/test.h"
+#include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal_util.h"
+#include "xla/service/hlo_cse.h"
 #include "xla/shape_util.h"
-#include "xla/test.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/types.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 namespace conditional_opt {
 
-using ConditionalCodeMotionTest = HloTestBase;
+using ConditionalCodeMotionTest = HloHardwareIndependentTestBase;
 namespace op = xla::testing::opcode_matchers;
 
 TEST_F(ConditionalCodeMotionTest, MoveSubsetTupleOut) {
@@ -78,6 +82,46 @@ ENTRY main {
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, AllOf(op::Tuple(op::Convert(), op::GetTupleElement())));
+}
+TEST_F(ConditionalCodeMotionTest, DoNotMoveLargeIntoOutfeed) {
+  absl::string_view hlo_string =
+      R"(
+HloModule RemoveDotOpOut
+
+on_true {
+  arg_tuple.1 = (f32[93184,4]{1,0}) parameter(0)
+  get-tuple-element.1 = f32[93184,4]{1,0} get-tuple-element(arg_tuple.1), index=0
+  reshape.8493 = f32[2,512,364]{2,1,0} reshape(f32[93184,4]{1,0} %get-tuple-element.1)
+  token0 = token[] after-all()
+  outfeed = token[] outfeed(reshape.8493, token0), outfeed_shape=f32[2,512,364]{2,1,0}
+  %convert.2894 = bf16[2,512,364]{2,1,0} convert(f32[2,512,364]{2,1,0} %reshape.8493)
+  ROOT %tuple.1 = ( bf16[2,512,364]{2,1,0}, f32[2,512,364]{2,1,0}) tuple(%convert.2894, %reshape.8493)
+}
+
+on_false {
+  %arg_tuple.2 = (f32[93184,4]{1,0}) parameter(0)
+  %get-tuple-element.3 = f32[93184,4]{1,0} get-tuple-element(%arg_tuple.2), index=0
+  %reshape.9717 = f32[2,512,364]{2,1,0} reshape(f32[93184,4]{1,0} %get-tuple-element.3)
+  %add = f32[2,512,364]{2,1,0} add(f32[2,512,364]{2,1,0} %reshape.9717, f32[2,512,364]{2,1,0} %reshape.9717)
+  %convert.3604 = bf16[2,512,364]{2,1,0} convert(f32[2,512,364]{2,1,0} %reshape.9717), metadata={op_type="Cast" op_name="gradients/Cast_125_grad/Cast"}
+  ROOT %tuple.2 = (bf16[2,512,364]{2,1,0}, f32[2,512,364]{2,1,0}) tuple(%convert.3604, %add)
+}
+
+ENTRY main {
+  p0 = f32[93184,512]{1,0} parameter(0)
+  p1 = f32[93184,512]{1,0} parameter(1)
+  x = f32[93184,4]{1,0} slice(p0), slice={[0:93184], [200:204]}
+  y = f32[93184,4]{1,0} slice(p1), slice={[0:93184], [200:204]}
+  arg_tuple.11 = (f32[93184,4]{1,0}) tuple(x)
+  arg_tuple.22 = (f32[93184,4]{1,0}) tuple(y)
+  pred.1 = pred[] parameter(2)
+  ROOT conditional = (bf16[2,512,364]{2,1,0}, f32[2,512,364]{2,1,0}) conditional(pred.1, arg_tuple.11, arg_tuple.22), true_computation=on_true, false_computation=on_false
+}
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  // not modifying large conditionals with outfeeds takes effect.
+  ConditionalCodeMotion pass(true, /*allow_memory_increase=*/false);
+  ASSERT_FALSE(pass.Run(&*module).value());
 }
 
 TEST_F(ConditionalCodeMotionTest, VerifyConditionalAnalysisWithWhileTuple) {
@@ -890,6 +934,8 @@ ENTRY main {
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   ConditionalCodeMotion pass(true, true);
+  TF_EXPECT_OK(HloCSE(true).Run(&*module));
+  TF_EXPECT_OK(HloDCE().Run(&*module));
   ASSERT_TRUE(pass.Run(&*module).value());
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Tuple(op::GetTupleElement(op::Conditional()),
@@ -1675,6 +1721,8 @@ ENTRY %main (pred.1: pred[], tuple.1: (f32[10]), tuple.2: (f32[10])) -> (f32[10]
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
+  TF_EXPECT_OK(HloCSE(true).Run(&*module));
+  TF_EXPECT_OK(HloDCE().Run(&*module));
   ConditionalCodeMotion pass(true, true);
   TF_ASSERT_OK_AND_ASSIGN(bool changed, pass.Run(module.get()));
   ASSERT_TRUE(changed);
@@ -1942,12 +1990,15 @@ HloModule xla_computation
 }
 
 ENTRY %xla_computation  {
-  %parameter.0 = f32[] parameter(0)
+  %parameter.0 = f32[5] parameter(0)
+  %offset = s32[] parameter(3)
+  %ds = f32[1] dynamic-slice(%parameter.0, %offset), dynamic_slice_sizes={1}
+  %r = f32[] reshape(%ds)
   %parameter.1 = ((f32[], f32[])) parameter(1)
   %parameter.2 = pred[] parameter(2)
   %constant.13862 = f32[] constant(0.00025)
   %constant.13863 = f32[] constant(0.97)
-  %floor.145 = f32[]{:T(256)} floor(f32[]{:T(256)} %parameter.0)
+  %floor.145 = f32[]{:T(256)} floor(f32[]{:T(256)} %r)
   %power.1 = f32[] power(f32[] %constant.13863, f32[]{:T(256)} %floor.145)
   %multiply.13463 = f32[] multiply(f32[] %constant.13862, f32[] %power.1)
   %tuple.87 = (f32[]) tuple(f32[] %multiply.13463)
@@ -1961,7 +2012,7 @@ ENTRY %xla_computation  {
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Conditional());
   EXPECT_EQ(root->branch_computation(0)->instruction_count(), 7);
-  EXPECT_EQ(root->branch_computation(1)->instruction_count(), 9);
+  EXPECT_EQ(root->branch_computation(1)->instruction_count(), 12);
   // Expect the power and multiply from ENTRY are moved to the false branch of
   // conditional.1.
   const HloInstruction* conditional_false =
@@ -1971,10 +2022,14 @@ ENTRY %xla_computation  {
       op::Tuple(
           op::Multiply(
               op::Constant(),
-              op::Power(op::Constant(), op::Floor(op::GetTupleElement()))),
+              op::Power(op::Constant(),
+                        op::Floor(op::Reshape(op::DynamicSlice(
+                            op::GetTupleElement(), op::GetTupleElement()))))),
           op::Reshape(op::Multiply(
               op::Constant(),
-              op::Power(op::Constant(), op::Floor(op::GetTupleElement()))))));
+              op::Power(op::Constant(), op::Floor(op::Reshape(op::DynamicSlice(
+                                            op::GetTupleElement(),
+                                            op::GetTupleElement()))))))));
 }
 // Move partially used operands inside empty conditional branches.
 TEST_F(ConditionalCodeMotionTest, MovePartialyUsedOperands3) {
@@ -2329,11 +2384,12 @@ ENTRY %xla_computation  {
       root->branch_computation(1)->root_instruction();
   const HloInstruction* conditional_true =
       root->branch_computation(0)->root_instruction();
-  EXPECT_THAT(conditional_false->shape().tuple_shapes_size(), 1);
-  EXPECT_THAT(conditional_false->shape().tuple_shapes(0).tuple_shapes_size(),
+  EXPECT_THAT(conditional_false->shape().tuple_shapes().size(), 1);
+  EXPECT_THAT(conditional_false->shape().tuple_shapes(0).tuple_shapes().size(),
               2);
-  EXPECT_THAT(conditional_true->shape().tuple_shapes_size(), 1);
-  EXPECT_THAT(conditional_true->shape().tuple_shapes(0).tuple_shapes_size(), 2);
+  EXPECT_THAT(conditional_true->shape().tuple_shapes().size(), 1);
+  EXPECT_THAT(conditional_true->shape().tuple_shapes(0).tuple_shapes().size(),
+              2);
 }
 
 // Move partially used operands inside empty conditional branches.
@@ -2391,11 +2447,12 @@ ENTRY %xla_computation  {
       root->branch_computation(1)->root_instruction();
   const HloInstruction* conditional_true =
       root->branch_computation(0)->root_instruction();
-  EXPECT_THAT(conditional_false->shape().tuple_shapes_size(), 2);
-  EXPECT_THAT(conditional_false->shape().tuple_shapes(1).tuple_shapes_size(),
+  EXPECT_THAT(conditional_false->shape().tuple_shapes().size(), 2);
+  EXPECT_THAT(conditional_false->shape().tuple_shapes(1).tuple_shapes().size(),
               2);
-  EXPECT_THAT(conditional_true->shape().tuple_shapes_size(), 2);
-  EXPECT_THAT(conditional_true->shape().tuple_shapes(1).tuple_shapes_size(), 2);
+  EXPECT_THAT(conditional_true->shape().tuple_shapes().size(), 2);
+  EXPECT_THAT(conditional_true->shape().tuple_shapes(1).tuple_shapes().size(),
+              2);
 }
 
 // Move partially used operands inside empty conditional branches.

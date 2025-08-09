@@ -21,30 +21,29 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/backends/cpu/constant_allocation.h"
 #include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk_executor.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/literal.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/executable.pb.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_status_internal.h"
 #include "xla/service/executable.h"
+#include "xla/service/hlo_execution_profile.h"
 #include "xla/service/hlo_profile_printer_data.pb.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/maybe_owning_device_memory.h"
 #include "xla/service/service_executable_run_options.h"
-#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 
 namespace xla {
@@ -56,16 +55,6 @@ namespace cpu {
 // architecture, so JIT-ed code and host code share the same ABI.
 class CpuExecutable : public Executable {
  public:
-  // A storage (or an alias) for constant allocations data.
-  struct ConstantAllocation {
-    se::DeviceMemoryBase AsDeviceMemoryBase() const;
-
-    BufferAllocation::Index index = -1;
-    std::variant<std::monostate, std::unique_ptr<Literal>,
-                 absl::Span<const uint8_t>>
-        data;
-  };
-
   // Creates a CpuExecutable from JIT compiled cpu function by resolving
   // `entry_function_name` in the `jit`.
   static absl::StatusOr<std::unique_ptr<CpuExecutable>> Create(
@@ -102,7 +91,7 @@ class CpuExecutable : public Executable {
   absl::Status ExecuteThunks(const ExecutableRunOptions* run_options,
                              absl::Span<MaybeOwningDeviceMemory const> buffers);
 
-  absl::Span<const std::string> obj_files() const { return obj_files_; }
+  absl::Span<const ObjFileProto> obj_files() const { return obj_files_; }
 
   std::vector<SymbolProto> get_compiled_symbols_proto() const {
     std::vector<SymbolProto> symbols;
@@ -115,7 +104,7 @@ class CpuExecutable : public Executable {
     return symbols;
   }
 
-  void set_obj_files(std::vector<std::string> obj_files) {
+  void set_obj_files(std::vector<ObjFileProto> obj_files) {
     obj_files_ = std::move(obj_files);
   }
 
@@ -163,6 +152,8 @@ class CpuExecutable : public Executable {
   bool has_thunks() const { return thunks_.has_value(); }
   ThunkExecutor& thunks() { return *thunks_; }
 
+  bool has_xnn_fusions() const { return has_xnn_fusions_; }
+
   const BufferAssignment& buffer_assignment() const { return *assignment_; }
   absl::Span<const ConstantAllocation> constants() const { return constants_; }
 
@@ -173,6 +164,10 @@ class CpuExecutable : public Executable {
   }
 
   FunctionLibrary* function_library() const { return function_library_.get(); }
+
+  std::unique_ptr<FunctionLibrary> consume_function_library() && {
+    return std::move(function_library_);
+  }
 
  private:
   // Creates an array suitable for passing as the "buffer_table" argument to the
@@ -215,7 +210,7 @@ class CpuExecutable : public Executable {
   // Object files (machine code) compiled from an HLO module by the JIT
   // compiler. We capture all object files created by JitCompiler so we can
   // export them to AOT compilation result.
-  std::vector<std::string> obj_files_;
+  std::vector<ObjFileProto> obj_files_;
 
   // Generate compiled symbols. We capture all compiled symbols so we can export
   // them to AOT compilation result.
@@ -254,8 +249,11 @@ class CpuExecutable : public Executable {
   // Vector indexed by BufferAllocation::Index for efficient access.
   std::vector<ConstantAllocation> constants_;
 
+  // Whether the thunk executor contains any XNN fusion thunks.
+  bool has_xnn_fusions_ = false;
+
   // Entry function name for the computation.
-  const std::string entry_function_name_;
+  std::string entry_function_name_;
 
   CpuExecutable(std::unique_ptr<HloModule> hlo_module,
                 std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,

@@ -1,4 +1,4 @@
-load("//xla:xla.bzl", "xla_cc_test")
+load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
@@ -15,7 +15,6 @@ cc_library(
     ],
     hdrs = ["xla_cpu_pjrt_client.h"],
     deps = [
-        ":cpu_client_options",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt/cpu:cpu_client",
         "@com_google_absl//absl/status:statusor",
@@ -115,4 +114,15 @@ xla_cc_test(
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:protobuf",
     ],
+)
+
+cc_library(
+    name = "cpu_static_registration",
+    srcs = ["cpu_static_registration.cc"],
+    deps = [
+        "//xla/pjrt/c:pjrt_c_api_cpu_internal",
+        "//xla/pjrt/plugin:plugin_names",
+        "//xla/pjrt/plugin:static_registration",
+    ],
+    alwayslink = True,
 )

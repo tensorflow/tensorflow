@@ -39,7 +39,7 @@ namespace xla {
 namespace {
 
 template <typename F>
-void ResolveUsers(const HloInstruction* value, const HloInstruction* user,
+void ResolveUsers(int64_t user_operand_index, const HloInstruction* user,
                   const HloFusionAdaptor& fusion_adaptor, F&& add_user) {
   if (user->opcode() == HloOpcode::kTuple && user->IsRoot()) {
     if (auto* fusion = user->parent()->FusionInstruction()) {
@@ -48,9 +48,10 @@ void ResolveUsers(const HloInstruction* value, const HloInstruction* user,
       for (const auto* fusion_user : fusion->users()) {
         if (fusion_user->opcode() == HloOpcode::kGetTupleElement) {
           for (const auto* gte_user : fusion_user->users()) {
-            ResolveUsers(fusion_user, gte_user, fusion_adaptor, add_user);
+            ResolveUsers(gte_user->operand_index(fusion_user), gte_user,
+                         fusion_adaptor, add_user);
           }
-        } else if (fusion_adaptor.ContainsInstruction(value)) {
+        } else if (fusion_adaptor.ContainsInstruction(fusion_user)) {
           add_user(fusion_user);
         }
       }
@@ -66,7 +67,7 @@ void ResolveUsers(const HloInstruction* value, const HloInstruction* user,
   if (user->opcode() == HloOpcode::kFusion &&  // Not a nested fusion.
       fusion_adaptor.ContainsInstruction(user->fused_expression_root())) {
     // Add users of the computation's parameter.
-    auto* param = user->fused_parameter(user->operand_index(value));
+    auto* param = user->fused_parameter(user_operand_index);
     for (const auto* param_user : param->users()) {
       add_user(param_user);
     }
@@ -485,6 +486,11 @@ void HloFusionAdaptor::AddComputation(const HloComputation* computation) {
       std::make_unique<HloComputationFusion>(computation, this));
 }
 
+HloInstructionAdaptor HloFusionAdaptor::GetInstruction(
+    const HloInstruction* instruction) const {
+  return HloInstructionAdaptor{*ResolveOperand(instruction, *this), this};
+}
+
 absl::InlinedVector<HloInstructionAdaptor, 2>
 HloInstructionAdaptor::GetOperands() const {
   absl::InlinedVector<HloInstructionAdaptor, 2> operands;
@@ -526,13 +532,13 @@ absl::InlinedVector<HloInstructionAdaptor, 2> HloInstructionAdaptor::GetUsers()
   if (instruction_->IsRoot()) {
     if (auto* fusion = instruction_->parent()->FusionInstruction()) {
       for (auto* user : fusion->users()) {
-        ResolveUsers(fusion, user, *parent_, add_user);
+        ResolveUsers(user->operand_index(fusion), user, *parent_, add_user);
       }
     }
   }
 
   for (auto* user : instruction_->users()) {
-    ResolveUsers(instruction_, user, *parent_, add_user);
+    ResolveUsers(user->operand_index(instruction_), user, *parent_, add_user);
   }
 
   return users;

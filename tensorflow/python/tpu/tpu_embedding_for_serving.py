@@ -36,6 +36,7 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.tpu import tpu_embedding_base
 from tensorflow.python.tpu import tpu_embedding_v2_utils
 from tensorflow.python.tpu import tpu_embedding_v3_utils
+from tensorflow.python.trackable import base as trackable_base
 from tensorflow.python.types import core
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
@@ -129,6 +130,16 @@ class TPUEmbeddingForServing(tpu_embedding_base.TPUEmbeddingBase):
       raise RuntimeError("Serving on TPU is not yet supported.")
 
   @property
+  def variables(
+      self,
+  ) -> Dict[
+      tpu_embedding_v2_utils.TableConfig, Dict[str, tf_variables.Variable]
+  ]:
+    """Returns a dict of variables, keyed by `TableConfig`, then by slot name."""
+    self._maybe_build()
+    return self._variables
+
+  @property
   def embedding_tables(
       self,
   ) -> Dict[tpu_embedding_v2_utils.TableConfig, tf_variables.Variable]:
@@ -210,6 +221,26 @@ class TPUEmbeddingForServing(tpu_embedding_base.TPUEmbeddingBase):
         tpu_embedding_v3_utils.SPARSECORE_LAYOUTS_CHECKPOINT_KEY,
     )
     return layouts_str.read_value().numpy()
+
+  def _trackable_children(
+      self, save_type=trackable_base.SaveType.CHECKPOINT, **kwargs: Any
+  ):
+    # Remove the trackables added to make sparsecore checkpoint restore work.
+    # These are not required for serializing the model.
+    tc = super()._trackable_children(save_type, **kwargs)
+    if save_type == trackable_base.SaveType.SAVEDMODEL:
+      if tpu_embedding_v3_utils.SPARSECORE_LAYOUTS_CHECKPOINT_KEY in tc:
+        tc.pop(tpu_embedding_v3_utils.SPARSECORE_LAYOUTS_CHECKPOINT_KEY, None)
+      sclt = [
+          k
+          for k, v in tc.items()
+          if isinstance(
+              v, tpu_embedding_v3_utils.SparseCoreStackedTableTrackable
+          )
+      ]
+      for k in sclt:
+        tc.pop(k, None)
+    return tc
 
   def _create_variables_from_stacked_tables(self):
     sc_layouts = sparse_core_layout_pb2.SparseCoreTableLayouts()
@@ -386,26 +417,29 @@ def cpu_embedding_lookup(
       None for no weights. If not None, structure must match that of inputs, but
       entries are allowed to be None.
     tables: a dict of mapping TableConfig objects to Variables.
-    feature_config: a nested structure of FeatureConfig objects with the same
-      structure as inputs.
+    feature_config: a nested structure of FeatureConfig objects. The keys of
+      feature_config is a superset of inputs.
 
   Returns:
     A nested structure of Tensors with the same structure as inputs.
   """
 
-  nest.assert_same_structure(inputs, feature_config)
-
-  flat_inputs = nest.flatten(inputs)
+  flat_inputs = nest.flatten_with_joined_string_paths(inputs)
   flat_weights = [None] * len(flat_inputs)
   if weights is not None:
     nest.assert_same_structure(inputs, weights)
     flat_weights = nest.flatten(weights)
-  flat_features = nest.flatten_with_joined_string_paths(feature_config)
+  flat_features = dict(nest.flatten_with_joined_string_paths(feature_config))
 
+  input_keys = {key for key, _ in flat_inputs}
+  if not input_keys.issubset(flat_features.keys()):
+    raise ValueError(
+        "Inputs are not a subset of feature_config. Inputs keys are {}, but"
+        " feature_config keys are {}".format(input_keys, flat_features.keys())
+    )
   outputs = []
-  for inp, weight, (path, feature) in zip(
-      flat_inputs, flat_weights, flat_features
-  ):
+  for (path, inp), weight in zip(flat_inputs, flat_weights):
+    feature = flat_features[path]
     table = tables[feature.table]
 
     if weight is not None:
@@ -446,7 +480,7 @@ def cpu_embedding_lookup(
           "Input {} is type {}. Tensor, SparseTensor or "
           "RaggedTensor expected.".format(path, type(inp))
       )
-  return nest.pack_sequence_as(feature_config, outputs)
+  return nest.pack_sequence_as(inputs, outputs)
 
 
 def _embedding_lookup_for_sparse_tensor(

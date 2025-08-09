@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/synchronization/mutex.h"
 #include "rocm/rocm_config.h"
 #include "xla/tsl/profiler/backends/cpu/annotation_stack.h"
 #include "xla/tsl/profiler/utils/time_utils.h"
@@ -33,8 +34,6 @@ namespace xla {
 namespace profiler {
 
 namespace se = ::stream_executor;
-using tsl::mutex;
-using tsl::mutex_lock;
 using tsl::profiler::AnnotationStack;
 
 constexpr uint32_t RocmTracerEvent::kInvalidDeviceId;
@@ -45,7 +44,7 @@ constexpr uint32_t RocmTracerEvent::kInvalidDeviceId;
     if (status != ROCTRACER_STATUS_SUCCESS) {                               \
       const char* errstr = se::wrap::roctracer_error_string();              \
       LOG(ERROR) << "function " << #expr << "failed with error " << errstr; \
-      return tsl::errors::Internal(                                         \
+      return absl::InternalError(                                           \
           absl::StrCat("roctracer call error", errstr));                    \
     }                                                                       \
   } while (false)
@@ -304,7 +303,7 @@ absl::Status RocmApiCallbackImpl::operator()(uint32_t domain, uint32_t cbid,
   if (data->phase == ACTIVITY_API_PHASE_ENTER) {
     if (options_.api_tracking_set.find(cbid) !=
         options_.api_tracking_set.end()) {
-      mutex_lock lock(api_call_start_mutex_);
+      absl::MutexLock lock(&api_call_start_mutex_);
       api_call_start_time_.emplace(data->correlation_id,
                                    RocmTracer::GetTimestamp());
     }
@@ -317,7 +316,7 @@ absl::Status RocmApiCallbackImpl::operator()(uint32_t domain, uint32_t cbid,
 
     if (options_.api_tracking_set.find(cbid) !=
         options_.api_tracking_set.end()) {
-      mutex_lock lock(api_call_start_mutex_);
+      absl::MutexLock lock(&api_call_start_mutex_);
       if (api_call_start_time_.find(data->correlation_id) !=
           api_call_start_time_.end()) {
         enter_time = api_call_start_time_.at(data->correlation_id);
@@ -398,11 +397,11 @@ absl::Status RocmApiCallbackImpl::operator()(uint32_t domain, uint32_t cbid,
         break;
       default:
         //
-        LOG(WARNING) << "API call "
-                     << se::wrap::roctracer_op_string(ACTIVITY_DOMAIN_HIP_API,
-                                                      cbid, 0)
-                     << ", corr. id=" << data->correlation_id
-                     << " dropped. No capturing function was found!";
+        VLOG(1) << "API call "
+                << se::wrap::roctracer_op_string(ACTIVITY_DOMAIN_HIP_API, cbid,
+                                                 0)
+                << ", corr. id=" << data->correlation_id
+                << " dropped. No capturing function was found!";
         // AddGenericEventUponApiExit(cbid, data);
         break;
     }
@@ -1324,7 +1323,7 @@ void RocmActivityCallbackImpl::AddHipOpsMemsetActivityEvent(
 }
 
 /* static */ RocmTracer* RocmTracer::GetRocmTracerSingleton() {
-  static auto* singleton = new RocmTracer();
+  static auto* const singleton = new RocmTracer();
   return singleton;
 }
 
@@ -1561,8 +1560,8 @@ absl::Status RocmTracer::DisableActivityTracing() {
   size_t threshold = 1;
   for (int i = 0; i < 6; i++, duration_ms *= 2, threshold *= 2) {
     if (GetPendingActivityRecordsCount() < threshold) break;
-    VLOG(3) << "Wait for pending activity records :" << " Pending count = "
-            << GetPendingActivityRecordsCount()
+    VLOG(3) << "Wait for pending activity records :"
+            << " Pending count = " << GetPendingActivityRecordsCount()
             << ", Threshold = " << threshold;
     VLOG(3) << "Wait for pending activity records : sleep for " << duration_ms
             << " ms";

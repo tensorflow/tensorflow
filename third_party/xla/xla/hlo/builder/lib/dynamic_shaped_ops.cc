@@ -52,8 +52,8 @@ Shape FindMaxShape(absl::Span<const Shape*> shapes) {
   if (shapes[0]->IsTuple()) {
     // Recurse into sub-element.
     std::vector<Shape> results;
-    results.reserve(shapes[0]->tuple_shapes_size());
-    for (int i = 0; i < shapes[0]->tuple_shapes_size(); ++i) {
+    results.reserve(shapes[0]->tuple_shapes().size());
+    for (int i = 0; i < shapes[0]->tuple_shapes().size(); ++i) {
       std::vector<const Shape*> subshapes;
       subshapes.reserve(shapes.size());
       for (int64_t j = 0; j < shapes.size(); ++j) {
@@ -66,8 +66,8 @@ Shape FindMaxShape(absl::Span<const Shape*> shapes) {
   Shape result = *shapes[0];
 
   for (const Shape* shape : shapes) {
-    CHECK(result.rank() == shape->rank());
-    for (int64_t dim = 0; dim < result.rank(); ++dim) {
+    CHECK(result.dimensions().size() == shape->dimensions().size());
+    for (int64_t dim = 0; dim < result.dimensions().size(); ++dim) {
       if (shape->dimensions(dim) > result.dimensions(dim)) {
         result.set_dimensions(dim, shape->dimensions(dim));
       }
@@ -83,12 +83,12 @@ absl::StatusOr<XlaOp> ReconsileBranchDifference(const Shape& left_branch_shape,
     // Invariant sanity check -- Left branch and right branch need to have
     // compatible shapes.
     CHECK(right_branch_shape.IsTuple() &&
-          left_branch_shape.tuple_shapes_size() ==
-              right_branch_shape.tuple_shapes_size());
+          left_branch_shape.tuple_shapes().size() ==
+              right_branch_shape.tuple_shapes().size());
     // Recurse into sub-element.
     std::vector<XlaOp> results;
-    results.reserve(left_branch_shape.tuple_shapes_size());
-    for (int i = 0; i < left_branch_shape.tuple_shapes_size(); ++i) {
+    results.reserve(left_branch_shape.tuple_shapes().size());
+    for (int i = 0; i < left_branch_shape.tuple_shapes().size(); ++i) {
       XlaOp sub_tuple = GetTupleElement(left_root, i);
       TF_ASSIGN_OR_RETURN(XlaOp elem,
                           ReconsileBranchDifference(
@@ -104,14 +104,17 @@ absl::StatusOr<XlaOp> ReconsileBranchDifference(const Shape& left_branch_shape,
   if (right_branch_shape.IsTuple()) {
     return InvalidArgument(
         "right_branch_shape should not be a tuple, received %s",
-        right_branch_shape.DebugString());
+        right_branch_shape.ToString());
   }
-  if (left_branch_shape.rank() != right_branch_shape.rank()) {
+  if (left_branch_shape.dimensions().size() !=
+      right_branch_shape.dimensions().size()) {
     return InvalidArgument(
-        "left_branch_shape.rank() != right_branch_shape.rank() (%d vs %d)",
-        left_branch_shape.rank(), right_branch_shape.rank());
+        "left_branch_shape.dimensions_size() != "
+        "right_branch_shape.dimensions_size() (%d vs %d)",
+        left_branch_shape.dimensions().size(),
+        right_branch_shape.dimensions().size());
   }
-  for (int64_t dim = 0; dim < left_branch_shape.rank(); ++dim) {
+  for (int64_t dim = 0; dim < left_branch_shape.dimensions().size(); ++dim) {
     XlaOp original_dim = GetDimensionSize(result, dim);
     if (left_branch_shape.dimensions(dim) <
         right_branch_shape.dimensions(dim)) {
@@ -270,7 +273,7 @@ absl::StatusOr<XlaOp> SetAllDimensionSizes(ValueInference* value_inference,
   TF_RETURN_IF_ERROR(builder->GetCurrentStatus());
   TF_ASSIGN_OR_RETURN(auto shape_ptr, builder->GetShapePtr(operand));
 
-  for (int64_t i = 0; i < shape_ptr->rank(); ++i) {
+  for (int64_t i = 0; i < shape_ptr->dimensions().size(); ++i) {
     // If a dimension is dynamic, call set-dimension-size on the output.
     auto dim_size = xla::Slice(size_vector, {i}, {i + 1}, {1});
     dim_size = xla::Reshape(dim_size, {});

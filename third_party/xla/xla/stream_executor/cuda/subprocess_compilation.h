@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/cuda/cubin_or_ptx_image.h"
 #include "xla/stream_executor/device_description.h"
@@ -98,6 +99,15 @@ absl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
 absl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
     absl::string_view nvlink_path, stream_executor::CudaComputeCapability cc,
     absl::Span<const std::vector<uint8_t>> images);
+
+// Returns the path to the first found nvdisasm binary that fulfills our version
+// requirements.
+absl::StatusOr<std::string> FindNvdisasmExecutable(
+    absl::string_view preferred_cuda_dir);
+
+// On NVIDIA GPUs, returns the version of the nvdisasm command line tool.
+absl::StatusOr<SemanticVersion> GetNvdisasmVersion(
+    absl::string_view preferred_cuda_dir);
 }  // namespace stream_executor
 
 #endif  // XLA_STREAM_EXECUTOR_CUDA_SUBPROCESS_COMPILATION_H_

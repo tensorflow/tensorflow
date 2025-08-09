@@ -249,6 +249,7 @@ void SerializeAutotuneEntry(AutotuneResults* results, const AutotuneCacheKey& k,
   auto& entry = *results->add_results();
   entry.set_device(std::string(k.GetModelStr()));
   entry.set_hlo(std::string(k.GetHlo()));
+  entry.set_version(k.GetVersion());
   *entry.mutable_result() = *res;
 }
 }  // namespace
@@ -272,7 +273,7 @@ void SerializeAutotuneEntry(AutotuneResults* results, const AutotuneCacheKey& k,
     const AutotuneResults& results, bool allow_override) {
   absl::MutexLock lock(&autotune_cache_mu);
   for (const AutotuneResults::Entry& result : results.results()) {
-    AutotuneCacheKey key(result.device(), result.hlo());
+    AutotuneCacheKey key(result.device(), result.hlo(), result.version());
     if (allow_override) {
       autotune_cache.insert_or_assign(key, result.result());
     } else {
@@ -413,6 +414,34 @@ absl::StatusOr<std::optional<AutotuneResult>> TryFindInCache(
 }
 }  // namespace
 
+AutotuneConfig AutotuneConfig::FromDebugOptions(
+    const DeviceOrDevicelessConfig& config, const DebugOptions& opts) {
+  int autotune_level = opts.xla_gpu_autotune_level();
+
+  bool should_init_buffers = autotune_level >= 2;
+  bool should_reinit_output_buffer = autotune_level >= 3;
+  bool should_check_correctness = autotune_level >= 4;
+  bool should_skip_wrong_results = autotune_level >= 5;
+
+  bool should_crash_on_check_failure =
+      opts.xla_gpu_crash_on_verification_failures();
+
+  bool exhaustive_tiling_search = opts.xla_gpu_exhaustive_tiling_search();
+
+  bool should_require_complete_aot_autotune_results =
+      opts.xla_gpu_require_complete_aot_autotune_results();
+
+  std::string autotune_cache_dir = opts.xla_gpu_per_fusion_autotune_cache_dir();
+  DebugOptions_AutotuneCacheMode autotune_cache_mode =
+      opts.xla_gpu_experimental_autotune_cache_mode();
+  return AutotuneConfig(config, should_init_buffers,
+                        should_reinit_output_buffer, should_check_correctness,
+                        should_skip_wrong_results,
+                        should_crash_on_check_failure, exhaustive_tiling_search,
+                        should_require_complete_aot_autotune_results,
+                        autotune_cache_dir, autotune_cache_mode);
+}
+
 /*static*/ AutotuneCacheKey AutotunerUtil::GetKey(
     const HloInstruction* instr, const AutotuneConfig& config) {
   return AutotuneCacheKey(config.GetModelStr(), *instr);
@@ -469,6 +498,7 @@ namespace {
 
 bool IsTextProtoPath(absl::string_view file_path) {
   return absl::EndsWith(file_path, ".txt") ||
+         absl::EndsWith(file_path, ".txtpb") ||
          absl::EndsWith(file_path, ".textproto") ||
          absl::EndsWith(file_path, ".prototxt") ||
          absl::EndsWith(file_path, ".pbtxt");
@@ -494,6 +524,7 @@ bool IsTextProtoPath(absl::string_view file_path) {
         kVersion, results.version()));
   }
 
+  AddVersionToAutotuneResults(results);
   TF_RETURN_IF_ERROR(LoadAutotuneResults(results, allow_override));
   return absl::OkStatus();
 }
@@ -566,6 +597,15 @@ bool IsTextProtoPath(absl::string_view file_path) {
 /*static*/ void AutotunerUtil::ClearCacheStats() {
   absl::MutexLock lock(&autotune_cache_mu);
   autotune_cache_stats = CacheStats();
+}
+
+void AddVersionToAutotuneResults(AutotuneResults& results) {
+  for (auto& result : *results.mutable_results()) {
+    if (result.version() == 0) {
+      // Set to current version if we don't have one specified.
+      result.set_version(AutotuneCacheKey::kCurrentVersion);
+    }
+  }
 }
 
 }  // namespace gpu

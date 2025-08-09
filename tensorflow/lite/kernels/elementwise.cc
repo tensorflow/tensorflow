@@ -48,8 +48,8 @@ struct OpData {
   int output_offset;
   bool needs_rescale;
   union {
-    int8_t lut_int8[LUTSize<int8_t>()];
-    int16_t lut_int16[LUTSize<int16_t>()];
+    int8_t* lut_int8;
+    int16_t* lut_int16;
   };
 };
 
@@ -67,6 +67,10 @@ bool IsAbsSupportedType(const TfLiteType type) {
 }
 
 bool IsRsqrtSupportedType(const TfLiteType type) {
+  return type == kTfLiteFloat32 || type == kTfLiteInt8 || type == kTfLiteInt16;
+}
+
+bool IsSqrtSupportedType(const TfLiteType type) {
   return type == kTfLiteFloat32 || type == kTfLiteInt8 || type == kTfLiteInt16;
 }
 
@@ -106,10 +110,16 @@ void LogLUTPrepare(TfLiteType type, OpData* op_data, float input_scale,
   };
 
   if (type == kTfLiteInt8) {
+    if (!op_data->lut_int8) {
+      op_data->lut_int8 = new int8_t[LUTSize<int8_t>()];
+    }
     LUTPopulate<int8_t>(input_scale, input_zero_point, output_scale,
                         output_zero_point, lut_func, lut_func_params,
                         op_data->lut_int8);
   } else {
+    if (!op_data->lut_int16) {
+      op_data->lut_int16 = new int16_t[LUTSize<int16_t>()];
+    }
     LUTPopulate<int16_t>(input_scale, input_zero_point, output_scale,
                          output_zero_point, lut_func, lut_func_params,
                          op_data->lut_int16);
@@ -176,6 +186,9 @@ TfLiteStatus GenericPrepare(TfLiteContext* context, TfLiteNode* node,
           }
           return 1.0f / std::sqrt(value);
         };
+        if (!op_data->lut_int16) {
+          op_data->lut_int16 = new int16_t[LUTSize<int16_t>()];
+        }
         LUTPopulate<int16_t>(input_scale, input_params->zero_point->data[0],
                              output_scale, output_params->zero_point->data[0],
                              lut_func, lut_func_params, op_data->lut_int16);
@@ -256,7 +269,11 @@ void* ElementWiseQuantizedInit(TfLiteContext* context, const char* buffer,
 }
 
 void ElementWiseQuantizedFree(TfLiteContext* context, void* buffer) {
-  delete static_cast<OpData*>(buffer);
+  OpData* data = static_cast<OpData*>(buffer);
+  if (data && data->lut_int8) {
+    delete[] data->lut_int8;
+  }
+  delete data;
 }
 
 template <typename T>
@@ -286,7 +303,8 @@ TfLiteStatus AbsEval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteType type = input->type;
   switch (type) {
     case kTfLiteFloat32:
-      return EvalImpl<float>(context, node, std::abs<float>, type);
+      return EvalImpl<float>(
+          context, node, [](float f) { return std::abs(f); }, type);
     case kTfLiteInt8:
       return AbsEvalQuantized<int8_t>(context, node, type);
     case kTfLiteInt16:
@@ -294,7 +312,8 @@ TfLiteStatus AbsEval(TfLiteContext* context, TfLiteNode* node) {
                  ? AbsInt16EvalImpl(context, node, type)
                  : AbsEvalQuantized<int16_t>(context, node, type);
     case kTfLiteInt32:
-      return EvalImpl<int32_t>(context, node, std::abs<int32_t>, type);
+      return EvalImpl<int32_t>(
+          context, node, [](int32_t i) { return std::abs(i); }, type);
     default:
       TF_LITE_KERNEL_LOG(context, "Current data type %s is not supported.",
                          TfLiteTypeGetName(type));
@@ -339,8 +358,59 @@ TfLiteStatus LogEval(TfLiteContext* context, TfLiteNode* node) {
   }
 }
 
+template <typename T>
+TfLiteStatus SqrtEvalQuantized(TfLiteContext* context, TfLiteNode* node) {
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
+
+  const auto* input_params =
+      reinterpret_cast<TfLiteAffineQuantization*>(input->quantization.params);
+  const auto* output_params =
+      reinterpret_cast<TfLiteAffineQuantization*>(output->quantization.params);
+  const float input_scale = input_params->scale->data[0];
+  const int input_zp = input_params->zero_point->data[0];
+  const float output_scale = output_params->scale->data[0];
+  const int output_zp = output_params->zero_point->data[0];
+
+  const int64_t num_elements = NumElements(input);
+  const T* in_data = GetTensorData<T>(input);
+  T* out_data = GetTensorData<T>(output);
+
+  const int kMin = std::numeric_limits<T>::min();
+  const int kMax = std::numeric_limits<T>::max();
+
+  for (int64_t i = 0; i < num_elements; ++i) {
+    const float dequantized_input =
+        input_scale * (static_cast<int>(in_data[i]) - input_zp);
+    TF_LITE_ENSURE_MSG(context, dequantized_input >= 0.0f,
+                       "Sqrt is only defined for non-negative values");
+    const float float_output = std::sqrt(dequantized_input);
+    const int quantized_output =
+        static_cast<int>(float_output / output_scale) + output_zp;
+    out_data[i] =
+        static_cast<T>(std::min(std::max(quantized_output, kMin), kMax));
+  }
+  return kTfLiteOk;
+}
+
 TfLiteStatus SqrtEval(TfLiteContext* context, TfLiteNode* node) {
-  return EvalNumeric(context, node, std::sqrt);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input));
+  const TfLiteType type = input->type;
+  switch (type) {
+    case kTfLiteFloat32:
+      return EvalNumeric(context, node, std::sqrt);
+    case kTfLiteInt8:
+      return SqrtEvalQuantized<int8_t>(context, node);
+    case kTfLiteInt16:
+      return SqrtEvalQuantized<int16_t>(context, node);
+    default:
+      TF_LITE_KERNEL_LOG(context, "Current data type %s is not supported.",
+                         TfLiteTypeGetName(type));
+      return kTfLiteError;
+  }
 }
 
 TfLiteStatus RsqrtEvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
@@ -479,10 +549,11 @@ TfLiteRegistration* Register_LOG() {
   return &r;
 }
 
-GENERIC_PREPARE(PrepareSqrt, elementwise::IsNumericSupportedType, "Sqrt")
+GENERIC_PREPARE(PrepareSqrt, elementwise::IsSqrtSupportedType, "Sqrt")
 
 TfLiteRegistration* Register_SQRT() {
-  static TfLiteRegistration r = {/*init=*/nullptr, /*free=*/nullptr,
+  static TfLiteRegistration r = {elementwise::ElementWiseQuantizedInit,
+                                 elementwise::ElementWiseQuantizedFree,
                                  PrepareSqrt, elementwise::SqrtEval};
   return &r;
 }

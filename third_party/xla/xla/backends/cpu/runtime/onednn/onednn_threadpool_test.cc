@@ -23,10 +23,8 @@ limitations under the License.
 #include "oneapi/dnnl/dnnl_common.hpp"
 #include "oneapi/dnnl/dnnl_graph.hpp"
 #include "oneapi/dnnl/dnnl_threadpool.hpp"
-#include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "xla/backends/cpu/runtime/onednn/onednn_interop.h"
-#include "xla/backends/cpu/runtime/parallel_loop_runner.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
@@ -55,11 +53,7 @@ static absl::StatusOr<dnnl::graph::graph> CreateExpGraph(
 
 TEST(OneDnnThreadPoolTest, Binary) {
   tsl::thread::ThreadPool threads(tsl::Env::Default(), "test", 32);
-  Eigen::ThreadPoolDevice device(threads.AsEigenThreadPool(),
-                                 threads.NumThreads());
-
-  ParallelLoopRunner runner(&device);
-  OneDnnThreadPool threadpool(&runner);
+  OneDnnThreadPool threadpool(threads.AsEigenThreadPool());
 
   int64_t d0 = 100;
   int64_t d1 = 1000;
@@ -105,9 +99,6 @@ TEST(OneDnnThreadPoolTest, Binary) {
 
   // Execute compiled oneDNN graph on the CPU stream.
   compiled_partitions[0].execute(stream, {src}, {dst});
-
-  // Wait for the completion of parallel loops scheduled into the runner.
-  tsl::BlockUntilReady(runner.done_event());
 
   for (int i = 0; i < num_elements; ++i) {
     EXPECT_NEAR(dst_data[i], std::exp(1.0f), 1e-5);

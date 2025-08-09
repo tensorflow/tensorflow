@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/gpu_fusible.h"
@@ -34,14 +35,13 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tests/hlo_test_base.h"
 
 namespace xla {
 namespace gpu {
 
 namespace m = ::xla::match;
 
-class MultiOutputFusionTest : public HloTestBase {
+class MultiOutputFusionTest : public HloHardwareIndependentTestBase {
  public:
   MultiOutputFusion mof_{TestGpuDeviceInfo::RTXA6000DeviceInfo(),
                          HloCostAnalysis::DefaultShapeSize};
@@ -1797,26 +1797,26 @@ HloModule module
 
 fused_computation {
   param_0.1 = f16[16,32]{1,0} parameter(0)
-  s.1 = f32[16,32]{1,0} convert(param_0.1)
-  ROOT t.1 = f32[32,16]{1,0} transpose(s.1), dimensions={1,0}
+  s.1 = s16[16,32]{1,0} convert(param_0.1)
+  ROOT t.1 = s16[32,16]{1,0} transpose(s.1), dimensions={1,0}
 }
 
 ENTRY main {
   p = f16[16,32]{1,0} parameter(0)
-  fusion = f32[32,16]{1,0} fusion(p), kind=kInput, calls=fused_computation
+  fusion = s16[32,16]{1,0} fusion(p), kind=kInput, calls=fused_computation
   t1 = f16[32,16]{1,0} transpose(p), dimensions={1,0}
-  ROOT t = (f32[32,16]{1,0}, f16[32,16]{1,0}) tuple(fusion, t1)
+  ROOT t = (s16[32,16]{1,0}, f16[32,16]{1,0}) tuple(fusion, t1)
 }
   )";
 
   CheckMultiOutputFusion(hlo, R"(
-// CHECK: %fused_computation (param_0.1: f16[16,32]) -> (f32[32,16], f16[32,16]) {
+// CHECK: %fused_computation (param_0.1: f16[16,32]) -> (s16[32,16], f16[32,16]) {
 // CHECK-NEXT:   [[param_0_1_0:%[^ ]+]] = f16[16,32]{1,0} parameter(0)
-// CHECK-NEXT:   [[s_1_1:%[^ ]+]] = f32[16,32]{1,0} convert([[param_0_1_0]])
-// CHECK-NEXT:   [[c_1_2:%[^ ]+]] = f32[32,16]{1,0} transpose([[s_1_1]]), dimensions={1,0}
+// CHECK-NEXT:   [[s_1_1:%[^ ]+]] = s16[16,32]{1,0} convert([[param_0_1_0]])
+// CHECK-NEXT:   [[c_1_2:%[^ ]+]] = s16[32,16]{1,0} transpose([[s_1_1]]), dimensions={1,0}
 // CHECK-NEXT:   [[c1_1_3:%[^ ]+]] = f16[32,16]{1,0} transpose([[param_0_1_0]]), dimensions={1,0}
-// CHECK-NEXT:   ROOT [[tuple_4:%[^ ]+]] = (f32[32,16]{1,0}, f16[32,16]{1,0}) tuple([[c_1_2]], [[c1_1_3]])
-// CHECK:   [[fusion_5:%[^ ]+]] = (f32[32,16]{1,0}, f16[32,16]{1,0}) fusion([[p_6:%[^ ]+]]), kind=kInput, calls=[[fused_computation_7:%[^ ]+]]
+// CHECK-NEXT:   ROOT [[tuple_4:%[^ ]+]] = (s16[32,16]{1,0}, f16[32,16]{1,0}) tuple([[c_1_2]], [[c1_1_3]])
+// CHECK:   [[fusion_5:%[^ ]+]] = (s16[32,16]{1,0}, f16[32,16]{1,0}) fusion([[p_6:%[^ ]+]]), kind=kInput, calls=[[fused_computation_7:%[^ ]+]]
 )");
 }
 
@@ -2170,6 +2170,68 @@ TEST_F(ReduceMultiOutputFusionTest, GetTupleElementMakeTupleSequence) {
                     .value();
 
   ASSERT_FALSE(mof_.Run(module.get()).value());
+}
+
+TEST_F(ReduceMultiOutputFusionTest, NestedAndUnnestedTranspose) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+fused_computation.0 {
+  p.0 = bf16[2048,16,128] parameter(0)
+  p.1 = bf16[2048,16,128] parameter(1)
+  concatenate.0 = bf16[2048,16,256] concatenate(p.0, p.1), dimensions={2}
+  bitcast.0 = bf16[32,64,16,256] bitcast(concatenate.0)
+  ROOT transpose = bf16[32,16,64,256] transpose(bitcast.0),
+      dimensions={0,2,1,3}  // Does not transpose the most minor dimension.
+}
+
+fused_computation.1 {
+  p.0 = bf16[2048,16,128] parameter(0)
+  p.1 = bf16[2048,16,128] parameter(1)
+  concatenate.0 = bf16[2048,16,256] concatenate(p.0, p.1), dimensions={2}
+  bitcast.0 = bf16[32,64,4096] bitcast(concatenate.0)
+  ROOT transpose = bf16[32,4096,64] transpose(bitcast.0),
+      dimensions={0,2,1}  // Does transpose the most minor dimension.
+}
+
+ENTRY computation {
+  p.0 = bf16[2048,16,128] parameter(0)
+  p.1 = bf16[2048,16,128] parameter(1)
+  fusion.0 = bf16[32,16,64,256] fusion(p.0, p.1), kind=kLoop, calls=fused_computation.0
+  fusion.1 = bf16[32,4096,64] fusion(p.0, p.1), kind=kInput, calls=fused_computation.1
+  ROOT tuple = (bf16[32,16,64,256], bf16[32,4096,64]) tuple(fusion.0, fusion.1)
+})")
+                    .value();
+  ASSERT_FALSE(mof_.Run(module.get()).value()) << module->ToString();
+}
+
+TEST_F(ReduceMultiOutputFusionTest, UnnestedTransposeAndNestedReduction) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+fused_transpose {
+  p.0 = f32[2048,16,128] parameter(0)
+  bitcast.0 = f32[32,64,16,128] bitcast(p.0)
+  ROOT transpose = f32[32,16,64,128] transpose(bitcast.0),
+      dimensions={0,2,1,3}  // Does not transpose the most minor dimension.
+}
+
+add {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT c = f32[] add(a, b)
+}
+
+fused_reduction {
+  p = f32[2048,16,128] parameter(0)
+  z = f32[] constant(0)
+  ROOT r = f32[16,128] reduce(p, z), dimensions={0}, to_apply=add
+}
+
+ENTRY computation {
+  p.0 = f32[2048,16,128] parameter(0)
+  fusion.0 = f32[32,16,64,128] fusion(p.0), kind=kLoop, calls=fused_transpose
+  fusion.1 = f32[16,128] fusion(p.0), kind=kInput, calls=fused_reduction
+  ROOT tuple = (f32[32,16,64,128], f32[16,128]) tuple(fusion.0, fusion.1)
+})")
+                    .value();
+  ASSERT_FALSE(mof_.Run(module.get()).value()) << module->ToString();
 }
 
 }  // namespace gpu

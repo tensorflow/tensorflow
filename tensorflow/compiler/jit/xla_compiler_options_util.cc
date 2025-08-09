@@ -15,9 +15,19 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/xla_compiler_options_util.h"
 
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "tensorflow/compiler/jit/device_compiler.h"
+#include "tensorflow/compiler/jit/xla_platform_info.h"
+#include "tensorflow/compiler/tf2xla/xla_compiler.h"
+#include "xla/client/local_client.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/stream_executor/host/host_platform_id.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/tsl/framework/device_id_utils.h"
+#include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/types.h"
 
 namespace tensorflow {
 namespace {

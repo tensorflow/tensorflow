@@ -97,7 +97,7 @@ TEST(ShardingUtilsTest, ShardTensorToIfrtLoadedVariableNotFoundWrongName) {
       AsyncLoadRestoredTensorAsIfrtLoadedVariable(
           "var_x", client, thread_pool, restored_tensor_registry,
           loaded_variable_registry, restore_work_queue.get(), sharding_config),
-      StatusIs(absl::StatusCode::kNotFound));
+      absl_testing::StatusIs(absl::StatusCode::kNotFound));
 }
 
 TEST(ShardingUtilsTest, ShardTensorToIfrtLoadedVariableSucceed) {
@@ -151,9 +151,11 @@ TEST(ShardingUtilsTest, ShardTensorToIfrtLoadedVariableSucceed) {
                           loaded_variable_registry.GetLoadedVariable(key));
   TF_ASSERT_OK_AND_ASSIGN(auto assembled_array, v.array.Await());
 
-  TF_ASSERT_OK_AND_ASSIGN(auto disassembled_arrays,
-                          assembled_array->DisassembleIntoSingleDeviceArrays(
-                              xla::ifrt::ArrayCopySemantics::kAlwaysCopy));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto disassembled_arrays,
+      assembled_array->DisassembleIntoSingleDeviceArrays(
+          xla::ifrt::ArrayCopySemantics::kAlwaysCopy,
+          xla::ifrt::SingleDeviceShardSemantics::kAddressableShards));
   ASSERT_EQ(disassembled_arrays.size(), 1);
   for (int i = 0; i < disassembled_arrays.size(); ++i) {
     tensorflow::Tensor host_tensor(input_tensor.dtype(), input_tensor.shape());

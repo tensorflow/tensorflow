@@ -13,18 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
+#include <cmath>
+#include <cstddef>
+#include <tuple>
 #include <vector>
 
-#include "xla/client/local_client.h"
+#include "xla/error_spec.h"
 #include "xla/hlo/builder/lib/math.h"
 #include "xla/hlo/builder/xla_builder.h"
-#include "xla/tests/client_library_test_base.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
 #include "xla/tests/complex_unary_op_samples.h"
-#include "xla/tests/literal_test_util.h"
-#include "xla/tests/test_macros.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -32,7 +36,9 @@ namespace {
 template <class>
 constexpr bool dependent_false = false;
 
-class ComplexUnaryOpTest : public ClientLibraryTestBase {
+class ComplexUnaryOpTest
+    : public ClientLibraryTestRunnerMixin<
+          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
  protected:
   template <typename T, size_t index, typename... Types>
   std::vector<T> get_column(const std::vector<std::tuple<Types...>>& table) {
@@ -95,22 +101,26 @@ class ComplexUnaryOpTest : public ClientLibraryTestBase {
   }
 };
 
-XLA_TEST_F(ComplexUnaryOpTest, Log1pTest) {
-  UnaryTestHelper<complex_unary_op_samples::Log1p<float>>(Log1p);
-  UnaryTestHelper<complex_unary_op_samples::Log1p<double>>(Log1p);
+TEST_F(ComplexUnaryOpTest, Log1pTest) {
+  UnaryTestHelper<complex_unary_op_samples::Log1p<float>>(
+      [](XlaOp x) { return Log1p(x); });
+  UnaryTestHelper<complex_unary_op_samples::Log1p<double>>(
+      [](XlaOp x) { return Log1p(x); });
 }
 
-XLA_TEST_F(ComplexUnaryOpTest, TanTest) {
-  UnaryTestHelper<complex_unary_op_samples::Tan<float>>(Tan);
-  UnaryTestHelper<complex_unary_op_samples::Tan<double>>(Tan);
+TEST_F(ComplexUnaryOpTest, TanTest) {
+  UnaryTestHelper<complex_unary_op_samples::Tan<float>>(
+      [](XlaOp x) { return Tan(x); });
+  UnaryTestHelper<complex_unary_op_samples::Tan<double>>(
+      [](XlaOp x) { return Tan(x); });
 }
 
-XLA_TEST_F(ComplexUnaryOpTest, AsinTest) {
+TEST_F(ComplexUnaryOpTest, AsinTest) {
   UnaryTestHelper<complex_unary_op_samples::Asin<float>>(Asin);
   UnaryTestHelper<complex_unary_op_samples::Asin<double>>(Asin);
 }
 
-XLA_TEST_F(ComplexUnaryOpTest, AsinhTest) {
+TEST_F(ComplexUnaryOpTest, AsinhTest) {
   UnaryTestHelper<complex_unary_op_samples::Asinh<float>>(Asinh);
   UnaryTestHelper<complex_unary_op_samples::Asinh<double>>(Asinh);
 }

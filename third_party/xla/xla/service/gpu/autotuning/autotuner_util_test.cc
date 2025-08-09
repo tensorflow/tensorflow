@@ -23,9 +23,11 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_set.h"
+#include "absl/hash/hash_testing.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/autotuning.pb.h"
@@ -64,6 +66,7 @@ using ::testing::Ne;
 using ::testing::Not;
 using ::testing::TempDir;
 using ::testing::UnorderedElementsAre;
+using ::tsl::testing::IsOkAndHolds;
 using ::tsl::testing::StatusIs;
 
 class AutotunerUtilTest : public HloTestBase {
@@ -176,6 +179,22 @@ TEST_F(AutotunerUtilTest, LoadAutotuneResultsFromFile_TextProto1) {
 
   TF_EXPECT_OK(AutotunerUtil::LoadAutotuneResultsFromFile(kFilePath));
   EXPECT_FALSE(AutotunerUtil::ResultCacheIsEmpty());
+
+  AutotuneResults results;
+  EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      std::string(kResultText), &results));
+  ASSERT_GT(results.results().size(), 0);
+  AddVersionToAutotuneResults(results);
+  AutotuneCacheKey key(results.results(0).device(), results.results(0).hlo(),
+                       results.results(0).version());
+  auto options = DebugOptions();
+  options.set_xla_gpu_require_complete_aot_autotune_results(true);
+  stream_executor::StreamExecutor* executor = NewStreamExecutor();
+  AutotuneConfig config = AutotuneConfig::FromDebugOptions(
+      DeviceOrDevicelessConfig{DeviceConfig{executor}}, options);
+
+  EXPECT_THAT(AutotunerUtil::IsInCache(key, config),
+              absl_testing::IsOkAndHolds(true));
 }
 
 TEST_F(AutotunerUtilTest, LoadAutotuneResultsFromFile_TextProto2) {
@@ -205,8 +224,8 @@ TEST_F(AutotunerUtilTest, ResultConflictsAreDetected) {
   std::string kFilePath = GetUniqueTempFilePath(".pb");
   TF_EXPECT_OK(AutotunerUtil::SerializeAutotuneResultsToFile(kFilePath));
   EXPECT_THAT(AutotunerUtil::LoadAutotuneResultsFromFile(kFilePath),
-              StatusIs(absl::StatusCode::kInternal,
-                       HasSubstr("Duplicate autotuning result")));
+              absl_testing::StatusIs(absl::StatusCode::kInternal,
+                                     HasSubstr("Duplicate autotuning result")));
 }
 
 // Test that when complete AOT autotuning is required, and there is cache miss,
@@ -223,12 +242,13 @@ TEST_F(AutotunerUtilTest, FailIfRequireCompleteAotAutotuning) {
   stream_executor::StreamExecutor* executor = NewStreamExecutor();
   auto options = DebugOptions();
   options.set_xla_gpu_require_complete_aot_autotune_results(true);
-  AutotuneConfig config(DeviceConfig{executor}, options);
+  AutotuneConfig config = AutotuneConfig::FromDebugOptions(
+      DeviceOrDevicelessConfig{DeviceConfig{executor}}, options);
   absl::Status s = AutotunerUtil::Autotune(instruction, config, [&] {
                      return AutotuneResult();
                    }).status();
   EXPECT_THAT(
-      s, StatusIs(
+      s, absl_testing::StatusIs(
              absl::StatusCode::kNotFound,
              HasSubstr("Complete XLA AOT autotuning results are required, but "
                        "no AOT result was found for key: <key model")));
@@ -251,7 +271,8 @@ TEST_F(AutotunerUtilTest, OkIfJitAutotuningDisabledButAlreadyLoadedAOT) {
 
   {
     // By default, JIT autotuning is OK.
-    AutotuneConfig config(DeviceConfig{executor}, DebugOptions());
+    AutotuneConfig config = AutotuneConfig::FromDebugOptions(
+        DeviceOrDevicelessConfig{DeviceConfig{executor}}, DebugOptions());
     TF_EXPECT_OK(AutotunerUtil::Autotune(instruction, config, [&] {
                    return AutotuneResult();
                  }).status());
@@ -263,7 +284,8 @@ TEST_F(AutotunerUtilTest, OkIfJitAutotuningDisabledButAlreadyLoadedAOT) {
   auto options = DebugOptions();
   options.set_xla_gpu_require_complete_aot_autotune_results(true);
 
-  AutotuneConfig config(DeviceConfig{executor}, options);
+  AutotuneConfig config = AutotuneConfig::FromDebugOptions(
+      DeviceOrDevicelessConfig{DeviceConfig{executor}}, options);
   // Even though JIT autotuning is disabled, there is no cache miss when running
   // autotuning for the same entry, so no error should be raised either.
   TF_EXPECT_OK(AutotunerUtil::Autotune(instruction, config, [&] {
@@ -328,10 +350,16 @@ class FileBasedCacheTest : public AutotunerUtilTest {
   }
 
   AutotuneConfig GetConfig() const {
-    DebugOptions options;
-    options.set_xla_gpu_per_fusion_autotune_cache_dir(cache_dir_);
-    options.set_xla_gpu_experimental_autotune_cache_mode(GetCacheMode());
-    return AutotuneConfig(DeviceConfig{executor_}, options);
+    return AutotuneConfig(
+        DeviceOrDevicelessConfig{DeviceConfig{executor_}},
+        /*should_init_buffers=*/true,
+        /*should_reinit_output_buffer=*/true, /*should_check_correctness=*/true,
+        /*should_skip_wrong_results=*/true,
+        /*should_crash_on_check_failure=*/true,
+        /*exhaustive_tiling_search=*/true,
+        /*should_require_complete_aot_autotune_results=*/false,
+        /*autotune_cache_dir=*/cache_dir_,
+        /*autotune_cache_mode=*/GetCacheMode());
   }
 
   AutotuneCacheKey GetCacheKey() const {
@@ -513,6 +541,23 @@ TEST(AutotuneCacheKeyTest, DeviceDescriptionToCacheKey) {
                 device_description("mi200.txtpb")),
             "ROCM: gfx90a, Cores: 110, GPU clock: 1.7 GHz, Memory bandwidth: "
             "1638 GB/s, L2 cache: 8 MB");
+}
+
+TEST(AutotuneCacheKeyTest, VersionIsIncludedInCacheKey) {
+  AutotuneCacheKey key = AutotuneCacheKey("model", "hlo");
+  EXPECT_THAT(key.ToString(),
+              HasSubstr(absl::StrFormat("version=%d", key.GetVersion())));
+}
+
+TEST(AutotuneCacheKeyTest, VersionChangeInvalidateCacheKey) {
+  AutotuneCacheKey key0 = AutotuneCacheKey("model", "hlo", /*version=*/0);
+  AutotuneCacheKey key1 = AutotuneCacheKey("model", "hlo", /*version=*/1);
+  EXPECT_FALSE(key0 == key1);
+  EXPECT_NE(key0.ToString(), key1.ToString());
+  EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly({
+      key0,
+      key1,
+  }));
 }
 
 TEST_F(FileBasedCacheTest, AddResultDoesNotWriteTheFileInReadMode) {

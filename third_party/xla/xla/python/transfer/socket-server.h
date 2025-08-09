@@ -16,6 +16,8 @@ limitations under the License.
 #define XLA_PYTHON_TRANSFER_SOCKET_SERVER_H_
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "xla/python/transfer/event_loop.h"
 #include "xla/python/transfer/streaming.h"
 #include "xla/python/transfer/transfer_socket.pb.h"
@@ -54,6 +56,12 @@ class SocketServer {
     // Fetch a particular buffer from a remote server.
     void Pull(uint64_t uuid, int buffer_id,
               tsl::RCReference<ChunkDestination> dest);
+
+    // Fetch a list of buffers from a remote server.
+    void Pull(uint64_t uuid, absl::Span<const int> buffer_ids,
+              std::vector<tsl::RCReference<ChunkDestination>> dests);
+
+    void InjectFailure();
 
    private:
     SocketNetworkState* local_;

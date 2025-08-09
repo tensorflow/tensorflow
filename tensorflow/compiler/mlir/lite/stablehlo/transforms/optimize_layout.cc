@@ -80,7 +80,7 @@ static RankedTensorType GetInvertPermutedTensorType(RankedTensorType type,
 
 static Value CreateTranspose(OpBuilder& builder, Value source,
                              ArrayRef<int64_t> perm) {
-  return builder.create<stablehlo::TransposeOp>(source.getLoc(), source, perm)
+  return stablehlo::TransposeOp::create(builder, source.getLoc(), source, perm)
       ->getResult(0);
 }
 
@@ -91,7 +91,7 @@ struct TransposeCommuteWithPad : public OpRewritePattern<stablehlo::PadOp> {
   LogicalResult matchAndRewrite(stablehlo::PadOp pad_op,
                                 PatternRewriter& rewriter) const override {
     Value pad_input = pad_op.getOperand();
-    RankedTensorType pad_type = pad_op.getType().cast<RankedTensorType>();
+    RankedTensorType pad_type = mlir::cast<RankedTensorType>(pad_op.getType());
 
     auto transpose_op = pad_input.getDefiningOp<stablehlo::TransposeOp>();
     if (!transpose_op || !transpose_op->hasOneUse()) return failure();
@@ -107,8 +107,8 @@ struct TransposeCommuteWithPad : public OpRewritePattern<stablehlo::PadOp> {
 
     RankedTensorType new_pad_type =
         GetInvertPermutedTensorType(pad_type, transpose_perm);
-    Value new_pad = rewriter.create<stablehlo::PadOp>(
-        pad_op.getLoc(), new_pad_type, transpose_input,
+    Value new_pad = stablehlo::PadOp::create(
+        rewriter, pad_op.getLoc(), new_pad_type, transpose_input,
         pad_op.getPaddingValue(), new_padding_low, new_padding_high,
         new_padding_interrier);
 
@@ -132,7 +132,7 @@ struct TransposeCommuteWithReduceWindow
     Value reduce_input = inputs[0];
 
     RankedTensorType reduce_type =
-        reduce_op.getResultTypes()[0].cast<RankedTensorType>();
+        mlir::cast<RankedTensorType>(reduce_op.getResultTypes()[0]);
 
     auto transpose_op = reduce_input.getDefiningOp<stablehlo::TransposeOp>();
     if (!transpose_op || !transpose_op->hasOneUse()) return failure();
@@ -173,8 +173,8 @@ struct TransposeCommuteWithReduceWindow
 
     RankedTensorType new_reduce_type =
         GetInvertPermutedTensorType(reduce_type, transpose_perm);
-    auto new_reduce_op = rewriter.create<stablehlo::ReduceWindowOp>(
-        reduce_op.getLoc(), new_reduce_type, transpose_input,
+    auto new_reduce_op = stablehlo::ReduceWindowOp::create(
+        rewriter, reduce_op.getLoc(), new_reduce_type, transpose_input,
         reduce_op.getInitValues()[0], new_window_dimensions, new_window_strides,
         new_base_dilations, new_win_dilations, new_padding_attr);
     IRMapping mapping;

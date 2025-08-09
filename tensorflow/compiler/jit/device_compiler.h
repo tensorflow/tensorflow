@@ -17,16 +17,16 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_JIT_DEVICE_COMPILER_H_
 
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/call_once.h"
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/types/optional.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/jit/device_compilation_cache.h"
 #include "tensorflow/compiler/jit/device_compilation_cluster_signature.h"
@@ -37,9 +37,10 @@ limitations under the License.
 #include "tensorflow/compiler/jit/tf_graph_to_hlo_compiler.h"
 #include "tensorflow/compiler/jit/xla_compile_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
-#include "xla/client/local_client.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/resource_base.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -116,6 +117,16 @@ class DeviceCompiler : public ResourceBase {
       const XlaCompiler::CompilationResult** out_compilation_result,
       ExecutableType** out_executable);
 
+  // An override that allows the caller to specify the function explicitly.
+  absl::Status CompileSingleOpIfNeeded(
+      const XlaCompiler::Options& options, const NameAttrList& function,
+      const DeviceCompilationCanonicalFunction& canonical_function,
+      const std::vector<XlaCompiler::Argument>& args,
+      const XlaCompiler::CompileOptions& compile_options, OpKernelContext* ctx,
+      DeviceCompilationProfiler* profiler,
+      const XlaCompiler::CompilationResult** out_compilation_result,
+      ExecutableType** out_executable);
+
   ClientType* client() const { return compiler_client_->client(); }
   const DeviceType& device_type() const { return persistor_->device_type(); }
   DeviceCompilationCache<ExecutableType>* cache() { return cache_.get(); }
@@ -134,6 +145,7 @@ class DeviceCompiler : public ResourceBase {
   absl::Status CompileImpl(
       const XlaCompiler::CompileOptions& compile_options,
       const XlaCompiler::Options& options, const NameAttrList& function,
+      const DeviceCompilationCanonicalFunction& canonical_function,
       const std::vector<XlaCompiler::Argument>& args, CompileScope scope,
       DeviceCompileMode compile_mode, OpKernelContext* ctx,
       DeviceCompilationProfiler* profiler,
@@ -159,6 +171,14 @@ class DeviceCompiler : public ResourceBase {
       const std::vector<XlaCompiler::Argument>& args,
       const NameAttrList& function, CompileScope scope, OpKernelContext* ctx,
       DeviceCompilationProfiler* profiler);
+
+  // Releases all references held to `std::shared_ptr<xla::XlaComputation>`
+  // held by the cache.
+  //
+  // This is to be called during session finalization, after all compilation
+  // has completed and computations no longer need to be accessed through the
+  // cache.
+  void Finalize() override;
 
   std::unique_ptr<DeviceExecutablePersistor<ExecutableType, ClientType>>
       persistor_;
@@ -251,9 +271,21 @@ absl::Status DeviceCompiler<ExecutableType, ClientType>::CompileIfNeeded(
     DeviceCompileMode compile_mode, DeviceCompilationProfiler* profiler,
     const XlaCompiler::CompilationResult** out_compilation_result,
     ExecutableType** out_executable) {
-  return CompileImpl(compile_options, options, function, args,
-                     CompileScope::kFunction, compile_mode, /*ctx=*/nullptr,
-                     profiler, out_compilation_result, out_executable);
+  return CompileImpl(compile_options, options, function, Canonicalize(function),
+                     args, CompileScope::kFunction, compile_mode,
+                     /*ctx=*/nullptr, profiler, out_compilation_result,
+                     out_executable);
+}
+
+inline NameAttrList GetDeviceCompilerFunction(const NodeDef& def) {
+  NameAttrList function;
+  function.set_name(def.op());
+  *function.mutable_attr() = def.attr();
+  // Remove the "_class" attribute from the attribute set used to create the
+  // compilation cache key. This attribute is information for the colocator
+  // and causes false uniqueness between nodes.
+  function.mutable_attr()->erase("_class");
+  return function;
 }
 
 template <typename ExecutableType, typename ClientType>
@@ -266,16 +298,25 @@ DeviceCompiler<ExecutableType, ClientType>::CompileSingleOpIfNeeded(
     const XlaCompiler::CompilationResult** out_compilation_result,
     ExecutableType** out_executable) {
   const NodeDef& def = ctx->op_kernel().def();
-  NameAttrList name;
-  name.set_name(def.op());
-  *name.mutable_attr() = def.attr();
-  // Remove the "_class" attribute from the attribute set used to create the
-  // compilation cache key. This attribute is information for the colocator
-  // and causes false uniqueness between nodes.
-  name.mutable_attr()->erase("_class");
-  return CompileImpl(compile_options, options, name, args, CompileScope::kOp,
-                     DeviceCompileMode::kStrict, ctx, profiler,
-                     out_compilation_result, out_executable);
+  const NameAttrList function = GetDeviceCompilerFunction(def);
+  return CompileSingleOpIfNeeded(options, function, Canonicalize(function),
+                                 args, compile_options, ctx, profiler,
+                                 out_compilation_result, out_executable);
+}
+
+template <typename ExecutableType, typename ClientType>
+absl::Status
+DeviceCompiler<ExecutableType, ClientType>::CompileSingleOpIfNeeded(
+    const XlaCompiler::Options& options, const NameAttrList& function,
+    const DeviceCompilationCanonicalFunction& canonical_function,
+    const std::vector<XlaCompiler::Argument>& args,
+    const XlaCompiler::CompileOptions& compile_options, OpKernelContext* ctx,
+    DeviceCompilationProfiler* profiler,
+    const XlaCompiler::CompilationResult** out_compilation_result,
+    ExecutableType** out_executable) {
+  return CompileImpl(compile_options, options, function, canonical_function,
+                     args, CompileScope::kOp, DeviceCompileMode::kStrict, ctx,
+                     profiler, out_compilation_result, out_executable);
 }
 
 template <typename ExecutableType, typename ClientType>
@@ -341,6 +382,9 @@ DeviceCompiler<ExecutableType, ClientType>::CompileStrict(
   cache_->Store(sig, cache_value.compile_state, cache_value.compilation_status,
                 std::move(out_compilation_result), std::move(out_executable));
 
+  // Finalize the cache to release the XlaComputation after it was compiled.
+  cache_->Finalize();
+
   const uint64 compile_end_us = env->NowMicros();
   const uint64 compile_time_us = compile_end_us - compile_start_us;
 
@@ -396,9 +440,34 @@ absl::Status DeviceCompiler<ExecutableType, ClientType>::CompileAsynchronous(
 }
 
 template <typename ExecutableType, typename ClientType>
+void DeviceCompiler<ExecutableType, ClientType>::Finalize() {
+  const mutex_lock lock(cluster_mutexes_mu_);
+  std::vector<mutex* absl_nonnull> cluster_mutexes;
+  cluster_mutexes.reserve(cluster_mutexes_.size());
+  for (auto& [_, mutex] : cluster_mutexes_) {
+    if (mutex != nullptr) {
+      cluster_mutexes.push_back(mutex.get());
+    }
+  }
+
+  // Sort the mutexes before locking to ensure that this happens in a
+  // deterministic order, consistent between resizes of the `cluster_mutexes_`
+  // map.
+  absl::c_sort(cluster_mutexes);
+  std::vector<mutex_lock> cluster_mutex_locks;
+  cluster_mutex_locks.reserve(cluster_mutexes.size());
+  for (mutex* absl_nonnull const mutex : cluster_mutexes) {
+    cluster_mutex_locks.emplace_back(*mutex);
+  }
+
+  cache_->Finalize();
+}
+
+template <typename ExecutableType, typename ClientType>
 absl::Status DeviceCompiler<ExecutableType, ClientType>::CompileImpl(
     const XlaCompiler::CompileOptions& compile_options,
     const XlaCompiler::Options& options, const NameAttrList& function,
+    const DeviceCompilationCanonicalFunction& canonical_function,
     const std::vector<XlaCompiler::Argument>& args, CompileScope scope,
     DeviceCompileMode compile_mode, OpKernelContext* ctx,
     DeviceCompilationProfiler* profiler,
@@ -413,8 +482,8 @@ absl::Status DeviceCompiler<ExecutableType, ClientType>::CompileImpl(
       VLOG(3) << i << ": " << args[i].HumanString();
     }
   }
-  TF_ASSIGN_OR_RETURN(auto signature,
-                      DeviceCompilationClusterSignature::Build(function, args));
+  TF_ASSIGN_OR_RETURN(auto signature, DeviceCompilationClusterSignature::Build(
+                                          canonical_function, args));
 
   // The outer lock protects the existence of the mutex in the map.
   mutex* cluster_mutex;

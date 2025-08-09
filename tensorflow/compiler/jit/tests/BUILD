@@ -118,5 +118,8 @@ tf_cc_test(
         "//tensorflow/compiler/jit:compilation_passes",
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/core:test",
+        "//tensorflow/core/framework:graph_proto_cc",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
     ],
 )

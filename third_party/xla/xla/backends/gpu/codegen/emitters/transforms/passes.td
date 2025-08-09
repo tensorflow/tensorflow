@@ -37,68 +37,37 @@ def ConvertIndexTypePass : Pass<"xla-gpu-convert-index-type", "mlir::ModuleOp"> 
 }
 
 def ConvertFloatNvidiaPass : Pass<"xla-gpu-convert-float-nvidia", "mlir::ModuleOp"> {
-  let summary = "Convert floating point types using NVidia intrinsics.";
+  let summary = "Convert floating point types using NVPTX intrinsics.";
 
   let dependentDialects = [
     "mlir::LLVM::LLVMDialect",
     "mlir::arith::ArithDialect",
   ];
-
   let constructor = "CreateConvertFloatNvidiaPass()";
 }
 
-def VectorizeLoadsAndStoresPass :
-   Pass<"xla-gpu-vectorize-loads-stores", "mlir::func::FuncOp"> {
-  let summary = "Vectorizes loads and stores.";
-
-  let description = [{
-    Rewrites tensor.extract and tensor.insert ops inside loops to their vector
-    equivalents (vector.transfer_read and vector.transfer_write + vector.extract
-    and vector.insert).
-  }];
+def ConvertFloatAMDPass : Pass<"xla-gpu-convert-float-amd", "mlir::ModuleOp"> {
+  let summary = "Convert floating point types using AMDGCN intrinsics.";
 
   let dependentDialects = [
-    "mlir::vector::VectorDialect",
+    "mlir::LLVM::LLVMDialect",
+    "mlir::arith::ArithDialect",
   ];
-
   let options = [
     Option<"gpu_device_info_", "gpu_device_info", "std::string", /*default=*/"",
            "Serialized stream_executor::GPUDeviceInfo proto.">,
   ];
-
-  let constructor = "CreateVectorizeLoadsAndStoresPass()";
+  let constructor = "CreateConvertFloatAMDPass()";
 }
+def RecoverExp2Pass : Pass<"xla-gpu-recover-exp2", "mlir::ModuleOp"> {
+  let summary = "Recovers exp2(x) from exp(x*log(2))";
 
-def FuseLoopsPass : Pass<"xla-gpu-fuse-loops", "mlir::func::FuncOp"> {
-  let summary = "Fuse xla_gpu.loop.";
-  let description = [{
-    This pass fuses similar xla_gpu.loops into one if the second one is
-    extracting the same value from a vector in which the first one inserts to.
-
-    Before fuse-loops:
-      %loop0 = xla_gpu.loop (%tid, %bid) -> (%ra, %rb, %rc)[%i, %j]
-        in #indexing_map iter_args(%iter = %cst) -> (vector<8x1xf32>) {
-          %extracted = tensor.extract %arg0[%ra, %rb, %rc]
-          %1 = vector.insert %extracted, %iter [%i, %j]
-          xla_gpu.yield %1
-      }
-      %loop1 = xla_gpu.loop (%tid, %bid) -> (%ra, %rb)[%i, %j]
-        in #indexing_map1 iter_args(%iter = %shmem) -> (tensor<32x33xf32>) {
-          %2 = vector.extract %loop0  [%i, %j]
-          %inserted = tensor.insert %iter[%ra, %rb]
-          xla_gpu.yield %extracted
-      }
-
-    After fuse-loops:
-      %loop = xla_gpu.loop (%tid, %bid) -> (%ra, %rb, %rc, %rd, %re)[%i, %j]
-        in #indexing_map iter_args(%iter = %shmem) -> (tensor<32x33xf32>) {
-          %extracted = tensor.extract %arg0[%ra, %rb, %rc]
-          %inserted = tensor.insert %extracted into %iter[%rd, %re]
-          xla_gpu.yield %inserted
-      }
-  }];
-  let dependentDialects = ["xla::gpu::XlaGpuDialect", "xla::XlaDialect"];
-  let constructor = "CreateFuseLoopsPass()";
+  let dependentDialects = [
+    "mlir::LLVM::LLVMDialect",
+    "mlir::arith::ArithDialect",
+    "mlir::math::MathDialect",
+  ];
+  let constructor = "CreateRecoverExp2Pass()";
 }
 
 def PeelLoopsPass : Pass<"xla-gpu-peel-loops", "mlir::func::FuncOp"> {
@@ -128,6 +97,24 @@ def OptimizeLoopsPass :
   ];
 
   let constructor = "CreateOptimizeLoopsPass()";
+}
+
+
+def LowerXlaSharedPass :
+   Pass<"xla-gpu-lower-xla-shared", "mlir::func::FuncOp"> {
+  let summary = "Lowers XLA shared dialect ops to XLA GPU ops.";
+
+  let description = [{
+    Lowers XLA shared dialect ops to XLA GPU ops.
+  }];
+
+  let dependentDialects = [
+    "xla::XlaDialect",
+    "mlir::gpu::GPUDialect",
+    "mlir::scf::SCFDialect",
+  ];
+
+  let constructor = "CreateLowerXlaSharedPass()";
 }
 
 #endif  // XLA_SERVICE_GPU_FUSIONS_TRANSFORMS_PASSES_TD_

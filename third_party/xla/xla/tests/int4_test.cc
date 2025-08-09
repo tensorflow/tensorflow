@@ -22,12 +22,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/test_macros.h"
 
 namespace xla {
 namespace {
 
-XLA_TEST_F(HloTestBase, InputIsOutput) {
+TEST_F(HloTestBase, InputIsOutput) {
   const std::string hlo_text = R"(
   HloModule InputIsOutput
   ENTRY main {
@@ -37,7 +36,7 @@ XLA_TEST_F(HloTestBase, InputIsOutput) {
   EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
 }
 
-XLA_TEST_F(HloTestBase, Reshape) {
+TEST_F(HloTestBase, Reshape) {
   const std::string hlo_text = R"(
   HloModule Reshape
   ENTRY main {
@@ -48,7 +47,7 @@ XLA_TEST_F(HloTestBase, Reshape) {
   EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
 }
 
-XLA_TEST_F(HloTestBase, MultiReshape) {
+TEST_F(HloTestBase, MultiReshape) {
   // Test reshaping multiple arrays to the same shape.
   const std::string hlo_text = R"(
   HloModule MultiReshape
@@ -64,7 +63,7 @@ XLA_TEST_F(HloTestBase, MultiReshape) {
   EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
 }
 
-XLA_TEST_F(HloTestBase, Slice) {
+TEST_F(HloTestBase, Slice) {
   // Tests indexing s4 arrays in the presence of a slice instruction. On
   // CPUs/GPUs, the slice is fused with the s4 array.
   const std::string hlo_text = R"(
@@ -78,7 +77,7 @@ XLA_TEST_F(HloTestBase, Slice) {
   EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
 }
 
-XLA_TEST_F(HloTestBase, Add) {
+TEST_F(HloTestBase, Add) {
   const std::string hlo_text = R"(
   HloModule Add
 
@@ -90,7 +89,7 @@ XLA_TEST_F(HloTestBase, Add) {
   EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
 }
 
-XLA_TEST_F(HloTestBase, Dot) {
+TEST_F(HloTestBase, Dot) {
   const std::string hlo_text = R"(
   HloModule Dot
 
@@ -103,7 +102,7 @@ XLA_TEST_F(HloTestBase, Dot) {
   EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
 }
 
-XLA_TEST_F(HloTestBase, MixedTypeDot) {
+TEST_F(HloTestBase, MixedTypeDot) {
   const std::string hlo_text = R"(
   HloModule Dot
 
@@ -117,7 +116,7 @@ XLA_TEST_F(HloTestBase, MixedTypeDot) {
   EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
 }
 
-XLA_TEST_F(HloTestBase, NonMajorToMinorLayout) {
+TEST_F(HloTestBase, NonMajorToMinorLayout) {
   // Tests transposing a matrix with a non-major-to-minor layout.
   const std::string hlo_text = R"(
   HloModule NonMajorToMinorLayout
@@ -128,7 +127,7 @@ XLA_TEST_F(HloTestBase, NonMajorToMinorLayout) {
   EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
 }
 
-XLA_TEST_F(HloTestBase, Transpose4d) {
+TEST_F(HloTestBase, Transpose4d) {
   const std::string hlo_text = R"(
   ENTRY main {
     x = s4[2,2,2,2] parameter(0)
@@ -137,7 +136,7 @@ XLA_TEST_F(HloTestBase, Transpose4d) {
   EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
 }
 
-XLA_TEST_F(HloTestBase, TransposeDot) {
+TEST_F(HloTestBase, TransposeDot) {
   const std::string hlo_text = R"(
   ENTRY main {
     x = s4[32,32,32] parameter(0)
@@ -149,7 +148,7 @@ XLA_TEST_F(HloTestBase, TransposeDot) {
   EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
 }
 
-XLA_TEST_F(HloTestBase, Int4Output2d) {
+TEST_F(HloTestBase, Int4Output2d) {
   // Tests outputting a 2D int4 array.
   const std::string hlo_text = R"(
   HloModule Int4Output2d
@@ -160,7 +159,7 @@ XLA_TEST_F(HloTestBase, Int4Output2d) {
   EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
 }
 
-XLA_TEST_F(HloTestBase, TupleOutput) {
+TEST_F(HloTestBase, TupleOutput) {
   // Tests tuple output with an int4 array
   const std::string hlo_text = R"(
   HloModule TupleOutput
@@ -172,7 +171,7 @@ XLA_TEST_F(HloTestBase, TupleOutput) {
   EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
 }
 
-XLA_TEST_F(HloTestBase, OddNumberOfElements) {
+TEST_F(HloTestBase, OddNumberOfElements) {
   // Tests writing to s4 arrays with an odd number of elements
   const std::string hlo_text = R"(
   HloModule OddNumberOfElements
@@ -184,7 +183,7 @@ XLA_TEST_F(HloTestBase, OddNumberOfElements) {
   EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
 }
 
-XLA_TEST_F(HloTestBase, Scalar) {
+TEST_F(HloTestBase, Scalar) {
   // Tests reading an int4 scalar value
   const std::string hlo_text = R"(
   HloModule Scalar
@@ -197,7 +196,7 @@ XLA_TEST_F(HloTestBase, Scalar) {
   EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
 }
 
-XLA_TEST_F(HloTestBase, HorizontalLoopFusion) {
+TEST_F(HloTestBase, HorizontalLoopFusion) {
   // Tests an HLO module where horizontal loop fusion can be done on GPUs
   const std::string hlo_text = R"(
   HloModule HorizontalLoopFusion
@@ -219,7 +218,7 @@ XLA_TEST_F(HloTestBase, HorizontalLoopFusion) {
   EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
 }
 
-XLA_TEST_F(HloTestBase, ReduceMultipleDimensions) {
+TEST_F(HloTestBase, ReduceMultipleDimensions) {
   const std::string hlo_text = R"(
   add_computation {
     x = s4[] parameter(0)
@@ -236,7 +235,7 @@ XLA_TEST_F(HloTestBase, ReduceMultipleDimensions) {
   EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
 }
 
-XLA_TEST_F(HloTestBase, ReduceToScalar) {
+TEST_F(HloTestBase, ReduceToScalar) {
   const std::string hlo_text = R"(
   add_computation {
     x = s4[] parameter(0)
@@ -253,7 +252,7 @@ XLA_TEST_F(HloTestBase, ReduceToScalar) {
   EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
 }
 
-XLA_TEST_F(HloTestBase, dynamic_slice_fusion) {
+TEST_F(HloTestBase, dynamic_slice_fusion) {
   const std::string hlo_text = R"(
   ENTRY main {
     input = s4[101,9] parameter(0)
@@ -264,7 +263,7 @@ XLA_TEST_F(HloTestBase, dynamic_slice_fusion) {
   EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
 }
 
-XLA_TEST_F(HloTestBase, dynamic_update_slice_fusion) {
+TEST_F(HloTestBase, dynamic_update_slice_fusion) {
   const std::string hlo_text = R"(
   ENTRY main {
     input = s4[101,9] parameter(0)
@@ -284,7 +283,7 @@ class HloTestBaseWithAlgsimpDisabled : public HloTestBase {
   }
 };
 
-XLA_TEST_F(HloTestBaseWithAlgsimpDisabled, TwoDots) {
+TEST_F(HloTestBaseWithAlgsimpDisabled, TwoDots) {
   // This tests a regression that occured when a non-parameter non-ROOT
   // instruction was s4 as the input or output of a fusion. Fusion passes tend
   // to make any int4 instructions only internal to a fusion, but this HLO, at

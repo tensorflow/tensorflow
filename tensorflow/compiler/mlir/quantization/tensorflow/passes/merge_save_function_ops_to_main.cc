@@ -15,16 +15,30 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/algorithm/container.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/IRMapping.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/constants.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/manipulate_model_attr.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 
 namespace mlir {
@@ -200,17 +214,17 @@ IslandOp CreateFilePrefixIdentityOp(const BlockArgument main_file_prefix_arg,
   auto builder = OpBuilder::atBlockTerminator(&main_graph_op.GetBody());
   // Create an IslandOp that will wrap the IdentityOp. Add a control dependency
   // for the newly copied save function.
-  auto wrapper_island_op = builder.create<IslandOp>(
-      name_loc, TypeRange{main_file_prefix_arg.getType()},
+  auto wrapper_island_op = IslandOp::create(
+      builder, name_loc, TypeRange{main_file_prefix_arg.getType()},
       tf_executor::ControlType::get(&ctx), ValueRange(control_inputs));
   wrapper_island_op.getBody().emplaceBlock();
 
   builder.setInsertionPointToStart(&wrapper_island_op.GetBody());
-  auto identity_op = builder.create<TF::IdentityOp>(
-      name_loc, /*result_types=*/main_file_prefix_arg.getType(),
+  auto identity_op = TF::IdentityOp::create(
+      builder, name_loc, /*result_types=*/main_file_prefix_arg.getType(),
       /*input=*/main_file_prefix_arg);
 
-  builder.create<tf_executor::YieldOp>(name_loc, identity_op.getResult());
+  tf_executor::YieldOp::create(builder, name_loc, identity_op.getResult());
 
   return wrapper_island_op;
 }
@@ -222,7 +236,7 @@ void AppendValueToFetch(GraphOp graph_op, Value value) {
   fetches.emplace_back(value);
 
   auto builder = OpBuilder::atBlockTerminator(&graph_op.GetBody());
-  builder.create<FetchOp>(old_main_fetch.getLoc(), std::move(fetches));
+  FetchOp::create(builder, old_main_fetch.getLoc(), std::move(fetches));
   old_main_fetch.erase();
 }
 

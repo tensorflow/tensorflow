@@ -14,10 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
-#include <iterator>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "third_party/gpus/cuda/include/cublas_v2.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -30,7 +28,7 @@ limitations under the License.
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu/transforms/cudnn_fusion_compiler.h"
-#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 
 namespace xla {
 namespace gpu {
@@ -64,7 +62,7 @@ bool GemmFusionAutotunerImpl::AddLibConfigs(
       (IsFusionKind(fusion, kTritonGemmFusionKind) && is_cudnn_enabled &&
        algorithm_util::IsSupportedByCudnn(
            dot->precision_config().algorithm()) &&
-       !dot->sparse_operands() && IsAutotuningEnabled())) {
+       IsAutotuningEnabled())) {
     const int plan_count = GetCuDnnPlanCount(fusion, config_);
     for (int plan_id = 0; plan_id < plan_count; ++plan_id) {
       configs.push_back(CuDnnConfig{plan_id});
@@ -82,36 +80,82 @@ bool GemmFusionAutotunerImpl::AddLibConfigs(
 std::vector<TritonGemmConfig> GemmFusionAutotunerImpl::GetDefaultTritonConfigs()
     const {
   using Config = TritonGemmConfig;
-
-  std::vector<Config> configs = {
-      Config(32, 32, 256, 1, 1, 4),   Config(64, 32, 32, 16, 1, 4),
-      Config(32, 64, 64, 4, 1, 4),    Config(128, 128, 64, 4, 1, 4),
-      Config(16, 16, 256, 1, 1, 4),   Config(16, 128, 32, 16, 1, 4),
-      Config(16, 64, 128, 1, 1, 4),   Config(16, 128, 32, 8, 1, 4),
-      Config(16, 16, 512, 1, 1, 4),   Config(32, 16, 512, 1, 1, 4),
-      Config(64, 32, 64, 1, 2, 8),    Config(128, 256, 32, 1, 3, 8),
-      Config(256, 128, 32, 1, 3, 8),  Config(256, 64, 32, 1, 4, 4),
-      Config(64, 256, 32, 1, 4, 4),   Config(128, 64, 32, 1, 4, 4),
-      Config(64, 128, 32, 1, 4, 4),   Config(256, 128, 128, 1, 3, 8),
-      Config(256, 64, 128, 1, 4, 4),  Config(64, 256, 128, 1, 4, 4),
-      Config(128, 128, 128, 1, 4, 4), Config(128, 64, 64, 1, 4, 4),
-      Config(64, 128, 64, 1, 4, 4),   Config(128, 32, 64, 1, 4, 4),
-      Config(64, 32, 64, 1, 4, 4),    Config(32, 128, 32, 1, 4, 4),
-      Config(128, 128, 32, 1, 4, 4),  Config(16, 16, 256, 1, 3, 4),
-      Config(128, 128, 64, 2, 1, 8),  Config(64, 64, 64, 1, 2, 4),
-      Config(16, 64, 256, 8, 1, 4),   Config(256, 256, 128, 1, 3, 8)};
-  auto cu_compute_capability =
+  auto compute_capability =
       std::get<se::CudaComputeCapability>(GetComputeCapability());
-  if (cu_compute_capability.IsAtLeastHopper()) {
-    absl::c_copy(
-        std::vector<Config>{
-            Config(16, 32, 32, 8, 1, 2),
-            Config(16, 64, 128, 8, 1, 4),
-            Config(16, 64, 128, 16, 3, 4),
-        },
-        std::back_inserter(configs));
+  std::vector<TritonGemmConfig> configs;
+
+  if (compute_capability.IsAtLeastBlackwell()) {
+    configs = {Config(128, 128, 32, 1, 4, 4), Config(128, 128, 64, 1, 1, 8),
+               Config(128, 128, 64, 8, 3, 4), Config(128, 16, 16, 512, 4, 2),
+               Config(128, 16, 32, 16, 3, 2), Config(128, 16, 64, 1, 5, 4),
+               Config(128, 16, 64, 16, 3, 4), Config(128, 16, 64, 64, 1, 2),
+               Config(128, 256, 64, 1, 4, 8), Config(128, 256, 64, 2, 4, 8),
+               Config(128, 256, 64, 4, 3, 8), Config(128, 64, 64, 1, 3, 4),
+               Config(128, 64, 64, 16, 4, 8), Config(128, 64, 64, 8, 4, 4),
+               Config(16, 16, 128, 1, 3, 2),  Config(16, 16, 16, 1, 1, 2),
+               Config(16, 16, 64, 8, 3, 2),   Config(16, 32, 64, 1, 3, 2),
+               Config(256, 128, 64, 1, 3, 8), Config(256, 16, 16, 1, 1, 2),
+               Config(256, 32, 32, 16, 3, 4), Config(32, 16, 32, 1, 4, 2),
+               Config(32, 16, 512, 1, 1, 4),  Config(32, 16, 64, 1, 1, 2),
+               Config(32, 16, 64, 1, 4, 2),   Config(64, 128, 16, 1, 1, 16),
+               Config(64, 128, 16, 1, 3, 2),  Config(64, 128, 64, 1, 4, 4),
+               Config(64, 16, 64, 1, 2, 2),   Config(64, 32, 128, 1, 3, 2),
+               Config(64, 32, 32, 1, 4, 2),   Config(64, 32, 64, 64, 3, 2),
+               Config(64, 64, 128, 8, 1, 8),  Config(64, 64, 16, 1, 1, 2),
+               Config(64, 64, 16, 1, 3, 2)};
+  } else if (compute_capability.IsHopper() || compute_capability.IsAmpere()) {
+    configs = {Config(16, 16, 64, 1, 4, 2),    Config(16, 16, 128, 1, 4, 4),
+               Config(16, 16, 128, 128, 4, 2), Config(16, 16, 128, 16, 1, 2),
+               Config(16, 256, 16, 1, 1, 2),   Config(32, 32, 128, 16, 1, 4),
+               Config(32, 256, 32, 1, 3, 4),   Config(32, 256, 32, 16, 3, 8),
+               Config(64, 16, 32, 1, 4, 2),    Config(64, 16, 32, 16, 4, 2),
+               Config(64, 16, 64, 1, 1, 4),    Config(64, 16, 64, 4, 3, 2),
+               Config(64, 16, 64, 16, 4, 4),   Config(64, 16, 128, 1, 4, 2),
+               Config(64, 16, 128, 16, 4, 4),  Config(64, 32, 32, 1, 4, 4),
+               Config(64, 32, 64, 16, 3, 4),   Config(64, 32, 128, 1, 3, 2),
+               Config(64, 32, 128, 128, 2, 4), Config(64, 64, 32, 1, 4, 4),
+               Config(64, 64, 64, 1, 4, 4),    Config(64, 64, 64, 4, 4, 4),
+               Config(64, 64, 128, 16, 3, 4),  Config(64, 64, 256, 16, 4, 8),
+               Config(64, 128, 16, 1, 4, 2),   Config(64, 128, 64, 1, 3, 4),
+               Config(64, 128, 128, 8, 1, 4),  Config(64, 256, 32, 1, 4, 4),
+               Config(128, 16, 32, 8, 4, 2),   Config(128, 16, 64, 16, 3, 2),
+               Config(128, 16, 64, 16, 1, 4),  Config(128, 32, 32, 8, 4, 2),
+               Config(128, 128, 32, 8, 4, 8),  Config(128, 256, 32, 1, 4, 8),
+               Config(128, 256, 64, 1, 4, 8)};
+  } else {
+    configs = {Config(32, 32, 256, 1, 1, 4),   Config(64, 32, 32, 16, 1, 4),
+               Config(32, 64, 64, 4, 1, 4),    Config(128, 128, 64, 4, 1, 4),
+               Config(16, 16, 256, 1, 1, 4),   Config(16, 128, 32, 16, 1, 4),
+               Config(16, 64, 128, 1, 1, 4),   Config(16, 128, 32, 8, 1, 4),
+               Config(16, 16, 512, 1, 1, 4),   Config(32, 16, 512, 1, 1, 4),
+               Config(64, 32, 64, 1, 2, 8),    Config(128, 256, 32, 1, 3, 8),
+               Config(256, 128, 32, 1, 3, 8),  Config(256, 64, 32, 1, 4, 4),
+               Config(64, 256, 32, 1, 4, 4),   Config(128, 64, 32, 1, 4, 4),
+               Config(64, 128, 32, 1, 4, 4),   Config(256, 128, 128, 1, 3, 8),
+               Config(256, 64, 128, 1, 4, 4),  Config(64, 256, 128, 1, 4, 4),
+               Config(128, 128, 128, 1, 4, 4), Config(128, 64, 64, 1, 4, 4),
+               Config(64, 128, 64, 1, 4, 4),   Config(128, 32, 64, 1, 4, 4),
+               Config(64, 32, 64, 1, 4, 4),    Config(32, 128, 32, 1, 4, 4),
+               Config(128, 128, 32, 1, 4, 4),  Config(16, 16, 256, 1, 3, 4),
+               Config(128, 128, 64, 2, 1, 8),  Config(64, 64, 64, 1, 2, 4),
+               Config(16, 64, 256, 8, 1, 4),   Config(256, 256, 128, 1, 3, 8)};
   }
-  return configs;
+
+  if (!debug_options_.xla_gpu_experimental_enable_triton_tma() ||
+      !compute_capability.IsAtLeastHopper()) {
+    return configs;
+  }
+
+  // Hopper+ devices support TMA. Add TMA parameterized configs.
+  std::vector<TritonGemmConfig> tma_parameterized_configs;
+  for (auto& config : configs) {
+    config.is_tma_allowed = false;
+    tma_parameterized_configs.push_back(config);
+
+    config.is_tma_allowed = true;
+    tma_parameterized_configs.push_back(config);
+  }
+  return tma_parameterized_configs;
 }
 
 }  // namespace gpu

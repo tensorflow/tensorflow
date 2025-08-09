@@ -82,14 +82,13 @@ class MockArrayTest : public testing::Test {
                             CreateClient(absl::StrCat("grpc://", address)));
   }
 
-  absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> NewArray() {
+  absl::StatusOr<xla::ifrt::ArrayRef> NewArray() {
     DType dtype(DType::kF32);
     Shape shape({2, 3});
     auto data = std::make_unique<std::vector<float>>(6);
     std::iota(data->begin(), data->end(), 0);
     xla::ifrt::Device* device = client_->addressable_devices().at(0);
-    std::shared_ptr<const Sharding> sharding =
-        SingleDeviceSharding::Create(device, MemoryKind());
+    ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
 
     TF_ASSIGN_OR_RETURN(
         auto client_arr,
@@ -121,10 +120,9 @@ class MockArrayTest : public testing::Test {
             [this, mock_backend = mock_backend.get()](
                 const void* data, DType dtype, Shape shape,
                 std::optional<absl::Span<const int64_t>> byte_strides,
-                std::shared_ptr<const Sharding> sharding,
-                Client::HostBufferSemantics semantics,
+                ShardingRef sharding, Client::HostBufferSemantics semantics,
                 std::function<void()> on_done_with_host_buffer)
-                -> absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> {
+                -> absl::StatusOr<xla::ifrt::ArrayRef> {
               TF_ASSIGN_OR_RETURN(
                   auto delegated,
                   mock_backend->delegated()->MakeArrayFromHostBuffer(
@@ -155,7 +153,7 @@ class MockArrayTest : public testing::Test {
             });
 
     ON_CALL(*mock_backend, GetReadyFuture)
-        .WillByDefault([](absl::Span<const tsl::RCReference<Value>> values) {
+        .WillByDefault([](absl::Span<const ValueRef> values) {
           std::vector<Future<>> futures;
           futures.reserve(values.size());
           for (const auto& value : values) {
@@ -191,7 +189,7 @@ TEST_F(MockArrayTest, ReadyFutureWaitsUntilReady) {
   EXPECT_FALSE(ready.IsReady());
 
   wait_ready.Notify();
-  EXPECT_THAT(ready.Await(), IsOk());
+  EXPECT_THAT(ready.Await(), absl_testing::IsOk());
 }
 
 TEST_F(MockArrayTest, ReadyFuturePropagatesError) {
@@ -204,7 +202,7 @@ TEST_F(MockArrayTest, ReadyFuturePropagatesError) {
     get_ready_hook_ = [&]() { return absl::InternalError("testing"); };
   }
 
-  EXPECT_THAT(arr->GetReadyFuture().Await(), StatusIs(kInternal));
+  EXPECT_THAT(arr->GetReadyFuture().Await(), absl_testing::StatusIs(kInternal));
 }
 
 TEST_F(MockArrayTest, CopyToHostFutureWaitsUntilCopied) {
@@ -228,7 +226,7 @@ TEST_F(MockArrayTest, CopyToHostFutureWaitsUntilCopied) {
   EXPECT_FALSE(copied.IsReady());
 
   wait_ready.Notify();
-  EXPECT_THAT(copied.Await(), IsOk());
+  EXPECT_THAT(copied.Await(), absl_testing::IsOk());
 }
 
 TEST_F(MockArrayTest, CopyToHostFuturePropagatesError) {
@@ -245,7 +243,7 @@ TEST_F(MockArrayTest, CopyToHostFuturePropagatesError) {
   auto copied = arr->CopyToHostBuffer(data, /*byte_strides=*/std::nullopt,
                                       ArrayCopySemantics::kAlwaysCopy);
 
-  EXPECT_THAT(copied.Await(), StatusIs(kInternal));
+  EXPECT_THAT(copied.Await(), absl_testing::StatusIs(kInternal));
 }
 
 }  // namespace

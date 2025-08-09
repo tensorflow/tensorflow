@@ -28,6 +28,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/python/ifrt/serdes.pb.h"
+#include "xla/python/ifrt/serdes_default_version_accessor.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -50,7 +52,7 @@ struct Registry {
 };
 
 Registry* registry() {
-  static auto* r = new Registry();
+  static auto* const r = new Registry();
   return r;
 }
 
@@ -60,6 +62,13 @@ char Serializable::ID = 0;
 char SerializeOptions::ID = 0;
 char DeserializeOptions::ID = 0;
 char SerDes::ID = 0;
+
+SerDesVersion GetRequestedSerDesVersion(const SerializeOptions* options) {
+  if (options == nullptr) {
+    return SerDesDefaultVersionAccessor::Get();
+  }
+  return options->version;
+}
 
 void RegisterSerDes(const void* type_id, std::unique_ptr<SerDes> serdes) {
   Registry* const r = registry();
@@ -82,7 +91,8 @@ void RegisterSerDes(const void* type_id, std::unique_ptr<SerDes> serdes) {
 }
 
 absl::StatusOr<Serialized> Serialize(
-    Serializable& serializable, std::unique_ptr<SerializeOptions> options) {
+    const Serializable& serializable,
+    std::unique_ptr<SerializeOptions> options) {
   SerDes* serdes;
   {
     Registry* const r = registry();

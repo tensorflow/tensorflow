@@ -19,6 +19,7 @@ limitations under the License.
 #include <numeric>
 #include <vector>
 
+#include "xla/tests/xla_test_backend_predicates.h"
 #include "absl/status/statusor.h"
 #include "xla/array2d.h"
 #include "xla/array3d.h"
@@ -30,16 +31,20 @@ limitations under the License.
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tests/client_library_test_base.h"
-#include "xla/tests/test_macros.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 
-class SVDTest : public ClientLibraryTestBase {
+class SVDTest : public ClientLibraryTestRunnerMixin<
+                    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
  protected:
   void SetUp() override {
-    ClientLibraryTestBase::SetUp();
+    ClientLibraryTestRunnerMixin<
+        HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>::SetUp();
     batch_3d_4x5_ = Array3D<float>{
         {
             {4, 6, 8, 10, 1},
@@ -55,7 +60,6 @@ class SVDTest : public ClientLibraryTestBase {
         },
     };
   }
-  void TearDown() override { ClientLibraryTestBase::TearDown(); }
 
   Array3D<float> GetUnitMatrix3D(int32_t batch_dim, int32_t mat_dim) {
     Array3D<float> result(batch_dim, mat_dim, mat_dim, 0.0);
@@ -84,7 +88,7 @@ class SVDTest : public ClientLibraryTestBase {
       v = SliceInMinorDims(v, {0, 0}, {n, m});
     }
 
-    int num_dims = u_shape.rank();
+    int num_dims = u_shape.dimensions().size();
     std::vector<int64_t> broadcast_dims(num_dims - 1);
     std::iota(broadcast_dims.begin(), broadcast_dims.end(), 0);
     broadcast_dims[num_dims - 2] = num_dims - 1;
@@ -112,7 +116,7 @@ class SVDTest : public ClientLibraryTestBase {
   Array3D<float> batch_3d_4x5_;
 };
 
-XLA_TEST_F(SVDTest, Simple2D) {
+TEST_F(SVDTest, Simple2D) {
   XlaBuilder builder(TestName());
 
   Array2D<float> simple_2d_4x4_ = Array2D<float>{
@@ -126,11 +130,11 @@ XLA_TEST_F(SVDTest, Simple2D) {
   auto result = SVD(a, 100, 1e-6);
   ComputeMatmulUDVT(result, &builder);
 
-  ComputeAndCompareR2<float>(&builder, simple_2d_4x4_, {a_data.get()},
+  ComputeAndCompareR2<float>(&builder, simple_2d_4x4_, {&a_data},
                              ErrorSpec(1e-3, 1e-3));
 }
 
-XLA_TEST_F(SVDTest, Test_VWVt_EQ_A_2x4x5) {
+TEST_F(SVDTest, Test_VWVt_EQ_A_2x4x5) {
   XlaBuilder builder(TestName());
 
   XlaOp a;
@@ -138,11 +142,11 @@ XLA_TEST_F(SVDTest, Test_VWVt_EQ_A_2x4x5) {
   auto result = SVD(a, 100, 1e-8);
   ComputeMatmulUDVT(result, &builder);
 
-  ComputeAndCompareR3<float>(&builder, batch_3d_4x5_, {a_data.get()},
+  ComputeAndCompareR3<float>(&builder, batch_3d_4x5_, {&a_data},
                              ErrorSpec(1e-3, 1e-3));
 }
 
-XLA_TEST_F(SVDTest, Test_Orthogonality_U) {
+TEST_F(SVDTest, Test_Orthogonality_U) {
   XlaBuilder builder(TestName());
 
   XlaOp a;
@@ -151,11 +155,11 @@ XLA_TEST_F(SVDTest, Test_Orthogonality_U) {
   ComputeMatmulUDVT(result, &builder);
   BatchDot(result.u, TransposeInMinorDims(result.u));
 
-  ComputeAndCompareR3<float>(&builder, GetUnitMatrix3D(2, 4), {a_data.get()},
+  ComputeAndCompareR3<float>(&builder, GetUnitMatrix3D(2, 4), {&a_data},
                              ErrorSpec(1e-2, 1e-2));
 }
 
-XLA_TEST_F(SVDTest, Test_Orthogonality_V) {
+TEST_F(SVDTest, Test_Orthogonality_V) {
   XlaBuilder builder(TestName());
 
   XlaOp a;
@@ -163,11 +167,11 @@ XLA_TEST_F(SVDTest, Test_Orthogonality_V) {
   auto result = SVD(a, 100, 1e-8);
   BatchDot(result.v, TransposeInMinorDims(result.v), PrecisionConfig::HIGHEST);
 
-  ComputeAndCompareR3<float>(&builder, GetUnitMatrix3D(2, 5), {a_data.get()},
+  ComputeAndCompareR3<float>(&builder, GetUnitMatrix3D(2, 5), {&a_data},
                              ErrorSpec(1e-3, 1e-3));
 }
 
-XLA_TEST_F(SVDTest, TestSingleValuesMatchNumpy) {
+TEST_F(SVDTest, TestSingleValuesMatchNumpy) {
   XlaBuilder builder(TestName());
 
   auto singular_values = Array2D<float>{
@@ -180,13 +184,15 @@ XLA_TEST_F(SVDTest, TestSingleValuesMatchNumpy) {
   auto result = SVD(a, 100, 1e-8);
   Add(result.d, ZerosLike(result.d));
 
-  ComputeAndCompareR2<float>(&builder, singular_values, {a_data.get()},
+  ComputeAndCompareR2<float>(&builder, singular_values, {&a_data},
                              ErrorSpec(1e-3, 1e-3));
 }
 
 // Too slow on the interpreter backend.
-XLA_TEST_F(SVDTest,
-           DISABLED_ON_INTERPRETER(Various_Size_Random_Matrix_512x128)) {
+TEST_F(SVDTest, Various_Size_Random_Matrix_512x128) {
+  if (test::DeviceIs(test::kInterpreter)) {
+    GTEST_SKIP();
+  }
   XlaBuilder builder(TestName());
   Array2D<float> a_val = GenerateRandomMatrix(512, 128);
   XlaOp a;
@@ -194,11 +200,10 @@ XLA_TEST_F(SVDTest,
   auto result = SVD(a, 100, 1e-4);
   GetAverageAbsoluteError(ComputeMatmulUDVT(result, &builder), a, &builder);
 
-  ComputeAndCompareR0<float>(&builder, 1e-3, {a_data.get()},
-                             ErrorSpec(1e-3, 1e-3));
+  ComputeAndCompareR0<float>(&builder, 1e-3, {&a_data}, ErrorSpec(1e-3, 1e-3));
 }
 
-XLA_TEST_F(SVDTest, Various_Size_Random_Matrix_128x256) {
+TEST_F(SVDTest, Various_Size_Random_Matrix_128x256) {
   XlaBuilder builder(TestName());
   Array2D<float> a_val = GenerateRandomMatrix(128, 256);
   XlaOp a;
@@ -206,11 +211,10 @@ XLA_TEST_F(SVDTest, Various_Size_Random_Matrix_128x256) {
   auto result = SVD(a, 100, 1e-4);
   GetAverageAbsoluteError(ComputeMatmulUDVT(result, &builder), a, &builder);
 
-  ComputeAndCompareR0<float>(&builder, 1e-3, {a_data.get()},
-                             ErrorSpec(1e-3, 1e-3));
+  ComputeAndCompareR0<float>(&builder, 1e-3, {&a_data}, ErrorSpec(1e-3, 1e-3));
 }
 
-XLA_TEST_F(SVDTest, Various_Size_Random_Matrix_256x128) {
+TEST_F(SVDTest, Various_Size_Random_Matrix_256x128) {
   XlaBuilder builder(TestName());
   Array2D<float> a_val = GenerateRandomMatrix(256, 128);
   XlaOp a;
@@ -218,13 +222,14 @@ XLA_TEST_F(SVDTest, Various_Size_Random_Matrix_256x128) {
   auto result = SVD(a, 100, 1e-4);
   GetAverageAbsoluteError(ComputeMatmulUDVT(result, &builder), a, &builder);
 
-  ComputeAndCompareR0<float>(&builder, 1e-3, {a_data.get()},
-                             ErrorSpec(1e-3, 1e-3));
+  ComputeAndCompareR0<float>(&builder, 1e-3, {&a_data}, ErrorSpec(1e-3, 1e-3));
 }
 
 // Too slow on the interpreter backend.
-XLA_TEST_F(SVDTest,
-           DISABLED_ON_INTERPRETER(Various_Size_Random_Matrix_128x512)) {
+TEST_F(SVDTest, Various_Size_Random_Matrix_128x512) {
+  if (test::DeviceIs(test::kInterpreter)) {
+    GTEST_SKIP();
+  }
   XlaBuilder builder(TestName());
   Array2D<float> a_val = GenerateRandomMatrix(128, 512);
   XlaOp a;
@@ -232,13 +237,14 @@ XLA_TEST_F(SVDTest,
   auto result = SVD(a, 100, 1e-4);
   GetAverageAbsoluteError(ComputeMatmulUDVT(result, &builder), a, &builder);
 
-  ComputeAndCompareR0<float>(&builder, 1e-3, {a_data.get()},
-                             ErrorSpec(1e-3, 1e-3));
+  ComputeAndCompareR0<float>(&builder, 1e-3, {&a_data}, ErrorSpec(1e-3, 1e-3));
 }
 
 // Too slow on the interpreter and CPU backends.
-XLA_TEST_F(SVDTest, DISABLED_ON_CPU(DISABLED_ON_INTERPRETER(
-                        Various_Size_Random_Matrix_512x256))) {
+TEST_F(SVDTest, Various_Size_Random_Matrix_512x256) {
+  if (test::DeviceIsOneOf({test::kCpu, test::kInterpreter})) {
+    GTEST_SKIP();
+  }
   XlaBuilder builder(TestName());
   Array2D<float> a_val = GenerateRandomMatrix(512, 256);
   XlaOp a;
@@ -246,13 +252,14 @@ XLA_TEST_F(SVDTest, DISABLED_ON_CPU(DISABLED_ON_INTERPRETER(
   auto result = SVD(a, 100, 1e-4);
   GetAverageAbsoluteError(ComputeMatmulUDVT(result, &builder), a, &builder);
 
-  ComputeAndCompareR0<float>(&builder, 1e-3, {a_data.get()},
-                             ErrorSpec(1e-3, 1e-3));
+  ComputeAndCompareR0<float>(&builder, 1e-3, {&a_data}, ErrorSpec(1e-3, 1e-3));
 }
 
 // Too slow on the CPU, GPU and interpreter backends.
-XLA_TEST_F(SVDTest, DISABLED_ON_GPU(DISABLED_ON_CPU(DISABLED_ON_INTERPRETER(
-                        Various_Size_Random_Matrix_512x512)))) {
+TEST_F(SVDTest, Various_Size_Random_Matrix_512x512) {
+  if (test::DeviceTypeIsOneOf({test::kCpu, test::kGpu, test::kInterpreter})) {
+    GTEST_SKIP();
+  }
   XlaBuilder builder(TestName());
   Array2D<float> a_val = GenerateRandomMatrix(512, 512);
   XlaOp a;
@@ -260,8 +267,7 @@ XLA_TEST_F(SVDTest, DISABLED_ON_GPU(DISABLED_ON_CPU(DISABLED_ON_INTERPRETER(
   auto result = SVD(a, 100, 1e-4);
   GetAverageAbsoluteError(ComputeMatmulUDVT(result, &builder), a, &builder);
 
-  ComputeAndCompareR0<float>(&builder, 1e-3, {a_data.get()},
-                             ErrorSpec(1e-3, 1e-3));
+  ComputeAndCompareR0<float>(&builder, 1e-3, {&a_data}, ErrorSpec(1e-3, 1e-3));
 }
 
 }  // namespace xla

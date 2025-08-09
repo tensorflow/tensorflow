@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "llvm/Support/LogicalResult.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Location.h"
@@ -37,7 +38,8 @@ namespace {
 // Error collector that simply ignores errors reported.
 class NoOpErrorCollector : public tsl::protobuf::io::ErrorCollector {
  public:
-  void AddError(int line, int column, const std::string& message) override {}
+  void RecordError(int line, tsl::protobuf::io::ColumnNumber column,
+                   absl::string_view message) override {}
 };
 
 bool LoadHloProto(const std::string& contents, HloProto* hlo_proto) {
@@ -54,7 +56,8 @@ bool LoadHloProto(const std::string& contents, HloProto* hlo_proto) {
 
 mlir::OwningOpRef<mlir::ModuleOp> HloToMlirHloTranslateFunction(
     llvm::StringRef input, mlir::MLIRContext* context,
-    bool import_all_computations, bool flatten_computation_args_result) {
+    bool import_all_computations, bool flatten_computation_args_result,
+    bool emit_stablehlo) {
   mlir::OwningOpRef<mlir::ModuleOp> module =
       llvm_ir::CreateMlirModuleOp(mlir::UnknownLoc::get(context));
 
@@ -67,7 +70,7 @@ mlir::OwningOpRef<mlir::ModuleOp> HloToMlirHloTranslateFunction(
 
   auto status = ConvertHloToMlirHlo(
       module.get(), hlo_proto.mutable_hlo_module(), import_all_computations,
-      flatten_computation_args_result);
+      flatten_computation_args_result, emit_stablehlo);
   if (!status.ok()) {
     module->emitError("Hlo module import failed: ") << status.message();
     return nullptr;
@@ -78,7 +81,8 @@ mlir::OwningOpRef<mlir::ModuleOp> HloToMlirHloTranslateFunction(
 
 mlir::OwningOpRef<mlir::ModuleOp> HloTextToMlirHloTranslateFunction(
     llvm::StringRef input, mlir::MLIRContext* context,
-    bool import_all_computations, bool flatten_computation_args_result) {
+    bool import_all_computations, bool flatten_computation_args_result,
+    bool emit_stablehlo) {
   mlir::OwningOpRef<mlir::ModuleOp> module =
       llvm_ir::CreateMlirModuleOp(mlir::UnknownLoc::get(context));
 
@@ -93,7 +97,7 @@ mlir::OwningOpRef<mlir::ModuleOp> HloTextToMlirHloTranslateFunction(
   auto hlo_module = std::move(hlo_module_error.value());
   auto status =
       ConvertHloToMlirHlo(*module, hlo_module.get(), import_all_computations,
-                          flatten_computation_args_result);
+                          flatten_computation_args_result, emit_stablehlo);
   if (!status.ok()) {
     module->emitError("HLO Module import failed: ") << status.message();
     return nullptr;
@@ -134,7 +138,7 @@ mlir::OwningOpRef<mlir::ModuleOp> HloTextToStablehloTranslateFunction(
     return nullptr;
   }
 
-  return std::move(stablehlo_module.value());
+  return std::move(stablehlo_module).value();
 }
 
 }  // namespace xla

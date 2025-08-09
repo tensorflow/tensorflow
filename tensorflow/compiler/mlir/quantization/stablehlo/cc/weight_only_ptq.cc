@@ -46,6 +46,7 @@ limitations under the License.
 
 namespace mlir::quant::stablehlo {
 
+using ::mlir::quant::stablehlo::AddWeightOnlyQuantizationPasses;
 using ::stablehlo::quantization::GetReportFilePath;
 using ::stablehlo::quantization::QuantizationConfig;
 using ::tensorflow::SignatureDef;
@@ -53,7 +54,7 @@ using ::tensorflow::quantization::ExportedModel;
 using ::tensorflow::quantization::PyFunctionLibrary;
 using ::tensorflow::quantization::RunPasses;
 
-WeightOnlyPtqComponent::WeightOnlyPtqComponent(absl::Nonnull<MLIRContext*> ctx)
+WeightOnlyPtqComponent::WeightOnlyPtqComponent(MLIRContext* absl_nonnull ctx)
     : ctx_(ABSL_DIE_IF_NULL(ctx)) {}  // Crash OK
 
 absl::StatusOr<ModuleOp> WeightOnlyPtqComponent::Run(

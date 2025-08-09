@@ -1237,6 +1237,10 @@ tf_module {
     argspec: "args=[\'contents\', \'desired_channels\', \'desired_samples\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'-1\', \'None\'], "
   }
   member_method {
+    name: "DecodeWebP"
+    argspec: "args=[\'contents\', \'channels\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \"<dtype: \'uint8\'>\", \'None\'], "
+  }
+  member_method {
     name: "DeepCopy"
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -5098,7 +5102,7 @@ tf_module {
   }
   member_method {
     name: "TPUReplicateMetadata"
-    argspec: "args=[\'num_replicas\', \'num_cores_per_replica\', \'topology\', \'use_tpu\', \'device_assignment\', \'computation_shape\', \'host_compute_core\', \'padding_map\', \'step_marker_location\', \'allow_soft_placement\', \'use_spmd_for_xla_partitioning\', \'tpu_compile_options_proto\', \'name\'], varargs=None, keywords=None, defaults=[\'1\', \'\', \'True\', \'[]\', \'[]\', \'[]\', \'[]\', \'STEP_MARK_AT_ENTRY\', \'False\', \'False\', \'\', \'None\'], "
+    argspec: "args=[\'num_replicas\', \'num_cores_per_replica\', \'topology\', \'use_tpu\', \'device_assignment\', \'computation_shape\', \'host_compute_core\', \'padding_map\', \'step_marker_location\', \'allow_soft_placement\', \'use_spmd_for_xla_partitioning\', \'use_shardy_partitioner\', \'tpu_compile_options_proto\', \'name\'], varargs=None, keywords=None, defaults=[\'1\', \'\', \'True\', \'[]\', \'[]\', \'[]\', \'[]\', \'STEP_MARK_AT_ENTRY\', \'False\', \'False\', \'False\', \'\', \'None\'], "
   }
   member_method {
     name: "TPUReplicatedInput"
@@ -5737,56 +5741,84 @@ tf_module {
     argspec: "args=[\'row_ids\', \'col_ids\', \'values\', \'offsets\', \'embedding_table\', \'max_ids_per_partition\', \'max_unique_ids_per_partition\', \'input_size\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "XlaSparseDenseMatmulCustomCombinerOnTcGradWithAdagradAndCsrInput"
+    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_pos_ids\', \'sorted_gains\', \'weights\', \'preserved_valencies\', \'preserved_vectors\', \'preserved_weights\', \'activation_gradients\', \'learning_rate\', \'combiner_weights_learning_rate\', \'embedding_table\', \'accumulator\', \'max_valency\', \'num_weights\', \'combiner_table_vjp_computation\', \'combiner_weights_vjp_computation\', \'table_name\', \'clip_weight_min\', \'clip_weight_max\', \'num_sparsecores_per_device\', \'name\'], varargs=None, keywords=None, defaults=[\'-inf\', \'inf\', \'-1\', \'None\'], "
+  }
+  member_method {
+    name: "XlaSparseDenseMatmulCustomCombinerOnTcGradWithAdagradMomentumAndCsrInput"
+    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_pos_ids\', \'sorted_gains\', \'weights\', \'preserved_valencies\', \'preserved_vectors\', \'preserved_weights\', \'activation_gradients\', \'learning_rate\', \'combiner_weights_learning_rate\', \'embedding_table\', \'accumulator\', \'momenta\', \'use_nesterov\', \'exponent\', \'beta1\', \'beta2\', \'epsilon\', \'max_valency\', \'num_weights\', \'combiner_table_vjp_computation\', \'combiner_weights_vjp_computation\', \'table_name\', \'clip_weight_min\', \'clip_weight_max\', \'num_sparsecores_per_device\', \'name\'], varargs=None, keywords=None, defaults=[\'-inf\', \'inf\', \'-1\', \'None\'], "
+  }
+  member_method {
+    name: "XlaSparseDenseMatmulCustomCombinerOnTcGradWithAdamAndCsrInput"
+    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_pos_ids\', \'sorted_gains\', \'weights\', \'preserved_valencies\', \'preserved_vectors\', \'preserved_weights\', \'activation_gradients\', \'learning_rate\', \'combiner_weights_learning_rate\', \'embedding_table\', \'momenta\', \'velocity\', \'use_sum_inside_sqrt\', \'beta1\', \'beta2\', \'epsilon\', \'max_valency\', \'num_weights\', \'combiner_table_vjp_computation\', \'combiner_weights_vjp_computation\', \'table_name\', \'clip_weight_min\', \'clip_weight_max\', \'num_sparsecores_per_device\', \'name\'], varargs=None, keywords=None, defaults=[\'-inf\', \'inf\', \'-1\', \'None\'], "
+  }
+  member_method {
+    name: "XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInput"
+    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_pos_ids\', \'sorted_gains\', \'weights\', \'preserved_valencies\', \'preserved_vectors\', \'preserved_weights\', \'activation_gradients\', \'tables\', \'hyperparameters\', \'combiner_weights_learning_rate\', \'max_valency\', \'num_weights\', \'combiner_table_vjp_computation\', \'combiner_weights_vjp_computation\', \'optimizer_custom_computation\', \'table_name\', \'num_sparsecores_per_device\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'None\'], "
+  }
+  member_method {
+    name: "XlaSparseDenseMatmulCustomCombinerOnTcGradWithFtrlAndCsrInput"
+    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_pos_ids\', \'sorted_gains\', \'weights\', \'preserved_valencies\', \'preserved_vectors\', \'preserved_weights\', \'activation_gradients\', \'learning_rate\', \'combiner_weights_learning_rate\', \'embedding_table\', \'accumulator\', \'linear\', \'multiply_linear_by_learning_rate\', \'beta\', \'learning_rate_power\', \'l1_regularization_strength\', \'l2_regularization_strength\', \'max_valency\', \'num_weights\', \'combiner_table_vjp_computation\', \'combiner_weights_vjp_computation\', \'table_name\', \'clip_weight_min\', \'clip_weight_max\', \'num_sparsecores_per_device\', \'name\'], varargs=None, keywords=None, defaults=[\'-inf\', \'inf\', \'-1\', \'None\'], "
+  }
+  member_method {
+    name: "XlaSparseDenseMatmulCustomCombinerOnTcGradWithSgdAndCsrInput"
+    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_pos_ids\', \'sorted_gains\', \'weights\', \'preserved_valencies\', \'preserved_vectors\', \'preserved_weights\', \'activation_gradients\', \'learning_rate\', \'combiner_weights_learning_rate\', \'embedding_table\', \'max_valency\', \'num_weights\', \'combiner_table_vjp_computation\', \'combiner_weights_vjp_computation\', \'table_name\', \'clip_weight_min\', \'clip_weight_max\', \'num_sparsecores_per_device\', \'name\'], varargs=None, keywords=None, defaults=[\'-inf\', \'inf\', \'-1\', \'None\'], "
+  }
+  member_method {
+    name: "XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInput"
+    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_pos_ids\', \'sorted_gains\', \'embedding_table\', \'weights\', \'input_size\', \'max_valency\', \'num_weights\', \'combiner_computation\', \'quantization_config_low\', \'quantization_config_high\', \'quantization_config_num_buckets\', \'table_name\', \'num_sparsecores_per_device\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'None\'], "
+  }
+  member_method {
     name: "XlaSparseDenseMatmulGradWithAdagradAndCsrInput"
-    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'activation_gradients\', \'learning_rate\', \'embedding_table\', \'accumulator\', \'num_minibatches_per_physical_sparse_core\', \'table_name\', \'clip_weight_min\', \'clip_weight_max\', \'name\'], varargs=None, keywords=None, defaults=[\'-inf\', \'inf\', \'None\'], "
+    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'activation_gradients\', \'learning_rate\', \'embedding_table\', \'accumulator\', \'num_minibatches_per_physical_sparse_core\', \'table_name\', \'clip_weight_min\', \'clip_weight_max\', \'num_sparsecores_per_device\', \'name\'], varargs=None, keywords=None, defaults=[\'-inf\', \'inf\', \'-1\', \'None\'], "
   }
   member_method {
     name: "XlaSparseDenseMatmulGradWithAdagradAndStaticBufferSize"
-    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'activation_gradients\', \'learning_rate\', \'embedding_table\', \'accumulator\', \'num_minibatches_per_physical_sparse_core\', \'max_ids_per_sparse_core\', \'max_unique_ids_per_sparse_core\', \'table_name\', \'clip_weight_min\', \'clip_weight_max\', \'name\'], varargs=None, keywords=None, defaults=[\'-inf\', \'inf\', \'None\'], "
+    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'activation_gradients\', \'learning_rate\', \'embedding_table\', \'accumulator\', \'num_minibatches_per_physical_sparse_core\', \'max_ids_per_sparse_core\', \'max_unique_ids_per_sparse_core\', \'table_name\', \'clip_weight_min\', \'clip_weight_max\', \'num_sparsecores_per_device\', \'name\'], varargs=None, keywords=None, defaults=[\'-inf\', \'inf\', \'-1\', \'None\'], "
   }
   member_method {
     name: "XlaSparseDenseMatmulGradWithAdagradMomentumAndCsrInput"
-    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'activation_gradients\', \'learning_rate\', \'embedding_table\', \'accumulator\', \'momenta\', \'num_minibatches_per_physical_sparse_core\', \'use_nesterov\', \'exponent\', \'beta1\', \'beta2\', \'epsilon\', \'table_name\', \'clip_weight_min\', \'clip_weight_max\', \'name\'], varargs=None, keywords=None, defaults=[\'-inf\', \'inf\', \'None\'], "
+    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'activation_gradients\', \'learning_rate\', \'embedding_table\', \'accumulator\', \'momenta\', \'num_minibatches_per_physical_sparse_core\', \'use_nesterov\', \'exponent\', \'beta1\', \'beta2\', \'epsilon\', \'table_name\', \'clip_weight_min\', \'clip_weight_max\', \'num_sparsecores_per_device\', \'name\'], varargs=None, keywords=None, defaults=[\'-inf\', \'inf\', \'-1\', \'None\'], "
   }
   member_method {
     name: "XlaSparseDenseMatmulGradWithAdagradMomentumAndStaticBufferSize"
-    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'activation_gradients\', \'learning_rate\', \'embedding_table\', \'accumulator\', \'momenta\', \'num_minibatches_per_physical_sparse_core\', \'use_nesterov\', \'exponent\', \'beta1\', \'beta2\', \'epsilon\', \'max_ids_per_sparse_core\', \'max_unique_ids_per_sparse_core\', \'table_name\', \'clip_weight_min\', \'clip_weight_max\', \'name\'], varargs=None, keywords=None, defaults=[\'-inf\', \'inf\', \'None\'], "
+    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'activation_gradients\', \'learning_rate\', \'embedding_table\', \'accumulator\', \'momenta\', \'num_minibatches_per_physical_sparse_core\', \'use_nesterov\', \'exponent\', \'beta1\', \'beta2\', \'epsilon\', \'max_ids_per_sparse_core\', \'max_unique_ids_per_sparse_core\', \'table_name\', \'clip_weight_min\', \'clip_weight_max\', \'num_sparsecores_per_device\', \'name\'], varargs=None, keywords=None, defaults=[\'-inf\', \'inf\', \'-1\', \'None\'], "
   }
   member_method {
     name: "XlaSparseDenseMatmulGradWithAdamAndCsrInput"
-    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'activation_gradients\', \'learning_rate\', \'embedding_table\', \'momenta\', \'velocity\', \'num_minibatches_per_physical_sparse_core\', \'use_sum_inside_sqrt\', \'beta1\', \'beta2\', \'epsilon\', \'table_name\', \'clip_weight_min\', \'clip_weight_max\', \'name\'], varargs=None, keywords=None, defaults=[\'-inf\', \'inf\', \'None\'], "
+    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'activation_gradients\', \'learning_rate\', \'embedding_table\', \'momenta\', \'velocity\', \'num_minibatches_per_physical_sparse_core\', \'use_sum_inside_sqrt\', \'beta1\', \'beta2\', \'epsilon\', \'table_name\', \'clip_weight_min\', \'clip_weight_max\', \'num_sparsecores_per_device\', \'name\'], varargs=None, keywords=None, defaults=[\'-inf\', \'inf\', \'-1\', \'None\'], "
   }
   member_method {
     name: "XlaSparseDenseMatmulGradWithAdamAndStaticBufferSize"
-    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'activation_gradients\', \'learning_rate\', \'embedding_table\', \'momenta\', \'velocity\', \'num_minibatches_per_physical_sparse_core\', \'use_sum_inside_sqrt\', \'beta1\', \'beta2\', \'epsilon\', \'max_ids_per_sparse_core\', \'max_unique_ids_per_sparse_core\', \'table_name\', \'clip_weight_min\', \'clip_weight_max\', \'name\'], varargs=None, keywords=None, defaults=[\'-inf\', \'inf\', \'None\'], "
+    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'activation_gradients\', \'learning_rate\', \'embedding_table\', \'momenta\', \'velocity\', \'num_minibatches_per_physical_sparse_core\', \'use_sum_inside_sqrt\', \'beta1\', \'beta2\', \'epsilon\', \'max_ids_per_sparse_core\', \'max_unique_ids_per_sparse_core\', \'table_name\', \'clip_weight_min\', \'clip_weight_max\', \'num_sparsecores_per_device\', \'name\'], varargs=None, keywords=None, defaults=[\'-inf\', \'inf\', \'-1\', \'None\'], "
   }
   member_method {
     name: "XlaSparseDenseMatmulGradWithCsrInput"
-    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'activation_gradients\', \'tables\', \'hyperparameters\', \'num_minibatches_per_physical_sparse_core\', \'custom_computation\', \'table_name\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'activation_gradients\', \'tables\', \'hyperparameters\', \'num_minibatches_per_physical_sparse_core\', \'custom_computation\', \'table_name\', \'num_sparsecores_per_device\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'None\'], "
   }
   member_method {
     name: "XlaSparseDenseMatmulGradWithFtrlAndCsrInput"
-    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'activation_gradients\', \'learning_rate\', \'embedding_table\', \'accumulator\', \'linear\', \'num_minibatches_per_physical_sparse_core\', \'multiply_linear_by_learning_rate\', \'beta\', \'learning_rate_power\', \'l1_regularization_strength\', \'l2_regularization_strength\', \'table_name\', \'clip_weight_min\', \'clip_weight_max\', \'name\'], varargs=None, keywords=None, defaults=[\'-inf\', \'inf\', \'None\'], "
+    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'activation_gradients\', \'learning_rate\', \'embedding_table\', \'accumulator\', \'linear\', \'num_minibatches_per_physical_sparse_core\', \'multiply_linear_by_learning_rate\', \'beta\', \'learning_rate_power\', \'l1_regularization_strength\', \'l2_regularization_strength\', \'table_name\', \'clip_weight_min\', \'clip_weight_max\', \'num_sparsecores_per_device\', \'name\'], varargs=None, keywords=None, defaults=[\'-inf\', \'inf\', \'-1\', \'None\'], "
   }
   member_method {
     name: "XlaSparseDenseMatmulGradWithFtrlAndStaticBufferSize"
-    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'activation_gradients\', \'learning_rate\', \'embedding_table\', \'accumulator\', \'linear\', \'num_minibatches_per_physical_sparse_core\', \'multiply_linear_by_learning_rate\', \'beta\', \'learning_rate_power\', \'l1_regularization_strength\', \'l2_regularization_strength\', \'max_ids_per_sparse_core\', \'max_unique_ids_per_sparse_core\', \'table_name\', \'clip_weight_min\', \'clip_weight_max\', \'name\'], varargs=None, keywords=None, defaults=[\'-inf\', \'inf\', \'None\'], "
+    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'activation_gradients\', \'learning_rate\', \'embedding_table\', \'accumulator\', \'linear\', \'num_minibatches_per_physical_sparse_core\', \'multiply_linear_by_learning_rate\', \'beta\', \'learning_rate_power\', \'l1_regularization_strength\', \'l2_regularization_strength\', \'max_ids_per_sparse_core\', \'max_unique_ids_per_sparse_core\', \'table_name\', \'clip_weight_min\', \'clip_weight_max\', \'num_sparsecores_per_device\', \'name\'], varargs=None, keywords=None, defaults=[\'-inf\', \'inf\', \'-1\', \'None\'], "
   }
   member_method {
     name: "XlaSparseDenseMatmulGradWithSgdAndCsrInput"
-    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'activation_gradients\', \'learning_rate\', \'embedding_table\', \'num_minibatches_per_physical_sparse_core\', \'table_name\', \'clip_weight_min\', \'clip_weight_max\', \'name\'], varargs=None, keywords=None, defaults=[\'-inf\', \'inf\', \'None\'], "
+    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'activation_gradients\', \'learning_rate\', \'embedding_table\', \'num_minibatches_per_physical_sparse_core\', \'table_name\', \'clip_weight_min\', \'clip_weight_max\', \'num_sparsecores_per_device\', \'name\'], varargs=None, keywords=None, defaults=[\'-inf\', \'inf\', \'-1\', \'None\'], "
   }
   member_method {
     name: "XlaSparseDenseMatmulGradWithSgdAndStaticBufferSize"
-    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'activation_gradients\', \'learning_rate\', \'embedding_table\', \'num_minibatches_per_physical_sparse_core\', \'max_ids_per_sparse_core\', \'max_unique_ids_per_sparse_core\', \'table_name\', \'clip_weight_min\', \'clip_weight_max\', \'name\'], varargs=None, keywords=None, defaults=[\'-inf\', \'inf\', \'None\'], "
+    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'activation_gradients\', \'learning_rate\', \'embedding_table\', \'num_minibatches_per_physical_sparse_core\', \'max_ids_per_sparse_core\', \'max_unique_ids_per_sparse_core\', \'table_name\', \'clip_weight_min\', \'clip_weight_max\', \'num_sparsecores_per_device\', \'name\'], varargs=None, keywords=None, defaults=[\'-inf\', \'inf\', \'-1\', \'None\'], "
   }
   member_method {
     name: "XlaSparseDenseMatmulWithCsrInput"
-    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'embedding_table\', \'num_minibatches_per_physical_sparse_core\', \'input_size\', \'quantization_config_low\', \'quantization_config_high\', \'quantization_config_num_buckets\', \'table_name\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'embedding_table\', \'num_minibatches_per_physical_sparse_core\', \'input_size\', \'quantization_config_low\', \'quantization_config_high\', \'quantization_config_num_buckets\', \'table_name\', \'num_sparsecores_per_device\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'None\'], "
   }
   member_method {
     name: "XlaSparseDenseMatmulWithStaticBufferSize"
-    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'embedding_table\', \'num_minibatches_per_physical_sparse_core\', \'input_size\', \'quantization_config_low\', \'quantization_config_high\', \'quantization_config_num_buckets\', \'max_ids_per_sparse_core\', \'max_unique_ids_per_sparse_core\', \'table_name\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'embedding_table\', \'num_minibatches_per_physical_sparse_core\', \'input_size\', \'quantization_config_low\', \'quantization_config_high\', \'quantization_config_num_buckets\', \'max_ids_per_sparse_core\', \'max_unique_ids_per_sparse_core\', \'table_name\', \'num_sparsecores_per_device\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'None\'], "
   }
   member_method {
     name: "XlaSplitND"

@@ -1,4 +1,4 @@
-load("//xla:strict.default.bzl", "py_strict_test")
+load("//xla:py_strict.bzl", "py_strict_test")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -19,12 +19,14 @@ cc_library(
         "//xla/codegen:kernel_emitter",
         "//xla/codegen:kernel_spec",
         "//xla/codegen:llvm_ir_kernel_source",
+        "//xla/codegen:llvm_kernel_definition",
+        "//xla/codegen:llvm_kernel_emitter",
         "//xla/hlo/ir:hlo",
+        "//xla/runtime:work_group",
         "//xla/service:buffer_assignment",
         "//xla/service:hlo_module_config",
         "//xla/service/cpu:dot_op_emitter",
         "//xla/service/llvm_ir:ir_array",
-        "//xla/stream_executor:launch_dim",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",

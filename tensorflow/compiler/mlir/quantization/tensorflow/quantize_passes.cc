@@ -29,8 +29,6 @@ namespace tensorflow {
 namespace quantization {
 namespace {
 
-using ::tensorflow::quantization::QuantizationOptions;
-
 void AddConvertTpuToCpuModelPasses(mlir::OpPassManager &pm) {
   pm.addPass(mlir::quant::CreateConvertTpuModelToCpuPass());
   pm.addPass(mlir::createInlinerPass());

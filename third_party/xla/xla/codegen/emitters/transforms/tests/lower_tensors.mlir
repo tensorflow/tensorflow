@@ -66,7 +66,7 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32 : i32>>
 // CHECK-SAME:        {xla.invariant, xla.slice_index = 0 : i64}, %[[ARG1:.*]]: index) -> f32 {
 // CHECK-DAG:       %[[C2:.*]] = arith.constant 2.000000e+00
 // CHECK-DAG:       %[[IDX:.*]] = arith.index_castui %[[ARG1]] : index to i32
-// CHECK-DAG:       %[[PTR:.*]] = llvm.getelementptr inbounds %[[ARG0]][%[[IDX]]]
+// CHECK-DAG:       %[[PTR:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, %[[IDX]]]
 // CHECK-DAG:       %[[V2:.*]] = llvm.load %[[PTR]] invariant
 // CHECK:           %[[RET:.*]] = call @add(%[[C2]], %[[V2]])
 // CHECK:           return %[[RET]]
@@ -80,9 +80,9 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<index, 32 : i32>>
 // CHECK-SAME:        %[[ARG0:.*]]: !llvm.ptr {xla.slice_index = 0 : i64},
 // CHECK-SAME:        %[[ARG1:.*]]: !llvm.ptr {xla.slice_index = 1 : i64})
 // CHECK-NEXT:      %[[CST:.*]] = arith.constant 3.000000e+00 : f32
-// CHECK-NEXT:      %[[PTR1:.*]] = llvm.getelementptr inbounds %[[ARG1]][17]
+// CHECK-NEXT:      %[[PTR1:.*]] = llvm.getelementptr inbounds %[[ARG1]][0, 17]
 // CHECK-NEXT:      llvm.store %[[CST]], %[[PTR1]]
-// CHECK-NEXT:      %[[PTR2:.*]] = llvm.getelementptr inbounds %[[ARG1]][23]
+// CHECK-NEXT:      %[[PTR2:.*]] = llvm.getelementptr inbounds %[[ARG1]][0, 23]
 // CHECK-NEXT:      llvm.store %[[CST]], %[[PTR2]]
 // CHECK-NEXT:      return
 
@@ -117,7 +117,7 @@ func.func @store_control_flow( %arg0: tensor<2xf32>, %arg1: index)
 // CHECK-DAG:   %[[C2:.*]] = arith.constant 2 : index
 // CHECK:       scf.for %[[I:.*]] = %[[C0]] to %[[C2]] step %[[C1]] {
 // CHECK:         %[[CAST:.*]] = arith.index_castui %[[I]] : index to i64
-// CHECK:         %[[PTR:.*]] = llvm.getelementptr inbounds %[[ARG0]][%[[CAST]]]
+// CHECK:         %[[PTR:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, %[[CAST]]]
 // CHECK:         llvm.store {{.*}}, %[[PTR]]
 // CHECK:       %[[INBOUNDS:.*]] = arith.cmpi
 // CHECK:       scf.if %[[INBOUNDS]] {
@@ -147,7 +147,7 @@ func.func @extract_from_constant(%arg0: tensor<2xf32>, %arg1: index) -> f32 {
 // CHECK-SAME: [1.000000e+00, 2.000000e+00]> : tensor<2xf32>) {addr_space = 0 : i32} : !llvm.array<2 x f32>
 // CHECK-LABEL: @extract_from_constant
 // CHECK: %[[ADDR_OF:.*]] = llvm.mlir.addressof @global_cst_0 : !llvm.ptr
-// CHECK: %[[GEP:.*]] = llvm.getelementptr inbounds %[[ADDR_OF]][%{{.*}}] : (!llvm.ptr, i64) -> !llvm.ptr, f32
+// CHECK: %[[GEP:.*]] = llvm.getelementptr inbounds %[[ADDR_OF]][0, %{{.*}}] : (!llvm.ptr, i64) -> !llvm.ptr, !llvm.array<2 x f32>
 // CHECK: %[[LOAD:.*]] = llvm.load %[[GEP]] : !llvm.ptr -> f32
 // CHECK: %[[ADD:.*]] = arith.addf %{{.*}}, %[[LOAD]] : f32
 // CHECK: return %[[ADD]] : f32
@@ -176,7 +176,7 @@ func.func @complex_tensor_insert(
 // CHECK-LABEL: @complex_tensor_insert(
 // CHECK-SAME: %[[ARG0:.*]]: !llvm.ptr
 // CHECK: %[[C:.*]] = complex.create
-// CHECK: %[[GEP:.*]] = llvm.getelementptr inbounds %[[ARG0]][1] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<(f32, f32)>
+// CHECK: %[[GEP:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, 1] : (!llvm.ptr) -> !llvm.ptr, !llvm.array<10 x struct<(f32, f32)>>
 // CHECK: %[[CAST:.*]] = builtin.unrealized_conversion_cast %[[C]] : complex<f32> to !llvm.struct<(f32, f32)>
 // CHECK: llvm.store %[[CAST]], %[[GEP]] : !llvm.struct<(f32, f32)>, !llvm.ptr
 
@@ -190,7 +190,7 @@ func.func @complex_tensor_extract(
 }
 // CHECK-LABEL: @complex_tensor_extract(
 // CHECK-SAME: %[[ARG0:.*]]: !llvm.ptr
-// CHECK: %[[GEP:.*]] = llvm.getelementptr inbounds %[[ARG0]][1] : (!llvm.ptr) -> !llvm.ptr, !llvm.struct<(f32, f32)>
+// CHECK: %[[GEP:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, 1] : (!llvm.ptr) -> !llvm.ptr, !llvm.array<10 x struct<(f32, f32)>>
 // CHECK: %[[LOAD:.*]] = llvm.load %[[GEP]] : !llvm.ptr -> !llvm.struct<(f32, f32)>
 // CHECK: builtin.unrealized_conversion_cast %[[LOAD]] : !llvm.struct<(f32, f32)> to complex<f32>
 
@@ -252,7 +252,7 @@ func.func @atomic_rmw_f32(%in: tensor<8xf32>, %i: index) -> (tensor<8xf32>) {
 // CHECK: %[[ADDR:.*]] = llvm.getelementptr
 // CHECK-NEXT: %[[INIT:.*]] = llvm.load %[[ADDR]]
 // CHECK-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]])
-// CHECK: %[[RES:.*]] = llvm.bitcast %{{.*}} : f32 to i32
+// CHECK: %[[RES:.*]] = arith.bitcast %{{.*}} : f32 to i32
 // CHECK-NEXT: llvm.cmpxchg %[[ADDR]], %[[VAR]], %[[RES]]
 
 // -----
@@ -272,18 +272,104 @@ func.func @atomic_rmw_f16(%in: tensor<8xf16>, %i: index)
 // CHECK-NEXT: %[[ADDR_INT:.*]] = llvm.ptrtoint %[[ADDR]]
 // CHECK-NEXT: %[[OFFSET:.*]] = llvm.and %[[ADDR_INT]], %{{.*}}
 // CHECK-NEXT: %[[INDEX:.*]] = llvm.mul %[[OFFSET]], %{{.*}}
-// CHECK-NEXT: %[[BASE:.*]] = llvm.getelementptr inbounds %[[ADDR]][%[[INDEX]]]
+// CHECK-NEXT: %[[BASE:.*]] = llvm.getelementptr inbounds %[[ADDR]]
 // CHECK: %[[INIT:.*]] = llvm.load %[[BASE]]
 // CHECK-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]])
 // CHECK-NEXT: %[[VAR_SHIFT:.*]] = llvm.lshr %[[VAR]], %{{.*}}
 // CHECK-NEXT: %[[VAR_TRUNC:.*]] = llvm.trunc %[[VAR_SHIFT]]
-// CHECK-NEXT: llvm.bitcast %[[VAR_TRUNC]] : i16 to f16
-// CHECK: %[[RES:.*]] = llvm.bitcast %{{.*}} : f16 to i16
+// CHECK-NEXT: arith.bitcast %[[VAR_TRUNC]] : i16 to f16
+// CHECK: %[[RES:.*]] = arith.bitcast %{{.*}} : f16 to i16
 // CHECK-NEXT: %[[RES_WIDE:.*]] = llvm.zext %[[RES]]
 // CHECK-NEXT: %[[NEW_MASKED:.*]] = llvm.and %[[VAR]], %{{.*}}
 // CHECK-NEXT: %[[RES_SHIFT:.*]] = llvm.shl %[[RES_WIDE]], %{{.*}}
 // CHECK-NEXT: %[[NEW:.*]] = llvm.or %[[NEW_MASKED]], %[[RES_SHIFT]]
 // CHECK-NEXT: llvm.cmpxchg %[[BASE]], %[[VAR]], %[[NEW]]
+
+// -----
+
+func.func @atomic_rmw_f8E4M3(%in: tensor<8xf8E4M3>, %i: index)
+    -> (tensor<8xf8E4M3>) {
+  %ret = xla.atomic_rmw %in[%i] : tensor<8xf8E4M3> {
+    ^bb0(%current : f8E4M3):
+      %c1 = arith.constant 1.0 : f8E4M3
+      %add = arith.addf %current, %c1 : f8E4M3
+      xla.yield %add : f8E4M3
+  }
+  return %ret : tensor<8xf8E4M3>
+}
+// CHECK-LABEL: @atomic_rmw_f8E4M3
+// CHECK: %[[ADDR:.*]] = llvm.getelementptr
+// CHECK-NEXT: %[[ADDR_INT:.*]] = llvm.ptrtoint %[[ADDR]]
+// CHECK-NEXT: %[[OFFSET:.*]] = llvm.and %[[ADDR_INT]], %{{.*}}
+// CHECK-NEXT: %[[INDEX:.*]] = llvm.mul %[[OFFSET]], %{{.*}}
+// CHECK-NEXT: %[[BASE:.*]] = llvm.getelementptr inbounds %[[ADDR]]
+// CHECK: %[[INIT:.*]] = llvm.load %[[BASE]]
+// CHECK-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]])
+// CHECK-NEXT: %[[VAR_SHIFT:.*]] = llvm.lshr %[[VAR]], %{{.*}}
+// CHECK-NEXT: %[[VAR_TRUNC:.*]] = llvm.trunc %[[VAR_SHIFT]]
+// CHECK-NEXT: arith.bitcast %[[VAR_TRUNC]] : i8 to f8E4M3
+// CHECK: %[[RES:.*]] = arith.bitcast %{{.*}} : f8E4M3 to i8
+// CHECK-NEXT: %[[RES_WIDE:.*]] = llvm.zext %[[RES]]
+// CHECK-DAG: %[[RES_SHIFT:.*]] = llvm.shl %[[RES_WIDE]], %{{.*}}
+// CHECK-DAG: %[[NEW_MASKED:.*]] = llvm.and %[[VAR]], %{{.*}}
+// CHECK-NEXT: %[[NEW:.*]] = llvm.or %[[NEW_MASKED]], %[[RES_SHIFT]]
+// CHECK-NEXT: llvm.cmpxchg %[[BASE]], %[[VAR]], %[[NEW]]
+
+// -----
+
+func.func @atomic_rmw_i4(%in: tensor<8xi4>, %i: index) -> (tensor<8xi4>) {
+  %ret = xla.atomic_rmw %in[%i] : tensor<8xi4> {
+    ^bb0(%current : i4):
+      %c1 = arith.constant 1 : i4
+      %add = arith.addi %current, %c1 : i4
+      xla.yield %add : i4
+  }
+  return %ret : tensor<8xi4>
+}
+// CHECK-LABEL: func.func @atomic_rmw_i4(
+// CHECK-SAME:    %[[VAL_0:.*]]: !llvm.ptr, %[[VAL_1:.*]]: index) {
+
+// CHECK-DAG:  %[[LC1_i4:.*]] = arith.constant 1 : i4
+// CHECK-DAG:  %[[C0:.*]] = arith.constant 0 : i64
+// CHECK-DAG:  %[[C1:.*]] = arith.constant 1 : i64
+// CHECK-DAG:  %[[LC3:.*]] = llvm.mlir.constant(3 : i64) : i64
+// CHECK-DAG:  %[[LCm1:.*]] = llvm.mlir.constant(-1 : i64) : i64
+// CHECK-DAG:  %[[LC8:.*]] = llvm.mlir.constant(8 : i32) : i32
+// CHECK-DAG:  %[[LC0:.*]] = llvm.mlir.constant(0 : i32) : i32
+// CHECK-DAG:  %[[LC4:.*]] = llvm.mlir.constant(4 : i32) : i32
+// CHECK-DAG:  %[[LCm1_i32:.*]] = llvm.mlir.constant(-1 : i32) : i32
+// CHECK-DAG:  %[[LC15:.*]] = llvm.mlir.constant(15 : i32) : i32
+// CHECK-DAG:  %[[LCTRUE:.*]] = llvm.mlir.constant(true) : i1
+
+// CHECK:  %[[VAL_13:.*]] = arith.index_castui %[[VAL_1]] : index to i64
+// CHECK:  %[[VAL_14:.*]] = arith.andi %[[VAL_13]], %[[C1]] : i64
+// CHECK:  %[[VAL_15:.*]] = arith.cmpi eq, %[[VAL_14]], %[[C0]] : i64
+// CHECK:  %[[VAL_16:.*]] = arith.shrui %[[VAL_13]], %[[C1]] : i64
+// CHECK:  %[[VAL_17:.*]] = llvm.getelementptr inbounds %[[VAL_0]][0, %[[VAL_16]]]
+// CHECK-SAME:   : (!llvm.ptr, i64) -> !llvm.ptr, !llvm.array<4 x i8>
+
+// CHECK:  %[[VAL_18:.*]] = llvm.ptrtoint %[[VAL_17]] : !llvm.ptr to i64
+// CHECK:  %[[VAL_19:.*]] = llvm.and %[[VAL_18]], %[[LC3]] : i64
+// CHECK:  %[[VAL_20:.*]] = llvm.mul %[[VAL_19]], %[[LCm1]] : i64
+// CHECK:  %[[VAL_21:.*]] = llvm.getelementptr inbounds %[[VAL_17]][%[[VAL_20]]]
+// CHECK-SAME:   : (!llvm.ptr, i64) -> !llvm.ptr, i8
+
+// CHECK:  %[[VAL_22:.*]] = llvm.trunc %[[VAL_19]] : i64 to i32
+// CHECK:  %[[VAL_23:.*]] = llvm.mul %[[VAL_22]], %[[LC8]] : i32
+// CHECK:  %[[VAL_24:.*]] = llvm.select %[[VAL_15]], %[[LC0]], %[[LC4]]
+// CHECK:  %[[VAL_25:.*]] = llvm.add %[[VAL_23]], %[[VAL_24]] : i32
+// CHECK:  %[[VAL_26:.*]] = llvm.shl %[[LC15]], %[[VAL_25]] : i32
+// CHECK:  %[[VAL_27:.*]] = llvm.xor %[[LCm1_i32]], %[[VAL_26]] : i32
+// CHECK:  %[[LOAD_4BYTES:.*]] = llvm.load %[[VAL_21]] : !llvm.ptr -> i32
+// CHECK:  scf.while (%[[VAL_30:.*]] = %[[LOAD_4BYTES]]) : (i32) -> i32 {
+// CHECK:    %[[VAL_31:.*]] = llvm.lshr %[[VAL_30]], %[[VAL_25]] : i32
+// CHECK:    %[[VAL_32:.*]] = llvm.trunc %[[VAL_31]] : i32 to i4
+// CHECK:    %[[VAL_33:.*]] = arith.addi %[[VAL_32]], %[[LC1_i4]] : i4
+// CHECK:    %[[VAL_34:.*]] = llvm.zext %[[VAL_33]] : i4 to i32
+// CHECK:    %[[VAL_35:.*]] = llvm.and %[[VAL_30]], %[[VAL_27]] : i32
+// CHECK:    %[[VAL_36:.*]] = llvm.shl %[[VAL_34]], %[[VAL_25]] : i32
+// CHECK:    %[[VAL_37:.*]] = llvm.or %[[VAL_35]], %[[VAL_36]] : i32
+// CHECK:    llvm.cmpxchg
 
 // -----
 
@@ -304,10 +390,32 @@ func.func @atomic_rmw_overwrite(%in: tensor<8xf16>, %i: index)
 // CHECK-NEXT: %[[BASE:.*]] = llvm.getelementptr inbounds %[[ADDR]][%[[INDEX]]]
 // CHECK: %[[INIT:.*]] = llvm.load %[[BASE]]
 // CHECK-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]])
-// CHECK: %[[RES:.*]] = llvm.bitcast %{{.*}} : f16 to i16
-// CHECK-NEXT: %[[RES_WIDE:.*]] = llvm.zext %[[RES]]
-// CHECK-NEXT: %[[NEW_MASKED:.*]] = llvm.and %[[VAR]], %{{.*}}
-// CHECK-NEXT: %[[RES_SHIFT:.*]] = llvm.shl %[[RES_WIDE]], %{{.*}}
+// CHECK-DAG: %[[RES_SHIFT:.*]] = llvm.shl %{{.*}}, %{{.*}}
+// CHECK-DAG: %[[NEW_MASKED:.*]] = llvm.and %[[VAR]], %{{.*}}
+// CHECK-NEXT: %[[NEW:.*]] = llvm.or %[[NEW_MASKED]], %[[RES_SHIFT]]
+// CHECK-NEXT: llvm.cmpxchg %[[BASE]], %[[VAR]], %[[NEW]]
+
+// -----
+
+func.func @atomic_rmw_overwrite_f8E4M3(%in: tensor<8xf8E4M3>, %i: index)
+    -> (tensor<8xf8E4M3>) {
+  %c1 = arith.constant 1.0 : f8E4M3
+  %ret = xla.atomic_rmw %in[%i] : tensor<8xf8E4M3> {
+    ^bb0(%current : f8E4M3):
+      xla.yield %c1 : f8E4M3
+  }
+  return %ret : tensor<8xf8E4M3>
+}
+// CHECK-LABEL: @atomic_rmw_overwrite_f8E4M3
+// CHECK: %[[ADDR:.*]] = llvm.getelementptr
+// CHECK-NEXT: %[[ADDR_INT:.*]] = llvm.ptrtoint %[[ADDR]]
+// CHECK-NEXT: %[[OFFSET:.*]] = llvm.and %[[ADDR_INT]], %{{.*}}
+// CHECK-NEXT: %[[INDEX:.*]] = llvm.mul %[[OFFSET]], %{{.*}}
+// CHECK-NEXT: %[[BASE:.*]] = llvm.getelementptr inbounds %[[ADDR]][%[[INDEX]]]
+// CHECK: %[[INIT:.*]] = llvm.load %[[BASE]]
+// CHECK-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]])
+// CHECK-DAG: %[[RES_SHIFT:.*]] = llvm.shl %{{.*}}, %{{.*}}
+// CHECK-DAG: %[[NEW_MASKED:.*]] = llvm.and %[[VAR]], %{{.*}}
 // CHECK-NEXT: %[[NEW:.*]] = llvm.or %[[NEW_MASKED]], %[[RES_SHIFT]]
 // CHECK-NEXT: llvm.cmpxchg %[[BASE]], %[[VAR]], %[[NEW]]
 
@@ -322,6 +430,15 @@ func.func @shared_complex() -> tensor<10xcomplex<f32>> {
 
 // -----
 
+func.func @shared_i4() -> tensor<10xi4> {
+  %shared = xla_gpu.allocate_shared : tensor<10xi4>
+  return %shared : tensor<10xi4>
+}
+// CHECK: llvm.mlir.global private @{{.*}}() {addr_space = 3 : i32} : !llvm.array<5 x i8>
+// CHECK-LABEL: @shared_i4
+
+// -----
+
 func.func @i4_load_store(%arg: tensor<10xi4>, %i: index, %j: index)
     -> tensor<10xi4> {
   %v = tensor.extract %arg[%i] : tensor<10xi4>
@@ -333,27 +450,27 @@ func.func @i4_load_store(%arg: tensor<10xi4>, %i: index, %j: index)
 // CHECK-DAG: %[[C15:.*]] = arith.constant 15 : i8
 // CHECK-DAG: %[[C_NEG16:.*]] = arith.constant -16 : i8
 // CHECK: llvm.getelementptr
-// CHECK-SAME: -> !llvm.ptr, i8
+// CHECK-SAME: -> !llvm.ptr, !llvm.array<5 x i8>
 // CHECK: %[[VALUE_I8:.*]] = arith.extui {{.*}} : i4 to i8
 // CHECK: llvm.getelementptr
-// CHECK-SAME: -> !llvm.ptr, i8
+// CHECK-SAME: -> !llvm.ptr, !llvm.array<10 x i8>
 // CHECK: %[[CURRENT_I32:.*]] = llvm.load
 // CHECK-SAME: !llvm.ptr -> i32
 // CHECK: scf.while (%[[INIT:.*]] = %[[CURRENT_I32]])
 // CHECK: %[[SHIFTED:.*]] = llvm.lshr %[[INIT]]
 // CHECK: %[[CURRENT:.*]] = llvm.trunc %[[SHIFTED]]
-// CHECK: %[[MASKED_CURRENT_LO:.*]] = arith.andi %[[CURRENT]], %[[C_NEG16]] : i8
-// CHECK: %[[MASKED_VALUE_I8:.*]] = arith.andi %[[VALUE_I8]], %[[C15]] : i8
+// CHECK-DAG: %[[MASKED_VALUE_I8:.*]] = arith.andi %[[VALUE_I8]], %[[C15]] : i8
+// CHECK-DAG: %[[MASKED_CURRENT_LO:.*]] = arith.andi %[[CURRENT]], %[[C_NEG16]] : i8
 // CHECK: %[[NEW_LO:.*]] = arith.ori %[[MASKED_CURRENT_LO]], %[[MASKED_VALUE_I8]] : i8
-// CHECK: %[[MASKED_CURRENT_HI:.*]] = arith.andi %[[CURRENT]], %[[C15]] : i8
-// CHECK: %[[VALUE_HI:.*]] = arith.shli %[[VALUE_I8]], %[[C4]] : i8
+// CHECK-DAG: %[[VALUE_HI:.*]] = arith.shli %[[VALUE_I8]], %[[C4]] : i8
+// CHECK-DAG: %[[MASKED_CURRENT_HI:.*]] = arith.andi %[[CURRENT]], %[[C15]] : i8
 // CHECK: %[[NEW_HI:.*]] = arith.ori %[[MASKED_CURRENT_HI]], %[[VALUE_HI]] : i8
 // CHECK: %[[NEW_VALUE:.*]] = arith.select %{{.*}}, %[[NEW_LO]], %[[NEW_HI]] : i8
 // CHECK: %[[NEW_VALUE_I32:.*]] = llvm.zext %[[NEW_VALUE]]
-// CHECK: %[[MASKED_INIT:.*]] = llvm.and %[[INIT]]
-// CHECK: %[[NEW_VALUE_SHIFTED:.*]] = llvm.shl %[[NEW_VALUE_I32]]
+// CHECK-DAG: %[[NEW_VALUE_SHIFTED:.*]] = llvm.shl %[[NEW_VALUE_I32]]
+// CHECK-DAG: %[[MASKED_INIT:.*]] = llvm.and %[[INIT]]
 // CHECK: %[[NEW_INIT:.*]] = llvm.or %[[MASKED_INIT]], %[[NEW_VALUE_SHIFTED]]
-// CHECK: llvm.cmpxchg %{{.*}}, %[[INIT]], %[[NEW_INIT]] seq_cst seq_cst
+// CHECK: llvm.cmpxchg %{{.*}}, %[[INIT]], %[[NEW_INIT]] monotonic monotonic
 // CHECK: scf.condition
 
 // -----
@@ -387,7 +504,7 @@ func.func @direct_atomic_rmw_addi(%in: tensor<8xi32>,
 // CHECK-PASCAL-LABEL: @direct_atomic_rmw_addi
 // CHECK-PASCAL: %[[C2:.*]] = arith.constant 2
 // CHECK-PASCAL: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-PASCAL: llvm.atomicrmw add %[[ADDR]], %[[C2]] seq_cst
+// CHECK-PASCAL: llvm.atomicrmw add %[[ADDR]], %[[C2]] monotonic
 
 // -----
 
@@ -404,7 +521,7 @@ func.func @direct_atomic_rmw_maxsi(%in: tensor<8xi32>,
 // CHECK-PASCAL-LABEL: @direct_atomic_rmw_maxsi
 // CHECK-PASCAL: %[[C2:.*]] = arith.constant 2
 // CHECK-PASCAL: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-PASCAL: llvm.atomicrmw max %[[ADDR]], %[[C2]] seq_cst
+// CHECK-PASCAL: llvm.atomicrmw max %[[ADDR]], %[[C2]] monotonic
 
 // -----
 
@@ -421,7 +538,7 @@ func.func @direct_atomic_rmw_maxui(%in: tensor<8xi32>,
 // CHECK-PASCAL-LABEL: @direct_atomic_rmw_maxui
 // CHECK-PASCAL: %[[C2:.*]] = arith.constant 2
 // CHECK-PASCAL: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-PASCAL: llvm.atomicrmw umax %[[ADDR]], %[[C2]] seq_cst
+// CHECK-PASCAL: llvm.atomicrmw umax %[[ADDR]], %[[C2]] monotonic
 
 // -----
 
@@ -438,7 +555,7 @@ func.func @direct_atomic_rmw_minsi(%in: tensor<8xi32>,
 // CHECK-PASCAL-LABEL: @direct_atomic_rmw_minsi
 // CHECK-PASCAL: %[[C2:.*]] = arith.constant 2
 // CHECK-PASCAL: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-PASCAL: llvm.atomicrmw min %[[ADDR]], %[[C2]] seq_cst
+// CHECK-PASCAL: llvm.atomicrmw min %[[ADDR]], %[[C2]] monotonic
 
 // -----
 
@@ -455,7 +572,7 @@ func.func @direct_atomic_rmw_minui(%in: tensor<8xi32>,
 // CHECK-PASCAL-LABEL: @direct_atomic_rmw_minui
 // CHECK-PASCAL: %[[C2:.*]] = arith.constant 2
 // CHECK-PASCAL: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-PASCAL: llvm.atomicrmw umin %[[ADDR]], %[[C2]] seq_cst
+// CHECK-PASCAL: llvm.atomicrmw umin %[[ADDR]], %[[C2]] monotonic
 
 // -----
 
@@ -472,29 +589,27 @@ func.func @direct_atomic_rmw_fadd_f32(%in: tensor<8xf32>,
 // CHECK-PASCAL-LABEL: @direct_atomic_rmw_fadd_f32
 // CHECK-PASCAL: %[[C2:.*]] = arith.constant 2
 // CHECK-PASCAL: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-PASCAL: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] seq_cst
+// CHECK-PASCAL: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] monotonic
 
 // CHECK-VOLTA-LABEL: @direct_atomic_rmw_fadd_f32
 // CHECK-VOLTA: %[[C2:.*]] = arith.constant 2
 // CHECK-VOLTA: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-VOLTA: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] seq_cst
+// CHECK-VOLTA: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] monotonic
 
 // CHECK-AMPERE-LABEL: @direct_atomic_rmw_fadd_f32
 // CHECK-AMPERE: %[[C2:.*]] = arith.constant 2
 // CHECK-AMPERE: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-AMPERE: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] seq_cst
+// CHECK-AMPERE: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] monotonic
 
 // CHECK-GFX908-MI100-LABEL: @direct_atomic_rmw_fadd_f32
 // CHECK-GFX908-MI100: %[[C2:.*]] = arith.constant 2
 // CHECK-GFX908-MI100: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-GFX908-MI100: %[[ADDR_CAST:.*]] = llvm.addrspacecast %[[ADDR]] : !llvm.ptr to !llvm.ptr<1>
-// CHECK-GFX908-MI100: llvm.atomicrmw fadd %[[ADDR_CAST]], %[[C2]] syncscope("agent") seq_cst
+// CHECK-GFX908-MI100: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] syncscope("agent-one-as") monotonic
 
 // CHECK-GFX90A-MI200-LABEL: @direct_atomic_rmw_fadd_f32
 // CHECK-GFX90A-MI200: %[[C2:.*]] = arith.constant 2
 // CHECK-GFX90A-MI200: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-GFX90A-MI200: %[[ADDR_CAST:.*]] = llvm.addrspacecast %[[ADDR]] : !llvm.ptr to !llvm.ptr<1>
-// CHECK-GFX90A-MI200: llvm.atomicrmw fadd %[[ADDR_CAST]], %[[C2]] syncscope("agent") seq_cst
+// CHECK-GFX90A-MI200: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] syncscope("agent-one-as") monotonic
 
 // -----
 
@@ -514,21 +629,78 @@ func.func @direct_atomic_rmw_fadd_f16(%in: tensor<8xf16>,
 // CHECK-VOLTA-LABEL: @direct_atomic_rmw_fadd_f16
 // CHECK-VOLTA: %[[C2:.*]] = arith.constant 2
 // CHECK-VOLTA: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-VOLTA: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] seq_cst
+// CHECK-VOLTA: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] monotonic
 
 // CHECK-AMPERE-LABEL: @direct_atomic_rmw_fadd_f16
 // CHECK-AMPERE: %[[C2:.*]] = arith.constant 2
 // CHECK-AMPERE: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-AMPERE: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] seq_cst
+// CHECK-AMPERE: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] monotonic
 
 // CHECK-GFX908-MI100-LABEL: @direct_atomic_rmw_fadd_f16
-// CHECK-GFX908-MI100-NOT: llvm.atomicrmw fadd
+// CHECK-GFX908-MI100: %[[CST:.*]] = arith.constant 2
+// CHECK-GFX908-MI100: %[[C_NEG4:.*]] = llvm.mlir.constant(-4 : i64) : i64
+// CHECK-GFX908-MI100: %[[C2:.*]] = llvm.mlir.constant(2 : i32) : i32
+// CHECK-GFX908-MI100: %[[C8:.*]] = llvm.mlir.constant(8 : i32) : i32
+// CHECK-GFX908-MI100: %[[ADDR:.*]] = llvm.getelementptr
+// CHECK-GFX908-MI100: %[[ADDR_INT:.*]] = llvm.ptrtoint %[[ADDR]]
+// CHECK-GFX908-MI100: %[[ADDR_MASKED:.*]] = llvm.and %[[ADDR_INT]], %[[C_NEG4]]
+// CHECK-GFX908-MI100: %[[ADDR_TRUNC:.*]] = llvm.trunc %[[ADDR_INT]]
+// CHECK-GFX908-MI100: %[[OFFSET:.*]] = llvm.and %[[ADDR_TRUNC]], %[[C2]]
+// CHECK-GFX908-MI100: %[[SHIFT:.*]] = llvm.mul %[[OFFSET]], %[[C8]]
+// CHECK-GFX908-MI100: %[[VAL_INT:.*]] = llvm.bitcast %[[CST]] : f16 to i16
+// CHECK-GFX908-MI100: %[[VAL_WIDE:.*]] = llvm.zext %[[VAL_INT]] : i16 to i32
+// CHECK-GFX908-MI100: %[[VAL_SHIFT:.*]] = llvm.shl %[[VAL_WIDE]], %[[SHIFT]]
+// CHECK-GFX908-MI100: %[[ADDR:.*]] = llvm.inttoptr %[[ADDR_MASKED]]
+// CHECK-GFX908-MI100: %[[VAL:.*]] = llvm.bitcast %[[VAL_SHIFT]] : i32 to vector<2xf16>
+// CHECK-GFX908-MI100: llvm.atomicrmw fadd %[[ADDR]], %[[VAL]] syncscope("agent-one-as") monotonic
+
 
 // CHECK-GFX90A-MI200-LABEL: @direct_atomic_rmw_fadd_f16
-// CHECK-GFX90A-MI200: %[[C2:.*]] = arith.constant 2
+// CHECK-GFX90A-MI200: %[[CST:.*]] = arith.constant 2
+// CHECK-GFX90A-MI200: %[[C_NEG4:.*]] = llvm.mlir.constant(-4 : i64) : i64
+// CHECK-GFX90A-MI200: %[[C2:.*]] = llvm.mlir.constant(2 : i32) : i32
+// CHECK-GFX90A-MI200: %[[C8:.*]] = llvm.mlir.constant(8 : i32) : i32
 // CHECK-GFX90A-MI200: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-GFX90A-MI200: %[[ADDR_CAST:.*]] = llvm.addrspacecast %[[ADDR]] : !llvm.ptr to !llvm.ptr<1>
-// CHECK-GFX90A-MI200: llvm.atomicrmw fadd %[[ADDR_CAST]], %[[C2]] syncscope("agent") seq_cst
+// CHECK-GFX90A-MI200: %[[ADDR_INT:.*]] = llvm.ptrtoint %[[ADDR]]
+// CHECK-GFX90A-MI200: %[[ADDR_MASKED:.*]] = llvm.and %[[ADDR_INT]], %[[C_NEG4]]
+// CHECK-GFX90A-MI200: %[[ADDR_TRUNC:.*]] = llvm.trunc %[[ADDR_INT]]
+// CHECK-GFX90A-MI200: %[[OFFSET:.*]] = llvm.and %[[ADDR_TRUNC]], %[[C2]]
+// CHECK-GFX90A-MI200: %[[SHIFT:.*]] = llvm.mul %[[OFFSET]], %[[C8]]
+// CHECK-GFX90A-MI200: %[[VAL_INT:.*]] = llvm.bitcast %[[CST]] : f16 to i16
+// CHECK-GFX90A-MI200: %[[VAL_WIDE:.*]] = llvm.zext %[[VAL_INT]] : i16 to i32
+// CHECK-GFX90A-MI200: %[[VAL_SHIFT:.*]] = llvm.shl %[[VAL_WIDE]], %[[SHIFT]]
+// CHECK-GFX90A-MI200: %[[ADDR:.*]] = llvm.inttoptr %[[ADDR_MASKED]]
+// CHECK-GFX90A-MI200: %[[VAL:.*]] = llvm.bitcast %[[VAL_SHIFT]] : i32 to vector<2xf16>
+// CHECK-GFX90A-MI200: llvm.atomicrmw fadd %[[ADDR]], %[[VAL]] syncscope("agent-one-as") monotonic
+
+// -----
+
+func.func @no_direct_atomic_rmw_fadd_f8E4M3(%in: tensor<8xf8E4M3>,
+    %i: index) -> (tensor<8xf8E4M3>) {
+  %c2 = arith.constant 2.0 : f8E4M3
+  %ret = xla.atomic_rmw %in[%i] : tensor<8xf8E4M3> {
+    ^bb0(%current : f8E4M3):
+      %min = arith.addf %current, %c2 : f8E4M3
+      xla.yield %c2 : f8E4M3
+  }
+  return %ret : tensor<8xf8E4M3>
+}
+// CHECK-PASCAL-LABEL: @no_direct_atomic_rmw_fadd_f8E4M3
+// CHECK-PASCAL-NOT: llvm.atomicrmw fadd
+
+// CHECK-VOLTA-LABEL: @no_direct_atomic_rmw_fadd_f8E4M3
+// CHECK-VOLTA-NOT: llvm.atomicrmw fadd
+
+// CHECK-AMPERE-LABEL: @no_direct_atomic_rmw_fadd_f8E4M3
+// CHECK-AMPERE-NOT: llvm.atomicrmw fadd
+
+// CHECK-GFX908-MI100-LABEL: @no_direct_atomic_rmw_fadd_f8E4M3
+// CHECK-GFX908-MI100-NOT: llvm.atomicrmw fadd
+// CHECK-GFX908-MI100: return
+
+// CHECK-GFX90A-MI200-LABEL: @no_direct_atomic_rmw_fadd_f8E4M3
+// CHECK-GFX90A-MI200-NOT: llvm.atomicrmw fadd
+// CHECK-GFX90A-MI200: return
 
 // -----
 
@@ -548,7 +720,7 @@ func.func @direct_atomic_rmw_fadd_bf16(%in: tensor<8xbf16>,
 // CHECK-HOPPER-LABEL: @direct_atomic_rmw_fadd_bf16
 // CHECK-HOPPER: %[[C2:.*]] = arith.constant 2
 // CHECK-HOPPER: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-HOPPER: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] seq_cst
+// CHECK-HOPPER: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] monotonic
 
 // -----
 
@@ -565,23 +737,29 @@ func.func @direct_atomic_rmw_fadd_f64(%in: tensor<8xf64>,
 // CHECK-PASCAL-LABEL: @direct_atomic_rmw_fadd_f64
 // CHECK-PASCAL: %[[C2:.*]] = arith.constant 2
 // CHECK-PASCAL: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-PASCAL: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] seq_cst
+// CHECK-PASCAL: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] monotonic
 
 // CHECK-VOLTA-LABEL: @direct_atomic_rmw_fadd_f64
 // CHECK-VOLTA: %[[C2:.*]] = arith.constant 2
 // CHECK-VOLTA: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-VOLTA: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] seq_cst
+// CHECK-VOLTA: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] monotonic
 
 // CHECK-AMPERE-LABEL: @direct_atomic_rmw_fadd_f64
 // CHECK-AMPERE: %[[C2:.*]] = arith.constant 2
 // CHECK-AMPERE: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-AMPERE: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] seq_cst
+// CHECK-AMPERE: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] monotonic
 
 // CHECK-GFX908-MI100-LABEL: @direct_atomic_rmw_fadd_f64
-// CHECK-GFX908-MI100-NOT: llvm.atomicrmw fadd
+// CHECK-GFX908-MI100: %[[C2:.*]] = arith.constant 2
+// CHECK-GFX908-MI100: %[[ADDR:.*]] = llvm.getelementptr
+// CHECK-GFX908-MI100: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] syncscope("agent-one-as") monotonic
+
 
 // CHECK-GFX90A-MI200-LABEL: @direct_atomic_rmw_fadd_f64
-// CHECK-GFX90A-MI200-NOT: llvm.atomicrmw fadd
+// CHECK-GFX90A-MI200: %[[C2:.*]] = arith.constant 2
+// CHECK-GFX90A-MI200: %[[ADDR:.*]] = llvm.getelementptr
+// CHECK-GFX90A-MI200: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] syncscope("agent-one-as") monotonic
+
 
 // -----
 
@@ -609,12 +787,12 @@ func.func @direct_atomic_rmw_maximumf(%in: tensor<8xf32>,
 // CHECK-PASCAL:   %[[MODIFIER_OR_NAN:.*]] = llvm.select %[[MODIFIER_IS_NAN]], %[[NAN]], %[[MODIFIER]] : i1, f32
 // CHECK-PASCAL:   %[[VAL_13:.*]] = llvm.fcmp "ult" %[[CURRENT]], %[[MODIFIER_OR_NAN]] : f32
 // CHECK-PASCAL:   scf.if %[[VAL_13]] {
-// CHECK-PASCAL:     %[[INT_MODIFIER_OR_NAN:.*]] = llvm.bitcast %[[MODIFIER_OR_NAN]] : f32 to i32
+// CHECK-PASCAL:     %[[INT_MODIFIER_OR_NAN:.*]] = arith.bitcast %[[MODIFIER_OR_NAN]] : f32 to i32
 // CHECK-PASCAL:     %[[IS_POSITIVE:.*]] = llvm.icmp "sge" %[[INT_MODIFIER_OR_NAN]], %[[C0]] : i32
 // CHECK-PASCAL:     scf.if %[[IS_POSITIVE]] {
-// CHECK-PASCAL:       llvm.atomicrmw max %[[ADDR]], %[[INT_MODIFIER_OR_NAN]] seq_cst
+// CHECK-PASCAL:       llvm.atomicrmw max %[[ADDR]], %[[INT_MODIFIER_OR_NAN]] monotonic
 // CHECK-PASCAL:     } else {
-// CHECK-PASCAL:       llvm.atomicrmw umin %[[ADDR]], %[[INT_MODIFIER_OR_NAN]] seq_cst
+// CHECK-PASCAL:       llvm.atomicrmw umin %[[ADDR]], %[[INT_MODIFIER_OR_NAN]] monotonic
 // CHECK-PASCAL:     }
 // CHECK-PASCAL:   }
 // CHECK-PASCAL: }
@@ -676,9 +854,9 @@ func.func @transfer_write(%arg0: tensor<43xf32> {xla.slice_index = 1}) -> tensor
   func.return %out2 : tensor<43xf32>
 }
 // CHECK-LABEL: @transfer_write
-// CHECK:           %[[PTR1:.*]] = llvm.getelementptr inbounds %[[BUF:.*]][16]
+// CHECK:           %[[PTR1:.*]] = llvm.getelementptr inbounds %[[BUF:.*]][0, 16]
 // CHECK-NEXT:      llvm.store %[[CST:.*]], %[[PTR1]]
-// CHECK-NEXT:      %[[PTR2:.*]] = llvm.getelementptr inbounds %[[BUF]][22]
+// CHECK-NEXT:      %[[PTR2:.*]] = llvm.getelementptr inbounds %[[BUF]][0, 22]
 // CHECK-NEXT:      llvm.store %[[CST]], %[[PTR2]]
 
 // -----
@@ -690,8 +868,8 @@ func.func @transfer_read(%arg0: tensor<43xf32> {xla.slice_index = 1}) -> vector<
   func.return %out : vector<2xf32>
 }
 // CHECK-LABEL: @transfer_read
-// CHECK:           %[[PTR:.*]] = llvm.getelementptr inbounds %{{.*}}[16]
-// CHECK-NEXT:      llvm.load %[[PTR]] : !llvm.ptr -> vector<2xf32>
+// CHECK:           %[[PTR:.*]] = llvm.getelementptr inbounds %{{.*}}[0, 16]
+// CHECK-NEXT:      llvm.load %[[PTR]] {alignment = 4 : i64} : !llvm.ptr -> vector<2xf32>
 
 // -----
 
@@ -706,12 +884,12 @@ func.func @transfer_write_i1(%arg0: tensor<43xi1> {xla.slice_index = 1},
 // CHECK-LABEL: @transfer_write_i1
 // CHECK-SAME:      (%[[ARG0:.*]]: !llvm.ptr
 // CHECK-SAME:       %[[V1:.*]]: vector<2xi1>, %[[V2:.*]]: vector<2xi1>)
-// CHECK-DAG:       %[[PTR1:.*]] = llvm.getelementptr inbounds %[[BUF:.*]][16]
+// CHECK-DAG:       %[[PTR1:.*]] = llvm.getelementptr inbounds %[[BUF:.*]][0, 16]
 // CHECK-DAG:       %[[V1_EXT:.*]] = arith.extui %[[V1]]
-// CHECK:           llvm.store %[[V1_EXT]], %[[PTR1]]
-// CHECK-DAG:       %[[PTR2:.*]] = llvm.getelementptr inbounds %[[BUF]][22]
+// CHECK:           llvm.store %[[V1_EXT]], %[[PTR1]] {alignment = 1 : i64}
+// CHECK-DAG:       %[[PTR2:.*]] = llvm.getelementptr inbounds %[[BUF]][0, 22]
 // CHECK-DAG:       %[[V2_EXT:.*]] = arith.extui %[[V2]]
-// CHECK:           llvm.store %[[V2_EXT]], %[[PTR2]]
+// CHECK:           llvm.store %[[V2_EXT]], %[[PTR2]] {alignment = 1 : i64}
 
 // -----
 
@@ -723,10 +901,68 @@ func.func @transfer_read_i1(%arg0: tensor<43xi1> {xla.slice_index = 1}) -> vecto
 }
 // CHECK-LABEL: @transfer_read_i1
 // CHECK-DAG:       %[[C0:.*]] = arith.constant dense<0> : vector<2xi8>
-// CHECK-DAG:       %[[PTR:.*]] = llvm.getelementptr inbounds %{{.*}}[16]
-// CHECK:           %[[LOADED:.*]] = llvm.load %[[PTR]] : !llvm.ptr
+// CHECK-DAG:       %[[PTR:.*]] = llvm.getelementptr inbounds %{{.*}}[0, 16]
+// CHECK:           %[[LOADED:.*]] = llvm.load %[[PTR]] {alignment = 1 : i64} : !llvm.ptr
 // CHECK:           %[[CAST:.*]] = arith.cmpi ne, %[[LOADED]], %[[C0]]
 // CHECK:           return %[[CAST]] : vector<2xi1>
+
+// -----
+
+func.func @transfer_read_alignment(%arg0: tensor<8xi64> {llvm.align = 32 : index}) -> vector<8xi64> {
+  %c0 = arith.constant 0 : index
+  %c0_i64 = arith.constant 0 : i64
+  %0 = vector.transfer_read %arg0[%c0], %c0_i64 {in_bounds = [true]} : tensor<8xi64>, vector<8xi64>
+  return %0 : vector<8xi64>
+}
+// CHECK-LABEL: @transfer_read_alignment(
+// CHECK-SAME:  %[[ARG0:.*]]: !llvm.ptr
+// CHECK:           %[[GEP:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, 0] :
+// CHECK-SAME:        !llvm.array<8 x i64>
+// CHECK:           %[[LOADED:.*]] = llvm.load %[[GEP]] {alignment = 32 : i64} : !llvm.ptr
+// CHECK:           return %[[LOADED]] : vector<8xi64>
+
+// -----
+
+func.func @transfer_read_alignment_non_zero_index(%arg0: tensor<16xi64> {llvm.align = 32 : index}) -> vector<8xi64> {
+  %c8 = arith.constant 8 : index
+  %c0_i64 = arith.constant 0 : i64
+  %0 = vector.transfer_read %arg0[%c8], %c0_i64 {in_bounds = [true]} : tensor<16xi64>, vector<8xi64>
+  return %0 : vector<8xi64>
+}
+// CHECK-LABEL: @transfer_read_alignment_non_zero_index(
+// CHECK-SAME:  %[[ARG0:.*]]: !llvm.ptr
+// CHECK:           %[[PTR:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, 8]
+// CHECK-NEXT:      llvm.load %[[PTR]] {alignment = 8 : i64} : !llvm.ptr -> vector<8xi64>
+
+// -----
+
+func.func @transfer_write_alignment(%arg0: tensor<8xi64> {llvm.align = 32 : index}) -> tensor<8xi64> {
+  %c0 = arith.constant 0 : index
+  %c0_i64 = arith.constant dense<0> : vector<8xi64>
+  %0 = vector.transfer_write %c0_i64, %arg0[%c0] {in_bounds = [true]} : vector<8xi64>, tensor<8xi64>
+  return %0 : tensor<8xi64>
+}
+// CHECK-LABEL: @transfer_write_alignment(
+// CHECK-SAME:  %[[ARG0:.*]]: !llvm.ptr
+// CHECK-DAG:       %[[C0_I64:.*]] = arith.constant dense<0> : vector<8xi64>
+// CHECK:           %[[GEP:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, 0] :
+// CHECK-SAME:        !llvm.array<8 x i64>
+// CHECK:           llvm.store %[[C0_I64]], %[[GEP]] {alignment = 32 : i64} : vector<8xi64>, !llvm.ptr
+
+// -----
+
+func.func @transfer_write_alignment_non_zero_index(%arg0: tensor<8xi64> {llvm.align = 32 : index}) -> tensor<8xi64> {
+  %c8 = arith.constant 8 : index
+  %c0_i64 = arith.constant dense<0> : vector<8xi64>
+  %0 = vector.transfer_write %c0_i64, %arg0[%c8] {in_bounds = [true]} : vector<8xi64>, tensor<8xi64>
+  return %0 : tensor<8xi64>
+}
+// CHECK-LABEL: @transfer_write_alignment_non_zero_index(
+// CHECK-SAME:  %[[ARG0:.*]]: !llvm.ptr
+// CHECK-DAG:       %[[C0_I64:.*]] = arith.constant dense<0> : vector<8xi64>
+// CHECK:           %[[GEP:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, 8] :
+// CHECK-SAME:        !llvm.array<8 x i64>
+// CHECK:           llvm.store %[[C0_I64]], %[[GEP]] {alignment = 8 : i64} : vector<8xi64>, !llvm.ptr
 
 // -----
 
@@ -813,8 +1049,9 @@ func.func @transfer_read_f4(%arg0: tensor<43xf4E2M1FN> {xla.slice_index = 1}) ->
   func.return %out : vector<2xf4E2M1FN>
 }
 // CHECK-LABEL: @transfer_read_f4
-// CHECK: %[[PTR:.*]] = llvm.getelementptr inbounds %{{.*}}[8]
-// CHECK: llvm.load %[[PTR]] : !llvm.ptr -> vector<2xi4>
+// CHECK: %[[PTR:.*]] = llvm.getelementptr inbounds %{{.*}}[0, 8] :
+// CHECK-SAME: (!llvm.ptr) -> !llvm.ptr, !llvm.array<22 x i8>
+// CHECK: llvm.load %[[PTR]] {alignment = 1 : i64} : !llvm.ptr -> vector<2xi4>
 // CHECK: %[[OUT:.*]] = builtin.unrealized_conversion_cast %{{.*}} : vector<2xi4> to vector<2xf4E2M1FN>
 // CHECK: return %[[OUT]] : vector<2xf4E2M1FN>
 
@@ -827,5 +1064,5 @@ func.func @transfer_write_f4(%arg0: tensor<43xf4E2M1FN> {xla.slice_index = 1},
   func.return %out : tensor<43xf4E2M1FN>
 }
 // CHECK-LABEL: @transfer_write_f4
-// CHECK: %[[PTR:.*]] = llvm.getelementptr inbounds %arg0[5] : (!llvm.ptr) -> !llvm.ptr, i8
+// CHECK: %[[PTR:.*]] = llvm.getelementptr inbounds %arg0[0, 5] : (!llvm.ptr) -> !llvm.ptr, !llvm.array<22 x i8>
 // CHECK: %[[OUT:.*]] = builtin.unrealized_conversion_cast %{{.*}} : vector<2xf4E2M1FN> to vector<2xi4>

@@ -15,7 +15,8 @@ func.func @main(%arg0: tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"
     -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"c"}, {}]>}) {
   // CHECK-NEXT: %[[ADD_0:.*]] = stablehlo.add %arg0, %arg0 : tensor<8x16xf32>
   // CHECK-NEXT: %[[MUL:.*]] = stablehlo.multiply %[[ADD_0]], %[[ADD_0]] : tensor<8x16xf32>
-  // CHECK-NEXT: %[[ADD_1:.*]] = stablehlo.add %[[MUL]], %[[MUL]] : tensor<8x16xf32>
+  // CHECK-NEXT: %[[SC:.*]] = sdy.sharding_constraint %[[MUL]] <@mesh, [{}, {"b"}]> : tensor<8x16xf32>
+  // CHECK-NEXT: %[[ADD_1:.*]] = stablehlo.add %[[SC]], %[[SC]] : tensor<8x16xf32>
   // CHECK-NEXT: return %[[ADD_1]] : tensor<8x16xf32>
   %0 = stablehlo.add %arg0, %arg0 : tensor<8x16xf32>
   %1 = func.call @nested_func(%0) : (tensor<8x16xf32>) -> (tensor<8x16xf32>)

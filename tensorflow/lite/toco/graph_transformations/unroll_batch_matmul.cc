@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -137,8 +138,8 @@ TransposeOperator* TransposeInput(const std::string& input, Model* model) {
 // Unrolls a BatchMatMul on the batch dimension.
 // We need to slice each batch out of the inputs, matmul them individually, then
 // stack them all back together at the end.
-::tensorflow::Status UnrollBatchMatMul::Run(Model* model, std::size_t op_index,
-                                            bool* modified) {
+absl::Status UnrollBatchMatMul::Run(Model* model, std::size_t op_index,
+                                    bool* modified) {
   *modified = false;
   auto batch_op_it = model->operators.begin() + op_index;
   if (batch_op_it->get()->type != OperatorType::kBatchMatMul) {

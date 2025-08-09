@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/tools/collective_perf_table_gen.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -40,13 +41,13 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
-#include "xla/service/gpu/model/hlo_op_profiler.h"
 #include "xla/service/gpu/model/hlo_op_profiles.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/tools/multihost_hlo_runner/create_client.h"
 #include "xla/tools/multihost_hlo_runner/functional_hlo_runner.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
@@ -99,6 +100,20 @@ struct ProfilingResult {
   };
 };
 
+int64_t GetMedianRuntimeNs(const std::vector<ExecutionProfile>& profiles) {
+  std::vector<int64_t> runtimes;
+  runtimes.reserve(profiles.size());
+  for (const ExecutionProfile& profile : profiles) {
+    runtimes.push_back(profile.compute_time_ns());
+  }
+  std::sort(runtimes.begin(), runtimes.end());
+  size_t mid = runtimes.size() / 2;
+  if (runtimes.size() % 2 == 1) {
+    return runtimes[mid];
+  }
+  return runtimes[mid - 1] + (runtimes[mid] - runtimes[mid - 1]) / 2;
+}
+
 int64_t GetInputDim(CollectivePerfTableGen::CollectiveType type,
                     int64_t tensor_size_bytes,
                     IotaReplicaGroupList replica_groups) {
@@ -106,14 +121,13 @@ int64_t GetInputDim(CollectivePerfTableGen::CollectiveType type,
   CHECK_EQ(tensor_size_bytes % kBytesPerElem, 0);
   switch (type) {
     case CollectivePerfTableGen::CollectiveType::ALL_REDUCE:
+    case CollectivePerfTableGen::CollectiveType::REDUCE_SCATTER:
+    case CollectivePerfTableGen::CollectiveType::ALL_TO_ALL:
       dim_size = tensor_size_bytes / kBytesPerElem;
       break;
     case CollectivePerfTableGen::CollectiveType::ALL_GATHER:
       dim_size = tensor_size_bytes /
                  (kBytesPerElem * replica_groups.num_devices_per_group());
-      break;
-    case CollectivePerfTableGen::CollectiveType::REDUCE_SCATTER:
-      dim_size = tensor_size_bytes / kBytesPerElem;
       break;
     default:
       LOG(FATAL) << "Unsupported collective type.";
@@ -129,6 +143,7 @@ int64_t GetOutputDim(CollectivePerfTableGen::CollectiveType type,
   switch (type) {
     case CollectivePerfTableGen::CollectiveType::ALL_REDUCE:
     case CollectivePerfTableGen::CollectiveType::ALL_GATHER:
+    case CollectivePerfTableGen::CollectiveType::ALL_TO_ALL:
       dim_size = tensor_size_bytes / kBytesPerElem;
       break;
     case CollectivePerfTableGen::CollectiveType::REDUCE_SCATTER:
@@ -195,6 +210,19 @@ std::string GetHlo(CollectivePerfTableGen::CollectiveType type,
           ROOT _ = $0[$2] reduce-scatter(p0), replica_groups=$3,
             to_apply=add, use_global_device_ids=true, channel_id=1,
             dimensions={0}
+        }
+      )",
+                             "f32", input_dim, output_dim,
+                             replica_groups.ToString());
+      break;
+    case CollectivePerfTableGen::CollectiveType::ALL_TO_ALL:
+      hlo = absl::Substitute(R"(
+        HloModule m
+
+        ENTRY e {
+          p0 = $0[$1] parameter(0)
+          ROOT _ = $0[$2] all-to-all(p0), replica_groups=$3, channel_id=1,
+          dimensions={0}
         }
       )",
                              "f32", input_dim, output_dim,
@@ -279,12 +307,17 @@ std::unique_ptr<PjRtLoadedExecutable> CollectivePerfTableGen::Compile(
   return std::move(*executable);
 }
 
-void CollectivePerfTableGen::Run(PjRtLoadedExecutable& executable) {
+std::vector<ExecutionProfile> CollectivePerfTableGen::Run(
+    PjRtLoadedExecutable& executable) {
   FunctionalHloRunner::RunningOptions run_opts;
   run_opts.module_argument_mode =
       FunctionalHloRunner::ModuleArgumentMode::kUninitialized;
+  run_opts.num_repeats = kNumProfilingRuns;
+  std::vector<ExecutionProfile> profiles;
+  run_opts.execution_profiles = &profiles;
   CHECK_OK(FunctionalHloRunner::Run(*pjrt_env_.client, &executable,
                                     /*arguments=*/{}, run_opts));
+  return profiles;
 }
 
 CollectivePerfTableGen::ProfilingData CollectivePerfTableGen::Profile(
@@ -299,19 +332,12 @@ CollectivePerfTableGen::ProfilingData CollectivePerfTableGen::Profile(
   }
 
   if (config_.task_id == 0) {
-    std::unique_ptr<HloOpProfiler::KernelTracer> tracer =
-        HloOpProfiler::GetKernelTracer();
-    for (int i = 0; i < kNumProfilingRuns; ++i) {
-      Run(*executable);
-    }
+    std::vector<ExecutionProfile> profiles = Run(*executable);
     return {
-        /*runtime=*/absl::Nanoseconds(
-            std::move(*tracer).getMedianKernelTimeNs()),
+        /*runtime=*/absl::Nanoseconds(GetMedianRuntimeNs(std::move(profiles))),
     };
   }
-  for (int i = 0; i < kNumProfilingRuns; ++i) {
-    Run(*executable);
-  }
+  Run(*executable);
   return {};
 }
 
@@ -493,6 +519,8 @@ DeviceHloInstructionProfiles CollectivePerfTableGen::Merge(
     profile_proto.set_flops(profiling_result.flops);
     profile_proto.set_clock_cycles(profiling_result.clock_cycles);
     profile_proto.set_fingerprint(profiling_result.fingerprint);
+    profile_proto.set_network_throughput_bytes_per_sec(
+        profiling_result.network_throughput);
 
     *result.mutable_entries()->at(device_descriptor).add_entries() =
         std::move(profile_proto);

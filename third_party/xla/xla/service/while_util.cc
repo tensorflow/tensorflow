@@ -75,7 +75,7 @@ WidenWhileCondition(HloComputation* narrow_condition, const Shape& wide_shape) {
 
   HloInstruction* truncated_parameter = TupleUtil::ExtractPrefix(
       wide_while_cond->parameter_instruction(0),
-      narrow_shape.tuple_shapes_size(),
+      narrow_shape.tuple_shapes().size(),
       absl::StrCat("renarrowed.",
                    wide_while_cond->parameter_instruction(0)->name()));
   HloInstruction* call_narrow_cond = wide_while_cond->AddInstruction(
@@ -104,7 +104,7 @@ WidenWhileBody(HloComputation* narrow_body, const Shape& wide_shape) {
 
   HloInstruction* wide_parameter = wide_while_body->parameter_instruction(0);
   HloInstruction* truncated_parameter = TupleUtil::ExtractPrefix(
-      wide_parameter, narrow_shape.tuple_shapes_size(),
+      wide_parameter, narrow_shape.tuple_shapes().size(),
       absl::StrCat("renarrowed.",
                    wide_while_body->parameter_instruction(0)->name()));
   HloInstruction* call_narrow_body =
@@ -112,13 +112,13 @@ WidenWhileBody(HloComputation* narrow_body, const Shape& wide_shape) {
           narrow_shape, {truncated_parameter}, narrow_body));
 
   std::vector<HloInstruction*> live_through_values;
-  for (int i = narrow_shape.tuple_shapes_size();
-       i < wide_shape.tuple_shapes_size(); i++) {
+  for (int i = narrow_shape.tuple_shapes().size();
+       i < wide_shape.tuple_shapes().size(); i++) {
     live_through_values.push_back(wide_while_body->AddInstruction(
         HloInstruction::CreateGetTupleElement(wide_shape.tuple_shapes(i),
                                               wide_parameter, i),
         absl::StrCat(wide_while_body->name(), ".through.",
-                     i - narrow_shape.tuple_shapes_size())));
+                     i - narrow_shape.tuple_shapes().size())));
   }
 
   wide_while_body->set_root_instruction(
@@ -135,7 +135,7 @@ WhileUtil::MakeInstructionsLiveIn(
     absl::Span<HloInstruction* const> instructions) {
   CHECK(while_instr->shape().IsTuple());
 
-  int elements_in_old_while_shape = while_instr->shape().tuple_shapes_size();
+  int elements_in_old_while_shape = while_instr->shape().tuple_shapes().size();
   Shape new_while_shape = while_instr->shape();
   for (auto* instruction : instructions) {
     *new_while_shape.add_tuple_shapes() = instruction->shape();
@@ -156,7 +156,7 @@ WhileUtil::MakeInstructionsLiveIn(
   HloInstruction* new_while_init =
       TupleUtil::AppendSuffix(while_instr->mutable_operand(0), instructions);
   HloComputation* containing_computation = while_instr->parent();
-  HloInstruction* new_while = containing_computation->AddInstruction(
+  HloInstruction* new_while = while_instr->AddInstruction(
       HloInstruction::CreateWhile(new_while_shape, new_while_condition,
                                   new_while_body, new_while_init));
 
@@ -164,7 +164,7 @@ WhileUtil::MakeInstructionsLiveIn(
   // effecting operations so we do a manual HloComputation::RemoveInstruction
   // instead of relying on HloComputation::ReplaceInstruction.
   HloInstruction* replacement_instr = TupleUtil::ExtractPrefix(
-      new_while, while_instr->shape().tuple_shapes_size());
+      new_while, while_instr->shape().tuple_shapes().size());
   TF_RETURN_IF_ERROR(new_while->CopyAllControlDepsFrom(while_instr));
   TF_RETURN_IF_ERROR(while_instr->DropAllControlDeps());
   TF_RETURN_IF_ERROR(while_instr->ReplaceAllUsesWith(replacement_instr));
@@ -173,7 +173,7 @@ WhileUtil::MakeInstructionsLiveIn(
   HloInstruction* while_body_param = new_while_body->parameter_instruction(0);
   std::vector<HloInstruction*> live_in_instructions;
   for (int64_t i = elements_in_old_while_shape;
-       i < new_while_shape.tuple_shapes_size(); i++) {
+       i < new_while_shape.tuple_shapes().size(); i++) {
     live_in_instructions.push_back(new_while_body->AddInstruction(
         HloInstruction::CreateGetTupleElement(
             instructions[i - elements_in_old_while_shape]->shape(),
@@ -236,7 +236,7 @@ MakeCountedLoopBodyComputation(
                       MakeBinaryHlo(HloOpcode::kAdd, indvar, one));
 
   std::vector<HloInstruction*> loop_body_generator_args;
-  for (int i = 1, e = loop_state_shape.tuple_shapes_size(); i < e; i++) {
+  for (int i = 1, e = loop_state_shape.tuple_shapes().size(); i < e; i++) {
     TF_ASSIGN_OR_RETURN(HloInstruction * tuple_element,
                         MakeGetTupleElementHlo(param, i));
     loop_body_generator_args.push_back(tuple_element);

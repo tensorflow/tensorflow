@@ -131,6 +131,7 @@ DECL_CONVERT_OP(ResizeNearestNeighbor);
 DECL_CONVERT_OP(Gather);
 DECL_CONVERT_OP(GatherV2);
 DECL_CONVERT_OP(GatherNd);
+DECL_CONVERT_OP(ScatterNd);
 DECL_CONVERT_OP(SelectV2);
 DECL_CONVERT_OP(SpaceToDepth);
 DECL_CONVERT_OP(DepthToSpace);
@@ -176,7 +177,7 @@ LogicalResult ConvertTFReluOp::matchAndRewrite(
   }
 
   mlir::Attribute min_val, max_val;
-  if (element_type.isa<mlir::FloatType>()) {
+  if (mlir::isa<mlir::FloatType>(element_type)) {
     min_val = rewriter.getFloatAttr(element_type, 0.0f);
     max_val =
         rewriter.getFloatAttr(element_type, std::numeric_limits<float>::max());
@@ -207,7 +208,7 @@ LogicalResult ConvertTFRelu6Op::matchAndRewrite(
   }
 
   mlir::Attribute min_val, max_val;
-  if (element_type.isa<mlir::FloatType>()) {
+  if (mlir::isa<mlir::FloatType>(element_type)) {
     min_val = rewriter.getFloatAttr(element_type, 0.0f);
     max_val = rewriter.getFloatAttr(element_type, 6.0f);
   } else {
@@ -1047,7 +1048,6 @@ LogicalResult ConvertTFConv2DBackpropInputOp::matchAndRewrite(
 
   DenseI64ArrayAttr stride;
   DenseI64ArrayAttr outpad;
-  DenseI64ArrayAttr output_shape;
   {
     auto tmpAttr = tf_conv_op.getStrides();
     if (!tmpAttr) {
@@ -1089,21 +1089,6 @@ LogicalResult ConvertTFConv2DBackpropInputOp::matchAndRewrite(
         return failure();
     }
   }
-  {
-    ElementsAttr output_shape_elems;
-    // Match from input_sizes tensor first.
-    if (matchPattern(tf_conv_op.getInputSizes(),
-                     m_Constant(&output_shape_elems))) {
-      SmallVector<int64_t> shape_vec;
-      for (int i = 0; i < output_shape_elems.getNumElements(); i++)
-        shape_vec.push_back(
-            output_shape_elems.getValues<IntegerAttr>()[i].getInt());
-      output_shape = rewriter.getDenseI64ArrayAttr(shape_vec);
-    } else {
-      // Use output tensor's shape otherwise.
-      output_shape = rewriter.getDenseI64ArrayAttr(output_type.getShape());
-    }
-  }
 
   int output_channel = output_type.getShape()[3];
   SmallVector<float> vec(output_channel, 0.0f);
@@ -1120,7 +1105,7 @@ LogicalResult ConvertTFConv2DBackpropInputOp::matchAndRewrite(
   CreateReplaceOpAndInfer<tosa::TransposeConv2DOp>(
       rewriter, op, output_type, tf_conv_op.getOutBackprop(),
       a1_filter_transpose_op.getResult(), zero_bias.value(), outpad, stride,
-      output_shape, acc_type);
+      acc_type);
 
   return success();
 }
@@ -1138,7 +1123,7 @@ LogicalResult ConvertTFAllOp::matchAndRewrite(Operation* op,
     return failure();
 
   std::optional<Value> result = convertReduceAllOp(
-      rewriter, op, output_type, tf_all_op.getInput(), axes_elems);
+      rewriter, op, output_type, tf_all_op.getInput(), axes_elems, tf_all_op.getKeepDims());
 
   if (!result) return failure();
 
@@ -1160,7 +1145,7 @@ LogicalResult ConvertTFAnyOp::matchAndRewrite(Operation* op,
     return failure();
 
   std::optional<Value> result = convertReduceAnyOp(
-      rewriter, op, output_type, tf_any_op.getInput(), axes_elems);
+      rewriter, op, output_type, tf_any_op.getInput(), axes_elems, tf_any_op.getKeepDims());
 
   if (!result) return failure();
 
@@ -1182,7 +1167,7 @@ LogicalResult ConvertTFMaxOp::matchAndRewrite(Operation* op,
     return failure();
 
   std::optional<Value> result = convertReduceMaxOp(
-      rewriter, op, output_type, tf_max_op.getInput(), axes_elems);
+      rewriter, op, output_type, tf_max_op.getInput(), axes_elems, tf_max_op.getKeepDims());
 
   if (!result) return failure();
 
@@ -1204,7 +1189,7 @@ LogicalResult ConvertTFMinOp::matchAndRewrite(Operation* op,
     return failure();
 
   std::optional<Value> result = convertReduceMinOp(
-      rewriter, op, output_type, tf_min_op.getInput(), axes_elems);
+      rewriter, op, output_type, tf_min_op.getInput(), axes_elems, tf_min_op.getKeepDims());
 
   if (!result) return failure();
 
@@ -1226,7 +1211,7 @@ LogicalResult ConvertTFMeanOp::matchAndRewrite(
     return failure();
 
   std::optional<Value> result = convertReduceMeanOp(
-      rewriter, op, output_type, tf_mean_op.getInput(), axes_elems);
+      rewriter, op, output_type, tf_mean_op.getInput(), axes_elems, tf_mean_op.getKeepDims());
 
   if (!result) return failure();
 
@@ -1248,7 +1233,7 @@ LogicalResult ConvertTFProdOp::matchAndRewrite(
     return failure();
 
   std::optional<Value> result = convertReduceProdOp(
-      rewriter, op, output_type, tf_prod_op.getInput(), axes_elems);
+      rewriter, op, output_type, tf_prod_op.getInput(), axes_elems, tf_prod_op.getKeepDims());
 
   if (!result) return failure();
 
@@ -1270,7 +1255,7 @@ LogicalResult ConvertTFSumOp::matchAndRewrite(Operation* op,
     return failure();
 
   std::optional<Value> result = convertReduceSumOp(
-      rewriter, op, output_type, tf_sum_op.getInput(), axes_elems);
+      rewriter, op, output_type, tf_sum_op.getInput(), axes_elems, tf_sum_op.getKeepDims());
 
   if (!result) return failure();
 
@@ -1462,7 +1447,7 @@ LogicalResult ConvertTFFusedBatchNormV3Op::matchAndRewrite(
   auto epsilon_const = CreateOpAndInfer<tosa::ConstOp>(
       rewriter, op->getLoc(), epsilon_type, epsilon_attr);
 
-  variance_type = variance.getType().cast<RankedTensorType>();
+  variance_type = mlir::cast<RankedTensorType>(variance.getType());
   Value op2_add_var_epsilon = CreateOpAndInfer<tosa::AddOp>(
       rewriter, op->getLoc(), variance_type, variance, epsilon_const);
 
@@ -1793,13 +1778,20 @@ LogicalResult ConvertTFPadV2Op::matchAndRewrite(
   auto tf_pad_op = cast<TF::PadV2Op>(op);
 
   RankedTensorType output_type =
-      tf_pad_op.getResult().getType().dyn_cast<RankedTensorType>();
+      mlir::dyn_cast<RankedTensorType>(tf_pad_op.getResult().getType());
   if (!output_type) {
     return rewriter.notifyMatchFailure(op, "output type not a ranked tensor");
   }
 
   Value input = tf_pad_op.getInput();
   Value constant_value = tf_pad_op.getConstantValues();
+
+  Value rank1_scalar_value =
+      reshapeScalarTo1D(rewriter, op->getLoc(), constant_value);
+  if (!rank1_scalar_value) {
+    return rewriter.notifyMatchFailure(
+        op, "cannot reshape constant_value input to rank 1");
+  }
 
   SmallVector<int64_t> padding_vals;
   if (failed(getVectorFromValue64(tf_pad_op.getPaddings(), padding_vals))) {
@@ -1809,7 +1801,7 @@ LogicalResult ConvertTFPadV2Op::matchAndRewrite(
   Value padding = mlir::tosa::getTosaConstShape(rewriter, op->getLoc(), padding_vals);
 
   CreateReplaceOpAndInfer<tosa::PadOp>(rewriter, op, tf_pad_op.getType(), input,
-                                       padding, constant_value);
+                                       padding, rank1_scalar_value);
 
   return success();
 }
@@ -2005,6 +1997,22 @@ LogicalResult ConvertTFGatherNdOp::matchAndRewrite(
 
   if (!result) return failure();
 
+  rewriter.replaceOp(op, {result.value()});
+
+  return success();
+}
+
+LogicalResult ConvertTFScatterNdOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto tfl_scatternd_op = cast<TF::ScatterNdOp>(op);
+
+  const std::optional<Value> result = convertScatterNdOp(
+      rewriter, op, tfl_scatternd_op.getResult(), tfl_scatternd_op.getIndices(),
+      tfl_scatternd_op.getUpdates(), tfl_scatternd_op.getShape());
+
+  if (!result) {
+    return failure();
+  }
   rewriter.replaceOp(op, {result.value()});
 
   return success();
@@ -2629,6 +2637,7 @@ void populateLegalizeTFPatterns(MLIRContext* ctx, RewritePatternSet& patterns) {
   patterns.add<ConvertTFGatherOp>(ctx);
   patterns.add<ConvertTFGatherV2Op>(ctx);
   patterns.add<ConvertTFGatherNdOp>(ctx);
+  patterns.add<ConvertTFScatterNdOp>(ctx);
   patterns.add<ConvertTFSelectV2Op>(ctx);
   patterns.add<ConvertTFSpaceToDepthOp>(ctx);
   patterns.add<ConvertTFDepthToSpaceOp>(ctx);

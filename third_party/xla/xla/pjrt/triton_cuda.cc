@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/STLExtras.h"
@@ -35,13 +36,12 @@ limitations under the License.
 #include "llvm/Linker/Linker.h"
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Support/CodeGen.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/Path.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
+#include "llvm/TargetParser/Triple.h"
 #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
 #include "mlir/Conversion/IndexToLLVM/IndexToLLVM.h"
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"
@@ -60,9 +60,12 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Export.h"
 #include "xla/backends/gpu/codegen/triton/compilation_pipeline.h"
 #include "xla/pjrt/triton.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
+#include "tsl/platform/cuda_root_path.h"
+#include "tsl/platform/path.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
 #include "triton/Dialect/TritonNvidiaGPU/Transforms/Passes.h"
@@ -79,8 +82,7 @@ absl::Status TritonToLLVM(
   pm.enableVerifier();
   TF_RETURN_IF_ERROR(
       xla::gpu::CreateTritonPipeline(&pm, std::string(arch_name), num_warps,
-                                     num_ctas, num_stages, *out_cluster_info,
-                                     /*is_xla_fusion=*/false));
+                                     num_ctas, num_stages, *out_cluster_info));
   return pm.run(module).succeeded()
              ? absl::OkStatus()
              : absl::InternalError("Failed to compile Triton IR to LLVM IR");
@@ -96,7 +98,7 @@ absl::StatusOr<std::unique_ptr<llvm::TargetMachine>> CreateTargetMachine(
   if (target == nullptr) {
     return absl::InternalError(
         absl::StrFormat("Failed to lookup LLVM target based on triple %s: %s",
-                        module->getTargetTriple(), error));
+                        module->getTargetTriple().str(), error));
   }
   llvm::TargetOptions opt;
   if (enable_fp_fusion) {
@@ -109,28 +111,27 @@ absl::StatusOr<std::unique_ptr<llvm::TargetMachine>> CreateTargetMachine(
   opt.MCOptions.AsmVerbose = true;
   opt.MCOptions.PreserveAsmComments = true;
   return std::unique_ptr<llvm::TargetMachine>(target->createTargetMachine(
-      module->getTargetTriple(), arch_name, features, opt, llvm::Reloc::PIC_,
-      std::nullopt, llvm::CodeGenOptLevel::Aggressive));
+      module->getTargetTriple().str(), arch_name, features, opt,
+      llvm::Reloc::PIC_, std::nullopt, llvm::CodeGenOptLevel::Aggressive));
+}
+
+absl::StatusOr<std::string> GetLibdeviceDir() {
+  auto nvvm_cuda_root = mlir::NVVM::getCUDAToolkitPath().str();
+  for (const std::string& cuda_root : tsl::CandidateCudaRoots(nvvm_cuda_root)) {
+    auto libdevice_dir = tsl::io::JoinPath(cuda_root, "nvvm", "libdevice");
+    if (tsl::Env::Default()->IsDirectory(libdevice_dir).ok()) {
+      return libdevice_dir;
+    }
+  }
+  return absl::InternalError(absl::StrCat(
+      "Cannot find libdevice.10.bc in any of the CUDA roots. "
+      "Searched for CUDA in the following directories:\n  ",
+      absl::StrJoin(tsl::CandidateCudaRoots(nvvm_cuda_root), "\n  ")));
 }
 
 absl::Status LinkLibdevice(llvm::Module* module) {
-  // NOTE: We cannot use std::filesystem until XLA migrates to C++20.
-  namespace fs = llvm::sys::fs;
-
-  auto cuda_path = mlir::NVVM::getCUDAToolkitPath();
-  if (cuda_path.empty() || !fs::is_directory(cuda_path)) {
-    return absl::InternalError(absl::StrFormat(
-        "CUDA path %s does not exist or is not a directory", cuda_path));
-  }
-  auto sep = llvm::sys::path::get_separator().str();
-  std::string libdevice_path;
-  absl::StrAppend(&libdevice_path, cuda_path.str(), sep, "nvvm", sep,
-                  "libdevice", sep, "libdevice.10.bc");
-
-  if (!fs::is_regular_file(libdevice_path)) {
-    return absl::InternalError(
-        absl::StrFormat("%s is not a regular file", libdevice_path));
-  }
+  TF_ASSIGN_OR_RETURN(auto libdevice_dir, GetLibdeviceDir());
+  auto libdevice_path = tsl::io::JoinPath(libdevice_dir, "libdevice.10.bc");
 
   llvm::LLVMContext& ctx = module->getContext();
   llvm::SMDiagnostic err;
@@ -172,7 +173,7 @@ absl::StatusOr<std::string> LLVMToPTX(mlir::ModuleOp module,
   // We cap the ISA at 8.4 to align with Triton.
   // See get_features() in triton/third_party/nvidia/backend/compiler.py.
   auto features = cc >= "84" ? "+ptx84" : "+ptx" + cc;
-  llvmModule->setTargetTriple("nvptx64-nvidia-cuda");
+  llvmModule->setTargetTriple(llvm::Triple("nvptx64-nvidia-cuda"));
   static absl::once_flag init_target_once;
   absl::call_once(init_target_once, []() {
     LLVMInitializeNVPTXTarget();

@@ -17,25 +17,39 @@ limitations under the License.
 
 #include <memory>
 #include <optional>
-#include <string>
 #include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "tensorflow/compiler/jit/device_compiler.h"
+#include "tensorflow/compiler/jit/device_executable_persistor.h"
 #include "tensorflow/compiler/jit/flags.h"
+#include "tensorflow/compiler/jit/pjrt_base_device.h"
 #include "tensorflow/compiler/jit/pjrt_device_compiler_client.h"
 #include "tensorflow/compiler/jit/test_util.h"
+#include "tensorflow/compiler/jit/xla_device.h"
+#include "tensorflow/compiler/jit/xla_device_compiler_client.h"
 #include "tensorflow/compiler/jit/xla_platform_info.h"
+#include "tensorflow/compiler/tf2xla/layout_util.h"
+#include "tensorflow/compiler/tf2xla/xla_argument.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/client/client_library.h"
+#include "xla/client/local_client.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/shape.h"
+#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/host/host_platform_id.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/platform/refcount.h"
+#include "tensorflow/core/public/version.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 
 namespace tensorflow {
@@ -207,7 +221,9 @@ TEST_F(XlaCompilerOptionsTest, PjRtOptionsNonXlaDevice) {
   xla::ShapeProto shape_proto;
   shape_proto.set_element_type(xla::PrimitiveType::F32);
   shape_proto.mutable_layout();
-  EXPECT_EQ(shape, xla::Shape(shape_proto));
+  TF_ASSERT_OK_AND_ASSIGN(auto expected_shape,
+                          xla::Shape::FromProto(shape_proto));
+  EXPECT_EQ(shape, expected_shape);
   EXPECT_EQ(options.shape_determination_fns.layout_preference_fn(
                 TensorShape(), DT_FLOAT, std::nullopt),
             tensorflow::XlaLayoutPreference::kNoPreference);
@@ -289,7 +305,9 @@ TEST_F(XlaCompilerOptionsTest, XlaOptionsHasRefVarsNoXlaDeviceMetadata) {
   xla::ShapeProto shape_proto;
   shape_proto.set_element_type(xla::PrimitiveType::F32);
   shape_proto.mutable_layout();
-  EXPECT_EQ(shape, xla::Shape(shape_proto));
+  TF_ASSERT_OK_AND_ASSIGN(auto expected_shape,
+                          xla::Shape::FromProto(shape_proto));
+  EXPECT_EQ(shape, expected_shape);
   EXPECT_EQ(options.shape_determination_fns.layout_preference_fn(
                 TensorShape(), DT_FLOAT, std::nullopt),
             tensorflow::XlaLayoutPreference::kNoPreference);

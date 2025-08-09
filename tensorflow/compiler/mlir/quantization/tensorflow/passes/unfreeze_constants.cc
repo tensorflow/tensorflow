@@ -12,30 +12,43 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstdint>
 #include <iterator>
 #include <memory>
 #include <string>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/CommandLine.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/const_op_size.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/utils/name_utils.h"
 
 namespace mlir {
@@ -128,8 +141,8 @@ SessionInitializerOp GetOrCreateSessionInitializerOp(ModuleOp module_op) {
   if (!session_init_op) {
     OpBuilder builder(&module_op.getBodyRegion());
 
-    session_init_op = builder.create<SessionInitializerOp>(
-        module_op.getLoc(), /*initializers=*/builder.getArrayAttr({}));
+    session_init_op = SessionInitializerOp::create(
+        builder, module_op.getLoc(), /*initializers=*/builder.getArrayAttr({}));
   }
 
   return session_init_op;
@@ -149,8 +162,8 @@ func::FuncOp CreateInitializerFunc(ModuleOp module_op) {
   const Location loc = builder.getUnknownLoc();
   const auto func_type = builder.getFunctionType(/*inputs=*/{}, /*results=*/{});
 
-  auto init_func = builder.create<func::FuncOp>(
-      loc, /*sym_name=*/"init_func_restore_op", func_type);
+  auto init_func = func::FuncOp::create(
+      builder, loc, /*sym_name=*/"init_func_restore_op", func_type);
   builder.createBlock(&init_func.getBody(), /*insertPt=*/init_func.begin(),
                       /*arg_types=*/{}, /*arg_locs=*/{});
 
@@ -162,7 +175,7 @@ func::FuncOp CreateInitializerFunc(ModuleOp module_op) {
       builder.getStringAttr(kTfSavedModelInitializerRestoreType));
 
   builder.setInsertionPointToStart(&init_func.front());
-  builder.create<func::ReturnOp>(loc, /*operands=*/ValueRange{});
+  func::ReturnOp::create(builder, loc, /*operands=*/ValueRange{});
 
   SymbolTable symbol_table(module_op);
   symbol_table.insert(init_func);
@@ -260,13 +273,12 @@ llvm::MapVector<TF::ConstOp, std::string> ReplaceConstOpUsesWithVariableReads(
         /*shape=*/{}, /*elementType=*/TF::ResourceType::get(
             /*subtypes=*/llvm::ArrayRef<TensorType>{const_op.getType()},
             builder.getContext()));
-    auto var_handle_op =
-        builder.create<TF::VarHandleOp>(const_op.getLoc(),
-                                        /*resource=*/resource_type,
-                                        /*container=*/"", shared_name);
+    auto var_handle_op = TF::VarHandleOp::create(builder, const_op.getLoc(),
+                                                 /*resource=*/resource_type,
+                                                 /*container=*/"", shared_name);
 
-    auto read_variable_op = builder.create<TF::ReadVariableOp>(
-        const_op.getLoc(), const_op.getType(), var_handle_op);
+    auto read_variable_op = TF::ReadVariableOp::create(
+        builder, const_op.getLoc(), const_op.getType(), var_handle_op);
 
     // Replace each usage of ConstOp with the corresponding ReadVariableOp.
     const_op.getResult().replaceAllUsesWith(read_variable_op);
@@ -292,18 +304,18 @@ void CreateAssignVariableOps(
     const auto ranked_tensor_type = RankedTensorType::get(
         /*shape=*/{}, /*elementType=*/element_type);
     auto var_handle_op =
-        builder.create<TF::VarHandleOp>(const_op.getLoc(),
-                                        /*resource=*/ranked_tensor_type,
-                                        /*container=*/"", shared_name);
+        TF::VarHandleOp::create(builder, const_op.getLoc(),
+                                /*resource=*/ranked_tensor_type,
+                                /*container=*/"", shared_name);
 
     // Assign the ConstOp to each VarHandleOp. These will be used to save the
     // variable values to the checkpoint.
     auto const_op_copy =
-        builder.create<TF::ConstOp>(const_op.getLoc(), const_op.getValue());
+        TF::ConstOp::create(builder, const_op.getLoc(), const_op.getValue());
 
-    builder.create<TF::AssignVariableOp>(const_op.getLoc(),
-                                         /*resource=*/var_handle_op,
-                                         /*value=*/const_op_copy.getOutput());
+    TF::AssignVariableOp::create(builder, const_op.getLoc(),
+                                 /*resource=*/var_handle_op,
+                                 /*value=*/const_op_copy.getOutput());
   }
 }
 

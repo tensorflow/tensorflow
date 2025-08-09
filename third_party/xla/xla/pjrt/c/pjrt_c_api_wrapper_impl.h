@@ -21,6 +21,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
@@ -130,7 +131,8 @@ struct PJRT_ExecuteContext {
 
 struct PJRT_Executable {
   // Must be shared_ptr so that we can share with PJRT_LoadedExecutable.
-  std::shared_ptr<xla::PjRtExecutable> executable;
+  std::shared_ptr<xla::PjRtExecutable> shared_executable;
+  xla::PjRtExecutable* executable;
 
   absl::StatusOr<std::string> fingerprint;
 
@@ -156,9 +158,10 @@ struct PJRT_Executable {
   std::vector<size_t> out_dimension_sizes;
 
   explicit PJRT_Executable(std::shared_ptr<xla::PjRtExecutable> executable);
+  explicit PJRT_Executable(xla::PjRtExecutable* executable);
 
-  const xla::PjRtExecutable* get() const { return executable.get(); }
-  xla::PjRtExecutable* get() { return executable.get(); }
+  const xla::PjRtExecutable* get() const { return executable; }
+  xla::PjRtExecutable* get() { return executable; }
 };
 
 struct PJRT_LoadedExecutable {
@@ -225,6 +228,24 @@ struct PJRT_Layouts_SerializedLayout {
   std::string serialized;
 };
 
+// This struct is used to pass a `xla::PjRtPhaseCompiler` through the C API.
+// These objects are created by the plugin developer. A plugin developer can
+// pass either an owning or a non-owning pointer of `xla::PjRtPhaseCompiler`. If
+// an owning pointer is provided, the underlying `xla::PjRtPhaseCompiler` object
+// will be deleted when this `PJRT_PhaseCompiler` object is destroyed.
+// Otherwise, the caller is responsible for deleting the underlying
+// `xla::PjRtPhaseCompiler` object.
+struct PJRT_PhaseCompiler {
+  xla::PjRtPhaseCompiler* compiler;
+  std::unique_ptr<xla::PjRtPhaseCompiler> owned_compiler;
+  explicit PJRT_PhaseCompiler(
+      std::unique_ptr<xla::PjRtPhaseCompiler> phase_compiler)
+      : compiler(phase_compiler.get()),
+        owned_compiler(std::move(phase_compiler)) {}
+  explicit PJRT_PhaseCompiler(xla::PjRtPhaseCompiler* phase_compiler)
+      : compiler(phase_compiler), owned_compiler(nullptr) {}
+};
+
 namespace pjrt {
 // C API definitions
 
@@ -253,11 +274,15 @@ PJRT_Error* PJRT_Client_AddressableDevices(
 PJRT_Error* PJRT_Client_LookupDevice(PJRT_Client_LookupDevice_Args* args);
 PJRT_Error* PJRT_Client_LookupAddressableDevice(
     PJRT_Client_LookupAddressableDevice_Args* args);
+PJRT_Error* PJRT_Client_UpdateGlobalProcessInfo(
+    PJRT_Client_UpdateGlobalProcessInfo_Args* args);
 PJRT_Error* PJRT_Client_AddressableMemories(
     PJRT_Client_AddressableMemories_Args* args);
 PJRT_Error* PJRT_Client_Compile(PJRT_Client_Compile_Args* args);
 PJRT_Error* PJRT_Client_DefaultDeviceAssignment(
     PJRT_Client_DefaultDeviceAssignment_Args* args);
+PJRT_Error* PJRT_Client_CreateUninitializedBuffer(
+    PJRT_Client_CreateUninitializedBuffer_Args* args);
 PJRT_Error* PJRT_Client_BufferFromHostBuffer(
     PJRT_Client_BufferFromHostBuffer_Args* args);
 PJRT_Error* PJRT_Client_CreateViewOfDeviceBuffer(

@@ -23,7 +23,6 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
-#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -173,6 +172,10 @@ void ImportEntryComputationResultLayoutAndTiles(
           result_layouts.push_back(layout_attrs.first);
           result_tiles.push_back(layout_attrs.second);
         });
+    module->setAttr(kEntryComputationResultLayout,
+                    builder.getArrayAttr(result_layouts));
+    module->setAttr(kEntryComputationResultTiles,
+                    builder.getArrayAttr(result_tiles));
     return;
   }
 
@@ -219,7 +222,11 @@ void ImportEntryComputationLayoutAndTiles(const HloModule& hlo_module,
                                           bool flatten_computation_args_result,
                                           mlir::Builder builder) {
   const auto& computation_layout = hlo_module.entry_computation_layout();
-  if (!computation_layout.LayoutIsSet()) return;
+  // need to check any layout is set, otherwise LayoutIsSet() will check
+  // that layout is set for every leaf of input and output.
+  if (!computation_layout.AnyLayoutSet()) {
+    return;
+  }
 
   // The MLIR CPU pipeline assumes default layouts throughout the program. At
   // the boundaries, this may not be the case, so layout information needs to
@@ -349,7 +356,8 @@ void ImportParameterLayoutModes(mlir::func::FuncOp main,
   CHECK_EQ(parameter_shapes.size(), main.getNumArguments());
   for (size_t i = 0; i < main.getNumArguments(); ++i) {
     const Shape& shape = *parameter_shapes[i];
-    if (shape.IsTuple() || (shape.IsArray() && shape.rank() == 0)) continue;
+    if (shape.IsTuple() || (shape.IsArray() && shape.dimensions().size() == 0))
+      continue;
     if (LayoutUtil::HasAnyLayout(*parameter_shapes[i])) continue;
     main.setArgAttrs(
         i, AppendAutoLayoutModeAttribute(builder, main.getArgAttrDict(i)));
@@ -368,7 +376,8 @@ void ImportResultLayoutModes(mlir::func::FuncOp main,
   CHECK_EQ(result_shapes.size(), main.getNumResults());
   for (size_t i = 0; i < main.getNumResults(); ++i) {
     const Shape& shape = *result_shapes[i];
-    if (shape.IsTuple() || (shape.IsArray() && shape.rank() == 0)) continue;
+    if (shape.IsTuple() || (shape.IsArray() && shape.dimensions().size() == 0))
+      continue;
     if (LayoutUtil::HasAnyLayout(shape)) continue;
     main.setResultAttrs(
         i, AppendAutoLayoutModeAttribute(builder, main.getResultAttrDict(i)));

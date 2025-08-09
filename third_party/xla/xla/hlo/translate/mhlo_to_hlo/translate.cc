@@ -44,7 +44,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 #include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
-#include "xla/mlir_hlo/mhlo/IR/register.h"
+#include "xla/hlo/translate/register.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_proto_util.h"
@@ -149,7 +149,8 @@ absl::Status ConvertMlirHloToHloViaBuilder(
 mlir::LogicalResult MlirHloToHloTextTranslateFunction(
     mlir::ModuleOp module, llvm::raw_ostream& output, bool emit_return_tuple,
     bool emit_use_tuple_arg, bool print_layouts, bool print_large_constants,
-    bool print_sugar, bool via_builder, bool with_layouts) {
+    bool print_sugar, bool via_builder, bool with_layouts,
+    bool direct_stablehlo_to_hlo) {
   if (!module) return mlir::failure();
 
   HloProto hloProto;
@@ -157,6 +158,7 @@ mlir::LogicalResult MlirHloToHloTextTranslateFunction(
   options.propagate_layouts = with_layouts;
   options.use_tuple_args = emit_use_tuple_arg;
   options.return_tuple = emit_return_tuple;
+  options.direct_stablehlo_to_hlo = direct_stablehlo_to_hlo;
   absl::StatusOr<std::unique_ptr<HloModule>> statusOrHloModule;
   if (via_builder) {
     auto status = ConvertMlirHloToHloViaBuilder(module, &hloProto, options);
@@ -206,8 +208,7 @@ mlir::LogicalResult MlirHloToHloTextMain(
   source_mgr->AddNewSourceBuffer(std::move(buffer), llvm::SMLoc());
 
   mlir::DialectRegistry registry;
-  mlir::mhlo::registerAllMhloDialects(registry);
-  registry.insert<mlir::func::FuncDialect>();
+  xla::RegisterMlirToHloDependentDialects(registry);
 
   mlir::MLIRContext context(registry);
   mlir::OwningOpRef<mlir::ModuleOp> module =

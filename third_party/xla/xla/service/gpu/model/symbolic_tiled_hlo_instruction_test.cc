@@ -25,9 +25,9 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/model/symbolic_tile.h"
-#include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -35,7 +35,7 @@ namespace gpu {
 namespace {
 
 using ::testing::ElementsAre;
-using SymbolicTiledHloInstructionTest = HloTestBase;
+using SymbolicTiledHloInstructionTest = HloHardwareIndependentTestBase;
 
 TEST_F(SymbolicTiledHloInstructionTest, TransposeTileSizesAreSupported) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
@@ -69,7 +69,7 @@ ENTRY main {
   // kParameter instructions inside the fusion and produces indexing for fusion
   // operands.
   IndexingMap p0_indexing =
-      *output_to_input_indexing[fusion->operand(0)].begin();
+      output_to_input_indexing[fusion->operand(0)].begin()->map();
   std::optional<SymbolicTile> p0_symbolic_tile =
       SymbolicTile::FromIndexingMap(p0_indexing);
   ASSERT_TRUE(p0_symbolic_tile.has_value());
@@ -78,7 +78,7 @@ ENTRY main {
   ASSERT_TRUE(p0_symbolic_tile.has_value());
 
   IndexingMap p1_indexing =
-      *output_to_input_indexing[fusion->operand(1)].begin();
+      output_to_input_indexing[fusion->operand(1)].begin()->map();
   std::optional<SymbolicTile> p1_symbolic_tile =
       SymbolicTile::FromIndexingMap(p1_indexing);
   ASSERT_TRUE(p1_symbolic_tile.has_value());

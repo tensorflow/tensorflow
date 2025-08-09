@@ -25,10 +25,12 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "xla/pjrt/pjrt_compiler.h"
+#include "xla/pjrt/raw_buffer.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/test_util.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
@@ -41,22 +43,24 @@ limitations under the License.
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "tsl/platform/casts.h"
 
 namespace aux {
 namespace {
 
-xla::ifrt::PjRtDevice* GetOtherDevice(tsl::RCReference<xla::ifrt::Array> arr) {
+xla::ifrt::PjRtDevice* GetOtherDevice(xla::ifrt::ArrayRef arr) {
   auto* ifrt_client =
       llvm::dyn_cast_or_null<xla::ifrt::PjRtClient>(arr->client());
   return llvm::dyn_cast<xla::ifrt::PjRtDevice>(ifrt_client->devices()[1]);
 }
 
-xla::ifrt::PjRtClient* GetIfrtClient(tsl::RCReference<xla::ifrt::Array> arr) {
+xla::ifrt::PjRtClient* GetIfrtClient(xla::ifrt::ArrayRef arr) {
   return llvm::dyn_cast_or_null<xla::ifrt::PjRtClient>(arr->client());
 }
 
-xla::Shape ShapeFromIfrt(tsl::RCReference<xla::ifrt::Array> arr) {
+xla::Shape ShapeFromIfrt(xla::ifrt::ArrayRef arr) {
   auto* pjrt_arr =
       llvm::dyn_cast_or_null<xla::ifrt::PjRtCompatibleArray>(arr.get());
   auto buffer = pjrt_arr->pjrt_buffers()[0].get();
@@ -65,7 +69,7 @@ xla::Shape ShapeFromIfrt(tsl::RCReference<xla::ifrt::Array> arr) {
 
 struct SingleBufferCopyPlan {
   std::vector<tsl::RCReference<ChunkDestination>> dests;
-  std::vector<tsl::RCReference<xla::ifrt::Array>> arrays;
+  std::vector<xla::ifrt::ArrayRef> arrays;
 };
 
 // Single buffer copy plan example.
@@ -86,27 +90,24 @@ absl::StatusOr<SingleBufferCopyPlan> SetupTransferDestList(
 
   results.dests.push_back(MakeDmaDestination(atm, 0, copy_size));
   TF_ASSIGN_OR_RETURN(auto arr,
-                   ifrt_client->CreatePjRtArray(atm->RetrieveBuffer(0)));
+                      ifrt_client->CreatePjRtArray(atm->RetrieveBuffer(0)));
   results.arrays.push_back(std::move(arr));
   return results;
 }
 
-TEST(PremappedCopierState, RoundTrip) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client, xla::ifrt::test_util::GetClient());
-  size_t xfer_size = 1024 * 1024;
-  auto test_pattern = tests::CreateTestPattern(0, 16l * 1024 * 1024);
+void CopyIntoDest(tsl::RCReference<ChunkDestination> dest,
+                  tsl::RCReference<xla::ifrt::Array> arr, size_t xfer_size,
+                  size_t buffer_id) {
+  std::shared_ptr<xla::PjRtClient> pjrt_client =
+      tensorflow::down_cast<xla::ifrt::PjRtClient*>(arr->client())
+          ->shared_ptr_pjrt_client();
+
+  auto* array = static_cast<xla::ifrt::PjRtCompatibleArray*>(arr.get());
   TF_ASSERT_OK_AND_ASSIGN(
-      auto arr, tests::CopyTestPatternToDevice(
-                    client.get(), client->devices()[0], test_pattern));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto scratch, AllocateAndMapPjrtMemory(arr->client(), 1024 * 1024 * 16));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto src_work_units,
-      DmaCopyChunk::DivideBufferCopiesEvenly(arr, xfer_size, 0));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto dest_copy_plan,
-      SetupTransferDestList(ShapeFromIfrt(arr), GetOtherDevice(arr),
-                            GetIfrtClient(arr), xfer_size));
+      auto scratch, AllocateAndMapPjrtMemory(pjrt_client, 1024 * 1024 * 16));
+  TF_ASSERT_OK_AND_ASSIGN(auto src_work_units,
+                          DmaCopyChunk::DivideBufferCopiesEvenly(
+                              array->pjrt_buffers()[0], xfer_size, 0));
   auto cstate = std::make_shared<PremappedCopierState>(scratch, 4, xfer_size);
 
   absl::Mutex mu;
@@ -119,11 +120,13 @@ TEST(PremappedCopierState, RoundTrip) {
 
   for (size_t i = 0; i < src_work_units.size(); ++i) {
     cstate->ScheduleCopy(
-        src_work_units[i],
-        [&mu, &local_queue](PremappedCopierState* state, void* buf,
+        std::move(src_work_units[i]),
+        [&mu, &local_queue](PremappedCopierState* state,
+                            absl::StatusOr<void*> buf,
                             const DmaCopyChunk& chunk) {
+          CHECK_OK(buf.status());
           absl::MutexLock l(&mu);
-          local_queue.push_back(LocalQueueInfo{buf, chunk.offset, chunk.size});
+          local_queue.push_back(LocalQueueInfo{*buf, chunk.offset, chunk.size});
         });
   }
   for (size_t i = 0; i < src_work_units.size(); ++i) {
@@ -132,28 +135,105 @@ TEST(PremappedCopierState, RoundTrip) {
     auto state = local_queue.front();
     local_queue.pop_front();
     mu.Unlock();
-    TF_ASSERT_OK(dest_copy_plan.dests[0]->Put(
-        state.buff, state.offset, state.size,
-        [cstate, buf = state.buff]() { cstate->ReturnBuffer(buf); }));
+    TF_ASSERT_OK(
+        dest->Put(state.buff, state.offset, state.size,
+                  [cstate, buf = state.buff]() { cstate->ReturnBuffer(buf); }));
   }
+}
 
-  auto pull_result_arr = dest_copy_plan.arrays[0];
-
+absl::StatusOr<std::vector<int32_t>> FetchResult(
+    tsl::RCReference<xla::ifrt::Array> arr, size_t result_size) {
   std::vector<int32_t> result;
-  result.resize(test_pattern.size());
-  TF_ASSERT_OK(pull_result_arr
-                ->CopyToHostBuffer(result.data(), std::nullopt,
-                                   xla::ifrt::ArrayCopySemantics::kReuseInput)
-                .Await());
+  result.resize(result_size);
+  TF_RETURN_IF_ERROR(
+      arr->CopyToHostBuffer(result.data(), std::nullopt,
+                            xla::ifrt::ArrayCopySemantics::kReuseInput)
+          .Await());
+  return result;
+}
+
+TEST(PremappedCopierState, RoundTrip) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, xla::ifrt::test_util::GetClient());
+  size_t xfer_size = 1024 * 1024;
+  auto test_pattern = tests::CreateTestPattern(0, 16l * 1024 * 1024);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto arr, tests::CopyTestPatternToDevice(
+                    client.get(), client->devices()[0], test_pattern));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto dest_copy_plan,
+      SetupTransferDestList(ShapeFromIfrt(arr), GetOtherDevice(arr),
+                            GetIfrtClient(arr), xfer_size));
+  CopyIntoDest(dest_copy_plan.dests[0], arr, xfer_size, 0);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto result, FetchResult(dest_copy_plan.arrays[0], test_pattern.size()));
   EXPECT_EQ(result, test_pattern);
+}
+
+TEST(PremappedCopierState, RoundTripSlicedRaw) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, xla::ifrt::test_util::GetClient());
+  size_t xfer_size = 1024 * 1024;
+  auto test_pattern = tests::CreateTestPattern(0, 16l * 1024 * 1024);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto dest_arr, tests::CopyTestPatternToDevice(
+                         client.get(), client->devices()[0],
+                         std::vector<int32_t>(test_pattern.size() * 3 / 2, 0)));
+  TF_ASSERT_OK(dest_arr->GetReadyFuture().Await());
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto arr, tests::CopyTestPatternToDevice(
+                    client.get(), client->devices()[0], test_pattern));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto dest_raw_buffer,
+      xla::PjRtRawBuffer::CreateRawAliasOfBuffer(
+          static_cast<xla::ifrt::PjRtCompatibleArray*>(dest_arr.get())
+              ->pjrt_buffers()[0]
+              .get()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto fut_and_dest,
+      CreateSlicedRawBufferDest(
+          dest_raw_buffer, dest_raw_buffer->GetOnDeviceSizeInBytes() / 3,
+          dest_raw_buffer->GetOnDeviceSizeInBytes() * 2 / 3));
+  CopyIntoDest(std::move(fut_and_dest.first), arr, xfer_size, 0);
+  TF_ASSERT_OK(fut_and_dest.second.Await());
+
+  TF_ASSERT_OK_AND_ASSIGN(auto result,
+                          FetchResult(dest_arr, test_pattern.size() * 3 / 2));
+  std::vector<int32_t> padded_test_pattern(test_pattern.size() / 2, 0);
+  padded_test_pattern.insert(padded_test_pattern.end(), test_pattern.begin(),
+                             test_pattern.end());
+  EXPECT_EQ(result, padded_test_pattern);
+}
+
+TEST(PremappedCopierState, PoisonSlicedRaw) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, xla::ifrt::test_util::GetClient());
+  TF_ASSERT_OK_AND_ASSIGN(auto dest_arr, tests::CopyTestPatternToDevice(
+                                             client.get(), client->devices()[0],
+                                             std::vector<int32_t>(4096, 0)));
+  TF_ASSERT_OK(dest_arr->GetReadyFuture().Await());
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto dest_raw_buffer,
+      xla::PjRtRawBuffer::CreateRawAliasOfBuffer(
+          static_cast<xla::ifrt::PjRtCompatibleArray*>(dest_arr.get())
+              ->pjrt_buffers()[0]
+              .get()));
+  TF_ASSERT_OK_AND_ASSIGN(auto fut_and_dest,
+                          CreateSlicedRawBufferDest(dest_raw_buffer, 0, 4096));
+  fut_and_dest.first->Poison(absl::InternalError("Poisoning."));
+  ASSERT_FALSE(fut_and_dest.second.Await().ok());
 }
 
 TEST(Semaphore, Basic) {
   internal::IsLastSemaphore semaphore(15);
   for (size_t i = 0; i < 10; ++i) {
-    semaphore.DoWork(1, [&](bool is_last) { EXPECT_FALSE(is_last); });
+    CHECK_OK(semaphore.DoWork(1, [&](bool is_last) -> absl::Status {
+      EXPECT_FALSE(is_last);
+      return absl::OkStatus();
+    }));
   }
-  semaphore.DoWork(5, [&](bool is_last) { EXPECT_TRUE(is_last); });
+  CHECK_OK(semaphore.DoWork(5, [&](bool is_last) -> absl::Status {
+    EXPECT_TRUE(is_last);
+    return absl::OkStatus();
+  }));
 }
 
 TEST(Semaphore, Async) {
@@ -177,26 +257,36 @@ TEST(Semaphore, Async) {
       tsl::Env::Default()->StartThread({}, "t1", [&]() {
         for (size_t i = 0; i < 8; ++i) {
           thread_wait_flip(0);
-          o_semaphore.DoWork(1, [&](bool is_last) {
+          CHECK_OK(o_semaphore.DoWork(1, [&](bool is_last) -> absl::Status {
             thread_flip(0);
             EXPECT_FALSE(is_last);
-          });
+            return absl::OkStatus();
+          }));
         }
       }));
   std::unique_ptr<tsl::Thread> t2(
       tsl::Env::Default()->StartThread({}, "t2", [&]() {
         for (size_t i = 0; i < 8; ++i) {
           thread_wait_flip(1);
-          o_semaphore.DoWork(1, [&](bool is_last) {
+          CHECK_OK(o_semaphore.DoWork(1, [&](bool is_last) -> absl::Status {
             thread_flip(1);
             if (i == 7) {
               EXPECT_TRUE(is_last);
             } else {
               EXPECT_FALSE(is_last);
             }
-          });
+            return absl::OkStatus();
+          }));
         }
       }));
+}
+
+TEST(Semaphore, Poison) {
+  internal::IsLastSemaphore o_semaphore(16);
+
+  EXPECT_TRUE(o_semaphore.Poison());
+  EXPECT_FALSE(o_semaphore.Poison());
+  EXPECT_FALSE(o_semaphore.Poison());
 }
 
 }  // namespace

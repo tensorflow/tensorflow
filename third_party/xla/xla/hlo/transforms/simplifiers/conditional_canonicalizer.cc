@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/transforms/simplifiers/conditional_canonicalizer.h"
 
+#include "absl/base/optimization.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -38,11 +39,35 @@ absl::StatusOr<bool> CanonicalizeNonTupleConditional(
   TF_RET_CHECK(conditional->opcode() == HloOpcode::kConditional);
   bool changed = false;
 
-  for (auto* branch : conditional->called_computations()) {
+  for (int i = 0; i < conditional->branch_count(); ++i) {
+    auto* branch = conditional->branch_computation(i);
     TF_RET_CHECK(branch->num_parameters() == 1) << branch->num_parameters();
 
-    // Canonicalize branch inputs to tuples.
+    // If this is used by something that's not a conditional, we need to make
+    // a copy of the computation before we modify it. Note that if it's used
+    // by multiple conditionals, that's ok, since the same rewrite is needed,
+    // and it'll only get applied once.
+    if (!branch->parameter_instruction(0)->shape().IsTuple() ||
+        !branch->root_instruction()->shape().IsTuple()) {
+      if (branch->caller_instructions().size() > 1) {
+        bool copy_needed = false;
+        for (HloInstruction* caller : branch->caller_instructions()) {
+          if (ABSL_PREDICT_FALSE(caller->opcode() != HloOpcode::kConditional)) {
+            copy_needed = true;
+            break;
+          }
+        }
+
+        if (copy_needed) {
+          branch = branch->parent()->AddEmbeddedComputation(branch->Clone());
+          conditional->set_branch_computation(i, branch);
+          changed = true;
+        }
+      }
+    }
+
     HloInstruction* const param = branch->parameter_instruction(0);
+    // Canonicalize branch inputs to tuples.
     if (!param->shape().IsTuple()) {
       Shape shape = ShapeUtil::MakeTupleShape({param->shape()});
       HloInstruction* const new_param = branch->ReplaceParameter(
@@ -54,7 +79,7 @@ absl::StatusOr<bool> CanonicalizeNonTupleConditional(
     }
 
     // Canonicalize branch output to tuples.
-    HloInstruction* root = branch->root_instruction();
+    HloInstruction* const root = branch->root_instruction();
     if (!root->shape().IsTuple()) {
       HloInstruction* tuple =
           branch->AddInstruction(HloInstruction::CreateTuple({root}));

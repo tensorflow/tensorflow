@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/lite/delegates/xnnpack/quantization_util.h"
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
 
 #include "fp16.h"  // from @FP16
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"

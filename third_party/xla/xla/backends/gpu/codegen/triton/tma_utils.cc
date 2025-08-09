@@ -16,93 +16,131 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/tma_utils.h"
 
 #include <cstdint>
-#include <optional>
+#include <variant>
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/Builders.h"
-#include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/Types.h"
-#include "mlir/IR/Value.h"
-#include "xla/codegen/emitter_loc_op_builder.h"
-#include "xla/shape.h"
+#include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/tsl/platform/statusor.h"
-#include "triton/Dialect/Triton/IR/Dialect.h"
-#include "triton/Dialect/Triton/IR/Types.h"
 
 namespace xla::gpu {
 
-namespace mt = ::mlir::triton;
-
 using ::llvm::SmallVector;
-using ::mlir::RankedTensorType;
-using ::mlir::Type;
-using ::mlir::Value;
+using mlir::triton::xla::SwizzleMode;
 using ::stream_executor::gpu::TmaDescriptor;
-using ::stream_executor::gpu::TmaMetadata;
 
-// Returns a TmaDescriptor for a 2D tensor to be emitted in Triton.
+TmaDescriptor::TmaSwizzle GetTmaSwizzleMode(SwizzleMode swizzle_mode) {
+  switch (swizzle_mode) {
+    case SwizzleMode::kNone:
+      return TmaDescriptor::TmaSwizzle::kNone;
+    case SwizzleMode::k32b:
+      return TmaDescriptor::TmaSwizzle::k32B;
+    case SwizzleMode::k64b:
+      return TmaDescriptor::TmaSwizzle::k64B;
+    case SwizzleMode::k128b:
+      return TmaDescriptor::TmaSwizzle::k128B;
+  }
+}
+
+// Returns a TmaDescriptor for a tensor to be emitted in Triton.
 //
-// This function follows the defaults and logic found in fill2DTMADescriptor in
+// This function follows the defaults and logic found in fillTMADescriptor in
 // @triton/third_party/nvidia/backend/cuda_utils.cc
-absl::StatusOr<TmaDescriptor> Create2DTmaDescriptor(
-    Shape global_shape, llvm::ArrayRef<int64_t> block_shape,
-    Type element_type) {
-  if (global_shape.dimensions().size() != 2) {
-    return absl::InvalidArgumentError("expected 2D global shape");
+absl::StatusOr<TmaDescriptor> CreateTmaDescriptor(
+    llvm::ArrayRef<int64_t> global_shape, llvm::ArrayRef<int64_t> tile_shape,
+    llvm::ArrayRef<int64_t> tile_strides, llvm::ArrayRef<int64_t> layout,
+    int element_byte_size, TmaDescriptor::TmaSwizzle swizzle_mode) {
+  if (global_shape.size() != tile_shape.size()) {
+    return absl::InvalidArgumentError(
+        "global_shape and tile_shape must have the same size");
   }
-  if (block_shape.size() != 2) {
-    return absl::InvalidArgumentError("expected 2D block shape");
+  if (global_shape.empty() || global_shape.size() > 5) {
+    return absl::InvalidArgumentError(
+        "expected global/tile shapes to be between 1D and 5D");
   }
-  int byte_width = element_type.getIntOrFloatBitWidth() / 8;
-  SmallVector<uint64_t, 2> global_dims = {
-      static_cast<uint64_t>(global_shape.dimensions(1)),
-      static_cast<uint64_t>(global_shape.dimensions(0))};
-  auto global_strides = {global_dims[0] * byte_width};
-  SmallVector<uint32_t, 2> box_dims = {static_cast<uint32_t>(block_shape[1]),
-                                       static_cast<uint32_t>(block_shape[0])};
-  SmallVector<uint32_t, 2> element_strides = {1, 1};
-  TmaDescriptor::TmaSwizzle swizzle;
-  uint32_t contig_dim_size_in_byte = byte_width * box_dims[0];
-  if (contig_dim_size_in_byte >= 128) {
-    swizzle = TmaDescriptor::TmaSwizzle::k128B;
-  } else if (contig_dim_size_in_byte >= 64) {
-    swizzle = TmaDescriptor::TmaSwizzle::k64B;
-  } else if (contig_dim_size_in_byte >= 32) {
-    swizzle = TmaDescriptor::TmaSwizzle::k32B;
-  } else {
-    return absl::FailedPreconditionError(
-        "continguous dimension size too small");
+
+  SmallVector<uint64_t, 5> global_dims;
+  for (auto layout_dim : layout) {
+    global_dims.push_back(global_shape[layout_dim]);
   }
-  if (contig_dim_size_in_byte > 128) {
-    box_dims[0] = 128 / byte_width;
+
+  SmallVector<uint64_t, 4> global_strides;
+  if (global_dims.size() >= 2) {
+    global_strides.push_back(global_dims[0] * element_byte_size);
+    for (int i = 1; i < global_dims.size() - 1; ++i) {
+      global_strides.push_back(global_dims[i] * global_strides[i - 1]);
+    }
   }
+
+  // Tile strides are reflected in the element strides. Note that the most minor
+  // dimension should have a stride of 1.
+  CHECK(tile_strides[layout[0]] == 1)
+      << "tile stride must be 1 for the most minor dimension";
+  SmallVector<uint32_t, 5> element_strides;
+  for (auto layout_dim : layout) {
+    element_strides.push_back(tile_strides[layout_dim]);
+  }
+
+  // When the tile strides are > 1, the box dimensions no longer reflect the
+  // number of elements in the tile. To load the correct number of
+  // elements, we need to multiply the tile strides by the number of elements in
+  // the tile.
+  SmallVector<uint32_t, 5> box_dims;
+  for (auto layout_dim : layout) {
+    box_dims.push_back(static_cast<uint32_t>(tile_shape[layout_dim]) *
+                       tile_strides[layout_dim]);
+  }
+
+  // We need to respect maximum limit restrictions on box_dims imposed by TMA.
+  // Documented in
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__TENSOR__MEMORY.html#group__CUDA__TENSOR__MEMORY_1ga7c7d2aaac9e49294304e755e6f341d7
+  // Triton handles this by clamping the block size in a similar fashion:
+  // triton/lib/Dialect/TritonNvidiaGPU/Transforms/TMAUtilities.cpp;l=102-119;rcl=759529316
+  // Replicating their code-comment here:
+  // "We clamp the block size and the codegen will emit multiple copy
+  // operations."
+  // This only works because Triton expects this way of handling and makes the
+  // corresponding codegen adjustments under the hood.
+  uint32_t contig_dim_size_in_byte = element_byte_size * box_dims[0];
+  if (swizzle_mode == TmaDescriptor::TmaSwizzle::k32B &&
+      contig_dim_size_in_byte > 32) {
+    box_dims[0] = 32 / element_byte_size;
+  } else if (swizzle_mode == TmaDescriptor::TmaSwizzle::k64B &&
+             contig_dim_size_in_byte > 64) {
+    box_dims[0] = 64 / element_byte_size;
+  } else if (swizzle_mode == TmaDescriptor::TmaSwizzle::k128B &&
+             contig_dim_size_in_byte > 128) {
+    box_dims[0] = 128 / element_byte_size;
+  }
+
   TF_ASSIGN_OR_RETURN(
       auto tma_desc, TmaDescriptor::Create(
                          global_dims, global_strides, box_dims, element_strides,
-                         byte_width, TmaDescriptor::TmaInterleave::kNone,
-                         swizzle, TmaDescriptor::TmaL2Promotion::k128B));
+                         element_byte_size, TmaDescriptor::TmaInterleave::kNone,
+                         swizzle_mode, TmaDescriptor::TmaL2Promotion::k128B));
   return tma_desc;
 }
 
-Value EmitTmaDescriptor(EmitterLocOpBuilder& b, Value arg,
-                        RankedTensorType tensor_type) {
-  auto desc_type = mt::TensorDescType::get(b.getContext(), tensor_type);
-  return b.create<mt::ReinterpretTensorDescOp>(desc_type, arg);
+absl::StatusOr<TmaDescriptor> CreateTmaDescriptor(
+    llvm::ArrayRef<int64_t> global_shape, llvm::ArrayRef<int64_t> tile_shape,
+    llvm::ArrayRef<int64_t> tile_strides, llvm::ArrayRef<int64_t> layout,
+    int element_byte_size, SwizzleMode swizzle_mode) {
+  return CreateTmaDescriptor(global_shape, tile_shape, tile_strides, layout,
+                             element_byte_size,
+                             GetTmaSwizzleMode(swizzle_mode));
 }
 
-void RewriteFunctionForTma(EmitterLocOpBuilder& b, mlir::triton::FuncOp fn,
-                           std::optional<TmaMetadata> tma_metadata) {
-  if (!tma_metadata.has_value()) {
-    return;
-  }
-  for (auto& [parameter_number, _] : tma_metadata->arg_index_to_tma_info) {
-    fn.setArgAttr(parameter_number, "tt.nv_tma_desc", b.getI32IntegerAttr(1));
-  }
+bool IsTmaEnabledForDevice(
+    const stream_executor::DeviceDescription& device_info) {
+  bool is_cuda = std::holds_alternative<stream_executor::CudaComputeCapability>(
+      device_info.gpu_compute_capability());
+  return is_cuda && device_info.cuda_compute_capability().IsAtLeastHopper();
 }
 
 }  // namespace xla::gpu

@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "xla/service/instruction_fusion.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status_matchers.h"
@@ -56,7 +56,7 @@ bool HasBlockLevelFusionConfig(const HloInstruction* fusion) {
 }
 
 class SoftmaxRewriterTritonTest
-    : public HloTestBase,
+    : public HloHardwareIndependentTestBase,
       public ::testing::WithParamInterface<PrimitiveType> {
  protected:
   se::DeviceDescription device_info_{TestGpuDeviceInfo::RTXA6000DeviceInfo()};
@@ -560,10 +560,10 @@ ENTRY main {
   EXPECT_THAT(
       SoftmaxRewriterTriton(
           TestGpuDeviceInfo::RTXA6000DeviceInfo(
-              se::CudaComputeCapability{se::CudaComputeCapability::VOLTA, 0}),
+              se::CudaComputeCapability{se::CudaComputeCapability::kVolta, 0}),
           HloCostAnalysis::DefaultShapeSize)
           .Run(module.get()),
-      tsl::testing::StatusIs(
+      absl_testing::StatusIs(
           tsl::error::FAILED_PRECONDITION,
           ::testing::HasSubstr("Triton support is only enabled for Ampere GPUs "
                                "(compute capability 8.0) and up, but got")));

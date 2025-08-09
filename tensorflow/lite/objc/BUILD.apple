@@ -1,6 +1,7 @@
 # TensorFlow Lite for Objective-C
 
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_application", "ios_unit_test")
+load("@rules_cc//cc:objc_library.bzl", "objc_library")
 load("//tensorflow/lite:special_rules.bzl", "ios_visibility_allowlist", "tflite_ios_lab_runner")
 load("//tensorflow/lite/ios:ios.bzl", "TFL_DEFAULT_TAGS", "TFL_DISABLED_SANITIZER_TAGS", "TFL_MINIMUM_OS_VERSION")
 
@@ -95,7 +96,8 @@ objc_library(
 # directory name. (See: b/174508866)
 ios_unit_test(
     name = "tests",
-    size = "medium",
+    size = "small",
+    timeout = "moderate",
     minimum_os_version = TFL_MINIMUM_OS_VERSION,
     runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = TFL_DEFAULT_TAGS + TFL_DISABLED_SANITIZER_TAGS,
@@ -119,6 +121,7 @@ objc_library(
     data = [
         "//tensorflow/lite:testdata/add.bin",
         "//tensorflow/lite:testdata/add_quantized.bin",
+        "//tensorflow/lite:testdata/multi_add.bin",
         "//tensorflow/lite:testdata/multi_signatures.bin",
     ],
     sdk_frameworks = ["XCTest"],

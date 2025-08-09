@@ -3,9 +3,9 @@ build --repo_env CC=/usr/lib/llvm-18/bin/clang
 build --repo_env BAZEL_COMPILER=/usr/lib/llvm-18/bin/clang
 build --config cuda_clang
 build --action_env CLANG_CUDA_COMPILER_PATH=/usr/lib/llvm-18/bin/clang
-build:cuda --repo_env HERMETIC_CUDA_VERSION="12.1.1"
+build:cuda --repo_env HERMETIC_CUDA_VERSION="12.8.0"
 build:cuda --repo_env HERMETIC_CUDA_COMPUTE_CAPABILITIES=7.5
-build:cuda --repo_env HERMETIC_CUDNN_VERSION="8.6"
+build:cuda --repo_env HERMETIC_CUDNN_VERSION="9.8.0"
 build --config nonccl
 build --action_env LD_LIBRARY_PATH=/usr/local/nvidia/lib:/usr/local/nvidia/lib64
 build --action_env PYTHON_BIN_PATH=/usr/bin/python3
@@ -15,7 +15,7 @@ test --test_size_filters small,medium
 build --copt -Wno-sign-compare
 build --copt -Wno-error=unused-command-line-argument
 build --copt -Wno-gnu-offsetof-extensions
-build --build_tag_filters -no_oss,-rocm-only,-sycl-only
-build --test_tag_filters -no_oss,-rocm-only,-sycl-only
-test --build_tag_filters -no_oss,-rocm-only,-sycl-only
-test --test_tag_filters -no_oss,-rocm-only,-sycl-only
+build --build_tag_filters -no_oss,-rocm-only,-oneapi-only
+build --test_tag_filters -no_oss,-rocm-only,-oneapi-only
+test --build_tag_filters -no_oss,-rocm-only,-oneapi-only
+test --test_tag_filters -no_oss,-rocm-only,-oneapi-only

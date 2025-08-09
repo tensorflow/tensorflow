@@ -12,11 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <Python.h>
+
 #include <array>
 
 // clang-format off
 // These headers must be at the top, before including Python.h header
 // Otherwise, we get C2039 on MSVC due to 'copysign'
+#include "absl/log/check.h"
 #include "pybind11/complex.h"  // from @pybind11
 #include "pybind11/pybind11.h"  // from @pybind11
 // clang-format on
@@ -25,7 +28,12 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 
 namespace py = pybind11;
+
+#ifdef Py_GIL_DISABLED
+constexpr int PY_MODULE_TYPE_TP_BASIC_SIZE = 80;  // Under Python 3.13t
+#else                                             // Py_GIL_DISABLED
 constexpr int PY_MODULE_TYPE_TP_BASIC_SIZE = 56;
+#endif                                            // Py_GIL_DISABLED
 
 struct FastModuleObject {
   // A dummy array that ensures enough size is reserved for FastModuleObject,

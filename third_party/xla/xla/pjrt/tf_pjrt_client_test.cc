@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/pjrt/tf_pjrt_client.h"
 
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -24,6 +25,8 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
 #include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
+#include "xla/service/hlo.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/file_system.h"
 #include "tsl/platform/test.h"
@@ -53,7 +56,7 @@ TEST(TfClientTest, ExecuteAndHloSnapshot) {
   debug_opts->set_xla_dump_hlo_snapshots(true);
   XlaComputation xla_computation(hlo_module->ToProto());
   TF_ASSERT_OK_AND_ASSIGN(auto pjrt_executable,
-                          client->Compile(xla_computation, options));
+                          client->CompileAndLoad(xla_computation, options));
 
   auto* device = client->addressable_devices()[0];
 

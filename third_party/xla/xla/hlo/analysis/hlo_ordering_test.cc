@@ -16,10 +16,10 @@ limitations under the License.
 #include "xla/hlo/analysis/hlo_ordering.h"
 
 #include <memory>
-#include <string>
 
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -37,7 +37,10 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class HloOrderingTest : public HloHardwareIndependentTestBase {};
+class HloOrderingTest : public HloHardwareIndependentTestBase {
+ protected:
+  AliasInfo alias_info_;
+};
 
 TEST_F(HloOrderingTest, InstructionsInDifferentComputations) {
   // Tests the ordering of instructions in different computations using the
@@ -250,15 +253,15 @@ TEST_F(HloOrderingTest, ValuesInWhileComputations) {
                                        dataflow->GetValueDefinedAt(xla_while)));
   EXPECT_FALSE(ordering.LiveRangeStrictlyBefore(
       dataflow->GetValueDefinedAt(constant),
-      dataflow->GetValueDefinedAt(xla_while), *dataflow));
+      dataflow->GetValueDefinedAt(xla_while), *dataflow, &alias_info_));
   // Value defined as init of while interferes with instructions in the
   // condition other than the parameter.
   EXPECT_FALSE(ordering.LiveRangeStrictlyBefore(
       dataflow->GetValueDefinedAt(constant),
-      dataflow->GetValueDefinedAt(convert), *dataflow));
+      dataflow->GetValueDefinedAt(convert), *dataflow, &alias_info_));
   EXPECT_TRUE(ordering.MayInterfere(dataflow->GetValueDefinedAt(constant),
                                     dataflow->GetValueDefinedAt(xla_while),
-                                    *dataflow));
+                                    *dataflow, &alias_info_));
 
   // Any value defined in the body or condition is defined before the while, and
   // has a live range strictly before the while.
@@ -266,21 +269,21 @@ TEST_F(HloOrderingTest, ValuesInWhileComputations) {
                                        dataflow->GetValueDefinedAt(xla_while)));
   EXPECT_TRUE(ordering.LiveRangeStrictlyBefore(
       dataflow->GetValueDefinedAt(negate),
-      dataflow->GetValueDefinedAt(xla_while), *dataflow));
+      dataflow->GetValueDefinedAt(xla_while), *dataflow, &alias_info_));
   EXPECT_FALSE(ordering.MayInterfere(dataflow->GetValueDefinedAt(negate),
                                      dataflow->GetValueDefinedAt(xla_while),
-                                     *dataflow));
+                                     *dataflow, &alias_info_));
   EXPECT_TRUE(ordering.MayInterfere(dataflow->GetValueDefinedAt(constant),
                                     dataflow->GetValueDefinedAt(xla_while),
-                                    *dataflow));
+                                    *dataflow, &alias_info_));
   EXPECT_TRUE(ordering.IsDefinedBefore(dataflow->GetValueDefinedAt(constant),
                                        dataflow->GetValueDefinedAt(xla_while)));
   EXPECT_TRUE(ordering.LiveRangeStrictlyBefore(
       dataflow->GetValueDefinedAt(convert),
-      dataflow->GetValueDefinedAt(xla_while), *dataflow));
+      dataflow->GetValueDefinedAt(xla_while), *dataflow, &alias_info_));
   EXPECT_FALSE(ordering.MayInterfere(dataflow->GetValueDefinedAt(convert),
                                      dataflow->GetValueDefinedAt(xla_while),
-                                     *dataflow));
+                                     *dataflow, &alias_info_));
 
   // The live range of the while should be before the add.
   EXPECT_TRUE(ordering.IsDefinedBefore(dataflow->GetValueDefinedAt(xla_while),
@@ -291,10 +294,11 @@ TEST_F(HloOrderingTest, ValuesInWhileComputations) {
       dataflow->GetValueDefinedAt(xla_while).GetUses().data();
   EXPECT_EQ(while_use->instruction, add);
   EXPECT_TRUE(ordering.UsesBeforeValueDefinition(
-      {&while_use, 1}, dataflow->GetValueDefinedAt(add), *dataflow));
+      {&while_use, 1}, dataflow->GetValueDefinedAt(add), *dataflow,
+      &alias_info_));
   EXPECT_TRUE(ordering.LiveRangeStrictlyBefore(
       dataflow->GetValueDefinedAt(xla_while), dataflow->GetValueDefinedAt(add),
-      *dataflow));
+      *dataflow, &alias_info_));
 }
 
 // Regression test for HloOrdering::ToString() crashing when fed a computation
@@ -445,11 +449,11 @@ TEST_F(HloOrderingTest,
 
   EXPECT_FALSE(ordering.LiveRangeStrictlyBefore(
       dataflow->GetValueDefinedAt(root), dataflow->GetValueDefinedAt(dead),
-      *dataflow));
+      *dataflow, &alias_info_));
 
   EXPECT_TRUE(ordering.MayInterfere(dataflow->GetValueDefinedAt(root),
                                     dataflow->GetValueDefinedAt(dead),
-                                    *dataflow));
+                                    *dataflow, &alias_info_));
 }
 
 TEST_F(HloOrderingTest,
@@ -501,11 +505,11 @@ TEST_F(HloOrderingTest,
 
   EXPECT_FALSE(ordering.LiveRangeStrictlyBefore(
       dataflow->GetValueDefinedAt(root), dataflow->GetValueDefinedAt(dead),
-      *dataflow));
+      *dataflow, &alias_info_));
 
   EXPECT_TRUE(ordering.MayInterfere(dataflow->GetValueDefinedAt(root),
                                     dataflow->GetValueDefinedAt(dead),
-                                    *dataflow));
+                                    *dataflow, &alias_info_));
 }
 
 TEST_F(HloOrderingTest, InterferenceWithOuterRoot) {
@@ -535,8 +539,8 @@ ENTRY InterferenceWithOuterRoot {
   auto add = FindInstruction(module.get(), "add");
 
   EXPECT_TRUE(ordering.MayInterfere(dataflow->GetValueDefinedAt(multiply),
-                                    dataflow->GetValueDefinedAt(add),
-                                    *dataflow));
+                                    dataflow->GetValueDefinedAt(add), *dataflow,
+                                    &alias_info_));
 }
 
 TEST_F(HloOrderingTest, RootNotLastInstruction) {
@@ -590,8 +594,8 @@ ENTRY entry {
 
   auto tuple_use = HloUse{root, 0};
   const HloValue& value = dataflow->GetUniqueValueAt(p_body_2, {0});
-  EXPECT_FALSE(
-      ordering.UsesBeforeValueDefinition({&tuple_use}, value, *dataflow));
+  EXPECT_FALSE(ordering.UsesBeforeValueDefinition({&tuple_use}, value,
+                                                  *dataflow, &alias_info_));
 }
 
 TEST_F(HloOrderingTest, AsyncCallUses) {
@@ -638,7 +642,8 @@ ENTRY %main {
   auto call_use = HloUse{call, 1};
   const HloValue& value = dataflow->GetUniqueValueAt(output2, {});
   EXPECT_TRUE(ordering.UsesBeforeValueDefinition(
-      {&async_start_use, &call_use, &async_done_use}, value, *dataflow));
+      {&async_start_use, &call_use, &async_done_use}, value, *dataflow,
+      &alias_info_));
 }
 
 TEST_F(HloOrderingTest,
@@ -690,14 +695,14 @@ ENTRY %main {
   const HloValue& broadcast_value = dataflow->GetUniqueValueAt(broadcast1, {});
 
   DependencyHloOrdering ordering(module.get());
-  EXPECT_TRUE(
-      ordering.UsesBeforeValueDefinition({&async_start_use}, value, *dataflow));
-  EXPECT_TRUE(ordering.UsesBeforeValueDefinition({&async_start_use},
-                                                 broadcast_value, *dataflow));
-  EXPECT_FALSE(
-      ordering.UsesBeforeValueDefinition({&call_use}, value, *dataflow));
-  EXPECT_TRUE(
-      ordering.UsesBeforeValueDefinition({&async_done_use}, value, *dataflow));
+  EXPECT_TRUE(ordering.UsesBeforeValueDefinition({&async_start_use}, value,
+                                                 *dataflow, &alias_info_));
+  EXPECT_TRUE(ordering.UsesBeforeValueDefinition(
+      {&async_start_use}, broadcast_value, *dataflow, &alias_info_));
+  EXPECT_FALSE(ordering.UsesBeforeValueDefinition({&call_use}, value, *dataflow,
+                                                  &alias_info_));
+  EXPECT_TRUE(ordering.UsesBeforeValueDefinition({&async_done_use}, value,
+                                                 *dataflow, &alias_info_));
 }
 
 TEST_F(HloOrderingTest,
@@ -746,12 +751,12 @@ ENTRY %main {
   const HloValue& value = dataflow->GetUniqueValueAt(async_wrapped_call, {});
 
   DependencyHloOrdering ordering(module.get());
-  EXPECT_TRUE(
-      ordering.UsesBeforeValueDefinition({&async_start_use}, value, *dataflow));
-  EXPECT_TRUE(
-      ordering.UsesBeforeValueDefinition({&call_use}, value, *dataflow));
-  EXPECT_TRUE(
-      ordering.UsesBeforeValueDefinition({&async_done_use}, value, *dataflow));
+  EXPECT_TRUE(ordering.UsesBeforeValueDefinition({&async_start_use}, value,
+                                                 *dataflow, &alias_info_));
+  EXPECT_TRUE(ordering.UsesBeforeValueDefinition({&call_use}, value, *dataflow,
+                                                 &alias_info_));
+  EXPECT_TRUE(ordering.UsesBeforeValueDefinition({&async_done_use}, value,
+                                                 *dataflow, &alias_info_));
 }
 
 TEST_F(HloOrderingTest, AsyncOpUsesBeforeValueDefinitionUseIsTuple) {
@@ -800,12 +805,12 @@ ENTRY %main {
   const HloValue& value = dataflow->GetUniqueValueAt(async_wrapped_call, {});
 
   DependencyHloOrdering ordering(module.get());
-  EXPECT_TRUE(
-      ordering.UsesBeforeValueDefinition({&async_start_use}, value, *dataflow));
-  EXPECT_FALSE(
-      ordering.UsesBeforeValueDefinition({&call_use}, value, *dataflow));
-  EXPECT_TRUE(
-      ordering.UsesBeforeValueDefinition({&async_done_use}, value, *dataflow));
+  EXPECT_TRUE(ordering.UsesBeforeValueDefinition({&async_start_use}, value,
+                                                 *dataflow, &alias_info_));
+  EXPECT_FALSE(ordering.UsesBeforeValueDefinition({&call_use}, value, *dataflow,
+                                                  &alias_info_));
+  EXPECT_TRUE(ordering.UsesBeforeValueDefinition({&async_done_use}, value,
+                                                 *dataflow, &alias_info_));
 }
 
 TEST_F(HloOrderingTest, OrderingBetweenAsyncOpAndItsWrapped) {

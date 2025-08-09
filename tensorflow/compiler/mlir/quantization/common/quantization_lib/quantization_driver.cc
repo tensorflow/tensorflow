@@ -39,7 +39,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
+#include "tensorflow/compiler/mlir/quantization/common/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_traits.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 
@@ -88,7 +88,7 @@ void InitializeStateForValue(
 
 bool HasPerAxisQuantizedOperand(Operation* op) {
   for (int i = 0; i < op->getNumOperands(); ++i) {
-    if (auto dq_op = dyn_cast_or_null<quantfork::DequantizeCastOp>(
+    if (auto dq_op = dyn_cast_or_null<mlir::quant::ir::DequantizeCastOp>(
             op->getOperand(i).getDefiningOp())) {
       auto type =
           mlir::cast<TensorType>(dq_op.getArg().getType()).getElementType();
@@ -291,9 +291,9 @@ void QuantizationDriver::QuantizeValue(Value value,
   // of `quantized_type`.
   if (new_value_type == nullptr) return;
 
-  auto quantize =
-      builder_.create<quantfork::QuantizeCastOp>(loc, new_value_type, value);
-  auto dequantize = builder_.create<quantfork::DequantizeCastOp>(
+  auto quantize = builder_.create<mlir::quant::ir::QuantizeCastOp>(
+      loc, new_value_type, value);
+  auto dequantize = builder_.create<mlir::quant::ir::DequantizeCastOp>(
       loc, expressed_type, quantize.getResult());
 
   // This attribute is set to distinguish the quantize ops being added by the
@@ -328,7 +328,7 @@ void QuantizationDriver::RequantizeOpResult(Operation* op,
   }
   if (pos == RequantizeState::ON_OUTPUT) {
     Operation* user = value.getUses().begin().getUser();
-    if (isa<quantfork::QuantizeCastOp>(user)) {
+    if (isa<mlir::quant::ir::QuantizeCastOp>(user)) {
       // The requantize op is inserted between `quantize` and `dequantize` ops.
       value = user->getResult(0);
       builder_.setInsertionPointAfter(user);
@@ -343,7 +343,7 @@ void QuantizationDriver::RequantizeArg(const BlockArgument arg,
   builder_.setInsertionPointToStart(arg.getOwner());
   if (value.hasOneUse()) {
     Operation* user = value.use_begin().getUser();
-    if (auto q = dyn_cast<quantfork::QuantizeCastOp>(user)) {
+    if (auto q = dyn_cast<mlir::quant::ir::QuantizeCastOp>(user)) {
       value = q.getResult();
       builder_.setInsertionPoint(arg.getOwner(), ++Block::iterator(user));
     }
@@ -364,7 +364,7 @@ void QuantizationDriver::RequantizeValue(Value value, RequantizeStates& states,
     const Type new_type = state.params.castFromExpressedType(expressed_type);
     if (!new_type) return;
     auto requantize_op =
-        builder_.create<quantfork::QuantizeCastOp>(loc, new_type, value);
+        builder_.create<mlir::quant::ir::QuantizeCastOp>(loc, new_type, value);
     value.replaceAllUsesWith(requantize_op);
     requantize_op.getOperation()->replaceUsesOfWith(requantize_op, value);
     // This requantization was defined as required for the result value, so
@@ -377,7 +377,7 @@ void QuantizationDriver::RequantizeValue(Value value, RequantizeStates& states,
   if (!value.hasOneUse()) {
     return;
   }
-  auto dequant_op = dyn_cast_or_null<quantfork::DequantizeCastOp>(
+  auto dequant_op = dyn_cast_or_null<mlir::quant::ir::DequantizeCastOp>(
       value.use_begin().getUser());
   if (!dequant_op) {
     return;
@@ -401,14 +401,14 @@ void QuantizationDriver::RequantizeValue(Value value, RequantizeStates& states,
     if (!new_type) continue;
 
     auto requantize_op =
-        builder_.create<quantfork::QuantizeCastOp>(loc, new_type, value);
+        builder_.create<mlir::quant::ir::QuantizeCastOp>(loc, new_type, value);
 
     if (clobber_first) {
       dequant_op.setOperand(requantize_op.getResult());
       // All ops requiring this value already use the result of dequant.
       clobber_first = false;
     } else {
-      auto new_dequant_op = builder_.create<quantfork::DequantizeCastOp>(
+      auto new_dequant_op = builder_.create<mlir::quant::ir::DequantizeCastOp>(
           loc, dequant_op.getResult().getType(), requantize_op.getResult());
       for (auto [op, operand_idx] : state.users) {
         op->setOperand(operand_idx, new_dequant_op.getResult());
@@ -521,7 +521,7 @@ void QuantizationDriver::PreprocessConstantOps() {
       // weights.
       if (!biases.contains(operand_num) &&
           !scale_spec->has_same_scale_requirement &&
-          !dyn_cast<quantfork::QuantizeCastOp>(user)) {
+          !dyn_cast<mlir::quant::ir::QuantizeCastOp>(user)) {
         // Needs to scan the content of weights to get the quantization
         // parameters if there are no quantization parameters (FakeQuant ops).
         // For this case, the weight will not be duplicated.
@@ -553,7 +553,7 @@ void QuantizationDriver::SetupAllStates() {
     // If the argument is quantized, it should only has one user.
     if (arg.hasOneUse()) {
       Operation* user = value.use_begin().getUser();
-      if (auto q = dyn_cast<quantfork::QuantizeCastOp>(user)) {
+      if (auto q = dyn_cast<mlir::quant::ir::QuantizeCastOp>(user)) {
         value = q.getResult();
       }
     }
@@ -570,10 +570,10 @@ void QuantizationDriver::SetupAllStates() {
     for (int i = 0; i < op->getNumOperands(); ++i) {
       Value operand = op->getOperand(i);
       if (Operation* inst = operand.getDefiningOp()) {
-        // If the operand comes from a `quantfork::DequantizeCastOp`, we use
-        // the quantized input of this `quantfork::DequantizeCastOp` to set the
-        // state.
-        if (auto dq = dyn_cast<quantfork::DequantizeCastOp>(inst)) {
+        // If the operand comes from a `mlir::quant::ir::DequantizeCastOp`, we
+        // use the quantized input of this `mlir::quant::ir::DequantizeCastOp`
+        // to set the state.
+        if (auto dq = dyn_cast<mlir::quant::ir::DequantizeCastOp>(inst)) {
           operand = dq.getArg();
         }
       }
@@ -583,11 +583,11 @@ void QuantizationDriver::SetupAllStates() {
     for (int i = 0; i < op->getNumResults(); ++i) {
       Value result = op->getResult(i);
       // If the result has been quantized, it should only be used by a
-      // `quantfork::QuantizeCastOp`. For this case, we uses the quantized
+      // `mlir::quant::ir::QuantizeCastOp`. For this case, we uses the quantized
       // result to create the state and mark it immutable.
       if (result.hasOneUse()) {
         Operation* user = result.use_begin().getUser();
-        if (auto q = dyn_cast<quantfork::QuantizeCastOp>(user)) {
+        if (auto q = dyn_cast<mlir::quant::ir::QuantizeCastOp>(user)) {
           result = q.getResult();
         }
       }
@@ -753,8 +753,8 @@ bool QuantizationDriver::SetBiasParamsWithAdjustments(
 // This method scans the operations in the function to setup the initial
 // states for quantization parameter propagation.
 // TODO: b/323478683 - This algorithm assumes there are only one pair of
-// `quantfork::QuantizeCastOp` and `quantfork::DequantizeCastOp` ops between two
-// quantizable ops. A sanity check should be applied.
+// `mlir::quant::ir::QuantizeCastOp` and `mlir::quant::ir::DequantizeCastOp` ops
+// between two quantizable ops. A sanity check should be applied.
 void QuantizationDriver::Initialize() {
   // Duplicate the bias constant, so the states can be setup correctly.
   // TODO: b/323478683 - Function definition should also be duplicated if there

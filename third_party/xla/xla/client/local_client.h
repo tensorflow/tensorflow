@@ -86,6 +86,10 @@ class LocalExecutable {
   // build device.
   absl::Status VerifyRunDeviceCompatible(int run_device_ordinal) const;
 
+  absl::StatusOr<std::pair<ServiceExecutableRunOptions, StreamPool::Ptr>>
+  RunHelper(absl::Span<const Shape* const> argument_shapes,
+            ExecutableRunOptions run_options);
+
  private:
   absl::StatusOr<ExecutionOutput> RunAsync(
       absl::Span<Shape const* const> argument_host_shapes,
@@ -103,21 +107,15 @@ class LocalExecutable {
   absl::StatusOr<Literal> LiteralFromShapedBuffer(
       const ShapedBuffer& shaped_buffer);
 
-  absl::StatusOr<std::pair<ServiceExecutableRunOptions, StreamPool::Ptr>>
-  RunHelper(absl::Span<const Shape* const> argument_shapes,
-            ExecutableRunOptions run_options);
-
   // The ordinal of the device which this executable was compiled for. The
   // executable can run on all equivalent devices (as determined by
   // Backend::devices_equivalent).
   int build_device_ordinal() const { return build_options_.device_ordinal(); }
 
-  template <typename T>
+  template <typename T, typename AsyncCallback>
   absl::StatusOr<T> AsyncCallAndBlockHostUntilDone(
       absl::Span<Shape const* const> argument_shapes,
-      const ExecutableRunOptions& run_options,
-      std::function<absl::StatusOr<T>(const ExecutableRunOptions&)>
-          async_callback) {
+      const ExecutableRunOptions& run_options, AsyncCallback&& async_callback) {
     TF_ASSIGN_OR_RETURN(auto options_and_stream,
                         RunHelper(argument_shapes, run_options));
     ExecutableRunOptions options = options_and_stream.first.run_options();
@@ -172,6 +170,11 @@ class LocalClient : public Client {
   // AotCompilationResult.
   absl::StatusOr<std::unique_ptr<LocalExecutable>> Load(
       const std::string& serialized_aot_result,
+      const ExecutableBuildOptions& options);
+
+  // Variant of `Load()` that accepts an AotCompilationResult.
+  absl::StatusOr<std::unique_ptr<LocalExecutable>> Load(
+      std::unique_ptr<xla::AotCompilationResult> aot_result,
       const ExecutableBuildOptions& options);
 
   // Copy the literal data to the device with the given ordinal and return as a
@@ -244,6 +247,10 @@ class LocalClient : public Client {
 
  private:
   LocalService* local_service_;
+
+  absl::StatusOr<std::unique_ptr<LocalExecutable>> LoadInternal(
+      std::unique_ptr<xla::AotCompilationResult> aot_result, Compiler* compiler,
+      const ExecutableBuildOptions& options);
 };
 
 }  // namespace xla

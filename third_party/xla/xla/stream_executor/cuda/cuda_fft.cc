@@ -23,7 +23,10 @@ limitations under the License.
 #include <type_traits>
 #include <utility>
 
+#include "absl/base/casts.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cufft.h"
@@ -33,14 +36,12 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/gpu/gpu_helpers.h"
-#include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -74,7 +75,9 @@ cufftType CUDAFftType(fft::Type type) {
 // Associates the given stream with the given cuFFT plan.
 bool SetStream(StreamExecutor *parent, cufftHandle plan, Stream *stream) {
   std::unique_ptr<ActivateContext> activation = parent->Activate();
-  auto ret = cufftSetStream(plan, AsGpuStreamValue(stream));
+  auto ret = cufftSetStream(
+      plan,
+      absl::bit_cast<CUstream>((stream->platform_specific_handle().stream)));
   if (ret != CUFFT_SUCCESS) {
     LOG(ERROR) << "Failed to run cuFFT routine cufftSetStream: " << ret;
     return false;
@@ -464,7 +467,7 @@ void initialize_cufft() {
             return new gpu::CUDAFft(parent);
           });
   if (!status.ok()) {
-    LOG(ERROR) << "Unable to register cuFFT factory: " << status.message();
+    LOG(INFO) << "Unable to register cuFFT factory: " << status.message();
   }
 }
 

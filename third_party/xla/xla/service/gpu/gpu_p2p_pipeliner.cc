@@ -22,6 +22,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
@@ -39,6 +41,8 @@ limitations under the License.
 #include "xla/service/collective_conflict_analysis.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/collective_pipeliner.h"
+#include "xla/service/collective_pipeliner_utils.h"
+#include "xla/service/pattern_matcher.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -284,7 +288,8 @@ struct PeeledHloInstructionInfo {
 
 // Finds the start instruction for send/recv where send/recv-done are chosen to
 // be pipelined.
-static HloInstruction* GetSendRecvStartInstruction(HloInstruction* instr) {
+static HloInstruction* absl_nullable GetSendRecvStartInstruction(
+    HloInstruction* absl_nonnull instr) {
   if (instr->opcode() == HloOpcode::kRecv ||
       instr->opcode() == HloOpcode::kSend) {
     return instr;
@@ -296,14 +301,30 @@ static HloInstruction* GetSendRecvStartInstruction(HloInstruction* instr) {
   return nullptr;
 }
 
-static std::vector<HloInstruction*> GetSendRecvStartInstructions(
-    const std::vector<HloInstruction*>& instructions) {
-  std::vector<HloInstruction*> start_instructions;
-  for (HloInstruction* instr : instructions) {
-    HloInstruction* start_instr = GetSendRecvStartInstruction(instr);
+static std::vector<HloInstruction* absl_nonnull> GetSendRecvStartInstructions(
+    const std::vector<HloInstruction* absl_nonnull>& instructions) {
+  std::vector<HloInstruction* absl_nonnull> start_instructions;
+  for (HloInstruction* absl_nonnull instr : instructions) {
+    HloInstruction* absl_nullable start_instr =
+        GetSendRecvStartInstruction(instr);
     if (start_instr != nullptr) start_instructions.push_back(start_instr);
   }
   return start_instructions;
+}
+
+static HloInstruction* absl_nonnull GetSendRecvStartInstructionOrSelf(
+    HloInstruction* absl_nonnull instr) {
+  HloInstruction* send_recv_start = GetSendRecvStartInstruction(instr);
+  return send_recv_start != nullptr ? send_recv_start : instr;
+}
+
+static HloInstruction* absl_nonnull GetSendRecvDoneInstructionOrSelf(
+    HloInstruction* absl_nonnull rotated_instr) {
+  auto it = absl::c_find_if(rotated_instr->users(), [](HloInstruction* user) {
+    return user->opcode() == HloOpcode::kRecvDone ||
+           user->opcode() == HloOpcode::kSendDone;
+  });
+  return it != rotated_instr->users().end() ? *it : rotated_instr;
 }
 
 // Post-process rotated send/recv ops to add control dependencies with
@@ -311,7 +332,7 @@ static std::vector<HloInstruction*> GetSendRecvStartInstructions(
 static absl::Status PostProcessRotatedSendRecvOps(
     const std::vector<HloInstruction*>& rotated) {
   // Find the start instructions for send/recv.
-  std::vector<HloInstruction*> rotated_send_recvs =
+  std::vector<HloInstruction* absl_nonnull> rotated_send_recvs =
       GetSendRecvStartInstructions(rotated);
 
   VLOG(5) << "Post-processing rotated send/recv ops:";
@@ -322,7 +343,7 @@ static absl::Status PostProcessRotatedSendRecvOps(
   }
 
   // Convert to set for faster lookup.
-  absl::flat_hash_set<HloInstruction*> rotated_send_recvs_set(
+  absl::flat_hash_set<HloInstruction* absl_nonnull> rotated_send_recvs_set(
       rotated_send_recvs.begin(), rotated_send_recvs.end());
 
   // Add control dependencies from conflicting collectives to rotated send/recv
@@ -337,11 +358,14 @@ static absl::Status PostProcessRotatedSendRecvOps(
          FindAllConflictingCollectives(parent, {rotated_instr})) {
       if (rotated_send_recvs_set.contains(conflicting_collective)) continue;
       num_conflicting_collectives++;
+      conflicting_collective =
+          GetSendRecvDoneInstructionOrSelf(conflicting_collective);
+      rotated_instr = GetSendRecvStartInstructionOrSelf(rotated_instr);
       TF_RETURN_IF_ERROR(
           conflicting_collective->AddControlDependencyTo(rotated_instr));
       VLOG(5) << "Adding control dependency from "
               << conflicting_collective->ToShortString() << " to "
-              << rotated_instr->ToShortString();
+              << rotated_instr->ToShortString() << "\n";
     }
     VLOG(5) << "Conflicting collectives: " << num_conflicting_collectives;
   }
@@ -524,8 +548,7 @@ absl::StatusOr<bool> GpuP2PPipeliner::Run(
       PostprocessPeeledP2P;
   CollectivePipeliner::HloPostprocessor postprocess_backward_rotated_op =
       PostprocessRotatedP2P;
-  CollectivePipeliner::HloPostprocessor
-      postprocess_backward_peeled_trailing_op = std::nullopt;
+  CollectivePipeliner::HloPostprocessor postprocess_backward_peeled_trailing_op;
 
   // If partial send/recv pipelining is enabled, collect send/recv instructions
   // for post-processing.
@@ -570,7 +593,7 @@ absl::StatusOr<bool> GpuP2PPipeliner::Run(
       /*pipeline_use_tree=*/false,
       /*process_different_sized_ops=*/true,
       /*pipelining_direction=*/
-      CollectivePipeliner::PipeliningDirection::kBackward,
+      collective_pipeliner_utils::PipeliningDirection::kBackward,
       /*should_process=*/should_process,
       /*acceptable_formatting=*/HloPredicateTrue,
       /*reuse_pipelined_op_buffer=*/HloPredicateTrue,

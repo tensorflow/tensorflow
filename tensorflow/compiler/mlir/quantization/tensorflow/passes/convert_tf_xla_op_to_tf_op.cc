@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -164,8 +165,8 @@ Value CreateEinsumOpFromXlaDotV2Op(OpBuilder& builder, const Location loc,
   const std::string einsum_equation =
       CreateEinsumEquation(dot_dimension_numbers, lhs_rank, rhs_rank);
 
-  return builder.create<TF::EinsumOp>(loc, output.getType(), input_arguments,
-                                      builder.getStringAttr(einsum_equation));
+  return TF::EinsumOp::create(builder, loc, output.getType(), input_arguments,
+                              builder.getStringAttr(einsum_equation));
 }
 
 // Restores the collapsed dimensions to the `tensor_type`. `collapsed_dims`
@@ -247,8 +248,8 @@ Value CreateSliceAndReshapeOpFromXlaGatherOpWithoutBatch(
   const int64_t operand_rank = operand_shape.size();
 
   // Fills zeros if start_index is not given in start_indices.
-  Value empty_start_indices = builder.create<TF::FillOp>(
-      loc, RankedTensorType::get({operand_rank}, builder.getI64Type()),
+  Value empty_start_indices = TF::FillOp::create(
+      builder, loc, RankedTensorType::get({operand_rank}, builder.getI64Type()),
       /*shape=*/Create1DConstValue<int64_t>(builder, loc, {operand_rank}),
       /*value=*/CreateScalarConstValue<int64_t>(builder, loc, 0));
 
@@ -260,8 +261,8 @@ Value CreateSliceAndReshapeOpFromXlaGatherOpWithoutBatch(
   }
 
   // Fill elements from start_indices with start_index_map
-  Value scattered_start_indices = builder.create<TF::TensorScatterUpdateOp>(
-      loc, empty_start_indices,
+  Value scattered_start_indices = TF::TensorScatterUpdateOp::create(
+      builder, loc, empty_start_indices,
       /*indices=*/
       builder.create<TF::ReshapeOp>(
           loc, RankedTensorType::get({index_map_size, 1}, builder.getI64Type()),
@@ -280,8 +281,9 @@ Value CreateSliceAndReshapeOpFromXlaGatherOpWithoutBatch(
                         dimension_numbers.collapsed_slice_dims().end());
 
   // Slice operand by constructed start_indices and slice_sizes.
-  auto slice_op = builder.create<TF::SliceOp>(
-      loc, GetSliceOpOutputType(output.getType(), collapsed_dims), operand,
+  auto slice_op = TF::SliceOp::create(
+      builder, loc, GetSliceOpOutputType(output.getType(), collapsed_dims),
+      operand,
       /*start_indices=*/scattered_start_indices,
       /*slice_sizes=*/
       builder.create<TF::CastOp>(
@@ -299,9 +301,8 @@ Value CreateSliceAndReshapeOpFromXlaGatherOpWithoutBatch(
     }
   }
   if (!new_shape.empty()) new_shape[0] = -1;
-  return builder.create<TF::ReshapeOp>(
-      loc, output.getType(), slice_op,
-      Create1DConstValue(builder, loc, new_shape));
+  return TF::ReshapeOp::create(builder, loc, output.getType(), slice_op,
+                               Create1DConstValue(builder, loc, new_shape));
 }
 
 bool IsPrecisionEmpty(StringAttr prec_str) {

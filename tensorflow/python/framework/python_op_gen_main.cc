@@ -68,7 +68,7 @@ absl::Status ReadOpListFromFile(const string& filename,
     }
     s = input_buffer->ReadLine(&line_contents);
   }
-  if (!errors::IsOutOfRange(s)) return s;
+  if (!absl::IsOutOfRange(s)) return s;
   return absl::OkStatus();
 }
 

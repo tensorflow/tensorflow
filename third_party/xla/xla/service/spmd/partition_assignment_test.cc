@@ -19,14 +19,14 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
 namespace {
 
-using PartitionAssignmentTest = HloTestBase;
+using PartitionAssignmentTest = HloHardwareIndependentTestBase;
 
 TEST_F(PartitionAssignmentTest, NoopAlg) {
   absl::string_view hlo_string = R"(

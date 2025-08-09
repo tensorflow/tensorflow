@@ -371,7 +371,7 @@ def _build_element_shape(shape):
   If shape is None or a TensorShape with unknown rank, -1 is returned.
 
   If shape is a scalar, an int32 tensor with empty list is returned. Note we
-  do directly return an empty list since ops.convert_to_tensor would conver it
+  do directly return an empty list since ops.convert_to_tensor would convert it
   to a float32 which is not a valid type for element_shape.
 
   If shape is a sequence of dims, None's in the list are replaced with -1. We

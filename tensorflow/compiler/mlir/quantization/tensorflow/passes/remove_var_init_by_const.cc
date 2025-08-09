@@ -15,13 +15,18 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/log/log.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 
@@ -64,26 +69,23 @@ class RemoveVariableInitializationByConstPass
 struct RemoveVariableAssignmentByConst
     : public OpRewritePattern<TF::AssignVariableOp> {
   // Inherit the constructors.
-  using OpRewritePattern<TF::AssignVariableOp>::OpRewritePattern;
+  using OpRewritePattern::OpRewritePattern;
 
-  LogicalResult match(TF::AssignVariableOp assign_op) const override {
+  LogicalResult matchAndRewrite(TF::AssignVariableOp assign_op,
+                                PatternRewriter& rewriter) const override {
     Value resource_operand = assign_op.getOperand(0);
     Value assigned_value_operand = assign_op.getOperand(1);
 
-    if (isa<TF::VarHandleOp>(resource_operand.getDefiningOp()) &&
-        isa<TF::ConstOp>(assigned_value_operand.getDefiningOp())) {
-      return success();
-    } else {
+    if (!isa<TF::VarHandleOp>(resource_operand.getDefiningOp()) ||
+        !isa<TF::ConstOp>(assigned_value_operand.getDefiningOp())) {
       return failure();
     }
-  }
 
-  void rewrite(TF::AssignVariableOp assign_op,
-               PatternRewriter& rewriter) const override {
     // `TF::ConstOp` and `TF::VarHandleOp` are not manually erased.
     // `applyPatternsGreedily` performs dead code elimination and unsed
     // ops will be erased during the optimization.
     rewriter.eraseOp(assign_op);
+    return success();
   }
 };
 

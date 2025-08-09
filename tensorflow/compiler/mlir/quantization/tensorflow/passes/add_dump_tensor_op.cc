@@ -37,8 +37,8 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
+#include "tensorflow/compiler/mlir/quantization/common/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/quantization_unit_loc.h"
@@ -143,7 +143,7 @@ class AddDumpTensorOpPass
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<TF::TensorFlowDialect>();
     registry.insert<quant::QuantDialect>();
-    registry.insert<quantfork::QuantizationForkDialect>();
+    registry.insert<mlir::quant::ir::TFQuantDialect>();
   }
 
  private:
@@ -174,6 +174,15 @@ class AddDumpTensorOp : public OpRewritePattern<LiftedOpT> {
         debugger_type_(debugger_type),
         log_dir_path_(std::move(log_dir_path)) {}
 
+  LogicalResult matchAndRewrite(LiftedOpT op,
+                                PatternRewriter &rewriter) const override {
+    if (match(op).failed()) {
+      return failure();
+    }
+    rewrite(op, rewriter);
+    return success();
+  }
+
  private:
   SmallVector<NamedAttribute> CreateDumpAttributes(
       PatternRewriter &rewriter, const StringRef folder_name,
@@ -203,7 +212,7 @@ class AddDumpTensorOp : public OpRewritePattern<LiftedOpT> {
     return symbol_table.insert(new_ref_func);
   }
 
-  LogicalResult match(LiftedOpT op) const override {
+  LogicalResult match(LiftedOpT op) const {
     if (!op->hasAttr(kQuantTraitAttrName) || op->getNumResults() != 1) {
       return failure();
     }
@@ -218,7 +227,7 @@ class AddDumpTensorOp : public OpRewritePattern<LiftedOpT> {
     return success();
   }
 
-  void rewrite(LiftedOpT op, PatternRewriter &rewriter) const override {
+  void rewrite(LiftedOpT op, PatternRewriter &rewriter) const {
     // Only support ops with 1 results
     Value result = op->getResult(0);
     rewriter.setInsertionPointAfterValue(result);

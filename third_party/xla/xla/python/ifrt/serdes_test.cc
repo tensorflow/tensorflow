@@ -80,7 +80,7 @@ class TestNumberSerDes : public llvm::RTTIExtends<TestNumberSerDes, SerDes> {
   }
 
   absl::StatusOr<std::string> Serialize(
-      Serializable& serializable,
+      const Serializable& serializable,
       std::unique_ptr<SerializeOptions> options) override {
     if (options != nullptr) {
       auto* serialize_options =
@@ -133,8 +133,9 @@ TEST_F(TestNumberTest, WithSerializeOptions) {
   auto obj = std::make_unique<TestNumber>(1234);
   auto options = std::make_unique<TestNumberSerializeOptions>();
   options->injected_failure = absl::InternalError("injected failure");
-  EXPECT_THAT(Serialize(*obj, std::move(options)),
-              StatusIs(absl::StatusCode::kInternal, "injected failure"));
+  EXPECT_THAT(
+      Serialize(*obj, std::move(options)),
+      absl_testing::StatusIs(absl::StatusCode::kInternal, "injected failure"));
 }
 
 TEST_F(TestNumberTest, WithDeserializeOptions) {
@@ -144,8 +145,9 @@ TEST_F(TestNumberTest, WithDeserializeOptions) {
 
   auto options = std::make_unique<TestNumberDeserializeOptions>();
   options->injected_failure = absl::InternalError("injected failure");
-  EXPECT_THAT(Deserialize<TestNumber>(serialized, std::move(options)),
-              StatusIs(absl::StatusCode::kInternal, "injected failure"));
+  EXPECT_THAT(
+      Deserialize<TestNumber>(serialized, std::move(options)),
+      absl_testing::StatusIs(absl::StatusCode::kInternal, "injected failure"));
 }
 
 }  // namespace

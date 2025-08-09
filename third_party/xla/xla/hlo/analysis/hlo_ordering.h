@@ -21,6 +21,8 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/types/span.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -80,17 +82,19 @@ class HloOrdering {
   // instructions, due to additional buffer sharing constraints.
   bool UsesBeforeValueDefinition(
       absl::Span<const HloUse* const> uses, const HloValue& value,
-      const HloDataflowAnalysis& dataflow,
+      const HloDataflowAnalysis& dataflow, const AliasInfo* alias_info,
       bool use_is_always_before_def_in_same_instr = false) const;
   // Returns whether the given values interfere. Two values interfere if they
   // may both be simultaneously live.
   bool MayInterfere(const HloValue& a, const HloValue& b,
-                    const HloDataflowAnalysis& dataflow) const;
+                    const HloDataflowAnalysis& dataflow,
+                    const AliasInfo* alias_info) const;
 
   // Returns true if the live range of the given value 'a' is strictly before
   // the live range of value 'b' using the given HLO ordering.
   bool LiveRangeStrictlyBefore(
       const HloValue& a, const HloValue& b, const HloDataflowAnalysis& dataflow,
+      const AliasInfo* alias_info,
       bool use_is_always_before_def_in_same_instr = false) const;
 
   // Returns the sequential instruction order for the given computation, or

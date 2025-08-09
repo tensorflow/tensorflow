@@ -1,4 +1,5 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_binary", "tf_cc_test")
 
 # Note: keep the following lines separate due to the way copybara works
@@ -60,16 +61,10 @@ td_library(
 
 gentbl_cc_library(
     name = "runtime_fallback_ops_inc_gen",
-    tbl_outs = [
-        (
-            ["-gen-op-decls"],
-            "runtime_fallback_ops.h.inc",
-        ),
-        (
-            ["-gen-op-defs"],
-            "runtime_fallback_ops.cc.inc",
-        ),
-    ],
+    tbl_outs = {
+        "runtime_fallback_ops.h.inc": ["-gen-op-decls"],
+        "runtime_fallback_ops.cc.inc": ["-gen-op-defs"],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "runtime_fallback/runtime_fallback_ops.td",
     deps = [":runtime_fallback_ops_td_files"],
@@ -538,7 +533,6 @@ cc_library(
         ":transforms/gpu_passes",
         "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/compiler/mlir:passes",
-        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow/transforms/host_runtime:lower_cluster_to_runtime_ops",
@@ -552,10 +546,13 @@ cc_library(
         "//tensorflow/core:tensorflow",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:MlirOptLib",
+        "@llvm-project//mlir:RegisterAllDialects",
+        "@llvm-project//mlir:RegisterAllPasses",
         "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
         "@local_xla//xla/mlir_hlo",
+        "@stablehlo//:register",
         "@tf_runtime//:init_tfrt_dialects",
         "@tf_runtime//:print_stream_pass",
     ],

@@ -174,16 +174,77 @@ TEST(WorkQueueTest, WorkerConcurrency) {
 
 TEST(WorkQueueTest, WorkerParallelize) {
   tsl::thread::ThreadPool threads(tsl::Env::Default(), "test", 8);
-  Eigen::ThreadPoolDevice device(threads.AsEigenThreadPool(), 8);
 
   std::vector<size_t> data(1024, 0);
 
-  auto event = Worker::Parallelize(
-      &device, 128, 1024, [&](size_t task_index) { ++data[task_index]; });
+  auto event =
+      Worker::Parallelize(threads.AsEigenThreadPool(), 128, 1024,
+                          [&](size_t task_index) { ++data[task_index]; });
   tsl::BlockUntilReady(event);
 
   std::vector<size_t> expected(1024, 1);
   EXPECT_EQ(data, expected);
+}
+
+TEST(WorkQueueTest, WorkerParallelizeDeadlockProof) {
+  tsl::thread::ThreadPool threads(tsl::Env::Default(), "test", 8);
+
+  std::vector<size_t> data(10 * 1024, 0);
+  absl::BlockingCounter counter(10);
+
+  // Dispatch and wait for parallel loops completion in the same thread pool
+  // where they execute, to test that this work scheduling pattern doesn't lead
+  // to deadlocks.
+  for (size_t i = 0; i < 10; ++i) {
+    threads.Schedule([&, i] {
+      auto event = Worker::Parallelize(
+          threads.AsEigenThreadPool(), 32, 1024,
+          [&](size_t task_index) { ++data[i * 1024 + task_index]; });
+      tsl::BlockUntilReady(event);
+      counter.DecrementCount();
+    });
+  }
+
+  counter.Wait();
+
+  std::vector<size_t> expected(10 * 1024, 1);
+  EXPECT_EQ(data, expected);
+}
+
+TEST(WorkQueueTest, WorkerParallelizeVariousWorkerTaskRatios) {
+  tsl::thread::ThreadPool threads(tsl::Env::Default(), "test", 16);
+
+  struct TestCase {
+    size_t num_tasks;
+    size_t num_workers;
+  };
+
+  std::vector<TestCase> test_cases = {
+      {0, 1},     // Edge: no tasks
+      {1, 1},     // Edge: single task, single worker
+      {1, 8},     // Edge: single task, many workers
+      {8, 1},     // Serial execution
+      {8, 4},     // Fewer workers than tasks
+      {8, 8},     // Equal
+      {8, 16},    // More workers than tasks
+      {1024, 8},  // Many tasks, fewer workers
+      {1024, 64}  // Many tasks, many workers
+  };
+
+  for (const auto& test : test_cases) {
+    std::vector<size_t> data(test.num_tasks, 0);
+
+    auto event = Worker::Parallelize(
+        threads.AsEigenThreadPool(), test.num_workers, test.num_tasks,
+        [&](size_t task_index) { ++data[task_index]; });
+
+    tsl::BlockUntilReady(event);
+
+    // Verify that all tasks were executed once (if any exist)
+    std::vector<size_t> expected(test.num_tasks, 1);
+    EXPECT_EQ(data, expected) << "Failed for num_tasks=" << test.num_tasks
+                              << ", num_workers=" << test.num_workers;
+  }
 }
 
 //===----------------------------------------------------------------------===//

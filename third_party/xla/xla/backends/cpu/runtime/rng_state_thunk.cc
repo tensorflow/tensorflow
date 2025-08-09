@@ -16,17 +16,14 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/rng_state_thunk.h"
 
 #include <cstdint>
-#include <cstring>
 #include <memory>
 #include <utility>
 
-#include "absl/base/config.h"
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/numeric/int128.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
-#include "absl/synchronization/mutex.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/device_memory.h"
@@ -35,11 +32,6 @@ limitations under the License.
 #include "xla/util.h"
 
 namespace xla::cpu {
-
-// Use a non-zero initial value as zero state can cause the result of the first
-// random number generation not passing the chi-square test. The value used here
-// is arbitrarily chosen, any non-zero values should be fine.
-static constexpr absl::int128 kRngStateInitialValue = 0x7012395ull;
 
 absl::StatusOr<std::unique_ptr<RngGetAndUpdateStateThunk>>
 RngGetAndUpdateStateThunk::Create(Info info,
@@ -53,12 +45,10 @@ RngGetAndUpdateStateThunk::RngGetAndUpdateStateThunk(
     Info info, BufferAllocation::Slice state_buffer, int64_t delta)
     : Thunk(Kind::kRngGetAndUpdateState, info),
       state_buffer_(state_buffer),
-      delta_(delta),
-      state_(kRngStateInitialValue) {}
+      rng_state_(delta) {}
 
 tsl::AsyncValueRef<Thunk::ExecuteEvent> RngGetAndUpdateStateThunk::Execute(
     const ExecuteParams& params) {
-
   TF_ASSIGN_OR_RETURN(
       se::DeviceMemoryBase state_data,
       params.buffer_allocations->GetDeviceAddress(state_buffer_));
@@ -71,17 +61,8 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> RngGetAndUpdateStateThunk::Execute(
   VLOG(3) << absl::StreamFormat("  state: %s (%p)", state_buffer_.ToString(),
                                 state_data.opaque());
 
-  absl::MutexLock lock(&mu_);
-
-  uint64_t low = absl::Int128Low64(state_);
-  uint64_t high = absl::Int128High64(state_);
   uint64_t* data = static_cast<uint64_t*>(state_data.opaque());
-
-  static_assert(ABSL_IS_LITTLE_ENDIAN, "Big endian not supported");
-  std::memcpy(data, &low, sizeof(low));
-  std::memcpy(data + 1, &high, sizeof(high));
-
-  state_ += delta_;
+  rng_state_.GetAndUpdateState(data);
 
   return OkExecuteEvent();
 }

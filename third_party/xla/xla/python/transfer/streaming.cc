@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/pjrt/pjrt_future.h"
+#include "xla/python/transfer/transfer_socket.pb.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
 namespace aux {
@@ -57,6 +58,8 @@ class StringFutureChunkDestination : public aux::ChunkDestination {
     std::move(on_done)();
     return absl::OkStatus();
   }
+
+  void Poison(absl::Status s) override { CHECK_OK(s); }
 
   absl::StatusOr<std::string> ConsumeFinalResult() {
     absl::MutexLock l(&mu_);

@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -69,7 +70,7 @@ RunHandlerThreadWorkQueue::InitializeRequest(int64_t request_id) const {
   std::unique_ptr<RunHandler> handler =
       handler_pool_->Get(request_id, options_.init_timeout_ms, options);
   if (!handler) {
-    return tensorflow::errors::Internal(absl::StrCat(
+    return absl::DeadlineExceededError(absl::StrCat(
         "Could not obtain RunHandler for request after waiting for ",
         options_.init_timeout_ms, " ms."));
   }

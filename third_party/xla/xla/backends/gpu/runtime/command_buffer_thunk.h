@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <optional>
+#include <string>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/command_buffer_cmd.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -38,7 +39,7 @@ namespace xla::gpu {
 
 class CommandBufferThunk : public Thunk {
  public:
-  CommandBufferThunk(CommandBufferCmdSequence commands, ThunkInfo thunk_info,
+  CommandBufferThunk(CommandBufferCmdExecutor commands, ThunkInfo thunk_info,
                      std::unique_ptr<SequentialThunk> thunks = nullptr,
                      bool enable_command_buffers_during_profiling = false);
 
@@ -57,6 +58,8 @@ class CommandBufferThunk : public Thunk {
 
   void ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const override;
 
+  std::string ToString(int indent) const override;
+
  private:
   // Command buffer instantiated on a `se::StreamExecutor` instance, and
   // auxiliary state required for efficient command buffer updates.
@@ -64,10 +67,13 @@ class CommandBufferThunk : public Thunk {
     explicit ExecutorCommandBuffer(
         std::unique_ptr<se::CommandBuffer> command_buffer);
 
-    // Returns true if `commands` cmd sequence has to be recorded into
-    // `command_buffer` to update it (see `recorded_allocs` below).
-    bool ShouldUpdateCommandBuffer(const CommandBufferCmdSequence& commands,
-                                   const Thunk::ExecuteParams& params)
+    // Updates recorded buffer allocation for the given `commands` using the
+    // buffer allocations passed in `params`. Returns buffer allocations that
+    // changed since the last update. Returned buffer allocations are sorted by
+    // the buffer allocation index.
+    std::vector<BufferAllocation::Index> UpdateBufferAllocations(
+        const CommandBufferCmdExecutor& commands,
+        const Thunk::ExecuteParams& params)
         ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex);
 
     // se::CommandBuffer is not thread safe, and we guard it with a mutex to
@@ -124,8 +130,8 @@ class CommandBufferThunk : public Thunk {
   // Evicts all previously instantiated command buffers.
   static void EvictCommandBuffers();
 
-  // Command sequence that initializes command buffers on each executor.
-  CommandBufferCmdSequence commands_;
+  // Commands executor that initializes command buffers on each stream executor.
+  CommandBufferCmdExecutor commands_;
 
   // Thunk sequence that executes the same commands as in `commands_` but using
   // thunk mechanism. We use it as a fallback mechanism to work around CUPTI

@@ -19,7 +19,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/test_macros.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -120,7 +119,7 @@ ENTRY TestComputation {
 
 TEST_F(ConvolutionLayoutNormalizationTest, GraphConvF8) {
   if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::HOPPER)) {
+          se::CudaComputeCapability::kHopper)) {
     GTEST_SKIP() << "FP8 convolutions require Hopper or newer architecture.";
   }
   const char* hlo = R"(

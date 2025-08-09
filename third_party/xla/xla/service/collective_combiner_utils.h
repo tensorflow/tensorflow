@@ -125,6 +125,9 @@ absl::StatusOr<bool> CombineInstructionsByKey(
       // We can't combine dependent instructions.
       bool is_reachable =
           absl::c_any_of(to_combine, [&](HloInstruction* to_combine_inst) {
+            // We don't need a call to IsConnected() here because we iterate
+            // through instructions in topological order, which implies that
+            // IsReachable(instruction, to_combine_inst) would return false.
             bool reachable =
                 reachability->IsReachable(to_combine_inst, instruction);
             if (reachable) {

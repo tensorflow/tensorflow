@@ -15,6 +15,7 @@ cc_library(
     srcs = ["portable_tensor_utils.cc"],
     hdrs = ["portable_tensor_utils.h"],
     visibility = [
+        "//tensorflow/compiler/mlir/lite/quantization/common/quantization_lib:__pkg__",
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib:__pkg__",
     ],
 )
@@ -100,6 +101,7 @@ cc_library(
         "//tensorflow/core/platform:logging",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@flatbuffers//:runtime_cc",

@@ -21,26 +21,29 @@ limitations under the License.
 #include <vector>
 
 #include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/pattern_matcher_gmock.h"
+#include "xla/hlo/testlib/test.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal_util.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/service/pattern_matcher_gmock.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
-#include "xla/test.h"
-#include "xla/test_helpers.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
@@ -53,7 +56,7 @@ namespace op = xla::testing::opcode_matchers;
 using ::testing::ElementsAre;
 using ::testing::UnorderedElementsAre;
 
-class HloComputationTest : public HloTestBase {
+class HloComputationTest : public HloHardwareIndependentTestBase {
  protected:
   HloComputationTest() = default;
 
@@ -705,8 +708,8 @@ TEST_F(HloComputationTest, Stringification) {
       R"(%TransposeDot (x: f32[5,10], y: f32[20,10]) -> f32[5,20] {
   %x = f32[5,10]{1,0} parameter(0)
   %y = f32[20,10]{1,0} parameter(1)
-  %transpose = f32[10,20]{1,0} transpose(f32[20,10]{1,0} %y), dimensions={1,0}
-  ROOT %dot = f32[5,20]{1,0} dot(f32[5,10]{1,0} %x, f32[10,20]{1,0} %transpose), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  %transpose = f32[10,20]{1,0} transpose(%y), dimensions={1,0}
+  ROOT %dot = f32[5,20]{1,0} dot(%x, %transpose), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }, execution_thread="MainThread")";
   EXPECT_EQ(computation->ToString(options), expected_computation);
 }
@@ -742,8 +745,8 @@ TEST_F(HloComputationTest, StringificationIndent) {
       R"(    %TransposeDot (x: f32[5,10], y: f32[20,10]) -> f32[5,20] {
       %x = f32[5,10]{1,0} parameter(0)
       %y = f32[20,10]{1,0} parameter(1)
-      %transpose = f32[10,20]{1,0} transpose(f32[20,10]{1,0} %y), dimensions={1,0}
-      ROOT %dot = f32[5,20]{1,0} dot(f32[5,10]{1,0} %x, f32[10,20]{1,0} %transpose), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      %transpose = f32[10,20]{1,0} transpose(%y), dimensions={1,0}
+      ROOT %dot = f32[5,20]{1,0} dot(%x, %transpose), lhs_contracting_dims={1}, rhs_contracting_dims={0}
     }, execution_thread="MainThread")";
   EXPECT_EQ(computation->ToString(options), expected_computation);
 }
@@ -778,8 +781,8 @@ TEST_F(HloComputationTest, StringificationCanonical) {
       R"(%TransposeDot (x: f32[5,10], y: f32[20,10]) -> f32[5,20] {
   %x = f32[5,10]{1,0} parameter(0)
   %y = f32[20,10]{1,0} parameter(1)
-  %transpose = f32[10,20]{1,0} transpose(f32[20,10]{1,0} %y), dimensions={1,0}
-  ROOT %dot = f32[5,20]{1,0} dot(f32[5,10]{1,0} %x, f32[10,20]{1,0} %transpose), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  %transpose = f32[10,20]{1,0} transpose(%y), dimensions={1,0}
+  ROOT %dot = f32[5,20]{1,0} dot(%x, %transpose), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }, execution_thread="MainThread")";
   EXPECT_EQ(computation->ToString(options), expected_computation1);
 
@@ -843,8 +846,8 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   EXPECT_THAT(module->entry_computation()->MakeInstructionPostOrder(),
-              ElementsAre(op::Parameter(), op::AllReduce(), op::AllReduce(),
-                          op::Add(), op::Tuple()));
+              ElementsAre(op::Parameter(), op::AllReduce(), op::Add(),
+                          op::AllReduce(), op::Tuple()));
 }
 
 TEST_F(HloComputationTest, ComparisonWithCustomComparator) {
@@ -1039,6 +1042,35 @@ TEST_F(HloComputationTest, ToStringWhileCreatingReplacements) {
   entry->ForEachInstructionPostOrder(
       [&counter](HloInstruction* instr) { counter++; });
   EXPECT_EQ(counter, entry->instruction_count());
+}
+
+TEST_F(HloComputationTest, RemoveParameterWithBackendConfig) {
+  const absl::string_view hlo = R"(
+ENTRY main {
+  arg.0 = s32[] parameter(0)
+  arg.1 = s32[] parameter(1)
+  ROOT call.0 = (s32[]) call(arg.0, arg.1), to_apply={
+    arg.0 = s32[] parameter(0)
+    arg.1 = s32[] parameter(1), backend_config={"config" : []}
+    ROOT tuple.0 = tuple(arg.1)
+  }
+}
+  )";
+  // Since we remove the called computation parameter, we also need to remove
+  // the operand from the callee, but that's not possible, due to all related
+  // APIs being private/protected, hence the module will be left in an illegal
+  // state and not verifiable.
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(hlo));
+
+  HloInstruction* call0 = module->entry_computation()->root_instruction();
+  ASSERT_EQ(call0->opcode(), HloOpcode::kCall);
+  HloComputation* computation = call0->to_apply();
+  ASSERT_TRUE(!computation->parameter_instruction(0)->has_backend_config());
+  // Parameter 0 is dead and safe to remove.
+  TF_ASSERT_OK(computation->RemoveParameter(0));
+  // Parameter 1 shifted to parameter 0 and should preserve its backend config.
+  EXPECT_TRUE(computation->parameter_instruction(0)->has_backend_config());
 }
 
 }  // namespace

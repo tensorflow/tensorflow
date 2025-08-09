@@ -16,36 +16,63 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_original_value.h"
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 
-std::string OriginalValueToStringHelper(const OriginalValue& original_value,
-                                        const Shape& shape,
-                                        std::vector<int64_t>& shape_index) {
+std::string OriginalArray::ToString() const {
+  std::string result;
+  absl::StrAppend(&result, "\"", instruction_name, "\"",
+                  (shape_index.empty() ? "" : " " + shape_index.ToString()));
+  return result;
+}
+
+OriginalArrayProto OriginalArray::ToProto() const {
+  OriginalArrayProto original_array_proto;
+  original_array_proto.set_instruction_name(instruction_name);
+  for (const auto& index : shape_index) {
+    original_array_proto.add_shape_index(index);
+  }
+  return original_array_proto;
+}
+
+OriginalArray OriginalArray::FromProto(
+    const xla::OriginalArrayProto& original_array_proto) {
+  return {original_array_proto.instruction_name(),
+          ShapeIndex(original_array_proto.shape_index())};
+}
+
+std::string OriginalValueToString(const OriginalValue& original_value,
+                                  const Shape& shape,
+                                  std::vector<int64_t>& shape_index) {
   std::string result;
   if (shape.IsTuple()) {
     if (shape.tuple_shapes().empty()) {
       return "()";
     }
-    absl::StrAppend(&result, "(");
     shape_index.push_back(0);
-    absl::StrAppend(&result,
-                    OriginalValueToStringHelper(
-                        original_value, shape.tuple_shapes(0), shape_index));
+    absl::StrAppend(&result, "(",
+                    OriginalValueToString(original_value, shape.tuple_shapes(0),
+                                          shape_index));
     shape_index.pop_back();
     for (int64_t i = 1; i < shape.tuple_shapes().size(); ++i) {
-      absl::StrAppend(&result, ", ");
       shape_index.push_back(i);
-      absl::StrAppend(&result,
-                      OriginalValueToStringHelper(
+      absl::StrAppend(&result, ", ",
+                      OriginalValueToString(
                           original_value, shape.tuple_shapes(i), shape_index));
       shape_index.pop_back();
     }
@@ -55,37 +82,123 @@ std::string OriginalValueToStringHelper(const OriginalValue& original_value,
 
   const auto& leaf = original_value.element(shape_index);
   if (leaf.has_value()) {
-    absl::StrAppend(
-        &result, "{", "\"", leaf->instruction_name, "\"",
-        (leaf->shape_index.empty() ? "" : " " + leaf->shape_index.ToString()),
-        "}");
+    absl::StrAppend(&result, "{", leaf->ToString(), "}");
   } else {
     absl::StrAppend(&result, "{}");
   }
   return result;
 }
 
-std::string OriginalValueToString(const OriginalValue& original_value) {
+std::string OriginalValue::ToString() const {
   std::vector<int64_t> shape_index;
-  return OriginalValueToStringHelper(original_value, original_value.shape(),
-                                     shape_index);
+  return OriginalValueToString(*this, shape(), shape_index);
 }
 
-OriginalValueProto OriginalValueToProto(const OriginalValue& original_value) {
+OriginalValueProto OriginalValue::ToProto() const {
   OriginalValueProto original_value_proto;
-  for (const auto& leaf : original_value.leaves()) {
-    OriginalArrayProto* original_array_proto =
+  *original_value_proto.mutable_shape() = shape().ToProto();
+  for (const auto& leaf : leaves()) {
+    OriginalValueNodeProto* original_value_node_proto =
         original_value_proto.add_leaves();
     for (const auto& index : leaf.first) {
-      original_array_proto->add_leaf_shape_index(index);
+      original_value_node_proto->add_shape_index(index);
     }
-    *original_array_proto->mutable_instruction_name() =
-        leaf.second->instruction_name;
-    for (const auto& index : leaf.second->shape_index) {
-      original_array_proto->add_shape_index(index);
-    }
+    *original_value_node_proto->mutable_original_array() =
+        leaf.second->ToProto();
   }
   return original_value_proto;
+}
+
+std::shared_ptr<OriginalValue> OriginalValue::FromProto(
+    const xla::OriginalValueProto& original_value_proto) {
+  xla::Shape original_value_shape(
+      Shape::FromProto(original_value_proto.shape()).value_or(Shape()));
+  auto original_value = std::make_shared<OriginalValue>(original_value_shape);
+
+  for (const auto& leaf : original_value_proto.leaves()) {
+    *original_value->mutable_element(ShapeIndex(leaf.shape_index())) =
+        OriginalArray::FromProto(leaf.original_array());
+  }
+  return original_value;
+}
+
+std::shared_ptr<OriginalValue> OriginalValue::CreateFromInstruction(
+    const HloInstruction* instruction, absl::string_view prefix) {
+  std::shared_ptr<OriginalValue> original_value =
+      std::make_shared<OriginalValue>(instruction->shape());
+
+  if (instruction->opcode() == HloOpcode::kGetTupleElement) {
+    const auto* tuple = instruction->operand(0);
+    std::shared_ptr<OriginalValue> tuple_original_value =
+        tuple->original_value();
+    if (!tuple_original_value) {
+      return nullptr;
+    }
+    original_value->CopySubtreeFrom(*tuple_original_value,
+                                    {instruction->tuple_index()}, {});
+  } else if (instruction->opcode() == HloOpcode::kTuple) {
+    for (int64_t operand_number = 0;
+         operand_number < instruction->operand_count(); ++operand_number) {
+      auto element_original_value =
+          instruction->operand(operand_number)->original_value();
+      if (!element_original_value) {
+        return nullptr;
+      }
+      original_value->CopySubtreeFrom(*element_original_value, {},
+                                      {operand_number});
+    }
+  } else {
+    for (auto& leaf : original_value->leaves()) {
+      leaf.second = {absl::StrCat(prefix, instruction->name()), leaf.first};
+    }
+  }
+  return original_value;
+}
+
+void CopyOriginalValue(const HloInstruction* src_instruction,
+                       HloInstruction* dest_instruction, bool clone) {
+  // This is not expected to happen in practice.
+  if (!src_instruction || !dest_instruction ||
+      !ShapeUtil::Compatible(src_instruction->shape(),
+                             dest_instruction->shape())) {
+    VLOG(1) << "Expect the new instruction to have the same shape with the old "
+               "instruction when moving over original_value";
+    return;
+  }
+
+  std::shared_ptr<OriginalValue> original_value =
+      src_instruction->original_value();
+  if (!original_value) {
+    return;
+  }
+
+  if (!clone) {
+    dest_instruction->set_original_value(original_value);
+    return;
+  }
+
+  std::shared_ptr<OriginalValue> original_value_clone =
+      std::make_shared<OriginalValue>(original_value->shape());
+  original_value_clone->CopySubtreeFrom(*original_value, {}, {});
+  dest_instruction->set_original_value(original_value_clone);
+}
+
+void DeduplicateOriginalValues(HloModule* module) {
+  absl::flat_hash_set<OriginalValuePointer> unique_original_values;
+  for (HloComputation* computation : module->computations()) {
+    for (HloInstruction* instruction : computation->instructions()) {
+      if (std::shared_ptr<OriginalValue> original_value =
+              instruction->original_value()) {
+        OriginalValuePointer original_value_ptr(original_value);
+        auto p = unique_original_values.insert(original_value_ptr);
+        if (!p.second) {
+          // Reassign the pointer with the existing identical object and release
+          // the duplicate.
+          instruction->set_original_value(p.first->original_value);
+        }
+      }
+    }
+  }
 }
 
 }  // namespace xla

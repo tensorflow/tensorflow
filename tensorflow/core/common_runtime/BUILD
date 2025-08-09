@@ -899,6 +899,8 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:variant",
@@ -2199,9 +2201,9 @@ tf_cuda_library(
     deps = [
         ":core_cpu_internal",
         ":local_session_selection",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
-        "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
@@ -2213,6 +2215,9 @@ tf_cuda_library(
         "//tensorflow/core/profiler/lib:profiler_backends",
         "//tensorflow/core/profiler/lib:traceme_encode",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:optional",
     ],
     alwayslink = 1,
 )
@@ -2468,6 +2473,7 @@ tf_cc_tests(
     create_named_test_suite = True,
     data = [
         "testdata/simplify_ici_dummy_variables_pass_before.pbtxt",
+        "testdata/simplify_ici_dummy_variables_pass_updatevars_before.pbtxt",
     ],
     linkopts = select({
         "//tensorflow:macos": ["-headerpad_max_install_names"],
@@ -2940,8 +2946,12 @@ tf_cuda_cc_test(
         "//tensorflow/core/kernels:session_ops",
         "//tensorflow/core/kernels:variable_ops",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_googletest//:gtest",
         "@eigen_archive//:eigen3",
+        "@local_xla//xla/tsl/platform:status_matchers",
     ] + if_cuda(["@local_xla//xla/tsl/cuda:cudart"]),
 )
 
@@ -2957,6 +2967,10 @@ tf_cc_test(
         ":core_cpu",
         ":core_cpu_internal",
         ":direct_session_internal",
+        "@com_google_googletest//:gtest",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
+        "@local_xla//xla/tsl/platform:status_matchers",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
@@ -2967,7 +2981,6 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "@com_google_absl//absl/strings",
-        "@eigen_archive//:eigen3",
         "@com_google_absl//absl/memory",
         "//tensorflow/cc:cc_ops",
         # Link with support for TensorFlow Debugger (tfdbg).
@@ -3121,7 +3134,8 @@ tf_cc_test(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@eigen_archive//:eigen3",
+        "@com_google_googletest//:gtest",
+        "@local_xla//xla/tsl/platform:status_matchers",
     ],
 )
 
@@ -3592,6 +3606,8 @@ tf_cc_fuzz_test(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:tensorflow",
         "//tensorflow/core/ops",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_protobuf//:protobuf",
     ],
 )
 

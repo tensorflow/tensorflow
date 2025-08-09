@@ -16,12 +16,7 @@ package(
 gentbl_cc_library(
     name = "legalize_tf_patterns_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-rewriters"],
-            "generated_legalize_tf.inc",
-        ),
-    ],
+    tbl_outs = {"generated_legalize_tf.inc": ["-gen-rewriters"]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "legalize_tf_patterns.td",
     deps = [
@@ -30,21 +25,18 @@ gentbl_cc_library(
         "@llvm-project//mlir:FuncTdFiles",
         "@llvm-project//mlir:TensorOpsTdFiles",
         "@local_xla//xla/mlir_hlo:hlo_ops_td_files",
+        "@stablehlo//:chlo_ops_td_files",
+        "@stablehlo//:stablehlo_ops_td_files",
     ],
 )
 
 gentbl_cc_library(
     name = "xla_legalize_tf_passes_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            [
-                "-gen-pass-decls",
-                "-name=LegalizeTf",
-            ],
-            "xla_legalize_tf_passes.h.inc",
-        ),
-    ],
+    tbl_outs = {"xla_legalize_tf_passes.h.inc": [
+        "-gen-pass-decls",
+        "-name=LegalizeTf",
+    ]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "xla_legalize_tf_passes.td",
     deps = [
@@ -55,15 +47,10 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "tf_xla_passes_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            [
-                "-gen-pass-decls",
-                "-name=TfXla",
-            ],
-            "tf_xla_passes.h.inc",
-        ),
-    ],
+    tbl_outs = {"tf_xla_passes.h.inc": [
+        "-gen-pass-decls",
+        "-name=TfXla",
+    ]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "tf_xla_passes.td",
     deps = [
@@ -120,7 +107,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir:register_common_dialects",
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:serialize_mlir_module_utils",
+        "//tensorflow/compiler/mlir/tensorflow:deserialize_mlir_module_utils",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
@@ -177,6 +164,8 @@ cc_library(
         "@local_xla//xla/mlir_hlo:convert_op_folder",
         "@local_xla//xla/tsl/platform:status",
         "@stablehlo//:chlo_ops",
+        "@stablehlo//:stablehlo_ops",
+        "@stablehlo//:stablehlo_pass_utils",
     ] + if_static(["@local_tsl//tsl/platform:tensor_float_32_utils"]),
 )
 
@@ -262,7 +251,6 @@ cc_library(
         ":xla_legalize_targets",
         ":xla_legalize_tf_passes_inc_gen",
         ":xla_legalize_tf_with_tf2xla",
-        "//tensorflow/compiler/mlir/quantization/stablehlo:bridge_passes",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:mangling_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
@@ -305,8 +293,10 @@ cc_library(
         "@local_xla//xla/mlir_hlo:type_conversion",
         "@local_xla//xla/stream_executor/tpu:c_api_conversions",
         "@local_xla//xla/stream_executor/tpu:tpu_api",
+        "@stablehlo//:base",
         "@stablehlo//:chlo_ops",
         "@stablehlo//:stablehlo_ops",
+        "@stablehlo//:stablehlo_passes",
     ],
 )
 
@@ -339,7 +329,6 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/framework:allocator",
         "//tensorflow/core/protobuf:for_core_protos_cc",
-        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -361,12 +350,13 @@ cc_library(
         "@local_xla//xla/hlo/translate/hlo_to_mhlo:hlo_function_importer",
         "@local_xla//xla/hlo/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
         "@local_xla//xla/hlo/translate/mhlo_to_hlo:type_to_shape",
-        "@local_xla//xla/mlir_hlo",
         "@local_xla//xla/service:hlo_proto_cc",
         "@local_xla//xla/tsl/platform:env",
         "@local_xla//xla/tsl/platform:errors",
         "@local_xla//xla/tsl/platform:status",
         "@local_xla//xla/tsl/platform:statusor",
+        "@stablehlo//:base",
+        "@stablehlo//:stablehlo_ops",
     ],
 )
 
@@ -381,9 +371,7 @@ tf_cc_test(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
-        "//tensorflow/core:framework",
         "//tensorflow/core:ops",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
@@ -396,11 +384,11 @@ tf_cc_test(
         "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/hlo/builder:xla_builder",
         "@local_xla//xla/hlo/builder:xla_computation",
-        "@local_xla//xla/mlir_hlo",
         "@local_xla//xla/tsl/lib/core:status_test_util",
         "@local_xla//xla/tsl/platform:errors",
         "@local_xla//xla/tsl/platform:status",
         "@local_xla//xla/tsl/platform:statusor",
+        "@stablehlo//:stablehlo_ops",
     ],
 )
 
@@ -442,7 +430,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
-        "@local_xla//xla/mlir_hlo",
+        "@stablehlo//:base",
     ],
 )
 
@@ -454,7 +442,7 @@ tf_cc_test(
     deps = [
         ":tf_xla_passes",
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:serialize_mlir_module_utils",
+        "//tensorflow/compiler/mlir/tensorflow:deserialize_mlir_module_utils",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_context",
         "//tensorflow/compiler/tf2xla:xla_expression",

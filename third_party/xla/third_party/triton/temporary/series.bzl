@@ -14,10 +14,8 @@ those to this list.
 """
 
 temporary_patch_list = [
-    "//third_party/triton:temporary/fix_fence_insertion_race.patch",
-    "//third_party/triton:temporary/enable_peer_access.patch",
-    "//third_party/triton:temporary/sm120.patch",
-    "//third_party/triton:temporary/mmav5_warps.patch",
-    "//third_party/triton:temporary/ptxas_blackwell.patch",
+    "//third_party/triton:temporary/fix_test_core_h100_target.patch",
+    "//third_party/triton:temporary/speed_up_int4_unpacking.patch",
+    "//third_party/triton:temporary/tutorial_fixes.patch",
     # Add new patches just above this line
 ]

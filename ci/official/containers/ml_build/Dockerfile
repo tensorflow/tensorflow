@@ -28,6 +28,8 @@ RUN /setup.python.sh python3.10 /builder.requirements.txt
 RUN /setup.python.sh python3.11 /builder.requirements.txt
 RUN /setup.python.sh python3.13 /builder.requirements.txt
 RUN /setup.python.sh python3.13-nogil /builder.requirements.txt
+RUN /setup.python.sh python3.14 /builder.requirements.txt
+RUN /setup.python.sh python3.14-nogil /builder.requirements.txt
 
 # Since we are using python3.12 as the default python version, we need to
 # install python3.12 last for now.
@@ -76,7 +78,7 @@ RUN curl https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud
     tar zxf - google-cloud-sdk && \
     google-cloud-sdk/install.sh --quiet && \
     ln -s /google-cloud-sdk/bin/gcloud /usr/bin/gcloud
-ENV PATH="$PATH:/google-cloud-sdk/bin/"
+ENV PATH="$PATH:/google-cloud-sdk/bin/:/usr/local/cuda/bin/"
 
 # Download and install patchelf v0.18.0 from GitHub. The default Ubuntu focal
 # packages only provide the "0.10-2build1" version. We use patchelf to manipulate

@@ -290,5 +290,14 @@ def LoopOp : XLA_Op<"loop", [
   let hasCanonicalizer = 1;
 }
 
+def WorkGroupIdOp : XLA_Op<"workgroup_id", [
+    Pure,
+  ]> {
+  let assemblyFormat = "$dimension attr-dict";
+  let arguments =(ins WorkGroupDimensionAttr:$dimension);
+  let results = (outs Index);
+}
+
+
 #endif // XLA_CODEGEN_EMITTERS_IR_XLA_OPS
 

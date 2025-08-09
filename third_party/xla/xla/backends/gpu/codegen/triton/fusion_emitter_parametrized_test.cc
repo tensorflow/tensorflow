@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <memory>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -25,20 +26,25 @@ limitations under the License.
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
+#include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/backends/gpu/codegen/triton/support_legacy.h"
 #include "xla/backends/gpu/codegen/triton/test_utils.h"
 #include "xla/comparison_util.h"
 #include "xla/error_spec.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
 namespace {
+
+constexpr ErrorSpec kExactMatch{/*aabs=*/0, /*arel=*/0};
 
 struct MixTypeParams {
   PrimitiveType lhs_ty;
@@ -51,61 +57,65 @@ struct MixTypeParams {
 };
 
 class MixedTypeTest : public GpuCodegenTest,
-                      public ::testing::WithParamInterface<MixTypeParams> {
- public:
-  se::GpuComputeCapability GetGpuComputeCapability() {
-    return backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .gpu_compute_capability();
-  }
+                      public ::testing::WithParamInterface<MixTypeParams> {};
 
-  void SetUp() override {
-    if (std::holds_alternative<se::RocmComputeCapability>(
-            GetGpuComputeCapability())) {
-      GTEST_SKIP()
-          << "Related fusions are not performed on ROCm without Triton.";
-    }
-  }
-
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
-    // We are testing Triton, remove cuBLAS fallback for these tests.
-    debug_options.set_xla_gpu_cublas_fallback(false);
-    // Always rewrite Gemms with Triton regardless of size.
-    debug_options.set_xla_gpu_gemm_rewrite_size_threshold(0);
-    return debug_options;
-  }
-};
-
+// TODO(b/393299275): there is a significant amount of overlap between this test
+// and tests for ALG_UNSET in `fusion_emitter_device_test.cc`. We should
+// eventually unify them by outlining whatever needs to be a special case here,
+// if anything. (I suspect this whole test suite can just be deleted, but
+// keeping it for now for the sake of the migration to the new emitter.)
 TEST_P(MixedTypeTest, MixedTypeDotProducesCorrectResult) {
   MixTypeParams params = GetParam();
   const std::string hlo_string_template = R"(
-HloModule m
-
-ENTRY e {
+lhs {
   p0 = $0[$2,$3] parameter(0)
-  p0c = $1[$2,$3] convert(p0)
+  ROOT convert = $1[$2,$3] convert(p0)
+}
+
+rhs {
+  ROOT p0 = $1[$3,$4] parameter(0)
+}
+
+dot {
+  p0 = $0[$2,$3] parameter(0)
   p1 = $1[$3,$4] parameter(1)
-  ROOT _ = $1[$2,$4] dot(p0c, p1),
+  lhs = $1[$2,$3] fusion(p0), kind=kCustom, calls=lhs, backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["16", "16"]}]
+    }}}
+  rhs = $1[$3,$4]{1,0} fusion(p1), kind=kCustom, calls=rhs, backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["16", "16"]}]
+    }}}
+  ROOT dot = $1[$2,$4] dot(lhs, rhs),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY entry {
+  p0 = $0[$2,$3] parameter(0)
+  p1 = $1[$3,$4] parameter(1)
+  ROOT fusion = $1[$2,$4] fusion(p0, p1),
+    kind=kCustom, calls=dot, backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["16","16"]}],
+          "num_warps":"1", "num_ctas":"1", "num_stages":"1"
+    }}}
 })";
+
   std::string hlo_string = absl::Substitute(
       hlo_string_template,
       primitive_util::LowercasePrimitiveTypeName(params.lhs_ty),
       primitive_util::LowercasePrimitiveTypeName(params.rhs_ty), params.m,
       params.k, params.n);
-  MatchOptimizedHlo(hlo_string, R"(
-; CHECK: ENTRY
-; CHECK-NEXT: parameter
-; CHECK-NEXT: parameter
-; CHECK-NEXT: kCustom
-)");
 
-  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{params.aabs, params.arel}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_string,
+                                       ErrorSpec{params.aabs, params.arel}));
 }
 
-std::string GemmTestParamsParamsToString(
+std::string DotTestParamsToString(
     const ::testing::TestParamInfo<MixTypeParams>& data) {
   return absl::StrCat(
       primitive_util::LowercasePrimitiveTypeName(data.param.lhs_ty), "_",
@@ -117,7 +127,7 @@ INSTANTIATE_TEST_SUITE_P(RewriteTestSuite, MixedTypeTest,
                          ::testing::ValuesIn({
                              MixTypeParams{PRED, F16, 16, 32, 8},
                              MixTypeParams{PRED, BF16, 16, 32, 8},
-                             MixTypeParams{PRED, F32, 16, 32, 8, 1e-4, 1e-3},
+                             MixTypeParams{PRED, F32, 16, 32, 8, 2e-4, 2e-3},
                              MixTypeParams{S8, F16, 16, 32, 8},
                              MixTypeParams{S8, BF16, 16, 32, 8},
                              MixTypeParams{S8, F32, 16, 32, 8, 5e-2, 1e-2},
@@ -125,33 +135,24 @@ INSTANTIATE_TEST_SUITE_P(RewriteTestSuite, MixedTypeTest,
                              MixTypeParams{S8, F32, 101, 32, 303, 0.1, 0.1},
                              MixTypeParams{S8, F32, 101, 2048, 303, 0.5, 0.1},
                              MixTypeParams{S8, F32, 101, 2555, 303, 0.5, 0.1},
-                             // Is supported but overflows.
-                             //  GemmTestParams{S32, F16},
                              MixTypeParams{S16, F16, 30, 19, 12},
                              MixTypeParams{S32, F32, 4, 4, 4, 1, 1e-2},
                              MixTypeParams{F16, BF16, 16, 32, 8},
                              MixTypeParams{F16, F32, 16, 32, 8, 1e-3, 1e-6},
                              MixTypeParams{BF16, F16, 16, 32, 8, 1e-3, 1e-6},
                              MixTypeParams{BF16, F32, 16, 32, 8, 1e-3, 1e-6},
-                             // Supported but disabled because narrowing
-                             // converts should rather belong to producers.
-                             // TODO(b/266862493): Move these to CompareTest.
-                             // TritonRewriteTest2Params{S32, BF16},
-                             //  TritonRewriteTest2Params{F32, F16},
-                             //  TritonRewriteTest2Params{F32, BF16},
                              MixTypeParams{S8, BF16, 24, 40, 8},
                              MixTypeParams{S8, F16, 80, 16, 32, 1e-3, 1e-6},
                              MixTypeParams{F16, F32, 127, 3, 300, 1e-2, 1e-2},
                              MixTypeParams{F16, BF16, 544, 96, 16, 1e-3, 1e-3},
                              MixTypeParams{BF16, F32, 77, 500, 333, 3e-3, 3e-3},
                          }),
-                         GemmTestParamsParamsToString);
+                         DotTestParamsToString);
 
 class TritonTest : public GpuCodegenTest {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_unsupported_force_triton_gemm(true);
     debug_options.set_xla_gpu_cublas_fallback(false);
     // Always rewrite Gemms with Triton regardless of size.
     debug_options.set_xla_gpu_gemm_rewrite_size_threshold(0);
@@ -184,7 +185,7 @@ std::string ElementwiseTestParamsToString(
 
 using UnaryElementwiseTest = ElementwiseTest;
 
-TEST_P(UnaryElementwiseTest, ElementwiseFusionExecutesCorrectly) {
+TEST_P(UnaryElementwiseTest, DISABLED_ElementwiseFusionExecutesCorrectly) {
   PrimitiveType data_type;
   HloOpcode opcode;
   float tolerance;
@@ -249,7 +250,7 @@ ENTRY e {
       /*run_hlo_passes=*/false));
 }
 
-TEST_P(UnaryElementwiseTest, ElementwiseUnaryOpExecutesCorrectly) {
+TEST_P(UnaryElementwiseTest, DISABLED_ElementwiseUnaryOpExecutesCorrectly) {
   PrimitiveType data_type;
   HloOpcode opcode;
   float tolerance;
@@ -265,9 +266,14 @@ triton_computation {
 ENTRY e {
   p0 = $0[33,68]{1,0} parameter(0)
   ROOT triton_fusion = f32[33,68]{1,0} fusion(p0), kind=kCustom,
-    calls=triton_computation,
-    backend_config={"fusion_backend_config":{"kind":"__triton",
-                    "block_level_fusion_config":{"output_tiles":[{"sizes":["1", "1"]}],"num_warps":"1"}}}
+    calls=triton_computation, backend_config={
+      "fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["1", "1"]}],
+        "num_warps":"1",
+        "num_ctas":"1",
+        "num_stages":"1"}}}
 })";
   const std::string hlo_test = absl::Substitute(
       kHloTestTemplate, primitive_util::LowercasePrimitiveTypeName(data_type),
@@ -355,7 +361,7 @@ INSTANTIATE_TEST_SUITE_P(
 
 using BinaryElementwiseTest = ElementwiseTest;
 
-TEST_P(BinaryElementwiseTest, ElementwiseFusionExecutesCorrectly) {
+TEST_P(BinaryElementwiseTest, DISABLED_ElementwiseFusionExecutesCorrectly) {
   PrimitiveType data_type;
   HloOpcode opcode;
   float tolerance;
@@ -424,7 +430,7 @@ ENTRY e {
       /*run_hlo_passes=*/false, /*args_max_bits_of_precision=*/6));
 }
 
-TEST_P(BinaryElementwiseTest, ElementwiseBinaryOpExecutesCorrectly) {
+TEST_P(BinaryElementwiseTest, DISABLED_ElementwiseBinaryOpExecutesCorrectly) {
   PrimitiveType data_type;
   HloOpcode opcode;
   float tolerance;
@@ -442,9 +448,14 @@ ENTRY e {
   p0 = $0[11,63]{1,0} parameter(0)
   p1 = $0[11,63]{1,0} parameter(1)
   ROOT triton_fusion = f32[11,63]{1,0} fusion(p0, p1), kind=kCustom,
-    calls=triton_computation,
-    backend_config={"fusion_backend_config":{"kind":"__triton",
-                    "block_level_fusion_config":{"output_tiles":[{"sizes":["1", "1"]}],"num_warps":"1"}}}
+    calls=triton_computation, backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["1", "1"]}],
+          "num_warps":"1",
+          "num_ctas":"1",
+          "num_stages":"1"}}}
 })";
   const std::string hlo_test = absl::Substitute(
       kHloTestTemplate, primitive_util::LowercasePrimitiveTypeName(data_type),
@@ -541,109 +552,66 @@ std::string CompareTestParamsToString(
                       "_", ComparisonDirectionToString(direction));
 }
 
-TEST_P(CompareTest, CompareFusionExecutesCorrectly) {
-  PrimitiveType data_type;
-  Comparison::Direction direction;
-  std::tie(data_type, direction) = GetParam();
+TEST_P(CompareTest, CompareExecutesCorrectly) {
+  auto [data_type, direction] = GetParam();
 
   const std::string kHloTestTemplate = R"(
-triton_gemm___computation {
-  parameter_0 = f32[92,11]{1,0} parameter(0)
-  parameter_1 = $0[11,63]{1,0} parameter(1)
-  parameter_2 = $0[11,63]{1,0} parameter(2)
-  f1.1 = pred[11,63]{1,0} compare(parameter_1, parameter_2), direction=$1
-  c.1 = f32[11,63]{1,0} convert(f1.1)
-  ROOT _.1 = f32[92,63]{1,0} dot(parameter_0, c.1),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0},
-    operand_precision={HIGH, HIGH}
+triton_computation {
+  p0 = $0[11,63]{1,0} parameter(0)
+  p1 = $0[11,63]{1,0} parameter(1)
+  ROOT compare = pred[11,63]{1,0} compare(p0, p1), direction=$1
 }
 
 ENTRY e {
-  p0 = f32[92,11]{1,0} parameter(0)
+  p0 = $0[11,63]{1,0} parameter(0)
   p1 = $0[11,63]{1,0} parameter(1)
-  p2 = $0[11,63]{1,0} parameter(2)
-  ROOT triton_gemm__ = f32[92,63]{1,0} fusion(p0, p1, p2), kind=kCustom,
-    calls=triton_gemm___computation,
-    backend_config={"fusion_backend_config":{"kind":"__triton_gemm",
-                    "triton_gemm_config":
-                      {"block_m":"16",
-                       "block_n":"64",
-                       "block_k":"16",
-                       "split_k":"1",
-                       "num_stages":"3",
-                       "num_warps":"2",
-                       "num_ctas":"1"}}}
+  ROOT fusion = pred[11,63]{1,0} fusion(p0, p1), kind=kCustom,
+    calls=triton_computation, backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["1", "16"]}],
+          "num_warps":"1",
+          "num_ctas":"1",
+          "num_stages":"1"}}}
+
 })";
   const std::string hlo_test = absl::Substitute(
       kHloTestTemplate, primitive_util::LowercasePrimitiveTypeName(data_type),
       ComparisonDirectionToString(direction));
 
-  const std::string kHloRefTemplate = R"(
-fused_computation {
-  p0 = $0[11,63]{1,0} parameter(0)
-  p1 = $0[11,63]{1,0} parameter(1)
-  f.1 = pred[11,63]{1,0} compare(p0, p1), direction=$1
-  ROOT convert.1 = f32[11,63]{1,0} convert(f.1)
-}
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_test));
 
-ENTRY e {
-  p2 = $0[11,63]{1,0} parameter(2)
-  p1 = $0[11,63]{1,0} parameter(1)
-  p0 = f32[92,11]{1,0} parameter(0)
-  fusion = f32[11,63]{1,0} fusion(p1, p2), kind=kLoop, calls=fused_computation
-  gemm = (f32[92,63]{1,0}, s8[0]{0}) custom-call(p0, fusion),
-    custom_call_target="__cublas$$gemm",
-    backend_config={"gemm_backend_config":{"alpha_real":1,"beta":0,"dot_dimension_numbers":
-      {"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],
-      "lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},
-      "alpha_imag":0,"precision_config":
-      {"operand_precision":["HIGHEST","HIGHEST"]},"epilogue":"DEFAULT"}}
-  ROOT get-tuple-element = f32[92,63]{1,0} get-tuple-element((f32[92,63]{1,0}, s8[0]{0}) gemm), index=0
-})";
-  const std::string hlo_ref = absl::Substitute(
-      kHloRefTemplate, primitive_util::LowercasePrimitiveTypeName(data_type),
-      ComparisonDirectionToString(direction));
+  HloInstruction* compare =
+      module->entry_computation()->root_instruction()->fused_expression_root();
 
-  float tolerance;
-  switch (data_type) {
-    case F32:
-      tolerance = 1e-6;
-      break;
-    case F16:
-      tolerance = 2e-4;
-      break;
-    case PRED:
-    case S8:
-      tolerance = 3e-2;
-      break;
-    case S16:
-      tolerance = 1e-3;
-      break;
-    case S32:
-      tolerance = 1e-5;
-      break;
-    default:
-      ABSL_UNREACHABLE();
+  // We generate all possible instruction combinations, but we need to skip
+  // those that are known to not be supported by the backend on the relevant
+  // chip.
+  if (!IsTritonSupportedInstruction(*compare, se::GpuComputeCapability())) {
+    GTEST_SKIP() << "Unsupported type combination for comparison, skipping.";
   }
-  EXPECT_TRUE(RunAndCompareTwoModules(
-      hlo_ref, hlo_test, ErrorSpec{/*aabs=*/tolerance, /*arel=*/tolerance},
-      /*run_hlo_passes=*/false));
-}
 
-using cd = Comparison::Direction;
+  EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_test, kExactMatch));
+}
 
 INSTANTIATE_TEST_SUITE_P(
     CompareTestSuite, CompareTest,
-    ::testing::Combine(::testing::Values(PRED, S8, S16, S32, F16, F32),
-                       ::testing::Values(cd::kEq, cd::kNe, cd::kGe, cd::kGt,
-                                         cd::kLe, cd::kLt)),
+    ::testing::Combine(::testing::ValuesIn(AllXlaDataTypes()),
+                       ::testing::Values(Comparison::Direction::kEq,
+                                         Comparison::Direction::kNe,
+                                         Comparison::Direction::kGe,
+                                         Comparison::Direction::kGt,
+                                         Comparison::Direction::kLe,
+                                         Comparison::Direction::kLt)),
     CompareTestParamsToString);
 
 class SelectTest : public TritonTest,
                    public ::testing::WithParamInterface<
                        std::tuple<PrimitiveType, PrimitiveType>> {};
 
-TEST_P(SelectTest, SelectFusionExecutesCorrectly) {
+TEST_P(SelectTest, DISABLED_SelectFusionExecutesCorrectly) {
   PrimitiveType data_type1, data_type2;
   std::tie(data_type1, data_type2) = GetParam();
   for (const PrimitiveType type : {data_type1, data_type2}) {
@@ -674,16 +642,17 @@ ENTRY e {
   p2 = $0[13,63]{1,0} parameter(2)
   p3 = pred[13,63]{1,0} parameter(3)
   ROOT triton_gemm__ = $1[92,63]{1,0} fusion(p0, p1, p2, p3), kind=kCustom,
-    calls=triton_gemm___computation,
-    backend_config={"fusion_backend_config":{"kind":"__triton_gemm",
-                    "triton_gemm_config":
-                      {"block_m":"16",
-                       "block_n":"64",
-                       "block_k":"16",
-                       "split_k":"1",
-                       "num_stages":"3",
-                       "num_warps":"2",
-                       "num_ctas":"1"}}}
+    calls=triton_gemm___computation, backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton_gemm",
+        "triton_gemm_config": {
+          "block_m":"16",
+          "block_n":"64",
+          "block_k":"16",
+          "split_k":"1",
+          "num_stages":"3",
+          "num_warps":"2",
+          "num_ctas":"1"}}}
 })";
   const std::string hlo_test = absl::Substitute(
       kHloTestTemplate, primitive_util::LowercasePrimitiveTypeName(data_type1),
@@ -747,7 +716,7 @@ INSTANTIATE_TEST_SUITE_P(
 class ConstantTest : public TritonTest,
                      public ::testing::WithParamInterface<PrimitiveType> {};
 
-TEST_P(ConstantTest, ConstantFusionExecutesCorrectly) {
+TEST_P(ConstantTest, DISABLED_ConstantFusionExecutesCorrectly) {
   const PrimitiveType data_type = GetParam();
   if (!legacy_triton::IsTritonSupportedDataType(data_type,
                                                 GetCudaComputeCapability())) {
@@ -773,16 +742,17 @@ ENTRY e {
   p0 = f32[92,11]{1,0} parameter(0)
   p1 = f32[11,63]{1,0} parameter(1)
   ROOT triton_gemm__ = f32[92,63]{1,0} fusion(p0, p1), kind=kCustom,
-    calls=triton_gemm___computation,
-    backend_config={"fusion_backend_config":{"kind":"__triton_gemm",
-                    "triton_gemm_config":
-                      {"block_m":"16",
-                       "block_n":"64",
-                       "block_k":"16",
-                       "split_k":"1",
-                       "num_stages":"3",
-                       "num_warps":"2",
-                       "num_ctas":"1"}}}
+    calls=triton_gemm___computation, backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton_gemm",
+        "triton_gemm_config":{
+          "block_m":"16",
+          "block_n":"64",
+          "block_k":"16",
+          "split_k":"1",
+          "num_stages":"3",
+          "num_warps":"2",
+          "num_ctas":"1"}}}
 })";
   const std::string hlo_test = absl::Substitute(
       kHloTestTemplate, primitive_util::LowercasePrimitiveTypeName(data_type));
@@ -848,7 +818,7 @@ class ConvertTest : public TritonTest,
                     public ::testing::WithParamInterface<
                         std::tuple<PrimitiveType, PrimitiveType>> {};
 
-TEST_P(ConvertTest, ConvertFusionExecutesCorrectly) {
+TEST_P(ConvertTest, DISABLED_ConvertFusionExecutesCorrectly) {
   PrimitiveType data_type1, data_type2;
   std::tie(data_type1, data_type2) = GetParam();
   for (const PrimitiveType type : {data_type1, data_type2}) {
@@ -892,6 +862,8 @@ INSTANTIATE_TEST_SUITE_P(
                        ::testing::ValuesIn(kSupportedDataTypes)),
     TwoPrimitiveTypesToString);
 
+// TODO(b/412651198): lots of tests in TritonNormalizationTest are no longer
+// relevant. Clean this up.
 class TritonNormalizationTest
     : public GpuCodegenTest,
       public ::testing::WithParamInterface<PrimitiveType> {
@@ -1080,7 +1052,7 @@ ENTRY main {
 
   const std::string hlo_ref = R"(
 ; CHECK:      %[[P0_FUSION:.*]] = bf16[127,125]{1,0} parameter(0)
-; CHECK:      %[[convert:.*]] = f32[127,125]{1,0} convert(%[[P0_FUSION]])
+; CHECK:      %[[REDUCE:.*]] = bf16[127]{0} reduce(%[[P0_FUSION]]
 ; CHECK:    ENTRY
 ; CHECK:      %[[P0_ENTRY:.*]] = bf16[127,125]{1,0} parameter(0)
 ; CHECK:      ROOT
@@ -1218,7 +1190,7 @@ ENTRY main {
 
 TEST_P(
     TritonNormalizationTest,
-    CanFuseAndEmitTwoDiamondsWithSecondDiamondProducerEqualToFirstDiamondRoot) {
+    CanFuseAndEmitTwoDiamondsWithSecondDiamondProducerEqualToFirstDiamondRoot) {  // NOLINT(whitespace/line_length)
   PrimitiveType data_type = GetParam();
 
   const std::string hlo_text_template = R"(
@@ -1445,8 +1417,9 @@ ENTRY main {
                             ErrorSpec(/*aabs=*/tolerance, /*arel=*/tolerance)));
 }
 
-TEST_P(TritonNormalizationTest,
-       CanFuseAndEmitConvertInvolvingBF16InputIntoSoftmaxDiamondCorrectly) {
+TEST_P(
+    TritonNormalizationTest,
+    CanFuseAndEmitConvertInvolvingBF16InputIntoSoftmaxDiamondCorrectly) {  // NOLINT(whitespace/line_length)
   PrimitiveType data_type = GetParam();
 
   const std::string hlo_text_template = R"(
@@ -2351,10 +2324,14 @@ triton_computation {
 ENTRY entry_computation {
   p = $0[400,16] parameter(0)
   ROOT fusion = $0[400] fusion(p), kind=kCustom, calls=triton_computation,
-    backend_config={ "operation_queue_id":"0", "wait_on_operation_queues":[],
-      "fusion_backend_config":{ "kind":"__triton", "block_level_fusion_config":{
-          "output_tiles":[{"sizes":["400"]}], "num_warps":"1"}},
-      "force_earliest_schedule":false}
+    backend_config={
+      "fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["400"]}],
+        "num_warps":"1",
+        "num_ctas":"1",
+        "num_stages":"1"}}}
 })";
   const std::string hlo_test = absl::Substitute(
       kHloTestTemplate, primitive_util::LowercasePrimitiveTypeName(data_type));

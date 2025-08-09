@@ -1,0 +1,41 @@
+diff --git a/BUILD.bazel b/BUILD.bazel
+index cc254457..49120384 100644
+--- a/BUILD.bazel
++++ b/BUILD.bazel
+@@ -142,16 +142,16 @@ cc_library(
+     }),
+     deps = select({
+         ":has_absl": [
+-            "@abseil-cpp//absl/container:flat_hash_set",
+-            "@abseil-cpp//absl/debugging:failure_signal_handler",
+-            "@abseil-cpp//absl/debugging:stacktrace",
+-            "@abseil-cpp//absl/debugging:symbolize",
+-            "@abseil-cpp//absl/flags:flag",
+-            "@abseil-cpp//absl/flags:parse",
+-            "@abseil-cpp//absl/flags:reflection",
+-            "@abseil-cpp//absl/flags:usage",
+-            "@abseil-cpp//absl/strings",
+-            "@re2",
++            "@com_google_absl//absl/container:flat_hash_set",
++            "@com_google_absl//absl/debugging:failure_signal_handler",
++            "@com_google_absl//absl/debugging:stacktrace",
++            "@com_google_absl//absl/debugging:symbolize",
++            "@com_google_absl//absl/flags:flag",
++            "@com_google_absl//absl/flags:parse",
++            "@com_google_absl//absl/flags:reflection",
++            "@com_google_absl//absl/flags:usage",
++            "@com_google_absl//absl/strings",
++            "@com_googlesource_code_re2//:re2",
+         ],
+         "//conditions:default": [],
+     }) + select({
+@@ -160,9 +160,6 @@ cc_library(
+         # so that's why these libraries are needed.
+         # Otherwise, builds targeting Fuchsia would fail to compile.
+         ":fuchsia": [
+-            "@fuchsia_sdk//pkg/fdio",
+-            "@fuchsia_sdk//pkg/syslog",
+-            "@fuchsia_sdk//pkg/zx",
+         ],
+         "//conditions:default": [],
+     }),

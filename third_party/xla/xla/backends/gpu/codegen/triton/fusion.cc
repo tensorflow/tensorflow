@@ -33,6 +33,7 @@ limitations under the License.
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/MLIRContext.h"
@@ -41,14 +42,16 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/triton/fusion_emitter_legacy_matmul.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
+#include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
-#include "xla/service/gpu/kernel_arguments.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
@@ -59,10 +62,34 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
+
+// Since we are creating the kernel and splicing the impl_fn into it, we
+// need to manually annotate the kernel with the nvvm.annotations.
+static void PopulateNvvmAnnotations(
+    llvm::Module* llvm_module, llvm::Function* kernel,
+    TritonWrapperResult& triton_wrapper_result) {
+  llvm::NamedMDNode* dest_nvvm_annotations =
+      llvm_module->getOrInsertNamedMetadata("nvvm.annotations");
+  for (auto md : triton_wrapper_result.nvvm_annotations) {
+    if (auto node = llvm::dyn_cast<llvm::MDNode>(md)) {
+      if (node->getNumOperands() >= 1) {
+        std::vector<llvm::Metadata*> new_operands;
+        new_operands.reserve(node->getNumOperands());
+        new_operands.push_back(llvm::ValueAsMetadata::get(kernel));
+        for (unsigned i = 1; i < node->getNumOperands(); ++i) {
+          new_operands.push_back(node->getOperand(i));
+        }
+        llvm::MDNode* new_node =
+            llvm::MDNode::get(llvm_module->getContext(), new_operands);
+        dest_nvvm_annotations->addOperand(new_node);
+      }
+    }
+  }
+}
 
 absl::StatusOr<TritonWrapperResult>
 TritonFusion::GenerateTritonKernelAndWrapper(
@@ -75,7 +102,8 @@ TritonFusion::GenerateTritonKernelAndWrapper(
   absl::string_view fusion_kind = backend_config.kind();
   TritonWrapperResult triton_wrapper_result;
 
-  if (fusion_kind == kTritonFusionKind) {
+  if (fusion_kind == kTritonFusionKind ||
+      fusion_kind == kTritonNestedGemmFusionKind) {
     std::optional<LaunchConfig> launch_config = this->launch_config();
     if (!launch_config.has_value()) {
       return absl::InvalidArgumentError(absl::StrCat(
@@ -119,7 +147,8 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
   std::string suggested_kernel_name = std::string(fusion.name());
   TF_ASSIGN_OR_RETURN(
       auto kernel_arguments,
-      KernelArguments::Create(ir_emitter_context.buffer_assignment(), &fusion));
+      emitters::KernelArguments::Create(ir_emitter_context.buffer_assignment(),
+                                        GetDefaultBufferAlignment(), &fusion));
 
   const HloComputation* hlo_computation =
       fusion.fused_instructions_computation();
@@ -145,7 +174,8 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
     absl::string_view fusion_kind = backend_config.kind();
 
     LaunchDimensions launch_dimensions;
-    if (fusion_kind == kTritonFusionKind) {
+    if (fusion_kind == kTritonFusionKind ||
+        fusion_kind == kTritonNestedGemmFusionKind) {
       std::optional<LaunchConfig> launch_config = this->launch_config();
       // This check should be enforced by `GenerateTritonKernelWrapper`.
       CHECK(launch_config.has_value());
@@ -188,20 +218,21 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
         ir_emitter_context.llvm_module()->getFunction(impl_fn_name);
     TF_RET_CHECK(impl_fn);
 
-    llvm::Function* kernel;
-    std::vector<llvm_ir::IrArray> inputs;
-    std::vector<llvm_ir::IrArray> outputs;
     TF_ASSIGN_OR_RETURN(
-        std::tie(kernel, inputs, outputs),
-        BuildKernelPrototype(ir_emitter_context, suggested_kernel_name,
-                             kernel_arguments.args(), impl_fn->arg_size(),
+        llvm::Function * kernel,
+        BuildKernelPrototype(ir_emitter_context, impl_fn_name,
+                             suggested_kernel_name, kernel_arguments,
                              launch_dimensions, &builder));
+
+    PopulateNvvmAnnotations(ir_emitter_context.llvm_module(), kernel,
+                            triton_wrapper_result);
 
     // Move function body into kernel prototype.
     llvm::Function* prototype_func = builder.GetInsertBlock()->getParent();
     prototype_func->splice(prototype_func->begin(), impl_fn);
-    for (const auto& [arg, ir_array] : llvm::zip(impl_fn->args(), inputs)) {
-      arg.replaceAllUsesWith(ir_array.GetBasePointer());
+    for (const auto& [impl_fn_arg, kernel_arg] :
+         llvm::zip(impl_fn->args(), kernel->args())) {
+      impl_fn_arg.replaceAllUsesWith(&kernel_arg);
     }
     // Triton's kernel ABI expects an additional scratchpad global memory.
     // For now it is only used for on-device creation of TMA descriptors, which
@@ -227,9 +258,9 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
 
   FusionEmissionResult result;
   result.thunks.emplace_back(std::make_unique<KernelThunk>(
-      &fusion, entry->kernel_name, kernel_arguments.args(),
-      entry->launch_dimensions, entry->cluster_dim, entry->shmem_bytes,
-      entry->tma_metadata));
+      Thunk::ThunkInfo::WithProfileAnnotation(&fusion), entry->kernel_name,
+      kernel_arguments, entry->launch_dimensions, entry->cluster_dim,
+      entry->shmem_bytes, entry->tma_metadata));
 
   return result;
 }

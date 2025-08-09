@@ -337,6 +337,8 @@ message XNNPackSettings {
   // reloaded from this cache which can reduce initialization time and the
   // packing memory footprint.
   optional string weight_cache_file_path = 3;
+  // Extra flags to pass to xnn_create_runtime.
+  optional int32 runtime_flags = 4;
 }
 
 // CoreML Delegate settings.
@@ -550,6 +552,9 @@ message EdgeTpuSettings {
   }
   optional UseLayerIrTgcBackend use_layer_ir_tgc_backend = 10
       [default = USE_LAYER_IR_TGC_BACKEND_UNSPECIFIED];
+
+  // Whether to use TPU server for the inference.
+  optional bool use_tpu_server = 11 [default = false];
 }
 
 // Google EdgeTPU delegate settings.

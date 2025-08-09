@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
+#include "xla/backends/gpu/runtime/copy_thunk.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
@@ -39,6 +40,33 @@ class MemcpyFusion : public FusionInterface {
   absl::StatusOr<FusionEmissionResult> Emit(
       IrEmitterContext& ir_emitter_context,
       const HloFusionInstruction& fusion) const final;
+
+ private:
+  const HloFusionAnalysis& analysis_;
+  const BufferAssignment* buffer_assignment_;
+};
+
+// Special case of a fusion consisting only of instructions that can be
+// implemented using `memcpy`s. The difference between this fusion and
+// `MemcpyFusion` is that here we allow `memcpy`s that have dynamic offsets
+// (e.g. dynamic-slice in a while loop).
+class DynamicMemcpyFusion : public FusionInterface {
+ public:
+  DynamicMemcpyFusion(const HloFusionAnalysis& analysis,
+                      const BufferAssignment* buffer_assignment)
+      : analysis_(analysis), buffer_assignment_(buffer_assignment) {}
+
+  absl::StatusOr<FusionEmissionResult> Emit(
+      IrEmitterContext& ir_emitter_context,
+      const HloFusionInstruction& fusion) const final;
+
+  // Inexpensive checks to see if a fusion might be a dynamic memcpy fusion.
+  // If this returns true, GetMemcpyDescriptorForFusion might still fail.
+  static bool IsCandidateFusion(const HloFusionInstruction& fusion);
+
+  // Attempts to build a memcpy descriptor for the given fusion.
+  static std::optional<DynamicMemcpyThunk::MemcpyDescriptor>
+  GetMemcpyDescriptorForFusion(const HloFusionInstruction& fusion);
 
  private:
   const HloFusionAnalysis& analysis_;

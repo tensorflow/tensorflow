@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/tuple_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -55,8 +56,8 @@ namespace {
 HloInstruction* CreateConstant(const Shape& shape,
                                HloComputation* computation) {
   if (shape.IsTuple()) {
-    std::vector<HloInstruction*> tuple_arguments(shape.tuple_shapes_size());
-    for (int index = 0; index < shape.tuple_shapes_size(); ++index) {
+    std::vector<HloInstruction*> tuple_arguments(shape.tuple_shapes().size());
+    for (int index = 0; index < shape.tuple_shapes().size(); ++index) {
       tuple_arguments[index] =
           CreateConstant(shape.tuple_shapes(index), computation);
     }
@@ -82,7 +83,7 @@ void PrintSubexpression(HloInstruction* inst, int depth) {
 bool IsConstantScalarInt(const HloInstruction* inst) {
   return inst->opcode() == HloOpcode::kConstant &&
          ShapeUtil::IsEffectiveScalar(inst->shape()) &&
-         inst->shape().IsInteger();
+         inst->shape().AreAllLeavesIntegers();
 }
 
 bool IsNotContainedInLoop(const HloInstruction& while_hlo,
@@ -183,7 +184,7 @@ absl::Status HloControlFlowFlattening::FlattenWhileLoop(
       // Lazily extract the prefix on demand, reuse it as needed.
       if (prefix == nullptr) {
         prefix = TupleUtil::ExtractPrefix(
-            new_tuple, new_tuple->shape().tuple_shapes_size() - 1);
+            new_tuple, new_tuple->shape().tuple_shapes().size() - 1);
       }
       TF_RETURN_IF_ERROR(new_tuple->ReplaceUseWithDifferentShape(user, prefix));
     }
@@ -269,7 +270,7 @@ absl::Status HloControlFlowFlattening::RemoveInfeed(
     HloInstruction* infeed_hlo) const {
   CHECK_EQ(infeed_hlo->opcode(), HloOpcode::kInfeed);
   HloComputation* computation = infeed_hlo->parent();
-  CHECK_EQ(infeed_hlo->shape().tuple_shapes_size(), 2);
+  CHECK_EQ(infeed_hlo->shape().tuple_shapes().size(), 2);
   const Shape& infeed_shape = ShapeUtil::GetSubshape(infeed_hlo->shape(), {0});
 
   HloInstruction* custom_call = computation->AddInstruction(
@@ -296,7 +297,7 @@ HloControlFlowFlattening::RemoveRecvAndRecvDone(
   CHECK_EQ(recv->opcode(), HloOpcode::kRecv);
 
   HloComputation* computation = recv_done->parent();
-  CHECK_EQ(recv_done->shape().tuple_shapes_size(), 2);
+  CHECK_EQ(recv_done->shape().tuple_shapes().size(), 2);
   HloModule* module = computation->parent();
 
   HloInstruction* custom_call_recv =
@@ -336,7 +337,8 @@ absl::Status HloControlFlowFlattening::RemoveOutfeed(
   HloInstruction* custom_call =
       computation->AddInstruction(HloInstruction::CreateCustomCall(
           outfeed_hlo->shape(), outfeed_hlo->operands(),
-          kNopReturnTokenCustomCallTarget));
+          kNopReturnTokenCustomCallTarget, "",
+          CustomCallApiVersion::API_VERSION_STATUS_RETURNING));
   Cast<HloCustomCallInstruction>(custom_call)
       ->set_custom_call_has_side_effect(true);
   // For SPMD graphs, partitioner requires that side-effecting custom calls have
@@ -374,7 +376,8 @@ HloControlFlowFlattening::RemoveSendAndSendDone(
   HloInstruction* custom_call_send_done =
       computation->AddInstruction(HloInstruction::CreateCustomCall(
           send_done->shape(), send_done->operands(),
-          kNopReturnTokenCustomCallTarget));
+          kNopReturnTokenCustomCallTarget, "",
+          CustomCallApiVersion::API_VERSION_STATUS_RETURNING));
   std::string original_send_done_name(send_done->name());
   Cast<HloCustomCallInstruction>(custom_call_send_done)
       ->set_custom_call_has_side_effect(true);

@@ -17,111 +17,102 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <initializer_list>
-#include <memory>
 #include <string>
-#include <tuple>
 #include <utility>
+#include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "tsl/platform/logging.h"
+#include "xla/stream_executor/kernel_spec.pb.h"
 
 namespace stream_executor {
 
-KernelLoaderSpec::KernelLoaderSpec(absl::string_view kernel_name)
-    : kernel_name_(std::string(kernel_name)) {}
-
-InProcessSymbol::InProcessSymbol(void *symbol, std::string kernel_name)
-    : KernelLoaderSpec(std::move(kernel_name)), symbol_(symbol) {}
-
-CudaCubinInMemory::CudaCubinInMemory(absl::Span<const uint8_t> cubin_bytes,
-                                     absl::string_view kernel_name)
-    : KernelLoaderSpec(kernel_name), cubin_bytes_(cubin_bytes) {}
-
-const std::tuple<int, int> CudaPtxInMemory::kMinimumCapability{1, 0};
-
-CudaPtxInMemory::CudaPtxInMemory(absl::string_view ptx,
-                                 absl::string_view kernel_name)
-    : KernelLoaderSpec(kernel_name) {
-  ptx_by_compute_capability_[kMinimumCapability] = ptx.data();
+KernelLoaderSpec KernelLoaderSpec::CreateInProcessSymbolSpec(
+    void* symbol, std::string kernel_name, size_t arity,
+    KernelArgsPacking kernel_args_packing) {
+  return KernelLoaderSpec{InProcessSymbol{symbol}, std::move(kernel_name),
+                          arity, kernel_args_packing};
 }
 
-CudaPtxInMemory::CudaPtxInMemory(
-    const std::initializer_list<CudaPtxInMemory::PtxSpec> &spec_list,
-    absl::string_view kernel_name)
-    : KernelLoaderSpec(kernel_name) {
-  for (const auto &spec : spec_list) {
-    int major, minor;
-    absl::string_view ptx;
-    std::tie(major, minor, ptx) = spec;
-    ptx_by_compute_capability_[std::tuple<int, int>{major, minor}] = ptx.data();
-  }
+KernelLoaderSpec KernelLoaderSpec::CreateCudaCubinInMemorySpec(
+    absl::Span<const uint8_t> cubin_bytes, std::string kernel_name,
+    size_t arity, KernelArgsPacking kernel_args_packing) {
+  return KernelLoaderSpec{CudaCubinInMemory{cubin_bytes},
+                          std::move(kernel_name), arity, kernel_args_packing};
 }
 
-LlvmHostKernel::LlvmHostKernel(absl::string_view ir,
-                               absl::string_view entrypoint,
-                               absl::string_view kernel_name,
-                               absl::Span<std::string> options)
-    : KernelLoaderSpec(std::move(kernel_name)),
-      ir_(ir),
-      entrypoint_(entrypoint),
-      options_(options.cbegin(), options.cend()) {}
+KernelLoaderSpec KernelLoaderSpec::CreateOwningCudaCubinInMemorySpec(
+    std::vector<uint8_t> cubin_bytes, std::string kernel_name, size_t arity,
+    KernelArgsPacking kernel_args_packing) {
+  return KernelLoaderSpec{OwningCudaCubinInMemory{std::move(cubin_bytes)},
+                          std::move(kernel_name), arity, kernel_args_packing};
+}
 
-const char *CudaPtxInMemory::default_text() const {
-  if (ptx_by_compute_capability_.empty()) {
-    return nullptr;
+KernelLoaderSpec KernelLoaderSpec::CreateCudaPtxInMemorySpec(
+    absl::string_view ptx, std::string kernel_name, size_t arity,
+    KernelArgsPacking kernel_args_packing) {
+  return KernelLoaderSpec{CudaPtxInMemory{ptx}, std::move(kernel_name), arity,
+                          kernel_args_packing};
+}
+
+KernelLoaderSpec KernelLoaderSpec::CreateOwningCudaPtxInMemorySpec(
+    std::string ptx, std::string kernel_name, size_t arity,
+    KernelArgsPacking kernel_args_packing) {
+  return KernelLoaderSpec{OwningCudaPtxInMemory{std::move(ptx)},
+                          std::move(kernel_name), arity, kernel_args_packing};
+}
+
+absl::StatusOr<KernelLoaderSpecProto> KernelLoaderSpec::ToProto() const {
+  if (kernel_args_packing_ != nullptr) {
+    return absl::UnimplementedError(
+        "KernelLoaderSpecs with KernelArgsPacking are not currently"
+        "serializable.");
   }
 
-  return ptx_by_compute_capability_.begin()->second;
-}
-
-const char *CudaPtxInMemory::text(int compute_capability_major,
-                                  int compute_capability_minor) const {
-  std::tuple<int, int> capability{compute_capability_major,
-                                  compute_capability_minor};
-
-  auto ptx_iter = ptx_by_compute_capability_.find(capability);
-  if (ptx_iter == ptx_by_compute_capability_.end()) {
-    return nullptr;
+  if (has_in_process_symbol()) {
+    return absl::InvalidArgumentError(
+        "KernelLoaderSpec referencing in process device functions can't "
+        "be serialized.");
   }
 
-  return ptx_iter->second;
+  KernelLoaderSpecProto proto{};
+  proto.set_arity(arity_);
+  proto.set_kernel_name(kernel_name_);
+
+  if (has_cuda_cubin_in_memory()) {
+    absl::Span<const uint8_t> data = cuda_cubin_in_memory()->cubin_bytes;
+    proto.mutable_cubin()->mutable_data()->assign(data.begin(), data.end());
+  }
+
+  if (has_cuda_ptx_in_memory()) {
+    proto.mutable_ptx()->set_data(cuda_ptx_in_memory()->ptx);
+  }
+
+  CHECK(proto.has_cubin() || proto.has_ptx());
+
+  return proto;
 }
 
-MultiKernelLoaderSpec *MultiKernelLoaderSpec::AddInProcessSymbol(
-    void *symbol, absl::string_view kernel_name) {
-  CHECK(in_process_symbol_ == nullptr);
-  in_process_symbol_ =
-      std::make_shared<InProcessSymbol>(symbol, std::string(kernel_name));
-  return this;
-}
+absl::StatusOr<KernelLoaderSpec> KernelLoaderSpec::FromProto(
+    const KernelLoaderSpecProto& proto) {
+  if (proto.has_cubin()) {
+    const std::string& data = proto.cubin().data();
+    return KernelLoaderSpec::CreateOwningCudaCubinInMemorySpec(
+        std::vector<uint8_t>{data.begin(), data.end()}, proto.kernel_name(),
+        proto.arity());
+  }
 
-MultiKernelLoaderSpec *MultiKernelLoaderSpec::AddCudaCubinInMemory(
-    absl::Span<const uint8_t> cubin_bytes, absl::string_view kernel_name) {
-  CHECK(cuda_cubin_in_memory_ == nullptr);
-  cuda_cubin_in_memory_.reset(new CudaCubinInMemory{cubin_bytes, kernel_name});
-  return this;
-}
+  if (proto.has_ptx()) {
+    return KernelLoaderSpec::CreateOwningCudaPtxInMemorySpec(
+        proto.ptx().data(), proto.kernel_name(), proto.arity());
+  }
 
-MultiKernelLoaderSpec *MultiKernelLoaderSpec::AddCudaPtxInMemory(
-    absl::string_view ptx, absl::string_view kernel_name) {
-  CHECK(cuda_ptx_in_memory_ == nullptr);
-  cuda_ptx_in_memory_.reset(new CudaPtxInMemory{ptx, kernel_name});
-  return this;
+  return absl::InvalidArgumentError(
+      "Invalid KernelLoaderSpecProto. Neither PTX nor CUBIN payload has been "
+      "found.");
 }
-
-MultiKernelLoaderSpec *MultiKernelLoaderSpec::AddLlvmHostKernel(
-    absl::string_view ir, absl::string_view entrypoint,
-    absl::string_view kernel_name, absl::Span<std::string> options) {
-  CHECK(llvm_host_kernel_ == nullptr);
-  llvm_host_kernel_ =
-      std::make_shared<LlvmHostKernel>(ir, entrypoint, kernel_name, options);
-  return this;
-}
-
-MultiKernelLoaderSpec::MultiKernelLoaderSpec(
-    size_t arity, KernelArgsPacking kernel_args_packing)
-    : arity_(arity), kernel_args_packing_(std::move(kernel_args_packing)) {}
 
 }  // namespace stream_executor

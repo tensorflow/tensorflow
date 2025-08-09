@@ -15,12 +15,9 @@ limitations under the License.
 
 #include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <numeric>
 #include <optional>
-#include <tuple>
-#include <utility>
 #include <vector>
 
 #include "llvm/ADT/ArrayRef.h"
@@ -52,23 +49,20 @@ using xla::PrimitiveType;
 
 namespace xla {
 
-std::optional<std::tuple<DimLevelType, bool, bool>> ConvertDimLevelType(
+std::optional<DimLevelType> ConvertDimLevelType(
     mlir::sparse_tensor::LevelType lt) {
   auto f = mlir::sparse_tensor::getLevelFormat(lt);
   if (!f) return std::nullopt;
 
-  bool unique = mlir::sparse_tensor::isUniqueLT(lt);
-  bool ordered = mlir::sparse_tensor::isOrderedLT(lt);
   switch (*f) {
     case mlir::sparse_tensor::LevelFormat::Singleton:
-      return std::make_tuple(DimLevelType::DIM_SINGLETON, unique, ordered);
+      return DimLevelType::DIM_SINGLETON;
     case mlir::sparse_tensor::LevelFormat::Compressed:
-      return std::make_tuple(DimLevelType::DIM_COMPRESSED, unique, ordered);
+      return DimLevelType::DIM_COMPRESSED;
     case mlir::sparse_tensor::LevelFormat::Dense:
-      return std::make_tuple(DimLevelType::DIM_DENSE, unique, ordered);
+      return DimLevelType::DIM_DENSE;
     case mlir::sparse_tensor::LevelFormat::LooseCompressed:
-      return std::make_tuple(DimLevelType::DIM_LOOSE_COMPRESSED, unique,
-                             ordered);
+      return DimLevelType::DIM_LOOSE_COMPRESSED;
     default:
       return std::nullopt;
   }
@@ -91,50 +85,6 @@ Shape TypeToShape(mlir::Type type) {
     PrimitiveType primitive_type = ConvertMlirTypeToPrimitiveType(element_type);
     if (primitive_type != PrimitiveType::PRIMITIVE_TYPE_INVALID)
       return ShapeUtil::MakeShape(primitive_type, span);
-  } else if (auto m = mlir::dyn_cast<mlir::MemRefType>(type)) {
-    llvm::SmallVector<int64_t, 6> span(m.getShape().begin(),
-                                       m.getShape().end());
-    mlir::Type element_type = m.getElementType();
-    // Treat a memref of a vector as if it was a memref of primitive type with
-    // the vector dimensions at the end.
-    if (auto v = mlir::dyn_cast<mlir::VectorType>(element_type)) {
-      element_type = v.getElementType();
-      span.insert(span.end(), v.getShape().begin(), v.getShape().end());
-    }
-    PrimitiveType primitive_type = ConvertMlirTypeToPrimitiveType(element_type);
-    if (primitive_type == PrimitiveType::PRIMITIVE_TYPE_INVALID) return {};
-    // For the primitive type case, the shape of the memref is similar to the
-    // vector type case (i.e., it is, modulo the layout, the same dimensions
-    // and primitive type).
-    if (m.getLayout().isIdentity())
-      return ShapeUtil::MakeShape(primitive_type, span);
-
-    llvm::SmallVector<int64_t, 4> strides;
-    int64_t offset;
-    if (failed(m.getStridesAndOffset(strides, offset))) return {};
-
-    llvm::SmallVector<std::pair<int64_t, int>, 4> strides_with_indices;
-    for (const auto& e : llvm::enumerate(strides)) {
-      strides_with_indices.push_back({e.value(), e.index()});
-    }
-    std::stable_sort(strides_with_indices.begin(), strides_with_indices.end());
-
-    llvm::SmallVector<int64_t, 4> minor_to_major;
-    int64_t stride = 1;
-    for (const auto& pr : strides_with_indices) {
-      minor_to_major.push_back(pr.second);
-
-      // Either the affine map is not perfectly strided, or the dimensions
-      // recovered from strides don't match the actual dimensions in shapes.
-      if (stride != pr.first && m.getShape()[pr.second] != 1) return {};
-
-      stride *= m.getShape()[pr.second];
-    }
-
-    llvm::SmallVector<int64_t, 4> dimensions(m.getShape().begin(),
-                                             m.getShape().end());
-    return ::xla::ShapeUtil::MakeShapeWithDenseLayout(
-        primitive_type, dimensions, minor_to_major);
   } else if (auto t = mlir::dyn_cast<mlir::RankedTensorType>(type)) {
     // TODO(jpienaar): This is only handling the base case with primitive
     // element type.
@@ -180,17 +130,6 @@ Shape TypeToShape(mlir::Type type) {
       // added to xla
       if (sparse.getPosWidth() != 32 || sparse.getCrdWidth() != 32) return {};
 
-      llvm::SmallVector<DimLevelType, 3> lvl_types;
-      llvm::SmallVector<bool, 3> level_unique;
-      llvm::SmallVector<bool, 3> level_ordered;
-      for (auto lt : sparse.getLvlTypes()) {
-        auto new_lt = ConvertDimLevelType(lt);
-        if (!new_lt) return {};
-        lvl_types.push_back(std::get<0>(*new_lt));
-        level_unique.push_back(std::get<1>(*new_lt));
-        level_ordered.push_back(std::get<2>(*new_lt));
-      }
-
       std::vector<int64_t> ordering(rank);
       std::iota(ordering.rbegin(), ordering.rend(), 0);
       // Uses an identity map for dim ordering as the default value.
@@ -200,10 +139,9 @@ Shape TypeToShape(mlir::Type type) {
                                 rank, sparse.getContext());
       auto final_ordering = mlir::applyPermutationMap(
           dimToLvl, llvm::ArrayRef<int64_t>(ordering));
-      auto sparse_shape = ::xla::ShapeUtil::MakeShapeWithSparseLayout(
-          primitive_type, shape, final_ordering, lvl_types, level_unique,
-          level_ordered);
-      return sparse_shape;
+      return ::xla::ShapeUtil::MakeValidatedShapeWithSparseLayout(
+                 primitive_type, shape, final_ordering)
+          .value();
     }
 
     return ShapeUtil::MakeShape(primitive_type, shape, is_dynamic);

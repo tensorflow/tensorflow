@@ -16,18 +16,18 @@ limitations under the License.
 #ifndef XLA_SERVICE_EXECUTABLE_H_
 #define XLA_SERVICE_EXECUTABLE_H_
 
+#include <cstdint>
 #include <memory>
-#include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "absl/types/variant.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
@@ -41,8 +41,8 @@ limitations under the License.
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -66,26 +66,40 @@ namespace xla {
 class ExecutionInput {
  public:
   explicit ExecutionInput(xla::Shape shape) : buffers_(std::move(shape)) {
-    SetHostShape(ShapeUtil::DeviceShapeToHostShape(buffers_.shape()));
+    if (!ShapeUtil::DeviceShapeIsHostShape(buffers_.shape())) {
+      SetHostShape(ShapeUtil::DeviceShapeToHostShape(buffers_.shape()));
+    }
   }
   // TODO(b/170310047): remove this overload.
   ExecutionInput(xla::Shape shape, xla::Shape host_shape)
       : buffers_(std::move(shape)) {
-    SetHostShape(ShapeUtil::DeviceShapeToHostShape(buffers_.shape()));
+    if (!ShapeUtil::DeviceShapeIsHostShape(buffers_.shape())) {
+      SetHostShape(ShapeUtil::DeviceShapeToHostShape(buffers_.shape()));
+    }
+  }
+
+  explicit ExecutionInput(const xla::Shape* shape) : buffers_(shape) {
+    if (!ShapeUtil::DeviceShapeIsHostShape(buffers_.shape())) {
+      SetHostShape(ShapeUtil::DeviceShapeToHostShape(buffers_.shape()));
+    }
   }
 
   explicit ExecutionInput(ShapeTree<MaybeOwningDeviceMemory> buffers)
       : buffers_(std::move(buffers)) {
-    SetHostShape(ShapeUtil::DeviceShapeToHostShape(buffers_.shape()));
+    if (!ShapeUtil::DeviceShapeIsHostShape(buffers_.shape())) {
+      SetHostShape(ShapeUtil::DeviceShapeToHostShape(buffers_.shape()));
+    }
   }
   // TODO(b/170310047): remove this overload.
   ExecutionInput(ShapeTree<MaybeOwningDeviceMemory> buffers,
                  xla::Shape host_shape)
       : buffers_(std::move(buffers)) {
-    SetHostShape(ShapeUtil::DeviceShapeToHostShape(buffers_.shape()));
+    if (!ShapeUtil::DeviceShapeIsHostShape(buffers_.shape())) {
+      SetHostShape(ShapeUtil::DeviceShapeToHostShape(buffers_.shape()));
+    }
   }
 
-  ExecutionInput(ExecutionInput&&) = default;
+  ExecutionInput(ExecutionInput&&) noexcept;
 
   ~ExecutionInput();
 
@@ -116,7 +130,9 @@ class ExecutionInput {
     unowned_indices_.erase(index);
   }
 
-  const std::set<ShapeIndex>& unowned_indices() { return unowned_indices_; }
+  const absl::flat_hash_set<ShapeIndex>& unowned_indices() {
+    return unowned_indices_;
+  }
 
   const ShapeTree<MaybeOwningDeviceMemory>& Buffers() const { return buffers_; }
 
@@ -138,9 +154,11 @@ class ExecutionInput {
   }
 
   ShapeTree<MaybeOwningDeviceMemory> buffers_;
+
   // Set of indices of buffers that should be returned to the caller if an error
   // occurs when enqueuing the computation.
-  std::set<ShapeIndex> unowned_indices_;
+  absl::flat_hash_set<ShapeIndex> unowned_indices_;
+
   std::unique_ptr<Shape> dynamic_shape_;
   std::unique_ptr<Shape> host_shape_;
 };

@@ -2,7 +2,7 @@
 #   A common directory for cost modelling related code.
 
 load(
-    "//xla:xla.bzl",
+    "//xla:xla.default.bzl",
     "xla_cc_test",
 )
 load("//xla/tsl:tsl.bzl", "internal_visibility")
@@ -60,10 +60,8 @@ xla_cc_test(
         "//xla:shape_util",
         "//xla:util",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service:hlo_cost_analysis",
-        "//xla/service:hlo_runner",
-        "//xla/service:platform_util",
-        "//xla/tests:hlo_runner_agnostic_test_base",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",

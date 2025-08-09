@@ -20,13 +20,14 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/gpu/transforms/gemm_fusion.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/status_matchers.h"
@@ -39,7 +40,7 @@ namespace {
 using ::testing::ElementsAre;
 using ::testing::FieldsAre;
 
-using TritonDotAnalysisTest = HloTestBase;
+using TritonDotAnalysisTest = HloHardwareIndependentTestBase;
 
 TEST_F(TritonDotAnalysisTest, QueryingOutputScopeParametersAlwaysWorks) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
@@ -679,7 +680,7 @@ e {
                                                ->called_computations()[0];
   EXPECT_THAT(
       TritonFusionAnalysis::Execute(dot_computation),
-      tsl::testing::StatusIs(absl::StatusCode::kFailedPrecondition,
+      absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition,
                              ::testing::HasSubstr("Unsupported broadcast")));
 }
 
@@ -697,7 +698,7 @@ ENTRY e {
   ROOT bc = bf16[2,2,100] broadcast(dot), dimensions={0,1}
 })"));
   EXPECT_TRUE(GemmFusion(se::CudaComputeCapability{
-                             se::CudaComputeCapability::AMPERE, 0})
+                             se::CudaComputeCapability::kAmpere, 0})
                   .Run(module.get())
                   .value());
   EXPECT_EQ(module->entry_computation()->root_instruction()->opcode(),
@@ -834,35 +835,6 @@ ENTRY e {
                                     /*slice_start=*/0, /*sliced_count=*/2,
                                     /*subfragments=*/ElementsAre(2),
                                     /*broadcast_multiplier=*/1)));
-}
-
-TEST_F(TritonDotAnalysisTest, SparseDot) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
-triton_gemm {
-  lhs = bf16[5,16] parameter(0)
-  rhs = bf16[32,10] parameter(1)
-  meta = u16[5,2] parameter(2)
-  ROOT dot = f32[5,10] dot(lhs, rhs, meta),
-      lhs_contracting_dims={1}, rhs_contracting_dims={0}, sparsity=L.1@2:4
-}
-
-ENTRY main {
-  lhs = bf16[5,16] parameter(0)
-  rhs = bf16[32,10] parameter(1)
-  meta = u16[5,2] parameter(2)
-  ROOT out = f32[5,10] fusion(lhs, rhs, meta),
-      kind=kCustom, calls=triton_gemm, backend_config={kind:"__triton_gemm"}
-}
-)"));
-
-  const HloComputation* dot_computation =
-      module->entry_computation()->root_instruction()->called_computations()[0];
-  TF_ASSERT_OK_AND_ASSIGN(const auto analysis,
-                          TritonFusionAnalysis::Execute(*dot_computation));
-  EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::META,
-                                 dot_computation->parameter_instruction(2), 0),
-              ::testing::SizeIs(1));
 }
 
 TEST_F(TritonDotAnalysisTest, QueryScopeAlwaysWorks) {

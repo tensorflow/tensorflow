@@ -47,11 +47,11 @@ def TfExecutor_Dialect : Dialect {
 }
 
 // Control type.
-def TfeControlType : Type<CPred<"$_self.isa<ControlType>()">, "control">,
+def TfeControlType : Type<CPred<"llvm::isa<ControlType>($_self)">, "control">,
                      BuildableType<"$_builder.getType<ControlType>()">;
 
 // Token type.
-def TfeTokenType : Type<CPred<"$_self.isa<TokenType>()">, "token">,
+def TfeTokenType : Type<CPred<"llvm::isa<TokenType>($_self)">, "token">,
                    BuildableType<"$_builder.getType<TokenType>()">;
 
 // TODO(hinsu): Define and use TensorType instead of AnyType for data operands

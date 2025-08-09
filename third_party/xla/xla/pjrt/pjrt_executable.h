@@ -26,8 +26,6 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -36,11 +34,12 @@ limitations under the License.
 #include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
-#include "xla/pjrt/compile_options.pb.h"
-#include "xla/pjrt/executable_metadata.pb.h"
-#include "xla/pjrt/execute_options.pb.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_layout.h"
+#include "xla/pjrt/proto/compile_options.pb.h"
+#include "xla/pjrt/proto/executable_metadata.pb.h"
+#include "xla/pjrt/proto/execute_options.pb.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/compiler.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
@@ -49,6 +48,8 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 namespace xla {
+
+class PjRtClient;
 
 // Provides configuration for implementations that support compile and execute
 // spanning multiple slices. A slice is a set of devices connected by dedicated
@@ -120,9 +121,7 @@ struct CompileOptions {
   absl::Status ApplyOptionFromString(
       const tsl::protobuf::FieldDescriptor* field, const std::string& value);
 
-  static absl::StatusOr<
-      std::vector<std::pair<std::string, CompileOptions::OptionOverride>>>
-  LoadEnvOptionOverrides(
+  static absl::StatusOr<EnvironmentOptionOverrides> LoadEnvOptionOverrides(
       const google::protobuf::Map<std::string, xla::OptionOverrideProto>&
           env_option_overrides);
 
@@ -271,6 +270,11 @@ struct ExecuteOptions {
   // specific input buffers.
   absl::flat_hash_set<int> non_donatable_input_indices;
 
+  // Execution stream ID identifies the series of executions that must be
+  // executed in program order.  Executions with different execution stream IDs
+  // may be executed in any order and concurrently.
+  int64_t execution_stream_id = 0;
+
   absl::StatusOr<ExecuteOptionsProto> ToProto() const;
   static absl::StatusOr<ExecuteOptions> FromProto(
       const ExecuteOptionsProto& proto);
@@ -286,6 +290,7 @@ struct CompiledMemoryStats {
   int64_t generated_code_size_in_bytes = 0;
   int64_t argument_size_in_bytes = 0;
   int64_t output_size_in_bytes = 0;
+  int64_t peak_memory_in_bytes = 0;
   // How much argument is reused for output.
   int64_t alias_size_in_bytes = 0;
   int64_t temp_size_in_bytes = 0;
@@ -297,7 +302,8 @@ struct CompiledMemoryStats {
   int64_t host_alias_size_in_bytes = 0;
   int64_t host_temp_size_in_bytes = 0;
 
-  std::string serialized_hlo_proto = "";
+  std::string serialized_buffer_assignment;
+
   std::string DebugString() const;
 
   CompiledMemoryStatsProto ToProto() const;
@@ -321,7 +327,7 @@ class PjRtExecutable {
   // Unique name for this executable, e.g., HloModule name.
   virtual absl::string_view name() const = 0;
 
-  // Return an HloModule (optimized) per partition.
+  // Return an array of HloModule (optimized) per partition.
   virtual absl::StatusOr<std::vector<std::shared_ptr<HloModule>>>
   GetHloModules() const = 0;
 
@@ -363,27 +369,31 @@ class PjRtExecutable {
   // Return memory stats that allow callers to estimate device memory usage
   // when running this executable.
   virtual absl::StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const {
-    return Unimplemented("Retrieving CompiledMemoryStats is not supported.");
+    return absl::UnimplementedError(
+        "GetCompiledMemoryStats is not implemented.");
   }
 
   // Returns named values for cost properties of this executable (such as
   // operations, size of input/outputs, and run time estimate). Properties may
   // differ for different platforms.
   virtual absl::StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
-  GetCostAnalysis() const = 0;
+  GetCostAnalysis() const {
+    return absl::UnimplementedError("GetCostAnalysis is not implemented.");
+  }
 
   // Serialize this executable into a string and return the value.
   virtual absl::StatusOr<std::string> SerializeExecutable() const {
-    return Unimplemented("Serializing executable is not supported.");
+    return absl::UnimplementedError("SerializeExecutable is not implemented.");
   }
 
   // Return a fingerprint of this executable.
   virtual absl::StatusOr<std::string> FingerprintExecutable() const {
-    return Unimplemented("Fingerprinting executable is not supported.");
+    return absl::UnimplementedError(
+        "FingerprintExecutable is not implemented.");
   }
 
   virtual absl::StatusOr<struct CompileOptions> GetCompileOptions() const {
-    return Unimplemented("CompileOptions not available.");
+    return absl::UnimplementedError("GetCompileOptions is not implemented.");
   }
 };
 

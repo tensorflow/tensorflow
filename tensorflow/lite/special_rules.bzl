@@ -78,6 +78,12 @@ def verifier_internal_visibility_allowlist():
     This is a no-op outside of Google."""
     return []
 
+def gpu_compatibility_without_gl_deps_internal_visibility_allowlist():
+    """Returns a list of packages that can depend on tensorflow/lite/experimental/acceleration/compatibility:gpu_compatibility_without_gl_deps.
+
+    This is a no-op outside of Google."""
+    return []
+
 def xnnpack_plugin_impl_visibility_allowlist():
     """Returns a list of packages that can depend on tensorflow/lite/core/acceleration/configuration:xnnpack_plugin.
 

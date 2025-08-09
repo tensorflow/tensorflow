@@ -21,8 +21,6 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
-#include "riegeli/bytes/fd_reader.h"  // from @riegeli
-#include "riegeli/records/record_reader.h"  // from @riegeli
 #include "tensorflow/tools/proto_splitter/chunk.pb.h"
 #include "tsl/platform/protobuf.h"
 
@@ -60,6 +58,10 @@ class Merger {
       const ::tensorflow::proto_splitter::ChunkMetadata& chunk_metadata,
       tsl::protobuf::Message* merged_message);
 
+  // Deserializes a chunked protobuf from a string into `merged_message`.
+  static absl::Status ReadChunkedFromString(
+      absl::string_view data, tsl::protobuf::Message* merged_message);
+
  private:
   // Reads a normal saved_model.pb proto in.
   static absl::Status ReadPb(const std::string& pb_file,
@@ -67,9 +69,10 @@ class Merger {
 
   // Uses metadata contained in `chunked_message` to fill `merged_message` with
   // data accessed by the `reader` using `chunks_info`.
+  template <typename RecordReader>
   static absl::Status ReadFields(
       const ::tensorflow::proto_splitter::ChunkedMessage& chunked_message,
-      riegeli::RecordReader<riegeli::FdReader<>>& reader,
+      RecordReader& reader,
       const std::vector<::tensorflow::proto_splitter::ChunkInfo>&
           chunks_info,  // TODO(adamcogdell): this can just be a
                         // RepeatedPtrField
@@ -80,12 +83,13 @@ class Merger {
   // either MergeFields or ReadFields is called to recursively (depending on the
   // value of `op`) to add those fields to `merged_message`. Otherwise, the
   // field is simply added to `merged_message` using reflection.
+  template <typename RecordReader>
   static absl::Status ProcessField(
       const ::tensorflow::proto_splitter::ChunkedField& chunked_field,
       tsl::protobuf::Message* merged_message,
       const std::vector<::tensorflow::proto_splitter::ChunkInfo>& chunks_info,
       const std::vector<std::unique_ptr<tsl::protobuf::Message>>& chunks,
-      riegeli::RecordReader<riegeli::FdReader<>>& reader, MergerOp op);
+      RecordReader& reader, MergerOp op);
 };
 
 }  // namespace tensorflow::tools::proto_splitter

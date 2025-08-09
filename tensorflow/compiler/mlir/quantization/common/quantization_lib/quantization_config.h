@@ -28,7 +28,6 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/compiler/mlir/lite/tools/optimize/reduced_precision_metadata.h"
 #include "tensorflow/core/framework/types.pb.h"
 
 namespace mlir {
@@ -43,7 +42,7 @@ struct CustomOpInfo {
 
 using CustomOpMap = std::unordered_map<std::string, CustomOpInfo>;
 enum CustomOpUpdateOptions { kInputIndices, kWeightOnly, kNoSideEffect };
-enum class QDQConversionMode { kQDQNone, kQDQStatic, kQDQDynamic };
+enum class QDQConversionMode { kQDQNone, kQDQStatic, kQDQDynamic, kQDQStrict };
 
 struct QuantizationSpecs {
   // Which function this node quant specifications belong to.
@@ -132,10 +131,6 @@ struct QuantizationSpecs {
   // A serialized "QuantizationInfo" object to specify value ranges for some of
   // the tensors with known names.
   std::string serialized_quant_stats = "";
-
-  // A bitmask to encode support for reduced precision inference in the model.
-  tflite::optimize::ReducedPrecisionSupport support_mask =
-      tflite::optimize::ReducedPrecisionSupport::None;
 
   // Whether to run the passes to propagate the quantization parameters and
   // graph rewrites. Returns false if the inference_type is DT_FLOAT or
@@ -246,6 +241,9 @@ bool GetInputNodeQuantSpecs(const std::vector<std::string>& node_names,
 
 // Returns a human-readable string of the QDQQuantMode enum class
 std::string GetQDQQuantModeString(QDQConversionMode mode);
+
+// Returns the QDQQuantMode enum class from a human-readable string
+QDQConversionMode GetQDQQuantModeFromString(const std::string& mode_str);
 }  // namespace quant
 }  // namespace mlir
 

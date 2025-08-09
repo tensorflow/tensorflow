@@ -21,15 +21,14 @@ limitations under the License.
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SMLoc.h"
 #include "llvm/Support/SourceMgr.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Parser/Parser.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LogicalResult.h"
-#include "stablehlo/dialect/Register.h"
 #include "xla/hlo/translate/mhlo_to_hlo/translate.h"
+#include "xla/hlo/translate/register.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 
 namespace xla {
@@ -58,7 +57,9 @@ mlir::LogicalResult StablehloToHloTextTranslateFunction(
   if (!module) return mlir::failure();
 
   mlir::PassManager pm(module->getContext());
-  pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
+  mlir::mhlo::StablehloLegalizeToHloPassOptions shlo_pass_opts;
+  shlo_pass_opts.convert_xla_supported_stablehlo_ = false;
+  pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass(shlo_pass_opts));
   if (failed(pm.run(module))) {
     module->dump();
     return mlir::failure();
@@ -66,7 +67,8 @@ mlir::LogicalResult StablehloToHloTextTranslateFunction(
 
   return xla::MlirHloToHloTextTranslateFunction(
       module, output, emit_return_tuple, emit_use_tuple_arg, print_layouts,
-      print_large_constants, print_sugar, via_builder, with_layouts);
+      print_large_constants, print_sugar, via_builder, with_layouts,
+      /*direct_stablehlo_to_hlo=*/true);
 }
 
 mlir::LogicalResult StablehloToHloTextMain(
@@ -78,8 +80,7 @@ mlir::LogicalResult StablehloToHloTextMain(
   source_mgr->AddNewSourceBuffer(std::move(buffer), llvm::SMLoc());
 
   mlir::DialectRegistry registry;
-  mlir::stablehlo::registerAllDialects(registry);
-  registry.insert<mlir::func::FuncDialect>();
+  xla::RegisterMlirToHloDependentDialects(registry);
 
   mlir::MLIRContext context(registry);
   mlir::OwningOpRef<mlir::ModuleOp> module =

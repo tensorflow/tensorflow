@@ -27,15 +27,31 @@ limitations under the License.
 
 namespace xla {
 
+// Translates the given MLIR module containing MHLO to a HLO module.
+// The resulting HLO is written to the output stream.
+// `emit_return_tuple` controls whether the return value should be a tuple.
+// `emit_use_tuple_arg` controls whether the arguments should be a tuple.
 mlir::LogicalResult MlirHloToHloTranslateFunction(mlir::ModuleOp module,
                                                   llvm::raw_ostream& output,
                                                   bool emit_return_tuple,
                                                   bool emit_use_tuple_arg);
 
+// Translates the given MLIR module containing MHLO to a HLO text program.
+// The resulting HLO text is written to the output stream.
+// `emit_return_tuple` controls whether the return value should be a tuple.
+// `emit_use_tuple_arg` controls whether the arguments should be a tuple.
+// `print_layouts` controls whether to print layouts.
+// `print_large_constants` controls whether to print large constants.
+// `print_sugar` controls whether to print sugar.
+// `via_builder` controls whether to use the HLO builder.
+// `with_layouts` controls whether to print layouts.
+// `direct_stablehlo_to_hlo` controls whether to translate StableHLO directly to
+// HLO.
 mlir::LogicalResult MlirHloToHloTextTranslateFunction(
     mlir::ModuleOp module, llvm::raw_ostream& output, bool emit_return_tuple,
     bool emit_use_tuple_arg, bool print_layouts, bool print_large_constants,
-    bool print_sugar, bool via_builder, bool with_layouts);
+    bool print_sugar, bool via_builder, bool with_layouts,
+    bool direct_stablehlo_to_hlo = false);
 
 // Translate the MHLO program in in-memory file 'buffer' to a HLO program
 // written in a file represented with handle 'output_stream';

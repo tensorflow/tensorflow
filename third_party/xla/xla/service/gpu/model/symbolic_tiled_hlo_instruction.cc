@@ -18,16 +18,31 @@ limitations under the License.
 #include <sstream>
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "xla/service/gpu/model/symbolic_tile.h"
 
 namespace xla {
 namespace gpu {
 
-std::string SymbolicTiledHloInstruction::ToString() const {
+std::string SymbolicTiledHloInstruction::ToString(
+    absl::string_view field_separator) const {
   std::stringstream ss;
-  ss << "\thlo: " << hlo_->ToString() << "\n";
-  ss << "\t" << symbolic_tile().ToString() << "\n";
-  ss << "\tindexing map: " << indexing_map_ << "\n";
+  ss << "hlo: " << hlo_->ToString() << field_separator;
+  if (symbolic_tile_.has_value()) {
+    ss << symbolic_tile().ToString();
+  } else {
+    ss << "(no symbolic tile)";
+  }
+  ss << field_separator;
+  ss << "indexing map: " << indexing_map_;
+  if (!runtime_variables_.empty()) {
+    ss << field_separator;
+    ss << "runtime operands: (";
+    for (const auto& rt_var : runtime_variables_) {
+      ss << rt_var->ToString() << field_separator;
+    }
+    ss << ")";
+  }
   return ss.str();
 }
 

@@ -44,7 +44,7 @@ pybind_extension(
         ":intn",
         ":mxfloat",
         "@eigen_archive//:eigen3",
-        "@local_tsl//third_party/py/numpy:headers",
+        "@local_xla//third_party/py/numpy:headers",
     ],
 )
 
@@ -55,6 +55,6 @@ py_library(
         "_finfo.py",
         "_iinfo.py",
     ],
+    data = [":_ml_dtypes_ext"],
     imports = ["."],  # Import relative to _this_ directory, not the root.
-    deps = [":_ml_dtypes_ext"],
 )

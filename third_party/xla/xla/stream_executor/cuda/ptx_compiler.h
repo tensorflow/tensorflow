@@ -20,7 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/statusor.h"
-#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/semantic_version.h"
 
@@ -33,6 +33,10 @@ absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingLibNvPtxCompiler(
     bool cancel_if_reg_spill);
 
 absl::StatusOr<SemanticVersion> GetLibNvPtxCompilerVersion();
+
+// Returns the latest PTX ISA version supported by the underlying version of the
+// NVPTX compiler.
+absl::StatusOr<int> GetLatestPtxIsaVersionForNvptxCompiler();
 
 }  // namespace stream_executor
 

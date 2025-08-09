@@ -1,4 +1,5 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 
@@ -13,12 +14,7 @@ package(
 
 gentbl_cc_library(
     name = "MklPDLLPatternsIncGen",
-    tbl_outs = [
-        (
-            ["-x=cpp"],
-            "pdll/MklPDLLPatterns.h.inc",
-        ),
-    ],
+    tbl_outs = {"pdll/MklPDLLPatterns.h.inc": ["-x=cpp"]},
     tblgen = "@llvm-project//mlir:mlir-pdll",
     td_file = "pdll/mkl_patterns.pdll",
     deps = [

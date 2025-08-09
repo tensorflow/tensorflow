@@ -57,7 +57,7 @@ absl::StatusOr<tensorflow::NodeDef> BuildNodeDef(
     const std::function<absl::Status(tensorflow::AttrValueMap*)>&
         attr_builder) {
   tensorflow::NodeDef node_def;
-  node_def.set_name(std::string(node_name));
+  node_def.set_name(node_name);
   node_def.set_op(op_def.name());
   for (int i = 0; i < num_args; ++i) {
     node_def.add_input("dummy_input");
@@ -157,8 +157,8 @@ OpKernelRunner::OpKernelRunner(
     tensorflow::FunctionLibraryRuntime* function_library_runtime,
     std::unique_ptr<tensorflow::OpKernel> op_kernel)
     : op_kernel_(std::move(op_kernel)),
-      op_name_(op_name),
-      info_(std::make_unique<Info>()) {
+      info_(std::make_unique<Info>()),
+      op_name_(op_name) {
   DCHECK(device);
   DCHECK(function_library_runtime);
 

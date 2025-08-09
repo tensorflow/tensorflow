@@ -34,11 +34,11 @@ struct CudaComputeCapability {
 
   // MSVC does not like "PASCAL" symbol.
   enum CudaComputeCapabilities {
-    PASCAL_ = 6,
-    VOLTA = 7,
-    AMPERE = 8,
-    HOPPER = 9,
-    BLACKWELL = 10
+    kPascal = 6,
+    kVolta = 7,
+    kAmpere = 8,
+    kHopper = 9,
+    kBlackwell = 10
   };
 
   constexpr CudaComputeCapability() = default;
@@ -57,19 +57,19 @@ struct CudaComputeCapability {
   }
 
   static CudaComputeCapability Volta() {
-    return CudaComputeCapability{VOLTA, 0};
+    return CudaComputeCapability{kVolta, 0};
   }
 
   static CudaComputeCapability Ampere() {
-    return CudaComputeCapability{AMPERE, 0};
+    return CudaComputeCapability{kAmpere, 0};
   }
 
   static CudaComputeCapability Hopper() {
-    return CudaComputeCapability{HOPPER, 0};
+    return CudaComputeCapability{kHopper, 0};
   }
 
   static CudaComputeCapability Blackwell() {
-    return CudaComputeCapability{BLACKWELL, 0};
+    return CudaComputeCapability{kBlackwell, 0};
   }
 
   bool IsAtLeast(int other_major, int other_minor = 0) const {
@@ -81,24 +81,30 @@ struct CudaComputeCapability {
   }
 
   bool IsAtLeastVolta() const {
-    return major >= CudaComputeCapabilities::VOLTA;
+    return major >= CudaComputeCapabilities::kVolta;
   }
 
   bool IsAtLeastAmpere() const {
-    return major >= CudaComputeCapabilities::AMPERE;
+    return major >= CudaComputeCapabilities::kAmpere;
   }
 
+  bool IsAtLeastAda() const { return IsAtLeast(8, 9); }
+
   bool IsAtLeastHopper() const {
-    return major >= CudaComputeCapabilities::HOPPER;
+    return major >= CudaComputeCapabilities::kHopper;
   }
 
   bool IsAtLeastBlackwell() const {
-    return major >= CudaComputeCapabilities::BLACKWELL;
+    return major >= CudaComputeCapabilities::kBlackwell;
   }
 
-  bool IsHopper() const { return major == CudaComputeCapabilities::HOPPER; }
+  bool IsAmpere() const { return major == CudaComputeCapabilities::kAmpere; }
 
-  bool IsBlackwell() const { return *this == Blackwell(); }
+  bool IsHopper() const { return major == CudaComputeCapabilities::kHopper; }
+
+  bool IsBlackwell() const {
+    return major == CudaComputeCapabilities::kBlackwell;
+  }
 
   bool operator<(const CudaComputeCapability &other) const {
     return ToPair() < other.ToPair();

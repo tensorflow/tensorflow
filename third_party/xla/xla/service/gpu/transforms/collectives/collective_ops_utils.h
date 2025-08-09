@@ -16,13 +16,45 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_TRANSFORMS_COLLECTIVES_COLLECTIVE_OPS_UTILS_H_
 #define XLA_SERVICE_GPU_TRANSFORMS_COLLECTIVES_COLLECTIVE_OPS_UTILS_H_
 
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
 
+enum class GPUCommunicationType {
+  UNDEFINED = 0,
+  RAIL_ALIGNED = 1,
+  NON_RAIL_ALIGNED = 2,
+  SINGLE_HOST = 3
+};
+
+// Returns the type of communication pattern for a channel instruction.
+absl::StatusOr<GPUCommunicationType> CommunicationType(
+    int num_devices_per_host, const HloChannelInstruction& instr,
+    const se::GpuComputeCapability& gpu_version);
+
 // Returns true if instruction is a synchronous collective op.
 bool IsGPUSyncCollective(const HloInstruction& instr);
+
+enum class GPUTopologyType {
+  UNKNOWN = 0,
+  SINGLE_HOST = 1,
+  MULTI_HOST = 2,
+};
+
+// Returns the given device topology. Currently this function is
+// heuristic based: it can be the case it will not detect a multi host case when
+// a user decides to use < 8 GPUs per host. Moreover it tells nothing about how
+// fast the interconnect between hosts is (Infiniband, NVLINK, DCN, etc.).
+//
+// Will return `UNKNOWN` on any platform other than Hopper and Ampere.
+GPUTopologyType GetTopologyType(
+    const HloModuleConfig& config,
+    const se::DeviceDescription& device_description);
 
 }  // namespace gpu
 }  // namespace xla

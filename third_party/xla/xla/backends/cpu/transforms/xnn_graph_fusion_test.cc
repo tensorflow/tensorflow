@@ -25,10 +25,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/cpu/backend_config.pb.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace op = xla::testing::opcode_matchers;
@@ -36,20 +37,19 @@ namespace op = xla::testing::opcode_matchers;
 namespace xla::cpu {
 namespace {
 
-using XnnGraphFusionTest = HloTestBase;
+using XnnGraphFusionTest = HloHardwareIndependentTestBase;
 
 TEST_F(XnnGraphFusionTest, BasicFusion) {
   std::string hlo_string = R"(
 HloModule FusionDemonstration
 
 ENTRY entry {
-   %param.0 = f32[1024,1024]{1,0} parameter(0)
-   %param.1 = f32[1024,1024]{1,0} parameter(1)
-   %add.0 = f32[1024,1024]{1,0} add(f32[1024,1024]{1,0} %param.0, f32[1024,1024]{1,0} %param.1)
-   %sub.0 = f32[1024,1024]{1,0} subtract(f32[1024,1024]{1,0} %param.0, f32[1024,1024]{1,0} %param.1)
-   ROOT %result = f32[1024,1024]{1,0} multiply(f32[1024,1024]{1,0} %add.0, f32[1024,1024]{1,0} %sub.0)
+   %param.0 = f32[2,2] parameter(0)
+   %constant.0 = f32[2,2] constant({ { 1, 2 }, { 3, 4 } })
+   %add.0 = f32[2,2] add(f32[2,2] %param.0, f32[2,2]{1,0} %constant.0)
+   %sub.0 = f32[2,2] subtract(f32[2,2] %param.0, f32[2,2] %constant.0)
+   ROOT %result = f32[2,2] multiply(f32[2,2] %add.0, f32[2,2] %sub.0)
 }
-
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -65,6 +65,268 @@ ENTRY entry {
                           fusion->backend_config<BackendConfig>());
   ASSERT_TRUE(backend_config.has_fusion_config());
   EXPECT_EQ(backend_config.fusion_config().kind(), kXnnFusionKind);
+}
+
+TEST_F(XnnGraphFusionTest, BasicFusionUnsupportedType) {
+  std::string hlo_string = R"(
+HloModule FusionDemonstration
+
+ENTRY entry {
+   %param.0 = s2[2,2] parameter(0)
+   %constant.0 = s2[2,2] constant({ { 0, 1 }, { 1, 0 } })
+   %add.0 = s2[2,2] add(s2[2,2] %param.0, s2[2,2] %constant.0)
+   %sub.0 = s2[2,2] subtract(s2[2,2] %param.0, s2[2,2] %constant.0)
+   ROOT %result = s2[2,2] multiply(s2[2,2] %add.0, s2[2,2] %sub.0)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, XnnGraphFusion().Run(module.get()));
+  ASSERT_FALSE(changed);
+}
+
+TEST_F(XnnGraphFusionTest, BasicFusionUnsupportedLayout) {
+  std::string hlo_string = R"(
+HloModule FusionDemonstration
+
+ENTRY entry {
+   %param.0 = f32[2,2]{0,1} parameter(0)
+   %constant.0 = f32[2,2]{0,1} constant({ { 0, 1 }, { 1, 0 } })
+   %add.0 = f32[2,2]{0,1} add(f32[2,2]{0,1} %param.0, f32[2,2]{0,1} %constant.0)
+   %sub.0 = f32[2,2]{0,1} subtract(f32[2,2]{0,1} %param.0, f32[2,2]{0,1} %constant.0)
+   ROOT %result = f32[2,2]{0,1} multiply(f32[2,2]{0,1} %add.0, f32[2,2]{0,1} %sub.0)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, XnnGraphFusion().Run(module.get()));
+  ASSERT_FALSE(changed);
+}
+
+static void SetFusionMode(HloModule* module,
+                          DebugOptions::XnnGraphFusionMode mode) {
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_cpu_experimental_xnn_graph_fusion_mode(mode);
+}
+
+TEST_F(XnnGraphFusionTest, BasicBroadcast) {
+  std::string hlo_string = R"(
+HloModule BroadcastFusion
+
+ENTRY entry {
+  %param.0 = f32[] parameter(0)
+  %broadcast.0 = f32[2,2] broadcast(f32[] %param.0), dimensions={}
+  ROOT result = f32[2,2] add(f32[2,2] %broadcast.0, f32[2,2] %broadcast.0)
+}
+
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  SetFusionMode(module.get(),
+                DebugOptions::XNN_GRAPH_FUSION_MODE_GREEDY_SLINKY);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, XnnGraphFusion().Run(module.get()));
+  ASSERT_TRUE(changed);
+  EXPECT_THAT(module.get()->entry_computation()->root_instruction(),
+              op::Fusion());
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_EQ(root->opcode(), HloOpcode::kFusion);
+  HloFusionInstruction* fusion = Cast<HloFusionInstruction>(root);
+  TF_ASSERT_OK_AND_ASSIGN(auto backend_config,
+                          fusion->backend_config<BackendConfig>());
+  ASSERT_TRUE(backend_config.has_fusion_config());
+  EXPECT_EQ(backend_config.fusion_config().kind(), kXnnFusionKind);
+}
+
+TEST_F(XnnGraphFusionTest, SkipRootBroadcast) {
+  std::string hlo_string = R"(
+HloModule SkipRootBroadcast
+
+ENTRY entry {
+  %param.0 = f32[] parameter(0)
+  %add.0 = f32[] add(f32[] %param.0, f32[] %param.0)
+  ROOT result = f32[2,2] broadcast(f32[] %param.0), dimensions={}
+}
+
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  SetFusionMode(module.get(),
+                DebugOptions::XNN_GRAPH_FUSION_MODE_GREEDY_SLINKY);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, XnnGraphFusion().Run(module.get()));
+  ASSERT_FALSE(changed);
+}
+
+TEST_F(XnnGraphFusionTest, SkipUnsupportedBroadcast) {
+  // Broadcast changes the relative order of dimensions.
+  std::string hlo_string = R"(
+HloModule SkipUnsupportedBroadcast
+
+ENTRY entry {
+  %param.0 = f32[2,3] parameter(0)
+  %broadcast.0 = f32[4,3,2] broadcast(f32[2,3] %param.0), dimensions={2,1}
+  ROOT result = f32[4,3,2] add(f32[4,3,2] %broadcast.0, f32[4,3,2] %broadcast.0)
+}
+
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  SetFusionMode(module.get(),
+                DebugOptions::XNN_GRAPH_FUSION_MODE_GREEDY_SLINKY);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, XnnGraphFusion().Run(module.get()));
+  ASSERT_FALSE(changed);
+}
+
+TEST_F(XnnGraphFusionTest, SkipRootWideningConvert) {
+  std::string hlo_string = R"(
+HloModule SkipRootWideningConvert
+
+ENTRY entry {
+  %param.0 = f32[4] parameter(0)
+  %to_bf16.0 = bf16[4] convert(f32[4] %param.0)
+  ROOT result = f32[4] convert(bf16[4] %to_bf16.0)
+}
+
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  SetFusionMode(module.get(),
+                DebugOptions::XNN_GRAPH_FUSION_MODE_GREEDY_SLINKY);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, XnnGraphFusion().Run(module.get()));
+  ASSERT_FALSE(changed);
+}
+
+TEST_F(XnnGraphFusionTest, BasicFusionUnsupportedOperandType) {
+  std::string hlo_string = R"(
+HloModule BasicFusionUnsupportedOperandType
+
+ENTRY entry {
+   %param.0 = s1[2,2] parameter(0)
+   ROOT %converted_param.0 = f32[2,2] convert(s1[2,2] %param.0)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, XnnGraphFusion().Run(module.get()));
+  ASSERT_FALSE(changed);
+}
+
+TEST_F(XnnGraphFusionTest, BasicReduce) {
+  std::string hlo_string = R"(
+HloModule BasicReduce
+
+reducer {
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(arg_0, arg_1)
+}
+
+ENTRY main {
+  arg_0 = f32[3,2] parameter(0)
+  init = f32[] constant(-inf)
+  ROOT result = f32[] reduce(arg_0, init), dimensions={0,1}, to_apply=reducer
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  SetFusionMode(module.get(),
+                DebugOptions::XNN_GRAPH_FUSION_MODE_GREEDY_SLINKY);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, XnnGraphFusion().Run(module.get()));
+  ASSERT_TRUE(changed);
+  EXPECT_THAT(module.get()->entry_computation()->root_instruction(),
+              op::Fusion());
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  HloFusionInstruction* fusion = Cast<HloFusionInstruction>(root);
+  TF_ASSERT_OK_AND_ASSIGN(auto backend_config,
+                          fusion->backend_config<BackendConfig>());
+  ASSERT_TRUE(backend_config.has_fusion_config());
+  EXPECT_EQ(backend_config.fusion_config().kind(), kXnnFusionKind);
+}
+
+TEST_F(XnnGraphFusionTest, SkipReduceWithUnsupportedInit) {
+  std::string hlo_string = R"(
+HloModule SkipReduceWithUnsupportedInit
+
+reducer {
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(arg_0, arg_1)
+}
+
+ENTRY main {
+  arg_0 = f32[3,2] parameter(0)
+  init = f32[] constant(1.33)
+  ROOT result = f32[] reduce(arg_0, init), dimensions={0,1}, to_apply=reducer
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  SetFusionMode(module.get(),
+                DebugOptions::XNN_GRAPH_FUSION_MODE_GREEDY_SLINKY);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, XnnGraphFusion().Run(module.get()));
+  ASSERT_FALSE(changed);
+}
+
+TEST_F(XnnGraphFusionTest, SkipReduceWithUnsupportedReducer) {
+  std::string hlo_string = R"(
+HloModule SkipReduceWithUnsupportedReducer
+
+reducer {
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT sub = f32[] subtract(arg_0, arg_1)
+}
+
+ENTRY main {
+  arg_0 = f32[3,2] parameter(0)
+  init = f32[] constant(1.33)
+  ROOT result = f32[] reduce(arg_0, init), dimensions={0,1}, to_apply=reducer
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  SetFusionMode(module.get(),
+                DebugOptions::XNN_GRAPH_FUSION_MODE_GREEDY_SLINKY);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, XnnGraphFusion().Run(module.get()));
+  ASSERT_FALSE(changed);
+}
+
+TEST_F(XnnGraphFusionTest, NoFusionInsideReducer) {
+  std::string hlo_string = R"(
+HloModule NoFusionInsideReducer
+
+reducer {
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  mul = f32[] multiply(arg_0, arg_1)
+  ROOT result = f32[] add(arg_0, mul)
+}
+
+ENTRY main {
+  arg_0 = f32[3,2] parameter(0)
+  init = f32[] constant(1.33)
+  ROOT result = f32[] reduce(arg_0, init), dimensions={0,1}, to_apply=reducer
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  SetFusionMode(module.get(),
+                DebugOptions::XNN_GRAPH_FUSION_MODE_GREEDY_SLINKY);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, XnnGraphFusion().Run(module.get()));
+  ASSERT_FALSE(changed);
 }
 
 }  // namespace

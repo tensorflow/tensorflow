@@ -19,6 +19,7 @@ limitations under the License.
 #include <functional>
 #include <list>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "xla/hlo/testlib/test.h"
@@ -135,6 +136,28 @@ TEST(FilteringUnwrappingIteratorTest, StdFind) {
       *std::find(MakeFilteringUnwrappingIterator(l.begin(), l.end(), pred),
                  MakeFilteringUnwrappingIterator(l.end(), l.end(), pred),
                  l.begin()->get()));
+}
+
+TEST(WithIndex, BasicFunctionality) {
+  int index = 0;
+  for (const auto& [i, s] :
+       WithIndex(std::vector<std::string>{"0", "1", "2"})) {
+    ASSERT_EQ(i, index);
+    ASSERT_LT(i, 3);
+    ASSERT_EQ(s, (i == 0) ? "0" : ((i == 1) ? "1" : "2"));
+    index++;
+  }
+  ASSERT_EQ(index, 3);
+}
+
+TEST(WithIndex, NoCopyOnRef) {
+  // WithIndex must not copy non-temporary arguments.
+  std::vector<int> src;
+  src.push_back(1);
+  src.push_back(2);
+  for (const auto& [i, v] : WithIndex(src)) {
+    EXPECT_EQ(&v, &src[i]);
+  }
 }
 
 }  // namespace

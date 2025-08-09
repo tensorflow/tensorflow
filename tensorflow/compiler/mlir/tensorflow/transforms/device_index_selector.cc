@@ -15,6 +15,8 @@ limitations under the License.
 
 // Converts DeviceIndex to constant device.
 
+#include <memory>
+
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -71,7 +73,7 @@ void DeviceIndexSelector::runOnOperation() {
     }
     DenseElementsAttr attr =
         DenseElementsAttr::get(type, b.getI32IntegerAttr(index));
-    auto constant = b.create<arith::ConstantOp>(op.getLoc(), type, attr);
+    auto constant = arith::ConstantOp::create(b, op.getLoc(), type, attr);
     op.replaceAllUsesWith(constant.getOperation());
     op.erase();
   });

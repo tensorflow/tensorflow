@@ -572,6 +572,15 @@ stylesheet=<
   if (computation_->IsFusionComputation()) {
     StrAppend(&graph_label, " (in fusion instruction ",
               computation_->FusionInstruction()->name(), ")");
+  } else if (computation_->IsEntryComputation()) {
+    StrAppend(&graph_label, "<br/>ENTRY computation");
+  } else if (!computation_->caller_computations().empty()) {
+    std::string callers =
+        absl::StrJoin(computation_->caller_instructions(), ", ",
+                      [](std::string* out, const HloInstruction* instr) {
+                        absl::StrAppend(out, instr->name());
+                      });
+    StrAppend(&graph_label, "<br/>Caller instructions: ", callers);
   }
 
   // Create CSS rules that say, when you hover over the given node or cluster,
@@ -679,7 +688,7 @@ bool HloDotDumper::ShouldShowSubcomputation(const HloComputation* subcomp) {
     return false;
   }
 
-  if (subcomp->WhileCallInstruction() != nullptr &&
+  if (!subcomp->caller_instructions(HloOpcode::kWhile).empty() &&
       !hlo_render_options_.show_while_subcomputations) {
     return false;
   }
@@ -1231,6 +1240,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kConvolution:
     case HloOpcode::kDot:
     case HloOpcode::kRaggedDot:
+    case HloOpcode::kScaledDot:
     case HloOpcode::kFft:
     case HloOpcode::kTriangularSolve:
     case HloOpcode::kCholesky:
@@ -1451,10 +1461,66 @@ std::string HloDotDumper::GetInstructionNodeBackendConfig(
   return StrCat("backend_config=\"", instr->raw_backend_config_string(), "\"");
 }
 
+// Returns the op that produced the given instruction's input, ignoring
+// uninteresting ops like get-tuple-element.
+const HloInstruction* GetInterestingProducer(const HloInstruction* instr) {
+  std::vector<int64_t> tuple_index;
+  while (true) {
+    switch (instr->opcode()) {
+      case HloOpcode::kBitcast:
+      case HloOpcode::kCopy:
+        // Ignore data-movement instructions and move on.
+        instr = instr->operand(0);
+        break;
+      case HloOpcode::kGetTupleElement:
+        // Ignore get-tuple-element instructions but remember the tuple index.
+        tuple_index.push_back(instr->tuple_index());
+        instr = instr->operand(0);
+        break;
+      case HloOpcode::kTuple:
+        if (tuple_index.empty()) {
+          // Return the tuple itself, since we have not encountered a
+          // corresponding get-tuple-element before.
+          return instr;
+        }
+        // Resolve the tuple index and move on.
+        if (instr->operand_count() <= tuple_index.back()) {
+          LOG(ERROR) << "Tuple index " << tuple_index.back()
+                     << " is out of bounds for " << instr->ToString();
+          return instr;
+        }
+        instr = instr->operand(tuple_index.back());
+        tuple_index.pop_back();
+        break;
+      case HloOpcode::kCall:
+        // Move on from the root of the called computation.
+        instr = instr->to_apply()->root_instruction();
+        break;
+      default:
+        // Consider this instructions interesting and return it.
+        return instr;
+    }
+  }
+}
+
 std::string HloDotDumper::GetInstructionNodeExtraInfo(
     const HloInstruction* instr) {
   std::vector<std::string> lines;
 
+  // Inside a kCall op's called computation, annotate each parameter with the
+  // name of the instruction that produced it.
+  std::optional<HloInstruction*> caller =
+      instr->parent()->GetUniqueCaller(HloOpcode::kCall);
+  if (caller.has_value() && instr->opcode() == HloOpcode::kParameter) {
+    const HloInstruction* operand =
+        caller.value()->operand(instr->parameter_number());
+    const HloInstruction* producer = GetInterestingProducer(operand);
+    lines.push_back(StrFormat(
+        "<i>from %s in %s</i>", HtmlLikeStringSanitize(producer->name()),
+        producer->parent()->IsEntryComputation()
+            ? "the ENTRY computation"
+            : HtmlLikeStringSanitize(producer->parent()->name())));
+  }
   // Get the instruction's extra attributes excluding the names of its
   // subcomputations, since those are drawn explicitly in the graph.
   for (const auto& line : instr->ExtraAttributesToString(
@@ -1486,10 +1552,10 @@ std::string HloDotDumper::GetInstructionNodeExtraInfo(
     // layout on tuples or tensors with just one dimension (which only have one
     // possible layout) to avoid visual noise.
     bool shape_is_multidim = false;
-    ShapeUtil::ForEachSubshape(instr->shape(),
-                               [&](const Shape& s, const ShapeIndex&) {
-                                 shape_is_multidim |= s.dimensions_size() > 1;
-                               });
+    ShapeUtil::ForEachSubshape(
+        instr->shape(), [&](const Shape& s, const ShapeIndex&) {
+          shape_is_multidim |= s.IsArray() && s.dimensions().size() > 1;
+        });
     std::string instr_shape;
     if (instr->opcode() != HloOpcode::kTuple && shape_is_multidim) {
       instr_shape = ShapeUtil::HumanStringWithLayout(instr->shape());
@@ -1613,6 +1679,57 @@ const HloInstruction* HloDotDumper::GetNodeForEdge(
   return instr;
 }
 
+// Detect if an instruction is an AsyncCollectiveFusion parameter that is
+// implementation details.
+bool IsAcfPrameter(const xla::HloInstruction* instruction) {
+  // Parameter is fused
+  if (instruction->opcode() != xla::HloOpcode::kParameter ||
+      !instruction->IsFused())
+    return false;
+
+  // Parameter piped through and is only consumed by 1 user
+  // Parameter 0 consumed by both root and all-gather will always persist.
+  if (instruction->user_count() != 1) return false;
+
+  const xla::HloComputation* parent_computation = instruction->parent();
+  int64_t parameter_number = instruction->parameter_number();
+  xla::HloInstruction* fusion_instruction =
+      parent_computation->FusionInstruction();
+  const xla::HloInstruction* parameterOperand =
+      fusion_instruction->operand(parameter_number);
+  // Operand is get-tuple-element
+  if (parameterOperand->opcode() != xla::HloOpcode::kGetTupleElement) {
+    return false;
+  }
+
+  const xla::HloInstruction* gteOperand = parameterOperand->operand(0);
+  if (gteOperand->opcode() != xla::HloOpcode::kFusion) {
+    return false;
+  }
+
+  constexpr absl::string_view kAcfComputationName = "async_collective_fusion";
+  constexpr absl::string_view kAcsInstructionName = "AsyncCollectiveStart";
+  constexpr absl::string_view kAcdInstructionName = "AsyncCollectiveDone";
+  auto src_instruction =
+      gteOperand->fused_instructions_computation()->root_instruction();
+  // (1) Parameter is fused into AsyncCollectiveFusion, operand is gte from
+  // AsyncCollectiveStart custom call and user is the root node of ACF
+  // (2) Parameter is mapped from Params in AsyncCollectiveFusion - operand is
+  // gte from ACF, and user is AsyncCollectiveDone custom call
+  return (absl::StartsWith(parent_computation->name(), kAcfComputationName) &&
+          src_instruction->IsCustomCall(kAcsInstructionName) &&
+          instruction->users()[0] == parent_computation->root_instruction()) ||
+         (instruction->users()[0]->IsCustomCall(kAcdInstructionName) &&
+          absl::StartsWith(gteOperand->fused_instructions_computation()->name(),
+                           kAcfComputationName));
+}
+
+// Rules to filter out input nodes (no operands) that are implementation
+// details.
+bool ShouldFilterInputNode(const HloInstruction* instr) {
+  return IsAcfPrameter(instr);
+}
+
 // Gets a NodeFilter that includes roughly all instructions whose distance from
 // root is <= radius.
 NodeFilter MakeNodeRadiusAroundFilter(
@@ -1629,7 +1746,7 @@ NodeFilter MakeNodeRadiusAroundFilter(
     std::tie(instr, depth) = worklist.front();
     worklist.pop_front();
 
-    nodes[instr] = kNormalNode;
+    nodes[instr] = ShouldFilterInputNode(instr) ? kHideNode : kNormalNode;
     if (depth == radius) {
       continue;
     }
@@ -1731,7 +1848,8 @@ NodeFilter MakeNodeRadiusAroundFilter(
           return it->second;
         }
         // Show all nodes in subcomputations.
-        if (instr->parent() != root->parent()) {
+        if (instr->parent() != root->parent() &&
+            !ShouldFilterInputNode(instr)) {
           return kNormalNode;
         }
         return kHideNode;
@@ -1841,7 +1959,7 @@ static std::pair<int, int> FusionVisualizerStateKey(
 static absl::StatusOr<std::string> CompressAndEncode(absl::string_view input) {
   class WritableStringFile : public tsl::WritableFile {
    public:
-    explicit WritableStringFile(std::string* data) : data_(data){};
+    explicit WritableStringFile(std::string* data) : data_(data) {};
     ~WritableStringFile() override = default;
 
     absl::Status Append(absl::string_view data) override {

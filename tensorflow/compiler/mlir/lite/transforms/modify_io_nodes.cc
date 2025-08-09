@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 
 namespace mlir {
@@ -118,8 +119,8 @@ LogicalResult ModifyIONodesPass::ModifyInputNodes(
         quantize_output.replaceAllUsesWith(new_arg);
       } else if (input_type.isUnsignedInteger(
                      current_type.getIntOrFloatBitWidth())) {  // int8 != uint8
-        arg_type = quant::ConvertSignedQuantizedToUnsigned(
-            quantize_output.getType(), loc);
+        arg_type =
+            ConvertSignedQuantizedToUnsigned(quantize_output.getType(), loc);
         new_arg = block.addArgument(arg_type, loc);
         quantize_op.setOperand(new_arg);
       } else {
@@ -172,12 +173,13 @@ LogicalResult ModifyIONodesPass::ModifyOutputNodes(
         returned_value = dequantize_input;
       } else if (output_type.isUnsignedInteger(
                      current_type.getIntOrFloatBitWidth())) {  // int8 != uint8
-        returned_type = quant::ConvertSignedQuantizedToUnsigned(
+        returned_type = ConvertSignedQuantizedToUnsigned(
             dequantize_input.getType(), dequantize_op.getLoc());
         // replace the dequantize op by a quantize op
         TypeAttr type_attr = TypeAttr::get(returned_type);
-        auto quantize_op = builder.create<QuantizeOp>(
-            dequantize_op.getLoc(), returned_type, dequantize_input, type_attr);
+        auto quantize_op =
+            QuantizeOp::create(builder, dequantize_op.getLoc(), returned_type,
+                               dequantize_input, type_attr);
         returned_value = quantize_op.getOutput();
       } else {
         output_type.print(llvm::errs() << "Requested output type ");

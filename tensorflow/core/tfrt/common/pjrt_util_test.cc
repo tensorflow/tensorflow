@@ -17,6 +17,8 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
 #include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -45,9 +47,9 @@ TEST(PjRtUtilTest, SetGetAndDeletePjRtClient) {
 }
 
 TEST(PjRtStateResourceManagerTest, SetNullPjRtClient) {
-  EXPECT_THAT(
-      SetPjRtClientInTFGlobalResourceManager(DEVICE_CPU, nullptr),
-      StatusIs(error::INVALID_ARGUMENT, HasSubstr("PJRT client is nullptr")));
+  EXPECT_THAT(SetPjRtClientInTFGlobalResourceManager(DEVICE_CPU, nullptr),
+              absl_testing::StatusIs(error::INVALID_ARGUMENT,
+                                     HasSubstr("PJRT client is nullptr")));
 }
 
 TEST(PjRtGpuClientCreationInfoTest, SetAndGet) {

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PJRT_C_PJRT_C_API_RAW_BUFFER_EXTERNAL_H_
 #define XLA_PJRT_C_PJRT_C_API_RAW_BUFFER_EXTERNAL_H_
 
+#include "absl/status/statusor.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_raw_buffer_extension.h"
 #include "xla/pjrt/pjrt_c_api_client.h"
@@ -31,7 +32,10 @@ PJRT_Memory* PjRtCApiRawBuffer_GetMemorySpace(
     const PJRT_Api* c_api, const PJRT_RawBuffer_Extension* extension,
     PJRT_RawBuffer* buffer);
 
-absl::StatusOr<size_t> PjRtCApiRawBuffer_GetOnDeviceSizeInBytes(
+void* PjRtCApiRawBuffer_GetHostPointer(
+    PJRT_RawBuffer_GetHostPointer_Args* args);
+
+size_t PjRtCApiRawBuffer_GetOnDeviceSizeInBytes(
     const PJRT_Api* c_api, const PJRT_RawBuffer_Extension* extension,
     PJRT_RawBuffer* buffer);
 
@@ -64,7 +68,8 @@ class PjRtCApiRawBuffer : public PjRtRawBuffer {
   ~PjRtCApiRawBuffer() override;
 
   PjRtMemorySpace* memory_space() const override;
-  absl::StatusOr<size_t> GetOnDeviceSizeInBytes() const override;
+  void* GetHostPointer() const override;
+  size_t GetOnDeviceSizeInBytes() const override;
   PjRtFuture<> CopyRawHostToDevice(const void* src, int64_t offset,
                                    int64_t transfer_size) override;
   PjRtFuture<> CopyRawDeviceToHost(void* dst, int64_t offset,

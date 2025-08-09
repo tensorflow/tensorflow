@@ -1,4 +1,4 @@
-// RUN: tf-opt -split-input-file -verify-diagnostics -tfl-get-arithmetic-count %s | FileCheck %s
+// RUN: litert-opt -split-input-file -verify-diagnostics -tfl-get-arithmetic-count %s | FileCheck %s
 
 func.func @testConv2D(tensor<256x32x32x3xf32>, tensor<16x3x3x3xf32>, tensor<16xf32>) -> tensor<256x32x32x16xf32> {
 ^bb0(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<16x3x3x3xf32>, %arg2: tensor<16xf32>):

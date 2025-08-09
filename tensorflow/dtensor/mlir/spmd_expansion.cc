@@ -18,7 +18,6 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
-#include "absl/types/optional.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -123,10 +122,8 @@ mlir::LogicalResult UpdateResourceArgumentType(
     return mlir::success();
   }
 
-  auto resource_type = resource_arg.getType()
-                           .cast<mlir::TensorType>()
-                           .getElementType()
-                           .dyn_cast<mlir::TF::ResourceType>();
+  auto resource_type = llvm::dyn_cast<mlir::tf_type::ResourceType>(
+      llvm::cast<mlir::TensorType>(resource_arg.getType()).getElementType());
   if (!resource_type) return mlir::success();
 
   auto sub_types = resource_type.getSubtypes();
@@ -191,7 +188,7 @@ bool GetResourceArgIndexIfUsedInAssignmentOp(
           GetForwardedDTensorLayoutInput(assign_variable_op.getResource());
       if (llvm::isa<mlir::BlockArgument>(resource)) {
         *resource_argument_index_for_assign_variable =
-            resource.cast<mlir::BlockArgument>().getArgNumber();
+            cast<mlir::BlockArgument>(resource).getArgNumber();
         return true;
       }
     }
@@ -224,16 +221,14 @@ mlir::LogicalResult UpdateFunctionArgsUsingLayout(mlir::func::FuncOp function) {
 
     // If argument is a resource type update the subtype shape information
     // to reflect local shape of resources.
-    if (arg_type.isa<mlir::TF::ResourceType>()) {
+    if (isa<mlir::TF::ResourceType>(arg_type)) {
       if (mlir::failed(UpdateResourceArgumentType(argument_index, function)))
         return mlir::failure();
       continue;
     }
 
-    mlir::RankedTensorType ranked_type =
-        function.getFunctionType()
-            .getInput(argument_index)
-            .dyn_cast<mlir::RankedTensorType>();
+    mlir::RankedTensorType ranked_type = llvm::dyn_cast<mlir::RankedTensorType>(
+        function.getFunctionType().getInput(argument_index));
     if (!ranked_type) continue;
 
     // If input value is non-resource type, then update the value to reflect
@@ -267,7 +262,8 @@ mlir::LogicalResult UpdateFunctionWithLocalInputShapes(
     mlir::func::FuncOp function) {
   for (auto& operand : function_operands) {
     const int index = operand.getOperandNumber();
-    auto arg_type = operand.get().getType().dyn_cast<mlir::RankedTensorType>();
+    auto arg_type =
+        llvm::dyn_cast<mlir::RankedTensorType>(operand.get().getType());
     if (!arg_type) continue;
 
     auto arg_local_shape = arg_type.getShape();

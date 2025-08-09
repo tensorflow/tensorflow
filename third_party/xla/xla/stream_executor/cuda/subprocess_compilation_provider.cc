@@ -23,15 +23,19 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/cuda/compilation_options.h"
 #include "xla/stream_executor/cuda/compilation_provider.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/cuda/ptx_compiler_helpers.h"
 #include "xla/stream_executor/cuda/subprocess_compilation.h"
-#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/subprocess.h"
 
 namespace stream_executor::cuda {
 
@@ -95,6 +99,26 @@ absl::StatusOr<Assembly> SubprocessCompilationProvider::CompileAndLink(
 
   TF_ASSIGN_OR_RETURN(auto cubin, LinkUsingNvlink(path_to_nvlink_, cc, images));
   return Assembly{std::move(cubin)};
+}
+
+absl::StatusOr<int> SubprocessCompilationProvider::GetLatestPtxIsaVersion()
+    const {
+  std::vector<std::string> ptxas_args = {path_to_ptxas_, "--input-as-string",
+                                         ".version 99.99"};
+  tsl::SubProcess ptxas_info_dumper;
+  ptxas_info_dumper.SetProgram(path_to_ptxas_, ptxas_args);
+  ptxas_info_dumper.SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_PIPE);
+  if (!ptxas_info_dumper.Start()) {
+    return absl::InternalError("Failed to launch ptxas");
+  }
+  std::string stderr_output;
+  int exit_status = ptxas_info_dumper.Communicate(
+      /*stdin_input=*/nullptr, /*stdout_output=*/nullptr, &stderr_output);
+  if (exit_status == 0) {
+    return absl::InternalError("ptxas succeeded where it was expected to fail");
+  }
+
+  return GetLatestPtxIsaVersionFromUnsupportedVersionErrorLog(stderr_output);
 }
 
 std::string SubprocessCompilationProvider::name() const {

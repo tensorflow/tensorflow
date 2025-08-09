@@ -15,6 +15,7 @@
 """TensorFlow Lite Python Interface: Sanity check."""
 import ctypes
 import io
+import pathlib
 import sys
 from unittest import mock
 
@@ -95,6 +96,16 @@ class InterpreterTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(scales, params['scales'])
     self.assertAllEqual(zero_points, params['zero_points'])
     self.assertEqual(quantized_dimension, params['quantized_dimension'])
+
+  def testPathLikeModel(self):
+    interpreter = interpreter_wrapper.Interpreter(
+        model_path=pathlib.Path(
+            resource_loader.get_path_to_datafile(
+                'testdata/permute_float.tflite'
+            )
+        ),
+    )
+    interpreter.allocate_tensors()
 
   def testThreads_NegativeValue(self):
     with self.assertRaisesRegex(ValueError, 'num_threads should >= 1'):
@@ -360,7 +371,9 @@ class InterpreterTestErrorPropagation(test_util.TensorFlowTestCase):
             'testdata/permute_float.tflite'))
     interpreter.allocate_tensors()
     # Invalid tensor index passed.
-    with self.assertRaisesRegex(ValueError, 'Tensor with no shape found.'):
+    with self.assertRaisesRegex(
+        ValueError, 'Invalid tensor index 4 exceeds max tensor index 3'
+    ):
       interpreter._get_tensor_details(4, 0)
     with self.assertRaisesRegex(ValueError, 'Invalid node index'):
       interpreter._get_op_details(4)

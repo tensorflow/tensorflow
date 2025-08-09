@@ -16,15 +16,18 @@ limitations under the License.
 #ifndef XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_SOLVER_H_
 #define XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_SOLVER_H_
 
+#include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/time/time.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.pb.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
-#include "ortools/linear_solver/linear_solver.h"
+#include "xla/hlo/experimental/auto_sharding/iopddl.h"
 
 namespace xla {
 namespace spmd {
@@ -38,15 +41,32 @@ struct AutoShardingSolverOutput {
   bool operator==(const AutoShardingSolverOutput& other) const;
 };
 
-// Scales down values to reduce the range of costs & coefficients in the solver.
-AutoShardingSolverRequest ScaleRequest(
-    const AutoShardingSolverRequest& request);
-
 // Determines the minimum memory budget required to avoid memory violations.
 double MinimumMemoryBudgetRequired(const AutoShardingSolverRequest& request);
 
+struct AutoShardingSolverParams {
+  bool compute_iis = false;
+  bool crash_at_infinity_costs_check = false;
+  std::vector<std::vector<double>> departure_costs;
+  bool deterministic_mode = false;
+  bool enable_output = false;
+  std::optional<double> max_cost;
+  std::optional<double> max_departures;
+  bool minimize_departures = false;
+  std::optional<double> overbudget_coeff;
+  std::vector<int64_t> s_hint;
+  bool shave_strategies = false;
+  absl::Duration solver_timeout = absl::InfiniteDuration();
+};
+
+AutoShardingSolverParams GetParams(const AutoShardingSolverRequest& request);
+
+absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromProblem(
+    const iopddl::Problem& problem, const AutoShardingSolverParams& params);
+
 absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
-    const AutoShardingSolverRequest& request);
+    const AutoShardingSolverRequest& request,
+    const AutoShardingSolverParams& params);
 
 // TODO(fahrbach): Create AutoShardingHeuristicOptions proto with a oneof field.
 // Runs a heuristic specified by one of the following values of `algorithm`:
@@ -57,6 +77,9 @@ absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
 // - "brkga"
 absl::StatusOr<AutoShardingSolverOutput> RunHeuristicSolver(
     const AutoShardingSolverRequest& request, const std::string& algorithm);
+
+absl::StatusOr<AutoShardingSolverOutput> RunHeuristicSolver(
+    const iopddl::Problem& problem, const std::string& algorithm);
 
 enum AutoShardingViolationCode {
   kAliasViolationCode,     // Some node's strategy does not match its alias
@@ -71,10 +94,14 @@ struct CostComponents {
   double computation_cost = 0.0;
   double resharding_cost = 0.0;
   double overbudget_cost = 0.0;
-  double makespan_cost = 0.0;
   double max_memory = 0.0;
+  iopddl::TotalCost node_cost = 0;
+  iopddl::TotalCost edge_cost = 0;
+  iopddl::TotalUsage overbudget_usage = 0;
+  iopddl::TotalUsage max_usage = 0;
 
   double cost() const;
+  iopddl::TotalCost total_cost() const;
 
   bool operator==(const CostComponents& other) const;
 };
@@ -92,55 +119,94 @@ struct AutoShardingEvaluation {
   // How many instructions departed from the "default" sharding strategy.
   double total_departures = 0.0;
 
-  // The (raw) total makespan, i.e., not scaled by the makespan coefficient.
-  double total_makespan = 0.0;
-
   bool operator==(const AutoShardingEvaluation& other) const;
 };
 
 // Evaluates the given solver result w.r.t. the input request, computing various
 // solution quality metrics and validating the consistency of hard constraints.
 AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
-                                const AutoShardingSolverOutput& result);
+                                const AutoShardingSolverOutput& result,
+                                const AutoShardingSolverParams& params);
+
+// Evaluates the given solver result w.r.t. the input problem, computing various
+// solution quality metrics and validating the consistency of hard constraints.
+AutoShardingEvaluation Evaluate(const iopddl::Problem& problem,
+                                const AutoShardingSolverOutput& result,
+                                const AutoShardingSolverParams& params);
 
 // Computes the objective value of the sharding strategy. If the objective value
 // is infinite or the sharding is infeasible (e.g., violates the peak-memory
-// constraint), then a negated `AutoShardingViolationCode` value is returned.
-// This function is used instead of `Evaluate` for faster iteration loops in the
-// heuristic solver library.
-double ComputeShardingStrategyCost(
-    const AutoShardingSolverRequest& request,
-    const std::vector<NodeStrategyIdx>& node_strategies);
+// constraint), the negative `AutoShardingViolationCode` value is returned.
+// We use this function instead of `Evaluate()` for faster iteration loops in
+// the heuristic solver library.
+double ComputeShardingCost(const AutoShardingSolverRequest& request,
+                           const std::vector<NodeStrategyIdx>& node_strategies,
+                           bool use_negative_violation_codes = true);
 
-// Creates and returns a variable for makespan.
-operations_research::MPVariable* CreateMakespanVar(
-    const AutoShardingSolverRequest& request,
-    const std::vector<std::vector<operations_research::MPVariable*>>& e,
-    operations_research::MPSolver& solver);
-
-double EvaluateMakespan(const AutoShardingSolverRequest& request,
-                        const AutoShardingSolverOutput& result,
-                        AutoShardingEvaluation& evaluation);
+iopddl::TotalCost ComputeShardingCost(
+    const iopddl::Problem& problem,
+    const std::vector<NodeStrategyIdx>& node_strategies,
+    bool use_negative_violation_codes = true);
 
 // Determines if strategy 'first' is dominated by strategy 'second' (i.e., its
 // costs are all equal or worse, and it has identical alias mappings).
-bool CheckDominance(const AutoShardingSolverRequest& request,
+bool CheckDominance(const AutoShardingSolverParams& params,
+                    const AutoShardingSolverRequest& request,
                     const std::vector<EdgeIdx>& src_edges,
                     const std::vector<EdgeIdx>& dst_edges,
                     const std::vector<AliasIdx>& src_aliases,
                     const std::vector<AliasIdx>& dst_aliases, NodeIdx node_idx,
                     NodeStrategyIdx first, NodeStrategyIdx second);
 
-class StrategyShaver {
+class StrategyShaverForRequest {
  public:
-  explicit StrategyShaver(const AutoShardingSolverRequest& request);
+  explicit StrategyShaverForRequest(const AutoShardingSolverParams& params,
+                                    const AutoShardingSolverRequest& request);
 
   // For every node, examine each sharding strategy to see if it is dominated by
   // another.
   NodeStrategies FindShavedStrategies() const;
 
  private:
+  const AutoShardingSolverParams& params_;    // NOLINT
   const AutoShardingSolverRequest& request_;  // NOLINT
+  std::vector<std::vector<EdgeIdx>> src_edge_map_;
+  std::vector<std::vector<EdgeIdx>> dst_edge_map_;
+  std::vector<std::vector<AliasIdx>> src_alias_map_;
+  std::vector<std::vector<AliasIdx>> dst_alias_map_;
+  std::vector<std::vector<NodeIdx>> followers_;
+};
+
+// Determines if strategy 'first' is dominated by strategy 'second' (i.e., its
+// costs are all equal or worse, and it has identical alias mappings).
+bool CheckDominance(const AutoShardingSolverParams& params,
+                    const iopddl::Problem& problem,
+                    const std::vector<iopddl::Edge>& aliases,
+                    const std::vector<iopddl::Edge>& deduplicated_edges,
+                    const std::vector<EdgeIdx>& src_edges,
+                    const std::vector<EdgeIdx>& dst_edges,
+                    const std::vector<AliasIdx>& src_aliases,
+                    const std::vector<AliasIdx>& dst_aliases, NodeIdx node_idx,
+                    NodeStrategyIdx first, NodeStrategyIdx second);
+
+class StrategyShaverForProblem {
+ public:
+  explicit StrategyShaverForProblem(
+      const AutoShardingSolverParams& params, const iopddl::Problem& problem,
+      const std::vector<int64_t>& s_follow,
+      const std::vector<iopddl::Edge>& aliases,
+      const std::vector<iopddl::Edge>& deduplicated_edges);
+
+  // For every node, examine each sharding strategy to see if it is dominated by
+  // another.
+  NodeStrategies FindShavedStrategies() const;
+
+ private:
+  const AutoShardingSolverParams& params_;               // NOLINT
+  const iopddl::Problem& problem_;                       // NOLINT
+  const std::vector<int64_t>& s_follow_;                 // NOLINT
+  const std::vector<iopddl::Edge>& aliases_;             // NOLINT
+  const std::vector<iopddl::Edge>& deduplicated_edges_;  // NOLINT
   std::vector<std::vector<EdgeIdx>> src_edge_map_;
   std::vector<std::vector<EdgeIdx>> dst_edge_map_;
   std::vector<std::vector<AliasIdx>> src_alias_map_;

@@ -27,16 +27,16 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/shape.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
-using ConcatenateTest = HloTestBase;
+using ConcatenateTest = HloPjRtTestBase;
 
 TEST_F(ConcatenateTest, TwoR3Axis1) {
   const std::string hlo_text_module = R"(
@@ -99,8 +99,8 @@ TEST_F(ConcatenateTest, ThreeR2Axis1) {
 }
 
 static auto MakeIotaForShape(const Shape& shape) {
-  std::vector<int64_t> strides(shape.rank(), 1);
-  for (int i = shape.rank() - 1; i > 0; --i) {
+  std::vector<int64_t> strides(shape.dimensions().size(), 1);
+  for (int i = shape.dimensions().size() - 1; i > 0; --i) {
     strides[i - 1] = strides[i] * shape.dimensions(i);
   }
   return [strides = std::move(strides)](absl::Span<const int64_t> indices) {

@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/SmallBitVector.h"
@@ -269,9 +270,10 @@ LogicalResult ApplyIndexingOp::verify() {
   auto affine_map = getIndexingMapAttr().getIndexingMap().GetAffineMap();
   unsigned num_variables = affine_map.getNumDims() + affine_map.getNumSymbols();
   if (getOperands().size() != num_variables) {
-    return emitOpError(
-        "operand count must match the number of dimensions and symbols in the "
-        "affine map");
+    return emitOpError(absl::StrCat(
+        "operand count ", getOperands().size(),
+        " does not match the sum of dimensions ", affine_map.getNumDims(),
+        " and symbols ", affine_map.getNumSymbols(), " in the affine map"));
   }
   if (!getIndexingMap().GetConstraints().empty()) {
     return emitOpError("apply indexing op cannot have any constraints");
@@ -1046,7 +1048,7 @@ struct FoldConstantDimensions : public mlir::OpRewritePattern<LoopOp> {
             dim_replacements, {}, used_dim_vars.size(),
             loop_indexing_map.GetSymbolCount());
 
-    llvm::DenseMap<mlir::AffineExpr, Interval> new_constraints;
+    llvm::MapVector<mlir::AffineExpr, Interval> new_constraints;
     for (auto [expr, interval] : loop_indexing_map.GetConstraints()) {
       new_constraints[expr.replaceDims(dim_replacements)] = interval;
     }

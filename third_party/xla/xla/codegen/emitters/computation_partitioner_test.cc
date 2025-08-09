@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Builders.h"
@@ -28,7 +27,7 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 
 namespace xla {
 namespace emitters {
@@ -38,7 +37,7 @@ using ::testing::ElementsAre;
 using ::testing::SizeIs;
 using ::testing::UnorderedElementsAre;
 
-class ComputationPartitionerTest : public HloTestBase {
+class ComputationPartitionerTest : public HloHardwareIndependentTestBase {
  protected:
   ComputationPartitionerTest() {
     mlir_context_.loadDialect<mlir::func::FuncDialect>();
@@ -82,26 +81,26 @@ TEST_F(ComputationPartitionerTest, PartitionDiamonds) {
 
   constexpr auto kExpected = R"(PartitionedComputation fused_computation:
       SUBGRAPH fused_computation_add3 {
-        %slice3.1 = f32[2]{0} slice(f32[3]{0} %add2), slice={[0:2]}
-        %slice3.2 = f32[2]{0} slice(f32[3]{0} %add2), slice={[1:3]}
-        ROOT %add3 = f32[2]{0} add(f32[2]{0} %slice3.1, f32[2]{0} %slice3.2)
+        %slice3.1 = f32[2]{0} slice(%add2), slice={[0:2]}
+        %slice3.2 = f32[2]{0} slice(%add2), slice={[1:3]}
+        ROOT %add3 = f32[2]{0} add(%slice3.1, %slice3.2)
       }
       SUBGRAPH fused_computation_add2 {
-        %slice2.1 = f32[3]{0} slice(f32[4]{0} %add1), slice={[0:3]}
-        %slice2.2 = f32[3]{0} slice(f32[4]{0} %add1), slice={[1:4]}
-        ROOT %add2 = f32[3]{0} add(f32[3]{0} %slice2.1, f32[3]{0} %slice2.2)
+        %slice2.1 = f32[3]{0} slice(%add1), slice={[0:3]}
+        %slice2.2 = f32[3]{0} slice(%add1), slice={[1:4]}
+        ROOT %add2 = f32[3]{0} add(%slice2.1, %slice2.2)
       }
       SUBGRAPH fused_computation_add1 {
-        %slice1.1 = f32[4]{0} slice(f32[5]{0} %add0), slice={[0:4]}
-        %slice1.2 = f32[4]{0} slice(f32[5]{0} %add0), slice={[1:5]}
-        ROOT %add1 = f32[4]{0} add(f32[4]{0} %slice1.1, f32[4]{0} %slice1.2)
+        %slice1.1 = f32[4]{0} slice(%add0), slice={[0:4]}
+        %slice1.2 = f32[4]{0} slice(%add0), slice={[1:5]}
+        ROOT %add1 = f32[4]{0} add(%slice1.1, %slice1.2)
       }
       SUBGRAPH fused_computation_add0 {
-        %slice0.1 = f32[5]{0} slice(f32[6]{0} %param), slice={[0:5]}
-        %slice0.2 = f32[5]{0} slice(f32[6]{0} %param), slice={[1:6]}
-        ROOT %add0 = f32[5]{0} add(f32[5]{0} %slice0.1, f32[5]{0} %slice0.2)
+        %slice0.1 = f32[5]{0} slice(%param), slice={[0:5]}
+        %slice0.2 = f32[5]{0} slice(%param), slice={[1:6]}
+        ROOT %add0 = f32[5]{0} add(%slice0.1, %slice0.2)
       }
-      SUBGRAPH fused_computation_param {
+      SUBGRAPH fused_computation_param no_compute {
         ROOT %param = f32[6]{0} parameter(0)
       })";
   EXPECT_EQ(computation.ToString(6), kExpected);
@@ -146,15 +145,15 @@ TEST_F(ComputationPartitionerTest, DiamondConcatenate) {
 
   constexpr auto kExpected = R"(PartitionedComputation fused_computation:
       SUBGRAPH fused_computation_concat {
-        %neg = f32[6]{0} negate(f32[6]{0} %log)
+        %neg = f32[6]{0} negate(%log)
         %param2 = f32[6]{0} parameter(1)
-        %add = f32[6]{0} add(f32[6]{0} %log, f32[6]{0} %param2)
-        %exp = f32[6]{0} exponential(f32[6]{0} %add)
-        ROOT %concat = f32[12]{0} concatenate(f32[6]{0} %neg, f32[6]{0} %exp), dimensions={0}
+        %add = f32[6]{0} add(%log, %param2)
+        %exp = f32[6]{0} exponential(%add)
+        ROOT %concat = f32[12]{0} concatenate(%neg, %exp), dimensions={0}
       }
       SUBGRAPH fused_computation_log {
         %param1 = f32[6]{0} parameter(0)
-        ROOT %log = f32[6]{0} log(f32[6]{0} %param1)
+        ROOT %log = f32[6]{0} log(%param1)
       })";
   EXPECT_EQ(computation.ToString(6), kExpected);
 }
@@ -178,9 +177,9 @@ TEST_F(ComputationPartitionerTest, TupleRoot) {
       SUBGRAPH fused_computation_root {
         %p0 = f32[6]{0} parameter(0)
         %p1 = f32[6]{0} parameter(1)
-        %add = f32[6]{0} add(f32[6]{0} %p0, f32[6]{0} %p1)
-        %sub = f32[6]{0} subtract(f32[6]{0} %p0, f32[6]{0} %p1)
-        ROOT %root = (f32[6]{0}, f32[6]{0}) tuple(f32[6]{0} %add, f32[6]{0} %sub)
+        %add = f32[6]{0} add(%p0, %p1)
+        %sub = f32[6]{0} subtract(%p0, %p1)
+        ROOT %root = (f32[6]{0}, f32[6]{0}) tuple(%add, %sub)
       })";
   EXPECT_EQ(computation.ToString(6), kExpected);
 }
@@ -252,6 +251,35 @@ TEST_F(ComputationPartitionerTest, TransposeAsRoot) {
   ASSERT_THAT(computation.subgraphs(), SizeIs(2));
   EXPECT_THAT(computation.GetRootSubgraph().roots, SizeIs(1));
   EXPECT_THAT(computation.GetRootSubgraph().instructions, SizeIs(2));
+}
+
+TEST_F(ComputationPartitionerTest, TransposeReverse) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule test_module
+    fused_computation {
+      %p0 = f32[64, 32] parameter(0)
+      %reverse = f32[64, 32] reverse(%p0), dimensions={0}
+      %transpose = f32[32, 64] transpose(%reverse), dimensions={1, 0}
+      ROOT %root = f32[32, 64] tanh(%transpose)
+    })")
+                    .value();
+
+  auto* fusion = module->GetComputationWithName("fused_computation");
+  ASSERT_NE(fusion, nullptr);
+  PartitionedComputation computation(
+      fusion, &mlir_context_, [](const HloInstruction* instr) {
+        return instr->opcode() == HloOpcode::kTranspose;
+      });
+  constexpr auto kExpected = R"(PartitionedComputation fused_computation:
+      SUBGRAPH fused_computation_root {
+        ROOT %root = f32[32,64]{1,0} tanh(%transpose)
+      }
+      SUBGRAPH fused_computation_transpose no_compute {
+        %p0 = f32[64,32]{1,0} parameter(0)
+        %reverse = f32[64,32]{1,0} reverse(%p0), dimensions={0}
+        ROOT %transpose = f32[32,64]{1,0} transpose(%reverse), dimensions={1,0}
+      })";
+  EXPECT_EQ(computation.ToString(6), kExpected);
 }
 
 TEST_F(ComputationPartitionerTest, PartiallyMergable) {
@@ -412,6 +440,48 @@ TEST_F(ComputationPartitionerTest, ScatterFusion) {
                                 &mlir_context_);
   EXPECT_THAT(fusion.subgraphs(), SizeIs(1));
   PrintAndErase(CreateSubgraphMlirFunction(fusion.GetRootSubgraph(), builder));
+}
+
+TEST_F(ComputationPartitionerTest, PartitioningIsDeterministic) {
+  // This is a fusion that used to result in non-deterministic partitioning.
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule test_module
+    ENTRY fused_computation {
+      constant_15990_184 = s32[] constant(0)
+      broadcast.59771.33 = s32[16]{0} broadcast(constant_15990_184), dimensions={}
+      param_1.31375 = s32[16]{0} parameter(1)
+      constant_15774_2 = s32[] constant(262143)
+      broadcast.59775.7 = s32[16]{0} broadcast(constant_15774_2), dimensions={}
+      clamp.6.7 = s32[16]{0} clamp(broadcast.59771.33, param_1.31375, broadcast.59775.7)
+      param_2.20600 = u32[] parameter(2)
+      convert.12580.11 = s32[] convert(param_2.20600)
+      constant_15783_5 = s32[] constant(32768)
+      multiply.10392.11 = s32[] multiply(convert.12580.11, constant_15783_5)
+      broadcast.59778.9 = s32[16]{0} broadcast(multiply.10392.11), dimensions={}
+      compare.12185.5 = pred[16]{0} compare(clamp.6.7, broadcast.59778.9), direction=LT
+      constant_15997_1 = s32[] constant(32767)
+      add.7199.4 = s32[] add(multiply.10392.11, constant_15997_1)
+      broadcast.59780.6 = s32[16]{0} broadcast(add.7199.4), dimensions={}
+      compare.12186.5 = pred[16]{0} compare(clamp.6.7, broadcast.59780.6), direction=GT
+      or.384.3 = pred[16]{0} or(compare.12185.5, compare.12186.5)
+      broadcast.59957.1 = pred[1,16,4096]{2,1,0} broadcast(or.384.3), dimensions={1}
+      constant_16001_1 = bf16[] constant(0)
+      broadcast.59959.1 = bf16[1,16,4096]{2,1,0} broadcast(constant_16001_1), dimensions={}
+      param_0.9142 = bf16[32768,4096]{1,0} parameter(0)
+      clamp.7.1 = s32[16]{0} clamp(broadcast.59778.9, clamp.6.7, broadcast.59780.6)
+      subtract.4322.1 = s32[16]{0} subtract(clamp.7.1, broadcast.59778.9)
+      bitcast.3.3 = s32[16,1]{1,0} bitcast(subtract.4322.1)
+      gather.34.3 = bf16[16,1,4096]{2,0,1} gather(param_0.9142, bitcast.3.3), offset_dims={1,2}, collapsed_slice_dims={}, start_index_map={0}, index_vector_dim=1, slice_sizes={1,4096}
+      bitcast.4104.1 = bf16[1,16,4096]{2,1,0} bitcast(gather.34.3)
+      ROOT select.8499.1 = bf16[1,16,4096]{2,1,0} select(broadcast.59957.1, broadcast.59959.1, bitcast.4104.1)
+    }
+)")
+                    .value();
+
+  auto* fusion = module->GetComputationWithName("fused_computation");
+  ASSERT_NE(fusion, nullptr);
+  PartitionedComputation computation(fusion, &mlir_context_);
+  EXPECT_EQ(computation.subgraphs().size(), 1);
 }
 
 }  // namespace

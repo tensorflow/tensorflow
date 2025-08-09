@@ -1,5 +1,6 @@
 # buildifier: disable=out-of-order-load
 
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 
 # copybara:uncomment_begin(google-only)
@@ -47,16 +48,10 @@ td_library(
 gentbl_cc_library(
     name = "tensorflow_op_interfaces_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-op-interface-decls"],
-            "ir/tf_op_interfaces.h.inc",
-        ),
-        (
-            ["-gen-op-interface-defs"],
-            "ir/tf_op_interfaces.cc.inc",
-        ),
-    ],
+    tbl_outs = {
+        "ir/tf_op_interfaces.h.inc": ["-gen-op-interface-decls"],
+        "ir/tf_op_interfaces.cc.inc": ["-gen-op-interface-defs"],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ir/tf_op_interfaces.td",
     test = True,
@@ -68,12 +63,7 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "tensorflow_struct_doc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-dialect-doc"],
-            "g3doc/tf_ops.md",
-        ),
-    ],
+    tbl_outs = {"g3doc/tf_ops.md": ["-gen-dialect-doc"]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ir/tf_ops.td",
     test = True,
@@ -107,16 +97,10 @@ cc_library(
 gentbl_cc_library(
     name = "tensorflow_all_ops_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-op-decls"],
-            "ir/tf_all_ops.h.inc",
-        ),
-        (
-            ["-gen-op-defs"],
-            "ir/tf_all_ops.cc.inc",
-        ),
-    ],
+    tbl_outs = {
+        "ir/tf_all_ops.h.inc": ["-gen-op-decls"],
+        "ir/tf_all_ops.cc.inc": ["-gen-op-defs"],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ir/tf_ops.td",
     deps = [
@@ -140,22 +124,16 @@ tf_ops_category_list = [
     gentbl_cc_library(
         name = "tensorflow_" + target["name"] + "_inc_gen",
         compatible_with = get_compatible_with_portable(),
-        tbl_outs = [
-            (
-                [
-                    "-gen-op-decls",
-                    "-op-include-regex=" + target["include"],
-                ],
-                "ir/tf_" + target["name"] + ".h.inc",
-            ),
-            (
-                [
-                    "-gen-op-defs",
-                    "-op-include-regex=" + target["include"],
-                ],
-                "ir/tf_" + target["name"] + ".cc.inc",
-            ),
-        ],
+        tbl_outs = {
+            "ir/tf_" + target["name"] + ".h.inc": [
+                "-gen-op-decls",
+                "-op-include-regex=" + target["include"],
+            ],
+            "ir/tf_" + target["name"] + ".cc.inc": [
+                "-gen-op-defs",
+                "-op-include-regex=" + target["include"],
+            ],
+        },
         tblgen = "@llvm-project//mlir:mlir-tblgen",
         td_file = "ir/tf_ops.td",
         deps = [
@@ -167,22 +145,16 @@ tf_ops_category_list = [
 gentbl_cc_library(
     name = "tensorflow_remaining_ops_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            [
-                "-gen-op-decls",
-                "-op-exclude-regex=" + "|".join([target["include"] for target in tf_ops_category_list]),
-            ],
-            "ir/tf_remaining_ops.h.inc",
-        ),
-        (
-            [
-                "-gen-op-defs",
-                "-op-exclude-regex=" + "|".join([target["include"] for target in tf_ops_category_list]),
-            ],
-            "ir/tf_remaining_ops.cc.inc",
-        ),
-    ],
+    tbl_outs = {
+        "ir/tf_remaining_ops.h.inc": [
+            "-gen-op-decls",
+            "-op-exclude-regex=" + "|".join([target["include"] for target in tf_ops_category_list]),
+        ],
+        "ir/tf_remaining_ops.cc.inc": [
+            "-gen-op-defs",
+            "-op-exclude-regex=" + "|".join([target["include"] for target in tf_ops_category_list]),
+        ],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ir/tf_ops.td",
     deps = [
@@ -193,20 +165,11 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "tf_saved_model_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-op-decls"],
-            "ir/tf_saved_model.h.inc",
-        ),
-        (
-            ["-gen-op-defs"],
-            "ir/tf_saved_model.cc.inc",
-        ),
-        (
-            ["-gen-dialect-doc"],
-            "g3doc/tf_saved_model.md",
-        ),
-    ],
+    tbl_outs = {
+        "ir/tf_saved_model.h.inc": ["-gen-op-decls"],
+        "ir/tf_saved_model.cc.inc": ["-gen-op-defs"],
+        "g3doc/tf_saved_model.md": ["-gen-dialect-doc"],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ir/tf_saved_model_ops.td",
     test = True,
@@ -219,23 +182,14 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "tensorflow_executor_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-op-decls"],
-            "ir/tf_executor.h.inc",
-        ),
-        (
-            ["-gen-op-defs"],
-            "ir/tf_executor.cc.inc",
-        ),
-        (
-            [
-                "-gen-dialect-doc",
-                "-dialect=tf_executor",
-            ],
-            "g3doc/tf_executor.md",
-        ),
-    ],
+    tbl_outs = {
+        "ir/tf_executor.h.inc": ["-gen-op-decls"],
+        "ir/tf_executor.cc.inc": ["-gen-op-defs"],
+        "g3doc/tf_executor.md": [
+            "-gen-dialect-doc",
+            "-dialect=tf_executor",
+        ],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ir/tf_executor_ops.td",
     test = True,
@@ -250,20 +204,11 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "tensorflow_device_ops_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-op-decls"],
-            "ir/tf_device.h.inc",
-        ),
-        (
-            ["-gen-op-defs"],
-            "ir/tf_device.cc.inc",
-        ),
-        (
-            ["-gen-dialect-doc"],
-            "g3doc/tf_device.md",
-        ),
-    ],
+    tbl_outs = {
+        "ir/tf_device.h.inc": ["-gen-op-decls"],
+        "ir/tf_device.cc.inc": ["-gen-op-defs"],
+        "g3doc/tf_device.md": ["-gen-dialect-doc"],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ir/tf_device_ops.td",
     test = True,
@@ -389,7 +334,7 @@ cc_library(
     ] + ["ir/tf_" + target["name"] + ".h.inc" for target in tf_ops_category_list],
     deps = [
         ":attribute_utils",
-        ":serialize_mlir_module_utils",
+        ":deserialize_mlir_module_utils",
         ":side_effect_analysis_util",
         ":tensorflow_attributes",
         ":tensorflow_op_interfaces",
@@ -724,6 +669,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:casts",
         "@com_google_absl//absl/strings",
+        "@com_google_protobuf//:protobuf",
     ],
 )
 
@@ -953,7 +899,7 @@ cc_library(
     name = "error_util",
     srcs = ["utils/error_util.cc"],
     hdrs = ["utils/error_util.h"],
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
@@ -1011,18 +957,43 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "deserialize_mlir_module_utils",
+    srcs = ["utils/deserialize_mlir_module_utils.cc"],
+    hdrs = ["utils/deserialize_mlir_module_utils.h"],
+    deps = [
+        ":error_util",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/status",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@local_xla//xla:status_macros",
+    ],
+)
+
+cc_library(
     name = "serialize_mlir_module_utils",
     srcs = ["utils/serialize_mlir_module_utils.cc"],
     hdrs = ["utils/serialize_mlir_module_utils.h"],
     deps = [
-        ":error_util",
-        "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:status",
+        "//tensorflow/compiler/jit:flags",
+        "//tensorflow/compiler/jit:flags_headers",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Parser",
-        "@local_xla//xla:status_macros",
+    ],
+)
+
+tf_cc_test(
+    name = "serialize_mlir_module_utils_test",
+    srcs = ["utils/serialize_mlir_module_utils_test.cc"],
+    deps = [
+        ":serialize_mlir_module_utils",
+        "//tensorflow/compiler/jit:flags",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -1031,12 +1002,13 @@ cc_library(
     testonly = True,  # Ensure alwayslink does not leak in the codebase.
     srcs = ["utils/tf_xla_mlir_translate.cc"],
     deps = [
+        ":deserialize_mlir_module_utils",
         ":mlir_roundtrip_flags",
         ":serialize_mlir_module_utils",
         ":tensorflow",
-        "//tensorflow/compiler/mlir/lite/tools:translate_cl_options",
         "//tensorflow/compiler/mlir/tensorflow/translate/tools:parsers",
         "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util",
+        "//tensorflow/compiler/mlir/tools:translate_cl_options",
         "//tensorflow/compiler/mlir/utils:string_container_utils",
         "//tensorflow/compiler/tf2xla:layout_util",
         "//tensorflow/compiler/tf2xla:xla_argument",
@@ -1141,7 +1113,7 @@ tf_cc_test(
     srcs = ["utils/cluster_util_test.cc"],
     deps = [
         ":cluster_util",
-        ":serialize_mlir_module_utils",
+        ":deserialize_mlir_module_utils",
         ":tensorflow",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -1183,8 +1155,8 @@ tf_cc_test(
     size = "small",
     srcs = ["utils/tpu_rewrite_device_util_test.cc"],
     deps = [
+        ":deserialize_mlir_module_utils",
         ":device_util",
-        ":serialize_mlir_module_utils",
         ":tensorflow",
         ":tpu_rewrite_device_util",
         "//tensorflow/compiler/jit:flags",
@@ -1277,6 +1249,8 @@ tf_cc_test(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MlirOptLib",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:RegisterAllDialects",
+        "@llvm-project//mlir:RegisterAllPasses",
         "@llvm-project//mlir:Support",
     ],
 )
@@ -1325,7 +1299,7 @@ tf_cc_test(
     srcs = ["utils/bridge_logger_test.cc"],
     deps = [
         ":bridge_logger",
-        ":serialize_mlir_module_utils",
+        ":deserialize_mlir_module_utils",
         ":tensorflow",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/core:lib",
@@ -1346,7 +1320,7 @@ tf_cc_test(
     srcs = ["utils/data_dumper_logger_config_test.cc"],
     deps = [
         ":bridge_logger",
-        ":serialize_mlir_module_utils",
+        ":deserialize_mlir_module_utils",
         ":tensorflow",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/core:test",
@@ -1428,6 +1402,7 @@ cc_library(
         ":tensorflow",
         "//tensorflow/core:framework",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -1438,6 +1413,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/hlo/ir:hlo",
+        "@local_xla//xla/hlo/ir:tile_assignment",
         "@local_xla//xla/hlo/parser:hlo_parser",
         "@local_xla//xla/tsl/lib/math:math_util",
     ],
@@ -1447,7 +1423,7 @@ tf_cc_test(
     name = "utils/xla_sharding_util_test",
     srcs = ["utils/xla_sharding_util_test.cc"],
     deps = [
-        ":serialize_mlir_module_utils",
+        ":deserialize_mlir_module_utils",
         ":tensorflow",
         ":xla_sharding_util",
         "//tensorflow/core:test",
@@ -1665,8 +1641,8 @@ tf_cc_test(
     size = "small",
     srcs = ["utils/xla_rewrite_util_test.cc"],
     deps = [
+        ":deserialize_mlir_module_utils",
         ":device_util",
-        ":serialize_mlir_module_utils",
         ":tensorflow",
         ":tpu_rewrite_device_util",
         ":xla_rewrite_util",
@@ -1695,6 +1671,7 @@ cc_library(
     deps = [
         "tensorflow_side_effects",
         "tensorflow_types",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:SideEffectInterfaces",
         "@llvm-project//mlir:Support",

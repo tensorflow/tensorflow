@@ -33,7 +33,8 @@ class XnnpackDelegateProvider : public DelegateProvider {
                              ToolParam::Create<bool>(false));
     default_params_.AddParam("xnnpack_weight_cache_file_path",
                              ToolParam::Create<std::string>(""));
-    default_params_.AddParam("xnnpack_slinky", ToolParam::Create<bool>(false));
+    default_params_.AddParam("xnnpack_runtime_flags",
+                             ToolParam::Create<int>(0));
   }
 
   std::vector<Flag> CreateFlags(ToolParams* params) const final;
@@ -63,10 +64,8 @@ std::vector<Flag> XnnpackDelegateProvider::CreateFlags(
                        "enforce float16 inference."),
       CreateFlag<std::string>("xnnpack_weight_cache_file_path", params,
                               "enable file-backed weight caching."),
-      CreateFlag<bool>("xnnpack_slinky", params,
-                       "enable the Slinky optimizer. "
-                       "(Ignored if --use_xnnpack is false, or if XNNPACK is "
-                       "built without Slinky.)"),
+      CreateFlag<int>("xnnpack_runtime_flags", params,
+                      "Extra flags to pass to XNNPACK runtime."),
   };
   return flags;
 }
@@ -78,7 +77,8 @@ void XnnpackDelegateProvider::LogParams(const ToolParams& params,
                  verbose);
   LOG_TOOL_PARAM(params, std::string, "xnnpack_weight_cache_file_path",
                  "xnnpack_weight_cache_file_path", verbose);
-  LOG_TOOL_PARAM(params, bool, "xnnpack_slinky", "Use Slinky", verbose);
+  LOG_TOOL_PARAM(params, int, "xnnpack_runtime_flags",
+                 "Extra flags for XNNPACK runtime", verbose);
 }
 
 TfLiteDelegatePtr XnnpackDelegateProvider::CreateTfLiteDelegate(
@@ -91,9 +91,8 @@ TfLiteDelegatePtr XnnpackDelegateProvider::CreateTfLiteDelegate(
     if (params.Get<bool>("xnnpack_force_fp16")) {
       opts.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_FORCE_FP16;
     }
-    if (params.Get<bool>("xnnpack_slinky")) {
-      opts.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_SLINKY;
-    }
+    opts.runtime_flags = params.Get<int>("xnnpack_runtime_flags");
+
     const std::string path =
         params.Get<std::string>("xnnpack_weight_cache_file_path");
     if (!path.empty()) {

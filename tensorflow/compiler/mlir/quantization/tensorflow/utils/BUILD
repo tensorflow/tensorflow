@@ -1,3 +1,4 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
@@ -12,12 +13,17 @@ package(
 cc_library(
     name = "fake_quant_utils",
     srcs = ["fake_quant_utils.cc"],
-    hdrs = ["fake_quant_utils.h"],
+    hdrs = [
+        "fake_quant_utils.h",
+    ],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
+        "//tensorflow/compiler/mlir/quantization/common/ir:QuantOps",
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Dialect",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],
@@ -79,8 +85,7 @@ cc_library(
     hdrs = ["tf_to_xla_attribute_utils.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "//tensorflow/compiler/mlir/lite/core/c:tflite_common",
-        "//tensorflow/compiler/mlir/lite/kernels:padding",
+        "//tensorflow/compiler/mlir/kernels:padding",
         "//tensorflow/compiler/mlir/quantization/common:attrs_and_constraints",
         "//tensorflow/compiler/mlir/quantization/tensorflow/cc:constant_fold",
         "@com_google_absl//absl/algorithm:container",

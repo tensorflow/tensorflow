@@ -17,6 +17,8 @@ syntax = "proto3";
 
 package xla.cpu;
 
+import "xla/backends/cpu/xnnpack_config.proto";
+import "xla/service/buffer_assignment.proto";
 import "xla/service/hlo.proto";
 import "xla/xla_data.proto";
 
@@ -57,15 +59,9 @@ message SortDirectionOptional {
   bool contains_value = 2;
 }
 
-message BufferAllocationSliceProto {
-  int64 offset = 1;
-  int64 size = 2;
-  int64 buffer_allocation_index = 3;
-}
-
 message ShapeBufferAllocationSliceProto {
   xla.ShapeProto shape = 1;
-  BufferAllocationSliceProto slice = 2;
+  xla.buffer_assignment.BufferAllocationSliceProto slice = 2;
 }
 
 message OpParamsProto {
@@ -124,7 +120,7 @@ message CallThunkProto {
 
 message ConditionalThunkProto {
   repeated ThunkSequenceProto branch_sequences = 1;
-  BufferAllocationSliceProto branch_index_buffer = 2;
+  xla.buffer_assignment.BufferAllocationSliceProto branch_index_buffer = 2;
 }
 
 message ConvolutionThunkProto {
@@ -153,6 +149,7 @@ message XnnDotThunkProto {
   ShapeBufferAllocationSliceProto lhs_buffer_shape = 2;
   ShapeBufferAllocationSliceProto rhs_buffer_shape = 3;
   ShapeBufferAllocationSliceProto out_buffer_shape = 4;
+  bool capture_rhs = 5;
 }
 
 message XnnConvolutionThunkProto {
@@ -172,11 +169,7 @@ message XnnFusionThunkProtoImpl {
 }
 
 message XnnFusionThunkProto {
-  message Options {
-    bool use_threadpool = 1;
-  }
-
-  Options options = 1;
+  XnnFusionBackendConfig options = 1;
 
   oneof impl {
     XnnDotThunkProto xnn_dot_thunk = 2;
@@ -194,37 +187,38 @@ message DotThunkProto {
 
 message RngGetAndUpdateStateThunkProto {
   int64 delta = 1;
-  BufferAllocationSliceProto state_buffer = 2;
+  xla.buffer_assignment.BufferAllocationSliceProto state_buffer = 2;
 }
 
 message TopKThunkProto {
   int64 batch_size = 1;
   int64 input_size = 2;
   int64 k = 3;
-  BufferAllocationSliceProto values_buffer = 4;
-  BufferAllocationSliceProto output_buffer = 5;
-  BufferAllocationSliceProto indices_buffer = 6;
+  xla.buffer_assignment.BufferAllocationSliceProto values_buffer = 4;
+  xla.buffer_assignment.BufferAllocationSliceProto output_buffer = 5;
+  xla.buffer_assignment.BufferAllocationSliceProto indices_buffer = 6;
 }
 
 message WhileThunkProto {
   ThunkSequenceProto cond_sequence = 1;
   ThunkSequenceProto body_sequence = 2;
   Int64Optional trip_count = 3;
-  BufferAllocationSliceProto cond_buffer = 4;
+  xla.buffer_assignment.BufferAllocationSliceProto cond_buffer = 4;
 }
 
 message KernelThunkProto {
-  message ThreadDim {
+  message NumWorkGroups {
     int64 x = 1;
     int64 y = 2;
     int64 z = 3;
   }
   string kernel_name = 1;
-  ThreadDim thread_dim = 2;
+  NumWorkGroups num_workgroups = 2;
   repeated int64 invariant_arguments = 3;
   Int64Optional min_alignment = 4;
-  repeated BufferAllocationSliceProto arguments_buffers = 5;
-  repeated BufferAllocationSliceProto results_buffers = 6;
+  repeated xla.buffer_assignment.BufferAllocationSliceProto arguments_buffers =
+      5;
+  repeated xla.buffer_assignment.BufferAllocationSliceProto results_buffers = 6;
 }
 
 message CopyThunkProto {
@@ -272,11 +266,11 @@ message CustomCallThunkProto {
 }
 
 message PartitionIdThunkProto {
-  BufferAllocationSliceProto logical_id_buffer = 1;
+  xla.buffer_assignment.BufferAllocationSliceProto logical_id_buffer = 1;
 }
 
 message ReplicaIdThunkProto {
-  BufferAllocationSliceProto logical_id_buffer = 1;
+  xla.buffer_assignment.BufferAllocationSliceProto logical_id_buffer = 1;
 }
 
 message InfoProto {
@@ -311,5 +305,10 @@ message ThunkProto {
 }
 
 message ThunkSequenceProto {
+  message ResourceUsersProto {
+    repeated int64 thunk_indices = 1;
+    ResourceProto resource = 2;
+  }
   repeated ThunkProto thunks = 1;
+  repeated ResourceUsersProto thunk_resources = 2;
 }

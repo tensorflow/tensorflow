@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/python/framework/python_op_gen.h"
 
+#include <string>
 #include <unordered_set>
 #include <vector>
 
@@ -31,8 +32,7 @@ namespace {
 
 void ExpectHasSubstr(const string& s, const string& expected) {
   EXPECT_TRUE(absl::StrContains(s, expected))
-      << "'Generated ops "
-      << " does not contain '" << expected << "'";
+      << "'Generated ops '" << s << "' does not contain '" << expected << "'";
 }
 
 void ExpectDoesNotHaveSubstr(const string& s, const string& expected) {
@@ -59,21 +59,23 @@ TEST(PythonOpGen, TypeAnnotateAllOps) {
       GetPythonOps(ops, api_def_map, OpRegOffsets(), /* hidden_ops= */ {},
                    /* source_file_list= */ {});
 
-  const string all_types =
+  const std::string all_types =
       ", \"_atypes.BFloat16\", \"_atypes.Bool\", \"_atypes.Complex128\", "
       "\"_atypes.Complex64\", \"_atypes.Float16\", \"_atypes.Float32\", "
       "\"_atypes.Float64\", "
       "\"_atypes.Float8e4m3b11fnuz\", \"_atypes.Float8e4m3fn\", "
       "\"_atypes.Float8e4m3fnuz\", \"_atypes.Float8e5m2\", "
       "\"_atypes.Float8e5m2fnuz\", "
-      "\"_atypes.Half\", \"_atypes.Int16\", "
-      "\"_atypes.Int32\", \"_atypes.Int4\", \"_atypes.Int64\", "
+      "\"_atypes.Half\", \"_atypes.Int16\", \"_atypes.Int2\", "
+      "\"_atypes.Int32\", \"_atypes.Int4\", "
+      "\"_atypes.Int64\", "
       "\"_atypes.Int8\", "
       "\"_atypes.QInt16\", \"_atypes.QInt32\", \"_atypes.QInt8\", "
       "\"_atypes.QUInt16\", "
       "\"_atypes.QUInt8\", \"_atypes.Resource\", \"_atypes.String\", "
-      "\"_atypes.UInt16\", "
-      "\"_atypes.UInt32\", \"_atypes.UInt4\", \"_atypes.UInt64\", "
+      "\"_atypes.UInt16\", \"_atypes.UInt2\", "
+      "\"_atypes.UInt32\", \"_atypes.UInt4\", "
+      "\"_atypes.UInt64\", "
       "\"_atypes.UInt8\", "
       "\"_atypes.Variant\")";
 

@@ -33,7 +33,7 @@ def GetI32DenseAttr: NativeCodeCall<
 // Receives a composite DictionaryAttr and returns the value of the Attribute
 // with the key `attr_name` as the type provided by `attr_type`.
 class GetCompositeAttributeAs<string attr_name, string attr_type>:
-  NativeCodeCall<"$0.get(\"" # attr_name # "\").dyn_cast<" # attr_type # ">()">;
+  NativeCodeCall<"llvm::dyn_cast<" # attr_type # ">($0.get(\"" # attr_name # "\"))">;
 
 // Receives a composite DictionaryAttr and returns the value of the Attribute
 // with the key `attr_name` as a DenseIntElementsAttr.

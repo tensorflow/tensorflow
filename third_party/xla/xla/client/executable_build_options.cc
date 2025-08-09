@@ -27,7 +27,7 @@ limitations under the License.
 #include "xla/debug_options_flags.h"
 #include "xla/execution_options_util.h"
 #include "xla/layout_util.h"
-#include "xla/pjrt/compile_options.pb.h"
+#include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/service/compilation_environments.h"
 #include "xla/service/computation_placer.h"
 #include "xla/shape.h"
@@ -212,7 +212,9 @@ absl::StatusOr<ExecutableBuildOptions> ExecutableBuildOptionsFromProto(
     output.set_device_ordinal(input.device_ordinal());
   }
   if (input.has_result_layout()) {
-    output.set_result_layout(xla::Shape(input.result_layout()));
+    TF_ASSIGN_OR_RETURN(Shape result_layout,
+                        Shape::FromProto(input.result_layout()));
+    output.set_result_layout(result_layout);
   }
   if (input.has_comp_envs()) {
     TF_ASSIGN_OR_RETURN(

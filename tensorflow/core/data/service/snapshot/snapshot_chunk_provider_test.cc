@@ -140,8 +140,10 @@ TEST(SnapshotChunkProviderTest, EmptySnapshot) {
 
   SnapshotChunkProvider snapshot_chunk_provider(snapshot_path,
                                                 tsl::Env::Default());
-  EXPECT_THAT(GetAllChunks(snapshot_chunk_provider), IsOkAndHolds(IsEmpty()));
-  EXPECT_THAT(GetAllChunks(snapshot_chunk_provider), IsOkAndHolds(IsEmpty()));
+  EXPECT_THAT(GetAllChunks(snapshot_chunk_provider),
+              absl_testing::IsOkAndHolds(IsEmpty()));
+  EXPECT_THAT(GetAllChunks(snapshot_chunk_provider),
+              absl_testing::IsOkAndHolds(IsEmpty()));
 }
 
 TEST(SnapshotChunkProviderTest, SingleReader) {
@@ -159,7 +161,8 @@ TEST(SnapshotChunkProviderTest, SingleReader) {
   // Chunks are ordered by chunk indices.
   absl::c_reverse(chunks);
   EXPECT_THAT(GetAllChunks(snapshot_chunk_provider),
-              IsOkAndHolds(ElementsAreArray(JoinPaths(snapshot_path, chunks))));
+              absl_testing::IsOkAndHolds(
+                  ElementsAreArray(JoinPaths(snapshot_path, chunks))));
 }
 
 TEST(SnapshotChunkProviderTest, Cardinality) {
@@ -287,12 +290,12 @@ TEST(SnapshotChunkProviderTest, SaveRestore) {
   SnapshotChunkProvider snapshot_chunk_provider(snapshot_path,
                                                 tsl::Env::Default());
   EXPECT_THAT(GetChunk(snapshot_chunk_provider),
-              IsOkAndHolds(tsl::io::JoinPath(
+              absl_testing::IsOkAndHolds(tsl::io::JoinPath(
                   CommittedChunksDirectory(snapshot_path), "chunk_0_0_0")));
   TF_ASSERT_OK(SaveAndRestore(snapshot_chunk_provider));
 
   EXPECT_THAT(GetAllChunks(snapshot_chunk_provider),
-              IsOkAndHolds(ElementsAreArray(
+              absl_testing::IsOkAndHolds(ElementsAreArray(
                   JoinPaths(snapshot_path, {"chunk_1_1_1", "chunk_2_2_2",
                                             "chunk_3_3_3", "chunk_4_4_4"}))));
 }
@@ -306,7 +309,8 @@ TEST(SnapshotChunkProviderTest, SnapshotError) {
                                                           tsl::Env::Default());
             EXPECT_THAT(
                 GetAllChunks(snapshot_chunk_provider),
-                StatusIs(absl::StatusCode::kFailedPrecondition, "Test error."));
+                absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition,
+                                       "Test error."));
           }));
 
   TF_ASSERT_OK(WriteChunk(snapshot_path, "chunk_0_0_0"));
@@ -328,8 +332,9 @@ TEST(SnapshotChunkProviderTest, Cancel) {
           [&snapshot_chunk_provider]() {
             EXPECT_THAT(
                 GetAllChunks(snapshot_chunk_provider),
-                StatusIs(absl::StatusCode::kCancelled,
-                         HasSubstr("Cancelled loading tf.data snapshot at")));
+                absl_testing::StatusIs(
+                    absl::StatusCode::kCancelled,
+                    HasSubstr("Cancelled loading tf.data snapshot at")));
           }));
 
   TF_ASSERT_OK(WriteChunk(snapshot_path, "chunk_0_0_0"));

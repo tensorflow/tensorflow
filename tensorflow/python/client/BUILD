@@ -1,3 +1,5 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
 # Contains targets that expose client session APIs
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
@@ -73,9 +75,9 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_status",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//third_party/py/numpy:headers",
-        "//third_party/python_runtime:headers",
         "@com_google_absl//absl/types:optional",
         "@eigen_archive//:eigen3",
+        "@local_xla//third_party/python_runtime:headers",
         "@local_xla//xla/tsl/python/lib/core:numpy",
         "@pybind11",
         "@pybind11_abseil//pybind11_abseil:absl_casters",
@@ -111,14 +113,17 @@ tf_python_pybind_extension(
         "_pywrap_debug_events_writer.pyi",
     ],
     deps = [
+        "//tensorflow/core:framework",
         "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:lib",
         "//tensorflow/core:lib_headers_for_pybind",
+        "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/python/lib/core:pybind11_absl",
         "//tensorflow/python/lib/core:pybind11_proto",
         "//tensorflow/python/lib/core:pybind11_status",
-        "//third_party/python_runtime:headers",
         "@com_google_absl//absl/strings",
+        "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
     ],
 )
@@ -131,14 +136,17 @@ tf_python_pybind_extension(
         "_pywrap_events_writer.pyi",
     ],
     deps = [
+        "//tensorflow/core:framework",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
+        "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/python/lib/core:pybind11_absl",
         "//tensorflow/python/lib/core:pybind11_proto",
         "//tensorflow/python/lib/core:pybind11_status",
-        "//third_party/python_runtime:headers",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
     ],
 )
@@ -197,12 +205,16 @@ tf_python_pybind_extension(
         "_pywrap_device_lib.pyi",
     ],
     deps = [
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework_internal_headers_lib",
+        "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime:core_cpu_headers_lib",
+        "//tensorflow/core/common_runtime:device",
+        "//tensorflow/core/common_runtime:device_factory",
         "//tensorflow/python/lib/core:pybind11_proto",
         "//tensorflow/python/lib/core:pybind11_status",
-        "//third_party/python_runtime:headers",
+        "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
     ],
 )
@@ -231,6 +243,9 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/protobuf:replay_log_proto_cc",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
     ] + if_static(
         extra_deps = [
             "//tensorflow/core/protobuf:master_proto_cc",

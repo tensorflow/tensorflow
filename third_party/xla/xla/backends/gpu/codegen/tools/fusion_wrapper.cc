@@ -17,7 +17,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "llvm/Support/raw_ostream.h"
-#include "xla/backends/gpu/codegen/tools/test_lib.h"
+#include "xla/codegen/tools/test_lib.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/init_main.h"
 

@@ -93,10 +93,6 @@ struct HloVerifierOpts {
     return std::move(*this);
   }
 
-  HloVerifierOpts&& WithVerifyS4U4Usage(bool verify) {
-    return std::move(*this);
-  }
-
   HloVerifierOpts&& WithAllowUnboundedDynamism(bool allow) {
     allow_unbounded_dynamism = allow;
     return std::move(*this);
@@ -107,7 +103,22 @@ struct HloVerifierOpts {
     return std::move(*this);
   }
 
+  HloVerifierOpts&& VerifyNoHostMemorySpace() {
+    verify_no_host_memory_space = true;
+    return std::move(*this);
+  }
+
+  HloVerifierOpts&& WithVerifyNoCollectiveDeadlocks(
+      bool verify_no_collective_deadlocks_p) {
+    verify_no_collective_deadlocks = verify_no_collective_deadlocks_p;
+    return std::move(*this);
+  }
+
   bool IsLayoutSensitive() const { return layout_sensitive; }
+
+  bool CheckForCollectiveDeadlocks() const {
+    return verify_no_collective_deadlocks;
+  }
 
   bool AllowMixedPrecision() const { return allow_mixed_precision; }
 
@@ -156,6 +167,12 @@ struct HloVerifierOpts {
 
   // Check if channel instructions all have unique channel ids.
   bool verify_unique_channel_ids = true;
+
+  // Check if a shape has a host memory space color
+  bool verify_no_host_memory_space = false;
+
+  // Check if collectives in the given module will result in a deadlock.
+  bool verify_no_collective_deadlocks = false;
 
   HloPredicate instruction_can_change_layout;
 
@@ -206,6 +223,7 @@ class ShapeVerifier : public DfsHloVisitor {
   absl::Status HandleCollectivePermuteDone(HloInstruction* hlo) override;
   absl::Status HandlePartitionId(HloInstruction* hlo) override;
   absl::Status HandleRaggedDot(HloInstruction* ragged_dot) override;
+  absl::Status HandleScaledDot(HloInstruction* scaled_dot) override;
   absl::Status HandleReplicaId(HloInstruction* hlo) override;
   absl::Status HandleReducePrecision(HloInstruction* reduce_precision) override;
   absl::Status HandleInfeed(HloInstruction*) override;
@@ -376,13 +394,16 @@ class HloVerifier : public HloModulePass {
       bool layout_sensitive, bool allow_mixed_precision,
       HloPredicate instruction_can_change_layout_func = {},
       std::function<int64_t(const Shape&)> shape_size_func =
-          [](const Shape& shape) { return ShapeUtil::ByteSizeOf(shape); })
+          [](const Shape& shape) { return ShapeUtil::ByteSizeOf(shape); },
+      bool verify_no_collective_deadlocks = false)
       : HloVerifier(HloVerifierOpts{}
                         .WithLayoutSensitive(layout_sensitive)
                         .WithAllowMixedPrecision(allow_mixed_precision)
                         .WithInstructionCanChangeLayout(
                             instruction_can_change_layout_func)
-                        .WithCustomShapeSize(shape_size_func)) {}
+                        .WithCustomShapeSize(shape_size_func)
+                        .WithVerifyNoCollectiveDeadlocks(
+                            verify_no_collective_deadlocks)) {}
 
   explicit HloVerifier(HloVerifierOpts&& opts)
       : target_metadata_(

@@ -47,7 +47,7 @@ uint64 EnvTime::NowNanos() {
     // versions of Windows, so we need to check for its existence here.
     // All std::chrono clocks on Windows proved to return values that may
     // repeat, which is not good enough for some uses.
-    constexpr int64_t kUnixEpochStartTicks = 116444736000000000i64;
+    constexpr int64_t kUnixEpochStartTicks = 116444736000000000LL;
 
     // This interface needs to return system time and not just any time
     // because it is often used as an argument to TimedWait() on condition

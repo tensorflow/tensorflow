@@ -49,6 +49,10 @@ void RuntimeSimulator::InitializeAlternateMemoryMap(
   outputs_in_alternate_memory_map_.clear();
   operands_in_alternate_memory_map_.clear();
   for (auto& allocation : allocations) {
+    if (allocation->is_scoped_allocation()) {
+      continue;
+    }
+
     if (!allocation->is_copy_allocation()) {
       if (allocation->memory_space() == MemorySpace::kAlternate) {
         const HloInstruction* defining_instruction =
@@ -317,14 +321,13 @@ float GetUnusedDefaultMemBandwidthBytes(float bytes_per_second, float seconds) {
 }  // namespace
 
 float RuntimeSimulator::SimulateElapsedTime(
-    const HloModule* hlo_module, const AllocationSequence& allocations,
+    const HloModule* hlo_module, const HloAliasAnalysis& alias_analysis,
+    const AllocationSequence& allocations,
     const std::vector<int64_t>* alt_mem_bytes_occupied) {
   InitializeAlternateMemoryMap(allocations);
 
-  std::unique_ptr<xla::HloAliasAnalysis> alias_analysis =
-      HloAliasAnalysis::Run(hlo_module).value();
   std::unique_ptr<HloLiveRange> hlo_live_range =
-      HloLiveRange::Run(hlo_module->schedule(), *alias_analysis,
+      HloLiveRange::Run(hlo_module->schedule(), alias_analysis,
                         hlo_module->entry_computation())
           .value();
 

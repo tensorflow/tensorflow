@@ -28,6 +28,7 @@ limitations under the License.
 #include "nvtx3/nvToolsExt.h"
 #include "nvtx3/nvToolsExtCuda.h"
 #include "nvtx3/nvToolsExtCudaRt.h"
+#include "nvtx3/nvToolsExtMemCudaRt.h"
 #include "nvtx3/nvToolsExtPayload.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 
@@ -92,11 +93,7 @@ void RangePush(ProfilerDomainHandle domain, StringHandle title,
   attrs.size = NVTX_EVENT_ATTRIB_STRUCT_SIZE;
   attrs.messageType = NVTX_MESSAGE_TYPE_REGISTERED;
   attrs.message.registered = reinterpret_cast<nvtxStringHandle_t>(title);
-#ifdef NVTX_VERSION_3_1
   NVTX_PAYLOAD_EVTATTR_SET(&attrs, schema_id, payload, payload_size);
-#else
-  NVTX_PAYLOAD_EVTATTR_SET(attrs, schema_id, payload, payload_size);
-#endif
   nvtxDomainRangePushEx(reinterpret_cast<nvtxDomainHandle_t>(domain), &attrs);
 }
 }  // namespace detail
@@ -123,4 +120,21 @@ StringHandle RegisterString(ProfilerDomainHandle domain,
   buffer.append(suffix);
   return impl(buffer.c_str());
 }
+
+void MarkMemoryInitialized(void const* address, size_t size,
+                           StreamHandle stream) {
+  auto domain = DefaultProfilerDomain();
+  nvtxMemVirtualRangeDesc_t range_desc{size, address};
+  nvtxMemMarkInitializedBatch_t regions_desc{
+      NVTX_EXT_COMPATID_MEM,
+      sizeof(nvtxMemMarkInitializedBatch_t),
+      NVTX_MEM_TYPE_VIRTUAL_ADDRESS,
+      /*regionDescCount=*/1,
+      sizeof(nvtxMemVirtualRangeDesc_t),
+      &range_desc};
+  nvtxMemCudaMarkInitialized(reinterpret_cast<nvtxDomainHandle_t>(domain),
+                             reinterpret_cast<cudaStream_t>(stream),
+                             /*isPerThreadStream=*/false, &regions_desc);
+}
+
 }  // namespace tsl::profiler

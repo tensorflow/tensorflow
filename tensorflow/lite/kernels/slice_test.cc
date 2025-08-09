@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "Eigen/Core"
 #include <gtest/gtest.h>
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/test_util.h"
@@ -307,6 +308,74 @@ TEST_P(SliceOpTest, SliceBool) {
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({false, true}));
+}
+
+TEST_P(SliceOpTest, SliceFloat16) {
+  SliceOpModel<Eigen::half, int32_t> m({3, 2, 3, 1}, {4}, {1, 0, 0, 0}, {4},
+                                       {2, 1, -1, 1}, TensorType_INT32,
+                                       TensorType_FLOAT16, GetParam());
+  m.SetInput({Eigen::half(1), Eigen::half(1), Eigen::half(1), Eigen::half(2),
+              Eigen::half(2), Eigen::half(2), Eigen::half(3), Eigen::half(3),
+              Eigen::half(3), Eigen::half(4), Eigen::half(4), Eigen::half(4),
+              Eigen::half(5), Eigen::half(5), Eigen::half(5), Eigen::half(6),
+              Eigen::half(6), Eigen::half(6)});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 1, 3, 1}));
+  EXPECT_THAT(
+      m.GetOutput(),
+      ElementsAreArray({Eigen::half(3), Eigen::half(3), Eigen::half(3),
+                        Eigen::half(5), Eigen::half(5), Eigen::half(5)}));
+}
+
+TEST_P(SliceOpTest, SliceBFloat16) {
+  SliceOpModel<Eigen::bfloat16, int32_t> m({3, 2, 3, 1}, {4}, {1, 0, 0, 0}, {4},
+                                           {2, 1, -1, 1}, TensorType_INT32,
+                                           TensorType_BFLOAT16, GetParam());
+  m.SetInput({Eigen::bfloat16(1), Eigen::bfloat16(1), Eigen::bfloat16(1),
+              Eigen::bfloat16(2), Eigen::bfloat16(2), Eigen::bfloat16(2),
+              Eigen::bfloat16(3), Eigen::bfloat16(3), Eigen::bfloat16(3),
+              Eigen::bfloat16(4), Eigen::bfloat16(4), Eigen::bfloat16(4),
+              Eigen::bfloat16(5), Eigen::bfloat16(5), Eigen::bfloat16(5),
+              Eigen::bfloat16(6), Eigen::bfloat16(6), Eigen::bfloat16(6)});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 1, 3, 1}));
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray({Eigen::bfloat16(3), Eigen::bfloat16(3),
+                                Eigen::bfloat16(3), Eigen::bfloat16(5),
+                                Eigen::bfloat16(5), Eigen::bfloat16(5)}));
+}
+
+TEST_P(SliceOpTest, BeginNonZeroSizeMinus1Axis1Float16) {
+  SliceOpModel<Eigen::half, int32_t> m({3, 3, 2, 1}, {4}, {1, 1, 0, 0}, {4},
+                                       {2, -1, 1, 1}, TensorType_INT32,
+                                       TensorType_FLOAT16, GetParam());
+  m.SetInput({Eigen::half(1), Eigen::half(1), Eigen::half(2), Eigen::half(2),
+              Eigen::half(3), Eigen::half(3), Eigen::half(4), Eigen::half(4),
+              Eigen::half(5), Eigen::half(5), Eigen::half(6), Eigen::half(6),
+              Eigen::half(7), Eigen::half(7), Eigen::half(8), Eigen::half(8),
+              Eigen::half(9), Eigen::half(9)});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 1, 1}));
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray({Eigen::half(5), Eigen::half(6), Eigen::half(8),
+                                Eigen::half(9)}));
+}
+
+TEST_P(SliceOpTest, BeginNonZeroSizeMinus1Axis1BFloat16) {
+  SliceOpModel<Eigen::bfloat16, int32_t> m({3, 3, 2, 1}, {4}, {1, 1, 0, 0}, {4},
+                                           {2, -1, 1, 1}, TensorType_INT32,
+                                           TensorType_BFLOAT16, GetParam());
+  m.SetInput({Eigen::bfloat16(1), Eigen::bfloat16(1), Eigen::bfloat16(2),
+              Eigen::bfloat16(2), Eigen::bfloat16(3), Eigen::bfloat16(3),
+              Eigen::bfloat16(4), Eigen::bfloat16(4), Eigen::bfloat16(5),
+              Eigen::bfloat16(5), Eigen::bfloat16(6), Eigen::bfloat16(6),
+              Eigen::bfloat16(7), Eigen::bfloat16(7), Eigen::bfloat16(8),
+              Eigen::bfloat16(8), Eigen::bfloat16(9), Eigen::bfloat16(9)});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 1, 1}));
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray({Eigen::bfloat16(5), Eigen::bfloat16(6),
+                                Eigen::bfloat16(8), Eigen::bfloat16(9)}));
 }
 
 INSTANTIATE_TEST_SUITE_P(SliceOpTest, SliceOpTest,

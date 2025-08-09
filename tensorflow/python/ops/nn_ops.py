@@ -3797,7 +3797,7 @@ def _wrap_2d_function(inputs, compute_op, dim=-1, name=None):
     inputs: A non-empty `Tensor`. Must be one of the following types: `half`,
       `float32`, `float64`.
     compute_op: The function to wrap. Must accept the input tensor as its first
-      arugment, and a second keyword argument `name`.
+      argument, and a second keyword argument `name`.
     dim: The dimension softmax would be performed on. The default is -1 which
       indicates the last dimension.
     name: A name for the operation (optional).

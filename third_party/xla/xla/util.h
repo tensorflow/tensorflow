@@ -23,6 +23,7 @@ limitations under the License.
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <functional>
 #include <initializer_list>
 #include <limits>
@@ -50,11 +51,13 @@ limitations under the License.
 #include "xla/tsl/lib/math/math_util.h"
 #include "xla/tsl/platform/errors.h"  // IWYU pragma: keep
 #include "xla/tsl/platform/logging.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/bfloat16.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/ml_dtypes.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -66,7 +69,8 @@ namespace xla {
 //
 // and FromMixedRadix(digits) == n. The mixed radix representation is unique
 // modulo the product of the entries of bounds.
-std::vector<int64_t> ToMixedRadix(int64_t n, absl::Span<const int64_t> bounds);
+template <typename Container = std::vector<int64_t>>
+Container ToMixedRadix(int64_t n, absl::Span<const int64_t> bounds);
 
 // Logs the provided status message with a backtrace.
 //
@@ -159,7 +163,8 @@ class ScopedLoggingTimer {
 template <typename T>
 absl::Span<const uint8_t> CastToByteSlice(absl::Span<const T> slice) {
   return absl::Span<const uint8_t>(
-      reinterpret_cast<const uint8_t*>(slice.data()), slice.size() * sizeof(T));
+      tsl::safe_reinterpret_cast<const uint8_t*>(slice.data()),
+      slice.size() * sizeof(T));
 }
 
 // Casts a byte slice to a non-byte type T, checking that the original slice
@@ -167,7 +172,7 @@ absl::Span<const uint8_t> CastToByteSlice(absl::Span<const T> slice) {
 template <typename T>
 absl::Span<const T> CastByteSlice(absl::Span<const uint8_t> slice) {
   CHECK_EQ(0, slice.size() % sizeof(T));
-  return absl::Span<const T>(reinterpret_cast<const T*>(slice.data()),
+  return absl::Span<const T>(tsl::safe_reinterpret_cast<const T*>(slice.data()),
                              slice.size() / sizeof(T));
 }
 
@@ -370,8 +375,8 @@ XLA_ERROR_WITH_STRCAT_AND_BACKTRACE(Internal);
 // uniformly replaced with "indentation".
 std::string Reindent(absl::string_view original, absl::string_view indentation);
 
-template <typename Container>
-int64_t PositionInContainer(const Container& container, int64_t value) {
+template <typename Container, typename Value>
+int64_t PositionInContainer(const Container& container, const Value& value) {
   return std::distance(container.begin(), absl::c_find(container, value));
 }
 
@@ -761,7 +766,7 @@ std::vector<int64_t> ElemwiseProduct(absl::Span<const int64_t> a,
 // and `b` with the same product, i.e. `(i, j)` so
 // • a = {a[0 = i_0], ..., a[i_1 - 1], a[i_1], ... , a[i_2 - 1], ...}
 // • b = {b[0 = j_0], ..., b[j_1 - 1], b[j_1], ... , b[j_2 - 1], ...}
-// • ∀ k . 0 <= k < CommonFactors(a, b).size - 1 =>
+// • ∀ k . 0 <= k < CommonFactors(a, b).size =>
 //         a[i_k] × a[i_k + 1] × ... × a[i_(k+1) - 1] =
 //         b[j_k] × b[j_k + 1] × ... × b[j_(k+1) - 1]
 // where `CommonFactors(a, b)[CommonFactors(a, b).size - 1] = (a.size, b.size)`
@@ -836,22 +841,27 @@ bool IsInt32(T x) {
   return static_cast<int32_t>(x) == x;
 }
 
-template <typename T>
-absl::Status EraseElementFromVector(std::vector<T>* container, const T& value) {
+template <typename Container, typename T>
+bool EraseElementFromVector(Container* container, const T& value) {
   // absl::c_find returns a const_iterator which does not seem to work on
   // gcc 4.8.4, and this breaks the ubuntu/xla_gpu build bot.
   auto it = std::find(container->begin(), container->end(), value);
-  TF_RET_CHECK(it != container->end());
+  if (it == container->end()) {
+    return false;
+  }
   container->erase(it);
-  return absl::OkStatus();
+  return true;
 }
 
-// Takes a sequence of unpacked n-bit values, such that every byte stores one
-// value in the low-order bits, and packs them so every byte stores as many
-// which will fit. `output` should have ceil((input.size()*kBitsPerElement)/8)
-// bytes. The high-order bits of each byte in `input` are ignored.
+// Takes a sequence of unpacked kBitsPerElement-bit values (kBitsPerElement must
+// be between 1 and 7), such that every byte stores one value in the low-order
+// bits, and packs them so every byte stores as many which will fit. `output`
+// should have at least ceil((input.size()*kBitsPerElement)/8.0) bytes. The
+// high-order bits of each byte in `input` are ignored.
 template <size_t kBitsPerElement>
 void PackIntN(absl::Span<const char> input, absl::Span<char> output) {
+  static_assert(1 <= kBitsPerElement);
+  static_assert(kBitsPerElement <= 7);
   constexpr auto kElementsPerByte = 8 / kBitsPerElement;
   const size_t aligned_inputs = input.size() / kElementsPerByte;
   for (size_t i = 0; i < aligned_inputs; ++i) {
@@ -863,7 +873,8 @@ void PackIntN(absl::Span<const char> input, absl::Span<char> output) {
     }
     output[i] = byte;
   }
-  if (size_t remainder = input.size() % kElementsPerByte; remainder != 0) {
+  if (const size_t remainder = input.size() % kElementsPerByte;
+      remainder != 0) {
     char byte = 0;
     for (size_t j = 0; j < remainder; ++j) {
       byte |= (input[aligned_inputs * kElementsPerByte + j] &
@@ -874,6 +885,8 @@ void PackIntN(absl::Span<const char> input, absl::Span<char> output) {
   }
 }
 
+// Same as above, but takes the number of bits per element as an argument.
+// `bits_per_element` must be 2 or 4, or this function will crash.
 inline void PackIntN(int bits_per_element, absl::Span<const char> input,
                      absl::Span<char> output) {
   if (bits_per_element == 2) {
@@ -885,13 +898,28 @@ inline void PackIntN(int bits_per_element, absl::Span<const char> input,
   }
 }
 
+// Same as above, but takes the number of bits per element, a pointer to the
+// source data, and the size of the data in bytes. Returns a unique pointer to
+// the packed data.
+inline std::unique_ptr<char[]> PackIntN(int bits_per_element, const char* data,
+                                        size_t size) {
+  size_t packed_size = size * bits_per_element / 8;
+  auto buffer = std::make_unique<char[]>(packed_size);
+  auto src = absl::MakeSpan(data, size);
+  auto dst = absl::MakeSpan(buffer.get(), packed_size);
+  PackIntN(bits_per_element, src, dst);
+  return buffer;
+}
+
 // Takes a sequence of packed values, such that every byte stores multiple
 // values, and unpacks them so every byte stores one value in the low-order
 // bits. `input` should have
-// ceil(output.size()*8/kBitsPerElement) bytes. The high-order bits in each
-// output are zero.
+// ceil(output.size()*8.0/kBitsPerElement) bytes. kBitsPerElement must be
+// between 1 and 7. ßThe high-order bits in each output are zero.
 template <size_t kBitsPerElement>
 void UnpackIntN(absl::Span<const char> input, absl::Span<char> output) {
+  static_assert(1 <= kBitsPerElement);
+  static_assert(kBitsPerElement <= 7);
   constexpr auto kElementsPerByte = 8 / kBitsPerElement;
   const size_t aligned_outputs = output.size() / kElementsPerByte;
   for (size_t i = 0; i < aligned_outputs; ++i) {
@@ -910,6 +938,8 @@ void UnpackIntN(absl::Span<const char> input, absl::Span<char> output) {
   }
 }
 
+// Same as above, but takes the number of bits per element as an argument.
+// `bits_per_element` must be 2 or 4, or this function will crash.
 inline void UnpackIntN(int bits_per_element, absl::Span<const char> input,
                        absl::Span<char> output) {
   if (bits_per_element == 2) {
@@ -919,6 +949,19 @@ inline void UnpackIntN(int bits_per_element, absl::Span<const char> input,
   } else {
     LOG(FATAL) << "Invalid bits_per_element: " << bits_per_element;
   }
+}
+
+// Same as above, but takes the number of bits per element, a pointer to the
+// source data, and the size of the data in bytes. Returns a unique pointer to
+// the unpacked data.
+inline std::unique_ptr<char[]> UnpackIntN(int bits_per_element,
+                                          const char* data, size_t size) {
+  size_t unpacked_size = size * 8 / bits_per_element;
+  auto buffer = std::make_unique<char[]>(unpacked_size);
+  auto src = absl::MakeSpan(data, size);
+  auto dst = absl::MakeSpan(buffer.get(), unpacked_size);
+  UnpackIntN(bits_per_element, src, dst);
+  return buffer;
 }
 
 // Returns a container with `sorted_ids_to_remove` elements removed.
@@ -950,7 +993,33 @@ inline bool HloPredicateFalse(const HloInstruction*) { return false; }
 using Vector2 = std::array<int64_t, 2>;
 using Vector3 = std::array<int64_t, 3>;
 
-}  // namespace xla
+std::string PrintAllFields(const tsl::protobuf::Message& message);
+
+// Returns true if x is a power of 2.
+constexpr bool IsPowerOf2(size_t x) noexcept {
+  // Checks that x is non-zero and has only a single bit set.
+  return x != 0 && (x & (x - 1)) == 0;
+}
+
+// A custom deleter that frees the pointer via std::free().
+struct FreeDeleter {
+  void operator()(void* ptr) {
+#if defined(_WIN32)
+    _aligned_free(ptr);
+#else
+    std::free(ptr);
+#endif
+  }
+};
+
+/**
+ * @brief Allocates memory with specified alignment.
+ * @param alignment Specifies the alignment. Power of two.
+ * @param size The number of bytes to allocate. Integral multiple of alignment
+ * @return A unique_ptr managing the allocated memory.
+ */
+std::unique_ptr<void, FreeDeleter> AlignedAlloc(std::size_t alignment,
+                                                std::size_t size);
 
 // Note that STRING is evaluated regardless of whether it will be logged.
 #define XLA_LOG_LINES(SEV, STRING) \
@@ -962,5 +1031,32 @@ using Vector3 = std::array<int64_t, 3>;
   do {                                                  \
     if (VLOG_IS_ON(LEVEL)) XLA_LOG_LINES(INFO, STRING); \
   } while (false)
+
+// Implementation details only below here
+
+template <typename Container>
+Container ToMixedRadix(int64_t n, absl::Span<const int64_t> bounds) {
+  if (bounds.empty()) {
+    return {};
+  }
+
+  Container digits;
+  digits.reserve(bounds.size());
+  int64_t divisor = Product(bounds);
+  CHECK_GT(divisor, 0);
+  int64_t remainder = n % divisor;
+  for (const int64_t radix : bounds) {
+    CHECK_GT(radix, 0);
+    divisor /= radix;
+    CHECK_GT(divisor, 0);
+
+    // The divisor is always 1 for the last iteration.
+    digits.push_back(remainder / divisor);
+    remainder = remainder % divisor;
+  }
+  return digits;
+}
+
+}  // namespace xla
 
 #endif  // XLA_UTIL_H_

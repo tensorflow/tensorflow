@@ -16,48 +16,211 @@ limitations under the License.
 #include "xla/service/scheduling_annotations_util.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <optional>
 #include <string>
+#include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/collective_pipeliner_utils.h"
 #include "xla/side_effect_util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 
-std::optional<int64_t> GetSchedulingAnnotation(
-    const HloInstruction* instruction) {
-  const auto& attrs = instruction->frontend_attributes().map();
+namespace {
+
+constexpr absl::string_view delimiter = ":";
+
+absl::Status VerifyAnnotation(const HloInstruction* instr,
+                              absl::string_view annotation) {
+  auto verify_integer_or_empty =
+      [instr, annotation](
+          absl::string_view str, absl::string_view field_name,
+          bool verify_non_negative_integer = false) -> absl::Status {
+    if (str.empty()) {
+      return absl::OkStatus();
+    }
+    int64_t integer;
+    if (!absl::SimpleAtoi(str, &integer)) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Instruction has a non-integer scheduling annotation ", field_name,
+          ", inst: ", instr->name(), ", annotation: ", annotation));
+    }
+    if (verify_non_negative_integer && integer < 0) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Instruction has a negative scheduling annotation ", field_name,
+          ", inst: ", instr->name(), ", annotation: ", annotation));
+    }
+    return absl::OkStatus();
+  };
+  std::vector<absl::string_view> annotation_fields =
+      absl::StrSplit(annotation, delimiter);
+  CHECK_GE(annotation_fields.size(), 1);
+  if (annotation_fields.size() > 2) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Instruction has more than 2 scheduling annotation fields, inst: ",
+        instr->name(), ", annotation: ", annotation));
+  }
+  TF_RETURN_IF_ERROR(verify_integer_or_empty(
+      annotation_fields[0], "group id", /*verify_non_negative_integer=*/true));
+  if (annotation_fields.size() == 2) {
+    TF_RETURN_IF_ERROR(
+        verify_integer_or_empty(annotation_fields[1], "iteration id"));
+  }
+  return absl::OkStatus();
+}
+
+absl::StatusOr<std::optional<Annotation>> ParseAnnotation(
+    const HloInstruction* instr) {
+  const auto& attrs = instr->frontend_attributes().map();
   if (!attrs.contains(kXlaSchedulingGroupIdAttr)) {
     return std::nullopt;
   }
-  int64_t annotation_id;
-  if (!absl::SimpleAtoi(attrs.at(kXlaSchedulingGroupIdAttr), &annotation_id)) {
+  absl::string_view annotation_str = attrs.at(kXlaSchedulingGroupIdAttr);
+  VLOG(2) << "Annotated instruction: " << instr->name() << " "
+          << annotation_str;
+  TF_RETURN_IF_ERROR(VerifyAnnotation(instr, annotation_str));
+  std::vector<absl::string_view> annotation_fields =
+      absl::StrSplit(annotation_str, delimiter);
+
+  auto parse_integer = [](absl::string_view str) -> std::optional<int64_t> {
+    if (str.empty()) {
+      return std::nullopt;
+    }
+    int64_t integer;
+    CHECK(absl::SimpleAtoi(str, &integer));
+    return integer;
+  };
+
+  Annotation annotation;
+  annotation.group_id = parse_integer(annotation_fields[0]);
+  if (annotation_fields.size() == 2 &&
+      parse_integer(annotation_fields[1]).has_value()) {
+    annotation.iteration_id = AnnotationIterationId{
+        .iteration_id = *parse_integer(annotation_fields[1])};
+  }
+
+  return annotation;
+}
+
+}  // namespace
+
+bool HasSchedulingAnnotation(const HloInstruction* instr) {
+  return instr->frontend_attributes().map().contains(kXlaSchedulingGroupIdAttr);
+}
+
+absl::StatusOr<std::optional<Annotation>> GetSchedulingAnnotation(
+    const HloInstruction* instr) {
+  return ParseAnnotation(instr);
+}
+
+absl::Status SetSchedulingAnnotation(HloInstruction* instr,
+                                     std::string annotation) {
+  TF_RETURN_IF_ERROR(VerifyAnnotation(instr, annotation));
+  FrontendAttributes frontend_attributes = instr->frontend_attributes();
+  if (frontend_attributes.map().contains(kXlaSchedulingGroupIdAttr)) {
+    frontend_attributes.mutable_map()->find(kXlaSchedulingGroupIdAttr)->second =
+        annotation;
+  } else {
+    frontend_attributes.mutable_map()->insert(
+        {kXlaSchedulingGroupIdAttr, annotation});
+  }
+  instr->set_frontend_attributes(frontend_attributes);
+  return absl::OkStatus();
+}
+
+absl::Status SetSchedulingAnnotation(HloInstruction* instr,
+                                     Annotation annotation) {
+  return SetSchedulingAnnotation(instr, annotation.ToString());
+}
+
+bool RemoveSchedulingAnnotation(HloInstruction* instr) {
+  FrontendAttributes frontend_attributes = instr->frontend_attributes();
+  if (!frontend_attributes.map().contains(kXlaSchedulingGroupIdAttr)) {
+    return false;
+  }
+  frontend_attributes.mutable_map()->erase(kXlaSchedulingGroupIdAttr);
+  instr->set_frontend_attributes(frontend_attributes);
+  return true;
+}
+
+absl::StatusOr<std::optional<AnnotationIterationId>>
+GetSchedulingAnnotationIterationId(const HloInstruction* instr) {
+  TF_ASSIGN_OR_RETURN(auto annotation, ParseAnnotation(instr));
+  if (!annotation.has_value()) {
     return std::nullopt;
   }
-  return annotation_id;
+  return annotation->iteration_id;
 }
 
-void SetSchedulingAnnotation(HloInstruction* instruction, int64_t id) {
-  FrontendAttributes fas = instruction->frontend_attributes();
-  fas.mutable_map()->find(kXlaSchedulingGroupIdAttr)->second = absl::StrCat(id);
-  instruction->set_frontend_attributes(fas);
+absl::StatusOr<bool> RemoveSchedulingAnnotationIterationId(
+    HloInstruction* instr) {
+  TF_ASSIGN_OR_RETURN(std::optional<Annotation> annotation,
+                      GetSchedulingAnnotation(instr));
+  if (!annotation || !annotation->iteration_id) {
+    return false;
+  }
+  if (!annotation->group_id) {
+    // If the annotation has no group id, we remove the annotation entirely.
+    return RemoveSchedulingAnnotation(instr);
+  }
+  annotation->iteration_id = std::nullopt;
+  TF_RETURN_IF_ERROR(SetSchedulingAnnotation(instr, *annotation));
+  return true;
 }
 
-int64_t NextSchedulingId(const HloModule& module) {
-  int64_t next_scheduling_id = 1;
+absl::StatusOr<std::optional<int64_t>> GetSchedulingAnnotationGroupId(
+    const HloInstruction* instr) {
+  TF_ASSIGN_OR_RETURN(auto annotation, ParseAnnotation(instr));
+  if (!annotation.has_value()) {
+    return std::nullopt;
+  }
+  return annotation->group_id;
+}
+
+absl::Status SetSchedulingAnnotationGroupId(HloInstruction* instr, int64_t id) {
+  return SetSchedulingAnnotation(instr, absl::StrCat(id));
+}
+
+absl::StatusOr<AnnotationGroupId> NextSchedulingGroupId(
+    const HloModule& module) {
+  int64_t next_scheduling_id = 0;
   for (const HloComputation* comp : module.computations()) {
     for (const HloInstruction* hlo : comp->instructions()) {
-      std::optional<int64_t> scheduling_id = GetSchedulingAnnotation(hlo);
+      TF_ASSIGN_OR_RETURN(std::optional<int64_t> scheduling_id,
+                          GetSchedulingAnnotationGroupId(hlo));
       if (scheduling_id.has_value()) {
         next_scheduling_id =
-            std::max(next_scheduling_id, scheduling_id.value() + 1);
+            std::max(next_scheduling_id, scheduling_id.value());
       }
     }
   }
-  return next_scheduling_id;
+  return next_scheduling_id + 1;
+}
+
+bool IsIterationIdConstentWithPipeliningDirection(
+    const AnnotationIterationId& iteration_id,
+    collective_pipeliner_utils::PipeliningDirection pipeline_direction) {
+  if (pipeline_direction ==
+      collective_pipeliner_utils::PipeliningDirection::kForward) {
+    return iteration_id.iteration_id == 1;
+  }
+  if (pipeline_direction ==
+      collective_pipeliner_utils::PipeliningDirection::kBackward) {
+    return iteration_id.iteration_id == -1;
+  }
+  return false;
 }
 
 }  // namespace xla

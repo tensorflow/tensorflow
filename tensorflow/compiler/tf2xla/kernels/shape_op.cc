@@ -326,7 +326,7 @@ class SqueezeOp : public XlaOpKernel {
         ctx->builder()->GetShape(ctx->Input(0));
     OP_REQUIRES_OK(ctx, input_shape.status());
     xla::Shape shape = input_shape.value();
-    int64_t rank = shape.rank();
+    int64_t rank = shape.dimensions().size();
 
     absl::flat_hash_set<int32_t> wrapped_squeeze_dims;
     wrapped_squeeze_dims.reserve(squeeze_dims_.size());
@@ -364,7 +364,7 @@ class SqueezeOp : public XlaOpKernel {
             ctx, !shape.is_dynamic_dimension(i),
             errors::InvalidArgument("Squeeze op does not support bounded "
                                     "dynamic dimensions. Input shape: ",
-                                    shape.DebugString()));
+                                    shape.ToString()));
         // Copy over all non-1-length dimensions.
         if (existing_dim != 1) {
           new_shape.push_back(existing_dim);
@@ -402,14 +402,14 @@ class ZerosLikeOp : public XlaOpKernel {
       OP_REQUIRES_OK(ctx, list_shape_or.status());
       const xla::Shape& list_shape = list_shape_or.value();
       std::vector<std::vector<xla::XlaOp>> list_dynamic_dims;
-      list_dynamic_dims.reserve(list_shape.tuple_shapes_size() - 1);
-      for (int i = 0; i < list_shape.tuple_shapes_size() - 1; ++i) {
+      list_dynamic_dims.reserve(list_shape.tuple_shapes().size() - 1);
+      for (int i = 0; i < list_shape.tuple_shapes().size() - 1; ++i) {
         // Set dynamic dimension size to 0 for initialization value.
         std::vector<xla::XlaOp> dynamic_dims;
         const xla::Shape& shape = list_shape.tuple_shapes(i);
         auto sub_element = xla::GetTupleElement(list, i);
-        dynamic_dims.reserve(shape.dimensions_size());
-        for (int64_t dim = 0; dim < shape.dimensions_size(); ++dim) {
+        dynamic_dims.reserve(shape.dimensions().size());
+        for (int64_t dim = 0; dim < shape.dimensions().size(); ++dim) {
           dynamic_dims.push_back(xla::GetDimensionSize(sub_element, dim));
         }
         list_dynamic_dims.push_back(dynamic_dims);
@@ -433,7 +433,7 @@ class ZerosLikeOp : public XlaOpKernel {
       auto result = xla::Broadcast(zero, input_shape.dimensions());
 
       // Setting up dynamic dimensions of the broadcast.
-      for (int64_t i = 0; i < input_shape.dimensions_size(); ++i) {
+      for (int64_t i = 0; i < input_shape.dimensions().size(); ++i) {
         if (input_shape.is_dynamic_dimension(i)) {
           xla::XlaOp input_dynamic_dim = xla::GetDimensionSize(input, i);
           result = xla::SetDimensionSize(result, input_dynamic_dim, i);

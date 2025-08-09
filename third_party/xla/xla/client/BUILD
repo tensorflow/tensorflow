@@ -1,7 +1,7 @@
 # Description:
 #   XLA client libraries.
 
-load("//xla:xla.bzl", "xla_cc_test")
+load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
@@ -25,15 +25,6 @@ filegroup(
         "**/*.cc",
         "**/*.h",
     ]),
-)
-
-cc_library(
-    name = "padding",
-    hdrs = ["padding.h"],
-    deprecation = "This library is deprecated and will be removed in February 2025. Use //third_party/tensorflow/compiler/xla/hlo/builder:padding instead.",
-    deps = [
-        "//xla/hlo/builder:padding",
-    ],
 )
 
 cc_library(
@@ -72,8 +63,8 @@ cc_library(
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_proto_cc",
-        "//xla/pjrt:compile_options_proto_cc",
         "//xla/pjrt/distributed:key_value_store_interface",
+        "//xla/pjrt/proto:compile_options_proto_cc",
         "//xla/service:compilation_environments",
         "//xla/service:computation_placer",
         "//xla/tsl/platform:env",
@@ -93,9 +84,9 @@ xla_cc_test(
     srcs = ["executable_build_options_test.cc"],
     deps = [
         ":executable_build_options",
-        "//xla:protobuf_util",
         "//xla:shape_util",
-        "//xla/pjrt:compile_options_proto_cc",
+        "//xla:xla_data_proto_cc",
+        "//xla/pjrt/proto:compile_options_proto_cc",
         "//xla/service:computation_placer",
         "//xla/service:test_compilation_environment_proto_cc",
         "//xla/tsl/lib/core:status_test_util",
@@ -103,6 +94,7 @@ xla_cc_test(
         "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test_main",
+        "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest",
@@ -199,44 +191,5 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
-    ],
-)
-
-cc_library(
-    name = "sharding_builder",
-    hdrs = ["sharding_builder.h"],
-    deprecation = "This library is deprecated and will be removed in February 2025. Use //third_party/tensorflow/compiler/xla/hlo/builder:sharding_builder instead.",
-    deps = [
-        "//xla/hlo/builder:sharding_builder",
-    ],
-)
-
-cc_library(
-    name = "xla_computation",
-    hdrs = ["xla_computation.h"],
-    deprecation = "This library is deprecated and will be removed in February 2025. Use //third_party/tensorflow/compiler/xla/hlo/builder:xla_computation instead.",
-    visibility = ["//visibility:public"],
-    deps = [
-        "//xla/hlo/builder:xla_computation",
-    ],
-)
-
-cc_library(
-    name = "value_inference",
-    hdrs = ["value_inference.h"],
-    deprecation = "This library is deprecated and will be removed in February 2025. Use //third_party/tensorflow/compiler/xla/hlo/builder:value_inference instead.",
-    visibility = ["//visibility:public"],
-    deps = [
-        "//xla/hlo/builder:value_inference",
-    ],
-)
-
-cc_library(
-    name = "xla_builder",
-    hdrs = ["xla_builder.h"],
-    deprecation = "This library is deprecated and will be removed in February 2025. Use //third_party/tensorflow/compiler/xla/hlo/builder:xla_builder instead.",
-    visibility = ["//visibility:public"],
-    deps = [
-        "//xla/hlo/builder:xla_builder",
     ],
 )

@@ -529,7 +529,9 @@ def get_from_env_or_user_or_default(environ_cp, var_name, ask_for_var,
     string value for var_name
   """
   var = environ_cp.get(var_name)
-  if not var:
+  # an intentionally empty value in the
+  # environment is not the same as no value
+  if var is None:
     var = get_input(ask_for_var)
     print('\n')
   if not var:
@@ -1125,7 +1127,7 @@ def set_system_libs_flag(environ_cp):
       syslibs = ','.join(sorted(syslibs.split()))
     write_action_env_to_bazelrc('TF_SYSTEM_LIBS', syslibs)
 
-  for varname in ('PREFIX', 'LIBDIR', 'INCLUDEDIR', 'PROTOBUF_INCLUDE_PATH'):
+  for varname in ('PREFIX', 'PROTOBUF_INCLUDE_PATH'):
     if varname in environ_cp:
       write_to_bazelrc('build --define=%s=%s' % (varname, environ_cp[varname]))
 

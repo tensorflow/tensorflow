@@ -50,6 +50,7 @@ limitations under the License.
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "stablehlo/dialect/Version.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
@@ -85,7 +86,7 @@ bool IsInLiftedFunc(Operation* op) {
 bool IsInStableHloOpRegion(Operation* op) {
   if (op == nullptr) return false;
   auto parent_op = op->getParentOp();
-  return parent_op != nullptr && stablehlo::IsStablehloOp(parent_op);
+  return parent_op != nullptr && quant::stablehlo::IsStablehloOp(parent_op);
 }
 
 // Inserts the function to the symbol table of the module thread-safely.
@@ -297,7 +298,7 @@ LogicalResult SetAttributeMap(MLIRContext& context,
     for (const auto& [attr, val] : attr_to_op_map) {
       if (attr.getName() == attribute.getName()) owner_op = val;
     }
-    if (stablehlo::IsStablehloOp(owner_op)) {
+    if (quant::stablehlo::IsStablehloOp(owner_op)) {
       owner_op->setAttr(StringRef(attribute.getName()), attribute.getValue());
     } else {
       owner_op = attr_to_op_map[attribute];
@@ -366,10 +367,11 @@ SmallVector<Value, 4> LiftAsFunctionCall(
   // Set the location of call op to QuantizationUnitLoc if found.
   Location call_op_loc = location;
   for (Operation* op : cloning_ops) {
-    std::optional<QuantizationUnitLoc::QuantizationUnit> unit =
-        FindQuantizationUnitFromLoc(op->getLoc());
+    std::optional<quant::QuantizationUnitLoc::QuantizationUnit> unit =
+        quant::FindQuantizationUnitFromLoc(op->getLoc());
     if (unit.has_value()) {
-      call_op_loc = QuantizationUnitLoc(builder.getContext(), unit.value());
+      call_op_loc =
+          quant::QuantizationUnitLoc(builder.getContext(), unit.value());
     }
   }
 
@@ -491,7 +493,7 @@ bool IsEinsumSupportedByXlaDotV2(StringAttr equation_attr) {
          rhs_out_idx_start >= batch_dim_size;
 }
 
-absl::StatusOr<Method> GetQuantizationMethod(absl::Nonnull<Operation*> op) {
+absl::StatusOr<Method> GetQuantizationMethod(Operation* absl_nonnull op) {
   const auto quantization_method_attr =
       op->getAttrOfType<StringAttr>(kQuantizationMethodAttr);
   if (!quantization_method_attr) {
@@ -509,7 +511,7 @@ absl::StatusOr<Method> GetQuantizationMethod(absl::Nonnull<Operation*> op) {
   return quantization_method;
 }
 
-Method GetQuantizationMethodOrDefault(absl::Nonnull<Operation*> op) {
+Method GetQuantizationMethodOrDefault(Operation* absl_nonnull op) {
   absl::StatusOr<Method> method = GetQuantizationMethod(op);
   if (method.status().code() == absl::StatusCode::kInternal) {
     // This indicates that the `Method` protobuf string is corrupt, but this

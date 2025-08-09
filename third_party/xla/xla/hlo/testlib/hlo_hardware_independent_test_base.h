@@ -26,19 +26,23 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/attributes.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/layout.h"
 #include "xla/service/computation_layout.h"
+#include "xla/service/computation_placer.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/shape_layout.h"
@@ -78,7 +82,8 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
   explicit HloHardwareIndependentTestBase(
       bool verifier_layout_sensitive = false,
       bool allow_mixed_precision_in_hlo_verifier = true,
-      HloPredicate instruction_can_change_layout_func = {});
+      HloPredicate instruction_can_change_layout_func = {},
+      bool verify_no_collective_deadlocks = false);
 
   // Creates a new HLO module for a test. The module created will have
   // TestName() for its name; it will also automatically populate its debug
@@ -97,14 +102,26 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
   std::unique_ptr<VerifiedHloModule> CreateNewVerifiedModule(
       const std::string& name = TestName(), int64_t replica_count = 1) const;
 
+  // Returns a default device assignment for the given replica and partition
+  // counts.
+  static DeviceAssignment GetDefaultDeviceAssignment(int64_t replica_count,
+                                                     int64_t num_partitions);
+
   // Parses the given string and returns module as a VerifiedHloModule.
   absl::StatusOr<std::unique_ptr<VerifiedHloModule>>
-  ParseAndReturnVerifiedModule(absl::string_view hlo_text,
-                               int64_t replica_count = 1,
-                               int64_t num_partitions = 1) const;
+  ParseAndReturnVerifiedModule(
+      absl::string_view hlo_text, int64_t replica_count = 1,
+      int64_t num_partitions = 1,
+      std::optional<DeviceAssignment> device_assignment = std::nullopt) const;
   absl::StatusOr<std::unique_ptr<VerifiedHloModule>>
-  ParseAndReturnVerifiedModule(absl::string_view hlo_text,
-                               const HloModuleConfig& config) const;
+  ParseAndReturnVerifiedModule(
+      absl::string_view hlo_text, const HloModuleConfig& config,
+      const HloParserOptions& parser_options = HloParserOptions()) const;
+  absl::StatusOr<std::unique_ptr<VerifiedHloModule>>
+  ParseAndReturnVerifiedModule(
+      absl::string_view hlo_text, const HloModuleConfig& config,
+      const HloParserOptions& parser_options,
+      std::function<int64_t(const xla::Shape&)> shape_size_fn) const;
 
   // Runs the hlo_pass with the provided module and returns the result. This
   // function also verifies that the module remains unchanged when hlo_pass
@@ -194,13 +211,26 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
   // options (e.g. disabling additional passes).
   virtual DebugOptions GetDebugOptionsForTest() const;
 
+  void TearDown() override {
+    absl::MutexLock ml(&device_assignment_mu_);
+    default_device_assignment_.reset();
+  }
   // Gets an HloModuleConfig with options appropriate for tests.
-  HloModuleConfig GetModuleConfigForTest(int64_t replica_count = 1,
-                                         int64_t num_partitions = 1) const {
+  HloModuleConfig GetModuleConfigForTest(
+      int64_t replica_count = 1, int64_t num_partitions = 1,
+      std::optional<DeviceAssignment> device_assignment = std::nullopt) const {
     HloModuleConfig config;
     config.set_debug_options(GetDebugOptionsForTest());
     config.set_replica_count(replica_count);
     config.set_num_partitions(num_partitions);
+    if (device_assignment.has_value()) {
+      config.set_static_device_assignment(*device_assignment);
+    } else {
+      absl::MutexLock ml(&device_assignment_mu_);
+      default_device_assignment_ = std::make_unique<DeviceAssignment>(
+          GetDefaultDeviceAssignment(replica_count, num_partitions));
+      config.set_static_device_assignment(*default_device_assignment_);
+    }
     return config;
   }
 
@@ -239,7 +269,6 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
         ->Clear();
   }
 
-
   bool verifier_layout_sensitive() const { return verifier_layout_sensitive_; }
   void set_verifier_layout_sensitive(bool verifier_layout_sensitive) {
     verifier_layout_sensitive_ = verifier_layout_sensitive;
@@ -262,7 +291,8 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
   }
 
   static std::string TestName() {
-    return ::testing::UnitTest::GetInstance()->current_test_info()->name();
+    auto* test_info = ::testing::UnitTest::GetInstance()->current_test_info();
+    return test_info ? test_info->name() : std::string("unknown_test_name");
   }
 
   // Updates the entry computation layout to match the program shape. Useful
@@ -282,6 +312,10 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
   bool allow_mixed_precision_in_hlo_verifier_;
   HloPredicate instruction_can_change_layout_func_;
   std::unique_ptr<HloVerifier> hlo_verifier_;
+  mutable absl::Mutex device_assignment_mu_;
+  mutable std::unique_ptr<DeviceAssignment> default_device_assignment_
+      ABSL_GUARDED_BY(device_assignment_mu_)
+          ABSL_PT_GUARDED_BY(device_assignment_mu_);
 };
 
 }  // namespace xla

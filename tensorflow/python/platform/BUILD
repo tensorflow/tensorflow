@@ -37,10 +37,12 @@ py_strict_library(
 py_strict_library(
     name = "self_check",
     srcs = ["self_check.py"],
-    deps = if_oss([
-        ":build_info",
-        ":_pywrap_cpu_feature_guard",
-    ]),
+    deps = if_oss(
+        [
+            ":build_info",
+            ":_pywrap_cpu_feature_guard",
+        ],
+    ),
 )
 
 py_strict_library(
@@ -191,8 +193,8 @@ tf_python_pybind_extension(
         "_pywrap_stacktrace_handler.pyi",
     ],
     deps = [
-        "//third_party/python_runtime:headers",
         "@local_tsl//tsl/platform:stacktrace_handler_hdrs_lib",
+        "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
     ],
 )
@@ -206,7 +208,7 @@ tf_python_pybind_extension(
     ],
     deps = [
         "//tensorflow/core/platform:cpu_feature_guard_hdr",  # Only depend on header to avoid ODR issues.
-        "//third_party/python_runtime:headers",
+        "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
     ],
 )

@@ -11,8 +11,6 @@
 [![Fuzzing Status](https://oss-fuzz-build-logs.storage.googleapis.com/badges/tensorflow-py.svg)](https://bugs.chromium.org/p/oss-fuzz/issues/list?sort=-opened&can=1&q=proj:tensorflow-py)
 [![OSSRank](https://shields.io/endpoint?url=https://ossrank.com/shield/44)](https://ossrank.com/p/44)
 [![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-v1.4%20adopted-ff69b4.svg)](CODE_OF_CONDUCT.md)
-[![TF Official Continuous](https://tensorflow.github.io/build/TF%20Official%20Continuous.svg)](https://tensorflow.github.io/build#TF%20Official%20Continuous)
-[![TF Official Nightly](https://tensorflow.github.io/build/TF%20Official%20Nightly.svg)](https://tensorflow.github.io/build#TF%20Official%20Nightly)
 
 **`Documentation`** |
 ------------------- |
@@ -58,7 +56,7 @@ $ pip install tensorflow
 ```
 
 Other devices (DirectX and MacOS-metal) are supported using
-[Device plugins](https://www.tensorflow.org/install/gpu_plugins#available_devices).
+[Device Plugins](https://www.tensorflow.org/install/gpu_plugins#available_devices).
 
 A smaller CPU-only package is also available:
 
@@ -71,7 +69,7 @@ commands.
 
 *Nightly binaries are available for testing using the
 [tf-nightly](https://pypi.python.org/pypi/tf-nightly) and
-[tf-nightly-cpu](https://pypi.python.org/pypi/tf-nightly-cpu) packages on PyPi.*
+[tf-nightly-cpu](https://pypi.python.org/pypi/tf-nightly-cpu) packages on PyPI.*
 
 #### *Try your first TensorFlow program*
 
@@ -89,16 +87,16 @@ b'Hello, TensorFlow!'
 ```
 
 For more examples, see the
-[TensorFlow tutorials](https://www.tensorflow.org/tutorials/).
+[TensorFlow Tutorials](https://www.tensorflow.org/tutorials/).
 
 ## Contribution guidelines
 
 **If you want to contribute to TensorFlow, be sure to review the
-[contribution guidelines](CONTRIBUTING.md). This project adheres to TensorFlow's
-[code of conduct](CODE_OF_CONDUCT.md). By participating, you are expected to
+[Contribution Guidelines](CONTRIBUTING.md). This project adheres to TensorFlow's
+[Code of Conduct](CODE_OF_CONDUCT.md). By participating, you are expected to
 uphold this code.**
 
-**We use [GitHub issues](https://github.com/tensorflow/tensorflow/issues) for
+**We use [GitHub Issues](https://github.com/tensorflow/tensorflow/issues) for
 tracking requests and bugs, please see
 [TensorFlow Forum](https://discuss.tensorflow.org/) for general questions and
 discussion, and please direct specific questions to
@@ -112,9 +110,9 @@ open-source software development.
 Follow these steps to patch a specific version of TensorFlow, for example, to
 apply fixes to bugs or security vulnerabilities:
 
-*   Clone the TensorFlow repo and switch to the corresponding branch for your
-    desired TensorFlow version, for example, branch `r2.8` for version 2.8.
-*   Apply (that is, cherry-pick) the desired changes and resolve any code
+*   Clone the TensorFlow repository and switch to the appropriate branch for
+    your desired version—for example, `r2.8` for version 2.8.
+*   Apply the desired changes (i.e., cherry-pick them) and resolve any code
     conflicts.
 *   Run TensorFlow tests and ensure they pass.
 *   [Build](https://www.tensorflow.org/install/source) the TensorFlow pip
@@ -123,7 +121,7 @@ apply fixes to bugs or security vulnerabilities:
 ## Continuous build status
 
 You can find more community-supported platforms and configurations in the
-[TensorFlow SIG Build community builds table](https://github.com/tensorflow/build#community-supported-tensorflow-builds).
+[TensorFlow SIG Build Community Builds Table](https://github.com/tensorflow/build#community-supported-tensorflow-builds).
 
 ### Official Builds
 
@@ -161,8 +159,8 @@ Build Type                    | Status                                          
 *   [TensorFlow Code Search](https://cs.opensource.google/tensorflow/tensorflow)
 
 Learn more about the
-[TensorFlow community](https://www.tensorflow.org/community) and how to
-[contribute](https://www.tensorflow.org/community/contribute).
+[TensorFlow Community](https://www.tensorflow.org/community) and how to
+[Contribute](https://www.tensorflow.org/community/contribute).
 
 ## Courses
 

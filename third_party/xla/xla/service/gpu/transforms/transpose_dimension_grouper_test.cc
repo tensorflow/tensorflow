@@ -18,7 +18,7 @@ limitations under the License.
 #include <optional>
 
 #include "absl/strings/string_view.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
@@ -30,7 +30,7 @@ namespace {
 using ::testing::HasSubstr;
 using ::tsl::testing::StatusIs;
 
-class TransposeDimensionGrouperTest : public HloTestBase {
+class TransposeDimensionGrouperTest : public HloHardwareIndependentTestBase {
  public:
   void CheckDimensionGrouper(absl::string_view hlo,
                              std::optional<absl::string_view> expected) {
@@ -69,8 +69,8 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   TransposeDimensionGrouper dimension_grouper;
   EXPECT_THAT(dimension_grouper.Run(module.get()),
-              StatusIs(tsl::error::FAILED_PRECONDITION,
-                       HasSubstr("Layout normalization")));
+              absl_testing::StatusIs(tsl::error::FAILED_PRECONDITION,
+                                     HasSubstr("Layout normalization")));
 }
 
 TEST_F(TransposeDimensionGrouperTest, NoTranspose3) {
@@ -85,8 +85,8 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   TransposeDimensionGrouper dimension_grouper;
   EXPECT_THAT(dimension_grouper.Run(module.get()),
-              StatusIs(tsl::error::FAILED_PRECONDITION,
-                       HasSubstr("Layout normalization")));
+              absl_testing::StatusIs(tsl::error::FAILED_PRECONDITION,
+                                     HasSubstr("Layout normalization")));
 }
 
 TEST_F(TransposeDimensionGrouperTest, Simple2D) {

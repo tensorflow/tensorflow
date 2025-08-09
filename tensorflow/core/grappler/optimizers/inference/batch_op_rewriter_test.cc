@@ -183,7 +183,7 @@ TEST_P(BatchOpRewriterTest, InvalidArgumentForAdaptiveBatchScheduler) {
   Status status = optimizer.Optimize(nullptr, item, &optimized_graph);
 
   EXPECT_FALSE(status.ok());
-  EXPECT_TRUE(errors::IsInvalidArgument(status));
+  EXPECT_TRUE(absl::IsInvalidArgument(status));
 }
 
 // Tests that reserved attributes relevant with adaptive scheduler are

@@ -13,16 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-
 #include <gtest/gtest.h>
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/tests/hlo_test_base.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
-using GpuPerformanceWithCollectiveModelTest = HloTestBase;
+using GpuPerformanceWithCollectiveModelTest = HloHardwareIndependentTestBase;
 
 TEST_F(GpuPerformanceWithCollectiveModelTest, TestNvmlLibraryLoading) {
 #if GOOGLE_CUDA

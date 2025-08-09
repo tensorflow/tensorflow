@@ -25,9 +25,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/ffi/api/ffi.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
@@ -169,6 +171,12 @@ CreateHostCallbackStateAndAppendSendRecvCallbacks(
     std::vector<SendCallback>& send_callbacks,
     std::vector<RecvCallback>& recv_callbacks,
     bool use_major_to_minor_data_layout_for_callbacks);
+
+struct FfiLoadedHostCallbacks {
+  static ffi::TypeId id;
+  void** callbacks;
+  uint32_t num_callbacks;
+};
 
 }  // namespace xla
 

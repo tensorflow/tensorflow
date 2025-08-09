@@ -80,8 +80,6 @@ void SetChannelIdForNewCollective(HloInstruction* new_instr,
     if (channel_id_comp_map.find(new_channel_id) == channel_id_comp_map.end()) {
       channel_id_comp_map[new_channel_id] =
           new_instr->async_wrapped_computation();
-    } else {
-      channel_id_comp_map[new_channel_id]->AddAsyncStart(new_instr);
     }
   } else if (hlo_query::IsCollectiveCommunicationOp(new_instr->opcode()) ||
              hlo_query::IsAsyncCollectiveStartOp(new_instr)) {
@@ -430,8 +428,8 @@ absl::Status PeelInstructionsForOddTripCount(HloModule* module,
       HloInstruction* new_instr = old_to_new_map[old_instr];
       VLOG(2) << "Processing control predecessors for peeled instruction "
               << new_instr->ToString();
-      std::vector<HloInstruction*> new_control_pred(
-          old_instr->control_predecessors().size());
+      std::vector<HloInstruction*> new_control_pred;
+      new_control_pred.reserve(old_instr->control_predecessors().size());
       for (HloInstruction* pred : old_instr->control_predecessors()) {
         new_control_pred.push_back(old_to_new_map[pred]);
       }
@@ -519,6 +517,21 @@ absl::StatusOr<bool> DoubleBufferingUnroll(HloInstruction* while_instr,
 
   WhileLoopBackendConfig new_config;
   new_config.mutable_known_trip_count()->set_n(exact_trip_count / 2);
+
+  // Keep known induction variable metadata if it was present before.
+  if (config.has_known_induction_variable()) {
+    *new_config.mutable_known_induction_variable() =
+        config.known_induction_variable();
+  }
+
+  // Update the init/step metadata if it was present before.
+  if (config.has_known_init_step()) {
+    int64_t step = config.known_init_step().step();
+    new_config.mutable_known_init_step()->set_step(step * 2);
+    new_config.mutable_known_init_step()->set_init(
+        config.known_init_step().init() + (peel_one_iteration ? step : 0));
+  }
+
   TF_RETURN_IF_ERROR(while_instr->set_backend_config(new_config));
   return true;  // changed
 }

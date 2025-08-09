@@ -22,6 +22,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/backends/profiler/gpu/cupti_interface.h"
+#include "xla/backends/profiler/gpu/cupti_utils.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/mem.h"
 
@@ -598,6 +599,55 @@ static absl::Status ConvertActivityBuffer(
 
 }  // namespace
 
+const char *GetTraceEventTypeName(const CuptiTracerEventType &type) {
+  // Do not use a default so that this gives a build error when
+  // CuptiTracerEventType is extended but this is not.
+  switch (type) {
+    case CuptiTracerEventType::MemcpyH2D:
+      return "MemcpyH2D";
+    case CuptiTracerEventType::MemcpyD2H:
+      return "MemcpyD2H";
+    case CuptiTracerEventType::MemcpyD2D:
+      return "MemcpyD2D";
+    case CuptiTracerEventType::MemcpyP2P:
+      return "MemcpyP2P";
+    case CuptiTracerEventType::MemcpyOther:
+      return "MemcpyOther";
+    case CuptiTracerEventType::Kernel:
+      return "Compute";
+    case CuptiTracerEventType::MemoryAlloc:
+      return "MemoryAlloc";
+    case CuptiTracerEventType::MemoryFree:
+      return "MemoryFree";
+    case CuptiTracerEventType::Memset:
+      return "Memset";
+    case CuptiTracerEventType::Overhead:
+      return "Overhead";
+    case CuptiTracerEventType::UnifiedMemory:
+      return "UnifiedMemory";
+    case CuptiTracerEventType::Generic:
+      return "Generic";
+    case CuptiTracerEventType::MemoryResidency:
+      return "MemoryResidency";
+    case CuptiTracerEventType::HostRegister:
+      return "HostRegister";
+    case CuptiTracerEventType::HostUnregister:
+      return "HostUnregister";
+    case CuptiTracerEventType::CudaGraph:
+      return "CudaGraph";
+    case CuptiTracerEventType::ThreadMarkerRange:
+      return "ThreadMarkerRange";
+    case CuptiTracerEventType::ThreadMarkerStart:
+      return "ThreadMarkerStart";
+    case CuptiTracerEventType::ThreadMarkerEnd:
+      return "ThreadMarkerEnd";
+    case CuptiTracerEventType::CudaGraphNodeMap:
+      return "CudaGraphNodeMap";
+    case CuptiTracerEventType::Unsupported:
+      return "";
+  }
+}
+
 absl::string_view StringDeduper::Dedup(absl::string_view str,
                                        size_t max_unique_count) {
   if (str.empty()) return absl::string_view();
@@ -684,6 +734,29 @@ void CallbackAnnotationsAndEvents::Clear() {
   num_dropped_events_ = 0;
   event_queue_.Clear();
   scope_range_id_tree_.clear();
+}
+
+// The strings are parser friendly and have no whitespaces in them.
+absl::string_view GetMemoryKindName(int8_t memory_kind) {
+  switch (memory_kind) {
+    case CUPTI_ACTIVITY_MEMORY_KIND_ARRAY:
+      return "array";
+    case CUPTI_ACTIVITY_MEMORY_KIND_DEVICE:
+      return "device";
+    case CUPTI_ACTIVITY_MEMORY_KIND_DEVICE_STATIC:
+      return "device_static";
+    case CUPTI_ACTIVITY_MEMORY_KIND_MANAGED:
+      return "managed";
+    case CUPTI_ACTIVITY_MEMORY_KIND_MANAGED_STATIC:
+      return "managed_static";
+    case CUPTI_ACTIVITY_MEMORY_KIND_PAGEABLE:
+      return "pageable";
+    case CUPTI_ACTIVITY_MEMORY_KIND_PINNED:
+      return "pinned";
+    case CUPTI_ACTIVITY_MEMORY_KIND_UNKNOWN:
+    default:
+      return "unknown";
+  }
 }
 
 }  // namespace profiler

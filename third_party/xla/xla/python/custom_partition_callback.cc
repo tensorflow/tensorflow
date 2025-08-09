@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -160,7 +161,7 @@ class CApiCustomCallPartitioner : public xla::CustomCallPartitioner {
                              partitioner->MakePartitioningState())
             .Reshard(instruction->sharding());
 
-    partitioner->SetPartitionedHlo(instruction, result_partitioned);
+    partitioner->SetPartitionedHlo(instruction, std::move(result_partitioned));
     return absl::OkStatus();
   }
   HloSharding PropagateUserSharding(
@@ -212,7 +213,8 @@ absl::string_view ToStringView(JAX_CustomCallPartitioner_string data) {
 void SetCAPIAval(JAX_CustomCallPartitioner_aval& result,
                  const xla::HloInstruction* inst,
                  std::vector<std::string>& scratch) {
-  SetCAPIString(result.shape, inst->shape().SerializeAsString(), scratch);
+  SetCAPIString(result.shape, inst->shape().ToProto().SerializeAsString(),
+                scratch);
   if (inst->has_sharding()) {
     result.has_sharding = true;
     SetCAPIString(result.sharding,
@@ -248,7 +250,7 @@ absl::StatusOr<xla::Shape> ReadHloShape(JAX_CustomCallPartitioner_string data) {
     return absl::InternalError(
         "custom_call_sharding.cc: error parsing xla::Shape");
   }
-  return xla::Shape(proto);
+  return xla::Shape::FromProto(proto);
 }
 
 bool PopulateErrorHeader(JAX_CustomCallPartitioner_version_and_error& header,
@@ -421,7 +423,8 @@ PartitionScratch PopulateArgs(
   }
   args->num_args = instruction->operand_count();
   args->op_args = scratch.op_args_storage.data();
-  SetCAPIString(args->result_shape, instruction->shape().SerializeAsString(),
+  SetCAPIString(args->result_shape,
+                instruction->shape().ToProto().SerializeAsString(),
                 scratch.strings);
   args->backend_config.data = instruction->raw_backend_config_string().data();
   args->backend_config.size = instruction->raw_backend_config_string().size();
@@ -476,7 +479,8 @@ PartitionScratch PopulateArgs(
   scratch.strings.reserve(2);
   SetCAPIString(args->result_sharding, sharding.ToProto().SerializeAsString(),
                 scratch.strings);
-  SetCAPIString(args->result_shape, instruction->shape().SerializeAsString(),
+  SetCAPIString(args->result_shape,
+                instruction->shape().ToProto().SerializeAsString(),
                 scratch.strings);
   args->backend_config.data = instruction->raw_backend_config_string().data();
   args->backend_config.size = instruction->raw_backend_config_string().size();

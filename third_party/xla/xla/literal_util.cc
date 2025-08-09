@@ -15,16 +15,20 @@ limitations under the License.
 
 #include "xla/literal_util.h"
 
+#include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <limits>
 #include <memory>
 #include <optional>
+#include <random>
 #include <string>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
 #include "absl/random/uniform_int_distribution.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -153,6 +157,14 @@ NativeT GetMaxImpl() {
 }
 
 template <typename NativeT>
+NativeT GetMaxFiniteImpl() {
+  if constexpr (IsReal<NativeT>::value) {
+    return std::numeric_limits<NativeT>::max();
+  }
+  LOG(FATAL) << "No finite max value for given type.";
+}
+
+template <typename NativeT>
 NativeT GetMinImpl() {
   if constexpr (IsReal<NativeT>::value) {
     if constexpr (std::numeric_limits<NativeT>::has_infinity) {
@@ -166,6 +178,13 @@ NativeT GetMinImpl() {
 template <PrimitiveType kType>
 struct MaxProvider {
   NativeT<kType> operator()() const { return GetMaxImpl<NativeT<kType>>(); }
+};
+
+template <PrimitiveType kType>
+struct MaxFiniteProvider {
+  NativeT<kType> operator()() const {
+    return GetMaxFiniteImpl<NativeT<kType>>();
+  }
 };
 
 template <PrimitiveType kType>
@@ -326,7 +345,7 @@ void PopulateWithFloatingPointData(
     bool use_large_range, std::optional<int64_t> max_bits_of_precision) {
   using ComputeT =
       std::conditional_t<sizeof(FloatT) < sizeof(float), float, FloatT>;
-  CHECK(engine != nullptr);
+  CHECK_NOTNULL(engine);
   CHECK_EQ(literal->shape().element_type(),
            primitive_util::NativeToPrimitiveType<FloatT>());
   if (max_bits_of_precision.has_value()) {
@@ -341,7 +360,8 @@ void PopulateWithFloatingPointData(
       // We want to generate floating point numbers to a fixed precision, while
       // keeping them between -1 and 1. This preserves their bits of precision
       // while keeping the numbers small.
-      value = static_cast<FloatT>(temp * pow(2, -ceil(log2(abs(temp)))));
+      value = static_cast<FloatT>(
+          temp == 0 ? 0 : temp * pow(2, -ceil(log2(abs(temp)))));
     }
   } else if (no_duplicates) {
     PopulateWithNoDuplicateData<FloatT>(literal, engine);
@@ -356,7 +376,7 @@ template <typename ComplexT>
 void PopulateWithComplexData(Literal* result, std::minstd_rand0* engine,
                              bool no_duplicates, bool use_large_range) {
   using InnerFloatT = typename ComplexT::value_type;
-  CHECK(engine != nullptr);
+  CHECK_NOTNULL(engine);
   CHECK_EQ(result->shape().element_type(),
            primitive_util::NativeToPrimitiveType<ComplexT>());
   Shape floating_point_shape = ShapeUtil::ChangeElementType(
@@ -392,7 +412,7 @@ void PopulateWithRandomIntegralDataWithBounds(Literal* literal,
                                               std::minstd_rand0* engine,
                                               bool no_duplicates, IntT min,
                                               IntT max) {
-  CHECK(engine != nullptr);
+  CHECK_NOTNULL(engine);
   CHECK_EQ(literal->shape().element_type(),
            primitive_util::NativeToPrimitiveType<IntT>());
   if (no_duplicates &&
@@ -416,6 +436,16 @@ void PopulateWithRandomIntegralDataWithBounds(Literal* literal,
     PrimitiveType primitive_type, absl::Span<const int64_t> dimensions) {
   return Literal::CreateFromShape(
       ShapeUtil::MakeShape(primitive_type, dimensions));
+}
+
+/* static */ Literal LiteralUtil::ConvertF8E4M3FNToF32(
+    const LiteralSlice& f8e4m3fn_literal) {
+  return ConvertType<tsl::float8_e4m3fn, float>(f8e4m3fn_literal);
+}
+
+/* static */ Literal LiteralUtil::ConvertF8E5M2ToF32(
+    const LiteralSlice& f8e5m2_literal) {
+  return ConvertType<tsl::float8_e5m2, float>(f8e5m2_literal);
 }
 
 /* static */ Literal LiteralUtil::ConvertS8ToF32(
@@ -506,6 +536,10 @@ void PopulateWithRandomIntegralDataWithBounds(Literal* literal,
 
 /* static */ Literal LiteralUtil::MaxValue(PrimitiveType primitive_type) {
   return CreateScalar<MaxProvider>(primitive_type);
+}
+
+/* static */ Literal LiteralUtil::MaxFiniteValue(PrimitiveType primitive_type) {
+  return CreateScalar<MaxFiniteProvider>(primitive_type);
 }
 
 /* static */ absl::StatusOr<Literal> LiteralUtil::NanValue(
@@ -789,6 +823,15 @@ absl::StatusOr<Literal> MakeFakeLiteral(
       },
       shape.element_type()));
   return std::move(literal);
+}
+
+/*static*/ std::vector<const Literal*> LiteralUtil::MakePointers(
+    absl::Span<const Literal> literals) {
+  std::vector<const Literal*> pointers(literals.size());
+  for (int i = 0; i < literals.size(); i++) {
+    pointers[i] = &literals[i];
+  }
+  return pointers;
 }
 
 }  // namespace xla

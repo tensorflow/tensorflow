@@ -17,13 +17,13 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <string_view>
 #include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -35,17 +35,17 @@ limitations under the License.
 namespace xla::ffi {
 
 static absl::StatusOr<CallFrameBuilder::Attribute> ConvertBoolAttr(
-    std::string_view name, mlir::BoolAttr boolean) {
+    absl::string_view name, mlir::BoolAttr boolean) {
   return static_cast<bool>(boolean.getValue());
 }
 
 static absl::StatusOr<CallFrameBuilder::Attribute> ConvertStringAttr(
-    std::string_view name, mlir::StringAttr str) {
+    absl::string_view name, mlir::StringAttr str) {
   return str.getValue().str();
 }
 
 static absl::StatusOr<CallFrameBuilder::Attribute> ConvertIntegerAttr(
-    std::string_view name, mlir::IntegerAttr integer) {
+    absl::string_view name, mlir::IntegerAttr integer) {
   if (integer.getType().isUnsignedInteger()) {
     switch (integer.getType().getIntOrFloatBitWidth()) {
       case 8:
@@ -78,7 +78,7 @@ static absl::StatusOr<CallFrameBuilder::Attribute> ConvertIntegerAttr(
 }
 
 static absl::StatusOr<CallFrameBuilder::Attribute> ConvertFloatAttr(
-    std::string_view name, mlir::FloatAttr fp) {
+    absl::string_view name, mlir::FloatAttr fp) {
   switch (fp.getType().getIntOrFloatBitWidth()) {
     case 32:
       return static_cast<float>(fp.getValue().convertToFloat());
@@ -91,7 +91,7 @@ static absl::StatusOr<CallFrameBuilder::Attribute> ConvertFloatAttr(
 }
 
 static absl::StatusOr<CallFrameBuilder::Attribute> ConvertArrayAttr(
-    std::string_view name, mlir::DenseArrayAttr arr) {
+    absl::string_view name, mlir::DenseArrayAttr arr) {
   if (auto dense = mlir::dyn_cast<mlir::DenseI8ArrayAttr>(arr)) {
     return dense.asArrayRef().vec();
   } else if (auto dense = mlir::dyn_cast<mlir::DenseI16ArrayAttr>(arr)) {
@@ -118,7 +118,7 @@ static std::vector<T> CopyDenseElementsToVec(
 }
 
 static absl::StatusOr<CallFrameBuilder::Attribute> ConvertDenseElementsAttr(
-    std::string_view name, mlir::DenseIntOrFPElementsAttr arr) {
+    absl::string_view name, mlir::DenseIntOrFPElementsAttr arr) {
   auto type = arr.getElementType();
   if (type.isInteger()) {
     if (type.isUnsignedInteger()) {
@@ -157,7 +157,7 @@ static absl::StatusOr<CallFrameBuilder::Attribute> ConvertDenseElementsAttr(
 }
 
 static absl::StatusOr<CallFrameBuilder::Attribute> ConvertDictionaryAttr(
-    std::string_view name, mlir::DictionaryAttr dict) {
+    absl::string_view name, mlir::DictionaryAttr dict) {
   TF_ASSIGN_OR_RETURN(auto attrs, BuildAttributesMap(dict));
   return CallFrameBuilder::Dictionary{
       std::make_shared<CallFrameBuilder::AttributesMap>(std::move(attrs))};
@@ -167,7 +167,7 @@ absl::StatusOr<CallFrameBuilder::AttributesMap> BuildAttributesMap(
     mlir::DictionaryAttr dict) {
   CallFrameBuilder::AttributesMap attributes;
   for (auto& kv : dict) {
-    std::string_view name = kv.getName().strref();
+    absl::string_view name = kv.getName().strref();
     mlir::Attribute value = kv.getValue();
 
     // Wraps attribute conversion function into callable object.

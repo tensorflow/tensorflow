@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/execution_engine.h"
 #include "xla/backends/cpu/codegen/ir_compiler.h"
 #include "xla/backends/cpu/codegen/jit_compiler.h"
+#include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/service/cpu/executable.pb.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -66,9 +67,10 @@ static absl::StatusOr<llvm::orc::ThreadSafeModule> ParseModule(
     llvm::orc::ThreadSafeContext& context, absl::string_view ir,
     absl::string_view name) {
   llvm::SMDiagnostic diagnostic;
-  llvm::MemoryBufferRef ir_buffer(ir, name);
-
-  auto m = llvm::parseAssembly(ir_buffer, diagnostic, *context.getContext());
+  auto m = context.withContextDo([&](llvm::LLVMContext* ctxt) {
+    llvm::MemoryBufferRef ir_buffer(ir, name);
+    return llvm::parseAssembly(ir_buffer, diagnostic, *ctxt);
+  });
   if (m == nullptr) {
     return Internal("Failed to parse LLVM IR: %s",
                     diagnostic.getMessage().str());
@@ -106,17 +108,23 @@ TEST_P(ObjectLoaderTest, Load) {
 
   JitCompiler::Options options;
   options.num_dylibs = kNumDyLibs;
-  options.ir_compiler_hooks.post_codegen = object_files_saver;
   options.definition_generator = params.definition_generator;
+
+  IrCompiler::CompilationHooks ir_compiler_hooks;
+  ir_compiler_hooks.post_codegen = object_files_saver;
+
+  std::unique_ptr<IrCompiler> ir_compiler = IrCompiler::Create(
+      llvm::TargetOptions(), IrCompiler::Options(), ir_compiler_hooks);
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto compiler,
-      JitCompiler::Create(llvm::TargetOptions(), std::move(options)));
+      JitCompiler::Create(std::move(options), std::move(ir_compiler)));
 
   auto add_module = [&](absl::string_view ir, absl::string_view name,
                         size_t dylib_index) -> absl::Status {
     TF_ASSIGN_OR_RETURN(llvm::orc::ThreadSafeModule tsm,
                         ParseModule(tsc, ir, name));
+    SetModuleMemoryRegionName(*tsm.getModuleUnlocked(), "object_loader_test");
     TF_RETURN_IF_ERROR(compiler.AddModule(std::move(tsm), dylib_index));
     return absl::OkStatus();
   };

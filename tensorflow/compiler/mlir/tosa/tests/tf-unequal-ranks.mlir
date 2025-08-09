@@ -1,5 +1,5 @@
-// RUN: tf-opt --split-input-file --tf-to-tosa-pipeline --verify-each %s | FileCheck %s
-// REQUIRES: tf_tosa
+// RUN: tf-tosa-opt --split-input-file --tf-to-tosa-pipeline --verify-each %s | FileCheck %s
+
 // Test tf legalization that produce TOSA ResultsBroadcastableShape operators with unequal ranks
 
 // -----
@@ -79,8 +79,9 @@ func.func @test_logical_or(%arg0: tensor<8x13x21x3xi1>, %arg1: tensor<13x21x1xi1
 // -----
 
 // CHECK-LABEL: test_floor_div
+// CHECK: tosa.intdiv
+// CHECK: tosa.select
 func.func @test_floor_div(%arg0: tensor<13x21x3xi32>, %arg1: tensor<1x13x1x3xi32>) -> tensor<1x13x21x3xi32> {
-  // CHECK: tosa.int_div
   %2 = "tf.FloorDiv"(%arg0, %arg1)   : (tensor<13x21x3xi32>, tensor<1x13x1x3xi32>) -> tensor<1x13x21x3xi32>
   func.return %2 : tensor<1x13x21x3xi32>
 }
@@ -88,7 +89,7 @@ func.func @test_floor_div(%arg0: tensor<13x21x3xi32>, %arg1: tensor<1x13x1x3xi32
 // -----
 
 // CHECK-LABEL: test_real_div
-// CHECK: tosa.int_div
+// CHECK: tosa.intdiv
 func.func @test_real_div(%arg0: tensor<13x21x3xi32>, %arg1: tensor<1x13x1x3xi32>) -> tensor<1x13x21x3xi32> {
   %2 = "tf.RealDiv"(%arg0, %arg1)   : (tensor<13x21x3xi32>, tensor<1x13x1x3xi32>) -> tensor<1x13x21x3xi32>
   func.return %2 : tensor<1x13x21x3xi32>

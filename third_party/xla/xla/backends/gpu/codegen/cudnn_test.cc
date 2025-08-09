@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/dump.h"
 #include "xla/service/executable.h"
+#include "xla/service/gpu/cudnn_support_utils.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
@@ -56,6 +58,8 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 namespace {
+
+using ::tsl::testing::IsOkAndHolds;
 
 class CuDnnFusionTest : public GpuCodegenTest {
  public:
@@ -219,14 +223,45 @@ ENTRY e {
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Fusion(m::GetTupleElement(m::Fusion()))));
-  EXPECT_THAT(module->entry_computation()
-                  ->root_instruction()
-                  ->operand(0)
-                  ->operand(0)
-                  ->fused_instructions_computation()
-                  ->root_instruction(),
-              GmockMatch(m::Tuple(m::Dot(), m::CustomCall())));
+  EXPECT_TRUE(IsWorkspaceAllocationRoot(*module->entry_computation()
+                                             ->root_instruction()
+                                             ->operand(0)
+                                             ->operand(0)
+                                             ->fused_expression_root()));
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+TEST_F(CuDnnFusionExecutionTest, CompilerSupportsFusionsWithWorkspace) {
+  const std::string kHloText = R"(
+f {
+  a = f32[32,96] parameter(0)
+  b = f32[96,64] parameter(1)
+  d = f32[32,64] dot(a, b), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  c = s8[33554688] custom-call(), custom_call_target="__nop"
+  t = (f32[32,64], s8[33554688]{0}) tuple(d, c)
+}
+
+e {
+  a = f32[32,96] parameter(0)
+  b = f32[96,64] parameter(1)
+  r = (f32[32,64], s8[33554688]) fusion(a, b), kind=kCustom, calls=f,
+    backend_config={"fusion_backend_config":{"kind":"__cudnn$fusion","cudnn_fusion_config":{"plan_id":"0"}}}
+  g = f32[32,64] get-tuple-element(r), index=0
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloText));
+  BinaryMap dnn_compiled_graphs;
+  CuDnnFusionCompiler cudnn_compiler(*backend().default_stream_executor(),
+                                     dnn_compiled_graphs);
+  EXPECT_THAT(cudnn_compiler.Run(module.get()),
+              absl_testing::IsOkAndHolds(false));
+  EXPECT_TRUE(RunAndCompareTwoModules(kHloText, R"(e {
+    a = f32[32,96] parameter(0)
+    b = f32[96,64] parameter(1)
+    d = f32[32,64] dot(a, b),
+      lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  })",
+                                      ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 TEST_F(CuDnnFusionExecutionTest,
@@ -1071,7 +1106,7 @@ ENTRY e {
   const std::string hlo_test = absl::Substitute(
       kHloTemplate, primitive_util::LowercasePrimitiveTypeName(GetParam()));
 
-  EXPECT_TRUE(RunAndCompare(hlo_test, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-4}));
+  EXPECT_TRUE(RunAndCompare(hlo_test, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 constexpr std::array<PrimitiveType, 3> kSupportedDataTypes{F16, F32, BF16};

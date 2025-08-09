@@ -14,6 +14,7 @@
 # =============================================================================
 """Provides python test rules for Cloud TPU."""
 
+load("@rules_python//python:py_test.bzl", "py_test")
 load(
     "//tensorflow/python/tpu:tpu_test_wrapper.bzl",
     _get_kwargs_for_wrapping = "get_kwargs_for_wrapping",
@@ -29,7 +30,7 @@ def tpu_py_test(
         disable_mlir_bridge = True,
         disable_tfrt = None,
         args = [],
-        test_rule = native.py_test,
+        test_rule = py_test,
         **kwargs):
     """Generates identical unit test variants for various Cloud TPU versions.
 

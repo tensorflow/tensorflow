@@ -123,8 +123,8 @@ https://github.com/openxla/xla/blob/main/xla/hlo/transforms/simplifiers/gather_s
 ## Subgraph functions
 
 For a subgraph of a computation with parameters `%p0` to `%p_n`, and subgraph
-roots with rank `r` and element types (`e0` to `e_m`), we use the following MLIR
-function signature:
+roots with `r` dimensions and element types (`e0` to `e_m`), we use the
+following MLIR function signature:
 
 ``````
 (%p0: tensor<...>, %p1: tensor<...>, ..., %pn: tensor<...>,
@@ -489,10 +489,11 @@ coalesced writes to the output.
 
 ### Reproducer
 
-In order to see the IR after every pass of the compilation pipeline, one can launch `run_hlo_module` with the `--v=5` flag.
+In order to see the IR after every pass of the compilation pipeline, one can
+launch `run_hlo_module` with the `--xla_dump_hlo_pass_re=fusion-emitter` flag.
 
 ```
-run_hlo_module --platform=CUDA --xla_disable_all_hlo_passes --reference_platform="" --v=5 /tmp/gelu.hlo
+run_hlo_module --platform=CUDA --xla_disable_all_hlo_passes --reference_platform="" /tmp/gelu.hlo --xla_dump_hlo_pass_re=fusion-emitter --xla_dump_to=<some_directory>
 ```
 
 where `/tmp/gelu.hlo` contains

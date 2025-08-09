@@ -49,7 +49,7 @@ def TFR_Dialect : Dialect {
 
 // tensor argument types
 class TFR_Type<string name> : DialectType<TFR_Dialect,
-    CPred<"$_self.isa<mlir::TFR::" # name # "Type>()">,
+    CPred<"llvm::isa<mlir::TFR::" # name # "Type>($_self)">,
     "TFR " # name #" type">,
     BuildableType<"$_builder.getType<mlir::TFR::" # name # "Type>()">;
 def TFR_TensorType : TFR_Type<"TFRTensor">;
@@ -178,7 +178,7 @@ def TFR_CastOp : TFR_Op<"cast", [Pure]> {
     // Return element type of the input tensor type. Only available when the
     // input is a MLIR built-in tensor type.
     Attribute getInputElementType() {
-      if (auto ty = getArg().getType().dyn_cast<TensorType>()) {
+      if (auto ty = llvm::dyn_cast<TensorType>(getArg().getType())) {
         return TypeAttr::get(ty.getElementType());
       }
       return {};
@@ -431,13 +431,6 @@ def TFR_TFRFuncOp : TFR_Op<"func", [HasParent<"ModuleOp">,
   // to model the element type constraints of the tf op. Otherwise, there is one
   // region containing the composition.
   let regions = (region VariadicRegion<AnyRegion>:$body);
-
-  let skipDefaultBuilders = 1;
-
-  let builders = [
-    OpBuilder<(ins "StringRef":$name, "FunctionType":$type,
-      CArg<"ArrayRef<NamedAttribute>", "{}">:$attrs)>
-  ];
 
   let extraClassDeclaration = [{
     LogicalResult verifyType() { return success(); }

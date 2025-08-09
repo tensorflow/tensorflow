@@ -34,7 +34,7 @@ class HloModuleProto;
 
 // Converts an HLO module proto to a MLIR module in HLO dialect.
 //
-// If `import_all_computation` is set to true, imports all computations
+// If `import_all_computations` is set to true, imports all computations
 // irrespective if transitively called from entry computation.
 //
 // If `flatten_computation_args_result` is set to true, flattens all tuple
@@ -42,16 +42,17 @@ class HloModuleProto;
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertHloToMlirHlo(
     mlir::MLIRContext& ctx, xla::HloModuleProto const* hlo_module,
     bool import_all_computations = false,
-    bool flatten_computation_args_result = false);
+    bool flatten_computation_args_result = false, bool emit_stablehlo = false);
 
 absl::Status ConvertHloToMlirHlo(mlir::ModuleOp module,
                                  xla::HloModuleProto const* hlo_module,
                                  bool import_all_computations = false,
-                                 bool flatten_computation_args_result = false);
+                                 bool flatten_computation_args_result = false,
+                                 bool emit_stablehlo = false);
 
 // Converts an HLO module to a MLIR module in HLO dialect.
 //
-// If `import_all_computation` is set to true, imports all computations
+// If `import_all_computations` is set to true, imports all computations
 // irrespective if transitively called from entry computation.
 //
 // If `flatten_computation_args_result` is set to true, flattens all tuple
@@ -59,12 +60,13 @@ absl::Status ConvertHloToMlirHlo(mlir::ModuleOp module,
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertHloToMlirHlo(
     mlir::MLIRContext& ctx, const xla::HloModule* hlo_module,
     bool import_all_computations = false,
-    bool flatten_computation_args_result = false);
+    bool flatten_computation_args_result = false, bool emit_stablehlo = false);
 
 absl::Status ConvertHloToMlirHlo(mlir::ModuleOp module,
                                  const xla::HloModule* hlo_module,
                                  bool import_all_computations = false,
-                                 bool flatten_computation_args_result = false);
+                                 bool flatten_computation_args_result = false,
+                                 bool emit_stablehlo = false);
 
 }  // namespace xla
 

@@ -16,19 +16,21 @@ limitations under the License.
 #include <cmath>
 #include <vector>
 
-#include "xla/client/local_client.h"
+#include "xla/array3d.h"
+#include "xla/error_spec.h"
 #include "xla/hlo/builder/xla_builder.h"
-#include "xla/tests/client_library_test_base.h"
-#include "xla/tests/literal_test_util.h"
-#include "xla/tests/test_macros.h"
-#include "tsl/platform/test.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
-class LogTest : public ClientLibraryTestBase {};
+class LogTest : public ClientLibraryTestRunnerMixin<
+                    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {};
 
-XLA_TEST_F(LogTest, LogZeroValues) {
+TEST_F(LogTest, LogZeroValues) {
   XlaBuilder builder(TestName());
   auto x = ConstantR3FromArray3D<float>(&builder, Array3D<float>(3, 0, 0));
   Log(x);

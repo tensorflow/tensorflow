@@ -15,12 +15,19 @@ limitations under the License.
 
 #include "xla/service/hlo_cost_analysis.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/array4d.h"
 #include "xla/client/client.h"
 #include "xla/client/client_library.h"
 #include "xla/client/local_client.h"
@@ -29,14 +36,17 @@ limitations under the License.
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
-#include "xla/service/local_service.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/test_helpers.h"
+#include "xla/literal_util.h"
 #include "xla/service/service.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/test_helpers.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"
 
 namespace xla {
 namespace {
@@ -343,8 +353,11 @@ TEST_F(HloCostAnalysisTest, ConvolutionSame) {
   ASSERT_IS_OK(
       hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
 
-  // Output shape is [1x1x3x3] and each output element requires (3x3)
-  // FMAs and one FMA is 2 flops.
+  // Output shape is [1x1x3x3] with the following flops required for each
+  // element:
+  //    4 6 4
+  //    6 9 6
+  //    4 6 4
   // NOTE: This formula only works for the hard-coded dimensions for now.
   EXPECT_EQ(analysis.flop_count(), 2 * (4 + 6 + 4 + 6 + 9 + 6 + 4 + 6 + 4));
 
@@ -721,7 +734,7 @@ TEST_F(HloCostAnalysisTest, LatencyBoundedOptimalTime) {
   EXPECT_EQ(cost_analysis.optimal_seconds(), clock_cycle_seconds);
 }
 
-using FusionCostAnalysis = HloTestBase;
+using FusionCostAnalysis = HloHardwareIndependentTestBase;
 
 TEST_F(FusionCostAnalysis, LoopFusionDynUpdateSlice) {
   // Test for b/234935631.
@@ -1347,7 +1360,7 @@ TEST_F(HloCostAnalysisTest, TupleCost) {
             HloCostAnalysis::kDefaultPointerSize * 2);
 }
 
-using DomainCostAnalysis = HloTestBase;
+using DomainCostAnalysis = HloHardwareIndependentTestBase;
 TEST_F(DomainCostAnalysis, DomainCost) {
   HloCostAnalysis analysis;
 
@@ -1642,16 +1655,6 @@ TEST_F(HloCostAnalysisTest, MultioutputScatter) {
   EXPECT_EQ(analysis.output_bytes_accessed(*root), 2 * sizeof(float) * 2 * 3);
 }
 
-TEST_F(HloCostAnalysisTest, GetShapeSizeIgnoreUnsupportedShape) {
-  // Build a sparse array shape.
-  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
-  *shape.mutable_layout() =
-      LayoutUtil::MakeLayout({1, 0}, {DIM_DENSE, DIM_COMPRESSED});
-  HloCostAnalysis analysis;
-  EXPECT_TRUE(LayoutUtil::IsSparseArray(shape));
-  EXPECT_EQ(0, analysis.GetShapeSize(shape));
-}
-
 TEST_F(FusionCostAnalysis, Broadcast) {
   absl::string_view hlo_string = R"(
 HloModule m
@@ -1777,8 +1780,8 @@ ENTRY e {
   // Modify fusion root, revisit the fusion with the analysis and expect
   // updated values. Compare against a complete fresh analysis.
   fusion_root->mutable_slice_limits()->at(0) = 2;
-  fusion_root->mutable_shape()->mutable_dimensions()[0] = 2;
-  root->mutable_shape()->mutable_dimensions()[0] = 2;
+  fusion_root->mutable_shape()->set_dimensions(0, 2);
+  root->mutable_shape()->set_dimensions(0, 2);
   module->mutable_config().SetDefaultComputationLayout(
       module->entry_computation()->ComputeProgramShape());
   ASSERT_IS_OK(modified_analysis.RevisitInstruction(root));

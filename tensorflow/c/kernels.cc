@@ -875,8 +875,8 @@ TF_Tensor* TF_ForwardInputOrAllocateOutput(
   TF_SetStatus(status, TF_OK, "");
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(context);
 
-  tensorflow::gtl::ArraySlice<int> input_indices_array(
-      candidate_input_indices, num_candidate_input_indices);
+  absl::Span<const int> input_indices_array(candidate_input_indices,
+                                            num_candidate_input_indices);
   tensorflow::gtl::ArraySlice<const int64_t> output_dimarray(
       reinterpret_cast<const int64_t*>(output_dims), output_num_dims);
   tensorflow::Tensor* output_tensor_pointer;

@@ -98,7 +98,8 @@ absl::Status DynamicParameterBinding::Verify(
             computation.parameter_instruction(dynamic_dimension.parameter_num)
                 ->shape(),
             dynamic_dimension.parameter_index)
-            .rank());
+            .dimensions()
+            .size());
     return absl::OkStatus();
   });
 }

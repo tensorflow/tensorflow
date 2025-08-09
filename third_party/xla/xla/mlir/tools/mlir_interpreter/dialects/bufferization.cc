@@ -36,7 +36,7 @@ InterpreterValue ToTensor(InterpreterState&, bufferization::ToTensorOp,
   return in.Clone();
 }
 
-InterpreterValue ToMemref(InterpreterState&, bufferization::ToMemrefOp,
+InterpreterValue ToMemref(InterpreterState&, bufferization::ToBufferOp,
                           const InterpreterValue& in) {
   return in;
 }
@@ -45,7 +45,7 @@ InterpreterValue AllocTensor(
     InterpreterState&, bufferization::AllocTensorOp alloc,
     ArrayRef<int64_t> dynamic_sizes, std::optional<InterpreterValue> copy,
     const std::optional<InterpreterValue>& /*sizeHint*/) {
-  auto ty = alloc->getResultTypes().front().cast<mlir::ShapedType>();
+  auto ty = mlir::cast<mlir::ShapedType>(alloc->getResultTypes().front());
   auto shape = ReplaceDynamicVals(ty.getShape(), dynamic_sizes);
 
   if (copy) {

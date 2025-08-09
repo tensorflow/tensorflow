@@ -27,6 +27,7 @@ cc_library(
         "//xla/tsl/profiler/rpc/client:__pkg__",
         "//tensorflow_serving/model_servers:__pkg__",
         "//tensorflow/python/profiler/internal:__pkg__",
+        "//third_party/xprof/pywrap:__pkg__",
     ]),
     deps = [
         "//xla/tsl/platform:env",
@@ -43,7 +44,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:mutex",
+        "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/profiler/lib:profiler_session",
         "@local_tsl//tsl/profiler/protobuf:profiler_service_cc_grpc_proto",
         "@local_tsl//tsl/profiler/protobuf:profiler_service_proto_cc",
@@ -69,6 +70,7 @@ cc_library(
         "//tensorflow/python/profiler/internal:__pkg__",
         "//xla/tsl/profiler:internal",
         "//xla/tsl/profiler/rpc/client:__pkg__",
+        "//third_party/xprof/pywrap:__pkg__",
     ]),
     deps = [
         ":profiler_service_impl",

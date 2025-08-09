@@ -321,10 +321,10 @@ EstimateOptimizedHloRunTimeWithoutSoftMaxRewriterTriton(
 
   absl::Duration total_run_time = absl::ZeroDuration();
 
+  GpuPerformanceModelOwning gpu_performance_model(device_info);
   for (const HloInstruction* instr : entry_computation->instructions()) {
-    total_run_time += GpuPerformanceModel::EstimateRunTimeForInstruction(
-                          instr, device_info, &cost_analysis,
-                          GpuPerformanceModelOptions::Default())
+    total_run_time += gpu_performance_model.Get()
+                          .EstimateRunTimeForInstruction(instr, &cost_analysis)
                           .exec_time;
   }
 
@@ -461,7 +461,8 @@ FusionDecision ShouldFuseReduction(const HloInstruction& reduce,
   }
 
   if (reduce.dimensions().size() != 1 ||
-      reduce.dimensions(0) != reduce.operand(0)->shape().rank() - 1) {
+      reduce.dimensions(0) !=
+          reduce.operand(0)->shape().dimensions().size() - 1) {
     return FusionDecision::Forbid(
         "The reductions in the diamond must reduce 1 dimension and that "
         "dimension must be the last dimension of the operand.");
@@ -545,7 +546,7 @@ DiamondMatchingDecision MatchesTritonCompatibleClosedReductionDiamondImpl(
   producer = reduce->mutable_operand(0);
 
   if (absl::c_linear_search(broadcast->dimensions(),
-                            broadcast->shape().rank() - 1)) {
+                            broadcast->shape().dimensions().size() - 1)) {
     return FusionDecision::Forbid(
         "Broadcast is not along the reduction dimension.");
   }
@@ -594,7 +595,7 @@ SoftmaxRewriterTriton::FindAllFusibleNormalizationDiamonds(
 
   for (HloComputation* comp :
        module.MakeNonfusionComputations(execution_threads)) {
-    if (comp->IsCustomCallComputation()) {
+    if (!comp->caller_instructions(HloOpcode::kCustomCall).empty()) {
       continue;
     }
     for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {

@@ -1,3 +1,4 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/compiler/mlir/lite:build_def.bzl", "tflite_copts")
 
@@ -23,9 +24,7 @@ filegroup(
         "builtin_op_data.h",
         "tflite_types.h",
     ],
-    visibility = [
-        "//tensorflow/lite:__subpackages__",
-    ],
+    visibility = ["//visibility:public"],
 )
 
 exports_files(

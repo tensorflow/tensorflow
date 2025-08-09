@@ -689,6 +689,8 @@ def deprecated_argument_lookup(new_name, new_value, old_name, old_value):
 
 
 def rewrite_argument_docstring(old_doc, old_argument, new_argument):
+  if old_doc is None:
+    return None
   return old_doc.replace('`%s`' % old_argument,
                          '`%s`' % new_argument).replace('%s:' % old_argument,
                                                         '%s:' % new_argument)

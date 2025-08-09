@@ -17,13 +17,15 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/logging.h"
 
 namespace tsl {
 
 // static
 AllocatorFactoryRegistry* AllocatorFactoryRegistry::singleton() {
-  static AllocatorFactoryRegistry* singleton = new AllocatorFactoryRegistry;
+  static AllocatorFactoryRegistry* const singleton =
+      new AllocatorFactoryRegistry;
   return singleton;
 }
 
@@ -41,7 +43,7 @@ void AllocatorFactoryRegistry::Register(const char* source_file,
                                         int source_line, const string& name,
                                         int priority,
                                         AllocatorFactory* factory) {
-  mutex_lock l(mu_);
+  absl::MutexLock l(&mu_);
   CHECK(!first_alloc_made_) << "Attempt to register an AllocatorFactory "
                             << "after call to GetAllocator()";
   CHECK(!name.empty()) << "Need a valid name for Allocator";
@@ -67,7 +69,7 @@ void AllocatorFactoryRegistry::Register(const char* source_file,
 }
 
 Allocator* AllocatorFactoryRegistry::GetAllocator() {
-  mutex_lock l(mu_);
+  absl::MutexLock l(&mu_);
   first_alloc_made_ = true;
   FactoryEntry* best_entry = nullptr;
   for (auto& entry : factories_) {
@@ -89,7 +91,7 @@ Allocator* AllocatorFactoryRegistry::GetAllocator() {
 }
 
 SubAllocator* AllocatorFactoryRegistry::GetSubAllocator(int numa_node) {
-  mutex_lock l(mu_);
+  absl::MutexLock l(&mu_);
   first_alloc_made_ = true;
   FactoryEntry* best_entry = nullptr;
   for (auto& entry : factories_) {

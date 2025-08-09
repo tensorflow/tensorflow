@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/LogicalResult.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
@@ -55,13 +56,15 @@ void UnbufferizePass::runOnOperation() {
   IRMapping mapping;
   llvm::SmallDenseSet<BlockArgument> insertedArgs;
   funcOp->walk([&](bufferization::ToTensorOp op) {
-    auto arg = mlir::dyn_cast<BlockArgument>(op.getMemref());
+    auto arg = mlir::dyn_cast<BlockArgument>(op.getBuffer());
     if (!arg) return;
     Value newValue = mapping.lookupOrNull(arg);
     if (newValue == nullptr) {
       auto attrs = funcOp.getArgAttrDict(arg.getArgNumber());
-      funcOp.insertArgument(funcOp.getNumArguments(), op.getType(), attrs,
-                            arg.getLoc());
+      if (llvm::failed(funcOp.insertArgument(
+              funcOp.getNumArguments(), op.getType(), attrs, arg.getLoc()))) {
+        return signalPassFailure();
+      }
       newValue = funcOp.getArguments().back();
       mapping.map(arg, newValue);
     }
@@ -79,10 +82,14 @@ void UnbufferizePass::runOnOperation() {
     rewriter.eraseOp(op);
   });
   argsToErase.resize(funcOp.getNumArguments());
-  funcOp.eraseArguments(argsToErase);
+  if (llvm::failed(funcOp.eraseArguments(argsToErase))) {
+    return signalPassFailure();
+  }
   auto resultIndices = llvm::to_vector(llvm::seq<unsigned>(0, results.size()));
-  funcOp.insertResults(resultIndices, TypeRange(ValueRange(results)),
-                       resultAttrs);
+  if (llvm::failed(funcOp.insertResults(
+          resultIndices, TypeRange(ValueRange(results)), resultAttrs))) {
+    return signalPassFailure();
+  }
   Operation *terminator = funcOp.getBody().back().getTerminator();
   rewriter.setInsertionPoint(terminator);
   rewriter.replaceOpWithNewOp<func::ReturnOp>(terminator, results);

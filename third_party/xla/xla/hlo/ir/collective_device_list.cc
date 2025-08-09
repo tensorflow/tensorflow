@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
+#include "xla/printer.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/xla_data.pb.h"
@@ -58,6 +59,10 @@ std::string IotaReplicaGroupList::ToString() const {
   return iota_tile_assignment_.ToString();
 }
 
+void IotaReplicaGroupList::Print(Printer* printer) const {
+  iota_tile_assignment_.Print(printer);
+}
+
 IotaReplicaGroupListProto IotaReplicaGroupList::ToProto() const {
   IotaReplicaGroupListProto proto;
   proto.set_num_replica_groups(num_replica_groups_);
@@ -79,6 +84,18 @@ IotaReplicaGroupList IotaReplicaGroupList::FromProto(
                            proto.iota_reshape_dims().end()),
       std::vector<int>(proto.iota_transpose_perm().begin(),
                        proto.iota_transpose_perm().end()));
+}
+
+std::vector<std::vector<int64_t>>
+IotaReplicaGroupList::flattened_replica_groups() const {
+  std::vector<std::vector<int64_t>> result;
+  result.reserve(num_replica_groups());
+  Array<int64_t> array = ToArray();
+  for (auto it = array.begin(); it != array.end();
+       it += num_devices_per_group()) {
+    result.emplace_back(it, it + num_devices_per_group());
+  }
+  return result;
 }
 
 namespace {
@@ -120,6 +137,21 @@ std::string CollectiveDeviceList::ToString(
   }
 
   return ReplicaGroupsToString(replica_groups());
+}
+
+void CollectiveDeviceList::Print(Printer* printer,
+                                 bool print_full_replica_group_list) const {
+  if (iota_replica_group_list_.has_value() && !print_full_replica_group_list) {
+    iota_replica_group_list_->Print(printer);
+    return;
+  }
+  printer->Append("{");
+  bool leading_comma = false;
+  for (const ReplicaGroup& group : replica_groups()) {
+    printer->AppendInt64List(group.replica_ids(), leading_comma);
+    leading_comma = true;
+  }
+  printer->Append("}");
 }
 
 CollectiveDeviceListProto CollectiveDeviceList::ToProto() const {

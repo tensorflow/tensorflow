@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -36,9 +37,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/converter_flags.pb.h"
 #include "tensorflow/compiler/mlir/lite/model_flags.pb.h"
 #include "tensorflow/compiler/mlir/lite/python/tf_tfl_flatbuffer_helpers.h"
+#include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/types.pb.h"
-#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/translate/stablehlo.h"
 #include "xla/service/hlo.pb.h"
@@ -57,7 +58,8 @@ namespace {
 // Error collector that simply ignores errors reported.
 class NoOpErrorCollector : public tsl::protobuf::io::ErrorCollector {
  public:
-  void AddError(int line, int column, const std::string& message) override {}
+  void RecordError(int line, tsl::protobuf::io::ColumnNumber column,
+                   absl::string_view message) override {}
 };
 
 absl::StatusOr<xla::HloProto> LoadHloProto(const std::string& contents) {
@@ -83,7 +85,7 @@ absl::Status ConvertJaxToTFLiteFlatBuffer(
     const std::string& input, const tflite::ModelFlags& model_flags,
     tflite::ConverterFlags& converter_flags, std::string* result) {
   auto context = std::make_unique<mlir::MLIRContext>();
-  mlir::quant::QuantizationSpecs quant_specs;
+  mlir::TFL::QuantizationSpecs quant_specs;
 
   // Parse input arrays.
   std::vector<std::string> node_names;

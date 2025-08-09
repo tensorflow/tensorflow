@@ -473,20 +473,34 @@ LocalClient::CompileAheadOfTime(
 absl::StatusOr<std::unique_ptr<LocalExecutable>> LocalClient::Load(
     const std::string& serialized_aot_result,
     const ExecutableBuildOptions& options) {
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler,
+                      Compiler::GetForPlatform(platform()));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::AotCompilationResult> aot_result,
+      compiler->LoadAotCompilationResult(serialized_aot_result));
+  return LoadInternal(std::move(aot_result), compiler.get(), options);
+}
+
+absl::StatusOr<std::unique_ptr<LocalExecutable>> LocalClient::Load(
+    std::unique_ptr<xla::AotCompilationResult> aot_result,
+    const ExecutableBuildOptions& options) {
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler,
+                      Compiler::GetForPlatform(platform()));
+  return LoadInternal(std::move(aot_result), compiler.get(), options);
+}
+
+absl::StatusOr<std::unique_ptr<LocalExecutable>> LocalClient::LoadInternal(
+    std::unique_ptr<xla::AotCompilationResult> aot_result, Compiler* compiler,
+    const ExecutableBuildOptions& options) {
   TF_ASSIGN_OR_RETURN(ExecutableBuildOptions updated_options,
                       UpdateBuildOptions(options, default_device_ordinal()));
   TF_ASSIGN_OR_RETURN(
       se::StreamExecutor * executor,
       backend().stream_executor(updated_options.device_ordinal()));
 
-  TF_ASSIGN_OR_RETURN(Compiler * compiler,
-                      Compiler::GetForPlatform(platform()));
   TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<xla::AotCompilationResult> aot_result,
-      compiler->LoadAotCompilationResult(serialized_aot_result));
-
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
-                      aot_result->LoadExecutable(compiler, executor));
+      std::unique_ptr<Executable> executable,
+      std::move(*aot_result).LoadExecutable(compiler, executor));
   return std::make_unique<LocalExecutable>(std::move(executable),
                                            local_service_->mutable_backend(),
                                            updated_options);

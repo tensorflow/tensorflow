@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/service/latency_hiding_scheduler.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/stream_executor.h"
 
 namespace xla {
 namespace gpu {
@@ -48,6 +49,20 @@ static constexpr int64_t kCostlyAllReduceThreshold = 30 * 1024 * 1024;
 
 // Multiplier which we apply to expand the base cost for the costly AR.
 static constexpr int64_t kCostlyAllReduceMultiplier = 4;
+
+// Multipliers for p2p collectives.
+static constexpr int64_t kCostlyP2PSendMultiplier = 1024;
+static constexpr int64_t kCostlyP2PCollectivePermuteMultiplier = 14;
+static constexpr int64_t kCostlyP2PRecvMultiplier = 6;
+
+// Number of P2P collectives that can be in flight at the same time. Note that
+// this does not mean that these collectives run in parallel but synchronisation
+// may not happen after each one of them.
+static constexpr int64_t kNumAsyncCollectivesP2P = 4;
+
+// Number of async memcpy operations that can be in flight at the same time.
+static constexpr int64_t kNumAsyncMemcpy = std::numeric_limits<int>::max();
+;
 
 // Classifies `hlo` instruction as noop or not.
 bool IsNopInstruction(const HloInstruction& hlo) {
@@ -66,9 +81,14 @@ bool IsNopInstruction(const HloInstruction& hlo) {
   }
 }
 
-bool IsAsyncComputeOp(const HloInstruction& hlo) {
-  return (hlo.opcode() == HloOpcode::kAsyncStart ||
-          hlo.opcode() == HloOpcode::kAsyncDone) &&
+bool IsAsyncComputeStartOp(const HloInstruction& hlo) {
+  return hlo.opcode() == HloOpcode::kAsyncStart &&
+         !hlo_query::IsCollectiveCommunicationOp(hlo.async_wrapped_opcode()) &&
+         hlo.async_execution_thread() != hlo.parent()->execution_thread();
+}
+
+bool IsAsyncComputeDoneOp(const HloInstruction& hlo) {
+  return hlo.opcode() == HloOpcode::kAsyncDone &&
          !hlo_query::IsCollectiveCommunicationOp(hlo.async_wrapped_opcode()) &&
          hlo.async_execution_thread() != hlo.parent()->execution_thread();
 }
@@ -105,6 +125,40 @@ std::pair<GpuResourceType, ResourceUsageType> GetP2PResourceAndUsage(
   return {resource, usage};
 }
 
+bool ShapeHasHostMemorySpace(const Shape& shape) {
+  return shape.IsArray() && shape.has_layout() &&
+         shape.layout().memory_space() ==
+             static_cast<int64_t>(stream_executor::MemoryType::kHost);
+}
+
+bool IsSlicingMemcpy(const HloInstruction& hlo) {
+  if (hlo.opcode() == HloOpcode::kFusion) {
+    return ShapeHasHostMemorySpace(hlo.shape()) ||
+           ShapeHasHostMemorySpace(hlo.operand(0)->shape());
+  }
+  return false;
+}
+
+bool IsMemcpyAsyncStartOp(const HloInstruction& hlo) {
+  if (hlo.opcode() == HloOpcode::kCopyStart) {
+    return true;
+  }
+  if (hlo.opcode() != HloOpcode::kAsyncStart) {
+    return false;
+  }
+  return IsSlicingMemcpy(*hlo.async_wrapped_instruction());
+}
+
+bool IsMemcpyAsyncDoneOp(const HloInstruction& hlo) {
+  if (hlo.opcode() == HloOpcode::kCopyDone) {
+    return true;
+  }
+  if (hlo.opcode() != HloOpcode::kAsyncDone) {
+    return false;
+  }
+  return IsSlicingMemcpy(*hlo.async_wrapped_instruction());
+}
+
 // Marks async start operations to be scheduled as early as possible.
 // It allows maximum overlap of operations while respecting dependencies.
 // Besides async collectives, copy-start is async memcpy D2H/H2D, the beginning
@@ -113,7 +167,7 @@ bool IsGpuAsyncStart(const HloInstruction& hlo) {
   return (hlo_query::IsAsyncCollectiveStartOp(&hlo,
                                               /*include_send_recv=*/true) &&
           !IsGPUSyncCollective(hlo)) ||
-         IsAsyncComputeOp(hlo) || hlo.opcode() == HloOpcode::kCopyStart;
+         IsAsyncComputeStartOp(hlo) || IsMemcpyAsyncStartOp(hlo);
 }
 
 // Marks async done operations to be scheduled as late as possible.
@@ -121,7 +175,7 @@ bool IsGpuAsyncDone(const HloInstruction& hlo) {
   return (hlo_query::IsAsyncCollectiveDoneOp(&hlo,
                                              /*include_send_recv=*/true) &&
           !IsGPUSyncCollective(*hlo.operand(0))) ||
-         IsAsyncComputeOp(hlo) || hlo.opcode() == HloOpcode::kCopyDone;
+         IsAsyncComputeDoneOp(hlo) || IsMemcpyAsyncDoneOp(hlo);
 }
 
 bool IsAsyncPair(const HloInstruction& from, const HloInstruction& target) {
@@ -129,18 +183,18 @@ bool IsAsyncPair(const HloInstruction& from, const HloInstruction& target) {
 }
 
 // Count the maximum overlapping count in subgroups of group and other
-size_t CountOverlappingRanks(const std::vector<ReplicaGroup>& group,
-                             const std::vector<ReplicaGroup>& other) {
+size_t CountOverlappingRanks(const std::vector<std::vector<int64_t>>& group,
+                             const std::vector<std::vector<int64_t>>& other) {
   size_t overlapping_count = 0;
-  for (const auto& curr_replica_group : group) {
-    absl::flat_hash_set<int> curr_replica_ids;
-    for (const auto curr_replica_id : curr_replica_group.replica_ids()) {
+  for (const std::vector<int64_t>& curr_replica_group : group) {
+    absl::flat_hash_set<int64_t> curr_replica_ids;
+    for (const int64_t curr_replica_id : curr_replica_group) {
       curr_replica_ids.insert(curr_replica_id);
     }
 
-    for (const auto& replica_group : other) {
+    for (const std::vector<int64_t>& replica_group : other) {
       size_t subgroup_count = 0;
-      for (const auto replica_id : replica_group.replica_ids()) {
+      for (const int64_t replica_id : replica_group) {
         if (curr_replica_ids.contains(replica_id)) ++subgroup_count;
       }
       overlapping_count = std::max(overlapping_count, subgroup_count);
@@ -151,14 +205,22 @@ size_t CountOverlappingRanks(const std::vector<ReplicaGroup>& group,
 
 }  // namespace
 
-int64_t GetSizeOfShape(const Shape& shape, int pointer_size) {
-  int64_t size = ShapeUtil::ByteSizeOf(shape, pointer_size);
-  if (shape.IsTuple() || shape.is_static()) {
-    return size;
-  }
-  // Each dynamic dimension size is represented as a S32.
-  int64_t metadata_size = sizeof(int32_t) * shape.dimensions_size();
-  return size + metadata_size;
+HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction(
+    int64_t pointer_size, std::optional<int64_t> memory_space) {
+  return [pointer_size, memory_space](const Shape& shape) -> int64_t {
+    // Filter by memory space if specified
+    if (memory_space.has_value() && shape.has_layout() &&
+        shape.layout().memory_space() != memory_space.value()) {
+      return 0;
+    }
+    int64_t size = ShapeUtil::ByteSizeOf(shape, pointer_size);
+    if (shape.IsTuple() || shape.is_static()) {
+      return size;
+    }
+    // Each dynamic dimension size is represented as a S32.
+    int64_t metadata_size = sizeof(int32_t) * shape.dimensions().size();
+    return size + metadata_size;
+  };
 }
 
 CanonicalAsyncOp GpuGetCanonicalAsyncOp(const HloInstruction& hlo) {
@@ -213,16 +275,28 @@ bool GpuScheduleCrossesOverlapLimit(
       CHECK(
           hlo_query::IsAsyncCollectiveStartOp(curr_hlo_inst.operand(0), true));
       const HloInstruction* curr_start_inst =
-          curr_hlo_inst.operand(0)->async_wrapped_instruction();
+          curr_hlo_inst.IsAsynchronous()
+              ? curr_hlo_inst.operand(0)->async_wrapped_instruction()
+              : curr_hlo_inst.operand(0);
 
       // If candidate can be overlapped with in-flight collectives
       bool can_overlap = true;
-      for (const auto occupier :
+      for (const auto async_occupier :
            sched_state.resource_occupiers_in_flight.at(resource_type)) {
-        if (sched_state.async_tracker->IsSupportedAsyncStart(*occupier)) {
+        if (sched_state.async_tracker->IsSupportedAsyncStart(*async_occupier)) {
+          const HloInstruction* occupier =
+              async_occupier->opcode() == HloOpcode::kAsyncStart
+                  ? async_occupier->async_wrapped_instruction()
+                  : async_occupier;
+
           // Number of overlapping ranks between this occupier and candidate
+          auto curr_start_replica_group =
+              GetAsyncReplicaGroups(curr_start_inst);
+          CHECK_OK(curr_start_replica_group);
+          auto occupier_replica_group = GetAsyncReplicaGroups(occupier);
+          CHECK_OK(occupier_replica_group);
           size_t overlapping_count = CountOverlappingRanks(
-              curr_start_inst->replica_groups(), occupier->replica_groups());
+              *curr_start_replica_group, *occupier_replica_group);
           if (overlapping_count > 1) {
             can_overlap = false;
             VLOG(3) << "Collectives have " << overlapping_count
@@ -405,6 +479,25 @@ int64_t GpuAsyncTracker::GetNumAvailableResources(int64_t resource_type) const {
     return config_.parallel_collective_overlap_limit;
   }
 
+  if (resource_type ==
+          ResourceTypeToIndex(GpuResourceType::kGpuAsyncStreamCollectivesP2P) ||
+      resource_type ==
+          ResourceTypeToIndex(GpuResourceType::kGpuAsyncStreamSend0) ||
+      resource_type ==
+          ResourceTypeToIndex(GpuResourceType::kGpuAsyncStreamSend1) ||
+      resource_type ==
+          ResourceTypeToIndex(GpuResourceType::kGpuAsyncStreamRecv0) ||
+      resource_type ==
+          ResourceTypeToIndex(GpuResourceType::kGpuAsyncStreamRecv1)) {
+    return kNumAsyncCollectivesP2P;
+  }
+
+  if (resource_type ==
+      ResourceTypeToIndex(GpuResourceType::kGpuAsyncStreamMemcpy)) {
+    constexpr int64_t kNumAsyncMemcpy = std::numeric_limits<int>::max();
+    return kNumAsyncMemcpy;
+  }
+
   return 1;
 }
 
@@ -524,12 +617,28 @@ ApproximateLatencyEstimator::TimeCost GpuLatencyEstimator::NodeCost(
 ApproximateLatencyEstimator::TimeCost GpuLatencyEstimator::GetLatencyBetween(
     const HloGraphNode& from, const HloGraphNode& to) const {
   if (IsAsyncPair(from, to)) {
-    if (from.GetInstr().opcode() == HloOpcode::kRecv) {
-      // Recv -> RecvDone has a low latency.
-      return ApproximateLatencyEstimator::kLowLatency;
-    } else if (from.GetInstr().opcode() == HloOpcode::kSend) {
-      // Send -> SendDone has a very high latency.
-      return ApproximateLatencyEstimator::kHighLatency * 10;
+    if (IsAnnotatedForGpuAsyncStreamCollectivesP2P(from.GetInstr())) {
+      HloOpcode inner_opcode = GpuGetCanonicalAsyncOp(from.GetInstr()).inner;
+      if (inner_opcode == HloOpcode::kSend) {
+        return kCostlyP2PSendMultiplier * kHighLatency;
+      } else if (inner_opcode == HloOpcode::kCollectivePermute) {
+        // The collective permutes in p2p communication force-synchronize all
+        // devices and destroy the desired staggering. The latency we assign
+        // them here must compensate for that. We give them the time they take
+        // plus the maximum time any of them will have to wait for their
+        // furthest peer.
+        int64_t num_partitions =
+            from.GetInstr().GetModule()->config().num_partitions();
+        int64_t cycle_length = num_partitions / 8;
+        int64_t staggering_factor = std::max<int64_t>(cycle_length - 1, 1);
+        return staggering_factor * kCostlyP2PRecvMultiplier *
+                   ApproximateLatencyEstimator::kHighLatency +
+               kCostlyP2PCollectivePermuteMultiplier *
+                   ApproximateLatencyEstimator::kHighLatency;
+      } else {
+        return kCostlyP2PRecvMultiplier *
+               ApproximateLatencyEstimator::kHighLatency;
+      }
     }
 
     bool enable_approx_collectives =
@@ -540,7 +649,7 @@ ApproximateLatencyEstimator::TimeCost GpuLatencyEstimator::GetLatencyBetween(
             .xla_gpu_enable_approx_costly_collectives();
     bool is_all_reduce = from.GetInstr().opcode() == HloOpcode::kAllReduceStart;
     bool collective_size_exceeds_threshold =
-        GetSizeOfShape(from.GetInstr().shape(), pointer_size_) >
+        ShapeSizeBytesFunction(pointer_size_)(from.GetInstr().shape()) >
         kCostlyAllReduceThreshold;
     if (enable_approx_collectives && is_all_reduce &&
         collective_size_exceeds_threshold) {

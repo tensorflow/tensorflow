@@ -45,7 +45,7 @@ bool IsSupportedComposite(::mlir::stablehlo::CompositeOp op) {
   // List of supported composites to represent using CustomOp.
   return llvm::is_contained(
       {"odml.update_kv_cache", "odml.update_external_kv_cache",
-       "odml.quantize_and_dequantize"},
+       "odml.quantize_and_dequantize", "odml.detector"},
       op.getName());
 }
 
@@ -74,6 +74,12 @@ LogicalResult BuildOption(flexbuffers::Builder* fbb, Operation* op,
     return success();
   }
 
+  if (mlir::isa<::mlir::StringAttr>(attr)) {
+    fbb->String(
+        key, mlir::dyn_cast<mlir::StringAttr>(attr).getValue().str().c_str());
+    return success();
+  }
+
   return op->emitWarning("serialization not supported for : ") << key;
 }
 
@@ -82,15 +88,15 @@ TFL::CustomOp BuildCustomOp(stablehlo::CompositeOp composite,
   OpBuilder builder(composite->getContext());
   builder.setInsertionPoint(composite);
   if (IsKVCacheCompositeOp(composite)) {
-    return builder.create<TFL::CustomOp>(
-        composite->getLoc(), composite->getResultTypes(),
+    return TFL::CustomOp::create(
+        builder, composite->getLoc(), composite->getResultTypes(),
         composite->getOperands().slice(2, 3), composite.getName(),
         CustomOption(&builder, custom_option_buffer));
   }
-  return builder.create<TFL::CustomOp>(
-      composite->getLoc(), composite->getResultTypes(),
-      composite->getOperands(), composite.getName(),
-      CustomOption(&builder, custom_option_buffer));
+  return TFL::CustomOp::create(builder, composite->getLoc(),
+                               composite->getResultTypes(),
+                               composite->getOperands(), composite.getName(),
+                               CustomOption(&builder, custom_option_buffer));
 }
 
 }  // namespace

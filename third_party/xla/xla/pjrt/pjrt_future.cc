@@ -20,13 +20,24 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/base/no_destructor.h"
+#include "absl/base/optimization.h"
 #include "absl/base/thread_annotations.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 
 namespace xla {
+
+// Construct an immediately ready promise in the static storage. This avoids
+// heap allocation and reference counting operations on a hot path.
+static tsl::internal::AsyncValueStorage<absl::Status> ready_promise_storage;
+absl::NoDestructor<tsl::AsyncValueOwningRef<absl::Status>>
+    PjRtFuture<>::ready_promise_(
+        tsl::MakeAvailableAsyncValueRef<absl::Status>(ready_promise_storage));
 
 namespace {
 struct State {
@@ -53,7 +64,7 @@ PjRtFuture<> JoinFutures(absl::Span<const PjRtFuture<>> futures) {
 
   for (const PjRtFuture<>& future : futures) {
     future.OnReady([state](absl::Status status) {
-      if (!status.ok()) {
+      if (ABSL_PREDICT_FALSE(!status.ok())) {
         absl::MutexLock lock(&state->mu);
         if (VLOG_IS_ON(2)) {
           if (!state->status.ok() && status.code() != state->status.code()) {
@@ -64,7 +75,7 @@ PjRtFuture<> JoinFutures(absl::Span<const PjRtFuture<>> futures) {
         state->status.Update(status);
       }
 
-      const int pending_count =
+      int32_t pending_count =
           state->pending_count.fetch_sub(1, std::memory_order_acq_rel);
       CHECK_GE(pending_count, 1) << "Pending count can't drop below 0";
 

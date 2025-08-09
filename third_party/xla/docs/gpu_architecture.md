@@ -76,8 +76,8 @@ A number of notable optimization passes happen on HLO, as HLO->HLO rewrites.
 
 ### SPMD Partitioner
 
-The XLA SPMD partitioner, as described in the GSPMD
-[publication](https://arxiv.org/pdf/2105.04663.pdf%C3%AF%C2%BC%E2%80%B0%C3%A3%E2%82%AC%E2%80%B9%C3%A5%E2%80%99%C5%92),
+The XLA SPMD partitioner, as described in
+[GSPMD: General and Scalable Parallelization for MLComputation Graphs](https://arxiv.org/pdf/2105.04663.pdf),
 consumes HLO with sharding annotations (produced e.g. by `jax.pjit`), and
 produces a sharded HLO which can then run on a number of hosts and devices.
 Apart from partitioning, the SPMD attempts to optimize HLO for an optimal
@@ -133,7 +133,7 @@ HLO decouples logical shape and physical layout (how tensors are laid out in
 memory). For example, a matrix `f32[32, 64]` can be represented either in
 row-major or column-major order, represented as `{1,0}` or `{0,1}` respectively.
 In general, layout is represented as a part of shape, showing a permutation over
-the rank indicating physical layout in memory.
+the number of dimensions indicating physical layout in memory.
 
 For each operation present in the HLO, the Layout Assignment pass chooses an
 optimal layout (e.g. NHWC for a convolution on Ampere). For example, an

@@ -34,12 +34,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_op_metadata.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/transforms/simplifiers/hlo_constant_splitter.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/protobuf_util.h"
 #include "xla/shape_util.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
@@ -49,7 +49,19 @@ namespace op = xla::testing::opcode_matchers;
 namespace xla {
 namespace {
 
-using ShardingPropagationTest = HloTestBase;
+using ::testing::ExplainMatchResult;
+using ::testing::HasSubstr;
+using ::testing::MakeMatcher;
+using ::testing::Matcher;
+using ::testing::MatcherInterface;
+using ::testing::MatchResultListener;
+using ::testing::StringMatchResultListener;
+using ::testing::TestParamInfo;
+using ::testing::Values;
+using ::testing::WithParamInterface;
+using ::tsl::proto_testing::EqualsProto;
+
+using ShardingPropagationTest = HloHardwareIndependentTestBase;
 
 void ClearMetadata(HloModule* module) {
   for (HloComputation* computation : module->computations()) {
@@ -88,12 +100,12 @@ struct MetadataTestParameterWithOutput {
 };
 
 class ParameterizedMetadataTest
-    : public HloTestBase,
-      public ::testing::WithParamInterface<MetadataTestParameter> {};
+    : public HloHardwareIndependentTestBase,
+      public WithParamInterface<MetadataTestParameter> {};
 
 class ParameterizedMetadataTestWithOutput
-    : public HloTestBase,
-      public ::testing::WithParamInterface<MetadataTestParameterWithOutput> {};
+    : public HloHardwareIndependentTestBase,
+      public WithParamInterface<MetadataTestParameterWithOutput> {};
 
 std::string OpMetadataListToString(absl::Span<const OpMetadata> metadata) {
   std::vector<std::string> metadata_strings;
@@ -105,15 +117,13 @@ std::string OpMetadataListToString(absl::Span<const OpMetadata> metadata) {
   return absl::StrCat("{", absl::StrJoin(metadata_strings, ", "), "}");
 }
 
-class HloShardingMetadataMatcher
-    : public ::testing::MatcherInterface<const HloSharding&> {
+class HloShardingMetadataMatcher : public MatcherInterface<const HloSharding&> {
  public:
   explicit HloShardingMetadataMatcher(absl::Span<const OpMetadata> metadata)
       : metadata_(metadata.begin(), metadata.end()) {}
 
-  bool MatchAndExplain(
-      const HloSharding& sharding,
-      ::testing::MatchResultListener* listener) const override {
+  bool MatchAndExplain(const HloSharding& sharding,
+                       MatchResultListener* listener) const override {
     if (sharding.metadata().size() != metadata_.size()) {
       *listener << sharding.ToString(/*include_metadata=*/true)
                 << " has incorrect sharding metadata (expected: "
@@ -122,11 +132,13 @@ class HloShardingMetadataMatcher
     }
 
     for (int i = 0, e = metadata_.size(); i < e; ++i) {
-      if (!protobuf_util::ProtobufEquals(sharding.metadata()[i],
-                                         metadata_[i])) {
+      StringMatchResultListener sub_listener;
+      if (!ExplainMatchResult(EqualsProto(metadata_[i]), sharding.metadata()[i],
+                              &sub_listener)) {
         *listener << sharding.ToString(/*include_metadata=*/true)
                   << " has incorrect sharding metadata (expected: "
-                  << OpMetadataListToString(metadata_) << ")";
+                  << OpMetadataListToString(metadata_) << "), where the " << i
+                  << "-th element doesn't match (" << sub_listener.str() << ")";
         return false;
       }
     }
@@ -142,9 +154,9 @@ class HloShardingMetadataMatcher
   std::vector<OpMetadata> metadata_;
 };
 
-::testing::Matcher<const HloSharding&> ShardingMetadata(
+Matcher<const HloSharding&> ShardingMetadata(
     absl::Span<const OpMetadata> metadata) {
-  return ::testing::MakeMatcher(new HloShardingMetadataMatcher(metadata));
+  return MakeMatcher(new HloShardingMetadataMatcher(metadata));
 }
 
 OpMetadata CreateMetadata(const std::string& op_name) {
@@ -155,15 +167,15 @@ OpMetadata CreateMetadata(const std::string& op_name) {
 
 INSTANTIATE_TEST_SUITE_P(
     ShardingPropagation, ParameterizedMetadataTest,
-    ::testing::Values(MetadataTestParameter(/*propagate_metadata=*/false,
-                                            /*clear_metadata=*/false),
-                      MetadataTestParameter(/*propagate_metadata=*/false,
-                                            /*clear_metadata=*/true),
-                      MetadataTestParameter(/*propagate_metadata=*/true,
-                                            /*clear_metadata=*/false),
-                      MetadataTestParameter(/*propagate_metadata=*/true,
-                                            /*clear_metadata=*/true)),
-    [](const ::testing::TestParamInfo<MetadataTestParameter>& info) {
+    Values(MetadataTestParameter(/*propagate_metadata=*/false,
+                                 /*clear_metadata=*/false),
+           MetadataTestParameter(/*propagate_metadata=*/false,
+                                 /*clear_metadata=*/true),
+           MetadataTestParameter(/*propagate_metadata=*/true,
+                                 /*clear_metadata=*/false),
+           MetadataTestParameter(/*propagate_metadata=*/true,
+                                 /*clear_metadata=*/true)),
+    [](const TestParamInfo<MetadataTestParameter>& info) {
       return absl::StrCat(info.param.propagate_metadata
                               ? "MetadataPropagation"
                               : "NoMetadataPropagation",
@@ -174,39 +186,39 @@ INSTANTIATE_TEST_SUITE_P(
 
 INSTANTIATE_TEST_SUITE_P(
     ShardingPropagation, ParameterizedMetadataTestWithOutput,
-    ::testing::Values(MetadataTestParameterWithOutput(
-                          /*propagate_metadata=*/false,
-                          /*clear_metadata=*/false,
-                          /*allow_root_sharding_propagation=*/false),
-                      MetadataTestParameterWithOutput(
-                          /*propagate_metadata=*/false,
-                          /*clear_metadata=*/true,
-                          /*allow_root_sharding_propagation=*/false),
-                      MetadataTestParameterWithOutput(
-                          /*propagate_metadata=*/true,
-                          /*clear_metadata=*/false,
-                          /*allow_root_sharding_propagation=*/false),
-                      MetadataTestParameterWithOutput(
-                          /*propagate_metadata=*/true,
-                          /*clear_metadata=*/true,
-                          /*allow_root_sharding_propagation=*/false),
-                      MetadataTestParameterWithOutput(
-                          /*propagate_metadata=*/false,
-                          /*clear_metadata=*/false,
-                          /*allow_root_sharding_propagation=*/true),
-                      MetadataTestParameterWithOutput(
-                          /*propagate_metadata=*/false,
-                          /*clear_metadata=*/true,
-                          /*allow_root_sharding_propagation=*/true),
-                      MetadataTestParameterWithOutput(
-                          /*propagate_metadata=*/true,
-                          /*clear_metadata=*/false,
-                          /*allow_root_sharding_propagation=*/true),
-                      MetadataTestParameterWithOutput(
-                          /*propagate_metadata=*/true,
-                          /*clear_metadata=*/true,
-                          /*allow_root_sharding_propagation=*/true)),
-    [](const ::testing::TestParamInfo<MetadataTestParameterWithOutput>& info) {
+    Values(MetadataTestParameterWithOutput(
+               /*propagate_metadata=*/false,
+               /*clear_metadata=*/false,
+               /*allow_root_sharding_propagation=*/false),
+           MetadataTestParameterWithOutput(
+               /*propagate_metadata=*/false,
+               /*clear_metadata=*/true,
+               /*allow_root_sharding_propagation=*/false),
+           MetadataTestParameterWithOutput(
+               /*propagate_metadata=*/true,
+               /*clear_metadata=*/false,
+               /*allow_root_sharding_propagation=*/false),
+           MetadataTestParameterWithOutput(
+               /*propagate_metadata=*/true,
+               /*clear_metadata=*/true,
+               /*allow_root_sharding_propagation=*/false),
+           MetadataTestParameterWithOutput(
+               /*propagate_metadata=*/false,
+               /*clear_metadata=*/false,
+               /*allow_root_sharding_propagation=*/true),
+           MetadataTestParameterWithOutput(
+               /*propagate_metadata=*/false,
+               /*clear_metadata=*/true,
+               /*allow_root_sharding_propagation=*/true),
+           MetadataTestParameterWithOutput(
+               /*propagate_metadata=*/true,
+               /*clear_metadata=*/false,
+               /*allow_root_sharding_propagation=*/true),
+           MetadataTestParameterWithOutput(
+               /*propagate_metadata=*/true,
+               /*clear_metadata=*/true,
+               /*allow_root_sharding_propagation=*/true)),
+    [](const TestParamInfo<MetadataTestParameterWithOutput>& info) {
       return absl::StrCat(
           info.param.propagate_metadata ? "MetadataPropagation"
                                         : "NoMetadataPropagation",
@@ -2912,10 +2924,10 @@ ENTRY %entry {
   auto result =
       ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata)
           .Run(module.get());
-  EXPECT_THAT(result.status().message(),
-              ::testing::HasSubstr(
-                  "Instruction: count is on device: 0, which conflicts with "
-                  "device: 1 of channel instruction: recv"));
+  EXPECT_THAT(
+      result.status().message(),
+      HasSubstr("Instruction: count is on device: 0, which conflicts with "
+                "device: 1 of channel instruction: recv"));
 }
 
 TEST_P(ParameterizedMetadataTest, WhileConflictingShardingInBodyAfterRecv) {
@@ -2958,10 +2970,10 @@ ENTRY %entry {
   auto result =
       ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata)
           .Run(module.get());
-  EXPECT_THAT(result.status().message(),
-              ::testing::HasSubstr(
-                  "Instruction: data is on device: 0, which conflicts with "
-                  "device: 1 of channel instruction: recv"));
+  EXPECT_THAT(
+      result.status().message(),
+      HasSubstr("Instruction: data is on device: 0, which conflicts with "
+                "device: 1 of channel instruction: recv"));
 }
 
 TEST_P(ParameterizedMetadataTest, WhileConflictingShardingOnWhileInstruction) {
@@ -3004,10 +3016,10 @@ ENTRY %entry {
   auto result =
       ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata)
           .Run(module.get());
-  EXPECT_THAT(result.status().message(),
-              ::testing::HasSubstr(
-                  "Instruction: while is on device: 0, which conflicts with "
-                  "device: 1 of channel instruction: recv"));
+  EXPECT_THAT(
+      result.status().message(),
+      HasSubstr("Instruction: while is on device: 0, which conflicts with "
+                "device: 1 of channel instruction: recv"));
 }
 
 TEST_P(ParameterizedMetadataTest, WhileConv) {
@@ -12482,6 +12494,36 @@ ENTRY main {
   auto* instruction = FindInstruction(module.get(), "seed");
   // Check sharding is correctly propagated.
   EXPECT_TRUE(instruction->sharding().IsReplicated());
+}
+
+TEST_F(ShardingPropagationTest,
+       ShardingPropagatesThroughPinToDeviceCustomCall) {
+  const char* const hlo_string = R"(
+HloModule jit_f, entry_computation_layout={(s32[8,2]{1,0:T(2,128)})->s32[8,2]{0,1:T(2,128)}}, allow_spmd_sharding_propagation_to_output={true}, num_partitions=8
+
+ENTRY %main.6 (Arg_0.1: s32[8,2]) -> s32[8,2] {
+  %Arg_0.1 = s32[8,2]{1,0} parameter(0), sharding={devices=[4,2]<=[8]}, metadata={op_name="x"}
+  %custom-call = s32[8,2]{1,0} custom-call(s32[8,2]{1,0} %Arg_0.1), custom_call_target="PinToDevice"
+  %constant.0 = s32[] constant(2)
+  %broadcast.0 = s32[8,2]{1,0} broadcast(s32[] %constant.0), dimensions={}
+  ROOT %multiply.5 = s32[8,2]{1,0} multiply(s32[8,2]{1,0} %custom-call, s32[8,2]{1,0} %broadcast.0)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* original_custom_call =
+      FindInstruction(module.get(), "custom-call");
+  ASSERT_NE(original_custom_call, nullptr);
+  EXPECT_THAT(original_custom_call, op::NoSharding());
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+  HloInstruction* sharded_custom_call =
+      FindInstruction(module.get(), "custom-call");
+  ASSERT_NE(sharded_custom_call, nullptr);
+  EXPECT_THAT(sharded_custom_call, op::Sharding("{devices=[4,2]<=[8]}"));
 }
 
 }  // namespace

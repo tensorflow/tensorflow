@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace hlo_query {
@@ -298,6 +299,17 @@ HloInstruction* GetUniqueGteInstruction(const HloInstruction* operand,
     gte = instr;
   }
   return gte;
+}
+
+int64_t CountGteInstructionsWithIndex(const HloComputation* computation,
+                                      int64_t index) {
+  int64_t count = 0;
+  for (const HloInstruction* instr : computation->instructions()) {
+    if (DynCast<HloGetTupleElementInstruction>(instr)) {
+      count += instr->tuple_index() == index;
+    }
+  }
+  return count;
 }
 
 HloComputation* FindComputation(HloModule* module, absl::string_view name) {

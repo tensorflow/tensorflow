@@ -13,10 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -27,6 +30,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels_fatbin.h"
+#include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
@@ -36,8 +40,8 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/typed_kernel_factory.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor::gpu {
 namespace {
@@ -55,7 +59,7 @@ class GpuKernelTest : public ::testing::Test {
     executor_ = platform->ExecutorForDevice(0).value();
   }
 
-  void RunAddI32Kernel(const MultiKernelLoaderSpec& spec) {
+  void RunAddI32Kernel(const KernelLoaderSpec& spec) {
     TF_ASSERT_OK_AND_ASSIGN(auto stream, executor_->CreateStream());
     TF_ASSERT_OK_AND_ASSIGN(auto add, AddI32Kernel::Create(executor_, spec));
 
@@ -96,15 +100,45 @@ TEST_F(GpuKernelTest, LoadAndRunKernelFromPtx) {
 }
 
 TEST_F(GpuKernelTest, LoadAndRunKernelFromCubin) {
-  MultiKernelLoaderSpec spec(/*arity=*/3);
-  TF_ASSERT_OK_AND_ASSIGN(auto binary, GetGpuTestKernelsFatbin());
-  spec.AddCudaCubinInMemory(binary, "AddI32");
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto binary, GetGpuTestKernelsFatbin(executor_->GetPlatform()->Name()));
+  KernelLoaderSpec spec =
+      KernelLoaderSpec::CreateCudaCubinInMemorySpec(binary, "AddI32", 3);
   RunAddI32Kernel(spec);
 }
 
 TEST_F(GpuKernelTest, LoadAndRunKernelFromSymbol) {
-  RunAddI32Kernel(GetAddI32KernelSpec());
+  TF_ASSERT_OK_AND_ASSIGN(
+      KernelLoaderSpec spec,
+      GetAddI32TestKernelSpec(executor_->GetPlatform()->id()));
+  RunAddI32Kernel(spec);
 }
 
+TEST_F(GpuKernelTest, ArrayArgByValue) {
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor_->CreateStream());
+  TF_ASSERT_OK_AND_ASSIGN(auto kernel, LoadCopyTestKernel(executor_));
+
+  constexpr int64_t kLength = 16;
+
+  DeviceMemory<char> dst = executor_->AllocateArray<char>(kLength, 0);
+  TF_ASSERT_OK(stream->MemZero(&dst, kLength));
+
+  std::array<std::byte, 16> storage;
+  int i = 0;
+  for (auto& element : storage) {
+    element = static_cast<std::byte>(i++);
+  }
+
+  // Launch kernel.
+  auto args = stream_executor::PackKernelArgs(/*shmem_bytes=*/0, dst, storage);
+  TF_ASSERT_OK(kernel->Launch(ThreadDim(), BlockDim(), stream.get(), *args));
+
+  // Copy data back to host.
+  std::byte dst_host[16] = {};
+  TF_ASSERT_OK(stream->Memcpy(dst_host, dst, kLength));
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
+
+  EXPECT_THAT(dst_host, ::testing::ElementsAreArray(storage));
+}
 }  // namespace
 }  // namespace stream_executor::gpu

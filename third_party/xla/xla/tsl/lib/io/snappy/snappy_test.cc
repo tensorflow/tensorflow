@@ -103,7 +103,9 @@ absl::Status TestMultipleWritesWriteFile(size_t compress_input_buf_size,
     char* buffer = new char[bytes_to_read];
     size_t buffer_size = 0;
 
-    while ((file_reader->Read(file_pos, bytes_to_read, &data, scratch)).ok()) {
+    while ((file_reader->Read(file_pos, data,
+                              absl::MakeSpan(scratch, bytes_to_read)))
+               .ok()) {
       file_pos += data.size();
       TF_CHECK_OK(
           corrupt_file_writer->Append(absl::string_view(buffer, buffer_size)));

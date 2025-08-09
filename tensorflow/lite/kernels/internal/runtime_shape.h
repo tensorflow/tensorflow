@@ -46,13 +46,22 @@ class RuntimeShape {
   RuntimeShape() : size_(0) {}
 
   explicit RuntimeShape(int dimensions_count) : size_(dimensions_count) {
+#ifndef TF_LITE_STATIC_MEMORY
     if (dimensions_count > kMaxSmallSize) {
       dims_pointer_ = new int32_t[dimensions_count];
     }
+#else
+    TFLITE_DCHECK_LE(dimensions_count, kMaxSmallSize);
+#endif  // TF_LITE_STATIC_MEMORY
   }
 
+#ifndef TF_LITE_STATIC_MEMORY
   RuntimeShape(int shape_size, int32_t value) : size_(0) {
     Resize(shape_size);
+#else
+  RuntimeShape(int shape_size, int32_t value) : size_(shape_size) {
+    TFLITE_DCHECK_LE(shape_size, kMaxSmallSize);
+#endif  // TF_LITE_STATIC_MEMORY
     for (int i = 0; i < shape_size; ++i) {
       SetDim(i, value);
     }
@@ -62,6 +71,7 @@ class RuntimeShape {
     ReplaceWith(dimensions_count, dims_data);
   }
 
+#ifndef TF_LITE_STATIC_MEMORY
   RuntimeShape(const std::initializer_list<int> init_list) : size_(0) {
     BuildFrom(init_list);
   }
@@ -74,6 +84,7 @@ class RuntimeShape {
     }
     std::memcpy(DimsData(), other.DimsData(), sizeof(int32_t) * size_);
   }
+#endif  // TF_LITE_STATIC_MEMORY
 
   bool operator==(const RuntimeShape& comp) const {
     return this->size_ == comp.size_ &&
@@ -90,22 +101,35 @@ class RuntimeShape {
   inline void SetDim(int i, int32_t val) {
     TFLITE_DCHECK_GE(i, 0);
     TFLITE_DCHECK_LT(i, size_);
+#ifndef TF_LITE_STATIC_MEMORY
     if (size_ > kMaxSmallSize) {
       dims_pointer_[i] = val;
     } else {
       dims_[i] = val;
     }
+#else
+    dims_[i] = val;
+#endif  // TF_LITE_STATIC_MEMORY
   }
 
   inline int32_t* DimsData() {
+#ifndef TF_LITE_STATIC_MEMORY
     return size_ > kMaxSmallSize ? dims_pointer_ : dims_;
+#else
+    return dims_;
+#endif  // TF_LITE_STATIC_MEMORY
   }
   inline const int32_t* DimsData() const {
+#ifndef TF_LITE_STATIC_MEMORY
     return size_ > kMaxSmallSize ? dims_pointer_ : dims_;
+#else
+    return dims_;
+#endif  // TF_LITE_STATIC_MEMORY
   }
   // The caller must ensure that the shape is no bigger than 5-D.
   inline const int32_t* DimsDataUpTo5D() const { return dims_; }
 
+#ifndef TF_LITE_STATIC_MEMORY
   inline void Resize(int dimensions_count) {
     const int32_t old_size = size_;
     size_ = dimensions_count;
@@ -131,9 +155,11 @@ class RuntimeShape {
       }
     }
   }
+#endif  // TF_LITE_STATIC_MEMORY
 
   void ReplaceWith(int dimensions_count, const int32_t* dims_data);
 
+#ifndef TF_LITE_STATIC_MEMORY
   template <typename T>
   inline void BuildFrom(const T& src_iterable) {
     const int dimensions_count =
@@ -145,6 +171,7 @@ class RuntimeShape {
       ++data;
     }
   }
+#endif  // TF_LITE_STATIC_MEMORY
 
   // This will probably be factored out. Old code made substantial use of 4-D
   // shapes, and so this function is used to extend smaller shapes. Note that
@@ -153,12 +180,17 @@ class RuntimeShape {
   // inputs should already be 4-D, so this function should not be needed.
   inline static RuntimeShape ExtendedShape(int new_shape_size,
                                            const RuntimeShape& shape) {
+#ifdef TF_LITE_STATIC_MEMORY
+    TFLITE_DCHECK_LE(new_shape_size, kMaxSmallSize);
+#endif  // TF_LITE_STATIC_MEMORY
     return RuntimeShape(new_shape_size, shape, 1);
   }
 
+#ifndef TF_LITE_STATIC_MEMORY
   inline void BuildFrom(const std::initializer_list<int> init_list) {
     BuildFrom<const std::initializer_list<int>>(init_list);
   }
+#endif  // TF_LITE_STATIC_MEMORY
 
   // Returns the total count of elements, that is the size when flattened into a
   // vector.
@@ -171,11 +203,18 @@ class RuntimeShape {
   // elision in C++17.
   // This creates a shape padded to the desired size with the specified value.
   RuntimeShape(int new_shape_size, const RuntimeShape& shape, int pad_value)
+#ifndef TF_LITE_STATIC_MEMORY
       : size_(0) {
     // If the following check fails, it is likely because a 4D-only kernel is
     // being used with an array of larger dimension count.
     TFLITE_CHECK_GE(new_shape_size, shape.DimensionsCount());
     Resize(new_shape_size);
+#else
+      : size_(new_shape_size) {
+    // If the following check fails, it is likely because a 4D-only kernel is
+    // being used with an array of larger dimension count.
+    TFLITE_CHECK_GE(new_shape_size, shape.DimensionsCount());
+#endif  // TF_LITE_STATIC_MEMORY
     const int size_increase = new_shape_size - shape.DimensionsCount();
     for (int i = 0; i < size_increase; ++i) {
       SetDim(i, pad_value);
@@ -187,7 +226,9 @@ class RuntimeShape {
   int32_t size_;
   union {
     int32_t dims_[kMaxSmallSize];
+#ifndef TF_LITE_STATIC_MEMORY
     int32_t* dims_pointer_;
+#endif  // TF_LITE_STATIC_MEMORY
   };
 };
 
@@ -207,11 +248,13 @@ inline tflite::Dims<4> ToRuntimeDims(const tflite::RuntimeShape& array_shape) {
   return result;
 }
 
+#ifndef TF_LITE_STATIC_MEMORY
 // TODO(b/80418076): Move to legacy ops file, update invocations.
 inline RuntimeShape DimsToShape(const tflite::Dims<4>& dims) {
   return RuntimeShape(
       {dims.sizes[3], dims.sizes[2], dims.sizes[1], dims.sizes[0]});
 }
+#endif  // TF_LITE_STATIC_MEMORY
 
 // Since tensors with '0' in their shape are valid in TF, these offset functions
 // allow that as long as the corresponding index is also 0. It is upto the

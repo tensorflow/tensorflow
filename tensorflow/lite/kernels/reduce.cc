@@ -74,7 +74,7 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   // Creates three temp tensors to store index and axis for internal
   // implementation only.
   auto* op_data = new OpData();
-  context->AddTensors(context, 4, &op_data->scratch_tensor_index);
+  op_data->scratch_tensor_index = -1;
   return op_data;
 }
 
@@ -252,6 +252,11 @@ TfLiteStatus PrepareSimple(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
   OpContext op_context(context, node);
+  TF_LITE_ENSURE(context, op_context.axis != nullptr);
+  OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
+  if (op_data->scratch_tensor_index == -1) {
+    context->AddTensors(context, 4, &op_data->scratch_tensor_index);
+  }
   TF_LITE_ENSURE_TYPES_EQ(context, op_context.axis->type, kTfLiteInt32);
   TF_LITE_ENSURE_OK(context, InitializeTemporaries(context, node, &op_context));
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
@@ -910,9 +915,10 @@ TfLiteStatus EvalSum(TfLiteContext* context, TfLiteNode* node) {
   OpContext op_context(context, node);
   ruy::profiler::ScopeLabel label("Sum");
   const auto& input = op_context.input;
-  const bool eight_bit_quantized =
-      input->type == kTfLiteUInt8 || input->type == kTfLiteInt8;
-  if (eight_bit_quantized) {
+  const bool quantized = input->type == kTfLiteUInt8 ||
+                         input->type == kTfLiteInt8 ||
+                         input->type == kTfLiteInt16;
+  if (quantized) {
     const OpData* op_data = reinterpret_cast<const OpData*>(node->user_data);
     TfLiteTensor* temp_index;
     TF_LITE_ENSURE_OK(
@@ -939,6 +945,11 @@ TfLiteStatus EvalSum(TfLiteContext* context, TfLiteNode* node) {
     }
     if (input->type == kTfLiteInt8) {
       return QuantizedMeanOrSum<int8_t, kernel_type>(
+          context, op_context, op_data, temp_index, resolved_axis, temp_sum,
+          /*compute_sum=*/true);
+    }
+    if (input->type == kTfLiteInt16) {
+      return QuantizedMeanOrSum<int16_t, kernel_type>(
           context, op_context, op_data, temp_index, resolved_axis, temp_sum,
           /*compute_sum=*/true);
     }

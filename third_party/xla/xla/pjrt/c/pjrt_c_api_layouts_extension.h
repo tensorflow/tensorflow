@@ -111,9 +111,7 @@ typedef PJRT_Error* PJRT_Layouts_PJRT_Client_GetDefaultLayout(
 // --------------------------- Extension entrypoint ----------------------------
 
 typedef struct PJRT_Layouts_Extension {
-  size_t struct_size;
-  PJRT_Extension_Type type;
-  PJRT_Extension_Base* next;
+  PJRT_Extension_Base base;
 
   PJRT_Layouts_MemoryLayout_Destroy* PJRT_Layouts_MemoryLayout_Destroy;
   PJRT_Layouts_MemoryLayout_Serialize* PJRT_Layouts_MemoryLayout_Serialize;

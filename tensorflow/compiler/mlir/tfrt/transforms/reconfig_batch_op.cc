@@ -48,6 +48,8 @@ class ReconfigBatchOpPass
     batch_timeout_micros_ = options.batch_timeout_micros;
     allowed_batch_sizes_ = options.allowed_batch_sizes;
     max_enqueued_batches_ = options.max_enqueued_batches;
+    batch_queue_global_prioritization_num_threads_ =
+        options.batch_queue_global_prioritization_num_threads;
   }
   ReconfigBatchOpPass()
       : mlir::PassWrapper<ReconfigBatchOpPass,
@@ -107,6 +109,30 @@ class ReconfigBatchOpPass
       if (max_enqueued_batches_ > 0) {
         batch_op.setMaxEnqueuedBatches(max_enqueued_batches_);
       }
+      if (batch_queue_global_prioritization_num_threads_ > 0) {
+        batch_op.setNumBatchThreads(
+            batch_queue_global_prioritization_num_threads_);
+        batch_op.setMixedPriorityPolicy("priority_merge");
+
+        // Default queue options for the low priority queue will be copied from
+        // the high priority queue if the model doesn't explicitly set low
+        // priority queue options.
+        if (batch_op.getLowPriorityMaxBatchSize() == 0) {
+          batch_op.setLowPriorityMaxBatchSize(batch_op.getMaxBatchSize());
+        }
+        if (batch_op.getLowPriorityBatchTimeoutMicros() == 0) {
+          batch_op.setLowPriorityBatchTimeoutMicros(
+              batch_op.getBatchTimeoutMicros());
+        }
+        if (batch_op.getLowPriorityAllowedBatchSizes().empty()) {
+          batch_op.setLowPriorityAllowedBatchSizesAttr(
+              batch_op.getAllowedBatchSizes());
+        }
+        if (batch_op.getLowPriorityMaxEnqueuedBatches() == 0) {
+          batch_op.setLowPriorityMaxEnqueuedBatches(
+              batch_op.getMaxEnqueuedBatches());
+        }
+      }
     });
   }
 
@@ -139,6 +165,12 @@ class ReconfigBatchOpPass
       *this, "tfrt-max-enqueued-batches", llvm::cl::init(0),
       llvm::cl::desc("The maximum number of batches enqueued for processing "
                      "before requests are failed fast")};
+  mlir::Pass::Option<int64_t> batch_queue_global_prioritization_num_threads_{
+      *this, "tfrt-batch-queue-global-prioritization-num-threads",
+      llvm::cl::init(0),
+      llvm::cl::desc("If non-zero, all models on this server are switched to "
+                     "use a prioritized batching function using this number of "
+                     "global threads.")};
 };
 
 }  // namespace

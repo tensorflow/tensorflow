@@ -15,17 +15,23 @@ limitations under the License.
 
 #include "xla/hlo/utils/hlo_matchers.h"
 
+#include <cstdint>
+#include <optional>
 #include <ostream>
 #include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace testing {
@@ -228,6 +234,47 @@ void HloShardingMatcher::DescribeTo(std::ostream* os) const {
   }
 }
 
+bool HloFrontendAttributeMatcher::MatchAndExplain(
+    const HloInstruction* instruction,
+    ::testing::MatchResultListener* listener) const {
+  if (std::optional<std::string> value =
+          instruction->get_frontend_attribute(key_)) {
+    if (*value == value_) {
+      return true;
+    }
+    *listener << instruction->ToString() << " has incorrect value for '" << key_
+              << "' frontend attribute (expected: " << value_ << ")";
+    return false;
+  }
+
+  *listener << instruction->ToString() << " has no '" << key_
+            << "' frontend attribute (expected: " << value_ << ")";
+  return false;
+}
+
+void HloFrontendAttributeMatcher::DescribeTo(std::ostream* os) const {
+  *os << key_ << " = \"" << value_ << "\"";
+}
+
+bool HloUsedByMatcher::MatchAndExplain(
+    const HloInstruction* instruction,
+    ::testing::MatchResultListener* listener) const {
+  for (const HloInstruction* user : instruction->users()) {
+    if (used_by_.MatchAndExplain(user, listener)) {
+      return true;
+    }
+  }
+  *listener << instruction->ToString()
+            << " has no users that match expected:\n\t";
+  used_by_.DescribeTo(listener->stream());
+  return false;
+}
+
+void HloUsedByMatcher::DescribeTo(std::ostream* os) const {
+  *os << "used by ";
+  used_by_.DescribeTo(os);
+}
+
 bool HloDotWithContractingDimsMatcher::MatchAndExplain(
     const HloInstruction* instruction,
     ::testing::MatchResultListener* listener) const {
@@ -422,14 +469,38 @@ bool HloMetadataMatcher::MatchAndExplain(
     return false;
   }
   *listener << metadata_.source_line();
+  if (instruction->metadata().source_end_line() !=
+      metadata_.source_end_line()) {
+    *listener << " has wrong metadata (got "
+              << instruction->metadata().source_end_line() << ", want "
+              << metadata_.source_end_line() << ")";
+    return false;
+  }
+  *listener << metadata_.source_end_line();
+  if (instruction->metadata().source_column() != metadata_.source_column()) {
+    *listener << " has wrong metadata (got "
+              << instruction->metadata().source_column() << ", want "
+              << metadata_.source_column() << ")";
+    return false;
+  }
+  *listener << metadata_.source_column();
+  if (instruction->metadata().source_end_column() !=
+      metadata_.source_end_column()) {
+    *listener << " has wrong metadata (got "
+              << instruction->metadata().source_end_column() << ", want "
+              << metadata_.source_end_column() << ")";
+    return false;
+  }
+  *listener << metadata_.source_end_column();
   *listener << ")";
   return true;
 }
 
 void HloMetadataMatcher::DescribeTo(std::ostream* os) const {
   *os << " (metadata: " << metadata_.op_type() << " " << metadata_.op_name()
-      << " " << metadata_.source_file() << " " << metadata_.source_line()
-      << ")";
+      << " " << metadata_.source_file() << " " << metadata_.source_line() << " "
+      << metadata_.source_end_line() << " " << metadata_.source_column() << " "
+      << metadata_.source_end_column() << ")";
 }
 }  // namespace testing
 

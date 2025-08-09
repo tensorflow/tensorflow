@@ -103,6 +103,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/control_edges.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/lite/utils/low_bit_utils.h"
+#include "tensorflow/compiler/mlir/lite/utils/metadata_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/region_isolation.h"
 #include "tensorflow/compiler/mlir/lite/utils/stateful_ops_utils.h"
@@ -284,6 +285,14 @@ static bool IsTFResourceOp(Operation* op) {
 // Returns whether the current op is not supported by the TF Lite runtime.
 static bool IsUnsupportedFlexOp(const std::string& op_name) {
   return op_name == "PartitionedCall" || op_name == "StatefulPartitionedCall";
+}
+
+// Returns whether the current location is supported by the TF Lite runtime.
+// Refer to "LocationType" in
+// tensorflow/compiler/mlir/lite/schema/debug_metadata.fbs.
+static bool IsUnsupportedLocation(const mlir::Location& loc) {
+  return !mlir::isa<mlir::CallSiteLoc, mlir::FileLineColLoc, mlir::FusedLoc,
+                    mlir::NameLoc, mlir::OpaqueLoc, mlir::UnknownLoc>(loc);
 }
 
 // Create description of operation that could not be converted.
@@ -1716,30 +1725,34 @@ void CreateFlexbufferVector(
     const std::unique_ptr<flexbuffers::Builder>& flex_builder,
     std::string& name, const mlir::Attribute& attr) {
   auto start = flex_builder->StartVector(name.c_str());
-  auto array = attr.cast<mlir::vhlo::ArrayV1Attr>().getValue();
+  auto array = mlir::cast<mlir::vhlo::ArrayV1Attr>(attr).getValue();
 
   for (int i = 0; i < array.size(); i++) {
     if (llvm::isa<mlir::BoolAttr>(array[i])) {
       flex_builder->Bool(name.c_str(),
-                         array[i].cast<mlir::BoolAttr>().getValue());
+                         mlir::cast<mlir::BoolAttr>(array[i]).getValue());
     } else if (llvm::isa<mlir::StringAttr>(attr)) {
-      flex_builder->String(name.c_str(),
-                           array[i].cast<mlir::StringAttr>().getValue().str());
+      flex_builder->String(
+          name.c_str(),
+          mlir::cast<mlir::StringAttr>(array[i]).getValue().str());
     } else if (llvm::isa<mlir::vhlo::BooleanV1Attr>(array[i])) {
-      flex_builder->Bool(name.c_str(),
-                         array[i].cast<mlir::vhlo::BooleanV1Attr>().getValue());
+      flex_builder->Bool(
+          name.c_str(),
+          mlir::cast<mlir::vhlo::BooleanV1Attr>(array[i]).getValue());
     } else if (llvm::isa<mlir::vhlo::StringV1Attr>(array[i])) {
       flex_builder->String(
           name.c_str(),
-          array[i].cast<mlir::vhlo::StringV1Attr>().getValue().str());
+          mlir::cast<mlir::vhlo::StringV1Attr>(array[i]).getValue().str());
     } else if (llvm::isa<mlir::vhlo::IntegerV1Attr>(array[i])) {
-      flex_builder->Int(
-          name.c_str(),
-          array[i].cast<mlir::vhlo::IntegerV1Attr>().getValue().getSExtValue());
+      flex_builder->Int(name.c_str(),
+                        mlir::cast<mlir::vhlo::IntegerV1Attr>(array[i])
+                            .getValue()
+                            .getSExtValue());
     } else if (llvm::isa<mlir::vhlo::FloatV1Attr>(array[i])) {
-      flex_builder->Float(
-          name.c_str(),
-          array[i].cast<mlir::vhlo::FloatV1Attr>().getValue().convertToFloat());
+      flex_builder->Float(name.c_str(),
+                          mlir::cast<mlir::vhlo::FloatV1Attr>(array[i])
+                              .getValue()
+                              .convertToFloat());
 
     } else if (llvm::isa<mlir::vhlo::ArrayV1Attr>(array[i])) {
       CreateFlexbufferVector(flex_builder, name, array[i]);
@@ -1835,43 +1848,49 @@ Translator::BuildVhloCompositeV1Op(mlir::vhlo::CompositeOpV1 composite_op,
   uint32_t opcode_index =
       GetOpcodeIndex(op_name, tflite::BuiltinOperator_STABLEHLO_COMPOSITE);
 
-  int32_t api_version = composite_op.getVersion()
-                            .cast<mlir::vhlo::IntegerV1Attr>()
-                            .getValue()
-                            .getSExtValue();
+  int32_t api_version =
+      mlir::cast<mlir::vhlo::IntegerV1Attr>(composite_op.getVersion())
+          .getValue()
+          .getSExtValue();
 
   auto name = builder_.CreateString(
-      composite_op.getName().cast<mlir::vhlo::StringV1Attr>().getValue().str());
+      mlir::cast<mlir::vhlo::StringV1Attr>(composite_op.getName())
+          .getValue()
+          .str());
 
-  auto composite_attributes = composite_op.getCompositeAttributes()
-                                  .cast<mlir::vhlo::DictionaryV1Attr>();
+  auto composite_attributes = mlir::cast<mlir::vhlo::DictionaryV1Attr>(
+      composite_op.getCompositeAttributes());
   auto flex_builder = std::make_unique<flexbuffers::Builder>();
   size_t map_start = flex_builder->StartMap();
 
   for (auto namedAttr : composite_attributes.getValue()) {
     auto name =
-        namedAttr.first.cast<mlir::vhlo::StringV1Attr>().getValue().str();
+        mlir::cast<mlir::vhlo::StringV1Attr>(namedAttr.first).getValue().str();
     auto attr = namedAttr.second;
 
     if (llvm::isa<mlir::BoolAttr>(attr))
-      flex_builder->Bool(name.c_str(), attr.cast<mlir::BoolAttr>().getValue());
+      flex_builder->Bool(name.c_str(),
+                         mlir::cast<mlir::BoolAttr>(attr).getValue());
     else if (llvm::isa<mlir::StringAttr>(attr))
       flex_builder->String(name.c_str(),
-                           attr.cast<mlir::StringAttr>().getValue().str());
+                           mlir::cast<mlir::StringAttr>(attr).getValue().str());
     else if (llvm::isa<mlir::vhlo::BooleanV1Attr>(attr))
-      flex_builder->Bool(name.c_str(),
-                         attr.cast<mlir::vhlo::BooleanV1Attr>().getValue());
+      flex_builder->Bool(
+          name.c_str(), mlir::cast<mlir::vhlo::BooleanV1Attr>(attr).getValue());
     else if (llvm::isa<mlir::vhlo::StringV1Attr>(attr))
       flex_builder->String(
-          name.c_str(), attr.cast<mlir::vhlo::StringV1Attr>().getValue().str());
+          name.c_str(),
+          mlir::cast<mlir::vhlo::StringV1Attr>(attr).getValue().str());
     else if (llvm::isa<mlir::vhlo::IntegerV1Attr>(attr))
-      flex_builder->Int(
-          name.c_str(),
-          attr.cast<mlir::vhlo::IntegerV1Attr>().getValue().getSExtValue());
+      flex_builder->Int(name.c_str(),
+                        mlir::cast<mlir::vhlo::IntegerV1Attr>(attr)
+                            .getValue()
+                            .getSExtValue());
     else if (llvm::isa<mlir::vhlo::FloatV1Attr>(attr))
-      flex_builder->Float(
-          name.c_str(),
-          attr.cast<mlir::vhlo::FloatV1Attr>().getValue().convertToFloat());
+      flex_builder->Float(name.c_str(),
+                          mlir::cast<mlir::vhlo::FloatV1Attr>(attr)
+                              .getValue()
+                              .convertToFloat());
     else if (llvm::isa<mlir::vhlo::ArrayV1Attr>(attr))
       CreateFlexbufferVector(flex_builder, name, attr);
     else if (llvm::isa<mlir::vhlo::TensorV1Attr>(attr)) {
@@ -1932,8 +1951,8 @@ Translator::BuildVhloCompositeV1Op(mlir::vhlo::CompositeOpV1 composite_op,
   flex_builder->Finish();
 
   int32_t decomposition_subgraph_index =
-      subgraph_index_map_[composite_op.getDecomposition()
-                              .cast<mlir::vhlo::StringV1Attr>()
+      subgraph_index_map_[mlir::cast<mlir::vhlo::StringV1Attr>(
+                              composite_op.getDecomposition())
                               .getValue()
                               .str()];
 
@@ -3538,26 +3557,72 @@ uint32_t CreateLocation(
         debug_metadata::CreateUnknownLoc(builder).Union());
   } else {
     LOG(WARNING) << "Location type not supported";
-    return 0;
+    // Return an index for a placeholder UnknownLoc.
+    // Check if UnknownLoc has been created.
+    if (auto it = location_map.find(
+            mlir::UnknownLoc::get(mlir_location.getContext()));
+        it != location_map.end()) {
+      return it->second;
+    }
+    location = debug_metadata::CreateLocation(
+        builder, debug_metadata::LocationType_UnknownLoc,
+        debug_metadata::CreateUnknownLoc(builder).Union());
   }
 
   // Append to attributes.
   attribute_type_vector.push_back(debug_metadata::Attribute_Location);
   attribute_vector.push_back(location.Union());
 
-  location_map.insert({mlir_location, attribute_type_vector.size() - 1});
-  return attribute_type_vector.size() - 1;
+  uint32_t new_index = attribute_vector.size() - 1;
+  location_map.insert({mlir_location, new_index});
+
+  // Also add a map entry for UnknownLoc if we logged a warning, so we don't
+  // create multiple placeholders.
+  if (IsUnsupportedLocation(mlir_location)) {
+    location_map.insert(
+        {mlir::UnknownLoc::get(mlir_location.getContext()), new_index});
+  }
+
+  return new_index;
 }
 
 // Create debug metadata location for an operation.
+// This function is updated to unwrap the location structure created on import
+// to restore the original location for roundtrip consistency.
 std::vector<uint32_t> CreateOpLocation(
-    flatbuffers::FlatBufferBuilder& builder, Operation* op,
+    flatbuffers::FlatBufferBuilder& builder, mlir::Operation* op,
     std::vector<uint8_t>& attribute_type_vector,
     std::vector<flatbuffers::Offset<void>>& attribute_vector,
     absl::flat_hash_map<const mlir::Location, uint32_t, MlirLocationHasher>&
         location_map) {
+  mlir::Location loc_to_serialize = op->getLoc();
+
+  // The import process via `OpLoc` wraps the original location (`orig_loc`)
+  // to attach tensor names. The structure is either:
+  // 1. For multi-output ops: `FusedLoc([NameLoc(t1, orig_loc), ...])`
+  // 2. For single-output ops (after canonicalization): `NameLoc(t1, orig_loc)`
+  // This logic reverses this wrapping to retrieve `orig_loc` without touching
+  // any nested structures inside `orig_loc`.
+  if (auto fused_loc = mlir::dyn_cast<mlir::FusedLoc>(loc_to_serialize)) {
+    if (auto str_attr =
+            mlir::dyn_cast_or_null<mlir::StringAttr>(fused_loc.getMetadata());
+        str_attr && str_attr.getValue() == mlir::TFL::kImporterWrapper) {
+      // This is our wrapper! It's safe to unwrap.
+      // The original location is the child of the first NameLoc inside.
+      const auto& inner_locs = fused_loc.getLocations();
+      if (!inner_locs.empty()) {
+        if (auto name_loc = mlir::dyn_cast<mlir::NameLoc>(inner_locs[0]);
+            name_loc != nullptr) {
+          loc_to_serialize = name_loc.getChildLoc();
+        }
+      }
+    }
+  }
+
+  // If the marker is not found, loc_to_serialize remains unchanged,
+  // preserving the original debug info from earlier conversion steps.
   uint32_t loc_idx =
-      CreateLocation(builder, op->getLoc(), attribute_type_vector,
+      CreateLocation(builder, loc_to_serialize, attribute_type_vector,
                      attribute_vector, location_map);
   return {loc_idx};
 }
@@ -3587,10 +3652,9 @@ std::string Translator::SerializeDebugMetadata(mlir::ModuleOp module) {
         operators_debug_metadata;
 
     auto& first_bb = func.getBody().front();
-    for (const auto& item : llvm::enumerate(first_bb)) {
-      Operation& op = item.value();
+    for (auto& op : first_bb) {
       // Skip terminal op.
-      if (op.hasTrait<mlir::OpTrait::IsTerminator>()) break;
+      if (op.hasTrait<mlir::OpTrait::IsTerminator>()) continue;
 
       operator_debug_metadata_map[&op] = operators_debug_metadata.size();
 
@@ -3631,11 +3695,17 @@ std::string Translator::SerializeDebugMetadata(mlir::ModuleOp module) {
 
 std::optional<VectorBufferOffset<BufferOffset<tflite::Metadata>>>
 Translator::CreateMetadataVector() {
+  constexpr StringRef kRuntimeVersionMetadataKey = "min_runtime_version";
   auto dict_attr = module_->getAttrOfType<mlir::DictionaryAttr>("tfl.metadata");
   std::vector<BufferOffset<tflite::Metadata>> metadata;
   if (dict_attr) {
     for (const auto& named_attr : dict_attr) {
       StringRef name = named_attr.getName();
+      if (name == kRuntimeVersionMetadataKey) {
+        LOG(WARNING) << "Skipping runtime version metadata in the model. This "
+                        "will be generated by the exporter.";
+        continue;
+      }
       mlir::Attribute attr = named_attr.getValue();
       if (auto content = mlir::dyn_cast<StringAttr>(attr)) {
         metadata.push_back(BuildMetadata(name, content.getValue()));
@@ -3652,8 +3722,8 @@ Translator::CreateMetadataVector() {
   // 16-byte because it's the alignment of buffers in flatbuffer, so it won't
   // cause any waste of space if the actual string is shorter than 16 bytes.
   constexpr std::size_t kByteStringSize = 16;
-  metadata.push_back(
-      BuildMetadata("min_runtime_version", std::string(kByteStringSize, '\0')));
+  metadata.push_back(BuildMetadata(kRuntimeVersionMetadataKey,
+                                   std::string(kByteStringSize, '\0')));
   if (use_buffer_offset_) {
     metadata.push_back(
         BuildMetadata(tflite_metadata_buffer_location, "outside flatbuffers"));
@@ -3781,7 +3851,7 @@ std::vector<SignatureDefData> BuildSignaturedef(
   // Exported method name.
   auto exported_name =
       main_op->getAttrOfType<mlir::ArrayAttr>(kTfSavedModelExportedNamesAttr);
-  if (exported_name.empty()) {
+  if (!exported_name || exported_name.empty()) {
     main_op.emitError("Empty exported names for main Function.");
     return {};
   }

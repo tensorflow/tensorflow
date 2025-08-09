@@ -50,42 +50,6 @@ def XLACPU_LoadOp : XLACPU_Op<"load"> {
 }
 
 //===----------------------------------------------------------------------===//
-// !xla_cpu.store
-//===----------------------------------------------------------------------===//
-
-def XLACPU_StoreOp : XLACPU_Op<"store"> {
-  let summary = "Stores a tensor into an XLA:CPU call frame";
-
-  let description = [{
-    Stores a tensor into an XLA:CPU call frame at the given index.
-
-    ```mlir
-    %0 = ... : tensor<32x32xf32>
-    xla_cpu.store %0 into %call_frame, 0 : tensor<32x32xf32>
-    ```
-  }];
-
-  let arguments = (ins AnyStaticShapeTensor:$tensor,
-                       XLACPU_CallFrame:$call_frame,
-                       I32Attr:$index);
-
-  let assemblyFormat = [{
-    $tensor `into` $call_frame `,` $index attr-dict `:` type($tensor)
-  }];
-}
-
-//===----------------------------------------------------------------------===//
-// !xla_cpu.thread_id
-//===----------------------------------------------------------------------===//
-
-def XLACPU_ThreadIdOp : XLACPU_Op<"thread_id"> {
-  let summary = "Extracts thread_id from the call frame";
-  let arguments = (ins XLACPU_CallFrame:$call_frame);
-  let results = (outs Index:$result);
-  let assemblyFormat = [{ $call_frame  attr-dict `:` type($result) }];
-}
-
-//===----------------------------------------------------------------------===//
 // !xla_cpu.success
 //===----------------------------------------------------------------------===//
 

@@ -1,3 +1,6 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
+
 # Custom Ops useful for GenAI models.
 load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
@@ -26,12 +29,9 @@ cc_library(
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/experimental/resource:cache_buffer",
         "//tensorflow/lite/kernels:kernel_util",
-        "//tensorflow/lite/kernels:reference_ops",
         "//tensorflow/lite/kernels/internal:common",
-        "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:reference_base",
         "//tensorflow/lite/kernels/internal:tensor",
-        "//tensorflow/lite/kernels/internal:tensor_utils",
         "//tensorflow/lite/kernels/internal:types",
         "@flatbuffers",
     ],
@@ -76,6 +76,10 @@ pybind_extension(
     ],
     hdrs = ["genai_ops.h"],
     additional_exported_symbols = ["GenAIOpsRegisterer"],
+    common_lib_packages = [
+        "litert/python",
+        "tensorflow/lite/python",
+    ],
     enable_stub_generation = True,
     link_in_framework = True,
     module_name = "pywrap_genai_ops",
@@ -83,12 +87,13 @@ pybind_extension(
         "pywrap_genai_ops.pyi",
     ],
     visibility = ["//visibility:public"],
+    wrap_py_init = True,
     deps = [
         ":genai_ops",
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite:mutable_op_resolver",
         "//tensorflow/lite/c:common",
-        "//third_party/python_runtime:headers",
+        "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
     ],
 )

@@ -243,6 +243,18 @@ size_t FloatToBuffer(float value, char* buffer) {
   return snprintf_result;
 }
 
+strings_internal::AlphaNumBuffer LegacyPrecision(double d) {
+  strings_internal::AlphaNumBuffer result;
+  result.size = DoubleToBuffer(d, result.data.data());
+  return result;
+}
+
+strings_internal::AlphaNumBuffer LegacyPrecision(float f) {
+  strings_internal::AlphaNumBuffer result;
+  result.size = FloatToBuffer(f, result.data.data());
+  return result;
+}
+
 std::string FpToString(Fprint fp) {
   return absl::StrCat(absl::Hex(fp, absl::kZeroPad16));
 }

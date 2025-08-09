@@ -23,6 +23,7 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -57,7 +58,8 @@ mlir::Value GetForwardedInput(mlir::Value value) {
   bool value_updated;
   do {
     value_updated = false;
-    if (mlir::BlockArgument argument = value.dyn_cast<mlir::BlockArgument>()) {
+    if (mlir::BlockArgument argument =
+            mlir::dyn_cast<mlir::BlockArgument>(value)) {
       mlir::Region* region = argument.getParentRegion();
       if (region == nullptr) break;
       mlir::Operation* parent_op = region->getParentOp();
@@ -86,7 +88,7 @@ namespace ops_util = ::mlir::TF::collection_ops_util;
 
 int ValueRank(mlir::Value operand_value) {
   mlir::Type type = GetSubtypeOrSelf(operand_value);
-  const auto operand_type = type.cast<mlir::TensorType>();
+  const auto operand_type = llvm::cast<mlir::TensorType>(type);
   if (!operand_type.hasRank()) return -1;
   return operand_type.getRank();
 }
@@ -116,7 +118,7 @@ mlir::Value IntConst(mlir::OpBuilder& builder, mlir::Location loc,
 }
 
 StatusOr<llvm::SmallVector<int64_t>> GetTFShapeFromType(mlir::Type type) {
-  auto ranked_type = type.dyn_cast<mlir::RankedTensorType>();
+  auto ranked_type = llvm::dyn_cast<mlir::RankedTensorType>(type);
   if (!ranked_type) {
     return errors::InvalidArgument(
         llvm::formatv("Type {0} is not a RankedTensorType.", type).str());
@@ -166,7 +168,7 @@ mlir::Value IntConstWithMatchingType(mlir::OpBuilder& builder,
                                      mlir::Location loc,
                                      llvm::ArrayRef<int64_t> values,
                                      mlir::Type type) {
-  if (type.cast<mlir::RankedTensorType>().getElementType().isInteger(64)) {
+  if (llvm::cast<mlir::RankedTensorType>(type).getElementType().isInteger(64)) {
     return Int64Const(builder, loc, values);
   } else {
     llvm::SmallVector<int32, 4> values32(values.begin(), values.end());
@@ -176,7 +178,7 @@ mlir::Value IntConstWithMatchingType(mlir::OpBuilder& builder,
 
 StatusOr<int64_t> ExtractConstIntFromValue(mlir::Value value) {
   value = GetForwardedInput(value);
-  if (value.isa<mlir::BlockArgument>())
+  if (mlir::isa<mlir::BlockArgument>(value))
     return errors::Internal("unable get constant value from block argument");
   mlir::DenseIntElementsAttr attr;
   if (!matchPattern(value, m_Constant(&attr))) {
@@ -195,7 +197,7 @@ StatusOr<int64_t> ExtractConstIntFromValue(mlir::Value value) {
 absl::Status ExtractConstVectorFromValue(
     mlir::Value value, llvm::SmallVector<int64_t, 4>* out_vector) {
   value = GetForwardedInput(value);
-  if (value.isa<mlir::BlockArgument>())
+  if (mlir::isa<mlir::BlockArgument>(value))
     return errors::Internal("unable get constant value from block argument");
   mlir::DenseIntElementsAttr attr;
   if (!matchPattern(value, m_Constant(&attr))) {
@@ -263,7 +265,7 @@ StatusOr<mlir::Value> SelectScalarValueFromArray(mlir::OpBuilder& builder,
                                                  int index,
                                                  mlir::Location location,
                                                  mlir::Value array) {
-  mlir::TensorType arrayType = array.getType().cast<mlir::TensorType>();
+  mlir::TensorType arrayType = llvm::cast<mlir::TensorType>(array.getType());
   if (arrayType.getRank() != 2 || arrayType.getDimSize(0) != 1) {
     return errors::InvalidArgument("Input array must have shape [1, N].");
   }
@@ -289,8 +291,8 @@ StatusOr<mlir::Value> SelectScalarValueFromArray(mlir::OpBuilder& builder,
 mlir::Type GetSubtypeOrSelf(mlir::Value val) {
   mlir::Type type = val.getType();
   if (auto type_with_subtype =
-          mlir::getElementTypeOrSelf(val)
-              .dyn_cast<mlir::TF::TensorFlowTypeWithSubtype>()) {
+          mlir::dyn_cast<mlir::TF::TensorFlowTypeWithSubtype>(
+              mlir::getElementTypeOrSelf(val))) {
     if (type_with_subtype.GetSubtypes().size() == 1) {
       type = type_with_subtype.GetSubtypes().front();
     }
@@ -299,10 +301,8 @@ mlir::Type GetSubtypeOrSelf(mlir::Value val) {
 }
 
 bool IsResourceType(mlir::Value val) {
-  return val.getType()
-      .cast<mlir::TensorType>()
-      .getElementType()
-      .isa<mlir::TF::ResourceType>();
+  return mlir::isa<mlir::TF::ResourceType>(
+      mlir::cast<mlir::TensorType>(val.getType()).getElementType());
 }
 
 }  // namespace dtensor

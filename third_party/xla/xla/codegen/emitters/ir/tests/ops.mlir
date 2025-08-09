@@ -49,10 +49,6 @@ func.func @caller(%a: f32, %b: f32) -> f32 {
 // CHECK: %[[D:.*]] = xla.pure_call @add
 // CHECK: arith.addf %[[C]], %[[D]]
 
-// CHECK-CSE: @caller
-// CHECK-CSE: %[[C:.*]] = xla.pure_call @add
-// CHECK-CSE: arith.addf %[[C]], %[[C]]
-
 // -----
 
 #map0 = #xla.indexing_map<"(d0, d1)[s0] -> (d0, d1 + s0),"
@@ -158,3 +154,16 @@ func.func @test_backend_kind(%arg0: f32) attributes { xla.backend_kind = #xla.ba
 }
 // CHECK:      @test_backend_kind
 // CHECK-SAME: #xla.backend_kind<tpu>
+
+// -----
+
+func.func @workgroup_id_op() -> (index, index, index) {
+  %workgroup_id_x = xla.workgroup_id x {xla.range = [0 : index, 1023 : index]}
+  %workgroup_id_y = xla.workgroup_id y
+  %workgroup_id_z = xla.workgroup_id z
+  func.return %workgroup_id_x, %workgroup_id_y, %workgroup_id_z
+      : index, index, index
+}
+// CHECK: [[WORKGROUP_ID_X:.*]] = xla.workgroup_id x {xla.range = [0 : index, 1023 : index]}
+// CHECK: [[WORKGROUP_ID_Y:.*]] = xla.workgroup_id y
+// CHECK: [[WORKGROUP_ID_Z:.*]] = xla.workgroup_id z

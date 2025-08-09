@@ -110,7 +110,7 @@ absl::Status CombineAllReduces(absl::Span<HloInstruction* const> to_combine) {
 }
 }  // namespace
 
-/*static*/ std::string AllReduceCombiner::GetGroupKeyExtraArgs(
+/*static*/ std::string& AllReduceCombiner::GetGroupKeyExtraArgs(
     AllReduceCombiner::GroupKey& key) {
   return std::get<1>(key);
 }

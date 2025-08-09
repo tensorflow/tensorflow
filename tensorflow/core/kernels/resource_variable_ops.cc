@@ -134,6 +134,8 @@ absl::Status CopyVariable(int output_idx, OpKernelContext* ctx,
       TF_CALL_float8_e4m3fn(HANDLER);
       TF_CALL_int4(HANDLER);
       TF_CALL_uint4(HANDLER);
+      TF_CALL_int2(HANDLER);
+      TF_CALL_uint2(HANDLER);
 #undef HANDLER
       default:
         return errors::Internal("Unsupported dtype", t->dtype());
@@ -303,6 +305,8 @@ TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_GPU_KERNELS);
 TF_CALL_variant(REGISTER_GPU_KERNELS);
 TF_CALL_int4(REGISTER_GPU_KERNELS);
 TF_CALL_uint4(REGISTER_GPU_KERNELS);
+TF_CALL_int2(REGISTER_GPU_KERNELS);
+TF_CALL_uint2(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -318,6 +322,8 @@ TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_DEFAULT_KERNELS);
 TF_CALL_variant(REGISTER_DEFAULT_KERNELS);
 TF_CALL_int4(REGISTER_DEFAULT_KERNELS);
 TF_CALL_uint4(REGISTER_DEFAULT_KERNELS);
+TF_CALL_int2(REGISTER_DEFAULT_KERNELS);
+TF_CALL_uint2(REGISTER_DEFAULT_KERNELS);
 #undef REGISTER_DEFAULT_KERNELS
 
 REGISTER_KERNEL_BUILDER(
@@ -359,7 +365,7 @@ DestroyResourceOp::DestroyResourceOp(OpKernelConstruction* ctx)
 void DestroyResourceOp::Compute(OpKernelContext* ctx) {
   const ResourceHandle& p = HandleFromInput(ctx, 0);
   absl::Status status = DeleteResource(ctx, p);
-  if (ignore_lookup_error_ && errors::IsNotFound(status)) {
+  if (ignore_lookup_error_ && absl::IsNotFound(status)) {
     return;
   }
   OP_REQUIRES_OK(ctx, status);
@@ -569,6 +575,8 @@ TF_CALL_float8_e5m2(REGISTER_KERNELS);
 TF_CALL_float8_e4m3fn(REGISTER_KERNELS);
 TF_CALL_int4(REGISTER_KERNELS);
 TF_CALL_uint4(REGISTER_KERNELS);
+TF_CALL_int2(REGISTER_KERNELS);
+TF_CALL_uint2(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -585,6 +593,8 @@ TF_CALL_float8_e5m2(REGISTER_GPU_KERNELS);
 TF_CALL_float8_e4m3fn(REGISTER_GPU_KERNELS);
 TF_CALL_int4(REGISTER_GPU_KERNELS);
 TF_CALL_uint4(REGISTER_GPU_KERNELS);
+TF_CALL_int2(REGISTER_GPU_KERNELS);
+TF_CALL_uint2(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -599,6 +609,8 @@ TF_CALL_ALL_TYPES(REGISTER_KERNELS);
 TF_CALL_QUANTIZED_TYPES(REGISTER_KERNELS);
 TF_CALL_int4(REGISTER_KERNELS);
 TF_CALL_uint4(REGISTER_KERNELS);
+TF_CALL_int2(REGISTER_KERNELS);
+TF_CALL_uint2(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
 template <typename Device, typename T, DenseUpdateType Op>

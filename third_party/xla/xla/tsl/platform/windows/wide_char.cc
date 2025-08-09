@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "xla/tsl/platform/windows/wide_char.h"
 
-#include <Windows.h>
+#include <windows.h>
 
 #include <string>
 

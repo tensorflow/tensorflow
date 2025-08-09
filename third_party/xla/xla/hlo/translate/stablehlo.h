@@ -29,9 +29,6 @@ limitations under the License.
 
 namespace xla {
 
-// Registers dialects necessary for converting MLIR to HLO.
-void RegisterMlirToHloDependentDialects(mlir::DialectRegistry& registry);
-
 // Convert HloModule to StableHLO module.
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertHloToStablehlo(
     mlir::MLIRContext& ctx, const xla::HloModule* hlo_module);
@@ -40,6 +37,16 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertHloToStablehlo(
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertHloToStablehlo(
     mlir::MLIRContext& ctx, const xla::HloModuleProto* hlo_module);
 
+// Convert HloModuleProto to StableHLO module.
+// DO NOT USE THIS METHOD WITHOUT A GOOD REASON. Prefer ConvertHloToStablehlo.
+// Currently it exists to satisfy TF2XLA compilation APIs where certain behavior
+// is dependent on not important all computations. In general we want a single
+// conversion path for all HLO, and are working to obsolete this method.
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
+ConvertHloToStablehloWithOptions(mlir::MLIRContext& ctx,
+                                 const xla::HloModuleProto* hlo_module,
+                                 bool import_all_computations);
+
 // Convert StableHLO module to HloModule.
 absl::StatusOr<std::unique_ptr<xla::HloModule>> ConvertStablehloToHlo(
     mlir::ModuleOp module);
@@ -47,6 +54,15 @@ absl::StatusOr<std::unique_ptr<xla::HloModule>> ConvertStablehloToHlo(
 // Convert StableHLO module to HloModuleProto.
 absl::Status ConvertStablehloToHloProto(mlir::ModuleOp module,
                                         xla::HloProto* hlo_proto);
+
+// Convert StableHLO module to HloModule.
+// DO NOT USE THIS METHOD WITHOUT A GOOD REASON. Prefer ConvertStablehloToHlo.
+// Currently it exists to satisfy the PJRT compilation APIs where a framework
+// may specify that a computation should use tuples. This is seldom used, the
+// main exception being computations with 2k+ parameters targeting TPU.
+absl::StatusOr<std::unique_ptr<xla::HloModule>>
+ConvertStablehloToHloWithOptions(mlir::ModuleOp module, bool use_tuple_args,
+                                 bool return_tuple);
 
 // Convert StableHLO module to HloModuleProto.
 // Some platforms run out of memory when the argument list is too long.

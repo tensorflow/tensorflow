@@ -18,50 +18,77 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "xla/tests/xla_test_backend_predicates.h"
 #include "xla/array2d.h"
+#include "xla/array3d.h"
+#include "xla/error_spec.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/literal_util.h"
 #include "xla/reference_util.h"
-#include "xla/tests/client_library_test_base.h"
-#include "xla/tests/hlo_test_base.h"
-#include "xla/tests/test_macros.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/util.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
-class TransposeTest : public ClientLibraryTestBase {
- public:
-  ErrorSpec error_spec_{0.0001};
+constexpr ErrorSpec kErrorSpec{0.0001};
 
+class TransposeTest : public ClientLibraryTestRunnerMixin<
+                          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
  protected:
-  void TestTransposeConstant(Vector3 sizes, Vector3 transpose_dims);
+  void TestTransposeConstant(Vector3 sizes, Vector3 transpose_dims) {
+    Array3D<int32_t> aoperand(sizes[0], sizes[1], sizes[2]);
+    std::vector<int32_t> expected(sizes[0] * sizes[1] * sizes[2]);
+    for (int64_t i = 0; i < sizes[0]; ++i) {
+      for (int64_t j = 0; j < sizes[1]; ++j) {
+        for (int64_t k = 0; k < sizes[2]; ++k) {
+          Vector3 indices{i, j, k};
+          aoperand(i, j, k) = (i * sizes[1] + j) * sizes[2] + k;
+          expected[(indices[transpose_dims[0]] * sizes[transpose_dims[1]] +
+                    indices[transpose_dims[1]]) *
+                       sizes[transpose_dims[2]] +
+                   indices[transpose_dims[2]]] = aoperand(i, j, k);
+        }
+      }
+    }
+
+    XlaBuilder builder(TestName());
+    auto operand = ConstantR3FromArray3D(&builder, aoperand);
+    auto transpose = Transpose(operand, transpose_dims);
+    // Add a reshape so that the transpose does not disappear during layout
+    // assignment.
+    Reshape(transpose, {sizes[0] * sizes[1] * sizes[2]});
+
+    ComputeAndCompareR1<int32_t>(&builder, expected, {});
+  }
 };
 
-XLA_TEST_F(TransposeTest, Transpose0x0) {
+TEST_F(TransposeTest, Transpose0x0) {
   XlaBuilder builder("Transpose");
   auto lhs = ConstantR2FromArray2D<float>(&builder, Array2D<float>(0, 0));
   Transpose(lhs, {1, 0});
 
-  ComputeAndCompareR2<float>(&builder, Array2D<float>(0, 0), {}, error_spec_);
+  ComputeAndCompareR2<float>(&builder, Array2D<float>(0, 0), {}, kErrorSpec);
 }
 
-XLA_TEST_F(TransposeTest, Transpose0x42) {
+TEST_F(TransposeTest, Transpose0x42) {
   XlaBuilder builder("Transpose");
   auto lhs = ConstantR2FromArray2D<float>(&builder, Array2D<float>(0, 42));
   Transpose(lhs, {1, 0});
 
-  ComputeAndCompareR2<float>(&builder, Array2D<float>(42, 0), {}, error_spec_);
+  ComputeAndCompareR2<float>(&builder, Array2D<float>(42, 0), {}, kErrorSpec);
 }
 
-XLA_TEST_F(TransposeTest, Transpose7x0) {
+TEST_F(TransposeTest, Transpose7x0) {
   XlaBuilder builder("Transpose");
   auto lhs = ConstantR2FromArray2D<float>(&builder, Array2D<float>(7, 0));
   Transpose(lhs, {1, 0});
 
-  ComputeAndCompareR2<float>(&builder, Array2D<float>(0, 7), {}, error_spec_);
+  ComputeAndCompareR2<float>(&builder, Array2D<float>(0, 7), {}, kErrorSpec);
 }
 
 TEST_F(TransposeTest, Transpose2x2) {
@@ -74,10 +101,10 @@ TEST_F(TransposeTest, Transpose2x2) {
 
   Array2D<float> expected({{1.0f, 3.0f}, {2.0f, 4.0f}});
 
-  ComputeAndCompareR2<float>(&builder, expected, {}, error_spec_);
+  ComputeAndCompareR2<float>(&builder, expected, {}, kErrorSpec);
 }
 
-XLA_TEST_F(TransposeTest, Transpose0x2x3_2x3x0) {
+TEST_F(TransposeTest, Transpose0x2x3_2x3x0) {
   XlaBuilder builder("Transpose");
   auto operand =
       ConstantR3FromArray3D<int32_t>(&builder, Array3D<int32_t>(0, 2, 3));
@@ -130,7 +157,7 @@ TEST_F(TransposeTest, MultiTranspose3x2) {
       computed = Transpose(computed, {1, 0});
     }
     const Array2D<float>& expected = transposes % 2 == 0 ? input : transposed;
-    ComputeAndCompareR2<float>(&builder, expected, {}, error_spec_);
+    ComputeAndCompareR2<float>(&builder, expected, {}, kErrorSpec);
   }
 }
 
@@ -158,33 +185,6 @@ TEST_F(TransposeTest, Small_2x2) {
   ComputeAndCompareR2<float>(&builder, *expected, {}, ErrorSpec(1e-4));
 }
 
-void TransposeTest::TestTransposeConstant(Vector3 sizes,
-                                          Vector3 transpose_dims) {
-  Array3D<int32_t> aoperand(sizes[0], sizes[1], sizes[2]);
-  std::vector<int32_t> expected(sizes[0] * sizes[1] * sizes[2]);
-  for (int64_t i = 0; i < sizes[0]; ++i) {
-    for (int64_t j = 0; j < sizes[1]; ++j) {
-      for (int64_t k = 0; k < sizes[2]; ++k) {
-        Vector3 indices{i, j, k};
-        aoperand(i, j, k) = (i * sizes[1] + j) * sizes[2] + k;
-        expected[(indices[transpose_dims[0]] * sizes[transpose_dims[1]] +
-                  indices[transpose_dims[1]]) *
-                     sizes[transpose_dims[2]] +
-                 indices[transpose_dims[2]]] = aoperand(i, j, k);
-      }
-    }
-  }
-
-  XlaBuilder builder(TestName());
-  auto operand = ConstantR3FromArray3D(&builder, aoperand);
-  auto transpose = Transpose(operand, transpose_dims);
-  // Add a reshape so that the transpose does not disappear during layout
-  // assignment.
-  Reshape(transpose, {sizes[0] * sizes[1] * sizes[2]});
-
-  ComputeAndCompareR1<int32_t>(&builder, expected, {});
-}
-
 TEST_F(TransposeTest, TransposeConstant021_SingleIncompleteTilePerLayer) {
   TestTransposeConstant({2, 16, 17}, {0, 2, 1});
 }
@@ -201,11 +201,13 @@ TEST_F(TransposeTest, TransposeConstant210_DegenerateDim) {
   TestTransposeConstant({20, 30, 1}, {2, 1, 0});
 }
 
-using HloTransposeTest = HloTestBase;
+using HloTransposeTest = HloPjRtTestBase;
 
 // Disable HLO passes to verify the default behavior
-XLA_TEST_F(HloTransposeTest, DISABLED_ON_INTERPRETER(DISABLED_ON_GPU(
-                                 DISABLED_ON_TPU(HloPassesDisabled)))) {
+TEST_F(HloTransposeTest, HloPassesDisabled) {
+  if (test::DeviceTypeIsOneOf({test::kGpu, test::kInterpreter, test::kTpu})) {
+    GTEST_SKIP();
+  }
   const char* const kModuleStr = R"(
     HloModule Transpose
 

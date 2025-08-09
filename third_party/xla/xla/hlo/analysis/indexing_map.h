@@ -27,8 +27,8 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Hashing.h"
+#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/AffineExpr.h"
@@ -249,7 +249,7 @@ class IndexingMap {
 
   IndexingMap(mlir::AffineMap affine_map, std::vector<Variable> dimensions,
               std::vector<Variable> range_vars, std::vector<Variable> rt_vars,
-              const llvm::DenseMap<mlir::AffineExpr, Interval>& constraints);
+              const llvm::MapVector<mlir::AffineExpr, Interval>& constraints);
 
   IndexingMap(const IndexingMap&) = default;
   IndexingMap(IndexingMap&&) noexcept = default;
@@ -317,7 +317,7 @@ class IndexingMap {
   int64_t GetSymbolCount() const { return affine_map_.getNumSymbols(); }
 
   // Getters for affine expression constraints.
-  const llvm::DenseMap<mlir::AffineExpr, Interval>& GetConstraints() const {
+  const llvm::MapVector<mlir::AffineExpr, Interval>& GetConstraints() const {
     return constraints_;
   }
   int64_t GetConstraintsCount() const { return constraints_.size(); }
@@ -354,7 +354,7 @@ class IndexingMap {
 
   // Removes unused symbols from the `affine_map_` and constraints.
   // Returns a bit vector of symbols that were removed. If none of the symbols
-  // were removed, returns {}.
+  // were removed, returns an empty bit vector.
   llvm::SmallBitVector RemoveUnusedSymbols();
 
   // Removes unused dimensions and symbols from the `affine_map_` and
@@ -429,7 +429,7 @@ class IndexingMap {
   // Inequality constraints for affine expressions. They restrict the feasible
   // set for the domain of the indexing map. It contains affine expressions
   // other than AffineDimExpr and AffineSymbolExpr.
-  llvm::DenseMap<mlir::AffineExpr, Interval> constraints_;
+  llvm::MapVector<mlir::AffineExpr, Interval> constraints_;
   // Flag to indicate that the domain is empty.
   bool is_known_empty_ = false;
 };
@@ -487,8 +487,13 @@ std::vector<IndexingMap::Variable> RangeVarsFromTensorSizes(
     absl::Span<const int64_t> tensor_sizes);
 
 // Creates a new indexing map that is the same as `map` but with the range
-// variables at `range_var_indices` converted to the new dimensions variables at
-// and added to the end of dimension variables list.
+// variables at `range_var_indices` converted to dimensions. The new dimensions
+// are appended to the end.
+// `range_var_indices` must be a strictly increasing sequence of valid
+// range variable indices.
+// For example, `(d0)[s0, s1, s2]{rt0} -> (d0, s0, s1, s2, rt0)` with
+// `range_var_indices` = {0, 2}  will be converted to
+// `(d0, d1, d2)[s0]{rt0} -> (d0, d1, s0, d2, rt0)`.
 IndexingMap ConvertRangeVariablesToDimensions(
     const IndexingMap& map, llvm::ArrayRef<int64_t> range_var_indices);
 

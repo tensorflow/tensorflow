@@ -33,14 +33,13 @@ limitations under the License.
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_util.h"
-#include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/test_macros.h"
 #include "xla/types.h"
 #include "tsl/platform/ml_dtypes.h"
 #include "tsl/platform/statusor.h"
@@ -107,7 +106,7 @@ using FloatTypes =
 
 TYPED_TEST_SUITE(ElementalIrEmitterExecutionTypedTest, FloatTypes);
 
-XLA_TEST_F(ElementalIrEmitterExecutionTest, DotFusion) {
+TEST_F(ElementalIrEmitterExecutionTest, DotFusion) {
   const std::string hlo_text = R"(
 HloModule FusedDot
 
@@ -131,7 +130,7 @@ ENTRY main {
   RunTest(hlo_text, {&lhs, &rhs});
 }
 
-XLA_TEST_F(ElementalIrEmitterExecutionTest, EmitReducePrecisionIR_F16ToF8e5m2) {
+TEST_F(ElementalIrEmitterExecutionTest, EmitReducePrecisionIR_F16ToF8e5m2) {
   llvm::LLVMContext llvm_context;
   llvm::IRBuilder<> builder(llvm_context);
   llvm::IRBuilderBase* b = &builder;
@@ -178,7 +177,7 @@ XLA_TEST_F(ElementalIrEmitterExecutionTest, EmitReducePrecisionIR_F16ToF8e5m2) {
   }
 }
 
-XLA_TEST_F(ElementalIrEmitterExecutionTest, EmitReducePrecisionIR_F16ToF8e4m3) {
+TEST_F(ElementalIrEmitterExecutionTest, EmitReducePrecisionIR_F16ToF8e4m3) {
   llvm::LLVMContext llvm_context;
   llvm::IRBuilder<> builder(llvm_context);
   llvm::IRBuilderBase* b = &builder;
@@ -225,7 +224,7 @@ XLA_TEST_F(ElementalIrEmitterExecutionTest, EmitReducePrecisionIR_F16ToF8e4m3) {
   }
 }
 
-XLA_TEST_F(ElementalIrEmitterExecutionTest, EmitReducePrecisionIR_F16ToF8e3m4) {
+TEST_F(ElementalIrEmitterExecutionTest, EmitReducePrecisionIR_F16ToF8e3m4) {
   llvm::LLVMContext llvm_context;
   llvm::IRBuilder<> builder(llvm_context);
   llvm::IRBuilderBase* b = &builder;
@@ -272,8 +271,7 @@ XLA_TEST_F(ElementalIrEmitterExecutionTest, EmitReducePrecisionIR_F16ToF8e3m4) {
   }
 }
 
-XLA_TEST_F(ElementalIrEmitterExecutionTest,
-           EmitReducePrecisionIR_F16ToF8e4m3fn) {
+TEST_F(ElementalIrEmitterExecutionTest, EmitReducePrecisionIR_F16ToF8e4m3fn) {
   llvm::LLVMContext llvm_context;
   llvm::IRBuilder<> builder(llvm_context);
   llvm::IRBuilderBase* b = &builder;
@@ -317,7 +315,7 @@ XLA_TEST_F(ElementalIrEmitterExecutionTest,
   }
 }
 
-XLA_TEST_F(ElementalIrEmitterExecutionTest, ScalarDotFusion) {
+TEST_F(ElementalIrEmitterExecutionTest, ScalarDotFusion) {
   const char* hlo_text = R"(
 HloModule ScalarDotFusion
 
@@ -341,7 +339,7 @@ ENTRY main {
   RunTest(hlo_text, {&lhs, &rhs});
 }
 
-XLA_TEST_F(ElementalIrEmitterExecutionTest, BatchDot) {
+TEST_F(ElementalIrEmitterExecutionTest, BatchDot) {
   const char* hlo_text = R"(
 HloModule BatchDot
 
@@ -374,8 +372,8 @@ ENTRY resampler_Resampler.49 {
   EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{4e-3, 4e-3}));
 }
 
-XLA_TEST_F(ElementalIrEmitterExecutionTest,
-           DivideComplexNumbersWithInfiniteNormRhs) {
+TEST_F(ElementalIrEmitterExecutionTest,
+       DivideComplexNumbersWithInfiniteNormRhs) {
   constexpr char hlo_text[] = R"(
     HloModule DivideComplexNumbers
     ENTRY DivideComplexNumbers {
@@ -398,8 +396,7 @@ XLA_TEST_F(ElementalIrEmitterExecutionTest,
   EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{(0.)}));
 }
 
-XLA_TEST_F(ElementalIrEmitterExecutionTest,
-           DivideComplexNumbersWithFiniteNormRhs) {
+TEST_F(ElementalIrEmitterExecutionTest, DivideComplexNumbersWithFiniteNormRhs) {
   constexpr char hlo_text[] = R"(
     HloModule DivideComplexNumbers
     ENTRY DivideComplexNumbers {
@@ -421,8 +418,7 @@ XLA_TEST_F(ElementalIrEmitterExecutionTest,
   EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{(0.)}));
 }
 
-XLA_TEST_F(ElementalIrEmitterExecutionTest,
-           DivideComplexNumbersWithZeroNormRhs) {
+TEST_F(ElementalIrEmitterExecutionTest, DivideComplexNumbersWithZeroNormRhs) {
   constexpr char hlo_text[] = R"(
     HloModule DivideComplexNumbers
     ENTRY DivideComplexNumbers {
@@ -659,8 +655,8 @@ TYPED_TEST(ElementalIrEmitterExecutionTypedTest, BatchDotFloat) {
       HloTestBase::RunAndCompare(std::move(module), ErrorSpec{1e-3, 1e-3}));
 }
 
-XLA_TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax,
-           MinimumHandlesNaNsOnTheLeft) {
+TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax,
+       MinimumHandlesNaNsOnTheLeft) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -674,10 +670,8 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-// TODO(b/324385428): Failing on GPU at head due to an LLVM integrate. Re-enable
-// once this has been fixed.
-XLA_TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax,
-           DISABLED_MinimumHandlesNaNsOnTheRight) {
+TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax,
+       MinimumHandlesNaNsOnTheRight) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -691,8 +685,8 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-XLA_TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax,
-           MaximumHandlesNaNsOnTheLeft) {
+TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax,
+       MaximumHandlesNaNsOnTheLeft) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -706,8 +700,8 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-XLA_TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax,
-           MaximumHandlesNaNsOnTheRight) {
+TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax,
+       MaximumHandlesNaNsOnTheRight) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -721,8 +715,7 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-XLA_TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax,
-           MinimumReturnsLHS) {
+TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax, MinimumReturnsLHS) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -738,8 +731,7 @@ ENTRY e {
                                                 /*arel=*/1e-3}));
 }
 
-XLA_TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax,
-           MinimumReturnsRHS) {
+TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax, MinimumReturnsRHS) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -755,8 +747,7 @@ ENTRY e {
                                                 /*arel=*/1e-3}));
 }
 
-XLA_TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax,
-           MaximumReturnsLHS) {
+TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax, MaximumReturnsLHS) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -772,8 +763,7 @@ ENTRY e {
                                                 /*arel=*/1e-3}));
 }
 
-XLA_TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax,
-           MaximumReturnsRHS) {
+TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax, MaximumReturnsRHS) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -787,33 +777,6 @@ ENTRY e {
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3,
                                                 /*arel=*/1e-3}));
-}
-
-class ElementalIrEmitterInternalTest : public HloTestBase {};
-
-XLA_TEST_F(ElementalIrEmitterInternalTest, SparseDotIsUnsupported) {
-  constexpr absl::string_view kHloText = R"(
-HloModule test
-
-ENTRY main {
-  lhs = f16[5,16] parameter(0)
-  rhs = f16[32,10] parameter(1)
-  meta = u16[5,2] parameter(2)
-  ROOT dot = f32[5,10] dot(lhs, rhs, meta),
-      lhs_contracting_dims={1}, rhs_contracting_dims={0}, sparsity=L.1@2:4
-})";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloText));
-  HloInstruction* root = module->entry_computation()->root_instruction();
-
-  llvm::LLVMContext llvm_context;
-  llvm::Module llvm_module("", llvm_context);
-  llvm::IRBuilder<> builder(llvm_context);
-  ElementalIrEmitterForTests emitter(&llvm_module, &builder);
-
-  llvm_ir::IrArray::Index test_index{builder.getInt64Ty()};
-  auto result = emitter.TestElementalDot(root, test_index);
-  EXPECT_FALSE(result.ok());
 }
 
 }  // namespace

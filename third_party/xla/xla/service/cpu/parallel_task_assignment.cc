@@ -165,8 +165,7 @@ int64_t ParallelTaskAssignment::GetTargetParallelTaskCount(
   // TODO(b/27458679) Parallelize instructions which are skipped here.
   auto opcode = instruction->opcode();
   if (llvm_ir::MayBeImplementedAsInPlaceDynamicUpdateSlice(instruction) ||
-      instruction->shape().IsTuple() || opcode == HloOpcode::kRng ||
-      opcode == HloOpcode::kConstant) {
+      opcode == HloOpcode::kRng || opcode == HloOpcode::kConstant) {
     return 1;
   }
 
@@ -174,7 +173,13 @@ int64_t ParallelTaskAssignment::GetTargetParallelTaskCount(
   if (opcode == HloOpcode::kFusion) {
     const HloFusionInstruction* fusion =
         Cast<HloFusionInstruction>(instruction);
-    if (fusion->fusion_kind() == HloInstruction::FusionKind::kCustom) return 1;
+    if (fusion->fusion_kind() == HloInstruction::FusionKind::kCustom) {
+      return 1;
+    }
+  }
+
+  if (instruction->shape().IsTuple() && !instruction->IsLoopFusion()) {
+    return 1;
   }
 
   // Only allow instructions that can be trivially parallelized (where all
@@ -230,18 +235,35 @@ bool ParallelTaskAssigner::AssignParallelTasksHelper(
   std::vector<HloInstruction*> instructions(computation->instructions().begin(),
                                             computation->instructions().end());
   for (auto* instruction : instructions) {
-    // Assign parallel tasks to sub-computations for While and Call HLOs.
+    // Assign parallel tasks to sub-computations for While, Conditional and Call
+    // HLOs.
     // TODO(b/27458679) Evaluate alternative intra-op parallelism placement,
     // and support other callable computations like reduce.
+    bool control_flow_hlo = false;
+
     if (instruction->opcode() == HloOpcode::kWhile) {
+      control_flow_hlo = true;
       changed |= AssignParallelTasksHelper(module, instruction->while_body(),
                                            hlo_to_parallel_tasks);
-      continue;
+
+    } else if (instruction->opcode() == HloOpcode::kConditional) {
+      control_flow_hlo = true;
+      for (HloComputation* branch : instruction->branch_computations()) {
+        changed |=
+            AssignParallelTasksHelper(module, branch, hlo_to_parallel_tasks);
+      }
+
     } else if (instruction->opcode() == HloOpcode::kCall) {
+      control_flow_hlo = true;
       changed |= AssignParallelTasksHelper(module, instruction->to_apply(),
                                            hlo_to_parallel_tasks);
+    }
+
+    // Continue to the next instruction if we handled control flow above.
+    if (control_flow_hlo) {
       continue;
     }
+
     // Skip if no parallel tasks were computed in first pass.
     auto it = hlo_to_parallel_tasks.find(instruction);
     if (it == hlo_to_parallel_tasks.end()) {
@@ -249,9 +271,11 @@ bool ParallelTaskAssigner::AssignParallelTasksHelper(
     }
     // Get target parallel task count computed for 'instruction'.
     const int64_t target_parallel_task_count = (*it).second;
+    const Shape& shape = instruction->shape();
+    const Shape& index_shape = shape.IsTuple() ? shape.tuple_shapes(0) : shape;
     // Assign feasible dimension partitions (based on actual dimension sizes).
-    auto dim_partition_counts = ShapePartitionAssigner(instruction->shape())
-                                    .Run(target_parallel_task_count);
+    auto dim_partition_counts =
+        ShapePartitionAssigner(index_shape).Run(target_parallel_task_count);
     const int64_t total_partition_count =
         ShapePartitionAssigner::GetTotalPartitionCount(dim_partition_counts);
     if (total_partition_count <= 1) {

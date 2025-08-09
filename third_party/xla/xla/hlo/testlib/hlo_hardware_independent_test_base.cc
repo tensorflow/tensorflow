@@ -33,15 +33,19 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/service/computation_placer.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/shape.h"
@@ -58,7 +62,8 @@ namespace xla {
 
 HloHardwareIndependentTestBase::HloHardwareIndependentTestBase(
     bool verifier_layout_sensitive, bool allow_mixed_precision_in_hlo_verifier,
-    HloPredicate instruction_can_change_layout_func)
+    HloPredicate instruction_can_change_layout_func,
+    bool verify_no_collective_deadlocks)
     : verifier_layout_sensitive_(verifier_layout_sensitive),
       allow_mixed_precision_in_hlo_verifier_(
           allow_mixed_precision_in_hlo_verifier),
@@ -66,7 +71,9 @@ HloHardwareIndependentTestBase::HloHardwareIndependentTestBase(
   hlo_verifier_ = std::make_unique<HloVerifier>(
       /*layout_sensitive=*/verifier_layout_sensitive,
       /*allow_mixed_precision=*/allow_mixed_precision_in_hlo_verifier,
-      instruction_can_change_layout_func);
+      instruction_can_change_layout_func,
+      [](const Shape& shape) { return ShapeUtil::ByteSizeOf(shape); },
+      verify_no_collective_deadlocks);
 }
 
 std::unique_ptr<HloModule>
@@ -84,12 +91,24 @@ HloHardwareIndependentTestBase::CreateNewVerifiedModule(
       instruction_can_change_layout_func_);
 }
 
+/* static */ DeviceAssignment
+HloHardwareIndependentTestBase::GetDefaultDeviceAssignment(
+    int64_t replica_count, int64_t num_partitions) {
+  DeviceAssignment device_assignment(replica_count, num_partitions);
+  device_assignment.FillIota(0);
+  return device_assignment;
+}
+
 absl::StatusOr<std::unique_ptr<VerifiedHloModule>>
 HloHardwareIndependentTestBase::ParseAndReturnVerifiedModule(
-    absl::string_view hlo_text, int64_t replica_count,
-    int64_t num_partitions) const {
-  return ParseAndReturnVerifiedModule(
-      hlo_text, GetModuleConfigForTest(replica_count, num_partitions));
+    absl::string_view hlo_text, int64_t replica_count, int64_t num_partitions,
+    std::optional<DeviceAssignment> device_assignment) const {
+  HloModuleConfig config =
+      GetModuleConfigForTest(replica_count, num_partitions);
+  if (device_assignment.has_value()) {
+    config.set_static_device_assignment(device_assignment.value());
+  }
+  return ParseAndReturnVerifiedModule(hlo_text, config);
 }
 
 absl::Status HloHardwareIndependentTestBase::
@@ -117,12 +136,32 @@ absl::Status HloHardwareIndependentTestBase::
 
 absl::StatusOr<std::unique_ptr<VerifiedHloModule>>
 HloHardwareIndependentTestBase::ParseAndReturnVerifiedModule(
-    absl::string_view hlo_text, const HloModuleConfig& config) const {
+    absl::string_view hlo_text, const HloModuleConfig& config,
+    const HloParserOptions& parser_options) const {
+  return ParseAndReturnVerifiedModule(hlo_text, config, parser_options,
+                                      ShapeUtil::ByteSizeOfElements);
+}
+
+absl::StatusOr<std::unique_ptr<VerifiedHloModule>>
+HloHardwareIndependentTestBase::ParseAndReturnVerifiedModule(
+    absl::string_view hlo_text, const HloModuleConfig& config,
+    const HloParserOptions& parser_options,
+    std::function<int64_t(const xla::Shape&)> shape_size_fn) const {
+  HloModuleConfig config_with_device_assignment = config;
+  if (!config.has_static_device_assignment()) {
+    absl::MutexLock ml(&device_assignment_mu_);
+    default_device_assignment_ =
+        std::make_unique<DeviceAssignment>(GetDefaultDeviceAssignment(
+            config.replica_count(), config.num_partitions()));
+    config_with_device_assignment.set_static_device_assignment(
+        *default_device_assignment_);
+  }
   auto module = std::make_unique<VerifiedHloModule>(
-      TestName(), config, verifier_layout_sensitive_,
-      allow_mixed_precision_in_hlo_verifier_, ShapeUtil::ByteSizeOfElements,
+      TestName(), config_with_device_assignment, verifier_layout_sensitive_,
+      allow_mixed_precision_in_hlo_verifier_, shape_size_fn,
       instruction_can_change_layout_func_);
-  TF_RETURN_IF_ERROR(module->ParseHloStringAndVerifyModule(hlo_text));
+  TF_RETURN_IF_ERROR(
+      module->ParseHloStringAndVerifyModule(hlo_text, parser_options));
   return module;
 }
 
@@ -192,6 +231,7 @@ DebugOptions HloHardwareIndependentTestBase::GetDebugOptionsForTest() const {
   // TODO(b/38354253): Change tests to use Parameters instead of Constants.
   debug_options.add_xla_disable_hlo_passes("constant_folding");
   debug_options.set_xla_hlo_evaluator_use_fast_path(true);
+  debug_options.set_xla_cpu_emitter_verification_level(1);
   return debug_options;
 }
 
@@ -209,7 +249,7 @@ void HloHardwareIndependentTestBase::RunAndFilecheckHloRewrite(
     TF_ASSERT_OK_AND_ASSIGN(
         bool filecheck_matches,
         RunFileCheck(
-            module->ToString(HloPrintOptions{}.set_print_operand_shape(false)),
+            module->ToString(HloPrintOptions().set_print_large_constants(true)),
             *expected));
     EXPECT_TRUE(filecheck_matches);
     if (after_pass_checks) {
@@ -253,7 +293,7 @@ void HloHardwareIndependentTestBase::RunAndFilecheckHloModuleGroupRewrite(
     TF_ASSERT_OK_AND_ASSIGN(
         bool filecheck_matches,
         RunFileCheck(module_group.module(index).ToString(
-                         HloPrintOptions{}.set_print_operand_shape(false)),
+                         HloPrintOptions().set_print_large_constants(true)),
                      expected_str));
     EXPECT_TRUE(filecheck_matches);
     index++;

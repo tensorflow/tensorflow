@@ -348,6 +348,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/framework:graph_proto_cc",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
     ],
 )

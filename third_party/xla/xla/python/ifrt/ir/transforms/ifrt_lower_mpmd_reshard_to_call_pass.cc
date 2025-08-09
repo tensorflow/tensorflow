@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
-#include <memory>
 #include <numeric>
 #include <string>
 #include <tuple>
@@ -37,7 +36,6 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/IR/Visitors.h"
-#include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
@@ -49,10 +47,10 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 
-namespace {
-
 #define GEN_PASS_DEF_IFRTLOWERMPMDRESHARDTOCALLPASS
 #include "xla/python/ifrt/ir/transforms/passes.h.inc"
+
+namespace {
 
 // Returns a fingerprint of the input and output types of a ReshardOp.
 uint64_t ReshardFingerprint(ReshardOp reshard_op) {
@@ -127,8 +125,15 @@ class IfrtLowerMpmdReshardToCallPass
       if (reshard_module_op == nullptr) {
         // Create a module corresponding to the reshard op.
         builder.setInsertionPointToEnd(module_op.getBody());
-        reshard_module_op = builder.create<mlir::ModuleOp>(
-            mlir::UnknownLoc::get(builder.getContext()), module_sym_name);
+        // Note: below we don't use `xla::llvm_ir::CreateMlirModuleOp` as this
+        // is a module op being created inside another module op. The lifetime
+        // of this module op is managed by the parent module op rather than
+        // variable scope here.
+        reshard_module_op =
+            mlir::ModuleOp::create(/*ALLOW_MLIR_MODULE_OP_CREATE*/
+                                   builder,
+                                   mlir::UnknownLoc::get(builder.getContext()),
+                                   module_sym_name);
         reshard_module_op.setVisibility(mlir::SymbolTable::Visibility::Private);
         reshard_module_op->setAttr(kIfrtNumDevicesAttrName,
                                    builder.getI32IntegerAttr(devices.size()));
@@ -136,8 +141,8 @@ class IfrtLowerMpmdReshardToCallPass
         // Create the main func in the reshard module, and add the ReshardOp
         // to it.
         mlir::OpBuilder reshard_builder(reshard_module_op.getBodyRegion());
-        reshard_func = reshard_builder.create<mlir::func::FuncOp>(
-            reshard_module_op->getLoc(), kCalleeMainFuncName,
+        reshard_func = mlir::func::FuncOp::create(
+            reshard_builder, reshard_module_op->getLoc(), kCalleeMainFuncName,
             mlir::FunctionType::get(reshard_builder.getContext(),
                                     reshard_op.getInputs().getTypes(),
                                     reshard_op.getOutputs().getTypes()));
@@ -146,14 +151,15 @@ class IfrtLowerMpmdReshardToCallPass
                               builder.getUnitAttr());
         mlir::Block* entryBlock = reshard_func.addEntryBlock();
         reshard_builder.setInsertionPointToEnd(entryBlock);
-        auto inner_reshard_op = reshard_builder.create<ReshardOp>(
-            reshard_op.getLoc(), /*outputs=*/reshard_op.getOutputs().getTypes(),
+        auto inner_reshard_op = ReshardOp::create(
+            reshard_builder, reshard_op.getLoc(),
+            /*outputs=*/reshard_op.getOutputs().getTypes(),
             /*control_output=*/reshard_op.getControlOutput().getType(),
             /*inputs=*/reshard_func.getArguments(),
             /*donated=*/reshard_op.getDonated(),
             /*control_inputs=*/mlir::ValueRange());
-        reshard_builder.create<mlir::func::ReturnOp>(
-            reshard_func.getLoc(), inner_reshard_op.getOutputs());
+        mlir::func::ReturnOp::create(reshard_builder, reshard_func.getLoc(),
+                                     inner_reshard_op.getOutputs());
       }
 
       // Replace the ReshardOp with a CallOp.
@@ -167,8 +173,9 @@ class IfrtLowerMpmdReshardToCallPass
         std::iota(donated_input_indices.begin(), donated_input_indices.end(),
                   0);
       }
-      auto call_op = builder.create<CallOp>(
-          reshard_op.getLoc(), /*outputs=*/reshard_op.getOutputs().getTypes(),
+      auto call_op = CallOp::create(
+          builder, reshard_op.getLoc(),
+          /*outputs=*/reshard_op.getOutputs().getTypes(),
           /*control_output=*/reshard_op.getControlOutput().getType(),
           /*inputs=*/reshard_op.getInputs(),
           /*control_inputs=*/reshard_op.getControlInputs(),
@@ -192,11 +199,5 @@ class IfrtLowerMpmdReshardToCallPass
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateIfrtLowerMpmdReshardToCallPass() {
-  return std::make_unique<IfrtLowerMpmdReshardToCallPass>();
-}
-
 }  // namespace ifrt
 }  // namespace xla

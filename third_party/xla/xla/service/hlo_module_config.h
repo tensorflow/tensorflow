@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/service/computation_layout.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/schedule_config.h"
 #include "xla/service/sharding_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -287,6 +288,9 @@ class HloModuleConfig {
   void set_static_device_assignment(const DeviceAssignment& device_assignment) {
     static_device_assignment_ = device_assignment;
   }
+  void reset_static_device_assignment() {
+    static_device_assignment_ = std::nullopt;
+  }
 
   // Checks if this config has a simulated device assignment.
   bool has_pre_simulation_device_assignment() const {
@@ -383,6 +387,9 @@ class HloModuleConfig {
   const ShardingConfig& sharding_config() const { return sharding_config_; }
   ShardingConfig* mutable_sharding_config() { return &sharding_config_; }
 
+  const ScheduleConfig& schedule_config() const { return schedule_config_; }
+  ScheduleConfig* mutable_schedule_config() { return &schedule_config_; }
+
   int phase_index() const { return phase_index_; }
   void set_phase_index(const int phase_index) { phase_index_ = phase_index; }
 
@@ -442,6 +449,13 @@ class HloModuleConfig {
   bool use_shardy_partitioner() const { return use_shardy_partitioner_; }
   void set_use_shardy_partitioner(bool use_shardy_partitioner) {
     use_shardy_partitioner_ = use_shardy_partitioner;
+  }
+
+  // Do channel IDs in this module carry semantic information.
+  bool ChannelIdSensitive() const {
+    // TODO(b/430952564): Base this on num_partitions / num_replicas instead
+    // of use_spmd_partitioning.
+    return !use_spmd_partitioning_;
   }
 
  private:
@@ -510,7 +524,7 @@ class HloModuleConfig {
   // instead. O3 might enable costly algorithms to reduce memory usage that may
   // greatly increase compile time.
   ExecutionOptions::EffortLevel memory_fitting_level_ =
-      ExecutionOptions::EFFORT_UNKNOWN;
+      ExecutionOptions::EFFORT_O2;
 
   // If enabled, deduplicate equivalent hlos into function calls to reduce code
   // size.
@@ -614,6 +628,10 @@ class HloModuleConfig {
   // Sharding configuration, where sharding_config_.nodes[v] controls the
   // sharding of operation v.
   ShardingConfig sharding_config_;
+
+  // Schedule configuration, where schedule_config_.sequence is the sequence of
+  // instructions to be scheduled.
+  ScheduleConfig schedule_config_;
 
   // LINT.ThenChange(//tensorflow/compiler/xla/xla.proto)
 };

@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/hlo/transforms/simplifiers/float_normalization.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -34,19 +35,20 @@ limitations under the License.
 #include "xla/service/hlo_verifier.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
 
-class FloatSupportTest : public HloTestBase {
+class FloatSupportTest : public HloHardwareIndependentTestBase {
  protected:
   FloatSupportTest()
-      : HloTestBase(/*verifier_layout_sensitive=*/false,
-                    /*allow_mixed_precision_in_hlo_verifier=*/true) {}
+      : HloHardwareIndependentTestBase(
+            /*verifier_layout_sensitive=*/false,
+            /*allow_mixed_precision_in_hlo_verifier=*/true) {}
 
   bool Normalize(HloModule* module, se::GpuComputeCapability cc,
                  PrimitiveType low_precision_type,
@@ -271,6 +273,41 @@ ENTRY main {
   EXPECT_FALSE(Normalize(module.get(), cc, BF16, F32));
 }
 
+TEST_F(FloatSupportTest, Bf16TotalOrderSortIsNotNormalized) {
+  const char* hlo_text = R"(
+// The following resembles the output of the ComparisonExpander pass.
+total_order_comparator {
+  p0 = bf16[] parameter(0)
+  convert0 = f32[] convert(p0)
+  bitcast-convert0 = s32[] bitcast-convert(convert0)
+  zero = s32[] constant(0)
+  compare0 = pred[] compare(bitcast-convert0, zero), direction=LT
+  maxint = s32[] constant(2147483647)
+  xor0 = s32[] xor(maxint, bitcast-convert0)
+  select0 = s32[] select(compare0, xor0, bitcast-convert0)
+  p1 = bf16[] parameter(1)
+  convert1 = f32[] convert(p1)
+  bitcast-convert1 = s32[] bitcast-convert(convert1)
+  compare1 = pred[] compare(bitcast-convert1, zero), direction=LT
+  xor1 = s32[] xor(maxint, bitcast-convert1)
+  select1 = s32[] select(compare1, xor1, bitcast-convert1)
+  ROOT compare = pred[] compare(select0, select1), direction=LT
+}
+
+ENTRY sort {
+  p0 = bf16[1024]{0} parameter(0)
+  ROOT sort = bf16[1024]{0} sort(p0), dimensions={0}, is_stable=false, to_apply=total_order_comparator
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  EXPECT_FALSE(
+      Normalize(module.get(), se::CudaComputeCapability::Volta(), BF16, F32));
+  EXPECT_FALSE(
+      Normalize(module.get(), se::CudaComputeCapability::Ampere(), BF16, F32));
+  EXPECT_FALSE(
+      Normalize(module.get(), se::CudaComputeCapability::Hopper(), BF16, F32));
+}
+
 TEST_F(FloatSupportTest, Bf16ExpIsNotNormalized) {
   auto cc = se::CudaComputeCapability::Ampere();
   constexpr absl::string_view kHloModule = R"(
@@ -299,6 +336,46 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kHloModule));
   EXPECT_FALSE(Normalize(module.get(), cc, BF16, F32));
+}
+
+TEST_F(FloatSupportTest, Bf16MinimumIsOnlyNormalizedPreAmpere) {
+  constexpr absl::string_view kHloModule = R"(
+HloModule m
+
+ENTRY main {
+  p0 = bf16[] parameter(0)
+  p1 = bf16[] parameter(1)
+  ROOT r = bf16[] minimum(p0, p1)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+  EXPECT_FALSE(
+      Normalize(module.get(), se::CudaComputeCapability::Hopper(), BF16, F32));
+  EXPECT_FALSE(
+      Normalize(module.get(), se::CudaComputeCapability::Ampere(), BF16, F32));
+  EXPECT_TRUE(
+      Normalize(module.get(), se::CudaComputeCapability::Volta(), BF16, F32));
+}
+
+TEST_F(FloatSupportTest, Bf16MaximumIsOnlyNormalizedPreAmpere) {
+  constexpr absl::string_view kHloModule = R"(
+HloModule m
+
+ENTRY main {
+  p0 = bf16[] parameter(0)
+  p1 = bf16[] parameter(1)
+  ROOT r = bf16[] maximum(p0, p1)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+  EXPECT_FALSE(
+      Normalize(module.get(), se::CudaComputeCapability::Hopper(), BF16, F32));
+  EXPECT_FALSE(
+      Normalize(module.get(), se::CudaComputeCapability::Ampere(), BF16, F32));
+  EXPECT_TRUE(
+      Normalize(module.get(), se::CudaComputeCapability::Volta(), BF16, F32));
 }
 
 TEST_F(FloatSupportTest,

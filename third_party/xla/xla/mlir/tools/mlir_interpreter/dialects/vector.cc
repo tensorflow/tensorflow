@@ -242,7 +242,7 @@ InterpreterValue Contract(InterpreterState&, vector::ContractionOp contraction,
   contraction.getIterationBounds(iter.sizes);
   auto maps = contraction.getIndexingMapsArray();
   auto result_ty = contraction->getResultTypes()[0];
-  auto shaped_ty = result_ty.dyn_cast<ShapedType>();
+  auto shaped_ty = mlir::dyn_cast<ShapedType>(result_ty);
   auto result =
       DispatchScalarType(result_ty, [&](auto dummy) -> InterpreterValue {
         using T = decltype(dummy);
@@ -299,21 +299,7 @@ InterpreterValue Extract(InterpreterState& state, vector::ExtractOp extract,
   for (int64_t offset : extract.getStaticPosition()) {
     state.CheckSuccess(result_view.Slice(0, offset), "index out of bounds");
   }
-  return result_view.Rank() == 0 ? result.ExtractElement({}) : result;
-}
-
-InterpreterValue ExtractElement(InterpreterState& state,
-                                vector::ExtractElementOp,
-                                const InterpreterValue& vector,
-                                std::optional<int64_t> index) {
-  if (!index) {
-    return vector.ExtractElement({});
-  }
-  if (!vector.View().InBounds(*index)) {
-    state.AddFailure("array index out of bounds");
-    return {};
-  }
-  return vector.ExtractElement(*index);
+  return result_view.num_dimensions() == 0 ? result.ExtractElement({}) : result;
 }
 
 InterpreterValue ExtractSlice(InterpreterState& state,
@@ -325,20 +311,6 @@ InterpreterValue ExtractSlice(InterpreterState& state,
                          ExtractVector<int64_t>(extract.getSizes()),
                          ExtractVector<int64_t>(extract.getStrides())),
       "subview out of bounds");
-  return out;
-}
-
-InterpreterValue FlatTranspose(InterpreterState&,
-                               vector::FlatTransposeOp transpose,
-                               const InterpreterValue& vector) {
-  auto out = vector.Clone();
-  // We currently only implement -matrix-default-layout=column-major.
-  int64_t rows = transpose.getRows();
-  int64_t cols = transpose.getColumns();
-  for (int64_t i = 0; i < rows * cols; ++i) {
-    int64_t src_index = (i % cols) * rows + (i / cols);
-    out.InsertElement({i}, vector.ExtractElement({src_index}));
-  }
   return out;
 }
 
@@ -393,23 +365,6 @@ InterpreterValue Insert(InterpreterState& state, vector::InsertOp insert,
                        "index out of bounds");
   }
   result_slice.Fill([&](auto indices) { return src.ExtractElement(indices); });
-  return result;
-}
-
-InterpreterValue InsertElement(InterpreterState& state, vector::InsertElementOp,
-                               const InterpreterValue& value,
-                               const InterpreterValue& vector,
-                               std::optional<int64_t> index) {
-  auto result = vector.Clone();
-  if (!index) {
-    result.InsertElement({}, value);
-    return result;
-  }
-  if (!result.View().InBounds(*index)) {
-    state.AddFailure("array index out of bounds");
-    return {};
-  }
-  result.InsertElement(*index, value);
   return result;
 }
 
@@ -621,8 +576,8 @@ InterpreterValue ShapeCast(InterpreterState&, vector::ShapeCastOp op,
                            const InterpreterValue& in) {
   auto out = in.CoerceLayout({});
   auto& out_view = out.View();
-  out_view.sizes =
-      llvm::to_vector(op->getResultTypes()[0].cast<ShapedType>().getShape());
+  out_view.sizes = llvm::to_vector(
+      mlir::cast<ShapedType>(op->getResultTypes()[0]).getShape());
   out_view.strides = BufferView::GetDefaultStrides(out_view.sizes);
   return out;
 }
@@ -635,7 +590,7 @@ InterpreterValue Shuffle(InterpreterState& state, vector::ShuffleOp shuffle,
   result_view.is_vector = true;
 
   auto mask = shuffle.getMask();
-  bool is_zero_dim = v0.View().Rank() == 0;
+  bool is_zero_dim = v0.View().num_dimensions() == 0;
   int64_t size0 = is_zero_dim ? 1 : v0.View().sizes[0];
   for (auto [dst_index, src_index] : llvm::enumerate(mask)) {
     auto src = src_index < size0 ? v0 : v1;
@@ -656,8 +611,8 @@ InterpreterValue Splat(InterpreterState&, vector::SplatOp op,
                        const InterpreterValue& in) {
   auto out = in.AsUnitTensor(/*is_vector=*/true);
   auto& view = out.View();
-  view.sizes =
-      llvm::to_vector(op->getResultTypes()[0].cast<ShapedType>().getShape());
+  view.sizes = llvm::to_vector(
+      mlir::cast<ShapedType>(op->getResultTypes()[0]).getShape());
   view.strides = SmallVector<int64_t>(view.sizes.size(), 0);
   return out;
 }
@@ -698,9 +653,9 @@ std::optional<InterpreterValue> ExtractMemorySlice(
   auto mem_slice = memory;
   auto& mem_slice_view = mem_slice.View();
   auto& vector_view = vector.View();
-  for (int64_t i = 0; i < mem_slice_view.Rank(); ++i) {
+  for (int64_t i = 0; i < mem_slice_view.num_dimensions(); ++i) {
     bool found = false;
-    for (int64_t j = 0; !found && j < vector_view.Rank(); ++j) {
+    for (int64_t j = 0; !found && j < vector_view.num_dimensions(); ++j) {
       if (map.getResult(j).isFunctionOfDim(i)) {
         int64_t size = mem_slice_view.sizes[i] - offsets[i];
         bool is_in_bounds = size >= vector_view.sizes[j];
@@ -801,10 +756,12 @@ llvm::SmallVector<InterpreterValue> TransferWrite(
   }
 
   const auto& src_view = src.View();
-  assert(transfer.getPermutationMap().getNumResults() == src_view.Rank() &&
+  assert(transfer.getPermutationMap().getNumResults() ==
+             src_view.num_dimensions() &&
          "expected matching number of results");
 
-  dst = transfer.getSource().getType().isa<TensorType>() ? dst.Clone() : dst;
+  dst =
+      mlir::isa<TensorType>(transfer.getSource().getType()) ? dst.Clone() : dst;
   auto dst_slice = ExtractMemorySlice(state, transfer.getPermutationMap(), dst,
                                       src, offsets, transfer.getInBounds());
   if (!dst_slice) {
@@ -832,7 +789,7 @@ InterpreterValue Transpose(InterpreterState&, vector::TransposeOp transpose,
 
 InterpreterValue TypeCast(InterpreterState&, vector::TypeCastOp,
                           InterpreterValue vector) {
-  vector.View().num_vector_dims = vector.View().Rank();
+  vector.View().num_vector_dims = vector.View().num_dimensions();
   return vector;
 }
 
@@ -847,13 +804,10 @@ REGISTER_MLIR_INTERPRETER_OP(Contract);
 REGISTER_MLIR_INTERPRETER_OP(CreateMask);
 REGISTER_MLIR_INTERPRETER_OP(ExpandLoad);
 REGISTER_MLIR_INTERPRETER_OP(Extract);
-REGISTER_MLIR_INTERPRETER_OP(ExtractElement);
 REGISTER_MLIR_INTERPRETER_OP(ExtractSlice);
 REGISTER_MLIR_INTERPRETER_OP(FusedMultiplyAdd);
-REGISTER_MLIR_INTERPRETER_OP(FlatTranspose);
 REGISTER_MLIR_INTERPRETER_OP(Gather);
 REGISTER_MLIR_INTERPRETER_OP(Insert);
-REGISTER_MLIR_INTERPRETER_OP(InsertElement);
 REGISTER_MLIR_INTERPRETER_OP(InsertSlice);
 REGISTER_MLIR_INTERPRETER_OP(Load);
 REGISTER_MLIR_INTERPRETER_OP(Mask);

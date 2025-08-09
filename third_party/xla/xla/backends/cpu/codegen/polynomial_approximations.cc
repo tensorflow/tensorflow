@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "xla/backends/cpu/codegen/polynomial_approximations.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <optional>
+#include <string>
 #include <vector>
 
 #include "absl/strings/string_view.h"
@@ -36,12 +39,20 @@ limitations under the License.
 #include "llvm/Support/TypeSize.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "xla/backends/cpu/codegen/vector_ir_builder.h"
-#include "xla/service/llvm_ir/math_ops.h"
+#include "xla/codegen/intrinsic/string_interner.h"
+#include "xla/codegen/intrinsic/vec_name_mangler.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
 namespace {
+
+// Returns the Intel VFABI prefix for a function with the given vector width.
+absl::string_view GetVfabiPrefix(size_t width) {
+  return codegen::intrinsic::StringInterner::Get().Intern(
+      codegen::intrinsic::GetMangledNamePrefix(
+          false, width, {codegen::intrinsic::VecParamCardinality::kVector}));
+}
 
 // Removes 'fn' from the list of symbols to keep in 'module'.
 void RemoveFunctionFromUsedList(llvm::Module* module, llvm::Function* fn) {
@@ -157,16 +168,6 @@ void RewriteCalls(llvm::Module* module, absl::string_view fn_name,
   // function.
   RemoveFunctionFromUsedList(module, fn);
   fn->eraseFromParent();
-}
-
-llvm::Value* GenerateVF32Tanh(llvm::IRBuilderBase* b, llvm::Value* input,
-                              int32_t /*vector_width*/) {
-  return llvm_ir::EmitFastTanh(b, input, /*with_fma=*/true);
-}
-
-llvm::Value* GenerateVF64Tanh(llvm::IRBuilderBase* b, llvm::Value* input,
-                              int32_t /*vector_width*/) {
-  return llvm_ir::EmitFastTanhF64(b, input, /*with_fma=*/true);
 }
 
 llvm::Value* GenerateVF32Exp(llvm::IRBuilderBase* b, llvm::Value* input,
@@ -412,45 +413,7 @@ llvm::Value* UpcastF16ToF32(llvm::IRBuilderBase* b, llvm::Value* input,
   return b->CreateFPCast(f32_result, input->getType(), "f32_to_f16");
 }
 
-//===----------------------------------------------------------------------===//
-// Tanh
-//===----------------------------------------------------------------------===//
 
-static constexpr absl::string_view kTanhV4F32Sym = "__xla_cpu_TanhV4F32";
-static constexpr absl::string_view kTanhV8F32Sym = "__xla_cpu_TanhV8F32";
-static constexpr absl::string_view kTanhV16F32Sym = "__xla_cpu_TanhV16F32";
-
-static constexpr absl::string_view kTanhV8F16Sym = "__xla_cpu_TanhV8F16";
-static constexpr absl::string_view kTanhV16F16Sym = "__xla_cpu_TanhV16F16";
-
-std::vector<llvm::VecDesc> TanhVectorization() {
-  return {
-      {"tanhf", kTanhV4F32Sym, llvm::ElementCount::getFixed(4), false,
-       "_ZGV_LLVM_N4v"},
-      {"llvm.tanh.f32", kTanhV4F32Sym, llvm::ElementCount::getFixed(4), false,
-       "_ZGV_LLVM_N4v"},
-
-      {"tanhf", kTanhV8F32Sym, llvm::ElementCount::getFixed(8), false,
-       "_ZGV_LLVM_N8v"},
-      {"llvm.tanh.f32", kTanhV8F32Sym, llvm::ElementCount::getFixed(8), false,
-       "_ZGV_LLVM_N8v"},
-
-      {"tanhf", kTanhV16F32Sym, llvm::ElementCount::getFixed(16), false,
-       "_ZGV_LLVM_N16v"},
-      {"llvm.tanh.f32", kTanhV16F32Sym, llvm::ElementCount::getFixed(16), false,
-       "_ZGV_LLVM_N16v"},
-
-      {"tanhf", kTanhV8F16Sym, llvm::ElementCount::getFixed(8), false,
-       "_ZGV_LLVM_N8v"},
-      {"llvm.tanh.f16", kTanhV8F16Sym, llvm::ElementCount::getFixed(8), false,
-       "_ZGV_LLVM_N8v"},
-
-      {"tanhf", kTanhV16F16Sym, llvm::ElementCount::getFixed(16), false,
-       "_ZGV_LLVM_N16v"},
-      {"llvm.tanh.f16", kTanhV16F16Sym, llvm::ElementCount::getFixed(16), false,
-       "_ZGV_LLVM_N16v"},
-  };
-}
 
 //===----------------------------------------------------------------------===//
 // Exp
@@ -466,29 +429,29 @@ static constexpr absl::string_view kExpV16F16Sym = "__xla_cpu_ExpV16F16";
 std::vector<llvm::VecDesc> ExpVectorization() {
   return {
       {"expf", kExpV4F32Sym, llvm::ElementCount::getFixed(4), false,
-       "_ZGV_LLVM_N4v"},
+       GetVfabiPrefix(4), std::nullopt},
       {"llvm.exp.f32", kExpV4F32Sym, llvm::ElementCount::getFixed(4), false,
-       "_ZGV_LLVM_N4v"},
+       GetVfabiPrefix(4), std::nullopt},
 
       {"expf", kExpV8F32Sym, llvm::ElementCount::getFixed(8), false,
-       "_ZGV_LLVM_N8v"},
+       GetVfabiPrefix(8), std::nullopt},
       {"llvm.exp.f32", kExpV8F32Sym, llvm::ElementCount::getFixed(8), false,
-       "_ZGV_LLVM_N8v"},
+       GetVfabiPrefix(8), std::nullopt},
 
       {"expf", kExpV16F32Sym, llvm::ElementCount::getFixed(16), false,
-       "_ZGV_LLVM_N16v"},
+       GetVfabiPrefix(16), std::nullopt},
       {"llvm.exp.f32", kExpV16F32Sym, llvm::ElementCount::getFixed(16), false,
-       "_ZGV_LLVM_N16v"},
+       GetVfabiPrefix(16), std::nullopt},
 
       {"expf", kExpV8F16Sym, llvm::ElementCount::getFixed(8), false,
-       "_ZGV_LLVM_N16v"},
+       GetVfabiPrefix(8), std::nullopt},
       {"llvm.exp.f16", kExpV8F16Sym, llvm::ElementCount::getFixed(8), false,
-       "_ZGV_LLVM_N8v"},
+       GetVfabiPrefix(8), std::nullopt},
 
       {"expf", kExpV16F16Sym, llvm::ElementCount::getFixed(16), false,
-       "_ZGV_LLVM_N16v"},
+       GetVfabiPrefix(16), std::nullopt},
       {"llvm.exp.f16", kExpV16F16Sym, llvm::ElementCount::getFixed(16), false,
-       "_ZGV_LLVM_N16v"},
+       GetVfabiPrefix(16), std::nullopt},
   };
 }
 
@@ -506,29 +469,29 @@ static constexpr absl::string_view kLogV16F16Sym = "__xla_cpu_LogV16F16";
 std::vector<llvm::VecDesc> LogVectorization() {
   return {
       {"logf", kLogV4F32Sym, llvm::ElementCount::getFixed(4), false,
-       "_ZGV_LLVM_N4v"},
+       GetVfabiPrefix(4), std::nullopt},
       {"llvm.log.f32", kLogV4F32Sym, llvm::ElementCount::getFixed(4), false,
-       "_ZGV_LLVM_N4v"},
+       GetVfabiPrefix(4), std::nullopt},
 
       {"logf", kLogV8F32Sym, llvm::ElementCount::getFixed(8), false,
-       "_ZGV_LLVM_N8v"},
+       GetVfabiPrefix(8), std::nullopt},
       {"llvm.log.f32", kLogV8F32Sym, llvm::ElementCount::getFixed(8), false,
-       "_ZGV_LLVM_N8v"},
+       GetVfabiPrefix(8), std::nullopt},
 
       {"logf", kLogV16F32Sym, llvm::ElementCount::getFixed(16), false,
-       "_ZGV_LLVM_N16v"},
+       GetVfabiPrefix(16), std::nullopt},
       {"llvm.log.f32", kLogV16F32Sym, llvm::ElementCount::getFixed(16), false,
-       "_ZGV_LLVM_N16v"},
+       GetVfabiPrefix(16), std::nullopt},
 
       {"logf", kLogV8F16Sym, llvm::ElementCount::getFixed(8), false,
-       "_ZGV_LLVM_N8v"},
+       GetVfabiPrefix(8), std::nullopt},
       {"llvm.log.f16", kLogV8F16Sym, llvm::ElementCount::getFixed(8), false,
-       "_ZGV_LLVM_N8v"},
+       GetVfabiPrefix(8), std::nullopt},
 
       {"logf", kLogV16F16Sym, llvm::ElementCount::getFixed(16), false,
-       "_ZGV_LLVM_N16v"},
+       GetVfabiPrefix(16), std::nullopt},
       {"llvm.log.f16", kLogV16F16Sym, llvm::ElementCount::getFixed(16), false,
-       "_ZGV_LLVM_N16v"},
+       GetVfabiPrefix(16), std::nullopt},
   };
 }
 
@@ -537,12 +500,10 @@ std::vector<llvm::VecDesc> LogVectorization() {
 std::vector<llvm::VecDesc> PolynomialApproximationsVectorization() {
   auto exp = ExpVectorization();
   auto log = LogVectorization();
-  auto tanh = TanhVectorization();
 
   std::vector<llvm::VecDesc> vec_descs;
   vec_descs.insert(vec_descs.end(), exp.begin(), exp.end());
   vec_descs.insert(vec_descs.end(), log.begin(), log.end());
-  vec_descs.insert(vec_descs.end(), tanh.begin(), tanh.end());
   return vec_descs;
 }
 
@@ -553,25 +514,6 @@ void RewriteToPolynomialApproximations(llvm::Module* module,
       std::bind(RewriteCalls, module, std::placeholders::_1,
                 std::placeholders::_2, std::placeholders::_3, fast_math_flags);
 
-  //===----------------------------------------------------------------===//
-  // Tanh
-  //===----------------------------------------------------------------===//
-
-  rewrite_calls("tanhf", GenerateVF32Tanh, /*vector_width=*/1);
-  rewrite_calls("llvm.tanh.f32", GenerateVF32Tanh, /*vector_width=*/1);
-  rewrite_calls(kTanhV4F32Sym, GenerateVF32Tanh, /*vector_width=*/4);
-  rewrite_calls(kTanhV8F32Sym, GenerateVF32Tanh, /*vector_width=*/8);
-  rewrite_calls(kTanhV16F32Sym, GenerateVF32Tanh, /*vector_width=*/16);
-
-  rewrite_calls("llvm.tanh.f16", UpcastF16ToF32<GenerateVF32Tanh>,
-                /*vector_width=*/1);
-  rewrite_calls(kTanhV8F16Sym, UpcastF16ToF32<GenerateVF32Tanh>,
-                /*vector_width=*/8);
-  rewrite_calls(kTanhV16F16Sym, UpcastF16ToF32<GenerateVF32Tanh>,
-                /*vector_width=*/16);
-
-  // TODO(penporn): Re-enable after fixing JAX issue #23590.
-  // rewrite_calls("tanh", GenerateVF64Tanh, /*vector_width=*/1);
 
   //===----------------------------------------------------------------===//
   // Exp

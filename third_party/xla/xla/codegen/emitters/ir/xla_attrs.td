@@ -77,4 +77,28 @@ def XLA_BackendKindAttr :
   let assemblyFormat = "`<` $value `>`";
 }
 
+def XLA_ExtraBackendOptionsAttr
+  : ArrayOfAttr<XlaDialect,
+                "ExtraBackendOptions",
+                "extra_backend_options",
+                "mlir::StringAttr"> {
+}
+
+def XLA_CpuMemoryRegionNameAttr
+  : AttrDef<XlaDialect, "CpuMemoryRegionName", [], "mlir::StringAttr"> {
+  let mnemonic = "cpu_memory_region_name";
+}
+
+def WorkGroupDimension : I32EnumAttr<"WorkGroupDimension",
+    "a dimension, either 'x', 'y', or 'z'",
+    [
+      I32EnumAttrCase<"x", 0>,
+      I32EnumAttrCase<"y", 1>,
+      I32EnumAttrCase<"z", 2>
+    ]>{
+  let genSpecializedAttr = 0;
+  let cppNamespace = "::xla";
+}
+def WorkGroupDimensionAttr : EnumAttr<XlaDialect, WorkGroupDimension, "dim">;
+
 #endif // XLA_CODEGEN_EMITTERS_IR_XLA_ATTRS

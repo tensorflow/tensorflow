@@ -13,7 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cassert>
+#include <memory>
 #include <queue>
+#include <utility>
 
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
@@ -94,7 +97,7 @@ LogicalResult ApplyPatternsLocallyUntilConverged(
     auto walk_result =
         op_with_regions->walk([&patterns, &changed](Operation* operation) {
           GreedyRewriteConfig config;
-          config.strictMode = mlir::GreedyRewriteStrictness::ExistingOps;
+          config.setStrictness(mlir::GreedyRewriteStrictness::ExistingOps);
           bool op_erased;
           if (failed(applyOpPatternsAndFold(operation, patterns, config,
                                             &op_erased)))

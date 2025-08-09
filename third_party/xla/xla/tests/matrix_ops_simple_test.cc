@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <variant>
 
+#include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -34,7 +35,6 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tests/test_macros.h"
 #include "xla/tests/test_utils.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
@@ -43,11 +43,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-#ifdef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16
-using TypesF16F32 = ::testing::Types<float>;
-#else
 using TypesF16F32 = ::testing::Types<Eigen::half, float>;
-#endif
 
 class MatOpsSimpleTest : public ClientLibraryTestBase {};
 
@@ -56,7 +52,7 @@ class MatOpsSimpleTest_F16F32 : public MatOpsSimpleTest {};
 
 TYPED_TEST_CASE(MatOpsSimpleTest_F16F32, TypesF16F32);
 
-XLA_TYPED_TEST(MatOpsSimpleTest_F16F32, ExpTwoByTwoValues) {
+TYPED_TEST(MatOpsSimpleTest_F16F32, ExpTwoByTwoValues) {
   using T = TypeParam;
   XlaBuilder builder("exp_2x2");
   auto data = ConstantR2FromArray2D<T>(&builder, {
@@ -72,7 +68,7 @@ XLA_TYPED_TEST(MatOpsSimpleTest_F16F32, ExpTwoByTwoValues) {
   this->ComputeAndCompareLiteral(&builder, expected, {}, ErrorSpec(1e-5));
 }
 
-XLA_TYPED_TEST(MatOpsSimpleTest_F16F32, MapTwoByTwo) {
+TYPED_TEST(MatOpsSimpleTest_F16F32, MapTwoByTwo) {
   using T = TypeParam;
   XlaComputation add_half;
   {
@@ -100,7 +96,7 @@ XLA_TYPED_TEST(MatOpsSimpleTest_F16F32, MapTwoByTwo) {
   this->ComputeAndCompareLiteral(&builder, expected, {}, ErrorSpec(1e-5));
 }
 
-XLA_TYPED_TEST(MatOpsSimpleTest_F16F32, MaxTwoByTwoValues) {
+TYPED_TEST(MatOpsSimpleTest_F16F32, MaxTwoByTwoValues) {
   using T = TypeParam;
   XlaBuilder builder("max_2x2");
   auto lhs = ConstantR2FromArray2D<T>(&builder, {
@@ -163,10 +159,8 @@ std::string PrintTestLinspaceMaxParam(
   return absl::StrCat(param.rows, "r", param.cols, "c");
 }
 
-#ifndef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16
-XLA_TEST_P(TestLinspaceMaxParametric, TestF16) { TestImpl<Eigen::half>(); }
-#endif
-XLA_TEST_P(TestLinspaceMaxParametric, TestF32) { TestImpl<float>(); }
+TEST_P(TestLinspaceMaxParametric, TestF16) { TestImpl<Eigen::half>(); }
+TEST_P(TestLinspaceMaxParametric, TestF32) { TestImpl<float>(); }
 
 INSTANTIATE_TEST_CASE_P(
     TestLinspaceMax, TestLinspaceMaxParametric,
@@ -429,28 +423,26 @@ class MatOpsDotAddTest
   }
 };
 
-XLA_TEST_P(MatOpsDotAddTest, Dot_Add_2x2_2x2BF16) { TestImpl<bfloat16>(); }
-#ifndef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16
-XLA_TEST_P(MatOpsDotAddTest, Dot_Add_2x2_2x2F16) { TestImpl<Eigen::half>(); }
-XLA_TEST_P(MatOpsDotAddTest, Dot_BiasAdd_2x2_2x2F16) {
+TEST_P(MatOpsDotAddTest, Dot_Add_2x2_2x2BF16) { TestImpl<bfloat16>(); }
+TEST_P(MatOpsDotAddTest, Dot_Add_2x2_2x2F16) { TestImpl<Eigen::half>(); }
+TEST_P(MatOpsDotAddTest, Dot_BiasAdd_2x2_2x2F16) {
   TestImplBiasAddEpilogueFusion<Eigen::half>();
 }
-XLA_TEST_P(MatOpsDotAddTest, Dot_ReluActivation_2x2_2x2F16) {
+TEST_P(MatOpsDotAddTest, Dot_ReluActivation_2x2_2x2F16) {
   TestImplReluActivationEpilogueFusion<Eigen::half>();
 }
-XLA_TEST_P(MatOpsDotAddTest, Dot_BiasAddReluActivation_2x2_2x2F16) {
+TEST_P(MatOpsDotAddTest, Dot_BiasAddReluActivation_2x2_2x2F16) {
   TestImplBiasAddReluActivationEpilogueFusion<Eigen::half>();
 }
-#endif
 
-XLA_TEST_P(MatOpsDotAddTest, Dot_Add_2x2_2x2F32) { TestImpl<float>(); }
-XLA_TEST_P(MatOpsDotAddTest, Dot_BiasAdd_2x2_2x2F32) {
+TEST_P(MatOpsDotAddTest, Dot_Add_2x2_2x2F32) { TestImpl<float>(); }
+TEST_P(MatOpsDotAddTest, Dot_BiasAdd_2x2_2x2F32) {
   TestImplBiasAddEpilogueFusion<float>();
 }
-XLA_TEST_P(MatOpsDotAddTest, Dot_ReluActivation_2x2_2x2F32) {
+TEST_P(MatOpsDotAddTest, Dot_ReluActivation_2x2_2x2F32) {
   TestImplReluActivationEpilogueFusion<float>();
 }
-XLA_TEST_P(MatOpsDotAddTest, Dot_BiasAddReluActivation_2x2_2x2F32) {
+TEST_P(MatOpsDotAddTest, Dot_BiasAddReluActivation_2x2_2x2F32) {
   TestImplBiasAddReluActivationEpilogueFusion<float>();
 }
 

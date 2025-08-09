@@ -52,6 +52,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_sharding_util.h"
 #include "xla/hlo/builder/sharding_builder.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace tensorflow {
@@ -84,6 +85,8 @@ constexpr char kShardingAttr[] = "mhlo.sharding";
 constexpr char kUseSpmdAttr[] = "use_spmd_for_xla_partitioning";
 constexpr char kAliasingAttr[] = "tf.aliasing_output";
 constexpr char kNumCoresPerReplicaAttr[] = "num_cores_per_replica";
+const char kShardingAttribute[] = "_XlaSharding";
+const char kShardingAttributeV2[] = "_XlaShardingV2";
 
 #define GEN_PASS_DEF_TPUSHARDINGIDENTIFICATIONPASS
 #include "tensorflow/compiler/mlir/tf2xla/internal/passes/clustering_passes.h.inc"
@@ -181,13 +184,18 @@ mlir::Operation* GetXlaShardingFromOperand(Value value) {
 std::optional<StringRef> GetXlaShardingFromOperator(mlir::Operation* op) {
   if (auto partitioned_output =
           llvm::dyn_cast<mlir::TF::TPUPartitionedOutputV2Op>(op)) {
+    if (partitioned_output.get_XlaShardingV2().has_value()) {
+      return partitioned_output.get_XlaShardingV2();
+    }
     return partitioned_output.get_XlaSharding();
   } else if (auto partitioned_input =
                  llvm::dyn_cast<mlir::TF::TPUPartitionedInputV2Op>(op)) {
+    if (partitioned_input.get_XlaShardingV2().has_value()) {
+      return partitioned_input.get_XlaShardingV2();
+    }
     return partitioned_input.get_XlaSharding();
-  } else {
-    return std::nullopt;
   }
+  return std::nullopt;
 }
 
 // Returns the sharding string from a op-sharding variant if it is available.
@@ -314,6 +322,13 @@ std::optional<llvm::StringRef> AssignLogicalDeviceFromTPUReplicatedCoreAttr(
   return std::nullopt;
 }
 
+absl::StatusOr<std::optional<llvm::StringRef>> GetXlaShardingFromShardingOp(
+    mlir::TF::XlaShardingOp sharding) {
+  TF_ASSIGN_OR_RETURN(auto attr, GetXlaShardingAttrFromShardingOp(sharding));
+  return attr ? ::std::optional<::llvm::StringRef>(attr.getValue())
+              : (::std::nullopt);
+}
+
 // Returns XLA sharding from a XlaSharding op connected to an argument value. If
 // value is a resource type then XlaSharding op will be connected to a
 // ReadVariable op. XlaSharding op may be direct user of inputs but it may also
@@ -324,7 +339,7 @@ std::optional<llvm::StringRef> AssignLogicalDeviceFromTPUReplicatedCoreAttr(
 // Case) ops and Caller return values.
 // TODO(hongjunchoi): Consider explicitly checking op patterns to detect sharded
 // inputs.
-std::optional<llvm::StringRef> GetXlaShardingFromArg(
+absl::StatusOr<std::optional<llvm::StringRef>> GetXlaShardingFromArg(
     Value value, const llvm::SmallVector<std::string>& logical_device_vec) {
   llvm::SmallPtrSet<Value, 4> visited_values;
   llvm::SmallVector<Value, 4> values_to_visit{value};
@@ -336,7 +351,7 @@ std::optional<llvm::StringRef> GetXlaShardingFromArg(
       for (auto& use : value_to_visit.getUses()) {
         Operation* owner = use.getOwner();
         if (auto sharding = llvm::dyn_cast<mlir::TF::XlaShardingOp>(owner))
-          return sharding.get_XlaSharding();
+          return GetXlaShardingFromShardingOp(sharding);
 
         if (auto logical_device = AssignLogicalDeviceFromTPUReplicatedCoreAttr(
                 owner, logical_device_vec)) {
@@ -392,7 +407,7 @@ std::optional<llvm::StringRef> GetXlaShardingFromArg(
 // argument to the `cluster_func` directly feeds into another function call op,
 // then recursively walk the function definition to find the connected
 // XlaSharding op.
-void IdentifyXlaShardingForComputationInputs(
+absl::Status IdentifyXlaShardingForComputationInputs(
     const llvm::SmallVector<std::string>& logical_device_vec,
     bool infer_from_computation, mlir::tf_device::ClusterFuncOp cluster_func,
     mlir::func::FuncOp func, Builder* builder,
@@ -428,7 +443,8 @@ void IdentifyXlaShardingForComputationInputs(
     }
 
     if (infer_from_computation) {
-      auto arg_sharding = GetXlaShardingFromArg(arg, logical_device_vec);
+      TF_ASSIGN_OR_RETURN(auto arg_sharding,
+                          GetXlaShardingFromArg(arg, logical_device_vec));
       if (arg_sharding) {
         sharding_for_args.push_back(arg_sharding.value());
         continue;
@@ -437,6 +453,7 @@ void IdentifyXlaShardingForComputationInputs(
 
     sharding_for_args.push_back(std::nullopt);
   }
+  return absl::OkStatus();
 }
 
 // Returns a TPUPartitionedOutput or TPUPartitionedInput op with XLA sharding
@@ -496,7 +513,7 @@ absl::Status DetermineShardingFromAlias(
 // Case) ops and Caller argument values.
 // TODO(hongjunchoi): Consider explicitly checking op patterns to detect sharded
 // inputs.
-std::optional<StringRef> GetXlaShardingFromRetval(
+absl::StatusOr<std::optional<StringRef>> GetXlaShardingFromRetval(
     Value value, const llvm::SmallVector<std::string>& logical_device_vec) {
   llvm::SmallPtrSet<Value, 4> visited_values;
   llvm::SmallVector<Value, 4> values_to_visit;
@@ -515,9 +532,13 @@ std::optional<StringRef> GetXlaShardingFromRetval(
     }
 
     if (auto sharding = llvm::dyn_cast_or_null<mlir::TF::XlaShardingOp>(def))
-      return sharding.get_XlaSharding();
+      return GetXlaShardingFromShardingOp(sharding);
 
-    if (auto sharding = def->getAttrOfType<StringAttr>("_XlaSharding")) {
+    if (auto sharding = def->getAttrOfType<StringAttr>(kShardingAttributeV2)) {
+      return sharding.strref();
+    }
+
+    if (auto sharding = def->getAttrOfType<StringAttr>(kShardingAttribute)) {
       return sharding.strref();
     }
 
@@ -560,7 +581,7 @@ std::optional<StringRef> GetXlaShardingFromRetval(
 
 // Tries to extract sharding configurations for all outputs by parsing
 // XlaSharding/ TPUPartitionedOutput op connected to the retvals/results.
-void IdentifyXlaShardingForComputationOutputs(
+absl::Status IdentifyXlaShardingForComputationOutputs(
     const llvm::SmallVector<std::string>& logical_device_vec,
     bool infer_from_computation, mlir::tf_device::ClusterFuncOp cluster_func,
     mlir::func::FuncOp func, Builder* builder,
@@ -587,8 +608,10 @@ void IdentifyXlaShardingForComputationOutputs(
     }
 
     if (infer_from_computation) {
-      if (auto retval_sharding =
-              GetXlaShardingFromRetval(retval.get(), logical_device_vec)) {
+      TF_ASSIGN_OR_RETURN(
+          auto retval_sharding,
+          GetXlaShardingFromRetval(retval.get(), logical_device_vec));
+      if (retval_sharding) {
         sharding_for_rets.push_back(retval_sharding.value());
         continue;
       }
@@ -596,6 +619,7 @@ void IdentifyXlaShardingForComputationOutputs(
 
     sharding_for_rets.push_back(std::nullopt);
   }
+  return absl::OkStatus();
 }
 
 void SetReplicatedOrMaximalShardingIfNoShardingFound(
@@ -648,12 +672,12 @@ absl::Status IdentifyXlaShardingForInputsAndOutputs(
     OpShardingVector& output_sharding) {
   OptionalOpShardingVector optional_input_sharding;
   OptionalOpShardingVector optional_output_sharding;
-  IdentifyXlaShardingForComputationInputs(
+  TF_RETURN_IF_ERROR(IdentifyXlaShardingForComputationInputs(
       logical_device_vec, infer_from_computation, cluster_func, func, builder,
-      optional_input_sharding);
-  IdentifyXlaShardingForComputationOutputs(
+      optional_input_sharding));
+  TF_RETURN_IF_ERROR(IdentifyXlaShardingForComputationOutputs(
       logical_device_vec, infer_from_computation, cluster_func, func, builder,
-      optional_output_sharding);
+      optional_output_sharding));
   TF_RETURN_IF_ERROR(DetermineShardingFromAlias(func, optional_input_sharding,
                                                 optional_output_sharding));
   SetReplicatedOrMaximalShardingIfNoShardingFound(logical_device_vec, use_spmd,
@@ -700,8 +724,7 @@ LogicalResult IdentifyXlaShardingForTPUComputation(
           /*infer_from_computation=*/true, cluster_func, func, builder,
           sharding_for_args, sharding_for_rets);
       !status.ok()) {
-    LOG(ERROR) << status;
-    return mlir::failure();
+    return cluster_func.emitOpError(status.message());
   };
 
   auto has_maximal_sharding =
@@ -730,8 +753,7 @@ LogicalResult IdentifyXlaShardingForTPUComputation(
             /*infer_from_computation=*/false, cluster_func, func, builder,
             sharding_for_args, sharding_for_rets);
         !status.ok()) {
-      LOG(ERROR) << status;
-      return mlir::failure();
+      return cluster_func.emitOpError(status.message());
     }
   }
 

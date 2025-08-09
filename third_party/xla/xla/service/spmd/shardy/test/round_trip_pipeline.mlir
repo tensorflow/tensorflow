@@ -230,12 +230,21 @@ func.func @main(%arg0: tensor<8x16xf32>) -> (tensor<8x16xf32>) {
 
 // -----
 
+// CHECK-LABEL: func @main
+func.func @main(%arg0: tensor<8x16xf32>) -> (tensor<8x16xf32>) {
+  // CHECK: sdy.propagation_barrier %arg0 allowed_direction=BACKWARD : tensor<8x16xf32>
+  %r = sdy.propagation_barrier %arg0 allowed_direction=BACKWARD : tensor<8x16xf32>
+  return %r : tensor<8x16xf32>
+}
+
+// -----
+
 // Test call with backend config and multiple results. This is what JAX would
 // emit in the frontend, and then we'd convert it to a NamedComputationOp when
 // coming back.
 
 func.func @main(%arg0: tensor<8x2xi32>) -> tensor<8x2xi32> {
-  // CHECK:      %[[NC:.*]]:2 = sdy.named_computation<"g.2.2">(%arg0) (%arg1: tensor<8x2xi32>) {
+  // CHECK:      %[[NC:.*]]:2 = sdy.named_computation<"g.2.{{[0-9]}}">(%arg0) (%arg1: tensor<8x2xi32>) {
   // CHECK-NEXT:   %[[MUL:.*]] = stablehlo.multiply %arg1, %arg1 : tensor<8x2xi32>
   // CHECK-NEXT:   sdy.return %[[MUL]], %[[MUL]] : tensor<8x2xi32>, tensor<8x2xi32>
   // CHECK-NEXT: } {mhlo.frontend_attributes = {backend_config = "{\22flag_configs\22:[],\22scoped_memory_configs\22:[],\22device_type\22:\22DEVICE_TYPE_HOST\22,\22used_scoped_memory_configs\22:[]}"}} : (tensor<8x2xi32>) -> (tensor<8x2xi32>, tensor<8x2xi32>)

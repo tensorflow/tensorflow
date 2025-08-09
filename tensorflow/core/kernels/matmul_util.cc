@@ -63,15 +63,16 @@ namespace {
 struct BlasLtMatmulPlanMap {
   absl::Mutex mu;
 
-  template <class... Args>
-  auto emplace(Args&&... args) {
+  template <class K, class... Args>
+  auto try_emplace(K&& k, Args&&... args) {
     absl::MutexLock lock(&mu);
-    return map_.emplace(std::forward<Args>(args)...);
+    return map_.try_emplace(std::forward<K>(k), std::forward<Args>(args)...);
   }
 
  private:
-  absl::flat_hash_map<BlasLtMatmulPlanParams, PlanAndAlgorithms> map_
-      ABSL_GUARDED_BY(mu);
+  absl::flat_hash_map<BlasLtMatmulPlanParams,
+                      std::unique_ptr<PlanAndAlgorithms>>
+      map_ ABSL_GUARDED_BY(mu);
 };
 
 int MatmulMaxAutotuneAlgorithmCount() {
@@ -125,7 +126,8 @@ StatusOr<se::blas::ComputationType> GetBlasComputationType(
 
   static BlasLtMatmulPlanMap plan_map;
 
-  auto [ptr, inserted] = plan_map.emplace(params, PlanAndAlgorithms{});
+  auto [ptr, inserted] =
+      plan_map.try_emplace(params, std::make_unique<PlanAndAlgorithms>());
   if (inserted) {
     TF_ASSIGN_OR_RETURN(auto xlatype,
                         se::gpu::AsXlaPrimitiveType(params.dtype));
@@ -181,10 +183,10 @@ StatusOr<se::blas::ComputationType> GetBlasComputationType(
         auto algorithms,
         plan->GetAlgorithms(stream, *max_algorithm_count, max_scratch_size));
 
-    ptr->second = {std::move(plan), std::move(algorithms)};
+    *ptr->second = {std::move(plan), std::move(algorithms)};
   }
   *ppmu = &plan_map.mu;
-  return &ptr->second;
+  return ptr->second.get();
 }
 
 Status PlanAndAlgorithms::ExecuteOnStream(
@@ -196,6 +198,7 @@ Status PlanAndAlgorithms::ExecuteOnStream(
   if (!plan || algorithm_idx >= algorithms.size()) {
     return errors::Internal("MatmulPlan or algorithms are not initialized!");
   }
+  TF_RETURN_IF_ERROR(plan->SetAlgorithm(algorithms[algorithm_idx]));
   return plan->ExecuteOnStream(stream, a, b, c, c,
                                bias,                    // bias_buffer
                                se::DeviceMemoryBase{},  // aux_buffer
@@ -204,8 +207,7 @@ Status PlanAndAlgorithms::ExecuteOnStream(
                                se::DeviceMemoryBase{},  // c_scale_buffer
                                se::DeviceMemoryBase{},  // d_scale_buffer
                                se::DeviceMemoryBase{},  // d_amax_buffer
-                               algorithms[algorithm_idx], scratch_allocator,
-                               profile_result);
+                               scratch_allocator, profile_result);
 }
 
 }  // namespace tensorflow

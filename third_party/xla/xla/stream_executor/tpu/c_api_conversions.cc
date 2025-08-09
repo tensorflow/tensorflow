@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
+#include "xla/primitive_util.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo.pb.h"
@@ -273,10 +274,16 @@ stream_executor::DeviceMemoryBase FromC(const SE_DeviceMemoryBase& se_base) {
 void ToC(const xla::Shape& xla_shape, XLA_Shape* c_shape) {
   c_shape->element_type = xla_shape.element_type();
 
-  CreateVector(xla_shape.dimensions(), &c_shape->dimensions);
-  CreateVector(xla_shape.dynamic_dimensions(), &c_shape->dynamic_dimensions);
+  if (xla_shape.IsArray()) {
+    CreateVector(xla_shape.dimensions(), &c_shape->dimensions);
+    CreateVector(xla_shape.dynamic_dimensions(), &c_shape->dynamic_dimensions);
+  } else {
+    c_shape->dimensions.size = 0;
+    c_shape->dynamic_dimensions.size = 0;
+  }
 
-  c_shape->ntuple_shapes = xla_shape.tuple_shapes_size();
+  c_shape->ntuple_shapes =
+      xla_shape.IsTuple() ? xla_shape.tuple_shapes().size() : 0;
   if (c_shape->ntuple_shapes > 0) {
     c_shape->tuple_shapes = new XLA_Shape[c_shape->ntuple_shapes];
     for (int i = 0; i < c_shape->ntuple_shapes; ++i) {
@@ -302,8 +309,13 @@ xla::Shape FromC(const XLA_Shape* c_shape) {
     tuple_shapes.push_back(FromC(&c_shape->tuple_shapes[i]));
   }
 
-  xla::Shape result(static_cast<xla::PrimitiveType>(c_shape->element_type),
-                    dims, dynamic_dims, std::move(tuple_shapes));
+  const auto type = static_cast<xla::PrimitiveType>(c_shape->element_type);
+  xla::Shape result = xla::primitive_util::IsArrayType(type)
+                          ? xla::Shape(type, dims, dynamic_dims)
+                      : type == xla::PrimitiveType::TUPLE
+                          ? xla::Shape(std::move(tuple_shapes))
+                          // type is TOKEN or OPAQUE_TYPE.
+                          : xla::Shape(type);
   if (c_shape->has_layout) {
     *result.mutable_layout() = FromC(&c_shape->layout);
   }
@@ -330,31 +342,6 @@ void Destroy(XLA_Shape* c_shape) {
 
 void ToC(const xla::Layout& layout, XLA_Layout* c_layout) {
   CreateVector(layout.minor_to_major(), &c_layout->minor_to_major);
-  {
-    const int n = layout.dim_level_types_size();
-    absl::InlinedVector<xla::DimLevelType, xla::InlineRank()> dim_level_types(
-        n);
-    for (int i = 0; i < n; i++) {
-      dim_level_types[i] = layout.dim_level_type(i);
-    }
-    CreateVector(dim_level_types, &c_layout->dim_level_types);
-  }
-  {
-    const int n = layout.dim_unique_size();
-    absl::InlinedVector<bool, xla::InlineRank()> dim_unique(n);
-    for (int i = 0; i < n; i++) {
-      dim_unique[i] = layout.dim_unique(i);
-    }
-    CreateVector(dim_unique, &c_layout->dim_unique);
-  }
-  {
-    const int n = layout.dim_ordered_size();
-    absl::InlinedVector<bool, xla::InlineRank()> dim_ordered(n);
-    for (int i = 0; i < n; i++) {
-      dim_ordered[i] = layout.dim_ordered(i);
-    }
-    CreateVector(dim_ordered, &c_layout->dim_ordered);
-  }
   c_layout->index_primitive_type = layout.index_primitive_type();
   c_layout->pointer_primitive_type = layout.pointer_primitive_type();
   c_layout->element_size_in_bits = layout.element_size_in_bits();
@@ -368,19 +355,6 @@ void ToC(const xla::Layout& layout, XLA_Layout* c_layout) {
 
 xla::Layout FromC(const XLA_Layout* c_layout) {
   absl::Span<const int64_t> minor_to_major = MakeSpan(c_layout->minor_to_major);
-  absl::Span<const int> dim_level_type_ints =
-      MakeSpan(c_layout->dim_level_types);
-  xla::DimLevelTypeVector dim_level_types;
-  dim_level_types.reserve(dim_level_type_ints.size());
-  for (int dim_level_type : dim_level_type_ints) {
-    dim_level_types.push_back(static_cast<xla::DimLevelType>(dim_level_type));
-  }
-  absl::Span<const int> dim_unique_ints = MakeSpan(c_layout->dim_unique);
-  absl::InlinedVector<bool, xla::InlineRank()> dim_unique(
-      dim_unique_ints.begin(), dim_unique_ints.end());
-  absl::Span<const int> dim_ordered_ints = MakeSpan(c_layout->dim_unique);
-  absl::InlinedVector<bool, xla::InlineRank()> dim_ordered(
-      dim_ordered_ints.begin(), dim_ordered_ints.end());
   absl::InlinedVector<xla::Tile, 1> tiles;
   const XLA_Tile* c_tiles = c_layout->tiles.size > TPU_C_API_MAX_INLINED
                                 ? c_layout->tiles.heap
@@ -390,10 +364,10 @@ xla::Layout FromC(const XLA_Layout* c_layout) {
     tiles.push_back(FromC(&c_tiles[i]));
   }
   return xla::Layout(
-      minor_to_major, dim_level_types, dim_unique, dim_ordered, tiles,
-      c_layout->tail_padding_alignment_in_elements,
+      minor_to_major, tiles,
       static_cast<xla::PrimitiveType>(c_layout->index_primitive_type),
       static_cast<xla::PrimitiveType>(c_layout->pointer_primitive_type),
+      c_layout->tail_padding_alignment_in_elements,
       c_layout->element_size_in_bits, c_layout->memory_space,
       /*split_configs=*/{},
       /*physical_shape=*/nullptr,
@@ -403,9 +377,6 @@ xla::Layout FromC(const XLA_Layout* c_layout) {
 void Destroy(XLA_Layout* c_layout) {
   if (c_layout->minor_to_major.size > TPU_C_API_MAX_INLINED) {
     delete[] c_layout->minor_to_major.heap;
-  }
-  if (c_layout->dim_level_types.size > TPU_C_API_MAX_INLINED) {
-    delete[] c_layout->dim_level_types.heap;
   }
   if (c_layout->tiles.size > TPU_C_API_MAX_INLINED) {
     delete[] c_layout->tiles.heap;

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/tools/run_hlo_module.h"
 
+#include <chrono>
+#include <cstddef>
 #include <functional>
 #include <iomanip>
 #include <iostream>
@@ -32,6 +34,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -147,19 +150,15 @@ absl::StatusOr<Literal> ExecuteWithRunner(
   std::cerr << "Running HLO module with runner " << runner->Name() << "...\n";
   XLA_VLOG_LINES(1, module->ToString());
   const auto start = std::chrono::high_resolution_clock::now();
-  ExecutionProfile profile;
   auto result_status =
       (buffer_assignment_proto == nullptr)
-          ? runner->Execute(std::move(module), args, run_hlo_passes, &profile)
+          ? runner->Execute(std::move(module), args, run_hlo_passes)
           : runner->ExecuteWithBufferAssignment(std::move(module),
                                                 buffer_assignment_proto, args,
-                                                run_hlo_passes, &profile);
+                                                run_hlo_passes);
   const auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> diff = end - start;
   std::cerr << "... compiled and ran in " << diff.count() << "s.\n";
-  double run_time = static_cast<double>(profile.compute_time_ns()) / 1e9;
-  std::cerr << "execution time for runner " << runner->Name() << ": "
-            << run_time << "s.\n";
 
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       result_status.status(),
@@ -226,9 +225,12 @@ absl::Status RunAndCompareInternal(
           "number of expected arguments.");
     } else {
       for (int i = 0; i < args.size(); ++i) {
-        if (!literal_comparison::EqualShapes(
-                 xla::Shape(args[i].shape()),
-                 xla::Shape(iteration_literals_proto->arguments(i).shape()))
+        TF_ASSIGN_OR_RETURN(
+            auto expected_shape,
+            xla::Shape::FromProto(
+                iteration_literals_proto->arguments(i).shape()));
+        if (!literal_comparison::EqualShapes(xla::Shape(args[i].shape()),
+                                             expected_shape)
                  .ok()) {
           if (test_run_result != nullptr) {
             *test_run_result = ModuleResult::kOtherError;

@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
+#include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/map_util.h"
 #include "xla/service/compile_time_cap.h"
 #include "xla/service/while_util.h"
@@ -351,6 +352,11 @@ absl::StatusOr<bool> WhileLoopInvariantCodeMotion::Run(
   }
   BoundNonLinearCompilerAnalysis allowance(module, name(), 10);
 
+  // Currently, if a loop body that is used by multiple while
+  // ops contains an op that can be hoisted, we will make a new computation for
+  // each of the while ops, instead of using one shared new computation. This is
+  // probably fine, but we may want to improve it in the future if we decide to
+  // double-down on shared while bodies.
   for (HloInstruction* while_instr : while_instrs) {
     // Right now we only hoist computations from the while body, but
     // TryHoistingInvariantInstructionsFromWhileBody can be generalized to
@@ -380,6 +386,9 @@ absl::StatusOr<bool> WhileLoopInvariantCodeMotion::Run(
     // instructions that have the same channel ids).
     HloDCE dce;
     TF_RETURN_IF_ERROR(dce.Run(module).status());
+    // Simplify while loops after narrowing / widening.
+    TupleSimplifier tuple_simplifier;
+    TF_RETURN_IF_ERROR(tuple_simplifier.Run(module).status());
   }
 
   if (changed) {

@@ -21,6 +21,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -30,13 +31,17 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/IntrinsicsAMDGPU.h"
 #include "llvm/IR/IntrinsicsNVPTX.h"
 #include "llvm/Linker/Linker.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Conversion/ComplexToStandard/ComplexToStandard.h"
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"
@@ -66,7 +71,6 @@ limitations under the License.
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
-#include "mlir/IR/Types.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LLVM.h"
@@ -80,36 +84,43 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/emitters/transforms/passes.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
+#include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
-#include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
+#include "xla/codegen/emitters/ir/xla_dialect.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
+#include "xla/codegen/emitters/kernel_api_builder.h"
+#include "xla/codegen/emitters/kernel_arguments.h"
+#include "xla/codegen/emitters/transforms/pass_pipelines.h"
 #include "xla/codegen/emitters/transforms/passes.h"
-#include "xla/codegen/emitters/type_util.h"
+#include "xla/hlo/analysis/indexing_analysis.h"
+#include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/mlir/tools/mlir_replay/public/compiler_trace.pb.h"
 #include "xla/mlir/tools/mlir_replay/public/compiler_trace_instrumentation.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/dump.h"
+#include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emitter_context.h"
-#include "xla/service/gpu/kernel_arguments.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/llvm_gpu_backend/ptx_version_util.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
-#include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/tsl/framework/mlir/status_scoped_diagnostic_handler.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -128,26 +139,32 @@ void AddRanges(llvm::Function* func, const LaunchDimensions& launch_dims,
         if (auto* callee = call->getCalledFunction()) {
           switch (callee->getIntrinsicID()) {
             case llvm::Intrinsic::nvvm_read_ptx_sreg_tid_x:
+            case llvm::Intrinsic::amdgcn_workitem_id_x:
               llvm_ir::AddRangeMetadata(
                   0, launch_dims.thread_counts_per_block().x, call, module);
               break;
             case llvm::Intrinsic::nvvm_read_ptx_sreg_tid_y:
+            case llvm::Intrinsic::amdgcn_workitem_id_y:
               llvm_ir::AddRangeMetadata(
                   0, launch_dims.thread_counts_per_block().y, call, module);
               break;
             case llvm::Intrinsic::nvvm_read_ptx_sreg_tid_z:
+            case llvm::Intrinsic::amdgcn_workitem_id_z:
               llvm_ir::AddRangeMetadata(
                   0, launch_dims.thread_counts_per_block().z, call, module);
               break;
             case llvm::Intrinsic::nvvm_read_ptx_sreg_ctaid_x:
+            case llvm::Intrinsic::amdgcn_workgroup_id_x:
               llvm_ir::AddRangeMetadata(0, launch_dims.block_counts().x, call,
                                         module);
               break;
             case llvm::Intrinsic::nvvm_read_ptx_sreg_ctaid_y:
+            case llvm::Intrinsic::amdgcn_workgroup_id_y:
               llvm_ir::AddRangeMetadata(0, launch_dims.block_counts().y, call,
                                         module);
               break;
             case llvm::Intrinsic::nvvm_read_ptx_sreg_ctaid_z:
+            case llvm::Intrinsic::amdgcn_workgroup_id_z:
               llvm_ir::AddRangeMetadata(0, launch_dims.block_counts().z, call,
                                         module);
               break;
@@ -158,45 +175,64 @@ void AddRanges(llvm::Function* func, const LaunchDimensions& launch_dims,
   }
 }
 
-bool Needs64Bits(const Shape& shape) {
-  return shape.IsArray() ? !IsInt32(ShapeUtil::ElementsIn(shape))
-                         : absl::c_any_of(shape.tuple_shapes(), Needs64Bits);
-}
+absl::Status RunPassPipeline(mlir::ModuleOp module, const HloModule& hlo_module,
+                             mlir::PassManager& pm,
+                             absl::string_view entry_function_name) {
+  bool should_dump_mlir_passes =
+      DumpingEnabledForHloModule(hlo_module) &&
+      DumpingEnabledForHloPass("mlir-fusion-emitter",
+                               hlo_module.config().debug_options());
 
-bool Is64BitIndex(const HloInstruction* instr, int operand) {
-  const auto& shape = instr->operand(operand)->shape();
-  return shape.element_type() == PrimitiveType::S64 ||
-         shape.element_type() == PrimitiveType::U64;
-}
+  std::string mlir_passes_dump_result;
+  llvm::raw_string_ostream log_stream(mlir_passes_dump_result);
+  mlir::interpreter::MlirCompilationTrace trace;
 
-bool Needs64BitIndices(const HloComputation* computation) {
-  for (auto* instr : computation->instructions()) {
-    // Check if any HLO instructions directly take 64 bit indices as operands.
-    switch (instr->opcode()) {
-      case HloOpcode::kDynamicSlice:
-      case HloOpcode::kDynamicUpdateSlice:
-        for (int i = 1; i < instr->operand_count(); ++i) {
-          if (Is64BitIndex(instr, i)) return true;
-        }
-        break;
-      case HloOpcode::kGather:
-      case HloOpcode::kScatter:
-        CHECK(instr->shape().IsArray()) << "Variadic scatter is unsupported.";
-        if (Is64BitIndex(instr, 1)) return true;
-        break;
-      default:
-        break;
-    }
+  if (should_dump_mlir_passes) {
+    module.getContext()->disableMultithreading();
 
-    if (Needs64Bits(instr->shape()) ||
-        absl::c_any_of(instr->called_computations(), Needs64BitIndices)) {
-      return true;
-    }
+    auto print_always = [](mlir::Pass*, mlir::Operation*) { return true; };
+    pm.enableIRPrinting(/*shouldPrintBeforePass=*/print_always,
+                        /*shouldPrintAfterPass=*/print_always,
+                        /*printModuleScope=*/true,
+                        /*printAfterOnlyOnChange=*/false,
+                        /*printAfterOnlyOnFailure=*/true, log_stream,
+                        /*opPrintingFlags=*/{});
+    pm.printAsTextualPipeline(log_stream);
+    log_stream.write("\n\n", 2);
+
+    pm.addInstrumentation(
+        std::make_unique<mlir::interpreter::MlirCompilerTraceInstrumentation>(
+            trace));
   }
-  return false;
+
+  tsl::StatusScopedDiagnosticHandler diagnostic_handler(module.getContext());
+  (void)pm.run(module);
+
+  if (should_dump_mlir_passes) {
+    DumpPerModuleProtobufToFile(
+        hlo_module, trace, hlo_module.config().debug_options(),
+        absl::StrCat(entry_function_name, ".mlir-trace"));
+
+    DumpToFileInDirOrStdout(
+        hlo_module, "", absl::StrCat(entry_function_name, ".mlir-passes.log"),
+        mlir_passes_dump_result);
+  }
+
+  return diagnostic_handler.consumeStatus();
 }
 
 }  // namespace
+
+Value EmitterBase::EmitWorkGroupId(mlir::ImplicitLocOpBuilder& builder,
+                                   WorkGroupDimension dim) const {
+  const auto& counts = launch_dimensions().block_counts();
+  int64_t count = dim == WorkGroupDimension::x   ? counts.x
+                  : dim == WorkGroupDimension::y ? counts.y
+                                                 : counts.z;
+  auto block_id = builder.create<WorkGroupIdOp>(dim);
+  block_id->setAttr("xla.range", builder.getIndexArrayAttr({0, count - 1}));
+  return block_id;
+}
 
 Value EmitterBase::EmitBlockId(mlir::ImplicitLocOpBuilder& builder,
                                int dim) const {
@@ -229,9 +265,9 @@ absl::StatusOr<FusionEmissionResult> EmitterBase::Emit(
     IrEmitterContext& ir_emitter_context,
     const HloFusionInstruction& fusion) const {
   VLOG(4) << "Fusion: " << fusion.fused_instructions_computation()->ToString();
-  TF_ASSIGN_OR_RETURN(
-      auto args,
-      KernelArguments::Create(ir_emitter_context.buffer_assignment(), &fusion));
+  TF_ASSIGN_OR_RETURN(auto args, emitters::KernelArguments::Create(
+                                     ir_emitter_context.buffer_assignment(),
+                                     GetDefaultBufferAlignment(), &fusion));
   auto launch_dims = launch_dimensions();
   auto [status_or_entry, cached] =
       ir_emitter_context.kernel_cache().GetWithStatus(
@@ -283,8 +319,8 @@ absl::StatusOr<FusionEmissionResult> EmitterBase::Emit(
 
   FusionEmissionResult result;
   result.thunks.emplace_back(std::make_unique<KernelThunk>(
-      &fusion, entry->kernel_name, args.args(), launch_dims, entry->cluster_dim,
-      entry->shmem_bytes));
+      Thunk::ThunkInfo::WithProfileAnnotation(&fusion), entry->kernel_name,
+      args, launch_dims, entry->cluster_dim, entry->shmem_bytes));
   return result;
 }
 
@@ -293,28 +329,19 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> EmitterBase::CreateLLVMModule(
     const se::DeviceDescription& device, const HloFusionInstruction& fusion,
     const std::string& entry_function_name,
     const BufferAssignment* buffer_assignment) const {
-  HloModule* hlo_module = fusion.GetModule();
-  std::unique_ptr<mlir::interpreter::MlirCompilationTrace> trace = nullptr;
-  if (DumpingEnabledForHloModule(*hlo_module) &&
-      DumpingEnabledForHloPass("mlir-fusion-emitter",
-                               hlo_module->config().debug_options())) {
-    trace = std::make_unique<mlir::interpreter::MlirCompilationTrace>();
-  }
+  mlir_context.appendDialectRegistry(GetDialectRegistry());
+  mlir_context.loadAllAvailableDialects();
   TF_ASSIGN_OR_RETURN(
       auto module, CreateMLIRModule(mlir_context, fusion, entry_function_name,
                                     buffer_assignment));
 
   mlir::PassManager pm(&mlir_context);
-  AddXlaGpuOpsOptimizationPasses(pm);
+  emitters::RegisterOptimizationPasses(pm);
   AddLoopTransformationPasses(pm, device);
   AddLoweringPasses(pm, device);
-  auto pipeline_status = RunPassPipeline(module.get(), pm, trace.get());
-  if (trace) {
-    DumpPerModuleProtobufToFile(
-        *hlo_module, *trace, hlo_module->config().debug_options(),
-        absl::StrCat(entry_function_name, ".mlir-trace"));
-  }
-  TF_RETURN_IF_ERROR(pipeline_status);
+
+  auto pipeline_status = RunPassPipeline(module.get(), *fusion.GetModule(), pm,
+                                         entry_function_name);
 
   auto llvm_module = mlir::translateModuleToLLVMIR(module.get(), llvm_context);
   TF_RET_CHECK(llvm_module != nullptr)
@@ -326,90 +353,15 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> EmitterBase::CreateLLVMModule(
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitterBase::CreateMLIRModule(
     mlir::MLIRContext& context, const HloFusionInstruction& fusion,
     const std::string& entry_function_name,
-    const BufferAssignment* buffer_assignment,
-    mlir::interpreter::MlirCompilationTrace* trace) const {
-  context.loadDialect<
-      mlir::DLTIDialect, mlir::NVVM::NVVMDialect, mlir::ROCDL::ROCDLDialect,
-      mlir::affine::AffineDialect, mlir::arith::ArithDialect,
-      mlir::cf::ControlFlowDialect, mlir::func::FuncDialect,
-      mlir::gpu::GPUDialect, mlir::math::MathDialect, mlir::mhlo::MhloDialect,
-      mlir::scf::SCFDialect, mlir::tensor::TensorDialect,
-      mlir::vector::VectorDialect, xla::XlaDialect, xla::gpu::XlaGpuDialect>();
-  mlir::DialectRegistry registry;
-  mlir::LLVM::registerInlinerInterface(registry);
-  mlir::func::registerInlinerExtension(registry);
-  mlir::registerBuiltinDialectTranslation(registry);
-  mlir::registerLLVMDialectTranslation(registry);
-  mlir::registerNVVMDialectTranslation(registry);
-  mlir::registerROCDLDialectTranslation(registry);
-  context.appendDialectRegistry(registry);
-
+    const BufferAssignment* buffer_assignment) const {
   mlir::OpBuilder builder(&context);
   auto loc = mlir::NameLoc::get(builder.getStringAttr(fusion.name()));
   mlir::OwningOpRef<mlir::ModuleOp> module = llvm_ir::CreateMlirModuleOp(loc);
 
-  // Create the entry function.
-  SmallVector<mlir::Type> param_types;
-  std::optional<KernelArguments> args;
-  if (buffer_assignment != nullptr) {
-    TF_ASSIGN_OR_RETURN(args,
-                        KernelArguments::Create(*buffer_assignment, &fusion));
-  }
-  // Annotate tensors with the buffer indices. This way, the buffer propagation
-  // pass can clean them up later.
-  int next_slice_index = 0;
-  absl::flat_hash_map<BufferAllocation::Slice, std::optional<int>>
-      slice_indices;
-  auto get_arg_attrs = [&](int index) -> absl::StatusOr<mlir::Attribute> {
-    if (!args) {
-      return builder.getDictionaryAttr({builder.getNamedAttr(
-          "xla.slice_index", builder.getIndexAttr(next_slice_index++))});
-    }
-
-    const auto& arg = args->args()[index];
-    SmallVector<mlir::NamedAttribute> attrs;
-    attrs.push_back(builder.getNamedAttr(
-        "xla.slice_index", builder.getIndexAttr(arg.llvm_arg_index())));
-    attrs.push_back(
-        builder.getNamedAttr(mlir::LLVM::LLVMDialect::getAlignAttrName(),
-                             builder.getIndexAttr(arg.alignment())));
-    attrs.push_back(builder.getNamedAttr(
-        mlir::LLVM::LLVMDialect::getDereferenceableAttrName(),
-        builder.getIndexAttr(arg.slice().size())));
-    if (!arg.written()) {
-      attrs.push_back(
-          builder.getNamedAttr("xla.invariant", builder.getUnitAttr()));
-    }
-    return builder.getDictionaryAttr(attrs);
-  };
-
-  SmallVector<mlir::Attribute> arg_attrs;
-  int arg_index = 0;
-  for (auto* param : fusion.operands()) {
-    param_types.push_back(
-        emitters::TensorShapeToMlirType(param->shape(), builder));
-    TF_ASSIGN_OR_RETURN(arg_attrs.emplace_back(), get_arg_attrs(arg_index++));
-  }
-
-  auto result_types = emitters::ShapeToMlirTypes(fusion.shape(), builder);
-  param_types.append(result_types.begin(), result_types.end());
-  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
-      fusion.shape(), [&](const auto& shape, const ShapeIndex& index) {
-        if (shape.IsArray()) {
-          TF_ASSIGN_OR_RETURN(arg_attrs.emplace_back(),
-                              get_arg_attrs(arg_index++));
-        }
-        return absl::OkStatus();
-      }));
-
-  builder.setInsertionPointToStart(module->getBody());
-  auto entry_func = builder.create<FuncOp>(
-      loc, entry_function_name,
-      mlir::FunctionType::get(&context, param_types, result_types),
-      /*sym_visibility=*/mlir::StringAttr{},
-      mlir::ArrayAttr::get(&context, arg_attrs),
-      /*res_attrs=*/mlir::ArrayAttr{});
-  entry_func->setAttr("xla.entry", mlir::UnitAttr::get(&context));
+  TF_ASSIGN_OR_RETURN(mlir::func::FuncOp entry_func,
+                      emitters::EmitKernelApi(
+                          *module, fusion, buffer_assignment,
+                          GetDefaultBufferAlignment(), entry_function_name));
   SetBackendKind(&context, entry_func, BackendKind::kGpu);
 
   TF_RETURN_IF_ERROR(EmitMlir(module.get(), entry_func, fusion));
@@ -459,61 +411,35 @@ emitters::EpilogueSpecification EmitterBase::GetEpilogueForOutputIndexing(
   return result;
 }
 
+mlir::DialectRegistry EmitterBase::GetDialectRegistry() {
+  mlir::DialectRegistry registry;
+  registry.insert<
+      mlir::DLTIDialect, mlir::NVVM::NVVMDialect, mlir::ROCDL::ROCDLDialect,
+      mlir::affine::AffineDialect, mlir::arith::ArithDialect,
+      mlir::cf::ControlFlowDialect, mlir::func::FuncDialect,
+      mlir::gpu::GPUDialect, mlir::math::MathDialect, mlir::mhlo::MhloDialect,
+      mlir::scf::SCFDialect, mlir::tensor::TensorDialect,
+      mlir::vector::VectorDialect, xla::XlaDialect, xla::gpu::XlaGpuDialect>();
+  mlir::LLVM::registerInlinerInterface(registry);
+  mlir::func::registerInlinerExtension(registry);
+  mlir::registerBuiltinDialectTranslation(registry);
+  mlir::registerLLVMDialectTranslation(registry);
+  mlir::registerNVVMDialectTranslation(registry);
+  mlir::registerROCDLDialectTranslation(registry);
+  return registry;
+}
+
 absl::Status EmitterBase::EmitMlir(mlir::ModuleOp module, FuncOp entry_function,
                                    const HloFusionInstruction& fusion) const {
   std::vector<emitters::EpilogueSpecification> epilogues =
       GetEpilogues(fusion, module->getContext());
   emitters::PartitionedComputations computations(
       fusion.fused_instructions_computation(), module->getContext(), epilogues);
-  auto subgraph_to_mlir_fn = computations.DeclareFunctions(module);
 
-  // Erase subgraphs for all heroes that aren't used anywhere else. This is
-  // necessary because the instructions may not have elemental implementations
-  // (scatter).
-  for (const auto& epilogue : epilogues) {
-    for (auto* custom : epilogue.heroes) {
-      if (custom->user_count() == 0) {
-        subgraph_to_mlir_fn.extract(&computations.FindSubgraph(custom))
-            .mapped()
-            .erase();
-      }
-    }
-  }
+  TF_ASSIGN_OR_RETURN(auto call_targets, emitters::EmitPartitionedComputations(
+                                             module, computations));
 
-  // The epilogue functions replace the root tuple.
-  auto* root = fusion.fused_instructions_computation()->root_instruction();
-  if (root->opcode() == HloOpcode::kTuple && !epilogues.empty()) {
-    subgraph_to_mlir_fn.extract(&computations.FindSubgraph(root))
-        .mapped()
-        .erase();
-  }
-
-  auto call_targets =
-      computations.CreateCallTargetProvider(subgraph_to_mlir_fn);
-  for (const auto& comp : computations.partitioned_computations()) {
-    for (const auto& subgraph : comp.subgraphs()) {
-      if (subgraph_to_mlir_fn.contains(&subgraph)) {
-        TF_RETURN_IF_ERROR(emitters::SubgraphToMlirFunction(
-            comp, subgraph, subgraph_to_mlir_fn[&subgraph], call_targets));
-      }
-    }
-  }
-  for (const auto& epilogue : computations.epilogues()) {
-    if (epilogue.roots.empty()) continue;
-    TF_RETURN_IF_ERROR(emitters::SubgraphToMlirFunction(
-        computations.FindPartitionedComputation(
-            fusion.fused_instructions_computation()),
-        epilogue, subgraph_to_mlir_fn[&epilogue], call_targets));
-  }
-
-  int index_bitwidth =
-      Needs64BitIndices(fusion.fused_instructions_computation()) ? 64 : 32;
-  mlir::OpBuilder b(module->getContext());
-  auto index_layout = mlir::DataLayoutEntryAttr::get(
-      b.getIndexType(), b.getI32IntegerAttr(index_bitwidth));
-  module->setAttr(
-      mlir::DLTIDialect::kDataLayoutAttrName,
-      mlir::DataLayoutSpecAttr::get(module->getContext(), {index_layout}));
+  emitters::SetIndexDataLayout(module, fusion);
 
   return EmitEntryFunction(computations, call_targets, entry_function, fusion);
 }
@@ -554,38 +480,11 @@ EmitterBase::EmitEpilogue(
   return results_per_root;
 }
 
-absl::Status EmitterBase::RunPassPipeline(
-    mlir::ModuleOp module, mlir::PassManager& pm,
-    mlir::interpreter::MlirCompilationTrace* trace) const {
-  if (VLOG_IS_ON(5)) {
-    module.getContext()->disableMultithreading();
-    pm.enableIRPrinting();
-  }
-  if (trace) {
-    module.getContext()->disableMultithreading();
-    pm.addInstrumentation(
-        std::make_unique<mlir::interpreter::MlirCompilerTraceInstrumentation>(
-            *trace));
-  }
-
-  tsl::StatusScopedDiagnosticHandler diagnostic_handler(module.getContext());
-  (void)pm.run(module);
-  return diagnostic_handler.consumeStatus();
-}
-
-void AddXlaGpuOpsOptimizationPasses(mlir::OpPassManager& pm) {
-  pm.addNestedPass<FuncOp>(emitters::CreateSimplifyArithPass());
-  pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::createCSEPass());
-  pm.addPass(emitters::CreateEraseDeadFunctionsPass());
-  pm.addPass(mlir::createCSEPass());
-}
-
 void AddLoopTransformationPasses(mlir::OpPassManager& pm,
                                  const se::DeviceDescription& device) {
+  pm.addNestedPass<FuncOp>(CreateLowerXlaSharedPass());
   pm.addNestedPass<FuncOp>(
       emitters::CreateLowerXlaToScfPass(device.threads_per_warp()));
-  pm.addNestedPass<FuncOp>(CreateFuseLoopsPass());
   pm.addPass(mlir::createInlinerPass({}, [&](mlir::OpPassManager& pm) {
     // CSE after inlining because inlining can introduce duplicates.
     pm.addPass(mlir::createCSEPass());
@@ -605,7 +504,7 @@ void AddLoopTransformationPasses(mlir::OpPassManager& pm,
   // opportunities for LICM. This would not be necessary if LICM also moved
   // instructions over ifs.
   pm.addPass(mlir::createLoopInvariantCodeMotionPass());
-  pm.addNestedPass<FuncOp>(CreateVectorizeLoadsAndStoresPass(device));
+  pm.addNestedPass<FuncOp>(emitters::CreateVectorizeLoadsAndStoresPass(device));
   pm.addNestedPass<FuncOp>(CreateOptimizeLoopsPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
@@ -634,9 +533,24 @@ void AddLoweringPasses(mlir::OpPassManager& pm,
   pm.addPass(mlir::createCSEPass());
 
   // This pass has to run before `ExpandFloatOpsPass`.
-  auto maybe_convert_fp8 = MaybeCreateConvertFloatNvidiaPass(device);
-  if (maybe_convert_fp8.has_value()) {
-    pm.addPass(std::move(*maybe_convert_fp8));
+  if (auto* cc = std::get_if<se::CudaComputeCapability>(
+          &device.gpu_compute_capability())) {
+    se::SemanticVersion ptx_version =
+        nvptx::DetermineHighestSupportedPtxVersionFromCudaVersion(
+            device.runtime_version());
+
+    // FP8 conversion intrinsics are available on sm89 since ptx 8.1
+    // Older ptx versions only support FP8 conversion for sm90
+    if ((ptx_version >= se::SemanticVersion(8, 1, 0) && cc->IsAtLeast(8, 9)) ||
+        (ptx_version >= se::SemanticVersion(7, 8, 0) && cc->IsAtLeast(9, 0))) {
+      pm.addPass(CreateConvertFloatNvidiaPass());
+    }
+  } else if (auto* cc = std::get_if<se::RocmComputeCapability>(
+                 &device.gpu_compute_capability())) {
+    if (cc->has_fp8_support()) {
+      pm.addPass(CreateConvertFloatAMDPass(*cc));
+    }
+    pm.addPass(CreateRecoverExp2Pass());
   }
 
   pm.addPass(emitters::CreateExpandFloatOpsPass());

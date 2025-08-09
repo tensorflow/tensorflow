@@ -30,6 +30,7 @@ limitations under the License.
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -38,10 +39,14 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/experimental/tac/common/targets.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_import.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h"
 
 namespace mlir {
 namespace TFL {
@@ -97,6 +102,22 @@ absl::Status ExportFlatbufferOrMlir(
     module.print(os);
     os.flush();
   } else {
+    // This extra attribute is added by TAC pass. We need to remove it before
+    // converting to VHLO.
+    module.walk([&](mlir::Operation* op) {
+      if (op->hasAttr(mlir::TFL::tac::kSkipTargetAnnotation)) {
+        op->removeAttr(mlir::TFL::tac::kSkipTargetAnnotation);
+      }
+    });
+    // Converts stablehlo to vhlo so that flatbuffer export can handle it.
+    auto pass_manager =
+        std::make_unique<mlir::PassManager>(module.getContext());
+    pass_manager->addPass(mlir::odml::createLegalizeStablehloToVhloPass());
+    pass_manager->addPass(mlir::createReconcileUnrealizedCastsPass());
+    if (failed(pass_manager->run(module))) {
+      return absl::UnknownError("Failed to legalize stablehlo to vhlo.");
+    }
+
     tflite::FlatbufferExportOptions options;
     options.converter_flags.set_force_select_tf_ops(false);
     options.converter_flags.set_allow_custom_ops(true);
@@ -109,7 +130,8 @@ absl::Status ExportFlatbufferOrMlir(
     if (custom_option_alignment.has_value()) {
       options.custom_option_alignment = *custom_option_alignment;
     }
-    if (!tflite::MlirToFlatBufferTranslateFunction(module, options, &result)) {
+    if (!tflite::MlirToFlatBufferTranslateFunction(
+            module, options, &result, /*serialize_stablehlo_ops=*/true)) {
       return absl::UnknownError("Failed to export tflite file.");
     }
   }

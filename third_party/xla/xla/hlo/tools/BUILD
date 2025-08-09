@@ -1,8 +1,8 @@
 # Tools and utilities that aid in XLA development and usage.
 
-load("//xla:strict.default.bzl", "py_strict_library")
+load("//xla:py_strict.bzl", "py_strict_binary", "py_strict_library")
 load(
-    "//xla:xla.bzl",
+    "//xla:xla.default.bzl",
     "xla_cc_binary",
 )
 load("//xla/tsl:tsl.default.bzl", "filegroup")
@@ -31,6 +31,8 @@ xla_cc_binary(
         "//xla/tsl/lib/io:random_inputstream",
         "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:logging",
@@ -58,6 +60,8 @@ xla_cc_binary(
     srcs = ["convert_computation.cc"],
     deps = [
         "//xla/service:hlo_proto_cc",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:platform_port",
@@ -120,6 +124,7 @@ xla_cc_binary(
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/translate:register",
         "//xla/hlo/translate:stablehlo",
         "//xla/hlo/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
         "//xla/mlir_hlo:mhlo_passes",
@@ -131,6 +136,7 @@ xla_cc_binary(
         "//xla/stream_executor/host:host_platform",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -153,7 +159,11 @@ xla_cc_binary(
 )
 
 py_strict_library(
+    name = "generate_hlo_test_checks_lib",
+    srcs = ["generate_hlo_test_checks.py"],
+)
+
+py_strict_binary(
     name = "generate_hlo_test_checks",
     srcs = ["generate_hlo_test_checks.py"],
-    srcs_version = "PY3",
 )

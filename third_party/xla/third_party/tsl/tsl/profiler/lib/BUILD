@@ -1,4 +1,4 @@
-load("@local_xla//xla/tsl:tsl.bzl", "if_not_android", "if_oss", "internal_visibility", "nvtx_headers")
+load("@local_xla//xla/tsl:tsl.bzl", "if_not_android", "internal_visibility", "nvtx_headers")
 load("@local_xla//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 load("@local_xla//xla/tsl/platform:build_config.bzl", "tsl_cc_test")
 load("@local_xla//xla/tsl/platform:build_config_root.bzl", "if_static")
@@ -173,7 +173,10 @@ tsl_cc_test(
 cc_library(
     name = "profiler_session",
     hdrs = ["profiler_session.h"],
-    visibility = internal_visibility(["@local_xla//xla/tsl:internal"]),
+    visibility = internal_visibility([
+        "@local_xla//xla/tsl:internal",
+        "//third_party/py/jax:__subpackages__",
+    ]),
     deps = [
         "//tsl/platform",
         "//tsl/platform:thread_annotations",
@@ -284,7 +287,6 @@ cc_library(
         ["nvtx_utils_stub.cc"],
     ),
     hdrs = ["nvtx_utils.h"],
-    local_defines = if_oss(["NVTX_VERSION_3_1=1"]),
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured(nvtx_headers()),
 )
@@ -382,5 +384,6 @@ cc_library(
     hdrs = ["scoped_memory_debug_annotation.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "@com_google_absl//absl/strings:string_view",
     ],
 )

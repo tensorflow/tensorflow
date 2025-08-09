@@ -47,11 +47,6 @@ class LiteralTestUtil {
   [[nodiscard]] static ::testing::AssertionResult EqualShapes(
       const Shape& expected, const Shape& actual);
 
-  // Asserts that the provided shapes are equal as defined in AssertEqualShapes
-  // and that they have the same layout.
-  [[nodiscard]] static ::testing::AssertionResult EqualShapesAndLayouts(
-      const Shape& expected, const Shape& actual);
-
   [[nodiscard]] static ::testing::AssertionResult Equal(
       const LiteralSlice& expected, const LiteralSlice& actual);
 

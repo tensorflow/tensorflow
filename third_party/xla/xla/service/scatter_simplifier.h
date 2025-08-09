@@ -51,7 +51,7 @@ namespace xla {
 //   if n < N:
 //     "Fill `indices` with trailing zeroes so that it is of shape M x N"
 //   for update, index = shuffle(zip(updates, indices)) {  # M iterations.
-//     assert(update.rank() == len(index) == N)
+//     assert(update.dimensions_size() == len(index) == N)
 //     if "update fits in operand at index":
 //       operand[index] = update_computation(operand[index], update)
 //

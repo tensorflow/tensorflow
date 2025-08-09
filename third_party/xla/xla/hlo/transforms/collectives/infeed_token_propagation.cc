@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/hlo/transforms/collectives/infeed_token_propagation.h"
 
 #include <cstdint>
+#include <queue>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
@@ -31,6 +32,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/service/call_graph.h"
@@ -122,10 +124,6 @@ HloInstruction* ChainEnd(HloInstruction* instruction) {
 
 bool IsDanglingInfeed(HloInstruction* infeed) {
   CHECK(infeed->opcode() == HloOpcode::kInfeed);
-  if (infeed->has_sharding()) {
-    // TODO: b/368327832 - Skip handling sharding until it is removed.
-    return false;
-  }
 
   // Check for dangling input token.
   if (const HloInstruction* after_all = ChainBegin(infeed)->operand(0);
@@ -147,10 +145,6 @@ bool IsDanglingInfeed(HloInstruction* infeed) {
 
 bool IsDanglingOutfeed(HloInstruction* outfeed) {
   CHECK(outfeed->opcode() == HloOpcode::kOutfeed);
-  if (outfeed->has_sharding()) {
-    // TODO: b/368327832 - Skip handling sharding until it is removed.
-    return false;
-  }
 
   // Check for dangling input token.
   if (const HloInstruction* after_all = OutfeedChainBegin(outfeed)->operand(1);
@@ -189,10 +183,16 @@ absl::StatusOr<HloInstruction*> InsertTokenIntoTuple(HloInstruction* tuple,
     tuple->AppendOperand(
         computation->AddInstruction(HloInstruction::CreateToken()));
   }
+  if (tuple->has_sharding()) {
+    // Assign arbitrary sharding for the token.
+    HloSharding sharding = tuple->sharding();
+    sharding.tuple_elements().push_back(HloSharding::AssignDevice(0));
+    tuple->set_sharding(sharding);
+  }
 
   HloInstruction* input_token_gte =
       computation->AddInstruction(HloInstruction::CreateGetTupleElement(
-          tuple, tuple->shape().tuple_shapes_size() - 1));
+          tuple, tuple->shape().tuple_shapes().size() - 1));
   return input_token_gte;
 }
 }  // namespace
@@ -206,6 +206,11 @@ absl::Status CanonicalizeConditionalInstruction(HloInstruction* conditional) {
     if (!parameter->shape().IsTuple()) {
       *parameter->mutable_shape() =
           ShapeUtil::MakeTupleShape({parameter->shape()});
+      if (parameter->has_sharding()) {
+        HloSharding sharding =
+            HloSharding::Tuple(parameter->shape(), {parameter->sharding()});
+        parameter->set_sharding(sharding);
+      }
       HloInstruction* original = branch->AddInstruction(
           HloInstruction::CreateGetTupleElement(parameter, 0));
       TF_RETURN_IF_ERROR(parameter->ReplaceAllUsesWithDifferentShape(original));
@@ -262,6 +267,11 @@ absl::Status CanonicalizeWhileInstruction(HloInstruction* loop) {
   if (!body_parameter->shape().IsTuple()) {
     *body_parameter->mutable_shape() =
         ShapeUtil::MakeTupleShape({body_parameter->shape()});
+    if (body_parameter->has_sharding()) {
+      HloSharding sharding = HloSharding::Tuple(body_parameter->shape(),
+                                                {body_parameter->sharding()});
+      body_parameter->set_sharding(sharding);
+    }
     HloInstruction* original = body->AddInstruction(
         HloInstruction::CreateGetTupleElement(body_parameter, 0));
     TF_RETURN_IF_ERROR(
@@ -280,6 +290,11 @@ absl::Status CanonicalizeWhileInstruction(HloInstruction* loop) {
   if (!cond_parameter->shape().IsTuple()) {
     *cond_parameter->mutable_shape() =
         ShapeUtil::MakeTupleShape({cond_parameter->shape()});
+    if (cond_parameter->has_sharding()) {
+      HloSharding sharding = HloSharding::Tuple(cond_parameter->shape(),
+                                                {cond_parameter->sharding()});
+      cond_parameter->set_sharding(sharding);
+    }
     HloInstruction* original = cond->AddInstruction(
         HloInstruction::CreateGetTupleElement(cond_parameter, 0));
     TF_RETURN_IF_ERROR(
@@ -289,6 +304,11 @@ absl::Status CanonicalizeWhileInstruction(HloInstruction* loop) {
   // Tuplify the while instruction if needed.
   if (!loop->shape().IsTuple()) {
     *loop->mutable_shape() = ShapeUtil::MakeTupleShape({loop->shape()});
+    if (loop->has_sharding()) {
+      HloSharding sharding =
+          HloSharding::Tuple(loop->shape(), {loop->sharding()});
+      loop->set_sharding(sharding);
+    }
     HloInstruction* original = loop->parent()->AddInstruction(
         HloInstruction::CreateGetTupleElement(loop, 0));
     TF_RETURN_IF_ERROR(loop->ReplaceAllUsesWithDifferentShape(original));
@@ -502,6 +522,12 @@ absl::StatusOr<bool> InfeedTokenPropagation::Run(
        module->MakeNonfusionComputations(execution_threads)) {
     if (!computation->IsEntryComputation()) {
       for (HloInstruction* instruction : computation->instructions()) {
+        // Bail in the presence of HLO domains.
+        if (instruction->opcode() == HloOpcode::kDomain) {
+          return false;
+        }
+      }
+      for (HloInstruction* instruction : computation->instructions()) {
         if (instruction->opcode() == HloOpcode::kInfeed &&
             instruction->infeed_config().empty() &&
             IsDanglingInfeed(instruction)) {
@@ -525,10 +551,35 @@ absl::StatusOr<bool> InfeedTokenPropagation::Run(
 
   if (changed) {
     call_graph_ = CallGraph::Build(module, execution_threads);
-    if (!call_graph_->IsFlattened()) {
-      return FailedPrecondition(
-          "Call graph must be flattened before infeed token propagation.");
+
+    absl::flat_hash_set<HloComputation*> visited;
+    std::queue<HloComputation*> worklist;
+    for (const std::vector<HloInstruction*>& inst_vector :
+         {dangling_infeeds, dangling_outfeeds}) {
+      for (HloInstruction* instruction : inst_vector) {
+        if (visited.insert(instruction->parent()).second) {
+          worklist.push(instruction->parent());
+        }
+      }
     }
+
+    while (!worklist.empty()) {
+      HloComputation* computation = worklist.front();
+      worklist.pop();
+      const CallGraphNode& node = call_graph_->GetNode(computation);
+      if (node.caller_callsites().empty()) {
+        continue;
+      }
+      if (node.caller_callsites().size() > 1) {
+        return FailedPrecondition(
+            "Call graph must be flattened before infeed token propagation.");
+      }
+      HloComputation* parent = node.callers()[0];
+      if (visited.insert(parent).second) {
+        worklist.push(parent);
+      }
+    }
+
     DependencyHloOrdering ordering = DependencyHloOrdering(module);
 
     for (HloInstruction* dangling_infeed : dangling_infeeds) {

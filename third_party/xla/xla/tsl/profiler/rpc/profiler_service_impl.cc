@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_replace.h"
+#include "absl/synchronization/mutex.h"
 #include "grpcpp/support/status.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/env_time.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "xla/tsl/profiler/utils/math_utils.h"
 #include "xla/tsl/profiler/utils/time_utils.h"
 #include "xla/tsl/profiler/utils/xplane_utils.h"
-#include "tsl/platform/mutex.h"
 #include "tsl/profiler/lib/profiler_session.h"
 #include "tsl/profiler/protobuf/profiler_service.grpc.pb.h"
 #include "tsl/profiler/protobuf/profiler_service.pb.h"
@@ -91,7 +91,7 @@ class ProfilerServiceImpl : public tensorflow::grpc::ProfilerService::Service {
         return ::grpc::Status::CANCELLED;
       }
       if (TF_PREDICT_FALSE(IsStopped(req->session_id()))) {
-        mutex_lock lock(mutex_);
+        absl::MutexLock lock(&mutex_);
         stop_signals_per_session_.erase(req->session_id());
         break;
       }
@@ -109,19 +109,19 @@ class ProfilerServiceImpl : public tensorflow::grpc::ProfilerService::Service {
   ::grpc::Status Terminate(::grpc::ServerContext* ctx,
                            const TerminateRequest* req,
                            TerminateResponse* response) override {
-    mutex_lock lock(mutex_);
+    absl::MutexLock lock(&mutex_);
     stop_signals_per_session_[req->session_id()] = true;
     return ::grpc::Status::OK;
   }
 
  private:
   bool IsStopped(const std::string& session_id) {
-    mutex_lock lock(mutex_);
+    absl::MutexLock lock(&mutex_);
     auto it = stop_signals_per_session_.find(session_id);
     return it != stop_signals_per_session_.end() && it->second;
   }
 
-  mutex mutex_;
+  absl::Mutex mutex_;
   absl::flat_hash_map<std::string, bool> stop_signals_per_session_
       ABSL_GUARDED_BY(mutex_);
 };

@@ -26,6 +26,8 @@
 #include "absl/log/check.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/python/ifrt/future.h"
+#include "xla/python/ifrt/serdes_any_version_accessor.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt_proxy/client/client_session.h"
 #include "xla/python/ifrt_proxy/client/host_buffer.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
@@ -52,7 +54,13 @@ class RpcHelper {
   ~RpcHelper();
 
   // IFRT Proxy version negotiated between the client and the server.
-  const IfrtProxyVersion& version() const { return version_; }
+  int32_t protocol_version() const { return version_.protocol_version(); }
+
+  // IFRT SerDes version number negotiated between the client and the server.
+  SerDesVersion ifrt_serdes_version() const {
+    return SerDesAnyVersionAccessor::Get(
+        SerDesVersionNumber(version_.ifrt_serdes_version_number()));
+  }
 
   // Initializes the host buffer store for this RpcHelper instance. This must be
   // called exactly once during initialization before `host_buffer_store()` is
@@ -100,6 +108,11 @@ class RpcHelper {
 
   ResponseFuture<MakeArrayFromHostBufferResponse> MakeArrayFromHostBuffer(
       std::unique_ptr<MakeArrayFromHostBufferRequest> req);
+  ResponseFuture<MakeArraysFromHostBufferShardsResponse>
+  MakeArraysFromHostBufferShards(
+      std::unique_ptr<MakeArraysFromHostBufferShardsRequest> req);
+  ResponseFuture<MakeErrorArraysResponse> MakeErrorArrays(
+      std::unique_ptr<MakeErrorArraysRequest> req);
   ResponseFuture<AssembleArrayFromSingleDeviceArraysResponse>
   AssembleArrayFromSingleDeviceArrays(
       std::unique_ptr<AssembleArrayFromSingleDeviceArraysRequest> req);
@@ -138,6 +151,9 @@ class RpcHelper {
       std::unique_ptr<LoadedHostCallbackPollRequest> req);
   ResponseFuture<LoadedHostCallbackReturnResponse> LoadedHostCallbackReturn(
       std::unique_ptr<LoadedHostCallbackReturnRequest> req);
+
+  ResponseFuture<GetDefaultLayoutResponse> GetDefaultLayout(
+      std::unique_ptr<GetDefaultLayoutRequest> req);
 
   // Utility functions.
 

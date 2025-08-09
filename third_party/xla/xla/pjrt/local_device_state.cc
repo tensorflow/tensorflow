@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "xla/pjrt/local_device_state.h"
 
-#include <functional>
+#include <cstdint>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -23,16 +23,23 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/casts.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/client/local_client.h"
+#include "xla/pjrt/worker_thread.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "xla/tsl/util/env_var.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
@@ -77,7 +84,7 @@ LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
   int num_device_to_device_streams =
       stream_options.has_value() ? stream_options->num_device_to_device_streams
                                  : kNumDeviceToDeviceStreams;
-  auto create_stream = [executor, &stream_options](std::string const& name) {
+  auto create_stream = [executor, &stream_options](const std::string& name) {
     std::unique_ptr<stream_executor::Stream> stream;
     if (stream_options.has_value()) {
       stream = executor->CreateStream(stream_options->priority).value();
@@ -174,7 +181,7 @@ absl::Status LocalDeviceState::ThenMemcpyDeviceToDevice(
 }
 
 absl::Status LocalDeviceState::ThenExecuteCallback(
-    se::Stream* stream, std::function<void()> callback) {
+    se::Stream* stream, absl::AnyInvocable<void() &&> callback) {
   tsl::profiler::TraceMe traceme("ThenExecuteCallback");
   if (callback_stream_map_.has_value()) {
     // Prevent concurrent updates to the callback stream map.
@@ -271,9 +278,11 @@ std::unique_ptr<se::Stream> LocalDeviceState::BorrowStreamFromPool() {
   }
 
   // The stream pool is empty, create a new stream.
-  auto stream = compute_stream_->parent()->CreateStream().value();
-  stream->SetName("Pool stream");
-  return stream;
+  absl::StatusOr<std::unique_ptr<se::Stream>> stream =
+      compute_stream_->parent()->CreateStream();
+  CHECK_OK(stream);
+  (*stream)->SetName("Pool stream");
+  return std::move(*stream);
 }
 
 void LocalDeviceState::ReturnStreamToPool(std::unique_ptr<se::Stream> stream) {

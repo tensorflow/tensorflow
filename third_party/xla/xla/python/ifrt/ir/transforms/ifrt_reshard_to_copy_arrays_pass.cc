@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
 #include <utility>
 
 #include "llvm/ADT/STLExtras.h"
@@ -23,7 +22,6 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/Visitors.h"
-#include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -35,10 +33,10 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 
-namespace {
-
 #define GEN_PASS_DEF_IFRTRESHARDTOCOPYARRAYSPASS
 #include "xla/python/ifrt/ir/transforms/passes.h.inc"
+
+namespace {
 
 class ReshardToCopyArraysOpPattern
     : public mlir::OpRewritePattern<xla::ifrt::ReshardOp> {
@@ -114,8 +112,8 @@ class ReshardToCopyArraysOpPattern
       reshard_output_types.push_back(op.getOutputs()[idx].getType());
     }
     if (!reshard_input_values.empty()) {
-      auto reshard_op = rewriter.create<xla::ifrt::ReshardOp>(
-          op.getLoc(),
+      auto reshard_op = xla::ifrt::ReshardOp::create(
+          rewriter, op.getLoc(),
           /*outputs=*/reshard_output_types,
           /*control_output=*/op.getControlOutput().getType(),
           /*inputs=*/reshard_input_values,
@@ -141,8 +139,8 @@ class ReshardToCopyArraysOpPattern
         copy_input_values.push_back(op.getInputs()[idx]);
         copy_output_types.push_back(op.getOutputs()[idx].getType());
       }
-      auto copy_arrays_op = rewriter.create<xla::ifrt::CopyArraysOp>(
-          op.getLoc(),
+      auto copy_arrays_op = xla::ifrt::CopyArraysOp::create(
+          rewriter, op.getLoc(),
           /*outputs=*/copy_output_types,
           /*control_output=*/op.getControlOutput().getType(),
           /*inputs=*/copy_input_values,
@@ -178,11 +176,5 @@ class IfrtReshardToCopyArraysPass
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateIfrtReshardToCopyArraysPass() {
-  return std::make_unique<IfrtReshardToCopyArraysPass>();
-}
-
 }  // namespace ifrt
 }  // namespace xla

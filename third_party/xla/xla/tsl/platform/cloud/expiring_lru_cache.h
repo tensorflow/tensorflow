@@ -22,9 +22,9 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/status.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/types.h"
-#include "tsl/platform/mutex.h"
 #include "tsl/platform/thread_annotations.h"
 
 namespace tsl {
@@ -49,7 +49,7 @@ class ExpiringLRUCache {
     if (max_age_ == 0) {
       return;
     }
-    mutex_lock lock(mu_);
+    absl::MutexLock lock(&mu_);
     InsertLocked(key, value);
   }
 
@@ -57,7 +57,7 @@ class ExpiringLRUCache {
   // `key`, false if the entry was not found. In both cases, there is no entry
   // with key `key` existed after the call.
   bool Delete(const string& key) {
-    mutex_lock lock(mu_);
+    absl::MutexLock lock(&mu_);
     return DeleteLocked(key);
   }
 
@@ -68,7 +68,7 @@ class ExpiringLRUCache {
     if (max_age_ == 0) {
       return false;
     }
-    mutex_lock lock(mu_);
+    absl::MutexLock lock(&mu_);
     return LookupLocked(key, value);
   }
 
@@ -84,14 +84,14 @@ class ExpiringLRUCache {
     }
 
     {
-      mutex_lock lock(mu_);
+      absl::MutexLock lock(&mu_);
       if (LookupLocked(key, value)) {
         return absl::OkStatus();
       }
     }
     absl::Status s = compute_func(key, value);
     if (s.ok()) {
-      mutex_lock lock(mu_);
+      absl::MutexLock lock(&mu_);
       InsertLocked(key, *value);
     }
     return s;
@@ -99,7 +99,7 @@ class ExpiringLRUCache {
 
   /// Clear the cache.
   void Clear() {
-    mutex_lock lock(mu_);
+    absl::MutexLock lock(&mu_);
     cache_.clear();
     lru_list_.clear();
   }
@@ -173,7 +173,7 @@ class ExpiringLRUCache {
   Env* const env_;  // not owned
 
   /// Guards access to the cache and the LRU list.
-  mutex mu_;
+  absl::Mutex mu_;
 
   /// The cache (a map from string key to Entry).
   std::map<string, Entry> cache_ TF_GUARDED_BY(mu_);

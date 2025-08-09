@@ -1,0 +1,101 @@
+
+--- a/include/triton/Conversion/TritonGPUToLLVM/PatternTritonGPUOpToLLVM.h	2025-03-25 07:48:50.000000000 -0700
++++ b/include/triton/Conversion/TritonGPUToLLVM/PatternTritonGPUOpToLLVM.h	2025-06-26 09:20:47.000000000 -0700
+@@ -95,7 +95,8 @@
+ void populateFuncOpConversionPattern(LLVMTypeConverter &typeConverter,
+                                      RewritePatternSet &patterns,
+                                      const TargetInfoBase &targetInfo,
+-                                     PatternBenefit benefit);
++                                     PatternBenefit benefit,
++                                     SymbolTableCollection *symbolTables);
+ 
+ void populatePrintOpToLLVMPattern(LLVMTypeConverter &typeConverter,
+                                   RewritePatternSet &patterns,
+
+--- a/lib/Conversion/TritonGPUToLLVM/FuncOpToLLVM.cpp	2025-04-25 05:19:43.000000000 -0700
++++ b/lib/Conversion/TritonGPUToLLVM/FuncOpToLLVM.cpp	2025-06-26 09:20:48.000000000 -0700
+@@ -7,7 +7,8 @@
+ FailureOr<LLVM::LLVMFuncOp>
+ convertFuncOpToLLVMFuncOp(FunctionOpInterface funcOp,
+                           ConversionPatternRewriter &rewriter,
+-                          const LLVMTypeConverter &converter);
++                          const LLVMTypeConverter &converter,
++                          SymbolTableCollection *symbolTables);
+ }
+ 
+ namespace {
+@@ -33,8 +34,10 @@
+ /// information.
+ struct FuncOpConversion : public ConvertOpToLLVMPattern<triton::FuncOp> {
+   FuncOpConversion(LLVMTypeConverter &converter,
+-                   const TargetInfoBase &targetInfo, PatternBenefit benefit)
+-      : ConvertOpToLLVMPattern(converter, benefit), targetInfo(targetInfo) {}
++                   const TargetInfoBase &targetInfo, PatternBenefit benefit,
++                   SymbolTableCollection *symbolTables)
++      : ConvertOpToLLVMPattern(converter, benefit), targetInfo(targetInfo),
++        symbolTables(symbolTables) {}
+ 
+   /// Only retain those attributes that are not constructed by
+   /// `LLVMFuncOp::build`. If `filterArgAttrs` is set, also filter out argument
+@@ -152,7 +155,7 @@
+ 
+     FailureOr<LLVM::LLVMFuncOp> maybeNewFuncOp =
+         mlir::convertFuncOpToLLVMFuncOp(amendedFuncOp, rewriter,
+-                                        *getTypeConverter());
++                                        *getTypeConverter(), symbolTables);
+     if (failed(maybeNewFuncOp)) {
+       return failure();
+     }
+@@ -202,12 +205,16 @@
+ 
+ private:
+   const TargetInfoBase &targetInfo;
++  // Store a pointer to the single, pass-wide symbol table
++  SymbolTableCollection *symbolTables;
+ };
+ 
+ } // namespace
+ 
+ void mlir::triton::populateFuncOpConversionPattern(
+     LLVMTypeConverter &typeConverter, RewritePatternSet &patterns,
+-    const TargetInfoBase &targetInfo, PatternBenefit benefit) {
+-  patterns.add<FuncOpConversion>(typeConverter, targetInfo, benefit);
++    const TargetInfoBase &targetInfo, PatternBenefit benefit,
++    SymbolTableCollection *symbolTables) {
++  patterns.add<FuncOpConversion>(typeConverter, targetInfo, benefit,
++                                 symbolTables);
+ }
+
+--- a/third_party/amd/lib/TritonAMDGPUToLLVM/TritonGPUToLLVM.cpp	2025-06-02 05:51:09.000000000 -0700
++++ b/third_party/amd/lib/TritonAMDGPUToLLVM/TritonGPUToLLVM.cpp	2025-06-26 09:20:48.000000000 -0700
+@@ -110,7 +110,8 @@
+       TritonLLVMFunctionConversionTarget funcTarget(*context);
+       RewritePatternSet funcPatterns(context);
+       mlir::triton::populateFuncOpConversionPattern(
+-          typeConverter, funcPatterns, targetInfo, patternBenefitDefault);
++          typeConverter, funcPatterns, targetInfo, patternBenefitDefault,
++          /*symTable=*/nullptr);
+       mlir::cf::populateControlFlowToLLVMConversionPatterns(typeConverter,
+                                                             funcPatterns);
+       if (failed(
+
+--- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TritonGPUToLLVM.cpp	2025-04-11 01:29:32.000000000 -0700
++++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TritonGPUToLLVM.cpp	2025-06-26 09:20:48.000000000 -0700
+@@ -79,6 +79,7 @@
+   void runOnOperation() override {
+     MLIRContext *context = &getContext();
+     ModuleOp mod = getOperation();
++
+     TargetInfo targetInfo(computeCapability, ptxVersion);
+ 
+     // Allocate shared memory and set barrier
+@@ -94,7 +95,8 @@
+     TritonLLVMFunctionConversionTarget funcTarget(*context);
+     RewritePatternSet funcPatterns(context);
+     mlir::triton::populateFuncOpConversionPattern(
+-        typeConverter, funcPatterns, targetInfo, patternBenefitDefault);
++        typeConverter, funcPatterns, targetInfo, patternBenefitDefault,
++        /*symTable=*/nullptr);
+     mlir::cf::populateControlFlowToLLVMConversionPatterns(typeConverter,
+                                                           funcPatterns);
+     if (failed(

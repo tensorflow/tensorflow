@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/model/symbolic_tile.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <iterator>
 #include <optional>
@@ -100,6 +101,44 @@ AffineExpr SimplifyAffineExpr(const AffineExpr& expr,
   return tmp_indexing_map.GetAffineMap().getResults().back();
 }
 
+// Returns a boolean indicating whether the constraints of the parameter
+// indexing maps are known to be irrelevant with regards to symbolic tile
+// derivation.
+bool IndexingMapConstraintsCanBeIgnored(const IndexingMap& indexing_map) {
+  for (const auto& [expr, range] : indexing_map.GetConstraints()) {
+    bool range_has_no_offset = range.lower == 0;
+    bool constrains_result =
+        absl::c_linear_search(indexing_map.GetAffineMap().getResults(), expr);
+    // In this case, we know that the constraint we found here is
+    //   1. directly restricting the range of a result of the input indexing
+    //      map, and
+    //   2. the restricted range may only invalidate "high values" (i.e., the
+    //      range has a lower bound of 0)
+    //
+    // Since indexing map constraints only allow expressing continuous
+    // intervals, 1. tells us that we are restricting the continuous range of
+    // an output (i.e. we're not constraining as a way to express some kind of
+    // interior padding), and 2. tells us that, if we are inserting padding
+    // (i.e. the constraint is not redundant), then that padding applies to
+    // high values.
+    //
+    // This essentially falls into the use case of "constructing a tile size
+    // that spans indices outside of the input space", which is a use case we
+    // intend for `SymbolicTile` to support. Therefore, we should be able to
+    // safely ignore this constraint.
+    //
+    // Note that the same should hold for low padding, but we leave that for
+    // future work in order to not overcomplicate things.
+    if (range_has_no_offset && constrains_result) {
+      continue;
+    }
+
+    return false;
+  }
+
+  return true;
+}
+
 }  // anonymous namespace
 
 /*static*/ std::optional<SymbolicTile> SymbolicTile::FromIndexingMap(
@@ -113,7 +152,7 @@ AffineExpr SimplifyAffineExpr(const AffineExpr& expr,
   bool did_simplify =
       indexing_map.Simplify(IndexingMap::SimplifyPointDimensions::kPreserve);
   VLOG(1) << "did_simplify: " << did_simplify;
-  if (indexing_map.GetConstraintsCount() != 0) {
+  if (!IndexingMapConstraintsCanBeIgnored(indexing_map)) {
     VLOG(1) << "Deriving symbolic tile from indexing map with pre-existing "
             << "constraints might produce spurious constraints. Bailing out. "
             << indexing_map;
@@ -296,8 +335,20 @@ llvm::SmallVector<int64_t> EvaluateTileSizes(
 
 llvm::SmallVector<int64_t> EvaluateTileStrides(
     const SymbolicTile& symbolic_tile, absl::Span<int64_t const> parameters) {
+  llvm::SmallVector<int64_t> clamped_parameters;
+  clamped_parameters.reserve(parameters.size());
+  // We need to clamp the parameters to the dimension bounds, otherwise the
+  // stride expressions would potentially return wrong results. The underlying
+  // implementation detail is that the IfNeqOne affine expression that we use
+  // for expanding reshapes assumes that the tile parameter is not bigger than
+  // the dimension bound. To make the assumption hold, we clamp the parameters
+  // accordingly.
+  for (auto [parameter, dim_bounds] :
+       llvm::zip(parameters, symbolic_tile.tile_map().GetDimensionBounds())) {
+    clamped_parameters.push_back(std::min(parameter, dim_bounds.upper));
+  }
   return EvaluateAffineMap(symbolic_tile.stride_map(),
-                           /*dim_values=*/parameters);
+                           /*dim_values=*/clamped_parameters);
 }
 
 }  // namespace gpu

@@ -18,8 +18,10 @@ limitations under the License.
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
+#include <functional>
 #include <limits>
 #include <memory>
+#include <string>
 
 #define EIGEN_USE_THREADS
 
@@ -38,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/jpeg/jpeg_mem.h"
 #include "tensorflow/core/lib/png/png_io.h"
+#include "tensorflow/core/lib/webp/webp_io.h"
 #include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
@@ -57,6 +60,9 @@ static const char kGifMagicBytes[] = "\x47\x49\x46\x38";
 static const char kBmpMagicBytes[] = "\x42\x4d";
 // The 4th byte of JPEG is '\xe0' or '\xe1', so check just the first three.
 static const char kJpegMagicBytes[] = "\xff\xd8\xff";
+// WebP is RIFF????WEBP
+static const char kRiffMagicBytes[] = "\x52\x49\x46\x46";
+static const char kWebpMagicBytes[] = "\x57\x45\x42\x50";
 
 enum FileFormat {
   kUnknownFormat = 0,
@@ -64,6 +70,7 @@ enum FileFormat {
   kJpgFormat = 2,
   kGifFormat = 3,
   kBmpFormat = 4,
+  kWebpFormat = 5,
 };
 
 // Classify the contents of a file based on starting bytes (the magic number).
@@ -72,12 +79,19 @@ FileFormat ClassifyFileFormat(absl::string_view data) {
   if (absl::StartsWith(data, kPngMagicBytes)) return kPngFormat;
   if (absl::StartsWith(data, kGifMagicBytes)) return kGifFormat;
   if (absl::StartsWith(data, kBmpMagicBytes)) return kBmpFormat;
+
+  if (absl::StartsWith(data, kRiffMagicBytes) && data.size() > 12) {
+    // Move forward by RIFF plus 4 size bytes.
+    data.remove_prefix(8);
+    if (absl::StartsWith(data, kWebpMagicBytes)) return kWebpFormat;
+  }
+
   return kUnknownFormat;
 }
 
-// Decode an image. Supported image formats are JPEG, PNG, GIF and BMP. This is
-// a newer version of `DecodeImageOp` for enabling image data parsing to take
-// place in kernels only, reducing security vulnerabilities and redundancy.
+// Decode an image. Supported image formats are JPEG, PNG, GIF, BMP, and WebP.
+// This is a newer version of `DecodeImageOp` for enabling image data parsing to
+// take place in kernels only, reducing security vulnerabilities and redundancy.
 class DecodeImageV2Op : public OpKernel {
  public:
   explicit DecodeImageV2Op(OpKernelConstruction* context) : OpKernel(context) {
@@ -93,7 +107,8 @@ class DecodeImageV2Op : public OpKernel {
     OP_REQUIRES(context,
                 op_type_ == "DecodeJpeg" || op_type_ == "DecodeAndCropJpeg" ||
                     op_type_ == "DecodePng" || op_type_ == "DecodeGif" ||
-                    op_type_ == "DecodeBmp" || op_type_ == "DecodeImage",
+                    op_type_ == "DecodeBmp" || op_type_ == "DecodeWebP" ||
+                    op_type_ == "DecodeImage",
                 errors::InvalidArgument("Bad op type ", op_type_));
 
     // Get attributes from `DecodeJpeg` and `DecodeAndCropJpeg` op
@@ -218,10 +233,14 @@ class DecodeImageV2Op : public OpKernel {
       case kBmpFormat:
         DecodeBmpV2(context, input);
         break;
+      case kWebpFormat:
+        DecodeWebP(context, input);
+        break;
       case kUnknownFormat:
-        OP_REQUIRES(context, false,
-                    errors::InvalidArgument("Unknown image file format. One of "
-                                            "JPEG, PNG, GIF, BMP required."));
+        OP_REQUIRES(
+            context, false,
+            errors::InvalidArgument("Unknown image file format. One of "
+                                    "JPEG, PNG, GIF, BMP, WebP required."));
         break;
     }
   }
@@ -666,6 +685,93 @@ class DecodeImageV2Op : public OpKernel {
     }
   }
 
+  void DecodeWebP(OpKernelContext* context, absl::string_view input) {
+    OP_REQUIRES(context, channels_ == 0 || channels_ == 3 || channels_ == 4,
+                errors::InvalidArgument("WebP only supports 3 or 4 channels"));
+
+    OP_REQUIRES(context, data_type_ == DataType::DT_UINT8,
+                errors::InvalidArgument("WebP only supports uint8 for dtype"));
+
+    int width, height, channels;
+    bool has_animation;
+
+    OP_REQUIRES(context,
+                webp::DecodeWebPHeader(input, &width, &height, &channels,
+                                       &has_animation),
+                errors::InvalidArgument("Failed to decode WebP header."));
+
+    // We either wanted auto-detection of channels or that they match the input
+    // image.
+    OP_REQUIRES(context, channels_ == 0 || channels_ == channels,
+                errors::InvalidArgument(
+                    "Number of channels requested does not match input"));
+
+    if (!has_animation) {
+      Tensor* output = nullptr;
+
+      // If this is DecodeImage w/ expand_animations_ = False, return a 3D
+      // tensor. Otherwise, return a 4D tensor with num_frames = 1.
+      if (expand_animations_) {
+        OP_REQUIRES_OK(
+            context,
+            context->allocate_output(
+                0, TensorShape({1, height, width, channels}), &output));
+      } else {
+        OP_REQUIRES_OK(context,
+                       context->allocate_output(
+                           0, TensorShape({height, width, channels}), &output));
+      }
+
+      // Actually decode the image into the output buffer.
+      OP_REQUIRES(context,
+                  webp::DecodeWebPImage(input, output->flat<uint8>().data(),
+                                        width, height, channels),
+                  errors::InvalidArgument("Failed to decode WebP image."));
+      // Note: Here we could also perform casting to other dtypes, but users can
+      // also just convert in their own code.
+      return;
+    }
+
+    // Handle the animation case.
+    OP_REQUIRES(
+        context, channels_ == 0 || channels_ == 4,
+        errors::InvalidArgument("WebP Animation must be 4 channel RGBA"));
+
+    Tensor* output = nullptr;
+    std::string error_string;
+
+    uint8_t* buffer = webp::DecodeWebPAnimation(
+        input,
+        [&](int num_frames, int width, int height, int channls) -> uint8_t* {
+          // If expand_animations is false, we want {height, width, channels}
+          // otherwise, we want {num_frames, height, width, channels} even if
+          // it's a single frame.
+          absl::Status status;
+
+          if (expand_animations_) {
+            status = context->allocate_output(
+                0, TensorShape({num_frames, height, width, channels}), &output);
+          } else {
+            status = context->allocate_output(
+                0, TensorShape({height, width, channels}), &output);
+          }
+
+          if (!status.ok()) {
+            VLOG(1) << status;
+            context->SetStatus(status);
+            return nullptr;
+          }
+
+          return output->flat<uint8>().data();
+        },
+        &error_string, expand_animations_);
+
+    OP_REQUIRES(context, buffer != nullptr,
+                errors::InvalidArgument("Failed to decode WebP Animation: ",
+                                        error_string));
+    // All done, output should have been filled in by DecodeWebPAnimation.
+  }
+
  private:
   void DecodeBMP(const uint8* input, const int row_size, uint8* const output,
                  const int width, const int height, const int output_channels,
@@ -686,6 +792,7 @@ REGISTER_KERNEL_BUILDER(Name("DecodeAndCropJpeg").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name("DecodeImage").Device(DEVICE_CPU),
                         DecodeImageV2Op);
 REGISTER_KERNEL_BUILDER(Name("DecodeBmp").Device(DEVICE_CPU), DecodeImageV2Op);
+REGISTER_KERNEL_BUILDER(Name("DecodeWebP").Device(DEVICE_CPU), DecodeImageV2Op);
 
 void DecodeImageV2Op::DecodeBMP(const uint8* input, const int row_size,
                                 uint8* const output, const int width,

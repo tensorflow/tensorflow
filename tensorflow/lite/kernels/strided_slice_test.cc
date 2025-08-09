@@ -152,8 +152,8 @@ class StridedSliceOpModel : public SingleOpModel {
 template <typename T>
 class StridedSliceOpTest : public ::testing::Test {};
 
-using DataTypes =
-    ::testing::Types<float, uint8_t, uint32_t, int8_t, int16_t, int32_t>;
+using DataTypes = ::testing::Types<float, Eigen::half, Eigen::bfloat16, uint8_t,
+                                   uint32_t, int8_t, int16_t, int32_t>;
 TYPED_TEST_SUITE(StridedSliceOpTest, DataTypes);
 
 template <typename TypeParam, typename T = TypeParam>
@@ -163,6 +163,24 @@ auto ElementsAreTypedArray(std::vector<T> x) {
   } else {
     return ElementsAreArray(std::move(x));
   }
+}
+
+// Casts input vector to specified type, converting to string for std::string
+// type.
+template <typename T>
+std::vector<T> CastVector(const std::vector<int>& input_data) {
+  std::vector<T> casted_input(input_data.size());
+
+  if constexpr (std::is_same_v<T, std::string>) {
+    std::transform(input_data.begin(), input_data.end(), casted_input.begin(),
+                   [](int x) { return std::to_string(x); });
+  } else if constexpr (std::is_same_v<T, int>) {
+    return input_data;
+  } else {
+    std::transform(input_data.begin(), input_data.end(), casted_input.begin(),
+                   [](int x) { return static_cast<T>(x); });
+  }
+  return casted_input;
 }
 
 #if GTEST_HAS_DEATH_TEST
@@ -194,13 +212,15 @@ TYPED_TEST(StridedSliceOpTest, Offset) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m(
-        {10}, {1}, {1}, {1},
-        std::vector<TypeParam>{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}, {1}, {3}, {1}, 0,
-        0, 0, 0, 0, constant_tensors, /*offset=*/true);
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({0, 1, 2, 3, 4, 5, 6, 7, 8, 9});
+    StridedSliceOpModel<TypeParam> m({10}, {1}, {1}, {1}, input_data, {1}, {3},
+                                     {1}, 0, 0, 0, 0, 0, constant_tensors,
+                                     /*offset=*/true);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3}));
-    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>({1, 2, 3}));
+    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
+                                   CastVector<TypeParam>({1, 2, 3})));
     if (constant_tensors) {
       EXPECT_THAT(m.GetOutputTensor(0)->allocation_type, kTfLitePersistentRo);
     } else {
@@ -215,13 +235,15 @@ TYPED_TEST(StridedSliceOpTest, OffsetArray) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m(
-        {3, 4}, {2}, {2}, {2},
-        std::vector<TypeParam>{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}, {0, 1},
-        {2, 2}, {1, 1}, 0, 0, 0, 0, 0, constant_tensors, /*offset=*/true);
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11});
+    StridedSliceOpModel<TypeParam> m({3, 4}, {2}, {2}, {2}, input_data, {0, 1},
+                                     {2, 2}, {1, 1}, 0, 0, 0, 0, 0,
+                                     constant_tensors, /*offset=*/true);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2}));
-    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>({1, 2, 5, 6}));
+    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
+                                   CastVector<TypeParam>({1, 2, 5, 6})));
     if (constant_tensors) {
       EXPECT_THAT(m.GetOutputTensor(0)->allocation_type, kTfLitePersistentRo);
     } else {
@@ -231,47 +253,56 @@ TYPED_TEST(StridedSliceOpTest, OffsetArray) {
 }
 
 TYPED_TEST(StridedSliceOpTest, OffsetConstant) {
-  StridedSliceOpModel<TypeParam> m(
-      {3, 4}, {2}, {2}, {2},
-      std::vector<TypeParam>{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}, {0, 1},
-      {2, 2}, {1, 1}, 0, 0, 0, 0, 0, /*constant_tensors*/ false,
-      /*offset=*/true);
+  const std::vector<TypeParam> input_data =
+      CastVector<TypeParam>({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11});
+  StridedSliceOpModel<TypeParam> m({3, 4}, {2}, {2}, {2}, input_data, {0, 1},
+                                   {2, 2}, {1, 1}, 0, 0, 0, 0, 0,
+                                   /*constant_tensors*/ false,
+                                   /*offset=*/true);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2}));
-  EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>({1, 2, 5, 6}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
+                                 CastVector<TypeParam>({1, 2, 5, 6})));
   EXPECT_THAT(m.GetOutputTensor(0)->allocation_type, kTfLiteArenaRw);
 }
 
 TYPED_TEST(StridedSliceOpTest, OffsetConstantStride) {
   const int height = 5;
   const int width = 6;
-  std::vector<TypeParam> input_data(height * width);
+  std::vector<int> input_data(height * width);
   std::iota(input_data.begin(), input_data.end(), 0);
 
-  StridedSliceOpModel<TypeParam> m({height, width}, {2}, {2}, {2}, input_data,
-                                   {0, 1}, {4, 3}, {2, 2}, 0, 0, 0, 0, 0,
+  auto casted_input_data = CastVector<TypeParam>(input_data);
+
+  StridedSliceOpModel<TypeParam> m({height, width}, {2}, {2}, {2},
+                                   casted_input_data, {0, 1}, {4, 3}, {2, 2}, 0,
+                                   0, 0, 0, 0,
                                    /*constant_tensors*/ false,
                                    /*offset=*/true);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2}));
-  EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>({1, 3, 13, 15}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
+                                 CastVector<TypeParam>({1, 3, 13, 15})));
   EXPECT_THAT(m.GetOutputTensor(0)->allocation_type, kTfLiteArenaRw);
 }
 
 TYPED_TEST(StridedSliceOpTest, OffsetConstantNegativeStride) {
   const int height = 5;
   const int width = 6;
-  std::vector<TypeParam> input_data(height * width);
+  std::vector<int> input_data(height * width);
   std::iota(input_data.begin(), input_data.end(), 0);
 
-  StridedSliceOpModel<TypeParam> m({height, width}, {2}, {2}, {2}, input_data,
-                                   {4, 4}, {-4, -3}, {-2, -2}, 0, 0, 0, 0, 0,
+  auto casted_input_data = CastVector<TypeParam>(input_data);
+
+  StridedSliceOpModel<TypeParam> m({height, width}, {2}, {2}, {2},
+                                   casted_input_data, {4, 4}, {-4, -3},
+                                   {-2, -2}, 0, 0, 0, 0, 0,
                                    /*constant_tensors*/ false,
                                    /*offset=*/true);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2}));
-  EXPECT_THAT(m.GetOutput(),
-              ElementsAreTypedArray<TypeParam>({28, 26, 16, 14}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
+                                 CastVector<TypeParam>({28, 26, 16, 14})));
   EXPECT_THAT(m.GetOutputTensor(0)->allocation_type, kTfLiteArenaRw);
 }
 
@@ -281,11 +312,14 @@ TYPED_TEST(StridedSliceOpTest, In1D) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m({4}, {1}, {1}, {1}, {1, 2, 3, 4}, {1}, {3},
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({1, 2, 3, 4});
+    StridedSliceOpModel<TypeParam> m({4}, {1}, {1}, {1}, input_data, {1}, {3},
                                      {1}, 0, 0, 0, 0, 0, constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
-    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>({2, 3}));
+    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
+                                   CastVector<TypeParam>({2, 3})));
   }
 }
 
@@ -295,11 +329,14 @@ TYPED_TEST(StridedSliceOpTest, In1DConst) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m({4}, {1}, {1}, {1}, {1, 2, 3, 4}, {1}, {3},
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({1, 2, 3, 4});
+    StridedSliceOpModel<TypeParam> m({4}, {1}, {1}, {1}, input_data, {1}, {3},
                                      {1}, 0, 0, 0, 0, 0, constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
-    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>({2, 3}));
+    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
+                                   CastVector<TypeParam>({2, 3})));
   }
 }
 
@@ -309,10 +346,9 @@ TYPED_TEST(StridedSliceOpTest, In1D_Int32End) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    std::vector<TypeParam> values;
-    for (int i = 0; i < 32768; i++) {
-      values.push_back(i);
-    }
+    std::vector<TypeParam> values(32768);
+    std::iota(values.begin(), values.end(), TypeParam(0));
+
     StridedSliceOpModel<TypeParam> m({32768}, {1}, {1}, {1}, values, {0},
                                      {32768}, {1}, 0, 0, 0, 0, 0,
                                      constant_tensors);
@@ -328,8 +364,10 @@ TYPED_TEST(StridedSliceOpTest, In1D_EmptyOutput) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m({4}, {1}, {1}, {1}, {1, 2, 3, 4}, {10},
-                                     {3}, {1}, 0, 0, 0, 0, 0, constant_tensors);
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({1, 2, 3, 4});
+    StridedSliceOpModel<TypeParam> m({4}, {1}, {1}, {1}, input_data, {10}, {3},
+                                     {1}, 0, 0, 0, 0, 0, constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({0}));
   }
@@ -341,11 +379,14 @@ TYPED_TEST(StridedSliceOpTest, In1D_NegativeBegin) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m({4}, {1}, {1}, {1}, {1, 2, 3, 4}, {-3},
-                                     {3}, {1}, 0, 0, 0, 0, 0, constant_tensors);
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({1, 2, 3, 4});
+    StridedSliceOpModel<TypeParam> m({4}, {1}, {1}, {1}, input_data, {-3}, {3},
+                                     {1}, 0, 0, 0, 0, 0, constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
-    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>({2, 3}));
+    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
+                                   CastVector<TypeParam>({2, 3})));
   }
 }
 
@@ -355,11 +396,14 @@ TYPED_TEST(StridedSliceOpTest, In1D_OutOfRangeBegin) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m({4}, {1}, {1}, {1}, {1, 2, 3, 4}, {-5},
-                                     {3}, {1}, 0, 0, 0, 0, 0, constant_tensors);
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({1, 2, 3, 4});
+    StridedSliceOpModel<TypeParam> m({4}, {1}, {1}, {1}, input_data, {-5}, {3},
+                                     {1}, 0, 0, 0, 0, 0, constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3}));
-    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>({1, 2, 3}));
+    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
+                                   CastVector<TypeParam>({1, 2, 3})));
   }
 }
 
@@ -369,12 +413,14 @@ TYPED_TEST(StridedSliceOpTest, In1D_NegativeEnd) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m({4}, {1}, {1}, {1}, {1, 2, 3, 4}, {1},
-                                     {-2}, {1}, 0, 0, 0, 0, 0,
-                                     constant_tensors);
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({1, 2, 3, 4});
+    StridedSliceOpModel<TypeParam> m({4}, {1}, {1}, {1}, input_data, {1}, {-2},
+                                     {1}, 0, 0, 0, 0, 0, constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1}));
-    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>({2}));
+    EXPECT_THAT(m.GetOutput(),
+                ElementsAreTypedArray<TypeParam>(CastVector<TypeParam>({2})));
   }
 }
 
@@ -384,11 +430,14 @@ TYPED_TEST(StridedSliceOpTest, In1D_OutOfRangeEnd) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m({4}, {1}, {1}, {1}, {1, 2, 3, 4}, {-3},
-                                     {5}, {1}, 0, 0, 0, 0, 0, constant_tensors);
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({1, 2, 3, 4});
+    StridedSliceOpModel<TypeParam> m({4}, {1}, {1}, {1}, input_data, {-3}, {5},
+                                     {1}, 0, 0, 0, 0, 0, constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3}));
-    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>({2, 3, 4}));
+    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
+                                   CastVector<TypeParam>({2, 3, 4})));
   }
 }
 
@@ -398,11 +447,14 @@ TYPED_TEST(StridedSliceOpTest, In1D_BeginMask) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m({4}, {1}, {1}, {1}, {1, 2, 3, 4}, {1}, {3},
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({1, 2, 3, 4});
+    StridedSliceOpModel<TypeParam> m({4}, {1}, {1}, {1}, input_data, {1}, {3},
                                      {1}, 1, 0, 0, 0, 0, constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3}));
-    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>({1, 2, 3}));
+    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
+                                   CastVector<TypeParam>({1, 2, 3})));
   }
 }
 
@@ -412,13 +464,15 @@ TYPED_TEST(StridedSliceOpTest, In1D_NegativeBeginNegativeStride) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m({4}, {1}, {1}, {1}, {1, 2, 3, 4}, {-2},
-                                     {-3}, {-1}, 0, 0, 0, 0, 0,
-                                     constant_tensors);
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({1, 2, 3, 4});
+    StridedSliceOpModel<TypeParam> m({4}, {1}, {1}, {1}, input_data, {-2}, {-3},
+                                     {-1}, 0, 0, 0, 0, 0, constant_tensors);
 
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1}));
-    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>({3}));
+    EXPECT_THAT(m.GetOutput(),
+                ElementsAreTypedArray<TypeParam>(CastVector<TypeParam>({3})));
   }
 }
 
@@ -428,11 +482,14 @@ TYPED_TEST(StridedSliceOpTest, In1D_OutOfRangeBeginNegativeStride) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m({4}, {1}, {1}, {1}, {1, 2, 3, 4}, {5}, {2},
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({1, 2, 3, 4});
+    StridedSliceOpModel<TypeParam> m({4}, {1}, {1}, {1}, input_data, {5}, {2},
                                      {-1}, 0, 0, 0, 0, 0, constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1}));
-    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>({4}));
+    EXPECT_THAT(m.GetOutput(),
+                ElementsAreTypedArray<TypeParam>(CastVector<TypeParam>({4})));
   }
 }
 
@@ -442,12 +499,14 @@ TYPED_TEST(StridedSliceOpTest, In1D_NegativeEndNegativeStride) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m({4}, {1}, {1}, {1}, {1, 2, 3, 4}, {2},
-                                     {-4}, {-1}, 0, 0, 0, 0, 0,
-                                     constant_tensors);
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({1, 2, 3, 4});
+    StridedSliceOpModel<TypeParam> m({4}, {1}, {1}, {1}, input_data, {2}, {-4},
+                                     {-1}, 0, 0, 0, 0, 0, constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
-    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>({3, 2}));
+    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
+                                   CastVector<TypeParam>({3, 2})));
   }
 }
 
@@ -457,12 +516,14 @@ TYPED_TEST(StridedSliceOpTest, In1D_OutOfRangeEndNegativeStride) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m({4}, {1}, {1}, {1}, {1, 2, 3, 4}, {-3},
-                                     {-5}, {-1}, 0, 0, 0, 0, 0,
-                                     constant_tensors);
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({1, 2, 3, 4});
+    StridedSliceOpModel<TypeParam> m({4}, {1}, {1}, {1}, input_data, {-3}, {-5},
+                                     {-1}, 0, 0, 0, 0, 0, constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
-    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>({2, 1}));
+    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
+                                   CastVector<TypeParam>({2, 1})));
   }
 }
 
@@ -472,11 +533,14 @@ TYPED_TEST(StridedSliceOpTest, In1D_EndMask) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m({4}, {1}, {1}, {1}, {1, 2, 3, 4}, {1}, {3},
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({1, 2, 3, 4});
+    StridedSliceOpModel<TypeParam> m({4}, {1}, {1}, {1}, input_data, {1}, {3},
                                      {1}, 0, 1, 0, 0, 0, constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3}));
-    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>({2, 3, 4}));
+    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
+                                   CastVector<TypeParam>({2, 3, 4})));
   }
 }
 
@@ -486,11 +550,13 @@ TYPED_TEST(StridedSliceOpTest, In1D_NegStride) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m({3}, {1}, {1}, {1}, {1, 2, 3}, {-1}, {-4},
+    const std::vector<TypeParam> input_data = CastVector<TypeParam>({1, 2, 3});
+    StridedSliceOpModel<TypeParam> m({3}, {1}, {1}, {1}, input_data, {-1}, {-4},
                                      {-1}, 0, 0, 0, 0, 0, constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3}));
-    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>({3, 2, 1}));
+    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
+                                   CastVector<TypeParam>({3, 2, 1})));
   }
 }
 
@@ -500,11 +566,13 @@ TYPED_TEST(StridedSliceOpTest, In1D_EvenLenStride2) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m({2}, {1}, {1}, {1}, {1, 2}, {0}, {2}, {2},
-                                     0, 0, 0, 0, 0, constant_tensors);
+    const std::vector<TypeParam> input_data = CastVector<TypeParam>({1, 2});
+    StridedSliceOpModel<TypeParam> m({2}, {1}, {1}, {1}, input_data, {0}, {2},
+                                     {2}, 0, 0, 0, 0, 0, constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1}));
-    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>({1}));
+    EXPECT_THAT(m.GetOutput(),
+                ElementsAreTypedArray<TypeParam>(CastVector<TypeParam>({1})));
   }
 }
 
@@ -514,11 +582,13 @@ TYPED_TEST(StridedSliceOpTest, In1D_OddLenStride2) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m({3}, {1}, {1}, {1}, {1, 2, 3}, {0}, {3},
+    const std::vector<TypeParam> input_data = CastVector<TypeParam>({1, 2, 3});
+    StridedSliceOpModel<TypeParam> m({3}, {1}, {1}, {1}, input_data, {0}, {3},
                                      {2}, 0, 0, 0, 0, 0, constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
-    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>({1, 3}));
+    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
+                                   CastVector<TypeParam>({1, 3})));
   }
 }
 
@@ -528,13 +598,15 @@ TYPED_TEST(StridedSliceOpTest, In2D_Identity) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m({2, 3}, {2}, {2}, {2}, {1, 2, 3, 4, 5, 6},
-                                     {0, 0}, {2, 3}, {1, 1}, 0, 0, 0, 0, 0,
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({1, 2, 3, 4, 5, 6});
+    StridedSliceOpModel<TypeParam> m({2, 3}, {2}, {2}, {2}, input_data, {0, 0},
+                                     {2, 3}, {1, 1}, 0, 0, 0, 0, 0,
                                      constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3}));
-    EXPECT_THAT(m.GetOutput(),
-                ElementsAreTypedArray<TypeParam>({1, 2, 3, 4, 5, 6}));
+    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
+                                   CastVector<TypeParam>({1, 2, 3, 4, 5, 6})));
   }
 }
 
@@ -544,12 +616,15 @@ TYPED_TEST(StridedSliceOpTest, In2D) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m({2, 3}, {2}, {2}, {2}, {1, 2, 3, 4, 5, 6},
-                                     {1, 0}, {2, 2}, {1, 1}, 0, 0, 0, 0, 0,
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({1, 2, 3, 4, 5, 6});
+    StridedSliceOpModel<TypeParam> m({2, 3}, {2}, {2}, {2}, input_data, {1, 0},
+                                     {2, 2}, {1, 1}, 0, 0, 0, 0, 0,
                                      constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
-    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>({4, 5}));
+    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
+                                   CastVector<TypeParam>({4, 5})));
   }
 }
 
@@ -559,12 +634,15 @@ TYPED_TEST(StridedSliceOpTest, In2D_Stride2) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m({2, 3}, {2}, {2}, {2}, {1, 2, 3, 4, 5, 6},
-                                     {0, 0}, {2, 3}, {2, 2}, 0, 0, 0, 0, 0,
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({1, 2, 3, 4, 5, 6});
+    StridedSliceOpModel<TypeParam> m({2, 3}, {2}, {2}, {2}, input_data, {0, 0},
+                                     {2, 3}, {2, 2}, 0, 0, 0, 0, 0,
                                      constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
-    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>({1, 3}));
+    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
+                                   CastVector<TypeParam>({1, 3})));
   }
 }
 
@@ -574,12 +652,15 @@ TYPED_TEST(StridedSliceOpTest, In2D_NegStride) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m({2, 3}, {2}, {2}, {2}, {1, 2, 3, 4, 5, 6},
-                                     {1, -1}, {2, -4}, {2, -1}, 0, 0, 0, 0, 0,
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({1, 2, 3, 4, 5, 6});
+    StridedSliceOpModel<TypeParam> m({2, 3}, {2}, {2}, {2}, input_data, {1, -1},
+                                     {2, -4}, {2, -1}, 0, 0, 0, 0, 0,
                                      constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3}));
-    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>({6, 5, 4}));
+    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
+                                   CastVector<TypeParam>({6, 5, 4})));
   }
 }
 
@@ -589,12 +670,15 @@ TYPED_TEST(StridedSliceOpTest, In2D_BeginMask) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m({2, 3}, {2}, {2}, {2}, {1, 2, 3, 4, 5, 6},
-                                     {1, 0}, {2, 2}, {1, 1}, 1, 0, 0, 0, 0,
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({1, 2, 3, 4, 5, 6});
+    StridedSliceOpModel<TypeParam> m({2, 3}, {2}, {2}, {2}, input_data, {1, 0},
+                                     {2, 2}, {1, 1}, 1, 0, 0, 0, 0,
                                      constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2}));
-    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>({1, 2, 4, 5}));
+    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
+                                   CastVector<TypeParam>({1, 2, 4, 5})));
   }
 }
 
@@ -604,12 +688,15 @@ TYPED_TEST(StridedSliceOpTest, In2D_EndMask) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m({2, 3}, {2}, {2}, {2}, {1, 2, 3, 4, 5, 6},
-                                     {1, 0}, {2, 2}, {1, 1}, 0, 2, 0, 0, 0,
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({1, 2, 3, 4, 5, 6});
+    StridedSliceOpModel<TypeParam> m({2, 3}, {2}, {2}, {2}, input_data, {1, 0},
+                                     {2, 2}, {1, 1}, 0, 2, 0, 0, 0,
                                      constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3}));
-    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>({4, 5, 6}));
+    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
+                                   CastVector<TypeParam>({4, 5, 6})));
   }
 }
 TYPED_TEST(StridedSliceOpTest, In2D_NegStrideBeginMask) {
@@ -618,12 +705,15 @@ TYPED_TEST(StridedSliceOpTest, In2D_NegStrideBeginMask) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m({2, 3}, {2}, {2}, {2}, {1, 2, 3, 4, 5, 6},
-                                     {1, -2}, {2, -4}, {1, -1}, 2, 0, 0, 0, 0,
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({1, 2, 3, 4, 5, 6});
+    StridedSliceOpModel<TypeParam> m({2, 3}, {2}, {2}, {2}, input_data, {1, -2},
+                                     {2, -4}, {1, -1}, 2, 0, 0, 0, 0,
                                      constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3}));
-    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>({6, 5, 4}));
+    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
+                                   CastVector<TypeParam>({6, 5, 4})));
   }
 }
 TYPED_TEST(StridedSliceOpTest, In2D_NegStrideEndMask) {
@@ -632,12 +722,15 @@ TYPED_TEST(StridedSliceOpTest, In2D_NegStrideEndMask) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m({2, 3}, {2}, {2}, {2}, {1, 2, 3, 4, 5, 6},
-                                     {1, -2}, {2, -3}, {1, -1}, 0, 2, 0, 0, 0,
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({1, 2, 3, 4, 5, 6});
+    StridedSliceOpModel<TypeParam> m({2, 3}, {2}, {2}, {2}, input_data, {1, -2},
+                                     {2, -3}, {1, -1}, 0, 2, 0, 0, 0,
                                      constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
-    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>({5, 4}));
+    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
+                                   CastVector<TypeParam>({5, 4})));
   }
 }
 
@@ -647,9 +740,11 @@ TYPED_TEST(StridedSliceOpTest, In3D_Identity) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m(
-        {2, 3, 2}, {3}, {3}, {3}, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
-        {0, 0, 0}, {2, 3, 2}, {1, 1, 1}, 0, 0, 0, 0, 0, constant_tensors);
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+    StridedSliceOpModel<TypeParam> m({2, 3, 2}, {3}, {3}, {3}, input_data,
+                                     {0, 0, 0}, {2, 3, 2}, {1, 1, 1}, 0, 0, 0,
+                                     0, 0, constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3, 2}));
     EXPECT_THAT(m.GetOutput(),
@@ -662,8 +757,9 @@ TYPED_TEST(StridedSliceOpTest, In3D_NegStride) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m({2, 3, 2}, {3}, {3}, {3},
-                                     {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+    StridedSliceOpModel<TypeParam> m({2, 3, 2}, {3}, {3}, {3}, input_data,
                                      {-1, -1, -1}, {-3, -4, -3}, {-1, -1, -1},
                                      0, 0, 0, 0, 0, constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
@@ -678,12 +774,15 @@ TYPED_TEST(StridedSliceOpTest, In3D_Strided2) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m(
-        {2, 3, 2}, {3}, {3}, {3}, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
-        {0, 0, 0}, {2, 3, 2}, {2, 2, 2}, 0, 0, 0, 0, 0, constant_tensors);
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+    StridedSliceOpModel<TypeParam> m({2, 3, 2}, {3}, {3}, {3}, input_data,
+                                     {0, 0, 0}, {2, 3, 2}, {2, 2, 2}, 0, 0, 0,
+                                     0, 0, constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 1}));
-    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>({1, 5}));
+    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
+                                   CastVector<TypeParam>({1, 5})));
   }
 }
 TYPED_TEST(StridedSliceOpTest, In1D_ShrinkAxisMask1) {
@@ -692,11 +791,14 @@ TYPED_TEST(StridedSliceOpTest, In1D_ShrinkAxisMask1) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m({4}, {1}, {1}, {1}, {1, 2, 3, 4}, {1}, {2},
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({1, 2, 3, 4});
+    StridedSliceOpModel<TypeParam> m({4}, {1}, {1}, {1}, input_data, {1}, {2},
                                      {1}, 0, 0, 0, 0, 1, constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_TRUE(m.GetOutputShape().empty());
-    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>({2}));
+    EXPECT_THAT(m.GetOutput(),
+                ElementsAreTypedArray<TypeParam>(CastVector<TypeParam>({2})));
   }
 }
 TYPED_TEST(StridedSliceOpTest, In1D_ShrinkAxisMask1_NegativeSlice) {
@@ -706,12 +808,15 @@ TYPED_TEST(StridedSliceOpTest, In1D_ShrinkAxisMask1_NegativeSlice) {
       continue;
     }
     // This is equivalent to tf.range(4)[-1].
-    StridedSliceOpModel<TypeParam> m({4}, {1}, {1}, {1}, {0, 1, 2, 3}, {-1},
-                                     {0}, {1}, 0, 0, 0, 0, 1, constant_tensors);
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({0, 1, 2, 3});
+    StridedSliceOpModel<TypeParam> m({4}, {1}, {1}, {1}, input_data, {-1}, {0},
+                                     {1}, 0, 0, 0, 0, 1, constant_tensors);
 
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_TRUE(m.GetOutputShape().empty());
-    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>({3}));
+    EXPECT_THAT(m.GetOutput(),
+                ElementsAreTypedArray<TypeParam>(CastVector<TypeParam>({3})));
   }
 }
 TYPED_TEST(StridedSliceOpTest, In2D_ShrinkAxis3_NegativeSlice) {
@@ -721,13 +826,16 @@ TYPED_TEST(StridedSliceOpTest, In2D_ShrinkAxis3_NegativeSlice) {
       continue;
     }
     // This is equivalent to tf.range(4)[:, tf.newaxis][-2, -1].
-    StridedSliceOpModel<TypeParam> m({4, 1}, {2}, {2}, {2}, {0, 1, 2, 3},
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({0, 1, 2, 3});
+    StridedSliceOpModel<TypeParam> m({4, 1}, {2}, {2}, {2}, input_data,
                                      {-2, -1}, {-1, 0}, {1, 1}, 0, 0, 0, 0, 3,
                                      constant_tensors);
 
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_TRUE(m.GetOutputShape().empty());
-    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>({2}));
+    EXPECT_THAT(m.GetOutput(),
+                ElementsAreTypedArray<TypeParam>(CastVector<TypeParam>({2})));
   }
 }
 TYPED_TEST(StridedSliceOpTest, In2D_ShrinkAxis2_BeginEndAxis1_NegativeSlice) {
@@ -737,13 +845,16 @@ TYPED_TEST(StridedSliceOpTest, In2D_ShrinkAxis2_BeginEndAxis1_NegativeSlice) {
       continue;
     }
     // This is equivalent to tf.range(4)[:, tf.newaxis][:, -1].
-    StridedSliceOpModel<TypeParam> m({4, 1}, {2}, {2}, {2}, {0, 1, 2, 3},
-                                     {0, -1}, {0, 0}, {1, 1}, 1, 1, 0, 0, 2,
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({0, 1, 2, 3});
+    StridedSliceOpModel<TypeParam> m({4, 1}, {2}, {2}, {2}, input_data, {0, -1},
+                                     {0, 0}, {1, 1}, 1, 1, 0, 0, 2,
                                      constant_tensors);
 
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({4}));
-    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>({0, 1, 2, 3}));
+    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
+                                   CastVector<TypeParam>({0, 1, 2, 3})));
   }
 }
 TYPED_TEST(StridedSliceOpTest, In1D_BeginMaskShrinkAxisMask1) {
@@ -752,11 +863,14 @@ TYPED_TEST(StridedSliceOpTest, In1D_BeginMaskShrinkAxisMask1) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m({4}, {1}, {1}, {1}, {1, 2, 3, 4}, {1}, {1},
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({1, 2, 3, 4});
+    StridedSliceOpModel<TypeParam> m({4}, {1}, {1}, {1}, input_data, {1}, {1},
                                      {1}, 1, 0, 0, 0, 1, constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_TRUE(m.GetOutputShape().empty());
-    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>({1}));
+    EXPECT_THAT(m.GetOutput(),
+                ElementsAreTypedArray<TypeParam>(CastVector<TypeParam>({1})));
   }
 }
 TYPED_TEST(StridedSliceOpTest, In2D_ShrinkAxisMask1) {
@@ -765,12 +879,15 @@ TYPED_TEST(StridedSliceOpTest, In2D_ShrinkAxisMask1) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m({2, 3}, {2}, {2}, {2}, {1, 2, 3, 4, 5, 6},
-                                     {0, 0}, {1, 3}, {1, 1}, 0, 0, 0, 0, 1,
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({1, 2, 3, 4, 5, 6});
+    StridedSliceOpModel<TypeParam> m({2, 3}, {2}, {2}, {2}, input_data, {0, 0},
+                                     {1, 3}, {1, 1}, 0, 0, 0, 0, 1,
                                      constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3}));
-    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>({1, 2, 3}));
+    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
+                                   CastVector<TypeParam>({1, 2, 3})));
   }
 }
 TYPED_TEST(StridedSliceOpTest, In2D_ShrinkAxisMask2) {
@@ -779,12 +896,15 @@ TYPED_TEST(StridedSliceOpTest, In2D_ShrinkAxisMask2) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m({2, 3}, {2}, {2}, {2}, {1, 2, 3, 4, 5, 6},
-                                     {0, 0}, {2, 1}, {1, 1}, 0, 0, 0, 0, 2,
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({1, 2, 3, 4, 5, 6});
+    StridedSliceOpModel<TypeParam> m({2, 3}, {2}, {2}, {2}, input_data, {0, 0},
+                                     {2, 1}, {1, 1}, 0, 0, 0, 0, 2,
                                      constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
-    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>({1, 4}));
+    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
+                                   CastVector<TypeParam>({1, 4})));
   }
 }
 TYPED_TEST(StridedSliceOpTest, In2D_ShrinkAxisMask3) {
@@ -793,12 +913,15 @@ TYPED_TEST(StridedSliceOpTest, In2D_ShrinkAxisMask3) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m({2, 3}, {2}, {2}, {2}, {1, 2, 3, 4, 5, 6},
-                                     {0, 0}, {1, 1}, {1, 1}, 0, 0, 0, 0, 3,
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({1, 2, 3, 4, 5, 6});
+    StridedSliceOpModel<TypeParam> m({2, 3}, {2}, {2}, {2}, input_data, {0, 0},
+                                     {1, 1}, {1, 1}, 0, 0, 0, 0, 3,
                                      constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_TRUE(m.GetOutputShape().empty());
-    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>({1}));
+    EXPECT_THAT(m.GetOutput(),
+                ElementsAreTypedArray<TypeParam>(CastVector<TypeParam>({1})));
   }
 }
 TYPED_TEST(StridedSliceOpTest, In3D_IdentityShrinkAxis1) {
@@ -807,13 +930,15 @@ TYPED_TEST(StridedSliceOpTest, In3D_IdentityShrinkAxis1) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m(
-        {2, 3, 2}, {3}, {3}, {3}, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
-        {0, 0, 0}, {1, 3, 2}, {1, 1, 1}, 0, 0, 0, 0, 1, constant_tensors);
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+    StridedSliceOpModel<TypeParam> m({2, 3, 2}, {3}, {3}, {3}, input_data,
+                                     {0, 0, 0}, {1, 3, 2}, {1, 1, 1}, 0, 0, 0,
+                                     0, 1, constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 2}));
-    EXPECT_THAT(m.GetOutput(),
-                ElementsAreTypedArray<TypeParam>({1, 2, 3, 4, 5, 6}));
+    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
+                                   CastVector<TypeParam>({1, 2, 3, 4, 5, 6})));
   }
 }
 TYPED_TEST(StridedSliceOpTest, In3D_IdentityShrinkAxis2) {
@@ -822,12 +947,15 @@ TYPED_TEST(StridedSliceOpTest, In3D_IdentityShrinkAxis2) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m(
-        {2, 3, 2}, {3}, {3}, {3}, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
-        {0, 0, 0}, {2, 1, 2}, {1, 1, 1}, 0, 0, 0, 0, 2, constant_tensors);
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+    StridedSliceOpModel<TypeParam> m({2, 3, 2}, {3}, {3}, {3}, input_data,
+                                     {0, 0, 0}, {2, 1, 2}, {1, 1, 1}, 0, 0, 0,
+                                     0, 2, constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2}));
-    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>({1, 2, 7, 8}));
+    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
+                                   CastVector<TypeParam>({1, 2, 7, 8})));
   }
 }
 TYPED_TEST(StridedSliceOpTest, In3D_IdentityShrinkAxis3) {
@@ -836,12 +964,15 @@ TYPED_TEST(StridedSliceOpTest, In3D_IdentityShrinkAxis3) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m(
-        {2, 3, 2}, {3}, {3}, {3}, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
-        {0, 0, 0}, {1, 1, 2}, {1, 1, 1}, 0, 0, 0, 0, 3, constant_tensors);
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+    StridedSliceOpModel<TypeParam> m({2, 3, 2}, {3}, {3}, {3}, input_data,
+                                     {0, 0, 0}, {1, 1, 2}, {1, 1, 1}, 0, 0, 0,
+                                     0, 3, constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
-    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>({1, 2}));
+    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
+                                   CastVector<TypeParam>({1, 2})));
   }
 }
 TYPED_TEST(StridedSliceOpTest, In3D_IdentityShrinkAxis4) {
@@ -850,13 +981,15 @@ TYPED_TEST(StridedSliceOpTest, In3D_IdentityShrinkAxis4) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m(
-        {2, 3, 2}, {3}, {3}, {3}, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
-        {0, 0, 0}, {2, 3, 1}, {1, 1, 1}, 0, 0, 0, 0, 4, constant_tensors);
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+    StridedSliceOpModel<TypeParam> m({2, 3, 2}, {3}, {3}, {3}, input_data,
+                                     {0, 0, 0}, {2, 3, 1}, {1, 1, 1}, 0, 0, 0,
+                                     0, 4, constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3}));
-    EXPECT_THAT(m.GetOutput(),
-                ElementsAreTypedArray<TypeParam>({1, 3, 5, 7, 9, 11}));
+    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
+                                   CastVector<TypeParam>({1, 3, 5, 7, 9, 11})));
   }
 }
 TYPED_TEST(StridedSliceOpTest, In3D_IdentityShrinkAxis5) {
@@ -865,12 +998,15 @@ TYPED_TEST(StridedSliceOpTest, In3D_IdentityShrinkAxis5) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m(
-        {2, 3, 2}, {3}, {3}, {3}, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
-        {0, 0, 0}, {1, 3, 1}, {1, 1, 1}, 0, 0, 0, 0, 5, constant_tensors);
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+    StridedSliceOpModel<TypeParam> m({2, 3, 2}, {3}, {3}, {3}, input_data,
+                                     {0, 0, 0}, {1, 3, 1}, {1, 1, 1}, 0, 0, 0,
+                                     0, 5, constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3}));
-    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>({1, 3, 5}));
+    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
+                                   CastVector<TypeParam>({1, 3, 5})));
   }
 }
 TYPED_TEST(StridedSliceOpTest, In3D_IdentityShrinkAxis6) {
@@ -879,36 +1015,44 @@ TYPED_TEST(StridedSliceOpTest, In3D_IdentityShrinkAxis6) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m(
-        {2, 3, 2}, {3}, {3}, {3}, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
-        {0, 0, 0}, {2, 1, 1}, {1, 1, 1}, 0, 0, 0, 0, 6, constant_tensors);
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+    StridedSliceOpModel<TypeParam> m({2, 3, 2}, {3}, {3}, {3}, input_data,
+                                     {0, 0, 0}, {2, 1, 1}, {1, 1, 1}, 0, 0, 0,
+                                     0, 6, constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
-    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>({1, 7}));
+    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
+                                   CastVector<TypeParam>({1, 7})));
   }
 }
 TYPED_TEST(StridedSliceOpTest, In3D_IdentityShrinkAxis7) {
   for (bool constant_tensors : {true, false}) {
-    StridedSliceOpModel<TypeParam> m(
-        {2, 3, 2}, {3}, {3}, {3}, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
-        {0, 0, 0}, {1, 1, 1}, {1, 1, 1}, 0, 0, 0, 0, 7, constant_tensors);
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+    StridedSliceOpModel<TypeParam> m({2, 3, 2}, {3}, {3}, {3}, input_data,
+                                     {0, 0, 0}, {1, 1, 1}, {1, 1, 1}, 0, 0, 0,
+                                     0, 7, constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_TRUE(m.GetOutputShape().empty());
-    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>({1}));
+    EXPECT_THAT(m.GetOutput(),
+                ElementsAreTypedArray<TypeParam>(CastVector<TypeParam>({1})));
   }
 
   // This tests catches a very subtle bug that was fixed by cl/188403234.
 }
 TYPED_TEST(StridedSliceOpTest, RunTwice) {
-  StridedSliceOpModel<TypeParam> m({2, 3}, {2}, {2}, {2}, {1, 2, 3, 4, 5, 6},
-                                   {1, 0}, {2, 2}, {1, 1}, 1, 0, 0, 0, 0,
-                                   false);
+  const std::vector<TypeParam> input_data =
+      CastVector<TypeParam>({1, 2, 3, 4, 5, 6});
+  StridedSliceOpModel<TypeParam> m({2, 3}, {2}, {2}, {2}, input_data, {1, 0},
+                                   {2, 2}, {1, 1}, 1, 0, 0, 0, 0, false);
 
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>({1, 2, 4, 5}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
+                                 CastVector<TypeParam>({1, 2, 4, 5})));
 
-  auto setup_inputs = [&m]() {
-    m.template SetInput<TypeParam>({1, 2, 3, 4, 5, 6},
+  auto setup_inputs = [&m, &input_data]() {
+    m.template SetInput<TypeParam>(input_data,
                                    std::is_same<std::string, TypeParam>());
     m.SetBegin({1, 0});
     m.SetEnd({2, 2});
@@ -918,7 +1062,8 @@ TYPED_TEST(StridedSliceOpTest, RunTwice) {
   setup_inputs();
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   // Prior to cl/188403234 this was {4, 5}.
-  EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>({1, 2, 4, 5}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
+                                 CastVector<TypeParam>({1, 2, 4, 5})));
 }
 TYPED_TEST(StridedSliceOpTest, In3D_IdentityShrinkAxis1Uint8) {
   for (bool constant_tensors : {true, false}) {
@@ -926,13 +1071,15 @@ TYPED_TEST(StridedSliceOpTest, In3D_IdentityShrinkAxis1Uint8) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m(
-        {2, 3, 2}, {3}, {3}, {3}, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
-        {0, 0, 0}, {1, 3, 2}, {1, 1, 1}, 0, 0, 0, 0, 1, constant_tensors);
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+    StridedSliceOpModel<TypeParam> m({2, 3, 2}, {3}, {3}, {3}, input_data,
+                                     {0, 0, 0}, {1, 3, 2}, {1, 1, 1}, 0, 0, 0,
+                                     0, 1, constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 2}));
-    EXPECT_THAT(m.GetOutput(),
-                ElementsAreTypedArray<TypeParam>({1, 2, 3, 4, 5, 6}));
+    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
+                                   CastVector<TypeParam>({1, 2, 3, 4, 5, 6})));
   }
 }
 TYPED_TEST(StridedSliceOpTest, In3D_IdentityShrinkAxis1int8) {
@@ -941,13 +1088,15 @@ TYPED_TEST(StridedSliceOpTest, In3D_IdentityShrinkAxis1int8) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m(
-        {2, 3, 2}, {3}, {3}, {3}, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
-        {0, 0, 0}, {1, 3, 2}, {1, 1, 1}, 0, 0, 0, 0, 1, constant_tensors);
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+    StridedSliceOpModel<TypeParam> m({2, 3, 2}, {3}, {3}, {3}, input_data,
+                                     {0, 0, 0}, {1, 3, 2}, {1, 1, 1}, 0, 0, 0,
+                                     0, 1, constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 2}));
-    EXPECT_THAT(m.GetOutput(),
-                ElementsAreTypedArray<TypeParam>({1, 2, 3, 4, 5, 6}));
+    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
+                                   CastVector<TypeParam>({1, 2, 3, 4, 5, 6})));
   }
 }
 TYPED_TEST(StridedSliceOpTest, In5D_Identity) {
@@ -956,15 +1105,16 @@ TYPED_TEST(StridedSliceOpTest, In5D_Identity) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
+    const std::vector<TypeParam> input_data = CastVector<TypeParam>(
+        {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
     StridedSliceOpModel<TypeParam> m(
-        {2, 2, 2, 1, 2}, {5}, {5}, {5},
-        {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
-        {0, 0, 0, 0, 0}, {2, 1, 2, 1, 2}, {1, 1, 1, 1, 1}, 0, 0, 0, 0, 0,
-        constant_tensors);
+        {2, 2, 2, 1, 2}, {5}, {5}, {5}, input_data, {0, 0, 0, 0, 0},
+        {2, 1, 2, 1, 2}, {1, 1, 1, 1, 1}, 0, 0, 0, 0, 0, constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 1, 2, 1, 2}));
     EXPECT_THAT(m.GetOutput(),
-                ElementsAreTypedArray<TypeParam>({1, 2, 3, 4, 9, 10, 11, 12}));
+                ElementsAreTypedArray<TypeParam>(
+                    CastVector<TypeParam>({1, 2, 3, 4, 9, 10, 11, 12})));
   }
 }
 TYPED_TEST(StridedSliceOpTest, In5D_IdentityShrinkAxis1) {
@@ -973,14 +1123,15 @@ TYPED_TEST(StridedSliceOpTest, In5D_IdentityShrinkAxis1) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
+    const std::vector<TypeParam> input_data = CastVector<TypeParam>(
+        {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
     StridedSliceOpModel<TypeParam> m(
-        {2, 2, 2, 1, 2}, {5}, {5}, {5},
-        {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
-        {0, 0, 0, 0, 0}, {2, 1, 2, 1, 2}, {1, 1, 1, 1, 1}, 0, 0, 0, 0, 1,
-        constant_tensors);
+        {2, 2, 2, 1, 2}, {5}, {5}, {5}, input_data, {0, 0, 0, 0, 0},
+        {2, 1, 2, 1, 2}, {1, 1, 1, 1, 1}, 0, 0, 0, 0, 1, constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 1, 2}));
-    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>({1, 2, 3, 4}));
+    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
+                                   CastVector<TypeParam>({1, 2, 3, 4})));
   }
 }
 TYPED_TEST(StridedSliceOpTest, In3D_SmallBegin) {
@@ -989,13 +1140,14 @@ TYPED_TEST(StridedSliceOpTest, In3D_SmallBegin) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m(
-        {2, 3, 2}, {1}, {1}, {1}, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}, {0},
-        {1}, {1}, 0, 0, 0, 0, 0, constant_tensors);
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+    StridedSliceOpModel<TypeParam> m({2, 3, 2}, {1}, {1}, {1}, input_data, {0},
+                                     {1}, {1}, 0, 0, 0, 0, 0, constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3, 2}));
-    EXPECT_THAT(m.GetOutput(),
-                ElementsAreTypedArray<TypeParam>({1, 2, 3, 4, 5, 6}));
+    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
+                                   CastVector<TypeParam>({1, 2, 3, 4, 5, 6})));
   }
 }
 TYPED_TEST(StridedSliceOpTest, In3D_SmallBeginWithhrinkAxis1) {
@@ -1004,13 +1156,14 @@ TYPED_TEST(StridedSliceOpTest, In3D_SmallBeginWithhrinkAxis1) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m(
-        {2, 3, 2}, {1}, {1}, {1}, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}, {0},
-        {1}, {1}, 0, 0, 0, 0, 1, constant_tensors);
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+    StridedSliceOpModel<TypeParam> m({2, 3, 2}, {1}, {1}, {1}, input_data, {0},
+                                     {1}, {1}, 0, 0, 0, 0, 1, constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 2}));
-    EXPECT_THAT(m.GetOutput(),
-                ElementsAreTypedArray<TypeParam>({1, 2, 3, 4, 5, 6}));
+    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
+                                   CastVector<TypeParam>({1, 2, 3, 4, 5, 6})));
   }
 }
 TYPED_TEST(StridedSliceOpTest, In3D_BackwardSmallBeginEndMask) {
@@ -1019,8 +1172,9 @@ TYPED_TEST(StridedSliceOpTest, In3D_BackwardSmallBeginEndMask) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m({1, 1, 2}, {1}, {1}, {1}, {1, 2}, {1}, {0},
-                                     {1}, 0, 1, 0, 0, 0, constant_tensors);
+    const std::vector<TypeParam> input_data = CastVector<TypeParam>({1, 2});
+    StridedSliceOpModel<TypeParam> m({1, 1, 2}, {1}, {1}, {1}, input_data, {1},
+                                     {0}, {1}, 0, 1, 0, 0, 0, constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({0, 1, 2}));
   }
@@ -1031,8 +1185,9 @@ TYPED_TEST(StridedSliceOpTest, In3D_BackwardSmallBegin) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m({1, 1, 2}, {1}, {1}, {1}, {1, 2}, {1}, {0},
-                                     {1}, 0, 0, 0, 0, 0, constant_tensors);
+    const std::vector<TypeParam> input_data = CastVector<TypeParam>({1, 2});
+    StridedSliceOpModel<TypeParam> m({1, 1, 2}, {1}, {1}, {1}, input_data, {1},
+                                     {0}, {1}, 0, 0, 0, 0, 0, constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({0, 1, 2}));
   }
@@ -1043,7 +1198,8 @@ TYPED_TEST(StridedSliceOpTest, In3D_Backward) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m({1, 1, 2}, {3}, {3}, {3}, {1, 2},
+    const std::vector<TypeParam> input_data = CastVector<TypeParam>({1, 2});
+    StridedSliceOpModel<TypeParam> m({1, 1, 2}, {3}, {3}, {3}, input_data,
                                      {1, 0, 0}, {0, -1, -1}, {1, 1, 1}, 6, 7, 0,
                                      0, 0, constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
@@ -1052,26 +1208,32 @@ TYPED_TEST(StridedSliceOpTest, In3D_Backward) {
 }
 
 TEST(StridedSliceOpTest, In1D_String_NegativeBegin) {
-  StridedSliceOpModel<std::string> m({4}, {1}, {1}, {1}, {"a", "b", "c", "d"},
-                                     {-3}, {3}, {1}, 0, 0, 0, 0, 0, false);
+  std::vector<std::string> input_data = CastVector<std::string>(
+      {1, 2, 3, 4});  // input_data = {"a", "b", "c", "d"}
+  StridedSliceOpModel<std::string> m({4}, {1}, {1}, {1}, input_data, {-3}, {3},
+                                     {1}, 0, 0, 0, 0, 0, false);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  std::vector<std::string> output_data =
+      CastVector<std::string>({2, 3});  // output_data = {"b", "c"}
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
-  EXPECT_THAT(m.GetStringOutput(), ElementsAreArray({"b", "c"}));
+  EXPECT_THAT(m.GetStringOutput(), ElementsAreArray(output_data));
 }
 
 TEST(StridedSliceOpTest, In3D_String_BackwardSmallBegin) {
-  StridedSliceOpModel<std::string> m({1, 1, 2}, {1}, {1}, {1}, {"a", "b"}, {1},
+  std::vector<std::string> input_data =
+      CastVector<std::string>({1, 2});  // input_data = {"a", "b"}
+
+  StridedSliceOpModel<std::string> m({1, 1, 2}, {1}, {1}, {1}, input_data, {1},
                                      {0}, {1}, 0, 1, 0, 0, 0, false);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({0, 1, 2}));
 }
 
 TEST(StridedSliceOpTest, In3D_String_SmallBeginWithhrinkAxis1) {
-  StridedSliceOpModel<std::string> m(
-      {2, 3, 2}, {1}, {1}, {1},
-
-      {"1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"}, {0}, {1},
-      {1}, 0, 0, 0, 0, 1, false);
+  std::vector<std::string> input_data =
+      CastVector<std::string>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+  StridedSliceOpModel<std::string> m({2, 3, 2}, {1}, {1}, {1}, input_data, {0},
+                                     {1}, {1}, 0, 0, 0, 0, 1, false);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 2}));
   EXPECT_THAT(m.GetStringOutput(),
@@ -1079,11 +1241,11 @@ TEST(StridedSliceOpTest, In3D_String_SmallBeginWithhrinkAxis1) {
 }
 
 TEST(StridedSliceOpTest, In5D_String_IdentityShrinkAxis1) {
-  StridedSliceOpModel<std::string> m(
-      {2, 2, 2, 1, 2}, {5}, {5}, {5},
-      {"1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13",
-       "14", "15", "16"},
-      {0, 0, 0, 0, 0}, {2, 1, 2, 1, 2}, {1, 1, 1, 1, 1}, 0, 0, 0, 0, 1, false);
+  std::vector<std::string> input_data = CastVector<std::string>(
+      {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
+  StridedSliceOpModel<std::string> m({2, 2, 2, 1, 2}, {5}, {5}, {5}, input_data,
+                                     {0, 0, 0, 0, 0}, {2, 1, 2, 1, 2},
+                                     {1, 1, 1, 1, 1}, 0, 0, 0, 0, 1, false);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 1, 2}));
   EXPECT_THAT(m.GetStringOutput(), ElementsAreArray({"1", "2", "3", "4"}));
@@ -1094,13 +1256,16 @@ TYPED_TEST(StridedSliceOpTest, In2D_ShrinkAxis_Endmask_AtSameAxis) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m({2, 2}, {2}, {2}, {2}, {0, 1, 2, 3},
-                                     {0, -1}, {0, 0}, {1, -1}, 1, 1, 0, 0, 1,
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({0, 1, 2, 3});
+    StridedSliceOpModel<TypeParam> m({2, 2}, {2}, {2}, {2}, input_data, {0, -1},
+                                     {0, 0}, {1, -1}, 1, 1, 0, 0, 1,
                                      constant_tensors);
 
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1}));
-    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>({1}));
+    EXPECT_THAT(m.GetOutput(),
+                ElementsAreTypedArray<TypeParam>(CastVector<TypeParam>({1})));
   }
 }
 TYPED_TEST(StridedSliceOpTest, EllipsisMask1_NewAxisMask2) {
@@ -1109,14 +1274,16 @@ TYPED_TEST(StridedSliceOpTest, EllipsisMask1_NewAxisMask2) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m(
-        {2, 3, 2}, {3}, {3}, {3}, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
-        {0, 0, 0}, {1, 2, 1}, {1, 1, 1}, 0, 0, 1, 2, 0, constant_tensors);
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+    StridedSliceOpModel<TypeParam> m({2, 3, 2}, {3}, {3}, {3}, input_data,
+                                     {0, 0, 0}, {1, 2, 1}, {1, 1, 1}, 0, 0, 1,
+                                     2, 0, constant_tensors);
 
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3, 1, 1}));
-    EXPECT_THAT(m.GetOutput(),
-                ElementsAreTypedArray<TypeParam>({1, 3, 5, 7, 9, 11}));
+    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
+                                   CastVector<TypeParam>({1, 3, 5, 7, 9, 11})));
   }
 }
 TYPED_TEST(StridedSliceOpTest, EllipsisMask2_NewAxisMask1) {
@@ -1125,14 +1292,16 @@ TYPED_TEST(StridedSliceOpTest, EllipsisMask2_NewAxisMask1) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m(
-        {2, 3, 2}, {3}, {3}, {3}, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
-        {0, 0, 0}, {1, 2, 1}, {1, 1, 1}, 0, 0, 2, 1, 0, constant_tensors);
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+    StridedSliceOpModel<TypeParam> m({2, 3, 2}, {3}, {3}, {3}, input_data,
+                                     {0, 0, 0}, {1, 2, 1}, {1, 1, 1}, 0, 0, 2,
+                                     1, 0, constant_tensors);
 
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 3, 1}));
-    EXPECT_THAT(m.GetOutput(),
-                ElementsAreTypedArray<TypeParam>({1, 3, 5, 7, 9, 11}));
+    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
+                                   CastVector<TypeParam>({1, 3, 5, 7, 9, 11})));
   }
 }
 TYPED_TEST(StridedSliceOpTest, EllipsisMask2_NewAxisMask5) {
@@ -1141,9 +1310,11 @@ TYPED_TEST(StridedSliceOpTest, EllipsisMask2_NewAxisMask5) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m(
-        {2, 3, 2}, {3}, {3}, {3}, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
-        {0, 0, 0}, {1, 2, 1}, {1, 1, 1}, 0, 0, 2, 5, 0, constant_tensors);
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+    StridedSliceOpModel<TypeParam> m({2, 3, 2}, {3}, {3}, {3}, input_data,
+                                     {0, 0, 0}, {1, 2, 1}, {1, 1, 1}, 0, 0, 2,
+                                     5, 0, constant_tensors);
 
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 3, 2, 1}));
@@ -1157,13 +1328,16 @@ TYPED_TEST(StridedSliceOpTest, EllipsisMask2_NewAxisMask2) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m(
-        {2, 3, 2}, {3}, {3}, {3}, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
-        {0, 0, 0}, {1, 2, 1}, {1, 1, 1}, 0, 0, 2, 2, 0, constant_tensors);
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+    StridedSliceOpModel<TypeParam> m({2, 3, 2}, {3}, {3}, {3}, input_data,
+                                     {0, 0, 0}, {1, 2, 1}, {1, 1, 1}, 0, 0, 2,
+                                     2, 0, constant_tensors);
 
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3, 1}));
-    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>({1, 3, 5}));
+    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
+                                   CastVector<TypeParam>({1, 3, 5})));
   }
 }
 TYPED_TEST(StridedSliceOpTest, EllipsisMask4_NewAxisMask2) {
@@ -1172,14 +1346,16 @@ TYPED_TEST(StridedSliceOpTest, EllipsisMask4_NewAxisMask2) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m(
-        {2, 3, 2}, {3}, {3}, {3}, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
-        {0, 0, 0}, {1, 2, 1}, {1, 1, 1}, 0, 0, 4, 2, 0, constant_tensors);
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+    StridedSliceOpModel<TypeParam> m({2, 3, 2}, {3}, {3}, {3}, input_data,
+                                     {0, 0, 0}, {1, 2, 1}, {1, 1, 1}, 0, 0, 4,
+                                     2, 0, constant_tensors);
 
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1, 3, 2}));
-    EXPECT_THAT(m.GetOutput(),
-                ElementsAreTypedArray<TypeParam>({1, 2, 3, 4, 5, 6}));
+    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
+                                   CastVector<TypeParam>({1, 2, 3, 4, 5, 6})));
   }
 }
 TYPED_TEST(StridedSliceOpTest, EllipsisMask2) {
@@ -1188,13 +1364,16 @@ TYPED_TEST(StridedSliceOpTest, EllipsisMask2) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m(
-        {2, 3, 2}, {3}, {3}, {3}, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
-        {0, 0, 0}, {1, 2, 1}, {1, 1, 1}, 0, 0, 2, 0, 0, constant_tensors);
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+    StridedSliceOpModel<TypeParam> m({2, 3, 2}, {3}, {3}, {3}, input_data,
+                                     {0, 0, 0}, {1, 2, 1}, {1, 1, 1}, 0, 0, 2,
+                                     0, 0, constant_tensors);
 
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3, 1}));
-    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>({1, 3, 5}));
+    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
+                                   CastVector<TypeParam>({1, 3, 5})));
   }
 }
 TYPED_TEST(StridedSliceOpTest, NewAxisMask2) {
@@ -1203,13 +1382,16 @@ TYPED_TEST(StridedSliceOpTest, NewAxisMask2) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m(
-        {2, 3, 2}, {3}, {3}, {3}, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
-        {0, 0, 0}, {1, 3, 1}, {1, 1, 1}, 0, 0, 0, 2, 0, constant_tensors);
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+    StridedSliceOpModel<TypeParam> m({2, 3, 2}, {3}, {3}, {3}, input_data,
+                                     {0, 0, 0}, {1, 3, 1}, {1, 1, 1}, 0, 0, 0,
+                                     2, 0, constant_tensors);
 
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1, 1, 2}));
-    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>({1, 2}));
+    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
+                                   CastVector<TypeParam>({1, 2})));
   }
 }
 TYPED_TEST(StridedSliceOpTest, NewAxisMask1) {
@@ -1218,13 +1400,16 @@ TYPED_TEST(StridedSliceOpTest, NewAxisMask1) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m(
-        {2, 3, 2}, {3}, {3}, {3}, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
-        {0, 0, 0}, {1, 3, 1}, {1, 1, 1}, 0, 0, 0, 1, 0, constant_tensors);
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+    StridedSliceOpModel<TypeParam> m({2, 3, 2}, {3}, {3}, {3}, input_data,
+                                     {0, 0, 0}, {1, 3, 1}, {1, 1, 1}, 0, 0, 0,
+                                     1, 0, constant_tensors);
 
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 1, 2}));
-    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>({1, 2, 7, 8}));
+    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
+                                   CastVector<TypeParam>({1, 2, 7, 8})));
   }
 }
 TYPED_TEST(StridedSliceOpTest, NoInfiniteLoop) {
@@ -1245,12 +1430,14 @@ TYPED_TEST(StridedSliceOpTest, MinusThreeMinusFourMinusOne) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m({4}, {1}, {1}, {1}, {1, 2, 3, 4}, {-3},
-                                     {-4}, {-1}, 0, 0, 0, 0, 0,
-                                     constant_tensors);
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({1, 2, 3, 4});
+    StridedSliceOpModel<TypeParam> m({4}, {1}, {1}, {1}, input_data, {-3}, {-4},
+                                     {-1}, 0, 0, 0, 0, 0, constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1}));
-    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>({2}));
+    EXPECT_THAT(m.GetOutput(),
+                ElementsAreTypedArray<TypeParam>(CastVector<TypeParam>({2})));
   }
 }
 TYPED_TEST(StridedSliceOpTest, MinusFourMinusThreeOne) {
@@ -1259,12 +1446,14 @@ TYPED_TEST(StridedSliceOpTest, MinusFourMinusThreeOne) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m({4}, {1}, {1}, {1}, {1, 2, 3, 4}, {-4},
-                                     {-3}, {1}, 0, 0, 0, 0, 0,
-                                     constant_tensors);
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({1, 2, 3, 4});
+    StridedSliceOpModel<TypeParam> m({4}, {1}, {1}, {1}, input_data, {-4}, {-3},
+                                     {1}, 0, 0, 0, 0, 0, constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1}));
-    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>({1}));
+    EXPECT_THAT(m.GetOutput(),
+                ElementsAreTypedArray<TypeParam>(CastVector<TypeParam>({1})));
   }
 }
 TYPED_TEST(StridedSliceOpTest, OneOneOne) {
@@ -1273,8 +1462,9 @@ TYPED_TEST(StridedSliceOpTest, OneOneOne) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m({1}, {1}, {1}, {1}, {2}, {1}, {1}, {1}, 0,
-                                     0, 0, 0, 0, constant_tensors);
+    const std::vector<TypeParam> input_data = CastVector<TypeParam>({2});
+    StridedSliceOpModel<TypeParam> m({1}, {1}, {1}, {1}, input_data, {1}, {1},
+                                     {1}, 0, 0, 0, 0, 0, constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({0}));
   }
@@ -1285,11 +1475,13 @@ TYPED_TEST(StridedSliceOpTest, OneOneOneShrinkAxis) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m({3}, {1}, {1}, {1}, {1, 2, 3}, {1}, {1},
+    const std::vector<TypeParam> input_data = CastVector<TypeParam>({1, 2, 3});
+    StridedSliceOpModel<TypeParam> m({3}, {1}, {1}, {1}, input_data, {1}, {1},
                                      {1}, 0, 0, 0, 0, 1, constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), IsEmpty());
-    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>({2}));
+    EXPECT_THAT(m.GetOutput(),
+                ElementsAreTypedArray<TypeParam>(CastVector<TypeParam>({2})));
   }
 }
 TYPED_TEST(StridedSliceOpTest, OneOneOneShrinkAxisOOB) {
@@ -1298,8 +1490,9 @@ TYPED_TEST(StridedSliceOpTest, OneOneOneShrinkAxisOOB) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m({1}, {1}, {1}, {1}, {2}, {1}, {1}, {1}, 0,
-                                     0, 0, 0, 1, constant_tensors);
+    const std::vector<TypeParam> input_data = CastVector<TypeParam>({2});
+    StridedSliceOpModel<TypeParam> m({1}, {1}, {1}, {1}, input_data, {1}, {1},
+                                     {1}, 0, 0, 0, 0, 1, constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), IsEmpty());
   }
@@ -1334,22 +1527,26 @@ TYPED_TEST(StridedSliceOpTest, NegEndMask) {
       // NNAPI does not support graphs with all constant inputs.
       continue;
     }
-    StridedSliceOpModel<TypeParam> m({2, 3}, {2}, {2}, {2}, {1, 2, 3, 4, 5, 6},
-                                     {0, -1}, {2, -3}, {1, -1}, 0, 0b10, 0, 0,
-                                     0, constant_tensors);
+    const std::vector<TypeParam> input_data =
+        CastVector<TypeParam>({1, 2, 3, 4, 5, 6});
+    StridedSliceOpModel<TypeParam> m({2, 3}, {2}, {2}, {2}, input_data, {0, -1},
+                                     {2, -3}, {1, -1}, 0, 0b10, 0, 0, 0,
+                                     constant_tensors);
     ASSERT_EQ(m.Invoke(), kTfLiteOk);
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3}));
-    EXPECT_THAT(m.GetOutput(),
-                ElementsAreTypedArray<TypeParam>({3, 2, 1, 6, 5, 4}));
+    EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
+                                   CastVector<TypeParam>({3, 2, 1, 6, 5, 4})));
   }
 }
 TYPED_TEST(StridedSliceOpTest, NoopOffset) {
-  StridedSliceOpModel<TypeParam> m({2, 3}, {2}, {2}, {2}, {1, 2, 3, 4, 5, 6},
-                                   {0, -1}, {2, -3}, {1, -1}, 0, 0b10, 0, 0, 0);
+  const std::vector<TypeParam> input_data =
+      CastVector<TypeParam>({1, 2, 3, 4, 5, 6});
+  StridedSliceOpModel<TypeParam> m({2, 3}, {2}, {2}, {2}, input_data, {0, -1},
+                                   {2, -3}, {1, -1}, 0, 0b10, 0, 0, 0);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3}));
-  EXPECT_THAT(m.GetOutput(),
-              ElementsAreTypedArray<TypeParam>({3, 2, 1, 6, 5, 4}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
+                                 CastVector<TypeParam>({3, 2, 1, 6, 5, 4})));
 }
 }  // namespace
 }  // namespace tflite

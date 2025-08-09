@@ -121,8 +121,7 @@ bool ParseInputNodeQuantSpecs(const absl::string_view node_names,
   }
 
   tensorflow::DataType final_type = tensorflow::DT_FLOAT;
-  if (!inference_type.empty() &&
-      !DataType_Parse(std::string(inference_type), &final_type)) {
+  if (!inference_type.empty() && !DataType_Parse(inference_type, &final_type)) {
     return true;
   }
   return GetInputNodeQuantSpecs(input_nodes, node_mins, node_maxs, final_type,
@@ -166,9 +165,18 @@ std::string GetQDQQuantModeString(const QDQConversionMode mode) {
       return "Static";
     case QDQConversionMode::kQDQDynamic:
       return "Dynamic";
+    case QDQConversionMode::kQDQStrict:
+      return "Strict";
     default:
       return "NoQDQ";
   }
+}
+
+QDQConversionMode GetQDQQuantModeFromString(const std::string& mode_str) {
+  if (mode_str == "Static") return QDQConversionMode::kQDQStatic;
+  if (mode_str == "Dynamic") return QDQConversionMode::kQDQDynamic;
+  if (mode_str == "Strict") return QDQConversionMode::kQDQStrict;
+  return QDQConversionMode::kQDQNone;
 }
 
 }  // namespace quant

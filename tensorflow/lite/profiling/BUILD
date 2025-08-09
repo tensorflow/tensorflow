@@ -1,3 +1,6 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
+load("@rules_cc//cc:objc_library.bzl", "objc_library")
 load("//tensorflow:tensorflow.bzl", "clean_dep")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")
@@ -185,6 +188,19 @@ cc_test(
         ":memory_usage_monitor",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "memory_latency_logger",
+    srcs = ["memory_latency_logger.cc"],
+    hdrs = ["memory_latency_logger.h"],
+    deps = [
+        ":memory_usage_monitor",
+        "//tensorflow/lite:framework_stable",
+        "//tensorflow/lite/tools:logging",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/time",
     ],
 )
 

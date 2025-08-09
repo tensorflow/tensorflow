@@ -1,4 +1,5 @@
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -127,7 +128,7 @@ cc_library(
 
 flatbuffer_cc_library(
     name = "serialization_base_cc_fbs",
-    srcs = ["serialization_base.fbs"],
+    srcs = ["tflite_serialization_base.fbs"],
     flatc_args = [
         "--scoped-enums",
     ],

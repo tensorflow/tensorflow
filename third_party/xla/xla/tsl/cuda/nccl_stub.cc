@@ -12,9 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <string_view>
-
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/string_view.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/nccl/nccl.h"
 #include "xla/tsl/platform/logging.h"
@@ -53,8 +52,8 @@ const char* kSymbols[] = {
 
 constexpr size_t kNumSymbols = sizeof(kSymbols) / sizeof(const char*);
 
-absl::flat_hash_set<std::string_view> const& ErrorStringSymbols() {
-  static auto* syms = new absl::flat_hash_set<std::string_view>{
+absl::flat_hash_set<absl::string_view> const& ErrorStringSymbols() {
+  static auto* const syms = new absl::flat_hash_set<absl::string_view>{
       "ncclGetErrorString",
       "pncclGetErrorString",
       "ncclGetLastError",

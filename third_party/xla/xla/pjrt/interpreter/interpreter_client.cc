@@ -64,6 +64,8 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
@@ -177,7 +179,8 @@ inline DeviceAssignment MakeInterpreterDeviceAssignment() {
 }  // namespace
 
 const InterpreterDescription& InterpreterDescription::Singleton() {
-  static const InterpreterDescription* singleton = new InterpreterDescription;
+  static const InterpreterDescription* const singleton =
+      new InterpreterDescription;
   return *singleton;
 }
 
@@ -185,7 +188,7 @@ absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
 InterpreterLoadedExecutable::Execute(
     absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
     const ExecuteOptions& options,
-    std::optional<std::vector<PjRtFuture<>>>& returned_futures) {
+    std::optional<std::vector<PjRtFuture<>>>& returned_futures) const {
   if (device_assignment_ == nullptr) {
     return absl::InvalidArgumentError(
         "Execute expects a non-null device_assignment");
@@ -224,7 +227,7 @@ absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 InterpreterLoadedExecutable::ExecuteSharded(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
     const ExecuteOptions& options, std::optional<PjRtFuture<>>& returned_future,
-    bool fill_future) {
+    bool fill_future) const {
   if (device_assignment_ == nullptr) {
     return absl::InvalidArgumentError(
         "ExecuteSharded expects a non-null device_assignment");
@@ -282,7 +285,7 @@ InterpreterLoadedExecutable::ExecuteSharded(
   std::vector<std::unique_ptr<PjRtBuffer>> result;
   // Untuple result if requested.
   if (options.untuple_result && result_literal.shape().IsTuple()) {
-    const int tuple_count = result_literal.shape().tuple_shapes_size();
+    const int tuple_count = result_literal.shape().tuple_shapes().size();
     result.reserve(tuple_count);
     // DecomposeTuple invalidates result_literal. move(...) to make it obvious.
     std::vector<Literal> tuple_elements =
@@ -304,15 +307,24 @@ absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 InterpreterLoadedExecutable::ExecutePortable(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
     const ExecuteOptions& options, std::optional<PjRtFuture<>>& returned_future,
-    bool fill_future) {
+    bool fill_future) const {
   return absl::UnimplementedError("ExecutePortable is not implemented");
 }
 
 absl::StatusOr<Literal> InterpreterLoadedExecutable::Evaluate(
     const HloComputation& computation,
-    absl::Span<const Literal* const> arg_literals) {
+    absl::Span<const Literal* const> arg_literals) const {
   absl::MutexLock lock(&hlo_evaluator_lock_);
+  hlo_evaluator_->ResetVisitStates();
   return hlo_evaluator_->Evaluate(computation, arg_literals);
+}
+
+std::optional<PjRtPluginAttributes> InterpreterClient::plugin_attributes()
+    const {
+  PjRtPluginAttributes attributes =
+      PjRtClient::plugin_attributes().value_or(PjRtPluginAttributes());
+  attributes.attributes["serialize_with_sdy"] = true;
+  return attributes;
 }
 
 absl::StatusOr<DeviceAssignment> InterpreterClient::GetDefaultDeviceAssignment(
@@ -333,8 +345,8 @@ absl::StatusOr<Layout> InterpreterClient::GetDefaultLayout(
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-InterpreterClient::Compile(const XlaComputation& computation,
-                           CompileOptions options) {
+InterpreterClient::CompileAndLoad(const XlaComputation& computation,
+                                  CompileOptions options) {
   std::vector<const Shape*> argument_layout_pointers;
   const ExecutableBuildOptions& build_options =
       options.executable_build_options;
@@ -356,19 +368,19 @@ InterpreterClient::Compile(const XlaComputation& computation,
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-InterpreterClient::Compile(mlir::ModuleOp module, CompileOptions options) {
+InterpreterClient::CompileAndLoad(mlir::ModuleOp module,
+                                  CompileOptions options) {
   XlaComputation xla_computation;
-  const ExecutableBuildOptions& exec_build_options =
-      options.executable_build_options;
+  ExecutableBuildOptions& exec_build_options = options.executable_build_options;
   TF_RETURN_IF_ERROR(MlirToXlaComputation(
       module, xla_computation,
       /*use_tuple_args=*/options.parameter_is_tupled_arguments,
-      /*return_tuple=*/false, exec_build_options.use_shardy_partitioner()));
+      /*return_tuple=*/false, &exec_build_options));
 
   // If the compile options specify argument layout, then let's
   // fall back to using the options to determine layouts.
   if (options.argument_layouts) {
-    return Compile(xla_computation, options);
+    return CompileAndLoad(xla_computation, options);
   }
 
   TF_ASSIGN_OR_RETURN(std::vector<LayoutMode> arg_layout_modes,
@@ -406,17 +418,11 @@ InterpreterClient::Compile(mlir::ModuleOp module, CompileOptions options) {
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 InterpreterClient::BufferFromHostLiteral(const LiteralSlice& literal,
-                                         PjRtMemorySpace* memory_space) {
-  return std::make_unique<InterpreterLiteralWrapperBuffer>(
-      memory_space->client(), memory_space, literal);
-}
-
-absl::StatusOr<std::unique_ptr<PjRtBuffer>>
-InterpreterClient::BufferFromHostLiteral(const LiteralSlice& literal,
                                          PjRtMemorySpace* memory_space,
                                          const Layout* device_layout) {
   if (device_layout == nullptr) {
-    return BufferFromHostLiteral(literal, memory_space);
+    return std::make_unique<InterpreterLiteralWrapperBuffer>(
+        memory_space->client(), memory_space, literal);
   }
   Literal device_literal = literal.Relayout(*device_layout);
   return std::make_unique<InterpreterLiteralWrapperBuffer>(

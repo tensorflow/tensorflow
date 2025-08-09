@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
@@ -53,7 +54,7 @@ absl::Status ExchangeTopologies(absl::string_view platform, int node_id,
 // Given a LocalTopologyProto object from each node, builds a
 // GlobalTopologyProto that describes all nodes. Steals the contents of the
 // LocalTopologyProtos.
-GlobalTopologyProto BuildGlobalTopology(
+absl::StatusOr<GlobalTopologyProto> BuildGlobalTopology(
     absl::Span<LocalTopologyProto> local_topologies,
     bool assign_global_device_ids);
 

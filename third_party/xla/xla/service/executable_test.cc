@@ -24,9 +24,9 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/hlo_execution_profile.h"
 #include "xla/service/service_executable_run_options.h"
-#include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
@@ -47,7 +47,7 @@ class TestExecutable : public Executable {
   }
 };
 
-class ExecutableTest : public HloTestBase {};
+class ExecutableTest : public HloHardwareIndependentTestBase {};
 
 TEST_F(ExecutableTest, HloProtoGetterIsThreadCompatible) {
   // Executable::hlo_proto() is doing some lazy initialization of a

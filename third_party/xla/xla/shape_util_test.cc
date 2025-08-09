@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <numeric>
 #include <optional>
@@ -34,6 +35,7 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/shape.h"
 #include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test_benchmark.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
@@ -242,8 +244,9 @@ TEST(ShapeUtilTest, CompatibleTuples) {
 }
 
 TEST(ShapeUtilTest, MakeMaybeTupleShape) {
-  Shape s1 =
-      ShapeUtil::MakeMaybeTupleShape({ShapeUtil::MakeShape(F32, {3, 2})});
+  Shape s1 = ShapeUtil::MakeValidatedMaybeTupleShape(
+                 {ShapeUtil::MakeValidatedShape(F32, {3, 2}).value()})
+                 .value();
   EXPECT_TRUE(ShapeUtil::Compatible(s1, ShapeUtil::MakeShape(F32, {3, 2})));
 }
 
@@ -817,6 +820,20 @@ TEST(ShapeUtilTest, ForEachIndexParallel_WithOddIncr) {
   }
 }
 
+TEST(ShapeUtilTest, ForEachIndexParallel_Scalar) {
+  Shape shape = ShapeUtil::MakeShape(F32, {});
+  int64_t output = 0;
+  auto set_func = [&](absl::Span<const int64_t> indexes,
+                      int /*thread_id*/) -> absl::StatusOr<bool> {
+    output = 5;
+    return true;
+  };
+
+  ShapeUtil::ForEachIndexParallel(shape, /*base=*/{}, /*count=*/{},
+                                  /*incr=*/{}, set_func);
+  EXPECT_EQ(output, 5);
+}
+
 TEST(ShapeUtilTest, ForEachIndexParallel_CalledTwice) {
   Shape shape = ShapeUtil::MakeShape(F32, {10, 10});
   int64_t output[10][10];
@@ -1028,8 +1045,7 @@ TEST(ShapeUtilTest, InvalidDynamicDimension) {
 
   EXPECT_FALSE(error_status.ok());
   EXPECT_THAT(error_status.status().message(),
-              ::testing::HasSubstr(
-                  "Cannot mark a dynamic dimension at dim=1 as static"));
+              ::testing::HasSubstr("Invalid dimension size"));
 }
 
 TEST(ShapeUtilTest, PermuteDynamicDimensions) {
@@ -1044,7 +1060,7 @@ TEST(ShapeUtilTest, PermuteDynamicDimensions) {
     SCOPED_TRACE(absl::StrCat("permutation=", absl::StrJoin(permutation, ",")));
 
     auto permuted = ShapeUtil::PermuteDimensions(permutation, shape);
-    for (int i = 0; i < shape.rank(); i++) {
+    for (int i = 0; i < shape.dimensions().size(); i++) {
       EXPECT_EQ(permuted.dimensions(i), shape.dimensions(permutation[i]));
       EXPECT_EQ(permuted.is_dynamic_dimension(i),
                 shape.is_dynamic_dimension(permutation[i]));
@@ -1082,6 +1098,58 @@ TEST(ShapeUtilTest, AppendMinorDimension) {
   ShapeUtil::AppendMinorDimension(40, &shape);
   EXPECT_EQ(shape, ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 20, 30, 40},
                                                        {3, 0, 2, 1}));
+}
+
+TEST(ShapeUtilTest, InsertDimensionAtIndex) {
+  Shape shape = ShapeUtil::MakeShape(F32, {});
+  EXPECT_EQ(ShapeUtil::InsertDimensionAtIndex(shape, 0, 10),
+            ShapeUtil::MakeShape(F32, {10}));
+
+  shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 20, 30}, {2, 1, 0});
+  EXPECT_EQ(
+      ShapeUtil::InsertDimensionAtIndex(shape, 3, 40),
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 20, 30, 40}, {3, 2, 1, 0}));
+
+  shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 20, 30}, {2, 1, 0});
+  EXPECT_EQ(
+      ShapeUtil::InsertDimensionAtIndex(shape, 1, 40),
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 40, 20, 30}, {3, 2, 1, 0}));
+
+  shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 20, 30}, {0, 2, 1});
+  EXPECT_EQ(
+      ShapeUtil::InsertDimensionAtIndex(shape, 1, 40),
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 40, 20, 30}, {0, 3, 2, 1}));
+
+  shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 20, 30}, {2, 1, 0});
+  EXPECT_EQ(
+      ShapeUtil::InsertDimensionAtIndex(shape, 0, 40),
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {40, 10, 20, 30}, {3, 2, 1, 0}));
+}
+
+TEST(ShapeUtilTest, InsertDimensionsAtIndex) {
+  Shape shape = ShapeUtil::MakeShape(F32, {});
+  EXPECT_EQ(ShapeUtil::InsertDimensionsAtIndex(shape, 0, {10, 20}),
+            ShapeUtil::MakeShape(F32, {10, 20}));
+
+  shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 20, 30}, {2, 1, 0});
+  EXPECT_EQ(ShapeUtil::InsertDimensionsAtIndex(shape, 3, {40, 50}),
+            ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 20, 30, 40, 50},
+                                                {4, 3, 2, 1, 0}));
+
+  shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 20, 30}, {2, 1, 0});
+  EXPECT_EQ(ShapeUtil::InsertDimensionsAtIndex(shape, 1, {40, 50}),
+            ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 40, 50, 20, 30},
+                                                {4, 3, 2, 1, 0}));
+
+  shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 20, 30}, {0, 2, 1});
+  EXPECT_EQ(ShapeUtil::InsertDimensionsAtIndex(shape, 1, {40, 50}),
+            ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 40, 50, 20, 30},
+                                                {0, 4, 3, 2, 1}));
+
+  shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 20, 30}, {2, 1, 0});
+  EXPECT_EQ(ShapeUtil::InsertDimensionsAtIndex(shape, 0, {40, 50}),
+            ShapeUtil::MakeShapeWithDenseLayout(F32, {40, 50, 10, 20, 30},
+                                                {4, 3, 2, 1, 0}));
 }
 
 TEST(ShapeUtilTest, MoveDimToMajor) {
@@ -1200,7 +1268,6 @@ TEST(ShapeUtilTest, B_250640044) {
              dimensions: 137438953472
              layout {
                minor_to_major: 0
-               dim_level_types: DIM_COMPRESSED
                physical_shape {
                  element_type: TUPLE
                  tuple_shapes {}
@@ -1209,7 +1276,7 @@ TEST(ShapeUtilTest, B_250640044) {
              is_dynamic_dimension: false
            })pb",
       &proto));
-  Shape shape(proto);
+  TF_ASSERT_OK_AND_ASSIGN(Shape shape, Shape::FromProto(proto));
   EXPECT_FALSE(ShapeUtil::ValidateShape(shape).ok());
 }
 
@@ -1243,7 +1310,7 @@ TEST(ShapeUtilTest, B_251055887) {
           physical_shape { element_type: -562 }
         })pb",
       &proto));
-  Shape shape(proto);
+  TF_ASSERT_OK_AND_ASSIGN(Shape shape, Shape::FromProto(proto));
   EXPECT_FALSE(ShapeUtil::ValidateShape(shape).ok());
 }
 
@@ -1254,14 +1321,14 @@ TEST(ShapeUtilTest, B_385192799) {
   {
     EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
         R"pb(element_type: 2000)pb", &proto));
-    Shape shape(proto);
+    TF_ASSERT_OK_AND_ASSIGN(Shape shape, Shape::FromProto(proto));
     EXPECT_FALSE(ShapeUtil::ValidateShape(shape).ok());
   }
 
   {
     EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
         R"pb(element_type: -1)pb", &proto));
-    Shape shape(proto);
+    TF_ASSERT_OK_AND_ASSIGN(Shape shape, Shape::FromProto(proto));
     EXPECT_FALSE(ShapeUtil::ValidateShape(shape).ok());
   }
 }
@@ -1291,6 +1358,17 @@ TEST(ShapeUtilTest, Int4ShapeSize) {
   EXPECT_EQ(u8_shape.layout().element_size_in_bits(), 0);
   Shape u4_shape = ShapeUtil::ChangeElementType(int4_shape, U4);
   EXPECT_EQ(u4_shape.layout().element_size_in_bits(), 4);
+}
+
+TEST(ShapeUtilTest, Int4ShapeToHostShape) {
+  Shape int4_shape = ShapeUtil::MakeShape(S4, {64, 128});
+  int4_shape.mutable_layout()->set_element_size_in_bits(4);
+
+  EXPECT_FALSE(ShapeUtil::DeviceShapeIsHostShape(int4_shape));
+  Shape host_shape = ShapeUtil::DeviceShapeToHostShape(int4_shape);
+
+  EXPECT_TRUE(ShapeUtil::DeviceShapeIsHostShape(host_shape));
+  EXPECT_EQ(host_shape.layout().element_size_in_bits(), 0);
 }
 
 TEST(XlaShapeUtilTest, ZeroSize) {
@@ -1550,11 +1628,49 @@ TEST(ShapeUtilTest, FlattenTupleShape) {
   EXPECT_EQ(flattened_shapes[3]->ToString(), "f32[8,9]");
 }
 
+TEST(ShapeUtilTest, ShapeIndexProtoSerialization) {
+  ShapeIndex empty{};
+  EXPECT_EQ(empty, ShapeIndex::FromProto(empty.ToProto()));
+
+  ShapeIndex single_index{1};
+  EXPECT_EQ(single_index, ShapeIndex::FromProto(single_index.ToProto()));
+
+  ShapeIndex multi_index{1, 2, 42};
+  EXPECT_EQ(multi_index, ShapeIndex::FromProto(multi_index.ToProto()));
+}
+
+//===----------------------------------------------------------------------===//
+// Performance benchmarks below.
+//===----------------------------------------------------------------------===//
+
+void BM_ShapeCount(::testing::benchmark::State& state) {
+  const int depth = state.range(0);
+  const int fan_out = state.range(1);
+
+  Shape shape = ShapeUtil::MakeShape(F32, {32, 64, 128});
+  for (int i = 0; i < depth; ++i) {
+    std::vector<xla::Shape> shapes(fan_out, shape);
+    shape = ShapeUtil::MakeTupleShape(shapes);
+  }
+
+  for (auto s : state) {
+    size_t count = ShapeUtil::SubshapeCount(shape);
+    benchmark::DoNotOptimize(count);
+  }
+}
+
+BENCHMARK(BM_ShapeCount)
+    ->ArgPair(0, 0)
+    ->ArgPair(2, 8)
+    ->ArgPair(4, 8)
+    ->ArgPair(1, 1000);
+
 void BM_MakeShape(::testing::benchmark::State& state) {
   for (auto s : state) {
     ShapeUtil::MakeShape(F32, {2});
   }
 }
+
 BENCHMARK(BM_MakeShape);
 
 void BM_MakeValidatedShape(::testing::benchmark::State& state) {
@@ -1562,6 +1678,7 @@ void BM_MakeValidatedShape(::testing::benchmark::State& state) {
     ShapeUtil::MakeValidatedShape(F32, {2}).value();
   }
 }
+
 BENCHMARK(BM_MakeValidatedShape);
 
 Shape ShapeForBenchmark(::testing::benchmark::State& state) {
@@ -1596,6 +1713,7 @@ void BM_ForEachIndex(::testing::benchmark::State& state) {
     ShapeUtil::ForEachIndex(shape, increment_func);
   }
 }
+
 BENCHMARK(BM_ForEachIndex)->Arg(0)->Arg(1)->Arg(2);
 
 void BM_ForEachIndexNoStatus(::testing::benchmark::State& state) {
@@ -1609,6 +1727,7 @@ void BM_ForEachIndexNoStatus(::testing::benchmark::State& state) {
     ShapeUtil::ForEachIndexNoStatus(shape, increment_func);
   }
 }
+
 BENCHMARK(BM_ForEachIndexNoStatus)->Arg(0)->Arg(1)->Arg(2);
 
 }  // namespace

@@ -42,14 +42,14 @@ TEST(ErrorUtilTest, StatusScopedDiagnosticHandler) {
   {
     StatusScopedDiagnosticHandler handler(&context);
     emitError(loc) << "Diagnostic message";
-    ASSERT_TRUE(tensorflow::errors::IsUnknown(handler.ConsumeStatus()));
+    ASSERT_TRUE(absl::IsUnknown(handler.ConsumeStatus()));
   }
 
   // Verify passed in errors are propagated.
   {
     Status err = tensorflow::errors::Internal("Passed in error");
-    ASSERT_TRUE(tensorflow::errors::IsInternal(
-        StatusScopedDiagnosticHandler(&context).Combine(err)));
+    ASSERT_TRUE(
+        absl::IsInternal(StatusScopedDiagnosticHandler(&context).Combine(err)));
   }
 
   // Verify diagnostic reported are append to passed in error.
@@ -61,7 +61,7 @@ TEST(ErrorUtilTest, StatusScopedDiagnosticHandler) {
     };
     StatusScopedDiagnosticHandler ssdh(&context);
     Status s = ssdh.Combine(function());
-    ASSERT_TRUE(tensorflow::errors::IsInternal(s));
+    ASSERT_TRUE(absl::IsInternal(s));
     EXPECT_THAT(s.message(), HasSubstr("Passed in error"));
     EXPECT_THAT(s.message(), HasSubstr("Diagnostic message reported"));
     EXPECT_THAT(s.message(), HasSubstr("Second diagnostic message reported"));

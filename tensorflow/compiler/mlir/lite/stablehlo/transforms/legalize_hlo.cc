@@ -27,6 +27,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -2288,8 +2289,7 @@ class ConvertLoweredCumOp : public OpConversionPattern<mhlo::ReduceWindowOp> {
     }
 
     if (cumulative_axis == -1) {
-      rw.emitOpError() << "no reduced dimension is found.";
-      return failure();
+      return rewriter.notifyMatchFailure(rw, "no reduced dimension is found.");
     }
 
     // For a cumulative op, padding (expressed as a list of left-padding and
@@ -2809,7 +2809,7 @@ class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
     }
     for (int i = 0; i < slice_sizes_vector.size(); ++i) {
       int s = slice_sizes_vector[i];
-      if (llvm::count(start_indices_batching_dims, i)) {
+      if (llvm::count(operand_batching_dims, i)) {
         if (s != 1) {
           return rewriter.notifyMatchFailure(gather_op,
                                              "unsupported slice sizes");

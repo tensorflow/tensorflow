@@ -45,6 +45,7 @@ cc_library(
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:stringpiece",
         "//tensorflow/core/platform:types",
+        "@com_google_absl//absl/log:check",
         "@local_xla//xla/tsl/lib/core:bits",
     ],
 )
@@ -62,12 +63,8 @@ cc_library(
     srcs = ["proto_text_util.cc"],
     hdrs = ["proto_text_util.h"],
     deps = [
-        "//tensorflow/core/lib/strings:scanner",
-        "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:numbers",
-        "//tensorflow/core/platform:protobuf",
-        "//tensorflow/core/platform:str_util",
-        "//tensorflow/core/platform:strcat",
+        "//tensorflow/core/platform:scanner",
         "@com_google_absl//absl/strings",
     ],
 )

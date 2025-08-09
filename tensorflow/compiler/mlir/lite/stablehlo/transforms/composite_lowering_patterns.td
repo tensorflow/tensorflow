@@ -29,22 +29,25 @@ def LegalizeHardSwishComposite: Pat<
                     (TFL_HardSwishOp $input)>;
 
 def IsNchwLayoutOp: Constraint<CPred<
-  "$0.get(\"is_nchw_op\") && $0.get(\"is_nchw_op\").dyn_cast<BoolAttr>() "
+  "$0.get(\"is_nchw_op\") && llvm::dyn_cast<BoolAttr>($0.get(\"is_nchw_op\")) "
       "== mlir::BoolAttr::get($_builder.getContext(), true)">>;
 
 def IsNhwcLayoutOp: Constraint<Neg<IsNchwLayoutOp.predicate>>;
 
 class HasRank<int n> : Constraint<
-    CPred<"$0.getType().cast<ShapedType>().hasRank() && "
-          "$0.getType().cast<ShapedType>().getRank() == " # n>>;
+    CPred<"llvm::cast<ShapedType>($0.getType()).hasRank() && "
+          "llvm::cast<ShapedType>($0.getType()).getRank() == " # n>>;
 
 class HasRankAtLeast<int n> : Constraint<
-    CPred<"$0.getType().cast<ShapedType>().hasRank() && "
-          "$0.getType().cast<ShapedType>().getRank() >= " # n>>;
+    CPred<"llvm::cast<ShapedType>($0.getType()).hasRank() && "
+          "llvm::cast<ShapedType>($0.getType()).getRank() >= " # n>>;
 
 def I32ElementsVal : Constraint<CPred<
-  "$0.getType().cast<TensorType>().getElementType().isInteger(32)">,
+  "llvm::cast<TensorType>($0.getType()).getElementType().isInteger(32)">,
   "32 bit integer tensor">;
+
+class NegatedCompositeBoolAttribute<string attr_name>: NativeCodeCall<
+  "BoolAttr::get($_builder.getContext(), !llvm::cast<BoolAttr>($0.get(\"" # attr_name # "\")).getValue())">;
 
 // TODO(b/343278954): Move the creation of transposes to a separate prepare pass
 // to avoid creating multiple pattern-rewrite rules for the same composite op.
@@ -59,7 +62,7 @@ def LegalizeTorchUpsampleBlinear2dComposite: Pat<
             ConstantAttr<RankedI32ElementsAttr<[4]>,"{0, 2, 3, 1}">)),
         (Arith_ConstantOp:$output_size (GetI32DenseAttr (GetAsVectorAttr<"size"> $attrs))),
         (GetCompositeAttributeAs<"align_corners", "BoolAttr"> $attrs),
-        ConstBoolAttrTrue,
+        (/*half_pixel_centers=*/NegatedCompositeBoolAttribute<"align_corners"> $attrs),
         (returnType (GetNhwcReturnTypeFromNchw $old_val))),
       (Arith_ConstantOp
         ConstantAttr<RankedI32ElementsAttr<[4]>,"{0, 3, 1, 2}">)),
@@ -75,7 +78,7 @@ def LegalizeNhwcResizeBilinear2dComposite: Pat<
       $input,
       (Arith_ConstantOp:$output_size (GetI32DenseAttr (GetAsVectorAttr<"size"> $attrs))),
       (GetCompositeAttributeAs<"align_corners", "BoolAttr"> $attrs),
-      ConstBoolAttrTrue),
+      (/*half_pixel_centers=*/NegatedCompositeBoolAttribute<"align_corners"> $attrs)),
     [(IsNhwcLayoutOp $attrs)]>;
 
 // pattern to lower a stablehlo.composite of `jax` and `pytorch` image resize fuctions
@@ -87,8 +90,8 @@ def LegalizeNhwcResizeNearestNeighbor2dComposite: Pat<
     (TFL_ResizeNearestNeighborOp
       $input,
       (Arith_ConstantOp:$output_size (GetI32DenseAttr (GetAsVectorAttr<"size"> $attrs))),
-      ConstBoolAttrFalse,
-      ConstBoolAttrTrue),
+      /*align_corners=*/ConstBoolAttrFalse,
+      /*half_pixel_centers=*/ConstBoolAttrTrue),
     [(IsNhwcLayoutOp $attrs)]>;
 
 // pattern to lower a stablehlo.composite of `jax` and `pytorch` image resize fuctions
@@ -105,8 +108,8 @@ def LegalizeNchwResizeNearestNeighbor2dComposite: Pat<
           (Arith_ConstantOp
             ConstantAttr<RankedI32ElementsAttr<[4]>,"{0, 2, 3, 1}">)),
         (Arith_ConstantOp:$output_size (GetI32DenseAttr (GetAsVectorAttr<"size"> $attrs))),
-        ConstBoolAttrFalse,
-        ConstBoolAttrTrue,
+        /*align_corners=*/ConstBoolAttrFalse,
+        /*half_pixel_centers=*/ConstBoolAttrTrue,
         (returnType (GetNhwcReturnTypeFromNchw $old_val))),
       (Arith_ConstantOp
         ConstantAttr<RankedI32ElementsAttr<[4]>,"{0, 3, 1, 2}">)),
@@ -133,6 +136,27 @@ def LegalizeCompositeGELU : Pat<
         (TFL_GeluOp $inputs,
           (GetCompositeAttributeAs<"approximate", "BoolAttr"> $attrs))>;
 
+def LegalizeCompositeGELUDynamicShaped : Pat<
+        (MHLO_CompositeOp:$composite
+          (variadic $_, $inputs),
+          ConstantStrAttr<StrAttr, "tfl.gelu">, $attrs, $_, $_),
+        (TFL_GeluOp $inputs,
+          (GetCompositeAttributeAs<"approximate", "BoolAttr"> $attrs))>;
+
+def LegalizeCompositeGELUDynamicShaped2 : Pat<
+        (MHLO_CompositeOp:$composite
+          (variadic $_, $_, $inputs),
+          ConstantStrAttr<StrAttr, "tfl.gelu">, $attrs, $_, $_),
+        (TFL_GeluOp $inputs,
+          (GetCompositeAttributeAs<"approximate", "BoolAttr"> $attrs))>;
+
+def LegalizeCompositeGELUDynamicShaped3 : Pat<
+        (MHLO_CompositeOp:$composite
+          (variadic $_, $_, $_, $inputs),
+          ConstantStrAttr<StrAttr, "tfl.gelu">, $attrs, $_, $_),
+        (TFL_GeluOp $inputs,
+          (GetCompositeAttributeAs<"approximate", "BoolAttr"> $attrs))>;
+
 def LegalizeCompositeOdmlEmbeddingLookup : Pat<
         (MHLO_CompositeOp:$composite
           (variadic $indices, $table),
@@ -145,6 +169,24 @@ def LegalizeCompositeOdmlEmbeddingLookup : Pat<
 def LegalizeCompositeOdmlEmbeddingLookupDynamicShaped : Pat<
         (MHLO_CompositeOp:$composite
           (variadic $_, $_, $_, $indices, $table),
+          ConstantStrAttr<StrAttr, "odml.embedding_lookup">, $attrs, $_, $_),
+        (TFL_EmbeddingLookupOp $indices, $table),
+        [(HasRank<1> $indices),
+        (I32ElementsVal $indices),
+        (HasRankAtLeast<2> $table)]>;
+
+def LegalizeCompositeOdmlEmbeddingLookupDynamicShaped2 : Pat<
+        (MHLO_CompositeOp:$composite
+          (variadic $_, $_, $indices, $table),
+          ConstantStrAttr<StrAttr, "odml.embedding_lookup">, $attrs, $_, $_),
+        (TFL_EmbeddingLookupOp $indices, $table),
+        [(HasRank<1> $indices),
+        (I32ElementsVal $indices),
+        (HasRankAtLeast<2> $table)]>;
+
+def LegalizeCompositeOdmlEmbeddingLookupDynamicShaped3 : Pat<
+        (MHLO_CompositeOp:$composite
+          (variadic $_, $indices, $table),
           ConstantStrAttr<StrAttr, "odml.embedding_lookup">, $attrs, $_, $_),
         (TFL_EmbeddingLookupOp $indices, $table),
         [(HasRank<1> $indices),
@@ -166,3 +208,39 @@ def LegalizeCompositeOdmlRandomStandardNormal : Pat<
         (TFL_RandomStandardNormalOp $shape,
           (GetCompositeAttributeAs<"seed", "IntegerAttr"> $attrs),
           (GetCompositeAttributeAs<"seed2", "IntegerAttr"> $attrs))>;
+
+def LegalizeCompositeUnpack : Pat<
+        (MHLO_CompositeOp:$composite
+          (variadic $inputs),
+          ConstantStrAttr<StrAttr, "tfl.unpack">, $attrs, $_, $_),
+        (TFL_UnpackOp $inputs,
+          (GetCompositeAttributeAs<"num", "IntegerAttr"> $attrs),
+          (GetCompositeAttributeAs<"axis", "IntegerAttr"> $attrs))>;
+
+def LegalizeCompositeUnpack1 : Pat<
+        (MHLO_CompositeOp:$composite
+          (variadic $_, $inputs),
+          ConstantStrAttr<StrAttr, "tfl.unpack">, $attrs, $_, $_),
+        (TFL_UnpackOp $inputs,
+          (GetCompositeAttributeAs<"num", "IntegerAttr"> $attrs),
+          (GetCompositeAttributeAs<"axis", "IntegerAttr"> $attrs))>;
+
+def LegalizeCompositePack4Elements : Pat<
+        (MHLO_CompositeOp:$composite
+          // TD not able to represent variadic of variadic now.
+          // Move to C++ matcher to support more cases.
+          (variadic $i0, $i1, $i2, $i3),
+          ConstantStrAttr<StrAttr, "tfl.pack">, $attrs, $_, $_),
+        (TFL_PackOp (variadic $i0, $i1, $i2, $i3),
+          (GetCompositeAttributeAs<"values_count", "IntegerAttr"> $attrs),
+          (GetCompositeAttributeAs<"axis", "IntegerAttr"> $attrs))>;
+
+def LegalizeCompositePack4Elements1 : Pat<
+        (MHLO_CompositeOp:$composite
+          // TD not able to represent variadic of variadic now.
+          // Move to C++ matcher to support more cases.
+          (variadic $_, $i0, $i1, $i2, $i3),
+          ConstantStrAttr<StrAttr, "tfl.pack">, $attrs, $_, $_),
+        (TFL_PackOp (variadic $i0, $i1, $i2, $i3),
+          (GetCompositeAttributeAs<"values_count", "IntegerAttr"> $attrs),
+          (GetCompositeAttributeAs<"axis", "IntegerAttr"> $attrs))>;

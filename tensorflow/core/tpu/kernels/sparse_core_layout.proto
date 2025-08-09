@@ -102,6 +102,7 @@ message SparseCoreTableLayout {
   int64 num_features = 11;
 }
 
+// Each proto in this list corresponds to an unstacked table.
 message SparseCoreTableLayouts {
   repeated SparseCoreTableLayout tables = 1;
 }

@@ -19,8 +19,8 @@ limitations under the License.
 #include <memory>
 
 #include "absl/status/statusor.h"
-#include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 
 namespace xla {
 

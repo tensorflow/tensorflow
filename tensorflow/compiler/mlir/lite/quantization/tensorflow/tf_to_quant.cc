@@ -31,8 +31,8 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
-#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir {
@@ -141,7 +141,7 @@ struct InsertQuantOpsAfterTFFakeQuantOp
     IntegerAttr num_bits = rewriter.getI64IntegerAttr(tf_op.getNumBits());
     BoolAttr narrow_range = rewriter.getBoolAttr(tf_op.getNarrowRange());
     Type res_type = tf_op.getType();
-    TypeAttr qtype = quant::GetQuantizedTypeAttr(
+    TypeAttr qtype = TFL::GetQuantizedTypeAttr(
         rewriter, res_type, min_value, max_value, quant_dim, num_bits,
         narrow_range, /*is_signed=*/true);
     if (!qtype) return failure();

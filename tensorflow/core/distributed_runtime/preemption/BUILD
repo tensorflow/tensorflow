@@ -1,3 +1,4 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs", "tf_gen_op_wrapper_cc", "tf_gen_op_wrapper_py", "tf_kernel_library")
 
@@ -32,6 +33,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/distributed_runtime:error_payloads",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service_agent",
     ],

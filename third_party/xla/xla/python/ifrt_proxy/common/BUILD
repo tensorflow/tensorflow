@@ -56,6 +56,23 @@ cc_library(
     alwayslink = True,
 )
 
+cc_library(
+    name = "grpc_credentials_possibly_insecure_wrapper",
+    srcs = [
+        "grpc_credentials_possibly_insecure_wrapper.cc",
+    ],
+    hdrs = [
+        "grpc_credentials_possibly_insecure_wrapper.h",
+    ],
+    visibility = ["//xla/python/ifrt_proxy:__subpackages__"],
+    deps = [
+        ":grpc_credentials",
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/log",
+        "@local_tsl//tsl/platform",
+    ],
+)
+
 tf_proto_library(
     name = "types_proto",
     srcs = ["types.proto"],
@@ -68,7 +85,8 @@ tf_proto_library(
         ":types_proto",
         # copybara:uncomment "@com_google_protobuf//:any",
         "//xla:xla_data_proto",
-        "//xla/pjrt:execute_options_proto",
+        "//xla/pjrt/proto:execute_options_proto",
+        "//xla/python/ifrt:array_spec_proto",
         "//xla/python/ifrt:attribute_map_proto",
         "//xla/python/ifrt:dtype_proto",
         "//xla/python/ifrt:execute_options_proto",
@@ -78,6 +96,7 @@ tf_proto_library(
         "//xla/python/ifrt:sharding_proto",
         "//xla/tsl/protobuf:status_proto",
     ],
+    deps = ["//xla/pjrt/proto:executable_metadata_proto"],
 )
 
 tf_proto_library(
@@ -233,6 +252,10 @@ cc_library(
 #     srcs = ["ifrt_proxy.bzl"],
 #     parse_tests = False,
 #     visibility = ["//visibility:private"],
+#     deps = [
+#         "@rules_cc//cc:core_rules",
+#         "//xla/tsl:package_groups_bzl",
+#     ],
 # )
 #
 # bzl_library(
@@ -242,6 +265,7 @@ cc_library(
 #     visibility = ["//visibility:private"],
 #     deps = [
 #         "//devtools/build_cleaner/skylark:build_defs_lib",
+#         "@rules_cc//cc:core_rules",
 #         "//xla:xla_bzl",
 #     ],
 # )

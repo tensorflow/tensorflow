@@ -49,6 +49,8 @@ std::string TestDataPath() {
       "tensorflow/core/common_runtime/testdata/");
 }
 
+using SimplifyIciDummyVariablesPassTest = ::testing::TestWithParam<bool>;
+
 // Test the case enable_tf2min_ici_weight is false.
 TEST(SimplifyIciDummyVariablesPassTest, flag_is_false) {
   flags::Global().enable_tf2min_ici_weight.reset(false);
@@ -78,11 +80,15 @@ TEST(SimplifyIciDummyVariablesPassTest, flag_is_false) {
 
 // Test the case enable_tf2min_ici_weight is true, graph after pass will have
 // dummy variables on task 2.
-TEST(SimplifyIciDummyVariablesPassTest, replace_dummy_variable) {
+// The bool test parameter decides whether to load a graph with TPUExecute or
+// TPUExecuteAndUpdateVariables ops.
+TEST_P(SimplifyIciDummyVariablesPassTest, replace_dummy_variable) {
   flags::Global().enable_tf2min_ici_weight.reset(true);
   auto graph = std::make_unique<Graph>(OpRegistry::Global());
-  std::string graph_path =
-      TestDataPath() + "simplify_ici_dummy_variables_pass_before.pbtxt";
+  const std::string graph_file_name =
+      GetParam() ? "simplify_ici_dummy_variables_pass_updatevars_before.pbtxt"
+                 : "simplify_ici_dummy_variables_pass_before.pbtxt";
+  std::string graph_path = TestDataPath() + graph_file_name;
   tensorflow::GraphDef graph_def;
   absl::Status load_graph_status =
       ReadTextProto(tensorflow::Env::Default(), graph_path, &graph_def);
@@ -95,17 +101,28 @@ TEST(SimplifyIciDummyVariablesPassTest, replace_dummy_variable) {
   SimplifyIciDummyVariablesPass pass;
   TF_ASSERT_OK(pass.Run(options));
 
-  Node* fill_1 =
+  Node* tpu_dummy_input_1 =
       GetNode(*graph, "tpu_dummy_input_ici_specific_index_0_task_id_2");
-  EXPECT_NE(fill_1, nullptr);
-  EXPECT_EQ(fill_1->requested_device(),
+  EXPECT_NE(tpu_dummy_input_1, nullptr);
+  EXPECT_EQ(tpu_dummy_input_1->requested_device(),
             "/job:tpu_host_worker/replica:0/task:2/device:CPU:0");
 
-  Node* fill_2 =
+  Node* tpu_dummy_input_2 =
       GetNode(*graph, "tpu_dummy_input_ici_specific_index_1_task_id_2");
-  EXPECT_NE(fill_2, nullptr);
-  EXPECT_EQ(fill_2->requested_device(),
+  EXPECT_NE(tpu_dummy_input_2, nullptr);
+  EXPECT_EQ(tpu_dummy_input_2->requested_device(),
             "/job:tpu_host_worker/replica:0/task:2/device:CPU:0");
+
+  // Check that all remaining TPUDummyInput nodes have at least one out edge.
+  for (auto n : graph->nodes()) {
+    if (n->type_string() == "TPUDummyInput") {
+      EXPECT_FALSE(n->out_edges().empty());
+    }
+  }
 }
+
+INSTANTIATE_TEST_SUITE_P(All, SimplifyIciDummyVariablesPassTest,
+                         ::testing::Values(false, true),
+                         ::testing::PrintToStringParamName());
 
 }  // namespace tensorflow

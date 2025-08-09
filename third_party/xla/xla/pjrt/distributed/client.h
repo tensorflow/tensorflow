@@ -62,14 +62,9 @@ class DistributedRuntimeClient {
     // expires, then shutdown() reports an error and returns control.
     absl::Duration shutdown_timeout = absl::Minutes(5);
 
-    // Interval at which the client should send heartbeat RPCs to the
-    // coordinator.
-    absl::Duration heartbeat_interval = absl::Seconds(10);
-
-    // How many failed heartbeat RPCs may fail due to a possibly-ephemeral
-    // reason before we decide the coordinator has vanished and that we should
-    // shut down.
-    int max_missing_heartbeats = 10;
+    // The duration after which the service concludes a client has vanished if
+    // it hasn't received any heartbeats from the client.
+    absl::Duration heartbeat_timeout = absl::Seconds(100);
 
     // Callback invoked by the client when notification of a missing heartbeat
     // is reported by the coordinator, or we have not heard from the coordinator
@@ -94,6 +89,10 @@ class DistributedRuntimeClient {
     // coordination service at the startup.
     // TODO(b/355706798): eventually remove this option.
     bool poll_for_error_from_service_at_startup = true;
+
+    // If true, a multi-controller JAX job can continue even if this client
+    // fails. Otherwise, the job will fail when the task failes.
+    bool recoverable = false;
   };
 
   virtual ~DistributedRuntimeClient() = default;

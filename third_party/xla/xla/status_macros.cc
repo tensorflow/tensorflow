@@ -118,8 +118,6 @@ MakeErrorStream::Impl::Impl(const absl::Status& status,
       prior_message_handling_(prior_message_handling),
       prior_message_(status.message()),
       is_done_(false),
-      // Error code type is not visible here, so we can't call
-      // IsLoggedByDefault.
       should_log_(true),
       log_severity_(absl::LogSeverity::kError),
       should_log_stack_trace_(false),

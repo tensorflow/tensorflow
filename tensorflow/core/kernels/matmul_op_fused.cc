@@ -364,8 +364,8 @@ StatusOr<AutotuneEntry<se::dnn::FusedMatmulOp>> AutotuneFusedMatmul(
       return errors::Internal("No DNN in stream executor.");
     }
     TF_RETURN_IF_ERROR(dnn->GetFusedMatmulRunners(
-        CudnnUseFrontend(), element_type, element_type, element_type, stream,
-        trans_a, trans_b, m, n, k, lda, ldb, ldc, activation_mode,
+        element_type, element_type, element_type, stream, trans_a, trans_b, m,
+        n, k, lda, ldb, ldc, activation_mode,
         /*use_fallback=*/false, GetNumericOptionsForCuDnn(), &runners));
 
     auto launch_func =
@@ -408,8 +408,8 @@ StatusOr<AutotuneEntry<se::dnn::FusedMatmulOp>> AutotuneFusedMatmul(
       std::vector<std::unique_ptr<const se::dnn::FusedMatmulRunner>>
           fallback_runners;
       TF_RETURN_IF_ERROR(dnn->GetFusedMatmulRunners(
-          CudnnUseFrontend(), element_type, element_type, element_type, stream,
-          trans_a, trans_b, m, n, k, lda, ldb, ldc, activation_mode,
+          element_type, element_type, element_type, stream, trans_a, trans_b, m,
+          n, k, lda, ldb, ldc, activation_mode,
           /*use_fallback=*/true, GetNumericOptionsForCuDnn(),
           &fallback_runners));
 
@@ -737,6 +737,7 @@ class FusedMatMulOp : public OpKernel {
 
 TF_CALL_float(REGISTER_FUSED_CPU_MATMUL);
 TF_CALL_half(REGISTER_FUSED_CPU_MATMUL);
+TF_CALL_bfloat16(REGISTER_FUSED_CPU_MATMUL);
 
 #undef REGISTER_FUSED_CPU_MATMUL
 
@@ -750,6 +751,7 @@ TF_CALL_half(REGISTER_FUSED_CPU_MATMUL);
 
 TF_CALL_float(REGISTER_FUSED_GPU_MATMUL);
 TF_CALL_half(REGISTER_FUSED_GPU_MATMUL);
+TF_CALL_bfloat16(REGISTER_FUSED_GPU_MATMUL);
 
 #undef REGISTER_FUSED_GPU_MATMUL
 

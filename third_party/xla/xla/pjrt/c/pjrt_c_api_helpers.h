@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -286,6 +287,14 @@ struct BufferMemoryLayoutData {
   std::vector<int64_t> minor_to_major;
   std::vector<int64_t> tile_dims;
   std::vector<size_t> tile_dim_sizes;
+  // Don't allow copy and copy construction because c_layout includes naked C
+  // pointers, which could lead the field to point to freed memory if the RHS of
+  // the copy goes out of scope.
+  BufferMemoryLayoutData() = default;
+  BufferMemoryLayoutData(const BufferMemoryLayoutData&) = delete;
+  BufferMemoryLayoutData(BufferMemoryLayoutData&&) = default;
+  BufferMemoryLayoutData& operator=(const BufferMemoryLayoutData&) = delete;
+  BufferMemoryLayoutData& operator=(BufferMemoryLayoutData&&) = default;
 };
 absl::StatusOr<BufferMemoryLayoutData> ConvertToBufferMemoryLayoutData(
     const xla::Layout& cpp_layout);

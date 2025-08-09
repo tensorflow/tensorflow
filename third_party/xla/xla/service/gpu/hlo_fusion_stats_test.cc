@@ -20,14 +20,14 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/match.h"
 #include "xla/hlo/parser/hlo_parser.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
-using HloFusionStatsTest = HloTestBase;
+using HloFusionStatsTest = HloHardwareIndependentTestBase;
 
 TEST_F(HloFusionStatsTest, LoopFusionAndReduceFusion) {
   auto module = ParseAndReturnVerifiedModule(R"(

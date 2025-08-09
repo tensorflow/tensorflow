@@ -16,14 +16,19 @@ limitations under the License.
 #include "xla/hlo/analysis/hlo_ordering.h"
 
 #include <memory>
+#include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
-#include "absl/status/statusor.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "xla/hlo/analysis/alias_info.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -220,7 +225,7 @@ bool HloOrdering::IsDefinedBefore(const HloValue& a, const HloValue& b) const {
 /* static */
 bool HloOrdering::UsesBeforeValueDefinition(
     absl::Span<const HloUse* const> uses, const HloValue& value,
-    const HloDataflowAnalysis& dataflow,
+    const HloDataflowAnalysis& dataflow, const AliasInfo* alias_info,
     bool use_is_always_before_def_in_same_instr) const {
   bool has_use_in_exclusive_branches = false;
   bool has_escaped_use_in_conditional = false;
@@ -264,7 +269,7 @@ bool HloOrdering::UsesBeforeValueDefinition(
                 /*operand=*/operand,
                 /*operand_index=*/*operand_index_ptr,
                 /*user=*/user,
-                /*user_index=*/value.defining_index())) {
+                /*user_index=*/value.defining_index(), alias_info)) {
           VLOG(4)
               << "  use is value def, and instruction can share use buffer.";
           return true;
@@ -436,6 +441,7 @@ bool HloOrdering::UsesBeforeValueDefinition(
 
 bool HloOrdering::LiveRangeStrictlyBefore(
     const HloValue& a, const HloValue& b, const HloDataflowAnalysis& dataflow,
+    const AliasInfo* alias_info,
     bool use_is_always_before_def_in_same_instr) const {
   VLOG(4) << "LiveRangeStrictlyBefore(a = " << a.ToShortString()
           << ", b = " << b.ToShortString() << ")";
@@ -472,7 +478,7 @@ bool HloOrdering::LiveRangeStrictlyBefore(
     }
     uses.push_back(&use);
   }
-  if (!UsesBeforeValueDefinition(uses, b, dataflow,
+  if (!UsesBeforeValueDefinition(uses, b, dataflow, alias_info,
                                  use_is_always_before_def_in_same_instr)) {
     VLOG(4) << "uses of " << a << "not before " << b << " is defined";
     return false;
@@ -488,10 +494,11 @@ bool HloOrdering::LiveRangeStrictlyBefore(
 }
 
 bool HloOrdering::MayInterfere(const HloValue& a, const HloValue& b,
-                               const HloDataflowAnalysis& dataflow) const {
+                               const HloDataflowAnalysis& dataflow,
+                               const AliasInfo* alias_info) const {
   // Buffers without disjoint liveness may interfere.
-  return !LiveRangeStrictlyBefore(a, b, dataflow) &&
-         !LiveRangeStrictlyBefore(b, a, dataflow);
+  return !LiveRangeStrictlyBefore(a, b, dataflow, alias_info) &&
+         !LiveRangeStrictlyBefore(b, a, dataflow, alias_info);
 }
 
 PredecessorHloOrdering::PredecessorHloOrdering(const HloModule* module)

@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstdint>
 #include <exception>
 #include <string>
-#include <string_view>
 #include <type_traits>
 #include <utility>
 #include <variant>
@@ -36,6 +35,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/api/api.h"
 #include "xla/ffi/api/c_api.h"
@@ -333,13 +333,13 @@ const ExecutionContext* ScopedExecutionContext::GetCallExecutionContext(
 using HandlerKey = std::pair<std::string, std::string>;
 using HandlerRegistry = absl::flat_hash_map<HandlerKey, HandlerRegistration>;
 
-static HandlerKey MakeHandlerKey(std::string_view name,
-                                 std::string_view platform) {
+static HandlerKey MakeHandlerKey(absl::string_view name,
+                                 absl::string_view platform) {
   return std::make_pair(std::string(name), absl::AsciiStrToLower(platform));
 }
 
 static HandlerRegistry& GetHandlerRegistry() {
-  static auto* registry = new HandlerRegistry();
+  static auto* const registry = new HandlerRegistry();
   return *registry;
 }
 
@@ -353,8 +353,8 @@ static std::vector<std::string> GetHandlerStages(
   return stages;
 }
 
-static absl::Status RegisterHandler(std::string_view name,
-                                    std::string_view platform,
+static absl::Status RegisterHandler(absl::string_view name,
+                                    absl::string_view platform,
                                     XLA_FFI_Handler_Bundle bundle,
                                     XLA_FFI_Handler_Traits traits) {
   TF_ASSIGN_OR_RETURN(std::string canonical_platform,
@@ -413,8 +413,8 @@ static absl::Status RegisterHandler(std::string_view name,
   return absl::OkStatus();
 }
 
-absl::StatusOr<HandlerRegistration> FindHandler(std::string_view name,
-                                                std::string_view platform) {
+absl::StatusOr<HandlerRegistration> FindHandler(absl::string_view name,
+                                                absl::string_view platform) {
   TF_ASSIGN_OR_RETURN(std::string canonical_platform,
                       PlatformUtil::CanonicalPlatformName(platform));
 
@@ -428,7 +428,7 @@ absl::StatusOr<HandlerRegistration> FindHandler(std::string_view name,
 }
 
 absl::StatusOr<absl::flat_hash_map<std::string, HandlerRegistration>>
-StaticRegisteredHandlers(std::string_view platform) {
+StaticRegisteredHandlers(absl::string_view platform) {
   TF_ASSIGN_OR_RETURN(std::string canonical_platform,
                       PlatformUtil::CanonicalPlatformName(platform));
 
@@ -446,7 +446,7 @@ StaticRegisteredHandlers(std::string_view platform) {
 // XLA FFI Api Implementation
 //===----------------------------------------------------------------------===//
 
-static std::string StructSizeErrorMsg(std::string_view struct_name,
+static std::string StructSizeErrorMsg(absl::string_view struct_name,
                                       size_t expected, size_t actual) {
   return absl::StrCat("Unexpected ", struct_name, " size: expected ", expected,
                       ", got ", actual, ". Check installed software versions. ",
@@ -455,7 +455,7 @@ static std::string StructSizeErrorMsg(std::string_view struct_name,
 }
 
 static absl::Status ActualStructSizeIsGreaterOrEqual(
-    std::string_view struct_name, size_t expected, size_t actual) {
+    absl::string_view struct_name, size_t expected, size_t actual) {
   if (actual < expected) {
     return InvalidArgument("%s",
                            StructSizeErrorMsg(struct_name, expected, actual));
@@ -586,8 +586,8 @@ static XLA_FFI_Error* XLA_FFI_Handler_Register(
       args->struct_size));
 
   if (auto status = RegisterHandler(
-          std::string_view(args->name.ptr, args->name.len),
-          std::string_view(args->platform.ptr, args->platform.len),
+          absl::string_view(args->name.ptr, args->name.len),
+          absl::string_view(args->platform.ptr, args->platform.len),
           args->bundle, args->traits);
       !status.ok()) {
     return new XLA_FFI_Error{std::move(status)};
@@ -629,19 +629,42 @@ static XLA_FFI_Error* XLA_FFI_RunId_Get(XLA_FFI_RunId_Get_Args* args) {
   return nullptr;
 }
 
+static XLA_FFI_Error* XLA_FFI_DeviceOrdinal_Get(
+    XLA_FFI_DeviceOrdinal_Get_Args* args) {
+  XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "XLA_FFI_DeviceOrdinal_Get", XLA_FFI_DeviceOrdinal_Get_Args_STRUCT_SIZE,
+      args->struct_size));
+  args->device_ordinal = args->ctx->device_ordinal;
+  return nullptr;
+}
+
 static XLA_FFI_Error* XLA_FFI_TypeId_Register(
     XLA_FFI_TypeId_Register_Args* args) {
   XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "XLA_FFI_ExecutionContext_Get_Args",
       XLA_FFI_ExecutionContext_Get_Args_STRUCT_SIZE, args->struct_size));
 
-  auto type_id = TypeIdRegistry::RegisterExternalTypeId(
-      std::string_view(args->name.ptr, args->name.len));
-  if (!type_id.ok()) {
-    return new XLA_FFI_Error{std::move(type_id).status()};
+  absl::string_view type_name(args->name.ptr, args->name.len);
+  TypeIdRegistry::TypeId type_id(args->type_id->type_id);
+
+  // If type_id is unknown, we are registering a new type and XLA will assign a
+  // unique type id to it.
+  if (type_id == TypeIdRegistry::kUnknownTypeId) {
+    auto assigned_type_id = TypeIdRegistry::AssignExternalTypeId(type_name);
+    if (!assigned_type_id.ok()) {
+      return new XLA_FFI_Error{std::move(assigned_type_id).status()};
+    }
+
+    args->type_id->type_id = assigned_type_id->value();
+    return nullptr;
   }
 
-  args->type_id->type_id = type_id->value();
+  // If type_id is set, we are relying on the caller-provided unique type id.
+  if (auto status = TypeIdRegistry::RegisterExternalTypeId(type_name, type_id);
+      !status.ok()) {
+    return new XLA_FFI_Error{std::move(status)};
+  }
+
   return nullptr;
 }
 
@@ -943,6 +966,7 @@ static XLA_FFI_Api api = {
     XLA_FFI_Future_SetAvailable,
     XLA_FFI_Future_SetError,
     XLA_FFI_RunId_Get,
+    XLA_FFI_DeviceOrdinal_Get,
 };
 
 const XLA_FFI_Api* GetXlaFfiApi() { return &api; }

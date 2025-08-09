@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/ADT/APInt.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -75,16 +76,27 @@ class RewriteIfrtLoadVariablePass
           builder.create<tf_mlrt::TFIfrtLoadVariableOp>(
               load_variable_op->getLoc(), result_types,
               load_variable_op->getOperands(), load_variable_op->getAttrs());
-      for (auto user : load_variable_op.getTensorFuture().getUsers()) {
-        builder.setInsertionPoint(user);
-        auto await_op = builder.create<tf_mlrt::TFAwaitOp>(
-            user->getLoc(), load_variable_op.getTensorFuture().getType(),
-            mlrt_load_variable_op.getTensorFuture());
+      tf_mlrt::TFAwaitOp await_op;
+      for (auto user : llvm::make_early_inc_range(
+               load_variable_op.getTensorFuture().getUsers())) {
+        // Materialize the future for the first use. Reuse it for the rest of
+        // the uses.
+        if (!await_op) {
+          builder.setInsertionPoint(user);
+          await_op = builder.create<tf_mlrt::TFAwaitOp>(
+              user->getLoc(), load_variable_op.getTensorFuture().getType(),
+              mlrt_load_variable_op.getTensorFuture());
+        } else {
+          if (user->isBeforeInBlock(await_op)) {
+            await_op->moveBefore(user);
+          }
+        }
         user->replaceUsesOfWith(load_variable_op.getTensorFuture(),
                                 await_op.getResult());
       }
 
-      for (auto user : load_variable_op.getArrayKey().getUsers()) {
+      for (auto user : llvm::make_early_inc_range(
+               load_variable_op.getArrayKey().getUsers())) {
         user->replaceUsesOfWith(load_variable_op.getArrayKey(),
                                 mlrt_load_variable_op.getArrayKey());
       }

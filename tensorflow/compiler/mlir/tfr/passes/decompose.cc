@@ -47,8 +47,8 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "mlir/Transforms/Inliner.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tfr/ir/tfr_ops.h"
 #include "tensorflow/compiler/mlir/tfr/ir/tfr_types.h"
@@ -185,19 +185,20 @@ LogicalResult DecomposeTFOpsPass::RewriteUnregisteredTFOps() {
     llvm::SmallVector<Value, 4> new_operands;
     for (auto arg : llvm::enumerate(compose_func_type.getInputs())) {
       if (auto tensor_type = mlir::dyn_cast<TFRTensorType>(arg.value())) {
-        auto casted = builder.create<CastOp>(op->getLoc(), tensor_type,
-                                             op->getOperand(arg.index()));
+        auto casted = CastOp::create(builder, op->getLoc(), tensor_type,
+                                     op->getOperand(arg.index()));
         new_operands.push_back(casted);
       } else if (auto list_type =
                      mlir::dyn_cast<TFRTensorListType>(arg.value())) {
         llvm::SmallVector<Value, 4> variadic_operands;
         for (int i = arg.index(); i < op->getNumOperands(); i++) {
-          auto casted = builder.create<CastOp>(
-              op->getLoc(), unconstrainted_tensor_type, op->getOperand(i));
+          auto casted =
+              CastOp::create(builder, op->getLoc(), unconstrainted_tensor_type,
+                             op->getOperand(i));
           variadic_operands.push_back(casted);
         }
-        auto build_list_op = builder.create<BuildListOp>(
-            op->getLoc(), list_type, variadic_operands);
+        auto build_list_op = BuildListOp::create(builder, op->getLoc(),
+                                                 list_type, variadic_operands);
         new_operands.push_back(build_list_op.getOut());
       } else {
         auto attr_name = compose_func.getArgAttrOfType<StringAttr>(
@@ -223,18 +224,18 @@ LogicalResult DecomposeTFOpsPass::RewriteUnregisteredTFOps() {
             mlir::isa<FlatSymbolRefAttr>(attribute)) {
           TFRAttrType output_type = TFRAttrType::get(builder.getContext());
           attr_cst =
-              builder.create<ConstOp>(op->getLoc(), output_type, attribute);
+              ConstOp::create(builder, op->getLoc(), output_type, attribute);
         } else {
-          attr_cst = builder.create<mlir::arith::ConstantOp>(
-              op->getLoc(), cast<TypedAttr>(attribute));
+          attr_cst = mlir::arith::ConstantOp::create(
+              builder, op->getLoc(), cast<TypedAttr>(attribute));
         }
         new_operands.push_back(attr_cst);
       }
     }
 
     // Create the TFR call op
-    auto new_op = builder.create<CallOp>(
-        op->getLoc(), compose_func_type.getResults(),
+    auto new_op = CallOp::create(
+        builder, op->getLoc(), compose_func_type.getResults(),
         SymbolRefAttr::get(builder.getContext(), compose_func.getName()),
         new_operands, /*args_attrs=*/nullptr, /*res_attrs=*/nullptr);
 
@@ -249,18 +250,18 @@ LogicalResult DecomposeTFOpsPass::RewriteUnregisteredTFOps() {
       } else if (auto list_type =
                      mlir::dyn_cast<TFRTensorListType>(res.value())) {
         for (int i = res.index(), j = 0; i < op->getNumResults(); i++, j++) {
-          auto index = builder.create<mlir::arith::ConstantOp>(
-              op->getLoc(), builder.getIndexAttr(j));
-          auto element_op = builder.create<GetElementOp>(
-              op->getLoc(), unconstrainted_tensor_type,
+          auto index = mlir::arith::ConstantOp::create(builder, op->getLoc(),
+                                                       builder.getIndexAttr(j));
+          auto element_op = GetElementOp::create(
+              builder, op->getLoc(), unconstrainted_tensor_type,
               new_op.getResult(res.index()), index.getResult());
           new_results.push_back(element_op.getOut());
         }
       }
     }
     for (auto res : llvm::zip(op->getResults(), new_results)) {
-      auto casted = builder.create<CastOp>(
-          op->getLoc(), std::get<0>(res).getType(), std::get<1>(res));
+      auto casted = CastOp::create(
+          builder, op->getLoc(), std::get<0>(res).getType(), std::get<1>(res));
       std::get<0>(res).replaceAllUsesWith(casted.getOut());
     }
 
@@ -282,6 +283,7 @@ LogicalResult DecomposeTFOpsPass::RewriteUnregisteredTFOps() {
 LogicalResult DecomposeTFOpsPass::InlineTFRFuncCalls() {
   // The Inliner will automatically use the registered dialect inliner.
   InlinerInterface inliner(&getContext());
+  InlinerConfig config;
   func::FuncOp func = getOperation();
   SymbolTable table(external_tfr_module_.has_value()
                         ? *external_tfr_module_
@@ -301,7 +303,7 @@ LogicalResult DecomposeTFOpsPass::InlineTFRFuncCalls() {
 
     // Use the inliner to replace all the uses of the call_op by its
     // composition.
-    if (failed(inlineCall(inliner,
+    if (failed(inlineCall(inliner, config.getCloneCallback(),
                           cast<CallOpInterface>(call_op.getOperation()),
                           cast<CallableOpInterface>(callee.getOperation()),
                           callee.getCallableRegion(),

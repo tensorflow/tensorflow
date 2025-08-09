@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "tf_copts")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_copts")
 load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
@@ -222,4 +222,24 @@ cc_library(
         "@local_xla//xla/stream_executor:platform_manager",
     ],
     alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "pluggable_device_plugin_init_test",
+    size = "small",
+    srcs = ["pluggable_device_plugin_init_test.cc"],
+    deps = [
+        ":pluggable_device_plugin_init",
+        "//tensorflow/c:c_api",
+        "//tensorflow/c/experimental/grappler:grappler_hdrs",
+        "//tensorflow/c/experimental/pluggable_profiler:pluggable_profiler_hdrs",
+        "//tensorflow/c/experimental/stream_executor:stream_executor_hdrs",
+        "//tensorflow/c/experimental/stream_executor/test:test_pluggable_device",  # buildcleaner: keep
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/common_runtime/next_pluggable_device/c:plugin_c_api_hdrs",
+        "//tensorflow/core/common_runtime/next_pluggable_device/c:test_next_pluggable_device_plugin",  # buildcleaner: keep
+        "@com_google_googletest//:gtest_main",
+        "@local_xla//xla/pjrt/c:pjrt_c_api_hdrs",
+    ],
 )

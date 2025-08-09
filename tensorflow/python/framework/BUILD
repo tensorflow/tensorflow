@@ -1,5 +1,6 @@
 # python/framework package
 
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 
@@ -111,6 +112,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:op_gen_lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:numbers",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:protobuf",
@@ -159,7 +161,7 @@ tf_python_pybind_extension(
         "//tensorflow/python:python_op_gen_headers_lib",
         "//tensorflow/python/lib/core:pybind11_absl",
         "//tensorflow/python/lib/core:pybind11_lib",
-        "//third_party/python_runtime:headers",
+        "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
     ],
 )
@@ -417,7 +419,7 @@ py_strict_library(
     srcs = ["dtypes.py"],
     # copybara:uncomment_begin(google-only)
     # visibility = visibility + [
-    # "//ads/adsml/ab:__subpackages__",
+    # "//ads/adsml/ab:atls_configs",
     # "//smartass:__subpackages__",
     # "//third_party/cloud_tpu/convergence_tools:__subpackages__",
     # "//third_party/mlperf:__subpackages__",
@@ -692,11 +694,11 @@ tf_python_pybind_extension(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/python/lib/core:pybind11_status",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
-        "//third_party/python_runtime:headers",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
+        "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
     ],
 )
@@ -760,7 +762,7 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",  # for core/platform/logging.h
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
-        "//third_party/python_runtime:headers",
+        "@local_xla//third_party/python_runtime:headers",
     ],
 )
 
@@ -775,7 +777,7 @@ tf_python_pybind_extension(
     starlark_only = True,
     deps = [
         ":py_context_manager",
-        "//third_party/python_runtime:headers",
+        "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
     ],
 )
@@ -809,8 +811,8 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//tensorflow/python/util:cpp_python_util",
-        "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/strings",
+        "@local_xla//third_party/python_runtime:headers",  # buildcleaner: keep
     ],
 )
 
@@ -830,7 +832,7 @@ tf_python_pybind_extension(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/python/lib/core:pybind11_lib",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
-        "//third_party/python_runtime:headers",
+        "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
     ],
 )
@@ -868,9 +870,9 @@ cc_library(
         "//tensorflow/python/eager:pywrap_tfe_lib",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//tensorflow/python/util:cpp_python_util",
-        "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@local_xla//third_party/python_runtime:headers",  # buildcleaner: keep
     ],
 )
 
@@ -913,13 +915,13 @@ tf_python_pybind_extension(
         "//tensorflow/core/common_runtime:core_cpu_headers_lib",
         "//tensorflow/core/config:flags_headers",
         "//third_party/py/numpy:headers",
-        "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
+        "@local_xla//third_party/python_runtime:headers",  # buildcleaner: keep
         "@pybind11",
     ] + if_pywrap(
         if_true = [
@@ -979,9 +981,9 @@ cc_library(
         "//tensorflow/python/eager:pywrap_tfe_lib",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//tensorflow/python/util:cpp_python_util",
-        "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@local_xla//third_party/python_runtime:headers",  # buildcleaner: keep
     ],
 )
 
@@ -1023,13 +1025,13 @@ tf_python_pybind_extension(
         "//tensorflow/core/common_runtime:core_cpu_headers_lib",
         "//tensorflow/core/config:flags_headers",
         "//third_party/py/numpy:headers",
-        "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
+        "@local_xla//third_party/python_runtime:headers",  # buildcleaner: keep
         "@pybind11",
     ] + if_pywrap(
         if_true = [
@@ -1078,10 +1080,10 @@ cc_library(
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//tensorflow/python/util:cpp_python_util",
         "//tensorflow/python/util:function_parameter_canonicalizer",
-        "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
+        "@local_xla//third_party/python_runtime:headers",  # buildcleaner: keep
     ],
     alwayslink = 1,
 )
@@ -1106,9 +1108,9 @@ tf_python_pybind_extension(
     ],
     deps = [
         "//tensorflow/python/util:function_parameter_canonicalizer_hdrs",
-        "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+        "@local_xla//third_party/python_runtime:headers",  # buildcleaner: keep
         "@pybind11",
     ] + if_pywrap([":python_api_dispatcher"]),
 )
@@ -1141,8 +1143,8 @@ cc_library(
         "//tensorflow/python/eager:pywrap_tfe_lib",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//tensorflow/python/util:cpp_python_util",
-        "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/strings",
+        "@local_xla//third_party/python_runtime:headers",  # buildcleaner: keep
     ],
 )
 
@@ -1179,13 +1181,13 @@ tf_python_pybind_extension(
         "//tensorflow/core/common_runtime:core_cpu_headers_lib",
         "//tensorflow/core/config:flags_headers",
         "//third_party/py/numpy:headers",
-        "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
+        "@local_xla//third_party/python_runtime:headers",  # buildcleaner: keep
         "@pybind11",
     ] + if_static(
         extra_deps = [
@@ -3238,7 +3240,7 @@ tf_python_pybind_extension(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:protobuf",
         "//tensorflow/python/lib/core:pybind11_status",
-        "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@local_xla//third_party/python_runtime:headers",  # buildcleaner: keep
         "@pybind11",
     ],
 )
@@ -3246,7 +3248,6 @@ tf_python_pybind_extension(
 pyx_library(
     name = "fast_tensor_util",
     srcs = ["fast_tensor_util.pyx"],
-    cc_deps = ["//third_party/py/numpy:headers"],
     py_deps = ["//tensorflow/python/util:compat"],
 )
 
@@ -3295,7 +3296,7 @@ tf_python_pybind_extension(
     ],
     deps = [
         "//tensorflow/core:framework",
-        "//third_party/python_runtime:headers",
+        "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
     ],
 )

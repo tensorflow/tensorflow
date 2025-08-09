@@ -143,11 +143,11 @@ double ClusterEnvironment::ReshardingCostMixedMeshShape(
     const HloSharding& dst_sharding) const {
   absl::StatusOr<std::vector<absl::btree_set<int64_t>>>
       src_tensor_dim_to_mesh_axis = GetTensorDimToMeshDimMixedMeshSharding(
-          shape.rank(), src_sharding, device_mesh_,
+          shape.dimensions().size(), src_sharding, device_mesh_,
           /*consider_reverse_device_meshes=*/true);
   absl::StatusOr<std::vector<absl::btree_set<int64_t>>>
       dst_tensor_dim_to_mesh_axis = GetTensorDimToMeshDimMixedMeshSharding(
-          shape.rank(), dst_sharding, device_mesh_,
+          shape.dimensions().size(), dst_sharding, device_mesh_,
           /*consider_reverse_device_meshes=*/true);
   if (!src_tensor_dim_to_mesh_axis.ok() || !dst_tensor_dim_to_mesh_axis.ok()) {
     return OverestimateReplicationCost(shape, src_sharding, device_mesh_);
@@ -156,7 +156,7 @@ double ClusterEnvironment::ReshardingCostMixedMeshShape(
   int64_t num_devices = device_mesh_.num_elements();
   std::vector<int64_t> collective_mesh_axes;
   // Only consider sharded dimensions, do not consider replicate_on_last_dim.
-  for (size_t i = 0; i < shape.rank(); ++i) {
+  for (size_t i = 0; i < shape.dimensions().size(); ++i) {
     if ((*src_tensor_dim_to_mesh_axis)[i] ==
         (*dst_tensor_dim_to_mesh_axis)[i]) {
       continue;
@@ -313,9 +313,9 @@ double ClusterEnvironment::ReshardingCost(const Shape& shape,
   // of an operand with a different shape, we need to use their
   // TiledDataRank().
   size_t src_rank =
-      src_spec.IsTiled() ? src_spec.TiledDataRank() : shape.rank();
+      src_spec.IsTiled() ? src_spec.TiledDataRank() : shape.dimensions().size();
   size_t dst_rank =
-      dst_spec.IsTiled() ? dst_spec.TiledDataRank() : shape.rank();
+      dst_spec.IsTiled() ? dst_spec.TiledDataRank() : shape.dimensions().size();
 
   auto get_tensor_dim_to_mesh_dim = [&](int64_t rank,
                                         const HloSharding& sharding) {

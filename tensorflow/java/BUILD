@@ -1,6 +1,7 @@
 # Description:
 # TensorFlow Java API.
 
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_java//java:defs.bzl", "java_library", "java_plugin")
 load(
     "//tensorflow:tensorflow.bzl",
@@ -137,7 +138,9 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:op_gen_lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_googlesource_code_re2//:re2",
     ],

@@ -18,13 +18,17 @@ limitations under the License.
 
 #include <stdint.h>
 
+#include <cstddef>
 #include <functional>
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
+#include "absl/base/macros.h"
+#include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/file_statistics.h"
 #include "xla/tsl/platform/macros.h"
@@ -387,14 +391,6 @@ class FileSystem {
   virtual absl::Status HasAtomicMove(const std::string& path,
                                      bool* has_atomic_move);
 
-  /// Returns whether the give path is on a file system
-  /// that has ability to create a new temp file. This can be used
-  /// to determine if there needs to be a temp location to safely write objects.
-  /// If the file system cannot create a temp file, it's possibile that
-  /// uncomplete result may appear in the given file.
-  virtual absl::Status CanCreateTempFile(const std::string& fname,
-                                         bool* can_create_temp_file);
-
   /// \brief Flushes any cached filesystem objects from memory.
   virtual void FlushCaches() { FlushCaches(nullptr); }
 
@@ -524,32 +520,32 @@ class FileSystem {
 
   /// \brief Set File System Configuration Options
   virtual absl::Status SetOption(const string& key, const string& value) {
-    return errors::Unimplemented("SetOption");
+    return absl::UnimplementedError("SetOption");
   }
 
   /// \brief Set File System Configuration Option
   virtual absl::Status SetOption(const std::string& name,
                                  const std::vector<string>& values) {
-    return errors::Unimplemented("SetOption");
+    return absl::UnimplementedError("SetOption");
   }
 
   /// \brief Set File System Configuration Option
   virtual absl::Status SetOption(const std::string& name,
                                  const std::vector<int64_t>& values) {
-    return errors::Unimplemented("SetOption");
+    return absl::UnimplementedError("SetOption");
   }
 
   /// \brief Set File System Configuration Option
   virtual absl::Status SetOption(const std::string& name,
                                  const std::vector<double>& values) {
-    return errors::Unimplemented("SetOption");
+    return absl::UnimplementedError("SetOption");
   }
 
   /// \brief Set File System ACL checker.
   ///
   /// No checks are enforced if a FileAcl is never set.
   virtual absl::Status SetFileAcl(std::shared_ptr<FileAcl> file_acl) {
-    return errors::Unimplemented("SetFileAcl");
+    return absl::UnimplementedError("SetFileAcl");
   }
 
   FileSystem() {}
@@ -763,7 +759,7 @@ class RandomAccessFile {
   /// This is an optional operation that may not be implemented by every
   /// filesystem.
   virtual absl::Status Name(absl::string_view* result) const {
-    return errors::Unimplemented("This filesystem does not support Name()");
+    return absl::UnimplementedError("This filesystem does not support Name()");
   }
 
   /// \brief Reads up to `n` bytes from the file starting at `offset`.
@@ -781,15 +777,36 @@ class RandomAccessFile {
   /// because of EOF.
   ///
   /// Safe for concurrent use by multiple threads.
+  ABSL_DEPRECATE_AND_INLINE()
   virtual absl::Status Read(uint64 offset, size_t n, absl::string_view* result,
-                            char* scratch) const = 0;
+                            char* scratch) const {
+    // Subclasses should implement the safe version of Read() below instead of
+    // this. This implementation is provided to enable the migration: without
+    // this, when a subclass switches from implementing this (deprecated) Read()
+    // to the safe version, the compiler will complain that the subclass
+    // doesn't implement the old one.
+    return Read(offset, *result, absl::MakeSpan(scratch, n));
+  }
+
+  // Like the above, but takes an absl::Span<char> instead of a size_t and a
+  // char*.
+  // TODO(b/393630847):
+  // - Make subclasses implement this method instead of the above,
+  // - Remove the above.
+  // - Mark this method as `= 0` to force subclasses to implement it.
+  virtual absl::Status Read(uint64 offset, absl::string_view& result,
+                            absl::Span<char> scratch) const {
+    // This implementation is provided only for backward compatibility.
+    // If a subclass implements the deprecated Read() above instead of this, it
+    // will still work.
+    return Read(offset, scratch.size(), &result, scratch.data());
+  }
 
 #if defined(TF_CORD_SUPPORT)
   /// \brief Read up to `n` bytes from the file starting at `offset`.
   virtual absl::Status Read(uint64 offset, size_t n, absl::Cord* cord) const {
-    return errors::Unimplemented(
-        "Read(uint64, size_t, absl::Cord*) is not "
-        "implemented");
+    return absl::UnimplementedError(
+        "Read(uint64, size_t, absl::Cord*) is not implemented");
   }
 #endif
 
@@ -846,7 +863,7 @@ class WritableFile {
   /// This is an optional operation that may not be implemented by every
   /// filesystem.
   virtual absl::Status Name(absl::string_view* result) const {
-    return errors::Unimplemented("This filesystem does not support Name()");
+    return absl::UnimplementedError("This filesystem does not support Name()");
   }
 
   /// \brief Syncs contents of file to filesystem.
@@ -861,10 +878,10 @@ class WritableFile {
   /// error.
   ///
   /// This is an optional operation, subclasses may choose to return
-  /// errors::Unimplemented.
+  /// absl::UnimplementedError.
   virtual absl::Status Tell(int64_t* position) {
     *position = -1;
-    return errors::Unimplemented("This filesystem does not support Tell()");
+    return absl::UnimplementedError("This filesystem does not support Tell()");
   }
 
  private:
@@ -927,7 +944,7 @@ class FileSystemRegistry {
 /// \brief An abstraction for enforcing ACL checks in FileSystem.
 class FileAcl {
  public:
-  virtual absl::Status CheckAccess(std::string_view path) = 0;
+  virtual absl::Status CheckAccess(absl::string_view path) = 0;
   virtual ~FileAcl() = default;
 };
 

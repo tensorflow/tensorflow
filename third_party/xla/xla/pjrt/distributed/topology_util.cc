@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/pjrt/distributed/topology_util.h"
 
-#include <algorithm>
 #include <fstream>
 #include <map>
 #include <set>
@@ -23,11 +22,14 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/synchronization/blocking_counter.h"
 #include "absl/synchronization/mutex.h"
@@ -35,14 +37,13 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
-#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/gpu/gpu_topology.pb.h"
 #include "xla/pjrt/utils.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/threadpool.h"
 
 namespace xla {
 
@@ -67,6 +68,19 @@ bool SameLocalTopology(const LocalTopologyProto& a,
   for (int i = 0; i < a.devices_size(); ++i) {
     if (!SameDevice(a.devices(i), b.devices(i))) {
       return false;
+    }
+  }
+  return true;
+}
+
+// Returns true if all devices have a valid fabric_uuid.
+bool HasFabricUuid(absl::Span<LocalTopologyProto> local_topologies) {
+  for (const LocalTopologyProto& local : local_topologies) {
+    for (const DeviceProto& device : local.devices()) {
+      if (device.fabric_uuid().empty() ||
+          device.fabric_uuid() == "00000000-0000-0000-0000-000000000000/0") {
+        return false;
+      }
     }
   }
   return true;
@@ -155,36 +169,61 @@ static absl::StatusOr<std::vector<LocalTopologyProto>> GetAllLocalTopologies(
 }
 
 // Steals the contents of `local_topologies`.
-GlobalTopologyProto BuildGlobalTopology(
+absl::StatusOr<GlobalTopologyProto> BuildGlobalTopology(
     absl::Span<LocalTopologyProto> local_topologies,
     bool assign_global_device_ids) {
+  CHECK(!local_topologies.empty());
+  bool explicit_slice_indices = local_topologies[0].has_slice_index();
+  if (explicit_slice_indices) {
+    // Every local topology explicitly declares its slice_index.
+    for (LocalTopologyProto& local : local_topologies) {
+      if (!local.has_slice_index()) {
+        return InvalidArgument(
+            "Either all of or none of the local topologies "
+            "should explicitly set slice_index");
+      }
+      int slice_index = local.slice_index();
+      for (DeviceProto& device : *local.mutable_devices()) {
+        device.set_slice_index(slice_index);
+      }
+    }
+  } else {
+    // Assign local devices of the same fabric_uuid/boot_id to the same
+    // slice_index.
+    const bool has_fabric_uuid = HasFabricUuid(local_topologies);
+    absl::flat_hash_map<std::string, int> id_to_slice_index;
+    for (LocalTopologyProto& local : local_topologies) {
+      if (local.has_slice_index()) {
+        return InvalidArgument(
+            "Either all of or none of the local topologies "
+            "should explicitly set slice_index");
+      }
+      for (DeviceProto& device : *local.mutable_devices()) {
+        // Each new fabric_uuid/boot_id seen is treated as a new slice.
+        auto [it, _] = id_to_slice_index.try_emplace(
+            has_fabric_uuid ? device.fabric_uuid() : local.boot_id(),
+            id_to_slice_index.size());
+        device.set_slice_index(it->second);
+      }
+    }
+    if (VLOG_IS_ON(10)) {
+      for (auto it = id_to_slice_index.begin(); it != id_to_slice_index.end();
+           ++it) {
+        LOG(INFO) << "BuildGlobalTopology id_to_slice_index " << it->first
+                  << "->" << it->second;
+      }
+    }
+  }
+
   GlobalTopologyProto global_topology;
   int next_global_device_id = 0;
-  // Assign local devices of the same host to the same slice_index.
-  int next_slice_index = 0;
-  absl::flat_hash_map<std::string, int> boot_id_to_slice_index;
   for (LocalTopologyProto& local : local_topologies) {
-    // Every new boot_id seen is treated as a new host/slice.
-    absl::string_view boot_id = local.boot_id();
-    auto [it, inserted] =
-        boot_id_to_slice_index.try_emplace(boot_id, next_slice_index);
-    if (inserted) {
-      ++next_slice_index;
-    }
-    for (DeviceProto& device : *local.mutable_devices()) {
-      if (assign_global_device_ids) {
+    if (assign_global_device_ids) {
+      for (DeviceProto& device : *local.mutable_devices()) {
         device.set_global_device_id(next_global_device_id++);
       }
-      device.set_slice_index(it->second);
     }
     global_topology.add_nodes()->Swap(&local);
-  }
-  if (VLOG_IS_ON(10)) {
-    for (auto it = boot_id_to_slice_index.begin();
-         it != boot_id_to_slice_index.end(); ++it) {
-      LOG(INFO) << "BuildGlobalTopology boot_id_to_slice_index " << it->first
-                << "->" << it->second;
-    }
   }
   return global_topology;
 }
@@ -239,9 +278,10 @@ absl::Status ExchangeTopologies(absl::string_view platform, int node_id,
     TF_ASSIGN_OR_RETURN(std::vector<LocalTopologyProto> local_topologies,
                         GetAllLocalTopologies(platform, num_nodes, kv_store,
                                               get_local_topology_timeout));
-    *global_topology =
+    TF_ASSIGN_OR_RETURN(
+        *global_topology,
         BuildGlobalTopology(absl::Span<LocalTopologyProto>(local_topologies),
-                            assign_global_device_ids);
+                            assign_global_device_ids));
     TF_RETURN_IF_ERROR(kv_store->Set(global_topology_key,
                                      global_topology->SerializeAsString()));
   } else {
@@ -285,7 +325,6 @@ absl::StatusOr<GpuTopologyProto> BuildGpuTopology(
   GpuTopologyProto gpu_topology;
   std::map<int, std::set<int>> slice_id_to_node_ids;
   std::map<int, int> node_id_to_device_count;
-  std::vector<int> device_ids;
   for (int i = 0; i < global_topology.nodes_size(); ++i) {
     const LocalTopologyProto& local_topology = global_topology.nodes(i);
 
@@ -297,7 +336,6 @@ absl::StatusOr<GpuTopologyProto> BuildGpuTopology(
       }
       slice_id_to_node_ids[device.slice_index()].insert(
           local_topology.node_id());
-      device_ids.push_back(device.global_device_id());
     }
   }
 
@@ -314,8 +352,6 @@ absl::StatusOr<GpuTopologyProto> BuildGpuTopology(
     gpu_topology.set_num_hosts_per_slice(-1);
     gpu_topology.set_num_devices_per_host(-1);
   }
-  std::sort(device_ids.begin(), device_ids.end());
-  gpu_topology.mutable_device_ids()->Add(device_ids.begin(), device_ids.end());
   return gpu_topology;
 }
 

@@ -15,10 +15,7 @@ limitations under the License.
 
 #include "xla/index_util.h"
 
-#include <algorithm>
 #include <cstdint>
-#include <string>
-#include <vector>
 
 #include "absl/types/span.h"
 #include "xla/layout_util.h"
@@ -41,7 +38,7 @@ namespace xla {
   // I{L(1)} = (linear_index / D{L(0)}) % D{L(1)}
   // I{L(2)} = (linear_index / (D{L(0)} * D{L(1)})) % D{L(2)}
   // ...
-  DimensionVector multi_index(shape.dimensions_size());
+  DimensionVector multi_index(shape.dimensions().size());
 
   // Accumulated product D{L(0)} * D{L(1)} * ...
   int64_t divisor = 1;
@@ -51,21 +48,6 @@ namespace xla {
     divisor *= shape.dimensions(dimension);
   }
   return multi_index;
-}
-
-/* static */ bool IndexUtil::BumpIndices(const Shape& shape,
-                                         absl::Span<int64_t> indices) {
-  for (int64_t dimno = indices.size() - 1; dimno >= 0; --dimno) {
-    int64_t limit = shape.dimensions(dimno);
-    if (indices[dimno] + 1 < limit) {
-      indices[dimno]++;
-      // Whenever an index of a dimension is increased, it means that all
-      // following dimensions have maxed out, so they must go to 0.
-      std::fill(indices.begin() + dimno + 1, indices.end(), 0);
-      return true;
-    }
-  }
-  return false;
 }
 
 /* static */ int64_t IndexUtil::GetDimensionStride(const Shape& shape,
@@ -82,7 +64,7 @@ namespace xla {
 
 /* static */ bool IndexUtil::IndexInBounds(const Shape& shape,
                                            absl::Span<const int64_t> index) {
-  int64_t rank = shape.rank();
+  int64_t rank = shape.dimensions().size();
   const int64_t index_size = index.size();
   if (rank != index_size) {
     return false;

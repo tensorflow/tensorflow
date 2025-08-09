@@ -30,8 +30,39 @@ def StablehloRefineShapesPass : Pass<"stablehlo-ext-refine-shapes", "ModuleOp"> 
   }];
 }
 
-def ChloRecomposeOpsPass : Pass<"stablehlo-ext-chlo-recompose-ops", "ModuleOp"> {
-  let summary = "(Experimental) Recompose CHLO ops serialized as custom calls.";
+def ChloPreserveHighLevelOpsPass : Pass<"stablehlo-ext-chlo-preserve-high-level-ops", "ModuleOp"> {
+  let summary = "(Experimental) Preserve select CHLO ops as composites.";
+  let description = [{
+    Experimental version of CHLO serialization support.
+
+    This pass converts the following CHLO ops to composites:
+    * chlo.ragged_dot
+
+    ```
+    chlo.some_op {attr = 1}
+    ==>
+    stablehlo.composite "chlo.some_op" {
+      composite_attributes = {attr = 1},
+      decomposition = @chlo.some_op.decomposition
+    }
+    func.func @chlo.some_op.decomposition {
+      %0 = chlo.some_op {attr = 1}
+      return %0
+    }
+    ```
+
+    When CHLO to StableHLO is then run, the decomposition function will be a
+    pure StableHLO implementaiton of the CHLO op's semantics.
+  }];
+  let dependentDialects = ["stablehlo::StablehloDialect", "chlo::ChloDialect"];
+  let options = [
+    Option<"useDeprecatedCustomCallEncoding", "use-custom-call-encoding", "bool", /*default=*/"true",
+           "Use the deprecated custom call encoding for TopK, to be removed for composites after 12w.">,
+  ];
+}
+
+def ChloRecomposeOpsPass : Pass<"stablehlo-ext-chlo-recompose-ops", "mlir::func::FuncOp"> {
+  let summary = "(Experimental) Recompose CHLO ops serialized as custom calls and composites.";
   let description = [{
     Experimental version of CHLO serialization support.
   }];
@@ -131,5 +162,58 @@ def StablehloAddQDQAfterConvPass : Pass<"stablehlo-ext-add-qdq-after-conv", "Mod
     "mlir::quant::QuantDialect",
     "stablehlo::StablehloDialect"
   ];
-} 
+}
+
+def SinkConstantsToControlFlowPass : Pass<"stablehlo-ext-sink-constants-to-control-flow", "func::FuncOp"> {
+  let summary = "Sink constants implicitly captured in control flow regions. This "
+    "is necessary to export to XLA.";
+  let description = [{
+    A pass that sinks constants implicitly captured in control flow regions. This
+    is necessary to export to XLA, because XLA's representation of control flow
+    doesn't have the notion of implicit capture.
+
+    For example given this function:
+
+    ```mlir
+      func @sink_const_to_sort(%arg0: tensor<16xf32>) {
+        %c0 = stablehlo.constant dense<1.0> : tensor<f32>
+        %0 = "stablehlo.sort"(%arg0) ( {
+        ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+          %1 = "stablehlo.divide"(%arg1, %c0) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+          %2 = "stablehlo.divide"(%arg2, %c0) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+          %3 = "stablehlo.compare"(%1, %2) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+          "stablehlo.return"(%3) : (tensor<i1>) -> ()
+        }) {is_stable = true} : (tensor<16xf32>) -> tensor<16xi32>
+        return
+      }
+    ```
+
+    Observe how the arith.constant is moved into the region it's used in:
+
+    ```mlir
+      module  {
+        func @sink_const_to_sort(%arg0: tensor<16xf32>) {
+          %0 = "stablehlo.sort"(%arg0) ( {
+          ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+            %cst = stablehlo.constant dense<1.000000e+00> : tensor<f32>
+            %1 = stablehlo.divide %arg1, %cst : tensor<f32>
+            %2 = stablehlo.divide %arg2, %cst : tensor<f32>
+            %3 = "stablehlo.compare"(%1, %2) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+            "stablehlo.return"(%3) : (tensor<i1>) -> ()
+          }) {is_stable = true} : (tensor<16xf32>) -> tensor<16xi32>
+          return
+        }
+      }
+    ```
+  }];
+}
+
+def SymbolicShapeOptimizationPass : Pass<"stablehlo-ext-symbolic-shape-optimization", "func::FuncOp"> {
+  let summary = "Analyzes shapes and performs shape-related optimizations";
+  let description = [{
+    This pass analyzes shapes and performs shape-related optimizations, mostly
+    only used from programs resulting from TF compilation. This pass is largely
+    unmaintained otherwise.
+  }];
+}
 

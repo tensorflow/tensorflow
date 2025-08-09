@@ -54,10 +54,10 @@ void WriteUpdateTo(const string& directory) {
 
   const string& history_dir = compatibility.op_history_directory();
   absl::Status status = env->CreateDir(history_dir);
-  if (!errors::IsAlreadyExists(status)) {
+  if (!absl::IsAlreadyExists(status)) {
     TF_QCHECK_OK(status);
   }
-  if (changed_ops + added_ops > 0 || !errors::IsAlreadyExists(status)) {
+  if (changed_ops + added_ops > 0 || !absl::IsAlreadyExists(status)) {
     // Write out new op history.
     printf("Writing updated op history to %s/...\n", history_dir.c_str());
     for (const auto& op_file : out_op_history) {

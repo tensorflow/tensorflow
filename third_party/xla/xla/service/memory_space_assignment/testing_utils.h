@@ -24,10 +24,12 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/service/call_graph.h"
+#include "xla/service/cost_modelling/op_cost.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/memory_space_assignment/cost_analysis.h"
 #include "xla/shape.h"
@@ -42,16 +44,19 @@ namespace memory_space_assignment {
 class FakeCostAnalysis : public CostAnalysis {
  public:
   static absl::StatusOr<std::unique_ptr<FakeCostAnalysis>> Create(
-      HloCostAnalysisCosts& cost_analysis_costs, const HloModule& module,
+      OpCostManager& op_cost_manager, const HloModule& module,
       const CostAnalysisOptions& options) {
-    TF_ASSIGN_OR_RETURN(auto alias_analysis, HloAliasAnalysis::Run(&module));
+    std::unique_ptr<AliasInfo> alias_info = std::make_unique<AliasInfo>();
+    TF_ASSIGN_OR_RETURN(auto alias_analysis,
+                        HloAliasAnalysis::Run(&module, alias_info.get()));
     TF_ASSIGN_OR_RETURN(auto hlo_live_range,
                         HloLiveRange::Run(module.schedule(), *alias_analysis,
                                           module.entry_computation()));
     auto call_graph = CallGraph::Build(&module);
-    return absl::WrapUnique(new FakeCostAnalysis(
-        cost_analysis_costs, options, std::move(alias_analysis),
-        std::move(hlo_live_range), std::move(call_graph)));
+    return absl::WrapUnique(
+        new FakeCostAnalysis(op_cost_manager, options,
+                             std::move(alias_analysis), std::move(alias_info),
+                             std::move(hlo_live_range), std::move(call_graph)));
   }
 
   float GetInstructionElapsed(
@@ -104,13 +109,15 @@ class FakeCostAnalysis : public CostAnalysis {
   }
 
  protected:
-  FakeCostAnalysis(HloCostAnalysisCosts& cost_analysis_costs,
+  FakeCostAnalysis(OpCostManager& op_cost_manager,
                    const CostAnalysisOptions& options,
                    std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                   std::unique_ptr<AliasInfo> alias_info,
                    std::unique_ptr<HloLiveRange> hlo_live_range,
                    std::unique_ptr<CallGraph> call_graph)
-      : CostAnalysis(cost_analysis_costs, options, std::move(alias_analysis),
-                     std::move(hlo_live_range), std::move(call_graph)) {}
+      : CostAnalysis(op_cost_manager, options, std::move(alias_analysis),
+                     std::move(hlo_live_range), std::move(call_graph)),
+        alias_info_(std::move(alias_info)) {}
 
  private:
   std::function<float(const HloInstruction&)>
@@ -120,6 +127,7 @@ class FakeCostAnalysis : public CostAnalysis {
                       absl::Span<const ShapeIndex>)>
       get_instruction_elapsed_in_alternate_memory_override_ = nullptr;
   std::function<float(const Shape&)> get_async_copy_elapsed_override_ = nullptr;
+  std::unique_ptr<AliasInfo> alias_info_;
 };
 
 }  // namespace memory_space_assignment

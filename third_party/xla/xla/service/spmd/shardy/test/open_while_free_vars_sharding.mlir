@@ -1,5 +1,8 @@
 // RUN: sdy_opt %s -xla-sdy-open-while-free-vars-sharding 2>&1 | FileCheck %s
 
+// Verify calling this pass a second time is a no-op.
+// RUN: sdy_opt %s -xla-sdy-open-while-free-vars-sharding -xla-sdy-open-while-free-vars-sharding 2>&1 | FileCheck %s
+
 sdy.mesh @mesh1 = <["a"=2]>
 sdy.mesh @mesh2 = <["b"=2]>
 
@@ -7,7 +10,8 @@ sdy.mesh @mesh2 = <["b"=2]>
 func.func @while_with_free_variables(
     %arg0: tensor<32x96xf32>,
     %arg1: tensor<32x96xf32> {sdy.sharding = #sdy.sharding<@mesh1, [{"a"}, {}]>},
-    %arg2: tensor<32x96xf32>)
+    %arg2: tensor<32x96xf32>,
+    %arg3: tensor<32x96xf32> {sdy.sharding = #sdy.sharding<@mesh1, [{?}, {?}]>})
     -> (tensor<32x96xf32>, tensor<32x96xf32>) {
   // CHECK-NEXT: %[[C0:.*]] = stablehlo.constant dense<0>
   // CHECK-NEXT: %[[C1:.*]] = stablehlo.constant dense<1>
@@ -24,7 +28,8 @@ func.func @while_with_free_variables(
   // CHECK-NEXT:   %[[ADD_2:.*]] = stablehlo.add %iterArg, %[[SC_0]]
   // CHECK-NEXT:   %[[ADD_3:.*]] = stablehlo.add %[[ADD_2]], %arg2
   // CHECK-NEXT:   %[[ADD_4:.*]] = stablehlo.add %[[ADD_3]], %[[SC_1]]
-  // CHECK-NEXT:   stablehlo.return %[[ADD_4]], %[[ADD_1]]
+  // CHECK-NEXT:   %[[ADD_5:.*]] = stablehlo.add %[[ADD_4]], %arg3
+  // CHECK-NEXT:   stablehlo.return %[[ADD_5]], %[[ADD_1]]
   // CHECK-NEXT: }
   // CHECK-NEXT: return %[[ADD_0]], %[[WHILE]]#0
   %0 = stablehlo.constant dense<0> : tensor<i32>
@@ -40,7 +45,8 @@ func.func @while_with_free_variables(
     %6 = stablehlo.add %iterArg, %arg1 : tensor<32x96xf32>
     %7 = stablehlo.add %6, %arg2 : tensor<32x96xf32>
     %8 = stablehlo.add %7, %3 : tensor<32x96xf32>
-    stablehlo.return %8, %5 : tensor<32x96xf32>, tensor<i32>
+    %9 = stablehlo.add %8, %arg3 : tensor<32x96xf32>
+    stablehlo.return %9, %5 : tensor<32x96xf32>, tensor<i32>
   }
   return %3, %4#0 : tensor<32x96xf32>, tensor<32x96xf32>
 }

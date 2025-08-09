@@ -120,6 +120,36 @@ func.func @func_with_sharding(%arg0: tensor<*xi32>, %arg1: tensor<*xi1>) -> (ten
 
 // -----
 
+func.func @check_sharding_for_input_inconsistent(%arg0: tensor<4x8xi32>) {
+  // expected-error @+1 {{'tf_device.cluster_func' op _XlaShardingV2 is not equivalent to _XlaSharding: {devices=[2,1]<=[2]} vs {devices=[2,1]1,0}}}
+  "tf_device.cluster_func"(%arg0) {func = @func_with_sharding, step_marker_location = "", num_cores_per_replica = 1 : i64} : (tensor<4x8xi32>) -> (tensor<4x8xi32>)
+  func.return
+}
+
+func.func @func_with_sharding(%arg0: tensor<4x8xi32>) -> (tensor<4x8xi32>) {
+  %0 = "tf.XlaSharding"(%arg0) { _XlaSharding = "{devices=[2,1]1,0}", sharding = "{devices=[2,1]1,0}", _XlaShardingV2 = "{devices=[2,1]<=[2]}" } : (tensor<4x8xi32>) -> tensor<4x8xi32>
+  %1 = "tf.A"(%0) : (tensor<4x8xi32>) -> (tensor<4x8xi32>)
+  func.return %1 : tensor<4x8xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @check_sharding_for_input_consistent
+func.func @check_sharding_for_input_consistent(%arg0: tensor<4x8xi32>) {
+  // CHECK: %[[A0:.*]] = "tf_device.cluster_func"(%arg0)
+  // CHECK-SAME: input_sharding_configuration = ["{devices=[2,1]<=[2]}"
+  "tf_device.cluster_func"(%arg0) {func = @func_with_sharding, step_marker_location = "", num_cores_per_replica = 1 : i64} : (tensor<4x8xi32>) -> (tensor<4x8xi32>)
+  func.return
+}
+
+func.func @func_with_sharding(%arg0: tensor<4x8xi32>) -> (tensor<4x8xi32>) {
+  %0 = "tf.XlaSharding"(%arg0) { _XlaSharding = "{devices=[2,1]0,1}", sharding = "{devices=[2,1]0,1}", _XlaShardingV2 = "{devices=[2,1]<=[2]}" } : (tensor<4x8xi32>) -> tensor<4x8xi32>
+  %1 = "tf.A"(%0) : (tensor<4x8xi32>) -> (tensor<4x8xi32>)
+  func.return %1 : tensor<4x8xi32>
+}
+
+// -----
+
 // Tests with input sharding following an identity op.
 // CHECK-LABEL: func @check_sharding_after_identity
 func.func @check_sharding_after_identity(%arg0: tensor<*xi32>, %arg1: tensor<*xi1>) {
@@ -384,6 +414,28 @@ func.func @partitioned_input_output(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>) 
 // CHECK-LABEL: func @cluster_func
 // CHECK-SAME: ({{.+}}: tensor<*xi32> {mhlo.sharding = "\01\02\03"}, {{.+}}: tensor<*xi32> {mhlo.sharding = ""})
 // CHECK-SAME: -> (tensor<*xi32> {mhlo.sharding = ""}, tensor<*xi32> {mhlo.sharding = "\04\05\06"})
+func.func @cluster_func(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi32>) {
+  func.return %arg0, %arg1 : tensor<*xi32>, tensor<*xi32>
+}
+
+// -----
+
+// Tests XlaShardingV2 is preferred over XlaSharding if set.
+
+// CHECK-LABEL: func @partitioned_input_output
+func.func @partitioned_input_output(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi32>) {
+  %0 = "tf.TPUPartitionedInputV2"(%arg0) {_XlaSharding = "{devices=[2,1]1,0}", _XlaShardingV2 = "{devices=[2,1]<=[2]}", partition_dims = []} : (tensor<*xi32>) -> tensor<*xi32>
+  // CHECK:      tf_device.cluster_func
+  // CHECK-SAME: input_sharding_configuration = ["{devices=[2,1]<=[2]}", ""]
+  // CHECK-SAME: output_sharding_configuration = ["", "{devices=[2,1]<=[2]}"]
+  %1:2 = "tf_device.cluster_func"(%0, %arg1) {func = @cluster_func, use_spmd_for_xla_partitioning = true, num_cores_per_replica = 1 : i64} : (tensor<*xi32>, tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi32>)
+  %2 = "tf.TPUPartitionedOutputV2"(%1#1) {_XlaSharding = "{devices=[2,1]1,0}", _XlaShardingV2 = "{devices=[2,1]<=[2]}", partition_dims = []} : (tensor<*xi32>) -> tensor<*xi32>
+  func.return %1#0, %2 : tensor<*xi32>, tensor<*xi32>
+}
+
+// CHECK-LABEL: func @cluster_func
+// CHECK-SAME: ({{.+}}: tensor<*xi32> {mhlo.sharding = "{devices=[2,1]<=[2]}"}, {{.+}}: tensor<*xi32> {mhlo.sharding = ""})
+// CHECK-SAME: -> (tensor<*xi32> {mhlo.sharding = ""}, tensor<*xi32> {mhlo.sharding = "{devices=[2,1]<=[2]}"})
 func.func @cluster_func(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi32>) {
   func.return %arg0, %arg1 : tensor<*xi32>, tensor<*xi32>
 }

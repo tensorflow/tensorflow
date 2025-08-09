@@ -223,8 +223,9 @@ absl::Status CaptureRemoteTrace(const std::string& logdir,
     } else {
       status = Profile(repository_root, session_id, opts);
     }
-    if (remaining_attempts <= 0 || status.ok() || !ShouldRetryTracing(status))
+    if (remaining_attempts <= 0 || status.ok() || !ShouldRetryTracing(status)) {
       break;
+    }
     std::cout << "No trace event is collected. Automatically retrying.\n"
               << std::endl;
   }
@@ -272,8 +273,8 @@ absl::Status ExportToTensorBoard(const XSpace& xspace,
 absl::Status CaptureRemoteTrace(
     const char* service_addr, const char* logdir, const char* worker_list,
     bool include_dataset_ops, int duration_ms, int num_tracing_attempts,
-    const absl::flat_hash_map<std::string, std::variant<int, std::string>>&
-        options) {
+    const absl::flat_hash_map<std::string,
+                              std::variant<bool, int, std::string>>& options) {
   // TPU capture is true if the user sets worker_list.
   bool is_cloud_tpu_session = false;
   RemoteProfilerSessionManagerOptions opts =

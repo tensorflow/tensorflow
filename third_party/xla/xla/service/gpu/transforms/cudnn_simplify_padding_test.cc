@@ -22,10 +22,13 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/functional/function_ref.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/hlo/pass/hlo_pass_fix.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
 #include "xla/hlo/transforms/simplifiers/reshape_mover.h"
@@ -37,9 +40,9 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -49,7 +52,7 @@ namespace {
 
 namespace m = ::xla::match;
 
-class CudnnSimplifyPaddingTest : public HloTestBase {
+class CudnnSimplifyPaddingTest : public HloHardwareIndependentTestBase {
  protected:
   // Runs the whole relevant pass pipeline starting at CudnnPadForConvolutions.
   // This lets us test that we're matching the patterns that actually get
@@ -64,7 +67,7 @@ class CudnnSimplifyPaddingTest : public HloTestBase {
 
     TF_RETURN_IF_ERROR(
         RunHloPass(CudnnVectorizeConvolutions(
-                       cc, /*cudnn_version=*/se::dnn::VersionInfo{8, 3, 0}),
+                       cc, /*cudnn_version=*/se::dnn::VersionInfo{8, 9, 0}),
                    module)
             .status());
     VLOG(1) << "after vectorizing convs:\n" << module->ToString();
@@ -624,7 +627,7 @@ TEST_F(CudnnSimplifyPaddingTest, SliceMoreElementsThanPad) {
   // into a slice.
   ASSERT_THAT(root, GmockMatch(m::Slice(
                         &slice, m::GetTupleElement(m::CustomCall(), 0))));
-  for (int64_t i = 0; i < slice->shape().dimensions_size(); ++i) {
+  for (int64_t i = 0; i < slice->shape().dimensions().size(); ++i) {
     SCOPED_TRACE(i);
     EXPECT_EQ(slice->slice_starts(i), 0);
     EXPECT_EQ(slice->slice_strides(i), 1);

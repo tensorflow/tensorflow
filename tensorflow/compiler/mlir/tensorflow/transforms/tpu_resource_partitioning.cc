@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
@@ -49,19 +50,18 @@ struct TPUResourceReadsWritesPartitioningPass
 
 bool AllResourceTypesHaveSubtypes(TypeRange resources) {
   for (Type resource : resources)
-    if (!llvm::hasSingleElement(resource.cast<TensorType>()
-                                    .getElementType()
-                                    .cast<TF::ResourceType>()
-                                    .getSubtypes()))
+    if (!llvm::hasSingleElement(
+            llvm::cast<tf_type::ResourceType>(
+                llvm::cast<TensorType>(resource).getElementType())
+                .getSubtypes()))
       return false;
 
   return true;
 }
 
 Type GetResourceSubtype(Type type) {
-  return type.cast<TensorType>()
-      .getElementType()
-      .cast<TF::ResourceType>()
+  return llvm::cast<tf_type::ResourceType>(
+             llvm::cast<TensorType>(type).getElementType())
       .getSubtypes()
       .front();
 }
@@ -118,7 +118,7 @@ mlir::Attribute GetDeviceOfResource(mlir::func::FuncOp func,
   if (auto* resource_op = resource.getDefiningOp()) {
     return resource_op->getAttr(kDeviceAttr);
   } else {
-    const auto resource_arg = resource.dyn_cast_or_null<BlockArgument>();
+    const auto resource_arg = dyn_cast_or_null<BlockArgument>(resource);
     if (resource_arg && (resource_arg.getOwner() == &(func.front()))) {
       return func.getArgAttrOfType<mlir::StringAttr>(
           resource_arg.getArgNumber(), kFuncDeviceAttr);
@@ -129,7 +129,7 @@ mlir::Attribute GetDeviceOfResource(mlir::func::FuncOp func,
 }
 
 bool IsCompositeDevice(mlir::Attribute attr) {
-  const auto str_attr = attr.dyn_cast_or_null<mlir::StringAttr>();
+  const auto str_attr = llvm::dyn_cast_if_present<StringAttr>(attr);
   return str_attr &&
          (str_attr.getValue().find("COMPOSITE") != llvm::StringRef::npos);
 }
@@ -204,7 +204,8 @@ LogicalResult PartitionResourceReadsWrites(
     auto partitioned_output = builder.create<TF::TPUPartitionedOutputV2Op>(
         cluster_func->getLoc(), partitioned_output_types, result,
         partitioned_input.getPartitionDimsAttr(),
-        partitioned_input.get_XlaShardingAttr());
+        partitioned_input.get_XlaShardingAttr(),
+        partitioned_input.get_XlaShardingV2Attr());
     for (auto [i, value] : llvm::enumerate(partitioned_output.getOutput())) {
       const auto& resource = packed_input ? inputs[0] : inputs[i];
       builder.create<TF::AssignVariableOp>(
@@ -254,7 +255,8 @@ LogicalResult PartitionResourceReadsWrites(
         partitioned_input->getLoc(), read_var.getValue().getType(),
         partitioned_reads, partitioned_input.getPartitionDimsAttr(),
         partitioned_input.getIsPackedAttr(),
-        partitioned_input.get_XlaShardingAttr());
+        partitioned_input.get_XlaShardingAttr(),
+        partitioned_input.get_XlaShardingV2Attr());
     if (failed(UpdateReadUses(read_var, partitioned_input, partitioned_read,
                               partitioned_reads, is_packed)))
       return failure();

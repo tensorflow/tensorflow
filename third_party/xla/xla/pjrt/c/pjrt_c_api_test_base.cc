@@ -23,19 +23,24 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/client/executable_build_options.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
-#include "xla/pjrt/compile_options.pb.h"
+#include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"  // IWYU pragma: keep
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
+#include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/service/computation_placer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/status.h"
+#include "xla/xla_data.pb.h"
 
 namespace pjrt {
 namespace {
@@ -174,9 +179,15 @@ PjrtCApiTestBase::CreateBufferFromHostBufferArgs(
   return args;
 }
 
+std::unique_ptr<PJRT_Buffer, ::pjrt::PJRT_BufferDeleter>
+PjrtCApiTestBase::create_buffer(PJRT_Device* device) {
+  xla::Shape shape = xla::ShapeUtil::MakeShapeWithType<float>({4});
+  return create_uninitialized_buffer(shape, device);
+}
+
 std::pair<std::unique_ptr<PJRT_Buffer, ::pjrt::PJRT_BufferDeleter>,
           xla::PjRtFuture<>>
-PjrtCApiTestBase::create_buffer(PJRT_Device* device) {
+PjrtCApiTestBase::create_iota_buffer(PJRT_Device* device) {
   xla::Shape shape = xla::ShapeUtil::MakeShapeWithType<float>({4});
   std::vector<float> float_data(4);
   std::iota(float_data.begin(), float_data.end(), 41.0f);
@@ -216,6 +227,43 @@ PjrtCApiTestBase::create_buffer_from_data(const std::vector<float>& float_data,
   return std::make_pair(std::move(buffer), buffer_ready_event);
 }
 
+std::unique_ptr<PJRT_Buffer, ::pjrt::PJRT_BufferDeleter>
+PjrtCApiTestBase::create_uninitialized_buffer(const xla::Shape& shape,
+                                              PJRT_Device* device) {
+  PJRT_Client_CreateUninitializedBuffer_Args args;
+  args.struct_size = PJRT_Client_CreateUninitializedBuffer_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.client = client_;
+
+  args.shape_dims = shape.dimensions().data();
+  args.shape_num_dims = shape.dimensions().size();
+  args.shape_element_type = pjrt::ConvertToPjRtBufferType(shape.element_type());
+
+  absl::StatusOr<pjrt::BufferMemoryLayoutData> c_layout_data;
+  if (shape.has_layout()) {
+    c_layout_data = pjrt::ConvertToBufferMemoryLayoutData(shape.layout());
+    CHECK_OK(c_layout_data);
+    args.shape_layout = &c_layout_data->c_layout;
+  } else {
+    args.shape_layout = nullptr;
+  }
+
+  if (device == nullptr) {
+    device = GetClientAddressableDevices()[0];
+  }
+  args.device = device;
+  args.memory = nullptr;
+
+  auto transfer_error =
+      ToUniquePtr(api_->PJRT_Client_CreateUninitializedBuffer(&args));
+  EXPECT_EQ(transfer_error, nullptr);
+
+  std::unique_ptr<PJRT_Buffer, ::pjrt::PJRT_BufferDeleter> buffer(
+      args.buffer, ::pjrt::MakeBufferDeleter(api_));
+
+  return buffer;
+}
+
 std::unique_ptr<PJRT_Error, ::pjrt::PJRT_ErrorDeleter>
 PjrtCApiTestBase::ToUniquePtr(PJRT_Error* error) {
   return std::unique_ptr<PJRT_Error, ::pjrt::PJRT_ErrorDeleter>{
@@ -242,7 +290,7 @@ PjrtCApiTestBase::create_transfer_manager(const xla::Shape& host_shape) {
   absl::StatusOr<BufferMemoryLayoutData> result =
       ConvertToBufferMemoryLayoutData(host_shape.layout());
   CHECK_OK(result);
-  BufferMemoryLayoutData c_layout_data = result.value();
+  BufferMemoryLayoutData c_layout_data = std::move(result.value());
   std::vector<PJRT_Buffer_MemoryLayout*> device_layout_list(1);
   device_layout_list[0] = &(c_layout_data.c_layout);
   args.device_layouts = device_layout_list.data();
@@ -271,4 +319,43 @@ PjrtCApiTestBase::create_transfer_manager(const xla::Shape& host_shape) {
   return transfer_manager_out;
 }
 
+xla::XlaComputation PjrtCApiTestBase::CreateAddOneComputation() {
+  xla::XlaBuilder builder(std::string{kExecutableName});
+  xla::Shape s = xla::ShapeUtil::MakeShape(xla::F32, {});
+  auto inp = Parameter(&builder, 0, s, "input");
+  auto one = xla::ConstantR0<float>(&builder, 1.0f);
+  auto incremented = Add(inp, one);
+  return builder.Build(incremented).value();
+}
+
+std::unique_ptr<PJRT_LoadedExecutable, PJRT_LoadedExecutableDeleter>
+PjrtCApiTestBase::create_executable(const PJRT_Api* c_api,
+                                    PJRT_Client* client) {
+  return create_executable(c_api, client, CreateAddOneComputation());
+}
+
+std::unique_ptr<PJRT_LoadedExecutable, PJRT_LoadedExecutableDeleter>
+PjrtCApiTestBase::create_executable(const PJRT_Api* c_api, PJRT_Client* client,
+                                    const xla::XlaComputation& computation) {
+  xla::CompileOptions compile_options;
+  compile_options.executable_build_options.set_num_replicas(1);
+  auto compile_result =
+      client->client->CompileAndLoad(computation, compile_options);
+  CHECK_OK(compile_result.status());
+  CHECK_NE(compile_result.value().get(), nullptr);
+  return {new PJRT_LoadedExecutable{std::move(compile_result).value(), client},
+          MakeLoadedExecutableDeleter(c_api)};
+}
+
+std::unique_ptr<PJRT_Executable, PJRT_ExecutableDeleter>
+PjrtCApiTestBase::GetExecutable(PJRT_LoadedExecutable* loaded_executable,
+                                const PJRT_Api* api) {
+  PJRT_LoadedExecutable_GetExecutable_Args args;
+  args.struct_size = PJRT_LoadedExecutable_GetExecutable_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.loaded_executable = loaded_executable;
+  args.executable = nullptr;
+  LogFatalIfPjrtError(api->PJRT_LoadedExecutable_GetExecutable(&args), api);
+  return {args.executable, MakeExecutableDeleter(api)};
+}
 }  // namespace pjrt

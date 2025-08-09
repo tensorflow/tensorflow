@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/algorithm_util.h"
 
 #include <variant>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -24,6 +25,7 @@ limitations under the License.
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace algorithm_util {
@@ -49,6 +51,8 @@ absl::StatusOr<se::blas::ComputationType> GetBlasComputationType(
     case PrecisionConfig::ALG_DOT_F16_F16_F32:
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3:
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6:
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9:
+
     case PrecisionConfig::ALG_DOT_F32_F32_F32:
     case PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3:
       return se::blas::ComputationType::kF32;
@@ -63,6 +67,49 @@ absl::StatusOr<se::blas::ComputationType> GetBlasComputationType(
   }
 }
 
+absl::StatusOr<std::vector<PrimitiveType>> GetAllowedOperandsTypeForAlgorithm(
+    PrecisionConfig::Algorithm algorithm) {
+  switch (algorithm) {
+    case PrecisionConfig::ALG_UNSET:
+      break;
+    case PrecisionConfig::ALG_DOT_F16_F16_F16:
+    case PrecisionConfig::ALG_DOT_F16_F16_F32:
+      return std::vector<PrimitiveType>{F16};
+    case PrecisionConfig::ALG_DOT_F32_F32_F32:
+      return std::vector<PrimitiveType>{F32};
+    case PrecisionConfig::ALG_DOT_F64_F64_F64:
+      return std::vector<PrimitiveType>{F64};
+    case PrecisionConfig::ALG_DOT_BF16_BF16_BF16:
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32:
+      return std::vector<PrimitiveType>{BF16};
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3:
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6:
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9:
+      return std::vector<PrimitiveType>{F32};  // This is not a typo.
+    case PrecisionConfig::ALG_DOT_TF32_TF32_F32:
+    case PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3:
+      return std::vector<PrimitiveType>{F32};
+    case PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32:
+    case PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32_FAST_ACCUM: {
+      std::vector<PrimitiveType> f8_types;
+      const tsl::protobuf::EnumDescriptor* desc =
+          tsl::protobuf::GetEnumDescriptor<PrimitiveType>();
+      for (int i = 0; i < desc->value_count(); ++i) {
+        PrimitiveType ty = static_cast<PrimitiveType>(desc->value(i)->number());
+        if (primitive_util::IsF8Type(ty)) {
+          f8_types.push_back(ty);
+        }
+      }
+      return f8_types;
+    }
+    default:
+      break;
+  }
+  return absl::InternalError(
+      absl::StrFormat("GetDotAccumulatorType: unsupported algorithm %s",
+                      xla::PrecisionConfig::Algorithm_Name(algorithm)));
+}
+
 absl::StatusOr<PrimitiveType> GetDotAccumulatorType(
     PrecisionConfig::Algorithm algorithm) {
   // All dot algorithms should be listed here.
@@ -75,6 +122,7 @@ absl::StatusOr<PrimitiveType> GetDotAccumulatorType(
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32:
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3:
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6:
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9:
     case PrecisionConfig::ALG_DOT_TF32_TF32_F32:
     case PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3:
     case PrecisionConfig::ALG_DOT_F32_F32_F32:
@@ -98,13 +146,6 @@ bool HasTf32InputType(PrecisionConfig::Algorithm algorithm) {
 
 bool HasFastAccum(PrecisionConfig::Algorithm algorithm) {
   return algorithm == PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32_FAST_ACCUM;
-}
-
-bool IsAmpere(stream_executor::GpuComputeCapability gpu_compute_capability) {
-  return std::holds_alternative<se::CudaComputeCapability>(
-             gpu_compute_capability) &&
-         std::get<se::CudaComputeCapability>(gpu_compute_capability).major ==
-             stream_executor::CudaComputeCapability::AMPERE;
 }
 
 // It's clear that those libraries could support more, but we only list the ones
@@ -132,6 +173,7 @@ bool IsSupportedByCublasOrCublasLt(
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32:
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3:
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6:
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9:
     case PrecisionConfig::ALG_UNSET:
     case PrecisionConfig::ALG_DOT_F16_F16_F32:
     case PrecisionConfig::ALG_DOT_F32_F32_F32:
@@ -218,6 +260,7 @@ bool IsSupportedDotAlgorithmOnGpu(
       }
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3:
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6:
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9:
       return (is_cuda_ge_ampere || is_rocm_mi100_and_above) &&
              input_storage_type == F32 && output_storage_type == F32;
     case PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3:

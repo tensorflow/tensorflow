@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/user_context.h"
 #include "xla/python/pjrt_ifrt/pjrt_attribute_map_util.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
@@ -85,7 +86,7 @@ class PjRtExecutable final
     : public llvm::RTTIExtends<PjRtExecutable, PjRtCompatibleExecutable> {
  public:
   // Creates PjRtExecutable from xla::PjRtExecutable.
-  static absl::StatusOr<std::unique_ptr<Executable>> Create(
+  static absl::StatusOr<ExecutableRef> Create(
       std::shared_ptr<xla::PjRtExecutable> pjrt_executable);
 
   // PjRtCompatibleExecutable implementation.
@@ -115,13 +116,13 @@ class PjRtExecutable final
     return pjrt_executable_->GetOutputShardings();
   }
 
-  absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
+  absl::StatusOr<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
   GetParameterLayouts() const override {
     DCHECK(this);
     return pjrt_executable_->GetParameterLayouts();
   }
 
-  absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
+  absl::StatusOr<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
   GetOutputLayouts() const override {
     DCHECK(this);
     return pjrt_executable_->GetOutputLayouts();
@@ -181,20 +182,22 @@ class PjRtLoadedExecutable final
   // Creates PjRtExecutable from xla::PjRtLoadedExecutable. We expect that
   // xla::PjRtLoadedExecutable has fixed output dtypes/shapes/shardings.
   // PjRtLoadedExecutable::GetHloModules() must be implemented.
-  static absl::StatusOr<std::unique_ptr<LoadedExecutable>> Create(
+  static absl::StatusOr<LoadedExecutableRef> Create(
       PjRtCompatibleClient* client,
       std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
-      std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks);
+      std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks,
+      DeviceListRef executable_devices);
 
   // Creates PjRtExecutable from an MHLO or StableHLO MLIR module. We expect
   // that xla::PjRtLoadedExecutable has fixed output dtypes/shapes/shardings. If
   // options.executable_build_options has use_auto_spmd_partitioning or
   // allow_spmd_sharding_propagation_to_output enabled,
   // PjRtLoadedExecutable::GetHloModules() must be implemented.
-  static absl::StatusOr<std::unique_ptr<LoadedExecutable>> Create(
+  static absl::StatusOr<LoadedExecutableRef> Create(
       PjRtCompatibleClient* client, mlir::ModuleOp module,
       xla::CompileOptions compile_options,
-      std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks);
+      std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks,
+      DeviceListRef executable_devices);
 
   // PjRtCompatibleLoadedExecutable implementation.
 
@@ -217,6 +220,14 @@ class PjRtLoadedExecutable final
     return pjrt_loaded_executable_->name();
   }
 
+  absl::StatusOr<absl::Span<const int>> GetDonatableInputIndices()
+      const override {
+    return absl::UnimplementedError(
+        "PjRtLoadedExecutable::GetDonatableInputIndices is not implemented.");
+  }
+
+  UserContextRef user_context() const override { return user_context_; }
+
   Future<> GetReadyFuture() const override {
     // PjRtCompiler blocks until compilation finishes and returns only the
     // executables that are ready.
@@ -234,13 +245,13 @@ class PjRtLoadedExecutable final
     return pjrt_loaded_executable_->GetOutputShardings();
   }
 
-  absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
+  absl::StatusOr<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
   GetParameterLayouts() const override {
     DCHECK(this);
     return pjrt_loaded_executable_->GetParameterLayouts();
   }
 
-  absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
+  absl::StatusOr<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
   GetOutputLayouts() const override {
     DCHECK(this);
     return pjrt_loaded_executable_->GetOutputLayouts();
@@ -281,14 +292,10 @@ class PjRtLoadedExecutable final
     return client_;
   }
   absl::StatusOr<ExecuteResult> Execute(
-      absl::Span<tsl::RCReference<Array>> args, const ExecuteOptions& options,
+      absl::Span<ArrayRef> args, const ExecuteOptions& options,
       std::optional<DeviceListRef> devices) override;
 
-  Future<> Delete() override;
-  bool IsDeleted() const override {
-    DCHECK(this);
-    return pjrt_loaded_executable_->IsDeleted();
-  }
+  const DeviceListRef& devices() const override { return devices_; }
 
   absl::Span<Device* const> addressable_devices() const override {
     DCHECK(this);
@@ -304,14 +311,15 @@ class PjRtLoadedExecutable final
   static char ID;  // NOLINT
 
  private:
-  static absl::StatusOr<std::unique_ptr<LoadedExecutable>> CreateInternal(
+  static absl::StatusOr<LoadedExecutableRef> CreateInternal(
       PjRtCompatibleClient* client,
       std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
       absl::Span<const xla::PrimitiveType> result_element_types,
       absl::Span<const xla::DimensionVector> result_dimensions,
       const std::optional<xla::HloSharding>& result_hlo_sharding,
       const std::optional<std::vector<absl::string_view>>& result_memory_kinds,
-      std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks);
+      std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks,
+      DeviceListRef executable_devices);
 
   PjRtLoadedExecutable(
       PjRtCompatibleClient* client,
@@ -322,7 +330,7 @@ class PjRtLoadedExecutable final
       std::vector<PjRtHostSendAndRecvLoadedHostCallback*>
           host_send_recv_callbacks,
       std::vector<DType> output_dtypes, std::vector<Shape> output_shapes,
-      std::vector<std::shared_ptr<const Sharding>> output_shardings);
+      std::vector<ShardingRef> output_shardings);
 
   PjRtCompatibleClient* client_;
   std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable_;
@@ -340,7 +348,8 @@ class PjRtLoadedExecutable final
   // time.
   std::vector<DType> output_dtypes_;
   std::vector<Shape> output_shapes_;
-  std::vector<std::shared_ptr<const Sharding>> output_shardings_;
+  std::vector<ShardingRef> output_shardings_;
+  const xla::ifrt::UserContextRef user_context_;
 };
 
 }  // namespace ifrt

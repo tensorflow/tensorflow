@@ -34,8 +34,8 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
-#include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
@@ -46,7 +46,7 @@ using ::mlir::AffineMap;
 using ::testing::AnyOf;
 using ::testing::ElementsAre;
 
-class IndexingMapTest : public HloTestBase {
+class IndexingMapTest : public HloHardwareIndependentTestBase {
  public:
   IndexingMap Parse(absl::string_view indexing_map_str) {
     auto indexing_map = ParseIndexingMap(indexing_map_str, &mlir_context_);
@@ -96,7 +96,8 @@ TEST_F(IndexingMapTest, VerifyDimensions) {
   std::stringstream ss;
   EXPECT_FALSE(indexing_map.Verify(ss));
   EXPECT_EQ(ss.str(),
-            "dim size must match the number of dimensions in the affine map");
+            "number of dim vars (2) must match the number of dimensions in the "
+            "affine map (1)");
 }
 
 TEST_F(IndexingMapTest, VerifySymbols) {
@@ -107,8 +108,8 @@ TEST_F(IndexingMapTest, VerifySymbols) {
   std::stringstream ss;
   EXPECT_FALSE(indexing_map.Verify(ss));
   EXPECT_EQ(ss.str(),
-            "range vars size + rt var size must match the number of symbols in "
-            "the affine map");
+            "number of range (1) + runtime (0) variables must match the number "
+            "of symbols in the affine map (0)");
 }
 
 TEST_F(IndexingMapTest, RTVar) {
@@ -130,7 +131,24 @@ TEST_F(IndexingMapTest, RTVar) {
               )"));
 }
 
-TEST_F(IndexingMapTest, Evaluation) {
+TEST_F(IndexingMapTest, EvaluateIgnoresDomainRanges) {
+  IndexingMap indexing_map = Parse(R"(
+    (d0, d1)[s0, s1] -> (d1, d0, s1, s0),
+    domain:
+      d0 in [0, 3],
+      d1 in [0, 3],
+      s0 in [0, 1],
+      s1 in [0, 1]
+  )");
+
+  auto results = indexing_map.Evaluate(
+      mlir::getAffineConstantExprs({1, 2}, &mlir_context_),
+      mlir::getAffineConstantExprs({3, 4}, &mlir_context_));
+
+  EXPECT_THAT(results, ElementsAre(2, 1, 4, 3));
+}
+
+TEST_F(IndexingMapTest, ConstraintsSatisfied) {
   IndexingMap indexing_map = Parse(R"(
      (d0, d1)[s0, s1] -> (d1, d0, s1, s0),
      domain:
@@ -139,10 +157,6 @@ TEST_F(IndexingMapTest, Evaluation) {
      s0 in [0, 1],
      s1 in [0, 1]
   )");
-  auto results = indexing_map.Evaluate(
-      mlir::getAffineConstantExprs({1, 2}, &mlir_context_),
-      mlir::getAffineConstantExprs({3, 4}, &mlir_context_));
-  EXPECT_THAT(results, ElementsAre(2, 1, 4, 3));
 
   auto feasible = indexing_map.ConstraintsSatisfied(
       mlir::getAffineConstantExprs({1, 2}, &mlir_context_),
@@ -324,6 +338,51 @@ TEST_F(IndexingMapTest, Composition_OnlyRTVars) {
   )"));
 }
 
+TEST_F(IndexingMapTest, KnownEmpty_CreatingIndexingMapWithInfeasibleRange) {
+  auto indexing_map = Parse(R"(
+    (d0) -> (d0),
+    domain:
+    d0 in [10, 0]
+  )");
+  EXPECT_THAT(indexing_map, MatchIndexingMap("KNOWN EMPTY"));
+}
+
+TEST_F(IndexingMapTest, KnownEmpty_AddingConstraintOutOfRange) {
+  auto indexing_map = Parse(R"(
+    (d0) -> (d0),
+    domain:
+    d0 in [0, 49],
+    0 in [10, 15]
+  )");
+  // Addition of this constraint makes the domain empty.
+  EXPECT_THAT(indexing_map, MatchIndexingMap("KNOWN EMPTY"));
+}
+
+TEST_F(IndexingMapTest, KnownEmpty_Composition) {
+  auto indexing_map = Parse("(d0) -> (d0), domain: d0 in [0, 49]");
+  auto known_empty = Parse("(d0) -> (d0), domain: d0 in [0, -1]");
+  EXPECT_THAT(known_empty, MatchIndexingMap("KNOWN EMPTY"));
+  EXPECT_THAT(indexing_map * known_empty, MatchIndexingMap("KNOWN EMPTY"));
+  EXPECT_THAT(known_empty * indexing_map, MatchIndexingMap("KNOWN EMPTY"));
+  EXPECT_EQ((indexing_map * known_empty).GetAffineMap().getNumResults(), 1);
+  EXPECT_EQ((known_empty * indexing_map).GetAffineMap().getNumResults(), 1);
+}
+
+TEST_F(IndexingMapTest,
+       KnownEmpty_AddingConstraintOutOfRangeAfterSimplification) {
+  auto indexing_map = Parse(R"(
+    (d0, d1)[s0, s1] -> (d1, d0, s1),
+    domain:
+    d0 in [0, 49],
+    d1 in [0, 59],
+    s0 in [0, 69],
+    s1 in [0, 19],
+    s1 floordiv 20 in [2, 2]
+  )");
+  EXPECT_TRUE(indexing_map.Simplify());
+  EXPECT_THAT(indexing_map, MatchIndexingMap("KNOWN EMPTY"));
+}
+
 TEST_F(IndexingMapTest, RemoveUnusedVars_ConstraintUsesDim) {
   // This constraint cannot be removed, because it contains a dimension.
   auto indexing_map = Parse(R"(
@@ -349,7 +408,7 @@ TEST_F(IndexingMapTest, RemoveUnusedVars_ConstraintUsesDim) {
                         )"));
 }
 
-TEST_F(IndexingMapTest, RemoveUnusedVars_ConstraintUsesUnusedDim) {
+TEST_F(IndexingMapTest, RemoveUnusedVars_ConstraintUsesOnlyUnusedDim) {
   // This constraint can be removed, because it contains only the unused dim.
   auto indexing_map = Parse(R"(
     (d0, d1)[s0, s1] -> (s0, d1, s1),
@@ -390,6 +449,53 @@ TEST_F(IndexingMapTest, RemoveUnusedSymbols_ConstraintUsesOnlyUnusedSym) {
                           s0 in [0, 19]
                         )"));
 }
+
+TEST_F(IndexingMapTest, RemoveUnusedSymbols_ConstraintsWithManySymbols) {
+  auto indexing_map = Parse(R"(
+    (d0)[s0, s1, s2, s3, s4] -> (d0 * 4 + s1 + s3 - 42),
+    domain:
+    d0 in [0, 31],
+    s0 in [0, 0],
+    s1 in [0, 1],
+    s2 in [0, 2],
+    s3 in [0, 3],
+    s4 in [0, 4],
+    d0 * 4 + s1 + s3 in [24, 459]
+  )");
+  indexing_map.RemoveUnusedSymbols();
+  // Symbols s0, s2, s4 will be removed and s1 and s3 will become s0 and s1.
+  EXPECT_THAT(indexing_map, MatchIndexingMap(R"(
+                              (d0)[s0, s1] -> (d0 * 4 + s0 + s1 - 42),
+                              domain:
+                              d0 in [0, 31],
+                              s0 in [0, 1],
+                              s1 in [0, 3],
+                              d0 * 4 + s0 + s1 in [24, 459]
+                            )"));
+}
+
+TEST_F(IndexingMapTest, RemoveUnusedSymbols_ConstraintsWithRTVars) {
+  IndexingMap indexing_map(
+      ParseAffineMap("(d0)[s0, s1, s2, s3, s4] -> (d0 * 4 + s1 + s3 - 42)",
+                     &mlir_context_),
+      {IndexingMap::Variable{{0, 31}}},
+      {IndexingMap::Variable{{0, 0}}, IndexingMap::Variable{{0, 1}},
+       IndexingMap::Variable{{0, 2}}},
+      {IndexingMap::Variable{Interval{0, 3}},
+       IndexingMap::Variable{Interval{0, 4}}});
+  indexing_map.AddConstraint(
+      ParseAffineExpr("d0 * 4 + s1 + s3", &mlir_context_), Interval{24, 459});
+  indexing_map.RemoveUnusedSymbols();
+  // Symbols s0, s2, s4 will be removed and s1 and s3 will become s0 and s1.
+  EXPECT_THAT(indexing_map, MatchIndexingMap(R"(
+                              (d0)[s0]{rt0} -> (d0 * 4 + s0 + rt0 - 42),
+                              domain:
+                              d0 in [0, 31],
+                              s0 in [0, 1],
+                              rt0 in [0, 3],
+                              d0 * 4 + s0 + rt0 in [24, 459]
+                            )"));
+};
 
 TEST_F(IndexingMapTest, RemoveUnusedVars_ConstraintsWithManyDims) {
   auto indexing_map = Parse(R"(
@@ -448,27 +554,6 @@ TEST_F(IndexingMapTest, RemoveUnusedSymbols_ConstraintUsesSymbol) {
                         )"));
 }
 
-TEST_F(IndexingMapTest, RemoveUnusedSymbols_ConstraintUsesOnlyUnusedSymbols) {
-  auto indexing_map = Parse(R"(
-    (d0, d1)[s0, s1] -> (d1, d0, s1),
-    domain:
-    d0 in [0, 49],
-    d1 in [0, 59],
-    s0 in [0, 69],
-    s1 in [0, 19],
-    s0 mod 3 in [0, 0]
-  )");
-  // This constraint can be removed, because it contains only the unused symbol.
-  indexing_map.RemoveUnusedSymbols();
-  EXPECT_THAT(indexing_map, MatchIndexingMap(R"(
-                          (d0, d1)[s0] -> (d1, d0, s0),
-                          domain:
-                          d0 in [0, 49],
-                          d1 in [0, 59],
-                          s0 in [0, 19]
-                        )"));
-}
-
 TEST_F(IndexingMapTest, RemoveUnusedSymbols_ConstraintIsAConstantWithinRange) {
   auto indexing_map = Parse(R"(
     (d0) -> (d0),
@@ -482,98 +567,6 @@ TEST_F(IndexingMapTest, RemoveUnusedSymbols_ConstraintIsAConstantWithinRange) {
                           d0 in [0, 49]
                         )"));
 }
-
-TEST_F(IndexingMapTest, KnownEmpty_CreatingIndexingMapWithInfeasibleRange) {
-  auto indexing_map = Parse(R"(
-    (d0) -> (d0),
-    domain:
-    d0 in [0, -2]
-  )");
-  EXPECT_THAT(indexing_map, MatchIndexingMap("KNOWN EMPTY"));
-}
-
-TEST_F(IndexingMapTest, KnownEmpty_AddingConstraintOutOfRange) {
-  auto indexing_map = Parse(R"(
-    (d0) -> (d0),
-    domain:
-    d0 in [0, 49],
-    0 in [10, 15]
-  )");
-  // Addition of this constraint makes the domain empty.
-  EXPECT_THAT(indexing_map, MatchIndexingMap("KNOWN EMPTY"));
-}
-
-TEST_F(IndexingMapTest, KnownEmpty_Composition) {
-  auto indexing_map = Parse("(d0) -> (d0), domain: d0 in [0, 49]");
-  auto known_empty = Parse("(d0) -> (d0), domain: d0 in [0, -1]");
-  EXPECT_THAT(known_empty, MatchIndexingMap("KNOWN EMPTY"));
-  EXPECT_THAT(indexing_map * known_empty, MatchIndexingMap("KNOWN EMPTY"));
-  EXPECT_THAT(known_empty * indexing_map, MatchIndexingMap("KNOWN EMPTY"));
-  EXPECT_EQ((indexing_map * known_empty).GetAffineMap().getNumResults(), 1);
-  EXPECT_EQ((known_empty * indexing_map).GetAffineMap().getNumResults(), 1);
-}
-
-TEST_F(IndexingMapTest,
-       KnownEmpty_AddingConstraintOutOfRangeAfterSimplification) {
-  auto indexing_map = Parse(R"(
-    (d0, d1)[s0, s1] -> (d1, d0, s1),
-    domain:
-    d0 in [0, 49],
-    d1 in [0, 59],
-    s0 in [0, 69],
-    s1 in [0, 19],
-    s1 floordiv 20 in [2, 2]
-  )");
-  EXPECT_TRUE(indexing_map.Simplify());
-  EXPECT_THAT(indexing_map, MatchIndexingMap("KNOWN EMPTY"));
-}
-
-TEST_F(IndexingMapTest, RemoveUnusedSymbols_ConstraintsWithManySymbols) {
-  auto indexing_map = Parse(R"(
-    (d0)[s0, s1, s2, s3, s4] -> (d0 * 4 + s1 + s3 - 42),
-    domain:
-    d0 in [0, 31],
-    s0 in [0, 0],
-    s1 in [0, 1],
-    s2 in [0, 2],
-    s3 in [0, 3],
-    s4 in [0, 4],
-    d0 * 4 + s1 + s3 in [24, 459]
-  )");
-  indexing_map.RemoveUnusedSymbols();
-  // Symbols s0, s2, s4 will be removed and s1 and s3 will become s0 and s1.
-  EXPECT_THAT(indexing_map, MatchIndexingMap(R"(
-                              (d0)[s0, s1] -> (d0 * 4 + s0 + s1 - 42),
-                              domain:
-                              d0 in [0, 31],
-                              s0 in [0, 1],
-                              s1 in [0, 3],
-                              d0 * 4 + s0 + s1 in [24, 459]
-                            )"));
-}
-
-TEST_F(IndexingMapTest, RemoveUnusedSymbols_ConstraintsWithRTVars) {
-  IndexingMap indexing_map(
-      ParseAffineMap("(d0)[s0, s1, s2, s3, s4] -> (d0 * 4 + s1 + s3 - 42)",
-                     &mlir_context_),
-      {IndexingMap::Variable{{0, 31}}},
-      {IndexingMap::Variable{{0, 0}}, IndexingMap::Variable{{0, 1}},
-       IndexingMap::Variable{{0, 2}}},
-      {IndexingMap::Variable{Interval{0, 3}},
-       IndexingMap::Variable{Interval{0, 4}}});
-  indexing_map.AddConstraint(
-      ParseAffineExpr("d0 * 4 + s1 + s3", &mlir_context_), Interval{24, 459});
-  indexing_map.RemoveUnusedSymbols();
-  // Symbols s0, s2, s4 will be removed and s1 and s3 will become s0 and s1.
-  EXPECT_THAT(indexing_map, MatchIndexingMap(R"(
-                              (d0)[s0]{rt0} -> (d0 * 4 + s0 + rt0 - 42),
-                              domain:
-                              d0 in [0, 31],
-                              s0 in [0, 1],
-                              rt0 in [0, 3],
-                              d0 * 4 + s0 + rt0 in [24, 459]
-                            )"));
-};
 
 TEST_F(IndexingMapTest, ConvertSymbolsToDimensions) {
   IndexingMap indexing_map(
@@ -607,6 +600,8 @@ TEST_F(IndexingMapTest, ConstraintIntervalSimplification_Sum) {
     d0 mod 8 + 5 in [50, 54]
   )");
   EXPECT_TRUE(indexing_map.Simplify());
+  // TODO(karupayun): This should be infeasible, since d0 mod 8 should be in
+  // [0, 7].
   EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
                           (d0) -> (d0),
                           domain:
@@ -645,24 +640,14 @@ TEST_F(IndexingMapTest,
     s1 in [0, 2],
     d0 * 6 + s0 * 3 + s1 in [0, 598]
   )");
+  // TODO(karupayun): This should be simplified to
+  // (d0)[s0, s1] -> (d0 * 6 + s0 * 3 + s1),
+  // domain:
+  // d0 in [0, 99],
+  // s0 in [0, 1],
+  // s1 in [0, 2],
+  // d0 * 6 + s0 * 3 + s1 in [0, 598]
   EXPECT_FALSE(indexing_map.Simplify());
-}
-
-TEST_F(IndexingMapTest, ConstraintIntervalSimplification_Sum_GcdGreaterOne) {
-  auto indexing_map = Parse(R"(
-    (d0)[s0] -> (d0 * 6 + s0 * 3),
-    domain:
-    d0 in [0, 1999],
-    s0 in [0, 1],
-    d0 * 6 + s0 * 3 in [0, 599]
-  )");
-  EXPECT_TRUE(indexing_map.Simplify());
-  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
-                          (d0)[s0] -> (d0 * 6 + s0 * 3),
-                          domain:
-                          d0 in [0, 99],
-                          s0 in [0, 1]
-                        )"));
 }
 
 TEST_F(IndexingMapTest,
@@ -1690,6 +1675,34 @@ TEST_F(IndexingMapTest, ConvertRangeVariablesToDimensions) {
      to_convert_0 in [0, 2],
      to_convert_1 in [0, 3],
      range in [0, 1]
+  )"));
+}
+
+TEST_F(IndexingMapTest, ConvertRangeVariablesToDimensionsWithRuntimeVars) {
+  IndexingMap indexing_map = Parse(R"(
+     (d0, d1)[to_convert_0, range, to_convert_1]{rt0, rt1}
+       -> (d1, d0, range + to_convert_1 + rt0, to_convert_0),
+     domain:
+     d0 in [0, 3],
+     d1 in [0, 3],
+     to_convert_0 in [0, 2],
+     range in [0, 1],
+     to_convert_1 in [0, 3],
+     rt0 in [0, 0],
+     rt1 in [0, 1]
+  )");
+  EXPECT_THAT(ConvertRangeVariablesToDimensions(indexing_map, {0, 2}),
+              MatchIndexingMap(R"(
+     (d0, d1, to_convert_0, to_convert_1)[range]{rt0, rt1}
+       -> (d1, d0, to_convert_1 + range + rt0, to_convert_0),
+     domain:
+     d0 in [0, 3],
+     d1 in [0, 3],
+     to_convert_0 in [0, 2],
+     to_convert_1 in [0, 3],
+     range in [0, 1],
+     rt0 in [0, 0],
+     rt1 in [0, 1]
   )"));
 }
 

@@ -30,8 +30,7 @@ namespace mlir::quant::stablehlo {
 using ::stablehlo::quantization::QuantizationConfig;
 using ::tensorflow::quantization::RunPasses;
 
-PreCalibrationComponent::PreCalibrationComponent(
-    absl::Nonnull<MLIRContext*> ctx)
+PreCalibrationComponent::PreCalibrationComponent(MLIRContext* absl_nonnull ctx)
     : ctx_(ABSL_DIE_IF_NULL(ctx)) {}  // Crash OK
 
 absl::StatusOr<ModuleOp> PreCalibrationComponent::Run(
@@ -39,8 +38,9 @@ absl::StatusOr<ModuleOp> PreCalibrationComponent::Run(
   TF_RETURN_IF_ERROR(RunPasses(
       kName, /*add_passes_func=*/
       [&config](PassManager& pm) {
-        AddPreCalibrationPasses(pm, config.calibration_options(),
-                                config.specs(), config.debugger_config());
+        quant::stablehlo::AddPreCalibrationPasses(
+            pm, config.calibration_options(), config.specs(),
+            config.debugger_config());
       },
       *ctx_, module_op));
   return module_op;

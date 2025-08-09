@@ -17,18 +17,24 @@ limitations under the License.
 
 #include <cmath>
 #include <cstdint>
+#include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
-#include "llvm/ADT/ArrayRef.h"
+#include "absl/strings/string_view.h"
+#include "xla/stream_executor/gpu/tma_metadata.pb.h"
 #include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/proto/proto_matchers.h"
+#include "tsl/platform/protobuf.h"
 
 namespace stream_executor::gpu {
 namespace {
 
 using absl::StatusCode;
 using testing::HasSubstr;
+using tsl::proto_testing::EqualsProto;
 using tsl::testing::IsOk;
 using tsl::testing::StatusIs;
 
@@ -38,19 +44,19 @@ TEST(TmaMetadataTest, CreateValidTmaInfoReturnsOk) {
                                     /*box_dims=*/{128, 128},
                                     /*element_strides=*/{1, 1},
                                     /*element_byte_width=*/1),
-              IsOk());
+              absl_testing::IsOk());
   EXPECT_THAT(TmaDescriptor::Create(/*global_dims=*/{500},
                                     /*global_strides=*/{},
                                     /*box_dims=*/{128},
                                     /*element_strides=*/{1},
                                     /*element_byte_width=*/2),
-              IsOk());
+              absl_testing::IsOk());
   EXPECT_THAT(TmaDescriptor::Create(/*global_dims=*/{100, 280},
                                     /*global_strides=*/{400},
                                     /*box_dims=*/{64, 64},
                                     /*element_strides=*/{1, 1},
                                     /*element_byte_width=*/4),
-              IsOk());
+              absl_testing::IsOk());
   constexpr uint64_t kValid32BSwizzleBoxDim = 32;
   EXPECT_THAT(
       TmaDescriptor::Create(/*global_dims=*/{500, 360},
@@ -60,7 +66,7 @@ TEST(TmaMetadataTest, CreateValidTmaInfoReturnsOk) {
                             /*element_byte_width=*/1,
                             /*interleave=*/TmaDescriptor::TmaInterleave::kNone,
                             /*swizzle=*/TmaDescriptor::TmaSwizzle::k32B),
-      IsOk());
+      absl_testing::IsOk());
   constexpr uint64_t kValid64BSwizzleBoxDim = 64;
   EXPECT_THAT(
       TmaDescriptor::Create(/*global_dims=*/{500, 360},
@@ -70,7 +76,7 @@ TEST(TmaMetadataTest, CreateValidTmaInfoReturnsOk) {
                             /*element_byte_width=*/1,
                             /*interleave=*/TmaDescriptor::TmaInterleave::kNone,
                             /*swizzle=*/TmaDescriptor::TmaSwizzle::k64B),
-      IsOk());
+      absl_testing::IsOk());
   constexpr uint64_t kValid128BSwizzleBoxDim = 128;
   EXPECT_THAT(
       TmaDescriptor::Create(/*global_dims=*/{500, 360},
@@ -80,23 +86,23 @@ TEST(TmaMetadataTest, CreateValidTmaInfoReturnsOk) {
                             /*element_byte_width=*/1,
                             /*interleave=*/TmaDescriptor::TmaInterleave::kNone,
                             /*swizzle=*/TmaDescriptor::TmaSwizzle::k128B),
-      IsOk());
+      absl_testing::IsOk());
 }
 
 TEST(TmaMetadataTest, CreateInvalidTensorRankFailsGracefully) {
   EXPECT_THAT(TmaDescriptor::Create(/*global_dims=*/{}, /*global_strides=*/{},
                                     /*box_dims=*/{}, /*element_strides=*/{},
                                     /*element_byte_width=*/2),
-              StatusIs(StatusCode::kInvalidArgument,
-                       HasSubstr("unsupported rank for TMA")));
+              absl_testing::StatusIs(StatusCode::kInvalidArgument,
+                                     HasSubstr("unsupported rank for TMA")));
   EXPECT_THAT(
       TmaDescriptor::Create(
           /*global_dims=*/{128, 128, 128, 128, 128, 128},
           /*global_strides=*/{1000, 1000, 1000, 1000, 1000},
           /*box_dims=*/{16, 16, 16, 16, 16, 16},
           /*element_strides=*/{1, 1, 1, 1, 1, 1}, /*element_byte_width=*/2),
-      StatusIs(StatusCode::kInvalidArgument,
-               HasSubstr("unsupported rank for TMA")));
+      absl_testing::StatusIs(StatusCode::kInvalidArgument,
+                             HasSubstr("unsupported rank for TMA")));
   EXPECT_THAT(
       TmaDescriptor::Create(/*global_dims=*/{500, 360},
                             /*global_strides=*/{1600},
@@ -104,14 +110,15 @@ TEST(TmaMetadataTest, CreateInvalidTensorRankFailsGracefully) {
                             /*element_strides=*/{1, 1},
                             /*element_byte_width=*/1,
                             /*interleave=*/TmaDescriptor::TmaInterleave::k16B),
-      StatusIs(StatusCode::kFailedPrecondition,
-               HasSubstr("If TmaInterleave is not kNone, then tensor rank must "
-                         "additionally be >= 3")));
+      absl_testing::StatusIs(
+          StatusCode::kFailedPrecondition,
+          HasSubstr("If TmaInterleave is not kNone, then tensor rank must "
+                    "additionally be >= 3")));
 }
 
 TEST(TmaMetadataTest, CreateMismatchedTensorRanksFailsGracefully) {
-  auto kExpectedError = StatusIs(StatusCode::kFailedPrecondition,
-                                 HasSubstr("must have the same rank"));
+  auto kExpectedError = absl_testing::StatusIs(
+      StatusCode::kFailedPrecondition, HasSubstr("must have the same rank"));
   EXPECT_THAT(TmaDescriptor::Create(/*global_dims=*/{128, 128, 128},
                                     /*global_strides=*/{500},
                                     /*box_dims=*/{16, 16},
@@ -136,18 +143,19 @@ TEST(TmaMetadataTest, CreateMismatchedTensorRanksFailsGracefully) {
                                     /*element_strides=*/{1, 1},
                                     /*element_byte_width=*/2),
               kExpectedError);
-  EXPECT_THAT(TmaDescriptor::Create(/*global_dims=*/{128, 128},
-                                    /*global_strides=*/{500, 500},
-                                    /*box_dims=*/{16, 16},
-                                    /*element_strides=*/{1, 1},
-                                    /*element_byte_width=*/2),
-              StatusIs(StatusCode::kFailedPrecondition,
-                       HasSubstr("global_strides must have a rank of")));
+  EXPECT_THAT(
+      TmaDescriptor::Create(/*global_dims=*/{128, 128},
+                            /*global_strides=*/{500, 500},
+                            /*box_dims=*/{16, 16},
+                            /*element_strides=*/{1, 1},
+                            /*element_byte_width=*/2),
+      absl_testing::StatusIs(StatusCode::kFailedPrecondition,
+                             HasSubstr("global_strides must have a rank of")));
 }
 
 TEST(TmaMetadataTest, CreateInvalidElementByteWidthFailsGracefully) {
-  auto kExpectedError = StatusIs(StatusCode::kInvalidArgument,
-                                 HasSubstr("unsupported element size"));
+  auto kExpectedError = absl_testing::StatusIs(
+      StatusCode::kInvalidArgument, HasSubstr("unsupported element size"));
   EXPECT_THAT(TmaDescriptor::Create(/*global_dims=*/{500, 360},
                                     /*global_strides=*/{1000},
                                     /*box_dims=*/{128, 128},
@@ -170,9 +178,9 @@ TEST(TmaMetadataTest, CreateInvalidElementByteWidthFailsGracefully) {
 
 TEST(TmaMetadataTest, CreateInvalidGlobalDimsFailsGracefully) {
   auto kExpectedError =
-      StatusIs(StatusCode::kInvalidArgument,
-               AllOf(HasSubstr("global_dims"),
-                     HasSubstr("must be non-zero and <= 2^32")));
+      absl_testing::StatusIs(StatusCode::kInvalidArgument,
+                             AllOf(HasSubstr("global_dims"),
+                                   HasSubstr("must be non-zero and <= 2^32")));
   constexpr uint64_t kZeroGlobalDim = 0;
   EXPECT_THAT(TmaDescriptor::Create(/*global_dims=*/{kZeroGlobalDim, 360},
                                     /*global_strides=*/{1600},
@@ -192,23 +200,24 @@ TEST(TmaMetadataTest, CreateInvalidGlobalDimsFailsGracefully) {
 
 TEST(TmaMetadataTest, CreateInvalidGlobalStridesFailsGracefully) {
   constexpr uint64_t kNotDivisibleBy16 = 1000;
-  EXPECT_THAT(TmaDescriptor::Create(/*global_dims=*/{500, 360},
-                                    /*global_strides=*/{kNotDivisibleBy16},
-                                    /*box_dims=*/{128, 128},
-                                    /*element_strides=*/{1, 1},
-                                    /*element_byte_width=*/1),
-              StatusIs(StatusCode::kInvalidArgument,
-                       AllOf(HasSubstr("global_strides"),
-                             HasSubstr("must be a multiple of 16"))));
-  const uint64_t kOverMaxGlobalStride = static_cast<uint64_t>(pow(2, 40));
   EXPECT_THAT(
       TmaDescriptor::Create(/*global_dims=*/{500, 360},
-                            /*global_strides=*/{kOverMaxGlobalStride},
+                            /*global_strides=*/{kNotDivisibleBy16},
                             /*box_dims=*/{128, 128},
                             /*element_strides=*/{1, 1},
                             /*element_byte_width=*/1),
-      StatusIs(StatusCode::kInvalidArgument,
-               AllOf(HasSubstr("global_strides"), HasSubstr("<= 2^40"))));
+      absl_testing::StatusIs(StatusCode::kInvalidArgument,
+                             AllOf(HasSubstr("global_strides"),
+                                   HasSubstr("must be a multiple of 16"))));
+  const uint64_t kOverMaxGlobalStride = static_cast<uint64_t>(pow(2, 40));
+  EXPECT_THAT(TmaDescriptor::Create(/*global_dims=*/{500, 360},
+                                    /*global_strides=*/{kOverMaxGlobalStride},
+                                    /*box_dims=*/{128, 128},
+                                    /*element_strides=*/{1, 1},
+                                    /*element_byte_width=*/1),
+              absl_testing::StatusIs(
+                  StatusCode::kInvalidArgument,
+                  AllOf(HasSubstr("global_strides"), HasSubstr("< 2^40"))));
   constexpr uint64_t kNotDivisibleBy32 = 2000;
   EXPECT_THAT(
       TmaDescriptor::Create(/*global_dims=*/{500, 360, 200},
@@ -218,7 +227,7 @@ TEST(TmaMetadataTest, CreateInvalidGlobalStridesFailsGracefully) {
                             /*element_strides=*/{1, 1, 1},
                             /*element_byte_width=*/1,
                             TmaDescriptor::TmaInterleave::k32B),
-      StatusIs(
+      absl_testing::StatusIs(
           StatusCode::kFailedPrecondition,
           AllOf(HasSubstr("global_strides"),
                 HasSubstr("must be a multiple of 32 when interleave is 32B"))));
@@ -229,40 +238,44 @@ TEST(TmaMetadataTest, CreateInvalidGlobalStridesFailsGracefully) {
                             /*box_dims=*/{128, 128, 128},
                             /*element_strides=*/{1, 1, 1},
                             /*element_byte_width=*/1),
-      StatusIs(StatusCode::kFailedPrecondition,
-               AllOf(HasSubstr("global_stride"),
-                     HasSubstr("must be a multiple of the previous stride"))));
+      absl_testing::StatusIs(
+          StatusCode::kFailedPrecondition,
+          AllOf(HasSubstr("global_stride"),
+                HasSubstr("must be a multiple of the previous stride"))));
   constexpr uint64_t kSmallerThanGlobalDims = 160;
-  EXPECT_THAT(TmaDescriptor::Create(/*global_dims=*/{500, 360},
-                                    /*global_strides=*/{kSmallerThanGlobalDims},
-                                    /*box_dims=*/{128, 128},
-                                    /*element_strides=*/{1, 1},
-                                    /*element_byte_width=*/1),
-              StatusIs(StatusCode::kFailedPrecondition,
-                       AllOf(HasSubstr("global_stride"),
-                             HasSubstr("must be >= global_dim"))));
+  EXPECT_THAT(
+      TmaDescriptor::Create(/*global_dims=*/{500, 360},
+                            /*global_strides=*/{kSmallerThanGlobalDims},
+                            /*box_dims=*/{128, 128},
+                            /*element_strides=*/{1, 1},
+                            /*element_byte_width=*/1),
+      absl_testing::StatusIs(StatusCode::kFailedPrecondition,
+                             AllOf(HasSubstr("global_stride"),
+                                   HasSubstr("must be >= global_dim"))));
 }
 
 TEST(TmaMetadataTest, CreateInvalidBoxDimsFailsGracefully) {
   constexpr uint64_t kZeroBoxDim = 0;
-  EXPECT_THAT(TmaDescriptor::Create(/*global_dims=*/{500, 360},
-                                    /*global_strides=*/{1600},
-                                    /*box_dims=*/{kZeroBoxDim, 128},
-                                    /*element_strides=*/{1, 1},
-                                    /*element_byte_width=*/1),
-              StatusIs(StatusCode::kInvalidArgument,
-                       AllOf(HasSubstr("box_dims"),
-                             HasSubstr("must be non-zero and <= 256"))));
+  EXPECT_THAT(
+      TmaDescriptor::Create(/*global_dims=*/{500, 360},
+                            /*global_strides=*/{1600},
+                            /*box_dims=*/{kZeroBoxDim, 128},
+                            /*element_strides=*/{1, 1},
+                            /*element_byte_width=*/1),
+      absl_testing::StatusIs(StatusCode::kInvalidArgument,
+                             AllOf(HasSubstr("box_dims"),
+                                   HasSubstr("must be non-zero and <= 256"))));
   const uint64_t kOverMaxBoxDim = 257;
-  EXPECT_THAT(TmaDescriptor::Create(
-                  /*global_dims=*/{500, 360},
-                  /*global_strides=*/{1600},
-                  /*box_dims=*/{128, kOverMaxBoxDim},
-                  /*element_strides=*/{1, 1},
-                  /*element_byte_width=*/1),
-              StatusIs(StatusCode::kInvalidArgument,
-                       AllOf(HasSubstr("box_dims"),
-                             HasSubstr("must be non-zero and <= 256"))));
+  EXPECT_THAT(
+      TmaDescriptor::Create(
+          /*global_dims=*/{500, 360},
+          /*global_strides=*/{1600},
+          /*box_dims=*/{128, kOverMaxBoxDim},
+          /*element_strides=*/{1, 1},
+          /*element_byte_width=*/1),
+      absl_testing::StatusIs(StatusCode::kInvalidArgument,
+                             AllOf(HasSubstr("box_dims"),
+                                   HasSubstr("must be non-zero and <= 256"))));
   const uint64_t kNotDivisibleBy16 = 17;
   EXPECT_THAT(TmaDescriptor::Create(
                   /*global_dims=*/{500, 360},
@@ -270,15 +283,17 @@ TEST(TmaMetadataTest, CreateInvalidBoxDimsFailsGracefully) {
                   /*box_dims=*/{kNotDivisibleBy16, 128},
                   /*element_strides=*/{1, 1},
                   /*element_byte_width=*/1),
-              StatusIs(StatusCode::kFailedPrecondition,
-                       AllOf(HasSubstr("when interleave is kNone, box_dims[0]"),
-                             HasSubstr("must be a multiple of 16 bytes"))));
+              absl_testing::StatusIs(
+                  StatusCode::kFailedPrecondition,
+                  AllOf(HasSubstr("when interleave is kNone, box_dims[0]"),
+                        HasSubstr("must be a multiple of 16 bytes"))));
 }
 
 TEST(TmaMetadataTest, CreateInvalidElementStridesFailsGracefully) {
-  auto kExpectedError = StatusIs(StatusCode::kInvalidArgument,
-                                 AllOf(HasSubstr("element_strides"),
-                                       HasSubstr("must be non-zero and <= 8")));
+  auto kExpectedError =
+      absl_testing::StatusIs(StatusCode::kInvalidArgument,
+                             AllOf(HasSubstr("element_strides"),
+                                   HasSubstr("must be non-zero and <= 8")));
   constexpr uint64_t kZeroElementStride = 0;
   EXPECT_THAT(TmaDescriptor::Create(/*global_dims=*/{500, 360},
                                     /*global_strides=*/{1600},
@@ -306,10 +321,11 @@ TEST(TmaMetadataTest, CreateInvalidInterleaveSwizzleComboFailsGracefully) {
                             /*element_byte_width=*/1,
                             /*interleave=*/TmaDescriptor::TmaInterleave::kNone,
                             /*swizzle=*/TmaDescriptor::TmaSwizzle::k32B),
-      StatusIs(StatusCode::kFailedPrecondition,
-               HasSubstr("when interleave is kNone and swizzle is k32B, "
-                         "box_dims[0] * element_byte_width must be <= "
-                         "32.")));
+      absl_testing::StatusIs(
+          StatusCode::kFailedPrecondition,
+          HasSubstr("when interleave is kNone and swizzle is k32B, "
+                    "box_dims[0] * element_byte_width must be <= "
+                    "32.")));
   constexpr uint64_t kGreaterThan64BSwizzle = 128;
   EXPECT_THAT(
       TmaDescriptor::Create(/*global_dims=*/{500, 360},
@@ -319,10 +335,11 @@ TEST(TmaMetadataTest, CreateInvalidInterleaveSwizzleComboFailsGracefully) {
                             /*element_byte_width=*/1,
                             /*interleave=*/TmaDescriptor::TmaInterleave::kNone,
                             /*swizzle=*/TmaDescriptor::TmaSwizzle::k64B),
-      StatusIs(StatusCode::kFailedPrecondition,
-               HasSubstr("when interleave is kNone and swizzle is k64B, "
-                         "box_dims[0] * element_byte_width must be <= "
-                         "64.")));
+      absl_testing::StatusIs(
+          StatusCode::kFailedPrecondition,
+          HasSubstr("when interleave is kNone and swizzle is k64B, "
+                    "box_dims[0] * element_byte_width must be <= "
+                    "64.")));
   constexpr uint64_t kGreaterThan128BSwizzle = 144;
   EXPECT_THAT(
       TmaDescriptor::Create(/*global_dims=*/{500, 360},
@@ -332,23 +349,56 @@ TEST(TmaMetadataTest, CreateInvalidInterleaveSwizzleComboFailsGracefully) {
                             /*element_byte_width=*/1,
                             /*interleave=*/TmaDescriptor::TmaInterleave::kNone,
                             /*swizzle=*/TmaDescriptor::TmaSwizzle::k128B),
-      StatusIs(StatusCode::kFailedPrecondition,
-               HasSubstr("when interleave is kNone and swizzle is k128B, "
-                         "box_dims[0] * element_byte_width must be <= "
-                         "128.")));
+      absl_testing::StatusIs(
+          StatusCode::kFailedPrecondition,
+          HasSubstr("when interleave is kNone and swizzle is k128B, "
+                    "box_dims[0] * element_byte_width must be <= "
+                    "128.")));
   const TmaDescriptor::TmaSwizzle kNot32BSwizzle =
       TmaDescriptor::TmaSwizzle::k128B;
-  EXPECT_THAT(
-      TmaDescriptor::Create(
-          /*global_dims=*/{500, 360, 200},
-          /*global_strides=*/{32 * 500, 32 * 500 * 360},
-          /*box_dims=*/{128, 128, 128},
-          /*element_strides=*/{1, 1, 1},
-          /*element_byte_width=*/1,
-          /*interleave=*/TmaDescriptor::TmaInterleave::k32B,
-          /*swizzle=*/kNot32BSwizzle),
-      StatusIs(StatusCode::kFailedPrecondition,
-               HasSubstr("when interleave is k32B, swizzle must be k32B.")));
+  EXPECT_THAT(TmaDescriptor::Create(
+                  /*global_dims=*/{500, 360, 200},
+                  /*global_strides=*/{32 * 500, 32 * 500 * 360},
+                  /*box_dims=*/{128, 128, 128},
+                  /*element_strides=*/{1, 1, 1},
+                  /*element_byte_width=*/1,
+                  /*interleave=*/TmaDescriptor::TmaInterleave::k32B,
+                  /*swizzle=*/kNot32BSwizzle),
+              absl_testing::StatusIs(
+                  StatusCode::kFailedPrecondition,
+                  HasSubstr("when interleave is k32B, swizzle must be k32B.")));
+}
+
+TEST(TmaMetadataTest, ProtoSerializationDeserialization) {
+  TmaDescriptorProto descriptor_proto;
+  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        element_size: 4
+        global_dims: 100
+        global_dims: 100
+        global_dims: 100
+        global_strides: 400
+        global_strides: 40000
+        box_dims: 16
+        box_dims: 16
+        box_dims: 16
+        element_strides: 1
+        element_strides: 1
+        element_strides: 1
+        interleave: INTERLEAVE_BYTES16
+        swizzle: SWIZZLE_BYTES32
+        l2_promotion: L2_PROMOTION_BYTES64
+        float_oob_fill: FLOAT_OOB_FILL_NAN_REQUEST_ZERO_FMA
+      )pb",
+      &descriptor_proto));
+
+  TmaMetadataProto metadata_proto;
+  metadata_proto.mutable_arg_index_to_tma_info()->emplace(
+      /*arg_index=*/0, std::move(descriptor_proto));
+
+  TF_ASSERT_OK_AND_ASSIGN(TmaMetadata metadata,
+                          TmaMetadata::FromProto(metadata_proto));
+  EXPECT_THAT(metadata.ToProto(), EqualsProto(metadata_proto));
 }
 
 }  // namespace

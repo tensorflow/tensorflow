@@ -26,14 +26,12 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/kernel.h"
-#include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/rocm/rocm_executor.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/stream_executor/typed_kernel_factory.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
@@ -46,13 +44,7 @@ using ::tsl::testing::IsOk;
 class RocmTimerTest : public ::testing::Test {
  public:
   void LaunchSomeKernel(StreamExecutor* executor, Stream* stream) {
-    using AddI32Kernel =
-        TypedKernelFactory<DeviceMemory<int32_t>, DeviceMemory<int32_t>,
-                           DeviceMemory<int32_t>>;
-
-    MultiKernelLoaderSpec spec(/*arity=*/3);
-    spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "AddI32");
-    TF_ASSERT_OK_AND_ASSIGN(auto add, AddI32Kernel::Create(executor, spec));
+    TF_ASSERT_OK_AND_ASSIGN(auto add, LoadAddI32TestKernel(executor));
 
     int64_t length = 4;
     int64_t byte_length = sizeof(int32_t) * length;
@@ -62,9 +54,10 @@ class RocmTimerTest : public ::testing::Test {
     DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
     DeviceMemory<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
 
-    ASSERT_THAT(stream->Memset32(&a, 1, byte_length), IsOk());
-    ASSERT_THAT(stream->Memset32(&b, 2, byte_length), IsOk());
-    ASSERT_THAT(add.Launch(ThreadDim(), BlockDim(4), stream, a, b, c), IsOk());
+    ASSERT_THAT(stream->Memset32(&a, 1, byte_length), absl_testing::IsOk());
+    ASSERT_THAT(stream->Memset32(&b, 2, byte_length), absl_testing::IsOk());
+    ASSERT_THAT(add.Launch(ThreadDim(), BlockDim(4), stream, a, b, c),
+                absl_testing::IsOk());
   }
 
   RocmExecutor* executor_;
@@ -94,7 +87,7 @@ TEST_F(RocmTimerTest, Create) {
                           timer.GetElapsedDuration());
   EXPECT_THAT(timer_result, Gt(absl::ZeroDuration()));
   EXPECT_THAT(timer.GetElapsedDuration(),
-              tsl::testing::StatusIs(absl::StatusCode::kFailedPrecondition));
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 }  // namespace

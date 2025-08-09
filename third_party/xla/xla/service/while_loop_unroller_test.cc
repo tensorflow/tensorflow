@@ -16,12 +16,14 @@ limitations under the License.
 #include "xla/service/while_loop_unroller.h"
 
 #include <cstdint>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
@@ -33,10 +35,14 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
+#include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal.h"
 #include "xla/service/scheduling_annotations_util.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
+#include "xla/tsl/platform/statusor.h"
+
+namespace op = xla::testing::opcode_matchers;
 
 namespace xla {
 namespace {
@@ -68,11 +74,9 @@ class WhileLoopUnrollerTest : public HloTestBase {
                         int64_t unroll_factor = -1, bool wrap_in_loop = false) {
     Literal before_unroll = ExecuteAndTransfer(module->Clone(), arguments);
     VLOG(2) << "before unroll value: " << before_unroll.ToString();
-
     EXPECT_TRUE(WhileLoopUnroller(unroll_factor, wrap_in_loop)
                     .Run(module.get())
                     .value());
-
     Literal after_unroll = ExecuteAndTransfer(std::move(module), arguments);
     VLOG(2) << "after unroll value: " << after_unroll.ToString();
 
@@ -803,6 +807,68 @@ TEST_F(WhileLoopUnrollerTest, NestedIndirectBodyInc) {
                    -1, true);
 }
 
+// In this scenario, we expect the body and cond of the original inner while to
+// be used by 5 while instructions.
+TEST_F(WhileLoopUnrollerTest, NoGraphFlattening) {
+  int num_iters = 5;
+  std::unique_ptr<HloModule> module =
+      MakeModuleWithNestedLoopBodyIndirectInc(num_iters);
+  EXPECT_TRUE(
+      WhileLoopUnroller(/*unroll_factor=*/-1, /*wrap_in_trivial_loop=*/true)
+          .Run(module.get())
+          .value());
+  HloComputation* entry_computation = module->entry_computation();
+  ASSERT_EQ(entry_computation->root_instruction()->opcode(), HloOpcode::kWhile);
+  HloComputation* outer_while_body =
+      entry_computation->root_instruction()->while_body();
+  auto outer_callees = outer_while_body->callee_computations();
+  EXPECT_EQ(outer_callees.size(), 2);
+  for (auto iter : outer_callees) {
+    HloComputation* inner_computation = iter.first;
+    EXPECT_EQ(inner_computation->caller_instructions(HloOpcode::kWhile).size(),
+              num_iters);
+  }
+}
+
+// Make sure we don't inline unrelated calls.
+TEST_F(WhileLoopUnrollerTest, NoUnrelatedInlining) {
+  std::string hlo_string = R"(
+  HloModule SimpleLoop
+
+  NopComputation {
+    ROOT param.0 = (s32[]{:T(128)}, s32[3]{0}) parameter(0)
+  }
+  SimpleLoop.body {
+    loop_var.1 = (s32[]{:T(128)}, s32[3]{0}) parameter(0)
+    get-tuple-element.1 = s32[]{:T(128)} get-tuple-element(loop_var.1), index=0
+    constant.1 = s32[]{:T(128)} constant(1)
+    idx = s32[]{:T(128)} add(get-tuple-element.1, constant.1)
+    get-tuple-element.2 = s32[3]{0} get-tuple-element(loop_var.1), index=1
+    output = s32[3]{0} add(get-tuple-element.2, get-tuple-element.2)
+    ROOT tuple = (s32[]{:T(128)}, s32[3]{0}) tuple(idx, output)
+  }
+  SimpleLoop.condition {
+    loop_var.2 = (s32[]{:T(128)}, s32[3]{0}) parameter(0)
+    get-tuple-element.3 = s32[] get-tuple-element(loop_var.2), index=0
+    constant.2 = s32[]{:T(128)} constant(5)
+    ROOT less-than = pred[] compare(get-tuple-element.3, constant.2), direction=LT
+  }
+  ENTRY SimpleLoop {
+    constant.3 = s32[]{:T(128)} constant(0)
+    constant.4 = s32[3]{0} constant({0, 1, 2})
+    tuple.1 = (s32[]{:T(128)}, s32[3]{0}) tuple(constant.3, constant.4)
+    while = (s32[]{:T(128)}, s32[3]{0}) while(tuple.1), condition=
+      SimpleLoop.condition, body=SimpleLoop.body
+    ROOT call = call(while), to_apply=NopComputation
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_TRUE(
+      WhileLoopUnroller(/*unroll_factor=*/-1).Run(hlo_module.get()).value());
+  EXPECT_THAT(hlo_module->entry_computation()->root_instruction(), op::Call());
+}
+
 TEST_F(WhileLoopUnrollerTest, WhileFeedingWhile) {
   UnrollAndCompare(MakeModuleWithWhileFeedingAnotherWhile(/*num_iters=*/5), {},
                    -1, false);
@@ -1032,8 +1098,10 @@ TEST_F(WhileLoopUnrollerTest, LoopWithCollective2) {
   absl::flat_hash_map<int64_t, int64_t> num_instrs_per_group;
   for (const HloInstruction* instr :
        module->entry_computation()->instructions()) {
-    if (std::optional<int64_t> id = GetSchedulingAnnotation(instr)) {
-      num_instrs_per_group[id.value()]++;
+    TF_ASSERT_OK_AND_ASSIGN(std::optional<int64_t> id,
+                            GetSchedulingAnnotationGroupId(instr));
+    if (id) {
+      num_instrs_per_group[*id]++;
     }
   }
   for (const auto& [group_id, num_instrs] : num_instrs_per_group) {
@@ -1535,6 +1603,94 @@ TEST_F(WhileLoopUnrollerTest, SimpleLoopWithCustomCall) {
                                  /*wrap_in_trivial_loop=*/false, config)
                    .Run(m.get())
                    .value());
+}
+
+TEST_F(WhileLoopUnrollerTest, SymmetricMatMul) {
+  constexpr char kModule[] = R"(
+    HloModule xxt_simulation
+
+    inner.while.body {
+      // declare constants
+      constant.512 = s32[]{:T(128)} constant(512)
+      constant.1 = s32[]{:T(128)} constant(1)
+      constant.0 = f32[]{:T(128)} constant(0)
+
+      // (inner_induction_var, dus_input, outer_induction_var, outer_start_index)
+      inner.while.tuple = (s32[]{:T(128)}, f32[8192,8192]{1,0:T(8,128)}, s32[]{:T(128)}, s32[]{:T(128)}) parameter(0)
+      inner.induction.var = s32[]{:T(128)} get-tuple-element(inner.while.tuple), index=0
+      dus.input = f32[8192,8192]{1,0:T(8,128)} get-tuple-element(inner.while.tuple), index=1
+      outer.induction.var = s32[]{:T(128)} get-tuple-element(inner.while.tuple), index=2
+      outer.start.index = s32[]{:T(128)} get-tuple-element(inner.while.tuple), index=3
+
+      inner.start.index = s32[]{:T(128)S(6)} multiply(inner.induction.var, constant.512)
+      broadcast.24 = f32[512,512]{1,0:T(8,128)} broadcast(constant.0), dimensions={}
+      dynamic-update-slice.13 = f32[8192,8192]{1,0:T(8,128)} dynamic-update-slice(dus.input, broadcast.24, outer.start.index, inner.start.index)
+      dynamic-update-slice.14 = f32[8192,8192]{1,0:T(8,128)} dynamic-update-slice(dynamic-update-slice.13, broadcast.24, inner.start.index, outer.start.index)
+
+      updated.inner.induction.var = s32[]{:T(128)} add(inner.induction.var, constant.1)
+      ROOT tuple.46 = (s32[]{:T(128)}, f32[8192,8192]{1,0:T(8,128)}, s32[]{:T(128)}, s32[]{:T(128)}) tuple(updated.inner.induction.var, dynamic-update-slice.14, outer.induction.var, outer.start.index)
+    }
+
+    inner.while.cond {
+      inner.while.cond.tuple = (s32[]{:T(128)}, f32[8192,8192]{1,0:T(8,128)}, s32[]{:T(128)}, /*index=5*/s32[]{:T(128)}) parameter(0)
+      inner.induction.var.cond = s32[]{:T(128)} get-tuple-element(inner.while.cond.tuple), index=0
+      outer.induction.var.cond.2 = s32[]{:T(128)} get-tuple-element(inner.while.cond.tuple), index=2
+      ROOT compare.23 = pred[]{:T(512)} compare(inner.induction.var.cond, outer.induction.var.cond.2), direction=LT
+    }
+
+    outer.while.body {
+      // declare constants
+      constant.512.1 = s32[]{:T(128)} constant(512)
+      constant.0.1 = s32[]{:T(128)} constant(0)
+      constant.1.1 = s32[]{:T(128)} constant(1)
+      constant.1.2 = f32[]{:T(128)} constant(1)
+
+      // (outer_induction_var, dus_input)
+      outer.while.tuple = (s32[]{:T(128)}, f32[8192,8192]{1,0:T(8,128)}) parameter(0)
+      outer.induction.var = s32[]{:T(128)} get-tuple-element(outer.while.tuple), index=0
+      outer.dus.input = f32[8192,8192]{1,0:T(8,128)} get-tuple-element(outer.while.tuple), index=1
+
+      outer.start.index = s32[]{:T(128)S(6)} multiply(outer.induction.var, constant.512.1)
+      constant_dynamic-slice_fusion.2 = f32[512,8192]{1,0:T(8,128)S(1)} constant({...})
+
+      tuple.44 = (s32[]{:T(128)}, f32[8192,8192]{1,0:T(8,128)}, s32[]{:T(128)}, s32[]{:T(128)}) tuple(constant.0.1, outer.dus.input, outer.induction.var, outer.start.index)
+      inner.while = (s32[]{:T(128)}, f32[8192,8192]{1,0:T(8,128)}, s32[]{:T(128)}, s32[]{:T(128)}) while(tuple.44), condition=inner.while.cond, body=inner.while.body
+      updated.dus.input = f32[8192,8192]{1,0:T(8,128)} get-tuple-element(inner.while), index=1
+
+      broadcast.1 = f32[512,512]{1,0:T(8,128)} broadcast(constant.1.2), dimensions={}
+      updated.dus.input.2 = f32[8192,8192]{1,0:T(8,128)} dynamic-update-slice(updated.dus.input, broadcast.1, outer.start.index, outer.start.index)
+      updated.outer.induction.var = s32[]{:T(128)} add(outer.induction.var, constant.1.1)
+      ROOT tuple.53 = (s32[]{:T(128)}, f32[8192,8192]{1,0:T(8,128)}) tuple(updated.outer.induction.var, updated.dus.input.2)
+    }
+
+    outer.while.cond {
+      constant.16 = s32[]{:T(128)} constant(16)
+      outer.while.tuple.cond = (s32[]{:T(128)}, f32[8192,8192]{1,0:T(8,128)}) parameter(0)
+      outer.induction.var.cond = s32[]{:T(128)} get-tuple-element(outer.while.tuple.cond), index=0
+      ROOT compare.25 = pred[]{:T(512)} compare(outer.induction.var.cond, constant.16), direction=LT
+    }
+
+    ENTRY main.131 {
+      constant.4 = f32[]{:T(128)} constant(0)
+      constant.3 = s32[]{:T(128)} constant(0)
+      Arg_0.1 = f32[8192]{0:T(1024)} parameter(0)
+      broadcast.5 = f32[8192,8192]{1,0:T(8,128)} broadcast(constant.4), dimensions={}
+      tuple.51 = (s32[]{:T(128)}, f32[8192,8192]{1,0:T(8,128)}) tuple(constant.3, broadcast.5)
+      outer.while = (s32[]{:T(128)}, f32[8192,8192]{1,0:T(8,128)}) while(tuple.51), condition=outer.while.cond, body=outer.while.body
+      ROOT get-tuple-element.320 = f32[8192,8192]{1,0:T(8,128)} get-tuple-element(outer.while), index=1
+    }
+    )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(kModule));
+  HloInstruction* while_op = FindInstruction(m.get(), "outer.while");
+  ASSERT_NE(while_op, nullptr);
+
+  std::optional<WhileLoopConfig> config =
+      WhileLoopUnroller::IsLoopUnrollable(while_op);
+  ASSERT_TRUE(config.has_value());
+  auto result = IsInputShapeCoveredByDynamicUpdateSliceInstructions(1, *config);
+  ASSERT_TRUE(result.ok());
+  EXPECT_TRUE(result.value());
 }
 
 }  // namespace

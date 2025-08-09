@@ -86,8 +86,8 @@ DistributedRuntimeCoordinationServiceClient::
   config.set_service_leader("/job:jax_worker/task:0");
   config.set_cluster_register_timeout_in_ms(
       absl::ToInt64Milliseconds(options.init_timeout));
-  config.set_heartbeat_timeout_in_ms(absl::ToInt64Milliseconds(
-      options.heartbeat_interval * options.max_missing_heartbeats));
+  config.set_heartbeat_timeout_in_ms(
+      absl::ToInt64Milliseconds(options.heartbeat_timeout));
   config.set_cluster_register_with_barrier(true);
   config.set_shutdown_barrier_timeout_in_ms(
       absl::ToInt64Milliseconds(options.shutdown_timeout));
@@ -95,15 +95,14 @@ DistributedRuntimeCoordinationServiceClient::
       !options.shutdown_on_destruction);
   config.set_poll_for_error_from_service_at_startup(
       options.poll_for_error_from_service_at_startup);
-  auto error_fn = [timeout_fn = options.missed_heartbeat_callback](
-                      const absl::Status& status) { timeout_fn(status); };
 
   std::unique_ptr<tsl::CoordinationClient> leader_client;
   leader_client.reset(tsl::NewGrpcCoordinationClient(channel));
   coord_agent_ = tsl::CreateCoordinationServiceAgent();
-  const absl::Status status =
-      coord_agent_->Initialize(options.env, "jax_worker", options.node_id,
-                               config, std::move(leader_client), error_fn);
+  const absl::Status status = coord_agent_->Initialize(
+      options.env, "jax_worker", options.node_id, config,
+      std::move(leader_client), options.missed_heartbeat_callback,
+      options.recoverable);
   if (!status.ok()) {
     LOG(ERROR) << "Coordination agent failed to initialize: " << status;
   }

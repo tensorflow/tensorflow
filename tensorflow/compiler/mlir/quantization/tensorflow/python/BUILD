@@ -1,4 +1,5 @@
 load("@local_xla//xla/tsl/platform:build_config_root.bzl", "if_pywrap")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load(
     "//tensorflow:tensorflow.default.bzl",
@@ -34,7 +35,6 @@ cc_library(
     ],
     deps = [
         ":py_function_lib",
-        ":unfreeze_constants",
         "//tensorflow/cc/saved_model:loader",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:config",
@@ -56,7 +56,6 @@ cc_library(
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantize_preprocess",
         "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:calibration_statistics_saver_op",  # Required for CalibrationStatisticsSaver op registration.
         "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:custom_aggregator_op",  # Required for CustomAggregator op registration.
-        "//tensorflow/compiler/mlir/quantization/tensorflow/cc:convert_asset_args",
         "//tensorflow/compiler/mlir/quantization/tensorflow/cc:run_passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow/debugging:dump_tensor_op",  # Required for DumpTensor op registration.
         "//tensorflow/compiler/mlir/tensorflow:mlir_import_options",
@@ -104,6 +103,7 @@ cc_library(
 pytype_strict_library(
     name = "py_function_lib_py",
     srcs = ["py_function_lib.py"],
+    visibility = ["//visibility:public"],
     deps = [
         ":pywrap_function_lib",
         ":representative_dataset",
@@ -152,10 +152,10 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/python/lib/core:pybind11_lib",
-        "//third_party/python_runtime:headers",  # build_cleaner: keep; Required for pybind11.
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@local_tsl//tsl/platform:protobuf",
+        "@local_xla//third_party/python_runtime:headers",  # build_cleaner: keep; Required for pybind11.
         "@pybind11",
         "@pybind11_abseil//pybind11_abseil:absl_casters",
     ],
@@ -165,6 +165,7 @@ cc_library(
     name = "py_function_lib",
     hdrs = ["py_function_lib.h"],
     compatible_with = get_compatible_with_portable(),
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration:min_max_value",
@@ -204,6 +205,7 @@ tf_python_pybind_extension(
     pytype_srcs = ["pywrap_function_lib.pyi"],
     visibility = [
         "__subpackages__",
+        "//tensorflow/lite/python:__subpackages__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/tools/pip_package:__subpackages__",
     ],

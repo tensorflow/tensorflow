@@ -23,9 +23,12 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "llvm/ADT/STLExtras.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
@@ -106,7 +109,8 @@ DynamicSliceThunk::DynamicSliceThunk(
   for (SliceDef& slice : slices_) {
     offsets_allocs_base_.push_back(offsets_allocs_size_);
     if (slice.sliced_shape.has_value()) {
-      offsets_allocs_size_ += slice.sliced_shape->rank() * sizeof(int64_t);
+      offsets_allocs_size_ +=
+          slice.sliced_shape->dimensions().size() * sizeof(int64_t);
     }
   }
 }
@@ -123,8 +127,10 @@ absl::Status DynamicSliceThunk::Prepare(
       TF_RET_CHECK(slice.orig_shape->IsArray());
       TF_RET_CHECK(slice.sliced_shape->IsArray());
 
-      TF_RET_CHECK(slice.offsets->size() == slice.orig_shape->rank());
-      TF_RET_CHECK(slice.sliced_shape->rank() == slice.orig_shape->rank());
+      TF_RET_CHECK(slice.offsets->size() ==
+                   slice.orig_shape->dimensions().size());
+      TF_RET_CHECK(slice.sliced_shape->dimensions().size() ==
+                   slice.orig_shape->dimensions().size());
     }
   }
 
@@ -198,14 +204,14 @@ absl::Status DynamicSliceThunk::ExecuteOnStream(const ExecuteParams& params) {
     const Shape& dst_shape = *slice.sliced_shape;
 
     absl::InlinedVector<int64_t, 4> slice_starts;
-    slice_starts.reserve(dst_shape.rank());
+    slice_starts.reserve(dst_shape.dimensions().size());
 
     // Number of issues d2h transfers to copy offset values from device to
     // host.
     int64_t num_transfers = 0;
 
-    // Get offset for `argument_idx`-th argument, which has `dst_shape.rank()`
-    // components.
+    // Get offset for `argument_idx`-th argument, which has
+    // `dst_shape.dimensions_size()` components.
     for (auto [offset_idx, values] : llvm::enumerate(llvm::zip(
              *slice.offsets, src_shape.dimensions(), dst_shape.dimensions()))) {
       auto [offset, src_dim, dst_dim] = values;

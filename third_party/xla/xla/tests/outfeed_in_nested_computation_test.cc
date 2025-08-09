@@ -13,11 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
 
+#include "absl/log/log.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/tests/local_client_test_base.h"
-#include "xla/tests/test_macros.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -27,7 +37,7 @@ namespace {
 
 class OutfeedInNestedComputationTest : public LocalClientTestBase {};
 
-XLA_TEST_F(OutfeedInNestedComputationTest, OutfeedInWhile) {
+TEST_F(OutfeedInNestedComputationTest, OutfeedInWhile) {
   XlaBuilder b(TestName());
 
   Shape state_tuple_array_shape = ShapeUtil::MakeShape(xla::S32, {10, 5});
@@ -119,7 +129,7 @@ XLA_TEST_F(OutfeedInNestedComputationTest, OutfeedInWhile) {
   EXPECT_EQ(comp_result.Get<int32_t>({}), 0);
 }
 
-XLA_TEST_F(OutfeedInNestedComputationTest, OutfeedInConditional) {
+TEST_F(OutfeedInNestedComputationTest, OutfeedInConditional) {
   XlaBuilder b(TestName());
 
   Shape condition_shape = ShapeUtil::MakeShape(xla::PRED, {});

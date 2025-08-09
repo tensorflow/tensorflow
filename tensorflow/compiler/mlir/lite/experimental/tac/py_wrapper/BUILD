@@ -1,3 +1,4 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "VERSION")
 load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
 
@@ -21,9 +22,9 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/experimental/tac:tflite_importer_exporter",
         "//tensorflow/compiler/mlir/lite/experimental/tac/hardwares:all-target-hardwares",
         "//tensorflow/compiler/mlir/tensorflow",
-        "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/status",
         "@llvm-project//mlir:IR",
+        "@local_xla//third_party/python_runtime:headers",  # buildcleaner: keep
     ],
 )
 
@@ -104,7 +105,7 @@ pybind_extension(
     deps = [
         ":tac_wrapper_lib",
         "//tensorflow/python/lib/core:pybind11_lib",
-        "//third_party/python_runtime:headers",
+        "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
     ],
 )

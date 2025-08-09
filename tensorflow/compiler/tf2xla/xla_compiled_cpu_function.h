@@ -17,12 +17,20 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_TF2XLA_XLA_COMPILED_CPU_FUNCTION_H_
 
 #include <cassert>
+#include <cstddef>
+#include <cstdint>
+#include <functional>
+#include <memory>
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
+#include "xla/backends/cpu/runtime/rng_state_lib.h"
 #include "xla/cpu_function_runtime.h"
 #include "xla/executable_run_options.h"
-#include "xla/service/cpu/buffer_desc.h"
 #include "xla/service/custom_call_status_internal.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -33,11 +41,19 @@ class ProgramShapeProto;
 class HloProfilePrinterData;
 
 namespace cpu {
+
+class AotCompiledFunctionLibrary;
+class CompilationResultProto;
 class CpuExecutable;
+class NanoRtExecutable;
+
 }  // namespace cpu
 }  // namespace xla
 
 namespace tensorflow {
+
+// Forward-declare so that it can access StaticData.
+class XlaCompiledCpuFunctionThunks;
 
 // Represents a function compiled by XLA, produced via either JIT or AOT.
 //
@@ -77,9 +93,36 @@ class XlaCompiledCpuFunction {
   // The contents of StaticData are XLA-internal implementation details and
   // should not be relied on by clients (and therefore are private).
   class StaticData {
+   public:
+    bool has_thunk_sequence() const {
+      return compilation_result_proto_ != nullptr;
+    }
+
    private:
+    // start thunk execution specific
+    const xla::cpu::CompilationResultProto* compilation_result_proto_ = nullptr;
+
+    absl::flat_hash_map<
+        std::string,
+        /*xla::cpu::AotCompiledFunctionLibrary::FunctionPtr*/ void*>
+        function_library_symbol_map_;
+
+    std::optional<size_t> temp_allocation_index_ = std::nullopt;
+    // end thunk execution specific
+
     // The raw function to call.
-    RawFunction raw_function_;
+    RawFunction raw_function_ = nullptr;
+
+    // Serialized thunk execution specific (used for AOT to avoid binary size
+    // issues)
+    std::function<bool(void** buffer_table, xla::ExecutableRunOptions*,
+                       std::vector<std::unique_ptr<xla::cpu::RngState>>&)>
+        thunk_run_impl_ = nullptr;
+
+    std::vector<std::pair<uint64_t, char*>> embedded_constant_buffers_;
+
+    std::vector<int64_t> rng_state_deltas_;
+    // End serialized thunk execution specific
 
     // Contains information about the buffers used by the XLA computation.
     const xla::cpu_function_runtime::BufferInfo* buffer_infos_ = nullptr;
@@ -130,6 +173,7 @@ class XlaCompiledCpuFunction {
     // Only XlaCompiledCpuFunction is allowed to read and write the above
     // fields.
     friend class XlaCompiledCpuFunction;
+    friend class XlaCompiledCpuFunctionThunks;
   };
 
   // AllocMode controls the buffer allocation mode.
@@ -154,20 +198,22 @@ class XlaCompiledCpuFunction {
   XlaCompiledCpuFunction& operator=(XlaCompiledCpuFunction&&) = default;
 
   // Sets the intra-op thread pool used to run individual ops concurrently.
-  void set_thread_pool(const Eigen::ThreadPoolDevice* pool) {
+  virtual void set_thread_pool(const Eigen::ThreadPoolDevice* pool) {
     run_options_.set_intra_op_thread_pool(pool);
   }
 
   // Runs the computation, with inputs read from arg buffers, and outputs
   // written to result buffers. Returns true on success and false on failure.
-  bool Run();
+  virtual bool Run();
 
   // Returns the error message from the previous failed Run call.
   //
   // TODO(fschneider): For now this always returns an empty string because there
   // is no support for error reporting in XLA. Remove this once all callers are
   // updated.
-  string error_msg() const { return {}; }
+  string error_msg() const { return error_msg_; }
+
+  void set_error_msg(absl::string_view error_msg) { error_msg_ = error_msg; }
 
   // ------------------------------
   // Arg methods for managing input buffers. Buffers are in row-major order.
@@ -196,6 +242,11 @@ class XlaCompiledCpuFunction {
     return buffer_infos_[arg_index_table_[idx]].size();
   }
 
+  int result_size(int idx) const {
+    assert(idx < num_results());
+    return buffer_infos_[result_index_table_[idx]].size();
+  }
+
   // Sets the buffer for the positional argument at the given `index` to `data`.
   // Must be called before Run to have an effect. May be called under any
   // AllocMode; if the AllocMode is RESULTS_AND_TEMPS_ONLY, this method must be
@@ -209,8 +260,8 @@ class XlaCompiledCpuFunction {
   // Aliasing of argument and result buffers is not allowed, and results in
   // undefined behavior.
   void set_arg_data(size_t index, const void* data) {
-    assert((arg_size(index) < xla::cpu_function_runtime::MinAlign() ||
-            (uintptr_t)data % xla::cpu_function_runtime::MinAlign() == 0) &&
+    assert((arg_size(index) < xla::cpu::MinAlign() ||
+            (uintptr_t)data % xla::cpu::MinAlign() == 0) &&
            "Underaligned pointer!");
     // The const_cast is safe because the generated code does not write to arg
     // buffers.
@@ -219,19 +270,6 @@ class XlaCompiledCpuFunction {
     // generated code so it would be misleading to make buffer_table_ a `const
     // void**`.
     buffer_table_[arg_index_table_[index]] = const_cast<void*>(data);
-  }
-
-  // ------------------------------
-  // Result methods for managing output buffers. Buffers are in row-major order.
-  // Must only be called after a successful Run call. Unlike the arg methods,
-  // there is no set_resultN_data method. The result buffers are managed
-  // internally, and may change after each call to Run.
-
-  // Returns the underlying array of result buffers, where results()[I] is the
-  // buffer for the positional result at index I.
-  void** results() { return static_cast<void**>(buffer_table_[result_index_]); }
-  const void* const* results() const {
-    return static_cast<const void* const*>(buffer_table_[result_index_]);
   }
 
   // Profile counters for this XLA computation.
@@ -245,8 +283,12 @@ class XlaCompiledCpuFunction {
   const int64_t* profile_counters() const { return profile_counters_; }
 
   // Returns the buffer for the positional result at the given `index`.
-  void* result_data(size_t index) { return results()[index]; }
-  const void* result_data(size_t index) const { return results()[index]; }
+  void* result_data(size_t index) {
+    return buffer_table_[result_index_table_[index]];
+  }
+  const void* result_data(size_t index) const {
+    return buffer_table_[result_index_table_[index]];
+  }
 
   // ------------------------------
   // Methods for extracting optional metadata.
@@ -272,7 +314,7 @@ class XlaCompiledCpuFunction {
   // The index remains constant for every instance of XlaCompiledCpuFunction
   // generated from the same static data, and might not be cheap to determine.
   // Recommended usage is to capture this in a variable for re-use.
-  int LookupVariableIndex(const string& name) const;
+  int LookupVariableIndex(absl::string_view name) const;
 
   // Returns the 0-based index for the result with the given `name`.
   // Returns -1 if the name wasn't found, or data isn't available.
@@ -306,7 +348,30 @@ class XlaCompiledCpuFunction {
     return *hlo_profile_printer_data_;
   }
 
+  const absl::flat_hash_map<
+      std::string,
+      /*xla::cpu::AotCompiledFunctionLibrary::FunctionPtr*/ void*>&
+  function_library_symbol_map() const {
+    return *function_library_symbol_map_;
+  }
+
+  const xla::ExecutableRunOptions* run_options() const { return &run_options_; }
+
  protected:
+  virtual bool is_thunk_mode() const { return false; }
+
+  std::optional<size_t> temp_allocation_index() const {
+    return temp_allocation_index_;
+  }
+
+  const xla::cpu_function_runtime::BufferInfo* buffer_infos() const {
+    return buffer_infos_;
+  }
+
+  int32 num_buffers() const { return num_buffers_; }
+
+  void** buffer_table() const { return buffer_table_; }
+
   // ---------------------------------------------------------------------------
   // Accessors for reading from and writing to instances of `StaticData`.
   //
@@ -314,9 +379,45 @@ class XlaCompiledCpuFunction {
   // inherit from `XlaCompiledCpuFunction`.  `XlaJitCompiledCpuFunction` can
   // call these because it is explicitly added as a friend.
 
+  static void set_static_data_function_library_symbol_map(
+      StaticData* static_data,
+      absl::flat_hash_map<
+          std::string,
+          /*xla::cpu::AotCompiledFunctionLibrary::FunctionPtr*/ void*>
+          function_library_symbol_map) {
+    static_data->function_library_symbol_map_ =
+        std::move(function_library_symbol_map);
+  }
+
+  static void set_static_data_compilation_result_proto(
+      StaticData* static_data,
+      const xla::cpu::CompilationResultProto* compilation_result_proto) {
+    static_data->compilation_result_proto_ = compilation_result_proto;
+  }
+
   static void set_static_data_raw_function(StaticData* static_data,
                                            RawFunction raw_function) {
     static_data->raw_function_ = raw_function;
+  }
+
+  static void set_static_data_thunk_run_impl(
+      StaticData* static_data,
+      std::function<bool(void** buffer_table, xla::ExecutableRunOptions*,
+                         std::vector<std::unique_ptr<xla::cpu::RngState>>&)>
+          thunk_run_impl) {
+    static_data->thunk_run_impl_ = std::move(thunk_run_impl);
+  }
+
+  static void set_static_data_embedded_constant_buffers(
+      StaticData* static_data,
+      std::vector<std::pair<uint64_t, char*>> embedded_constant_buffers) {
+    static_data->embedded_constant_buffers_ =
+        std::move(embedded_constant_buffers);
+  }
+
+  static void set_static_data_rng_state_deltas(
+      StaticData* static_data, std::vector<int64_t> rng_state_deltas) {
+    static_data->rng_state_deltas_ = std::move(rng_state_deltas);
   }
 
   static void set_static_data_buffer_infos(
@@ -353,6 +454,12 @@ class XlaCompiledCpuFunction {
   static void set_static_data_num_variables(StaticData* static_data,
                                             int64_t num_variables) {
     static_data->num_variables_ = num_variables;
+  }
+
+  static void set_static_data_temp_allocation_index(
+      StaticData* static_data,
+      const std::optional<size_t> temp_allocation_index) {
+    static_data->temp_allocation_index_ = temp_allocation_index;
   }
 
   static void set_static_data_result_index(StaticData* static_data,
@@ -411,7 +518,19 @@ class XlaCompiledCpuFunction {
   static void set_static_data_use_xla_runtime(StaticData* static_data, bool) {}
 
  private:
-  const RawFunction raw_function_;
+  const absl::flat_hash_map<
+      std::string,
+      /*xla::cpu::AotCompiledFunctionLibrary::FunctionPtr*/ void*>*
+      function_library_symbol_map_;
+
+  const std::optional<size_t> temp_allocation_index_;
+
+  const RawFunction raw_function_ = nullptr;
+  std::function<bool(void** buffer_table, xla::ExecutableRunOptions*,
+                     std::vector<std::unique_ptr<xla::cpu::RngState>>&)>
+      thunk_run_impl_ = nullptr;
+
+  std::vector<std::unique_ptr<xla::cpu::RngState>> rng_states_;
 
   const size_t result_index_;
 
@@ -459,6 +578,8 @@ class XlaCompiledCpuFunction {
   const char** result_names_ = nullptr;
   const xla::ProgramShapeProto* program_shape_ = nullptr;
   const xla::HloProfilePrinterData* hlo_profile_printer_data_ = nullptr;
+
+  std::string error_msg_ = "";
 
   // Add `XlaJitCompiledCpuFunction` as a friend so that it can access the
   // `set_static_data_*` static methods above.

@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 
 namespace stream_executor::gpu {
 
@@ -28,7 +29,8 @@ namespace stream_executor::gpu {
 // Note that this function will read the extracted fatbin from the file system
 // at runtime and will only be able to succeed when the test is being invoked by
 // `bazel test`.
-absl::StatusOr<std::vector<uint8_t>> GetGpuTestKernelsFatbin();
+absl::StatusOr<std::vector<uint8_t>> GetGpuTestKernelsFatbin(
+    absl::string_view platform_name);
 
 }  // namespace stream_executor::gpu
 

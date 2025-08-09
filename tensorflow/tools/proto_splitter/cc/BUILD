@@ -13,8 +13,10 @@ package(
     default_visibility = [
         "//learning/brain/tfrt/aot:__subpackages__",
         "//learning/brain/tfrt/tf_tpu:__subpackages__",
+        "//platforms/darwinn/contrib/waymo:__subpackages__",
         "//tensorflow/cc/saved_model/image_format:__subpackages__",
         "//tensorflow/tools/proto_splitter:__subpackages__",
+        "//waymo/ml/compiler/frontend:__subpackages__",
     ],
     licenses = ["notice"],
 )
@@ -116,6 +118,7 @@ cc_library(
     hdrs = ["util.h"],
     visibility = [
         "//learning/brain/tfrt/aot:__subpackages__",
+        "//platforms/darwinn/contrib/waymo:__subpackages__",
         "//tensorflow/cc/saved_model:__subpackages__",
         "//tensorflow/cc/saved_model/image_format:__subpackages__",
         "//tensorflow/tools/proto_splitter:__subpackages__",
@@ -137,6 +140,7 @@ cc_library(
         "@riegeli//riegeli/base:initializer",
         "@riegeli//riegeli/base:types",
         "@riegeli//riegeli/bytes:fd_reader",
+        "@riegeli//riegeli/bytes:string_reader",
         "@riegeli//riegeli/records:record_reader",
     ] + if_oss([
         "//tensorflow/tools/proto_splitter:protos_impl",
@@ -210,20 +214,18 @@ cc_library(
 
 cc_library(
     name = "repeated_field_splitter",
-    srcs = ["repeated_field_splitter.cc"],
     hdrs = ["repeated_field_splitter.h"],
     deps = [
         ":composable_splitter",
         ":max_size",
         ":size_splitter",
-        ":split",
         ":util",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla/tsl/platform:errors",
+        "@local_xla//xla/tsl/platform:statusor",
     ],
 )
 

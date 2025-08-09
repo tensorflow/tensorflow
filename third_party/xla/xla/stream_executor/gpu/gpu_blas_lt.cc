@@ -16,17 +16,24 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <utility>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/primitive_util.h"
 #include "xla/service/algorithm_util.h"
 #include "xla/stream_executor/blas.h"
+#include "xla/stream_executor/gpu/gpu_blas_lt.pb.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -151,6 +158,51 @@ void MatrixLayout::Transpose() {
   order = (order == Order::kRowMajor) ? Order::kColumnMajor : Order::kRowMajor;
 }
 
+absl::StatusOr<MatrixLayout> MatrixLayout::FromProto(
+    const xla::GemmConfigProto::MatrixLayout& proto) {
+  Order order;
+  switch (proto.order()) {
+    case xla::GemmConfigProto::MatrixLayout::ORDER_ROW_MAJOR:
+      order = Order::kRowMajor;
+      break;
+    case xla::GemmConfigProto::MatrixLayout::ORDER_COLUMN_MAJOR:
+      order = Order::kColumnMajor;
+      break;
+    case xla::GemmConfigProto::MatrixLayout::ORDER_UNKNOWN:
+    default:
+      return absl::InvalidArgumentError("Invalid matrix layout order");
+  }
+
+  TF_ASSIGN_OR_RETURN(blas::Transpose transpose,
+                      blas::FromProto(proto.transpose()));
+  return MatrixLayout(proto.dtype(), proto.num_rows(), proto.num_cols(), order,
+                      proto.batch_size(), proto.leading_dim_stride(),
+                      proto.batch_stride(), transpose);
+}
+
+xla::GemmConfigProto::MatrixLayout MatrixLayout::ToProto() const {
+  xla::GemmConfigProto::MatrixLayout proto;
+  switch (order) {
+    case Order::kRowMajor:
+      proto.set_order(xla::GemmConfigProto::MatrixLayout::ORDER_ROW_MAJOR);
+      break;
+    case Order::kColumnMajor:
+      proto.set_order(xla::GemmConfigProto::MatrixLayout::ORDER_COLUMN_MAJOR);
+      break;
+    default: {
+      LOG(FATAL) << "Invalid matrix layout order";
+    }
+  }
+  proto.set_num_rows(num_rows);
+  proto.set_num_cols(num_cols);
+  proto.set_batch_size(batch_size);
+  proto.set_leading_dim_stride(leading_dim_stride);
+  proto.set_batch_stride(batch_stride);
+  proto.set_transpose(blas::ToProto(transpose));
+  proto.set_dtype(dtype);
+  return proto;
+}
+
 absl::StatusOr<ComputationType> GetBlasComputationType(
     xla::PrecisionConfig::Algorithm algorithm, xla::PrimitiveType lhs_dtype,
     xla::PrimitiveType output_dtype, int64_t compute_precision) {
@@ -234,6 +286,78 @@ DataType GetScaleType(DataType c_type, ComputationType computation_type) {
               : c_type);
 }
 
-}  // namespace gpu
+absl::StatusOr<BlasLt::MatmulPlan*> BlasLt::GetOrCreateMatmulPlan(
+    const std::string& key, PlanCreateFunc create) {
+  absl::MutexLock lock(&plan_cache_mu_);  // double mutex ???
+  auto res = plan_cache_.emplace(key, MatmulPlanPtr{});
+  // New entry inserted: always create a new matmul plan if key is empty,
+  // this is used by command_buffer_thunk test.
+  if (res.second || key.empty()) {
+    VLOG(2) << "Creating a plan for: " << key;
+    TF_ASSIGN_OR_RETURN(res.first->second, create());
+    VLOG(2) << "Plan created: cache size: " << plan_cache_.size();
+  }
+  return res.first->second.get();
+}
 
+void BlasLt::ClearMatmulPlanCache() {
+  absl::MutexLock lock(&plan_cache_mu_);
+  plan_cache_.clear();
+}
+
+size_t BlasLt::GetMatmulPlanCacheSize() const {
+  absl::MutexLock lock(&plan_cache_mu_);
+  return plan_cache_.size();
+}
+
+absl::StatusOr<GemmConfig> GemmConfig::FromProto(
+    const xla::GemmConfigProto& proto) {
+  TF_ASSIGN_OR_RETURN(MatrixLayout lhs_layout,
+                      MatrixLayout::FromProto(proto.lhs_layout()));
+  TF_ASSIGN_OR_RETURN(MatrixLayout rhs_layout,
+                      MatrixLayout::FromProto(proto.rhs_layout()));
+  TF_ASSIGN_OR_RETURN(MatrixLayout c_layout,
+                      MatrixLayout::FromProto(proto.c_layout()));
+  TF_ASSIGN_OR_RETURN(MatrixLayout output_layout,
+                      MatrixLayout::FromProto(proto.output_layout()));
+  std::optional<blas::ComputationType> compute_type =
+      blas::FromProto(proto.compute_type());
+  return GemmConfig{
+      std::move(lhs_layout),
+      std::move(rhs_layout),
+      std::move(c_layout),
+      std::move(output_layout),
+      {proto.alpha_real(), proto.alpha_imag()},
+      proto.beta(),
+      proto.compute_precision(),
+      proto.precision_algorithm(),
+      proto.has_algorithm() ? std::optional(proto.algorithm()) : std::nullopt,
+      proto.grad_x(),
+      proto.grad_y(),
+      compute_type};
+}
+
+xla::GemmConfigProto GemmConfig::ToProto() const {
+  xla::GemmConfigProto proto;
+  *proto.mutable_lhs_layout() = lhs_layout.ToProto();
+  *proto.mutable_rhs_layout() = rhs_layout.ToProto();
+  *proto.mutable_c_layout() = c_layout.ToProto();
+  *proto.mutable_output_layout() = output_layout.ToProto();
+  proto.set_alpha_real(alpha.real());
+  proto.set_alpha_imag(alpha.imag());
+  proto.set_beta(beta);
+  proto.set_compute_precision(compute_precision);
+  proto.set_precision_algorithm(precision_algorithm);
+  if (algorithm.has_value()) {
+    proto.set_algorithm(*algorithm);
+  }
+  proto.set_grad_x(grad_x);
+  proto.set_grad_y(grad_y);
+  if (compute_type.has_value()) {
+    proto.set_compute_type(blas::ToProto(*compute_type));
+  }
+  return proto;
+}
+
+}  // namespace gpu
 }  // namespace stream_executor

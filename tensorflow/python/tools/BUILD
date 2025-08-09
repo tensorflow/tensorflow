@@ -1,6 +1,7 @@
 # Description:
 #   Tools for manipulating TensorFlow graphs.
 
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library", "py_strict_test")
 load("//tensorflow:tensorflow.bzl", "if_google", "if_xla_available", "tf_cc_test")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_pywrap")
@@ -564,6 +565,13 @@ tf_cc_test(
     srcs = if_xla_available([
         "aot_compiled_test.cc",
     ]),
+    # For Windows the test works locally, but for some reason throws
+    # "The filename or extension is too long." when run on our RBE.
+    # Given that the test fails for Windows RBE infrastructure reasons,
+    # but passes otherwise disabling for Windows it for now.
+    tags = [
+        "no_windows",
+    ],
     deps = [
         "//tensorflow/core:test_main",
     ] + if_xla_available([

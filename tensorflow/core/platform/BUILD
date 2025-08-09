@@ -760,13 +760,7 @@ cc_library(
     name = "status_matchers",
     testonly = 1,
     hdrs = ["status_matchers.h"],
-    deps = [
-        ":status",
-        ":statusor",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "@local_tsl//tsl/platform:status_matchers",
-    ],
+    deps = ["@local_xla//xla/tsl/platform:status_matchers"],
 )
 
 cc_library(
@@ -950,9 +944,12 @@ cc_library(
         ":bfloat16",
         ":platform",
         ":tstring",
+        "@local_tsl//tsl/platform:bfloat16",
         "@local_tsl//tsl/platform:ml_dtypes",
+        "@local_tsl//tsl/platform:tstring",
         "@local_tsl//tsl/platform:types",
         "@local_xla//xla/tsl/framework:device_type",
+        "@local_xla//xla/tsl/platform:types",
     ],
 )
 
@@ -1123,7 +1120,7 @@ cc_library(
     name = "test_main",
     testonly = 1,
     deps = [
-        "@com_google_googletest//:gtest_main",
+        "@local_xla//xla/tsl/platform:test_main",
     ],
 )
 

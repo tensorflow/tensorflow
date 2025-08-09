@@ -15,15 +15,18 @@ limitations under the License.
 
 #include "xla/pjrt/mlir_to_hlo.h"
 
+#include <string>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "stablehlo/api/PortableApi.h"
 #include "xla/hlo/testlib/test.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -116,7 +119,7 @@ TEST(MlirToHloTest, MhloTest) {
       R"(
     func.func @add(%arg0: tensor<1x2xf32>) -> tensor<1x2xf32> {
       %cst = mhlo.constant dense<1.0> : tensor<1x2xf32>
-      %0 = mhlo.add %arg0, %cst : tensor<1x2xf32>
+      %0 = stablehlo.add %arg0, %cst : tensor<1x2xf32>
       return %0 : tensor<1x2xf32>
     }
   )";
@@ -127,6 +130,24 @@ TEST(MlirToHloTest, MhloTest) {
 
   // MHLO and other dialects use native MLIR bytecode, not VHLO.
   EXPECT_THAT(blob, Not(IsVhloArtifact("1.0.0")));
+}
+
+TEST(MlirToHloTest, MhloMixedSerializationTest) {
+  constexpr char kProgram[] =
+      R"(
+    func.func @add(%arg0: tensor<1x2xf32>) -> tensor<1x2xf32> {
+      %cst = mhlo.constant dense<1.0> : tensor<1x2xf32>
+      %0 = stablehlo.add %arg0, %cst : tensor<1x2xf32>
+      return %0 : tensor<1x2xf32>
+    }
+  )";
+  mlir::MLIRContext context;
+  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                          ParseMlirModuleString(kProgram, context));
+  TF_ASSERT_OK_AND_ASSIGN(std::string blob, Serialize(*module, "1.11.0"));
+
+  // Use Mixed serialization starting at v1.11.0.
+  EXPECT_THAT(blob, IsVhloArtifact("1.11.0"));
 }
 
 TEST(MlirToHloTest, InvalidBytecodeTest) {

@@ -27,7 +27,6 @@ limitations under the License.
 #include "xla/tests/exhaustive/exhaustive_op_test.h"
 #include "xla/tests/exhaustive/exhaustive_op_test_base.h"
 #include "xla/tests/exhaustive/exhaustive_op_test_utils.h"
-#include "xla/tests/test_macros.h"
 #include "xla/types.h"
 #include "tsl/platform/test.h"
 
@@ -89,8 +88,8 @@ using ExhaustiveC64UnaryTest = ExhaustiveComplexUnaryTestBase<C64>;
 
 using ExhaustiveC128UnaryTest = ExhaustiveComplexUnaryTestBase<C128>;
 
-#define UNARY_TEST_COMPLEX_64(test_name, ...)   \
-  XLA_TEST_P(ExhaustiveC64UnaryTest, test_name) \
+#define UNARY_TEST_COMPLEX_64(test_name, ...) \
+  TEST_P(ExhaustiveC64UnaryTest, test_name)   \
   __VA_ARGS__
 
 UNARY_TEST_COMPLEX_64(Log, {
@@ -115,7 +114,8 @@ UNARY_TEST_COMPLEX_64(Log, {
         .skip_comparison(should_skip)
         .build();
   };
-  Run(Log, [](complex64 x) { return std::log(x); }, error_spec_gen);
+  Run([](XlaOp x) { return Log(x); }, [](complex64 x) { return std::log(x); },
+      error_spec_gen);
 })
 
 UNARY_TEST_COMPLEX_64(Sqrt, {
@@ -135,7 +135,8 @@ UNARY_TEST_COMPLEX_64(Sqrt, {
         .rel_err(50 * std::numeric_limits<float>::epsilon())
         .build();
   };
-  Run(Sqrt, [](complex64 x) { return std::sqrt(x); }, error_spec_gen);
+  Run([](XlaOp x) { return Sqrt(x); }, [](complex64 x) { return std::sqrt(x); },
+      error_spec_gen);
 })
 
 template <typename NativeT, typename ComponentNativeT>
@@ -185,8 +186,8 @@ UNARY_TEST_COMPLEX_64(Rsqrt, {
     };
   }
 
-  Run(
-      Rsqrt, [](complex64 x) { return complex64(1, 0) / std::sqrt(x); },
+  Run([](XlaOp x) { return Rsqrt(x); },
+      [](complex64 x) { return complex64(1, 0) / std::sqrt(x); },
       error_spec_gen);
 })
 
@@ -200,8 +201,7 @@ UNARY_TEST_COMPLEX_64(Tanh, {
 
     return GetDefaultSpecGenerator()(x);
   };
-  Run(
-      Tanh,
+  Run([](XlaOp x) { return Tanh(x); },
       +[](complex64 x) {
         // The current libc++ implementation of the complex tanh function
         // provides less accurate results when the denominator of a complex tanh
@@ -246,8 +246,8 @@ INSTANTIATE_TEST_SUITE_P(
         ::testing::ValuesIn(
             GetFpValuesForMagnitudeExtremeNormals<float>(40000, 4000))));
 
-#define UNARY_TEST_COMPLEX_128(test_name, ...)   \
-  XLA_TEST_P(ExhaustiveC128UnaryTest, test_name) \
+#define UNARY_TEST_COMPLEX_128(test_name, ...) \
+  TEST_P(ExhaustiveC128UnaryTest, test_name)   \
   __VA_ARGS__
 
 UNARY_TEST_COMPLEX_128(Log, {
@@ -267,7 +267,8 @@ UNARY_TEST_COMPLEX_128(Log, {
     };
   }
 
-  Run(Log, [](complex128 x) { return std::log(x); }, error_spec_gen);
+  Run([](XlaOp x) { return Log(x); }, [](complex128 x) { return std::log(x); },
+      error_spec_gen);
 })
 
 UNARY_TEST_COMPLEX_128(Sqrt, {
@@ -285,7 +286,8 @@ UNARY_TEST_COMPLEX_128(Sqrt, {
         .skip_comparison(std::abs(x) > std::numeric_limits<double>::max() / 2)
         .build();
   };
-  Run(Sqrt, [](complex128 x) { return std::sqrt(x); }, error_spec_gen);
+  Run([](XlaOp x) { return Sqrt(x); },
+      [](complex128 x) { return std::sqrt(x); }, error_spec_gen);
 })
 
 UNARY_TEST_COMPLEX_128(Rsqrt, {
@@ -321,8 +323,8 @@ UNARY_TEST_COMPLEX_128(Rsqrt, {
     };
   }
 
-  Run(
-      Rsqrt, [](complex128 x) { return complex128(1, 0) / std::sqrt(x); },
+  Run([](XlaOp x) { return Rsqrt(x); },
+      [](complex128 x) { return complex128(1, 0) / std::sqrt(x); },
       error_spec_gen);
 })
 
@@ -345,7 +347,8 @@ UNARY_TEST_COMPLEX_128(Tanh, {
         .build();
   };
 
-  Run(Tanh, +[](complex128 x) { return std::tanh(x); }, error_spec_gen);
+  Run([](XlaOp x) { return Tanh(x); },
+      +[](complex128 x) { return std::tanh(x); }, error_spec_gen);
 })
 
 INSTANTIATE_TEST_SUITE_P(

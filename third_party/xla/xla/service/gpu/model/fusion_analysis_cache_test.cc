@@ -18,16 +18,16 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
 
-class FusionAnalysisCacheTest : public HloTestBase {
+class FusionAnalysisCacheTest : public HloHardwareIndependentTestBase {
  public:
   stream_executor::DeviceDescription device_{
       TestGpuDeviceInfo::RTXA6000DeviceInfo()};
@@ -96,17 +96,17 @@ TEST_F(FusionAnalysisCacheTest, CachesAndInvalidatesProducerConsumerFusions) {
   auto* computation = module->GetComputationWithName("f");
   auto* constant = computation->GetInstructionWithName("c0");
 
-  EXPECT_EQ(cache_.Get(*fusion, *neg).GetEmitterFusionKind(),
+  EXPECT_EQ(cache_.Get(*fusion, *neg).emitter_fusion_kind(),
             HloFusionAnalysis::EmitterFusionKind::kReduction);
 
   computation->set_root_instruction(constant);
 
-  EXPECT_EQ(cache_.Get(*fusion, *neg).GetEmitterFusionKind(),
+  EXPECT_EQ(cache_.Get(*fusion, *neg).emitter_fusion_kind(),
             HloFusionAnalysis::EmitterFusionKind::kReduction)
       << "Analysis should be cached.";
 
   cache_.Invalidate(*fusion);
-  EXPECT_EQ(cache_.Get(*fusion, *neg).GetEmitterFusionKind(),
+  EXPECT_EQ(cache_.Get(*fusion, *neg).emitter_fusion_kind(),
             HloFusionAnalysis::EmitterFusionKind::kLoop)
       << "Analysis should have been recomputed";
 }

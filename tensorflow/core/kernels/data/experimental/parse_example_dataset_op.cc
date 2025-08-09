@@ -12,7 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstddef>
+#include <cstdint>
 #include <deque>
+#include <map>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/data/dataset_utils.h"
@@ -735,7 +742,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
           *end_of_sequence = false;
           return absl::OkStatus();
         }
-        if (errors::IsOutOfRange(result->status)) {
+        if (absl::IsOutOfRange(result->status)) {
           // To guarantee that the transformation preserves the cardinality of
           // the dataset, we convert `OutOfRange` to `InvalidArgument` as the
           // former may be interpreted by a caller as the end of sequence.

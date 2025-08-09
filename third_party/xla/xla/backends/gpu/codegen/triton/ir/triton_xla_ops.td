@@ -23,10 +23,10 @@ include "mlir/Interfaces/SideEffectInterfaces.td" // Pure
 include "mlir/Interfaces/InferTypeOpInterface.td" // SameOperandsAndResultType
 include "mlir/Interfaces/ViewLikeInterface.td" // OffsetSizeAndStrideOpInterface
 include "xla/backends/gpu/codegen/triton/ir/triton_xla_dialect.td"
-include "xla/backends/gpu/codegen/triton/ir/triton_xla_types.td"
 include "triton/Dialect/Triton/IR/TritonInterfaces.td"
-include "triton/Dialect/TritonGPU/IR/TritonGPUTypeInterfaces.td"
+include "triton/Dialect/Triton/IR/TritonOpInterfaces.td"
 include "triton/Dialect/Triton/IR/TritonTypes.td"
+include "triton/Dialect/TritonGPU/IR/TritonGPUTypeInterfaces.td"
 
 // -----------------------------------------------------------------------------
 // Triton XLA Ops
@@ -36,102 +36,167 @@ class TTXLA_Op<string mnemonic, list<Trait> traits = []> :
       Op<XlaTritonDialect, mnemonic, traits> {
 }
 
-def TTXLA_SparseDotOp : TTXLA_Op<"sparse_dot", [
-        Pure, DotLike, DeclareOpInterfaceMethods<InferTypeOpInterface>,
-        TypesMatchWith<"result's type matches accumulator's type", "d", "c", "$_self">]> {
-    let summary = "sparse dot";
+// Base class for ops with static/dynamic offset, sizes and strides
+// attributes/arguments.
+class TTXLA_OpWithOffsetSizesAndStrides<string mnemonic,
+                                        list<Trait> traits = []>
+    : TTXLA_Op<mnemonic, !listconcat(traits, [
+      Pure,
+      AttrSizedOperandSegments,
+      OffsetSizeAndStrideOpInterface,
+      DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
+  ])> {
+  let results = (outs AnyRankedTensor:$result);
+  code extraBaseClassDeclaration = [{
+    /// Return the type of the base tensor operand.
+    ::mlir::RankedTensorType getSrcType() {
+      return ::llvm::cast<RankedTensorType>(getSrc().getType());
+    }
 
-    let arguments = (ins
-      TTG_TensorOrMemDesc:$a,
-      TTG_TensorOrMemDesc:$b,
-      TT_FpIntTensor:$c,
-      TT_IntTensor: $aMeta);
-    let results = (outs TT_FpIntTensor:$d);
-    let assemblyFormat = [{
-      $a`,` $b`,` $c`,` $aMeta attr-dict
-        `:` type($a) `meta` type($aMeta) `*` type($b) `->` type($d)
-    }];
-    let hasVerifier = 1;
-}
+    /// Return the type of the result tensor.
+    ::mlir::RankedTensorType getResultType() {
+      return ::llvm::cast<RankedTensorType>(getResult().getType());
+    }
 
-def TTXLA_TileOp : TTXLA_Op<"tile", [Pure,
-    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
-  let summary = "Capture the tiling information of a tensor.";
-  let description = [{
-    This op captures the tiling information of a tensor, which can be used to
-    extract/insert tiles with the `triton_xla.extract` and `triton_xla.insert`
-    ops.
+    SmallVector<Value> getOffsetsAsValues(::mlir::ImplicitLocOpBuilder &b) {
+      return ::mlir::getValueOrCreateConstantIndexOp(b, b.getLoc(),
+        getMixedOffsets());
+    }
 
-    Example:
-      ```
-      %tensor: tensor<120x320xbf16>
-      ...
-      %tiled_tensor = triton_xla.tile %tensor [0, 0][16, 64][120, 1]
-      : !triton_xla.tiled_tensor<16x64|120x320xbf16>
-      ```
+    SmallVector<Value> getSizesAsValues(::mlir::ImplicitLocOpBuilder &b) {
+      return ::mlir::getValueOrCreateConstantIndexOp(b, b.getLoc(),
+        getMixedSizes());
+    }
+
+    SmallVector<Value> getStridesAsValues(::mlir::ImplicitLocOpBuilder &b) {
+      return ::mlir::getValueOrCreateConstantIndexOp(b, b.getLoc(),
+        getMixedStrides());
+    }
+
+    /// Return the expected rank of each of the `static_offsets`, `static_sizes`
+    /// and `static_strides` attributes.
+    std::array<unsigned, 3> getArrayAttrMaxRanks() {
+      unsigned rank = getResultType().getRank();
+      return {rank, rank, rank};
+    }
   }];
-
-  let arguments = (ins
-    AnyRankedTensor:$tensor,
-    DenseI32ArrayAttr:$offsets,
-    DenseI32ArrayAttr:$sizes,
-    DenseI64ArrayAttr:$strides
-  );
-  let results = (outs TTXLA_TiledTensorType:$tiled_tensor);
-  let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
+  let hasCanonicalizer = 1;
 }
 
-def TTXLA_ExtractOp : TTXLA_Op<"extract", [Pure,
-    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
+def TTXLA_ExtractOp : TTXLA_OpWithOffsetSizesAndStrides<"extract", []> {
   let summary = "Extract a tile from a tensor.";
   let description = [{
-    This op is used to extract a tile from a tiled tensor.
+    Offsets, strides, and destination tensor size are used to specify the tile
+    to extract. Minor-to-major layout should also be specified.
+
+    Assembly format: %src [%offsets] [%sizes] [%strides]
+      {xla layout} : src_tensor to dst_tensor
 
     Example:
       ```
-      %tiled_tensor = triton_xla.tile %tensor [0, 0][16, 64][120, 1]
-      : !triton_xla.tiled_tensor<16x64|120x320xbf16>
-      ...
-      %extracted_tensor = triton_xla.extract %tiled_tensor [%cst, %cst]
-        : tensor<120x320xbf16> to tensor<16x64xbf16>
+      %extracted_tensor = triton_xla.extract %src [0, 0] [16, 64] [128, 1]
+        {layout = array<i64:1, 0>} : tensor<512x128xbf16> to tensor<16x64xbf16>
       ```
   }];
+  let builders = [
+    OpBuilder<(ins "RankedTensorType":$result_type, "Value":$src,
+      "ValueRange":$offsets,  "ValueRange":$strides,
+      CArg<"ArrayRef<int64_t>", "{}">:$layout,
+      CArg<"ArrayRef<NamedAttribute>", "{}">:$attrs)>,
+    OpBuilder<(ins "RankedTensorType":$result_type, "Value":$src,
+      "ArrayRef<OpFoldResult>":$offsets,  "ArrayRef<OpFoldResult>":$strides,
+      CArg<"ArrayRef<int64_t>", "{}">:$layout,
+      CArg<"ArrayRef<NamedAttribute>", "{}">:$attrs)>
+  ];
 
   let arguments = (ins
-    TTXLA_TiledTensorType:$src,
-    Variadic<I32>:$offsets
+    AnyStaticShapeTensor:$src,
+    Variadic<Index>:$offsets,
+    Variadic<Index>:$sizes,
+    Variadic<Index>:$strides,
+    DenseI64ArrayAttr:$static_offsets,
+    DenseI64ArrayAttr:$static_sizes,
+    DenseI64ArrayAttr:$static_strides,
+    DenseI64ArrayAttr:$layout
   );
-  let results = (outs AnyRankedTensor:$result);
-  let hasCustomAssemblyFormat = 1;
-  let hasVerifier = 1;
+  let assemblyFormat = [{
+    $src ``
+    custom<DynamicIndexList>($offsets, $static_offsets)
+    custom<DynamicIndexList>($sizes, $static_sizes)
+    custom<DynamicIndexList>($strides, $static_strides)
+    attr-dict `:` type($src) `to` type($result)
+  }];
+  let extraClassDeclaration = extraBaseClassDeclaration # [{
+    /// Return the number of leading operands before the `offsets`, `sizes` and
+    /// and `strides` operands.
+    static unsigned getOffsetSizeAndStrideStartOperandIndex() { return 1; }
+  }];
 }
 
-def TTXLA_InsertOp : TTXLA_Op<"insert", [Pure,
-    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
+def TTXLA_InsertOp : TTXLA_OpWithOffsetSizesAndStrides<"insert", [
+    TypesMatchWith<"expected result type to match dest type",
+                   "dst", "result", "$_self">
+  ]> {
   let summary = "Insert a tile into a tensor.";
   let description = [{
-    This op is used to insert a tile into a tensor. The tiling information can
-    be captured using triton_xla.tile and passed to this op.
+    Offsets, strides, and source tensor size are used to specify the tile to
+    insert into. Minor-to-major layout should also be specified.
+
+    Assembly format: %src into %dst [%offsets] [%sizes] [%strides]
+      {xla layout} : src_tensor into dst_tensor
 
     Example:
       ```
-      %tiled_tensor = triton_xla.tile %tensor [0, 0][16, 64][120, 1]
-      : !triton_xla.tiled_tensor<16x64|120x320xbf16>
-      ...
-      %updated_tensor = triton_xla.insert %arg0 into %tiled_tensor[%cst, %cst]
-        : tensor<16x64xbf16> into tensor<120x320xbf16>
+      %updated_tensor = triton_xla.insert %src into
+        %dst [0, 0] [8, 8] [1, 1] {layout = array<i64:1, 0>}
       ```
   }];
+  let builders = [
+    OpBuilder<(ins "Value":$src, "Value":$dst,
+      "ValueRange":$offsets,  "ValueRange":$strides,
+      CArg<"ArrayRef<int64_t>", "{}">:$layout,
+      CArg<"ArrayRef<NamedAttribute>", "{}">:$attrs)>,
+    OpBuilder<(ins "Value":$src, "Value":$dst,
+      "ArrayRef<OpFoldResult>":$offsets,  "ArrayRef<OpFoldResult>":$strides,
+      CArg<"ArrayRef<int64_t>", "{}">:$layout,
+      CArg<"ArrayRef<NamedAttribute>", "{}">:$attrs)>
+  ];
 
   let arguments = (ins
-    AnyRankedTensor:$src,
-    TTXLA_TiledTensorType:$dst,
-    Variadic<I32>:$offsets
+    AnyStaticShapeTensor:$src,
+    AnyStaticShapeTensor:$dst,
+    Variadic<Index>:$offsets,
+    Variadic<Index>:$sizes,
+    Variadic<Index>:$strides,
+    DenseI64ArrayAttr:$static_offsets,
+    DenseI64ArrayAttr:$static_sizes,
+    DenseI64ArrayAttr:$static_strides,
+    DenseI64ArrayAttr:$layout
   );
-  let results = (outs AnyRankedTensor:$result);
-  let hasCustomAssemblyFormat = 1;
-  let hasVerifier = 1;
+
+  let assemblyFormat = [{
+    $src `into` $dst ``
+    custom<DynamicIndexList>($offsets, $static_offsets)
+    custom<DynamicIndexList>($sizes, $static_sizes)
+    custom<DynamicIndexList>($strides, $static_strides)
+    attr-dict `:` type($src) `into` type($dst)
+  }];
+
+  let extraClassDeclaration = extraBaseClassDeclaration # [{
+    /// Return the number of leading operands before the `offsets`, `sizes` and
+    /// and `strides` operands.
+    static unsigned getOffsetSizeAndStrideStartOperandIndex() { return 2; }
+  }];
+}
+
+def TTXLA_SqueezeDimsOp : TTXLA_Op<"squeeze_dims", [
+    Pure, SameOperandsAndResultElementType
+  ]> {
+    let summary = "Remove a size-1 dimension from a tensor.";
+    let arguments = (ins TT_Tensor:$src, I32Attr:$axis);
+    let results = (outs TT_Tensor:$result);
+    let assemblyFormat = "$src attr-dict `:` type($src) `->` type($result)";
 }
 
 #endif // XLA_BACKENDS_GPU_CODEGEN_TRITON_IR_TRITON_XLA_OPS_TD_

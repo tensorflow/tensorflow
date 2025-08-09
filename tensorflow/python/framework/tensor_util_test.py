@@ -437,6 +437,54 @@ class TensorUtilTest(test.TestCase, parameterized.TestCase):
         t,
     )
 
+  def testInt2(self):
+    test_type = dtypes.int2.as_numpy_dtype
+    t = tensor_util.make_tensor_proto(
+        np.array(
+            [-2, -1, 0, 1],
+            dtype=test_type,
+        )
+    )
+    self.assertProtoEquals(
+        """
+      dtype: DT_INT2
+      tensor_shape {
+        dim {
+          size: 4
+        }
+      }
+      int_val: -2
+      int_val: -1
+      int_val: 0
+      int_val: 1
+      """,
+        t,
+    )
+
+  def testUInt2(self):
+    test_type = dtypes.uint2.as_numpy_dtype
+    t = tensor_util.make_tensor_proto(
+        np.array(
+            [0, 1, 2, 3],
+            dtype=test_type,
+        )
+    )
+    self.assertProtoEquals(
+        """
+      dtype: DT_UINT2
+      tensor_shape {
+        dim {
+          size: 4
+        }
+      }
+      int_val: 0
+      int_val: 1
+      int_val: 2
+      int_val: 3
+      """,
+        t,
+    )
+
   def testLargeInt(self):
     value = np.iinfo(np.int64).max
     t = tensor_util.make_tensor_proto(value)

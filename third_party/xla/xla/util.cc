@@ -20,10 +20,12 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <functional>
 #include <iterator>
 #include <limits>
-#include <numeric>
+#include <memory>
+#include <sstream>
 #include <string>
 #include <tuple>
 #include <type_traits>
@@ -52,32 +54,10 @@ limitations under the License.
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/numbers.h"
+#include "tsl/platform/protobuf.h"
 #include "tsl/platform/stacktrace.h"
 
 namespace xla {
-
-std::vector<int64_t> ToMixedRadix(const int64_t n,
-                                  absl::Span<const int64_t> bounds) {
-  if (bounds.empty()) {
-    return {};
-  }
-
-  std::vector<int64_t> digits;
-  digits.reserve(bounds.size());
-  int64_t divisor = Product(bounds);
-  CHECK_GT(divisor, 0);
-  int64_t remainder = n % divisor;
-  for (const int64_t radix : bounds) {
-    CHECK_GT(radix, 0);
-    divisor /= radix;
-    CHECK_GT(divisor, 0);
-
-    // The divisor is always 1 for the last iteration.
-    digits.push_back(remainder / divisor);
-    remainder = remainder % divisor;
-  }
-  return digits;
-}
 
 absl::Status WithLogBacktrace(const absl::Status& status) {
   CHECK(!status.ok());
@@ -102,7 +82,8 @@ ScopedLoggingTimer::ScopedLoggingTimer(absl::string_view label, bool enabled,
 void ScopedLoggingTimer::StopAndLog() {
   if (enabled_) {
     uint64_t end_micros = tsl::Env::Default()->NowMicros();
-    double secs = (end_micros - start_micros_) / 1000000.0;
+    uint64_t elapsed_micros = end_micros - start_micros_;
+    double secs = elapsed_micros / 1000000.0;
 
     TimerStats& stats = *timer_stats_;
     absl::MutexLock lock(&stats.stats_mutex);
@@ -114,6 +95,7 @@ void ScopedLoggingTimer::StopAndLog() {
 
     LOG(INFO).AtLocation(file_, line_)
         << label_ << " time: " << tsl::strings::HumanReadableElapsedTime(secs)
+        << " (" << elapsed_micros << " us)"
         << " (cumulative: "
         << tsl::strings::HumanReadableElapsedTime(stats.cumulative_secs)
         << ", max: " << tsl::strings::HumanReadableElapsedTime(stats.max_secs)
@@ -306,6 +288,12 @@ std::string HumanReadableNumOps(double flops, double nanoseconds,
   throughput += absl::StrCat(op_prefix, "OP/s");
   return throughput;
 }
+
+void LogString(absl::string_view fname, int line, absl::LogSeverity severity,
+               absl::string_view message) {
+  LOG(LEVEL(severity)).AtLocation(fname, line) << message;
+}
+
 }  // namespace
 
 std::string HumanReadableNumFlops(double flops, double nanoseconds) {
@@ -336,20 +324,18 @@ void LogLines(absl::LogSeverity sev, absl::string_view text, const char* fname,
       eol = text.size();
     }
     auto msg = text.substr(cur, eol - cur);
-    tsl::internal::LogString(fname, lineno, sev,
-                             std::string(msg.data(), msg.size()));
+    LogString(fname, lineno, sev, msg);
     cur = eol + 1;
   }
 
   if (orig_sev == absl::LogSeverity::kFatal) {
-    tsl::internal::LogString(fname, lineno, orig_sev,
-                             "Aborting due to errors.");
+    LogString(fname, lineno, orig_sev, "Aborting due to errors.");
   }
 }
 
 int64_t Product(absl::Span<const int64_t> xs) {
-  return std::accumulate(xs.begin(), xs.end(), static_cast<int64_t>(1),
-                         std::multiplies<int64_t>());
+  return absl::c_accumulate(xs, static_cast<int64_t>(1),
+                            std::multiplies<int64_t>());
 }
 
 std::vector<int64_t> ElemwiseProduct(absl::Span<const int64_t> a,
@@ -363,7 +349,8 @@ std::vector<int64_t> ElemwiseProduct(absl::Span<const int64_t> a,
 
 absl::InlinedVector<std::pair<int64_t, int64_t>, 8> CommonFactors(
     absl::Span<const int64_t> a, absl::Span<const int64_t> b) {
-  CHECK_EQ(Product(a), Product(b));
+  CHECK_EQ(Product(a), Product(b)) << "a=[" << absl::StrJoin(a, ",") << "], b=["
+                                   << absl::StrJoin(b, ",") << "]";
   absl::InlinedVector<std::pair<int64_t, int64_t>, 8> bounds;
   if (absl::c_equal(a, b)) {
     bounds.reserve(a.size() + 1);
@@ -513,6 +500,54 @@ std::string SanitizeFileName(std::string file_name) {
 bool DistinctNumbersAreConsecutiveIfSorted(absl::Span<const int64_t> seq) {
   return *absl::c_max_element(seq) - *absl::c_min_element(seq) ==
          seq.size() - 1;
+}
+
+std::string PrintAllFields(const tsl::protobuf::Message& message) {
+  tsl::protobuf::TextFormat::Printer tsl_printer;
+  const tsl::protobuf::Reflection* reflection = message.GetReflection();
+  std::stringstream result;
+  std::string buffer;
+  const tsl::protobuf::Descriptor* descriptor = message.GetDescriptor();
+  for (int i = 0; i < descriptor->field_count(); ++i) {
+    const tsl::protobuf::FieldDescriptor* field = descriptor->field(i);
+    if (field->is_repeated()) {
+      result << field->name() << ": [";
+      for (int j = 0; j < reflection->FieldSize(message, field); ++j) {
+        if (j > 0) {
+          result << ", ";
+        }
+        tsl_printer.PrintFieldValueToString(message, field, j, &buffer);
+        result << buffer;
+      }
+      result << "]\n";
+    } else {
+      result << field->name() << ": ";
+      tsl_printer.PrintFieldValueToString(message, field, -1, &buffer);
+      result << buffer << "\n";
+    }
+  }
+  return result.str();
+}
+
+std::unique_ptr<void, FreeDeleter> AlignedAlloc(std::size_t alignment,
+                                                std::size_t size) {
+  CHECK_GT(alignment, 0) << "alignment must be positive";
+  CHECK(IsPowerOf2(alignment))
+      << "alignment must be a power of 2, but got " << alignment;
+  CHECK_GT(size, 0) << "size must be positive";
+#ifdef _WIN32
+  void* raw_ptr = _aligned_malloc(size, alignment);  // Note argument order
+#elif defined(__ANDROID__) && __ANDROID_API__ < 28
+  // Use posix_memalign as a fallback for older Android APIs
+  void* raw_ptr;
+  int result = posix_memalign(&raw_ptr, alignment, size);
+  CHECK_EQ(result, 0) << "posix_memalign failed with error code: " << result;
+#else
+  void* raw_ptr = std::aligned_alloc(alignment, size);
+#endif
+  CHECK_NE(raw_ptr, nullptr) << "aligned_alloc failed";
+  // Return unique_ptr managing the memory.
+  return std::unique_ptr<void, FreeDeleter>(raw_ptr, FreeDeleter());
 }
 
 }  // namespace xla

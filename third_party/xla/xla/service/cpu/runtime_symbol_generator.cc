@@ -39,20 +39,15 @@ limitations under the License.
 #include "xla/service/cpu/cpu_runtime.h"
 #include "xla/service/cpu/runtime_conv2d.h"
 #include "xla/service/cpu/runtime_conv2d_acl.h"
-#include "xla/service/cpu/runtime_conv2d_mkl.h"
 #include "xla/service/cpu/runtime_conv3d.h"
 #include "xla/service/cpu/runtime_custom_call_status.h"
-#include "xla/service/cpu/runtime_fft.h"
-#include "xla/service/cpu/runtime_fork_join.h"
 #include "xla/service/cpu/runtime_fp16.h"
-#include "xla/service/cpu/runtime_handle_ffi_call.h"
 #include "xla/service/cpu/runtime_key_value_sort.h"
 #include "xla/service/cpu/runtime_matmul.h"
 #include "xla/service/cpu/runtime_matmul_acl.h"
 #include "xla/service/cpu/runtime_pow.h"
 #include "xla/service/cpu/runtime_single_threaded_conv2d.h"
 #include "xla/service/cpu/runtime_single_threaded_conv3d.h"
-#include "xla/service/cpu/runtime_single_threaded_fft.h"
 #include "xla/service/cpu/runtime_single_threaded_matmul.h"
 #include "xla/service/cpu/runtime_topk.h"
 #include "xla/service/cpu/windows_compatibility.h"
@@ -75,16 +70,16 @@ llvm::Error RuntimeSymbolGenerator::tryToGenerate(
     llvm::orc::LookupState&, llvm::orc::LookupKind kind,
     llvm::orc::JITDylib& jit_dylib, llvm::orc::JITDylibLookupFlags,
     const llvm::orc::SymbolLookupSet& names) {
-  llvm::orc::SymbolMap new_defs;
+  llvm::orc::SymbolMap symbols;
+  symbols.reserve(names.size());
 
-  for (const auto& kv : names) {
-    const auto& name = kv.first;
+  for (const auto& [name, flags] : names) {
     if (auto symbol = ResolveRuntimeSymbol(*name)) {
-      new_defs[name] = *symbol;
+      symbols[name] = *symbol;
     }
   }
 
-  cantFail(jit_dylib.define(llvm::orc::absoluteSymbols(std::move(new_defs))));
+  cantFail(jit_dylib.define(llvm::orc::absoluteSymbols(std::move(symbols))));
   return llvm::Error::success();
 }
 
@@ -100,9 +95,12 @@ RuntimeSymbolGenerator::ResolveRuntimeSymbol(llvm::StringRef name) {
     fn_addr = CustomCallTargetRegistry::Global()->Lookup(name.str(), "Host");
   }
 
+  // We register runtime symbols as weak, because during concurrent compilation
+  // different threads may race to register their symbols in the same dylib and
+  // we get spurious "symbol already defined" errors.
   return llvm::orc::ExecutorSymbolDef{
       llvm::orc::ExecutorAddr(reinterpret_cast<uint64_t>(fn_addr)),
-      llvm::JITSymbolFlags::None};
+      llvm::JITSymbolFlags::Weak};
 }
 
 //===----------------------------------------------------------------------===//
@@ -159,22 +157,10 @@ static bool RegisterKnownJITSymbols() {
   registry->Register("printf", reinterpret_cast<void*>(&printf), "Host");
   registry->Register("puts", reinterpret_cast<void*>(&puts), "Host");
 
-  REGISTER_CPU_RUNTIME_SYMBOL(AcquireInfeedBufferForDequeue);
-  REGISTER_CPU_RUNTIME_SYMBOL(AcquireOutfeedBufferForPopulation);
-  REGISTER_CPU_RUNTIME_SYMBOL(AllReduce);
-  REGISTER_CPU_RUNTIME_SYMBOL(CollectivePermute);
-  REGISTER_CPU_RUNTIME_SYMBOL(AllToAll);
-  REGISTER_CPU_RUNTIME_SYMBOL(AllGather);
-  REGISTER_CPU_RUNTIME_SYMBOL(ReduceScatter);
-  REGISTER_CPU_RUNTIME_SYMBOL(PartitionId);
-  REGISTER_CPU_RUNTIME_SYMBOL(ReplicaId);
-  REGISTER_CPU_RUNTIME_SYMBOL(MKLConv2DF32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenConv2DF16);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenConv2DF32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenConv3DF16);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenConv3DF32);
-  REGISTER_CPU_RUNTIME_SYMBOL(LegacyDuccFft);
-  REGISTER_CPU_RUNTIME_SYMBOL(DuccFft);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenMatMulF16);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenMatMulF32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenMatMulF64);
@@ -189,7 +175,6 @@ static bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedConv2DF32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedConv3DF16);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedConv3DF32);
-  REGISTER_CPU_RUNTIME_SYMBOL(DuccSingleThreadedFft);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulF8E4M3FN);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulF8E5M2);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulF16);
@@ -199,16 +184,9 @@ static bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulC128);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulS32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulU8);
-  REGISTER_CPU_RUNTIME_SYMBOL(ParallelForkJoin);
-  REGISTER_CPU_RUNTIME_SYMBOL(PrintfToStderr);
-  REGISTER_CPU_RUNTIME_SYMBOL(ReleaseInfeedBufferAfterDequeue);
-  REGISTER_CPU_RUNTIME_SYMBOL(ReleaseOutfeedBufferAfterPopulation);
   REGISTER_CPU_RUNTIME_SYMBOL(StatusIsSuccess);
   REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSort);
   REGISTER_CPU_RUNTIME_SYMBOL(TopKF32);
-  REGISTER_CPU_RUNTIME_SYMBOL(TracingStart);
-  REGISTER_CPU_RUNTIME_SYMBOL(TracingEnd);
-  REGISTER_CPU_RUNTIME_SYMBOL(HandleFfiCall);
 #if defined(INTEL_MKL)
   REGISTER_CPU_RUNTIME_SYMBOL(OneDnnMatMul);
   REGISTER_CPU_RUNTIME_SYMBOL(OneDnnSoftmax);

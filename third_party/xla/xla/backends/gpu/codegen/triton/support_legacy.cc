@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/functional/overload.h"
 #include "absl/log/check.h"
 #include "absl/strings/str_format.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -30,7 +31,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/variant_visitor.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/tensor_float_32_utils.h"
@@ -67,45 +68,44 @@ bool IsTritonSupportedDotOutputType(
     case F32:
       return true;
     case F8E5M2:
-      return std::visit(VariantVisitor{[](const se::CudaComputeCapability& cc) {
-                                         return cc.IsAtLeastAmpere();
-                                       },
-                                       [](const se::RocmComputeCapability& cc) {
-                                         return false;
-                                       }},
-                        gpu_version);
+      return std::visit(
+          absl::Overload(
+              [](const se::CudaComputeCapability& cc) {
+                return cc.IsAtLeastAmpere();
+              },
+              [](const se::RocmComputeCapability& cc) { return false; }),
+          gpu_version);
 
     case F8E4M3FN:
-      return std::visit(VariantVisitor{[](const se::CudaComputeCapability& cc) {
-                                         return cc.IsAtLeastHopper();
-                                       },
-                                       [](const se::RocmComputeCapability& cc) {
-                                         return false;
-                                       }},
-                        gpu_version);
+      return std::visit(
+          absl::Overload(
+              [](const se::CudaComputeCapability& cc) {
+                return cc.IsAtLeastHopper();
+              },
+              [](const se::RocmComputeCapability& cc) { return false; }),
+          gpu_version);
     case BF16:
-      return std::visit(VariantVisitor{[](const se::CudaComputeCapability& cc) {
-                                         return true;
-                                       },
-                                       [](const se::RocmComputeCapability& cc) {
-                                         return cc.has_bf16_dtype_support();
-                                       }},
-                        gpu_version);
+      return std::visit(
+          absl::Overload(
+              [](const se::CudaComputeCapability& cc) { return true; },
+              [](const se::RocmComputeCapability& cc) {
+                return cc.has_bf16_dtype_support();
+              }),
+          gpu_version);
     case S32:
-      return std::visit(VariantVisitor{[](const se::CudaComputeCapability& cc) {
-                                         return cc.IsAtLeastAmpere();
-                                       },
-                                       [](const se::RocmComputeCapability& cc) {
-                                         return false;
-                                       }},
-                        gpu_version);
+      return std::visit(
+          absl::Overload(
+              [](const se::CudaComputeCapability& cc) {
+                return cc.IsAtLeastAmpere();
+              },
+              [](const se::RocmComputeCapability& cc) { return false; }),
+          gpu_version);
     default:
       return false;
   }
 };
 
 // Data types that are supported by the Triton emitters.
-// TODO(b/266862493): Support more data types (F8, F64, etc.).
 bool IsTritonSupportedDataType(PrimitiveType type,
                                const se::GpuComputeCapability& gpu_version) {
   if (IsTritonSupportedDotOutputType(type, gpu_version)) {
@@ -244,6 +244,7 @@ bool IsDotAlgorithmSupportedByTriton(
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32:
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3:
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6:
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9:
       if (cuda_compute_capability) {
         return true;
       }
@@ -266,7 +267,6 @@ CodegenDecision AreDotInputAndOutputTypesSupportedAndCompatible(
   auto lhs_type = dot.operand(0)->shape().element_type();
   auto rhs_type = dot.operand(1)->shape().element_type();
 
-  // TODO(b/266862493): Support more output types.
   if (!IsTritonSupportedDotOutputType(output_type, gpu_version)) {
     return CodegenDecision::Forbid("Unsupported output data type for Dot op.");
   }
@@ -333,10 +333,10 @@ bool NoNonContractingDimension(const HloDotInstruction& dot) {
   const DotDimensionNumbers& dim_numbers = dot.dot_dimension_numbers();
   if (dim_numbers.lhs_batch_dimensions().size() +
               dim_numbers.lhs_contracting_dimensions().size() ==
-          dot.operand(0)->shape().rank() ||
+          dot.operand(0)->shape().dimensions().size() ||
       dim_numbers.rhs_batch_dimensions().size() +
               dim_numbers.rhs_contracting_dimensions().size() ==
-          dot.operand(1)->shape().rank()) {
+          dot.operand(1)->shape().dimensions().size()) {
     return true;
   }
   return false;
@@ -363,9 +363,9 @@ CodegenDecision IsTritonSupportedDynamicSlice(
   const HloInstruction* input = instr.operand(0);
   Layout in_layout = input->shape().layout();
   int64_t majormost_dim_id =
-      in_layout.minor_to_major(in_layout.minor_to_major_size() - 1);
+      in_layout.minor_to_major(in_layout.minor_to_major().size() - 1);
 
-  for (int i = 0; i < input->shape().dimensions_size(); ++i) {
+  for (int i = 0; i < input->shape().dimensions().size(); ++i) {
     if (i == majormost_dim_id) {
       continue;
     } else if (input->shape().dimensions(i) != instr.slice_sizes(i)) {

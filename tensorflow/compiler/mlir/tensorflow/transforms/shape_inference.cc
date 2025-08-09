@@ -92,6 +92,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/kernels/xla_call_module_loader.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_utils.h"
 #include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/shape_inference.h"
 #include "xla/shape.h"
 #include "xla/tsl/platform/errors.h"
@@ -305,10 +306,10 @@ RankedTensorType DropFirstDimension(Type type) {
 Operation* InsertCast(OpBuilder& b, Location loc, Type dst_type, Value input) {
   Type element_type = getElementTypeOrSelf(dst_type);
   if (mlir::isa<IndexType>(element_type))
-    return b.create<tensor::CastOp>(loc, dst_type, input);
+    return tensor::CastOp::create(b, loc, dst_type, input);
   if (isa<TensorFlowDialect, BuiltinDialect>(element_type.getDialect()))
-    return b.create<TF::CastOp>(loc, dst_type, input,
-                                /*truncate=*/b.getBoolAttr(false));
+    return TF::CastOp::create(b, loc, dst_type, input,
+                              /*truncate=*/b.getBoolAttr(false));
   return nullptr;
 }
 
@@ -510,7 +511,7 @@ Type GetNewArgType(Type old_arg_type, ArrayRef<int64_t> shape,
       }
       new_arg_type = tensorflow::GetTypeFromTFTensorShape(
           new_shape, element_type,
-          mhlo::TypeExtensionsAttr::get(context, new_bounds));
+          mlir::mhlo::TypeExtensionsAttr::get(context, new_bounds));
     }
   }
   return new_arg_type;
@@ -1284,7 +1285,7 @@ bool ShapeInference::InferShapeForXlaCallModule(XlaCallModuleOp op) {
         xla_call_module_context_.get(), op.getVersion(), op.getModule(),
         std::move(disabled_checks), std::move(platforms),
         /*num_invocation_args=*/op.getArgs().size(),
-        op.getHasTokenInputOutput());
+        op.getHasTokenInputOutput(), op.getUseShardyPartitioner());
     if (!l.ok()) {
       llvm::errs() << "Parsing error in XlaCallModule: "
                    << l.status().ToString() << "\n";

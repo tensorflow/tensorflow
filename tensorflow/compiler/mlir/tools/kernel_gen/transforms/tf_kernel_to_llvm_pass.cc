@@ -71,8 +71,6 @@ class ConvertLaunchFuncOpToTfRuntimeCallPattern
  private:
   Value generateParamsArray(gpu::LaunchFuncOp launch_op, OpAdaptor adaptor,
                             OpBuilder &builder) const;
-  Value generateKernelNameConstant(StringRef moduleName, StringRef name,
-                                   Location loc, OpBuilder &builder) const;
 
   LogicalResult matchAndRewrite(
       gpu::LaunchFuncOp launch_op, OpAdaptor adaptor,

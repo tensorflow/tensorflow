@@ -59,8 +59,7 @@ static absl::StatusOr<bool> AsynchronizeInstruction(HloInstruction* instr) {
   TF_ASSIGN_OR_RETURN(
       HloInstruction * done,
       computation->CreateAsyncInstructions(
-          instr, {},
-          ExplicitStreamAnnotationAsyncWrapper::kExplicitExecutionThread,
+          instr, {}, ExplicitStreamAnnotationAsyncWrapper::kMainExecutionThread,
           /*replace=*/true));
   // Replace the original attributes after creating the async pair.
   done->set_frontend_attributes(original_attributes);
@@ -80,7 +79,8 @@ absl::StatusOr<bool> ExplicitStreamAnnotationAsyncWrapper::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  for (const HloComputation* comp : module->computations()) {
+  for (const HloComputation* comp :
+       module->MakeNonfusionComputations(execution_threads)) {
     for (HloInstruction* instr : comp->instructions()) {
       TF_ASSIGN_OR_RETURN(bool result, AsynchronizeInstruction(instr));
       changed |= result;

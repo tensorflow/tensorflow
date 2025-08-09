@@ -16,53 +16,53 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 
+#include "absl/base/const_init.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "xla/literal.h"
+#include "absl/strings/str_format.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/service/global_device_id.h"
-#include "xla/shape_util.h"
-#include "xla/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/host/host_platform_id.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/sycl/sycl_platform_id.h"
-#include "xla/types.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/status.h"
 
 using absl::StrAppend;
-using absl::StrCat;
 
 namespace xla {
 
 absl::StatusOr<DeviceAssignment::LogicalID>
 DeviceAssignment::LogicalIdForDevice(GlobalDeviceId device_id) const {
-  std::optional<DeviceAssignment::LogicalID> logical_id;
+  std::optional<LogicalID> res;
+  int64_t id = device_id.value();
   for (int r = 0; r < replica_count(); ++r) {
     for (int c = 0; c < computation_count(); ++c) {
-      if ((*this)(r, c) == device_id.value()) {
-        if (logical_id.has_value()) {
-          return Internal("Device %d appears twice in DeviceAssignment: %s",
-                          device_id.value(), ToString());
+      if (operator()(r, c) == device_id.value()) {
+        if (res.has_value()) {
+          return Internal("Device %d not unique in %v", id, *this);
         }
-        logical_id.emplace(DeviceAssignment::LogicalID{r, c});
+        res = LogicalID{r, c};
       }
     }
   }
-  if (logical_id.has_value()) {
-    return *logical_id;
-  } else {
-    return Internal("Device %d doesn't appear in DeviceAssignment: %s",
-                    device_id.value(), ToString());
+  if (!res.has_value()) {
+    return Internal("Device %d doesn't appear in %v", id, *this);
   }
+  return res.value();
 }
 
 absl::StatusOr<int> DeviceAssignment::ReplicaIdForDevice(
@@ -103,52 +103,45 @@ void DeviceAssignment::Serialize(DeviceAssignmentProto* proto) const {
     }
   }
 }
+namespace {
+#define RET_CHECK_ARG(condition) \
+  if (!(condition)) return absl::InvalidArgumentError(#condition);
+}  // namespace
 
 /* static */ absl::StatusOr<std::unique_ptr<DeviceAssignment>>
 DeviceAssignment::Deserialize(const DeviceAssignmentProto& proto) {
-  TF_RET_CHECK(proto.computation_devices_size() == proto.computation_count());
-  if (proto.replica_count() <= 0 || proto.computation_count() <= 0) {
-    return InvalidArgument(
-        "Invalid device assignment topology: replica_count=%d, "
-        "computation_count=%d",
-        proto.replica_count(), proto.computation_count());
-  }
-  auto assignment = std::make_unique<DeviceAssignment>(
-      proto.replica_count(), proto.computation_count());
-  for (int computation = 0; computation < proto.computation_count();
-       ++computation) {
-    const auto& computation_device = proto.computation_devices(computation);
-    int64_t replica_count = proto.replica_count();
-    int64_t ids = computation_device.replica_device_ids_size();
-    TF_RET_CHECK(ids == replica_count);
+  RET_CHECK_ARG(proto.computation_devices_size() == proto.computation_count());
+  RET_CHECK_ARG(proto.replica_count() > 0);
+  RET_CHECK_ARG(proto.computation_count() > 0);
+  auto da = std::make_unique<DeviceAssignment>(proto.replica_count(),
+                                               proto.computation_count());
+  for (int comp_id = 0; comp_id < proto.computation_count(); ++comp_id) {
+    const auto& comp = proto.computation_devices(comp_id);
+    RET_CHECK_ARG(comp.replica_device_ids_size() == proto.replica_count());
     for (int replica = 0; replica < proto.replica_count(); ++replica) {
-      (*assignment)(replica, computation) =
-          computation_device.replica_device_ids(replica);
+      (*da)(replica, comp_id) = comp.replica_device_ids(replica);
     }
   }
-  return std::move(assignment);
+  return std::move(da);
 }
 
 std::string DeviceAssignment::ToString() const {
-  std::string output = StrCat("Computations: ", computation_count(),
-                              " Replicas: ", replica_count(), "\n");
+  std::string output = absl::StrFormat(
+      "DeviceAssignment{replica_count=%d, computation_count=%d,",
+      replica_count(), computation_count());
   for (int computation = 0; computation < computation_count(); ++computation) {
-    StrAppend(&output, "Computation ", computation, ": ");
+    StrAppend(&output, " Computation", computation, "{");
     for (int replica = 0; replica < replica_count(); ++replica) {
-      StrAppend(&output, operator()(replica, computation), " ");
+      if (replica > 0) {
+        StrAppend(&output, " ");
+      }
+      int device_id = operator()(replica, computation);
+      StrAppend(&output, device_id);
     }
-    StrAppend(&output, "\n");
+    StrAppend(&output, "}");
   }
+  StrAppend(&output, "}");
   return output;
-}
-
-absl::StatusOr<int> ComputationPlacer::DeviceId(int replica, int computation,
-                                                int replica_count,
-                                                int computation_count) {
-  TF_RET_CHECK(replica < replica_count);
-  TF_RET_CHECK(computation < computation_count);
-
-  return computation * replica_count + replica;
 }
 
 absl::StatusOr<DeviceAssignment> ComputationPlacer::AssignDevices(
@@ -156,75 +149,84 @@ absl::StatusOr<DeviceAssignment> ComputationPlacer::AssignDevices(
   DeviceAssignment assignment(replica_count, computation_count);
   for (int replica = 0; replica < replica_count; ++replica) {
     for (int computation = 0; computation < computation_count; ++computation) {
-      TF_ASSIGN_OR_RETURN(
-          int device_id,
-          DeviceId(replica, computation, replica_count, computation_count));
-      assignment(replica, computation) = device_id;
+      assignment(replica, computation) = computation * replica_count + replica;
     }
   }
-  return std::move(assignment);
+  return assignment;
 }
 
-/* static */ void ComputationPlacer::RegisterComputationPlacer(
-    se::Platform::Id platform_id,
-    ComputationPlacerCreationFunction creation_function) {
-  absl::MutexLock lock(&ComputationPlacer::platform_computation_placer_mutex_);
-  auto* computation_placers = GetPlatformComputationPlacers();
-  if (computation_placers->find(platform_id) != computation_placers->end()) {
-    // TODO(b/282059652): Consider logging the platform name using
-    // PlatformManager::PlatformWithId(). No doing that for now to avoid
-    // introducing unwanted dependency.
-    LOG(WARNING) << "computation placer already registered. Please check "
-                    "linkage and avoid linking the same target more than once.";
+namespace {
+absl::Mutex placer_mutex(absl::kConstInit);
+
+// State kept for each kind of ComputationPlacer. Registration functions set
+// up creation_function, and then we use that to lazily create "placer" the
+// first time GetForPlatform is invoked for a particular id.
+struct PlacerState {
+  std::unique_ptr<ComputationPlacer> placer;
+  ComputationPlacer::CreationFunction creation_function;
+};
+
+// Platform id (pointer) to ComputationPlacer with creation function.
+using PlacerFactoryMap = absl::flat_hash_map<se::Platform::Id, PlacerState>;
+
+PlacerFactoryMap& GetPlatformComputationPlacers() {
+  static PlacerFactoryMap* const r = new PlacerFactoryMap;
+  return *r;
+}
+}  // namespace
+
+/* static */
+void ComputationPlacer::RegisterComputationPlacer(
+    se::Platform::Id id, CreationFunction creation_function) {
+  absl::MutexLock lock(&placer_mutex);
+  PlacerFactoryMap& placers = GetPlatformComputationPlacers();
+  if (placers.find(id) != placers.end()) {
+    LOG(WARNING) << "Computation placer creation function is already "
+                    "registered for this platform";
   }
-  (*computation_placers)[platform_id].creation_function = creation_function;
+  placers[id].creation_function = creation_function;
 }
 
-/* static */ absl::StatusOr<ComputationPlacer*>
-ComputationPlacer::GetForPlatform(const se::Platform* platform) {
-  absl::MutexLock lock(&ComputationPlacer::platform_computation_placer_mutex_);
-  auto* computation_placers = GetPlatformComputationPlacers();
+/* static */
+absl::StatusOr<ComputationPlacer*> ComputationPlacer::GetForPlatform(
+    const se::Platform* platform) {
+  absl::MutexLock lock(&placer_mutex);
+  PlacerFactoryMap& placers = GetPlatformComputationPlacers();
 
-  auto it = computation_placers->find(platform->id());
-  if (it == computation_placers->end()) {
+  auto it = placers.find(platform->id());
+  if (it == placers.end()) {
     return NotFound(
-        "could not find registered computation placer for platform %s -- check "
-        "target linkage",
+        "Could not find registered computation placer for platform %s",
         platform->Name());
   }
 
-  if (it->second.placer == nullptr) {
+  PlacerState& state = it->second;
+  if (state.placer == nullptr) {
     // Lazily create the computation placer the first time it is needed.
-    it->second.placer = (*it->second.creation_function)();
+    state.placer = state.creation_function();
   }
-
-  return it->second.placer.get();
-}
-
-/* static */ absl::Mutex ComputationPlacer::platform_computation_placer_mutex_(
-    absl::kConstInit);
-
-/* static */ std::map<se::Platform::Id, ComputationPlacer::State>*
-ComputationPlacer::GetPlatformComputationPlacers() {
-  static auto* r = new std::map<se::Platform::Id, ComputationPlacer::State>;
-  return r;
+  return state.placer.get();
 }
 
 }  // namespace xla
 
-static std::unique_ptr<xla::ComputationPlacer> CreateComputationPlacer() {
+namespace {
+// registering default computation placer factory for common platforms.
+std::unique_ptr<xla::ComputationPlacer> DefaultComputationPlacer() {
   return std::make_unique<xla::ComputationPlacer>();
 }
 
-static bool InitModule() {
+bool InitModule() {
   xla::ComputationPlacer::RegisterComputationPlacer(
-      stream_executor::host::kHostPlatformId, &CreateComputationPlacer);
+      stream_executor::host::kHostPlatformId, DefaultComputationPlacer);
   xla::ComputationPlacer::RegisterComputationPlacer(
-      stream_executor::cuda::kCudaPlatformId, &CreateComputationPlacer);
+      stream_executor::cuda::kCudaPlatformId, DefaultComputationPlacer);
   xla::ComputationPlacer::RegisterComputationPlacer(
-      stream_executor::rocm::kROCmPlatformId, &CreateComputationPlacer);
+      stream_executor::rocm::kROCmPlatformId, DefaultComputationPlacer);
   xla::ComputationPlacer::RegisterComputationPlacer(
-      stream_executor::sycl::kSyclPlatformId, &CreateComputationPlacer);
+      stream_executor::sycl::kSyclPlatformId, DefaultComputationPlacer);
   return true;
 }
-static bool module_initialized = InitModule();
+
+bool module_initialized = InitModule();
+}  // namespace

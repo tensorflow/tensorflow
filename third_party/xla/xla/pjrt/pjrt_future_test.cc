@@ -22,9 +22,22 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/test_benchmark.h"
 
 namespace xla {
+
+TEST(PjRtFutureTest, StatusConstructedFuture) {
+  PjRtFuture<> future = PjRtFuture<>(absl::OkStatus());
+  EXPECT_TRUE(future.IsReady());
+  EXPECT_EQ(future.Await(), absl::OkStatus());
+}
+
+TEST(PjRtFutureTest, ValueConstructedFuture) {
+  PjRtFuture<int32_t> future = PjRtFuture<int32_t>(42);
+  EXPECT_TRUE(future.IsReady());
+  EXPECT_EQ(future.Await(), absl::StatusOr<int32_t>(42));
+}
 
 TEST(PjRtFutureTest, StatelessFuture) {
   auto promise = PjRtFuture<>::CreatePromise();
@@ -107,6 +120,193 @@ TEST(PjRtFutureTest, OnReadyMoveOnlyFuture) {
   });
 }
 
+TEST(PjRtFutureTest, MapCopyableFuture) {
+  auto promise = PjRtFuture<int32_t>::CreatePromise();
+  PjRtFuture<int32_t> future(promise);
+  PjRtFuture<float> mapped = future.Map([](int32_t v) { return v * 2.0f; });
+
+  EXPECT_FALSE(future.IsReady());
+  EXPECT_FALSE(mapped.IsReady());
+
+  promise.Set(42);
+  EXPECT_TRUE(future.IsReady());
+  EXPECT_TRUE(mapped.IsReady());
+
+  EXPECT_EQ(*future.Await(), 42);
+  EXPECT_EQ(*mapped.Await(), 84.0f);
+
+  PjRtFuture<int32_t> mapped_again =
+      std::move(mapped).Map([](float v) -> int32_t { return v; });
+  EXPECT_EQ(*mapped_again.Await(), 84);
+}
+
+TEST(PjRtFutureTest, MapCopyableFutureError) {
+  auto promise = PjRtFuture<int32_t>::CreatePromise();
+  PjRtFuture<int32_t> future(promise);
+  PjRtFuture<float> mapped = future.Map([](int32_t v) { return v * 2.0f; });
+
+  promise.Set(absl::InternalError("test"));
+  EXPECT_TRUE(mapped.IsReady());
+  EXPECT_EQ(mapped.Await().status(), absl::InternalError("test"));
+}
+
+TEST(PjRtFutureTest, MapMoveOnlyFuture) {
+  auto promise = PjRtFuture<std::unique_ptr<int32_t>>::CreatePromise();
+
+  PjRtFuture<std::unique_ptr<int32_t>> future(promise);
+  PjRtFuture<std::unique_ptr<float>> mapped =
+      std::move(future).Map([](std::unique_ptr<int32_t> v) {
+        return std::make_unique<float>(*v * 2.0f);
+      });
+
+  EXPECT_FALSE(mapped.IsReady());
+
+  promise.Set(std::make_unique<int32_t>(42));
+
+  EXPECT_TRUE(mapped.IsReady());
+  EXPECT_EQ(**mapped.Await(), 84.0f);
+}
+
+TEST(PjRtFutureTest, MapMoveOnlyFutureError) {
+  auto promise = PjRtFuture<std::unique_ptr<int32_t>>::CreatePromise();
+  PjRtFuture<std::unique_ptr<int32_t>> future(promise);
+  PjRtFuture<std::unique_ptr<float>> mapped =
+      std::move(future).Map([](std::unique_ptr<int32_t> v) {
+        return std::make_unique<float>(*v * 2.0f);
+      });
+
+  promise.Set(absl::InternalError("test"));
+  EXPECT_TRUE(mapped.IsReady());
+  EXPECT_EQ(mapped.Await().status(), absl::InternalError("test"));
+}
+
+TEST(PjRtFutureTest, MapCopyableWithInplaceConstructor) {
+  struct Struct {
+    explicit Struct(int32_t v) : v(v) {}
+    int32_t v;
+  };
+
+  auto promise = PjRtFuture<int32_t>::CreatePromise();
+  PjRtFuture<int32_t> future(promise);
+  PjRtFuture<Struct> mapped = future.Map<Struct>([](int32_t v) { return v; });
+
+  promise.Set(42);
+  EXPECT_TRUE(mapped.IsReady());
+  EXPECT_EQ(mapped.Await()->v, 42);
+}
+
+TEST(PjRtFutureTest, MapMoveOnlyWithInplaceConstructor) {
+  struct Struct {
+    explicit Struct(int32_t v) : v(v) {}
+    int32_t v;
+  };
+
+  auto promise = PjRtFuture<std::unique_ptr<int32_t>>::CreatePromise();
+  PjRtFuture<std::unique_ptr<int32_t>> future(promise);
+  PjRtFuture<Struct> mapped = std::move(future).Map<Struct>(
+      [](std::unique_ptr<int32_t> v) { return *v; });
+
+  promise.Set(std::make_unique<int32_t>(42));
+  EXPECT_TRUE(mapped.IsReady());
+  EXPECT_EQ(mapped.Await()->v, 42);
+}
+
+TEST(PjRtFutureTest, TryMapCopyableFuture) {
+  auto promise = PjRtFuture<int32_t>::CreatePromise();
+  PjRtFuture<int32_t> future(promise);
+  PjRtFuture<float> mapped = future.TryMap(
+      [](int32_t v) -> absl::StatusOr<float> { return v * 2.0f; });
+
+  EXPECT_FALSE(future.IsReady());
+  EXPECT_FALSE(mapped.IsReady());
+
+  promise.Set(42);
+  EXPECT_TRUE(future.IsReady());
+  EXPECT_TRUE(mapped.IsReady());
+
+  EXPECT_EQ(*future.Await(), 42);
+  EXPECT_EQ(*mapped.Await(), 84.0f);
+
+  PjRtFuture<int32_t> mapped_again = std::move(mapped).TryMap(
+      [](float v) -> absl::StatusOr<int32_t> { return v; });
+  EXPECT_EQ(*mapped_again.Await(), 84);
+}
+
+TEST(PjRtFutureTest, TryMapCopyableFutureForwardError) {
+  auto promise = PjRtFuture<int32_t>::CreatePromise();
+  PjRtFuture<int32_t> future(promise);
+  PjRtFuture<float> mapped = future.TryMap(
+      [](int32_t v) -> absl::StatusOr<float> { return v * 2.0f; });
+
+  promise.Set(absl::InternalError("test"));
+  EXPECT_TRUE(mapped.IsReady());
+  EXPECT_EQ(mapped.Await().status(), absl::InternalError("test"));
+}
+
+TEST(PjRtFutureTest, TryMapCopyableFutureCreateError) {
+  auto promise = PjRtFuture<int32_t>::CreatePromise();
+  PjRtFuture<int32_t> future(promise);
+  PjRtFuture<float> mapped =
+      future.TryMap([](int32_t v) -> absl::StatusOr<float> {
+        return absl::InternalError("test");
+      });
+
+  promise.Set(42);
+  EXPECT_TRUE(mapped.IsReady());
+  EXPECT_EQ(mapped.Await().status(), absl::InternalError("test"));
+}
+
+TEST(PjRtFutureTest, TryMapMoveOnlyFuture) {
+  auto promise = PjRtFuture<std::unique_ptr<int32_t>>::CreatePromise();
+
+  PjRtFuture<std::unique_ptr<int32_t>> future(promise);
+  PjRtFuture<std::unique_ptr<float>> mapped = std::move(future).TryMap(
+      [](std::unique_ptr<int32_t> v) -> absl::StatusOr<std::unique_ptr<float>> {
+        return std::make_unique<float>(*v * 2.0f);
+      });
+
+  EXPECT_FALSE(mapped.IsReady());
+
+  promise.Set(std::make_unique<int32_t>(42));
+
+  EXPECT_TRUE(mapped.IsReady());
+  EXPECT_EQ(**mapped.Await(), 84.0f);
+}
+
+TEST(PjRtFutureTest, TryMapMoveOnlyFutureForwardError) {
+  auto promise = PjRtFuture<std::unique_ptr<int32_t>>::CreatePromise();
+
+  PjRtFuture<std::unique_ptr<int32_t>> future(promise);
+  PjRtFuture<std::unique_ptr<float>> mapped = std::move(future).TryMap(
+      [](std::unique_ptr<int32_t> v) -> absl::StatusOr<std::unique_ptr<float>> {
+        return std::make_unique<float>(*v * 2.0f);
+      });
+
+  EXPECT_FALSE(mapped.IsReady());
+
+  promise.Set(absl::InternalError("test"));
+
+  EXPECT_TRUE(mapped.IsReady());
+  EXPECT_EQ(mapped.Await().status(), absl::InternalError("test"));
+}
+
+TEST(PjRtFutureTest, TryMapMoveOnlyFutureCreateError) {
+  auto promise = PjRtFuture<std::unique_ptr<int32_t>>::CreatePromise();
+
+  PjRtFuture<std::unique_ptr<int32_t>> future(promise);
+  PjRtFuture<std::unique_ptr<float>> mapped = std::move(future).TryMap(
+      [](std::unique_ptr<int32_t> v) -> absl::StatusOr<std::unique_ptr<float>> {
+        return absl::InternalError("test");
+      });
+
+  EXPECT_FALSE(mapped.IsReady());
+
+  promise.Set(std::make_unique<int32_t>(42));
+
+  EXPECT_TRUE(mapped.IsReady());
+  EXPECT_EQ(mapped.Await().status(), absl::InternalError("test"));
+}
+
 TEST(PjRtFutureTest, StatelessError) {
   auto promise = PjRtFuture<>::CreatePromise();
   PjRtFuture<> future(promise);
@@ -139,6 +339,93 @@ TEST(PjRtFutureTest, StatelessImmediate) {
   error_future.OnReady([](absl::Status status) {
     EXPECT_EQ(status, absl::InternalError("test"));
   });
+}
+
+TEST(PjRtFutureTest, MapStatelessFuture) {
+  auto promise = PjRtFuture<>::CreatePromise();
+  PjRtFuture<> future(promise);
+  PjRtFuture<float> mapped = future.Map([]() { return 42.0f; });
+
+  EXPECT_FALSE(future.IsReady());
+  EXPECT_FALSE(mapped.IsReady());
+
+  promise.Set(absl::OkStatus());
+  EXPECT_TRUE(future.IsReady());
+  EXPECT_TRUE(mapped.IsReady());
+
+  EXPECT_EQ(future.Await(), absl::OkStatus());
+  EXPECT_EQ(*mapped.Await(), 42.0f);
+}
+
+TEST(PjRtFutureTest, MapStatelessFutureError) {
+  auto promise = PjRtFuture<>::CreatePromise();
+  PjRtFuture<> future(promise);
+  PjRtFuture<float> mapped = future.Map([]() { return 42.0f; });
+
+  EXPECT_FALSE(future.IsReady());
+  EXPECT_FALSE(mapped.IsReady());
+
+  promise.Set(absl::InternalError("test"));
+  EXPECT_TRUE(future.IsReady());
+  EXPECT_TRUE(mapped.IsReady());
+
+  EXPECT_EQ(future.Await(), absl::InternalError("test"));
+  EXPECT_EQ(mapped.Await().status(), absl::InternalError("test"));
+}
+
+TEST(PjRtFutureTest, TryMapStatelessFuture) {
+  auto promise = PjRtFuture<>::CreatePromise();
+  PjRtFuture<> future(promise);
+  PjRtFuture<float> mapped =
+      future.TryMap([]() -> absl::StatusOr<float> { return 42.0f; });
+
+  EXPECT_FALSE(future.IsReady());
+  EXPECT_FALSE(mapped.IsReady());
+
+  promise.Set(absl::OkStatus());
+  EXPECT_TRUE(future.IsReady());
+  EXPECT_TRUE(mapped.IsReady());
+
+  EXPECT_EQ(future.Await(), absl::OkStatus());
+  EXPECT_EQ(*mapped.Await(), 42.0f);
+}
+
+TEST(PjRtFutureTest, TryMapStatelessFutureForwardError) {
+  auto promise = PjRtFuture<>::CreatePromise();
+  PjRtFuture<> future(promise);
+  PjRtFuture<float> mapped =
+      future.TryMap([]() -> absl::StatusOr<float> { return 42.0f; });
+
+  promise.Set(absl::InternalError("test"));
+  EXPECT_TRUE(mapped.IsReady());
+  EXPECT_EQ(mapped.Await().status(), absl::InternalError("test"));
+}
+
+TEST(PjRtFutureTest, TryMapStatelessFutureCreateError) {
+  auto promise = PjRtFuture<>::CreatePromise();
+  PjRtFuture<> future(promise);
+  PjRtFuture<float> mapped = future.TryMap(
+      []() -> absl::StatusOr<float> { return absl::InternalError("test"); });
+
+  promise.Set(absl::OkStatus());
+  EXPECT_TRUE(mapped.IsReady());
+  EXPECT_EQ(mapped.Await().status(), absl::InternalError("test"));
+}
+
+TEST(PjRtFutureTest, MapToStatelessFuture) {
+  auto promise = PjRtFuture<>::CreatePromise();
+  PjRtFuture<> future(promise);
+  PjRtFuture<float> mapped = future.MapTo(42.0f);
+
+  EXPECT_FALSE(future.IsReady());
+  EXPECT_FALSE(mapped.IsReady());
+
+  promise.Set(absl::OkStatus());
+  EXPECT_TRUE(future.IsReady());
+  EXPECT_TRUE(mapped.IsReady());
+
+  EXPECT_EQ(future.Await(), absl::OkStatus());
+  EXPECT_EQ(*mapped.Await(), 42.0f);
 }
 
 TEST(PjRtFutureTest, StatefulFuture) {
@@ -230,5 +517,29 @@ TEST(PjRtFutureTest, JoinErrors) {
   EXPECT_TRUE(join_two.IsReady());
   EXPECT_EQ(join_two.Await(), absl::InternalError("error #0"));
 }
+
+//===----------------------------------------------------------------------===//
+// Performance benchmarks.
+//===----------------------------------------------------------------------===//
+
+static void BM_CreateOkFuture(benchmark::State& state) {
+  for (auto _ : state) {
+    PjRtFuture<> future(absl::OkStatus());
+    benchmark::DoNotOptimize(future);
+  }
+}
+
+static void BM_StatelessMapTo(benchmark::State& state) {
+  std::shared_ptr<float> value = std::make_shared<float>(42.0f);
+
+  for (auto _ : state) {
+    PjRtFuture<> future(absl::OkStatus());
+    PjRtFuture<std::shared_ptr<float>> mapped = future.MapTo(value);
+    benchmark::DoNotOptimize(mapped);
+  }
+}
+
+BENCHMARK(BM_CreateOkFuture);
+BENCHMARK(BM_StatelessMapTo);
 
 }  // namespace xla

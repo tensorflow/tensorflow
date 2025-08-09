@@ -346,11 +346,12 @@ TEST_F(ConversionTest, EdgeTpuSettings) {
   const std::string kModelToken = "model_token";
   constexpr EdgeTpuSettings_::FloatTruncationType kFloatTruncationType =
       EdgeTpuSettings_::FloatTruncationType_HALF;
-
+  constexpr bool kUseTpuServer = true;
   input_settings->inference_power_state = kInferencePowerState;
   input_settings->inference_priority = kInferencePriority;
   input_settings->model_token = kModelToken;
   input_settings->float_truncation_type = kFloatTruncationType;
+  input_settings->use_tpu_server = kUseTpuServer;
 
   std::unique_ptr<EdgeTpuInactivePowerConfigT> inactive_power_config(
       new EdgeTpuInactivePowerConfigT());
@@ -393,6 +394,7 @@ TEST_F(ConversionTest, EdgeTpuSettings) {
   EXPECT_EQ(static_cast<EdgeTpuSettings_::FloatTruncationType>(
                 output_settings.float_truncation_type()),
             kFloatTruncationType);
+  EXPECT_EQ(output_settings.use_tpu_server(), kUseTpuServer);
 
   EXPECT_EQ(static_cast<EdgeTpuDeviceSpec_::PlatformType>(
                 output_settings.edgetpu_device_spec().platform_type()),

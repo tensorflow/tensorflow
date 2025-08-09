@@ -17,9 +17,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <memory>
 #include <optional>
-#include <utility>
 #include <vector>
 
 #include "absl/status/statusor.h"
@@ -43,7 +41,7 @@ std::vector<int32_t> CreateTestPattern(size_t offset, size_t length) {
   return out;
 }
 
-absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> CopyTestPatternToDevice(
+absl::StatusOr<xla::ifrt::ArrayRef> CopyTestPatternToDevice(
     xla::ifrt::Client* client, xla::ifrt::Device* dest_device,
     const std::vector<int32_t>& pattern) {
   return client->MakeArrayFromHostBuffer(

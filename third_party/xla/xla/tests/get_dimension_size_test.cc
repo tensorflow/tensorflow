@@ -15,14 +15,16 @@ limitations under the License.
 
 #include <utility>
 
+#include "xla/tests/xla_test_backend_predicates.h"
 #include "absl/status/status.h"
+#include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/tests/hlo_test_base.h"
-#include "xla/tests/test_macros.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -33,7 +35,7 @@ void DisableAllHloPasses(HloModule& module) {
   module.mutable_config().set_debug_options(debug_options);
 }
 
-class GetDimensionSizeTest : public HloTestBase {};
+using GetDimensionSizeTest = HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>;
 
 // Test that the interpreter can correctly compute get_dimension_size.
 TEST_F(GetDimensionSizeTest, CorrectComputation) {
@@ -56,9 +58,10 @@ ENTRY %a_inference_call_110__.55 (arg0.1: f32[1,8], arg1.2: f32[8], arg2.3: f32[
   EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{0.01, 0.01}));
 }
 
-TEST_F(GetDimensionSizeTest,
-       DISABLED_ON_INTERPRETER(DISABLED_ON_GPU(
-           DISABLED_ON_TPU(ReturnsErrorWhenHloPassesDisabled)))) {
+TEST_F(GetDimensionSizeTest, ReturnsErrorWhenHloPassesDisabled) {
+  if (test::DeviceTypeIsOneOf({test::kGpu, test::kInterpreter, test::kTpu})) {
+    GTEST_SKIP();
+  }
   const char* const kModuleStr = R"(
     HloModule m
 

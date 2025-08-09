@@ -1,4 +1,3 @@
-load("//xla:strict.default.bzl", "py_strict_test")
 load("//xla/tsl:tsl.default.bzl", "tsl_pybind_extension")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
@@ -6,8 +5,8 @@ load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 cc_library(
     name = "profile_data_lib",
-    srcs = ["profile_data.cc"],
-    hdrs = ["profile_data.h"],
+    srcs = ["profile_data_lib.cc"],
+    hdrs = ["profile_data_lib.h"],
     copts = [
         "-fexceptions",
         "-fno-strict-aliasing",
@@ -36,26 +35,10 @@ tsl_pybind_extension(
         "-fexceptions",
         "-fno-strict-aliasing",
     ],
-    pytype_srcs = ["profile_data.pyi"],
-    visibility = ["//visibility:public"],
     deps = [
         ":profile_data_lib",
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
         "@nanobind",
-    ],
-)
-
-py_strict_test(
-    name = "profile_data_test",
-    srcs = ["profile_data_test.py"],
-    tags = [
-        "no_oss",  # TODO(phawkins): This test passes, but requires --config=monolithic.
-        "optonly",
-    ],
-    deps = [
-        ":profile_data",
-        # copybara:uncomment "//pyglib:gfile",
-        "@absl_py//absl/testing:absltest",
     ],
 )

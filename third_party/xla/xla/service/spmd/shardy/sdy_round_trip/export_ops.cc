@@ -62,6 +62,7 @@ using ::mlir::StringRef;
 using ::mlir::success;
 
 using ::mlir::sdy::ConstantOp;
+using ::mlir::sdy::PropagationBarrierOp;
 using ::mlir::sdy::ShardingConstraintOp;
 using ::mlir::sdy::ShardingGroupOp;
 using ::mlir::sdy::TensorShardingAttr;
@@ -123,7 +124,27 @@ class ShardingGroupPattern : public OpConversionPattern<ShardingGroupOp> {
     customCallOp.setCallTargetName(kShardingGroupCustomCallTargetName);
     setFrontendAttribute(customCallOp, kShardingGroupIdAttr,
                          op.getGroupIdAttr());
-    customCallOp.setHasSideEffectAttr(rewriter.getBoolAttr(true));
+    customCallOp.setHasSideEffect(true);
+    return success();
+  }
+};
+
+class PropagationBarrierPattern
+    : public OpConversionPattern<PropagationBarrierOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+ private:
+  LogicalResult matchAndRewrite(
+      PropagationBarrierOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const override {
+    auto customCallOp = rewriter.replaceOpWithNewOp<stablehlo::CustomCallOp>(
+        op, op->getResultTypes(), adaptor.getInput());
+
+    customCallOp.setCallTargetName(kPropagationBarrierCustomCallTargetName);
+    customCallOp.setHasSideEffect(true);
+    setFrontendAttribute(customCallOp, kAllowedDirectionAttr,
+                         op.getAllowedDirectionAttr());
     return success();
   }
 };
@@ -136,12 +157,12 @@ class SdyRoundTripExportOpsPass
   void runOnOperation() final {
     mlir::MLIRContext& context = getContext();
     mlir::ConversionTarget target(context);
-    target.addIllegalOp<ConstantOp, ShardingConstraintOp>();
+    target.addIllegalOp<ConstantOp, PropagationBarrierOp, ShardingConstraintOp,
+                        ShardingGroupOp>();
     target.addLegalOp<stablehlo::ConstantOp, stablehlo::CustomCallOp>();
     mlir::RewritePatternSet patterns(&context);
-    patterns
-        .add<ConstantPattern, ShardingConstraintPattern, ShardingGroupPattern>(
-            &context);
+    patterns.add<ConstantPattern, ShardingConstraintPattern,
+                 ShardingGroupPattern, PropagationBarrierPattern>(&context);
     if (mlir::failed(mlir::applyPartialConversion(getOperation(), target,
                                                   std::move(patterns)))) {
       signalPassFailure();
@@ -154,6 +175,10 @@ class SdyRoundTripExportOpsPass
 
   StringRef getDescription() const override {
     return "Exports Shardonnay ops to StableHLO ops.";
+  }
+
+  void getDependentDialects(mlir::DialectRegistry& registry) const final {
+    registry.insert<stablehlo::StablehloDialect>();
   }
 };
 

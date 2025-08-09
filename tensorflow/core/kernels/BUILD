@@ -12,6 +12,7 @@ load(
     "if_mkl",
     "mkl_deps",
 )
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
@@ -536,6 +537,11 @@ tf_cuda_only_cc_test(
 cc_library(
     name = "conv_ops_gpu_hdrs",
     hdrs = ["conv_ops_gpu.h"],
+)
+
+cc_library(
+    name = "pooling_ops_gpu_hdrs",
+    hdrs = ["maxpooling_op_gpu.h"],
 )
 
 # We keep this target only because some contrib/ targets depend on it. The
@@ -2395,6 +2401,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/log",
         "@eigen_archive//:eigen3",
     ],
     alwayslink = 1,
@@ -5165,6 +5172,7 @@ tf_kernel_library(
     prefix = "sparse_reshape_op",
     deps = SPARSE_DEPS + [
         ":reshape_util",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -7172,6 +7180,7 @@ cc_library(
         "//tensorflow/core/framework:tensor_shape_proto_cc",
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/lib/png:png_io",
+        "//tensorflow/core/lib/webp:webp_io",
         "//tensorflow/core/platform:strong_hash",
         "//tensorflow/core/platform:types",
         "//tensorflow/core/protobuf:autotuning_proto_cc",

@@ -20,6 +20,7 @@ limitations under the License.
 #include <algorithm>
 
 #include "absl/strings/str_cat.h"
+#include "gif_lib.h"  // from @gif
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/gif.h"
 #include "tensorflow/core/platform/logging.h"
@@ -60,6 +61,7 @@ uint8* Decode(const void* srcdata, int datasize,
               string* error_string, bool expand_animations) {
   int error_code = D_GIF_SUCCEEDED;
   InputBufferInfo info = {reinterpret_cast<const uint8*>(srcdata), datasize};
+  /// NOTE: After this, gif file is mostly not initialized!
   GifFileType* gif_file =
       DGifOpen(static_cast<void*>(&info), &input_callback, &error_code);
   const auto cleanup = gtl::MakeCleanup([gif_file]() {
@@ -81,19 +83,17 @@ uint8* Decode(const void* srcdata, int datasize,
     // Stop load if no images are detected or the allocation of the last image
     // buffer was failed.
     if (gif_file->ImageCount <= 0 ||
-        gif_file->SavedImages[gif_file->ImageCount - 1].RasterBits == NULL) {
+        gif_file->SavedImages[gif_file->ImageCount - 1].RasterBits == nullptr) {
       return nullptr;
     }
-
     LOG(ERROR) << *error_string;
   }
+  int target_num_frames = gif_file->ImageCount;
 
-  if (gif_file->ImageCount <= 0) {
+  if (target_num_frames <= 0) {
     *error_string = "gif file does not contain any image";
     return nullptr;
   }
-
-  int target_num_frames = gif_file->ImageCount;
 
   // Don't request more memory than needed for each frame, preventing OOM
   int max_frame_width = 0;

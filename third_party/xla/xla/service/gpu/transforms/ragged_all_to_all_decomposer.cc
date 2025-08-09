@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -38,6 +39,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal_util.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
@@ -46,30 +48,6 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-
-// Returns the number of devices that participate in the ragged-all-to-all based
-// on the replica groups. Returns nullopt if replica groups are not present or
-// have different numbers of devices.
-std::optional<int64_t> GetNumParticipatingDevices(
-    HloRaggedAllToAllInstruction* ragged_all_to_all) {
-  absl::Span<const ReplicaGroup> replica_groups =
-      ragged_all_to_all->device_list().replica_groups();
-
-  if (replica_groups.empty()) {
-    return std::nullopt;
-  }
-
-  int64_t num_participating_devices =
-      replica_groups.begin()->replica_ids_size();
-
-  if (!absl::c_all_of(replica_groups, [&](const ReplicaGroup& replica_group) {
-        return replica_group.replica_ids_size() == num_participating_devices;
-      })) {
-    return std::nullopt;
-  }
-
-  return num_participating_devices;
-}
 
 // Runs all-to-all to exchange output offsets for each participating device.
 HloInstruction* RunAllToAllOnOutputOffsets(HloComputation* computation,
@@ -113,13 +91,9 @@ HloInstruction* GetScalarValue(HloInstruction* hlo, int64_t index) {
           /*start_indices=*/{index},
           /*limit_indices=*/{index + 1},
           /*strides=*/{1}));
-  index_value = computation->AddInstruction(HloInstruction::CreateReshape(
+  return computation->AddInstruction(HloInstruction::CreateReshape(
       /*shape=*/ShapeUtil::MakeScalarShape(hlo->shape().element_type()),
       index_value));
-
-  // Convert to S64 for convenience.
-  return computation->AddInstruction(HloInstruction::CreateConvert(
-      /*shape=*/ShapeUtil::MakeScalarShape(S64), index_value));
 }
 
 // Returns a multi-index offset for the ith row. The tensors are always ragged
@@ -158,12 +132,12 @@ HloInstruction* GetRowSlice(HloInstruction* hlo, int64_t row_index) {
   Shape row_shape = hlo->shape();
   row_shape.set_dimensions(0, 1);
 
-  std::vector<int64_t> slice_start_indices(row_shape.rank(), 0);
+  std::vector<int64_t> slice_start_indices(row_shape.dimensions().size(), 0);
   slice_start_indices[0] = row_index;
   std::vector<int64_t> slice_limit_indices{row_shape.dimensions().begin(),
                                            row_shape.dimensions().end()};
   slice_limit_indices[0] = row_index + 1;
-  std::vector<int64_t> slice_strides(row_shape.rank(), 1);
+  std::vector<int64_t> slice_strides(row_shape.dimensions().size(), 1);
 
   HloInstruction* row_slice =
       computation->AddInstruction(HloInstruction::CreateSlice(
@@ -226,7 +200,8 @@ HloInstruction* PadOutermostDimension(HloComputation* computation,
                                       int64_t padding_size) {
   Shape padded_shape = hlo->shape();
 
-  PaddingConfig padding_config = MakeNoPaddingConfig(padded_shape.rank());
+  PaddingConfig padding_config =
+      MakeNoPaddingConfig(padded_shape.dimensions().size());
   padding_config.mutable_dimensions(0)->set_edge_padding_high(padding_size);
 
   padded_shape.set_dimensions(0, padded_shape.dimensions(0) + padding_size);
@@ -258,7 +233,7 @@ std::vector<HloInstruction*> RaggedToDense(HloComputation* computation,
     for (int64_t j = 0; j < num_updates_per_replica; ++j) {
       auto offset_multi_index = GetOffsetMultiIndex(
           computation, offsets, i * num_updates_per_replica + j,
-          ragged_input->shape().rank());
+          ragged_input->shape().dimensions().size());
 
       HloInstruction* padded_input =
           PadOutermostDimension(computation, ragged_input, max_update_size);
@@ -291,7 +266,7 @@ HloInstruction* DenseToRagged(HloComputation* computation,
                               int64_t num_updates_per_replica,
                               int64_t max_update_size) {
   int64_t num_rows = offsets->shape().dimensions(0);
-  int64_t rank = ragged_output->shape().rank();
+  int64_t rank = ragged_output->shape().dimensions().size();
 
   Shape original_shape = ragged_output->shape();
 
@@ -306,7 +281,8 @@ HloInstruction* DenseToRagged(HloComputation* computation,
     for (int64_t j = 0; j < num_updates_per_replica; ++j) {
       int idx = i * num_updates_per_replica + j;
       auto offset_multi_index = GetOffsetMultiIndex(
-          computation, offsets, idx, padded_ragged_output->shape().rank());
+          computation, offsets, idx,
+          padded_ragged_output->shape().dimensions().size());
 
       // `dense_inputs` is a tuple of updates for each replica. The number of
       // elements in the tuple is equal to the number of replicas.
@@ -368,11 +344,13 @@ absl::StatusOr<bool> DecomposeRaggedAllToAll(HloInstruction* hlo,
   HloRaggedAllToAllInstruction* all_to_all =
       Cast<HloRaggedAllToAllInstruction>(hlo);
 
-  std::optional<int64_t> num_participating_devices =
-      GetNumParticipatingDevices(all_to_all);
-  if (!num_participating_devices.has_value()) {
+  TF_ASSIGN_OR_RETURN(auto replica_group_count_and_size,
+                      GetReplicaGroupCountAndSize(all_to_all));
+  if (!replica_group_count_and_size.has_value()) {
     return false;
   }
+
+  int64_t num_participating_devices = replica_group_count_and_size->second;
 
   HloInstruction* input_operand = all_to_all->mutable_operand(0);
   HloInstruction* output_operand = all_to_all->mutable_operand(1);
@@ -383,7 +361,7 @@ absl::StatusOr<bool> DecomposeRaggedAllToAll(HloInstruction* hlo,
 
   int64_t num_total_updates = input_offsets->shape().dimensions(0);
   int64_t num_updates_per_replica =
-      num_total_updates / *num_participating_devices;
+      num_total_updates / num_participating_devices;
   int64_t max_update_size = input_operand->shape().dimensions(0);
 
   // Runs all-to-all to exchange output offsets for each participating device.
@@ -393,7 +371,7 @@ absl::StatusOr<bool> DecomposeRaggedAllToAll(HloInstruction* hlo,
   // from the perspective of the local buffer.
   output_offsets = RunAllToAllOnOutputOffsets(
       computation, all_to_all, output_offsets, num_updates_per_replica,
-      *num_participating_devices);
+      num_participating_devices);
 
   auto dense_input = RaggedToDense(computation, input_operand, input_offsets,
                                    num_updates_per_replica, max_update_size);
@@ -431,6 +409,12 @@ absl::StatusOr<bool> RaggedAllToAllDecomposer::Run(
     for (auto hlo : computation->MakeInstructionPostOrder()) {
       if (HloPredicateIsNotOp<HloOpcode::kRaggedAllToAll>(hlo)) {
         continue;
+      }
+
+      if (hlo->operand(2)->shape().element_type() != S64) {
+        return absl::InvalidArgumentError(
+            "RaggedAllToAllDecomposer only supports S64 offsets. Was "
+            "`ragged-all-to-all-canonicalizer` pass executed?");
       }
 
       TF_ASSIGN_OR_RETURN(bool result,

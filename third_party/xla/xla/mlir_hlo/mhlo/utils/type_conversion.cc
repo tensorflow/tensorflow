@@ -58,7 +58,7 @@ Value materializeCastFromIllegal(OpBuilder& builder, Type type,
       !toType.isSignlessInteger())
     return Value();
   // Use unrealized conversion casts to do signful->signless conversions.
-  return builder.create<UnrealizedConversionCastOp>(loc, type, inputs[0])
+  return UnrealizedConversionCastOp::create(builder, loc, type, inputs[0])
       ->getResult(0);
 }
 
@@ -70,7 +70,7 @@ Value materializeCastToIllegal(OpBuilder& builder, Type type,
       (!toType.isSignedInteger() && !toType.isUnsignedInteger()))
     return Value();
   // Use unrealized conversion casts to do signless->signful conversions.
-  return builder.create<UnrealizedConversionCastOp>(loc, type, inputs[0])
+  return UnrealizedConversionCastOp::create(builder, loc, type, inputs[0])
       ->getResult(0);
 }
 
@@ -81,15 +81,14 @@ Value scalarToTensor(OpBuilder& builder, Type type,
     return Value();
   }
   Value result =
-      builder
-          .create<tensor::FromElementsOp>(
-              loc, RankedTensorType::get({}, inputs.front().getType()),
-              inputs.front())
+      tensor::FromElementsOp::create(
+          builder, loc, RankedTensorType::get({}, inputs.front().getType()),
+          inputs.front())
           .getResult();
   // Convert to a signed integer if necessary.
   Type elementType = mlir::getElementTypeOrSelf(type);
   if (elementType.isInteger() && !elementType.isSignlessInteger()) {
-    result = builder.create<UnrealizedConversionCastOp>(loc, type, result)
+    result = UnrealizedConversionCastOp::create(builder, loc, type, result)
                  ->getResult(0);
   }
   return result;
@@ -103,13 +102,11 @@ RemoveSignTypeConverter::RemoveSignTypeConverter() {
   addConversion(convertInteger);
   addConversion(convertShapedType);
 
-  addArgumentMaterialization(materializeCastFromIllegal);
   addSourceMaterialization(materializeCastToIllegal);
   addTargetMaterialization(materializeCastFromIllegal);
 }
 
 LinalgTypeConverter::LinalgTypeConverter() : RemoveSignTypeConverter() {
-  addArgumentMaterialization(scalarToTensor);
   addSourceMaterialization(scalarToTensor);
   addTargetMaterialization(scalarToTensor);
 }
@@ -182,10 +179,25 @@ Attribute HloToStablehloTypeConverter::convertSourceDialectEncoding(
 }
 
 StablehloToHloTypeConverter::StablehloToHloTypeConverter()
-    : HloTypeConverter() {
+    : HloTypeConverter(), convert_xla_supported_stablehlo_(true) {
   addConversion([](stablehlo::TokenType stablehloType) -> Type {
     return mhlo::TokenType::get(stablehloType.getContext());
   });
+}
+
+StablehloToHloTypeConverter::StablehloToHloTypeConverter(
+    bool convertXlaSupportedStablehlo)
+    : HloTypeConverter(),
+      convert_xla_supported_stablehlo_(convertXlaSupportedStablehlo) {
+  if (convert_xla_supported_stablehlo_) {
+    addConversion([](stablehlo::TokenType stablehloType) -> Type {
+      return mhlo::TokenType::get(stablehloType.getContext());
+    });
+  } else {
+    addConversion([](stablehlo::TokenType stablehloType) -> Type {
+      return stablehlo::TokenType::get(stablehloType.getContext());
+    });
+  }
 }
 
 bool StablehloToHloTypeConverter::isSourceDialect(Dialect& dialect) {

@@ -53,25 +53,6 @@ createSinkConstantsToControlFlowPass();
 /// that do not use intrinsics.
 std::unique_ptr<OperationPass<func::FuncOp>>
 createLegalizeTrigonometricToApproximationPass();
-
-// Move dynamic broadcasts up over element-wise operations and broadcast the
-// operands rather than the result. This will eventually allow for larger
-// fusions.
-std::unique_ptr<OperationPass<func::FuncOp>> createBroadcastPropagationPass();
-
-// Prepare moving dynamic broadcasts up over element-wise operations and
-// broadcast the operands rather than the result. This will eventually allow for
-// larger fusions.
-std::unique_ptr<OperationPass<func::FuncOp>> createMergeAssumingOpsPass();
-
-/// Creates a pass to analyze shapes and to use that information for
-/// shape-related optimizations.
-std::unique_ptr<OperationPass<func::FuncOp>>
-createSymbolicShapeOptimizationPass();
-
-// Pass to simplify shape ops.
-std::unique_ptr<OperationPass<func::FuncOp>> createShapeSimplification();
-
 std::unique_ptr<OperationPass<func::FuncOp>>
 createLegalizeDotToDotGeneralPass();
 std::unique_ptr<OperationPass<func::FuncOp>>
@@ -90,13 +71,6 @@ std::unique_ptr<OperationPass<func::FuncOp>> createCollapseElementwiseMapPass();
 
 // Pass to replace unsigned types with signless integers.
 std::unique_ptr<OperationPass<ModuleOp>> createConvertToSignlessPass();
-
-// Legalizes from the StableHLO dialect to the MHLO dialect.
-std::unique_ptr<OperationPass<ModuleOp>> createStablehloLegalizeToHloPass();
-
-// Legalizes from the Shape dialect to the MHLO dialect.
-std::unique_ptr<OperationPass<func::FuncOp>> createShapeLegalizeToHloPass(
-    bool legalizeConstraints = false);
 
 // Test passes.
 std::unique_ptr<Pass> createTestInferShapedTypeMethodsPass();

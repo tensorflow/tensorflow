@@ -157,7 +157,7 @@ using FragmentOrders = DimensionOrder::FragmentOrders;
 /*static*/ DimensionOrder DimensionOrder::FromDotOperandOrOutput(
     const HloInstruction& hlo, const int split_k_dimension_index) {
   DimensionOrder dim_order;
-  dim_order.tensor_fragments_order_.reserve(hlo.shape().rank());
+  dim_order.tensor_fragments_order_.reserve(hlo.shape().dimensions().size());
   for (const int i : hlo.shape().layout().minor_to_major()) {
     int target_dim_number = i;
     if (i == split_k_dimension_index) {
@@ -611,8 +611,8 @@ DimOrderMapOrError GetPropagatedDimOrdersForDimAlteringOp(
   // Group subdimensions by iterating over them in the same order as over
   // full dimensions and matching by total size.
   std::vector<std::vector<Fragment*>> src_physical;
-  src_physical.reserve(src.shape().rank());
-  if (src_fragments_order.size() < src.shape().rank()) {
+  src_physical.reserve(src.shape().dimensions().size());
+  if (src_fragments_order.size() < src.shape().dimensions().size()) {
     // It's not supported currently to further propagate dimensions after
     // reaching a trivial sized tensor. We could probably support it, but now we
     // just prevent crashing here.
@@ -676,7 +676,7 @@ DimOrderMapOrError GetPropagatedDimOrdersForDimAlteringOp(
       if (reduce->dimensions().size() != 1) {
         return FusionDecision::Forbid("Unsupported reduction.");
       } else if (reduce->dimensions().front() !=
-                 reduce->operand(0)->shape().rank() - 1) {
+                 reduce->operand(0)->shape().dimensions().size() - 1) {
         return FusionDecision::Forbid("Only row reductions are supported.");
       }
     } else if (hlo.opcode() == HloOpcode::kConcatenate) {
@@ -850,7 +850,9 @@ DimOrderMapOrError GetPropagatedDimOrdersForDimAlteringOp(
         dst_dim_fragments_order[dim_index].push_back(it->second);
       }
       for (auto* alive_fragment : alive_dst_fragments) {
-        alive_fragment->set_broadcast_multiplier(broadcast_multiplier);
+        int old_multiplier = alive_fragment->broadcast_multiplier();
+        alive_fragment->set_broadcast_multiplier(broadcast_multiplier *
+                                                 old_multiplier);
       }
     }
   }

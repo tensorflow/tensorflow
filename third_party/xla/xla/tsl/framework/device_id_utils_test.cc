@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/tsl/framework/device_id_utils.h"
 
-#include <string_view>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "xla/tsl/framework/device_id_manager.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/status_matchers.h"
@@ -28,7 +28,7 @@ namespace {
 using ::testing::HasSubstr;
 using ::tsl::testing::StatusIs;
 
-constexpr std::string_view kTestDeviceType = "CPU";
+constexpr absl::string_view kTestDeviceType = "CPU";
 
 PlatformDeviceId TfToPlatformDeviceId(TfDeviceId tf_device_id) {
   PlatformDeviceId platform_device_id;
@@ -85,18 +85,18 @@ TEST(DeviceIdUtilsTest, ParseVisibleDeviceList) {
 
 TEST(DeviceIdUtilsTest, ParseInvalidVisibleDeviceList) {
   std::vector<PlatformDeviceId> visible_device_order;
-  EXPECT_THAT(
-      ParseVisibleDeviceList("3,1", 3, &visible_device_order),
-      StatusIs(tensorflow::error::INVALID_ARGUMENT,
-               HasSubstr("'visible_device_list' listed an invalid Device id "
-                         "'3' but visible device count is 3")));
+  EXPECT_THAT(ParseVisibleDeviceList("3,1", 3, &visible_device_order),
+              absl_testing::StatusIs(
+                  tensorflow::error::INVALID_ARGUMENT,
+                  HasSubstr("'visible_device_list' listed an invalid Device id "
+                            "'3' but visible device count is 3")));
 }
 
 TEST(DeviceIdUtilsTest, ParseDuplicateVisibleDeviceList) {
   std::vector<PlatformDeviceId> visible_device_order;
   EXPECT_THAT(
       ParseVisibleDeviceList("1,1", 3, &visible_device_order),
-      StatusIs(
+      absl_testing::StatusIs(
           tensorflow::error::INVALID_ARGUMENT,
           HasSubstr("visible_device_list contained a duplicate entry: 1,1")));
 }
@@ -209,11 +209,11 @@ TEST(DeviceIdUtilsTest, GetPlatformDeviceIdNotFound) {
   DeviceNameUtils::ParsedName device_name;
   device_name.id = 0;
 
-  EXPECT_THAT(
-      GetPlatformDeviceIdFromDeviceParsedName(device_name,
-                                              DeviceType(kTestDeviceType)),
-      StatusIs(tensorflow::error::NOT_FOUND,
-               HasSubstr("TensorFlow device CPU:0 was not registered")));
+  EXPECT_THAT(GetPlatformDeviceIdFromDeviceParsedName(
+                  device_name, DeviceType(kTestDeviceType)),
+              absl_testing::StatusIs(
+                  tensorflow::error::NOT_FOUND,
+                  HasSubstr("TensorFlow device CPU:0 was not registered")));
 }
 
 TEST(DeviceIdUtilsTest, GetDeviceIdWithPlatformDeviceId) {

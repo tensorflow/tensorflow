@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/tsl/platform/cloud/gcs_dns_cache.h"
 
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/test.h"
 #include "tsl/platform/str_util.h"
 
@@ -76,7 +77,7 @@ class GcsDnsCacheTest : public ::testing::Test {
   void AnnotateRequestTest() {
     GcsDnsCache d;
     {
-      mutex_lock l(d.mu_);
+      absl::MutexLock l(&d.mu_);
       d.started_ = true;  // Avoid creating a thread.
       d.addresses_ = {{"192.168.1.1"}, {"172.134.1.1"}};
     }

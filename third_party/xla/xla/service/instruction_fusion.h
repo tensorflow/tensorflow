@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -68,6 +69,12 @@ class FusionDecision {
   FusionDecision(bool condition, absl::string_view explanation) {
     if (!condition) {
       explanation_ = std::string(explanation);
+    }
+  }
+
+  explicit FusionDecision(absl::Status status) {
+    if (!status.ok()) {
+      explanation_ = status.message();
     }
   }
 
@@ -121,8 +128,10 @@ class FusionDecision {
     return Forbid(absl::StrCat(explanation_.value_or(""), explanation));
   }
 
-  // Explains why the fusion could not be performed.
-  std::string Explain() const { return *explanation_; }
+  // Explains why the fusion could not be performed, or that it can be.
+  std::string Explain() const {
+    return explanation_.value_or("Actually, we can fuse it.");
+  }
 
  private:
   // Empty IFF fusion is possible (explanation provided for negative cases).
@@ -214,12 +223,16 @@ class InstructionFusion : public HloModulePass {
   // Returns whether a 'producer' at given operand index can be fused into the
   // consumer. It uses the provided function to check the legality of a possible
   // fusion when either the producer or the consumer contains an operation which
-  // updates an operand in place.
+  // updates an operand in place. If legality_check_only is true, only strict
+  // legality check is performed and factors such as operand duplication and
+  // profitability are not taken into account. Legality checks ensure that
+  // fusions formed are semantically correct and they are lowerable.
   virtual FusionDecision ShouldFuse(
       HloInstruction* consumer, int64_t operand_index,
       std::function<FusionDecision(const HloInstruction*, const HloInstruction*,
                                    std::optional<const InPlaceFusionOptions>)>
-          inplace_op_fusion_decider);
+          inplace_op_fusion_decider,
+      bool legality_check_only = false);
 
   // Returns whether multi-output fusion can be applied to fuse `producer` into
   // `consumer`. In contrast to "regular" fusion, the `producer` is not
@@ -277,11 +290,6 @@ class InstructionFusion : public HloModulePass {
     is_expensive_ = is_expensive;
   }
 
-  // Whether multi-output fusion would introduce a cycle into the HLO graph.
-  bool MultiOutputFusionCreatesCycle(HloInstruction* producer,
-                                     HloInstruction* consumer,
-                                     const HloReachabilityMap& reachability);
-
   FusionConfigCollection config_collection_mode() {
     return config_collection_mode_;
   }
@@ -299,6 +307,8 @@ class InstructionFusion : public HloModulePass {
   virtual HloInstructionSet ComputeGloballyUnfusible(
       absl::Span<HloInstruction* const> post_order,
       const HloReachabilityMap& reachability);
+
+  bool may_duplicate() const { return may_duplicate_; }
 
  private:
   // Returns the reused operands of `instruction` from reused_fusion_operands_,

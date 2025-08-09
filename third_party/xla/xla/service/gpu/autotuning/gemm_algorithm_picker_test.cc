@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <variant>
 
+#include "absl/functional/overload.h"
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "xla/autotune_results.pb.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/transforms/gemm_rewriter.h"
-#include "xla/service/gpu/variant_visitor.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
@@ -74,7 +74,7 @@ class GemmAlgorithmPickerTest : public HloTestBase,
     bool blas_get_version = name.rfind("BlasGetVersion") == 0;
 
     std::visit(
-        VariantVisitor{
+        absl::Overload(
             [&](const se::CudaComputeCapability& cc) {
               if (!blas_get_version && cc.IsAtLeastAmpere()) {
                 GTEST_SKIP()
@@ -93,7 +93,7 @@ class GemmAlgorithmPickerTest : public HloTestBase,
                          !cc.has_hipblaslt()) {
                 GTEST_SKIP() << "No gpublas-lt support on this architecture!";
               }
-            }},
+            }),
         gpu_comp());
   }
 };
@@ -135,7 +135,9 @@ ENTRY main {
                 /*toolkit_version=*/stream_executor::SemanticVersion{12, 4, 0}),
             module.get()));
 
-    AutotuneConfig cfg{DeviceConfig{stream_exec(), nullptr}, debug_opts};
+    AutotuneConfig cfg = AutotuneConfig::FromDebugOptions(
+        DeviceOrDevicelessConfig{DeviceConfig{stream_exec(), nullptr}},
+        debug_opts);
     GemmAlgorithmPicker gpicker(cfg);
     // Note that, we do not care if the algorithm index has been changed:
     // the thing matters is the # of algorithms left after sorting out.
@@ -175,7 +177,9 @@ ENTRY main {
                 /*toolkit_version=*/stream_executor::SemanticVersion{12, 4, 0}),
             module.get()));
 
-    AutotuneConfig cfg{DeviceConfig{stream_exec(), nullptr}, debug_opts};
+    AutotuneConfig cfg = AutotuneConfig::FromDebugOptions(
+        DeviceOrDevicelessConfig{DeviceConfig{stream_exec(), nullptr}},
+        debug_opts);
     GemmAlgorithmPicker gpicker(cfg);
     TF_ASSERT_OK_AND_ASSIGN(changed, RunHloPass(gpicker, module.get()));
     num_left2 = gpicker.num_algorithms_left();
@@ -208,7 +212,8 @@ ENTRY main {
           m.get()));
   changed = false;
   DebugOptions opts;
-  AutotuneConfig cfg{DeviceConfig{stream_exec(), nullptr}, opts};
+  AutotuneConfig cfg = AutotuneConfig::FromDebugOptions(
+      DeviceOrDevicelessConfig{DeviceConfig{stream_exec(), nullptr}}, opts);
   TF_ASSERT_OK_AND_ASSIGN(changed,
                           RunHloPass(GemmAlgorithmPicker(cfg), m.get()));
   ASSERT_TRUE(changed);
@@ -273,7 +278,8 @@ ENTRY main {
   changed = false;
 
   DebugOptions opts;
-  AutotuneConfig cfg{DeviceConfig{stream_exec(), nullptr}, opts};
+  AutotuneConfig cfg = AutotuneConfig::FromDebugOptions(
+      DeviceOrDevicelessConfig{DeviceConfig{stream_exec(), nullptr}}, opts);
 
   TF_ASSERT_OK_AND_ASSIGN(changed,
                           RunHloPass(GemmAlgorithmPicker(cfg), m.get()));
@@ -297,7 +303,8 @@ ENTRY main {
   changed = false;
 
   DevicelessConfig deviceless_config{device_desc()};
-  AutotuneConfig deviceless_cfg{deviceless_config, opts};
+  AutotuneConfig deviceless_cfg = AutotuneConfig::FromDebugOptions(
+      DeviceOrDevicelessConfig{deviceless_config}, opts);
   TF_ASSERT_OK_AND_ASSIGN(
       changed,
       RunHloPass(

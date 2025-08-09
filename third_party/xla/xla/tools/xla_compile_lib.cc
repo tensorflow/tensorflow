@@ -56,12 +56,14 @@ limitations under the License.
 #include "xla/service/symbol_repository.h"
 #include "xla/service/xla_compile_result.pb.h"
 #include "xla/shape.h"
+#include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tools/hlo_module_loader.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/env_time.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
@@ -192,9 +194,10 @@ absl::StatusOr<std::unique_ptr<HloModule>> LoadModule(
 
   // Convert Mhlo to Hlo Module.
   XlaComputation xla_computation;
-  TF_RETURN_IF_ERROR(
-      MlirToXlaComputation(*module, xla_computation, /*use_tuple_args=*/false,
-                           /*return_tuple=*/false, /*use_shardy=*/false));
+  TF_RETURN_IF_ERROR(MlirToXlaComputation(*module, xla_computation,
+                                          /*use_tuple_args=*/false,
+                                          /*return_tuple=*/false,
+                                          /*exec_build_options=*/nullptr));
   HloModuleProto hlo_module_proto = xla_computation.proto();
 
   TF_ASSIGN_OR_RETURN(ProgramShape shape, xla_computation.GetProgramShape());

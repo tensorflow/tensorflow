@@ -1,3 +1,5 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:build_def.bzl", "tflite_cc_library_with_c_headers_test")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
@@ -184,6 +186,8 @@ cc_test(
     ],
     tags = [
         "no_windows",
+        # TODO(b/401046768): Re-enable once the test is fixed.
+        "notap",
         "tflite_not_portable_ios",
     ],
     deps = [
@@ -212,6 +216,8 @@ cc_test(
     ],
     tags = [
         "no_windows",
+        # TODO(b/401046768): Re-enable once the test is fixed.
+        "notap",
         "tflite_not_portable_ios",
     ],
     visibility = ["//visibility:private"],

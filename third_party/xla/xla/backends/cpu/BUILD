@@ -1,7 +1,9 @@
+load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/backends/cpu:package_groups.bzl", "xla_cpu_backend_access")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 load("//xla/tsl/mkl:graph.bzl", "onednn_graph_cc_library")
+load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -28,6 +30,7 @@ filegroup(
 cc_library(
     name = "alignment",
     hdrs = ["alignment.h"],
+    visibility = internal_visibility([":friends"]),
     deps = ["@eigen_archive//:eigen3"],
 )
 
@@ -38,11 +41,13 @@ onednn_graph_cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":onednn_fusion",
+        ":onednn_support",
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/backends/cpu/runtime/onednn:onednn_interop",
         "//xla/hlo/ir:hlo",
+        "//xla/tsl/mkl:onednn",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -50,14 +55,20 @@ onednn_graph_cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
-        "@onednn//:mkl_dnn",
     ],
 )
 
 onednn_graph_cc_library(
     name = "onednn_fusion",
-    srcs = ["onednn_fusion.cc"],
     hdrs = ["onednn_fusion.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = ["//xla/tsl/mkl:onednn"],
+)
+
+cc_library(
+    name = "onednn_support",
+    srcs = ["onednn_support.cc"],
+    hdrs = ["onednn_support.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
         "//xla:shape_util",
@@ -65,8 +76,12 @@ onednn_graph_cc_library(
         "//xla/backends/cpu/runtime:dot_lib",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
-        "@onednn//:mkl_dnn",
     ],
+)
+
+tf_proto_library(
+    name = "xnnpack_config_proto",
+    srcs = ["xnnpack_config.proto"],
 )
 
 cc_library(
@@ -75,6 +90,7 @@ cc_library(
     hdrs = ["xnn_emitter.h"],
     deps = [
         ":xnn_fusion",
+        "//xla:literal",
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -87,6 +103,20 @@ cc_library(
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "xnn_gemm_config",
+    srcs = ["xnn_gemm_config.cc"],
+    hdrs = ["xnn_gemm_config.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla/backends/cpu/codegen:target_machine_features",
+        "//xla/backends/cpu/runtime:dot_lib",
+        "@com_google_absl//absl/log:check",
+        "@llvm-project//llvm:Target",
     ],
 )
 
@@ -95,13 +125,56 @@ cc_library(
     srcs = ["xnn_fusion.cc"],
     hdrs = ["xnn_fusion.h"],
     deps = [
+        ":xnn_gemm_config",
         "//xla:shape_util",
+        "//xla:util",
         "//xla:xla_data_proto_cc",
+        "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/backends/cpu/runtime:dot_lib",
         "//xla/hlo/ir:hlo",
+        "//xla/service:pattern_matcher",
         "//xla/tsl/platform:statusor",
+        "@XNNPACK",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "xnn_fusion_test",
+    srcs = ["xnn_fusion_test.cc"],
+    deps = [
+        ":xnn_fusion",
+        "//xla/hlo/ir:hlo",
+        "@XNNPACK",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "constant_allocation",
+    srcs = ["constant_allocation.cc"],
+    hdrs = ["constant_allocation.h"],
+    deps = [
+        "//xla:literal",
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:buffer_assignment",
+        "//xla/stream_executor:device_memory",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )

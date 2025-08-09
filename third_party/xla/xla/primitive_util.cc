@@ -35,7 +35,7 @@ namespace xla {
 namespace primitive_util {
 
 int SignificandWidth(PrimitiveType type) {
-  return FloatingPointTypeSwitch<int>(
+  return FloatingPointTypeSwitch(
       [&](auto constant_type) -> int {
         return std::numeric_limits<NativeTypeOf<constant_type>>::digits;
       },
@@ -61,7 +61,7 @@ int UnderflowExponent(PrimitiveType type) {
   // normalized floating-point number." as such it does not actually yield the
   // minimum exponent but one above the minimum exponent that a normalized
   // number can have.
-  return FloatingPointTypeSwitch<int>(
+  return FloatingPointTypeSwitch(
       [&](auto constant_type) -> int {
         return std::numeric_limits<NativeTypeOf<constant_type>>::min_exponent;
       },
@@ -74,7 +74,7 @@ int OverflowExponent(PrimitiveType type) {
   // representable finite floating-point number." as such it does not actually
   // yield the maximum exponent but the exponent of the first integer which
   // overflows.
-  return FloatingPointTypeSwitch<int>(
+  return FloatingPointTypeSwitch(
       [&](auto constant_type) -> int {
         return std::numeric_limits<NativeTypeOf<constant_type>>::max_exponent;
       },
@@ -87,7 +87,7 @@ int ExponentBias(PrimitiveType type) {
 
 bool HasInfinity(PrimitiveType type) {
   if (ABSL_PREDICT_TRUE(IsFloatingPointType(type))) {
-    return FloatingPointTypeSwitch<bool>(
+    return FloatingPointTypeSwitch(
         [&](auto constant_type) -> bool {
           return std::numeric_limits<NativeTypeOf<constant_type>>::has_infinity;
         },
@@ -98,7 +98,7 @@ bool HasInfinity(PrimitiveType type) {
 
 bool HasNaN(PrimitiveType type) {
   if (ABSL_PREDICT_TRUE(IsFloatingPointType(type))) {
-    return FloatingPointTypeSwitch<bool>(
+    return FloatingPointTypeSwitch(
         [&](auto constant_type) -> bool {
           return std::numeric_limits<
               NativeTypeOf<constant_type>>::has_quiet_NaN;
@@ -110,7 +110,7 @@ bool HasNaN(PrimitiveType type) {
 
 bool HasNegativeZero(PrimitiveType type) {
   if (ABSL_PREDICT_TRUE(IsFloatingPointType(type))) {
-    return FloatingPointTypeSwitch<bool>(
+    return FloatingPointTypeSwitch(
         [&](auto constant_type) -> bool {
           return has_negative_zero_v<NativeTypeOf<constant_type>>;
         },
@@ -136,6 +136,86 @@ xla::PrimitiveType SignedIntegralTypeForBitWidth(int64_t src_bitwidth) {
     default:
       return xla::PRIMITIVE_TYPE_INVALID;
   }
+}
+
+bool CastPreservesValues(const PrimitiveType from_type,
+                         const PrimitiveType to_type) {
+  // * -> *
+  if (from_type == to_type) {
+    return true;
+  }
+  // * -> F8E8M0FNU is not possible because zero cannot be represented.
+  if (to_type == F8E8M0FNU) {
+    return false;
+  }
+  // PRED -> *
+  if (from_type == PRED) {
+    return true;
+  }
+  // ~PRED -> PRED is not safe because it drops almost all numbers.
+  if (to_type == PRED) {
+    return false;
+  }
+  // * -> C is safe if the components of * and C can be safely converted.
+  if (IsComplexType(to_type)) {
+    auto from_component_type =
+        IsComplexType(from_type) ? ComplexComponentType(from_type) : from_type;
+    auto to_component_type = ComplexComponentType(to_type);
+    return CastPreservesValues(from_component_type, to_component_type);
+  }
+  // ~C -> C is not safe because it drops imaginary components.
+  if (IsComplexType(from_type)) {
+    return false;
+  }
+  // F -> F is safe if the exponent/significand are preserved and `to_type`
+  // preserves infinities/nans/unsigned zero in `from_type`.
+  if (IsFloatingPointType(from_type) && IsFloatingPointType(to_type)) {
+    return
+        // Target mantissa should be large enough.
+        SignificandWidth(from_type) <= SignificandWidth(to_type) &&
+        // Target exponent should be large enough.
+        ExponentWidth(from_type) <= ExponentWidth(to_type) &&
+        // HasInfinity check.
+        (!HasInfinity(from_type) || HasInfinity(to_type)) &&
+        // HasNaN check.
+        (!HasNaN(from_type) || HasNaN(to_type)) &&
+        // HasNegativeZero check.
+        (!HasNegativeZero(from_type) || HasNegativeZero(to_type)) &&
+        // Minimum denormal should be representable by target type.
+        (UnderflowExponent(from_type) - SignificandWidth(from_type)) >=
+            (UnderflowExponent(to_type) - SignificandWidth(to_type)) &&
+        // Maximum exponent may be larger with custom bias (e.g. F8E4M3B11FNUZ).
+        OverflowExponent(from_type) <= OverflowExponent(to_type);
+  }
+  // F -> I is not safe because it drops fractional numbers.
+  if (!IsIntegralType(from_type)) {
+    return false;
+  }
+  // An n-bit unsigned integer takes on values from [0, 2^n - 1].
+  // An n-bit signed integer takes on values from [-2^(n-1), 2^(n-1) - 1].
+  // from_bits/to_bits considers the number of non-sign bits.
+  const int from_bits = IsSignedIntegralType(from_type)
+                            ? BitWidth(from_type) - 1
+                            : BitWidth(from_type);
+  const int to_bits =
+      IsSignedIntegralType(to_type) ? BitWidth(to_type) - 1 : BitWidth(to_type);
+  // I -> F is safe if the integer can be represented exactly.
+  if (IsFloatingPointType(to_type)) {
+    // In both cases, we need to handle an exponent of n-1.
+    // However, the significand needed to represent signed two's complement
+    // numbers is smaller by one bit because it will only have a non-zero
+    // trailing significand field when the exponent is smaller than n-1.
+    return from_bits <= SignificandWidth(to_type) &&
+           BitWidth(from_type) - 1 < OverflowExponent(to_type);
+  }
+  // S -> U is not safe because it drops negative numbers.
+  if (IsSignedIntegralType(from_type) && IsUnsignedIntegralType(to_type)) {
+    return false;
+  }
+  // I -> I is safe if the integer can be represented exactly; we've already
+  // ensured that signed to unsigned conversions won't happen here.
+  CHECK(IsIntegralType(to_type));
+  return from_bits <= to_bits;
 }
 
 // Class to memoize the computation of
@@ -169,7 +249,7 @@ class PrimitiveTypeNameGenerator {
 };
 
 const std::string& LowercasePrimitiveTypeName(PrimitiveType s) {
-  static auto* gen = new PrimitiveTypeNameGenerator();
+  static auto* const gen = new PrimitiveTypeNameGenerator();
   return gen->LowercaseName(s);
 }
 
@@ -180,34 +260,37 @@ namespace {
 // Due to Postel's Law considerations, both "opaque" and "opaque_type" map to
 // the xla::OPAQUE_TYPE enumerator.
 const absl::flat_hash_map<std::string, PrimitiveType>&
-GetPrimitiveTypeStringMap() {
-  static absl::flat_hash_map<std::string, PrimitiveType>* name_to_type = [] {
-    static auto* map = new absl::flat_hash_map<std::string, PrimitiveType>;
-    for (int i = 0; i < PrimitiveType_ARRAYSIZE; i++) {
-      if (PrimitiveType_IsValid(i) && i != PRIMITIVE_TYPE_INVALID) {
-        auto value = static_cast<PrimitiveType>(i);
-        (*map)[LowercasePrimitiveTypeName(value)] = value;
-      }
-    }
-    (*map)["opaque"] = OPAQUE_TYPE;
-    return map;
-  }();
+LowerCaseNameToPrimitiveType() {
+  static absl::flat_hash_map<std::string, PrimitiveType>* const name_to_type =
+      [] {
+        static auto* const map =
+            new absl::flat_hash_map<std::string, PrimitiveType>;
+        for (int i = 0; i < PrimitiveType_ARRAYSIZE; i++) {
+          if (PrimitiveType_IsValid(i) && i != PRIMITIVE_TYPE_INVALID) {
+            auto value = static_cast<PrimitiveType>(i);
+            (*map)[LowercasePrimitiveTypeName(value)] = value;
+          }
+        }
+        (*map)["opaque"] = OPAQUE_TYPE;
+        return map;
+      }();
   return *name_to_type;
 }
 
 }  // namespace
 
-absl::StatusOr<PrimitiveType> StringToPrimitiveType(absl::string_view name) {
-  const auto& map = GetPrimitiveTypeStringMap();
-  auto found = map.find(name);
+absl::StatusOr<PrimitiveType> StringToPrimitiveType(
+    absl::string_view lower_name) {
+  const auto& map = LowerCaseNameToPrimitiveType();
+  auto found = map.find(lower_name);
   if (found == map.end()) {
-    return InvalidArgument("Invalid element type string: \"%s\".", name);
+    return InvalidArgument("Invalid element type string: \"%s\".", lower_name);
   }
   return found->second;
 }
 
 bool IsPrimitiveTypeName(absl::string_view name) {
-  const auto& map = GetPrimitiveTypeStringMap();
+  const auto& map = LowerCaseNameToPrimitiveType();
   auto found = map.find(name);
   return found != map.end();
 }

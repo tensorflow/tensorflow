@@ -16,7 +16,6 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "absl/types/optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"

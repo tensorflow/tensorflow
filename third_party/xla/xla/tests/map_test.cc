@@ -13,34 +13,38 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 
+#include "xla/tests/xla_test_backend_predicates.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/array2d.h"
-#include "xla/client/local_client.h"
+#include "xla/array3d.h"
+#include "xla/error_spec.h"
 #include "xla/hlo/builder/lib/arithmetic.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/test_helpers.h"
+#include "xla/layout_util.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/stream_executor.h"
-#include "xla/tests/client_library_test_base.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/literal_test_util.h"
-#include "xla/tests/test_macros.h"
-#include "xla/tests/test_utils.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
 
-class MapTest : public ClientLibraryTestBase {
+class MapTest : public ClientLibraryTestRunnerMixin<HloTestBase> {
  public:
-  explicit MapTest(se::Platform* platform = nullptr)
-      : ClientLibraryTestBase(platform) {
+  MapTest() {
     mutable_debug_options()->add_xla_disable_hlo_passes("algsimp");
     mutable_debug_options()->add_xla_disable_hlo_passes("inline");
   }
@@ -170,28 +174,23 @@ TEST_F(MapTest, MapEachElemPlusOneR0) {
   // Applies lambda (x) (+ x 1)) to an input scalar.
   XlaBuilder builder(TestName());
   Literal param0_literal = LiteralUtil::CreateR0<float>(42.0);
-  std::unique_ptr<GlobalData> param0_data =
-      client_->TransferToServer(param0_literal).value();
 
   auto param = Parameter(&builder, 0, param0_literal.shape(), "param0");
   Map(&builder, {param}, CreateAdderToOne(), {});
 
-  ComputeAndCompareR0<float>(&builder, 43.0, {param0_data.get()},
+  ComputeAndCompareR0<float>(&builder, 43.0, {&param0_literal},
                              ErrorSpec(0.01f));
 }
 
-XLA_TEST_F(MapTest, MapEachElemPlusOneR1S0) {
+TEST_F(MapTest, MapEachElemPlusOneR1S0) {
   // Maps (lambda (x) (+ x 1)) onto an input R1F32 vector of length 0.
   XlaBuilder builder(TestName());
   Literal param0_literal = LiteralUtil::CreateR1<float>({});
-  std::unique_ptr<GlobalData> param0_data =
-      client_->TransferToServer(param0_literal).value();
 
   auto param = Parameter(&builder, 0, param0_literal.shape(), "param0");
   Map(&builder, {param}, CreateAdderToOne(), {0});
 
-  ComputeAndCompareR1<float>(&builder, {}, {param0_data.get()},
-                             ErrorSpec(0.01f));
+  ComputeAndCompareR1<float>(&builder, {}, {&param0_literal}, ErrorSpec(0.01f));
 }
 
 TEST_F(MapTest, MapEachElemPlusOneR1S4) {
@@ -199,40 +198,34 @@ TEST_F(MapTest, MapEachElemPlusOneR1S4) {
   XlaBuilder builder(TestName());
   Literal param0_literal =
       LiteralUtil::CreateR1<float>({2.2f, 3.3f, 4.4f, 5.5f});
-  std::unique_ptr<GlobalData> param0_data =
-      client_->TransferToServer(param0_literal).value();
 
   auto param = Parameter(&builder, 0, param0_literal.shape(), "param0");
   Map(&builder, {param}, CreateAdderToOne(), {0});
 
   ComputeAndCompareR1<float>(&builder, {3.2f, 4.3f, 5.4f, 6.5f},
-                             {param0_data.get()}, ErrorSpec(0.01f));
+                             {&param0_literal}, ErrorSpec(0.01f));
 }
 
 TEST_F(MapTest, MapEachF32ElementToS32Constant) {
   XlaBuilder builder(TestName());
   Literal param0_literal =
       LiteralUtil::CreateR1<float>({2.2f, 3.3f, 4.4f, 5.5f});
-  std::unique_ptr<GlobalData> param0_data =
-      client_->TransferToServer(param0_literal).value();
 
   auto param = Parameter(&builder, 0, param0_literal.shape(), "param0");
   Map(&builder, {param}, CreateScalarOne<int32_t>(), {0});
 
-  ComputeAndCompareR1<int32_t>(&builder, {1, 1, 1, 1}, {param0_data.get()});
+  ComputeAndCompareR1<int32_t>(&builder, {1, 1, 1, 1}, {&param0_literal});
 }
 
 TEST_F(MapTest, MapEachF32ElementToU32Constant) {
   XlaBuilder builder(TestName());
   Literal param0_literal =
       LiteralUtil::CreateR1<float>({2.2f, 3.3f, 4.4f, 5.5f});
-  std::unique_ptr<GlobalData> param0_data =
-      client_->TransferToServer(param0_literal).value();
 
   auto param = Parameter(&builder, 0, param0_literal.shape(), "param0");
   Map(&builder, {param}, CreateScalarOne<uint32_t>(), {0});
 
-  ComputeAndCompareR1<uint32_t>(&builder, {1, 1, 1, 1}, {param0_data.get()});
+  ComputeAndCompareR1<uint32_t>(&builder, {1, 1, 1, 1}, {&param0_literal});
 }
 
 TEST_F(MapTest, MapEachElemLongerChainR1) {
@@ -240,31 +233,26 @@ TEST_F(MapTest, MapEachElemLongerChainR1) {
   XlaBuilder builder(TestName());
   Literal param0_literal =
       LiteralUtil::CreateR1<float>({2.6f, -5.1f, 0.1f, 0.2f, 999.0f, 255.5f});
-  std::unique_ptr<GlobalData> param0_data =
-      client_->TransferToServer(param0_literal).value();
 
   auto param = Parameter(&builder, 0, param0_literal.shape(), "param0");
   Map(&builder, {param}, CreateAdderToOneTimesItself(), {0});
 
   ComputeAndCompareR1<float>(
       &builder, {9.36f, 20.91f, 0.11f, 0.24f, 999000.0f, 65535.75f},
-      {param0_data.get()}, ErrorSpec(0.01f));
+      {&param0_literal}, ErrorSpec(0.01f));
 }
 
-XLA_TEST_F(MapTest, MapMultipleMapsR1S0) {
+TEST_F(MapTest, MapMultipleMapsR1S0) {
   // Maps (lambda (x) (+ x 1)) onto an input R1F32 vector of length 0, and then
   // maps (lambda (x) (* x 2)) on the result.
   XlaBuilder builder(TestName());
   Literal param0_literal = LiteralUtil::CreateR1<float>({});
-  std::unique_ptr<GlobalData> param0_data =
-      client_->TransferToServer(param0_literal).value();
 
   auto param = Parameter(&builder, 0, param0_literal.shape(), "param0");
   auto map1 = Map(&builder, {param}, CreateAdderToOne(), {0});
   Map(&builder, {map1}, CreateMulByTwo(), {0});
 
-  ComputeAndCompareR1<float>(&builder, {}, {param0_data.get()},
-                             ErrorSpec(0.01f));
+  ComputeAndCompareR1<float>(&builder, {}, {&param0_literal}, ErrorSpec(0.01f));
 }
 
 TEST_F(MapTest, MapMultipleMapsR1S4) {
@@ -273,15 +261,13 @@ TEST_F(MapTest, MapMultipleMapsR1S4) {
   XlaBuilder builder(TestName());
   Literal param0_literal =
       LiteralUtil::CreateR1<float>({2.2f, 3.3f, 4.4f, 5.5f});
-  std::unique_ptr<GlobalData> param0_data =
-      client_->TransferToServer(param0_literal).value();
 
   auto param = Parameter(&builder, 0, param0_literal.shape(), "param0");
   auto map1 = Map(&builder, {param}, CreateAdderToOne(), {0});
   Map(&builder, {map1}, CreateMulByTwo(), {0});
 
   ComputeAndCompareR1<float>(&builder, {6.4f, 8.6f, 10.8f, 13.0f},
-                             {param0_data.get()}, ErrorSpec(0.01f));
+                             {&param0_literal}, ErrorSpec(0.01f));
 }
 
 TEST_F(MapTest, MapEachElemPlusOneR2) {
@@ -289,19 +275,17 @@ TEST_F(MapTest, MapEachElemPlusOneR2) {
   XlaBuilder builder(TestName());
   Literal param0_literal = LiteralUtil::CreateR2<float>(
       {{13.25f, 14.0f}, {-7.1f, -7.2f}, {-8.8f, 8.8f}});
-  std::unique_ptr<GlobalData> param0_data =
-      client_->TransferToServer(param0_literal).value();
 
   auto param = Parameter(&builder, 0, param0_literal.shape(), "param0");
   Map(&builder, {param}, CreateAdderToOne(), {0, 1});
 
   Array2D<float> expected_array(
       {{14.25f, 15.0f}, {-6.1f, -6.2f}, {-7.8f, 9.8f}});
-  ComputeAndCompareR2<float>(&builder, expected_array, {param0_data.get()},
+  ComputeAndCompareR2<float>(&builder, expected_array, {&param0_literal},
                              ErrorSpec(0.01f));
 }
 
-XLA_TEST_F(MapTest, ComplexNestedMaps) {
+TEST_F(MapTest, ComplexNestedMaps) {
   // Constructs a complex graph of embedded computations to test the computation
   // lowering order. Python equivalent:
   //
@@ -344,12 +328,8 @@ TEST_F(MapTest, MapBinaryAdder) {
   XlaBuilder builder(TestName());
   Literal param0_literal =
       LiteralUtil::CreateR1<float>({2.2f, 3.3f, 4.4f, 5.5f});
-  std::unique_ptr<GlobalData> param0_data =
-      client_->TransferToServer(param0_literal).value();
   Literal param1_literal =
       LiteralUtil::CreateR1<float>({5.1f, 4.4f, -0.1f, -5.5f});
-  std::unique_ptr<GlobalData> param1_data =
-      client_->TransferToServer(param1_literal).value();
 
   auto param0 = Parameter(&builder, 0, param0_literal.shape(), "param0");
   auto param1 = Parameter(&builder, 1, param1_literal.shape(), "param1");
@@ -357,23 +337,18 @@ TEST_F(MapTest, MapBinaryAdder) {
       {0});
 
   ComputeAndCompareR1<float>(&builder, {7.3f, 7.7, 4.3f, 0},
-                             {param0_data.get(), param1_data.get()},
+                             {&param0_literal, &param1_literal},
                              ErrorSpec(0.01f));
 }
 
 // Adds two rank-2 arrays with different layouts. This test exercises a path
 // for Map that used to fail in shape inference (b/28989438).
-XLA_TEST_F(MapTest, AddWithMixedLayouts) {
+TEST_F(MapTest, AddWithMixedLayouts) {
   XlaBuilder builder(TestName());
   Literal param0_literal = LiteralUtil::CreateR2WithLayout(
       {{1, 2}, {3, 4}}, LayoutUtil::MakeLayout({1, 0}));
-  std::unique_ptr<GlobalData> param0_data =
-      client_->TransferToServer(param0_literal).value();
-
   Literal param1_literal = LiteralUtil::CreateR2WithLayout(
       {{10, 20}, {30, 40}}, LayoutUtil::MakeLayout({0, 1}));
-  std::unique_ptr<GlobalData> param1_data =
-      client_->TransferToServer(param1_literal).value();
 
   auto param0 = Parameter(&builder, 0, param0_literal.shape(), "param0");
   auto param1 = Parameter(&builder, 1, param1_literal.shape(), "param1");
@@ -386,20 +361,15 @@ XLA_TEST_F(MapTest, AddWithMixedLayouts) {
   expected(1, 0) = 33;
   expected(1, 1) = 44;
   ComputeAndCompareR2<int32_t>(&builder, expected,
-                               {param0_data.get(), param1_data.get()});
+                               {&param0_literal, &param1_literal});
 }
 
-XLA_TEST_F(MapTest, AddR3_3x0x2) {
+TEST_F(MapTest, AddR3_3x0x2) {
   XlaBuilder builder(TestName());
   Literal param0_literal =
       LiteralUtil::CreateR3FromArray3D<int32_t>(Array3D<int32_t>(3, 0, 2));
-  std::unique_ptr<GlobalData> param0_data =
-      client_->TransferToServer(param0_literal).value();
-
   Literal param1_literal =
       LiteralUtil::CreateR3FromArray3D<int32_t>(Array3D<int32_t>(3, 0, 2));
-  std::unique_ptr<GlobalData> param1_data =
-      client_->TransferToServer(param1_literal).value();
 
   auto param0 = Parameter(&builder, 0, param0_literal.shape(), "param0");
   auto param1 = Parameter(&builder, 1, param1_literal.shape(), "param1");
@@ -407,7 +377,7 @@ XLA_TEST_F(MapTest, AddR3_3x0x2) {
       {0, 1, 2});
 
   ComputeAndCompareR3<int32_t>(&builder, Array3D<int32_t>(3, 0, 2),
-                               {param0_data.get(), param1_data.get()});
+                               {&param0_literal, &param1_literal});
 }
 
 TEST_F(MapTest, MapTernaryAdder) {
@@ -415,16 +385,10 @@ TEST_F(MapTest, MapTernaryAdder) {
   XlaBuilder builder(TestName());
   Literal param0_literal =
       LiteralUtil::CreateR1<float>({2.2f, 3.3f, 4.4f, 5.5f});
-  std::unique_ptr<GlobalData> param0_data =
-      client_->TransferToServer(param0_literal).value();
   Literal param1_literal =
       LiteralUtil::CreateR1<float>({5.1f, 4.4f, -0.1f, -5.5f});
-  std::unique_ptr<GlobalData> param1_data =
-      client_->TransferToServer(param1_literal).value();
   Literal param2_literal =
       LiteralUtil::CreateR1<float>({-10.0f, -100.0f, -900.0f, -400.0f});
-  std::unique_ptr<GlobalData> param2_data =
-      client_->TransferToServer(param2_literal).value();
 
   auto param0 = Parameter(&builder, 0, param0_literal.shape(), "param0");
   auto param1 = Parameter(&builder, 1, param1_literal.shape(), "param1");
@@ -433,8 +397,7 @@ TEST_F(MapTest, MapTernaryAdder) {
 
   ComputeAndCompareR1<float>(
       &builder, {-2.7f, -92.3f, -895.7f, -400.0f},
-      {param0_data.get(), param1_data.get(), param2_data.get()},
-      ErrorSpec(0.01f));
+      {&param0_literal, &param1_literal, &param2_literal}, ErrorSpec(0.01f));
 }
 
 TEST_F(MapTest, MapGt) {
@@ -477,12 +440,8 @@ TEST_F(MapTest, MapOperationWithBuildError) {
 
   Literal param0_literal =
       LiteralUtil::CreateR1<float>({2.2f, 3.3f, 4.4f, 5.5f});
-  std::unique_ptr<GlobalData> param0_data =
-      client_->TransferToServer(param0_literal).value();
   Literal param1_literal =
       LiteralUtil::CreateR1<float>({5.1f, 4.4f, -0.1f, -5.5f});
-  std::unique_ptr<GlobalData> param1_data =
-      client_->TransferToServer(param1_literal).value();
 
   auto param0 = Parameter(&builder, 0, param0_literal.shape(), "param0");
   auto param1 = Parameter(&builder, 1, param1_literal.shape(), "param1");
@@ -498,7 +457,10 @@ TEST_F(MapTest, MapOperationWithBuildError) {
 class MapHloTest : public HloTestBase {};
 
 // TODO(b/230123847): Enable this on GPU once mhlo allows mixed-type map.
-XLA_TEST_F(MapHloTest, DISABLED_ON_GPU(MapWithMixedInputTypes)) {
+TEST_F(MapHloTest, MapWithMixedInputTypes) {
+  if (test::DeviceTypeIs(test::kGpu)) {
+    GTEST_SKIP();
+  }
   absl::string_view hlo_string = R"(
   HloModule MapMixedInputTypes
 
@@ -522,7 +484,7 @@ XLA_TEST_F(MapHloTest, DISABLED_ON_GPU(MapWithMixedInputTypes)) {
 
 // MapTest disables inline and algsimp. MapTestWithFullOpt runs all
 // optimizations.
-using MapTestWithFullOpt = ClientLibraryTestBase;
+using MapTestWithFullOpt = ClientLibraryTestRunnerMixin<HloTestBase>;
 
 // Regression test for b/31466798. The inliner simplifies map(param0, param1,
 // power) to power(param0, param1) without deleting the old subcomputation which
@@ -540,18 +502,13 @@ TEST_F(MapTestWithFullOpt, MapScalarPower) {
 
   Literal param0_literal = LiteralUtil::CreateR0<float>(2.0f);
   Literal param1_literal = LiteralUtil::CreateR0<float>(5.0f);
-  std::unique_ptr<GlobalData> param0_data =
-      client_->TransferToServer(param0_literal).value();
-  std::unique_ptr<GlobalData> param1_data =
-      client_->TransferToServer(param1_literal).value();
 
   auto param0 = Parameter(&builder, 0, param0_literal.shape(), "param0");
   auto param1 = Parameter(&builder, 1, param1_literal.shape(), "param1");
   Map(&builder, {param0, param1}, power, {});
 
-  ComputeAndCompareR0<float>(&builder, 32.0f,
-                             {param0_data.get(), param1_data.get()},
-                             ErrorSpec(0.01f));
+  ComputeAndCompareR0<float>(
+      &builder, 32.0f, {&param0_literal, &param1_literal}, ErrorSpec(0.01f));
 }
 
 // Regression test for b/35786417, where the inliner would not notice the change
@@ -567,17 +524,13 @@ TEST_F(MapTestWithFullOpt, MapSubtractOppositeOrder) {
 
   Literal param0_literal = LiteralUtil::CreateR0<float>(2.0f);
   Literal param1_literal = LiteralUtil::CreateR0<float>(5.0f);
-  std::unique_ptr<GlobalData> param0_data =
-      client_->TransferToServer(param0_literal).value();
-  std::unique_ptr<GlobalData> param1_data =
-      client_->TransferToServer(param1_literal).value();
 
   auto param0 = Parameter(&builder, 0, param0_literal.shape(), "param0");
   auto param1 = Parameter(&builder, 1, param1_literal.shape(), "param1");
   Map(&builder, {param0, param1}, sub_opposite, {});
 
-  ComputeAndCompareR0<float>(
-      &builder, 3.0f, {param0_data.get(), param1_data.get()}, ErrorSpec(0.01f));
+  ComputeAndCompareR0<float>(&builder, 3.0f, {&param0_literal, &param1_literal},
+                             ErrorSpec(0.01f));
 }
 
 // Regression test for b/35786417, where the inliner would CHECK-fail due to the
@@ -591,13 +544,11 @@ TEST_F(MapTestWithFullOpt, MapSquare) {
   auto square = sub_builder->BuildAndNoteError();
 
   Literal param0_literal = LiteralUtil::CreateR0<float>(10.0f);
-  std::unique_ptr<GlobalData> param0_data =
-      client_->TransferToServer(param0_literal).value();
 
   auto param0 = Parameter(&builder, 0, param0_literal.shape(), "param0");
   Map(&builder, {param0}, square, {});
 
-  ComputeAndCompareR0<float>(&builder, 100.0f, {param0_data.get()},
+  ComputeAndCompareR0<float>(&builder, 100.0f, {&param0_literal},
                              ErrorSpec(0.01f));
 }
 

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/log/log.h"
 #include "absl/types/span.h"
 #include "llvm/Support/MathExtras.h"
 #include "mlir/IR/AffineExpr.h"
@@ -68,6 +69,8 @@ int64_t EvaluateAffineExpr(AffineExpr expr,
       return llvm::divideFloorSigned(lhs, rhs);
     case AffineExprKind::Mod:
       return lhs % rhs;
+    case AffineExprKind::CeilDiv:
+      return llvm::divideCeilSigned(lhs, rhs);
     default:
       LOG(FATAL) << "Unsupported expression";
   }

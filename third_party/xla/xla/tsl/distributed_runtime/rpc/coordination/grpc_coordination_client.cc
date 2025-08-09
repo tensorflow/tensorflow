@@ -75,6 +75,8 @@ using tensorflow::TryGetKeyValueRequest;
 using tensorflow::TryGetKeyValueResponse;
 using tensorflow::WaitForAllTasksRequest;
 using tensorflow::WaitForAllTasksResponse;
+using tensorflow::WatchJobStateRequest;
+using tensorflow::WatchJobStateResponse;
 
 class GrpcCoordinationClientThread {
  public:
@@ -199,6 +201,17 @@ class GrpcCoordinationClient : public CoordinationClient {
     new RPCState<protobuf::Message>(
         &stub_, cq_, "/tensorflow.CoordinationService/GetTaskState", *request,
         response, std::move(done), /*call_opts=*/nullptr,
+        /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
+        &target_);
+  }
+
+  void WatchJobStateAsync(CallOptions* call_opts,
+                          const WatchJobStateRequest* request,
+                          WatchJobStateResponse* response,
+                          StatusCallback done) override {
+    new RPCState<protobuf::Message>(
+        &stub_, cq_, "/tensorflow.CoordinationService/WatchJobState", *request,
+        response, std::move(done), call_opts,
         /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
         &target_);
   }

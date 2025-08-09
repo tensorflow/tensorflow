@@ -21,10 +21,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/cuda/compilation_options.h"
 #include "xla/stream_executor/cuda/compilation_provider.h"
-#include "xla/stream_executor/device_description.h"
 
 namespace stream_executor::cuda {
 
@@ -39,6 +39,8 @@ class NvptxcompilerCompilationProvider : public CompilationProvider {
   std::string name() const override {
     return "NvptxcompilerCompilationProvider";
   }
+
+  absl::StatusOr<int> GetLatestPtxIsaVersion() const override;
 
   absl::StatusOr<Assembly> Compile(
       const CudaComputeCapability& cc, absl::string_view ptx,

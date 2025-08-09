@@ -1,5 +1,5 @@
-// RUN: tf-opt --split-input-file --tfl-to-tosa-pipeline --verify-each %s | FileCheck %s
-// REQUIRES: tf_tosa
+// RUN: tf-tosa-opt --split-input-file --tfl-to-tosa-pipeline --verify-each %s | FileCheck %s
+
 // Test tf legalization that produce TOSA ResultsBroadcastableShape operators with unequal ranks
 
 // -----
@@ -110,8 +110,17 @@ func.func @test_mul_qi8(%arg0: tensor<13x21x3x!quant.uniform<i8:f32, 0.015681236
 }
 
 // -----
+// CHECK-LABEL: test_floor_div
+// CHECK: tosa.intdiv
+// CHECK: tosa.select
+func.func @test_floor_div(%arg0: tensor<13x21x3xi32>, %arg1: tensor<1x13x1x3xi32>) -> tensor<1x13x21x3xi32> {
+  %0 = "tfl.floor_div"(%arg0, %arg1)  {fused_activation_function = "NONE"}  : (tensor<13x21x3xi32>, tensor<1x13x1x3xi32>) -> tensor<1x13x21x3xi32>
+  func.return %0 : tensor<1x13x21x3xi32>
+}
+
+// -----
 // CHECK-LABEL: test_div
-// CHECK: tosa.int_div
+// CHECK: tosa.intdiv
 func.func @test_div(%arg0: tensor<13x21x3xi32>, %arg1: tensor<i32>) -> tensor<*xi32> {
   %0 = "tfl.div"(%arg0, %arg1)  {fused_activation_function = "NONE"}  : (tensor<13x21x3xi32>, tensor<i32>) -> tensor<*xi32>
   func.return %0 : tensor<*xi32>

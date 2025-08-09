@@ -23,7 +23,6 @@ limitations under the License.
 
 #include "xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
-#include "xla/tests/test_macros.h"
 #include "xla/tsl/framework/device_id.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
@@ -537,7 +536,7 @@ TEST_F(GPUDeviceTest, MultipleVirtualDevicesWithSpecifiedNumber) {
 // Enabling unified memory on pre-Pascal GPUs results in an initialization
 // error.
 TEST_F(GPUDeviceTest, UnifiedMemoryUnavailableOnPrePascalGpus) {
-  if (GetComputeCapability().IsAtLeast(se::CudaComputeCapability::PASCAL_)) {
+  if (GetComputeCapability().IsAtLeast(se::CudaComputeCapability::kPascal)) {
     return;
   }
 
@@ -559,7 +558,7 @@ TEST_F(GPUDeviceTest, UnifiedMemoryAllocation) {
   static constexpr tsl::PlatformDeviceId kPlatformDeviceId(0);
 
   // Exit early if running on pre-Pascal GPUs.
-  if (!GetComputeCapability().IsAtLeast(se::CudaComputeCapability::PASCAL_)) {
+  if (!GetComputeCapability().IsAtLeast(se::CudaComputeCapability::kPascal)) {
     LOG(INFO)
         << "Unified memory allocation is not supported with pre-Pascal GPUs.";
     return;

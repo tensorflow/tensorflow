@@ -26,10 +26,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/base/log_severity.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
+#include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "ml_dtypes/include/float8.h"
@@ -37,10 +39,31 @@ limitations under the License.
 #include "xla/maybe_owning.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/types.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/ml_dtypes.h"
 
 namespace xla {
 namespace {
+
+using ::testing::ElementsAre;
+
+TEST(UtilTest, Product) {
+  EXPECT_EQ(Product({}), 1);
+  EXPECT_EQ(Product({1}), 1);
+  EXPECT_EQ(Product({2, 3}), 2 * 3);
+  EXPECT_EQ(Product({2, 7, 9}), 2 * 7 * 9);
+}
+
+TEST(UtilTest, ToMixedRadix) {
+  EXPECT_THAT(ToMixedRadix<std::vector<int64_t>>(0, {2, 3, 4}),
+              ElementsAre(0, 0, 0));
+  EXPECT_THAT(ToMixedRadix<std::vector<int64_t>>(1, {2, 3, 4}),
+              ElementsAre(0, 0, 1));
+  EXPECT_THAT(ToMixedRadix<std::vector<int64_t>>(19, {2, 3, 4}),
+              ElementsAre(19 / (3 * 4), 7 / 4, 3));
+  EXPECT_THAT(ToMixedRadix<std::vector<int64_t>>(23, {3, 2, 4}),
+              ElementsAre(23 / (2 * 4), 7 / 4, 3));
+}
 
 // Verifies that, even with a different number of leading spaces, the
 // Reindent routine turns them into a uniform number of leading spaces.
@@ -407,6 +430,29 @@ TEST(UtilTest, MaybeOwningTestShared) {
   EXPECT_EQ(*c1, 'x');
   EXPECT_EQ(*c2, 'x');
   EXPECT_EQ(c1.get(), c2.get());
+}
+
+TEST(UtilTest, MaybeOwningTestSharedNoCharType) {
+  auto owner = std::make_unique<int>();
+  *owner = 42;
+  MaybeOwning<int> i1(owner.get());
+  MaybeOwning<int> i2(owner.get());
+
+  EXPECT_EQ(*i1, 42);
+  EXPECT_EQ(*i2, 42);
+  EXPECT_EQ(i1.get(), i2.get());
+}
+
+TEST(UtilTest, PrintAllFields) {
+  // Here we are using one of the bool fields that has the default value to
+  // false and ensuring that it is always printed.
+  ExecutionProfile execution_profile;
+  execution_profile.set_compilation_cache_hit(true);
+  std::string result = PrintAllFields(execution_profile);
+  EXPECT_TRUE(absl::StrContains(result, "compilation_cache_hit: true"));
+  execution_profile.set_compilation_cache_hit(false);
+  result = PrintAllFields(execution_profile);
+  EXPECT_TRUE(absl::StrContains(result, "compilation_cache_hit: false"));
 }
 
 }  // namespace

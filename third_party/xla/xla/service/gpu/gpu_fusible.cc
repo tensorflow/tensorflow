@@ -232,10 +232,14 @@ FusionDecision FusionHeroesAreCompatible(
       IsReductionFromOrToContiguousDimensions(*hero1, device_info);
   auto tiled_transpose_hero1 = GetDescriptionForTiledTransposeEmitter(*hero1);
   bool hero1_is_unnested_transpose = tiled_transpose_hero1.has_value();
+  bool hero1_is_nested_transpose =
+      hero1->opcode() == HloOpcode::kTranspose && !hero1_is_unnested_transpose;
   bool hero2_is_unnested_reduce =
       IsReductionFromOrToContiguousDimensions(*hero2, device_info);
   auto tiled_transpose_hero2 = GetDescriptionForTiledTransposeEmitter(*hero2);
   bool hero2_is_unnested_transpose = tiled_transpose_hero2.has_value();
+  bool hero2_is_nested_transpose =
+      hero2->opcode() == HloOpcode::kTranspose && !hero2_is_unnested_transpose;
 
   if (hero1_is_unnested_reduce && hero2_is_unnested_reduce &&
       !AreReductionsMultiOutputFusionCompatible(hero2, hero1)) {
@@ -245,9 +249,23 @@ FusionDecision FusionHeroesAreCompatible(
              // same shape and permute the same dimensions.
              !tiled_transpose_hero1->IsEquivalent(*tiled_transpose_hero2)) {
     return FusionDecision::Forbid("tiled transposes with different shapes");
+  } else if (((hero1_is_unnested_transpose || hero1_is_unnested_reduce) &&
+              hero2_is_nested_transpose) ||
+             (hero1_is_nested_transpose &&
+              (hero2_is_unnested_transpose || hero2_is_unnested_reduce))) {
+    // A elemental (aka nested) transpose has a different read pattern than an
+    // unnested transpose or reduction, because the emitters for tiled
+    // transposes and parallel reductions ensure uniform read patterns.
+    // A multi-output fusion with roots that have different read patterns is
+    // generally not profitable. Input data will be read multiple times by
+    // different threads, which defeats the purpose of multi-output fusion.
+    // What is worse, increased register pressure can impact performance.
+    return FusionDecision::Forbid(
+        "multi-output fusion of a nested transpose with an unnested hero op");
   } else if ((hero1_is_unnested_transpose && hero2_is_unnested_reduce) ||
              (hero1_is_unnested_reduce && hero2_is_unnested_transpose)) {
-    return FusionDecision::Forbid("MOF-fusion of a transpose and a reduction");
+    return FusionDecision::Forbid(
+        "multi-output fusion of a transpose and a reduction");
   }
   // If we are dealing with unnested transpose, make sure that we can still
   // treat them as unnested transpose after the sibling fusion.
@@ -509,28 +527,31 @@ static int64_t SharedMemoryUsageNoCache(
              IsReductionFromOrToContiguousDimensions(instr, device_info)) {
     ReductionDimensions reduction_info =
         GetReductionKindAndContiguousComponents(instr);
-    int64_t primitive_size = ShapeUtil::ByteSizeOfPrimitiveType(
-        instr.operand(0)->shape().element_type());
-    int num_variadic =
-        instr.shape().IsTuple() ? instr.shape().tuple_shapes_size() : 1;
+    int64_t primitive_size_sum = 0;
+    // Variadic reductions will allocate one shared memory buffer for each
+    // input. They all have the same shape, so we can just sum up the primitive
+    // sizes of the inputs.
+    for (int i = 0; i < instr.operand_count() / 2; ++i) {
+      primitive_size_sum += ShapeUtil::ByteSizeOfPrimitiveType(
+          instr.operand(i)->shape().element_type());
+    }
+
     if (reduction_info.is_row_reduction) {
-      // __shared__[32] is used for row reduction.
-      return 32 * primitive_size * num_variadic;
+      // In row reductions, we write at most one element per warp to shared
+      // memory, regardless of whether the reduction is vectorized or not. We
+      // have at most 32 warps for a single row. We could tighten this estimate,
+      // but it doesn't really matter. Row reductions are very unlikely to ever
+      // run out of shared memory budget.
+      return 32 * primitive_size_sum;
     } else {
-      // __shared__[4][32][33] cache is used for column reduction ("4" comes
-      // from potential x-tiling).
-      return 4 * 32 * 33 * primitive_size * num_variadic;
+      // The shape of the cache for column reductions is 32x(vector_size * 32 +
+      // 1). We don't know the actual vector size here, so we assume the
+      // maximum.
+      constexpr int kMaxVectorSize = 4;
+      return 32 * (kMaxVectorSize * 32 + 1) * primitive_size_sum;
     }
   } else if (auto tr = GetDescriptionForTiledTransposeEmitter(instr)) {
-    // Tile size for transposition.
-    int64_t primitive_size =
-        ShapeUtil::ByteSizeOfPrimitiveType(instr.shape().element_type());
-    int64_t bytes_required = 32 * 33 * primitive_size;
-    // If the last dimension is not changed, it becomes part of the tile.
-    if (tr->permutation.back() == tr->permutation.size() - 1) {
-      bytes_required *= tr->dimensions.back();
-    }
-    return bytes_required;
+    return tr->shmem_usage;
   }
   // Other fused expressions for now don't need the shared memory budget.
   return 0;
@@ -617,9 +638,6 @@ static int64_t NumUnnestedReductions(const HloInstruction& instr,
   return cache->GetNumUnnestedReductions(instr);
 }
 
-// This function limits the maximum number of operands to a fusion, and the
-// amount of shared memory which can be consumed by the fusion.
-//
 // There's a cap on how many parameters we can pass to a CUDA kernel, but
 // exactly what that limit is hazy, as it depends on (among other things) how
 // much GPU constant memory is in use for other purposes.
@@ -640,27 +658,9 @@ static int64_t NumUnnestedReductions(const HloInstruction& instr,
 // If the fusion is a producer/consumer fusion and instr1 is the
 // consumer and instr2 is the producer, set is_consumer_producer_fusion
 // to true to enable more fusion.
-FusionDecision FusionFitsInBudget(const HloInstruction& instr1,
-                                  const HloInstruction& instr2,
-                                  const se::DeviceDescription& device_info,
-                                  bool is_consumer_producer_fusion,
-                                  FusionInfoCache* cache /*=nullptr*/) {
-  if (SharedMemoryUsage(instr1, cache, device_info) +
-          SharedMemoryUsage(instr2, cache, device_info) >
-      device_info.shared_memory_per_block()) {
-    return FusionDecision::Forbid(
-               "shared memory usage would be over the budget of ")
-           << device_info.shared_memory_per_block() << "B";
-  }
-
-  if (NumUnnestedReductions(instr1, cache, device_info) +
-          NumUnnestedReductions(instr2, cache, device_info) >
-      kMaxUnnestedReductionOutputsPerFusion) {
-    return FusionDecision::Forbid("over ")
-           << kMaxUnnestedReductionOutputsPerFusion
-           << " unnested reductions in fusion";
-  }
-
+FusionDecision FusionFitsInParameterLimit(const HloInstruction& instr1,
+                                          const HloInstruction& instr2,
+                                          bool is_consumer_producer_fusion) {
   // Compute the number of outputs of the (possibly multi-output) fusion node
   // we're considering creating.
   //
@@ -725,6 +725,37 @@ FusionDecision FusionFitsInBudget(const HloInstruction& instr1,
         "per fusion");
   }
   return FusionDecision::Allow();
+}
+
+// This function limits the maximum number of operands to a fusion, the number
+// of unnested reductions in multi-output fusions, and the amount of shared
+// memory which can be consumed by the fusion.
+//
+// If the fusion is a producer/consumer fusion and instr1 is the
+// consumer and instr2 is the producer, set is_consumer_producer_fusion
+// to true to enable more fusion.
+FusionDecision FusionFitsInBudget(const HloInstruction& instr1,
+                                  const HloInstruction& instr2,
+                                  const se::DeviceDescription& device_info,
+                                  bool is_consumer_producer_fusion,
+                                  FusionInfoCache* cache /*=nullptr*/) {
+  if (SharedMemoryUsage(instr1, cache, device_info) +
+          SharedMemoryUsage(instr2, cache, device_info) >
+      device_info.shared_memory_per_block()) {
+    return FusionDecision::Forbid(
+               "shared memory usage would be over the budget of ")
+           << device_info.shared_memory_per_block() << "B";
+  }
+
+  if (NumUnnestedReductions(instr1, cache, device_info) +
+          NumUnnestedReductions(instr2, cache, device_info) >
+      kMaxUnnestedReductionOutputsPerFusion) {
+    return FusionDecision::Forbid("over ")
+           << kMaxUnnestedReductionOutputsPerFusion
+           << " unnested reductions in fusion";
+  }
+  return FusionFitsInParameterLimit(instr1, instr2,
+                                    is_consumer_producer_fusion);
 }
 
 bool IsFusibleAsMultiOutputFusionRoot(
@@ -819,6 +850,8 @@ std::vector<const HloInstruction*> GetFusionRoots(
 }
 
 bool IsGenericTritonFusion(const HloInstruction& instr) {
+  // Note that we don't accept kTritonNestedGemmFusionKind here as they should
+  // not be fused with anything else.
   return instr.opcode() == HloOpcode::kFusion &&
          instr.fusion_kind() == HloInstruction::FusionKind::kCustom &&
          instr.backend_config<GpuBackendConfig>().ok() &&
@@ -840,8 +873,10 @@ bool MayPreventVectorization(const HloFusionAdaptor& fusion) {
       case HloOpcode::kConcatenate:
         return node.instruction().operand_count() >
                kMaxConcatArgumentsForUnrolling;
-      case HloOpcode::kReduce:
-        return node.instruction().shape().tuple_shapes_size() > 1;
+      case HloOpcode::kReduce: {
+        const Shape& shape = node.instruction().shape();
+        return shape.IsTuple() && shape.tuple_shapes().size() > 1;
+      }
       default:
         return false;
     }

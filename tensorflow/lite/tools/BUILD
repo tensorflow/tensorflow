@@ -1,3 +1,6 @@
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library", "py_strict_test")
 
 # Placeholder: load py_proto_library
@@ -246,6 +249,7 @@ cc_library(
     name = "tool_params",
     srcs = ["tool_params.cc"],
     hdrs = ["tool_params.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [":logging"],
 )
@@ -265,6 +269,7 @@ cc_library(
     name = "command_line_flags",
     srcs = ["command_line_flags.cc"],
     hdrs = ["command_line_flags.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         ":logging",
@@ -395,6 +400,7 @@ cc_library(
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
         "@com_google_absl//absl/types:span",
+        "@eigen_archive//:eigen3",
     ],
 )
 

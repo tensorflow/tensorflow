@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -74,7 +75,7 @@ proto file.)doc");
 class CalibrationStatisticsSaverOp : public OpKernel {
  public:
   explicit CalibrationStatisticsSaverOp(
-      absl::Nonnull<OpKernelConstruction*> context)
+      OpKernelConstruction* absl_nonnull context)
       : OpKernel(context) {
     std::string output_file_path;
     OP_REQUIRES_OK(context,
@@ -128,7 +129,7 @@ class CalibrationStatisticsSaverOp : public OpKernel {
     }
   }
 
-  void Compute(absl::Nonnull<OpKernelContext*> context) override {
+  void Compute(OpKernelContext* absl_nonnull context) override {
     for (int idx = 0; idx < ids_.size(); ++idx) {
       AssignIfNotExists(
           ids_[idx], static_cast<CalibrationMethod>(calibration_methods_[idx]));

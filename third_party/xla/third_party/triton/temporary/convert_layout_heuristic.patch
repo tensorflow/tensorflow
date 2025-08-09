@@ -1,0 +1,28 @@
+This chanage prevents convert_layout propagation of slice layouts across
+broadcast/expand_dims.
+
+It is generally a good idea, but it is especially important when running
+triton-xla-squeeze-dims, which removes expand_dims ops. The expand_dims ops
+remove the slice layouts, so we need to prevent them from propagating
+further across broadcast ops which can cause large tensor materialization.
+
+See also b/422133176.
+
+--- a/lib/Dialect/TritonGPU/Transforms/RemoveLayoutConversions.cpp	2025-05-20 08:08:14.000000000 -0700
++++ b/lib/Dialect/TritonGPU/Transforms/RemoveLayoutConversions.cpp	2025-07-22 04:36:43.000000000 -0700
+@@ -300,6 +300,15 @@
+         continue;
+       }
+     }
++    // Heuristic: don't propagate slice layouts across broadcasts.
++    // This can cause massive register pressure. It's better to convert to
++    // blocked before the broadcast.
++    if (isa<BroadcastOp>(user) &&
++        llvm::any_of(info.encodings, [](Attribute encoding) {
++          return llvm::isa_and_nonnull<SliceEncodingAttr>(encoding);
++        })) {
++      continue;
++    }
+     if (user->hasTrait<OpTrait::SameOperandsAndResultEncoding>() ||
+         user->hasTrait<OpTrait::Elementwise>() ||
+         isa<ReduceOp, ExpandDimsOp, ReshapeOp, TransOp, JoinOp, SplitOp,

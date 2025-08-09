@@ -39,12 +39,13 @@ absl::Status RandomAccessInputStream::ReadNBytes(int64_t bytes_to_read,
   result->resize_uninitialized(bytes_to_read);
   char* result_buffer = &(*result)[0];
   absl::string_view data;
-  absl::Status s = file_->Read(pos_, bytes_to_read, &data, result_buffer);
+  absl::Status s =
+      file_->Read(pos_, data, absl::MakeSpan(result_buffer, bytes_to_read));
   if (data.data() != result_buffer) {
     memmove(result_buffer, data.data(), data.size());
   }
   result->resize(data.size());
-  if (s.ok() || errors::IsOutOfRange(s)) {
+  if (s.ok() || absl::IsOutOfRange(s)) {
     pos_ += data.size();
   }
   return s;
@@ -58,7 +59,7 @@ absl::Status RandomAccessInputStream::ReadNBytes(int64_t bytes_to_read,
   }
   int64_t current_size = result->size();
   absl::Status s = file_->Read(pos_, bytes_to_read, result);
-  if (s.ok() || errors::IsOutOfRange(s)) {
+  if (s.ok() || absl::IsOutOfRange(s)) {
     pos_ += result->size() - current_size;
   }
   return s;
@@ -78,9 +79,9 @@ absl::Status RandomAccessInputStream::SkipNBytes(int64_t bytes_to_skip) {
   // not reached yet and we could return.
   if (bytes_to_skip > 0) {
     absl::string_view data;
-    absl::Status s =
-        file_->Read(pos_ + bytes_to_skip - 1, 1, &data, scratch.get());
-    if ((s.ok() || errors::IsOutOfRange(s)) && data.size() == 1) {
+    absl::Status s = file_->Read(pos_ + bytes_to_skip - 1, data,
+                                 absl::MakeSpan(scratch.get(), 1));
+    if ((s.ok() || absl::IsOutOfRange(s)) && data.size() == 1) {
       pos_ += bytes_to_skip;
       return absl::OkStatus();
     }
@@ -89,8 +90,9 @@ absl::Status RandomAccessInputStream::SkipNBytes(int64_t bytes_to_skip) {
   while (bytes_to_skip > 0) {
     int64_t bytes_to_read = std::min<int64_t>(kMaxSkipSize, bytes_to_skip);
     absl::string_view data;
-    absl::Status s = file_->Read(pos_, bytes_to_read, &data, scratch.get());
-    if (s.ok() || errors::IsOutOfRange(s)) {
+    absl::Status s =
+        file_->Read(pos_, data, absl::MakeSpan(scratch.get(), bytes_to_read));
+    if (s.ok() || absl::IsOutOfRange(s)) {
       pos_ += data.size();
     } else {
       return s;

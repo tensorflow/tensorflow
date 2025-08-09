@@ -86,6 +86,10 @@ class ImportConstantsPass
   StringRef getDescription() const override {
     return "Converts an `stablehlo.constant` into an `sdy.constant`.";
   }
+
+  void getDependentDialects(mlir::DialectRegistry& registry) const final {
+    registry.insert<mlir::sdy::SdyDialect>();
+  }
 };
 
 }  // namespace

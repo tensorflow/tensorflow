@@ -2,7 +2,7 @@
 #   HLO parser implementation.
 
 load(
-    "//xla:xla.bzl",
+    "//xla:xla.default.bzl",
     "xla_cc_test",
 )
 load("//xla/tsl:tsl.bzl", "internal_visibility")
@@ -36,6 +36,7 @@ cc_library(
         "//xla:types",
         "//xla:util",
         "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:collective_op_group_mode",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:tile_assignment",
         "//xla/service:computation_layout",
@@ -72,11 +73,11 @@ xla_cc_test(
         ":hlo_lexer",
         ":hlo_parser",
         "//xla:array",
-        "//xla:protobuf_util",
         "//xla:shape_util",
         "//xla:window_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/builder:xla_builder",
+        "//xla/hlo/ir:collective_op_group_mode",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:pattern_matcher_gmock",
         "//xla/hlo/testlib:verified_hlo_module",
@@ -88,10 +89,12 @@ xla_cc_test(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
+        "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
     ],
@@ -115,5 +118,17 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:numbers",
         "@local_tsl//tsl/platform:regexp",
+    ],
+)
+
+xla_cc_test(
+    name = "hlo_lexer_test",
+    srcs = ["hlo_lexer_test.cc"],
+    deps = [
+        ":hlo_lexer",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
     ],
 )

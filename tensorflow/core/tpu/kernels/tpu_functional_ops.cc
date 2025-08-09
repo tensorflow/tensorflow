@@ -112,6 +112,7 @@ constexpr int kOtherDimOfTpuInputFastPath = 8;
 
 constexpr char kXLAShardingAttrName[] = "sharding";
 constexpr char kXLAShardingAttrAltName[] = "_XlaSharding";
+constexpr char kXLAShardingAttrAltNameV2[] = "_XlaShardingV2";
 
 tpu::TopologyProto GetTPUTopology() {
   const tpu::TpuTopologyExternal& topology =
@@ -1968,7 +1969,8 @@ absl::Status TPUPartitionedCallOp::ReplaceAndPartitionXLAShardingVariable(
   builder.Attr("N", num_cores_per_replica);
   builder.Attr("T", DT_RESOURCE);
   builder.Attr("partition_dim", split_dim);
-  builder.Attr("_XlaSharding", xla_sharding.SerializeAsString());
+  builder.Attr(kXLAShardingAttrAltName, xla_sharding.SerializeAsString());
+  builder.Attr(kXLAShardingAttrAltNameV2, xla_sharding.SerializeAsString());
   std::vector<NodeDefBuilder::NodeOut> inputs;
   inputs.reserve(num_cores_per_replica);
   for (int i = 0; i < num_cores_per_replica; i++) {
@@ -2362,7 +2364,6 @@ absl::Status TPUPartitionedCallOp::GetGraphFromFunction(
 
   // Pin the inputs and outputs to the local device to simplify the
   // function-dispatching logic.
-  local_device_name_ = library_runtime_->device()->name();
   replaced_input_indices_.resize(fbody->arg_nodes.size(), false);
   for (Node* node : graph->op_nodes()) {
     if (node->IsArg() || node->IsRetval()) {

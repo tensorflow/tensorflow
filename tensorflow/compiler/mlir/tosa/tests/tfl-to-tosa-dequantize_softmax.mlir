@@ -1,5 +1,5 @@
-// RUN: tf-opt --tosa-dequantize-tfl-softmax %s | FileCheck %s
-// REQUIRES: tf_tosa
+// RUN: tf-tosa-opt --tosa-dequantize-tfl-softmax %s | FileCheck %s
+
 
 // -----
 

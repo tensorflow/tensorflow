@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.4.3)
+cmake_minimum_required(VERSION 3.5)
 
 file(GLOB_RECURSE TF_RUNTIME_SRC "*.cc")
 add_library(tf_xla_runtime_objects OBJECT

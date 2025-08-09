@@ -23,7 +23,6 @@ limitations under the License.
 namespace tsl {
 
 bool CudnnUseAutotune();
-bool CudnnUseFrontend();
 bool CudnnUseRuntimeFusion();
 bool CudnnRnnUseAutotune();
 bool CudnnDisableConv1x1Optimization();
@@ -34,10 +33,9 @@ int64_t DebugCudnnRnnAlgo();
 // Returns true if the CuDNN depthwise convolution can be used. See cudnn
 // release note 7.6.3.
 // (https://docs.nvidia.com/deeplearning/sdk/cudnn-release-notes/rel_763.html)
-bool ShouldCudnnGroupedConvolutionBeUsed(const int32_t filter_rows,
-                                         const int32_t filter_cols,
-                                         const int32_t in_depth,
-                                         const int32_t out_depth);
+bool ShouldCudnnGroupedConvolutionBeUsed(int32_t filter_rows,
+                                         int32_t filter_cols, int32_t in_depth,
+                                         int32_t out_depth);
 }  // namespace tsl
 
 #endif  // XLA_TSL_UTIL_USE_CUDNN_H_

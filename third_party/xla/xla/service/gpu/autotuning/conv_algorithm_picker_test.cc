@@ -88,7 +88,8 @@ ENTRY main {
   changed = false;
   DebugOptions opts = DefaultDebugOptionsIgnoringFlags();
 
-  AutotuneConfig cfg{DeviceConfig{stream_exec, nullptr}, opts};
+  AutotuneConfig cfg = AutotuneConfig::FromDebugOptions(
+      DeviceOrDevicelessConfig{DeviceConfig{stream_exec, nullptr}}, opts);
   TF_ASSERT_OK_AND_ASSIGN(changed,
                           RunHloPass(GpuConvAlgorithmPicker(cfg), m.get()));
   ASSERT_TRUE(changed);
@@ -143,7 +144,7 @@ ENTRY main {
 
 TEST_F(GpuConvAlgorithmPickerTest, SetAlgorithmGraphConvF8) {
   if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::HOPPER)) {
+          se::CudaComputeCapability::kHopper)) {
     GTEST_SKIP() << "FP8 convolutions require Hopper or newer architecture.";
   }
   constexpr absl::string_view kHlo = R"(
@@ -200,7 +201,8 @@ ENTRY main {
   ASSERT_TRUE(changed);
 
   DebugOptions opts = DefaultDebugOptionsIgnoringFlags();
-  AutotuneConfig cfg{DeviceConfig{stream_exec, nullptr}, opts};
+  AutotuneConfig cfg = AutotuneConfig::FromDebugOptions(
+      DeviceOrDevicelessConfig{DeviceConfig{stream_exec, nullptr}}, opts);
   TF_ASSERT_OK_AND_ASSIGN(changed,
                           RunHloPass(GpuConvAlgorithmPicker(cfg), m.get()));
   ASSERT_TRUE(changed);

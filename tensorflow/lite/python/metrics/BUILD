@@ -1,3 +1,4 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "if_portable", "pybind_extension")
@@ -16,9 +17,9 @@ cc_library(
     ),
     hdrs = ["wrapper/metrics_wrapper.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//tensorflow/python:__pkg__"],
+    visibility = ["//visibility:private"],
     deps = [
-        "//third_party/python_runtime:headers",
+        "@local_xla//third_party/python_runtime:headers",
     ] + if_portable(
         if_false = [
             "//learning/brain/google/monitoring:metrics_exporter",
@@ -31,21 +32,22 @@ pybind_extension(
     name = "_pywrap_tensorflow_lite_metrics_wrapper",
     srcs = ["wrapper/metrics_wrapper_pybind11.cc"],
     hdrs = ["wrapper/metrics_wrapper.h"],
+    common_lib_packages = [
+        "litert/python",
+        "tensorflow/lite/python",
+    ],
     compatible_with = get_compatible_with_portable(),
     enable_stub_generation = True,
     pytype_srcs = [
         "_pywrap_tensorflow_lite_metrics_wrapper.pyi",
     ],
-    visibility = [
-        "__subpackages__",
-        "//tensorflow/python:__pkg__",
-        "//tensorflow/tools/pip_package:__subpackages__",
-    ],
+    visibility = ["//visibility:public"],
+    wrap_py_init = True,
     deps = [
         ":metrics_wrapper_lib",
         "//tensorflow/python/lib/core:pybind11_lib",
-        "//third_party/python_runtime:headers",
         "@com_google_protobuf//:protobuf",
+        "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
     ],
 )

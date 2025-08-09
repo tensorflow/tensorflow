@@ -20,7 +20,9 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -62,6 +64,20 @@ class PjrtCApiTestBase : public ::testing::Test {
 
   std::string BuildSingleDeviceCompileOptionStr();
 
+  static constexpr absl::string_view kExecutableName = "operation";
+
+  xla::XlaComputation CreateAddOneComputation();
+
+  std::unique_ptr<PJRT_LoadedExecutable, PJRT_LoadedExecutableDeleter>
+  create_executable(const PJRT_Api* c_api, PJRT_Client* client);
+
+  std::unique_ptr<PJRT_LoadedExecutable, PJRT_LoadedExecutableDeleter>
+  create_executable(const PJRT_Api* c_api, PJRT_Client* client,
+                    const xla::XlaComputation& computation);
+
+  std::unique_ptr<PJRT_Executable, PJRT_ExecutableDeleter> GetExecutable(
+      PJRT_LoadedExecutable* loaded_executable, const PJRT_Api* api);
+
   absl::Span<PJRT_Device* const> GetClientAddressableDevices() const;
 
   PJRT_Client_BufferFromHostBuffer_Args CreateBufferFromHostBufferArgs(
@@ -75,9 +91,19 @@ class PjrtCApiTestBase : public ::testing::Test {
                           const xla::Shape& shape,
                           PJRT_Device* device = nullptr);
 
+  // Create a buffer with shape 4xf32 and with values {41, 42, 43, 44}.
   std::pair<std::unique_ptr<PJRT_Buffer, ::pjrt::PJRT_BufferDeleter>,
             xla::PjRtFuture<>>
-  create_buffer(PJRT_Device* device = nullptr);
+  create_iota_buffer(PJRT_Device* device = nullptr);
+
+  // Create an uninitialized buffer with shape 4xf32.
+  std::unique_ptr<PJRT_Buffer, ::pjrt::PJRT_BufferDeleter> create_buffer(
+      PJRT_Device* device = nullptr);
+
+  // Create an uninitialized buffer with a given shape.
+  std::unique_ptr<PJRT_Buffer, ::pjrt::PJRT_BufferDeleter>
+  create_uninitialized_buffer(const xla::Shape& shape,
+                              PJRT_Device* device = nullptr);
 
   std::unique_ptr<PJRT_Error, ::pjrt::PJRT_ErrorDeleter> ToUniquePtr(
       PJRT_Error* error);

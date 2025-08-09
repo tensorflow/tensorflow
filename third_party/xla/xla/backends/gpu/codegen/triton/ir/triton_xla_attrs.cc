@@ -13,111 +13,85 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cstdint>
-
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/Support/ErrorHandling.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/OpDefinition.h"  // IWYU pragma: keep
 #include "mlir/IR/Types.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
-#include "triton/Dialect/Triton/IR/Utility.h"
-#include "triton/Dialect/TritonGPU/IR/Attributes.h"
-#include "triton/Dialect/TritonGPU/IR/Dialect.h"
-#include "triton/Dialect/TritonGPU/IR/LinearLayoutConversions.h"
-#include "triton/Dialect/TritonGPU/IR/TritonGPUInterfaces.h"
-#include "triton/Tools/LinearLayout.h"
 
 namespace mlir::triton::xla {
 
-//--- SparseDotMetaEncodingAttr ---
-unsigned SparseDotMetaEncodingAttr::getTotalElemsPerThread(
-    ArrayRef<int64_t> shape, Type eltTy) const {
-  constexpr int kMetadataElementsPerWarp = 16;
-  auto mmaLayout = mlir::cast<gpu::NvidiaMmaEncodingAttr>(getParent());
-  return product<int64_t>(shape) /
-         (mmaLayout.getWarpsPerCTA()[0] * kMetadataElementsPerWarp);
-}
-
-SmallVector<unsigned> SparseDotMetaEncodingAttr::getElemsPerThread(
-    ArrayRef<int64_t> shape, Type eltTy) const {
-  llvm_unreachable("getElemsPerThread is not supported for sparse dot meta");
-  return SmallVector<unsigned>();
-}
-
-SmallVector<unsigned> SparseDotMetaEncodingAttr::getCTAsPerCGA() const {
-  return gpu::getCTAsPerCGA(getParent());
-}
-SmallVector<unsigned> SparseDotMetaEncodingAttr::getCTAOrder() const {
-  return gpu::getCTAOrder(getParent());
-}
-SmallVector<unsigned> SparseDotMetaEncodingAttr::getCTASplitNum() const {
-  return gpu::getCTASplitNum(getParent());
-}
-SmallVector<unsigned> SparseDotMetaEncodingAttr::getWarpsPerCTA() const {
-  return gpu::getWarpsPerCTA(getParent());
-}
-SmallVector<unsigned> SparseDotMetaEncodingAttr::getWarpOrder() const {
-  return {1, 0};
-}
-SmallVector<unsigned> SparseDotMetaEncodingAttr::getThreadsPerWarp() const {
-  return gpu::getThreadsPerWarp(getParent());
-}
-SmallVector<unsigned> SparseDotMetaEncodingAttr::getThreadOrder() const {
-  return {1, 0};
-}
-SmallVector<unsigned> SparseDotMetaEncodingAttr::getSizePerThread() const {
-  return gpu::getSizePerThread(getParent());
-}
-LinearLayout SparseDotMetaEncodingAttr::toLinearLayout(
-    ArrayRef<int64_t> shape) const {
-  return gpu::toLinearLayout(shape, getParent());
-}
-
-SmallVector<unsigned> SparseDotMetaEncodingAttr::getRepOrder() const {
-  // TODO: b/381422752 - Maybe we should reuse upstream's implementation from
-  // lib/Dialect/TritonGPU/IR/Dialect.cpp, but we would need to make it public
-  // first.
-  if (auto parent = mlir::dyn_cast<gpu::DistributedEncodingTrait>(getParent()))
-    return parent.getRepOrder();
-  llvm::report_fatal_error("Unimplemented usage of getRepOrder");
-}
-
-namespace {
-mlir::ParseResult parseI64ArrayAttr(mlir::AsmParser& parser,
-                                    mlir::DenseI64ArrayAttr& array) {
+static mlir::ParseResult parseI64ArrayAttr(mlir::AsmParser& parser,
+                                           mlir::DenseI64ArrayAttr& array) {
   array = mlir::dyn_cast_or_null<mlir::DenseI64ArrayAttr>(
       mlir::DenseI64ArrayAttr::parse(parser, mlir::Type{}));
   if (!array) return mlir::failure();
   return mlir::success();
 }
-}  // namespace
+
+ParseResult ParseOptionalSwizzleMode(mlir::AsmParser& parser,
+                                     SwizzleModeAttr& swizzle_mode) {
+  if (parser.parseOptionalComma()) {
+    // If there is no comma, we don't have a swizzle mode, but it's still valid.
+    swizzle_mode = nullptr;
+    return mlir::success();
+  }
+  StringAttr swizzle_mode_str;
+  if (parser.parseKeyword("swizzle_mode") || parser.parseEqual() ||
+      parser.parseAttribute(swizzle_mode_str)) {
+    return mlir::failure();
+  }
+  auto maybe_swizzle_mode = symbolizeSwizzleMode(swizzle_mode_str);
+  if (!maybe_swizzle_mode.has_value()) {
+    return mlir::failure();
+  }
+  swizzle_mode =
+      SwizzleModeAttr::get(parser.getContext(), maybe_swizzle_mode.value());
+  return mlir::success();
+}
 
 Attribute TmaDescriptorAttr::parse(mlir::AsmParser& parser, mlir::Type) {
   int element_byte_size;
-  DenseI64ArrayAttr global_shape, block_shape;
+  DenseI64ArrayAttr global_shape, tile_shape, tile_strides, layout;
+  SwizzleModeAttr swizzle_mode = nullptr;
 
   if (parser.parseLess() || parser.parseKeyword("global_shape") ||
       parser.parseEqual() || parseI64ArrayAttr(parser, global_shape) ||
-      parser.parseComma() || parser.parseKeyword("block_shape") ||
-      parser.parseEqual() || parseI64ArrayAttr(parser, block_shape) ||
+      parser.parseComma() || parser.parseKeyword("tile_shape") ||
+      parser.parseEqual() || parseI64ArrayAttr(parser, tile_shape) ||
+      parser.parseComma() || parser.parseKeyword("tile_strides") ||
+      parser.parseEqual() || parseI64ArrayAttr(parser, tile_strides) ||
+      parser.parseComma() || parser.parseKeyword("layout") ||
+      parser.parseEqual() || parseI64ArrayAttr(parser, layout) ||
       parser.parseComma() || parser.parseKeyword("element_byte_size") ||
       parser.parseEqual() || parser.parseInteger(element_byte_size) ||
-      parser.parseGreater()) {
+      ParseOptionalSwizzleMode(parser, swizzle_mode) || parser.parseGreater()) {
     return {};
   }
+
   return TmaDescriptorAttr::get(parser.getContext(), global_shape.asArrayRef(),
-                                block_shape.asArrayRef(), element_byte_size);
+                                tile_shape.asArrayRef(),
+                                tile_strides.asArrayRef(), layout.asArrayRef(),
+                                element_byte_size, swizzle_mode);
 }
 
 void TmaDescriptorAttr::print(mlir::AsmPrinter& printer) const {
   printer << "<global_shape = [";
   llvm::interleaveComma(getGlobalShape(), printer);
-  printer << "], block_shape = [";
-  llvm::interleaveComma(getBlockShape(), printer);
-  printer << "], element_byte_size = " << getElementByteSize() << ">";
+  printer << "], tile_shape = [";
+  llvm::interleaveComma(getTileShape(), printer);
+  printer << "], tile_strides = [";
+  llvm::interleaveComma(getTileStrides(), printer);
+  printer << "], layout = [";
+  llvm::interleaveComma(getLayout(), printer);
+  printer << "], element_byte_size = " << getElementByteSize();
+  if (getSwizzleMode()) {
+    printer << ", swizzle_mode = \""
+            << stringifySwizzleMode(getSwizzleMode().getValue()) << "\"";
+  }
+  printer << ">";
 }
 
 }  // namespace mlir::triton::xla

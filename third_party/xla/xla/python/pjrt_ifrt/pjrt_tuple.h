@@ -31,6 +31,7 @@ limitations under the License.
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/user_context.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
@@ -40,13 +41,18 @@ namespace ifrt {
 class PjRtTuple final : public llvm::RTTIExtends<PjRtTuple, Tuple> {
  public:
   static absl::StatusOr<tsl::RCReference<PjRtTuple>> Create(
-      PjRtCompatibleClient* client, absl::Span<tsl::RCReference<Value>> values);
+      PjRtCompatibleClient* client, absl::Span<ValueRef> values);
 
   ~PjRtTuple() override = default;
 
   PjRtCompatibleClient* client() const override {
     DCHECK(this);
     return client_;
+  }
+
+  UserContextRef user_context() const override {
+    DCHECK(this);
+    return {};
   }
 
   Future<> GetReadyFuture() const override;
@@ -59,19 +65,18 @@ class PjRtTuple final : public llvm::RTTIExtends<PjRtTuple, Tuple> {
 
   int Arity() override;
 
-  absl::Status Unpack(absl::Span<tsl::RCReference<Value>> values) override;
+  absl::Status Unpack(absl::Span<ValueRef> values) override;
 
   static char ID;  // NOLINT
 
  private:
-  PjRtTuple(PjRtCompatibleClient* client,
-            absl::Span<tsl::RCReference<Value>> values);
+  PjRtTuple(PjRtCompatibleClient* client, absl::Span<ValueRef> values);
 
   template <typename T, typename... Args>
   friend tsl::RCReference<T> tsl::MakeRef(Args&&... args);
 
   PjRtCompatibleClient* client_;
-  absl::InlinedVector<tsl::RCReference<Value>, 4> values_;
+  absl::InlinedVector<ValueRef, 4> values_;
 
   absl::Mutex mu_;
 

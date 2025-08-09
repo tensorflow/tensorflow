@@ -170,9 +170,9 @@ absl::Status LowerHlotoLoops(mlir::ModuleOp module,
   pm.addNestedPass<FuncOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<FuncOp>(mlir::createCSEPass());
   pm.addNestedPass<FuncOp>(mlir::createCanonicalizerPass());
-  pm.addNestedPass<FuncOp>(mlir::mhlo::createShapeSimplification());
-  pm.addNestedPass<FuncOp>(mlir::mhlo::createMergeAssumingOpsPass());
-  pm.addNestedPass<FuncOp>(mlir::mhlo::createBroadcastPropagationPass());
+  pm.addNestedPass<FuncOp>(mlir::kernel_gen::createShapeSimplificationPass());
+  pm.addNestedPass<FuncOp>(mlir::kernel_gen::createMergeAssumingOpsPass());
+  pm.addNestedPass<FuncOp>(mlir::kernel_gen::createBroadcastPropagationPass());
   pm.addNestedPass<FuncOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<FuncOp>(mlir::createCSEPass());
 
@@ -289,11 +289,12 @@ absl::Status LowerLoopsToGPU(mlir::ModuleOp module, bool index_64bit,
   // Make loops with min bounds into a conditional plus static bounds.
   pm.addNestedPass<FuncOp>(mlir::createForLoopSpecializationPass());
   // Take launches to launches with kernels.
-  pm.addPass(mlir::createGpuLauchSinkIndexComputationsPass());
+  pm.addPass(mlir::createGpuLaunchSinkIndexComputationsPass());
   const std::string gpuDataLayoutSpec =
       index_64bit ? "#dlti.dl_spec<#dlti.dl_entry<index,64:i64>>"
                   : "#dlti.dl_spec<#dlti.dl_entry<index,32:i32>>";
-  pm.addPass(mlir::createGpuKernelOutliningPass(gpuDataLayoutSpec));
+  pm.addPass(
+      mlir::createGpuKernelOutliningPass({.dataLayoutStr = gpuDataLayoutSpec}));
 
   pm.addPass(::mlir::createLowerAffinePass());
   // Constraints are removed as late as possible and before lowering to CFG.
@@ -309,7 +310,8 @@ absl::Status LowerLoopsToGPU(mlir::ModuleOp module, bool index_64bit,
 }
 
 absl::Status LowerKernelBodiesToLowLevelIr(mlir::ModuleOp module,
-                                           bool apply_cl_options) {
+                                           bool apply_cl_options,
+                                           const std::string& architecture) {
 #if !defined(TENSORFLOW_USE_ROCM) && !defined(GOOGLE_CUDA)
   return absl::InternalError(
       "Neither TENSORFLOW_USE_ROCM nor GOOGLE_CUDA are defined."
@@ -337,10 +339,10 @@ absl::Status LowerKernelBodiesToLowLevelIr(mlir::ModuleOp module,
   auto& kernelPm = pm.nest<::mlir::gpu::GPUModuleOp>();
   kernelPm.addPass(::mlir::createSCFToControlFlowPass());
 #if TENSORFLOW_USE_ROCM
-  kernelPm.addPass(mlir::createGpuKernelToRocdlPass());
+  kernelPm.addPass(mlir::createGpuKernelToRocdlPass(architecture));
 #elif GOOGLE_CUDA
   kernelPm.addPass(mlir::createGpuKernelToNvvmPass());
-  kernelPm.addPass(mlir::NVVM::createOptimizeForTargetPass());
+  kernelPm.addPass(mlir::LLVM::createNVVMOptimizeForTargetPass());
 #endif
   // Remove all location information to prevent a debug build.
   pm.addPass(::mlir::createStripDebugInfoPass());
@@ -460,8 +462,15 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GenerateKernelForHloCode(
         jit_i64_indexed_for_large_tensors, apply_cl_options));
     TF_RETURN_IF_ERROR(
         LowerLoopsToGPU(module.get(), index_64bit, apply_cl_options));
-    TF_RETURN_IF_ERROR(
-        LowerKernelBodiesToLowLevelIr(module.get(), apply_cl_options));
+
+    // Note: we're just passing the first architecture out of the list. This
+    // should be sufficient for now, but in the future perhaps we'll need
+    // restructure this code to generate separate MLIR modules for each
+    // architecture.
+    const std::string& first_architecture =
+        !architectures.empty() ? architectures[0] : "";
+    TF_RETURN_IF_ERROR(LowerKernelBodiesToLowLevelIr(
+        module.get(), apply_cl_options, first_architecture));
     TF_RETURN_IF_ERROR(
         AmendKernelLLVMIRWithStaticKnowledge(module.get(), apply_cl_options));
     TF_RETURN_IF_ERROR(GenerateDeviceCode(

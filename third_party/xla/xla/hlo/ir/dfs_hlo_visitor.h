@@ -110,6 +110,7 @@ class DfsHloVisitorBase {
   }
   virtual absl::Status HandleDot(HloInstructionPtr hlo) = 0;
   virtual absl::Status HandleRaggedDot(HloInstructionPtr hlo) = 0;
+  virtual absl::Status HandleScaledDot(HloInstructionPtr hlo) = 0;
   virtual absl::Status HandlePower(HloInstructionPtr hlo) {
     return HandleElementwiseBinary(hlo);
   }
@@ -417,6 +418,11 @@ class DfsHloVisitorBase {
   // Overriding methods should call DfsHloVisitor::Postprocess after doing their
   // own postprocessing.
   virtual absl::Status Postprocess(HloInstructionPtr hlo);
+
+  // This method should be overriden by subclasses that wish to skip some ops
+  // while traversing the HLO graph. If this method returns false, the calls to
+  // Preprocess(op), Handle/OpType/(op) and Postprocess(op) are skipped.
+  virtual bool ShouldProcessNode(HloInstructionPtr hlo) { return true; }
 
  private:
   absl::flat_hash_map<int, VisitState> visit_state_;

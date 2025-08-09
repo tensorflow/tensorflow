@@ -17,10 +17,13 @@ limitations under the License.
 #define XLA_SERVICE_GPU_LAUNCH_DIMENSIONS_H_
 
 #include <cstdint>
-#include <ostream>
 #include <string>
+#include <tuple>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "xla/runtime/work_dimensions.h"
+#include "xla/service/gpu/launch_dimensions.pb.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -34,16 +37,15 @@ class LaunchDimensions {
  public:
   // The default constructor creates a launch dimension that indicate
   // single-threaded execution.
-  LaunchDimensions()
-      : block_counts_(se::BlockDim()),
-        thread_counts_per_block_(se::ThreadDim()) {}
+  constexpr LaunchDimensions() = default;
 
-  LaunchDimensions(uint64_t block_x_count, uint64_t thread_x_count_per_block)
+  constexpr LaunchDimensions(uint64_t block_x_count,
+                             uint64_t thread_x_count_per_block)
       : block_counts_(block_x_count, 1, 1),
         thread_counts_per_block_(thread_x_count_per_block, 1, 1) {}
 
-  LaunchDimensions(const se::BlockDim& block_counts,
-                   const se::ThreadDim& thread_counts_per_block)
+  constexpr LaunchDimensions(const se::BlockDim& block_counts,
+                             const se::ThreadDim& thread_counts_per_block)
       : block_counts_(block_counts),
         thread_counts_per_block_(thread_counts_per_block) {}
 
@@ -74,6 +76,23 @@ class LaunchDimensions {
                         thread_counts_per_block_.x, ", ",
                         thread_counts_per_block_.y, ", ",
                         thread_counts_per_block_.z, "}");
+  }
+
+  WorkDimensions AsWorkDimensions() const;
+
+  LaunchDimensionsProto ToProto() const;
+  static absl::StatusOr<LaunchDimensions> FromProto(
+      const LaunchDimensionsProto& proto);
+
+  friend bool operator==(const LaunchDimensions& lhs,
+                         const LaunchDimensions& rhs) {
+    return std::tie(lhs.block_counts_, lhs.thread_counts_per_block_) ==
+           std::tie(rhs.block_counts_, rhs.thread_counts_per_block_);
+  }
+
+  friend bool operator!=(const LaunchDimensions& lhs,
+                         const LaunchDimensions& rhs) {
+    return !(lhs == rhs);
   }
 
  private:

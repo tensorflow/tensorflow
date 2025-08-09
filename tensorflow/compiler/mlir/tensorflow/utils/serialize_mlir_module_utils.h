@@ -18,22 +18,12 @@ limitations under the License.
 
 #include <string>
 
-#include "llvm/ADT/StringRef.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 
 // Prints a MLIR module `module_op` and returns it as a string.
 std::string SerializeMlirModule(mlir::ModuleOp module_op);
-
-// Parses a MLIR module from `mlir_module_string` into `mlir_module` with
-// context `mlir_context`.
-absl::Status DeserializeMlirModule(
-    llvm::StringRef serialized_mlir_module, mlir::MLIRContext* mlir_context,
-    mlir::OwningOpRef<mlir::ModuleOp>* mlir_module);
 
 }  // namespace tensorflow
 

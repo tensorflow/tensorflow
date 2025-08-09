@@ -1,3 +1,5 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
 # Placeholder: load py_proto_library
 load(
     "//tensorflow:tensorflow.bzl",
@@ -151,6 +153,8 @@ cc_library(
         ":types_proto_cc",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
     ],
 )

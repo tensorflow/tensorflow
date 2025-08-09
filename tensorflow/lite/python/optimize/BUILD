@@ -1,3 +1,4 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
 
@@ -27,11 +28,11 @@ cc_library(
         "//tensorflow/lite/tools/optimize:quantize_model",
         "//tensorflow/lite/tools/optimize/calibration:calibration_reader",
         "//tensorflow/lite/tools/optimize/calibration:calibrator_lib",
-        "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",
+        "@local_xla//third_party/python_runtime:headers",  # buildcleaner: keep
     ],
 )
 
@@ -44,17 +45,22 @@ pybind_extension(
     additional_stubgen_deps = [
         "//third_party/py/numpy:numpy",
     ],
+    common_lib_packages = [
+        "litert/python",
+        "tensorflow/lite/python",
+    ],
     enable_stub_generation = True,
     link_in_framework = True,
     pytype_srcs = [
         "_pywrap_tensorflow_lite_calibration_wrapper.pyi",
     ],
+    wrap_py_init = True,
     deps = [
         ":calibration_wrapper_lib",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/core:framework_stable",
         "//tensorflow/python/lib/core:pybind11_lib",
-        "//third_party/python_runtime:headers",
+        "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
     ],
 )

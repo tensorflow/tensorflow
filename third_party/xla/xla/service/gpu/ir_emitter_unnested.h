@@ -33,13 +33,15 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
-#include "xla/backends/gpu/runtime/send_recv_thunk.h"
+#include "xla/backends/gpu/runtime/host_send_recv_thunk.h"
+#include "xla/backends/gpu/runtime/nvshmem_collective_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/call_graph.h"
 #include "xla/service/gpu/ir_emitter.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -87,7 +89,7 @@ class IrEmitterUnnested : public IrEmitter {
   static std::unique_ptr<IrEmitterUnnested> Create(
       IrEmitterContext* ir_emitter_context);
 
-  // Transfers the ownship of thunk_sequence_ out.
+  // Transfers the ownership of thunk_sequence_ out.
   std::unique_ptr<SequentialThunk> ConsumeThunkSequence(
       Thunk::ThunkInfo thunk_info = Thunk::ThunkInfo{}) {
     return std::make_unique<SequentialThunk>(thunk_info,
@@ -147,13 +149,29 @@ class IrEmitterUnnested : public IrEmitter {
   absl::Status EmitRecvThunk(const HloRecvInstruction* instr);
   absl::Status EmitRecvDoneThunk(const HloRecvDoneInstruction* instr);
 
-  template <typename NcclThunkType, typename HloInstType>
-  absl::Status EmitNcclThunk(Thunk::Kind kind,
-                             const HloInstruction* async_start,
-                             const HloInstType* inst,
-                             std::optional<bool> use_global_device_ids);
+  template <typename CollectiveThunkType, typename HloInstType>
+  absl::Status EmitCollectiveThunk(Thunk::Kind kind,
+                                   const HloInstruction* async_start,
+                                   const HloInstType* inst,
+                                   std::optional<bool> use_global_device_ids);
 
-  absl::Status EmitNcclAsyncDone(Thunk::Kind kind, const HloInstruction* instr);
+  absl::Status EmitCollectiveAsyncDone(Thunk::Kind kind,
+                                       const HloInstruction* instr);
+
+  template <typename NvshmemAllReduceThunkType,
+            typename HloAllReduceInstruction>
+  absl::Status EmitNvshmemThunk(Thunk::Kind kind,
+                                const HloInstruction* async_start,
+                                const HloAllReduceInstruction* inst,
+                                std::optional<bool> use_global_device_ids);
+
+  absl::Status EmitNvshmemAsyncDone(Thunk::Kind kind,
+                                    const HloInstruction* instr);
+
+  template <typename HloInstType>
+  absl::Status EmitDegeneratedCollectiveThunk(
+      std::vector<CollectiveThunk::Buffer>& buffers,
+      const HloInstruction* async_start, const HloInstType* inst);
 
   template <typename ThunkType>
   absl::Status EmitReplicaOrPartitionId(const HloInstruction* instr);
@@ -167,7 +185,7 @@ class IrEmitterUnnested : public IrEmitter {
 
   absl::Status EmitHloInstruction(const HloInstruction* instr);
 
-  absl::Status EmitNcclGroupStartThunk(const HloInstruction* instr);
+  absl::Status EmitCollectiveGroupStartThunk(const HloInstruction* instr);
 
   absl::Status EmitTargetElementLoop(
       const HloInstruction& hlo,
@@ -298,12 +316,8 @@ class IrEmitterUnnested : public IrEmitter {
   //   ```
   absl::Status EmitSliceToDynamic(const HloCustomCallInstruction* instr);
 
-  absl::StatusOr<std::pair<std::vector<llvm_ir::IrArray> /*inputs*/,
-                           std::vector<llvm_ir::IrArray> /*outputs*/>>
-  BuildKernelThunkForNonFusionOp(
-      const HloInstruction* hlo,
-      absl::Span<const HloInstruction* const> needed_operands,
-      const LaunchDimensions& launch_dimensions);
+  absl::StatusOr<std::vector<llvm_ir::IrArray>> BuildKernelThunkForNonFusionOp(
+      const HloInstruction* instr, const LaunchDimensions& launch_dimensions);
 
   // Returns a WhileThunk that invokes thunk sequences for 'condition' and
   // 'body' sub-computations of while instruction.
@@ -325,11 +339,14 @@ class IrEmitterUnnested : public IrEmitter {
   ThunkSequence scoped_thunk_sequence_;
   bool emit_group_thunks_ = false;
 
-  // Container for async send/recv events shared by send/recv thunks.
-  std::shared_ptr<SendRecvAsyncEvents> send_recv_events_;
+  // Container for async host send/recv events shared by host send/recv thunks.
+  std::shared_ptr<HostSendRecvAsyncEvents> send_recv_events_;
 
   // Container for async copy-start/copy-done events.
   std::shared_ptr<CopyThunk::AsyncEvents> copy_events_;
+
+  // Shared buffer addresses registry for NVSHMEM put/get operations.
+  std::shared_ptr<NvshmemBufferAddresses> nvshmem_buffer_addresses_;
 
   // Cache to store the call_graph.
   std::unique_ptr<CallGraph> call_graph_;

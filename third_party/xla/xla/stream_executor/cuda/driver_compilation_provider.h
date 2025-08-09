@@ -19,10 +19,11 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/cuda/compilation_options.h"
 #include "xla/stream_executor/cuda/compilation_provider.h"
-#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 
 namespace stream_executor::cuda {
 
@@ -47,6 +48,8 @@ class DriverCompilationProvider : public CompilationProvider {
       const CudaComputeCapability& cc,
       absl::Span<const RelocatableModuleOrPtx> inputs,
       const CompilationOptions& options) const override;
+
+  absl::StatusOr<int> GetLatestPtxIsaVersion() const override;
 };
 
 }  // namespace stream_executor::cuda

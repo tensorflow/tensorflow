@@ -7,6 +7,7 @@ load(
     "@local_xla//xla/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
@@ -85,13 +86,10 @@ cc_library(
 gentbl_cc_library(
     name = "kernel_gen_passes_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [(
-        [
-            "-gen-pass-decls",
-            "-name=KernelGen",
-        ],
-        "kernel_gen_passes.h.inc",
-    )],
+    tbl_outs = {"kernel_gen_passes.h.inc": [
+        "-gen-pass-decls",
+        "-name=KernelGen",
+    ]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "passes.td",
     deps = ["@llvm-project//mlir:PassBaseTdFiles"],
@@ -113,6 +111,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:errors",
         "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:TargetParser",
         "@llvm-project//llvm:TransformUtils",
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:ArithDialect",
@@ -180,15 +179,18 @@ cc_library(
 cc_library(
     name = "passes",
     srcs = [
+        "broadcast_propagation_pass.cc",
         "buffer_reuse_pass.cc",
         "bufferize_pass.cc",
         "copy_cleanup_pass.cc",
         "embed_tf_framework_pass.cc",
         "func_to_jit_invocations.cc",
         "fuse_inner_parallel_loops_pass.cc",
+        "merge_assuming_ops_pass.cc",
         "parallel_loops_to_sequential.cc",
         "rewrite_tf_framework_assert.cc",
         "same_shape_propagation.cc",
+        "shape_simplification_pass.cc",
         "shape_to_descriptors_pass.cc",
         "tensorflow_abi_knowledge_propagation.cc",
     ],
@@ -199,8 +201,6 @@ cc_library(
         ":embed_tf_framework",  # buildcleaner: keep
         ":kernel_gen_passes_inc_gen",
         ":tf_framework_legalize_to_llvm",  # buildcleaner: keep
-        ":utils",
-        "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
@@ -210,6 +210,7 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:GPUDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:LLVMDialect",
         "@llvm-project//mlir:LinalgDialect",
         "@llvm-project//mlir:MathDialect",
@@ -225,7 +226,9 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
-        "@llvm-project//mlir:Transforms",
+        "@local_xla//xla/mlir_hlo",
+        "@local_xla//xla/mlir_hlo:mhlo_passes",
         "@local_xla//xla/mlir_hlo:transforms_passes",
+        "@stablehlo//:base",
     ],
 )

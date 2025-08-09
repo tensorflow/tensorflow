@@ -54,7 +54,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
-#include "stablehlo/dialect/Register.h"  // from @stablehlo
+#include "stablehlo/dialect/Base.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
@@ -68,6 +68,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/data_dumper_logger_config.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/deserialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
@@ -87,9 +88,10 @@ limitations under the License.
 #include "xla/hlo/translate/mhlo_to_hlo/layout_util.h"
 #include "xla/hlo/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 #include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
+#include "xla/hlo/translate/register.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
+#include "xla/mlir_hlo/stablehlo_ext/transforms/passes.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/tsl/platform/errors.h"
@@ -201,12 +203,12 @@ mlir::RankedTensorType GetBufferType(mlir::Type ty) {
 
   int64_t rank = ranked_ty.getRank();
   llvm::SmallVector<int64_t, 4> dims = llvm::to_vector<4>(ranked_ty.getShape());
-  auto encoding = mlir::dyn_cast_or_null<mlir::mhlo::TypeExtensionsAttr>(
-      ranked_ty.getEncoding());
-  if (encoding && !encoding.getBounds().empty()) {
+  llvm::ArrayRef<int64_t> bounds =
+      mlir::hlo::encodingToBounds(ranked_ty.getEncoding());
+  if (!bounds.empty()) {
     for (int64_t dim = 0; dim < rank; ++dim) {
       if (dims[dim] == mlir::ShapedType::kDynamic) {
-        dims[dim] = encoding.getBounds()[dim];
+        dims[dim] = bounds[dim];
       }
     }
   }
@@ -346,8 +348,7 @@ void GetInputMappingForMlir(int num_inputs, std::vector<int>* input_mapping) {
 
 static void RegisterDialects(mlir::DialectRegistry& registry) {
   mlir::RegisterAllTensorFlowDialects(registry);
-  mlir::mhlo::registerAllMhloDialects(registry);
-  mlir::stablehlo::registerAllDialects(registry);
+  xla::RegisterMlirToHloDependentDialects(registry);
 }
 
 // Checks if functions can be inlined after TF -> HLO legalization. Currently
@@ -581,7 +582,7 @@ void CreateConvertMlirToXlaHloPipeline(
     // Everything should be MHLO after this.
     if (!allow_partial_conversion) {
       pm.addNestedPass<mlir::func::FuncOp>(
-          mlir::mhlo::CreateVerifyTFXLALegalizationPass(legalize_chlo));
+          mlir::hlo::CreateVerifyTFXLALegalizationPass(legalize_chlo));
     }
   }
 
@@ -592,7 +593,7 @@ void CreateConvertMlirToXlaHloPipeline(
   // In order to export to XLA, we must sink constants to control flow regions,
   // since XLA uses functional control flow.
   pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::mhlo::createSinkConstantsToControlFlowPass());
+      mlir::stablehlo_ext::createSinkConstantsToControlFlowPass());
 }
 
 absl::Status RefineShapes(llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
@@ -988,7 +989,9 @@ static absl::StatusOr<std::vector<int>> RewriteWithArgs(
                                 main_fn.getFunctionType().getResults()));
   }
 
-  for (int idx : llvm::reverse(args_to_erase)) main_fn.eraseArgument(idx);
+  for (int idx : llvm::reverse(args_to_erase)) {
+    CHECK(llvm::succeeded(main_fn.eraseArgument(idx)));
+  }
 
   return params;
 }

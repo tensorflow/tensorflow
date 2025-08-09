@@ -16,11 +16,17 @@ tf_python_pybind_extension(
     ],
     deps = [
         "//tensorflow/core:lib",
+        "//tensorflow/core/data/service:common_proto_cc",
+        "//tensorflow/core/data/service:dispatcher_client",
+        "//tensorflow/core/data/service:grpc_util",
+        "//tensorflow/core/data/service:server_lib",
         "//tensorflow/core/data/service:server_lib_headers_lib",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/python/lib/core:pybind11_lib",
         "//tensorflow/python/lib/core:pybind11_status",
-        "//third_party/python_runtime:headers",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
         "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
     ],
@@ -62,7 +68,7 @@ tf_python_pybind_extension(
     deps = [
         "//tensorflow/core/data/service:py_utils",
         "//tensorflow/python/lib/core:pybind11_lib",
-        "//third_party/python_runtime:headers",
+        "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
     ],
 )
@@ -77,7 +83,7 @@ tf_python_pybind_extension(
     deps = [
         "//tensorflow/core/data/service/snapshot:path_utils",
         "//tensorflow/python/lib/core:pybind11_lib",
-        "//third_party/python_runtime:headers",
+        "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
     ],
 )

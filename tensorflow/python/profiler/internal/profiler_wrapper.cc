@@ -20,12 +20,12 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "pybind11/pybind11.h"  // from @pybind11
-#include "tensorflow/core/profiler/convert/repository.h"
-#include "tensorflow/core/profiler/convert/tool_options.h"
-#include "tensorflow/core/profiler/convert/xplane_to_tools_data.h"
 #include "tensorflow/core/profiler/rpc/profiler_server.h"
 #include "tensorflow/python/lib/core/pybind11_status.h"
 #include "tensorflow/python/profiler/internal/profiler_pywrap_impl.h"
+#include "xprof/convert/repository.h"  // from @org_xprof
+#include "xprof/convert/tool_options.h"  // from @org_xprof
+#include "xprof/convert/xplane_to_tools_data.h"  // from @org_xprof
 
 namespace py = ::pybind11;
 
@@ -41,14 +41,18 @@ using ::tensorflow::profiler::pywrap::ProfilerSessionWrapper;
 ToolOptions ToolOptionsFromPythonDict(const py::dict& dictionary) {
   ToolOptions map;
   for (const auto& item : dictionary) {
-    std::variant<int, std::string> value;
+    std::variant<bool, int, std::string> value;
     try {
-      value = item.second.cast<int>();
+      value = item.second.cast<bool>();
     } catch (...) {
       try {
-        value = item.second.cast<std::string>();
+        value = item.second.cast<int>();
       } catch (...) {
-        continue;
+        try {
+          value = item.second.cast<std::string>();
+        } catch (...) {
+          continue;
+        }
       }
     }
     map.emplace(item.first.cast<std::string>(), value);
@@ -98,8 +102,7 @@ PYBIND11_MODULE(_pywrap_profiler, m) {
       });
 
   m.def("start_server", [](int port) {
-    auto profiler_server =
-        std::make_unique<tensorflow::profiler::ProfilerServer>();
+    auto profiler_server = std::make_unique<tsl::profiler::ProfilerServer>();
     profiler_server->StartProfilerServer(port);
     // Intentionally release profiler server. Should transfer ownership to
     // caller instead.

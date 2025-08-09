@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/hash/hash_testing.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/tile_assignment.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
-#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
@@ -49,7 +49,18 @@ using ::testing::SizeIs;
 using ::tsl::testing::IsOkAndHolds;
 using ::tsl::testing::StatusIs;
 
-class HloShardingTest : public test_util::DeviceTest {};
+class HloShardingTest
+    : public testing::TestWithParam<test_util::DeviceTestParam> {
+ public:
+  HloShardingTest() : fixture_(GetParam()) {}
+
+  DeviceListRef GetDevices(absl::Span<const int> device_indices) {
+    return fixture_.GetDevices(device_indices);
+  }
+
+ private:
+  test_util::DeviceTestFixture fixture_;
+};
 
 TEST_P(HloShardingTest, CreateWithBadDeviceList) {
   auto xla_hlo_sharding = xla::HloSharding::Replicate();
@@ -64,22 +75,71 @@ TEST_P(HloShardingTest, CreateWithBadDeviceList) {
 TEST_P(HloShardingTest, IsFullyReplicated) {
   auto device_list = GetDevices({0, 1, 2, 3, 4, 5});
   {
-    // Fully replicated.
+    // Fully replicated HloSharding is fully replicated.
     auto xla_hlo_sharding = xla::HloSharding::Replicate();
     std::shared_ptr<const HloSharding> sharding =
         HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
     EXPECT_TRUE(sharding->IsFullyReplicated());
   }
   {
-    // Not fully replicated.
+    // Single-tile HloSharding is fully replicated.
+    auto device_list = GetDevices({0});  // This sharding uses 1 device.
+    auto xla_hlo_sharding = xla::HloSharding::IotaTile({1, 1});
+    std::shared_ptr<const HloSharding> sharding =
+        HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
+    EXPECT_TRUE(sharding->IsFullyReplicated());
+  }
+  {
+    // Multi-tile HloSharding with last_dim_replicate where all replices are on
+    // the last tile dimension is fully replicated.
+    auto xla_hlo_sharding = xla::HloSharding::PartialTile(
+        xla::TileAssignment(xla::IotaTileAssignment::Create({1, 6})));
+    std::shared_ptr<const HloSharding> sharding =
+        HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
+    EXPECT_TRUE(sharding->IsFullyReplicated());
+  }
+  {
+    // Multi-tile HloSharding with last_dim_replicate where not all replices are
+    // on the last tile dimension is not fully replicated.
+    auto xla_hlo_sharding = xla::HloSharding::PartialTile(
+        xla::TileAssignment(xla::IotaTileAssignment::Create({2, 3})));
+    std::shared_ptr<const HloSharding> sharding =
+        HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
+    EXPECT_FALSE(sharding->IsFullyReplicated());
+  }
+  {
+    // Multi-tile HloSharding with no last_dim_replicate is not fully
+    // replicated.
     auto xla_hlo_sharding = xla::HloSharding::IotaTile({1, 6});
     std::shared_ptr<const HloSharding> sharding =
         HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
     EXPECT_FALSE(sharding->IsFullyReplicated());
   }
   {
-    // Not fully replicated.
-    auto xla_hlo_sharding = xla::HloSharding::IotaTile({2, 3});
+    // Maximal HloSharding with a single device is fully replicated.
+    auto device_list = GetDevices({0});  // This sharding uses 1 device.
+    auto xla_hlo_sharding = xla::HloSharding::AssignDevice(/*device_id=*/0);
+    std::shared_ptr<const HloSharding> sharding =
+        HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
+    EXPECT_TRUE(sharding->IsFullyReplicated());
+  }
+  {
+    // Maximal HloSharding with more than one device is not fully replicated.
+    auto xla_hlo_sharding = xla::HloSharding::AssignDevice(/*device_id=*/0);
+    std::shared_ptr<const HloSharding> sharding =
+        HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
+    EXPECT_FALSE(sharding->IsFullyReplicated());
+  }
+  {
+    // Manual HloSharding is not fully replicated.
+    auto xla_hlo_sharding = xla::HloSharding::Manual();
+    std::shared_ptr<const HloSharding> sharding =
+        HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
+    EXPECT_FALSE(sharding->IsFullyReplicated());
+  }
+  {
+    // Unknown HloSharding is not fully replicated.
+    auto xla_hlo_sharding = xla::HloSharding::Unknown();
     std::shared_ptr<const HloSharding> sharding =
         HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
     EXPECT_FALSE(sharding->IsFullyReplicated());
@@ -780,6 +840,23 @@ TEST_P(HloShardingTest, DisassembleWithSubgroupMaximalSlowPath) {
   }
 }
 
+TEST_P(HloShardingTest, IndexDomainsWithTileTranspose) {
+  auto device_list = GetDevices({0, 1, 2, 3});
+  auto xla_hlo_sharding =
+      xla::HloSharding::IotaTile(/*tile_assignment_dims=*/{2, 2},
+                                 /*reshape_dims=*/{2, 2},
+                                 /*transpose_perm=*/{1, 0});
+  std::shared_ptr<const HloSharding> sharding =
+      HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
+  Shape shape({4, 4});
+  {
+    TF_ASSERT_OK_AND_ASSIGN(auto index_domains, sharding->IndexDomains(shape));
+    EXPECT_THAT(index_domains,
+                ElementsAreArray(TEST_HloShardingIndexDomainsSlowPath(
+                    *sharding, shape, SingleDeviceShardSemantics::kAllShards)));
+  }
+}
+
 TEST_P(HloShardingTest, IndexDomainsWithManual) {
   auto device_list = GetDevices({0, 1, 2, 3, 4, 5});
   auto xla_hlo_sharding = xla::HloSharding::Manual();
@@ -880,6 +957,22 @@ TEST_P(HloShardingTest, DisassembleFailsWithDynamicShape) {
   EXPECT_THAT(sharding->Disassemble(dynamic_shape),
               StatusIs(tsl::error::INVALID_ARGUMENT,
                        HasSubstr("can only disassemble static shape")));
+}
+
+TEST_P(HloShardingTest, Hash) {
+  EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly({
+      HloSharding::Create(GetDevices({0, 1, 2, 3, 4, 5}), MemoryKind(),
+                          xla::HloSharding::Replicate()),
+      HloSharding::Create(GetDevices({0}), MemoryKind(),
+                          xla::HloSharding::Replicate()),
+      HloSharding::Create(GetDevices({0}), MemoryKind("pinned_host"),
+                          xla::HloSharding::Replicate()),
+      HloSharding::Create(GetDevices({0, 1, 2, 3, 4, 5}), MemoryKind(),
+                          xla::HloSharding::AssignDevice(/*device_id=*/0)),
+      HloSharding::Create(GetDevices({0, 1, 2, 3, 4, 5}), MemoryKind(),
+                          xla::HloSharding::PartialTile(xla::TileAssignment(
+                              xla::IotaTileAssignment::Create({2, 3})))),
+  }));
 }
 
 INSTANTIATE_TEST_SUITE_P(NumDevices, HloShardingTest,

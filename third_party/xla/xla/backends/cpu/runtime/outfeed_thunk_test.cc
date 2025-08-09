@@ -18,9 +18,9 @@ limitations under the License.
 #include <memory>
 
 #include <gtest/gtest.h>
-#include "xla/backends/cpu/runtime/resource_use.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/runtime/buffer_use.h"
+#include "xla/runtime/resource_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"

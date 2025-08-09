@@ -30,7 +30,7 @@ namespace cpu {
 
 int64_t GetMinimumAlignmentForArray(
     const Shape& shape, const TargetMachineFeatures& target_machine_features) {
-  CHECK(LayoutUtil::IsDenseArray(shape));
+  CHECK(shape.IsArray());
 
   // We don't require a layout to be set on `shape`.  This only works on CPU
   // because we don't pad our tensors or otherwise have complicated data tiling
@@ -104,14 +104,15 @@ bool PotentiallyImplementedAsEigenConvolution(
   }
 
   return dnums.input_batch_dimension() == 0 &&
-         dnums.input_feature_dimension() == input_shape.dimensions_size() - 1 &&
+         dnums.input_feature_dimension() ==
+             input_shape.dimensions().size() - 1 &&
          dnums.output_batch_dimension() == 0 &&
          dnums.output_feature_dimension() ==
-             output_shape.dimensions_size() - 1 &&
+             output_shape.dimensions().size() - 1 &&
          dnums.kernel_input_feature_dimension() ==
-             kernel_shape.dimensions_size() - 2 &&
+             kernel_shape.dimensions().size() - 2 &&
          dnums.kernel_output_feature_dimension() ==
-             kernel_shape.dimensions_size() - 1;
+             kernel_shape.dimensions().size() - 1;
 }
 
 }  // namespace cpu

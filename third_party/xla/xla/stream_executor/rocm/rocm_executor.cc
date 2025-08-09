@@ -131,8 +131,9 @@ int fpus_per_core(std::string gcn_arch_name) {
 // thread::ThreadPool on some platforms), we run certain routines in this pool
 // and wait for completion.
 tsl::thread::ThreadPool* GetDriverExecutor() {
-  static tsl::thread::ThreadPool* thread_pool = new tsl::thread::ThreadPool(
-      tsl::Env::Default(), tsl::ThreadOptions(), "rocm_driver", 1);
+  static tsl::thread::ThreadPool* const thread_pool =
+      new tsl::thread::ThreadPool(tsl::Env::Default(), tsl::ThreadOptions(),
+                                  "rocm_driver", 1);
   return thread_pool;
 }
 
@@ -286,8 +287,7 @@ absl::StatusOr<int64_t> GetMaxRegistersPerBlock(hipDevice_t device) {
 }
 
 absl::StatusOr<int64_t> GetThreadsPerWarp(hipDevice_t device) {
-  // TODO(ROCm): This is almost certainly wrong but tests seem to rely on it.
-  return 32;
+  return GetSimpleAttribute<int64_t>(device, hipDeviceAttributeWarpSize);
 }
 
 absl::Status GetGridLimits(int* x, int* y, int* z, hipDevice_t device) {
@@ -418,7 +418,7 @@ void* DeviceAllocate(Context* context, uint64_t bytes) {
   }
 
   ScopedActivateContext activated(context);
-  hipDeviceptr_t result = 0;
+  hipDeviceptr_t result = nullptr;
   hipError_t res = wrap::hipMalloc(&result, bytes);
   if (res != hipSuccess) {
     // LOG(INFO) because this isn't always important to users (e.g. BFCAllocator
@@ -584,7 +584,7 @@ bool RocmExecutor::UnloadGpuBinary(ModuleHandle module_handle) {
     VLOG(3) << "No loaded  HSACO module for " << module_handle;
     return false;
   }
-  auto& module = module_it->second.first;
+  auto module = module_it->second.first;
   auto& refcount = module_it->second.second;
   VLOG(3) << "Found HSACO module " << module << " with refcount " << refcount;
   if (--refcount == 0) {
@@ -632,15 +632,13 @@ absl::Status RocmExecutor::Init() {
 }
 
 absl::StatusOr<std::unique_ptr<Kernel>> RocmExecutor::LoadKernel(
-    const MultiKernelLoaderSpec& spec) {
+    const KernelLoaderSpec& spec) {
   auto rocm_kernel = std::make_unique<RocmKernel>(this);
-  const std::string* kernel_name;
+  const std::string& kernel_name = spec.kernel_name();
 
   if (spec.has_cuda_cubin_in_memory()) {
-    kernel_name = &spec.cuda_cubin_in_memory().kernel_name();
-
     const char* hsaco = reinterpret_cast<const char*>(
-        spec.cuda_cubin_in_memory().cubin_bytes().data());
+        spec.cuda_cubin_in_memory()->cubin_bytes.data());
     absl::MutexLock lock{&in_memory_modules_mu_};
     ModuleHandle module_handle{hsaco};
     hipModule_t& module = in_memory_modules_[module_handle];
@@ -650,22 +648,21 @@ absl::StatusOr<std::unique_ptr<Kernel>> RocmExecutor::LoadKernel(
     }
     kernel_to_gpu_binary_[rocm_kernel.get()] = module_handle;
 
-    VLOG(2) << "getting function " << *kernel_name << " from module " << module;
+    VLOG(2) << "getting function " << kernel_name << " from module " << module;
     TF_ASSIGN_OR_RETURN(
         hipFunction_t function,
-        GetModuleFunction(rocm_context_, module, kernel_name->c_str()));
+        GetModuleFunction(rocm_context_, module, kernel_name.c_str()));
     rocm_kernel->set_gpu_function(function);
   } else if (spec.has_in_process_symbol()) {
-    kernel_name = &spec.in_process_symbol().kernel_name();
-    void* symbol = spec.in_process_symbol().symbol();
+    void* symbol = spec.in_process_symbol()->symbol;
 
-    VLOG(1) << "Resolve ROCM kernel " << *kernel_name
+    VLOG(1) << "Resolve ROCM kernel " << kernel_name
             << " from symbol pointer: " << symbol;
 
 #if TF_ROCM_VERSION >= 60200
     hipFunction_t func;
     TF_RETURN_IF_ERROR(ToStatus(
-        wrap::hipGetFuncBySymbol(&func, spec.in_process_symbol().symbol()),
+        wrap::hipGetFuncBySymbol(&func, spec.in_process_symbol()->symbol),
         "Failed call to hipGetFuncBySymbol"));
     rocm_kernel->set_gpu_function(func);
 #else
@@ -690,7 +687,7 @@ absl::StatusOr<std::unique_ptr<Kernel>> RocmExecutor::LoadKernel(
                         rocm_kernel->GetKernelMetadata());
     rocm_kernel->set_metadata(kernel_metadata);
   }
-  rocm_kernel->set_name(*kernel_name);
+  rocm_kernel->set_name(kernel_name);
   rocm_kernel->set_args_packing(spec.kernel_args_packing());
   return std::move(rocm_kernel);
 }
@@ -824,6 +821,35 @@ RocmExecutor::CreateMemoryAllocator(MemoryType type) {
 
 bool RocmExecutor::SynchronizeAllActivity() {
   return rocm_context_->Synchronize().ok();
+}
+
+bool RocmExecutor::HostMemoryRegister(void* location, uint64_t size) {
+  VLOG(1) << "Called StreamExecutor::HostMemoryRegister(data=" << location
+          << ")";
+
+  std::unique_ptr<ActivateContext> activation = Activate();
+  // "Portable" memory is visible to all CUDA contexts. Safe for our use model.
+  auto status =
+      ToStatus(hipHostRegister(location, size, hipHostRegisterPortable));
+  if (!status.ok()) {
+    LOG(ERROR) << "error registering host memory at " << location << ": "
+               << status;
+    return false;
+  }
+  return true;
+}
+
+bool RocmExecutor::HostMemoryUnregister(void* location) {
+  VLOG(1) << "Called StreamExecutor::HostUnregister(data=" << location << ")";
+
+  std::unique_ptr<ActivateContext> activation = Activate();
+  auto status = ToStatus(hipHostUnregister(location));
+  if (!status.ok()) {
+    LOG(ERROR) << "error unregistering host memory at " << location << ": "
+               << status;
+    return false;
+  }
+  return true;
 }
 
 absl::Status RocmExecutor::SynchronousMemZero(DeviceMemoryBase* location,
@@ -980,6 +1006,7 @@ absl::StatusOr<DeviceMemoryBase> RocmExecutor::GetSymbol(
                    reinterpret_cast<uintptr_t>(module_handle.id()), ")"));
 }
 
+namespace {
 absl::Status FillBlockDimLimit(hipDevice_t device, BlockDim* block_dim_limit) {
   // The BlockDim name is a mismatch against these GRID_DIM_* queries because
   // we use BlockDims to express the dimensions of blocks within a grid
@@ -993,6 +1020,7 @@ absl::Status FillBlockDimLimit(hipDevice_t device, BlockDim* block_dim_limit) {
   block_dim_limit->z = z;
   return absl::OkStatus();
 }
+}  // namespace
 
 absl::StatusOr<std::unique_ptr<Event>> RocmExecutor::CreateEvent() {
   TF_ASSIGN_OR_RETURN(auto event,
@@ -1089,6 +1117,8 @@ RocmExecutor::CreateDeviceDescription(int device_ordinal) {
 
   desc.set_shared_memory_per_core(GetMaxSharedMemoryPerCore(device).value());
   desc.set_shared_memory_per_block(GetMaxSharedMemoryPerBlock(device).value());
+  desc.set_shared_memory_per_block_optin(
+      GetMaxSharedMemoryPerBlock(device).value());
   int core_count = GetMultiprocessorCount(device).value();
   desc.set_core_count(core_count);
   desc.set_fpus_per_core(fpus_per_core(gcn_arch_name));

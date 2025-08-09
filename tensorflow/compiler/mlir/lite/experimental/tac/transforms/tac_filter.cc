@@ -127,12 +127,11 @@ void ApplyTacFilter(
   }
 
   auto should_filter_op = [](mlir::Operation* op) {
-    return IsNonConstOp(op) && NotTFLQuantDequantizeOp(op) &&
-           !IsTerminatorOp(op) &&
+    return IsNonConstOp(op) && !IsTerminatorOp(op) &&
            !llvm::isa<func::ReturnOp, func::FuncOp, CallOpInterface>(op);
   };
 
-  auto map_op_to_cpu = [&](mlir::Operation* op, std::string name) {
+  auto map_op_to_cpu = [&](mlir::Operation* op) {
     if (!should_filter_op(op)) {
       return;
     }
@@ -157,8 +156,14 @@ void ApplyTacFilter(
   OpFilter::MatchType match_type = tac_filter.op_filter().match_type();
   OpFilter::DeviceType device_type = tac_filter.op_filter().device_type();
   module.walk([&](Operation* op) {
-    auto named_loc = mlir::dyn_cast<NameLoc>(op->getLoc());
-    if (!named_loc) {
+    NameLoc loc;
+    if (auto name_loc = mlir::dyn_cast<NameLoc>(op->getLoc())) {
+      loc = name_loc;
+    } else if (auto fused_loc = mlir::dyn_cast<FusedLoc>(op->getLoc())) {
+      loc = dyn_cast<NameLoc>(fused_loc.getLocations().front());
+    }
+
+    if (!loc) {
       return;
     }
     // There can be two kinds of `match_type`:
@@ -171,11 +176,11 @@ void ApplyTacFilter(
     //
     // The code below maps an op to the appropriate device based on the above
     // fields.
-    if (op_regex.match(named_loc.getName())) {
+    if (op_regex.match(loc.getName())) {
       switch (match_type) {
         case OpFilter::MATCH:
           if (device_type == OpFilter::CPU) {
-            map_op_to_cpu(op, named_loc.getName().str());
+            map_op_to_cpu(op);
             return;
           }
           map_op_to_custom_device(op);
@@ -187,7 +192,7 @@ void ApplyTacFilter(
       switch (match_type) {
         case OpFilter::INVERT_MATCH:
           if (device_type == OpFilter::CPU) {
-            map_op_to_cpu(op, named_loc.getName().str());
+            map_op_to_cpu(op);
             return;
           }
           map_op_to_custom_device(op);

@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -41,11 +42,11 @@ limitations under the License.
 #include "xla/pjrt/distributed/protocol.pb.h"
 #include "xla/pjrt/distributed/service.h"
 #include "xla/pjrt/distributed/topology_util.h"
-#include "xla/protobuf_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "xla/tsl/util/proto/proto_matchers.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -54,13 +55,15 @@ limitations under the License.
 
 namespace xla {
 namespace {
+
 using ::testing::IsEmpty;
+using ::testing::Matches;
 using ::testing::Pair;
 using ::testing::UnorderedElementsAre;
+using ::tsl::proto_testing::EqualsProto;
 using tsl::testing::StatusIs;
 
-constexpr absl::Duration kHeartbeatInterval = absl::Milliseconds(500);
-constexpr int kMaxMissingHeartbeats = 5;
+constexpr absl::Duration kHeartbeatTimeout = absl::Milliseconds(2500);
 constexpr absl::Duration kBarrierTimeout = absl::Milliseconds(200);
 
 class ClientServerTest : public testing::Test {
@@ -69,9 +72,8 @@ class ClientServerTest : public testing::Test {
       int node_id, DistributedRuntimeClient::Options client_options = {},
       std::shared_ptr<::grpc::Channel> channel = nullptr) {
     client_options.node_id = node_id;
-    // Set a small heartbeat interval for quicker tests.
-    client_options.heartbeat_interval = kHeartbeatInterval;
-    client_options.max_missing_heartbeats = kMaxMissingHeartbeats;
+    // Set a small heartbeat timeout for quicker tests.
+    client_options.heartbeat_timeout = kHeartbeatTimeout;
     if (channel == nullptr) {
       channel = coord_service_->server()->InProcessChannel(
           ::grpc::ChannelArguments());
@@ -85,9 +87,8 @@ class ClientServerTest : public testing::Test {
     service_address_ = absl::StrCat("[::]:", port);
 
     service_options.num_nodes = num_nodes;
-    // Set a small heartbeat interval for quicker tests.
-    service_options.heartbeat_interval = kHeartbeatInterval;
-    service_options.max_missing_heartbeats = kMaxMissingHeartbeats;
+    // Set a small heartbeat timeout for quicker tests.
+    service_options.heartbeat_timeout = kHeartbeatTimeout;
 
     // Set up and register service on the gRPC server.
     coord_service_ = DistributedRuntimeService::Get(
@@ -225,8 +226,7 @@ TEST_F(ClientServerTest, ConnectAndEnumerateDevices) {
                            /*get_global_topology_timeout=*/absl::Minutes(1),
                            kv_store.get(), locals[0], &topology,
                            /*assign_global_device_ids=*/true));
-    TF_RET_CHECK(
-        xla::protobuf_util::ProtobufEquals(topology, expected_topology))
+    TF_RET_CHECK(Matches(EqualsProto(expected_topology))(topology))
         << topology.DebugString();
     TF_RETURN_IF_ERROR(client->KeyValueSet("key1", "value1"));
     TF_ASSIGN_OR_RETURN(
@@ -251,8 +251,7 @@ TEST_F(ClientServerTest, ConnectAndEnumerateDevices) {
         /*get_local_topology_timeout=*/absl::Minutes(1),
         /*get_global_topology_timeout=*/absl::Minutes(1), kv_store.get(),
         locals[1], &topology, /*assign_global_device_ids=*/true));
-    TF_RET_CHECK(
-        xla::protobuf_util::ProtobufEquals(topology, expected_topology))
+    TF_RET_CHECK(Matches(EqualsProto(expected_topology))(topology))
         << topology.DebugString();
     TF_ASSIGN_OR_RETURN(
         std::string value,
@@ -310,8 +309,7 @@ TEST_F(ClientServerTest, EnumerateElevenDevices) {
         /*get_local_topology_timeout=*/absl::Minutes(1),
         /*get_global_topology_timeout=*/absl::Minutes(1), kv_store.get(),
         locals[node_id], &topology, /*assign_global_device_ids=*/true));
-    TF_RET_CHECK(
-        xla::protobuf_util::ProtobufEquals(topology, expected_topology))
+    TF_RET_CHECK(Matches(EqualsProto(expected_topology))(topology))
         << topology.DebugString();
     return absl::OkStatus();
   };
@@ -716,10 +714,12 @@ TEST_F(ClientServerTest, ClientRestart_AfterConnect_Fails) {
   // Errors should have been propagated to the clients, and thus the shutdown
   // call will fail with `FailedPrecondition` since the tasks are already in
   // error.
-  EXPECT_THAT(statuses[0], StatusIs(absl::StatusCode::kFailedPrecondition));
-  EXPECT_THAT(statuses[1], StatusIs(absl::StatusCode::kFailedPrecondition));
+  EXPECT_THAT(statuses[0],
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
+  EXPECT_THAT(statuses[1],
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
   // This client was restarted, so its connection attempt will be aborted.
-  EXPECT_THAT(statuses[2], StatusIs(absl::StatusCode::kAborted));
+  EXPECT_THAT(statuses[2], absl_testing::StatusIs(absl::StatusCode::kAborted));
 }
 
 // If a client restarts during init, it can silently reconnect because no
@@ -785,12 +785,13 @@ TEST_F(ClientServerTest, ClientRestart_DuringConnect_Succeeds) {
       thread_pool.Schedule([&, i]() { statuses[i] = thread_fn(i); });
     }
   }
-  EXPECT_THAT(statuses[0], StatusIs(absl::StatusCode::kOk));
-  EXPECT_THAT(statuses[1], StatusIs(absl::StatusCode::kOk));
+  EXPECT_THAT(statuses[0], absl_testing::StatusIs(absl::StatusCode::kOk));
+  EXPECT_THAT(statuses[1], absl_testing::StatusIs(absl::StatusCode::kOk));
   // This was the initial connection attempt that should be aborted.
-  EXPECT_THAT(statuses[2], StatusIs(absl::StatusCode::kAlreadyExists));
+  EXPECT_THAT(statuses[2],
+              absl_testing::StatusIs(absl::StatusCode::kAlreadyExists));
   // This was the restarted client which should silently reconnect.
-  EXPECT_THAT(statuses[3], StatusIs(absl::StatusCode::kOk));
+  EXPECT_THAT(statuses[3], absl_testing::StatusIs(absl::StatusCode::kOk));
 }
 
 TEST_F(ClientServerTest, WaitAtBarrier_Succeed) {
@@ -1020,7 +1021,7 @@ TEST_F(ClientServerTest, GetLiveTasksWithoutBeingAMember) {
       std::vector<int> nodes{0, 1, 2};
       nodes.erase(nodes.begin() + i);
       EXPECT_THAT(client->GetLiveNodes(nodes),
-                  StatusIs(absl::StatusCode::kInvalidArgument));
+                  absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
     });
   }
 }
@@ -1076,7 +1077,7 @@ TEST_F(ClientServerTest, KeyValueTryGet) {
   TF_ASSERT_OK(client->Connect());
 
   ASSERT_THAT(client->KeyValueTryGet("test_key").status(),
-              StatusIs(absl::StatusCode::kNotFound));
+              absl_testing::StatusIs(absl::StatusCode::kNotFound));
 
   TF_ASSERT_OK(client->KeyValueSet("test_key", "value"));
   auto result = client->KeyValueTryGet("test_key");

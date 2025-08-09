@@ -39,8 +39,8 @@ REGISTER_PJRT_RAW_BUFFER_FACTORY(MockFactory);
 TEST(RawBufferTest, FactoryFallback) {
   auto status = PjRtRawBuffer::CreateRawAliasOfBuffer(nullptr).status();
   ASSERT_THAT(status,
-              tsl::testing::StatusIs(tsl::error::UNIMPLEMENTED,
-                                     testing::HasSubstr("not implemented.")));
+              absl_testing::StatusIs(tsl::error::INVALID_ARGUMENT,
+                                     testing::HasSubstr("null buffer.")));
 }
 
 TEST(RawBufferTest, FactoryError) {
@@ -49,7 +49,7 @@ TEST(RawBufferTest, FactoryError) {
                     reinterpret_cast<PjRtBuffer*>(&dummy))
                     .status();
   ASSERT_THAT(status,
-              tsl::testing::StatusIs(tsl::error::INVALID_ARGUMENT,
+              absl_testing::StatusIs(tsl::error::INVALID_ARGUMENT,
                                      testing::HasSubstr("MockFactory")));
 }
 

@@ -25,6 +25,7 @@
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -40,9 +41,11 @@
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/host_callback.h"
+#include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/xla_data.pb.h"
@@ -56,7 +59,7 @@ class LoadedExecutable final
  public:
   LoadedExecutable(xla::ifrt::Client* client,
                    std::shared_ptr<RpcHelper> rpc_helper, uint64_t handle,
-                   std::string name, int num_devices,
+                   std::string name, int num_devices, DeviceListRef devices,
                    std::vector<xla::ifrt::Device*> addressable_devices,
                    absl::StatusOr<std::optional<std::string>> fingerprint,
                    Future<> ready_future,
@@ -70,6 +73,9 @@ class LoadedExecutable final
   absl::string_view name() const override;
   absl::StatusOr<std::optional<std::string>> Fingerprint() const override;
   absl::StatusOr<std::string> Serialize() const override;
+  xla::ifrt::UserContextRef user_context() const override {
+    return user_context_;
+  }
   Future<> GetReadyFuture() const override;
 
   int num_devices() const override;
@@ -77,6 +83,8 @@ class LoadedExecutable final
   absl::StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const override;
 
   std::optional<std::vector<OpSharding>> GetParameterShardings() const override;
+  absl::StatusOr<absl::Span<const int>> GetDonatableInputIndices()
+      const override;
   std::optional<std::vector<OpSharding>> GetOutputShardings() const override;
   absl::StatusOr<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
   GetParameterLayouts() const override;
@@ -89,14 +97,16 @@ class LoadedExecutable final
 
   absl::StatusOr<xla::ifrt::AttributeMap> GetCostAnalysis() const override;
 
+  // The following may return an OK status even if the underlying IFRT backend
+  // would (eagerly) return an error. If that happens, the fields of the
+  // returned `ExecuteResult` will resolve to the error (for example,
+  // `result->status.Await()` will return the error, where `result` is the
+  // returned value from the `Execute()` call).
   absl::StatusOr<ExecuteResult> Execute(
-      absl::Span<tsl::RCReference<xla::ifrt::Array>> args,
-      const ExecuteOptions& options,
+      absl::Span<xla::ifrt::ArrayRef> args, const ExecuteOptions& options,
       std::optional<xla::ifrt::DeviceListRef> devices) override;
 
-  Future<> Delete() override;
-  bool IsDeleted() const override;
-
+  const DeviceListRef& devices() const override;
   absl::Span<xla::ifrt::Device* const> addressable_devices() const override;
 
   static char ID;  // NOLINT
@@ -117,11 +127,15 @@ class LoadedExecutable final
     absl::node_hash_set<std::string> memory_kinds;
     absl::StatusOr<std::vector<std::vector<absl::string_view>>>
         output_memory_kinds;
-  };
 
-  void PollLoadedHostCallback(
-      uint64_t handle,
-      tsl::RCReference<xla::ifrt::LoadedHostCallback> loaded_host_callback);
+    absl::StatusOr<std::vector<int>> donatable_input_indices;
+
+    std::optional<absl::flat_hash_set<int>> donatable_input_indices_set;
+
+    absl::StatusOr<CompiledMemoryStats> compiled_memory_stats;
+
+    int64_t size_of_generated_code_in_bytes;
+  };
 
   xla::ifrt::Client* client_;
   std::shared_ptr<RpcHelper> rpc_helper_;
@@ -129,9 +143,11 @@ class LoadedExecutable final
   const uint64_t handle_;
   const std::string name_;
   const int num_devices_;
+  const DeviceListRef devices_;
   const std::vector<xla::ifrt::Device*> addressable_devices_;
   const absl::StatusOr<std::optional<std::string>> fingerprint_;
   const Future<> ready_future_;
+  const xla::ifrt::UserContextRef user_context_;
 
   class OutputSpecCache;
   const std::unique_ptr<OutputSpecCache> output_spec_cache_;

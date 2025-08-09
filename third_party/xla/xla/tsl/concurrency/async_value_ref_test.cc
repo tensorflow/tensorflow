@@ -22,7 +22,9 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <utility>
+#include <vector>
 
+#include "absl/base/no_destructor.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -908,6 +910,14 @@ TEST(AsyncValueRefTest, RecursiveOwnership) {
   EXPECT_EQ(counter, 1 + 2 + 3);
 }
 
+TEST(AsyncValueRefTest, CountDownZero) {
+  CountDownAsyncValueRef<int32_t> count_down_ref(0, 42);
+  AsyncValueRef<int32_t> ref = count_down_ref.AsRef();
+
+  EXPECT_TRUE(ref.IsAvailable());
+  EXPECT_EQ(*ref, 42);
+}
+
 TEST(AsyncValueRefTest, CountDownSuccess) {
   AsyncValueRef<int32_t> ref = MakeConstructedAsyncValueRef<int32_t>(42);
 
@@ -916,10 +926,12 @@ TEST(AsyncValueRefTest, CountDownSuccess) {
 
   EXPECT_FALSE(ref.IsAvailable());
 
-  EXPECT_FALSE(count_down_ref.CountDown());
+  EXPECT_FALSE(count_down_ref.CountDown(1));
+  EXPECT_FALSE(count_down_ref.CountDown(0));
   EXPECT_FALSE(ref.IsAvailable());
 
-  EXPECT_TRUE(count_down_ref_copy.CountDown());
+  EXPECT_TRUE(count_down_ref_copy.CountDown(1));
+  EXPECT_TRUE(count_down_ref_copy.CountDown(0));
   EXPECT_TRUE(ref.IsAvailable());
   EXPECT_EQ(*ref, 42);
 }
@@ -935,9 +947,75 @@ TEST(AsyncValueRefTest, CountDownError) {
   EXPECT_FALSE(count_down_ref.CountDown(absl::InternalError("error")));
   EXPECT_FALSE(ref.IsAvailable());
 
-  EXPECT_TRUE(count_down_ref_copy.CountDown());
+  EXPECT_TRUE(count_down_ref_copy.CountDown(1));
   EXPECT_TRUE(ref.IsError());
   EXPECT_EQ(ref.GetError(), absl::InternalError("error"));
+}
+
+TEST(AsyncValueRefTest, UnconstructedScopedAsyncValue) {
+  ScopedAsyncValue<int32_t> scoped_value;
+
+  AsyncValueRef<int32_t> ref = scoped_value.AsRef();
+  EXPECT_FALSE(ref.IsAvailable());
+
+  ref.emplace(42);
+  EXPECT_TRUE(ref.IsAvailable());
+  EXPECT_EQ(*ref, 42);
+}
+
+TEST(AsyncValueRefTest, ConstructedScopedAsyncValue) {
+  ScopedAsyncValue<int32_t> scoped_value(
+      ScopedAsyncValue<int32_t>::ConstructedTag{}, 42);
+
+  AsyncValueRef<int32_t> ref = scoped_value.AsRef();
+  EXPECT_FALSE(ref.IsAvailable());
+
+  ref.SetStateConcrete();
+  EXPECT_TRUE(ref.IsAvailable());
+  EXPECT_EQ(*ref, 42);
+}
+
+TEST(AsyncValueRefTest, AvailableScopedAsyncValue) {
+  ScopedAsyncValue<int32_t> scoped_value(
+      ScopedAsyncValue<int32_t>::AvailableTag{}, 42);
+
+  AsyncValueRef<int32_t> ref = scoped_value.AsRef();
+  EXPECT_TRUE(ref.IsAvailable());
+  EXPECT_EQ(*ref, 42);
+}
+
+TEST(AsyncValueRefTest, ErrorScopedAsyncValue) {
+  ScopedAsyncValue<int32_t> scoped_value(ScopedAsyncValue<int32_t>::ErrorTag{},
+                                         absl::InternalError("test"));
+
+  AsyncValueRef<int32_t> ref = scoped_value.AsRef();
+  EXPECT_TRUE(ref.IsError());
+  EXPECT_EQ(ref.GetError(), absl::InternalError("test"));
+}
+
+TEST(AsyncValueRefTest, StaticScopedAsyncValue) {
+  static absl::NoDestructor<ScopedAsyncValue<int32_t>> scoped_value(
+      ScopedAsyncValue<int32_t>::AvailableTag{}, 42);
+
+  AsyncValueRef<int32_t> ref = scoped_value->AsRef();
+  EXPECT_TRUE(ref.IsAvailable());
+  EXPECT_EQ(*ref, 42);
+}
+
+TEST(AsyncValueRefTest, ScopedAsyncValueDestroyed) {
+  static std::atomic<int32_t> foo_counter{0};
+
+  struct Foo {
+    Foo() { foo_counter++; }
+    ~Foo() { foo_counter--; }
+  };
+
+  {
+    ScopedAsyncValue<Foo> scoped_value(ScopedAsyncValue<Foo>::ConstructedTag{});
+    EXPECT_EQ(foo_counter, 1);
+  }
+
+  EXPECT_EQ(foo_counter, 0);
 }
 
 //===----------------------------------------------------------------------===//
@@ -968,7 +1046,7 @@ static void BM_CountDownSuccess(benchmark::State& state) {
     auto ref = MakeConstructedAsyncValueRef<int32_t>(42);
     CountDownAsyncValueRef<int32_t> count_down_ref(ref, n);
     for (size_t i = 0; i < n; ++i) {
-      count_down_ref.CountDown();
+      count_down_ref.CountDown(1);
     }
   }
 }

@@ -80,7 +80,7 @@ class CompilationEnvironments {
       ProcessNewEnvFn process_new_env);
 
   // Adds env to the list of CompilationEnvironments. If an environment with
-  // the same proto descriptor has already been added, env will replace it.
+  // the same proto descriptor has already been added, returns an error.
   //
   // All added environments are processed via registered ProcessNewEnvFns. If
   // such a function was not regitered for env's proto descriptor or env's
@@ -100,6 +100,14 @@ class CompilationEnvironments {
   const T& GetEnv();
   template <typename T>
   bool HasEnv();
+
+  // Deletes the environment corresponding to T. Does nothing if no such
+  // environment has been added.
+  template <typename T>
+  void DeleteEnv();
+
+  // Initialize all known compilation environments.
+  absl::Status InitializeAllKnownEnvs();
 
   // Removes all added environments.
   void Clear() { environments_.clear(); }
@@ -136,7 +144,17 @@ class CompilationEnvironments {
 template <typename T>
 T& CompilationEnvironments::GetMutableEnv() {
   auto descriptor = T::descriptor();
+  // Attempt to find by pointer if it exists.
   auto it = environments_.find(descriptor);
+
+  if (it == environments_.end()) {
+    // Attempt to find by name if direct pointer lookup failed. This can happen
+    // with dynamically-linked libraries if descriptor pointers differ.
+    it = absl::c_find_if(environments_, [&](const auto& entry) {
+      return entry.first->full_name() == descriptor->full_name();
+    });
+  }
+
   if (it == environments_.end()) {
     TF_CHECK_OK(AddEnvImpl(*descriptor, nullptr));
     DefaultEnvCreatedByCompilationEnvironments(descriptor->full_name());
@@ -160,6 +178,12 @@ template <typename T>
 bool CompilationEnvironments::HasEnv() {
   auto descriptor = T::descriptor();
   return environments_.find(descriptor) != environments_.end();
+}
+
+template <typename T>
+void CompilationEnvironments::DeleteEnv() {
+  auto descriptor = T::descriptor();
+  environments_.erase(descriptor);
 }
 
 }  // namespace xla

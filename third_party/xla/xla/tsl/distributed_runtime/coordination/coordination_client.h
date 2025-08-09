@@ -58,6 +58,8 @@ using tensorflow::TryGetKeyValueRequest;
 using tensorflow::TryGetKeyValueResponse;
 using tensorflow::WaitForAllTasksRequest;
 using tensorflow::WaitForAllTasksResponse;
+using tensorflow::WatchJobStateRequest;
+using tensorflow::WatchJobStateResponse;
 
 // Base class of client interface for communicating with coordination service.
 // Can be implemented by a variety of transports such as gRPC.
@@ -100,6 +102,11 @@ class CoordinationClient {
   virtual void GetTaskStateAsync(const GetTaskStateRequest* request,
                                  GetTaskStateResponse* response,
                                  StatusCallback done) = 0;
+
+  virtual void WatchJobStateAsync(CallOptions* call_opts,
+                                  const WatchJobStateRequest* request,
+                                  WatchJobStateResponse* response,
+                                  StatusCallback done) = 0;
 
   virtual void InsertKeyValueAsync(const InsertKeyValueRequest* request,
                                    InsertKeyValueResponse* response,

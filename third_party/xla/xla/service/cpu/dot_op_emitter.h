@@ -19,7 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 
-#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/shape.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"
 
 namespace xla::cpu {
 
@@ -93,25 +92,43 @@ DotInfo InnerDotInfo(const DotInfo& batch_dot);
 // `dot_info`.
 DotImplementationStrategy GetDotImplementationStrategy(
     const HloModuleConfig& config, const HloInstruction& instr,
-    const TargetMachineFeatures& target_machine_features);
+    const TargetMachineFeatures& target_machine_features,
+    bool allow_runtime_calls);
 
 // Returns true if the two operands and the output of `dot_instr` must have row
 // major layout.
 bool DotOperandsAndResultMustHaveRowMajorLayout(
     const HloInstruction& dot_instr,
-    const TargetMachineFeatures& target_machine_features);
+    const TargetMachineFeatures& target_machine_features,
+    bool allow_runtime_calls);
 
 // Returns true our lowering strategy for `dot_instr` can fold in transposes to
 // the either of the inputs.
 bool DotImplementationCanHandleTranspose(
     const HloInstruction& dot_instr,
-    const TargetMachineFeatures& target_machine_features);
+    const TargetMachineFeatures& target_machine_features,
+    bool allow_runtime_calls);
 
 // Returns the index for an operand to `hlo` that should ideally be column
 // major.  Returns nullopt if there is no such operand or if `hlo` is not a dot
 // or a fusion containing a dot.
 std::optional<int64_t> ProfitableToMakeDotOperandColumnMajor(
     const HloInstruction& hlo);
+
+// We can choose to parallelize the dot operation using at most two dimensions:
+//
+//   1. Use one dimensions to parallelize the non-batched matmul.
+//   2. Use two dimensions to parallelize batched matmul along the batch
+//      dimensions, and also paralellize the inner marix multiplication.
+struct DotOpWorkGroupId {
+  llvm::Value* x = nullptr;
+  llvm::Value* y = nullptr;
+};
+
+struct DotOpWorkGroupDim {
+  uint64_t x = 1;
+  uint64_t y = 1;
+};
 
 // Emit LLVM IR to perform the dot operation on lhs_array and rhs_array and
 // place the result in target_array. IR is emitted at current insert point of
@@ -125,14 +142,17 @@ std::optional<int64_t> ProfitableToMakeDotOperandColumnMajor(
 //
 // If `allow_runtime_calls` is false and DotEmitter tries to emit a call to a
 // runtime API, it will return an error.
-absl::Status EmitDotOperation(
+//
+// Returns the number of workgroups along the X dimension that can be used to
+// parallelize the dot operation.
+absl::StatusOr<DotOpWorkGroupDim> EmitDotOperation(
     const HloInstruction& dot, const llvm_ir::IrArray& target_array,
     const llvm_ir::IrArray& lhs_array, const llvm_ir::IrArray& rhs_array,
-    const llvm_ir::IrArray* addend_array,
+    const llvm_ir::IrArray* addend_array, DotOpWorkGroupId work_group_id,
     llvm::Value* executable_run_options_value, llvm::IRBuilderBase* b,
     const HloModuleConfig& hlo_module_config,
     const TargetMachineFeatures& target_machine_features,
-    bool allow_runtime_calls = true);
+    bool allow_runtime_calls = true, bool allow_parallelism = true);
 
 }  // namespace xla::cpu
 

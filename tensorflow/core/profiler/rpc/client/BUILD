@@ -17,10 +17,10 @@ cc_library(
     copts = tf_profiler_copts(),
     visibility = ["//tensorflow/core/profiler:internal"],
     deps = [
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
         "@local_tsl//tsl/profiler/protobuf:profiler_service_proto_cc",
+        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
         "@local_xla//xla/tsl/profiler/rpc/client:save_profile",
     ],
 )

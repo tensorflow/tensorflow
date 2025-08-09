@@ -14,20 +14,23 @@ limitations under the License.
 ==============================================================================*/
 
 // Miscellaneous tests with the PRED type that don't fit anywhere else.
-#include <memory>
+#include <cstdint>
+#include <functional>
+#include <string>
 
-#include "xla/array2d.h"
-#include "xla/client/local_client.h"
+#include "absl/types/span.h"
 #include "xla/hlo/builder/lib/arithmetic.h"
 #include "xla/hlo/builder/xla_builder.h"
-#include "xla/tests/client_library_test_base.h"
-#include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/test.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
-class PredTest : public ClientLibraryTestBase {
+class PredTest : public ClientLibraryTestRunnerMixin<
+                     HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
  protected:
   void TestCompare(bool lhs, bool rhs, bool expected,
                    std::function<XlaOp(const xla::XlaOp&, const xla::XlaOp&,

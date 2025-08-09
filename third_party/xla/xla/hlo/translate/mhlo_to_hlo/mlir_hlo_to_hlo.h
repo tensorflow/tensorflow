@@ -61,6 +61,12 @@ struct MlirToHloConversionOptions {
   // Multiple return values are always converted to a tuple and returned as a
   // single value.
   bool return_tuple = true;
+
+  // If true, StableHLO ops that are supported by XLA will be converted directly
+  // to HLO. Otherwise, they will be converted to MHLO and then lowered to HLO.
+  // This is a temporary flag to support the ongoing direct stableHLO to HLO
+  // translation.
+  bool direct_stablehlo_to_hlo = false;
 };
 
 // Prefer `ConvertMlirHloToHloModule` over this method when possible, as it
@@ -94,6 +100,11 @@ absl::Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
                                  llvm::ArrayRef<xla::XlaOp> xla_params,
                                  std::vector<xla::XlaOp>& returns,
                                  MlirToHloConversionOptions options = {});
+
+// Returns an OriginalValueProto from the "original_value" attribute of the op.
+// Returns std::nullopt if the op doesn't have the attribute.
+std::optional<xla::OriginalValueProto> CreateOriginalValueFromOp(
+    mlir::Operation* op);
 
 }  // namespace mlir
 

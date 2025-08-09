@@ -21,9 +21,10 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/SmallVector.h"
+#include "absl/types/span.h"
+#include "xla/stream_executor/gpu/tma_metadata.pb.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -79,10 +80,10 @@ class TmaDescriptor {
 
   // Constructs TmaDescriptor to be used at runtime.
   static absl::StatusOr<TmaDescriptor> Create(
-      llvm::ArrayRef<uint64_t> global_dims,
-      llvm::ArrayRef<uint64_t> global_strides,
-      llvm::ArrayRef<uint32_t> box_dims,
-      llvm::ArrayRef<uint32_t> element_strides, int element_byte_width,
+      absl::Span<const uint64_t> global_dims,
+      absl::Span<const uint64_t> global_strides,
+      absl::Span<const uint32_t> box_dims,
+      absl::Span<const uint32_t> element_strides, int element_byte_width,
       TmaInterleave interleave = TmaInterleave::kNone,
       TmaSwizzle swizzle = TmaSwizzle::kNone,
       TmaL2Promotion l2_promotion = TmaL2Promotion::kNone,
@@ -94,23 +95,25 @@ class TmaDescriptor {
   // Element size in bytes of the tensor. Can be 1, 2, 4, 8.
   int element_size() const { return element_size_; }
 
-  // Rank of the tensor. Can be 1-5.
-  uint32_t rank() const { return rank_; }
+  // Number of dimensions of the tensor. Can be 1-5.
+  uint32_t num_dimensions() const { return global_dims_.size(); }
 
   // Array containing tensor size (number of elements) along each of the rank
   // dimensions.
-  llvm::ArrayRef<uint64_t> global_dims() const { return global_dims_; }
+  absl::Span<const uint64_t> global_dims() const { return global_dims_; }
 
   // Array containing stride size (in bytes) along each of the rank dimensions.
-  llvm::ArrayRef<uint64_t> global_strides() const { return global_strides_; }
+  absl::Span<const uint64_t> global_strides() const { return global_strides_; }
 
   // Array containing traversal box size (number of elements) along each of the
   // rank dimensions. Specifies how many elements to be traversed along each
   // tensor dimension. Can be max 256.
-  llvm::ArrayRef<uint32_t> box_dims() const { return box_dims_; }
+  absl::Span<const uint32_t> box_dims() const { return box_dims_; }
 
   // Array containing traversal stride in each of the rank dimensions.
-  llvm::ArrayRef<uint32_t> element_strides() const { return element_strides_; }
+  absl::Span<const uint32_t> element_strides() const {
+    return element_strides_;
+  }
 
   // Type of interleaved layout the tensor addresses.
   TmaInterleave interleave() const { return interleave_; }
@@ -125,35 +128,36 @@ class TmaDescriptor {
   // out-of-bound elements.
   TmaFloatOobFill float_oob_fill() const { return float_oob_fill_; }
 
+  TmaDescriptorProto ToProto() const;
+  static absl::StatusOr<TmaDescriptor> FromProto(
+      const TmaDescriptorProto& proto);
+
  private:
-  TmaDescriptor(llvm::ArrayRef<uint64_t> global_dims,
-                llvm::ArrayRef<uint64_t> global_strides,
-                llvm::ArrayRef<uint32_t> box_dims,
-                llvm::ArrayRef<uint32_t> element_strides, int element_size,
+  TmaDescriptor(absl::Span<const uint64_t> global_dims,
+                absl::Span<const uint64_t> global_strides,
+                absl::Span<const uint32_t> box_dims,
+                absl::Span<const uint32_t> element_strides, int element_size,
                 TmaInterleave interleave, TmaSwizzle swizzle,
                 TmaL2Promotion l2_promotion, TmaFloatOobFill float_oob_fill);
 
   // Element size in bytes of the tensor. Can be 1, 2, 4, 8.
   int element_size_;
 
-  // Rank of the tensor. Can be 1-5.
-  uint32_t rank_;
-
   // Array containing tensor size (number of elements) along each of the rank
   // dimensions.
-  llvm::SmallVector<uint64_t> global_dims_;
+  absl::InlinedVector<uint64_t, 5> global_dims_;
 
   // Array containing stride size (in bytes) along each of the rank - 1
   // dimensions.
-  llvm::SmallVector<uint64_t> global_strides_;
+  absl::InlinedVector<uint64_t, 5> global_strides_;
 
   // Array containing traversal box size (number of elements) along each of the
   // rank dimensions. Specifies how many elements to be traversed along each
   // tensor dimension. Can be max 256.
-  llvm::SmallVector<uint32_t> box_dims_;
+  absl::InlinedVector<uint32_t, 5> box_dims_;
 
   // Array containing traversal stride in each of the rank dimensions.
-  llvm::SmallVector<uint32_t> element_strides_;
+  absl::InlinedVector<uint32_t, 5> element_strides_;
 
   // Type of interleaved layout the tensor addresses.
   TmaInterleave interleave_;
@@ -167,12 +171,38 @@ class TmaDescriptor {
   // Indicate whether zero or special NaN constant must be used to fill
   // out-of-bound elements.
   TmaFloatOobFill float_oob_fill_;
+
+  friend bool operator==(const TmaDescriptor& lhs, const TmaDescriptor& rhs) {
+    return lhs.element_size_ == rhs.element_size_ &&
+           lhs.global_dims_ == rhs.global_dims_ &&
+           lhs.global_strides_ == rhs.global_strides_ &&
+           lhs.box_dims_ == rhs.box_dims_ &&
+           lhs.element_strides_ == rhs.element_strides_ &&
+           lhs.interleave_ == rhs.interleave_ && lhs.swizzle_ == rhs.swizzle_ &&
+           lhs.l2_promotion_ == rhs.l2_promotion_ &&
+           lhs.float_oob_fill_ == rhs.float_oob_fill_;
+  }
+
+  friend bool operator!=(const TmaDescriptor& lhs, const TmaDescriptor& rhs) {
+    return !(lhs == rhs);
+  }
 };
 
 struct TmaMetadata {
   // Maps the index of the kernel argument to the corresponding TmaDescriptor to
   // be used at runtime.
   absl::flat_hash_map<int64_t, TmaDescriptor> arg_index_to_tma_info = {};
+
+  TmaMetadataProto ToProto() const;
+  static absl::StatusOr<TmaMetadata> FromProto(const TmaMetadataProto& proto);
+
+  friend bool operator==(const TmaMetadata& lhs, const TmaMetadata& rhs) {
+    return lhs.arg_index_to_tma_info == rhs.arg_index_to_tma_info;
+  }
+
+  friend bool operator!=(const TmaMetadata& lhs, const TmaMetadata& rhs) {
+    return !(lhs == rhs);
+  }
 };
 
 }  // namespace gpu

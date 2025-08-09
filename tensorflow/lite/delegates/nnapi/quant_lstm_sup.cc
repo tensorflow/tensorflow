@@ -15,6 +15,8 @@ limitations under the License.
 #include "tensorflow/lite/delegates/nnapi/quant_lstm_sup.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <vector>
 
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/kernel_util.h"

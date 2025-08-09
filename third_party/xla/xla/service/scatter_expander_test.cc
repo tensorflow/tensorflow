@@ -24,18 +24,18 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal.h"
 #include "xla/shape_util.h"
-#include "xla/test.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/types.h"
 
 namespace xla {
 namespace {
 
-class ScatterExpanderTest : public HloTestBase {
+class ScatterExpanderTest : public HloHardwareIndependentTestBase {
  protected:
   // The HLO parser changes all no layout shapes from the input to have a
   // default layout. Clear the layout of the scatter operand for testing.
@@ -170,38 +170,38 @@ HloModule TensorFlowScatter
   const std::string expected = R"(
   //CHECK: (s32[], s32[5,3,2,2], s32[30], s32[30,2])) -> (s32[], s32[5,3,2,2], s32[30], s32[30,2]) {
   //CHECK: %[[PARAM:.*]] = (s32[], s32[5,3,2,2], s32[30], s32[30,2]) parameter(0)
-  //CHECK: %[[I:.*]] = s32[] get-tuple-element((s32[], s32[5,3,2,2], s32[30], s32[30,2]) %[[PARAM]]), index=0
+  //CHECK: %[[I:.*]] = s32[] get-tuple-element(%[[PARAM]]), index=0
   //CHECK: %[[CONSTANT1:.*]] = s32[] constant(1)
-  //CHECK: %[[I_PLUS_1:.*]] = s32[] add(s32[] %[[I]], s32[] %[[CONSTANT1]])
-  //CHECK: %[[OPERAND:.*]] = s32[5,3,2,2] get-tuple-element((s32[], s32[5,3,2,2], s32[30], s32[30,2]) %[[PARAM]]), index=1
+  //CHECK: %[[I_PLUS_1:.*]] = s32[] add(%[[I]], %[[CONSTANT1]])
+  //CHECK: %[[OPERAND:.*]] = s32[5,3,2,2] get-tuple-element(%[[PARAM]]), index=1
 
   //CHECK: %[[CONSTANT0:.*]] = s32[] constant(0)
-  //CHECK: %[[OPERAND_INDICES_LOWER_BOUND:.*]] = s32[4] broadcast(s32[] %[[CONSTANT0]])
+  //CHECK: %[[OPERAND_INDICES_LOWER_BOUND:.*]] = s32[4] broadcast(%[[CONSTANT0]])
   //CHECK: %[[CONSTANT5:.*]] = s32[] constant(5)
-  //CHECK: %[[REMAINDER:.*]] = s32[] remainder(s32[] %[[I]], s32[] %[[CONSTANT5]])
-  //CHECK: %[[BD2:.*]] = s32[1] broadcast(s32[] %[[REMAINDER]])
-  //CHECK: %[[START_INDICES:.*]] = s32[30] get-tuple-element((s32[], s32[5,3,2,2], s32[30], s32[30,2]) %[[PARAM]]), index=2
-  //CHECK: %[[I_1D_1:.*]] = s32[1] broadcast(s32[] %[[I]])
-  //CHECK: %[[START_INDICES_INDEX_RAW:.*]] = s32[1] slice(s32[1] %[[I_1D_1]])
-  //CHECK: %[[START_INDICES_INDEX:.*]] = s32[] reshape(s32[1] %[[START_INDICES_INDEX_RAW]])
-  //CHECK: %[[INDEX_VECTOR:.*]] = s32[1] dynamic-slice(s32[30] %[[START_INDICES]], s32[] %[[START_INDICES_INDEX]])
+  //CHECK: %[[REMAINDER:.*]] = s32[] remainder(%[[I]], %[[CONSTANT5]])
+  //CHECK: %[[BD2:.*]] = s32[1] broadcast(%[[REMAINDER]])
+  //CHECK: %[[START_INDICES:.*]] = s32[30] get-tuple-element(%[[PARAM]]), index=2
+  //CHECK: %[[I_1D_1:.*]] = s32[1] broadcast(%[[I]])
+  //CHECK: %[[START_INDICES_INDEX_RAW:.*]] = s32[1] slice(%[[I_1D_1]])
+  //CHECK: %[[START_INDICES_INDEX:.*]] = s32[] reshape(%[[START_INDICES_INDEX_RAW]])
+  //CHECK: %[[INDEX_VECTOR:.*]] = s32[1] dynamic-slice(%[[START_INDICES]], %[[START_INDICES_INDEX]])
 
-  //CHECK: %[[SCATTER_INDEX:.*]] = s32[1] slice(s32[1] %[[INDEX_VECTOR]])
+  //CHECK: %[[SCATTER_INDEX:.*]] = s32[1] slice(%[[INDEX_VECTOR]])
   //CHECK: %[[CONSTANT0_2:.*]] = s32[1] constant({0})
-  //CHECK: %[[BD_0_1:.*]] = s32[] divide(s32[] %[[I]], s32[] %[[CONSTANT5]])
+  //CHECK: %[[BD_0_1:.*]] = s32[] divide(%[[I]], %[[CONSTANT5]])
   //CHECK: %[[CONSTANT3:.*]] = s32[] constant(3)
-  //CHECK: %[[BD0_RAW:.*]] = s32[] divide(s32[] %[[BD_0_1]], s32[] %[[CONSTANT3]])
-  //CHECK: %[[BD0:.*]] = s32[1] broadcast(s32[] %[[BD0_RAW]])
-  //CHECK: %[[OPERAND_INDICES:.*]] = s32[4] concatenate(s32[1] %[[BD2]], s32[1] %[[SCATTER_INDEX]], s32[1] %[[CONSTANT0_2]], s32[1] %[[BD0]])
-  //CHECK: %[[OPERAND_INDEX_D0_RAW:.*]] = s32[1] slice(s32[4] %[[OPERAND_INDICES]]), slice={[0:1]}
-  //CHECK: %[[OPERAND_INDEX_D0:.*]] = s32[] reshape(s32[1] %[[OPERAND_INDEX_D0_RAW]])
-  //CHECK: %[[OPERAND_INDEX_D1_RAW:.*]] = s32[1] slice(s32[4] %[[OPERAND_INDICES]]), slice={[1:2]}
-  //CHECK: %[[OPERAND_INDEX_D1:.*]] = s32[] reshape(s32[1] %[[OPERAND_INDEX_D1_RAW]])
-  //CHECK: %[[OPERAND_INDEX_D2_RAW:.*]] = s32[1] slice(s32[4] %[[OPERAND_INDICES]]), slice={[2:3]}
-  //CHECK: %[[OPERAND_INDEX_D2:.*]] = s32[] reshape(s32[1] %[[OPERAND_INDEX_D2_RAW]])
-  //CHECK: %[[OPERAND_INDEX_D3_RAW:.*]] = s32[1] slice(s32[4] %[[OPERAND_INDICES]]), slice={[3:4]}
-  //CHECK: %[[OPERAND_INDEX_D3:.*]] = s32[] reshape(s32[1] %[[OPERAND_INDEX_D3_RAW]])
-  //CHECK: %{{.*}} = s32[1,1,2,1] dynamic-slice(s32[5,3,2,2] %[[OPERAND]], s32[] %[[OPERAND_INDEX_D0]], s32[] %[[OPERAND_INDEX_D1]], s32[] %[[OPERAND_INDEX_D2]], s32[] %[[OPERAND_INDEX_D3]])
+  //CHECK: %[[BD0_RAW:.*]] = s32[] divide(%[[BD_0_1]], %[[CONSTANT3]])
+  //CHECK: %[[BD0:.*]] = s32[1] broadcast(%[[BD0_RAW]])
+  //CHECK: %[[OPERAND_INDICES:.*]] = s32[4] concatenate(%[[BD2]], %[[SCATTER_INDEX]], %[[CONSTANT0_2]], %[[BD0]])
+  //CHECK: %[[OPERAND_INDEX_D0_RAW:.*]] = s32[1] slice(%[[OPERAND_INDICES]]), slice={[0:1]}
+  //CHECK: %[[OPERAND_INDEX_D0:.*]] = s32[] reshape(%[[OPERAND_INDEX_D0_RAW]])
+  //CHECK: %[[OPERAND_INDEX_D1_RAW:.*]] = s32[1] slice(%[[OPERAND_INDICES]]), slice={[1:2]}
+  //CHECK: %[[OPERAND_INDEX_D1:.*]] = s32[] reshape(%[[OPERAND_INDEX_D1_RAW]])
+  //CHECK: %[[OPERAND_INDEX_D2_RAW:.*]] = s32[1] slice(%[[OPERAND_INDICES]]), slice={[2:3]}
+  //CHECK: %[[OPERAND_INDEX_D2:.*]] = s32[] reshape(%[[OPERAND_INDEX_D2_RAW]])
+  //CHECK: %[[OPERAND_INDEX_D3_RAW:.*]] = s32[1] slice(%[[OPERAND_INDICES]]), slice={[3:4]}
+  //CHECK: %[[OPERAND_INDEX_D3:.*]] = s32[] reshape(%[[OPERAND_INDEX_D3_RAW]])
+  //CHECK: %{{.*}} = s32[1,1,2,1] dynamic-slice(%[[OPERAND]], %[[OPERAND_INDEX_D0]], %[[OPERAND_INDEX_D1]], %[[OPERAND_INDEX_D2]], %[[OPERAND_INDEX_D3]])
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,

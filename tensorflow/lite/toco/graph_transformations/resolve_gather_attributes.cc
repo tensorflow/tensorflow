@@ -25,9 +25,8 @@ limitations under the License.
 
 namespace toco {
 
-::tensorflow::Status ResolveGatherAttributes::Run(Model* model,
-                                                  std::size_t op_index,
-                                                  bool* modified) {
+absl::Status ResolveGatherAttributes::Run(Model* model, std::size_t op_index,
+                                          bool* modified) {
   *modified = false;
   auto* gather_op = model->operators[op_index].get();
   if (gather_op->type != OperatorType::kGather) return absl::OkStatus();

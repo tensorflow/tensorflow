@@ -15,7 +15,6 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_barrier_proxy.h"
 
 #include <atomic>
-#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -25,8 +24,8 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "xla/tsl/distributed_runtime/call_options.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
@@ -55,81 +54,6 @@ class MockCoordinationServiceAgent : public CoordinationServiceAgent {
                const std::vector<CoordinatedTask>& tasks),
               (override));
   MOCK_METHOD(absl::Status, CancelBarrier, (std::string_view barrier_id),
-              (override));
-
-  // All the following member functions are not needed for testing.
-  MOCK_METHOD(absl::Status, Initialize,
-              (Env * env, std::string_view job_name, int task_id,
-               const CoordinationServiceConfig& configs,
-               std::unique_ptr<CoordinationClient> leader_client,
-               StatusCallback error_fn, bool recoverable),
-              (override));
-  MOCK_METHOD(absl::Status, Initialize,
-              (Env * env, std::string_view job_name, int task_id,
-               const CoordinationServiceConfig& configs,
-               std::unique_ptr<CoordinationClient> leader_client,
-               StatusCallback error_fn),
-              (override));
-  MOCK_METHOD(absl::Status, Initialize,
-              (Env * env, const CoordinatedTask& task,
-               const CoordinationServiceConfig& configs,
-               std::unique_ptr<CoordinationClient> leader_client,
-               StatusCallback error_fn),
-              (override));
-  MOCK_METHOD(bool, IsInitialized, (), (override));
-  MOCK_METHOD(bool, IsConnected, (), (override));
-  MOCK_METHOD(bool, IsError, (), (override));
-  MOCK_METHOD(absl::Status, Connect, (), (override));
-  MOCK_METHOD(absl::Status, WaitForAllTasks, (const DeviceInfo& local_devices),
-              (override));
-  MOCK_METHOD(const DeviceInfo&, GetClusterDeviceInfo, (), (override));
-  MOCK_METHOD(absl::StatusOr<CoordinatedTask>, GetOwnTask, (), (override));
-  MOCK_METHOD(absl::StatusOr<std::vector<CoordinatedTaskStateInfo>>,
-              GetTaskState, (const std::vector<CoordinatedTask>& task),
-              (override));
-  MOCK_METHOD(absl::Status, ReportError, (const absl::Status& error),
-              (override));
-  MOCK_METHOD(absl::Status, Shutdown, (), (override));
-  MOCK_METHOD(absl::Status, Reset, (), (override));
-  MOCK_METHOD(absl::StatusOr<std::string>, GetKeyValue, (std::string_view key),
-              (override));
-  MOCK_METHOD(absl::StatusOr<std::string>, GetKeyValue,
-              (std::string_view key, absl::Duration timeout), (override));
-  MOCK_METHOD(std::shared_ptr<CallOptions>, GetKeyValueAsync,
-              (std::string_view key, StatusOrValueCallback done), (override));
-  MOCK_METHOD(absl::StatusOr<std::string>, TryGetKeyValue,
-              (std::string_view key), (override));
-  MOCK_METHOD(absl::StatusOr<std::vector<KeyValueEntry>>, GetKeyValueDir,
-              (std::string_view key), (override));
-  MOCK_METHOD(void, GetKeyValueDirAsync,
-              (std::string_view key, StatusOrValueDirCallback done),
-              (override));
-  MOCK_METHOD(absl::Status, InsertKeyValue,
-              (std::string_view key, std::string_view value), (override));
-  MOCK_METHOD(absl::Status, InsertKeyValue,
-              (std::string_view key, std::string_view value,
-               bool allow_overwrite),
-              (override));
-  MOCK_METHOD(absl::Status, DeleteKeyValue, (std::string_view key), (override));
-  MOCK_METHOD(absl::Status, UpdateKeyValue,
-              (std::string_view key, std::string_view value), (override));
-  MOCK_METHOD(absl::Status, StartWatchKey,
-              (std::string_view key, ChangedKeyValuesCallback on_change),
-              (override));
-  MOCK_METHOD(absl::Status, StopWatchKey, (std::string_view key), (override));
-  MOCK_METHOD(void, WaitAtBarrierAsync,
-              (std::string_view barrier_id, absl::Duration timeout,
-               const std::vector<CoordinatedTask>& tasks, StatusCallback done),
-              (override));
-  MOCK_METHOD(void, CancelBarrierAsync,
-              (std::string_view barrier_id, StatusCallback done), (override));
-  MOCK_METHOD(absl::StatusOr<std::vector<CoordinatedTask>>, GetAliveTasks,
-              (const std::vector<CoordinatedTask>& tasks), (override));
-  MOCK_METHOD(absl::StatusOr<Env*>, GetEnv, (), (override));
-  MOCK_METHOD(void, SetError, (const absl::Status& error), (override));
-  MOCK_METHOD(absl::Status, ActivateWatch,
-              (std::string_view key,
-               (const std::map<std::string, std::string>&)),
               (override));
 };
 

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <memory>
 
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
@@ -64,14 +65,6 @@ TEST_F(GetPointerMemorySpaceTest, Device) {
   TF_ASSERT_OK_AND_ASSIGN(auto memory_space,
                           executor->GetPointerMemorySpace(mem.opaque()))
   EXPECT_EQ(memory_space, MemoryType::kDevice);
-  executor->Deallocate(&mem);
-}
-
-TEST_F(GetPointerMemorySpaceTest, Collective) {
-  StreamExecutor* executor = GetPlatform()->ExecutorForDevice(0).value();
-  auto mem =
-      executor->Allocate(64, static_cast<int64_t>(MemoryType::kCollective));
-  ASSERT_NE(mem, nullptr);
   executor->Deallocate(&mem);
 }
 

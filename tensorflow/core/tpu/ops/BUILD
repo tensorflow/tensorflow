@@ -210,7 +210,11 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
+        "@local_xla//xla:util",
     ],
     alwayslink = 1,
 )

@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "tensorflow/core/framework/metrics.h"
+#include "tensorflow/core/framework/tf_data_file_logger_options.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 
 namespace tensorflow {
@@ -47,7 +48,7 @@ absl::StatusOr<bool> DisableCompressionAtRuntime(
   return false;
 }
 
-void LogFilenames(const std::vector<std::string>& files) {}
+void LogFilenames(const LogFilenamesOptions& options) {}
 
 }  // namespace data
 }  // namespace tensorflow

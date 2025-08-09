@@ -24,6 +24,7 @@ limitations under the License.
 
 // clang-format off
 // Required for IS_MOBILE_PLATFORM
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/platform/platform.h"
@@ -640,6 +641,15 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
     return std::nullopt;
   }
 
+  // Returns true if this library contains an OptimizedFunctionGraph for the
+  // given `function_name`, otherwise false.
+  bool HasOptimizedFunctionGraph(const std::string& function_name) const
+      TF_LOCKS_EXCLUDED(mu_) {
+    tf_shared_lock l(mu_);
+    return optimized_function_graph_creator_map_.find(function_name) !=
+           optimized_function_graph_creator_map_.end();
+  }
+
   // Creates a map of function names to stack traces for a FunctionDefLibrary.
   static FunctionDefLibraryStackTraces CreateStackTracesForFunctionDefLibrary(
       const FunctionDefLibrary& library, const GraphDebugInfo& debug_info);
@@ -899,6 +909,10 @@ class FunctionLibraryRuntime : public core::WeakRefCounted {
     auto opts = absl::make_unique<InstantiateOptions>();
     return Instantiate(function_name, attrs, *opts, handle);
   }
+
+  // Finalizes the function library runtime. The Instantiate method should be
+  // called before Finalize is called.
+  virtual absl::Status Finalize() { return absl::OkStatus(); };
 
   // Releases state associated with the handle.
   virtual absl::Status ReleaseHandle(Handle handle) = 0;

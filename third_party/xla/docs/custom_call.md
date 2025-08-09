@@ -93,7 +93,7 @@ type, dimensions, and a pointer to the buffer itself.
 
 
 ```c++
-// Buffers of any rank and data type.
+// Buffers of any number of dimensions and data type.
 auto handler = Ffi::Bind().Arg<AnyBuffer>().Ret<AnyBuffer>().To(
     [](AnyBuffer arg, Result<AnyBuffer> res) -> Error {
       void* arg_data = arg.untyped_data();
@@ -104,12 +104,13 @@ auto handler = Ffi::Bind().Arg<AnyBuffer>().Ret<AnyBuffer>().To(
 
 ### Constrained Buffer Arguments And Results
 
-`Buffer` allows to add constraints on the buffer data type and rank, and they
-will be automatically checked by the handler and return an error to XLA runtime,
-if run time arguments do not match the FFI handler signature.
+`Buffer` allows to add constraints on the buffer data type and number of
+dimensions, and they will be automatically checked by the handler and return
+an error to XLA runtime, if run time arguments do not match the FFI handler
+signature.
 
 ```c++
-// Buffers of any rank and F32 data type.
+// Buffers of any number of dimensions and F32 data type.
 auto handler = Ffi::Bind().Arg<Buffer<F32>>().Ret<Buffer<F32>>().To(
     [](Buffer<F32> arg, Result<Buffer<F32>> res) -> Error {
       float* arg_data = arg.typed_data();
@@ -119,7 +120,7 @@ auto handler = Ffi::Bind().Arg<Buffer<F32>>().Ret<Buffer<F32>>().To(
 ```
 
 ```c++
-// Buffers of rank 2 and F32 data type.
+// Buffers of number of dimensions 2 and F32 data type.
 auto handler = Ffi::Bind().Arg<BufferR2<F32>>().Ret<BufferR2<F32>>().To(
     [](BufferR2<F32> arg, Result<BufferR2<F32>> res) -> Error {
       float* arg_data = arg.typed_data();
@@ -312,10 +313,10 @@ void do_it() {
         /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
 }
 
-// Constrain custom call arguments to rank-1 buffers of F32 data type.
+// Constrain custom call arguments to 1-dimensional buffers of F32 data type.
 using BufferF32 = xla::ffi::BufferR1<xla::ffi::DataType::F32>;
 
-// Implement a custom call as a C+ function. Note that we can use `Buffer` type
+// Implement a custom call as a C++ function. Note that we can use `Buffer` type
 // defined by XLA FFI that gives us access to buffer data type and shape.
 xla::ffi::Error do_custom_call(BufferF32 in0, BufferF32 in1,
                                xla::ffi::Result<BufferF32> out) {

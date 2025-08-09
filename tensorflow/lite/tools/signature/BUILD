@@ -1,3 +1,5 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "pybind_extension", "replace_with_portable_tf_lib_when_required")
 
@@ -19,6 +21,10 @@ cc_library(
     hdrs = ["signature_def_util.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
+    features = select({
+        "//tensorflow:android": ["-layering_check"],
+        "//conditions:default": [],
+    }),
     deps = replace_with_portable_tf_lib_when_required([
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",

@@ -1,6 +1,7 @@
 # Description:
 #   Benchmark utility that can run on desktop and Android.
 
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_binary",

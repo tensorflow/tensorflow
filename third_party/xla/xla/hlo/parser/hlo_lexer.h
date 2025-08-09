@@ -71,6 +71,7 @@ enum class TokKind {
   kw_shard_like,
   kw_unknown,
   kw_inf,
+  kw_unreduced,
 
   kNegInf,  // -inf
 
@@ -81,7 +82,6 @@ enum class TokKind {
   kDimLabels,      // [0-9bf?]{2,}_[0-9io?]{2,}->[0-9bf?]{2,}
   kDxD,            // [0-9]+(x[0-9]+)+
   kPad,            // [0-9]+_[0-9]+(_[0-9]+)?(x[0-9]+_[0-9]+(_[0-9]+)?)*
-  kSparsityDesc,   // ([LR]\.[0-9]+@[0-9]+:[0-9]+_?)+
   kIdent,          // other identifiers
   kString,         // "abcd\"\n"
   kInt,            // 42
@@ -89,6 +89,13 @@ enum class TokKind {
 };
 
 std::string TokKindToString(TokKind kind);
+
+constexpr uint64_t kNoneMask = 0;
+constexpr uint64_t kDimLabelsDxDPadDecimalMask =
+    (1ULL << static_cast<int>(TokKind::kDimLabels)) |
+    (1ULL << static_cast<int>(TokKind::kDxD)) |
+    (1ULL << static_cast<int>(TokKind::kPad)) |
+    (1ULL << static_cast<int>(TokKind::kDecimal));
 
 // Lexer for the HloModule::ToString() format text.
 //
@@ -100,7 +107,9 @@ class HloLexer {
     current_ptr_ = buf_.data();
   }
 
-  TokKind Lex() { return token_state_.current_kind = LexToken(); }
+  TokKind Lex(uint64_t skip_mask = kNoneMask) {
+    return token_state_.current_kind = LexToken(skip_mask);
+  }
 
   TokKind GetKind() const { return token_state_.current_kind; }
   std::string GetStrVal() const {
@@ -110,7 +119,6 @@ class HloLexer {
       case TokKind::kDimLabels:
       case TokKind::kDxD:
       case TokKind::kPad:
-      case TokKind::kSparsityDesc:
       case TokKind::kString:
       case TokKind::kIdent:
         return token_state_.str_val;
@@ -172,14 +180,15 @@ class HloLexer {
   // current buffer.
   bool CanDereference(const char* ptr) const;
 
-  TokKind LexToken();
+  TokKind LexToken(uint64_t skip_mask);
 
   TokKind LexIdentifier();
   TokKind LexPercent();
   TokKind LexShape();
   TokKind LexConstant();
-  TokKind LexNumberOrPattern();
+  TokKind LexNumberOrPattern(uint64_t skip_mask);
   TokKind LexString();
+  TokKind LexInt64Impl();
 
   std::optional<int64_t> LexNanPayload(absl::string_view& consumable);
 

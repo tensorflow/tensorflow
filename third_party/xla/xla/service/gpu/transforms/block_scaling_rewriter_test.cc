@@ -142,6 +142,44 @@ ENTRY main {
 })");
 }
 
+TEST_F(BlockScalingRewriterTest, ExpandBlockScaledDotExplicitBlockSize) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule test
+
+ENTRY main {
+  %lhs = f8e4m3fn[4,16,224] parameter(0)
+  %rhs = f8e4m3fn[4,32,224] parameter(1)
+  %lhs_scale = f8e5m2[4,16,8] parameter(2)
+  %rhs_scale = f8e5m2[4,32,8] parameter(3)
+  ROOT %result = f32[4,16,32] custom-call(%lhs, %rhs, %lhs_scale, %rhs_scale),
+      custom_call_target="__op$block_scaled_dot",
+      backend_config={"block_scaled_dot_backend_config":{block_size:32}}
+})";
+
+  BlockScalingRewriter pass(/*allow_cudnn=*/false);
+  RunAndFilecheckHloRewrite(hlo_string, std::move(pass), R"(
+  CHECK: [[lhs_quant:%.+]] = f8e4m3fn[4,16,224]{2,1,0} parameter(0)
+  CHECK: [[lhs_quant_cvt:%.+]] = f32[4,16,224]{2,1,0} convert([[lhs_quant]])
+  CHECK: [[lhs_scale:%.+]] = f8e5m2[4,16,8]{2,1,0} parameter(2)
+  CHECK: [[lhs_scale_sl:%.+]] = f8e5m2[4,16,7]{2,1,0} slice([[lhs_scale]])
+  CHECK: [[lhs_scale_cvt:%.+]] = f32[4,16,7]{2,1,0} convert([[lhs_scale_sl]])
+  CHECK: [[lhs_scale_bc:%.+]] = f32[4,16,7,32]{3,2,1,0} broadcast([[lhs_scale_cvt]])
+  CHECK: [[lhs_scale_rs:%.+]] = f32[4,16,224]{2,1,0} reshape([[lhs_scale_bc]])
+  CHECK: [[lhs:%.+]] = f32[4,16,224]{2,1,0} multiply([[lhs_quant_cvt]], [[lhs_scale_rs]])
+  CHECK: [[rhs_quant:%.+]] = f8e4m3fn[4,32,224]{2,1,0} parameter(1)
+  CHECK: [[rhs_quant_cvt:%.+]] = f32[4,32,224]{2,1,0} convert([[rhs_quant]])
+  CHECK: [[rhs_scale:%.+]] = f8e5m2[4,32,8]{2,1,0} parameter(3)
+  CHECK: [[rhs_scale_sl:%.+]] = f8e5m2[4,32,7]{2,1,0} slice([[rhs_scale]])
+  CHECK: [[rhs_scale_cvt:%.+]] = f32[4,32,7]{2,1,0} convert([[rhs_scale_sl]])
+  CHECK: [[rhs_scale_bc:%.+]] = f32[4,32,7,32]{3,2,1,0} broadcast([[rhs_scale_cvt]])
+  CHECK: [[rhs_scale_rs:%.+]] = f32[4,32,224]{2,1,0} reshape([[rhs_scale_bc]])
+  CHECK: [[rhs:%.+]] = f32[4,32,224]{2,1,0} multiply([[rhs_quant_cvt]], [[rhs_scale_rs]])
+  CHECK: ROOT {{.+}} = f32[4,16,32]{2,1,0} dot([[lhs]], [[rhs]])
+  CHECK-SAME: lhs_batch_dims={0}, lhs_contracting_dims={2}
+  CHECK-SAME: rhs_batch_dims={0}, rhs_contracting_dims={2}
+})");
+}
+
 TEST_F(BlockScalingRewriterTest, QuantizeDequantizeCompare) {
   constexpr absl::string_view hlo_test = R"(
 HloModule test
@@ -243,6 +281,41 @@ ENTRY main {
   CHECK: [[gte:%.+]] = f16[1,128,128]{2,1,0} get-tuple-element([[call]]), index=0
   CHECK: [[slice:%.+]] = f16[1,128,120]{2,1,0} slice([[gte]]), slice={[0:1], [0:128], [0:120]}
   CHECK: ROOT {{.+}} = f16[128,120]{1,0} reshape([[slice]])
+})");
+}
+
+TEST_F(BlockScalingRewriterTest, CudnnScaledDotPaddedScales) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule test
+
+ENTRY main {
+  %lhs = f8e4m3fn[4,120,96] parameter(0)
+  %rhs = f8e4m3fn[4,120,96] parameter(1)
+  %lhs_scale = f8e8m0fnu[4,128,4] parameter(2)
+  %rhs_scale = f8e8m0fnu[4,128,4] parameter(3)
+  ROOT %result = f16[4,120,120] custom-call(%lhs, %rhs, %lhs_scale, %rhs_scale),
+      custom_call_target="__op$block_scaled_dot",
+      backend_config={"block_scaled_dot_backend_config":{block_size:32}}
+})";
+
+  BlockScalingRewriter pass(/*allow_cudnn=*/true);
+  RunAndFilecheckHloRewrite(hlo_string, std::move(pass), R"(
+  CHECK: [[lhs:%.+]] = f8e4m3fn[4,120,96]{2,1,0} parameter(0)
+  CHECK: [[lhs_pad:%.+]] = f8e4m3fn[4,128,96]{2,1,0} pad([[lhs]], {{.+}}), padding=0_0x0_8x0_0
+  CHECK: [[rhs:%.+]] = f8e4m3fn[4,120,96]{2,1,0} parameter(1)
+  CHECK: [[rhs_pad:%.+]] = f8e4m3fn[4,128,96]{2,1,0} pad([[rhs]], {{.+}}), padding=0_0x0_8x0_0
+  CHECK: [[lhs_scale:%.+]] = f8e8m0fnu[4,128,4]{2,1,0} parameter(2)
+  CHECK: [[lhs_scale_rs:%.+]] = f8e8m0fnu[4,1,4,32,1,4]{5,4,3,2,1,0} reshape([[lhs_scale]])
+  CHECK: [[lhs_scale_tr:%.+]] = f8e8m0fnu[4,1,1,32,4,4]{5,2,3,4,1,0} transpose([[lhs_scale_rs]]), dimensions={0,1,4,3,2,5}
+  CHECK: [[lhs_scale_swizzle:%.+]] = f8e8m0fnu[4,128,4]{2,1,0} reshape([[lhs_scale_tr]])
+  CHECK: [[rhs_scale:%.+]] = f8e8m0fnu[4,128,4]{2,1,0} parameter(3)
+  CHECK: [[rhs_scale_rs:%.+]] = f8e8m0fnu[4,1,4,32,1,4]{5,4,3,2,1,0} reshape([[rhs_scale]])
+  CHECK: [[rhs_scale_tr:%.+]] = f8e8m0fnu[4,1,1,32,4,4]{5,2,3,4,1,0} transpose([[rhs_scale_rs]]), dimensions={0,1,4,3,2,5}
+  CHECK: [[rhs_scale_swizzle:%.+]] = f8e8m0fnu[4,128,4]{2,1,0} reshape([[rhs_scale_tr]])
+  CHECK: [[call:%.+]] = ({{.+}}) custom-call([[lhs_pad]], [[rhs_pad]], [[lhs_scale_swizzle]], [[rhs_scale_swizzle]])
+  CHECK-SAME: custom_call_target="__cudnn$blockScaledDot"
+  CHECK: [[gte:%.+]] = f16[4,128,128]{2,1,0} get-tuple-element([[call]]), index=0
+  CHECK: ROOT {{.+}} = f16[4,120,120]{2,1,0} slice([[gte]]), slice={[0:4], [0:120], [0:120]}
 })");
 }
 

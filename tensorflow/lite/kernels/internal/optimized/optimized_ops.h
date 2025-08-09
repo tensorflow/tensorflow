@@ -2398,14 +2398,12 @@ void BroadcastDivSlow(const ArithmeticParams& params,
 // BroadcastDiv is intentionally duplicated from reference_ops.h.
 // For more details see the comment above the generic version of
 // BroadcastDivSlow.
-template <int N = 5>
-inline void BroadcastDivSlow(const ArithmeticParams& params,
-                             const RuntimeShape& unextended_input1_shape,
-                             const uint8_t* input1_data,
-                             const RuntimeShape& unextended_input2_shape,
-                             const uint8_t* input2_data,
-                             const RuntimeShape& unextended_output_shape,
-                             uint8_t* output_data) {
+template <typename T, int N = 5>
+inline void BroadcastDivSlowQuantized(
+    const ArithmeticParams& params, const RuntimeShape& unextended_input1_shape,
+    const T* input1_data, const RuntimeShape& unextended_input2_shape,
+    const T* input2_data, const RuntimeShape& unextended_output_shape,
+    T* output_data) {
   TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), N);
   TFLITE_DCHECK_LE(unextended_input2_shape.DimensionsCount(), N);
   TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), N);
@@ -2418,12 +2416,28 @@ inline void BroadcastDivSlow(const ArithmeticParams& params,
   CopyDimsToDesc(RuntimeShape::ExtendedShape(N, unextended_output_shape),
                  &output_desc);
 
-  TFLITE_DCHECK_GT(params.input1_offset, -256);
-  TFLITE_DCHECK_LT(params.input1_offset, 256);
-  TFLITE_DCHECK_GT(params.input2_offset, -256);
-  TFLITE_DCHECK_LT(params.input2_offset, 256);
-  TFLITE_DCHECK_GT(params.output_offset, -256);
-  TFLITE_DCHECK_LT(params.output_offset, 256);
+  if (std::is_same<T, uint8_t>::value) {
+    TFLITE_DCHECK_GT(params.input1_offset, -256);
+    TFLITE_DCHECK_LT(params.input1_offset, 256);
+    TFLITE_DCHECK_GT(params.input2_offset, -256);
+    TFLITE_DCHECK_LT(params.input2_offset, 256);
+    TFLITE_DCHECK_GT(params.output_offset, -256);
+    TFLITE_DCHECK_LT(params.output_offset, 256);
+  } else if (std::is_same<T, int8_t>::value) {
+    TFLITE_DCHECK_GT(params.input1_offset, -128);
+    TFLITE_DCHECK_LE(params.input1_offset, 128);
+    TFLITE_DCHECK_GT(params.input2_offset, -128);
+    TFLITE_DCHECK_LE(params.input2_offset, 128);
+    TFLITE_DCHECK_GE(params.output_offset, -128);
+    TFLITE_DCHECK_LT(params.output_offset, 128);
+  } else if (std::is_same<T, int16_t>::value) {
+    TFLITE_DCHECK_GT(params.input1_offset, -32768);
+    TFLITE_DCHECK_LE(params.input1_offset, 32768);
+    TFLITE_DCHECK_GT(params.input2_offset, -32768);
+    TFLITE_DCHECK_LE(params.input2_offset, 32768);
+    TFLITE_DCHECK_GE(params.output_offset, -32768);
+    TFLITE_DCHECK_LT(params.output_offset, 32768);
+  }
 
   auto div_func = [&](int indexes[N]) {
     int32_t input1_val =
@@ -2452,9 +2466,48 @@ inline void BroadcastDivSlow(const ArithmeticParams& params,
         std::min(params.quantized_activation_max,
                  std::max(params.quantized_activation_min, unclamped_result));
     output_data[SubscriptToIndex(output_desc, indexes)] =
-        static_cast<uint8_t>(clamped_output);
+        static_cast<T>(clamped_output);
   };
   NDOpsHelper<N>(output_desc, div_func);
+}
+
+template <int N = 5>
+inline void BroadcastDivSlow(const ArithmeticParams& params,
+                             const RuntimeShape& unextended_input1_shape,
+                             const uint8_t* input1_data,
+                             const RuntimeShape& unextended_input2_shape,
+                             const uint8_t* input2_data,
+                             const RuntimeShape& unextended_output_shape,
+                             uint8_t* output_data) {
+  BroadcastDivSlowQuantized<uint8_t, N>(
+      params, unextended_input1_shape, input1_data, unextended_input2_shape,
+      input2_data, unextended_output_shape, output_data);
+}
+
+template <int N = 5>
+inline void BroadcastDivSlow(const ArithmeticParams& params,
+                             const RuntimeShape& unextended_input1_shape,
+                             const int8_t* input1_data,
+                             const RuntimeShape& unextended_input2_shape,
+                             const int8_t* input2_data,
+                             const RuntimeShape& unextended_output_shape,
+                             int8_t* output_data) {
+  BroadcastDivSlowQuantized<int8_t, N>(
+      params, unextended_input1_shape, input1_data, unextended_input2_shape,
+      input2_data, unextended_output_shape, output_data);
+}
+
+template <int N = 5>
+inline void BroadcastDivSlow(const ArithmeticParams& params,
+                             const RuntimeShape& unextended_input1_shape,
+                             const int16_t* input1_data,
+                             const RuntimeShape& unextended_input2_shape,
+                             const int16_t* input2_data,
+                             const RuntimeShape& unextended_output_shape,
+                             int16_t* output_data) {
+  BroadcastDivSlowQuantized<int16_t, N>(
+      params, unextended_input1_shape, input1_data, unextended_input2_shape,
+      input2_data, unextended_output_shape, output_data);
 }
 
 template <typename T>
@@ -3915,13 +3968,14 @@ inline void LogSoftmax(const SoftmaxParams& params, float input_scale,
   }
 }
 
-inline void Logistic(const RuntimeShape& input_shape, const float* input_data,
-                     const RuntimeShape& output_shape, float* output_data) {
+template <typename T>
+inline void Logistic(const RuntimeShape& input_shape, const T* input_data,
+                     const RuntimeShape& output_shape, T* output_data) {
   ruy::profiler::ScopeLabel label("Logistic");
   auto input_map = MapAsVector(input_data, input_shape);
   auto output_map = MapAsVector(output_data, output_shape);
   output_map.array() =
-      input_map.array().unaryExpr(Eigen::internal::scalar_logistic_op<float>());
+      input_map.array().unaryExpr(Eigen::internal::scalar_logistic_op<T>());
 }
 
 // Convenience version that allows, for example, generated-code calls to be
@@ -4029,8 +4083,9 @@ inline void Logistic(const LogisticParams& params,
   }
 }
 
-inline void Tanh(const RuntimeShape& input_shape, const float* input_data,
-                 const RuntimeShape& output_shape, float* output_data) {
+template <typename T>
+inline void Tanh(const RuntimeShape& input_shape, const T* input_data,
+                 const RuntimeShape& output_shape, T* output_data) {
   ruy::profiler::ScopeLabel label("Tanh");
   auto input_map = MapAsVector(input_data, input_shape);
   auto output_map = MapAsVector(output_data, output_shape);
@@ -4222,8 +4277,9 @@ inline void Cast(const RuntimeShape& input_shape, const SrcT* input_data,
   output_map.array() = input_map.array().template cast<DstT>();
 }
 
-inline void Floor(const RuntimeShape& input_shape, const float* input_data,
-                  const RuntimeShape& output_shape, float* output_data) {
+template <typename T>
+inline void Floor(const RuntimeShape& input_shape, const T* input_data,
+                  const RuntimeShape& output_shape, T* output_data) {
   ruy::profiler::ScopeLabel label("Floor");
   auto input_map = MapAsVector(input_data, input_shape);
   auto output_map = MapAsVector(output_data, output_shape);

@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
 
@@ -106,8 +107,9 @@ absl::StatusOr<DotShape> GetDotShape(const DotDimensionNumbers& dot_dimensions,
 
   // Check that matmul shapes are rank 2 or less and can be represented as
   // Eigen 2D contraction.
-  if (lhs_matmul_shape.rank() > 2 || rhs_matmul_shape.rank() > 2 ||
-      out_matmul_shape.rank() > 2) {
+  if (lhs_matmul_shape.dimensions().size() > 2 ||
+      rhs_matmul_shape.dimensions().size() > 2 ||
+      out_matmul_shape.dimensions().size() > 2) {
     return InvalidArgument(
         "MatMul shape must be rank 2 or less: lhs=%s, rhs=%s, out=%s",
         lhs_matmul_shape.ToString(true), rhs_matmul_shape.ToString(true),
@@ -148,19 +150,20 @@ absl::StatusOr<DotCanonicalDims> GetDotCanonicalDims(
   TF_RET_CHECK(rhs_contracting_dims[0] < 2);
 
   auto is_column_major = [](const Shape& shape) {
-    return shape.rank() > 1 && LayoutUtil::Minor(shape.layout(), 0) == 0;
+    return shape.dimensions().size() > 1 &&
+           LayoutUtil::Minor(shape.layout(), 0) == 0;
   };
 
   return DotCanonicalDims{
-      /*m=*/dot_shape.lhs_matmul_shape.rank() <= 1
+      /*m=*/dot_shape.lhs_matmul_shape.dimensions().size() <= 1
           ? int64_t{1}
           : dot_shape.lhs_matmul_shape.dimensions(1 - lhs_contracting_dims[0]),
       /*k=*/dot_shape.lhs_matmul_shape.dimensions(lhs_contracting_dims[0]),
-      /*n=*/dot_shape.rhs_matmul_shape.rank() <= 1
+      /*n=*/dot_shape.rhs_matmul_shape.dimensions().size() <= 1
           ? int64_t{1}
           : dot_shape.rhs_matmul_shape.dimensions(1 - rhs_contracting_dims[0]),
       /*lhs_column_major=*/is_column_major(dot_shape.lhs_matmul_shape),
-      /*lhs_canonical=*/dot_shape.lhs_matmul_shape.rank() <= 1 ||
+      /*lhs_canonical=*/dot_shape.lhs_matmul_shape.dimensions().size() <= 1 ||
           lhs_contracting_dims[0] == 1,
       /*rhs_column_major=*/is_column_major(dot_shape.rhs_matmul_shape),
       /*rhs_canonical=*/rhs_contracting_dims[0] == 0,

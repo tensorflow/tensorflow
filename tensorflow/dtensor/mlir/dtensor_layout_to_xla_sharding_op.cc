@@ -45,14 +45,30 @@ using mlir::TF::DTensorLayout;
 class RemoveDTensorLayoutAfterConstOrBlockArgPattern
     : public mlir::OpRewritePattern<DTensorLayout> {
  public:
-  using mlir::OpRewritePattern<DTensorLayout>::OpRewritePattern;
+  using OpRewritePattern::OpRewritePattern;
 
-  mlir::LogicalResult match(DTensorLayout layout_op) const override;
-
-  void rewrite(DTensorLayout layout_op,
-               mlir::PatternRewriter& rewriter) const override {
+  mlir::LogicalResult matchAndRewrite(
+      DTensorLayout layout_op, mlir::PatternRewriter& rewriter) const override {
+    if (match(layout_op).failed()) {
+      return mlir::failure();
+    }
     rewriter.replaceAllUsesWith(layout_op, layout_op.getInput());
     rewriter.eraseOp(layout_op);
+    return mlir::success();
+  }
+
+ private:
+  mlir::LogicalResult match(DTensorLayout layout_op) const {
+    auto input = layout_op.getInput();
+    if (mlir::isa<mlir::BlockArgument>(input)) {
+      return mlir::success();
+    }
+    mlir::Operation* input_op = input.getDefiningOp();
+    if (input_op != nullptr) {
+      return mlir::success(input_op->hasTrait<mlir::OpTrait::ConstantLike>());
+    } else {
+      return layout_op->emitOpError() << "Can't find defining op for " << input;
+    }
   }
 };
 
@@ -62,20 +78,6 @@ class DTensorLayoutToXlaShardingOpPass
  public:
   void runOnOperation() override;
 };
-
-mlir::LogicalResult RemoveDTensorLayoutAfterConstOrBlockArgPattern::match(
-    DTensorLayout layout_op) const {
-  auto input = layout_op.getInput();
-  if (mlir::isa<mlir::BlockArgument>(input)) {
-    return mlir::success();
-  }
-  mlir::Operation* input_op = input.getDefiningOp();
-  if (input_op != nullptr) {
-    return mlir::success(input_op->hasTrait<mlir::OpTrait::ConstantLike>());
-  } else {
-    return layout_op->emitOpError() << "Can't find defining op for " << input;
-  }
-}
 
 void DTensorLayoutToXlaShardingOpPass::runOnOperation() {
   mlir::RewritePatternSet patterns(&getContext());
@@ -106,11 +108,16 @@ void DTensorLayoutToXlaShardingOpPass::runOnOperation() {
         mlir::OpBuilder builder(layout_op);
         auto sharding_attr =
             builder.getStringAttr(sharding->SerializeAsString());
+        // TODO(b/414807890): It seems that the dtensor path later on clear up
+        // the V1 sharding attr, so set V2 sharding to "" here. It may be better
+        // to set the V2 sharding attr here and then removed it when V1 is
+        // removed.
         auto sharding_op = builder.create<mlir::TF::XlaShardingOp>(
             layout_op.getLoc(), layout_op.getOutput().getType(),
             layout_op.getInput(),
             /*sharding=*/builder.getStringAttr(""),  // Not used by tf2xla.
-            /*_xlaSharding=*/sharding_attr);
+            /*_xlaSharding=*/sharding_attr,
+            /*_xla_sharding_v2=*/builder.getStringAttr(""));
         layout_op.getOutput().replaceAllUsesWith(sharding_op);
         layout_op.erase();
         return mlir::WalkResult::advance();

@@ -27,14 +27,15 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/backends/cpu/runtime/xfeed_manager.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/cpu/cpu_runtime.h"
-#include "xla/service/cpu/xfeed_manager.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
@@ -44,7 +45,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class CpuInfeedBuffer : public cpu::runtime::XfeedBuffer {
+class CpuInfeedBuffer : public cpu::XfeedBuffer {
  public:
   explicit CpuInfeedBuffer(int32_t length)
       : length_(length), buffer_(new char[length]) {}
@@ -59,7 +60,7 @@ class CpuInfeedBuffer : public cpu::runtime::XfeedBuffer {
   char* buffer_;
 };
 
-class CpuOutfeedBuffer : public cpu::runtime::XfeedBuffer {
+class CpuOutfeedBuffer : public cpu::XfeedBuffer {
  public:
   CpuOutfeedBuffer(void* destination, int32_t length)
       : destination_(destination), length_(length) {}
@@ -80,12 +81,12 @@ class CpuOutfeedBuffer : public cpu::runtime::XfeedBuffer {
   void* destination_;
   int32_t length_;
   absl::StatusOr<Shape> status_;
-  tsl::Notification done_;
+  absl::Notification done_;
 };
 
 // Transfers infeed data to device. InfeedBuffer->Done() must be called to
 // clean up the memory allocated for InfeedBuffer.
-absl::StatusOr<cpu::runtime::XfeedBuffer*> TransferBufferToInfeedInternal(
+absl::StatusOr<cpu::XfeedBuffer*> TransferBufferToInfeedInternal(
     int64_t size, const void* source) {
   if (size > std::numeric_limits<int32_t>::max()) {
     return InvalidArgument("CPU infeed of %d bytes exceeds maximum of %d bytes",
@@ -106,11 +107,10 @@ absl::StatusOr<cpu::runtime::XfeedBuffer*> TransferBufferToInfeedInternal(
 
 absl::Status TransferBufferToInfeed(int device_ordinal, int64_t size,
                                     const void* source) {
-  TF_ASSIGN_OR_RETURN(cpu::runtime::XfeedBuffer * buffer,
+  TF_ASSIGN_OR_RETURN(cpu::XfeedBuffer * buffer,
                       TransferBufferToInfeedInternal(size, source));
 
-  cpu::runtime::XfeedManager* xfeed_manager =
-      cpu::runtime::GetXfeedManager(device_ordinal);
+  cpu::XfeedManager* xfeed_manager = cpu::GetXfeedManager(device_ordinal);
   xfeed_manager->infeed()->EnqueueBuffersAtomically({buffer});
 
   return absl::OkStatus();
@@ -139,14 +139,13 @@ absl::StatusOr<Shape> TransferBuffersFromOutfeedInternal(
     buffers.push_back(std::make_unique<CpuOutfeedBuffer>(b.first, size_32));
   }
 
-  std::vector<cpu::runtime::XfeedBuffer*> buffer_pointers;
+  std::vector<cpu::XfeedBuffer*> buffer_pointers;
   buffer_pointers.reserve(buffers.size());
   for (auto& b : buffers) {
     buffer_pointers.push_back(b.get());
   }
 
-  cpu::runtime::XfeedManager* xfeed_manager =
-      cpu::runtime::GetXfeedManager(device_ordinal);
+  cpu::XfeedManager* xfeed_manager = cpu::GetXfeedManager(device_ordinal);
   xfeed_manager->outfeed()->EnqueueBuffersAtomically(buffer_pointers);
   VLOG(2) << "Waiting for buffer to be notified as populated.";
   std::vector<Shape> outfed_shapes;
@@ -184,7 +183,7 @@ absl::Status TransferLiteralToInfeedOnCpu(int device_ordinal,
           << ShapeUtil::HumanString(shape);
 
   if (!shape.IsTuple()) {
-    int64_t size = cpu::runtime::GetByteSizeRequirement(shape, sizeof(void*));
+    int64_t size = cpu::GetByteSizeRequirement(shape, sizeof(void*));
     return TransferBufferToInfeed(device_ordinal, size, literal.untyped_data());
   }
 
@@ -197,26 +196,25 @@ absl::Status TransferLiteralToInfeedOnCpu(int device_ordinal,
   // For a tuple, we transfer each of its elements to the device and
   // enqueue the resulting destination device addresses with the
   // infeed manager.
-  std::vector<cpu::runtime::XfeedBuffer*> buffers;
+  std::vector<cpu::XfeedBuffer*> buffers;
   buffers.reserve(ShapeUtil::TupleElementCount(shape));
   absl::Cleanup cleanup = [&buffers]() {
-    for (cpu::runtime::XfeedBuffer* b : buffers) {
+    for (cpu::XfeedBuffer* b : buffers) {
       b->Done(Cancelled("Failed to infeed buffer to device."));
     }
   };
 
   for (int64_t i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
     const Shape& tuple_element_shape = ShapeUtil::GetSubshape(shape, {i});
-    int64_t tuple_element_size = cpu::runtime::GetByteSizeRequirement(
-        tuple_element_shape, sizeof(void*));
-    TF_ASSIGN_OR_RETURN(cpu::runtime::XfeedBuffer * buffer,
+    int64_t tuple_element_size =
+        cpu::GetByteSizeRequirement(tuple_element_shape, sizeof(void*));
+    TF_ASSIGN_OR_RETURN(cpu::XfeedBuffer * buffer,
                         TransferBufferToInfeedInternal(
                             tuple_element_size, literal.untyped_data({i})));
     buffers.push_back(buffer);
   }
 
-  cpu::runtime::XfeedManager* xfeed_manager =
-      cpu::runtime::GetXfeedManager(device_ordinal);
+  cpu::XfeedManager* xfeed_manager = cpu::GetXfeedManager(device_ordinal);
   xfeed_manager->infeed()->EnqueueBuffersAtomically(buffers);
 
   std::move(cleanup).Cancel();
@@ -226,8 +224,7 @@ absl::Status TransferLiteralToInfeedOnCpu(int device_ordinal,
 absl::Status TransferLiteralFromOutfeedOnCpu(int device_ordinal,
                                              MutableBorrowingLiteral literal) {
   if (!literal.shape().IsTuple()) {
-    int64_t size =
-        cpu::runtime::GetByteSizeRequirement(literal.shape(), sizeof(void*));
+    int64_t size = cpu::GetByteSizeRequirement(literal.shape(), sizeof(void*));
     // Note: OSS build didn't like implicit conversion from
     // literal.shape().dimensions() to the array slice on 2017-07-10.
     absl::Span<const int64_t> dimensions(
@@ -241,8 +238,8 @@ absl::Status TransferLiteralFromOutfeedOnCpu(int device_ordinal,
         << ShapeUtil::HumanString(received_shape)
         << " did not match the shape that was requested for outfeed: "
         << ShapeUtil::HumanString(literal.shape());
-    TF_RET_CHECK(size == cpu::runtime::GetByteSizeRequirement(received_shape,
-                                                              sizeof(void*)));
+    TF_RET_CHECK(size ==
+                 cpu::GetByteSizeRequirement(received_shape, sizeof(void*)));
     *literal.mutable_shape_do_not_use() = received_shape;
     return absl::OkStatus();
   }
@@ -253,11 +250,11 @@ absl::Status TransferLiteralFromOutfeedOnCpu(int device_ordinal,
   }
 
   std::vector<std::pair<void*, int64_t>> buffer_data;
-  for (int i = 0; i < literal.shape().tuple_shapes_size(); ++i) {
+  for (int i = 0; i < literal.shape().tuple_shapes().size(); ++i) {
     const Shape& tuple_element_shape =
         ShapeUtil::GetTupleElementShape(literal.shape(), i);
-    int64_t size = cpu::runtime::GetByteSizeRequirement(tuple_element_shape,
-                                                        sizeof(void*));
+    int64_t size =
+        cpu::GetByteSizeRequirement(tuple_element_shape, sizeof(void*));
     buffer_data.push_back({literal.untyped_data({i}), size});
   }
 
@@ -269,9 +266,8 @@ absl::Status TransferLiteralFromOutfeedOnCpu(int device_ordinal,
       << ShapeUtil::HumanString(received_shape)
       << " did not match the shape that was requested for outfeed: "
       << ShapeUtil::HumanString(literal.shape());
-  TF_RET_CHECK(
-      cpu::runtime::GetByteSizeRequirement(literal.shape(), sizeof(void*)) ==
-      cpu::runtime::GetByteSizeRequirement(received_shape, sizeof(void*)));
+  TF_RET_CHECK(cpu::GetByteSizeRequirement(literal.shape(), sizeof(void*)) ==
+               cpu::GetByteSizeRequirement(received_shape, sizeof(void*)));
 
   TF_RET_CHECK(ShapeUtil::Equal(literal.shape(), literal.shape()));
   return absl::OkStatus();
@@ -309,8 +305,8 @@ absl::Status ReadDynamicShapesOnCpu(
             reinterpret_cast<const int32_t*>(buffer_8 + offset);
 
         // Update shape size from metadata.
-        for (int64_t i = 0; i < device_sub_shape.rank(); ++i) {
-          device_sub_shape.mutable_dimensions()[i] = metadata_buffer[i];
+        for (int64_t i = 0; i < device_sub_shape.dimensions().size(); ++i) {
+          device_sub_shape.set_dimensions(i, metadata_buffer[i]);
         }
         return absl::OkStatus();
       }));

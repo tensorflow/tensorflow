@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <variant>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
@@ -25,6 +26,10 @@ limitations under the License.
 
 namespace xla::gpu {
 namespace {
+
+using ::testing::Each;
+using ::testing::Gt;
+using ::testing::Property;
 
 class CollectivePerfTableGenTest : public HloTestBase {
   void SetUp() override {
@@ -80,6 +85,7 @@ TEST_F(CollectivePerfTableGenTest, FactorStepGeneratesConfigs) {
       CollectivePerfTableGen::CollectiveType::ALL_REDUCE,
       CollectivePerfTableGen::CollectiveType::ALL_GATHER,
       CollectivePerfTableGen::CollectiveType::REDUCE_SCATTER,
+      CollectivePerfTableGen::CollectiveType::ALL_TO_ALL,
   };
   cfg_.replica_groups_list.emplace_back("[1,1]<=[1]");
   CollectivePerfTableGen::StepSpec spec{
@@ -95,7 +101,32 @@ TEST_F(CollectivePerfTableGenTest, FactorStepGeneratesConfigs) {
 
   DeviceHloInstructionProfiles profiles = gen->ComputeTable();
   EXPECT_EQ(profiles.entries_size(), 1);
-  EXPECT_EQ(profiles.entries().begin()->second.entries_size(), 12);
+  EXPECT_EQ(profiles.entries().begin()->second.entries_size(), 16);
+}
+
+TEST_F(CollectivePerfTableGenTest, HappyPathWorks) {
+  cfg_.collective_types = {
+      CollectivePerfTableGen::CollectiveType::ALL_REDUCE,
+  };
+  cfg_.replica_groups_list.emplace_back("[1,1]<=[1]");
+  cfg_.dry_run = false;
+  CollectivePerfTableGen::StepSpec spec{
+      /*start=*/4,
+      /*stop=*/32,
+      /*step=*/0,
+      /*factor=*/2,
+  };
+  cfg_.tensor_size_bytes_spec = spec;
+  std::unique_ptr<CollectivePerfTableGen> gen =
+      CollectivePerfTableGen::Create(cfg_);
+
+  DeviceHloInstructionProfiles profiles = gen->ComputeTable();
+
+  EXPECT_EQ(profiles.entries_size(), 1);
+  EXPECT_THAT(
+      profiles.entries().begin()->second.entries(),
+      Each(Property(&HloInstructionProfile::network_throughput_bytes_per_sec,
+                    Gt(0))));
 }
 
 }  // namespace

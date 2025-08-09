@@ -17,9 +17,12 @@ limitations under the License.
 #define XLA_SERVICE_CONDITIONAL_CODE_MOTION_H_
 
 #include <string>
+#include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 
@@ -36,7 +39,7 @@ namespace conditional_opt {
 // outside of the branches. Subsequently, it allows a common implementation
 // basis to be used for both moving instructions out of and for moving them
 // inside branches.
-class Boundary {
+class Boundary : public std::vector<HloInstruction*> {
  public:
   enum class Position {
     kInsideBranch,
@@ -46,8 +49,6 @@ class Boundary {
   };
   Boundary() : position_(Position::kUndefined) {}
   explicit Boundary(Position p) : position_(p) {}
-  std::vector<HloInstruction*>& mutable_operands() { return operands_; }
-  const std::vector<HloInstruction*>& operands() const { return operands_; }
   bool IsInsideBranch() const { return position_ == Position::kInsideBranch; }
   bool IsOutsideBranchUser() const {
     return position_ == Position::kOutsideBranchUser;
@@ -56,26 +57,30 @@ class Boundary {
     return position_ == Position::kOutsideBranchOperand;
   }
   Position GetPosition() const { return position_; }
-  bool IsEmpty() const { return operands_.empty(); }
+  bool IsEmpty() const { return empty(); }
   std::string ToString() const {
     std::string res;
-    for (HloInstruction* op : operands_) {
+    for (HloInstruction* op : *this) {
       res += op->ToString() + ";";
     }
     return res;
   }
   bool operator==(const Boundary& that) const {
-    return absl::c_equal(operands_, that.operands_);
+    return position_ == that.position_ &&
+           absl::c_equal(
+               static_cast<const std::vector<HloInstruction*>&>(*this),
+               static_cast<const std::vector<HloInstruction*>&>(that));
   }
   template <typename H>
   friend H AbslHashValue(H h, const Boundary& boundary) {
-    return H::combine(std::move(h), boundary.operands_);
+    return H::combine(
+        H::combine(std::move(h), boundary.position_),
+        static_cast<const std::vector<HloInstruction*>&>(boundary));
   }
 
  private:
   // Boundary instructions in the conditional branches, one from each branch
   // of the conditional; or a single operand from outside the conditional.
-  std::vector<HloInstruction*> operands_;
   Position position_;
 };
 

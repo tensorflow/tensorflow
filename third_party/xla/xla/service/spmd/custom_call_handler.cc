@@ -46,7 +46,7 @@ limitations under the License.
 #include "xla/service/custom_call_sharding_helper.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/host_memory_offload_annotations.h"
+#include "xla/service/memory_annotations.h"
 #include "xla/service/spmd/spmd_partitioner.h"
 #include "xla/service/spmd/spmd_partitioner_util.h"
 #include "xla/shape.h"
@@ -278,7 +278,7 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_RotateRight(
 
   amount %= full_size;
   if (amount == 0) {
-    SetPartitionedHlo(hlo, input);
+    SetPartitionedHlo(hlo, std::move(input));
     return absl::OkStatus();
   }
 
@@ -304,7 +304,7 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_RotateRight(
       HloInstruction* halo = input.hlo();
       if (halo_size != shard_size) {
         halo_shape.set_dimensions(dim, halo_size);
-        std::vector<int64_t> slice_starts(hlo->shape().rank(), 0);
+        std::vector<int64_t> slice_starts(hlo->shape().dimensions().size(), 0);
         slice_starts[dim] = offset_in_shard;
         std::vector<int64_t> slice_limits(
             input.hlo()->shape().dimensions().begin(),
@@ -312,7 +312,7 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_RotateRight(
         slice_limits[dim] = offset_in_shard + halo_size;
         halo = b_.AddInstruction(HloInstruction::CreateSlice(
             halo_shape, halo, slice_starts, slice_limits,
-            std::vector<int64_t>(halo_shape.rank(), 1)));
+            std::vector<int64_t>(halo_shape.dimensions().size(), 1)));
       }
       if (shard_distance != 0) {
         std::vector<std::pair<int64_t, int64_t>> pairs;
@@ -457,12 +457,16 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
   }
 
   if (hlo->custom_call_target() ==
-      host_memory_offload_annotations::kMoveToHostCustomCallTarget) {
+      memory_annotations::kMoveToHostCustomCallTarget) {
     return HandleElementwise(hlo);
   }
 
   if (hlo->custom_call_target() ==
-      host_memory_offload_annotations::kMoveToDeviceCustomCallTarget) {
+          memory_annotations::kMoveToDeviceCustomCallTarget ||
+      hlo->custom_call_target() ==
+          memory_annotations::kPinToDeviceCustomCallTarget ||
+      hlo->custom_call_target() ==
+          memory_annotations::kPinToDeviceSramCustomCallTarget) {
     // Use the operand's sharding to shard the move-to-device op. This avoids
     // inserting any resharding before the custom call so that the
     // host-offloader pass can pattern match the offloading sequences correctly.

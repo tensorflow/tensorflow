@@ -67,13 +67,13 @@ std::optional<Value> buildReshapeWithDynamicDims(PatternRewriter& rewriter,
 Value buildRescale(PatternRewriter& rewriter, Operation* op,
                    ShapedType output_type, Value input_val,
                    int32_t scale_multiplier, int32_t scale_shit,
-                   int64_t input_zp, int64_t output_zp, bool double_round,
+                   int64_t input_zp, int64_t output_zp, StringRef rounding_mode,
                    bool scale32);
 
 // Create a TOSA rescale op from TFLite scaling, zero points and rounding mode
 Value buildRescale(PatternRewriter& rewriter, Operation* op,
                    ShapedType output_type, Value input_val, double scale,
-                   int64_t input_zp, int64_t output_zp, bool double_round,
+                   int64_t input_zp, int64_t output_zp, StringRef rounding_mode,
                    bool scale32);
 
 // Removes the zero point and cast to int32, no need to handle roundings modes
@@ -102,14 +102,18 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
 
 // Create a 8-bit TOSA TABLE constant tensor
 Value getTosaConst8bitTable(PatternRewriter& rewriter, Operation* op,
-                            double input_scale, int32_t input_zp,
-                            double output_scale, int32_t output_zp,
-                            std::function<double(double)> func);
+                            float input_scale, int32_t input_zp,
+                            float output_scale, int32_t output_zp,
+                            std::function<float(float)> func);
 
 // Create a 16-bit TOSA TABLE constant tensor
+// A float should be used by default for FloatT except if a double is required
+// for backward compatibility
+template <typename FloatT>
 Value getTosaConst16bitTable(PatternRewriter& rewriter, Operation* op,
-                             std::function<double(double)> func, double min,
-                             double max);
+                             FloatT input_scale, int32_t input_zp,
+                             FloatT output_scale, int32_t output_zp,
+                             std::function<FloatT(FloatT)> func);
 
 // Create a 32-bit TOSA TABLE for Softmax Exp
 void getTosaConst32bitSoftmaxExpTable(PatternRewriter& rewriter, Operation* op,
@@ -121,6 +125,11 @@ void getTosaConst32bitSoftmaxExpTable(PatternRewriter& rewriter, Operation* op,
 Value getTosaConstRsqrt8bitTable(PatternRewriter& rewriter, Operation* op,
                                  float input_scale, int32_t input_zp,
                                  float output_scale, int32_t output_zp);
+
+// Create an 8-bit TOSA Table constant tensor for the HardSwish operator
+Value getTosaConstHardSwish8bitTable(PatternRewriter& rewriter, Operation* op,
+                                     float input_scale, int32_t input_zp,
+                                     float output_scale, int32_t output_zp);
 
 // Create a 32-bit float constant operator from a float
 Value getTosaConstTensorSingleF32(PatternRewriter& rewriter, Operation* op,
@@ -203,6 +212,14 @@ Value getInputSlicedToItsUsedSize(PatternRewriter& rewriter, Operation* op,
 // Check if scale32 mode is used for given output_element_type
 bool isScale32(mlir::quant::UniformQuantizedType output_element_type);
 
+// Checks if the multi-dimensional indices supplied by a constant tensor
+// are unique. This is a useful check for legalizations to tosa.scatter
+// which requires indices are unique, while in TF/TFLite they may be
+// non-unique.
+bool checkUniqueConstantScatterIndices(ShapedType indices_type,
+                                       ShapedType result_type,
+                                       ElementsAttr const_data);
+
 // Applies a set of patterns greedily to the specified function, then applies
 // a cleanup to guarantee the function contract and constants are valid. This
 // means patterns can performed shape inference while not altering immutable
@@ -282,6 +299,11 @@ inline bool IsTFLDoubleRoundingMode() {
   return true;
 #endif  // TFLITE_SINGLE_ROUNDING
 }
+
+Value reshapeScalarTo1D(PatternRewriter& rewriter, Location loc, Value value);
+
+LogicalResult broadcastLowRankTensor(PatternRewriter &rewriter, Operation* op,
+                                     Value &input1, Value &input2);
 
 }  // namespace tosa
 }  // namespace mlir

@@ -1537,7 +1537,7 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
           {"a": 12, "b": {"c": 23}},
           {("b", "c"): 7},
       ),
-      # Multipe updates.
+      # Multiple updates.
       (
           {"a": 12, "b": {"c": 23}},
           {"a": 3, ("b", "c"): 7},

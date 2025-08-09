@@ -18,7 +18,7 @@ filegroup(
     name = "test_utilities",
     testonly = True,
     data = [
-        "//tensorflow/compiler/mlir:tf-opt",
+        "//tensorflow/compiler/mlir/lite:litert-opt",
         "@llvm-project//llvm:FileCheck",
     ],
 )

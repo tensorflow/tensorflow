@@ -13,25 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cmath>
-#include <limits>
-#include <memory>
-#include <numeric>
-#include <utility>
+#include <cstdint>
 #include <vector>
 
+#include "xla/tests/xla_test_backend_predicates.h"
 #include "absl/base/casts.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
-#include "xla/array2d.h"
-#include "xla/client/local_client.h"
+#include "absl/strings/str_format.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/testlib/test.h"
-#include "xla/layout_util.h"
 #include "xla/literal.h"
-#include "xla/tests/client_library_test_base.h"
-#include "xla/tests/literal_test_util.h"
-#include "xla/tests/test_macros.h"
+#include "xla/literal_util.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/types.h"
 
 namespace xla {
@@ -452,8 +447,10 @@ static const uint64_t f64_test_values[][4] = {
     },
 };
 
-class ReducedPrecisionAccuracyTest : public ClientLibraryTestBase,
-                                     public ::testing::WithParamInterface<int> {
+class ReducedPrecisionAccuracyTest
+    : public ClientLibraryTestRunnerMixin<
+          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>,
+      public ::testing::WithParamInterface<int> {
  protected:
   template <typename Fp, typename Uint, int kNumTestcases, int kNumInputs>
   void DoIt(int exponent_bits, int mantissa_bits,
@@ -461,29 +458,31 @@ class ReducedPrecisionAccuracyTest : public ClientLibraryTestBase,
             int operation_index);
 };
 
-XLA_TEST_P(ReducedPrecisionAccuracyTest, ReducePrecisionHalf) {
+TEST_P(ReducedPrecisionAccuracyTest, ReducePrecisionHalf) {
   int operation_index = GetParam();
   DoIt<Eigen::half, uint16_t>(f16_exponent_sizes[operation_index],
                               f16_mantissa_sizes[operation_index],
                               f16_test_values, operation_index);
 }
 
-XLA_TEST_P(ReducedPrecisionAccuracyTest, ReducePrecisionBfloat16) {
+TEST_P(ReducedPrecisionAccuracyTest, ReducePrecisionBfloat16) {
   int operation_index = GetParam();
   DoIt<bfloat16, uint16_t>(bf16_exponent_sizes[operation_index],
                            bf16_mantissa_sizes[operation_index],
                            bf16_test_values, operation_index);
 }
 
-XLA_TEST_P(ReducedPrecisionAccuracyTest, ReducePrecisionFloat) {
+TEST_P(ReducedPrecisionAccuracyTest, ReducePrecisionFloat) {
   int operation_index = GetParam();
   DoIt<float, uint32_t>(f32_exponent_sizes[operation_index],
                         f32_mantissa_sizes[operation_index], f32_test_values,
                         operation_index);
 }
 
-XLA_TEST_P(ReducedPrecisionAccuracyTest,
-           DISABLED_ON_TPU(ReducePrecisionDouble)) {
+TEST_P(ReducedPrecisionAccuracyTest, ReducePrecisionDouble) {
+  if (test::DeviceTypeIs(test::kTpu)) {
+    GTEST_SKIP();
+  }
   int operation_index = GetParam();
   DoIt<double, uint64_t>(f64_exponent_sizes[operation_index],
                          f64_mantissa_sizes[operation_index], f64_test_values,
@@ -517,7 +516,7 @@ void ReducedPrecisionAccuracyTest::DoIt(
 
   ReducePrecision(a, exponent_bits, mantissa_bits);
 
-  ComputeAndCompare(&builder, {std::move(a_literal)});
+  ComputeAndCompare(&builder, {&a_literal});
 }
 
 INSTANTIATE_TEST_CASE_P(ReducedPrecisionAccuracyTest,

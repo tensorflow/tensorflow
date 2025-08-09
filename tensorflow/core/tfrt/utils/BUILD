@@ -14,7 +14,6 @@ package_group(
         "//learning/brain/google/xla/kernels/...",
         # copybara:uncomment "//learning/brain/research/pjrt/...",
         # copybara:uncomment "//learning/brain/tfrt/...",
-        # copybara:uncomment "//learning/infra/mira/distributed/...",
         # copybara:uncomment "//learning/pathways/serving/...",
         "//learning/serving/...",
         "//quality/webanswers/...",
@@ -275,6 +274,7 @@ cc_library(
     deps = [
         "//tensorflow/core/common_runtime:dma_helper",
         "//tensorflow/core/framework:tensor",
+        "@com_google_absl//absl/log:check",
         "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )

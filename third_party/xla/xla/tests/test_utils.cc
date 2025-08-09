@@ -369,14 +369,14 @@ absl::Status VerifyHloModule(HloModule* const module, bool layout_sensitive,
 std::unique_ptr<HloDotInstruction> CreateCanonicalDot(const Shape& shape,
                                                       HloInstruction* lhs,
                                                       HloInstruction* rhs) {
-  CHECK_LE(lhs->shape().rank(), 2);
-  CHECK_LE(rhs->shape().rank(), 2);
+  CHECK_LE(lhs->shape().dimensions().size(), 2);
+  CHECK_LE(rhs->shape().dimensions().size(), 2);
   PrecisionConfig precision_config;
   precision_config.mutable_operand_precision()->Resize(
       2, PrecisionConfig::DEFAULT);
   DotDimensionNumbers dot_dimension_numbers;
   dot_dimension_numbers.add_lhs_contracting_dimensions(
-      lhs->shape().rank() > 1 ? 1 : 0);
+      lhs->shape().dimensions().size() > 1 ? 1 : 0);
   dot_dimension_numbers.add_rhs_contracting_dimensions(0);
   return std::make_unique<HloDotInstruction>(
       shape, lhs, rhs, dot_dimension_numbers, precision_config);

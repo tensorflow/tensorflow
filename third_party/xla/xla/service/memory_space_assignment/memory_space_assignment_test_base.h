@@ -17,14 +17,20 @@ limitations under the License.
 #define XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_MEMORY_SPACE_ASSIGNMENT_TEST_BASE_H_
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
 #include <set>
 #include <string>
+#include <tuple>
 #include <utility>
+#include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -34,6 +40,7 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/instruction_hoister.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/service/buffer_value.h"
+#include "xla/service/cost_modelling/op_cost.h"
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_value.h"
@@ -132,6 +139,39 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
     return options;
   }
 
+  // Creates an MsaBufferIntervalCompare function that prioritizes the
+  // instructions named in prioritized_instruction_names, in the order
+  // specified. We default to alphabetical instruction name order for the
+  // remaining instructions.
+  static MsaBufferIntervalCompare
+  CreateBufferIntervalCompareFnFromInstructionNames(
+      std::vector<std::string> prioritized_instruction_names) {
+    absl::flat_hash_map<std::string, size_t> instruction_name_to_priority;
+    // A lower priority value means its higher on the Msa sort list.
+    for (size_t i = 0; i < prioritized_instruction_names.size(); ++i) {
+      instruction_name_to_priority[prioritized_instruction_names[i]] = i;
+    }
+    return [instruction_name_to_priority =
+                std::move(instruction_name_to_priority)](
+               const MsaBufferInterval& a, const MsaBufferInterval& b) {
+      auto get_sort_tuple = [&instruction_name_to_priority](
+                                const MsaBufferInterval& buffer_interval) {
+        auto it = instruction_name_to_priority.find(
+            buffer_interval.buffer->defining_instruction()->name());
+        if (it != instruction_name_to_priority.end()) {
+          return std::make_tuple(
+              it->second,
+              buffer_interval.buffer->defining_instruction()->name());
+        }
+        return std::make_tuple(
+            instruction_name_to_priority.size(),
+            buffer_interval.buffer->defining_instruction()->name());
+      };
+
+      return get_sort_tuple(a) < get_sort_tuple(b);
+    };
+  }
+
   std::unique_ptr<PresetAssignments> AssignMemorySpaceUsingCostAnalysis(
       HloModule* module,
       std::optional<Options> memory_space_options_override = std::nullopt,
@@ -147,10 +187,11 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
     }
 
     HloCostAnalysis hlo_cost_analysis(hlo_cost_options);
+    HloCostAnalysisWithAcceptState hlo_cost_analysis_wrapper(hlo_cost_analysis);
     for (HloComputation* computation : module->MakeNonfusionComputations()) {
       TF_CHECK_OK(computation->Accept(&hlo_cost_analysis));
     }
-    TF_CHECK_OK(HloAliasAnalysis::Run(module).status());
+    TF_CHECK_OK(HloAliasAnalysis::Run(module, &alias_info_).status());
 
     Options memory_space_options = DefaultMemorySpaceOptions();
     if (memory_space_options_override) {
@@ -160,10 +201,18 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
     if (cost_analysis_options_override) {
       cost_analysis_options = *cost_analysis_options_override;
     }
-    HloCostAnalysisCosts hlo_cost_analysis_costs(hlo_cost_analysis);
+    OpCostManager op_cost_manager(
+        OpCostManager::Options{
+            /*enable_cache=*/false,
+            /*enable_analysis_logging=*/false,
+        },
+        OpCostManager::CalculationNode::CreateLeaf(
+            "HloCostAnalysis",
+            CreateHloCostAnalysisCalculator(hlo_cost_analysis_wrapper),
+            /*enable_cache=*/false));
 
     auto status_or_cost_analysis = CostAnalysis::Create(
-        hlo_cost_analysis_costs, cost_analysis_options, *module);
+        op_cost_manager, cost_analysis_options, &alias_info_, *module);
     TF_CHECK_OK(status_or_cost_analysis.status());
     auto cost_analysis = std::move(status_or_cost_analysis.value());
 
@@ -263,14 +312,16 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
       options.is_allowed_in_alternate_mem_fn = is_allowed_in_alternate_mem;
     }
 
-    TF_ASSIGN_OR_RETURN(auto alias_analysis, HloAliasAnalysis::Run(module));
+    TF_ASSIGN_OR_RETURN(auto alias_analysis,
+                        HloAliasAnalysis::Run(module, &alias_info_));
     TF_ASSIGN_OR_RETURN(std::unique_ptr<HloLiveRange> hlo_live_range,
                         HloLiveRange::Run(module->schedule(), *alias_analysis,
                                           module->entry_computation()));
 
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<PresetAssignments> preset_assignments,
-                        MemorySpaceAssignment::Run(module, *hlo_live_range,
-                                                   *alias_analysis, options));
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<PresetAssignments> preset_assignments,
+        MemorySpaceAssignment::Run(module, *hlo_live_range, *alias_analysis,
+                                   &alias_info_, options));
     if (check_parameters_in_default_memory) {
       CheckParametersInDefaultMemory(module);
     }
@@ -371,10 +422,12 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
     // Returns the offset of the assignment, -1 if it's not in the alternate
     // memory.
     const HloModule* module = instruction->GetModule();
-    auto status_or_alias_analysis = HloAliasAnalysis::Run(module);
+    AliasInfo alias_info;
+    auto status_or_alias_analysis = HloAliasAnalysis::Run(module, &alias_info);
     TF_CHECK_OK(status_or_alias_analysis.status());
     auto alias_analysis = std::move(status_or_alias_analysis.value());
-    HloBuffer& buffer = alias_analysis->GetUniqueBufferAt(instruction, index);
+    const HloBuffer& buffer =
+        alias_analysis->GetUniqueBufferAt(instruction, index);
     for (auto& pos_and_chunk : preset_assignments.chunks()) {
       for (auto& value : buffer.values()) {
         if (pos_and_chunk.first == value->defining_position()) {
@@ -445,6 +498,7 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
   }
 
   CostAnalysis::Cache cache_;
+  AliasInfo alias_info_;
 };
 
 }  // namespace memory_space_assignment

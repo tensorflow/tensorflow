@@ -1,4 +1,6 @@
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist", "tflite_portable_test_suite_combined")
@@ -240,24 +242,26 @@ cc_library(
         ":file_util",
         ":flexbuffers_util",
         ":quantization_util",
-        ":tflite_with_xnnpack_dynamic_fully_connected",
-        ":tflite_with_xnnpack_logging",
-        ":tflite_with_xnnpack_qs8",
-        ":tflite_with_xnnpack_qu8",
-        ":tflite_with_xnnpack_transient_indirection_buffer",
+        ":tflite_with_xnnpack_dynamic_fully_connected",  # buildcleaner: keep
+        ":tflite_with_xnnpack_logging",  # buildcleaner: keep
+        ":tflite_with_xnnpack_qs8",  # buildcleaner: keep
+        ":tflite_with_xnnpack_qu8",  # buildcleaner: keep
+        ":tflite_with_xnnpack_transient_indirection_buffer",  # buildcleaner: keep
         ":weight_cache",
         "//tensorflow/compiler/mlir/lite/kernels/internal:compatibility_macros",
         "//tensorflow/compiler/mlir/lite/tools/optimize:reduced_precision_metadata",
+        "//tensorflow/lite:array",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:padding",
-        "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal/utils:sparsity_format_converter",
         "//tensorflow/lite/schema:schema_fbs",
@@ -292,16 +296,18 @@ cc_library(
         ":weight_cache",
         "//tensorflow/compiler/mlir/lite/kernels/internal:compatibility_macros",
         "//tensorflow/compiler/mlir/lite/tools/optimize:reduced_precision_metadata",
+        "//tensorflow/lite:array",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:padding",
-        "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal/utils:sparsity_format_converter",
         "//tensorflow/lite/schema:schema_fbs",
@@ -344,6 +350,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":file_util",
+        ":mmap_handle",
         ":weight_cache_schema",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:common",
@@ -362,6 +369,41 @@ cc_library(
 )
 
 cc_library(
+    name = "weight_cache_test_helpers",
+    testonly = True,
+    hdrs = ["weight_cache_test_helpers.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":file_util",
+        "//tensorflow/lite:minimal_logging",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
+    name = "mmap_handle",
+    srcs = ["mmap_handle.cc"],
+    hdrs = ["mmap_handle.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":file_util",
+        ":windows_util",
+        "//tensorflow/lite:minimal_logging",
+    ],
+)
+
+cc_test(
+    name = "mmap_handle_test",
+    srcs = ["mmap_handle_test.cc"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":mmap_handle",
+        ":weight_cache_test_helpers",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "file_util",
     srcs = ["file_util.cc"],
     hdrs = ["file_util.h"],
@@ -369,6 +411,17 @@ cc_library(
     deps = [
         "//tensorflow/lite:minimal_logging",
     ],
+)
+
+cc_library(
+    name = "windows_util",
+    srcs = ["windows_util.cc"],
+    hdrs = ["windows_util.h"],
+    compatible_with = get_compatible_with_portable(),
+    tags = [
+        "keep_dep",  # Build cleaner will want to remove this because it doesn't check for Windows builds.
+    ],
+    deps = [],
 )
 
 ################################ Tester classes ################################
@@ -2634,14 +2687,29 @@ cc_test(
     srcs = ["weight_cache_test.cc"],
     deps = [
         ":file_util",
+        ":mmap_handle",
         ":test_main",
         ":weight_cache",
         ":weight_cache_schema",
+        ":weight_cache_test_helpers",
         ":xnnpack_delegate_test_mode",
         "//tensorflow/lite/c:common",
         "@XNNPACK",
         "@com_google_googletest//:gtest",
         "@flatbuffers//:runtime_cc",
+    ],
+)
+
+cc_test(
+    name = "delegate_weight_cache_test",
+    srcs = ["delegate_weight_cache_test.cc"],
+    deps = [
+        ":weight_cache",
+        ":xnnpack_delegate_hdrs_only",
+        "//tensorflow/lite:framework_experimental",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core:model_building",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

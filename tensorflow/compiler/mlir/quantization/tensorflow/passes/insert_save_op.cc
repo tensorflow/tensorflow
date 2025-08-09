@@ -12,19 +12,31 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstdint>
 #include <memory>
 #include <string>
-#include <vector>
 
+#include "absl/log/log.h"
+#include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Block.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/IRMapping.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/constants.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 namespace mlir {
 namespace quant {
@@ -95,10 +107,11 @@ TF::ConstOp Create1DStringConst(const ArrayRef<std::string> str_values,
       RankedTensorType::get(/*shape=*/{static_cast<int64_t>(str_values.size())},
                             /*elementType=*/builder.getType<TF::StringType>());
 
-  return builder.create<TF::ConstOp>(
-      loc, DenseStringElementsAttr::get(
-               tensor_type,
-               SmallVector<StringRef>(str_values.begin(), str_values.end())));
+  return TF::ConstOp::create(
+      builder, loc,
+      DenseStringElementsAttr::get(
+          tensor_type,
+          SmallVector<StringRef>(str_values.begin(), str_values.end())));
 }
 
 // Creates a 1D string array constant for "tensor_names" input of `RestoreV2`
@@ -150,8 +163,8 @@ TF::SaveV2Op CreateSaveV2Op(func::FuncOp save_func,
   for (auto var_handle_op : var_handle_ops) {
     tensor_names.emplace_back(var_handle_op.getSharedName().str());
 
-    auto read_var_op = builder.create<TF::ReadVariableOp>(
-        var_handle_op.getLoc(), var_handle_op.resource_subtype(),
+    auto read_var_op = TF::ReadVariableOp::create(
+        builder, var_handle_op.getLoc(), var_handle_op.resource_subtype(),
         var_handle_op);
     tensor_values.emplace_back(read_var_op.getResult());
   }
@@ -162,8 +175,8 @@ TF::SaveV2Op CreateSaveV2Op(func::FuncOp save_func,
       CreateShapeAndSlicesConst(tensor_names.size(), builder);
 
   BlockArgument filename_arg = save_func.getArgument(0);
-  return builder.create<TF::SaveV2Op>(
-      NameLoc::get(builder.getStringAttr(kTfQuantSaveV2OpName)),
+  return TF::SaveV2Op::create(
+      builder, NameLoc::get(builder.getStringAttr(kTfQuantSaveV2OpName)),
       /*prefix=*/filename_arg, tensor_names_const, shape_and_slices_const,
       /*tensors=*/tensor_values);
 }
@@ -179,8 +192,8 @@ func::FuncOp CreateEmptySaveFunc(ModuleOp module_op) {
 
   FunctionType func_type = builder.getFunctionType(
       /*inputs=*/{filename_input_type}, /*results=*/{});
-  auto save_func = builder.create<func::FuncOp>(
-      NameLoc::get(builder.getStringAttr(kTfQuantSaveFuncName)),
+  auto save_func = func::FuncOp::create(
+      builder, NameLoc::get(builder.getStringAttr(kTfQuantSaveFuncName)),
       /*sym_name=*/kTfQuantSaveFuncName, func_type);
   save_func.addEntryBlock();
   save_func.setPrivate();
@@ -204,8 +217,8 @@ void CreateSaveFunc(ModuleOp module_op,
 
   // Create a "func.return".
   auto builder = OpBuilder::atBlockEnd(&save_func.getBody().front());
-  builder.create<func::ReturnOp>(
-      NameLoc::get(builder.getStringAttr(kTfQuantSaveReturnOpName)));
+  func::ReturnOp::create(
+      builder, NameLoc::get(builder.getStringAttr(kTfQuantSaveReturnOpName)));
 }
 
 void InsertSaveOpPass::runOnOperation() {

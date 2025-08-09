@@ -45,9 +45,8 @@ namespace tensorflow {
 // the buffer using the combiner function. Otherwise, the updates replace the
 // existing values. The order of updates is implementation-defined.
 absl::StatusOr<xla::XlaOp> XlaScatter(
-    const xla::XlaOp& buffer, const xla::XlaOp& updates,
-    const xla::XlaOp& indices, bool indices_are_vectors,
-    bool indices_are_sorted,
+    xla::XlaOp buffer, xla::XlaOp updates, xla::XlaOp indices,
+    bool indices_are_vectors, bool indices_are_sorted,
     const std::function<xla::XlaOp(xla::XlaOp, xla::XlaOp, xla::XlaBuilder*)>&
         combiner,
     xla::XlaBuilder* builder);

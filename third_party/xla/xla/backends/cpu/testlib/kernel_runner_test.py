@@ -52,7 +52,9 @@ class LLvmKernelRunnerTest(absltest.TestCase):
           ret ptr null
         }
     """
-    llvm_emitter = cpu_testlib.LlvmIrKernelEmitter(ir, "LlvmAddI32", (4, 1, 1))
+    llvm_emitter = cpu_testlib.LlvmTestKernelEmitter(
+        ir, "LlvmAddI32", (4, 1, 1)
+    )
 
     kernel_definition = llvm_emitter.emit_kernel_definition()
 
@@ -66,6 +68,57 @@ class LLvmKernelRunnerTest(absltest.TestCase):
     runner.call([a, b, c])
 
     np.testing.assert_array_equal(np.asarray(c), np.asarray(a) + np.asarray(b))
+
+
+class MlirKernelRunnerTest(absltest.TestCase):
+
+  def test_mlir_kernel_runner(self):
+    ir = """
+      #indexing_map = #xla.indexing_map<"()[s0, s1] -> (s0, s1), domain: s0 in [0, 1023], s1 in [0, 31]">
+      module attributes {dlti.dl_spec = #dlti.dl_spec<index = 32 : i32>} {
+        func.func
+        @sum(%input_buffer: tensor<1024x32xf32>,
+                          %output_buffer: tensor<1xf32>) -> tensor<1xf32>
+                            attributes {xla.backend_kind = #xla.backend_kind<cpu>, xla.entry} {
+          // Initial sum set to 0.
+          %sum_0 = arith.constant 0.0 : f32
+          // iter_args binds initial values to the loop's region arguments.
+          %sum = xla.loop ()[%i, %j] -> (%r0, %r1)
+              in #indexing_map iter_args(%sum_iter = %sum_0) -> (f32) {
+            %t = tensor.extract %input_buffer[%i, %j] : tensor<1024x32xf32>
+            %sum_next = arith.addf %sum_iter, %t : f32
+            // Yield current iteration sum to next iteration %sum_iter or to %sum
+            // if final iteration.
+            xla.yield %sum_next : f32
+          }
+
+          // Ideally it would be be possible to do this in the kernel region,
+          // but currently our lowering results in xla_cpu.store being removed
+          // before the tensors are lowered which then results in the insert
+          // being removed as tensors have value scemantics and are treated as
+          // pure.
+          %zero_index = arith.constant 0 : index
+          %inserted = tensor.insert %sum into %output_buffer[%zero_index] : tensor<1xf32>
+
+          return %inserted : tensor<1xf32>
+        }
+      }
+    """
+    mlir_emitter = cpu_testlib.MlirTestKernelEmitter(ir, "sum", (1, 1, 1))
+
+    kernel_definition = mlir_emitter.emit_kernel_definition()
+
+    runner = cpu_testlib.KernelRunner.create(
+        kernel_definition,
+        cpu_testlib.JitCompiler(base_testlib.HloModuleConfig()),
+    )
+    input_tensor = create_literal(np.ones([1024, 32], dtype=np.float32))
+    output_sum = create_literal(np.zeros([1], dtype=np.float32))
+    runner.call([input_tensor, output_sum])
+
+    np.testing.assert_array_equal(
+        np.asarray(output_sum).item(), np.asarray(input_tensor).sum()
+    )
 
 
 if __name__ == "__main__":

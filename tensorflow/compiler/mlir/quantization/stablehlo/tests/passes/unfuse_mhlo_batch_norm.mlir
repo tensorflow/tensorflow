@@ -1,4 +1,4 @@
-// RUN: stablehlo-quant-opt %s -split-input-file -stablehlo-unfuse-mhlo-batch-norm | FileCheck %s
+// RUN: stablehlo-quant-opt %s -split-input-file -tf-stablehlo-unfuse-mhlo-batch-norm | FileCheck %s
 
 // CHECK-LABEL: @unfuse_batch_norm
 // CHECK-SAME: %[[X:[^:[:space:]]+]]

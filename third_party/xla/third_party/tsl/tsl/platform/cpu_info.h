@@ -70,8 +70,11 @@ int GetCurrentCPU();
 int NumHyperthreadsPerCore();
 
 // Mostly ISA related features that we care about
+// Do not change numeric assignments.
 enum CPUFeature {
-  // Do not change numeric assignments.
+  //===--------------------------------------------------------------------===//
+  // x86 features
+  //===--------------------------------------------------------------------===//
   MMX = 0,
   SSE = 1,
   SSE2 = 2,
@@ -138,6 +141,14 @@ enum CPUFeature {
   AMX_FP16 = 45,        // Float16 tile matrix multiplication
   AVX_NE_CONVERT = 46,  // Instructions for faster bfloat16, float16 convert.
   AVX_VNNI_INT8 = 47,   // VNNI instructions for combinations of u8, s8 dtypes.
+
+  //===--------------------------------------------------------------------===//
+  // AArch64 features
+  //===--------------------------------------------------------------------===//
+  AARCH64_NEON = 1000,
+  AARCH64_SVE = 1001,
+  AARCH64_SVE2 = 1002,
+  AARCH64_BF16 = 1003,  // BF16 on AArch64 systems
 };
 
 enum Aarch64CPU {

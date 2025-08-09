@@ -142,6 +142,10 @@ string DataTypeStringInternal(DataType dtype) {
       return "int4";
     case DT_UINT4:
       return "uint4";
+    case DT_INT2:
+      return "int2";
+    case DT_UINT2:
+      return "uint2";
     case DT_RESOURCE:
       return "resource";
     case DT_VARIANT:
@@ -257,6 +261,12 @@ bool DataTypeFromString(absl::string_view sp, DataType* dt) {
   } else if (sp == "uint4") {
     *dt = DT_UINT4;
     return true;
+  } else if (sp == "int2") {
+    *dt = DT_INT2;
+    return true;
+  } else if (sp == "uint2") {
+    *dt = DT_UINT2;
+    return true;
   } else if (sp == "resource") {
     *dt = DT_RESOURCE;
     return true;
@@ -311,6 +321,8 @@ int DataTypeSize(DataType dt) {
     TF_CALL_float8_e5m2fnuz(CASE);
     TF_CALL_int4(CASE);
     TF_CALL_uint4(CASE);
+    TF_CALL_int2(CASE);
+    TF_CALL_uint2(CASE);
 
     default:
       return 0;
@@ -350,6 +362,8 @@ DEFINE_DATATYPETOENUM_VALUE(float8_e4m3b11fnuz);
 DEFINE_DATATYPETOENUM_VALUE(float8_e5m2fnuz);
 DEFINE_DATATYPETOENUM_VALUE(int4);
 DEFINE_DATATYPETOENUM_VALUE(uint4);
+DEFINE_DATATYPETOENUM_VALUE(int2);
+DEFINE_DATATYPETOENUM_VALUE(uint2);
 DEFINE_DATATYPETOENUM_VALUE(ResourceHandle);
 DEFINE_DATATYPETOENUM_VALUE(Variant);
 #undef DEFINE_DATATYPETOENUM_VALUE

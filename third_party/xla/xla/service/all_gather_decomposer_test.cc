@@ -24,8 +24,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -33,7 +33,7 @@ namespace {
 
 using ::testing::AllOf;
 namespace op = xla::testing::opcode_matchers;
-using AllGatherDecomposerTest = HloTestBase;
+using AllGatherDecomposerTest = HloHardwareIndependentTestBase;
 
 TEST_F(AllGatherDecomposerTest, CrossReplicaAllGather) {
   const std::string module_str = R"(

@@ -29,14 +29,15 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/cpu/tests/cpu_codegen_test.h"
 #include "xla/shape_util.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/cpu_info.h"
+#include "tsl/platform/platform.h"
 
 namespace xla {
 namespace cpu {
@@ -80,13 +81,14 @@ class CpuVectorizationTest
           '_');
     }
 
-    return absl::StrCat(opcode, "_On_", triple,
+    return absl::StrCat(opcode, "_on_", triple,
                         (features.empty() ? "" : "_With"), features);
   }
 
  private:
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options =
+        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
     HloTestBase::SetAotFastMathDebugOptions(&debug_options);
     return debug_options;
   }
@@ -121,6 +123,10 @@ TEST_P(CpuVectorizationTest, DoIt) {
   hlo_module->AddEntryComputation(std::move(computation));
 
   std::string check_lines{spec.check_lines.data(), spec.check_lines.size()};
+
+  hlo_module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_cpu_use_thunk_runtime(false);
 
   CompileAheadOfTimeAndVerifyIr(std::move(hlo_module), options, check_lines,
                                 /*match_optimized_ir=*/true);
@@ -166,16 +172,21 @@ class MaxIsaTest : public CpuCodegenTest,
   }
 };
 
-TEST_P(MaxIsaTest, ShouldEnableFeature) {
+class X86MaxIsaTest : public MaxIsaTest {};
+
+TEST_P(X86MaxIsaTest, ShouldEnableFeature) {
   HloComputation::Builder builder(TestName());
   MaxIsaTestSpec spec = GetParam();
+  if (!tsl::port::IsX86CPU()) {
+    GTEST_SKIP() << "This test is for x86 CPUs.";
+  }
 
   auto max_feature = CpuFeatureFromString(spec.max_isa);
   bool should_enable = ShouldEnableCpuFeature(spec.feature, *max_feature);
   EXPECT_EQ(should_enable, spec.should_enable);
 }
 
-std::vector<MaxIsaTestSpec> GetMaxIsaTestCases() {
+std::vector<MaxIsaTestSpec> GetX86MaxIsaTestCases() {
   return std::vector<MaxIsaTestSpec>({
       MaxIsaTestSpec{"AVX2", "avx", true},
       MaxIsaTestSpec{"AVX2", "avx2", true},
@@ -188,9 +199,52 @@ std::vector<MaxIsaTestSpec> GetMaxIsaTestCases() {
   });
 }
 
-INSTANTIATE_TEST_SUITE_P(MaxIsaTestInstantiation, MaxIsaTest,
-                         ::testing::ValuesIn(GetMaxIsaTestCases()),
-                         MaxIsaTest::Name);
+INSTANTIATE_TEST_SUITE_P(X86MaxIsaTestInstantiation, X86MaxIsaTest,
+                         ::testing::ValuesIn(GetX86MaxIsaTestCases()),
+                         X86MaxIsaTest::Name);
+
+class AArch64MaxIsaTest : public MaxIsaTest {};
+
+TEST_P(AArch64MaxIsaTest, ShouldEnableFeature) {
+  HloComputation::Builder builder(TestName());
+  MaxIsaTestSpec spec = GetParam();
+  if (!tsl::port::IsAarch64CPU()) {
+    GTEST_SKIP() << "This test is for AArch64 CPUs.";
+  }
+
+  auto max_feature = CpuFeatureFromString(spec.max_isa);
+  bool should_enable = ShouldEnableCpuFeature(spec.feature, *max_feature);
+  EXPECT_EQ(should_enable, spec.should_enable);
+}
+
+std::vector<MaxIsaTestSpec> GetAArch64MaxIsaTestCases() {
+  return std::vector<MaxIsaTestSpec>({
+      MaxIsaTestSpec{"NEON", "neon", true},
+      MaxIsaTestSpec{"NEON", "sve", false},
+      MaxIsaTestSpec{"NEON", "sve2", false},
+      MaxIsaTestSpec{"SVE", "neon", true},
+      MaxIsaTestSpec{"SVE", "sve", true},
+      MaxIsaTestSpec{"SVE", "sve2", false},
+      MaxIsaTestSpec{"SVE2", "neon", true},
+      MaxIsaTestSpec{"SVE2", "sve", true},
+      MaxIsaTestSpec{"SVE2", "sve2", true},
+  });
+}
+
+INSTANTIATE_TEST_SUITE_P(AArch64MaxIsaTestInstantiation, AArch64MaxIsaTest,
+                         ::testing::ValuesIn(GetAArch64MaxIsaTestCases()),
+                         AArch64MaxIsaTest::Name);
+
+class DefaultMaxIsaTest : public CpuCodegenTest {};
+
+TEST_F(DefaultMaxIsaTest, NeonForOssAArch64) {
+  if (!tsl::port::IsAarch64CPU()) {
+    GTEST_SKIP() << "This test is for AArch64 CPUs.";
+  }
+  DebugOptions debug_options =
+      HloHardwareIndependentTestBase::GetDebugOptionsForTest();
+  EXPECT_EQ(debug_options.xla_cpu_max_isa(), "NEON");
+}
 
 struct JitVectorizationTestSpec {
   HloOpcode opcode;
@@ -213,7 +267,8 @@ class JitVectorizationTest
  private:
   DebugOptions GetDebugOptionsForTest() const override {
     JitVectorizationTestSpec spec = GetParam();
-    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options =
+        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_cpu_max_isa(spec.max_isa);
     // For AVX512, we have to override the default `prefer_vector_width=256`
     // setting. Otherwise, LLVM won't generate AVX512.
@@ -225,7 +280,9 @@ class JitVectorizationTest
   }
 };
 
-TEST_P(JitVectorizationTest, JitUpToIsa) {
+// Most Aarch64 CPUs are still using 128-bit registers so we don't have this
+// test for Aarch64.
+TEST_P(JitVectorizationTest, JitX86UpToIsa) {
   if (!tsl::port::IsX86CPU()) {
     GTEST_SKIP() << "This feature only works for x86 CPUs.";
   }

@@ -17,6 +17,9 @@ limitations under the License.
 
 #include <string>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -26,9 +29,9 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"
 #include "xla/backends/gpu/codegen/triton/fusion_emitter.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "tsl/platform/status_matchers.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -37,7 +40,9 @@ using mlir::NameLoc;
 using mlir::StringAttr;
 using ::tsl::testing::IsOkAndHolds;
 
-class EmitterLocOpBuilderTest : public ::testing::Test {
+using ::xla::gpu::ir_emitter_triton_internal::DumpTritonIR;
+
+class EmitterLocOpBuilderTest : public HloHardwareIndependentTestBase {
  protected:
   void SetUp() override { gpu::LoadMlirDialectsForTriton(context_); }
 
@@ -63,18 +68,17 @@ TEST_F(EmitterLocOpBuilderTest, IRWithAnnotations) {
   auto loc = NameLoc(context_, "IRWithAnnotations");
   EmitterLocOpBuilder b(loc, &context_, /*annotate_loc=*/true);
   auto triton_module = MakeModuleWithOneOp(context_, b);
-  std::string ir =
-      gpu::DumpTritonIR(triton_module.get(), /*dump_annotations=*/true);
+  std::string ir = DumpTritonIR(triton_module.get(), /*dump_annotations=*/true);
   if constexpr (EmitterLocOpBuilder::kSourceLocationSupported) {
     EXPECT_THAT(RunFileCheck(ir, R"(
       CHECK: "IRWithAnnotations -> [[FILE:.*_test.cc]]:[[LINE:[0-9]+]]"
     )"),
-                IsOkAndHolds(true));
+                absl_testing::IsOkAndHolds(true));
   } else {
     EXPECT_THAT(RunFileCheck(ir, R"(
       CHECK: "IRWithAnnotations"
     )"),
-                IsOkAndHolds(true));
+                absl_testing::IsOkAndHolds(true));
   }
 }
 
@@ -83,11 +87,11 @@ TEST_F(EmitterLocOpBuilderTest, IRWithoutAnnotations) {
   EmitterLocOpBuilder b(loc, &context_, /*annotate_loc=*/false);
   auto triton_module = MakeModuleWithOneOp(context_, b);
   std::string ir =
-      gpu::DumpTritonIR(triton_module.get(), /*dump_annotations=*/false);
+      DumpTritonIR(triton_module.get(), /*dump_annotations=*/false);
   EXPECT_THAT(RunFileCheck(ir, R"(
     CHECK-NOT: IRWithoutAnnotations
   )"),
-              IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
 }
 
 }  // namespace

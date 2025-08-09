@@ -27,8 +27,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -36,7 +36,7 @@ namespace {
 
 namespace op = testing::opcode_matchers;
 
-using HloSlicerTest = HloTestBase;
+using HloSlicerTest = HloHardwareIndependentTestBase;
 
 TEST_F(HloSlicerTest, SingleComputationForwardSlice) {
   const std::string& hlo_string = R"(
@@ -1072,12 +1072,12 @@ TEST_F(HloSlicerTest, TestSliceModuleAndExtractReduceTupleParameter) {
     // Check that the new p.0 only has one element.
     HloInstruction* p_0 = FindInstruction(sliced_module.get(), "p.0");
     EXPECT_NE(p_0, nullptr);
-    EXPECT_EQ(p_0->shape().tuple_shapes_size(), 1);
+    EXPECT_EQ(p_0->shape().tuple_shapes().size(), 1);
 
     // Check that the new p.1 only has one element.
     HloInstruction* p_1 = FindInstruction(sliced_module.get(), "p.1");
     EXPECT_NE(p_1, nullptr);
-    EXPECT_EQ(p_1->shape().tuple_shapes_size(), 1);
+    EXPECT_EQ(p_1->shape().tuple_shapes().size(), 1);
   }
 }
 

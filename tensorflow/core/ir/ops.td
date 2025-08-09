@@ -684,7 +684,7 @@ class TFGraph_CaseLikeRegionOp<string mnemonic> : TFGraph_RegionOp<
 
     RegionAttr getPreservedAttrs(unsigned index) {
       if (auto attrs = getRegionAttrsAttr())
-        return attrs[index].cast<RegionAttr>();
+        return llvm::cast<RegionAttr>(attrs[index]);
       return {};
     }
     void setPreservedAttrs(unsigned index, RegionAttr attrs) {

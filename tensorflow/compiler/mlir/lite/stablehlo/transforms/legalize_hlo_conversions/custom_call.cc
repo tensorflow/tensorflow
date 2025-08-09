@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <optional>
 
+#include "mlir/AsmParser/AsmParser.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -27,6 +29,7 @@ limitations under the License.
 
 namespace mlir {
 namespace odml {
+namespace {
 
 class ConvertCustomCallOp : public OpConversionPattern<mhlo::CustomCallOp> {
  public:
@@ -37,10 +40,45 @@ class ConvertCustomCallOp : public OpConversionPattern<mhlo::CustomCallOp> {
       ConversionPatternRewriter& rewriter) const final;
 };
 
+// TFL op on StableHLO CustomCall carrier must serialize its attributes in
+// the CustomCallOp's backend_config StringAttr, following MLIR
+// DictionaryAttr serialization format. If no attributes are specified,
+// the backend_config should be the serialized empty DictionaryAttr.
+mlir::DictionaryAttr ParseSerializedTFLOpAttributes(
+    std::optional<mlir::Attribute> backend_config, MLIRContext* ctx) {
+  if (!backend_config) {
+    return nullptr;
+  }
+
+  auto serialized_attributes =
+      mlir::dyn_cast_or_null<mlir::StringAttr>(*backend_config);
+  if (!serialized_attributes) {
+    return nullptr;
+  }
+
+  auto dict_attribute = mlir::dyn_cast_or_null<mlir::DictionaryAttr>(
+      parseAttribute(serialized_attributes.getValue(), ctx));
+  return dict_attribute;
+}
+
 LogicalResult ConvertCustomCallOp::matchAndRewrite(
     mhlo::CustomCallOp mhlo_custom_call, OpAdaptor adaptor,
     ConversionPatternRewriter& rewriter) const {
   auto call_target_name = mhlo_custom_call.getCallTargetName();
+  if (call_target_name.starts_with("tfl.")) {
+    auto bc = mhlo_custom_call.getBackendConfig();
+    if (mlir::DictionaryAttr attributes =
+            ParseSerializedTFLOpAttributes(bc, getContext())) {
+      // Short-cut: TFL direct lowering on StableHLO CustomCall carrier.
+      mlir::OperationState new_op(mhlo_custom_call.getLoc(), call_target_name,
+                                  mhlo_custom_call.getOperands(),
+                                  mhlo_custom_call.getResultTypes(),
+                                  attributes.getValue());
+      rewriter.replaceOp(mhlo_custom_call, rewriter.create(new_op));
+      return success();
+    }
+  }
+
   if (!call_target_name.starts_with("custom_call.")) {
     return failure();
   }
@@ -102,9 +140,16 @@ std::optional<bool> IsCustomCallLegal(mhlo::CustomCallOp op) {
       return false;
     }
   }
+  if (call_target_name.starts_with("tfl.")) {
+    auto bc = op.getBackendConfig();
+    if (!bc || mlir::isa<mlir::DictionaryAttr, mlir::StringAttr>(*bc)) {
+      return false;
+    }
+  }
 
   return true;
 }
+}  // namespace
 
 void PopulateCustomCallPatterns(MLIRContext* ctx, RewritePatternSet& patterns,
                                 ConversionTarget& target) {

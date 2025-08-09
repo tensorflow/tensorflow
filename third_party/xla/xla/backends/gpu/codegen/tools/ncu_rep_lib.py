@@ -18,14 +18,20 @@ Separate library from ncu_rep_main.py to enable unit tests.
 """
 
 import csv
+import itertools
 import json
+import logging
+import re
 from typing import TextIO
 from absl import app
+
+KERNEL_NAME_FIELD = "Kernel Name"
+KERNEL_ID_FIELD = "ID"
 
 
 def get_metrics_by_kernel(
     rows: list[list[str]],
-) -> dict[str, dict[str, tuple[str, str]]]:
+) -> list[dict[str, tuple[str, str]]]:
   """Converts ncu-rep table to a dictionary of metrics by kernel.
 
   Args:
@@ -38,43 +44,110 @@ def get_metrics_by_kernel(
   units = rows[1]
   for i, name in enumerate(rows[0]):
     name_index[name] = i
-  results = {}
+  results = []
   for kernel in rows[2:]:
     values = {}
     for idx, name in enumerate(rows[0]):
       values[name] = (kernel[idx], units[idx])
-    kernel_name = values["Kernel Name"][0]
-    results[kernel_name] = values
+    results.append(values)
   return results
 
 
-def get_kernel_metrics_rows(
-    metrics: list[str],
-    all_metrics: dict[str, dict[str, tuple[str, str]]],
-    kernel_name: str,
+def aggregate(metric_values: list[float], metric_name: str):
+  """Aggregates metric values using a function based on the metric name.
+
+  If metric name does not match any of the known patterns, the first value from
+  the input list is returned.
+
+  Args:
+    metric_values: list of metric values, floats
+    metric_name: metric name
+
+  Returns:
+    aggregated metric value
+  """
+  if str.endswith(metric_name, ".max"):
+    return max(metric_values)
+  if str.endswith(metric_name, ".min"):
+    return min(metric_values)
+  if str.endswith(metric_name, ".sum"):
+    return sum(metric_values)
+  return metric_values[0]
+
+
+def aggregate_kernel_metrics(
+    metrics: list[str], kernel_metrics: list[dict[str, tuple[str, str]]]
 ) -> list[list[str]]:
-  """Returns the metrics to print for the given kernel.
+  """Aggregates and returns the metrics for the given kernels.
 
   Args:
     metrics: list of metrics names to print
-    all_metrics: dictionary of metrics by kernel, extracted from ncu-rep table
-    kernel_name: kernel name to print, returns first kernel if empty
+    kernel_metrics: dictionary of metrics by kernel
 
   Returns:
     list of rows [name, value, unit] per metric.
   """
-  if not all_metrics:
+  if not kernel_metrics:
     raise app.UsageError("no metrics found")
-  for kernel, vals in all_metrics.items():
-    if kernel_name and kernel != kernel_name:
-      continue
-    result = []
+  results: dict[str, tuple[list[float], str]] = {}  # name -> (float[], unit)
+  for vals in kernel_metrics:
     for name in metrics:
       if name not in vals:
         raise app.UsageError(f"metric '{name}' is not found")
-      result.append([name, vals[name][0], vals[name][1]])
-    return result
-  raise app.UsageError(f"kernel '{kernel_name}' is not found")
+      value, unit = vals[name]
+      if name not in results:
+        results[name] = ([], unit)
+      if results[name][1] != unit:
+        # That should not happen with `--print-units base` but left as a
+        # safety check.
+        raise app.UsageError(f"unit mismatch for metric '{name}'")
+      # Replace ',' in value to parse it as a float. It is printed in
+      # en_US.UTF-8 locale but we don't want to change the runtime locale just
+      # for this as that might affect downstream.
+      results[name][0].append(float(value.replace(",", "")))
+  kernel_metrics = []
+  for name, (values, unit) in results.items():
+    a = aggregate(values, name)
+    if round(a) == a:
+      kernel_metrics.append([name, f"{round(a)}", unit])
+    else:
+      kernel_metrics.append([name, f"{round(a, 2)}", unit])
+  return kernel_metrics
+
+
+def filter_kernels(
+    kernels: list[dict[str, tuple[str, str]]], condition: str
+) -> list[dict[str, tuple[str, str]]]:
+  """Filters kernels by a condition.
+
+  Args:
+    kernels: list of kernel tuples, extracted from ncu-rep CSV
+    condition: filter condition. Supported filter expressions: 'id:<value>' -
+      kernel with an ID 'name:<regex>' - kernel with a name matching the regex
+      'after:<filter>' - kernels after the last kernel matching the filter.
+
+  Returns:
+    matching kernels
+  """
+  if condition.startswith("id:"):
+    i = condition.removeprefix("id:")
+    return [v for v in kernels if v[KERNEL_ID_FIELD][0] == i]
+  if condition.startswith("name:"):
+    r = condition.removeprefix("name:")
+    return [v for v in kernels if re.search(r, v[KERNEL_NAME_FIELD][0])]
+  if condition.startswith("after:"):
+    r = condition.removeprefix("after:")
+    sub = filter_kernels(kernels, r)
+    if not sub:
+      logging.warning("no kernels matched '%s', 'after:' has no effect", r)
+      return kernels
+    after_id = sub[-1][KERNEL_ID_FIELD][0]
+    return list(
+        itertools.dropwhile(
+            lambda v: v[KERNEL_ID_FIELD][0] != after_id, kernels
+        )
+    )[1:]
+  raise app.UsageError(f"unsupported filter: {condition}")
 
 
 def write_metrics_markdown(out: TextIO, metrics: list[list[str]]):
@@ -85,9 +158,11 @@ def write_metrics_markdown(out: TextIO, metrics: list[list[str]]):
   out.write(
       f"{'Metric'.ljust(name_width)} | {'Value'.rjust(value_width)} | Unit\n"
   )
-  out.write(
-      f"{'-' * name_width }-|-{'-' * value_width }-|-{'-' * unit_width }\n"
-  )
+  out.write("-" * name_width)
+  out.write("-|-")
+  out.write("-" * value_width)
+  out.write("-|-")
+  out.write("-" * unit_width + "\n")
   for name, value, unit in metrics:
     out.write(
         f"{name.ljust(name_width)} | {value.rjust(value_width)} | {unit}\n"

@@ -26,14 +26,14 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Pass/PassManager.h"
-#include "mlir/Support/LogicalResult.h"
 #include "stablehlo/dialect/Serialization.h"
 #include "xla/mlir/utils/error_util.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/serdes.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/python/ifrt/serdes_version.h"
+#include "xla/python/ifrt/serdes_week_4_old_version_accessor.h"
 
 namespace xla {
 namespace ifrt {
@@ -64,24 +64,33 @@ class HloProgramSerDes : public llvm::RTTIExtends<HloProgramSerDes, SerDes> {
   }
 
   absl::StatusOr<std::string> Serialize(
-      Serializable& serializable, std::unique_ptr<SerializeOptions>) override {
+      const Serializable& serializable,
+      std::unique_ptr<SerializeOptions> options) override {
+    // All serialization of `HloProgram` is pinned to a at-least-4-week-old
+    // version. An acceptable IFRT SerDes version is [4-week-old, current].
+    const SerDesVersion version = GetRequestedSerDesVersion(options.get());
+    if (version.version_number() <
+        SerDesWeek4OldVersionAccessor::Get().version_number()) {
+      return absl::FailedPreconditionError(
+          absl::StrCat("Unsupported ", version.version_number(),
+                       " for HloProgram serialization"));
+    }
+
     // Currently, PjRT-IFRT accepts an `HloProgram` that contains C/MHLO. Since
     // these dialects don't provide version compatibility, the following
     // converts the module into StableHLO and use its portable serialization.
 
     const auto& program = llvm::cast<HloProgram>(serializable);
-    if (program.mlir_module == nullptr) {
+    if (program.mlir_module() == nullptr) {
       return absl::InvalidArgumentError("Unable to serialize null MLIR module");
     }
 
     mlir::OwningOpRef<mlir::ModuleOp> module(
-        llvm::cast<mlir::ModuleOp>(program.mlir_module->clone()));
+        llvm::cast<mlir::ModuleOp>(program.mlir_module()->clone()));
 
     // Serialize portable artifact.
-    TF_ASSIGN_OR_RETURN(std::string serialized,
-                        xla::SerializeUsingVersionedStablehlo(
-                            *module, xla::GetDefaultStablehloVersion()));
-    return serialized;
+    return xla::SerializeUsingVersionedStablehlo(
+        *module, xla::GetDefaultStablehloVersion());
   }
 
   absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
@@ -101,17 +110,6 @@ class HloProgramSerDes : public llvm::RTTIExtends<HloProgramSerDes, SerDes> {
           absl::StrCat("Failed to deserialize StableHLO module;\n\nDetailed "
                        "error from MLIR: ",
                        status.message()));
-    }
-
-    // Convert StableHLO back to MHLO to keep the contract the same before and
-    // after a serialization/deserialization round trip.
-    mlir::PassManager pm(context.get());
-    pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
-    if (!mlir::succeeded(pm.run(*module))) {
-      const absl::Status status = diagnostic_handler.ConsumeStatus();
-      return absl::InvalidArgumentError(absl::StrCat(
-          "Failed to legalize StableHLO to MHLO;\n\nDetailed error from MLIR: ",
-          status.message()));
     }
 
     return std::make_unique<HloProgram>(std::move(context), std::move(module));

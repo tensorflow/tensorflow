@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/service/gpu/model/symbolic_tile_analysis.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
+#include "xla/service/gpu/model/tiled_hlo_instruction.h"
 #include "xla/service/gpu/model/triton_emitter_constraints.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape.h"
@@ -126,6 +127,40 @@ bool DoesTileFitsInRegisters(int64_t tile_size,
   // smaller types can fit into one register.
   return tile_size <= kFractionOfRegistersAvailableToStoreTile *
                           device_info.registers_per_block_limit();
+}
+
+// Checks if all tiles in the computation fit in registers.
+//
+// There is no way to know for sure if emitted computation will not spill
+// registers, so we use a heuristic based on tile sizes. The heuristic looks at
+// operand and root tiles, because those will likely be materialized fully and
+// can not be reordered with other tiles.
+bool DoesComputationFitInRegisters(
+    const HloFusionAdaptor& fusion_adaptor,
+    const TiledHloComputation& tiled_hlo_computation,
+    const se::DeviceDescription& device_info) {
+  // Check that output tiles fit in registers.
+  for (const TiledHloInstruction* root : tiled_hlo_computation.GetRoots()) {
+    if (!DoesTileFitsInRegisters(GetPaddedTileSize(root->tile_sizes()),
+                                 device_info)) {
+      return false;
+    }
+  }
+
+  for (const TiledHloInstruction* tiled_hlo :
+       tiled_hlo_computation.instructions()) {
+    bool is_operand = !fusion_adaptor.ContainsInstruction(tiled_hlo->hlo());
+
+    // Iota is not an operand, but usually needs to be materialized in
+    // registers.
+    if ((is_operand || tiled_hlo->hlo()->opcode() == HloOpcode::kIota) &&
+        !DoesTileFitsInRegisters(GetPaddedTileSize(tiled_hlo->tile_sizes()),
+                                 device_info)) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 // Returns the number of warps to use based on the largest tile size in the
@@ -214,12 +249,12 @@ int64_t GpuPerformanceModelWithIndexingAnalysis::FlopsPerElement(
     // The Cost Model assumes that the reduction computation is applied N-1
     // times to reduce N elements. This is not true, because emitters will
     // generate a loop with N iterations. We don't fix it here to keep this
-    // estimate consistent with GpuHloCostAnalysis. This is like doesn't matter
+    // estimate consistent with `GpuHloCostAnalysis`. This likely doesn't matter
     // much for the application of the Cost Model.
     return (reduction_factor - 1) * flops_per_reduce_computation;
   }
 
-  // Encountered unexpected instruction, call to GpuHloCostAnalysis.
+  // Encountered unexpected instruction, call into `GpuHloCostAnalysis`.
   TF_CHECK_OK(
       cost_analysis_.RevisitInstruction(const_cast<HloInstruction*>(instr)));
 
@@ -303,7 +338,7 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForFusion(
     for (const auto& indexing_map : indexing_maps) {
       VLOG(10) << indexing_map;
 
-      int64_t num_iters = GetIterationSpaceSize(indexing_map, instr);
+      int64_t num_iters = GetIterationSpaceSize(indexing_map.map(), instr);
 
       if (is_operand) {
         int64_t type_size = ShapeUtil::ByteSizeOfPrimitiveType(element_type);
@@ -335,8 +370,8 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForFusion(
                   launch_dimensions.num_threads_per_block());
   absl::Duration write_time = WriteTime(*device_info_, bytes_written);
   absl::Duration memory_access_time = read_time + write_time;
-  absl::Duration exec_time = CombineComputeAndMemoryAccessTime(
-      compute_time, memory_access_time, GpuPerformanceModelOptions::Default());
+  absl::Duration exec_time =
+      CombineComputeAndMemoryAccessTime(compute_time, memory_access_time);
 
   EstimateRunTimeData runtime_data = {flops,     bytes_read, bytes_written,
                                       read_time, write_time, compute_time,
@@ -360,7 +395,7 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForInstruction(
   auto fusion_analysis = HloFusionAnalysis::Create(*producer, *device_info_);
 
   bool is_coalesced = IsReadCoalescedHeuristic(
-      fusion_analysis.GetEmitterFusionKind(), *device_info_, producer);
+      fusion_analysis.emitter_fusion_kind(), *device_info_, producer);
   return EstimateRunTimeForFusion(fusion_analysis, is_coalesced);
 }
 
@@ -370,9 +405,8 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForProducerConsumer(
   auto fusion_analysis =
       HloFusionAnalysis::Create(*producer, *consumer, *device_info_);
 
-  bool is_coalesced =
-      IsReadCoalescedHeuristic(fusion_analysis.GetEmitterFusionKind(),
-                               *device_info_, producer, consumer);
+  bool is_coalesced = IsReadCoalescedHeuristic(
+      fusion_analysis.emitter_fusion_kind(), *device_info_, producer, consumer);
   return EstimateRunTimeForFusion(fusion_analysis, is_coalesced);
 }
 
@@ -409,18 +443,17 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledHloComputation(
   int64_t bytes_read = 0;
   int64_t num_blocks = launch_dimensions.num_blocks();
 
-  for (const auto& tiled_hlo : tiled_hlo_computation.instructions()) {
-    // Number of elements in the tile after padding.
-    int64_t padded_tile_size = GetPaddedTileSize(tiled_hlo->tile_sizes());
+  // Check if the computation is too large to fit in registers and would result
+  // in spilling.
+  if (!DoesComputationFitInRegisters(fusion_adaptor, tiled_hlo_computation,
+                                     *device_info_)) {
+    // TODO(b/363194951): Estimate performance regression due to spilling in
+    // terms of memory bandwidth instead of returning infinite run time.
+    return EstimateRunTimeData::Infinite();
+  }
 
-    // Check if the tile is too large to fit in registers and would result in
-    // spilling.
-    if (!DoesTileFitsInRegisters(padded_tile_size, *device_info_)) {
-      // TODO(b/363194951): Estimate performance regression due to spilling in
-      // terms of memory bandwidth instead of returning infinite run time.
-      return EstimateRunTimeData::Infinite();
-    }
-
+  for (const TiledHloInstruction* tiled_hlo :
+       tiled_hlo_computation.instructions()) {
     const HloInstruction* hlo = tiled_hlo->hlo();
 
     if (fusion_adaptor.ContainsInstruction(hlo)) {
@@ -431,6 +464,9 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledHloComputation(
         return absl::FailedPreconditionError(
             "Concatenate is not supported by the indexing cost model.");
       }
+
+      // Number of elements in the tile after padding.
+      int64_t padded_tile_size = GetPaddedTileSize(tiled_hlo->tile_sizes());
 
       // Total number of elements computed for this tile across all blocks.
       //
@@ -512,12 +548,12 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledHloComputation(
   }
 
   absl::Duration compute_time =
-      ComputeTime(*device_info_, flops, launch_dimensions.num_blocks(),
+      ComputeTime(*device_info_, flops, num_blocks,
                   launch_dimensions.num_threads_per_block());
 
   absl::Duration memory_access_time = read_time + write_time;
-  absl::Duration exec_time = CombineComputeAndMemoryAccessTime(
-      compute_time, memory_access_time, GpuPerformanceModelOptions::Default());
+  absl::Duration exec_time =
+      CombineComputeAndMemoryAccessTime(compute_time, memory_access_time);
 
   return EstimateRunTimeData{/*flops=*/flops,
                              /*bytes_read=*/bytes_read,
@@ -543,15 +579,18 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledFusion(
     return absl::FailedPreconditionError(absl::StrCat(
         "SymbolicTileAnalysis failed. ", fusion_decision->Explain()));
   }
-  // TODO(b/390559452): Add support for more than one fusion root.
-  if (tile_sizes.size() != 1) {
-    return absl::UnimplementedError("Only 1 root is supported right now");
-  }
   SymbolicTileAnalysis analysis =
       std::get<SymbolicTileAnalysis>(std::move(analysis_or_error));
 
+  int64_t real_root_index = analysis.real_root_index();
+  absl::Span<int64_t const> real_root_tile_sizes = tile_sizes[real_root_index];
+  const HloInstruction* real_root =
+      &fusion_adaptor.GetRoots()[real_root_index].instruction();
+  Tiling tiling = Tiling({{real_root, FlatTiling(real_root_tile_sizes.begin(),
+                                                 real_root_tile_sizes.end())}});
+
   TF_ASSIGN_OR_RETURN(TiledHloComputation tiled_hlo_computation,
-                      analysis.ComputeTiledHloInstructions(tile_sizes[0]));
+                      analysis.ComputeTiledHloInstructions(tiling));
 
   return EstimateRunTimeForTiledHloComputation(
       fusion_adaptor, tiled_hlo_computation, launch_dimensions);
@@ -611,7 +650,7 @@ GpuPerformanceModelWithIndexingAnalysis::TryFindBestTilingForFusion(
   SymbolicTileAnalysis analysis =
       std::get<SymbolicTileAnalysis>(std::move(analysis_or_error));
 
-  TF_ASSIGN_OR_RETURN(auto tilings, analysis.GetGoodTilings());
+  TF_ASSIGN_OR_RETURN(auto tilings, analysis.GetValidTilings());
 
   std::optional<TiledRunTimeData> best_tiled_run_time_data;
 

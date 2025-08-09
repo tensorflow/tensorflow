@@ -171,9 +171,17 @@ class Subgraph {
       const int* dims_signature = nullptr);
 
   // Get all tensors in the subgraph.
+  //
+  // Warning: No guarantee is given about address stability. Operations
+  // (including but not limited to: `Invoke`, `AddTensors`) may invalidate the
+  // pointer returned by this function.
   TfLiteTensor* tensors() { return context_.tensors; }
 
   // Get a mutable tensor data structure.
+  //
+  // Warning: No guarantee is given about address stability. Operations
+  // (including but not limited to: `Invoke`, `AddTensors`) may invalidate the
+  // pointer returned by this function.
   TfLiteTensor* tensor(int tensor_index) {
     if (tensor_index < 0 ||
         static_cast<size_t>(tensor_index) >= context_.tensors_size) {
@@ -183,6 +191,10 @@ class Subgraph {
   }
 
   // Get an immutable tensor data structure.
+  //
+  // Warning: No guarantee is given about address stability. Operations
+  // (including but not limited to: `Invoke`, `AddTensors`) may invalidate the
+  // pointer returned by this function.
   const TfLiteTensor* tensor(int tensor_index) const {
     if (tensor_index < 0 ||
         static_cast<size_t>(tensor_index) >= context_.tensors_size) {
@@ -212,6 +224,8 @@ class Subgraph {
   // WARNING: Experimental interface, subject to change.
   // TODO(ycling): Move this function to an external context interface.
   resource::ResourceMap& resources() { return *resources_; }
+
+  resource::ResourceMap* resources_ptr() { return resources_; }
 
   // WARNING: Experimental interface, subject to change.
   // TODO(b/149099381): Move this function to an external context interface.

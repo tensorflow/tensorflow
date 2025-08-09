@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/match.h"
+#include "absl/synchronization/mutex.h"
 #include "json/json.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -139,7 +140,7 @@ GoogleAuthProvider::GoogleAuthProvider(
       env_(env) {}
 
 absl::Status GoogleAuthProvider::GetToken(string* t) {
-  mutex_lock lock(mu_);
+  absl::MutexLock lock(&mu_);
   const uint64 now_sec = env_->NowSeconds();
 
   if (now_sec + kExpirationTimeMarginSec < expiration_timestamp_sec_) {

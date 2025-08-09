@@ -22,8 +22,6 @@ limitations under the License.
 #include <limits>
 #include <optional>
 
-#include "absl/types/optional.h"
-
 namespace mlir {
 namespace quant {
 

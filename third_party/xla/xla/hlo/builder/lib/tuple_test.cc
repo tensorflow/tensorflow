@@ -16,28 +16,27 @@ limitations under the License.
 #include "xla/hlo/builder/lib/tuple.h"
 
 #include <cstdint>
-#include <memory>
 #include <utility>
 
 #include "xla/error_spec.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/service/service.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
-#include "xla/tests/client_library_test_base.h"
-#include "xla/tests/test_macros.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
+#include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
 
-class TupleTest : public ClientLibraryTestBase {};
+using TupleTest = ClientLibraryTestRunnerMixin<HloTestBase>;
 
-XLA_TEST_F(TupleTest, DisassembleAssemble) {
+TEST_F(TupleTest, DisassembleAssemble) {
   XlaBuilder builder(TestName());
 
   Shape shape = ShapeUtil::MakeTupleShape({
@@ -70,18 +69,13 @@ XLA_TEST_F(TupleTest, DisassembleAssemble) {
   });
   AssembleTuple(&builder, std::move(disassembled_tuple));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> data,
-                          client_->TransferToServer(input));
-
-  Literal expected = LiteralUtil::MakeTupleOwned(
+  const Literal expected = LiteralUtil::MakeTupleOwned(
       LiteralUtil::CreateFullWithDescendingLayout({3}, int32_t{43}),
       LiteralUtil::MakeTupleOwned(
           LiteralUtil::CreateFullWithDescendingLayout({4}, int32_t{45}),
           LiteralUtil::CreateFullWithDescendingLayout({5}, int32_t{47})),
       LiteralUtil::CreateFullWithDescendingLayout({6}, int32_t{49}));
-
-  ComputeAndCompareLiteral(&builder, expected, {data.get()}, ErrorSpec(0),
-                           &shape);
+  ComputeAndCompareLiteral(&builder, expected, {&input}, ErrorSpec(0), &shape);
 }
 
 }  // namespace

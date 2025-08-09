@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "xla/hlo/analysis/hlo_liveness_analysis.h"
 
+#include <memory>
+#include <string>
+
+#include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -580,6 +584,95 @@ ENTRY %main.67 (arg_tuple.1: (s32[])) -> () {
   EXPECT_TRUE(liveness.IsLive(
       GetInstruction(module.get(), "dynamic-update-slice.24"), {}));
   EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "send.57"), {}));
+}
+
+TEST_F(HloLivenessAnalysisTest, PropagateLivenessThroughCallSameUsedOutput) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule module
+
+%callee (arg0: s32[], arg1: s32[]) -> (s32[], s32[]) {
+  %arg0 = s32[] parameter(0)
+  %arg1 = s32[] parameter(1)
+  %add0 = s32[] add(%arg0, %arg0)
+  %add1 = s32[] add(%arg1, %arg1)
+  ROOT %tuple = (s32[], s32[]) tuple(%add0, %add1)
+}
+
+ENTRY %main (p0: s32[], p1: s32[], p2: s32[], p3: s32[]) -> s32[] {
+  %p0 = s32[] parameter(0)
+  %p1 = s32[] parameter(1)
+  %p2 = s32[] parameter(2)
+  %p3 = s32[] parameter(3)
+  %call0 = (s32[], s32[]) call(%p0, %p1), to_apply=%callee
+  %call1 = (s32[], s32[]) call(%p2, %p3), to_apply=%callee
+  %call0.1 = s32[] get-tuple-element(%call0), index=1
+  %call1.1 = s32[] get-tuple-element(%call1), index=1
+  ROOT %ret = s32[] add(%call0.1, %call1.1)
+  }
+  )")
+                    .value();
+
+  const HloLivenessAnalysis& liveness = RunLiveness(module.get());
+  EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "call0"), {}));
+  EXPECT_FALSE(liveness.IsLive(GetInstruction(module.get(), "call0"), {0}));
+  EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "call0"), {1}));
+  EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "call1"), {}));
+  EXPECT_FALSE(liveness.IsLive(GetInstruction(module.get(), "call1"), {0}));
+  EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "call1"), {1}));
+
+  EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "ret"), {}));
+  EXPECT_FALSE(liveness.IsLive(GetInstruction(module.get(), "arg0"), {}));
+  EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "arg1"), {}));
+
+  EXPECT_FALSE(liveness.IsLive(GetInstruction(module.get(), "p0"), {}));
+  EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "p1"), {}));
+  EXPECT_FALSE(liveness.IsLive(GetInstruction(module.get(), "p2"), {}));
+  EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "p3"), {}));
+}
+
+TEST_F(HloLivenessAnalysisTest,
+       PropagateLivenessThroughCallDifferentUsedOutput) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule module
+
+%callee (arg0: s32[], arg1: s32[]) -> (s32[], s32[]) {
+  %arg0 = s32[] parameter(0)
+  %arg1 = s32[] parameter(1)
+  %add0 = s32[] add(%arg0, %arg0)
+  %add1 = s32[] add(%arg1, %arg1)
+  ROOT %tuple = (s32[], s32[]) tuple(%add0, %add1)
+}
+
+ENTRY %main (p0: s32[], p1: s32[], p2: s32[], p3: s32[]) -> s32[] {
+  %p0 = s32[] parameter(0)
+  %p1 = s32[] parameter(1)
+  %p2 = s32[] parameter(2)
+  %p3 = s32[] parameter(3)
+  %call0 = (s32[], s32[]) call(%p0, %p1), to_apply=%callee
+  %call1 = (s32[], s32[]) call(%p2, %p3), to_apply=%callee
+  %call0.0 = s32[] get-tuple-element(%call0), index=0
+  %call1.1 = s32[] get-tuple-element(%call1), index=1
+  ROOT %ret = s32[] add(%call0.0, %call1.1)
+  }
+  )")
+                    .value();
+
+  const HloLivenessAnalysis& liveness = RunLiveness(module.get());
+  EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "call0"), {}));
+  EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "call0"), {0}));
+  EXPECT_FALSE(liveness.IsLive(GetInstruction(module.get(), "call0"), {1}));
+  EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "call1"), {}));
+  EXPECT_FALSE(liveness.IsLive(GetInstruction(module.get(), "call1"), {0}));
+  EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "call1"), {1}));
+
+  EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "ret"), {}));
+  EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "arg0"), {}));
+  EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "arg1"), {}));
+
+  EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "p0"), {}));
+  EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "p1"), {}));
+  EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "p2"), {}));
+  EXPECT_TRUE(liveness.IsLive(GetInstruction(module.get(), "p3"), {}));
 }
 
 }  // namespace

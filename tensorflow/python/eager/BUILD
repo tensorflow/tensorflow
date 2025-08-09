@@ -1,3 +1,4 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library", "py_strict_test")
 load("//tensorflow:tensorflow.bzl", "check_deps")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test", "tf_python_pybind_extension")
@@ -69,16 +70,17 @@ cc_library(
         "//tensorflow/python/util:cpp_python_util",
         "//tensorflow/python/util:stack_trace",
         "//third_party/py/numpy:headers",
-        "//third_party/python_runtime:headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/debugging:leak_check",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
         "@local_tsl//tsl/profiler/lib:traceme",
+        "@local_xla//third_party/python_runtime:headers",
         "@local_xla//xla/tsl/platform:status",
         "@local_xla//xla/tsl/python/lib/core:numpy",
         "@pybind11",
@@ -200,6 +202,7 @@ py_strict_library(
     # copybara:uncomment_begin(google-only)
     # visibility = [
     # "//smartass/brain/ops:__subpackages__",
+    # "//third_party/py/courier:__subpackages__",
     # "//third_party/py/jax_tpu_embedding:__subpackages__",
     # "//tensorflow:internal",
     # ],
@@ -250,7 +253,7 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_status",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//tensorflow/python/util:cpp_python_util",
-        "//third_party/python_runtime:headers",
+        "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
     ],
 )
@@ -320,6 +323,7 @@ cuda_py_strict_test(
     srcs = ["context_cross_platform_gpu_test.py"],
     tags = [
         "no_oss",
+        "noasan",  # TODO(b/417285186): Re-enable once the test is fixed.
     ],
     tpu_ops_enabled = True,
     xla_enabled = True,

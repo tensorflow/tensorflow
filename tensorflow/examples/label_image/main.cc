@@ -43,8 +43,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
+#include "absl/types/span.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/array_ops.h"
@@ -119,7 +121,8 @@ static Status ReadEntireFile(tensorflow::Env* env, const string& filename,
   TF_RETURN_IF_ERROR(env->NewRandomAccessFile(filename, &file));
 
   absl::string_view data;
-  TF_RETURN_IF_ERROR(file->Read(0, file_size, &data, &(contents)[0]));
+  TF_RETURN_IF_ERROR(
+      file->Read(0, data, absl::MakeSpan(&contents[0], file_size)));
   if (data.size() != file_size) {
     return tensorflow::errors::DataLoss("Truncated read of '", filename,
                                         "' expected ", file_size, " got ",

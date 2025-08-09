@@ -27,11 +27,10 @@ include "mlir/IR/PatternBase.td"
 def MHLO_PRECISION_DEFAULT : I32EnumAttrCase<"DEFAULT", 0>;
 def MHLO_PRECISION_HIGH    : I32EnumAttrCase<"HIGH", 1>;
 def MHLO_PRECISION_HIGHEST : I32EnumAttrCase<"HIGHEST", 2>;
-def MHLO_PRECISION_PACKED_NIBBLE : I32EnumAttrCase<"PACKED_NIBBLE", 3>;
 
 def MHLO_Precision : I32EnumAttr<"Precision",
     "XLA precision for an operand. Has backend specific meaning.",
-    [MHLO_PRECISION_DEFAULT, MHLO_PRECISION_HIGH, MHLO_PRECISION_HIGHEST, MHLO_PRECISION_PACKED_NIBBLE]> {
+    [MHLO_PRECISION_DEFAULT, MHLO_PRECISION_HIGH, MHLO_PRECISION_HIGHEST]> {
   let genSpecializedAttr = 0;
   let cppNamespace = "::mlir::mhlo";
 }

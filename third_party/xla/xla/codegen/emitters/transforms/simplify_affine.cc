@@ -162,7 +162,8 @@ Value ExpressionEvaluator::EvaluateAddMul(AffineExpr expr) {
   for (auto arg : args) {
     Value arg_evaluated = EvaluateExpression(arg);
     if (result) {
-      result = builder.create<Op>(result, arg_evaluated);
+      result = builder.create<Op>(result, arg_evaluated,
+                                  arith::IntegerOverflowFlags::nsw);
     } else {
       result = arg_evaluated;
     }
@@ -311,7 +312,7 @@ struct SimplifyAffinePass
     patterns.add<RewriteAffineApply, RewriteApplyIndexingOp>(ctx);
     mlir::GreedyRewriteConfig config;
     // There's no point simplifying more than once.
-    config.strictMode = mlir::GreedyRewriteStrictness::ExistingOps;
+    config.setStrictness(mlir::GreedyRewriteStrictness::ExistingOps);
     if (mlir::failed(mlir::applyPatternsGreedily(
             getOperation(), std::move(patterns), config))) {
       signalPassFailure();

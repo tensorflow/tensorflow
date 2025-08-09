@@ -18,15 +18,10 @@ package_group(
 gentbl_cc_library(
     name = "passes_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            [
-                "-gen-pass-decls",
-                "-name=XlaCpuTransforms",
-            ],
-            "passes.h.inc",
-        ),
-    ],
+    tbl_outs = {"passes.h.inc": [
+        "-gen-pass-decls",
+        "-name=XlaCpuTransforms",
+    ]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "passes.td",
     visibility = ["//visibility:private"],
@@ -35,19 +30,43 @@ gentbl_cc_library(
 
 cc_library(
     name = "passes",
-    srcs = ["lower_to_llvm.cc"],
+    srcs = [
+        "add_loop_unroll_flags.cc",
+        "add_reduction_fast_math_flags.cc",
+        "expand_float_ops.cc",
+        "lower_to_llvm.cc",
+        "lower_xla_shared.cc",
+        "peel_workgroup_loop.cc",
+    ],
     hdrs = ["passes.h"],
     deps = [
         ":passes_inc_gen",
         ":xla_cpu_rewrite_patterns",
         "//xla/backends/cpu/codegen/emitters/ir:xla_cpu",
+        "//xla/codegen/emitters:implicit_arith_op_builder",
+        "//xla/codegen/emitters/ir:xla",
+        "//xla/codegen/intrinsic:fptrunc",
+        "//xla/codegen/intrinsic:log1p",
+        "//xla/hlo/analysis:indexing_analysis",
+        "//xla/mlir/utils:type_util",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:DataLayoutInterfaces",
+        "@llvm-project//mlir:DialectUtils",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMDialect",
+        "@llvm-project//mlir:MathDialect",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
+        "@llvm-project//mlir:VectorDialect",
     ],
 )
 
@@ -57,7 +76,11 @@ cc_library(
     hdrs = ["xla_cpu_rewrite_patterns.h"],
     deps = [
         "//xla/backends/cpu/codegen/emitters/ir:xla_cpu",
+        "//xla/codegen/emitters/ir:xla",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:DataLayoutInterfaces",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMDialect",

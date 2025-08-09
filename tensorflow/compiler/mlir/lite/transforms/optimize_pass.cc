@@ -57,13 +57,13 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/optimize_pass_options.h"
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/constant_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/lite/utils/utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
-#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 
@@ -471,14 +471,16 @@ bool CanOptimizeIdentitySliceOp(Value input, Attribute begin, Attribute size) {
 // convolution.
 Value GetBiasMultiplier(OpBuilder &builder, Value binary_op,
                         DenseFPElementsAttr base) {
-  ShapedType shaped_type =
-      RankedTensorType::get({}, base.getType().getElementType());
+  Type element_type = base.getType().getElementType();
 
   float multiplier =
       (llvm::isa<mlir::TFL::AddOp>(binary_op.getDefiningOp()) ? 1.0 : -1.0);
+  Attribute constant_attr = FloatAttr::get(element_type, multiplier);
 
-  auto constant_attr = DenseFPElementsAttr::get(shaped_type, multiplier);
-  return builder.create<arith::ConstantOp>(binary_op.getLoc(), constant_attr);
+  return builder.create<arith::ConstantOp>(
+      binary_op.getLoc(),
+      DenseFPElementsAttr::get(RankedTensorType::get({}, element_type),
+                               constant_attr));
 }
 
 bool HasOneTailUnitDimension(Attribute attr) {
@@ -519,7 +521,7 @@ DenseElementsAttr ExpandTo4DForDepthwiseConv(Attribute a) {
 }
 
 TypeAttr RescaleQtype(Type input, Attribute factor) {
-  return quant::RescaleQuantizedType(input, factor);
+  return RescaleQuantizedType(input, factor);
 }
 
 // Returns `true` if reducing `axes` in `input` with `keep_dims=true` results
@@ -824,21 +826,6 @@ bool IsPermutationNCHW(Value perm) {
 
 #include "tensorflow/compiler/mlir/lite/transforms/generated_optimize.inc"
 
-// Returns 1D 32-bit dense elements attribute with the given values.
-static DenseIntElementsAttr GetI32ElementsAttr(ArrayRef<int32_t> values,
-                                               Builder *builder) {
-  RankedTensorType ty = mlir::RankedTensorType::get(
-      {static_cast<int32_t>(values.size())}, builder->getIntegerType(32));
-  return DenseIntElementsAttr::get(ty, values);
-}
-
-DenseIntElementsAttr GetI64ElementsAttr(ArrayRef<int64_t> values,
-                                        Builder *builder) {
-  RankedTensorType ty = RankedTensorType::get(
-      {static_cast<int64_t>(values.size())}, builder->getIntegerType(64));
-  return DenseIntElementsAttr::get(ty, values);
-}
-
 // Get the number of leading 1s in the shape of the given input.
 // Ex. input_shape = [1 x 1 x 1 x 1 x 2 x 1] => 4
 // returns 0 if the input shape is not static.
@@ -992,80 +979,6 @@ struct SqueezeReshapesAroundBroadcastOp
   }
 };
 
-// This pattern matches TFL::BroadcastToOp WITH TENSOR RANK <= 4 and replaces
-// it with a MulOp that multiplies the tensor by a splat constant with 1s.
-struct ConvertTFLBroadcastToMulOp
-    : public OpRewritePattern<TFL::BroadcastToOp> {
-  using OpRewritePattern<TFL::BroadcastToOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(TFL::BroadcastToOp tfl_broadcast_to_op,
-                                PatternRewriter &rewriter) const override {
-    auto input_type =
-        mlir::cast<ShapedType>(tfl_broadcast_to_op.getInput().getType());
-    auto output_type =
-        mlir::cast<ShapedType>(tfl_broadcast_to_op.getOutput().getType());
-    auto shape_type =
-        mlir::cast<ShapedType>(tfl_broadcast_to_op.getShape().getType());
-    Type element_type = input_type.getElementType();
-
-    auto loc = tfl_broadcast_to_op->getLoc();
-
-    // Check that the output type is not dynamic and is less-than-equal to 4D or
-    // the shape type is static, 1D and has less-than-equal to 4 elements.
-    bool is_output_shape_dynamic =
-        (!output_type.hasRank() || (output_type.getRank() > 4) ||
-         (output_type.getNumDynamicDims() > 0));
-    bool is_broadcast_shape_dynamic =
-        (!shape_type.hasStaticShape() || (shape_type.getRank() != 1) ||
-         (shape_type.getDimSize(0) > 4));
-    if (is_output_shape_dynamic && is_broadcast_shape_dynamic)
-      return rewriter.notifyMatchFailure(
-          loc, "output_rank or broadcast_to shape not supported");
-
-    // Allow lowering when the input's elements type is F32, BFloat16, I32 or
-    // I16.
-    if (!(mlir::isa<BFloat16Type, Float32Type>(element_type) ||
-          element_type.isInteger(32) || element_type.isInteger(16)))
-      return rewriter.notifyMatchFailure(loc, "element_type_not_supported");
-
-    // TFL_FillOp is created only if is_output_shape_dynamic is true, otherwise
-    // a Arith.ConstOp is created.
-    if (is_output_shape_dynamic &&
-        output_type.getElementType().isUnsignedInteger()) {
-      return rewriter.notifyMatchFailure(
-          loc,
-          "Unsigned broadcast_to output with dynamic shape is not supported");
-    }
-
-    Value mul_rhs_value;
-    if (!output_type.hasRank() || (output_type.getNumDynamicDims() > 0)) {
-      auto status_or_const_op =
-          CreateConstOpWithSingleValue(&rewriter, loc, input_type, 1);
-      if (!status_or_const_op.ok()) {
-        return failure();
-      }
-
-      mul_rhs_value = rewriter.create<TFL::FillOp>(
-          loc, output_type, tfl_broadcast_to_op.getShape(),
-          status_or_const_op.value());
-    } else {
-      auto status_or_const_op =
-          CreateConstOpWithVectorValue(&rewriter, loc, output_type, 1);
-      if (!status_or_const_op.ok()) {
-        return failure();
-      }
-
-      mul_rhs_value = status_or_const_op.value();
-    }
-
-    auto mul_op = rewriter.create<TFL::MulOp>(
-        loc, output_type, tfl_broadcast_to_op.getInput(), mul_rhs_value,
-        rewriter.getStringAttr("NONE"));
-    rewriter.replaceOp(tfl_broadcast_to_op, mul_op.getResult());
-    return success();
-  }
-};
-
 struct FuseAddAndStridedSlice : public OpRewritePattern<TFL::StridedSliceOp> {
   using OpRewritePattern<TFL::StridedSliceOp>::OpRewritePattern;
 
@@ -1152,8 +1065,8 @@ struct Convert2DUpscalingToResizeNearestNeighor
   // - tfl.gather_nd -> tfl.transpose -> tfl.gather_nd -> tfl.transpose
   //   where ...
   //     - all tfl.gather_nd op instances take [0, 0, 1, 1, ..., n-1, n-1] as
-  //       the indices arugment,
-  //     - first tranpose op takes perm [2, 1, 0, 3], and
+  //       the indices argument,
+  //     - first transpose op takes perm [2, 1, 0, 3], and
   //     - second transpose op take perm [1, 2, 0, 3].
   //
   // Note the current pattern matching logic only handles when width == height.
@@ -1176,7 +1089,7 @@ struct Convert2DUpscalingToResizeNearestNeighor
       return failure();
     }
 
-    // The pattern matching allows arbitary channel dimension but it handles
+    // The pattern matching allows arbitrary channel dimension but it handles
     // only when height = width.
     if (params_type.getShape().size() != 4 ||
         indices_type.getShape().size() != 2)
@@ -1219,7 +1132,7 @@ struct Convert2DUpscalingToResizeNearestNeighor
       ++i;
     }
 
-    // Check whether first tranpose's perm has [2, 1, 0, 3].
+    // Check whether first transpose's perm has [2, 1, 0, 3].
     DenseIntElementsAttr perm;
     if (!matchPattern(transpose_first.getPerm(), m_Constant(&perm)))
       return failure();
@@ -1229,7 +1142,7 @@ struct Convert2DUpscalingToResizeNearestNeighor
     }
     if (axes != SmallVector<int64_t>({2, 1, 0, 3})) return failure();
 
-    // Check whether second tranpose's perm has [1, 2, 0, 3].
+    // Check whether second transpose's perm has [1, 2, 0, 3].
     if (!matchPattern(transpose_second.getPerm(), m_Constant(&perm)))
       return failure();
     axes.clear();
@@ -1272,6 +1185,122 @@ struct Convert2DUpscalingToResizeNearestNeighor
   }
 };
 
+// Tries to get the given `value` as a 1D tensor of `num_channels` elements.
+// This is possible if `value` is already a 1D tensor of the correct size, or
+// if it is a constant that is either a scalar or has a shape that is
+// broadcastable to a 1D tensor of the correct size (e.g. [1, 1, C]).
+static std::optional<Value> GetAs1DValue(PatternRewriter &rewriter, Value value,
+                                         int64_t num_channels) {
+  auto type = mlir::dyn_cast<RankedTensorType>(value.getType());
+  if (!type) return std::nullopt;
+
+  // If it's already a 1D tensor of the correct size, return it.
+  if (type.getRank() == 1 && type.getDimSize(0) == num_channels) {
+    return value;
+  }
+
+  // Check if the value is a constant that can be expressed as a 1D tensor.
+  // This is true if it's a scalar or has a shape like [1, ..., 1, C].
+  DenseElementsAttr attr;
+  if (matchPattern(value, m_Constant(&attr))) {
+    if (attr.isSplat()) {
+      auto splat_type =
+          RankedTensorType::get({num_channels}, type.getElementType());
+      auto splat_attr =
+          DenseElementsAttr::get(splat_type, attr.getSplatValue<Attribute>());
+      return rewriter.create<arith::ConstantOp>(value.getLoc(), splat_attr);
+    }
+
+    if (HasOneTailUnitDimension(attr) &&
+        attr.getNumElements() == num_channels) {
+      auto flattened = FlattenTo1D(attr);
+      return rewriter.create<arith::ConstantOp>(value.getLoc(), flattened);
+    }
+  }
+
+  return std::nullopt;
+}
+
+// Tries to get the given `bias` as a 1D tensor of `num_channels` elements.
+// If `bias` is a `NoneType`, a 1D tensor of zeros is created.
+// Otherwise, it uses `GetAs1DValue` to handle scalar constants and other
+// broadcastable shapes.
+static std::optional<Value> GetBiasIn1D(PatternRewriter &rewriter, Value bias,
+                                        int num_channels,
+                                        Type filter_element_type) {
+  // If it's none, create a zero tensor with shape {num_channels}.
+  if (mlir::isa<NoneType>(bias.getType())) {
+    RankedTensorType type =
+        RankedTensorType::get({num_channels}, filter_element_type);
+    auto attr = rewriter.getZeroAttr(type);
+    return rewriter.create<arith::ConstantOp>(bias.getLoc(), type, attr);
+  }
+
+  auto bias_type = mlir::dyn_cast<RankedTensorType>(bias.getType());
+  if (!bias_type) return std::nullopt;
+
+  // Check if bias is already a 1D tensor of the correct size.
+  if (bias_type.getRank() == 1 && bias_type.getDimSize(0) == num_channels) {
+    return bias;
+  }
+
+  // Handle scalar bias constant by broadcasting it, or other broadcastable
+  // shapes.
+  return GetAs1DValue(rewriter, bias, num_channels);
+}
+
+// tfmot quantization appears to generate Q/DQ annotations whose output is an
+// unranked tensor. For that case, we traverse the Q-DQ chain to find the
+// original filter constant.
+static RankedTensorType GetRankedTensorType(Value value) {
+  auto filter_type = mlir::dyn_cast<RankedTensorType>(value.getType());
+  if (filter_type) {
+    return filter_type;
+  }
+
+  // The filter may be unranked after quantization. In that case, we
+  // recursively look for the ranked tensor type.
+  Operation *op = value.getDefiningOp();
+  while (op != nullptr && op->getNumOperands() > 0) {
+    filter_type = mlir::dyn_cast<RankedTensorType>(op->getOperand(0).getType());
+    if (filter_type) return filter_type;
+    op = op->getOperand(0).getDefiningOp();
+  }
+  return nullptr;
+}
+
+// Gets the number of channels and filter element type for a FullyConnected op.
+// This is used to determine the shape of the bias tensor when fusing an Add op.
+// It first tries to get this information from the filter tensor. If the filter
+// is unranked, it falls back to using the output tensor of the FullyConnected
+// op.
+static std::optional<std::pair<int, Type>> GetFcNumChannelsAndFilterType(
+    TFL::FullyConnectedOp fc_op) {
+  Value filter = fc_op.getFilter();
+  if (auto filter_type = GetRankedTensorType(filter);
+      filter_type && filter_type.getRank() == 2 &&
+      !mlir::isa<quant::QuantizedType>(filter_type.getElementType())) {
+    // Get the number of channels from the filter's shape if it's a ranked
+    // 2D tensor. Filter must be a `2D` tensor with `{num_channels,
+    // num_features}` shape.
+    int num_channels = filter_type.getShape()[0];
+    Type filter_element_type = filter_type.getElementType();
+    return {{num_channels, filter_element_type}};
+  }
+
+  // Fallback to using the FC op's output shape to determine the number of
+  // channels. This is useful when the filter is unranked.
+  auto fc_output_type =
+      mlir::dyn_cast<RankedTensorType>(fc_op.getOutput()[0].getType());
+  if (!fc_output_type || !fc_output_type.hasStaticShape() ||
+      fc_output_type.getRank() == 0) {
+    return std::nullopt;
+  }
+  int num_channels = fc_output_type.getShape().back();
+  Type filter_element_type = fc_output_type.getElementType();
+  return {{num_channels, filter_element_type}};
+}
+
 // Fuse Add with proceeding FullyConnected.
 // TODO(b/136285429): Move to tablegen when variadic is supported
 struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
@@ -1281,15 +1310,20 @@ struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
                                 PatternRewriter &rewriter) const override {
     // Match Add.
     DenseElementsAttr added_value;
-    Value constant_val = add_op.getRhs();
-    if (!matchPattern(constant_val, m_Constant(&added_value))) {
+    Value add_rhs = add_op.getRhs();
+    if (!matchPattern(add_rhs, m_Constant(&added_value))) {
       // The constant may be preceded by QDQs in models with QDQ format, so we
       // should set it to the real constant.
-      auto dq = dyn_cast_or_null<DequantizeOp>(constant_val.getDefiningOp());
-      if (!dq) return failure();
-      auto q = dyn_cast_or_null<QuantizeOp>(dq.getInput().getDefiningOp());
-      if (!q || !matchPattern(q.getInput(), m_Constant(&added_value))) {
+      auto dq = dyn_cast_or_null<DequantizeOp>(add_rhs.getDefiningOp());
+      if (!dq) {
         return failure();
+      } else if (!matchPattern(dq.getInput(), m_Constant(&added_value))) {
+        auto q = dyn_cast_or_null<QuantizeOp>(dq.getInput().getDefiningOp());
+        if (!q || !matchPattern(q.getInput(), m_Constant(&added_value))) {
+          return failure();
+        } else {
+          add_rhs = q.getInput();
+        }
       }
     }
 
@@ -1298,74 +1332,45 @@ struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
         add_op.getLhs().getDefiningOp());
     if (!fc_op) return failure();
 
-    auto constant_val_type = mlir::cast<TensorType>(constant_val.getType());
-
-    // In TFLite FullyConnect definition, bias must be a 1D tensor where
-    // the number of elements is equal to the number of channels.
-    // If it's not 1D or 0D (which can be broadcasted to 1D), reject the
-    // matching.
-    bool is_scalar_rhs = false;
-    if (constant_val_type.getRank() == 0) {
-      is_scalar_rhs = true;
-    } else if (constant_val_type.getRank() > 1) {
-      return failure();
+    // If the FC op has more than one use, don't fuse, as it will duplicate the
+    // FC.
+    if (!fc_op->hasOneUse()) {
+      return rewriter.notifyMatchFailure(
+          add_op, "FC op has multiple uses, skipping fusion");
     }
 
     Value filter = fc_op.getFilter();
     Value bias = fc_op.getBias();
     ElementsAttr bias_value;
-    const bool is_none_bias = mlir::isa<NoneType>(bias.getType());
     if (fc_op.getFusedActivationFunction() != "NONE") return failure();
 
-    if (!is_none_bias && !matchPattern(bias, m_Constant(&bias_value)))
+    // Get the number of channels if possible.
+    auto fc_info = GetFcNumChannelsAndFilterType(fc_op);
+    if (!fc_info) {
       return failure();
+    }
+    const auto &[num_channels, filter_element_type] = *fc_info;
 
-    // Rewrite
-    if (is_none_bias) {
-      if (is_scalar_rhs) {
-        // If the `constant_val` is scalar, we must the shape of filter
-        // to properly broadcast the scalar to `{num_channels}` shape.
+    auto bias_1d =
+        GetBiasIn1D(rewriter, bias, num_channels, filter_element_type);
+    // Get the added value as a 1D tensor.
+    auto add_rhs_1d = GetAs1DValue(rewriter, add_rhs, num_channels);
 
-        // Get the number of channels if possible.
-        auto filter_type = mlir::dyn_cast<RankedTensorType>(filter.getType());
-        // Filter must be a `2D` tensor with `{num_channels, num_features}`
-        // shape. The following check is rejecting unknown rank (-1).
-        if (filter_type == nullptr || filter_type.getRank() != 2) {
-          return failure();
-        }
-        int num_channels = filter_type.getShape()[0];
-
-        // Create a zero tensor with shape {num_channels}, and the type need
-        // to be the same as constant_val. This is a way to gracefully handle
-        // scalar tensor. The Add will always be constant-folded away
-        // regardless if `constant_val` is a scalar or not.
-        RankedTensorType type = RankedTensorType::get(
-            {num_channels}, constant_val_type.getElementType());
-        auto attr = rewriter.getZeroAttr(type);
-        bias = rewriter.create<arith::ConstantOp>(add_op.getLoc(), type, attr);
-        auto none_af = rewriter.getStringAttr("NONE");
-
-        bias =
-            rewriter.create<AddOp>(add_op.getLoc(), bias, constant_val, none_af)
-                .getOutput();
-      } else {
-        // If there no pre-existing bias and the `constant_val` is 1D, simply
-        // use `constant_val` as bias.
-        bias = constant_val;
-      }
-    } else {
-      bias = rewriter
-                 .create<AddOp>(add_op.getLoc(), bias, constant_val,
-                                rewriter.getStringAttr("NONE"))
-                 .getOutput();
+    if (!bias_1d.has_value() || !add_rhs_1d.has_value()) {
+      return failure();
     }
 
+    auto new_bias =
+        rewriter
+            .create<AddOp>(add_op.getLoc(), bias_1d.value(), add_rhs_1d.value(),
+                           rewriter.getStringAttr("NONE"))
+            .getOutput();
     auto fc = rewriter.create<TFL::FullyConnectedOp>(
         FusedLoc::get(fc_op.getContext(), {fc_op.getLoc(), add_op.getLoc()}),
         add_op.getType(),
         /*input=*/fc_op.getInput(),
         /*filter=*/filter,
-        /*bias=*/bias,
+        /*bias=*/new_bias,
         /*fused_activation_function=*/
         rewriter.getStringAttr(add_op.getFusedActivationFunction()),
         /*weights_format=*/rewriter.getStringAttr(fc_op.getWeightsFormat()),
@@ -1454,7 +1459,7 @@ struct FuseAddAndFullyConnected
 // FC(Mul(lhs, rhs), filter, bias)
 // .. with ..
 // FC(lhs, Mul(filter, rhs), bias)
-// .. if rhs, filter, and bias are all constants.
+// .. if rhs and filter are all constants.
 // The generated Mul will be constant folded to a single matrix.
 struct FuseMulAndFullyConnected
     : public OpRewritePattern<TFL::FullyConnectedOp> {
@@ -1480,6 +1485,28 @@ struct FuseMulAndFullyConnected
 
     // We rely on constant folding, implemented only for F32. Check types.
     if (!IsF32Value(mul_op.getRhs()) || !IsF32Value(fc_op.getFilter())) {
+      return failure();
+    }
+
+    // Checks the constant requirements.
+    if (!matchPattern(mul_op.getRhs(), m_Constant())) {
+      return failure();
+    }
+
+    if (!matchPattern(fc_op.getFilter(), m_Constant())) {
+      // We must not apply this optimization if RHS is not a constant.
+      //
+      // In particular, this optimization must not break the weight-only
+      // quantized FullyConnected sequence:
+      //
+      // %filter_quant = "tfl.pseudo_qconst"() <{...}>
+      //     : () -> tensor<... x !quant.uniform<...>>
+      // %filter_dequant = "tfl.dequantize"(%filter_quant)
+      //     : (tensor<... x !quant.uniform<...>>) -> tensor<... x f32>
+      // %fc = "tfl.fully_connected"(%input, %filter_dequant, ...)
+      //     : (tensor<... x f32>, tensor<... x f32>, ...)
+      //     -> tensor<... x f32>
+      //
       return failure();
     }
 
@@ -2481,6 +2508,32 @@ struct FuseLogSoftmax : public OpRewritePattern<TFL::SubOp> {
   }
 };
 
+// This is maintained for backward compatibility but not included in the strict
+// QDQ mode.
+// Equivalent to:
+// def eliminate_dq_q_pairs : Pat<
+//   (TFL_QuantizeOp (TFL_DequantizeOp $in), $qt),
+//   (replaceWithValue $in),
+//   [(NotFromQuantOpOrSameQuantType $in, $qt)]>;
+struct EliminateQDQPairs : public OpRewritePattern<TFL::QuantizeOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(TFL::QuantizeOp q_op,
+                                PatternRewriter &rewriter) const override {
+    if (auto dq_op = dyn_cast_or_null<TFL::DequantizeOp>(
+            q_op.getInput().getDefiningOp())) {
+      if (tflite::NotFromQuantOpOrSameQuantType(dq_op.getInput(),
+                                                q_op.getQtypeAttr())) {
+        q_op.replaceAllUsesWith(dq_op.getInput());
+        return success();
+      }
+      return rewriter.notifyMatchFailure(q_op,
+                                         "preceding DequantizeOp has different "
+                                         "input than the quantize quant type.");
+    }
+    return rewriter.notifyMatchFailure(q_op, "not preceded by a DequantizeOp.");
+  }
+};
+
 // This is the UndoBroadcastFullyConnectedBiasAdd pattern in
 // optimize_patterns.td but accounting for QDQ preceding Add's RHS.
 // The following doesn't work in TableGen due to some issues reconstructing
@@ -2507,7 +2560,9 @@ struct FuseLogSoftmax : public OpRewritePattern<TFL::SubOp> {
 struct UndoBroadcastFullyConnectedBiasAddWithQDQs
     : public OpRewritePattern<TFL::AddOp> {
   using OpRewritePattern::OpRewritePattern;
-  LogicalResult match(TFL::AddOp add_op) const override {
+
+  LogicalResult matchAndRewrite(TFL::AddOp add_op,
+                                PatternRewriter &rewriter) const override {
     if (!add_op->hasOneUse()) {
       return failure();
     }
@@ -2546,13 +2601,6 @@ struct UndoBroadcastFullyConnectedBiasAddWithQDQs
       return failure();
     }
 
-    return success();
-  }
-
-  void rewrite(TFL::AddOp add_op, PatternRewriter &rewriter) const override {
-    auto dq_op = cast<TFL::DequantizeOp>(add_op.getRhs().getDefiningOp());
-    auto q_op = cast<TFL::QuantizeOp>(dq_op.getInput().getDefiningOp());
-    auto bias_op = cast<arith::ConstantOp>(q_op.getInput().getDefiningOp());
     auto new_bias = FlattenTo1D(bias_op.getValueAttr());
     auto new_bias_type = new_bias.getType();
     auto new_bias_op = rewriter.create<arith::ConstantOp>(
@@ -2577,6 +2625,7 @@ struct UndoBroadcastFullyConnectedBiasAddWithQDQs
 
     // Remove old bias
     rewriter.eraseOp(bias_op);
+    return success();
   }
 };
 
@@ -2679,6 +2728,341 @@ struct EnableFullyConnectedKeepNumDimsBeforeReshape
   }
 };
 
+// This pattern push transposes through squeeze ops to facilitate further
+// transpose and reshape fusions. For example, some JAX model could have
+// subgraphs like Reshape-Transpose-Squeeze. With this pattern, the transpose
+// can be pushed through the squeeze op, and fused with a subsequent reshape or
+// removed entirely. The squeeze op could also be fused with the former reshape.
+//
+// The pattern is designed to have lower benefit/priority than others,
+// while the push may still happen if the transpose could be fused with
+// downstream optimization phases or passe..
+struct PushTransposeThroughSqueeze : public RewritePattern {
+  explicit PushTransposeThroughSqueeze(MLIRContext *context)
+      : RewritePattern(TFL::SqueezeOp::getOperationName(), /*benefit=*/0,
+                       context) {}
+
+  LogicalResult matchAndRewrite(mlir::Operation *op,
+                                PatternRewriter &rewriter) const override {
+    TFL::SqueezeOp squeeze = cast<TFL::SqueezeOp>(op);
+    auto transpose = llvm::dyn_cast_or_null<TFL::TransposeOp>(
+        squeeze.getInput().getDefiningOp());
+    if (!transpose) {
+      return failure();
+    }
+
+    int32_t input_rank = transpose.getType().getShape().size();
+
+    llvm::SmallVector<int32_t, 4> squeeze_dims;
+    if (squeeze->hasAttr("squeeze_dims")) {
+      for (const auto &squeeze_dim : squeeze.getSqueezeDimsAttr()) {
+        squeeze_dims.push_back(
+            mlir::dyn_cast<IntegerAttr>(squeeze_dim).getInt());
+      }
+    }
+    if (squeeze_dims.empty()) {
+      for (int dim = 0; dim < input_rank; ++dim) {
+        if (transpose.getType().getDimSize(dim) == 1) {
+          squeeze_dims.push_back(dim);
+        }
+      }
+    }
+
+    mlir::DenseIntElementsAttr perm_attr;
+    if (!matchPattern(transpose.getPerm(), m_Constant(&perm_attr))) {
+      return failure();
+    }
+    llvm::SmallVector<int32_t, 4> perm;
+    for (const auto &dim : perm_attr.getValues<APInt>()) {
+      perm.push_back(dim.getSExtValue());
+    }
+
+    // Map squeeze dimensions to their positions after transpose.
+    llvm::sort(squeeze_dims);
+    llvm::SmallVector<int32_t, 4> new_squeeze_dims;
+    for (int32_t dim : squeeze_dims) {
+      new_squeeze_dims.push_back(perm[dim]);
+    }
+    llvm::sort(new_squeeze_dims);
+
+    // Filter the original transpose permutation to keep only non-squeezed
+    // positions.
+    llvm::SmallVector<int32_t> filtered_perm_original_indices;
+    for (int i = 0; i < input_rank; ++i) {
+      if (!llvm::is_contained(squeeze_dims, i)) {
+        filtered_perm_original_indices.push_back(perm[i]);
+      }
+    }
+
+    // Map the remaining original dimension indices to new 0-based indices after
+    // squeeze.
+    llvm::SmallVector<int32_t> original_remaining_dims;
+    for (int i = 0; i < input_rank; ++i) {
+      if (!llvm::is_contained(new_squeeze_dims, i)) {
+        original_remaining_dims.push_back(i);
+      }
+    }
+
+    llvm::SmallVector<int32_t> original_to_new_index_map(input_rank, -1);
+    for (int i = 0; i < original_remaining_dims.size(); ++i) {
+      original_to_new_index_map[original_remaining_dims[i]] = i;
+    }
+
+    llvm::SmallVector<int32_t> new_perm;
+    for (const auto &original_dim : filtered_perm_original_indices) {
+      new_perm.push_back(original_to_new_index_map[original_dim]);
+    }
+
+    llvm::SmallVector<int64_t> new_squeeze_shape;
+    for (int i = 0; i < input_rank; ++i) {
+      if (!llvm::is_contained(new_squeeze_dims, i)) {
+        new_squeeze_shape.push_back(
+            transpose.getInput().getType().getDimSize(i));
+      }
+    }
+    auto new_squeeze = rewriter.create<TFL::SqueezeOp>(
+        squeeze->getLoc(),
+        mlir::RankedTensorType::get(new_squeeze_shape,
+                                    squeeze.getType().getElementType()),
+        transpose.getInput(), rewriter.getI32ArrayAttr(new_squeeze_dims));
+
+    auto new_transpose = rewriter.create<TFL::TransposeOp>(
+        squeeze->getLoc(), squeeze.getType(), new_squeeze,
+        rewriter.create<arith::ConstantOp>(
+            squeeze->getLoc(), GetI32ElementsAttr(new_perm, &rewriter)));
+
+    rewriter.replaceOp(squeeze, new_transpose);
+    return success();
+  }
+};
+
+// Helper function to check if a constant tensor attribute has the expected
+// integer values
+bool matchConstantIntPermutation(Value permValue,
+                                 ArrayRef<int64_t> expectedPerm) {
+  DenseElementsAttr permAttr;
+  if (!matchPattern(permValue, m_Constant(&permAttr))) {
+    return false;  // Not a constant
+  }
+  if (!permAttr.getElementType().isInteger(32) &&
+      !permAttr.getElementType().isInteger(64)) {
+    // TFLite perms are often i32, but accept i64 too
+    return false;
+  }
+
+  auto values = permAttr.getValues<APInt>();
+  if (values.size() != expectedPerm.size()) {
+    return false;
+  }
+  for (size_t i = 0; i < expectedPerm.size(); ++i) {
+    if (values[i].getSExtValue() != expectedPerm[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+inline DenseIntElementsAttr GetI32ElementsAttr(ArrayRef<int32_t> values,
+                                               Builder *builder) {
+  RankedTensorType ty = mlir::RankedTensorType::get(
+      {static_cast<int32_t>(values.size())}, builder->getIntegerType(32));
+  return DenseIntElementsAttr::get(ty, values);
+}
+
+inline DenseIntElementsAttr GetI32ElementsAttr(ArrayRef<int64_t> values,
+                                               Builder *builder) {
+  llvm::SmallVector<int32_t> new_values;
+  for (auto el : values) {
+    new_values.push_back(static_cast<int32_t>(el));
+  }
+  RankedTensorType ty = mlir::RankedTensorType::get(
+      {static_cast<int32_t>(values.size())}, builder->getIntegerType(32));
+  return DenseIntElementsAttr::get(ty, new_values);
+}
+
+// Reorders a Transpose-Reshape-Transpose sequence to
+// Reshape-Transpose-Transpose to allow for further optimization.
+//
+// The pattern matches:
+//   Transpose(Reshape(Transpose(input, perm: [1, 0])))
+//
+// and rewrites it to:
+//   Transpose(Transpose(Reshape(input)))
+//
+// This reordering allows for further optimization by potentially fusing the
+// reshapes and transposes.
+struct ReorderTransposeReshapeTranspose
+    : public OpRewritePattern<TFL::TransposeOp> {
+  explicit ReorderTransposeReshapeTranspose(MLIRContext *context)
+      : OpRewritePattern<TFL::TransposeOp>(context, /*benefit=*/0) {}
+
+  LogicalResult matchAndRewrite(TFL::TransposeOp outer_tpose,
+                                PatternRewriter &rewriter) const override {
+    auto reshape = outer_tpose.getInput().getDefiningOp<TFL::ReshapeOp>();
+    if (!reshape) return failure();
+
+    auto inner_tpose = reshape.getInput().getDefiningOp<TFL::TransposeOp>();
+    if (!inner_tpose) return failure();
+
+    auto inner_tpose_shape =
+        mlir::dyn_cast_or_null<RankedTensorType>(inner_tpose.getType());
+    if (!inner_tpose_shape) return failure();
+
+    auto input = inner_tpose.getInput();
+
+    auto inner_perm = inner_tpose.getPerm();
+    if (!matchConstantIntPermutation(inner_perm, {1, 0})) return failure();
+
+    int64_t perm0 = inner_tpose_shape.getDimSize(0);
+
+    llvm::SmallVector<int32_t, 4> reshape_shape;
+    {
+      DenseIntElementsAttr reshape_shape_attr;
+      if (!matchPattern(reshape.getShape(), m_Constant(&reshape_shape_attr))) {
+        return failure();
+      }
+
+      for (auto dim : reshape_shape_attr) {
+        reshape_shape.push_back(static_cast<int32_t>(dim.getSExtValue()));
+      }
+    }
+
+    // Consume dimensions until we've equaled the size of the first dim in the
+    // permuted result of the inner tpose and record the dim.
+    int32_t dim = -1;
+    for (auto i = 0, running_total = 1; i < reshape_shape.size(); i++) {
+      running_total *= reshape_shape[i];
+      if (perm0 == running_total) {
+        dim = i;
+      }
+    }
+
+    if (dim == -1) return failure();
+
+    llvm::SmallVector<int64_t, 4> new_reshape_shape(reshape_shape.size());
+    llvm::SmallVector<int32_t, 4> new_inner_perm(reshape_shape.size());
+
+    int index = 0;
+    for (auto i = dim + 1; i < reshape_shape.size(); i++) {
+      new_inner_perm[i] = index;
+      new_reshape_shape[index++] = reshape_shape[i];
+    }
+    for (auto i = 0; i <= dim; i++) {
+      new_inner_perm[i] = index;
+      new_reshape_shape[index++] = reshape_shape[i];
+    }
+
+    auto reshape_type =
+        mlir::dyn_cast_or_null<RankedTensorType>(reshape.getType());
+    if (!reshape_type) return failure();
+
+    auto new_reshape_shape_const = rewriter.create<arith::ConstantOp>(
+        reshape.getLoc(), GetI32ElementsAttr(new_reshape_shape, &rewriter));
+
+    auto new_inner_reshape = rewriter.create<TFL::ReshapeOp>(
+        reshape.getLoc(),
+        RankedTensorType::get(new_reshape_shape, reshape_type.getElementType()),
+        input, new_reshape_shape_const.getResult());
+    auto new_inner_tpose = rewriter.create<TFL::TransposeOp>(
+        inner_tpose.getLoc(), reshape_type, new_inner_reshape,
+        rewriter.create<arith::ConstantOp>(
+            inner_tpose.getLoc(),
+            GetI32ElementsAttr(new_inner_perm, &rewriter)));
+
+    rewriter.replaceOp(reshape, new_inner_tpose);
+
+    return success();
+  }
+};
+
+// Some models produce FullyConnected ops where the LHS is a const and the RHS
+// is the activation. This breaks some downstream optimizations (notably input
+// caching in XNNPack among other things). This rewrite pattern swaps the
+// operands to match the expected order and recomputes a new output shape for
+// the resuling op.
+//
+// This pattern only applies when:
+// * input and filter operands are 2D
+// * bias = none
+// * keep_num_dims = false (implied if input and filter are 2D)
+// Support for additional cases to broaden applicability can be added later.
+// TODO(b/408313959): Add support for more cases.
+//
+// Note that transposes are added to maintain correctness:
+//
+// Original: Output[B, O] = FC(Input[B, I](Const), Filter[O, I](Var), Bias=None)
+//                           ~= matmul(C, transpose(V))
+//
+// Transformed:
+//   Intermediate[O, B] = FC(Filter[O, I](Var), Input[B, I](Const), None)
+//                           ~= matmul(V, transpose(C))
+//   FinalOutput[B, O]   = Transpose(Intermediate[O, B], perm=[1, 0])
+struct FullyConnectedSwapOperandsWhenLHSIsConst
+    : public OpRewritePattern<TFL::FullyConnectedOp> {
+  explicit FullyConnectedSwapOperandsWhenLHSIsConst(MLIRContext *context)
+      : OpRewritePattern<TFL::FullyConnectedOp>(context, /*benefit=*/0) {}
+
+  LogicalResult matchAndRewrite(TFL::FullyConnectedOp fc,
+                                PatternRewriter &rewriter) const override {
+    if (!mlir::isa<NoneType>(fc.getBias().getType())) return failure();
+
+    auto input = fc.getInput();
+    auto filter = fc.getFilter();
+
+    if (!matchPattern(input, m_Constant()) ||
+        matchPattern(filter, m_Constant()))
+      return failure();
+
+    auto input_type = mlir::dyn_cast<RankedTensorType>(input.getType());
+    auto filter_type = mlir::dyn_cast<RankedTensorType>(filter.getType());
+    auto output_type =
+        mlir::dyn_cast<RankedTensorType>(fc.getResult(0).getType());
+
+    if (!input_type || !filter_type || !output_type) return failure();
+
+    if (input_type.getRank() != 2 || filter_type.getRank() != 2)
+      return failure();
+
+    // Dimensions: B=Batch, I=InputDepth, O=OutputDepth
+    // Input: [B, I], Filter: [O, I]
+    // We extract B from the input operand and O from the filter operand
+    int64_t B = input_type.getDimSize(0);
+    int64_t O = filter_type.getDimSize(0);
+
+    Type element_type = output_type.getElementType();
+    Location loc = fc.getLoc();
+
+    RankedTensorType intermediate_type =
+        RankedTensorType::get({O, B}, element_type);
+
+    auto new_fc = rewriter.create<TFL::FullyConnectedOp>(
+        loc,
+        /*resultTypes=*/intermediate_type,
+        /*input=*/filter,  // Original Filter V[O, I]
+        /*filter=*/input,  // Original Input C[B, I]
+        /*bias=*/fc.getBias(),
+        /*fused_activation_function=*/
+        rewriter.getStringAttr(fc.getFusedActivationFunction()),
+        /*weights_format=*/fc.getWeightsFormatAttr(),
+        /*keep_num_dims=*/rewriter.getBoolAttr(false),
+        /*asymmetric_quantize_inputs=*/
+        fc.getAsymmetricQuantizeInputsAttr()  // Propagate quant attr
+    );
+
+    RankedTensorType final_shape_type =
+        RankedTensorType::get({B, O}, element_type);
+
+    Value transposed_result = rewriter.create<TFL::TransposeOp>(
+        loc, final_shape_type, new_fc.getResult(0),
+        rewriter.create<arith::ConstantOp>(
+            loc, GetI32ElementsAttr(ArrayRef<int32_t>({1, 0}), &rewriter)));
+
+    rewriter.replaceOp(fc, transposed_result);
+
+    return success();
+  }
+};
+
 // Adds canonicalization patterns to the list of patterns.
 void AddCanonicalizationPatterns(MLIRContext *context,
                                  RewritePatternSet *patterns) {
@@ -2701,7 +3085,8 @@ void OptimizePass::runOnOperation() {
            FuseOutputReshape_BatchMatMulWithFlattenedContractingDims,
            FuseSqueezingLhsReshapeIntoFC_Output,
            FuseReshapesAroundBatchMatMulLHS, FuseReshapesAroundBatchMatMulLHS1,
-           FuseInputReshape_BatchMatMulWithFlattenedRhsDims>(ctx);
+           FuseInputReshape_BatchMatMulWithFlattenedRhsDims,
+           PushTransposeThroughSqueeze>(ctx);
   (void)applyPatternsGreedily(func, std::move(phase_0_patterns));
 
   // Potentially the binary ops might be fused together, like hard_swish, thus
@@ -2717,16 +3102,16 @@ void OptimizePass::runOnOperation() {
   if (!GetOptions().disable_fuse_mul_and_fc) {
     patterns.add<FuseMulAndFullyConnected>(ctx);
   }
-  if (GetOptions().enable_canonicalization)
+  if (GetOptions().enable_canonicalization) {
     AddCanonicalizationPatterns(ctx, &patterns);
+  }
   (void)applyPatternsGreedily(func, std::move(patterns));
 
   // Fuse the binary ops with the following ops.
   RewritePatternSet phase_2_patterns(&getContext());
   TFL::populateWithGenerated(phase_2_patterns);
   phase_2_patterns.add<
-      UndoBroadcastFullyConnectedBiasAddWithQDQs, FuseLogSoftmax,
-      FuseFullyConnectedAndAdd, FuseAddAndFullyConnected,
+      FuseLogSoftmax, FuseFullyConnectedAndAdd, FuseAddAndFullyConnected,
       FuseFullyConnectedAndMul, FuseFullyConnectedAndReluX<TFL::ReluOp, kRelu>,
       FuseFullyConnectedAndReluX<TFL::Relu6Op, kRelu6>,
       FuseFullyConnectedAndReluX<TFL::Relu1Op, kRelu1>,
@@ -2737,13 +3122,18 @@ void OptimizePass::runOnOperation() {
       OptimizeTopK, FuseAddAndStridedSlice,
       FuseReshapeAndTransposeAroundBatchMatmul,
       FuseTransposeReshapeIntoBatchMatmul, MoveReshapeAfterFullyConnected,
-      EnableFullyConnectedKeepNumDimsBeforeReshape, ConvertTFLBroadcastToMulOp>(
-      ctx);
+      EnableFullyConnectedKeepNumDimsBeforeReshape,
+      ReorderTransposeReshapeTranspose,
+      FullyConnectedSwapOperandsWhenLHSIsConst>(ctx);
   if (!GetOptions().disable_fuse_mul_and_fc) {
     phase_2_patterns.add<FuseMulAndFullyConnected>(ctx);
   }
-  if (GetOptions().enable_canonicalization)
+  if (GetOptions().enable_canonicalization) {
     AddCanonicalizationPatterns(ctx, &phase_2_patterns);
+  }
+  if (!GetOptions().enable_strict_qdq_mode) {
+    phase_2_patterns.add<EliminateQDQPairs>(ctx);
+  }
   (void)applyPatternsGreedily(func, std::move(phase_2_patterns));
 }
 

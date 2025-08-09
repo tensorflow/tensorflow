@@ -86,7 +86,7 @@ std::optional<StringRef> GetCompsiteFunctionName(Operation *op) {
     return entry_function_attr.getValue();
   } else {
     TF::PartitionedCallOp call_op = dyn_cast_or_null<TF::PartitionedCallOp>(op);
-    const auto f_attr = call_op.getFAttr().dyn_cast<FlatSymbolRefAttr>();
+    const auto f_attr = mlir::dyn_cast<FlatSymbolRefAttr>(call_op.getFAttr());
     if (!f_attr) return std::nullopt;
     return f_attr.getValue();
   }
@@ -333,8 +333,8 @@ class AddCustomAggregationOp : public RewritePattern {
 
       // Insert custom aggregation op between operand and operator.
       rewriter.setInsertionPointAfterValue(value);
-      Operation *aggregator_op = rewriter.create<TF::CustomAggregatorOp>(
-          op->getLoc(), output_types, value, attributes);
+      Operation *aggregator_op = TF::CustomAggregatorOp::create(
+          rewriter, op->getLoc(), output_types, value, attributes);
 
       Value aggregator_op_result = aggregator_op->getOpResult(0);
       value.replaceAllUsesExcept(aggregator_op_result, aggregator_op);

@@ -3,14 +3,18 @@ load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load(
     "//xla/tsl:tsl.bzl",
-    "if_cuda_tools",
     "if_not_fuchsia",
     "if_not_windows",
     "if_oss",
     "internal_visibility",
     "tsl_copts",
 )
-load("//xla/tsl:tsl.default.bzl", "filegroup", "tsl_grpc_cc_dependencies")
+load(
+    "//xla/tsl:tsl.default.bzl",
+    "filegroup",
+    "if_cuda_tools",
+    "tsl_grpc_cc_dependencies",
+)
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -50,7 +54,7 @@ cc_library(
 
 cc_library(
     name = "criticality",
-    hdrs = ["@local_tsl//tsl/platform:criticality.h"],
+    hdrs = ["//xla/tsl/platform:criticality.h"],
     tags = [
         "manual",
         "nobuilder",
@@ -153,17 +157,17 @@ cc_library(
         "//xla/tsl/protobuf:error_codes_proto_impl_cc",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform",
         "@local_tsl//tsl/platform:blocking_counter",
         "@local_tsl//tsl/platform:context",
         "@local_tsl//tsl/platform:cord",
         "@local_tsl//tsl/platform:denormal",
-        "@local_tsl//tsl/platform:load_library",
-        "@local_tsl//tsl/platform:mutex",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:protobuf",
@@ -174,6 +178,7 @@ cc_library(
         "@local_tsl//tsl/platform:strcat",
         "@local_tsl//tsl/platform:stringpiece",
         "@local_tsl//tsl/platform:stringprintf",
+        "@local_tsl//tsl/platform:thread_annotations",
         "@local_tsl//tsl/platform:tracing",
     ],
 )
@@ -192,9 +197,11 @@ cc_library(
         ":env",
         "//xla/tsl/platform:logging",
         "//xla/tsl/protobuf:error_codes_proto_impl_cc",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform:load_library",
-        "@local_tsl//tsl/platform:mutex",
         "@local_tsl//tsl/platform:strcat",
+        "@local_tsl//tsl/platform:thread_annotations",
     ],
 )
 
@@ -272,6 +279,7 @@ cc_library(
     ],
     deps = [
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
     ] + if_rocm_is_configured([
         "@local_config_rocm//rocm:rocm_rpath",
     ]),
@@ -296,14 +304,17 @@ cc_library(
         "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:mutex",
     ],
 )
 
 filegroup(
     name = "xla_cpu_runtime_srcs",
     srcs = [
+        "context.h",
         "integral_types.h",
     ] + if_not_windows(["env_time.cc"]),
 )
@@ -442,8 +453,9 @@ cc_library(
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:types",
+        "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:mutex",
+        "@local_tsl//tsl/platform:thread_annotations",
     ],
     alwayslink = True,
 )
@@ -557,20 +569,30 @@ bzl_library(
     # "manual",
     # "notap",
     # ],
+    # visibility = internal_visibility(["//tensorflow:__subpackages__"]),
     # copybara:uncomment_end
-    visibility = internal_visibility(["//tensorflow:__subpackages__"]),
+    deps = [
+        "//xla/tsl:package_groups_bzl",
+    ],
 )
 
 bzl_library(
     name = "rules_cc_bzl",
     srcs = ["rules_cc.bzl"],
+    # This .bzl file is only used in OSS and references OSS paths. Therefore it cannot be parsed
+    # correctly by the parse test in g3.
+    # copybara:uncomment parse_tests = False,
+    # copybara:uncomment deps = ["@rules_cc//cc:core_rules"],
 )
 
 bzl_library(
     name = "build_config_root_bzl",
     srcs = ["build_config_root.bzl"],
     # copybara:uncomment parse_tests = False,
-    deps = ["@local_tsl//third_party/py/rules_pywrap:pywrap_bzl"],
+    deps = [
+        "//xla/tsl:package_groups_bzl",
+        "@local_xla//third_party/py/rules_pywrap:pywrap_bzl",
+    ],
 )
 
 bzl_library(
@@ -579,8 +601,9 @@ bzl_library(
     # copybara:uncomment parse_tests = False,
     deps = [
         ":build_config_root_bzl",
+        # copybara:uncomment "@rules_cc//cc:core_rules",
         "//xla/tsl:tsl_bzl",
-        "@local_tsl//third_party/py/rules_pywrap:pywrap_bzl",
+        "@local_xla//third_party/py/rules_pywrap:pywrap_bzl",
     ],
 )
 
@@ -652,4 +675,18 @@ exports_files(
         "//tensorflow/core/lib/jpeg:__pkg__",
         "//tensorflow/core/platform:__pkg__",
     ]),
+)
+
+cc_library(
+    name = "recordphase",
+    srcs = ["recordphase.cc"],
+    hdrs = ["//xla/tsl/platform:recordphase.h"],
+    tags = [
+        "manual",
+        "no_oss",
+        "nobuilder",
+    ],
+    deps = [
+        "@com_google_absl//absl/strings:string_view",
+    ],
 )

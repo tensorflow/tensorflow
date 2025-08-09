@@ -2284,6 +2284,7 @@ cuda_py_strict_test(
     shard_count = 35,
     tags = [
         "multi_gpu",
+        "no_oss_py313",
         "no_pip",  # TODO(b/266520226)
     ],  # b/175904958
     deps = [
@@ -2578,6 +2579,9 @@ distribute_py_strict_test(
 tpu_py_strict_test(
     name = "tpu_strategy_model_parallelism_test",
     srcs = ["tpu_strategy_model_parallelism_test.py"],
+    args = [
+        "--xla_tpu_reserve_recv_ready_sync_flags=true",
+    ],
     disable_experimental = True,  # b/202779350
     disable_mlir_bridge = False,
     disable_v3_4chips = False,

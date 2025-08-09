@@ -22,11 +22,12 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/fusion_emitter_legacy_matmul.h"
 #include "xla/codegen/emitter_loc_op_builder.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/gpu/model/tiled_hlo_instruction.h"
-#include "tsl/platform/test.h"
+#include "xla/service/hlo_module_config.h"
 
 namespace mlir::triton::nvidia_gpu {
 // We define ClusterInfo here in order to avoid having to import a GPU-only
@@ -44,31 +45,22 @@ TEST(TritonStub, CallStubApi) {
   LoadMlirDialectsForTriton(context);
   EXPECT_FALSE(TritonWrapper({}, nullptr, {}, {}, {}, nullptr, context).ok());
   EXPECT_FALSE(CreateTritonModule({}, nullptr, {}, {}, context).ok());
-  EXPECT_FALSE(CompileTritonToLLVM({}, {}, {}, {}, {}, nullptr, context,
+  EXPECT_FALSE(CompileTritonToLLVM("", HloModule("test", HloModuleConfig()), {},
+                                   {}, {}, nullptr, context,
                                    /*is_xla_fusion=*/true, {})
                    .ok());
 
   mlir::OpPassManager pm;
   ::mlir::triton::nvidia_gpu::ClusterInfo cluster_info;
 
-  EXPECT_FALSE(CreateTritonPipeline(&pm, "", 1, 1, 1, cluster_info,
-                                    /*is_xla_fusion=*/true)
-                   .ok());
+  EXPECT_FALSE(CreateTritonPipeline(&pm, "", 1, 1, 1, cluster_info).ok());
   EXPECT_EQ(GetLibdevicePath({}, {}), "");
 
-  EmitterLocOpBuilder builder(mlir::UnknownLoc::get(&context), &context);
-
-  EXPECT_TRUE(
-      ir_emitter_triton_internal::ComputeDelinearizedTileIndex(builder, {})
-          .empty());
-
   HloConstantInstruction constant(LiteralUtil::CreateR1<int>({1, 1}));
-  auto tiled_hlo = TiledHloInstruction::Create(&constant, {}, {1}, {1}, {});
+  auto tiled_hlo = TiledHloInstruction::Create(
+      &constant, /*operands=*/{}, /*runtime_variables=*/{}, /*tile_sizes=*/{1},
+      /*tile_strides=*/{1}, /*tile_offsets_indexing=*/{});
   EXPECT_TRUE(tiled_hlo.ok());
-
-  EXPECT_FALSE(ir_emitter_triton_internal::CreateMakeTensorPtrOp(
-                   builder, {}, *tiled_hlo.value(), {})
-                   .ok());
 }
 
 TEST(TritonStub, CallLegacyMatMulApis) {

@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "xla/service/gpu/model/affine_map_evaluator.h"
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -31,7 +33,7 @@ using ::mlir::bindDims;
 using ::mlir::bindSymbols;
 using ::testing::ElementsAre;
 
-class AffineMapEvaluator : public HloTestBase {
+class AffineMapEvaluator : public HloHardwareIndependentTestBase {
  public:
   mlir::MLIRContext mlir_context_;
 };
@@ -43,10 +45,15 @@ TEST_F(AffineMapEvaluator, EvaluateMap) {
 
   auto affine_map =
       AffineMap::get(2, 2, {d0 + d1.floorDiv(8), s0 + s1 % 16}, &mlir_context_);
+  auto affine_map_ceil =
+      AffineMap::get(2, 2, {d0 + d1.ceilDiv(8), s0 + s1 % 16}, &mlir_context_);
 
   auto res = EvaluateAffineMap(affine_map, /*dim_values=*/{1, 2},
                                /*symbol_values=*/{3, 4});
+  auto res_ceil = EvaluateAffineMap(affine_map_ceil, /*dim_values=*/{1, 2},
+                                    /*symbol_values=*/{3, 4});
   EXPECT_THAT(res, ElementsAre(1, 7));
+  EXPECT_THAT(res_ceil, ElementsAre(2, 7));
 }
 
 }  // namespace

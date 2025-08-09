@@ -19,6 +19,8 @@ package xla.ifrt;
 
 // Proto equivalent of C++ `DeviceList`.
 message DeviceListProto {
+  int32 version_number = 2;
+
   // Serialization and deserialization are expected to ensure that device ids
   // are stable across proto construction and consumption.
   repeated int32 device_ids = 1;

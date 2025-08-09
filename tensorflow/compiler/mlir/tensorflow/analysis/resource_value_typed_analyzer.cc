@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/tensorflow/analysis/resource_value_typed_analyzer.h"
 
+#include <cassert>
 #include <tuple>
 
 #include "llvm/ADT/STLExtras.h"

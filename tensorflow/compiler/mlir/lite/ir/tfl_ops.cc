@@ -81,10 +81,10 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/FoldUtils.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_traits.h"
 #include "tensorflow/compiler/mlir/lite/utils/arithmetic_count_util.h"
 #include "tensorflow/compiler/mlir/lite/utils/shape_and_size_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/utils.h"
-#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_traits.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
@@ -96,15 +96,16 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 
+// go/keep-sorted start
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(CeilOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(CosOp);
-INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(LocalResponseNormalizationOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(FloorOp);
-INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(RoundOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(LocalResponseNormalizationOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(NegOp);
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(RoundOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(SinOp);
-INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(SqrtOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(SquareOp);
+// go/keep-sorted end
 
 namespace {
 
@@ -193,7 +194,7 @@ DenseElementsAttr GetSqueezedShape(Value value_tensor) {
 // TFL_TransposeOp when the tensor has some dimensions with value==1
 // Example- "tfl.transpose"(tensor<56x8x56x1x1x1x7xf32>, [4, 5, 1, 2, 0, 6, 3])
 // Permutation before squeese is [4, 5, 1, 2, 0, 6, 3] becomes [1, 2, 0, 3]
-// after squeeze is perfomed to retain the relative ordering of the non-1 dims.
+// after squeeze is performed to retain the relative ordering of the non-1 dims.
 DenseElementsAttr GetSqueezedPermutation(Value input_value,
                                          Value input_permutation) {
   auto input_shape =
@@ -250,12 +251,64 @@ bool ShouldFoldOperation(Operation* inst) {
   int64_t operands_size = get_size(inst->getOperandTypes());
 
   constexpr int kSizeFactor = 2;
-  constexpr int64_t kResultsSizeThreshold = (1 << 16);   // 64 Kib =   8 KiB
-  constexpr int64_t kOperandsSizeThreshold = (1 << 30);  //  1 Gib = 128 MiB
+  constexpr int64_t kResultsSizeThreshold = (1 << 16);  // 64 Kib =   8 KiB
+  constexpr int64_t kOperandsSizeThreshold = 200L * 1024 * 1024 * 8;  // 200 MiB
 
   return (operands_size <= kOperandsSizeThreshold) &&
          ((results_size <= kResultsSizeThreshold) ||
           (results_size <= kSizeFactor * operands_size));
+}
+
+// Returns dimension index for the given axis that supports negative
+// indexing.
+int64_t NormalizeDim(int64_t axis, int64_t rank) {
+  return axis >= 0 ? axis : axis + rank;
+}
+
+Type InferReductionOpType(Value input, Value reduction_indices,
+                          BoolAttr keep_dims) {
+  Type input_ty = input.getType();
+  Type element_ty = getElementTypeOrSelf(input_ty);
+
+  // Output type is unranked if input type is not ranked.
+  auto ranked_ty = mlir::dyn_cast<RankedTensorType>(input_ty);
+  if (!ranked_ty) return UnrankedTensorType::get(element_ty);
+  int64_t rank = ranked_ty.getRank();
+
+  DenseIntElementsAttr indices;
+  if (!matchPattern(reduction_indices, m_Constant(&indices))) {
+    // Output type is unranked if reduction indices are not constant and reduced
+    // dimensions are not kept.
+    if (!keep_dims.getValue()) return UnrankedTensorType::get(element_ty);
+
+    // Otherwise, output type has same rank as the input.
+    return RankedTensorType::get(
+        SmallVector<int64_t, 4>(rank, ShapedType::kDynamic), element_ty);
+  }
+
+  int64_t num_reduce_dim = 0;
+  llvm::SmallVector<bool, 4> is_reduce_dim(rank, false);
+  for (const APInt& index : indices.getValues<APInt>()) {
+    int64_t dim = NormalizeDim(index.getSExtValue(), rank);
+    // Invalid input.
+    assert(dim >= 0 && dim < rank);
+
+    if (!is_reduce_dim[dim]) {
+      is_reduce_dim[dim] = true;
+      num_reduce_dim++;
+    }
+  }
+
+  ArrayRef<int64_t> shape = ranked_ty.getShape();
+  SmallVector<int64_t, 4> out_shape;
+  out_shape.reserve(rank - (keep_dims.getValue() ? 0 : num_reduce_dim));
+  for (int64_t i = 0; i < rank; ++i) {
+    if (!is_reduce_dim[i])
+      out_shape.push_back(shape[i]);
+    else if (keep_dims.getValue())
+      out_shape.push_back(1);
+  }
+  return RankedTensorType::get(out_shape, element_ty);
 }
 
 #include "tensorflow/compiler/mlir/lite/ir/tfl_canonicalize.inc"
@@ -425,7 +478,7 @@ bool EqualsZero(Value value) {
 
 // Replaces the bias operand with a "none" type value if the bias value is
 // constant zero.
-// `ConcreteOpType` must be an concrete MLIR op class that has an optional
+// `ConcreteOpType` must be a concrete MLIR op class that has an optional
 // bias operand named 'bias'.
 template <typename ConcreteOpType>
 struct RemoveOptionalZeroBias : public OpRewritePattern<ConcreteOpType> {
@@ -1527,7 +1580,7 @@ LogicalResult FullyConnectedOp::verify() {
 
   // Input's element size must be multiple of parameter's z_in dimension.
   const int z_in = filter_type.getDimSize(1);
-  const int num_input_elements = input_type.getNumElements();
+  const int64_t num_input_elements = input_type.getNumElements();
   if (z_in != 0 && num_input_elements % z_in != 0) {
     return op.emitOpError(llvm::formatv(
                "expect 'input' num_elements % {0} == 0, got input type ", z_in))
@@ -1543,7 +1596,7 @@ LogicalResult FullyConnectedOp::verify() {
       return mlir::success();
     }
 
-    const int num_output_elements = output_type.getNumElements();
+    const int64_t num_output_elements = output_type.getNumElements();
     const int z_out = filter_type.getDimSize(0);
     if (num_output_elements % z_out != 0) {
       return op.emitOpError(llvm::formatv(
@@ -2232,16 +2285,14 @@ struct RemoveAdjacentReshape : public RewritePattern {
   explicit RemoveAdjacentReshape(MLIRContext* context)
       : RewritePattern(ReshapeOp::getOperationName(), 1, context) {}
 
-  LogicalResult match(Operation* op) const override {
+  LogicalResult matchAndRewrite(Operation* op,
+                                PatternRewriter& rewriter) const override {
     auto thisOp = cast<ReshapeOp>(op);
-    auto prevOp = thisOp.getOperand(0).getDefiningOp();
-    return isa_and_nonnull<ReshapeOp>(prevOp) ? success() : failure();
-  }
-
-  void rewrite(Operation* op, PatternRewriter& rewriter) const override {
-    auto thisOp = cast<ReshapeOp>(op);
-    auto prevOp = cast<ReshapeOp>(thisOp.getOperand(0).getDefiningOp());
-
+    auto prevOp =
+        dyn_cast_or_null<ReshapeOp>(thisOp.getOperand(0).getDefiningOp());
+    if (!prevOp) {
+      return failure();
+    }
     // Replace
     //   %1 = "tfl.reshape"(%0, %shape0)
     //   %2 = "tfl.reshape"(%1, %shape1)
@@ -2249,6 +2300,7 @@ struct RemoveAdjacentReshape : public RewritePattern {
     //   %2 = "tfl.reshape"(%0, %shape1)
     rewriter.replaceOpWithNewOp<ReshapeOp>(
         op, thisOp.getType(), prevOp.getOperand(0), thisOp.getOperand(1));
+    return success();
   }
 };
 
@@ -2964,7 +3016,8 @@ struct DropFakeQuant : public RewritePattern {
   explicit DropFakeQuant(MLIRContext* context)
       : RewritePattern(FakeQuantOp::getOperationName(), 1, context) {}
 
-  LogicalResult match(Operation* op) const override {
+  LogicalResult matchAndRewrite(Operation* op,
+                                PatternRewriter& rewriter) const override {
     // We only match the op with valid "minmax" attribute.
     if (!HasValidMinMaxAttribute(op)) return failure();
 
@@ -2974,12 +3027,9 @@ struct DropFakeQuant : public RewritePattern {
     for (auto* operand : fakeQuantOp.getResult().getUsers())
       if (!HasValidMinMaxAttribute(operand)) return failure();
 
-    return success();
-  }
-
-  void rewrite(Operation* op, PatternRewriter& rewriter) const override {
     // Replace the matched FakeQuantOp by its primary operand.
     rewriter.replaceOp(op, op->getOperand(0));
+    return success();
   }
 };
 }  // end anonymous namespace
@@ -4037,6 +4087,12 @@ OpFoldResult SumOp::fold(FoldAdaptor adaptor) {
   return DenseFPElementsAttr::get(out_type, out_data);
 }
 
+void SumOp::build(OpBuilder& builder, OperationState& result, Value input,
+                  Value axes, BoolAttr keep_dims) {
+  Type out_ty = InferReductionOpType(input, axes, keep_dims);
+  build(builder, result, out_ty, input, axes, keep_dims);
+}
+
 //===----------------------------------------------------------------------===//
 // RankOp
 //===----------------------------------------------------------------------===//
@@ -4443,6 +4499,27 @@ int64_t TransposeConvOp::GetArithmeticCount(Operation* op) {
 // StridedSliceOp
 //===----------------------------------------------------------------------===//
 
+bool VerifyStridedSliceOpInputRankConstraints(StridedSliceOp op) {
+  auto ranked_input_type =
+      mlir::dyn_cast<RankedTensorType>(op.getInput().getType());
+
+  // If input is unranked, there is nothing else to be verified.
+  if (!ranked_input_type) return true;
+  const int num_input_dims = ranked_input_type.getRank();
+
+  // The kernel will reshape the input tensor with new axis, it only supports
+  // this reshaped tensor up to 5D.
+  const uint32_t ellipsis_mask = op.getEllipsisMask();
+  const uint32_t new_axis_mask = op.getNewAxisMask();
+  int num_added_axis = 0;
+  for (int i = 0; i < 8; ++i) {
+    if (!((1 << i) & ellipsis_mask) && ((1 << i) & new_axis_mask)) {
+      num_added_axis++;
+    }
+  }
+  return (num_input_dims + num_added_axis <= 5);
+}
+
 LogicalResult StridedSliceOp::verify() {
   StridedSliceOp op = *this;
   auto ranked_input_type =
@@ -4469,17 +4546,6 @@ LogicalResult StridedSliceOp::verify() {
     if (strides_type.getDimSize(0) > num_input_dims) return failure();
   }
 
-  // The kernel will reshape the input tensor with new axis, it only supports
-  // this reshaped tensor up to 5D.
-  uint32_t ellipsis_mask = op.getEllipsisMask();
-  uint32_t new_axis_mask = op.getNewAxisMask();
-  int num_added_axis = 0;
-  for (int i = 0; i < 8; ++i) {
-    if (!((1 << i) & ellipsis_mask) && ((1 << i) & new_axis_mask)) {
-      num_added_axis++;
-    }
-  }
-  if (num_input_dims + num_added_axis > 5) return failure();
   return success();
 }
 
@@ -4574,7 +4640,7 @@ void ComputePermutation(ArrayRef<int64_t> perms, ArrayRef<int64_t> output_shape,
 
 void TransposeOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                               MLIRContext* context) {
-  results.add<ConvertTransposeToDecreaseRank>(context);
+  results.add<ConvertTransposeToDecreaseRank, RemoveNoopTranspose>(context);
 }
 
 OpFoldResult TransposeOp::fold(FoldAdaptor adaptor) {

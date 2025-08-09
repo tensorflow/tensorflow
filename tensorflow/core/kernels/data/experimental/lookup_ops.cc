@@ -13,12 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <algorithm>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/data/root_dataset.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
@@ -172,7 +174,7 @@ void InitializeTableFromDataset(OpKernelContext* ctx,
   OP_REQUIRES_OK(ctx, iter.Init(ctx));
   absl::Status s =
       table->Initialize(iter, MakeDatasetInitializerSerializer(ctx, dataset));
-  if (errors::IsFailedPrecondition(s) && table->is_initialized()) {
+  if (absl::IsFailedPrecondition(s) && table->is_initialized()) {
     LOG(INFO) << "Table already initialized from dataset.";
     return;
   }

@@ -48,10 +48,6 @@ TEST(XNNPACK_WEIGHTS_CACHE, WithSize) {
   const Model* model = GetModel(buffer.data());
   DummyOpResolver resolver;
 
-  std::unique_ptr<Interpreter> interpreter;
-  ASSERT_EQ(kTfLiteOk, InterpreterBuilder(model, resolver)(&interpreter));
-  ASSERT_EQ(kTfLiteOk, interpreter->AllocateTensors());
-
   size_t four_mb = 4194304;
   std::unique_ptr<TfLiteXNNPackDelegateWeightsCache,
                   decltype(&TfLiteXNNPackDelegateWeightsCacheDelete)>
@@ -66,6 +62,10 @@ TEST(XNNPACK_WEIGHTS_CACHE, WithSize) {
       delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
                TfLiteXNNPackDelegateDelete);
 
+  std::unique_ptr<Interpreter> interpreter;
+  ASSERT_EQ(kTfLiteOk, InterpreterBuilder(model, resolver)(&interpreter));
+  ASSERT_EQ(kTfLiteOk, interpreter->AllocateTensors());
+
   ASSERT_EQ(kTfLiteOk, interpreter->ModifyGraphWithDelegate(delegate.get()));
 
   ASSERT_TRUE(
@@ -78,10 +78,6 @@ TEST(XNNPACK_WEIGHTS_CACHE, InvokeBeforeFinalization) {
   std::vector<char> buffer = Conv2DTester().CreateTfLiteModel();
   const Model* model = GetModel(buffer.data());
   DummyOpResolver resolver;
-
-  std::unique_ptr<Interpreter> interpreter;
-  ASSERT_EQ(kTfLiteOk, InterpreterBuilder(model, resolver)(&interpreter));
-  ASSERT_EQ(kTfLiteOk, interpreter->AllocateTensors());
 
   std::unique_ptr<TfLiteXNNPackDelegateWeightsCache,
                   decltype(&TfLiteXNNPackDelegateWeightsCacheDelete)>
@@ -96,6 +92,10 @@ TEST(XNNPACK_WEIGHTS_CACHE, InvokeBeforeFinalization) {
       delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
                TfLiteXNNPackDelegateDelete);
 
+  std::unique_ptr<Interpreter> interpreter;
+  ASSERT_EQ(kTfLiteOk, InterpreterBuilder(model, resolver)(&interpreter));
+  ASSERT_EQ(kTfLiteOk, interpreter->AllocateTensors());
+
   ASSERT_EQ(kTfLiteOk, interpreter->ModifyGraphWithDelegate(delegate.get()));
 
   // Invoking before finalization fails.
@@ -106,10 +106,6 @@ TEST(XNNPACK_WEIGHTS_CACHE, HardFinalization) {
   std::vector<char> buffer = Conv2DTester().CreateTfLiteModel();
   const Model* model = GetModel(buffer.data());
   DummyOpResolver resolver;
-
-  std::unique_ptr<Interpreter> interpreter1;
-  ASSERT_EQ(kTfLiteOk, InterpreterBuilder(model, resolver)(&interpreter1));
-  ASSERT_EQ(kTfLiteOk, interpreter1->AllocateTensors());
 
   std::unique_ptr<TfLiteXNNPackDelegateWeightsCache,
                   decltype(&TfLiteXNNPackDelegateWeightsCacheDelete)>
@@ -123,6 +119,11 @@ TEST(XNNPACK_WEIGHTS_CACHE, HardFinalization) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       delegate1(TfLiteXNNPackDelegateCreate(&delegate_options),
                 TfLiteXNNPackDelegateDelete);
+
+  std::unique_ptr<Interpreter> interpreter1;
+  ASSERT_EQ(kTfLiteOk, InterpreterBuilder(model, resolver)(&interpreter1));
+  ASSERT_EQ(kTfLiteOk, interpreter1->AllocateTensors());
+
   ASSERT_EQ(kTfLiteOk, interpreter1->ModifyGraphWithDelegate(delegate1.get()));
   ASSERT_TRUE(
       TfLiteXNNPackDelegateWeightsCacheFinalizeHard(weights_cache.get()));
@@ -131,12 +132,12 @@ TEST(XNNPACK_WEIGHTS_CACHE, HardFinalization) {
 
   // We cannot create new instances using the same weights cache after hard
   // finalization.
-  std::unique_ptr<Interpreter> interpreter2;
-  ASSERT_EQ(kTfLiteOk, InterpreterBuilder(model, resolver)(&interpreter2));
-  ASSERT_EQ(kTfLiteOk, interpreter2->AllocateTensors());
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       delegate2(TfLiteXNNPackDelegateCreate(&delegate_options),
                 TfLiteXNNPackDelegateDelete);
+  std::unique_ptr<Interpreter> interpreter2;
+  ASSERT_EQ(kTfLiteOk, InterpreterBuilder(model, resolver)(&interpreter2));
+  ASSERT_EQ(kTfLiteOk, interpreter2->AllocateTensors());
   ASSERT_NE(kTfLiteOk, interpreter2->ModifyGraphWithDelegate(delegate2.get()));
 }
 
@@ -154,12 +155,13 @@ TEST(XNNPACK_WEIGHTS_CACHE, SoftFinalization) {
       TfLiteXNNPackDelegateOptionsDefault();
   delegate_options.weights_cache = weights_cache.get();
 
-  std::unique_ptr<Interpreter> interpreter1;
-  ASSERT_EQ(kTfLiteOk, InterpreterBuilder(model, resolver)(&interpreter1));
-  ASSERT_EQ(kTfLiteOk, interpreter1->AllocateTensors());
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       delegate1(TfLiteXNNPackDelegateCreate(&delegate_options),
                 TfLiteXNNPackDelegateDelete);
+
+  std::unique_ptr<Interpreter> interpreter1;
+  ASSERT_EQ(kTfLiteOk, InterpreterBuilder(model, resolver)(&interpreter1));
+  ASSERT_EQ(kTfLiteOk, interpreter1->AllocateTensors());
   ASSERT_EQ(kTfLiteOk, interpreter1->ModifyGraphWithDelegate(delegate1.get()));
 
   ASSERT_TRUE(
@@ -168,12 +170,12 @@ TEST(XNNPACK_WEIGHTS_CACHE, SoftFinalization) {
   ASSERT_EQ(kTfLiteOk, interpreter1->Invoke());
 
   // Build a second interpreter, it should work after soft finalization.
-  std::unique_ptr<Interpreter> interpreter2;
-  ASSERT_EQ(kTfLiteOk, InterpreterBuilder(model, resolver)(&interpreter2));
-  ASSERT_EQ(kTfLiteOk, interpreter2->AllocateTensors());
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       delegate2(TfLiteXNNPackDelegateCreate(&delegate_options),
                 TfLiteXNNPackDelegateDelete);
+  std::unique_ptr<Interpreter> interpreter2;
+  ASSERT_EQ(kTfLiteOk, InterpreterBuilder(model, resolver)(&interpreter2));
+  ASSERT_EQ(kTfLiteOk, interpreter2->AllocateTensors());
   ASSERT_EQ(kTfLiteOk, interpreter2->ModifyGraphWithDelegate(delegate2.get()));
   ASSERT_EQ(kTfLiteOk, interpreter2->Invoke());
 }
@@ -196,13 +198,13 @@ TEST_P(WeightsCacheTest, SoftFinalizationMultithreaded) {
   delegate_options.weights_cache = weights_cache.get();
 
   // Create the first interpreter and finalize it.
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      initial_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
+                       TfLiteXNNPackDelegateDelete);
   std::unique_ptr<Interpreter> initial_interpreter;
   ASSERT_EQ(kTfLiteOk,
             InterpreterBuilder(model, resolver)(&initial_interpreter));
   ASSERT_EQ(kTfLiteOk, initial_interpreter->AllocateTensors());
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      initial_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
-                       TfLiteXNNPackDelegateDelete);
   ASSERT_EQ(kTfLiteOk, initial_interpreter->ModifyGraphWithDelegate(
                            initial_delegate.get()));
 
@@ -221,13 +223,13 @@ TEST_P(WeightsCacheTest, SoftFinalizationMultithreaded) {
   threads.reserve(num_threads);
   for (size_t i = 0; i < num_threads; i++) {
     threads.emplace_back(std::thread([&] {
-      std::unique_ptr<Interpreter> interpreter;
-      ASSERT_EQ(kTfLiteOk, InterpreterBuilder(model, resolver)(&interpreter));
-      ASSERT_EQ(kTfLiteOk, interpreter->AllocateTensors());
-
       std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
           delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
                    TfLiteXNNPackDelegateDelete);
+
+      std::unique_ptr<Interpreter> interpreter;
+      ASSERT_EQ(kTfLiteOk, InterpreterBuilder(model, resolver)(&interpreter));
+      ASSERT_EQ(kTfLiteOk, interpreter->AllocateTensors());
 
       ASSERT_EQ(kTfLiteOk,
                 interpreter->ModifyGraphWithDelegate(delegate.get()));

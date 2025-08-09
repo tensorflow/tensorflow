@@ -130,6 +130,16 @@ class BFloat16Propagation : public HloModulePass {
   // Precondition: hlo->opcode() == kConditional
   void DetermineConditionalComputationsPrecision(HloInstruction* cond);
 
+  // Special handling in the opportunity-finding pass for async computations.
+  //
+  // Precondition: hlo->opcode() == kAsyncStart
+  void DetermineAsyncComputationsPrecision(HloInstruction* async_start);
+
+  // Special handling in the opportunity-finding pass for called computations.
+  //
+  // Precondition: hlo->opcode() == kCall
+  void DetermineCalledComputationsPrecision(HloInstruction* call);
+
   // The set of HloInstructions that have been visited in the
   // opportunity-finding pass.
   absl::flat_hash_set<const HloInstruction*>
@@ -146,9 +156,7 @@ class BFloat16Propagation : public HloModulePass {
   // Adjusts the output shapes of HloInstructions such that if two
   // HloInstructions have aliasing buffers in their outputs, they must have the
   // same precision.
-  void ResolveInconsistencyOfAliasingBuffers(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads);
+  void ResolveInconsistencyOfAliasingBuffers(HloModule* module);
 
   // Resolves inconsistency of aliasing buffers for the given computation, and
   // recursively runs on a while instruction's condition and body until a fixed
@@ -170,21 +178,15 @@ class BFloat16Propagation : public HloModulePass {
 
   // Resolves inconsistencies introduced by this pass for fusions with
   // tuple-type output.
-  absl::Status ResolveInconsistentFusions(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads);
+  absl::Status ResolveInconsistentFusions(HloModule* module);
 
   // Converts the literals in kConstant HLOs which have their types changed to
   // BF16 by this pass.
-  absl::Status ResolveConvertedConstants(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads);
+  absl::Status ResolveConvertedConstants(HloModule* module);
 
   // Skips no-op conversions (same source and target shapes) that can be
   // produced this pass, i.e., replaces them in their uses with their operands.
-  absl::Status SkipNoopConversions(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads);
+  absl::Status SkipNoopConversions(HloModule* module);
 
   // ***************************
   // Functions called and state used by two or more passes.
@@ -232,6 +234,8 @@ class BFloat16Propagation : public HloModulePass {
   bool changed_ = false;
 
   std::unique_ptr<HloDataflowAnalysis> dataflow_;
+
+  absl::flat_hash_set<absl::string_view> execution_threads_;
 };
 
 }  // namespace xla

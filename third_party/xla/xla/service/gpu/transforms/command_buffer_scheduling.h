@@ -31,10 +31,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/xla.pb.h"
 
 namespace xla::gpu {
 
-// Lift fusion instructions to command buffers.
+// Lift instructions to command buffers.
 //
 // Before the pass:
 //   %fused_computation (param_0: s32[], param_1: s32[]) -> s32[] {

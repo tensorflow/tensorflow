@@ -24,10 +24,16 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
+#include "xla/protobuf_util.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/gpu/gpu_blas_lt.pb.h"
 #include "xla/stream_executor/host_or_device_scalar.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
@@ -74,6 +80,10 @@ struct MatrixLayout {  // plain MatrixLayout which is extended with create
   // `batch_stride` is set to `0` when `batch_size == 1`.
   int64_t batch_stride;
   blas::Transpose transpose;
+
+  static absl::StatusOr<MatrixLayout> FromProto(
+      const xla::GemmConfigProto::MatrixLayout& proto);
+  xla::GemmConfigProto::MatrixLayout ToProto() const;
 };
 
 // compact version of the matrix layout to be used to pass matrices
@@ -120,6 +130,10 @@ struct GemmConfig {  // plain GemmConfig which is extended with create functions
   bool grad_x;
   bool grad_y;
   std::optional<blas::ComputationType> compute_type;
+
+  static absl::StatusOr<GemmConfig> FromProto(
+      const xla::GemmConfigProto& proto);
+  xla::GemmConfigProto ToProto() const;
 };
 
 struct BlasLt {
@@ -128,10 +142,14 @@ struct BlasLt {
     kReLU = 2,                      // Apply point-wise ReLU function
     kBias = 4,                      // Add broadcasted bias vector
     kBiasThenReLU = kBias | kReLU,  // Apply bias and then ReLU transform
-    kGELU = 32,                // Apply GELU point-wise transform to the results
-    kGELUWithAux = 32 | 1024,  // Apply GELU with auxiliary output.
+    kGELU = 32,  // Apply GELU point-wise transform to the results
+    kSILU = 64,  // Apply swish point-wise transform to the results
+    kSILUWithAux = kSILU | 1024,    // Apply swish with auxiliary output
+    kGELUWithAux = 32 | 1024,       // Apply GELU with auxiliary output.
     kBiasThenGELU = kBias | kGELU,  // Apply bias and then approximate GELU.
+    kBiasThenSILU = kBias | kSILU,  // Apply bias and then approximate Swish.
     kBiasThenGELUWithAux = kBiasThenGELU | 1024,
+    kBiasThenSILUWithAux = kBiasThenSILU | 1024,
   };
 
   // Describes the location of pointers for the scaling factors alpha and beta.
@@ -155,8 +173,8 @@ struct BlasLt {
   };
 
   struct MatmulPlan {
-    // API that uses scratch_allocator to allocate workspace.
-    // This version is used by TF: see tensorflow/core/kernels/matmul_util.cc
+    // This function is to be removed once TF interface is fixed,
+    // see tensorflow/core/kernels/matmul_util.cc
     absl::Status ExecuteOnStream(
         Stream* stream, DeviceMemoryBase a, DeviceMemoryBase b,
         DeviceMemoryBase c, DeviceMemoryBase d,
@@ -167,8 +185,29 @@ struct BlasLt {
         DeviceMemoryBase d_amax, const MatmulAlgorithm& algorithm,
         ScratchAllocator& scratch_allocator,
         blas::ProfileResult* profile_result = nullptr) const {
+      // Temporary hack until Tensorflow side is fixed
+      TF_RETURN_IF_ERROR(
+          const_cast<MatmulPlan*>(this)->SetAlgorithm(algorithm));
       return ExecuteOnStream(
-          stream, algorithm,
+          stream,
+          MemoryArgs{a, b, c, d, bias, aux, a_scale, b_scale, c_scale, d_scale,
+                     d_amax, DeviceMemoryBase{}, &scratch_allocator},
+          profile_result);
+    }
+
+    // API that uses scratch_allocator to allocate workspace.
+    // This version is used by TF: see tensorflow/core/kernels/matmul_util.cc
+    absl::Status ExecuteOnStream(
+        Stream* stream, DeviceMemoryBase a, DeviceMemoryBase b,
+        DeviceMemoryBase c, DeviceMemoryBase d,
+        DeviceMemoryBase bias,  // may be null
+        DeviceMemoryBase aux,   // may be null
+        DeviceMemoryBase a_scale, DeviceMemoryBase b_scale,
+        DeviceMemoryBase c_scale, DeviceMemoryBase d_scale,
+        DeviceMemoryBase d_amax, ScratchAllocator& scratch_allocator,
+        blas::ProfileResult* profile_result = nullptr) const {
+      return ExecuteOnStream(
+          stream,
           MemoryArgs{a, b, c, d, bias, aux, a_scale, b_scale, c_scale, d_scale,
                      d_amax, DeviceMemoryBase{}, &scratch_allocator},
           profile_result);
@@ -182,11 +221,10 @@ struct BlasLt {
         DeviceMemoryBase aux,   // may be null
         DeviceMemoryBase a_scale, DeviceMemoryBase b_scale,
         DeviceMemoryBase c_scale, DeviceMemoryBase d_scale,
-        DeviceMemoryBase d_amax, const MatmulAlgorithm& algorithm,
-        DeviceMemoryBase workspace,
+        DeviceMemoryBase d_amax, DeviceMemoryBase workspace,
         blas::ProfileResult* profile_result = nullptr) const {
       return ExecuteOnStream(
-          stream, algorithm,
+          stream,
           MemoryArgs{a, b, c, d, bias, aux, a_scale, b_scale, c_scale, d_scale,
                      d_amax, workspace, nullptr},
           profile_result);
@@ -194,8 +232,8 @@ struct BlasLt {
 
     // The most general form: to be implemented by derived clases.
     virtual absl::Status ExecuteOnStream(
-        Stream* stream, const MatmulAlgorithm& algorithm,
-        const MemoryArgs& args, blas::ProfileResult* profile_result) const = 0;
+        Stream* stream, const MemoryArgs& args,
+        blas::ProfileResult* profile_result) const = 0;
 
     // Returns a list of supported algorithms for DoMatmul. The algorithms are
     // returned in the order of increasing estimated compute time according to
@@ -204,10 +242,17 @@ struct BlasLt {
         const Stream* stream, size_t max_algorithm_count = 128,
         size_t max_workspace_size = 1ll << 32) const = 0;
 
+    // Algorithm must to be set before calling ExecuteOnStream function(s).
+    // Usually, we call ExecuteOnStream with the same algorithm ID, hence using
+    // a separate function here enables BlasLt implementations to do additional
+    // optimizations (like preloading matmul kernels) once the algorithm is set.
+    virtual absl::Status SetAlgorithm(const MatmulAlgorithm& algorithm) = 0;
+
     virtual ~MatmulPlan() {}
   };  // class MatmulPlan
 
   using MatmulPlanPtr = std::unique_ptr<MatmulPlan>;
+  using PlanCreateFunc = absl::AnyInvocable<absl::StatusOr<MatmulPlanPtr>()>;
 
   virtual absl::Status Init() = 0;
 
@@ -221,7 +266,18 @@ struct BlasLt {
                                                      const GemmConfig& cfg,
                                                      Epilogue epilogue);
 
+  absl::StatusOr<MatmulPlan*> GetOrCreateMatmulPlan(const std::string& key,
+                                                    PlanCreateFunc create);
+
+  void ClearMatmulPlanCache();
+  size_t GetMatmulPlanCacheSize() const;
+
   virtual ~BlasLt() {}
+
+ protected:
+  mutable absl::Mutex plan_cache_mu_;
+  absl::flat_hash_map<std::string, MatmulPlanPtr> plan_cache_
+      ABSL_GUARDED_BY(plan_cache_mu_);
 };  // class BlasLt
 
 }  // namespace stream_executor::gpu

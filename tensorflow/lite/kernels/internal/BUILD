@@ -1,8 +1,10 @@
 load("@bazel_skylib//lib:selects.bzl", "selects")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("//tensorflow:tensorflow.bzl", "transitive_hdrs")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
-load("//tensorflow/lite:special_rules.bzl", "tflite_extra_arm_config_settings", "tflite_portable_test_suite_combined")
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined")
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
 
 package(
@@ -20,18 +22,11 @@ HARD_FP_FLAGS_IF_APPLICABLE = select({
 })
 
 NEON_FLAGS_IF_APPLICABLE = select({
-    ":arm": [
-        "-O3",
-    ],
-    ":armeabi-v7a": [
-        "-O3",
-        "-mfpu=neon",
-    ],
     ":armhf": [
         "-O3",
         "-mfpu=neon",
     ],
-    ":armv7a": [
+    ":armv7": [
         "-O3",
         "-mfpu=neon",
     ],
@@ -94,210 +89,87 @@ cc_library(
 )
 
 config_setting(
+    name = "armv7",
+    constraint_values = [
+        "@platforms//cpu:armv7",
+    ],
+)
+
+config_setting(
     name = "aarch64",
-    values = {
-        "cpu": "aarch64",
-    },
-)
-
-config_setting(
-    name = "arm",
-    values = {
-        "cpu": "arm",
-    },
-)
-
-config_setting(
-    name = "arm64-v8a",
-    values = {
-        "cpu": "arm64-v8a",
-    },
+    constraint_values = [
+        "@platforms//cpu:aarch64",
+    ],
 )
 
 config_setting(
     name = "armhf",
-    values = {
-        "cpu": "armhf",
-    },
-)
-
-config_setting(
-    name = "armv7a",
-    values = {
-        "cpu": "armv7a",
-    },
-)
-
-config_setting(
-    name = "armeabi-v7a",
-    values = {
-        "cpu": "armeabi-v7a",
-    },
-)
-
-config_setting(
-    name = "haswell",
-    values = {
-        "cpu": "haswell",
-    },
-)
-
-config_setting(
-    name = "ios_x86_64",
-    values = {
-        "cpu": "ios_x86_64",
-    },
-)
-
-config_setting(
-    name = "tvos_x86_64",
-    values = {
-        "cpu": "tvos_x86_64",
-    },
-)
-
-config_setting(
-    name = "ios_armv7",
-    values = {
-        "cpu": "ios_armv7",
-    },
-)
-
-config_setting(
-    name = "ios_arm64",
-    values = {
-        "cpu": "ios_arm64",
-    },
-)
-
-config_setting(
-    name = "ios_arm64e",
-    values = {
-        "cpu": "ios_arm64e",
-    },
-)
-
-config_setting(
-    name = "ios_sim_arm64",
-    values = {
-        "cpu": "ios_sim_arm64",
-    },
-)
-
-config_setting(
-    name = "visionos_arm64",
-    values = {
-        "cpu": "visionos_arm64",
-    },
-)
-
-config_setting(
-    name = "visionos_sim_arm64",
-    values = {
-        "cpu": "visionos_sim_arm64",
-    },
-)
-
-config_setting(
-    name = "k8",
-    values = {
-        "cpu": "k8",
-    },
+    constraint_values = [
+        "@platforms//cpu:armv7e-mf",
+    ],
 )
 
 config_setting(
     name = "x86",
-    values = {
-        "cpu": "x86",
-    },
+    constraint_values = [
+        "@platforms//cpu:x86_32",
+    ],
 )
 
 config_setting(
     name = "x86_64",
-    values = {
-        "cpu": "x86_64",
-    },
-)
-
-config_setting(
-    name = "darwin",
-    values = {
-        "cpu": "darwin",
-    },
-)
-
-config_setting(
-    name = "darwin_x86_64",
-    values = {
-        "cpu": "darwin_x86_64",
-    },
-)
-
-config_setting(
-    name = "darwin_arm64",
-    values = {
-        "cpu": "darwin_arm64",
-    },
-)
-
-config_setting(
-    name = "freebsd",
-    values = {
-        "cpu": "freebsd",
-    },
-)
-
-config_setting(
-    name = "windows",
-    values = {
-        "cpu": "x64_windows",
-    },
-)
-
-config_setting(
-    name = "raspberry_pi_with_neon",
-    define_values = {
-        "raspberry_pi_with_neon": "true",
-    },
-    values = {
-        "cpu": "armeabi",
-    },
+    constraint_values = [
+        "@platforms//cpu:x86_64",
+    ],
 )
 
 selects.config_setting_group(
     name = "x86_any",
     match_any = [
-        ":haswell",
-        ":ios_x86_64",
-        ":k8",
-        ":x86",
-        ":x86_64",
-        ":darwin",
-        ":darwin_x86_64",
-        ":freebsd",
-        ":windows",
-        ":tvos_x86_64",
+        ":x86_32_any",
+        ":x86_64_any",
     ],
 )
 
 selects.config_setting_group(
     name = "arm_any",
     match_any = [
-        ":aarch64",
-        ":arm",
-        ":arm64-v8a",
-        ":armeabi-v7a",
-        ":armhf",
-        ":armv7a",
-        ":ios_armv7",
-        ":ios_arm64",
-        ":ios_arm64e",
-        ":ios_sim_arm64",
-        ":darwin_arm64",
-        ":raspberry_pi_with_neon",
-        ":visionos_arm64",
-        ":visionos_sim_arm64",
-    ] + tflite_extra_arm_config_settings(),
+        ":arm32_any",
+        ":aarch64_any",
+    ],
+)
+
+selects.config_setting_group(
+    name = "arm32_any",
+    match_any = [
+        "@platforms//cpu:aarch32",
+        "@platforms//cpu:armv7",
+        "@platforms//cpu:armv7-m",
+        "@platforms//cpu:armv7e-m",
+        "@platforms//cpu:armv7e-mf",
+    ],
+)
+
+selects.config_setting_group(
+    name = "aarch64_any",
+    match_any = [
+        "@platforms//cpu:aarch64",
+        "@platforms//cpu:arm64e",
+    ],
+)
+
+config_setting(
+    name = "x86_32_any",
+    constraint_values = [
+        "@platforms//cpu:x86_32",
+    ],
+)
+
+config_setting(
+    name = "x86_64_any",
+    constraint_values = [
+        "@platforms//cpu:x86_64",
+    ],
 )
 
 cc_library(
@@ -318,7 +190,6 @@ cc_library(
 cc_library(
     name = "optimized_base",
     hdrs = [
-        "optimized/batch_matmul.h",
         "optimized/depthwiseconv_3x3_filter_common.h",
         "optimized/depthwiseconv_float.h",
         "optimized/depthwiseconv_multithread.h",
@@ -430,44 +301,6 @@ cc_library(
         "//tensorflow/lite/core/c:common",
         "@eigen_archive//:eigen3",
         "@local_xla//xla/tsl/framework/convolution:eigen_spatial_convolutions-inl",
-    ],
-)
-
-selects.config_setting_group(
-    name = "arm32_any",
-    match_any = [
-        ":armeabi-v7a",
-        ":armhf",
-        ":armv7a",
-        ":ios_armv7",
-    ],
-)
-
-selects.config_setting_group(
-    name = "aarch64_any",
-    match_any = [
-        ":arm",
-        ":aarch64",
-        ":arm64-v8a",
-        ":darwin_arm64",
-        ":ios_arm64",
-        ":ios_arm64e",
-        ":ios_sim_arm64",
-        ":visionos_arm64",
-        ":visionos_sim_arm64",
-    ],
-)
-
-selects.config_setting_group(
-    name = "x86_64_any",
-    match_any = [
-        ":darwin_x86_64",
-        ":haswell",
-        ":ios_x86_64",
-        ":k8",
-        ":tvos_x86_64",
-        ":windows",
-        ":x86_64",
     ],
 )
 
@@ -743,6 +576,7 @@ cc_library(
         "reference/requantize.h",
         "reference/resize_bilinear.h",
         "reference/resize_nearest_neighbor.h",
+        "reference/reverse.h",
         "reference/round.h",
         "reference/select.h",
         "reference/slice.h",
@@ -849,6 +683,7 @@ cc_library(
         "reference/reference_ops.h",
         "reference/requantize.h",
         "reference/resize_nearest_neighbor.h",
+        "reference/reverse.h",
         "reference/round.h",
         "reference/select.h",
         "reference/slice.h",
@@ -983,7 +818,7 @@ cc_library(
         ":common",
         ":compatibility",
         ":cppmath",
-        "@gemmlowp",
+        "@gemmlowp//:fixedpoint",
     ],
 )
 
@@ -1489,10 +1324,7 @@ cc_test(
     srcs = ["optimized/avx2_quantization_utils_test.cc"],
     copts = select(
         {
-            ":haswell": [
-                "-mavx2",
-            ],
-            ":k8": [
+            ":x86_64": [
                 "-mavx2",
             ],
             "//conditions:default": [

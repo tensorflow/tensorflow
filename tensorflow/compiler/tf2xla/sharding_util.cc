@@ -14,8 +14,14 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/tf2xla/sharding_util.h"
 
+#include <optional>
+
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_sharding_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -24,6 +30,8 @@ namespace tensorflow {
 namespace {
 const char kDeviceSuffixReplicatedCore[] = "REPLICATED_CORE";
 const char kShardingAttribute[] = "_XlaSharding";
+const char kShardingAttributeV2[] = "_XlaShardingV2";
+const char kXlaShardingOp[] = "XlaSharding";
 const char kShardingOpAttribute[] = "sharding";
 }  // namespace
 
@@ -175,16 +183,44 @@ absl::StatusOr<std::optional<xla::OpSharding>> GetShardingFromNodeDefInternal(
 
 absl::StatusOr<std::optional<xla::OpSharding>> GetShardingFromNodeDef(
     const NodeDef& node_def, bool add_metadata) {
-  if (node_def.op() == "XlaSharding") {
-    TF_ASSIGN_OR_RETURN(auto sharding,
+  TF_ASSIGN_OR_RETURN(auto sharding_attribute,
+                      GetShardingFromNodeDefInternal(node_def, add_metadata,
+                                                     kShardingAttribute));
+
+  // kShardingOpAttribute is only defined for 'XlaSharding' op
+  xla::OpSharding primary_sharding;
+  if (node_def.op() == kXlaShardingOp) {
+    TF_ASSIGN_OR_RETURN(auto sharding_op_attribute,
                         GetShardingFromNodeDefInternal(node_def, add_metadata,
                                                        kShardingOpAttribute));
-    if (sharding.has_value()) {
-      return sharding;
+    if (!sharding_op_attribute.has_value()) {
+      return sharding_attribute;
     }
+    primary_sharding = sharding_op_attribute.value();
+  } else {
+    if (!sharding_attribute.has_value()) {
+      return std::optional<xla::OpSharding>();
+    }
+    primary_sharding = sharding_attribute.value();
   }
-  return GetShardingFromNodeDefInternal(node_def, add_metadata,
-                                        kShardingAttribute);
+
+  TF_ASSIGN_OR_RETURN(auto shardingv2,
+                      GetShardingFromNodeDefInternal(node_def, add_metadata,
+                                                     kShardingAttributeV2));
+
+  if (!shardingv2.has_value()) {
+    return primary_sharding;
+  }
+
+  if (tensorflow::VerifyShardingEquivalent(primary_sharding, shardingv2.value())
+          .failed()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "XlaSharding attribute was not equivalent to XlaShardingV2 "
+        "attribute: ",
+        primary_sharding.DebugString(), " vs ",
+        shardingv2.value().DebugString()));
+  }
+  return shardingv2;
 }
 
 }  // namespace tensorflow

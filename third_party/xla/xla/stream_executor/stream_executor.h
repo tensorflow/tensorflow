@@ -114,13 +114,13 @@ class StreamExecutor {
     return AllocateArray<T>(1);
   }
 
-  // Loads a kernel from a MultiKernelLoaderSpec.
+  // Loads a kernel from a KernelLoaderSpec.
   //
   // Parameters:
-  //   spec: The MultiKernelLoaderSpec is usually generated as a compile-time
+  //   spec: The KernelLoaderSpec is usually generated as a compile-time
   //    constant into an appropriate namespace.
   virtual absl::StatusOr<std::unique_ptr<Kernel>> LoadKernel(
-      const MultiKernelLoaderSpec& spec) {
+      const KernelLoaderSpec& spec) {
     return absl::UnimplementedError("Not Implemented");
   }
 
@@ -325,11 +325,11 @@ class StreamExecutor {
   virtual bool SetArgumentLoggingMode(uint64_t mode) { return false; }
 
   // Creates, allocates, and copies a CUtensorMap object for the given TMA
-  // descriptor.  Returns a DeviceMemoryBase pointing to the allocated
-  // CUtensorMap object to be used as an argument to a kernel.
+  // descriptor. Returns a TensorMap, which is 128 bytes of storage, to be
+  // passed by value to the kernel.
   // Only implemented on CUDA GPUs.
-  virtual absl::StatusOr<DeviceMemoryBase> CreateTensorMap(
-      gpu::TmaDescriptor tma_desc, void* global_address) {
+  virtual absl::StatusOr<TensorMap> CreateTensorMap(gpu::TmaDescriptor tma_desc,
+                                                    void* global_address) {
     return absl::UnimplementedError("Not Implemented");
   }
 };

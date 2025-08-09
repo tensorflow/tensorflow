@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/dump.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <iostream>
@@ -27,6 +28,8 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/const_init.h"
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/log.h"
@@ -54,6 +57,7 @@ limitations under the License.
 #include "xla/tsl/lib/io/zlib_outputbuffer.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
 #include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/file_system_helper.h"
 #include "xla/util.h"
@@ -70,6 +74,35 @@ limitations under the License.
 
 namespace xla {
 
+static absl::Mutex mu(absl::kConstInit);
+
+// Maps a module's unique ID to a counter indicating how many times we've dumped
+// this module during the compilation pipeline.  This lets us keep the filenames
+// ordered nicely.
+//
+// Entries added here leak forever; we have no way to GC them when a module
+// dies.  But we only add an entry if dumping is enabled for this module, and
+// dumping a module leaks buffer space in stdout or bytes on disk *way* faster
+// than this hashtable leaks memory.
+static auto& module_id_to_step_number ABSL_GUARDED_BY(mu) =
+    *new absl::flat_hash_map<int64_t, int64_t>();
+
+// Maps a module's unique ID to a timestamp indicating when we've first dumped
+// this module during the compilation pipeline and when we first started
+// compiling this module.  This lets us keep the filenames ordered nicely.
+//
+// Entries added here leak forever; we have no way to GC them when a module
+// dies.  But we only add an entry if dumping is enabled for this module, and
+// dumping a module leaks buffer space in stdout or bytes on disk *way* faster
+// than this hashtable leaks memory.
+static auto& module_id_to_timestamp ABSL_GUARDED_BY(mu) =
+    *new absl::flat_hash_map<int64_t, uint64_t>();
+
+int64_t StepNumberForModule(const HloModule& module) {
+  absl::MutexLock lock(&mu);
+  return module_id_to_step_number[module.unique_id()]++;
+}
+
 absl::Status CreateDirIfNeeded(const std::string& dir, tsl::Env* env) {
   if (!env->IsDirectory(dir).ok()) {
     absl::Status status = env->RecursivelyCreateDir(dir);
@@ -80,7 +113,8 @@ absl::Status CreateDirIfNeeded(const std::string& dir, tsl::Env* env) {
     if (!status.ok()) {
       status = env->IsDirectory(dir);
       if (!status.ok()) {
-        LOG(ERROR) << "Could not create directory " << dir;
+        LOG(ERROR) << "Could not create directory: " << dir
+                   << ". Error: " << status;
         return status;
       }
     }
@@ -288,12 +322,11 @@ static absl::Status WriteStringToFile(tsl::Env* env, const std::string& fname,
       TF_RETURN_IF_ERROR(gz_file.Append(next_producer()));
     }
     return gz_file.Close();
-  } else {
-    while (auto next_producer = data_producer.Next()) {
-      TF_RETURN_IF_ERROR(file->Append(next_producer()));
-    }
-    return file->Close();
   }
+  while (auto next_producer = data_producer.Next()) {
+    TF_RETURN_IF_ERROR(file->Append(next_producer()));
+  }
+  return file->Close();
 }
 
 static absl::Status WriteStringToFile(tsl::Env* env, const std::string& fname,
@@ -333,30 +366,12 @@ static std::optional<std::string> GetDumpFilePath(
 
   // Make sure we are not going to dump more modules than the user has asked.
   if (opts.dump_max_hlo_modules > 0) {
-    std::vector<std::string> matches;
-    auto pattern = tsl::io::JoinPath(dir, "*module_*.*");
-    auto status = env->GetMatchingPaths(pattern, &matches);
-    if (!status.ok()) {
-      LOG(ERROR) << "Could not get matching paths for pattern " << pattern
-                 << ": " << status;
-    }
-    static const LazyRE2 module_id_regex = {R"(.*module_(\d+)\..*)"};
-    absl::flat_hash_set<int64_t> dumped_module_ids;
-    for (const std::string& match : matches) {
-      int64_t dumped_module_id;
-      if (RE2::FullMatch(match, *module_id_regex, &dumped_module_id)) {
-        dumped_module_ids.insert(dumped_module_id);
-      }
-    }
-    if (dumped_module_ids.size() >= opts.dump_max_hlo_modules) {
-      int64_t module_id;
-      if (RE2::FullMatch(filename, *module_id_regex, &module_id) &&
-          !dumped_module_ids.contains(module_id)) {
-        LOG(ERROR) << "Have already dumped " << dumped_module_ids.size()
-                   << " modules, more than the limit of "
-                   << opts.dump_max_hlo_modules;
-        return std::nullopt;
-      }
+    absl::MutexLock lock(&mu);
+    if (module_id_to_timestamp.size() >= opts.dump_max_hlo_modules) {
+      LOG(ERROR) << "Have already dumped " << module_id_to_timestamp.size()
+                 << " modules, more than the limit of "
+                 << opts.dump_max_hlo_modules;
+      return std::nullopt;
     }
   }
 
@@ -367,7 +382,9 @@ static std::optional<std::string> DumpToFileInDirImpl(
     string_view filename, string_view contents,
     const CanonicalDebugOptions& opts, bool compress = false) {
   auto file_path = GetDumpFilePath(filename, opts);
-  if (!file_path) return std::nullopt;
+  if (!file_path) {
+    return std::nullopt;
+  }
 
   auto status =
       WriteStringToFile(tsl::Env::Default(), *file_path, contents, compress);
@@ -384,7 +401,9 @@ static std::optional<std::string> DumpToFileInDirImpl(
     string_view filename, DataProducer& data_producer,
     const CanonicalDebugOptions& opts, bool compress = false) {
   auto file_path = GetDumpFilePath(filename, opts);
-  if (!file_path) return std::nullopt;
+  if (!file_path) {
+    return std::nullopt;
+  }
 
   auto status = WriteStringToFile(tsl::Env::Default(), *file_path,
                                   data_producer, compress);
@@ -553,6 +572,13 @@ static std::vector<std::string> DumpHloModuleImpl(
   if (!dumped_file_paths.empty()) {
     LOG_FIRST_N(INFO, 1) << "HloModule dump enabled with path prefix: "
                          << prefix << ", suffix: " << suffix;
+    if (opts.dump_max_hlo_modules > 0) {
+      absl::MutexLock lock(&mu);
+      // Try to record the time we dumped this module to keep track of total
+      // module count.
+      module_id_to_timestamp.try_emplace(module.unique_id(),
+                                         tsl::Env::Default()->NowMicros());
+    }
   }
   return dumped_file_paths;
 }
@@ -574,33 +600,21 @@ static void DumpHloModuleMetadata(
   }
 }
 
-static absl::Mutex mu(absl::kConstInit);
-
-// Maps a module's unique ID to a counter indicating how many times we've dumped
-// this module during the compilation pipeline.  This lets us keep the filenames
-// ordered nicely.
-//
-// Entries added here leak forever; we have no way to GC them when a module
-// dies.  But we only add an entry if dumping is enabled for this module, and
-// dumping a module leaks buffer space in stdout or bytes on disk *way* faster
-// than this hashtable leaks memory.
-static auto& module_id_to_step_number ABSL_GUARDED_BY(mu) =
-    *new absl::flat_hash_map<int64_t, int64_t>();
-
-// Maps a module's unique ID to a timestamp indicating when we've first dumped
-// this module during the compilation pipeline and when we first started
-// compiling this module.  This lets us keep the filenames ordered nicely.
-//
-// Entries added here leak forever; we have no way to GC them when a module
-// dies.  But we only add an entry if dumping is enabled for this module, and
-// dumping a module leaks buffer space in stdout or bytes on disk *way* faster
-// than this hashtable leaks memory.
-static auto& module_id_to_timestamp ABSL_GUARDED_BY(mu) =
-    *new absl::flat_hash_map<int64_t, uint64_t>();
-
-int64_t StepNumberForModule(const HloModule& module) {
-  absl::MutexLock lock(&mu);
-  return module_id_to_step_number[module.unique_id()]++;
+std::vector<std::string> DumpHloModuleIfEnabledImpl(
+    const HloModule& module, const BufferAssignment* buffer_assn,
+    string_view name) {
+  CanonicalDebugOptions opts(module.config().debug_options());
+  if (opts.should_dump_module(module.name())) {
+    std::vector<std::string> filepaths = DumpHloModuleImpl(
+        module, /*buffer_assn=*/buffer_assn, TimestampFor(module), name, opts);
+    std::optional<std::string> maybe_debug_options_filepath =
+        DumpNonDefaultDebugOptions(module, kNonDefaultDebugOptionsDumpSuffix);
+    if (maybe_debug_options_filepath.has_value()) {
+      filepaths.push_back(*maybe_debug_options_filepath);
+    }
+    return filepaths;
+  }
+  return {};
 }
 
 }  // namespace
@@ -678,7 +692,9 @@ void DumpToFileInDirOrStdout(const DebugOptions& debug_options, int unique_id,
 void DumpToFileInDirOrStdout(const HloModule& module, string_view file_prefix,
                              mlir::Operation* op) {
   CanonicalDebugOptions opts(module.config().debug_options());
-  if (opts.dumping_to_stdout()) return op->dump();
+  if (opts.dumping_to_stdout()) {
+    return op->dump();
+  }
 
   mlir::OpPrintingFlags print_flags = mlir::OpPrintingFlags();
   // Enable debug info so that it is easier to see the corresponding HLO node.
@@ -743,24 +759,166 @@ void DumpPerModuleProtobufToFile(const HloModule& module,
   DumpProtobufToFile(proto, debug_options, filename, std::move(text_formatter));
 }
 
+std::string GetRepeatedValueAsString(
+    const tsl::protobuf::Reflection* reflection,
+    const DebugOptions& debug_options,
+    const tsl::protobuf::FieldDescriptor* field, int index) {
+  switch (field->type()) {
+    case tsl::protobuf::FieldDescriptor::TYPE_INT32:
+      return std::to_string(
+          reflection->GetRepeatedInt32(debug_options, field, index));
+    case tsl::protobuf::FieldDescriptor::TYPE_INT64:
+      return std::to_string(
+          reflection->GetRepeatedInt64(debug_options, field, index));
+    case tsl::protobuf::FieldDescriptor::TYPE_UINT32:
+      return std::to_string(
+          reflection->GetRepeatedUInt32(debug_options, field, index));
+    case tsl::protobuf::FieldDescriptor::TYPE_UINT64:
+      return std::to_string(
+          reflection->GetRepeatedUInt64(debug_options, field, index));
+    case tsl::protobuf::FieldDescriptor::TYPE_DOUBLE:
+      return std::to_string(
+          reflection->GetRepeatedDouble(debug_options, field, index));
+    case tsl::protobuf::FieldDescriptor::TYPE_FLOAT:
+      return std::to_string(
+          reflection->GetRepeatedFloat(debug_options, field, index));
+    case tsl::protobuf::FieldDescriptor::TYPE_BOOL:
+      return reflection->GetRepeatedBool(debug_options, field, index) ? "true"
+                                                                      : "false";
+    case tsl::protobuf::FieldDescriptor::TYPE_ENUM:
+      return std::string(
+          reflection->GetRepeatedEnum(debug_options, field, index)->name());
+    case tsl::protobuf::FieldDescriptor::TYPE_STRING:
+      return "\"" + reflection->GetRepeatedString(debug_options, field, index) +
+             "\"";
+    case tsl::protobuf::FieldDescriptor::TYPE_MESSAGE: {
+      tsl::protobuf::TextFormat::Printer tsl_printer;
+      tsl_printer.SetInitialIndentLevel(1);
+      std::string result;
+      tsl_printer.PrintToString(
+          reflection->GetRepeatedMessage(debug_options, field, index), &result);
+      return "{\n" + result + "}";
+    }
+    default:
+      return "Unsupported field type";
+  }
+}
+
+std::string GetValueAsString(const tsl::protobuf::Reflection* reflection,
+                             const DebugOptions& debug_options,
+                             const tsl::protobuf::FieldDescriptor* field) {
+  // Based on the field type, get the value and convert it to a string
+  switch (field->type()) {
+    case tsl::protobuf::FieldDescriptor::TYPE_INT32:
+      return std::to_string(reflection->GetInt32(debug_options, field));
+    case tsl::protobuf::FieldDescriptor::TYPE_INT64:
+      return std::to_string(reflection->GetInt64(debug_options, field));
+    case tsl::protobuf::FieldDescriptor::TYPE_UINT32:
+      return std::to_string(reflection->GetUInt32(debug_options, field));
+    case tsl::protobuf::FieldDescriptor::TYPE_UINT64:
+      return std::to_string(reflection->GetUInt64(debug_options, field));
+    case tsl::protobuf::FieldDescriptor::TYPE_DOUBLE:
+      return std::to_string(reflection->GetDouble(debug_options, field));
+    case tsl::protobuf::FieldDescriptor::TYPE_FLOAT:
+      return std::to_string(reflection->GetFloat(debug_options, field));
+    case tsl::protobuf::FieldDescriptor::TYPE_BOOL:
+      return reflection->GetBool(debug_options, field) ? "true" : "false";
+    case tsl::protobuf::FieldDescriptor::TYPE_ENUM:
+      return std::string(reflection->GetEnum(debug_options, field)->name());
+    case tsl::protobuf::FieldDescriptor::TYPE_STRING:
+      return "\"" + reflection->GetString(debug_options, field) + "\"";
+    case tsl::protobuf::FieldDescriptor::TYPE_MESSAGE: {
+      tsl::protobuf::TextFormat::Printer tsl_printer;
+      tsl_printer.SetSingleLineMode(false);
+      std::string result;
+      tsl_printer.PrintToString(reflection->GetMessage(debug_options, field),
+                                &result);
+      return "{\n" + result + "}";
+    }
+    default:
+      return "Unsupported field type";
+  }
+}
+
+std::string GetNonDefaultDebugOptions(const DebugOptions& debug_options) {
+  // Create a default DebugOptions to compare against
+  DebugOptions default_options = DefaultDebugOptionsIgnoringFlags();
+  std::string non_default_options;
+
+  // Use protobuf reflection to compare fields
+  const tsl::protobuf::Descriptor* descriptor = debug_options.GetDescriptor();
+  const tsl::protobuf::Reflection* reflection = debug_options.GetReflection();
+
+  // Iterate through all fields
+  for (int i = 0; i < descriptor->field_count(); i++) {
+    const tsl::protobuf::FieldDescriptor* field = descriptor->field(i);
+
+    if (field->is_repeated()) {
+      // Handle repeated fields by comparing the values
+      int repeated_count = reflection->FieldSize(debug_options, field);
+      int default_count = reflection->FieldSize(default_options, field);
+
+      // Only process if the repeated field has values
+      if (repeated_count > 0) {
+        std::vector<std::string> debug_values(repeated_count);
+        std::vector<std::string> default_values(default_count);
+
+        // Collect all values from debug_options
+        for (int j = 0; j < repeated_count; j++) {
+          debug_values[j] =
+              GetRepeatedValueAsString(reflection, debug_options, field, j);
+        }
+
+        // Collect all values from default_options
+        for (int j = 0; j < default_count; j++) {
+          default_values[j] =
+              GetRepeatedValueAsString(reflection, default_options, field, j);
+        }
+
+        // Sort both vectors for comparison
+        std::sort(debug_values.begin(), debug_values.end());
+        std::sort(default_values.begin(), default_values.end());
+
+        // Compare the sorted vectors
+        if (debug_values != default_values) {
+          // Values differ, append all debug values to output
+          for (const auto& value : debug_values) {
+            absl::StrAppend(&non_default_options, field->name(), ": ", value,
+                            "\n");
+          }
+        }
+      }
+      continue;
+    }
+
+    if (GetValueAsString(reflection, debug_options, field) !=
+        GetValueAsString(reflection, default_options, field)) {
+      absl::StrAppend(&non_default_options, field->name(), ": ",
+                      GetValueAsString(reflection, debug_options, field), "\n");
+    }
+  }
+
+  return non_default_options;
+}
+
+std::optional<std::string> DumpNonDefaultDebugOptions(
+    const HloModule& module, absl::string_view suffix) {
+  const DebugOptions& debug_options = module.config().debug_options();
+  std::string filename = FilenameFor(module, "", suffix);
+  std::string nonDefaultDebugOptions = GetNonDefaultDebugOptions(debug_options);
+  return DumpToFileInDirImpl(filename, nonDefaultDebugOptions,
+                             CanonicalDebugOptions(debug_options));
+}
+
 std::vector<std::string> DumpHloModuleIfEnabled(const HloModule& module,
                                                 string_view name) {
-  CanonicalDebugOptions opts(module.config().debug_options());
-  if (opts.should_dump_module(module.name())) {
-    return DumpHloModuleImpl(module, /*buffer_assn=*/nullptr,
-                             TimestampFor(module), name, opts);
-  }
-  return {};
+  return DumpHloModuleIfEnabledImpl(module, /*buffer_assn=*/nullptr, name);
 }
 
 std::vector<std::string> DumpHloModuleIfEnabled(
     const HloModule& module, const BufferAssignment& buffer_assn,
     string_view name) {
-  CanonicalDebugOptions opts(module.config().debug_options());
-  if (opts.should_dump_module(module.name())) {
-    DumpHloModuleImpl(module, &buffer_assn, TimestampFor(module), name, opts);
-  }
-  return {};
+  return DumpHloModuleIfEnabledImpl(module, &buffer_assn, name);
 }
 
 std::vector<std::string> DumpHloModuleProtoIfEnabled(
@@ -777,6 +935,28 @@ std::vector<std::string> DumpHloModuleProtoIfEnabled(
                              TimestampFor(*module), name, opts);
   }
   return {};
+}
+
+void DumpHloConfigIfEnabled(const HloModule& module) {
+  if (!module.config().debug_options().xla_dump_full_hlo_config()) {
+    return;
+  }
+
+  CanonicalDebugOptions opts(module.config().debug_options());
+  if (opts.dumping_to_stdout()) {
+    VLOG(2) << "Refusing to write HLO config proto for " << module.name()
+            << " to stdout. Pass --xla_dump_to=<path> to write to a file.";
+    return;
+  }
+  std::string config_str;
+  if (tsl::protobuf::TextFormat::PrintToString(module.config().ToProto(),
+                                               &config_str)) {
+    std::string filename = FilenameFor(module, "", "config.pbtxt");
+    DumpToFileInDirImpl(filename, config_str, opts);
+  } else {
+    VLOG(1) << "Failed to convert HloModuleConfig to text. Module: "
+            << module.name();
+  }
 }
 
 bool DumpingEnabledForHloModule(string_view hlo_module_name,

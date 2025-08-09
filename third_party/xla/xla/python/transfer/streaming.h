@@ -24,7 +24,11 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/python/transfer/transfer_socket.pb.h"
 
@@ -38,6 +42,8 @@ class ChunkDestination : public tsl::ReferenceCounted<ChunkDestination> {
   // Must call on_done when done copying out of data.
   virtual absl::Status Put(const void* data, int64_t offset, size_t size,
                            absl::AnyInvocable<void() &&> on_done) = 0;
+
+  virtual void Poison(absl::Status s) = 0;
 
   // For testing.
   static std::pair<xla::PjRtFuture<std::string>,
@@ -175,6 +181,11 @@ class ConnectionState : public tsl::ReferenceCounted<ConnectionState> {
   // used.
   virtual void Send(size_t req_id, const void* data, size_t offset, size_t size,
                     bool is_largest, absl::AnyInvocable<void() &&> on_done) = 0;
+
+  virtual void SendError(size_t req_id, size_t offset, size_t size,
+                         bool is_largest, absl::Status status) {
+    CHECK_OK(status);
+  }
 };
 
 // Basic rendevous table.

@@ -37,24 +37,28 @@ limitations under the License.
 #include <thread>
 #include <vector>
 
+#include "absl/base/attributes.h"
+#include "absl/base/const_init.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/default/posix_file_system.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/ram_file_system.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tsl/platform/load_library.h"
-#include "tsl/platform/mutex.h"
 #include "tsl/platform/strcat.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tsl {
 
 namespace {
 
-mutex name_mutex(tsl::LINKER_INITIALIZED);
+ABSL_CONST_INIT absl::Mutex name_mutex(absl::kConstInit);
 
 std::map<std::thread::id, string>& GetThreadNameRegistry()
     TF_EXCLUSIVE_LOCKS_REQUIRED(name_mutex) {
-  static auto* thread_name_registry = new std::map<std::thread::id, string>();
+  static auto* const thread_name_registry =
+      new std::map<std::thread::id, string>();
   return *thread_name_registry;
 }
 
@@ -89,12 +93,12 @@ class PThread : public Thread {
     std::unique_ptr<ThreadParams> params(
         reinterpret_cast<ThreadParams*>(params_arg));
     {
-      mutex_lock l(name_mutex);
+      absl::MutexLock l(&name_mutex);
       GetThreadNameRegistry().emplace(std::this_thread::get_id(), params->name);
     }
     params->fn();
     {
-      mutex_lock l(name_mutex);
+      absl::MutexLock l(&name_mutex);
       GetThreadNameRegistry().erase(std::this_thread::get_id());
     }
     return nullptr;
@@ -147,7 +151,7 @@ class PosixEnv : public Env {
 
   bool GetCurrentThreadName(string* name) override {
     {
-      mutex_lock l(name_mutex);
+      absl::MutexLock l(&name_mutex);
       auto thread_name =
           GetThreadNameRegistry().find(std::this_thread::get_id());
       if (thread_name != GetThreadNameRegistry().end()) {
@@ -256,7 +260,7 @@ REGISTER_FILE_SYSTEM("file", LocalPosixFileSystem);
 REGISTER_FILE_SYSTEM("ram", RamFileSystem);
 
 Env* Env::Default() {
-  static Env* default_env = new PosixEnv;
+  static Env* const default_env = new PosixEnv;
   return default_env;
 }
 #endif
@@ -266,19 +270,19 @@ void PosixEnv::GetLocalTempDirectories(std::vector<string>* list) {
   // Directories, in order of preference. If we find a dir that
   // exists, we stop adding other less-preferred dirs
   const char* candidates[] = {
-    // Non-null only during unittest/regtest
-    getenv("TEST_TMPDIR"),
+      // Non-null only during unittest/regtest
+      getenv("TEST_TMPDIR"),
 
-    // Explicitly-supplied temp dirs
-    getenv("TMPDIR"),
-    getenv("TMP"),
+      // Explicitly-supplied temp dirs
+      getenv("TMPDIR"),
+      getenv("TMP"),
 
 #if defined(__ANDROID__)
-    "/data/local/tmp",
+      "/data/local/tmp",
 #endif
 
-    // If all else fails
-    "/tmp",
+      // If all else fails
+      "/tmp",
   };
 
   std::vector<std::string> paths;  // Only in case of errors.

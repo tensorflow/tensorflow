@@ -2050,7 +2050,7 @@ class CentralCropTest(test_util.TensorFlowTestCase):
           _ = image_ops.central_crop(x, 1.01)
 
   def testErrorOnInvalidShapes(self):
-    x_shapes = [None, [], [3], [3, 9], [3, 9, 3, 9, 3]]
+    x_shapes = [[], [3], [3, 9], [3, 9, 3, 9, 3]]
     for x_shape in x_shapes:
       x_np = np.ones(x_shape, dtype=np.float32)
       for use_gpu in [True, False]:
@@ -4896,6 +4896,102 @@ class GifTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(image[0], frame0)
       self.assertAllEqual(image[1], frame1)
       self.assertAllEqual(image[2], frame2)
+
+
+class WebpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
+
+  def _path(self, name):
+    base = "tensorflow/core/lib/webp/testdata/"
+    return os.path.join(base, name)
+
+  @parameterized.named_parameters([
+      ("_rgbNoise", "RGB_noise_large_pixels_115x115.webp", (1, 115, 115, 3)),
+      ("_lossless", "lossless_raw.webp", (1, 32, 32, 3)),
+      ("_alpha", "lossy_alpha1.webp", (1, 307, 1000, 4)),
+  ])
+  def testRegularFile(self, filename, expected_dimensions):
+    # Read a real WebP image, via both APIs and check they're equal.
+    with self.cached_session():
+      webp = io_ops.read_file(self._path(filename))
+      image0 = image_ops.decode_webp(webp)
+      image1 = image_ops.decode_image(webp)
+      webp, image0, image1 = self.evaluate([webp, image0, image1])
+      self.assertEqual(image0.shape, expected_dimensions)
+      self.assertAllEqual(image0, image1)
+
+  def testAnimation(self):
+    # Read a WebP animation file, via both APIs and check they're equal.
+    with self.cached_session():
+      webp = io_ops.read_file(self._path("bouncy_ball.webp"))
+      expected_dimensions = (15, 450, 450, 4)
+
+      image0 = image_ops.decode_webp(webp)
+      image1 = image_ops.decode_image(webp, expand_animations=True)
+      webp, image0, image1 = self.evaluate([webp, image0, image1])
+      self.assertEqual(image0.shape, expected_dimensions)
+      self.assertAllEqual(image0, image1)
+
+  def testAnimationFrame0(self):
+    # Read a WebP animation file, via both APIs, but drop
+    # animation. Compare frame 0.
+    with self.cached_session():
+      webp = io_ops.read_file(self._path("bouncy_ball.webp"))
+
+      expected_anim_dimensions = (15, 450, 450, 4)
+      expected_still_dimensions = (450, 450, 4)
+
+      # decode_webp will return all the frames, but we should get the
+      # same frame 0 in both cases.
+      image0 = image_ops.decode_webp(webp)
+      image1 = image_ops.decode_image(webp, expand_animations=False)
+      webp, image0, image1 = self.evaluate([webp, image0, image1])
+      self.assertEqual(image0.shape, expected_anim_dimensions)
+      self.assertEqual(image1.shape, expected_still_dimensions)
+
+      # Compare frame0 of image0 to image1.
+      self.assertAllEqual(image0[0, ...], image1)
+
+  def testChannelsArg(self):
+    # Shape function requires placeholders and a graph.
+    with ops.Graph().as_default():
+      with self.cached_session():
+        webp = io_ops.read_file(
+            self._path("RGB_noise_large_pixels_115x115.webp")
+        )
+
+        for channels in 0, 3, 4:
+          image = image_ops.decode_webp(webp, channels=channels)
+          self.assertEqual(
+              image.get_shape().as_list(), [None, None, None, channels or None]
+          )
+
+  def testInvalidChannels(self):
+    with self.cached_session():
+      webp = io_ops.read_file(self._path("RGB_noise_large_pixels_115x115.webp"))
+
+      # DecodeImage supports grayscale, but WebP does not.
+      message = "WebP only supports 3 or 4 channels"
+      with self.assertRaisesRegex(
+          (errors.InvalidArgumentError, ValueError), message
+      ):
+        op = image_ops.decode_webp(webp, channels=1)
+        self.evaluate(op)
+
+  @parameterized.named_parameters(
+      [("_int8", np.int8), ("_int16", np.int16), ("_float32", np.float32)]
+  )
+  def testUnsupportedDtypes(self, dtype):
+    with self.cached_session():
+      webp = io_ops.read_file(self._path("RGB_noise_large_pixels_115x115.webp"))
+
+      message = "WebP only supports uint8"
+      with self.assertRaisesRegex(
+          (errors.InvalidArgumentError, ValueError), message
+      ):
+        # Note: we're testing with decode_image, since decode_webp
+        # *statically* does not support anything other than uint8.
+        op = image_ops.decode_image(webp, dtype=dtype)
+        self.evaluate(op)
 
 
 class ConvertImageTest(test_util.TensorFlowTestCase):

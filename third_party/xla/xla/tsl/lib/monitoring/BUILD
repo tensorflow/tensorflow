@@ -10,6 +10,7 @@ package(
     default_visibility = internal_visibility([
         "//learning/brain/google/data:__subpackages__",
         "//learning/brain/google/monitoring:__subpackages__",
+        # copybara:uncomment "//learning/infra/mira/experimental/orbax_model:__subpackages__",
         # tensorflow/core:lib effectively exposes all targets under tensorflow/core/lib/**
         "//tensorflow/core:__pkg__",
         # tensorflow/core/platform:monitoring depends on this package
@@ -27,7 +28,8 @@ package(
         "//xla/tsl/distributed_runtime:__subpackages__",
         "//tensorflow/compiler/mlir/tf2xla:__subpackages__",
         "//tensorflow_serving/model_servers:__subpackages__",
-        # tensorflow/python/profiler/internal depends on this package
+        # xprof depends on this package
+        "//third_party/xprof:__subpackages__",
         "//tensorflow/python/profiler/internal:__pkg__",
     ]),
     licenses = ["notice"],
@@ -43,8 +45,9 @@ cc_library(
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:types",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:mutex",
         "@local_tsl//tsl/platform:thread_annotations",
     ],
 )
@@ -60,8 +63,8 @@ cc_library(
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:types",
+        "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:mutex",
         "@local_tsl//tsl/platform:thread_annotations",
     ],
 )
@@ -80,8 +83,8 @@ cc_library(
         "//xla/tsl/protobuf:histogram_proto_cc",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:mutex",
         "@local_tsl//tsl/platform:thread_annotations",
     ],
 )
@@ -122,8 +125,8 @@ cc_library(
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:types",
         "//xla/tsl/protobuf:histogram_proto_cc",
+        "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:mutex",
         "@local_tsl//tsl/platform:stringpiece",
         "@local_tsl//tsl/platform:thread_annotations",
     ],
@@ -189,8 +192,8 @@ cc_library(
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:mutex",
         "@local_tsl//tsl/platform:thread_annotations",
     ],
 )

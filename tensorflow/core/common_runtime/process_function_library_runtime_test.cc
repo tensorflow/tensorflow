@@ -262,7 +262,7 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
                 done2.Notify();
               });
     done2.WaitForNotification();
-    EXPECT_TRUE(errors::IsNotFound(status)) << "Actual status: " << status;
+    EXPECT_TRUE(absl::IsNotFound(status)) << "Actual status: " << status;
     EXPECT_TRUE(absl::StrContains(status.message(), "not found."));
 
     return absl::OkStatus();
@@ -435,6 +435,53 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, SingleCallFindDevice) {
   EXPECT_EQ(0, rendezvous_cache_->Size());
 }
 
+TEST_F(ProcessFunctionLibraryRuntimeTest, SingleCallRunAfterInstalantiation) {
+  Init({test::function::XTimesTwo()});
+
+  // Instantiate the function.
+  FunctionLibraryRuntime::Handle handle;
+  FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
+  instantiate_opts.target = "/job:a/replica:0/task:0/cpu:0";
+  TF_CHECK_OK(
+      Instantiate("XTimesTwo", {{"T", DT_FLOAT}}, instantiate_opts, &handle));
+  FunctionLibraryRuntime::Options opts;
+  opts.source_device = "/job:a/replica:0/task:0/cpu:0";
+  opts.remote_execution = true;
+
+  // Run the function.
+  auto x = test::AsTensor<float>({1, 2, 3, 4});
+  Tensor y;
+  TF_CHECK_OK(RunInstantiated(handle, opts, {x}, {&y}));
+  test::ExpectTensorEqual<float>(y, test::AsTensor<float>({2, 4, 6, 8}));
+
+  // Re-run the function.
+  TF_CHECK_OK(RunInstantiated(handle, opts, {x}, {&y}));
+  test::ExpectTensorEqual<float>(y, test::AsTensor<float>({2, 4, 6, 8}));
+}
+
+TEST_F(ProcessFunctionLibraryRuntimeTest, SingleCallRunAfterFinalizaztion) {
+  Init({test::function::XTimesTwo()});
+
+  // Instantiate the function.
+  FunctionLibraryRuntime::Handle handle;
+  FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
+  instantiate_opts.target = "/job:a/replica:0/task:0/cpu:0";
+  TF_CHECK_OK(
+      Instantiate("XTimesTwo", {{"T", DT_FLOAT}}, instantiate_opts, &handle));
+  FunctionLibraryRuntime::Options opts;
+  opts.source_device = "/job:a/replica:0/task:0/cpu:0";
+  opts.remote_execution = true;
+  auto x = test::AsTensor<float>({1, 2, 3, 4});
+  Tensor y;
+  TF_CHECK_OK(RunInstantiated(handle, opts, {x}, {&y}));
+  test::ExpectTensorEqual<float>(y, test::AsTensor<float>({2, 4, 6, 8}));
+
+  TF_CHECK_OK(proc_flr_->Finalize());
+
+  TF_CHECK_OK(RunInstantiated(handle, opts, {x}, {&y}));
+  test::ExpectTensorEqual<float>(y, test::AsTensor<float>({2, 4, 6, 8}));
+}
+
 TEST_F(ProcessFunctionLibraryRuntimeTest, MultipleCallsSameDeviceXTimes) {
   Init({test::function::XTimesTwo(), test::function::XTimesFour()});
   auto x = test::AsTensor<float>({1, 2, 3, 4});
@@ -601,8 +648,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, ClusterFLRParallelTest) {
 bool IsCUDATensor(const Tensor& t) {
 #if GOOGLE_CUDA
   cudaPointerAttributes attributes;
-  cudaError_t err =
-      cudaPointerGetAttributes(&attributes, t.tensor_data().data());
+  cudaError_t err = cudaPointerGetAttributes(&attributes, t.data());
   if (err == cudaErrorInvalidValue) return false;
   CHECK_EQ(cudaSuccess, err) << cudaGetErrorString(err);
   return (attributes.type == cudaMemoryTypeDevice);
@@ -630,8 +676,7 @@ void TestTwoDeviceMult(
   absl::Status status = fixture->Run("TwoDeviceMult", opts, {{"T", DT_FLOAT}},
                                      inst_opts, {x}, {&y_cpu, &y_gpu});
   if (!error.empty()) {
-    EXPECT_TRUE(errors::IsInvalidArgument(status))
-        << "Actual status: " << status;
+    EXPECT_TRUE(absl::IsInvalidArgument(status)) << "Actual status: " << status;
     EXPECT_TRUE(absl::StrContains(status.message(), error))
         << "Actual error message: " << status.message();
     return;
@@ -790,7 +835,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, MultiDevice_ErrorWhenListInput) {
   absl::Status status = proc_flr_->Instantiate(
       "FuncWithListInput", test::function::Attrs({{"T", DT_FLOAT}, {"N", 1}}),
       MakeOptions("CPU:0", {"CPU:0"}, {}), &handle);
-  ASSERT_TRUE(errors::IsInvalidArgument(status)) << "Actual status: " << status;
+  ASSERT_TRUE(absl::IsInvalidArgument(status)) << "Actual status: " << status;
   ASSERT_TRUE(absl::StrContains(
       status.message(),
       "FuncWithListInput has an input named \"x1\" that is a list of tensors"))
@@ -811,7 +856,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, FullTypeForInt32) {
   absl::Status status =
       proc_flr_->Instantiate("XTimesTwoInt32", test::function::Attrs({}),
                              MakeOptions("CPU:0", {"CPU:0"}, {}), &handle);
-  ASSERT_TRUE(errors::IsInvalidArgument(status)) << "Actual status: " << status;
+  ASSERT_TRUE(absl::IsInvalidArgument(status)) << "Actual status: " << status;
   // Check that the error is found by earlier in ProcessFunctionLibraryRuntime
   // and not later in FunctionLibraryRuntime.
   EXPECT_TRUE(absl::StrContains(
@@ -827,7 +872,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, MultiDevice_ErrorWhenListOutput) {
   absl::Status status = proc_flr_->Instantiate(
       "FuncWithListOutput", test::function::Attrs({{"T", DT_FLOAT}, {"N", 1}}),
       MakeOptions("CPU:0", {}, {"CPU:0"}), &handle);
-  ASSERT_TRUE(errors::IsInvalidArgument(status)) << "Actual status: " << status;
+  ASSERT_TRUE(absl::IsInvalidArgument(status)) << "Actual status: " << status;
   ASSERT_TRUE(absl::StrContains(
       status.message(),
       "FuncWithListOutput has an output named \"y\" that is a list of tensors"))
@@ -1077,7 +1122,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, MultiDevice_PlacerError) {
   absl::Status status = proc_flr_->Instantiate(
       "ResourceOutput", test::function::Attrs({{"T", DT_FLOAT}}), inst_opts,
       &handle);
-  ASSERT_TRUE(errors::IsInvalidArgument(status)) << "Actual status: " << status;
+  ASSERT_TRUE(absl::IsInvalidArgument(status)) << "Actual status: " << status;
   ASSERT_TRUE(absl::StrContains(status.message(), "Cannot place"));
 }
 
@@ -1127,7 +1172,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, MultiDevice_CreateKernelsEagerly) {
   inst_opts.create_kernels_eagerly = true;
   absl::Status status =
       Instantiate("Broken", {{"T", DT_INT32}}, inst_opts, &handle);
-  EXPECT_TRUE(errors::IsInternal(status));
+  EXPECT_TRUE(absl::IsInternal(status));
 }
 
 TEST_F(ProcessFunctionLibraryRuntimeTest, MultiDevice_StateHandle) {

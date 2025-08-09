@@ -15,10 +15,14 @@ limitations under the License.
 
 #include "xla/hlo/analysis/logical_buffer_analysis.h"
 
+#include <memory>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -54,7 +58,7 @@ LogicalBufferAnalysis::Run(const HloModule* module) {
   std::unique_ptr<LogicalBufferAnalysis> analysis(
       new LogicalBufferAnalysis(module));
   TF_RETURN_IF_ERROR(analysis->Analyze());
-  return std::move(analysis);
+  return analysis;
 }
 
 absl::Status LogicalBufferAnalysis::Analyze() {
@@ -78,7 +82,8 @@ absl::Status LogicalBufferAnalysis::Analyze() {
     }
   }
   for (auto* instruction : fusion_instructions) {
-    TF_RETURN_IF_ERROR(instruction->fused_expression_root()->Accept(this));
+    TF_RETURN_IF_ERROR(
+        instruction->fused_instructions_computation()->Accept(this));
   }
   return absl::OkStatus();
 }

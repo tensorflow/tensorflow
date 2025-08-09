@@ -3,7 +3,7 @@ chex==0.1.87
 etils==1.11.0
 flax==0.10.2
 fsspec==2024.10.0
-gemma @ git+https://github.com/google-deepmind/gemma.git@af38d6eb413cb98446b78a906c77cf5ba28be149
+gemma==3.0.2
 humanize==4.11.0
 importlib_resources==6.4.5
 jax==0.4.37
@@ -17,7 +17,7 @@ numpy==2.2.0
 opt_einsum==3.4.0
 optax==0.2.4
 orbax-checkpoint==0.10.2
-protobuf==5.29.1
+protobuf==5.29.5
 Pygments==2.18.0
 PyYAML==6.0.2
 rich==13.9.4

@@ -67,7 +67,7 @@ def bincount(arr: ragged_tensor.RaggedTensor,
   summed).
 
   There is an equivilance between bin-counting with weights and
-  `unsorted_segement_sum` where `data` is the weights and `segment_ids` are the
+  `unsorted_segment_sum` where `data` is the weights and `segment_ids` are the
   values.
 
   >>> data = tf.ragged.constant([[1, 1], [2, 3, 2, 4, 4, 5]])
@@ -103,8 +103,8 @@ def bincount(arr: ragged_tensor.RaggedTensor,
            [1, 1, 1, 1]], dtype=int32)>
 
   Args:
-    arr: A RaggedTensor whose values should be counted.
-      These tensors must have a rank of 2 if `axis=-1`.
+    arr: A RaggedTensor whose values should be counted. These tensors must have
+      a rank of 2 if `axis=-1`.
     weights: If non-None, must be a RaggedTensor with the same row splits as
       `arr`. For each value in `arr`, the bin will be incremented by the
       corresponding weight instead of 1. If non-None, `binary_output` must be
@@ -128,7 +128,6 @@ def bincount(arr: ragged_tensor.RaggedTensor,
 
   Raises:
     `InvalidArgumentError` if negative values are provided as an input.
-
   """
   name = "bincount" if name is None else name
   with ops.name_scope(name):

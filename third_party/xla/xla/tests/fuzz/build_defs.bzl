@@ -1,6 +1,9 @@
 """Build rules for XLA generated regression testing."""
 
 load("//xla/tests:build_defs.bzl", "xla_test")
+load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
+
+visibility(DEFAULT_LOAD_VISIBILITY)
 
 def hlo_test(name, hlo, **kwargs):
     """Wrapper around `xla_test` which runs an HLO through `hlo_test_lib`.
@@ -34,9 +37,11 @@ def hlo_test(name, hlo, **kwargs):
       **kwargs:
         Additional arguments passed to `xla_test`.
     """
+    backend_kwargs = {}
     xla_test(
         name = name,
         srcs = [],
+        backend_kwargs = backend_kwargs,
         env = {"HLO_PATH": "$(location {})".format(hlo)},
         data = [hlo],
         real_hardware_only = True,

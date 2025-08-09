@@ -16,9 +16,11 @@ limitations under the License.
 #include "xla/hlo/builder/lib/self_adjoint_eig.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <numeric>
 #include <vector>
 
+#include "xla/tests/xla_test_backend_predicates.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
@@ -32,19 +34,26 @@ limitations under the License.
 #include "xla/hlo/builder/lib/matrix.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/testlib/test.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tests/client_library_test_base.h"
-#include "xla/tests/test_macros.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 
-class SelfAdjointEigTest : public ClientLibraryTestBase {
+class SelfAdjointEigTest
+    : public ClientLibraryTestRunnerMixin<
+          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
  protected:
   void SetUp() override {
-    ClientLibraryTestBase::SetUp();
+    ClientLibraryTestRunnerMixin<
+        HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>::SetUp();
     batch_3d_4x4_ = Array3D<float>{
         {
             {4, 6, 8, 10},
@@ -78,7 +87,6 @@ class SelfAdjointEigTest : public ClientLibraryTestBase {
         {3, 9, 11, 17},
     };
   }
-  void TearDown() override { ClientLibraryTestBase::TearDown(); }
 
   Array3D<float> GetUnitMatrix3D(const Array3D<float>& matrix) {
     Array3D<float> result(matrix.n1(), matrix.n2(), matrix.n3(), 0.0);
@@ -126,10 +134,10 @@ XlaOp GetAverageAbsoluteError(XlaOp m1, XlaOp m2, XlaBuilder* builder) {
 XlaOp ComputeMatmulVWVt(SelfAdjointEigResult result, XlaBuilder* builder) {
   Shape shape = builder->GetShape(result.v).value();
   absl::Span<const int64_t> out_dims = shape.dimensions();
-  std::vector<int64_t> broadcast_dims(shape.rank() - 1);
+  std::vector<int64_t> broadcast_dims(shape.dimensions().size() - 1);
   std::iota(broadcast_dims.begin(), broadcast_dims.end(), 0);
 
-  broadcast_dims[shape.rank() - 2] = shape.rank() - 1;
+  broadcast_dims[shape.dimensions().size() - 2] = shape.dimensions().size() - 1;
   auto vw =
       Mul(result.v,
           BroadcastInDim(ConvertElementType(result.w, shape.element_type()),
@@ -138,7 +146,7 @@ XlaOp ComputeMatmulVWVt(SelfAdjointEigResult result, XlaBuilder* builder) {
                   PrecisionConfig::HIGHEST);
 }
 
-XLA_TEST_F(SelfAdjointEigTest, Test_VWVt_EQ_A_2x4x4) {
+TEST_F(SelfAdjointEigTest, Test_VWVt_EQ_A_2x4x4) {
   for (bool sort_eigenvalues : {false, true}) {
     XlaBuilder builder(TestName());
 
@@ -148,28 +156,28 @@ XLA_TEST_F(SelfAdjointEigTest, Test_VWVt_EQ_A_2x4x4) {
                                  /*tol=*/1e-5, sort_eigenvalues);
     ComputeMatmulVWVt(result, &builder);
 
-    ComputeAndCompareR3<float>(&builder, batch_3d_4x4_, {a_data.get()},
+    ComputeAndCompareR3<float>(&builder, batch_3d_4x4_, {&a_data},
                                ErrorSpec(1e-3, 1e-3));
   }
 }
 
-XLA_TEST_F(SelfAdjointEigTest, Test_VWVt_EQ_A_3x3_Complex) {
+TEST_F(SelfAdjointEigTest, Test_VWVt_EQ_A_3x3_Complex) {
   XlaBuilder builder(TestName());
   Array<complex64> input = {
       {1, complex64{2, -7}, complex64{4, -8}},
       {complex64{2, 7}, 3, complex64{5, -9}},
       {complex64{4, 8}, complex64{5, 9}, 6},
   };
-  XlaOp a;
-  auto a_data = CreateParameter<complex64>(input, 0, "a", &builder, &a);
+  const Literal a_literal = LiteralUtil::CreateFromArray(input);
+  XlaOp a = Parameter(&builder, 0, a_literal.shape(), "a");
   auto result = SelfAdjointEig(a);
   ComputeMatmulVWVt(result, &builder);
 
-  ComputeAndCompare<complex64>(&builder, input, {a_data.get()},
-                               ErrorSpec(1e-3, 1e-3));
+  ComputeAndCompareLiteral(&builder, LiteralUtil::CreateFromArray(input),
+                           {&a_literal}, ErrorSpec(1e-3, 1e-3));
 }
 
-XLA_TEST_F(SelfAdjointEigTest, Test_VWVt_EQ_A_Lower_2x4x4) {
+TEST_F(SelfAdjointEigTest, Test_VWVt_EQ_A_Lower_2x4x4) {
   XlaBuilder builder(TestName());
 
   XlaOp a;
@@ -178,11 +186,11 @@ XLA_TEST_F(SelfAdjointEigTest, Test_VWVt_EQ_A_Lower_2x4x4) {
   auto result = SelfAdjointEig(a);
   ComputeMatmulVWVt(result, &builder);
 
-  ComputeAndCompareR3<float>(&builder, batch_3d_4x4_, {a_data.get()},
+  ComputeAndCompareR3<float>(&builder, batch_3d_4x4_, {&a_data},
                              ErrorSpec(1e-3, 1e-3));
 }
 
-XLA_TEST_F(SelfAdjointEigTest, Test_VWVt_EQ_A_Upper_2x4x4) {
+TEST_F(SelfAdjointEigTest, Test_VWVt_EQ_A_Upper_2x4x4) {
   XlaBuilder builder(TestName());
 
   XlaOp a;
@@ -191,11 +199,11 @@ XLA_TEST_F(SelfAdjointEigTest, Test_VWVt_EQ_A_Upper_2x4x4) {
   auto result = SelfAdjointEig(a, false);
   ComputeMatmulVWVt(result, &builder);
 
-  ComputeAndCompareR3<float>(&builder, batch_3d_4x4_, {a_data.get()},
+  ComputeAndCompareR3<float>(&builder, batch_3d_4x4_, {&a_data},
                              ErrorSpec(1e-3, 1e-3));
 }
 
-XLA_TEST_F(SelfAdjointEigTest, Test_Orthogonality_2x4x4) {
+TEST_F(SelfAdjointEigTest, Test_Orthogonality_2x4x4) {
   XlaBuilder builder(TestName());
 
   XlaOp a;
@@ -204,10 +212,10 @@ XLA_TEST_F(SelfAdjointEigTest, Test_Orthogonality_2x4x4) {
   BatchDot(result.v, TransposeInMinorDims(result.v), PrecisionConfig::HIGHEST);
 
   ComputeAndCompareR3<float>(&builder, GetUnitMatrix3D(batch_3d_4x4_),
-                             {a_data.get()}, ErrorSpec(1e-3, 1e-3));
+                             {&a_data}, ErrorSpec(1e-3, 1e-3));
 }
 
-XLA_TEST_F(SelfAdjointEigTest, Test_VtWV_EQ_A_Rank_Deficient_4x4) {
+TEST_F(SelfAdjointEigTest, Test_VtWV_EQ_A_Rank_Deficient_4x4) {
   XlaBuilder builder(TestName());
 
   XlaOp a;
@@ -215,11 +223,11 @@ XLA_TEST_F(SelfAdjointEigTest, Test_VtWV_EQ_A_Rank_Deficient_4x4) {
   auto result = SelfAdjointEig(a);
   ComputeMatmulVWVt(result, &builder);
 
-  ComputeAndCompareR2<float>(&builder, low_rank_4x4_, {a_data.get()},
+  ComputeAndCompareR2<float>(&builder, low_rank_4x4_, {&a_data},
                              ErrorSpec(1e-3, 1e-3));
 }
 
-XLA_TEST_F(SelfAdjointEigTest, Test_Eigen_8x8) {
+TEST_F(SelfAdjointEigTest, Test_Eigen_8x8) {
   XlaBuilder builder(TestName());
 
   // This is computed by numpy.linalg.eigh with float32.
@@ -231,11 +239,11 @@ XLA_TEST_F(SelfAdjointEigTest, Test_Eigen_8x8) {
   auto result = SelfAdjointEig(a);
   Add(result.w, ZerosLike(result.w));
 
-  ComputeAndCompareR1<float>(&builder, expected, {a_data.get()},
+  ComputeAndCompareR1<float>(&builder, expected, {&a_data},
                              ErrorSpec(1e-3, 1e-3));
 }
 
-XLA_TEST_F(SelfAdjointEigTest, Test_Orthogonality_8x8) {
+TEST_F(SelfAdjointEigTest, Test_Orthogonality_8x8) {
   XlaBuilder builder(TestName());
 
   float expected_vals = 1e-3;
@@ -248,11 +256,11 @@ XLA_TEST_F(SelfAdjointEigTest, Test_Orthogonality_8x8) {
                           BatchDot(TransposeInMinorDims(result.v), result.v),
                           &builder);
 
-  ComputeAndCompareR0<float>(&builder, expected_vals, {a_data.get()},
+  ComputeAndCompareR0<float>(&builder, expected_vals, {&a_data},
                              ErrorSpec(1e-3, 1e-3));
 }
 
-XLA_TEST_F(SelfAdjointEigTest, Wrong_Type_Int) {
+TEST_F(SelfAdjointEigTest, Wrong_Type_Int) {
   XlaBuilder builder(TestName());
 
   XlaOp a;
@@ -276,10 +284,11 @@ Array2D<float> GenerateRandomSymmetricMatrix(int size) {
 }
 
 using EighTestCase = int64_t;
-class RandomEighTest : public ClientLibraryTestBase,
+class RandomEighTest : public ClientLibraryTestRunnerMixin<
+                           HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>,
                        public ::testing::WithParamInterface<EighTestCase> {};
 
-XLA_TEST_P(RandomEighTest, Random) {
+TEST_P(RandomEighTest, Random) {
   XlaBuilder builder(TestName());
   int64_t size = GetParam();
   Array2D<float> a_val = GenerateRandomSymmetricMatrix(size);
@@ -290,30 +299,28 @@ XLA_TEST_P(RandomEighTest, Random) {
 
   // TODO(phawkins): this would be better expressed as <= 6e-3.
   double kExpected = 0.00300000003;
-  ComputeAndCompareR0<float>(&builder, kExpected, {a_data.get()},
+  ComputeAndCompareR0<float>(&builder, kExpected, {&a_data},
                              ErrorSpec(kExpected, 0));
 }
 
-#ifndef XLA_TEST_BACKEND_CPU
+std::vector<EighTestCase> MakeTestCases() {
+  std::vector<EighTestCase> testcases = {0,   1,   2,   3,   8,   16,  32, 77,
+                                         129, 203, 256, 257, 493, 511, 512};
+  if (!test::DeviceTypeIs(test::kCpu)) {
+    // These take too long on CPU.
+    testcases.push_back(513);
+    testcases.push_back(1000);
+  }
+
+  return testcases;
+}
+
 INSTANTIATE_TEST_SUITE_P(
     RandomEighTestInstantiation, RandomEighTest,
-    ::testing::Values(0, 1, 2, 3, 8, 16, 32, 77, 129, 203, 256, 257, 493, 511,
-                      512,
-                      // Large tests are slow on CPU.
-                      513, 1000),
+    ::testing::ValuesIn(MakeTestCases()),
     [](const ::testing::TestParamInfo<EighTestCase>& info) {
       const int64_t size = info.param;
       return absl::StrCat(size);
     });
-#else
-INSTANTIATE_TEST_SUITE_P(
-    RandomEighTestInstantiation, RandomEighTest,
-    ::testing::Values(0, 1, 2, 3, 8, 16, 32, 77, 129, 203, 256, 257, 493, 511,
-                      512),
-    [](const ::testing::TestParamInfo<EighTestCase>& info) {
-      const int64_t size = info.param;
-      return absl::StrCat(size);
-    });
-#endif  // XLA_TEST_BACKEND_CPU
 
 }  // namespace xla

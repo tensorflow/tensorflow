@@ -1,4 +1,4 @@
-// RUN: stablehlo-quant-opt %s -stablehlo-nchw-convolution-to-nhwc \
+// RUN: stablehlo-quant-opt %s -tf-stablehlo-nchw-convolution-to-nhwc \
 // RUN:   -split-input-file -verify-diagnostics | FileCheck %s
 
 // Tests that `stablehlo.transpose` ops are inserted for each of input, filter,

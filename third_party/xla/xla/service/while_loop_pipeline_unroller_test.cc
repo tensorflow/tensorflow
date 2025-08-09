@@ -20,30 +20,30 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/service/copy_insertion.h"
-#include "xla/test_helpers.h"
-#include "xla/tests/hlo_test_base.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
 
 // Copied from xla/service/copy_insertion_test.cc
-int64_t CountCopies(const HloComputation& computation) {
+int64_t Count(HloOpcode opcode, const HloComputation& computation) {
   int64_t count = 0;
   for (const auto& instruction : computation.instructions()) {
-    if (instruction->opcode() == HloOpcode::kCopy) {
+    if (instruction->opcode() == opcode) {
       count++;
     }
   }
   return count;
 }
 
-class WhileLoopPipelineUnrollerTest : public HloTestBase {
+class WhileLoopPipelineUnrollerTest : public HloHardwareIndependentTestBase {
  protected:
   WhileLoopPipelineUnrollerTest() = default;
 };
@@ -81,7 +81,8 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   WhileLoopPipelineUnroller wlpu;
   ASSERT_IS_OK(wlpu.Run(module.get()).status());
-  CopyInsertion copy_insertion(nullptr,
+  AliasInfo alias_info;
+  CopyInsertion copy_insertion(&alias_info,
                                /*use_region_based_live_range_analysis=*/-1);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
 
@@ -91,12 +92,12 @@ ENTRY main {
   // arg.1 moves to index 0.
   // arg.2 moves to index 1.
   // out.0 moves to index 2.
-  EXPECT_EQ(CountCopies(*original_loop->while_body()), 3);
+  EXPECT_EQ(Count(HloOpcode::kCopy, *original_loop->while_body()), 3);
 
   const HloInstruction* unrolled_loop = original_loop->operand(0);
   EXPECT_EQ(unrolled_loop->opcode(), HloOpcode::kWhile);
   // There should be no copies inserted into the unrolled loop.
-  EXPECT_EQ(CountCopies(*unrolled_loop->while_body()), 0);
+  EXPECT_EQ(Count(HloOpcode::kCopy, *unrolled_loop->while_body()), 0);
 }
 
 TEST_F(WhileLoopPipelineUnrollerTest, PipelinedLoopWithInfeed) {
@@ -149,7 +150,8 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   WhileLoopPipelineUnroller wlpu;
   ASSERT_IS_OK(wlpu.Run(module.get()).status());
-  CopyInsertion copy_insertion(nullptr,
+  AliasInfo alias_info;
+  CopyInsertion copy_insertion(&alias_info,
                                /*use_region_based_live_range_analysis=*/-1);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
 
@@ -157,12 +159,12 @@ ENTRY main {
       FindInstruction(module.get(), "while.0");
   // The original loop should have 1 copy.
   // arg.2 moves to index 1.
-  EXPECT_EQ(CountCopies(*original_loop->while_body()), 1);
+  EXPECT_EQ(Count(HloOpcode::kCopy, *original_loop->while_body()), 1);
 
   const HloInstruction* unrolled_loop = original_loop->operand(0);
   EXPECT_EQ(unrolled_loop->opcode(), HloOpcode::kWhile);
   // There should be no copies inserted into the unrolled loop.
-  EXPECT_EQ(CountCopies(*unrolled_loop->while_body()), 0);
+  EXPECT_EQ(Count(HloOpcode::kCopy, *unrolled_loop->while_body()), 0);
 
   // All infeeds in the unrolled body need to be ordered with respect to each
   // other.

@@ -48,6 +48,8 @@ namespace {
 
 using ::mlir::IntegerAttr;
 using ::mlir::StringRef;
+using ::mlir::sdy::PropagationBarrierOp;
+using ::mlir::sdy::PropagationDirectionAttr;
 using ::mlir::sdy::ShardingConstraintOp;
 using ::mlir::sdy::ShardingGroupOp;
 using ::mlir::sdy::TensorShardingAttr;
@@ -73,7 +75,14 @@ mlir::LogicalResult rewriteShardingCustomCall(
   }
   TensorShardingAttr sharding = mlir::sdy::getSharding(op->getResult(0));
   if (!sharding) {
-    op.emitError() << "expected CustomCallOp with a sharding attribute";
+    op.emitError()
+        << "expected CustomCallOp with a sharding attribute. "
+        // TODO: b/432201708 - Remove this once Shardy is stable in JAX.
+        << "If you are a JAX user hitting this, please file a bug against the "
+        << "OpenXLA Shardy team. This shouldn't happen to you. One of the "
+        << "possible bugs is the model has been lowered targeting GSPMD, but "
+        << "Shardy was then enabled in XLA.";
+
     return mlir::failure();
   }
 
@@ -87,6 +96,24 @@ mlir::LogicalResult rewriteShardingCustomCall(
   return mlir::success();
 }
 
+mlir::LogicalResult rewritePropagationBarrierCustomCall(
+    CustomCallOp op, CustomCallOpAdaptor adaptor,
+    mlir::ConversionPatternRewriter& rewriter) {
+  CHECK_EQ(op.getNumOperands(), 1);
+  CHECK_EQ(op.getNumResults(), 1);
+  std::optional<PropagationDirectionAttr> allowedDirection =
+      tryGetFrontendAttr<PropagationDirectionAttr>(op, kAllowedDirectionAttr);
+  if (!allowedDirection.has_value()) {
+    op.emitError() << "expected PropagationBarrier CustomCall Op with a "
+                      "propagation direction.";
+    return mlir::failure();
+  }
+
+  rewriter.replaceOpWithNewOp<PropagationBarrierOp>(
+      op, adaptor.getInputs().front(), allowedDirection->getValue());
+
+  return mlir::success();
+}
 mlir::LogicalResult rewriteShardingGroupCustomCall(
     CustomCallOp op, CustomCallOpAdaptor adaptor,
     mlir::ConversionPatternRewriter& rewriter) {
@@ -122,6 +149,9 @@ class SdyCustomCallPattern : public mlir::OpConversionPattern<CustomCallOp> {
     if (op.getCallTargetName() == kShardingGroupCustomCallTargetName) {
       return rewriteShardingGroupCustomCall(op, adaptor, rewriter);
     }
+    if (op.getCallTargetName() == kPropagationBarrierCustomCallTargetName) {
+      return rewritePropagationBarrierCustomCall(op, adaptor, rewriter);
+    }
 
     return rewriter.notifyMatchFailure(
         op, "expected CustomCallOp with xla.sdy target name.");
@@ -143,7 +173,8 @@ class ImportSdyCustomCallsPass
     target.addLegalDialect<mlir::sdy::SdyDialect>();
     target.addDynamicallyLegalOp<CustomCallOp>([](CustomCallOp op) {
       return op.getCallTargetName() != kShardingCustomCallTargetName &&
-             op.getCallTargetName() != kShardingGroupCustomCallTargetName;
+             op.getCallTargetName() != kShardingGroupCustomCallTargetName &&
+             op.getCallTargetName() != kPropagationBarrierCustomCallTargetName;
     });
     mlir::RewritePatternSet patterns(&context);
     patterns.add<SdyCustomCallPattern>(&context);
@@ -161,6 +192,10 @@ class ImportSdyCustomCallsPass
     return "Converts a CustomCall with target name Sharding into a "
            "ShardingConstraintOp and with target name ShardingGroup into a "
            "ShardingGroupOp.";
+  }
+
+  void getDependentDialects(mlir::DialectRegistry& registry) const final {
+    registry.insert<mlir::sdy::SdyDialect>();
   }
 };
 

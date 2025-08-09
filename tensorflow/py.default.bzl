@@ -5,8 +5,12 @@ Tensorflow is loading the Python rules directly from rules_python, these shims
 can be removed.
 """
 
-py_test = native.py_test
+load("@rules_python//python:py_binary.bzl", _py_binary = "py_binary")
+load("@rules_python//python:py_library.bzl", _py_library = "py_library")
+load("@rules_python//python:py_test.bzl", _py_test = "py_test")
 
-py_binary = native.py_binary
+py_test = _py_test
 
-py_library = native.py_library
+py_binary = _py_binary
+
+py_library = _py_library

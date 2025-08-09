@@ -116,12 +116,8 @@ void IfrtCompileAtomProgramPass::runOnOperation() {
   llvm::DenseMap<CallOp, CompileFuture, IfrtCallOpInfo> call_to_compile_futures;
   mlir::ModuleOp module_op = getOperation();
 
-  mlir::Attribute meshes_round_trip_attr;
-  // TODO: icgog - This attribute will be deleted in the IFRT -> VIFRT
-  // legalization. Fix in order to be able to use Sdy with VIFRT.
-  if (auto front_end_attr = xla::sdy::getFrontendAttrs(module_op)) {
-    meshes_round_trip_attr = front_end_attr.get(xla::sdy::kMeshesRoundTripAttr);
-  }
+  mlir::Attribute sdy_meshes_round_trip_attr =
+      module_op->getAttr(kIfrtSdyMeshesRoundTripAttr);
 
   // Stash the errors in a MapVector, which maintains the order in which they
   // are encountered. We do not emit an error within the walk because atom
@@ -153,20 +149,14 @@ void IfrtCompileAtomProgramPass::runOnOperation() {
             return mlir::WalkResult::advance();
           }
 
-          if (call_op->hasAttr(kIsSdyPartitioned)) {
+          // TODO(b/433244129) - remove after 6 months bwd compatibility window.
+          if (sdy_meshes_round_trip_attr &&
+              call_op->hasAttr(kIsSdyPartitioned)) {
             // Add the meshes roundtrip attribute to the callee module if the
             // atom program was partitioned with sdy.
-            if (!meshes_round_trip_attr) {
-              call_op_to_error.try_emplace(
-                  call_op,
-                  "requires meshes roundtrip attribute to be set on the "
-                  "program module if the atom program was partitioned with "
-                  "sdy.");
-              return mlir::WalkResult::advance();
-            }
-            xla::sdy::setFrontendAttribute(
-                callee_module, xla::sdy::kMeshesRoundTripAttr,
-                meshes_round_trip_attr, /*escapeAttr=*/false);
+            xla::sdy::setFrontendAttribute(callee_module,
+                                           xla::sdy::kMeshesRoundTripAttr,
+                                           sdy_meshes_round_trip_attr);
           }
 
           absl::StatusOr<CompileFuture> compile_future =
@@ -299,7 +289,7 @@ IfrtCompileAtomProgramPass::GenerateLoadedExecutableOp(
 }  // namespace
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateIfrtCompileAtomProgramPass(
+createIfrtCompileAtomProgramPass(
     std::shared_ptr<AtomProgramCompiler> compiler,
     std::shared_ptr<
         absl::flat_hash_map<std::string, std::unique_ptr<CompileOptions>>>
@@ -311,7 +301,7 @@ CreateIfrtCompileAtomProgramPass(
       std::move(atom_executable_map));
 }
 
-void RegisterIfrtCompileAtomProgramPass(
+void registerIfrtCompileAtomProgramPass(
     std::shared_ptr<AtomProgramCompiler> compiler,
     std::shared_ptr<
         absl::flat_hash_map<std::string, std::unique_ptr<CompileOptions>>>
@@ -322,7 +312,7 @@ void RegisterIfrtCompileAtomProgramPass(
        compile_options_overrides = std::move(compile_options_overrides),
        atom_executable_map =
            std::move(atom_executable_map)]() -> std::unique_ptr<mlir::Pass> {
-        return CreateIfrtCompileAtomProgramPass(
+        return createIfrtCompileAtomProgramPass(
             std::move(compiler), std::move(compile_options_overrides),
             std::move(atom_executable_map));
       });

@@ -51,7 +51,8 @@ func.func @main(
 This code is in [`stablehlo_axpy.mlir`](stablehlo_axpy.mlir).
 
 **Note:** StableHLO expresses broadcasting explicitly, so we use
-`"stablehlo.broadcast_in_dim"` to broadcast our scalar to a rank-1 tensor.
+`"stablehlo.broadcast_in_dim"` to broadcast our scalar to a 1-dimensional
+tensor.
 
 ## 2. Compile the StableHLO program
 

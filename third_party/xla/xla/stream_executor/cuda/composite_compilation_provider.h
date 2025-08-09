@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/cuda/compilation_options.h"
 #include "xla/stream_executor/cuda/compilation_provider.h"
@@ -45,6 +46,7 @@ class CompositeCompilationProvider : public CompilationProvider {
       std::vector<std::unique_ptr<CompilationProvider>> providers);
 
   std::string name() const override;
+  absl::StatusOr<int> GetLatestPtxIsaVersion() const override;
   bool SupportsCompileToRelocatableModule() const override;
   bool SupportsCompileAndLink() const override;
 

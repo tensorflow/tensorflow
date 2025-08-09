@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <vector>
 
-#include "tsl/platform/mutex.h"
+#include "absl/synchronization/mutex.h"
 #include "tsl/platform/thread_annotations.h"
 
 namespace tsl {
@@ -51,7 +51,7 @@ class BufferPool {
   size_t GetBufferSizeInBytes() const;
 
  protected:
-  mutex buffers_mutex_;
+  absl::Mutex buffers_mutex_;
   std::vector<uint8_t*> buffers_ TF_GUARDED_BY(buffers_mutex_);
   size_t buffer_size_in_bytes_;
 };

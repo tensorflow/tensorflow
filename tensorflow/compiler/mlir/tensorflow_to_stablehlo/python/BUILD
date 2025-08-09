@@ -1,4 +1,5 @@
 load("@local_xla//xla/tsl/platform:build_config_root.bzl", "if_pywrap")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.default.bzl",
     "get_compatible_with_portable",
@@ -81,7 +82,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow_to_stablehlo:tf_to_stablehlo",
         "//tensorflow/core:lib",
-        "//third_party/python_runtime:headers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -91,6 +91,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Support",
+        "@local_xla//third_party/python_runtime:headers",
     ],
 )
 
@@ -100,8 +101,8 @@ tf_python_pybind_extension(
     pytype_srcs = ["pywrap_tensorflow_to_stablehlo.pyi"],
     # Each dependency MUST be either header-only or exclusive.
     deps = [
-        "//third_party/python_runtime:headers",
         "@com_google_absl//absl/strings:string_view",
+        "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
         "@pybind11_abseil//pybind11_abseil:absl_casters",
         "@pybind11_abseil//pybind11_abseil:status_casters",

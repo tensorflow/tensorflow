@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/fusions.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
@@ -49,7 +49,7 @@ namespace {
 
 using ::testing::ElementsAre;
 
-class CoalescingTest : public HloTestBase {
+class CoalescingTest : public HloHardwareIndependentTestBase {
  public:
   std::vector<bool> IsReadCoalescedPerOperand(absl::string_view hlo_string) {
     auto module = ParseAndReturnVerifiedModule(hlo_string).value();
@@ -64,9 +64,9 @@ class CoalescingTest : public HloTestBase {
     auto fusion = dynamic_cast<KernelFusionInterface*>(emitter.get());
     EXPECT_NE(fusion, nullptr);
 
-    CoalescingAnalysis coalescing_analysis(root, root->operands(), analysis,
-                                           fusion, &mlir_context_,
-                                           /*use_heuristic=*/false);
+    CoalescingAnalysis coalescing_analysis =
+        CoalescingAnalysis::Create(root, root->operands(), analysis,
+                                   &mlir_context_, /*use_heuristic=*/false);
 
     std::vector<bool> results;
     for (const HloInstruction* operand : root->operands()) {
@@ -80,7 +80,7 @@ class CoalescingTest : public HloTestBase {
     HloInstruction* root = module->entry_computation()->root_instruction();
     auto analysis = HloFusionAnalysis::Create(*root, device_info_);
     return xla::gpu::IsReadCoalescedHeuristic(
-        analysis.GetEmitterFusionKind(), device_info_, root->operand(0), root);
+        analysis.emitter_fusion_kind(), device_info_, root->operand(0), root);
   }
 
  protected:
@@ -185,6 +185,69 @@ TEST_F(CoalescingTest, Transpose) {
   // thread_x to linearized input mapping for thread_x in [0, 31]:
   // Operand 1:  (thread_x)[s0] -> (thread_x + s0 * 128) for s0 in [0, 7]
   EXPECT_THAT(IsReadCoalescedPerOperand(ir), ElementsAre(true));
+}
+
+TEST_F(CoalescingTest, ConcatenateInLoopEmitter) {
+  absl::string_view ir = R"(
+    HloModule module
+
+    fusion {
+      p0 = bf16[42] parameter(0)
+      p1 = bf16[42] parameter(1)
+      p2 = bf16[42] parameter(2)
+      p3 = bf16[42] parameter(3)
+      p4 = bf16[44] parameter(4)
+      p5 = bf16[44] parameter(5)
+      concatenate = bf16[256] concatenate(p0, p1, p2, p3, p4, p5), dimensions={0}
+      broadcast = bf16[256] parameter(6)
+      ROOT multiply = bf16[256] multiply(concatenate, broadcast)
+    }
+
+    ENTRY entry_computation {
+      p0 = bf16[42] parameter(0)
+      p1 = bf16[42] parameter(1)
+      p2 = bf16[42] parameter(2)
+      p3 = bf16[42] parameter(3)
+      p4 = bf16[44] parameter(4)
+      p5 = bf16[44] parameter(5)
+      p6 = bf16[256] parameter(6)
+      ROOT fusion = bf16[256] fusion(p0, p1, p2, p3, p4, p5, p6), kind=kLoop, calls=fusion
+  })";
+
+  EXPECT_THAT(IsReadCoalescedPerOperand(ir),
+              ElementsAre(true, true, true, true, true, true, true));
+}
+
+TEST_F(CoalescingTest, ConcatenateWitBitcastInLoopEmitter) {
+  absl::string_view ir = R"(
+    HloModule module
+
+    fusion {
+      p0 = bf16[42] parameter(0)
+      p1 = bf16[42] parameter(1)
+      p2 = bf16[42] parameter(2)
+      p3 = bf16[42] parameter(3)
+      p4 = bf16[44] parameter(4)
+      p5 = bf16[44] parameter(5)
+      concatenate = bf16[256] concatenate(p0, p1, p2, p3, p4, p5), dimensions={0}
+      broadcast = bf16[256] parameter(6)
+      multiply = bf16[256] multiply(concatenate, broadcast)
+      ROOT bitcast = bf16[16,16] bitcast(multiply)
+    }
+
+    ENTRY entry_computation {
+      p0 = bf16[42] parameter(0)
+      p1 = bf16[42] parameter(1)
+      p2 = bf16[42] parameter(2)
+      p3 = bf16[42] parameter(3)
+      p4 = bf16[44] parameter(4)
+      p5 = bf16[44] parameter(5)
+      p6 = bf16[256] parameter(6)
+      ROOT fusion = bf16[16, 16] fusion(p0, p1, p2, p3, p4, p5, p6), kind=kLoop, calls=fusion
+  })";
+
+  EXPECT_THAT(IsReadCoalescedPerOperand(ir),
+              ElementsAre(true, true, true, true, true, true, true));
 }
 
 TEST_F(CoalescingTest, TransposeOfBroadcastHeuristic) {
@@ -529,7 +592,8 @@ class CoalescingForTiledHloTest : public CoalescingTest {
 
     TiledHloComputation tiled_hlo_computation =
         *symbolic_tile_analysis.ComputeTiledHloInstructions(
-            tile_sizes, /*constraints_are_known_satisfied=*/true,
+            Tiling({{root, FlatTiling(tile_sizes.begin(), tile_sizes.end())}}),
+            /*constraints_are_known_satisfied=*/true,
             /*compute_all_tile_offset_indexing_maps=*/true);
 
     const TiledHloInstruction* tiled_hlo_root =
@@ -551,7 +615,8 @@ class CoalescingForTiledHloTest : public CoalescingTest {
 
     TiledHloComputation tiled_hlo_computation =
         *symbolic_tile_analysis.ComputeTiledHloInstructions(
-            tile_sizes, /*constraints_are_known_satisfied=*/true,
+            Tiling({{root, FlatTiling(tile_sizes.begin(), tile_sizes.end())}}),
+            /*constraints_are_known_satisfied=*/true,
             /*compute_all_tile_offset_indexing_maps=*/true);
 
     const TiledHloInstruction* tiled_hlo_root =

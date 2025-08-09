@@ -83,11 +83,6 @@ limitations under the License.
 #include "xla/tsl/platform/default/statusor.h"  // IWYU pragma: export
 #endif
 
-// TODO: b/323943471 - This macro should eventually be provided by Abseil.
-#ifndef ABSL_DEPRECATE_AND_INLINE
-#define ABSL_DEPRECATE_AND_INLINE()
-#endif
-
 namespace tsl {
 
 template <typename T>
@@ -100,9 +95,10 @@ using StatusOr ABSL_DEPRECATE_AND_INLINE() = absl::StatusOr<T>;
       TF_STATUS_MACROS_CONCAT_NAME(_status_or_value, __COUNTER__), lhs, \
       rexpr);
 
-#define TF_ASSERT_OK_AND_ASSIGN_IMPL(statusor, lhs, rexpr)  \
-  auto statusor = (rexpr);                                  \
-  ASSERT_TRUE(statusor.status().ok()) << statusor.status(); \
+#define TF_ASSERT_OK_AND_ASSIGN_IMPL(statusor, lhs, rexpr) \
+  auto statusor = (rexpr);                                 \
+  ASSERT_TRUE(statusor.status().ok())                      \
+      << ADD_SOURCE_LOCATION(statusor.status());           \
   lhs = std::move(statusor).value()
 
 #define TF_STATUS_MACROS_CONCAT_NAME(x, y) TF_STATUS_MACROS_CONCAT_IMPL(x, y)

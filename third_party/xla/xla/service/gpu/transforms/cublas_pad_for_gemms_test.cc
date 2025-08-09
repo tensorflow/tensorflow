@@ -19,10 +19,12 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 
 namespace m = ::xla::match;
 
@@ -30,7 +32,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-class CublasGemmPadForTensorCoresTest : public HloTestBase {
+class CublasGemmPadForTensorCoresTest : public HloHardwareIndependentTestBase {
  protected:
   bool PadForF16Gemms(HloModule* module) {
     return CublasPadForGemms(se::CudaComputeCapability(7, 0),
@@ -40,7 +42,8 @@ class CublasGemmPadForTensorCoresTest : public HloTestBase {
   }
 
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options =
+        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
     // Some pads would not be added if we detect that Triton will handle the
     // given dot operation.
     debug_options.set_xla_gpu_triton_gemm_any(false);
@@ -122,12 +125,12 @@ TEST_F(CublasGemmPadForTensorCoresTest, TwoDotsComputation) {
   ENTRY TestComputation {
     %param1 = f16[2048, 1024] parameter(0)
     %param2 = f16[1024, 33708] parameter(1)
-    %param3 = f16[33708, 1] parameter(2)
+    %param3 = f16[33708, 2] parameter(2)
     %dot1 = f16[2048, 33708]{1,0} dot(f16[2048, 1024]{1,0} %param1,
                 f16[1024, 33708]{0,1} %param2),
                 lhs_contracting_dims={1}, rhs_contracting_dims={0}
-    ROOT %dot2 = f16[2048, 1]{1,0} dot(f16[2048, 33708]{1,0} %dot1,
-                f16[33708, 1]{0,1} %param3),
+    ROOT %dot2 = f16[2048, 2]{1,0} dot(f16[2048, 33708]{1,0} %dot1,
+                f16[33708, 2]{0,1} %param3),
                 lhs_contracting_dims={1}, rhs_contracting_dims={0}
   })")
                     .value();
@@ -153,13 +156,13 @@ TEST_F(CublasGemmPadForTensorCoresTest, TwoDotsComputation) {
                          m::Constant().WithShape(F16, {}))
                       .WithShape(F16, {2048, 33712}),
 
-                  m::Pad(m::Parameter().WithShape(F16, {33708, 1}),
+                  m::Pad(m::Parameter().WithShape(F16, {33708, 2}),
                          m::Constant().WithShape(F16, {}))
                       .WithShape(F16, {33712, 8}))
                   .WithShape(F16, {2048, 8})
                   .WithContractingDims(/*lhs_contracting_dims=*/{1},
                                        /*rhs_contracting_dims=*/{0}))
-              .WithShape(F16, {2048, 1})));
+              .WithShape(F16, {2048, 2})));
 
   EXPECT_THAT(
       dot2,

@@ -136,7 +136,7 @@ Classes
     before the while loop, 1 for the while loop's body parameter, and 1 for the
     result of the while loop. There are situations heading into a while loop, in
     which the while loop input is both in alternate memory and default memory.
-    (For example, this could happen beause we want the buffer in alternate
+    (For example, this could happen because we want the buffer in alternate
     memory for the while loop and default memory after the while loop, but we
     don't have resources to evict the buffer after the while loop.) In those
     cases, we use a mirrored allocation for the AllocationValue inside the
@@ -180,6 +180,7 @@ Useful logging and error messages
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -190,6 +191,7 @@ Useful logging and error messages
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -200,6 +202,7 @@ Useful logging and error messages
 #include "xla/service/memory_space_assignment/allocation.h"
 #include "xla/service/memory_space_assignment/memory_space_assignment.pb.h"
 #include "xla/service/memory_space_assignment/options.h"
+#include "xla/shape.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -258,6 +261,18 @@ class PresetAssignments {
     return assignment_info_;
   }
 
+  // A chunk of alternate memory that has been allocated for post-module
+  // scoped operations.
+  std::optional<HeapSimulator::Chunk>
+  post_module_scoped_alternate_memory_chunk() const {
+    return post_module_scoped_alternate_memory_chunk_;
+  }
+
+  void set_post_module_scoped_alternate_memory_chunk(
+      const HeapSimulator::Chunk& chunk) {
+    post_module_scoped_alternate_memory_chunk_ = chunk;
+  }
+
   // Get debugging information.
   std::string buffer_info_str() const { return buffer_info_str_; }
   std::string allocation_info_str() const { return allocation_info_str_; }
@@ -269,6 +284,8 @@ class PresetAssignments {
   std::vector<std::pair<HloPosition, HeapSimulator::Chunk>> chunks_;
   std::vector<std::pair<HloInstruction*, HeapSimulator::Chunk>>
       scoped_allocation_chunks_;
+  std::optional<HeapSimulator::Chunk>
+      post_module_scoped_alternate_memory_chunk_ = std::nullopt;
   std::vector<std::pair<int64_t, AssignmentInformation>> assignment_info_;
   std::string buffer_info_str_;
   std::string allocation_info_str_;
@@ -302,7 +319,8 @@ class MemorySpaceAssignment {
   // Runs the MemorySpaceAssignment pass.
   static absl::StatusOr<std::unique_ptr<PresetAssignments>> Run(
       HloModule* module, const HloLiveRange& hlo_live_range,
-      const HloAliasAnalysis& alias_analysis, const Options& options);
+      const HloAliasAnalysis& alias_analysis, const AliasInfo* alias_info,
+      const Options& options);
 
   // Calculates asynchronous copy statistics.
   absl::StatusOr<AsyncCopyStats> CalculateAsyncCopyStats(
@@ -338,9 +356,11 @@ class MemorySpaceAssignment {
 
   const Options& options() const { return options_; }
 
-  MemorySpaceAssignment(HloModule* module, const Options& options,
+  MemorySpaceAssignment(HloModule* module, const AliasInfo* alias_info,
+                        const Options& options,
                         const HloLiveRange& hlo_live_range)
       : module_(module),
+        alias_info_(alias_info),
         options_(options),
         flattened_instructions_(hlo_live_range.flattened_instruction_sequence()
                                     .instructions()
@@ -361,6 +381,18 @@ class MemorySpaceAssignment {
   HloModule* module() { return module_; }
 
  private:
+  // A struct that represents the source of scoped alternate memory. It can be
+  // either for an instruction or for post-module operations.
+  struct ScopedMemorySource {
+    static ScopedMemorySource ForInstruction(HloInstruction* instruction);
+    static ScopedMemorySource ForPostModule();
+
+    std::string ToString() const;
+
+    bool is_post_module = false;
+    HloInstruction* instruction = nullptr;
+  };
+
   // Process calls Process methods of the allocations after the allocations have
   // been finalized.
   absl::Status Process(const HloLiveRange& hlo_live_range);
@@ -382,18 +414,28 @@ class MemorySpaceAssignment {
   // corresponding CopyDones follow the same order.
   void ScheduleAsynchronousCopies();
 
-  // Remove the positions and chunks associated with the instruction from
+  // Remove the positions and chunks associated with instructions, from
   // alternate_memory_assignments_.
-  void RemoveAssignmentForInstruction(const HloInstruction* instruction);
+  void RemoveAlternateMemoryAssignments(
+      const absl::flat_hash_set<const HloInstruction*>& instructions);
+
+  // Remove the positions and chunks associated with instructions, from
+  // scoped_memory_assignments_.
+  void RemoveScopedMemoryAssignments(
+      const absl::flat_hash_set<const HloInstruction*>& instructions);
 
   HloModule* module_;
+  // Backend specific aliasing information.
+  const AliasInfo* alias_info_;
   const Options& options_;
   std::vector<HloInstruction*> flattened_instructions_;
   absl::flat_hash_set<const HloComputation*> computations_in_schedule_;
   std::unique_ptr<PresetAssignments> preset_assignments_;
   std::vector<std::pair<HloPosition, HeapSimulator::Chunk>>
       alternate_memory_assignments_;
-  std::vector<std::pair<HloInstruction*, HeapSimulator::Chunk>>
+  // Maps from a defining position to a shape if the tensor is split.
+  absl::flat_hash_map<HloPosition, const Layout*> split_map_;
+  std::vector<std::pair<ScopedMemorySource, HeapSimulator::Chunk>>
       scoped_memory_assignments_;
   int64_t alternate_memory_size_ = 0;
 

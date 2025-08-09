@@ -479,6 +479,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   absl::Status HandleDomain(const HloInstruction* domain) override;
   absl::Status HandleDot(const HloInstruction* dot) override;
   absl::Status HandleRaggedDot(const HloInstruction* dot) override;
+  absl::Status HandleScaledDot(const HloInstruction* dot) override;
   absl::Status HandleConvolution(const HloInstruction* convolution) override;
   absl::Status HandleFft(const HloInstruction* fft) override;
   absl::Status HandleTriangularSolve(const HloInstruction* hlo) override;
@@ -551,9 +552,9 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   // Enable efficient updates if a known small set of instructions within an
   // HLO graph was modified.
   // Updates the cost analysis by removing one instruction.
-  absl::Status RemoveInstruction(HloInstruction* instruction);
+  absl::Status RemoveInstruction(const HloInstruction* instruction);
   // Updates the cost analysis by re-doing the analysis of one instruction.
-  absl::Status RevisitInstruction(HloInstruction* instruction);
+  absl::Status RevisitInstruction(const HloInstruction* instruction);
 
   // Decorates shape_size_ by returning 0 immediately if the shape does not have
   // a layout.
@@ -576,7 +577,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   int64_t transcendental_count(const HloInstruction& hlo) const;
   int64_t bytes_accessed(const HloInstruction& hlo) const;
   int64_t operand_bytes_accessed(const HloInstruction& hlo, int64_t operand_num,
-                                 ShapeIndex index = {}) const;
+                                 const ShapeIndex& index = {}) const;
   // Value indicating how much each input of the instruction
   // is used assuming its output is fully used.
   // This is 1.0 for most cases except operations involving slicing (<1)

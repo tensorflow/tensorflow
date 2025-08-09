@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
-#include "xla/stream_executor/cuda/cuda_collectives.h"
 #include "xla/stream_executor/cuda/cuda_context.h"
 #include "xla/stream_executor/cuda/cuda_kernel.h"
 #include "xla/stream_executor/device_description.h"
@@ -84,7 +83,7 @@ class CudaExecutor : public GpuExecutor {
   bool CanEnablePeerAccessTo(StreamExecutor* other) override;
   bool DeviceMemoryUsage(int64_t* free_out, int64_t* total_out) const override;
   absl::StatusOr<std::unique_ptr<Kernel>> LoadKernel(
-      const MultiKernelLoaderSpec& spec) override;
+      const KernelLoaderSpec& spec) override;
   void UnloadKernel(const Kernel* kernel) override;
   absl::StatusOr<ModuleHandle> LoadModule(
       const MultiModuleLoaderSpec& spec) override;
@@ -133,10 +132,10 @@ class CudaExecutor : public GpuExecutor {
   absl::StatusOr<const CudaKernel*> GetCudaKernel(const Kernel* kernel);
 
   // Creates, allocates, and copies a CUtensorMap object for the given TMA
-  // descriptor.  Returns a DeviceMemoryBase pointing to the allocated
-  // CUtensorMap object to be used as an argument to a kernel.
-  absl::StatusOr<DeviceMemoryBase> CreateTensorMap(
-      TmaDescriptor tma_desc, void* global_address) override;
+  // descriptor. Returns a TensorMap, which is 128 bytes of storage, to be
+  // passed by value to the kernel.
+  absl::StatusOr<TensorMap> CreateTensorMap(TmaDescriptor tma_desc,
+                                            void* global_address) override;
   absl::StatusOr<std::unique_ptr<MemoryAllocator>> CreateMemoryAllocator(
       MemoryType type) override;
 

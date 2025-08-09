@@ -20,11 +20,13 @@ limitations under the License.
 
 #include "oneapi/dnnl/dnnl_common.hpp"
 #include "oneapi/dnnl/dnnl_graph.hpp"
+#include "absl/container/flat_hash_map.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "xla/backends/cpu/onednn_fusion.h"
+#include "xla/backends/cpu/onednn_support.h"
 #include "xla/backends/cpu/runtime/onednn/onednn_interop.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -90,7 +92,7 @@ static dnnl::graph::logical_tensor::dims OneDnnDimensions(const Shape& shape) {
 }
 
 static dnnl::graph::logical_tensor::dims OneDnnStrides(const Shape& shape) {
-  dnnl::graph::logical_tensor::dims strides(shape.rank());
+  dnnl::graph::logical_tensor::dims strides(shape.dimensions_size());
   int64_t stride = 1;
   for (int i : shape.layout().minor_to_major()) {
     strides.at(i) = stride;

@@ -227,8 +227,8 @@ static void LogPtxasTooOld(const std::string& ptxas_path, int cc_major,
   using AlreadyLoggedSetTy =
       absl::flat_hash_set<std::tuple<std::string, int, int>>;
 
-  static absl::Mutex* mutex = new absl::Mutex;
-  static AlreadyLoggedSetTy* already_logged = new AlreadyLoggedSetTy;
+  static absl::Mutex* const mutex = new absl::Mutex;
+  static AlreadyLoggedSetTy* const already_logged = new AlreadyLoggedSetTy;
 
   absl::MutexLock lock(mutex);
 
@@ -552,6 +552,26 @@ absl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
       tsl::ReadFileToString(tsl::Env::Default(), output_path, &cubin));
   std::vector<uint8_t> cubin_vector(cubin.begin(), cubin.end());
   return cubin_vector;
+}
+
+absl::StatusOr<std::string> FindNvdisasmExecutable(
+    absl::string_view preferred_cuda_dir) {
+  static constexpr SemanticVersion kMinimumSupportedNvdisasmAsVersion{3, 1, 7};
+  static constexpr absl::Span<const SemanticVersion> kNoExcludedVersions{};
+  static constexpr absl::string_view kNvdisasmAsBinaryName = "nvdisasm";
+
+  return FindCudaExecutable(kNvdisasmAsBinaryName, preferred_cuda_dir,
+                            kMinimumSupportedNvdisasmAsVersion,
+                            kNoExcludedVersions);
+}
+
+absl::StatusOr<SemanticVersion> GetNvdisasmVersion(
+    absl::string_view preferred_cuda_dir) {
+  // Make sure nvdisasm exists and is executable.
+  TF_ASSIGN_OR_RETURN(std::string bin_path,
+                      FindNvdisasmExecutable(preferred_cuda_dir));
+
+  return GetToolVersion(bin_path);
 }
 
 }  // namespace stream_executor

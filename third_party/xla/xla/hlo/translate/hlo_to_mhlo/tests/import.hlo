@@ -2,9 +2,6 @@
 // RUN: xla-translate --print-sugar=false -hlo-text-to-mlir-hlo -hlo-flatten-computation-args-result=false %s -o - | FileCheck %s -check-prefix=NO_DEAD_FUNCTION
 // RUN: hlo-translate --print-sugar=false -hlo-to-mlir -emit-mhlo %s | FileCheck %s -check-prefix=FLATTEN-CHECK
 
-// CHECK: #[[$DC:.*]] = #sparse_tensor.encoding<{ map = (d0, d1) -> (d0 : dense, d1 : compressed), posWidth = 32, crdWidth = 32 }>
-// CHECK: #[[$CSS:.*]] = #sparse_tensor.encoding<{ map = (d0, d1, d2) -> (d0 : compressed(nonunique), d1 : singleton(nonunique, nonordered), d2 : singleton(nonordered)), posWidth = 32, crdWidth = 32 }>
-
 // NO_DEAD_FUNCTION-NOT: @test
 
 // CHECK: module @foobar
@@ -828,18 +825,6 @@ add {
   // CHECK-SAME: precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]}
   ROOT %dot.1 = s16[14,1,12,16,3] dot(%Arg_0.1, %Arg_1.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
-
-// CHECK-LABEL:  @test_dot_sparse
-// CHECK-SAME:  [[LHS:%.*]]: tensor<10x16xf32>, [[RHS:%.*]]: tensor<32x20xf32>, [[META:%.*]]: tensor<10x2xui16>
-%test_dot_sparse (Arg_0: f32[10,16], Arg_1: f32[32,20], Arg_2: u16[10,2]) -> f32[10,20] {
-  %lhs = f32[10,16] parameter(0)
-  %rhs = f32[32,20] parameter(1)
-  %meta = u16[10,2] parameter(2)
-  // CHECK:  "mhlo.sparse_dot"([[LHS]], [[RHS]], [[META]])
-  // CHECK-SAME: lhs_sparsity = #mhlo.sparsity<dimension = 1, n = 2, m = 4>
-  ROOT %dot = f32[10,20] dot(%lhs, %rhs, %meta), lhs_contracting_dims={1}, rhs_contracting_dims={0}, sparsity=L.1@2:4
-}
-
 
 // CHECK-LABEL:  func private @test_dynamic_slice
 // CHECK-SAME:  [[OPERAND:%.*]]: tensor<2x2x258xi32>, [[START_IDX_1:%.*]]: tensor<i32>, [[START_IDX_2:%.*]]: tensor<i32>, [[START_IDX_3:%.*]]: tensor<i32>
@@ -1995,18 +1980,6 @@ add {
   ROOT %domain.2 = u32[] domain(u32[] %Arg_0.1), domain={kind="sharding", entry={maximal device=1}, exit={}}
 }
 
-// CHECK-LABEL : func private @sparse
-// CHECK: tensor<10x10xf32, #[[$DC]]>) -> tensor<10x10xf32, #[[$DC]]>
-%sparse {
-  ROOT root = f32[10,10]{1,0:D(D,C)} parameter(0)
-}
-
-// CHECK-LABEL : func private @sparse_nu_no
-// CHECK: tensor<3x4x5xf32, #[[$CSS]]>) -> tensor<3x4x5xf32, #[[$CSS]]>
-%sparse_nu_no {
-  ROOT root = f32[3,4,5]{2,1,0:D(C+,S+~,S~)} parameter(0)
-}
-
 // CHECK-LABEL: func private @add_dependency
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<4x4xf32>)
 %add_dependency (Arg_0.1: f32[4,4]) -> f32[4,4] {
@@ -2121,3 +2094,11 @@ add {
 
 // FLATTEN-CHECK-LABEL:  func private @test_topk
 // FLATTEN-CHECK-SAME:  ([[ARG:%.*]]: tensor<4x4xf32>) -> (tensor<4x2xf32>, tensor<4x2xi32>)
+
+// Test HLO original value
+// CHECK-LABEL:  func private @test_original_value
+%test_original_value (Arg_0: f32[192]) -> f32[1,17,17,192] {
+  %Arg_0 = f32[192]{0} parameter(0)
+  // CHECK: "mhlo.broadcast_in_dim"(%arg0) <{broadcast_dimensions = dense<3> : tensor<1xi64>}> {mhlo.original_value = "{{[{][{]}}\22broadcast.2342\22{{[}][}]}}"} : (tensor<192xf32>) -> tensor<1x17x17x192xf32>
+  ROOT %broadcast.2342 = f32[1,17,17,192]{3,2,1,0} broadcast(f32[192]{0} %Arg_0), dimensions={3}, origin={{"broadcast.2342"}}
+}

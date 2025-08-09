@@ -296,6 +296,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":tfdataz_metrics",
+        "//tensorflow/core/framework:model_proto_cc",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:numbers",
         "//tensorflow/core/platform:status",
@@ -663,6 +664,7 @@ tf_cc_test(
     # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     deps = [
         ":standalone",
+        "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ] + tf_protos_all(),
@@ -756,6 +758,7 @@ tf_cc_test(
     # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     deps = [
         ":utils",
+        "//tensorflow/core:framework",
         "@com_google_googletest//:gtest_main",
     ],
 )

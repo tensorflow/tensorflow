@@ -42,7 +42,7 @@ def _tf_bind():
     # Needed by Protobuf
     native.bind(
         name = "python_headers",
-        actual = str(Label("//third_party/python_runtime:headers")),
+        actual = str(Label("@local_xla//third_party/python_runtime:headers")),
     )
 
     # Needed by Protobuf
@@ -135,6 +135,17 @@ def workspace():
     grpc_extra_deps()
     rules_foreign_cc_dependencies()
     config_googleapis()
+
+    # Toolchains for ML projects hermetic builds.
+    # Details: https://github.com/google-ml-infra/rules_ml_toolchain
+    http_archive(
+        name = "rules_ml_toolchain",
+        sha256 = "b15e9159fb9c42a1a54319456fc7e8f2855261dedc90927a60f4fdc5dbfdcf58",
+        strip_prefix = "rules_ml_toolchain-09961bd590a5d3627b0044cd71b69b8cb9ba3145",
+        urls = [
+            "https://github.com/google-ml-infra/rules_ml_toolchain/archive/09961bd590a5d3627b0044cd71b69b8cb9ba3145.tar.gz",
+        ],
+    )
 
 # Alias so it can be loaded without assigning to a different symbol to prevent
 # shadowing previous loads and trigger a buildifier warning.

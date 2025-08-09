@@ -1,4 +1,4 @@
-// RUN: tf-opt %s --tf-guarantee-all-funcs-one-use --tf-shape-inference | FileCheck %s
+// RUN: litert-opt %s --tf-guarantee-all-funcs-one-use --tf-shape-inference | FileCheck %s
 
 module attributes {tf.versions = {producer = 888 : i32}} {
 // CHECK-LABEL: func @while_main

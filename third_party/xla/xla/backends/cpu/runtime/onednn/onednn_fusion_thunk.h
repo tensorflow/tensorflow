@@ -27,11 +27,15 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/onednn_fusion.h"
-#include "xla/backends/cpu/runtime/object_pool.h"
 #include "xla/backends/cpu/runtime/thunk.h"
+#include "xla/runtime/object_pool.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+
+namespace Eigen {
+class ThreadPoolInterface;
+}  // namespace Eigen
 
 namespace xla::cpu {
 
@@ -87,7 +91,7 @@ class OneDnnFusionThunk : public Thunk {
   struct OneDnnRuntime;
 
   absl::StatusOr<OneDnnRuntime> CreateOneDnnRuntime(
-      const Eigen::ThreadPoolDevice* device,
+      Eigen::ThreadPoolInterface* thread_pool,
       absl::FunctionRef<absl::StatusOr<OneDnnFusion>()> builder);
 
   std::vector<Argument> arguments_;
@@ -97,8 +101,7 @@ class OneDnnFusionThunk : public Thunk {
 
   // XLA:CPU executable can be called concurrently from multiple threads,
   // and we need to keep a pool of oneDNN runtimes to avoid data races.
-  ObjectPool<OneDnnRuntime, const Eigen::ThreadPoolDevice*>
-      onednn_runtime_pool_;
+  ObjectPool<OneDnnRuntime, Eigen::ThreadPoolInterface*> onednn_runtime_pool_;
 };
 
 }  // namespace xla::cpu

@@ -19,6 +19,8 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
@@ -37,6 +39,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/types.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
@@ -148,7 +151,7 @@ absl::Status RunFft(se::DeviceMemoryBase input, const Shape& input_shape,
     const int64_t fft_rank = fft_len.size();
     CHECK_LE(fft_rank, 3);
     int batch_size = 1;
-    for (int i = 0; i < input_shape.dimensions_size() - fft_rank; ++i) {
+    for (int i = 0; i < input_shape.dimensions().size() - fft_rank; ++i) {
       batch_size *= input_shape.dimensions(i);
     }
     uint64_t fft_length[3];
@@ -160,7 +163,7 @@ absl::Status RunFft(se::DeviceMemoryBase input, const Shape& input_shape,
     uint64_t output_distance = 1;
 
     for (int i = 0; i < fft_rank; ++i) {
-      auto dim_offset = input_shape.dimensions_size() - fft_rank + i;
+      auto dim_offset = input_shape.dimensions().size() - fft_rank + i;
       fft_length[i] = static_cast<uint64_t>(fft_len[i]);
       input_embed[i] = input_shape.dimensions(dim_offset);
       input_distance *= input_shape.dimensions(dim_offset);

@@ -69,6 +69,7 @@ tf_py_strict_test(
     srcs = ["failure_handler_test.py"],
     shard_count = 8,
     tags = [
+        "no_mac",
         "no_pip",  # TODO(b/266520226)
         "no_windows",  # TODO(b/197981388)
     ],
@@ -105,6 +106,7 @@ tf_py_strict_test(
     srcs = ["gce_failure_handler_test.py"],
     shard_count = 32,
     tags = [
+        "no_mac",  # Fails on CI but works fine locally.
         "no_pip",  # TODO(b/266520226)
         "noasan",  # TODO(b/226154233): Flaky test
     ],

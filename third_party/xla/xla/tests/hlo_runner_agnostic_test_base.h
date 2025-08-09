@@ -42,11 +42,22 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner_interface.h"
+#include "xla/shape.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
+
+struct HloRunnerAgnosticTestBaseOptions {
+  bool verifier_layout_sensitive = false;
+  bool allow_mixed_precision_in_hlo_verifier = true;
+  HloPredicate instruction_can_change_layout_func;
+  // If true, execution errors (any non-OK absl::StatusOr originating from the
+  // test runner) are swallowed. This only applies to the Run* methods, as these
+  // do not return literals themselves.
+  bool swallow_execution_errors = false;
+};
 
 // A base class for tests which build and/or run HLO code. The class includes
 // support for running an HLO module on two platforms and compare the results.
@@ -80,11 +91,23 @@ namespace xla {
 // and away from HloTestBase.
 class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
  public:
+  using DeviceShapeRepresentationFn = std::function<Shape(const Shape&)>;
+  using DeviceShapeSizeFn = std::function<int64_t(const Shape&)>;
+
   static constexpr ErrorSpec kDefaultErrorSpec{0.0001};
 
  protected:
+  // Preferred constructor, has more options.
   explicit HloRunnerAgnosticTestBase(
-      absl::Nonnull<std::unique_ptr<HloRunnerInterface>> test_runner,
+      absl_nonnull std::unique_ptr<HloRunnerInterface> test_runner,
+      DeviceShapeRepresentationFn device_shape_representation_fn,
+      DeviceShapeSizeFn device_shape_size_fn,
+      HloRunnerAgnosticTestBaseOptions options = {});
+  // Legacy constructor with old defaults. Do not add new options.
+  explicit HloRunnerAgnosticTestBase(
+      absl_nonnull std::unique_ptr<HloRunnerInterface> test_runner,
+      DeviceShapeRepresentationFn device_shape_representation_fn,
+      DeviceShapeSizeFn device_shape_size_fn,
       bool verifier_layout_sensitive = false,
       bool allow_mixed_precision_in_hlo_verifier = true,
       HloPredicate instruction_can_change_layout_func = {});
@@ -101,12 +124,8 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
       const std::string& name = TestName(), int64_t replica_count = 1);
 
   // Parses the given string and returns module as a VerifiedHloModule.
-  absl::StatusOr<std::unique_ptr<VerifiedHloModule>>
-  ParseAndReturnVerifiedModule(absl::string_view hlo_text,
-                               int64_t replica_count = 1,
-                               int64_t num_partitions = 1);
-  // Parses the given string and returns module as a VerifiedHloModule.
-  //
+  using HloHardwareIndependentTestBase::ParseAndReturnVerifiedModule;
+
   // To obtain a HloModuleConfig with a specific replica and partition count and
   // no further customization, either use the overload above or use
   // GetModuleConfigForTest. The latter option may be useful if you want to pass
@@ -114,7 +133,7 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
   absl::StatusOr<std::unique_ptr<VerifiedHloModule>>
   ParseAndReturnVerifiedModule(
       absl::string_view hlo_text, const HloModuleConfig& config,
-      const HloParserOptions& parser_options = HloParserOptions());
+      const HloParserOptions& parser_options = HloParserOptions()) const;
 
   HloComputation* AddEntryComputationAndUpdateEntryComputationLayout(
       HloModule*, std::unique_ptr<HloComputation> computation);
@@ -122,16 +141,16 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
 
   // Executes the given module and return the result as a Literal.
   absl::StatusOr<Literal> Execute(std::unique_ptr<HloModule> module,
-                                  absl::Span<Literal* const> arguments,
+                                  absl::Span<const Literal* const> arguments,
                                   bool run_hlo_passes = true);
 
   // Same as above, except the module will be executed without running any HLO
   // passes on it.
   Literal ExecuteNoHloPasses(std::unique_ptr<HloModule> module,
-                             absl::Span<Literal* const> arguments);
+                             absl::Span<const Literal* const> arguments);
 
   Literal ExecuteAndTransfer(std::unique_ptr<HloModule> module,
-                             absl::Span<Literal* const> arguments);
+                             absl::Span<const Literal* const> arguments);
 
   // Compile the given module to an executable.
   absl::StatusOr<std::unique_ptr<OpaqueExecutable>> CreateExecutable(
@@ -145,14 +164,16 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
   // with a thread-per-replica, vs using an implicitly async call such as
   // Executable::ExecuteOnStreams.
   absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
-      std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments,
-      int64_t num_replicas, bool use_threads, bool run_hlo_passes = false);
+      std::unique_ptr<HloModule> module,
+      absl::Span<const Literal* const> arguments, int64_t num_replicas,
+      bool use_threads, bool run_hlo_passes = false);
 
   // Same as above, but uses specified device assignment.
   absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
-      std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments,
-      int64_t num_replicas, DeviceAssignment* device_assignment,
-      bool run_hlo_passes, bool use_threads);
+      std::unique_ptr<HloModule> module,
+      absl::Span<const Literal* const> arguments, int64_t num_replicas,
+      DeviceAssignment* device_assignment, bool run_hlo_passes,
+      bool use_threads);
 
   // Same as above, but allows passing different programs for replicas.
   absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
@@ -180,7 +201,6 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
   // or loaded from a file.
   ::testing::AssertionResult Run(
       absl::string_view hlo_string, bool run_hlo_passes = true,
-      ExecutionProfile* profile = nullptr,
       const tsl::protobuf::Message* backend_config = nullptr,
       bool use_random_data = true);
 
@@ -212,7 +232,7 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
   // Same as below, except requires passing fake arguments.
   ::testing::AssertionResult RunAndCompareTwoModules(
       std::unique_ptr<HloModule> module_0, std::unique_ptr<HloModule> module_1,
-      absl::Span<Literal* const> arguments,
+      absl::Span<const Literal* const> arguments,
       const std::optional<ErrorSpec>& error, bool run_hlo_passes = true);
 
   // Same as below, except requires passing the modules.
@@ -242,7 +262,7 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
   ::testing::AssertionResult RunAndCompareTwoModules(
       absl::string_view hlo_string_module_0,
       absl::string_view hlo_string_module_1,
-      absl::Span<Literal* const> arguments,
+      absl::Span<const Literal* const> arguments,
       const std::optional<ErrorSpec>& error, bool run_hlo_passes = true);
 
   // Executes an hlo module with fake inputs on multiple replicas.
@@ -254,8 +274,7 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
   // If assert_determinism is true, the assertion will fail unless all runs
   // produce exactly the same output.
   ::testing::AssertionResult RunMultipleTimes(
-      absl::string_view hlo_string, bool run_hlo_passes,
-      std::vector<ExecutionProfile>* profiles,
+      absl::string_view hlo_string, bool run_hlo_passes, int64_t num_runs,
       const tsl::protobuf::Message* backend_config = nullptr,
       bool assert_determinism = false);
 
@@ -271,9 +290,10 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
   }
 
   HloRunnerInterface& test_runner() const { return *test_runner_; }
+  bool swallow_execution_errors() const { return swallow_execution_errors_; }
 
  private:
-  // Runs the two module with or without running hlo passes and compares
+  // Runs the two module with or without running hlo oasses and compares
   // the results. Returns whether the results are near or equal. If any
   // error happens before the results are computed, returns the error status.
   absl::StatusOr<::testing::AssertionResult>
@@ -287,10 +307,13 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
   // error happens before the results are computed, returns the error status.
   absl::StatusOr<::testing::AssertionResult> RunAndCompareTwoModulesInternal(
       std::unique_ptr<HloModule> module_0, std::unique_ptr<HloModule> module_1,
-      absl::Span<Literal* const> arguments,
+      absl::Span<const Literal* const> arguments,
       const std::optional<ErrorSpec>& error, bool run_hlo_passes);
 
   std::unique_ptr<HloRunnerInterface> test_runner_;
+  DeviceShapeRepresentationFn device_shape_representation_fn_;
+  DeviceShapeSizeFn device_shape_size_fn_;
+  bool swallow_execution_errors_ = false;
 };
 
 }  // namespace xla

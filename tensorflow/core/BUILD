@@ -179,7 +179,6 @@ tf_proto_library(
         "//tensorflow/core/example:protos_all",
         "//tensorflow/core/framework:protos_all",
         "//tensorflow/core/lib/core:error_codes_proto",
-        "//tensorflow/core/profiler/protobuf:xplane_proto",
         "//tensorflow/core/profiler:profiler_options_proto",
         "//tensorflow/core/protobuf:error_codes_proto_impl",
         "//tensorflow/core/protobuf:for_core_protos",
@@ -349,6 +348,7 @@ cc_library(
         ":lib_internal",
         ":protos_all_cc",
         "//tensorflow/core/kernels:required",
+        "@com_google_absl//absl/status:status_matchers",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_benchmark",
     ] + tf_additional_test_deps(),
@@ -418,6 +418,7 @@ tf_cuda_library(
         "//tensorflow/core/framework:tensor_slice.h",
         "//tensorflow/core/framework:tensor_types.h",
         "//tensorflow/core/framework:tensor_util.h",
+        "//tensorflow/core/framework:tf_data_file_logger_options.h",
         "//tensorflow/core/framework:thread_factory.h",
         "//tensorflow/core/framework:tracking_allocator.h",
         "//tensorflow/core/framework:type_index.h",
@@ -469,7 +470,6 @@ cc_library(
     hdrs = ["//tensorflow/core/public:session_options.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":lib",
         ":protos_all_cc",
     ],
 )
@@ -529,6 +529,9 @@ cc_library(
         "//tensorflow/dtensor/cc:dtensor_ops",
     ] + select({
         # Non-tpu platforms don't need tpu dependency.
+        # copybara:uncomment_begin(google-only)
+        # "//buildenv/platforms/settings:chrome_linux": [],
+        # copybara:uncomment_end
         "//tensorflow:chromiumos": [],
         "//tensorflow:fuchsia": [],
         "//conditions:default": [
@@ -1014,6 +1017,9 @@ cc_library(
     hdrs = if_mobile(["//tensorflow/core/config:flags_headers_filegroup"]),
     copts = tf_copts(android_optimization_level_override = None) + tf_opts_nortti_if_lite_protos() + if_ios(["-Os"]),
     defines = ["SUPPORT_SELECTIVE_REGISTRATION"] + select({
+                  # copybara:uncomment_begin(google-only)
+                  # "//buildenv/platforms/settings:chrome_linux": ["IS_MOBILE_PLATFORM"],
+                  # copybara:uncomment_end
                   "//tensorflow:chromiumos": ["IS_MOBILE_PLATFORM"],
                   "//tensorflow:fuchsia": ["IS_MOBILE_PLATFORM"],
                   "//conditions:default": [],
@@ -1031,7 +1037,9 @@ cc_library(
         "//tensorflow/core:mobile_additional_lib_deps",
         "//tensorflow/core/platform:resource",
         "//tensorflow/core/public:release_version",
+        "//tensorflow/core/util:onednn_env_vars",
         "//tensorflow/core/util:stats_calculator_portable",
+        "@local_xla//xla/tsl/util:safe_reinterpret_cast",
     ] + tf_portable_proto_lib() + tf_portable_deps_no_runtime(),
     alwayslink = 1,
 )
@@ -1046,6 +1054,7 @@ cc_library(
 #         "EIGEN_NEON_GEBP_NR=4",
 #     ] + select({
 #         "//tensorflow:chromiumos": ["IS_MOBILE_PLATFORM"],
+#         "//buildenv/platforms/settings:chrome_linux": ["IS_MOBILE_PLATFORM"],
 #         "//tensorflow:fuchsia": ["IS_MOBILE_PLATFORM"],
 #         "//conditions:default": [],
 #     }) + tf_defines_nortti_if_lite_protos() + select({
@@ -1067,6 +1076,7 @@ cc_library(
 #         "@com_google_absl//absl/strings",
 #         "@com_google_absl//absl/types:optional",
 #         "@local_xla//xla/tsl/framework/fixedpoint",
+#         "@local_xla//xla/tsl/util:safe_reinterpret_cast",
 #         "//tensorflow/core/platform:resource",
 #         "//tensorflow/core/util:managed_stack_trace",
 #         "//tensorflow/core/util:stats_calculator_portable",
@@ -1464,16 +1474,11 @@ cc_library(
     }) +
     # The TF proto implementations that we will statically link here.
     [
-        "//tensorflow/compiler/mlir/lite:model_flags_proto_cc_impl",
-        "//tensorflow/compiler/mlir/lite:converter_flags_proto_cc_impl",
-        "//tensorflow/compiler/mlir/lite:types_proto_cc_impl",
-        "//tensorflow/compiler/mlir/lite/debug:debug_options_proto_cc_impl",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc_impl",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_options_proto_cc_impl",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc_impl",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc_impl",
         "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:calibration_statistics_proto_cc_impl",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc_impl",
         "//tensorflow/core/protobuf:autotuning_proto_cc_impl",
         "//tensorflow/core/protobuf:conv_autotuning_proto_cc_impl",
         ":protos_all_cc_impl",
@@ -1491,10 +1496,19 @@ cc_library(
         "@local_xla//xla/service/gpu/model:hlo_op_profile_proto_cc_impl",
         "@local_xla//xla/stream_executor:device_description_proto_cc_impl",
         "@local_xla//xla/stream_executor/cuda:cuda_compute_capability_proto_cc_impl",
-        "//tensorflow/lite/toco:toco_flags_proto_cc_impl",
-        "//tensorflow/lite/toco:model_flags_proto_cc_impl",
-        "//tensorflow/lite/toco:types_proto_cc_impl",
-    ] + tf_protos_grappler_impl() + tf_monitoring_framework_deps(),
+    ] + tf_protos_grappler_impl() + tf_monitoring_framework_deps() + select({
+        # Disable the TF Lite proto implementations in the OSS build for LiteRT repository.
+        "//tensorflow:disable_tf_lite_py": [],
+        "//conditions:default": [
+            "//tensorflow/compiler/mlir/lite:converter_flags_proto_cc_impl",
+            "//tensorflow/compiler/mlir/lite:model_flags_proto_cc_impl",
+            "//tensorflow/compiler/mlir/lite:types_proto_cc_impl",
+            "//tensorflow/compiler/mlir/lite/debug:debug_options_proto_cc_impl",
+            "//tensorflow/lite/toco:model_flags_proto_cc_impl",
+            "//tensorflow/lite/toco:toco_flags_proto_cc_impl",
+            "//tensorflow/lite/toco:types_proto_cc_impl",
+        ],
+    }),
     # Alwayslink causes a cc_binary to "always link" in the
     # srcs for a given cc_library, even if they are unreferenced, see:
     # https://docs.bazel.build/versions/master/be/c-cpp.html#cc_library.alwayslink
@@ -1601,6 +1615,7 @@ filegroup(
         "//tensorflow/core/framework:op_segment.h",
         "//tensorflow/core/framework:ref_var.h",
         "//tensorflow/core/framework:rendezvous.h",  # only needed for tests
+        "//tensorflow/core/framework:resource_base.h",  # only needed for tests
         "//tensorflow/core/framework:resource_var.h",
         "//tensorflow/core/framework:run_handler.h",
         "//tensorflow/core/framework:run_handler_util.h",
@@ -1643,6 +1658,8 @@ cc_header_only_library(
     extra_deps = [
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
     ],
     deps = [
         ":lib",
@@ -1820,6 +1837,7 @@ tf_cuda_library(
         "//tensorflow/core/public:session.h",
     ],
     copts = tf_copts(),
+    visibility = ["//visibility:public"],
     deps = ["//tensorflow/core/common_runtime:core_cpu_base_no_ops"] + if_static([
         ":function_ops_op_lib",
         ":functional_grad",
@@ -1883,14 +1901,13 @@ cc_library(
 alias(
     name = "test_main",
     actual = "@local_xla//xla/tsl/platform:test_main",
-    visibility = ["//tensorflow:internal"],
+    visibility = ["//visibility:public"],
 )
 
 tf_cc_tests(
     name = "low_level_library_tests",
     size = "small",
     srcs = [
-        "//tensorflow/core/lib/core:legacy_lib_core_all_tests",
         "//tensorflow/core/lib/gtl:legacy_lib_gtl_tests",
         "//tensorflow/core/lib/monitoring:collection_registry_test.cc",
         "//tensorflow/core/lib/monitoring:counter_test.cc",
@@ -2032,6 +2049,7 @@ filegroup(
         "//tensorflow/core/lib/gif/testdata:gif_testdata",
         # BMP data
         "//tensorflow/core/lib/bmp:bmp_testdata",
+        "//tensorflow/core/lib/webp:testdata",
     ],
     visibility = ["//visibility:public"],
 )

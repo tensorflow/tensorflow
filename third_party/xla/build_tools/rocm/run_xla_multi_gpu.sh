@@ -75,7 +75,7 @@ bazel \
     test \
     --define xnn_enable_avxvnniint8=false \
     --define xnn_enable_avx512fp16=false \
-    --config=rocm \
+    --config=rocm_gcc \
     --build_tag_filters=${TAGS_FILTER} \
     --test_tag_filters=${TAGS_FILTER} \
     --test_timeout=920,2400,7200,9600 \
@@ -90,9 +90,10 @@ bazel \
     --action_env=XLA_FLAGS=--xla_gpu_force_compilation_parallelism=16 \
     --action_env=XLA_FLAGS=--xla_gpu_enable_llvm_module_compilation_parallelism=true \
     --action_env=NCCL_MAX_NCHANNELS=1 \
-    -- //xla/tests:collective_ops_e2e_test_gpu_amd_any \
-       //xla/tests:collective_ops_test_gpu_amd_any \
-       //xla/tests:replicated_io_feed_test_gpu_amd_any \
-       //xla/tools/multihost_hlo_runner:functional_hlo_runner_test_gpu_amd_any \
+    -- //xla/tests:collective_ops_e2e_test \
+       //xla/tests:collective_ops_test \
+       //xla/tests:collective_pipeline_parallelism_test \
+       //xla/tests:replicated_io_feed_test \
+       //xla/tools/multihost_hlo_runner:functional_hlo_runner_test \
        //xla/pjrt/distributed:topology_util_test \
        //xla/pjrt/distributed:client_server_test

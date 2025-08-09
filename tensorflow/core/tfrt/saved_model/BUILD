@@ -1,3 +1,4 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "if_google")
 
 package(
@@ -27,6 +28,7 @@ package_group(
         # copybara:uncomment "//quality/webanswers/servo2/...",
         "//tensorflow/core/tfrt/saved_model/python",  #python wrapping
         "//tensorflow/core/tfrt/saved_model/utils/...",
+        "//smartass/brain/inference/...",
     ],
 )
 
@@ -102,6 +104,7 @@ cc_library(
     visibility = ["//visibility:private"],
     deps = [
         ":saved_model_util",
+        "//tensorflow/cc/saved_model:fingerprinting",
         "//tensorflow/cc/saved_model:reader",
         "//tensorflow/compiler/jit:flags_headers",
         "//tensorflow/compiler/mlir/tensorflow",
@@ -240,7 +243,6 @@ cc_library(
         ":saved_model",
         "//tensorflow/cc/saved_model:loader",
         "//tensorflow/compiler/mlir/tfrt:tfrt_compile_options",
-        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/tfrt/runtime",
@@ -271,8 +273,8 @@ cc_library(
         ":saved_model_import_input",
         "//tensorflow/cc/saved_model:reader",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:deserialize_mlir_module_utils",
         "//tensorflow/compiler/mlir/tensorflow:import_model",
-        "//tensorflow/compiler/mlir/tensorflow:serialize_mlir_module_utils",
         "//tensorflow/compiler/mlir/tfrt:import_model",
         "//tensorflow/compiler/mlir/tfrt:saved_model",
         "//tensorflow/compiler/mlir/tfrt:tfrt_compile_options",

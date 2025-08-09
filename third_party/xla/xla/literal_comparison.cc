@@ -139,7 +139,7 @@ template <typename NativeT>
 absl::Status Equal(LiteralSlice expected, LiteralSlice actual,
                    absl::Span<int64_t> multi_index, int64_t dimension,
                    Literal* mismatched = nullptr) {
-  if (dimension == expected.shape().dimensions_size()) {
+  if (dimension == expected.shape().dimensions().size()) {
     NativeT expected_value = expected.Get<NativeT>(multi_index);
     NativeT actual_value = actual.Get<NativeT>(multi_index);
     bool result =
@@ -351,7 +351,7 @@ class NearComparator {
     if (error_.low_precision_fp_error_spec.type ==
         PrimitiveType::PRIMITIVE_TYPE_INVALID)
       return -1;
-    return primitive_util::FloatingPointTypeSwitch<int>(
+    return primitive_util::FloatingPointTypeSwitch(
         [&](const auto kType) -> int {
           using NarrowNativeT = primitive_util::NativeTypeOf<kType>;
           // TODO(b/370786669): Once ml_dtypes is updated to include
@@ -518,7 +518,7 @@ class NearComparator {
       }
       return;
     }
-    std::vector<int64_t> multi_index(actual_.shape().rank(), 0);
+    std::vector<int64_t> multi_index(actual_.shape().dimensions().size(), 0);
     CompareLiteralsSlow(0, &multi_index);
   }
 
@@ -706,14 +706,18 @@ absl::Status EqualHelper(const LiteralSlice& expected,
       next_index.pop_back();
     }
   } else {
-    std::vector<int64_t> multi_index(expected.shape().dimensions_size(), 0);
+    std::vector<int64_t> multi_index(
+        expected.shape().IsArray() ? expected.shape().dimensions().size() : 0,
+        0);
     auto index = absl::MakeSpan(multi_index);
 
-    Shape unequal_shape = ShapeUtil::MakeShape(PrimitiveType::PRED,
-                                               expected.shape().dimensions());
+    const Shape unequal_shape = ShapeUtil::MakeShape(
+        PrimitiveType::PRED, expected.shape().IsArray()
+                                 ? expected.shape().dimensions()
+                                 : absl::Span<const int64_t>());
     Literal miscompared(unequal_shape);
-    Literal* miscompared_ptr =
-        (miscompare_callback == nullptr ? nullptr : &miscompared);
+    Literal* const miscompared_ptr =
+        (miscompare_callback == nullptr) ? nullptr : &miscompared;
 
     primitive_util::PrimitiveTypeSwitch<void>(
         [&](auto primitive_type_constant) -> void {
@@ -830,7 +834,7 @@ absl::Status EqualShapes(const Shape& expected, const Shape& actual) {
           ShapeUtil::TupleElementCount(expected),
           ShapeUtil::TupleElementCount(actual));
     }
-    for (int i = 0; i < expected.tuple_shapes_size(); ++i) {
+    for (int i = 0; i < expected.tuple_shapes().size(); ++i) {
       absl::Status result =
           EqualShapes(expected.tuple_shapes(i), actual.tuple_shapes(i));
       if (!result.ok()) {
@@ -838,7 +842,7 @@ absl::Status EqualShapes(const Shape& expected, const Shape& actual) {
       }
     }
   } else if (expected.IsArray()) {
-    if (expected.rank() != actual.rank()) {
+    if (expected.dimensions().size() != actual.dimensions().size()) {
       return InvalidArgument("want rank of %s got rank of %s",
                              ShapeUtil::HumanString(expected),
                              ShapeUtil::HumanString(actual));
@@ -848,12 +852,12 @@ absl::Status EqualShapes(const Shape& expected, const Shape& actual) {
                              PrimitiveType_Name(expected.element_type()),
                              PrimitiveType_Name(actual.element_type()));
     }
-    if (expected.dimensions_size() != actual.dimensions_size()) {
+    if (expected.dimensions().size() != actual.dimensions().size()) {
       return InvalidArgument("want dimensions_size %d got dimensions_size %d",
-                             expected.dimensions_size(),
-                             actual.dimensions_size());
+                             expected.dimensions().size(),
+                             actual.dimensions().size());
     }
-    for (int i = 0; i < expected.dimensions_size(); ++i) {
+    for (int i = 0; i < expected.dimensions().size(); ++i) {
       if (expected.dimensions(i) != actual.dimensions(i)) {
         return InvalidArgument(
             "mismatch in dimension #%d expected: %s actual: %s", i,
@@ -873,6 +877,10 @@ absl::Status EqualDynamicShapesAndDimensions(const LiteralSlice& expected,
       [&expected, &actual](const Shape& expected_shape,
                            const ShapeIndex& index) -> absl::Status {
         auto actual_shape = ShapeUtil::GetSubshape(actual.shape(), index);
+        if (!expected_shape.IsArray()) {
+          return absl::OkStatus();
+        }
+
         for (int i = 0; i < expected_shape.dimensions().size(); ++i) {
           if (!expected_shape.is_dynamic_dimension(i) &&
               !actual_shape.is_dynamic_dimension(i)) {
@@ -930,14 +938,15 @@ absl::Status EmitLiteralsInErrorMessage(const absl::Status& result,
 
 }  // namespace
 
-absl::Status Equal(const LiteralSlice& expected, const LiteralSlice& actual) {
+absl::Status Equal(const LiteralSlice& expected, const LiteralSlice& actual,
+                   const MiscompareCallback& miscompare_callback) {
   if (VLOG_IS_ON(1)) {
     LOG(INFO) << "expected:";
     XLA_LOG_LINES(INFO, expected.ToString());
     LOG(INFO) << "actual:";
     XLA_LOG_LINES(INFO, actual.ToString());
   }
-  absl::Status result = EqualHelper(expected, actual, {}, nullptr);
+  absl::Status result = EqualHelper(expected, actual, {}, miscompare_callback);
   return EmitLiteralsInErrorMessage(result, expected, actual);
 }
 

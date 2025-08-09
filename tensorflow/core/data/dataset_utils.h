@@ -356,6 +356,9 @@ inline int GetCpuBudget() {
 // optimization.
 int64 GetAutotuneDefaultParallelism(IteratorContext* ctx);
 
+// Returns the minimum parallelism value for Autotune optimization.
+int64_t GetAutotuneMinParallelism(IteratorContext* ctx);
+
 // Creates an iterator context appropriate for a nested dataset's iterator. A
 // nested dataset is a dataset created within another dataset, e.g. by the
 // function passed to `interleave` or `flat_map`.

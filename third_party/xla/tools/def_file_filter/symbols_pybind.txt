@@ -429,6 +429,13 @@ tsl::profiler::RemoteProfilerSession::GetServiceAddress
 tsl::profiler::RemoteProfilerSession::WaitForCompletion
 tsl::profiler::RemoteProfilerSession::~RemoteProfilerSession
 
+[//external/local_xla/xla/tsl/concurrency:async_value] # tfcompile
+tsl::AsyncValue::CreateTypeInfoAndReturnTypeIdImpl
+tsl::AsyncValue::TypeInfo
+tsl::internal::ConcreteAsyncValue
+tsl::DummyValueForErrorAsyncValue
+tsl::internal::ConcreteAsyncValue
+
 [//external/local_xla/xla:status_macros] # tfcompile
 xla::status_macros::MakeErrorStream::Impl::Impl
 xla::status_macros::MakeErrorStream::Impl::~Impl

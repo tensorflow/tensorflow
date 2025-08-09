@@ -1,3 +1,4 @@
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tensorflow:strict.default.bzl", "py_strict_binary")
 
 package(
@@ -40,6 +41,7 @@ sh_test(
         "no_windows",
         "noasan",  # TODO(b/143150907)
         "nomsan",  # TODO(b/143150907)
+        "requires-mem:16g",
         "v2only",
     ],
 )

@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_triton_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_triton_internal.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
+#include "xla/pjrt/extensions/cross_host_transfers/pjrt_c_api_cross_host_transfers_extension.h"
 #include "xla/pjrt/gpu/gpu_helpers.h"
 #include "xla/pjrt/gpu/gpu_topology.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
@@ -52,6 +53,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/plugin/xla_gpu/xla_gpu_pjrt_client.h"
 #include "xla/python/custom_call_batch_partitioner.h"
 #include "xla/python/custom_partition_callback.h"
 #include "xla/service/compiler.h"
@@ -87,8 +89,12 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
           {"num_nodes", PJRT_NamedValue_Type::PJRT_NamedValue_kInt64},
           {"should_stage_host_to_device_transfers",
            PJRT_NamedValue_Type::PJRT_NamedValue_kBool},
+          {"abort_collectives_on_failure",
+           PJRT_NamedValue_Type::PJRT_NamedValue_kBool},
+          {"use_tfrt_gpu_client", PJRT_NamedValue_Type::PJRT_NamedValue_kBool},
           {"enable_mock_nccl", PJRT_NamedValue_Type::PJRT_NamedValue_kBool},
           {"mock_gpu_topology", PJRT_NamedValue_Type::PJRT_NamedValue_kString},
+          {"slice_index", PJRT_NamedValue_Type::PJRT_NamedValue_kInt64},
       });
   PJRT_RETURN_IF_ERROR(
       ValidateCreateOptions(create_options, kExpectedOptionNameAndTypes));
@@ -148,6 +154,16 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
       it != create_options.end()) {
     should_stage_host_to_device_transfers = std::get<bool>(it->second);
   }
+  bool abort_collectives_on_failure = false;
+  if (auto it = create_options.find("abort_collectives_on_failure");
+      it != create_options.end()) {
+    abort_collectives_on_failure = std::get<bool>(it->second);
+  }
+  bool use_tfrt_gpu_client = false;
+  if (auto it = create_options.find("use_tfrt_gpu_client");
+      it != create_options.end()) {
+    use_tfrt_gpu_client = std::get<bool>(it->second);
+  }
   bool enable_mock_nccl = false;
   if (auto it = create_options.find("enable_mock_nccl");
       it != create_options.end()) {
@@ -157,6 +173,11 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
   if (auto it = create_options.find("mock_gpu_topology");
       it != create_options.end()) {
     mock_gpu_topology = std::get<std::string>(it->second);
+  }
+  std::optional<int64_t> slice_index;
+  if (auto it = create_options.find("slice_index");
+      it != create_options.end()) {
+    slice_index = std::get<int64_t>(it->second);
   }
 
   xla::GpuClientOptions options;
@@ -170,10 +191,13 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
       args->kv_try_get_user_arg, args->kv_put_callback, args->kv_put_user_arg);
   options.should_stage_host_to_device_transfers =
       should_stage_host_to_device_transfers;
+  options.abort_collectives_on_failure = abort_collectives_on_failure;
+  options.use_tfrt_gpu_client = use_tfrt_gpu_client;
   options.enable_mock_nccl = enable_mock_nccl;
   options.mock_gpu_topology = mock_gpu_topology;
+  options.slice_index = slice_index;
   PJRT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtClient> client,
-                        xla::GetStreamExecutorGpuClient(options));
+                        xla::GetXlaPjrtGpuClient(options));
   args->client = pjrt::CreateWrapperClient(std::move(client));
   return nullptr;
 }
@@ -279,8 +303,8 @@ PJRT_Error* PJRT_GpuDeviceTopology_Create(
   }
 
   auto gpu_topology = std::make_shared<const xla::GpuTopology>(
-      device_ids, target_config_proto.device_description_str(),
-      sizes.num_slices, sizes.num_hosts_per_slice, sizes.num_devices_per_host);
+      target_config_proto.device_description_str(), sizes.num_slices,
+      sizes.num_hosts_per_slice, sizes.num_devices_per_host);
 
   std::string target_config_attr;
   if (!tsl::protobuf::TextFormat::PrintToString(target_config_proto,
@@ -312,9 +336,11 @@ PLUGIN_Profiler_Api profiler_api{
 };
 
 PJRT_Profiler_Extension profiler_extension{
-    /*struct_size=*/PJRT_Profiler_Extension_STRUCT_SIZE,
-    /*type=*/PJRT_Extension_Type::PJRT_Extension_Type_Profiler,
-    /*next=*/nullptr,
+    PJRT_Extension_Base{
+        /*struct_size=*/PJRT_Profiler_Extension_STRUCT_SIZE,
+        /*type=*/PJRT_Extension_Type::PJRT_Extension_Type_Profiler,
+        /*next=*/nullptr,
+    },
     /*profiler_api=*/&profiler_api,
 };
 
@@ -341,9 +367,11 @@ PJRT_Error* PJRT_Register_Batch_Partitionable(
 }
 
 PJRT_Custom_Partitioner_Extension custom_partitioner{
-    /*struct_size=*/PJRT_Custom_Partitioner_Extension_STRUCT_SIZE,
-    /*type=*/PJRT_Extension_Type::PJRT_Extension_Type_Custom_Partitioner,
-    /*next=*/reinterpret_cast<PJRT_Extension_Base*>(&profiler_extension),
+    PJRT_Extension_Base{
+        /*struct_size=*/PJRT_Custom_Partitioner_Extension_STRUCT_SIZE,
+        /*type=*/PJRT_Extension_Type::PJRT_Extension_Type_Custom_Partitioner,
+        /*next=*/&profiler_extension.base,
+    },
     /*register_custom_partitioner=*/PJRT_Register_Custom_Partitioner,
     /*register_batch_partitionable=*/PJRT_Register_Batch_Partitionable,
 };
@@ -374,9 +402,11 @@ PJRT_Error* PJRT_Wait_Until_Buffer_Ready_On_Stream(
 }
 
 PJRT_Stream_Extension stream{
-    /*struct_size=*/PJRT_Stream_Extension_STRUCT_SIZE,
-    /*type=*/PJRT_Extension_Type::PJRT_Extension_Type_Stream,
-    /*next=*/reinterpret_cast<PJRT_Extension_Base*>(&custom_partitioner),
+    PJRT_Extension_Base{
+        /*struct_size=*/PJRT_Stream_Extension_STRUCT_SIZE,
+        /*type=*/PJRT_Extension_Type::PJRT_Extension_Type_Stream,
+        /*next=*/&custom_partitioner.base,
+    },
     /*get_stream=*/PJRT_Get_Stream_For_External_Ready_Events,
     /*wait_stream=*/PJRT_Wait_Until_Buffer_Ready_On_Stream,
 };
@@ -412,32 +442,34 @@ PJRT_Error* PJRT_Gpu_Register_Custom_Call(
 
 const PJRT_Api* GetGpuPjrtApi() {
   static PJRT_Gpu_Custom_Call custom_call{
-      /*struct_size=*/PJRT_Gpu_Custom_Call_STRUCT_SIZE,
-      /*type=*/PJRT_Extension_Type::PJRT_Extension_Type_Gpu_Custom_Call,
-      /*next=*/reinterpret_cast<PJRT_Extension_Base*>(&stream),
+      PJRT_Extension_Base{
+          /*struct_size=*/PJRT_Gpu_Custom_Call_STRUCT_SIZE,
+          /*type=*/PJRT_Extension_Type::PJRT_Extension_Type_Gpu_Custom_Call,
+          /*next=*/&stream.base,
+      },
       /*custom_call=*/PJRT_Gpu_Register_Custom_Call,
   };
 
   static PJRT_Layouts_Extension layouts_extension =
-      pjrt::CreateLayoutsExtension(
-          reinterpret_cast<PJRT_Extension_Base*>(&custom_call));
+      pjrt::CreateLayoutsExtension(&custom_call.base);
 
-  static PJRT_FFI_Extension ffi_extension = pjrt::CreateFfiExtension(
-      reinterpret_cast<PJRT_Extension_Base*>(&layouts_extension));
+  static PJRT_FFI_Extension ffi_extension =
+      pjrt::CreateFfiExtension(&layouts_extension.base);
 
   static PJRT_MemoryDescriptions_Extension memory_descriptions_extension =
-      pjrt::CreateMemoryDescriptionsExtension(
-          reinterpret_cast<PJRT_Extension_Base*>(&ffi_extension));
+      pjrt::CreateMemoryDescriptionsExtension(&ffi_extension.base);
 
-  static PJRT_Triton_Extension triton_extension = pjrt::CreateTritonExtension(
-      reinterpret_cast<PJRT_Extension_Base*>(&memory_descriptions_extension));
+  static PJRT_Triton_Extension triton_extension =
+      pjrt::CreateTritonExtension(&memory_descriptions_extension.base);
+
+  static PJRT_CrossHostTransfers_Extension cross_host_transfers_extension =
+      pjrt::CreateCrossHostTransfersExtension(&triton_extension.base);
 
   static const PJRT_Api pjrt_api = pjrt::CreatePjrtApi(
       pjrt::gpu_plugin::PJRT_Client_Create,
       pjrt::gpu_plugin::PJRT_ExecuteContext_Create,
       pjrt::gpu_plugin::PJRT_GpuDeviceTopology_Create,
-      pjrt::PJRT_Plugin_Initialize_NoOp,
-      reinterpret_cast<PJRT_Extension_Base*>(&triton_extension),
+      pjrt::PJRT_Plugin_Initialize_NoOp, &cross_host_transfers_extension.base,
       pjrt::PJRT_Plugin_Attributes_Xla);
 
   return &pjrt_api;

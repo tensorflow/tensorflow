@@ -27,7 +27,6 @@ limitations under the License.
 #include <tuple>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/log.h"
@@ -35,7 +34,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/heap_simulator/allocation_block.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo_value.h"
@@ -97,7 +95,8 @@ class Allocation {
   void set_split_shape(const std::optional<Shape>& split_shape) {
     split_shape_ = split_shape;
   }
-  std::optional<Shape> mutable_split_shape() { return split_shape_; }
+  const std::optional<Shape>& split_shape() const { return split_shape_; }
+  std::optional<Shape>& mutable_split_shape() { return split_shape_; }
 
   // Allocation timing methods
   // --------------------------------------------------------------------------
@@ -123,7 +122,6 @@ class Allocation {
   HeapSimulator::Chunk chunk() const;
   HeapSimulator::Chunk* mutable_chunk() { return &*chunk_; }
   void set_offset(int64_t offset);
-  bool is_scoped_allocation() const { return is_scoped_allocation_; }
   // Returns true if the allocation is in the alternate memory space.
   bool is_in_alternate_mem() const;
   // Returns true if the allocation is in the default memory space.
@@ -148,6 +146,8 @@ class Allocation {
   virtual bool is_copy_allocation() const = 0;
   virtual bool is_sliced_copy_allocation() const = 0;
   virtual bool is_window_prefetched_allocation() const = 0;
+  virtual bool is_scoped_allocation() const = 0;
+  virtual bool is_reserved_allocation() const = 0;
   // True if the allocation is for a copy or a sliced-copy.
   bool is_copy_like_allocation() const;
 
@@ -183,7 +183,7 @@ class Allocation {
   // PinnedAllocation, CopyAllocation, etc.).
   Allocation(HloPosition defining_position, MemorySpace memory_space,
              std::optional<HeapSimulator::Chunk> chunk, int64_t start_time,
-             int64_t end_time, bool is_scoped_allocation,
+             int64_t end_time,
              std::optional<int64_t> cross_program_prefetch_index);
 
   // Returns the original defining position of this allocation.
@@ -198,7 +198,6 @@ class Allocation {
   std::optional<HeapSimulator::Chunk> chunk_;
   int64_t start_time_;
   int64_t end_time_;
-  const bool is_scoped_allocation_;
   std::vector<HloUse> uses_;
   std::optional<int64_t> cross_program_prefetch_index_;
   // If present, indicates the newly split shape.
@@ -220,8 +219,7 @@ class PinnedAllocation final : public Allocation {
  public:
   PinnedAllocation(HloPosition defining_position, MemorySpace memory_space,
                    std::optional<HeapSimulator::Chunk> chunk,
-                   int64_t start_time, int64_t end_time,
-                   bool is_scoped_allocation);
+                   int64_t start_time, int64_t end_time);
 
   // Overridden methods
   //
@@ -232,6 +230,8 @@ class PinnedAllocation final : public Allocation {
   bool is_copy_allocation() const override { return false; }
   bool is_sliced_copy_allocation() const override { return false; }
   bool is_window_prefetched_allocation() const override { return false; }
+  bool is_scoped_allocation() const override { return false; }
+  bool is_reserved_allocation() const override { return false; }
   absl::Status Process(const BitcastSplitFn& bitcast_split_fn) override;
   absl::Status PostProcess() override { return absl::OkStatus(); }
   void MarkIfNeeded(absl::flat_hash_set<const Allocation*>& needed_allocations)
@@ -243,6 +243,48 @@ class PinnedAllocation final : public Allocation {
 
   // New non-virtual methods
   bool operator==(const PinnedAllocation& other) const;
+};
+
+// This class represents an allocation that is used to reserve a chunk of
+// memory. If an HloPosition or an HloUse is colored in alternate memory, to
+// make sure we are able to satisfy the coloring requirements, we reserve a
+// chunk in the alternate memory before we start processing the buffers in
+// sorted order. The reserved chunk serves as a fallback in case we are not able
+// to satisfy the coloring requirements using the buffers in sorted order.
+class ReservedAllocation final : public Allocation {
+ public:
+  ReservedAllocation(HloPosition defining_position, HeapSimulator::Chunk chunk,
+                     int64_t start_time, int64_t end_time);
+
+  // Overridden methods
+  //
+  // Returns the original defining position.
+  HloPosition defining_position() const override;
+  int64_t earliest_available_time() const override { return start_time(); }
+  bool is_pinned_allocation() const override { return false; }
+  bool is_copy_allocation() const override { return false; }
+  bool is_sliced_copy_allocation() const override { return false; }
+  bool is_window_prefetched_allocation() const override { return false; }
+  bool is_scoped_allocation() const override { return false; }
+  bool is_reserved_allocation() const override { return true; }
+  absl::Status Process(const BitcastSplitFn& bitcast_split_fn) override;
+  absl::Status PostProcess() override { return absl::OkStatus(); }
+  void MarkIfNeeded(absl::flat_hash_set<const Allocation*>& needed_allocations)
+      const override;
+  void MarkNeeded(absl::flat_hash_set<const Allocation*>& needed_allocations)
+      const override;
+  std::string ToString() const override;
+  bool operator==(const Allocation& other) const override;
+
+  // New non-virtual methods
+  bool operator==(const ReservedAllocation& other) const;
+
+  bool is_chunk_reserved_in_interval_tree() const { return reserved_; }
+  void chunk_freed_in_interval_tree() { reserved_ = false; }
+
+ private:
+  // Indicates whether the chunk is still reserved in the interval_tree_.
+  bool reserved_;
 };
 
 // This class represents an allocation as a result of an asynchronous copy.
@@ -270,6 +312,8 @@ class CopyAllocation final : public Allocation {
   bool is_copy_allocation() const override { return true; }
   bool is_sliced_copy_allocation() const override { return false; }
   bool is_window_prefetched_allocation() const override { return false; }
+  bool is_scoped_allocation() const override { return false; }
+  bool is_reserved_allocation() const override { return false; }
   absl::Status Process(const BitcastSplitFn& bitcast_split_fn) override;
   absl::Status PostProcess() override { return absl::OkStatus(); }
   void MarkIfNeeded(absl::flat_hash_set<const Allocation*>& needed_allocations)
@@ -376,6 +420,8 @@ class SlicedCopyAllocation final : public Allocation {
   bool is_copy_allocation() const override { return false; }
   bool is_sliced_copy_allocation() const override { return true; }
   bool is_window_prefetched_allocation() const override { return false; }
+  bool is_scoped_allocation() const override { return false; }
+  bool is_reserved_allocation() const override { return false; }
   // MemorySpaceAssignment::Process() calls Process(const BitcastSplitFn&
   // bitcast_split_fn) to create asynchronous slice copies, and a bitcast-concat
   // call to glue the slices back together.
@@ -452,6 +498,8 @@ class WindowPrefetchedAllocation final : public Allocation {
   bool is_copy_allocation() const override { return false; }
   bool is_sliced_copy_allocation() const override { return false; }
   bool is_window_prefetched_allocation() const override { return true; }
+  bool is_scoped_allocation() const override { return false; }
+  bool is_reserved_allocation() const override { return false; }
   // MemorySpaceAssignment::Process() calls Process(const BitcastSplitFn&
   // bitcast_split_fn) to create asynchronous window prefetches.
   absl::Status Process(const BitcastSplitFn& bitcast_split_fn) override;
@@ -507,6 +555,8 @@ class MirroredAllocation final : public Allocation {
   bool is_copy_allocation() const override { return false; }
   bool is_sliced_copy_allocation() const override { return false; }
   bool is_window_prefetched_allocation() const override { return false; }
+  bool is_scoped_allocation() const override { return false; }
+  bool is_reserved_allocation() const override { return false; }
   absl::Status Process(const BitcastSplitFn& bitcast_split_fn) override;
   absl::Status PostProcess() override { return absl::OkStatus(); }
   void MarkIfNeeded(absl::flat_hash_set<const Allocation*>& needed_allocations)
@@ -541,6 +591,8 @@ class ParentAllocation final : public Allocation {
   bool is_copy_allocation() const override { return false; }
   bool is_sliced_copy_allocation() const override { return false; }
   bool is_window_prefetched_allocation() const override { return false; }
+  bool is_scoped_allocation() const override { return false; }
+  bool is_reserved_allocation() const override { return false; }
   absl::Status Process(const BitcastSplitFn& bitcast_split_fn) override;
   absl::Status PostProcess() override;
   void MarkIfNeeded(absl::flat_hash_set<const Allocation*>& needed_allocations)
@@ -556,6 +608,40 @@ class ParentAllocation final : public Allocation {
  private:
   const Allocation& original_allocation_;
   HloInstruction* calling_instruction_;
+};
+
+// An allocation representing scoped alternate memory.
+class ScopedAllocation final : public Allocation {
+ public:
+  // is_post_module is true if the allocation is for a scoped allocation that
+  // is used after the module.
+  ScopedAllocation(HeapSimulator::Chunk chunk, int64_t allocation_time,
+                   HloInstruction* defining_instruction, bool is_post_module);
+
+  // Overridden methods
+  HloPosition defining_position() const override;
+  int64_t earliest_available_time() const override { return start_time(); }
+  bool is_pinned_allocation() const override { return false; }
+  bool is_copy_allocation() const override { return false; }
+  bool is_sliced_copy_allocation() const override { return false; }
+  bool is_window_prefetched_allocation() const override { return false; }
+  bool is_scoped_allocation() const override { return true; }
+  bool is_reserved_allocation() const override { return false; }
+  absl::Status Process(const BitcastSplitFn& bitcast_split_fn) override;
+  absl::Status PostProcess() override { return absl::OkStatus(); }
+  void MarkIfNeeded(absl::flat_hash_set<const Allocation*>& needed_allocations)
+      const override;
+  void MarkNeeded(absl::flat_hash_set<const Allocation*>& needed_allocations)
+      const override;
+  std::string ToString() const override;
+  bool operator==(const Allocation& other) const override;
+
+  // New non-virtual methods
+  bool operator==(const ScopedAllocation& other) const;
+  bool is_post_module() const { return is_post_module_; }
+
+ private:
+  bool is_post_module_;
 };
 
 // A class with some utility functions that are useful in debugging.

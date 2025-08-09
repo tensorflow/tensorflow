@@ -37,6 +37,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
+#include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -65,11 +66,12 @@ class EmitterBase : public KernelFusionInterface {
 
   // Visible for testing. `buffer_assignment` is optional for testing (assigns
   // a different buffer to each tensor).
-  absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateMLIRModule(
+  virtual absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateMLIRModule(
       mlir::MLIRContext& context, const HloFusionInstruction& fusion,
       const std::string& entry_function_name,
-      const BufferAssignment* buffer_assignment,
-      mlir::interpreter::MlirCompilationTrace* trace = nullptr) const;
+      const BufferAssignment* buffer_assignment) const;
+
+  static mlir::DialectRegistry GetDialectRegistry();
 
  protected:
   // Returns the set of instructions that will be isolated in the partitioned,
@@ -105,6 +107,8 @@ class EmitterBase : public KernelFusionInterface {
       mlir::ValueRange output_indices,
       mlir::ImplicitLocOpBuilder& builder) const;
 
+  mlir::Value EmitWorkGroupId(mlir::ImplicitLocOpBuilder& builder,
+                              WorkGroupDimension dim) const;
   mlir::Value EmitBlockId(mlir::ImplicitLocOpBuilder& builder, int dim) const;
   mlir::Value EmitThreadId(mlir::ImplicitLocOpBuilder& builder, int dim) const;
   llvm::SmallVector<mlir::Value> EmitThreadAndBlockIds(
@@ -117,13 +121,7 @@ class EmitterBase : public KernelFusionInterface {
   absl::Status EmitMlir(mlir::ModuleOp module,
                         mlir::func::FuncOp entry_function,
                         const HloFusionInstruction& fusion) const;
-  absl::Status RunPassPipeline(
-      mlir::ModuleOp module, mlir::PassManager& pm,
-      mlir::interpreter::MlirCompilationTrace* trace) const;
 };
-
-// Adds passes that simplify arithmetic operations and remove dead code.
-void AddXlaGpuOpsOptimizationPasses(mlir::OpPassManager& pm);
 
 // Adds passes that transform XLA_GPU and SCF loops, e.g. peel, pipeline,
 // vectorize.

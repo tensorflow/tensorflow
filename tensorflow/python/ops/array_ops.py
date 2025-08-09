@@ -471,7 +471,8 @@ def listdiff(x, y, out_idx=None, name=None):
   return gen_array_ops.list_diff(x, y, out_idx, name)
 
 
-listdiff.__doc__ = gen_array_ops.list_diff.__doc__ + "\n" + listdiff.__doc__
+if gen_array_ops.list_diff.__doc__ is not None:
+  listdiff.__doc__ = gen_array_ops.list_diff.__doc__ + "\n" + listdiff.__doc__
 
 # pylint: enable=protected-access
 
@@ -1076,9 +1077,9 @@ def strided_slice(input_,
 
   Args:
     input_: A `Tensor`.
-    begin: An `int32` or `int64` `Tensor`.
-    end: An `int32` or `int64` `Tensor`.
-    strides: An `int32` or `int64` `Tensor`.
+    begin: An `int16`, `int32` or `int64` `Tensor`.
+    end: An `int16`, `int32` or `int64` `Tensor`.
+    strides: An `int16`, `int32` or `int64` `Tensor`.
     begin_mask: An `int32` mask.
     end_mask: An `int32` mask.
     ellipsis_mask: An `int32` mask.

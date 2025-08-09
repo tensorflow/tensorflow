@@ -20,7 +20,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
-#include "xla/hlo/analysis/hlo_alias_analysis.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/constant_value.h"
 
@@ -29,7 +29,8 @@ namespace xla {
 // Class keeping track of the range of an HLO value. A range is typically
 // defined by a minimum value, a maximum value, and a step value. The step and
 // maximum values are optional. If the maximum value is missing, the range is
-// unbounded. The default step value is nullopt.
+// unbounded. The default step value is nullopt. Non-null steps are expected to
+// be non-zero although this is not enforced by the constructor.
 class Range {
  public:
   Range()
@@ -103,7 +104,7 @@ class Range {
 Range RecursivelyIdentifyRange(
     const HloInstruction* instr,
     absl::flat_hash_map<const HloInstruction*, Range>& known_ranges,
-    const HloAliasAnalysis* alias_analysis = nullptr);
+    const HloDataflowAnalysis* dataflow_analysis = nullptr);
 
 }  // namespace xla
 

@@ -1,4 +1,4 @@
-// RUN: xla-translate -verify-diagnostics -split-input-file -mlir-hlo-to-hlo %s | FileCheck %s
+// RUN: xla-translate -verify-diagnostics -split-input-file -mlir-hlo-to-hlo --hlo-import-all-computations %s | FileCheck %s
 // RUN: xla-translate -verify-diagnostics -split-input-file -mlir-hlo-to-hlo --via-builder=true %s | FileCheck %s
 
 module attributes { mhlo.cross_program_prefetches = [ #mhlo.cross_program_prefetch<parameter = 1, indices = [0], offset = 0> ] } {
@@ -101,11 +101,10 @@ module @ModuleWithFrontendAttributes attributes {
   }
 }
 
-
-
 // -----
 
-module attributes {
+// CHECK-LABEL: input_output_alias_module
+module @input_output_alias_module attributes {
 //      CHECK:   input_output_alias {
 // CHECK-NEXT:    entries {
 // CHECK-NEXT:      output_shape_index: 0
@@ -140,5 +139,98 @@ module attributes {
 } {
   func.func @main(%arg0: tensor<1xf32>, %arg1: tensor<1xf32> ) -> (tensor<1xf32>, tensor<1xf32>) {
     func.return %arg0, %arg1: tensor<1xf32>, tensor<1xf32>
+  }
+}
+
+// -----
+
+// Check that function order in module does not impact HLO module entry
+// computation assignment.
+
+// CHECK-LABEL: entry_computation_with_multiple
+// CHECK-LABEL: host_program_shape {
+// CHECK-NEXT: parameters {
+// CHECK-NEXT:   element_type: BF16
+// CHECK-NEXT:   dimensions: 10
+// CHECK-NEXT:   dimensions: 20
+// CHECK-NEXT:   layout {
+// CHECK-NEXT:     minor_to_major: 0
+// CHECK-NEXT:     minor_to_major: 1
+// CHECK-NEXT:     tail_padding_alignment_in_elements: 1
+// CHECK-NEXT:   }
+// CHECK-NEXT:   is_dynamic_dimension: false
+// CHECK-NEXT:   is_dynamic_dimension: false
+// CHECK-NEXT: }
+// CHECK-NEXT: parameters {
+// CHECK-NEXT:   element_type: BF16
+// CHECK-NEXT:   dimensions: 20
+// CHECK-NEXT:   layout {
+// CHECK-NEXT:     minor_to_major: 0
+// CHECK-NEXT:     tail_padding_alignment_in_elements: 1
+// CHECK-NEXT:   }
+// CHECK-NEXT:   is_dynamic_dimension: false
+// CHECK-NEXT: }
+// CHECK-NEXT: result {
+// CHECK-NEXT:   element_type: F32
+// CHECK-NEXT:   layout {
+// CHECK-NEXT:     tail_padding_alignment_in_elements: 1
+// CHECK-NEXT:   }
+// CHECK-NEXT: }
+module @entry_computation_with_multiple attributes {
+    mhlo.xla_entry_computation_parameter_layouts = [dense<[0, 1]> : tensor<2xindex>, dense<0> : tensor<1xindex>],
+    mhlo.xla_entry_computation_parameter_tiles = [[], []]
+  } {
+  func.func @callee(%arg0: tensor<10x20xbf16>) -> tensor<f32> {
+    %cst = mhlo.constant dense<1.000000e+00> : tensor<f32>
+    return %cst : tensor<f32>
+  }
+  func.func @main(%arg0: tensor<10x20xbf16> {mhlo.sharding = "{devices=[4,1,2]<=[2,4]T(1,0) last_tile_dim_replicate}"}, %arg1: tensor<20xbf16> {mhlo.sharding = "{replicated}"}) -> tensor<f32> {
+    %0 = call @callee(%arg0) : (tensor<10x20xbf16>) -> tensor<f32>
+    return %0 : tensor<f32>
+  }
+}
+
+// -----
+
+// CHECK-LABEL: entry_computation_with_multiple_swap
+// CHECK-LABEL: host_program_shape {
+// CHECK-NEXT: parameters {
+// CHECK-NEXT:   element_type: BF16
+// CHECK-NEXT:   dimensions: 10
+// CHECK-NEXT:   dimensions: 20
+// CHECK-NEXT:   layout {
+// CHECK-NEXT:     minor_to_major: 0
+// CHECK-NEXT:     minor_to_major: 1
+// CHECK-NEXT:     tail_padding_alignment_in_elements: 1
+// CHECK-NEXT:   }
+// CHECK-NEXT:   is_dynamic_dimension: false
+// CHECK-NEXT:   is_dynamic_dimension: false
+// CHECK-NEXT: }
+// CHECK-NEXT: parameters {
+// CHECK-NEXT:   element_type: BF16
+// CHECK-NEXT:   dimensions: 20
+// CHECK-NEXT:   layout {
+// CHECK-NEXT:     minor_to_major: 0
+// CHECK-NEXT:     tail_padding_alignment_in_elements: 1
+// CHECK-NEXT:   }
+// CHECK-NEXT:   is_dynamic_dimension: false
+// CHECK-NEXT: }
+// CHECK-NEXT: result {
+// CHECK-NEXT:   element_type: F32
+// CHECK-NEXT:   layout {
+// CHECK-NEXT:     tail_padding_alignment_in_elements: 1
+// CHECK-NEXT:   }
+// CHECK-NEXT: }
+module @entry_computation_with_multiple_swap attributes {
+    mhlo.xla_entry_computation_parameter_layouts = [dense<[0, 1]> : tensor<2xindex>, dense<0> : tensor<1xindex>],
+    mhlo.xla_entry_computation_parameter_tiles = [[], []]
+  } {
+  func.func @main(%arg0: tensor<10x20xbf16> {mhlo.sharding = "{devices=[4,1,2]<=[2,4]T(1,0) last_tile_dim_replicate}"}, %arg1: tensor<20xbf16> {mhlo.sharding = "{replicated}"}) -> tensor<f32> {
+    %0 = call @callee(%arg0) : (tensor<10x20xbf16>) -> tensor<f32>
+    return %0 : tensor<f32>
+  }
+  func.func @callee(%arg0: tensor<10x20xbf16>) -> tensor<f32> {
+    %cst = mhlo.constant dense<1.000000e+00> : tensor<f32>
+    return %cst : tensor<f32>
   }
 }

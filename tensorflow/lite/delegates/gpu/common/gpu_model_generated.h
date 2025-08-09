@@ -26,7 +26,7 @@ static_assert(FLATBUFFERS_VERSION_MAJOR == 24 &&
               FLATBUFFERS_VERSION_REVISION == 25,
              "Non-compatible flatbuffers version included");
 
-#include "serialization_base_generated.h"
+#include "tflite_serialization_base_generated.h"
 
 namespace tflite {
 namespace gpu {

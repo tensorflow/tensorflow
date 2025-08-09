@@ -20,25 +20,16 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/builder/xla_computation.h"
-#include "xla/pjrt/metrics.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_device_description.h"
-#include "xla/tsl/lib/monitoring/cell_reader.h"
-#include "tsl/platform/status_matchers.h"
 
 namespace xla {
-
-using metrics::kPjrtCompilerCompileComputationMetricName;
-using metrics::kPjrtCompilerCompileModuleMetricName;
-using ::tsl::monitoring::testing::CellReader;
-using ::tsl::testing::StatusIs;
 
 namespace {
 class PjRtTestTopology : public PjRtTopologyDescription {
@@ -69,7 +60,7 @@ TEST(PjRtCompilerTest, CompilerNotRegistered) {
   XlaComputation computation;
   auto res = PjRtCompile(options, computation, topology);
 
-  EXPECT_TRUE(tsl::errors::IsNotFound(res.status()));
+  EXPECT_TRUE(absl::IsNotFound(res.status()));
 }
 
 TEST(PjRtCompilerTest, CompilerRegistered) {
@@ -117,35 +108,9 @@ TEST(PjRtCompilerTest, CompilerRegistered) {
   XlaComputation computation;
   auto res = PjRtCompile(options, computation, topology);
 
-  EXPECT_TRUE(tsl::errors::IsUnimplemented(res.status()));
+  EXPECT_TRUE(absl::IsUnimplemented(res.status()));
 }
 
-TEST(PjRtCompilerTest, PjrtCompileComputationMetric) {
-  PjRtTestTopology topology;
-  xla::CompileOptions compile_options;
-  XlaComputation xla_computation;
-  CellReader<bool> metric_reader(
-      std::string{kPjrtCompilerCompileComputationMetricName});
-
-  EXPECT_THAT(PjRtCompile(compile_options, xla_computation, topology,
-                          /*client=*/nullptr),
-              StatusIs(tensorflow::error::NOT_FOUND));
-  // Verify that when the compilation is done, the metric value is always false.
-  EXPECT_FALSE(metric_reader.Read());
-}
-
-TEST(PjRtCompilerTest, PjrtCompileModuleMetric) {
-  PjRtTestTopology topology;
-  xla::CompileOptions compile_options;
-  mlir::ModuleOp module;
-  CellReader<bool> metric_reader(
-      std::string{kPjrtCompilerCompileModuleMetricName});
-
-  EXPECT_THAT(PjRtCompile(compile_options, module, topology,
-                          /*client=*/nullptr),
-              StatusIs(tensorflow::error::NOT_FOUND));
-  EXPECT_FALSE(metric_reader.Read());
-}
 }  // namespace
 
 }  // namespace xla

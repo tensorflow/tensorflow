@@ -1107,7 +1107,6 @@ cc_library(
         ":c_api",
         ":c_api_experimental",
         ":tfe_tensorhandle_internal",
-        "//tensorflow/c:tf_status_helper",
         "//tensorflow/c:tf_status_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -1120,7 +1119,7 @@ cc_library(
 
 tf_cuda_cc_test(
     name = "dlpack_test",
-    size = "small",
+    size = "medium",
     srcs = [
         "dlpack_test.cc",
     ],

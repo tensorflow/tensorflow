@@ -14,7 +14,7 @@
 # ============================================================================
 
 load("@bazel_skylib//rules:diff_test.bzl", "diff_test")
-load("//xla:pytype.default.bzl", "pytype_strict_binary")
+load("//xla:pytype.bzl", "pytype_strict_binary")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -29,14 +29,14 @@ pytype_strict_binary(
 genrule(
     name = "generated_build_commands",
     outs = ["generated_commands.txt"],
-    cmd = "KOKORO_JOB_NAME=GOLDENS $(location //build_tools/ci:build) > $(OUTS)",
+    cmd = "$(location //build_tools/ci:build) --dump_commands > $(OUTS)",
     tags = ["not_run:arm"],
     tools = [":build"],
 )
 
 diff_test(
     name = "build_command_golden_test",
-    failure_message = """Regenerate with `KOKORO_JOB_NAME=GOLDENS PYTHONDONTWRITEBYTECODE=1 python3 build.py > golden_commands.txt`.""",
+    failure_message = """Regenerate with `PYTHONDONTWRITEBYTECODE=1 python3 build.py --dump_commands > golden_commands.txt`.""",
     file1 = "golden_commands.txt",
     file2 = ":generated_build_commands",
     tags = ["not_run:arm"],

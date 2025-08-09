@@ -25,7 +25,6 @@ limitations under the License.
 #include "xla/service/cpu/onednn_util.h"
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/test_macros.h"
 #include "tsl/platform/cpu_info.h"
 
 namespace xla {
@@ -72,9 +71,7 @@ class ConvolutionTest : public HloTestBase,
   ConvolutionTest() {
     dtype_ = GetParam();
     atol_ = rtol_ = (dtype_ == F32) ? 1e-4 : 1e-2;
-    // TODO(intel-tf): Set default value of user_scratchpad to true after
-    // enabling feature
-    user_scratchpad_ = false;
+    user_scratchpad_ = true;
     weights_prepacked_ = false;
     dtypeString_ = primitive_util::LowercasePrimitiveTypeName(dtype_);
   }
@@ -137,6 +134,14 @@ class ConvolutionTest : public HloTestBase,
 
   std::string PromotedDtypeToString() {
     return primitive_util::LowercasePrimitiveTypeName(PromotedDtype());
+  }
+
+  void RunAndExpectExit(const absl::string_view outline, int signal) {
+    const std::string convolution_module_str = absl::StrReplaceAll(
+        outline,
+        {{"$dtype", dtypeString_}, {"$pdtype", PromotedDtypeToString()}});
+    EXPECT_EXIT((void)Run(convolution_module_str, true),
+                ::testing::KilledBySignal(signal), "");
   }
 
   void RunCompareAndMatchOptimizedHlo(
@@ -221,6 +226,7 @@ TEST_P(ConvolutionTest, Conv3DWithBiasTest) {
 TEST_P(ConvolutionTest, Conv2DWithSmallBiasTest) {
   const absl::string_view outline = R"(
   HloModule convolution.test.with.constant.bias
+
   ENTRY convolution.test.with.bias {
     arg.0 = $dtype[1,10,10,32] parameter(0)
     arg.1 = $dtype[10,10,32,64] parameter(1)
@@ -273,6 +279,53 @@ TEST_P(ConvolutionTest, Conv2DWithBiasAndReluTest) {
   RunCompareAndMatchOptimizedHlo(outline, {"BIAS", "RELU"});
 }
 
+TEST_P(ConvolutionTest, ConvInsufficientScratchTest) {
+  // Running death tests in a single-threaded environment
+  GTEST_FLAG_SET(death_test_style, "threadsafe");
+  if (dtype_ == BF16 && !HasAMXTile()) {
+    GTEST_SKIP() << "Skipping test for " << dtypeString_
+                 << " because oneDNN may not request scratch allocations "
+                    "on platforms that emulate "
+                 << dtypeString_;
+  }
+  const absl::string_view outline = R"(
+  HloModule convolution.test.insufficient.scratch
+
+  ENTRY convolution.test.insufficient.scratch {
+    p0 = $dtype[1,1024,1] parameter(0)
+    p1 = $dtype[3,1,3] parameter(1)
+    ROOT conv = ($dtype[1,1022,3], u8[128]) custom-call(p0, p1),
+      custom_call_target="__onednn$convolution",
+        backend_config={
+          "outer_dimension_partitions":[],
+          "onednn_conv_config":{
+            "dims":"3",
+            "input":{
+              "dims":"3",
+              "data":{"batch_dim":"0","feature_dim":"2","spatial_dims":["2"]}
+            },
+            "kernel":{
+              "dims":"3",
+              "filter":{"input_feature_dim":"1","output_feature_dim":"2",
+                "spatial_dims":["1"],"shape":[]}
+            },
+            "output":{
+              "dims":"3",
+              "data":{"batch_dim":"0","feature_dim":"2","spatial_dims":["2"]}
+            },
+            "window":{
+              "size":[],"pad_left":["1"],"pad_right":["1"],
+              "strides":["2"],"window_dilations":["2"]
+            },
+            "feature_groups":"1",
+            "optimization_config":{"user_scratchpad":true}
+          }
+        }
+  })";
+
+  RunAndExpectExit(outline, SIGABRT);
+}
+
 TEST_P(ConvolutionTest, Conv2DWithBinaryAddTest) {
   const absl::string_view outline = R"(
   HloModule convolution.test.with.binaryadd
@@ -292,8 +345,6 @@ TEST_P(ConvolutionTest, Conv2DWithBinaryAddTest) {
   RunCompareAndMatchOptimizedHlo(outline, {"BINARY_ADD"});
 }
 
-// This test should match BIAS + RESIDUAL ADD when the residual add fusion is
-// re-enabled.
 TEST_P(ConvolutionTest, Conv2DWithBiasAndBinaryAddTest) {
   const absl::string_view outline = R"(
   HloModule convolution.add.test
@@ -310,7 +361,38 @@ TEST_P(ConvolutionTest, Conv2DWithBiasAndBinaryAddTest) {
     ROOT add.1 = $dtype[1,11,11,10] add(add.0, const.1)
   })";
 
-  RunCompareAndMatchOptimizedHlo(outline, {"BIAS"});
+  // Optimized HLO must match "SUM" only for precisions that support Elementwise
+  // Add operations
+  if (dtype_ == BF16) {
+    RunCompareAndMatchOptimizedHlo(outline, {"BIAS", "BINARY_ADD"});
+  } else {
+    RunCompareAndMatchOptimizedHlo(outline, {"BIAS", "SUM"});
+  }
+}
+
+TEST_P(ConvolutionTest, Conv2DWithReluSumAndBinaryAddTest) {
+  const absl::string_view outline = R"(
+  HloModule convolution.relu.sum.add.test
+
+  ENTRY convolution.relu.sum.add.test {
+    arg0.1 = $dtype[1,22,22,1] parameter(0)
+    arg0.2 = $dtype[8,8,1,10] parameter(1)
+    arg0.3 = $dtype[1,11,11,10] parameter(2)
+    convolution.0 = $dtype[1,11,11,10] convolution(arg0.1, arg0.2),
+          window={size=8x8 stride=2x2 pad=3_3x3_3}, dim_labels=b01f_01io->b01f
+    const.1 = $pdtype[] constant(0)
+    convert.0 = $dtype[] convert(const.1)
+    bcast.2 = $dtype[1,11,11,10] broadcast(convert.0), dimensions={}
+    maximum.1 = $dtype[1,11,11,10] maximum(convolution.0, bcast.2)
+    const.2 = $dtype[1,11,11,10] constant({...})
+    add.1 = $dtype[1,11,11,10] add(maximum.1, const.2)
+    ROOT add.2 = $dtype[1,11,11,10] add(add.1, arg0.3)
+  })";
+
+  // Optimized HLO must match "SUM" only for precisions that support Elementwise
+  // Add operations
+  RunCompareAndMatchOptimizedHlo(
+      outline, {"RELU", dtype_ == BF16 ? "BINARY_ADD" : "SUM", "BINARY_ADD"});
 }
 
 TEST_P(ConvolutionTest, ToeplitzConstrcutionTest) {
@@ -345,6 +427,26 @@ TEST_P(ConvolutionTest, ToeplitzConstrcutionTest) {
   })";
 
   RunCompareAndMatchOptimizedHlo(outline, {"BINARY_ADD"});
+}
+
+TEST_P(ConvolutionTest, Conv2DWithSumTest) {
+  const absl::string_view outline = R"(
+  HloModule convolution.test.with.sum
+
+  ENTRY convolution.test.with.sum {
+    arg0.1 = $dtype[1,22,22,1] parameter(0)
+    arg0.2 = $dtype[1,11,11,1] parameter(1)
+    constant.3 = $dtype[] constant(1)
+    broadcast.4 = $dtype[8,8,1,1] broadcast(constant.3), dimensions={}
+    convolution.0 = $dtype[1,11,11,1] convolution(arg0.1, broadcast.4),
+          window={size=8x8 stride=2x2 pad=3_3x3_3}, dim_labels=b01f_01io->b01f
+    ROOT add.10 = $dtype[1,11,11,1] add(convolution.0, arg0.2)
+  })";
+
+  // Optimized HLO must match "SUM" only for precisions that support Elementwise
+  // Add operations
+  RunCompareAndMatchOptimizedHlo(outline,
+                                 {(dtype_ == BF16) ? "BINARY_ADD" : "SUM"});
 }
 
 TEST_P(ConvolutionTest, Conv2DWithBiasAndTanhTest) {
@@ -624,6 +726,31 @@ TEST_P(ConvolutionTest, Conv2DWithBiasAndGeluExactPattern2Test) {
 })";
 
   RunCompareAndMatchOptimizedHlo(outline, {"BIAS", "GELU_ERF"});
+}
+
+TEST_P(ConvolutionTest, Conv2DWithBiasAndSwishTest) {
+  const absl::string_view outline = R"(
+  HloModule convolution.test.with.bias.swish
+
+  ENTRY convolution.test.with.bias.swish {
+    arg.0 = $dtype[2,40,40,128] parameter(0)
+    arg.1 = $dtype[1,1,128,128] parameter(1)
+    constant.1 = $pdtype[] constant(1)
+    broadcast.1 = $pdtype[2,40,40,128] broadcast(constant.1), dimensions={}
+    convert.1 = $dtype[2,40,40,128] convert(broadcast.1)
+    convolution.0 = $dtype[2,40,40,128] convolution(arg.0, arg.1),
+                      window={size=1x1}, dim_labels=b01f_01io->b01f
+    constant.0 = $dtype[128]{0} constant({...})
+    broadcast.0 = $dtype[2,40,40,128] broadcast(constant.0), dimensions={3}
+    add.0 = $dtype[2,40,40,128] add(convolution.0, broadcast.0)
+    negate.0 = $dtype[2,40,40,128] negate(add.0)
+    exponential.0 = $dtype[2,40,40,128] exponential(negate.0)
+    add.1 = $dtype[2,40,40,128] add(convert.1, exponential.0)
+    divide.0 = $dtype[2,40,40,128] divide(convert.1, add.1)
+    ROOT multiply.0 = $dtype[2,40,40,128] multiply(divide.0, add.0)
+})";
+
+  RunCompareAndMatchOptimizedHlo(outline, {"BIAS", "SWISH"});
 }
 
 INSTANTIATE_TEST_SUITE_P(
