@@ -179,7 +179,7 @@ class Call : public UntypedCall<Service> {
 
   void RequestCancelled(Service* service, bool ok) override {
     if (ctx_.IsCancelled()) {
-      absl::MutexLock l(&mu_);
+      absl::MutexLock l(mu_);
       if (cancel_callback_) {
         cancel_callback_();
       }
@@ -189,13 +189,13 @@ class Call : public UntypedCall<Service> {
   // Registers `callback` as the function that should be called if and when this
   // call is canceled by the client.
   void SetCancelCallback(std::function<void()> callback) {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     cancel_callback_ = std::move(callback);
   }
 
   // Clears any cancellation callback that has been registered for this call.
   void ClearCancelCallback() {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     cancel_callback_ = nullptr;
   }
 
