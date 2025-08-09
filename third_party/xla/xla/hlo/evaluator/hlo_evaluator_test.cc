@@ -6401,6 +6401,74 @@ TEST_F(PatternMatchParseWhileLoopTest, BooleanCond) {
   EXPECT_EQ(parsed_while_loop->static_while_loop->loop_bound, 1);
 }
 
+TEST_F(PatternMatchParseWhileLoopTest, DynamicLoopDependentDynamicLoop) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule accumulated_all_reduce
+
+    %while_condition.1 {
+      %param = (s32[], s32[], f32[1024, 1024], f32[1024, 1024]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = s32[] get-tuple-element(%param), index=1
+      ROOT result = pred[] compare(%gte.0, %gte.1), direction=LT
+    }
+
+    %while_body.1 {
+      %param = (s32[], s32[], f32[1024, 1024], f32[1024, 1024]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = s32[] get-tuple-element(%param), index=1
+      %gte.2 = f32[1024, 1024] get-tuple-element(%param), index=2
+      %gte.3 = f32[1024, 1024] get-tuple-element(%param), index=3
+      %accumulation = f32[1024, 1024] add(f32[1024, 1024] %gte.2, f32[1024, 1024] %gte.3)
+      %constant = s32[] constant(1)
+      %increment_iteration = s32[] add(s32[] %gte.0, s32[] %constant)
+      ROOT %loop_result = (s32[], s32[], f32[1024, 1024], f32[1024, 1024]) tuple(%increment_iteration, %gte.1, %gte.2, %accumulation)
+    }
+
+    %while_condition {
+      %param = (s32[], s32[], f32[1024, 1024], f32[1024, 1024]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = s32[] get-tuple-element(%param), index=1
+      ROOT result = pred[] compare(%gte.0, %gte.1), direction=LT
+    }
+
+    %while_body {
+      %param = (s32[], s32[], f32[1024, 1024], f32[1024, 1024]) parameter(0)
+      %gte.0 = s32[] get-tuple-element(%param), index=0
+      %gte.1 = s32[] get-tuple-element(%param), index=1
+      %gte.2 = f32[1024, 1024] get-tuple-element(%param), index=2
+      %gte.3 = f32[1024, 1024] get-tuple-element(%param), index=3
+      %accumulation = f32[1024, 1024] add(f32[1024, 1024] %gte.2, f32[1024, 1024] %gte.3)
+      %constant = s32[] constant(1)
+      %increment_iteration = s32[] add(s32[] %gte.0, s32[] %constant)
+      ROOT %loop_result = (s32[], s32[], f32[1024, 1024], f32[1024, 1024]) tuple(%increment_iteration, %gte.1, %gte.2, %accumulation)
+    }
+
+    ENTRY main {
+      %param.1 = f32[1024, 1024] parameter(0)
+      %param.2 = s32[] parameter(1)
+      %constant.0 = s32[] constant(0)
+      %accumulation_buffer_init = f32[] constant(0)
+      %accumulation_buffer = f32[1024, 1024] broadcast(f32[] %accumulation_buffer_init), dimensions={}
+      %while_init = (s32[], s32[], f32[1024, 1024], f32[1024, 1024]) tuple(s32[] %constant.0, s32[] %param.2, f32[1024, 1024] %param.1, f32[1024, 1024] %accumulation_buffer)
+      %while = (s32[], s32[], f32[1024, 1024], f32[1024, 1024]) while(%while_init), condition=%while_condition, body=%while_body
+      %result = f32[1024, 1024] get-tuple-element((s32[], s32[], f32[1024, 1024], f32[1024, 1024]) %while), index=3
+      %new_loop_bound = s32[] get-tuple-element((s32[], s32[], f32[1024, 1024], f32[1024, 1024]) %while), index=1
+      %while_init.1 = (s32[], s32[], f32[1024, 1024], f32[1024, 1024]) tuple(s32[] %constant.0, s32[] %new_loop_bound, f32[1024, 1024] %accumulation_buffer, f32[1024, 1024] %result)
+      %while.1 = (s32[], s32[], f32[1024, 1024], f32[1024, 1024]) while(%while_init.1), condition=%while_condition.1, body=%while_body.1
+      ROOT %result.1 = f32[1024, 1024] get-tuple-element((s32[], s32[], f32[1024, 1024], f32[1024, 1024]) %while.1), index=3
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+  auto* while_op =
+      hlo_module->entry_computation()->GetInstructionWithName("while.1");
+  EXPECT_NE(while_op, nullptr);
+  std::optional<ParsedWhileLoop> parsed_while_loop =
+      PatternMatchParseWhileLoop(while_op);
+  ASSERT_TRUE(parsed_while_loop.has_value());
+  EXPECT_TRUE(parsed_while_loop->is_dynamic());
+}
+
 TEST_F(PatternMatchParseWhileLoopTest, NestedLoop) {
   constexpr absl::string_view kHloModule = R"(
     HloModule accumulated_all_reduce

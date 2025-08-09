@@ -371,9 +371,12 @@ std::optional<WhileCondComparisonOrNoOp> PatternMatchLoopCondComparison(
   CHECK_EQ(comparison->opcode(), HloOpcode::kCompare);
   std::optional<ParamIndexAndValue> lhs =
       ParseComparisonOperand(comparison->operand(0), precomputed_analyses);
+  if (!lhs.has_value()) {
+    return std::nullopt;
+  }
   std::optional<ParamIndexAndValue> rhs =
       ParseComparisonOperand(comparison->operand(1), precomputed_analyses);
-  if (!lhs.has_value() || !rhs.has_value()) {
+  if (!rhs.has_value()) {
     return std::nullopt;
   }
   return WhileCondComparison{comparison->comparison_direction(), *lhs, *rhs};
@@ -721,7 +724,7 @@ std::optional<ParsedWhileLoop> PatternMatchParseWhileLoop(
   if (loop_comparison.lhs.value->is_dynamic() &&
       loop_comparison.rhs.value->is_dynamic()) {
     VLOG(3) << "Both operands of the loop condition comparison are dynamic.";
-    return std::nullopt;
+    return kParsedDynamicWhileLoop;
   }
   // We would have returned if both operands are dynamic. So there is at most
   // one dynamic operand, which is potentially the loop induction variable.
@@ -3675,7 +3678,7 @@ absl::Status HloEvaluator::HandleWhile(const HloInstruction* while_hlo) {
         visitor_shape_index_.size() != 1 ||
         parsed_while_loop->static_while_loop->induction_var_index !=
             visitor_shape_index_[0]) {
-      return absl::OkStatus();
+      return MakeEvalErrorDueToParamOrInfeed(*while_hlo);
     }
     Shape induction_var_shape =
         ShapeUtil::GetSubshape(while_hlo->shape(), visitor_shape_index_);
