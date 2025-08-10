@@ -37,7 +37,7 @@ def _check_penalty_number(x):
 
 
 def _none_to_default(inputs, default):
-  return default if inputs is None else default
+  return default if inputs is None else inputs
 
 
 class Regularizer(object):
