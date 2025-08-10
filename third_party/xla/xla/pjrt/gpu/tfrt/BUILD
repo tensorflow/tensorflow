@@ -126,6 +126,7 @@ cc_library(
         "@local_tsl//tsl/profiler/lib:traceme",
     ] + if_cuda([
         # keep sorted
+        "//xla/service/gpu/model:gpu_collective_performance_model",
         "@local_config_cuda//cuda:cuda_headers",
     ]) + if_rocm([
         # keep sorted
