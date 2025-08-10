@@ -88,7 +88,7 @@ def regex_replace(input, pattern, rewrite, replace_global=True, name=None):
     pattern: string or scalar string `Tensor`, regular expression to use,
       see more details at https://github.com/google/re2/wiki/Syntax
     rewrite: string or scalar string `Tensor`, value to use in match
-      replacement, supports backslash-escaped digits (\1 to \9) can be to insert
+      replacement, supports backslash-escaped digits (\1 to \9) which can be to insert
       text matching corresponding parenthesized group.
     replace_global: `bool`, if `True` replace all non-overlapping matches,
       else replace only the first match.
