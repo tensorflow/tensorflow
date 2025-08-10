@@ -104,7 +104,7 @@ if(${CMAKE_CROSSCOMPILING})
       ${TFLITE_HOST_TOOLS_DIR}/bin
       ${TFLITE_HOST_TOOLS_DIR}/flatbuffers-flatc/bin
       )
-  find_program(FLATC_BIN flatc PATHS ${FLATC_PATHS})
+  find_program(FLATC_BIN flatc HINTS ${FLATC_PATHS})
   if(${FLATC_BIN} STREQUAL "FLATC_BIN-NOTFOUND")
     message(FATAL_ERROR "Host 'flatc' compiler has not been found in the following locations: ${FLATC_PATHS}")
   else()
