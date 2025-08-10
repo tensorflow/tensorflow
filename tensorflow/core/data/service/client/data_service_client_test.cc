@@ -142,7 +142,7 @@ TEST(DataServiceClientTest, NoSharding) {
   TF_ASSERT_OK(client.Initialize(/*accelerator_device_info=*/nullptr,
                                  /*allocator=*/nullptr));
   EXPECT_THAT(GetResults<int64_t>(client),
-              IsOkAndHolds(ElementsAreArray(Range(10))));
+              absl_testing::IsOkAndHolds(ElementsAreArray(Range(10))));
   client.Cancel();
 }
 
@@ -159,7 +159,7 @@ TEST(DataServiceClientTest, DynamicSharding) {
   TF_ASSERT_OK(client.Initialize(/*accelerator_device_info=*/nullptr,
                                  /*allocator=*/nullptr));
   EXPECT_THAT(GetResults<int64_t>(client),
-              IsOkAndHolds(UnorderedElementsAreArray(Range(10))));
+              absl_testing::IsOkAndHolds(UnorderedElementsAreArray(Range(10))));
   client.Cancel();
 }
 
@@ -177,7 +177,7 @@ TEST(DataServiceClientTest, StaticSharding) {
   TF_ASSERT_OK(client.Initialize(/*accelerator_device_info=*/nullptr,
                                  /*allocator=*/nullptr));
   EXPECT_THAT(GetResults<int64_t>(client),
-              IsOkAndHolds(UnorderedElementsAreArray(Range(10))));
+              absl_testing::IsOkAndHolds(UnorderedElementsAreArray(Range(10))));
   client.Cancel();
 }
 
@@ -219,7 +219,7 @@ TEST(DataServiceClientTest, Cancel) {
                                  /*allocator=*/nullptr));
   client.Cancel();
   EXPECT_THAT(client.GetNext(GetTestDataServiceContext),
-              StatusIs(error::CANCELLED));
+              absl_testing::StatusIs(error::CANCELLED));
 }
 
 TEST(DataServiceClientTest, ValidationError) {
@@ -230,7 +230,7 @@ TEST(DataServiceClientTest, ValidationError) {
   EXPECT_THAT(
       client.Initialize(/*accelerator_device_info=*/nullptr,
                         /*allocator=*/nullptr),
-      StatusIs(
+      absl_testing::StatusIs(
           error::INVALID_ARGUMENT,
           HasSubstr(
               "Local reads require local tf.data workers, but no local worker "
