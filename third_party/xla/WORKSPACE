@@ -65,7 +65,7 @@ register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64")
 register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64_cuda")
 
 load(
-    "@rules_ml_toolchain//third_party/gpus/cuda/hermetic:cuda_json_init_repository.bzl",
+    "@rules_ml_toolchain//gpu/cuda:cuda_json_init_repository.bzl",
     "cuda_json_init_repository",
 )
 
@@ -77,7 +77,7 @@ load(
     "CUDNN_REDISTRIBUTIONS",
 )
 load(
-    "@rules_ml_toolchain//third_party/gpus/cuda/hermetic:cuda_redist_init_repositories.bzl",
+    "@rules_ml_toolchain//gpu/cuda:cuda_redist_init_repositories.bzl",
     "cuda_redist_init_repositories",
     "cudnn_redist_init_repository",
 )
@@ -91,28 +91,28 @@ cudnn_redist_init_repository(
 )
 
 load(
-    "@rules_ml_toolchain//third_party/gpus/cuda/hermetic:cuda_configure.bzl",
+    "@rules_ml_toolchain//gpu/cuda:cuda_configure.bzl",
     "cuda_configure",
 )
 
 cuda_configure(name = "local_config_cuda")
 
 load(
-    "@rules_ml_toolchain//third_party/nccl/hermetic:nccl_redist_init_repository.bzl",
+    "@rules_ml_toolchain//gpu/nccl:nccl_redist_init_repository.bzl",
     "nccl_redist_init_repository",
 )
 
 nccl_redist_init_repository()
 
 load(
-    "@rules_ml_toolchain//third_party/nccl/hermetic:nccl_configure.bzl",
+    "@rules_ml_toolchain//gpu/nccl:nccl_configure.bzl",
     "nccl_configure",
 )
 
 nccl_configure(name = "local_config_nccl")
 
 load(
-    "@rules_ml_toolchain//third_party/nvshmem/hermetic:nvshmem_json_init_repository.bzl",
+    "@rules_ml_toolchain//gpu/nvshmem:nvshmem_json_init_repository.bzl",
     "nvshmem_json_init_repository",
 )
 
@@ -123,7 +123,7 @@ load(
     "NVSHMEM_REDISTRIBUTIONS",
 )
 load(
-    "@rules_ml_toolchain//third_party/nvshmem/hermetic:nvshmem_redist_init_repository.bzl",
+    "@rules_ml_toolchain//gpu/nvshmem:nvshmem_redist_init_repository.bzl",
     "nvshmem_redist_init_repository",
 )
 
