@@ -14,7 +14,14 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 
+#include <utility>
+
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
+#include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
+#include "tfrt/host_context/diagnostic.h"  // from @tf_runtime
+#include "tfrt/host_context/host_context.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace tfrt_stub {
@@ -28,6 +35,19 @@ TEST(RuntimeTest, GlobalRuntimeWorks) {
   EXPECT_NE(GetGlobalRuntime(), nullptr);
   // It is only allocated once.
   EXPECT_EQ(GetGlobalRuntime(), GetGlobalRuntime());
+}
+
+TEST(RuntimeTest, DiagHandler) {
+  bool was_called = false;
+  auto diag_handler = [&was_called](const tfrt::DecodedDiagnostic& diag) {
+    was_called = true;
+  };
+  auto work_queue =
+      WrapDefaultWorkQueue(tfrt::CreateMultiThreadedWorkQueue(1, 1));
+  auto runtime = Runtime::Create(std::move(work_queue), diag_handler);
+  runtime->core_runtime()->GetHostContext()->diag_handler()(
+      tfrt::DecodedDiagnostic(absl::UnknownError("Some failure.")));
+  EXPECT_TRUE(was_called);
 }
 
 }  // namespace

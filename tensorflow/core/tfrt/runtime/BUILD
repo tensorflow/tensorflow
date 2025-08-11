@@ -58,10 +58,13 @@ tf_cc_shared_test(
     tags = ["no_oss"],
     deps = [
         ":runtime",
+        ":work_queue_interface",
         "//tensorflow/c:tf_tensor",
         "//tensorflow/core:test",
+        "//tensorflow/core/platform:threadpool_interface",
+        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
-        "@tf_runtime//cpp_tests:common",
+        "@tf_runtime//:hostcontext",
     ],
 )
 
