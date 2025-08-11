@@ -595,10 +595,6 @@ const HloInstruction& FindNonTrivialHero(const HloInstruction& instr) {
   return FindNonTrivialHero(instr_adaptor).instruction();
 }
 
-void VLogModule(int level, const llvm::Module& module) {
-  XLA_VLOG_LINES(level, llvm_ir::DumpToString(&module));
-}
-
 void VerifyModule(const llvm::Module& module) {
   std::string error_str;
   llvm::raw_string_ostream error_stream(error_str);
