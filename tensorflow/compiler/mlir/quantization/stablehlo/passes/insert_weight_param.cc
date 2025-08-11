@@ -135,10 +135,10 @@ class InsertWeightParamPattern
         quant_type.castFromExpressedType(expressed_type);
 
     rewriter.setInsertionPointAfter(op);
-    auto q = rewriter.create<mlir::quant::ir::QuantizeCastOp>(
-        op->getLoc(), quantized_type, op->getResult(0));
-    auto dq = rewriter.create<mlir::quant::ir::DequantizeCastOp>(
-        op->getLoc(), expressed_type, q);
+    auto q = mlir::quant::ir::QuantizeCastOp::create(
+        rewriter, op->getLoc(), quantized_type, op->getResult(0));
+    auto dq = mlir::quant::ir::DequantizeCastOp::create(rewriter, op->getLoc(),
+                                                        expressed_type, q);
     quantizable_op->setOperand(1, dq.getResult());
     return success();
   }
