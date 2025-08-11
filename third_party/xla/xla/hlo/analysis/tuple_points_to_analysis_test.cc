@@ -394,11 +394,77 @@ TEST_F(TuplePointsToAnalysisTest, AsyncOps) {
       {async_start});
   ExpectHasBufferAliases(
       param, {}, {{param, {}}, {async_start, {0, 0}}, {async_update, {0, 0}}});
-  ExpectHasBufferAliases(
-      async_start, {1},
-      {{async_start, {1}}, {async_update, {1}}, {async_done, {}}});
+  HloInstruction* async_wrapped_instruction =
+      async_start->async_wrapped_instruction();
+  ExpectHasBufferAliases(async_wrapped_instruction, {},
+                         {{async_wrapped_instruction, {}},
+                          {async_start, {1}},
+                          {async_update, {1}},
+                          {async_done, {}}});
   ExpectHasBufferAliases(async_start, {2},
                          {{async_start, {2}}, {async_update, {2}}});
+}
+
+TEST_F(TuplePointsToAnalysisTest, AsyncCall) {
+  std::string hlo_str = R"(
+  HloModule AsyncCall
+
+  %called_computation {
+    %param_0 = f32[4096]{0} parameter(0)
+    %param_1 = f32[4096]{0} parameter(1)
+    %negate_0 = f32[4096]{0} negate(f32[4096]{0} %param_0)
+    %negate_1 = f32[4096]{0} negate(f32[4096]{0} %param_1)
+    ROOT %result.1 = f32[4096]{0} add(f32[4096]{0} %negate_0, f32[4096]{0} %negate_1)
+  }
+
+  ENTRY %main {
+    %a = f32[4096]{0} parameter(0)
+    %b = f32[4096]{0} parameter(1)
+    %async-start = ((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) call-start(f32[4096]{0} %a, f32[4096]{0} %b), to_apply=%called_computation
+    %negate_2 = f32[4096]{0} negate(f32[4096]{0} %a)
+    %async-update = ((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) call-update(((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) %async-start)
+    %negate_3 = f32[4096]{0} negate(f32[4096]{0} %b)
+    %add_0 = f32[4096]{0} add(f32[4096]{0} %negate_2, f32[4096]{0} %negate_3)
+    %async-done = f32[4096]{0} call-done(((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) %async-update)
+    ROOT %add_1 = f32[4096]{0} add(f32[4096]{0} %add_0, f32[4096]{0} %async-done)
+  }
+)";
+  TF_ASSERT_OK_AND_ASSIGN(
+      module_, ParseAndReturnVerifiedModule(hlo_str, GetModuleConfigForTest()));
+
+  RunAnalysis();
+
+  HloInstruction* async_start = FindInstruction(module_.get(), "async-start");
+  EXPECT_FALSE(points_to_analysis_->GetPointsToSet(async_start).IsAmbiguous());
+  EXPECT_TRUE(points_to_analysis_->GetPointsToSet(async_start).IsDistinct());
+
+  HloInstruction* async_update = FindInstruction(module_.get(), "async-update");
+  EXPECT_FALSE(points_to_analysis_->GetPointsToSet(async_update).IsAmbiguous());
+  EXPECT_TRUE(points_to_analysis_->GetPointsToSet(async_update).IsDistinct());
+
+  HloInstruction* async_done = FindInstruction(module_.get(), "async-done");
+  EXPECT_FALSE(points_to_analysis_->GetPointsToSet(async_done).IsAmbiguous());
+  EXPECT_TRUE(points_to_analysis_->GetPointsToSet(async_done).IsDistinct());
+
+  // In contrast to HloDataflowAnalysis, parameter `a` does not alias the
+  // parameter of the called computation of the async call.
+  HloInstruction* a = FindInstruction(module_.get(), "a");
+  ExpectHasBufferAliases(
+      a, {}, {{a, {}}, {async_start, {0, 0}}, {async_update, {0, 0}}});
+
+  // In contrast to HloDataflowAnalysis, parameter `b` does not alias the
+  // parameter of the called computation of the async call.
+  HloInstruction* b = FindInstruction(module_.get(), "b");
+  ExpectHasBufferAliases(
+      b, {}, {{b, {}}, {async_start, {0, 1}}, {async_update, {0, 1}}});
+
+  HloInstruction* async_wrapped_instruction =
+      async_start->async_wrapped_instruction();
+  ExpectHasBufferAliases(async_wrapped_instruction, {},
+                         {{async_wrapped_instruction, {}},
+                          {async_start, {1}},
+                          {async_update, {1}},
+                          {async_done, {}}});
 }
 
 TEST_F(TuplePointsToAnalysisTest, SendAndSendDone) {
