@@ -368,11 +368,11 @@ absl::Status runShardingPropagation(HloModule* hloModule,
         /*allowPropagationToResults=*/
         spanToArrayRef(
             hloModule->config().allow_spmd_sharding_propagation_to_output()),
-        /*importOnlyUninlineableFuncCalls=*/true);
+        /*importOnlyUninlineableFuncCalls=*/false);
   } else {
     // This is the default path.
     addSdyRoundTripImportPipeline(pm, /*enableConstantImport=*/true,
-                                  /*importOnlyUninlineableFuncCalls=*/true,
+                                  /*importOnlyUninlineableFuncCalls=*/false,
                                   /*liftAndDedupMeshes=*/true);
   }
 
