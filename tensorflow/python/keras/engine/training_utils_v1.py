@@ -687,7 +687,7 @@ def standardize_sample_or_class_weights(x_weight, output_names, weight_type):
   if x_weight is None or (isinstance(x_weight, (list, tuple)) and
                           len(x_weight) == 0):  # pylint: disable=g-explicit-length-test
     return [None for _ in output_names]
-  
+
   if len(output_names) == 1:
     if isinstance(x_weight, (list, tuple)) and len(x_weight) == 1:
       return x_weight
@@ -713,7 +713,7 @@ def standardize_sample_or_class_weights(x_weight, output_names, weight_type):
                          f"Class weight keys must be integers representing "
                          f"class indices or valid output names for single-output models. "
                          f"Got key of type {type(key).__name__}.")
-      
+
       if output_names[0] in x_weight:
         return [x_weight[output_names[0]]]
       else:
@@ -744,11 +744,11 @@ def standardize_sample_or_class_weights(x_weight, output_names, weight_type):
                   raise ValueError()
               except (ValueError, TypeError):
                 raise ValueError(f"Invalid class_weight key: '{key}' for "
-                               f"output '{name}'. " 
+                               f"output '{name}'. "
                                f"Class weight keys must be integers "
                                f"representing class indices, "
                                f"got key of type {type(key).__name__}.")
-    
+
     for name in output_names:
       if name not in x_weight:
         raise ValueError('Output "' + name + '" missing from `' +

@@ -42,13 +42,13 @@ class DataAdapterTest(test.TestCase):
   def test_make_class_weight_map_fn_complex_weights_rejected(self):
     """Test that complex class weights are explicitly rejected."""
     with self.assertRaisesRegex(
-        ValueError, 
+        ValueError,
         "Complex class weights are not supported"):
       data_adapter._make_class_weight_map_fn({
           0: complex(1.0, 0.0),
           1: complex(2.0, 0.0)
       })
-    
+
     # Also test with TensorFlow complex types
     with self.assertRaisesRegex(
         ValueError,
@@ -63,7 +63,7 @@ class DataAdapterTest(test.TestCase):
     # Test with integer keys
     fn = data_adapter._make_class_weight_map_fn({0: 1.0, 1: 2.0, 2: 0.5})
     self.assertTrue(callable(fn))
-    
+
     # Test with string keys that convert to integers
     fn = data_adapter._make_class_weight_map_fn({'0': 1.0, '1': 2.0})
     self.assertTrue(callable(fn))
