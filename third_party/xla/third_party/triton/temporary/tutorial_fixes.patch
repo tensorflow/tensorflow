@@ -54,30 +54,6 @@ diff --git a/python/tutorials/09-persistent-matmul.py b/python/tutorials/09-pers
  
  
  def bench_fn(label, reps, warmup_reps, fn, *args):
-@@ -657,9 +660,10 @@ def bench(K, dtype, reps=10000, warmup_r
-         if HAS_HOST_TENSOR_DESC and not (is_hopper() and ws):
-             bench_fn(f"tma_persistent{ws_str}", reps, warmup_reps, lambda a, b: matmul_tma_persistent(a, b, ws), a, b)
-             bench_fn(f"tma{ws_str}", reps, warmup_reps, lambda a, b: matmul_tma(a, b, ws), a, b)
--        if HAS_TENSOR_DESC:
--            bench_fn(f"descriptor_persistent{ws_str}", reps, warmup_reps,
--                     lambda a, b: matmul_descriptor_persistent(a, b, ws), a, b)
-+        # TODO: b/436156622 - Crashes in NVGPUWarpSpecialization
-+        # if HAS_TENSOR_DESC:
-+        #     bench_fn(f"descriptor_persistent{ws_str}", reps, warmup_reps,
-+        #              lambda a, b: matmul_descriptor_persistent(a, b, ws), a, b)
- 
- 
- def run_test(expect, fn, a, b, label, enabled=True):
-@@ -687,7 +691,8 @@ def validate(M, N, K, dtype):
-     kernels = [
-         (matmul_tma, "TMA", HAS_HOST_TENSOR_DESC),
-         (matmul_tma_persistent, "TMA Persistent", HAS_HOST_TENSOR_DESC),
--        (matmul_descriptor_persistent, "Tensor Descriptor Persistent", HAS_TENSOR_DESC),
-+        # TODO: b/436156622 - Crashes in NVGPUWarpSpecialization
-+        # (matmul_descriptor_persistent, "Tensor Descriptor Persistent", HAS_TENSOR_DESC),
-     ]
-     warp_specialize = [False, True] if HAS_WARP_SPECIALIZE else [False]
- 
 @@ -734,9 +739,12 @@ if __name__ == "__main__":
          validate(32, 32, 32, dtype)
          validate(8192, 8192, args.K_range[0], dtype)
