@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 
+#include <functional>
 #include <memory>
 #include <utility>
 
@@ -23,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_tensor.h"
+#include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tfrt/cpu/core_runtime/cpu_op_handler.h"  // from @tf_runtime
 #include "tfrt/core_runtime/core_runtime.h"  // from @tf_runtime
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
@@ -42,13 +44,17 @@ Runtime** GetGlobalRuntimeInternal() {
 }
 }  // namespace
 
+void Runtime::LogOnError(const tfrt::DecodedDiagnostic& diag) {
+  LOG(ERROR) << diag.message();
+}
+
 std::unique_ptr<Runtime> Runtime::Create(
-    std::unique_ptr<WorkQueueInterface> work_queue) {
+    std::unique_ptr<WorkQueueInterface> work_queue,
+    std::function<void(const tfrt::DecodedDiagnostic&)> diag_handler) {
   auto* work_queue_ptr = work_queue.get();
-  auto expected_core_runtime = tfrt::CoreRuntime::Create(
-      [](const tfrt::DecodedDiagnostic& diag) { LOG(ERROR) << diag.message(); },
-      tfrt::CreateMallocAllocator(), std::move(work_queue),
-      kDefaultHostDeviceName);
+  auto expected_core_runtime =
+      tfrt::CoreRuntime::Create(diag_handler, tfrt::CreateMallocAllocator(),
+                                std::move(work_queue), kDefaultHostDeviceName);
   DCHECK(expected_core_runtime);
 
   // We don't use std::make_unique here because the constructor should better be
