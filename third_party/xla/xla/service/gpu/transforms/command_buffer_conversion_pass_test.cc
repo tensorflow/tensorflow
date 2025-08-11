@@ -234,12 +234,11 @@ TEST(CommandBufferConversionPassTest, ConvertsToCommandBufferThunk) {
   // SequentialThunk(CommandBufferThunk(CopyThunk))
   ASSERT_THAT(pass.Run(root_thunk.get(), debug_options, device_info),
               IsOkAndHolds(true));
-  ASSERT_EQ(root_thunk->thunks().size(), 1);
 
-  const Thunk* thunk = root_thunk->thunks()[0].get();
-  ASSERT_EQ(thunk->kind(), Thunk::kCommandBuffer);
+  EXPECT_THAT(root_thunk->thunks(), ThunkKindsAre(Thunk::kCommandBuffer));
 
-  auto* command_buffer_thunk = static_cast<const CommandBufferThunk*>(thunk);
+  const auto* command_buffer_thunk =
+      static_cast<const CommandBufferThunk*>(root_thunk->thunks()[0].get());
 
   const auto& thunks_in_command_buffer =
       command_buffer_thunk->thunks()->thunks();
@@ -271,13 +270,12 @@ TEST(CommandBufferConversionPassTest, PartiallyConvertsToCommandBufferThunk) {
 
   ASSERT_THAT(pass.Run(root_thunk.get(), debug_options, device_info),
               IsOkAndHolds(true));
-  ASSERT_EQ(root_thunk->thunks().size(), 3);
 
   // Expected transformation: (Copy, Gemm, Copy) -> (CommandBuffer(Copy), Gemm,
   // CommandBuffer(Copy))
-  EXPECT_EQ(root_thunk->thunks()[0]->kind(), Thunk::kCommandBuffer);
-  EXPECT_EQ(root_thunk->thunks()[1]->kind(), Thunk::kGemm);
-  EXPECT_EQ(root_thunk->thunks()[2]->kind(), Thunk::kCommandBuffer);
+  EXPECT_THAT(root_thunk->thunks(),
+              ThunkKindsAre(Thunk::kCommandBuffer, Thunk::kGemm,
+                            Thunk::kCommandBuffer));
 
   // Check the content of the first command buffer thunk
   auto* command_buffer_thunk0 =
@@ -285,7 +283,7 @@ TEST(CommandBufferConversionPassTest, PartiallyConvertsToCommandBufferThunk) {
   ASSERT_NE(command_buffer_thunk0, nullptr);
   const auto& thunks_in_command_buffer0 =
       command_buffer_thunk0->thunks()->thunks();
-  EXPECT_EQ(thunks_in_command_buffer0[0]->kind(), Thunk::kCopy);
+  EXPECT_THAT(thunks_in_command_buffer0, ThunkKindsAre(Thunk::kCopy));
 
   // Check the content of the second command buffer thunk
   auto* command_buffer_thunk1 =
@@ -293,7 +291,7 @@ TEST(CommandBufferConversionPassTest, PartiallyConvertsToCommandBufferThunk) {
   ASSERT_NE(command_buffer_thunk1, nullptr);
   const auto& thunks_in_command_buffer1 =
       command_buffer_thunk1->thunks()->thunks();
-  EXPECT_EQ(thunks_in_command_buffer1[0]->kind(), Thunk::kCopy);
+  EXPECT_THAT(thunks_in_command_buffer1, ThunkKindsAre(Thunk::kCopy));
 }
 
 TEST(CommandBufferConversionPassTest, ConvertsAsyncPairToCommandBuffer) {
@@ -324,12 +322,10 @@ TEST(CommandBufferConversionPassTest, ConvertsAsyncPairToCommandBuffer) {
   // SequentialThunk(AllGatherStartThunk, CollectiveDoneThunk) ->
   // SequentialThunk(CommandBufferThunk(AllGatherStartThunk,
   // CollectiveDoneThunk))
-  ASSERT_EQ(root_thunk->thunks().size(), 1);
+  EXPECT_THAT(root_thunk->thunks(), ThunkKindsAre(Thunk::kCommandBuffer));
 
-  const Thunk* thunk = root_thunk->thunks()[0].get();
-  ASSERT_EQ(thunk->kind(), Thunk::kCommandBuffer);
-
-  auto* command_buffer_thunk = static_cast<const CommandBufferThunk*>(thunk);
+  const auto* command_buffer_thunk =
+      static_cast<const CommandBufferThunk*>(root_thunk->thunks()[0].get());
   const auto& thunks_in_command_buffer =
       command_buffer_thunk->thunks()->thunks();
   EXPECT_THAT(thunks_in_command_buffer,
@@ -366,6 +362,9 @@ TEST(CommandBufferConversionPassTest,
   // between the asyncs.
   ASSERT_THAT(pass.Run(root_thunk.get(), debug_options, device_info),
               IsOkAndHolds(false));
+  EXPECT_THAT(root_thunk->thunks(),
+              ThunkKindsAre(Thunk::kAllGatherStart, Thunk::kCopy,
+                            Thunk::kAllGatherDone));
 }
 
 TEST(CommandBufferConversionPassTest, ConvertCrossedAsyncs) {
@@ -396,12 +395,10 @@ TEST(CommandBufferConversionPassTest, ConvertCrossedAsyncs) {
               IsOkAndHolds(true));
 
   // Expected transformation: Convert all 4 thunks into command buffer
-  ASSERT_EQ(root_thunk->thunks().size(), 1);
+  EXPECT_THAT(root_thunk->thunks(), ThunkKindsAre(Thunk::kCommandBuffer));
 
-  const Thunk* thunk = root_thunk->thunks()[0].get();
-  ASSERT_EQ(thunk->kind(), Thunk::kCommandBuffer);
-
-  auto* command_buffer_thunk = static_cast<const CommandBufferThunk*>(thunk);
+  const auto* command_buffer_thunk =
+      static_cast<const CommandBufferThunk*>(root_thunk->thunks()[0].get());
   const auto& thunks_in_command_buffer =
       command_buffer_thunk->thunks()->thunks();
   EXPECT_THAT(thunks_in_command_buffer,
@@ -441,12 +438,10 @@ TEST(CommandBufferConversionPassTest, ConvertNestedAsyncs) {
               IsOkAndHolds(true));
 
   // Expected transformation: Convert all 5 thunks into command buffer
-  ASSERT_EQ(root_thunk->thunks().size(), 1);
+  EXPECT_THAT(root_thunk->thunks(), ThunkKindsAre(Thunk::kCommandBuffer));
 
-  const Thunk* thunk = root_thunk->thunks()[0].get();
-  ASSERT_EQ(thunk->kind(), Thunk::kCommandBuffer);
-
-  auto* command_buffer_thunk = static_cast<const CommandBufferThunk*>(thunk);
+  const auto* command_buffer_thunk =
+      static_cast<const CommandBufferThunk*>(root_thunk->thunks()[0].get());
   const auto& thunks_in_command_buffer =
       command_buffer_thunk->thunks()->thunks();
   EXPECT_THAT(thunks_in_command_buffer,
@@ -493,25 +488,22 @@ TEST(CommandBufferConversionPassTest, DontConvertAsyncsIfUnpairedStart) {
   // Expected transformation: {Copy, AllGatherStart0, AllGatherStart1,
   // AllGatherDone0, Copy} -> {CommandBuffer(Copy), AllGatherStart0,
   // AllGatherStart1, AllGatherDone0, CommandBuffer(Copy)}
-  ASSERT_EQ(root_thunk->thunks().size(), 5);
+  EXPECT_THAT(root_thunk->thunks(),
+              ThunkKindsAre(Thunk::kCommandBuffer, Thunk::kAllGatherStart,
+                            Thunk::kAllGatherStart, Thunk::kAllGatherDone,
+                            Thunk::kCommandBuffer));
 
-  const Thunk* thunk0 = root_thunk->thunks()[0].get();
-  EXPECT_EQ(thunk0->kind(), Thunk::kCommandBuffer);
-  auto* command_buffer_thunk0 = static_cast<const CommandBufferThunk*>(thunk0);
+  const auto* command_buffer_thunk0 =
+      static_cast<const CommandBufferThunk*>(root_thunk->thunks()[0].get());
   const auto& thunks_in_command_buffer0 =
       command_buffer_thunk0->thunks()->thunks();
-  EXPECT_EQ(thunks_in_command_buffer0[0]->kind(), Thunk::kCopy);
+  EXPECT_THAT(thunks_in_command_buffer0, ThunkKindsAre(Thunk::kCopy));
 
-  EXPECT_EQ(root_thunk->thunks()[1]->kind(), Thunk::kAllGatherStart);
-  EXPECT_EQ(root_thunk->thunks()[2]->kind(), Thunk::kAllGatherStart);
-  EXPECT_EQ(root_thunk->thunks()[3]->kind(), Thunk::kAllGatherDone);
-
-  const Thunk* thunk4 = root_thunk->thunks()[4].get();
-  EXPECT_EQ(thunk4->kind(), Thunk::kCommandBuffer);
-  auto* command_buffer_thunk4 = static_cast<const CommandBufferThunk*>(thunk4);
+  const auto* command_buffer_thunk4 =
+      static_cast<const CommandBufferThunk*>(root_thunk->thunks()[4].get());
   const auto& thunks_in_command_buffer4 =
       command_buffer_thunk4->thunks()->thunks();
-  EXPECT_EQ(thunks_in_command_buffer4[0]->kind(), Thunk::kCopy);
+  EXPECT_THAT(thunks_in_command_buffer4, ThunkKindsAre(Thunk::kCopy));
 }
 
 TEST(CommandBufferConversionPassTest, ConvertsAsyncPairsMixedWithOtherThunks) {
@@ -553,12 +545,10 @@ TEST(CommandBufferConversionPassTest, ConvertsAsyncPairsMixedWithOtherThunks) {
   // SequentialThunk(AllGatherStartThunk0, CollectiveDoneThunk0, CopyThunk,
   // AllGatherStartThunk1, AllGatherDoneThunk1) ->
   // SequentialThunk(CommandBufferThunk(/*The same sequence of thunks*/))
-  ASSERT_EQ(root_thunk->thunks().size(), 1);
+  EXPECT_THAT(root_thunk->thunks(), ThunkKindsAre(Thunk::kCommandBuffer));
 
-  const Thunk* thunk = root_thunk->thunks()[0].get();
-  ASSERT_EQ(thunk->kind(), Thunk::kCommandBuffer);
-
-  auto* command_buffer_thunk = static_cast<const CommandBufferThunk*>(thunk);
+  const auto* command_buffer_thunk =
+      static_cast<const CommandBufferThunk*>(root_thunk->thunks()[0].get());
   const auto& thunks_in_command_buffer =
       command_buffer_thunk->thunks()->thunks();
   EXPECT_THAT(
@@ -590,6 +580,7 @@ TEST(CommandBufferConversionPassTest, DontConvertIfNotMinGraphSize) {
   // be converted to a command buffer.
   ASSERT_THAT(pass.Run(root_thunk.get(), debug_options, device_info),
               IsOkAndHolds(false));
+  EXPECT_THAT(root_thunk->thunks(), ThunkKindsAre(Thunk::kCopy));
 }
 
 TEST(CommandBufferConversionPassTest, ConvertWhileThunk) {
@@ -624,11 +615,10 @@ TEST(CommandBufferConversionPassTest, ConvertWhileThunk) {
 
   ASSERT_THAT(pass.Run(root_thunk.get(), debug_options, device_info),
               IsOkAndHolds(true));
-  ASSERT_EQ(root_thunk->thunks().size(), 1);
 
   // Expected transformation: (While({Copy}, {Gemm})) ->
   // (CommandBuffer(While({Copy}, {Gemm})))
-  EXPECT_EQ(root_thunk->thunks()[0]->kind(), Thunk::kCommandBuffer);
+  EXPECT_THAT(root_thunk->thunks(), ThunkKindsAre(Thunk::kCommandBuffer));
 
   // Check the content of the command buffer thunk
   auto* command_buffer_thunk =
@@ -636,14 +626,14 @@ TEST(CommandBufferConversionPassTest, ConvertWhileThunk) {
   ASSERT_NE(command_buffer_thunk, nullptr);
   const auto& thunks_in_command_buffer =
       command_buffer_thunk->thunks()->thunks();
+  EXPECT_THAT(thunks_in_command_buffer, ThunkKindsAre(Thunk::kWhile));
   auto* while_thunk_transformed =
       dynamic_cast<const WhileThunk*>(thunks_in_command_buffer[0].get());
   ASSERT_NE(while_thunk_transformed, nullptr);
-  EXPECT_EQ(
-      while_thunk_transformed->condition_thunk_sequence()->thunks()[0]->kind(),
-      Thunk::kCopy);
-  EXPECT_EQ(while_thunk_transformed->body_thunk_sequence()->thunks()[0]->kind(),
-            Thunk::kGemm);
+  EXPECT_THAT(while_thunk_transformed->condition_thunk_sequence()->thunks(),
+              ThunkKindsAre(Thunk::kCopy));
+  EXPECT_THAT(while_thunk_transformed->body_thunk_sequence()->thunks(),
+              ThunkKindsAre(Thunk::kGemm));
 }
 
 TEST(CommandBufferConversionPassTest,
@@ -681,11 +671,10 @@ TEST(CommandBufferConversionPassTest,
 
   ASSERT_THAT(pass.Run(root_thunk.get(), debug_options, device_info),
               IsOkAndHolds(false));
-  ASSERT_EQ(root_thunk->thunks().size(), 1);
 
   // Expected no transformation, because one of the branches has an unclosed
   // async thunk => is not convertible.
-  EXPECT_EQ(root_thunk->thunks()[0]->kind(), Thunk::kConditional);
+  EXPECT_THAT(root_thunk->thunks(), ThunkKindsAre(Thunk::kConditional));
 }
 
 TEST(CommandBufferConversionPassTest, ConvertWhileThunkWithAsyncPair) {
@@ -723,12 +712,11 @@ TEST(CommandBufferConversionPassTest, ConvertWhileThunkWithAsyncPair) {
 
   ASSERT_THAT(pass.Run(root_thunk.get(), debug_options, device_info),
               IsOkAndHolds(true));
-  ASSERT_EQ(root_thunk->thunks().size(), 1);
 
   // Expected transformation: (While({Copy}, {AllGatherStart, Copy,
   // AllGatherDone})) -> (CommandBuffer(While({Copy}, {AllGatherStart, Copy,
   // AllGatherDone})))
-  EXPECT_EQ(root_thunk->thunks()[0]->kind(), Thunk::kCommandBuffer);
+  EXPECT_THAT(root_thunk->thunks(), ThunkKindsAre(Thunk::kCommandBuffer));
 
   // Check the content of the command buffer thunk
   auto* command_buffer_thunk =
@@ -736,18 +724,15 @@ TEST(CommandBufferConversionPassTest, ConvertWhileThunkWithAsyncPair) {
   ASSERT_NE(command_buffer_thunk, nullptr);
   const auto& thunks_in_command_buffer =
       command_buffer_thunk->thunks()->thunks();
+  EXPECT_THAT(thunks_in_command_buffer, ThunkKindsAre(Thunk::kWhile));
   auto* while_thunk_transformed =
       dynamic_cast<const WhileThunk*>(thunks_in_command_buffer[0].get());
   ASSERT_NE(while_thunk_transformed, nullptr);
-  EXPECT_EQ(
-      while_thunk_transformed->condition_thunk_sequence()->thunks()[0]->kind(),
-      Thunk::kCopy);
-  EXPECT_EQ(while_thunk_transformed->body_thunk_sequence()->thunks()[0]->kind(),
-            Thunk::kAllGatherStart);
-  EXPECT_EQ(while_thunk_transformed->body_thunk_sequence()->thunks()[1]->kind(),
-            Thunk::kCopy);
-  EXPECT_EQ(while_thunk_transformed->body_thunk_sequence()->thunks()[2]->kind(),
-            Thunk::kAllGatherDone);
+  EXPECT_THAT(while_thunk_transformed->condition_thunk_sequence()->thunks(),
+              ThunkKindsAre(Thunk::kCopy));
+  EXPECT_THAT(while_thunk_transformed->body_thunk_sequence()->thunks(),
+              ThunkKindsAre(Thunk::kAllGatherStart, Thunk::kCopy,
+                            Thunk::kAllGatherDone));
 }
 
 TEST(CommandBufferConversionPassTest,
@@ -771,11 +756,10 @@ TEST(CommandBufferConversionPassTest,
 
   ASSERT_THAT(pass.Run(root_thunk.get(), debug_options, device_info),
               IsOkAndHolds(true));
-  ASSERT_EQ(root_thunk->thunks().size(), 1);
-  const Thunk* thunk = root_thunk->thunks()[0].get();
-  ASSERT_EQ(thunk->kind(), Thunk::kCommandBuffer);
+  EXPECT_THAT(root_thunk->thunks(), ThunkKindsAre(Thunk::kCommandBuffer));
 
-  auto* command_buffer_thunk = static_cast<const CommandBufferThunk*>(thunk);
+  const auto* command_buffer_thunk =
+      static_cast<const CommandBufferThunk*>(root_thunk->thunks()[0].get());
 
   const auto& thunks_in_command_buffer =
       command_buffer_thunk->thunks()->thunks();
@@ -805,17 +789,74 @@ TEST(CommandBufferConversionPassTest, ConvertsCuDnnThunkToCommandBufferThunk) {
   // SequentialThunk(CommandBufferThunk(CuDnnThunk))
   ASSERT_THAT(pass.Run(root_thunk.get(), debug_options, device_info),
               IsOkAndHolds(true));
-  ASSERT_EQ(root_thunk->thunks().size(), 1);
+  EXPECT_THAT(root_thunk->thunks(), ThunkKindsAre(Thunk::kCommandBuffer));
 
-  const Thunk* thunk = root_thunk->thunks()[0].get();
-  ASSERT_EQ(thunk->kind(), Thunk::kCommandBuffer);
-
-  auto* command_buffer_thunk = static_cast<const CommandBufferThunk*>(thunk);
+  const auto* command_buffer_thunk =
+      static_cast<const CommandBufferThunk*>(root_thunk->thunks()[0].get());
 
   const auto& thunks_in_command_buffer =
       command_buffer_thunk->thunks()->thunks();
   EXPECT_THAT(thunks_in_command_buffer, ThunkKindsAre(Thunk::kCuDnn));
 }
+TEST(CommandBufferConversionPassTest, ConvertTheBodyOfWhileThunk) {
+  CommandBufferConversionPass pass;
+
+  std::vector<std::unique_ptr<Thunk>> thunks;
+
+  // Create condition and branch sequences
+  std::vector<std::unique_ptr<Thunk>> condition_thunks;
+  BufferAllocation alloc0(0, 1024, 0);
+  condition_thunks.push_back(CreateCopyThunk(alloc0));
+
+  std::vector<std::unique_ptr<Thunk>> body_thunks;
+  BufferAllocation alloc1(1, 16 * 4, 0);
+  BufferAllocation alloc2(1, 16 * 4, 0);
+  BufferAllocation alloc3(1, 16 * 4, 0);
+  // Add one non-convertible thunk to the body.
+  body_thunks.push_back(CreateAllGatherStartThunk(alloc1, alloc2));
+  body_thunks.push_back(CreateGemmThunk(alloc3));
+
+  // Create a while thunk
+  BufferAllocation alloc4(0, 1024, 0);
+  thunks.push_back(CreateWhileThunk(std::move(condition_thunks),
+                                    std::move(body_thunks), alloc4));
+  auto root_thunk =
+      std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), std::move(thunks));
+  DebugOptions debug_options;
+
+  debug_options.clear_xla_gpu_enable_command_buffer();
+  debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::WHILE);
+  debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLAS);
+  debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
+  debug_options.set_xla_gpu_graph_min_graph_size(1);
+  se::DeviceDescription device_info = TestGpuDeviceInfo::CudaOrRocmDeviceInfo();
+  ASSERT_EQ(root_thunk->thunks().size(), 1);
+
+  ASSERT_THAT(pass.Run(root_thunk.get(), debug_options, device_info),
+              IsOkAndHolds(true));
+
+  // While thunk is not converted itself, because it has a non-convertible thunk
+  // in its body, but the body is partially converted. Expected transformation:
+  // (While({Copy}, {AllGatherStart,Gemm})) ->
+  // ((While({Copy}, {AllGatherStart, CommandBuffer(Gemm))})))
+  EXPECT_THAT(root_thunk->thunks(), ThunkKindsAre(Thunk::kWhile));
+
+  // Check the content of the while thunk
+  auto* while_thunk =
+      dynamic_cast<const WhileThunk*>(root_thunk->thunks()[0].get());
+  ASSERT_NE(while_thunk, nullptr);
+  const auto& thunks_in_while_thunk_body =
+      while_thunk->body_thunk_sequence()->thunks();
+  EXPECT_THAT(thunks_in_while_thunk_body,
+              ThunkKindsAre(Thunk::kAllGatherStart, Thunk::kCommandBuffer));
+  auto* command_buffer_thunk = dynamic_cast<const CommandBufferThunk*>(
+      thunks_in_while_thunk_body[1].get());
+  ASSERT_NE(command_buffer_thunk, nullptr);
+  const auto& thunks_in_command_buffer =
+      command_buffer_thunk->thunks()->thunks();
+  EXPECT_THAT(thunks_in_command_buffer, ThunkKindsAre(Thunk::kGemm));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
