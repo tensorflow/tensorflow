@@ -253,18 +253,20 @@ class MultiBenchmarkConfig {
 
 // Benchmarks 'fn' in JIT and AOT modes. The JIT benchmark
 // keeps the given 'name'; AOT is suffixed with '_Aot'.
-inline MultiBenchmarkConfig* RegisterJitAndAotBenchmarks(
-    absl::string_view name, void(fn)(benchmark::State&, HloBenchmarkOptions)) {
+template <typename Func, typename... Arg>
+inline MultiBenchmarkConfig* RegisterJitAndAotBenchmarks(absl::string_view name,
+                                                         Func&& fn,
+                                                         Arg&&... arg) {
   std::string jit_name(name);
   std::string aot_name = jit_name + "_Aot";
-  auto jit_fn = [fn](benchmark::State& state) {
+  auto jit_fn = [fn, arg...](benchmark::State& state) {
     HloBenchmarkOptions options;
-    fn(state, std::move(options));
+    fn(state, std::move(options), arg...);
   };
-  auto aot_fn = [fn](benchmark::State& state) {
+  auto aot_fn = [fn, arg...](benchmark::State& state) {
     HloBenchmarkOptions options;
     options.aot_options = GetAotCompilationOptions();
-    fn(state, std::move(options));
+    fn(state, std::move(options), arg...);
   };
   benchmark::internal::Benchmark* jit =
       benchmark::RegisterBenchmark(jit_name, jit_fn);
