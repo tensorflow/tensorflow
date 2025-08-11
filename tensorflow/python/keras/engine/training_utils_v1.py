@@ -692,24 +692,11 @@ def standardize_sample_or_class_weights(x_weight, output_names, weight_type):
     if isinstance(x_weight, (list, tuple)) and len(x_weight) == 1:
       return x_weight
     if isinstance(x_weight, dict):
-      # Check for unsupported complex class weights (consistent with data_adapter.py)
-      if weight_type == 'class_weight':
-        for key, value in x_weight.items():
-          try:
-            tensor_val = tensor_conversion.convert_to_tensor_v2_with_dispatch(value)
-            if tensor_val.dtype.is_complex:
-              raise ValueError(
-                  f"Complex class weights are not supported. "
-                  f"Found complex value {value} for class {key}. "
-                  f"Please use real-valued weights only.")
-          except Exception:
-            pass
-      
       # Validate class_weight keys
       if weight_type == 'class_weight':
         for key in x_weight.keys():
           # Allow integer keys (class indices)
-          if isinstance(key, (int, type(0))):
+          if isinstance(key, (int, numpy_compat.integer_types)):
             continue
           # Allow output names for single-output models
           elif isinstance(key, str) and key in output_names:
@@ -744,21 +731,6 @@ def standardize_sample_or_class_weights(x_weight, output_names, weight_type):
                        'array per model output.')
     return x_weight
   if isinstance(x_weight, dict):
-    # Check for unsupported complex class weights (consistent with data_adapter.py)
-    if weight_type == 'class_weight':
-      for name in output_names:
-        if name in x_weight and isinstance(x_weight[name], dict):
-          for key, value in x_weight[name].items():
-            try:
-              tensor_val = tensor_conversion.convert_to_tensor_v2_with_dispatch(value)
-              if tensor_val.dtype.is_complex:
-                raise ValueError(
-                    f"Complex class weights are not supported. "
-                    f"Found complex value {value} for class {key} in output '{name}'. "
-                    f"Please use real-valued weights only.")
-            except Exception:
-              pass
-    
     # Validate class_weight keys for multiple outputs
     if weight_type == 'class_weight':
       for name in output_names:

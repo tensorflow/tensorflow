@@ -276,3 +276,16 @@ tf_py_test(
         "//tensorflow/python/platform:test",
     ],
 )
+
+tf_py_test(
+    name = "data_adapter_test",
+    srcs = ["data_adapter_test.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":data_adapter",
+        ":engine",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:test",
+    ],
+)
