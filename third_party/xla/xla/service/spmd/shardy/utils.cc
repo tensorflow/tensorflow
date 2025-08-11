@@ -48,6 +48,7 @@ limitations under the License.
 #include "shardy/dialect/sdy/ir/register.h"
 #include "shardy/dialect/sdy/ir/utils.h"
 #include "stablehlo/dialect/StablehloOps.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/shardy/extensions/mhlo_extensions.h"
@@ -375,7 +376,7 @@ bool hasGspmdAttrsOrOps(mlir::ModuleOp module) {
         if (func.getArgAttr(argIndex, sdy::kXlaShardingAttr) &&
             !func.getArgAttr(argIndex, mlir::sdy::kShardingAttr) &&
             !hasKey(sdy::getFuncArgFrontendAttrs(func, argIndex),
-                    sdy::kShardingRoundTripAttr)) {
+                    HloSharding::kShardingFrontendAttrName)) {
           return true;
         }
       }
@@ -396,7 +397,8 @@ bool hasGspmdAttrsOrOps(mlir::ModuleOp module) {
               sdy::kShardingCustomCallTargetName &&
           customCall->hasAttr(sdy::kXlaShardingAttr) &&
           !customCall->hasAttr(mlir::sdy::kShardingAttr) &&
-          !hasFrontendAttr(customCall, sdy::kShardingRoundTripAttr)) {
+          !hasFrontendAttr(customCall,
+                           HloSharding::kShardingFrontendAttrName)) {
         hasGspmd = true;
         return mlir::WalkResult::interrupt();
       }

@@ -41,7 +41,7 @@ void addSdyRoundTripExportPipeline(mlir::OpPassManager& pm,
 // including a sequence of passes, imports an StableHLO module into the
 // SDY (Shardy) dialect.
 //
-// The module is assumed to have `kShardingRoundTripAttr` and
+// The module is assumed to have `HloSharding::kShardingFrontendAttrName` and
 // `kMeshesRoundTripAttr`.
 void addSdyRoundTripImportPipeline(mlir::OpPassManager& pm,
                                    bool enableConstantImport = true,

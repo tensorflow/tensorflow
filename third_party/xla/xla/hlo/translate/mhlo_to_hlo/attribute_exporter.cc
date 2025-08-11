@@ -469,7 +469,7 @@ std::optional<xla::OpSharding> ExtractShardyArgShardingFromFrontendAttrs(
       arg_frontend_attrs != nullptr) {
     auto sdy_sharding =
         xla::sdy::parseStringAttr<mlir::sdy::TensorShardingAttr>(
-            arg_frontend_attrs, xla::sdy::kShardingRoundTripAttr);
+            arg_frontend_attrs, HloSharding::kShardingFrontendAttrName);
     if (sdy_sharding != nullptr) {
       return CreateOpShardingFromSdySharding(sdy_sharding, sdy_meshes,
                                              arg_frontend_attrs);
@@ -501,7 +501,7 @@ std::optional<xla::OpSharding> ExtractShardyResultShardingFromFrontendAttrs(
       << "xla.sdy.FuncResultSharding custom call should have frontend attrs";
   auto sharding_per_value_attr =
       xla::sdy::parseStringAttr<mlir::sdy::TensorShardingPerValueAttr>(
-          op_frontend_attrs, xla::sdy::kShardingRoundTripAttr);
+          op_frontend_attrs, HloSharding::kShardingFrontendAttrName);
   CHECK(sharding_per_value_attr != nullptr)
       << "Failed to parse sharding from frontend attrs";
   CHECK_EQ(sharding_per_value_attr.size(), 1)
