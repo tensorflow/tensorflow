@@ -2010,6 +2010,7 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
       device_info, block_level_parameters.is_tma_allowed));
 
   pm.addPass(mlir::triton::xla::CreateTritonXLASqueezeDimsPass());
+  pm.addPass(mlir::triton::xla::CreateTritonXLAFoldTransposePass());
 
   // Lower affine expressions into arithmetic ops.
   pm.addPass(mlir::createLowerAffinePass());

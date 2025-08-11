@@ -36,6 +36,7 @@ cc_library(
         "int4_passes.cc",
         "round_f32_to_tf32_for_tf32_dot_pass.cc",
         "triton_xla_extract_insert_to_triton_pass.cc",
+        "triton_xla_fold_transpose_pass.cc",
         "triton_xla_squeeze_dims_pass.cc",
     ],
     hdrs = ["passes.h"],
