@@ -34,7 +34,6 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/SHA256.h"
-#include "xla/backends/autotuner/autotune_config.h"
 #include "xla/backends/autotuner/autotuner_cache.pb.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -51,21 +50,21 @@ limitations under the License.
 namespace xla {
 
 absl::StatusOr<std::unique_ptr<AutotunerCacheInterface>>
-FileBasedAutotunerCache::Create(const AutotuneConfig& autotune_config,
+FileBasedAutotunerCache::Create(const FileBasedCacheConfig& cache_config,
                                 const se::DeviceDescription& device_desc,
                                 const std::string& version) {
   auto cache = absl::WrapUnique(
-      new FileBasedAutotunerCache(autotune_config, device_desc, version));
-  if (!autotune_config.autotune_cache_dir.empty()) {
+      new FileBasedAutotunerCache(cache_config, device_desc, version));
+  if (!cache_config.autotune_cache_dir.empty()) {
     TF_RETURN_IF_ERROR(cache->Load());
   }
   return cache;
 }
 
 FileBasedAutotunerCache::FileBasedAutotunerCache(
-    const AutotuneConfig& autotune_config,
+    const FileBasedCacheConfig& cache_config,
     const se::DeviceDescription& device_desc, const std::string& version)
-    : autotune_config_(autotune_config),
+    : cache_config_(cache_config),
       device_desc_(device_desc),
       version_(version) {}
 
@@ -151,7 +150,8 @@ std::optional<AutotunerCacheEntry> FileBasedAutotunerCache::Lookup(
 
 absl::Status FileBasedAutotunerCache::Insert(const HloInstruction* instr,
                                              AutotunerCacheEntry& entry) {
-  if (autotune_config_.autotune_cache_mode == AutotuneConfig::CacheMode::READ) {
+  if (cache_config_.autotune_cache_mode ==
+      FileBasedCacheConfig::CacheMode::READ) {
     return absl::OkStatus();
   }
   TF_ASSIGN_OR_RETURN(const std::string map_key, GetMapKey(instr));
@@ -159,7 +159,7 @@ absl::Status FileBasedAutotunerCache::Insert(const HloInstruction* instr,
   absl::MutexLock lock(&mutex_);
   *entry.mutable_key() = proto_key;
   in_memory_cache_[map_key] = entry;
-  if (!autotune_config_.autotune_cache_dir.empty()) {
+  if (!cache_config_.autotune_cache_dir.empty()) {
     return Save(map_key, entry);
   }
   return absl::OkStatus();
@@ -169,12 +169,12 @@ absl::StatusOr<std::string> FileBasedAutotunerCache::GetCacheFilePath(
     absl::string_view map_key) {
   TF_ASSIGN_OR_RETURN(const std::string key_hash,
                       GetBase64EncodedSha256Hash(map_key));
-  return tsl::io::JoinPath(autotune_config_.autotune_cache_dir,
+  return tsl::io::JoinPath(cache_config_.autotune_cache_dir,
                            absl::StrCat(key_hash, ".textproto"));
 }
 
 std::string FileBasedAutotunerCache::GetCacheFilePattern() {
-  return tsl::io::JoinPath(autotune_config_.autotune_cache_dir, "*.textproto");
+  return tsl::io::JoinPath(cache_config_.autotune_cache_dir, "*.textproto");
 }
 
 absl::Status FileBasedAutotunerCache::Load() {
@@ -232,13 +232,13 @@ absl::Status FileBasedAutotunerCache::Save(absl::string_view map_key,
 
   tsl::Env* default_env = tsl::Env::Default();
   TF_RETURN_IF_ERROR(
-      default_env->RecursivelyCreateDir(autotune_config_.autotune_cache_dir));
+      default_env->RecursivelyCreateDir(cache_config_.autotune_cache_dir));
 
   // Rename trick: Write to a temporary file, then rename it to the final file
   // to avoid mingled files when multiple threads are writing to the same
   // file. Also avoids reading incomplete files.
   const std::string tmp_dir =
-      tsl::io::JoinPath(autotune_config_.autotune_cache_dir, "tmp");
+      tsl::io::JoinPath(cache_config_.autotune_cache_dir, "tmp");
   TF_RETURN_IF_ERROR(default_env->RecursivelyCreateDir(tmp_dir));
 
   TF_ASSIGN_OR_RETURN(const std::string key_hash,

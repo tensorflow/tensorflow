@@ -25,7 +25,6 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
-#include "xla/backends/autotuner/autotune_config.h"
 #include "xla/backends/autotuner/autotuner_cache.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/literal_util.h"
@@ -84,9 +83,10 @@ class FileBasedAutotunerCacheTest : public ::testing::Test {
 
   std::string test_dir_;
 
-  AutotuneConfig GetConfig(
-      AutotuneConfig::CacheMode mode = AutotuneConfig::CacheMode::READ_WRITE) {
-    AutotuneConfig config;
+  FileBasedCacheConfig GetConfig(
+      FileBasedCacheConfig::CacheMode mode =
+          FileBasedCacheConfig::CacheMode::READ_WRITE) {
+    FileBasedCacheConfig config;
     config.autotune_cache_dir = test_dir_;
     config.autotune_cache_mode = mode;
     return config;
@@ -212,7 +212,7 @@ TEST_F(FileBasedAutotunerCacheTest, ReadOnlyMode) {
   // Create in READ mode.
   TF_ASSERT_OK_AND_ASSIGN(auto cache,
                           FileBasedAutotunerCache::Create(
-                              GetConfig(AutotuneConfig::CacheMode::READ),
+                              GetConfig(FileBasedCacheConfig::CacheMode::READ),
                               CreateDummyDeviceDescription(), kVersion));
   // Lookup should work.
   EXPECT_THAT(cache->Lookup(instr.get()), Optional(EqualsProto(entry)));
