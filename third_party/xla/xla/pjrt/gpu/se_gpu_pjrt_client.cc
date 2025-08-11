@@ -703,7 +703,7 @@ StreamExecutorGpuClient::GetLatestIncarnations() {
   if (!distributed_client_) {
     return FailedPrecondition("No distributed client");
   }
-  TF_ASSIGN_OR_RETURN(tsl::CoordinationServiceAgent * agent,
+  TF_ASSIGN_OR_RETURN(xla::CoordinationServiceAgent * agent,
                       distributed_client_->GetCoordinationServiceAgent());
 
   // Get the latest incarnation for every task.

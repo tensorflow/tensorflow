@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/tsl/distributed_runtime/coordination/coordination_service.h"
+#include "xla/pjrt/distributed/coordination_service/coordination_service.h"
 
 #include <cstdint>
 #include <memory>
@@ -35,10 +35,10 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
+#include "xla/pjrt/distributed/coordination_service/coordination_client.h"
+#include "xla/pjrt/distributed/coordination_service/coordination_service_error_util.h"
+#include "xla/pjrt/distributed/coordination_service/test_device.pb.h"
 #include "xla/tsl/distributed_runtime/call_options.h"
-#include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
-#include "xla/tsl/distributed_runtime/coordination/coordination_service_error_util.h"
-#include "xla/tsl/distributed_runtime/coordination/test_device.pb.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/status.h"
@@ -49,7 +49,7 @@ limitations under the License.
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "tsl/platform/random.h"
 
-namespace tsl {
+namespace xla {
 namespace {
 
 using ::testing::Each;
@@ -67,8 +67,6 @@ using tensorflow::CoordinatedTask;
 using tensorflow::CoordinationServiceConfig;
 using tensorflow::DeviceInfo;
 using tensorflow::KeyValueEntry;
-using tensorflow::TestDevice;
-using tensorflow::TestDeviceList;
 
 constexpr absl::Duration kHeartbeatTimeout = absl::Seconds(2);
 constexpr absl::Duration kShutdownBarrierTimeout = absl::Milliseconds(500);
@@ -99,27 +97,28 @@ class TestCoordinationClient : public CoordinationClient {
     return status_;
   }
 
-  void RegisterTaskAsync(CallOptions* opts, const RegisterTaskRequest* request,
+  void RegisterTaskAsync(tsl::CallOptions* opts,
+                         const RegisterTaskRequest* request,
                          RegisterTaskResponse* response,
-                         StatusCallback done) override {
+                         tsl::StatusCallback done) override {
     done(absl::OkStatus());
   }
 
-  void ReportErrorToTaskAsync(CallOptions* call_opts,
+  void ReportErrorToTaskAsync(tsl::CallOptions* call_opts,
                               const ReportErrorToTaskRequest* request,
                               ReportErrorToTaskResponse* response,
-                              StatusCallback done) override {
+                              tsl::StatusCallback done) override {
     absl::MutexLock l(&mu_);
     status_ = absl::Status(static_cast<absl::StatusCode>(request->error_code()),
                            request->error_message());
     done(absl::OkStatus());
   }
 
-#define UNIMPLEMENTED(method)                                         \
-  void method##Async(const method##Request* request,                  \
-                     method##Response* response, StatusCallback done) \
-      override {                                                      \
-    done(absl::UnimplementedError(#method "Async"));                  \
+#define UNIMPLEMENTED(method)                                              \
+  void method##Async(const method##Request* request,                       \
+                     method##Response* response, tsl::StatusCallback done) \
+      override {                                                           \
+    done(absl::UnimplementedError(#method "Async"));                       \
   }
 
   UNIMPLEMENTED(WaitForAllTasks);
@@ -134,11 +133,11 @@ class TestCoordinationClient : public CoordinationClient {
   UNIMPLEMENTED(GetAliveTasks);
 #undef UNIMPLEMENTED
 
-#define UNIMPLEMENTED_WITH_CALL_OPTS(method)                                 \
-  void method##Async(CallOptions* call_opts, const method##Request* request, \
-                     method##Response* response, StatusCallback done)        \
-      override {                                                             \
-    done(absl::UnimplementedError(#method "Async"));                         \
+#define UNIMPLEMENTED_WITH_CALL_OPTS(method)                           \
+  void method##Async(                                                  \
+      tsl::CallOptions* call_opts, const method##Request* request,     \
+      method##Response* response, tsl::StatusCallback done) override { \
+    done(absl::UnimplementedError(#method "Async"));                   \
   }
 
   UNIMPLEMENTED_WITH_CALL_OPTS(GetKeyValue);
@@ -160,14 +159,14 @@ class TestCoordinationClientCache : public CoordinationClientCache {
     clients_.emplace(target, client);
   }
 
-  CoordinationClient* GetClient(const string& target) override {
+  CoordinationClient* GetClient(const std::string& target) override {
     auto it = clients_.find(target);
     if (it == clients_.end()) return nullptr;
     return it->second;
   }
 
   std::unique_ptr<CoordinationClient> GetOwnedClient(
-      const string& target) override {
+      const std::string& target) override {
     LOG(ERROR) << "GetOwnedClient is not supported.";
     return nullptr;
   }
@@ -196,7 +195,7 @@ class CoordinationBarrierTest : public ::testing::Test {
     }
     CoordinationServiceConfig config = GetCoordinationServiceConfig(num_tasks);
 
-    coord_service_ = CoordinationService::Create(Env::Default(), config,
+    coord_service_ = CoordinationService::Create(tsl::Env::Default(), config,
                                                  std::move(client_cache));
     // Register the tasks.
     for (int i = 0; i < num_tasks; ++i) {
@@ -286,17 +285,17 @@ class CoordinateTwoTasksTest : public ::testing::Test {
       config.set_allow_new_incarnation_to_reconnect(true);
     }
     // Init service.
-    coord_service_ = CoordinationService::Create(Env::Default(), config,
+    coord_service_ = CoordinationService::Create(tsl::Env::Default(), config,
                                                  std::move(client_cache));
   }
 
   CoordinatedTask task_0_;
-  const IncarnationId incarnation_0_{random::New64()};
-  const IncarnationId incarnation_0_new_{random::New64()};
+  const IncarnationId incarnation_0_{tsl::random::New64()};
+  const IncarnationId incarnation_0_new_{tsl::random::New64()};
   TestCoordinationClient client_0_;
   CoordinatedTask task_1_;
-  const IncarnationId incarnation_1_{random::New64()};
-  const IncarnationId incarnation_1_new_{random::New64()};
+  const IncarnationId incarnation_1_{tsl::random::New64()};
+  const IncarnationId incarnation_1_new_{tsl::random::New64()};
   TestCoordinationClient client_1_;
   std::unique_ptr<CoordinationService> coord_service_;
 };
@@ -377,7 +376,7 @@ TEST(CoordinationServiceTest, TestCoordinatedJobs) {
   TestCoordinationClient ei;
   client_cache->AddTask("/job:evaluator/replica:0/task:0", &ei);
   std::unique_ptr<CoordinationService> coord_service =
-      CoordinationService::Create(Env::Default(), config,
+      CoordinationService::Create(tsl::Env::Default(), config,
                                   std::move(client_cache));
 
   // Each coordinated task registers and waits for other tasks.
@@ -421,7 +420,7 @@ TEST(CoordinationServiceTest, RegisterTask_AlreadyConnected_Succeeds) {
   task_0.set_job_name("worker");
   task_0.set_task_id(0);
   std::unique_ptr<CoordinationService> coord_service =
-      CoordinationService::Create(Env::Default(), config,
+      CoordinationService::Create(tsl::Env::Default(), config,
                                   /*cache=*/nullptr);
   // Task connects to coordination service.
   ASSERT_OK(coord_service->RegisterTask(task_0, IncarnationId(0)));
@@ -441,7 +440,7 @@ TEST(CoordinationServiceTest,
   task_0.set_job_name("worker");
   task_0.set_task_id(0);
   std::unique_ptr<CoordinationService> coord_service =
-      CoordinationService::Create(Env::Default(), config,
+      CoordinationService::Create(tsl::Env::Default(), config,
                                   /*cache=*/nullptr);
   // Task connects to coordination service.
   ASSERT_OK(coord_service->RegisterTask(task_0, IncarnationId(0)));
@@ -462,7 +461,7 @@ TEST(CoordinationServiceTest, RegisterTask_AlreadyInError_Fails) {
   task_0.set_job_name("worker");
   task_0.set_task_id(0);
   std::unique_ptr<CoordinationService> coord_service =
-      CoordinationService::Create(Env::Default(), config,
+      CoordinationService::Create(tsl::Env::Default(), config,
                                   /*cache=*/nullptr);
   // Task connects to coordination service.
   ASSERT_OK(coord_service->RegisterTask(task_0, IncarnationId(0)));
@@ -483,7 +482,7 @@ TEST_F(CoordinateTwoTasksTest, TestTaskHeartbeatTimeout) {
   ASSERT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
 
   // No heartbeat for a while, leader considers the task as stale.
-  Env::Default()->SleepForMicroseconds(
+  tsl::Env::Default()->SleepForMicroseconds(
       absl::ToInt64Microseconds(2 * kHeartbeatTimeout));
   EXPECT_THAT(coord_service_->RecordHeartbeat(task_0_, incarnation_0_),
               StatusIs(absl::StatusCode::kAborted));
@@ -521,7 +520,7 @@ TEST_F(CoordinateTwoTasksTest,
   ASSERT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
 
   // No heartbeat for a while, leader consider the task as stale.
-  Env::Default()->SleepForMicroseconds(
+  tsl::Env::Default()->SleepForMicroseconds(
       absl::ToInt64Microseconds(2 * kHeartbeatTimeout));
   // Unexpected heartbeat from errored tasks.
   EXPECT_THAT(coord_service_->RecordHeartbeat(task_0_, incarnation_0_),
@@ -550,9 +549,9 @@ TEST_F(CoordinateTwoTasksTest,
 
   // No heartbeat for a while, leader consider the task as stale and propagate
   // the error to the tasks.
-  Env::Default()->SleepForMicroseconds(
+  tsl::Env::Default()->SleepForMicroseconds(
       absl::ToInt64Microseconds(2 * kHeartbeatTimeout));
-  // Make sure the StatusCallbacks are called.
+  // Make sure the tsl::StatusCallbacks are called.
   n0.WaitForNotification();
   n1.WaitForNotification();
 
@@ -584,12 +583,12 @@ TEST_F(CoordinateTwoTasksTest,
       absl::ToInt64Microseconds(0.9 * kHeartbeatTimeout);
   // No heartbeat from task 1 for a while, so leader consider the task as stale
   // and propagate the error to all tasks.
-  Env::Default()->SleepForMicroseconds(sleeping_time);
+  tsl::Env::Default()->SleepForMicroseconds(sleeping_time);
   TF_EXPECT_OK(coord_service_->RecordHeartbeat(task_0_, incarnation_0_));
-  Env::Default()->SleepForMicroseconds(sleeping_time);
+  tsl::Env::Default()->SleepForMicroseconds(sleeping_time);
   TF_EXPECT_OK(coord_service_->RecordHeartbeat(task_0_, incarnation_0_));
-  Env::Default()->SleepForMicroseconds(sleeping_time);
-  // Make sure the StatusCallbacks are called.
+  tsl::Env::Default()->SleepForMicroseconds(sleeping_time);
+  // Make sure the tsl::StatusCallbacks are called.
   n0.WaitForNotification();
   n1.WaitForNotification();
 
@@ -624,8 +623,8 @@ TEST_F(CoordinateTwoTasksTest, TestTaskRestart) {
   ASSERT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
 
   // Simulate task restart scenario: trying to register to cluster again.
-  absl::Status s =
-      coord_service_->RegisterTask(task_1_, IncarnationId(random::New64()));
+  absl::Status s = coord_service_->RegisterTask(
+      task_1_, IncarnationId(tsl::random::New64()));
 
   EXPECT_THAT(s, StatusIs(absl::StatusCode::kAborted));
   // Aborted error is also propagated to other tasks in cluster.
@@ -909,7 +908,7 @@ TEST(CoordinationServiceTest, TryGetKeyValue) {
       GetCoordinationServiceConfig(/*num_tasks=*/1);
   auto client_cache = std::make_unique<TestCoordinationClientCache>();
   std::unique_ptr<CoordinationService> coord_service =
-      CoordinationService::Create(Env::Default(), config,
+      CoordinationService::Create(tsl::Env::Default(), config,
                                   std::move(client_cache));
 
   // Try to get nonexistent key.
@@ -1023,7 +1022,7 @@ TEST(CoordinationServiceTest, ListClusterDevices_TfDevice) {
   absl::Status status = absl::OkStatus();
   auto client_cache = std::make_unique<TestCoordinationClientCache>();
   std::unique_ptr<CoordinationService> coord_service =
-      CoordinationService::Create(Env::Default(), config,
+      CoordinationService::Create(tsl::Env::Default(), config,
                                   std::move(client_cache));
   absl::Notification n;
   // Map fake devices to each task.
@@ -1080,7 +1079,7 @@ TEST(CoordinationServiceTest, ListClusterDevices_DevicesAreNotAddedTwice) {
   absl::Status initial_wait_for_all_tasks_status;
   auto client_cache = std::make_unique<TestCoordinationClientCache>();
   std::unique_ptr<CoordinationService> coord_service =
-      CoordinationService::Create(Env::Default(), config,
+      CoordinationService::Create(tsl::Env::Default(), config,
                                   std::move(client_cache));
   absl::Notification n;
   // Map fake devices to each task.
@@ -1836,7 +1835,7 @@ TEST_F(CoordinateTwoTasksTest, Reset_HeartbeatsAreAcceptedForAGracePeriod) {
 
   // Heartbeat failure should be triggered for disconnected task after grace
   // period.
-  Env::Default()->SleepForMicroseconds(
+  tsl::Env::Default()->SleepForMicroseconds(
       absl::ToInt64Microseconds(3 * kHeartbeatTimeout));
   EXPECT_THAT(coord_service_->RecordHeartbeat(task_0_, incarnation_0_),
               StatusIs(absl::StatusCode::kInvalidArgument));
@@ -1880,7 +1879,7 @@ TEST_F(CoordinateTwoTasksTest, Shutdown_HeartbeatsAreAcceptedForAGracePeriod) {
 
   // Heartbeat failure should be triggered for disconnected task after grace
   // period.
-  Env::Default()->SleepForMicroseconds(
+  tsl::Env::Default()->SleepForMicroseconds(
       absl::ToInt64Microseconds(3 * kHeartbeatTimeout));
   EXPECT_THAT(coord_service_->RecordHeartbeat(task_0_, incarnation_0_),
               StatusIs(absl::StatusCode::kInvalidArgument));
@@ -1984,7 +1983,7 @@ TEST_F(CoordinateTwoTasksTest,
   // Block until barrier times out.
   n.WaitForNotification();
   // Provide time for coordination service to shut down after barrier timeout.
-  Env::Default()->SleepForMicroseconds(
+  tsl::Env::Default()->SleepForMicroseconds(
       absl::ToInt64Microseconds(absl::Seconds(1)));
 
   EXPECT_THAT(barrier_status,
@@ -2003,7 +2002,7 @@ TEST_F(CoordinateTwoTasksTest, BarrierFailsIfTaskIsInError) {
   absl::Notification n0;
   absl::Status barrier_status;
   // No heartbeat for a while, leader consider the task as stale.
-  Env::Default()->SleepForMicroseconds(
+  tsl::Env::Default()->SleepForMicroseconds(
       absl::ToInt64Microseconds(2 * kHeartbeatTimeout));
 
   // Barrier should fail when called after stale task is set to error.
@@ -2026,7 +2025,7 @@ TEST_F(CoordinateTwoTasksTest,
   absl::Notification n0;
   absl::Status barrier_status;
   // No heartbeat for a while, leader consider the task as stale.
-  Env::Default()->SleepForMicroseconds(
+  tsl::Env::Default()->SleepForMicroseconds(
       absl::ToInt64Microseconds(2 * kHeartbeatTimeout));
 
   coord_service_->BarrierAsync("barrier_id", 0, absl::Seconds(5), task_0_,
@@ -2059,10 +2058,10 @@ TEST_F(CoordinateTwoTasksTest, BarrierFailsAfterErrorPollingResponse) {
 
   // No heartbeat for a while, leader consider the task as stale. The error will
   // be propagated through error polling.
-  Env::Default()->SleepForMicroseconds(
+  tsl::Env::Default()->SleepForMicroseconds(
       absl::ToInt64Microseconds(2 * kHeartbeatTimeout));
 
-  // Make sure the StatusCallbacks are called before the barrier is called.
+  // Make sure the tsl::StatusCallbacks are called before the barrier is called.
   n0.WaitForNotification();
   n1.WaitForNotification();
   // The heartbeat error should be propagated to all tasks.
@@ -2090,7 +2089,7 @@ TEST_F(CoordinateTwoTasksTest, BarrierWithSubsetFailsIfTaskIsStale) {
   absl::Notification n0;
   absl::Status barrier_status;
   // No heartbeat for a while, leader consider the task as stale.
-  Env::Default()->SleepForMicroseconds(
+  tsl::Env::Default()->SleepForMicroseconds(
       absl::ToInt64Microseconds(2 * kHeartbeatTimeout));
 
   // Barrier should fail if task is in error.
@@ -2189,7 +2188,7 @@ TEST(CoordinationServiceTest, RecoverableAndNonRecoverableTasks) {
   worker_job->set_num_tasks(2);
 
   std::unique_ptr<CoordinationService> coord_service =
-      CoordinationService::Create(Env::Default(), config,
+      CoordinationService::Create(tsl::Env::Default(), config,
                                   /*cache=*/nullptr);
 
   // Each coordinated task registers and polls for errors.
@@ -2346,7 +2345,7 @@ TEST_F(CoordinateTwoTasksTest, DoNotAllowPollForErrorIfTaskHasShutDown) {
                                     [&](const absl::Status& status) {});
 
   // Sleep past the grace period.
-  Env::Default()->SleepForMicroseconds(
+  tsl::Env::Default()->SleepForMicroseconds(
       absl::ToInt64Microseconds(2 * kHeartbeatTimeout));
   coord_service_->PollForErrorAsync(
       task_0_, [&](const absl::Status& status) { s = status; });
@@ -2361,7 +2360,7 @@ TEST_F(CoordinateTwoTasksTest, DoNotAllowPollForErrorAfterReset) {
   ASSERT_OK(coord_service_->ResetTask(task_0_));
 
   // Sleep past the grace period.
-  Env::Default()->SleepForMicroseconds(
+  tsl::Env::Default()->SleepForMicroseconds(
       absl::ToInt64Microseconds(2 * kHeartbeatTimeout));
   coord_service_->PollForErrorAsync(
       task_0_, [&](const absl::Status& status) { s = status; });
@@ -2386,7 +2385,7 @@ TEST_F(CoordinateTwoTasksTest, DoNotAllowPollForErrorIfTaskIsStale) {
   ASSERT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
   ASSERT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
   // No heartbeat for a while, leader consider the task as stale.
-  Env::Default()->SleepForMicroseconds(
+  tsl::Env::Default()->SleepForMicroseconds(
       absl::ToInt64Microseconds(2 * kHeartbeatTimeout));
 
   absl::Status s;
@@ -2674,4 +2673,4 @@ TEST_F(GetAliveTasksTest, RedundantGetAliveTasks) {
   finished.Wait();
 }
 
-}  // namespace tsl
+}  // namespace xla
