@@ -362,13 +362,17 @@ absl::Status runShardingPropagation(HloModule* hloModule,
 
     addStablehloImportPipeline(
         pm,
+        /* allowPropagationToArgs=*/
         spanToArrayRef(hloModule->config()
                            .allow_spmd_sharding_propagation_to_parameters()),
+        /*allowPropagationToResults=*/
         spanToArrayRef(
-            hloModule->config().allow_spmd_sharding_propagation_to_output()));
+            hloModule->config().allow_spmd_sharding_propagation_to_output()),
+        /*importOnlyUninlineableFuncCalls=*/true);
   } else {
     // This is the default path.
-    addSdyRoundTripImportPipeline(pm);
+    addSdyRoundTripImportPipeline(pm, /*enableConstantImport=*/true,
+                                  /*importOnlyUninlineableFuncCalls=*/true);
   }
 
   // NOTE: if we are using auto-spmd, we will use conservative propagation
