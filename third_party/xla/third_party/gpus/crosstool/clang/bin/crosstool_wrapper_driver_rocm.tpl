@@ -24,7 +24,6 @@ import shlex
 
 # Template values set by rocm_configure.bzl.
 CPU_COMPILER = ('%{cpu_compiler}')
-USE_CLANG = ('%{compiler_is_clang}' == 'True')
 HOST_COMPILER_PATH = ('%{host_compiler_path}')
 
 HIPCC_PATH = '%{hipcc_path}'
@@ -77,7 +76,6 @@ def GetHostCompilerOptions(argv):
   parser.add_argument('-iquote', nargs='*', action='append')
   parser.add_argument('--sysroot', nargs=1)
   parser.add_argument('-g', nargs='*', action='append')
-  parser.add_argument('-fno-canonical-system-headers', action='store_true')
   parser.add_argument('-no-canonical-prefixes', action='store_true')
   parser.add_argument('--genco', action='store_true')
 
@@ -91,7 +89,7 @@ def GetHostCompilerOptions(argv):
     opts += ' -iquote ' + ' -iquote '.join(sum(args.iquote, []))
   if args.g:
     opts += ' -g' + ' -g'.join(sum(args.g, []))
-  if args.fno_canonical_system_headers or args.no_canonical_prefixes:
+  if args.no_canonical_prefixes:
     opts += ' -no-canonical-prefixes'
   if args.sysroot:
     opts += ' --sysroot ' + args.sysroot[0]
@@ -285,9 +283,6 @@ def main():
     # this).
     cpu_compiler_flags = [flag for flag in sys.argv[1:]
                                if not flag.startswith(('--rocm_log'))]
-
-    if not USE_CLANG:
-      cpu_compiler_flags.append('-fno-canonical-system-headers')
 
     # XXX: SE codes need to be built with gcc, but need this macro defined
     cpu_compiler_flags.append("-D__HIP_PLATFORM_HCC__")
