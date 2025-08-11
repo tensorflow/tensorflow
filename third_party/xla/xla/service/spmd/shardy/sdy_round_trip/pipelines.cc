@@ -107,6 +107,7 @@ struct SdyRoundTripImportPipelineOptions
   Option<bool> enableConstantImport{*this, "enable-constant-import",
                                     llvm::cl::desc("Enable constant import."),
                                     llvm::cl::init(true)};
+  // TODO(b/430894772): Drop the flag and import all func calls always.
   Option<bool> importOnlyUninlineableFuncCalls{
       *this, "import-only-uninlineable-func-calls",
       llvm::cl::desc("Import only unlineable func calls."),
