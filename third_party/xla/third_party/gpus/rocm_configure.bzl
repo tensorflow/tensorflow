@@ -3,6 +3,7 @@
 `rocm_configure` depends on the following environment variables:
 
   * `TF_NEED_ROCM`: Whether to enable building with ROCm.
+  * `TF_ROCM_CLANG`: Whether to use clang for C++ and HIPCC for ROCm compilation.
   * `TF_SYSROOT`: The sysroot to use when compiling.
   * `CLANG_COMPILER_PATH`: The clang compiler path that will be used for
   * `ROCM_PATH`: The path to the ROCm toolkit. Default is `/opt/rocm`.

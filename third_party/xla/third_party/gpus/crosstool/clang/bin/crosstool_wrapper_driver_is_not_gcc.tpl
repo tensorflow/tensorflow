@@ -49,7 +49,6 @@ HOST_COMPILER_PATH = ('%{host_compiler_path}')
 
 NVCC_PATH = '%{nvcc_path}'
 PREFIX_DIR = os.path.dirname(HOST_COMPILER_PATH)
-USE_CLANG_COMPILER = '%{use_clang_compiler}'
 NVCC_VERSION = '%{cuda_version}'
 TMPDIR= '%{tmpdir}'
 
@@ -109,8 +108,6 @@ def GetHostCompilerOptions(argv):
     opts += ' -iquote ' + ' -iquote '.join(sum(args.iquote, []))
   if args.g:
     opts += ' -g' + ' -g'.join(sum(args.g, []))
-  if args.fno_canonical_system_headers:
-    opts += ' -fno-canonical-system-headers'
   if args.no_canonical_prefixes:
     opts += ' -no-canonical-prefixes'
   if args.sysroot:
@@ -264,8 +261,7 @@ def InvokeNvcc(argv, log=False):
   # to override this version check; however, using an unsupported host compiler
   # may cause compilation failure or incorrect run time execution.
   # Use at your own risk.
-  if USE_CLANG_COMPILER:
-    nvccopts += ' -allow-unsupported-compiler --expt-extended-lambda --expt-relaxed-constexpr '
+  nvccopts += ' -allow-unsupported-compiler --expt-extended-lambda --expt-relaxed-constexpr '
 
   if depfiles:
     # Generate the dependency file
@@ -294,8 +290,6 @@ def InvokeNvcc(argv, log=False):
 
 
 def main():
-  if TMPDIR and not USE_CLANG_COMPILER:
-    os.environ['TMPDIR'] = TMPDIR
   parser = ArgumentParser()
   parser.add_argument('-x', nargs=1)
   parser.add_argument('--cuda_log', action='store_true')
