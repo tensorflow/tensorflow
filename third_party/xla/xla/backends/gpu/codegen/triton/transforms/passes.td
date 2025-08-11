@@ -47,6 +47,17 @@ def TritonXLASqueezeDimsPass : Pass<"triton-xla-squeeze-dims", "mlir::ModuleOp">
   let constructor = "CreateTritonXLASqueezeDimsPass()";
 }
 
+def TritonXLAFoldTransposePass : Pass<"triton-xla-fold-transpose", "mlir::ModuleOp"> {
+  let summary = "Folds transposes into loads.";
+  let description = [{
+    This pass tries to remove transposes by folding them into loads.
+  }];
+  let dependentDialects = [
+    "::mlir::triton::xla::XlaTritonDialect"
+  ];
+  let constructor = "CreateTritonXLAFoldTransposePass()";
+}
+
 def GeneralizeKernelSignaturePass
     : Pass<"generalize-kernel-signature"> {
   let summary = "Rewrite kernels to use generic data pointer arguments.";
