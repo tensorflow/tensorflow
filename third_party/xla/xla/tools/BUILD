@@ -692,7 +692,6 @@ xla_test(
 
 cc_library(
     name = "matmul_perf_table_gen_main_lib",
-    testonly = True,
     srcs = ["matmul_perf_table_gen_main.cc"],
     compatible_with = None,
     tags = [
@@ -838,7 +837,6 @@ xla_cc_binary(
 
 xla_cc_binary(
     name = "matmul_perf_table_gen_main",
-    testonly = True,
     tags = [
         "no_mac",
     ],
