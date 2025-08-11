@@ -1452,8 +1452,7 @@ def _make_class_weight_map_fn(class_weight):
     error_msg = (
         "Expected `class_weight` to be a dict with keys from 0 to one less "
         "than the number of classes, found {}").format(class_weight)
-    raise ValueError(error_msg)
-    
+    raise ValueError(error_msg) 
   class_weight_tensor = tensor_conversion.convert_to_tensor_v2_with_dispatch(
       [converted_class_weight[int(c)] for c in class_ids]
   )
