@@ -15,7 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/shuffle_and_repeat_fusion.h"
 
+#include <cstdint>
+#include <utility>
+
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
