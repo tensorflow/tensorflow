@@ -350,7 +350,6 @@ absl::StatusOr<bool> CommandBufferConversionPass::Run(
     return absl::OkStatus();
   };
 
-  // TODO(aliia): use post order here
   auto& original_thunks = root_thunk_ptr->thunks();
 
   for (size_t i = 0; i < original_thunks.size(); ++i) {
@@ -380,6 +379,16 @@ absl::StatusOr<bool> CommandBufferConversionPass::Run(
 
       current_command_buffer_thunks.push_back(std::move(thunk));
       continue;
+    }
+
+    if (thunk->kind() == Thunk::kWhile) {
+      // If a `WhileThunk` itself is not eligible for conversion into a
+      // command buffer, we attempt to convert thunks within its body
+      auto while_thunk = static_cast<WhileThunk*>(thunk.get());
+      TF_ASSIGN_OR_RETURN(
+          bool changed_in_body,
+          Run(while_thunk->body_thunk_sequence(), debug_options, device_info));
+      changed |= changed_in_body;
     }
 
     // If the current thunk is not convertible, flush collected eligible thunk
