@@ -26,7 +26,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
+#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/hash/hash.h"
 #include "absl/log/check.h"
@@ -297,28 +297,28 @@ std::vector<ExplicitSpec> GetExplicitSpecs(
   std::vector<ExplicitSpec> specs;
   for (int i = 0; i < entry_specs.size(); i++) {
     const EntrySpec& entry_spec = entry_specs[i];
-    std::visit(
-        Overload{
-            [&specs](const PathSpec& spec) {
-              std::string hlo;
-              CHECK_OK(tsl::ReadFileToString(tsl::Env::Default(), spec.filepath,
-                                             &hlo));
-              std::unique_ptr<HloModule> model_module = GetModule(hlo);
-              if (model_module == nullptr) {
-                return;
-              }
-              hlo_query::ForEachInstructionWithOpcode(
-                  *model_module, HloOpcode::kDot,
-                  [&specs](HloInstruction* instr) {
-                    specs.emplace_back(ExplicitSpec{CreateDotModule(instr)});
-                  });
-            },
-            [&specs](const StaticSpec spec) {
-              specs.emplace_back(ExplicitSpec{
-                  GetModule(spec.dtype_lhs, spec.dtype_rhs, spec.dtype_out,
-                            spec.b, spec.m, spec.n, spec.k)});
-            }},
-        entry_spec);
+    std::visit(Overload{[&specs](const PathSpec& spec) {
+                          std::string hlo;
+                          CHECK_OK(tsl::ReadFileToString(tsl::Env::Default(),
+                                                         spec.filepath, &hlo));
+                          std::unique_ptr<HloModule> model_module =
+                              GetModule(hlo);
+                          if (model_module == nullptr) {
+                            return;
+                          }
+                          hlo_query::ForEachInstructionWithOpcode(
+                              *model_module, HloOpcode::kDot,
+                              [&specs](HloInstruction* instr) {
+                                specs.emplace_back(
+                                    ExplicitSpec{CreateDotModule(instr)});
+                              });
+                        },
+                        [&specs](const StaticSpec spec) {
+                          specs.emplace_back(ExplicitSpec{GetModule(
+                              spec.dtype_lhs, spec.dtype_rhs, spec.dtype_out,
+                              spec.b, spec.m, spec.n, spec.k)});
+                        }},
+               entry_spec);
     ReportProgress("Parsing modules progress", i + 1, entry_specs.size());
   }
   return specs;
@@ -391,6 +391,11 @@ std::unique_ptr<OpaqueExecutable> MatmulPerfTableGen::Compile(
 }
 
 absl::Duration MatmulPerfTableGen::Profile(std::unique_ptr<HloModule> module) {
+  if (config_.dry_run) {
+    VLOG(1) << "Dry run, skip profiling.";
+    return absl::Nanoseconds(42);
+  }
+
   VLOG(1) << "Profiling module: " << module->ToString();
 
   // Flip flop between arguments to prevent caching.
@@ -407,14 +412,6 @@ absl::Duration MatmulPerfTableGen::Profile(std::unique_ptr<HloModule> module) {
 
   // First run to warm up stuff.
   CHECK_OK(runner_.ExecuteWithExecutable(compiled.get(), args_small).status());
-
-  // Run matrix multiplications but do not trace.
-  if (config_.dry_run) {
-    for (int i = 0; i < kNumProfilingRuns; i++) {
-      Measure(runner_, compiled.get(), args_small, args_large);
-    }
-    return absl::Nanoseconds(42);
-  }
 
   // Trace `kNumProfilingRuns` times to get decent measurement.
   std::unique_ptr<HloOpProfiler::KernelTracer> tracer =
@@ -563,7 +560,7 @@ DeviceHloInstructionProfiles MatmulPerfTableGen::ComputeTable() {
     if (!result.entries().contains(device_info)) {
       result.mutable_entries()->insert({device_info, {}});
     }
-    absl::flat_hash_map<std::array<int64_t, 4>, GemmPerfTableEntry>
+    absl::btree_map<std::array<int64_t, 4>, GemmPerfTableEntry>
         gemm_perf_table_entry;
     for (const HloInstructionProfile& profile : profile_list.entries()) {
       TF_ASSIGN_OR_RETURN(StaticSpec spec, StaticSpec::FromDotProfile(profile));
@@ -596,7 +593,7 @@ DeviceHloInstructionProfiles MatmulPerfTableGen::ComputeTable() {
 
 absl::Status MatmulPerfTableGen::Dump(
     const DeviceHloInstructionProfiles& table) {
-  if (config_.output == "stdout") {
+  if (config_.output.empty()) {
     LOG(INFO) << table.DebugString();
     return absl::OkStatus();
   }
@@ -632,7 +629,7 @@ absl::Status MatmulPerfTableGen::Dump(
 }
 
 absl::Status MatmulPerfTableGen::Dump(const GemmPerfTable& table) {
-  if (config_.output == "stdout") {
+  if (config_.output.empty()) {
     LOG(INFO) << table.DebugString();
     return absl::OkStatus();
   }
