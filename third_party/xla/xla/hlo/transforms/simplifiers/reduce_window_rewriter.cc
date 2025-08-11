@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/transforms/simplifiers/reduce_window_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
@@ -51,106 +52,6 @@ static size_t FlattenShapeIndex(const ShapeIndex& shape_index) {
   }
   CHECK_EQ(shape_index.size(), 1);
   return shape_index.back();
-}
-
-static Shape ShapeAtIndex(const Shape& shape, const ShapeIndex& shape_index) {
-  if (shape_index.empty()) {
-    return shape;
-  }
-  CHECK_EQ(shape_index.size(), 1);
-  return ShapeUtil::GetTupleElementShape(shape, shape_index.back());
-}
-
-static HloInstruction* GetAtIndex(HloInstruction* hlo,
-                                  const ShapeIndex& shape_index) {
-  if (shape_index.empty()) {
-    return hlo;
-  }
-  CHECK_EQ(shape_index.size(), 1);
-  return hlo->parent()->AddInstruction(HloInstruction::CreateGetTupleElement(
-      ShapeAtIndex(hlo->shape(), shape_index), hlo, shape_index.back()));
-}
-
-// Transform reduce-win(x) ->
-//   if rank(x) == 1:
-//   then: reshape_r2_r1(reduce-win(reshape_r1_r2(x)))
-//   else: no change
-absl::Status ReduceWindowRewriter::ReplaceReduceWindowWithReshape(
-    HloReduceWindowInstruction* reduce_window) {
-  VLOG(2) << "Converting R1 reduce window: " << reduce_window->ToString();
-
-  std::vector<Shape> r2_output_shapes;
-  ShapeUtil::ForEachSubshape(
-      reduce_window->shape(),
-      [&](const Shape& subshape, const ShapeIndex& shape_index) {
-        if (!ShapeUtil::IsLeafIndex(reduce_window->shape(), shape_index)) {
-          return;
-        }
-        Shape r2_output_shape = subshape;
-        ShapeUtil::AppendMajorDimension(1, &r2_output_shape);
-        UpdateLayout(&r2_output_shape);
-        r2_output_shapes.push_back(r2_output_shape);
-
-        VLOG(2) << "ReduceWindowRewriter: Converting R2 result to R1: "
-                << ShapeUtil::HumanStringWithLayout(r2_output_shape);
-      });
-
-  Window r2_window = reduce_window->window();
-  WindowDimension* dim = r2_window.add_dimensions();
-  dim->set_size(1);
-  dim->set_stride(1);
-  dim->set_base_dilation(1);
-  dim->set_window_dilation(1);
-
-  std::vector<HloInstruction*> r2_operands;
-  for (HloInstruction* operand : reduce_window->inputs()) {
-    Shape r2_input_shape = operand->shape();
-    ShapeUtil::AppendMajorDimension(1, &r2_input_shape);
-    UpdateLayout(&r2_input_shape);
-
-    VLOG(2) << "ReduceWindowRewriter: Converting R1 operand to R2: "
-            << ShapeUtil::HumanStringWithLayout(r2_input_shape);
-    HloInstruction* r2_operand = operand->parent()->AddInstruction(
-        HloInstruction::CreateReshape(r2_input_shape, operand));
-    VLOG(2) << "R2 new operand: " << r2_operand->ToString();
-    r2_operands.push_back(r2_operand);
-  }
-  HloInstruction* new_reduce_window = reduce_window->parent()->AddInstruction(
-      HloInstruction::CreateReduceWindow(
-          reduce_window->shape().IsTuple()
-              ? ShapeUtil::MakeTupleShape(r2_output_shapes)
-              : r2_output_shapes[0],
-          r2_operands, reduce_window->init_values(), r2_window,
-          reduce_window->to_apply()));
-
-  VLOG(2) << "R2 resulting reduce window: " << new_reduce_window->ToString();
-
-  std::vector<HloInstruction*> final_reshapes;
-  ShapeUtil::ForEachSubshape(
-      reduce_window->shape(),
-      [&](const Shape& subshape, const ShapeIndex& shape_index) {
-        if (!ShapeUtil::IsLeafIndex(reduce_window->shape(), shape_index)) {
-          return;
-        }
-        HloInstruction* final_reshape =
-            new_reduce_window->parent()->AddInstruction(
-                HloInstruction::CreateReshape(
-                    subshape, GetAtIndex(new_reduce_window, shape_index)));
-        final_reshapes.push_back(final_reshape);
-      });
-  HloInstruction* result;
-  if (reduce_window->shape().IsTuple()) {
-    result = new_reduce_window->parent()->AddInstruction(
-        HloInstruction::CreateTuple(final_reshapes));
-  } else {
-    CHECK_EQ(final_reshapes.size(), 1);
-    result = final_reshapes[0];
-  }
-  TF_RETURN_IF_ERROR(reduce_window->ReplaceAllUsesWith(result));
-  TF_RETURN_IF_ERROR(
-      new_reduce_window->parent()->RemoveInstruction(reduce_window));
-
-  return absl::OkStatus();
 }
 
 std::vector<int64_t> ReduceWindowRewriter::GetTransposedInputs(
@@ -424,8 +325,10 @@ absl::StatusOr<bool> ReduceWindowRewriter::TryOptimizeCumSumOrProd(
         // reshape [x, y/base, 1] -> [x, y/base]
         SliceOutLastColumn(
             parent, subshape,
-            /*outer_shape=*/GetAtIndex(outer_reduce_window, shape_index), rank,
-            last_dim, forward_scan, num_columns, column_shapes, last_cols);
+            /*outer_shape=*/
+            reduce_window_util::GetAtIndex(outer_reduce_window, shape_index),
+            rank, last_dim, forward_scan, num_columns, column_shapes,
+            last_cols);
       });
 
   // 5) Inner scan - Exclusive scan for the last column.
@@ -471,7 +374,8 @@ absl::StatusOr<bool> ReduceWindowRewriter::TryOptimizeCumSumOrProd(
         size_t idx = FlattenShapeIndex(shape_index);
         auto last_col = last_cols[idx];
         auto* inner_slice = parent->AddInstruction(HloInstruction::CreateSlice(
-            last_col->shape(), GetAtIndex(inner_reduce_window, shape_index),
+            last_col->shape(),
+            reduce_window_util::GetAtIndex(inner_reduce_window, shape_index),
             exclusive_slice_starts, exclusive_slice_limits,
             std::vector<int64_t>(rank, 1)));
 
@@ -492,7 +396,8 @@ absl::StatusOr<bool> ReduceWindowRewriter::TryOptimizeCumSumOrProd(
                                     shape_index)) {
           return;
         }
-        map_operands.push_back(GetAtIndex(outer_reduce_window, shape_index));
+        map_operands.push_back(
+            reduce_window_util::GetAtIndex(outer_reduce_window, shape_index));
       });
   map_operands.insert(map_operands.end(), inner_scan_components.begin(),
                       inner_scan_components.end());
@@ -541,7 +446,8 @@ absl::StatusOr<bool> ReduceWindowRewriter::TryOptimizeCumSumOrProd(
           map_computation = reduce_window->to_apply();
         }
         auto scan = parent->AddInstruction(HloInstruction::CreateMap(
-            ShapeAtIndex(outer_reduce_window->shape(), shape_index),
+            reduce_window_util::ShapeAtIndex(outer_reduce_window->shape(),
+                                             shape_index),
             map_operands, map_computation));
         scan = parent->AddInstruction(
             HloInstruction::CreateReshape(source->shape(), scan));
@@ -570,8 +476,9 @@ absl::StatusOr<bool> ReduceWindowRewriter::TryOptimizeCumSumOrProd(
                 1);
           }
           scan = parent->AddInstruction(HloInstruction::CreatePad(
-              ShapeAtIndex(reduce_window->shape(), shape_index), scan,
-              init_values[idx], padding_config));
+              reduce_window_util::ShapeAtIndex(reduce_window->shape(),
+                                               shape_index),
+              scan, init_values[idx], padding_config));
         }
         scans.push_back(scan);
         return absl::OkStatus();
@@ -613,7 +520,8 @@ absl::StatusOr<bool> ReduceWindowRewriter::Run(
       if (reduce_window->inputs().front()->shape().dimensions().size() != 1) {
         continue;
       }
-      TF_RETURN_IF_ERROR(ReplaceReduceWindowWithReshape(reduce_window));
+      TF_RETURN_IF_ERROR(
+          reduce_window_util::Replace1DReduceWindowWithReshape(reduce_window));
 
       changed = true;
     }
