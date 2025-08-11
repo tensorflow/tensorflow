@@ -66,10 +66,8 @@ xla_cc_test(
     deps = [
         ":unstable_reduction_detector",
         "//xla/hlo/parser:hlo_parser",
-        "//xla/tsl/platform:logging",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:log_severity",
-        "@com_google_absl//absl/log:log_sink",
         "@com_google_absl//absl/log:scoped_mock_log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
