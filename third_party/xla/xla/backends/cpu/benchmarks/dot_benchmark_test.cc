@@ -42,6 +42,7 @@ limitations under the License.
 #include "tsl/platform/stacktrace_handler.h"
 
 namespace xla::cpu {
+namespace {
 
 Literal GetRandomLiteral(const Shape& shape) {
   double mean = 1.0f;
@@ -55,18 +56,26 @@ Literal GetRandomLiteral(const Shape& shape) {
     case BF16:
       return *LiteralUtil::CreateRandomLiteral<BF16>(shape, &engine, mean,
                                                      stddev);
+    case S8:
+      return *LiteralUtil::CreateRandomLiteral<S8>(shape, &engine, mean,
+                                                   stddev);
+    case S32:
+      return *LiteralUtil::CreateRandomLiteral<S32>(shape, &engine, mean,
+                                                    stddev);
     default:
       LOG(FATAL) << "Add dtype to the if-else block before use: " << dtype;
   }
 }
 
-static void BM_BatchedDot(benchmark::State& state,
-                          HloBenchmarkOptions options) {
-  PrimitiveType dtype = static_cast<PrimitiveType>(state.range(0));
-  PrimitiveType out_dtype = F32;
-  int64_t d0 = state.range(1);
-  int64_t d1 = state.range(2);
+struct BatchedDot {
+  PrimitiveType in_dtype;
+  PrimitiveType out_dtype;
+  int64_t d0;
+  int64_t d1;
+};
 
+static void BM_BatchedDot(benchmark::State& state, HloBenchmarkOptions options,
+                          BatchedDot info) {
   absl::string_view hlo = R"(
     HloModule dot_$dtype_b$d0_d$d1
 
@@ -79,52 +88,20 @@ static void BM_BatchedDot(benchmark::State& state,
     }
   )";
 
-  auto shape = ShapeUtil::MakeShape(dtype, {d0, d1, d1});
+  auto shape = ShapeUtil::MakeShape(info.in_dtype, {info.d0, info.d1, info.d1});
   Literal p0 = GetRandomLiteral(shape);
   Literal p1 = GetRandomLiteral(shape);
 
   std::vector<const Literal*> args = {&p0, &p1};
   CHECK_OK(RunHloBenchmark(
       state, hlo, args,
-      {{"$dtype", primitive_util::LowercasePrimitiveTypeName(dtype)},
-       {"$out_dtype", primitive_util::LowercasePrimitiveTypeName(out_dtype)},
-       {"$d0", absl::StrCat(d0)},
-       {"$d1", absl::StrCat(d1)}},
+      {{"$dtype", primitive_util::LowercasePrimitiveTypeName(info.in_dtype)},
+       {"$out_dtype",
+        primitive_util::LowercasePrimitiveTypeName(info.out_dtype)},
+       {"$d0", absl::StrCat(info.d0)},
+       {"$d1", absl::StrCat(info.d1)}},
       options));
 }
-
-#define BENCHMARK_BATCHED_DOT(dtype) \
-  XLA_CPU_BENCHMARK(BM_BatchedDot)   \
-      ->MeasureProcessCPUTime()      \
-      ->Args({dtype, 1, 2})          \
-      ->Args({dtype, 1, 32})         \
-      ->Args({dtype, 1, 64})         \
-      ->Args({dtype, 1, 128})        \
-      ->Args({dtype, 1, 256})        \
-      ->Args({dtype, 1, 512})        \
-      ->Args({dtype, 2, 2})          \
-      ->Args({dtype, 2, 32})         \
-      ->Args({dtype, 2, 64})         \
-      ->Args({dtype, 2, 128})        \
-      ->Args({dtype, 2, 256})        \
-      ->Args({dtype, 2, 512})        \
-      ->Args({dtype, 4, 2})          \
-      ->Args({dtype, 4, 32})         \
-      ->Args({dtype, 4, 64})         \
-      ->Args({dtype, 4, 128})        \
-      ->Args({dtype, 4, 256})        \
-      ->Args({dtype, 4, 512})        \
-      ->Args({dtype, 8, 2})          \
-      ->Args({dtype, 8, 32})         \
-      ->Args({dtype, 8, 64})         \
-      ->Args({dtype, 8, 128})        \
-      ->Args({dtype, 8, 256})        \
-      ->Args({dtype, 8, 512})
-
-BENCHMARK_BATCHED_DOT(F32);   // Shown as "11" in the benchmark name.
-BENCHMARK_BATCHED_DOT(BF16);  // Shown as "16" in the benchmark name.
-
-namespace {
 
 // LINT.IfChange
 struct GenericDot {
@@ -208,11 +185,10 @@ std::vector<GenericDot> GetGenericDotList() {
   return list;
 }
 
-std::string BenchmarkName(const GenericDot& dot) {
+std::string GenericDotBenchmarkName(const GenericDot& dot) {
   auto dtype_str = absl::AsciiStrToUpper(absl::StrCat(
-      primitive_util::LowercasePrimitiveTypeName(dot.lhs_type), "_",
-      primitive_util::LowercasePrimitiveTypeName(dot.rhs_type), "_",
-      primitive_util::LowercasePrimitiveTypeName(dot.out_type)));
+      PrimitiveType_Name(dot.lhs_type), "_", PrimitiveType_Name(dot.rhs_type),
+      "_", PrimitiveType_Name(dot.out_type)));
   return absl::StrCat("BM_", dot.name, "/", dtype_str, "_",
                       absl::StrJoin(dot.lhs_shape, "x"), "_",
                       absl::StrJoin(dot.rhs_shape, "x"), "_",
@@ -220,8 +196,34 @@ std::string BenchmarkName(const GenericDot& dot) {
 }
 
 void RegisterBenchmarks() {
+  //===--------------------------------------------------------------------===//
+  // BM_BatchedDot
+  //===--------------------------------------------------------------------===//
+  // Pairs of input-output data types.
+  std::vector<std::unique_ptr<MultiBenchmarkConfig>> configs;
+  std::vector<std::pair<PrimitiveType, PrimitiveType>> dtype_pairs = {
+      {F32, F32}, {BF16, F32}, {S8, S32}, {S32, S32}};
+  for (auto [in_dtype, out_dtype] : dtype_pairs) {
+    std::string in_dtype_str = PrimitiveType_Name(in_dtype);
+    std::string out_dtype_str = PrimitiveType_Name(out_dtype);
+    for (int64_t d0 : {1, 2, 4, 8}) {
+      for (int64_t d1 : {2, 32, 64, 128, 256, 512}) {
+        configs.push_back(std::unique_ptr<MultiBenchmarkConfig>(
+            RegisterJitAndAotBenchmarks(
+                absl::StrCat("BM_BatchedDot_", in_dtype_str, "_", out_dtype_str,
+                             "_", d0, "x", d1, "x", d1),
+                BM_BatchedDot, BatchedDot{in_dtype, out_dtype, d0, d1})
+                ->MeasureProcessCPUTime()));
+      }
+    }
+  }
+
+  //===--------------------------------------------------------------------===//
+  // BM_GenericDot
+  //===--------------------------------------------------------------------===//
   for (const GenericDot& dot : GetGenericDotList()) {
-    benchmark::RegisterBenchmark(BenchmarkName(dot), BM_GenericDot, dot)
+    benchmark::RegisterBenchmark(GenericDotBenchmarkName(dot), BM_GenericDot,
+                                 dot)
         ->MeasureProcessCPUTime();
   }
 }
