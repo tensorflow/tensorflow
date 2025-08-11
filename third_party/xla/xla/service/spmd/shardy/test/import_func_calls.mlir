@@ -155,11 +155,18 @@ func.func @non_flat_call_graph_all_uninlineable(%arg0: tensor<8xf32>) -> tensor<
   // CHECK-NEXT: }
   // CHECK-SAME: {mhlo.frontend_attributes = {inlineable = "false"}}
   // CHECK-SAME: (tensor<8xf32>) -> tensor<8xf32>
-  // CHECK-NEXT: return %[[NC3]] : tensor<8xf32>
+  // CHECK-NEXT: %[[NC4:.*]] = sdy.named_computation<"bar">(%[[NC3]]) (%arg1: tensor<8xf32>) {
+  // CHECK-NEXT:   %[[ABS3:.*]] = stablehlo.abs %arg1 : tensor<8xf32>
+  // CHECK-NEXT:   sdy.return %[[ABS3]] : tensor<8xf32>
+  // CHECK-NEXT: }
+  // CHECK-SAME: {mhlo.frontend_attributes = {inlineable = "false"}}
+  // CHECK-SAME: (tensor<8xf32>) -> tensor<8xf32>
+  // CHECK-NEXT: return %[[NC4]] : tensor<8xf32>
   %0 = call @foo(%arg0) {mhlo.frontend_attributes = {inlineable = "false"}} : (tensor<8xf32>) -> tensor<8xf32>
   %1 = stablehlo.negate %0 : tensor<8xf32>
   %2 = call @baz(%1) {mhlo.frontend_attributes = {inlineable = "false"}} : (tensor<8xf32>) -> tensor<8xf32>
-  return %2 : tensor<8xf32>
+  %3 = call @bar(%2) {mhlo.frontend_attributes = {inlineable = "false"}} : (tensor<8xf32>) -> tensor<8xf32>
+  return %3 : tensor<8xf32>
 }
 
 // CHECK-NOT: func private @foo
@@ -189,7 +196,8 @@ func.func @non_flat_call_graph_all_inlineable(%arg0: tensor<8xf32>) -> tensor<8x
   %0 = call @foo(%arg0) {mhlo.frontend_attributes = {inlineable = "true"}} : (tensor<8xf32>) -> tensor<8xf32>
   %1 = stablehlo.negate %0 : tensor<8xf32>
   %2 = call @baz(%1) {mhlo.frontend_attributes = {inlineable = "true"}} : (tensor<8xf32>) -> tensor<8xf32>
-  return %2 : tensor<8xf32>
+  %3 = call @bar(%2) {mhlo.frontend_attributes = {inlineable = "true"}} : (tensor<8xf32>) -> tensor<8xf32>
+  return %3 : tensor<8xf32>
 }
 
 // CHECK: func private @foo
