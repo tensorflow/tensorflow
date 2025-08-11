@@ -19,9 +19,9 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
-#include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
@@ -32,6 +32,8 @@ namespace xla::emitters {
 
 mlir::DenseElementsAttr GetZeroDenseElementsAttr(mlir::ShapedType shaped_type);
 
+// Evaluates the epilogue of the fusion. Returns the results for each epilogue
+// root.
 absl::flat_hash_map<const HloInstruction*, mlir::ValueRange> EmitEpilogue(
     int epilogue_index, const emitters::PartitionedComputations& computations,
     mlir::func::FuncOp entry_fn,

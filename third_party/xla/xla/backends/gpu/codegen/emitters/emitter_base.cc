@@ -444,42 +444,6 @@ absl::Status EmitterBase::EmitMlir(mlir::ModuleOp module, FuncOp entry_function,
   return EmitEntryFunction(computations, call_targets, entry_function, fusion);
 }
 
-absl::flat_hash_map<const HloInstruction*, ValueRange>
-EmitterBase::EmitEpilogue(
-    int epilogue_index, const emitters::PartitionedComputations& computations,
-    FuncOp entry_fn,
-    const absl::flat_hash_map<const HloInstruction*, llvm::SmallVector<Value>>&
-        injected,
-    ValueRange output_indices, mlir::ImplicitLocOpBuilder& builder) const {
-  const auto& epilogue = computations.epilogues().at(epilogue_index);
-  if (epilogue.roots.empty()) {
-    return {};
-  }
-  auto epilogue_fn = mlir::cast<FuncOp>(
-      entry_fn->getParentOfType<mlir::ModuleOp>().lookupSymbol(epilogue.name));
-  SmallVector<Value> operands = ValueRange(entry_fn.getArguments().take_front(
-      computations.fusion()->num_parameters()));
-  absl::c_copy(output_indices, std::back_inserter(operands));
-  int injected_offset = operands.size();
-  operands.resize(injected_offset + epilogue.num_injected_values);
-  for (auto [injected_instruction, start] : epilogue.injected_value_starts) {
-    absl::c_copy(injected.at(injected_instruction),
-                 operands.begin() + injected_offset + start);
-  }
-
-  ValueRange results =
-      builder.create<PureCallOp>(epilogue_fn, operands).getResults();
-  absl::flat_hash_map<const HloInstruction*, ValueRange> results_per_root;
-  for (auto* root : epilogue.roots) {
-    int arity =
-        root->shape().IsTuple() ? root->shape().tuple_shapes().size() : 1;
-    results_per_root[root] = results.take_front(arity);
-    results = results.drop_front(arity);
-  }
-  CHECK_EQ(results.size(), 0);
-  return results_per_root;
-}
-
 void AddLoopTransformationPasses(mlir::OpPassManager& pm,
                                  const se::DeviceDescription& device) {
   pm.addNestedPass<FuncOp>(CreateLowerXlaSharedPass());
