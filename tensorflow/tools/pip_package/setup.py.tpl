@@ -155,7 +155,7 @@ EXTRA_PACKAGES = {
         'nvidia-curand-cu12 >= 10.3.6.82, < 11.0',
         'nvidia-cusolver-cu12 >= 11.6.3.83, < 12.0',
         'nvidia-cusparse-cu12 >= 12.5.1.3, < 13.0',
-        'nvidia-nccl-cu12 >= 2.26.5, < 3.0',
+        'nvidia-nccl-cu12 >= 2.27.7, < 3.0',
         'nvidia-nvjitlink-cu12 >= 12.5.82, < 13.0',
     ],
     'gcs-filesystem': [
