@@ -301,11 +301,13 @@ bool CallInliner::IsInlineableCallOp(HloInstruction* instruction) const {
     // prerequisites.
     return false;
   }
-  if (!inline_shardy_manual_computation_ &&
-      instruction->GetModule()->config().use_shardy_partitioner() &&
+  if (instruction->GetModule()->config().use_shardy_partitioner() &&
       (absl::StrContains(instruction->to_apply()->name(), "shmap_body") ||
        absl::StrContains(instruction->to_apply()->name(),
                          sdy::kManualComputationBodyFuncName.str()))) {
+    // TODO(b/436603025). Remove this special handling by marking the
+    // instruction as uninlineable with the frontend attribute.
+    //
     // Specific inlining rules when needing to round-trip from MLIR->HLO->MLIR
     // when using Shardy (github.com/openxla/shardy).
     //

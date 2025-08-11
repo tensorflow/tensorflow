@@ -497,36 +497,6 @@ TEST_F(CallInlinerTest, UseShardManualComputationBodyNotInlined) {
   EXPECT_EQ(call->to_apply()->name(), "xla.sdy.manual_computation_body.4");
 }
 
-// Inline with `inline_shardy_manual_computation` enabled.
-TEST_F(CallInlinerTest, UseShardManualComputationBodyInlined) {
-  const char* const hloString = R"(
-    HloModule jit_f, entry_computation_layout={(f32[8,8]{1,0})->f32[8,8]{1,0}}
-
-    %xla.sdy.manual_computation_body.4 (Arg_0.5: f32[1,8]) -> f32[1,8] {
-      %Arg_0.5 = f32[1,8]{1,0} parameter(0)
-      ROOT %add.6 = f32[1,8]{1,0} add(f32[1,8]{1,0} %Arg_0.5, f32[1,8]{1,0} %Arg_0.5), metadata={source_file="-" source_line=11}
-    }
-
-    ENTRY %main.10 (Arg_0.1: f32[8,8]) -> f32[8,8] {
-      %Arg_0.1 = f32[8,8]{1,0} parameter(0)
-      %custom-call.3 = f32[1,8]{1,0} custom-call(f32[8,8]{1,0} %Arg_0.1), custom_call_target="SPMDFullToShardShape", sharding={manual}, metadata={source_file="-" source_line=4}
-      %call.7 = f32[1,8]{1,0} call(f32[1,8]{1,0} %custom-call.3), to_apply=%xla.sdy.manual_computation_body.4
-      ROOT %custom-call.9 = f32[8,8]{1,0} custom-call(f32[1,8]{1,0} %call.7), custom_call_target="SPMDShardToFullShape", sharding={devices=[8,1]<=[8]}, metadata={source_file="-" source_line=7}
-    })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hloString));
-  module->mutable_config().set_use_shardy_partitioner(true);
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed, CallInliner(
-                        /*single_call_site=*/false, /*update_domain=*/false,
-                        /*composites_to_preserve=*/{},
-                        /*uniquify_channel_ids=*/false,
-                        /*should_inline=*/std::nullopt,
-                        /*inline_shardy_manual_computation=*/true)
-                        .Run(module.get()));
-  EXPECT_TRUE(changed);
-  EXPECT_EQ(FindInstruction(module.get(), xla::HloOpcode::kCall), nullptr);
-}
-
 // Make sure we check the name of the called function contains the string, not
 // just the prefix/suffix.
 TEST_F(CallInlinerTest, UseShardManualComputationBodySurroundedNotInlined) {
