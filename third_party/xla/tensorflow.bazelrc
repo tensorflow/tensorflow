@@ -184,7 +184,7 @@ build:mkl_aarch64_threadpool --define=build_with_mkl_aarch64=true
 build:mkl_aarch64_threadpool -c opt
 
 # Default CUDA, CUDNN and NVSHMEM versions.
-build:cuda_version --repo_env=HERMETIC_CUDA_VERSION="12.8.0"
+build:cuda_version --repo_env=HERMETIC_CUDA_VERSION="12.9.0"
 build:cuda_version --repo_env=HERMETIC_CUDNN_VERSION="9.8.0"
 build:cuda_version --repo_env=HERMETIC_NVSHMEM_VERSION="3.2.5"
 
