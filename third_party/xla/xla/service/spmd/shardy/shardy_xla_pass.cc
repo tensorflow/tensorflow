@@ -372,7 +372,8 @@ absl::Status runShardingPropagation(HloModule* hloModule,
   } else {
     // This is the default path.
     addSdyRoundTripImportPipeline(pm, /*enableConstantImport=*/true,
-                                  /*importOnlyUninlineableFuncCalls=*/true);
+                                  /*importOnlyUninlineableFuncCalls=*/true,
+                                  /*liftAndDedupMeshes=*/true);
   }
 
   // NOTE: if we are using auto-spmd, we will use conservative propagation
