@@ -18,8 +18,6 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
-#include "absl/algorithm/container.h"
-#include "absl/log/check.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
