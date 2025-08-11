@@ -177,7 +177,7 @@ func.func @manual_computation_no_inputs_no_outputs() {
   // CHECK-NEXT:   sdy.return
   // CHECK-NEXT: } : () -> ()
   // CHECK-NEXT: return
-  call @local_xla.sdy.manual_computation_body_8() : () -> ()
+  call @local_xla.sdy.manual_computation_body_8() {mhlo.frontend_attributes = {inlineable = "false"}} : () -> ()
   return
 }
 

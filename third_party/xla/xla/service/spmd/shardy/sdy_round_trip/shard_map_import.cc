@@ -176,7 +176,8 @@ class ManualComputationPattern : public OpConversionPattern<CallOp> {
     // TODO(b/410499196): Code to handle loading an old checkpoint. Remove after
     // 6 months of cl/745735176 being submitted.
     mlir::DictionaryAttr callOpFrontendAttrs = getFrontendAttrs(callOp);
-    if (!newCodePath && callOpFrontendAttrs) {
+    if (!newCodePath && callOpFrontendAttrs &&
+        callOpFrontendAttrs.contains(kManualAxes)) {
       inShardings = parseStringAttr<sdy::TensorShardingPerValueAttr>(
           callOpFrontendAttrs, kInShardings);
       outShardings = parseStringAttr<sdy::TensorShardingPerValueAttr>(
