@@ -71,6 +71,7 @@ cc_library(
     hdrs = ["utils.h"],
     deps = [
         ":constants",
+        "//xla/hlo/ir:hlo_sharding",
         "//xla/mlir_hlo:hlo_dialect_registration",
         "//xla/service/spmd/shardy/extensions:mhlo_extensions",
         "@com_google_absl//absl/log:check",
