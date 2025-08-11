@@ -26,7 +26,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/backends/autotuner/autotune_config.h"
 #include "xla/backends/autotuner/autotuner_cache.pb.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -34,10 +33,28 @@ limitations under the License.
 
 namespace xla {
 
+// Configuration for the file-based autotuner cache.
+struct FileBasedCacheConfig {
+  // Directory to store autotune results. If empty, caching is disabled.
+  std::string autotune_cache_dir = "";
+  // Mode for the autotune cache.
+  // READ: Only load existing profiles, never run the autotuner.
+  // WRITE: Only run the autotuner and write results, never load existing
+  //        profiles.
+  // READ_WRITE: Load existing profiles if available, otherwise run the
+  //             autotuner and update the cache.
+  enum class CacheMode {
+    READ,
+    WRITE,
+    READ_WRITE,
+  };
+  CacheMode autotune_cache_mode = CacheMode::READ_WRITE;
+};
+
 // File-based implementation of the AutotunerCacheInterface.
 // This class stores autotuner cache entries as textproto files in a directory
-// specified by AutotuneConfig.autotune_cache_dir. It supports any file system
-// accessible via tsl::Env.
+// specified by FileBasedCacheConfig.autotune_cache_dir. It supports any file
+// system accessible via tsl::Env.
 //
 // Each cache entry is stored in a separate file. The filename is a SHA256 hash
 // of the cache key, which includes the HLO instruction, device description,
@@ -56,7 +73,7 @@ namespace xla {
 class FileBasedAutotunerCache : public AutotunerCacheInterface {
  public:
   static absl::StatusOr<std::unique_ptr<AutotunerCacheInterface>> Create(
-      const AutotuneConfig& autotune_config,
+      const FileBasedCacheConfig& cache_config,
       const se::DeviceDescription& device_desc, const std::string& version);
 
   std::optional<AutotunerCacheEntry> Lookup(
@@ -67,7 +84,7 @@ class FileBasedAutotunerCache : public AutotunerCacheInterface {
       ABSL_LOCKS_EXCLUDED(mutex_);
 
  private:
-  FileBasedAutotunerCache(const AutotuneConfig& autotune_config,
+  FileBasedAutotunerCache(const FileBasedCacheConfig& cache_config,
                           const se::DeviceDescription& device_desc,
                           const std::string& version);
 
@@ -87,7 +104,7 @@ class FileBasedAutotunerCache : public AutotunerCacheInterface {
   absl::Status Save(absl::string_view map_key, const AutotunerCacheEntry& entry)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  AutotuneConfig autotune_config_;
+  FileBasedCacheConfig cache_config_;
   const se::DeviceDescription device_desc_;
   const std::string version_;
   absl::Mutex mutex_;
