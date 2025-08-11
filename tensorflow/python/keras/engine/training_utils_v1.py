@@ -692,6 +692,19 @@ def standardize_sample_or_class_weights(x_weight, output_names, weight_type):
     if isinstance(x_weight, (list, tuple)) and len(x_weight) == 1:
       return x_weight
     if isinstance(x_weight, dict):
+      # Check for unsupported complex class weights (consistent with data_adapter.py)
+      if weight_type == 'class_weight':
+        for key, value in x_weight.items():
+          try:
+            tensor_val = tensor_conversion.convert_to_tensor_v2_with_dispatch(value)
+            if tensor_val.dtype.is_complex:
+              raise ValueError(
+                  f"Complex class weights are not supported. "
+                  f"Found complex value {value} for class {key}. "
+                  f"Please use real-valued weights only.")
+          except Exception:
+            pass
+      
       # Validate class_weight keys
       if weight_type == 'class_weight':
         for key in x_weight.keys():
@@ -711,8 +724,7 @@ def standardize_sample_or_class_weights(x_weight, output_names, weight_type):
           # Reject everything else
           raise ValueError(f"Invalid class_weight key: '{key}'. "
                          f"Class weight keys must be integers representing "
-                         f"or valid output names for single-output models. "
-                         f"class indices, "
+                         f"class indices or valid output names for single-output models. "
                          f"Got key of type {type(key).__name__}.")
       
       if output_names[0] in x_weight:
@@ -725,13 +737,28 @@ def standardize_sample_or_class_weights(x_weight, output_names, weight_type):
   # For multiple outputs
   if isinstance(x_weight, (list, tuple)):
     if len(x_weight) != len(output_names):
-      raise ValueError('Provided `' + weight_type + '` was a list of length ' +
-                       str(len(x_weight)) + ', but the model has ' +
+      raise ValueError('Provided `' + weight_type + '` was a list of ' +
+                       str(len(x_weight)) + ' elements, but the model has ' +
                        str(len(output_names)) + ' outputs. '
-                       'You should provide one `' + weight_type + '`'
+                       'You should provide one `' + weight_type + '` '
                        'array per model output.')
     return x_weight
   if isinstance(x_weight, dict):
+    # Check for unsupported complex class weights (consistent with data_adapter.py)
+    if weight_type == 'class_weight':
+      for name in output_names:
+        if name in x_weight and isinstance(x_weight[name], dict):
+          for key, value in x_weight[name].items():
+            try:
+              tensor_val = tensor_conversion.convert_to_tensor_v2_with_dispatch(value)
+              if tensor_val.dtype.is_complex:
+                raise ValueError(
+                    f"Complex class weights are not supported. "
+                    f"Found complex value {value} for class {key} in output '{name}'. "
+                    f"Please use real-valued weights only.")
+            except Exception:
+              pass
+    
     # Validate class_weight keys for multiple outputs
     if weight_type == 'class_weight':
       for name in output_names:
@@ -762,11 +789,9 @@ def standardize_sample_or_class_weights(x_weight, output_names, weight_type):
       return x_weight
     else:
       raise ValueError('The model has multiple outputs, so `' + weight_type +
-                       '` '
-                       'should be either a list or a dict. '
+                       '` should be either a list or a dict. '
                        'Provided `' + weight_type + '` type: ' +
                        str(type(x_weight)))
-
 
 def standardize_class_weights(class_weight, output_names):
   return standardize_sample_or_class_weights(class_weight, output_names,
