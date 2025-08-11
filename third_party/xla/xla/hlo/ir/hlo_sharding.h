@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/hlo/ir/tile_assignment.h"  // IWYU pragma: export
@@ -47,6 +48,11 @@ namespace xla {
 // computations.
 class HloSharding {
  public:
+  // The name of the HLO instruction frontend attribute which stores that
+  // instruction's sharding (e.g., Shardy).
+  static inline constexpr absl::string_view kShardingFrontendAttrName =
+      "xla.sdy.sharding";
+
   // Creates a trivial sharding that replicates a maximal tile across all
   // devices.
   static HloSharding Replicate(absl::Span<const OpMetadata> metadata = {}) {
