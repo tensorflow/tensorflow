@@ -100,13 +100,13 @@ diff --git a/src/device/generate.py b/src/device/generate.py
  
  # Partition the functions and kernels to the .cu filenames. The partition is
  # a dictionary mapping filename to (coll, func-tuple list)
-@@ -323,7 +338,7 @@ name_to_kernels = partition_by_name(kfn for kfn in kernel_funcs if kfn[0]!="Gene
+@@ -326,7 +341,7 @@ name_to_kernels = partition_by_name(kfn for kfn in kernel_funcs if kfn[0]!="Gene
  with open(os.path.join(gensrc, "rules.mk"), "w") as f:
    out = f.write
    impl_names = sorted(name_to_funcs.keys())
 -  names = impl_names + ["host_table.cc", "device_table.cu"]
 +  names = impl_names + ["host_table.cc", "device_table.cu.cc"]
-   out("LIB_OBJS_GEN = $(patsubst %, $(OBJDIR)/genobj/%.o, {names})\n"
+   out("LIB_OBJS_GEN = $(patsubst %,$(OBJDIR)/genobj/%.o,{names})\n"
        .format(names=" ".join(names)))
    out("\n")
 diff --git a/src/ras/ras.cc b/src/ras/ras.cc
