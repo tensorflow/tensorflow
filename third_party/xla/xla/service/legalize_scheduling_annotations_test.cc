@@ -43,7 +43,6 @@ namespace {
 using LegalizeSchedulingAnnotationsTest = HloHardwareIndependentTestBase;
 using SchedulingAnnotationPropagationTest = HloHardwareIndependentTestBase;
 using RemoveLoopIterationAnnotationTest = HloHardwareIndependentTestBase;
-using ::tsl::testing::IsOkAndHolds;
 
 TEST_F(LegalizeSchedulingAnnotationsTest, NonIntegerAnnotation) {
   constexpr absl::string_view hlo_string = R"(
