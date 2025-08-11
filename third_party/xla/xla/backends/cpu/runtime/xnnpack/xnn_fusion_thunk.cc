@@ -141,13 +141,18 @@ XnnFusionThunk::CreateXnnExecutable(
   // Keep track of the arguments captured by value.
   executable.captured_arguments = CaptureArguments(arguments_buffers);
 
+  // TODO(dsharlet): Make this flag publicly visible from XNNPACK somehow.
+#define XNN_FLAG_SLINKY_USE_XLA_THREADPOOL 1
+
   // Configure XNNPACK threadpool if the use of thread pool is enabled.
   if (options_.use_threadpool && device) {
     executable.scheduler = std::make_unique<XnnScheduler>(device);
     TF_ASSIGN_OR_RETURN(executable.threadpool,
                         CreateXnnThreadpool([&](xnn_threadpool_t* threadpool) {
-                          return xnn_create_threadpool(
-                              executable.scheduler.get(), threadpool);
+                          return xnn_create_threadpool_v2(
+                              executable.scheduler.get(),
+                              /*flags=*/XNN_FLAG_SLINKY_USE_XLA_THREADPOOL,
+                              threadpool);
                         }));
   }
 
