@@ -26,7 +26,10 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -119,7 +122,11 @@ TEST(DumpTest, GetDumpSubdirPathEmptyPath) {
 }
 
 TEST(DumpTest, DumpCompileInputs) {
-  const std::string temp_dir = tsl::testing::TmpDir();
+  const std::string temp_test_dir = tsl::testing::TmpDir();
+  const std::string temp_test_subdir =
+      tsl::io::JoinPath(temp_test_dir, "compile_dump_test",
+                        absl::StrCat(absl::ToUnixMillis(absl::Now())));
+  TF_ASSERT_OK(tsl::Env::Default()->RecursivelyCreateDir(temp_test_subdir));
   xla::CompileOptions compile_options;
   mlir::MLIRContext context;
   mlir::OpBuilder builder(&context);
@@ -129,13 +136,13 @@ TEST(DumpTest, DumpCompileInputs) {
 
   // Dump compile inputs.
   compile_options.executable_build_options.mutable_debug_options()
-      ->set_xla_dump_to(temp_dir);
+      ->set_xla_dump_to(temp_test_subdir);
 
-  TF_ASSERT_OK(pjrt::DumpCompileInputs(temp_dir, compile_options, *module,
-                                       *topology.get()));
+  TF_ASSERT_OK(pjrt::DumpCompileInputs(temp_test_subdir, compile_options,
+                                       *module, *topology.get()));
   std::vector<std::string> files;
   TF_ASSERT_OK(tsl::Env::Default()->GetMatchingPaths(
-      tsl::io::JoinPath(temp_dir, "*"), &files));
+      tsl::io::JoinPath(temp_test_subdir, "*"), &files));
 
   ASSERT_EQ(files.size(), 1);
   std::string dump_subdir = files[0];
