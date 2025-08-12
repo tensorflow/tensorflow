@@ -40,10 +40,14 @@ if [ -f /usertools/cpu.bazelrc ]; then
           --bazelrc=/usertools/cpu.bazelrc \
           test \
           --config=sigbuild_local_cache \
+	  --verbose_failures \
           --config=pycpp \
+	  --test_env=HIP_VISIBLE_DEVICES=\"\"  \
+          --repo_env=USE_PYWRAP_RULES=${usePywrapRules} \
+          --action_env=TF_NEED_ROCM=0 \
           --action_env=TF_PYTHON_VERSION=$PYTHON_VERSION \
           --local_test_jobs=${N_BUILD_JOBS} \
-         --test_timeout 920,2400,7200,9600 \
+          --test_timeout 920,2400,7200,9600 \
           --jobs=${N_BUILD_JOBS}
 else
          yes "" | $PYTHON_BIN_PATH configure.py
@@ -53,9 +57,10 @@ else
         # xla/mlir_hlo/tests/Dialect/gml_st tests disabled in 09/08/22 sync
         bazel test \
               -k \
-              --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,-gpu,-multi_gpu,-tpu,-cuda-only,-benchmark-test,-v1only \
+	      --verbose_failures \
+              --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,-gpu,-multi_gpu,-multi_and_single_gpu,-tpu,-cuda-only,-benchmark-test,-v1only \
               --test_lang_filters=cc,py \
-	            --jobs=30 \
+	      --jobs=30 \
               --local_ram_resources=60000 \
               --local_cpu_resources=15 \
               --local_test_jobs=${N_BUILD_JOBS} \
@@ -65,6 +70,9 @@ else
               --test_sharding_strategy=disabled \
               --test_size_filters=small,medium \
               --test_env=TF_PYTHON_VERSION=$PYTHON_VERSION \
+              --test_env=HIP_VISIBLE_DEVICES=\"\"  \
+              --repo_env=USE_PYWRAP_RULES=${usePywrapRules} \
+              --action_env=TF_NEED_ROCM=0 \
               -- \
               //tensorflow/... \
               -//tensorflow/compiler/tf2tensorrt/... \
