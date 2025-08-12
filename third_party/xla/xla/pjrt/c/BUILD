@@ -258,6 +258,7 @@ cc_library(
         "//xla/pjrt:pjrt_layout",
         "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/pjrt/proto:compile_options_proto_cc",
+        "//xla/pjrt/proto:topology_description_proto_cc",
         "//xla/service:computation_placer_hdr",
         "//xla/service:hlo_proto_cc",
         "//xla/tsl/framework:allocator",

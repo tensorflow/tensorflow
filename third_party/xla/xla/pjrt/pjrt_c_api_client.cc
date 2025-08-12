@@ -2850,6 +2850,23 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCApiCompiler::Compile(
                                      serialized, format);
 }
 
+absl::StatusOr<std::unique_ptr<PjRtTopologyDescription>>
+PjRtCApiCompiler::DeserializePjRtTopologyDescription(
+    const std::string& serialized_topology) {
+  PJRT_TopologyDescription_Deserialize_Args args;
+  args.struct_size = PJRT_TopologyDescription_Deserialize_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.serialized_topology = serialized_topology.data();
+  args.serialized_topology_size = serialized_topology.size();
+  args.topology = nullptr;
+
+  RETURN_STATUS_IF_PJRT_ERROR(
+      (*c_api_->PJRT_TopologyDescription_Deserialize)(&args), c_api_);
+
+  return std::make_unique<PjRtCApiTopologyDescription>(c_api_, args.topology,
+                                                       /*owned=*/true);
+}
+
 // -------------------------------- API access ---------------------------------
 
 absl::StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient(
