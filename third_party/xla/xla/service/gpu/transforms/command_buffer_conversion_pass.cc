@@ -329,8 +329,10 @@ absl::StatusOr<bool> CommandBufferConversionPass::Run(
         ConvertToCommands(thunks_to_convert,
                           ConvertToCommandsOptions{synchronization_mode}));
 
+    Thunk::ThunkInfo thunk_info;
+    thunk_info.profile_annotation = "command_buffer";
     return std::make_unique<CommandBufferThunk>(
-        std::move(cmd_executor), Thunk::ThunkInfo(),
+        std::move(cmd_executor), std::move(thunk_info),
         std::make_unique<SequentialThunk>(Thunk::ThunkInfo(),
                                           std::move(thunks_to_convert)),
         debug_options.xla_enable_command_buffers_during_profiling());
