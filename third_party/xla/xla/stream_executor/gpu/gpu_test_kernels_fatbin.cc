@@ -119,14 +119,9 @@ absl::StatusOr<std::vector<uint8_t>> GetGpuTestKernelsFatbin(
         absl::StrCat("Unsupported GPU platform: ", platform_name));
   }
 
-<<<<<<< HEAD
   std::string file_path =
       tsl::io::JoinPath("external", "local_xla", "xla", "stream_executor",
                         "gpu", archive_filename);
-=======
-  std::string file_path = tsl::io::JoinPath(
-      tsl::testing::XlaSrcRoot(), "stream_executor", archive_filename);
->>>>>>> 599084a14d53d026462e1aa43c06d24facdd79db
 
   return GetFatbinFromArchive(file_path, fatbin_prefix);
 }

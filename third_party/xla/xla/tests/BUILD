@@ -811,15 +811,9 @@ xla_test(
         "cpu",
         "gpu",
     ],
-<<<<<<< HEAD
-    tags = ["test_xla_cpu_thunks",
-            "cuda-only",
-            "test_xla_cpu_no_thunks",], #(TODO)(rocm): weekly sync 24-11-05
-=======
     tags = [
         "test_migrated_to_hlo_runner_pjrt",
     ],
->>>>>>> 599084a14d53d026462e1aa43c06d24facdd79db
     deps = [
         ":client_library_test_runner_mixin",
         ":hlo_pjrt_interpreter_reference_mixin",
@@ -1245,12 +1239,6 @@ xla_test(
     shard_count = 20,
     tags = [
         "optonly",
-<<<<<<< HEAD
-        "test_xla_cpu_thunks",
-        "cuda-only", #TODO(rocm): weekly sync 24-10-01
-        "test_xla_cpu_no_thunks",
-=======
->>>>>>> 599084a14d53d026462e1aa43c06d24facdd79db
     ],
     deps = [
         ":client_library_test_base",
@@ -2575,15 +2563,8 @@ xla_test(
     name = "convert_test",
     srcs = ["convert_test.cc"],
     tags = [
-<<<<<<< HEAD
-        "test_xla_cpu_thunks",
-        "cuda-only", #TODO(rocm): weekly sync 24-10-01
-        "test_xla_cpu_no_thunks",
-        ],
-=======
         "test_migrated_to_hlo_runner_pjrt",
     ],
->>>>>>> 599084a14d53d026462e1aa43c06d24facdd79db
     deps = [
         ":client_library_test_runner_mixin",
         ":hlo_pjrt_interpreter_reference_mixin",

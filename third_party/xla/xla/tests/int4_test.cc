@@ -1,4 +1,4 @@
-/* Copyright 2023 The OpenXLA Authors.
+g* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -136,12 +136,7 @@ TEST_F(HloTestBase, Transpose4d) {
   EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
 }
 
-<<<<<<< HEAD
-XLA_TEST_F(HloTestBase, TransposeDot) {
-  GTEST_SKIP() << "weekly-sync 250211: crash due to new LLVM version";
-=======
 TEST_F(HloTestBase, TransposeDot) {
->>>>>>> 599084a14d53d026462e1aa43c06d24facdd79db
   const std::string hlo_text = R"(
   ENTRY main {
     x = s4[32,32,32] parameter(0)

@@ -1632,15 +1632,11 @@ ENTRY e {
 // TODO(b/393299275): this should just be a fusion test and does not need to be
 // in the codegen directory.
 TEST_F(TritonGemmTestWithSplitK,
-<<<<<<< HEAD
-       DISABLED_SplitKDoesNotBreakSlicedFragmentedContractingDimension) {
+       SplitKDoesNotBreakSlicedFragmentedContractingDimension) {
   if (std::holds_alternative<se::RocmComputeCapability>(
     GpuComputeCapability())) {
     GTEST_SKIP() << "ROCm: disabled in weekly-sync-250514";
   }
-=======
-       SplitKDoesNotBreakSlicedFragmentedContractingDimension) {
->>>>>>> 599084a14d53d026462e1aa43c06d24facdd79db
   constexpr absl::string_view kHloText = R"(
 ENTRY e {
   p0 = f16[16,8,128]{2,1,0} parameter(0)

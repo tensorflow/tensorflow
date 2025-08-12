@@ -1690,7 +1690,6 @@ TEST_F(DotOperationTest, DotRank2AndRank2NonDefaultContractionDims) {
 using EinsumParamType =
     std::tuple<std::vector<int64_t>, std::vector<int64_t>, std::string>;
 class EinsumTest : public DotOperationTest,
-<<<<<<< HEAD
                    public ::testing::WithParamInterface<EinsumParamType> {
  protected:
   void SetUp() override {
@@ -1708,11 +1707,7 @@ class EinsumTest : public DotOperationTest,
   }
 };
 
-XLA_TEST_P(EinsumTest, SimpleEinsumTest) {
-=======
-                   public ::testing::WithParamInterface<EinsumParamType> {};
 TEST_P(EinsumTest, SimpleEinsumTest) {
->>>>>>> 599084a14d53d026462e1aa43c06d24facdd79db
   XlaBuilder builder(TestName());
   auto x = AddParam(
       MakeFakeLiteral(ShapeUtil::MakeShape(F32, std::get<0>(GetParam())))
@@ -1800,7 +1795,6 @@ INSTANTIATE_TEST_SUITE_P(Einsum, EinsumTest,
 using BatchDotParamType = std::tuple<std::vector<int64_t>, std::vector<int64_t>,
                                      std::vector<int64_t>>;
 class BatchDotTest : public DotOperationTest,
-<<<<<<< HEAD
                      public ::testing::WithParamInterface<BatchDotParamType> {
  protected:
   void SetUp() override {
@@ -1818,11 +1812,7 @@ class BatchDotTest : public DotOperationTest,
   }
 };
 
-XLA_TEST_P(BatchDotTest, BroadcastingBatchDotTest) {
-=======
-                     public ::testing::WithParamInterface<BatchDotParamType> {};
 TEST_P(BatchDotTest, BroadcastingBatchDotTest) {
->>>>>>> 599084a14d53d026462e1aa43c06d24facdd79db
   XlaBuilder builder(TestName());
   auto x = AddParam(
       MakeFakeLiteral(ShapeUtil::MakeShape(F32, std::get<0>(GetParam())))
@@ -1914,15 +1904,11 @@ ENTRY %test {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-3, 1e-3}));
 }
 
-<<<<<<< HEAD
-XLA_TEST_F(DotOperationTextTest, Einsum) {
+TEST_F(DotOperationTextTest, Einsum) {
   // TODO(rocm): weekly-sync 25-02-21
   if (std::holds_alternative<stream_executor::RocmComputeCapability>(GpuComputeComp())) {
     GTEST_SKIP() << "Currently disabled on ROCm.";
   }
-=======
-TEST_F(DotOperationTextTest, Einsum) {
->>>>>>> 599084a14d53d026462e1aa43c06d24facdd79db
   absl::string_view hlo_string =
       R"(
 HloModule Einsum
@@ -2149,15 +2135,11 @@ ENTRY SmallIntegerDot {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0, 0}));
 }
 
-<<<<<<< HEAD
-XLA_TEST_F(DotOperationTextTest, GpuTransposeOutput) {
+TEST_F(DotOperationTextTest, GpuTransposeOutput) {
   // TODO(rocm): weekly-sync 25-02-21
   if (std::holds_alternative<stream_executor::RocmComputeCapability>(GpuComputeComp())) {
     GTEST_SKIP() << "Currently disabled on ROCm.";
   }
-=======
-TEST_F(DotOperationTextTest, GpuTransposeOutput) {
->>>>>>> 599084a14d53d026462e1aa43c06d24facdd79db
   absl::string_view hlo_string =
       R"(
 HloModule TransposeOutput

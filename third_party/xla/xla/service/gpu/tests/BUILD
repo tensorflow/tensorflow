@@ -347,21 +347,11 @@ xla_test(
     name = "gpu_triton_custom_call_test",
     srcs = ["gpu_triton_custom_call_test.cc"],
     backends = [
-<<<<<<< HEAD
-        "gpu_a100",
-        "gpu_h100",
-        "gpu_v100",
-
-        # "gpu_b100",  # TODO: Weekly sync 24-12-10 duplication
-        "gpu_b200",
-        "gpu_amd_any",
-=======
         "a100",
         "h100",
         "v100",
         "b200",
         "amdgpu_any",
->>>>>>> 599084a14d53d026462e1aa43c06d24facdd79db
     ],
     tags = ["cuda-only"], # TODO(rocm) 240729 Test checks only for cuda capability
     deps = [
@@ -642,17 +632,7 @@ lit_test_suite(
     ],
     default_tags = tf_gpu_tests_tags(),
     hermetic_cuda_data_dir = "%S/../../../../../cuda_nvcc",
-<<<<<<< HEAD
-=======
     tags = ["no-oneapi"],
-    tags_override = {
-        "element_wise_row_vectorization.hlo": ["cuda-only"],
-        "scatter_bf16.hlo": ["cuda-only"],
-        "single_instruction.hlo": ["cuda-only"],
-        "reduce_unnested.hlo": ["cuda-only"],
-        "reduction_vectorization_sm_all.hlo": ["cuda-only"],
-    },
->>>>>>> 599084a14d53d026462e1aa43c06d24facdd79db
     tools = [
         "//xla/tools:hlo-opt",
         "@llvm-project//llvm:FileCheck",

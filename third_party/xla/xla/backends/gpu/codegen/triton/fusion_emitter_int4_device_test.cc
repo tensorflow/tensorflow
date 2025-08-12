@@ -295,12 +295,7 @@ TEST_F(TritonTest, FuseSubchannelDequantization) {
       std::move(module), ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-<<<<<<< HEAD
-
-TEST_F(TritonTest, DISABLED_FuseChannelDequantization) {
-=======
 TEST_F(TritonTest, FuseChannelDequantization) {
->>>>>>> 599084a14d53d026462e1aa43c06d24facdd79db
   // This test is a Channel Dequantization fusion.
   // We run the non-fused version with the goal to fail if an hlo rewrite broke
   // the dequantization logic. The case where we do:
@@ -313,13 +308,10 @@ TEST_F(TritonTest, FuseChannelDequantization) {
       w.bf16 = bf16[32,128,256] convert(w.s8)
 
       s = bf16[32,1,256] parameter(1)
-<<<<<<< HEAD
-=======
       s.broadcast = bf16[32,1,256] broadcast(s), dimensions={0,1,2}
       s.reshape = bf16[32,256] reshape(s.broadcast)
       s.broadcast.2 = bf16[32,128,256] broadcast(s.reshape),
           dimensions={0,2}
->>>>>>> 599084a14d53d026462e1aa43c06d24facdd79db
       w.scaled = bf16[32,128,256] multiply(w.bf16, s.broadcast.2)
 
       a = bf16[2,1,32,128,128] parameter(2)

@@ -383,14 +383,8 @@ xla_test(
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/profiler/lib:profiler_lock",
-<<<<<<< HEAD
-    ] + if_cuda_is_configured([
-        "@local_config_cuda//cuda:cuda_headers",
-    ]),
+    ]
     data = ["//xla/stream_executor/gpu:gpu_test_kernels_fatbin"]
-=======
-    ],
->>>>>>> 599084a14d53d026462e1aa43c06d24facdd79db
 )
 
 xla_test(

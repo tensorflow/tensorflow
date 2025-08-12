@@ -487,9 +487,6 @@ cuda_only_cc_library(
     alwayslink = True,
 )
 
-<<<<<<< HEAD
-cuda_only_cc_library(
-=======
 cc_library(
     name = "cudnn_sdpa_score_mod",
     srcs = ["cudnn_sdpa_score_mod.cc"],
@@ -532,7 +529,6 @@ xla_test(
 )
 
 cc_library(
->>>>>>> 599084a14d53d026462e1aa43c06d24facdd79db
     name = "cuda_kernel",
     srcs = ["cuda_kernel.cc"],
     hdrs = ["cuda_kernel.h"],
