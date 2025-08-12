@@ -711,7 +711,8 @@ def standardize_sample_or_class_weights(x_weight, output_names, weight_type):
           # Reject everything else
           raise ValueError(f"Invalid class_weight key: '{key}'. "
                          f"Class weight keys must be integers representing "
-                         f"class indices or valid output names for single-output models. "
+                         f"class indices or valid output names for "
+                         f"single-output models. "
                          f"Got key of type {type(key).__name__}.")
 
       if output_names[0] in x_weight:

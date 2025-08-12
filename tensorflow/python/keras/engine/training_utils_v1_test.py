@@ -16,7 +16,6 @@
 
 import tensorflow as tf
 from tensorflow.python.keras.engine import training_utils_v1
-from tensorflow.python.keras.engine import data_adapter
 
 class TrainingUtilsV1Test(tf.test.TestCase):
 
