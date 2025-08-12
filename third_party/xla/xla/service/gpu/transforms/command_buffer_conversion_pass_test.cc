@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/cudnn_thunk.h"
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/gemm_thunk.h"
+#include "xla/backends/gpu/runtime/replica_id_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/while_thunk.h"
@@ -207,6 +208,12 @@ std::unique_ptr<CuDnnThunk> CreateCuDnnThunk(const BufferAllocation& alloc0) {
       /*fingerprint=*/"fingeprint", Thunk::ThunkInfo(),
       /*args=*/std::vector<BufferAllocation::Slice>{slice0},
       /*output_args=*/std::vector<bool>{true});
+}
+
+std::unique_ptr<PartitionIdThunk> CreatePartitionIdThunk(
+    const BufferAllocation& alloc0) {
+  BufferAllocation::Slice slice0(&alloc0, 0, 1024);
+  return std::make_unique<PartitionIdThunk>(Thunk::ThunkInfo(), slice0);
 }
 
 TEST(CommandBufferConversionPassTest, ConvertsToCommandBufferThunk) {
@@ -420,7 +427,7 @@ TEST(CommandBufferConversionPassTest, ConvertNestedAsyncs) {
   thunks.push_back(CreateAllGatherDoneThunk(thunks[0].get()));
   // Create a convertible thunk C
   BufferAllocation alloc2(1, 16 * 4, 0);
-  thunks.push_back(CreateGemmThunk(alloc2));
+  thunks.push_back(CreatePartitionIdThunk(alloc2));
   // Create a done thunk A
   thunks.push_back(CreateAllGatherDoneThunk(thunks[1].get()));
 
@@ -435,6 +442,7 @@ TEST(CommandBufferConversionPassTest, ConvertNestedAsyncs) {
   debug_options.clear_xla_gpu_enable_command_buffer();
   debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES);
   debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLAS);
+  debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
 
   ASSERT_THAT(pass.Run(root_thunk.get(), debug_options, device_info),
               IsOkAndHolds(true));
@@ -448,7 +456,7 @@ TEST(CommandBufferConversionPassTest, ConvertNestedAsyncs) {
       command_buffer_thunk->thunks()->thunks();
   EXPECT_THAT(thunks_in_command_buffer,
               ThunkKindsAre(Thunk::kAllGatherStart, Thunk::kAllGatherStart,
-                            Thunk::kAllGatherDone, Thunk::kGemm,
+                            Thunk::kAllGatherDone, Thunk::kPartitionId,
                             Thunk::kAllGatherDone));
 }
 

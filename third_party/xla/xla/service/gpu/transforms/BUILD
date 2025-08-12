@@ -3334,6 +3334,7 @@ xla_test(
         "//xla/backends/gpu/runtime:cudnn_thunk",
         "//xla/backends/gpu/runtime:custom_call_thunk",
         "//xla/backends/gpu/runtime:gemm_thunk",
+        "//xla/backends/gpu/runtime:replica_id_thunk",
         "//xla/backends/gpu/runtime:sequential_thunk",
         "//xla/backends/gpu/runtime:thunk",
         "//xla/backends/gpu/runtime:while_thunk",
