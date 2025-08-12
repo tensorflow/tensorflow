@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/tools/matmul_perf_table_gen.h"
 
+#include <cstdint>
 #include <variant>
 
 #include <gtest/gtest.h>
@@ -183,6 +184,39 @@ TEST_F(MatmulPerfTableGenTest, CompactsTable) {
   EXPECT_EQ(entry.n(), 7);
   EXPECT_EQ(entry.flops().at("bf16xbf16->bf16"), 16 * 1e9);
   EXPECT_EQ(entry.flops().at("bf16xf16->f32"), 16 * 1e9);
+}
+
+TEST_F(MatmulPerfTableGenTest, CompactTableInDeterministicOrder) {
+  MatmulPerfTableGen::Config cfg;
+  cfg.b_spec.start = 1;
+  cfg.b_spec.stop = 8;
+  cfg.b_spec.step = 1;
+  cfg.k_spec.start = 8;
+  cfg.k_spec.stop = 8;
+  cfg.k_spec.step = 1;
+  cfg.m_spec.start = 3;
+  cfg.m_spec.stop = 3;
+  cfg.m_spec.step = 1;
+  cfg.n_spec.start = 7;
+  cfg.n_spec.stop = 7;
+  cfg.n_spec.step = 1;
+  cfg.dry_run = true;
+  cfg.dtypes.emplace_back(
+      MatmulPerfTableGen::DataTypeSpec{"bf16", "bf16", "bf16"});
+
+  MatmulPerfTableGen gen(cfg);
+  TF_ASSERT_OK_AND_ASSIGN(GemmPerfTable compact_table,
+                          MatmulPerfTableGen::Compact(gen.ComputeTable()));
+
+  EXPECT_EQ(compact_table.entries_size(), 1);
+  EXPECT_EQ(compact_table.entries().begin()->second.entries_size(), 8);
+
+  // Expect entries in increasing order of b.
+  int64_t expect_b = 1;
+  for (const GemmPerfTableEntry& entry :
+       compact_table.entries().begin()->second.entries()) {
+    EXPECT_EQ(entry.b(), expect_b++);
+  }
 }
 
 }  // namespace
