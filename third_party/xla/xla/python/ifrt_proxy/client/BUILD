@@ -408,6 +408,10 @@ cc_library(
     name = "executable",
     srcs = ["executable.cc"],
     hdrs = ["executable.h"],
+    # TODO(b/437149714): Remove this once the long term solution is in place.
+    visibility = internal_visibility(default_ifrt_proxy_visibility + if_google([
+        "//xla/python/ifrt_proxy/common/google:cc_client_users",
+    ])),
     deps = [
         ":array",
         ":host_buffer",
