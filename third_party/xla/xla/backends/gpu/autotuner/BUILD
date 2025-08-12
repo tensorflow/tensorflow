@@ -96,6 +96,7 @@ cc_library(
     name = "cublas",
     srcs = ["cublas.cc"],
     hdrs = ["cublas.h"],
+    tags = ["gpu"],
     deps = [
         ":gpu_codegen_backend",
         "//xla:autotuning_proto_cc",
@@ -133,6 +134,7 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
     ] + if_cuda([
         "//xla/stream_executor/cuda:repeat_buffer_kernel_cuda",
+        "//xla/stream_executor/cuda:cublas_plugin",
     ]),
 )
 
@@ -629,6 +631,7 @@ xla_cc_binary(
         "//xla:debug_options_flags",
         "//xla:xla_proto_cc",
         "//xla/backends/autotuner",
+        "//xla/backends/autotuner:file_based_autotuner_cache",
         "//xla/backends/autotuner:profiler",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",

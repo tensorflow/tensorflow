@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -27,6 +28,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/autotuner/autotuner.h"
+#include "xla/backends/autotuner/file_based_autotuner_cache.h"
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/backends/gpu/autotuner/factory.h"
 #include "xla/backends/gpu/autotuner/gpu_profiler.h"
@@ -52,11 +54,14 @@ limitations under the License.
 namespace {
 
 const char* const kUsage = R"(
-This tool autotunes an HLO module from a given HLO file and prints the autotuned module to stdout.
+This tool autotunes an HLO module from a given HLO file and prints the
+autotuned module to stdout.
 
 Usage:
 
-  bazel run autotuner_main -- --hlo_file=path/to/hlo_module
+  bazel run autotuner_main -- --hlo_file=path/to/hlo_module \
+    [--autotune_cache_dir=path/to/cache_dir] \
+    [--autotune_cache_mode=READ|WRITE|READ_WRITE]
 )";
 
 }  // namespace
@@ -71,7 +76,8 @@ absl::StatusOr<std::unique_ptr<HloModule>> GetModule(
   return ParseAndReturnUnverifiedModule(hlo_text);
 }
 
-absl::Status Autotune(HloModule& module) {
+absl::Status Autotune(HloModule& module, const std::string& autotune_cache_dir,
+                      const std::string& autotune_cache_mode_str) {
   TF_ASSIGN_OR_RETURN(std::string platform_name,
                       PlatformUtil::CanonicalPlatformName("gpu"));
 
@@ -101,10 +107,31 @@ absl::Status Autotune(HloModule& module) {
   tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "autotuner",
                                       tsl::port::MaxParallelism());
 
+  FileBasedCacheConfig cache_config;
+  cache_config.autotune_cache_dir = autotune_cache_dir;
+
+  const absl::flat_hash_map<std::string, FileBasedCacheConfig::CacheMode>
+      mode_map = {
+          {"READ", FileBasedCacheConfig::CacheMode::READ},
+          {"WRITE", FileBasedCacheConfig::CacheMode::WRITE},
+          {"READ_WRITE", FileBasedCacheConfig::CacheMode::READ_WRITE},
+      };
+  auto it = mode_map.find(autotune_cache_mode_str);
+  if (it == mode_map.end()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Invalid autotune_cache_mode: ", autotune_cache_mode_str));
+  }
+  cache_config.autotune_cache_mode = it->second;
+  cache_config.device_desc = stream_executor->GetDeviceDescription();
+
+  TF_ASSIGN_OR_RETURN(auto cache,
+                      FileBasedAutotunerCache::Create(cache_config));
+
+  AutotuneConfig autotune_config;
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Autotuner> autotuner,
       Autotuner::Create(std::move(backends), std::move(profiler),
-                        AutotuneConfig(), &thread_pool));
+                        autotune_config, std::move(cache), &thread_pool));
 
   // TODO: b/407494793 - Expand the filter to include more instructions.
   auto should_autotune = [](const HloInstruction& instruction) -> bool {
@@ -123,8 +150,14 @@ absl::Status Autotune(HloModule& module) {
 
 int main(int argc, char* argv[]) {
   std::string hlo_file;
+  std::string autotune_cache_dir;
+  std::string autotune_cache_mode = "READ_WRITE";
   std::vector<tsl::Flag> flag_list = {
-      tsl::Flag("hlo_file", &hlo_file, "Path to the HLO file to autotune.")};
+      tsl::Flag("hlo_file", &hlo_file, "Path to the HLO file to autotune."),
+      tsl::Flag("autotune_cache_dir", &autotune_cache_dir,
+                "Directory to store/load the autotune cache."),
+      tsl::Flag("autotune_cache_mode", &autotune_cache_mode,
+                "Autotune cache mode: READ, WRITE, or READ_WRITE.")};
 
   const std::string usage_string =
       absl::StrCat(kUsage, "\n\n", tsl::Flags::Usage(argv[0], flag_list));
@@ -135,7 +168,8 @@ int main(int argc, char* argv[]) {
   tsl::port::InitMain(usage_string.c_str(), &argc, &argv);
   auto module = xla::GetModule(hlo_file);
   CHECK_OK(module.status());
-  CHECK_OK(xla::Autotune(*module.value()));
+  CHECK_OK(
+      xla::Autotune(*module.value(), autotune_cache_dir, autotune_cache_mode));
   std::cout << module.value()->ToString() << std::endl;
   return 0;
 }
