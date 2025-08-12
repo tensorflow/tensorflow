@@ -45,6 +45,7 @@ class LegalizeSchedulingAnnotations : public HloModulePass {
     bool run_verification = false;
     bool keep_start_annotation = true;
     bool deannotate_unsupported_groups = false;
+    bool check_gap_only = false;
   };
 
   explicit LegalizeSchedulingAnnotations(Config config)
@@ -74,6 +75,21 @@ class LegalizeSchedulingAnnotations : public HloModulePass {
           annotation_to_instruction);
   Config config_;
 };
+
+// This pass only checks that there are no direct data dependencies between
+// instructions with scheduling annotations. If there are any indirect data
+// dependencies(i.e. gaps), it will detected by the
+// LegalizeSchedulingAnnotations pass.
+class CheckNoDataDependencyInSchedulingAnnotations : public HloModulePass {
+ public:
+  absl::string_view name() const override {
+    return "check-no-data-dependency-in-scheduling-annotations";
+  }
+  absl::StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+};
+
 }  // namespace xla
 
 #endif  // XLA_SERVICE_LEGALIZE_SCHEDULING_ANNOTATIONS_H_
