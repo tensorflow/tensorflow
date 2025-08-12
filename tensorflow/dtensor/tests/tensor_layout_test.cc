@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include "absl/container/inlined_vector.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/match.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "xla/tsl/platform/errors.h"
