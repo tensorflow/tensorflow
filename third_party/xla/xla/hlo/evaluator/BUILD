@@ -18,6 +18,18 @@ package_group(
 )
 
 cc_library(
+    name = "hlo_evaluator_interface",
+    hdrs = ["hlo_evaluator_interface.h"],
+    deps = [
+        "//xla:literal",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:dynamic_dimension_inference",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "hlo_evaluator",
     srcs = [
         "hlo_evaluator.cc",
@@ -45,6 +57,7 @@ cc_library(
     ],
     hdrs = ["hlo_evaluator.h"],
     deps = [
+        ":hlo_evaluator_interface",
         "//xla:array2d",
         "//xla:comparison_util",
         "//xla:literal",
