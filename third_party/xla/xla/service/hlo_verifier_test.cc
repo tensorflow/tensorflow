@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/base/log_severity.h"
 #include "absl/log/scoped_mock_log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -49,7 +50,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -59,8 +59,6 @@ namespace xla {
 namespace {
 
 using ::testing::HasSubstr;
-using ::tsl::testing::IsOkAndHolds;
-using ::tsl::testing::StatusIs;
 
 std::unique_ptr<HloModule> CreateUnverifiedModule() {
   return std::make_unique<HloModule>("module", HloModuleConfig());
@@ -4655,6 +4653,114 @@ TEST_F(HloVerifierTest, VerifyMatchingSendSameChannelDifferentAttributes) {
                   absl::StatusCode::kInternal,
                   HasSubstr("Host-transfer send/recv instructions that use the "
                             "same channel must be identical")));
+}
+
+TEST_F(HloVerifierTest, ScaledDotWithNoScalesFails) {
+  static constexpr absl::string_view kScaledDotHloString = R"(
+    HloModule module
+    ENTRY entry_computation {
+      a = f32[2,10] parameter(0)
+      b = f32[10,2] parameter(1)
+      a_scale = f32[] constant(1)
+      b_scale = f32[] constant(1)
+      ROOT dot = f32[2,2] scaled-dot(a, a_scale, b, b_scale),
+        lhs_contracting_dims={1},
+        rhs_contracting_dims={0}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kScaledDotHloString));
+
+  auto status = verifier().Run(module.get()).status();
+  EXPECT_THAT(
+      status,
+      absl_testing::StatusIs(
+          absl::StatusCode::kFailedPrecondition,
+          HasSubstr("At least one of the scales should be not a scalar in")));
+}
+
+TEST_F(HloVerifierTest, ScaledDotWithBothScalesSucceeds) {
+  static constexpr absl::string_view kScaledDotHloString = R"(
+    HloModule module
+    ENTRY entry_computation {
+      a = f32[2,10] parameter(0)
+      b = f32[10,2] parameter(1)
+      a_scale = f32[2,2] parameter(2)
+      b_scale = f32[2,2] parameter(3)
+      ROOT dot = f32[2,2] scaled-dot(a, a_scale, b, b_scale),
+        lhs_contracting_dims={1},
+        rhs_contracting_dims={0}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kScaledDotHloString));
+  EXPECT_THAT(verifier().Run(module.get()), absl_testing::IsOkAndHolds(false));
+}
+
+TEST_F(HloVerifierTest, ScaledDotInvalidScaleShapeFails) {
+  static constexpr absl::string_view kScaledDotHloString = R"(
+    HloModule module
+    ENTRY entry_computation {
+      a = f32[2,10] parameter(0)
+      b = f32[10,2] parameter(1)
+      a_scale = f32[2,2,2] parameter(2)
+      b_scale = f32[2,2,2] parameter(3)
+      ROOT dot = f32[2,2] scaled-dot(a, a_scale, b, b_scale),
+        lhs_contracting_dims={1},
+        rhs_contracting_dims={0}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kScaledDotHloString));
+
+  auto status = verifier().Run(module.get()).status();
+  EXPECT_THAT(status,
+              absl_testing::StatusIs(
+                  absl::StatusCode::kFailedPrecondition,
+                  HasSubstr("different number of dimensions than operand")))
+      << status;
+}
+
+TEST_F(HloVerifierTest, ScaledDotWithInvalidScaleContractingDimSizeFails) {
+  static constexpr absl::string_view kScaledDotHloString = R"(
+    HloModule module
+    ENTRY entry_computation {
+      a = f32[2,10] parameter(0)
+      b = f32[10,2] parameter(1)
+      a_scale = f32[2,6] parameter(2)
+      b_scale = f32[6,2] parameter(3)
+      ROOT dot = f32[2,2] scaled-dot(a, a_scale, b, b_scale),
+        lhs_contracting_dims={1},
+        rhs_contracting_dims={0}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kScaledDotHloString));
+
+  auto status = verifier().Run(module.get()).status();
+  EXPECT_THAT(status, absl_testing::StatusIs(
+                          absl::StatusCode::kFailedPrecondition,
+                          HasSubstr("should be a multiple of dimension")))
+      << status;
+}
+
+TEST_F(HloVerifierTest, ScaledDotWithScaleNonContractingDimSucceeds) {
+  static constexpr absl::string_view kScaledDotHloString = R"(
+    HloModule module
+    ENTRY entry_computation {
+      a = f32[2,10] parameter(0)
+      b = f32[10,2] parameter(1)
+      a_scale = f32[1,5] parameter(2)
+      b_scale = f32[5,1] parameter(3)
+      ROOT dot = f32[2,2] scaled-dot(a, a_scale, b, b_scale),
+        lhs_contracting_dims={1},
+        rhs_contracting_dims={0}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kScaledDotHloString));
+
+  EXPECT_THAT(verifier().Run(module.get()), absl_testing::IsOkAndHolds(false));
 }
 
 }  // namespace
