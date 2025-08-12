@@ -42,7 +42,26 @@ static constexpr absl::string_view kUnstableReductionHloModule = R"(
   ENTRY main {
       p0 = bf16[164] parameter(0)
       init = bf16[] constant(1.0)
-      ROOT red = bf16[] reduce(p0, init), to_apply=red, dimensions={0}
+      ROOT red = bf16[] reduce(p0, init),
+          to_apply=red,
+          dimensions={0},
+          metadata={op_name="op_name" source_file="source_file.py" source_line=42}
+  }
+)";
+
+static constexpr absl::string_view kUnstableReductionNoMetadataHloModule = R"(
+  red {
+      p0 = bf16[] parameter(0)
+      p1 = bf16[] parameter(1)
+      ROOT red = bf16[] add(p0, p1)
+  }
+
+  ENTRY main {
+      p0 = bf16[164] parameter(0)
+      init = bf16[] constant(1.0)
+      ROOT red = bf16[] reduce(p0, init),
+          to_apply=red,
+          dimensions={0}
   }
 )";
 
@@ -62,19 +81,24 @@ TEST(UnstableReductionDetectorTest, FailOnUnstableReductions) {
   UnstableReductionDetector detector;
   ::absl::ScopedMockLog log;
   if constexpr (std::is_same_v<absl::LogSink, tsl::TFLogSink>) {
+    EXPECT_CALL(
+        log,
+        Log(LogSeverity::kWarning, _,
+            HasSubstr("1 unstable reductions found in module 'module_main'")));
     EXPECT_CALL(log,
                 Log(LogSeverity::kWarning, _,
-                    "1 unstable reductions found in module 'module_main'"));
-    EXPECT_CALL(log, Log(LogSeverity::kWarning, _,
-                         "Unstable reduction: %red.1 = bf16[] reduce(%p0.1, "
-                         "%init), dimensions={0}, to_apply=%red"));
+                    "Unstable reduction: %red.1 = bf16[] reduce(%p0.1, %init), "
+                    "dimensions={0}, to_apply=%red, "
+                    "metadata={op_name=\"op_name\" "
+                    "source_file=\"source_file.py\" source_line=42}"));
   }
   log.StartCapturingLogs();
   EXPECT_THAT(
       detector.Run(module.get(), /*execution_threads=*/{}),
       StatusIs(
           absl::StatusCode::kFailedPrecondition,
-          HasSubstr("1 unstable reductions found in module 'module_main'")));
+          HasSubstr("1 unstable reductions found in module 'module_main'. List "
+                    "of unique reduction ops:\nsource_file.py:42: op_name")));
 }
 
 TEST(UnstableReductionDetectorTest, WarningOnUnstableReduction) {
@@ -92,11 +116,37 @@ TEST(UnstableReductionDetectorTest, WarningOnUnstableReduction) {
                     "1 unstable reductions found in module 'module_main'"));
     EXPECT_CALL(log, Log(LogSeverity::kWarning, _,
                          "Unstable reduction: %red.1 = bf16[] reduce(%p0.1, "
-                         "%init), dimensions={0}, to_apply=%red"));
+                         "%init), dimensions={0}, to_apply=%red, "
+                         "metadata={op_name=\"op_name\" "
+                         "source_file=\"source_file.py\" source_line=42}"));
   }
   log.StartCapturingLogs();
   EXPECT_THAT(detector.Run(module.get(), /*execution_threads=*/{}),
               IsOkAndHolds(false));
+}
+
+TEST(UnstableReductionDetectorTest, FailOnUnstableReductionNoMetadata) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      ParseAndReturnUnverifiedModule(kUnstableReductionNoMetadataHloModule));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_detect_unstable_reductions(
+          DebugOptions::UNSTABLE_REDUCTION_DETECTION_MODE_FAIL);
+  UnstableReductionDetector detector;
+  ::absl::ScopedMockLog log;
+  if constexpr (std::is_same_v<absl::LogSink, tsl::TFLogSink>) {
+    EXPECT_CALL(log,
+                Log(LogSeverity::kWarning, _,
+                    "1 unstable reductions found in module 'module_main'"));
+    EXPECT_CALL(log, Log(LogSeverity::kWarning, _,
+                         "Unstable reduction: %red.1 = bf16[] reduce(%p0.1, "
+                         "%init), dimensions={0}, to_apply=%red"));
+  }
+  log.StartCapturingLogs();
+  EXPECT_THAT(detector.Run(module.get(), /*execution_threads=*/{}),
+              StatusIs(absl::StatusCode::kFailedPrecondition,
+                       HasSubstr("1 op names without metadata: red.1")));
 }
 
 TEST(UnstableReductionDetectorTest, DoNothingOnUnstableReduction) {
