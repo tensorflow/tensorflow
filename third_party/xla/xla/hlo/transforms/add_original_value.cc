@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "xla/hlo/transforms/add_original_value.h"
 
-#include <memory>
-
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
