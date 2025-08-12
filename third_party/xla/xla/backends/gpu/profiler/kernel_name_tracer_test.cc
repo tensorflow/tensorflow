@@ -166,7 +166,7 @@ void LaunchCommandBufferThunk(stream_executor::StreamExecutor* executor,
       CommandBufferCmdExecutor cmd_buffer_executor,
       CommandBufferCmdExecutor::Create(
           std::move(commands),
-          CommandBufferCmdExecutor::SynchronizationMode::kAutomatic));
+          CommandBufferCmdExecutor::SynchronizationMode::kConcurrent));
 
   // Construct a thunk with command sequence.
   CommandBufferThunk thunk(std::move(cmd_buffer_executor), Thunk::ThunkInfo());

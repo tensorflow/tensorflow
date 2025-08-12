@@ -570,11 +570,25 @@ absl::Status IrEmitterUnnested::EmitCommandBufferThunk(
   // between all recorded commands. This guarantees that we execute
   // all device operations in the exact same order as a thunk
   // sequence.
-  CommandBufferCmdExecutor::SynchronizationMode synchronization_mode =
-      ir_emitter_context_->debug_options()
-              .xla_gpu_graph_enable_concurrent_region()
-          ? CommandBufferCmdExecutor::SynchronizationMode::kAutomatic
-          : CommandBufferCmdExecutor::SynchronizationMode::kSerialize;
+  CommandBufferCmdExecutor::SynchronizationMode synchronization_mode;
+  auto mode = ir_emitter_context_->debug_options()
+                  .xla_gpu_command_buffer_scheduling_mode();
+  switch (mode) {
+    case DebugOptions::SERIALIZE:
+      synchronization_mode =
+          CommandBufferCmdExecutor::SynchronizationMode::kSerialize;
+      break;
+    case DebugOptions::CONCURRENT:
+      synchronization_mode =
+          CommandBufferCmdExecutor::SynchronizationMode::kConcurrent;
+      break;
+    case DebugOptions::LHS:
+      synchronization_mode =
+          CommandBufferCmdExecutor::SynchronizationMode::kLHS;
+      break;
+    default:
+      return Internal("Unsupported command buffer scheduling mode: %d", mode);
+  }
 
   TF_ASSIGN_OR_RETURN(
       CommandBufferCmdExecutor cmd_executor,

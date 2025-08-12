@@ -3291,6 +3291,7 @@ cc_library(
     hdrs = ["command_buffer_conversion_pass.h"],
     deps = [
         ":thunk_pass_pipeline",
+        "//xla:util",
         "//xla/backends/gpu/runtime:command_buffer_cmd",
         "//xla/backends/gpu/runtime:command_buffer_cmd_emitter",
         "//xla/backends/gpu/runtime:command_buffer_thunk",
