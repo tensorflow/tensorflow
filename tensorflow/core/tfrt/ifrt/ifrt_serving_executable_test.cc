@@ -53,7 +53,6 @@ using ::tensorflow::test::AsTensor;
 using ::tensorflow::test::TensorEq;
 using ::testing::ElementsAre;
 using ::testing::Return;
-using ::tsl::testing::StatusIs;
 
 struct VariableInputTestParam {
   std::vector<tensorflow::Tensor> in_tensors;

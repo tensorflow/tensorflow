@@ -55,7 +55,6 @@ namespace ifrt_serving {
 namespace {
 
 using tensorflow::test::TensorEq;
-using tsl::testing::StatusIs;
 
 struct ReshardToTensorTestParam {
   // split tensors in natural device order.
