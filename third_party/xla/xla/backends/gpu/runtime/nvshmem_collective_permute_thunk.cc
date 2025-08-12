@@ -236,38 +236,6 @@ absl::Status RunCollectivePermute(P2PConfig::SourceTargetMapEntry source_target,
   return absl::OkStatus();
 }
 
-/*static*/ absl::Status NvshmemCollectivePermuteStartThunk::CheckImplementable(
-    const HloCollectivePermuteInstruction* inst, int64_t replica_count,
-    int64_t partition_count) {
-  // Check if the operation is degenerate (no communication needed)
-  if (CollectivePermuteStartThunk::IsDegenerate(inst, replica_count,
-                                                partition_count)) {
-    return absl::OkStatus();
-  }
-
-  // Check if the operation is implementable with NVSHMEM
-  for (const auto& operand : inst->operands()) {
-    TF_RETURN_IF_ERROR(IsValidNvshmemOperand(
-        operand->shape(), Thunk::kNvshmemCollectivePermuteStart));
-  }
-
-  // Check if all source-target pairs are valid
-  const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs =
-      inst->source_target_pairs();
-  const int64_t expected_size =
-      inst->channel_id().has_value() ? partition_count : replica_count;
-  if (source_target_pairs.empty()) {
-    return absl::InvalidArgumentError("No source-target pairs specified");
-  }
-  if (source_target_pairs.size() > expected_size) {
-    return absl::InvalidArgumentError(
-        absl::StrFormat("Too many source-target pairs: %d > %d",
-                        source_target_pairs.size(), expected_size));
-  }
-
-  return absl::OkStatus();
-}
-
 NvshmemCollectivePermuteDoneThunk::NvshmemCollectivePermuteDoneThunk(
     ThunkInfo thunk_info,
     std::shared_ptr<CollectiveThunk::AsyncEvents> async_events,

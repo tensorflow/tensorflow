@@ -45,10 +45,6 @@ class NvshmemCollectivePermuteStartThunk : public NvshmemCollectiveThunk {
 
   static const char* GetHloOpName() { return "collective-permute-start"; }
 
-  static absl::Status CheckImplementable(
-      const HloCollectivePermuteInstruction* inst, int64_t replica_count,
-      int64_t partition_count);
-
   static CollectiveOpGroupMode GetGroupMode(
       const HloCollectivePermuteInstruction* instr);
 

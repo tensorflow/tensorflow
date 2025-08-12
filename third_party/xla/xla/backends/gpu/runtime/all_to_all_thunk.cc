@@ -341,26 +341,6 @@ absl::Status RunAllToAll(bool has_split_dimension,
   return absl::OkStatus();
 }
 
-static absl::Status SendPtrToPeer(void* ptr, RankId peer, GpuCommunicator* comm,
-                                  se::Stream& stream) {
-  VLOG(3) << absl::StreamFormat(
-      "RecvPtrFromPeer on device #%d; peer=%d; comm=%p; stream=%p",
-      stream.parent()->device_ordinal(), peer.value(), comm, &stream);
-
-  return comm->LaunchSend(se::DeviceMemoryBase(ptr, sizeof(void*)), U64, 1,
-                          peer, GpuCollectives::On(stream));
-}
-
-static absl::Status RecvPtrFromPeer(void* ptr, RankId peer,
-                                    GpuCommunicator* comm, se::Stream& stream) {
-  VLOG(3) << absl::StreamFormat(
-      "RecvPtrFromPeer on device #%d; peer=%d; comm=%p; stream=%p",
-      stream.parent()->device_ordinal(), peer.value(), comm, &stream);
-
-  return comm->LaunchRecv(se::DeviceMemoryBase(ptr, sizeof(void*)), U64, 1,
-                          peer, GpuCollectives::On(stream));
-}
-
 // Syncs the execution progress across all devices.
 absl::Status SyncProgress(absl::string_view name,
                           const GpuCliqueKey& clique_key, RankId rank,
