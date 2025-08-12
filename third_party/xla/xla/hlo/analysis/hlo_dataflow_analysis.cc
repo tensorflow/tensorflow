@@ -685,12 +685,7 @@ bool HloDataflowAnalysis::UpdateAsyncUpdateValueSet(
 
         HloValueSet& value_set = GetMutableValueSet(async_update, index);
         CHECK_GE(index.size(), 0);
-        if (index[0] != 1) {
-          if (value_set != operand_value_set) {
-            value_set = operand_value_set;
-            changed = true;
-          }
-        } else if (root != nullptr) {
+        if (index[0] == 1 && root != nullptr) {
           // If this subshape is an output (index {1}), we need to create the
           // union with the async wrapped computation root.
           ShapeIndex root_index(index.begin() + 1, index.end());
