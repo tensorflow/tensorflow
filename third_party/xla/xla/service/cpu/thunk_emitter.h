@@ -40,8 +40,10 @@ limitations under the License.
 #include "xla/runtime/resource_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/ir_emitter2.h"
+#include "xla/service/cpu/parallel_fusion_emitter.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
@@ -70,7 +72,7 @@ class ThunkEmitter {
     llvm::orc::ThreadSafeModule module;
   };
 
-  ThunkEmitter(IrEmitter2& ir_emitter,
+  ThunkEmitter(IrEmitter2& ir_emitter, tsl::thread::ThreadPool& thread_pool,
                const BufferAssignment& buffer_assignment,
                const TargetMachineFeatures& target_machine_features,
                const HloModule& hlo_module,
@@ -80,7 +82,7 @@ class ThunkEmitter {
   // Emits HLO module entry computation as a sequence of thunks.
   absl::StatusOr<ThunkSequence> EmitEntryComputation(const HloModule& module);
 
-  std::vector<EmittedKernel>& kernels() { return kernels_; }
+  absl::StatusOr<std::vector<EmittedKernel>> ConsumeKernels();
 
  private:
   struct HostKernelAllocationSlices {
@@ -263,6 +265,8 @@ class ThunkEmitter {
   FusionCompiler fusion_compiler_;
 
   absl::flat_hash_map<std::string, KernelSpec> kernel_spec_cache_;
+
+  ParallelFusionEmitter parallel_fusion_emitter_;
 };
 
 }  // namespace xla::cpu
