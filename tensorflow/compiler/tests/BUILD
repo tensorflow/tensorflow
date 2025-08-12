@@ -94,6 +94,7 @@ tf_xla_combined_py_test(
     name = "combined_ops_test_a",
     size = "medium",
     package = "tensorflow.compiler.tests",
+    shard_count = 10,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
     ],
@@ -119,6 +120,7 @@ tf_xla_combined_py_test(
     size = "medium",
     timeout = "long",
     package = "tensorflow.compiler.tests",
+    shard_count = 10,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
     ],
@@ -142,6 +144,7 @@ tf_xla_combined_py_test(
     size = "medium",
     timeout = "long",
     package = "tensorflow.compiler.tests",
+    shard_count = 10,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
     ],
@@ -166,6 +169,7 @@ tf_xla_combined_py_test(
     size = "medium",
     timeout = "long",
     package = "tensorflow.compiler.tests",
+    shard_count = 10,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
     ],
@@ -189,6 +193,7 @@ tf_xla_combined_py_test(
     size = "medium",
     timeout = "long",
     package = "tensorflow.compiler.tests",
+    shard_count = 10,
     tags = [
         "no_cuda_asan",  # times out in individual tests
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
@@ -215,6 +220,7 @@ tf_xla_combined_py_test(
     # disable_tpu_tfrt = True,
     # copybara:uncomment_end
     package = "tensorflow.compiler.tests",
+    shard_count = 10,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
     ],
