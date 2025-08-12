@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/hlo/transforms/expanders/dot_decomposer.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <utility>
