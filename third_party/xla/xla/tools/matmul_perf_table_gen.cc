@@ -26,7 +26,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
+#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/hash/hash.h"
 #include "absl/log/check.h"
@@ -560,7 +560,7 @@ DeviceHloInstructionProfiles MatmulPerfTableGen::ComputeTable() {
     if (!result.entries().contains(device_info)) {
       result.mutable_entries()->insert({device_info, {}});
     }
-    absl::flat_hash_map<std::array<int64_t, 4>, GemmPerfTableEntry>
+    absl::btree_map<std::array<int64_t, 4>, GemmPerfTableEntry>
         gemm_perf_table_entry;
     for (const HloInstructionProfile& profile : profile_list.entries()) {
       TF_ASSIGN_OR_RETURN(StaticSpec spec, StaticSpec::FromDotProfile(profile));
