@@ -30,9 +30,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.pb.h"
 
-using tsl::testing::IsOk;
-using tsl::testing::StatusIs;
-
 namespace tensorflow {
 namespace ifrt_serving {
 namespace {

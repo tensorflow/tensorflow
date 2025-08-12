@@ -36,7 +36,6 @@ namespace {
 using ::testing::ElementsAre;
 using ::testing::Return;
 using ::testing::ReturnRef;
-using ::tsl::testing::StatusIs;
 
 static constexpr int kNumReplicas = 1;
 static constexpr int kNumCoresPerReplica = 2;

@@ -54,7 +54,6 @@ namespace ifrt_serving {
 namespace {
 
 using tensorflow::test::TensorEq;
-using tsl::testing::StatusIs;
 
 TEST(ShardingUtilsTest, ShardTensorToIfrtLoadedVariableNotFoundWrongName) {
   auto input_tensor =
