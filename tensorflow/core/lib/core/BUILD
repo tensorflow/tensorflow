@@ -146,6 +146,7 @@ cc_library(
 
 tf_cc_test(
     name = "threadpool_test",
+    timeout = "short",
     srcs = ["threadpool_test.cc"],
     deps = [
         ":threadpool",
