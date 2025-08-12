@@ -998,6 +998,13 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
     if (Match(instr,
               m::Copy(&copy, m::Transpose(&transpose,
                                           OneDnnMatmulInstr(&custom_call))))) {
+      auto rank = transpose->dimensions().size();
+      // oneDNN does not dispatch to optimized algorithm in these cases, hence
+      // avoid folding transposes here.
+      // TODO(intel-tf): Reevaluate this condition with future oneDNN releases.
+      if (rank >= 5 || transpose->dimensions()[rank - 1] != rank - 1) {
+        return absl::OkStatus();
+      }
       auto backend_config = custom_call->backend_config<BackendConfig>();
       auto dimensions = backend_config->mutable_onednn_matmul_config()
                             ->mutable_result()

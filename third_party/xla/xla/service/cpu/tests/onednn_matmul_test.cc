@@ -1599,7 +1599,7 @@ TEST_F(MatmulTest, SimpleTestTransposeFusionF16) {
   MatchOptimizedHlo(matmul_module_str, matmul_transpose_rewrite_str_);
 }
 
-TEST_F(MatmulTest, SimpleTestNoTransposeFusion) {
+TEST_F(MatmulTest, SimpleTestNoTransposeFusion1) {
   const char* matmul_module_str = R"(
   ENTRY matmul.test {
     arg0.1 = f32[32,40,40,32] parameter(0), parameter_replication={false}
@@ -1614,6 +1614,24 @@ TEST_F(MatmulTest, SimpleTestNoTransposeFusion) {
                     R"(
     ; CHECK:     transpose(%{{[a-z,A-Z,0-9,_,\.]*}}),
     ; CHECK:     custom_call_target="__onednn$matmul",
+    )");
+}
+
+TEST_F(MatmulTest, SimpleTestNoTransposeFusion2) {
+  const char* matmul_module_str = R"(
+  ENTRY matmul.test {
+    arg0.1 = f32[32,40,40,32] parameter(0), parameter_replication={false}
+    arg0.2 = f32[32,40,32,40] parameter(1), parameter_replication={false}
+    dot.1 = f32[32,40,40,40] dot(arg0.1, arg0.2), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+    transpose.2 = f32[40,32,40,40] transpose(dot.1), dimensions={1,0,3,2}
+    ROOT copy.2 = f32[40,32,40,40] copy(transpose.2)
+  })";
+
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
+  MatchOptimizedHlo(matmul_module_str,
+                    R"(
+    ; CHECK:     custom_call_target="__onednn$matmul",
+    ; CHECK:     call(%{{[a-z,A-Z,0-9,_,-]*}})
     )");
 }
 
