@@ -131,6 +131,8 @@ std::optional<DebugOptions::CommandBufferCmdType> GetCommandBufferCmdType(
         return std::nullopt;
       }
     case Thunk::kKernel:
+    case Thunk::kPartitionId:
+    case Thunk::kReplicaId:
       return DebugOptions::FUSION;
     case Thunk::kWhile:
       return DebugOptions::WHILE;
