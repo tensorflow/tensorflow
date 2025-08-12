@@ -23,6 +23,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/hash/hash_testing.h"
+#include "absl/status/status_matchers.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
 #include "xla/python/ifrt/device_list.h"
