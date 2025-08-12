@@ -939,13 +939,6 @@ class CountDownAsyncValueRef {
   explicit operator bool() const { return state_ != nullptr; }
 
  private:
-  static constexpr size_t kAtomicAlignment =
-#if defined(__cpp_lib_hardware_interference_size)
-      std::hardware_destructive_interference_size;
-#else
-      64;
-#endif
-
   struct State {
     State(AsyncValueRef<T> ref, int64_t cnt)
         : ref(std::move(ref)), cnt(cnt), is_error(false) {}
@@ -954,8 +947,8 @@ class CountDownAsyncValueRef {
 
     // Align atomic counters to a cache line boundary to avoid reloading `cnt`
     // cache line when checking `is_error` status.
-    alignas(kAtomicAlignment) std::atomic<int64_t> cnt;
-    alignas(kAtomicAlignment) std::atomic<bool> is_error;
+    ABSL_CACHELINE_ALIGNED std::atomic<int64_t> cnt;
+    ABSL_CACHELINE_ALIGNED std::atomic<bool> is_error;
 
     absl::Mutex mutex;
     absl::Status status ABSL_GUARDED_BY(mutex);
