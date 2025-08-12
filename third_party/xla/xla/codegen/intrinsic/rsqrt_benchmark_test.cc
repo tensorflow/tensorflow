@@ -67,7 +67,8 @@ JitRunner CreateJitRunnerWithRsqrt(Type type) {
       xla::codegen::intrinsic::CreateHostTargetMachine();
   llvm::Function* rsqrt_func =
       Rsqrt::CreateDefinition(
-          module.get(), target_machine->getTargetFeatureString().str(), type)
+          module.get(), {target_machine->getTargetFeatureString().str(), false},
+          type)
           .value();
   rsqrt_func->setLinkage(llvm::Function::ExternalLinkage);
   CreateOneOverSqrt(*context, *module, Type::TypeToIrType(type, *context));

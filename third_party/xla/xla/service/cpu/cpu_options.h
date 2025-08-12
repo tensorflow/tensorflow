@@ -50,11 +50,14 @@ inline constexpr absl::string_view kFlattenAfterFusion =
     "xla_cpu_flatten_after_fusion";
 inline constexpr absl::string_view kUseMultiOutputFusion =
     "xla_cpu_use_multi_output_fusion";
+inline constexpr absl::string_view kDisablePlatformDependentMath =
+    "xla_cpu_disable_platform_dependent_math";
 
 bool OptimizeForSizeRequested(const HloModuleConfig& config);
 bool VectorizedReduceDisabled(const HloModuleConfig& config);
 bool SlpVectorizerDisabled(const HloModuleConfig& config);
 bool DisableLoopUnrolling(const HloModuleConfig& config);
+bool DisablePlatformDependentMath(const HloModuleConfig& config);
 bool FoldAllConstants(const HloModuleConfig& config);
 bool ForceEnableExperimentalLlvmIrGemm(const HloModuleConfig& config);
 std::optional<int64_t> LlvmIrGemvTilingFactor(const HloModuleConfig& config);

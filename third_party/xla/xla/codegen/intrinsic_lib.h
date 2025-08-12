@@ -49,7 +49,7 @@ class IntrinsicFunction {
 
   // Returns the LLVM IR function definition for the approximation.
   virtual llvm::Function* CreateDefinition(llvm::Module& module,
-                                           absl::string_view features,
+                                           intrinsics::IntrinsicOptions options,
                                            absl::string_view name) const = 0;
 
   // The vectorized function name, e.g. "xla.ldexp.v8f64.v8i32".
@@ -73,7 +73,7 @@ class IntrinsicFunction {
 // Retains storage of the strings required for VecDescs in the instance.
 class IntrinsicFunctionLib {
  public:
-  explicit IntrinsicFunctionLib(absl::string_view features);
+  explicit IntrinsicFunctionLib(intrinsics::IntrinsicOptions options);
 
   // Returns a vector of vectorization information for functions that have
   // vectorized approximations. This enables LLVM vectorization
@@ -91,7 +91,7 @@ class IntrinsicFunctionLib {
  private:
   std::vector<std::unique_ptr<IntrinsicFunction>> intrinsic_functions_;
   absl::flat_hash_map<absl::string_view, absl::string_view> targets_;
-  std::string features_;
+  const intrinsics::IntrinsicOptions options_;
 };
 
 }  // namespace xla::codegen

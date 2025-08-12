@@ -62,6 +62,12 @@ bool FoldAllConstants(const HloModuleConfig& config) {
   return extra_options_map.count(kFoldAllConstants) > 0;
 }
 
+bool DisablePlatformDependentMath(const HloModuleConfig& config) {
+  const auto& extra_options_map =
+      config.debug_options().xla_backend_extra_options();
+  return extra_options_map.count(kDisablePlatformDependentMath) > 0;
+}
+
 std::optional<int64_t> LlvmIrGemvTilingFactor(const HloModuleConfig& config) {
   const auto& extra_options_map =
       config.debug_options().xla_backend_extra_options();
