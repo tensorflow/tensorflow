@@ -134,6 +134,9 @@ TEST(XnnThreadPoolTest, Binary) {
 
   ASSERT_EQ(xnn_initialize(/*allocator=*/nullptr), xnn_status_success);
 
+  xnn_threadpool_t threadpool = nullptr;
+  ASSERT_EQ(xnn_create_threadpool(&scheduler, &threadpool), xnn_status_success);
+
   xnn_subgraph_t subgraph = nullptr;
 
   ASSERT_EQ(
@@ -150,8 +153,8 @@ TEST(XnnThreadPoolTest, Binary) {
 
   xnn_runtime_t runtime = nullptr;
   ASSERT_EQ(
-      xnn_create_runtime_with_scheduler(subgraph, nullptr, &scheduler,
-                                        XNN_FLAG_SLINKY_ENABLED, &runtime),
+      xnn_create_runtime_with_threadpool(subgraph, nullptr, threadpool,
+                                         XNN_FLAG_SLINKY_ENABLED, &runtime),
       xnn_status_success);
 
   std::vector<xnn_external_value> external_values = {
@@ -172,6 +175,7 @@ TEST(XnnThreadPoolTest, Binary) {
 
   ASSERT_EQ(xnn_delete_runtime(runtime), xnn_status_success);
   ASSERT_EQ(xnn_delete_subgraph(subgraph), xnn_status_success);
+  ASSERT_EQ(xnn_delete_threadpool(threadpool), xnn_status_success);
 }
 
 TEST(XnnThreadPoolTest, Dot) {
@@ -179,6 +183,9 @@ TEST(XnnThreadPoolTest, Dot) {
   XnnScheduler scheduler(thread_pool.AsEigenThreadPool());
 
   ASSERT_EQ(xnn_initialize(/*allocator=*/nullptr), xnn_status_success);
+
+  xnn_threadpool_t threadpool = nullptr;
+  ASSERT_EQ(xnn_create_threadpool(&scheduler, &threadpool), xnn_status_success);
 
   xnn_subgraph_t subgraph = nullptr;
 
@@ -194,9 +201,10 @@ TEST(XnnThreadPoolTest, Dot) {
   std::vector<float> out(m * n, 0.0f);
 
   xnn_runtime_t runtime = nullptr;
-  ASSERT_EQ(xnn_create_runtime_with_scheduler(subgraph, nullptr, &scheduler, 0,
-                                              &runtime),
-            xnn_status_success);
+  ASSERT_EQ(
+      xnn_create_runtime_with_threadpool(subgraph, nullptr, threadpool,
+                                         XNN_FLAG_SLINKY_ENABLED, &runtime),
+      xnn_status_success);
 
   std::vector<xnn_external_value> external_values = {
       xnn_external_value{0, lhs.data()},
@@ -214,6 +222,7 @@ TEST(XnnThreadPoolTest, Dot) {
 
   ASSERT_EQ(xnn_delete_runtime(runtime), xnn_status_success);
   ASSERT_EQ(xnn_delete_subgraph(subgraph), xnn_status_success);
+  ASSERT_EQ(xnn_delete_threadpool(threadpool), xnn_status_success);
 }
 
 }  // namespace
