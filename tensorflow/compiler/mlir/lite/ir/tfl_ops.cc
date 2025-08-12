@@ -1447,6 +1447,82 @@ OpFoldResult GatherOp::fold(GatherOp::FoldAdaptor adaptor) {
 }
 
 //===----------------------------------------------------------------------===//
+// GatherNd op
+//===----------------------------------------------------------------------===//
+
+OpFoldResult GatherNdOp::fold(GatherNdOp::FoldAdaptor adaptor) {
+  auto params = mlir::dyn_cast_or_null<DenseElementsAttr>(adaptor.getParams());
+  auto indices =
+      mlir::dyn_cast_or_null<DenseIntElementsAttr>(adaptor.getIndices());
+
+  if (!params || !indices) {
+    return nullptr;
+  }
+
+  auto params_type = params.getType();
+  auto indices_type = indices.getType();
+  auto params_shape = params_type.getShape();
+  auto indices_shape = indices_type.getShape();
+
+  // The last dimension of 'indices' is the coordinate depth.
+  if (indices_shape.empty()) {
+    return nullptr;  // Invalid indices shape.
+  }
+  int64_t index_depth = indices_shape.back();
+
+  // The index depth cannot exceed the rank of the params tensor.
+  assert(index_depth <= params_shape.size() &&
+         "Index depth cannot be greater than params rank.");
+
+  // Calculate the output shape.
+  // output_shape = indices_shape[:-1] + params_shape[index_depth:]
+  llvm::SmallVector<int64_t> output_shape;
+  output_shape.append(indices_shape.begin(), indices_shape.end() - 1);
+  output_shape.append(params_shape.begin() + index_depth, params_shape.end());
+
+  auto output_type = params_type.clone(output_shape);
+
+  // Calculate the size of each slice we will gather.
+  int64_t slice_size = 1;
+  for (int64_t i = index_depth; i < params_shape.size(); ++i) {
+    slice_size *= params_shape[i];
+  }
+
+  // Prepare for the gathering logic.
+  auto params_values = params.getValues<mlir::Attribute>();
+  auto indices_values_it = indices.getValues<mlir::APInt>().begin();
+  std::vector<mlir::Attribute> result_values;
+  result_values.reserve(output_type.getNumElements());
+
+  const int64_t num_indices = indices.getNumElements() / index_depth;
+
+  // Implement the core gathering logic.
+  for (int64_t i = 0; i < num_indices; ++i) {
+    // For each output element, first find the N-d coordinate from 'indices'.
+    uint64_t linear_index = 0;
+    for (int64_t j = 0; j < index_depth; ++j) {
+      // Read the coordinate value and advance the iterator.
+      uint64_t coord = (*indices_values_it++).getZExtValue();
+
+      // Convert the N-d coordinate into a linear index for the slice.
+      // This is equivalent to: linear_index = (linear_index * params_shape[0] +
+      // c_0) * params_shape[1] + c_1 ...
+      linear_index = linear_index * params_shape[j] + coord;
+    }
+
+    // The start of the slice in the flattened 'params' buffer.
+    uint64_t slice_start_offset = linear_index * slice_size;
+
+    // Copy the entire slice into the result vector.
+    for (int64_t j = 0; j < slice_size; ++j) {
+      result_values.push_back(params_values[slice_start_offset + j]);
+    }
+  }
+
+  return mlir::DenseElementsAttr::get(output_type, result_values);
+}
+
+//===----------------------------------------------------------------------===//
 // BroadcastToOp
 //===----------------------------------------------------------------------===//
 
