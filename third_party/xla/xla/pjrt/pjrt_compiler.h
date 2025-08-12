@@ -158,6 +158,10 @@ class PjRtTopologyDescription {
   // "mhlo.layout_mode" attribute.
   virtual absl::StatusOr<Layout> GetDefaultLayout(
       PrimitiveType element_type, absl::Span<const int64_t> dims) const = 0;
+
+  virtual absl::StatusOr<PjRtTopologyDescriptionProto> ToProto() const {
+    return absl::UnimplementedError("ToProto is unsupported.");
+  }
 };
 
 // Abstract interface that all registered compilers must implement.

@@ -57,7 +57,7 @@ tf_proto_library(
 tf_proto_library(
     name = "topology_description_proto",
     srcs = ["topology_description.proto"],
-    compatible_with = get_compatible_with_libtpu_portable() + get_compatible_with_portable(),
+    compatible_with = (get_compatible_with_libtpu_portable() + get_compatible_with_portable()),
     visibility = ["//visibility:public"],
     deps = if_google(["@com_google_protobuf//:any"]),
 )
