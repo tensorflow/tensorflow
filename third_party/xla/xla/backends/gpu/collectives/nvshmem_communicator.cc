@@ -167,7 +167,7 @@ absl::Status NvshmemCommunicator::Barrier(
 
   auto gpu_stream = se::gpu::AsGpuStreamValue(stream);
 
-  if (nvshmemx_barrier_on_stream(NVSHMEMX_TEAM_NODE, gpu_stream) != 0) {
+  if (nvshmemx_barrier_on_stream(NVSHMEM_TEAM_SHARED, gpu_stream) != 0) {
     return absl::InternalError("Nvshmem team barrier failed.");
   }
   return absl::OkStatus();
@@ -182,7 +182,7 @@ absl::StatusOr<size_t> NvshmemCommunicator::NumRanks() const {
   }
 
   int32_t count = 0;
-  count = nvshmem_team_n_pes(NVSHMEMX_TEAM_NODE);
+  count = nvshmem_team_n_pes(NVSHMEM_TEAM_SHARED);
   if (count < 0) {
     return absl::InvalidArgumentError(
         "NvshmemCommunicator::NumRanks invalid team.");
@@ -200,7 +200,7 @@ absl::StatusOr<size_t> NvshmemCommunicator::CurrentRank() {
   }
 
   int32_t rank = 0;
-  rank = nvshmem_team_my_pe(NVSHMEMX_TEAM_NODE);
+  rank = nvshmem_team_my_pe(NVSHMEM_TEAM_SHARED);
   if (rank < 0) {
     return absl::InvalidArgumentError(
         "NvshmemCommunicator::NumRanks invalid team.");
@@ -229,58 +229,62 @@ tsl::AsyncValueRef<NvshmemCommunicator::Event> NvshmemCommunicator::AllReduce(
       "recv_buffer=%p; dtype=%s; count=%d; reduction_kind=%s; comm=node; "
       "team=%d;"
       "stream=%p",
-      nvshmem_team_my_pe(NVSHMEMX_TEAM_NODE), send_buffer.opaque(),
+      nvshmem_team_my_pe(NVSHMEM_TEAM_SHARED), send_buffer.opaque(),
       recv_buffer.opaque(), primitive_util::LowercasePrimitiveTypeName(dtype),
-      count, ReductionKindToString(reduction_kind), NVSHMEMX_TEAM_NODE, stream);
+      count, ReductionKindToString(reduction_kind), NVSHMEM_TEAM_SHARED,
+      stream);
 
   switch (dtype) {
     case PrimitiveType::F64: {
-      CALL_NVSHMEM_REDUCTION_DATATYPE(
-          double, double, NVSHMEMX_TEAM_NODE, se::gpu::AsGpuStreamValue(stream),
-          reduction_kind, source_ptr, dest_ptr, count);
+      CALL_NVSHMEM_REDUCTION_DATATYPE(double, double, NVSHMEM_TEAM_SHARED,
+                                      se::gpu::AsGpuStreamValue(stream),
+                                      reduction_kind, source_ptr, dest_ptr,
+                                      count);
       break;
     }
     case PrimitiveType::F16: {
       CALL_NVSHMEM_REDUCTION_DATATYPE(
-          half, __half, NVSHMEMX_TEAM_NODE, se::gpu::AsGpuStreamValue(stream),
+          half, __half, NVSHMEM_TEAM_SHARED, se::gpu::AsGpuStreamValue(stream),
           reduction_kind, source_ptr, dest_ptr, count);
       break;
     }
     case PrimitiveType::F32: {
       CALL_NVSHMEM_REDUCTION_DATATYPE(
-          float, float, NVSHMEMX_TEAM_NODE, se::gpu::AsGpuStreamValue(stream),
+          float, float, NVSHMEM_TEAM_SHARED, se::gpu::AsGpuStreamValue(stream),
           reduction_kind, source_ptr, dest_ptr, count);
       break;
     }
     case PrimitiveType::BF16: {
       CALL_NVSHMEM_REDUCTION_DATATYPE(
-          bfloat16, __nv_bfloat16, NVSHMEMX_TEAM_NODE,
+          bfloat16, __nv_bfloat16, NVSHMEM_TEAM_SHARED,
           se::gpu::AsGpuStreamValue(stream), reduction_kind, source_ptr,
           dest_ptr, count);
       break;
     }
     case PrimitiveType::S32: {
       CALL_NVSHMEM_BITWISE_REDUCTION_DATATYPE(
-          int32, int32_t, NVSHMEMX_TEAM_NODE, se::gpu::AsGpuStreamValue(stream),
-          reduction_kind, source_ptr, dest_ptr, count);
+          int32, int32_t, NVSHMEM_TEAM_SHARED,
+          se::gpu::AsGpuStreamValue(stream), reduction_kind, source_ptr,
+          dest_ptr, count);
       break;
     }
     case PrimitiveType::S64: {
       CALL_NVSHMEM_BITWISE_REDUCTION_DATATYPE(
-          int64, int64_t, NVSHMEMX_TEAM_NODE, se::gpu::AsGpuStreamValue(stream),
-          reduction_kind, source_ptr, dest_ptr, count);
+          int64, int64_t, NVSHMEM_TEAM_SHARED,
+          se::gpu::AsGpuStreamValue(stream), reduction_kind, source_ptr,
+          dest_ptr, count);
       break;
     }
     case PrimitiveType::U32: {
       CALL_NVSHMEM_BITWISE_REDUCTION_DATATYPE(
-          uint32, uint32_t, NVSHMEMX_TEAM_NODE,
+          uint32, uint32_t, NVSHMEM_TEAM_SHARED,
           se::gpu::AsGpuStreamValue(stream), reduction_kind, source_ptr,
           dest_ptr, count);
       break;
     }
     case PrimitiveType::U64: {
       CALL_NVSHMEM_BITWISE_REDUCTION_DATATYPE(
-          uint64, uint64_t, NVSHMEMX_TEAM_NODE,
+          uint64, uint64_t, NVSHMEM_TEAM_SHARED,
           se::gpu::AsGpuStreamValue(stream), reduction_kind, source_ptr,
           dest_ptr, count);
       break;
@@ -293,7 +297,7 @@ tsl::AsyncValueRef<NvshmemCommunicator::Event> NvshmemCommunicator::AllReduce(
 
 std::string NvshmemCommunicator::ToString() const {
   return absl::StrFormat("NvshmemCommunicator(nvshmem_team_t=%d)",
-                         NVSHMEMX_TEAM_NODE);
+                         NVSHMEM_TEAM_SHARED);
 }
 
 absl::StatusOr<se::Stream*> NvshmemCommunicator::ToStream(
