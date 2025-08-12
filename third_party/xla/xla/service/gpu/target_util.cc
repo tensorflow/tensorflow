@@ -145,28 +145,27 @@ struct TargetIntrinsics GetIntrinsic(TargetIntrinsicID intrin) {
       };
     }
     case TargetIntrinsicID::kBarrierId: {
-      return {[](llvm::IRBuilderBase* b_) -> llvm::CallInst* {
-                // We need to use the callback mechanism here, because the
-                // barrier intrinsics expects a constant 0 as operand, whereas
-                // for AMD no operand is expected. We don't want to distinguish
-                // at the call site.
-                llvm::Module* module = b_->GetInsertBlock()->getModule();
-                llvm::Function* intrinsic =
-                    llvm::Intrinsic::getOrInsertDeclaration(
-                        module,
-                        llvm::Intrinsic::nvvm_barrier_cta_sync_aligned_all, {});
-                return b_->CreateCall(intrinsic, {b_->getInt32(0)});
-              },
-              llvm::Intrinsic::amdgcn_s_barrier,
-              [](llvm::IRBuilderBase* b_) -> llvm::CallInst* {
-                return EmitDeviceFunctionCall(
-                    "_Z22__spirv_ControlBarrierjjj",
-                    {b_->getInt32(2), b_->getInt32(2), b_->getInt32(272)},
-                    {U32, U32, U32}, U32,
-                    llvm::AttrBuilder(b_->getContext())
-                        .addAttribute(llvm::Attribute::Convergent),
-                    b_);
-              }};
+      return {
+          [](llvm::IRBuilderBase* b_) -> llvm::CallInst* {
+            // We need to use the callback mechanism here, because the
+            // barrier intrinsics expects a constant 0 as operand, whereas
+            // for AMD no operand is expected. We don't want to distinguish
+            // at the call site.
+            llvm::Module* module = b_->GetInsertBlock()->getModule();
+            llvm::Function* intrinsic = llvm::Intrinsic::getOrInsertDeclaration(
+                module, llvm::Intrinsic::nvvm_barrier_cta_sync_aligned_all, {});
+            return b_->CreateCall(intrinsic, {b_->getInt32(0)});
+          },
+          llvm::Intrinsic::amdgcn_s_barrier,
+          [](llvm::IRBuilderBase* b_) -> llvm::CallInst* {
+            return EmitDeviceFunctionCall(
+                "_Z22__spirv_ControlBarrierjjj",
+                {b_->getInt32(2), b_->getInt32(2), b_->getInt32(272)},
+                {U32, U32, U32}, U32,
+                llvm::AttrBuilder(b_->getContext())
+                    .addAttribute(llvm::Attribute::Convergent),
+                b_);
+          }};
     }
     case TargetIntrinsicID::kBlockDimx: {
       return {llvm::Intrinsic::nvvm_read_ptx_sreg_ntid_x,
@@ -304,6 +303,8 @@ struct TargetDeviceFunction GetDeviceFunctionRoot(
     case TargetDeviceFunctionID::kCbrt: {
       return {"__nv_cbrt", "__ocml_cbrt", "_Z16__spirv_ocl_cbrt"};
     }
+    case TargetDeviceFunctionID::kLogistic:
+      LOG(FATAL) << "Logistic op does not have a libdevice implementation.";
   }
 }
 }  // namespace
@@ -354,8 +355,10 @@ std::optional<TargetDeviceFunctionID> GetTargetDeviceFunctionID(HloOpcode op) {
       return TargetDeviceFunctionID::kTanh;
     case HloOpcode::kCbrt:
       return TargetDeviceFunctionID::kCbrt;
+
+    // All the other ops do not have a libdevice implementation.
     default:
-      break;
+      return std::nullopt;
   }
   return std::nullopt;
 }

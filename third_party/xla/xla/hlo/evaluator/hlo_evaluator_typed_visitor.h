@@ -278,7 +278,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     return UnsupportedTypeError(asin);
   }
 
-  absl::Status HandleRound(const HloInstruction* round) override {
+  absl::Status HandleRoundNearestAfz(const HloInstruction* round) override {
     if constexpr (!is_complex_v<ReturnT>) {
       TF_ASSIGN_OR_RETURN(
           Literal literal,

@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/types/span.h"
@@ -153,8 +154,8 @@ class UnboundedConcatenateOpShapeInferenceTest
     : public ::testing::TestWithParam<std::vector<std::string>> {};
 
 struct UnaryOpTestCase {
-  std::string operand;
-  std::string expected;
+  absl::string_view operand;
+  absl::string_view expected;
   HloOpcode opcode;
 };
 
@@ -6011,40 +6012,34 @@ INSTANTIATE_TEST_SUITE_P(
                                   "Operands to select must be the same shape; "
                                   "got f32[?] and f32[]."})));
 
-INSTANTIATE_TEST_SUITE_P(UnboundedDynamism, UnboundedUnaryOpShapeInferenceTest,
-                         ::testing::ValuesIn<UnaryOpTestCase>(
-                             {{"f32[?]", "f32[?]", HloOpcode::kAbs},
-                              {"f32[?]", "f32[?]", HloOpcode::kAcos},
-                              {"f32[?]", "f32[?]", HloOpcode::kAcosh},
-                              {"f32[?]", "f32[?]", HloOpcode::kAsin},
-                              {"f32[?]", "f32[?]", HloOpcode::kAsinh},
-                              {"f32[?]", "f32[?]", HloOpcode::kAtanh},
-                              {"f32[?]", "f32[?]", HloOpcode::kCbrt},
-                              {"f32[?]", "f32[?]", HloOpcode::kCeil},
-                              {"u32[?]", "u32[?]", HloOpcode::kClz},
-                              {"f32[?]", "f32[?]", HloOpcode::kCos},
-                              {"f32[?]", "f32[?]", HloOpcode::kCosh},
-                              {"f32[?]", "f32[?]", HloOpcode::kErf},
-                              {"f32[?]", "f32[?]", HloOpcode::kExp},
-                              {"f32[?]", "f32[?]", HloOpcode::kExpm1},
-                              {"f32[?]", "f32[?]", HloOpcode::kFloor},
-                              {"f32[?]", "f32[?]", HloOpcode::kImag},
-                              {"f32[?]", "pred[?]", HloOpcode::kIsFinite},
-                              {"f32[?]", "f32[?]", HloOpcode::kLog},
-                              {"f32[?]", "f32[?]", HloOpcode::kLog1p},
-                              {"f32[?]", "f32[?]", HloOpcode::kLogistic},
-                              {"f32[?]", "f32[?]", HloOpcode::kNegate},
-                              {"s32[?]", "s32[?]", HloOpcode::kNot},
-                              {"u32[?]", "u32[?]", HloOpcode::kPopulationCount},
-                              {"f32[?]", "f32[?]", HloOpcode::kReal},
-                              {"f32[?]", "f32[?]", HloOpcode::kRoundNearestAfz},
-                              {"f32[?]", "f32[?]",
-                               HloOpcode::kRoundNearestEven},
-                              {"f32[?]", "f32[?]", HloOpcode::kRsqrt},
-                              {"f32[?]", "f32[?]", HloOpcode::kSign},
-                              {"f32[?]", "f32[?]", HloOpcode::kSin},
-                              {"f32[?]", "f32[?]", HloOpcode::kSinh},
-                              {"f32[?]", "f32[?]", HloOpcode::kSqrt},
-                              {"f32[?]", "f32[?]", HloOpcode::kTanh}}));
+constexpr UnaryOpTestCase kUnaryOpTestCases[] = {
+    {"f32[?]", "f32[?]", HloOpcode::kAbs},
+    {"f32[?]", "f32[?]", HloOpcode::kCeil},
+    {"u32[?]", "u32[?]", HloOpcode::kClz},
+    {"f32[?]", "f32[?]", HloOpcode::kFloor},
+    {"f32[?]", "f32[?]", HloOpcode::kImag},
+    {"f32[?]", "pred[?]", HloOpcode::kIsFinite},
+    {"f32[?]", "f32[?]", HloOpcode::kNegate},
+    {"s32[?]", "s32[?]", HloOpcode::kNot},
+    {"u32[?]", "u32[?]", HloOpcode::kPopulationCount},
+    {"f32[?]", "f32[?]", HloOpcode::kReal},
+    {"f32[?]", "f32[?]", HloOpcode::kRoundNearestAfz},
+    {"f32[?]", "f32[?]", HloOpcode::kRoundNearestEven},
+    {"f32[?]", "f32[?]", HloOpcode::kSign},
+#define TEST_CASE(name, ...) {"f32[?]", "f32[?]", HloOpcode::k##name},
+    UNARY_OPS_WITH_ACCURACY(TEST_CASE)
+#undef TEST_CASE
+};
+
+std::string UnaryOpTestCaseToString(
+    const ::testing::TestParamInfo<UnaryOpTestCase>& info) {
+  return absl::StrReplaceAll(HloOpcodeString(info.param.opcode), {{"-", "_"}});
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    UnboundedDynamism, UnboundedUnaryOpShapeInferenceTest,
+    ::testing::ValuesIn<UnaryOpTestCase>(kUnaryOpTestCases),
+    UnaryOpTestCaseToString);
+
 }  // namespace
 }  // namespace xla

@@ -1028,7 +1028,7 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
     case HloOpcode::kErf:
       return EmitErf(op->shape().element_type(), operand_value);
     case HloOpcode::kExp:
-      return EmitExp(op->shape().element_type(), operand_value, "");
+      return EmitExp(op->shape().element_type(), operand_value);
     case HloOpcode::kExpm1:
       return EmitExpm1(op->shape().element_type(), operand_value);
     case HloOpcode::kLog:
@@ -1202,8 +1202,7 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
     case HloOpcode::kExp: {
       // e^(a+bi) = e^a*(cos(b)+sin(b)i)
       TF_ASSIGN_OR_RETURN(
-          auto exp_a,
-          EmitExp(component_type, EmitExtractReal(operand_value), ""));
+          auto exp_a, EmitExp(component_type, EmitExtractReal(operand_value)));
       TF_ASSIGN_OR_RETURN(
           auto cos_b, EmitCos(component_type, EmitExtractImag(operand_value)));
       TF_ASSIGN_OR_RETURN(
@@ -1240,7 +1239,7 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
       auto x = EmitExtractReal(operand_value);
       auto y = EmitExtractImag(operand_value);
       auto type = y->getType();
-      TF_ASSIGN_OR_RETURN(auto exp_y, EmitExp(component_type, y, ""));
+      TF_ASSIGN_OR_RETURN(auto exp_y, EmitExp(component_type, y));
       auto half_exp_y = FMul(llvm::ConstantFP::get(type, 0.5), exp_y);
       auto half_exp_neg_y = FDiv(llvm::ConstantFP::get(type, 0.5), exp_y);
       TF_ASSIGN_OR_RETURN(auto sin_x, EmitSin(component_type, x));
@@ -1939,7 +1938,7 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexPower(
   TF_ASSIGN_OR_RETURN(auto arg_lhs, EmitAtan2(component_type, b, a, ""));
   auto neg_d_arg_lhs = FMul(neg_d, arg_lhs);
   TF_ASSIGN_OR_RETURN(auto e_to_neg_d_arg_lhs,
-                      EmitExp(component_type, neg_d_arg_lhs, ""));
+                      EmitExp(component_type, neg_d_arg_lhs));
   auto coeff = FMul(abs_to_c, e_to_neg_d_arg_lhs);
   TF_ASSIGN_OR_RETURN(auto ln_abs, EmitLog(component_type, abs));
   auto q = FAdd(FMul(c, arg_lhs), FMul(d, ln_abs));
@@ -2091,6 +2090,11 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitLog1p(
   return b_->CreateCall(log1p, {value});
 }
 
+absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitLogistic(
+    PrimitiveType prim_type, llvm::Value* value) {
+  return Unimplemented("logistic");
+}
+
 absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitSqrt(PrimitiveType,
                                                           llvm::Value* value) {
   return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::sqrt, {value},
@@ -2155,9 +2159,9 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitCosm1(
 }
 
 absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitExp(
-    PrimitiveType prim_type, llvm::Value* value, absl::string_view name) {
+    PrimitiveType prim_type, llvm::Value* value) {
   return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::exp, {value},
-                                      {value->getType()}, b_, name);
+                                      {value->getType()}, b_, "");
 }
 
 absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitExpm1(
@@ -2177,7 +2181,7 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitExpm1(
   // Use a naive exp(x)-1 calculation if |x| is > 0.5
   auto x_magnitude_is_large = FCmpOGT(abs_x, half);
   TF_ASSIGN_OR_RETURN(auto tanh_of_x_over_two, EmitTanh(prim_type, x_over_two));
-  TF_ASSIGN_OR_RETURN(auto exp_of_x, EmitExp(prim_type, x, ""));
+  TF_ASSIGN_OR_RETURN(auto exp_of_x, EmitExp(prim_type, x));
   auto exp_of_x_plus_one = FAdd(exp_of_x, one);
   auto exp_of_x_minus_one = FSub(exp_of_x, one);
   auto expm1_of_x = FMul(tanh_of_x_over_two, exp_of_x_plus_one);
@@ -3201,40 +3205,25 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     const HloInstruction* hlo,
     const ElementalIrEmitter::HloToElementGeneratorMap& operand_to_generator) {
   switch (hlo->opcode()) {
+#define CASE_STMT(name, ...) case HloOpcode::k##name:
+    UNARY_OPS_WITH_ACCURACY(CASE_STMT)
+#undef CASE_STMT
+
     case HloOpcode::kAbs:
-    case HloOpcode::kAsin:
-    case HloOpcode::kAsinh:
-    case HloOpcode::kAcos:
-    case HloOpcode::kAcosh:
-    case HloOpcode::kAtanh:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kRoundNearestEven:
     case HloOpcode::kCeil:
     case HloOpcode::kClz:
     case HloOpcode::kConvert:
     case HloOpcode::kBitcastConvert:
-    case HloOpcode::kCos:
-    case HloOpcode::kCosh:
-    case HloOpcode::kErf:
-    case HloOpcode::kExp:
-    case HloOpcode::kExpm1:
     case HloOpcode::kFloor:
     case HloOpcode::kImag:
     case HloOpcode::kIsFinite:
-    case HloOpcode::kLog:
-    case HloOpcode::kLog1p:
     case HloOpcode::kNegate:
     case HloOpcode::kNot:
     case HloOpcode::kPopulationCount:
     case HloOpcode::kReal:
-    case HloOpcode::kRsqrt:
     case HloOpcode::kSign:
-    case HloOpcode::kSin:
-    case HloOpcode::kSinh:
-    case HloOpcode::kSqrt:
-    case HloOpcode::kCbrt:
-    case HloOpcode::kTan:
-    case HloOpcode::kTanh:
       return [this, hlo, &operand_to_generator](
                  const IrArray::Index& index) -> absl::StatusOr<llvm::Value*> {
         TF_ASSIGN_OR_RETURN(llvm::Value * operand_value,

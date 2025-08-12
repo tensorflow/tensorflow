@@ -214,26 +214,21 @@ const HloInstruction* PickRepresentativeOperand(
         return instruction->operand(0);
       }
       return nullptr;
-    case HloOpcode::kAbs:
-    case HloOpcode::kAsin:
-    case HloOpcode::kAsinh:
-    case HloOpcode::kAcos:
-    case HloOpcode::kAcosh:
+
+#define CASE_STMT(name, ...) case HloOpcode::k##name:
+      UNARY_OPS_WITHOUT_ACCURACY(CASE_STMT)
+      UNARY_OPS_WITH_ACCURACY(CASE_STMT)
+#undef CASE_STMT
+
     case HloOpcode::kAdd:
     case HloOpcode::kAnd:
     case HloOpcode::kAtan2:
-    case HloOpcode::kAtanh:
     case HloOpcode::kBitcastConvert:
-    case HloOpcode::kCeil:
     case HloOpcode::kClamp:
-    case HloOpcode::kClz:
     case HloOpcode::kCompare:
     case HloOpcode::kComplex:
     case HloOpcode::kConcatenate:
     case HloOpcode::kConvert:
-    case HloOpcode::kCopy:
-    case HloOpcode::kCos:
-    case HloOpcode::kCosh:
     case HloOpcode::kAllGather:
     case HloOpcode::kAllReduce:
     case HloOpcode::kReduceScatter:
@@ -241,40 +236,17 @@ const HloInstruction* PickRepresentativeOperand(
     case HloOpcode::kCollectiveBroadcast:
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kDivide:
-    case HloOpcode::kErf:
-    case HloOpcode::kExp:
-    case HloOpcode::kExpm1:
-    case HloOpcode::kFloor:
-    case HloOpcode::kImag:
-    case HloOpcode::kIsFinite:
-    case HloOpcode::kLog:
-    case HloOpcode::kLog1p:
-    case HloOpcode::kLogistic:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kMultiply:
-    case HloOpcode::kNegate:
-    case HloOpcode::kNot:
     case HloOpcode::kOr:
-    case HloOpcode::kPopulationCount:
-    case HloOpcode::kReal:
     case HloOpcode::kReducePrecision:
     case HloOpcode::kRemainder:
-    case HloOpcode::kRoundNearestAfz:
-    case HloOpcode::kRoundNearestEven:
-    case HloOpcode::kRsqrt:
     case HloOpcode::kSelect:
-    case HloOpcode::kSign:
-    case HloOpcode::kSin:
-    case HloOpcode::kSinh:
     case HloOpcode::kTopK:
     case HloOpcode::kSort:
-    case HloOpcode::kSqrt:
-    case HloOpcode::kCbrt:
     case HloOpcode::kSubtract:
     case HloOpcode::kStochasticConvert:
-    case HloOpcode::kTan:
-    case HloOpcode::kTanh:
     case HloOpcode::kWhile:
     case HloOpcode::kXor: {
       // For these opcodes the output sharding can be determined by any operand

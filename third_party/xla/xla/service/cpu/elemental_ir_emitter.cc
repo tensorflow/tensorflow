@@ -96,7 +96,7 @@ absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitErf(
 }
 
 absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitExp(
-    PrimitiveType prim_type, llvm::Value* value, absl::string_view name) {
+    PrimitiveType prim_type, llvm::Value* value) {
   if (prim_type == F64) {
     llvm::Type* f64 = b()->getDoubleTy();
     llvm::Function* exp_f64 =
@@ -105,7 +105,7 @@ absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitExp(
     return b()->CreateCall(exp_f64, value);
   }
   return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::exp, {value},
-                                      {value->getType()}, b(), name);
+                                      {value->getType()}, b(), "");
 }
 
 absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitRsqrt(

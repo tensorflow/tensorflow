@@ -181,6 +181,50 @@ namespace xla {
   /* go/keep-sorted end */
 // LINT.ThenChange(../../mlir_hlo/mhlo/IR/hlo_ops.td)
 
+// The subset of unary ops from above that do not have an accuracy.
+// The helper macros are used to avoid the boilerplate of adding new unary ops.
+#define UNARY_OPS_WITHOUT_ACCURACY(V)   \
+  /* go/keep-sorted start */            \
+  V(Abs, abs)                           \
+  V(Ceil, ceil)                         \
+  V(Clz, clz)                           \
+  V(Copy, copy)                         \
+  V(Floor, floor)                       \
+  V(Imag, imag)                         \
+  V(IsFinite, isfinite)                 \
+  V(Negate, negate)                     \
+  V(Not, not_)                          \
+  V(PopulationCount, populationcount)   \
+  V(Real, real)                         \
+  V(RoundNearestAfz, roundnearestafz)   \
+  V(RoundNearestEven, roundnearesteven) \
+  V(Sign, sign)
+/* go/keep-sorted end */
+
+// The subset of unary ops from above that have an accuracy.
+// The helper macros are used to avoid the boilerplate of adding new unary ops.
+#define UNARY_OPS_WITH_ACCURACY(V) \
+  V(Acos, acos)                    \
+  V(Acosh, acosh)                  \
+  V(Asin, asin)                    \
+  V(Asinh, asinh)                  \
+  V(Atanh, atanh)                  \
+  V(Cbrt, cbrt)                    \
+  V(Cos, cos)                      \
+  V(Cosh, cosh)                    \
+  V(Erf, erf)                      \
+  V(Exp, exp)                      \
+  V(Expm1, expm1)                  \
+  V(Log, log)                      \
+  V(Log1p, log1p)                  \
+  V(Logistic, logistic)            \
+  V(Rsqrt, rsqrt)                  \
+  V(Sin, sin)                      \
+  V(Sinh, sinh)                    \
+  V(Sqrt, sqrt)                    \
+  V(Tan, tan)                      \
+  V(Tanh, tanh)
+
 // Upto 256 opcodes. Increase the base type if/when needed.
 enum class HloOpcode : uint8_t {
 #define DECLARE_ENUM(enum_name, opcode_name, ...) enum_name,

@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/xla_data.pb.h"
@@ -289,18 +290,15 @@ class HloMetadataMatcher
 //   EXPECT_THAT(instruction,
 //               op::Add(op::Reshape(), op::Add(op::Reshape(), _)));
 namespace opcode_matchers {
-#define HLO_MATCHER(opcode)                                                \
+#define HLO_MATCHER(opcode, ...)                                           \
   template <typename... M>                                                 \
   ::testing::Matcher<const ::xla::HloInstruction*> opcode(M... operands) { \
     return ::testing::MakeMatcher(new ::xla::testing::HloMatcher(          \
         ::xla::HloOpcode::k##opcode, {operands...}));                      \
   }
-HLO_MATCHER(Abs);
-HLO_MATCHER(Acos);
-HLO_MATCHER(Acosh);
-HLO_MATCHER(Asin);
-HLO_MATCHER(Asinh);
-HLO_MATCHER(Atanh);
+UNARY_OPS_WITHOUT_ACCURACY(HLO_MATCHER)
+UNARY_OPS_WITH_ACCURACY(HLO_MATCHER)
+
 HLO_MATCHER(Add);
 HLO_MATCHER(AddDependency);
 HLO_MATCHER(AfterAll);
@@ -320,7 +318,6 @@ HLO_MATCHER(Bitcast);
 HLO_MATCHER(BitcastConvert);
 HLO_MATCHER(Broadcast);
 HLO_MATCHER(Call);
-HLO_MATCHER(Ceil);
 HLO_MATCHER(Cholesky);
 HLO_MATCHER(Clamp);
 HLO_MATCHER(CollectiveBroadcast);
@@ -332,31 +329,22 @@ HLO_MATCHER(Concatenate);
 HLO_MATCHER(Conditional);
 HLO_MATCHER(Convert);
 HLO_MATCHER(Convolution);
-HLO_MATCHER(Copy);
 HLO_MATCHER(CopyDone);
 HLO_MATCHER(CopyStart);
-HLO_MATCHER(Cosh);
 HLO_MATCHER(Divide);
 HLO_MATCHER(Domain);
 HLO_MATCHER(DynamicSlice);
 HLO_MATCHER(DynamicUpdateSlice);
-HLO_MATCHER(Erf);
-HLO_MATCHER(Exp);
 HLO_MATCHER(Fft);
-HLO_MATCHER(Floor);
 HLO_MATCHER(Fusion);
 HLO_MATCHER(Gather);
 HLO_MATCHER(GetDimensionSize);
 HLO_MATCHER(Infeed);
 HLO_MATCHER(Iota);
-HLO_MATCHER(IsFinite);
-HLO_MATCHER(Log);
 HLO_MATCHER(Map);
 HLO_MATCHER(Maximum);
 HLO_MATCHER(Minimum);
 HLO_MATCHER(Multiply);
-HLO_MATCHER(Negate);
-HLO_MATCHER(Not);
 HLO_MATCHER(Or);
 HLO_MATCHER(Outfeed);
 HLO_MATCHER(Pad);
@@ -386,13 +374,9 @@ HLO_MATCHER(SetDimensionSize);
 HLO_MATCHER(ShiftLeft);
 HLO_MATCHER(ShiftRightArithmetic);
 HLO_MATCHER(ShiftRightLogical);
-HLO_MATCHER(Sign);
-HLO_MATCHER(Sinh);
 HLO_MATCHER(Slice);
 HLO_MATCHER(Sort);
 HLO_MATCHER(Subtract);
-HLO_MATCHER(Tan);
-HLO_MATCHER(Tanh);
 HLO_MATCHER(Transpose);
 HLO_MATCHER(TriangularSolve);
 HLO_MATCHER(Tuple);

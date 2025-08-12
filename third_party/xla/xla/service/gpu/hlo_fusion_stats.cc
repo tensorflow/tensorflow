@@ -44,33 +44,17 @@ class OpcodeCollector : public ConstDfsHloVisitorWithDefault {
       case HloOpcode::kParameter:
         break;
       // Unary
+#define CASE_STMT(name, ...) case HloOpcode::k##name:
+        UNARY_OPS_WITH_ACCURACY(CASE_STMT)
+#undef CASE_STMT
+
       case HloOpcode::kAbs:
-      case HloOpcode::kAcos:
-      case HloOpcode::kAcosh:
-      case HloOpcode::kAsin:
-      case HloOpcode::kAsinh:
-      case HloOpcode::kAtanh:
-      case HloOpcode::kCbrt:
       case HloOpcode::kCeil:
-      case HloOpcode::kCos:
-      case HloOpcode::kCosh:
-      case HloOpcode::kErf:
-      case HloOpcode::kExp:
-      case HloOpcode::kExpm1:
       case HloOpcode::kFloor:
-      case HloOpcode::kLog:
-      case HloOpcode::kLog1p:
-      case HloOpcode::kLogistic:
       case HloOpcode::kNegate:
       case HloOpcode::kRoundNearestAfz:
       case HloOpcode::kRoundNearestEven:
-      case HloOpcode::kRsqrt:
       case HloOpcode::kSign:
-      case HloOpcode::kSin:
-      case HloOpcode::kSinh:
-      case HloOpcode::kSqrt:
-      case HloOpcode::kTan:
-      case HloOpcode::kTanh:
       // Binary
       case HloOpcode::kAdd:
       case HloOpcode::kAtan2:

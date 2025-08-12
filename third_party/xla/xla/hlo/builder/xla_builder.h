@@ -1377,12 +1377,24 @@ class XlaBuilder {
                               absl::Span<const int64_t> out_dim_size,
                               absl::Span<const int64_t> broadcast_dimensions);
 
+#define DEFINE_FRIEND_UNARY_OP_WITHOUT_ACCURACY(name, ...) \
+  friend XlaOp name(XlaOp operand);
+  UNARY_OPS_WITHOUT_ACCURACY(DEFINE_FRIEND_UNARY_OP_WITHOUT_ACCURACY)
+#undef DEFINE_FRIEND_UNARY_OP_WITHOUT_ACCURACY
+
+#define DEFINE_FRIEND_UNARY_OP_WITH_ACCURACY(name, ...)             \
+  friend XlaOp name(XlaOp operand,                                  \
+                    const std::optional<ResultAccuracy>& accuracy); \
+  friend XlaOp name(XlaOp operand,                                  \
+                    const std::optional<ResultAccuracy>& accuracy,  \
+                    bool expand);
+  UNARY_OPS_WITH_ACCURACY(DEFINE_FRIEND_UNARY_OP_WITH_ACCURACY)
+#undef DEFINE_FRIEND_UNARY_OP_WITH_ACCURACY
+
   friend XlaOp MhloDynamicBroadcastInDim(
       XlaOp operand, XlaOp output_dimensions,
       absl::Span<const int64_t> broadcast_dimensions,
       const Shape& output_shape);
-
-  friend XlaOp Copy(XlaOp operand);
 
   friend XlaOp Pad(XlaOp operand, XlaOp padding_value,
                    const PaddingConfig& padding_config);
@@ -1623,8 +1635,6 @@ class XlaBuilder {
                   absl::Span<const int64_t> broadcast_dimensions);
   friend XlaOp Xor(XlaOp lhs, XlaOp rhs,
                    absl::Span<const int64_t> broadcast_dimensions);
-  friend XlaOp Not(XlaOp operand);
-  friend XlaOp PopulationCount(XlaOp operand);
   friend XlaOp ShiftLeft(XlaOp lhs, XlaOp rhs,
                          absl::Span<const int64_t> broadcast_dimensions);
   friend XlaOp ShiftRightArithmetic(
@@ -1736,66 +1746,10 @@ class XlaBuilder {
       absl::Span<const std::pair<int64_t, int64_t>> padding, XlaOp source,
       XlaOp init_value, XlaComputationId scatter);
   friend XlaOp Abs(XlaOp operand);
-  friend XlaOp Acos(XlaOp x,
-                    const std::optional<ResultAccuracy>& result_accuracy,
-                    bool expand);
-  friend XlaOp Acosh(XlaOp x,
-                     const std::optional<ResultAccuracy>& result_accuracy,
-                     bool expand);
-  friend XlaOp Asin(XlaOp x,
-                    const std::optional<ResultAccuracy>& result_accuracy,
-                    bool expand);
-  friend XlaOp Asinh(XlaOp x,
-                     const std::optional<ResultAccuracy>& result_accuracy,
-                     bool expand);
   friend XlaOp Atan2(XlaOp y, XlaOp x,
                      absl::Span<const int64_t> broadcast_dimensions);
-  friend XlaOp Atanh(XlaOp x,
-                     const std::optional<ResultAccuracy>& result_accuracy,
-                     bool expand);
-  friend XlaOp Erf(XlaOp operand,
-                   const std::optional<ResultAccuracy>& result_accuracy);
-  friend XlaOp Exp(XlaOp operand,
-                   const std::optional<ResultAccuracy>& result_accuracy);
-  friend XlaOp Expm1(XlaOp operand,
-                     const std::optional<ResultAccuracy>& result_accuracy);
-  friend XlaOp Floor(XlaOp operand);
-  friend XlaOp Ceil(XlaOp operand);
-  friend XlaOp Round(XlaOp operand);
-  friend XlaOp RoundNearestEven(XlaOp operand);
-  friend XlaOp Log(XlaOp operand,
-                   const std::optional<ResultAccuracy>& result_accuracy);
-  friend XlaOp Log1p(XlaOp operand,
-                     const std::optional<ResultAccuracy>& result_accuracy);
-  friend XlaOp Logistic(XlaOp operand,
-                        const std::optional<ResultAccuracy>& result_accuracy);
-  friend XlaOp Sign(XlaOp operand);
-  friend XlaOp Clz(XlaOp operand);
-  friend XlaOp Cos(XlaOp operand,
-                   const std::optional<ResultAccuracy>& result_accuracy);
-  friend XlaOp Cosh(XlaOp x,
-                    const std::optional<ResultAccuracy>& result_accuracy,
-                    bool expand);
-  friend XlaOp Sin(XlaOp operand,
-                   const std::optional<ResultAccuracy>& result_accuracy);
-  friend XlaOp Sinh(XlaOp x,
-                    const std::optional<ResultAccuracy>& result_accuracy,
-                    bool expand);
-  friend XlaOp Tan(XlaOp operand,
-                   const std::optional<ResultAccuracy>& result_accuracy);
-  friend XlaOp Tanh(XlaOp operand,
-                    const std::optional<ResultAccuracy>& result_accuracy);
-  friend XlaOp Real(XlaOp operand);
-  friend XlaOp Imag(XlaOp operand);
-  friend XlaOp Sqrt(XlaOp operand,
-                    const std::optional<ResultAccuracy>& result_accuracy);
-  friend XlaOp Rsqrt(XlaOp operand,
-                     const std::optional<ResultAccuracy>& result_accuracy);
-  friend XlaOp Cbrt(XlaOp operand,
-                    const std::optional<ResultAccuracy>& result_accuracy);
   friend XlaOp Pow(XlaOp lhs, XlaOp rhs,
                    absl::Span<const int64_t> broadcast_dimensions);
-  friend XlaOp IsFinite(XlaOp operand);
   friend XlaOp Iota(XlaBuilder* builder, const Shape& shape,
                     int64_t iota_dimension);
   friend XlaOp Iota(XlaBuilder* builder, PrimitiveType type, int64_t size);

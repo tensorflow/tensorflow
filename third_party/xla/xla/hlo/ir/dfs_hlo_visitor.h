@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -72,6 +73,14 @@ class DfsHloVisitorBase {
   // These routines are self-descriptive, see class comment for usage
   // information.
 
+#define HANDLE_OP_FUNCTION(name, lower_name)                 \
+  virtual absl::Status Handle##name(HloInstructionPtr hlo) { \
+    return HandleElementwiseUnary(hlo);                      \
+  }
+  UNARY_OPS_WITHOUT_ACCURACY(HANDLE_OP_FUNCTION)
+  UNARY_OPS_WITH_ACCURACY(HANDLE_OP_FUNCTION)
+#undef HANDLE_OP_FUNCTION
+
   virtual absl::Status HandleElementwiseUnary(HloInstructionPtr hlo);
   virtual absl::Status HandleElementwiseBinary(HloInstructionPtr hlo);
 
@@ -93,9 +102,6 @@ class DfsHloVisitorBase {
   virtual absl::Status HandleStochasticConvert(HloInstructionPtr hlo) {
     return HandleElementwiseBinary(hlo);
   }
-  virtual absl::Status HandleCopy(HloInstructionPtr hlo) {
-    return HandleElementwiseUnary(hlo);
-  }
   virtual absl::Status HandleComplex(HloInstructionPtr hlo) {
     return HandleElementwiseBinary(hlo);
   }
@@ -107,15 +113,6 @@ class DfsHloVisitorBase {
   virtual absl::Status HandleScaledDot(HloInstructionPtr hlo) = 0;
   virtual absl::Status HandlePower(HloInstructionPtr hlo) {
     return HandleElementwiseBinary(hlo);
-  }
-  virtual absl::Status HandleSqrt(HloInstructionPtr hlo) {
-    return HandleElementwiseUnary(hlo);
-  }
-  virtual absl::Status HandleRsqrt(HloInstructionPtr hlo) {
-    return HandleElementwiseUnary(hlo);
-  }
-  virtual absl::Status HandleCbrt(HloInstructionPtr hlo) {
-    return HandleElementwiseUnary(hlo);
   }
   /* go/keep-sorted start */
   virtual absl::Status HandleAllGather(HloInstructionPtr hlo) = 0;
@@ -162,107 +159,17 @@ class DfsHloVisitorBase {
   virtual absl::Status HandleSubtract(HloInstructionPtr hlo) {
     return HandleElementwiseBinary(hlo);
   }
-  virtual absl::Status HandleAbs(HloInstructionPtr hlo) {
-    return HandleElementwiseUnary(hlo);
-  }
-  virtual absl::Status HandleAcos(HloInstructionPtr hlo) {
-    return HandleElementwiseUnary(hlo);
-  }
-  virtual absl::Status HandleAcosh(HloInstructionPtr hlo) {
-    return HandleElementwiseUnary(hlo);
-  }
-  virtual absl::Status HandleAsin(HloInstructionPtr hlo) {
-    return HandleElementwiseUnary(hlo);
-  }
-  virtual absl::Status HandleAsinh(HloInstructionPtr hlo) {
-    return HandleElementwiseUnary(hlo);
-  }
   virtual absl::Status HandleAtan2(HloInstructionPtr hlo) {
     return HandleElementwiseBinary(hlo);
   }
-  virtual absl::Status HandleAtanh(HloInstructionPtr hlo) {
-    return HandleElementwiseUnary(hlo);
-  }
-  virtual absl::Status HandleRound(HloInstructionPtr hlo) {
-    return HandleElementwiseUnary(hlo);
-  }
-  virtual absl::Status HandleRoundNearestEven(HloInstructionPtr hlo) {
-    return HandleElementwiseUnary(hlo);
-  }
-  virtual absl::Status HandleErf(HloInstructionPtr hlo) {
-    return HandleElementwiseUnary(hlo);
-  }
-  virtual absl::Status HandleLogistic(HloInstructionPtr hlo) {
-    return HandleElementwiseUnary(hlo);
-  }
-  virtual absl::Status HandleSign(HloInstructionPtr hlo) {
-    return HandleElementwiseUnary(hlo);
-  }
-  virtual absl::Status HandleNegate(HloInstructionPtr hlo) {
-    return HandleElementwiseUnary(hlo);
-  }
-  virtual absl::Status HandleExp(HloInstructionPtr hlo) {
-    return HandleElementwiseUnary(hlo);
-  }
-  virtual absl::Status HandleExpm1(HloInstructionPtr hlo) {
-    return HandleElementwiseUnary(hlo);
-  }
-  virtual absl::Status HandleFloor(HloInstructionPtr hlo) {
-    return HandleElementwiseUnary(hlo);
-  }
-  virtual absl::Status HandleCeil(HloInstructionPtr hlo) {
-    return HandleElementwiseUnary(hlo);
-  }
-  virtual absl::Status HandleLog(HloInstructionPtr hlo) {
-    return HandleElementwiseUnary(hlo);
-  }
-  virtual absl::Status HandleClz(HloInstructionPtr hlo) {
-    return HandleElementwiseUnary(hlo);
-  }
-  virtual absl::Status HandleLog1p(HloInstructionPtr hlo) {
-    return HandleElementwiseUnary(hlo);
-  }
-  virtual absl::Status HandleCos(HloInstructionPtr hlo) {
-    return HandleElementwiseUnary(hlo);
-  }
-  virtual absl::Status HandleCosh(HloInstructionPtr hlo) {
-    return HandleElementwiseUnary(hlo);
-  }
-  virtual absl::Status HandleSin(HloInstructionPtr hlo) {
-    return HandleElementwiseUnary(hlo);
-  }
-  virtual absl::Status HandleSinh(HloInstructionPtr hlo) {
-    return HandleElementwiseUnary(hlo);
-  }
-  virtual absl::Status HandleTan(HloInstructionPtr hlo) {
-    return HandleElementwiseUnary(hlo);
-  }
-  virtual absl::Status HandleTanh(HloInstructionPtr hlo) {
-    return HandleElementwiseUnary(hlo);
-  }
-  virtual absl::Status HandleReal(HloInstructionPtr hlo) {
-    return HandleElementwiseUnary(hlo);
-  }
-  virtual absl::Status HandleImag(HloInstructionPtr hlo) {
-    return HandleElementwiseUnary(hlo);
-  }
-  virtual absl::Status HandleIsFinite(HloInstructionPtr hlo) {
-    return HandleElementwiseUnary(hlo);
-  }
   virtual absl::Status HandleAnd(HloInstructionPtr hlo) {
     return HandleElementwiseBinary(hlo);
-  }
-  virtual absl::Status HandleNot(HloInstructionPtr hlo) {
-    return HandleElementwiseUnary(hlo);
   }
   virtual absl::Status HandleOr(HloInstructionPtr hlo) {
     return HandleElementwiseBinary(hlo);
   }
   virtual absl::Status HandleXor(HloInstructionPtr hlo) {
     return HandleElementwiseBinary(hlo);
-  }
-  virtual absl::Status HandlePopulationCount(HloInstructionPtr hlo) {
-    return HandleElementwiseUnary(hlo);
   }
   virtual absl::Status HandleShiftLeft(HloInstructionPtr hlo) {
     return HandleElementwiseBinary(hlo);
