@@ -149,6 +149,7 @@ limitations under the License.
 #include "xla/service/conditional_simplifier.h"
 #include "xla/service/copy_insertion.h"
 #include "xla/service/cpu_gpu_shape_verifier.h"
+#include "xla/service/debug/unstable_reduction_detector.h"
 #include "xla/service/dump.h"
 #include "xla/service/dynamic_dimension_inference.h"
 #include "xla/service/dynamic_padder.h"
@@ -688,6 +689,10 @@ absl::Status RunOptimizationPasses(
 
   HloPassPipeline pipeline("optimization");
   AddHloVerifier(&pipeline, !debug_options.xla_ignore_channel_id());
+  if (debug_options.xla_detect_unstable_reductions() !=
+      DebugOptions::UNSTABLE_REDUCTION_DETECTION_MODE_NONE) {
+    pipeline.AddPass<UnstableReductionDetector>();
+  }
   pipeline.AddPass<RaggedDotRewriter>();
   pipeline.AddPass<BatchedGatherScatterNormalizer>();
   if (debug_options.xla_gpu_multi_streamed_windowed_einsum()) {
