@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/copy_fusion.h"
 
 #include <cstdint>
+#include <memory>
 #include <queue>
 #include <vector>
 
@@ -28,6 +29,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
+#include "xla/service/call_graph.h"
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/reduction_utils.h"
@@ -60,7 +62,8 @@ bool OnlyElementwiseOpsReachableFromParams(HloComputation* fused_computation) {
   return true;
 }
 
-absl::StatusOr<bool> CopyFusion::DoCopyFusion(HloComputation* computation) {
+absl::StatusOr<bool> CopyFusion::DoCopyFusion(
+    HloComputation* computation, std::unique_ptr<CallGraph> call_graph) {
   bool changed = false;
   std::vector<HloInstruction*> defs_before_uses =
       computation->MakeInstructionPostOrder();
@@ -174,6 +177,14 @@ absl::StatusOr<bool> CopyFusion::DoCopyFusion(HloComputation* computation) {
     fused_computation->set_root_instruction(new_root,
                                             /*accept_different_shape=*/true);
     *hlo->mutable_shape() = new_root->shape();
+    for (HloInstruction* caller :
+         call_graph->GetComputationCallers(fused_computation)) {
+      if (caller->opcode() == HloOpcode::kFusion) {
+        if (caller->has_sharding()) {
+          caller->clear_sharding();
+        }
+      }
+    }
 
     if (HloPredicateIsOp<HloOpcode::kTuple>(root)) {
       TF_RETURN_IF_ERROR(fused_computation->RemoveInstruction(root));
@@ -202,7 +213,7 @@ absl::StatusOr<bool> CopyFusion::Run(
   // the buffers with the output tuples, and copies inserted by the
   // CopyInsertion pass will share a buffer with the tuple output (and thus
   // with the tuple input as well).
-  return DoCopyFusion(module->entry_computation());
+  return DoCopyFusion(module->entry_computation(), CallGraph::Build(module));
 }
 
 }  // namespace gpu

@@ -160,6 +160,34 @@ TEST_F(CopyFusionTest, CopyFusionTransposeOfBroadcastedConstantTwoCopies) {
               GmockMatch(m::Tuple(m::Transpose(), m::Copy(), m::Copy())));
 }
 
+TEST_F(CopyFusionTest, CopyFusionTransposeOfBroadcastedTwoCopiesWithSharding) {
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    fused_computation {
+      two = f32[] constant(2.0)
+      broadcast = f32[16,32]{1,0} broadcast(two), dimensions={}
+      s.1 = f32[16,32]{1,0} sqrt(broadcast)
+      ROOT c.1 = f32[32,16]{1,0} transpose(s.1), dimensions={1,0}
+    }
+
+    ENTRY main {
+      fusion = f32[32,16]{1,0} fusion(), kind=kInput, calls=fused_computation, sharding={replicated}
+      copy.1 = f32[32,16]{1,0} copy(fusion)
+      copy.2 = f32[32,16]{1,0} copy(fusion)
+      ROOT t = (f32[32,16]{1,0}, f32[32,16]{1,0}) tuple(copy.2, copy.1)
+    })"))
+                    .value();
+  ASSERT_TRUE(cf_.Run(module.get()).value());
+  SCOPED_TRACE(module->ToString());
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  const HloInstruction* fusion = nullptr;
+  ASSERT_THAT(root,
+              GmockMatch(m::Tuple(m::GetTupleElement(m::Fusion(&fusion)),
+                                  m::GetTupleElement(m::Fusion(&fusion)))));
+  EXPECT_THAT(fusion->fused_expression_root(),
+              GmockMatch(m::Tuple(m::Transpose(), m::Copy(), m::Copy())));
+  EXPECT_FALSE(fusion->has_sharding());
+}
+
 TEST_F(CopyFusionTest, CopyFusionTransposeTwoCopies) {
   auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_computation {

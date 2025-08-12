@@ -522,6 +522,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/utils:hlo_traversal",
+        "//xla/service:call_graph",
         "//xla/service/gpu:gpu_fusible",
         "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu:reduction_utils",
