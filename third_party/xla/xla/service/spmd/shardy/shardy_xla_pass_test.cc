@@ -158,6 +158,37 @@ TEST_F(ShardyXLATest, NonFlatGraph) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
   runShardyWithStablehloImport(module.get());
+  // Computations refer to: %foo, %bar (x1), %entry.
+  EXPECT_EQ(module->computation_count(), 3);
+}
+
+TEST_F(ShardyXLATest, NonFlatGraphForcedDifferentShardingsOnSharedFunc) {
+  const char* const hloString = R"(
+    HloModule module
+
+    %bar {
+      %arg = f32[6,4] parameter(0)
+      %multiply = f32[6,4] multiply(arg, arg)
+      ROOT result = f32[6,4] copy(%multiply)
+    }
+
+    %foo {
+      %arg = f32[6,4] parameter(0)
+      %multiply = f32[6,4] call(%arg), to_apply=%bar
+      %add = f32[6,4] add(multiply, multiply)
+      ROOT result = f32[6,4] copy(%add)
+    }
+
+    ENTRY %entry {
+      %p0 = f32[6,4] parameter(0), sharding={devices=[2,1]<=[2]}
+      %foores = f32[6,4] call(%p0), to_apply=%foo
+      %absres = abs(%foores), sharding={devices=[1,2]<=[2]}
+      %barres = f32[6,4] call(%absres), to_apply=%bar
+      ROOT result = f32[6,4] copy(%barres)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hloString));
+  runShardyWithStablehloImport(module.get());
   // Computations refer to: %foo, %bar (x2), %entry.
   EXPECT_EQ(module->computation_count(), 4);
 }
@@ -209,8 +240,8 @@ TEST_F(ShardyXLATest, NonFlatWhileComputation) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
   runShardyWithStablehloImport(module.get());
-  // Computations refer to: %foo (x3), %cond1, %cond2, %loop1, %loop2, %entry.
-  EXPECT_EQ(module->computation_count(), 8);
+  // Computations refer to: %foo (x1), %cond1, %cond2, %loop1, %loop2, %entry.
+  EXPECT_EQ(module->computation_count(), 6);
 }
 
 TEST_F(ShardyXLATest, SharedWhileComputation) {
@@ -245,8 +276,8 @@ TEST_F(ShardyXLATest, SharedWhileComputation) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
   runShardyWithStablehloImport(module.get());
-  // Computations refer to: %foo (x2), %cond (x2), %loop (x2), %entry.
-  EXPECT_EQ(module->computation_count(), 7);
+  // Computations refer to: %foo (x1), %cond (x2), %loop (x2), %entry.
+  EXPECT_EQ(module->computation_count(), 6);
 }
 
 TEST_F(ShardyXLATest, CostantSplitter) {

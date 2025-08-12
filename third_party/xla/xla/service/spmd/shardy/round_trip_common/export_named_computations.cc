@@ -17,9 +17,11 @@ limitations under the License.
 
 #include <memory>
 #include <optional>
+#include <tuple>
 #include <utility>
 
 #include "absl/log/check.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -58,16 +60,52 @@ using ::mlir::sdy::ManualAxesAttr;
 using ::mlir::sdy::NamedComputationOp;
 using ::mlir::sdy::TensorShardingPerValueAttr;
 
-std::pair<FuncOp, StringAttr> getFuncOp(NamedComputationOp namedComputationOp,
-                                        mlir::IRRewriter& rewriter,
-                                        SymbolTable& symbolTable) {
-  auto funcOp = rewriter.create<FuncOp>(
+using ComputationKey = std::tuple<StringRef, TensorShardingPerValueAttr,
+                                  TensorShardingPerValueAttr>;
+FuncOp createFuncOp(NamedComputationOp namedComputationOp,
+                    mlir::IRRewriter& rewriter) {
+  return rewriter.create<FuncOp>(
       namedComputationOp.getLoc(), namedComputationOp.getName(),
       rewriter.getFunctionType(namedComputationOp.getBody().getArgumentTypes(),
                                namedComputationOp.getResultTypes()),
       rewriter.getStringAttr("private"),
       /*argAttrs=*/ArrayAttr(), /*resultAttrs=*/ArrayAttr());
-  return {funcOp, symbolTable.insert(funcOp)};
+}
+std::tuple<FuncOp, StringAttr, bool> maybeGetCachedFuncOp(
+    NamedComputationOp namedComputationOp,
+    llvm::SmallDenseMap<ComputationKey, std::pair<FuncOp, StringAttr>>&
+        funcCache,
+    mlir::IRRewriter& rewriter, SymbolTable& symbolTable) {
+  auto key = std::make_tuple(namedComputationOp.getName(),
+                             namedComputationOp.getInShardings().value_or(
+                                 TensorShardingPerValueAttr()),
+                             namedComputationOp.getOutShardings().value_or(
+                                 TensorShardingPerValueAttr()));
+  auto it = funcCache.find(key);
+  if (it == funcCache.end()) {
+    auto funcOp = createFuncOp(namedComputationOp, rewriter);
+    StringAttr funcSymName = symbolTable.insert(funcOp);
+    std::tie(it, std::ignore) = funcCache.try_emplace(key, funcOp, funcSymName);
+    return {funcOp, funcSymName, /*alreadyConvertedToCall=*/false};
+  }
+  auto& [funcOp, funcSymName] = it->second;
+  return {funcOp, funcSymName, /*alreadyConvertedToCall=*/true};
+}
+
+std::tuple<FuncOp, StringAttr, bool> getFuncOp(
+    NamedComputationOp namedComputationOp,
+    llvm::SmallDenseMap<ComputationKey, std::pair<FuncOp, StringAttr>>&
+        funcCache,
+    mlir::IRRewriter& rewriter, SymbolTable& symbolTable,
+    ManualAxesAttr manualAxesAttr) {
+  // TODO(enver): Support deduplicate also for ones with manual axes.
+  if (manualAxesAttr) {
+    auto funcOp = createFuncOp(namedComputationOp, rewriter);
+    return {funcOp, symbolTable.insert(funcOp),
+            /*alreadyConvertedToCall=*/false};
+  }
+  return maybeGetCachedFuncOp(namedComputationOp, funcCache, rewriter,
+                              symbolTable);
 }
 
 // Converts a `NamedComputationOp` into a `CallOp`.
@@ -76,6 +114,8 @@ class ExportNamedComputationsPass
                                mlir::OperationPass<ModuleOp>> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ExportNamedComputationsPass)
+
+  llvm::SmallDenseMap<ComputationKey, std::pair<FuncOp, StringAttr>> funcCache;
 
   void runOnOperation() final {
     ModuleOp moduleOp = getOperation();
@@ -98,32 +138,33 @@ class ExportNamedComputationsPass
         CHECK(inShardings.has_value());
         CHECK(outShardings.has_value());
       }
+      auto [funcOp, funcSymName, alreadyConvertedToCall] = getFuncOp(
+          namedComputationOp, funcCache, rewriter, symbolTable, manualAxesAttr);
 
-      auto [funcOp, funcSymName] =
-          getFuncOp(namedComputationOp, rewriter, symbolTable);
+      if (!alreadyConvertedToCall) {
+        rewriter.setInsertionPointToStart(funcOp->getBlock());
+        mlir::sdy::inlineRegionAndConvertTerminatorOp<mlir::func::ReturnOp>(
+            namedComputationOp.getBody(), funcOp.getBody());
 
-      rewriter.setInsertionPointToStart(funcOp->getBlock());
-      mlir::sdy::inlineRegionAndConvertTerminatorOp<mlir::func::ReturnOp>(
-          namedComputationOp.getBody(), funcOp.getBody());
-
-      // Copy the input shardings to the func.
-      if (inShardings.has_value()) {
-        for (auto [i, sharding] :
-             llvm::enumerate(inShardings->getShardings())) {
-          funcOp.setArgAttr(i, kShardingAttr, sharding);
-          if (manualAxesAttr) {
-            funcOp.setArgAttr(i, kManualAxes, manualAxesAttr);
+        // Copy the input shardings to the func.
+        if (inShardings.has_value()) {
+          for (auto [i, sharding] :
+               llvm::enumerate(inShardings->getShardings())) {
+            funcOp.setArgAttr(i, kShardingAttr, sharding);
+            if (manualAxesAttr) {
+              funcOp.setArgAttr(i, kManualAxes, manualAxesAttr);
+            }
           }
         }
-      }
 
-      // Copy the output shardings to the func.
-      if (outShardings.has_value()) {
-        for (auto [i, sharding] :
-             llvm::enumerate(outShardings->getShardings())) {
-          funcOp.setResultAttr(i, kShardingAttr, sharding);
-          if (manualAxesAttr) {
-            funcOp.setResultAttr(i, kManualAxes, manualAxesAttr);
+        // Copy the output shardings to the func.
+        if (outShardings.has_value()) {
+          for (auto [i, sharding] :
+               llvm::enumerate(outShardings->getShardings())) {
+            funcOp.setResultAttr(i, kShardingAttr, sharding);
+            if (manualAxesAttr) {
+              funcOp.setResultAttr(i, kManualAxes, manualAxesAttr);
+            }
           }
         }
       }
