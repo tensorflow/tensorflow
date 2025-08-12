@@ -63,6 +63,7 @@ class HloPrintOptions {
         print_original_value_(true),
         print_metadata_(true),
         print_metadata_only_op_name_(false),
+        print_name_from_metadata_(false),
         print_backend_config_(true),
         sort_backend_config_(false),
         print_infeed_outfeed_config_(true),
@@ -195,6 +196,13 @@ class HloPrintOptions {
   // metadata values will be omitted.
   HloPrintOptions& set_print_metadata_only_op_name(bool value) {
     print_metadata_only_op_name_ = value;
+    return *this;
+  }
+
+  // If true, the name of the instruction will be printed from the `op_name`
+  // metadata field if present.
+  HloPrintOptions& set_print_name_from_metadata(bool value) {
+    print_name_from_metadata_ = value;
     return *this;
   }
 
@@ -390,6 +398,7 @@ class HloPrintOptions {
   bool print_metadata_only_op_name() const {
     return print_metadata_only_op_name_;
   }
+  bool print_name_from_metadata() const { return print_name_from_metadata_; }
   bool print_backend_config() const { return print_backend_config_; }
   bool sort_backend_config() const { return sort_backend_config_; }
   bool print_infeed_outfeed_config() const {
@@ -437,6 +446,7 @@ class HloPrintOptions {
   bool print_original_value_;
   bool print_metadata_;
   bool print_metadata_only_op_name_;
+  bool print_name_from_metadata_;
   bool print_backend_config_;
   bool sort_backend_config_;
   bool print_infeed_outfeed_config_;

@@ -25,8 +25,10 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
+#include "xla/literal.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -192,6 +194,24 @@ TEST_F(HloInstructionTest, PrintCompareOpWorksIfDead) {
             "%result = pred[] compare(), direction=GT, type=TOTALORDER");
   *module->mutable_entry_computation_layout() =
       module->compute_computation_layout();
+}
+
+TEST_F(HloInstructionTest, PrintNameFromMetadata) {
+  auto builder = HloComputation::Builder(TestName());
+  auto c1 = builder.AddInstruction(HloInstruction::CreateConstant(
+      Literal::CreateFromShape(ShapeUtil::MakeShape(F32, {}))));
+  c1->SetAndSanitizeName("my_constant");
+  OpMetadata metadata;
+  metadata.set_op_name("MyConstantOp");
+  c1->set_metadata(metadata);
+
+  HloPrintOptions options;
+  options.set_print_name_from_metadata(true);
+  options.set_print_percent(true);
+  EXPECT_THAT(c1->ToString(options), testing::StartsWith("%MyConstantOp"));
+
+  options.set_print_name_from_metadata(false);
+  EXPECT_THAT(c1->ToString(options), testing::StartsWith("%my_constant"));
 }
 }  // namespace
 }  // namespace xla

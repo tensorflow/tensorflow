@@ -3722,6 +3722,29 @@ void PrintNameInternal(Printer* printer, absl::string_view name,
   printer->Append(PrintName(name, options.print_ids()));
 }
 
+void PrintNameInternal(Printer* printer, const HloInstruction* instruction,
+                       const HloPrintOptions& options) {
+  if (options.print_percent()) {
+    printer->Append("%");
+  }
+  if (options.print_name_from_metadata() &&
+      !instruction->metadata().op_name().empty()) {
+    absl::string_view op_name = instruction->metadata().op_name();
+    // Removes the prefix up to the last '/' from an operation name.
+    auto pos = op_name.find_last_of('/');
+    if (pos != absl::string_view::npos) {
+      op_name.remove_prefix(pos + 1);
+    }
+    printer->Append(NameUniquer::GetSanitizedName(op_name));
+    if (options.print_ids()) {
+      printer->Append(".");
+      printer->Append(instruction->unique_id());
+    }
+  } else {
+    printer->Append(PrintName(instruction->name(), options.print_ids()));
+  }
+}
+
 std::string PrintCycle(const HloInstruction* child, DFSStack* dfs_stack,
                        bool ignore_control_predecessors) {
   // This set contains HloInstructions from the top of `DFSStack` that might
@@ -3913,7 +3936,7 @@ void HloInstruction::PrintWithCanonicalNameMap(
       printer->Append(" = ");
     }
   } else {
-    PrintNameInternal(printer, name(), options);
+    PrintNameInternal(printer, this, options);
     printer->Append(" = ");
   }
 
@@ -4041,7 +4064,7 @@ void HloInstruction::PrintOperandsWithCanonicalNameMap(
       if (add_space) {
         printer->Append(" ");
       }
-      PrintNameInternal(printer, operand->name(), options);
+      PrintNameInternal(printer, operand, options);
     }
   };
   print_one(slice[0]);
@@ -4280,7 +4303,7 @@ void HloInstruction::PrintExtraAttributes(
       printer->Append("control-predecessors={");
       AppendJoin(printer, control_predecessors(), ", ",
                  [&](Printer* printer, HloInstruction* pre) {
-                   PrintNameInternal(printer, pre->name(), options);
+                   PrintNameInternal(printer, pre, options);
                  });
       printer->Append("}");
     });
