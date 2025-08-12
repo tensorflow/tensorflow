@@ -64,7 +64,6 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/hlo/analysis/alias_info.h"
-#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -511,7 +510,6 @@ GpuThunkAotCompilationResult::LoadExecutable(
       std::move(ir_emitter_context.constants());
   TF_ASSIGN_OR_RETURN(auto output_info,
                       GetOutputInfo(*hlo_module, *buffer_assignment));
-  const Shape& output_shape = hlo_module->result_shape();
   int64_t debug_buffer_assignment_show_max =
       hlo_module->config()
           .debug_options()
@@ -532,7 +530,8 @@ GpuThunkAotCompilationResult::LoadExecutable(
         /*constants=*/std::move(constants),
         /*output_info=*/std::move(output_info),
         /*module_name=*/std::move(hlo_module->name()),
-        /*output_shape=*/std::move(output_shape),
+        /*program_shape=*/
+        hlo_module->entry_computation_layout().ComputeProgramShape(),
         /*mlir_allocations=*/std::nullopt,
         /*buffer_assignment=*/std::move(buffer_assignment),
         /*alias_info=*/std::move(alias_info),
@@ -2602,6 +2601,8 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
 
   std::unique_ptr<GpuAliasInfo> alias_info = GetAliasInfo(gpu_device_info);
   const GpuAliasInfo* alias_info_ptr = alias_info.get();
+  std::vector<Shape> paramater_shapes =
+      module->entry_computation_layout().parameter_shapes();
   TF_ASSIGN_OR_RETURN(
       auto gpu_executable,
       GpuExecutable::Create(GpuExecutable::Params{
@@ -2617,7 +2618,8 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
           /*constants=*/std::move(res.compile_module_results.constants),
           /*output_info=*/std::move(res.compile_module_results.output_info),
           /*module_name=*/std::move(res.compile_module_results.module_name),
-          /*output_shape=*/std::move(res.compile_module_results.output_shape),
+          /*program_shape=*/
+          module->entry_computation_layout().ComputeProgramShape(),
           /*mlir_allocations=*/
           (res.compile_module_results.use_original_allocations
                ? std::optional<std::vector<BufferAllocation>>()

@@ -2163,8 +2163,8 @@ PjRtStreamExecutorLoadedExecutable::PjRtStreamExecutorLoadedExecutable(
   executables_.reserve(executables.size());
   tsl::Fprint128 fingerprint = tsl::Fingerprint128(fingerprint_);
   for (auto& executable : executables) {
-    const auto& computation_layout =
-        executable->executable()->module().entry_computation_layout();
+    ComputationLayout computation_layout =
+        executable->executable()->entry_computation_layout();
     std::vector<Shape> parameter_shapes;
     parameter_shapes.reserve(computation_layout.parameter_count());
     for (int i = 0; i < computation_layout.parameter_count(); ++i) {
@@ -2178,6 +2178,9 @@ PjRtStreamExecutorLoadedExecutable::PjRtStreamExecutorLoadedExecutable(
     executables_.emplace_back(std::move(executable));
     on_device_executable_parameter_shapes_.push_back(
         std::move(parameter_shapes));
+  }
+  if (!executables_.empty()) {
+    name_ = executables_.front()->executable()->name();
   }
   fingerprint_ = absl::StrCat(fingerprint.low64, fingerprint.high64);
 
@@ -2233,12 +2236,7 @@ absl::Status PjRtStreamExecutorLoadedExecutable::SetUpDonation(
 }
 
 absl::string_view PjRtStreamExecutorLoadedExecutable::name() const {
-  Executable* executable = executables_[0]->executable();
-  if (executable->has_module()) {
-    return executable->module().name();
-  } else {
-    return "<unknown executable>";
-  }
+  return name_;
 }
 
 absl::Span<int const>
@@ -2762,10 +2760,9 @@ PjRtStreamExecutorLoadedExecutable::EnqueueExecution(
           << ", run_id=" << run_options.run_id().ToInt();
 
   if (VLOG_IS_ON(2)) {
-    auto executable_name =
-        executables_[executable_idx]->executable()->module().name();
     absl::Status host_callback_status = run_options.stream()->DoHostCallback(
-        [executable_name, launch_id(run_options.run_id().ToInt()), device]() {
+        [executable_name = name_, launch_id(run_options.run_id().ToInt()),
+         device]() {
           VLOG(2) << "Start device execution for " << executable_name
                   << ", launch_id: " << launch_id
                   << ", device: " << device->DebugString();
@@ -2773,7 +2770,7 @@ PjRtStreamExecutorLoadedExecutable::EnqueueExecution(
     if (!host_callback_status.ok()) {
       LOG(WARNING)
           << "Failed to do host callback for start device execution for "
-          << executable_name << ", status = " << host_callback_status;
+          << name_ << ", status = " << host_callback_status;
     }
   }
 
@@ -2782,10 +2779,9 @@ PjRtStreamExecutorLoadedExecutable::EnqueueExecution(
                         std::move(execution_inputs), run_options);
 
   if (VLOG_IS_ON(2)) {
-    auto executable_name =
-        executables_[executable_idx]->executable()->module().name();
     absl::Status host_callback_status = run_options.stream()->DoHostCallback(
-        [executable_name, launch_id(run_options.run_id().ToInt()), device]() {
+        [executable_name = name_, launch_id(run_options.run_id().ToInt()),
+         device]() {
           VLOG(2) << "Finish device execution for " << executable_name
                   << ", launch_id: " << launch_id
                   << ", device: " << device->DebugString();
@@ -2793,7 +2789,7 @@ PjRtStreamExecutorLoadedExecutable::EnqueueExecution(
     if (!host_callback_status.ok()) {
       LOG(WARNING)
           << "Failed to do host callback for start device execution for "
-          << executable_name << ", status = " << host_callback_status;
+          << name_ << ", status = " << host_callback_status;
     }
   }
 

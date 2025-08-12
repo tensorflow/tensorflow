@@ -609,6 +609,7 @@ cc_library(
         "//xla/backends/gpu/runtime:thunk",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
+        "//xla/service:computation_layout",
         "//xla/service:executable",
         "//xla/service:hlo_value",
         "//xla/service:maybe_owning_device_memory",
@@ -674,13 +675,15 @@ xla_cc_test(
     srcs = ["gpu_executable_test.cc"],
     deps = [
         ":gpu_executable",
+        "//xla:shape_layout",
         "//xla:shape_util",
+        "//xla/backends/gpu/runtime:sequential_thunk",
+        "//xla/backends/gpu/runtime:thunk",
         "//xla/hlo/ir:hlo",
         "//xla/tsl/platform:status_matchers",
+        "//xla/tsl/platform:statusor",
         "//xla/tsl/util/proto:proto_matchers",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
