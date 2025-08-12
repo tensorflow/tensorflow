@@ -67,9 +67,12 @@ class DotOperandDims {
   static absl::StatusOr<std::array<DotOperandDims, 2>> FromDot(
       const HloInstruction* dot);
 
+  static absl::StatusOr<std::array<DotOperandDims, 4>> FromScaledDot(
+      const HloInstruction* scaled_dot);
+
   // Creates a DotOperandDims from a dot instruction and operand index (0 or 1).
   static absl::StatusOr<DotOperandDims> FromDotOperand(
-      const HloInstruction* dot, int operand_idx);
+      const HloInstruction* dot, int operand_number);
 
   // Converts two DotOperandDims to a DotDimensionNumbers.
   static absl::StatusOr<DotDimensionNumbers> IntoDotDimensionNumbers(
