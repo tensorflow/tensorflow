@@ -37,24 +37,13 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/shape.h"
 #include "xla/tools/multihost_hlo_runner/hlo_input_output_format.h"
+#include "xla/tools/multihost_hlo_runner/profiler_interface.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/profiler/lib/profiler_session.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace xla {
-
-// Interface for profiler plugins. If being set in RunningOptions, profiling
-// session will be created for the last run of the HLO module.
-class ProfilerInterface {
- public:
-  virtual ~ProfilerInterface() = default;
-  // Creates profiling session while running HLO module.
-  virtual void CreateSession() = 0;
-  // Uploads profiling session data after finishing running HLO module.
-  virtual void UploadSession() = 0;
-};
-
 // Interface that may optionally returns an XSpace proto after UploadSession()
 // is called. This can be used by caller to get a programmatic handler of the
 // profile data.

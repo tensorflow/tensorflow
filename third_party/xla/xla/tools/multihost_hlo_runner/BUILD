@@ -25,6 +25,14 @@ build_test(
 )
 
 cc_library(
+    name = "profiler_interface",
+    hdrs = ["profiler_interface.h"],
+    deps = [
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+cc_library(
     name = "hlo_runner_main_lib",
     testonly = True,
     srcs = ["hlo_runner_main.cc"],
@@ -35,6 +43,7 @@ cc_library(
     deps = [
         ":create_client",
         ":functional_hlo_runner",
+        ":profiler_interface",
         "//xla:debug_options_flags",
         "//xla:status_macros",
         "//xla:xla_data_proto_cc",
@@ -152,6 +161,7 @@ cc_library(
     hdrs = ["functional_hlo_runner.h"],
     deps = [
         ":hlo_input_output_format",
+        ":profiler_interface",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_layout",
