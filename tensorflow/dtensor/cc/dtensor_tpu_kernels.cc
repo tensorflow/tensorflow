@@ -118,7 +118,7 @@ class ConfigureAndInitializeGlobalTPUOpKernel : public OpKernel {
     LOG(INFO) << "ConfigureAndInitializeGlobalTPUOpKernel done";
   }
 
-  ~ConfigureAndInitializeGlobalTPUOpKernel() override {}
+  ~ConfigureAndInitializeGlobalTPUOpKernel() override = default;
 
  private:
   // ConfigureAndInitializeGlobalTPUOpKernel is neither copyable nor movable.
