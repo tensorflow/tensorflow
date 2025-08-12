@@ -58,6 +58,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
+#include "xla/pjrt/proto/topology_description.pb.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
@@ -2480,6 +2481,34 @@ PJRT_Error* PJRT_Compile(PJRT_Compile_Args* args) {
   return nullptr;
 }
 
+PJRT_Error* PJRT_TopologyDescription_Deserialize(
+    PJRT_TopologyDescription_Deserialize_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_TopologyDescription_Attributes_Args",
+      PJRT_TopologyDescription_Attributes_Args_STRUCT_SIZE, args->struct_size));
+
+  xla::PjRtTopologyDescriptionProto proto;
+  if (!proto.ParseFromArray(args->serialized_topology,
+                            args->serialized_topology_size)) {
+    return new PJRT_Error{xla::InvalidArgument(
+        "Failed to parse PjRtTopologyDescriptionProto at the C API level, "
+        "from binary string of size: %d",
+        args->serialized_topology_size)};
+  }
+
+  PJRT_ASSIGN_OR_RETURN(xla::PjRtCompiler * compiler,
+                        xla::GetPjRtCompiler(proto.platform_name()));
+  std::string serialized_topology_str(args->serialized_topology,
+                                      args->serialized_topology_size);
+  PJRT_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::PjRtTopologyDescription> deserialized_topology,
+      compiler->DeserializePjRtTopologyDescription(serialized_topology_str));
+
+  args->topology =
+      pjrt::CreateWrapperDeviceTopology(std::move(deserialized_topology));
+  return nullptr;
+}
+
 PJRT_Error* PJRT_Layouts_MemoryLayout_Destroy(
     PJRT_Layouts_MemoryLayout_Destroy_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
@@ -2918,6 +2947,8 @@ PJRT_Api CreatePjrtApi(PJRT_Client_Create* create_fn,
       pjrt::PJRT_Client_CreateUninitializedBuffer,
       /*PJRT_Client_UpdateGlobalProcessInfo=*/
       pjrt::PJRT_Client_UpdateGlobalProcessInfo,
+      /*PJRT_TopologyDescription_Deserialize=*/
+      pjrt::PJRT_TopologyDescription_Deserialize,
   };
 }
 
