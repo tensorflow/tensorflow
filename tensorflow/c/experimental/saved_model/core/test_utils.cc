@@ -15,9 +15,13 @@ limitations under the License.
 
 #include "tensorflow/c/experimental/saved_model/core/test_utils.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/c/tensor_interface.h"
