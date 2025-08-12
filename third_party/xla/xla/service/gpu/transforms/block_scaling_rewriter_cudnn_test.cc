@@ -48,12 +48,14 @@ ENTRY main {
       /*reference_preprocessor=*/
       [](HloModule* reference_module) {
         BlockScalingRewriter pass(/*allow_cudnn=*/false);
-        EXPECT_THAT(RunHloPass(&pass, reference_module), IsOkAndHolds(true));
+        EXPECT_THAT(RunHloPass(&pass, reference_module),
+                    absl_testing::IsOkAndHolds(true));
       },
       /*test_preprocessor=*/
       [](HloModule* test_module) {
         BlockScalingRewriter pass(/*allow_cudnn=*/true);
-        EXPECT_THAT(RunHloPass(&pass, test_module), IsOkAndHolds(true));
+        EXPECT_THAT(RunHloPass(&pass, test_module),
+                    absl_testing::IsOkAndHolds(true));
       }));
 
   RunAndFilecheckHloRewrite(hlo_string, BlockScalingRewriter(false),
@@ -80,12 +82,14 @@ ENTRY main {
       /*reference_preprocessor=*/
       [](HloModule* reference_module) {
         BlockScalingRewriter pass(/*allow_cudnn=*/false);
-        EXPECT_THAT(RunHloPass(&pass, reference_module), IsOkAndHolds(true));
+        EXPECT_THAT(RunHloPass(&pass, reference_module),
+                    absl_testing::IsOkAndHolds(true));
       },
       /*test_preprocessor=*/
       [](HloModule* test_module) {
         BlockScalingRewriter pass(/*allow_cudnn=*/true);
-        EXPECT_THAT(RunHloPass(&pass, test_module), IsOkAndHolds(true));
+        EXPECT_THAT(RunHloPass(&pass, test_module),
+                    absl_testing::IsOkAndHolds(true));
       }));
 
   RunAndFilecheckHloRewrite(hlo_string, BlockScalingRewriter(false),
@@ -116,12 +120,14 @@ ENTRY main {
       /*reference_preprocessor=*/
       [](HloModule* reference_module) {
         BlockScalingRewriter pass(/*allow_cudnn=*/false);
-        EXPECT_THAT(RunHloPass(&pass, reference_module), IsOkAndHolds(true));
+        EXPECT_THAT(RunHloPass(&pass, reference_module),
+                    absl_testing::IsOkAndHolds(true));
       },
       /*test_preprocessor=*/
       [](HloModule* test_module) {
         BlockScalingRewriter pass(/*allow_cudnn=*/true);
-        EXPECT_THAT(RunHloPass(&pass, test_module), IsOkAndHolds(true));
+        EXPECT_THAT(RunHloPass(&pass, test_module),
+                    absl_testing::IsOkAndHolds(true));
       }));
 
   RunAndFilecheckHloRewrite(hlo_string, BlockScalingRewriter(false),
@@ -158,12 +164,14 @@ ENTRY main {
       /*reference_preprocessor=*/
       [](HloModule* reference_module) {
         BlockScalingRewriter pass(/*allow_cudnn=*/false);
-        EXPECT_THAT(RunHloPass(&pass, reference_module), IsOkAndHolds(true));
+        EXPECT_THAT(RunHloPass(&pass, reference_module),
+                    absl_testing::IsOkAndHolds(true));
       },
       /*test_preprocessor=*/
       [](HloModule* test_module) {
         BlockScalingRewriter pass(/*allow_cudnn=*/true);
-        EXPECT_THAT(RunHloPass(&pass, test_module), IsOkAndHolds(true));
+        EXPECT_THAT(RunHloPass(&pass, test_module),
+                    absl_testing::IsOkAndHolds(true));
       }));
 
   RunAndFilecheckHloRewrite(hlo_string, BlockScalingRewriter(false),
