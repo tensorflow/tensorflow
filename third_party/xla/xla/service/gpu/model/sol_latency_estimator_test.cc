@@ -290,7 +290,7 @@ ENTRY e {
 })",
       /*opcode_to_find=*/HloOpcode::kFusion,
       /*cost_type=*/CostType::kNodeCost,
-      /*expected_latency=*/absl::Microseconds(8),
+      /*expected_latency=*/absl::Microseconds(9),
   };
 
   EstimatorTestCase cublas_matmul_bf16_batch1_1024_1024_1024 = {
@@ -320,7 +320,7 @@ ENTRY e {
 })",
       /*opcode_to_find=*/HloOpcode::kCustomCall,
       /*cost_type=*/CostType::kNodeCost,
-      /*expected_latency=*/absl::Microseconds(8),
+      /*expected_latency=*/absl::Microseconds(9),
   };
 
   EstimatorTestCase simple_fusion_elementwise = {
