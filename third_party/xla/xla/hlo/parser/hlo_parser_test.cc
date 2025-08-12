@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/array.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/collective_device_list.h"
+#include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -1546,6 +1547,34 @@ ENTRY %test (v1: f32[], v2: f32[3], v3: f32[2,3]) -> ((f32[], f32[3]), f32[2,3])
 
 )"
 },
+
+{
+"OriginalValueRecoveryTable",
+R"(HloModule test, entry_computation_layout={(f32[192]{0})->f32[1,17,17,192]{3,2,1,0}}, origin_recovery_table={
+  {"broadcast.2340"} : {"reshape.2341"},
+  "
+    ENTRY %recovery_computation.3 (p.1: f32[1,192]) -> f32[1,1,1,192] {
+      %p.1 = f32[1,192]{1,0} parameter(0)
+      ROOT %reshape.2 = f32[1,1,1,192]{3,2,1,0} reshape(%p.1)
+    }
+  "
+  {"reshape.2341"} : {"placeholder_reshape.201"},
+  "
+    ENTRY %recovery_computation.3 (p.1: f32[192]) -> f32[1,192] {
+      %p.1 = f32[192]{0} parameter(0)
+      ROOT %reshape.2 = f32[1,192]{1,0} reshape(%p.1)
+    }
+  "
+}
+
+
+ENTRY %main (Arg_0: f32[192]) -> f32[1,17,17,192] {
+  %Arg_0 = f32[192]{0} parameter(0)
+  ROOT %broadcast.2342 = f32[1,17,17,192]{3,2,1,0} broadcast(f32[192]{0} %Arg_0), dimensions={3}, origin={{"broadcast.2342"}}
+}
+
+)"
+},
 });
   // clang-format on
 }
@@ -1984,7 +2013,7 @@ add {
 
 ENTRY CRS {
   input = f32[8]{0} parameter(0)
-  ROOT crs = f32[8]{0} all-reduce(input), replica_groups={}, to_apply=add
+  ROOT crs = f32[8]{0} all-reduce(input), mode=cross_replica, replica_groups={}, to_apply=add
 }
 
 )"
@@ -2002,7 +2031,7 @@ add {
 
 ENTRY AllReduceWithSubgroups {
   input = f32[128,32]{0,1} parameter(0)
-  ROOT all-reduce = f32[128,32]{0,1} all-reduce(input), replica_groups={{0,1},{2,3}}, to_apply=add
+  ROOT all-reduce = f32[128,32]{0,1} all-reduce(input), mode=cross_replica, replica_groups={{0,1},{2,3}}, to_apply=add
 }
 
 )",
@@ -2021,7 +2050,7 @@ add {
 
 ENTRY AllReduceWithSubgroupsIotaList {
   input = f32[128,32]{0,1} parameter(0)
-  ROOT all-reduce = f32[128,32]{0,1} all-reduce(input), replica_groups=[2,10]<=[20], to_apply=add
+  ROOT all-reduce = f32[128,32]{0,1} all-reduce(input), mode=cross_replica, replica_groups=[2,10]<=[20], to_apply=add
 }
 
 )",
@@ -2040,14 +2069,14 @@ add {
 
 ENTRY CRS {
   input = f32[8]{0} parameter(0)
-  ROOT crs = f32[8]{0} all-reduce(input), replica_groups={}, constrain_layout=true, to_apply=add
+  ROOT crs = f32[8]{0} all-reduce(input), mode=cross_replica, replica_groups={}, constrain_layout=true, to_apply=add
 }
 
 )"
 },
-// all-reduce with channel-id
+// all-reduce with mode=cross_replica_and_partition
 {
-"AllReduceAllReduce",
+"AllReduceCrossReplicaAndPartition",
 R"(HloModule CRS, entry_computation_layout={(f32[8]{0})->f32[8]{0}}
 
 add {
@@ -2058,8 +2087,27 @@ add {
 
 ENTRY CRS {
   input = f32[8]{0} parameter(0)
-  crs.1 = f32[8]{0} all-reduce(input), channel_id=1, replica_groups={{0}}, to_apply=add
-  ROOT crs.0 = f32[8]{0} all-reduce(input), channel_id=1, replica_groups={{0}}, to_apply=add
+  crs.1 = f32[8]{0} all-reduce(input), mode=cross_replica_and_partition, channel_id=1, replica_groups={{0}}, to_apply=add
+  ROOT crs.0 = f32[8]{0} all-reduce(input), mode=cross_replica_and_partition, channel_id=1, replica_groups={{0}}, to_apply=add
+}
+
+)"
+},
+// all-reduce with mode=flattened_id
+{
+"AllReduceFlattenedIds",
+R"(HloModule CRS, entry_computation_layout={(f32[8]{0})->f32[8]{0}}
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY CRS {
+  input = f32[8]{0} parameter(0)
+  crs.1 = f32[8]{0} all-reduce(input), mode=cross_replica_and_partition, channel_id=1, replica_groups={{0}}, to_apply=add
+  ROOT crs.0 = f32[8]{0} all-reduce(input), mode=flattened_id, channel_id=1, replica_groups={{0}}, use_global_device_ids=true, to_apply=add
 }
 
 )"
@@ -2077,7 +2125,7 @@ add {
 
 ENTRY CRS {
   input = f32[8]{0} parameter(0)
-  crs = f32[8]{0} all-reduce-start(input), replica_groups={}, to_apply=add
+  crs = f32[8]{0} all-reduce-start(input), mode=cross_replica, replica_groups={}, to_apply=add
   ROOT done = f32[8]{0} all-reduce-done(crs)
 }
 
@@ -2096,7 +2144,25 @@ add {
 
 ENTRY CRS {
   input = f32[8]{0} parameter(0)
-  ROOT ars = f32[4]{0} reduce-scatter(input), replica_groups={{0,1}}, dimensions={0}, to_apply=add
+  ROOT ars = f32[4]{0} reduce-scatter(input), mode=cross_replica, replica_groups={{0,1}}, dimensions={0}, to_apply=add
+}
+
+)"
+},
+// reduce-scatter with mode=flattened_id
+{
+"ReduceScatterFlattenedId",
+R"(HloModule RS, entry_computation_layout={(f32[8]{0})->f32[4]{0}}
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY CRS {
+  input = f32[8]{0} parameter(0)
+  ROOT ars = f32[4]{0} reduce-scatter(input), mode=flattened_id, channel_id=1, replica_groups={{0,1}}, use_global_device_ids=true, dimensions={0}, to_apply=add
 }
 
 )"
@@ -2690,104 +2756,6 @@ ENTRY test {
   broadcast.anon = f32[10,10]{1,0} broadcast(parameter.anon), dimensions={}
   ROOT root = f32[10,10]{1,0} sqrt(broadcast.anon)
 })"
-},
-
-{
-"SparseShape",
-R"(HloModule test
-
-ENTRY test {
-  ROOT root = f32[10,10]{1,0:D(D,C)} parameter(0)
-})",
-R"(HloModule test, entry_computation_layout={(f32[10,10]{1,0:D(D,C)})->f32[10,10]{1,0:D(D,C)}}
-
-ENTRY test {
-  ROOT root = f32[10,10]{1,0:D(D,C)} parameter(0)
-})",
-},
-
-{
-"SparseShapeWithIndexPrimitiveType",
-R"(HloModule test
-
-ENTRY test {
-  ROOT root = f32[10,10]{1,0:D(D,C)#(u32)} parameter(0)
-})",
-R"(HloModule test, entry_computation_layout={(f32[10,10]{1,0:D(D,C)#(u32)})->f32[10,10]{1,0:D(D,C)#(u32)}}
-
-ENTRY test {
-  ROOT root = f32[10,10]{1,0:D(D,C)#(u32)} parameter(0)
-})",
-},
-
-{
-"SparseShapeWithPointerPrimitiveType",
-R"(HloModule test
-
-ENTRY test {
-  ROOT root = f32[10,10]{1,0:D(D,C)*(u32)} parameter(0)
-})",
-R"(HloModule test, entry_computation_layout={(f32[10,10]{1,0:D(D,C)*(u32)})->f32[10,10]{1,0:D(D,C)*(u32)}}
-
-ENTRY test {
-  ROOT root = f32[10,10]{1,0:D(D,C)*(u32)} parameter(0)
-})",
-},
-
-{
-"SparseShapeWithPhysicalShape",
-R"(HloModule test
-
-ENTRY test {
-  ROOT root = f32[10,10]{1,0:D(D,C)P((s32[10]{0:T(100)}, s32[10]{0:T(100)}, f32[10]{0:T(100)}))} parameter(0)
-})",
-R"(HloModule test, entry_computation_layout={(f32[10,10]{1,0:D(D,C)P((s32[10]{0:T(100)}, s32[10]{0:T(100)}, f32[10]{0:T(100)}))})->f32[10,10]{1,0:D(D,C)P((s32[10]{0:T(100)}, s32[10]{0:T(100)}, f32[10]{0:T(100)}))}}
-
-ENTRY test {
-  ROOT root = f32[10,10]{1,0:D(D,C)P((s32[10]{0:T(100)}, s32[10]{0:T(100)}, f32[10]{0:T(100)}))} parameter(0)
-})",
-},
-
-{
-"SparseShapeFull",
-R"(HloModule test
-
-ENTRY test {
-  ROOT root = f32[10,10]{1,0:D(D,C)#(u64)*(u32)S(42)P((s32[10]{0:T(100)}, s32[10]{0:T(100)}, f32[10]{0:T(100)}))} parameter(0)
-})",
-R"(HloModule test, entry_computation_layout={(f32[10,10]{1,0:D(D,C)#(u64)*(u32)S(42)P((s32[10]{0:T(100)}, s32[10]{0:T(100)}, f32[10]{0:T(100)}))})->f32[10,10]{1,0:D(D,C)#(u64)*(u32)S(42)P((s32[10]{0:T(100)}, s32[10]{0:T(100)}, f32[10]{0:T(100)}))}}
-
-ENTRY test {
-  ROOT root = f32[10,10]{1,0:D(D,C)#(u64)*(u32)S(42)P((s32[10]{0:T(100)}, s32[10]{0:T(100)}, f32[10]{0:T(100)}))} parameter(0)
-})",
-},
-
-{
-"SparseCOO",
-R"(HloModule test
-
-ENTRY test {
-  ROOT root = f32[10,10]{1,0:D(C,S)} parameter(0)
-})",
-R"(HloModule test, entry_computation_layout={(f32[10,10]{1,0:D(C,S)})->f32[10,10]{1,0:D(C,S)}}
-
-ENTRY test {
-  ROOT root = f32[10,10]{1,0:D(C,S)} parameter(0)
-})",
-},
-
-{
-"SparseCOOUnordered",
-R"(HloModule test
-
-ENTRY test {
-  ROOT root = f32[10,10]{1,0:D(C,S)} parameter(0)
-})",
-R"(HloModule test, entry_computation_layout={(f32[10,10]{1,0:D(C,S)})->f32[10,10]{1,0:D(C,S)}}
-
-ENTRY test {
-  ROOT root = f32[10,10]{1,0:D(C,S)} parameter(0)
-})",
 },
 });
   // clang-format on
@@ -5207,31 +5175,6 @@ ENTRY test {
                   HasSubstr("expected a DimLevelType abbreviation")));
 }
 
-TEST_F(HloParserTest, InvalidDimLevelTypeCount) {
-  const std::string original = R"(HloModule test
-
-ENTRY test {
-  ROOT root = f32[10,10]{1,0:D(C)} parameter(0)
-})";
-  EXPECT_THAT(
-      ParseAndReturnUnverifiedModule(original).status(),
-      tsl::testing::StatusIs(
-          tsl::error::INVALID_ARGUMENT,
-          HasSubstr("Dimensions size is 2, but dim level types size is 1")));
-}
-
-TEST_F(HloParserTest, RejectSparseTiles) {
-  const std::string original = R"(HloModule test
-
-ENTRY test {
-  ROOT root = f32[10,10]{1,0:D(D,C)T(128,8)} parameter(0)
-})";
-  EXPECT_THAT(ParseAndReturnUnverifiedModule(original).status(),
-              tsl::testing::StatusIs(
-                  tsl::error::INVALID_ARGUMENT,
-                  HasSubstr("Layout has tiles, but is for a sparse array")));
-}
-
 TEST_F(HloParserTest, RejectDensePhysicalShape) {
   const std::string original = R"(HloModule test
 
@@ -5807,6 +5750,31 @@ ENTRY %test {
                   "origin={(({}, {\"v2\"}), {\"v3\"})}");
 }
 
+TEST_F(HloParserTest, DeduplicateOriginalValues) {
+  const std::string hlo_string =
+      R"(HloModule test, entry_computation_layout={(s32[])->s32[]}
+
+%fused_computation (param_0: s32[]) -> s32[] {
+  %param_0 = s32[] parameter(0)
+  %constant = s32[] constant(32)
+  ROOT %add = s32[] add(%param_0, %constant), origin={{"concatenate"}}
+}
+
+ENTRY %test (Arg_0: s32[]) -> s32[] {
+  %Arg_0 = s32[] parameter(0), origin={{"Arg_0"}}
+  ROOT %pad_add_fusion = s32[] fusion(%Arg_0), kind=kLoop, calls=%fused_computation, origin={{"concatenate"}}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  auto fusion_inst = static_cast<HloFusionInstruction*>(
+      module->entry_computation()->root_instruction());
+
+  ASSERT_EQ(
+      fusion_inst->original_value(),
+      fusion_inst->called_computation()->root_instruction()->original_value());
+}
+
 TEST_F(HloParserTest, TranscendentalAccuracyMode) {
   constexpr absl::string_view hlo_string = R"(
   HloModule exponential_hw
@@ -5956,8 +5924,7 @@ TEST_F(HloParserTest,
   EXPECT_EQ(wrapped_instr->statistics_viz().statistics(1).stat_name(),
             "stat-2");
   EXPECT_EQ(wrapped_instr->statistics_viz().statistics(1).stat_val(), 44);
-  EXPECT_EQ(OriginalValueToString(*wrapped_instr->original_value()),
-            "{\"v3\"}");
+  EXPECT_EQ(wrapped_instr->original_value()->ToString(), "{\"v3\"}");
   // Check the async-start and async-done instructions.
   HloInstruction* async_done = m->entry_computation()->root_instruction();
   HloInstruction* async_start = async_done->async_chain_start();
@@ -5968,8 +5935,8 @@ TEST_F(HloParserTest,
               EqualsProto(wrapped_instr->frontend_attributes()));
   EXPECT_THAT(async_start->statistics_viz(),
               EqualsProto(wrapped_instr->statistics_viz()));
-  EXPECT_EQ(OriginalValueToString(*async_done->original_value()),
-            OriginalValueToString(*wrapped_instr->original_value()));
+  EXPECT_EQ(async_done->original_value()->ToString(),
+            wrapped_instr->original_value()->ToString());
 }
 
 TEST_F(HloParserTest, ResultAccuracyToProto) {
@@ -6009,7 +5976,7 @@ TEST_F(HloParserTest, ParseBufferMoreThanOneElement) {
 TEST_F(HloParserTest, ParseBufferScalar) {
   std::string shape_string = "b(s32[])";
   TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
-  Shape expected = ShapeUtil::MakeBufferShape(S32, {});
+  Shape expected = ShapeUtil::MakeValidatedBufferShape(S32, {}).value();
   ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
       << "expected: " << ShapeUtil::HumanString(expected)
       << "actual:   " << ShapeUtil::HumanString(actual);
@@ -6018,10 +5985,48 @@ TEST_F(HloParserTest, ParseBufferScalar) {
 TEST_F(HloParserTest, ParseBufferArray) {
   std::string shape_string = "b(f32[8,16]{1,0})";
   TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
-  Shape expected = ShapeUtil::MakeBufferShape(F32, {8, 16});
+  Shape expected = ShapeUtil::MakeValidatedBufferShape(F32, {8, 16}).value();
   ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
       << "expected: " << ShapeUtil::HumanString(expected)
       << "actual:   " << ShapeUtil::HumanString(actual);
+}
+
+TEST_F(HloParserTest, AllReduceModeProto) {
+  // Test that the mode attribute is parsed and round trips through proto.
+  // Intentionally give a mode that would fail the verifier, to ensure the
+  // default mode is not used.
+  const std::string hlo_string = R"(
+HloModule AllReduceModeProto
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY AllReduceModeProto {
+  input = f32[128,32]{0,1} parameter(0)
+  ROOT all_reduce = f32[128,32]{0,1} all-reduce(input), mode=flattened_id,
+      replica_groups={{0,1},{2,3}}, to_apply=add
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  const auto* ar = Cast<HloAllReduceInstruction>(root);
+  EXPECT_EQ(ar->collective_op_group_mode(),
+            CollectiveOpGroupMode::kFlattenedID);
+
+  // Round trip through proto.
+  HloModuleProto proto = module->ToProto();
+  TF_ASSERT_OK_AND_ASSIGN(auto new_module,
+                          HloModule::CreateFromProto(proto, module->config()));
+
+  const HloInstruction* new_root =
+      new_module->entry_computation()->root_instruction();
+  const auto* new_ar = Cast<HloAllReduceInstruction>(new_root);
+  EXPECT_EQ(new_ar->collective_op_group_mode(),
+            CollectiveOpGroupMode::kFlattenedID);
 }
 
 }  // namespace

@@ -61,11 +61,12 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/xnnpack/xnn_convolution_thunk.h"
 #include "xla/backends/cpu/runtime/xnnpack/xnn_dot_thunk.h"
 #include "xla/backends/cpu/runtime/xnnpack/xnn_fusion_thunk.h"
+#include "xla/backends/cpu/xnnpack_config.pb.h"
 #include "xla/runtime/resource_use.h"
+#include "xla/runtime/work_group.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -741,6 +742,7 @@ static absl::Status ToProto(const XnnDotThunk& thunk, ThunkProto& proto) {
       xnn_dot_thunk_proto->mutable_out_buffer_shape()));
   proto.mutable_xnn_fusion_thunk()->mutable_options()->set_use_threadpool(
       thunk.options().use_threadpool);
+  xnn_dot_thunk_proto->set_capture_rhs(thunk.capture_rhs());
   return absl::OkStatus();
 }
 
@@ -818,9 +820,9 @@ static absl::Status ToProto(const KernelThunkBase& thunk, ThunkProto& proto) {
   const absl::string_view kernel_name = thunk.kernel_name();
   const std::string kernel_name_str(kernel_name.begin(), kernel_name.end());
   kernel_thunk_proto->set_kernel_name(kernel_name_str);
-  kernel_thunk_proto->mutable_thread_dim()->set_x(thunk.thread_dim().x);
-  kernel_thunk_proto->mutable_thread_dim()->set_y(thunk.thread_dim().y);
-  kernel_thunk_proto->mutable_thread_dim()->set_z(thunk.thread_dim().z);
+  kernel_thunk_proto->mutable_num_workgroups()->set_x(thunk.num_workgroups().x);
+  kernel_thunk_proto->mutable_num_workgroups()->set_y(thunk.num_workgroups().y);
+  kernel_thunk_proto->mutable_num_workgroups()->set_z(thunk.num_workgroups().z);
   kernel_thunk_proto->mutable_min_alignment()->set_contains_value(
       thunk.min_alignment().has_value());
   if (thunk.min_alignment().has_value()) {
@@ -1339,9 +1341,10 @@ static absl::StatusOr<std::unique_ptr<Thunk>> KernelThunkFromProto(
     results_buffers.push_back(std::move(buffer));
   }
 
-  se::ThreadDim thread_dim(proto.kernel_thunk().thread_dim().x(),
-                           proto.kernel_thunk().thread_dim().y(),
-                           proto.kernel_thunk().thread_dim().z());
+  NumWorkGroups num_workgroups{
+      static_cast<uint64_t>(proto.kernel_thunk().num_workgroups().x()),
+      static_cast<uint64_t>(proto.kernel_thunk().num_workgroups().y()),
+      static_cast<uint64_t>(proto.kernel_thunk().num_workgroups().z())};
 
   absl::flat_hash_set<int64_t> invariant_arguments;
   for (int64_t invariant_argument :
@@ -1356,7 +1359,7 @@ static absl::StatusOr<std::unique_ptr<Thunk>> KernelThunkFromProto(
 
   return KernelThunk::Create(std::move(info), std::move(arguments_buffers),
                              std::move(results_buffers),
-                             proto.kernel_thunk().kernel_name(), thread_dim,
+                             proto.kernel_thunk().kernel_name(), num_workgroups,
                              invariant_arguments, min_alignment);
 }
 
@@ -1540,10 +1543,12 @@ static absl::StatusOr<std::unique_ptr<XnnDotThunk>> XnnDotThunkFromProto(
   const auto& [rhs_buffer, rhs_shape] = rhs_slice_shape;
   const auto& [out_buffer, out_shape] = out_slice_shape;
 
+  bool capture_rhs = proto.xnn_fusion_thunk().xnn_dot_thunk().capture_rhs();
+
   return XnnDotThunk::Create(
       std::move(options), std::move(info),
       proto.xnn_fusion_thunk().xnn_dot_thunk().dot_dimensions(), lhs_buffer,
-      lhs_shape, rhs_buffer, rhs_shape, out_buffer, out_shape);
+      lhs_shape, rhs_buffer, rhs_shape, out_buffer, out_shape, capture_rhs);
 }
 
 static absl::StatusOr<std::unique_ptr<XnnConvolutionThunk>>

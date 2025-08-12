@@ -1,5 +1,5 @@
-// RUN: tf-opt %s -tfl-prepare-quantize="quantize-signed=true post-training-quantize=true" -cse | FileCheck %s
-// RUN: tf-opt %s -tfl-prepare-quantize="quantize-signed=true post-training-quantize=true legacy-float-scale=true" -cse| FileCheck --check-prefix=Legacy %s
+// RUN: litert-opt %s -tfl-prepare-quantize="quantize-signed=true post-training-quantize=true" -cse | FileCheck %s
+// RUN: litert-opt %s -tfl-prepare-quantize="quantize-signed=true post-training-quantize=true legacy-float-scale=true" -cse| FileCheck --check-prefix=Legacy %s
 
 // CHECK-LABEL: QuantizeLstmCellInput
 func.func @QuantizeLstmCellInput(%arg0: tensor<1x28x28xf32>) -> tensor<1x28x20xf32> {

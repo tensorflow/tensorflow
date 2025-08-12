@@ -1,0 +1,9 @@
+
+--- a/test/Triton/reproducer.mlir	2024-12-05 23:53:31.000000000 -0800
++++ b/test/Triton/reproducer.mlir	2025-06-09 11:14:20.000000000 -0700
+@@ -17,4 +17,4 @@
+ #-}
+ 
+ // CHECK: Pass Manager with
+-// CHECK-NEXT: convert-triton-gpu-to-llvm
++// CHECK: convert-triton-gpu-to-llvm

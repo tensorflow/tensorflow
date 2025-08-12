@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -316,9 +317,10 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
                         HloLiveRange::Run(module->schedule(), *alias_analysis,
                                           module->entry_computation()));
 
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<PresetAssignments> preset_assignments,
-                        MemorySpaceAssignment::Run(module, *hlo_live_range,
-                                                   *alias_analysis, options));
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<PresetAssignments> preset_assignments,
+        MemorySpaceAssignment::Run(module, *hlo_live_range, *alias_analysis,
+                                   &alias_info_, options));
     if (check_parameters_in_default_memory) {
       CheckParametersInDefaultMemory(module);
     }
@@ -422,7 +424,8 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
     auto status_or_alias_analysis = HloAliasAnalysis::Run(module);
     TF_CHECK_OK(status_or_alias_analysis.status());
     auto alias_analysis = std::move(status_or_alias_analysis.value());
-    HloBuffer& buffer = alias_analysis->GetUniqueBufferAt(instruction, index);
+    const HloBuffer& buffer =
+        alias_analysis->GetUniqueBufferAt(instruction, index);
     for (auto& pos_and_chunk : preset_assignments.chunks()) {
       for (auto& value : buffer.values()) {
         if (pos_and_chunk.first == value->defining_position()) {
@@ -493,6 +496,7 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
   }
 
   CostAnalysis::Cache cache_;
+  AliasInfo alias_info_;
 };
 
 }  // namespace memory_space_assignment

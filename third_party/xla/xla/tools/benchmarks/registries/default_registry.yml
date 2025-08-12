@@ -18,46 +18,60 @@
 benchmarks: [
   {
     name: "gemma3_1b_flax_call"
-    description: "Benchmarks Gemma3 1b in Flax using B200 GPUs."
+    description: "Gemma3 1b in Flax."
     owner: "juliagmt-google@"
     input_artifact: {
       input_format: HLO_TEXT
       artifact_gcs_bucket_path: "https://storage.googleapis.com/xla-benchmarking-temp/gemma3_1b_flax_call.hlo"
     }
     model_source_info: ["Gemma3 1B"]
-    hardware_targets: [{
-      hardware_category: GPU_B200
-      topology: { num_hosts: 1, num_devices_per_host: 1 }
-      target_metrics: [WALL_TIME, GPU_DEVICE_TIME, GPU_DEVICE_MEMCPY_TIME, PEAK_GPU_MEMORY]
-    }]
-    run_frequencies: [POSTSUBMIT]
+    hardware_execution_configs: [{
+      hardware_category: GPU_L4
+      topology: { num_hosts: 1, num_devices_per_host: 1, multi_host: false, multi_device: false }
+      target_metrics: [GPU_DEVICE_TIME, GPU_DEVICE_MEMCPY_TIME]
+      workflow_type: [PRESUBMIT, POSTSUBMIT, SCHEDULED]
+      runtime_flags: ["--num_repeats=5"]
+    },
+    {
+      hardware_category: CPU_X86
+      topology: { num_hosts: 1, num_devices_per_host: 1, multi_host: false, multi_device: false }
+      target_metrics: [CPU_TIME]
+      workflow_type: [PRESUBMIT, POSTSUBMIT, SCHEDULED]
+      runtime_flags: ["--num_repeats=5"]
+    }
+    ]
     update_frequency_policy: QUARTERLY
-    runtime_flags: ["--num_repeats=5"]
-    github_labels: ["blocking_presubmit_test"] # Github label for presubmit triggering
   },
   {
     name: "gemma2_2b_keras_jax"
-    description: "Gemma2 2B in Keras on x86 CPU."
-    owner: "company-A@"
+    description: "Gemma2 2B in Keras."
+    owner: "juliagmt-google@"
     input_artifact: {
       input_format: HLO_TEXT
       artifact_gcs_bucket_path: "https://storage.googleapis.com/xla-benchmarking-temp/gemma2_2b_keras_jax.hlo"
     }
     model_source_info: ["Gemma2 2B"]
-    hardware_targets: [{
+    hardware_execution_configs: [{
       hardware_category: GPU_L4
-      topology: { num_hosts: 1, num_devices_per_host: 1 }
-      target_metrics: [WALL_TIME, GPU_DEVICE_TIME, GPU_DEVICE_MEMCPY_TIME, PEAK_GPU_MEMORY]
+      topology: { num_hosts: 1, num_devices_per_host: 1, multi_host: false, multi_device: false }
+      target_metrics: [GPU_DEVICE_TIME, GPU_DEVICE_MEMCPY_TIME]
+      workflow_type: [PRESUBMIT, POSTSUBMIT]
+      runtime_flags: ["--num_repeats=5"]
+    },
+    {
+      hardware_category: GPU_B200
+      topology: { num_hosts: 1, num_devices_per_host: 1, multi_host: false, multi_device: false }
+      target_metrics: [GPU_DEVICE_TIME, GPU_DEVICE_MEMCPY_TIME]
+      workflow_type: [POSTSUBMIT]
+      runtime_flags: ["--num_repeats=5"]
     },
     {
       hardware_category: CPU_X86
-      topology: { num_hosts: 1, num_devices_per_host: 1 }
-      target_metrics: [CPU_TIME, PEAK_CPU_MEMORY]
-    }
-    ]
-    run_frequencies: [PRESUBMIT, POSTSUBMIT]
+      topology: { num_hosts: 1, num_devices_per_host: 1, multi_host: false, multi_device: false }
+      target_metrics: [CPU_TIME]
+      workflow_type: [PRESUBMIT, POSTSUBMIT]
+      runtime_flags: ["--num_repeats=5"]
+    }]
     update_frequency_policy: QUARTERLY
-    runtime_flags: ["--num_repeats=5"]
-    github_labels: ["blocking_presubmit_test"] # Github label for presubmit triggering
   }
 ]

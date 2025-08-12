@@ -25,7 +25,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
-#include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -37,6 +36,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "tsl/platform/casts.h"
 
 namespace xla {
 namespace gpu {
@@ -101,8 +101,7 @@ absl::Status CollectiveGroupThunk::ExecuteOnStream(
   }
 
   Communicator* comm = *communicator_set.begin();
-  TF_ASSIGN_OR_RETURN(GpuCommunicator * gpu_comm,
-                      GpuCollectives::TryCast(comm));
+  auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(comm);
   tsl::AsyncValueRef<Communicator::Event> group_event = gpu_comm->GroupExecute(
       [this, &params](GpuCommunicator* comm) -> absl::Status {
         for (const std::unique_ptr<Thunk>& thunk : thunks_) {

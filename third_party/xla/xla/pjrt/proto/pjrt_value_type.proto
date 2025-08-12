@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package xla;
+
+// Mirror of xla::PjRtValueType.
+
+message PjRtValueTypeProto {
+  message IntVector {
+    repeated int64 values = 1;
+  }
+
+  oneof value {
+    string string_value = 1;
+    bool bool_value = 2;
+    int64 int_value = 3;
+    IntVector int_vector = 4;
+    float float_value = 5;
+  }
+}

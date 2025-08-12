@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -319,14 +320,17 @@ MemorySpaceAssignment::CalculateAsyncCopyStats(
 MemorySpaceAssignment::Run(HloModule* module,
                            const HloLiveRange& hlo_live_range,
                            const HloAliasAnalysis& alias_analysis,
+                           const AliasInfo* alias_info,
                            const Options& options) {
   CHECK(module->has_schedule());
   if (VLOG_IS_ON(3)) {
+    LOG(INFO) << "memory_space_assignment_options::Options:\n";
+    XLA_LOG_LINES(INFO, options.ToString());
     LOG(INFO) << "Module before memory space assignment: ";
     XLA_LOG_LINES(INFO, module->ToString());
     LOG(INFO) << "Schedule: " << module->schedule().ToString();
   }
-  MemorySpaceAssignment memory_space_assignment(module, options,
+  MemorySpaceAssignment memory_space_assignment(module, alias_info, options,
                                                 hlo_live_range);
 
   return memory_space_assignment.RunMemorySpaceAssignment(hlo_live_range,
@@ -456,7 +460,7 @@ absl::Status MemorySpaceAssignment::FindAllocationSequence(
   heap_simulator_options.alloc_constants = true;
   TF_RETURN_IF_ERROR(HeapSimulator::Run(std::move(algorithm), *module_,
                                         module_->schedule(), alias_analysis,
-                                        options_.size_fn,
+                                        alias_info_, options_.size_fn,
                                         heap_simulator_options)
                          .status());
   return absl::OkStatus();
@@ -643,7 +647,7 @@ absl::Status MemorySpaceAssignment::ExportAndColorBuffers(
           shape->mutable_layout()->set_memory_space(
               options_.alternate_memory_space);
           if (split_result != split_map_.end()) {
-            CHECK_EQ(shape->layout().split_configs_size(), 0);
+            CHECK_EQ(shape->layout().split_configs().size(), 0);
             shape->mutable_layout()->add_split_configs(
                 split_result->second->split_configs(0));
           }
@@ -1134,8 +1138,8 @@ absl::Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace(
         return Internal(
             ("Value %s (%d, %d) off: %d size: %d overlaps with another chunk"
              " off: %d size: %d"),
-            value->ToShortString(), start_time, end_time, chunk.offset,
-            chunk.size, overlapping_chunk.offset, overlapping_chunk.size);
+            value->ToString(), start_time, end_time, chunk.offset, chunk.size,
+            overlapping_chunk.offset, overlapping_chunk.size);
       }
     }
     interval_tree.Add(start_time, end_time - 1, chunk);

@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/overload.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -45,7 +46,6 @@ limitations under the License.
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/overload.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
@@ -114,7 +114,8 @@ static bool AsyncStartOrDoneCommandIsSupported(
   if (hlo->async_wrapped_opcode() == HloOpcode::kFusion) {
     // We don't currently support dynamic memcpy fusions in command buffers.
     if (IsDynamicMemcpyFusion(hlo->async_wrapped_instruction())) {
-      return false;
+      return config.enabled_commands.contains(
+          DebugOptions::DYNAMIC_SLICE_COPY_FUSION);
     }
 
     // We currently only support static address computations in command
@@ -265,8 +266,8 @@ static bool IsCommand(const HloInstruction* hlo,
       return config.enabled_commands.contains(DebugOptions::CUDNN);
     }
     if (IsDynamicMemcpyFusion(fusion)) {
-      // Dynamic memcpy fusions do not yet have a command implementation.
-      return false;
+      return config.enabled_commands.contains(
+          DebugOptions::DYNAMIC_SLICE_COPY_FUSION);
     }
     if (IsDynamicSliceFusion(fusion)) {
       auto fusion_analysis =
@@ -947,7 +948,7 @@ absl::StatusOr<bool> CommandBufferScheduling::Run(
     erase(kRequireConditionals);  // on-device control flow
   };
 
-  std::visit(Overload{erase_cuda, erase_rocm},
+  std::visit(absl::Overload(erase_cuda, erase_rocm),
              device_description_.gpu_compute_capability());
 
   auto order = module->MakeComputationPostOrder();

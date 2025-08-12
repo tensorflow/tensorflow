@@ -34,9 +34,9 @@ using test_utils::TestFP16Delegation;
 namespace {
 
 TEST_F(TestDelegate, DelegateNodeInvokeFailureFallback) {
-  delegate_ = std::unique_ptr<SimpleDelegate>(new SimpleDelegate(
-      {0, 1, 2}, kTfLiteDelegateFlagsNone, false /**fail_node_prepare**/,
-      0 /**min_ops_per_subset**/, true /**fail_node_invoke**/));
+  delegate_ = std::make_unique<SimpleDelegate>(
+      std::vector<int>{0, 1, 2}, kTfLiteDelegateFlagsNone,
+      SimpleDelegate::Options::kFailOnInvoke);
   ASSERT_EQ(
       interpreter_->ModifyGraphWithDelegate(delegate_->get_tf_lite_delegate()),
       kTfLiteOk);
@@ -65,12 +65,13 @@ TEST_F(TestDelegate, TestFallbackWithMultipleDelegates) {
   // First delegate only supports node 0.
   // This delegate should support dynamic tensors, otherwise the second won't be
   // applied.
-  delegate_ = std::unique_ptr<SimpleDelegate>(
-      new SimpleDelegate({0}, kTfLiteDelegateFlagsAllowDynamicTensors));
+  delegate_ = std::make_unique<SimpleDelegate>(
+      std::vector<int>{0}, kTfLiteDelegateFlagsAllowDynamicTensors,
+      SimpleDelegate::Options::kNone);
   // Second delegate supports nodes 1 & 2, and makes the graph immutable.
-  delegate2_ = std::unique_ptr<SimpleDelegate>(new SimpleDelegate(
-      {1, 2}, kTfLiteDelegateFlagsNone, false /**fail_node_prepare**/,
-      0 /**min_ops_per_subset**/, true /**fail_node_invoke**/));
+  delegate2_ = std::make_unique<SimpleDelegate>(
+      std::vector<int>{1, 2}, kTfLiteDelegateFlagsNone,
+      SimpleDelegate::Options::kFailOnInvoke);
   // Pre-delegation execution plan should have three nodes.
   ASSERT_EQ(interpreter_->execution_plan().size(), 3);
   ASSERT_EQ(

@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -36,6 +37,7 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
@@ -640,6 +642,45 @@ TEST(HloModuleTest, MultipleCallsFromOneInstruction) {
 
   EXPECT_THAT(f->caller_instructions(), ElementsAre(conditional));
   EXPECT_THAT(g->caller_instructions(), ElementsAre(conditional));
+}
+
+TEST(HloModuleTest, TestUniqueIdIs64Bits) {
+  const char* hlo = R"(
+    f {
+      ROOT tparam = f32[4] parameter(0)
+    }
+
+    g {
+      ROOT fparam = f32[4] parameter(0)
+    }
+
+    ENTRY main {
+      p0 = f32[4] parameter(0)
+      b0 = f32[4] parameter(1)
+      call.f.0 = f32[4] call(p0), to_apply=f
+      call.g.0 = f32[4] call(b0), to_apply=g
+      ROOT sum = f32[4] add(call.f.0, call.g.0)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(hlo));
+  HloComputation* f = module->GetComputationWithName("f");
+  HloInstruction* tparam = f->GetInstructionWithName("tparam");
+  HloComputation* g = module->GetComputationWithName("g");
+  HloInstruction* fparam = g->GetInstructionWithName("fparam");
+  int64_t new_tparam_unique_id = 1 + (static_cast<int64_t>(1) << 32);
+  int64_t new_fparam_unique_id = 1 + (static_cast<int64_t>(2) << 32);
+
+  tparam->ClearUniqueIdInternal();
+  tparam->SetUniqueId(new_tparam_unique_id);
+  fparam->ClearUniqueIdInternal();
+  fparam->SetUniqueId(new_fparam_unique_id);
+  // Upper 32 bits should be preserved
+  EXPECT_EQ(tparam->unique_id_64_bits(), new_tparam_unique_id);
+  EXPECT_EQ(fparam->unique_id_64_bits(), new_fparam_unique_id);
+  TF_EXPECT_OK(module->CheckUniqueNamesAndIdsForComputationsAndInstructions());
+  // Lower 32 bits should be preserved and therefore the same
+  EXPECT_EQ(tparam->unique_id_64_bits() & 0xFFFFFFFF,
+            fparam->unique_id_64_bits() & 0xFFFFFFFF);
 }
 
 }  // namespace

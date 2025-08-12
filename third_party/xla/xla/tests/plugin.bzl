@@ -20,7 +20,6 @@
 #   "foo": {
 #     "deps": [
 #       "//tensorflow/compiler/plugin/foo:foo_lib",
-#       "//tensorflow/compiler/plugin/foo:test_macros",
 #     ],
 #     "disabled_manifest": "tensorflow/compiler/plugin/foo/disabled_test_manifest.txt",
 #     "copts": [],

@@ -31,15 +31,16 @@ limitations under the License.
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/llvm_ir_kernel_source.h"
+#include "xla/codegen/llvm_kernel_definition.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout_util.h"
+#include "xla/runtime/work_group.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/ir_emitter.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -73,7 +74,7 @@ ConcatenateKernelEmitter::ConcatenateKernelEmitter(
       buffer_assignment_(buffer_assignment),
       target_machine_(target_machine) {}
 
-absl::StatusOr<KernelDefinition>
+absl::StatusOr<LlvmKernelDefinition>
 ConcatenateKernelEmitter::EmitKernelDefinition() {
   if (absl::Status status = CanDoFastConcatenate(instr_); !status.ok()) {
     VLOG(1) << "Could not emit fast concatenate for " << instr_->ToString()
@@ -96,9 +97,10 @@ ConcatenateKernelEmitter::EmitKernelDefinition() {
   std::unique_ptr<llvm::Module> llvm_module = KernelApiIrBuilder::CreateModule(
       absl::StrCat(instr_->name(), "_elemental_kernel_module"), *ctx);
 
-  TF_ASSIGN_OR_RETURN(KernelApiIrBuilder::KernelPrototype kernel_prototype,
-                      kernel_api_ir_builder.EmitKernelPrototype(
-                          *llvm_module, instr_, buffer_assignment_, "_kernel"));
+  TF_ASSIGN_OR_RETURN(
+      KernelApiIrBuilder::KernelPrototype kernel_prototype,
+      kernel_api_ir_builder.EmitKernelPrototype(
+          *llvm_module, instr_, buffer_assignment_, name(), "_kernel"));
 
   llvm::IRBuilder<> ir_builder(*ctx);
   ir_builder.SetInsertPoint(
@@ -109,14 +111,13 @@ ConcatenateKernelEmitter::EmitKernelDefinition() {
                                          output_array, llvm_module.get(),
                                          ir_builder));
 
-  auto source = std::make_unique<LlvmIrKernelSource>(std::move(ctx),
-                                                     std::move(llvm_module));
-  KernelSpec spec(kernel_prototype.function->getName(), se::ThreadDim(),
+  LlvmIrKernelSource source(std::move(ctx), std::move(llvm_module));
+  KernelSpec spec(kernel_prototype.function->getName(), NumWorkGroups(),
                   std::move(kernel_prototype.argument_buffers),
                   std::move(kernel_prototype.result_buffers),
                   std::move(kernel_prototype.invariant_arguments));
 
-  return KernelDefinition(std::move(spec), std::move(source));
+  return LlvmKernelDefinition(std::move(spec), std::move(source));
 }
 
 }  // namespace xla::cpu

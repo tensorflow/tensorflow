@@ -218,7 +218,7 @@ TEST(CodegenTest, Golden) {
   variable3->mutable_shape()->add_dim()->set_size(5);
   variable3->set_type(DT_INT32);
   CompileResult compile_result;
-  compile_result.aot =
+  compile_result.set_aot(
       absl::WrapUnique(new xla::cpu::CpuAotCompilationResultLegacy(
           {},
           {BufferInfo::MakeTempBuffer(3 * 8),
@@ -241,7 +241,7 @@ TEST(CodegenTest, Golden) {
                                            /*result_param_number=*/1),
            BufferInfo::MakeResultParameter(/*size=*/5 * 4,
                                            /*result_param_number=*/2)},
-          0, nullptr, {}));
+          0, nullptr, {})));
   compile_result.program_shape =
       xla::ShapeUtil::MakeProgramShape(
           {
@@ -273,8 +273,8 @@ TEST(CodegenTest, Golden) {
                         metadata_result.object_file_data, false);
 
   string header;
-  TF_ASSERT_OK(
-      GenerateHeader(opts, config, compile_result, metadata_result, &header));
+  TF_ASSERT_OK(GenerateHeader(opts, config, compile_result, metadata_result, {},
+                              &header));
 
   CompareWithGoldenFile("tensorflow/compiler/aot/codegen_test_h.golden", header,
                         true);

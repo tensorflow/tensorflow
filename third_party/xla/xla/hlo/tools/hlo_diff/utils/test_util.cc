@@ -43,25 +43,20 @@ const HloInstructionNode* GetNodeByName(const HloGumgraph& graph,
 void OverwriteMapInstructions(const HloInstructionNode* left,
                               const HloInstructionNode* right,
                               HloGumgraphMappings& mappings,
-                              bool position_unchanged) {
+                              bool position_unchanged,
+                              absl::string_view matcher_debug_info) {
   ASSERT_NE(left, nullptr);
   ASSERT_NE(right, nullptr);
-  if (auto it = mappings.left_to_right_instruction_map.left.find(left);
-      it != mappings.left_to_right_instruction_map.left.end()) {
-    mappings.left_to_right_instruction_map.left.erase(it);
-  }
+  mappings.left_to_right_instruction_map.EraseByLeft(left);
+  mappings.left_to_right_instruction_map.EraseByRight(right);
 
-  if (auto it = mappings.left_to_right_instruction_map.right.find(right);
-      it != mappings.left_to_right_instruction_map.right.end()) {
-    mappings.left_to_right_instruction_map.right.erase(it);
-  }
-
-  mappings.left_to_right_instruction_map.insert(
-      InstructionPair(left, right, {.matcher_type = MatcherType::kManual}));
+  HloInstructionNodeMappingProps props = {false, MatcherType::kManual,
+                                          std::string(matcher_debug_info)};
   if (position_unchanged) {
-    mappings.left_to_right_instruction_map.left.find(left)->info.unchanged =
-        true;
+    props.unchanged = true;
   }
+
+  mappings.left_to_right_instruction_map.Insert(left, right, props);
 }
 
 void MatchAllNodesByName(const HloGumgraph& left, const HloGumgraph& right,
@@ -88,12 +83,12 @@ void MatchAllNodesByName(const HloGumgraph& left, const HloGumgraph& right,
 absl::flat_hash_map<std::string, std::string> ExtractMappedInstructionNames(
     const HloGumgraphMappings& mappings) {
   absl::flat_hash_map<std::string, std::string> mapped_nodes;
-  for (auto it = mappings.left_to_right_instruction_map.begin();
-       it != mappings.left_to_right_instruction_map.end(); ++it) {
+  for (const auto& [left, right] : mappings.left_to_right_instruction_map) {
     absl::string_view left_name =
-        it->left->is_root ? "root_L" : it->left->instruction->name();
+        left->is_root ? "root_L" : left->instruction->name();
+
     absl::string_view right_name =
-        it->right->is_root ? "root_R" : it->right->instruction->name();
+        right->is_root ? "root_R" : right->instruction->name();
     mapped_nodes[left_name] = right_name;
   }
 
@@ -103,22 +98,23 @@ absl::flat_hash_map<std::string, std::string> ExtractMappedInstructionNames(
 absl::flat_hash_map<std::string, std::string> ExtractMappedComputationNames(
     const HloGumgraphMappings& mappings) {
   absl::flat_hash_map<std::string, std::string> mapped_computations;
-  for (auto it = mappings.left_to_right_computation_map.left.begin();
-       it != mappings.left_to_right_computation_map.left.end(); ++it) {
-    mapped_computations[it->first->computation()->name()] =
-        it->second->computation()->name();
+  for (const auto& [left, right] : mappings.left_to_right_computation_map) {
+    mapped_computations[left->computation()->name()] =
+        right->computation()->name();
   }
+
   return mapped_computations;
 }
 
 absl::flat_hash_map<std::string, ComputationMatchType>
 ExtractComputationMatchType(const HloGumgraphMappings& mappings) {
   absl::flat_hash_map<std::string, ComputationMatchType> computation_match_type;
-  for (auto it = mappings.left_to_right_computation_map.left.begin();
-       it != mappings.left_to_right_computation_map.left.end(); ++it) {
-    computation_match_type[it->first->computation()->name()] =
-        it->info.computation_match_type;
+  for (const auto& [left, right] : mappings.left_to_right_computation_map) {
+    computation_match_type[left->computation()->name()] =
+        mappings.left_to_right_computation_map.GetPropsByLeft(left)
+            ->computation_match_type;
   }
+
   return computation_match_type;
 }
 

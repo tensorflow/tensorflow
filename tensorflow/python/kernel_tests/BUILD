@@ -59,8 +59,15 @@ tf_py_strict_test(
     name = "collective_ops_multi_worker_test",
     size = "medium",
     srcs = ["collective_ops_multi_worker_test.py"],
+<<<<<<< HEAD
     python_version = "PY3",
     tags = [], # "no_rocm"
+=======
+    tags = [
+        "no_mac",  # times out on CI but works fine locally
+        "no_rocm",
+    ],
+>>>>>>> 599084a14d53d026462e1aa43c06d24facdd79db
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/distribute:combinations",

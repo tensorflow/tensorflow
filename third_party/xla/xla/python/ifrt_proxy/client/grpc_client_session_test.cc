@@ -43,6 +43,7 @@
 #include "grpcpp/server_context.h"
 #include "grpcpp/support/status.h"
 #include "grpcpp/support/sync_stream.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt_proxy/client/version.h"
 #include "xla/python/ifrt_proxy/common/grpc_credentials.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.grpc.pb.h"
@@ -71,6 +72,8 @@ constexpr absl::Duration kSufficientTime = absl::Seconds(5);
 GrpcIfrtSessionMetadata Metadata() {
   GrpcIfrtSessionMetadata metadata;
   metadata.mutable_version()->set_protocol_version(kClientMaxVersion);
+  metadata.mutable_version()->set_ifrt_serdes_version_number(
+      SerDesVersion::current().version_number().value());
   return metadata;
 }
 

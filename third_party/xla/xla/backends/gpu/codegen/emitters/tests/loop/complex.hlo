@@ -13,7 +13,7 @@ fusion {
 }
 
 // CHECK: func.func @main
-// CHECK-NEXT: gpu.thread_id
+// CHECK:      scf.forall
 // CHECK:      xla.loop
 // CHECK-NEXT: pure_call @fusion_mul
 // CHECK-NEXT: tensor.insert

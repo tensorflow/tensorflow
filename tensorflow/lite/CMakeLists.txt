@@ -553,10 +553,6 @@ if(TFLITE_ENABLE_XNNPACK)
     )
 
   list(APPEND TFLITE_TARGET_PUBLIC_OPTIONS "-DTFLITE_KERNEL_USE_XNNPACK")
-  target_compile_options(xnnpack-delegate
-    PUBLIC ${TFLITE_TARGET_PUBLIC_OPTIONS}
-    PRIVATE ${TFLITE_TARGET_PRIVATE_OPTIONS}
-  )
 
   list(APPEND TFLITE_TARGET_DEPENDENCIES
     xnnpack-delegate
@@ -838,6 +834,11 @@ target_link_libraries(_pywrap_tensorflow_interpreter_wrapper
   ${CMAKE_DL_LIBS}
 )
 target_compile_options(_pywrap_tensorflow_interpreter_wrapper
+  PUBLIC ${TFLITE_TARGET_PUBLIC_OPTIONS}
+  PRIVATE ${TFLITE_TARGET_PRIVATE_OPTIONS}
+)
+
+target_compile_options(xnnpack-delegate
   PUBLIC ${TFLITE_TARGET_PUBLIC_OPTIONS}
   PRIVATE ${TFLITE_TARGET_PRIVATE_OPTIONS}
 )

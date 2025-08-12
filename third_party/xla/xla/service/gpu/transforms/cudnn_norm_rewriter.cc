@@ -1090,7 +1090,6 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
       auto* algorithm = backend_config.mutable_algorithm();
       algorithm->set_algo_id(0);
       algorithm->set_math_type(se::dnn::AlgorithmProto::TENSOR_OP_MATH);
-      algorithm->set_is_cudnn_frontend(true);
 
       // Set the workspace size to its upper bound.
       // TODO(philipphack): Consider autotuning the norm kernels.
@@ -1484,7 +1483,6 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
       auto* algorithm = backend_config.mutable_algorithm();
       algorithm->set_algo_id(0);
       algorithm->set_math_type(se::dnn::AlgorithmProto::TENSOR_OP_MATH);
-      algorithm->set_is_cudnn_frontend(true);
 
       // Set the workspace size to its upper bound.
       // TODO(philipphack): Consider autotuning the norm kernels.

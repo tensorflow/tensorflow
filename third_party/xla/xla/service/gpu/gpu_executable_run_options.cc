@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_executable_run_options.h"
 
+#include <cstdint>
 #include <map>
 #include <optional>
 #include <utility>
 
+#include "absl/container/flat_hash_map.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/executable_run_options.h"
 #include "xla/service/global_device_id.h"
@@ -54,6 +56,17 @@ GpuExecutableRunOptions& GpuExecutableRunOptions::set_collectives(
 
 GpuCollectives* GpuExecutableRunOptions::collectives() const {
   return collectives_;
+}
+
+GpuExecutableRunOptions& GpuExecutableRunOptions::set_incarnations(
+    absl::flat_hash_map<GlobalDeviceId, IncarnationId> incarnations) {
+  incarnations_ = std::move(incarnations);
+  return *this;
+}
+
+const std::optional<absl::flat_hash_map<GlobalDeviceId, IncarnationId>>&
+GpuExecutableRunOptions::incarnations() const {
+  return incarnations_;
 }
 
 }  // namespace xla::gpu

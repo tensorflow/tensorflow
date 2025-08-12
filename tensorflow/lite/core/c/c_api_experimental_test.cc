@@ -582,10 +582,7 @@ TEST(CApiExperimentalTest, SetAndGetBufferHandleSuccess) {
       // op nodes in the TfLiteModel.
       /*nodes=*/std::vector<int>({0, 1}),
       /*delegate_flags=*/kTfLiteDelegateFlagsNone,
-      /*fail_node_prepare=*/false, /*min_ops_per_subset=*/0,
-      /*fail_node_invoke=*/false,
-      /* automatic_shape_propagation=*/false, /*custom_op=*/false,
-      /* set_output_tensor_dynamic =*/false);
+      SimpleDelegate::Options::kNoCustomOp);
   TfLiteDelegate* delegate = simple_delegate->get_tf_lite_delegate();
 
   TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
@@ -874,10 +871,7 @@ TEST(CApiExperimentalTest, SetInvalidHandleToTensor) {
       // op nodes in the TfLiteModel.
       /*nodes=*/std::vector<int>({0, 1}),
       /*delegate_flags=*/kTfLiteDelegateFlagsNone,
-      /*fail_node_prepare=*/false, /*min_ops_per_subset=*/0,
-      /*fail_node_invoke=*/false,
-      /* automatic_shape_propagation=*/false, /*custom_op=*/false,
-      /* set_output_tensor_dynamic =*/false);
+      SimpleDelegate::Options::kNoCustomOp);
   TfLiteDelegate* delegate = simple_delegate->get_tf_lite_delegate();
 
   TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
@@ -893,9 +887,7 @@ TEST(CApiExperimentalTest, SetInvalidHandleToTensor) {
       // the TfLiteModel.
       /*nodes=*/std::vector<int>({0, 1, 2}),
       /*delegate_flags=*/kTfLiteDelegateFlagsNone,
-      /*fail_node_prepare=*/false, /*min_ops_per_subset=*/0,
-      /*fail_node_invoke=*/false, /* automatic_shape_propagation=*/false,
-      /*custom_op=*/false, /*set_output_tensor_dynamic=*/false);
+      SimpleDelegate::Options::kNoCustomOp);
 
   // Tensor index is set to the output tensor (index 2) of the TfLite model.
   int tensor_index = 2;
@@ -982,10 +974,10 @@ TEST_F(TestDelegate, NoDelegate) {
 
 TEST_F(TestDelegate, DelegateNodeInvokeFailure) {
   // Initialize a delegate that will fail when invoked.
-  delegate_ = std::unique_ptr<SimpleDelegate>(new SimpleDelegate(
-      {0, 1}, kTfLiteDelegateFlagsNone, false /**fail_node_prepare**/,
-      0 /**min_ops_per_subset**/, true /**fail_node_invoke**/,
-      false /**automatic_shape_propagation**/, false /**custom_op**/));
+  delegate_ = std::make_unique<SimpleDelegate>(
+      std::vector<int>{0, 1}, kTfLiteDelegateFlagsNone,
+      SimpleDelegate::Options::kFailOnInvoke |
+          SimpleDelegate::Options::kNoCustomOp);
   // Create another interpreter with the delegate, without fallback.
   TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
   TfLiteInterpreterOptionsAddDelegate(options,
@@ -997,10 +989,10 @@ TEST_F(TestDelegate, DelegateNodeInvokeFailure) {
 
 TEST_F(TestDelegate, DelegateNodeInvokeFailureFallback) {
   // Initialize a delegate that will fail when invoked.
-  delegate_ = std::unique_ptr<SimpleDelegate>(new SimpleDelegate(
-      {0, 1}, kTfLiteDelegateFlagsNone, false /**fail_node_prepare**/,
-      0 /**min_ops_per_subset**/, true /**fail_node_invoke**/,
-      false /**automatic_shape_propagation**/, false /**custom_op**/));
+  delegate_ = std::make_unique<SimpleDelegate>(
+      std::vector<int>{0, 1}, kTfLiteDelegateFlagsNone,
+      SimpleDelegate::Options::kFailOnInvoke |
+          SimpleDelegate::Options::kNoCustomOp);
   // Create another interpreter with the delegate, with fallback enabled.
   TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
   TfLiteInterpreterOptionsAddDelegate(options,
@@ -1020,16 +1012,15 @@ TEST_F(TestDelegate, TestFallbackWithMultipleDelegates) {
   // First delegate only supports node 0.
   // This delegate should support dynamic tensors, otherwise the second won't be
   // applied.
-  delegate_ = std::unique_ptr<SimpleDelegate>(new SimpleDelegate(
-      {0}, kTfLiteDelegateFlagsAllowDynamicTensors,
-      false /**fail_node_prepare**/, 0 /**min_ops_per_subset**/,
-      true /**fail_node_invoke**/, false /**automatic_shape_propagation**/,
-      false /**custom_op**/));
+  delegate_ = std::make_unique<SimpleDelegate>(
+      std::vector<int>{0}, kTfLiteDelegateFlagsAllowDynamicTensors,
+      SimpleDelegate::Options::kFailOnInvoke |
+          SimpleDelegate::Options::kNoCustomOp);
   // Second delegate supports node 1, and makes the graph immutable.
-  delegate2_ = std::unique_ptr<SimpleDelegate>(new SimpleDelegate(
-      {1}, kTfLiteDelegateFlagsNone, false /**fail_node_prepare**/,
-      0 /**min_ops_per_subset**/, true /**fail_node_invoke**/,
-      false /**automatic_shape_propagation**/, false /**custom_op**/));
+  delegate2_ = std::make_unique<SimpleDelegate>(
+      std::vector<int>{1}, kTfLiteDelegateFlagsNone,
+      SimpleDelegate::Options::kFailOnInvoke |
+          SimpleDelegate::Options::kNoCustomOp);
   TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
   TfLiteInterpreterOptionsAddDelegate(options,
                                       delegate_->get_tf_lite_delegate());

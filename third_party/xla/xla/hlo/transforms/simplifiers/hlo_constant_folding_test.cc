@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 
@@ -619,6 +620,52 @@ TEST_F(HloConstantFoldingTest, FoldWhile) {
   EXPECT_TRUE(result);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Constant()));
+}
+
+TEST_F(HloConstantFoldingTest, FoldCall) {
+  const char* const kModuleStr = R"(
+    HloModule test
+
+    Fn {
+      param0 = f32[] parameter(0)
+      param1 = f32[] parameter(1)
+      ROOT add = f32[] add(param0, param1)
+    }
+
+    ENTRY entry {
+      constant.0 = f32[] constant(1)
+      constant.1 = f32[] constant(2)
+      ROOT call = f32[] call(constant.0, constant.1), to_apply=Fn
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  HloConstantFolding constant_folding;
+  TF_ASSERT_OK_AND_ASSIGN(bool result,
+                          RunHloPass(&constant_folding, module.get()));
+  EXPECT_TRUE(result);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Constant()));
+}
+
+TEST_F(HloConstantFoldingTest, FoldCallToFft) {
+  const char* const kModuleStr = R"(
+    HloModule test
+
+    Fn {
+      param0 = c64[8] parameter(0)
+      ROOT fft = c64[8] fft(param0), fft_type=FFT, fft_length={32}
+    }
+
+    ENTRY entry {
+      constant.0 = c64[8] constant({(0,0), (0,0), (0,0), (0,0), (0,0), (0,0), (0,0), (0,0)})
+      ROOT call = c64[8] call(constant.0), to_apply=Fn
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  HloConstantFolding constant_folding;
+  TF_ASSERT_OK_AND_ASSIGN(bool result,
+                          RunHloPass(&constant_folding, module.get()));
+  EXPECT_FALSE(result);
 }
 
 }  // namespace

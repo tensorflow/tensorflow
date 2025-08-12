@@ -19,7 +19,6 @@ limitations under the License.
 #include <memory>
 
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/service/hlo_runner_interface.h"
 #include "xla/service/hlo_runner_pjrt.h"
 
 namespace xla {
@@ -29,10 +28,7 @@ namespace xla {
 // --xla_pjrt_split_phase_mode is not set / set to "disabled", this function
 // returns a standard HloRunnerPjRt.
 std::unique_ptr<HloRunnerPjRt> MakeHloRunnerPjRtSplitPhaseAware(
-    std::unique_ptr<PjRtClient> client,
-    HloRunnerInterface::DeviceShapeRepresentationFn
-        device_shape_representation_fn,
-    HloRunnerInterface::DeviceShapeSizeFn device_shape_size_fn);
+    std::unique_ptr<PjRtClient> client);
 }  // namespace xla
 
 #endif  // XLA_TESTS_HLO_RUNNER_PJRT_TEST_UTILS_H_

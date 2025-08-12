@@ -239,7 +239,8 @@ ThreadPoolTaskRunner* NanoRtExecutable::ExecuteOptions::task_runner() const {
 }
 
 absl::StatusOr<std::unique_ptr<NanoRtExecutable>> NanoRtExecutable::Create(
-    std::unique_ptr<Executable> executable) {
+    std::unique_ptr<Executable> executable,
+    std::optional<ProgramShape> program_shape) {
   const HloModule& module = executable->module();
 
   VLOG(3) << "Create NanoRtExecutable: name = " << module.name();
@@ -273,10 +274,11 @@ absl::StatusOr<std::unique_ptr<NanoRtExecutable>> NanoRtExecutable::Create(
     allocation_sizes[allocation.index()] = allocation.size();
   }
 
-  return absl::WrapUnique(new NanoRtExecutable(
-      std::move(executable), std::move(allocation_sizes),
-      std::move(argument_to_allocation_index),
-      std::move(result_to_allocation_index), temp_allocation_index));
+  return absl::WrapUnique(
+      new NanoRtExecutable(std::move(executable), std::move(allocation_sizes),
+                           std::move(argument_to_allocation_index),
+                           std::move(result_to_allocation_index),
+                           temp_allocation_index, program_shape));
 }
 
 NanoRtExecutable::NanoRtExecutable(
@@ -284,12 +286,14 @@ NanoRtExecutable::NanoRtExecutable(
     std::vector<size_t> allocation_sizes,
     std::vector<size_t> argument_to_allocation_index,
     std::vector<size_t> result_to_allocation_index,
-    std::optional<size_t> temp_allocation_index)
+    std::optional<size_t> temp_allocation_index,
+    std::optional<ProgramShape> program_shape)
     : executable_(std::move(executable)),
       allocation_sizes_(std::move(allocation_sizes)),
       argument_to_allocation_index_(std::move(argument_to_allocation_index)),
       result_to_allocation_index_(std::move(result_to_allocation_index)),
-      temp_allocation_index_(temp_allocation_index) {}
+      temp_allocation_index_(temp_allocation_index),
+      program_shape_(program_shape) {}
 
 static se::DeviceMemoryBase ToDeviceMemory(
     const NanoRtExecutable::Argument& argument) {

@@ -32,9 +32,11 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/collective_device_list.h"
+#include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
 #include "xla/service/collective_permute_cycle.h"
 #include "xla/service/computation_placer.h"
@@ -72,50 +74,17 @@ std::optional<ReductionKind> MatchReductionInstruction(
 std::optional<ReductionKind> MatchReductionComputation(
     const HloComputation* computation);
 
+// Creates a computation that performs a reduction operation.
+std::unique_ptr<HloComputation> MakeReductionComputation(
+    ReductionKind reduction_kind, PrimitiveType element_type);
+
+// Returns the HloOpcode corresponding to the given ReductionKind.
+std::optional<HloOpcode> ReductionKindToOpcode(ReductionKind reduction_kind);
+
 // Returns the reduction identity value for a certain ReductionKind and
 // PrimitiveType.
 std::optional<Literal> GetReductionIdentity(ReductionKind kind,
                                             PrimitiveType type);
-
-// There are broadly 4 modes that collective communication ops use to describe
-// which sets of devices are participating with a given device in the operation.
-// These modes are determined by the values of channel_id (optional) and
-// use_global_device_ids (optional). The modes are as follows:
-//
-// kCrossReplica:
-//    implied by: no channel id, use_global_device_ids = false, or
-//                no channel_id, no use_global_device_ids:
-//    replica_groups contain replica_id, group contains all replicas for the
-//    current partition
-//
-// kCrossPartition:
-//    implied by: channel_id is set, no use_global_device_ids:
-//    replica_groups contain partition_id, group contains all partitions for the
-//    current replica.
-//
-// kCrossReplicaAndPartition:
-//    implied by: channel_id is set, use_global_device_ids = false:
-//    replica_groups contain replica_id, group contains all replicas for all
-//    partitions (as opposed to just current partition).
-//
-// kFlattenedID:
-//    implied by: channel_id is set, use_global_device_ids = true:
-//    replica_groups contain flattened-ids, group contains devices that are
-//    listed in the flattened-id list.
-//
-// Rest of the combinations are invalid.
-//
-// Since the actual value of channel_id does not matter, we use a bool argument
-// `has_channel_id`, and optional<bool> for use_global_device_ids.
-// Note that use_global_device_ids true requires channel_id to be set as well.
-// Additionally, if use_global_device_ids = true, replica groups cannot be
-// empty (verified in the HLO verifier).
-enum class CollectiveOpGroupMode {
-  kCrossReplica,
-  kCrossPartition,
-  kCrossReplicaAndPartition,
-  kFlattenedID,
-};
 
 // Figures out which IDs are participating in the collective subgroup.
 // An empty `groups` indicates that all [0, total_participant_count) IDs
@@ -129,9 +98,6 @@ absl::StatusOr<std::vector<int>> GetParticipatingIDs(
 // Returns the replica groups for the given async collective instruction.
 absl::StatusOr<std::vector<std::vector<int64_t>>> GetAsyncReplicaGroups(
     const HloInstruction* instruction);
-
-absl::string_view CollectiveOpGroupModeToString(
-    CollectiveOpGroupMode group_mode);
 
 const CollectiveDeviceList& GetCollectiveDeviceList(const HloInstruction* hlo);
 
@@ -148,11 +114,6 @@ const std::vector<ReplicaGroup>& GetCollectiveReplicaGroups(
 //   * HloRaggedAllToAllInstruction
 absl::StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
     const HloInstruction* instr);
-
-// Returns the group formation mode implied by (a) whether the operation has
-// channel_id and (b) if it has use_global_device_ids and if yes, its value.
-absl::StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
-    bool has_channel_id, std::optional<bool> use_global_device_ids);
 
 // Figures out subgroups of participating devices from given replica_groups and
 // group_mode.
@@ -187,23 +148,23 @@ GetParticipatingDevicesGroups(const HloInstruction* collective);
 
 // Same as above, except that it returns the flattened id in the replica groups
 // instead of device id.
-absl::StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
+absl::StatusOr<CollectiveDeviceList> GetParticipatingFlattenedIdGroups(
     const DeviceAssignment& device_assignment,
-    absl::Span<const ReplicaGroup> replica_groups,
+    const CollectiveDeviceList& collective_device_list,
     CollectiveOpGroupMode group_mode);
 
 // Same as above, but take replica/partition count instead of device assignment.
-absl::StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
-    absl::Span<const ReplicaGroup> replica_groups,
+absl::StatusOr<CollectiveDeviceList> GetParticipatingFlattenedIdGroups(
+    const CollectiveDeviceList& collective_device_list,
     CollectiveOpGroupMode group_mode, int replica_count, int partition_count);
 
 // Same as above, with collective group mode determined by the collective
 // instruction.
-absl::StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
+absl::StatusOr<CollectiveDeviceList> GetParticipatingFlattenedIdGroups(
     const HloInstruction* hlo, const DeviceAssignment& device_assignment);
 
 // Same as above, used for cases where static_device_assignment is not present.
-absl::StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
+absl::StatusOr<CollectiveDeviceList> GetParticipatingFlattenedIdGroups(
     const HloInstruction* hlo, int replica_count, int partition_count);
 
 // Figures out which devices are participating in the collective subgroup.
@@ -262,16 +223,6 @@ absl::StatusOr<bool> IsAsyncCollective(const HloInstruction* instruction);
 // collective fusion) with channel_id.
 HloInstruction* IsOrHasCollectiveWithChannelId(HloInstruction* instruction);
 
-// Returns the cycle type and indices of the vertices that form cycles. For
-// example, GetCycleTypeAndIndices({{0,3},{1,0},{2,1},{3,2}}) returns
-// {kBackward, {0}}, since the communication pattern contains a backward cycle
-// with the cycle-inducing vertex at index 0 in the input source-target pairs
-// array. This function uses the assumption that, in practice, in forward
-// cycles, most edges will have the target replica ID greater than the source
-// replica ID except for the back edges that form cycles (similar logic applies
-// to backward cycles).
-std::pair<collective_permute_cycle::CycleType, std::set<int>>
-GetCycleTypeAndIndices(const std::vector<std::pair<int64_t, int64_t>>& pairs);
 
 // Key that identifies a particular Rendezvous object in our global hashtable.
 // This determines which calls to ExecuteOnStream communicate with each other.

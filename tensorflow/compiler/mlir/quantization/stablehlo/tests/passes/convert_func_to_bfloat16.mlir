@@ -1,4 +1,4 @@
-// RUN: stablehlo-quant-opt %s -split-input-file -stablehlo-convert-func-to-bfloat16 -verify-diagnostics | FileCheck %s
+// RUN: stablehlo-quant-opt %s -split-input-file -tf-stablehlo-convert-func-to-bfloat16 -verify-diagnostics | FileCheck %s
 
 // CHECK-LABEL: @add_f32(%arg0: tensor<3x3xbf16>, %arg1: tensor<3x3xbf16>) -> tensor<3x3xbf16>
 func.func @add_f32(%arg0: tensor<3x3xf32>, %arg1: tensor<3x3xf32>) -> tensor<3x3xf32> {

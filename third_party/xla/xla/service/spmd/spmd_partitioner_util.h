@@ -63,6 +63,21 @@ limitations under the License.
 namespace xla {
 namespace spmd {
 
+Window GenNewWindow(const HloInstruction* original_dot,
+                    const HloInstruction* dot_lhs,
+                    const HloInstruction* dot_rhs, int64_t lhs_concat_dim,
+                    int64_t rhs_concat_dim, bool windowed_at_contracting_dims,
+                    bool windowed_at_batch_dims);
+
+ConvolutionDimensionNumbers GenNewConvDNums(
+    const HloInstruction* original_dot, const HloInstruction* dot_lhs,
+    const HloInstruction* dot_rhs, int64_t lhs_concat_dim,
+    int64_t rhs_concat_dim, bool windowed_at_contracting_dims,
+    bool windowed_at_batch_dims,
+    const std::vector<int64_t>& lhs_to_output_indices,
+    const std::vector<int64_t>& rhs_to_output_indices,
+    const Shape& new_dot_shape);
+
 template <typename T>
 using IsCompOrCompBuilder =
     typename std::enable_if_t<std::is_same<HloComputation, T>::value ||
@@ -98,7 +113,7 @@ HloInstruction* CreateConstantBase(const Shape& shape, Literal value, T* b,
   }
   auto c = b->AddInstruction(HloInstruction::CreateConstant(
       literal_creator(std::move(value), shape.element_type())));
-  if (shape.dimensions_size() == 0) {
+  if (shape.dimensions().size() == 0) {
     return c;
   }
   return b->AddInstruction(HloInstruction::CreateBroadcast(shape, c, {}));
@@ -217,7 +232,7 @@ HloInstruction* PadToShape(HloInstruction* hlo, const Shape& padded_shape, T* b,
     return hlo;
   }
   PaddingConfig padding_config;
-  for (int64_t i = 0; i < padded_shape.dimensions_size(); ++i) {
+  for (int64_t i = 0; i < padded_shape.dimensions().size(); ++i) {
     auto padding_config_dim = padding_config.add_dimensions();
     padding_config_dim->set_edge_padding_low(0);
     padding_config_dim->set_interior_padding(0);
@@ -466,18 +481,20 @@ Shape GetPerGroupBaseShape(
 // Returns the partition id within a group.
 HloInstruction* GetInGroupPartitionId(
     HloInstruction* partition_id,
-    const std::vector<std::vector<int64_t>>& device_groups, SpmdBuilder* b);
+    const hlo_sharding_util::DeviceGroupTileAssignment& device_groups,
+    SpmdBuilder* b);
 
 // Creates the nested partitioner state for in-group partitioning.
 PartitionedHlo::PartitioningState CreatePerGroupPartitioningState(
     const PartitionedHlo::PartitioningState& state,
-    const std::vector<std::vector<int64_t>>& device_groups, SpmdBuilder* b);
+    const hlo_sharding_util::DeviceGroupTileAssignment& device_groups,
+    SpmdBuilder* b);
 
 // Partially shards a replicated HLO into groups along the group dimensions, and
 // within each group data is still replicated.
 HloInstruction* PerGroupSliceFromReplicated(
     HloInstruction* replicated, HloInstruction* partition_id,
-    const std::vector<std::vector<int64_t>>& device_groups,
+    const hlo_sharding_util::DeviceGroupTileAssignment& device_groups,
     absl::Span<const int64_t> group_dims,
     absl::Span<const int64_t> group_dim_sizes, SpmdBuilder* b);
 
@@ -518,7 +535,7 @@ std::optional<HloInstruction*> TileToPartialReplicateHaloExchange(
 // specified device groups. Group order and dimension order are ignored.
 std::optional<std::vector<int64_t>> FindMatchingPartitionedDimsForGrouping(
     const HloSharding& sharding,
-    const std::vector<std::vector<int64_t>>& device_groups);
+    const hlo_sharding_util::DeviceGroupTileAssignment& device_groups);
 
 // Create a sharding that matches the provided source sharding on the
 // specified dimensions. 'target_dims' and 'source_dims' represent the

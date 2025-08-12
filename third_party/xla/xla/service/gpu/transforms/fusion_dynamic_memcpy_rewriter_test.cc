@@ -34,14 +34,24 @@ namespace xla {
 namespace gpu {
 namespace {
 
+using ::testing::ElementsAre;
 using ::tsl::testing::IsOkAndHolds;
 
 using FusionDynamicMemcpyRewriterTest = HloHardwareIndependentTestBase;
 
-bool IsMemcpyFusion(const HloInstruction* instr) {
-  const auto& config = instr->backend_config<GpuBackendConfig>();
-  return config.ok() &&
-         config->fusion_backend_config().kind() == kDynamicMemcpyFusionKind;
+std::optional<DynamicMemcpyConfig> GetMemcpyConfig(
+    const HloInstruction* instr) {
+  auto config = instr->backend_config<GpuBackendConfig>();
+  if (!config.ok()) {
+    return std::nullopt;
+  }
+
+  const auto& fusion_config = config->fusion_backend_config();
+  if (fusion_config.kind() != kDynamicMemcpyFusionKind ||
+      !fusion_config.has_dynamic_memcpy_config()) {
+    return std::nullopt;
+  }
+  return fusion_config.dynamic_memcpy_config();
 }
 
 constexpr char kSliceMemcpyModule[] = R"(
@@ -65,8 +75,14 @@ TEST_F(FusionDynamicMemcpyRewriterTest, AnnotatesMemcpyFusion) {
                           ParseAndReturnVerifiedModule(kSliceMemcpyModule));
   EXPECT_THAT(FusionDynamicMemcpyRewriter().Run(module.get()),
               IsOkAndHolds(true));
-  EXPECT_TRUE(IsMemcpyFusion(module->entry_computation()->root_instruction()))
-      << module->ToString();
+
+  auto config =
+      GetMemcpyConfig(module->entry_computation()->root_instruction());
+  ASSERT_TRUE(config.has_value()) << module->ToString();
+
+  EXPECT_FALSE(config->depends_on_loop());
+  EXPECT_THAT(config->src_offset_bytes(), ElementsAre(4));
+  EXPECT_THAT(config->dst_offset_bytes(), ElementsAre(0));
 }
 
 constexpr char kSliceCallModule[] = R"(
@@ -88,8 +104,70 @@ TEST_F(FusionDynamicMemcpyRewriterTest, DoesNotAnnotateCall) {
   EXPECT_THAT(FusionDynamicMemcpyRewriter().Run(module.get()),
               IsOkAndHolds(false))
       << module->ToString();
-  EXPECT_FALSE(IsMemcpyFusion(module->entry_computation()->root_instruction()))
+  EXPECT_FALSE(GetMemcpyConfig(module->entry_computation()->root_instruction())
+                   .has_value())
       << module->ToString();
+}
+
+constexpr char kLoopUpdateSliceMemcpyModule[] = R"(
+    dynamic_slice {
+      p0 = s32[4,8,8] parameter(0)
+      p1 = s32[1,1,8] parameter(1)
+      p2 = s32[] parameter(2)
+      c1 = s32[] constant(1)
+
+      ROOT update-slice = s32[4,8,8] dynamic-update-slice(p0, p1, p2, c1, c1)
+    }
+
+    body {
+      p0 = (s32[], s32[4,8,8]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      input = s32[4,8,8] get-tuple-element(p0), index=1
+      val = s32[1,1,8] constant({{{1,2,3,4,5,6,7,8}}})
+
+      updated = s32[4,8,8] fusion(input, val, ivar), kind=kLoop, calls=dynamic_slice
+      c1 = s32[] constant(1)
+      next_ivar = s32[] add(ivar, c1)
+
+      ROOT result = (s32[], s32[4,8,8])
+          tuple(next_ivar, updated)
+    }
+
+    condition {
+      p0 = (s32[], s32[4,8,8]) parameter(0)
+      ivar = s32[] get-tuple-element(p0), index=0
+      c6 = s32[] constant(6)
+      ROOT cmp = pred[] compare(ivar, c6), direction=LT
+    }
+
+    ENTRY main {
+      input = s32[4,8,8] parameter(0)
+      c0 = s32[] constant(0)
+      tuple = (s32[], s32[4,8,8]) tuple(c0, input)
+      ROOT while = (s32[], s32[4,8,8]) while(tuple),
+          condition=condition, body=body,
+          backend_config={"known_trip_count":{"n":"6"},
+                          "known_init_step":{"init":"0","step":"1"},
+                          "known_induction_variable":{"tuple_index":"0"}}
+    })";
+
+TEST_F(FusionDynamicMemcpyRewriterTest,
+       AnnotatesDusMemcpyFusionWithIterations) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnVerifiedModule(kLoopUpdateSliceMemcpyModule));
+  EXPECT_THAT(FusionDynamicMemcpyRewriter().Run(module.get()),
+              IsOkAndHolds(true));
+  auto config = GetMemcpyConfig(
+      module->GetComputationWithName("body")->GetInstructionWithName(
+          "updated"));
+  ASSERT_TRUE(config.has_value()) << module->ToString();
+
+  EXPECT_TRUE(config->depends_on_loop());
+  EXPECT_THAT(config->src_offset_bytes(), ElementsAre(0, 0, 0, 0, 0, 0));
+  EXPECT_THAT(config->dst_offset_bytes(),
+              ElementsAre(32, 32 + 256 * 1, 32 + 256 * 2, 32 + 256 * 3,
+                          32 + 256 * 3, 32 + 256 * 3));
 }
 
 }  // namespace

@@ -19,5 +19,7 @@ package xla.ifrt;
 
 // Proto equivalent of C++ `CompactLayout`.
 message CompactLayoutProto {
+  int32 version_number = 2;
+
   repeated int32 major_to_minor = 1;
 }

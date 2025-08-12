@@ -23,36 +23,100 @@ limitations under the License.
 #include <initializer_list>
 #include <memory>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/portable_type_to_tflitetype.h"
 
 namespace tflite {
-
 namespace model_builder {
 
-using OwningErasedPtr = std::unique_ptr<void, void (*)(void*)>;
-
 class InterpreterInfo;
-struct Helper;
+class Graph;
 
 namespace internal {
 
 template <class T, class Tag>
 struct StrongType {
-  StrongType() = default;
-  explicit StrongType(const T& v) : val(v) {}
+  constexpr StrongType() = default;
+  constexpr explicit StrongType(const T& v) : val(v) {}
 
   T val;
 };
 
-using GraphIdx = StrongType<int, class GraphTag>;
-using TensorIdx = StrongType<int, class TensorTag>;
+template <typename H, class T, class Tag>
+H AbslHashValue(H h, const StrongType<T, Tag>& v) {
+  return H::combine(std::move(h), v.val);
+}
+
+template <class T, class Tag>
+bool operator==(const StrongType<T, Tag>& lhs, const StrongType<T, Tag>& rhs) {
+  return lhs.val == rhs.val;
+}
 
 }  // namespace internal
+
+using OwningErasedPtr = std::unique_ptr<void, void (*)(void*)>;
+using GraphIdx = internal::StrongType<int, class GraphTag>;
+using TensorIdx = internal::StrongType<int, class TensorTag>;
+using BufferIdx = internal::StrongType<int, class BufferTag>;
+
+struct NoQuantization {};
+
+struct [[nodiscard]] AffineQuantization {
+  std::vector<float> zero_points;
+  std::vector<float> scales;
+  int axis;
+};
+
+using Quantization = std::variant<NoQuantization, AffineQuantization>;
+
+// Represents a buffer in the TFLite graph.
+//
+// Copyable but you shouldn't create such an object by yourself. Use the
+// `NewConstantTensor` family of functions with Builder for that.
+//
+// Each buffer is attached to a builder instance. Use `AddConstantTensor` to
+// make it available to a graph.
+class [[nodiscard]] Buffer {
+ public:
+  static constexpr const BufferIdx kNoBuffer{-1};
+
+  Buffer(const Buffer&) = default;
+  Buffer& operator=(const Buffer&) = default;
+
+ private:
+  Buffer(InterpreterInfo* builder, BufferIdx buffer_idx)
+      : builder_(builder), buffer_idx_(buffer_idx) {}
+
+  friend class Helper;
+  friend class Tensor;
+
+  InterpreterInfo* builder_;
+  BufferIdx buffer_idx_;
+};
+
+// Assigns data to be managed by the given Buffer.
+template <TfLiteType kType, class T>
+void Assign(Buffer b, std::vector<int> shape, const std::vector<T>& data,
+            Quantization quantization) {
+  using Storage = TfLiteTypeToType<kType>::Type;
+  std::unique_ptr<Storage[]> buffer_data(new Storage[data.size()]);
+  std::copy(begin(data), end(data), buffer_data.get());
+  Assign(
+      b, kType, std::move(shape),
+      reinterpret_cast<char*>(buffer_data.release()),
+      [](char* data) { delete[] reinterpret_cast<Storage*>(data); },
+      sizeof(Storage) * data.size(), std::move(quantization));
+}
+
+// Assigns data to be managed by the given Buffer.
+void Assign(Buffer b, TfLiteType type, std::vector<int> shape, char* data,
+            void (*deleter)(char*), size_t bytes, Quantization quantization);
 
 // Represents a tensor in the TFLite graph.
 //
@@ -72,16 +136,20 @@ class [[nodiscard]] Tensor {
   Tensor(const Tensor&) = default;
   Tensor& operator=(const Tensor&) = default;
 
+  explicit Tensor(Buffer buffer) : builder_(buffer.builder_) {}
+
  private:
-  Tensor(InterpreterInfo* builder, internal::TensorIdx tensor_idx,
-         internal::GraphIdx graph_idx)
+  Tensor() = default;
+  Tensor(InterpreterInfo* builder, TensorIdx tensor_idx, GraphIdx graph_idx)
       : builder_(builder), tensor_idx_(tensor_idx), graph_idx_(graph_idx) {}
 
   friend class Helper;
+  template <size_t count>
+  friend std::array<Tensor, count> NewInputs(Graph graph, TfLiteType type);
 
   InterpreterInfo* builder_;
-  internal::TensorIdx tensor_idx_;
-  internal::GraphIdx graph_idx_;
+  TensorIdx tensor_idx_{-1};
+  GraphIdx graph_idx_{-1};
 };
 
 // Represents a subgraph in the TFLite interpreter.
@@ -99,22 +167,17 @@ class [[nodiscard]] Graph {
   // See also: `NewInputs<Count>()`.
   friend Tensor NewInput(Graph& graph, TfLiteType type);
 
+  friend Tensor NewConstantTensor(Graph& graph, Buffer buffer);
+
  private:
-  Graph(InterpreterInfo* builder, internal::GraphIdx graph_idx)
+  Graph(InterpreterInfo* builder, GraphIdx graph_idx)
       : builder_(builder), graph_idx_(graph_idx) {}
 
   friend class Helper;
 
   InterpreterInfo* builder_;
-  internal::GraphIdx graph_idx_;
+  GraphIdx graph_idx_;
 };
-
-namespace internal {
-
-template <size_t... Is>
-std::array<Tensor, sizeof...(Is)> NewInputsImpl(std::index_sequence<Is...>,
-                                                Graph graph, TfLiteType type);
-}  // namespace internal
 
 // Returns an array of `Count` inputs for the given `graph`.
 //
@@ -123,11 +186,14 @@ std::array<Tensor, sizeof...(Is)> NewInputsImpl(std::index_sequence<Is...>,
 // ```cpp
 // auto [t1, t2] = NewInputs<2>(graph, kTfLiteFloat32);
 // ```
-template <size_t Count>
-[[nodiscard]] std::array<Tensor, Count> NewInputs(Graph graph,
+template <size_t count>
+[[nodiscard]] std::array<Tensor, count> NewInputs(Graph graph,
                                                   TfLiteType type) {
-  return internal::NewInputsImpl(std::make_index_sequence<Count>{}, graph,
-                                 type);
+  std::array<Tensor, count> tensors{};
+  for (size_t i = 0; i < count; ++i) {
+    tensors[i] = NewInput(graph, type);
+  }
+  return tensors;
 }
 
 // Allows building a TFLite interpreter programmatically.
@@ -158,11 +224,26 @@ class ModelBuilder {
   // Returns a new graph managed by the given builder.
   friend Graph NewGraph(ModelBuilder& builder);
 
+  // Returns a new buffer that can be used as a constant tensor with graphs.
+  friend Buffer NewConstantBuffer(ModelBuilder& builder);
+
  private:
   friend class Helper;
 
   OwningErasedPtr impl_;
 };
+
+template <TfLiteType kType, class T>
+Buffer NewConstantBuffer(ModelBuilder& builder, std::vector<int> shape,
+                         const std::vector<T>& data,
+                         Quantization quantization) {
+  Buffer buffer = NewConstantBuffer(builder);
+  Assign<kType>(buffer, std::move(shape), std::move(data),
+                std::move(quantization));
+  return buffer;
+}
+
+void SetShape(Tensor tensor, std::vector<int> shape);
 
 // Marks the given tensor as an output of the graph it is attached to.
 void MarkOutput(Tensor tensor);
@@ -186,17 +267,6 @@ template <class... Ts>
 void MarkOutputs(Ts... tensors) {
   (MarkOutput(tensors), ...);
 }
-
-namespace internal {
-
-template <size_t... Is>
-std::array<Tensor, sizeof...(Is)> NewInputsImpl(std::index_sequence<Is...>,
-                                                Graph graph, TfLiteType type) {
-  return std::array<Tensor, sizeof...(Is)>{
-      ((void)Is, NewInput(graph, type))...};
-}
-
-}  // namespace internal
 
 // Creates an ABS operation with `tensor` as the input and returns the tensor
 // representing the result.
@@ -228,14 +298,22 @@ Tensor Mul(Tensor lhs, Tensor rhs);
 // The resulting operation is added to the `Graph` the `tensor` is related to.
 Tensor Transpose(Tensor tensor, Tensor permutation);
 
+// Creates a FULLY_CONNECTED operation and returns its output tensor handle.
+//
+// - A tensor referencing `weights` is added to `input`'s `Graph`.
+// - The types and and shapes must be compatible with what TFLite supports.
+//
+// The resulting operation is added to the `Graph` the `input` is related to.
+Tensor FullyConnected(Tensor input, Buffer weights);
+
 // Creates a STABLEHLO_COMPOSITE operation named `name` and falling back to
 // `subgraph`.
 //
 // `inputs` is associated to the subgraph inputs.
 //
-// - all the `inputs` must be from the same `Graph`.
-// - `subgraph` but be associated to the same `GraphBuilder` as the `inputs`'
-// `Graph`.
+// - All the `inputs` must be from the same `Graph`.
+// - `subgraph` must be associated to the same `GraphBuilder` as the `inputs`'
+//   `Graph`.
 //
 // The resulting operation is added to the `Graph` the `inputs` are related to.
 //

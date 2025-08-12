@@ -168,7 +168,7 @@ class CancellationManager {
   };
 
   struct State {
-    Notification cancelled_notification;
+    absl::Notification cancelled_notification;
     gtl::FlatMap<CancellationToken, CallbackConfiguration> callbacks;
 
     // If this CancellationManager has any children, this member points to the

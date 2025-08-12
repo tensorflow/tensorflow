@@ -1842,7 +1842,8 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
     auto dl_device = std::unique_ptr<DLDevice>(static_cast<DLDevice*>(
         tensorflow::TFE_GetDLDevice(thandle, status.get())));
     tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
-    return py::make_tuple(dl_device->device_type, dl_device->device_id);
+    return py::make_tuple(static_cast<int32_t>(dl_device->device_type),
+                          dl_device->device_id);
   });
 
   m.def("TFE_ToDlpackCapsule", [](py::handle& o) {

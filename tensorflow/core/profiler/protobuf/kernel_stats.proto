@@ -2,4 +2,4 @@ syntax = "proto3";
 
 package tensorflow.profiler;
 
-import public "plugin/tensorboard_plugin_profile/protobuf/kernel_stats.proto";
+import public "plugin/xprof/protobuf/kernel_stats.proto";

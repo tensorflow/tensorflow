@@ -311,13 +311,13 @@ class PjRtChunk {
     }
   }
 
-  PjRtChunk(PjRtChunk&& other)
+  PjRtChunk(PjRtChunk&& other) noexcept
       : data_(other.data_),
         size_(other.size_),
         deleter_(std::move(other.deleter_)) {
     other.data_ = nullptr;
   }
-  PjRtChunk& operator=(PjRtChunk&& other) {
+  PjRtChunk& operator=(PjRtChunk&& other) noexcept {
     if (data_) {
       deleter_(data_);
     }
@@ -629,6 +629,9 @@ class PjRtClient {
   // LoadSerializedExecutable takes the serialized output of PjRtExecutable. The
   // returned executable is loaded by this client. The same checks are made as
   // in Load that the serialized executable is compatible with the client.
+  //
+  // If `options` are provided, then they override the compile options
+  // from the serialized executable (`serialized`).
   virtual absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
   LoadSerializedExecutable(absl::string_view serialized,
                            std::optional<CompileOptions> options,
@@ -1184,7 +1187,7 @@ class PjRtBuffer {
   ReleaseDeviceMemoryOwnership(bool wait_for_operations_to_complete) = 0;
 
   // True if and only if Delete or Release has previously been called.
-  virtual bool IsDeleted() = 0;
+  virtual bool IsDeleted() const = 0;
 
   // Copies the buffer to memory space `dst_memory_space`.
   //
@@ -1333,11 +1336,11 @@ class PjRtLoadedExecutable {
   virtual absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
   Execute(absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
           const ExecuteOptions& options,
-          std::optional<std::vector<PjRtFuture<>>>& returned_futures) = 0;
+          std::optional<std::vector<PjRtFuture<>>>& returned_futures) const = 0;
   // Convenience wrapper for Execute that never returns futures.
   absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
       absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
-      const ExecuteOptions& options) {
+      const ExecuteOptions& options) const {
     std::optional<std::vector<PjRtFuture<>>> returned_futures;
     return Execute(std::move(argument_handles), options, returned_futures);
   }
@@ -1356,19 +1359,19 @@ class PjRtLoadedExecutable {
   ExecuteSharded(absl::Span<PjRtBuffer* const> argument_handles,
                  PjRtDevice* device, const ExecuteOptions& options,
                  std::optional<PjRtFuture<>>& returned_future,
-                 bool fill_future) = 0;
+                 bool fill_future) const = 0;
   // Convenience wrapper for ExecuteSharded that always returns a future.
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options,
-      std::optional<PjRtFuture<>>& returned_future) {
+      std::optional<PjRtFuture<>>& returned_future) const {
     return ExecuteSharded(std::move(argument_handles), device, options,
                           returned_future, /*fill_future=*/true);
   }
   // Convenience wrapper for ExecuteSharded that never returns a future.
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-      const ExecuteOptions& options) {
+      const ExecuteOptions& options) const {
     std::optional<PjRtFuture<>> returned_future;
     return ExecuteSharded(std::move(argument_handles), device, options,
                           returned_future, /*fill_future=*/false);
@@ -1388,19 +1391,19 @@ class PjRtLoadedExecutable {
   ExecutePortable(absl::Span<PjRtBuffer* const> argument_handles,
                   PjRtDevice* device, const ExecuteOptions& options,
                   std::optional<PjRtFuture<>>& returned_future,
-                  bool fill_future) = 0;
+                  bool fill_future) const = 0;
   // Convenience wrapper for ExecutePortable that always returns a future.
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options,
-      std::optional<PjRtFuture<>>& returned_future) {
+      std::optional<PjRtFuture<>>& returned_future) const {
     return ExecutePortable(std::move(argument_handles), device, options,
                            returned_future, /*fill_future=*/true);
   }
   // Convenience wrapper for ExecutePortable that never returns a future.
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-      const ExecuteOptions& options) {
+      const ExecuteOptions& options) const {
     std::optional<PjRtFuture<>> returned_future;
     return ExecutePortable(std::move(argument_handles), device, options,
                            returned_future, /*fill_future=*/false);
@@ -1410,7 +1413,7 @@ class PjRtLoadedExecutable {
   virtual void Delete() = 0;
 
   // True if on-device resources associated with the executable are freed.
-  virtual bool IsDeleted() = 0;
+  virtual bool IsDeleted() const = 0;
 
   // These are all forwarding methods for convenience, wrapping the
   // corresponding methods on the wrapped PjRtExecutable.

@@ -109,11 +109,6 @@ TEST(EvaluateTest, IllegalSolutionHasBogusStrategyIndex) {
             absl::StatusCode::kOutOfRange);
 }
 
-TEST(DISABLED_ReadProblemTest, ExampleFile) {
-  const std::string filename = "example.json";
-  EXPECT_THAT(ReadProblem(filename), IsOkAndHolds(GetExampleProblem()));
-}
-
 TEST(SolveTest, FindsOptimalSolution) {
   EXPECT_THAT(Solver().Solve(GetExampleProblem(), absl::Seconds(1)),
               IsOkAndHolds(Solution{0, 0, 2, 1, 0}));

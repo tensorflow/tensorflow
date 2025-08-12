@@ -39,7 +39,7 @@
 #include "grpcpp/support/channel_arguments.h"
 #include "xla/pjrt/distributed/util.h"
 #include "xla/python/ifrt/future.h"
-#include "xla/python/ifrt_proxy/common/grpc_credentials.h"
+#include "xla/python/ifrt_proxy/common/grpc_credentials_possibly_insecure_wrapper.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.grpc.pb.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
@@ -196,6 +196,7 @@ void GrpcClientSession::Finish(const absl::Status& client_status) {
             << client_status;
 
   absl::call_once(finish_once_, [&] {
+    LOG(INFO) << "GrpcClientSession: Finish(): calling context_->TryCancel();";
     context_->TryCancel();
 
     LOG(INFO) << "GrpcClientSession: Waiting for reader thread to stop.";
@@ -234,9 +235,11 @@ void GrpcClientSession::Finish(const absl::Status& client_status) {
               << combined_status;
     stream_terminated_cb_(combined_status);
   });
+  LOG(INFO) << "GrpcClientSession: Finish() done.";
 }
 
 GrpcClientSession::~GrpcClientSession() {
+  LOG(INFO) << "GrpcClientSession::~GrpcClientSession() starting.";
   GrpcClientSession::Finish(absl::CancelledError("~GrpcClientSession called."));
   reader_thread_.reset();  // Wait until the reader thread exits.
   LOG(INFO) << "Deleting GrpcClientSession.user_futures_work_queue_ ...";
@@ -252,8 +255,9 @@ std::shared_ptr<grpc::GrpcIfrtService::StubInterface> CreateGrpcStub(
   args.SetInt(GRPC_ARG_MAX_SEND_MESSAGE_LENGTH, -1);
   args.SetInt(GRPC_ARG_MAX_RECEIVE_MESSAGE_LENGTH, -1);
   args.SetInt(GRPC_ARG_USE_LOCAL_SUBCHANNEL_POOL, true);
-  std::shared_ptr<::grpc::Channel> channel = ::grpc::CreateCustomChannel(
-      std::string(server_address), GetClientCredentials(), args);
+  std::shared_ptr<::grpc::Channel> channel =
+      ::grpc::CreateCustomChannel(std::string(server_address),
+                                  GetClientCredentialsPossiblyInsecure(), args);
   VLOG(0) << "  Established channel.";
   CHECK(channel != nullptr);
 

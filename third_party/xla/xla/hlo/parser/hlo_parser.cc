@@ -49,11 +49,13 @@ limitations under the License.
 #include "xla/array.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/collective_device_list.h"
+#include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_domain_metadata.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/ir/hlo_schedule.h"
@@ -328,6 +330,8 @@ class HloParserImpl : public HloParser {
     kCollectiveDeviceList,
     kResultAccuracy,
     kOriginalValue,
+    kOriginalValueRecoveryTable,
+    kMode,
   };
 
   struct AttrConfig {
@@ -581,11 +585,14 @@ class HloParserImpl : public HloParser {
   bool ParseDouble(double* result);
   bool ParseComplex(std::complex<double>* result);
   bool ParseBool(bool* result);
-  bool ParseToken(TokKind kind, const std::string& msg);
+  bool ParseToken(TokKind kind, const std::string& msg,
+                  uint64_t lexer_skip_mask = kNoneMask);
   bool ParseUnsignedIntegerType(PrimitiveType* primitive_type);
-  bool ParseOriginalValue(
-      optional<std::shared_ptr<OriginalValue>>* original_value,
-      const Shape& shape);
+  bool ParseOriginalArray(OriginalArray& original_array);
+  bool ParseOriginalValue(std::shared_ptr<OriginalValue>& original_value);
+  bool ParseOriginalValueRecoveryTable(
+      OriginalValueRecoveryTable& original_value_recovery_table);
+  bool ParseCollectiveOpGroupMode(CollectiveOpGroupMode* result);
 
   using AliasingData =
       absl::flat_hash_map<ShapeIndex, HloInputOutputAliasConfig::Alias>;
@@ -1104,6 +1111,7 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
   std::optional<FrontendAttributes> frontend_attributes;
   BoolList allow_spmd_sharding_propagation_to_parameters;
   BoolList allow_spmd_sharding_propagation_to_output;
+  std::optional<OriginalValueRecoveryTable> original_value_recovery_table;
 
   attrs["is_scheduled"] = {/*required=*/false, AttrTy::kBool, &is_scheduled};
   attrs["replica_count"] = {/*required=*/false, AttrTy::kInt64, &replica_count};
@@ -1126,6 +1134,9 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
   attrs["allow_spmd_sharding_propagation_to_output"] = {
       /*required=*/false, AttrTy::kBracedBoolListOrBool,
       &allow_spmd_sharding_propagation_to_output};
+  attrs["origin_recovery_table"] = {/*required=*/false,
+                                    AttrTy::kOriginalValueRecoveryTable,
+                                    &original_value_recovery_table};
 
   if (!parse_module_without_header) {
     if (lexer_.GetKind() != TokKind::kw_HloModule) {
@@ -1229,6 +1240,10 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
     }
     module->buffer_donor_config() = buffer_donor_config;
   }
+  if (original_value_recovery_table) {
+    module->set_original_value_recovery_table(*original_value_recovery_table);
+  }
+  DeduplicateOriginalValues(module);
 
   return true;
 }
@@ -1799,6 +1814,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       optional<bool> constrain_layout;
       optional<bool> use_global_device_ids;
       optional<std::vector<int64_t>> dimensions;
+      optional<CollectiveOpGroupMode> collective_op_group_mode;
       attrs["to_apply"] = {/*required=*/true, AttrTy::kHloComputation,
                            &to_apply};
       attrs["replica_groups"] = {/*required=*/false,
@@ -1808,19 +1824,33 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
                                    &constrain_layout};
       attrs["use_global_device_ids"] = {/*required=*/false, AttrTy::kBool,
                                         &use_global_device_ids};
+      attrs["mode"] = {/*required=*/false, AttrTy::kMode,
+                       &collective_op_group_mode};
       if (opcode == HloOpcode::kReduceScatter) {
         attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,
                                &dimensions};
       }
+      const LocTy loc = lexer_.GetLoc();
       if ((!preset_operands && !ParseOperands(&operands, builder)) ||
           !ParseAttributes(attrs, allow_attributes, shape)) {
         return nullptr;
+      }
+      if (!collective_op_group_mode.has_value()) {
+        auto mode_or_status = GetCollectiveOpGroupMode(
+            /*has_channel_id=*/channel_id.has_value(),
+            use_global_device_ids.value_or(false));
+        if (!mode_or_status.ok()) {
+          Error(loc, mode_or_status.status().message());
+          return nullptr;
+        }
+        collective_op_group_mode = mode_or_status.value();
       }
       if (opcode == HloOpcode::kAllReduce) {
         return builder->AddInstruction(HloInstruction::CreateAllReduce(
             *shape, operands, *to_apply, device_list,
             constrain_layout ? *constrain_layout : false, channel_id,
-            use_global_device_ids ? *use_global_device_ids : false));
+            use_global_device_ids ? *use_global_device_ids : false,
+            collective_op_group_mode.value()));
       } else if (opcode == HloOpcode::kReduceScatter) {
         return builder->AddInstruction(HloInstruction::CreateReduceScatter(
             *shape, operands, *to_apply, device_list,
@@ -4497,7 +4527,7 @@ bool HloParserImpl::ParseTupleLiteral(Literal* literal, const Shape& shape) {
 //   ::= rank2345
 // rank2345 ::= shape nested_array
 bool HloParserImpl::ParseNonTupleLiteral(Literal* literal, const Shape& shape) {
-  CHECK(LayoutUtil::IsDenseArray(shape)) << shape.ToString(true);
+  CHECK(shape.IsArray()) << shape.ToString(true);
   return ParseDenseLiteral(literal, shape);
 }
 
@@ -5167,10 +5197,24 @@ bool HloParserImpl::ParseAttributeHelper(
         if (!shape) {
           return TokenError("expects instruction shape");
         }
-        return ParseOriginalValue(
-            static_cast<optional<std::shared_ptr<OriginalValue>>*>(
-                attr_out_ptr),
-            *shape);
+        std::shared_ptr<OriginalValue> result =
+            std::make_shared<OriginalValue>(*shape);
+        if (!ParseOriginalValue(result)) {
+          return false;
+        }
+        static_cast<optional<std::shared_ptr<OriginalValue>>*>(attr_out_ptr)
+            ->emplace(std::move(result));
+        return true;
+      }
+      case AttrTy::kOriginalValueRecoveryTable: {
+        OriginalValueRecoveryTable result;
+        if (!ParseOriginalValueRecoveryTable(result)) {
+          return false;
+        }
+        static_cast<optional<HloModule::OriginalValueRecoveryTable>*>(
+            attr_out_ptr)
+            ->emplace(std::move(result));
+        return true;
       }
       case AttrTy::kMetadata: {
         OpMetadata result;
@@ -5328,6 +5372,15 @@ bool HloParserImpl::ParseAttributeHelper(
           return false;
         }
         static_cast<optional<ResultAccuracy>*>(attr_out_ptr)->emplace(result);
+        return true;
+      }
+      case AttrTy::kMode: {
+        CollectiveOpGroupMode mode;
+        if (!ParseCollectiveOpGroupMode(&mode)) {
+          return false;
+        }
+        static_cast<optional<CollectiveOpGroupMode>*>(attr_out_ptr)
+            ->emplace(mode);
         return true;
       }
     }
@@ -5816,15 +5869,37 @@ bool HloParserImpl::ParseShapeList(std::vector<Shape>* result) {
 bool HloParserImpl::ParseInt64List(const TokKind start, const TokKind end,
                                    const TokKind delim,
                                    std::vector<int64_t>* result) {
-  auto parse_and_add_item = [&]() {
-    int64_t i;
-    if (!ParseInt64(&i)) {
-      return false;
+  // Next token can be `end` or an int64. So, we pass skip_mask hint to the
+  // lexer to avoid parsing unnecessary expensive patterns.
+  if (!ParseToken(start,
+                  StrCat("expects a list to end with ", TokKindToString(end)),
+                  /*lexer_skip_mask=*/kDimLabelsDxDPadDecimalMask)) {
+    return false;
+  }
+  if (lexer_.GetKind() == end) {
+    // empty
+  } else {
+    while (true) {
+      int64_t i;
+      // The next token must be a `delim` or the `end` token, both of which are
+      // small and lexing it fast. So, we don't pass any skip hint to the lexer.
+      if (!ParseInt64(&i)) {
+        return false;
+      }
+      result->push_back(i);
+      if (lexer_.GetKind() != delim) {
+        break;
+      }
+      // The next token must be an int64. Otherwise, it would be a parsing
+      // error. So, we pass skip_mask hint to the lexer to avoid parsing
+      // unnecessary expensive patterns.
+      lexer_.Lex(/*skip_mask=*/kDimLabelsDxDPadDecimalMask);
     }
-    result->push_back(i);
-    return true;
-  };
-  return ParseList(start, end, delim, parse_and_add_item);
+  }
+  // After the `end` token, we don't have any idea on the next token. So, we
+  // don't pass any skip_mask hint to the lexer.
+  return ParseToken(
+      end, StrCat("expects a list to end with ", TokKindToString(end)));
 }
 
 // int64_tlistlist ::= start int64_tlist_elements end
@@ -6252,10 +6327,10 @@ bool HloParserImpl::ParseLayout(Layout* layout) {
     vec_tiles[i] = Tile(tiles[i]);
   }
   *layout = LayoutUtil::MakeLayout(
-      minor_to_major, dim_level_types, vec_tiles,
-      tail_padding_alignment_in_elements, index_primitive_type,
-      pointer_primitive_type, element_size_in_bits, memory_space, split_configs,
-      std::move(physical_shape), dynamic_shape_metadata_prefix_bytes);
+      minor_to_major, vec_tiles, tail_padding_alignment_in_elements,
+      index_primitive_type, pointer_primitive_type, element_size_in_bits,
+      memory_space, split_configs, std::move(physical_shape),
+      dynamic_shape_metadata_prefix_bytes);
   return true;
 }
 
@@ -6275,7 +6350,11 @@ bool HloParserImpl::ParseShape(Shape* result,
     if (!ParseShape(&shape, allow_fallback_to_default_layout)) {
       return false;
     }
-    *result = Shape::MakeBufferShape(shape);
+    auto buffer_shape = ShapeUtil::MakeValidatedBufferShape(shape);
+    if (!buffer_shape.ok()) {
+      return false;
+    }
+    *result = *std::move(buffer_shape);
     return ParseToken(TokKind::kRparen,
                       "expects ')' at the end of buffer shape.");
   }
@@ -6293,7 +6372,11 @@ bool HloParserImpl::ParseShape(Shape* result,
         }
       } while (EatIfPresent(TokKind::kComma));
     }
-    *result = ShapeUtil::MakeTupleShape(shapes);
+    auto maybe_shape = ShapeUtil::MakeValidatedTupleShape(shapes);
+    if (!maybe_shape.ok()) {
+      return false;
+    }
+    *result = *std::move(maybe_shape);
     return ParseToken(TokKind::kRparen, "expects ')' at the end of tuple.");
   }
 
@@ -6338,26 +6421,13 @@ bool HloParserImpl::ParseShape(Shape* result,
     if (!ParseLayout(&layout)) {
       return false;
     }
-    if (layout.dim_level_types_size() != 0 &&
-        layout.dim_level_types_size() != result->dimensions().size()) {
-      return Error(
-          lexer_.GetLoc(),
-          StrFormat("Dimensions size is %ld, but dim level types size is %ld.",
-                    result->dimensions().size(),
-                    layout.dim_level_types_size()));
-    }
     if (layout.minor_to_major_size() != result->dimensions().size()) {
       return Error(
           lexer_.GetLoc(),
           StrFormat("Dimensions size is %ld, but minor to major size is %ld.",
                     result->dimensions().size(), layout.minor_to_major_size()));
     }
-    if (LayoutUtil::IsSparse(layout) && layout.tiles_size() > 0) {
-      return Error(lexer_.GetLoc(),
-                   StrFormat("Layout has tiles, but is for a sparse array: %s",
-                             layout.ToString()));
-    }
-    if (!LayoutUtil::IsSparse(layout) && layout.has_physical_shape()) {
+    if (layout.has_physical_shape()) {
       return Error(
           lexer_.GetLoc(),
           StrFormat(
@@ -6494,18 +6564,39 @@ bool HloParserImpl::ParsePaddingConfig(PaddingConfig* padding) {
   return true;
 }
 
-// original_value ::= original_value | '{' [shape_index] ',' original_array '}'
-// [',']
-bool HloParserImpl::ParseOriginalValue(
-    optional<std::shared_ptr<OriginalValue>>* original_value,
-    const Shape& shape) {
-  VLOG(kDebugLevel) << "ParseOriginalValue";
+// original_array ::= '{' instruction_name [shape_index] '}'
+bool HloParserImpl::ParseOriginalArray(OriginalArray& original_array) {
+  VLOG(kDebugLevel) << "ParseOriginalArray";
 
   if (!ParseToken(TokKind::kLbrace, "Expects '{'")) {
     return false;
   }
 
-  *original_value = std::make_shared<OriginalValue>(shape);
+  if (lexer_.GetKind() == TokKind::kString) {
+    if (!ParseString(&original_array.instruction_name)) {
+      return false;
+    }
+    if (lexer_.GetKind() == TokKind::kLbrace) {
+      if (!ParseShapeIndex(&original_array.shape_index)) {
+        return false;
+      }
+    }
+  }
+
+  if (!ParseToken(TokKind::kRbrace, "Expects '} at end of OriginalArray'")) {
+    return false;
+  }
+  return true;
+}
+
+// original_value ::= '{' '('* original_array [','] ')'* | original_value '}'
+bool HloParserImpl::ParseOriginalValue(
+    std::shared_ptr<OriginalValue>& original_value) {
+  VLOG(kDebugLevel) << "ParseOriginalValue";
+
+  if (!ParseToken(TokKind::kLbrace, "Expects '{'")) {
+    return false;
+  }
 
   ShapeIndex leaf_shape_index;
   while (lexer_.GetKind() != TokKind::kRbrace) {
@@ -6519,29 +6610,17 @@ bool HloParserImpl::ParseOriginalValue(
       lexer_.Lex();
       ++leaf_shape_index.back();
     } else if (lexer_.GetKind() == TokKind::kLbrace) {
-      lexer_.Lex();
-      if (lexer_.GetKind() != TokKind::kRbrace) {
-        std::string instruction_name;
-        ShapeIndex shape_index;
-        if (!ParseString(&instruction_name)) {
-          return false;
-        }
-        if (lexer_.GetKind() != TokKind::kRbrace) {
-          if (!ParseShapeIndex(&shape_index)) {
-            return false;
-          }
-        }
-        *(**original_value)->mutable_element(leaf_shape_index) = {
-            instruction_name, shape_index};
+      OriginalArray original_array;
+      if (!ParseOriginalArray(original_array)) {
+        return false;
+      }
+      if (!original_array.instruction_name.empty()) {
+        *original_value->mutable_element(leaf_shape_index) = original_array;
       } else {
-        // The original_value is not expected to have any leaf without values.
+        // The original value is not expected to have any leaf without values.
         // However we should not fail the execution here. This should
         // be done in HloVerifier instead.
         LOG(WARNING) << "Found an empty leaf node in an original value";
-      }
-      if (!ParseToken(TokKind::kRbrace,
-                      "Expects '} at end of each OriginalArray'")) {
-        return false;
       }
     } else {
       return false;
@@ -6549,6 +6628,50 @@ bool HloParserImpl::ParseOriginalValue(
   }
 
   lexer_.Lex();
+  return true;
+}
+
+// OriginalValueRecoveryTable ::= '{' OriginalArray ':' OriginalArray ','
+//   HloModule | OriginalValueRecoveryTable '}'
+bool HloParserImpl::ParseOriginalValueRecoveryTable(
+    OriginalValueRecoveryTable& original_value_recovery_table) {
+  VLOG(kDebugLevel) << "ParseOriginalValueRecoveryTable";
+
+  if (!ParseToken(TokKind::kLbrace, "Expects '{'")) {
+    return false;
+  }
+
+  while (lexer_.GetKind() != TokKind::kRbrace) {
+    OriginalArray removed_original_array, remaining_original_array;
+    if (!ParseOriginalArray(removed_original_array)) {
+      return false;
+    }
+    std::string errmsg =
+        "Expected format: <original_array>: <original_array>, "
+        "<HloModule>";
+    if (!ParseToken(TokKind::kColon, errmsg)) {
+      return false;
+    }
+    if (!ParseOriginalArray(remaining_original_array)) {
+      return false;
+    }
+    if (!ParseToken(TokKind::kComma, errmsg)) {
+      return false;
+    }
+    std::string hlo_string;
+    if (!ParseString(&hlo_string)) {
+      return false;
+    }
+    auto recovery_module = ParseAndReturnUnverifiedModule(hlo_string);
+    if (!recovery_module.ok()) {
+      return false;
+    }
+    original_value_recovery_table[removed_original_array] = std::make_pair(
+        remaining_original_array, std::move(recovery_module.value()));
+  }
+
+  lexer_.Lex();
+
   return true;
 }
 
@@ -6797,6 +6920,23 @@ bool HloParserImpl::ParseRandomDistribution(RandomDistribution* result) {
   return true;
 }
 
+bool HloParserImpl::ParseCollectiveOpGroupMode(CollectiveOpGroupMode* result) {
+  VLOG(kDebugLevel) << "ParseCollectiveOpGroupMode";
+  if (lexer_.GetKind() != TokKind::kIdent) {
+    return TokenError("expects collective op group mode");
+  }
+  std::string val = lexer_.GetStrVal();
+  auto status_or_result = StringToCollectiveOpGroupMode(val);
+  if (!status_or_result.ok()) {
+    return TokenError(
+        StrFormat("expects collective op group mode but sees: %s, error: %s",
+                  val, status_or_result.status().message()));
+  }
+  *result = status_or_result.value();
+  lexer_.Lex();
+  return true;
+}
+
 bool HloParserImpl::ParseRandomAlgorithm(RandomAlgorithm* result) {
   VLOG(kDebugLevel) << "ParseRandomAlgorithm";
   if (lexer_.GetKind() != TokKind::kIdent) {
@@ -7025,12 +7165,13 @@ bool HloParserImpl::ParseBool(bool* result) {
   return true;
 }
 
-bool HloParserImpl::ParseToken(TokKind kind, const std::string& msg) {
+bool HloParserImpl::ParseToken(TokKind kind, const std::string& msg,
+                               uint64_t lexer_skip_mask) {
   VLOG(kDebugLevel) << "ParseToken " << TokKindToString(kind) << " " << msg;
   if (lexer_.GetKind() != kind) {
     return TokenError(msg);
   }
-  lexer_.Lex();
+  lexer_.Lex(/*skip_mask=*/lexer_skip_mask);
   return true;
 }
 

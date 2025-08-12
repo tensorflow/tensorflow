@@ -117,6 +117,7 @@ ObjectPool<T, Args...>::~ObjectPool() {
 template <typename T, typename... Args>
 auto ObjectPool<T, Args...>::CreateEntry(Args... args)
     -> absl::StatusOr<std::unique_ptr<Entry>> {
+  DCHECK(builder_) << "ObjectPool builder is not initialized";
   auto entry = std::make_unique<Entry>();
   TF_ASSIGN_OR_RETURN(entry->object, builder_(std::forward<Args>(args)...));
   num_created_.fetch_add(1, std::memory_order_relaxed);

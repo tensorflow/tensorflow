@@ -100,9 +100,6 @@ std::string MultiRunStatsRecorder::PerfOptionName(
     if (params.Get<bool>("xnnpack_force_fp16")) {
       sstm << "-fp16";
     }
-    if (params.Get<bool>("xnnpack_slinky")) {
-      sstm << "-slinky";
-    }
     sstm << ")";
   }
 
@@ -277,7 +274,6 @@ void BenchmarkPerformanceOptions::ResetPerformanceOptions() {
 #endif
   single_option_run_params_->Set<bool>("use_xnnpack", false);
   single_option_run_params_->Set<bool>("xnnpack_force_fp16", false);
-  single_option_run_params_->Set<bool>("xnnpack_slinky", false);
 }
 
 void BenchmarkPerformanceOptions::CreatePerformanceOptions() {
@@ -305,8 +301,6 @@ void BenchmarkPerformanceOptions::CreatePerformanceOptions() {
       xnnpack_params.AddParam("use_xnnpack",
                               BenchmarkParam::Create<bool>(true));
       xnnpack_params.AddParam("xnnpack_force_fp16",
-                              BenchmarkParam::Create<bool>(false));
-      xnnpack_params.AddParam("xnnpack_slinky",
                               BenchmarkParam::Create<bool>(false));
       xnnpack_params.AddParam("num_threads",
                               BenchmarkParam::Create<int32_t>(count));

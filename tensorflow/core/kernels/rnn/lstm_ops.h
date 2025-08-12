@@ -165,21 +165,18 @@ struct LSTMBlockCellFprop : public LSTMBlockCell {
                      const int cell_size)
       : LSTMBlockCell(batch_size, input_size, cell_size) {}
 
-  void operator()(OpKernelContext* ctx, const Device& d,
-                  const float forget_bias, const float cell_clip,
-                  bool use_peephole, typename TTypes<T>::ConstMatrix x,
-                  typename TTypes<T>::ConstMatrix cs_prev,
-                  typename TTypes<T>::ConstMatrix h_prev,
-                  typename TTypes<T>::ConstMatrix w,
-                  typename TTypes<T>::ConstVec wci,
-                  typename TTypes<T>::ConstVec wcf,
-                  typename TTypes<T>::ConstVec wco,
-                  typename TTypes<T>::ConstVec b, typename TTypes<T>::Matrix xh,
-                  typename TTypes<T>::Matrix i, typename TTypes<T>::Matrix cs,
-                  typename TTypes<T>::Matrix f, typename TTypes<T>::Matrix o,
-                  typename TTypes<T>::Matrix ci, typename TTypes<T>::Matrix co,
-                  typename TTypes<T>::Matrix gates,
-                  typename TTypes<T>::Matrix h);
+  void operator()(
+      OpKernelContext* ctx, const Device& d, float forget_bias, float cell_clip,
+      bool use_peephole, typename TTypes<T>::ConstMatrix x,
+      typename TTypes<T>::ConstMatrix cs_prev,
+      typename TTypes<T>::ConstMatrix h_prev, typename TTypes<T>::ConstMatrix w,
+      typename TTypes<T>::ConstVec wci, typename TTypes<T>::ConstVec wcf,
+      typename TTypes<T>::ConstVec wco, typename TTypes<T>::ConstVec b,
+      typename TTypes<T>::Matrix xh, typename TTypes<T>::Matrix i,
+      typename TTypes<T>::Matrix cs, typename TTypes<T>::Matrix f,
+      typename TTypes<T>::Matrix o, typename TTypes<T>::Matrix ci,
+      typename TTypes<T>::Matrix co, typename TTypes<T>::Matrix gates,
+      typename TTypes<T>::Matrix h);
 };
 
 // See lstm_ops.cc for CPUDevice implementation and lstm_ops_gpu.cu.cc for

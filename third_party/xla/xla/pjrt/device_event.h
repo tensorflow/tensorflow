@@ -40,6 +40,13 @@ class PjRtDeviceEventOrPromise
   virtual void AppendDescriptionToEvent(
       absl::string_view description,
       absl::Span<PjRtDeviceEventOrPromise* const> waiters) {}
+
+  // If this event type supports tracking, add dependency async values.
+  virtual void AddEventDependencies(
+      absl::Span<const tsl::RCReference<tsl::AsyncValue>> dependencies) {}
+
+  // If this event type supports tracking, report that a thread is waiting.
+  virtual void RegisterClientThreadWait(absl::string_view description) {}
 };
 
 // A device event occurs (potentially) on a device. It can be waited on

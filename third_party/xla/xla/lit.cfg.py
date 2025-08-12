@@ -32,7 +32,7 @@ extra_env_flags = []
 # copybara:uncomment_end
 
 config.name = "XLA"
-config.suffixes = [".cc", ".hlo", ".json", ".mlir", ".pbtxt", ".py"]
+config.suffixes = [".cc", ".hlo", ".json", ".mlir", ".pbtxt", ".py", ".ll"]
 
 config.test_format = lit.formats.ShTest(execute_external=True)
 

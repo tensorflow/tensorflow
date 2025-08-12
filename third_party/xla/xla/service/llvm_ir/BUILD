@@ -52,21 +52,6 @@ cc_library(
     ],
 )
 
-xla_cc_test(
-    name = "alias_analysis_test",
-    srcs = ["alias_analysis_test.cc"],
-    deps = [
-        "//xla:xla_proto_cc",
-        "//xla/ffi",
-        "//xla/ffi:ffi_api",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/service/cpu/tests:cpu_codegen_test_main",
-        "//xla/tsl/platform:test",
-        "@com_google_absl//absl/status",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
 cc_library(
     name = "llvm_util",
     srcs = ["llvm_util.cc"],

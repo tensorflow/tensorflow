@@ -1437,18 +1437,6 @@ TEST_F(ElementalHloToMlirEpilogueTest, XlaGpuEntry) {
                    /*xla_backend=*/xla::BackendKind::kGpu));
 }
 
-TEST_F(ElementalHloToMlirEpilogueTest, XlaCpuEntry) {
-  TF_EXPECT_OK(Run(kHlo,
-                   R"(
-      // CHECK:      @main_add(
-      // CHECK-SAME:     %[[ARG0:.*]]: tensor<7xf32>
-      // main_transpose must still have arg0, but the pure_call must not.
-      // CHECK:          %[[PURE:.*]] = xla.pure_call @main_transpose(%arg1,
-      // CHECK:      @main_transpose(tensor<7xf32)",
-                   EpilogueSpec(), /*set_xla_entry=*/true,
-                   /*xla_backend=*/xla::BackendKind::kCpu));
-}
-
 TEST_F(ElementalHloToMlirTest, ScalarConstant) {
   TF_EXPECT_OK(Run(R"(
     ENTRY main {

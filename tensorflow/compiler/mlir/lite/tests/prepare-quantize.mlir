@@ -1,6 +1,6 @@
-// RUN: tf-opt %s -split-input-file -tfl-prepare-quantize="quantize-allowlist=quantize_float_placeholder_only,not_reset_input" | FileCheck %s
-// RUN: tf-opt %s -split-input-file -tfl-prepare-quantize="disable-set-input-nodes-quantization-params=true" | FileCheck --check-prefix=MixedPrecision %s
-// RUN: tf-opt %s -split-input-file -tfl-prepare-quantize="qdq-conversion-mode=Static" | FileCheck --check-prefix=QDQ %s
+// RUN: litert-opt %s -split-input-file -tfl-prepare-quantize="quantize-allowlist=quantize_float_placeholder_only,not_reset_input" | FileCheck %s
+// RUN: litert-opt %s -split-input-file -tfl-prepare-quantize="disable-set-input-nodes-quantization-params=true" | FileCheck --check-prefix=MixedPrecision %s
+// RUN: litert-opt %s -split-input-file -tfl-prepare-quantize="qdq-conversion-mode=Static" | FileCheck --check-prefix=QDQ %s
 
 // -----
 

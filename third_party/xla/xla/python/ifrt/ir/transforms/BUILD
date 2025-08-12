@@ -1,4 +1,5 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
+load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 
 package(
@@ -40,6 +41,7 @@ cc_library(
         "ifrt_remove_attrs_from_other_dialects_pass.cc",
         "ifrt_remove_ifrt_attrs_pass.cc",
         "ifrt_reshard_to_copy_arrays_pass.cc",
+        "ifrt_to_dot_pass.cc",
         "ifrt_verify_bound_external_loaded_executable_pass.cc",
         "ifrt_verify_device_type_consistency_pass.cc",
         "ifrt_verify_donation_pass.cc",
@@ -58,6 +60,7 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        ":debug",
         ":passes_inc_gen",
         ":utils",
         "//xla:status_macros",
@@ -68,9 +71,11 @@ cc_library(
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_executable",
         "//xla/python/ifrt",
+        "//xla/python/ifrt:attribute_map",
         "//xla/python/ifrt/hlo:hlo_program",
         "//xla/python/ifrt/ir",
         "//xla/python/ifrt/ir:atom_program_compiler",
+        "//xla/python/ifrt/ir:ifrt_ir_program",
         "//xla/python/ifrt/ir:ifrt_ir_program_proto_cc",
         "//xla/python/ifrt/ir:ifrt_ops_inc_gen",
         "//xla/python/ifrt/ir:sharding_param",
@@ -84,6 +89,8 @@ cc_library(
         "//xla/service/spmd/shardy:constants",
         "//xla/service/spmd/shardy:utils",
         "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:btree",
@@ -95,6 +102,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
@@ -107,6 +115,7 @@ cc_library(
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
         "@local_tsl//tsl/platform:fingerprint",
+        "@local_tsl//tsl/platform:numbers",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:protobuf",
         "@shardy//shardy/dialect/sdy/ir:dialect",
@@ -148,5 +157,49 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
+        "@local_tsl//tsl/platform:fingerprint",
+    ],
+)
+
+cc_library(
+    name = "debug",
+    srcs = ["debug.cc"],
+    hdrs = ["debug.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//xla/tsl/platform:env",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@local_tsl//tsl/platform:path",
+        "@local_tsl//tsl/platform:random",
+        "@local_tsl//tsl/platform:regexp",
+    ],
+)
+
+xla_cc_test(
+    name = "debug_test",
+    srcs = ["debug_test.cc"],
+    deps = [
+        ":debug",
+        "//xla/python/ifrt/support:module_parsing",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@local_tsl//tsl/platform:path",
+        "@local_tsl//tsl/platform:status_matchers",
     ],
 )

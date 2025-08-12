@@ -65,6 +65,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/TargetParser/Triple.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -168,6 +169,7 @@ IrEmitter::IrEmitter(mlir::MLIRContext* mlir_context,
   absl::c_sort(thread_local_computations_);
   absl::c_sort(global_computations_);
   TF_CHECK_OK(s) << "Should have failed buffer assignment.";
+  SetModuleMemoryRegionName(*module_, "ir_emitter");
 }
 
 IrEmitter::~IrEmitter() {
@@ -798,10 +800,18 @@ absl::Status IrEmitter::HandleDot(HloInstruction* dot) {
           << llvm_ir::DumpToString(target_array.GetBasePointer());
 
   // Dot operation is complicated so we delegate to a helper class.
-  return EmitDotOperation(
-      *dot, target_array, lhs_array, rhs_array,
-      /*addend_array=*/nullptr, GetExecutableRunOptionsArgument(), b(),
-      hlo_module_config_, target_machine_features_, allow_runtime_calls_);
+  TF_ASSIGN_OR_RETURN(
+      DotOpWorkGroupDim num_workgroups,
+      EmitDotOperation(*dot, target_array, lhs_array, rhs_array,
+                       /*addend_array=*/nullptr,
+                       /*work_group_id=*/{b()->getInt64(0), b()->getInt64(0)},
+                       GetExecutableRunOptionsArgument(), b(),
+                       hlo_module_config_, target_machine_features_,
+                       allow_runtime_calls_, false));
+  DCHECK_EQ(num_workgroups.x, 1);
+  DCHECK_EQ(num_workgroups.y, 1);
+
+  return absl::OkStatus();
 }
 
 absl::Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
@@ -892,9 +902,6 @@ absl::Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
       PrimitiveType primitive_type = lhs->shape().element_type();
       bool multi_threaded =
           hlo_module_config_.debug_options().xla_cpu_multi_thread_eigen();
-      bool use_mkl_dnn =
-          hlo_module_config_.debug_options().xla_cpu_use_mkl_dnn() &&
-          convolution->feature_group_count() == 1;
       bool use_acl = hlo_module_config_.debug_options().xla_cpu_use_acl();
 
       auto valid_num_dims = [](absl::Span<const int64_t> xs) {
@@ -918,10 +925,8 @@ absl::Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
                        ? runtime::kEigenConv2DF16SymbolName
                        : runtime::kEigenSingleThreadedConv2DF16SymbolName)
                 : (multi_threaded
-                       ? (use_mkl_dnn
-                              ? runtime::kMKLConv2DF32SymbolName
-                              : (use_acl ? runtime::kACLConv2DF32SymbolName
-                                         : runtime::kEigenConv2DF32SymbolName))
+                       ? (use_acl ? runtime::kACLConv2DF32SymbolName
+                                  : runtime::kEigenConv2DF32SymbolName)
                        : runtime::kEigenSingleThreadedConv2DF32SymbolName);
       } else if (input_dims.size() == 3) {
         fn_name =
@@ -934,10 +939,6 @@ absl::Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
                        : runtime::kEigenSingleThreadedConv3DF32SymbolName);
       } else {
         LOG(FATAL) << "Invalid number of dimensions " << input_dims.size();
-      }
-      if (!multi_threaded && use_mkl_dnn) {
-        LOG(WARNING) << "Using Eigen instead of MKL-DNN for single-threaded "
-                        "convolution.";
       }
       std::vector<llvm::Value*> args = {
           GetExecutableRunOptionsArgument(),
@@ -2247,10 +2248,16 @@ absl::Status IrEmitter::HandleFusion(HloInstruction* fusion) {
     llvm_ir::IrArray addend_array(
         GetIrArrayFor(fusion->operand(addend_param_number)));
 
-    TF_RETURN_IF_ERROR(
-        EmitDotOperation(*dot, target_array, lhs_array, rhs_array,
-                         &addend_array, GetExecutableRunOptionsArgument(), b(),
-                         hlo_module_config_, target_machine_features_));
+    TF_ASSIGN_OR_RETURN(
+        DotOpWorkGroupDim num_workgroups,
+        EmitDotOperation(
+            *dot, target_array, lhs_array, rhs_array, &addend_array,
+            /*work_group_id=*/{b()->getInt64(0), b()->getInt64(0)},
+            GetExecutableRunOptionsArgument(), b(), hlo_module_config_,
+            target_machine_features_, true, false));
+    DCHECK_EQ(num_workgroups.x, 1);
+    DCHECK_EQ(num_workgroups.y, 1);
+
     return absl::OkStatus();
   } else {
     return Unimplemented("Fusion kind not implemented on CPU");

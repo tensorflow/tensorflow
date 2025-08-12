@@ -54,7 +54,7 @@ class HostExecutor : public StreamExecutorCommon {
   absl::Status Init() override;
 
   absl::StatusOr<std::unique_ptr<Kernel>> LoadKernel(
-      const MultiKernelLoaderSpec& spec) override;
+      const KernelLoaderSpec& spec) override;
 
   DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space) override;
   void Deallocate(DeviceMemoryBase* mem) override;

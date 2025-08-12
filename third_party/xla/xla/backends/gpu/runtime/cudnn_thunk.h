@@ -24,8 +24,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/gpu/kernel_arguments.h"
 #include "xla/stream_executor/dnn.h"
 
 namespace xla {
@@ -35,7 +35,7 @@ namespace gpu {
 class CuDnnThunk : public Thunk {
  public:
   CuDnnThunk(std::string fingerprint, ThunkInfo,
-             absl::Span<const KernelArgument>,
+             absl::Span<const emitters::KernelArgument>,
              std::optional<int64_t> sdpa_dropout_seed = std::nullopt);
   CuDnnThunk(const CuDnnThunk&) = delete;
   CuDnnThunk& operator=(const CuDnnThunk&) = delete;

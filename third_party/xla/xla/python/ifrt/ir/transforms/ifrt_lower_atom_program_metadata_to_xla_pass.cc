@@ -34,10 +34,10 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 
-namespace {
-
 #define GEN_PASS_DEF_IFRTLOWERATOMPROGRAMMETADATATOXLAPASS
 #include "xla/python/ifrt/ir/transforms/passes.h.inc"
+
+namespace {
 
 // Pass that does the following:
 // 1) transforms kIfrtShardingAttrName attribute on the main FuncOp inputs and

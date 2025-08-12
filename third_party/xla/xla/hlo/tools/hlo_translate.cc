@@ -82,7 +82,8 @@ llvm::cl::opt<bool> print_sugar(
 // Error collector that simply ignores errors reported.
 class NoOpErrorCollector : public tsl::protobuf::io::ErrorCollector {
  public:
-  void AddError(int line, int column, const std::string& message) override {}
+  void RecordError(int line, tsl::protobuf::io::ColumnNumber column,
+                   absl::string_view message) override {}
 };
 
 bool LoadHloProto(const std::string& contents, xla::HloProto* hlo_proto) {

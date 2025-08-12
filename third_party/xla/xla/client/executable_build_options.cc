@@ -27,7 +27,7 @@ limitations under the License.
 #include "xla/debug_options_flags.h"
 #include "xla/execution_options_util.h"
 #include "xla/layout_util.h"
-#include "xla/pjrt/compile_options.pb.h"
+#include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/service/compilation_environments.h"
 #include "xla/service/computation_placer.h"
 #include "xla/shape.h"

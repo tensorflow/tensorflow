@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/wait_for_streams_thunk.h"
 
+#include <memory>
+
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -33,6 +35,36 @@ absl::Status WaitForStreamsThunk::ExecuteOnStream(const ExecuteParams& params) {
       Thunk::GetStreamForExecution(wait_for_stream_id_, params));
 
   return stream->WaitFor(wait_on_stream);
+}
+
+absl::StatusOr<ThunkProto> WaitForStreamsThunk::ToProto() const {
+  ThunkProto proto;
+  TF_ASSIGN_OR_RETURN(*proto.mutable_thunk_info(), GetThunkInfoProto());
+
+  WaitForStreamsThunkProto* wait_for_streams_thunk_proto =
+      proto.mutable_wait_for_streams_thunk();
+  wait_for_streams_thunk_proto->set_stream_id(stream_id_.value());
+  wait_for_streams_thunk_proto->set_wait_for_stream_id(
+      wait_for_stream_id_.value());
+  return proto;
+}
+
+absl::StatusOr<std::unique_ptr<WaitForStreamsThunk>>
+WaitForStreamsThunk::FromProto(ThunkInfo thunk_info,
+                               const WaitForStreamsThunkProto& proto) {
+  if (proto.stream_id() < 0) {
+    return absl::InvalidArgumentError(
+        "Failed to deserialize WaitForStreamsThunkProto: stream_id must be "
+        "non-negative.");
+  }
+  if (proto.wait_for_stream_id() < 0) {
+    return absl::InvalidArgumentError(
+        "Failed to deserialize WaitForStreamsThunkProto: wait_for_stream_id "
+        "must be non-negative.");
+  }
+  return std::make_unique<WaitForStreamsThunk>(
+      thunk_info, ExecutionStreamId(proto.stream_id()),
+      ExecutionStreamId(proto.wait_for_stream_id()));
 }
 
 }  // namespace xla::gpu

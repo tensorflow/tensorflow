@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
-#include <memory>
 #include <numeric>
 #include <string>
 #include <tuple>
@@ -37,7 +36,6 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/IR/Visitors.h"
-#include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
@@ -49,10 +47,10 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 
-namespace {
-
 #define GEN_PASS_DEF_IFRTLOWERMPMDRESHARDTOCALLPASS
 #include "xla/python/ifrt/ir/transforms/passes.h.inc"
+
+namespace {
 
 // Returns a fingerprint of the input and output types of a ReshardOp.
 uint64_t ReshardFingerprint(ReshardOp reshard_op) {
@@ -192,11 +190,5 @@ class IfrtLowerMpmdReshardToCallPass
 };
 
 }  // namespace
-
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateIfrtLowerMpmdReshardToCallPass() {
-  return std::make_unique<IfrtLowerMpmdReshardToCallPass>();
-}
-
 }  // namespace ifrt
 }  // namespace xla

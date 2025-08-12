@@ -49,13 +49,13 @@ namespace gpu {
 // memory usage.
 constexpr int64_t kOneShotAllReduceThreshold = 256 * 1024;
 
-bool IsSmallAllReduce(const HloInstruction* hlo) {
+static bool IsSmallAllReduce(const HloInstruction* hlo) {
   return HloPredicateIsOp<HloOpcode::kAllReduce>(hlo) &&
          ShapeUtil::ElementsInRecursive(hlo->shape()) <=
              kOneShotAllReduceThreshold;
 }
 
-std::optional<Literal> CreateReductionInitLiteral(
+static std::optional<Literal> CreateReductionInitLiteral(
     HloAllReduceInstruction* all_reduce, HloComputation* computation) {
   std::optional<ReductionKind> reduction_kind =
       MatchReductionComputation(all_reduce->to_apply());
@@ -68,8 +68,8 @@ std::optional<Literal> CreateReductionInitLiteral(
 }
 
 // Adds a size-1 major dimension to the given HLO instruction.
-HloInstruction* PrependSize1MajorDimension(HloInstruction* hlo,
-                                           HloComputation* computation) {
+static HloInstruction* PrependSize1MajorDimension(HloInstruction* hlo,
+                                                  HloComputation* computation) {
   absl::InlinedVector<int64_t, 4> reshape_dimensions;
   reshape_dimensions.reserve(hlo->shape().dimensions().size() + 1);
   reshape_dimensions.push_back(1);
@@ -84,9 +84,9 @@ HloInstruction* PrependSize1MajorDimension(HloInstruction* hlo,
 
 // Decomposes the given all-reduce operation into an all-gather and a reduce
 // operation.
-absl::StatusOr<bool> DecomposeAllReduce(HloInstruction* hlo,
-                                        HloComputation* computation,
-                                        HloModule* module) {
+static absl::StatusOr<bool> DecomposeAllReduce(HloInstruction* hlo,
+                                               HloComputation* computation,
+                                               HloModule* module) {
   HloAllReduceInstruction* all_reduce = Cast<HloAllReduceInstruction>(hlo);
 
   HloInstruction* input = all_reduce->mutable_operand(0);

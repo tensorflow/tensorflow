@@ -1,0 +1,54 @@
+# TODO: b/428750062 - Remove this patch once rules_cc is updated.
+
+diff --git a/absl/base/BUILD.bazel b/absl/base/BUILD.bazel
+--- a/absl/base/BUILD.bazel
++++ b/absl/base/BUILD.bazel
+@@ -208,7 +208,6 @@ cc_library(
+     linkopts = select({
+         "@rules_cc//cc/compiler:msvc-cl": [],
+         "@rules_cc//cc/compiler:clang-cl": [],
+-        "@rules_cc//cc/compiler:emscripten": [],
+         "//conditions:default": ["-pthread"],
+     }) + ABSL_DEFAULT_LINKOPTS,
+     visibility = [
+@@ -275,7 +274,6 @@ cc_library(
+             "-DEFAULTLIB:advapi32.lib",
+             "-ladvapi32",
+         ],
+-        "@rules_cc//cc/compiler:emscripten": [],
+         "//conditions:default": ["-pthread"],
+     }) + ABSL_DEFAULT_LINKOPTS,
+     deps = [
+diff --git a/absl/debugging/BUILD.bazel b/absl/debugging/BUILD.bazel
+--- a/absl/debugging/BUILD.bazel
++++ b/absl/debugging/BUILD.bazel
+@@ -181,7 +181,6 @@ cc_test(
+     linkopts = select({
+         "@rules_cc//cc/compiler:msvc-cl": [],
+         "@rules_cc//cc/compiler:clang-cl": [],
+-        "@rules_cc//cc/compiler:emscripten": [],
+         "//conditions:default": ["-pthread"],
+     }) + ABSL_DEFAULT_LINKOPTS,
+     deps = [
+diff --git a/absl/random/internal/BUILD.bazel b/absl/random/internal/BUILD.bazel
+--- a/absl/random/internal/BUILD.bazel
++++ b/absl/random/internal/BUILD.bazel
+@@ -181,7 +181,6 @@ cc_library(
+     linkopts = select({
+         "@rules_cc//cc/compiler:msvc-cl": [],
+         "@rules_cc//cc/compiler:clang-cl": [],
+-        "@rules_cc//cc/compiler:emscripten": [],
+         "//conditions:default": ["-pthread"],
+     }) + ABSL_DEFAULT_LINKOPTS,
+     deps = [
+diff --git a/absl/synchronization/BUILD.bazel b/absl/synchronization/BUILD.bazel
+--- a/absl/synchronization/BUILD.bazel
++++ b/absl/synchronization/BUILD.bazel
+@@ -126,7 +126,6 @@ cc_library(
+     linkopts = select({
+         "@rules_cc//cc/compiler:msvc-cl": [],
+         "@rules_cc//cc/compiler:clang-cl": [],
+-        "@rules_cc//cc/compiler:emscripten": [],
+         "//conditions:default": ["-pthread"],
+     }) + ABSL_DEFAULT_LINKOPTS,
+     visibility = ["//visibility:public"],

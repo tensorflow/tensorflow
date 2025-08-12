@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/basic_string_array.h"
 
 #include <cstdint>
+#include <iterator>
 #include <memory>
 #include <numeric>
 #include <optional>
@@ -25,6 +26,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/cord.h"
@@ -378,8 +380,8 @@ absl::StatusOr<ArrayRef> MakeSingleDeviceFloatTestArray(Client* client,
       /*on_done_with_host_buffer=*/nullptr);
 }
 
-// Makes a sharded string array with two shards. Uses the first two strings from
-// the input `data`, one per shard.
+// Makes a sharded string array with four shards in total and two addressable
+// shards. Uses the first two strings from the input `data`, one per shard.
 absl::StatusOr<ArrayRef> MakeShardedStringTestArray(
     Client* client, absl::Span<const std::string> data,
     bool is_fully_replicated) {
@@ -387,15 +389,31 @@ absl::StatusOr<ArrayRef> MakeShardedStringTestArray(
     return absl::InvalidArgumentError(absl::StrCat(
         "Input data has too few strings. Need at least 2. got: ", data.size()));
   }
-  auto devices = client->addressable_devices();
+
+  std::vector<Device*> devices;
+  absl::c_copy(client->addressable_devices().first(2),
+               std::back_inserter(devices));
   if (devices.size() < 2) {
     return absl::InvalidArgumentError(absl::StrCat(
-        "Test client has too few devices. Need 2, got:", devices.size()));
+        "Test client has too few addressable devices. Need 2, got:",
+        devices.size()));
+  }
+  for (Device* const device : client->devices()) {
+    if (device->ProcessIndex() != client->process_index()) {
+      devices.push_back(device);
+    }
+    if (devices.size() == 4) {
+      break;
+    }
+  }
+  if (devices.size() != 4) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Test client has too few devices. Need 4, got:", devices.size()));
   }
 
   ShardingRef sharding = ConcreteEvenSharding::Create(
-      client->MakeDeviceList({devices[0], devices[1]}), MemoryKind(),
-      Shape({2, 1}), Shape({1}), is_fully_replicated);
+      client->MakeDeviceList(devices), MemoryKind(), Shape({2, 1}), Shape({1}),
+      is_fully_replicated);
 
   std::vector<ArrayRef> arrays;
   for (int i = 0; i < 2; ++i) {
@@ -675,8 +693,20 @@ TEST(CopyTest, SuccessSingleDeviceShardedArray) {
 
 TEST(CopyTest, SuccessMultiDeviceShardedArray) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
-  auto devices = client->addressable_devices();
-  ASSERT_GE(devices.size(), 4);
+
+  std::vector<Device*> devices;
+  absl::c_copy(client->addressable_devices().subspan(2, 2),
+               std::back_inserter(devices));
+  ASSERT_EQ(devices.size(), 2);
+  for (Device* const device : client->devices()) {
+    if (device->ProcessIndex() != client->process_index()) {
+      devices.push_back(device);
+    }
+    if (devices.size() == 4) {
+      break;
+    }
+  }
+  ASSERT_EQ(devices.size(), 4);
 
   const std::vector<std::string> per_shard_contents({"shard 0", "shard 1"});
   std::vector<ArrayRef> arrays;
@@ -688,8 +718,8 @@ TEST(CopyTest, SuccessMultiDeviceShardedArray) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto new_arrays,
       client->CopyArrays(absl::MakeSpan(arrays),
-                         client->MakeDeviceList({devices[2], devices[3]}),
-                         MemoryKind(), ArrayCopySemantics::kAlwaysCopy));
+                         client->MakeDeviceList(devices), MemoryKind(),
+                         ArrayCopySemantics::kAlwaysCopy));
 
   auto new_basic_string_array =
       llvm::dyn_cast<BasicStringArray>(new_arrays[0].get());

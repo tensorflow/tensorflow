@@ -786,8 +786,8 @@ void BaseGPUDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
   }
   std::unique_ptr<stream_executor::ActivateContext> scoped_activation =
       stream->parent()->Activate();
-  profiler::ScopedMemoryDebugAnnotation op_annotation(
-      op_kernel->name_view().data(), context->step_id());
+  profiler::ScopedMemoryDebugAnnotation op_annotation(op_kernel->name_view(),
+                                                      context->step_id());
   bool should_log_inputs_and_outputs = ShouldLogInputsAndOutputs(op_kernel);
 
   if (should_log_inputs_and_outputs) {
@@ -1927,7 +1927,9 @@ Status BaseGPUDeviceFactory::CreateDevices(
               /*host_memory_allocator=*/std::move(pjrt_gpu_host_allocator),
               /*should_stage_host_to_device_transfers=*/true,
               /*gpu_run_options=*/std::move(gpu_run_options),
-              /*kv_store=*/nullptr, /*gpu_topology=*/nullptr);
+              /*kv_store=*/nullptr, /*distributed_client=*/nullptr,
+              /*abort_collectives_on_failure=*/false, /*gpu_topology=*/nullptr,
+              /*num_nodes=*/std::nullopt);
 
       return SetPjRtClientInTFGlobalResourceManager(DeviceType(DEVICE_GPU),
                                                     std::move(pjrt_client));

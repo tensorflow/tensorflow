@@ -15,19 +15,22 @@ limitations under the License.
 
 #include "xla/service/compiler.h"
 
+#include "xla/tests/xla_test_backend_predicates.h"
 #include <gtest/gtest.h>
 #include "xla/autotune_results.pb.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tests/test_macros.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
 
-TEST(TargetConfigTest, DISABLED_ON_CPU(ExecutorConstructorFillsAllFields)) {
+TEST(TargetConfigTest, ExecutorConstructorFillsAllFields) {
+  if (test::DeviceIs(test::kCpu)) {
+    GTEST_SKIP();
+  }
   TF_ASSERT_OK(stream_executor::ValidateGPUMachineManager());
   TF_ASSERT_OK_AND_ASSIGN(
       stream_executor::StreamExecutor * executor,

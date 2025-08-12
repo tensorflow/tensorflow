@@ -26,8 +26,8 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/functional/overload.h"
 #include "absl/log/log.h"
-#include "xla/service/overload.h"
 
 namespace xla::gpu {
 namespace {
@@ -35,6 +35,8 @@ namespace {
 using ::testing::Combine;
 using ::testing::TestWithParam;
 using ::testing::ValuesIn;
+
+constexpr float kEpsilon = 0.01;
 
 enum class InterpolatorType {
   NN = 0,
@@ -124,23 +126,24 @@ TEST_P(EuclideanNN2DInterpolatorTest, ReturnsNearestNeighbour) {
     std::array<int64_t, 2> plane_point = point.first;
     int val = point.second;
     std::visit(
-        Overload{[&](const std::unique_ptr<EuclideanNNInterpolator<int64_t, 2>>&
-                         nn) { return nn->Add(plane_point, val); },
-                 [&](const std::unique_ptr<
-                     EuclideanComplementInterpolator<int64_t, 2>>& comp) {
-                   return comp->Add(plane_point, val);
-                 }},
+        absl::Overload(
+            [&](const std::unique_ptr<EuclideanNNInterpolator<int64_t, 2>>&
+                    nn) { return nn->Add(plane_point, val); },
+            [&](const std::unique_ptr<
+                EuclideanComplementInterpolator<int64_t, 2>>& comp) {
+              return comp->Add(plane_point, val);
+            }),
         interpolator);
   }
   std::visit(
-      Overload{
+      absl::Overload(
           [&](const std::unique_ptr<EuclideanNNInterpolator<int64_t, 2>>& nn) {
             EXPECT_EQ(nn->Eval(param.eval_point), param.expected_value);
           },
           [&](const std::unique_ptr<
               EuclideanComplementInterpolator<int64_t, 2>>& comp) {
             EXPECT_EQ(comp->Eval(param.eval_point), param.expected_value);
-          }},
+          }),
       interpolator);
 }
 
@@ -180,6 +183,48 @@ INSTANTIATE_TEST_SUITE_P(
       return absl::StrCat(std::get<1>(info.param).test_name, "x",
                           std::get<0>(info.param));
     });
+
+TEST(EuclideanWeightedAverage2DInterpolatorTest, ReturnsWeightedAverage) {
+  auto interpolator = std::make_unique<EuclideanWeightedAverageInterpolator<2>>(
+      /*next_context=*/std::array<int64_t, 2>{-1, -1},
+      /*next_power_context=*/std::array<int64_t, 2>{1, 1},
+      /*max_context=*/std::array<int64_t, 2>{16, 16},
+      /*min_context=*/std::array<int64_t, 2>{8, 8});
+  std::array<int64_t, 2> p1 = {8, 16};
+  std::array<int64_t, 2> p2 = {8, 8};
+  std::array<int64_t, 2> p3 = {16, 8};
+  std::array<int64_t, 2> p4 = {16, 16};
+
+  std::vector<std::pair<std::array<int64_t, 2>, int>> plane;
+  plane.push_back({p1, 1});
+  plane.push_back({p2, 2});
+  plane.push_back({p3, 3});
+  plane.push_back({p4, 4});
+
+  for (const auto& point : plane) {
+    std::array<int64_t, 2> plane_point = point.first;
+    int val = point.second;
+    interpolator->Add(plane_point, val);
+  }
+  // Near the first point.
+  std::array<int64_t, 2> p = {7, 9};
+  EXPECT_NEAR(interpolator->Eval(p), 1.94, kEpsilon);
+  // Near the second point.
+  p = {15, 17};
+  EXPECT_NEAR(interpolator->Eval(p), 3.83, kEpsilon);
+  // Nearer only for first dim.
+  p = {13, 8};
+  EXPECT_NEAR(interpolator->Eval(p), 2.72, kEpsilon);
+  // Extrapolate first point.
+  p = {7, 7};
+  EXPECT_NEAR(interpolator->Eval(p), 2.0, kEpsilon);
+  // Extrapolate second point.
+  p = {17, 9};
+  EXPECT_NEAR(interpolator->Eval(p), 3.05, kEpsilon);
+  // Exact point.
+  p = {8, 16};
+  EXPECT_NEAR(interpolator->Eval(p), 1.00, kEpsilon);
+}
 
 }  // namespace
 }  // namespace xla::gpu

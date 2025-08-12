@@ -19,23 +19,79 @@ limitations under the License.
 #include <array>
 #include <cstdint>
 
-#include "xla/stream_executor/device_memory.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/stream_executor/kernel.h"
 
 namespace stream_executor::gpu {
 
+enum class AllReduceStrategy : uint32_t {
+  kOneShot,
+  kTwoShot,
+};
+
+template <typename Sink>
+void AbslStringify(Sink& sink, AllReduceStrategy strategy) {
+  switch (strategy) {
+    case AllReduceStrategy::kOneShot:
+      sink.Append("kOneShot");
+      break;
+    case AllReduceStrategy::kTwoShot:
+      sink.Append("kTwoShot");
+      break;
+  }
+}
+
 // The maximum number of input pointers that can be passed to the all-reduce
 // kernel.
 inline constexpr int64_t kMaxNumAllReduceInputPtrs = 8;
+inline constexpr int64_t kNumElementsPerThread = 4;
+
+// A pointer to a buffer that does not alias with other buffers.
+template <typename U>
+using RestrictedPtr = U* __restrict__;
+
+template <typename T>
+struct AllReduceKernelParams {
+  // Shared buffers of all devices ordered by rank.
+  std::array<RestrictedPtr<T>, kMaxNumAllReduceInputPtrs> remote_input_buffers;
+  // Local buffer of the device.
+  RestrictedPtr<T> input_buffer;
+  // Output buffer of the device. Can be the same as the local input buffer in
+  // case of aliasing.
+  RestrictedPtr<T> output_buffer;
+  // Local rank of the device.
+  int64_t rank;
+  // Number of participating ranks in the all-reduce.
+  int64_t num_ranks;
+  // Size of tensor on each device.
+  int64_t num_elements;
+  // Elements to be processed by each rank. This is equal to `num_elements` for
+  // one-shot all-reduce and `num_elements / num_ranks` for two-shot
+  // all-reduce.
+  int64_t num_elements_per_rank;
+  // Elements to be processed by each block.
+  int64_t num_elements_per_block;
+  // Start offset of the rank responsible for accumulating the elements.
+  // This is equal to `rank * num_elements_per_rank`.
+  int64_t rank_offset;
+  // Ranks rotated by `rank` % `num_ranks` to circumvent all GPUs reading from
+  // the same location simultaneously. Index 0 is the rank itself.
+  std::array<int64_t, kMaxNumAllReduceInputPtrs> rotated_ranks;
+  // Signal flags buffers of all devices ordered by rank.
+  std::array<RestrictedPtr<uint32_t>, kMaxNumAllReduceInputPtrs>
+      signal_flags_buffers;
+  // Value to be written to the signal flags. Should be different for different
+  // invocations of the kernel with the same signal buffer.
+  uint32_t signal_value;
+};
 
 // Defines a trait for the AllReduce kernel that can be used to register
 // and look up the kernel in the GPU kernel registry.
-template <typename ElementT>
+template <typename ElementT, xla::ReductionKind ReductionKindT,
+          AllReduceStrategy kAllReduceStrategy>
 struct AllReduceKernel {
   using KernelType =
-      stream_executor::TypedKernel<std::array<void*, kMaxNumAllReduceInputPtrs>,
-                                   stream_executor::DeviceMemoryBase, int64_t,
-                                   int64_t>;
+      stream_executor::TypedKernel<AllReduceKernelParams<ElementT>>;
 };
 
 }  // namespace stream_executor::gpu

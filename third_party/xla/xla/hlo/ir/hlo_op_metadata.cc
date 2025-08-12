@@ -31,9 +31,8 @@ std::string OpMetadataToString(const OpMetadata& metadata, bool only_op_name) {
     if (!metadata.op_name().empty()) {
       return absl::StrCat("op_name=\"", absl::CEscape(metadata.op_name()),
                           "\"");
-    } else {
-      return "";
     }
+    return "";
   }
   if (!metadata.op_type().empty()) {
     result.push_back(

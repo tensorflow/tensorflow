@@ -179,7 +179,7 @@ TEST_F(RandomShapePartitionIteratorTest, RandomShapeAndPartitions) {
   int64_t total_dim_size = 1;
   for (int i = 0; i < num_outer_dims_to_partition; ++i) {
     const int64_t dimension = shape.layout().minor_to_major(
-        shape.layout().minor_to_major_size() - 1 - i);
+        shape.layout().minor_to_major().size() - 1 - i);
     dim_sizes[i] = shape.dimensions(dimension);
     total_dim_size *= dim_sizes[i];
     // Choose dimension partition count in [1, dim_size]

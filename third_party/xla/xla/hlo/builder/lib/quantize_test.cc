@@ -25,7 +25,6 @@ limitations under the License.
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/tests/client_library_test_base.h"
-#include "xla/tests/test_macros.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "tsl/platform/bfloat16.h"
@@ -190,7 +189,7 @@ TEST(PackTest, PackUint8ToUint32PerfectSize) {
   EXPECT_THAT(output, ::testing::ElementsAre(0x03020100));
 }
 
-XLA_TEST_F(DequantizeTest, MinCombinedUint16R1) {
+TEST_F(DequantizeTest, MinCombinedUint16R1) {
   XlaBuilder builder(TestName());
   auto input = GenerateInput<uint16_t>();
   auto x = ConstantR1<uint32_t>(&builder, PackToUint32<uint16_t>(input));
@@ -200,7 +199,7 @@ XLA_TEST_F(DequantizeTest, MinCombinedUint16R1) {
   ComputeAndCompareR1<bfloat16>(&builder, expected, {});
 }
 
-XLA_TEST_F(DequantizeTest, MinCombinedUint8R1) {
+TEST_F(DequantizeTest, MinCombinedUint8R1) {
   XlaBuilder builder(TestName());
   auto input = GenerateInput<uint8_t>();
   auto x = ConstantR1<uint32_t>(&builder, PackToUint32<uint8_t>(input));
@@ -210,7 +209,7 @@ XLA_TEST_F(DequantizeTest, MinCombinedUint8R1) {
   ComputeAndCompareR1<bfloat16>(&builder, expected, {});
 }
 
-XLA_TEST_F(DequantizeTest, MinCombinedUint8R2) {
+TEST_F(DequantizeTest, MinCombinedUint8R2) {
   XlaBuilder builder(TestName());
   std::vector<std::vector<uint8_t>> input = {
       {0, 1, 2, 3},
@@ -234,7 +233,7 @@ XLA_TEST_F(DequantizeTest, MinCombinedUint8R2) {
   ComputeAndCompareR2<bfloat16>(&builder, expected, {});
 }
 
-XLA_TEST_F(DequantizeTest, MinCombinedUint8R2TransposeOutput) {
+TEST_F(DequantizeTest, MinCombinedUint8R2TransposeOutput) {
   XlaBuilder builder(TestName());
   std::vector<std::vector<uint8_t>> input = {
       {0, 1, 2, 3},
@@ -258,7 +257,7 @@ XLA_TEST_F(DequantizeTest, MinCombinedUint8R2TransposeOutput) {
   ComputeAndCompareR2<bfloat16>(&builder, expected, {});
 }
 
-XLA_TEST_F(DequantizeTest, MinCombinedUint8R2TailingZero) {
+TEST_F(DequantizeTest, MinCombinedUint8R2TailingZero) {
   XlaBuilder builder(TestName());
   std::vector<std::vector<uint8_t>> input = {
       {0, 1, 2, 3, 16},
@@ -289,7 +288,7 @@ XLA_TEST_F(DequantizeTest, MinCombinedUint8R2TailingZero) {
   ComputeAndCompareR2<bfloat16>(&builder, expected, {});
 }
 
-XLA_TEST_F(DequantizeTest, MinCombinedUint8R2TailingZeroTransposeOutput) {
+TEST_F(DequantizeTest, MinCombinedUint8R2TailingZeroTransposeOutput) {
   XlaBuilder builder(TestName());
   std::vector<std::vector<uint8_t>> input = {
       {0, 1, 2, 3, 16},
@@ -320,7 +319,7 @@ XLA_TEST_F(DequantizeTest, MinCombinedUint8R2TailingZeroTransposeOutput) {
   ComputeAndCompareR2<bfloat16>(&builder, expected, {});
 }
 
-XLA_TEST_F(DequantizeTest, MinCombinedUint8LargeSizeTest) {
+TEST_F(DequantizeTest, MinCombinedUint8LargeSizeTest) {
   XlaBuilder builder(TestName());
   Array2D<uint8_t> input = GenerateLargeSizeInput<uint8_t>(500, 3547);
   Array2D<uint32_t> input_packed = PackLargeInput<uint8_t>(input);
@@ -334,7 +333,7 @@ XLA_TEST_F(DequantizeTest, MinCombinedUint8LargeSizeTest) {
   ComputeAndCompareR2<bfloat16>(&builder, expected, {});
 }
 
-XLA_TEST_F(DequantizeTest, MinCombinedUint8LargeSizeTestTransposeOutput) {
+TEST_F(DequantizeTest, MinCombinedUint8LargeSizeTestTransposeOutput) {
   XlaBuilder builder(TestName());
   Array2D<uint8_t> input = GenerateLargeSizeInput<uint8_t>(500, 3547);
   Array2D<uint32_t> input_packed = PackLargeInput<uint8_t>(input);

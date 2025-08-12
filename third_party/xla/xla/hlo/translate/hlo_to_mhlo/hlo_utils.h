@@ -94,49 +94,6 @@ static absl::StatusOr<TypeT> ConvertTensorShapeToType(const Shape& xla_ty,
   //
   // For example, we wouldn't be able to represent the xla type
   // `f32[4,<=4]{1,0:D(D,C)}`.
-  if (xla_ty.has_layout()) {
-    auto layout = xla_ty.layout();
-    if (LayoutUtil::IsSparse(layout)) {
-      if (is_bounded_dynamic)
-        return Unimplemented(
-            "MHLO doesn't support bounded dynamic shapes for sparse tensors");
-      llvm::SmallVector<mlir::sparse_tensor::LevelType> lts;
-      for (size_t i = 0, e = layout.dim_level_types_size(); i < e; ++i) {
-        auto dlt = layout.dim_level_type(i);
-        const bool ordered = true;
-        const bool unique = true;
-        switch (dlt) {
-          case DimLevelType::DIM_DENSE:
-            lts.push_back(*mlir::sparse_tensor::buildLevelType(
-                mlir::sparse_tensor::LevelFormat::Dense, ordered, unique));
-            break;
-          case DimLevelType::DIM_COMPRESSED:
-            lts.push_back(*mlir::sparse_tensor::buildLevelType(
-                mlir::sparse_tensor::LevelFormat::Compressed, ordered, unique));
-            break;
-          case DimLevelType::DIM_SINGLETON:
-            lts.push_back(*mlir::sparse_tensor::buildLevelType(
-                mlir::sparse_tensor::LevelFormat::Singleton, ordered, unique));
-            break;
-          case DimLevelType::DIM_LOOSE_COMPRESSED:
-            lts.push_back(*mlir::sparse_tensor::buildLevelType(
-                mlir::sparse_tensor::LevelFormat::LooseCompressed, ordered,
-                unique));
-            break;
-          default:
-            return InvalidArgument("Unknown DimLevelType from HLO");
-        }
-      }
-      auto ordering = layout.minor_to_major();
-      llvm::SmallVector<uint32_t> major_to_minor = {ordering.rbegin(),
-                                                    ordering.rend()};
-      auto id_map = mlir::AffineMap::getPermutationMap(major_to_minor,
-                                                       builder.getContext());
-      // TODO(atondwal): support sizes other than 32 when XLA does
-      encoding = SparseTensorEncodingAttr::get(
-          builder.getContext(), lts, id_map, mlir::AffineMap(), 32, 32);
-    }
-  }
   return TypeT::get(shape, element_type_or.value(), encoding);
 }
 
@@ -228,18 +185,18 @@ static std::pair<mlir::Attribute, mlir::ArrayAttr> GetLayoutAttribute(
                           b.getArrayAttr(tile_attrs));
   }
 
-  Layout layout = maybe_layout.value_or(
-      shape.has_layout() ? shape.layout()
-                         : LayoutUtil::GetDefaultLayoutForShape(shape));
-
   llvm::SmallVector<mlir::Attribute> vec_of_tiles;
-  for (const Tile& tile : layout.tiles()) {
-    llvm::SmallVector<int64_t> tile_vec = {tile.dimensions().begin(),
-                                           tile.dimensions().end()};
-    vec_of_tiles.push_back(b.getIndexTensorAttr(tile_vec));
+  llvm::SmallVector<int64_t> layout_vec;
+  if (maybe_layout.has_value() || shape.has_layout()) {
+    Layout layout = maybe_layout.value_or(shape.layout());
+    for (const Tile& tile : layout.tiles()) {
+      llvm::SmallVector<int64_t> tile_vec = {tile.dimensions().begin(),
+                                             tile.dimensions().end()};
+      vec_of_tiles.push_back(b.getIndexTensorAttr(tile_vec));
+    }
+    layout_vec = {layout.minor_to_major().begin(),
+                  layout.minor_to_major().end()};
   }
-  llvm::SmallVector<int64_t> layout_vec = {layout.minor_to_major().begin(),
-                                           layout.minor_to_major().end()};
   return std::make_pair(b.getIndexTensorAttr(layout_vec),
                         b.getArrayAttr(vec_of_tiles));
 }

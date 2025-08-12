@@ -104,14 +104,7 @@ absl::StatusOr<std::unique_ptr<EmitterData>> GetEmitter(
 }
 
 mlir::MLIRContext GetMlirContextForTest() {
-  mlir::DialectRegistry registry;
-  registry.insert<mlir::DLTIDialect, mlir::tensor::TensorDialect,
-                  mlir::func::FuncDialect, mlir::affine::AffineDialect,
-                  mlir::arith::ArithDialect, mlir::complex::ComplexDialect,
-                  mlir::math::MathDialect, mlir::scf::SCFDialect,
-                  mlir::mhlo::MhloDialect, mlir::gpu::GPUDialect,
-                  mlir::vector::VectorDialect, XlaGpuDialect>();
-  return mlir::MLIRContext(registry);
+  return mlir::MLIRContext(EmitterBase::GetDialectRegistry());
 }
 
 }  // namespace gpu

@@ -175,6 +175,10 @@ class SdyRoundTripExportOpsPass
   StringRef getDescription() const override {
     return "Exports Shardonnay ops to StableHLO ops.";
   }
+
+  void getDependentDialects(mlir::DialectRegistry& registry) const final {
+    registry.insert<stablehlo::StablehloDialect>();
+  }
 };
 
 }  // namespace

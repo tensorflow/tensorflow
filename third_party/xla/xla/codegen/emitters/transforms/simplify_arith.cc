@@ -85,7 +85,7 @@ struct RewriteCmpI : OpRewritePattern<CmpIOp> {
         EvaluateCmpI(op.getPredicate(), *lhs, *rhs);
     if (result != std::nullopt) {
       rewriter.replaceOpWithNewOp<mlir::arith::ConstantIntOp>(
-          op, *result, rewriter.getI1Type());
+          op, rewriter.getI1Type(), *result);
       return mlir::success();
     }
     return rewriter.notifyMatchFailure(op, "not a constant result");
@@ -230,6 +230,34 @@ struct RewriteTruncExtShuffle : public OpRewritePattern<mlir::gpu::ShuffleOp> {
   }
 };
 
+struct RewriteMinimumF : OpRewritePattern<mlir::arith::MinimumFOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mlir::arith::MinimumFOp op,
+                                PatternRewriter& rewriter) const override {
+    auto cmp = rewriter.create<mlir::arith::CmpFOp>(
+        op.getLoc(), mlir::arith::CmpFPredicate::ULE, op.getLhs(), op.getRhs());
+    auto select = rewriter.create<mlir::arith::SelectOp>(
+        op.getLoc(), op.getType(), cmp, op.getLhs(), op.getRhs());
+    rewriter.replaceOp(op, select);
+    return mlir::success();
+  }
+};
+
+struct RewriteMaximumF : OpRewritePattern<mlir::arith::MaximumFOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mlir::arith::MaximumFOp op,
+                                PatternRewriter& rewriter) const override {
+    auto cmp = rewriter.create<mlir::arith::CmpFOp>(
+        op.getLoc(), mlir::arith::CmpFPredicate::UGE, op.getLhs(), op.getRhs());
+    auto select = rewriter.create<mlir::arith::SelectOp>(
+        op.getLoc(), op.getType(), cmp, op.getLhs(), op.getRhs());
+    rewriter.replaceOp(op, select);
+    return mlir::success();
+  }
+};
+
 static std::optional<Interval> GetSelectRange(mlir::Operation* sel) {
   // Match |x| implemented as (x >= 0) ? x : (0 - x).
   mlir::Value x = sel->getOperand(1);
@@ -347,6 +375,8 @@ struct RefineConstraints : public OpRewritePattern<ApplyIndexingOp> {
 class SimplifyArithPass
     : public impl::SimplifyArithPassBase<SimplifyArithPass> {
  public:
+  using impl::SimplifyArithPassBase<SimplifyArithPass>::SimplifyArithPassBase;
+
   void runOnOperation() override {
     auto ctx = &getContext();
     auto func = getOperation();
@@ -362,6 +392,12 @@ class SimplifyArithPass
       RewriteTruncBitExt<mlir::arith::OrIOp>,
       RewriteTruncExtShuffle
     >(ctx);
+
+    if (fast_min_max_)
+    {
+      patterns.add<RewriteMinimumF, RewriteMaximumF>(ctx);
+    }
+
     // clang-format on
     if (mlir::failed(mlir::applyPatternsGreedily(func, std::move(patterns)))) {
       signalPassFailure();
@@ -379,8 +415,10 @@ class SimplifyArithPass
 
 }  // namespace
 
-std::unique_ptr<mlir::Pass> CreateSimplifyArithPass() {
-  return std::make_unique<SimplifyArithPass>();
+std::unique_ptr<mlir::Pass> CreateSimplifyArithPass(bool fast_min_max) {
+  SimplifyArithPassOptions options;
+  options.fast_min_max_ = fast_min_max;
+  return std::make_unique<SimplifyArithPass>(options);
 }
 
 }  // namespace emitters

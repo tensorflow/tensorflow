@@ -62,7 +62,8 @@ namespace xla {
 
 HloHardwareIndependentTestBase::HloHardwareIndependentTestBase(
     bool verifier_layout_sensitive, bool allow_mixed_precision_in_hlo_verifier,
-    HloPredicate instruction_can_change_layout_func)
+    HloPredicate instruction_can_change_layout_func,
+    bool verify_no_collective_deadlocks)
     : verifier_layout_sensitive_(verifier_layout_sensitive),
       allow_mixed_precision_in_hlo_verifier_(
           allow_mixed_precision_in_hlo_verifier),
@@ -70,7 +71,9 @@ HloHardwareIndependentTestBase::HloHardwareIndependentTestBase(
   hlo_verifier_ = std::make_unique<HloVerifier>(
       /*layout_sensitive=*/verifier_layout_sensitive,
       /*allow_mixed_precision=*/allow_mixed_precision_in_hlo_verifier,
-      instruction_can_change_layout_func);
+      instruction_can_change_layout_func,
+      [](const Shape& shape) { return ShapeUtil::ByteSizeOf(shape); },
+      verify_no_collective_deadlocks);
 }
 
 std::unique_ptr<HloModule>
@@ -228,6 +231,7 @@ DebugOptions HloHardwareIndependentTestBase::GetDebugOptionsForTest() const {
   // TODO(b/38354253): Change tests to use Parameters instead of Constants.
   debug_options.add_xla_disable_hlo_passes("constant_folding");
   debug_options.set_xla_hlo_evaluator_use_fast_path(true);
+  debug_options.set_xla_cpu_emitter_verification_level(1);
   return debug_options;
 }
 

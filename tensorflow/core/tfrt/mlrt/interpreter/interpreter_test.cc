@@ -2952,8 +2952,10 @@ TEST(KernelTest, PromiseReturn) {
   registry.Register("await.i32", &AwaitI32);
 
   LoadedExecutable loaded_executable(executable, registry);
-
+  auto work_queue = tfrt::CreateMultiThreadedWorkQueue(
+      /*num_threads=*/1, /*num_blocking_threads=*/1);
   ExecutionContext consumer_context(&loaded_executable);
+  consumer_context.set_work_queue(work_queue.get());
 
   absl::Notification notification;
   consumer_context.set_exit_handler(
@@ -2984,7 +2986,7 @@ TEST(KernelTest, PromiseReturn) {
     Execute(producer_context);
   }
 
-  ASSERT_TRUE(notification.HasBeenNotified());
+  notification.WaitForNotification();
   EXPECT_EQ(output.Get<int32_t>(), 100);
 }
 

@@ -28,18 +28,18 @@ message CompilationResultProto {
   map<string, bytes> dnn_compiled_graphs = 5;
 }
 
-message LaunchDimensionsProto {
-  uint64 num_blocks = 1;
-  uint64 num_threads_per_block = 2;
-}
-
-message ClusterDimProto {
-  uint64 x = 1;
-  uint64 y = 2;
-  uint64 z = 3;
-}
-
 message CompilationCacheEntryProto {
+  message LaunchDimensionsProto {
+    uint64 num_blocks = 1;
+    uint64 num_threads_per_block = 2;
+  }
+
+  message ClusterDimProto {
+    uint64 x = 1;
+    uint64 y = 2;
+    uint64 z = 3;
+  }
+
   string fingerprint = 1;
   LaunchDimensionsProto launch_dimensions = 2;
   optional ClusterDimProto cluster_dim = 3;

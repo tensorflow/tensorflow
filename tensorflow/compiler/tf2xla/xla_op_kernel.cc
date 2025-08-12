@@ -265,7 +265,7 @@ static absl::Status LiteralToPredVector(const xla::LiteralSlice& literal,
                                         std::vector<bool>* out) {
   if (literal.shape().dimensions().size() != 1) {
     return errors::InvalidArgument("output_shape must be rank 1, got shape ",
-                                   literal.shape().DebugString());
+                                   literal.shape().ToString());
   }
   int64_t size = xla::ShapeUtil::ElementsIn(literal.shape());
   if (literal.shape().element_type() != xla::PRED) {
@@ -365,7 +365,7 @@ static absl::Status LiteralToInt64Vector(const xla::LiteralSlice& literal,
                                          std::vector<int64_t>* out) {
   if (literal.shape().dimensions().size() != 1) {
     return errors::InvalidArgument("output_shape must be rank 1, got shape ",
-                                   literal.shape().DebugString());
+                                   literal.shape().ToString());
   }
   int64_t size = xla::ShapeUtil::ElementsIn(literal.shape());
   if (literal.shape().element_type() == xla::S32) {

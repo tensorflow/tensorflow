@@ -319,7 +319,9 @@ class DfsHloRewriteVisitor : public DfsHloVisitorWithDefault {
     for (HloComputation* computation :
          module->MakeNonfusionComputations(execution_threads)) {
       status = computation->Accept(this);
-      if (ABSL_PREDICT_FALSE(!status.ok())) return status;
+      if (ABSL_PREDICT_FALSE(!status.ok())) {
+        return status;
+      }
     }
     return changed();
   }
@@ -381,6 +383,7 @@ class DfsHloRewriteVisitor : public DfsHloVisitorWithDefault {
 
   // Mark the computation as having changed.
   void MarkAsChanged() { changed_ = true; }
+  void MarkAsUnchanged() { changed_ = false; }
   void MarkAsMaybeChanged(bool changed) { changed_ |= changed; }
 
  private:

@@ -136,7 +136,7 @@ ENTRY entry {
   ASSERT_NE(copy_done, nullptr);
   EXPECT_EQ(copy_done->opcode(), HloOpcode::kCopyDone);
   EXPECT_EQ(copy_done->operand(0), copy_start);
-  EXPECT_EQ(copy_done->shape().layout().split_configs_size(), 0);
+  EXPECT_EQ(copy_done->shape().layout().split_configs().size(), 0);
 
   // Check that uses are updated.
   EXPECT_EQ(add->operand(1), copy_done);

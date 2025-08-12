@@ -59,6 +59,13 @@ TEST(SubprocessCompilationTest, GetToolVersion) {
   EXPECT_EQ(fatbinary_version.major(), 777);
   EXPECT_EQ(fatbinary_version.minor(), 8);
   EXPECT_EQ(fatbinary_version.patch(), 9);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      SemanticVersion nvdisasm_version,
+      GetToolVersion(tsl::io::JoinPath(cuda_dir, "bin", "nvdisasm")));
+  EXPECT_EQ(nvdisasm_version.major(), 999);
+  EXPECT_EQ(nvdisasm_version.minor(), 1);
+  EXPECT_EQ(nvdisasm_version.patch(), 2);
 }
 
 TEST(SubprocessCompilationTest, GetNvlinkVersion) {

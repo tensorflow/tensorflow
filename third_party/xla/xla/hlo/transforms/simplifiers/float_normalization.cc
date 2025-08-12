@@ -327,9 +327,11 @@ absl::Status FloatNormalizationVisitor::ConvertCalledComputations(
 // Returns true if the called computations of the instruction should not
 // be touched by float normalization. In particular, we must not introduce
 // float conversions into collective reductions.
-bool ShouldAvoidNormalizingComputationsForInstruction(HloInstruction* hlo) {
+bool ShouldAvoidNormalizingComputationsForInstruction(
+    HloInstruction* hlo, const FloatSupport* float_support) {
   return hlo->opcode() == HloOpcode::kAllReduce ||
-         hlo->opcode() == HloOpcode::kReduceScatter;
+         hlo->opcode() == HloOpcode::kReduceScatter ||
+         float_support->ShouldSkipComputationsOf(*hlo);
 }
 
 absl::Status FloatNormalizationVisitor::HandleMultipleOutputs(
@@ -398,7 +400,7 @@ absl::Status FloatNormalizationVisitor::HandleMultipleOutputs(
 
   std::vector<HloComputation*> low_precision_called_comps;
   for (auto* comp : hlo->called_computations()) {
-    if (ShouldAvoidNormalizingComputationsForInstruction(hlo)) {
+    if (ShouldAvoidNormalizingComputationsForInstruction(hlo, float_support_)) {
       continue;
     }
     bool comp_has_low_precision = false;
@@ -481,7 +483,7 @@ absl::Status FloatNormalizationVisitor::HandleInstruction(HloInstruction* hlo) {
 
   std::vector<HloComputation*> low_precision_called_comps;
   for (auto* comp : hlo->called_computations()) {
-    if (ShouldAvoidNormalizingComputationsForInstruction(hlo)) {
+    if (ShouldAvoidNormalizingComputationsForInstruction(hlo, float_support_)) {
       continue;
     }
     bool comp_has_low_precision = false;
@@ -622,7 +624,8 @@ absl::Status FloatNormalizationVisitor::Preprocess(HloInstruction* hlo) {
 absl::flat_hash_set<HloComputation*>
 CloneComputationsForNonNormalizingInstructions(
     HloModule* module,
-    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+    const absl::flat_hash_set<absl::string_view>& execution_threads,
+    const FloatSupport* float_support) {
   std::unique_ptr<CallGraph> call_graph =
       CallGraph::Build(module, execution_threads);
 
@@ -631,8 +634,8 @@ CloneComputationsForNonNormalizingInstructions(
     bool has_normalizing_users = false;
     bool has_users_to_skip_normalization = false;
     for (const CallSite& site : node.caller_callsites()) {
-      if (ShouldAvoidNormalizingComputationsForInstruction(
-              site.instruction())) {
+      if (ShouldAvoidNormalizingComputationsForInstruction(site.instruction(),
+                                                           float_support)) {
         has_users_to_skip_normalization = true;
       } else {
         has_normalizing_users = true;
@@ -651,8 +654,8 @@ CloneComputationsForNonNormalizingInstructions(
     // computations with the clone.
     HloComputation* clone = module->DeepCloneComputation(node.computation());
     for (const CallSite& site : node.caller_callsites()) {
-      if (ShouldAvoidNormalizingComputationsForInstruction(
-              site.instruction())) {
+      if (ShouldAvoidNormalizingComputationsForInstruction(site.instruction(),
+                                                           float_support)) {
         site.instruction()->ReplaceCalledComputations(
             [&](HloComputation* called) {
               return called == node.computation() ? clone : called;
@@ -674,8 +677,8 @@ absl::StatusOr<bool> FloatNormalization::Run(
                         ", before:\n" + module->ToString());
   auto computations_to_visit =
       module->MakeComputationPostOrder(execution_threads);
-  auto computations_to_skip =
-      CloneComputationsForNonNormalizingInstructions(module, execution_threads);
+  auto computations_to_skip = CloneComputationsForNonNormalizingInstructions(
+      module, execution_threads, float_support_);
 
   FloatNormalizationVisitor visitor(float_support_, this);
   for (auto* comp : computations_to_visit) {

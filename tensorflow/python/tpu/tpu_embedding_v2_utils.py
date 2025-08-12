@@ -1343,6 +1343,7 @@ class TableConfig:
       # TODO(b/295372790): Change the type to SparseCoreTableLayout after it is
       # open sourced.
       layout: Optional[Any] = None,
+      dtype: dtypes.DType = dtypes.float32,
   ):
     """Embedding table configuration.
 
@@ -1373,6 +1374,8 @@ class TableConfig:
       layout: If the table already has its layout computed, you can pass it in
         here. Otherwise, we will compute it for you. Most users should leave
         this as None.
+      dtype: The data type of the embedding table. Currently only int32 or
+        float32 is supported.
 
     Returns:
       `TableConfig`.
@@ -1419,6 +1422,10 @@ class TableConfig:
           "Name of the table config must be specified for running on"
           " SparseCore. Different table configs must have unique names."
       )
+    if dtype not in (dtypes.float32, dtypes.int32):
+      raise ValueError(
+          f"Argument `dtype` must be either float32 or int32. Received: {dtype}"
+      )
 
     self.vocabulary_size = vocabulary_size
     self.dim = dim
@@ -1428,6 +1435,8 @@ class TableConfig:
     self.name = name
     self.quantization_config = quantization_config
     self.layout = layout
+
+    self.dtype = dtype
 
   def __repr__(self):
     # If using the default initializer, just print "None" for clarity.

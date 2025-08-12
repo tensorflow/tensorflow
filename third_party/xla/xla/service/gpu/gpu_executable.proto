@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package xla.gpu;
+
+import "xla/service/hlo.proto";
+
+message OutputInfoProto {
+  // This output is part of the following buffer allocation
+  int64 allocation_index = 1;
+
+  // True when this output is passed through from an input parameter
+  bool passthrough = 2;
+
+  // Describes whether and how this output aliases with an input parameter
+  optional xla.HloInputOutputAliasProto.AliasEntryProto alias_config = 3;
+}

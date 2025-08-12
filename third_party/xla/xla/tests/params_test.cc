@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "xla/tests/xla_test_backend_predicates.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/array2d.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tests/client_library_test_runner_mixin.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/test_macros.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
 
@@ -207,13 +207,9 @@ TEST_F(ParamsTest, HundredLargeR1Parameters) {
     sum_handle = Add(sum_handle, param);
   }
 
-  std::vector<const Literal*> param_data;
-  param_data.reserve(param_data_owner.size());
-  for (const Literal& data : param_data_owner) {
-    param_data.push_back(&data);
-  }
-
-  ComputeAndCompareR1<float>(&builder, sum, param_data, ErrorSpec(0.0001f));
+  ComputeAndCompareR1<float>(&builder, sum,
+                             LiteralUtil::MakePointers(param_data_owner),
+                             ErrorSpec(0.0001f));
 }
 
 // Only run the 3,000-parameter tests in opt mode to avoid test timeouts.
@@ -222,7 +218,10 @@ TEST_F(ParamsTest, HundredLargeR1Parameters) {
 
 // TODO(b/65526061) Failed on CPU on 2017-09-10 due to timeout in LLVM
 // compilation.
-TEST_F(ParamsTest, DISABLED_ON_CPU(ThreeThousandParameters)) {
+TEST_F(ParamsTest, ThreeThousandParameters) {
+  if (test::DeviceIs(test::kCpu)) {
+    GTEST_SKIP();
+  }
   XlaBuilder builder(TestName());
 
   std::vector<Literal> param_data_owner;
@@ -248,7 +247,10 @@ TEST_F(ParamsTest, DISABLED_ON_CPU(ThreeThousandParameters)) {
 
 // TODO(b/65526061) Failed on CPU on 2017-09-10 due to timeout in LLVM
 // compilation.
-TEST_F(ParamsTest, DISABLED_ON_CPU(ThreeThousandParametersAndOutputElements)) {
+TEST_F(ParamsTest, ThreeThousandParametersAndOutputElements) {
+  if (test::DeviceIs(test::kCpu)) {
+    GTEST_SKIP();
+  }
   XlaBuilder builder(TestName());
 
   std::vector<Literal> param_data_owner;
@@ -438,8 +440,10 @@ TEST_F(ParamsTest, R2_2x2_Layout_10) {
 // computation layout is used instead. The way this test is set up, the ECL will
 // reflect the layout of the original literal, so it does not pass. This seems
 // to be a niche behavior that is not worth fixing.
-TEST_F(ParamsTest, DISABLED_ON_CPU(DISABLED_ON_GPU(DISABLED_ON_INTERPRETER(
-                       R2_2x2_TryToPassReverseLayoutToParameter)))) {
+TEST_F(ParamsTest, R2_2x2_TryToPassReverseLayoutToParameter) {
+  if (test::DeviceTypeIsOneOf({test::kCpu, test::kGpu, test::kInterpreter})) {
+    GTEST_SKIP();
+  }
   Literal literal = LiteralUtil::CreateR2<float>({
       {1, 3},
       {2, 4},

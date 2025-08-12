@@ -24,7 +24,6 @@ limitations under the License.
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/conv_depthwise_common.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/test_macros.h"
 
 namespace xla {
 namespace {
@@ -83,7 +82,7 @@ static std::vector<DepthwiseConvolution2DSpec> GetConv2DTestCases() {
   return config_set;
 }
 
-XLA_TEST_P(DepthwiseConvolution2DTest, DoIt) {
+TEST_P(DepthwiseConvolution2DTest, DoIt) {
   const DepthwiseConvolution2DSpec& spec = ::testing::get<0>(GetParam());
   bool use_bfloat16 = ::testing::get<1>(GetParam());
 

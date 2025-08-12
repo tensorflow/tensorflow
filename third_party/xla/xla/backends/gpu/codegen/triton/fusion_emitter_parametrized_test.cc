@@ -1052,7 +1052,7 @@ ENTRY main {
 
   const std::string hlo_ref = R"(
 ; CHECK:      %[[P0_FUSION:.*]] = bf16[127,125]{1,0} parameter(0)
-; CHECK:      %[[convert:.*]] = f32[127,125]{1,0} convert(%[[P0_FUSION]])
+; CHECK:      %[[REDUCE:.*]] = bf16[127]{0} reduce(%[[P0_FUSION]]
 ; CHECK:    ENTRY
 ; CHECK:      %[[P0_ENTRY:.*]] = bf16[127,125]{1,0} parameter(0)
 ; CHECK:      ROOT

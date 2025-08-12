@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <queue>
+#include <utility>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/functional/any_invocable.h"
@@ -26,12 +27,11 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
-#include "xla/stream_executor/kernel.h"
-#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_common.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "tsl/platform/env.h"
+#include "xla/tsl/platform/env.h"
+#include "tsl/platform/context.h"
 #include "tsl/platform/thread_annotations.h"
 
 namespace stream_executor {
@@ -78,9 +78,16 @@ class HostStream : public StreamCommon {
   bool WorkAvailable() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   void WorkLoop();
 
+  struct WorkItem {
+    explicit WorkItem(absl::AnyInvocable<absl::Status() &&> task)
+        : context(tsl::ContextKind::kThread), task(std::move(task)) {}
+
+    tsl::Context context;
+    absl::AnyInvocable<absl::Status() &&> task;
+  };
+
   absl::Mutex mu_;
-  std::queue<absl::AnyInvocable<absl::Status() &&>> work_queue_
-      ABSL_GUARDED_BY(mu_);
+  std::queue<WorkItem> work_queue_ ABSL_GUARDED_BY(mu_);
   std::unique_ptr<tsl::Thread> thread_;
   absl::Status status_;
 };

@@ -1,4 +1,4 @@
-// RUN: stablehlo-quant-opt %s -split-input-file -tf-xla-call-module-serialization -stablehlo-convert-xla-call-module-op-to-bfloat16 -tf-xla-call-module-deserialization | FileCheck %s
+// RUN: stablehlo-quant-opt %s -split-input-file -tf-xla-call-module-serialization -tf-stablehlo-convert-xla-call-module-op-to-bfloat16 -tf-xla-call-module-deserialization | FileCheck %s
 
 // ConvertXlaCallModuleOpToBfloat16Pass works on XlaCallModuleOps with
 // serialized modules. Which makes verification difficult. Therefore we add

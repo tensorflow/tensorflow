@@ -389,6 +389,47 @@ TfLiteStatus SymmetricQuantizeFloatsToInt16(ModelT* model, TensorT* tensor,
                                error_reporter);
 }
 
+void SymmetricPerBlockQuantizeValues(
+    const float* const input, const float* const scales_inv,
+    const std::vector<int32_t>& input_dimension,
+    const std::vector<int32_t>& scale_dimension, int32_t channel_dim_index,
+    std::vector<int8_t>* output_value, TfLiteType type) {
+  // Quantize the values.
+  int indices[kPerChannelMaxDim];
+  int blocksize =
+      input_dimension[channel_dim_index] / scale_dimension[channel_dim_index];
+  RuntimeShape unextended_tensor_dims(input_dimension.size(),
+                                      input_dimension.data());
+  RuntimeShape tensor_dims =
+      RuntimeShape::ExtendedShape(kPerChannelMaxDim, unextended_tensor_dims);
+  RuntimeShape unextended_scale_dims(scale_dimension.size(),
+                                     scale_dimension.data());
+  RuntimeShape scale_dims =
+      RuntimeShape::ExtendedShape(kPerChannelMaxDim, unextended_scale_dims);
+  channel_dim_index +=
+      kPerChannelMaxDim - unextended_tensor_dims.DimensionsCount();
+  for (indices[0] = 0; indices[0] < tensor_dims.Dims(0); indices[0]++) {
+    for (indices[1] = 0; indices[1] < tensor_dims.Dims(1); indices[1]++) {
+      for (indices[2] = 0; indices[2] < tensor_dims.Dims(2); indices[2]++) {
+        for (indices[3] = 0; indices[3] < tensor_dims.Dims(3); indices[3]++) {
+          int index = Offset(tensor_dims, indices);
+          int scale_indices[4] = {indices[0], indices[1], indices[2],
+                                  indices[3] % blocksize};
+          int scale_index = Offset(scale_dims, scale_indices);
+          const float val = input[index];
+          const int32_t quantized_value =
+              static_cast<int32_t>(TfLiteRound(val * scales_inv[scale_index]));
+          if (type == kTfLiteInt4) {
+            output_value->at(index) = std::min<int8_t>(
+                kMaxQuantizedValue4bit,
+                std::max<int8_t>(kMinQuantizedValue4bit, quantized_value));
+          }
+        }
+      }
+    }
+  }
+}
+
 // LINT.IfChange(SymmetricPerChannelQuantizeValues)
 void SymmetricPerChannelQuantizeValues(const float* const input,
                                        const std::vector<float>& scales_inv,
@@ -428,8 +469,8 @@ void SymmetricPerChannelQuantizeValues(const float* const input,
 }
 // LINT.ThenChange(//tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy/quantization_utils.cc:SymmetricPerChannelQuantizeValues)
 
-// Quantize the tensor using the max and min values recorded in its quantization
-// parameters. Applies per-layer quantization.
+// Quantize the tensor using the max and min values recorded in its
+// quantization parameters. Applies per-layer quantization.
 TfLiteStatus SymmetricQuantizeTensorFromMinMax(ModelT* model, TensorT* tensor,
                                                ErrorReporter* error_reporter) {
   if (model == nullptr || tensor == nullptr) {
@@ -537,7 +578,8 @@ TfLiteStatus QuantizeTensorFloat16(ModelT* model, TensorT* tensor) {
   uint64_t num_elements;
   TF_LITE_ENSURE_STATUS(NumElements(*tensor, &num_elements));
 
-  // Copy single byte buffer data to float vector to guard against misalignment.
+  // Copy single byte buffer data to float vector to guard against
+  // misalignment.
   std::vector<float> float_vector(num_elements);
   uint8_t* first = buffer->data.data();
   std::copy(first, first + buffer->data.size(),
@@ -738,9 +780,9 @@ template TfLiteStatus SymmetricPerChannelBiasQuantize<std::int32_t>(
 
 TfLiteStatus QuantizeWeight(ModelT* model, TensorT* tensor, bool per_channel,
                             int per_axis_index, ErrorReporter* error_reporter) {
-  // TODO(suharshs): Currently we conflate quantizing weights and constants. Its
-  // possible that the right thing to do is asymmetric quantize the weight. Add
-  // support for this.
+  // TODO(suharshs): Currently we conflate quantizing weights and constants.
+  // Its possible that the right thing to do is asymmetric quantize the
+  // weight. Add support for this.
   if (per_channel) {
     return SymmetricQuantizeTensorPerChannel(model, tensor, per_axis_index,
                                              error_reporter);

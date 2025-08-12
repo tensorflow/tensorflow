@@ -76,7 +76,12 @@ class ScatterSliceMatcher {
                         return ShapeUtil::MakeShape(op->shape().element_type(),
                                                     result_dimensions_);
                       });
-    return ShapeUtil::MakeMaybeTupleShape(result_shapes);
+    auto maybe_tuple_shape =
+        ShapeUtil::MakeValidatedMaybeTupleShape(result_shapes);
+    if (!maybe_tuple_shape.ok()) {
+      return std::nullopt;
+    }
+    return *maybe_tuple_shape;
   }
 
  private:

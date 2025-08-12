@@ -175,7 +175,7 @@ ExportedModel CreateExportedModelFromGraphDef(
 
 void AddExportPasses(mlir::PassManager& pm,
                      const bool duplicate_shape_determining_constants) {
-  AddCallModuleSerializationPasses(pm);
+  quant::stablehlo::AddCallModuleSerializationPasses(pm);
   if (duplicate_shape_determining_constants) {
     pm.addNestedPass<mlir::func::FuncOp>(
         mlir::quant::CreateDuplicateShapeDeterminingConstantsPass());

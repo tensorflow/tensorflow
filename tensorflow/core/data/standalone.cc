@@ -226,6 +226,8 @@ absl::Status Dataset::MakeIterator(
     params.model = std::make_shared<model::Model>();
   }
   params.run_mode = RunMode::STANDALONE;
+  params.data_service_address =
+      finalized_dataset_->metadata().data_service_address();
   ctx = std::make_unique<IteratorContext>(std::move(params));
   SerializationContext::Params serialization_params(&op_ctx);
   auto serialization_ctx =

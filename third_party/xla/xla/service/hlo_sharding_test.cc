@@ -17,15 +17,19 @@ limitations under the License.
 #include <cstdint>
 #include <sstream>
 #include <string>
+#include <tuple>
+#include <utility>
 #include <vector>
 
 #include "absl/hash/hash.h"
 #include "absl/types/span.h"
+#include "xla/hlo/ir/tile_assignment.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
 
@@ -177,7 +181,80 @@ TEST_F(HloShardingTest, Tile) {
     EXPECT_EQ(sharding.TileOffsetForDevice(shape, 1),
               (std::vector<int64_t>{2, 3}));
 
+    EXPECT_EQ(sharding.TileLimitForDevice(shape, 0),
+              (std::vector<int64_t>{2, 3}));
+    EXPECT_EQ(sharding.TileLimitForDevice(shape, 3),
+              (std::vector<int64_t>{2, 5}));
+    EXPECT_EQ(sharding.TileLimitForDevice(shape, 2),
+              (std::vector<int64_t>{4, 3}));
+    EXPECT_EQ(sharding.TileLimitForDevice(shape, 1),
+              (std::vector<int64_t>{4, 5}));
+
     EXPECT_FALSE(sharding.HasUniqueDevice());
+
+    // {device_index, tile_offest, tile_limit}.
+    std::vector<std::tuple<int, std::vector<int64_t>, std::vector<int64_t>>>
+        tiles;
+    TF_ASSERT_OK(sharding.EachTile(
+        shape.dimensions(),
+        [&tiles](int device_index, absl::Span<const int64_t> tile_offset,
+                 absl::Span<const int64_t> tile_limit) {
+          std::vector<int64_t> offset(tile_offset.begin(), tile_offset.end());
+          std::vector<int64_t> limit(tile_limit.begin(), tile_limit.end());
+          tiles.emplace_back(device_index, std::move(offset), std::move(limit));
+        }));
+    EXPECT_THAT(tiles, ::testing::UnorderedElementsAre(
+                           std::make_tuple(0, std::vector<int64_t>{0, 0},
+                                           std::vector<int64_t>{2, 3}),
+                           std::make_tuple(1, std::vector<int64_t>{2, 3},
+                                           std::vector<int64_t>{4, 5}),
+                           std::make_tuple(2, std::vector<int64_t>{2, 0},
+                                           std::vector<int64_t>{4, 3}),
+                           std::make_tuple(3, std::vector<int64_t>{0, 3},
+                                           std::vector<int64_t>{2, 5})));
+  }
+}
+
+TEST_F(HloShardingTest, EachTile) {
+  auto validate = [](const Shape& shape,
+                     const HloSharding& sharding) -> absl::Status {
+    return sharding.EachTile(
+        shape.dimensions(),
+        [&shape, &sharding](int device_index,
+                            absl::Span<const int64_t> tile_offset,
+                            absl::Span<const int64_t> tile_limit) {
+          EXPECT_EQ(tile_offset,
+                    sharding.TileOffsetForDevice(shape, device_index));
+          EXPECT_EQ(tile_limit,
+                    sharding.TileLimitForDevice(shape, device_index));
+        });
+  };
+  {
+    // 6-way sharded along axis 0, 1-way sharded along axis 1.
+    HloSharding sharding = HloSharding::Tile(TileAssignment({6, 1}));
+    Shape shape = ShapeUtil::MakeShape(U32, {12, 20});
+    TF_EXPECT_OK(validate(shape, sharding));
+  }
+  {
+    // 6-way sharded along axis 0, 1-way sharded along axis 1.
+    HloSharding sharding = HloSharding::Tile(TileAssignment({6, 1}));
+    Shape shape = ShapeUtil::MakeShape(U32, {11, 20});
+    TF_EXPECT_OK(validate(shape, sharding));
+  }
+  {
+    // 2-way sharded along axis 0, 1-way sharded along axis 1, each shard
+    // replicated by 3 times.
+    HloSharding sharding = HloSharding::PartialTile(TileAssignment({2, 1, 3}));
+    Shape shape = ShapeUtil::MakeShape(U32, {10, 20});
+    TF_EXPECT_OK(validate(shape, sharding));
+  }
+  {
+    // 2-way sharded along axis 0, 1-way sharded along axis 1, each shard
+    // replicated by 3 times.
+    HloSharding sharding = HloSharding::Subgroup(TileAssignment({2, 1, 3}),
+                                                 {OpSharding::REPLICATED});
+    Shape shape = ShapeUtil::MakeShape(U32, {10, 20});
+    TF_EXPECT_OK(validate(shape, sharding));
   }
 }
 

@@ -130,6 +130,7 @@ class TPUPartitionedCallOp : public AsyncOpKernel {
   explicit TPUPartitionedCallOp(OpKernelConstruction* ctx)
       : AsyncOpKernel(ctx),
         pool_(ctx->env(), "InitializeVarOnTPUPool", 1),
+        local_device_name_(ctx->device()->name()),
         library_runtime_(nullptr) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("f", &func_));
     // If the importer has set the original function name, it means the function
@@ -340,7 +341,7 @@ class TPUPartitionedCallOp : public AsyncOpKernel {
 
   // `func_` is the original function supplied to this OpKernel.
   NameAttrList func_;
-  string local_device_name_;
+  const std::string local_device_name_;
   // Maps from cache key to their corresponding functions, which are
   // represented as (device, handle) pairs.
   gtl::FlatMap<uint64, std::vector<DeviceAndFHandle>> partition_cache_

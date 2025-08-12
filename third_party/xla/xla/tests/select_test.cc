@@ -22,7 +22,6 @@ limitations under the License.
 #include "xla/tests/client_library_test_runner_mixin.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
-#include "xla/tests/test_macros.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/types.h"
 
@@ -64,7 +63,7 @@ TEST_F(SelectTest, SelectScalarF32False) {
   ComputeAndCompareR0<float>(&builder, 42.0f, {}, kErrorSpec);
 }
 
-XLA_TEST_F(SelectTest, SelectR1S0F32WithConstantR1S0PRED) {
+TEST_F(SelectTest, SelectR1S0F32WithConstantR1S0PRED) {
   XlaBuilder builder(TestName());
   auto pred = ConstantR1<bool>(&builder, {});
   auto on_true = ConstantR1<float>(&builder, {});
@@ -87,7 +86,7 @@ TEST_F(SelectTest, SelectR1F32WithConstantR1PRED) {
                              kErrorSpec);
 }
 
-XLA_TEST_F(SelectTest, SelectR1S0F32WithCmpR1S0S32s) {
+TEST_F(SelectTest, SelectR1S0F32WithCmpR1S0S32s) {
   // Similar to SelectR1S0F32WithConstantR1S0PRED, except that the pred vector
   // is not a constant, but rather the result of comparing two other vectors.
   XlaBuilder builder(TestName());
@@ -230,7 +229,7 @@ TEST_F(SelectTest, SelectR1F32WithCmpR1F32ToScalar) {
                              kErrorSpec);
 }
 
-XLA_TEST_F(SelectTest, SelectR1S0F32WithScalarPredicate) {
+TEST_F(SelectTest, SelectR1S0F32WithScalarPredicate) {
   for (bool which : {false, true}) {
     XlaBuilder builder(TestName());
     auto pred = ConstantR0<bool>(&builder, which);

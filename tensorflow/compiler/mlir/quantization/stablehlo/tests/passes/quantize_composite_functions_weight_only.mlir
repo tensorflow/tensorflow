@@ -1,5 +1,5 @@
 // RUN: stablehlo-quant-opt %s -split-input-file -verify-diagnostics \
-// RUN:     -stablehlo-quantize-composite-functions | FileCheck --check-prefix=CHECK %s
+// RUN:     -tf-stablehlo-quantize-composite-functions | FileCheck --check-prefix=CHECK %s
 
 // Test that per-tensor weight-only quantized dot_general op is produced when
 // empty `weight_only_ptq` is provided.

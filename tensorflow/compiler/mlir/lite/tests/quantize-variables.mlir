@@ -1,5 +1,5 @@
-// RUN: tf-opt %s -tfl-quantize-variables | FileCheck %s
-// RUN: tf-opt %s -tfl-prepare-quantize -tfl-quantize -tfl-post-quantize -tfl-quantize-variables -tfl-quantize -tfl-post-quantize | FileCheck --check-prefix=WHOLE-PASSES %s
+// RUN: litert-opt %s -tfl-quantize-variables | FileCheck %s
+// RUN: litert-opt %s -tfl-prepare-quantize -tfl-quantize -tfl-post-quantize -tfl-quantize-variables -tfl-quantize -tfl-post-quantize | FileCheck --check-prefix=WHOLE-PASSES %s
 
 // CHECK-LABEL: QuantizeReadVariable
 func.func @QuantizeReadVariable() -> (tensor<1x2x1x3x!quant.uniform<i8:f32, 1.0>>) {

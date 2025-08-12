@@ -14,7 +14,11 @@ cc_library(
     hdrs = ["quantization_utils.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "//tensorflow/compiler/mlir/lite/kernels/internal:quantization_util",
-        "//tensorflow/compiler/mlir/lite/kernels/internal:runtime_shape",
+        "//tensorflow/compiler/mlir/tools:safe_cast",
+        "//tensorflow/core/framework:tensor_shape",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:macros",
+        "@com_google_absl//absl/types:span",
+        "@local_xla//xla/tsl/platform:status",
     ],
 )

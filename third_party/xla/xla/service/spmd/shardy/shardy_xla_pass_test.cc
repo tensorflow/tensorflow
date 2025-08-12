@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/spmd/shardy/shardy_xla_pass.h"
 
 #include <memory>
+#include <string>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -44,11 +45,10 @@ using ShardyXLATest = HloHardwareIndependentTestBase;
 void runShardy(VerifiedHloModule* module, bool stablehloImport,
                bool runSdyShardingPropagation = true,
                bool expectChanged = true) {
-  FrontendAttributes attrs;
   if (stablehloImport) {
-    attrs.mutable_map()->try_emplace(xla::sdy::kImportMhloShardings, "t");
+    module->add_frontend_attribute(std::string(xla::sdy::kImportMhloShardings),
+                                   "t");
   }
-  module->add_frontend_attributes(attrs);
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           ShardyXLA(runSdyShardingPropagation).Run(module));
   VLOG(1) << module->ToString();

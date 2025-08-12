@@ -30,7 +30,7 @@ inline void DivCheckArithmeticParams(const ArithmeticParams& params) {
   // Input offset is negative input zero point. Activation tensors are
   // asymmetric quantized so they span the full int8 range.
   constexpr int32_t max_value =
-      static_cast<int32_t>(std::numeric_limits<T>::max());
+      (static_cast<int32_t>(std::numeric_limits<T>::max()) + 1);
   TFLITE_DCHECK_GE(params.input1_offset, -max_value);
   TFLITE_DCHECK_LE(params.input1_offset, max_value);
   TFLITE_DCHECK_GE(params.input2_offset, -max_value);

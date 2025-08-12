@@ -270,6 +270,14 @@ CUptiResult CuptiErrorManager::GetGraphId(CUgraph graph, uint32_t* graph_id) {
   return error;
 }
 
+CUptiResult CuptiErrorManager::GetGraphNodeId(CUgraphNode node,
+                                              uint64_t* nodeId) {
+  IGNORE_CALL_IF_DISABLED;
+  CUptiResult error = interface_->GetGraphNodeId(node, nodeId);
+  LOG_AND_DISABLE_IF_ERROR(error);
+  return error;
+}
+
 CUptiResult CuptiErrorManager::GetGraphExecId(CUgraphExec graph_exec,
                                               uint32_t* graph_id) {
   IGNORE_CALL_IF_DISABLED;

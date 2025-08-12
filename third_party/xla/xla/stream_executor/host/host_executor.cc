@@ -68,7 +68,7 @@ absl::Status HostExecutor::Init() {
 }
 
 absl::StatusOr<std::unique_ptr<Kernel>> HostExecutor::LoadKernel(
-    const MultiKernelLoaderSpec& spec) {
+    const KernelLoaderSpec& spec) {
   return absl::InternalError("No method of loading host kernel provided");
 }
 

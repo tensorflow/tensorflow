@@ -384,7 +384,7 @@ void EigenGenericConv2D(
 
     if (use_thunk_runtime) {
       Worker::Parallelize(
-          &device, /*num_workers=*/num_tasks, num_tasks,
+          device.getPool(), /*num_workers=*/num_tasks, num_tasks,
           [=, &device](Eigen::Index task_index) mutable {
             Eigen::Index start = task_index * task_size;
             Eigen::Index end = std::min(start + task_size, feature_group_count);
@@ -396,7 +396,7 @@ void EigenGenericConv2D(
           });
     } else {
       tsl::BlockUntilReady(Worker::Parallelize(
-          &device, /*num_workers=*/num_tasks, num_tasks,
+          device.getPool(), /*num_workers=*/num_tasks, num_tasks,
           [=, &device](Eigen::Index task_index) {
             Eigen::Index start = task_index * task_size;
             Eigen::Index end = std::min(start + task_size, feature_group_count);

@@ -284,11 +284,10 @@ __launch_bounds__(stream_executor::gpu::kTopKMaxThreadsPerBlock, 1) __global__
 #define REGISTER_TOPK_KERNEL(K_VAL, TYPE, VT)                                 \
   GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(                             \
       TopKKernelCuda_K##K_VAL##_##TYPE##_##VT, KERNEL_TRAIT(K_VAL, TYPE, VT), \
-      stream_executor::cuda::kCudaPlatformId, ([] {                           \
-        stream_executor::MultiKernelLoaderSpec spec(5);                       \
-        spec.AddInProcessSymbol(absl::bit_cast<void*>(&Run<K_VAL, TYPE, VT>), \
-                                "topk_k" #K_VAL "_" #TYPE "_" #VT);           \
-        return spec;                                                          \
+      stream_executor::cuda::kCudaPlatformId, ([](size_t arity) {             \
+        return stream_executor::KernelLoaderSpec::CreateInProcessSymbolSpec(  \
+            absl::bit_cast<void*>(&Run<K_VAL, TYPE, VT>),                     \
+            "topk_k" #K_VAL "_" #TYPE "_" #VT, arity);                        \
       }));
 
 }  // namespace stream_executor::cuda

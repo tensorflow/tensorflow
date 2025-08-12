@@ -1289,4 +1289,61 @@ llvm::SmallVector<llvm::SmallVector<int64_t, 4>, 4> GetMetadataArgumentMapping(
   return input_mappings;
 }
 
+namespace {
+mlir::LogicalResult VerifyShardingEquivalent(mlir::Attribute sharding_attr1,
+                                             mlir::Attribute sharding_attr2) {
+  xla::OpSharding sharding_proto1;
+  if (tensorflow::DecodeShardingAttribute(sharding_attr1, sharding_proto1)
+          .failed()) {
+    return mlir::failure();
+  }
+  xla::OpSharding sharding_proto2;
+  if (tensorflow::DecodeShardingAttribute(sharding_attr2, sharding_proto2)
+          .failed()) {
+    return mlir::failure();
+  }
+
+  return tensorflow::VerifyShardingEquivalent(sharding_proto1, sharding_proto2);
+}
+}  // namespace
+
+mlir::LogicalResult VerifyShardingEquivalent(
+    const xla::OpSharding& sharding_proto1,
+    const xla::OpSharding& sharding_proto2) {
+  absl::StatusOr<xla::HloSharding> sharding1 =
+      xla::HloSharding::FromProto(sharding_proto1);
+  if (!sharding1.ok()) {
+    return mlir::failure();
+  }
+  absl::StatusOr<xla::HloSharding> sharding2 =
+      xla::HloSharding::FromProto(sharding_proto2);
+  if (!sharding2.ok()) {
+    return mlir::failure();
+  }
+
+  if (*sharding1 == *sharding2) {
+    return mlir::success();
+  }
+
+  return mlir::failure();
+}
+
+absl::StatusOr<mlir::StringAttr> GetXlaShardingAttrFromShardingOp(
+    mlir::TF::XlaShardingOp sharding) {
+  if (!sharding.get_XlaShardingV2Attr()) {
+    return sharding.get_XlaShardingAttr();
+  }
+
+  if (sharding.get_XlaShardingAttr() &&
+      VerifyShardingEquivalent(sharding.get_XlaShardingV2Attr(),
+                               sharding.get_XlaShardingAttr())
+          .failed()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("_XlaShardingV2 is not equivalent to _XlaSharding: ",
+                     sharding.get_XlaShardingV2().value().str(), " vs ",
+                     sharding.get_XlaSharding().value().str()));
+  }
+  return sharding.get_XlaShardingV2Attr();
+}
+
 }  // namespace tensorflow

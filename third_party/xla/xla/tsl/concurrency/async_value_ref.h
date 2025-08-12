@@ -864,6 +864,11 @@ class CountDownAsyncValueRef {
   // Drops the count by `count` and returns true if async value became
   // available.
   bool CountDown(size_t count, const absl::Status& status = absl::OkStatus()) {
+    // If `count` is zero, return the current state of the count down.
+    if (ABSL_PREDICT_FALSE(count == 0)) {
+      return state_->cnt.load(std::memory_order_relaxed) == 0;
+    }
+
     DCHECK(state_->ref.IsUnavailable()) << "AsyncValue must be unavailable";
     DCHECK_GE(state_->cnt.load(), count) << "Invalid count down value";
 

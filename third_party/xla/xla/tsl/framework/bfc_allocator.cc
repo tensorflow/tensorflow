@@ -545,12 +545,6 @@ void BFCAllocator::AddTraceMe(absl::string_view traceme_name,
                 memory_limit_ - stats_.bytes_reserved - stats_.bytes_in_use;
             const auto& annotation =
                 tsl::profiler::ScopedMemoryDebugAnnotation::CurrentAnnotation();
-            const auto op_name = annotation.pending_op_name
-                                     ? annotation.pending_op_name
-                                     : "(null)";
-            const auto region_type = annotation.pending_region_type
-                                         ? annotation.pending_region_type
-                                         : "(null)";
             return tsl::profiler::TraceMeEncode(
                 traceme_name, {{"allocator_name", name_},
                                {"bytes_reserved", stats_.bytes_reserved},
@@ -561,9 +555,9 @@ void BFCAllocator::AddTraceMe(absl::string_view traceme_name,
                                {"requested_bytes", req_bytes},
                                {"allocation_bytes", alloc_bytes},
                                {"addr", reinterpret_cast<uint64>(chunk_ptr)},
-                               {"tf_op", op_name},
+                               {"tf_op", annotation.pending_op_name},
                                {"id", annotation.pending_step_id},
-                               {"region_type", region_type},
+                               {"region_type", annotation.pending_region_type},
                                {"data_type", annotation.pending_data_type},
                                {"shape", annotation.pending_shape_func()}});
           },
@@ -630,13 +624,10 @@ void* BFCAllocator::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
         if (ShouldRecordOpName()) {
           const auto& annotation =
               profiler::ScopedMemoryDebugAnnotation::CurrentAnnotation();
-          if (annotation.pending_op_name != nullptr) {
+          if (!annotation.pending_op_name.empty()) {
             chunk->op_name = annotation.pending_op_name;
           } else {
-            LOG(INFO) << "missing pending_op_name for " << Name()
-                      << " reading addr "
-                      << static_cast<const void*>(&annotation.pending_op_name)
-                      << "\n"
+            LOG(INFO) << "missing pending_op_name for " << Name() << "\n"
                       << CurrentStackTrace();
             chunk->op_name = nullptr;
           }

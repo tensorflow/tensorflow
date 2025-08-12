@@ -74,6 +74,20 @@ class ConditionalThunk : public Thunk {
 
   absl::StatusOr<ThunkProto> ToProto() const override;
 
+  // Deserializes a ConditionalThunk from its proto representation.
+  // Parameters:
+  // - thunk_info: Metadata about the thunk
+  // - thunk_proto: Serialized ConditionalThunk proto message.
+  // - buffer_allocations: Buffer allocations available for use by the thunk.
+  // - deserializer: Callable (e.g., lambda) for deserializing nested thunks.
+  //
+  // Returns a unique_ptr to a ConditionalThunk on success, or an error status
+  // on failure.
+  static absl::StatusOr<std::unique_ptr<ConditionalThunk>> FromProto(
+      ThunkInfo thunk_info, const ConditionalThunkProto& thunk_proto,
+      absl::Span<const BufferAllocation> buffer_allocations,
+      const Deserializer& deserializer);
+
  private:
   const BufferAllocation::Slice branch_index_buffer_index_;
   std::vector<std::unique_ptr<SequentialThunk>> branch_thunks_;

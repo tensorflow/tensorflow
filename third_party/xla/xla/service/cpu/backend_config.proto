@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package xla.cpu;
 
+import "xla/backends/cpu/xnnpack_config.proto";
 import "xla/service/cpu/onednn_config.proto";
 
 // Backend config for a general custom call instruction, e.g. XLA FFI.
@@ -17,6 +18,15 @@ message CustomCallBackendConfig {
 
 message FusionBackendConfig {
   string kind = 1;
+  oneof custom_fusion_config_oneof {
+    XnnFusionBackendConfig xnn_fusion_config = 2;
+  }
+}
+
+message LlvmKernelOptions {
+  bool slp_vectorizer_disabled = 1;
+  bool disable_loop_unrolling = 2;
+  bool optimize_for_size = 3;
 }
 
 // Backend config for XLA:CPU.
@@ -38,5 +48,7 @@ message BackendConfig {
     CustomCallBackendConfig custom_call_config = 6;
     // Configuration for custom fusions.
     FusionBackendConfig fusion_config = 7;
+    // LlvmKernelOptions config options.
+    LlvmKernelOptions llvm_kernel_options = 8;
   }
 }

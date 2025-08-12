@@ -421,10 +421,20 @@ uint64_t ModuleAnnotation::NvtxSchemaId() {
                      "Common source locations",
                      offsetof(ModuleAnnotation, common_src_locations_))};
     const nvtxPayloadSchemaAttr_t schemaAttr = {
+#if defined(NVTX_PAYLOAD_SCHEMA_ATTR_NAME)
         /* .fieldMask = */ NVTX_PAYLOAD_SCHEMA_ATTR_NAME |
             NVTX_PAYLOAD_SCHEMA_ATTR_TYPE | NVTX_PAYLOAD_SCHEMA_ATTR_ENTRIES |
             NVTX_PAYLOAD_SCHEMA_ATTR_NUM_ENTRIES |
             NVTX_PAYLOAD_SCHEMA_ATTR_STATIC_SIZE,
+#elif defined(NVTX_PAYLOAD_SCHEMA_ATTR_FIELD_NAME)
+        /* .fieldMask = */ NVTX_PAYLOAD_SCHEMA_ATTR_FIELD_NAME |
+            NVTX_PAYLOAD_SCHEMA_ATTR_FIELD_TYPE |
+            NVTX_PAYLOAD_SCHEMA_ATTR_FIELD_ENTRIES |
+            NVTX_PAYLOAD_SCHEMA_ATTR_FIELD_NUM_ENTRIES |
+            NVTX_PAYLOAD_SCHEMA_ATTR_FIELD_STATIC_SIZE,
+#else
+#error Unknown NVTX variant.
+#endif
         /* .name = */ "XlaModule",
         /* .type = */ NVTX_PAYLOAD_SCHEMA_TYPE_STATIC,
         /* .flags = */ NVTX_PAYLOAD_SCHEMA_FLAG_NONE,
@@ -496,10 +506,20 @@ uint64_t KernelAnnotation::NvtxSchemaId() {
                      "Called HLO",
                      offsetof(KernelAnnotation, called_hlo_dump))};
     const nvtxPayloadSchemaAttr_t schemaAttr = {
+#if defined(NVTX_PAYLOAD_SCHEMA_ATTR_NAME)
         /* .fieldMask = */ NVTX_PAYLOAD_SCHEMA_ATTR_NAME |
             NVTX_PAYLOAD_SCHEMA_ATTR_TYPE | NVTX_PAYLOAD_SCHEMA_ATTR_ENTRIES |
             NVTX_PAYLOAD_SCHEMA_ATTR_NUM_ENTRIES |
             NVTX_PAYLOAD_SCHEMA_ATTR_STATIC_SIZE,
+#elif defined(NVTX_PAYLOAD_SCHEMA_ATTR_FIELD_NAME)
+        /* .fieldMask = */ NVTX_PAYLOAD_SCHEMA_ATTR_FIELD_NAME |
+            NVTX_PAYLOAD_SCHEMA_ATTR_FIELD_TYPE |
+            NVTX_PAYLOAD_SCHEMA_ATTR_FIELD_ENTRIES |
+            NVTX_PAYLOAD_SCHEMA_ATTR_FIELD_NUM_ENTRIES |
+            NVTX_PAYLOAD_SCHEMA_ATTR_FIELD_STATIC_SIZE,
+#else
+#error Unknown NVTX variant.
+#endif
         /* .name = */ "XlaKernel",
         /* .type = */ NVTX_PAYLOAD_SCHEMA_TYPE_STATIC,
         /* .flags = */ NVTX_PAYLOAD_SCHEMA_FLAG_NONE,

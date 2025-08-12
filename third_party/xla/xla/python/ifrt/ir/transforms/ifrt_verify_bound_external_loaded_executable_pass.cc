@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/Pass/PassRegistry.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/TypeID.h"
+#include "mlir/Support/WalkResult.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/ir/atom_program_compiler.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
@@ -188,18 +189,18 @@ void IfrtVerifyBoundExternalLoadedExecutablePass::runOnOperation() {
 }  // namespace
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateIfrtVerifyBoundExternalLoadedExecutablePass(
+createIfrtVerifyBoundExternalLoadedExecutablePass(
     std::shared_ptr<AtomExecutableMap> bound_executable_map) {
   return std::make_unique<IfrtVerifyBoundExternalLoadedExecutablePass>(
       std::move(bound_executable_map));
 }
 
-void RegisterIfrtVerifyBoundExternalLoadedExecutablePass(
+void registerIfrtVerifyBoundExternalLoadedExecutablePass(
     std::shared_ptr<AtomExecutableMap> bound_executable_map) {
   mlir::registerPass(
       [bound_executable_map =
            std::move(bound_executable_map)]() -> std::unique_ptr<mlir::Pass> {
-        return CreateIfrtVerifyBoundExternalLoadedExecutablePass(
+        return createIfrtVerifyBoundExternalLoadedExecutablePass(
             std::move(bound_executable_map));
       });
 }

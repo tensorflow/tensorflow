@@ -44,11 +44,16 @@ pybind_extension(
     additional_stubgen_deps = [
         "//third_party/py/numpy:numpy",
     ],
+    common_lib_packages = [
+        "litert/python",
+        "third_party/tensorflow/lite/python",
+    ],
     enable_stub_generation = True,
     link_in_framework = True,
     pytype_srcs = [
         "_pywrap_tensorflow_lite_calibration_wrapper.pyi",
     ],
+    wrap_py_init = True,
     deps = [
         ":calibration_wrapper_lib",
         "//tensorflow/lite:framework",

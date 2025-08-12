@@ -40,7 +40,8 @@ const HloInstructionNode* GetNodeByName(const HloGumgraph& graph,
 void OverwriteMapInstructions(const HloInstructionNode* left,
                               const HloInstructionNode* right,
                               HloGumgraphMappings& mappings,
-                              bool position_unchanged = false);
+                              bool position_unchanged = false,
+                              absl::string_view matcher_debug_info = "");
 
 // Matches all node pairs with the same name.
 void MatchAllNodesByName(const HloGumgraph& left, const HloGumgraph& right,

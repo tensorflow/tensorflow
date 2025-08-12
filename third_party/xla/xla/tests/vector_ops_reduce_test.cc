@@ -24,7 +24,6 @@ limitations under the License.
 #include "xla/tests/client_library_test_runner_mixin.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
-#include "xla/tests/test_macros.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
 
@@ -176,7 +175,7 @@ TEST_F(VecOpsReduceTest, AddReduceR3F32Dims1and2) {
   ComputeAndCompareR1<float>(&builder_, {21.0, 21.0, 21.0}, {}, kErrorSpec);
 }
 
-XLA_TEST_F(VecOpsReduceTest, AddReduceR3F32Dims0and2) {
+TEST_F(VecOpsReduceTest, AddReduceR3F32Dims0and2) {
   auto sum_reducer = CreateScalarAddComputation(F32, &builder_);
   auto x = BuildSampleConstantCube();
   Reduce(x, ConstantR0<float>(&builder_, 0.0f), sum_reducer,

@@ -36,7 +36,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/layout.h"
-#include "xla/layout_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
@@ -519,7 +518,7 @@ absl::StatusOr<mlir::ArrayAttr> ExtractLayoutsFromShapes(
     // currently. The layout has to be dense, and only specify the order of
     // dimensions. Sparse, tiled layout or non-default memory space fields
     // cannot be expressed in MHLO layout yet.
-    if (!xla::LayoutUtil::IsDenseArray(shape_and_layout)) {
+    if (!shape_and_layout.IsArray()) {
       return Unimplemented("Only dense arrays are supported.");
     }
 

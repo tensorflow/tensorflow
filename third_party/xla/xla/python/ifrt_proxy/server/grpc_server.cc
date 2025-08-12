@@ -20,6 +20,7 @@
 #include <utility>
 
 #include "absl/functional/any_invocable.h"
+#include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -31,7 +32,7 @@
 #include "grpcpp/server_builder.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/client.h"
-#include "xla/python/ifrt_proxy/common/grpc_credentials.h"
+#include "xla/python/ifrt_proxy/common/grpc_credentials_possibly_insecure_wrapper.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.grpc.pb.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/server/grpc_service_impl.h"
@@ -44,8 +45,11 @@ namespace ifrt {
 namespace proxy {
 
 GrpcServer::~GrpcServer() {
+  LOG(INFO) << "GrpcServer::~GrpcServer(): before Shutdown.";
   server_->Shutdown();
+  LOG(INFO) << "GrpcServer::~GrpcServer(): after Shutdown, before Wait.";
   server_->Wait();
+  LOG(INFO) << "GrpcServer::~GrpcServer(): done with Wait.";
 }
 
 absl::StatusOr<std::unique_ptr<GrpcServer>> GrpcServer::Create(
@@ -62,7 +66,8 @@ absl::StatusOr<std::unique_ptr<GrpcServer>> GrpcServer::Create(
   builder.AddChannelArgument(GRPC_ARG_MAX_SEND_MESSAGE_LENGTH, -1);
   builder.AddChannelArgument(GRPC_ARG_MAX_RECEIVE_MESSAGE_LENGTH, -1);
   builder.RegisterService(impl.get());
-  builder.AddListeningPort(std::string(address), GetServerCredentials());
+  builder.AddListeningPort(std::string(address),
+                           GetServerCredentialsPossiblyInsecure());
   auto server = builder.BuildAndStart();
   if (server == nullptr) {
     return absl::UnavailableError(

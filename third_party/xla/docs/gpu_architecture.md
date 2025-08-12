@@ -76,8 +76,8 @@ A number of notable optimization passes happen on HLO, as HLO->HLO rewrites.
 
 ### SPMD Partitioner
 
-The XLA SPMD partitioner, as described in the GSPMD
-[publication](https://arxiv.org/pdf/2105.04663.pdf%C3%AF%C2%BC%E2%80%B0%C3%A3%E2%82%AC%E2%80%B9%C3%A5%E2%80%99%C5%92),
+The XLA SPMD partitioner, as described in
+[GSPMD: General and Scalable Parallelization for MLComputation Graphs](https://arxiv.org/pdf/2105.04663.pdf),
 consumes HLO with sharding annotations (produced e.g. by `jax.pjit`), and
 produces a sharded HLO which can then run on a number of hosts and devices.
 Apart from partitioning, the SPMD attempts to optimize HLO for an optimal

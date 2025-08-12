@@ -1,0 +1,12 @@
+
+--- a/python/test/unit/language/test_core.py	2025-06-02 05:51:09.000000000 -0700
++++ b/python/test/unit/language/test_core.py	2025-06-03 11:33:35.000000000 -0700
+@@ -6878,7 +6878,7 @@
+             if capability[0] >= 8:
+                 ptx = pgm.asm['ptx']
+                 # check that the loop got pipelined with the right number of stages.
+-                assert 'cp.async.wait_group 6' in ptx
++                assert 'cp.async.wait_group 	6;' in ptx
+ 
+ 
+ def test_tl_range_fuse():

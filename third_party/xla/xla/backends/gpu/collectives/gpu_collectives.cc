@@ -20,15 +20,12 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
-#include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/core/collectives/collectives.h"
 #include "xla/core/collectives/collectives_registry.h"
-#include "xla/core/collectives/communicator.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 
@@ -58,37 +55,6 @@ GpuCollectives::Executor::Executor(stream_executor::Stream* stream)
 
 stream_executor::Stream* GpuCollectives::Executor::stream() const {
   return stream_;
-}
-
-absl::StatusOr<GpuCollectives::Device*> GpuCollectives::TryCast(
-    Collectives::Device* device) {
-  if (auto* gpu_device = tsl::down_cast<Device*>(device)) {
-    return gpu_device;
-  }
-  return InvalidArgument("Collectvies device is not a GPU device");
-}
-
-absl::StatusOr<const GpuCollectives::Config*> GpuCollectives::TryCast(
-    const Collectives::Config* config) {
-  if (auto* gpu_config = tsl::down_cast<const Config*>(config)) {
-    return gpu_config;
-  }
-  return InvalidArgument("Collectvies config is not a GPU config");
-}
-
-absl::StatusOr<GpuCommunicator*> GpuCollectives::TryCast(Communicator* comm) {
-  if (auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(comm)) {
-    return gpu_comm;
-  }
-  return InvalidArgument("Collectvies config is not a GPU config");
-}
-
-absl::StatusOr<const GpuCommunicator*> GpuCollectives::TryCast(
-    const Communicator* comm) {
-  if (auto* gpu_comm = tsl::down_cast<const GpuCommunicator*>(comm)) {
-    return gpu_comm;
-  }
-  return InvalidArgument("Collectvies config is not a GPU config");
 }
 
 se::DeviceMemoryBase GpuCollectives::Slice(se::DeviceMemoryBase buff,

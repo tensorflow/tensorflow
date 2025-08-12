@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "xla/backends/cpu/onednn_fusion.h"
+#include "xla/backends/cpu/onednn_fusion_graph.h"
 #include "xla/backends/cpu/runtime/onednn/onednn_interop.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"

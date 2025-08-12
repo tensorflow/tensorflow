@@ -266,6 +266,8 @@ class PjRtStreamExecutorClient : public PjRtClient {
   absl::string_view platform_name() const override { return platform_name_; }
   absl::string_view platform_version() const override { return "<unknown>"; }
 
+  std::optional<PjRtPluginAttributes> plugin_attributes() const override;
+
   // Most platforms expect device-to-device transfers to be enqueued on the
   // source d2d stream, but some platforms use the destination d2d stream. This
   // function specifies which one the platform expects.
@@ -334,11 +336,6 @@ class PjRtStreamExecutorClient : public PjRtClient {
       const LiteralSlice& literal, PjRtMemorySpace* memory_space,
       const Layout* device_layout) override;
 
-  absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
-  MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
-                              PjRtDevice* device,
-                              PjRtCrossHostRecvNotifier notifier) override;
-
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
       void* device_ptr, const Shape& shape, PjRtMemorySpace* memory_space,
       std::function<void()> on_delete_callback,
@@ -367,7 +364,7 @@ class PjRtStreamExecutorClient : public PjRtClient {
     return should_stage_host_to_device_transfers_;
   }
 
-  gpu::GpuExecutableRunOptions* gpu_run_options() const {
+  virtual gpu::GpuExecutableRunOptions* gpu_run_options() {
     return gpu_run_options_.get();
   }
 
@@ -382,16 +379,9 @@ class PjRtStreamExecutorClient : public PjRtClient {
   friend class PjRtStreamExecutorBuffer;
   friend class PjRtStreamExecutorRawBuffer;
 
-  virtual absl::Status EnqueueCrossHostReceive(
-      absl::Span<const std::unique_ptr<PjRtBuffer>> buffers,
-      std::shared_ptr<BufferSequencingEvent> definition_event,
-      PjRtCrossHostRecvNotifier notifier) const {
-    return Unimplemented("Cross host receives not implemented.");
-  }
-
-  virtual void CopyToRemoteDevice(
-      PjRtBuffer* buffer, absl::string_view serialized_descriptor,
-      PjRtBuffer::RemoteSendCallback on_done) const {
+  virtual void CopyToRemoteDevice(PjRtBuffer* buffer,
+                                  absl::string_view serialized_descriptor,
+                                  PjRtBuffer::RemoteSendCallback on_done) {
     on_done(Unimplemented("Cross host sends not implemented."),
             /*sends_were_enqueued=*/false);
   }
@@ -455,6 +445,7 @@ class PjRtStreamExecutorClient : public PjRtClient {
       CompileOptions options, bool lookup_addressable_devices);
 
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> BuildPjRtExecutable(
+      std::optional<HloModuleProto> unoptimized_hlo_module_proto,
       std::vector<std::unique_ptr<LocalExecutable>> local_executables,
       CompileOptions compile_options);
 
@@ -464,6 +455,7 @@ class PjRtStreamExecutorClient : public PjRtClient {
                                std::optional<CompileOptions> options);
 
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> LoadInternal(
+      std::optional<HloModuleProto> unoptimized_hlo_module_proto,
       std::vector<std::unique_ptr<LocalExecutable>> local_executables,
       CompileOptions compile_options);
 
@@ -684,7 +676,6 @@ class PjRtStreamExecutorBuffer : public CommonPjRtBuffer {
   PjRtStreamExecutorClient* const client_;
   const Shape on_device_shape_;
   PjRtStreamExecutorDevice* const device_;
-  PjRtMemorySpace* const memory_space_;
 };
 
 // Allocates the device buffers for a buffer that will be used as the
@@ -753,7 +744,9 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
     const BufferAssignmentProto* proto =
         executables_[0]->executable()->buffer_assignment_proto();
     if (proto != nullptr) {
-      memory_stats.buffer_assignment = *proto;
+      memory_stats.serialized_buffer_assignment = proto->SerializeAsString();
+      TF_ASSIGN_OR_RETURN(int64_t peak_memory, ComputePeakMemory(*proto));
+      memory_stats.peak_memory_in_bytes = peak_memory;
     }
     memory_stats.PopulateBufferStatsFromAllocations(
         executables_[0]->executable()->GetAllocations());
@@ -784,23 +777,26 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
   absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
       absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
       const ExecuteOptions& options,
-      std::optional<std::vector<PjRtFuture<>>>& returned_futures) override;
+      std::optional<std::vector<PjRtFuture<>>>& returned_futures)
+      const override;
 
   using PjRtLoadedExecutable::ExecuteSharded;
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options,
-      std::optional<PjRtFuture<>>& returned_future, bool fill_future) override;
+      std::optional<PjRtFuture<>>& returned_future,
+      bool fill_future) const override;
 
   using PjRtLoadedExecutable::ExecutePortable;
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options,
-      std::optional<PjRtFuture<>>& returned_future, bool fill_future) override;
+      std::optional<PjRtFuture<>>& returned_future,
+      bool fill_future) const override;
 
   void Delete() override { executables_.clear(); }
 
-  bool IsDeleted() override { return executables_.empty(); }
+  bool IsDeleted() const override { return executables_.empty(); }
 
   absl::StatusOr<std::string> SerializeExecutable() const override {
     return client_->SerializeExecutable(*this);

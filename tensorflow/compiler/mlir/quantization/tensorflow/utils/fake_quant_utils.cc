@@ -17,6 +17,14 @@ limitations under the License.
 // //third_party/tensorflow/compiler/mlir/lite/utils/fake_quant_utils.cc
 #include "tensorflow/compiler/mlir/quantization/tensorflow/utils/fake_quant_utils.h"
 
+#include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
+
 namespace mlir {
 namespace quant {
 

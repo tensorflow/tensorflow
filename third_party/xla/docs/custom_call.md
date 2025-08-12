@@ -316,7 +316,7 @@ void do_it() {
 // Constrain custom call arguments to 1-dimensional buffers of F32 data type.
 using BufferF32 = xla::ffi::BufferR1<xla::ffi::DataType::F32>;
 
-// Implement a custom call as a C+ function. Note that we can use `Buffer` type
+// Implement a custom call as a C++ function. Note that we can use `Buffer` type
 // defined by XLA FFI that gives us access to buffer data type and shape.
 xla::ffi::Error do_custom_call(BufferF32 in0, BufferF32 in1,
                                xla::ffi::Result<BufferF32> out) {

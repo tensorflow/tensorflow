@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner_interface.h"
+#include "xla/shape.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -80,11 +81,16 @@ namespace xla {
 // and away from HloTestBase.
 class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
  public:
+  using DeviceShapeRepresentationFn = std::function<Shape(const Shape&)>;
+  using DeviceShapeSizeFn = std::function<int64_t(const Shape&)>;
+
   static constexpr ErrorSpec kDefaultErrorSpec{0.0001};
 
  protected:
   explicit HloRunnerAgnosticTestBase(
       absl_nonnull std::unique_ptr<HloRunnerInterface> test_runner,
+      DeviceShapeRepresentationFn device_shape_representation_fn,
+      DeviceShapeSizeFn device_shape_size_fn,
       bool verifier_layout_sensitive = false,
       bool allow_mixed_precision_in_hlo_verifier = true,
       HloPredicate instruction_can_change_layout_func = {});
@@ -178,7 +184,6 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
   // or loaded from a file.
   ::testing::AssertionResult Run(
       absl::string_view hlo_string, bool run_hlo_passes = true,
-      ExecutionProfile* profile = nullptr,
       const tsl::protobuf::Message* backend_config = nullptr,
       bool use_random_data = true);
 
@@ -252,8 +257,7 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
   // If assert_determinism is true, the assertion will fail unless all runs
   // produce exactly the same output.
   ::testing::AssertionResult RunMultipleTimes(
-      absl::string_view hlo_string, bool run_hlo_passes,
-      std::vector<ExecutionProfile>* profiles,
+      absl::string_view hlo_string, bool run_hlo_passes, int64_t num_runs,
       const tsl::protobuf::Message* backend_config = nullptr,
       bool assert_determinism = false);
 
@@ -271,7 +275,7 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
   HloRunnerInterface& test_runner() const { return *test_runner_; }
 
  private:
-  // Runs the two module with or without running hlo passes and compares
+  // Runs the two module with or without running hlo oasses and compares
   // the results. Returns whether the results are near or equal. If any
   // error happens before the results are computed, returns the error status.
   absl::StatusOr<::testing::AssertionResult>
@@ -289,6 +293,8 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
       const std::optional<ErrorSpec>& error, bool run_hlo_passes);
 
   std::unique_ptr<HloRunnerInterface> test_runner_;
+  DeviceShapeRepresentationFn device_shape_representation_fn_;
+  DeviceShapeSizeFn device_shape_size_fn_;
 };
 
 }  // namespace xla

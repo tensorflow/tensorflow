@@ -35,12 +35,10 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/kernel.h"
-#include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/typed_kernel_factory.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -200,13 +198,7 @@ TEST_F(CudaStreamTest, LaunchKernel) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream,
                           CudaStream::Create(executor_,
                                              /*priority=*/std::nullopt));
-
-  MultiKernelLoaderSpec spec(/*arity=*/3);
-  spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "AddI32");
-  using AddI32Kernel =
-      TypedKernelFactory<DeviceMemory<int32_t>, DeviceMemory<int32_t>,
-                         DeviceMemory<int32_t>>;
-  TF_ASSERT_OK_AND_ASSIGN(auto add, AddI32Kernel::Create(executor_, spec));
+  TF_ASSERT_OK_AND_ASSIGN(auto add, LoadAddI32TestKernel(executor_));
 
   constexpr int64_t kLength = 4;
   constexpr int64_t kByteLength = sizeof(int32_t) * kLength;

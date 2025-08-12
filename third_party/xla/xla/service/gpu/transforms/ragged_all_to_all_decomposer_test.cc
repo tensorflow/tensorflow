@@ -20,10 +20,8 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/hlo_cse.h"
-#include "xla/service/hlo_runner.h"
-#include "xla/service/platform_util.h"
-#include "xla/tests/hlo_runner_agnostic_test_base.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
@@ -35,12 +33,7 @@ namespace {
 
 using ::testing::HasSubstr;
 
-class RaggedAllToAllDecomposerTest : public HloRunnerAgnosticTestBase {
- public:
-  RaggedAllToAllDecomposerTest()
-      : HloRunnerAgnosticTestBase(std::make_unique<HloRunner>(
-            PlatformUtil::GetDefaultPlatform().value())) {}
-};
+using RaggedAllToAllDecomposerTest = HloHardwareIndependentTestBase;
 
 TEST_F(RaggedAllToAllDecomposerTest, SimpleRaggedAllToAllIsSupported) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(

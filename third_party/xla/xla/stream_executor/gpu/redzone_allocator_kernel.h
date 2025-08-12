@@ -1,4 +1,4 @@
-/* Copyright 2024 The OpenXLA Authors.
+/* Copyright 2025 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,25 +18,16 @@ limitations under the License.
 
 #include <cstdint>
 
-#include "absl/status/statusor.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/kernel.h"
-#include "xla/stream_executor/stream_executor.h"
 
-namespace stream_executor {
-using ComparisonKernel = TypedKernel<DeviceMemory<uint8_t>, uint8_t, uint64_t,
-                                     DeviceMemory<uint64_t>>;
+namespace stream_executor::gpu {
 
-// Returns a GPU kernel that checks a memory location for redzone patterns.
-// Parameters are (buffer_address, redzone_pattern, buffer_length,
-// mismatch_count_ptr). For each byte in buffer `[buffer_address :
-// buffer_address
-// + buffer_length]` that is not equal to `redzone_pattern`,
-// `*mismatch_count_ptr` gets incremented by 1.
-absl::StatusOr<ComparisonKernel*> GetComparisonKernel(StreamExecutor* executor,
-                                                      GpuAsmOpts gpu_asm_opts);
+struct RedzoneAllocatorKernel {
+  using KernelType = TypedKernel<DeviceMemory<uint8_t>, uint8_t, uint64_t,
+                                 DeviceMemory<uint64_t>>;
+};
 
-}  // namespace stream_executor
+}  // namespace stream_executor::gpu
 
 #endif  // XLA_STREAM_EXECUTOR_GPU_REDZONE_ALLOCATOR_KERNEL_H_

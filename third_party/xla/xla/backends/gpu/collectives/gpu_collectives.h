@@ -112,20 +112,6 @@ class GpuCollectives : public Collectives {
       stream_executor::DeviceMemoryBase buff, PrimitiveType dtype,
       size_t offset, size_t count);
 
-  // Tries to cast a Collectives::Device to a GpuCollectives::Device.
-  static absl::StatusOr<Device*> TryCast(Collectives::Device* device);
-
-  // Tries to cast a Collectives::Config to a GpuCollectives::Config.
-  static absl::StatusOr<const Config*> TryCast(
-      const Collectives::Config* config);
-
-  // Tries to cast a Communicator to a GpuCommunicator.
-  static absl::StatusOr<GpuCommunicator*> TryCast(Communicator* comm);
-
-  // Tries to cast a Communicator to a GpuCommunicator.
-  static absl::StatusOr<const GpuCommunicator*> TryCast(
-      const Communicator* comm);
-
   // TODO(b/410686553): Use smart wrapper instead of void*.
   virtual absl::StatusOr<void*> Allocate(uint64_t bytes) = 0;
 

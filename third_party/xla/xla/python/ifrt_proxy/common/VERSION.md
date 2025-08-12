@@ -84,3 +84,10 @@
 *   Added date: 2025-03-12
 *   Changes:
     *   Added support for `Client::MakeArraysFromHostBufferShards()`.
+
+## Version kSerDesVersioning,
+
+*   Added date: 2025-06-25
+*   Changes:
+    *   Uses IFRT SerDes versioning to all IFRT type serialization and
+    deserialization in addition to existing IFRT Proxy protocol versioning.

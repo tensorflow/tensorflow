@@ -58,3 +58,10 @@ filegroup(
     srcs = ["manylinux_compliance_test.py"],
     visibility = ["//visibility:public"],
 )
+
+py_binary(
+    name = "unpack_wheel_and_unzip_archive_files",
+    srcs = ["unpack_wheel_and_unzip_archive_files.py"],
+    main = "unpack_wheel_and_unzip_archive_files.py",
+    visibility = ["//visibility:public"],
+)

@@ -28,7 +28,7 @@ def make_pad_tests(options):
   test_parameters = [
       # 5D:
       {
-          "dtype": [tf.int32, tf.int64, tf.float32],
+          "dtype": [tf.int32, tf.int64, tf.float32, tf.bool],
           "input_shape": [[1, 1, 2, 1, 1], [2, 1, 1, 1, 1]],
           "padding_dtype": [tf.int32, tf.int64],
           "paddings": [
@@ -41,7 +41,7 @@ def make_pad_tests(options):
       },
       # 4D:
       {
-          "dtype": [tf.int32, tf.int64, tf.float32],
+          "dtype": [tf.int32, tf.int64, tf.float32, tf.bool],
           "input_shape": [[1, 1, 2, 1], [2, 1, 1, 1]],
           "padding_dtype": [tf.int32, tf.int64],
           "paddings": [
@@ -54,7 +54,7 @@ def make_pad_tests(options):
       },
       # 2D:
       {
-          "dtype": [tf.int32, tf.int64, tf.float32],
+          "dtype": [tf.int32, tf.int64, tf.float32, tf.bool],
           "input_shape": [[1, 2]],
           "padding_dtype": [tf.int32, tf.int64],
           "paddings": [[[0, 1], [2, 3]]],
@@ -64,7 +64,7 @@ def make_pad_tests(options):
       },
       # 1D:
       {
-          "dtype": [tf.int32],
+          "dtype": [tf.int32, tf.bool],
           "input_shape": [[1]],
           "padding_dtype": [tf.int32, tf.int64],
           "paddings": [[[1, 2]]],
@@ -74,7 +74,7 @@ def make_pad_tests(options):
       },
       # 4D:
       {
-          "dtype": [tf.float32],
+          "dtype": [tf.float32, tf.bool],
           "input_shape": [[1, 1, 2, 1], [2, 1, 1, 1]],
           "padding_dtype": [tf.int32, tf.int64],
           "paddings": [
@@ -88,7 +88,7 @@ def make_pad_tests(options):
       },
       # 2D:
       {
-          "dtype": [tf.float32],
+          "dtype": [tf.float32, tf.bool],
           "input_shape": [[1, 2]],
           "padding_dtype": [tf.int32, tf.int64],
           "paddings": [[[0, 1], [2, 3]]],
@@ -98,7 +98,7 @@ def make_pad_tests(options):
       },
       # 1D:
       {
-          "dtype": [tf.float32],
+          "dtype": [tf.float32, tf.bool],
           "input_shape": [[1]],
           "padding_dtype": [tf.int32, tf.int64],
           "paddings": [[[1, 2]]],

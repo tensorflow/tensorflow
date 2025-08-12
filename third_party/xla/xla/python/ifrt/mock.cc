@@ -79,10 +79,10 @@ MockArray::MockArray(xla::ifrt::ArrayRef delegated)
   ON_CALL(*this, shared_ptr_sharding).WillByDefault([this]() {
     return delegated_->shared_ptr_sharding();
   });
-  ON_CALL(*this, layout)
+  ON_CALL(*this, pjrt_layout)
       .WillByDefault(
           [this]() -> absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> {
-            return delegated_->layout();
+            return delegated_->pjrt_layout();
           });
   ON_CALL(*this, DisassembleIntoSingleDeviceArrays(_, _))
       .WillByDefault(
@@ -222,14 +222,17 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
       .WillByDefault([this](const DeviceListRef& devices) {
         return delegated_->GetTopologyForDevices(devices);
       });
-  ON_CALL(*this, GetDefaultLayout)
+  ON_CALL(*this, GetDefaultPjRtLayout)
       .WillByDefault(
           [this](xla::ifrt::DType dtype, absl::Span<const int64_t> dims,
                  xla::ifrt::Device* device, xla::ifrt::MemoryKind memory_kind)
               -> absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> {
-            return delegated_->GetDefaultLayout(dtype, dims, device,
-                                                memory_kind);
+            return delegated_->GetDefaultPjRtLayout(dtype, dims, device,
+                                                    memory_kind);
           });
+  ON_CALL(*this, Attributes).WillByDefault([this]() -> const AttributeMap& {
+    return delegated_->Attributes();
+  });
 }
 // LINT.ThenChange()
 

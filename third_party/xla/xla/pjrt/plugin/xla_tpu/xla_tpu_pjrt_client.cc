@@ -24,8 +24,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_c_api_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
-
-const char kTpuPjrtName[] = "tpu";
+#include "xla/pjrt/plugin/plugin_names.h"
 
 namespace xla {
 

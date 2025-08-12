@@ -2216,6 +2216,7 @@ def XlaCallModuleDeserializationPass
     "stablehlo::StablehloDialect",
     "vhlo::VhloDialect",
     "quant::QuantDialect",
+    "sdy::SdyDialect",
   ];
 
   let constructor = "TF::CreateXlaCallModuleDeserializationPass()";

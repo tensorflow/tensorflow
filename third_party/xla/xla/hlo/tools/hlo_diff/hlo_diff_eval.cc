@@ -67,14 +67,14 @@ int64_t CountSplitAllegianceParental(const HloGumgraph& left,
                                      const HloGumgraph& right,
                                      const HloGumgraphMappings& mappings) {
   int64_t count = 0;
-  for (const auto it : mappings.left_to_right_instruction_map.left) {
-    if (it.first->children.size() != it.second->children.size()) {
+  for (const auto& [left, right] : mappings.left_to_right_instruction_map) {
+    if (left->children.size() != right->children.size()) {
       continue;
     }
     bool children_opcode_mismatch = false;
-    for (int i = 0; i < it.first->children.size(); ++i) {
-      if (it.first->children[i]->instruction->opcode() !=
-          it.second->children[i]->instruction->opcode()) {
+    for (int i = 0; i < left->children.size(); ++i) {
+      if (left->children[i]->instruction->opcode() !=
+          right->children[i]->instruction->opcode()) {
         children_opcode_mismatch = true;
         break;
       }
@@ -82,14 +82,13 @@ int64_t CountSplitAllegianceParental(const HloGumgraph& left,
     if (children_opcode_mismatch) {
       continue;
     }
-    for (int i = 0; i < it.first->children.size(); ++i) {
-      if (auto cit = mappings.left_to_right_instruction_map.left.find(
-              it.first->children[i]);
-          cit == mappings.left_to_right_instruction_map.left.end() ||
-          cit->second != it.second->children[i]) {
+    for (int i = 0; i < left->children.size(); ++i) {
+      const auto* left_child = left->children[i];
+      const auto* expected_right_child = right->children[i];
+      if (auto mapped_right_child =
+              mappings.left_to_right_instruction_map.GetRight(left_child);
+          mapped_right_child != expected_right_child) {
         count++;
-        // LOG(INFO) << it.first->instruction->name() << " has split child: "
-        //           << it.first->children[i]->instruction->name();
       }
     }
   }

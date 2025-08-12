@@ -1,14 +1,10 @@
 """TensorFlow workspace initialization. Consult the WORKSPACE on how to use it."""
 
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
-load("//:tsl_workspace3.bzl", "tsl_workspace3")
-load("//third_party/llvm:workspace.bzl", llvm = "repo")
 
 # buildifier: disable=function-docstring
 # buildifier: disable=unnamed-macro
 def workspace():
-    tsl_workspace3()
-
     http_archive(
         name = "io_bazel_rules_closure",
         sha256 = "5b00383d08dd71f28503736db0500b6fb4dda47489ff5fc6bed42557c07c6ba9",
@@ -38,6 +34,13 @@ def workspace():
         sha256 = "451e08a4d78988c06fa3f9306ec813b836b1d076d0f055595444ba4ff22b867f",
     )
 
+    http_archive(
+        name = "bazel_features",
+        sha256 = "4fd9922d464686820ffd8fcefa28ccffa147f7cdc6b6ac0d8b07fde565c65d66",
+        strip_prefix = "bazel_features-1.25.0",
+        url = "https://github.com/bazel-contrib/bazel_features/releases/download/v1.25.0/bazel_features-v1.25.0.tar.gz",
+    )
+
     # Maven dependencies.
     RULES_JVM_EXTERNAL_TAG = "4.3"
     http_archive(
@@ -56,10 +59,6 @@ def workspace():
         ],
         sha256 = "29742e87275809b5e598dc2f04d86960cc7a55b3067d97221c9abbc9926bff0f",
     )
-
-    # Load the raw llvm-project.  llvm does not have build rules set up by default,
-    # but provides a script for setting up build rules via overlays.
-    llvm("llvm-raw")
 
 # Alias so it can be loaded without assigning to a different symbol to prevent
 # shadowing previous loads and trigger a buildifier warning.

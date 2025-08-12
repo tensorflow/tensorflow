@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 
+#include <optional>
 #include <string>
 
 #include "absl/strings/string_view.h"
@@ -75,6 +76,20 @@ llvm::StringRef OpOrArgNameMapper::GetUniqueName(llvm::StringRef prefix,
       }
     }
   }
+}
+
+std::optional<llvm::StringRef> OpOrArgNameMapper::GetMappedName(
+    OpOrVal op_or_val) {
+  auto name = GetMappedNameView(op_or_val);
+  if (name.has_value()) return StringViewToRef(name.value());
+  return std::nullopt;
+}
+
+std::optional<absl::string_view> OpOrArgNameMapper::GetMappedNameView(
+    OpOrVal op_or_val) {
+  auto& name = op_or_val_to_name_[op_or_val];
+  if (!name.empty()) return name;
+  return std::nullopt;
 }
 
 llvm::StringRef OpOrArgNameMapper::GetUniqueName(OpOrVal op_or_val,

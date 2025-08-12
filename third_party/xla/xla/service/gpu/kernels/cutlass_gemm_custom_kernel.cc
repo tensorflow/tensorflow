@@ -71,7 +71,7 @@ extern template class DeviceKernel<Bf16xBf16ToBf16<Sm90>>;
 // CUTLASS kernel arguments packing
 //===----------------------------------------------------------------------===//
 
-using KernelArgsPacking = se::MultiKernelLoaderSpec::KernelArgsPacking;
+using KernelArgsPacking = se::KernelLoaderSpec::KernelArgsPacking;
 
 template <typename Dim>
 static Dim As(Dim3 dim3) {
@@ -194,16 +194,16 @@ static CustomKernel Load(std::string name, GemmMode mode, int32_t batch_count,
   auto packing = ArgsPacking<Tag>(mode, batch_count, m, n, k, indices, slices,
                                   device.core_count(), adaptor);
 
-  se::MultiKernelLoaderSpec spec(/*arity=*/2, std::move(packing));
-  spec.AddInProcessSymbol(kernel.symbol(), name);
+  se::KernelLoaderSpec spec = se::KernelLoaderSpec::CreateInProcessSymbolSpec(
+      kernel.symbol(), name, /*arity=*/2, std::move(packing));
 
   if (cluster_dim.has_value()) {
     return CustomKernel(std::move(name), std::move(spec), block_dim, thread_dim,
                         *cluster_dim, shared_memory_bytes);
-  } else {
-    return CustomKernel(std::move(name), std::move(spec), block_dim, thread_dim,
-                        shared_memory_bytes);
   }
+
+  return CustomKernel(std::move(name), std::move(spec), block_dim, thread_dim,
+                      shared_memory_bytes);
 }
 
 namespace {

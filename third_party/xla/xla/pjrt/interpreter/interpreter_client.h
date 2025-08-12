@@ -257,7 +257,7 @@ class InterpreterLiteralWrapperBuffer final : public PjRtBuffer {
         "InterpreterLiteralWrapperBuffer.");
   }
 
-  bool IsDeleted() override { return is_deleted_; }
+  bool IsDeleted() const override { return is_deleted_; }
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToMemorySpace(
       PjRtMemorySpace* dst_memory_space) override {
@@ -355,26 +355,29 @@ class InterpreterLoadedExecutable final : public PjRtLoadedExecutable {
   absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
       absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
       const ExecuteOptions& options,
-      std::optional<std::vector<PjRtFuture<>>>& returned_futures) override;
+      std::optional<std::vector<PjRtFuture<>>>& returned_futures)
+      const override;
 
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options,
-      std::optional<PjRtFuture<>>& returned_future, bool fill_future) override;
+      std::optional<PjRtFuture<>>& returned_future,
+      bool fill_future) const override;
 
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options,
-      std::optional<PjRtFuture<>>& returned_future, bool fill_future) override;
+      std::optional<PjRtFuture<>>& returned_future,
+      bool fill_future) const override;
 
   void Delete() override { hlo_module_ = nullptr; }
 
-  bool IsDeleted() override { return hlo_module_ == nullptr; }
+  bool IsDeleted() const override { return hlo_module_ == nullptr; }
 
  private:
   absl::StatusOr<Literal> Evaluate(
       const HloComputation& computation,
-      absl::Span<const Literal* const> arg_literals)
+      absl::Span<const Literal* const> arg_literals) const
       ABSL_LOCKS_EXCLUDED(hlo_evaluator_lock_);
 
   PjRtClient* client_ = nullptr;
@@ -442,6 +445,8 @@ class InterpreterClient final : public PjRtClient {
   absl::string_view platform_name() const override { return "interpreter"; }
 
   absl::string_view platform_version() const override { return "<unknown>"; }
+
+  std::optional<PjRtPluginAttributes> plugin_attributes() const override;
 
   absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;

@@ -74,40 +74,40 @@ class DynamicallyQuantizedConv2DTester {
     return input_channels_ / groups_;
   }
 
-  inline DynamicallyQuantizedConv2DTester& InputHeight(int32_t input_height) {
-    EXPECT_GT(input_height, 0);
-    input_height_ = input_height;
+  inline DynamicallyQuantizedConv2DTester& OutputHeight(int32_t output_height) {
+    EXPECT_GT(output_height, 0);
+    output_height_ = output_height;
     return *this;
   }
 
-  inline int32_t InputHeight() const { return input_height_; }
+  inline int32_t OutputHeight() const { return output_height_; }
 
-  inline DynamicallyQuantizedConv2DTester& InputWidth(int32_t input_width) {
-    EXPECT_GT(input_width, 0);
-    input_width_ = input_width;
+  inline DynamicallyQuantizedConv2DTester& OutputWidth(int32_t output_width) {
+    EXPECT_GT(output_width, 0);
+    output_width_ = output_width;
     return *this;
   }
 
-  inline int32_t InputWidth() const { return input_width_; }
+  inline int32_t OutputWidth() const { return output_width_; }
 
-  inline int32_t OutputWidth() const {
-    if (Padding() == ::tflite::Padding_SAME) {
-      EXPECT_GE(InputWidth(), 1);
-      return (InputWidth() - 1) / StrideWidth() + 1;
-    } else {
-      EXPECT_GE(InputWidth(), DilatedKernelWidth());
-      return 1 + (InputWidth() - DilatedKernelWidth()) / StrideWidth();
+  inline int32_t InputWidth() const {
+    EXPECT_GE(OutputWidth(), 1);
+    int32_t input_width = (OutputWidth() - 1) * StrideWidth() + 1;
+    if (Padding() != ::tflite::Padding_SAME) {
+      input_width += DilatedKernelWidth() - 1;
     }
+    EXPECT_GE(input_width, 1);
+    return input_width;
   }
 
-  inline int32_t OutputHeight() const {
-    if (Padding() == ::tflite::Padding_SAME) {
-      EXPECT_GE(InputHeight(), 1);
-      return (InputHeight() - 1) / StrideHeight() + 1;
-    } else {
-      EXPECT_GE(InputHeight(), DilatedKernelHeight());
-      return 1 + (InputHeight() - DilatedKernelHeight()) / StrideHeight();
+  inline int32_t InputHeight() const {
+    EXPECT_GE(OutputHeight(), 1);
+    int32_t input_height = (OutputHeight() - 1) * StrideHeight() + 1;
+    if (Padding() != ::tflite::Padding_SAME) {
+      input_height += DilatedKernelHeight() - 1;
     }
+    EXPECT_GE(input_height, 1);
+    return input_height;
   }
 
   inline DynamicallyQuantizedConv2DTester& KernelHeight(int32_t kernel_height) {
@@ -224,8 +224,8 @@ class DynamicallyQuantizedConv2DTester {
   int32_t input_channels_ = 1;
   int32_t output_channels_ = 1;
   int32_t groups_ = 1;
-  int32_t input_height_ = 1;
-  int32_t input_width_ = 1;
+  int32_t output_height_ = 1;
+  int32_t output_width_ = 1;
   int32_t kernel_height_ = 1;
   int32_t kernel_width_ = 1;
   int32_t stride_height_ = 1;

@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <optional>
 #include <string>
+#include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -26,7 +28,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/util/device_name_utils.h"
-#include "tensorflow/core/common_runtime/function_utils.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/config/flag_defs.h"
 #include "tensorflow/core/config/flags.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/platform/bfloat16.h"
@@ -228,6 +230,20 @@ bool ShouldRunPass(const GraphOptimizationPassOptions& options) {
   return true;
 }
 
+// Remove the dead nodes from the graph. This specifically avoids leaving behind
+// isolated stateful TPUDummyInput nodes. Such nodes can cause host OOMs on
+// coordinator tasks when training large models.
+bool RemoveDeadNodesAfterSimplify(Graph* g) {
+  std::unordered_set<const Node*> nodes;
+  for (auto n : g->nodes()) {
+    if (n->IsSource() || n->IsSink() || n->IsControlFlow() ||
+        (n->op_def().is_stateful() && n->type_string() != "TPUDummyInput")) {
+      nodes.insert(n);
+    }
+  }
+  return PruneForReverseReachability(g, std::move(nodes));
+}
+
 absl::Status SimplifyIciDummyVariablesPass::Run(
     const GraphOptimizationPassOptions& options) {
   if (!ShouldRunPass(options)) {
@@ -270,7 +286,7 @@ absl::Status SimplifyIciDummyVariablesPass::Run(
   }
 
   // Remove the dead nodes that previously connected to the TPUExecute node.
-  RemoveDeadNodes(graph);
+  RemoveDeadNodesAfterSimplify(graph);
 
   VLOG(1) << DumpGraphToFile("after_simplify_ici_dummy_variables_pass", *graph,
                              options.flib_def);

@@ -40,6 +40,16 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertHloToStablehlo(
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertHloToStablehlo(
     mlir::MLIRContext& ctx, const xla::HloModuleProto* hlo_module);
 
+// Convert HloModuleProto to StableHLO module.
+// DO NOT USE THIS METHOD WITHOUT A GOOD REASON. Prefer ConvertHloToStablehlo.
+// Currently it exists to satisfy TF2XLA compilation APIs where certain behavior
+// is dependent on not important all computations. In general we want a single
+// conversion path for all HLO, and are working to obsolete this method.
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
+ConvertHloToStablehloWithOptions(mlir::MLIRContext& ctx,
+                                 const xla::HloModuleProto* hlo_module,
+                                 bool import_all_computations);
+
 // Convert StableHLO module to HloModule.
 absl::StatusOr<std::unique_ptr<xla::HloModule>> ConvertStablehloToHlo(
     mlir::ModuleOp module);

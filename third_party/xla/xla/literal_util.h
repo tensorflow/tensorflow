@@ -120,6 +120,10 @@ class LiteralUtil {
   // Creates a scalar literal value containing the maximum value of the given
   // primitive type. For floating-point types supporting inf, returns inf.
   static Literal MaxValue(PrimitiveType primitive_type);
+  // Creates a scalar literal value containing the maximum finite value of the
+  // given primitive type. For floating-point types that do not support inf,
+  // this is the same as MaxValue.
+  static Literal MaxFiniteValue(PrimitiveType primitive_type);
   // Creates a scalar literal value containing the NaN value of the given
   // primitive type. Fail for non-inexact types. For complex types, returns a
   // nan + nan * j value.
@@ -311,6 +315,10 @@ class LiteralUtil {
   // Fails if the literal is not an integral type or if the value it contains
   // cannot be represented as an int64_t.
   static std::optional<int64_t> LiteralAsScalarInt64(const Literal& l);
+
+  // Creates a vector of pointers to the given literals.
+  static std::vector<const Literal*> MakePointers(
+      absl::Span<const Literal> literals);
 };
 
 std::ostream& operator<<(std::ostream& out, const Literal& literal);
@@ -643,7 +651,7 @@ absl::StatusOr<Literal> MakeFakeLiteral(const Shape& shape,
 // 'use_large_range' indicates the sampled data is from the full range of the
 // floating point format. (floating point format only)
 // 'max_bits_of_precision' sets the data to have the given number of bits or
-// less (integer or floating point formats only).
+// less and are not NaNs (integer or floating point formats only).
 absl::StatusOr<Literal> MakeFakeLiteral(
     const Shape& shape, std::minstd_rand0* engine,
     std::optional<std::pair<int64_t, int64_t>> limit, bool is_sorted,

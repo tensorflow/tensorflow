@@ -832,11 +832,10 @@ bool CUDABlas::GetBlasGemmAlgorithms(
   if (stream->GetCudaComputeCapability().IsAtLeast(
           CudaComputeCapability::kAmpere)) {
     // Note: for NVIDIA Ampere Architecture GPUs and beyond, i.e. SM version >=
-    // 80, the numbered algorithm options are equivalent to CUBLAS_GEMM_DEFAULT
-    // or CUBLAS_GEMM_DEFAULT_TENSOR_OP respectively.
+    // 80, the numbered algorithm options are equivalent to CUBLAS_GEMM_DEFAULT.
+    // CUBLAS_GEMM_DEFAULT_TENSOR_OP has been depreacted in CUDA 11.
     *out_algorithms = {
         CUBLAS_GEMM_DFALT,
-        CUBLAS_GEMM_DFALT_TENSOR_OP,
     };
   } else {
     *out_algorithms = {

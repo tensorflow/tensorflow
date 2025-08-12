@@ -60,7 +60,7 @@ class RewriteNchwConvolutionToNhwc
       return failure();
     }
 
-    if (!IsOpNotQuantized(op)) return failure();
+    if (!quant::IsOpNotQuantized(op)) return failure();
 
     const ConvDimensionNumbersAttr dimension_nums = op.getDimensionNumbers();
     const bool dimension_nums_matched =
@@ -168,7 +168,7 @@ class RewriteNchwConvolutionToNhwc
   TensorType GetTransposedTensorType(
       const TensorType type, const ArrayRef<int64_t> permutation) const {
     const SmallVector<int64_t> after_shape =
-        Permute<int64_t>(type.getShape(), permutation);
+        quant::Permute<int64_t>(type.getShape(), permutation);
     return type.cloneWith(after_shape, type.getElementType());
   }
 };

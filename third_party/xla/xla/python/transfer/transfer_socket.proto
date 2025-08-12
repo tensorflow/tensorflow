@@ -57,6 +57,19 @@ message SocketTransferEstablishBulkTransport {
   repeated uint64 bulk_transport_uuid = 3;
 }
 
+message SocketTransferPacketErrorHeader {
+  // Req ids are assigned sequentially for each pull request.
+  uint64 req_id = 1;
+  // Offset into the destination.
+  uint64 offset = 2;
+  // Actual send size (must recv this much from the bulk_transport).
+  uint64 size = 3;
+  // Is this the largest offset we will see?
+  bool is_largest = 4;
+  // The error message.
+  bytes error_message = 5;
+}
+
 message SocketTransferHalfClose {}
 
 message SocketTransferRequest {
@@ -69,5 +82,7 @@ message SocketTransferRequest {
     SocketTransferEstablishBulkTransport bulk_transport = 3;
     // Half close.
     SocketTransferHalfClose half_close = 4;
+    // An error.
+    SocketTransferPacketErrorHeader error_packet = 5;
   }
 }

@@ -46,6 +46,7 @@ exports_files(
         "env.cc",
         "ram_file_system.h",
         "grpc_credentials.h",
+        "recordphase.h",
         "resource.h",
         "rocm_rocdl_path.h",
         "resource_loader.h",
@@ -131,6 +132,7 @@ filegroup(
         "file_system_helper.h",
         "prefetch.h",
         "ram_file_system.h",
+        "recordphase.h",
         "resource.h",
         "stack_frame.h",
         "statusor.h",
@@ -512,10 +514,14 @@ cc_library(
         "//xla/tsl/protobuf:error_codes_proto_impl_cc",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
         "@local_tsl//tsl/platform",
@@ -839,4 +845,10 @@ tsl_cc_test(
         ":test",
         "@com_google_googletest//:gtest_main",
     ],
+)
+
+cc_library(
+    name = "recordphase",
+    textual_hdrs = ["recordphase.h"],
+    deps = tf_platform_deps("recordphase") + ["@com_google_absl//absl/strings:string_view"],
 )

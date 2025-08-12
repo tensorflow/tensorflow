@@ -44,6 +44,7 @@ class PluginProgramSerDes
   absl::StatusOr<std::string> Serialize(
       const Serializable& serializable,
       std::unique_ptr<SerializeOptions>) override {
+    // PluginProgram does not support versioning. `options` is ignored.
     return absl::StrCat(kSerializationPrefix,
                         llvm::cast<PluginProgram>(serializable).data);
   }

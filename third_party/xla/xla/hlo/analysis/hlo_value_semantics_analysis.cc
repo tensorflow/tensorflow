@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
@@ -49,6 +50,7 @@ limitations under the License.
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/side_effect_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -383,6 +385,15 @@ absl::Status EinsumDepthAnalysis::HandleDepthIncrementInstruction(
 
 absl::Status EinsumDepthAnalysis::HandleDot(HloInstruction* dot) {
   return HandleDepthIncrementInstruction(dot);
+}
+
+absl::Status EinsumDepthAnalysis::HandleCustomCall(
+    HloInstruction* custom_call) {
+  if (absl::StartsWith(custom_call->custom_call_target(),
+                       "SparseDenseMatmul")) {
+    return HandleDot(custom_call);
+  }
+  return DefaultAction(custom_call);
 }
 
 absl::Status EinsumDepthAnalysis::HandleCall(HloInstruction* call) {
@@ -765,6 +776,16 @@ absl::Status EinsumHeightAnalysis::HandleGetTupleElement(
 absl::Status EinsumHeightAnalysis::HandleDot(HloInstruction* dot) {
   RETURN_IF_HEIGHT_EXISTS(dot);
   return HandleHeightIncrementInstruction(dot);
+}
+
+absl::Status EinsumHeightAnalysis::HandleCustomCall(
+    HloInstruction* custom_call) {
+  RETURN_IF_HEIGHT_EXISTS(custom_call);
+  if (absl::StartsWith(custom_call->custom_call_target(),
+                       "SparseDenseMatmul")) {
+    return HandleDot(custom_call);
+  }
+  return DefaultAction(custom_call);
 }
 
 absl::Status EinsumHeightAnalysis::HandleCall(HloInstruction* call) {
@@ -1168,6 +1189,14 @@ const HloValueSemantics* HloValueSemanticsPropagation::AddSemantics(
 
 namespace {
 bool IsDotOrConvolution(const HloInstruction* instruction) {
+  // Generic catch all for current and future SC matmul ops.
+  if (instruction->opcode() == HloOpcode::kCustomCall &&
+      absl::StartsWith(instruction->custom_call_target(),
+                       "SparseDenseMatmul")) {
+    VLOG(3) << "Treating " << instruction->custom_call_target()
+            << " as dot or convolution.";
+    return true;
+  }
   return HloPredicateIsOp<HloOpcode::kDot, HloOpcode::kConvolution,
                           HloOpcode::kRaggedDot>(instruction);
 }
@@ -1595,6 +1624,68 @@ absl::Status HloValueSemanticsPropagation::DefaultAction(
   return absl::OkStatus();
 }
 
+absl::Status HloValueSemanticsPropagation::HandleSparseDenseMatmul(
+    HloInstruction* instruction) {
+  RETURN_IF_ALREADY_PROPAGATED(instruction);
+  std::vector<int64_t> operand_indices(instruction->operand_count());
+  std::iota(operand_indices.begin(), operand_indices.end(), 0);
+
+  // Similar to ComputeSemanticsFromOperands except that we expand tuple inputs.
+  std::vector<const HloInstruction*> flattened_operands;
+  for (int64_t operand_index : operand_indices) {
+    const HloInstruction* operand = instruction->operand(operand_index);
+    if (operand->shape().IsTuple()) {
+      for (const HloInstruction* tuple_element : operand->operands()) {
+        // Note: We don't handle nested tuple operands right now.
+        flattened_operands.push_back(tuple_element);
+      }
+    } else {
+      flattened_operands.push_back(operand);
+    }
+  }
+  std::vector<HloValueSemantics> semantics_vec;
+  for (const HloInstruction* operand : flattened_operands) {
+    const HloValueSemantics* operand_semantics =
+        analysis_->GetSemantics(operand, ShapeIndex());
+    auto operand_height_iter = analysis_->GetEinsumHeightMap().find(operand);
+    CHECK(operand_height_iter != analysis_->GetEinsumHeightMap().end())
+        << "operand: " << operand->name();
+    VLOG(3) << __func__ << ", operand: " << operand->name()
+            << ", operand_semantics: " << operand_semantics->ToString()
+            << ", height: " << ToString(operand_height_iter->second);
+    semantics_vec.push_back(*operand_semantics);
+  }
+  TF_ASSIGN_OR_RETURN(
+      HloValueSemantics semantics,
+      MergeSemanticsForAnInstruction(instruction, semantics_vec));
+
+  // Set the semantics for the instruction.
+  if (instruction->shape().IsTuple()) {
+    ShapeTree<const HloValueSemantics*> semantics_shape_tree(
+        instruction->shape(), nullptr);
+    semantics_shape_tree.ForEachMutableElement(
+        [this, &semantics, &semantics_shape_tree, instruction](
+            const ShapeIndex& index, const HloValueSemantics** semantics_ptr) {
+          if (semantics_shape_tree.IsLeaf(index)) {
+            HloValueSemantics sub_semantics =
+                CopySemanticsWithNewOrigin(semantics, instruction, index);
+            *semantics_ptr = AddSemantics(sub_semantics);
+          } else {
+            HloValueSemantics sub_semantics(
+                HloValueSemanticLabel::kTupleOrToken, {instruction, index});
+            *semantics_ptr = AddSemantics(sub_semantics);
+          }
+        });
+    analysis_->SetHloValueSemantics(instruction, semantics_shape_tree);
+  } else {
+    const HloValueSemantics* semantics_ptr = AddSemantics(semantics);
+    ShapeTree<const HloValueSemantics*> semantics_shape_tree(
+        instruction->shape(), semantics_ptr);
+    analysis_->SetHloValueSemantics(instruction, semantics_shape_tree);
+  }
+  return absl::OkStatus();
+}
+
 absl::Status HloValueSemanticsPropagation::HandleParameter(
     HloInstruction* parameter) {
   return absl::OkStatus();
@@ -1720,6 +1811,10 @@ absl::Status HloValueSemanticsPropagation::HandleCustomCall(
         analysis_->GetInstructionSemantics(custom_call->operand(0));
     analysis_->DeepCopyHloValueSemantics(custom_call, operand_semantics);
     return absl::OkStatus();
+  }
+  if (absl::StartsWith(custom_call->custom_call_target(),
+                       "SparseDenseMatmul")) {
+    return HandleSparseDenseMatmul(custom_call);
   }
   return Unimplemented("Unimplemented custom-call: %s",
                        custom_call->custom_call_target());

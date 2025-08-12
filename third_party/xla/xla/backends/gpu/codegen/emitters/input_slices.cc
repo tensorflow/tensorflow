@@ -62,9 +62,10 @@ std::optional<IndexingMap> InputSlicesFusion::ComputeThreadIdToOutputIndexing(
   const auto& shape = slice->operand(0)->shape();
   return GetDefaultThreadIdIndexingMap(launch_dims, unroll_factor_, shape,
                                        ctx) *
-         *ComputeInputToOutputIndexing(slice, 0, ctx)
-              .indexing_maps.front()
-              .begin();
+         ComputeInputToOutputIndexing(slice, 0, ctx)
+             .indexing_maps.front()
+             .begin()
+             ->map();
 }
 
 std::vector<emitters::EpilogueSpecification> InputSlicesFusion::GetEpilogues(

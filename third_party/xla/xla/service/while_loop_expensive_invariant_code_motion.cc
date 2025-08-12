@@ -350,6 +350,11 @@ absl::StatusOr<bool> WhileLoopExpensiveInvariantCodeMotion::Run(
                     HloPredicateIsOp<HloOpcode::kWhile>);
   }
 
+  // Currently, if a loop body that is used by multiple while
+  // ops contains an op that can be hoisted, we will make a new computation for
+  // each of the while ops, instead of using one shared new computation. This is
+  // probably fine, but we may want to improve it in the future if we decide to
+  // double-down on shared while bodies.
   for (HloInstruction* while_instr : while_instrs) {
     // Right now we only hoist computations from the while body, but
     // TryHoistingInvariantInstructionsFromWhileBody can be generalized to

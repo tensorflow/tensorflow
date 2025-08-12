@@ -31,7 +31,7 @@ limitations under the License.
 #include "mlir/Interfaces/CallInterfaces.h"  // IWYU pragma: keep
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // IWYU pragma: keep
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // IWYU pragma: keep
-#include "xla/codegen/emitters/ir/xla_dialect.h.inc"
+#include "xla/codegen/emitters/ir/xla_dialect.h"  // IWYU pragma: keep
 #include "xla/hlo/analysis/indexing_map.h"  // IWYU pragma: keep
 
 // The order of these includes is important.

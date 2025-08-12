@@ -67,8 +67,8 @@ EstimateRunTimeData GpuPerformanceModel::EstimateRunTimeForInstructionImpl(
       ComputeTime(device_info_, flops, num_blocks,
                   launch_dimensions.num_threads_per_block());
 
-  CoalescingAnalysis coalescing_analysis(instr, instr->operands(),
-                                         fusion_analysis);
+  CoalescingAnalysis coalescing_analysis =
+      CoalescingAnalysis::Create(instr, instr->operands(), fusion_analysis);
 
   absl::Duration read_time;
   int64_t bytes_read = 0;
@@ -152,8 +152,8 @@ absl::Duration GpuPerformanceModel::EstimateRunTimeForFusionImpl(
                   launch_dimensions.num_threads_per_block());
 
   auto fusion_operands = fusion_analysis.fusion().GetParameters();
-  CoalescingAnalysis coalescing_analysis(producer, consumer, fusion_operands,
-                                         fusion_analysis);
+  CoalescingAnalysis coalescing_analysis = CoalescingAnalysis::Create(
+      producer, consumer, fusion_operands, fusion_analysis);
 
   absl::Duration read_time;
   int64_t bytes_read = 0;

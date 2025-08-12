@@ -44,7 +44,7 @@ onednn_graph_cc_library(
         "//xla:types",
         "//xla:util",
         "//xla:xla_data_proto_cc",
-        "//xla/backends/cpu:onednn_fusion",
+        "//xla/backends/cpu:onednn_fusion_graph",
         "//xla/backends/cpu/runtime:dot_lib",
         "//xla/backends/cpu/runtime:parallel_loop_runner",
         "//xla/backends/cpu/runtime:thunk",
@@ -80,7 +80,8 @@ onednn_graph_cc_library(
     hdrs = ["onednn_threadpool.h"],
     deps = [
         ":onednn_interop",
-        "//xla/backends/cpu/runtime:parallel_loop_runner",
+        "//xla/backends/cpu/runtime:work_queue",
+        "@eigen_archive//:eigen3",
         "@onednn//:mkl_dnn",
     ],
 )
@@ -91,7 +92,7 @@ onednn_graph_cc_test(
     deps = [
         ":onednn_interop",
         ":onednn_threadpool",
-        "//xla/backends/cpu/runtime:parallel_loop_runner",
+        "//xla/backends/cpu/runtime:work_queue",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env",

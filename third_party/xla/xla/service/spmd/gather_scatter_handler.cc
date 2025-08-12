@@ -37,7 +37,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
+#include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/spmd/spmd_partitioner.h"
 #include "xla/service/spmd/spmd_partitioner_util.h"
 #include "xla/shape.h"
@@ -146,7 +148,7 @@ std::vector<int64_t> GatherOperandDimsByPriority(
 // 3. start_indices_batching_dims
 std::vector<int64_t> GatherIndexDimsByPriority(
     const HloGatherInstruction* gather) {
-  int64_t indices_rank = gather->operand(1)->shape().dimensions_size();
+  int64_t indices_rank = gather->operand(1)->shape().dimensions().size();
   const GatherDimensionNumbers& dnums = gather->gather_dimension_numbers();
 
   std::vector<int64_t> priority_dims_for_indices;
@@ -180,7 +182,7 @@ std::vector<int64_t> GatherOutputDimsByPriority(
   auto operand_passthrough_output_dims =
       hlo_sharding_util::GetGatherOperandPassthroughDims(*gather, slice_sizes)
           .output_dims;
-  for (int i = 0; i != output_shape.dimensions_size(); ++i) {
+  for (int i = 0; i != output_shape.dimensions().size(); ++i) {
     if (!absl::c_linear_search(operand_passthrough_output_dims, i)) {
       priority_dims_for_output.push_back(i);
     }
@@ -217,9 +219,17 @@ PartitionedHlo ClampGatherIndices(const PartitionedHlo& indices,
         max_indices = CreateMaxIndicesConstant<int32_t>(operand_base_shape,
                                                         start_index_map, b);
         break;
+      case U32:
+        max_indices = CreateMaxIndicesConstant<uint32_t>(operand_base_shape,
+                                                         start_index_map, b);
+        break;
       case S64:
         max_indices = CreateMaxIndicesConstant<int64_t>(operand_base_shape,
                                                         start_index_map, b);
+        break;
+      case U64:
+        max_indices = CreateMaxIndicesConstant<uint64_t>(operand_base_shape,
+                                                         start_index_map, b);
         break;
       default:
         LOG(FATAL) << "Unsupported indices type: "
@@ -363,7 +373,7 @@ absl::StatusOr<HloInstruction*> PartitionGatherIndexPassthroughDimensions(
       hlo_sharding_util::PropagateShardingAlongDimsAndReplicateOthers(
           indices.sharding(), index_passthrough_dims.indices_dims,
           index_passthrough_dims.output_dims,
-          gather->shape().dimensions_size());
+          gather->shape().dimensions().size());
   if (passthrough_sharding.IsTileMaximal()) {
     return nullptr;
   }
@@ -525,7 +535,7 @@ absl::StatusOr<HloInstruction*> PartitionGatherTrivialSlicedOperandDimensions(
     GroupedSharding output_grouped =
         AlignGroupsWith(hlo_sharding_util::GroupShardingOnReplicatedDim(
                             output_sharding, num_groups, num_tiles,
-                            output_shape.dimensions_size(),
+                            output_shape.dimensions().size(),
                             GatherOutputDimsByPriority(output_shape, operand,
                                                        gather, slice_sizes)),
                         operand_grouped);
@@ -540,7 +550,7 @@ absl::StatusOr<HloInstruction*> PartitionGatherTrivialSlicedOperandDimensions(
       output_grouped =
           AlignGroupsWith(hlo_sharding_util::GroupShardingOnReplicatedDim(
                               new_output_sharding, num_groups, num_tiles,
-                              output_shape.dimensions_size(),
+                              output_shape.dimensions().size(),
                               GatherOutputDimsByPriority(output_shape, operand,
                                                          gather, slice_sizes)),
                           operand_grouped);
@@ -620,7 +630,7 @@ absl::StatusOr<HloInstruction*> PartitionGatherTrivialSlicedOperandDimensions(
 
     if (dnums.index_vector_dim() < indices.num_dimensions()) {
       std::vector<int64_t> reduced_filter_dims;
-      for (int64_t i = 0; i < filter->shape().dimensions_size(); ++i) {
+      for (int64_t i = 0; i < filter->shape().dimensions().size(); ++i) {
         if (i != dnums.index_vector_dim()) {
           reduced_filter_dims.push_back(filter->shape().dimensions(i));
         }
@@ -631,7 +641,7 @@ absl::StatusOr<HloInstruction*> PartitionGatherTrivialSlicedOperandDimensions(
           MakeBinaryAdd(PRED, indices.state().module)));
     }
     std::vector<int64_t> batch_dims;
-    for (int64_t i = 0; i < pgather->shape().dimensions_size(); ++i) {
+    for (int64_t i = 0; i < pgather->shape().dimensions().size(); ++i) {
       if (!absl::c_linear_search(dnums.offset_dims(), i)) {
         batch_dims.push_back(i);
       }
@@ -747,7 +757,7 @@ absl::StatusOr<HloInstruction*> PartitionGatherParallelDimensions(
                                        indices.hlo()->shape().element_type()),
           adjusted_indices));
     }
-    if (adjusted_indices->shape().dimensions_size() == 0) {
+    if (adjusted_indices->shape().dimensions().size() == 0) {
       adjusted_indices = b->AddInstruction(HloInstruction::CreateBroadcast(
           indices.hlo()->shape(), adjusted_indices, {}));
     } else {
@@ -989,7 +999,7 @@ absl::Status SpmdPartitioningVisitor::HandleGather(HloInstruction* hlo) {
           : raw_indices;
 
   std::vector<int64_t> batch_dims;
-  for (int64_t i = 0; i < gather->shape().dimensions_size(); ++i) {
+  for (int64_t i = 0; i < gather->shape().dimensions().size(); ++i) {
     if (!absl::c_linear_search(dnums.offset_dims(), i)) {
       batch_dims.push_back(i);
     }
@@ -1032,31 +1042,11 @@ Shape MaybeGetTuplePerGroupBaseShape(const GroupedSharding& grouped_sharding,
     return GetPerGroupBaseShape(grouped_sharding, original_base_shape);
   }
   absl::InlinedVector<Shape, 2> element_shapes;
-  element_shapes.reserve(original_base_shape.tuple_shapes_size());
+  element_shapes.reserve(original_base_shape.tuple_shapes().size());
   for (const Shape& shape : original_base_shape.tuple_shapes()) {
     element_shapes.push_back(GetPerGroupBaseShape(grouped_sharding, shape));
   }
   return ShapeUtil::MakeTupleShape(element_shapes);
-}
-
-// Returns the opcode if `reduction_comp` represents a simple binary elementwise
-// computation on the two operands.
-std::optional<HloOpcode> ParseReductionComputation(
-    const HloComputation* reduction_comp) {
-  if (reduction_comp->num_parameters() != 2) {
-    return std::nullopt;
-  }
-  auto root = reduction_comp->root_instruction();
-  if (!HloOpcodeIsBinaryCommutative(root->opcode())) {
-    return std::nullopt;
-  }
-  if (!absl::c_linear_search(root->operands(),
-                             reduction_comp->parameter_instruction(0)) ||
-      !absl::c_linear_search(root->operands(),
-                             reduction_comp->parameter_instruction(1))) {
-    return std::nullopt;
-  }
-  return root->opcode();
 }
 
 // Priority for operand dimensions in scatter from lowest to highest, in case of
@@ -1088,7 +1078,8 @@ std::vector<int64_t> ScatterOperandDimsByPriority(
 // 3. scatter_indices_batching_dims
 std::vector<int64_t> ScatterIndexDimsByPriority(
     const HloScatterInstruction* scatter) {
-  int64_t indices_rank = scatter->scatter_indices()->shape().dimensions_size();
+  int64_t indices_rank =
+      scatter->scatter_indices()->shape().dimensions().size();
   const ScatterDimensionNumbers& dnums = scatter->scatter_dimension_numbers();
 
   std::vector<int64_t> priority_dims_for_indices;
@@ -1123,7 +1114,7 @@ std::vector<int64_t> ScatterUpdateDimsByPriority(
   auto operand_passthrough_update_dims =
       hlo_sharding_util::GetScatterOperandPassthroughDims(*scatter, slice_sizes)
           .output_dims;
-  for (int i = 0; i != update_shape.dimensions_size(); ++i) {
+  for (int i = 0; i != update_shape.dimensions().size(); ++i) {
     if (!absl::c_linear_search(operand_passthrough_update_dims, i)) {
       priority_dims_for_output.push_back(i);
     }
@@ -1208,7 +1199,7 @@ absl::StatusOr<HloInstruction*> PartitionScatterParallelDimensions(
     for (int start_idx = 0;
          start_idx < dnums.scatter_dims_to_operand_dims_size(); ++start_idx) {
       HloInstruction* index_offset =
-          indices.base_shape().dimensions_size() > index_dim
+          indices.base_shape().dimensions().size() > index_dim
               ? b->AddInstruction(HloInstruction::CreateReshape(
                     ShapeUtil::MakeShape(S32, {1}),
                     operand_offsets[dnums.scatter_dims_to_operand_dims(
@@ -1217,7 +1208,7 @@ absl::StatusOr<HloInstruction*> PartitionScatterParallelDimensions(
       index_offsets.push_back(index_offset);
     }
     HloInstruction* adjusted_indices = nullptr;
-    if (indices.base_shape().dimensions_size() > index_dim) {
+    if (indices.base_shape().dimensions().size() > index_dim) {
       // Concatenate the offsets for the parallel dimensions to subtract.
       adjusted_indices = b->AddInstruction(HloInstruction::CreateConcatenate(
           ShapeUtil::MakeShape(S32,
@@ -1233,7 +1224,7 @@ absl::StatusOr<HloInstruction*> PartitionScatterParallelDimensions(
                                        indices.hlo()->shape().element_type()),
           adjusted_indices));
     }
-    if (adjusted_indices->shape().dimensions_size() == 0) {
+    if (adjusted_indices->shape().dimensions().size() == 0) {
       adjusted_indices = b->AddInstruction(HloInstruction::CreateBroadcast(
           indices.hlo()->shape(), adjusted_indices, {}));
     } else {
@@ -1460,7 +1451,7 @@ absl::StatusOr<HloInstruction*> PartitionScatterIndexPassthroughDimensions(
       hlo_sharding_util::PropagateShardingAlongDimsAndReplicateOthers(
           indices.sharding(), index_passthrough_dims.indices_dims,
           index_passthrough_dims.output_dims,
-          scatter->scatter_updates()[0]->shape().dimensions_size());
+          scatter->scatter_updates()[0]->shape().dimensions().size());
   if (passthrough_sharding.IsTileMaximal()) {
     return nullptr;
   }
@@ -1487,36 +1478,21 @@ absl::StatusOr<HloInstruction*> PartitionScatterIndexPassthroughDimensions(
   PartitionedHlo per_group_operand =
       PerGroupPartitionedHlo(operands[0], operand_grouped, b, clean_ups);
 
-  auto reduction_opcode = ParseReductionComputation(scatter->to_apply());
-  if (!reduction_opcode.has_value() || *reduction_opcode == HloOpcode::kXor) {
+  std::optional<ReductionKind> reduction_kind =
+      MatchReductionComputation(scatter->to_apply());
+  if (!reduction_kind) {
     // XOR is not supported for now, as it will need to keep the operand
     // around in buffer after local scatter to XOR with the final all-reduced
     // results.
     return nullptr;
   }
-  HloInstruction* identity;
-  switch (*reduction_opcode) {
-    case HloOpcode::kAdd:
-    case HloOpcode::kOr:
-      identity = CreateZero(per_group_operand.hlo()->shape(), b);
-      break;
-    case HloOpcode::kMultiply:
-    case HloOpcode::kAnd:
-      identity = CreateOne(per_group_operand.hlo()->shape(), b);
-      break;
-    case HloOpcode::kMinimum:
-      identity = CreateConstant(
-          per_group_operand.hlo()->shape(),
-          LiteralUtil::MaxValue(scatter->shape().element_type()), b);
-      break;
-    case HloOpcode::kMaximum:
-      identity = CreateConstant(
-          per_group_operand.hlo()->shape(),
-          LiteralUtil::MinValue(scatter->shape().element_type()), b);
-      break;
-    default:
-      return nullptr;
+  std::optional<Literal> identity_literal =
+      GetReductionIdentity(*reduction_kind, scatter->shape().element_type());
+  if (!identity_literal) {
+    return nullptr;
   }
+  HloInstruction* identity = CreateConstant(per_group_operand.hlo()->shape(),
+                                            std::move(*identity_literal), b);
   // Update partition_id for partial replicate.
   auto partition_id = indices.state().partition_id;
   if (indices.sharding().ReplicateOnLastTileDim()) {
@@ -1625,7 +1601,7 @@ absl::StatusOr<HloInstruction*> PartitionScatterTrivialSlicedOperandDimensions(
       update_grouped = AlignGroupsWith(
           hlo_sharding_util::GroupShardingOnReplicatedDim(
               new_update_sharding, num_groups, num_tiles,
-              output_shape.dimensions_size(),
+              output_shape.dimensions().size(),
               ScatterUpdateDimsByPriority(updates[0].base_shape(), operands[0],
                                           scatter, slice_sizes)),
           operand_grouped);
@@ -1888,7 +1864,7 @@ absl::Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
       scatter->to_apply()->root_instruction();
   CHECK_EQ(operands.size(),
            scatter_reduction_root->shape().IsTuple()
-               ? scatter_reduction_root->shape().tuple_shapes_size()
+               ? scatter_reduction_root->shape().tuple_shapes().size()
                : 1);
   auto indices = GetPartitionedHlo(scatter->scatter_indices());
   if (absl::c_any_of(operands,

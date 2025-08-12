@@ -68,6 +68,15 @@ class HloInputOutputAliasConfig {
                              parameter_index.ToString(),
                              kind == kMustAlias ? "must-alias" : "may-alias");
     }
+
+    friend bool operator==(const Alias& lhs, const Alias& rhs) {
+      return std::tie(lhs.parameter_number, lhs.parameter_index, lhs.kind) ==
+             std::tie(rhs.parameter_number, rhs.parameter_index, rhs.kind);
+    }
+
+    friend bool operator!=(const Alias& lhs, const Alias& rhs) {
+      return !(lhs == rhs);
+    }
   };
 
   HloInputOutputAliasConfig() = default;

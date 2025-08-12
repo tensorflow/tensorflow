@@ -92,7 +92,7 @@ ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,4], filter: f32[1,2,2]) -> f32[1,2
   EXPECT_EQ(root->opcode(), HloOpcode::kReshape);
   EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kConvolution);
   EXPECT_EQ(root->operand(0)->feature_group_count(), 1);
-  EXPECT_EQ(root->operand(0)->shape().dimensions_size(), 4);
+  EXPECT_EQ(root->operand(0)->shape().dimensions().size(), 4);
 }
 
 TEST_F(ConvolutionGroupConverterTest,

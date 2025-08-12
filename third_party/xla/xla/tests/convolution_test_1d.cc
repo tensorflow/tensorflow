@@ -31,7 +31,6 @@ limitations under the License.
 #include "xla/tests/client_library_test_runner_mixin.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
-#include "xla/tests/test_macros.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
 
@@ -124,7 +123,7 @@ class Convolve1D1WindowTestBase
 
 class Convolve1D1WindowTestFloat : public Convolve1D1WindowTestBase {};
 
-XLA_TEST_P(Convolve1D1WindowTestFloat, Convolve1D1Window) { TestImpl<float>(); }
+TEST_P(Convolve1D1WindowTestFloat, Convolve1D1Window) { TestImpl<float>(); }
 
 INSTANTIATE_TEST_CASE_P(
     Convolve1D1WindowTest_Instantiation, Convolve1D1WindowTestFloat,
@@ -160,7 +159,7 @@ INSTANTIATE_TEST_CASE_P(
 #if (XLA_TEST_BACKEND_GPU || XLA_TEST_BACKEND_CPU)
 class Convolve1D1WindowTestHalf : public Convolve1D1WindowTestBase {};
 
-XLA_TEST_P(Convolve1D1WindowTestHalf, Convolve1D1Window) {
+TEST_P(Convolve1D1WindowTestHalf, Convolve1D1Window) {
   TestImpl<Eigen::half>();
 }
 

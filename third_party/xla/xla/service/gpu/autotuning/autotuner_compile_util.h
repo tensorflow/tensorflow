@@ -61,7 +61,7 @@ class AutotunerCompileUtil {
 
   // Generates a compile util for a platform associated with the `stream`.
   static absl::StatusOr<AutotunerCompileUtil> Create(
-      const AutotuneConfig& config, const DebugOptions& opts);
+      const DeviceOrDevicelessConfig& config, const DebugOptions& opts);
 
   struct ProfilingOutput {
     ProfilingOutput(absl::Duration duration, ScopedShapedBuffer&& buffer)
@@ -98,8 +98,7 @@ class AutotunerCompileUtil {
       GenerateModuleFn extractor);
 
  private:
-  AutotunerCompileUtil(const AutotuneConfig& config,
-                       std::unique_ptr<Compiler> compiler,
+  AutotunerCompileUtil(std::unique_ptr<Compiler> compiler,
                        se::StreamExecutor& stream_executor, se::Stream& stream,
                        se::DeviceMemoryAllocator& allocator,
                        const DebugOptions& opts);
@@ -108,7 +107,6 @@ class AutotunerCompileUtil {
                                           std::vector<ExecutionInput> arguments,
                                           ExecutionProfile* profile = nullptr);
 
-  AutotuneConfig config_;
   std::unique_ptr<Compiler> compiler_;
   se::StreamExecutor& stream_executor_;
   se::Stream& stream_;

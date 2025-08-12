@@ -8,18 +8,18 @@ module {
     %cst_0 = "tf.Const"() {device = "", value = dense<[[[[-0.282878935, -0.211567819], [-0.248810023, -0.0989695191]], [[0.400888503, 0.0803082585], [-0.0671417713, -0.23301053]]], [[[0.345862567, 0.311298311], [-0.595954239, 0.202630222]], [[-0.606417357, -0.257358253], [-0.3036502, -0.35013032]]]]> : tensor<2x2x2x2xf32>} : () -> tensor<2x2x2x2xf32>
     %cst_1 = "tf.Const"() {device = "", value = dense<[-0.0291469581, 0.0106381178]> : tensor<2xf32>} : () -> tensor<2xf32>
     %cst_2 = "tf.Const"() {device = "", value = dense<[[[[0.208403707, 0.478067577], [0.593097508, -0.305721074]], [[-0.114346057, 0.583530128], [0.211413622, -0.606618404]]], [[[0.314416587, -0.260997623], [-0.375806928, 0.0813755393]], [[-0.208318114, 0.275989294], [-3.469230e-01, -0.406548172]]]]> : tensor<2x2x2x2xf32>} : () -> tensor<2x2x2x2xf32>
-    %0 = "quantfork.stats"(%arg0) {layerStats = dense<[1.878980e-02, 0.988373816]> : tensor<2xf32>} : (tensor<*xf32>) -> tensor<*xf32>
+    %0 = "quantization.stats"(%arg0) {layerStats = dense<[1.878980e-02, 0.988373816]> : tensor<2xf32>} : (tensor<*xf32>) -> tensor<*xf32>
     %1 = "tf.PartitionedCall"(%0, %cst_0, %cst) {_tfl_quant_trait = "fully_quantizable", config = "", config_proto = "", device = "", executor_type = "", f = @composite_conv2d_with_bias_and_relu6_fn_20} : (tensor<*xf32>, tensor<2x2x2x2xf32>, tensor<2xf32>) -> tensor<*xf32>
-    %2 = "quantfork.stats"(%1) {layerStats = dense<[0.000000e+00, 0.36084348]> : tensor<2xf32>} : (tensor<*xf32>) -> tensor<*xf32>
+    %2 = "quantization.stats"(%1) {layerStats = dense<[0.000000e+00, 0.36084348]> : tensor<2xf32>} : (tensor<*xf32>) -> tensor<*xf32>
     "tf.DumpTensor"(%2) {device = "", enabled = true, file_name = "quantized_tensor_data.pb", func_name = "conv_with_dump", log_dir_path = "/tmp/dumps/composite_conv2d_with_bias_and_relu6_fn_2", node_name = "Conv2D"} : (tensor<*xf32>) -> ()
     %3 = "tf.PartitionedCall"(%2, %cst_2, %cst_1) {_tfl_quant_trait = "fully_quantizable", config = "", config_proto = "", device = "", executor_type = "", f = @composite_conv2d_with_bias_and_relu6_fn_10} : (tensor<*xf32>, tensor<2x2x2x2xf32>, tensor<2xf32>) -> tensor<*xf32>
-    %4 = "quantfork.stats"(%3) {layerStats = dense<[0.000000e+00, 0.18486841]> : tensor<2xf32>} : (tensor<*xf32>) -> tensor<*xf32>
+    %4 = "quantization.stats"(%3) {layerStats = dense<[0.000000e+00, 0.18486841]> : tensor<2xf32>} : (tensor<*xf32>) -> tensor<*xf32>
     %5 = "tf.Identity"(%4) {device = ""} : (tensor<*xf32>) -> tensor<*xf32>
-    %6 = "quantfork.stats"(%5) {layerStats = dense<[0.000000e+00, 0.18486841]> : tensor<2xf32>} : (tensor<*xf32>) -> tensor<*xf32>
+    %6 = "quantization.stats"(%5) {layerStats = dense<[0.000000e+00, 0.18486841]> : tensor<2xf32>} : (tensor<*xf32>) -> tensor<*xf32>
     %7 = "tf.PartitionedCall"(%2, %cst_2, %cst_1) {config = "", config_proto = "", device = "", executor_type = "", f = @composite_conv2d_with_bias_and_relu6_fn_1_00} : (tensor<*xf32>, tensor<2x2x2x2xf32>, tensor<2xf32>) -> tensor<*xf32>
-    %8 = "quantfork.stats"(%7) {layerStats = dense<[0.000000e+00, 0.18486841]> : tensor<2xf32>} : (tensor<*xf32>) -> tensor<*xf32>
+    %8 = "quantization.stats"(%7) {layerStats = dense<[0.000000e+00, 0.18486841]> : tensor<2xf32>} : (tensor<*xf32>) -> tensor<*xf32>
     %9 = "tf.PartitionedCall"(%0, %cst_0, %cst) {config = "", config_proto = "", device = "", executor_type = "", f = @composite_conv2d_with_bias_and_relu6_fn_2_00} : (tensor<*xf32>, tensor<2x2x2x2xf32>, tensor<2xf32>) -> tensor<*xf32>
-    %10 = "quantfork.stats"(%9) {layerStats = dense<[0.000000e+00, 0.36084348]> : tensor<2xf32>} : (tensor<*xf32>) -> tensor<*xf32>
+    %10 = "quantization.stats"(%9) {layerStats = dense<[0.000000e+00, 0.36084348]> : tensor<2xf32>} : (tensor<*xf32>) -> tensor<*xf32>
     "tf.DumpTensor"(%10) {device = "", enabled = true, file_name = "unquantized_tensor_data.pb", func_name = "conv_with_dump", log_dir_path = "/tmp/dumps/composite_conv2d_with_bias_and_relu6_fn_2", node_name = "Conv2D"} : (tensor<*xf32>) -> ()
     "tf.DumpTensor"(%4) {device = "", enabled = true, file_name = "quantized_tensor_data.pb", func_name = "conv_with_dump", log_dir_path = "/tmp/dumps/composite_conv2d_with_bias_and_relu6_fn_1", node_name = "Conv2D_1"} : (tensor<*xf32>) -> ()
     "tf.DumpTensor"(%8) {device = "", enabled = true, file_name = "unquantized_tensor_data.pb", func_name = "conv_with_dump", log_dir_path = "/tmp/dumps/composite_conv2d_with_bias_and_relu6_fn_1", node_name = "Conv2D_1"} : (tensor<*xf32>) -> ()
@@ -143,14 +143,14 @@ module {
   func.func @matmul2_with_int_per_layer(%arg0: tensor<2x2xf32> {tf_saved_model.index_path = ["input_tensor"]}) -> tensor<2x2xf32> {
     %cst = "tf.Const"() {device = "", value = dense<[[-0.630731344, 0.54962182], [0.180364341, -0.764542698]]> : tensor<2x2xf32>} : () -> tensor<2x2xf32>
     %cst_0 = "tf.Const"() {device = "", value = dense<[[-0.211145893, -0.708605706], [-0.954062759, -0.614013135]]> : tensor<2x2xf32>} : () -> tensor<2x2xf32>
-    %0 = "quantfork.stats"(%arg0) {layerStats = dense<[0.000000e+00, 0.1]> : tensor<2xf32>} : (tensor<2x2xf32>) -> tensor<2x2xf32>
+    %0 = "quantization.stats"(%arg0) {layerStats = dense<[0.000000e+00, 0.1]> : tensor<2xf32>} : (tensor<2x2xf32>) -> tensor<2x2xf32>
     %1 = "tf.PartitionedCall"(%0, %cst) {_tfl_quant_trait = "fully_quantizable", config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_2} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
-    %2 = "quantfork.stats"(%1) {layerStats = dense<[0.000000e+00, 0.2]> : tensor<2xf32>} : (tensor<2x2xf32>) -> tensor<2x2xf32>
+    %2 = "quantization.stats"(%1) {layerStats = dense<[0.000000e+00, 0.2]> : tensor<2xf32>} : (tensor<2x2xf32>) -> tensor<2x2xf32>
     "tf.DumpTensor"(%2) {enabled = false, file_name = "quantized_tensor_data.pb", func_name = "matmul2", log_dir_path = "/tmp/dumps/composite_matmul_fn_2", node_name = "MatMul"} : (tensor<2x2xf32>) -> ()
     %3 = "tf.PartitionedCall"(%arg0, %cst) {config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_2_0} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
     "tf.DumpTensor"(%3) {enabled = false, file_name = "unquantized_tensor_data.pb", func_name = "matmul2", log_dir_path = "/tmp/dumps/composite_matmul_fn_2", node_name = "MatMul"} : (tensor<2x2xf32>) -> ()
     %4 = "tf.PartitionedCall"(%2, %cst_0) {_tfl_quant_trait = "fully_quantizable", config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_1} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
-    %5 = "quantfork.stats"(%4) {layerStats = dense<[0.000000e+00, 0.3]> : tensor<2xf32>} : (tensor<2x2xf32>) -> tensor<2x2xf32>
+    %5 = "quantization.stats"(%4) {layerStats = dense<[0.000000e+00, 0.3]> : tensor<2xf32>} : (tensor<2x2xf32>) -> tensor<2x2xf32>
     "tf.DumpTensor"(%5) {enabled = false, file_name = "quantized_tensor_data.pb", func_name = "matmul2", log_dir_path = "/tmp/dumps/composite_matmul_fn_1", node_name = "MatMul_1"} : (tensor<2x2xf32>) -> ()
     %6 = "tf.PartitionedCall"(%2, %cst_0) {config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_1_0} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
     "tf.DumpTensor"(%6) {enabled = false, file_name = "unquantized_tensor_data.pb", func_name = "matmul2", log_dir_path = "/tmp/dumps/composite_matmul_fn_1", node_name = "MatMul_1"} : (tensor<2x2xf32>) -> ()
@@ -229,16 +229,16 @@ module {
   func.func @matmul2_softmax_with_int_per_layer(%arg0: tensor<2x2xf32> {tf_saved_model.index_path = ["input_tensor"]}) -> tensor<2x2xf32> {
     %cst = "tf.Const"() {device = "", value = dense<[[-0.630731344, 0.54962182], [0.180364341, -0.764542698]]> : tensor<2x2xf32>} : () -> tensor<2x2xf32>
     %cst_0 = "tf.Const"() {device = "", value = dense<[[-0.211145893, -0.708605706], [-0.954062759, -0.614013135]]> : tensor<2x2xf32>} : () -> tensor<2x2xf32>
-    %0 = "quantfork.stats"(%arg0) {layerStats = dense<[0.000000e+00, 0.1]> : tensor<2xf32>} : (tensor<2x2xf32>) -> tensor<2x2xf32>
+    %0 = "quantization.stats"(%arg0) {layerStats = dense<[0.000000e+00, 0.1]> : tensor<2xf32>} : (tensor<2x2xf32>) -> tensor<2x2xf32>
     %1 = "tf.PartitionedCall"(%0, %cst) {_tfl_quant_trait = "fully_quantizable", config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_2} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
-    %2 = "quantfork.stats"(%1) {layerStats = dense<[0.000000e+00, 0.2]> : tensor<2xf32>} : (tensor<2x2xf32>) -> tensor<2x2xf32>
+    %2 = "quantization.stats"(%1) {layerStats = dense<[0.000000e+00, 0.2]> : tensor<2xf32>} : (tensor<2x2xf32>) -> tensor<2x2xf32>
     "tf.DumpTensor"(%2) {enabled = false, file_name = "quantized_tensor_data.pb", func_name = "matmul2_softmax", log_dir_path = "/tmp/dumps/composite_matmul_fn_2", node_name = "MatMul"} : (tensor<2x2xf32>) -> ()
     %3 = "tf.PartitionedCall"(%arg0, %cst) {config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_2_0} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
     "tf.DumpTensor"(%3) {enabled = false, file_name = "unquantized_tensor_data.pb", func_name = "matmul2_softmax", log_dir_path = "/tmp/dumps/composite_matmul_fn_2", node_name = "MatMul"} : (tensor<2x2xf32>) -> ()
     %4 = "tf.Softmax"(%2) {T = "tfdtype$DT_FLOAT"} : (tensor<2x2xf32>) -> tensor<2x2xf32>
-    %5 = "quantfork.stats"(%4) {layerStats = dense<[0.000000e+00, 0.3]> : tensor<2xf32>} : (tensor<2x2xf32>) -> tensor<2x2xf32>
+    %5 = "quantization.stats"(%4) {layerStats = dense<[0.000000e+00, 0.3]> : tensor<2xf32>} : (tensor<2x2xf32>) -> tensor<2x2xf32>
     %6 = "tf.PartitionedCall"(%5, %cst_0) {_tfl_quant_trait = "fully_quantizable", config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_1} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
-    %7 = "quantfork.stats"(%6) {layerStats = dense<[0.000000e+00, 0.4]> : tensor<2xf32>} : (tensor<2x2xf32>) -> tensor<2x2xf32>
+    %7 = "quantization.stats"(%6) {layerStats = dense<[0.000000e+00, 0.4]> : tensor<2xf32>} : (tensor<2x2xf32>) -> tensor<2x2xf32>
     "tf.DumpTensor"(%7) {enabled = false, file_name = "quantized_tensor_data.pb", func_name = "matmul2_softmax", log_dir_path = "/tmp/dumps/composite_matmul_fn_1", node_name = "MatMul_1"} : (tensor<2x2xf32>) -> ()
     %8 = "tf.PartitionedCall"(%4, %cst_0) {config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_1_0} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
     "tf.DumpTensor"(%8) {enabled = false, file_name = "unquantized_tensor_data.pb", func_name = "matmul2_softmax", log_dir_path = "/tmp/dumps/composite_matmul_fn_1", node_name = "MatMul_1"} : (tensor<2x2xf32>) -> ()
@@ -324,15 +324,15 @@ module {
     %cst = "tf.Const"() {device = "", value = dense<[[-0.630731344, 0.54962182], [0.180364341, -0.764542698]]> : tensor<2x2xf32>} : () -> tensor<2x2xf32>
     %cst_0 = "tf.Const"() {device = "", value = dense<[[-0.211145893, -0.708605706], [-0.954062759, -0.614013135]]> : tensor<2x2xf32>} : () -> tensor<2x2xf32>
     %cst_1 = "tf.Const"() {value = dense<-1> : tensor<i32>} : () -> tensor<i32>
-    %0 = "quantfork.stats"(%arg0) {layerStats = dense<[0.000000e+00, 0.1]> : tensor<2xf32>} : (tensor<2x2xf32>) -> tensor<2x2xf32>
+    %0 = "quantization.stats"(%arg0) {layerStats = dense<[0.000000e+00, 0.1]> : tensor<2xf32>} : (tensor<2x2xf32>) -> tensor<2x2xf32>
     %1 = "tf.PartitionedCall"(%0, %cst) {_tfl_quant_trait = "fully_quantizable", config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_2} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
-    %2 = "quantfork.stats"(%1) {layerStats = dense<[0.000000e+00, 0.2]> : tensor<2xf32>} : (tensor<2x2xf32>) -> tensor<2x2xf32>
+    %2 = "quantization.stats"(%1) {layerStats = dense<[0.000000e+00, 0.2]> : tensor<2xf32>} : (tensor<2x2xf32>) -> tensor<2x2xf32>
     "tf.DumpTensor"(%2) {enabled = false, file_name = "quantized_tensor_data.pb", func_name = "matmul2_concat", log_dir_path = "/tmp/dumps/composite_matmul_fn_2", node_name = "MatMul"} : (tensor<2x2xf32>) -> ()
     %3 = "tf.PartitionedCall"(%arg0, %cst) {config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_2_0} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
     "tf.DumpTensor"(%3) {enabled = false, file_name = "unquantized_tensor_data.pb", func_name = "matmul2_concat", log_dir_path = "/tmp/dumps/composite_matmul_fn_2", node_name = "MatMul"} : (tensor<2x2xf32>) -> ()
-    %4 = "quantfork.stats"(%2) {layerStats = dense<[0.000000e+00, 0.3]> : tensor<2xf32>} : (tensor<2x2xf32>) -> tensor<2x2xf32>
+    %4 = "quantization.stats"(%2) {layerStats = dense<[0.000000e+00, 0.3]> : tensor<2xf32>} : (tensor<2x2xf32>) -> tensor<2x2xf32>
     %5 = "tf.PartitionedCall"(%4, %cst_0) {_tfl_quant_trait = "fully_quantizable", config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_1} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
-    %6 = "quantfork.stats"(%5) {layerStats = dense<[0.000000e+00, 0.4]> : tensor<2xf32>} : (tensor<2x2xf32>) -> tensor<2x2xf32>
+    %6 = "quantization.stats"(%5) {layerStats = dense<[0.000000e+00, 0.4]> : tensor<2xf32>} : (tensor<2x2xf32>) -> tensor<2x2xf32>
     "tf.DumpTensor"(%6) {enabled = false, file_name = "quantized_tensor_data.pb", func_name = "matmul2_concat", log_dir_path = "/tmp/dumps/composite_matmul_fn_1", node_name = "MatMul_1"} : (tensor<2x2xf32>) -> ()
     %7 = "tf.PartitionedCall"(%2, %cst_0) {config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_1_0} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
     "tf.DumpTensor"(%7) {enabled = false, file_name = "unquantized_tensor_data.pb", func_name = "matmul2_concat", log_dir_path = "/tmp/dumps/composite_matmul_fn_1", node_name = "MatMul_1"} : (tensor<2x2xf32>) -> ()
@@ -413,15 +413,15 @@ module {
   func.func @matmul2_with_float_per_layer(%arg0: tensor<2x2xf32> {tf_saved_model.index_path = ["input_tensor"]}) -> tensor<2x2xf32> {
     %cst = "tf.Const"() {device = "", value = dense<[[-0.630731344, 0.54962182], [0.180364341, -0.764542698]]> : tensor<2x2xf32>} : () -> tensor<2x2xf32>
     %cst_0 = "tf.Const"() {device = "", value = dense<[[-0.211145893, -0.708605706], [-0.954062759, -0.614013135]]> : tensor<2x2xf32>} : () -> tensor<2x2xf32>
-    %0 = "quantfork.stats"(%arg0) {layerStats = dense<[0.000000e+00, 0.1]> : tensor<2xf32>} : (tensor<2x2xf32>) -> tensor<2x2xf32>
+    %0 = "quantization.stats"(%arg0) {layerStats = dense<[0.000000e+00, 0.1]> : tensor<2xf32>} : (tensor<2x2xf32>) -> tensor<2x2xf32>
     %1 = "tf.PartitionedCall"(%0, %cst) {_tfl_quant_trait = "fully_quantizable", config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_2} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
-    %2 = "quantfork.stats"(%1) {layerStats = dense<[0.000000e+00, 0.2]> : tensor<2xf32>} : (tensor<2x2xf32>) -> tensor<2x2xf32>
+    %2 = "quantization.stats"(%1) {layerStats = dense<[0.000000e+00, 0.2]> : tensor<2xf32>} : (tensor<2x2xf32>) -> tensor<2x2xf32>
     "tf.DumpTensor"(%2) {enabled = false, file_name = "quantized_tensor_data.pb", func_name = "matmul2", log_dir_path = "/tmp/dumps/composite_matmul_fn_2", node_name = "MatMul"} : (tensor<2x2xf32>) -> ()
     %3 = "tf.PartitionedCall"(%arg0, %cst) {config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_2_0} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
     "tf.DumpTensor"(%3) {enabled = false, file_name = "unquantized_tensor_data.pb", func_name = "matmul2", log_dir_path = "/tmp/dumps/composite_matmul_fn_2", node_name = "MatMul"} : (tensor<2x2xf32>) -> ()
-    %4 = "quantfork.stats"(%3) {layerStats = dense<[0.000000e+00, 0.3]> : tensor<2xf32>} : (tensor<2x2xf32>) -> tensor<2x2xf32>
+    %4 = "quantization.stats"(%3) {layerStats = dense<[0.000000e+00, 0.3]> : tensor<2xf32>} : (tensor<2x2xf32>) -> tensor<2x2xf32>
     %5 = "tf.PartitionedCall"(%4, %cst_0) {_tfl_quant_trait = "fully_quantizable", config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_1} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
-    %6 = "quantfork.stats"(%5) {layerStats = dense<[0.000000e+00, 0.4]> : tensor<2xf32>} : (tensor<2x2xf32>) -> tensor<2x2xf32>
+    %6 = "quantization.stats"(%5) {layerStats = dense<[0.000000e+00, 0.4]> : tensor<2xf32>} : (tensor<2x2xf32>) -> tensor<2x2xf32>
     "tf.DumpTensor"(%6) {enabled = false, file_name = "quantized_tensor_data.pb", func_name = "matmul2", log_dir_path = "/tmp/dumps/composite_matmul_fn_1", node_name = "MatMul_1"} : (tensor<2x2xf32>) -> ()
     %7 = "tf.PartitionedCall"(%3, %cst_0) {config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_1_0} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
     "tf.DumpTensor"(%7) {enabled = false, file_name = "unquantized_tensor_data.pb", func_name = "matmul2", log_dir_path = "/tmp/dumps/composite_matmul_fn_1", node_name = "MatMul_1"} : (tensor<2x2xf32>) -> ()
@@ -503,16 +503,16 @@ module {
   func.func @matmul2_softmax_with_float_per_layer(%arg0: tensor<2x2xf32> {tf_saved_model.index_path = ["input_tensor"]}) -> tensor<2x2xf32> {
     %cst = "tf.Const"() {device = "", value = dense<[[-0.630731344, 0.54962182], [0.180364341, -0.764542698]]> : tensor<2x2xf32>} : () -> tensor<2x2xf32>
     %cst_0 = "tf.Const"() {device = "", value = dense<[[-0.211145893, -0.708605706], [-0.954062759, -0.614013135]]> : tensor<2x2xf32>} : () -> tensor<2x2xf32>
-    %0 = "quantfork.stats"(%arg0) {layerStats = dense<[0.000000e+00, 0.1]> : tensor<2xf32>} : (tensor<2x2xf32>) -> tensor<2x2xf32>
+    %0 = "quantization.stats"(%arg0) {layerStats = dense<[0.000000e+00, 0.1]> : tensor<2xf32>} : (tensor<2x2xf32>) -> tensor<2x2xf32>
     %1 = "tf.PartitionedCall"(%0, %cst) {_tfl_quant_trait = "fully_quantizable", config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_2} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
-    %2 = "quantfork.stats"(%1) {layerStats = dense<[0.000000e+00, 0.2]> : tensor<2xf32>} : (tensor<2x2xf32>) -> tensor<2x2xf32>
+    %2 = "quantization.stats"(%1) {layerStats = dense<[0.000000e+00, 0.2]> : tensor<2xf32>} : (tensor<2x2xf32>) -> tensor<2x2xf32>
     "tf.DumpTensor"(%2) {enabled = false, file_name = "quantized_tensor_data.pb", func_name = "matmul2_softmax", log_dir_path = "/tmp/dumps/composite_matmul_fn_2", node_name = "MatMul"} : (tensor<2x2xf32>) -> ()
     %3 = "tf.PartitionedCall"(%arg0, %cst) {config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_2_0} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
     "tf.DumpTensor"(%3) {enabled = false, file_name = "unquantized_tensor_data.pb", func_name = "matmul2_softmax", log_dir_path = "/tmp/dumps/composite_matmul_fn_2", node_name = "MatMul"} : (tensor<2x2xf32>) -> ()
     %4 = "tf.Softmax"(%3) {T = "tfdtype$DT_FLOAT"} : (tensor<2x2xf32>) -> tensor<2x2xf32>
-    %5 = "quantfork.stats"(%4) {layerStats = dense<[0.000000e+00, 0.3]> : tensor<2xf32>} : (tensor<2x2xf32>) -> tensor<2x2xf32>
+    %5 = "quantization.stats"(%4) {layerStats = dense<[0.000000e+00, 0.3]> : tensor<2xf32>} : (tensor<2x2xf32>) -> tensor<2x2xf32>
     %6 = "tf.PartitionedCall"(%5, %cst_0) {_tfl_quant_trait = "fully_quantizable", config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_1} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
-    %7 = "quantfork.stats"(%6) {layerStats = dense<[0.000000e+00, 0.4]> : tensor<2xf32>} : (tensor<2x2xf32>) -> tensor<2x2xf32>
+    %7 = "quantization.stats"(%6) {layerStats = dense<[0.000000e+00, 0.4]> : tensor<2xf32>} : (tensor<2x2xf32>) -> tensor<2x2xf32>
     "tf.DumpTensor"(%7) {enabled = false, file_name = "quantized_tensor_data.pb", func_name = "matmul2_softmax", log_dir_path = "/tmp/dumps/composite_matmul_fn_1", node_name = "MatMul_1"} : (tensor<2x2xf32>) -> ()
     %8 = "tf.PartitionedCall"(%4, %cst_0) {config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_1_0} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
     "tf.DumpTensor"(%8) {enabled = false, file_name = "unquantized_tensor_data.pb", func_name = "matmul2_softmax", log_dir_path = "/tmp/dumps/composite_matmul_fn_1", node_name = "MatMul_1"} : (tensor<2x2xf32>) -> ()
@@ -597,15 +597,15 @@ module {
     %cst = "tf.Const"() {device = "", value = dense<[[-0.630731344, 0.54962182], [0.180364341, -0.764542698]]> : tensor<2x2xf32>} : () -> tensor<2x2xf32>
     %cst_0 = "tf.Const"() {device = "", value = dense<[[-0.211145893, -0.708605706], [-0.954062759, -0.614013135]]> : tensor<2x2xf32>} : () -> tensor<2x2xf32>
     %cst_1 = "tf.Const"() {value = dense<-1> : tensor<i32>} : () -> tensor<i32>
-    %0 = "quantfork.stats"(%arg0) {layerStats = dense<[0.000000e+00, 0.1]> : tensor<2xf32>} : (tensor<2x2xf32>) -> tensor<2x2xf32>
+    %0 = "quantization.stats"(%arg0) {layerStats = dense<[0.000000e+00, 0.1]> : tensor<2xf32>} : (tensor<2x2xf32>) -> tensor<2x2xf32>
     %1 = "tf.PartitionedCall"(%0, %cst) {_tfl_quant_trait = "fully_quantizable", config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_2} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
-    %2 = "quantfork.stats"(%1) {layerStats = dense<[0.000000e+00, 0.2]> : tensor<2xf32>} : (tensor<2x2xf32>) -> tensor<2x2xf32>
+    %2 = "quantization.stats"(%1) {layerStats = dense<[0.000000e+00, 0.2]> : tensor<2xf32>} : (tensor<2x2xf32>) -> tensor<2x2xf32>
     "tf.DumpTensor"(%2) {enabled = false, file_name = "quantized_tensor_data.pb", func_name = "matmul2_concat", log_dir_path = "/tmp/dumps/composite_matmul_fn_2", node_name = "MatMul"} : (tensor<2x2xf32>) -> ()
     %3 = "tf.PartitionedCall"(%arg0, %cst) {config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_2_0} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
     "tf.DumpTensor"(%3) {enabled = false, file_name = "unquantized_tensor_data.pb", func_name = "matmul2_concat", log_dir_path = "/tmp/dumps/composite_matmul_fn_2", node_name = "MatMul"} : (tensor<2x2xf32>) -> ()
-    %4 = "quantfork.stats"(%3) {layerStats = dense<[0.000000e+00, 0.3]> : tensor<2xf32>} : (tensor<2x2xf32>) -> tensor<2x2xf32>
+    %4 = "quantization.stats"(%3) {layerStats = dense<[0.000000e+00, 0.3]> : tensor<2xf32>} : (tensor<2x2xf32>) -> tensor<2x2xf32>
     %5 = "tf.PartitionedCall"(%4, %cst_0) {_tfl_quant_trait = "fully_quantizable", config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_1} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
-    %6 = "quantfork.stats"(%5) {layerStats = dense<[0.000000e+00, 0.4]> : tensor<2xf32>} : (tensor<2x2xf32>) -> tensor<2x2xf32>
+    %6 = "quantization.stats"(%5) {layerStats = dense<[0.000000e+00, 0.4]> : tensor<2xf32>} : (tensor<2x2xf32>) -> tensor<2x2xf32>
     "tf.DumpTensor"(%6) {enabled = false, file_name = "quantized_tensor_data.pb", func_name = "matmul2_concat", log_dir_path = "/tmp/dumps/composite_matmul_fn_1", node_name = "MatMul_1"} : (tensor<2x2xf32>) -> ()
     %7 = "tf.PartitionedCall"(%3, %cst_0) {config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_1_0} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
     "tf.DumpTensor"(%7) {enabled = false, file_name = "unquantized_tensor_data.pb", func_name = "matmul2_concat", log_dir_path = "/tmp/dumps/composite_matmul_fn_1", node_name = "MatMul_1"} : (tensor<2x2xf32>) -> ()

@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tfl-pin-ops-with-side-effects | FileCheck %s
+// RUN: litert-opt %s -tfl-pin-ops-with-side-effects | FileCheck %s
 
 func.func @id(%arg0: tensor<1xf32>)->tensor<1xf32> {
   func.return %arg0 : tensor<1xf32>

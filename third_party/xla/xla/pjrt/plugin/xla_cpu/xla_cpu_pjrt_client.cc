@@ -25,8 +25,8 @@ namespace xla {
 
 absl::StatusOr<std::unique_ptr<PjRtClient>> GetXlaPjrtCpuClient(
     CpuClientOptions options) {
-  // TODO(masonchang): Wrap the TFRTCPU Client inside the PJRT Sandwich
-  return xla::GetTfrtCpuClient(options);
+  // TODO(masonchang): Wrap the PjRtCPU Client inside the PJRT Sandwich.
+  return xla::GetPjRtCpuClient(options);
 }
 
 }  // namespace xla

@@ -67,7 +67,8 @@ class CpuAotCompilationOptions : public AotCompilationOptions {
 
   CpuAotCompilationOptions(std::string triple, std::string cpu_name,
                            std::string features, std::string entry_point_name,
-                           RelocationModel relocation_model);
+                           RelocationModel relocation_model,
+                           bool compile_copy_as_llvm_kernel = false);
 
   ~CpuAotCompilationOptions() override;
 
@@ -83,6 +84,11 @@ class CpuAotCompilationOptions : public AotCompilationOptions {
   const std::string& entry_point_name() const { return entry_point_name_; }
   // The relocation model used for compilation.
   RelocationModel relocation_model() const { return relocation_model_; }
+  // Whether to compile copy as LLVM kernel. This is used to avoid dependencies
+  // on pjrt/transpose for tfcompiled models.
+  bool compile_copy_as_llvm_kernel() const {
+    return compile_copy_as_llvm_kernel_;
+  }
 
  private:
   const std::string triple_;
@@ -90,6 +96,7 @@ class CpuAotCompilationOptions : public AotCompilationOptions {
   const std::string features_;
   const std::string entry_point_name_;
   const RelocationModel relocation_model_;
+  const bool compile_copy_as_llvm_kernel_;
 };
 
 // Temporary base class for CpuAotCompilationResultLegacy and
@@ -97,6 +104,8 @@ class CpuAotCompilationOptions : public AotCompilationOptions {
 // name once legacy runtime is removed.
 class CpuAotCompilationResult : public AotCompilationResult {
  public:
+  virtual const std::vector<cpu_function_runtime::BufferInfo>& buffer_infos()
+      const = 0;
   // NOLINTNEXTLINE clang-tidy complains that `override` should be used here.
   virtual ~CpuAotCompilationResult() = default;
 };
@@ -115,7 +124,8 @@ class CpuAotCompilationResultLegacy : public CpuAotCompilationResult {
   }
 
   const ObjectFileData& object_file_data() const { return object_file_data_; }
-  const std::vector<cpu_function_runtime::BufferInfo>& buffer_infos() const {
+  const std::vector<cpu_function_runtime::BufferInfo>& buffer_infos()
+      const override {
     return buffer_infos_;
   }
   int64_t result_buffer_index() const { return result_buffer_index_; }
@@ -150,7 +160,7 @@ class CpuAotCompilationResultThunks : public CpuAotCompilationResult {
  public:
   static absl::StatusOr<std::unique_ptr<CpuAotCompilationResultThunks>> Create(
       const HloModule* hlo_module, const BufferAssignment* buffer_assignment,
-      absl::string_view function_name, std::vector<std::string> obj_files,
+      absl::string_view function_name, std::vector<ObjFileProto> obj_files,
       std::vector<SymbolProto> symbols, const ThunkSequence& thunks,
       FunctionLibrary* function_library,
       std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data);
@@ -175,7 +185,15 @@ class CpuAotCompilationResultThunks : public CpuAotCompilationResult {
 
   std::vector<absl::string_view> obj_files() const {
     std::vector<absl::string_view> obj_files;
-    for (const auto& obj_file : proto_.obj_files()) {
+    for (const auto& obj_file : proto_.object_files()) {
+      obj_files.push_back(obj_file.contents());
+    }
+    return obj_files;
+  }
+
+  std::vector<ObjFileProto> obj_files_protos() const {
+    std::vector<ObjFileProto> obj_files;
+    for (const auto& obj_file : proto_.object_files()) {
       obj_files.push_back(obj_file);
     }
     return obj_files;
@@ -185,7 +203,8 @@ class CpuAotCompilationResultThunks : public CpuAotCompilationResult {
     return temp_allocation_index_;
   }
 
-  const std::vector<cpu_function_runtime::BufferInfo>& buffer_infos() const {
+  const std::vector<cpu_function_runtime::BufferInfo>& buffer_infos()
+      const override {
     return buffer_infos_;
   }
 
@@ -213,7 +232,7 @@ class CpuAotCompilationResultThunks : public CpuAotCompilationResult {
  private:
   CpuAotCompilationResultThunks(
       const HloModule* hlo_module, const BufferAssignment* buffer_assignment,
-      absl::string_view function_name, std::vector<std::string> obj_files,
+      absl::string_view function_name, std::vector<ObjFileProto> obj_files,
       std::vector<SymbolProto> symbols, const ThunkSequenceProto& thunks,
       std::optional<size_t> temp_allocation_index,
       std::vector<cpu_function_runtime::BufferInfo> buffer_infos,

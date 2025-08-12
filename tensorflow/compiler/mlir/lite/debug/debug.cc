@@ -160,7 +160,7 @@ std::string Sanitize(absl::string_view string) {
 // `ir_dump_*` debug options.
 //
 // While `mlir::PassManager::enableIRPrinting` provides a similar functionality,
-// it is cumbersome to manually copy printed IRs and run them with `tf-opt`.
+// it is cumbersome to manually copy printed IRs and run them with `litert-opt`.
 // Also, long MLIR dumps are often truncated during printing. Instead, this
 // instrumentation dumps MLIR to external directories for convenience.
 class DumpInstrumentation : public mlir::PassInstrumentation {

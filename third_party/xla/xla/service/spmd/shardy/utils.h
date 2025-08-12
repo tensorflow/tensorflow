@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_SPMD_SHARDY_UTILS_H_
 
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
 
@@ -32,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeRange.h"
 #include "mlir/Support/LLVM.h"
+#include "shardy/dialect/sdy/ir/dialect.h"
 #include "stablehlo/dialect/StablehloOps.h"
 
 namespace xla {
@@ -129,6 +131,13 @@ bool isPythonCallbackCustomCall(mlir::stablehlo::CustomCallOp op);
 std::string duplicateShardingsAtIndices(
     mlir::StringRef shardingsFrontendAttr,
     const llvm::BitVector& indicesToDuplicate);
+
+// Return all axes or sub-axes in the `mesh`, such that sub-axes are derived
+// from `shardingOrAxisList` and sorted by their order in the mesh. For example,
+// given mesh <"x"=2, "y"=16, "z"=4> and axis refs [{"x"}, {"y":2(2)}], we
+// would return ["x", "y":1(2), "y":2(2), "y":4(4), "z"].
+mlir::SmallVector<mlir::sdy::AxisRefAttr> getOrderedAxisRefs(
+    mlir::Attribute shardingOrAxisList, mlir::sdy::MeshAttr mesh);
 
 }  // namespace sdy
 }  // namespace xla

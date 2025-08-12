@@ -24,6 +24,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/env.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/test.h"
@@ -267,6 +268,24 @@ TEST(MergeTest, TestReadPartial) {
   ASSERT_THAT(merged_many_fields, EqualsProto(R"pb(
                 map_field_int64 { key: -1345 value: "map_value_-1345" }
               )pb"));
+}
+
+TEST(MergeTest, TestReadChunkedFromString) {
+  const std::string path =
+      io::JoinPath(testing::TensorFlowSrcRoot(), "cc/saved_model/testdata",
+                   "chunked_saved_model/chunked_model/saved_model");
+  std::string data;
+  TF_ASSERT_OK(tsl::ReadFileToString(tsl::Env::Default(),
+                                     absl::StrCat(path, ".cpb"), &data));
+
+  SavedModel merged_saved_model;
+  TF_ASSERT_OK(Merger::ReadChunkedFromString(data, &merged_saved_model));
+
+  SavedModel test_saved_model;
+  TF_ASSERT_OK(tsl::ReadTextProto(
+      tsl::Env::Default(), absl::StrCat(path, ".pbtxt"), &test_saved_model));
+
+  ASSERT_THAT(merged_saved_model, EqualsProto(test_saved_model));
 }
 
 }  // namespace

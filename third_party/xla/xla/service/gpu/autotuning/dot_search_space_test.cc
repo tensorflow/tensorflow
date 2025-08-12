@@ -22,6 +22,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -96,17 +97,18 @@ class DefaultDeviceDotSearchSpaceTest : public HloHardwareIndependentTestBase {
 
   absl::StatusOr<std::unique_ptr<VerifiedHloModule>> GetDefaultDotModule(
       int lhs_parallel_dim = 1024, int rhs_parallel_dim = 1024,
-      int contracting_dim = 1024) {
+      int contracting_dim = 1024, absl::string_view type = "f16") {
     constexpr const char* kModuleTextFormat = R"(
 ENTRY e {
-  p0 = f16[%d,%d] parameter(0)
-  p1 = f16[%d,%d] parameter(1)
-  ROOT r = f16[%d,%d] dot(p0, p1),
+  p0 = %s[%d,%d] parameter(0)
+  p1 = %s[%d,%d] parameter(1)
+  ROOT r = %s[%d,%d] dot(p0, p1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
     return ParseAndReturnVerifiedModule(absl::StrFormat(
-        kModuleTextFormat, lhs_parallel_dim, contracting_dim, contracting_dim,
-        rhs_parallel_dim, lhs_parallel_dim, rhs_parallel_dim));
+        kModuleTextFormat, type, lhs_parallel_dim, contracting_dim, type,
+        contracting_dim, rhs_parallel_dim, type, lhs_parallel_dim,
+        rhs_parallel_dim));
   }
 
   HloDotInstruction* GetDot(VerifiedHloModule* module) {
@@ -142,6 +144,35 @@ class DotSearchSpaceTest : public DefaultDeviceDotSearchSpaceTest {
         se::CudaComputeCapability::Hopper());
   }
 };
+
+TEST_F(DotSearchSpaceTest, ExhaustiveSearchSpaceIsLargerThanDefault) {
+  constexpr const char* kModuleText = R"(
+    ENTRY e {
+      p0 = bf16[16,4096] parameter(0)
+      p1 = bf16[16,4096] parameter(1)
+      p2 = bf16[16,16] parameter(2)
+      p2_broadcast = bf16[16,16,256] broadcast(p2), dimensions={0,1}
+      p2_reshape = bf16[16,4096] reshape(p2_broadcast)
+      p0_scaled = bf16[16,4096] multiply(p0, p2_reshape)
+      ROOT r = bf16[16,16] dot(p0_scaled, p1),
+        lhs_contracting_dims={1},
+        rhs_contracting_dims={1}
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleText));
+  auto default_search_space = MakeSearchSpace(module.get());
+  std::vector<TritonGemmConfig> default_configs =
+      default_search_space.GenerateConfigs();
+
+  auto debug_options = module->config().debug_options();
+  debug_options.set_xla_gpu_exhaustive_tiling_search(true);
+  module->mutable_config().set_debug_options(debug_options);
+  auto exhaustive_search_space = MakeSearchSpace(module.get());
+  std::vector<TritonGemmConfig> exhaustive_configs =
+      exhaustive_search_space.GenerateConfigs();
+
+  EXPECT_THAT(exhaustive_configs.size(), Ge(default_configs.size()));
+}
 
 TEST_F(DotSearchSpaceTest, SerializesSearchSpace) {
   TF_ASSERT_OK_AND_ASSIGN(
@@ -267,13 +298,12 @@ TEST_F(DotSearchSpaceTest,
        FindsUniqueOccupancyMaximizingTilingForSmallProblem) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<VerifiedHloModule> module,
-      GetDefaultDotModule(/*lhs_parallel_dim=*/32, /*rhs_parallel_dim=*/32,
-                          /*contracting_dim=*/32));
+      GetDefaultDotModule(/*lhs_parallel_dim=*/64, /*rhs_parallel_dim=*/64,
+                          /*contracting_dim=*/64));
   TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
-
   EXPECT_THAT(search_space.GenerateConfigs(),
               AllOf(SizeIs(1), Each(AllOf(BlockMIs(Eq(16)), BlockNIs(Eq(16)),
-                                          SplitKIs(Eq(2))))));
+                                          SplitKIs(Eq(4))))));
 }
 
 TEST_F(DotSearchSpaceTest, FindsGoodDataReuseTilesForForcedHugeSplit) {
@@ -347,6 +377,20 @@ TEST_F(DotSearchSpaceTest, ConsidersAppropriateCtaSizeForTileSize) {
                                    NumWarpsIs(Eq(4)))),
                     Contains(AllOf(BlockMIs(Eq(64)), BlockNIs(Eq(64)),
                                    NumWarpsIs(Eq(8))))));
+}
+
+// TODO: b/422419331 - Remove this once Triton properly handles 32-bit dots.
+TEST_F(DotSearchSpaceTest, ConsidersSmallCtasFor32BitDot) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> module,
+      GetDefaultDotModule(/*lhs_parallel_dim=*/8 * 1024,
+                          /*rhs_parallel_dim=*/8 * 1024,
+                          /*contracting_dim=*/1024, /*type=*/"f32"));
+  TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
+
+  EXPECT_THAT(
+      search_space.GenerateConfigs(),
+      Contains(AllOf(BlockMIs(Eq(64)), BlockNIs(Eq(32)), NumWarpsIs(Eq(2)))));
 }
 
 TEST_F(DotSearchSpaceTest, FindsFullCacheLineContractingTileSize) {

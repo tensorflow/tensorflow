@@ -1,10 +1,10 @@
-// RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range -tfl-quantize="enable-dynamic-range-quantization=true" | FileCheck %s
-// RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range -tfl-quantize="enable-dynamic-range-quantization=true enable-weight-only-quantization=true" | FileCheck --check-prefix=PerChannelWeightOnly %s
-// RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range="enable-dynamic-range-per-channel-quantization=false" -tfl-quantize="enable-dynamic-range-quantization=true" | FileCheck --check-prefix=PerTensor %s
-// RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range="enable-dynamic-range-per-channel-quantization=false" -tfl-quantize="enable-dynamic-range-quantization=true enable-weight-only-quantization=true" | FileCheck --check-prefix=PerTensorWeightOnly %s
-// RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range="enable-dynamic-range-per-channel-quantization=false" -tfl-quantize="enable-dynamic-range-quantization=true ops-blocklist=tfl.conv_2d" | FileCheck --check-prefix=BLOCK %s
-// RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range="enable-custom-op-quantization=CustomTestOp=1" -tfl-quantize="enable-dynamic-range-quantization=true enable-custom-op-weight-only=CustomTestOp=true" | FileCheck --check-prefix=CustomOpWeightOnly %s
-// RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range="enable-custom-op-quantization=CustomTestOp=1" -tfl-quantize="enable-dynamic-range-quantization=true enable-custom-op-weight-only=CustomTestOp=false" | FileCheck --check-prefix=CustomOpNotWeightOnly %s
+// RUN: litert-opt %s -tfl-prepare-quantize-dynamic-range -tfl-quantize="enable-dynamic-range-quantization=true" | FileCheck %s
+// RUN: litert-opt %s -tfl-prepare-quantize-dynamic-range -tfl-quantize="enable-dynamic-range-quantization=true enable-weight-only-quantization=true" | FileCheck --check-prefix=PerChannelWeightOnly %s
+// RUN: litert-opt %s -tfl-prepare-quantize-dynamic-range="enable-dynamic-range-per-channel-quantization=false" -tfl-quantize="enable-dynamic-range-quantization=true" | FileCheck --check-prefix=PerTensor %s
+// RUN: litert-opt %s -tfl-prepare-quantize-dynamic-range="enable-dynamic-range-per-channel-quantization=false" -tfl-quantize="enable-dynamic-range-quantization=true enable-weight-only-quantization=true" | FileCheck --check-prefix=PerTensorWeightOnly %s
+// RUN: litert-opt %s -tfl-prepare-quantize-dynamic-range="enable-dynamic-range-per-channel-quantization=false" -tfl-quantize="enable-dynamic-range-quantization=true ops-blocklist=tfl.conv_2d" | FileCheck --check-prefix=BLOCK %s
+// RUN: litert-opt %s -tfl-prepare-quantize-dynamic-range="enable-custom-op-quantization=CustomTestOp=1" -tfl-quantize="enable-dynamic-range-quantization=true enable-custom-op-weight-only=CustomTestOp=true" | FileCheck --check-prefix=CustomOpWeightOnly %s
+// RUN: litert-opt %s -tfl-prepare-quantize-dynamic-range="enable-custom-op-quantization=CustomTestOp=1" -tfl-quantize="enable-dynamic-range-quantization=true enable-custom-op-weight-only=CustomTestOp=false" | FileCheck --check-prefix=CustomOpNotWeightOnly %s
 
 // CHECK-LABEL: QuantizeConv2D
 // PerTensor-LABEL: QuantizeConv2D

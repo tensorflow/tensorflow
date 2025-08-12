@@ -16,9 +16,11 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_WAIT_FOR_STREAMS_THUNK_H_
 #define XLA_BACKENDS_GPU_RUNTIME_WAIT_FOR_STREAMS_THUNK_H_
 
+#include <memory>
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 
 namespace xla::gpu {
@@ -39,6 +41,11 @@ class WaitForStreamsThunk : public Thunk {
   ExecutionStreamId wait_for_stream_id() const { return wait_for_stream_id_; }
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+
+  static absl::StatusOr<std::unique_ptr<WaitForStreamsThunk>> FromProto(
+      ThunkInfo thunk_info, const WaitForStreamsThunkProto& proto);
+
+  absl::StatusOr<ThunkProto> ToProto() const override;
 
  private:
   ExecutionStreamId stream_id_;

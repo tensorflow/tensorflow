@@ -262,7 +262,7 @@ absl::Status GetTensorListShapeFromElementShape(const xla::Shape& element_shape,
     return errors::InvalidArgument(
         "GetTensorListShapeFromElementShape() only supports normal tensor "
         "shape. But element shape is ",
-        element_shape.DebugString());
+        element_shape.ToString());
   }
   std::vector<xla::Shape> shapes;
   std::vector<int64_t> dimensions =
@@ -334,8 +334,8 @@ absl::Status GetInitializedTensorListForElement(xla::XlaOp list,
     TF_ASSIGN_OR_RETURN(xla::Shape original_list_shape, b->GetShape(list));
     if (!xla::ShapeUtil::Compatible(original_list_shape, list_shape)) {
       return errors::Internal(
-          "Invalid TensorList shape: ", original_list_shape.DebugString(),
-          ", expected: ", list_shape.DebugString());
+          "Invalid TensorList shape: ", original_list_shape.ToString(),
+          ", expected: ", list_shape.ToString());
     }
     *initialized_list = list;
     return absl::OkStatus();
@@ -581,7 +581,7 @@ absl::Status ExecuteTensorListFromTensor(int push_index, xla::XlaOp tensor,
     return errors::InvalidArgument(
         "ExecuteTensorListFromTensor() only supports normal tensor. But input "
         "shape is ",
-        shape.DebugString());
+        shape.ToString());
   }
 
   std::vector<xla::XlaOp> result_parts{tensor,

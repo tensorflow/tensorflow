@@ -1,4 +1,4 @@
-// RUN: tf-opt %s --tfl-push-transpose-through-ewise --split-input-file | FileCheck %s
+// RUN: litert-opt %s --tfl-push-transpose-through-ewise --split-input-file | FileCheck %s
 
 // CHECK-LABEL: pushTposeAfterAddSimple
 func.func @pushTposeAfterAddSimple(%arg0: tensor<2x3x4x5xf32>) -> tensor<5x2x3x4xf32> {

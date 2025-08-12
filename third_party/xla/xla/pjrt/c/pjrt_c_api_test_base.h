@@ -91,9 +91,19 @@ class PjrtCApiTestBase : public ::testing::Test {
                           const xla::Shape& shape,
                           PJRT_Device* device = nullptr);
 
+  // Create a buffer with shape 4xf32 and with values {41, 42, 43, 44}.
   std::pair<std::unique_ptr<PJRT_Buffer, ::pjrt::PJRT_BufferDeleter>,
             xla::PjRtFuture<>>
-  create_buffer(PJRT_Device* device = nullptr);
+  create_iota_buffer(PJRT_Device* device = nullptr);
+
+  // Create an uninitialized buffer with shape 4xf32.
+  std::unique_ptr<PJRT_Buffer, ::pjrt::PJRT_BufferDeleter> create_buffer(
+      PJRT_Device* device = nullptr);
+
+  // Create an uninitialized buffer with a given shape.
+  std::unique_ptr<PJRT_Buffer, ::pjrt::PJRT_BufferDeleter>
+  create_uninitialized_buffer(const xla::Shape& shape,
+                              PJRT_Device* device = nullptr);
 
   std::unique_ptr<PJRT_Error, ::pjrt::PJRT_ErrorDeleter> ToUniquePtr(
       PJRT_Error* error);
