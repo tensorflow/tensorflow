@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <optional>
+#include <utility>
 
 #include "absl/log/check.h"
 #include "llvm/ADT/STLExtras.h"
@@ -51,10 +52,23 @@ using ::mlir::SymbolTable;
 using ::mlir::func::CallOp;
 using ::mlir::func::FuncOp;
 
+using ::mlir::StringAttr;
 using ::mlir::sdy::kShardingAttr;
 using ::mlir::sdy::ManualAxesAttr;
 using ::mlir::sdy::NamedComputationOp;
 using ::mlir::sdy::TensorShardingPerValueAttr;
+
+std::pair<FuncOp, StringAttr> getFuncOp(NamedComputationOp namedComputationOp,
+                                        mlir::IRRewriter& rewriter,
+                                        SymbolTable& symbolTable) {
+  auto funcOp = rewriter.create<FuncOp>(
+      namedComputationOp.getLoc(), namedComputationOp.getName(),
+      rewriter.getFunctionType(namedComputationOp.getBody().getArgumentTypes(),
+                               namedComputationOp.getResultTypes()),
+      rewriter.getStringAttr("private"),
+      /*argAttrs=*/ArrayAttr(), /*resultAttrs=*/ArrayAttr());
+  return {funcOp, symbolTable.insert(funcOp)};
+}
 
 // Converts a `NamedComputationOp` into a `CallOp`.
 class ExportNamedComputationsPass
@@ -67,20 +81,11 @@ class ExportNamedComputationsPass
     ModuleOp moduleOp = getOperation();
     SymbolTable symbolTable(moduleOp);
     mlir::Block& moduleBlock = moduleOp.getRegion().front();
-    getOperation()->walk([&](NamedComputationOp namedComputationOp) {
+    // NOTE: The walk needs to be in post order, which is the default order, to
+    // account for nested named computations.
+    moduleOp.walk([&](NamedComputationOp namedComputationOp) {
       mlir::IRRewriter rewriter(namedComputationOp);
       rewriter.setInsertionPointToEnd(&moduleBlock);
-      auto funcOp = rewriter.create<FuncOp>(
-          namedComputationOp.getLoc(), namedComputationOp.getName(),
-          rewriter.getFunctionType(
-              namedComputationOp.getBody().getArgumentTypes(),
-              namedComputationOp.getResultTypes()),
-          rewriter.getStringAttr("private"),
-          /*argAttrs=*/ArrayAttr(), /*resultAttrs=*/ArrayAttr());
-      rewriter.setInsertionPointToStart(funcOp->getBlock());
-      mlir::sdy::inlineRegionAndConvertTerminatorOp<mlir::func::ReturnOp>(
-          namedComputationOp.getBody(), funcOp.getBody());
-      rewriter.setInsertionPoint(namedComputationOp);
 
       ManualAxesAttr manualAxesAttr =
           namedComputationOp->getAttrOfType<ManualAxesAttr>(kManualAxes);
@@ -88,12 +93,18 @@ class ExportNamedComputationsPass
           namedComputationOp.getInShardings();
       std::optional<TensorShardingPerValueAttr> outShardings =
           namedComputationOp.getOutShardings();
-
       if (manualAxesAttr) {
         CHECK(!manualAxesAttr.empty());
         CHECK(inShardings.has_value());
         CHECK(outShardings.has_value());
       }
+
+      auto [funcOp, funcSymName] =
+          getFuncOp(namedComputationOp, rewriter, symbolTable);
+
+      rewriter.setInsertionPointToStart(funcOp->getBlock());
+      mlir::sdy::inlineRegionAndConvertTerminatorOp<mlir::func::ReturnOp>(
+          namedComputationOp.getBody(), funcOp.getBody());
 
       // Copy the input shardings to the func.
       if (inShardings.has_value()) {
@@ -118,11 +129,12 @@ class ExportNamedComputationsPass
       }
 
       // Replace the `NamedComputationOp` with a `CallOp`.
+      rewriter.setInsertionPoint(namedComputationOp);
       mlir::SmallVector<NamedAttribute> callOpAttrs(
           namedComputationOp->getDiscardableAttrs());
       auto callOp = rewriter.replaceOpWithNewOp<CallOp>(
-          namedComputationOp, namedComputationOp.getResultTypes(),
-          symbolTable.insert(funcOp), namedComputationOp.getOperands());
+          namedComputationOp, namedComputationOp.getResultTypes(), funcSymName,
+          namedComputationOp.getOperands());
       callOp->setAttrs(callOpAttrs);
 
       // Copy the output shardings to the call op.
