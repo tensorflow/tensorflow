@@ -1204,6 +1204,14 @@ message DebugOptions {
   // Maximum number of buffers to print when debugging buffer assignment.
   optional int64 xla_debug_buffer_assignment_show_max = 251;
 
+  enum UnstableReductionDetectionMode {
+    UNSTABLE_REDUCTION_DETECTION_MODE_NONE = 0;
+    UNSTABLE_REDUCTION_DETECTION_MODE_WARNING = 1;
+    UNSTABLE_REDUCTION_DETECTION_MODE_FAIL = 2;
+  }
+  // Whether to enable checks for unstable reductions in computations.
+  optional UnstableReductionDetectionMode xla_detect_unstable_reductions = 403;
+
   reserved 275;  // was xla_gpu_enable_mlir_emitters
   reserved 281;  // was xla_gpu_max_mlir_kernels
   reserved 282;  // was xla_gpu_skip_mlir_kernels
@@ -1295,7 +1303,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 402
+  // Next id: 403
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
