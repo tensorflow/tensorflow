@@ -305,8 +305,8 @@ TEST(ResourceMgrTest, CreateFailAfterFinalize) {
   int finalize_count_ = 0;
   Finalizable* finalizable = new Finalizable(&finalize_count_);
   EXPECT_THAT(rm.Create("container", "resource-name", finalizable),
-              StatusIs(absl::StatusCode::kFailedPrecondition,
-                       HasSubstr("ResourceMgr is finalized")));
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition,
+                                     HasSubstr("ResourceMgr is finalized")));
   finalizable->Unref();
 }
 
@@ -318,8 +318,8 @@ TEST(ResourceMgrTest, CreateUnownedFailAfterFinalize) {
   int finalize_count_ = 0;
   Finalizable* finalizable = new Finalizable(&finalize_count_);
   EXPECT_THAT(rm.CreateUnowned("container", "resource-name", finalizable),
-              StatusIs(absl::StatusCode::kFailedPrecondition,
-                       HasSubstr("ResourceMgr is finalized")));
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition,
+                                     HasSubstr("ResourceMgr is finalized")));
   finalizable->Unref();
 }
 

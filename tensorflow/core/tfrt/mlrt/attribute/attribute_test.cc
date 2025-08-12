@@ -194,13 +194,13 @@ TEST(AttributeTest, UnsupportedAttr) {
 
   EXPECT_THAT(
       EncodeTensorflowAttribute(emitter_context, dense_string_attr),
-      ::tsl::testing::StatusIs(absl::StatusCode::kInvalidArgument,
-                               "String tensor attribute is not yet supported"));
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             "String tensor attribute is not yet supported"));
 
   EXPECT_THAT(
       EncodeTensorflowAttribute(emitter_context, builder.getUnitAttr()),
-      ::tsl::testing::StatusIs(absl::StatusCode::kInvalidArgument,
-                               "Try to encode unsupported attribute: unit"));
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             "Try to encode unsupported attribute: unit"));
 }
 
 }  // namespace

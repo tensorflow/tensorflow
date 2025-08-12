@@ -509,12 +509,12 @@ TEST_F(OpKernelTest, AllocateOutput) {
 
   // Allocating to index -1 should fail (Only 0 should work).
   absl::Status s = ctx->allocate_output(-1, TensorShape({}), &output);
-  EXPECT_THAT(s, tensorflow::testing::StatusIs(error::INTERNAL));
+  EXPECT_THAT(s, absl_testing::StatusIs(error::INTERNAL));
   EXPECT_THAT(s.message(), ::testing::ContainsRegex("bad index=-1"));
 
   // Allocating to index 1 should fail (Only 0 should work).
   s = ctx->allocate_output(1, TensorShape({}), &output);
-  EXPECT_THAT(s, tensorflow::testing::StatusIs(error::INTERNAL));
+  EXPECT_THAT(s, absl_testing::StatusIs(error::INTERNAL));
   EXPECT_THAT(s.message(), ::testing::ContainsRegex("bad index=1"));
 
   // Testing allocate_output when allocator attributes are set.
@@ -524,12 +524,12 @@ TEST_F(OpKernelTest, AllocateOutput) {
 
   // Index -1 should fail as only 1 output for the op.
   s = ctx->allocate_output(-1, TensorShape({}), &output, attrs);
-  EXPECT_THAT(s, tensorflow::testing::StatusIs(error::INTERNAL));
+  EXPECT_THAT(s, absl_testing::StatusIs(error::INTERNAL));
   EXPECT_THAT(s.message(), ::testing::ContainsRegex("bad index=-1"));
 
   // Index 1 should fail as only 1 output for the op.
   s = ctx->allocate_output(1, TensorShape({}), &output, attrs);
-  EXPECT_THAT(s, tensorflow::testing::StatusIs(error::INTERNAL));
+  EXPECT_THAT(s, absl_testing::StatusIs(error::INTERNAL));
   EXPECT_THAT(s.message(), ::testing::ContainsRegex("bad index=1"));
 }
 
