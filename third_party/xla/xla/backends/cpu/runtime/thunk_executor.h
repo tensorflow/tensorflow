@@ -19,7 +19,6 @@ limitations under the License.
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
-#include <new>
 #include <queue>
 #include <string>
 #include <type_traits>
@@ -172,15 +171,6 @@ class ThunkExecutor {
   };
 
  private:
-  // Align all atomic counters to a cache line boundary to avoid false
-  // sharing between multiple worker threads.
-  static constexpr size_t kAtomicAlignment =
-#if defined(__cpp_lib_hardware_interference_size)
-      std::hardware_destructive_interference_size;
-#else
-      64;
-#endif
-
   // A struct to keep the state of a running ThunkExecutor.
   struct ExecuteState {
     // At run time NodeDef instantiated as a Node with an atomic counter that
@@ -188,7 +178,7 @@ class ThunkExecutor {
     struct Node {
       explicit Node(const NodeDef& node_def);
 
-      alignas(kAtomicAlignment) std::atomic<int64_t> counter;
+      ABSL_CACHELINE_ALIGNED std::atomic<int64_t> counter;
       absl::Span<const NodeEdge> out_edges;
     };
 
@@ -218,11 +208,11 @@ class ThunkExecutor {
 
     // Once the number of pending nodes drops to zero, the execution is
     // completed and we set `execute_event` as concrete or error.
-    alignas(kAtomicAlignment) std::atomic<int64_t> pending_nodes;
+    ABSL_CACHELINE_ALIGNED std::atomic<int64_t> pending_nodes;
 
     // We store the first error from failed thunks in `abort_status` and at the
     // end of execution the executor forwards it via the `execute_event`.
-    alignas(kAtomicAlignment) std::atomic<bool> abort;
+    ABSL_CACHELINE_ALIGNED std::atomic<bool> abort;
     absl::Mutex abort_mutex;
     absl::Status abort_status ABSL_GUARDED_BY(abort_mutex);
   };
