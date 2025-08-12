@@ -128,6 +128,18 @@ class TrackedGpuDeviceBuffer {
 
   friend class TfrtGpuBuffer;
 
+  // Sets the cuda execute event to wait if this buffer depends on executions
+  // from other cuda streams.
+  void SetCudaEvent(std::shared_ptr<stream_executor::Event> cuda_event) {
+    cuda_event_ = cuda_event;
+  }
+
+  // Gets the cuda execute event to wait if this buffer depends on executions
+  // from other cuda streams.
+  std::shared_ptr<stream_executor::Event> GetCudaEvent() const {
+    return cuda_event_;
+  }
+
  private:
   tsl::AsyncValueRef<GpuDeviceMemory> buffer_;
 
@@ -150,6 +162,8 @@ class TrackedGpuDeviceBuffer {
   // A callback to call when the TrackedGpuDeviceBuffer is about to be
   // destroyed.
   absl::AnyInvocable<void() &&> on_delete_callback_;
+
+  std::shared_ptr<stream_executor::Event> cuda_event_;
 };
 
 }  // namespace xla

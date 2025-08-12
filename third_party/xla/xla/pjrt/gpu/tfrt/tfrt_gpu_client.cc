@@ -1024,6 +1024,9 @@ TfrtGpuDevice::TfrtGpuDevice(Options&& options)
       stream_(options.executor == nullptr
                   ? nullptr
                   : options.executor->CreateStream().value()),
+      d2h_stream_(options.executor == nullptr
+                      ? nullptr
+                      : options.executor->CreateStream().value()),
       prng_seed_generator_(prng_seed_device_()),
       prng_seed_distribution_(std::numeric_limits<int>::min(),
                               std::numeric_limits<int>::max()),
@@ -1059,6 +1062,12 @@ TfrtGpuDevice::~TfrtGpuDevice() {
     absl::Status status = stream_->BlockHostUntilDone();
     if (!status.ok()) {
       LOG(ERROR) << "Failed to wait for stream to finish: " << status;
+    }
+  }
+  if (d2h_stream_ != nullptr) {
+    absl::Status status = d2h_stream_->BlockHostUntilDone();
+    if (!status.ok()) {
+      LOG(ERROR) << "Failed to wait for d2h stream to finish: " << status;
     }
   }
 }
@@ -2721,6 +2730,8 @@ TfrtGpuBuffer::DonateWithControlDependency(PjRtFuture<> dependency) {
       tracked_buffer->ready_event(),
       std::move(tracked_buffer->on_delete_callback_));
 
+  new_tracked_buffer->SetCudaEvent(tracked_buffer->GetCudaEvent());
+
   auto new_pjrt_buffer = std::make_unique<TfrtGpuBuffer>(
       on_device_shape_, std::move(new_tracked_buffer), client_, device_,
       memory_space_);
@@ -2962,19 +2973,24 @@ PjRtFuture<> TfrtGpuBuffer::ToLiteralHelper(
             });
             MarkGpuEventReadyOnExit ready_on_exit(std::move(usage_event));
 
-            auto stream = device->stream();
+            auto d2h_stream = device->d2h_stream();
+
+            if (device_buffer->GetCudaEvent() != nullptr) {
+              CHECK_OK(d2h_stream->WaitFor(device_buffer->GetCudaEvent().get()))
+                  << "Failed to wait for cuda event";
+            }
 
             VLOG(3) << "D2H copy: "
                     << device_buffer->buffer()->buffer().opaque() << " -> "
                     << buffer_ptr << " (" << byte_size << " bytes)";
-            CHECK_OK(stream->Memcpy(
+            CHECK_OK(d2h_stream->Memcpy(
                 buffer_ptr, device_buffer->buffer()->buffer(), byte_size))
                 << "stream->Memcpy failed copying from GPU to host";
 
             absl::Status status;
             {
               tsl::profiler::TraceMe traceme("BlockHostUntilDone");
-              status = stream->BlockHostUntilDone();
+              status = d2h_stream->BlockHostUntilDone();
             }
             VLOG(3) << "D2H copy done. " << status;
             if (!status.ok()) {
@@ -3066,6 +3082,7 @@ PjRtFuture<> TfrtGpuBuffer::CopyRawToHostFuture(PjRtFuture<void*> dst_future,
       promise.Set(device_buffer->definition_event().GetError());
       return;
     }
+    auto cuda_event = device_buffer->GetCudaEvent().get();
     se::DeviceMemoryBase device_memory = device_buffer->buffer()->buffer();
     if (offset < 0 || offset > device_memory.size() ||
         device_memory.size() - offset < transfer_size) {
@@ -3096,11 +3113,16 @@ PjRtFuture<> TfrtGpuBuffer::CopyRawToHostFuture(PjRtFuture<void*> dst_future,
 
     void* host_ptr = use_staging ? staging_buffer.get() : dst;
 
-    auto stream = device->stream();
+    auto d2h_stream = device->d2h_stream();
+    if (cuda_event != nullptr) {
+      CHECK_OK(d2h_stream->WaitFor(cuda_event))
+          << "Failed to wait for cuda event";
+    }
 
     VLOG(3) << "D2H copy: " << sub_buffer.opaque() << " -> " << host_ptr << " ("
             << transfer_size << " bytes)";
-    absl::Status status = stream->Memcpy(host_ptr, sub_buffer, transfer_size);
+    absl::Status status =
+        d2h_stream->Memcpy(host_ptr, sub_buffer, transfer_size);
     if (!status.ok()) {
       LOG(ERROR) << "stream->Memcpy failed: " << status;
       promise.Set(status);
@@ -3108,23 +3130,18 @@ PjRtFuture<> TfrtGpuBuffer::CopyRawToHostFuture(PjRtFuture<void*> dst_future,
     }
 
     if (use_staging) {
-      status = stream->DoHostCallback(
-          [dst, staging_buffer = std::move(staging_buffer), transfer_size,
-           promise,
-           usage_event_holder = std::move(usage_event_holder)]() mutable {
-            tsl::profiler::TraceMe traceme3(
-                "CopyRawToHostFuture::D2H_staging_copy");
-            std::memcpy(dst, staging_buffer.get(), transfer_size);
-            VLOG(3) << "D2H staging copy done: " << staging_buffer.get()
-                    << " -> " << dst << " (" << transfer_size << " bytes)";
-            promise.Set(absl::OkStatus());
-          });
+      status = d2h_stream->BlockHostUntilDone();
+      {
+        tsl::profiler::TraceMe traceme3(
+            "CopyRawToHostFuture::D2H_staging_copy");
+        std::memcpy(dst, staging_buffer.get(), transfer_size);
+        VLOG(3) << "D2H staging copy done: " << staging_buffer.get() << " -> "
+                << dst << " (" << transfer_size << " bytes)";
+      }
+      promise.Set(absl::OkStatus());
     } else {
-      status = stream->DoHostCallback(
-          [promise,
-           usage_event_holder = std::move(usage_event_holder)]() mutable {
-            promise.Set(absl::OkStatus());
-          });
+      status = d2h_stream->BlockHostUntilDone();
+      promise.Set(absl::OkStatus());
     }
 
     if (!status.ok()) {
@@ -3688,6 +3705,11 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
     input_deps.push_back(std::move(ordering_event));
   }
 
+  TF_ASSIGN_OR_RETURN(auto output_cuda_execute_event,
+                      device->executor()->CreateEvent());
+  auto output_cuda_execute_event_ptr =
+      absl::ShareUniquePtr(std::move(output_cuda_execute_event));
+
   std::vector<tsl::AsyncValueRef<GpuDeviceMemory>> output_buffers;
   std::vector<std::unique_ptr<PjRtBuffer>> outputs;
   auto gpu_executable = executables_[executable_idx];
@@ -3709,6 +3731,8 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
               complete_event.CopyRef());
       VLOG(4) << "created leaf_tracked_device_buffer: "
               << leaf_tracked_device_buffer.get();
+
+      leaf_tracked_device_buffer->SetCudaEvent(output_cuda_execute_event_ptr);
 
       const Shape& shape = result_shape.tuple_shapes(i);
       PjRtMemorySpace* memory_space =
@@ -3733,6 +3757,8 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
         /*definition_event=*/scheduled_event.CopyRef(),
         complete_event.CopyRef());
     VLOG(4) << "created tracked_device_buffer: " << tracked_device_buffer.get();
+
+    tracked_device_buffer->SetCudaEvent(output_cuda_execute_event_ptr);
 
     const Shape& shape = result_shape;
     PjRtMemorySpace* memory_space =
@@ -3773,6 +3799,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
        execution_profile(options.execution_profile),
        send_device_memory(std::move(send_device_memory)),
        recv_device_memory(std::move(recv_device_memory)),
+       output_cuda_execute_event_ptr(std::move(output_cuda_execute_event_ptr)),
        compute_reservation(std::move(compute_reservation)),
        client = client_](std::vector<ExecutionInput> execution_inputs) mutable {
         VLOG(1) << "execute_fn for " << executable_name
@@ -3886,6 +3913,15 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
                      << device->DebugString()
                      << ", status = " << result_buffer_or_status.status();
           set_error(result_buffer_or_status.status());
+          return;
+        }
+
+        auto record_event_status =
+            stream->RecordEvent(output_cuda_execute_event_ptr.get());
+        if (!record_event_status.ok()) {
+          LOG(ERROR) << "Failed to record cuda event: " << record_event_status;
+          scheduled_event.SetError(record_event_status);
+          complete_event.SetError(record_event_status);
           return;
         }
 

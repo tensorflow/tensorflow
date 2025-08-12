@@ -128,6 +128,7 @@ void TrackedGpuDeviceBuffer::ReleaseDeviceMemory() {
   buffer_.reset();
   definition_event_.reset();
   usage_events_.Clear();
+  cuda_event_.reset();
 }
 
 void TrackedGpuDeviceBuffer::SetUnOwned() {
