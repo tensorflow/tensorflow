@@ -764,7 +764,7 @@ TEST(TensorBundleTest, StringTensors) {
     // Requires a 64-bit length.
     tstring* backing_string = long_string_tensor.flat<tstring>().data();
     backing_string->resize_uninitialized(kLongLength);
-    std::char_traits<char>::assign(backing_string->data(), kLongLength, 'd');
+    memset(backing_string->data(), 'd', kLongLength);
     TF_EXPECT_OK(writer.Add("long_scalar", long_string_tensor));
 
     // Mixes in some floats.
@@ -802,7 +802,7 @@ TEST(TensorBundleTest, StringTensors) {
     // of 4GB, therefore it is not ideal to free the buffer right now.
     // The rationale is to make allocation/free close to each other.
     tstring* backing_string = long_string_tensor.flat<tstring>().data();
-    std::char_traits<char>::assign(backing_string->data(), kLongLength, 'e');
+    memset(backing_string->data(), 'e', kLongLength);
 
     // Read long_scalar and check it contains kLongLength 'd's.
     TF_ASSERT_OK(reader.Lookup("long_scalar", &long_string_tensor));
