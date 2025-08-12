@@ -463,6 +463,32 @@ absl::Status LegalizeSchedulingAnnotations::Verify(HloModule* module) {
 absl::StatusOr<bool> LegalizeSchedulingAnnotations::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  absl::flat_hash_map<HloInstruction*, Annotation> instruction_to_annotation;
+  absl::flat_hash_map<
+      Annotation,
+      absl::flat_hash_map<HloComputation*, std::vector<HloInstruction*>>>
+      annotation_to_instruction;
+  // Run gap checking if requested.
+  if (config_.check_gap_only) {
+    // Find the annotated instructions and save relevant information.
+    for (HloComputation* computation :
+         module->MakeNonfusionComputations(execution_threads)) {
+      for (HloInstruction* instr : computation->instructions()) {
+        TF_ASSIGN_OR_RETURN(std::optional<Annotation> annotation,
+                            GetSchedulingAnnotation(instr));
+        if (!annotation) {
+          continue;
+        }
+        instruction_to_annotation[instr] = *annotation;
+        annotation_to_instruction[*annotation][computation].push_back(instr);
+      }
+    }
+    TF_RETURN_IF_ERROR(CheckGapBetweenAnnotatedInstructions(
+        annotation_to_instruction, instruction_to_annotation,
+        config_.deannotate_unsupported_groups));
+    return false;
+  }
+
   // Run verification if requested.
   if (config_.run_verification) {
     TF_RETURN_IF_ERROR(Verify(module));
@@ -476,11 +502,6 @@ absl::StatusOr<bool> LegalizeSchedulingAnnotations::Run(
     return changed;
   }
 
-  absl::flat_hash_map<HloInstruction*, Annotation> instruction_to_annotation;
-  absl::flat_hash_map<
-      Annotation,
-      absl::flat_hash_map<HloComputation*, std::vector<HloInstruction*>>>
-      annotation_to_instruction;
   // Filter the annotated ops (using config) to keep the annotations only in the
   // desired sync ops. Annotations in all async ops are kept.
   for (HloComputation* computation : module->MakeNonfusionComputations()) {
@@ -556,14 +577,47 @@ absl::StatusOr<bool> LegalizeSchedulingAnnotations::Run(
       changed |= result.value();
     }
   } else {
-    auto result = CheckGapBetweenAnnotatedInstructions(
+    TF_RETURN_IF_ERROR(CheckGapBetweenAnnotatedInstructions(
         annotation_to_instruction, instruction_to_annotation,
-        config_.deannotate_unsupported_groups);
-    if (!result.ok()) {
-      return result;
-    }
+        config_.deannotate_unsupported_groups));
   }
 
   return changed;
 }
+
+absl::StatusOr<bool> CheckNoDataDependencyInSchedulingAnnotations::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  for (HloComputation* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
+    for (HloInstruction* instr : computation->instructions()) {
+      if (HasSchedulingAnnotation(instr)) {
+        TF_ASSIGN_OR_RETURN(std::optional<Annotation> annotation,
+                            GetSchedulingAnnotation(instr));
+        if (!annotation) {
+          continue;
+        }
+        for (HloInstruction* operand : instr->operands()) {
+          if (HasSchedulingAnnotation(operand)) {
+            TF_ASSIGN_OR_RETURN(std::optional<Annotation> operand_annotation,
+                                GetSchedulingAnnotation(operand));
+            if (!operand_annotation) {
+              continue;
+            }
+            if (operand_annotation->group_id == annotation->group_id &&
+                annotation->group_id) {
+              return absl::InternalError(absl::StrCat(
+                  "Found a direct data dependency between instructions with "
+                  "the same scheduling group id ",
+                  std::to_string(*annotation->group_id), " :\n",
+                  instr->ToString(), "\nand\n", operand->ToString()));
+            }
+          }
+        }
+      }
+    }
+  }
+  return false;
+}
+
 }  // namespace xla
