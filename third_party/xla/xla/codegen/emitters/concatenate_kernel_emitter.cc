@@ -116,7 +116,9 @@ ConcatenateFusionKernelEmitter::EmitKernelDefinition() {
   TF_RETURN_IF_ERROR(
       EmitEntryFunction(computations, call_targets, entry_func, fusion_));
 
-  TF_ASSIGN_OR_RETURN(auto kernel_spec, GetKernelSpec());
+  TF_ASSIGN_OR_RETURN(auto kernel_spec,
+                      GetKernelSpec(entry_function_name_, fusion_,
+                                    buffer_assignment_, work_dimensions_));
 
   return MlirKernelDefinition(std::move(kernel_spec),
                               MlirKernelSource(std::move(module)));
@@ -157,50 +159,6 @@ IndexingMap ConcatenateFusionKernelEmitter::ComputeWorkItemIdToOutputIndexing(
     mlir::MLIRContext* ctx) const {
   return ComputeWorkItemIdToOutputIndexing(work_dimensions_, largest_shape_,
                                            ctx);
-}
-
-absl::StatusOr<KernelSpec> ConcatenateFusionKernelEmitter::GetKernelSpec()
-    const {
-  if (buffer_assignment_ == nullptr) {
-    return KernelSpec(entry_function_name_, work_dimensions_,
-                      KernelSpec::Buffers(), KernelSpec::Buffers(),
-                      absl::flat_hash_set<int64_t>());
-  }
-
-  KernelSpec::Buffers result_buffers;
-  for (auto& indexed : ShapeUtil::GetLeafShapes(fusion_.shape())) {
-    TF_ASSIGN_OR_RETURN(
-        BufferAllocation::Slice slice,
-        buffer_assignment_->GetUniqueSlice(&fusion_, indexed.index));
-    result_buffers.push_back(std::move(slice));
-  }
-
-  KernelSpec::Buffers argument_buffers;
-  absl::flat_hash_set<int64_t> invariant_arguments;
-  int64_t operand_index = 0;
-  for (HloInstruction* operand : fusion_.operands()) {
-    for (auto& indexed : ShapeUtil::GetLeafShapes(operand->shape())) {
-      TF_ASSIGN_OR_RETURN(
-          BufferAllocation::Slice slice,
-          buffer_assignment_->GetUniqueSlice(operand, indexed.index));
-
-      bool invariant = absl::c_none_of(
-          result_buffers,
-          [&slice](const BufferAllocation::Slice& result_slice) {
-            return result_slice.OverlapsWith(slice);
-          });
-      if (invariant) {
-        invariant_arguments.insert(operand_index);
-      }
-
-      argument_buffers.push_back(std::move(slice));
-      ++operand_index;
-    }
-  }
-
-  return KernelSpec(entry_function_name_, work_dimensions_,
-                    std::move(argument_buffers), std::move(result_buffers),
-                    std::move(invariant_arguments));
 }
 
 absl::Status ConcatenateFusionKernelEmitter::EmitEntryFunction(
