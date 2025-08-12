@@ -101,7 +101,7 @@ TEST_F(PreCalibrationComponentTest,
   absl::StatusOr<ModuleOp> pre_calibration_result =
       component.Run(*module_op, quantization_config);
 
-  EXPECT_THAT(pre_calibration_result, IsOk());
+  EXPECT_THAT(pre_calibration_result, absl_testing::IsOk());
 
   SmallVector<func::FuncOp> func_ops;
   for (auto func_op : pre_calibration_result->getOps<func::FuncOp>()) {
