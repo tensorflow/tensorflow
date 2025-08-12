@@ -36,7 +36,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/DebugStringHelper.h"
-#include "xla/backends/cpu/alignment.h"
 #include "xla/backends/cpu/codegen/computation_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/dot/dot_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/elemental/concatenate_kernel_emitter.h"
@@ -110,7 +109,6 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
-#include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -224,18 +222,13 @@ absl::StatusOr<std::string> GetFusionFingerprint(
 
 }  // namespace
 
-static FusionCompiler::Options FusionCompilerOptions(
-    const HloModuleConfig& config) {
-  const DebugOptions& debug_options = config.debug_options();
-  return FusionCompiler::Options{
+static FusionCompiler FusionCompilerFactory(mlir::MLIRContext* context,
+                                            const HloModule& hlo_module) {
+  const DebugOptions& debug_options = hlo_module.config().debug_options();
+  FusionCompiler::Options options{
       debug_options.xla_cpu_prefer_vector_width(),
       debug_options.xla_cpu_emitter_verification_level(),
       debug_options.xla_cpu_enable_fast_min_max()};
-}
-
-static FusionCompiler FusionCompilerFactory(mlir::MLIRContext* context,
-                                            const HloModule& hlo_module) {
-  FusionCompiler::Options options = FusionCompilerOptions(hlo_module.config());
 
   FusionCompiler::CompilationHooks hooks;
   if (DumpingEnabledForHloModule(hlo_module)) {
@@ -262,7 +255,6 @@ static FusionCompiler FusionCompilerFactory(mlir::MLIRContext* context,
 }
 
 ThunkEmitter::ThunkEmitter(IrEmitter2& ir_emitter,
-                           tsl::thread::ThreadPool& thread_pool,
                            const BufferAssignment& buffer_assignment,
                            const TargetMachineFeatures& target_machine_features,
                            const HloModule& hlo_module, const Options& options)
@@ -274,12 +266,8 @@ ThunkEmitter::ThunkEmitter(IrEmitter2& ir_emitter,
       communicator_resource_(
           Resource::Create(Resource::kCollectiveCommunicator)),
       mlir_context_(FusionCompiler::CreateContext()),
-      fusion_compiler_(FusionCompilerFactory(mlir_context_.get(), hlo_module)),
-      parallel_fusion_emitter_(
-          thread_pool, FusionCompilerOptions(hlo_module_config_),
-          &buffer_assignment,
-          hlo_module_config_.debug_options()
-              .xla_cpu_generate_unique_c_style_kernel_entry_points()) {}
+      fusion_compiler_(FusionCompilerFactory(mlir_context_.get(), hlo_module)) {
+}
 
 static Thunk::Info ThunkInfo(const HloInstruction* instruction) {
   const HloModule* module = instruction->GetModule();
@@ -294,20 +282,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitEntryComputation(
   }
   tsl::profiler::TraceMe trace("ThunkEmitter::EmitEntryComputation");
   return EmitHloComputation(module.entry_computation());
-}
-
-absl::StatusOr<std::vector<ThunkEmitter::EmittedKernel>>
-ThunkEmitter::ConsumeKernels() {
-  TF_ASSIGN_OR_RETURN(std::vector<LlvmKernelDefinition> fusion_kernels,
-                      parallel_fusion_emitter_.ConsumeKernels());
-
-  kernels_.reserve(kernels_.size() + fusion_kernels.size());
-  for (LlvmKernelDefinition& kernel : fusion_kernels) {
-    auto [spec, source] = std::move(kernel).ReleaseStorage();
-    kernels_.push_back({spec.name(), std::move(source).thread_safe_module()});
-  }
-
-  return std::move(kernels_);
 }
 
 absl::StatusOr<BufferAllocation::Slice> ThunkEmitter::GetAllocationSlice(
@@ -951,8 +925,22 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusionKernelThunk(
           /*min_alignment=*/cpu_function_runtime::MinAlign());
     }
 
-    TF_ASSIGN_OR_RETURN(KernelSpec kernel_spec,
-                        parallel_fusion_emitter_.AddFusion(fusion));
+    bool use_unique_c_name =
+        hlo_module_config_.debug_options()
+            .xla_cpu_generate_unique_c_style_kernel_entry_points();
+    TF_ASSIGN_OR_RETURN(
+        MlirKernelDefinition kernel_definition,
+        EmitFusionKernel(*mlir_context_, *fusion, &buffer_assignment_,
+                         use_unique_c_name));
+
+    auto [kernel_spec, kernel_source] =
+        std::move(kernel_definition).ReleaseStorage();
+
+    TF_ASSIGN_OR_RETURN(LlvmIrKernelSource llvm_ir_kernel_source,
+                        fusion_compiler_.Compile(std::move(kernel_source)));
+
+    kernels_.push_back({kernel_spec.name(),
+                        std::move(llvm_ir_kernel_source).thread_safe_module()});
 
     kernel_spec_cache_.insert({fingerprint, kernel_spec});
 
