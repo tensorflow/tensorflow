@@ -49,6 +49,10 @@ struct FileBasedCacheConfig {
     READ_WRITE,
   };
   CacheMode autotune_cache_mode = CacheMode::READ_WRITE;
+  // Version string for the cache.
+  std::string cache_version = "1";
+  // Device description.
+  se::DeviceDescription device_desc;
 };
 
 // File-based implementation of the AutotunerCacheInterface.
@@ -73,8 +77,7 @@ struct FileBasedCacheConfig {
 class FileBasedAutotunerCache : public AutotunerCacheInterface {
  public:
   static absl::StatusOr<std::unique_ptr<AutotunerCacheInterface>> Create(
-      const FileBasedCacheConfig& cache_config,
-      const se::DeviceDescription& device_desc, const std::string& version);
+      const FileBasedCacheConfig& cache_config);
 
   std::optional<AutotunerCacheEntry> Lookup(
       const HloInstruction* instr) override ABSL_LOCKS_EXCLUDED(mutex_);
@@ -84,9 +87,7 @@ class FileBasedAutotunerCache : public AutotunerCacheInterface {
       ABSL_LOCKS_EXCLUDED(mutex_);
 
  private:
-  FileBasedAutotunerCache(const FileBasedCacheConfig& cache_config,
-                          const se::DeviceDescription& device_desc,
-                          const std::string& version);
+  explicit FileBasedAutotunerCache(const FileBasedCacheConfig& cache_config);
 
   static std::string DeviceDescriptionToString(
       const se::DeviceDescription& device_desc);
@@ -104,8 +105,7 @@ class FileBasedAutotunerCache : public AutotunerCacheInterface {
   absl::Status Save(absl::string_view map_key, const AutotunerCacheEntry& entry)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  FileBasedCacheConfig cache_config_;
-  const se::DeviceDescription device_desc_;
+  const FileBasedCacheConfig cache_config_;
   const std::string version_;
   absl::Mutex mutex_;
   absl::flat_hash_map<std::string, AutotunerCacheEntry> in_memory_cache_

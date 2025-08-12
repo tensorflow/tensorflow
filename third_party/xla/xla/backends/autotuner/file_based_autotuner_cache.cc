@@ -50,11 +50,8 @@ limitations under the License.
 namespace xla {
 
 absl::StatusOr<std::unique_ptr<AutotunerCacheInterface>>
-FileBasedAutotunerCache::Create(const FileBasedCacheConfig& cache_config,
-                                const se::DeviceDescription& device_desc,
-                                const std::string& version) {
-  auto cache = absl::WrapUnique(
-      new FileBasedAutotunerCache(cache_config, device_desc, version));
+FileBasedAutotunerCache::Create(const FileBasedCacheConfig& cache_config) {
+  auto cache = absl::WrapUnique(new FileBasedAutotunerCache(cache_config));
   if (!cache_config.autotune_cache_dir.empty()) {
     TF_RETURN_IF_ERROR(cache->Load());
   }
@@ -62,11 +59,8 @@ FileBasedAutotunerCache::Create(const FileBasedCacheConfig& cache_config,
 }
 
 FileBasedAutotunerCache::FileBasedAutotunerCache(
-    const FileBasedCacheConfig& cache_config,
-    const se::DeviceDescription& device_desc, const std::string& version)
-    : cache_config_(cache_config),
-      device_desc_(device_desc),
-      version_(version) {}
+    const FileBasedCacheConfig& cache_config)
+    : cache_config_(cache_config), version_(cache_config.cache_version) {}
 
 std::string FileBasedAutotunerCache::DeviceDescriptionToString(
     const se::DeviceDescription& device_desc) {
@@ -119,8 +113,9 @@ absl::StatusOr<std::string> GetHloHash(const HloInstruction* instr) {
 absl::StatusOr<std::string> FileBasedAutotunerCache::GetMapKey(
     const HloInstruction* instr) {
   TF_ASSIGN_OR_RETURN(const std::string hlo_hash, GetHloHash(instr));
-  return absl::StrCat(hlo_hash, "|", DeviceDescriptionToString(device_desc_),
-                      "|", version_);
+  return absl::StrCat(hlo_hash, "|",
+                      DeviceDescriptionToString(cache_config_.device_desc), "|",
+                      version_);
 }
 
 absl::StatusOr<AutotunerCacheKey> FileBasedAutotunerCache::GetProtoKey(
@@ -128,7 +123,7 @@ absl::StatusOr<AutotunerCacheKey> FileBasedAutotunerCache::GetProtoKey(
   TF_ASSIGN_OR_RETURN(const std::string hlo_hash, GetHloHash(instr));
   AutotunerCacheKey key;
   key.set_hlo_fingerprint(hlo_hash);
-  key.set_device_str(DeviceDescriptionToString(device_desc_));
+  key.set_device_str(DeviceDescriptionToString(cache_config_.device_desc));
   key.set_version(version_);
   return key;
 }
@@ -208,7 +203,8 @@ absl::Status FileBasedAutotunerCache::Load() {
     }
 
     const AutotunerCacheKey& key = entry.key();
-    if (key.device_str() == DeviceDescriptionToString(device_desc_) &&
+    if (key.device_str() ==
+            DeviceDescriptionToString(cache_config_.device_desc) &&
         key.version() == version_) {
       in_memory_cache_[absl::StrCat(key.hlo_fingerprint(), "|",
                                     key.device_str(), "|", key.version())] =
