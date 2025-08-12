@@ -54,7 +54,8 @@ absl::StatusOr<bool> LlvmKernelAutotuner::Run(
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Autotuner> autotuner,
                       Autotuner::Create(std::move(codegen_backends),
-                                        std::move(profiler), AutotuneConfig()));
+                                        std::move(profiler), AutotuneConfig(),
+                                        /*cache=*/nullptr));
 
   bool hlo_changed = false;
   for (HloComputation* computation : module->computations()) {

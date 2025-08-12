@@ -41,7 +41,6 @@ cc_library(
         "//xla/service:executable",
         "//xla/service:shaped_buffer",
         "//xla/stream_executor:device_description",
-        "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
@@ -55,7 +54,7 @@ cc_library(
         "@com_google_absl//absl/time",
         "@local_tsl//tsl/platform:blocking_counter",
         "@local_tsl//tsl/platform:fingerprint",
-    ],
+    ] + if_google(["@com_google_protobuf//:any_cc_proto"]),
 )
 
 xla_cc_test(
@@ -78,12 +77,13 @@ xla_cc_test(
         "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:path",
-    ],
+    ] + if_google(["@com_google_protobuf//:any_cc_proto"]),
 )
 
 tf_proto_library(

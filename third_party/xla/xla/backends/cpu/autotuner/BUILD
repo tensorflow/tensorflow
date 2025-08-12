@@ -177,7 +177,6 @@ cc_library(
         ":cpu_codegen_backend",
         ":cpu_profiler",
         ":llvm_kernel_backend",
-        "//xla:executable_run_options",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/backends/autotuner",
@@ -185,10 +184,7 @@ cc_library(
         "//xla/backends/autotuner:profiler",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
-        "//xla/service:executable",
         "//xla/service/cpu:backend_config_proto_cc",
-        "//xla/service/cpu:cpu_executable",
-        "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
@@ -196,7 +192,6 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
-        "@local_tsl//tsl/platform:casts",
     ],
 )
 
