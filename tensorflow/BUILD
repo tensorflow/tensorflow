@@ -1719,8 +1719,8 @@ py_library(
         "//tensorflow/lite/python/authoring",
         "//tensorflow/python:no_contrib",
         "//tensorflow/python/profiler:profiler_client",
-        "@pypi_keras_nightly//:pkg",
-        "@pypi_tb_nightly//:pkg",
+        "@pypi_keras//:pkg",
+        "@pypi_tensorboard//:pkg",
     ],
 )
 # copybara:comment_end

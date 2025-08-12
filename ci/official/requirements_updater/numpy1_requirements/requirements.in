@@ -7,7 +7,7 @@ opt_einsum == 3.3.0
 astunparse == 1.6.3
 dill == 0.3.7
 astor == 0.7.1
-typing_extensions == 4.8.0
+typing_extensions ~= 4.14.1
 gast == 0.4.0
 termcolor == 2.3.0
 wrapt == 1.16.0
@@ -18,8 +18,8 @@ auditwheel >= 6.1.0
 # Note that here we want the latest version that matches TF major.minor version
 # Note that we must use nightly here as these are used in nightly jobs
 # For release jobs, we will pin these on the release branch
-keras-nightly ~= 3.0.0.dev
-tb-nightly ~= 2.20.0.a
+keras ~= 3.10.0
+tensorboard ~= 2.20.0
 # For new protobuf, if V.x.y is gencode version, then runtime version U must be
 # V <= U <= V+1
 # More info at https://protobuf.dev/support/cross-version-runtime-guarantee/
