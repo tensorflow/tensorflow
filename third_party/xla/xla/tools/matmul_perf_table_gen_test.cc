@@ -44,20 +44,14 @@ class MatmulPerfTableGenTest : public HloTestBase {
   }
 };
 
+using StepSpec = MatmulPerfTableGen::StepSpec;
+
 TEST_F(MatmulPerfTableGenTest, DryRunsSpecifiedSweepSpace) {
   MatmulPerfTableGen::Config cfg;
-  cfg.b_spec.start = 1;
-  cfg.b_spec.stop = 1;
-  cfg.b_spec.step = 1;
-  cfg.k_spec.start = 1;
-  cfg.k_spec.stop = 1;
-  cfg.k_spec.step = 1;
-  cfg.m_spec.start = 1;
-  cfg.m_spec.stop = 1;
-  cfg.m_spec.step = 1;
-  cfg.n_spec.start = 2;
-  cfg.n_spec.stop = 8;
-  cfg.n_spec.step = 2;
+  cfg.b_spec = StepSpec{.start = 1, .stop = 1, .step = 1};
+  cfg.k_spec = StepSpec{.start = 1, .stop = 1, .step = 1};
+  cfg.m_spec = StepSpec{.start = 1, .stop = 1, .step = 1};
+  cfg.n_spec = StepSpec{.start = 2, .stop = 8, .step = 2};
   cfg.dry_run = true;
   cfg.dtypes.emplace_back(
       MatmulPerfTableGen::DataTypeSpec{"bf16", "bf16", "bf16"});
@@ -71,18 +65,10 @@ TEST_F(MatmulPerfTableGenTest, DryRunsSpecifiedSweepSpace) {
 
 TEST_F(MatmulPerfTableGenTest, DryRunsFactorSweepSpace) {
   MatmulPerfTableGen::Config cfg;
-  cfg.b_spec.start = 1;
-  cfg.b_spec.stop = 1;
-  cfg.b_spec.step = 1;
-  cfg.k_spec.start = 1;
-  cfg.k_spec.stop = 1;
-  cfg.k_spec.step = 1;
-  cfg.m_spec.start = 1;
-  cfg.m_spec.stop = 1;
-  cfg.m_spec.step = 1;
-  cfg.n_spec.start = 2;
-  cfg.n_spec.stop = 8;
-  cfg.n_spec.factor = 2;
+  cfg.b_spec = StepSpec{.start = 1, .stop = 1, .step = 1};
+  cfg.k_spec = StepSpec{.start = 1, .stop = 1, .step = 1};
+  cfg.m_spec = StepSpec{.start = 1, .stop = 1, .step = 1};
+  cfg.n_spec = StepSpec{.start = 2, .stop = 8, .factor = 2};
   cfg.dry_run = true;
   cfg.dtypes.emplace_back(
       MatmulPerfTableGen::DataTypeSpec{"bf16", "bf16", "bf16"});
@@ -96,18 +82,10 @@ TEST_F(MatmulPerfTableGenTest, DryRunsFactorSweepSpace) {
 
 TEST_F(MatmulPerfTableGenTest, SweepSpaceSavesOperands) {
   MatmulPerfTableGen::Config cfg;
-  cfg.b_spec.start = 1;
-  cfg.b_spec.stop = 1;
-  cfg.b_spec.step = 1;
-  cfg.k_spec.start = 1;
-  cfg.k_spec.stop = 1;
-  cfg.k_spec.step = 1;
-  cfg.m_spec.start = 1;
-  cfg.m_spec.stop = 1;
-  cfg.m_spec.step = 1;
-  cfg.n_spec.start = 1;
-  cfg.n_spec.stop = 1;
-  cfg.n_spec.step = 1;
+  cfg.b_spec = StepSpec{.start = 1, .stop = 1, .step = 1};
+  cfg.k_spec = StepSpec{.start = 1, .stop = 1, .step = 1};
+  cfg.m_spec = StepSpec{.start = 1, .stop = 1, .step = 1};
+  cfg.n_spec = StepSpec{.start = 1, .stop = 1, .step = 1};
   cfg.dry_run = true;
   cfg.dtypes.emplace_back(
       MatmulPerfTableGen::DataTypeSpec{"bf16", "bf16", "bf16"});
@@ -122,18 +100,10 @@ TEST_F(MatmulPerfTableGenTest, SweepSpaceSavesOperands) {
 
 TEST_F(MatmulPerfTableGenTest, SweepSpaceSavesFlops) {
   MatmulPerfTableGen::Config cfg;
-  cfg.b_spec.start = 2;
-  cfg.b_spec.stop = 2;
-  cfg.b_spec.step = 1;
-  cfg.k_spec.start = 8;
-  cfg.k_spec.stop = 8;
-  cfg.k_spec.step = 1;
-  cfg.m_spec.start = 3;
-  cfg.m_spec.stop = 3;
-  cfg.m_spec.step = 1;
-  cfg.n_spec.start = 7;
-  cfg.n_spec.stop = 7;
-  cfg.n_spec.step = 1;
+  cfg.b_spec = StepSpec{.start = 2, .stop = 2, .step = 1};
+  cfg.k_spec = StepSpec{.start = 8, .stop = 8, .step = 1};
+  cfg.m_spec = StepSpec{.start = 3, .stop = 3, .step = 1};
+  cfg.n_spec = StepSpec{.start = 7, .stop = 7, .step = 1};
   cfg.dry_run = true;
   cfg.dtypes.emplace_back(
       MatmulPerfTableGen::DataTypeSpec{"bf16", "bf16", "bf16"});
@@ -151,18 +121,10 @@ TEST_F(MatmulPerfTableGenTest, SweepSpaceSavesFlops) {
 
 TEST_F(MatmulPerfTableGenTest, CompactsTable) {
   MatmulPerfTableGen::Config cfg;
-  cfg.b_spec.start = 2;
-  cfg.b_spec.stop = 2;
-  cfg.b_spec.step = 1;
-  cfg.k_spec.start = 8;
-  cfg.k_spec.stop = 8;
-  cfg.k_spec.step = 1;
-  cfg.m_spec.start = 3;
-  cfg.m_spec.stop = 3;
-  cfg.m_spec.step = 1;
-  cfg.n_spec.start = 7;
-  cfg.n_spec.stop = 7;
-  cfg.n_spec.step = 1;
+  cfg.b_spec = StepSpec{.start = 2, .stop = 2, .step = 1};
+  cfg.k_spec = StepSpec{.start = 8, .stop = 8, .step = 1};
+  cfg.m_spec = StepSpec{.start = 3, .stop = 3, .step = 1};
+  cfg.n_spec = StepSpec{.start = 7, .stop = 7, .step = 1};
   cfg.dry_run = true;
   cfg.dtypes.emplace_back(
       MatmulPerfTableGen::DataTypeSpec{"bf16", "bf16", "bf16"});
@@ -183,6 +145,31 @@ TEST_F(MatmulPerfTableGenTest, CompactsTable) {
   EXPECT_EQ(entry.n(), 7);
   EXPECT_EQ(entry.flops().at("bf16xbf16->bf16"), 16 * 1e9);
   EXPECT_EQ(entry.flops().at("bf16xf16->f32"), 16 * 1e9);
+}
+
+TEST_F(MatmulPerfTableGenTest, CompactTableInDeterministicOrder) {
+  MatmulPerfTableGen::Config cfg;
+  cfg.b_spec = StepSpec{.start = 1, .stop = 8, .step = 1};
+  cfg.k_spec = StepSpec{.start = 8, .stop = 8, .step = 1};
+  cfg.m_spec = StepSpec{.start = 3, .stop = 3, .step = 1};
+  cfg.n_spec = StepSpec{.start = 7, .stop = 7, .step = 1};
+  cfg.dry_run = true;
+  cfg.dtypes.emplace_back(
+      MatmulPerfTableGen::DataTypeSpec{"bf16", "bf16", "bf16"});
+
+  MatmulPerfTableGen gen(cfg);
+  TF_ASSERT_OK_AND_ASSIGN(GemmPerfTable compact_table,
+                          MatmulPerfTableGen::Compact(gen.ComputeTable()));
+
+  EXPECT_EQ(compact_table.entries_size(), 1);
+  EXPECT_EQ(compact_table.entries().begin()->second.entries_size(), 8);
+
+  // Expect entries in increasing order of b.
+  int64_t expect_b = 1;
+  for (const GemmPerfTableEntry& entry :
+       compact_table.entries().begin()->second.entries()) {
+    EXPECT_EQ(entry.b(), expect_b++);
+  }
 }
 
 }  // namespace
