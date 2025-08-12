@@ -98,6 +98,14 @@ class Type : public std::variant<Scalar, Vec> {
   static Type FromName(absl::string_view name);
 };
 
+struct IntrinsicOptions {
+  // CPU features available on the target machine.
+  std::string features;
+  // Disables math functions that do not have the same results across e.g.
+  // AMD vs. Intel CPUs.
+  bool disable_platform_dependent_math = false;
+};
+
 // Intrinsics are provided by XLA to expose special features (functions) that
 // may only be implemented with code generator support.
 //

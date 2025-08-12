@@ -145,7 +145,7 @@ struct RsqrtIntrinsic {
 };
 
 absl::StatusOr<llvm::Function*> Rsqrt::CreateDefinition(
-    llvm::Module* module, absl::string_view features, Type type) {
+    llvm::Module* module, const IntrinsicOptions& options, Type type) {
   CHECK(type.element_type() == F64 || type.element_type() == F32)
       << type.name();
   llvm::Type* input_type = Type::TypeToIrType(type, module->getContext());
@@ -170,11 +170,16 @@ absl::StatusOr<llvm::Function*> Rsqrt::CreateDefinition(
   llvm::BasicBlock* entry_bb = llvm::BasicBlock::Create(context, "entry", func);
   builder.SetInsertPoint(entry_bb);
 
-  if ((type.element_type() == F64 &&
-       !absl::StrContains(features, "+avx512f")) ||
-      !absl::StrContains(features, "+avx")) {
-    LOG_EVERY_N(INFO, 1000)
-        << "Falling back to 1 / sqrt(x) for " << type.name();
+  // Rsqrt is not portable across all CPUs, so we fall back to 1 / sqrt(x) if
+  // 1. The user explicitly requested it, or
+  // 2. The target CPU does not support AVX512F for F64, or
+  // 3. The target CPU does not support AVX for F32.
+  if (options.disable_platform_dependent_math ||
+      (type.element_type() == F64 &&
+       !absl::StrContains(options.features, "+avx512f")) ||
+      !absl::StrContains(options.features, "+avx")) {
+    LOG_EVERY_N(INFO, 1000) << "Falling back to 1 / sqrt(x) for " << type.name()
+                            << " " << options.disable_platform_dependent_math;
     // We can't use the same approximation algorithm for F64 without AVX512 or
     // anything non-x86 and without avx.
     llvm::Value* one = llvm::ConstantFP::get(input_type, 1.0);

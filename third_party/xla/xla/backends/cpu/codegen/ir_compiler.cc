@@ -91,6 +91,9 @@ void SetXlaCpuBackendOptions(llvm::Module& llvm_module,
   if (options.slp_vectorizer_disabled()) {
     llvm_kernel_options.emplace_back(options::kDisableSlpVectorizer);
   }
+  if (options.disable_platform_dependent_math()) {
+    llvm_kernel_options.emplace_back(options::kDisablePlatformDependentMath);
+  }
 
   llvm::MDString* options_mdstring = llvm::MDString::get(
       llvm_module.getContext(), absl::StrJoin(llvm_kernel_options, ","));
@@ -343,7 +346,9 @@ llvm::Error IrCompiler::RunIrPasses(llvm::Module& module,
   target_library_info_impl->addVectorizableFunctions(
       PolynomialApproximationsVectorization());
   codegen::IntrinsicFunctionLib intrinsic_lib(
-      target_machine->getTargetFeatureString().str());
+      {target_machine->getTargetFeatureString().str(),
+       /*disable_platform_dependent_math=*/options_
+           .disable_platform_dependent_math});
   target_library_info_impl->addVectorizableFunctions(
       intrinsic_lib.Vectorizations());
 

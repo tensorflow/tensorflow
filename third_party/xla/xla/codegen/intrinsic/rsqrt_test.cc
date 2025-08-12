@@ -72,15 +72,18 @@ void AddOneOverSqrt(llvm::LLVMContext& context, llvm::Module& module,
   builder.CreateRet(one_over_sqrt);
 }
 
-JitRunner CreateJitRunnerWithRsqrt(Type type) {
+JitRunner CreateJitRunnerWithRsqrt(
+    Type type, bool disable_platform_dependent_math = false) {
   auto context = std::make_unique<llvm::LLVMContext>();
   auto module = std::make_unique<llvm::Module>("test_module", *context);
 
   std::unique_ptr<llvm::TargetMachine> target_machine =
       xla::codegen::intrinsic::CreateHostTargetMachine();
   llvm::Function* rsqrt_func =
-      Rsqrt::CreateDefinition(
-          module.get(), target_machine->getTargetFeatureString().str(), type)
+      Rsqrt::CreateDefinition(module.get(),
+                              {target_machine->getTargetFeatureString().str(),
+                               disable_platform_dependent_math},
+                              type)
           .value();
   rsqrt_func->setLinkage(llvm::Function::ExternalLinkage);
   EXPECT_FALSE(llvm::verifyFunction(*rsqrt_func));
@@ -314,6 +317,18 @@ TEST(RsqrtTest, EmitRsqrtF64_EdgeCases_Vectors) {
     TestRsqrtF64EdgeCases<4>();
     TestRsqrtF64EdgeCases<8>();
   }
+}
+
+TEST(RsqrtTest, DisablePlatformDependentMath) {
+  Type type = Type::S(F64);
+  JitRunner jit =
+      CreateJitRunnerWithRsqrt(type, /*disable_platform_dependent_math=*/true);
+  auto rsqrt = jit.GetScalarFn<double(double)>(Rsqrt::Name(type));
+  auto one_over_sqrt = jit.GetScalarFn<double(double)>("one_over_sqrt");
+  double inf = std::numeric_limits<double>::infinity();
+  EXPECT_EQ(rsqrt(inf), one_over_sqrt(inf));
+  EXPECT_EQ(rsqrt(1.0), one_over_sqrt(1.0));
+  EXPECT_EQ(rsqrt(13.0), one_over_sqrt(13.0));
 }
 
 }  // namespace

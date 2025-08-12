@@ -59,7 +59,7 @@ class Rsqrt : public Intrinsic<Rsqrt> {
   // https://eigen.tuxfamily.org/dox-devel/arch_2AVX512_2MathFunctions_8h_source.html
   // Assumes AVX512 is available for F64 and <16 x float> inputs.
   static absl::StatusOr<llvm::Function*> CreateDefinition(
-      llvm::Module* module, absl::string_view features, Type type);
+      llvm::Module* module, const IntrinsicOptions& options, Type type);
 };
 
 }  // namespace xla::codegen::intrinsics
