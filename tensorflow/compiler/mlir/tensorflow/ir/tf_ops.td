@@ -3212,12 +3212,12 @@ def TF_XlaSparseActivationsUnstackOp : TF_Op<"XlaSparseActivationsUnstack", [Pur
     conversion, stacking and optionally interleaving of the embedding
     activations, while also offloading this work to SparseCore.
 
-    The op assumes its operand is in SparseCore layout.
-    The output is a tuple of tensors in TensorCore layout.
+    The op assumes its operand is in SparseCore layout, while also being F32.
+    The output is a tuple of tensors in TensorCore layout, in any data type.
   }];
 
   let arguments = (ins
-    TF_Tensor:$stacked_activations,
+    TF_Float32Tensor:$stacked_activations,
 
     ConfinedAttr<I64Attr, [IntMinValue<1>]>:$num_tables,
     ConfinedAttr<I64ArrayAttr, [ArrayMinCount<1>]>:$sample_counts,
@@ -3236,8 +3236,8 @@ def TF_XlaSparseGradientsStackOp : TF_Op<"XlaSparseGradientsStack", [Pure]> {
     unstacking and optionally interleaving of the embedding gradients, while
     also offloading this work to SparseCore.
 
-    The op assumes its operands are in TensoreCore layout.
-    The output is in SparseCore layout.
+    The op assumes its operands are in TensoreCore layout and in any data type.
+    The output is in SparseCore layout and is expected to be F32.
   }];
 
   let arguments = (ins
@@ -3248,7 +3248,7 @@ def TF_XlaSparseGradientsStackOp : TF_Op<"XlaSparseGradientsStack", [Pure]> {
   );
 
   let results = (outs
-    TF_Tensor:$stacked_gradients
+    TF_Float32Tensor:$stacked_gradients
   );
 }
 #endif // TF_OPS
