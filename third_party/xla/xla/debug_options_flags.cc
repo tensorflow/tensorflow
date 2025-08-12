@@ -445,6 +445,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_enable_split_k_rewrite(false);
   opts.set_xla_gpu_experimental_enable_triton_tma(false);
   opts.set_xla_gpu_experimental_enable_command_buffer_on_thunks(false);
+  opts.set_xla_detect_unstable_reductions(
+      DebugOptions::UNSTABLE_REDUCTION_DETECTION_MODE_NONE);
   return opts;
 }
 
@@ -843,6 +845,23 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
     return absl::StrJoin(values, ",", Formatter());
   };
 
+  // Custom "sub-parser" for xla_gpu_experimental_autotune_cache_mode.
+  auto setter_for_xla_detect_unstable_reductions =
+      [debug_options](const std::string& value) {
+        DebugOptions::UnstableReductionDetectionMode detection_mode;
+        if (value == "none") {
+          detection_mode = DebugOptions::UNSTABLE_REDUCTION_DETECTION_MODE_NONE;
+        } else if (value == "warning") {
+          detection_mode =
+              DebugOptions::UNSTABLE_REDUCTION_DETECTION_MODE_WARNING;
+        } else if (value == "fail") {
+          detection_mode = DebugOptions::UNSTABLE_REDUCTION_DETECTION_MODE_FAIL;
+        } else {
+          return false;
+        }
+        debug_options->set_xla_detect_unstable_reductions(detection_mode);
+        return true;
+      };
   // Don't use an initializer list for initializing the vector; this would
   // create a temporary copy, and exceeds the stack space when compiling with
   // certain configurations.
@@ -2488,6 +2507,15 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_experimental_use_autotuner_pass(),
       "If true, use the AutotunerPass to autotune fusions, instead of the "
       "gemm_fusion_autotuner."));
+  flag_list->push_back(
+      tsl::Flag("xla_detect_unstable_reductions",
+                setter_for_xla_detect_unstable_reductions,
+                DebugOptions::UnstableReductionDetectionMode_Name(
+                    debug_options->xla_detect_unstable_reductions()),
+                "Controls the behavior of the unstable reduction detector pass "
+                "that checks for unstable reductions in HLO computations. "
+                "Acceptable values are: 'none', 'log', and 'crash'. 'none' is "
+                "the default."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more
