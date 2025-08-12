@@ -236,6 +236,8 @@ TEST(CommandBufferConversionPassTest, ConvertsToCommandBufferThunk) {
               IsOkAndHolds(true));
 
   EXPECT_THAT(root_thunk->thunks(), ThunkKindsAre(Thunk::kCommandBuffer));
+  EXPECT_THAT(root_thunk->thunks()[0]->thunk_info().profile_annotation,
+              "command_buffer");
 
   const auto* command_buffer_thunk =
       static_cast<const CommandBufferThunk*>(root_thunk->thunks()[0].get());
