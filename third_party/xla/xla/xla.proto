@@ -255,10 +255,22 @@ message DebugOptions {
   // XLA:GPU options.
   //--------------------------------------------------------------------------//
   // clang-format off
-  // go/keep-sorted start newline_separated=yes skip_lines=2 ignore_prefixes=["optional AutotuneCacheMode","optional bool","optional float","optional int32","optional int64","optional LibNvJitLinkMode","map<string, string>","optional PGLEStrictnessLevel","optional PipelineParallelismOptLevel","repeated CollectiveOpType","repeated CommandBufferCmdType","repeated string","optional ShapeChecks","optional string","optional WhileLoopUnrolling","reserved","repeated GenericTritonEmitterFeature"] // NOLINT
+  // go/keep-sorted start newline_separated=yes skip_lines=2 ignore_prefixes=["optional AutotuneCacheMode","optional bool","optional float","optional int32","optional int64","optional LibNvJitLinkMode","map<string, string>","optional PGLEStrictnessLevel","optional PipelineParallelismOptLevel","repeated CollectiveOpType","repeated CommandBufferCmdType","repeated string","optional ShapeChecks","optional string","optional WhileLoopUnrolling","reserved","repeated GenericTritonEmitterFeature","optional CommandBufferSchedulingMode"] // NOLINT
   // clang-format on
 
   reserved 160;  // Was xla_gpu_enable_cudnn_frontend
+
+  // Command buffer scheduling mode.
+  // SERIALIZE: Serialize all commands in a command buffer.
+  // CONCURRENT: Identify concurrent across operator through data conflicts.
+  // LHS: Uses the same latency hidden scheduling results as adopted by
+  // LatencyHidingScheduler which hides latencies of operations that can run in
+  // parallel with other operations.
+  enum CommandBufferSchedulingMode {
+    SERIALIZE = 0;
+    CONCURRENT = 1;
+    LHS = 2;
+  }
 
   // Options for the generic Triton emitter.
   // Set with xla_gpu_unsupported_generic_triton_emitter_features.
@@ -368,6 +380,9 @@ message DebugOptions {
   // collective operations from concurrent executions are not correcctly ordered
   // it may lead to deadlocks, crashes or will produce garbage.
   optional bool xla_gpu_collectives_use_persistent_cliques = 354;
+
+  optional CommandBufferSchedulingMode xla_gpu_command_buffer_scheduling_mode =
+      404;
 
   optional bool xla_gpu_copy_insertion_use_region_analysis = 236;
 
@@ -694,8 +709,10 @@ message DebugOptions {
   // profiling and debugging.
   optional bool xla_gpu_generate_line_info = 349;
 
+  // DEPRECATED: Use `xla_gpu_command_buffer_scheduling_mode` instead.
   // Identify concurrent regions in GPU graphs and execute them concurrently.
-  optional bool xla_gpu_graph_enable_concurrent_region = 215;
+  optional bool xla_gpu_graph_enable_concurrent_region = 215
+      [deprecated = true];
 
   // This number determines how many moved instructions like fusion kernels are
   // required for a region to be captured as a function to be launched as a GPU
@@ -1303,7 +1320,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 403
+  // Next id: 405
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

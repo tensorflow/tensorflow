@@ -31,7 +31,8 @@ class CommandBufferTest : public HloPjRtTestBase,
                           public ::testing::WithParamInterface<bool> {
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloPjRtTestBase::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_graph_enable_concurrent_region(GetParam());
+    debug_options.set_xla_gpu_command_buffer_scheduling_mode(
+        DebugOptions::CONCURRENT);
     return debug_options;
   }
 };

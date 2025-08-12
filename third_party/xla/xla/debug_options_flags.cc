@@ -240,7 +240,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.add_xla_gpu_enable_command_buffer(DebugOptions::CUSTOM_CALL);
   opts.add_xla_gpu_enable_command_buffer(DebugOptions::CUDNN);
   opts.set_xla_gpu_graph_min_graph_size(5);
-  opts.set_xla_gpu_graph_enable_concurrent_region(false);
+  opts.set_xla_gpu_command_buffer_scheduling_mode(DebugOptions::SERIALIZE);
   opts.set_xla_cmd_buffer_trace_cache_size(16);
 
   opts.set_xla_gpu_collectives_use_persistent_cliques(false);
@@ -638,6 +638,30 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
         }
         debug_options->set_xla_gpu_experimental_pipeline_parallelism_opt_level(
             level);
+        return true;
+      };
+
+  // Custom "sub-parser" lambda for `xla_gpu_graph_enable_concurrent_region`.
+  auto setter_for_xla_gpu_graph_enable_concurrent_region =
+      [debug_options](bool value) {
+        if (value) {
+          debug_options->set_xla_gpu_command_buffer_scheduling_mode(
+              DebugOptions::CONCURRENT);
+        } else {
+          debug_options->set_xla_gpu_command_buffer_scheduling_mode(
+              DebugOptions::SERIALIZE);
+        }
+        return true;
+      };
+
+  // Custom "sub-parser" lambda for `xla_gpu_command_buffer_scheduling_mode`.
+  auto setter_for_xla_gpu_command_buffer_scheduling_mode =
+      [debug_options](const std::string& value) {
+        DebugOptions::CommandBufferSchedulingMode mode;
+        if (!DebugOptions::CommandBufferSchedulingMode_Parse(value, &mode)) {
+          return false;
+        }
+        debug_options->set_xla_gpu_command_buffer_scheduling_mode(mode);
         return true;
       };
 
@@ -1608,13 +1632,20 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_graph_min_graph_size(),
       "Capture a region as a function to be launched as cuda graph if the "
       "number of moved instructions reaches this threshold."));
+
   flag_list->push_back(
       tsl::Flag("xla_gpu_graph_enable_concurrent_region",
-                bool_setter_for(
-                    &DebugOptions::set_xla_gpu_graph_enable_concurrent_region),
+                setter_for_xla_gpu_graph_enable_concurrent_region,
                 debug_options->xla_gpu_graph_enable_concurrent_region(),
-                "Identify concurrent regions in gpu graphs and execute them "
-                "concurrently."));
+                "[Deprecated, do not use]"));
+
+  flag_list->push_back(
+      tsl::Flag("xla_gpu_command_buffer_scheduling_mode",
+                setter_for_xla_gpu_command_buffer_scheduling_mode,
+                DebugOptions::CommandBufferSchedulingMode_Name(
+                    debug_options->xla_gpu_command_buffer_scheduling_mode()),
+                "The command buffer scheduling mode for XLA:GPU."));
+
   flag_list->push_back(tsl::Flag(
       "xla_cmd_buffer_trace_cache_size",
       int64_setter_for(&DebugOptions::set_xla_cmd_buffer_trace_cache_size),
