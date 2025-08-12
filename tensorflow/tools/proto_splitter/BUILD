@@ -240,6 +240,7 @@ tf_cc_test(
         "//tensorflow/tools/proto_splitter/cc:test_util",
         "//tensorflow/tools/proto_splitter/cc:util",
         "//tensorflow/tools/proto_splitter/testdata:test_message_proto_cc",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:env",
