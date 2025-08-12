@@ -105,7 +105,7 @@ mlir::TF::FuncAttr createMaxUnpoolingAttr(mlir::MLIRContext* context,
 
 class PerceptionUtilsTest : public ::testing::Test {
  protected:
-  PerceptionUtilsTest() {}
+  PerceptionUtilsTest() = default;
 
   void SetUp() override {
     context_ = std::make_unique<mlir::MLIRContext>();
