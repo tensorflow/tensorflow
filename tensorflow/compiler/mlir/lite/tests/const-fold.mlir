@@ -1852,6 +1852,29 @@ func.func @gather() -> (tensor<2x3x4x5xi16>, tensor<2x3x4x5xi16>) {
   // CHECK: return [[CST]], [[CST]]
 }
 
+// CHECK-LABEL: func @gather_nd_slices
+func.func @gather_nd_slices() -> tensor<2x2xi32> {
+  %params = arith.constant dense<[[[1, 2], [3, 4]], [[5, 6], [7, 8]]]> : tensor<2x2x2xi32>
+  %indices = arith.constant dense<[[0, 1], [1, 0]]> : tensor<2x2xi64>
+  %0 = "tfl.gather_nd"(%params, %indices) : (tensor<2x2x2xi32>, tensor<2x2xi64>) -> tensor<2x2xi32>
+  return %0 : tensor<2x2xi32>
+
+  // CHECK-NOT: tfl.gather_nd
+  // CHECK: [[CST:%.*]] = arith.constant dense<{{\[\[}}3, 4], {{\[}}5, 6]]> : tensor<2x2xi32>
+  // CHECK: return [[CST]]
+}
+
+// CHECK-LABEL: func @gather_nd_scalars
+func.func @gather_nd_scalars() -> tensor<4xf32> {
+  %params = arith.constant dense<[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]> : tensor<3x3xf32>
+  %indices = arith.constant dense<[[0, 0], [2, 2], [1, 0], [2, 0]]> : tensor<4x2xi32>
+  %0 = "tfl.gather_nd"(%params, %indices) : (tensor<3x3xf32>, tensor<4x2xi32>) -> tensor<4xf32>
+  return %0 : tensor<4xf32>
+
+  // CHECK-NOT: tfl.gather_nd
+  // CHECK: [[CST:%.+]] = arith.constant dense<[1.000000e+00, 9.000000e+00, 4.000000e+00, 7.000000e+00]> : tensor<4xf32>
+  // CHECK: return [[CST]]
+}
 
 // CHECK-LABEL: reverse_2_dims
 func.func @reverse_2_dims() -> tensor<2x3x2xi32> {

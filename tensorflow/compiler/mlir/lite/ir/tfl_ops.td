@@ -1258,6 +1258,8 @@ def TFL_GatherNdOp : TFL_Op<"gather_nd", [
   let results = (outs
     TFL_TensorOf<[F32, I1, I8, I16, I64, I32, UI8, QI8, TFL_Str]>:$output
   );
+
+  let hasFolder = 1;
 }
 
 def TFL_ScatterNdOp : TFL_Op<"scatter_nd", [
