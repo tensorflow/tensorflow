@@ -72,7 +72,6 @@ class ConcatenateFusionKernelEmitter final : public MlirKernelEmitter {
 
  private:
   IndexingMap ComputeWorkItemIdToOutputIndexing(mlir::MLIRContext* ctx) const;
-  absl::StatusOr<KernelSpec> GetKernelSpec() const;
 
   absl::Status EmitEntryFunction(
       const emitters::PartitionedComputations& computations,
