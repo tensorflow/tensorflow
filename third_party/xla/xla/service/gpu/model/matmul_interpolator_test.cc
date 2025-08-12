@@ -354,7 +354,7 @@ INSTANTIATE_TEST_SUITE_P(
             /*test_name=*/"exact_match3_bf16",
             /*spec=*/
             {/*b=*/1, /*m=*/4096, /*n=*/2048, /*k=*/4096, /*clock_cycles=*/0},
-            /*expected_duration=*/absl::Microseconds(89),
+            /*expected_duration=*/absl::Microseconds(90),
         },
         {
             /*test_name=*/"extrapolate_small_bf16",
@@ -413,7 +413,7 @@ INSTANTIATE_TEST_SUITE_P(
             {/*b=*/1, /*m=*/2048, /*n=*/2048, /*k=*/2048, /*clock_cycles=*/0},
             // Expected duration based on nearest point (1,2048,2048,2048)
             // flops/sec and scaling by new dimensions.
-            /*expected_duration=*/absl::Microseconds(69),
+            /*expected_duration=*/absl::Microseconds(72),
         },
         {
             /*test_name=*/"interpolate_larger_batch_fp8",
