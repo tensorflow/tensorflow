@@ -531,7 +531,9 @@ build:verbose_logs --output_filter=
 #   avoid having to define linux/win separately.
 build:avx_linux --copt=-mavx
 build:avx_linux --host_copt=-mavx
+build:avx_linux --copt="-mf16c"
 build:avx_win --copt=/arch:AVX
+build:avx_win --copt="-mf16c"
 
 build:win_clang_base --@com_google_protobuf//build_defs:use_dlls=True
 build:win_clang_base --@com_google_absl//absl:use_dlls=True
