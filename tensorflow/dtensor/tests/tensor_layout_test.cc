@@ -41,8 +41,6 @@ using ::testing::ContainsRegex;
 using ::testing::ElementsAre;
 using ::testing::IsEmpty;
 using ::testing::SizeIs;
-using ::tsl::testing::IsOkAndHolds;
-using ::tsl::testing::StatusIs;
 
 // Simple implementation of a proto matcher comparing string representations.
 // Only works as ShapeProto's textual representation is deterministic.
