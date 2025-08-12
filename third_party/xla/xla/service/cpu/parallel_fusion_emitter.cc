@@ -1,0 +1,168 @@
+/* Copyright 2025 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#include "xla/service/cpu/parallel_fusion_emitter.h"
+
+#include <cstdint>
+#include <memory>
+#include <stack>
+#include <utility>
+#include <vector>
+
+#include "absl/base/thread_annotations.h"
+#include "absl/functional/bind_front.h"
+#include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
+#include "mlir/IR/MLIRContext.h"
+#include "xla/backends/cpu/codegen/fusion_compiler.h"
+#include "xla/backends/cpu/codegen/fusion_emitter.h"
+#include "xla/codegen/kernel_spec.h"
+#include "xla/codegen/llvm_ir_kernel_source.h"
+#include "xla/codegen/llvm_kernel_definition.h"
+#include "xla/codegen/mlir_kernel_definition.h"
+#include "xla/codegen/mlir_kernel_source.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/service/buffer_assignment.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/threadpool.h"
+
+namespace xla::cpu {
+
+struct ParallelFusionEmitter::CompilerInstance {
+  std::unique_ptr<mlir::MLIRContext> context;
+  std::unique_ptr<FusionCompiler> compiler;
+};
+
+class ParallelFusionEmitter::FusionCompilerPool {
+ public:
+  explicit FusionCompilerPool(FusionCompiler::Options options)
+      : options_(options) {}
+
+  // Get a single fusion compiler instance from the pool.
+  // When the shared_ptr is destroyed, the instance is returned to the pool.
+  std::shared_ptr<CompilerInstance> GetInstance();
+
+ private:
+  std::shared_ptr<CompilerInstance> CreateSharedInstance(
+      CompilerInstance instance);
+  void RecycleCompilerInstance(CompilerInstance* instance);
+
+  FusionCompiler::Options options_;
+
+  absl::Mutex instances_mutex_;
+  std::stack<CompilerInstance> instances_ ABSL_GUARDED_BY(instances_mutex_);
+};
+
+auto ParallelFusionEmitter::FusionCompilerPool::GetInstance()
+    -> std::shared_ptr<CompilerInstance> {
+  absl::MutexLock lock(&instances_mutex_);
+  if (!instances_.empty()) {
+    CompilerInstance instance = std::move(instances_.top());
+    instances_.pop();
+    return CreateSharedInstance(std::move(instance));
+  }
+
+  std::unique_ptr<mlir::MLIRContext> context = FusionCompiler::CreateContext();
+
+  auto compiler = std::make_unique<FusionCompiler>(context.get(), options_);
+
+  return CreateSharedInstance({std::move(context), std::move(compiler)});
+}
+
+auto ParallelFusionEmitter::FusionCompilerPool::CreateSharedInstance(
+    CompilerInstance instance) -> std::shared_ptr<CompilerInstance> {
+  return std::shared_ptr<CompilerInstance>(
+      new CompilerInstance(std::move(instance)),
+      absl::bind_front(&FusionCompilerPool::RecycleCompilerInstance, this));
+}
+
+void ParallelFusionEmitter::FusionCompilerPool::RecycleCompilerInstance(
+    CompilerInstance* instance) {
+  absl::MutexLock lock(&instances_mutex_);
+  instances_.push(std::move(*instance));
+  delete instance;
+}
+
+ParallelFusionEmitter::ParallelFusionEmitter(
+    tsl::thread::ThreadPool& thread_pool, FusionCompiler::Options options,
+    const BufferAssignment* buffer_assignment, bool use_unique_c_name)
+    : thread_pool_(thread_pool),
+      fusion_compiler_pool_(std::make_unique<FusionCompilerPool>(options)),
+      buffer_assignment_(buffer_assignment),
+      use_unique_c_name_(use_unique_c_name) {}
+
+ParallelFusionEmitter::~ParallelFusionEmitter() = default;
+
+absl::StatusOr<KernelSpec> ParallelFusionEmitter::AddFusion(
+    const HloFusionInstruction* fusion) {
+  // Ideally we would do the emitting in addition to the compilation in the
+  // background thread, but as the ThunkEmitter requires the kernel spec to be
+  // returned immediately, we have to do it in the main thread. This can be
+  // fixed but will require a rework of the ThunkEmitter.
+  auto compiler_instance = fusion_compiler_pool_->GetInstance();
+  TF_ASSIGN_OR_RETURN(MlirKernelDefinition mlir_kernel_definition,
+                      EmitFusionKernel(*compiler_instance->context, *fusion,
+                                       buffer_assignment_, use_unique_c_name_));
+
+  {
+    absl::MutexLock lock(&kernels_mutex_);
+    outstanding_kernels_++;
+  }
+
+  KernelSpec spec = mlir_kernel_definition.spec();
+  auto shared_source =
+      std::make_shared<MlirKernelDefinition>(std::move(mlir_kernel_definition));
+
+  thread_pool_.Schedule(absl::bind_front(&ParallelFusionEmitter::CompileFusion,
+                                         this, std::move(shared_source),
+                                         std::move(compiler_instance)));
+
+  return spec;
+}
+
+absl::StatusOr<std::vector<LlvmKernelDefinition>>
+ParallelFusionEmitter::ConsumeKernels() {
+  absl::MutexLock lock(&kernels_mutex_);
+
+  kernels_mutex_.Await(absl::Condition(
+      +[](int64_t* outstanding_kernels) { return *outstanding_kernels == 0; },
+      &outstanding_kernels_));
+
+  if (!kernels_status_.ok()) {
+    return kernels_status_;
+  }
+
+  return std::move(kernels_);
+}
+
+void ParallelFusionEmitter::CompileFusion(
+    std::shared_ptr<MlirKernelDefinition> mlir_kernel_definition,
+    std::shared_ptr<CompilerInstance> compiler_instance) {
+  auto [spec, source] = std::move(*mlir_kernel_definition).ReleaseStorage();
+  absl::StatusOr<LlvmIrKernelSource> llvm_kernel_source =
+      compiler_instance->compiler->Compile(std::move(source));
+
+  absl::MutexLock lock(&kernels_mutex_);
+  outstanding_kernels_--;
+
+  if (!llvm_kernel_source.ok()) {
+    kernels_status_.Update(llvm_kernel_source.status());
+    return;
+  }
+
+  kernels_.emplace_back(std::move(spec), std::move(*llvm_kernel_source));
+}
+
+}  // namespace xla::cpu

@@ -311,7 +311,13 @@ absl::StatusOr<LlvmIrKernelSource> FusionCompiler::Compile(
 }
 
 std::unique_ptr<mlir::MLIRContext> FusionCompiler::CreateContext() {
-  auto context = std::make_unique<mlir::MLIRContext>();
+  // MLIR uses std::thread, which means we will easily oversubscribe, disable it
+  // for now.
+  // TODO(willfroom): Look into implementing llvm::ThreadPoolInterface using an
+  // underlying tsl::thread::ThreadPool (b/437348148).
+  auto context = std::make_unique<mlir::MLIRContext>(
+      mlir::MLIRContext::Threading::DISABLED);
+
   context->loadDialect<mlir::DLTIDialect, mlir::affine::AffineDialect,
                        mlir::arith::ArithDialect, mlir::cf::ControlFlowDialect,
                        mlir::func::FuncDialect, mlir::math::MathDialect,
