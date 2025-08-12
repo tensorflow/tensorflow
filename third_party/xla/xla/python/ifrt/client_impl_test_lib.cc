@@ -89,7 +89,7 @@ TEST(ClientImplTest, DefaultDeviceAssignment) {
     for (int i = 0; i < device_assignment.replica_count(); ++i) {
       for (int j = 0; j < device_assignment.computation_count(); ++j) {
         EXPECT_THAT(client->LookupDevice(DeviceId(device_assignment(i, j))),
-                    IsOk());
+                    absl_testing::IsOk());
       }
     }
   }
@@ -102,7 +102,7 @@ TEST(ClientImplTest, DefaultDeviceAssignment) {
     for (int i = 0; i < device_assignment.replica_count(); ++i) {
       for (int j = 0; j < device_assignment.computation_count(); ++j) {
         EXPECT_THAT(client->LookupDevice(DeviceId(device_assignment(i, j))),
-                    IsOk());
+                    absl_testing::IsOk());
       }
     }
   }
