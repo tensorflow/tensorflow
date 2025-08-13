@@ -187,7 +187,7 @@ TEST_F(LiftAsFunctionCallTest, GetQuantizationMethodSucceeds) {
   // `"no_quantization {}"`.
   const absl::StatusOr<Method> method =
       GetQuantizationMethod(*xla_call_module_ops.begin());
-  ASSERT_THAT(method, IsOk());
+  ASSERT_THAT(method, absl_testing::IsOk());
   EXPECT_TRUE(method->has_no_quantization());
 }
 
@@ -217,10 +217,10 @@ TEST_F(LiftAsFunctionCallTest,
   // because there is no `_quantization_method` attribute.
   const absl::StatusOr<Method> method =
       GetQuantizationMethod(*xla_call_module_ops.begin());
-  EXPECT_THAT(
-      method,
-      StatusIs(absl::StatusCode::kInvalidArgument,
-               HasSubstr("Attribute _quantization_method is not found")));
+  EXPECT_THAT(method,
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInvalidArgument,
+                  HasSubstr("Attribute _quantization_method is not found")));
 }
 
 TEST_F(LiftAsFunctionCallTest,
@@ -247,9 +247,9 @@ TEST_F(LiftAsFunctionCallTest,
 
   const absl::StatusOr<Method> method =
       GetQuantizationMethod(*xla_call_module_ops.begin());
-  EXPECT_THAT(method,
-              StatusIs(absl::StatusCode::kInternal,
-                       HasSubstr("Failed to parse Method from textproto")));
+  EXPECT_THAT(method, absl_testing::StatusIs(
+                          absl::StatusCode::kInternal,
+                          HasSubstr("Failed to parse Method from textproto")));
 }
 
 constexpr absl::string_view kFunctionWithRegion =
