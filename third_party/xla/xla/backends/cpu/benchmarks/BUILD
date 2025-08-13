@@ -252,11 +252,13 @@ xla_cc_test(
 cc_library(
     name = "multi_benchmark_config",
     testonly = 1,
+    srcs = ["multi_benchmark_config.cc"],
     hdrs = ["multi_benchmark_config.h"],
     deps = [
         ":aot_benchmark_helper",
         ":hlo_benchmark_runner",
         "//xla/tsl/platform:test_benchmark",
+        "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/strings:string_view",
     ],
 )
