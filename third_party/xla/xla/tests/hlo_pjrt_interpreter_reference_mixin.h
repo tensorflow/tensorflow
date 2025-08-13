@@ -18,10 +18,9 @@ limitations under the License.
 
 #include <memory>
 
-#include "xla/hlo/evaluator/hlo_evaluator.h"
+#include "xla/pjrt/interpreter/interpreter_client.h"
 #include "xla/service/hlo_runner_pjrt.h"
 #include "xla/tests/hlo_runner_agnostic_reference_mixin.h"
-#include "xla/tests/split_phase_utils.h"
 
 namespace xla {
 
@@ -38,8 +37,7 @@ class HloPjRtInterpreterReferenceMixin
   explicit HloPjRtInterpreterReferenceMixin(BaseArgs&&... base_args)
       : HloRunnerAgnosticReferenceMixin<T>(
             std::make_unique<HloRunnerPjRt>(
-                MakeInterpreterClientSplitPhaseAware(
-                    []() { return std::make_unique<HloEvaluator>(); })),
+                std::make_unique<InterpreterClient>()),
             std::forward<BaseArgs>(base_args)...) {}
   ~HloPjRtInterpreterReferenceMixin() override = default;
 };
