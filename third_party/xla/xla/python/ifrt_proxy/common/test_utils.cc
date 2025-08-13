@@ -32,17 +32,17 @@ namespace {
 class Overrides {
  public:
   void Set(TestHookName h, std::function<void(bool*)> fn) {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     overrides_[h] = std::move(fn);
   }
 
   void Clear(TestHookName h) {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     overrides_.erase(h);
   }
 
   void Call(TestHookName h, bool* param1) {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     const auto it = overrides_.find(h);
     if (it != overrides_.end()) {
       it->second(param1);
