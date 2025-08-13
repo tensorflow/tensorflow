@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/log/check.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/compiler.h"
 #include "xla/service/gpu/autotuning/dot_search_space.h"
+#include "xla/service/gpu/autotuning/triton_configs.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_float_support.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -43,6 +45,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/nest_gemm_fusion.h"
 #include "xla/service/gpu/transforms/priority_fusion.h"
 #include "xla/service/hlo_cost_analysis.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/tsl/platform/errors.h"
@@ -52,6 +55,46 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+
+namespace {
+std::vector<TritonGemmConfig> GetDefaultTritonConfigs(
+    se::GpuComputeCapability compute_capability, bool autotune_tma) {
+  if (std::holds_alternative<se::CudaComputeCapability>(compute_capability)) {
+    auto cuda_compute_capability =
+        std::get<se::CudaComputeCapability>(compute_capability);
+    std::vector<TritonGemmConfig> configs;
+
+    if (cuda_compute_capability.IsAtLeastBlackwell()) {
+      configs = *kBlackwellConfigs;
+    } else if (cuda_compute_capability.IsHopper() ||
+               cuda_compute_capability.IsAmpere()) {
+      configs = *kHopperAmpereConfigs;
+    } else {
+      configs = *kDefaultCudaConfigs;
+    }
+
+    if (!autotune_tma) {
+      return configs;
+    }
+
+    // Hopper+ devices support TMA. Add TMA parameterized configs.
+    std::vector<TritonGemmConfig> tma_parameterized_configs;
+    for (auto& config : configs) {
+      config.is_tma_allowed = false;
+      tma_parameterized_configs.push_back(config);
+
+      config.is_tma_allowed = true;
+      tma_parameterized_configs.push_back(config);
+    }
+    return tma_parameterized_configs;
+  }
+  if (std::holds_alternative<se::RocmComputeCapability>(compute_capability)) {
+    return *kDefaultRocmConfigs;
+  }
+  return {};
+}
+
+}  // namespace
 
 absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
 TritonBackend::GetSupportedConfigs(const HloInstruction& instr) {
@@ -87,6 +130,14 @@ TritonBackend::GetSupportedConfigs(const HloInstruction& instr) {
           ? std::nullopt
           : std::make_optional(1),
       /*autotune_tma=*/autotune_tma);
+
+  if (!debug_options().xla_gpu_exhaustive_tiling_search()) {
+    VLOG(1) << "Restricting configs to the default set.";
+    gemm_configs = search_space.OptimizeConfigSet(
+        gemm_configs, /*hints=*/GetDefaultTritonConfigs(
+            target_config().device_description.gpu_compute_capability(),
+            autotune_tma));
+  }
   configs.reserve(gemm_configs.size());
   for (const auto& config : gemm_configs) {
     auto any = std::make_unique<google::protobuf::Any>();

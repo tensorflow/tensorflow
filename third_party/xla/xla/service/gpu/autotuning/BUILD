@@ -44,6 +44,7 @@ cc_library(
         ":autotuner_compile_util",
         ":autotuner_util",
         ":redzone_buffers",
+        ":triton_configs",
         "//xla:autotuning_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
@@ -85,6 +86,7 @@ cc_library(
         ":autotuner_compile_util",
         ":autotuner_util",
         ":redzone_buffers",
+        ":triton_configs",
         "//xla:autotuning_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
@@ -797,4 +799,10 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
     ],
+)
+
+cc_library(
+    name = "triton_configs",
+    hdrs = ["triton_configs.h"],
+    deps = ["//xla/service/gpu:matmul_utils"],
 )
