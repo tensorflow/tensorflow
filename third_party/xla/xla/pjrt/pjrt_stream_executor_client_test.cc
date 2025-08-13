@@ -24,6 +24,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/client/client_library.h"
@@ -51,7 +52,6 @@ namespace xla {
 namespace {
 
 using ::testing::HasSubstr;
-using ::tsl::testing::StatusIs;
 
 absl::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>> GetClient() {
   LocalClient* local_client = xla::ClientLibrary::LocalClientOrDie();
@@ -67,7 +67,7 @@ absl::StatusOr<std::unique_ptr<PjRtStreamExecutorClient>> GetClient() {
   std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices;
   devices.emplace_back(std::make_unique<PjRtStreamExecutorDevice>(
       0, std::move(device_state), local_device_id, /*process_index=*/0,
-      /*slice_index=*/0, "cpu"));
+      /*process_index_in_partition=*/0, /*partition_index=*/0, "cpu"));
   std::vector<std::unique_ptr<PjRtMemorySpace>> memory_spaces;
   memory_spaces.emplace_back(std::make_unique<PjRtStreamExecutorMemorySpace>(
       0, devices.back().get(), "cpu", 0));

@@ -44,19 +44,23 @@ limitations under the License.
 #include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
-#include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_stream_executor_client.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
+#include "xla/pjrt/tracked_device_buffer.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/computation_placer.h"
+#include "xla/service/global_device_id.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/shape.h"
+#include "xla/shape_tree.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/casts.h"
 
 namespace xla {
 using DeviceTopologyPair =
@@ -70,7 +74,8 @@ class StreamExecutorGpuDevice : public PjRtStreamExecutorDevice {
                           std::string device_kind, std::string device_vendor,
                           std::string compute_capability, int core_count,
                           int shared_memory_per_block_optin,
-                          int local_device_id, int node_id,
+                          int local_device_id, int process_index,
+                          int process_index_in_partition = 0,
                           int partition_index = 0);
 
   absl::string_view device_vendor() const;

@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -37,7 +36,6 @@ limitations under the License.
 #include "absl/functional/bind_front.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/numbers.h"
@@ -60,7 +58,6 @@ limitations under the License.
 #include "xla/executable_run_options.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/layout.h"
-#include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
@@ -82,7 +79,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_stream_executor_client.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_allocator_config.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
-#include "xla/pjrt/stream_executor_executable.h"
 #include "xla/pjrt/tracked_device_buffer.h"
 #include "xla/pjrt/worker_thread.h"
 #include "xla/service/compiler.h"
@@ -94,6 +90,7 @@ limitations under the License.
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
@@ -104,17 +101,13 @@ limitations under the License.
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "xla/tsl/framework/allocator.h"
-#include "xla/tsl/lib/strings/proto_serialization.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "tsl/platform/casts.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/fingerprint.h"
 #include "tsl/platform/protobuf.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/threadpool.h"
 #include "tsl/profiler/lib/connected_traceme.h"
 #include "tsl/profiler/lib/nvtx_utils.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -1574,8 +1567,24 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
 
   std::map<int, GlobalDeviceId> gpu_device_ids;
   absl::flat_hash_map<GlobalDeviceId, int> device_to_node;
+  int curr_partition_index = -1;
+  int curr_process_index = -1;
+  int curr_process_index_in_partition = 0;
   for (const LocalTopologyProto& node : global_topology.nodes()) {
     for (const DeviceProto& device_proto : node.devices()) {
+      // The devices in the global topology are ordered by node_id,
+      // partition_index. This is guaranteed by the `BuildGlobalTopology`
+      // function and the `ExchangeTopologies` function.
+      if (curr_partition_index != device_proto.partition_index()) {
+        curr_partition_index = device_proto.partition_index();
+        curr_process_index = node.node_id();
+        curr_process_index_in_partition = 0;
+      }
+      if (curr_process_index != node.node_id()) {
+        curr_process_index = node.node_id();
+        curr_process_index_in_partition++;
+      }
+
       GlobalDeviceId global_device_id(device_proto.global_device_id());
       device_to_node[global_device_id] = node.node_id();
       std::unique_ptr<LocalDeviceState> local_device;
@@ -1596,7 +1605,7 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
           device_proto.compute_capability(), device_proto.core_count(),
           device_proto.shared_memory_per_block_optin(),
           device_proto.local_device_ordinal(), node.node_id(),
-          device_proto.partition_index());
+          curr_process_index_in_partition, device_proto.partition_index());
       devices.push_back(std::move(device));
     }
   }
@@ -1641,11 +1650,11 @@ StreamExecutorGpuDevice::StreamExecutorGpuDevice(
     int id, std::unique_ptr<LocalDeviceState> local_device_state,
     std::string device_kind, std::string device_vendor,
     std::string compute_capability, int core_count,
-    int shared_memory_per_block_optin, int local_device_id, int node_id,
-    int partition_index)
+    int shared_memory_per_block_optin, int local_device_id, int process_index,
+    int process_index_in_partition, int partition_index)
     : PjRtStreamExecutorDevice(
-          id, std::move(local_device_state), local_device_id,
-          /*process_index=*/node_id, partition_index, std::move(device_kind)),
+          id, std::move(local_device_state), local_device_id, process_index,
+          process_index_in_partition, partition_index, std::move(device_kind)),
       device_vendor_(std::move(device_vendor)) {
   StreamExecutorGpuTopologyDescription::SetupDeviceDescription(
       description(), device_vendor_, compute_capability, core_count,

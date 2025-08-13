@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_PJRT_PJRT_STREAM_EXECUTOR_CLIENT_H_
 #define XLA_PJRT_PJRT_STREAM_EXECUTOR_CLIENT_H_
 
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -24,7 +23,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -59,17 +57,19 @@ limitations under the License.
 #include "xla/pjrt/tracked_device_buffer.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/pjrt/utils.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
-#include "xla/service/maybe_owning_device_memory.h"
-#include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
+#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/framework/allocator.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -99,13 +99,15 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
   PjRtStreamExecutorDevice(int id,
                            std::unique_ptr<LocalDeviceState> local_device_state,
                            int local_device_id, int process_index,
-                           int slice_index, std::string device_kind)
+                           int process_index_in_partition, int partition_index,
+                           std::string device_kind)
       : local_device_id_(local_device_id),
         local_hardware_id_(local_device_state
                                ? local_device_state->local_hardware_id()
                                : PjRtLocalHardwareId(-1)),
         local_device_state_(std::move(local_device_state)),
-        description_(id, local_device_id_.value(), process_index, slice_index,
+        description_(id, local_device_id_.value(), process_index,
+                     process_index_in_partition, partition_index,
                      std::move(device_kind)) {
     if (local_device_state_ != nullptr) {
       CHECK_EQ(local_device_state_->local_device_id(), local_device_id_);

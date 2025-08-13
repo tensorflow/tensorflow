@@ -200,6 +200,7 @@ xla_cc_test(
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:stream",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tests:literal_test_util",
         "//xla/tsl/concurrency:async_value",
         # copybara:uncomment "//xla/tsl/framework:allocator",
