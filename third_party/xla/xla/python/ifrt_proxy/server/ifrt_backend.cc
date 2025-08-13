@@ -1510,15 +1510,22 @@ Future<BackendInterface::Response> IfrtBackend::HandleCompileRequest(
 Future<BackendInterface::Response>
 IfrtBackend::HandleLoadedExecutableMetadataRequest(
     std::unique_ptr<IfrtRequest> request) {
-  // Call `GetParameterShardings` and `GetOutputShardings` on a thread pool
+  // Call `GetParameterShardings` and `GetOutputShardings` in the background
   // since some implementations may block until compilation completes.
-  return AsyncExecute([this, request = std::shared_ptr<IfrtRequest>(std::move(
-                                 request))]() -> absl::StatusOr<Response> {
-    const uint64_t handle = request->loaded_executable_metadata_request()
-                                .loaded_executable_handle();
-    TF_ASSIGN_OR_RETURN(
-        std::shared_ptr<LoadedExecutableWithInfo> executable_info,
-        GetLoadedExecutable(handle));
+  // But retain a shared-ptr reference to the executable immediately, in case
+  // the client asks to destruct the executable before the background thread
+  // finishes.
+  absl::StatusOr<std::shared_ptr<LoadedExecutableWithInfo>> executable_info =
+      GetLoadedExecutable(request->loaded_executable_metadata_request()
+                              .loaded_executable_handle());
+
+  if (!executable_info.ok()) {
+    return Future<BackendInterface::Response>(executable_info.status());
+  }
+
+  return AsyncExecute([executable_info = *std::move(executable_info),
+                       request = std::shared_ptr<IfrtRequest>(
+                           std::move(request))]() -> absl::StatusOr<Response> {
     LoadedExecutable* executable = executable_info->executable.get();
 
     std::unique_ptr<IfrtResponse> ifrt_resp =
