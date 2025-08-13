@@ -1391,5 +1391,39 @@ TEST_F(CommandBufferSchedulingTest, MoveGTEs) {
                             });
 }
 
+class CommandBufferSchedulingTestNoMinSize
+    : public CommandBufferSchedulingTest {
+ public:
+  DebugOptions GetDebugOptionsForTest() const override {
+    auto debug_options = CommandBufferSchedulingTest::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_graph_min_graph_size(1);
+    return debug_options;
+  }
+};
+
+TEST_F(CommandBufferSchedulingTestNoMinSize, BlockScaledDotGraphCaptureWorks) {
+  const std::string kHloText = R"(
+HloModule m, is_scheduled=true
+
+ENTRY e {
+  %lhs = f8e4m3fn[4,128,128] parameter(0)
+  %rhs = f8e4m3fn[4,128,128] parameter(1)
+  %lhs_scale = f8e8m0fnu[4,128,4] parameter(2)
+  %rhs_scale = f8e8m0fnu[4,128,4] parameter(3)
+  ROOT %result = f16[4,128,128] custom-call(%lhs, %rhs, %lhs_scale, %rhs_scale),
+      custom_call_target="__cudnn$blockScaledDot"
+})";
+
+  const std::string kExpected = R"(
+; CHECK: to_apply=%command_buffer
+})";
+
+  RunAndFilecheckHloRewrite(kHloText, CommandBufferScheduling(device_desc()),
+                            kExpected, [](HloModule* module) {
+                              EXPECT_TRUE(module->has_schedule());
+                              TF_CHECK_OK(module->schedule().Verify());
+                            });
+}
+
 }  // namespace
 }  // namespace xla::gpu
