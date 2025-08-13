@@ -94,64 +94,6 @@ class CpuVectorizationTest
   }
 };
 
-TEST_P(CpuVectorizationTest, DoIt) {
-  HloComputation::Builder builder(TestName());
-  VectorizationTestSpec spec = GetParam();
-
-  LLVMInitializeX86Target();
-  LLVMInitializeX86TargetInfo();
-  LLVMInitializeX86TargetMC();
-  LLVMInitializeARMTarget();
-  LLVMInitializeARMTargetInfo();
-  LLVMInitializeARMTargetMC();
-
-  auto param_shape = ShapeUtil::MakeShape(F32, {1024});
-  HloInstruction* param0 = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, param_shape, "input0"));
-  HloInstruction* param1 = builder.AddInstruction(
-      HloInstruction::CreateParameter(1, param_shape, "input1"));
-  builder.AddInstruction(
-      HloInstruction::CreateBinary(param_shape, spec.opcode, param0, param1));
-  std::unique_ptr<HloComputation> computation = builder.Build();
-
-  CpuAotCompilationOptions options{
-      /*triple=*/spec.triple, /*cpu_name=*/"", /*features=*/spec.features,
-      /*entry_point_name=*/"entry",
-      /*relocation_model=*/CpuAotCompilationOptions::RelocationModel::Static};
-
-  auto hlo_module = CreateNewVerifiedModule();
-  hlo_module->AddEntryComputation(std::move(computation));
-
-  std::string check_lines{spec.check_lines.data(), spec.check_lines.size()};
-
-  hlo_module->mutable_config()
-      .mutable_debug_options()
-      .set_xla_cpu_use_thunk_runtime(false);
-
-  CompileAheadOfTimeAndVerifyIr(std::move(hlo_module), options, check_lines,
-                                /*match_optimized_ir=*/true);
-}
-
-VectorizationTestSpec CpuVectorizationTestCases[] = {
-    VectorizationTestSpec{HloOpcode::kMultiply, kTriple_x86_64, "",
-                          R"(CHECK: fmul fast <4 x float>)"},
-
-    VectorizationTestSpec{HloOpcode::kMultiply, kTriple_x86_64, "+avx",
-                          R"(CHECK: fmul fast <8 x float>)"},
-
-    VectorizationTestSpec{HloOpcode::kMultiply, kTriple_android_arm,
-                          "-vfp,-neon", R"(CHECK: fmul fast float)"},
-
-    // Neon is not IEEE754-compliant (no denormals). We want vectorized code
-    // anyways.
-    VectorizationTestSpec{HloOpcode::kMultiply, kTriple_android_arm,
-                          "+neon,-vfp", R"(CHECK: fmul fast <4 x float>)"}};
-
-INSTANTIATE_TEST_SUITE_P(CpuVectorizationTestInstantiation,
-                         CpuVectorizationTest,
-                         ::testing::ValuesIn(CpuVectorizationTestCases),
-                         CpuVectorizationTest::Name);
-
 struct MaxIsaTestSpec {
   std::string max_isa;
   std::string feature;

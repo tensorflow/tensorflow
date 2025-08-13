@@ -1489,7 +1489,6 @@ CpuCompiler::CompileCpuExecutable(std::unique_ptr<HloModule> module) {
       JitCompiler::Create(std::move(jit_compiler_options),
                           std::move(ir_compiler), GetCompilationTaskRunner()));
 
-  HloComputation* entry_computation = module->entry_computation();
   absl::flat_hash_map<const HloInstruction*, int64_t>
       instruction_to_profile_idx;
   absl::flat_hash_map<const HloComputation*, int64_t>
@@ -1553,304 +1552,232 @@ CpuCompiler::CompileCpuExecutable(std::unique_ptr<HloModule> module) {
 #endif
   );
 
-  // If we use Thunk runtime then instead of emitting LLVM function for the
-  // entry computation we emit a sequence of thunks that implement the
-  // computation as a sequence of interpreted commands.
-  if (module->config().debug_options().xla_cpu_use_thunk_runtime()) {
-    // The thunk runtime manages large constants, therefore we only emit
-    // small ones.
-    TF_RETURN_IF_ERROR(nested_ir_emitter.EmitSmallConstantGlobals());
+  // The thunk runtime manages large constants, therefore we only emit
+  // small ones.
+  TF_RETURN_IF_ERROR(nested_ir_emitter.EmitSmallConstantGlobals());
 
-    // IR emitter is responsible for building LLVM module with host kernels for
-    // corresponding HLO instructions (fusions, elemental instructions, etc.).
-    IrEmitter2 ir_emitter2(*module, llvm_module.get(), &nested_ir_emitter);
+  // IR emitter is responsible for building LLVM module with host kernels for
+  // corresponding HLO instructions (fusions, elemental instructions, etc.).
+  IrEmitter2 ir_emitter2(*module, llvm_module.get(), &nested_ir_emitter);
 
-    // Thunk emitter is responsible for building a Thunk sequence that will
-    // resolved kernels in the compiled LLVM module and execute them together
-    // with Thunks implemented as library calls (e.g. oneDNN or Eigen).
-    ThunkEmitter thunk_emitter(ir_emitter2, *assignment,
-                               target_machine_features, *module);
-    TF_ASSIGN_OR_RETURN(ThunkSequence thunks,
-                        thunk_emitter.EmitEntryComputation(*module));
-
-    std::string ir_module_string;
-    if (embed_ir_in_executable) {
-      std::string emitter2_ir = llvm_ir::DumpToString(llvm_module.get());
-
-      auto thunk_kernel_fmt = [](std::string* out,
-                                 const ThunkEmitter::EmittedKernel& kernel) {
-        absl::StrAppend(
-            out, llvm_ir::DumpToString(kernel.module.getModuleUnlocked()));
-      };
-      std::string thunks_ir =
-          absl::StrJoin(thunk_emitter.kernels(), "\n", thunk_kernel_fmt);
-
-      ir_module_string = absl::StrCat(emitter2_ir, "\n", thunks_ir);
-    }
-
-    TF_RETURN_IF_ERROR(VerifyLlvmModule(*llvm_module));
-    for (const auto& [name, module] : thunk_emitter.kernels()) {
-      TF_RETURN_IF_ERROR(VerifyLlvmModule(*module.getModuleUnlocked()));
-    }
-
-    // Some kernels have to be compiled separately because they have
-    // extra backend options.
-    int num_extra_functions = 0;
-    using BackendOptions = llvm::StringRef;
-    using Kernel = llvm::StringRef;
-    absl::flat_hash_map<BackendOptions, absl::flat_hash_set<Kernel>>
-        backend_extra_options_to_kernels;
-    for (const auto& k : ir_emitter2.kernels()) {
-      if (k.backend_extra_options.empty()) continue;
-      auto [_, inserted] =
-          backend_extra_options_to_kernels[k.backend_extra_options].insert(
-              k.name);
-      CHECK(inserted) << "Kernel " << k.name << " is not unique";
-      num_extra_functions++;
-    }
-    const int num_extra_parts = backend_extra_options_to_kernels.size();
-    // We assign one dylib to each set of kernels that have the same extra
-    // backend options. We do this because we work under the assumption that
-    // very few kernels will set extra options, and if they do, the options are
-    // likely to be identical.
-    if (num_extra_parts >= parallel_codegen_split_count) {
-      return Internal(
-          "Too many extra compilation parts due to non-default options (%d). "
-          "Consider reducing this number or increasing "
-          "parallel_codegen_split_count (%d)",
-          num_extra_parts, parallel_codegen_split_count);
-    }
-
-    // We define the number of module parts based on the total number of
-    // compiled functions (kernels and comparators) that are called from thunks,
-    // and the maximum number of parts that we want to split the module into.
-    size_t num_compiled_functions = ir_emitter2.kernels().size() +
-                                    ir_emitter2.comparators().size() +
-                                    thunk_emitter.kernels().size();
-    size_t num_default_parts =
-        std::min(num_compiled_functions - num_extra_functions,
-                 parallel_codegen_split_count - num_extra_parts);
-
-    // JIT compile the LLVM IR module to in-memory machine code. We split the
-    // module into `num_jit_dylibs` parts to allow parallel compilation. In
-    // practice, all of the kernel functions are independent and don't call each
-    // other, so we can compile each individual part in parallel. We split
-    // module preserving locals, which should guarantee that all thread local
-    // computations end up in the same module with the corresponding kernel.
-
-    // Collect all compiled symbols grouped by LLVM module part, so that we can
-    // issue compile tasks in parallel without any interference.
-    std::vector<CompiledSymbolsPart> compiled_parts;
-
-    VLOG(2) << "Compile LLVM module with " << ir_emitter2.kernels().size()
-            << " kernels and " << ir_emitter2.comparators().size()
-            << " comparators";
-
-    int dylib_index = 0;
-    auto add_jit_module = [&](std::unique_ptr<llvm::Module> llvm_module_part) {
-      // Collect symbols that are compiled in this LLVM module part.
-      RemoveUnusedSymbols(*llvm_module_part);
-      compiled_parts.push_back(
-          CollectCompiledSymbolsPart(ir_emitter2, *llvm_module_part));
-
-      std::string dump = llvm_ir::DumpToString(llvm_module_part.get());
-      VLOG(5) << "Adding compilation module:\n" << dump;
-
-      // Clone LLVM module part into its own thread safe context.
-      auto tsm =
-          CloneAsThreadSafeModule(dylib_index, std::move(llvm_module_part));
-      TF_CHECK_OK(jit_compiler.AddModule(std::move(tsm), dylib_index++));
-    };
-
-    // If there are extra parts, compile them first, since we must
-    // remove the affected kernels from the LLVM module.
-    if (num_extra_parts > 0) {
-      TraceMe trace([&] {
-        return TraceMeEncode("CompileExtraKernels",
-                             {{"num_extra_parts", num_extra_parts}});
-      });
-      for (const auto& [backend_extra_options, kernels] :
-           backend_extra_options_to_kernels) {
-        TF_ASSIGN_OR_RETURN(
-            std::unique_ptr<llvm::Module> new_module,
-            ExtractKernelsFromModule(llvm_module.get(), kernels));
-        AddXlaBackendExtraOptionsAsModuleFlag(new_module.get(),
-                                              backend_extra_options);
-        add_jit_module(std::move(new_module));
-      }
-    }
-
-    if (HasLargeConstants(*llvm_module)) {
-      VLOG(3) << "Skip parallel compilation due to large constants";
-      num_default_parts = 1;
-    }
-
-    if (num_default_parts > 1) {
-      VLOG(3) << "Split LLVM module into " << num_default_parts
-              << " parts before codegen to enable parallel compilation"
-              << " (max split count: " << parallel_codegen_split_count << ")";
-
-      TraceMe trace([&] {
-        return TraceMeEncode("SplitModule",
-                             {{"num_default_parts", num_default_parts}});
-      });
-
-      llvm::SplitModule(*llvm_module, num_default_parts, add_jit_module,
-                        /*PreserveLocals=*/true, /*RoundRobin=*/true);
-      // Free resources used by the original LLVM module.
-      llvm_module.reset();
-      llvm_context.reset();
-
-    } else {
-      VLOG(3) << "Compile LLVM module without splitting (max split count: "
-              << parallel_codegen_split_count << ")";
-      compiled_parts.push_back(
-          CollectCompiledSymbolsPart(ir_emitter2, *llvm_module));
-      TF_CHECK_OK(jit_compiler.AddModule(llvm::orc::ThreadSafeModule(
-          std::move(llvm_module), std::move(llvm_context))));
-    }
-
-    // Collect compiled symbols from all LLVM module parts.
-    std::vector<FunctionLibrary::Symbol> compiled_symbols;
-
-    absl::flat_hash_map<FunctionLibrary::TypeId, SymbolProto::FunctionTypeId>
-        symbol_type_id_to_function_type_id;
-
-    VLOG(3) << "Adding " << thunk_emitter.kernels().size()
-            << " kernels to the JIT compiler";
-    // Make sure we use all the "default" modules for maximum parallelism.
-    int num_default_so_far = dylib_index - num_extra_parts;
-    int kernel_dylib_index =
-        num_default_so_far < num_default_parts ? num_default_so_far : 0;
-    for (auto& [name, module] : thunk_emitter.kernels()) {
-      compiled_symbols.push_back(
-          FunctionLibrary::Sym<FunctionLibrary::Kernel>(name));
-      symbol_type_id_to_function_type_id.emplace(
-          compiled_symbols.back().type_id, SymbolProto::KERNEL);
-      TF_CHECK_OK(jit_compiler.AddModule(std::move(module),
-                                         num_extra_parts + kernel_dylib_index));
-      // Simply roundrobin the default kernel dylibs
-      kernel_dylib_index = (kernel_dylib_index + 1) % num_default_parts;
-    }
-
-    for (const CompiledSymbolsPart& part : compiled_parts) {
-      for (const IrEmitter2::KernelInfo& kernel : part.kernels) {
-        compiled_symbols.push_back(
-            FunctionLibrary::Sym<FunctionLibrary::Kernel>(kernel.name));
-        symbol_type_id_to_function_type_id.emplace(
-            compiled_symbols.back().type_id, SymbolProto::KERNEL);
-      }
-      for (const IrEmitter2::ComparatorInfo& comparator : part.comparators) {
-        compiled_symbols.push_back(
-            FunctionLibrary::Sym<FunctionLibrary::Comparator>(comparator.name));
-        symbol_type_id_to_function_type_id.emplace(
-            compiled_symbols.back().type_id, SymbolProto::COMPARATOR);
-      }
-    }
-
-    VLOG(3) << "Collected " << compiled_symbols.size() << " compiled symbols";
-
-    TraceMe trace_codegen([&] {
-      return TraceMeEncode(
-          "Codegen", {{"num_default_parts", num_default_parts},
-                      {"num_extra_parts", num_extra_parts},
-                      {"num_compiled_functions", num_compiled_functions}});
-    });
-
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<FunctionLibrary> function_library,
-                        std::move(jit_compiler).Compile(compiled_symbols));
-
-    // Create constant allocations from the buffer assignment.
-    TF_ASSIGN_OR_RETURN(std::vector<ConstantAllocation> constants,
-                        CreateConstantAllocations(*assignment));
-
-    TF_ASSIGN_OR_RETURN(
-        auto cpu_executable,
-        CpuExecutable::Create(std::move(function_library),
-                              std::move(assignment), std::move(module),
-                              std::move(thunks), std::move(constants),
-                              std::move(hlo_profile_printer_data),
-                              std::move(hlo_profile_index_map)));
-
-    // Save object files to be able to export them to AOT compilation
-    // result.
-    cpu_executable->set_obj_files(std::move(obj_files));
-
-    // Save compiled symbols to be able to export them to AOT compilation
-    // result.
-    cpu_executable->set_compiled_symbols(std::move(compiled_symbols));
-
-    // Save mapping between symbol type id and function type id to be able to
-    // export them to AOT compilation result.
-    cpu_executable->set_symbol_type_id_to_function_type_id(
-        symbol_type_id_to_function_type_id);
-
-    if (embed_ir_in_executable) {
-      cpu_executable->set_ir_module_string(ir_module_string);
-    }
-
-    return with_hlo_proto(std::move(cpu_executable));
-  }
-
-  TF_RETURN_IF_ERROR(nested_ir_emitter.EmitAllConstantGlobals());
-
-  // Each computation is a single function.  Emit all embedded computations
-  // before the entry computation. The order of computations returned from
-  // SubcomputationEmissionOrder guarantees that a called computation occurs
-  // before a caller computation.
-  for (ComputationToEmit subcomputation :
-       SubcomputationEmissionOrder(entry_computation)) {
-    if (subcomputation.computation->IsFusionComputation()) {
-      continue;
-    }
-    TF_RETURN_IF_ERROR(
-        nested_ir_emitter
-            .EmitComputation(
-                subcomputation.computation, subcomputation.computation->name(),
-                /*is_top_level_computation=*/false,
-                schedule.sequence(subcomputation.computation).instructions(),
-                subcomputation.allow_reassociation)
-            .status());
-  }
-  absl::string_view function_name_prefix = entry_computation->name().empty()
-                                               ? "__compute"
-                                               : entry_computation->name();
-  TF_ASSIGN_OR_RETURN(llvm::Function * entry_function,
-                      nested_ir_emitter.EmitComputation(
-                          entry_computation, function_name_prefix,
-                          /*is_top_level_computation=*/true,
-                          schedule.sequence(entry_computation).instructions(),
-                          /*allow_reassociation=*/false));
+  // Thunk emitter is responsible for building a Thunk sequence that will
+  // resolved kernels in the compiled LLVM module and execute them together
+  // with Thunks implemented as library calls (e.g. oneDNN or Eigen).
+  ThunkEmitter thunk_emitter(ir_emitter2, *assignment, target_machine_features,
+                             *module);
+  TF_ASSIGN_OR_RETURN(ThunkSequence thunks,
+                      thunk_emitter.EmitEntryComputation(*module));
 
   std::string ir_module_string;
   if (embed_ir_in_executable) {
-    ir_module_string = llvm_ir::DumpToString(llvm_module.get());
+    std::string emitter2_ir = llvm_ir::DumpToString(llvm_module.get());
+
+    auto thunk_kernel_fmt = [](std::string* out,
+                               const ThunkEmitter::EmittedKernel& kernel) {
+      absl::StrAppend(out,
+                      llvm_ir::DumpToString(kernel.module.getModuleUnlocked()));
+    };
+    std::string thunks_ir =
+        absl::StrJoin(thunk_emitter.kernels(), "\n", thunk_kernel_fmt);
+
+    ir_module_string = absl::StrCat(emitter2_ir, "\n", thunks_ir);
   }
 
   TF_RETURN_IF_ERROR(VerifyLlvmModule(*llvm_module));
+  for (const auto& [name, module] : thunk_emitter.kernels()) {
+    TF_RETURN_IF_ERROR(VerifyLlvmModule(*module.getModuleUnlocked()));
+  }
 
-  // Save entry function name before destroying LLVM module.
-  std::string entry_function_name = entry_function->getName().str();
+  // Some kernels have to be compiled separately because they have
+  // extra backend options.
+  int num_extra_functions = 0;
+  using BackendOptions = llvm::StringRef;
+  using Kernel = llvm::StringRef;
+  absl::flat_hash_map<BackendOptions, absl::flat_hash_set<Kernel>>
+      backend_extra_options_to_kernels;
+  for (const auto& k : ir_emitter2.kernels()) {
+    if (k.backend_extra_options.empty()) continue;
+    auto [_, inserted] =
+        backend_extra_options_to_kernels[k.backend_extra_options].insert(
+            k.name);
+    CHECK(inserted) << "Kernel " << k.name << " is not unique";
+    num_extra_functions++;
+  }
+  const int num_extra_parts = backend_extra_options_to_kernels.size();
+  // We assign one dylib to each set of kernels that have the same extra
+  // backend options. We do this because we work under the assumption that
+  // very few kernels will set extra options, and if they do, the options are
+  // likely to be identical.
+  if (num_extra_parts >= parallel_codegen_split_count) {
+    return Internal(
+        "Too many extra compilation parts due to non-default options (%d). "
+        "Consider reducing this number or increasing "
+        "parallel_codegen_split_count (%d)",
+        num_extra_parts, parallel_codegen_split_count);
+  }
 
-  // JIT compile the LLVM IR module to in-memory machine code.
-  llvm::orc::ThreadSafeModule thread_safe_module(std::move(llvm_module),
-                                                 std::move(llvm_context));
-  TF_RETURN_IF_ERROR(jit_compiler.AddModule(std::move(thread_safe_module)));
+  // We define the number of module parts based on the total number of
+  // compiled functions (kernels and comparators) that are called from thunks,
+  // and the maximum number of parts that we want to split the module into.
+  size_t num_compiled_functions = ir_emitter2.kernels().size() +
+                                  ir_emitter2.comparators().size() +
+                                  thunk_emitter.kernels().size();
+  size_t num_default_parts =
+      std::min(num_compiled_functions - num_extra_functions,
+               parallel_codegen_split_count - num_extra_parts);
 
-  using ComputeFn = std::remove_pointer_t<CpuExecutable::ComputeFunctionType>;
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<FunctionLibrary> function_library,
-      std::move(jit_compiler)
-          .Compile({FunctionLibrary::Sym<ComputeFn>(entry_function_name)}));
+  // JIT compile the LLVM IR module to in-memory machine code. We split the
+  // module into `num_jit_dylibs` parts to allow parallel compilation. In
+  // practice, all of the kernel functions are independent and don't call each
+  // other, so we can compile each individual part in parallel. We split
+  // module preserving locals, which should guarantee that all thread local
+  // computations end up in the same module with the corresponding kernel.
+
+  // Collect all compiled symbols grouped by LLVM module part, so that we can
+  // issue compile tasks in parallel without any interference.
+  std::vector<CompiledSymbolsPart> compiled_parts;
+
+  VLOG(2) << "Compile LLVM module with " << ir_emitter2.kernels().size()
+          << " kernels and " << ir_emitter2.comparators().size()
+          << " comparators";
+
+  int dylib_index = 0;
+  auto add_jit_module = [&](std::unique_ptr<llvm::Module> llvm_module_part) {
+    // Collect symbols that are compiled in this LLVM module part.
+    RemoveUnusedSymbols(*llvm_module_part);
+    compiled_parts.push_back(
+        CollectCompiledSymbolsPart(ir_emitter2, *llvm_module_part));
+
+    std::string dump = llvm_ir::DumpToString(llvm_module_part.get());
+    VLOG(5) << "Adding compilation module:\n" << dump;
+
+    // Clone LLVM module part into its own thread safe context.
+    auto tsm =
+        CloneAsThreadSafeModule(dylib_index, std::move(llvm_module_part));
+    TF_CHECK_OK(jit_compiler.AddModule(std::move(tsm), dylib_index++));
+  };
+
+  // If there are extra parts, compile them first, since we must
+  // remove the affected kernels from the LLVM module.
+  if (num_extra_parts > 0) {
+    TraceMe trace([&] {
+      return TraceMeEncode("CompileExtraKernels",
+                           {{"num_extra_parts", num_extra_parts}});
+    });
+    for (const auto& [backend_extra_options, kernels] :
+         backend_extra_options_to_kernels) {
+      TF_ASSIGN_OR_RETURN(std::unique_ptr<llvm::Module> new_module,
+                          ExtractKernelsFromModule(llvm_module.get(), kernels));
+      AddXlaBackendExtraOptionsAsModuleFlag(new_module.get(),
+                                            backend_extra_options);
+      add_jit_module(std::move(new_module));
+    }
+  }
+
+  if (HasLargeConstants(*llvm_module)) {
+    VLOG(3) << "Skip parallel compilation due to large constants";
+    num_default_parts = 1;
+  }
+
+  if (num_default_parts > 1) {
+    VLOG(3) << "Split LLVM module into " << num_default_parts
+            << " parts before codegen to enable parallel compilation"
+            << " (max split count: " << parallel_codegen_split_count << ")";
+
+    TraceMe trace([&] {
+      return TraceMeEncode("SplitModule",
+                           {{"num_default_parts", num_default_parts}});
+    });
+
+    llvm::SplitModule(*llvm_module, num_default_parts, add_jit_module,
+                      /*PreserveLocals=*/true, /*RoundRobin=*/true);
+    // Free resources used by the original LLVM module.
+    llvm_module.reset();
+    llvm_context.reset();
+
+  } else {
+    VLOG(3) << "Compile LLVM module without splitting (max split count: "
+            << parallel_codegen_split_count << ")";
+    compiled_parts.push_back(
+        CollectCompiledSymbolsPart(ir_emitter2, *llvm_module));
+    TF_CHECK_OK(jit_compiler.AddModule(llvm::orc::ThreadSafeModule(
+        std::move(llvm_module), std::move(llvm_context))));
+  }
+
+  // Collect compiled symbols from all LLVM module parts.
+  std::vector<FunctionLibrary::Symbol> compiled_symbols;
+
+  absl::flat_hash_map<FunctionLibrary::TypeId, SymbolProto::FunctionTypeId>
+      symbol_type_id_to_function_type_id;
+
+  VLOG(3) << "Adding " << thunk_emitter.kernels().size()
+          << " kernels to the JIT compiler";
+  // Make sure we use all the "default" modules for maximum parallelism.
+  int num_default_so_far = dylib_index - num_extra_parts;
+  int kernel_dylib_index =
+      num_default_so_far < num_default_parts ? num_default_so_far : 0;
+  for (auto& [name, module] : thunk_emitter.kernels()) {
+    compiled_symbols.push_back(
+        FunctionLibrary::Sym<FunctionLibrary::Kernel>(name));
+    symbol_type_id_to_function_type_id.emplace(compiled_symbols.back().type_id,
+                                               SymbolProto::KERNEL);
+    TF_CHECK_OK(jit_compiler.AddModule(std::move(module),
+                                       num_extra_parts + kernel_dylib_index));
+    // Simply roundrobin the default kernel dylibs
+    kernel_dylib_index = (kernel_dylib_index + 1) % num_default_parts;
+  }
+
+  for (const CompiledSymbolsPart& part : compiled_parts) {
+    for (const IrEmitter2::KernelInfo& kernel : part.kernels) {
+      compiled_symbols.push_back(
+          FunctionLibrary::Sym<FunctionLibrary::Kernel>(kernel.name));
+      symbol_type_id_to_function_type_id.emplace(
+          compiled_symbols.back().type_id, SymbolProto::KERNEL);
+    }
+    for (const IrEmitter2::ComparatorInfo& comparator : part.comparators) {
+      compiled_symbols.push_back(
+          FunctionLibrary::Sym<FunctionLibrary::Comparator>(comparator.name));
+      symbol_type_id_to_function_type_id.emplace(
+          compiled_symbols.back().type_id, SymbolProto::COMPARATOR);
+    }
+  }
+
+  VLOG(3) << "Collected " << compiled_symbols.size() << " compiled symbols";
+
+  TraceMe trace_codegen([&] {
+    return TraceMeEncode("Codegen",
+                         {{"num_default_parts", num_default_parts},
+                          {"num_extra_parts", num_extra_parts},
+                          {"num_compiled_functions", num_compiled_functions}});
+  });
+
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<FunctionLibrary> function_library,
+                      std::move(jit_compiler).Compile(compiled_symbols));
+
+  // Create constant allocations from the buffer assignment.
+  TF_ASSIGN_OR_RETURN(std::vector<ConstantAllocation> constants,
+                      CreateConstantAllocations(*assignment));
 
   TF_ASSIGN_OR_RETURN(
       auto cpu_executable,
       CpuExecutable::Create(std::move(function_library), std::move(assignment),
-                            std::move(module), entry_function_name,
+                            std::move(module), std::move(thunks),
+                            std::move(constants),
                             std::move(hlo_profile_printer_data),
                             std::move(hlo_profile_index_map)));
 
+  // Save object files to be able to export them to AOT compilation
+  // result.
   cpu_executable->set_obj_files(std::move(obj_files));
+
+  // Save compiled symbols to be able to export them to AOT compilation
+  // result.
+  cpu_executable->set_compiled_symbols(std::move(compiled_symbols));
+
+  // Save mapping between symbol type id and function type id to be able to
+  // export them to AOT compilation result.
+  cpu_executable->set_symbol_type_id_to_function_type_id(
+      symbol_type_id_to_function_type_id);
 
   if (embed_ir_in_executable) {
     cpu_executable->set_ir_module_string(ir_module_string);
@@ -1999,185 +1926,19 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
                                     target_machine.get(),
                                     /*dummy*/ CompileOptions{}));
 
-    if (hlo_module->config().debug_options().xla_cpu_use_thunk_runtime()) {
-      TF_ASSIGN_OR_RETURN(results.emplace_back(),
-                          CompileAheadOfTimeThunks(
-                              std::move(hlo_module), target_machine_builder,
-                              options, triple, pic_level, pie_level));
-    } else {
-      TF_ASSIGN_OR_RETURN(results.emplace_back(),
-                          CompileAheadOfTimeLegacy(
-                              std::move(hlo_module), target_machine_builder,
-                              options, triple, pic_level, pie_level));
+    if (!hlo_module->config().debug_options().xla_cpu_use_thunk_runtime()) {
+      return InvalidArgument(
+          "xla_cpu_use_thunk_runtime must be true for AOT compilation.");
     }
+
+    TF_ASSIGN_OR_RETURN(
+        results.emplace_back(),
+        CompileAheadOfTimeThunks(std::move(hlo_module), target_machine_builder,
+                                 options, triple, pic_level, pie_level));
   }
 
   VLOG(1) << "Compilation finished";
   return std::move(results);
-}
-
-absl::StatusOr<std::unique_ptr<AotCompilationResult>>
-CpuCompiler::CompileAheadOfTimeLegacy(
-    std::unique_ptr<HloModule> module,
-    IrCompiler::TargetMachineBuilder target_machine_builder,
-    const CpuAotCompilationOptions& aot_options, const llvm::Triple& triple,
-    const llvm::PICLevel::Level& pic_level,
-    const llvm::PIELevel::Level& pie_level) {
-  AliasInfo alias_info;
-  TF_ASSIGN_OR_RETURN(
-      HloSchedule schedule,
-      ScheduleModule(module.get(), &alias_info, BufferSizeBytesFunction()));
-
-  // Run buffer analysis on the HLO graph. This analysis figures out which
-  // temporary buffers are required to run the computation.
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<BufferAssignment> assignment,
-      BufferAssigner::Run(
-          module.get(), std::make_unique<SequentialHloOrdering>(schedule),
-          BufferSizeBytesFunction(), &alias_info, memory_alignment,
-          /*allocate_buffers_for_constants=*/true));
-  // BufferAssignment::ToString() includes a header, so no need for us to
-  // print one ourselves.
-  if (DumpingEnabledForHloModule(*module)) {
-    DumpToFileInDirOrStdout(*module, "", "buffer_assignment",
-                            assignment->ToString());
-  }
-  DumpHloModuleIfEnabled(*module, *assignment,
-                         absl::StrCat("cpu_", kAfterOptimizationsDumpName));
-
-  absl::flat_hash_map<const HloInstruction*, int64_t>
-      instruction_to_profile_idx;
-  absl::flat_hash_map<const HloComputation*, int64_t>
-      computation_to_profile_idx;
-  std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map;
-  std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data;
-
-  if (module->config().hlo_profiling_enabled()) {
-    TF_RETURN_IF_ERROR(CreateHloProfilingArtifacts(
-        *module, &instruction_to_profile_idx, &computation_to_profile_idx,
-        &hlo_profile_index_map, &hlo_profile_printer_data));
-  }
-
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<llvm::TargetMachine> target_machine,
-                      target_machine_builder());
-  TargetMachineFeatures target_machine_features(target_machine.get());
-  std::vector<cpu_function_runtime::BufferInfo> buffer_infos =
-      CreateBufferInfosFromBufferAssignment(*module, *assignment);
-  HloComputation* computation = module->entry_computation();
-
-  // Compile must be thread-safe so create a new LLVM context for the module.
-  mlir::MLIRContext mlir_context;
-  auto llvm_context = std::make_unique<llvm::LLVMContext>();
-
-  // Set required information before emitting IR
-  auto llvm_module =
-      std::make_unique<llvm::Module>(kXlaModuleIdentifier, *llvm_context);
-  llvm_module->setDataLayout(target_machine->createDataLayout());
-  llvm_module->setTargetTriple(triple);
-  if (pic_level != llvm::PICLevel::NotPIC) {
-    llvm_module->setPICLevel(pic_level);
-  }
-  if (pie_level != llvm::PIELevel::Default) {
-    llvm_module->setPIELevel(pie_level);
-  }
-  IrEmitter ir_emitter(&mlir_context, *module, *assignment, llvm_module.get(),
-                       std::move(instruction_to_profile_idx),
-                       std::move(computation_to_profile_idx),
-                       ModuleComputationsTransitivelyContainCustomCall(*module),
-                       &target_machine_features,
-                       // TODO(b/66051036): Run full msan for AOT.
-                       /*emit_code_for_msan=*/false);
-
-  TF_RETURN_IF_ERROR(ir_emitter.EmitAllConstantGlobals());
-
-  for (ComputationToEmit subcomputation :
-       SubcomputationEmissionOrder(computation)) {
-    if (subcomputation.computation->IsFusionComputation()) {
-      continue;
-    }
-    TF_RETURN_IF_ERROR(
-        ir_emitter
-            .EmitComputation(
-                subcomputation.computation, subcomputation.computation->name(),
-                /*is_top_level_computation=*/false,
-                schedule.sequence(subcomputation.computation).instructions(),
-                subcomputation.allow_reassociation)
-            .status());
-  }
-  const std::string& entry_point_name = aot_options.entry_point_name();
-  TF_ASSIGN_OR_RETURN(
-      llvm::Function * entry_function,
-      ir_emitter.EmitComputation(computation, entry_point_name,
-                                 /*is_top_level_computation=*/true,
-                                 schedule.sequence(computation).instructions(),
-                                 /*allow_reassociation=*/false));
-
-  CHECK(entry_function->getName() == entry_point_name);
-
-  ModuleHook pre_optimization_ir_hook;
-  ModuleHook post_optimization_ir_hook;
-  std::tie(pre_optimization_ir_hook, post_optimization_ir_hook) =
-      GetIRModuleHooks(*module, user_pre_optimization_hook_,
-                       user_post_optimization_hook_);
-
-  // Run the LLVM verifier over the unoptimized LLVM IR.  If it fails, run
-  // the pre-optimization IR dump hook before returning.
-  {
-    absl::Status verify_status = VerifyLlvmModule(*llvm_module);
-    if (!verify_status.ok() && pre_optimization_ir_hook) {
-      pre_optimization_ir_hook(*llvm_module);
-    }
-    TF_RETURN_IF_ERROR(verify_status);
-  }
-
-  auto post_codegen_hook = [&](const llvm::Module& llvm_module,
-                               const llvm::object::ObjectFile& obj_file) {
-    if (!DumpingEnabledForHloModule(*module)) {
-      return;
-    }
-    DumpModuleToFile(llvm_module, obj_file, *module);
-  };
-
-  DebugOptions debug_options = module->config().debug_options();
-  IrCompiler::Options ir_compiler_options = {
-      /*optimization_level=*/target_machine->getOptLevel(),
-      /*optimize_for_size=*/
-      options::OptimizeForSizeRequested(module->config()),
-      /*max_cpu_isa=*/CpuFeatureFromString(debug_options.xla_cpu_max_isa()),
-      /*fast_math_flags=*/llvm_ir::GetCpuFastMathFlags(module->config()),
-      /*disable_expensive_passes=*/
-      debug_options.xla_llvm_disable_expensive_passes(),
-      /*disable_slp_vectorizer=*/
-      options::SlpVectorizerDisabled(module->config()),
-      /*disable_loop_unrolling=*/
-      options::DisableLoopUnrolling(module->config()),
-      /*disable_platform_dependent_math=*/
-      options::DisablePlatformDependentMath(module->config()),
-      /*dfsan_enabled=*/aot_options.sanitize_dataflow(),
-      /*dfsan_abilists_enabled=*/aot_options.sanitize_abilists_dataflow()};
-
-  IrCompiler::CompilationHooks ir_compiler_hooks = {
-      pre_optimization_ir_hook,
-      post_optimization_ir_hook,
-      post_codegen_hook,
-  };
-
-  IrCompiler ir_compiler(std::move(target_machine_builder),
-                         std::move(ir_compiler_options),
-                         std::move(ir_compiler_hooks));
-
-  std::unique_ptr<llvm::MemoryBuffer> object_file =
-      cantFail(ir_compiler(*llvm_module));
-  ObjectFileData object_file_data(object_file->getBufferStart(),
-                                  object_file->getBufferEnd());
-
-  TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice result_slice,
-                      assignment->GetUniqueTopLevelOutputSlice());
-
-  return std::make_unique<CpuAotCompilationResultLegacy>(
-      std::move(object_file_data), std::move(buffer_infos),
-      result_slice.index(), std::move(module),
-      std::move(hlo_profile_printer_data));
 }
 
 absl::StatusOr<std::unique_ptr<AotCompilationResult>>
