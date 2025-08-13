@@ -37,7 +37,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/xnnpack/xnn_interop.h"
-#include "xla/backends/cpu/runtime/xnnpack/xnn_scheduler.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -45,7 +44,23 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 
+#define EIGEN_USE_THREADS
+#include "Eigen/ThreadPool"
+#include "unsupported/Eigen/CXX11/Tensor"
+
 namespace xla::cpu {
+
+static int32_t NumThreads(void* pool) {
+  return reinterpret_cast<Eigen::ThreadPoolInterface*>(pool)->NumThreads();
+}
+
+static void Schedule(void* pool, void* context, void (*task)(void* context)) {
+  reinterpret_cast<Eigen::ThreadPoolInterface*>(pool)->Schedule(
+      [task, context]() { (*task)(context); });
+}
+
+// And adaptor from Eigen::ThreadPoolInterface to xnn_threadpool_t.
+static constexpr xnn_scheduler_v2 kXnnScheduler = {&NumThreads, &Schedule};
 
 absl::string_view XnnFusionThunk::XnnFusionKindToString(XnnFusionKind kind) {
   switch (kind) {
@@ -73,7 +88,6 @@ struct XnnFusionThunk::XnnExecutable {
   // Resets XNNPACK runtime and subgraph.
   absl::Status Reset();
 
-  std::unique_ptr<XnnScheduler> scheduler;
   XnnThreadpool threadpool = nullptr;
   XnnSubgraph subgraph = nullptr;
   XnnRuntime runtime = nullptr;
@@ -143,11 +157,11 @@ XnnFusionThunk::CreateXnnExecutable(
 
   // Configure XNNPACK threadpool if the use of thread pool is enabled.
   if (options_.use_threadpool && device) {
-    executable.scheduler = std::make_unique<XnnScheduler>(device);
     TF_ASSIGN_OR_RETURN(executable.threadpool,
                         CreateXnnThreadpool([&](xnn_threadpool_t* threadpool) {
-                          return xnn_create_threadpool(
-                              executable.scheduler.get(), threadpool);
+                          return xnn_create_threadpool_v2(
+                              kXnnScheduler, device->getPool(), /*flags=*/1,
+                              threadpool);
                         }));
   }
 

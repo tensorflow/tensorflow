@@ -30,39 +30,6 @@ cc_library(
 )
 
 cc_library(
-    name = "xnn_scheduler",
-    srcs = ["xnn_scheduler.cc"],
-    hdrs = ["xnn_scheduler.h"],
-    deps = [
-        "//xla/tsl/concurrency:async_value",
-        "//xla/tsl/platform:env",
-        "//xla/tsl/platform:logging",
-        "@XNNPACK",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/strings:str_format",
-        "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:platform_port",
-    ],
-)
-
-xla_cc_test(
-    name = "xnn_scheduler_test",
-    srcs = ["xnn_scheduler_test.cc"],
-    deps = [
-        ":xnn_scheduler",
-        "//xla/tsl/concurrency:async_value",
-        "//xla/tsl/platform:env",
-        "//xla/tsl/platform:test",
-        "//xla/tsl/platform:test_main",
-        "@XNNPACK",
-        "@com_google_absl//absl/algorithm:container",
-        "@eigen_archive//:eigen3",
-    ],
-)
-
-cc_library(
     name = "xnn_convolution_thunk",
     srcs = ["xnn_convolution_thunk.cc"],
     hdrs = ["xnn_convolution_thunk.h"],
@@ -174,7 +141,6 @@ cc_library(
     hdrs = ["xnn_fusion_thunk.h"],
     deps = [
         ":xnn_interop",
-        ":xnn_scheduler",
         "//xla:shape_util",
         "//xla/backends/cpu/runtime:thunk",
         "//xla/runtime:buffer_use",
@@ -198,6 +164,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
+        "@eigen_archive//:eigen3",
     ],
 )
 
