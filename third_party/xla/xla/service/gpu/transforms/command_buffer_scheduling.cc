@@ -235,6 +235,13 @@ static bool IsCommand(const HloCustomCallInstruction* hlo,
   }
 
   if (config.enabled_commands.contains(DebugOptions::CUDNN) &&
+      IsCustomCallToBlockScaledDot(*hlo)) {
+    VLOG(3) << "Recording BlockScaledDot, target " << hlo->custom_call_target()
+            << " into command buffer.";
+    return true;
+  }
+
+  if (config.enabled_commands.contains(DebugOptions::CUDNN) &&
       IsCustomCallTofMHA(*hlo)) {
     VLOG(3) << "Recording FusedMHA, target " << hlo->custom_call_target()
             << " into command buffer.";
