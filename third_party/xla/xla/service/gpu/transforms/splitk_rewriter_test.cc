@@ -34,10 +34,11 @@ namespace {
 class SplitkRewriterTest : public HloHardwareIndependentTestBase {
  public:
   SplitkRewriterTest()
-      : rewriter_(se::DeviceDescription(
-            ParseTextProto<stream_executor::GpuDeviceInfoProto>(
-                "core_count: 132")
-                .value())) {}
+      : rewriter_(se::DeviceDescription::FromProto(
+                      ParseTextProto<stream_executor::GpuDeviceInfoProto>(
+                          "core_count: 132")
+                          .value())
+                      .value()) {}
 
  protected:
   SplitkRewriter rewriter_;

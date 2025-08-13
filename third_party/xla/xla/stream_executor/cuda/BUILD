@@ -705,7 +705,7 @@ cc_library(
         "ptx_compiler_stub.cc",
     ],
     deps = [
-        "//xla/stream_executor:device_description",
+        ":cuda_compute_capability",
         "//xla/stream_executor:semantic_version",
         "//xla/stream_executor/gpu:gpu_asm_opts",
         "@com_google_absl//absl/status",

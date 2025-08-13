@@ -29,6 +29,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
@@ -378,7 +379,8 @@ class DeviceDescription {
   std::string ToString() const;
 
   DeviceDescription() = default;
-  explicit DeviceDescription(const GpuDeviceInfoProto &proto);
+  static absl::StatusOr<DeviceDescription> FromProto(
+      const GpuDeviceInfoProto& proto);
 
   // For string values that are not available via the underlying platform, this
   // value will be provided.
