@@ -88,7 +88,7 @@ TEST_F(SaveQuantizationReportInstrumentationTest, SaveReport) {
   // `composite_dot_general_fn` with quantized with `static_range_ptq` method.
   const absl::StatusOr<std::string> file_data =
       ReadFileToString(report_file_path);
-  ASSERT_THAT(file_data, IsOk());
+  ASSERT_THAT(file_data, absl_testing::IsOk());
 
   /*
   results {
@@ -146,7 +146,7 @@ TEST_F(SaveQuantizationReportInstrumentationTest,
   // The report file is not created because `QuantizeCompositeFunctionsPass` was
   // not run.
   EXPECT_THAT(ReadFileToString(report_file_path),
-              StatusIs(absl::StatusCode::kNotFound));
+              absl_testing::StatusIs(absl::StatusCode::kNotFound));
 }
 
 TEST_F(SaveQuantizationReportInstrumentationTest,
