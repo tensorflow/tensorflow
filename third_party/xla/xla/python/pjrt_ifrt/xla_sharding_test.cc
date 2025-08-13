@@ -152,11 +152,12 @@ TEST_P(HloShardingTest, GetShardShape) {
   std::shared_ptr<const HloSharding> sharding =
       HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
   EXPECT_THAT(sharding->GetShardShape(Shape({6, 6})),
-              IsOkAndHolds(Shape({3, 2})));
+              absl_testing::IsOkAndHolds(Shape({3, 2})));
   EXPECT_THAT(sharding->GetShardShape(Shape({6, 6, 6})),
-              StatusIs(tsl::error::INVALID_ARGUMENT,
-                       HasSubstr("Numbers of dimensions don't match. From "
-                                 "Shape 3 vs from HloSharding 2")));
+              absl_testing::StatusIs(
+                  tsl::error::INVALID_ARGUMENT,
+                  HasSubstr("Numbers of dimensions don't match. From "
+                            "Shape 3 vs from HloSharding 2")));
 }
 
 TEST_P(HloShardingTest, HasSamePartitioning) {
@@ -222,10 +223,11 @@ TEST_P(HloShardingTest, WithDeviceAssignment) {
     EXPECT_THAT(
         sharding0->WithDeviceAssignment(device_list1,
                                         /*memory_kind=*/std::nullopt),
-        StatusIs(tsl::error::INVALID_ARGUMENT,
-                 HasSubstr("HloSharding should have the same number of "
-                           "devices as the current sharding, but was asked to "
-                           "have 3 devices")));
+        absl_testing::StatusIs(
+            tsl::error::INVALID_ARGUMENT,
+            HasSubstr("HloSharding should have the same number of "
+                      "devices as the current sharding, but was asked to "
+                      "have 3 devices")));
   }
 }
 
@@ -864,10 +866,10 @@ TEST_P(HloShardingTest, IndexDomainsWithManual) {
       HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
 
   Shape shape({10, 20});
-  EXPECT_THAT(
-      sharding->IndexDomains(shape).status(),
-      StatusIs(tsl::error::INVALID_ARGUMENT,
-               HasSubstr("Manual sharding does not support IndexDomains")));
+  EXPECT_THAT(sharding->IndexDomains(shape).status(),
+              absl_testing::StatusIs(
+                  tsl::error::INVALID_ARGUMENT,
+                  HasSubstr("Manual sharding does not support IndexDomains")));
 }
 
 TEST_P(HloShardingTest, DisassembleWithManual) {
@@ -925,7 +927,7 @@ TEST_P(HloShardingTest, DisassembleFailsWithInvalidDeviceCount) {
   Shape shape({10, 20});
   EXPECT_THAT(
       sharding->Disassemble(shape),
-      StatusIs(
+      absl_testing::StatusIs(
           tsl::error::INVALID_ARGUMENT,
           HasSubstr("sharding's tile count and device count does not match")));
 }
@@ -940,7 +942,7 @@ TEST_P(HloShardingTest, DisassembleFailsWithMismatchingShapeDimsSize) {
   Shape shape({10});
   EXPECT_THAT(
       sharding->Disassemble(shape),
-      StatusIs(
+      absl_testing::StatusIs(
           tsl::error::INVALID_ARGUMENT,
           HasSubstr("shape must have 2 dimensions, but has 1 dimensions")));
 }
@@ -954,9 +956,10 @@ TEST_P(HloShardingTest, DisassembleFailsWithDynamicShape) {
   TF_ASSERT_OK_AND_ASSIGN(
       DynamicShape dynamic_shape,
       DynamicShape::Create(Shape({10}), BoundedDynamicShapeTag({true})));
-  EXPECT_THAT(sharding->Disassemble(dynamic_shape),
-              StatusIs(tsl::error::INVALID_ARGUMENT,
-                       HasSubstr("can only disassemble static shape")));
+  EXPECT_THAT(
+      sharding->Disassemble(dynamic_shape),
+      absl_testing::StatusIs(tsl::error::INVALID_ARGUMENT,
+                             HasSubstr("can only disassemble static shape")));
 }
 
 TEST_P(HloShardingTest, Hash) {
