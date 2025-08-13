@@ -39,11 +39,12 @@ limitations under the License.
 
 namespace stream_executor::cuda {
 
-absl::StatusOr<std::vector<uint8_t>>
-SubprocessCompilationProvider::CompileHelper(
-    const CudaComputeCapability& cc, absl::string_view ptx,
-    const CompilationOptions& options,
-    bool compile_to_relocatable_module) const {
+namespace {
+
+absl::StatusOr<std::vector<uint8_t>> CompileHelper(
+    absl::string_view ptxas_path, const CudaComputeCapability& cc,
+    absl::string_view ptx, const CompilationOptions& options,
+    bool compile_to_relocatable_module) {
   GpuAsmOpts asm_opts{};
   asm_opts.disable_gpuasm_optimizations = options.disable_optimizations;
   if (compile_to_relocatable_module) {
@@ -57,15 +58,17 @@ SubprocessCompilationProvider::CompileHelper(
     asm_opts.extra_flags.push_back("--device-debug");
   }
 
-  return CompileGpuAsmUsingPtxAs(path_to_ptxas_, cc, ptx, asm_opts,
+  return CompileGpuAsmUsingPtxAs(ptxas_path, cc, ptx, asm_opts,
                                  options.cancel_if_reg_spill);
 }
+
+}  // namespace
 
 absl::StatusOr<Assembly> SubprocessCompilationProvider::Compile(
     const CudaComputeCapability& cc, absl::string_view ptx,
     const CompilationOptions& options) const {
   TF_ASSIGN_OR_RETURN(auto cubin,
-                      CompileHelper(cc, ptx, options,
+                      CompileHelper(path_to_ptxas_, cc, ptx, options,
                                     /*compile_to_relocatable_module=*/false));
   return Assembly{std::move(cubin)};
 }
@@ -75,7 +78,7 @@ SubprocessCompilationProvider::CompileToRelocatableModule(
     const CudaComputeCapability& cc, absl::string_view ptx,
     const CompilationOptions& options) const {
   TF_ASSIGN_OR_RETURN(auto cubin,
-                      CompileHelper(cc, ptx, options,
+                      CompileHelper(path_to_ptxas_, cc, ptx, options,
                                     /*compile_to_relocatable_module=*/true));
   return RelocatableModule{std::move(cubin)};
 }
