@@ -30,7 +30,6 @@ limitations under the License.
 #include "absl/container/fixed_array.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/hash/hash.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
@@ -51,9 +50,7 @@ limitations under the License.
 #include "xla/tsl/profiler/utils/xplane_utils.h"
 #include "tsl/platform/abi.h"
 #include "tsl/platform/host_info.h"
-#include "tsl/platform/mem.h"
 #include "tsl/platform/thread_annotations.h"
-#include "tsl/platform/types.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace xla {
@@ -62,12 +59,9 @@ namespace profiler {
 namespace {
 
 using tensorflow::profiler::XEventMetadata;
-using tensorflow::profiler::XLine;
-using tensorflow::profiler::XPlane;
 using tensorflow::profiler::XSpace;
 using tensorflow::profiler::XStatMetadata;
 using tsl::profiler::Annotation;
-using tsl::profiler::FindMutablePlaneWithName;
 using tsl::profiler::FindOrAddMutablePlaneWithName;
 using tsl::profiler::GpuPlaneName;
 using tsl::profiler::kCuptiActivityNvtxPlaneName;
@@ -507,7 +501,8 @@ class PerDeviceCollector {
       events_types_per_line[line_id].emplace(event.type);
     }
     device_plane->ForEachLine([&](XLineBuilder line) {
-      line.SetName(
+      // If the line name is already set, we should not override it.
+      line.SetNameIfEmpty(
           GetDeviceXLineName(line.Id(), events_types_per_line[line.Id()]));
     });
     host_plane->ForEachLine([&](XLineBuilder line) {
@@ -681,7 +676,8 @@ class EventInQueue {
 
 }  // namespace
 
-void PmSamples::PopulateCounterLine(XPlaneBuilder* plane) {
+void PmSamples::PopulateCounterLine(XPlaneBuilder* plane,
+                                    uint64_t start_gpu_time_ns) {
   XLineBuilder line = plane->GetOrCreateCounterLine();
   std::vector<std::pair<XEventMetadata*, XStatMetadata*>> counter_metadata;
   counter_metadata.reserve(metrics_.size());
@@ -694,7 +690,9 @@ void PmSamples::PopulateCounterLine(XPlaneBuilder* plane) {
     for (int i = 0; i < sampler_range.metric_values.size(); ++i) {
       XEventBuilder event = line.AddEvent(
           tsl::profiler::Timespan(
-              tsl::profiler::NanoToPico(sampler_range.start_timestamp_ns), 0),
+              tsl::profiler::NanoToPico(sampler_range.start_timestamp_ns -
+                                        start_gpu_time_ns),
+              0),
           *counter_metadata[i].first);
       event.AddStatValue(*counter_metadata[i].second,
                          sampler_range.metric_values[i]);
@@ -711,6 +709,8 @@ const std::vector<std::string>& PmSamples::GetMetrics() const {
 const std::vector<SamplerRange>& PmSamples::GetSamplerRanges() const {
   return sampler_ranges_;
 }
+
+int64_t PmSamples::GetDeviceId() const { return device_id_; }
 
 void CuptiTraceCollector::OnTracerCollectedCallbackData(
     std::vector<CallbackAnnotationsAndEvents> callback_annotations_and_events,
@@ -918,6 +918,7 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
                         num_activity_events_, " device events.",
                         events_dropped);
   }
+  uint64_t GetProfileStartTimeNs() const override { return start_gpu_ns_; }
 
  private:
   size_t num_callback_events_ = 0;

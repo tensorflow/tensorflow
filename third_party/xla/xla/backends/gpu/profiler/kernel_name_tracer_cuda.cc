@@ -54,7 +54,13 @@ void KernelNameTracerCuda::start() {
       collector_options, start_walltime_ns, start_gputime_ns);
   profiler::CuptiTracerOptions options;
   options.activities_selected = {CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL};
-  cupti_tracer_->Enable(options, cupti_collector_.get()).IgnoreError();
+
+  std::vector<std::unique_ptr<tensorflow::profiler::XPlane>> xplanes;
+  xplanes.reserve(collector_options.num_gpus);
+  for (int i = 0; i < collector_options.num_gpus; ++i) {
+    xplanes.push_back(std::make_unique<tensorflow::profiler::XPlane>());
+  }
+  cupti_tracer_->Enable(options, cupti_collector_.get(), xplanes).IgnoreError();
 }
 
 std::vector<std::string> KernelNameTracerCuda::stop() {

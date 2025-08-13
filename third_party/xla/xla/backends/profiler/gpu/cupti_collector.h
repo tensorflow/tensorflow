@@ -61,17 +61,21 @@ struct SamplerRange {
 class PmSamples {
  public:
   PmSamples(std::vector<std::string> metrics,
-            std::vector<SamplerRange> sampler_ranges)
+            std::vector<SamplerRange> sampler_ranges, int device_id)
       : metrics_(std::move(metrics)),
-        sampler_ranges_(std::move(sampler_ranges)) {}
-  void PopulateCounterLine(tsl::profiler::XPlaneBuilder* plane);
+        sampler_ranges_(std::move(sampler_ranges)),
+        device_id_(device_id) {}
+  void PopulateCounterLine(tsl::profiler::XPlaneBuilder* plane,
+                           uint64_t start_gpu_time_ns);
   size_t GetNumSamples() const;
+  int64_t GetDeviceId() const;
   const std::vector<std::string>& GetMetrics() const;
   const std::vector<SamplerRange>& GetSamplerRanges() const;
 
  private:
   std::vector<std::string> metrics_;
   std::vector<SamplerRange> sampler_ranges_;
+  int device_id_;
 };
 
 class CuptiTraceCollector {
@@ -115,6 +119,8 @@ class CuptiTraceCollector {
   void SetTracingEndTimeNs(uint64_t end_time_ns) {
     tracing_end_time_ns_ = end_time_ns;
   }
+
+  virtual uint64_t GetProfileStartTimeNs() const { return 0; }
 
   uint64_t GetTracingEndTimeNs() const { return tracing_end_time_ns_; }
 
