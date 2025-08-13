@@ -259,16 +259,23 @@ INSTANTIATE_TEST_SUITE_P(
 class MatmulInterpolatorDefaultTableTest
     : public TestWithParam<ParametrizedTestCase> {
  public:
-  MatmulInterpolatorDefaultTableTest()
-      : device_info_(TestGpuDeviceInfo::RTXA6000DeviceInfo(
-            se::CudaComputeCapability(9, 0))) {}
-
-  void SetUp() override {
+  std::unique_ptr<MatmulInterpolator> GetMatmulInterpolator(
+      const se::DeviceDescription device_info) {
     absl::StatusOr<std::unique_ptr<MatmulInterpolator>> interpolator_status =
-        MatmulInterpolator::Create(device_info_);
+        MatmulInterpolator::Create(device_info);
     CHECK_OK(interpolator_status.status())
         << "Cannot construct interpolator from default table.";
-    interpolator_ = std::move(*interpolator_status);
+    return std::move(*interpolator_status);
+  }
+
+  std::unique_ptr<MatmulInterpolator> GetMatmulInterpolatorH100() {
+    return GetMatmulInterpolator(
+        TestGpuDeviceInfo::RTXA6000DeviceInfo(se::CudaComputeCapability(9, 0)));
+  }
+
+  std::unique_ptr<MatmulInterpolator> GetMatmulInterpolatorB200() {
+    return GetMatmulInterpolator(TestGpuDeviceInfo::RTXA6000DeviceInfo(
+        se::CudaComputeCapability(10, 0)));
   }
 
  protected:
@@ -315,28 +322,23 @@ class MatmulInterpolatorDefaultTableTest
         /*module=*/std::move(module),
     };
   }
-
-  const MatmulInterpolator& interpolator() { return *interpolator_; }
-
- private:
-  const se::DeviceDescription device_info_;
-  std::unique_ptr<const MatmulInterpolator> interpolator_;
 };
 
-using BF16Test = MatmulInterpolatorDefaultTableTest;
+using H100BF16Test = MatmulInterpolatorDefaultTableTest;
 
-TEST_P(BF16Test, EstimatesRuntimeForBF16) {
+TEST_P(H100BF16Test, EstimatesRuntimeForBF16) {
   const auto& [_, spec, expected_duration] = GetParam();
   TF_ASSERT_OK_AND_ASSIGN(DotContext context,
                           DotBF16(spec.b, spec.m, spec.n, spec.k));
   // Compare with nanosecond precision.
-  EXPECT_EQ(absl::Trunc(*interpolator().EstimatedRuntime(*context.dot),
-                        absl::Microseconds(1)),
-            expected_duration);
+  EXPECT_EQ(
+      absl::Trunc(*GetMatmulInterpolatorH100()->EstimatedRuntime(*context.dot),
+                  absl::Microseconds(1)),
+      expected_duration);
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    MatmulInterpolatorDefaultTableTestInstantiation, BF16Test,
+    MatmulInterpolatorDefaultTableTestInstantiation, H100BF16Test,
     ValuesIn<ParametrizedTestCase>({
         {
             /*test_name=*/"exact_match1_bf16",
@@ -384,20 +386,21 @@ INSTANTIATE_TEST_SUITE_P(
     [](const TestParamInfo<MatmulInterpolatorDefaultTableTest::ParamType>&
            info) { return info.param.test_name; });
 
-using F8Test = MatmulInterpolatorDefaultTableTest;
+using H100F8Test = MatmulInterpolatorDefaultTableTest;
 
-TEST_P(F8Test, EstimatesRuntimeForFP8) {
+TEST_P(H100F8Test, EstimatesRuntimeForFP8) {
   const auto& [_, spec, expected_duration] = GetParam();
   TF_ASSERT_OK_AND_ASSIGN(DotContext context,
                           DotFP8(spec.b, spec.m, spec.n, spec.k));
   // Compare with nanosecond precision.
-  EXPECT_EQ(absl::Trunc(*interpolator().EstimatedRuntime(*context.dot),
-                        absl::Microseconds(1)),
-            expected_duration);
+  EXPECT_EQ(
+      absl::Trunc(*GetMatmulInterpolatorH100()->EstimatedRuntime(*context.dot),
+                  absl::Microseconds(1)),
+      expected_duration);
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    MatmulInterpolatorDefaultTableTestInstantiationFP8, F8Test,
+    MatmulInterpolatorDefaultTableTestInstantiationFP8, H100F8Test,
     ValuesIn<ParametrizedTestCase>({
         {
             /*test_name=*/"extrapolate_small_fp8",
