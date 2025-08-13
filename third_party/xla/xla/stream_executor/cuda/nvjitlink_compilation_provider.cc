@@ -87,8 +87,7 @@ stream_executor::cuda::NvJitLinkCompilationProvider::CompileAndLink(
 
 absl::StatusOr<int> NvJitLinkCompilationProvider::GetLatestPtxIsaVersion()
     const {
-  return absl::UnimplementedError(
-      "GetLatestPtxIsaVersion is not implemented for " + name() + ".");
+  return GetLatestPtxIsaVersionForLibNvJitLink();
 }
 
 }  // namespace stream_executor::cuda

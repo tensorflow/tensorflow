@@ -837,12 +837,15 @@ cc_library(
     ],
     tags = ["manual"],
     deps = [
+        ":cuda_compute_capability",
         ":ptx_compiler_helpers",
-        "//xla/stream_executor:device_description",
         "//xla/stream_executor/gpu:gpu_asm_opts",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/debugging:leak_check",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -851,9 +854,6 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@local_config_cuda//cuda:cuda_headers",
         "@local_config_cuda//cuda:nvjitlink",  # buildcleaner: keep
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -878,6 +878,7 @@ cc_library(
         ":libnvjitlink_support_enabled": [":nvjitlink_cuda_supported"],
         "//conditions:default": [":nvjitlink_stub"],
     }) + [
+        ":cuda_compute_capability",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/gpu:gpu_asm_opts",
         "@com_google_absl//absl/status:statusor",

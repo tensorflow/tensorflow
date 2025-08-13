@@ -479,7 +479,8 @@ TEST_P(CompilationProviderTest,
        QueryLatestPtxIsaVersionReturnsAValidPtxIsaVersion) {
   CompilationProvider* provider = compilation_provider();
   if (dynamic_cast<SubprocessCompilationProvider*>(provider) ||
-      dynamic_cast<NvptxcompilerCompilationProvider*>(provider)) {
+      dynamic_cast<NvptxcompilerCompilationProvider*>(provider) ||
+      dynamic_cast<NvJitLinkCompilationProvider*>(provider)) {
     TF_ASSERT_OK_AND_ASSIGN(int latest_ptx_isa_version,
                             provider->GetLatestPtxIsaVersion());
     EXPECT_GE(latest_ptx_isa_version, 80);

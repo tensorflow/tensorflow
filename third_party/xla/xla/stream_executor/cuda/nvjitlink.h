@@ -22,7 +22,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 
 namespace stream_executor {
@@ -45,6 +45,10 @@ struct NvJitLinkInput {
 absl::StatusOr<std::vector<uint8_t>> CompileAndLinkUsingLibNvJitLink(
     const CudaComputeCapability& cc, absl::Span<const NvJitLinkInput> inputs,
     GpuAsmOpts options, bool cancel_if_reg_spill);
+
+// Returns the latest PTX ISA version supported by the underlying version of
+// libnvjitlink.
+absl::StatusOr<int> GetLatestPtxIsaVersionForLibNvJitLink();
 
 }  // namespace stream_executor
 
