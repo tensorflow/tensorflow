@@ -292,10 +292,12 @@ TEST_F(ClientServerTest, EnumerateElevenDevices) {
     device->set_vendor("test_vendor");
   }
   GlobalTopologyProto expected_topology;
+  int slice_0_global_id = 0, slice_1_global_id = num_nodes / 2 + 1;
   for (int i = 0; i < num_nodes; ++i) {
     auto* node = expected_topology.add_nodes();
     *node = locals[i];
-    node->mutable_devices(0)->set_global_device_id(i);
+    node->mutable_devices(0)->set_global_device_id(
+        (i % 2 == 0) ? slice_0_global_id++ : slice_1_global_id++);
     node->mutable_devices(0)->set_partition_index(i % 2);
   }
 

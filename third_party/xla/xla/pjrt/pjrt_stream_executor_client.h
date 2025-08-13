@@ -431,9 +431,9 @@ class PjRtStreamExecutorClient : public PjRtClient {
   // Updates `options` for compilation, and gets the executable extras if
   // `returned_extras` is not null. It skips addressable device lookup if
   // `lookup_addressable_devices` is false.
-  absl::Status UpdateCompileOptionsInternal(CompileOptions* options,
-                                            ExecutableExtras* returned_extras,
-                                            bool lookup_addressable_devices);
+  virtual absl::Status UpdateCompileOptionsInternal(
+      CompileOptions* options, ExecutableExtras* returned_extras,
+      bool lookup_addressable_devices);
 
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       const XlaComputation& computation, CompileOptions options,
