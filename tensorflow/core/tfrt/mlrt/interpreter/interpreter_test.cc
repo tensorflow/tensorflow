@@ -636,7 +636,7 @@ TEST(InterpreterTest, Fail) {
 
   EXPECT_THAT(
       execution_context.status(),
-      ::tsl::testing::StatusIs(absl::StatusCode::kInternal, "test error"));
+      absl_testing::StatusIs(absl::StatusCode::kInternal, "test error"));
 }
 
 bc::Buffer CreateAwaitExecutable() {
@@ -857,7 +857,7 @@ TEST(InterpreterTest, AwaitError) {
   notification.WaitForNotification();
   EXPECT_THAT(
       execution_context.status(),
-      ::tsl::testing::StatusIs(absl::StatusCode::kInternal, "test error"));
+      absl_testing::StatusIs(absl::StatusCode::kInternal, "test error"));
 }
 
 bc::Buffer CreateAwaitAllExecutable() {
@@ -1054,7 +1054,7 @@ TEST(InterpreterTest, AwaitAllError) {
   notification.WaitForNotification();
   EXPECT_THAT(
       execution_context.status(),
-      ::tsl::testing::StatusIs(absl::StatusCode::kInternal, "test error"));
+      absl_testing::StatusIs(absl::StatusCode::kInternal, "test error"));
 }
 
 struct TestState : UserContext<TestState> {
@@ -1322,7 +1322,7 @@ TEST(InterpreterTest, AwaitAllControlError) {
 
   EXPECT_THAT(
       execution_context.status(),
-      ::tsl::testing::StatusIs(absl::StatusCode::kInternal, "test error"));
+      absl_testing::StatusIs(absl::StatusCode::kInternal, "test error"));
 }
 
 class AddInPlaceI32 : public KernelFrame {
@@ -1501,7 +1501,7 @@ TEST(InterpreterTest, AsyncError) {
   notification.WaitForNotification();
   EXPECT_THAT(
       execution_context.status(),
-      ::tsl::testing::StatusIs(absl::StatusCode::kInternal, "test error"));
+      absl_testing::StatusIs(absl::StatusCode::kInternal, "test error"));
 }
 
 bc::Buffer CreateNestedAsyncExecutable() {
@@ -1696,7 +1696,7 @@ TEST(InterpreterTest, NestedAsyncError) {
   notification.WaitForNotification();
   EXPECT_THAT(
       execution_context.status(),
-      ::tsl::testing::StatusIs(absl::StatusCode::kInternal, "test error"));
+      absl_testing::StatusIs(absl::StatusCode::kInternal, "test error"));
 }
 
 bc::Buffer CreateAsyncControlPromiseAwaitExecutable() {
@@ -2256,7 +2256,7 @@ TEST(InterpreterTest, UnwindPromise) {
 
   EXPECT_THAT(
       execution_context.status(),
-      ::tsl::testing::StatusIs(absl::StatusCode::kCancelled, "test cancel"));
+      absl_testing::StatusIs(absl::StatusCode::kCancelled, "test cancel"));
 }
 
 TEST(InterpreterTest, UnwindInvalidPromise) {
@@ -2289,7 +2289,7 @@ TEST(InterpreterTest, UnwindInvalidPromise) {
 
   EXPECT_THAT(
       execution_context.status(),
-      ::tsl::testing::StatusIs(absl::StatusCode::kCancelled, "test cancel"));
+      absl_testing::StatusIs(absl::StatusCode::kCancelled, "test cancel"));
   EXPECT_EQ(future.Get<int32_t>(), 100);
 }
 
@@ -2332,7 +2332,7 @@ TEST(InterpreterTest, UnwindFuture) {
   notification.WaitForNotification();
   EXPECT_THAT(
       execution_context.status(),
-      ::tsl::testing::StatusIs(absl::StatusCode::kCancelled, "test cancel"));
+      absl_testing::StatusIs(absl::StatusCode::kCancelled, "test cancel"));
   EXPECT_EQ(input.Get<Future>().Get<int32_t>(), 100);
 }
 
@@ -2379,10 +2379,10 @@ TEST(InterpreterTest, UnwindPromiseAndFuture) {
   notification.WaitForNotification();
   EXPECT_THAT(
       execution_context.status(),
-      ::tsl::testing::StatusIs(absl::StatusCode::kCancelled, "test cancel"));
+      absl_testing::StatusIs(absl::StatusCode::kCancelled, "test cancel"));
   EXPECT_THAT(
       future.GetError(),
-      ::tsl::testing::StatusIs(absl::StatusCode::kCancelled, "test cancel"));
+      absl_testing::StatusIs(absl::StatusCode::kCancelled, "test cancel"));
 }
 
 TEST(InterpreterTest, UnwindAsyncHandle) {
@@ -2425,7 +2425,7 @@ TEST(InterpreterTest, UnwindAsyncHandle) {
   notification.WaitForNotification();
   EXPECT_THAT(
       execution_context.status(),
-      ::tsl::testing::StatusIs(absl::StatusCode::kCancelled, "test cancel"));
+      absl_testing::StatusIs(absl::StatusCode::kCancelled, "test cancel"));
 }
 
 bc::Buffer CreateCaseExecutable() {
@@ -2655,10 +2655,10 @@ TEST(InterpreterTest, UnwindComplex) {
   notification.WaitForNotification();
   EXPECT_THAT(
       execution_context.status(),
-      ::tsl::testing::StatusIs(absl::StatusCode::kCancelled, "test cancel"));
+      absl_testing::StatusIs(absl::StatusCode::kCancelled, "test cancel"));
   EXPECT_THAT(
       future.GetError(),
-      ::tsl::testing::StatusIs(absl::StatusCode::kCancelled, "test cancel"));
+      absl_testing::StatusIs(absl::StatusCode::kCancelled, "test cancel"));
 }
 
 bc::Buffer CreateUnwindNestedExecutable() {
@@ -2766,10 +2766,10 @@ TEST(InterpreterTest, UnwindNested) {
   notification.WaitForNotification();
   EXPECT_THAT(
       execution_context.status(),
-      ::tsl::testing::StatusIs(absl::StatusCode::kCancelled, "test cancel"));
+      absl_testing::StatusIs(absl::StatusCode::kCancelled, "test cancel"));
   EXPECT_THAT(
       future.GetError(),
-      ::tsl::testing::StatusIs(absl::StatusCode::kCancelled, "test cancel"));
+      absl_testing::StatusIs(absl::StatusCode::kCancelled, "test cancel"));
 }
 
 TEST(KernelTest, Case) {
