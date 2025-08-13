@@ -19,8 +19,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/nvjitlink.h"
-#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 
 namespace stream_executor {
@@ -32,6 +32,10 @@ absl::StatusOr<NvJitLinkVersion> GetNvJitLinkVersion() {
 absl::StatusOr<std::vector<uint8_t>> CompileAndLinkUsingLibNvJitLink(
     const CudaComputeCapability& cc, absl::Span<const NvJitLinkInput> inputs,
     GpuAsmOpts options, bool cancel_if_reg_spill) {
+  return absl::UnimplementedError("libnvjitlink is not supported");
+}
+
+absl::StatusOr<int> GetLatestPtxIsaVersionForLibNvJitLink() {
   return absl::UnimplementedError("libnvjitlink is not supported");
 }
 

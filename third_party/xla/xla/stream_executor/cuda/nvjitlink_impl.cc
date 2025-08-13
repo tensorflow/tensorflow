@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/base/optimization.h"
 #include "absl/cleanup/cleanup.h"
+#include "absl/debugging/leak_check.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -32,13 +33,12 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "third_party/gpus/cuda/include/nvJitLink.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/nvjitlink.h"
 #include "xla/stream_executor/cuda/ptx_compiler_helpers.h"
-#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor {
 
@@ -242,6 +242,50 @@ absl::StatusOr<std::vector<uint8_t>> CompileAndLinkUsingLibNvJitLink(
 
   return cubin;
 }
+
+absl::StatusOr<int> GetLatestPtxIsaVersionForLibNvJitLink() {
+  absl::string_view ptx_contents = ".version 99.99";
+  // The call to `nvJitLinkCreate` below requires an arch to be specified in
+  // order to succeed.
+  std::vector<const char*> cli_args_ptrs{"-arch=sm_90a"};
+  nvJitLinkHandle link_handle = nullptr;
+  nvJitLinkResult create_result =
+      nvJitLinkCreate(&link_handle, /*num_args=*/cli_args_ptrs.size(),
+                      /*args=*/cli_args_ptrs.data());
+
+  absl::Cleanup link_handle_cleaner = [&link_handle] {
+    if (link_handle != nullptr) {
+      CHECK_EQ(nvJitLinkDestroy(&link_handle), NVJITLINK_SUCCESS);
+    }
+  };
+
+  if (create_result != NVJITLINK_SUCCESS) {
+    TF_ASSIGN_OR_RETURN(std::string error_log,
+                        nvJitLinkGetErrorLog(link_handle));
+
+    VLOG(3) << "libnvjitlink error log output: " << error_log;
+
+    return ToStatus(create_result, error_log);
+  }
+
+  // TODO(b/437088681): Re-enable heap checking when calling
+  // nvJitLinkAddData. The compiler does not seem to free resources properly
+  // on error.
+  absl::LeakCheckDisabler disabler;
+
+  nvJitLinkResult result =
+      nvJitLinkAddData(link_handle, NVJITLINK_INPUT_PTX, ptx_contents.data(),
+                       ptx_contents.size(), nullptr);
+
+  if (result == NVJITLINK_SUCCESS) {
+    return absl::InternalError(
+        "libnvjitlink compilation succeeded where it was expected to fail");
+  }
+
+  TF_ASSIGN_OR_RETURN(std::string error_log, nvJitLinkGetErrorLog(link_handle));
+  return GetLatestPtxIsaVersionFromUnsupportedVersionErrorLog(error_log);
+}
+
 #undef RETURN_IF_NVJITLINK_ERROR
 
 }  // namespace stream_executor
