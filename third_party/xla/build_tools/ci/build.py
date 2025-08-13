@@ -110,6 +110,7 @@ class BuildType(enum.Enum):
   XLA_LINUX_ARM64_CPU_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_X86_GPU_L4_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_X86_GPU_ONEAPI_GITHUB_ACTIONS = enum.auto()
+  XLA_LINUX_X86_GPU_B200_GITHUB_ACTIONS = enum.auto()
 
   # Presubmit builds for regression testing.
   XLA_LINUX_ARM64_CPU_48_VCPU_PRESUBMIT_GITHUB_ACTIONS = enum.auto()
@@ -285,11 +286,16 @@ def nvidia_gpu_build_with_compute_capability(
           "-oneapi-only",
       ),
       options={
-          "run_under": "//build_tools/ci:parallel_gpu_execute",
           "//xla/tsl:ci_build": True,
+          "strategy": "TestRunner=local",
+          "test_sharding_strategy": "disabled",
+          "local_test_jobs": 1,
           **_DEFAULT_BAZEL_OPTIONS,
       },
-      repo_env={"TF_CUDA_COMPUTE_CAPABILITIES": f"{compute_capability/10}"},
+      repo_env={
+          "HERMETIC_CUDA_COMPUTE_CAPABILITIES": f"sm_{compute_capability}",
+          "TF_CUDA_COMPUTE_CAPABILITIES": f"{compute_capability/10}",
+      },
       extra_setup_commands=(["nvidia-smi"],),
   )
 
@@ -337,6 +343,12 @@ nvidia_gpu_build_with_compute_capability(
     type_=BuildType.XLA_LINUX_X86_GPU_L4_GITHUB_ACTIONS,
     configs=("warnings", "rbe_linux_cuda_nvcc"),
     compute_capability=75,
+)
+
+nvidia_gpu_build_with_compute_capability(
+    type_=BuildType.XLA_LINUX_X86_GPU_B200_GITHUB_ACTIONS,
+    configs=("warnings", "rbe_linux_cuda_nvcc"),
+    compute_capability=100,
 )
 
 oneapi_build_tag_filter = (
