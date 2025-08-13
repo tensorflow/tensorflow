@@ -80,7 +80,7 @@ TEST(ConfigTest, NotFound) {
                           RuntimeConfig::CreateFromProto(runtime_config_proto));
 
   EXPECT_THAT(runtime_config.Get<TestConfig2>(),
-              ::tsl::testing::StatusIs(absl::StatusCode::kNotFound));
+              absl_testing::StatusIs(absl::StatusCode::kNotFound));
 }
 
 TEST(ConfigTest, Duplicate) {
@@ -91,7 +91,7 @@ TEST(ConfigTest, Duplicate) {
 
   TF_ASSERT_OK(runtime_config.Add(expected_test_config1));
   EXPECT_THAT(runtime_config.Add(expected_test_config1),
-              ::tsl::testing::StatusIs(absl::StatusCode::kAlreadyExists));
+              absl_testing::StatusIs(absl::StatusCode::kAlreadyExists));
 }
 
 }  // namespace
