@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -29,6 +30,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/stream_executor/cuda/compilation_options.h"
 #include "xla/stream_executor/cuda/compilation_provider_test.h"
+#include "xla/stream_executor/cuda/composite_compilation_provider.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/driver_compilation_provider.h"
 #include "xla/stream_executor/cuda/nvjitlink_compilation_provider.h"
@@ -60,12 +62,19 @@ void CompilationProviderTest::SetUp() {
   }
 #endif
 
-  if (GetParam() == kNvJitLinkCompilationProviderName &&
-      !IsLibNvJitLinkSupported()) {
+  absl::string_view provider = GetParam();
+
+  if (!IsLibNvJitLinkSupported() &&
+      (provider == kNvJitLinkCompilationProviderName ||
+       provider ==
+           kCompositeNvptxCompilerAndNvJitLinkCompilationProviderName)) {
     GTEST_SKIP() << "nvjitlink is not supported in this build.";
   }
-  if (GetParam() == kNvptxcompilerCompilationProviderName &&
-      !IsLibNvPtxCompilerSupported()) {
+
+  if (!IsLibNvPtxCompilerSupported() &&
+      (provider == kNvptxcompilerCompilationProviderName ||
+       provider ==
+           kCompositeNvptxCompilerAndNvJitLinkCompilationProviderName)) {
     GTEST_SKIP() << "nvptxcompiler is not supported in this build.";
   }
 
@@ -93,6 +102,13 @@ CompilationProviderTest::CreateCompilationProvider(absl::string_view name) {
 
   if (name == kDriverCompilationProviderName) {
     return std::make_unique<DriverCompilationProvider>();
+  }
+
+  if (name == kCompositeNvptxCompilerAndNvJitLinkCompilationProviderName) {
+    std::vector<std::unique_ptr<CompilationProvider>> providers;
+    providers.push_back(std::make_unique<NvptxcompilerCompilationProvider>());
+    providers.push_back(std::make_unique<NvJitLinkCompilationProvider>());
+    return CompositeCompilationProvider::Create(std::move(providers));
   }
 
   return absl::NotFoundError(
@@ -480,7 +496,8 @@ TEST_P(CompilationProviderTest,
   CompilationProvider* provider = compilation_provider();
   if (dynamic_cast<SubprocessCompilationProvider*>(provider) ||
       dynamic_cast<NvptxcompilerCompilationProvider*>(provider) ||
-      dynamic_cast<NvJitLinkCompilationProvider*>(provider)) {
+      dynamic_cast<NvJitLinkCompilationProvider*>(provider) ||
+      dynamic_cast<CompositeCompilationProvider*>(provider)) {
     TF_ASSERT_OK_AND_ASSIGN(int latest_ptx_isa_version,
                             provider->GetLatestPtxIsaVersion());
     EXPECT_GE(latest_ptx_isa_version, 80);

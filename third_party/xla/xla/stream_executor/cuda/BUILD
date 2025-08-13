@@ -1596,6 +1596,7 @@ cc_library(
     deps = [
         ":compilation_options",
         ":compilation_provider",
+        ":composite_compilation_provider",
         ":cuda_compute_capability",
         ":cuda_platform",  # buildcleaner: keep
         ":driver_compilation_provider",
@@ -1707,6 +1708,7 @@ cc_library(
         ":compilation_provider",
         ":cuda_compute_capability",
         "//xla/stream_executor:device_description",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
