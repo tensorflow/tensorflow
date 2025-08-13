@@ -20,6 +20,7 @@ limitations under the License.
 #include <initializer_list>
 #include <string>
 #include <utility>
+#include <variant>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
@@ -29,6 +30,9 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/SmallVector.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/tma_metadata.pb.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -182,6 +186,11 @@ absl::Status ValidateInterleaveAndSwizzleCombos(
 
 absl::Status ValidateElementStrides(
     absl::Span<const uint32_t> element_strides) {
+  if (element_strides[0] != 1) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("element_strides[0] must be 1 for TMA. Got %d instead.",
+                        element_strides[0]));
+  }
   if (absl::c_any_of(element_strides, [](uint32_t stride) {
         return stride == 0 || stride > kMaxElementStride;
       })) {
@@ -449,6 +458,75 @@ absl::StatusOr<TmaMetadata> TmaMetadata::FromProto(
     metadata.arg_index_to_tma_info.insert({arg_index, std::move(descriptor)});
   }
   return metadata;
+}
+
+bool IsTmaAvailableForDevice(
+    const stream_executor::DeviceDescription& device_info) {
+  bool is_cuda = std::holds_alternative<stream_executor::CudaComputeCapability>(
+      device_info.gpu_compute_capability());
+  return is_cuda && device_info.cuda_compute_capability().IsAtLeastHopper();
+}
+
+// Limitations of TMA:
+// - The global shape must be > 0 and <= 2^32.
+// - The minor dimension of the tile (in bytes) must be divisible by 16.
+// - The minor dimension must be contiguous. i.e. its tile stride must be 1.
+// - Global strides (in bytes) must be divisible by 16 and < 2^40.
+// - The tile shape must be less than 256 in every dimension.
+// - The element byte size must be 1, 2, 4, or 8.
+// - Tile strides must be non-zero and <= 8.
+// See source:
+// https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__TENSOR__MEMORY.html
+absl::Status IsTmaCompatible(absl::Span<const int64_t> global_shape,
+                             absl::Span<const int64_t> tile_shape,
+                             absl::Span<const int64_t> tile_strides,
+                             absl::Span<const int64_t> minor_to_major_layout,
+                             int element_byte_size) {
+  llvm::SmallVector<uint64_t, 5> normalized_global_shape;
+  for (auto layout_dim : minor_to_major_layout) {
+    normalized_global_shape.push_back(global_shape[layout_dim]);
+  }
+
+  llvm::SmallVector<uint64_t, 4> global_strides;
+  if (normalized_global_shape.size() >= 2) {
+    global_strides.push_back(normalized_global_shape[0] * element_byte_size);
+    for (int64_t i = 1; i < normalized_global_shape.size() - 1; ++i) {
+      global_strides.push_back(global_strides[i - 1] *
+                               normalized_global_shape[i]);
+    }
+  }
+
+  llvm::SmallVector<uint32_t, 5> element_strides;
+  for (auto layout_dim : minor_to_major_layout) {
+    element_strides.push_back(tile_strides[layout_dim]);
+  }
+
+  // When the tile strides are > 1, the box dimensions no longer reflect the
+  // number of elements in the tile. To load the correct number of
+  // elements, we need to multiply the tile strides by the number of elements in
+  // the tile.
+  llvm::SmallVector<uint32_t, 5> box_dims;
+  for (auto layout_dim : minor_to_major_layout) {
+    box_dims.push_back(static_cast<uint32_t>(tile_shape[layout_dim]) *
+                       tile_strides[layout_dim]);
+  }
+
+  const TmaDescriptor::TmaInterleave default_interleave =
+      TmaDescriptor::TmaInterleave::kNone;
+  const TmaDescriptor::TmaSwizzle default_swizzle =
+      TmaDescriptor::TmaSwizzle::kNone;
+  const TmaDescriptor::TmaL2Promotion default_l2_promotion =
+      TmaDescriptor::TmaL2Promotion::kNone;
+
+  // Attempt to construct a TmaDescriptor with the default values. If this
+  // fails, then TMA is not compatible.
+  TF_ASSIGN_OR_RETURN(
+      auto tma_desc, TmaDescriptor::Create(
+                         normalized_global_shape, global_strides, box_dims,
+                         element_strides, element_byte_size, default_interleave,
+                         default_swizzle, default_l2_promotion));
+
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -53,7 +54,6 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/backends/gpu/codegen/triton/emitter_helpers.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
-#include "xla/backends/gpu/codegen/triton/tma_utils.h"
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h"
 #include "xla/codegen/emitter_loc_op_builder.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
@@ -63,6 +63,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/gpu/tma_metadata.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/Triton/IR/Types.h"
 
@@ -97,15 +98,17 @@ SmallVector<Value> IndexCastUI(::xla::EmitterLocOpBuilder& builder, Type type,
   return result;
 }
 
-// Canonicalizes tile strides. If a tile stride is 0, and the corresponding
-// tile shape or original shape value at the same index is 1, then the tile
-// stride is set to 1. Otherwise, it returns an error.
+// Canonicalizes tile strides. Currently this converts zero strides to 1.
+// If validation is requested and a tile stride is 0:
+// If the corresponding tile shape or original shape value at the same index is
+// 1, then the tile stride is set to 1. Otherwise, it returns an error.
 absl::Status CanonicalizeTileStrides(SmallVector<int64_t>& tile_strides,
                                      const ArrayRef<int64_t>& tile_shape,
-                                     const ArrayRef<int64_t>& original_shape) {
+                                     const ArrayRef<int64_t>& original_shape,
+                                     bool validate = true) {
   for (int64_t i = 0; i < tile_strides.size(); ++i) {
     if (tile_strides[i] == 0) {
-      if (tile_shape[i] != 1 && original_shape[i] != 1) {
+      if (validate && tile_shape[i] != 1 && original_shape[i] != 1) {
         return absl::InvalidArgumentError(absl::StrFormat(
             "tile_stride at index %d is 0, but tile_shape at the same "
             "index is %d, and original_shape at the same index is %d. Expected "
@@ -149,21 +152,24 @@ bool IsOffsetDivisibilityGuaranteed(mlir::Value offset_val,
   return false;
 }
 
-bool CanUseTMA(::xla::EmitterLocOpBuilder& builder, bool tma_enabled,
+// Limitations of TMA are documented in IsTmaCompatible
+// in third_party/tensorflow/compiler/xla/stream_executor/gpu/tma_metadata.h.
+// Additionally:
+// - UNDOCUMENTED LIMITATION (informed by Nvidia in chat):
+//      - The address we load/store from (base + offset) must be divisible
+//      by 16. Since we already check that both the global strides and most
+//      minor tile dimension (in bytes) must be divisible by 16, it is
+//      sufficient to check that the offset in the minor dimension (in bytes) is
+//      divisible by 16.
+bool CanUseTma(bool tma_enabled,
                const stream_executor::DeviceDescription& device_description,
+               const ArrayRef<int64_t>& original_shape,
                const ArrayRef<int64_t>& tile_shape,
                const ArrayRef<int64_t>& tile_strides, ValueRange offsets,
                const TypedValue<RankedTensorType>& tensor,
                const ArrayRef<int64_t>& minor_to_major_layout) {
-  if (!tma_enabled) {
-    return false;
-  }
-  if (!::xla::gpu::IsTmaEnabledForDevice(device_description)) {
-    return false;
-  }
-
-  // Nvidia TMA supports between 1 and up to 5 dimensions.
-  if (tile_shape.empty() || tile_shape.size() > 5) {
+  if (!tma_enabled ||
+      !stream_executor::gpu::IsTmaAvailableForDevice(device_description)) {
     return false;
   }
 
@@ -178,73 +184,38 @@ bool CanUseTMA(::xla::EmitterLocOpBuilder& builder, bool tma_enabled,
     return false;
   }
 
-  // Limitations of TMA:
-  // - The global shape must be > 0 and <= 2^32.
-  // - The minor dimension of the tile (in bytes) must be divisible by 16.
-  // - The minor dimension must be contiguous. i.e. its tile stride must be 1.
-  // - The global strides (in bytes) must be divisible by 16 and < 2^40.
-  // - The block size must be less than 256 in every dimension.
-  // See source:
-  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__TENSOR__MEMORY.html
-  //
-  // Another undocumented limitation (informed by Nvidia in chat):
-  // - The address we load/store from (base + offset) must be divisible by 16.
-  // Since we already check that both the global strides and most minor tile
-  // dimension (in bytes) must be divisible by 16, it is sufficient to check
-  // that the offset in the minor dimension (in bytes) is divisible by 16.
-  const uint64_t kMaxGlobalDim = pow(2, 32);
-  const uint64_t kMaxGlobalStride = pow(2, 40) - 1;
-  const uint64_t kByteDivisibilityFactor = 16;
-  const uint64_t kMaxBoxDim = 256;
-
-  RankedTensorType tensor_type = tensor.getType();
-  uint64_t element_byte_size = tensor_type.getElementTypeBitWidth() / 8;
-  ArrayRef<int64_t> global_shape = tensor_type.getShape();
-  int64_t minor_dim_idx = minor_to_major_layout[0];
-
-  // Validate global shape.
-  if (llvm::any_of(global_shape, [&](uint64_t dim) {
-        return dim == 0 || dim > kMaxGlobalDim;
-      })) {
+  // Some TMA constraints can't be validated if tile strides are dynamic.
+  if (mlir::ShapedType::isDynamicShape(tile_strides)) {
     return false;
   }
 
-  // Validate tile shape.
-  if ((tile_shape[minor_dim_idx] * element_byte_size) %
-          kByteDivisibilityFactor !=
-      0) {
-    return false;
-  }
-  if (llvm::any_of(tile_shape, [&](uint64_t dim) {
-        return dim == 0 || dim > kMaxBoxDim;
-      })) {
-    return false;
-  }
+  // Canonicalize without validation since we are still not sure if TMA will be
+  // used or not.
+  SmallVector<int64_t> canonical_tile_strides(tile_strides.begin(),
+                                              tile_strides.end());
+  auto canonicalize_status = CanonicalizeTileStrides(canonical_tile_strides,
+                                                     tile_shape, original_shape,
+                                                     /*validate=*/false);
 
-  // Validate minor dimension is contiguous.
-  if (mlir::ShapedType::isDynamicShape(tile_strides) ||
-      tile_strides[minor_dim_idx] != 1) {
+  uint64_t element_byte_size = tensor.getType().getElementTypeBitWidth() / 8;
+
+  auto tma_compatibilty_status = stream_executor::gpu::IsTmaCompatible(
+      absl::MakeSpan(tensor.getType().getShape().data(),
+                     tensor.getType().getShape().size()),
+      absl::MakeSpan(tile_shape.data(), tile_shape.size()),
+      absl::MakeSpan(canonical_tile_strides.data(),
+                     canonical_tile_strides.size()),
+      absl::MakeSpan(minor_to_major_layout.data(),
+                     minor_to_major_layout.size()),
+      element_byte_size);
+  if (!tma_compatibilty_status.ok()) {
+    VLOG(1) << "TMA is not compatible for this argument. Reason: "
+            << tma_compatibilty_status.message();
     return false;
-  }
-  // Validate global strides.
-  SmallVector<int64_t, 4> global_strides;
-  if (tensor_type.getRank() >= 2) {
-    global_strides.push_back(global_shape[minor_dim_idx] * element_byte_size);
-    if (global_strides[0] % kByteDivisibilityFactor != 0 ||
-        global_strides[0] > kMaxGlobalStride) {
-      return false;
-    }
-    for (int64_t i = 1; i < global_shape.size(); ++i) {
-      global_strides.push_back(global_strides[i - 1] *
-                               global_shape[minor_to_major_layout[i]]);
-      if (global_strides[i] > kMaxGlobalStride) {
-        return false;
-      }
-    }
   }
 
   // Validate minor dimension offset.
-  if (!IsOffsetDivisibilityGuaranteed(offsets[minor_dim_idx],
+  if (!IsOffsetDivisibilityGuaranteed(offsets[minor_to_major_layout[0]],
                                       element_byte_size)) {
     return false;
   }
@@ -580,8 +551,8 @@ class RewriteExtract : public mlir::OpRewritePattern<ExtractOp> {
     ArrayRef<int64_t> tile_shape = tile_type.getShape();
 
     auto offsets = op.getOffsetsAsValues(builder);
-    if (CanUseTMA(builder, tma_enabled_, *device_description_, tile_shape,
-                  op.getStaticStrides(), offsets, op.getSrc(),
+    if (CanUseTma(tma_enabled_, *device_description_, original_shape,
+                  tile_shape, op.getStaticStrides(), offsets, op.getSrc(),
                   op.getLayout())) {
       SmallVector<int64_t> strides = llvm::to_vector(op.getStaticStrides());
       if (auto result =
@@ -678,8 +649,8 @@ class RewriteInsert : public mlir::OpRewritePattern<InsertOp> {
     ArrayRef<int64_t> tile_shape = tile_type.getShape();
 
     auto offsets = op.getOffsetsAsValues(builder);
-    if (CanUseTMA(builder, tma_enabled_, *device_description_, tile_shape,
-                  op.getStaticStrides(), offsets, op.getDst(),
+    if (CanUseTma(tma_enabled_, *device_description_, original_shape,
+                  tile_shape, op.getStaticStrides(), offsets, op.getDst(),
                   op.getLayout())) {
       SmallVector<int64_t> strides = llvm::to_vector(op.getStaticStrides());
       if (auto result =

@@ -170,6 +170,7 @@ cc_library(
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/stream_executor/cuda:ptx_compiler_helpers",
         "//xla/stream_executor/gpu:redzone_allocator",
+        "//xla/stream_executor/gpu:tma_metadata",
         "//xla/stream_executor/integrations:tf_allocator_adapter",
         "//xla/tools:hlo_decomposer_lib",
         "//xla/tsl/lib/core:bits",

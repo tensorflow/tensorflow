@@ -25,7 +25,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
-#include "xla/backends/gpu/codegen/triton/tma_utils.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -45,6 +44,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/priority_fusion.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -75,7 +75,8 @@ TritonBackend::GetSupportedConfigs(const HloInstruction& instr) {
   // Allow TMA tuning for Hopper+ devices when TMA flag is passed.
   bool autotune_tma =
       debug_options().xla_gpu_experimental_enable_triton_tma() &&
-      IsTmaEnabledForDevice(target_config().device_description);
+      stream_executor::gpu::IsTmaAvailableForDevice(
+          target_config().device_description);
   std::vector<std::unique_ptr<BackendConfig>> configs;
   VLOG(1) << "Generating configs from search space: "
           << search_space.ToString();

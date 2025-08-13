@@ -21,7 +21,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
-#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 
 namespace xla::gpu {
@@ -31,11 +30,6 @@ absl::StatusOr<stream_executor::gpu::TmaDescriptor> CreateTmaDescriptor(
     llvm::ArrayRef<int64_t> global_shape, llvm::ArrayRef<int64_t> tile_shape,
     llvm::ArrayRef<int64_t> tile_strides, llvm::ArrayRef<int64_t> layout,
     int element_byte_size, mlir::triton::xla::SwizzleMode swizzle_mode);
-
-// Returns true if the device supports TMA.
-bool IsTmaEnabledForDevice(
-    const stream_executor::DeviceDescription& device_info);
-
 }  // namespace xla::gpu
 
 #endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_TMA_UTILS_H_
