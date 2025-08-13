@@ -648,7 +648,7 @@ TEST(TPURewriteDeviceUtilTest, InvalidXLADeviceAssignmentMesh1x2x1x3) {
       device_assignment_attr);
 
   EXPECT_THAT(xla_device_assignment,
-              testing::StatusIs(
+              absl_testing::StatusIs(
                   absl::StatusCode::kInvalidArgument,
                   ::testing::HasSubstr(
                       "must be 'num_replicas' * 'num_cores_per_replica' * ")));
