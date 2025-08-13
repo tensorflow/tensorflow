@@ -788,7 +788,7 @@ PjRtStreamExecutorClient::BufferFromHostBufferInternal(
     options.dims = dims;
     options.permutation = permutation;
     options.input_layout = TransposePlan::Striding{*byte_strides};
-    absl::MutexLock lock(&transpose_mu_);
+    absl::MutexLock lock(transpose_mu_);
     TF_ASSIGN_OR_RETURN(transpose, transpose_cache_.GetOrCreate(options));
   }
 
@@ -1151,7 +1151,7 @@ absl::Status PjRtStreamExecutorClient::DmaMap(void* data, size_t buffer_size) {
     return absl::InternalError(absl::StrFormat(
         "Failed to register host memory at address: %ps", data));
   }
-  absl::MutexLock lock(&dma_maps_mutex_);
+  absl::MutexLock lock(dma_maps_mutex_);
   dma_maps_.insert({data, buffer_size});
   return absl::OkStatus();
 }
@@ -1168,7 +1168,7 @@ absl::Status PjRtStreamExecutorClient::DmaUnmap(void* data) {
     return absl::InternalError(absl::StrFormat(
         "Failed to unregister host memory at address: %ps", data));
   }
-  absl::MutexLock lock(&dma_maps_mutex_);
+  absl::MutexLock lock(dma_maps_mutex_);
   dma_maps_.erase(data);
   return absl::OkStatus();
 }
@@ -1410,7 +1410,7 @@ void PjRtStreamExecutorBuffer::Delete() {
 void PjRtStreamExecutorBuffer::ConvertUsageHold(
     TrackedDeviceBuffer* buffer, se::Stream* usage_stream,
     std::shared_ptr<BufferSequencingEvent> event, bool reference_held) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   CHECK(device_buffer() == buffer || device_buffer() == nullptr);
   buffer->AddUsageEvent(usage_stream, std::move(event), reference_held);
   DecrementUsage();
@@ -1512,7 +1512,7 @@ PjRtFuture<> PjRtStreamExecutorBuffer::ToLiteralHelper(
             options.permutation = permutation;
             options.input_layout = TransposePlan::Striding{byte_strides};
             {
-              absl::MutexLock lock(&client->transpose_mu_);
+              absl::MutexLock lock(client->transpose_mu_);
               absl::StatusOr<std::shared_ptr<TransposePlan>> t =
                   client->transpose_cache_.GetOrCreate(options);
               if (!t.ok()) {
@@ -1645,7 +1645,7 @@ PjRtFuture<> PjRtStreamExecutorBuffer::ToLiteralHelper(
 
 absl::StatusOr<size_t> PjRtStreamExecutorBuffer::GetOnDeviceSizeInBytes()
     const {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   if (device_buffer() == nullptr || !device_buffer()->device_memory()) {
     return InvalidArgument(
         "GetOnDeviceSizeInBytes called on deleted or donated buffer");
@@ -1666,7 +1666,7 @@ PjRtFuture<> PjRtStreamExecutorBuffer::CopyRawToHostFuture(
 
 PjRtStreamExecutorBuffer::ScopedHold
 PjRtStreamExecutorBuffer::GetBufferWithHold(ScopedHold::Type type) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   // Ensure that at most one donation hold can be in progress at a time.
   WaitForOutstandingDonationHold();
   ScopedHold hold(this, type);
@@ -1863,7 +1863,7 @@ PjRtFuture<> PjRtStreamExecutorBuffer::GetReadyFuture() {
       definition_events;
   PjRtFuture<>::Promise definition_promise;
   {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     if (device_buffer() == nullptr) {
       return PjRtFuture<>(InvalidArgument(
           "GetReadyFuture() called on deleted or donated buffer"));
@@ -2424,7 +2424,7 @@ class StreamExecutorCopyToDeviceStream : public CopyToDeviceStream {
           {{"channel_id", channel_id_}});
     });
 
-    absl::ReleasableMutexLock lock(&mu_);
+    absl::ReleasableMutexLock lock(mu_);
 
     VLOG(3) << "Add chunk to a H2D channel #" << channel_id_ << ": "
             << "size=" << chunk.size() << ", "
@@ -3137,7 +3137,7 @@ PjRtStreamExecutorLoadedExecutable::Execute(
             ExecuteHelper(argument_handles[i], replica, partition, run_id,
                           options, returned_futures.has_value());
 
-        absl::MutexLock lock(&mu);
+        absl::MutexLock lock(mu);
         --running;
         if (!results[i].ok()) {
           if (failed == 0) {
@@ -3152,7 +3152,7 @@ PjRtStreamExecutorLoadedExecutable::Execute(
       mu.AssertHeld();
       return running == 0 || failed > 0;
     };
-    absl::MutexLock lock(&mu);
+    absl::MutexLock lock(mu);
     mu.Await(absl::Condition(&done_running_or_failed));
     if (failed > 0) {
       auto done_running = [&]() {
@@ -3823,7 +3823,7 @@ PjRtStreamExecutorClient::Load(std::unique_ptr<PjRtExecutable> executable,
 
 bool PjRtStreamExecutorClient::IsDmaMapped(const void* data_start,
                                            int64_t transfer_size) {
-  absl::MutexLock lock(&dma_maps_mutex_);
+  absl::MutexLock lock(dma_maps_mutex_);
   if (!dma_maps_.empty()) {
     void* data_end = (char*)data_start + transfer_size;
     for (const auto& [map_start, map_size] : dma_maps_) {
