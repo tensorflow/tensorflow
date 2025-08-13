@@ -17,8 +17,6 @@ limitations under the License.
 #include <cstring>
 #include <vector>
 
-// TODO(basioli): We are still supporting both runtimes. This enables us to test
-// both of them.
 #if defined(ENABLE_XLA_THUNK_TEST)
 #include "tensorflow/compiler/aot/tests/test_graph_tfadd_thunks.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfadd_with_ckpt_saver_thunks.h"
@@ -57,26 +55,6 @@ limitations under the License.
 #include "tensorflow/compiler/aot/tests/test_graph_tfvariable_nanort.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfvariable_readonly_nanort.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfvariable_sequential_updates_nanort.h"
-
-#else
-
-#include "tensorflow/compiler/aot/tests/test_graph_tfadd.h"
-#include "tensorflow/compiler/aot/tests/test_graph_tfadd_with_ckpt.h"
-#include "tensorflow/compiler/aot/tests/test_graph_tfadd_with_ckpt_saver.h"
-#include "tensorflow/compiler/aot/tests/test_graph_tfassert_eq.h"
-#include "tensorflow/compiler/aot/tests/test_graph_tfcond.h"
-#include "tensorflow/compiler/aot/tests/test_graph_tffunction.h"
-#include "tensorflow/compiler/aot/tests/test_graph_tfgather.h"
-#include "tensorflow/compiler/aot/tests/test_graph_tfmatmul.h"
-#include "tensorflow/compiler/aot/tests/test_graph_tfmatmul_with_constant.h"
-#include "tensorflow/compiler/aot/tests/test_graph_tfmatmulandadd.h"
-#include "tensorflow/compiler/aot/tests/test_graph_tfrandom_uniform.h"
-#include "tensorflow/compiler/aot/tests/test_graph_tfscatter.h"
-#include "tensorflow/compiler/aot/tests/test_graph_tfsplits.h"
-#include "tensorflow/compiler/aot/tests/test_graph_tftop_k.h"
-#include "tensorflow/compiler/aot/tests/test_graph_tfvariable.h"
-#include "tensorflow/compiler/aot/tests/test_graph_tfvariable_readonly.h"
-#include "tensorflow/compiler/aot/tests/test_graph_tfvariable_sequential_updates.h"
 
 #endif
 

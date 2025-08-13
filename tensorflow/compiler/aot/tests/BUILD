@@ -44,21 +44,21 @@ test_suite(
     name = "all_tests",
     tags = ["manual"],
     tests = [
-        ":test_graph_tfadd_test",
-        ":test_graph_tfadd_with_ckpt_saver_test",
-        ":test_graph_tfadd_with_ckpt_test",
-        ":test_graph_tfassert_eq_test",
-        ":test_graph_tfcond_test",
-        ":test_graph_tffunction_test",
-        ":test_graph_tfgather_test",
-        ":test_graph_tfmatmul_test",
-        ":test_graph_tfmatmulandadd_test",
-        ":test_graph_tfsplits_test",
-        ":test_graph_tftop_k_test",
-        ":test_graph_tfvariable_readonly_test",
-        ":test_graph_tfvariable_sequential_updates_test",
-        ":test_graph_tfvariable_test",
-        ":tfcompile_test",
+        ":test_graph_tfadd_thunks_test",
+        ":test_graph_tfadd_with_ckpt_saver_thunks_test",
+        ":test_graph_tfadd_with_ckpt_thunks_test",
+        ":test_graph_tfassert_eq_thunks_test",
+        ":test_graph_tfcond_thunks_test",
+        ":test_graph_tffunction_thunks_test",
+        ":test_graph_tfgather_thunks_test",
+        ":test_graph_tfmatmul_thunks_test",
+        ":test_graph_tfmatmulandadd_thunks_test",
+        ":test_graph_tfsplits_thunks_test",
+        ":test_graph_tftop_k_thunks_test",
+        ":test_graph_tfvariable_readonly_thunks_test",
+        ":test_graph_tfvariable_sequential_updates_thunks_test",
+        ":test_graph_tfvariable_thunks_test",
+        ":tfcompile_test_thunks",
     ],
     visibility = ["//visibility:public"],
 )
@@ -131,7 +131,6 @@ genrule(
 # tf_compile, so this allows the configurations to be specified in one place.
 # suffix, mlir_component, xla_flags, tfcompile_flags
 tfcompile_test_dep_configs = [
-    ("", "None", "--xla_cpu_use_thunk_runtime=false", ""),
     ("_thunks", "None", "--xla_cpu_use_thunk_runtime=true", ""),
     ("_nanort", "None", "--xla_cpu_use_thunk_runtime=true", "--use_xla_nanort_runtime"),
 ]
@@ -442,44 +441,6 @@ test_suite(
 ] for (bench_name, config_file, template_file, sed_replace) in tfcompile_bench_tfmatmul]
 
 tf_cc_test(
-    name = "tfcompile_test",
-    srcs = ["tfcompile_test.cc"],
-    tags = [
-        "manual",
-        "no_mac",  # TODO(b/228273415)
-        "not_run:arm",
-    ],
-    deps = [
-        ":test_graph_tfadd",
-        ":test_graph_tfadd_with_ckpt",
-        ":test_graph_tfadd_with_ckpt_saver",
-        ":test_graph_tfassert_eq",
-        ":test_graph_tfcond",
-        ":test_graph_tffunction",
-        ":test_graph_tfgather",
-        ":test_graph_tfmatmul",
-        ":test_graph_tfmatmul_with_constant",
-        ":test_graph_tfmatmulandadd",
-        ":test_graph_tfrandom_uniform",
-        ":test_graph_tfscatter",
-        ":test_graph_tfsplits",
-        ":test_graph_tftop_k",
-        ":test_graph_tfvariable",
-        ":test_graph_tfvariable_readonly",
-        ":test_graph_tfvariable_sequential_updates",
-        "//tensorflow/compiler/tf2xla:xla_compiled_cpu_function",
-        "//tensorflow/core:portable_gif_internal",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "@eigen_archive//:eigen3",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla/hlo/testlib:test",
-        "@local_xla//xla/tsl/platform:env",
-        "@local_xla//xla/tsl/platform:statusor",
-    ],
-)
-
-tf_cc_test(
     name = "tfcompile_test_thunks",
     srcs = ["tfcompile_test.cc"],
     extra_copts = ["-DENABLE_XLA_THUNK_TEST"],
@@ -518,7 +479,6 @@ tf_cc_test(
     ],
 )
 
-# TODO(basioli): We are still supporting both runtimes. Remove once we fully migrate to thunks.
 tf_cc_test(
     name = "tfcompile_test_nanort",
     srcs = ["tfcompile_test.cc"],
