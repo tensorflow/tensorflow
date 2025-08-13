@@ -78,8 +78,8 @@ int64_t GpuCommandBuffer::AliveExecs() {
 // GpuCommandBuffer implementation
 //===----------------------------------------------------------------------===//
 
-GpuCommandBuffer::GpuCommandBuffer(Mode mode, StreamExecutor* parent)
-    : mode_(mode), parent_(parent) {}
+GpuCommandBuffer::GpuCommandBuffer(Mode mode, StreamExecutor* executor)
+    : mode_(mode), executor_(executor) {}
 
 absl::Status GpuCommandBuffer::CheckNotFinalized() {
   if (state_ == State::kFinalized)
@@ -221,14 +221,13 @@ absl::Status GpuCommandBuffer::UpdateLaunch(const Command* command,
 
 absl::StatusOr<const CommandBuffer::Command*>
 GpuCommandBuffer::CreateNestedCommand(
-    const CommandBuffer& nested,
-    absl::Span<const Command* const> dependencies) {
+    CommandBuffer& nested, absl::Span<const Command* const> dependencies) {
   TF_RETURN_IF_ERROR(CheckInState(State::kCreate));
 
   TF_ASSIGN_OR_RETURN(
       GraphNodeHandle handle,
       CreateChildNode(ToGraphNodeDependencies(dependencies), nested));
-
+  VLOG(5) << "CreateNestedCommand: ";
   return AppendCommand(GpuCommand{handle});
 }
 
@@ -236,6 +235,7 @@ absl::Status GpuCommandBuffer::UpdateNestedCommand(
     const Command* command, const CommandBuffer& nested) {
   TF_RETURN_IF_ERROR(CheckInState(State::kUpdate));
   auto* gpu_command = tsl::down_cast<const GpuCommand*>(command);
+  VLOG(5) << "UpdateNestedCommand: " << reinterpret_cast<const void*>(command);
   return UpdateChildNode(gpu_command->handle, nested);
 }
 
@@ -436,7 +436,6 @@ absl::Status GpuCommandBuffer::UpdateCase(
   for (size_t i = 0; i < gpu_command->conditional_nodes.size(); ++i) {
     GpuCommandBuffer* case_command_buffer =
         gpu_command->conditional_nodes[i].command_buffer.get();
-    auto scoped_update_mode = ActivateUpdateMode(case_command_buffer);
     TF_RETURN_IF_ERROR(case_command_buffer->Update());
     TF_RETURN_IF_ERROR(update_branches[i](case_command_buffer));
     TF_RETURN_IF_ERROR(case_command_buffer->Finalize());
@@ -525,7 +524,6 @@ absl::Status GpuCommandBuffer::UpdateWhile(const Command* command,
       gpu_command->set_init_condition_node, gpu_command->conditional, pred));
 
   GpuCommandBuffer* body = gpu_command->conditional_node.command_buffer.get();
-  auto body_update_mode = ActivateUpdateMode(body);
 
   // Update command buffer using user-provided builder callback.
   TF_RETURN_IF_ERROR(body->Update());

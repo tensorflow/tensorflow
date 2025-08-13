@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_command_buffer.h"
-#include "xla/stream_executor/gpu/scoped_update_mode.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
@@ -95,11 +94,10 @@ GraphNodeHandle FromHipGraphHandle(hipGraphNode_t handle) {
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<RocmCommandBuffer>> RocmCommandBuffer::Create(
-    Mode mode, StreamExecutor* parent) {
+    Mode mode, StreamExecutor* executor) {
   TF_ASSIGN_OR_RETURN(hipGraph_t graph, CreateGraph());
   return std::unique_ptr<RocmCommandBuffer>(
-      new RocmCommandBuffer(mode, parent, graph,
-                            /*is_owned_graph=*/true));
+      new RocmCommandBuffer(mode, executor, graph, /*is_owned_graph=*/true));
 }
 
 absl::StatusOr<GpuCommandBuffer::GraphConditionalNodeHandle>
@@ -221,10 +219,13 @@ absl::Status RocmCommandBuffer::UpdateMemcpyD2DNode(
 }
 
 absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateChildNode(
-    absl::Span<const GraphNodeHandle> dependencies,
-    const CommandBuffer& nested) {
-  hipGraph_t child_graph =
-      tensorflow::down_cast<const RocmCommandBuffer&>(nested).graph_;
+    absl::Span<const GraphNodeHandle> dependencies, CommandBuffer& nested) {
+  auto& child_command_buffer =
+      tensorflow::down_cast<RocmCommandBuffer&>(nested);
+  CHECK(child_command_buffer.parent_ == nullptr)
+      << "Nested command buffer's parent is not null";
+  child_command_buffer.parent_ = this;
+  hipGraph_t child_graph = child_command_buffer.graph_;
   VLOG(2) << "Create a new node by cloning the child graph " << child_graph
           << " and add it to " << graph_ << "; deps: " << dependencies.size();
 
@@ -429,22 +430,8 @@ absl::Status RocmCommandBuffer::InstantiateGraph() {
       "Failed to instantiate HIP graph");
 }
 
-std::unique_ptr<ScopedUpdateMode> RocmCommandBuffer::ActivateUpdateMode(
-    GpuCommandBuffer* nested_cmd_buffer) {
-  auto nested_rocm_cmd_buffer =
-      static_cast<RocmCommandBuffer*>(nested_cmd_buffer);
-  auto scoped_graph_exec = std::make_unique<ScopedRocmGraphExec>(
-      &nested_rocm_cmd_buffer->exec_,
-      &nested_rocm_cmd_buffer->is_owned_graph_exec_);
-
-  nested_rocm_cmd_buffer->exec_ = exec_;
-  nested_rocm_cmd_buffer->is_owned_graph_exec_ = false;
-
-  return std::move(scoped_graph_exec);
-}
-
 RocmCommandBuffer::~RocmCommandBuffer() {
-  if (exec_ != nullptr && is_owned_graph_exec_) {
+  if (exec_ != nullptr) {
     auto exec_num = NotifyExecDestroyed();
     VLOG(5) << "Destroy GPU command buffer executable graph " << exec_ << " "
             << "(remaining alive executable graphs: " << exec_num << ")";
