@@ -685,25 +685,23 @@ def standardize_sample_or_class_weights(x_weight, output_names, weight_type):
       ValueError: In case of invalid user-provided argument.
   """
   if x_weight is None or (isinstance(x_weight, (list, tuple)) and
-                          len(x_weight) == 0):  # pylint: disable=g-explicit-length-test
+                          len(x_weight) == 0):
     return [None for _ in output_names]
 
   if len(output_names) == 1:
     if isinstance(x_weight, (list, tuple)) and len(x_weight) == 1:
       return x_weight
     if isinstance(x_weight, dict):
-      # Validate class_weight keys (consistent with data_adapter.py)
       if weight_type == 'class_weight':
         for key, value in x_weight.items():
           if isinstance(key, (int, numpy_compat.integer_types)):
             continue
           elif isinstance(key, str):
             try:
-              int(key)  # Valid if it's a string number like "0", "1"
+              int(key)
               continue
             except ValueError:
               pass
-          # Reject everything else
           raise ValueError(f"Invalid class_weight key: '{key}'. "
                          f"Class weight keys must be integers representing "
                          f"class indices, "
@@ -726,7 +724,6 @@ def standardize_sample_or_class_weights(x_weight, output_names, weight_type):
                        'array per model output.')
     return x_weight
   if isinstance(x_weight, dict):
-    # Validate class_weight keys for multiple outputs (consistent with data_adapter.py)
     if weight_type == 'class_weight':
       for name in output_names:
         if name in x_weight and isinstance(x_weight[name], dict):
@@ -739,11 +736,11 @@ def standardize_sample_or_class_weights(x_weight, output_names, weight_type):
                 continue
               except ValueError:
                 pass
-              raise ValueError(f"Invalid class_weight key: '{key}' for "
-                             f"output '{name}'. "
-                             f"Class weight keys must be integers "
-                             f"representing class indices, "
-                             f"got key of type {type(key).__name__}.")
+            raise ValueError(f"Invalid class_weight key: '{key}' for "
+                           f"output '{name}'. "
+                           f"Class weight keys must be integers "
+                           f"representing class indices, "
+                           f"got key of type {type(key).__name__}.")
 
     for name in output_names:
       if name not in x_weight:
@@ -760,7 +757,6 @@ def standardize_sample_or_class_weights(x_weight, output_names, weight_type):
                        '` should be either a list or a dict. '
                        'Provided `' + weight_type + '` type: ' +
                        str(type(x_weight)))
-
 def standardize_class_weights(class_weight, output_names):
   return standardize_sample_or_class_weights(class_weight, output_names,
                                              'class_weight')

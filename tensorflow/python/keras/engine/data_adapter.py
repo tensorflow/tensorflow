@@ -1412,15 +1412,13 @@ def _make_class_weight_map_fn(class_weight):
     A function that can be used with `tf.data.Dataset.map` to apply class
     weighting.
   """
-  # Convert string keys to integers
   converted_class_weight = {}
-  for key, value in class_weight.items():    # Convert keys to integers
+  for key, value in class_weight.items():
     if isinstance(key, (int, numpy_compat.integer_types)):
       converted_class_weight[key] = value
     elif isinstance(key, str):
       try:
-        int_key = int(key)
-        converted_class_weight[int_key] = value
+        converted_class_weight[int(key)] = value
       except ValueError:
         raise ValueError(f"Invalid class_weight key: '{key}'. "
                         f"Class weight keys must be integers representing "
@@ -1442,7 +1440,7 @@ def _make_class_weight_map_fn(class_weight):
     raise ValueError(error_msg)
 
   class_weight_tensor = tensor_conversion.convert_to_tensor_v2_with_dispatch(
-      [converted_class_weight[int(c)] for c in class_ids]
+      [converted_class_weight[c] for c in class_ids]
   )
 
 
