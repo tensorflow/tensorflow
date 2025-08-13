@@ -1,6 +1,32 @@
 # buildifier: disable=load-on-top
 workspace(name = "xla")
 
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+# Initialize toolchains for ML projects.
+#
+# A hermetic build system is designed to produce completely reproducible builds for C++.
+# Details: https://github.com/google-ml-infra/rules_ml_toolchain
+http_archive(
+    name = "rules_ml_toolchain",
+    sha256 = "59d7eb36a02cbe3c2e2fa67fda5e8f1ab7e274bc4773bbd207c51fe199e11c19",
+    strip_prefix = "rules_ml_toolchain-ffd9e3d7b84e43c2686c803cb08ce790ffd58baa",
+    urls = [
+        "https://github.com/google-ml-infra/rules_ml_toolchain/archive/ffd9e3d7b84e43c2686c803cb08ce790ffd58baa.tar.gz",
+    ],
+)
+
+load(
+    "@rules_ml_toolchain//cc/deps:cc_toolchain_deps.bzl",
+    "cc_toolchain_deps",
+)
+
+cc_toolchain_deps()
+
+register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64")
+
+register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64_cuda")
+
 # Initialize the XLA repository and all dependencies.
 #
 # The cascade of load() statements and xla_workspace?() calls works around the
@@ -52,17 +78,6 @@ xla_workspace1()
 load(":workspace0.bzl", "xla_workspace0")
 
 xla_workspace0()
-
-load(
-    "@rules_ml_toolchain//cc/deps:cc_toolchain_deps.bzl",
-    "cc_toolchain_deps",
-)
-
-cc_toolchain_deps()
-
-register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64")
-
-register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64_cuda")
 
 load(
     "@rules_ml_toolchain//gpu/cuda:cuda_json_init_repository.bzl",
