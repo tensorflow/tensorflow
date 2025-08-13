@@ -63,8 +63,6 @@ namespace {
 
 AllToAllConfig GetAllToAllConfig(const HloAllToAllInstruction* instr) {
   AllToAllConfig config;
-  // FIXME(b/180174349): LMHLO AllToAll incorrectly has use_global_device_ids
-  // attribute and it should be removed.
   config.config = GetCollectiveConfig(instr, std::nullopt);
   config.has_split_dimension = instr->split_dimension().has_value();
   return config;
@@ -385,8 +383,6 @@ absl::Status SyncProgress(absl::string_view name,
   return absl::OkStatus();
 }
 
-// TODO(b/380457503): Memcpy AllToAll implementation must be moved to
-// NcclCommunicator implementation.
 absl::Status RunMemCpyAllToAll(bool has_split_dimension,
                                std::vector<DeviceBufferPair>& buffers,
                                se::Stream& stream, Communicator* comm,

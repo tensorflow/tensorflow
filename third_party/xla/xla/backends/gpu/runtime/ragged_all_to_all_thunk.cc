@@ -315,8 +315,6 @@ absl::Status RendezvousAfterKernelFinish(
   return absl::OkStatus();
 }
 
-// TODO(b/380457503): Memcpy AllToAll implementation must be moved to
-// NcclCommunicator implementation.
 absl::Status RunMemCpyRaggedAllToAll(
     const GpuCliqueKey& clique_key, RankId rank,
     int64_t ragged_row_element_size, int64_t num_total_updates,
