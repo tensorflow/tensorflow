@@ -45,6 +45,7 @@ limitations under the License.
 #include "shardy/dialect/sdy/ir/utils.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/translate/hlo_to_mhlo/hlo_utils.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/shardy/utils.h"
 
@@ -80,7 +81,8 @@ using ::mlir::sdy::TensorShardingPerValueAttr;
 // the `op`.
 void saveOpShardingPerValueAttr(
     Operation* op, TensorShardingPerValueAttr shardingPerValueAttr) {
-  setFrontendAttribute(op, HloSharding::kShardingFrontendAttrName,
+  setFrontendAttribute(op,
+                       xla::ToStringRef(HloSharding::kShardingFrontendAttrName),
                        shardingPerValueAttr);
 }
 
@@ -90,8 +92,9 @@ LogicalResult exportFunc(FuncOp funcOp, OpBuilder& builder) {
   for (int64_t argNum = 0; argNum < funcOp.getNumArguments(); ++argNum) {
     if (auto oldSharding = funcOp.getArgAttrOfType<TensorShardingAttr>(
             argNum, kShardingAttr)) {
-      setFrontendAttribute(funcOp, HloSharding::kShardingFrontendAttrName,
-                           oldSharding, argNum);
+      setFrontendAttribute(
+          funcOp, xla::ToStringRef(HloSharding::kShardingFrontendAttrName),
+          oldSharding, argNum);
     }
   }
 

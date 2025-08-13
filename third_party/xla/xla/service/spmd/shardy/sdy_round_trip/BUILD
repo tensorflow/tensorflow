@@ -20,6 +20,7 @@ cc_library(
     hdrs = ["export_shardy_attrs.h"],
     deps = [
         "//xla/hlo/ir:hlo_sharding",
+        "//xla/hlo/translate/hlo_to_mhlo:hlo_utils",
         "//xla/service/spmd/shardy:constants",
         "//xla/service/spmd/shardy:utils",
         "@llvm-project//llvm:Support",
@@ -57,6 +58,7 @@ cc_library(
     visibility = internal_visibility([":friends"]),
     deps = [
         "//xla/hlo/ir:hlo_sharding",
+        "//xla/hlo/translate/hlo_to_mhlo:hlo_utils",
         "//xla/service/spmd/shardy:constants",
         "//xla/service/spmd/shardy:utils",
         "@com_google_absl//absl/functional:any_invocable",
