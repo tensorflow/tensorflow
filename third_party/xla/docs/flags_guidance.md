@@ -7,6 +7,12 @@ memory utilization. Should any issues, such as crashes, arise after enabling a
 flag, it is recommended to revert to the default setting and create a
 GitHub issue.
 
+## Correctness Flags
+
+Flag                            | Description                                                                                                                                                                                              | Default Values                       | Suggested Values                     | Candidate Values
+:------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :----------------------------------- | :----------------------------------- | :---------------
+`xla_mosaic_on_device_checks` | This flag enables on-device checks for Mosaic codegen. Currently, the supported checks are on bounds, i.e., if an out-of-bounds memory is touched, the compilation/execution would catch it. | `xla_mosaic_on_device_checks=bounds` | `xla_mosaic_on_device_checks=bounds` | `xla_mosaic_on_device_checks=bounds`
+
 ## Performance Flags
 
 The following flags are instrumental in enhancing runtime performance.
@@ -26,8 +32,12 @@ Flag                                                                            
 **Compute centric** <br>
 `xla_tpu_enable_dot_strength_reduction` | This flag rewrites non-compute intensive dots as multiply + reduce operations. | `xla_tpu_enable_dot_strength_reduction=true`  | `xla_tpu_enable_dot_strength_reduction=true` | `xla_tpu_enable_dot_strength_reduction=true/false`
 <br>
+<br>
 `xla_tpu_dot_dot_fusion`                    |  This flag enables dot-dot fusion, which fuses a producer-dot operation with a consumer-dot operation. On doing so, the producer-dot's output is not manifested in slow/main memory driving down memory footprint.     |        `xla_tpu_dot_dot_fusion=true`  |                                                                                                                                           `xla_tpu_dot_dot_fusion=true`                  | `xla_tpu_dot_dot_fusion=true/false`
-
+<br>
+`xla_jf_enable_multi_output_fusion`   | This flag enables fusions that fuse multiple consumers (i.e. the resultant fusion will have multiple outputs) | `xla_jf_enable_multi_output_fusion=true` | `xla_jf_enable_multi_output_fusion=true` | `xla_jf_enable_multi_output_fusion=true/false`
+<br>
+`xla_tpu_scoped_vmem_limit_kib` |  This flag sets the amount of scratchpad VMEM available to per op for local usage in KiloBytes. Rest of the VMEM is used as buffer space. | `xla_tpu_scoped_vmem_limit_kib=16384` | `xla_tpu_scoped_vmem_limit_kib=16384` | `xla_tpu_scoped_vmem_limit_kib=[4096, VMEM size of the architecture - 1024]`
 ## Memory Flags
 
 The flags listed below are provided to address HBM-related issues. These
