@@ -677,8 +677,6 @@ void ThunkExecutor::ProcessCompletedOutEdges(
     DCHECK(ready_queue.Empty())
         << "Ready queue must be empty when execution is completed";
 
-    // Make copy of execute_event to avoid use-after-free.
-    auto execute_event = state->execute_event;
     // In the unlikely event of an execution error during thunk execution,
     // forward it to the caller via the execute event.
     if (ABSL_PREDICT_FALSE(state->abort.load(std::memory_order_relaxed))) {
@@ -688,9 +686,9 @@ void ThunkExecutor::ProcessCompletedOutEdges(
             << "Abort status must be set if execution is aborted";
         return std::move(state->abort_status);
       };
-      execute_event.SetError(take_error());
+      state->execute_event.SetError(take_error());
     } else {
-      execute_event.SetStateConcrete();
+      state->execute_event.SetStateConcrete();
     }
   }
 }
