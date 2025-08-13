@@ -923,5 +923,100 @@ ENTRY main {
               op::Subtract(op::Call(op::Parameter(0)), op::Parameter(0)));
 }
 
+TEST_F(CallInlinerTest, OriginalValuePropagationWithUserCall) {
+  const absl::string_view hlo_string = R"(
+  HloModule test
+
+  incr {
+    p = f32[] parameter(0)
+    c = f32[] constant(2), origin={{"c"}}
+    ROOT a = f32[] add(p, c), origin={{"a"}}
+  }
+
+  ENTRY main {
+    p = f32[] parameter(0)
+    ROOT call = f32[] call(p), to_apply=incr, origin={{"call"}}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* call = module->entry_computation()->root_instruction();
+  TF_ASSERT_OK(
+      CallInliner::Inline(call, /*call_is_from_user_code=*/true).status());
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Add());
+  ASSERT_NE(root->original_value(), nullptr);
+  EXPECT_EQ(root->original_value()->leaf_begin()->second->instruction_name,
+            "call/a");
+
+  const HloInstruction* constant = root->operand(1);
+  EXPECT_THAT(constant, op::Constant());
+  ASSERT_NE(constant->original_value(), nullptr);
+  EXPECT_EQ(constant->original_value()->leaf_begin()->second->instruction_name,
+            "call/c");
+}
+
+TEST_F(CallInlinerTest, OriginalValuePropagationWithSyntheticCall) {
+  const absl::string_view hlo_string = R"(
+  HloModule test
+
+  incr {
+    p = f32[] parameter(0)
+    c = f32[] constant(2), origin={{"c"}}
+    ROOT a = f32[] add(p, c), origin={{"a"}}
+  }
+
+  ENTRY main {
+    p = f32[] parameter(0)
+    ROOT call = f32[] call(p), to_apply=incr, origin={{"call"}}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* call = module->entry_computation()->root_instruction();
+  TF_ASSERT_OK(
+      CallInliner::Inline(call, /*call_is_from_user_code=*/false).status());
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Add());
+  ASSERT_NE(root->original_value(), nullptr);
+  EXPECT_EQ(root->original_value()->leaf_begin()->second->instruction_name,
+            "a");
+
+  const HloInstruction* constant = root->operand(1);
+  EXPECT_THAT(constant, op::Constant());
+  ASSERT_NE(constant->original_value(), nullptr);
+  EXPECT_EQ(constant->original_value()->leaf_begin()->second->instruction_name,
+            "c");
+}
+
+TEST_F(CallInlinerTest, OriginalValuePropagationUserCallNoOriginalValue) {
+  const absl::string_view hlo_string = R"(
+  HloModule test
+
+  incr {
+    p = f32[] parameter(0)
+    c = f32[] constant(2), origin={{"c"}}
+    ROOT a = f32[] add(p, c), origin={{"a"}}
+  }
+
+  ENTRY main {
+    p = f32[] parameter(0)
+    ROOT call = f32[] call(p), to_apply=incr
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* call = module->entry_computation()->root_instruction();
+  TF_ASSERT_OK(
+      CallInliner::Inline(call, /*call_is_from_user_code=*/true).status());
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Add());
+  EXPECT_EQ(root->original_value(), nullptr);
+
+  const HloInstruction* constant = root->operand(1);
+  EXPECT_THAT(constant, op::Constant());
+  EXPECT_EQ(constant->original_value(), nullptr);
+}
+
 }  // namespace
 }  // namespace xla
