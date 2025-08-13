@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "xla/service/memory_space_assignment/memory_space_assignment.pb.h"
 
 namespace xla {
 namespace memory_space_assignment {
