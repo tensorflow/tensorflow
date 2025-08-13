@@ -391,6 +391,19 @@ absl::StatusOr<Shape> AdjustAddendShape(const HloInstruction* contraction,
   return new_shape;
 };
 
+// Compute new shape for the binary operand when dot's outer dims
+// are flattened/unflattened with respect to the binary operand dims.
+// Adjusting the operand shape to the dot's shape enables fusion in oneDNN.
+absl::StatusOr<Shape> AdjustBinaryOperandShape(
+    const HloInstruction* operand_instr, const Shape& dot_shape) {
+  if (ShapeUtil::ElementsIn(operand_instr->shape()) !=
+      ShapeUtil::ElementsIn(dot_shape)) {
+    return absl::CancelledError(
+        "Number of elements in operand and dot instruction do not match.");
+  }
+  return dot_shape;
+};
+
 inline bool IsOperandFusible(HloInstruction* operand, HloInstruction* instr) {
   // Check if the operand's shape is compatible for fusion.
   // An operand is fusable if
@@ -713,6 +726,44 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
         } else if (!ShapeUtil::Equal(*new_shape, addend->shape())) {
           addend = addend->AddInstruction(
               HloInstruction::CreateBitcast(new_shape.value(), addend));
+        }
+      }
+
+      // If addend dtype is different from contraction dtype, add a convert
+      // after the addend.
+      if (addend->shape().element_type() !=
+          contraction->shape().element_type()) {
+        addend = addend->AddInstruction(HloInstruction::CreateConvert(
+            ShapeUtil::ChangeElementType(addend->shape(),
+                                         contraction->shape().element_type()),
+            addend));
+      }
+
+      // For cases where the dot is followed by a reshape, the binary operands
+      // shape can be adjusted, making sure the number of elements match, to
+      // enable the fusion. For example:
+      //      dot = f32[6304,3072] dot(...)
+      //      reshape = f32[32,197,3072] reshape(dot)
+      //      constant = f32[32,197,3072] constant(..)
+      //      add = f32[32,197,3072] add(reshape, constant)
+      // can become
+      //      dot = f32[6304,3072] dot(...)
+      //      constant = f32[32,197,3072] constant(..)
+      //      reshape1 = f32[6304,3072] reshape(constant)
+      //      add = f32[6304,3072] add(dot, reshape1)
+      //      reshape2 = f32[32,197,3072] reshape(add)
+      // and be replaced with the fusion
+      //      fused = f32[6304,3072] custom-call(..)
+      //      bitcast = f32[32,197,3072] bitcast(fused)
+      auto addend_dims = addend->shape().dimensions();
+      auto contraction_dims = contraction->shape().dimensions();
+      if (optional_contraction_bitcast &&
+          addend_dims.size() != contraction_dims.size()) {
+        auto new_addend_shape =
+            AdjustBinaryOperandShape(addend, contraction->shape());
+        if (new_addend_shape.ok()) {
+          addend = addend->AddInstruction(
+              HloInstruction::CreateBitcast(new_addend_shape.value(), addend));
         }
       }
 

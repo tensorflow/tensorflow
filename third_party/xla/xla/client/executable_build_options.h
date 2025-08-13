@@ -300,6 +300,10 @@ class ExecutableBuildOptions {
     key_value_store_ = kv_store;
   }
 
+  // Number of devices in a fast-interconnect domain, i.e. a slice.
+  int64_t slice_size() const { return slice_size_; }
+  void set_slice_size(int64_t slice_size) { slice_size_ = slice_size; }
+
  private:
   int device_ordinal_ = -1;
   Shape result_layout_;
@@ -336,6 +340,7 @@ class ExecutableBuildOptions {
   int process_index_ = 0;
   int process_count_ = 1;
   std::shared_ptr<KeyValueStoreInterface> key_value_store_;
+  int64_t slice_size_ = 0;
 };
 
 absl::StatusOr<ExecutableBuildOptions> ExecutableBuildOptionsFromProto(
