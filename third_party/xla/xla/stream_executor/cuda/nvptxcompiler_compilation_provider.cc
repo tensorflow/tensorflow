@@ -32,11 +32,9 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor::cuda {
-absl::StatusOr<std::vector<uint8_t>>
-NvptxcompilerCompilationProvider::CompileHelper(
+absl::StatusOr<std::vector<uint8_t>> CompileHelper(
     const CudaComputeCapability& cc, absl::string_view ptx,
-    const CompilationOptions& options,
-    bool compile_to_relocatable_module) const {
+    const CompilationOptions& options, bool compile_to_relocatable_module) {
   GpuAsmOpts asm_opts{};
   asm_opts.disable_gpuasm_optimizations = options.disable_optimizations;
   if (compile_to_relocatable_module) {
