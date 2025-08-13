@@ -61,6 +61,9 @@ limitations under the License.
 
 namespace xla {
 
+inline constexpr absl::string_view kOriginalValuePlaceholderPrefix =
+    "_ovplaceholder_";
+
 using LayoutCanonicalizationCallback =
     std::function<absl::StatusOr<std::pair<std::vector<Shape>, Shape>>(
         const HloModule& module)>;
