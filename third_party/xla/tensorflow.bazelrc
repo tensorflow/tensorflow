@@ -470,6 +470,7 @@ common --experimental_repo_remote_exec
 build:use_tar_archive_files --repo_env=USE_CUDA_TAR_ARCHIVE_FILES=1
 build:use_tar_archive_files --repo_env=USE_NVSHMEM_TAR_ARCHIVE_FILES=1
 build:use_tar_archive_files --repo_env=USE_LLVM_TAR_ARCHIVE_FILES=1
+build:use_tar_archive_files --repo_env=USE_MIRRORED_TAR_ARCHIVE_FILES=1
 
 # Make Bazel not try to probe the host system for a C++ toolchain.
 build:rbe_base --config=use_tar_archive_files
