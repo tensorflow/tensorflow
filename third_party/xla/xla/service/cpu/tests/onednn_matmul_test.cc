@@ -1732,6 +1732,25 @@ TEST_F(MatmulTest, BroadcastedAddAfterFusion) {
   )");
 }
 
+TEST_F(MatmulTest, SimpleTestF32WithBiasAndAddFusionWithReshape) {
+  const char* matmul_module_str = R"(
+  HloModule matmul.test.f32
+  ENTRY matmul.test.f32 {
+    arg.0 = f32[6304,768] parameter(0), parameter_replication={false}
+    arg.1 = f32[768,3072] parameter(1), parameter_replication={false}
+    dot.378 = f32[6304,3072] dot(arg.0, arg.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    reshape.11 = f32[32,197,3072] reshape(dot.378)
+    constant.381 = f32[3072] constant(0.3)
+    broadcast.382 = f32[32,197,3072] broadcast(constant.381), dimensions={2}
+    add.0 = f32[32,197,3072] add(reshape.11, broadcast.382)
+    const.1 = f32[32,197,3072] constant(0.65)
+    add.1 = f32[32,197,3072] add(add.0, const.1)
+    ROOT out = f32[6304,3072] reshape(add.1)
+  })";
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
+  MatchOptimizedHlo(matmul_module_str, fused_matmul_bias_add_str_);
+}
+
 TEST_F(MatmulTest, SimpleTestF32BiasAndSwish) {
   const char* matmul_module_str = R"(
   ENTRY matmul.add.swish.test.f32 {
