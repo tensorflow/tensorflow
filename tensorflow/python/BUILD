@@ -1520,7 +1520,7 @@ cc_library(
                 "@local_xla//xla/tsl/cuda:cupti",
                 "@local_xla//xla/tsl/cuda:nvshmem_stub",
             ]) + if_nccl([
-                "@local_config_nccl//:nccl",
+                "@local_xla//xla/tsl/cuda:nccl",
             ])
         ),
     ),

@@ -331,7 +331,7 @@ cuda_stub(
 )
 
 cc_library(
-    name = "nccl",  # buildifier: disable=duplicated-name
+    name = "nccl_stub",  # buildifier: disable=duplicated-name
     srcs = if_cuda_is_configured([
         "nccl_stub.cc",
         "nccl.tramp.S",
@@ -353,8 +353,8 @@ cc_library(
 )
 
 alias(
-    name = "nccl_stub",
-    actual = if_cuda_libs("@cuda_nccl//:nccl", ":nccl"),
+    name = "nccl",  # buildifier: disable=duplicated-name
+    actual = if_cuda_libs("@cuda_nccl//:nccl", ":nccl_stub"),
     visibility = ["//visibility:public"],
 )
 
