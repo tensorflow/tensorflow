@@ -143,10 +143,6 @@ cc_library(
 tf_cc_test(
     name = "codegen_test",
     srcs = ["codegen_test.cc"],
-    data = [
-        "codegen_test_h.golden",
-        "codegen_test_o.golden",
-    ],
     defines = if_llvm_x86_available(["TF_LLVM_X86_AVAILABLE=1"]),
     deps = [
         ":tfcompile_lib",

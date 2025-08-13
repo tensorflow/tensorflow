@@ -323,19 +323,11 @@ absl::Status Main(const MainFlags& flags) {
   // Write output files.
   Env* env = Env::Default();
 
-  if (compile_result.is_aot_thunks()) {
-    const auto obj_files = compile_result.get_aot_thunks().value()->obj_files();
-    DCHECK_EQ(obj_files.size(), 1);
-    const absl::string_view obj_file = obj_files[0];
-    TF_RETURN_IF_ERROR(
-        WriteStringToFile(env, flags.out_function_object, obj_file));
-  } else {
-    const std::vector<char>& obj_file =
-        compile_result.get_aot_legacy().value()->object_file_data();
-    TF_RETURN_IF_ERROR(
-        WriteStringToFile(env, flags.out_function_object,
-                          absl::string_view(obj_file.data(), obj_file.size())));
-  }
+  const auto obj_files = compile_result.get_aot_thunks().value()->obj_files();
+  DCHECK_EQ(obj_files.size(), 1);
+  const absl::string_view obj_file = obj_files[0];
+  TF_RETURN_IF_ERROR(
+      WriteStringToFile(env, flags.out_function_object, obj_file));
 
   CodegenOpts codegen_opts;
   codegen_opts.gen_name_to_index = flags.gen_name_to_index;
@@ -360,18 +352,16 @@ absl::Status Main(const MainFlags& flags) {
                                    &codegen_opts.namespaces));
 
   EmbeddedConstantBuffers embedded_constant_buffers;
-  if (compile_result.is_aot_thunks()) {
-    if (flags.out_constant_buffers_object.empty()) {
-      return absl::InvalidArgumentError(
-          "Must specify --out_constant_buffers_object when using AOT thunks");
-    }
-    TF_ASSIGN_OR_RETURN(
-        embedded_constant_buffers,
-        GenerateConstantBuffersData(codegen_opts, compile_result));
-    TF_RETURN_IF_ERROR(
-        WriteStringToFile(env, flags.out_constant_buffers_object,
-                          embedded_constant_buffers.object_file_data));
+  if (flags.out_constant_buffers_object.empty()) {
+    return absl::InvalidArgumentError(
+        "Must specify --out_constant_buffers_object when using AOT thunks");
   }
+  TF_ASSIGN_OR_RETURN(
+      embedded_constant_buffers,
+      GenerateConstantBuffersData(codegen_opts, compile_result));
+  TF_RETURN_IF_ERROR(
+      WriteStringToFile(env, flags.out_constant_buffers_object,
+                        embedded_constant_buffers.object_file_data));
 
   MetadataResult metadata_result;
   TF_RETURN_IF_ERROR(
