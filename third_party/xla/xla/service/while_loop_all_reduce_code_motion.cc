@@ -594,8 +594,6 @@ MovableAllReduceContext IsAllReduceMovable(
           accumulation.accumulation_instruction;
       int64_t tuple_index = accumulation.param_tuple_index;
       std::stack<HloInstruction*> to_visit;
-      // TODO(b/176437845): simplify the logic below by using
-      // TuplePointsToAnalysis.
 
       // Iterate over all users of the while body parameter and find all
       // instructions that use the accumulation buffer, as specified by
