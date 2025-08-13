@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "grpcpp/channel.h"
+#include "xla/pjrt/distributed/coordination_service/coordination_service_agent.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "tsl/platform/env.h"
 
@@ -151,7 +152,7 @@ class DistributedRuntimeClient {
 
   // Returns pointer to coordination service agent, or InternalError if the
   // client does not use coordination service.
-  virtual absl::StatusOr<tsl::CoordinationServiceAgent*>
+  virtual absl::StatusOr<CoordinationServiceAgent*>
   GetCoordinationServiceAgent() = 0;
 };
 

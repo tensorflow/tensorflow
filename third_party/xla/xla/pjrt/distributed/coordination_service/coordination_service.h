@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_TSL_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_H_
-#define XLA_TSL_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_H_
+#ifndef XLA_PJRT_DISTRIBUTED_COORDINATION_SERVICE_COORDINATION_SERVICE_H_
+#define XLA_PJRT_DISTRIBUTED_COORDINATION_SERVICE_COORDINATION_SERVICE_H_
 
 #include <cstdint>
 #include <functional>
@@ -35,8 +35,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
-#include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
-#include "xla/tsl/distributed_runtime/coordination/key_value_store.h"
+#include "xla/pjrt/distributed/coordination_service/coordination_client.h"
+#include "xla/pjrt/distributed/coordination_service/key_value_store.h"
 #include "xla/tsl/lib/gtl/int_type.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/status.h"
@@ -44,7 +44,7 @@ limitations under the License.
 #include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "tsl/platform/random.h"
 
-namespace tsl {
+namespace xla {
 
 TSL_LIB_GTL_DEFINE_INT_TYPE(IncarnationId, uint64_t);
 
@@ -91,12 +91,12 @@ class CoordinationService {
                           CoordinatedTaskEqual>;
 
   static std::unique_ptr<CoordinationService> Create(
-      Env* env, const tensorflow::CoordinationServiceConfig& config,
+      tsl::Env* env, const tensorflow::CoordinationServiceConfig& config,
       std::unique_ptr<CoordinationClientCache> cache) {
     return std::make_unique<CoordinationService>(env, config, std::move(cache));
   }
 
-  CoordinationService(Env* env,
+  CoordinationService(tsl::Env* env,
                       const tensorflow::CoordinationServiceConfig& config,
                       std::unique_ptr<CoordinationClientCache> client_cache);
 
@@ -115,7 +115,7 @@ class CoordinationService {
   absl::Status RegisterTask(const tensorflow::CoordinatedTask& task,
                             IncarnationId incarnation);
   void RegisterTaskAsync(const tensorflow::CoordinatedTask& task,
-                         IncarnationId incarnation, StatusCallback done);
+                         IncarnationId incarnation, tsl::StatusCallback done);
 
   // Wait for all tasks to be up and running, and register local device
   // info. The callback is invoked when all tasks are up and registered, or some
@@ -124,7 +124,7 @@ class CoordinationService {
   // post-processed by the callback in SetDeviceAggregationFunction() (if set).
   void WaitForAllTasks(const tensorflow::CoordinatedTask& task,
                        const tensorflow::DeviceInfo& devices,
-                       StatusCallback done);
+                       tsl::StatusCallback done);
 
   // Disconnects task from the service. If `shutdown_barrier_timeout_in_ms` is
   // specified in the config, blocks until all tasks reach the barrier before
@@ -134,7 +134,7 @@ class CoordinationService {
   //   - InvalidArgument: Unexpected task request.
   //   - FailedPrecondition: task has already disconnected.
   void ShutdownTaskAsync(const tensorflow::CoordinatedTask& task,
-                         StatusCallback done);
+                         tsl::StatusCallback done);
 
   // Disconnects task from the service and cleans up its internal error state.
   // Possible service errors:
@@ -284,7 +284,7 @@ class CoordinationService {
   // service will use the error polling mode to propagate the error to all
   // connected tasks instead of simply shutting down.
   void PollForErrorAsync(const tensorflow::CoordinatedTask& task,
-                         StatusCallback done);
+                         tsl::StatusCallback done);
 
  private:
   friend class CoordinationServiceRpcHandler;
@@ -305,7 +305,7 @@ class CoordinationService {
       BarrierCallback done) ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   BarrierCallback ConnectAfterBarrierPasses(absl::string_view task_name,
                                             IncarnationId incarnation,
-                                            StatusCallback done);
+                                            tsl::StatusCallback done);
   // Connects a task to the service, and leaves any previously ongoing barriers
   // for recoverable tasks.
   void ConnectTask(const tensorflow::CoordinatedTask& task,
@@ -477,7 +477,7 @@ class CoordinationService {
     }
     // Adds a task to the error polling state.
     void AddTask(const tensorflow::CoordinatedTask& task,
-                 StatusCallback&& done);
+                 tsl::StatusCallback&& done);
 
     // Removes a task from the error polling state.
     // If an existing polling request is present, we will invoke the callback
@@ -490,7 +490,7 @@ class CoordinationService {
    private:
     bool responded_ = false;
     absl::Status error_ = absl::OkStatus();
-    absl::flat_hash_map<tensorflow::CoordinatedTask, StatusCallback,
+    absl::flat_hash_map<tensorflow::CoordinatedTask, tsl::StatusCallback,
                         CoordinatedTaskHash, CoordinatedTaskEqual>
         done_callbacks_;
     absl::flat_hash_set<std::string> polling_task_names_;
@@ -615,8 +615,8 @@ class CoordinationService {
   void ClusterStateUpdated() ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
 
   std::unique_ptr<CoordinationClientCache> client_cache_;
-  Env& env_;
-  const IncarnationId service_incarnation_{random::New64()};
+  tsl::Env& env_;
+  const IncarnationId service_incarnation_{tsl::random::New64()};
   const uint64_t heartbeat_timeout_ms_;
   bool cluster_register_with_barrier_ = false;
   const absl::Duration cluster_register_timeout_;
@@ -678,12 +678,12 @@ class CoordinationService {
   // Note: sequence matters here, we must destroy the staleness thread before
   // the other state related to barriers and heartbeats to prevent illegal
   // memory access.
-  std::unique_ptr<Thread> check_staleness_thread_;
+  std::unique_ptr<tsl::Thread> check_staleness_thread_;
 
   CoordinationService(const CoordinationService&) = delete;
   void operator=(const CoordinationService&) = delete;
 };
 
-}  // namespace tsl
+}  // namespace xla
 
-#endif  // XLA_TSL_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_H_
+#endif  // XLA_PJRT_DISTRIBUTED_COORDINATION_SERVICE_COORDINATION_SERVICE_H_

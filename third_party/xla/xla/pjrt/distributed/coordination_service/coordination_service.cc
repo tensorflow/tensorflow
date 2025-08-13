@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/tsl/distributed_runtime/coordination/coordination_service.h"
+#include "xla/pjrt/distributed/coordination_service/coordination_service.h"
 
 #include <algorithm>
 #include <cassert>
@@ -30,7 +30,6 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/flags/flag.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -43,20 +42,22 @@ limitations under the License.
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/pjrt/distributed/coordination_service/coordination_client.h"
+#include "xla/pjrt/distributed/coordination_service/coordination_service_error_util.h"
 #include "xla/tsl/distributed_runtime/call_options.h"
-#include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
-#include "xla/tsl/distributed_runtime/coordination/coordination_service_error_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/protobuf/coordination_config.pb.h"
 #include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "xla/tsl/util/device_name_utils.h"
 
-ABSL_FLAG(bool, leave_barriers_on_recoverable_agent_restart, false,
-          "If true, allow the recoverable agent to leave ongoing barriers on "
-          "restart.");
+// If true, allow the recoverable agent to leave ongoing barriers on restart.
+//
+// TODO: ishark - This used to be a flag, but flags like this are not allowed in
+// XLA. Plumb the value through the code.
+constexpr bool leave_barriers_on_recoverable_agent_restart = false;
 
-namespace tsl {
+namespace xla {
 namespace {
 using tensorflow::CoordinatedTask;
 using tensorflow::CoordinatedTaskState;
@@ -87,8 +88,8 @@ std::string GetTaskName(const CoordinatedTask& task) {
 }
 
 CoordinatedTask GetTaskFromName(absl::string_view task_name) {
-  DeviceNameUtils::ParsedName parsed;
-  DeviceNameUtils::ParseFullName(task_name, &parsed);
+  tsl::DeviceNameUtils::ParsedName parsed;
+  tsl::DeviceNameUtils::ParseFullName(task_name, &parsed);
   CoordinatedTask task;
   task.set_job_name(parsed.job);
   task.set_task_id(parsed.task);
@@ -123,7 +124,7 @@ void CoordinationService::ErrorPollingState::RemoveTask(
 }
 
 void CoordinationService::ErrorPollingState::AddTask(
-    const CoordinatedTask& task, StatusCallback&& done) {
+    const CoordinatedTask& task, tsl::StatusCallback&& done) {
   // Do not allow to insert a task if the service has already responded.
   if (Responded()) return;
   polling_task_names_.insert(GetTaskName(task));
@@ -137,13 +138,13 @@ void CoordinationService::TaskState::SetConnected(
   status_ = absl::OkStatus();
   task_incarnation_ = task_incarnation;
   absl::MutexLock l(&last_heartbeat_mu_);
-  last_heartbeat_us_ = Env::Default()->NowMicros();
+  last_heartbeat_us_ = tsl::Env::Default()->NowMicros();
 }
 
 void CoordinationService::TaskState::Disconnect(
     uint64_t grace_period_duration_us) {
   disconnect_grace_period_us_ =
-      Env::Default()->NowMicros() + grace_period_duration_us;
+      tsl::Env::Default()->NowMicros() + grace_period_duration_us;
   state_ = CoordinatedTaskState::TASKSTATE_DISCONNECTED;
   status_ = absl::OkStatus();
 }
@@ -161,7 +162,7 @@ absl::Status CoordinationService::TaskState::RecordHeartbeat(
   // Record heartbeat.
   if (task_incarnation_ == task_incarnation) {
     absl::MutexLock l(&last_heartbeat_mu_);
-    last_heartbeat_us_ = Env::Default()->NowMicros();
+    last_heartbeat_us_ = tsl::Env::Default()->NowMicros();
     return absl::OkStatus();
   }
   // Task incarnation mismatch!
@@ -179,7 +180,7 @@ absl::Status CoordinationService::TaskState::RecordHeartbeat(
 
 int64_t CoordinationService::TaskState::TimeSinceLastHeartbeatMs() {
   absl::MutexLock l(&last_heartbeat_mu_);
-  return (Env::Default()->NowMicros() - last_heartbeat_us_) / 1000;
+  return (tsl::Env::Default()->NowMicros() - last_heartbeat_us_) / 1000;
 }
 
 absl::flat_hash_set<std::string>
@@ -197,11 +198,11 @@ void CoordinationService::TaskState::ExitBarrier(absl::string_view barrier_id) {
 
 bool CoordinationService::TaskState::IsDisconnectedBeyondGracePeriod() {
   return GetState() == CoordinatedTaskState::TASKSTATE_DISCONNECTED &&
-         Env::Default()->NowMicros() > disconnect_grace_period_us_;
+         tsl::Env::Default()->NowMicros() > disconnect_grace_period_us_;
 }
 
 CoordinationService::CoordinationService(
-    Env* env, const CoordinationServiceConfig& config,
+    tsl::Env* env, const CoordinationServiceConfig& config,
     std::unique_ptr<CoordinationClientCache> client_cache)
     : client_cache_(std::move(client_cache)),
       env_(*env),
@@ -309,7 +310,7 @@ CoordinationService::GetCountOfOutOfSyncTasksPerBarrier() {
 }
 
 void CoordinationService::CheckBarrierStatusWithRecoverableTasks() {
-  if (!absl::GetFlag(FLAGS_leave_barriers_on_recoverable_agent_restart)) {
+  if (!leave_barriers_on_recoverable_agent_restart) {
     return;
   }
 
@@ -379,7 +380,7 @@ void CoordinationService::CheckBarrierStatusWithRecoverableTasks() {
 
 void CoordinationService::CheckBarrierTimeout() {
   absl::flat_hash_map<std::string, BarrierState*> expired_barriers;
-  uint64_t current_time_micros = Env::Default()->NowMicros();
+  uint64_t current_time_micros = tsl::Env::Default()->NowMicros();
   absl::MutexLock l(&state_mu_);
   // Gather barriers which have timed out.
   for (absl::string_view barrier_id : ongoing_barriers_) {
@@ -520,7 +521,7 @@ absl::Status CoordinationService::RegisterTask(const CoordinatedTask& task,
 CoordinationService::BarrierCallback
 CoordinationService::ConnectAfterBarrierPasses(absl::string_view task_name,
                                                IncarnationId incarnation,
-                                               StatusCallback done) {
+                                               tsl::StatusCallback done) {
   return [this, task = std::string(task_name), incarnation,
           done = std::move(done)](absl::Status s,
                                   int64_t unused_counter) mutable {
@@ -551,7 +552,7 @@ void CoordinationService::ConnectTask(const CoordinatedTask& task,
   task_state->Connect();
   if (task_state->IsRecoverable()) {
     LeaveOngoingBarriers(task, "recoverable task silently connected again");
-    if (absl::GetFlag(FLAGS_leave_barriers_on_recoverable_agent_restart)) {
+    if (leave_barriers_on_recoverable_agent_restart) {
       unsynced_recoverable_jobs_.insert(task_name);
     }
   }
@@ -560,7 +561,7 @@ void CoordinationService::ConnectTask(const CoordinatedTask& task,
 
 void CoordinationService::RegisterTaskAsync(const CoordinatedTask& task,
                                             IncarnationId incarnation,
-                                            StatusCallback done) {
+                                            tsl::StatusCallback done) {
   const std::string task_name = GetTaskName(task);
 
   std::string error_message;
@@ -664,7 +665,7 @@ void CoordinationService::RegisterTaskAsync(const CoordinatedTask& task,
 
 void CoordinationService::WaitForAllTasks(const CoordinatedTask& task,
                                           const DeviceInfo& devices,
-                                          StatusCallback done) {
+                                          tsl::StatusCallback done) {
   {
     absl::MutexLock l(&state_mu_);
     if (ServiceHasStopped()) {
@@ -688,7 +689,7 @@ void CoordinationService::WaitForAllTasks(const CoordinatedTask& task,
 }
 
 void CoordinationService::ShutdownTaskAsync(const CoordinatedTask& task,
-                                            StatusCallback done) {
+                                            tsl::StatusCallback done) {
   VLOG(3) << "Task " << GetTaskName(task) << " invoked ShutdownTaskAsync()";
   if (shutdown_barrier_timeout_ > absl::ZeroDuration() && !task.recoverable()) {
     // Impose shutdown barrier so that all (non-recoverable) tasks can
@@ -954,7 +955,7 @@ void CoordinationService::PropagateError(
   request.set_error_message(std::string(error.message()));
   CoordinationServiceError* payload = request.mutable_error_payload();
   payload->set_is_reported_error(is_reported_by_task);
-  CallOptions call_opts;
+  tsl::CallOptions call_opts;
   call_opts.SetTimeout(kServiceToClientTimeoutMs);
   // TODO(b/369222279): This logic will be removed shortly, so we don't bother
   // adding the full list of source tasks.
@@ -1084,7 +1085,7 @@ void CoordinationService::SetTaskError(absl::string_view task_name,
 }
 
 void CoordinationService::PollForErrorAsync(const CoordinatedTask& task,
-                                            StatusCallback done) {
+                                            tsl::StatusCallback done) {
   const std::string task_name = GetTaskName(task);
   VLOG(3) << "Task " << task_name << " invoked PollForErrorAsync().";
 
@@ -1184,7 +1185,7 @@ bool CoordinationService::InitializeBarrier(
     }
   }
   barrier->deadline_in_micros =
-      Env::Default()->NowMicros() + (timeout / absl::Microseconds(1));
+      tsl::Env::Default()->NowMicros() + (timeout / absl::Microseconds(1));
 
   // Add ongoing barrier to cluster state.
   ongoing_barriers_.emplace(barrier_id);
@@ -1699,7 +1700,7 @@ void CoordinationService::LeaveOngoingBarriers(const CoordinatedTask& task,
     for (const auto& barrier_id : task_state->GetOngoingBarriers()) {
       BarrierState* barrier = &barriers_[barrier_id];
       // Unregister task from barrier.
-      if (absl::GetFlag(FLAGS_leave_barriers_on_recoverable_agent_restart)) {
+      if (leave_barriers_on_recoverable_agent_restart) {
         if (barrier->tasks_at_barrier.contains(task)) {
           // Remove task from barrier.
           barrier->recoverable_tasks_restarted_during_barrier.insert(task);
@@ -1884,4 +1885,4 @@ bool CoordinationService::IsClientPollingForError() const {
   return client_polling_for_error_;
 }
 
-}  // namespace tsl
+}  // namespace xla

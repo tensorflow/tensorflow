@@ -30,10 +30,10 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "grpcpp/channel.h"
+#include "xla/pjrt/distributed/coordination_service/coordination_client.h"
+#include "xla/pjrt/distributed/coordination_service/coordination_service_agent.h"
+#include "xla/pjrt/distributed/coordination_service/grpc_coordination_client.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
-#include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
-#include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
-#include "xla/tsl/distributed_runtime/rpc/coordination/grpc_coordination_client.h"
 #include "xla/tsl/protobuf/coordination_config.pb.h"
 #include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "tsl/platform/statusor.h"
@@ -67,11 +67,11 @@ class DistributedRuntimeCoordinationServiceClient
       std::optional<absl::Span<const int32_t>> process_ids) override;
   absl::StatusOr<std::vector<int32_t>> GetLiveNodes(
       absl::Span<const int32_t> nodes) override;
-  absl::StatusOr<tsl::CoordinationServiceAgent*> GetCoordinationServiceAgent()
+  absl::StatusOr<CoordinationServiceAgent*> GetCoordinationServiceAgent()
       override;
 
  private:
-  std::unique_ptr<tsl::CoordinationServiceAgent> coord_agent_;
+  std::unique_ptr<CoordinationServiceAgent> coord_agent_;
   tensorflow::CoordinationServiceConfig config_;
   absl::Duration min_connect_barrier_timeout_;
   int task_id_;
@@ -96,9 +96,9 @@ DistributedRuntimeCoordinationServiceClient::
   config.set_poll_for_error_from_service_at_startup(
       options.poll_for_error_from_service_at_startup);
 
-  std::unique_ptr<tsl::CoordinationClient> leader_client;
-  leader_client.reset(tsl::NewGrpcCoordinationClient(channel));
-  coord_agent_ = tsl::CreateCoordinationServiceAgent();
+  std::unique_ptr<CoordinationClient> leader_client;
+  leader_client.reset(NewGrpcCoordinationClient(channel));
+  coord_agent_ = CreateCoordinationServiceAgent();
   const absl::Status status = coord_agent_->Initialize(
       options.env, "jax_worker", options.node_id, config,
       std::move(leader_client), options.missed_heartbeat_callback,
@@ -230,7 +230,7 @@ DistributedRuntimeCoordinationServiceClient::GetLiveNodes(
   return live_nodes;
 }
 
-absl::StatusOr<tsl::CoordinationServiceAgent*>
+absl::StatusOr<CoordinationServiceAgent*>
 DistributedRuntimeCoordinationServiceClient::GetCoordinationServiceAgent() {
   return coord_agent_.get();
 }
