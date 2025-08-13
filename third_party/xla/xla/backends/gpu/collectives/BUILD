@@ -246,7 +246,7 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/time",
     ] + if_cuda_is_configured([
-        "@local_config_nccl//:nccl",
+        "//xla/tsl/cuda:nccl",
     ]) + if_rocm_is_configured([
         "@local_config_rocm//rocm:rocm_headers",
         "@local_config_rocm//rocm:rccl",
@@ -312,7 +312,7 @@ cc_library(
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:numbers",
     ] + if_cuda_is_configured([
-        "@local_config_nccl//:nccl",
+        "//xla/tsl/cuda:nccl",
     ]) + if_rocm_is_configured([
         "@local_config_rocm//rocm:rocm_headers",
         "@local_config_rocm//rocm:rccl",
@@ -376,7 +376,7 @@ cc_library(
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:numbers",
     ] + if_cuda_is_configured([
-        "@local_config_nccl//:nccl",
+        "//xla/tsl/cuda:nccl",
     ]) + if_rocm_is_configured([
         "@local_config_rocm//rocm:rocm_headers",
         "@local_config_rocm//rocm:rccl",
@@ -472,7 +472,7 @@ xla_test(
         "@com_google_absl//absl/utility",
         "@com_google_googletest//:gtest_main",
     ] + if_cuda_is_configured([
-        "@local_config_nccl//:nccl",
+        "//xla/tsl/cuda:nccl",
     ]) + if_rocm_is_configured([
         "@local_config_rocm//rocm:rocm_headers",
         "@local_config_rocm//rocm:rccl",

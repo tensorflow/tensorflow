@@ -22,9 +22,9 @@ exports_files(["LICENSE.txt"])
 
 NCCL_MAJOR = 2
 
-NCCL_MINOR = 26
+NCCL_MINOR = 27
 
-NCCL_PATCH = 5
+NCCL_PATCH = 7
 
 NCCL_VERSION = NCCL_MAJOR * 10000 + NCCL_MINOR * 100 + NCCL_PATCH  # e.g., 21605
 
@@ -175,7 +175,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "@local_config_cuda//cuda:cuda_headers",
-        "@local_xla//xla/tsl/cuda:nccl_stub",
+        "@local_xla//xla/tsl/cuda:nccl",
     ],
 )
 

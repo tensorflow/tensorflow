@@ -385,7 +385,7 @@ tf_kernel_library(
         "nccl_ops.cc",
     ]),
     deps = if_cuda([
-        "@local_config_nccl//:nccl",
+        "@local_xla//xla/tsl/cuda:nccl",
     ]) + if_rocm([
         "@local_config_rocm//rocm:rccl",
     ]) + if_cuda_or_rocm([
