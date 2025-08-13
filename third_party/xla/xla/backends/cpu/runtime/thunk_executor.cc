@@ -204,11 +204,8 @@ absl::StatusOr<ThunkExecutor> ThunkExecutor::Create(
 ThunkExecutor::ExecuteState::Node::Node(const NodeDef& node_def)
     : counter(node_def.in_edges.size()), out_edges(node_def.out_edges) {}
 
-ThunkExecutor::ExecuteState::ExecuteState(ThunkExecutor* executor,
-                                          Thunk::TaskRunner* runner)
-    : executor(executor),
-      runner(runner),
-      nodes(executor->execution_graph_.nodes_defs().size()),
+ThunkExecutor::ExecuteState::ExecuteState(ThunkExecutor* executor)
+    : nodes(executor->execution_graph_.nodes_defs().size()),
       execute_event(tsl::MakeConstructedAsyncValueRef<ExecuteEvent>()),
       pending_nodes(executor->execution_graph_.sink().size()),
       abort(false) {
@@ -265,7 +262,18 @@ tsl::AsyncValueRef<ThunkExecutor::ExecuteEvent> ThunkExecutor::Execute(
   }
 
   // Create async execution state on heap and kick-off execution.
-  auto state = std::make_unique<ExecuteState>(this, params.task_runner);
+  auto state = std::make_shared<ExecuteState>(this);
+  tsl::AsyncValueRef<ExecuteEvent> execute_event = state->execute_event;
+
+  // In debug builds we verify that all pending nodes are completed before
+  // execute_event is marked available. We skip this check in non-debug builds
+  // to avoid performance penalty of adding a waiter to the async value.
+#ifndef NDEBUG
+  execute_event.AndThen([state] {
+    auto cnt = state->pending_nodes.load(std::memory_order_acquire);
+    DCHECK_EQ(cnt, 0) << "All pending nodes must be completed";
+  });
+#endif
 
   // When we kick-off execution we don't have to grab the session lock, as the
   // main thread is not counted towards the number of concurrent workers limit.
@@ -273,7 +281,7 @@ tsl::AsyncValueRef<ThunkExecutor::ExecuteEvent> ThunkExecutor::Execute(
   // as launching nested thunk sequence must not reduce the available
   // concurrency for the other thunks executing in parallel.
   auto execute = [&](auto ready_queue) {
-    Execute(state.get(), params, std::move(ready_queue), /*lock=*/nullptr);
+    Execute(std::move(state), params, std::move(ready_queue), /*lock=*/nullptr);
   };
 
   switch (options_.ready_queue_type) {
@@ -288,22 +296,6 @@ tsl::AsyncValueRef<ThunkExecutor::ExecuteEvent> ThunkExecutor::Execute(
                                  execution_graph_.source()));
       break;
   }
-
-  // If execution already completed (all kernels executed in the caller thread),
-  // immediately return the result to avoid wasteful reference counting below.
-  if (ABSL_PREDICT_TRUE(state->execute_event.IsAvailable())) {
-    return std::move(state->execute_event);
-  }
-
-  // Move execute state to the execute event callback to ensure that it is kept
-  // alive while thunk executor has pending tasks.
-  tsl::AsyncValueRef<ExecuteEvent> execute_event = state->execute_event;
-  execute_event.AndThen([state = std::move(state)] {
-    auto cnt = state->pending_nodes.load(std::memory_order_acquire);
-    DCHECK_EQ(cnt, 0)
-        << "All pending nodes must be completed before execute_event is marked "
-           "available.";
-  });
 
   return execute_event;
 }
@@ -441,14 +433,14 @@ void ThunkExecutor::ResumeExecuteSequential(
 // regressions in microbenchmarks.
 template <typename ReadyQueue>
 // NOLINTNEXTLINE(readability-function-cognitive-complexity)
-void ThunkExecutor::Execute(ExecuteState* state,
+void ThunkExecutor::Execute(std::shared_ptr<ExecuteState> state,
                             const Thunk::ExecuteParams& params,
                             ReadyQueue ready_queue,
                             Thunk::ExecuteSession::Lock lock) {
   DCHECK(!ready_queue.Empty()) << "Ready queue must not be empty";
 
   tsl::profiler::TraceMe trace("ThunkExecutor::Execute");
-  bool has_runner = state->runner != nullptr;
+  bool has_runner = params.task_runner != nullptr;
   bool has_lock = static_cast<bool>(lock);
 
   // Threshold for splitting ready queue into separate thunk executor tasks.
@@ -475,7 +467,7 @@ void ThunkExecutor::Execute(ExecuteState* state,
       SplitReadyQueue(state, params, ready_queue, split_threshold);
     }
 
-    Thunk& thunk = *state->executor->thunk_sequence_[id];
+    Thunk& thunk = *thunk_sequence_[id];
 
     // If thunk execution may block, and we have more ready thunks, offload
     // thunk execution to the task runner to avoid blocking the current thread.
@@ -484,12 +476,12 @@ void ThunkExecutor::Execute(ExecuteState* state,
     // the remaining thunks is higher than the cost of launching a task.
     if (ABSL_PREDICT_FALSE(thunk.ExecuteMayBlock() && !ready_queue.Empty() &&
                            has_runner)) {
-      (*state->runner)([state, &params, id,
-                        ready_queue = ready_queue.CreateEmptyReadyQueue(),
-                        lock = params.session.Join()]() mutable {
+      (*params.task_runner)([this, state, &params, id,
+                             ready_queue = ready_queue.CreateEmptyReadyQueue(),
+                             lock = params.session.Join()]() mutable {
         ready_queue.Push(id);
-        state->executor->Execute(state, params, std::move(ready_queue),
-                                 std::move(lock));
+        Execute(std::move(state), params, std::move(ready_queue),
+                std::move(lock));
       });
       continue;
     }
@@ -505,7 +497,7 @@ void ThunkExecutor::Execute(ExecuteState* state,
       // If thunk execution is completed, process out edges in the current
       // thread and keep working on the ready queue.
       ProcessCompletedOutEdges</*process_scheduling_edges=*/true>(
-          state, execute_event.AsPtr(), node, ready_queue,
+          &*state, execute_event.AsPtr(), node, ready_queue,
           /*drop_pending_nodes=*/is_sink);
 
     } else {
@@ -513,7 +505,16 @@ void ThunkExecutor::Execute(ExecuteState* state,
       // thunk execution. This allows to schedule more thunks without having to
       // wait for the execution completion.
       bool inc_pending_nodes =
-          ProcessScheduledOutEdges(state, node, ready_queue);
+          ProcessScheduledOutEdges(&*state, node, ready_queue);
+
+      // Drop pending nodes counter only if we are processing a sink node
+      // (pending counter initialized to the number of sink nodes) or we
+      // incremented it above (for scheduled but not completed thunks).
+      bool drop_pending_nodes = is_sink || inc_pending_nodes;
+
+      // If the ready queue is empty, we can move the state and lock to the
+      // continuation as we no longer need them in this thread.
+      bool is_empty_ready_queue = ready_queue.Empty();
 
       // If thunk execution is not completed yet, attach a continuation to the
       // event and resume execution on the continuation thread (ready queue
@@ -525,20 +526,18 @@ void ThunkExecutor::Execute(ExecuteState* state,
       // execute session. If we happen to process the last thunk in the ready
       // queue, we will forward the lock that we already hold (note that the
       // lock might be empty, if `Execute` was called by the main thread).
-      execute_event.AndThen([&params, &node, &thunk, state, is_sink,
-                             inc_pending_nodes,
+      execute_event.AndThen([this, &params, &node, &thunk, drop_pending_nodes,
                              execute_event = execute_event.AsPtr(),
                              ready_queue = ready_queue.CreateEmptyReadyQueue(),
-                             lock = ready_queue.Empty()
+                             state = ABSL_PREDICT_TRUE(is_empty_ready_queue)
+                                         ? std::move(state)
+                                         : state,
+                             lock = ABSL_PREDICT_TRUE(is_empty_ready_queue)
                                         ? std::move(lock)
                                         : params.session.Join()]() mutable {
-        // Drop pending nodes counter only if we are processing a sink node
-        // (pending counter initialized to the number of sink nodes) or we
-        // incremented it above (for scheduled but not completed thunks).
-        bool drop_pending_nodes = is_sink || inc_pending_nodes;
-        state->executor
-            ->ProcessCompletedOutEdges</*process_scheduling_edges=*/false>(
-                state, execute_event, node, ready_queue, drop_pending_nodes);
+        // Process completed out edges and maybe drop pending nodes counter.
+        ProcessCompletedOutEdges</*process_scheduling_edges=*/false>(
+            &*state, execute_event, node, ready_queue, drop_pending_nodes);
 
         // If ready queue is empty, it might mean that we have completed an
         // execution and destroyed the `state`, so we make sure we don't
@@ -547,19 +546,20 @@ void ThunkExecutor::Execute(ExecuteState* state,
           return;
         }
 
-        if (Thunk::TaskRunner* runner = state->runner; ABSL_PREDICT_FALSE(
+        if (Thunk::TaskRunner* runner = params.task_runner; ABSL_PREDICT_FALSE(
                 thunk.ExecutesOnExternalThreadPool() && runner != nullptr)) {
           // Resume execution using the task runner to avoid executing
           // remaining thunks on a thread pool that we don't own.
-          (*runner)([state, &params, ready_queue = std::move(ready_queue),
+          (*runner)([this, state = std::move(state), &params,
+                     ready_queue = std::move(ready_queue),
                      lock = std::move(lock)] {
-            state->executor->Execute(state, params, std::move(ready_queue),
-                                     std::move(lock));
+            Execute(std::move(state), params, std::move(ready_queue),
+                    std::move(lock));
           });
         } else {
           // Resume execution on a thread that completed thunk execution.
-          state->executor->Execute(state, params, std::move(ready_queue),
-                                   std::move(lock));
+          Execute(std::move(state), params, std::move(ready_queue),
+                  std::move(lock));
         }
       });
     }
@@ -568,9 +568,10 @@ void ThunkExecutor::Execute(ExecuteState* state,
 
 template <typename ReadyQueue>
 inline ABSL_ATTRIBUTE_ALWAYS_INLINE void ThunkExecutor::SplitReadyQueue(
-    ExecuteState* state, const Thunk::ExecuteParams& params,
-    ReadyQueue& ready_queue, int64_t split_threshold) {
-  DCHECK(state->runner) << "TaskRunner must be set";
+    const std::shared_ptr<ExecuteState>& state,
+    const Thunk::ExecuteParams& params, ReadyQueue& ready_queue,
+    int64_t split_threshold) {
+  DCHECK(params.task_runner != nullptr) << "TaskRunner must be set";
 
   // We use recursive work splitting to push the tail of the ready queue to
   // the task runner. Recursive work splitting creates a more uniform work
@@ -587,10 +588,11 @@ inline ABSL_ATTRIBUTE_ALWAYS_INLINE void ThunkExecutor::SplitReadyQueue(
     }
 
     // Execute half of the ready queue nodes in the task runner.
-    (*state->runner)([&params, state, ready_queue = ready_queue.PopHalf(),
-                      lock = std::move(task_runner_lock)]() mutable {
-      state->executor->Execute(state, params, std::move(ready_queue),
-                               std::move(lock));
+    (*params.task_runner)([this, &params, state,
+                           ready_queue = ready_queue.PopHalf(),
+                           lock = std::move(task_runner_lock)]() mutable {
+      Execute(std::move(state), params, std::move(ready_queue),
+              std::move(lock));
     });
   }
 }
