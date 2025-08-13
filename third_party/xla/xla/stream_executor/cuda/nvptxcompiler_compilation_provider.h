@@ -16,9 +16,7 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_CUDA_NVPTXCOMPILER_COMPILATION_PROVIDER_H_
 #define XLA_STREAM_EXECUTOR_CUDA_NVPTXCOMPILER_COMPILATION_PROVIDER_H_
 
-#include <cstdint>
 #include <string>
-#include <vector>
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -54,12 +52,6 @@ class NvptxcompilerCompilationProvider : public CompilationProvider {
       const CudaComputeCapability& cc,
       absl::Span<const RelocatableModuleOrPtx> inputs,
       const CompilationOptions& options) const override;
-
- private:
-  absl::StatusOr<std::vector<uint8_t>> CompileHelper(
-      const CudaComputeCapability& cc, absl::string_view ptx,
-      const CompilationOptions& options,
-      bool compile_to_relocatable_module) const;
 };
 
 }  // namespace stream_executor::cuda
