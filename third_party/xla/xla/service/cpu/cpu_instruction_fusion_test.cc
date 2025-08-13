@@ -577,16 +577,12 @@ TEST_F(OpcodeFusionTest, DynamicSliceWithDynamicUpdateSlice) {
       slice, update_indices));
 
   module->AddEntryComputation(builder.Build());
-  if (options::UseExperimentalLoopFusion(module->config())) {
-    EXPECT_FALSE(RunFusion(module.get()));
-  } else {
-    RunFusionAndCheckOpcodesWereFused(
-        module.get(),
-        {HloOpcode::kDynamicSlice, HloOpcode::kDynamicUpdateSlice,
-         HloOpcode::kParameter, HloOpcode::kParameter, HloOpcode::kParameter,
-         HloOpcode::kParameter, HloOpcode::kParameter, HloOpcode::kParameter,
-         HloOpcode::kParameter, HloOpcode::kParameter});
-  }
+  RunFusionAndCheckOpcodesWereFused(
+      module.get(),
+      {HloOpcode::kDynamicSlice, HloOpcode::kDynamicUpdateSlice,
+       HloOpcode::kParameter, HloOpcode::kParameter, HloOpcode::kParameter,
+       HloOpcode::kParameter, HloOpcode::kParameter, HloOpcode::kParameter,
+       HloOpcode::kParameter, HloOpcode::kParameter});
 }
 
 TEST_F(OpcodeFusionTest, MessOfFusibleNodes) {
