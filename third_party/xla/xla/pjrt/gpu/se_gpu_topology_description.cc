@@ -100,13 +100,15 @@ StreamExecutorGpuTopologyDescription::DeviceDescriptions() const {
     const int process_index = num_devices_per_process == -1
                                   ? 0
                                   : (device_id / num_devices_per_process);
+    const int process_index_in_partition =
+        process_index == -1 ? 0 : (process_index % num_processes_per_partition);
     const int partition_index =
         num_processes_per_partition == -1
             ? 0
             : (process_index / num_processes_per_partition);
     auto description = std::make_unique<PjRtStreamExecutorDeviceDescription>(
-        device_id, local_device_id, process_index, partition_index,
-        std::string(platform_version()));
+        device_id, local_device_id, process_index, process_index_in_partition,
+        partition_index, std::string(platform_version()));
     if (target_config_.has_value()) {
       std::string compute_capability = "<unknown compute-capability>";
       std::string gpu_vendor = "<unknown gpu vendor>";

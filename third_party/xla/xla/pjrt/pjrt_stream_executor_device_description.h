@@ -26,12 +26,15 @@ namespace xla {
 class PjRtStreamExecutorDeviceDescription : public PjRtDeviceDescription {
  public:
   PjRtStreamExecutorDeviceDescription(int id, int local_device_id,
-                                      int process_index, int slice_index,
+                                      int process_index,
+                                      int process_index_in_partition,
+                                      int partition_index,
                                       std::string device_kind)
       : id_(id),
         process_index_(process_index),
         device_kind_(std::move(device_kind)),
-        coords_({local_device_id, process_index, slice_index}) {}
+        coords_(
+            {partition_index, process_index_in_partition, local_device_id}) {}
 
   int id() const override { return id_; }
 

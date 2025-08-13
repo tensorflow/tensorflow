@@ -31,21 +31,21 @@ namespace {
 using ::testing::ElementsAre;
 
 void CheckDeviceDescription(const PjRtDeviceDescription& device_desc,
-                            int global_device_id, int local_device_id,
-                            int process_index, int partition_index) {
+                            int global_device_id, int process_index,
+                            const std::vector<int>& coords) {
   EXPECT_EQ(device_desc.id(), global_device_id);
   EXPECT_EQ(device_desc.process_index(), process_index);
   const auto& gpu_device_desc =
       dynamic_cast<const PjRtStreamExecutorDeviceDescription&>(device_desc);
   EXPECT_THAT(gpu_device_desc.coords(),
-              ElementsAre(local_device_id, process_index, partition_index));
+              ElementsAre(coords[0], coords[1], coords[2]));
 }
 
 TEST(StreamExecutorGpuTopologyDescriptionTest, SymmetricTopology) {
   std::shared_ptr<xla::GpuTopology> gpu_topology =
       std::make_shared<xla::GpuTopology>(
-          /*platform_version=*/"12.3", /*num_partitions=*/2,
-          /*num_hosts_per_partition=*/2, /*num_devices_per_host=*/2);
+          /*platform_version=*/"12.3", /*num_partitions=*/3,
+          /*num_hosts_per_partition=*/2, /*num_devices_per_host=*/4);
 
   StreamExecutorGpuTopologyDescription topology_desc(
       xla::CudaId(), xla::CudaName(), gpu_topology);
@@ -55,15 +55,31 @@ TEST(StreamExecutorGpuTopologyDescriptionTest, SymmetricTopology) {
   EXPECT_EQ(topology_desc.platform_version(), "12.3");
 
   const auto device_descs = topology_desc.DeviceDescriptions();
-  EXPECT_EQ(device_descs.size(), 8);
-  CheckDeviceDescription(*device_descs[0], 0, 0, 0, 0);
-  CheckDeviceDescription(*device_descs[1], 1, 1, 0, 0);
-  CheckDeviceDescription(*device_descs[2], 2, 0, 1, 0);
-  CheckDeviceDescription(*device_descs[3], 3, 1, 1, 0);
-  CheckDeviceDescription(*device_descs[4], 4, 0, 2, 1);
-  CheckDeviceDescription(*device_descs[5], 5, 1, 2, 1);
-  CheckDeviceDescription(*device_descs[6], 6, 0, 3, 1);
-  CheckDeviceDescription(*device_descs[7], 7, 1, 3, 1);
+  EXPECT_EQ(device_descs.size(), 24);
+  CheckDeviceDescription(*device_descs[0], 0, 0, {0, 0, 0});
+  CheckDeviceDescription(*device_descs[1], 1, 0, {0, 0, 1});
+  CheckDeviceDescription(*device_descs[2], 2, 0, {0, 0, 2});
+  CheckDeviceDescription(*device_descs[3], 3, 0, {0, 0, 3});
+  CheckDeviceDescription(*device_descs[4], 4, 1, {0, 1, 0});
+  CheckDeviceDescription(*device_descs[5], 5, 1, {0, 1, 1});
+  CheckDeviceDescription(*device_descs[6], 6, 1, {0, 1, 2});
+  CheckDeviceDescription(*device_descs[7], 7, 1, {0, 1, 3});
+  CheckDeviceDescription(*device_descs[8], 8, 2, {1, 0, 0});
+  CheckDeviceDescription(*device_descs[9], 9, 2, {1, 0, 1});
+  CheckDeviceDescription(*device_descs[10], 10, 2, {1, 0, 2});
+  CheckDeviceDescription(*device_descs[11], 11, 2, {1, 0, 3});
+  CheckDeviceDescription(*device_descs[12], 12, 3, {1, 1, 0});
+  CheckDeviceDescription(*device_descs[13], 13, 3, {1, 1, 1});
+  CheckDeviceDescription(*device_descs[14], 14, 3, {1, 1, 2});
+  CheckDeviceDescription(*device_descs[15], 15, 3, {1, 1, 3});
+  CheckDeviceDescription(*device_descs[16], 16, 4, {2, 0, 0});
+  CheckDeviceDescription(*device_descs[17], 17, 4, {2, 0, 1});
+  CheckDeviceDescription(*device_descs[18], 18, 4, {2, 0, 2});
+  CheckDeviceDescription(*device_descs[19], 19, 4, {2, 0, 3});
+  CheckDeviceDescription(*device_descs[20], 20, 5, {2, 1, 0});
+  CheckDeviceDescription(*device_descs[21], 21, 5, {2, 1, 1});
+  CheckDeviceDescription(*device_descs[22], 22, 5, {2, 1, 2});
+  CheckDeviceDescription(*device_descs[23], 23, 5, {2, 1, 3});
 }
 
 TEST(StreamExecutorGpuTopologyDescriptionTest, AsymmetricTopology) {

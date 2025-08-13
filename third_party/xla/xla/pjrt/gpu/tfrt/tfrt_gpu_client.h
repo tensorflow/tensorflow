@@ -128,6 +128,7 @@ class TfrtGpuDevice final : public PjRtDevice {
   struct Options {
     int id;
     int32_t process_index;
+    int32_t process_index_in_partition;
     int partition_index;
     PjRtLocalDeviceId local_device_id;
     PjRtLocalHardwareId local_hardware_id;

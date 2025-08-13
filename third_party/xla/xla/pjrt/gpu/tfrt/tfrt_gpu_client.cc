@@ -92,13 +92,11 @@ limitations under the License.
 #include "xla/pjrt/stream_executor_executable.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/pjrt/utils.h"
-#include "xla/pjrt/worker_thread.h"
 #include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/compiler.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/executable.h"
-#include "xla/service/generic_transfer_manager.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
@@ -1019,7 +1017,8 @@ TfrtGpuDevice::TfrtGpuDevice(Options&& options)
       last_collective_launch_event_(
           tsl::MakeAvailableAsyncValueRef<GpuEvent>()),
       description_(options.id, local_device_id_.value(), options.process_index,
-                   options.partition_index, options.platform_version),
+                   options.process_index_in_partition, options.partition_index,
+                   options.platform_version),
       max_inflight_computations_semaphore_(
           /*capacity=*/options.max_inflight_computations) {
   std::vector<int64_t> v_coords(description_.coords().begin(),
@@ -2437,8 +2436,24 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
 
   std::map<int, GlobalDeviceId> gpu_device_ids;
   absl::flat_hash_map<GlobalDeviceId, int> device_to_node;
+  int curr_partition_index = -1;
+  int curr_process_index = -1;
+  int curr_process_index_in_partition = 0;
   for (const LocalTopologyProto& node : global_topology.nodes()) {
     for (const DeviceProto& device_proto : node.devices()) {
+      // The devices in the global topology are ordered by node_id,
+      // partition_index. This is guaranteed by the `BuildGlobalTopology`
+      // function and the `ExchangeTopologies` function.
+      if (curr_partition_index != device_proto.partition_index()) {
+        curr_partition_index = device_proto.partition_index();
+        curr_process_index = node.node_id();
+        curr_process_index_in_partition = 0;
+      }
+      if (curr_process_index != node.node_id()) {
+        curr_process_index = node.node_id();
+        curr_process_index_in_partition++;
+      }
+
       GlobalDeviceId global_device_id(device_proto.global_device_id());
       device_to_node[global_device_id] = node.node_id();
       TfrtGpuDevice::Options options;
@@ -2462,6 +2477,7 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
       }
       options.id = device_proto.global_device_id();
       options.process_index = node.node_id();
+      options.process_index_in_partition = curr_process_index_in_partition;
       options.partition_index = device_proto.partition_index();
       options.max_inflight_computations = 8;
       options.platform_version = device_proto.name();
