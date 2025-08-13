@@ -31,11 +31,80 @@ namespace xla {
 namespace hlo_diff {
 namespace {
 
+using ::testing::ElementsAre;
 using ::testing::Pair;
 using ::testing::SizeIs;
 using ::testing::UnorderedElementsAre;
 
 class HloDiffRendererUtilTest : public HloHardwareIndependentTestBase {};
+
+TEST_F(HloDiffRendererUtilTest, GetChangedInstructionDiffTypesSuccess) {
+  const char* const hlo_string = R"(
+HloModule test_module
+
+ENTRY test_computation {
+  // For opcode, shape, and operand shape comparison
+  p_s32_10_a = s32[10] parameter(0)
+  p_s32_10_b = s32[10] parameter(1)
+  add_s32_10 = s32[10] add(p_s32_10_a, p_s32_10_b)
+  sub_s32_10 = s32[10] subtract(p_s32_10_a, p_s32_10_b)
+
+  // For shape comparison
+  p_f32_5_a = f32[5] parameter(2)
+  p_f32_5_b = f32[5] parameter(3)
+  add_f32_5 = f32[5] add(p_f32_5_a, p_f32_5_b)
+
+  // For constant literal comparison
+  const_42 = s32[] constant(42)
+  const_99 = s32[] constant(99)
+  
+  // For operand number comparison
+  p_s32_10_c = s32[10] parameter(4)
+  clamp_s32_10 = s32[10] clamp(p_s32_10_a, p_s32_10_b, p_s32_10_c)
+
+  // For operand shape comparison
+  p_f32_10_a = f32[10] parameter(5)
+  p_f32_10_b = f32[10] parameter(6)
+  add_with_f32_operands = f32[10] add(p_f32_10_a, p_f32_10_b)
+
+  ROOT tuple = (s32[10], s32[10], f32[5], s32[], s32[], s32[10], f32[10]) tuple(add_s32_10, sub_s32_10, add_f32_5, const_42, const_99, clamp_s32_10, add_with_f32_operands)
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloComputation* computation = module->entry_computation();
+
+  EXPECT_THAT(GetChangedInstructionDiffTypes(
+                  *computation->GetInstructionWithName("add_s32_10"),
+                  *computation->GetInstructionWithName("sub_s32_10")),
+              UnorderedElementsAre(ChangedInstructionDiffType::kOpCodeChanged));
+
+  EXPECT_THAT(
+      GetChangedInstructionDiffTypes(
+          *computation->GetInstructionWithName("add_s32_10"),
+          *computation->GetInstructionWithName("add_f32_5")),
+      UnorderedElementsAre(ChangedInstructionDiffType::kShapeChange,
+                           ChangedInstructionDiffType::kChangedOperandsShape));
+
+  EXPECT_THAT(GetChangedInstructionDiffTypes(
+                  *computation->GetInstructionWithName("const_42"),
+                  *computation->GetInstructionWithName("const_99")),
+              ElementsAre(ChangedInstructionDiffType::kConstantLiteralChanged));
+
+  EXPECT_THAT(
+      GetChangedInstructionDiffTypes(
+          *computation->GetInstructionWithName("add_s32_10"),
+          *computation->GetInstructionWithName("clamp_s32_10")),
+      UnorderedElementsAre(ChangedInstructionDiffType::kChangedOperandsNumber,
+                           ChangedInstructionDiffType::kOpCodeChanged));
+
+  EXPECT_THAT(
+      GetChangedInstructionDiffTypes(
+          *computation->GetInstructionWithName("add_s32_10"),
+          *computation->GetInstructionWithName("add_with_f32_operands")),
+      UnorderedElementsAre(ChangedInstructionDiffType::kShapeChange,
+                           ChangedInstructionDiffType::kChangedOperandsShape));
+}
 
 TEST_F(HloDiffRendererUtilTest, GroupInstructionsByOpcode) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
