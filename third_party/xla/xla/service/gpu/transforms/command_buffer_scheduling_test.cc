@@ -23,6 +23,8 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
+#include "xla/ffi/ffi.h"
+#include "xla/ffi/ffi_api.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
@@ -114,6 +116,35 @@ TEST_F(CommandBufferSchedulingTest, SingleCommandBuffer) {
 // CHECK:   %get-tuple-element.1 = s32[] get-tuple-element(%call), index=1
 // CHECK:   ROOT %custom-call = s32[] custom-call(%get-tuple-element, %get-tuple-element.1), custom_call_target="some target"
 // CHECK: })";
+
+  RunAndFilecheckHloRewrite(hlo, CommandBufferScheduling(device_desc()),
+                            expected, [](HloModule* module) {
+                              EXPECT_TRUE(module->has_schedule());
+                              TF_CHECK_OK(module->schedule().Verify());
+                            });
+}
+
+TEST_F(CommandBufferSchedulingTest, SingleRegisteredCustomCall) {
+  const char* hlo = R"(
+      HloModule TestModule, is_scheduled=true
+
+      ENTRY %main () -> () {
+        ROOT %custom-call = () custom-call(), custom_call_target="registered"
+      })";
+
+  const char* expected = R"(
+// CHECK: %command_buffer () -> () {
+// CHECK:   ROOT %custom-call = () custom-call(), custom_call_target="registered"
+// CHECK: }
+//
+// CHECK: ENTRY %main () -> () {
+// CHECK:   ROOT %call = () call(), to_apply=%command_buffer, metadata={op_name="call"} 
+// CHECK: })";
+
+  static constexpr auto* noop = +[] { return absl::OkStatus(); };
+  XLA_FFI_DEFINE_HANDLER(NoOp, noop, ffi::Ffi::Bind(),
+                         {ffi::Traits::kCmdBufferCompatible});
+  XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "registered", "gpu", NoOp);
 
   RunAndFilecheckHloRewrite(hlo, CommandBufferScheduling(device_desc()),
                             expected, [](HloModule* module) {
