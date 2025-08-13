@@ -1414,7 +1414,7 @@ def _make_class_weight_map_fn(class_weight):
   """
   # Convert string keys to integers
   converted_class_weight = {}
-  for key, value in class_weight.items():  # pylint: disable=unused-variable    # Convert keys to integers
+  for key, value in class_weight.items():    # Convert keys to integers
     if isinstance(key, (int, numpy_compat.integer_types)):
       converted_class_weight[key] = value
     elif isinstance(key, str):

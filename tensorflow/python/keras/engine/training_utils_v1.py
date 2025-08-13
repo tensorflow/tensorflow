@@ -692,16 +692,11 @@ def standardize_sample_or_class_weights(x_weight, output_names, weight_type):
     if isinstance(x_weight, (list, tuple)) and len(x_weight) == 1:
       return x_weight
     if isinstance(x_weight, dict):
-      # Validate class_weight keys
+      # Validate class_weight keys (consistent with data_adapter.py)
       if weight_type == 'class_weight':
-        for key in x_weight.keys():
-          # Allow integer keys (class indices)
+        for key, value in x_weight.items():
           if isinstance(key, (int, numpy_compat.integer_types)):
             continue
-          # Allow output names for single-output models
-          elif isinstance(key, str) and key in output_names:
-            continue
-          # Allow string representations of integers
           elif isinstance(key, str):
             try:
               int(key)  # Valid if it's a string number like "0", "1"
@@ -711,9 +706,8 @@ def standardize_sample_or_class_weights(x_weight, output_names, weight_type):
           # Reject everything else
           raise ValueError(f"Invalid class_weight key: '{key}'. "
                          f"Class weight keys must be integers representing "
-                         f"class indices or valid output names for "
-                         f"single-output models. "
-                         f"Got key of type {type(key).__name__}.")
+                         f"class indices, "
+                         f"got key of type {type(key).__name__}.")
 
       if output_names[0] in x_weight:
         return [x_weight[output_names[0]]]
@@ -732,23 +726,24 @@ def standardize_sample_or_class_weights(x_weight, output_names, weight_type):
                        'array per model output.')
     return x_weight
   if isinstance(x_weight, dict):
-    # Validate class_weight keys for multiple outputs
+    # Validate class_weight keys for multiple outputs (consistent with data_adapter.py)
     if weight_type == 'class_weight':
       for name in output_names:
         if name in x_weight and isinstance(x_weight[name], dict):
-          for key in x_weight[name].keys():
-            if not isinstance(key, (int, type(0))):
+          for key, value in x_weight[name].items():
+            if isinstance(key, (int, numpy_compat.integer_types)):
+              continue
+            elif isinstance(key, str):
               try:
-                if isinstance(key, str):
-                  int(key)
-                else:
-                  raise ValueError()
-              except (ValueError, TypeError):
-                raise ValueError(f"Invalid class_weight key: '{key}' for "
-                               f"output '{name}'. "
-                               f"Class weight keys must be integers "
-                               f"representing class indices, "
-                               f"got key of type {type(key).__name__}.")
+                int(key)
+                continue
+              except ValueError:
+                pass
+              raise ValueError(f"Invalid class_weight key: '{key}' for "
+                             f"output '{name}'. "
+                             f"Class weight keys must be integers "
+                             f"representing class indices, "
+                             f"got key of type {type(key).__name__}.")
 
     for name in output_names:
       if name not in x_weight:

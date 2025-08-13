@@ -67,5 +67,7 @@ class TrainingUtilsV1Test(tf.test.TestCase):
                                 "output1"):
       training_utils_v1.standardize_sample_or_class_weights(
           class_weight, ['output1', 'output2'], 'class_weight')
+
+
 if __name__ == '__main__':
   tf.test.main()
