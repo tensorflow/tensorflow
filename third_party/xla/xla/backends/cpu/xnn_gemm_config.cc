@@ -19,11 +19,13 @@ limitations under the License.
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <limits>
 #include <numeric>
 
 #include "absl/log/check.h"
 #include "llvm/Target/TargetMachine.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
 
