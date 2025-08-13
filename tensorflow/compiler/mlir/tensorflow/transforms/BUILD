@@ -479,6 +479,7 @@ cc_library(
         "name_anonymous_iterators.cc",
         "optimize.cc",
         "order_by_dialect.cc",
+        "order_for_program_key.cc",
         "parallel_execute_to_islands.cc",
         "prepare_tpu_computation_for_tf_export.cc",
         "print.cc",
