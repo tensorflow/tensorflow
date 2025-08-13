@@ -166,8 +166,6 @@ tsl::AsyncValueRef<WhileThunk::ExecuteEvent> WhileThunk::ExecuteAsyncForLoop(
   auto loop_fn = std::make_shared<std::function<void(int64_t, absl::Status)>>();
   *loop_fn = [this, trip_count, &params, event, loop = loop_fn.get()](
                  int64_t loop_counter, absl::Status status) {
-    // Make a copy of event to avoid use-after-free problems.
-    auto event_copy = event;
     // Dependency completed with an error. Forward it to the result event.
     if (ABSL_PREDICT_FALSE(!status.ok())) {
       event.SetError(std::move(status));
@@ -188,7 +186,7 @@ tsl::AsyncValueRef<WhileThunk::ExecuteEvent> WhileThunk::ExecuteAsyncForLoop(
 
       // Immediately forward error to the caller.
       if (ABSL_PREDICT_FALSE(body_event.IsError())) {
-        event_copy.SetError(body_event.GetError());
+        event.SetError(body_event.GetError());
         return;
       }
 
@@ -196,7 +194,7 @@ tsl::AsyncValueRef<WhileThunk::ExecuteEvent> WhileThunk::ExecuteAsyncForLoop(
     }
 
     // Successfully completed `trip_count` while loop iterations.
-    event_copy.SetStateConcrete();
+    event.SetStateConcrete();
   };
 
   // Kick-off loop execution once dependency event is available.
@@ -220,8 +218,6 @@ tsl::AsyncValueRef<WhileThunk::ExecuteEvent> WhileThunk::ExecuteAsyncWhileLoop(
   auto loop_fn = std::make_shared<std::function<void(absl::Status)>>();
   *loop_fn = [this, condition, &params, event,
               loop = loop_fn.get()](absl::Status status) {
-    // Make a copy of event to avoid use-after-free problems.
-    auto event_copy = event;
     // Dependency completed with an error. Forward it to the result event.
     if (ABSL_PREDICT_FALSE(!status.ok())) {
       event.SetError(std::move(status));
@@ -254,7 +250,7 @@ tsl::AsyncValueRef<WhileThunk::ExecuteEvent> WhileThunk::ExecuteAsyncWhileLoop(
     }
 
     // Successfully completed while loop iterations.
-    event_copy.SetStateConcrete();
+    event.SetStateConcrete();
   };
 
   // Kick-off loop execution once dependency event is available.

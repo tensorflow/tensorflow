@@ -15,11 +15,9 @@ limitations under the License.
 
 #include "xla/tsl/concurrency/async_value.h"
 
-#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <utility>
-#include <vector>
 
 #include "absl/status/status.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -191,20 +189,6 @@ TEST(AsyncValueTest, MoveOnlyCallback) {
   auto value = MakeConstructedAsyncValueRef<int32_t>(123);
   value.AndThen(MoveOnlyCb());
   value.SetStateConcrete();
-}
-
-TEST(AsyncValueTest, RunInOrder) {
-  for (size_t i = 0; i < 20; ++i) {
-    std::vector<size_t> order;
-    std::vector<size_t> expected_order;
-    auto value = MakeConstructedAsyncValueRef<int32_t>(123);
-    for (size_t j = 0; j < i; ++j) {
-      expected_order.push_back(j);
-      value.AndThen([&order, j]() { order.push_back(j); });
-    }
-    value.SetStateConcrete();
-    EXPECT_EQ(order, expected_order);
-  }
 }
 
 //===----------------------------------------------------------------------===//
