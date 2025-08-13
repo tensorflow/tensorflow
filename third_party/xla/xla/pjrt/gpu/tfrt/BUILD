@@ -16,8 +16,14 @@ xla_gpu_internal_packages()
 
 cc_library(
     name = "tfrt_gpu_client",
-    srcs = ["tfrt_gpu_client.cc"],
-    hdrs = ["tfrt_gpu_client.h"],
+    srcs = [
+        "tfrt_gpu_buffer.cc",
+        "tfrt_gpu_client.cc",
+    ],
+    hdrs = [
+        "tfrt_gpu_buffer.h",
+        "tfrt_gpu_client.h",
+    ],
     defines = if_cuda(["GOOGLE_CUDA=1"]) + if_rocm(["TENSORFLOW_USE_ROCM=1"]),
     visibility = internal_visibility(["//xla/pjrt/gpu:legacy_gpu_client_users"]),
     deps = [
