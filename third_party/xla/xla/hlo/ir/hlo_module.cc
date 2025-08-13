@@ -1517,7 +1517,7 @@ void HloModule::OriginalValueRecoveryTable::AddRecoveryComputation(
     // doesn't have one.
     if (!replacing_original_value) {
       replacing_original_value = OriginalValue::CreateFromInstruction(
-          replacing_inst, /*prefix=*/"placeholder_");
+          replacing_inst, /*prefix=*/kOriginalValuePlaceholderPrefix);
       if (!replacing_original_value) {
         return;
       }
