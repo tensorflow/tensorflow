@@ -163,12 +163,16 @@ tsl::AsyncValueRef<WhileThunk::ExecuteEvent> WhileThunk::ExecuteAsyncForLoop(
 
   // Allocate while loop iteration function on heap so we can detach its life
   // time from the caller stack.
-  auto loop_fn = std::make_shared<std::function<void(int64_t, absl::Status)>>();
-  *loop_fn = [this, trip_count, &params, event, loop = loop_fn.get()](
-                 int64_t loop_counter, absl::Status status) {
+  //
+  // WARNING: `loop` recursively owns itself via the lambda capture, and needs
+  // and explicit reset() call to release it once loop iteration is completed.
+  auto loop = std::make_shared<std::function<void(int64_t, absl::Status)>>();
+  *loop = [this, trip_count, &params, event, loop](
+              int64_t loop_counter, absl::Status status) mutable {
     // Dependency completed with an error. Forward it to the result event.
     if (ABSL_PREDICT_FALSE(!status.ok())) {
       event.SetError(std::move(status));
+      loop.reset();
       return;
     }
 
@@ -178,15 +182,17 @@ tsl::AsyncValueRef<WhileThunk::ExecuteEvent> WhileThunk::ExecuteAsyncForLoop(
       // If loop iteration has not completed yet, continue execution
       // asynchronously starting from `loop_counter + 1`.
       if (!body_event.IsAvailable()) {
-        body_event.AndThen([loop, loop_counter](absl::Status status) {
-          (*loop)(loop_counter + 1, std::move(status));
-        });
+        body_event.AndThen(
+            [loop = loop.get(), loop_counter](absl::Status status) {
+              (*loop)(loop_counter + 1, std::move(status));
+            });
         return;
       }
 
       // Immediately forward error to the caller.
       if (ABSL_PREDICT_FALSE(body_event.IsError())) {
         event.SetError(body_event.GetError());
+        loop.reset();
         return;
       }
 
@@ -195,15 +201,14 @@ tsl::AsyncValueRef<WhileThunk::ExecuteEvent> WhileThunk::ExecuteAsyncForLoop(
 
     // Successfully completed `trip_count` while loop iterations.
     event.SetStateConcrete();
+    loop.reset();
   };
 
   // Kick-off loop execution once dependency event is available.
-  dependency.AndThen([loop_counter, loop = loop_fn.get()](absl::Status status) {
-    (*loop)(loop_counter, std::move(status));
-  });
-
-  // Keep `loop_fn` alive until the end of the while loop execution.
-  event.AndThen([loop_fn = std::move(loop_fn)]() {});
+  dependency.AndThen(
+      [loop_counter, loop = std::move(loop)](absl::Status status) {
+        (*loop)(loop_counter, std::move(status));
+      });
 
   return event;
 }
@@ -215,12 +220,15 @@ tsl::AsyncValueRef<WhileThunk::ExecuteEvent> WhileThunk::ExecuteAsyncWhileLoop(
 
   // Allocate while loop iteration function on heap so we can detach its life
   // time from the caller stack.
-  auto loop_fn = std::make_shared<std::function<void(absl::Status)>>();
-  *loop_fn = [this, condition, &params, event,
-              loop = loop_fn.get()](absl::Status status) {
+  //
+  // WARNING: `loop` recursively owns itself via the lambda capture, and needs
+  // and explicit reset() call to release it once loop iteration is completed.
+  auto loop = std::make_shared<std::function<void(absl::Status)>>();
+  *loop = [this, condition, &params, event, loop](absl::Status status) mutable {
     // Dependency completed with an error. Forward it to the result event.
     if (ABSL_PREDICT_FALSE(!status.ok())) {
       event.SetError(std::move(status));
+      loop.reset();
       return;
     }
 
@@ -233,14 +241,16 @@ tsl::AsyncValueRef<WhileThunk::ExecuteEvent> WhileThunk::ExecuteAsyncWhileLoop(
       // If loop iteration has not completed yet, continue execution
       // asynchronously (if `condition` is still true when it becomes ready).
       if (!cond_event.IsAvailable()) {
-        cond_event.AndThen(
-            [loop](absl::Status status) { (*loop)(std::move(status)); });
+        cond_event.AndThen([loop = loop.get()](absl::Status status) {
+          (*loop)(std::move(status));
+        });
         return;
       }
 
       // Immediately forward error to the caller.
       if (ABSL_PREDICT_FALSE(cond_event.IsError())) {
         event.SetError(cond_event.GetError());
+        loop.reset();
         return;
       }
 
@@ -251,15 +261,13 @@ tsl::AsyncValueRef<WhileThunk::ExecuteEvent> WhileThunk::ExecuteAsyncWhileLoop(
 
     // Successfully completed while loop iterations.
     event.SetStateConcrete();
+    loop.reset();
   };
 
   // Kick-off loop execution once dependency event is available.
-  dependency.AndThen([loop = loop_fn.get()](absl::Status status) {
+  dependency.AndThen([loop = std::move(loop)](absl::Status status) {
     (*loop)(std::move(status));
   });
-
-  // Keep `loop_fn` alive until the end of the while loop execution.
-  event.AndThen([loop_fn = std::move(loop_fn)]() {});
 
   return event;
 }
