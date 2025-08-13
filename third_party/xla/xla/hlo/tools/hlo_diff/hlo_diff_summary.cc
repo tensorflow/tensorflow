@@ -116,19 +116,6 @@ MainMatchedComputationResult FindMainMatchedComputation(
   return result;
 }
 
-uint64_t GetDiffTypeFingerprint(
-    const HloInstruction* instruction,
-    const absl::flat_hash_set<const HloInstruction*>& changed_instructions,
-    const absl::flat_hash_set<const HloInstruction*>& unmatched_instructions) {
-  if (changed_instructions.contains(instruction)) {
-    return DiffCode::kChanged;
-  }
-  if (unmatched_instructions.contains(instruction)) {
-    return DiffCode::kUnmatched;
-  }
-  return DiffCode::kUnchanged;
-}
-
 struct DiffFingerprint {
   bool all_unchanged;
   uint64_t diff_fingerprint;
@@ -136,15 +123,16 @@ struct DiffFingerprint {
 
 DiffFingerprint ComputationDiffFingerprint(
     const xla::HloComputation* computation,
-    const absl::flat_hash_set<const HloInstruction*>& changed_instructions,
-    const absl::flat_hash_set<const HloInstruction*>& unmatched_instructions) {
+    const absl::flat_hash_map<const HloInstruction*, DiffType>& diff_codes) {
   absl::flat_hash_map<const HloInstruction*, uint64_t> subgraph_fingerprint;
   bool all_unchanged = true;
   for (auto* instruction : computation->MakeInstructionPostOrder()) {
     uint64_t fp = static_cast<uint64_t>(instruction->opcode());
-    uint64_t diff_type_fp = GetDiffTypeFingerprint(
-        instruction, changed_instructions, unmatched_instructions);
-    all_unchanged = all_unchanged && (diff_type_fp == DiffCode::kUnchanged);
+    uint64_t diff_type_fp = DiffType::kUnchanged;
+    if (auto it = diff_codes.find(instruction); it != diff_codes.end()) {
+      diff_type_fp = it->second;
+    }
+    all_unchanged = all_unchanged && (diff_type_fp == DiffType::kUnchanged);
     fp = tsl::FingerprintCat64(fp, diff_type_fp);
     for (const HloInstruction* operand : instruction->operands()) {
       fp = tsl::FingerprintCat64(fp, subgraph_fingerprint.at(operand));
@@ -162,8 +150,7 @@ DiffFingerprint ComputationDiffFingerprint(
 // Split the computations into left and right computations.
 ComputationGroup SplitComputations(
     const std::vector<const HloComputation*>& computations,
-    const absl::flat_hash_map<const HloComputation*, const ComputationSummary>&
-        computation_summaries) {
+    const ComputationSummaryMap& computation_summaries) {
   ComputationGroup result;
   for (const HloComputation* computation : computations) {
     if (auto it = computation_summaries.find(computation);
@@ -180,9 +167,7 @@ ComputationGroup SplitComputations(
 
 // Returns the connected components of the given computation summary.
 absl::flat_hash_map<uint64_t, std::vector<ComputationGroup>>
-FindConnectedComponents(
-    absl::flat_hash_map<const HloComputation*, const ComputationSummary>
-        computation_summary) {
+FindConnectedComponents(const ComputationSummaryMap& computation_summary) {
   ConnectedComponentsFinder cc;
   std::vector<std::vector<const HloComputation*>> unmatched_computations;
   absl::flat_hash_map<uint64_t, std::vector<ComputationGroup>> result;
@@ -258,8 +243,7 @@ DiffMetrics GetDiffMetrics(const ComputationGroup& computation_group,
 }
 
 std::vector<ComputationDiffPattern> FindComputationDiffPatterns(
-    const absl::flat_hash_map<const HloComputation*, const ComputationSummary>&
-        computation_summary,
+    const ComputationSummaryMap& computation_summary,
     const DiffResult& diff_result) {
   std::vector<ComputationDiffPattern> result;
   absl::flat_hash_map<uint64_t, std::vector<ComputationGroup>>
@@ -276,18 +260,15 @@ std::vector<ComputationDiffPattern> FindComputationDiffPatterns(
 }
 
 // Summarizes all computations in the given graph.
-absl::flat_hash_map<const HloComputation*, const ComputationSummary>
-SummarizeAllComputationsInGraph(
+ComputationSummaryMap SummarizeAllComputationsInGraph(
     const HloModule& module, const InstructionBimap& mapping,
-    const absl::flat_hash_set<const HloInstruction*>& changed_instructions,
-    const absl::flat_hash_set<const HloInstruction*>& unmatched_instructions,
+    const absl::flat_hash_map<const HloInstruction*, DiffType>& diff_codes,
     DiffSide side) {
-  absl::flat_hash_map<const HloComputation*, const ComputationSummary> result;
+  ComputationSummaryMap result;
   for (const HloComputation* computation : module.computations()) {
     const MainMatchedComputationResult mmc =
         FindMainMatchedComputation(computation, mapping, side);
-    DiffFingerprint dfp = ComputationDiffFingerprint(
-        computation, changed_instructions, unmatched_instructions);
+    DiffFingerprint dfp = ComputationDiffFingerprint(computation, diff_codes);
     ComputationSummary summary;
     summary.side = side;
     summary.main_matched_computation = mmc.main_matched_computation;
@@ -299,6 +280,19 @@ SummarizeAllComputationsInGraph(
     result.insert({computation, summary});
   }
   return result;
+}
+
+// Returns the computation summary.
+ComputationSummaryMap GetComputationSummary(const HloModule& left_module,
+                                            const HloModule& right_module,
+                                            const DiffResult& diff_result) {
+  ComputationSummaryMap summary;
+  InstructionBimap mapping = ConstructInstructionBimap(diff_result);
+  summary.merge(SummarizeAllComputationsInGraph(
+      left_module, mapping, diff_result.left_diff_codes, DiffSide::kLeft));
+  summary.merge(SummarizeAllComputationsInGraph(
+      right_module, mapping, diff_result.right_diff_codes, DiffSide::kRight));
+  return summary;
 }
 
 // Logs the computation group.
@@ -340,27 +334,10 @@ std::unique_ptr<const DiffSummary> ConstructDiffSummary(
     const HloModule& left_module, const HloModule& right_module,
     const DiffResult& diff_result) {
   auto summary = std::make_unique<DiffSummary>();
-  absl::flat_hash_set<const HloInstruction*> left_changed_instructions;
-  absl::flat_hash_set<const HloInstruction*> right_changed_instructions;
-  absl::flat_hash_set<const HloInstruction*> left_unmatched_instructions;
-  absl::flat_hash_set<const HloInstruction*> right_unmatched_instructions;
-  for (auto const& [left, right] : diff_result.changed_instructions) {
-    left_changed_instructions.insert(left);
-    right_changed_instructions.insert(right);
-  }
-  InstructionBimap mapping = ConstructInstructionBimap(diff_result);
-  left_unmatched_instructions.insert(
-      diff_result.left_module_unmatched_instructions.begin(),
-      diff_result.left_module_unmatched_instructions.end());
-  right_unmatched_instructions.insert(
-      diff_result.right_module_unmatched_instructions.begin(),
-      diff_result.right_module_unmatched_instructions.end());
-  summary->computation_summary.merge(SummarizeAllComputationsInGraph(
-      left_module, mapping, left_changed_instructions,
-      left_unmatched_instructions, DiffSide::kLeft));
-  summary->computation_summary.merge(SummarizeAllComputationsInGraph(
-      right_module, mapping, right_changed_instructions,
-      right_unmatched_instructions, DiffSide::kRight));
+
+  // Summarize the computations.
+  summary->computation_summary =
+      GetComputationSummary(left_module, right_module, diff_result);
 
   // Group the computations by their diff fingerprint.
   summary->computation_diff_patterns =
