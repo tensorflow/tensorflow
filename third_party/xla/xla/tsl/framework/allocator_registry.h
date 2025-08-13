@@ -90,7 +90,7 @@ class AllocatorFactoryRegistry {
   static AllocatorFactoryRegistry* singleton();
 
   ProcessStateInterface* process_state() const {
-    absl::MutexLock ml(&mu_);
+    absl::MutexLock ml(mu_);
     return process_state_;
   }
 
@@ -98,7 +98,7 @@ class AllocatorFactoryRegistry {
   friend class tensorflow::ProcessState;
 
   void SetProcessState(ProcessStateInterface* interface) {
-    absl::MutexLock ml(&mu_);
+    absl::MutexLock ml(mu_);
     process_state_ = interface;
   }
 
