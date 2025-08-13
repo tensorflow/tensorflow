@@ -636,7 +636,8 @@ AutoShardingSolverOutput SolveRandomPathGreedy(const iopddl::Problem& problem,
 }  // namespace
 
 absl::StatusOr<AutoShardingSolverOutput> RunHeuristicSolver(
-    const iopddl::Problem& problem, const std::string& algorithm) {
+    const iopddl::Problem& problem, const std::string& algorithm,
+    AutoShardingSolverParams params, bool improve_by_cpsat) {
   absl::Time start_time = absl::Now();
   AutoShardingSolverOutput output;
   if (algorithm == "trivial") {
@@ -658,10 +659,19 @@ absl::StatusOr<AutoShardingSolverOutput> RunHeuristicSolver(
     CHECK(false) << absl::Substitute("Algorithm $0 is not implemented.",
                                      algorithm);
   }
-  auto duration = absl::Now() - start_time;
-  LOG(INFO) << "Solver took " << absl::ToInt64Milliseconds(duration) << " ms";
-  LOG(INFO) << "Objective value: " << output.cost;
-  LOG(INFO) << "Total Cost: " << ComputeShardingCost(problem, output.s_val);
+  if (improve_by_cpsat) {
+    auto time_for_heuristic = absl::Now() - start_time;
+    LOG(INFO) << "Heuristic took "
+              << absl::ToInt64Milliseconds(time_for_heuristic) << " ms";
+    LOG(INFO) << "Objective value after heuristic: " << output.cost;
+    params.s_hint = {output.s_val.begin(), output.s_val.end()};
+    xla::spmd::FormulateAndSolveMIPFromProblem(problem, params).IgnoreError();
+  } else {
+    auto duration = absl::Now() - start_time;
+    LOG(INFO) << "Solver took " << absl::ToInt64Milliseconds(duration) << " ms";
+    LOG(INFO) << "Objective value: " << output.cost;
+    LOG(INFO) << "Total Cost: " << ComputeShardingCost(problem, output.s_val);
+  }
   return output;
 }
 
