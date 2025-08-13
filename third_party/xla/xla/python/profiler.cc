@@ -128,9 +128,7 @@ struct ProfilerSessionWrapper {
 static std::string GetFdoProfile(const std::string& xspace,
                                  bool as_textproto = false) {
   tensorflow::profiler::XSpace xspace_proto;
-  // TODO(phawkins): change to absl::string_view when protobuf is
-  // updated in XLA.
-  xspace_proto.ParseFromString(std::string(xspace.c_str(), xspace.size()));
+  xspace_proto.ParseFromString(xspace);
   tensorflow::profiler::ProfiledInstructionsProto fdo_profile;
   xla::ThrowIfError(xla::ConvertXplaneToProfiledInstructionsProto(
       {xspace_proto}, &fdo_profile));
