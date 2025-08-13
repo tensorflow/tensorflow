@@ -53,6 +53,7 @@ limitations under the License.
 #include "shardy/dialect/sdy/ir/utils.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/translate/hlo_to_mhlo/hlo_utils.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/shardy/utils.h"
 
@@ -112,7 +113,7 @@ void handleFuncResultSharding(CustomCallOp funcResultSharding, FuncOp funcOp,
   // func result. When importing we want to move that sharding to the
   // func result and delete the CustomCallOp.
   auto shardingPerValueAttr = parseStringAttr<TensorShardingPerValueAttr>(
-      dictAttr, HloSharding::kShardingFrontendAttrName);
+      dictAttr, xla::ToStringRef(HloSharding::kShardingFrontendAttrName));
 
   auto resultUses = funcResultSharding->getUses();
   auto x64CombineOp = getX64CombineOnFuncResultSharding(funcResultSharding);
@@ -176,10 +177,12 @@ void convertShardyAttrs(FuncOp funcOp, IRRewriter& rewriter) {
     // the function argument/result.
     if (DictionaryAttr dictAttr = getFuncArgFrontendAttrs(funcOp, argNum)) {
       if (auto sharding = parseStringAttr<TensorShardingAttr>(
-              dictAttr, HloSharding::kShardingFrontendAttrName)) {
+              dictAttr,
+              xla::ToStringRef(HloSharding::kShardingFrontendAttrName))) {
         funcOp.setArgAttr(argNum, kShardingAttr, sharding);
-        removeFrontendAttribute(funcOp, HloSharding::kShardingFrontendAttrName,
-                                argNum);
+        removeFrontendAttribute(
+            funcOp, xla::ToStringRef(HloSharding::kShardingFrontendAttrName),
+            argNum);
       }
     }
   }
@@ -203,7 +206,8 @@ void convertShardyAttrs(FuncOp funcOp, IRRewriter& rewriter) {
     if (mlir::isa<stablehlo::SendOp, stablehlo::RecvOp, stablehlo::AfterAllOp>(
             op)) {
       if (auto sharding = parseStringAttr<TensorShardingPerValueAttr>(
-              dictAttr, HloSharding::kShardingFrontendAttrName)) {
+              dictAttr,
+              xla::ToStringRef(HloSharding::kShardingFrontendAttrName))) {
         op->setAttr(kShardingAttr, sharding);
       }
     }
@@ -224,10 +228,12 @@ void convertShardyAttrs(FuncOp funcOp, IRRewriter& rewriter) {
         customCallOp->setAttr(
             kShardingAttr,
             parseStringAttr<TensorShardingPerValueAttr>(
-                dictAttr, HloSharding::kShardingFrontendAttrName));
+                dictAttr,
+                xla::ToStringRef(HloSharding::kShardingFrontendAttrName)));
       }
     }
-    removeFrontendAttribute(op, HloSharding::kShardingFrontendAttrName);
+    removeFrontendAttribute(
+        op, xla::ToStringRef(HloSharding::kShardingFrontendAttrName));
 
     // Import sharding rules.
     if (auto shardingRuleAttr = parseStringAttr<OpShardingRuleAttr>(
