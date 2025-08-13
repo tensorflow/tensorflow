@@ -260,6 +260,8 @@ message DebugOptions {
 
   reserved 160;  // Was xla_gpu_enable_cudnn_frontend
 
+  reserved 352;  // xla_gpu_dump_hlo_unoptimized_snapshots
+
   // Command buffer scheduling mode.
   // SERIALIZE: Serialize all commands in a command buffer.
   // CONCURRENT: Identify concurrent across operator through data conflicts.
@@ -305,6 +307,12 @@ message DebugOptions {
     // implementation.
     reserved 2;  // Was PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE_CYCLE_DECOMPOSER
   }
+
+  // If true, every time an HLO module is run, we will dump an
+  // HloUnoptimizedSnapshot (essentially, a serialized unoptimizedmodule plus
+  // its inputs) to the --xla_dump_to directory. This flag is currently
+  // supported on XLA:GPU and XLA:CPU.
+  optional bool xla_dump_hlo_unoptimized_snapshots = 405;
 
   // Denylist for cuDNN convolutions.
   optional string xla_gpu_algorithm_denylist_path = 128;
@@ -432,11 +440,6 @@ message DebugOptions {
   optional string xla_gpu_dump_autotune_results_to = 222;
 
   optional bool xla_gpu_dump_autotuned_gemm_fusions = 232;
-
-  // If true, every time an HLO module is run, we will dump an
-  // HloUnoptimizedSnapshot (essentially, a serialized unoptimizedmodule plus
-  // its inputs) to the --xla_dump_to directory.
-  optional bool xla_gpu_dump_hlo_unoptimized_snapshots = 352;
 
   // Whether to dump llvm ir when compiling to ptx.
   optional bool xla_gpu_dump_llvmir = 155;
@@ -1188,9 +1191,7 @@ message DebugOptions {
   // (much) faster on our hardware.  Set this flag to disable this behavior.
   optional bool xla_cpu_strict_dot_conv_math = 175;
 
-  // Dump HloSnapshot with an unoptimized HloModule into the --xla_dump_to
-  // directory. If --xla_dump_hlo_snapshots is not set, this flag is ignored.
-  optional bool xla_cpu_dump_unoptimized_hlo_snapshots = 402;
+  reserved 402;  // Was xla_cpu_dump_unoptimized_hlo_snapshots
 
   optional bool xla_dump_latency_hiding_schedule = 182;
 
@@ -1320,7 +1321,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 405
+  // Next id: 406
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

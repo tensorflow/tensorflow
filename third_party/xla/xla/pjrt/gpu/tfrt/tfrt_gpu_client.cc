@@ -1735,11 +1735,11 @@ TfrtGpuClient::LoadInternal(
   std::vector<PjRtDevice*>& addressable_devices = extras.addressable_devices;
 
   const auto& ex_options = compile_options.executable_build_options;
-  const bool xla_gpu_dump_hlo_unoptimized_snapshots =
+  const bool xla_dump_hlo_unoptimized_snapshots =
       ex_options.has_debug_options() &&
-      ex_options.debug_options().xla_gpu_dump_hlo_unoptimized_snapshots();
+      ex_options.debug_options().xla_dump_hlo_unoptimized_snapshots();
   HloModuleProto hlo_module_proto;
-  if (xla_gpu_dump_hlo_unoptimized_snapshots) {
+  if (xla_dump_hlo_unoptimized_snapshots) {
     hlo_module_proto = local_executables[0]->executable()->module().ToProto();
   }
 
@@ -1752,7 +1752,7 @@ TfrtGpuClient::LoadInternal(
 
   TF_RETURN_IF_ERROR(
       executable->SetUpDonation(compile_options.parameter_is_tupled_arguments));
-  if (xla_gpu_dump_hlo_unoptimized_snapshots) {
+  if (xla_dump_hlo_unoptimized_snapshots) {
     executable->SetInputHloSnapshotBits(
         std::move(hlo_module_proto),
         compile_options.executable_build_options.debug_options());
