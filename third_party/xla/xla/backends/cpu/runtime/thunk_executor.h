@@ -19,12 +19,14 @@ limitations under the License.
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <queue>
 #include <string>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
+#include "absl/base/optimization.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/fixed_array.h"
 #include "absl/container/inlined_vector.h"
@@ -191,15 +193,12 @@ class ThunkExecutor {
       alignas(Node) std::byte data[sizeof(Node)];
     };
 
-    ExecuteState(ThunkExecutor* executor, Thunk::TaskRunner* runner);
+    explicit ExecuteState(ThunkExecutor* executor);
 
     Node& node(NodeId id) {
       DCHECK_LT(id, nodes.size()) << "Node id is out of bounds";
       return *reinterpret_cast<Node*>(&nodes.data()[id]);
     }
-
-    ThunkExecutor* executor;
-    Thunk::TaskRunner* runner;
 
     // Note: using alignas(Node) here instead of in NodeStorage does not work:
     // `nodes` would be aligned, but not its elements.
@@ -238,13 +237,15 @@ class ThunkExecutor {
 
   // Executes nodes in the ready queue with given thunk parameters.
   template <typename ReadyQueue>
-  void Execute(ExecuteState* state, const Thunk::ExecuteParams& params,
-               ReadyQueue ready_queue, Thunk::ExecuteSession::Lock lock);
+  void Execute(std::shared_ptr<ExecuteState> state,
+               const Thunk::ExecuteParams& params, ReadyQueue ready_queue,
+               Thunk::ExecuteSession::Lock lock);
 
   // Splits ready queue starting from `start_index` into ThunkExecutor tasks and
   // offloads them to the task runner.
   template <typename ReadyQueue>
-  void SplitReadyQueue(ExecuteState* state, const Thunk::ExecuteParams& params,
+  void SplitReadyQueue(const std::shared_ptr<ExecuteState>& state,
+                       const Thunk::ExecuteParams& params,
                        ReadyQueue& ready_queue, int64_t split_threshold);
 
   // Processes out edges of a scheduled `node` and updates `ready_queue` with
