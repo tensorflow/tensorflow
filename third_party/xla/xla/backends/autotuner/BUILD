@@ -82,6 +82,7 @@ xla_cc_test(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
+        "@com_google_protobuf//:any_cc_proto",
         "@local_tsl//tsl/platform:path",
     ] + if_google(["@com_google_protobuf//:any_cc_proto"]),
 )
