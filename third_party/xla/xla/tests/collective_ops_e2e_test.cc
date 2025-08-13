@@ -1380,9 +1380,9 @@ TEST_F(CollectiveOpsTestE2E, HostMemoryOffloadingWithDonation) {
 
   std::string error_message = executable_or.status().ToString();
   EXPECT_TRUE(absl::StrContains(
-      error_message, "Not all HloValues in the HloBuffer have the same color"))
-      << "Got error but not the expected buffer color mismatch: "
-      << error_message;
+      error_message, "Shape and memory space of the result at index {} "))
+      << "(f32[128,128]) must be the same as the shape and memory space"
+      << "of aliased parameter 0 at index {} (f32[128,128])" << error_message;
 }
 
 // E2E tests comparing the results of sharded and unsharded execution.
