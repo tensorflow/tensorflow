@@ -624,7 +624,7 @@ LogicalResult importShardings(
     FuncOp funcOp, MeshAttr globalMesh,
     const SmallDenseMap<int64_t, StringRef>& deviceIdToMaximalMeshName,
     ArrayRef<bool> allowPropagationToArgs,
-    ArrayRef<bool> allowPropagationToResults) {
+    ArrayRef<bool> allowPropagationToResults, bool inlineMesh) {
   for (auto [argNum, argType] : llvm::enumerate(funcOp.getArgumentTypes())) {
     if (auto oldSharding =
             funcOp.getArgAttrOfType<StringAttr>(argNum, kXlaShardingAttr)) {
@@ -632,7 +632,8 @@ LogicalResult importShardings(
           argNum, kShardingAttr,
           convertToSdySharding(parseShardingFromString(oldSharding), globalMesh,
                                deviceIdToMaximalMeshName, getRank(argType),
-                               shouldOpenDims(allowPropagationToArgs, argNum)));
+                               shouldOpenDims(allowPropagationToArgs, argNum),
+                               inlineMesh));
       funcOp.removeArgAttr(argNum, kXlaShardingAttr);
     }
   }
@@ -645,7 +646,7 @@ LogicalResult importShardings(
           convertToSdySharding(
               parseShardingFromString(oldSharding), globalMesh,
               deviceIdToMaximalMeshName, getRank(resType),
-              shouldOpenDims(allowPropagationToResults, resNum)));
+              shouldOpenDims(allowPropagationToResults, resNum), inlineMesh));
       funcOp.removeResultAttr(
           resNum, StringAttr::get(funcOp.getContext(), kXlaShardingAttr));
     }
@@ -662,10 +663,10 @@ LogicalResult importShardings(
       newShardings.reserve(op->getNumResults());
       for (const auto& [resHloSharding, resType] :
            llvm::zip_equal(flatHloSharding, op->getResultTypes())) {
-        newShardings.push_back(convertToSdySharding(resHloSharding, globalMesh,
-                                                    deviceIdToMaximalMeshName,
-                                                    getRank(resType),
-                                                    /*openDims=*/false));
+        newShardings.push_back(
+            convertToSdySharding(resHloSharding, globalMesh,
+                                 deviceIdToMaximalMeshName, getRank(resType),
+                                 /*openDims=*/false, inlineMesh));
       }
       mlir::sdy::setShardings(op, newShardings);
       op->removeAttr(kXlaShardingAttr);
@@ -681,9 +682,10 @@ class ImportShardingsPass
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ImportShardingsPass)
 
   ImportShardingsPass(ArrayRef<bool> allowPropagationToArgs,
-                      ArrayRef<bool> allowPropagationToResults)
+                      ArrayRef<bool> allowPropagationToResults, bool inlineMesh)
       : allowPropagationToArgs(allowPropagationToArgs),
-        allowPropagationToResults(allowPropagationToResults) {}
+        allowPropagationToResults(allowPropagationToResults),
+        inlineMesh(inlineMesh) {}
 
   void runOnOperation() final {
     ModuleOp moduleOp = getOperation();
@@ -723,7 +725,8 @@ class ImportShardingsPass
       if (mlir::failed(importShardings(
               funcOp, globalMesh, deviceIdToMaximalMeshName,
               isMain ? allowPropagationToArgs : ArrayRef<bool>(),
-              isMain ? allowPropagationToResults : ArrayRef<bool>()))) {
+              isMain ? allowPropagationToResults : ArrayRef<bool>(),
+              inlineMesh))) {
         signalPassFailure();
       }
     }
@@ -743,20 +746,21 @@ class ImportShardingsPass
  private:
   ArrayRef<bool> allowPropagationToArgs;
   ArrayRef<bool> allowPropagationToResults;
+  bool inlineMesh;
 };
 
 }  // namespace
 
 std::unique_ptr<mlir::Pass> createImportShardingsPass(
     ArrayRef<bool> allowPropagationToArgs,
-    ArrayRef<bool> allowPropagationToResults) {
-  return std::make_unique<ImportShardingsPass>(allowPropagationToArgs,
-                                               allowPropagationToResults);
+    ArrayRef<bool> allowPropagationToResults, bool inlineMesh) {
+  return std::make_unique<ImportShardingsPass>(
+      allowPropagationToArgs, allowPropagationToResults, inlineMesh);
 }
 
 void registerStablehloImportShardingsPass() {
-  mlir::registerPass(
-      std::bind(createImportShardingsPass, ArrayRef<bool>(), ArrayRef<bool>()));
+  mlir::registerPass(std::bind(createImportShardingsPass, ArrayRef<bool>(),
+                               ArrayRef<bool>(), false));
 }
 
 void addStablehloImportPipeline(mlir::OpPassManager& pm,
