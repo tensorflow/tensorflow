@@ -22,7 +22,11 @@ limitations under the License.
 #include <utility>
 
 #include "absl/flags/flag.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/evaluator/caching_hlo_evaluator.h"
+#include "xla/hlo/evaluator/hlo_evaluator_interface.h"
+#include "xla/pjrt/interpreter/interpreter_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/service/hlo_runner_pjrt.h"
 
@@ -108,6 +112,39 @@ std::unique_ptr<HloRunnerPjRt> MakeHloRunnerPjRtSplitPhaseAware(
           std::move(client), std::move(artifact_dir));
   }
   return nullptr;  // Should not reach here.
+}
+
+std::unique_ptr<InterpreterClient> MakeInterpreterClientSplitPhaseAware(
+    absl::AnyInvocable<std::unique_ptr<HloEvaluatorInterface>() const>
+        hlo_evaluator_factory) {
+  const SplitPhaseMode mode = absl::GetFlag(FLAGS_xla_hlo_runner_split_phase);
+  std::string artifact_dir;
+  if (mode != SplitPhaseMode::kDisabled) {
+    std::optional<std::string> split_phase_dir =
+        absl::GetFlag(FLAGS_xla_hlo_runner_split_phase_dir);
+    if (!split_phase_dir.has_value()) {
+      return nullptr;
+    }
+    artifact_dir = *std::move(split_phase_dir);
+  }
+
+  return std::make_unique<InterpreterClient>(
+      [factory = std::move(hlo_evaluator_factory),
+       artifact_dir = std::move(
+           artifact_dir)]() -> std::unique_ptr<HloEvaluatorInterface> {
+        switch (absl::GetFlag(FLAGS_xla_hlo_runner_split_phase)) {
+          case SplitPhaseMode::kDisabled:
+            return factory();
+          case SplitPhaseMode::kCompile:
+            return std::make_unique<CachingHloEvaluator>(
+                factory(), artifact_dir, CachingHloEvaluator::kWrite);
+          case SplitPhaseMode::kExecute:
+            return std::make_unique<CachingHloEvaluator>(
+                factory(), artifact_dir,
+                CachingHloEvaluator::kReadAndEvaluateIfCacheMiss);
+        }
+        return nullptr;  // Should not reach here.
+      });
 }
 
 // Execution errors are swallowed if and only if the split phase mode is set to

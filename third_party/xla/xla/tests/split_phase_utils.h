@@ -18,6 +18,9 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/functional/any_invocable.h"
+#include "xla/hlo/evaluator/hlo_evaluator_interface.h"
+#include "xla/pjrt/interpreter/interpreter_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/service/hlo_runner_pjrt.h"
 
@@ -29,6 +32,14 @@ namespace xla {
 // returns a standard HloRunnerPjRt.
 std::unique_ptr<HloRunnerPjRt> MakeHloRunnerPjRtSplitPhaseAware(
     std::unique_ptr<PjRtClient> client);
+
+// Constructs an InterpreterClient depending on the value of
+// --xla_hlo_runner_split_phase and --xla_hlo_runner_split_phase_dir. If
+// --xla_hlo_runner_split_phase is not set / set to "disabled", this function
+// returns a standard InterpreterClient.
+std::unique_ptr<InterpreterClient> MakeInterpreterClientSplitPhaseAware(
+    absl::AnyInvocable<std::unique_ptr<HloEvaluatorInterface>() const>
+        hlo_evaluator_factory);
 
 bool HasPjRtSplitPhaseAwareSwallowExecutionErrors();
 }  // namespace xla
