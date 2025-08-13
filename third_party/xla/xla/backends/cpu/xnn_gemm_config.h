@@ -19,6 +19,7 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/runtime/dot_lib.h"
 #include "xla/primitive_util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
 

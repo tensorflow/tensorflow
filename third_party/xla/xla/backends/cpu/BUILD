@@ -113,6 +113,7 @@ cc_library(
     hdrs = ["xnn_gemm_config.h"],
     deps = [
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/backends/cpu/runtime:dot_lib",
         "@com_google_absl//absl/log:check",
