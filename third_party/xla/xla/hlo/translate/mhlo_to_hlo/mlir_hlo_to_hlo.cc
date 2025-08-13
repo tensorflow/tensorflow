@@ -2621,6 +2621,13 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
 
   auto aliasInfo = xla::ConvertOutputOperandAliasing<
       mlir::stablehlo::OutputOperandAliasAttr>(op.getOutputOperandAliases());
+  // XLA/HLO requires alias info for Pin and Unpin custom calls.
+  if (op.getCallTargetName() == mlir::stablehlo::kUnpinCustomCallTarget ||
+      op.getCallTargetName() == mlir::stablehlo::kPinCustomCallTarget) {
+    aliasInfo = {std::make_pair(
+        xla::ShapeIndex(),
+        std::make_pair(static_cast<int64_t>(0), xla::ShapeIndex()))};
+  }
   auto output_operand_aliasing = absl::MakeSpan(*aliasInfo);
 
   auto custom_call_schedule = xla::SCHEDULE_NONE;
@@ -4310,6 +4317,13 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   auto aliasInfo =
       xla::ConvertOutputOperandAliasing<mlir::mhlo::OutputOperandAliasAttr>(
           op.getOutputOperandAliases());
+  // XLA/HLO requires alias info for Pin and Unpin custom calls.
+  if (op.getCallTargetName() == mlir::stablehlo::kUnpinCustomCallTarget ||
+      op.getCallTargetName() == mlir::stablehlo::kPinCustomCallTarget) {
+    aliasInfo = {std::make_pair(
+        xla::ShapeIndex(),
+        std::make_pair(static_cast<int64_t>(0), xla::ShapeIndex()))};
+  }
   auto output_operand_aliasing = absl::MakeSpan(*aliasInfo);
   auto custom_call_schedule =
       xla::ConvertCustomCallSchedule(op.getCustomCallSchedule());

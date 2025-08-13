@@ -15,11 +15,14 @@ limitations under the License.
 
 #include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <numeric>
 #include <optional>
+#include <utility>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -161,6 +164,53 @@ Shape TypeToShape(mlir::Type type) {
     auto tuple_type =
         mlir::TupleType::get(type.getContext(), bundle_type.getTypes());
     return TypeToShape(tuple_type);
+  } else if (auto m = mlir::dyn_cast<mlir::MemRefType>(type)) {
+    llvm::SmallVector<int64_t, 6> span(m.getShape().begin(),
+                                       m.getShape().end());
+    mlir::Type element_type = m.getElementType();
+    PrimitiveType primitive_type = ConvertMlirTypeToPrimitiveType(element_type);
+    if (m.getLayout().isIdentity()) {
+      absl::StatusOr<Shape> shape =
+          ShapeUtil::MakeValidatedBufferShape(primitive_type, span);
+      if (!shape.ok()) {
+        return {};
+      }
+      return shape.value();
+    }
+
+    llvm::SmallVector<int64_t, 4> strides;
+    int64_t offset;
+    if (failed(m.getStridesAndOffset(strides, offset))) {
+      return {};
+    }
+
+    llvm::SmallVector<std::pair<int64_t, int>, 4> strides_with_indices;
+    for (const auto& e : llvm::enumerate(strides)) {
+      strides_with_indices.push_back({e.value(), e.index()});
+    }
+    std::stable_sort(strides_with_indices.begin(), strides_with_indices.end());
+
+    llvm::SmallVector<int64_t, 4> minor_to_major;
+    int64_t stride = 1;
+    for (const auto& pr : strides_with_indices) {
+      minor_to_major.push_back(pr.second);
+
+      if (stride != pr.first && m.getShape()[pr.second] != 1) {
+        return {};
+      }
+
+      stride *= m.getShape()[pr.second];
+    }
+
+    llvm::SmallVector<int64_t, 4> dimensions(m.getShape().begin(),
+                                             m.getShape().end());
+    absl::StatusOr<Shape> shape = ShapeUtil::MakeValidatedBufferShape(
+        ::xla::ShapeUtil::MakeShapeWithDenseLayout(primitive_type, dimensions,
+                                                   minor_to_major));
+    if (!shape.ok()) {
+      return {};
+    }
+    return shape.value();
   }
 
   // Return empty XLA shape to signify error. No MLIR Type maps to a empty

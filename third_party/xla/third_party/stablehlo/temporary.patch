@@ -1,3 +1,187 @@
+diff --ruN a/stablehlo/docs/spec.md b/stablehlo/docs/spec.md
+--- stablehlo/docs/spec.md
++++ stablehlo/docs/spec.md
+@@ -89,7 +89,7 @@
+ 
+ ```ebnf
+ Type         ::= ValueType | NonValueType
+-ValueType    ::= TensorType | QuantizedTensorType | TokenType | TupleType
++ValueType    ::= TensorType | QuantizedTensorType | TokenType | TupleType | BufferType
+ NonValueType ::= TensorElementType | QuantizedTensorElementType | FunctionType | StringType
+ ```
+ 
+@@ -228,6 +228,21 @@
+ TupleType ::= 'tuple' '<' TupleElementTypes '>'
+ TupleElementTypes ::= [ValueType {',' ValueType}]
+ ```
++
++**Buffer types** represent buffers. For example, in XLA, buffers are
++multidimensional arrays with consistent storage. Similar to **tensor types**,
++buffer types have a **shape** and an **element type**, where a shape represents
++non-negative or unknown **dimension sizes** in the ascending order of the
++corresponding **dimensions** (which are also called **axes**) numbered from `0`
++to `R-1`. The number of dimensions `R` is called **rank**. For example,
++`memref<2x3xf32>` is a buffer type with shape `2x3` and element type `f32`. It
++has two dimensions (or, in other words, two axes) - 0th dimension and 1st
++dimension - whose sizes are 2 and 3. Its rank is 2.
++
++Buffers can be allocated using a `custom_call` to `CreateBuffer` or `Pin` and
++deallocated via a `custom_call` to `Unpin`. Only `custom_call` ops can read and
++write the content inside buffers. See [custom_call](#custom_call) for more
++detail.
+ 
+ **Tuple types** represent tuples, i.e. heterogeneous lists. Tuples are a legacy
+ feature which only exists for compatibility with HLO. In HLO, tuples are
+@@ -2433,20 +2448,62 @@
+ 
+ #### Inputs
+ 
+-| Label | Name                  | Type                                              |
+-|-------|-----------------------|---------------------------------------------------|
+-| (I1)  | `inputs`              | variadic number of values                         |
+-| (I2)  | `call_target_name`    | constant of type `string`                         |
+-| (I3)  | `has_side_effect`     | constant of type `i1`                             |
+-| (I4)  | `backend_config`      | constant of type `string` or attribute dictionary |
+-| (I5)  | `api_version`         | constant of type `si32`                           |
+-| (I6)  | `called_computations` | variadic number of constants of type `string`     |
+-
+-#### Outputs
+-
+-| Name      | Type                      |
+-|-----------|---------------------------|
+-| `results` | variadic number of values |
++| Label | Name                     | Type                                                       |
++|-------|--------------------------|------------------------------------------------------------|
++| (I1)  | `inputs`                 | variadic number of values                                  |
++| (I2)  | `call_target_name`       | constant of type `string`                                  |
++| (I3)  | `has_side_effect`        | constant of type `i1`                                      |
++| (I4)  | `backend_config`         | constant of type `string` or attribute dictionary          |
++| (I5)  | `api_version`            | constant of type `si32`                                    |
++| (I6)  | `called_computations`    | variadic number of constants of type `string`              |
++| (I7)  | `output_operand_aliases` | specify the aliasing parts in the outputs and operands     |
++
++#### Outputs
++
++| Name      | Type                     |
++|-----------|--------------------------|
++| `results` | variadic number of values|
++
++### (XLA GPU Support) Special custom_call targets
++
++There are three special `call_target_name` related to `buffer` types:
++`CreateBuffer` creates an uninitialized `buffer`, `Pin` creates an initialized
++`buffer` and `Unpin` deallocates a `buffer` and returns the content of the
++`buffer`.
++
++```mlir
++%uninitialized_buffer = "stablehlo.custom_call"() {
++  call_target_name = "CreateBuffer",
++  api_version = 4 : i32,
++} : () -> memref<4xf64>
++
++%initialized_buffer = "stablehlo.custom_call"(%init_value) {
++  call_target_name = "Pin",
++  api_version = 4 : i32,
++} : (tensor<4xf64>) -> memref<4xf64>
++
++%dealloc_buffer = "stablehlo.custom_call"(%initialized_buffer) {
++  call_target_name = "Unpin",
++  api_version = 4 : i32,
++} : (memref<4xf64>) -> tensor<4xf64>
++
++```
++
++### Alias
++
++Some custom_call ops may require a part in the outputs and a part in the
++operands to share the same memory. This can be expressed via
++`output_operand_aliases`. An alias pair representation consists a list of output
++ tuple indices representing the output part, and an operand_index along with a
++ list of operand tuple indices representing the operand part. The list of output
++  or operand tuple indices is empty if the corresponding type is not a `tuple`
++  type, and can be arbitrarily long for an arbitrarily nested tuple type. This
++  is similar to [the XLA alias representation](https://www.tensorflow.org/xla/aliasing).
++
++The output part and the input part in an alias pair must have the same type. For
++custom_call ops that aren't call to `CreateBuffer`, `Pin` and `Unpin`, a
++`buffer` operand can appear in at most one pair of alias, and a `buffer` output
++must appear in one pair of alias.
+ 
+ #### Examples
+ 
+@@ -2458,6 +2515,16 @@
+   api_version = 4 : i32,
+   called_computations = [@foo]
+ } : (tensor<f64>) -> tensor<f64>
++
++%updated_buffer = "stablehlo.custom_call"(%buffer) {
++  call_target_name = "Update",
++  api_version = 4 : i32,
++  output_operand_aliases = [
++    #stablehlo.output_operand_alias<output_tuple_indices = [],
++      operand_index = 0,
++      operand_tuple_indices = []>]
++} : (memref<4xf64>) -> memref<4xf64>
++
+ ```
+ 
+ ### divide
+@@ -3780,9 +3847,9 @@
+ 
+ #### Outputs
+ 
+-| Name     | Type               | Constraints |
+-|----------|--------------------|-------------|
+-| `result` | any supported type | (C2)        |
++| Name     | Typ                    | Constraints |
++|----------|------------------------|-------------|
++| `result` | any value              | (C2)        |
+ 
+ #### Constraints
+ 
+@@ -6583,10 +6650,10 @@
+ #### Examples
+ 
+ ```mlir
+-// %val0: [1.0, 2.0]
++// %val0: memref[1.0, 2.0]
+ // %val1: (3)
+-%result = "stablehlo.tuple"(%val0, %val1) : (tensor<2xf32>, tuple<tensor<i32>>) -> tuple<tensor<2xf32>, tuple<tensor<i32>>>
+-// %result: ([1.0, 2.0], (3))
++%result = "stablehlo.tuple"(%val0, %val1) : (memref<2xf32>, tuple<tensor<i32>>) -> tuple<memref<2xf32>, tuple<tensor<i32>>>
++// %result: (memref[1.0, 2.0], (3))
+ ```
+ 
+ &nbsp;[More Examples](https://github.com/openxla/stablehlo/tree/main/stablehlo/tests/interpret/tuple_and_get_tuple_element.mlir)
+@@ -6692,17 +6759,17 @@
+ 
+ #### Inputs
+ 
+-| Label | Name      | Type                                                    | Constraints |
+-|-------|-----------|---------------------------------------------------------|-------------|
+-| (I1)  | `operand` | variadic number of tensors, quantized tensors or tokens | (C1-C3)     |
+-| (I2)  | `cond`    | function                                                | (C1)        |
+-| (I3)  | `body`    | function                                                | (C2)        |
+-
+-#### Outputs
+-
+-| Name      | Type                                                    | Constraints |
+-|-----------|---------------------------------------------------------|-------------|
+-| `results` | variadic number of tensors, quantized tensors or tokens | (C3)        |
++| Label | Name      | Type                                    | Constraints |
++|-------|-----------|-----------------------------------------|-------------|
++| (I1)  | `operand` | variadic number of values               | (C1-C3)     |
++| (I2)  | `cond`    | function                                | (C1)        |
++| (I3)  | `body`    | function                                | (C2)        |
++
++#### Outputs
++
++| Name      | Type                                            | Constraints |
++|-----------|-------------------------------------------------|-------------|
++| `results` | variadic number of values                       | (C3)        |
+ 
+ #### Constraints
+ 
 diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/LegalizeToLinalgUtils.cpp b/stablehlo/stablehlo/conversions/linalg/transforms/LegalizeToLinalgUtils.cpp
 --- stablehlo/stablehlo/conversions/linalg/transforms/LegalizeToLinalgUtils.cpp
 +++ stablehlo/stablehlo/conversions/linalg/transforms/LegalizeToLinalgUtils.cpp
@@ -1257,10 +1441,237 @@ diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalg
          /*inputs=*/ValueRange{adaptor.getLhs(), adaptor.getRhs()},
          /*outputBuffers=*/ValueRange{zeroTensor}, indexingMaps,
          getParallelAndReductionIterators(
+diff --ruN a/stablehlo/stablehlo/dialect/Base.cpp b/stablehlo/stablehlo/dialect/Base.cpp
+--- stablehlo/stablehlo/dialect/Base.cpp
++++ stablehlo/stablehlo/dialect/Base.cpp
+@@ -798,5 +798,35 @@
+   return numBoundedDims == 1 && numDynamicDims == 1;
+ }
+ 
++//===----------------------------------------------------------------------===//
++// Utils for type traversal.
++//===----------------------------------------------------------------------===//
++
++namespace {
++LogicalResult mapOverLeafTypesImpl(
++    Type type, function_ref<LogicalResult(Type type, ArrayRef<int64_t>)> fn,
++    std::vector<int64_t>& indices) {
++  if (!isa<TupleType>(type)) {
++    return fn(type, indices);
++  }
++
++  auto tupleType = cast<TupleType>(type);
++  for (size_t i = 0; i < tupleType.size(); ++i) {
++    indices.push_back(i);
++    if (failed(mapOverLeafTypesImpl(tupleType.getType(i), fn, indices)))
++      return failure();
++    indices.pop_back();
++  }
++
++  return success();
++}
++}  // namespace
++
++LogicalResult mapOverLeafTypes(
++    Type type, function_ref<LogicalResult(Type, ArrayRef<int64_t>)> fn) {
++  std::vector<int64_t> indices;
++  return mapOverLeafTypesImpl(type, fn, indices);
++}
++
+ }  // namespace hlo
+ }  // namespace mlir
+diff --ruN a/stablehlo/stablehlo/dialect/Base.h b/stablehlo/stablehlo/dialect/Base.h
+--- stablehlo/stablehlo/dialect/Base.h
++++ stablehlo/stablehlo/dialect/Base.h
+@@ -314,6 +314,11 @@
+ mlir::Speculation::Speculatability getShapedSpeculatability(Operation *op,
+                                                             int64_t shapeCount);
+ 
++// Applies `fn` to `type` if it is not a `tuple` type. Otherwise, applies `fn`
++// to each leaf type in the `tuple` type tree or until a `fn` returns failure.
++LogicalResult mapOverLeafTypes(
++    Type type, function_ref<LogicalResult(Type, ArrayRef<int64_t>)> fn);
++
+ namespace OpTrait {
+ 
+ template <typename ConcreteType>
+diff --ruN a/stablehlo/stablehlo/dialect/Base.td b/stablehlo/stablehlo/dialect/Base.td
+--- stablehlo/stablehlo/dialect/Base.td
++++ stablehlo/stablehlo/dialect/Base.td
+@@ -193,15 +193,21 @@
+ 
+ def HLO_ComplexTensor : RankedTensorOf<[HLO_Complex]>;
+ 
+-def HLO_Tuple : NestedTupleOf<[HLO_Tensor, HLO_PerAxisQuantizedIntTensor, HLO_Token]>;
++def HLO_Buffer : MemRefOf<[HLO_Float, HLO_Pred, HLO_Int, HLO_Complex, HLO_QuantizedInt]>;
++
++def HLO_Tuple : NestedTupleOf<[HLO_Tensor, HLO_Buffer, HLO_PerAxisQuantizedIntTensor, HLO_Token]>;
+ 
+ def HLO_TensorOrToken : AnyTypeOf<[HLO_Tensor, HLO_Token]>;
+ 
+ def HLO_TensorOrPerAxisQuantizedTensorOrToken : AnyTypeOf<[HLO_Tensor, HLO_PerAxisQuantizedIntTensor, HLO_Token]>;
+ 
++def HLO_TensorOrPerAxisQuantizedTensorOrTokenOrBuffer : AnyTypeOf<[HLO_TensorOrPerAxisQuantizedTensorOrToken, HLO_Buffer]>;
++
+ def HLO_TensorOrTokenOrTuple : AnyTypeOf<[HLO_Tensor, HLO_Token, HLO_Tuple]>;
+ 
+ def HLO_TensorOrPerAxisQuantizedTensorOrTokenOrTuple : AnyTypeOf<[HLO_Tensor, HLO_PerAxisQuantizedIntTensor, HLO_Token, HLO_Tuple]>;
++
++def HLO_TensorOrPerAxisQuantizedTensorOrTokenOrTupleOrBuffer : AnyTypeOf<[HLO_TensorOrPerAxisQuantizedTensorOrTokenOrTuple, HLO_Buffer]>;
+ 
+ def HLO_DimensionValue : AnyTypeOf<[Index, HLO_Int]>;
+ 
+@@ -227,9 +233,9 @@
+ 
+ def HLO_AnyPredOrIntTensor : TensorOf<[HLO_Pred, HLO_Int]>;
+ 
+-def HLO_AnyTuple : NestedTupleOf<[HLO_AnyTensor, HLO_Token]>;
+-
+-def HLO_CustomCallValue : AnyTypeOf<[HLO_AnyTensor, HLO_Token, HLO_AnyTuple]>;
++def HLO_CustomCallTuple : NestedTupleOf<[HLO_AnyTensor, HLO_Buffer, HLO_Token]>;
++
++def HLO_CustomCallValue : AnyTypeOf<[HLO_AnyTensor, HLO_Buffer, HLO_Token, HLO_CustomCallTuple]>;
+ 
+ //===----------------------------------------------------------------------===//
+ // HLO combined type definitions.
 diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
 --- stablehlo/stablehlo/dialect/StablehloOps.cpp
 +++ stablehlo/stablehlo/dialect/StablehloOps.cpp
-@@ -3852,14 +3852,19 @@
+@@ -535,6 +535,133 @@
+     }
+   }
+ 
++  // We have already verified that the output_operand_aliases have consistent
++  // types and valid indices. Here we verify buffer releated special custom_call
++  // targets, and also verify that buffer operands used non-special custom_call
++  // ops meet this requirements:
++  //   A result with a buffer type should be mentioned in one pair of
++  //   output-operand-aliasing and an operand with a buffer type can only appear
++  //   at most once in output-operand-aliasing.
++  if (getCallTargetName() == kCreateBufferCustomCallTarget) {
++    if (!getInputs().empty()) {
++      return emitOpError()
++             << "CreateBuffer custom_call shouldn't have any inputs";
++    }
++    if (getNumResults() != 1) {
++      return emitOpError() << "CreateBuffer custom_call should have one result";
++    }
++    if (!isa<MemRefType>(getResult(0).getType())) {
++      return emitOpError()
++             << "CreateBuffer custom_call should have a memref result";
++    }
++    return success();
++  }
++
++  if (getCallTargetName() == kPinCustomCallTarget) {
++    if (getInputs().size() != 1) {
++      return emitOpError() << "Pin custom_call should have one input";
++    }
++    Type inputType = getInputs()[0].getType();
++    if (!isa<TensorType>(inputType)) {
++      return emitOpError() << "Pin custom_call should have a tensor input";
++    }
++    if (getNumResults() != 1) {
++      return emitOpError() << "Pin custom_call should have one output";
++    }
++    Type outputType = getResult(0).getType();
++    if (!isa<MemRefType>(outputType)) {
++      return emitOpError() << "Pin custom_call should have a memref output";
++    }
++
++    if (failed(verifyCompatibleShape(inputType, outputType)) ||
++        getElementTypeOrSelf(inputType) != getElementTypeOrSelf(outputType)) {
++      return emitOpError()
++             << "Pin custom_call should have compatible input and output types";
++    }
++
++    return success();
++  }
++
++  if (getCallTargetName() == kUnpinCustomCallTarget) {
++    if (getInputs().size() != 1) {
++      return emitOpError() << "Unpin custom_call should have one input";
++    }
++    Type inputType = getInputs()[0].getType();
++    if (!isa<MemRefType>(inputType)) {
++      return emitOpError() << "Unpin custom_call should have a memref input";
++    }
++    if (getNumResults() != 1) {
++      return emitOpError() << "Unpin custom_call should have one output";
++    }
++    Type outputType = getResult(0).getType();
++    if (!isa<TensorType>(outputType)) {
++      return emitOpError() << "Unpin custom_call should have a tensor output";
++    }
++
++    if (failed(verifyCompatibleShape(inputType, outputType)) ||
++        getElementTypeOrSelf(inputType) != getElementTypeOrSelf(outputType)) {
++      return emitOpError() << "Unpin custom_call should have compatible input "
++                              "and output types";
++    }
++
++    return success();
++  }
++
++  auto getOperandPartType = [&](int64_t operandIndex,
++                                ::llvm::ArrayRef<int64_t> operandTupleIndices) {
++    Type operandPart = getOperand(operandIndex).getType();
++    for (auto i : operandTupleIndices) {
++      operandPart = cast<TupleType>(operandPart).getType(i);
++    }
++    return operandPart;
++  };
++  auto printIndices = [](ArrayRef<int64_t> indices) {
++    std::vector<std::string> stringIndices;
++    llvm::transform(indices, std::back_inserter(stringIndices),
++                    [](int v) { return llvm::Twine(v).str(); });
++    return "[" + llvm::join(stringIndices, ", ") + "]";
++  };
++
++  std::set<std::pair<int64_t, std::vector<int64_t>>> operandParts;
++  std::set<std::vector<int64_t>> outputParts;
++  for (auto attr : aliasArrayAttr) {
++    auto alias = cast<OutputOperandAliasAttr>(attr);
++    auto outputTupleIndices = alias.getOutputTupleIndices();
++    auto operandIndex = alias.getOperandIndex();
++    auto operandTupleIndices = alias.getOperandTupleIndices();
++    Type operandPartType =
++        getOperandPartType(operandIndex, operandTupleIndices);
++    if (!isa<MemRefType>(operandPartType)) continue;
++
++    if (!outputParts.insert(outputTupleIndices).second) {
++      emitOpError() << "buffer output " + printIndices(outputTupleIndices) +
++                           " is used in output_operand_alias more than once";
++    }
++    if (!operandParts.insert(std::make_pair(operandIndex, operandTupleIndices))
++             .second) {
++      emitOpError() << "buffer operand " + std::to_string(operandIndex) +
++                           printIndices(operandTupleIndices) +
++                           " is used in output_operand_alias more than once";
++    }
++  }
++
++  Type resultType = getNumResults() == 1
++                        ? getResult(0).getType()
++                        : TupleType::get(getContext(), getResultTypes());
++  if (failed(hlo::mapOverLeafTypes(
++          resultType,
++          [&](Type type, ArrayRef<int64_t> indices) -> LogicalResult {
++            if (!isa<MemRefType>(type)) return success();
++            if (!outputParts.contains(indices)) {
++              return emitOpError()
++                     << "buffer output " + printIndices(indices) +
++                            " is not used in output_operand_alias";
++            }
++            return success();
++          }))) {
++    return failure();
++  }
++
+   return success();
+ }
+ 
+@@ -3852,14 +3979,19 @@
  //
  // Note that this right now only does comparision on the first pair of block
  // arguments.
@@ -1305,6 +1716,16 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.h b/stablehlo/stablehlo/di
  SortOp createSortOp(PatternRewriter *rewriter, const Location &loc,
                      const llvm::ArrayRef<Value> &operands,
                      const llvm::ArrayRef<Type> &elementTypes, int64_t dimension,
+@@ -200,6 +210,9 @@
+   static ArrayAttr get(MLIRContext *context, ArrayRef<Precision> precisions);
+ };
+ 
++constexpr StringRef kCreateBufferCustomCallTarget = "CreateBuffer";
++constexpr StringRef kPinCustomCallTarget = "Pin";
++constexpr StringRef kUnpinCustomCallTarget = "Unpin";
+ }  // end namespace stablehlo
+ }  // end namespace mlir
+ 
 diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/dialect/StablehloOps.td
 --- stablehlo/stablehlo/dialect/StablehloOps.td
 +++ stablehlo/stablehlo/dialect/StablehloOps.td
@@ -1332,6 +1753,50 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/d
  
    let results = (outs Variadic<HLO_StaticShapeTensorOrPerAxisQuantizedTensorOrToken>);
    let hasVerifier = 1;
+@@ -1463,14 +1453,14 @@
+     }
+     ```
+   }];
+-  let arguments = (ins Variadic<HLO_TensorOrPerAxisQuantizedTensorOrToken>:$operand /*while_i1*/);
++  let arguments = (ins Variadic<HLO_TensorOrPerAxisQuantizedTensorOrTokenOrBuffer>:$operand /*while_i1*/);
+ 
+   let regions = (region
+     SizedRegion<1>:$cond /*while_i2*/,
+     SizedRegion<1>:$body /*while_i3*/
+   );
+ 
+-  let results = (outs Variadic<HLO_TensorOrPerAxisQuantizedTensorOrToken>);
++  let results = (outs Variadic<HLO_TensorOrPerAxisQuantizedTensorOrTokenOrBuffer>);
+ 
+   let hasVerifier = 1;
+ 
+@@ -1736,7 +1726,7 @@
+     ConfinedAttr<I32Attr, [IntNonNegative]>:$index /*get_tuple_element_c1, get_tuple_element_i2*/
+   );
+ 
+-  let results = (outs HLO_TensorOrPerAxisQuantizedTensorOrTokenOrTuple);
++  let results = (outs HLO_TensorOrPerAxisQuantizedTensorOrTokenOrTupleOrBuffer);
+ 
+   let assemblyFormat = [{
+     $operand `[` $index `]` attr-dict `:` functional-type(operands, results)
+@@ -1758,7 +1748,7 @@
+     ```
+    }];
+ 
+-  let arguments = (ins Variadic<HLO_TensorOrPerAxisQuantizedTensorOrTokenOrTuple>:$val /*tuple_i1*/);
++  let arguments = (ins Variadic<HLO_TensorOrPerAxisQuantizedTensorOrTokenOrTupleOrBuffer>:$val /*tuple_i1*/);
+   let results = (outs HLO_Tuple:$result);
+ 
+   let assemblyFormat = [{
+@@ -3356,7 +3346,7 @@
+   }];
+ 
+   let arguments = (ins
+-    Variadic<HLO_TensorOrPerAxisQuantizedTensorOrToken>:$results
++    Variadic<HLO_TensorOrPerAxisQuantizedTensorOrTokenOrBuffer>:$results
+   );
+ 
+   let assemblyFormat = "$results attr-dict (`:` type($results)^)?";
 diff --ruN a/stablehlo/stablehlo/dialect/Version.cpp b/stablehlo/stablehlo/dialect/Version.cpp
 --- stablehlo/stablehlo/dialect/Version.cpp
 +++ stablehlo/stablehlo/dialect/Version.cpp
@@ -1344,6 +1809,162 @@ diff --ruN a/stablehlo/stablehlo/dialect/Version.cpp b/stablehlo/stablehlo/diale
      case CompatibilityRequirement::WEEK_12:
        return Version(1, 10, 3);  // WEEK_12 ANCHOR: DO NOT MODIFY
      case CompatibilityRequirement::MAX:
+diff --ruN a/stablehlo/stablehlo/dialect/Version.h b/stablehlo/stablehlo/dialect/Version.h
+--- stablehlo/stablehlo/dialect/Version.h
++++ stablehlo/stablehlo/dialect/Version.h
+@@ -38,7 +38,7 @@
+   static FailureOr<Version> fromString(llvm::StringRef versionRef);
+ 
+   /// Return a Version representing the current VHLO dialect version.
+-  static Version getCurrentVersion() { return Version(1, 12, 2); }
++  static Version getCurrentVersion() { return Version(1, 13, 0); }
+ 
+   /// Return a Version representing the minimum supported VHLO dialect version.
+   static Version getMinimumVersion() { return Version(0, 9, 0); }
+diff --ruN a/stablehlo/stablehlo/dialect/VhloBytecode.cpp b/stablehlo/stablehlo/dialect/VhloBytecode.cpp
+--- stablehlo/stablehlo/dialect/VhloBytecode.cpp
++++ stablehlo/stablehlo/dialect/VhloBytecode.cpp
+@@ -387,6 +387,10 @@
+   ///     storageTypeMax: svarint
+   ///   }
+   kUniformQuantizedPerAxisV1Type = 30,
++
++  ///   RankedBufferV1Type {
++  ///   }
++  kRankedBufferV1Type = 41,
+ 
+   /// NoneV1Type {
+   /// }
+@@ -500,6 +504,8 @@
+       DialectBytecodeReader &reader) const;
+   UnrankedTensorV1Type readUnrankedTensorV1Type(
+       DialectBytecodeReader &reader) const;
++  RankedBufferV1Type readRankedBufferV1Type(
++      DialectBytecodeReader& reader) const;
+ 
+   // TO ADD TYPE: Include a write method for each type in VHLO
+   // Ex: void write(SomeType attr, DialectBytecodeWriter &writer) const;
+@@ -512,6 +518,7 @@
+              DialectBytecodeWriter &writer) const;
+   void write(UniformQuantizedV1Type type, DialectBytecodeWriter &writer) const;
+   void write(UnrankedTensorV1Type type, DialectBytecodeWriter &writer) const;
++  void write(RankedBufferV1Type type, DialectBytecodeWriter& writer) const;
+ };
+ 
+ //===----------------------------------------------------------------------===//
+@@ -1090,6 +1097,8 @@
+       return readUnrankedTensorV1Type(reader);
+     case vhlo_encoding::kWitnessV1Type:
+       return WitnessV1Type::get(getContext());
++    case vhlo_encoding::kRankedBufferV1Type:
++      return readRankedBufferV1Type(reader);
+     default:
+       reader.emitError() << "unknown vhlo type code: " << code;
+       return Type();
+@@ -1102,7 +1111,7 @@
+   return TypeSwitch<Type, LogicalResult>(type)
+       .Case<ComplexV1Type, FunctionV1Type, RankedTensorV1Type, TokenV1Type,
+             TupleV1Type, UnrankedTensorV1Type, UniformQuantizedPerAxisV1Type,
+-            UniformQuantizedV1Type>([&](auto type) {
++            UniformQuantizedV1Type, RankedBufferV1Type>([&](auto type) {
+         LOG_WRITE_CALL;
+         return write(type, writer), success();
+       })
+@@ -1475,6 +1484,29 @@
+ }
+ 
+ //===----------------------------------------------------------------------===//
++// RankedBufferV1Type
++//===----------------------------------------------------------------------===//
++
++RankedBufferV1Type VhloBytecodeInterface::readRankedBufferV1Type(
++    DialectBytecodeReader& reader) const {
++  LOG_READ_CALL;
++  SmallVector<int64_t> shape;
++  Type elementType;
++  if (failed(reader.readSignedVarInts(shape)) ||
++      failed(reader.readType(elementType)))
++    return RankedBufferV1Type();
++
++  return RankedBufferV1Type::get(getContext(), shape, elementType);
++}
++
++void VhloBytecodeInterface::write(RankedBufferV1Type type,
++                                  DialectBytecodeWriter& writer) const {
++  writer.writeVarInt(vhlo_encoding::kRankedBufferV1Type);
++  writer.writeSignedVarInts(type.getShape());
++  writer.writeType(type.getElementType());
++}
++
++//===----------------------------------------------------------------------===//
+ // ResultAccuracyModeAttr
+ 
+ ResultAccuracyModeV1Attr VhloBytecodeInterface::readResultAccuracyModeV1Attr(
+diff --ruN a/stablehlo/stablehlo/dialect/VhloDialect.td b/stablehlo/stablehlo/dialect/VhloDialect.td
+--- stablehlo/stablehlo/dialect/VhloDialect.td
++++ stablehlo/stablehlo/dialect/VhloDialect.td
+@@ -51,6 +51,7 @@
+       1.10.0: Add `ResultAccuracy` attribute to `cbrt`, `cosine`, `exponential`, `exponential_minus_one`, `log`, `log_plus_one`, `logistic`, `rsqrt`, `sine`, `sqrt`, `tan` and `tanh` ops.
+       1.11.0: Allow (de)serializing VHLO programs mixed with potentially unstable dialects.
+       1.12.0: Add `source_target_pairs` attribute to `send` and `recv` ops.
++      1.13.0: Extend `custom_call` op to support `buffer` types.
+   }];
+ 
+   let useDefaultAttributePrinterParser = 0;
+diff --ruN a/stablehlo/stablehlo/dialect/VhloTypes.cpp b/stablehlo/stablehlo/dialect/VhloTypes.cpp
+--- stablehlo/stablehlo/dialect/VhloTypes.cpp
++++ stablehlo/stablehlo/dialect/VhloTypes.cpp
+@@ -179,6 +179,12 @@
+   addConversion([&](shape::WitnessType type) -> Type {
+     return vhlo::WitnessV1Type::get(type.getContext());
+   });
++  addConversion([&](MemRefType type) -> Type {
++    auto convertedElementType = convertType(type.getElementType());
++    if (!convertedElementType) return {};
++    return RankedBufferV1Type::get(type.getContext(), type.getShape(),
++                                   convertedElementType);
++  });
+ }
+ 
+ void VhloTypeConverter::addVhloToBuiltinConversions() {
+@@ -323,6 +329,11 @@
+   addConversion([&](WitnessV1Type type) -> Type {
+     return shape::WitnessType::get(type.getContext());
+   });
++  addConversion([&](RankedBufferV1Type type) -> Type {
++    auto convertedElementType = convertType(type.getElementType());
++    if (!convertedElementType) return {};
++    return MemRefType::get(type.getShape(), convertedElementType);
++  });
+ }
+ 
+ namespace {
+diff --ruN a/stablehlo/stablehlo/dialect/VhloTypes.td b/stablehlo/stablehlo/dialect/VhloTypes.td
+--- stablehlo/stablehlo/dialect/VhloTypes.td
++++ stablehlo/stablehlo/dialect/VhloTypes.td
+@@ -326,4 +326,22 @@
+ // and we're planning to look into it as part of the work on the dynamism RFC.
+ def VHLO_WitnessV1 : VHLO_TypeDef<"WitnessV1", "witness_v1", "0.9.0", "current">;
+ 
++def VHLO_RankedBufferV1 : VHLO_TypeDef<"RankedBufferV1", "buffer_v1", "1.13.0", "current"> {
++  let parameters = (ins
++    VHLO_Dims:$shape,
++    "::mlir::Type":$elementType/*,
++    "::mlir::Attribute":$encoding*/
++  );
++  let genVerifyDecl = 1;
++  let extraClassDefinition = [{
++    LogicalResult RankedBufferV1Type::verify(
++        llvm::function_ref<mlir::InFlightDiagnostic ()> errFn,
++        ArrayRef<int64_t> shape, ::mlir::Type elementType) {
++      if (!isFromVhlo(elementType)) return errFn() << "expected VHLO types";
++      return success();
++    }
++  }];
++  let assemblyFormat = "`<` custom<Shape>($shape) `` $elementType `>`";
++}
++
+ #endif  // STABLEHLO_DIALECT_VHLO_TYPES
 diff --ruN a/stablehlo/stablehlo/integrations/python/tests/stablehlo.py b/stablehlo/stablehlo/integrations/python/tests/stablehlo.py
 --- stablehlo/stablehlo/integrations/python/tests/stablehlo.py
 +++ stablehlo/stablehlo/integrations/python/tests/stablehlo.py
@@ -1470,6 +2091,194 @@ diff --ruN a/stablehlo/stablehlo/tests/interpret/probe.mlir b/stablehlo/stablehl
    func.return
  }
  
+diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo.mlir b/stablehlo/stablehlo/tests/ops_stablehlo.mlir
+--- stablehlo/stablehlo/tests/ops_stablehlo.mlir
++++ stablehlo/stablehlo/tests/ops_stablehlo.mlir
+@@ -6639,3 +6639,184 @@
+   } : (!stablehlo.token) -> tensor<f32>
+   func.return
+ }
++
++// -----
++
++func.func @custom_call_op_with_buffer_type(%arg0: tensor<2xf32>) -> tensor<2xf32> {
++  %0 = "stablehlo.custom_call"(%arg0) {
++    call_target_name = "Pin",
++    api_version = 4 : i32
++  } : (tensor<2xf32>) -> memref<2xf32>
++  %1 = "stablehlo.custom_call"(%0) {
++    call_target_name = "foo",
++    api_version = 4 : i32,
++    output_operand_aliases = [
++      #stablehlo.output_operand_alias<output_tuple_indices = [],
++        operand_index = 0,
++        operand_tuple_indices = []>]
++  } : (memref<2xf32>) -> memref<2xf32>
++  %2 = "stablehlo.custom_call"(%1) {
++    call_target_name = "Unpin",
++    api_version = 4 : i32
++  } : (memref<2xf32>) -> tensor<2xf32>
++  func.return %2 : tensor<2xf32>
++}
++
++func.func @custom_call_op_create_buffer_type() -> memref<2xf32> {
++  %0 = "stablehlo.custom_call"() {
++    call_target_name = "CreateBuffer",
++    api_version = 4 : i32
++  } : () -> memref<2xf32>
++  func.return %0 : memref<2xf32>
++}
++
++func.func @tuple_op_with_buffer_type(%arg0: tensor<2xf32>, %arg1: memref<2xf32>) -> tuple<tensor<2xf32>, memref<2xf32>> {
++  %0 = "stablehlo.tuple"(%arg0, %arg1) : (tensor<2xf32>, memref<2xf32>) -> tuple<tensor<2xf32>, memref<2xf32>>
++  func.return %0 : tuple<tensor<2xf32>, memref<2xf32>>
++}
++
++func.func @get_tuple_element_op_with_buffer_type(%arg0: tuple<tensor<2xf32>, memref<2xf32>>) -> memref<2xf32> {
++  %0 = "stablehlo.get_tuple_element"(%arg0) {
++    index = 1 : i32
++  } : (tuple<tensor<2xf32>, memref<2xf32>>) -> memref<2xf32>
++  func.return %0 : memref<2xf32>
++}
++
++func.func @while_op_with_buffer_type(%arg0: tensor<i1>, %arg1: memref<2xf32>) -> memref<2xf32> {
++  %0:2 = stablehlo.while(%iterArg0 = %arg0, %iterArg1 = %arg1) : tensor<i1>, memref<2xf32>
++    cond {
++      stablehlo.return %iterArg0 : tensor<i1>
++    } do {
++      %1 = "stablehlo.custom_call"(%iterArg1) {
++        call_target_name = "foo",
++        api_version = 4 : i32,
++        output_operand_aliases = [
++          #stablehlo.output_operand_alias<output_tuple_indices = [],
++            operand_index = 0,
++            operand_tuple_indices = []>]
++      } : (memref<2xf32>) -> memref<2xf32>
++      stablehlo.return %iterArg0, %1 : tensor<i1>, memref<2xf32>
++    }
++  func.return %0#1: memref<2xf32>
++}
++
++func.func @custom_call_op_create_buffer_with_input(%arg0: tensor<2xf32>) -> memref<2xf32> {
++  // expected-error@+1 {{CreateBuffer custom_call shouldn't have any inputs}}
++  %0 = "stablehlo.custom_call"(%arg0) {
++    call_target_name = "CreateBuffer",
++    api_version = 4 : i32
++  } : (tensor<2xf32>) -> memref<2xf32>
++  func.return %0 : memref<2xf32>
++}
++
++func.func @custom_call_op_pin_with_tensor_output(%arg0: tensor<2xf32>) -> tensor<2xf32> {
++  // expected-error@+1 {{Pin custom_call should have a memref output}}
++  %0 = "stablehlo.custom_call"(%arg0) {
++    call_target_name = "Pin",
++    api_version = 4 : i32
++  } : (tensor<2xf32>) -> tensor<2xf32>
++  func.return %0 : tensor<2xf32>
++}
++
++func.func @custom_call_op_unpin_with_incompatible_input_output(%arg0: memref<2xf32>) -> tensor<2xi32> {
++  // expected-error@+1 {{Unpin custom_call should have compatible input and output types}}
++  %0 = "stablehlo.custom_call"(%arg0) {
++    call_target_name = "Unpin",
++    api_version = 4 : i32
++  } : (memref<2xf32>) -> tensor<2xi32>
++  func.return %0 : tensor<2xi32>
++}
++
++func.func @add_op_with_buffer_type(%arg0: memref<4xf32>, %arg1: memref<4xf32>) -> memref<4xf32> {
++  // expected-error-re@+1 {{operand #0 must be ranked tensor of {{.*}}, but got 'memref<4xf32>'}}
++  %0 = "stablehlo.add"(%arg0, %arg1) : (memref<4xf32>, memref<4xf32>) -> memref<4xf32>
++  func.return %0 : memref<4xf32>
++}
++
++func.func @if_op_with_buffer_type(%pred : tensor<i1>, %branch_operand : memref<2xf32>) -> memref<2xf32> {
++  // expected-error-re@+1 {{result #0 must be variadic of ranked tensor of {{.*}}, but got 'memref<2xf32>'}}
++  %0 = "stablehlo.if"(%pred) ({
++      "stablehlo.return"(%branch_operand) : (memref<2xf32>) -> ()
++    }, {
++      "stablehlo.return"(%branch_operand) : (memref<2xf32>) -> ()
++    }) : (tensor<i1>) -> memref<2xf32>
++  func.return %0 : memref<2xf32>
++}
++
++func.func @custom_call_pin_with_output_operand_alias(%arg0: tensor<2xf32>) -> memref<2xf32> {
++  // expected-error@+1 {{shapes mismatch in the output_operand_alias attribute: operand part has type 'tensor<2xf32>' and output part has type 'memref<2xf32>'}}
++  %0 = "stablehlo.custom_call"(%arg0) {
++    call_target_name = "Pin",
++    api_version = 4 : i32,
++    output_operand_aliases = [
++      #stablehlo.output_operand_alias<output_tuple_indices = [],
++        operand_index = 0,
++        operand_tuple_indices = []>]
++  } : (tensor<2xf32>) -> memref<2xf32>
++  func.return %0 : memref<2xf32>
++}
++
++func.func @custom_call_unpin_with_output_operand_alias(%arg0: memref<2xf32>) -> tensor<2xf32> {
++  // expected-error@+1 {{shapes mismatch in the output_operand_alias attribute: operand part has type 'memref<2xf32>' and output part has type 'tensor<2xf32>'}}
++  %0 = "stablehlo.custom_call"(%arg0) {
++    call_target_name = "Unpin",
++    api_version = 4 : i32,
++    output_operand_aliases = [
++      #stablehlo.output_operand_alias<output_tuple_indices = [],
++        operand_index = 0,
++        operand_tuple_indices = []>]
++  } : (memref<2xf32>) -> tensor<2xf32>
++  func.return %0 : tensor<2xf32>
++}
++
++func.func @custom_call_buffer_operand_in_multiple_output_operand_aliases(%arg0: tensor<2xf32>, %arg1: memref<2xf32>) -> (memref<2xf32>, memref<2xf32>) {
++  // expected-error@+1 {{buffer operand 1[] is used in output_operand_alias more than once}}
++  %0:2 = "stablehlo.custom_call"(%arg0, %arg1) {
++    call_target_name = "foo",
++    api_version = 4 : i32,
++    output_operand_aliases = [
++      #stablehlo.output_operand_alias<output_tuple_indices = [0],
++        operand_index = 1,
++        operand_tuple_indices = []>,
++      #stablehlo.output_operand_alias<output_tuple_indices = [1],
++        operand_index = 1,
++        operand_tuple_indices = []>]
++  } : (tensor<2xf32>, memref<2xf32>) -> (memref<2xf32>, memref<2xf32>)
++  func.return %0#0, %0#1 : memref<2xf32>, memref<2xf32>
++}
++
++func.func @custom_call_buffer_output_in_multiple_output_operand_aliases(%arg0: memref<2xf32>, %arg1: memref<2xf32>) -> tuple<tuple<memref<2xf32>>> {
++  %0 = "stablehlo.tuple"(%arg0) : (memref<2xf32>) -> tuple<memref<2xf32>>
++  %1 = "stablehlo.tuple"(%0, %arg1) : (tuple<memref<2xf32>>, memref<2xf32>) -> tuple<tuple<memref<2xf32>>, memref<2xf32>>
++  // expected-error@+1 {{buffer output [0, 0] is used in output_operand_alias more than once}}
++  %2 = "stablehlo.custom_call"(%1) {
++    call_target_name = "foo",
++    api_version = 4 : i32,
++    output_operand_aliases = [
++      #stablehlo.output_operand_alias<output_tuple_indices = [0, 0],
++        operand_index = 0,
++        operand_tuple_indices = [0, 0]>,
++      #stablehlo.output_operand_alias<output_tuple_indices = [0, 0],
++        operand_index = 0,
++        operand_tuple_indices = [1]>]
++  } : (tuple<tuple<memref<2xf32>>, memref<2xf32>>) -> tuple<tuple<memref<2xf32>>>
++  func.return %2 : tuple<tuple<memref<2xf32>>>
++}
++
++func.func @custom_call_buffer_output_not_in_output_operand_aliases(%arg0: memref<2xf32>, %arg1: memref<2xf32>) -> (memref<2xf32>, memref<2xf32>, memref<2xf32>) {
++  %0 = "stablehlo.tuple"(%arg0) : (memref<2xf32>) -> tuple<memref<2xf32>>
++  %1 = "stablehlo.tuple"(%0, %arg1) : (tuple<memref<2xf32>>, memref<2xf32>) -> tuple<tuple<memref<2xf32>>, memref<2xf32>>
++  // expected-error@+1 {{buffer output [2] is not used in output_operand_alias}}
++  %2:3 = "stablehlo.custom_call"(%1) {
++    call_target_name = "foo",
++    api_version = 4 : i32,
++    output_operand_aliases = [
++      #stablehlo.output_operand_alias<output_tuple_indices = [0],
++        operand_index = 0,
++        operand_tuple_indices = [0, 0]>,
++      #stablehlo.output_operand_alias<output_tuple_indices = [1],
++        operand_index = 0,
++        operand_tuple_indices = [1]>]
++  } : (tuple<tuple<memref<2xf32>>, memref<2xf32>>) -> (memref<2xf32>, memref<2xf32>, memref<2xf32>)
++  func.return %2#0, %2#1, %2#2 : memref<2xf32>, memref<2xf32>, memref<2xf32>
++}
 diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
 --- stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
 +++ stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.mlir
@@ -1620,6 +2429,23 @@ diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_refine_shapes.mlir b
  }
  
  // -----
+diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.mlir b/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.mlir
+--- stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.mlir
++++ stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.mlir
+@@ -2971,6 +2971,13 @@
+   return %0 : tuple<!stablehlo.token>
+ }
+ 
++// CHECK-LABEL: type_buffer
++// CHECK-NEXT: (%[[ARG0:.*]]: !vhlo.buffer_v1<2x!vhlo.f32_v1>)
++func.func @type_buffer(%arg0: memref<2xf32>) -> memref<2xf32> {
++  // CHECK: "vhlo.return_v1"(%[[ARG0]]) : (!vhlo.buffer_v1<2x!vhlo.f32_v1>) -> ()
++  func.return %arg0 : memref<2xf32>
++}
++
+ // ============ DEPENDENCIES  ============
+ 
+ func.func @composite_target(%arg0: tensor<f32>) -> tensor<f32> {
 diff --ruN a/stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.0_16_0.mlir b/stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.0_16_0.mlir
 --- stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.0_16_0.mlir
 +++ stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade_invalid.0_16_0.mlir
@@ -2236,6 +3062,20 @@ diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stable
  #include <algorithm>
  #include <array>
  #include <cassert>
+diff --ruN a/stablehlo/stablehlo/transforms/VhloToVersion.cpp b/stablehlo/stablehlo/transforms/VhloToVersion.cpp
+--- stablehlo/stablehlo/transforms/VhloToVersion.cpp
++++ stablehlo/stablehlo/transforms/VhloToVersion.cpp
+@@ -199,6 +199,10 @@
+   if (auto unranked = dyn_cast<UnrankedTensorV1Type>(type))
+     return isLegalType(unranked.getElementType(), targetVersion);
+ 
++  if (auto buffer = dyn_cast<RankedBufferV1Type>(type)) {
++    return isLegalType(buffer.getElementType(), targetVersion);
++  }
++
+   // Is VHLO and valid version, success.
+   return success();
+ }
 diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
 --- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
 +++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp

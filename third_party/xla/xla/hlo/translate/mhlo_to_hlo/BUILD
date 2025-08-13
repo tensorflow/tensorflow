@@ -335,6 +335,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/mlir/utils:type_util",
         "//xla/mlir_hlo",
+        "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:SparseTensorDialect",
