@@ -76,7 +76,7 @@ void addStablehloImportPipeline(mlir::OpPassManager& pm,
 // `sdy.sharding`.
 std::unique_ptr<mlir::Pass> createImportShardingsPass(
     mlir::ArrayRef<bool> allowPropagationToArgs,
-    mlir::ArrayRef<bool> allowPropagationToResults);
+    mlir::ArrayRef<bool> allowPropagationToResults, bool inlineMesh = false);
 
 // Adds the sdy shardings to frontend attributes for each instruction of entry
 // computation in the HloModule. This function should only be used if
