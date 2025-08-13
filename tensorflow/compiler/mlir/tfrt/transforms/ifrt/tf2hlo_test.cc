@@ -485,7 +485,8 @@ TEST_F(Tf2HloTest, GpuCompile) {
       .shape_representation_fn = tensorflow::IdentityShapeRepresentationFn(),
       .topology = std::make_shared<xla::ifrt::PjRtTopology>(
           std::make_shared<xla::StreamExecutorGpuTopologyDescription>(
-              xla::CudaId(), xla::CudaName(), /*gpu_topology=*/nullptr)),
+              xla::CudaId(), xla::CudaName(),
+              std::make_shared<xla::GpuTopology>("test", 1, 1, 1))),
       .platform_name = xla::CudaName(),
   };
 
