@@ -1011,12 +1011,6 @@ OpSharding HloSharding::ToProto() const {
     *result.add_metadata() = metadata;
   }
 
-  result.mutable_tile_assignment_dimensions()->Reserve(
-      tile_assignment_.num_dimensions());
-  absl::c_copy(tile_assignment_.dimensions(),
-               tsl::protobuf::RepeatedFieldBackInserter(
-                   result.mutable_tile_assignment_dimensions()));
-
   if (tile_assignment_.iota_) {
     result.mutable_iota_reshape_dims()->Reserve(
         tile_assignment_.iota_->reshape_dims().size());
@@ -1035,23 +1029,26 @@ OpSharding HloSharding::ToProto() const {
                  tsl::protobuf::RepeatedFieldBackInserter(
                      result.mutable_tile_assignment_devices()));
   }
+
   if (IsReplicated()) {
     result.set_type(OpSharding::REPLICATED);
-    result.clear_tile_assignment_dimensions();
   } else if (IsTileMaximal()) {
     result.set_type(OpSharding::MAXIMAL);
   } else if (IsManual()) {
     result.set_type(OpSharding::MANUAL);
-    result.clear_tile_assignment_dimensions();
   } else if (IsUnknown()) {
     result.set_type(OpSharding::UNKNOWN);
-    result.clear_tile_assignment_dimensions();
   } else {
     result.set_type(OpSharding::OTHER);
     result.set_replicate_on_last_tile_dim(ReplicateOnLastTileDim());
     for (auto type : subgroup_types_) {
       result.add_last_tile_dims(type);
     }
+    result.mutable_tile_assignment_dimensions()->Reserve(
+        tile_assignment_.num_dimensions());
+    absl::c_copy(tile_assignment_.dimensions(),
+                 tsl::protobuf::RepeatedFieldBackInserter(
+                     result.mutable_tile_assignment_dimensions()));
   }
 
   if (IsShardGroup()) {
