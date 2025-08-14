@@ -102,6 +102,7 @@ inline constexpr llvm::StringRef kFrontendAttributesAttr =
 
 // Attribute name for determining whether we need to import StableHLO shardings,
 // i.e., the input module doesn't contain SDY shardings as frontend attributes.
+// This is only used for testing.
 inline constexpr llvm::StringRef kImportMhloShardings =
     "xla.sdy.import_mhlo_shardings";
 
