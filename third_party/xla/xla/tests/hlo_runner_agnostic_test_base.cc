@@ -291,7 +291,9 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesReplicated(
       /*use_large_range=*/false,
       /*treat_gte_as_data_formatting=*/false,
       /*max_bits_of_precision=*/std::nullopt);
-  CHECK_OK(fake_arguments);
+  if (!fake_arguments.ok()) {
+    return ::testing::AssertionFailure() << fake_arguments.status();
+  }
 
   return RunAndCompareTwoModulesReplicated(std::move(module_0),
                                            std::move(module_1), *fake_arguments,
@@ -368,7 +370,9 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesReplicated(
   const absl::StatusOr<std::vector<Literal>> fake_arguments = MakeFakeArguments(
       module_0.get(), /*pseudo_random=*/true, /*use_large_range=*/false,
       /*treat_gte_as_data_formatting=*/false, args_max_bits_of_precision);
-  CHECK_OK(fake_arguments);
+  if (!fake_arguments.ok()) {
+    return ::testing::AssertionFailure() << fake_arguments.status();
+  }
 
   std::vector<Literal*> fake_argument_ptrs;
   absl::c_transform(
