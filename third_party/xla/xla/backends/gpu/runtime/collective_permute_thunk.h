@@ -134,7 +134,8 @@ absl::Status RunCollectivePermute(
     P2PConfig::SourceTargetMapEntry source_target,
     std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
     Communicator* comm, absl::string_view device_string, int64_t current_id,
-    bool use_memcpy, CollectivePermuteStartThunk::RecvPtrMap& recv_ptr_map);
+    bool use_memcpy, CollectivePermuteStartThunk::RecvPtrMap& recv_ptr_map,
+    bool use_symmetric_buffer = false);
 
 }  // namespace gpu
 }  // namespace xla

@@ -254,9 +254,13 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>> RunBufferAssignment(
   const DebugOptions& options = module->config().debug_options();
   BufferAssigner::Colorer colorer =
       (options.xla_gpu_enable_nccl_user_buffers() ||
-       options.xla_gpu_experimental_enable_nvshmem())
-          ? CollectiveColorer(options.xla_gpu_enable_nccl_user_buffers(),
-                              options.xla_gpu_experimental_enable_nvshmem())
+       options.xla_gpu_experimental_enable_nvshmem() ||
+       options.xla_gpu_experimental_enable_nccl_symmetric_buffers())
+          ? CollectiveColorer(
+                options.xla_gpu_enable_nccl_user_buffers() ||
+                    options
+                        .xla_gpu_experimental_enable_nccl_symmetric_buffers(),
+                options.xla_gpu_experimental_enable_nvshmem())
           : BufferAssigner::DefaultColorer();
 
   std::optional<BufferValue::Color> color =

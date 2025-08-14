@@ -240,7 +240,8 @@ absl::StatusOr<bool> AllToAllStartThunk::RunCollective(
     return false;
   }
   TF_RETURN_IF_ERROR(xla::gpu::RunAllToAll(
-      config_.has_split_dimension, device_buffers, stream, comm_handle.comm));
+      config_.has_split_dimension, device_buffers, stream, comm_handle.comm,
+      config_.config.use_symmetric_buffer));
   return true;
 }
 
@@ -266,11 +267,13 @@ bool AllToAllStartThunk::is_local() const {
 
 absl::Status RunAllToAll(bool has_split_dimension,
                          std::vector<DeviceBufferPair>& buffers,
-                         se::Stream& stream, Communicator* comm) {
+                         se::Stream& stream, Communicator* comm,
+                         bool use_symmetric_buffer) {
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing all-to-all from device ordinal: " << device_ordinal
           << ", has_split_dimension: " << has_split_dimension;
-  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(stream.parent(), buffers, comm));
+  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(stream.parent(), buffers, comm,
+                                          use_symmetric_buffer));
 
   TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm->NumRanks());
 

@@ -1971,7 +1971,10 @@ bool ShouldAddCopyForCollectiveMemorySpace(const HloValue* value) {
   const HloModule* module = inst->GetModule();
   // If no collective memory is needed, return.
   if (!module->config().debug_options().xla_gpu_enable_nccl_user_buffers() &&
-      !module->config().debug_options().xla_gpu_experimental_enable_nvshmem()) {
+      !module->config().debug_options().xla_gpu_experimental_enable_nvshmem() &&
+      !module->config()
+           .debug_options()
+           .xla_gpu_experimental_enable_nccl_symmetric_buffers()) {
     return false;
   }
   // Add copy if a potential collective-memmory-spaced op directly consumes from

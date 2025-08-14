@@ -113,7 +113,11 @@ CollectivePermuteStartThunk::CollectivePermuteStartThunk(
     int64_t partition_count) {
   P2PConfig collective_permute_config;
   auto& config = collective_permute_config.config;
-
+  config.use_symmetric_buffer =
+      instr->GetModule()
+          ->config()
+          .debug_options()
+          .xla_gpu_experimental_enable_nccl_symmetric_buffers();
   config.operand_count = instr->operand_count();
   for (int i = 0; i < config.operand_count; ++i) {
     config.operand_element_type.push_back(
@@ -302,7 +306,8 @@ absl::StatusOr<bool> CollectivePermuteStartThunk::RunCollective(
 
   TF_RETURN_IF_ERROR(::xla::gpu::RunCollectivePermute(
       source_target, device_buffers, stream, comm_handle.comm, device_string,
-      current_id, use_memcpy, recv_ptr_map_));
+      current_id, use_memcpy, recv_ptr_map_,
+      config_.config.use_symmetric_buffer));
 
   if (use_memcpy) {
     std::optional<int64_t> source_id = source_target.source;
@@ -348,7 +353,8 @@ absl::Status RunCollectivePermute(
     P2PConfig::SourceTargetMapEntry source_target,
     std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
     Communicator* comm, absl::string_view device_string, int64_t current_id,
-    bool use_memcpy, CollectivePermuteStartThunk::RecvPtrMap& recv_ptr_map) {
+    bool use_memcpy, CollectivePermuteStartThunk::RecvPtrMap& recv_ptr_map,
+    bool use_symmetric_buffer) {
   // Determine the source and target IDs for this instance. The source ID is the
   // ID which will copy its data to this instance. The destination ID is the ID
   // to which this instance will copy its data. Either are optional.
@@ -376,7 +382,8 @@ absl::Status RunCollectivePermute(
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing collective permute from device ordinal: "
           << device_ordinal << " current_id " << current_id;
-  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(stream.parent(), buffers, comm));
+  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(stream.parent(), buffers, comm,
+                                          use_symmetric_buffer));
 
   std::optional<int64_t> source_id = source_target.source;
   std::optional<int64_t> target_id = source_target.target;
