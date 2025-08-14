@@ -1430,7 +1430,6 @@ def _make_class_weight_map_fn(class_weight):
                       f"class indices, "
                       f"got key of type {type(key).__name__}.")
 
-  # Validate class indices are contiguous starting from 0
   class_ids = sorted(converted_class_weight.keys())
   expected_class_ids = list(range(len(class_ids)))
   if class_ids != expected_class_ids:
