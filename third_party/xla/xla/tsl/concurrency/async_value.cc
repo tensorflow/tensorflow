@@ -66,8 +66,7 @@ void AsyncValue::EnqueueWaiterListNode(WaiterListNode* waiter,
     if (waiters_and_state.state() == State::kConcrete ||
         waiters_and_state.state() == State::kError) {
       DCHECK(waiters_and_state.waiter() == nullptr);
-      (*waiter)();
-      delete waiter;
+      waiter->RunWaiterAndDeleteWaiterNode();
       return;
     }
     // Update the waiter to point to the new head of the waiter list.
