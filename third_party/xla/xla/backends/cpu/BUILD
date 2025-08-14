@@ -116,6 +116,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/backends/cpu/runtime:dot_lib",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/log:check",
         "@llvm-project//llvm:Target",
     ],
