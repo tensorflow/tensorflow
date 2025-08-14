@@ -593,7 +593,7 @@ DeviceHloInstructionProfiles MatmulPerfTableGen::ComputeTable() {
 
 absl::Status MatmulPerfTableGen::Dump(
     const DeviceHloInstructionProfiles& table) {
-  if (config_.output == "stdout") {
+  if (config_.output.empty()) {
     LOG(INFO) << table.DebugString();
     return absl::OkStatus();
   }
@@ -629,7 +629,7 @@ absl::Status MatmulPerfTableGen::Dump(
 }
 
 absl::Status MatmulPerfTableGen::Dump(const GemmPerfTable& table) {
-  if (config_.output == "stdout") {
+  if (config_.output.empty()) {
     LOG(INFO) << table.DebugString();
     return absl::OkStatus();
   }
