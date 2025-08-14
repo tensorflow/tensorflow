@@ -541,12 +541,6 @@ class TfrtGpuExecutable final : public PjRtLoadedExecutable {
 
 absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtGpuClient(
     const GpuClientOptions& options);
-
-void EnqueueWorkWhenReady(
-    tsl::thread::ThreadPool* pool,
-    absl::Span<const tsl::RCReference<tsl::AsyncValue>> values,
-    absl::AnyInvocable<void()> callee);
-
 }  // namespace xla
 
 #endif  // XLA_PJRT_GPU_TFRT_TFRT_GPU_CLIENT_H_

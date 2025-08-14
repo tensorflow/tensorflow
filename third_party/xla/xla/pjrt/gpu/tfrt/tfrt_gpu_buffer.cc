@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/pjrt/gpu/tfrt/gpu_event.h"
 #include "xla/pjrt/gpu/tfrt/tfrt_gpu_client.h"
 #include "xla/pjrt/gpu/tfrt/tracked_gpu_device_buffer.h"
+#include "xla/pjrt/gpu/tfrt/utils.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -60,27 +61,6 @@ limitations under the License.
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
-
-PjRtFuture<>::Promise CreatePromiseForEvent(
-    tsl::AsyncValueRef<xla::GpuEvent> event) {
-  PjRtFuture<>::Promise promise = PjRtFuture<>::CreatePromise();
-  auto done_fn = [promise, event]() mutable {
-    if (const absl::Status* error = event.GetErrorIfPresent()) {
-      VLOG(3) << "Setting future: " << *error;
-      promise.Set(*error);
-    } else {
-      VLOG(3) << "Setting future to OK";
-      promise.Set();
-    }
-  };
-  if (event.IsAvailable()) {
-    // If the event is available, we can set the promise immediately.
-    done_fn();
-  } else {
-    event.AndThen(std::move(done_fn));
-  }
-  return promise;
-}
 
 TfrtGpuBuffer::TfrtGpuBuffer(
     Shape on_device_shape,
