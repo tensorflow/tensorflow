@@ -53,7 +53,7 @@ static absl::Mutex& GetPluginRegistryMutex() {
 PluginRegistry::PluginRegistry() {}
 
 /* static */ PluginRegistry* PluginRegistry::Instance() {
-  absl::MutexLock lock{&GetPluginRegistryMutex()};
+  absl::MutexLock lock{GetPluginRegistryMutex()};
   if (instance_ == nullptr) {
     instance_ = new PluginRegistry();
   }
@@ -64,7 +64,7 @@ template <typename FACTORY_TYPE>
 absl::Status PluginRegistry::RegisterFactoryInternal(
     const std::string& plugin_name, FACTORY_TYPE factory,
     std::optional<FACTORY_TYPE>* factories) {
-  absl::MutexLock lock{&GetPluginRegistryMutex()};
+  absl::MutexLock lock{GetPluginRegistryMutex()};
 
   if (factories->has_value()) {
     return absl::AlreadyExistsError(
