@@ -1402,7 +1402,6 @@ cc_library(
         ":tensorflow",
         "//tensorflow/core:framework",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
-        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -1415,6 +1414,7 @@ cc_library(
         "@local_xla//xla/hlo/ir:hlo",
         "@local_xla//xla/hlo/ir:tile_assignment",
         "@local_xla//xla/hlo/parser:hlo_parser",
+        "@local_xla//xla/hlo/utils:hlo_sharding_util",
         "@local_xla//xla/tsl/lib/math:math_util",
     ],
 )

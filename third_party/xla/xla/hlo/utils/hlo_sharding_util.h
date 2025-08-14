@@ -614,6 +614,11 @@ HloSharding InferDotOperandSharding(
     const dot_as_convolution_util::DotConvolutionDimsInfo& dnums,
     bool consider_other_operand, bool may_combine_partial_sharding);
 
+// If the sharding is a V2 sharding (using iota_reshape_dims and
+// iota_transpose_perm) and its type is OTHER, converts it to a V1 sharding
+// (using tile_assignment_devices). Otherwise, does nothing.
+void ConvertV2ToV1Sharding(OpSharding& sharding);
+
 }  // namespace hlo_sharding_util
 }  // namespace xla
 
