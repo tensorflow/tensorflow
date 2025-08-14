@@ -95,6 +95,9 @@ limitations under the License.
 #include "tsl/platform/fingerprint.h"
 #include "tsl/platform/mem.h"
 
+#define EIGEN_USE_THREADS
+#include "unsupported/Eigen/CXX11/Tensor"
+
 namespace xla::cpu {
 namespace {
 
@@ -828,7 +831,12 @@ class NanoExecutable final
 
     NanoRtExecutable::ManagedTemp<128> temp_buffer(
         executable_->temp_buffer_size());
-    auto event = executable_->Execute(nano_args, nano_results, temp_buffer);
+
+    NanoRtExecutable::ExecuteOptions execute_options;
+    execute_options.set_intra_op_thread_pool(client_->intra_op_device());
+
+    auto event = executable_->Execute(nano_args, nano_results, temp_buffer,
+                                      execute_options);
 
     // TODO(jsoyke): Consider making this non-blocking if we ever use this
     // interface for models that require threading, or if we want to delay
@@ -1221,13 +1229,15 @@ ABSL_ATTRIBUTE_UNUSED char NanoDevice::ID = 'D';  // NOLINT
 
 NanoIfrtClient::~NanoIfrtClient() = default;
 
-std::shared_ptr<NanoIfrtClient> NanoIfrtClient::Create() {
-  return CreateWithDevices(1);
+std::shared_ptr<NanoIfrtClient> NanoIfrtClient::Create(
+    const NanoIfrtOptions& options) {
+  return CreateWithDevices(1, options);
 }
 
 std::shared_ptr<NanoIfrtClient> NanoIfrtClient::CreateWithDevices(
-    int num_devices) {
-  return std::shared_ptr<NanoIfrtClient>(new NanoIfrtClient(num_devices));
+    int num_devices, const NanoIfrtOptions& options) {
+  return std::shared_ptr<NanoIfrtClient>(
+      new NanoIfrtClient(num_devices, options));
 }
 
 ifrt::ShardingRef NanoIfrtClient::default_sharding() const {
@@ -1437,7 +1447,8 @@ NanoIfrtClient::GetDefaultPjRtLayout(ifrt::DType dtype,
   return std::make_shared<PjRtLayout>(Layout(dims));
 }
 
-NanoIfrtClient::NanoIfrtClient(int32_t num_devices)
+NanoIfrtClient::NanoIfrtClient(int32_t num_devices,
+                               const NanoIfrtOptions& options)
     : compiler_(std::make_unique<NanoCompiler>(this)),
       memory_(std::make_unique<NanoMemory>(this)) {
   owned_devices_.reserve(num_devices);
@@ -1449,6 +1460,10 @@ NanoIfrtClient::NanoIfrtClient(int32_t num_devices)
     devices_.push_back(owned_devices_.back().get());
     single_device_lists_.push_back(ifrt::BasicDeviceList::Create(
         absl::MakeConstSpan(&devices_.back(), 1)));
+  }
+  if (options.intra_op_threadpool != nullptr) {
+    intra_op_device_ = std::make_unique<Eigen::ThreadPoolDevice>(
+        options.intra_op_threadpool, options.intra_op_threadpool->NumThreads());
   }
 }
 
