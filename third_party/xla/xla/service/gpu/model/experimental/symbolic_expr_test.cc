@@ -173,6 +173,25 @@ TEST_F(SymbolicExprTest, DISABLED_Canonicalization) {
 
   SymbolicExpr non_affine_terms = (v0.min(v1) + v0.min(v1));
   EXPECT_EQ(non_affine_terms.Canonicalize().ToString(), "(min(v0, v1) * 2)");
+
+  // FloorDiv, CeilDiv, and Mod simplifications.
+  EXPECT_EQ((v0.floorDiv(1)).Canonicalize().ToString(), "v0");
+  EXPECT_EQ((v0.ceilDiv(1)).Canonicalize().ToString(), "v0");
+  EXPECT_EQ((v0 % 1).Canonicalize().ToString(), "0");
+
+  EXPECT_EQ(((v0 * 8).floorDiv(4)).Canonicalize().ToString(), "(v0 * 2)");
+  EXPECT_EQ(((v0 * 8).ceilDiv(4)).Canonicalize().ToString(), "(v0 * 2)");
+  EXPECT_EQ(((v0 * 8 + 3).floorDiv(4)).Canonicalize().ToString(), "(v0 * 2)");
+  EXPECT_EQ(((v0 * 8 + 3).ceilDiv(4)).Canonicalize().ToString(),
+            "((v0 * 2) + 1)");
+
+  EXPECT_EQ(((v0 * 8 + 4).floorDiv(4)).Canonicalize().ToString(),
+            "((v0 * 2) + 1)");
+  EXPECT_EQ(((v0 * 8 + 4).ceilDiv(4)).Canonicalize().ToString(),
+            "((v0 * 2) + 1)");
+
+  EXPECT_EQ(((v0 * 8) % 4).Canonicalize().ToString(), "0");
+  EXPECT_EQ(((v0 * 8 + 3) % 4).Canonicalize().ToString(), "3");
 }
 
 }  // namespace
