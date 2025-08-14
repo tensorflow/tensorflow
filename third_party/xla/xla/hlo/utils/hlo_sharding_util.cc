@@ -3344,5 +3344,22 @@ DeviceGroupTileAssignment::flattened_device_groups() const {
   return result;
 }
 
+void ConvertV2ToV1Sharding(OpSharding& sharding) {
+  if (sharding.type() != OpSharding::OTHER ||
+      sharding.iota_reshape_dims().empty()) {
+    return;
+  }
+
+  // V2 Sharding uses iota_reshape_dims and iota_transpose_perm, while V1
+  // Sharding uses tile_assignment_devices.
+  absl::c_copy(
+      ToArray(sharding.iota_reshape_dims(), sharding.iota_transpose_perm(),
+              sharding.tile_assignment_dimensions()),
+      tsl::protobuf::RepeatedFieldBackInserter(
+          sharding.mutable_tile_assignment_devices()));
+  sharding.clear_iota_reshape_dims();
+  sharding.clear_iota_transpose_perm();
+}
+
 }  // namespace hlo_sharding_util
 }  // namespace xla
