@@ -94,6 +94,7 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/fingerprint.h"
 #include "tsl/platform/mem.h"
+#include "tsl/profiler/lib/traceme.h"
 
 #define EIGEN_USE_THREADS
 #include "unsupported/Eigen/CXX11/Tensor"
@@ -841,7 +842,11 @@ class NanoExecutable final
     // TODO(jsoyke): Consider making this non-blocking if we ever use this
     // interface for models that require threading, or if we want to delay
     // execution until we know where the outputs will be stored.
-    tsl::BlockUntilReady(event);
+    {
+      tsl::profiler::TraceMe trace(
+          "NanoRtExecutable::Execute (wait for completion)");
+      tsl::BlockUntilReady(event);
+    }
 
     if (ABSL_PREDICT_FALSE(event.IsError())) {
       return event.GetError();
