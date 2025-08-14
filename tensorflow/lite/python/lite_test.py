@@ -404,7 +404,7 @@ class FromSessionTest(TestModels, parameterized.TestCase):
       if disable_per_channel:
         k_conv_name = 'output1'
       else:
-        k_conv_name = 'tfl.pseudo_qconst1'
+        k_conv_name = 'Conv2D1'
     else:
       k_conv_name = 'Conv2D1'
 
@@ -1161,7 +1161,7 @@ class FromSessionTest(TestModels, parameterized.TestCase):
       interpreter.allocate_tensors()
 
       # MLIR quantizer has different bias index.
-      bias_name = 'tfl.pseudo_qconst' if enable_mlir_quantizer else 'Conv2D'
+      bias_name = 'Conv2D'
       bias_tensor = [
           tensor for tensor in interpreter.get_tensor_details()
           if tensor['name'] == bias_name
