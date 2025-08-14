@@ -24,13 +24,14 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "xla/stream_executor/cuda/compilation_provider.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/ptx_compiler_support.h"
-#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/semantic_version.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace {
 
@@ -157,8 +158,11 @@ absl::StatusOr<std::vector<uint8_t>> CompileHelper(
   stream_executor::GpuAsmOpts options(disable_gpuasm_optimizations,
                                       /*preferred_cuda_dir=*/"", extra_flags);
 
-  return stream_executor::CompileGpuAsmUsingLibNvPtxCompiler(
-      cc, ptx_input, options, cancel_if_reg_spill);
+  TF_ASSIGN_OR_RETURN(stream_executor::cuda::Assembly assembly,
+                      stream_executor::CompileGpuAsmUsingLibNvPtxCompiler(
+                          cc, ptx_input, options, cancel_if_reg_spill,
+                          /*dump_compilation_log=*/false));
+  return assembly.cubin;
 }
 
 class PtxCompilerTest : public ::testing::Test {

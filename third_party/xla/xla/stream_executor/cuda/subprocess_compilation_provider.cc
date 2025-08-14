@@ -41,10 +41,11 @@ namespace stream_executor::cuda {
 
 namespace {
 
-absl::StatusOr<std::vector<uint8_t>> CompileHelper(
-    absl::string_view ptxas_path, const CudaComputeCapability& cc,
-    absl::string_view ptx, const CompilationOptions& options,
-    bool compile_to_relocatable_module) {
+absl::StatusOr<Assembly> CompileHelper(absl::string_view ptxas_path,
+                                       const CudaComputeCapability& cc,
+                                       absl::string_view ptx,
+                                       const CompilationOptions& options,
+                                       bool compile_to_relocatable_module) {
   GpuAsmOpts asm_opts{};
   asm_opts.disable_gpuasm_optimizations = options.disable_optimizations;
   if (compile_to_relocatable_module) {
@@ -59,7 +60,8 @@ absl::StatusOr<std::vector<uint8_t>> CompileHelper(
   }
 
   return CompileGpuAsmUsingPtxAs(ptxas_path, cc, ptx, asm_opts,
-                                 options.cancel_if_reg_spill);
+                                 options.cancel_if_reg_spill,
+                                 options.dump_compilation_log);
 }
 
 }  // namespace
@@ -67,20 +69,19 @@ absl::StatusOr<std::vector<uint8_t>> CompileHelper(
 absl::StatusOr<Assembly> SubprocessCompilationProvider::Compile(
     const CudaComputeCapability& cc, absl::string_view ptx,
     const CompilationOptions& options) const {
-  TF_ASSIGN_OR_RETURN(auto cubin,
-                      CompileHelper(path_to_ptxas_, cc, ptx, options,
-                                    /*compile_to_relocatable_module=*/false));
-  return Assembly{std::move(cubin)};
+  return CompileHelper(path_to_ptxas_, cc, ptx, options,
+                       /*compile_to_relocatable_module=*/false);
 }
 
 absl::StatusOr<RelocatableModule>
 SubprocessCompilationProvider::CompileToRelocatableModule(
     const CudaComputeCapability& cc, absl::string_view ptx,
     const CompilationOptions& options) const {
-  TF_ASSIGN_OR_RETURN(auto cubin,
+  TF_ASSIGN_OR_RETURN(auto assembly,
                       CompileHelper(path_to_ptxas_, cc, ptx, options,
                                     /*compile_to_relocatable_module=*/true));
-  return RelocatableModule{std::move(cubin)};
+  return RelocatableModule{std::move(assembly.cubin),
+                           std::move(assembly.compilation_log)};
 }
 
 absl::StatusOr<Assembly> SubprocessCompilationProvider::CompileAndLink(

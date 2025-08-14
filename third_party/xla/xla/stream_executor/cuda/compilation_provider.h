@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_CUDA_COMPILATION_PROVIDER_H_
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <variant>
 #include <vector>
@@ -36,13 +37,17 @@ struct RelocatableModule {
 
   friend bool operator==(const RelocatableModule& lhs,
                          const RelocatableModule& rhs) {
-    return lhs.cubin == rhs.cubin;
+    return lhs.cubin == rhs.cubin && lhs.compilation_log == rhs.compilation_log;
   }
 
   friend bool operator!=(const RelocatableModule& lhs,
                          const RelocatableModule& rhs) {
-    return lhs.cubin != rhs.cubin;
+    return lhs.cubin != rhs.cubin && lhs.compilation_log != rhs.compilation_log;
   }
+
+  // An optional error/informational log of the compilation process that
+  // produced this CUBIN.
+  std::optional<std::string> compilation_log;
 };
 
 // A compiled and linked CUDA program in CUBIN format.
@@ -50,12 +55,16 @@ struct Assembly {
   std::vector<uint8_t> cubin;
 
   friend bool operator==(const Assembly& lhs, const Assembly& rhs) {
-    return lhs.cubin == rhs.cubin;
+    return lhs.cubin == rhs.cubin && lhs.compilation_log == rhs.compilation_log;
   }
 
   friend bool operator!=(const Assembly& lhs, const Assembly& rhs) {
-    return lhs.cubin != rhs.cubin;
+    return lhs.cubin != rhs.cubin && lhs.compilation_log != rhs.compilation_log;
   }
+
+  // An optional error/informational log of the compilation process that
+  // produced this CUBIN.
+  std::optional<std::string> compilation_log;
 };
 
 // A PTX module in textual assembly format.

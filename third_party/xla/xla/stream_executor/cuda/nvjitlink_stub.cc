@@ -13,12 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cstdint>
-#include <vector>
-
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/stream_executor/cuda/compilation_provider.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/nvjitlink.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
@@ -29,9 +27,9 @@ absl::StatusOr<NvJitLinkVersion> GetNvJitLinkVersion() {
   return absl::UnimplementedError("libnvjitlink is not supported");
 }
 
-absl::StatusOr<std::vector<uint8_t>> CompileAndLinkUsingLibNvJitLink(
+absl::StatusOr<cuda::Assembly> CompileAndLinkUsingLibNvJitLink(
     const CudaComputeCapability& cc, absl::Span<const NvJitLinkInput> inputs,
-    GpuAsmOpts options, bool cancel_if_reg_spill) {
+    GpuAsmOpts options, bool cancel_if_reg_spill, bool dump_compilation_log) {
   return absl::UnimplementedError("libnvjitlink is not supported");
 }
 

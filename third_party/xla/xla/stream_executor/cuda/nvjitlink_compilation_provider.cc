@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
-#include <utility>
 #include <variant>
 #include <vector>
 
@@ -30,7 +29,6 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/nvjitlink.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
-#include "tsl/platform/statusor.h"  // IWYU pragma: keep
 
 namespace stream_executor::cuda {
 
@@ -79,10 +77,9 @@ stream_executor::cuda::NvJitLinkCompilationProvider::CompileAndLink(
     }
   }
 
-  TF_ASSIGN_OR_RETURN(auto cubin, CompileAndLinkUsingLibNvJitLink(
-                                      cc, nvjitlink_inputs, asm_opts,
-                                      options.cancel_if_reg_spill));
-  return Assembly{std::move(cubin)};
+  return CompileAndLinkUsingLibNvJitLink(cc, nvjitlink_inputs, asm_opts,
+                                         options.cancel_if_reg_spill,
+                                         options.dump_compilation_log);
 }
 
 absl::StatusOr<int> NvJitLinkCompilationProvider::GetLatestPtxIsaVersion()

@@ -32,9 +32,10 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor::cuda {
-absl::StatusOr<std::vector<uint8_t>> CompileHelper(
-    const CudaComputeCapability& cc, absl::string_view ptx,
-    const CompilationOptions& options, bool compile_to_relocatable_module) {
+absl::StatusOr<Assembly> CompileHelper(const CudaComputeCapability& cc,
+                                       absl::string_view ptx,
+                                       const CompilationOptions& options,
+                                       bool compile_to_relocatable_module) {
   GpuAsmOpts asm_opts{};
   asm_opts.disable_gpuasm_optimizations = options.disable_optimizations;
   if (compile_to_relocatable_module) {
@@ -49,26 +50,26 @@ absl::StatusOr<std::vector<uint8_t>> CompileHelper(
   }
 
   return CompileGpuAsmUsingLibNvPtxCompiler(cc, std::string(ptx), asm_opts,
-                                            options.cancel_if_reg_spill);
+                                            options.cancel_if_reg_spill,
+                                            options.dump_compilation_log);
 }
 
 absl::StatusOr<Assembly> NvptxcompilerCompilationProvider::Compile(
     const CudaComputeCapability& cc, absl::string_view ptx,
     const CompilationOptions& options) const {
-  TF_ASSIGN_OR_RETURN(auto cubin,
-                      CompileHelper(cc, ptx, options,
-                                    /*compile_to_relocatable_module=*/false));
-  return Assembly{std::move(cubin)};
+  return CompileHelper(cc, ptx, options,
+                       /*compile_to_relocatable_module=*/false);
 }
 
 absl::StatusOr<RelocatableModule>
 NvptxcompilerCompilationProvider::CompileToRelocatableModule(
     const CudaComputeCapability& cc, absl::string_view ptx,
     const CompilationOptions& options) const {
-  TF_ASSIGN_OR_RETURN(auto cubin,
+  TF_ASSIGN_OR_RETURN(Assembly assembly,
                       CompileHelper(cc, ptx, options,
                                     /*compile_to_relocatable_module=*/true));
-  return RelocatableModule{std::move(cubin)};
+  return RelocatableModule{std::move(assembly.cubin),
+                           std::move(assembly.compilation_log)};
 }
 
 absl::StatusOr<Assembly> NvptxcompilerCompilationProvider::CompileAndLink(

@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <variant>
@@ -182,7 +183,13 @@ absl::StatusOr<Assembly> DriverCompilationProvider::CompileAndLink(
 
   std::vector<uint8_t> cubin(static_cast<uint8_t*>(cubin_out),
                              static_cast<uint8_t*>(cubin_out) + cubin_size);
-  return Assembly{std::move(cubin)};
+
+  std::optional<std::string> maybe_compilation_log;
+  if (options.dump_compilation_log) {
+    maybe_compilation_log =
+        absl::StrCat(error_log_buffer, "\n", error_log_buffer);
+  }
+  return Assembly{std::move(cubin), std::move(maybe_compilation_log)};
 }
 
 absl::StatusOr<int> DriverCompilationProvider::GetLatestPtxIsaVersion() const {

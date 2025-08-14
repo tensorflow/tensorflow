@@ -25,14 +25,12 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_replace.h"
 #include "absl/types/span.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/nvjitlink_support.h"
-#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
-#include "xla/tsl/platform/status_matchers.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/test.h"
 
 namespace {
 
@@ -85,8 +83,8 @@ constexpr const char kDependentPtx[] = R"(
         { // callseq 0, 0
         .reg .b32 temp_param_reg;
         .param .b32 retval0;
-        call.uni (retval0), 
-        _Z5magicv, 
+        call.uni (retval0),
+        _Z5magicv,
         (
         );
         ld.param.b32    %r1, [retval0+0];
@@ -144,8 +142,8 @@ auto CompileAndLinkHelper(stream_executor::CudaComputeCapability cc,
   stream_executor::GpuAsmOpts options{};
   options.disable_gpuasm_optimizations = disable_gpuasm_optimizations;
 
-  return stream_executor::CompileAndLinkUsingLibNvJitLink(cc, inputs, options,
-                                                          cancel_if_reg_spill);
+  return stream_executor::CompileAndLinkUsingLibNvJitLink(
+      cc, inputs, options, cancel_if_reg_spill, /*dump_compilation_log=*/false);
 }
 
 class NvJitLinkTest : public ::testing::Test {
