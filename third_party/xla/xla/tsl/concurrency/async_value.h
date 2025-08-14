@@ -382,7 +382,7 @@ class AsyncValue {
   // callbacks are informed.
   struct WaiterListNode {
     virtual ~WaiterListNode() = default;
-    virtual void operator()() = 0;
+    virtual void RunWaiterAndDeleteWaiterNode() = 0;
 
     WaiterListNode* next = nullptr;
     Context context{ContextKind::kThread};
@@ -498,10 +498,16 @@ class AsyncValue {
 
     struct Node final : public WaiterListNode {
       explicit Node(Waiter waiter) : waiter(std::move(waiter)) {}
-      void operator()() final {
-        WithContext wc(context);
+
+      // Waiter destruction may perform work that needs to run in the same
+      // context as the waiter itself, so we choose to destroy the waiter
+      // immediately after running it (by deleting `this` linked list node).
+      void RunWaiterAndDeleteWaiterNode() final {
+        WithContext wc(std::move(context));
         std::move(waiter)();
+        delete this;
       }
+
       Waiter waiter;
     };
 
@@ -1085,13 +1091,8 @@ inline void AsyncValue::NotifyAvailable(State available_state) {
 inline void AsyncValue::RunWaiters(WaiterListNode* list) {
   while (ABSL_PREDICT_FALSE(list)) {
     WaiterListNode* node = list;
-    (*node)();
     list = node->next;
-
-    // Waiter destruction may perform work that needs to run in the same context
-    // that created the waiter.
-    WithContext wc(std::move(node->context));
-    delete node;
+    node->RunWaiterAndDeleteWaiterNode();
   }
 }
 
