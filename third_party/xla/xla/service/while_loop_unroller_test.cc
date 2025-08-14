@@ -72,12 +72,14 @@ class WhileLoopUnrollerTest : public HloTestBase {
   void UnrollAndCompare(std::unique_ptr<HloModule> module,
                         absl::Span<Literal* const> arguments,
                         int64_t unroll_factor = -1, bool wrap_in_loop = false) {
-    Literal before_unroll = ExecuteAndTransfer(module->Clone(), arguments);
+    TF_ASSERT_OK_AND_ASSIGN(Literal before_unroll,
+                            Execute(module->Clone(), arguments));
     VLOG(2) << "before unroll value: " << before_unroll.ToString();
     EXPECT_TRUE(WhileLoopUnroller(unroll_factor, wrap_in_loop)
                     .Run(module.get())
                     .value());
-    Literal after_unroll = ExecuteAndTransfer(std::move(module), arguments);
+    TF_ASSERT_OK_AND_ASSIGN(Literal after_unroll,
+                            Execute(std::move(module), arguments));
     VLOG(2) << "after unroll value: " << after_unroll.ToString();
 
     ASSERT_TRUE(LiteralTestUtil::NearOrEqual(/*expected=*/before_unroll,

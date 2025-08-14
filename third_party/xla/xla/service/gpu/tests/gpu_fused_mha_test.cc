@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
@@ -1543,8 +1544,9 @@ class FlashAttentionBMMScaleSoftmaxDropoutBMM
         std::unique_ptr<HloModule> module,
         ParseAndReturnVerifiedModule(
             kModuleFlashAttentionTrainingBMM1SoftmaxDropoutBMM2HloStringBF16));
-    ExecuteAndTransfer(std::move(module), {&lhs_bmm1_literal, &rhs_bmm1_literal,
-                                           &rhs_bmm2_literal, &do_literal});
+    TF_EXPECT_OK(
+        Execute(std::move(module), {&lhs_bmm1_literal, &rhs_bmm1_literal,
+                                    &rhs_bmm2_literal, &do_literal}));
   }
 };
 

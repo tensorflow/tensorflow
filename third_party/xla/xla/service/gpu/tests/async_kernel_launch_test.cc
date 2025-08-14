@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
 namespace xla::gpu {
@@ -75,7 +76,9 @@ TEST_F(AsyncKernelLaunchTest, BasicFusion) {
   Literal argument = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
   Literal expected = LiteralUtil::CreateR2<float>({{4.0, 8.0}, {12.0, 16.0}});
 
-  Literal result = ExecuteNoHloPasses(std::move(module), {&argument});
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result,
+      Execute(std::move(module), {&argument}, /*run_hlo_passes=*/false));
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
