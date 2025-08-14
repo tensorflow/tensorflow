@@ -100,15 +100,18 @@ absl::StatusOr<bool> AllGatherStartThunk::RunCollective(
       ConvertToDeviceBuffers(params, buffers_,
                              config_.config.operand_element_type));
   TF_RETURN_IF_ERROR(
-      xla::gpu::RunAllGather(device_buffers, stream, comm_handle.comm));
+      xla::gpu::RunAllGather(device_buffers, stream, comm_handle.comm,
+                             config_.config.use_symmetric_buffer));
   return true;
 }
 
 absl::Status RunAllGather(std::vector<DeviceBufferPair>& buffers,
-                          se::Stream& stream, Communicator* comm) {
+                          se::Stream& stream, Communicator* comm,
+                          bool use_symmetric_buffer) {
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing all-gather from device ordinal: " << device_ordinal;
-  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(stream.parent(), buffers, comm));
+  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(stream.parent(), buffers, comm,
+                                          use_symmetric_buffer));
   auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(comm);
   tsl::AsyncValueRef<Communicator::Event> event = gpu_comm->GroupExecute(
       [&buffers, &stream](GpuCommunicator* comm) -> absl::Status {

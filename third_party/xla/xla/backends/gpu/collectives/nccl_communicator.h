@@ -82,6 +82,9 @@ class NcclCommunicator : public GpuCommunicator {
   absl::StatusOr<std::unique_ptr<RegisteredBufferHandle>> RegisterBuffer(
       se::DeviceMemoryBase buffer) final;
 
+  absl::StatusOr<std::unique_ptr<RegisteredBufferHandle>> RegisterBuffer(
+      se::DeviceMemoryBase buffer, bool use_symmetric_buffer) final;
+
   tsl::AsyncValueRef<Communicator::Event> GroupExecute(
       absl::AnyInvocable<absl::Status(GpuCommunicator*)> f) final;
 

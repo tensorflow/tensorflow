@@ -59,6 +59,7 @@ struct CollectiveConfig {
   RendezvousKey::CollectiveOpKind collective_op_kind;
   int64_t op_id;
   CollectiveOpGroupMode group_mode;
+  bool use_symmetric_buffer;
 
   template <typename OpT>
   void SetCollectiveOpKindAndID(OpT op);
@@ -357,7 +358,8 @@ absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
 // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/bufferreg.html
 absl::Status MaybeRegisterBuffers(se::StreamExecutor* executor,
                                   const std::vector<DeviceBufferPair>& buffers,
-                                  Communicator* comm);
+                                  Communicator* comm,
+                                  bool use_symmetric_buffer = false);
 }  // namespace xla::gpu
 
 #endif  // XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_THUNK_H_

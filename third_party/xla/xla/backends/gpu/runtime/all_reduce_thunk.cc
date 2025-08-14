@@ -84,10 +84,12 @@ AllReduceConfig GetAllReduceConfigInst(HloInstType* inst) {
 
 absl::Status RunAllReduce(ReductionKind reduction_kind,
                           std::vector<DeviceBufferPair>& buffers,
-                          se::Stream& stream, Communicator* comm) {
+                          se::Stream& stream, Communicator* comm,
+                          bool use_symmetric_buffer) {
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing all-reduce from device ordinal: " << device_ordinal;
-  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(stream.parent(), buffers, comm));
+  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(stream.parent(), buffers, comm,
+                                          use_symmetric_buffer));
 
   auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(comm);
   tsl::AsyncValueRef<Communicator::Event> event =
@@ -190,7 +192,8 @@ absl::StatusOr<bool> AllReduceStartThunk::RunCollective(
   }
 
   TF_RETURN_IF_ERROR(RunAllReduce(config_.reduction_kind, device_buffers,
-                                  stream, comm_handle.comm));
+                                  stream, comm_handle.comm,
+                                  config_.config.use_symmetric_buffer));
   return true;
 }
 
@@ -222,17 +225,20 @@ absl::StatusOr<bool> ReduceScatterStartThunk::RunCollective(
       ConvertToDeviceBuffers(params, buffers_,
                              config_.config.operand_element_type));
   TF_RETURN_IF_ERROR(RunReduceScatter(config_.reduction_kind, device_buffers,
-                                      stream, comm_handle.comm));
+                                      stream, comm_handle.comm,
+                                      config_.config.use_symmetric_buffer));
   return true;
 }
 
 absl::Status RunReduceScatter(ReductionKind reduction_kind,
                               std::vector<DeviceBufferPair>& buffers,
-                              se::Stream& stream, Communicator* comm) {
+                              se::Stream& stream, Communicator* comm,
+                              bool use_symmetric_buffer) {
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing reduce-scatter from device ordinal: "
           << device_ordinal;
-  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(stream.parent(), buffers, comm));
+  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(stream.parent(), buffers, comm,
+                                          use_symmetric_buffer));
 
   TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm->NumRanks());
 
