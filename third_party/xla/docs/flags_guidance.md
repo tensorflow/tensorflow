@@ -38,6 +38,13 @@ Flag                                                                            
 `xla_jf_enable_multi_output_fusion`   | This flag enables fusions that fuse multiple consumers (i.e. the resultant fusion will have multiple outputs) | `xla_jf_enable_multi_output_fusion=true` | `xla_jf_enable_multi_output_fusion=true` | `xla_jf_enable_multi_output_fusion=true/false`
 <br>
 `xla_tpu_scoped_vmem_limit_kib` |  This flag sets the amount of scratchpad VMEM available to per op for local usage in KiloBytes. Rest of the VMEM is used as buffer space. | `xla_tpu_scoped_vmem_limit_kib=16384` | `xla_tpu_scoped_vmem_limit_kib=16384` | `xla_tpu_scoped_vmem_limit_kib=[4096, VMEM size of the architecture - 1024]`
+<br>
+`xla_tpu_async_copy_bandwidth_scaling_factor` | Scales effective bandwidth for async copies. This is used when making prefetch decisions and deciding which tensors should live in VMEM. | `xla_tpu_async_copy_bandwidth_scaling_factor=1` | `xla_tpu_async_copy_bandwidth_scaling_factor=1` | `xla_tpu_async_copy_bandwidth_scaling_factor=(0, 1]`
+<br>
+`xla_msa_enable_cross_program_prefetch_freeing` | Enables freeing optimization for cross-program-prefetched buffers. | `xla_msa_enable_cross_program_prefetch_freeing=enabled` | `xla_msa_enable_cross_program_prefetch_freeing=enabled` | `xla_msa_enable_cross_program_prefetch_freeing=enabled/disabled`
+<br>
+`xla_tpu_msa_inefficient_use_to_copy_ratio` | The ratio of use bytes to copy bytes for a given allocation site below which we consider the site to be inefficient. This is used while making VMEM placement decisions. A value of 0 would treat all sites as efficient and a value of 1 would require the amount of bytes used at the site to be at least as much as the async copy bytes. | `xla_tpu_msa_inefficient_use_to_copy_ratio=0.5` | `xla_tpu_msa_inefficient_use_to_copy_ratio=0.5` | `xla_tpu_msa_inefficient_use_to_copy_ratio=[0, 1]`
+
 ## Memory Flags
 
 The flags listed below are provided to address HBM-related issues. These
