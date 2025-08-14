@@ -3353,7 +3353,6 @@ xla_test(
     backend_tags = {
         "cpu": ["optonly"],
     },
-    precompile_test = False,  # TODO: b/438544287 - Re-enable once fixed.
     shard_count = 50,
     tags = [
         "test_migrated_to_hlo_runner_pjrt",
