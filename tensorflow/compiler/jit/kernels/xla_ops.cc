@@ -466,7 +466,7 @@ static thread::ThreadPool* GetOrCreateThreadPoolForCollective(
   static auto& thread_pool_cache ABSL_GUARDED_BY(m) =
       *new absl::node_hash_map<XlaCompilationResult::CollectiveInfo,
                                thread::ThreadPool>();
-  absl::MutexLock l(&m);
+  absl::MutexLock l(m);
   auto it = thread_pool_cache.find(collective_info);
   if (it == thread_pool_cache.end()) {
     // Create & cache thread pool.
