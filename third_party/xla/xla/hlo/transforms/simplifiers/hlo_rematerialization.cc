@@ -1809,6 +1809,8 @@ absl::StatusOr<int64_t> RematerializeInstructions(
                                       RematAlgorithm::kPeakPriority) {
           (*rematerializable_map)[remat_use] = false;
         }
+        TF_RETURN_IF_ERROR(
+            rematerialization->on_rematerialized(user_operand, remat_use));
       }
     }
 
