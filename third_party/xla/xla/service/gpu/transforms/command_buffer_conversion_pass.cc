@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/platform.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
 namespace gpu {
@@ -299,6 +300,8 @@ absl::Span<std::unique_ptr<Thunk>> CollectAndCheckAsyncRegion(
 absl::StatusOr<bool> CommandBufferConversionPass::Run(
     SequentialThunk* root_thunk_ptr, const DebugOptions& debug_options,
     const se::DeviceDescription& device_info) {
+  tsl::profiler::TraceMe traceme("CommandBufferConversionPass");
+
   CommandBufferConfig config =
       GetCommandBufferConfig(debug_options, device_info);
 
