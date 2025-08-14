@@ -16,20 +16,21 @@ limitations under the License.
 #ifndef XLA_BACKENDS_PROFILER_GPU_CUPTI_TRACER_H_
 #define XLA_BACKENDS_PROFILER_GPU_CUPTI_TRACER_H_
 
+#include <atomic>
+#include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "absl/status/status.h"
-#include "absl/time/time.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
 #include "third_party/gpus/cuda/include/nvtx3/nvToolsExt.h"
+#include "xla/backends/profiler/gpu/cupti_buffer_events.h"
 #include "xla/backends/profiler/gpu/cupti_collector.h"
 #include "xla/backends/profiler/gpu/cupti_interface.h"
 #include "xla/backends/profiler/gpu/cupti_pm_sampler.h"
-#include "tsl/platform/types.h"
 
 namespace xla {
 namespace profiler {
@@ -88,8 +89,12 @@ class CuptiTracer {
   bool IsAvailable() const;
   bool NeedRootAccess() const { return need_root_access_; }
 
-  absl::Status Enable(const CuptiTracerOptions& option,
-                      CuptiTraceCollector* collector);
+  // Enables the CUPTI tracer. XPlanes vector is optional and only needed when
+  // PM sampling is enabled to store sample metrics.
+  absl::Status Enable(
+      const CuptiTracerOptions& option, CuptiTraceCollector* collector,
+      const std::vector<std::unique_ptr<tensorflow::profiler::XPlane>>&
+          xplanes = {});
   void Disable();
 
   // Creates default CUPTI callback IDs to avoid empty set and enabling all
@@ -187,6 +192,7 @@ class CuptiTracer {
                                       const CUpti_CallbackData* cbdata);
   int num_gpus_;
   std::optional<CuptiTracerOptions> option_;
+  std::unique_ptr<xla::profiler::CuptiPmSampler> cupti_pm_sampler_;
   CuptiInterface* cupti_interface_ = nullptr;
   CuptiTraceCollector* collector_ = nullptr;
 
@@ -203,8 +209,6 @@ class CuptiTracer {
   bool activity_tracing_enabled_ = false;
 
   std::unique_ptr<CuptiDriverApiHook> cupti_driver_api_hook_;
-
-  std::unique_ptr<CuptiPmSampler> pm_sampler_;
 };
 
 }  // namespace profiler

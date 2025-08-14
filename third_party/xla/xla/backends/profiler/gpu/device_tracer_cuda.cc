@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -69,6 +70,7 @@ class GpuTracer : public tsl::profiler::ProfilerInterface {
   CuptiTracer* cupti_tracer_;
   CuptiTracerOptions options_;
   std::unique_ptr<CuptiTraceCollector> cupti_collector_;
+  std::vector<std::unique_ptr<tensorflow::profiler::XPlane>> xplanes_;
 };
 
 absl::Status GpuTracer::DoStart() {
@@ -102,7 +104,12 @@ absl::Status GpuTracer::DoStart() {
   cupti_collector_ = CreateCuptiCollector(collector_options, start_walltime_ns,
                                           start_gputime_ns);
 
-  cupti_tracer_->Enable(options_, cupti_collector_.get()).IgnoreError();
+  xplanes_.reserve(collector_options.num_gpus);
+  for (int i = 0; i < collector_options.num_gpus; ++i) {
+    xplanes_.push_back(std::make_unique<tensorflow::profiler::XPlane>());
+  }
+  cupti_tracer_->Enable(options_, cupti_collector_.get(), xplanes_)
+      .IgnoreError();
   return absl::OkStatus();
 }
 
@@ -152,6 +159,15 @@ absl::Status GpuTracer::CollectData(XSpace* space) {
       std::string events_dropped = cupti_collector_->ReportNumEventsIfDropped();
       if (!events_dropped.empty()) {
         space->add_warnings(std::move(events_dropped));
+      }
+      if (options_.pm_sampler_options.enable) {
+        // Adds PM sampling xplanes to the response before CuptiCollector to
+        // merge and export all the events.
+        for (auto& xplane : xplanes_) {
+          if (xplane) {
+            *space->add_planes() = *xplane;
+          }
+        }
       }
       if (cupti_collector_) {
         uint64_t end_gpu_ns = cupti_collector_->GetTracingEndTimeNs();

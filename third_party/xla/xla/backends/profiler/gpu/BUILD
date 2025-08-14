@@ -156,9 +156,7 @@ xla_test(
         ":cupti_wrapper",
         ":mock_cupti",
         "//xla/tsl/profiler/utils:time_utils",
-        "@com_google_absl//absl/memory",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -224,6 +222,8 @@ cc_library(
         "//xla/tsl/profiler/backends/cpu:annotation_stack",
         "//xla/tsl/profiler/utils:lock_free_queue",
         "//xla/tsl/profiler/utils:per_thread",
+        "//xla/tsl/profiler/utils:xplane_builder",
+        "//xla/tsl/profiler/utils:xplane_schema",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -259,6 +259,7 @@ cc_library(
         "cuda-only",
         "gpu",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         ":cupti_collector",
         ":cupti_interface",
@@ -285,9 +286,9 @@ cc_library(
         "cuda-only",
         "gpu",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         ":cupti_collector",
-        ":cupti_interface",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/time",
     ],
@@ -306,6 +307,7 @@ cc_library(
         "gpu",
         "manual",  # This target requires CUDA 12.6+, therefore we only built it if it was requested via a dependency.
     ],
+    visibility = ["//visibility:public"],
     deps = [
         ":cupti_collector",
         ":cupti_interface",
@@ -653,6 +655,7 @@ xla_test(
     deps = [
         ":cupti_collector",
         ":cupti_error_manager",
+        ":cupti_pm_sampler_stub",
         ":cupti_tracer",
         ":cupti_utils",
         ":cupti_wrapper",

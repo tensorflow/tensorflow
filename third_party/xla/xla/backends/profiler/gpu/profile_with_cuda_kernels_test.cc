@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "xla/backends/profiler/gpu/cupti_collector.h"
 #include "xla/backends/profiler/gpu/cupti_error_manager.h"
+#include "xla/backends/profiler/gpu/cupti_pm_sampler.h"
 #include "xla/backends/profiler/gpu/cupti_tracer.h"
 #include "xla/backends/profiler/gpu/cupti_wrapper.h"
 
@@ -102,8 +103,6 @@ void HandleRecords(PmSamples* samples) {
       GTEST_FAIL() << "Unknown metric: " << metrics[i];
     }
   }
-
-  return;
 }
 
 TEST(ProfilerCudaKernelSanityTest, SimpleAddSub) {
@@ -149,7 +148,13 @@ TEST(ProfilerCudaKernelSanityTest, SimpleAddSub) {
 
   CuptiErrorManager error_manager(std::make_unique<CuptiWrapper>());
   TestableCuptiTracer tracer(&error_manager);
-  auto err = tracer.Enable(tracer_options, collector.get());
+
+  std::vector<std::unique_ptr<tensorflow::profiler::XPlane>> xplanes;
+  xplanes.reserve(collector_options.num_gpus);
+  for (int i = 0; i < collector_options.num_gpus; ++i) {
+    xplanes.push_back(std::make_unique<tensorflow::profiler::XPlane>());
+  }
+  auto err = tracer.Enable(tracer_options, collector.get(), xplanes);
 
   if (absl::IsPermissionDenied(err)) {
     GTEST_SKIP() << "PM Sampling requires root access";
@@ -165,7 +170,12 @@ TEST(ProfilerCudaKernelSanityTest, SimpleAddSub) {
   skip_first = true;
   vec = SimpleAddSubWithProfiler(kNumElements);
 
-  err = tracer.Enable(tracer_options, collector.get());
+  xplanes.clear();
+  xplanes.reserve(collector_options.num_gpus);
+  for (int i = 0; i < collector_options.num_gpus; ++i) {
+    xplanes.push_back(std::make_unique<tensorflow::profiler::XPlane>());
+  }
+  err = tracer.Enable(tracer_options, collector.get(), xplanes);
 
   vec = SimpleAddSubWithProfiler(kNumElements);
 
