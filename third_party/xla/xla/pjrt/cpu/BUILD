@@ -179,6 +179,7 @@ cc_library(
         "//xla/pjrt:pjrt_future",
         "//xla/pjrt:raw_buffer",
         "//xla/pjrt:semaphore",
+        "//xla/pjrt:thread_pool_async_work_runner",
         "//xla/pjrt:transpose",
         "//xla/pjrt:utils",
         "//xla/pjrt/plugin/xla_cpu:cpu_client_options",

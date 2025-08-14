@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_PJRT_GPU_RAW_BUFFER_H_
-#define XLA_PJRT_GPU_RAW_BUFFER_H_
+#ifndef XLA_PJRT_SE_RAW_BUFFER_H_
+#define XLA_PJRT_SE_RAW_BUFFER_H_
 
 #include <cstddef>
 #include <cstdint>
@@ -60,4 +60,4 @@ class PjRtStreamExecutorRawBuffer : public PjRtRawBuffer {
 
 }  // namespace xla
 
-#endif  // XLA_PJRT_GPU_RAW_BUFFER_H_
+#endif  // XLA_PJRT_SE_RAW_BUFFER_H_

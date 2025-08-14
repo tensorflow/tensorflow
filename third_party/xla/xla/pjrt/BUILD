@@ -164,43 +164,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "tracked_device_buffer",
-    srcs = ["tracked_device_buffer.cc"],
-    hdrs = ["tracked_device_buffer.h"],
-    deps = [
-        ":abstract_tracked_device_buffer",
-        ":event_pool",
-        ":pjrt_client",
-        ":pjrt_common",
-        "//xla:shape_tree",
-        "//xla:shape_util",
-        "//xla/service:executable",
-        "//xla/service:maybe_owning_device_memory",
-        "//xla/service:shaped_buffer",
-        "//xla/stream_executor:device_memory",
-        "//xla/stream_executor:device_memory_allocator",
-        "//xla/stream_executor:event",
-        "//xla/tsl/concurrency:async_value",
-        "//xla/tsl/concurrency:ref_count",
-        "//xla/tsl/platform:env",
-        "//xla/tsl/platform:logging",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/functional:any_invocable",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/profiler/lib:connected_traceme",
-        "@local_tsl//tsl/profiler/lib:context_types_hdrs",
-    ],
-)
-
 xla_cc_test(
     name = "tracked_device_buffer_test",
     srcs = ["tracked_device_buffer_test.cc"],
@@ -208,7 +171,7 @@ xla_cc_test(
         ":pjrt_client",
         ":pjrt_common",
         ":pjrt_future",
-        ":tracked_device_buffer",
+        ":pjrt_stream_executor_client",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -620,8 +583,14 @@ cc_library(
     name = "pjrt_stream_executor_client",
     srcs = [
         "pjrt_stream_executor_client.cc",
+        "se_raw_buffer.cc",
+        "tracked_device_buffer.cc",
     ],
-    hdrs = ["pjrt_stream_executor_client.h"],
+    hdrs = [
+        "pjrt_stream_executor_client.h",
+        "se_raw_buffer.h",
+        "tracked_device_buffer.h",
+    ],
     visibility = internal_visibility(["//xla:friends"]),
     deps = [
         ":abstract_tracked_device_buffer",
@@ -638,9 +607,9 @@ cc_library(
         ":pjrt_executable",
         ":pjrt_future",
         ":pjrt_stream_executor_device_description",
+        ":raw_buffer",
         ":semaphore",
         ":stream_executor_executable",
-        ":tracked_device_buffer",
         ":transpose",
         ":utils",
         "//xla:executable_run_options",
@@ -672,11 +641,14 @@ cc_library(
         "//xla/service/gpu:gpu_executable_run_options",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:device_memory_allocator",
+        "//xla/stream_executor:event",
         "//xla/stream_executor:stream",
+        "//xla/tsl/concurrency:async_value",
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/framework:allocator",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:logging",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
@@ -704,6 +676,7 @@ cc_library(
         "@local_tsl//tsl/profiler/lib:context_types_hdrs",
         "@local_tsl//tsl/profiler/lib:traceme",
     ],
+    alwayslink = 1,
 )
 
 xla_cc_test(
@@ -1312,6 +1285,20 @@ cc_library(
     deps = [
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/concurrency:ref_count",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "thread_pool_async_work_runner",
+    srcs = ["thread_pool_async_work_runner.cc"],
+    hdrs = ["thread_pool_async_work_runner.h"],
+    deps = [
+        ":async_work_runner",
+        "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/concurrency:ref_count",
+        "//xla/tsl/platform:env",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/types:span",
     ],

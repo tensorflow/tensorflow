@@ -92,6 +92,7 @@ limitations under the License.
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/pjrt/semaphore.h"
+#include "xla/pjrt/thread_pool_async_work_runner.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/pjrt/utils.h"
 #include "xla/primitive_util.h"
@@ -137,49 +138,6 @@ limitations under the License.
 #include "unsupported/Eigen/CXX11/Tensor"
 
 namespace xla {
-namespace {
-
-void EnqueueWork(tsl::thread::ThreadPool* pool,
-                 absl::AnyInvocable<void() &&> callee) {
-  // TSL TheadPool expects std::function that must be copyable, so we are
-  // forced to do a little bit of manual memory management here.
-  pool->Schedule(
-      [ptr = new absl::AnyInvocable<void() &&>(std::move(callee))]() {
-        std::move (*ptr)();
-        delete ptr;
-      });
-}
-
-// Enqueue to PjRtClient pool when all `values` are ready.
-void EnqueueWorkWhenReady(
-    tsl::thread::ThreadPool* pool,
-    absl::Span<const tsl::RCReference<tsl::AsyncValue>> values,
-    absl::AnyInvocable<void() &&> callee) {
-  RunWhenReady(values, [pool, callee = std::move(callee)]() mutable {
-    EnqueueWork(pool, std::move(callee));
-  });
-}
-
-class ThreadPoolAsyncWorkRunner : public AsyncWorkRunner {
- public:
-  explicit ThreadPoolAsyncWorkRunner(tsl::thread::ThreadPool* pool)
-      : pool_(pool) {}
-
-  void Schedule(absl::AnyInvocable<void() &&> work) override {
-    EnqueueWork(pool_, std::move(work));
-  }
-
-  void ScheduleWhenReady(
-      absl::Span<const tsl::RCReference<tsl::AsyncValue>> values,
-      absl::AnyInvocable<void() &&> work) override {
-    EnqueueWorkWhenReady(pool_, values, std::move(work));
-  }
-
- private:
-  tsl::thread::ThreadPool* pool_;
-};
-
-}  // namespace
 
 static int CpuDeviceCount() {
   // By default we fix the number of devices to one.  However we do let the user
@@ -253,8 +211,8 @@ PjRtCpuClient::PjRtCpuClient(
       pjrt_client_thread_pool_(
           new tsl::thread::ThreadPool(tsl::Env::Default(), GetThreadOptions(),
                                       "XLAPjRtCpuClient", num_threads)),
-      async_work_runner_(std::make_unique<ThreadPoolAsyncWorkRunner>(
-          pjrt_client_thread_pool_.get())),
+      async_work_runner_(
+          MakeThreadPoolAsyncWorkRunner(pjrt_client_thread_pool_.get())),
       last_collective_launch_event_(
           tsl::MakeAvailableAsyncValueRef<CpuEvent>()),
       transpose_cache_(1024),
@@ -1635,8 +1593,8 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
     CpuScopedAsyncExecution scoped_async_execution =
         device->async_execution_tracker()->NewAsyncExecution(
             run_id.ToInt(), std::move(ready_on_exit).Release());
-    EnqueueWorkWhenReady(
-        client()->pjrt_client_thread_pool(), input_deps,
+    client()->async_work_runner()->ScheduleWhenReady(
+        input_deps,
         [cpu_executable, buffer_alloc = std::move(buffer_alloc),
          buffer_alloc_and_copy = std::move(buffer_alloc_and_copy),
          buffer_table = std::move(buffer_table),
@@ -1925,8 +1883,7 @@ PjRtCpuExecutable::Execute(
       const int replica = addressable_device_logical_ids_[i].replica;
       const int partition = addressable_device_logical_ids_[i].partition;
 
-      auto* thread_pool = client()->pjrt_client_thread_pool();
-      EnqueueWork(thread_pool, [&, replica, partition, i] {
+      client()->async_work_runner()->Schedule([&, replica, partition, i] {
         auto statusor = ExecuteHelper(
             argument_handles[i], replica, partition, run_id, options,
             last_collective_launch_event, returned_futures.has_value());
