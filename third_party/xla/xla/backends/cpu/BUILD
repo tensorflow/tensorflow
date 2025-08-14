@@ -89,7 +89,7 @@ cc_library(
     srcs = ["xnn_emitter.cc"],
     hdrs = ["xnn_emitter.h"],
     deps = [
-        ":xnn_fusion",
+        ":xnn_support",
         "//xla:literal",
         "//xla:shape_util",
         "//xla:util",
@@ -122,9 +122,9 @@ cc_library(
 )
 
 cc_library(
-    name = "xnn_fusion",
-    srcs = ["xnn_fusion.cc"],
-    hdrs = ["xnn_fusion.h"],
+    name = "xnn_support",
+    srcs = ["xnn_support.cc"],
+    hdrs = ["xnn_support.h"],
     deps = [
         ":xnn_gemm_config",
         "//xla:shape_util",
@@ -132,11 +132,13 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/backends/cpu/runtime:dot_lib",
+        "//xla/backends/cpu/runtime/xnnpack:xnn_interop",
         "//xla/hlo/ir:hlo",
         "//xla/service:pattern_matcher",
         "//xla/tsl/platform:statusor",
         "@XNNPACK",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
@@ -148,10 +150,10 @@ cc_library(
 )
 
 xla_cc_test(
-    name = "xnn_fusion_test",
-    srcs = ["xnn_fusion_test.cc"],
+    name = "xnn_support_test",
+    srcs = ["xnn_support_test.cc"],
     deps = [
-        ":xnn_fusion",
+        ":xnn_support",
         "//xla/hlo/ir:hlo",
         "@XNNPACK",
         "@com_google_absl//absl/container:flat_hash_map",

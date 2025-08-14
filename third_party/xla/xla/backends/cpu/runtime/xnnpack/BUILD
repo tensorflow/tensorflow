@@ -19,6 +19,7 @@ cc_library(
     srcs = ["xnn_interop.cc"],
     hdrs = ["xnn_interop.h"],
     deps = [
+        "//xla:shape_util",
         "//xla:util",
         "//xla/tsl/platform:logging",
         "@XNNPACK",

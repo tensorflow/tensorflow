@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/transforms/library_matcher.h"
-#include "xla/backends/cpu/xnn_fusion.h"
+#include "xla/backends/cpu/xnn_support.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "tsl/platform/protobuf.h"
@@ -42,11 +42,11 @@ class XnnMatcher : public LibraryMatcher {
     static const auto* kSupportedOps = []() {
       static auto* supported_ops =
           new absl::flat_hash_set<HloOpcode>{HloOpcode::kDot};
-      for (const auto& op : *GetXnnUnaryOpMap()) {
-        supported_ops->insert(op.first);
+      for (const auto& [op, _] : GetXnnUnaryOpMap()) {
+        supported_ops->insert(op);
       }
-      for (const auto& op : *GetXnnBinaryOpMap()) {
-        supported_ops->insert(op.first);
+      for (const auto& [op, _] : GetXnnBinaryOpMap()) {
+        supported_ops->insert(op);
       }
       return supported_ops;
     }();

@@ -91,7 +91,7 @@ cc_library(
         "//xla:status_macros",
         "//xla:util",
         "//xla/backends/autotuner:codegen_backend",
-        "//xla/backends/cpu:xnn_fusion",
+        "//xla/backends/cpu:xnn_support",
         "//xla/backends/cpu:xnnpack_config_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:compiler",
