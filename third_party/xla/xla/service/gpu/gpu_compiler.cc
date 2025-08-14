@@ -121,6 +121,7 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/hlo_rematerialization.h"
 #include "xla/hlo/transforms/simplifiers/host_memory_transfer_asyncifier.h"
 #include "xla/hlo/transforms/simplifiers/optimize_input_output_buffer_alias.h"
+#include "xla/hlo/transforms/simplifiers/reduce_window_resizer.h"
 #include "xla/hlo/transforms/simplifiers/reduce_window_rewriter.h"
 #include "xla/hlo/transforms/simplifiers/reshape_mover.h"
 #include "xla/hlo/transforms/simplifiers/result_caster.h"
@@ -798,6 +799,7 @@ absl::Status RunOptimizationPasses(
   if (debug_options.xla_reduce_window_rewrite_base_length() != 0) {
     pipeline.AddPass<HloPassFix<ReduceWindowRewriter>>(
         debug_options.xla_reduce_window_rewrite_base_length());
+    pipeline.AddPass<ReduceWindowResizer>();
   }
 
   DynamicPadderOptions dynamic_padder_options;

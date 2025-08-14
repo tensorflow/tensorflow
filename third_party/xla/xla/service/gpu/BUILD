@@ -1489,6 +1489,7 @@ cc_library(
         "//xla/hlo/transforms/simplifiers:hlo_rematerialization",
         "//xla/hlo/transforms/simplifiers:host_memory_transfer_asyncifier",
         "//xla/hlo/transforms/simplifiers:optimize_input_output_buffer_alias",
+        "//xla/hlo/transforms/simplifiers:reduce_window_resizer",
         "//xla/hlo/transforms/simplifiers:reduce_window_rewriter",
         "//xla/hlo/transforms/simplifiers:reshape_mover",
         "//xla/hlo/transforms/simplifiers:result_caster",
