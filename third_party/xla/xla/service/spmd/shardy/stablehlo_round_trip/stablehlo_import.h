@@ -17,8 +17,8 @@ limitations under the License.
 #define XLA_SERVICE_SPMD_SHARDY_STABLEHLO_ROUND_TRIP_STABLEHLO_IMPORT_H_
 
 #include <cstdint>
+#include <string>
 
-#include "absl/status/status.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -27,7 +27,7 @@ limitations under the License.
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/tile_assignment.h"
-#include "xla/util.h"
+#include "xla/shape.h"
 
 namespace xla {
 namespace sdy {
@@ -45,6 +45,13 @@ mlir::sdy::TensorShardingAttr convertToSdySharding(
     const llvm::SmallDenseMap<int64_t, mlir::StringRef>&
         deviceIdToMaximalMeshName,
     int64_t rank, bool openDims = false, bool inlineMesh = false);
+// Same as above, but takes an `xla::OpSharding` proto and uses fake mesh from
+// given `opSharding`. Returns a string representation of `TensorShardingAttr`
+// if `isSingleArg` is true, otherwise `TensorShardingPerValueAttr` to handle
+// tuples arguments, ops, or results.
+std::string convertToSdySharding(const xla::OpSharding& opSharding,
+                                 xla::Shape shape, bool openDims,
+                                 bool inlineMesh, bool isSingleArg = false);
 
 // Returns the axis sizes from the tile assignment. For example, given the input
 // {devices=[6,35]<=[7,10,3]T(2,1,0)}, the function returns [7, 2, 5, 3].
@@ -77,13 +84,6 @@ void addStablehloImportPipeline(mlir::OpPassManager& pm,
 std::unique_ptr<mlir::Pass> createImportShardingsPass(
     mlir::ArrayRef<bool> allowPropagationToArgs,
     mlir::ArrayRef<bool> allowPropagationToResults, bool inlineMesh = false);
-
-// Adds the sdy shardings to frontend attributes for each instruction of entry
-// computation in the HloModule. This function should only be used if
-// sdy.shardings are not already present in entry computation. This function is
-// currently being used only via jax2tf codepath which adds wrapper main
-// without sdy.shardings.
-absl::Status addSdyShardingsToEntryComputation(xla::HloModule* module);
 
 }  // namespace sdy
 }  // namespace xla
