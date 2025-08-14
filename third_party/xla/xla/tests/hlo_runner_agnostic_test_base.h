@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/base/nullability.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -146,9 +147,13 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
 
   // Same as above, except the module will be executed without running any HLO
   // passes on it.
+  ABSL_DEPRECATED(
+      "Use Execute() or another alternative that returns a StatusOr.")
   Literal ExecuteNoHloPasses(std::unique_ptr<HloModule> module,
                              absl::Span<const Literal* const> arguments);
 
+  ABSL_DEPRECATED(
+      "Use Execute() or another alternative that returns a StatusOr.")
   Literal ExecuteAndTransfer(std::unique_ptr<HloModule> module,
                              absl::Span<const Literal* const> arguments);
 
