@@ -142,6 +142,7 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/transforms/simplifiers/hlo_memory_scheduler.h"
 #include "xla/hlo/transforms/simplifiers/optimize_input_output_buffer_alias.h"
+#include "xla/hlo/transforms/simplifiers/reduce_window_resizer.h"
 #include "xla/hlo/transforms/simplifiers/reduce_window_rewriter.h"
 #include "xla/hlo/transforms/simplifiers/reshape_mover.h"
 #include "xla/hlo/transforms/simplifiers/result_caster.h"
@@ -755,6 +756,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
         module->config()
             .debug_options()
             .xla_reduce_window_rewrite_base_length());
+    pipeline.AddPass<ReduceWindowResizer>();
   }
   auto dynamic_padder_options = DynamicPadderOptions();
   // TODO(pgavin): ShapeChecks were never implemented correctly by the dynamic

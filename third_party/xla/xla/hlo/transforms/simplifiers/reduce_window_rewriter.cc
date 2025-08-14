@@ -516,13 +516,11 @@ absl::StatusOr<bool> ReduceWindowRewriter::Run(
         changed = true;
         continue;
       }
-
       if (reduce_window->inputs().front()->shape().dimensions().size() != 1) {
         continue;
       }
       TF_RETURN_IF_ERROR(
           reduce_window_util::Replace1DReduceWindowWithReshape(reduce_window));
-
       changed = true;
     }
   }
