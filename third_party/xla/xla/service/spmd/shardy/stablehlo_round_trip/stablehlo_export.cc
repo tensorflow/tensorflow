@@ -37,7 +37,10 @@ void addStablehloExportPipeline(
   // folding.
   pm.addPass(createExportOpsPass(options.keepHloShardingConstraints));
   pm.addPass(createStablehloRoundTripShardMapExportPass());
-  pm.addPass(createExportNamedComputationsPass());
+  // ExportNamedComputationsPass should come after
+  // StablehloRoundTripShardMapExportPass as it requires `manual_axes` for named
+  // computations that are inside manual computations in order to deduplicate.
+  pm.addPass(createExportNamedComputationsPass(/*deduplicate=*/true));
   // If we don't add a sharding to a control flow op without one,
   // StableHLO -> HLO conversion won't add a sharding for that op even if a
   // free variable that has a sharding is lifted as an additional result, and in

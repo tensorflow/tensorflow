@@ -49,7 +49,11 @@ void addSdyRoundTripExportPipeline(mlir::OpPassManager& pm,
     pm.addPass(mlir::sdy::createLiftInlinedMeshesPass());
   }
   pm.addPass(createSdyRoundTripDedupMeshesPass());
-  pm.addPass(createExportNamedComputationsPass());
+  // It requires `manual_axes` for named computations that are inside manual
+  // computations in order to deduplicate. Hence, do not deduplicate since
+  // manual axes are not added yet.
+  // TODO(enver, b/438108862): Set manual axes before and deduplicate.
+  pm.addPass(createExportNamedComputationsPass(/*deduplicate=*/false));
   pm.addPass(createSdyRoundTripExportOpsPass());
   pm.addPass(createSdyRoundTripShardMapExportPass());
   // Preserve the SDY shardings for `createExportStablehloShardingsPass` so that

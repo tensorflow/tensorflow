@@ -30,9 +30,11 @@ namespace sdy {
 //
 // If there is a function with the same name as the `NamedComputationOp` in the
 // module, the MLIR symbol table will change it to `{name}_#`.
-std::unique_ptr<mlir::Pass> createExportNamedComputationsPass();
+// TODO(enver, b/438108862): Drop deduplicate option and always deduplicate.
+std::unique_ptr<mlir::Pass> createExportNamedComputationsPass(bool deduplicate);
 
-// Register the xla-sdy-export-named-computations pass.
+// Register the xla-sdy-export-named-computations pass with `deduplicate` is
+// true.
 void registerExportNamedComputationsPass();
 
 }  // namespace sdy
