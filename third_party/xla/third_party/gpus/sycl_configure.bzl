@@ -100,7 +100,6 @@ def find_cc(repository_ctx):
         target_cc_name = "gcc"
         cc_path_envvar = _GCC_HOST_COMPILER_PATH
     cc_name = target_cc_name
-
     cc_name_from_env = get_host_environ(repository_ctx, cc_path_envvar)
     if cc_name_from_env:
         cc_name = cc_name_from_env
@@ -402,26 +401,64 @@ load("//crosstool:error_gpu_disabled.bzl", "error_gpu_disabled")
 error_gpu_disabled()
 """
 
-def _create_dummy_repository(repository_ctx):
-    # Set up BUILD file for sycl/.
-    _tpl(repository_ctx, "sycl:build_defs.bzl")
-    _tpl(repository_ctx, "sycl:BUILD")
+def _create_dummy_repository(
+        repository_ctx,
+        sycl_libs = None,
+        mkl_sycl_libs = None,
+        copy_rules = None,
+        level_zero_libs = None,
+        level_zero_headers = None):
+    """
+    Create a minimal SYCL layout that intercepts --config=sycl when SYCL
+    isn't configured, emitting a clear, actionable error.
+    """
 
-    # If sycl_configure is not configured to build with SYCL support, and the user
-    # attempts to build with --config=sycl, add a dummy build rule to intercept
-    # this and fail with an actionable error message.
+    # Normalize optional params
+    sycl_libs = sycl_libs or []
+    mkl_sycl_libs = mkl_sycl_libs or []
+    copy_rules = copy_rules or []
+    level_zero_libs = level_zero_libs or []
+    level_zero_headers = level_zero_headers or []
+
+    # Intercept attempts to build with --config=sycl when SYCL is not configured.
     repository_ctx.file(
         "crosstool/error_gpu_disabled.bzl",
         _DUMMY_CROSSTOOL_BZL_FILE,
     )
-    repository_ctx.file("crosstool/BUILD", _DUMMY_CROSSTOOL_BUILD_FILE)
+    repository_ctx.file(
+        "crosstool/BUILD",
+        _DUMMY_CROSSTOOL_BUILD_FILE,
+    )
 
+    # Materialize templated files under sycl/.
     _tpl(
         repository_ctx,
         "sycl:build_defs.bzl",
         {
             "%{sycl_is_configured}": "False",
             "%{sycl_build_is_configured}": "False",
+        },
+    )
+
+    _tpl(
+        repository_ctx,
+        "sycl:BUILD",
+        {
+            # Dummy placeholders: each expands to full item or "".
+            "%{mkl_intel_ilp64_src}": "",
+            "%{mkl_sequential_src}": "",
+            "%{mkl_core_src}": "",
+            "%{mkl_sycl_srcs}": "",
+
+            # Keep these for back-compat.
+            "%{mkl_intel_ilp64_lib}": "",
+            "%{mkl_sequential_lib}": "",
+            "%{mkl_core_lib}": "",
+            "%{mkl_sycl_libs}": "",
+            "%{level_zero_libs}": "",
+            "%{level_zero_headers}": "",
+            "%{sycl_headers}": "",
+            "%{copy_rules}": "\n".join(copy_rules) if copy_rules else "",
         },
     )
 
@@ -566,15 +603,24 @@ def _create_local_sycl_repository(repository_ctx):
             "sycl/lib/" + sycl_libs["mkl_sycl_data_fitting"].file_name,
         )
     level_zero_libs = '"{}",\n'.format("sycl/lib/" + sycl_libs["ze_loader"].file_name)
+
+    def _fmt_src(path):
+        return '"%s",\n' % path
+
     repository_dict = {
+        # New placeholders used by the template
+        "%{mkl_intel_ilp64_src}": _fmt_src("sycl/lib/" + sycl_libs["mkl_intel_ilp64"].file_name),
+        "%{mkl_sequential_src}": _fmt_src("sycl/lib/" + sycl_libs["mkl_sequential"].file_name),
+        "%{mkl_core_src}": _fmt_src("sycl/lib/" + sycl_libs["mkl_core"].file_name),
+        "%{mkl_sycl_srcs}": mkl_sycl_libs,
         "%{mkl_intel_ilp64_lib}": sycl_libs["mkl_intel_ilp64"].file_name,
         "%{mkl_sequential_lib}": sycl_libs["mkl_sequential"].file_name,
         "%{mkl_core_lib}": sycl_libs["mkl_core"].file_name,
         "%{mkl_sycl_libs}": mkl_sycl_libs,
         "%{copy_rules}": "\n".join(copy_rules),
-        "%{sycl_headers}": ('":mkl-include",\n":sycl-include",\n'),
+        "%{sycl_headers}": '":mkl-include",\n":sycl-include",\n',
         "%{level_zero_libs}": level_zero_libs,
-        "%{level_zero_headers}": ('":level-zero-include"'),
+        "%{level_zero_headers}": '":level-zero-include"',
     }
     repository_ctx.template(
         "sycl/BUILD",

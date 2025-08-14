@@ -62,16 +62,17 @@ cc_library(
 cc_library(
     name = "mkl",
     srcs = [
-        "sycl/lib/%{mkl_intel_ilp64_lib}",
-        "sycl/lib/%{mkl_sequential_lib}",
-        "sycl/lib/%{mkl_core_lib}",
-        %{mkl_sycl_libs}
+        %{mkl_intel_ilp64_src}
+        %{mkl_sequential_src}
+        %{mkl_core_src}
+        %{mkl_sycl_srcs}
     ],
     data = [
-        "sycl/lib/%{mkl_intel_ilp64_lib}",
-        "sycl/lib/%{mkl_sequential_lib}",
-        "sycl/lib/%{mkl_core_lib}",
-        %{mkl_sycl_libs}
+        %{mkl_intel_ilp64_src}
+        %{mkl_sequential_src}
+        %{mkl_core_src}
+        %{mkl_sycl_srcs}
+
     ],
     includes = [
         ".",
