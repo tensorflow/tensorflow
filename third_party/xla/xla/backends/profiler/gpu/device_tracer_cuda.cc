@@ -27,6 +27,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/backends/profiler/gpu/cupti_collector.h"
 #include "xla/backends/profiler/gpu/cupti_tracer.h"
+#include "xla/backends/profiler/gpu/cupti_tracer_options_utils.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/profiler/utils/time_utils.h"
 #include "xla/tsl/util/env_var.h"
@@ -44,7 +45,8 @@ using tsl::ReadBoolFromEnvVar;
 // GpuTracer for GPU.
 class GpuTracer : public tsl::profiler::ProfilerInterface {
  public:
-  explicit GpuTracer(CuptiTracer* cupti_tracer) : cupti_tracer_(cupti_tracer) {
+  explicit GpuTracer(CuptiTracer* cupti_tracer, ProfileOptions profile_options)
+      : cupti_tracer_(cupti_tracer), profile_options_(profile_options) {
     VLOG(1) << "GpuTracer created.";
   }
   ~GpuTracer() override {}
@@ -70,6 +72,7 @@ class GpuTracer : public tsl::profiler::ProfilerInterface {
   CuptiTracer* cupti_tracer_;
   CuptiTracerOptions options_;
   std::unique_ptr<CuptiTraceCollector> cupti_collector_;
+  ProfileOptions profile_options_;
   std::vector<std::unique_ptr<tensorflow::profiler::XPlane>> xplanes_;
 };
 
@@ -99,6 +102,13 @@ absl::Status GpuTracer::DoStart() {
 
   CuptiTracerCollectorOptions collector_options;
   collector_options.num_gpus = cupti_tracer_->NumGpus();
+
+  // TODO: Add a test to verify that the options are set correctly and
+  // collectors are generating correct data once ProfileData is
+  // available(b/399675726).
+  TF_RETURN_IF_ERROR(UpdateCuptiTracerOptionsFromProfilerOptions(
+      profile_options_, options_, collector_options));
+
   uint64_t start_gputime_ns = CuptiTracer::GetTimestamp();
   uint64_t start_walltime_ns = tsl::profiler::GetCurrentTimeNanos();
   cupti_collector_ = CreateCuptiCollector(collector_options, start_walltime_ns,
@@ -195,7 +205,7 @@ std::unique_ptr<tsl::profiler::ProfilerInterface> CreateGpuTracer(
   if (!cupti_tracer->IsAvailable()) {
     return nullptr;
   }
-  return std::make_unique<profiler::GpuTracer>(cupti_tracer);
+  return std::make_unique<profiler::GpuTracer>(cupti_tracer, options);
 }
 
 auto register_gpu_tracer_factory = [] {

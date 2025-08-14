@@ -864,7 +864,7 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
               << " callback api events and " << num_activity_events_
               << " activity events. " << ReportDroppedEvents();
     LOG(INFO) << " GpuTracer max callback_events: "
-              << options_.max_activity_api_events
+              << options_.max_callback_api_events
               << ", max activity events: " << options_.max_activity_api_events;
     if (std::string num_events_dropped_message = ReportNumEventsIfDropped();
         !num_events_dropped_message.empty()) {

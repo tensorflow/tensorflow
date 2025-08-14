@@ -37,6 +37,7 @@ cc_library(
     deps = [
         ":cupti_collector",
         ":cupti_tracer",
+        ":cupti_tracer_options_utils",
         "//xla/tsl/platform:errors",
         "//xla/tsl/profiler/utils:time_utils",
         "//xla/tsl/util:env_var",
@@ -663,5 +664,28 @@ xla_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "cupti_tracer_options_utils",
+    srcs = ["cupti_tracer_options_utils.cc"],
+    hdrs = ["cupti_tracer_options_utils.h"],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":cupti_collector",
+        ":cupti_tracer",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/profiler/utils:profiler_options_util",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@local_config_cuda//cuda:cuda_headers",
+        "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
     ],
 )
