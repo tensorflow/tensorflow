@@ -35,7 +35,7 @@ GcsThrottle::GcsThrottle(EnvTime* env_time)
       env_time_(env_time ? env_time : get_default_env_time()) {}
 
 bool GcsThrottle::AdmitRequest() {
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   UpdateState();
   if (available_tokens_ < config_.tokens_per_request) {
     return false || !config_.enabled;
@@ -45,13 +45,13 @@ bool GcsThrottle::AdmitRequest() {
 }
 
 void GcsThrottle::RecordResponse(size_t num_bytes) {
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   UpdateState();
   available_tokens_ -= request_bytes_to_tokens(num_bytes);
 }
 
 void GcsThrottle::SetConfig(GcsThrottleConfig config) {
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   config_ = config;
   available_tokens_ = config.initial_tokens;
   last_updated_secs_ = env_time_->GetOverridableNowSeconds();
