@@ -131,7 +131,7 @@ class GemmAutotuner {
                                                   .gpu_compute_capability()));
 
     // Don't run autotuning concurrently on the same GPU.
-    absl::MutexLock gpu_lock(&GetGpuMutex(stream_->parent()));
+    absl::MutexLock gpu_lock(GetGpuMutex(stream_->parent()));
 
     bool should_init_buffers = autotune_config_.should_init_buffers();
     bool should_check_correctness = autotune_config_.should_check_correctness();
