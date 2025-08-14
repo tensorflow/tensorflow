@@ -60,6 +60,9 @@ class HloControlFlowFlattening : public HloModulePass {
     // If flatten_conditional is true, this will behe default predicate value to
     // use for predicated conditional ops.
     bool conditional_value = false;
+    // If remove_dynamic_shapes is true, assume all bounded dynamic shapes have
+    // a maximum bounded size.
+    bool remove_dynamic_shapes = false;
   };
   explicit HloControlFlowFlattening(const Options& options)
       : while_execution_count_(options.while_execution_count),
@@ -70,6 +73,7 @@ class HloControlFlowFlattening : public HloModulePass {
         remove_host_transfer_(options.remove_host_transfer),
         flatten_conditional_(options.flatten_conditional),
         conditional_value_(options.conditional_value),
+        remove_dynamic_shapes_(options.remove_dynamic_shapes),
         remove_comm_(options.remove_comm),
         remove_id_(options.remove_id) {}
   ~HloControlFlowFlattening() override = default;
@@ -96,6 +100,9 @@ class HloControlFlowFlattening : public HloModulePass {
   // computation. For predicated conditionals, the PRED is set to
   // conditional_value_.
   absl::Status SetConditionalValue(HloInstruction* conditional) const;
+  // Rewrites entry computation layout of the module to assume all bounded
+  // dynamic shapes have a maximum bounded size.
+  absl::Status RemoveEntryComputationLayoutDynamism(HloModule* module) const;
 
   int while_execution_count_;
   int max_outer_loop_count_;
@@ -105,6 +112,7 @@ class HloControlFlowFlattening : public HloModulePass {
   bool remove_host_transfer_;
   bool flatten_conditional_;
   bool conditional_value_;
+  bool remove_dynamic_shapes_;
 
  protected:
   // Replaces a collective op with a custom call and returns the custom call.
