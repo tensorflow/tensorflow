@@ -103,10 +103,6 @@ PjRtFuture<> CpuTrackedDeviceEvent::GetReadyFuture() {
       });
 }
 
-void CpuTrackedDeviceEvent::AndThen(absl::AnyInvocable<void() &&> cb) {
-  event_.AndThen(std::move(cb));
-}
-
 /*static*/ absl::StatusOr<tsl::RCReference<CpuRawBuffer>>
 CpuRawBuffer::Allocate(PjRtMemorySpace* memory_space, size_t size_bytes) {
   TF_ASSIGN_OR_RETURN(auto memory, CpuDeviceMemory::Allocate(size_bytes));

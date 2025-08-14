@@ -59,6 +59,7 @@ limitations under the License.
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
+#include "xla/pjrt/device_event.h"
 #include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
@@ -79,6 +80,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_stream_executor_client.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_allocator_config.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
+#include "xla/pjrt/se_raw_buffer.h"
 #include "xla/pjrt/tracked_device_buffer.h"
 #include "xla/pjrt/worker_thread.h"
 #include "xla/service/compiler.h"
@@ -934,13 +936,14 @@ PjRtFuture<> StreamExecutorGpuClient::CopyRawSubBufferToHost(
       });
 }
 
-PjRtFuture<> StreamExecutorGpuClient::CopyRawHostToDevice(
+tsl::RCReference<PjRtDeviceEvent> StreamExecutorGpuClient::CopyRawHostToDevice(
     LocalDeviceState* local_device,
     tsl::RCReference<RawSEDeviceMemory> device_buffer, const void* src,
     int64_t offset, int64_t transfer_size) {
   auto promise = PjRtFuture<>::CreatePromise();
   se::Stream* stream = local_device->host_to_device_stream();
-  thread_pool()->Schedule([local_device, stream,
+  auto device_event = BufferSequencingEvent::Create(thread_pool());
+  thread_pool()->Schedule([this, device_event, local_device, stream,
                            buffer = std::move(device_buffer), src, offset,
                            transfer_size, promise]() mutable {
     se::DeviceMemoryBase sub_buffer = buffer->mem();
@@ -948,39 +951,26 @@ PjRtFuture<> StreamExecutorGpuClient::CopyRawHostToDevice(
       sub_buffer = sub_buffer.GetByteSlice(offset, transfer_size);
     }
     auto status = stream->Memcpy(&sub_buffer, src, transfer_size);
-    if (!status.ok()) {
-      promise.Set(std::move(status));
-      return;
+    if (status.ok()) {
+      status = AllocateAndRecordEvent(device_event, local_device, stream);
     }
-    auto callback_status = local_device->ThenExecuteCallback(
-        stream,
-        [promise, buffer = std::move(buffer)]() mutable { promise.Set(); });
+    if (!status.ok()) {
+      SetEventAsError(device_event, status);
+    }
   });
-  return PjRtFuture<>(
-      std::move(promise),
-      /*on_block_start=*/
-      []() {
-        tsl::profiler::TraceMeProducer traceme(
-            "StreamExecutorGpuClient::CopyRawHostToDevice");
-        VLOG(1) << "StreamExecutorGpuClient::CopyRawHostToDevice";
-        return PjRtFutureHelpers::ProfilingKeys(
-            {/*traceme_context_id =*/traceme.GetContextId()});
-      },
-      /*on_block_end=*/
-      [](PjRtFutureHelpers::ProfilingKeys keys) {
-        tsl::profiler::TraceMeConsumer traceme(
-            "StreamExecutorGpuClient::CopyRawHostToDevice",
-            keys.traceme_context_id);
-      });
+  return tsl::MakeRef<PjRtStreamExecutorDeviceEvent>(std::move(device_event),
+                                                     "StreamExecutorGpuClient",
+                                                     "CopyRawHostToDevice");
 }
 
-PjRtFuture<> StreamExecutorGpuClient::CopyRawDeviceToHost(
+tsl::RCReference<PjRtDeviceEvent> StreamExecutorGpuClient::CopyRawDeviceToHost(
     LocalDeviceState* local_device,
     tsl::RCReference<RawSEDeviceMemory> device_buffer, void* dst,
     int64_t offset, int64_t transfer_size) {
   auto promise = PjRtFuture<>::CreatePromise();
   se::Stream* stream = local_device->GetDeviceToHostStream();
-  thread_pool()->Schedule([local_device, stream,
+  auto device_event = BufferSequencingEvent::Create(thread_pool());
+  thread_pool()->Schedule([this, device_event, local_device, stream,
                            buffer = std::move(device_buffer), dst, offset,
                            transfer_size, promise]() mutable {
     se::DeviceMemoryBase sub_buffer = buffer->mem();
@@ -988,30 +978,16 @@ PjRtFuture<> StreamExecutorGpuClient::CopyRawDeviceToHost(
       sub_buffer = sub_buffer.GetByteSlice(offset, transfer_size);
     }
     auto status = stream->Memcpy(dst, sub_buffer, transfer_size);
-    if (!status.ok()) {
-      promise.Set(std::move(status));
-      return;
+    if (status.ok()) {
+      status = AllocateAndRecordEvent(device_event, local_device, stream);
     }
-    auto callback_status = local_device->ThenExecuteCallback(
-        stream,
-        [promise, buffer = std::move(buffer)]() mutable { promise.Set(); });
+    if (!status.ok()) {
+      SetEventAsError(device_event, status);
+    }
   });
-  return PjRtFuture<>(
-      std::move(promise),
-      /*on_block_start=*/
-      []() {
-        tsl::profiler::TraceMeProducer traceme(
-            "StreamExecutorGpuClient::CopyRawDeviceToHost");
-        VLOG(1) << "StreamExecutorGpuClient::CopyRawDeviceToHost";
-        return PjRtFutureHelpers::ProfilingKeys(
-            {/*traceme_context_id =*/traceme.GetContextId()});
-      },
-      /*on_block_end=*/
-      [](PjRtFutureHelpers::ProfilingKeys keys) {
-        tsl::profiler::TraceMeConsumer traceme(
-            "StreamExecutorGpuClient::CopyRawDeviceToHost",
-            keys.traceme_context_id);
-      });
+  return tsl::MakeRef<PjRtStreamExecutorDeviceEvent>(std::move(device_event),
+                                                     "StreamExecutorGpuClient",
+                                                     "CopyRawDeviceToHost");
 }
 
 absl::Status StreamExecutorGpuClient::UpdateCompileOptionsInternal(

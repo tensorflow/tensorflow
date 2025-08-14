@@ -122,6 +122,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/profiling/device_time_measurement.h"
 #include "xla/pjrt/profiling/profiling_context.h"
+#include "xla/pjrt/se_raw_buffer.h"
 #include "xla/pjrt/semaphore.h"
 #include "xla/pjrt/stream_executor_executable.h"
 #include "xla/pjrt/tracked_device_buffer.h"
@@ -593,6 +594,10 @@ bool PjRtStreamExecutorBuffer::IsOnCpu() const {
          memory_space()->kind() == PinnedHostMemorySpace::kKind;
 }
 
+bool PjRtStreamExecutorClient::IsOnCpu(PjRtMemorySpace* memory_space) {
+  return memory_space->kind() == PinnedHostMemorySpace::kKind;
+}
+
 absl::StatusOr<Shape> PjRtStreamExecutorBuffer::logical_on_device_shape() {
   if (on_device_shape_.is_static()) {
     return on_device_shape_;
@@ -1006,6 +1011,14 @@ PjRtStreamExecutorClient::CreateUninitializedBuffer(
                                 /*is_uninitialized_create=*/true, this,
                                 definition_event));
   return std::unique_ptr<PjRtBuffer>(std::move(py_buffer));
+}
+
+tsl::RCReference<PjRtDeviceEvent>
+PjRtStreamExecutorClient::CreateErrorDeviceEvent(absl::Status error) {
+  auto definition_event = BufferSequencingEvent::Create(this->thread_pool());
+  SetEventAsError(definition_event, error);
+  return tsl::MakeRef<PjRtStreamExecutorDeviceEvent>(
+      std::move(definition_event));
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
