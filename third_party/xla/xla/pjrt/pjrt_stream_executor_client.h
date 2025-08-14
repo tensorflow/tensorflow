@@ -389,7 +389,11 @@ class PjRtStreamExecutorClient : public PjRtClient {
                                       LocalDeviceState* local_device,
                                       se::Stream* stream);
 
+  tsl::RCReference<PjRtDeviceEvent> CreateErrorDeviceEvent(absl::Status error);
+
   void SetEventAsError(BufferSequencingEventRef event, absl::Status s);
+
+  bool IsOnCpu(PjRtMemorySpace* memory_space);
 
  protected:
   friend class PjRtStreamExecutorBuffer;
@@ -409,18 +413,20 @@ class PjRtStreamExecutorClient : public PjRtClient {
     return PjRtFuture<>(Unimplemented("Raw copies to host not implemented."));
   }
 
-  virtual PjRtFuture<> CopyRawHostToDevice(
+  virtual tsl::RCReference<PjRtDeviceEvent> CopyRawHostToDevice(
       LocalDeviceState* local_device,
       tsl::RCReference<RawSEDeviceMemory> device_buffer, const void* src,
       int64_t offset, int64_t transfer_size) {
-    return PjRtFuture<>(Unimplemented("Raw copies h2d not implemented."));
+    return CreateErrorDeviceEvent(
+        Unimplemented("Raw copies h2d not implemented."));
   }
 
-  virtual PjRtFuture<> CopyRawDeviceToHost(
+  virtual tsl::RCReference<PjRtDeviceEvent> CopyRawDeviceToHost(
       LocalDeviceState* local_device,
       tsl::RCReference<RawSEDeviceMemory> device_buffer, void* dst,
       int64_t offset, int64_t transfer_size) {
-    return PjRtFuture<>(Unimplemented("Raw copies d2h not implemented."));
+    return CreateErrorDeviceEvent(
+        Unimplemented("Raw copies d2h not implemented."));
   }
 
   // Helper function for creating PjRtStreamExecutorExecutables. Modifies

@@ -20,24 +20,58 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_stream_executor_client.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "tsl/profiler/lib/connected_traceme.h"
 
 namespace xla {
 
+PjRtFuture<> PjRtStreamExecutorDeviceEvent::GetReadyFuture() {
+  PjRtFuture<>::Promise promise = PjRtFuture<>::CreatePromise();
+  event_.AndThen([promise, event = event_]() mutable {
+    if (auto* error = event.GetErrorIfPresent()) {
+      promise.Set(*error);
+    } else {
+      promise.Set();
+    }
+  });
+
+  return PjRtFuture<>(
+      promise,
+      /*on_block_start=*/
+      [ready_event = FormRef(promise.async_value()),
+       callee_method = callee_method_, callee_type = callee_type_]() {
+        tsl::profiler::TraceMeProducer traceme(
+            [&] { return absl::StrCat(callee_type, "::", callee_method); });
+        return PjRtFutureHelpers::ProfilingKeys({traceme.GetContextId()});
+      },
+      /*on_block_end=*/
+      [callee_method = callee_method_,
+       callee_type = callee_type_](PjRtFutureHelpers::ProfilingKeys keys) {
+        tsl::profiler::TraceMeConsumer traceme(
+            [&] { return absl::StrCat(callee_type, "::", callee_method); },
+            keys.traceme_context_id);
+      });
+}
+
 PjRtFuture<> PjRtStreamExecutorRawBuffer::CopyRawHostToDevice(
     const void* src, int64_t offset, int64_t transfer_size) {
-  return client_->CopyRawHostToDevice(local_device_, device_buffer_, src,
-                                      offset, transfer_size);
+  return client_
+      ->CopyRawHostToDevice(local_device_, device_buffer_, src, offset,
+                            transfer_size)
+      ->GetReadyFuture();
 }
 
 PjRtFuture<> PjRtStreamExecutorRawBuffer::CopyRawDeviceToHost(
     void* dst, int64_t offset, int64_t transfer_size) {
-  return client_->CopyRawDeviceToHost(local_device_, device_buffer_, dst,
-                                      offset, transfer_size);
+  return client_
+      ->CopyRawDeviceToHost(local_device_, device_buffer_, dst, offset,
+                            transfer_size)
+      ->GetReadyFuture();
 }
 
 std::optional<absl::StatusOr<tsl::RCReference<PjRtRawBuffer>>>
