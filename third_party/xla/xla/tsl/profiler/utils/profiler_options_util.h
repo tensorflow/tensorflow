@@ -17,10 +17,15 @@ limitations under the License.
 #define XLA_TSL_PROFILER_UTILS_PROFILER_OPTIONS_UTIL_H_
 
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
 #include <variant>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
 
 namespace tsl {
@@ -29,6 +34,25 @@ namespace profiler {
 // std::nullopt.
 std::optional<std::variant<std::string, bool, int64_t>> GetConfigValue(
     const tensorflow::ProfileOptions& options, const std::string& key);
+
+template <typename T>
+absl::Status SetValue(const tensorflow::ProfileOptions& options,
+                      const std::string& key,
+                      absl::flat_hash_set<absl::string_view>& input_keys,
+                      std::function<void(T)> setter) {
+  auto value = tsl::profiler::GetConfigValue(options, key);
+  if (value.has_value()) {
+    if (std::holds_alternative<T>(*value)) {
+      input_keys.erase(key);
+      setter(std::get<T>(*value));
+    } else {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Invalid value type for key: ", key, ". Expected a different type."));
+    }
+  }
+  return absl::OkStatus();
+}
+
 }  // namespace profiler
 }  // namespace tsl
 

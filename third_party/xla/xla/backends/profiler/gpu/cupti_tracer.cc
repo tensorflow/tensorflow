@@ -1086,6 +1086,7 @@ absl::Status CuptiTracer::Enable(
 
   // For nvtx tracking, utilize CUPTI activity marker and marker_data.
   if (option_->enable_nvtx_tracking) {
+    VLOG(1) << "NVTX tracking Enabled.";
     std::vector<CUpti_ActivityKind>& activities = option_->activities_selected;
     if (std::find(activities.begin(), activities.end(),
                   CUPTI_ACTIVITY_KIND_MARKER) == activities.end()) {
