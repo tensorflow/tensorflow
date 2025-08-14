@@ -421,6 +421,8 @@ tf_kernel_library(
         "@local_xla//xla/hlo/translate:stablehlo",
         "@local_xla//xla/hlo/translate/mhlo_to_hlo:type_to_shape",
         "@local_xla//xla/service:hlo_module_config",
+        "@local_xla//xla/service/spmd/shardy/stablehlo_round_trip:stablehlo_import",
+        "@local_xla//xla/tsl/framework/mlir:status_scoped_diagnostic_handler",
         "@local_xla//xla/tsl/platform:errors",
         "@local_xla//xla/tsl/platform:statusor",
         "@stablehlo//:stablehlo_ops",
@@ -1579,6 +1581,7 @@ tf_kernel_library(
     name = "sharding_op",
     srcs = ["sharding_op.cc"],
     deps = [
+        "//tensorflow/compiler/tf2xla:sharding_util",
         "//tensorflow/compiler/tf2xla:xla_compilation_device",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_context",

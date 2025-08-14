@@ -46,7 +46,6 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/WalkResult.h"  // from @llvm-project
-#include "shardy/dialect/sdy/transforms/import/passes.h"  // from @shardy
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/extract_callback.h"
@@ -75,11 +74,8 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/dump.h"
-#include "xla/service/spmd/shardy/sdy_round_trip/pipelines.h"
-#include "xla/service/spmd/shardy/stablehlo_round_trip/stablehlo_import.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/ref_count.h"
-#include "xla/tsl/framework/mlir/status_scoped_diagnostic_handler.h"
 #include "xla/tsl/framework/serving_device_selector.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -250,29 +246,6 @@ absl::StatusOr<bool> GetUseShardyPartitioner(mlir::ModuleOp module) {
   }
   VLOG(2) << "use_shardy_partitioner: " << *use_shardy_partitioner;
   return *use_shardy_partitioner;
-}
-
-// We first convert mhlo.sharding to sdy.sharding. Then, we call
-// the SdyRoundTrip import pass to convert the
-// `mhlo.frontend_attributes={xla.sdy.sharding...}` to sdy.sharding. After
-// that we lift the meshes that were inlined when we built the module for the
-// cluster. We don't need to invoke SdyRoundTrip export here as MLIR to HLO will
-// perform that.
-absl::Status ImportShardingsAndLiftInlinedMeshes(mlir::ModuleOp module) {
-  mlir::PassManager sdy_roundtrip(module->getContext());
-  sdy_roundtrip.addPass(xla::sdy::createImportShardingsPass(
-      /*allowPropagationToArgs=*/false, /*allowPropagationToResults=*/false));
-  xla::sdy::addSdyRoundTripImportPipeline(sdy_roundtrip,
-                                          /*enableConstantImport=*/false);
-  sdy_roundtrip.addPass(mlir::sdy::createLiftInlinedMeshesPass());
-
-  tsl::StatusScopedDiagnosticHandler diagnosticHandler(module->getContext());
-  absl::Status status =
-      diagnosticHandler.consumeStatus(sdy_roundtrip.run(module));
-  if (status.ok() && VLOG_IS_ON(1)) {
-    tensorflow::DumpMlirOpToFile("ifrt_after_bridge_phase2_sdy", module);
-  }
-  return status;
 }
 
 }  // namespace
@@ -518,13 +491,6 @@ IfrtServingExecutable::CreateExecutableSynchronously(
   if (VLOG_IS_ON(1)) {
     tensorflow::DumpMlirOpToFile("ifrt_after_bridge_phase2",
                                  mlir_hlo_module.get());
-  }
-
-  if (use_shardy_partitioner) {
-    // We have inlined meshes to build the module for the cluster, but Shardy
-    // expects lifted meshes.
-    TF_RETURN_IF_ERROR(
-        ImportShardingsAndLiftInlinedMeshes(mlir_hlo_module.get()));
   }
 
   const int num_replicas = tf2hlo_result.compile_metadata.num_replicas();

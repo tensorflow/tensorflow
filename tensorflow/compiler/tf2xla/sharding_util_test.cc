@@ -18,7 +18,12 @@ limitations under the License.
 #include <string>
 
 #include <gmock/gmock.h>
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -216,5 +221,44 @@ xla::OpSharding CreateTupleSharding() {
 INSTANTIATE_TEST_SUITE_P(GetShardingFromNode, ShardingWithMetadataTest,
                          ::testing::Values(xla::sharding_builder::Replicate(),
                                            CreateTupleSharding()));
+
+TEST(AddSdyShardingFrontendAttributeTest, NoSharding) {
+  xla::XlaBuilder builder("test_builder");
+  xla::XlaOp param = xla::Parameter(
+      &builder, 0, xla::ShapeUtil::MakeShape(xla::F32, {}), "p0");
+  EXPECT_FALSE(builder.sharding().has_value());
+  TF_EXPECT_OK(addSdyShardingFrontendAttribute(
+      &builder, param, xla::ShapeUtil::MakeShape(xla::F32, {})));
+}
+
+TEST(AddSdyShardingFrontendAttributeTest, WithSharding) {
+  xla::XlaBuilder builder("test_builder");
+  xla::OpSharding opSharding;
+  opSharding.set_type(xla::OpSharding::OTHER);
+  opSharding.add_tile_assignment_dimensions(2);
+  opSharding.add_tile_assignment_dimensions(4);
+  opSharding.add_iota_reshape_dims(8);
+  opSharding.add_iota_transpose_perm(0);
+  xla::XlaScopedShardingAssignment assign_sharding(&builder, opSharding);
+
+  xla::XlaOp param = xla::Parameter(
+      &builder, 0, xla::ShapeUtil::MakeShape(xla::F32, {2, 3}), "p0");
+  TF_EXPECT_OK(addSdyShardingFrontendAttribute(
+      &builder, param, xla::ShapeUtil::MakeShape(xla::F32, {2, 3}),
+      /*is_single_arg=*/true));
+
+  TF_ASSERT_OK_AND_ASSIGN(xla::XlaComputation computation, builder.Build());
+  const xla::HloModuleProto& hloModuleProto = computation.proto();
+
+  const xla::HloInstructionProto& instruction =
+      hloModuleProto.computations(0).instructions(0);
+
+  EXPECT_TRUE(instruction.frontend_attributes().map().contains(
+      xla::HloSharding::kShardingFrontendAttrName));
+  EXPECT_EQ(instruction.frontend_attributes().map().at(
+                xla::HloSharding::kShardingFrontendAttrName),
+            "#sdy.sharding<mesh<[\"_axis_0\"=2, \"_axis_1\"=4]>, "
+            "[{\"_axis_0\"}, {\"_axis_1\"}]>");
+}
 
 }  // namespace tensorflow

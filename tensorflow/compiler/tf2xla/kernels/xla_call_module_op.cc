@@ -35,6 +35,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -44,6 +45,7 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -62,8 +64,10 @@ limitations under the License.
 #include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/hlo/translate/stablehlo.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/spmd/shardy/stablehlo_round_trip/stablehlo_import.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/framework/mlir/status_scoped_diagnostic_handler.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -77,12 +81,28 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+absl::Status ImportShardingsAndInlineMeshes(mlir::ModuleOp module) {
+  mlir::PassManager sdy_roundtrip(module->getContext());
+  sdy_roundtrip.addPass(xla::sdy::createImportShardingsPass(
+      /*allowPropagationToArgs=*/{}, /*allowPropagationToResults=*/{},
+      /*inlineMesh=*/true));
+
+  tsl::StatusScopedDiagnosticHandler diagnosticHandler(module->getContext());
+  absl::Status status =
+      diagnosticHandler.consumeStatus(sdy_roundtrip.run(module));
+  if (status.ok() && VLOG_IS_ON(5)) {
+    DumpMlirOpToFile("xla_call_module.imported_tf_func_after_shardy_import",
+                     module);
+  }
+  return status;
+}
+
 // Imports the given `XlaComputation` into StableHLO functions the MLIR module.
 // Returns the MLIR function in the imported module that represents the entry
 // function of the imported computation.
 absl::StatusOr<mlir::func::FuncOp> ImportXlaComputation(
-    mlir::SymbolTableCollection &symbol_table_collection, mlir::ModuleOp module,
-    const xla::XlaComputation &computation) {
+    mlir::SymbolTableCollection& symbol_table_collection, mlir::ModuleOp module,
+    const xla::XlaComputation& computation, bool use_shardy_partitioner) {
   mlir::MLIRContext *context = module.getContext();
   mlir::SymbolTable &symbol_table =
       symbol_table_collection.getSymbolTable(module);
@@ -92,6 +112,13 @@ absl::StatusOr<mlir::func::FuncOp> ImportXlaComputation(
       xla::ConvertHloToStablehlo(*context, &computation.proto()));
   if (VLOG_IS_ON(5)) {
     DumpMlirOpToFile("xla_call_module.imported_tf_func", *imported);
+  }
+
+  if (use_shardy_partitioner) {
+    // Shardings for the tf function calls are not added in
+    // XlaCompiler::CompileGraph. Therefore we need to add shardy shardings
+    // separately here.
+    TF_RETURN_IF_ERROR(ImportShardingsAndInlineMeshes(imported.get()));
   }
 
   // Rename all functions beforehand in order to avoid conflicts.
@@ -255,10 +282,13 @@ class XlaCallModuleOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, loader_->SetPlatformIndex(compilation_platform_));
     OP_REQUIRES_OK(ctx, loader_->RefineDynamicShapes(input_shapes));
     OP_REQUIRES_OK(ctx, loader_->ValidateStaticShapes());
-    OP_REQUIRES_OK(ctx, loader_->PrepareStablehloForLowering());
+    // Lowering tf function calls before SdyRoundTripExport which is a part of
+    // PrepareStablehloForLowering, as we run ImportShardy pass while lowering
+    // tf function calls.
     if (!function_list_.empty()) {
       OP_REQUIRES_OK(ctx, LowerTfFunctionCalls(ctx));
     }
+    OP_REQUIRES_OK(ctx, loader_->PrepareStablehloForLowering());
 
     xla::XlaOp token_input;
     if (!op_token_input_nodes_.empty()) {
@@ -467,9 +497,11 @@ class XlaCallModuleOp : public XlaOpKernel {
       // Import the lowered HLO module into StableHLO functions in `module`.
       // The main function accepts variadic arguments and returns variadic
       // results.
-      TF_ASSIGN_OR_RETURN(mlir::func::FuncOp main_func,
-                          ImportXlaComputation(symbol_table_collection, module,
-                                               *result.computation));
+      TF_ASSIGN_OR_RETURN(
+          mlir::func::FuncOp main_func,
+          ImportXlaComputation(
+              symbol_table_collection, module, *result.computation,
+              ctx->compiler()->options().use_shardy_partitioner));
 
       // Replace the custom call with ops that call the imported main function.
       mlir::OpBuilder builder(custom_call);

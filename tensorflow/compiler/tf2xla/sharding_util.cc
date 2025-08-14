@@ -15,12 +15,17 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/sharding_util.h"
 
 #include <optional>
+#include <string>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_sharding_util.h"
+#include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/service/spmd/shardy/stablehlo_round_trip/stablehlo_import.h"
+#include "xla/shape.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -221,6 +226,20 @@ absl::StatusOr<std::optional<xla::OpSharding>> GetShardingFromNodeDef(
         shardingv2.value().DebugString()));
   }
   return shardingv2;
+}
+
+absl::Status addSdyShardingFrontendAttribute(xla::XlaBuilder* builder,
+                                             xla::XlaOp op, xla::Shape shape,
+                                             bool is_single_arg) {
+  if (!builder->sharding().has_value()) {
+    return absl::OkStatus();
+  }
+
+  return builder->SetInstructionFrontendAttribute(
+      op, std::string(xla::HloSharding::kShardingFrontendAttrName),
+      xla::sdy::convertToSdySharding(builder->sharding().value(), shape,
+                                     /*openDims=*/false,
+                                     /*inlineMesh=*/true, is_single_arg));
 }
 
 }  // namespace tensorflow
