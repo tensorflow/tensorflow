@@ -91,9 +91,10 @@ absl::StatusOr<std::unique_ptr<InputBuffers>> GpuProfiler::CreateInputBuffers(
   }
   TF_ASSIGN_OR_RETURN(
       RedzoneBuffers buffers,
-      RedzoneBuffers::FromComputation(
-          *executable->module().entry_computation(), allocator_.get(),
-          stream_.get(), RedzoneBuffers::BuffersToCreate::kAllInputs,
+      RedzoneBuffers::FromProgramShape(
+          executable->entry_computation_layout().ComputeProgramShape(),
+          allocator_.get(), stream_.get(),
+          RedzoneBuffers::BuffersToCreate::kAllInputs,
           options_.should_init_buffers,
           /*should_check_correctness=*/true, options_.redzone_padding_bytes));
   auto gpu_buffers = std::make_unique<GpuInputBuffers>();

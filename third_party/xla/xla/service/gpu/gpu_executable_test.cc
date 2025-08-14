@@ -15,17 +15,24 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_executable.h"
 
+#include <memory>
 #include <optional>
+#include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "xla/backends/gpu/runtime/sequential_thunk.h"
+#include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
+#include "xla/shape_layout.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 
 namespace xla::gpu {
 namespace {
+using ::testing::ElementsAre;
 using ::tsl::proto_testing::EqualsProto;
 using ::tsl::testing::IsOkAndHolds;
 
@@ -72,6 +79,24 @@ TEST(GpuExecutableTest, OuputInfoToAndFromProto) {
               )pb"));
   EXPECT_THAT(GpuExecutable::OutputInfo::FromProto(output_info2.ToProto()),
               IsOkAndHolds(output_info2));
+}
+
+TEST(GpuExecutableTest, EntryComputationLayout) {
+  GpuExecutable::Params params;
+  params.module_name = "test_module";
+  params.program_shape.AddParameter(ShapeUtil::MakeShape(F32, {1, 2, 3}), "p0");
+  params.program_shape.AddParameter(ShapeUtil::MakeShape(U8, {1}), "p1");
+  *params.program_shape.mutable_result() = ShapeUtil::MakeShape(F64, {2});
+  params.executable =
+      std::make_unique<SequentialThunk>(Thunk::ThunkInfo{}, ThunkSequence{});
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> executable,
+                          GpuExecutable::Create(std::move(params)));
+  EXPECT_THAT(executable->entry_computation_layout().parameter_layouts(),
+              ElementsAre(ShapeLayout(ShapeUtil::MakeShape(F32, {1, 2, 3})),
+                          ShapeLayout(ShapeUtil::MakeShape(U8, {1}))));
+  EXPECT_EQ(executable->entry_computation_layout().result_layout(),
+            ShapeLayout(ShapeUtil::MakeShape(F64, {2})));
 }
 
 }  // namespace

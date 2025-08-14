@@ -1977,7 +1977,7 @@ StreamExecutorGpuClient::RunAsync(
   std::set<se::DeviceMemoryBase> buffers_in_result;
 
   xla::ShapeTree<tsl::RCReference<RawSEDeviceMemory>> results(
-      gpu_exec->output_shape());
+      gpu_exec->result_shape());
 
   for (auto& p : results) {
     const ShapeIndex& index = p.first;
@@ -2013,7 +2013,7 @@ StreamExecutorGpuClient::RunAsync(
         input.is_donated = false;
         continue;
       } else if (!output_info.passthrough &&
-                 !ShapeUtil::GetSubshape(gpu_exec->output_shape(), index)
+                 !ShapeUtil::GetSubshape(gpu_exec->result_shape(), index)
                       .IsTuple()) {
         // The guard is above is not to insert copy-protection when aliasing
         // pass-through params, as we do not need to write into the output
@@ -2021,7 +2021,7 @@ StreamExecutorGpuClient::RunAsync(
         VLOG(3) << "Using copy-protection: aliasing is specified, but the "
                    "buffer is not donated; allocating a fresh buffer";
         int64_t allocation_size = ShapeUtil::ByteSizeOf(
-            ShapeUtil::GetSubshape(gpu_exec->output_shape(), index));
+            ShapeUtil::GetSubshape(gpu_exec->result_shape(), index));
         absl::StatusOr<se::OwningDeviceMemory> allocated_buffer =
             memory_allocator->Allocate(device_ordinal, allocation_size,
                                        /*retry_on_failure=*/true,

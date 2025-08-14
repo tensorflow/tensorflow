@@ -246,11 +246,11 @@ HloRunner::ExecuteWithExecutable(OpaqueExecutable* executable,
                                  int64_t num_repeats) {
   TF_ASSIGN_OR_RETURN(HloRunnerExecutable* const hlo_runner_executable,
                       HloRunnerExecutable::TryUnwrap(*this, executable));
+  auto entry_computation_layout =
+      hlo_runner_executable->executable()->entry_computation_layout();
   TF_ASSIGN_OR_RETURN(
       std::vector<ScopedShapedBuffer> argument_buffers,
-      TransferLiteralsToDevice(arguments, &hlo_runner_executable->executable()
-                                               ->module()
-                                               .entry_computation_layout()));
+      TransferLiteralsToDevice(arguments, &entry_computation_layout));
 
   std::vector<absl::StatusOr<Literal>> results;
   results.reserve(num_repeats);
@@ -272,11 +272,11 @@ absl::StatusOr<Literal> HloRunner::ExecuteWithExecutableAndProfile(
     ExecutionProfile* profile) {
   TF_ASSIGN_OR_RETURN(HloRunnerExecutable* const hlo_runner_executable,
                       HloRunnerExecutable::TryUnwrap(*this, executable));
+  ComputationLayout entry_computation_layout =
+      hlo_runner_executable->executable()->entry_computation_layout();
   TF_ASSIGN_OR_RETURN(
       std::vector<ScopedShapedBuffer> argument_buffers,
-      TransferLiteralsToDevice(arguments, &hlo_runner_executable->executable()
-                                               ->module()
-                                               .entry_computation_layout()));
+      TransferLiteralsToDevice(arguments, &entry_computation_layout));
   TF_ASSIGN_OR_RETURN(ExecutionOutput result,
                       ExecuteWithDeviceBuffers(
                           /*executable=*/hlo_runner_executable,
