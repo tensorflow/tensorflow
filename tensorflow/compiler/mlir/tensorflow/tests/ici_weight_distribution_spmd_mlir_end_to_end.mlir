@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tf-replicated-clustering-bridge-v2 -tfrt-lower-cluster-to-runtime-ops-tpu -tf-dialect-to-executor-v2 --mlir-print-ir-before-all --mlir-print-ir-after-all | FileCheck %s
+// RUN: tf-opt %s -tf-replicated-clustering-bridge-v2 -tfrt-lower-cluster-to-runtime-ops-tpu -tf-dialect-to-executor-v2 | FileCheck %s
 
 // CHECK-LABEL: func.func @main
 // CHECK: %outputs, %control = tf_executor.island wraps "tf.ReadVariableOp"(%arg3) : (tensor<*x!tf_type.resource<tensor<128x1024xf32>>>) -> tensor<128x1024xf32>
