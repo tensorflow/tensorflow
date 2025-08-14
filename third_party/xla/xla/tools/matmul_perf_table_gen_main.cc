@@ -327,7 +327,9 @@ int main(int argc, char* argv[]) {
   }
 
   xla::gpu::DeviceHloInstructionProfiles result = table_gen.ComputeTable();
-  CHECK_OK(table_gen.Dump(result));
+  auto compact_result = MatmulPerfTableGen::Compact(result);
+  CHECK_OK(compact_result.status());
+  CHECK_OK(table_gen.Dump(*compact_result));
 
   return 0;
 }
