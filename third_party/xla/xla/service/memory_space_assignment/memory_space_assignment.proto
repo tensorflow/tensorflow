@@ -145,6 +145,63 @@ message PreferredPrefetchOverrides {
   repeated PreferredPrefetchOverride overrides = 1;
 }
 
+// Defines how to turn an instruction into a representative ID used for the
+// random value. Different instructions that receive the same ID will have the
+// same random value, and hence will be selected by the filter (or not selected)
+// together.
+message InstructionIdentifierOptions {
+  oneof options {
+    // Use instruction.ToString(HloPrintOptions::Fingerprint()).
+    // The fingerprint uses the computation graph of the instruction, so
+    // different instructions with the same computation graph will be grouped
+    // together.
+    //
+    // This is probably the most "logical" choice, since having identical
+    // computation graphs means there's no reason to make different choices
+    // between them.
+    //
+    // For that reason, this is also the "default" option if no option is given.
+    bool use_fingerprint = 1;
+
+    // Use instruction.ToString().
+    bool use_to_string = 2;
+
+    // Use instruction.SignatureString(). The signature is just the sizes of the
+    // input/output matrices and nothing else (not even the function name). So
+    // functions with the same shapes of inputs and output will be grouped
+    // together.
+    bool use_signature_string = 3;
+
+    // Use instruction.Name().
+    bool use_name = 4;
+  }
+}
+
+// Specifies details on how to randomally select HloPositions for perturbation.
+//
+// Each HloPosition is randomally assigned (based on the seed) to the range
+// [0...1). If it is withint the range
+// [selection_range_begin...selection_range_end) it will have its sort order
+// overridded.
+//
+// The probability of any HloPosition to be perturbed is
+// selection_range_end-selection_range_begin
+//
+// selection_range_begin defaults to 0
+message HloRandomFilter {
+  // Defaults to 1234
+  optional int64 seed = 1;
+  // Defaults to 0.
+  optional double selection_range_begin = 2;
+  // Defaults to 1.
+  optional double selection_range_end = 3;
+  // Defines how to turn an instruction into a representative ID used for the
+  // random value. Different instructions that receive the same ID will have the
+  // same random value, and hence will be selected by the filter (or not
+  // selected) together.
+  optional InstructionIdentifierOptions instruction_identifier_options = 4;
+}
+
 // A message that identifies one or more HloPositions.
 message HloPositionMatcher {
   // Regex to match the entire instruction HLO. The HLO string is constructed
@@ -163,6 +220,8 @@ message HloPositionMatcher {
   optional int64 size_lte = 5;
   // Filters instructions that have a use that matches the filter.
   optional HloOperandFilter hlo_use_filter = 6;
+  // Filters instructions randomly.
+  optional HloRandomFilter hlo_random_filter = 7;
 }
 
 // Options to override preferred prefetch time for an operand.
@@ -176,6 +235,10 @@ message MsaSortOrderOverrideOptions {
     // multiple buffers are to be assigned last (within the same override
     // config) other tie breakers and stable sort order will take effect.
     bool assign_last = 2;
+    // Set the specific priority value, where lower values means "before" higher
+    // values. If multiple buffers are to be assigned the same value, other tie
+    // breakers and stable sort order will take effect.
+    int64 assign_value = 3;
   }
 }
 
