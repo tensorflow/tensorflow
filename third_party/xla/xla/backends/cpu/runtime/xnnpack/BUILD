@@ -31,6 +31,19 @@ cc_library(
 )
 
 cc_library(
+    name = "xnn_threadpool",
+    srcs = ["xnn_threadpool.cc"],
+    hdrs = ["xnn_threadpool.h"],
+    deps = [
+        ":xnn_interop",
+        "@XNNPACK",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/status:statusor",
+        "@eigen_archive//:eigen3",
+    ],
+)
+
+cc_library(
     name = "xnn_convolution_thunk",
     srcs = ["xnn_convolution_thunk.cc"],
     hdrs = ["xnn_convolution_thunk.h"],
@@ -142,6 +155,7 @@ cc_library(
     hdrs = ["xnn_fusion_thunk.h"],
     deps = [
         ":xnn_interop",
+        ":xnn_threadpool",
         "//xla:shape_util",
         "//xla/backends/cpu/runtime:thunk",
         "//xla/runtime:buffer_use",
@@ -165,7 +179,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
-        "@eigen_archive//:eigen3",
     ],
 )
 
