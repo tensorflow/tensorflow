@@ -114,6 +114,7 @@ struct ConvertIndexTypePass
     mlir::RewritePatternSet patterns(ctx);
     patterns.add<RewriteIndexBinaryElementwiseOp<arith::AddIOp>,
                  RewriteIndexBinaryElementwiseOp<arith::DivUIOp>,
+                 RewriteIndexBinaryElementwiseOp<arith::DivSIOp>,
                  RewriteIndexBinaryElementwiseOp<arith::MulIOp>,
                  RewriteIndexBinaryElementwiseOp<arith::RemUIOp>,
                  RewriteIndexBinaryElementwiseOp<arith::SubIOp>>(

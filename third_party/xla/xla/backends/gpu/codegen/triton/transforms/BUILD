@@ -44,6 +44,7 @@ cc_library(
         ":passes_inc_gen",
         "//xla:permutation_util",
         "//xla:shape_util",
+        "//xla:util",
         "//xla/backends/gpu/codegen/triton:emitter_helpers",
         "//xla/backends/gpu/codegen/triton/ir:triton_xla",
         "//xla/codegen:emitter_loc_op_builder",
