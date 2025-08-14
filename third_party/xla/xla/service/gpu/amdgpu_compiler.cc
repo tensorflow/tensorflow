@@ -47,7 +47,6 @@ limitations under the License.
 #include "xla/service/gpu/autotuning/autotuner_pass.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/autotuning/conv_algorithm_picker.h"
-#include "xla/service/gpu/autotuning/gemm_algorithm_picker.h"
 #include "xla/service/gpu/autotuning/gemm_fusion_autotuner.h"
 #include "xla/service/gpu/cublas_padding_requirements.h"
 #include "xla/service/gpu/gpu_compiler.h"
@@ -63,11 +62,13 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/rocm/rocm_solver_context.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -260,21 +261,29 @@ absl::Status AMDGPUCompiler::AddConvAndGemmAutotuningPasses(
   // loaded in the GpuConvAlgorithmPicker but should be loaded in the autotuner.
   pipeline->AddPass<GpuConvAlgorithmPicker>(autotune_config);
 
+  // If present, use the device allocator from the compilation options.
+  // Otherwise, use the stream executor allocator, which needs to be deallocated
+  // after use. The device allocator from options is expected to remain valid
+  // throughout the compilation process.
+  std::unique_ptr<se::DeviceMemoryAllocator> stream_executor_allocator;
+  se::DeviceMemoryAllocator* allocator;
+  if (options.device_allocator == nullptr) {
+    stream_executor_allocator =
+        std::make_unique<se::StreamExecutorMemoryAllocator>(stream_exec);
+    allocator = stream_executor_allocator.get();
+  } else {
+    allocator = options.device_allocator;
+  }
   std::vector<std::unique_ptr<CodegenBackend>> backends;
   // TODO: b/407494793 - Add proper support for ROCM. Currently the Cublas
   // backend uses the same API as rocBLAS.
-  if (debug_options.xla_gpu_experimental_use_autotuner_pass()) {
-    backends.push_back(
-        std::make_unique<CublasBackend>(stream_exec, &debug_options, this));
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<AutotunerPass> autotuner_pass,
-        AutotunerPass::Create(std::move(backends), debug_options,
-                              options.device_allocator, stream_exec,
-                              thread_pool));
-    pipeline->AddPass(std::move(autotuner_pass));
-  } else {
-    pipeline->AddPass<GemmAlgorithmPicker>(autotune_config);
-  }
+  backends.push_back(
+      std::make_unique<CublasBackend>(stream_exec, &debug_options, this));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<AutotunerPass> autotuner_pass,
+      AutotunerPass::Create(std::move(backends), debug_options, allocator,
+                            stream_exec, thread_pool));
+  pipeline->AddPass(std::move(autotuner_pass));
 
   return absl::OkStatus();
 }
