@@ -58,7 +58,6 @@ cc_library(
         ":gpu_metrics",
         ":gpu_topology",
         ":gpu_topology_proto_cc",
-        ":raw_buffer",
         ":se_gpu_topology_description",
         "//xla:executable_run_options",
         "//xla:literal",
@@ -92,7 +91,6 @@ cc_library(
         "//xla/pjrt:pjrt_stream_executor_client",
         "//xla/pjrt:stream_executor_executable",
         "//xla/pjrt:stream_executor_executable_proto_cc",
-        "//xla/pjrt:tracked_device_buffer",
         "//xla/pjrt:utils",
         "//xla/pjrt:worker_thread",
         "//xla/pjrt/distributed:client",
@@ -650,22 +648,4 @@ xla_cc_test(
         "//xla/pjrt:pjrt_stream_executor_device_description",
         "@com_google_googletest//:gtest_main",
     ],
-)
-
-cc_library(
-    name = "raw_buffer",
-    srcs = ["raw_buffer.cc"],
-    hdrs = ["raw_buffer.h"],
-    deps = [
-        "//xla/pjrt:pjrt_client",
-        "//xla/pjrt:pjrt_future",
-        "//xla/pjrt:pjrt_stream_executor_client",
-        "//xla/pjrt:raw_buffer",
-        "//xla/pjrt:tracked_device_buffer",
-        "//xla/tsl/concurrency:async_value",
-        "//xla/tsl/concurrency:ref_count",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-    ],
-    alwayslink = 1,
 )

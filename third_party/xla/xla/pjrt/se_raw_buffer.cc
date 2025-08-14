@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/pjrt/gpu/raw_buffer.h"
+#include "xla/pjrt/se_raw_buffer.h"
 
 #include <cstdint>
 #include <optional>
