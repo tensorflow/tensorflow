@@ -48,7 +48,20 @@ limitations under the License.
 #include "xla/python/ifrt/value.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
+namespace Eigen {
+class ThreadPoolInterface;
+struct ThreadPoolDevice;
+}  // namespace Eigen
+
 namespace xla::cpu {
+
+// Options for creating a NanoIfrtClient client.
+struct NanoIfrtOptions {
+  // If set, this thread pool will be used as an intra-op thread pool for
+  // the underlying NanoRtClient. It is a user's responsibility to ensure that
+  // the thread pool outlives all pending executions.
+  Eigen::ThreadPoolInterface* intra_op_threadpool = nullptr;
+};
 
 // NanoIfrtClient is a thin wrapper around NanoRtClient that implements the
 // ifrt::Client interface.
@@ -71,12 +84,14 @@ class NanoIfrtClient : public llvm::RTTIExtends<NanoIfrtClient, ifrt::Client> {
 
   // Creates a client with a single device. Typically this is how this client
   // should be used.
-  static std::shared_ptr<NanoIfrtClient> Create();
+  static std::shared_ptr<NanoIfrtClient> Create(
+      const NanoIfrtOptions& options = {});
 
   // Creates a client with the given number of devices, this is provided for
   // testing and to allow the client to be used in applications that expect
   // programs to be sharded.
-  static std::shared_ptr<NanoIfrtClient> CreateWithDevices(int32_t num_devices);
+  static std::shared_ptr<NanoIfrtClient> CreateWithDevices(
+      int32_t num_devices, const NanoIfrtOptions& options = {});
 
   // Returns a single device sharding. Generally callers should prefer to use
   // this when possible for optimal performance.
@@ -84,6 +99,12 @@ class NanoIfrtClient : public llvm::RTTIExtends<NanoIfrtClient, ifrt::Client> {
 
   // Returns the underlying NanoRtClient.
   NanoRtClient* nano_client() { return &client_; }
+
+  // Returns the optional intra-op device constructed from the Eigen thread
+  // pool passed to the constructor via NanoIfrtOptions.
+  const Eigen::ThreadPoolDevice* intra_op_device() const {
+    return intra_op_device_.get();
+  }
 
   using HostBufferSemantics = ifrt::Client::HostBufferSemantics;
 
@@ -174,7 +195,7 @@ class NanoIfrtClient : public llvm::RTTIExtends<NanoIfrtClient, ifrt::Client> {
   static char ID;  // NOLINT
 
  private:
-  explicit NanoIfrtClient(int32_t num_devices);
+  NanoIfrtClient(int32_t num_devices, const NanoIfrtOptions& options);
 
   // The underlying NanoRtClient.
   NanoRtClient client_;
@@ -192,6 +213,10 @@ class NanoIfrtClient : public llvm::RTTIExtends<NanoIfrtClient, ifrt::Client> {
   // Single-device device lists pre-constructed for all `devices_`. We cache it
   // in the client to avoid constructing them all the time on a hot path.
   std::vector<ifrt::DeviceListRef> single_device_lists_;
+
+  // Optional intra-op device constructed from the Eigen thread pool passed to
+  // the constructor via NanoIfrtOptions.
+  std::unique_ptr<Eigen::ThreadPoolDevice> intra_op_device_;
 };
 
 }  // namespace xla::cpu

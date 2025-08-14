@@ -423,14 +423,16 @@ tsl::AsyncValueRef<NanoRtExecutable::ExecuteEvent> NanoRtExecutable::Execute(
         [execution_context = std::move(execution_context)] {});
 
     return execute_event;
-  } else {
-    cpu::BufferAllocations allocations(std::move(buffers));
-    Thunk::ExecuteParams execute_params{
-        executable->function_library(), &allocations,
-        /*xfeed=*/nullptr, options.intra_op_thread_pool(),
-        options.task_runner()};
-    return executable->thunks().Execute(execute_params);
   }
+
+  // If we are running without a thread pool, we can just create the
+  // ExecuteParams on the stack as thunks are guaranteed to be executed
+  // synchronously in the current thread.
+  cpu::BufferAllocations allocations(std::move(buffers));
+  Thunk::ExecuteParams execute_params{
+      executable->function_library(), &allocations,
+      /*xfeed=*/nullptr, options.intra_op_thread_pool(), options.task_runner()};
+  return executable->thunks().Execute(execute_params);
 }
 
 size_t NanoRtExecutable::temp_buffer_size() const {
