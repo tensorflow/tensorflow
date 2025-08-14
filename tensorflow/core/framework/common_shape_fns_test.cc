@@ -1790,7 +1790,7 @@ TEST(CommonShapeFnsTest, ReduceScatter_NotEvenlyDivisible) {
   EXPECT_EQ(3, c.num_inputs());
   EXPECT_EQ(1, c.num_outputs());
   EXPECT_THAT(ReduceScatterShape(&c),
-              tensorflow::testing::StatusIs(
+              absl_testing::StatusIs(
                   error::INVALID_ARGUMENT,
                   "Dimension size must be evenly divisible by 2 but is 3"));
 }
@@ -1818,7 +1818,7 @@ TEST(CommonShapeFnsTest, ReduceScatter_INVALID_GROUP_ASSIGNMENT) {
   EXPECT_EQ(3, c.num_inputs());
   EXPECT_EQ(1, c.num_outputs());
   EXPECT_THAT(ReduceScatterShape(&c),
-              tensorflow::testing::StatusIs(
+              absl_testing::StatusIs(
                   error::INVALID_ARGUMENT,
                   "ReduceScatter group_assignment should be rank 2"));
 }
