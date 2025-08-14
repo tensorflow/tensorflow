@@ -185,8 +185,9 @@ TEST(UtilTest, TestFieldTagConversion) {
 
 TEST(UtilTest, TestGetFieldTypes) {
   TF_ASSERT_OK_AND_ASSIGN(auto tags, MakeFieldTags());
-  EXPECT_THAT(GetFieldTypes(tags),
-              IsOkAndHolds(std::vector<Field>{{2, 1505}, {5, 123}}));
+  EXPECT_THAT(
+      GetFieldTypes(tags),
+      absl_testing::IsOkAndHolds(std::vector<Field>{{2, 1505}, {5, 123}}));
 }
 
 TEST(UtilTest, TestGetFieldTypesThenAddFieldTags) {
@@ -212,9 +213,10 @@ TEST(UtilTest, TestGetFieldTypesThenAddFieldTagsTooManyIndices) {
   ChunkedField chunked_field;
 
   TF_ASSERT_OK_AND_ASSIGN(auto tags, MakeFieldTagsTooManyIndices());
-  EXPECT_THAT(GetFieldTypes(tags),
-              StatusIs(absl::StatusCode::kFailedPrecondition,
-                       HasSubstr("Index doesn't belong to any field")));
+  EXPECT_THAT(
+      GetFieldTypes(tags),
+      absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition,
+                             HasSubstr("Index doesn't belong to any field")));
 }
 
 TEST(UtilTest, TestGetFieldTypesThenAddFieldTagsTooManyMapKeys) {
@@ -222,9 +224,10 @@ TEST(UtilTest, TestGetFieldTypesThenAddFieldTagsTooManyMapKeys) {
   ChunkedField chunked_field;
 
   TF_ASSERT_OK_AND_ASSIGN(auto tags, MakeFieldTagsTooManyMapKeys());
-  EXPECT_THAT(GetFieldTypes(tags),
-              StatusIs(absl::StatusCode::kFailedPrecondition,
-                       HasSubstr("Map key doesn't belong to any field")));
+  EXPECT_THAT(
+      GetFieldTypes(tags),
+      absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition,
+                             HasSubstr("Map key doesn't belong to any field")));
 }
 
 TEST(UtilTest, TestGetFieldTypesThenAddFieldTagsMisplacedIndex) {
@@ -232,9 +235,10 @@ TEST(UtilTest, TestGetFieldTypesThenAddFieldTagsMisplacedIndex) {
   ChunkedField chunked_field;
 
   TF_ASSERT_OK_AND_ASSIGN(auto tags, MakeFieldTagsMisplacedIndex());
-  EXPECT_THAT(GetFieldTypes(tags),
-              StatusIs(absl::StatusCode::kFailedPrecondition,
-                       HasSubstr("Index doesn't belong to any field")));
+  EXPECT_THAT(
+      GetFieldTypes(tags),
+      absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition,
+                             HasSubstr("Index doesn't belong to any field")));
 }
 
 TEST(UtilTest, TestGetFieldTypesThenAddFieldTagsMisplacedMapKey) {
@@ -242,9 +246,10 @@ TEST(UtilTest, TestGetFieldTypesThenAddFieldTagsMisplacedMapKey) {
   ChunkedField chunked_field;
 
   TF_ASSERT_OK_AND_ASSIGN(auto tags, MakeFieldTagsMisplacedMapKey());
-  EXPECT_THAT(GetFieldTypes(tags),
-              StatusIs(absl::StatusCode::kFailedPrecondition,
-                       HasSubstr("Map key doesn't belong to any field")));
+  EXPECT_THAT(
+      GetFieldTypes(tags),
+      absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition,
+                             HasSubstr("Map key doesn't belong to any field")));
 }
 
 TEST(UtilTest, TestSetRepeatedFieldElement) {
@@ -278,8 +283,8 @@ TEST(UtilTest, TestSetRepeatedFieldElementInvalidIndex) {
   EXPECT_THAT(SetRepeatedFieldElement(
                   &message, field_desc, 1, "",
                   []() -> absl::Status { return absl::OkStatus(); }),
-              StatusIs(absl::StatusCode::kOutOfRange,
-                       HasSubstr("Field index out of range")));
+              absl_testing::StatusIs(absl::StatusCode::kOutOfRange,
+                                     HasSubstr("Field index out of range")));
 }
 
 TEST(UtilTest, TestSetRepeatedFieldElementAlreadyExists) {
@@ -317,8 +322,8 @@ TEST(UtilTest, TestSetRepeatedFieldElementBadFieldDesc) {
   EXPECT_THAT(SetRepeatedFieldElement(
                   &message, map_field_desc, 0, "",
                   []() -> absl::Status { return absl::OkStatus(); }),
-              StatusIs(absl::StatusCode::kFailedPrecondition,
-                       HasSubstr("Field is a map")));
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition,
+                                     HasSubstr("Field is a map")));
 }
 
 TEST(UtilTest, TestSetRepeatedFieldElementMessage) {
@@ -441,24 +446,24 @@ TEST(UtilTest, GetFieldInvalidIndex) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto message, MakeManyFields());
   EXPECT_THAT(GetField(message, fields),
-              StatusIs(absl::StatusCode::kNotFound,
-                       HasSubstr("Can't access index 100")));
+              absl_testing::StatusIs(absl::StatusCode::kNotFound,
+                                     HasSubstr("Can't access index 100")));
 }
 
 TEST(UtilTest, GetFieldInvalidField) {
   std::vector<FieldType> fields = {"field_one"s, "INVALID"s};
   TF_ASSERT_OK_AND_ASSIGN(auto message, MakeManyFields());
   EXPECT_THAT(GetField(message, fields),
-              StatusIs(absl::StatusCode::kNotFound,
-                       HasSubstr("Field not found: INVALID")));
+              absl_testing::StatusIs(absl::StatusCode::kNotFound,
+                                     HasSubstr("Field not found: INVALID")));
 }
 
 TEST(UtilTest, GetFieldInvalidMapKey) {
   std::vector<FieldType> fields = {"map_field_int64"s, 10000};
   TF_ASSERT_OK_AND_ASSIGN(auto message, MakeManyFields());
   EXPECT_THAT(GetField(message, fields),
-              StatusIs(absl::StatusCode::kNotFound,
-                       HasSubstr("couldn't find key: 10000")));
+              absl_testing::StatusIs(absl::StatusCode::kNotFound,
+                                     HasSubstr("couldn't find key: 10000")));
 }
 TEST(UtilTest, GetField) {
   TF_ASSERT_OK_AND_ASSIGN(auto message, MakeManyFields());
@@ -497,8 +502,8 @@ TEST(UtilTest, FindMapKeyInvalid) {
   const tsl::protobuf::FieldDescriptor* not_map_field =
       message.GetDescriptor()->FindFieldByName("string_field");
   EXPECT_THAT(FindMapKey(message, *not_map_field, nullptr, -1345),
-              StatusIs(absl::StatusCode::kInvalidArgument,
-                       HasSubstr("was given a non map field")));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                                     HasSubstr("was given a non map field")));
 }
 
 TEST(UtilTest, TestHumanReadableBytes) {
