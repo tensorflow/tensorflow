@@ -569,6 +569,7 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
   opts.use_major_to_minor_data_layout_for_callbacks = true;
   opts.non_donatable_input_indices = options.non_donatable_input_indices;
   opts.execution_stream_id = options.execution_stream_id;
+  opts.call_location = options.call_location;
 
   auto context = std::make_unique<xla::ExecuteContext>();
   auto platform_id = pjrt_loaded_executable_->client()->platform_id();

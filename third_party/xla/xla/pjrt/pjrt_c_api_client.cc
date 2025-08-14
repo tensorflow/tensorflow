@@ -1984,6 +1984,13 @@ PjRtCApiLoadedExecutable::GetCommonExecuteArgs(
   args.options = &c_options;
   args.options->struct_size = PJRT_ExecuteOptions_STRUCT_SIZE;
   args.options->launch_id = options.launch_id;
+  if (options.call_location.has_value()) {
+    args.options->call_location = options.call_location->data();
+    args.options->call_location_size = options.call_location->size();
+  } else {
+    args.options->call_location = nullptr;
+    args.options->call_location_size = 0;
+  }
   for (auto i : options.non_donatable_input_indices) {
     non_donatable_input_indices_storage.push_back(i);
   }

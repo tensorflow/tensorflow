@@ -279,6 +279,9 @@ struct ExecuteOptions {
   // may be executed in any order and concurrently.
   int64_t execution_stream_id = 0;
 
+  // The call location of the program.
+  std::optional<std::string> call_location;
+
   absl::StatusOr<ExecuteOptionsProto> ToProto() const;
   static absl::StatusOr<ExecuteOptions> FromProto(
       const ExecuteOptionsProto& proto);

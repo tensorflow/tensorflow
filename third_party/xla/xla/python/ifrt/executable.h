@@ -135,6 +135,9 @@ struct ExecuteOptions {
   // are responsible for ensuring version compatibility.
   std::optional<AttributeMap> custom_options;
 
+  // The call location of the program.
+  std::optional<std::string> call_location;
+
   absl::StatusOr<ExecuteOptionsProto> ToProto(
       SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const;
 

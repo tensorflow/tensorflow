@@ -48,6 +48,7 @@ TEST_P(ExecuteOptionsSerDesTest, RoundTrip) {
   options.fill_status = true;
   options.custom_options = AttributeMap(
       AttributeMap::Map({{"foo", AttributeMap::StringValue("bar")}}));
+  options.call_location = "test_path.py:123";
   TF_ASSERT_OK_AND_ASSIGN(ExecuteOptionsProto serialized,
                           options.ToProto(version()));
   TF_ASSERT_OK_AND_ASSIGN(
@@ -61,6 +62,7 @@ TEST_P(ExecuteOptionsSerDesTest, RoundTrip) {
   EXPECT_THAT(
       deserialized.custom_options->map(),
       UnorderedElementsAre(Pair("foo", AttributeMap::StringValue("bar"))));
+  EXPECT_EQ(deserialized.call_location, "test_path.py:123");
 }
 
 INSTANTIATE_TEST_SUITE_P(
