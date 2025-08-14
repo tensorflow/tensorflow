@@ -22,6 +22,7 @@ limitations under the License.
 #include <limits>
 #include <numeric>
 
+#include "absl/base/no_destructor.h"
 #include "absl/log/check.h"
 #include "llvm/Target/TargetMachine.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
@@ -247,7 +248,7 @@ XnnGemmConfig::Opinion XnnGemmConfig::Evaluate(
 }
 
 const XnnGemmConfig& GetXnnGemmConfig() {
-  static const XnnGemmConfig* gemm_config = new XnnGemmConfig();
+  static const absl::NoDestructor<XnnGemmConfig> gemm_config;
   return *gemm_config;
 }
 
