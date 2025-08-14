@@ -13,7 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#ifdef __ANDROID__
 #include <android/log.h>
+#endif
 #include <jni.h>
 #include <stdint.h>
 #include <stdlib.h>
