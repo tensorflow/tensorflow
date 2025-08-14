@@ -747,7 +747,13 @@ INSTANTIATE_TEST_SUITE_P(
         std::make_pair(PrimitiveType::F8E4M3FN, PrimitiveType::F8E4M3FN),
         std::make_pair(PrimitiveType::F8E5M2, PrimitiveType::F8E4M3FN),
         std::make_pair(PrimitiveType::F8E4M3FN, PrimitiveType::F8E5M2),
-        std::make_pair(PrimitiveType::F8E5M2, PrimitiveType::F8E5M2)));
+        std::make_pair(PrimitiveType::F8E5M2, PrimitiveType::F8E5M2)),
+    [](const ::testing::TestParamInfo<FloatNormalizationTest::ParamType>&
+           info) {
+      return absl::StrCat(
+          primitive_util::LowercasePrimitiveTypeName(info.param.first), "_",
+          primitive_util::LowercasePrimitiveTypeName(info.param.second));
+    });
 
 TEST_P(FloatNormalizationTest, Fp8Normalization) {
   const PrimitiveType lhs_type = GetParam().first;
