@@ -84,6 +84,12 @@ inline absl::Status XnnStatusToStatus(xnn_status status) {
 }
 
 //===----------------------------------------------------------------------===//
+// XLA to XNNPACK type conversions.
+//===----------------------------------------------------------------------===//
+
+absl::StatusOr<xnn_datatype> XnnDatatype(const PrimitiveType& type);
+
+//===----------------------------------------------------------------------===//
 // RAII wrappers for XNNPACK types.
 //===----------------------------------------------------------------------===//
 

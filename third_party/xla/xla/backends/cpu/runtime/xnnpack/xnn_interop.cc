@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/primitive_util.h"
 #include "xla/util.h"
 
 namespace xla::cpu {
@@ -51,6 +52,20 @@ absl::StatusOr<XnnThreadpool> CreateXnnThreadpool(
   xnn_threadpool_t threadpool = nullptr;
   XNN_RETURN_IF_ERROR(builder(&threadpool));
   return XnnThreadpool(threadpool);
+}
+
+absl::StatusOr<xnn_datatype> XnnDatatype(const PrimitiveType& type) {
+  switch (type) {
+    case BF16:
+      return xnn_datatype_bf16;
+    case F16:
+      return xnn_datatype_fp16;
+    case F32:
+      return xnn_datatype_fp32;
+    default:
+      return InvalidArgument("Unsupported XNNPACK data type: %s",
+                             primitive_util::LowercasePrimitiveTypeName(type));
+  }
 }
 
 }  // namespace xla::cpu

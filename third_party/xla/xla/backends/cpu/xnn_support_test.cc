@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/cpu/xnn_fusion.h"
+#include "xla/backends/cpu/xnn_support.h"
 
 #include <gtest/gtest.h>
 #include "xnnpack.h"
@@ -23,15 +23,14 @@ limitations under the License.
 namespace xla::cpu {
 namespace {
 
-class XnnFusionTest : public ::testing::Test {};
+class XnnSupportTest : public ::testing::Test {};
 
-TEST_F(XnnFusionTest, UnaryEltwiseOpMap) {
-  const absl::flat_hash_map<HloOpcode, xnn_unary_operator>* unary_map =
-      GetXnnUnaryOpMap();
+TEST_F(XnnSupportTest, UnaryEltwiseOpMap) {
+  const auto& unary_map = GetXnnUnaryOpMap();
 
   auto check = [&](const HloOpcode opcode, const xnn_unary_operator expected) {
-    auto result = unary_map->find(opcode);
-    EXPECT_NE(result, unary_map->end());
+    auto result = unary_map.find(opcode);
+    EXPECT_NE(result, unary_map.end());
     EXPECT_EQ(result->second, expected);
   };
 
@@ -42,17 +41,16 @@ TEST_F(XnnFusionTest, UnaryEltwiseOpMap) {
   check(HloOpcode::kSqrt, xnn_unary_square_root);
 
   // Unsupported unary ops.
-  EXPECT_EQ(unary_map->find(HloOpcode::kErf), unary_map->end());
-  EXPECT_EQ(unary_map->find(HloOpcode::kSort), unary_map->end());
+  EXPECT_EQ(unary_map.find(HloOpcode::kErf), unary_map.end());
+  EXPECT_EQ(unary_map.find(HloOpcode::kSort), unary_map.end());
 }
 
-TEST_F(XnnFusionTest, BinaryEltwiseOpMap) {
-  const absl::flat_hash_map<HloOpcode, xnn_binary_operator>* binary_map =
-      GetXnnBinaryOpMap();
+TEST_F(XnnSupportTest, BinaryEltwiseOpMap) {
+  const auto& binary_map = GetXnnBinaryOpMap();
 
   auto check = [&](const HloOpcode opcode, const xnn_binary_operator expected) {
-    auto result = binary_map->find(opcode);
-    EXPECT_NE(result, binary_map->end());
+    auto result = binary_map.find(opcode);
+    EXPECT_NE(result, binary_map.end());
     EXPECT_EQ(result->second, expected);
   };
 
@@ -63,8 +61,8 @@ TEST_F(XnnFusionTest, BinaryEltwiseOpMap) {
   check(HloOpcode::kDivide, xnn_binary_divide);
 
   // Unsupported unary ops.
-  EXPECT_EQ(binary_map->find(HloOpcode::kAtan2), binary_map->end());
-  EXPECT_EQ(binary_map->find(HloOpcode::kComplex), binary_map->end());
+  EXPECT_EQ(binary_map.find(HloOpcode::kAtan2), binary_map.end());
+  EXPECT_EQ(binary_map.find(HloOpcode::kComplex), binary_map.end());
 }
 
 }  // namespace

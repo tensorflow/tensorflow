@@ -71,7 +71,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/xnnpack/xnn_dot_thunk.h"
 #include "xla/backends/cpu/runtime/xnnpack/xnn_fusion_thunk.h"
 #include "xla/backends/cpu/xnn_emitter.h"
-#include "xla/backends/cpu/xnn_fusion.h"
+#include "xla/backends/cpu/xnn_support.h"
 #include "xla/codegen/emitters/computation_fingerprint.h"
 #include "xla/codegen/emitters/kernel_api_builder.h"
 #include "xla/codegen/emitters/kernel_arguments.h"

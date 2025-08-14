@@ -98,7 +98,7 @@ cc_library(
     hdrs = ["xnn_matcher.h"],
     deps = [
         ":library_matcher",
-        "//xla/backends/cpu:xnn_fusion",
+        "//xla/backends/cpu:xnn_support",
         "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -115,7 +115,8 @@ cc_library(
     deps = [
         "//xla:shape_util",
         "//xla:xla_proto_cc",
-        "//xla/backends/cpu:xnn_fusion",
+        "//xla/backends/cpu:xnn_support",
+        "//xla/backends/cpu/runtime/xnnpack:xnn_interop",
         "//xla/hlo/ir:hlo",
         "//xla/service:call_graph",
         "//xla/service:instruction_fusion",
@@ -134,7 +135,7 @@ xla_cc_test(
         ":xnn_graph_fusion",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
-        "//xla/backends/cpu:xnn_fusion",
+        "//xla/backends/cpu:xnn_support",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/utils:hlo_matchers",

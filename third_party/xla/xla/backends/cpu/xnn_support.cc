@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/cpu/xnn_fusion.h"
+#include "xla/backends/cpu/xnn_support.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "xnnpack.h"
 #include "absl/algorithm/container.h"
+#include "absl/base/no_destructor.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/runtime/dot_lib.h"
+#include "xla/backends/cpu/runtime/xnnpack/xnn_interop.h"
 #include "xla/backends/cpu/xnn_gemm_config.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -164,25 +166,11 @@ absl::StatusOr<bool> IsDotSupportedByXnn(
   }
 }
 
-absl::StatusOr<xnn_datatype> XnnDatatype(const PrimitiveType& type) {
-  switch (type) {
-    case BF16:
-      return xnn_datatype_bf16;
-    case F16:
-      return xnn_datatype_fp16;
-    case F32:
-      return xnn_datatype_fp32;
-    default:
-      return InvalidArgument("Unsupported XNNPACK data type: %s",
-                             primitive_util::LowercasePrimitiveTypeName(type));
-  }
-}
-
-const absl::flat_hash_map<HloOpcode, xnn_unary_operator>* GetXnnUnaryOpMap() {
+const absl::flat_hash_map<HloOpcode, xnn_unary_operator>& GetXnnUnaryOpMap() {
   // TODO(ashaposhnikov): Investigate adding support for kErf, kExpm1, kLog1p,
   // kNot, kRoundNearestAfz, kTan.
-  static const auto* map =
-      new absl::flat_hash_map<HloOpcode, xnn_unary_operator>{
+  static absl::NoDestructor<absl::flat_hash_map<HloOpcode, xnn_unary_operator>>
+      unary_op_map({
           {HloOpcode::kAbs, xnn_unary_abs},
           {HloOpcode::kCeil, xnn_unary_ceiling},
           {HloOpcode::kClz, xnn_unary_count_leading_zeros},
@@ -199,24 +187,24 @@ const absl::flat_hash_map<HloOpcode, xnn_unary_operator>* GetXnnUnaryOpMap() {
           {HloOpcode::kSign, xnn_unary_sign},
           {HloOpcode::kSin, xnn_unary_sine},
           {HloOpcode::kSqrt, xnn_unary_square_root},
-          {HloOpcode::kTanh, xnn_unary_tanh}};
-  return map;
+          {HloOpcode::kTanh, xnn_unary_tanh},
+      });
+  return *unary_op_map;
 }
 
 absl::StatusOr<xnn_unary_operator> XnnUnaryOperator(const HloOpcode& opcode) {
-  const absl::flat_hash_map<HloOpcode, xnn_unary_operator>* map =
-      GetXnnUnaryOpMap();
-  auto result = map->find(opcode);
-  if (result == map->end()) {
+  const auto& unary_op_map = GetXnnUnaryOpMap();
+  auto result = unary_op_map.find(opcode);
+  if (result == unary_op_map.end()) {
     return InvalidArgument("Unsupported XNNPACK unary operator: %s",
                            HloOpcodeString(opcode));
   }
   return result->second;
 }
 
-const absl::flat_hash_map<HloOpcode, xnn_binary_operator>* GetXnnBinaryOpMap() {
-  static const auto* map =
-      new absl::flat_hash_map<HloOpcode, xnn_binary_operator>{
+const absl::flat_hash_map<HloOpcode, xnn_binary_operator>& GetXnnBinaryOpMap() {
+  static absl::NoDestructor<absl::flat_hash_map<HloOpcode, xnn_binary_operator>>
+      binary_op_map({
           {HloOpcode::kAdd, xnn_binary_add},
           {HloOpcode::kAnd, xnn_binary_bitwise_and},
           {HloOpcode::kDivide, xnn_binary_divide},
@@ -230,15 +218,15 @@ const absl::flat_hash_map<HloOpcode, xnn_binary_operator>* GetXnnBinaryOpMap() {
           {HloOpcode::kShiftRightArithmetic, xnn_binary_shift_right_arithmetic},
           {HloOpcode::kShiftRightLogical, xnn_binary_shift_right_logical},
           {HloOpcode::kSubtract, xnn_binary_subtract},
-          {HloOpcode::kXor, xnn_binary_bitwise_xor}};
-  return map;
+          {HloOpcode::kXor, xnn_binary_bitwise_xor},
+      });
+  return *binary_op_map;
 }
 
 absl::StatusOr<xnn_binary_operator> XnnBinaryOperator(const HloOpcode& opcode) {
-  const absl::flat_hash_map<HloOpcode, xnn_binary_operator>* map =
-      GetXnnBinaryOpMap();
-  auto result = map->find(opcode);
-  if (result == map->end()) {
+  const auto& binary_op_map = GetXnnBinaryOpMap();
+  auto result = binary_op_map.find(opcode);
+  if (result == binary_op_map.end()) {
     return InvalidArgument("Unsupported XNNPACK binary operator: %s",
                            HloOpcodeString(opcode));
   }

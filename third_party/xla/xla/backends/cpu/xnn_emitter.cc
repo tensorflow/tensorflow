@@ -29,7 +29,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/runtime/xnnpack/xnn_interop.h"
-#include "xla/backends/cpu/xnn_fusion.h"
+#include "xla/backends/cpu/xnn_support.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
