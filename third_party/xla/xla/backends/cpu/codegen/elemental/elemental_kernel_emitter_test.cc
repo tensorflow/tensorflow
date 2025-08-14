@@ -130,5 +130,44 @@ TEST_F(ElementalKernelEmitterTest, EmitParallelKernel) {
   )"));
 }
 
+TEST_F(ElementalKernelEmitterTest, EmitFastIntrinsic) {
+  const char* hlo_text = R"(
+    HloModule m
+    ENTRY main {
+      p0 = f32[1024] parameter(0)
+      ROOT log = f32[1024] log(p0)
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo, ParseAndReturnUnverifiedModule(hlo_text));
+  TF_ASSERT_OK_AND_ASSIGN(auto buffer_assignment, RunBufferAssignment(*hlo));
+
+  // Configure math options.
+  hlo->mutable_config().mutable_debug_options().set_xla_cpu_enable_fast_math(
+      true);
+  hlo->mutable_config()
+      .mutable_debug_options()
+      .set_xla_cpu_fast_math_honor_nans(false);
+  hlo->mutable_config()
+      .mutable_debug_options()
+      .set_xla_cpu_fast_math_honor_infs(false);
+  hlo->mutable_config()
+      .mutable_debug_options()
+      .set_xla_cpu_fast_math_honor_division(false);
+  hlo->mutable_config()
+      .mutable_debug_options()
+      .set_xla_cpu_fast_math_honor_functions(false);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      KernelDefinition kernel_definition,
+      EmitKernelDefinition(hlo->entry_computation()->root_instruction(),
+                           buffer_assignment.get()));
+
+  ASSERT_TRUE(*RunFileCheck(kernel_definition.source().ToString(), R"(
+    CHECK: define ptr @log_kernel(ptr %0) #0 {
+    CHECK:   call fast float @llvm.log.f32(float {{.*}})
+    CHECK: }
+  )"));
+}
+
 }  // namespace
 }  // namespace xla::cpu
