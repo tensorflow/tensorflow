@@ -130,11 +130,11 @@ TEST_P(CpuUnaryIntrinsicTest, DoIt) {
   auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
-  std::string check_lines{spec.check_lines.data(), spec.check_lines.size()};
-
   hlo_module->mutable_config()
       .mutable_debug_options()
-      .set_xla_cpu_use_thunk_runtime(false);
+      .clear_xla_cpu_prefer_vector_width();
+
+  std::string check_lines{spec.check_lines.data(), spec.check_lines.size()};
 
   CompileAheadOfTimeAndVerifyIr(std::move(hlo_module), options, check_lines,
                                 spec.match_optimized_ir);

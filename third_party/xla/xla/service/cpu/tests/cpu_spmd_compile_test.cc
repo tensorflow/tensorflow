@@ -55,44 +55,6 @@ ENTRY entry {
   TF_EXPECT_OK(executable.status());
 }
 
-TEST_F(CpuSpmdCompileTest, DotSharding) {
-  const char *const hlo_string = R"(
-HloModule test
-
-ENTRY main {
-  %Arg_0.1 = s64[8,6,4]{2,1,0} parameter(0), sharding={devices=[1,2,2]0,1,2,3}
-  %Arg_1.2 = s64[4,2]{1,0} parameter(1), sharding={devices=[2,1,2]0,2,1,3 last_tile_dim_replicate}
-  %dot.3 = s64[8,6,2]{2,1,0} dot(s64[8,6,4]{2,1,0} %Arg_0.1, s64[4,2]{1,0} %Arg_1.2), lhs_contracting_dims={2}, rhs_contracting_dims={0}
-  %tuple.4 = (s64[8,6,2]{2,1,0}) tuple(s64[8,6,2]{2,1,0} %dot.3)
-  ROOT %get-tuple-element.5 = s64[8,6,2]{2,1,0} get-tuple-element((s64[8,6,2]{2,1,0}) %tuple.4), index=0, sharding={devices=[2,1,1,2]0,1,2,3 last_tile_dim_replicate}
-})";
-
-  HloModuleConfig config;
-  config.set_use_spmd_partitioning(true);
-  config.set_replica_count(4);
-  config.set_num_partitions(4);
-  config.set_debug_options(GetDebugOptionsFromFlags());
-  auto module = ParseAndReturnVerifiedModule(hlo_string, config).value();
-
-  module->mutable_config()
-      .mutable_debug_options()
-      .set_xla_cpu_use_thunk_runtime(false);
-
-  CpuAotCompilationOptions options{
-      /*triple=*/kTargetTripleForHost, /*cpu_name=*/kTargetCpuForHost,
-      /*features=*/"",
-      /*entry_point_name=*/"main",
-      /*relocation_model=*/CpuAotCompilationOptions::RelocationModel::Static};
-
-  std::string filecheck_pattern = R"(
-CHECK: call void @__xla_cpu_runtime_AllToAll
-CHECK: call void @__xla_cpu_runtime_AllReduce
-)";
-
-  CompileAheadOfTimeAndVerifyIr(std::move(module), options, filecheck_pattern,
-                                /*match_optimized_ir=*/true);
-}
-
 }  // namespace
 }  // namespace cpu
 }  // namespace xla
