@@ -20,4 +20,13 @@ package stream_executor;
 message CudaComputeCapabilityProto {
   int32 major = 1;
   int32 minor = 2;
+
+  enum FeatureExtension {
+    UNSPECIFIED = 0;
+    NONE = 1;
+    ACCELERATED_FEATURES = 2;
+    FORWARD_COMPATIBLE_FEATURES = 3;
+  }
+
+  FeatureExtension feature_extension = 3;
 }

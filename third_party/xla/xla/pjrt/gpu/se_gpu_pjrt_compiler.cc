@@ -138,8 +138,10 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
         tensorflow::down_cast<const xla::StreamExecutorGpuTopologyDescription&>(
             topology);
     if (gpu_topology.target_config().has_value()) {
-      options.target_config.emplace(
-          Compiler::TargetConfig(*gpu_topology.target_config()));
+      TF_ASSIGN_OR_RETURN(
+          Compiler::TargetConfig target_config,
+          Compiler::TargetConfig::FromProto(*gpu_topology.target_config()));
+      options.target_config.emplace(std::move(target_config));
     } else {
       return absl::UnimplementedError(
           "Compilation without client and without target_config specified is "

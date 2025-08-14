@@ -524,7 +524,10 @@ TEST(AutotuneCacheKeyTest, DeviceDescriptionToCacheKey) {
         &spec_string));
     EXPECT_TRUE(
         tsl::protobuf::TextFormat::ParseFromString(spec_string, &proto));
-    return se::DeviceDescription(proto.gpu_device_info());
+    absl::StatusOr<se::DeviceDescription> device_description =
+        se::DeviceDescription::FromProto(proto.gpu_device_info());
+    CHECK_OK(device_description.status());
+    return *device_description;
   };
 
   EXPECT_EQ(AutotuneCacheKey::DeviceDescriptionToCacheKey(

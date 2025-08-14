@@ -62,15 +62,15 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tools/hlo_module_loader.h"
 #include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/env_time.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/status_to_from_proto.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
-#include "tsl/platform/env_time.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/protobuf.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/status_to_from_proto.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -326,8 +326,11 @@ absl::Status XlaCompileMain(const XlaCompileOptions& options) {
         return FailedPrecondition("Failed to parse GpuTargetConfigProto");
       }
 
-      target_config =
-          std::make_unique<Compiler::TargetConfig>(gpu_target_config_proto);
+      TF_ASSIGN_OR_RETURN(
+          Compiler::TargetConfig parsed_target_config,
+          Compiler::TargetConfig::FromProto(gpu_target_config_proto));
+      target_config = std::make_unique<Compiler::TargetConfig>(
+          std::move(parsed_target_config));
 
       if (absl::string_view autotune_results_path =
               options.gpu_options.autotune_results_path;
