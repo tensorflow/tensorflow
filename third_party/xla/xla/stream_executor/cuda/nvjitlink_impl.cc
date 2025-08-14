@@ -16,8 +16,10 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <optional>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -33,6 +35,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "third_party/gpus/cuda/include/nvJitLink.h"
+#include "xla/stream_executor/cuda/compilation_provider.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/nvjitlink.h"
 #include "xla/stream_executor/cuda/ptx_compiler_helpers.h"
@@ -124,11 +127,11 @@ absl::StatusOr<NvJitLinkVersion> GetNvJitLinkVersion() {
   return NvJitLinkVersion(major, minor);
 }
 
-absl::StatusOr<std::vector<uint8_t>> CompileAndLinkUsingLibNvJitLink(
+absl::StatusOr<cuda::Assembly> CompileAndLinkUsingLibNvJitLink(
     const CudaComputeCapability& cc, absl::Span<const NvJitLinkInput> inputs,
-    GpuAsmOpts options, bool cancel_if_reg_spill) {
+    GpuAsmOpts options, bool cancel_if_reg_spill, bool dump_compilation_log) {
   if (inputs.empty()) {
-    return std::vector<uint8_t>();
+    return cuda::Assembly{};
   }
 
   TF_ASSIGN_OR_RETURN(NvJitLinkVersion version, GetNvJitLinkVersion());
@@ -143,7 +146,7 @@ absl::StatusOr<std::vector<uint8_t>> CompileAndLinkUsingLibNvJitLink(
   std::string architecture = absl::StrCat("sm_", cc.major, cc.minor, extension);
   cli_args.emplace_back(absl::StrCat("-arch=", architecture));
 
-  if (VLOG_IS_ON(2)) {
+  if (VLOG_IS_ON(2) || dump_compilation_log) {
     cli_args.emplace_back("-verbose");
   }
   cli_args.emplace_back("-Xptxas=--warn-on-spills");
@@ -182,6 +185,8 @@ absl::StatusOr<std::vector<uint8_t>> CompileAndLinkUsingLibNvJitLink(
     return ToStatus(create_result, error_log);
   }
 
+  std::optional<std::string> maybe_compilation_log;
+
   for (auto& image : inputs) {
     nvJitLinkInputType input_type = image.type == NvJitLinkInput::Type::kPtx
                                         ? NVJITLINK_INPUT_PTX
@@ -198,16 +203,25 @@ absl::StatusOr<std::vector<uint8_t>> CompileAndLinkUsingLibNvJitLink(
         nvJitLinkAddData(link_handle, input_type, image.bytes.data(),
                          image.bytes.size(), nullptr);
 
+    std::optional<std::string> error_log;
+    if (dump_compilation_log || result != NVJITLINK_SUCCESS) {
+      TF_ASSIGN_OR_RETURN(error_log, nvJitLinkGetErrorLog(link_handle));
+    }
+
     if (result != NVJITLINK_SUCCESS) {
-      TF_ASSIGN_OR_RETURN(std::string error_log,
-                          nvJitLinkGetErrorLog(link_handle));
-
       // Print the verbose output of ptxas.
-      VLOG(3) << "libnvjitlink error log output: " << error_log;
+      VLOG(3) << "libnvjitlink error log output: " << *error_log;
 
-      TF_RETURN_IF_ERROR(CreateErrorFromPTXASLog(error_log, architecture,
+      TF_RETURN_IF_ERROR(CreateErrorFromPTXASLog(*error_log, architecture,
                                                  cancel_if_reg_spill));
-      return ToStatus(result, error_log);
+      return ToStatus(result, *error_log);
+    }
+
+    if (dump_compilation_log && maybe_compilation_log.has_value()) {
+      maybe_compilation_log =
+          absl::StrCat(*maybe_compilation_log, "\n", std::move(*error_log));
+    } else if (dump_compilation_log) {
+      maybe_compilation_log = std::move(error_log);
     }
   }
 
@@ -240,7 +254,12 @@ absl::StatusOr<std::vector<uint8_t>> CompileAndLinkUsingLibNvJitLink(
   std::vector<uint8_t> cubin(cubin_size);
   RETURN_IF_NVJITLINK_ERROR(nvJitLinkGetLinkedCubin(link_handle, cubin.data()));
 
-  return cubin;
+  if (dump_compilation_log) {
+    maybe_compilation_log =
+        absl::StrCat(*maybe_compilation_log, "\n", std::move(info_log));
+  }
+
+  return cuda::Assembly{std::move(cubin), maybe_compilation_log};
 }
 
 absl::StatusOr<int> GetLatestPtxIsaVersionForLibNvJitLink() {

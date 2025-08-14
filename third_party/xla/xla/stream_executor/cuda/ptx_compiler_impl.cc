@@ -17,8 +17,10 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <iterator>
+#include <optional>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -35,6 +37,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/nvPTXCompiler.h"
+#include "xla/stream_executor/cuda/compilation_provider.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/ptx_compiler.h"
 #include "xla/stream_executor/cuda/ptx_compiler_helpers.h"
@@ -82,9 +85,9 @@ static absl::string_view ToString(nvPTXCompileResult status) {
     }                                                                    \
   } while (false)
 
-absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingLibNvPtxCompiler(
+absl::StatusOr<cuda::Assembly> CompileGpuAsmUsingLibNvPtxCompiler(
     const CudaComputeCapability& cc, const std::string& ptx_contents,
-    GpuAsmOpts options, bool cancel_if_reg_spill) {
+    GpuAsmOpts options, bool cancel_if_reg_spill, bool dump_compilation_log) {
   TF_ASSIGN_OR_RETURN(auto version, GetLibNvPtxCompilerVersion());
   WarnIfBadPtxasVersion("nvPTXCompiler", cc, version);
 
@@ -103,7 +106,7 @@ absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingLibNvPtxCompiler(
   options.extra_flags.emplace_back(absl::StrCat("-arch=", architecture));
   options.extra_flags.emplace_back("--warn-on-spills");
 
-  if (VLOG_IS_ON(2)) {
+  if (VLOG_IS_ON(2) || dump_compilation_log) {
     options.extra_flags.emplace_back("-v");
   }
   if (options.disable_gpuasm_optimizations) {
@@ -123,30 +126,33 @@ absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingLibNvPtxCompiler(
       nvPTXCompilerCompile(compiler_handle, cmdline_options_ptrs.size(),
                            cmdline_options_ptrs.data());
 
-  if (compile_result != NVPTXCOMPILE_SUCCESS) {
+  std::optional<std::string> error_log;
+  if (dump_compilation_log || compile_result != NVPTXCOMPILE_SUCCESS) {
     size_t error_log_size{};
     RETURN_IF_NVPTXCOMPILER_ERROR(
         nvPTXCompilerGetErrorLogSize(compiler_handle, &error_log_size));
 
-    std::string error_log(error_log_size, '\0');
+    error_log = std::string(error_log_size, '\0');
     RETURN_IF_NVPTXCOMPILER_ERROR(
-        nvPTXCompilerGetErrorLog(compiler_handle, error_log.data()));
+        nvPTXCompilerGetErrorLog(compiler_handle, error_log->data()));
+  }
 
+  if (compile_result != NVPTXCOMPILE_SUCCESS) {
     //  It happens when the linked version of nvptxcompiler is too old for the
     //  current GPU. Example error message associated with this error code:
     //      ptxas fatal   : Value 'sm_80' is not defined for option 'gpu-name'
-    if (absl::StrContains(error_log, "ptxas fatal   : Value '") &&
-        absl::StrContains(error_log, "is not defined for option 'gpu-name'")) {
+    if (absl::StrContains(*error_log, "ptxas fatal   : Value '") &&
+        absl::StrContains(*error_log, "is not defined for option 'gpu-name'")) {
       return absl::UnimplementedError(absl::StrFormat(
           "Linked libnvptxcompiler is too old for %s.", architecture));
     }
-    if (IsPtxRegisterAllocationError(error_log)) {
-      return PtxRegisterAllocationError(error_log);
+    if (IsPtxRegisterAllocationError(*error_log)) {
+      return PtxRegisterAllocationError(*error_log);
     }
 
     return absl::InternalError(
         absl::StrFormat("PTX compilation failed with error code %d, output: %s",
-                        compile_result, error_log));
+                        compile_result, *error_log));
   }
 
   size_t info_log_size{};
@@ -182,7 +188,13 @@ absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingLibNvPtxCompiler(
   RETURN_IF_NVPTXCOMPILER_ERROR(
       nvPTXCompilerGetCompiledProgram(compiler_handle, (char*)cubin.data()));
 
-  return cubin;
+  std::optional<std::string> maybe_compilation_log;
+  if (dump_compilation_log) {
+    maybe_compilation_log =
+        absl::StrCat(std::move(*error_log), "\n", std::move(info_log));
+  }
+
+  return cuda::Assembly{cubin, std::move(maybe_compilation_log)};
 }
 
 absl::StatusOr<SemanticVersion> GetLibNvPtxCompilerVersion() {

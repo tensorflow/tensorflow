@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/compilation_provider.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -215,6 +216,17 @@ TEST_P(CompilationProviderTest, CompileStandaloneModuleSucceeds) {
       Assembly module, compilation_provider()->Compile(
                            kDefaultComputeCapability, kStandalonePtx, options));
   EXPECT_FALSE(module.cubin.empty());
+  EXPECT_EQ(module.compilation_log, std::nullopt);
+}
+
+TEST_P(CompilationProviderTest,
+       CompileStandaloneModuleDumpsCompilationLogWhenRequested) {
+  CompilationOptions options;
+  options.dump_compilation_log = true;
+  TF_ASSERT_OK_AND_ASSIGN(
+      Assembly module, compilation_provider()->Compile(
+                           kDefaultComputeCapability, kStandalonePtx, options));
+  EXPECT_THAT(module.compilation_log, Optional(Not(IsEmpty())));
 }
 
 TEST_P(CompilationProviderTest, CompileStandaloneRelocatableModuleSucceeds) {
@@ -228,6 +240,22 @@ TEST_P(CompilationProviderTest, CompileStandaloneRelocatableModuleSucceeds) {
       compilation_provider()->CompileToRelocatableModule(
           kDefaultComputeCapability, kStandalonePtx, options));
   EXPECT_FALSE(module.cubin.empty());
+  EXPECT_EQ(module.compilation_log, std::nullopt);
+}
+
+TEST_P(CompilationProviderTest,
+       CompileStandaloneRelocatableModuleDumpsCompilationLogWhenRequested) {
+  if (!compilation_provider()->SupportsCompileToRelocatableModule()) {
+    GTEST_SKIP();
+  }
+
+  CompilationOptions options;
+  options.dump_compilation_log = true;
+  TF_ASSERT_OK_AND_ASSIGN(
+      RelocatableModule module,
+      compilation_provider()->CompileToRelocatableModule(
+          kDefaultComputeCapability, kStandalonePtx, options));
+  EXPECT_THAT(module.compilation_log, Optional(Not(IsEmpty())));
 }
 
 TEST_P(CompilationProviderTest,
