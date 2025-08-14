@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/autotuner/cudnn.h"
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -30,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/literal_util.h"
 #include "xla/service/algorithm_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
@@ -37,6 +39,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu/transforms/cudnn_fusion_compiler.h"
+#include "xla/shape.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
@@ -57,6 +60,57 @@ namespace gpu {
 namespace se = ::stream_executor;
 
 using CudnnBackendConfig = stream_executor::dnn::AlgorithmProto;
+
+namespace {
+
+// Replaces the instruction with a new instruction with the same name in the
+// parent computation. The given instruction will be replaced by a tuple of the
+// convolution result and the workspace size. A few following instructions will
+// be added to the parent computation to extract the convolution result from the
+// new tuple.
+absl::Status ApplyConfigAndUpdateWorkspaceInOutputTuple(
+    HloInstruction& instr, const CudnnBackendConfig& config) {
+  HloComputation* computation = instr.parent();
+  std::vector<Shape> new_call_element_shapes;
+  // Add the shapes of the outputs of the convolution.
+  new_call_element_shapes.reserve(instr.shape().tuple_shapes().size() - 1);
+  for (int i = 0; i < instr.shape().tuple_shapes().size() - 1; ++i) {
+    new_call_element_shapes.emplace_back(instr.shape().tuple_shapes(i));
+  }
+  // The final element is the size of the workspace.
+  int workspace_size = config.workspace_size().value();
+  new_call_element_shapes.emplace_back(
+      ShapeUtil::MakeShape(U8, {workspace_size}));
+  Shape new_call_shape = ShapeUtil::MakeTupleShape(new_call_element_shapes);
+  HloInstruction* new_call = computation->AddInstruction(
+      instr.CloneWithNewOperands(new_call_shape, instr.operands()));
+  new_call->SetAndSanitizeName(instr.name());
+
+  TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_backend_config,
+                      instr.backend_config<GpuBackendConfig>());
+  CudnnConvBackendConfig* cudnn_conv_config =
+      gpu_backend_config.mutable_cudnn_conv_backend_config();
+  *cudnn_conv_config->mutable_algorithm() = config;
+  TF_RETURN_IF_ERROR(new_call->set_backend_config(gpu_backend_config));
+
+  std::vector<HloInstruction*> new_tuple_elements;
+  new_tuple_elements.reserve(new_call->shape().tuple_shapes().size() - 1);
+  for (int i = 0; i < new_call->shape().tuple_shapes().size() - 1; ++i) {
+    new_tuple_elements.emplace_back(
+        computation->AddInstruction(HloInstruction::CreateGetTupleElement(
+            new_call->shape().tuple_shapes(i), new_call, i)));
+  }
+  new_tuple_elements.emplace_back(computation->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR1<uint8_t>({}))));
+
+  // Repackage new_call so it has the same shape as the original call, namely
+  // (conv_result, u8[0]).
+  HloInstruction* new_tuple = computation->AddInstruction(
+      HloInstruction::CreateTuple(new_tuple_elements));
+
+  TF_RETURN_IF_ERROR(instr.parent()->ReplaceInstruction(&instr, new_tuple));
+  return absl::OkStatus();
+}
 
 bool IsSupportedCudnnFusion(const HloInstruction& instr,
                             se::StreamExecutor* stream_executor,
@@ -229,6 +283,41 @@ GetConvolutionCustomCallConfigs(const HloCustomCallInstruction* instr,
   return configs;
 }
 
+absl::Status ApplyConfigToCudnnFusion(HloInstruction& instr,
+                                      const CudnnBackendConfig& config) {
+  TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                      instr.backend_config<GpuBackendConfig>());
+  FusionBackendConfig* backend_config =
+      gpu_config.mutable_fusion_backend_config();
+  backend_config->mutable_cudnn_fusion_config()->set_plan_id(config.algo_id());
+  TF_RETURN_IF_ERROR(instr.set_backend_config(std::move(gpu_config)));
+  return absl::OkStatus();
+}
+
+absl::Status ApplyConfigToCudnnCustomCall(HloInstruction& instr,
+                                          const CudnnBackendConfig& config) {
+  if (config.has_workspace_size() && config.workspace_size().value() > 0) {
+    return ApplyConfigAndUpdateWorkspaceInOutputTuple(instr, config);
+  }
+  TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                      instr.backend_config<GpuBackendConfig>());
+  CudnnConvBackendConfig* cudnn_conv_config =
+      gpu_config.mutable_cudnn_conv_backend_config();
+  *cudnn_conv_config->mutable_algorithm() = config;
+  TF_RETURN_IF_ERROR(instr.set_backend_config(std::move(gpu_config)));
+  return absl::OkStatus();
+}
+
+}  // namespace
+
+absl::StatusOr<std::unique_ptr<BackendConfig>> CudnnBackend::GetDefaultConfig(
+    const HloInstruction& instr) {
+  // Default config would require stream_executor to check if the fusion is
+  // supported by Cudnn.
+  return absl::InvalidArgumentError(
+      "Cudnn backend doesn't support getting a default config.");
+}
+
 absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
 CudnnBackend::GetSupportedConfigs(const HloInstruction& instr) {
   if (!IsSupportedByCudnn(instr, stream_executor(), debug_options())) {
@@ -244,36 +333,6 @@ CudnnBackend::GetSupportedConfigs(const HloInstruction& instr) {
   }
 
   return std::vector<std::unique_ptr<BackendConfig>>();
-}
-
-absl::StatusOr<std::unique_ptr<BackendConfig>> CudnnBackend::GetDefaultConfig(
-    const HloInstruction& instr) {
-  // Default config would require stream_executor to check if the fusion is
-  // supported by Cudnn.
-  return absl::InvalidArgumentError(
-      "Cudnn backend doesn't support getting a default config.");
-}
-
-absl::Status ApplyConfigToCudnnFusion(HloInstruction& instr,
-                                      const CudnnBackendConfig& config) {
-  TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
-                      instr.backend_config<GpuBackendConfig>());
-  FusionBackendConfig* backend_config =
-      gpu_config.mutable_fusion_backend_config();
-  backend_config->mutable_cudnn_fusion_config()->set_plan_id(config.algo_id());
-  TF_RETURN_IF_ERROR(instr.set_backend_config(std::move(gpu_config)));
-  return absl::OkStatus();
-}
-
-absl::Status ApplyConfigToCudnnCustomCall(HloInstruction& instr,
-                                          const CudnnBackendConfig& config) {
-  TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
-                      instr.backend_config<GpuBackendConfig>());
-  CudnnConvBackendConfig* cudnn_conv_config =
-      gpu_config.mutable_cudnn_conv_backend_config();
-  *cudnn_conv_config->mutable_algorithm() = config;
-  TF_RETURN_IF_ERROR(instr.set_backend_config(std::move(gpu_config)));
-  return absl::OkStatus();
 }
 
 absl::Status CudnnBackend::ApplyConfig(HloInstruction& instr,
@@ -293,7 +352,7 @@ absl::Status CudnnBackend::ApplyConfig(HloInstruction& instr,
 
   return absl::UnimplementedError(
       "Cudnn backend doesn't support this instruction.");
-};
+}
 
 }  // namespace gpu
 }  // namespace xla
