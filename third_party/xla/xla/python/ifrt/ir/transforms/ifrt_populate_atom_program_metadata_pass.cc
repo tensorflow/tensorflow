@@ -55,6 +55,11 @@ mlir::LogicalResult PopulateMetadata(CallOp call_op, mlir::ModuleOp module_op,
   if (call_op->hasAttr(kIsSdyPartitioned)) {
     module_op->setAttr(kIsSdyPartitioned, builder.getUnitAttr());
   }
+  // Copy ifrt.compile_options_key if it exists.
+  if (call_op->hasAttr(kIfrtCompileOptionsKey)) {
+    module_op->setAttr(kIfrtCompileOptionsKey,
+                       call_op->getAttr(kIfrtCompileOptionsKey));
+  }
   // Copy `ifrt.local_view` attribute if it exists.
   if (call_op->hasAttrOfType<mlir::UnitAttr>(kIfrtLocalViewAttrName)) {
     module_op->setAttr(kIfrtLocalViewAttrName,
