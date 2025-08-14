@@ -52,6 +52,9 @@ TEST(GetTopologyTypeTest, SingleHostSingleDevice) {
   EXPECT_THAT(GetTopologyType(se::CudaComputeCapability::Hopper(),
                               /*num_partitions=*/1, /*replica_count=*/1),
               GPUTopologyType::SINGLE_HOST);
+  EXPECT_THAT(GetTopologyType(se::CudaComputeCapability::Blackwell(),
+                              /*num_partitions=*/1, /*replica_count=*/1),
+              GPUTopologyType::SINGLE_HOST);
 }
 
 TEST(GetTopologyTypeTest, SingleHostMultiDevices) {
@@ -65,6 +68,12 @@ TEST(GetTopologyTypeTest, SingleHostMultiDevices) {
                               /*num_partitions=*/8, /*replica_count=*/1),
               GPUTopologyType::SINGLE_HOST);
   EXPECT_THAT(GetTopologyType(se::CudaComputeCapability::Hopper(),
+                              /*num_partitions=*/1, /*replica_count=*/8),
+              GPUTopologyType::SINGLE_HOST);
+  EXPECT_THAT(GetTopologyType(se::CudaComputeCapability::Blackwell(),
+                              /*num_partitions=*/8, /*replica_count=*/1),
+              GPUTopologyType::SINGLE_HOST);
+  EXPECT_THAT(GetTopologyType(se::CudaComputeCapability::Blackwell(),
                               /*num_partitions=*/1, /*replica_count=*/8),
               GPUTopologyType::SINGLE_HOST);
 }
@@ -82,13 +91,16 @@ TEST(GetTopologyTypeTest, MultiHosts) {
   EXPECT_THAT(GetTopologyType(se::CudaComputeCapability::Hopper(),
                               /*num_partitions=*/1, /*replica_count=*/16),
               GPUTopologyType::MULTI_HOST);
+  EXPECT_THAT(GetTopologyType(se::CudaComputeCapability::Blackwell(),
+                              /*num_partitions=*/16, /*replica_count=*/1),
+              GPUTopologyType::MULTI_HOST);
+  EXPECT_THAT(GetTopologyType(se::CudaComputeCapability::Blackwell(),
+                              /*num_partitions=*/1, /*replica_count=*/16),
+              GPUTopologyType::MULTI_HOST);
 }
 
 TEST(GetTopologyTypeTest, NonAmpereAndHopper) {
   EXPECT_EQ(GetTopologyType(se::CudaComputeCapability::Volta(),
-                            /*num_partitions=*/1, /*replica_count=*/1),
-            GPUTopologyType::UNKNOWN);
-  EXPECT_EQ(GetTopologyType(se::CudaComputeCapability::Blackwell(),
                             /*num_partitions=*/1, /*replica_count=*/1),
             GPUTopologyType::UNKNOWN);
 }
