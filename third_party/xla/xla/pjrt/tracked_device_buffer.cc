@@ -62,6 +62,11 @@ void BufferSequencingEvent::SetSequencingEvent(EventPool::Handle event,
   defined_status_.emplace(absl::OkStatus());
 }
 
+void BufferSequencingEvent::SetDefinedStatus(absl::Status status) {
+  CHECK(!status.ok());
+  defined_status_.emplace(status);
+}
+
 bool BufferSequencingEvent::EventHasBeenRecorded() const {
   return event_.event() != nullptr;
 }
@@ -240,7 +245,7 @@ ShapedBuffer TrackedDeviceBuffer::AsShapedBuffer(
 
 TrackedDeviceBuffer::TrackedDeviceBuffer(
     PjRtDevice* device, tsl::RCReference<RawSEDeviceMemory> device_memory,
-    absl::Span<const std::shared_ptr<BufferSequencingEvent>> definition_events)
+    absl::Span<const BufferSequencingEventRef> definition_events)
     : device_(device),
       device_memory_(std::move(device_memory)),
       definition_events_(std::make_move_iterator(definition_events.begin()),
@@ -260,9 +265,9 @@ void TrackedDeviceBuffer::ConfirmDonation() {
   ReleaseDeviceMemory();
 }
 
-void TrackedDeviceBuffer::AddUsageEvent(
-    se::Stream* usage_stream, std::shared_ptr<BufferSequencingEvent> event,
-    bool reference_held) {
+void TrackedDeviceBuffer::AddUsageEvent(se::Stream* usage_stream,
+                                        BufferSequencingEventRef event,
+                                        bool reference_held) {
   CHECK(in_use_);
 
   // If the event is 0, it means that the event is not recorded yet and the task
@@ -299,17 +304,17 @@ void GetDeviceBufferEvents(
     absl::flat_hash_set<BufferSequencingEvent*>* events) {
   if (get_usage_events) {
     for (const auto& e : buffer.usage_events()) {
-      events->insert(e.event.get());
+      events->insert(&*e.event);
     }
   } else {
     for (const auto& e : buffer.definition_events()) {
-      events->insert(e.get());
+      events->insert(&*e);
     }
   }
 }
 
 void WaitForBufferDefinitionEventsOnStream(
-    absl::Span<const std::shared_ptr<BufferSequencingEvent>> definition_events,
+    absl::Span<const BufferSequencingEventRef> definition_events,
     se::Stream* stream) {
   if (definition_events.size() <= 1) {
     for (const auto& event : definition_events) {
@@ -318,7 +323,7 @@ void WaitForBufferDefinitionEventsOnStream(
   } else {
     absl::flat_hash_set<BufferSequencingEvent*> events;
     for (const auto& event : definition_events) {
-      if (events.emplace(event.get()).second) {
+      if (events.emplace(&*event).second) {
         event->WaitForEventOnStream(stream);
       }
     }

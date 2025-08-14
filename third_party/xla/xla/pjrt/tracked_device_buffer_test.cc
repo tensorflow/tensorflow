@@ -99,8 +99,7 @@ absl::StatusOr<std::shared_ptr<TrackedDeviceBuffer>> MakeArray(
         return absl::OkStatus();
       }));
   return std::make_shared<TrackedDeviceBuffer>(
-      device, device_buffers[0],
-      absl::Span<const std::shared_ptr<BufferSequencingEvent>>());
+      device, device_buffers[0], absl::Span<const BufferSequencingEventRef>());
 }
 
 TEST(TrackedDeviceBufferTest, AsShapedBuffer) {

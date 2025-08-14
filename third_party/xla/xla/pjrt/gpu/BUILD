@@ -128,6 +128,7 @@ cc_library(
         "//xla/tsl/framework:device_id",
         "//xla/tsl/framework:device_id_impl",
         "//xla/tsl/lib/strings:proto_serialization",
+        "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:statusor",
