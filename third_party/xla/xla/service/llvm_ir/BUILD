@@ -331,3 +331,24 @@ xla_cc_test(
         "@llvm-project//llvm:ir_headers",
     ],
 )
+
+xla_cc_test(
+    name = "llvm_util_test",
+    srcs = ["llvm_util_test.cc"],
+    deps = [
+        ":llvm_util",
+        "//xla:error_spec",
+        "//xla:literal",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_module_config",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest",
+        "@llvm-project//llvm:ir_headers",
+    ],
+)
