@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/ir/hlo_schedule.h"
@@ -95,8 +96,12 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
   // call is the call operation -- it will be replaced with the body of the
   // called computation.
   explicit SubcomputationInsertionVisitor(HloInstruction* call,
-                                          absl::string_view call_op_name)
-      : call_(call), outer_(call->parent()), call_op_name_(call_op_name) {
+                                          absl::string_view call_op_name,
+                                          bool call_is_from_user_code)
+      : call_(call),
+        outer_(call->parent()),
+        call_op_name_(call_op_name),
+        call_is_from_user_code_(call_is_from_user_code) {
     CHECK_EQ(HloOpcode::kCall, call_->opcode());
   }
 
@@ -116,23 +121,32 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
     TF_RETURN_IF_ERROR(NoteMapping(hlo, new_hlo_pointer));
 
     new_hlo_pointer->CopyOriginalValue(hlo, /*clone=*/true);
-    if (std::shared_ptr<OriginalValue> original_value =
-            new_hlo_pointer->original_value()) {
-      for (auto& leaf : original_value->leaves()) {
-        std::optional<OriginalArray>& original_array = leaf.second;
-        if (original_array.has_value()) {
-          std::string call_instruction_name;
-          if (std::shared_ptr<OriginalValue> call_original_value =
-                  call_->original_value()) {
-            call_instruction_name =
-                call_original_value->leaf_begin()->second->instruction_name;
+    if (call_is_from_user_code_) {
+      // If call is from user code, we need to update the original value of the
+      // inlined instruction to reflect the inlined call instruction.
+      if (std::shared_ptr<OriginalValue> original_value =
+              new_hlo_pointer->original_value()) {
+        if (std::shared_ptr<OriginalValue> call_original_value =
+                call_->original_value()) {
+          for (auto& leaf : original_value->leaves()) {
+            std::optional<OriginalArray>& original_array = leaf.second;
+            if (original_array.has_value()) {
+              std::string call_instruction_name =
+                  call_original_value->leaf_begin()->second->instruction_name;
+              original_array->instruction_name = absl::StrCat(
+                  call_instruction_name, "/", original_array->instruction_name);
+            }
           }
-          absl::StrAppend(&original_array->instruction_name, "/",
-                          call_instruction_name);
+        } else {
+          // When an instruction is inlined, we must attach the call context to
+          // make sense of the original value. If the call instruction has lost
+          // its original value during propagation, there is nothing we can do
+          // to recover it. Hence, we clear the incomplete original value to
+          // avoid confusion.
+          new_hlo_pointer->set_original_value(nullptr);
         }
       }
     }
-
     // Account for control edges.
     for (HloInstruction* control_predecessor : hlo->control_predecessors()) {
       TF_ASSIGN_OR_RETURN(HloInstruction * new_control_predecessor,
@@ -221,6 +235,7 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
   HloComputation* outer_;
   CallInliner::InlinedInstructionMap subcomputation_hlo_to_new_hlo_;
   absl::string_view call_op_name_;
+  bool call_is_from_user_code_;
 };
 
 bool InlineComposites(
@@ -244,7 +259,7 @@ bool InlineInstruction(HloInstruction* instruction) {
 }  // namespace
 
 /* static */ absl::StatusOr<CallInliner::InlinedInstructionMap>
-CallInliner::Inline(HloInstruction* call) {
+CallInliner::Inline(HloInstruction* call, bool call_is_from_user_code) {
   TF_RET_CHECK(call->opcode() == HloOpcode::kCall)
       << "Instruction was not a call op: " << call->opcode();
   if (call->is_composite()) {
@@ -284,7 +299,8 @@ CallInliner::Inline(HloInstruction* call) {
   }
 
   // We visit the callee, cloning its body into its caller.
-  SubcomputationInsertionVisitor visitor(call, call->metadata().op_name());
+  SubcomputationInsertionVisitor visitor(call, call->metadata().op_name(),
+                                         call_is_from_user_code);
   TF_RETURN_IF_ERROR(callee->Accept(&visitor));
   return visitor.ConsumeInstructionMap();
 }
@@ -358,7 +374,7 @@ absl::StatusOr<bool> CallInliner::InlineAndLegalize(
       // callee computation beforehand, so we can find its schedule.
       HloComputation* callee = instruction->to_apply();
       TF_ASSIGN_OR_RETURN(CallInliner::InlinedInstructionMap inline_map,
-                          Inline(instruction));
+                          Inline(instruction, /*call_is_from_user_code=*/true));
       if (module->has_schedule()) {
         for (HloInstruction* inlined_instruction :
              module->schedule().sequence(callee).instructions()) {

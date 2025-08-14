@@ -42,7 +42,17 @@ class CallInliner : public HloModulePass {
 
   // Inlines one call instruction.  Returns a mapping from the original
   // instructions to their inlined versions.
-  static absl::StatusOr<InlinedInstructionMap> Inline(HloInstruction* call);
+  // If call_is_from_user_code is true, the original value of the inlined
+  // instruction will be updated to reflect the inlined call instruction.
+  // The default value of call_is_from_user_code is false because in XLA it's a
+  // common pattern to create synthetic call instructions pointing to a
+  // computation and then immediately inline it to get the effect of hoisting
+  // the called computation. In this case, we don't want to update the original
+  // value of the inlined instruction because this is simply an implementation
+  // detail of a particular code rewrite pass and shouldn't be reflected in the
+  // original value.
+  static absl::StatusOr<InlinedInstructionMap> Inline(
+      HloInstruction* call, bool call_is_from_user_code = false);
 
   // If single_call_site is true, only functions with a single call site will be
   // inlined.
