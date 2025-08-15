@@ -1831,7 +1831,7 @@ TEST_F(GpuCompilerTest,
                                                .set_print_operand_shape(false)
                                                .set_print_metadata(false)),
                    kExpected),
-      ::tsl::testing::IsOkAndHolds(true));
+      absl_testing::IsOkAndHolds(true));
 
   if (test_runner().device_count() < 2) {
     GTEST_SKIP() << "Skipping test as it requires at least 2 devices.";
@@ -1875,7 +1875,7 @@ TEST_F(GpuCompilerTest, DynamicSliceFusionReduceScatterMultipleBuffers) {
     // CHECK: ENTRY
   )";
   EXPECT_THAT(RunFileCheck(m->ToString(), kExpected),
-              ::tsl::testing::IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
 }
 
 TEST_F(GpuCompilerTest, CompilingSortsWorksWithoutDevice) {

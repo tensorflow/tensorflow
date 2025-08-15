@@ -305,7 +305,7 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
                           ParseAndReturnVerifiedModule(kHloModule, config));
 
   EXPECT_THAT(ScheduleModule(module.get()),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_F(GpuLatencyHidingSchedulerBaseTest,
@@ -326,7 +326,7 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
                           ParseAndReturnVerifiedModule(kHloModule, config));
 
   EXPECT_THAT(ScheduleModule(module.get()),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_F(GpuLatencyHidingSchedulerBaseTest,
