@@ -22,38 +22,40 @@ limitations under the License.
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/autotuner/block_level_emitter.h"
 #include "xla/backends/gpu/autotuner/cublas.h"
+#include "xla/backends/gpu/autotuner/cublaslt.h"
+#include "xla/backends/gpu/autotuner/cudnn.h"
+#include "xla/backends/gpu/autotuner/custom_kernel.h"
 #include "xla/backends/gpu/autotuner/triton.h"
 #include "xla/service/compiler.h"
+#include "xla/stream_executor/cuda/cuda_platform_id.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 
 namespace xla {
 
 namespace gpu {
 
-// TODO: b/407494793 - Add support for ROCM, currently assumes CUDA.
 inline std::vector<std::unique_ptr<CodegenBackend>> GetAllGpuCodegenBackends(
     stream_executor::StreamExecutor* stream_executor,
     const DebugOptions* debug_options, Compiler* compiler) {
   std::vector<std::unique_ptr<CodegenBackend>> backends;
   backends.push_back(std::make_unique<TritonBackend>(stream_executor,
                                                      debug_options, compiler));
-  backends.push_back(std::make_unique<CublasBackend>(stream_executor,
-                                                     debug_options, compiler));
   backends.push_back(std::make_unique<BlockLevelEmitterBackend>(
-      stream_executor, debug_options, compiler));
-  /*
-  TODO(b/407494793): Enable backends as they are ready and verified.
-  backends.push_back(std::make_unique<CublasLtBackend>(
-      stream_executor, debug_options, compiler));
-  backends.push_back(std::make_unique<CudnnBackend>(
       stream_executor, debug_options, compiler));
   backends.push_back(std::make_unique<CustomKernelBackend>(
       stream_executor, debug_options, compiler));
-  */
-  /* TODO(b/407494793) : Enable FissionBackend which can rewrite fusions.
-  backends.push_back(std::make_unique<FissionBackend>(
-      stream_executor, debug_options, compiler));
-  */
+
+  // Cuda-specific backends.
+  se::Platform::Id platform_id = stream_executor->GetPlatform()->id();
+  if (platform_id == se::cuda::kCudaPlatformId) {
+    backends.push_back(std::make_unique<CublasBackend>(
+        stream_executor, debug_options, compiler));
+    backends.push_back(std::make_unique<CublasLtBackend>(
+        stream_executor, debug_options, compiler));
+    backends.push_back(std::make_unique<CudnnBackend>(stream_executor,
+                                                      debug_options, compiler));
+  }
   return backends;
 }
 

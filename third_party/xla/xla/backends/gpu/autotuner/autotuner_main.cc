@@ -84,10 +84,6 @@ absl::Status Autotune(HloModule& module, const std::string& autotune_cache_dir,
   TF_ASSIGN_OR_RETURN(se::Platform * platform,
                       se::PlatformManager::PlatformWithName(
                           absl::AsciiStrToUpper(platform_name)));
-  // TODO: b/407494793 - Add support for ROCM.
-  if (platform->id() != se::cuda::kCudaPlatformId) {
-    return absl::InternalError("Only CUDA is supported");
-  }
   if (platform->VisibleDeviceCount() == 0) {
     return absl::InternalError("No devices found");
   }

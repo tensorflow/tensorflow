@@ -545,10 +545,16 @@ cc_library(
     deps = [
         ":block_level_emitter",
         ":cublas",
+        ":cublaslt",
+        ":cudnn",
+        ":custom_kernel",
         ":triton",
         "//xla/backends/autotuner:codegen_backend",
         "//xla/service:compiler",
+        "//xla/stream_executor:platform",
         "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/cuda:cuda_platform_id",
+        "//xla/stream_executor/rocm:rocm_platform_id",
     ],
 )
 
