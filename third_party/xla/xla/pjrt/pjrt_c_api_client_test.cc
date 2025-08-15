@@ -137,13 +137,26 @@ TEST(PjRtCApiClientTest, OnDeviceShape) {
   }
 }
 
-TEST(PjRtCApiClientTest, PlatformId) {
+TEST(PjRtCApiClientTest, ClientPlatformIdAndName) {
   SetUpCpuPjRtApi();
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
                           GetCApiClient("cpu"));
 
   EXPECT_EQ(client->platform_name(), xla::CpuName());
   EXPECT_EQ(client->platform_id(), xla::CpuId());
+}
+
+TEST(PjRtCApiClientTest, TopologyPlatformIdAndName) {
+  SetUpCpuPjRtApi();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetCApiClient("cpu"));
+
+  TF_ASSERT_OK_AND_ASSIGN(const PjRtTopologyDescription* topology,
+                          client->GetTopologyDescription());
+
+  ASSERT_NE(topology, nullptr);
+  EXPECT_EQ(topology->platform_name(), xla::CpuName());
+  EXPECT_EQ(topology->platform_id(), xla::CpuId());
 }
 
 TEST(PjRtCApiClientTest, NonEmptyExecutableFingerprint) {
