@@ -166,6 +166,8 @@ cc_library(
         "//xla:executable_run_options",
         "//xla/backends/cpu/collectives:cpu_collectives",
         "//xla/backends/cpu/collectives:in_process_collectives",
+        "//xla/backends/cpu/runtime/xnnpack:xnn_interop",
+        "//xla/backends/cpu/runtime/xnnpack:xnn_threadpool",
         "//xla/ffi:execution_context",
         "//xla/runtime:buffer_use",
         "//xla/runtime:resource_use",

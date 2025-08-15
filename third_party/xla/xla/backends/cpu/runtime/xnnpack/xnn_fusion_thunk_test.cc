@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "xnnpack.h"
@@ -29,6 +30,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk_testlib.h"
 #include "xla/backends/cpu/runtime/xnnpack/xnn_interop.h"
+#include "xla/backends/cpu/runtime/xnnpack/xnn_threadpool.h"
 #include "xla/literal_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -128,9 +130,16 @@ TEST_P(XnnFusionThunkTest, ElementwiseAdd) {
                       XnnFusionThunk::Options{use_threadpool()}, {"fusion"},
                       {lhs_arg, rhs_arg}, {out_res}, &BuildBinaryAddSubgraph));
 
+  XnnThreadpool threadpool;
+  if (use_threadpool()) {
+    TF_ASSERT_OK_AND_ASSIGN(threadpool, CreateXnnThreadpool(&device));
+  }
+  Thunk::XnnParams xnn_params(std::move(threadpool));
+
   Thunk::ExecuteParams params;
   params.buffer_allocations = &allocations;
   params.intra_op_threadpool = use_threadpool() ? &device : nullptr;
+  params.xnn_params = &xnn_params;
 
   auto execute_event = thunk->Execute(params);
   tsl::BlockUntilReady(execute_event);

@@ -74,6 +74,8 @@ xla_cc_test(
     srcs = ["xnn_convolution_thunk_test.cc"],
     deps = [
         ":xnn_convolution_thunk",
+        ":xnn_interop",
+        ":xnn_threadpool",
         "//xla:error_spec",
         "//xla:literal",
         "//xla:literal_util",
@@ -132,6 +134,8 @@ xla_cc_test(
     srcs = ["xnn_dot_thunk_test.cc"],
     deps = [
         ":xnn_dot_thunk",
+        ":xnn_interop",
+        ":xnn_threadpool",
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
@@ -155,8 +159,8 @@ cc_library(
     hdrs = ["xnn_fusion_thunk.h"],
     deps = [
         ":xnn_interop",
-        ":xnn_threadpool",
         "//xla:shape_util",
+        "//xla:util",
         "//xla/backends/cpu/runtime:thunk",
         "//xla/runtime:buffer_use",
         "//xla/runtime:object_pool",
@@ -168,6 +172,7 @@ cc_library(
         "//xla/tsl/platform:statusor",
         "@XNNPACK",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/functional:bind_front",
@@ -188,6 +193,7 @@ xla_cc_test(
     deps = [
         ":xnn_fusion_thunk",
         ":xnn_interop",
+        ":xnn_threadpool",
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",

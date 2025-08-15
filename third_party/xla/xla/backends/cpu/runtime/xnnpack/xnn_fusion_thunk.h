@@ -137,13 +137,13 @@ class XnnFusionThunk : public Thunk {
 
   // Creates XnnExecutable for the fusion operation using one of the builders.
   absl::StatusOr<XnnExecutable> CreateXnnExecutable(
-      const Eigen::ThreadPoolDevice* device,
+      const XnnThreadpool& threadpool,
       absl::Span<const se::DeviceMemoryBase> arguments_buffers);
 
   // Updates XnnExecutable to the XNN subgraph constructed with the given
   // arguments buffers.
   absl::Status UpdateXnnExecutable(
-      XnnExecutable& executable,
+      const XnnThreadpool& threadpool, XnnExecutable& executable,
       absl::Span<const se::DeviceMemoryBase> arguments_buffers);
 
   // Returns the list of captured arguments buffers.
@@ -169,9 +169,8 @@ class XnnFusionThunk : public Thunk {
 
   // XLA:CPU executable can be called concurrently from multiple threads,
   // and we need to keep a pool of XNNPACK executables to avoid data races.
-  using XnnExecutablePool =
-      ObjectPool<XnnExecutable, const Eigen::ThreadPoolDevice*,
-                 absl::Span<const se::DeviceMemoryBase>>;
+  using XnnExecutablePool = ObjectPool<XnnExecutable, const XnnThreadpool&,
+                                       absl::Span<const se::DeviceMemoryBase>>;
   XnnExecutablePool xnn_executable_pool_;
 
   // The number of XNNPACK executables created for capturing graphs.
