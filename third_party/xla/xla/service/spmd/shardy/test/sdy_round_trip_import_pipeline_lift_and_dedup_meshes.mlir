@@ -1,4 +1,4 @@
-// RUN: sdy_opt %s --split-input-file -xla-sdy-import-constants -xla-sdy-round-trip-import-pipeline='lift-and-dedup-meshes=true' 2>&1 | FileCheck %s
+// RUN: sdy_opt %s -xla-sdy-round-trip-import-pipeline='lift-and-dedup-meshes=true' 2>&1 | FileCheck %s
 
 // CHECK-LABEL: module @multiple_inlined_mesh_shardings
 module @multiple_inlined_mesh_shardings {
