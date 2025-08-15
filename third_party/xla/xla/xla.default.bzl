@@ -30,6 +30,9 @@ def xla_py_proto_library(**_kwargs):
 def xla_py_test_deps():
     return []
 
+def xla_internal_plugin_deps():
+    return []
+
 # TODO(ddunleavy): some of these should be removed from here and added to
 # specific targets.
 # We actually shouldn't need this anymore post vendoring. If we build without
