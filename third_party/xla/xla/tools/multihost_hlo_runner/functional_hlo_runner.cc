@@ -374,7 +374,7 @@ absl::StatusOr<PerDeviceLiteralVecType> FetchAndLogOutput(
         output_slice.emplace_back(
             ShapeUtil::DeviceShapeToHostShape(buffer->on_device_shape()));
         buffer->ToLiteral(&output_slice.back()).OnReady([&](absl::Status s) {
-          absl::MutexLock lock(&mu);
+          absl::MutexLock lock(mu);
           --num_pending_transfers;
           status.Update(s);
         });
@@ -392,7 +392,7 @@ absl::StatusOr<PerDeviceLiteralVecType> FetchAndLogOutput(
       (module_output_mode == ModuleOutputMode::kReturnDevice0Outputs &&
        device_0_is_local)) {
     auto cond = [&]() { return !status.ok() || num_pending_transfers == 0; };
-    absl::MutexLock lock(&mu);
+    absl::MutexLock lock(mu);
     mu.Await(absl::Condition(&cond));
     TF_RETURN_IF_ERROR(status);
     if (log_output) {
