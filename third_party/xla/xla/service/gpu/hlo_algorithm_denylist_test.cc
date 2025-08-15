@@ -212,7 +212,8 @@ TEST_F(DenylistTest, GenerateDenyListEntry) {
                       *module->entry_computation()->root_instruction())),
               IsEmpty());
 
-  ASSERT_THAT(ParseTextFormatDenyList(denylist_map, denylist), IsOk());
+  ASSERT_THAT(ParseTextFormatDenyList(denylist_map, denylist),
+              absl_testing::IsOk());
 
   // After reading the previously generated denylist entry, we should match this
   // exact entry.

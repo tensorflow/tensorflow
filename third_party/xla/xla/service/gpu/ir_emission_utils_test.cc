@@ -715,7 +715,7 @@ ENTRY main {
                     return slice0;
                   },
                   fusion),
-              IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
 }
 
 TEST_F(
@@ -755,7 +755,7 @@ ENTRY main {
                     return slice0;
                   },
                   fusion),
-              IsOkAndHolds(false));
+              absl_testing::IsOkAndHolds(false));
 }
 
 // Same test as above, but different allocation slices for parameter and output.
@@ -800,7 +800,7 @@ ENTRY main {
                     return slice1;
                   },
                   fusion),
-              IsOkAndHolds(false));
+              absl_testing::IsOkAndHolds(false));
 }
 
 TEST_F(
@@ -840,7 +840,7 @@ ENTRY main {
                     return slice0;
                   },
                   fusion),
-              IsOkAndHolds(false));
+              absl_testing::IsOkAndHolds(false));
 }
 
 TEST_F(IrEmissionUtilsTest,
@@ -884,7 +884,7 @@ ENTRY main {
                     return slice0;
                   },
                   fusion),
-              IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
 }
 
 TEST_F(
@@ -927,7 +927,7 @@ ENTRY main {
                     return slice0;
                   },
                   fusion),
-              IsOkAndHolds(false));
+              absl_testing::IsOkAndHolds(false));
 }
 
 TEST_F(
@@ -973,7 +973,7 @@ ENTRY main {
                     return slice0;
                   },
                   fusion),
-              IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
 }
 
 TEST_F(
@@ -1015,7 +1015,7 @@ ENTRY main {
                     return slice0;
                   },
                   fusion),
-              IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
 }
 
 TEST_F(
@@ -1057,7 +1057,7 @@ ENTRY main {
                     return slice0;
                   },
                   fusion),
-              IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
 }
 
 TEST_F(
@@ -1101,7 +1101,7 @@ ENTRY main {
                     return slice0;
                   },
                   fusion),
-              IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
 }
 
 gpu::GpuBackendConfig CreateTestProto() {
@@ -1459,8 +1459,10 @@ TEST_F(IrEmissionUtilsTest, OrdinaryMatmul) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   auto* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(IsCublasSupportedMatMul(*root, true), IsOkAndHolds(true));
-  EXPECT_THAT(IsCublasSupportedMatMul(*root, false), IsOkAndHolds(true));
+  EXPECT_THAT(IsCublasSupportedMatMul(*root, true),
+              absl_testing::IsOkAndHolds(true));
+  EXPECT_THAT(IsCublasSupportedMatMul(*root, false),
+              absl_testing::IsOkAndHolds(true));
 }
 
 TEST_F(IrEmissionUtilsTest, SingletonNoncontractingDim) {
@@ -1477,8 +1479,10 @@ TEST_F(IrEmissionUtilsTest, SingletonNoncontractingDim) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   auto* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(IsCublasSupportedMatMul(*root, true), IsOkAndHolds(true));
-  EXPECT_THAT(IsCublasSupportedMatMul(*root, false), IsOkAndHolds(false));
+  EXPECT_THAT(IsCublasSupportedMatMul(*root, true),
+              absl_testing::IsOkAndHolds(true));
+  EXPECT_THAT(IsCublasSupportedMatMul(*root, false),
+              absl_testing::IsOkAndHolds(false));
 }
 
 TEST_F(IrEmissionUtilsTest, BothOperandsHaveSingletonNoncontractingDims) {
@@ -1495,8 +1499,10 @@ TEST_F(IrEmissionUtilsTest, BothOperandsHaveSingletonNoncontractingDims) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   auto* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(IsCublasSupportedMatMul(*root, true), IsOkAndHolds(false));
-  EXPECT_THAT(IsCublasSupportedMatMul(*root, false), IsOkAndHolds(false));
+  EXPECT_THAT(IsCublasSupportedMatMul(*root, true),
+              absl_testing::IsOkAndHolds(false));
+  EXPECT_THAT(IsCublasSupportedMatMul(*root, false),
+              absl_testing::IsOkAndHolds(false));
 }
 
 TEST_F(IrEmissionUtilsTest, OneSideDoesntHaveNoncontractingDims) {
@@ -1513,8 +1519,10 @@ TEST_F(IrEmissionUtilsTest, OneSideDoesntHaveNoncontractingDims) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   auto* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(IsCublasSupportedMatMul(*root, true), IsOkAndHolds(true));
-  EXPECT_THAT(IsCublasSupportedMatMul(*root, false), IsOkAndHolds(false));
+  EXPECT_THAT(IsCublasSupportedMatMul(*root, true),
+              absl_testing::IsOkAndHolds(true));
+  EXPECT_THAT(IsCublasSupportedMatMul(*root, false),
+              absl_testing::IsOkAndHolds(false));
 }
 
 TEST_F(IrEmissionUtilsTest, OneSideMissesNoncontractingDimsOtherIsSingleton) {
@@ -1531,8 +1539,10 @@ TEST_F(IrEmissionUtilsTest, OneSideMissesNoncontractingDimsOtherIsSingleton) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   auto* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(IsCublasSupportedMatMul(*root, true), IsOkAndHolds(false));
-  EXPECT_THAT(IsCublasSupportedMatMul(*root, false), IsOkAndHolds(false));
+  EXPECT_THAT(IsCublasSupportedMatMul(*root, true),
+              absl_testing::IsOkAndHolds(false));
+  EXPECT_THAT(IsCublasSupportedMatMul(*root, false),
+              absl_testing::IsOkAndHolds(false));
 }
 
 TEST_F(IrEmissionUtilsTest, NoNonContractingDims) {
@@ -1549,8 +1559,10 @@ TEST_F(IrEmissionUtilsTest, NoNonContractingDims) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   auto* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(IsCublasSupportedMatMul(*root, true), IsOkAndHolds(false));
-  EXPECT_THAT(IsCublasSupportedMatMul(*root, false), IsOkAndHolds(false));
+  EXPECT_THAT(IsCublasSupportedMatMul(*root, true),
+              absl_testing::IsOkAndHolds(false));
+  EXPECT_THAT(IsCublasSupportedMatMul(*root, false),
+              absl_testing::IsOkAndHolds(false));
 }
 
 }  // namespace gpu

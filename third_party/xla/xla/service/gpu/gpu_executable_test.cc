@@ -38,7 +38,7 @@ TEST(GpuExecutableTest, OuputInfoToAndFromProto) {
                 passthrough: true
               )pb"));
   EXPECT_THAT(GpuExecutable::OutputInfo::FromProto(output_info0.ToProto()),
-              IsOkAndHolds(output_info0));
+              absl_testing::IsOkAndHolds(output_info0));
 
   const GpuExecutable::OutputInfo output_info1{
       /*allocation_index=*/43,
@@ -56,7 +56,7 @@ TEST(GpuExecutableTest, OuputInfoToAndFromProto) {
                 }
               )pb"));
   EXPECT_THAT(GpuExecutable::OutputInfo::FromProto(output_info1.ToProto()),
-              IsOkAndHolds(output_info1));
+              absl_testing::IsOkAndHolds(output_info1));
 
   const GpuExecutable::OutputInfo output_info2{
       /*allocation_index=*/44,
@@ -71,7 +71,7 @@ TEST(GpuExecutableTest, OuputInfoToAndFromProto) {
                 alias_config { kind: MAY_ALIAS }
               )pb"));
   EXPECT_THAT(GpuExecutable::OutputInfo::FromProto(output_info2.ToProto()),
-              IsOkAndHolds(output_info2));
+              absl_testing::IsOkAndHolds(output_info2));
 }
 
 }  // namespace
