@@ -221,19 +221,6 @@ bool IsCommand<HloOpcode::kConditional>(const HloInstruction* hlo,
                         });
 }
 
-static bool CallCanUseCommandBuffer(const HloInstruction* hlo,
-                                    const CommandBufferConfig& config) {
-  // Check if FFI handler is compatible with command buffers.
-  if (auto* custom_call = DynCast<HloCustomCallInstruction>(hlo)) {
-    auto registration =
-        ffi::FindHandler(custom_call->custom_call_target(), "gpu");
-    return registration.ok()
-               ? ffi::IsCommandBufferCompatible(registration->traits)
-               : false;
-  }
-  return false;
-}
-
 static bool IsCommand(const HloCustomCallInstruction* hlo,
                       const CommandBufferConfig& config) {
   // cuBLAS gemms represented in the HLO as custom call instructions.
@@ -271,7 +258,12 @@ static bool IsCommand(const HloCustomCallInstruction* hlo,
             << hlo->custom_call_target() << " into command buffer.";
     return true;
   }
-  return CallCanUseCommandBuffer(hlo, config);
+
+  // Check if FFI handler is compatible with command buffers.
+  auto registration = ffi::FindHandler(hlo->custom_call_target(), "gpu");
+  return registration.ok()
+             ? ffi::IsCommandBufferCompatible(registration->traits)
+             : false;
 }
 
 static bool IsCommand(const HloInstruction* hlo,
@@ -466,17 +458,14 @@ CommandBufferScheduling::CollectCommandBufferSequences(
 
   HloInstructionSequence current_seq;
   int64_t num_commands_in_current_seq = 0;
-  auto must_use_command_buffer = false;
 
   // Adds `current_seq` to `sequences` if it has enough commands in it.
   auto collect_current_seq = [&]() {
-    if (num_commands_in_current_seq >= std::max(1, min_num_commands) ||
-        must_use_command_buffer) {
+    if (num_commands_in_current_seq >= std::max(1, min_num_commands)) {
       RemoveTrailingNoOps(current_seq);
       sequences.push_back(std::move(current_seq));
     }
     current_seq = HloInstructionSequence();
-    must_use_command_buffer = false;
     num_commands_in_current_seq = 0;
   };
 
@@ -596,9 +585,6 @@ CommandBufferScheduling::CollectCommandBufferSequences(
     if (IsCommand(inst, config) &&
         check_dynamic_slice_operand_not_from_seq(current_seq, inst)) {
       num_commands_in_current_seq++;
-      if (CallCanUseCommandBuffer(inst, config)) {
-        must_use_command_buffer = true;
-      }
       current_seq.push_back(inst);
       continue;
     }
