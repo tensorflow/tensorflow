@@ -53,7 +53,7 @@ TypeIdRegistry::TypeId TypeIdRegistry::GetNextExternalTypeId() {
 
 absl::StatusOr<TypeIdRegistry::TypeId> TypeIdRegistry::AssignExternalTypeId(
     absl::string_view name) {
-  absl::MutexLock lock(&type_registry_mutex);
+  absl::MutexLock lock(type_registry_mutex);
   auto& registry = StaticExternalTypeIdRegistry();
 
   // Try to emplace with unknow type id and fill it with real type id only if we
@@ -81,7 +81,7 @@ absl::StatusOr<TypeIdRegistry::TypeId> TypeIdRegistry::AssignExternalTypeId(
 
 absl::Status TypeIdRegistry::RegisterExternalTypeId(absl::string_view name,
                                                     TypeId type_id) {
-  absl::MutexLock lock(&type_registry_mutex);
+  absl::MutexLock lock(type_registry_mutex);
   auto& registry = StaticExternalTypeIdRegistry();
 
   auto emplaced = registry.emplace(name, type_id);
