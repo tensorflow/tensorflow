@@ -30,6 +30,8 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk_testlib.h"
+#include "xla/backends/cpu/runtime/xnnpack/xnn_interop.h"
+#include "xla/backends/cpu/runtime/xnnpack/xnn_threadpool.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -164,9 +166,16 @@ TEST_P(XnnConvolutionThunkTest, SimpleConvolution) {
           kernel_transposed.shape(), out_slice, out_shape, dnums,
           conv->window(), conv->feature_group_count()));
 
+  XnnThreadpool threadpool;
+  if (use_threadpool()) {
+    TF_ASSERT_OK_AND_ASSIGN(threadpool, CreateXnnThreadpool(&device));
+  }
+  Thunk::XnnParams xnn_params(std::move(threadpool));
+
   Thunk::ExecuteParams params;
   params.buffer_allocations = &allocations;
   params.intra_op_threadpool = use_threadpool() ? &device : nullptr;
+  params.xnn_params = &xnn_params;
 
   auto execute_event = thunk->Execute(params);
   tsl::BlockUntilReady(execute_event);

@@ -17,11 +17,14 @@ limitations under the License.
 
 #include <string>
 #include <tuple>
+#include <utility>
 
 #include "absl/strings/str_cat.h"
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk_testlib.h"
+#include "xla/backends/cpu/runtime/xnnpack/xnn_interop.h"
+#include "xla/backends/cpu/runtime/xnnpack/xnn_threadpool.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
@@ -93,9 +96,16 @@ TEST_P(XnnDotThunkTest, SimpleDot) {
                           dot_dimensions, lhs_slice, input_shape, rhs_slice,
                           input_shape, out_slice, output_shape, capture_rhs));
 
+  XnnThreadpool threadpool;
+  if (use_threadpool) {
+    TF_ASSERT_OK_AND_ASSIGN(threadpool, CreateXnnThreadpool(&device));
+  }
+  Thunk::XnnParams xnn_params(std::move(threadpool));
+
   Thunk::ExecuteParams params;
   params.buffer_allocations = &allocations;
   params.intra_op_threadpool = use_threadpool ? &device : nullptr;
+  params.xnn_params = &xnn_params;
 
   auto execute_event = thunk->Execute(params);
   tsl::BlockUntilReady(execute_event);

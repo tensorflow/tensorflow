@@ -1535,6 +1535,12 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
           cpu::Thunk::CustomCallExecuteParams custom_call_execute_params,
           cpu::Thunk::CustomCallExecuteParams::Create(&run_options));
 
+      std::optional<cpu::Thunk::XnnParams> xnn_params;
+      if (cpu_executable->has_xnn_fusions()) {
+        TF_ASSIGN_OR_RETURN(xnn_params,
+                            cpu::Thunk::XnnParams::Create(&run_options));
+      }
+
       cpu::ThreadPoolTaskRunner task_runner(
           run_options.intra_op_thread_pool()->getPool());
 
@@ -1545,7 +1551,8 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
           run_options.intra_op_thread_pool(),
           &task_runner,
           &collective_params,
-          &custom_call_execute_params};
+          &custom_call_execute_params,
+          xnn_params ? &*xnn_params : nullptr};
 
       thunks_execute_event = cpu_executable->thunks().Execute(execute_params);
 
@@ -1658,6 +1665,12 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
                 custom_call_params =
                     cpu::Thunk::CustomCallExecuteParams::Create(&run_options);
 
+            absl::StatusOr<std::optional<cpu::Thunk::XnnParams>> xnn_params(
+                std::nullopt);
+            if (cpu_executable->has_xnn_fusions()) {
+              xnn_params = cpu::Thunk::XnnParams::Create(&run_options);
+            }
+
             cpu::ThreadPoolTaskRunner task_runner(
                 run_options.intra_op_thread_pool()->getPool());
 
@@ -1669,7 +1682,8 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
                   run_options.intra_op_thread_pool(),
                   &task_runner,
                   &*collective_params,
-                  &*custom_call_params};
+                  &*custom_call_params,
+                  *xnn_params ? &**xnn_params : nullptr};
 
               auto thunks_execute_event =
                   cpu_executable->thunks().Execute(execute_params);
