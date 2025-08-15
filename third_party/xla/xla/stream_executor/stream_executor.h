@@ -23,9 +23,13 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/functional/function_ref.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/allocator_stats.h"
@@ -45,6 +49,7 @@ limitations under the License.
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/lib/gtl/int_type.h"
 
 namespace stream_executor {
 
@@ -62,6 +67,14 @@ enum class MemoryType { kDevice = 0, kUnified, kCollective, kHost = 5 };
 class StreamExecutor {
  public:
   virtual ~StreamExecutor() = default;
+
+  // A base class for external resources that can be attached to a
+  // StreamExecutor instance. When a StreamExecutor instance is destroyed, all
+  // attached resources are destroyed as well.
+  class Resource {
+   public:
+    virtual ~Resource() = default;
+  };
 
   // Returns an ActivateContext that ensures the StreamExecutor's context is
   // activated for the duration of the returned ActivateContext's scope.
@@ -332,6 +345,54 @@ class StreamExecutor {
                                                     void* global_address) {
     return absl::UnimplementedError("Not Implemented");
   }
+
+  // Returns a pointer to the resource of the given type, or nullptr if resource
+  // of the given type is not attached to this stream executor.
+  template <typename ConcreteResource>
+  ConcreteResource* GetOrNullResource() {
+    static_assert(std::is_base_of_v<Resource, ConcreteResource>);
+    return static_cast<ConcreteResource*>(
+        GetOrNullResource(GetResourceTypeId<ConcreteResource>()));
+  }
+
+  // Returns a pointer to the resource of the given type, or creates a new
+  // resource of the given type and attaches it to this stream executor.
+  template <typename ConcreteResource>
+  ConcreteResource* GetOrCreateResource(
+      absl::FunctionRef<std::unique_ptr<ConcreteResource>()> create) {
+    static_assert(std::is_base_of_v<Resource, ConcreteResource>);
+    return static_cast<ConcreteResource*>(GetOrCreateResource(
+        GetResourceTypeId<ConcreteResource>(), [&] { return create(); }));
+  }
+
+  // Returns a pointer to the resource of the given type, or creates a new
+  // resource of the given type and attaches it to this stream executor.
+  template <typename ConcreteResource>
+  ConcreteResource* GetOrCreateResource() {
+    return GetOrCreateResource<ConcreteResource>(
+        [] { return std::make_unique<ConcreteResource>(); });
+  }
+
+ private:
+  // We use ResourceTypeId to distinguish between different resource types.
+  TSL_LIB_GTL_DEFINE_INT_TYPE(ResourceTypeId, int64_t);
+
+  Resource* GetOrNullResource(ResourceTypeId type_id);
+  Resource* GetOrCreateResource(
+      ResourceTypeId type_id,
+      absl::FunctionRef<std::unique_ptr<Resource>()> create);
+
+  template <typename F>
+  static ResourceTypeId GetResourceTypeId() {
+    static const ResourceTypeId id = GetNextResourceTypeId();
+    return id;
+  }
+
+  static ResourceTypeId GetNextResourceTypeId();
+
+  absl::Mutex resource_mutex_;
+  absl::flat_hash_map<ResourceTypeId, std::unique_ptr<Resource>> resources_
+      ABSL_GUARDED_BY(resource_mutex_);
 };
 
 template <typename T>

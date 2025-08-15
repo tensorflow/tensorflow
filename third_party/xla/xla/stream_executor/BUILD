@@ -418,9 +418,8 @@ cc_library(
 
 cc_library(
     name = "stream_executor_h",
-    hdrs = [
-        "stream_executor.h",
-    ],
+    srcs = ["stream_executor.cc"],
+    hdrs = ["stream_executor.h"],
     deps = [
         ":activate_context",
         ":allocator_stats",
@@ -440,9 +439,15 @@ cc_library(
         ":platform",
         ":stream",
         "//xla/stream_executor/gpu:tma_metadata",
+        "//xla/tsl/lib/gtl:int_type",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -486,6 +491,7 @@ cc_library(
 
 cc_library(
     name = "stream",
+    srcs = ["stream.cc"],
     hdrs = ["stream.h"],
     deps = [
         ":device_description",
@@ -494,11 +500,17 @@ cc_library(
         ":event_based_timer",
         ":launch_dim",
         ":platform",
+        "//xla/tsl/lib/gtl:int_type",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -845,10 +857,10 @@ xla_cc_test(
         ":platform_manager",
         ":stream_executor_h",
         "//xla/stream_executor/host:host_platform",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -862,10 +874,10 @@ xla_cc_test(
         ":stream",
         ":stream_executor_h",
         "//xla/stream_executor/host:host_platform",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
         "@com_google_absl//absl/log:check",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
