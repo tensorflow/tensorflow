@@ -191,6 +191,8 @@ INSTANTIATE_TEST_CASE_P(
 
 );
 
+GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(Convolve1D1WindowTestHalf);
+
 TEST_F(ConvolutionTest, Convolve1D_1x2x5_1x2x2_Valid) {
   XlaBuilder builder(TestName());
   {
