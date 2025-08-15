@@ -389,8 +389,6 @@ xla_test(
     deps = [
         ":command_buffer_scheduling",
         "//xla:xla_proto_cc",
-        "//xla/ffi",
-        "//xla/ffi:ffi_api",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:filecheck",
@@ -3342,8 +3340,6 @@ xla_test(
         "//xla/backends/gpu/runtime:sequential_thunk",
         "//xla/backends/gpu/runtime:thunk",
         "//xla/backends/gpu/runtime:while_thunk",
-        "//xla/ffi",
-        "//xla/ffi:ffi_api",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
         "//xla/service:hlo_module_config",
