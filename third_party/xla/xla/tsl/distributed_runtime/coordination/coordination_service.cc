@@ -200,12 +200,6 @@ bool CoordinationService::TaskState::IsDisconnectedBeyondGracePeriod() {
          Env::Default()->NowMicros() > disconnect_grace_period_us_;
 }
 
-void CoordinationService::SetDeviceAggregationFunction(
-    std::function<DeviceInfo(const DeviceInfo& devices)>
-        post_aggregate_device_fn) {
-  post_aggregate_device_fn_ = std::move(post_aggregate_device_fn);
-}
-
 CoordinationService::CoordinationService(
     Env* env, const CoordinationServiceConfig& config,
     std::unique_ptr<CoordinationClientCache> client_cache)
