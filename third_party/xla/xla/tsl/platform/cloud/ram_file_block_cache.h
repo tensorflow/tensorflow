@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/synchronization/mutex.h"
+#include "absl/synchronization/notification.h"
 #include "xla/tsl/platform/cloud/file_block_cache.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/status.h"
