@@ -678,6 +678,21 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
         return true;
       };
 
+  // Custom "sub-parser" lambda for xla_gpu_graph_level.
+  auto setter_for_xla_gpu_graph_level = [debug_options](const int32_t level) {
+    debug_options->clear_xla_gpu_enable_command_buffer();
+    if (level >= 1) {
+      debug_options->add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
+    }
+    if (level >= 2) {
+      debug_options->add_xla_gpu_enable_command_buffer(DebugOptions::CUBLAS);
+    }
+    if (level >= 3) {
+      debug_options->add_xla_gpu_enable_command_buffer(DebugOptions::CUDNN);
+    }
+    return true;
+  };
+
   auto command_types_to_string =
       [](tsl::protobuf::RepeatedField<int> command_types) -> std::string {
     struct Formatter {
@@ -1586,6 +1601,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
           &DebugOptions::set_xla_gpu_collectives_use_persistent_cliques),
       debug_options->xla_gpu_collectives_use_persistent_cliques(),
       "Use persistent per-process XLA:GPU collectives cliques"));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_graph_level", setter_for_xla_gpu_graph_level, 1,
+      "The legacy flag for setting GPU graph level. Use "
+      "xla_gpu_enable_command_buffer in new use cases. 0 = off; 1 = capture "
+      "fusions and memcpys; 2 = capture gemms; 3 = capture convolutions."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_command_buffer",
       SetterForRepeatedEnum<DebugOptions::CommandBufferCmdType>(
