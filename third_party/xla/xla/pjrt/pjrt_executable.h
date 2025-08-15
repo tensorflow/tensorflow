@@ -26,6 +26,9 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -98,6 +101,7 @@ struct CompileOptions {
   // Set multi_slice_config to trigger compilation for DCN connected multi
   // slice operation.
   const MultiSliceConfig* multi_slice_config = nullptr;
+  std::string serialized_multi_slice_config = "";
 
   // Key-value string pairs, parsed in order to set miscellaneous options,
   // overriding if appropriate.

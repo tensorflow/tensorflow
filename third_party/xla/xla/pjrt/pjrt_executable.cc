@@ -101,12 +101,13 @@ absl::StatusOr<CompileOptionsProto> CompileOptions::ToProto() const {
 
 absl::StatusOr<CompileOptions> CompileOptions::FromProto(
     const CompileOptionsProto& proto) {
+  CompileOptions output;
   if (!proto.serialized_multi_slice_config().empty()) {
-    return Unimplemented(
-        "multi_slice_config not supported in CompileOptions::FromProto.");
+    LOG(WARNING) << "Multi slice config from proto, must deserialize to use.";
+    output.serialized_multi_slice_config =
+        proto.serialized_multi_slice_config();
   }
 
-  CompileOptions output;
   if (proto.argument_layouts_size() > 0) {
     std::vector<Shape> output_argument_layouts;
     output_argument_layouts.reserve(proto.argument_layouts_size());
