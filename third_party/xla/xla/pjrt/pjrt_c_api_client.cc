@@ -59,6 +59,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_stream_extension.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/extensions/cross_host_transfers/pjrt_c_api_cross_host_transfers_extension.h"
+#include "xla/pjrt/extensions/executable_metadata/executable_metadata_extension.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_api.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -1526,6 +1527,35 @@ PjRtCApiExecutable::GetOutputElementTypes() const {
     out.push_back(pjrt::ConvertFromPjRtBufferType(args.output_types[i]));
   }
   return std::vector<std::vector<PrimitiveType>>{std::move(out)};
+}
+
+absl::StatusOr<std::string>
+PjRtCApiExecutable::GetSerializedExecutableMetadata() const {
+  auto executable_metadata_extension =
+      pjrt::FindExtension<PJRT_ExecutableMetadata_Extension>(
+          c_api_, PJRT_Extension_Type::PJRT_Extension_Type_ExecutableMetadata);
+  if (executable_metadata_extension == nullptr) {
+    return absl::UnimplementedError(
+        "PJRT_ExecutableMetadata_Extension not implemented by this PJRT "
+        "plugin.");
+  }
+  PJRT_ExecutableMetadata_GetExecutableMetadata_Args args;
+  args.executable = c_executable();
+  args.metadata = nullptr;
+  executable_metadata_extension->get_executable_metadata(&args);
+  absl::Cleanup cleanup = [&args, &executable_metadata_extension] {
+    if (args.metadata != nullptr) {
+      PJRT_ExecutableMetadata_DestroySerializedMetadata_Args free_args;
+      free_args.metadata = args.metadata;
+      executable_metadata_extension->destroy_serialized_metadata(&free_args);
+    }
+  };
+  if (args.metadata == nullptr) {
+    return absl::InternalError(
+        "PJRT_ExecutableMetadata_Extension did not return metadata.");
+  }
+  return std::string(args.metadata->serialized_metadata,
+                     args.metadata->serialized_metadata_size);
 }
 
 absl::StatusOr<std::vector<std::vector<DimensionVector>>>

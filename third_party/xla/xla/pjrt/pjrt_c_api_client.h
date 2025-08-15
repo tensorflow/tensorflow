@@ -584,6 +584,9 @@ class PjRtCApiExecutable : public PjRtExecutable {
 
   absl::StatusOr<std::string> FingerprintExecutable() const override;
 
+  // TODO(b/438000615): Move this to PjRtLoadedExecutable.
+  absl::StatusOr<std::string> GetSerializedExecutableMetadata() const;
+
  private:
   const PJRT_Api* c_api_;
   std::unique_ptr<PJRT_Executable, ::pjrt::PJRT_ExecutableDeleter> executable_;
