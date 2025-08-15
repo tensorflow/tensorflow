@@ -6,7 +6,10 @@
 
 // Reshape should not be executed on TPU as all are marked by outside
 // compilation. And there should be no host-device communication.
-// CHECK: tf._TPUCompileMlir
+// CHECK: tf._TPUCompile
+// CHECK-NOT: tf.Reshape
+// CHECK: launch{{.*}}CPU
+// CHECK: tf.TPUCompileSucceeded
 // CHECK-NOT: tf.Reshape
 // CHECK-NOT: tf._XlaHostComputeMlir
 
