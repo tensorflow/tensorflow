@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/cpu/parallel_fusion_emitter.h"
 
+#include <cstdint>
 #include <utility>
 
 #include <gmock/gmock.h>
@@ -22,6 +23,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
 #include "xla/codegen/llvm_kernel_definition.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -36,8 +38,20 @@ namespace xla::cpu {
 namespace {
 
 using ::absl_testing::IsOk;
+using ::testing::_;
 using ::testing::Not;
-using ParallelFusionEmitterTest = HloHardwareIndependentTestBase;
+
+class ParallelFusionEmitterTest : public HloHardwareIndependentTestBase {
+ protected:
+  // Binds the mock hooks to the fusion compiler hooks and sets the number of
+  // expected calls.
+  FusionCompiler::CompilationHooks CreateMockHooks(int64_t num_calls);
+
+ private:
+  testing::MockFunction<void(mlir::ModuleOp)> pre_optimization_mock_;
+  testing::MockFunction<void(mlir::ModuleOp)> post_optimization_mock_;
+  testing::MockFunction<void(mlir::ModuleOp)> post_lowering_mock_;
+};
 
 FusionCompiler::Options CreateDefaultOptions() {
   FusionCompiler::Options options;
@@ -46,6 +60,22 @@ FusionCompiler::Options CreateDefaultOptions() {
   options.fast_min_max = false;
 
   return options;
+}
+
+FusionCompiler::CompilationHooks ParallelFusionEmitterTest::CreateMockHooks(
+    int64_t num_calls) {
+  auto create_mock_function =
+      [num_calls](testing::MockFunction<void(mlir::ModuleOp)>& mock_function) {
+        EXPECT_CALL(mock_function, Call(_)).Times(num_calls);
+        return mock_function.AsStdFunction();
+      };
+
+  FusionCompiler::CompilationHooks hooks;
+  hooks.pre_optimization = create_mock_function(pre_optimization_mock_);
+  hooks.post_optimization = create_mock_function(post_optimization_mock_);
+  hooks.post_lowering = create_mock_function(post_lowering_mock_);
+
+  return hooks;
 }
 
 TEST_F(ParallelFusionEmitterTest, HappyPathSingleFusion) {
@@ -69,8 +99,9 @@ TEST_F(ParallelFusionEmitterTest, HappyPathSingleFusion) {
       Cast<HloFusionInstruction>(computation->root_instruction());
 
   tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_pool", 4);
+
   xla::cpu::ParallelFusionEmitter fussion_emitter(
-      thread_pool, CreateDefaultOptions(), nullptr, false);
+      thread_pool, CreateDefaultOptions(), CreateMockHooks(1), nullptr, false);
 
   TF_ASSERT_OK_AND_ASSIGN(auto kernel_spec, fussion_emitter.AddFusion(fusion));
   EXPECT_EQ(kernel_spec.name(), expected_name);
@@ -114,7 +145,7 @@ TEST_F(ParallelFusionEmitterTest, Error) {
 
   tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_pool", 4);
   xla::cpu::ParallelFusionEmitter fussion_emitter(
-      thread_pool, CreateDefaultOptions(), nullptr, false);
+      thread_pool, CreateDefaultOptions(), CreateMockHooks(0), nullptr, false);
 
   EXPECT_THAT(fussion_emitter.AddFusion(fusion), Not(IsOk()));
 }

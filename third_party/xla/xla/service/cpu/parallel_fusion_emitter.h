@@ -41,6 +41,7 @@ class ParallelFusionEmitter {
  public:
   ParallelFusionEmitter(tsl::thread::ThreadPool& thread_pool,
                         FusionCompiler::Options options,
+                        FusionCompiler::CompilationHooks hooks,
                         const BufferAssignment* buffer_assignment,
                         bool use_unique_c_name);
 

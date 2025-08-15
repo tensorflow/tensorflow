@@ -37,9 +37,9 @@ namespace xla::cpu {
 class FusionCompiler {
  public:
   struct CompilationHooks {
-    absl::AnyInvocable<void(mlir::ModuleOp)> pre_optimization;
-    absl::AnyInvocable<void(mlir::ModuleOp)> post_optimization;
-    absl::AnyInvocable<void(mlir::ModuleOp)> post_lowering;
+    absl::AnyInvocable<void(mlir::ModuleOp) const> pre_optimization;
+    absl::AnyInvocable<void(mlir::ModuleOp) const> post_optimization;
+    absl::AnyInvocable<void(mlir::ModuleOp) const> post_lowering;
   };
 
   struct Options {
