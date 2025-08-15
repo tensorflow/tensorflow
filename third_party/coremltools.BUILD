@@ -9,6 +9,7 @@ exports_files(["LICENSE.txt"])
 proto_library(
     name = "mlmodel_proto",
     srcs = glob(["mlmodel/format/*.proto"]),
+    strip_import_prefix = "mlmodel/format",
 )
 
 cc_proto_library(
