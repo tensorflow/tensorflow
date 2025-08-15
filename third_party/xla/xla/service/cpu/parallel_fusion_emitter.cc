@@ -23,8 +23,10 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/functional/bind_front.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
 #include "xla/backends/cpu/codegen/fusion_emitter.h"
@@ -47,8 +49,9 @@ struct ParallelFusionEmitter::CompilerInstance {
 
 class ParallelFusionEmitter::FusionCompilerPool {
  public:
-  explicit FusionCompilerPool(FusionCompiler::Options options)
-      : options_(options) {}
+  explicit FusionCompilerPool(FusionCompiler::Options options,
+                              FusionCompiler::CompilationHooks hooks)
+      : options_(options), hooks_(std::move(hooks)) {}
 
   ~FusionCompilerPool();
 
@@ -61,8 +64,12 @@ class ParallelFusionEmitter::FusionCompilerPool {
       CompilerInstance instance)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(instances_mutex_);
   void RecycleCompilerInstance(CompilerInstance* instance);
+  // Wrap the held hooks to be able to pass them to the nested compiler without
+  // a copy.
+  FusionCompiler::CompilationHooks GetNestedHooks() const;
 
   FusionCompiler::Options options_;
+  FusionCompiler::CompilationHooks hooks_;
 
   absl::Mutex instances_mutex_;
   int64_t outstanding_instances_ ABSL_GUARDED_BY(instances_mutex_) = 0;
@@ -91,7 +98,8 @@ auto ParallelFusionEmitter::FusionCompilerPool::GetInstance()
 
   std::unique_ptr<mlir::MLIRContext> context = FusionCompiler::CreateContext();
 
-  auto compiler = std::make_unique<FusionCompiler>(context.get(), options_);
+  auto compiler = std::make_unique<FusionCompiler>(context.get(), options_,
+                                                   GetNestedHooks());
 
   return CreateSharedInstance({std::move(context), std::move(compiler)});
 }
@@ -112,11 +120,31 @@ void ParallelFusionEmitter::FusionCompilerPool::RecycleCompilerInstance(
   delete instance;
 }
 
+FusionCompiler::CompilationHooks
+ParallelFusionEmitter::FusionCompilerPool::GetNestedHooks() const {
+  using HookFnRef = absl::FunctionRef<void(mlir::ModuleOp) const>;
+
+  FusionCompiler::CompilationHooks new_hooks;
+  if (hooks_.pre_optimization) {
+    new_hooks.pre_optimization = HookFnRef(hooks_.pre_optimization);
+  }
+  if (hooks_.post_optimization) {
+    new_hooks.post_optimization = HookFnRef(hooks_.post_optimization);
+  }
+  if (hooks_.post_lowering) {
+    new_hooks.post_lowering = HookFnRef(hooks_.post_lowering);
+  }
+
+  return new_hooks;
+}
+
 ParallelFusionEmitter::ParallelFusionEmitter(
     tsl::thread::ThreadPool& thread_pool, FusionCompiler::Options options,
+    FusionCompiler::CompilationHooks hooks,
     const BufferAssignment* buffer_assignment, bool use_unique_c_name)
     : thread_pool_(thread_pool),
-      fusion_compiler_pool_(std::make_unique<FusionCompilerPool>(options)),
+      fusion_compiler_pool_(
+          std::make_unique<FusionCompilerPool>(options, std::move(hooks))),
       buffer_assignment_(buffer_assignment),
       use_unique_c_name_(use_unique_c_name) {}
 
