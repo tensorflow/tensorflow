@@ -685,13 +685,13 @@ def standardize_sample_or_class_weights(x_weight, output_names, weight_type):
       ValueError: In case of invalid user-provided argument.
   """
   if x_weight is None or (isinstance(x_weight, (list, tuple)) and
-                          len(x_weight) == 0):
+                          len(x_weight) == 0): # pylint: disable=g-explicit-length-test
     return [None for _ in output_names]
 
   if len(output_names) == 1:
     if isinstance(x_weight, (list, tuple)) and len(x_weight) == 1:
       return x_weight
-    if isinstance(x_weight, dict):
+    if isinstance(x_weight, collections.abc.Mapping):
       if weight_type == 'class_weight':
         converted_class_weight = {}
         for key, value in x_weight.items():
