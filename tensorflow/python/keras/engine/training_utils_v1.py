@@ -726,6 +726,7 @@ def standardize_sample_or_class_weights(x_weight, output_names, weight_type):
                        'You should provide one `' + weight_type + '` '
                        'array per model output.')
     return x_weight
+
   if isinstance(x_weight, dict):
     if weight_type == 'class_weight':
       for name in output_names:
