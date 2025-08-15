@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "absl/base/const_init.h"
+#include "absl/base/no_destructor.h"
 #include "absl/base/optimization.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
@@ -64,13 +65,12 @@ limitations under the License.
 
 namespace xla {
 
-namespace {
 // An upper bound on the number of threads to use for intra-op parallelism. It
 // is nearly impossible to utilize efficiently more than 256 threads for compute
 // intensive operations that are supposed to run inside the intra-op threadpool.
 static const size_t kMaxIntraOpThreads = 256;
 
-static tsl::ThreadOptions GetThreadOptions() {
+static tsl::ThreadOptions GetIntraOpThreadOptions() {
   tsl::ThreadOptions thread_options;
   // On Mac OS the default stack size is 512KiB, which is too small for some
   // BLAS and LAPACK functions (https://github.com/google/jax/issues/20428).
@@ -80,7 +80,7 @@ static tsl::ThreadOptions GetThreadOptions() {
   return thread_options;
 }
 
-static size_t GetEigenThreadPoolSize() {
+static size_t GetIntraOpThreadPoolSize() {
   // By default we fix the number of devices to one.  However we do let the user
   // override this behavior to help run tests on the host that run models in
   // parallel across multiple devices, e.g. pmap.
@@ -90,7 +90,12 @@ static size_t GetEigenThreadPoolSize() {
   return std::min(num_threads, kMaxIntraOpThreads);
 }
 
-}  // namespace
+static tsl::thread::ThreadPool& GetIntraOpThreadPool() {
+  static absl::NoDestructor<tsl::thread::ThreadPool> intra_op_thread_pool(
+      tsl::Env::Default(), GetIntraOpThreadOptions(),
+      "host-offloading-intra-op", GetIntraOpThreadPoolSize());
+  return *intra_op_thread_pool;
+}
 
 HostOffloadingNanoRtExecutable::HostOffloadingNanoRtExecutable(
     std::string name, ProgramShape program_shape,
@@ -102,13 +107,10 @@ HostOffloadingNanoRtExecutable::HostOffloadingNanoRtExecutable(
       program_shape_(std::move(program_shape)),
       alias_config_(std::move(alias_config)),
       executable_(std::move(executable)),
-      eigen_intraop_pool_(tsl::Env::Default(), GetThreadOptions(),
-                          "XLAEigenNanoRtHostOffloading",
-                          GetEigenThreadPoolSize()),
-      eigen_intraop_device_(eigen_intraop_pool_.AsEigenThreadPool(),
-                            eigen_intraop_pool_.NumThreads()),
       needs_layout_conversion_(needs_layout_conversion),
-      device_assignment_(std::move(device_assignment)) {}
+      device_assignment_(std::move(device_assignment)),
+      intra_op_device_(GetIntraOpThreadPool().AsEigenThreadPool(),
+                       GetIntraOpThreadPool().NumThreads()) {}
 
 namespace {
 
@@ -243,7 +245,7 @@ HostOffloadingNanoRtExecutable::Execute(
     nanort_execute_options.set_ffi_context(
         &execute_options.context->ffi_context());
   }
-  nanort_execute_options.set_intra_op_thread_pool(&eigen_intraop_device_);
+  nanort_execute_options.set_intra_op_thread_pool(&intra_op_device_);
   nanort_execute_options.set_launch_id(execute_options.launch_id);
 
   // We assume that for host offloading computation we have a single device.
