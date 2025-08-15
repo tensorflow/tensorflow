@@ -174,13 +174,17 @@ class CommandBuffer {
                             const ThreadDim& threads, const BlockDim& blocks,
                             Args... args);
 
-  // Creates a command that launches a nested command buffer.
-  virtual absl::StatusOr<const Command*> CreateNestedCommand(
-      CommandBuffer& nested, absl::Span<const Command* const> dependencies) = 0;
+  // kCloned: child command is cloned into parent command.
+  // kMoved: child command is moved into parent command.
+  enum class ChildCommandType { kCloned, kMoved };
+  virtual absl::StatusOr<const Command*> CreateChildCommand(
+      ChildCommandType type, CommandBuffer& nested,
+      absl::Span<const Command* const> dependencies) = 0;
 
   // Updates a command that launches a nested command buffer.
-  virtual absl::Status UpdateNestedCommand(const Command* command,
-                                           const CommandBuffer& nested) = 0;
+  virtual absl::Status UpdateChildCommand(ChildCommandType type,
+                                          const Command* command,
+                                          const CommandBuffer& nested) = 0;
 
   // Creates a device-to-device memory copy.
   virtual absl::StatusOr<const Command*> CreateMemcpyD2D(

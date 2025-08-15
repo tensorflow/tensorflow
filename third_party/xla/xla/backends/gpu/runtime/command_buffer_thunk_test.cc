@@ -129,6 +129,19 @@ bool IsAtLeastCuda12300(const se::StreamExecutor* stream_executor) {
   return false;
 }
 
+bool IsAtLeastCuda12900(const se::StreamExecutor* stream_executor) {
+  const auto& device_description = stream_executor->GetDeviceDescription();
+  const auto* cuda_cc = std::get_if<se::CudaComputeCapability>(
+      &device_description.gpu_compute_capability());
+  if (cuda_cc != nullptr) {
+    if (device_description.driver_version() >=
+        stream_executor::SemanticVersion(12, 9, 0)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // Give a short alias to synchronization mode.
 static constexpr auto serialize =
     CommandBufferCmdExecutor::SynchronizationMode::kSerialize;
@@ -727,6 +740,138 @@ TEST(CommandBufferThunkTest, GemmCmd) {
 
   // Execute command buffer thunk and verify that it executed a GEMM.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
+
+  // Copy `out` data back to host.
+  std::vector<float> dst(6, 0);
+  TF_ASSERT_OK(stream->Memcpy(dst.data(), out, out_length));
+
+  ASSERT_EQ(dst, std::vector<float>({10, 10, 10, 26, 26, 26}));
+
+  // Prepare buffer allocation for updating command buffer.
+  se::DeviceMemory<float> updated_out =
+      stream_executor->AllocateArray<float>(2 * 3);
+  TF_ASSERT_OK(stream->MemZero(&updated_out, out_length));
+
+  // Update buffer allocation to updated `out` buffer.
+  allocations =
+      BufferAllocations({lhs, rhs, updated_out, workspace}, 0, &allocator);
+
+  // Thunk execution should automatically update underlying command buffer.
+  TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
+
+  // Copy `updated_out` data back to host.
+  std::fill(dst.begin(), dst.end(), 0);
+  TF_ASSERT_OK(stream->Memcpy(dst.data(), updated_out, out_length));
+
+  ASSERT_EQ(dst, std::vector<float>({10, 10, 10, 26, 26, 26}));
+
+  // Try to update the command buffer with the same buffers.
+  TF_ASSERT_OK(stream->MemZero(&updated_out, out_length));
+
+  // Thunk execution should automatically update underlying command buffer.
+  TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
+
+  // Copy `updated_out` data back to host.
+  std::fill(dst.begin(), dst.end(), 0);
+  TF_ASSERT_OK(stream->Memcpy(dst.data(), updated_out, out_length));
+
+  ASSERT_EQ(dst, std::vector<float>({10, 10, 10, 26, 26, 26}));
+}
+
+TEST(CommandBufferThunkTest, ChildGemmCmd) {
+  se::StreamExecutor* stream_executor = GpuExecutor();
+
+  if (!IsAtLeastCuda12900(stream_executor)) {
+    GTEST_SKIP() << "Child command is not supported for CUDA < 12.9";
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, stream_executor->CreateStream());
+
+  int64_t lhs_length = sizeof(float) * 2 * 4;
+  int64_t rhs_length = sizeof(float) * 4 * 3;
+  int64_t out_length = sizeof(float) * 2 * 3;
+
+  // Prepare arguments:
+  // lhs = [1.0, 2.0, 3.0, 4.0
+  //        5.0, 6.0, 7.0, 8.0]
+  // rhs = [1.0, 1.0, 1.0
+  //        1.0, 1.0, 1.0
+  //        1.0, 1.0, 1.0
+  //        1.0, 1.0, 1.0]
+  se::DeviceMemory<float> lhs = stream_executor->AllocateArray<float>(2 * 4);
+  std::vector<float> lhs_arr{1, 2, 3, 4, 5, 6, 7, 8};
+  TF_ASSERT_OK(stream->Memcpy(&lhs, lhs_arr.data(), lhs_length));
+
+  se::DeviceMemory<float> rhs = stream_executor->AllocateArray<float>(4 * 3);
+  std::vector<float> rhs_arr(12, 1);
+  TF_ASSERT_OK(stream->Memcpy(&rhs, rhs_arr.data(), rhs_length));
+
+  se::DeviceMemory<float> out = stream_executor->AllocateArray<float>(2 * 3);
+  TF_ASSERT_OK(stream->MemZero(&out, out_length));
+
+  se::DeviceMemory<float> workspace =
+      stream_executor->AllocateArray<float>(1024 * 1024);
+  TF_ASSERT_OK(stream->MemZero(&workspace, 1024 * 1024));
+
+  // Prepare buffer allocations for recording command buffer.
+  BufferAllocation alloc_lhs(/*index=*/0, lhs_length, /*color=*/0);
+  BufferAllocation alloc_rhs(/*index=*/1, rhs_length, /*color=*/0);
+  BufferAllocation alloc_out(/*index=*/2, out_length, /*color=*/0);
+  BufferAllocation alloc_workspace(/*index=*/3, 1024 * 1024, /*color=*/0);
+
+  BufferAllocation::Slice slice_lhs(&alloc_lhs, 0, lhs_length);
+  BufferAllocation::Slice slice_rhs(&alloc_rhs, 0, rhs_length);
+  BufferAllocation::Slice slice_out(&alloc_out, 0, out_length);
+  BufferAllocation::Slice slice_workspace(&alloc_workspace, 0, 1024 * 1024);
+
+  auto config = GemmConfig::For(
+      ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}), {}, {1},
+      ShapeUtil::MakeShape(PrimitiveType::F32, {4, 3}), {}, {0},
+      ShapeUtil::MakeShape(PrimitiveType::F32, {2, 3}), 1.0, 0.0, 0.0,
+      PrecisionConfig::ALG_UNSET, std::nullopt,
+      se::blas::kDefaultComputePrecision, false, false,
+      stream_executor->GetDeviceDescription().gpu_compute_capability());
+  ASSERT_TRUE(config.ok());
+
+  // Prepare commands sequence for constructing command buffer.
+  CommandBufferCmdSequence child_commands;
+  child_commands.Emplace<GemmCmd>(config.value(), slice_lhs, slice_rhs,
+                                  slice_out, slice_workspace,
+                                  /*deterministic=*/true);
+  TF_ASSERT_OK_AND_ASSIGN(
+      CommandBufferCmdExecutor child_executor,
+      CommandBufferCmdExecutor::Create(std::move(child_commands), serialize));
+
+  CommandBufferCmdSequence commands;
+  commands.Emplace<ChildCmd>(std::move(child_executor), ResourceUseVector{});
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      CommandBufferCmdExecutor executor,
+      CommandBufferCmdExecutor::Create(std::move(commands), serialize));
+
+  // Construct a thunk with command sequence.
+  CommandBufferThunk thunk(std::move(executor), Thunk::ThunkInfo());
+
+  ServiceExecutableRunOptions run_options;
+  se::StreamExecutorMemoryAllocator allocator(stream_executor);
+  BufferAllocations allocations({lhs, rhs, out, workspace}, 0, &allocator);
+
+  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
+      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+
+  Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
+  VLOG(0) << "Initialize thunk";
+  TF_ASSERT_OK(thunk.Initialize(
+      {stream_executor, source, &allocations, stream.get(), stream.get()}));
+
+  VLOG(0) << "Initialize done";
+  // Execute command buffer thunk and verify that it executed a GEMM.
+  TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+
+  VLOG(0) << "Execute thunk done";
   TF_ASSERT_OK(stream->BlockHostUntilDone());
 
   // Copy `out` data back to host.
