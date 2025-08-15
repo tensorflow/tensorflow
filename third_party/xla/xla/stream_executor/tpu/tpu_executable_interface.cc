@@ -46,7 +46,7 @@ limitations under the License.
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tsl/platform/statusor.h"
 
-namespace xla {
+namespace xla::legacy {
 
 namespace {
 
@@ -269,4 +269,4 @@ absl::StatusOr<ExecutionOutput> TpuExecutableInterface::ExecuteAsyncOnStream(
   return std::move(result);
 }
 
-}  // namespace xla
+}  // namespace xla::legacy
