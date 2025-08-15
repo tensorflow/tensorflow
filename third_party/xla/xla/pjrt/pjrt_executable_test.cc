@@ -14,19 +14,21 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/pjrt/pjrt_executable.h"
 
+#include <cstdint>
 #include <string>
-#include <utility>
-#include <variant>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
+#include "xla/service/computation_placer.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/status_matchers.h"
 
 namespace xla {
 namespace {
@@ -51,17 +53,16 @@ TEST(CompileOptionsTest, Serialization) {
   EXPECT_EQ(proto.SerializeAsString(), output_proto.SerializeAsString());
 }
 
-TEST(CompileOptionsTest, MultiSliceConfigNotSupported) {
+TEST(CompileOptionsTest, DeserializeSerializedMultiSliceConfig) {
   CompileOptionsProto proto;
-  *proto.mutable_serialized_multi_slice_config() = "multi_size_config";
+  std::string serialized_config = "multi_size_config";
+  *proto.mutable_serialized_multi_slice_config() = serialized_config;
 
-  auto option = CompileOptions::FromProto(proto);
+  TF_ASSERT_OK_AND_ASSIGN(CompileOptions option,
+                          CompileOptions::FromProto(proto));
 
-  EXPECT_THAT(
-      option.status(),
-      absl_testing::StatusIs(
-          absl::StatusCode::kUnimplemented,
-          "multi_slice_config not supported in CompileOptions::FromProto."));
+  EXPECT_EQ(option.multi_slice_config, nullptr);
+  EXPECT_EQ(option.serialized_multi_slice_config, serialized_config);
 }
 
 TEST(ExecuteOptionsTest, Serialization) {
