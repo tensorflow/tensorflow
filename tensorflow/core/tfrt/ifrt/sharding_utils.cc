@@ -476,9 +476,8 @@ absl::StatusOr<xla::ifrt::Future<tensorflow::Tensor>> MakeTensorFromArrayHelper(
   VLOG(2) << "Create tensor from array based on sharding: "
           << hlo_sharding.ToString();
 
-  xla::ifrt::Promise<tensorflow::Tensor> promise =
-      xla::ifrt::Future<tensorflow::Tensor>::CreatePromise();
-  xla::ifrt::Future<tensorflow::Tensor> output_tensor_future(promise);
+  auto [promise, output_tensor_future] =
+      xla::ifrt::Future<tensorflow::Tensor>::MakePromise();
 
   if (hlo_sharding.IsReplicated()) {
     VLOG(1) << "Fast path for replication";
@@ -629,12 +628,14 @@ absl::StatusOr<xla::ifrt::Future<tensorflow::Tensor>> MakeTensorFromArrayHelper(
           std::move(promise).Set(status);
           return;
         }
+        auto shared_promise =
+            std::make_shared<decltype(promise)>(std::move(promise));
         thread_pool.Schedule(
-            [promise = std::move(promise), &ifrt_client,
+            [promise = std::move(shared_promise), &ifrt_client,
              input_tensors = std::move(input_tensors),
              num_concats = std::move(num_concats), data_type = data_type,
              tensor_shape = tensor_shape, &thread_pool]() mutable {
-              std::move(promise).Set(MakeTensorFromDisassembledTensors(
+              std::move(promise)->Set(MakeTensorFromDisassembledTensors(
                   ifrt_client, absl::MakeSpan(input_tensors), num_concats,
                   data_type, tensor_shape, thread_pool));
             });
