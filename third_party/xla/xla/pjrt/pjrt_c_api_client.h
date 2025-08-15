@@ -224,11 +224,9 @@ class PjRtCApiTopologyDescription : public PjRtTopologyDescription {
   PjRtCApiTopologyDescription(const PJRT_Api* c_api,
                               PJRT_TopologyDescription* c_topology, bool owned);
 
-  PjRtPlatformId platform_id() const override {
-    CHECK(false) << "PJRT C API does not support platform_id.";
-  }
+  PjRtPlatformId platform_id() const override { return platform_id_; }
 
-  absl::string_view platform_name() const override;
+  absl::string_view platform_name() const override { return platform_name_; }
 
   absl::string_view platform_version() const override;
 
@@ -266,6 +264,9 @@ class PjRtCApiTopologyDescription : public PjRtTopologyDescription {
   PJRT_TopologyDescription* c_topology_;
   // Device specific attributes with corresponding values.
   absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute> attributes_;
+
+  const std::string platform_name_;
+  const PjRtPlatformId platform_id_;
 
   // Initializes device specific attributes.
   void InitAttributes();

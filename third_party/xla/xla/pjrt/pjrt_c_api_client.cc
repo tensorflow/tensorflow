@@ -2747,23 +2747,15 @@ PjRtCApiTopologyDescription::PjRtCApiTopologyDescription(
     const PJRT_Api* c_api, PJRT_TopologyDescription* c_topology, bool owned)
     : compiler_(std::make_unique<PjRtCApiCompiler>(c_api)),
       c_api_(c_api),
-      c_topology_(c_topology) {
+      c_topology_(c_topology),
+      platform_name_(::pjrt::PlatformName(c_api, c_topology)),
+      platform_id_(tsl::Fingerprint64(platform_name_)) {
   if (owned) {
     owned_c_topology_ = std::unique_ptr<PJRT_TopologyDescription,
                                         pjrt::PJRT_TopologyDescriptionDeleter>(
         c_topology, pjrt::MakeTopologyDescriptionDeleter(c_api));
   }
   InitAttributes();
-}
-
-absl::string_view PjRtCApiTopologyDescription::platform_name() const {
-  PJRT_TopologyDescription_PlatformName_Args args;
-  args.topology = c_topology_;
-  args.struct_size = PJRT_TopologyDescription_PlatformName_Args_STRUCT_SIZE;
-  args.extension_start = nullptr;
-  pjrt::LogFatalIfPjrtError(
-      c_api_->PJRT_TopologyDescription_PlatformName(&args), c_api_);
-  return absl::string_view(args.platform_name, args.platform_name_size);
 }
 
 absl::string_view PjRtCApiTopologyDescription::platform_version() const {
