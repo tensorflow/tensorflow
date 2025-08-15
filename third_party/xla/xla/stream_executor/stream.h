@@ -28,11 +28,15 @@ limitations under the License.
 #include <utility>
 #include <variant>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
@@ -40,6 +44,7 @@ limitations under the License.
 #include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/tsl/lib/gtl/int_type.h"
 
 namespace stream_executor {
 
@@ -61,13 +66,21 @@ class Stream {
   // Platform specific handle to the underlying resources behind a stream
   // implementation (e.g. it gives access to CUstream for CUDA platform).
   struct PlatformSpecificHandle {
-    void *stream = nullptr;  // will be nullptr if not supported
+    void* stream = nullptr;  // will be nullptr if not supported
   };
 
   // Deallocates any stream resources that the parent StreamExecutor has
   // bestowed
   // upon this object.
   virtual ~Stream() = default;
+
+  // A base class for external resources that can be attached to a Stream
+  // instance. When a Stream instance is destroyed, all
+  // attached resources are destroyed as well.
+  class Resource {
+   public:
+    virtual ~Resource() = default;
+  };
 
   // TODO(ezhulenev): Consider removing this platform-specific accessor and
   // forward all users to platform-specific headers, however it requires careful
@@ -97,13 +110,13 @@ class Stream {
   // create a new sub-stream.
   //
   // TODO(b/112196569): The semantics of failed sub-streams is error-prone.
-  virtual absl::StatusOr<Stream *> GetOrCreateSubStream() = 0;
+  virtual absl::StatusOr<Stream*> GetOrCreateSubStream() = 0;
 
   // Return the sub-stream back to the host stream so that it can be reused
   // later. Sub-streams that are !ok() will not be reused.
   //
   // TODO(b/112196569): The semantics of failed sub-streams is error-prone.
-  virtual void ReturnSubStream(Stream *sub_stream) = 0;
+  virtual void ReturnSubStream(Stream* sub_stream) = 0;
 
   // Create a dependency for this stream's next work on the other stream
   // completing. Does not take ownership of other, and other must not be
@@ -112,38 +125,38 @@ class Stream {
   // Checks that a stream does not wait for itself, and it is up to the
   // user to guarantee that a stream does not come to wait on itself in a
   // cyclic manner; in that case, behavior is undefined.
-  virtual absl::Status WaitFor(Stream *other) = 0;
+  virtual absl::Status WaitFor(Stream* other) = 0;
 
   // Waits for an event object to be set.
   // Note that RecordEvent must have been called on the event before
   // you call this function; otherwise the event will be considered complete
   // and this wait will do nothing.
-  virtual absl::Status WaitFor(Event *event) = 0;
+  virtual absl::Status WaitFor(Event* event) = 0;
 
   // Inserts the specified event into the end of this stream. Once the stream
   // has processed all events prior to the insertion point, the event will be
   // marked as completed.
   // The stream does not take ownership of event - meaning that event's lifetime
   // must extend past the point at which it is marked complete!
-  virtual absl::Status RecordEvent(Event *event) = 0;
+  virtual absl::Status RecordEvent(Event* event) = 0;
 
   // Entrain onto the stream: a memcpy to a host destination from a GPU source
   // of the given target size. host_dst must be a pointer to host memory
   // allocated by StreamExecutor::HostMemoryAllocate.
-  virtual absl::Status Memcpy(void *host_dst, const DeviceMemoryBase &gpu_src,
+  virtual absl::Status Memcpy(void* host_dst, const DeviceMemoryBase& gpu_src,
                               uint64_t size) = 0;
 
   // Entrain onto the stream: a memcpy to a GPU destination from a host source
   // of the given target size. host_src must be a pointer to host memory
   // allocated by StreamExecutor::HostMemoryAllocate.
-  virtual absl::Status Memcpy(DeviceMemoryBase *gpu_dst, const void *host_src,
+  virtual absl::Status Memcpy(DeviceMemoryBase* gpu_dst, const void* host_src,
                               uint64_t size) = 0;
 
   // Alternative interface for memcpying from device to host that takes an
   // array slice. Checks that the destination size can accommodate the host
   // slice size.
   template <typename T>
-  absl::Status MemcpyD2H(const DeviceMemory<T> &gpu_src,
+  absl::Status MemcpyD2H(const DeviceMemory<T>& gpu_src,
                          absl::Span<T> host_dst) {
     auto host_size = host_dst.size() * sizeof(T);
     if (gpu_src.size() == 0 || host_size >= gpu_src.size()) {
@@ -157,7 +170,7 @@ class Stream {
   // slice size.
   template <typename T>
   absl::Status MemcpyH2D(absl::Span<const T> host_src,
-                         DeviceMemory<T> *gpu_dst) {
+                         DeviceMemory<T>* gpu_dst) {
     auto host_size = host_src.size() * sizeof(T);
     if (gpu_dst->size() == 0 || gpu_dst->size() >= host_size) {
       return Memcpy(gpu_dst, host_src.begin(), host_size);
@@ -168,28 +181,28 @@ class Stream {
   // Entrain onto the stream: a memcpy to a GPU destination from a GPU source
   // of the given target size. gpu_src/dst must be pointers to GPU memory and
   // peer access must be enabled between their owning StreamExecutors.
-  virtual absl::Status Memcpy(DeviceMemoryBase *gpu_dst,
-                              const DeviceMemoryBase &gpu_src, uint64_t size) {
+  virtual absl::Status Memcpy(DeviceMemoryBase* gpu_dst,
+                              const DeviceMemoryBase& gpu_src, uint64_t size) {
     return absl::UnimplementedError(
         "Memcpy from device to device is not implemented for this "
         "stream.");
   }
 
-  absl::Status MemcpyD2D(DeviceMemoryBase *gpu_dst,
-                         const DeviceMemoryBase &gpu_src, uint64_t size) {
+  absl::Status MemcpyD2D(DeviceMemoryBase* gpu_dst,
+                         const DeviceMemoryBase& gpu_src, uint64_t size) {
     return Memcpy(gpu_dst, gpu_src, size);
   }
 
   // Entrain onto the stream: a memset of zero at a device location of size
   // bytes. The location must not be null.
-  virtual absl::Status MemZero(DeviceMemoryBase *location, uint64_t size) {
+  virtual absl::Status MemZero(DeviceMemoryBase* location, uint64_t size) {
     return absl::UnimplementedError("MemZero is not supported on this stream.");
   }
 
   // Entrain onto the stream: a memset of a 32-bit pattern at device location of
   // size bytes, where bytes must be evenly 32-bit sized (i.e. evenly divisible
   // by 4). The location must not be null.
-  virtual absl::Status Memset32(DeviceMemoryBase *location, uint32_t pattern,
+  virtual absl::Status Memset32(DeviceMemoryBase* location, uint32_t pattern,
                                 uint64_t size) {
     return absl::UnimplementedError(
         "Memset32 is not supported on this stream.");
@@ -229,7 +242,7 @@ class Stream {
       absl::AnyInvocable<absl::Status() &&> callback) = 0;
 
   // Returns the StreamExecutor (parent object) associated with this stream.
-  virtual StreamExecutor *parent() const = 0;
+  virtual StreamExecutor* parent() const = 0;
 
   // Returns the CudaComputeCapability for this stream.
   virtual CudaComputeCapability GetCudaComputeCapability() const = 0;
@@ -241,7 +254,7 @@ class Stream {
   virtual std::variant<StreamPriority, int> priority() const = 0;
 
   // Get/set a name for a stream, which can be shown in profiling tools
-  virtual const std::string &GetName() const = 0;
+  virtual const std::string& GetName() const = 0;
   virtual void SetName(std::string name) = 0;
 
   // Create an EventBasedTimer that can be used to time operations on this
@@ -261,11 +274,59 @@ class Stream {
 
   // Helper method to launch a kernel with optional cluster dimensions.
   virtual absl::Status LaunchKernel(
-      const ThreadDim &thread_dims, const BlockDim &block_dims,
-      const std::optional<ClusterDim> &cluster_dims, void *function,
-      absl::string_view name, void **args, int64_t shmem_bytes) {
+      const ThreadDim& thread_dims, const BlockDim& block_dims,
+      const std::optional<ClusterDim>& cluster_dims, void* function,
+      absl::string_view name, void** args, int64_t shmem_bytes) {
     return absl::UnimplementedError("Not implemented");
   }
+
+  // Returns a pointer to the resource of the given type, or nullptr if resource
+  // of the given type is not attached to this stream executor.
+  template <typename ConcreteResource>
+  ConcreteResource* GetOrNullResource() {
+    static_assert(std::is_base_of_v<Resource, ConcreteResource>);
+    return static_cast<ConcreteResource*>(
+        GetOrNullResource(GetResourceTypeId<ConcreteResource>()));
+  }
+
+  // Returns a pointer to the resource of the given type, or creates a new
+  // resource of the given type and attaches it to this stream executor.
+  template <typename ConcreteResource>
+  ConcreteResource* GetOrCreateResource(
+      absl::FunctionRef<std::unique_ptr<ConcreteResource>()> create) {
+    static_assert(std::is_base_of_v<Resource, ConcreteResource>);
+    return static_cast<ConcreteResource*>(GetOrCreateResource(
+        GetResourceTypeId<ConcreteResource>(), [&] { return create(); }));
+  }
+
+  // Returns a pointer to the resource of the given type, or creates a new
+  // resource of the given type and attaches it to this stream executor.
+  template <typename ConcreteResource>
+  ConcreteResource* GetOrCreateResource() {
+    return GetOrCreateResource<ConcreteResource>(
+        [] { return std::make_unique<ConcreteResource>(); });
+  }
+
+ private:
+  // We use ResourceTypeId to distinguish between different resource types.
+  TSL_LIB_GTL_DEFINE_INT_TYPE(ResourceTypeId, int64_t);
+
+  Resource* GetOrNullResource(ResourceTypeId type_id);
+  Resource* GetOrCreateResource(
+      ResourceTypeId type_id,
+      absl::FunctionRef<std::unique_ptr<Resource>()> create);
+
+  template <typename F>
+  static ResourceTypeId GetResourceTypeId() {
+    static const ResourceTypeId id = GetNextResourceTypeId();
+    return id;
+  }
+
+  static ResourceTypeId GetNextResourceTypeId();
+
+  absl::Mutex resource_mutex_;
+  absl::flat_hash_map<ResourceTypeId, std::unique_ptr<Resource>> resources_
+      ABSL_GUARDED_BY(resource_mutex_);
 };
 
 }  // namespace stream_executor
