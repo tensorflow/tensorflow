@@ -4915,3 +4915,16 @@ func.func @BMMLHSConstnat(%arg0: tensor<1x3xf32>) -> tensor<2x3xf32> {
   // CHECK: %1 = "tfl.transpose"(%0, %cst) : (tensor<3x2xf32>, tensor<2xi32>) -> tensor<2x3xf32>
   // CHECK: return %1 : tensor<2x3xf32>
 }
+
+// CHECK-LABEL: @FCAddToFCWithBiasAndReshape
+func.func public @FCAddToFCWithBiasAndReshape(%arg0: tensor<1x10xf32>) -> tensor<1x1x5xf32> {
+  %cst = arith.constant dense<1.000000e+00> : tensor<1x1x5xf32>
+  %cst_0 = arith.constant dense<0.000000e+00> : tensor<5x10xf32>
+  %0 = "tfl.no_value"() {value} : () -> none
+  %1 = "tfl.fully_connected"(%arg0, %cst_0, %0) <{asymmetric_quantize_inputs = false, fused_activation_function = "NONE", keep_num_dims = true, weights_format = "DEFAULT"}> : (tensor<1x10xf32>, tensor<5x10xf32>, none) -> tensor<1x5xf32>
+  %2 = tfl.add(%1, %cst) <{fused_activation_function = "NONE"}> : (tensor<1x5xf32>, tensor<1x1x5xf32>) -> tensor<1x1x5xf32>
+  return %2 : tensor<1x1x5xf32>
+
+  // CHECK: %0 = "tfl.fully_connected"(%arg0, %cst_0, %cst_1) <{asymmetric_quantize_inputs = false, fused_activation_function = "NONE", keep_num_dims = true, weights_format = "DEFAULT"}> : (tensor<1x10xf32>, tensor<5x10xf32>, tensor<5xf32>) -> tensor<1x5xf32>
+  // CHECK: %1 = "tfl.reshape"(%0, %cst) : (tensor<1x5xf32>, tensor<3xi32>) -> tensor<1x1x5xf32>
+}
