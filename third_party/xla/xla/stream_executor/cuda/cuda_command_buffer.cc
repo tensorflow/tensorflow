@@ -424,7 +424,8 @@ absl::Status CudaCommandBuffer::UpdateDnnGraphNode(
 }
 
 absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateChildNode(
-    absl::Span<const GraphNodeHandle> dependencies, CommandBuffer& nested) {
+    ChildCommandType type, absl::Span<const GraphNodeHandle> dependencies,
+    CommandBuffer& nested) {
   auto& child_command_buffer =
       tensorflow::down_cast<CudaCommandBuffer&>(nested);
   CHECK(child_command_buffer.parent_ == nullptr)
@@ -437,16 +438,49 @@ absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateChildNode(
   std::vector<CUgraphNode> deps = ToCudaGraphHandles(dependencies);
 
   CUgraphNode node_handle;
-  TF_RETURN_IF_ERROR(cuda::ToStatus(
-      cuGraphAddChildGraphNode(&node_handle, graph_, deps.data(), deps.size(),
-                               child_graph),
-      "Failed to create a child graph node and add it to a CUDA graph"));
-  VLOG(5) << "CreateChildNode: " << reinterpret_cast<const void*>(&node_handle);
-  return FromCudaGraphHandle(node_handle);
+  if (type == ChildCommandType::kCloned) {
+    TF_RETURN_IF_ERROR(cuda::ToStatus(
+        cuGraphAddChildGraphNode(&node_handle, graph_, deps.data(), deps.size(),
+                                 child_graph),
+        "Failed to create a child graph node and add it to a CUDA graph"));
+    VLOG(5) << "CreateClonedChildNode: "
+            << reinterpret_cast<const void*>(&node_handle);
+
+    return FromCudaGraphHandle(node_handle);
+
+  } else if (type == ChildCommandType::kMoved) {
+#if CUDA_VERSION >= 12090
+    child_command_buffer.is_owned_graph_ = false;
+    CUgraphNodeParams nodeParams;
+    std::memset(&nodeParams, 0, sizeof(nodeParams));
+    nodeParams.type = CU_GRAPH_NODE_TYPE_GRAPH;
+    nodeParams.graph.graph = child_graph;
+    nodeParams.graph.ownership = CU_GRAPH_CHILD_GRAPH_OWNERSHIP_MOVE;
+    VLOG(2) << "Create a new node by moving the child graph " << child_graph
+            << " and add it to " << graph_ << "; deps: " << dependencies.size();
+
+    std::vector<CUgraphNode> deps = ToCudaGraphHandles(dependencies);
+
+    CUgraphNode node_handle;
+    TF_RETURN_IF_ERROR(cuda::ToStatus(
+        cuGraphAddNode(&node_handle, graph_, deps.data(), deps.size(),
+                       &nodeParams),
+        "Failed to create a child graph node and add it to a CUDA graph"));
+    return FromCudaGraphHandle(node_handle);
+#else
+    return absl::UnimplementedError(
+        "Moved child node is not supported for CUDA < 12.9");
+#endif
+  } else {
+    return absl::InternalError("Unsupported child command type");
+  }
 }
 
-absl::Status CudaCommandBuffer::UpdateChildNode(GraphNodeHandle node_handle,
+absl::Status CudaCommandBuffer::UpdateChildNode(ChildCommandType type,
+                                                GraphNodeHandle node_handle,
                                                 const CommandBuffer& nested) {
+  CHECK(type == ChildCommandType::kCloned)
+      << "Moved child node update is not supported";
   CUgraph child_graph =
       tensorflow::down_cast<const CudaCommandBuffer&>(nested).graph_;
   VLOG(2) << "Set child node params " << node_handle << " in graph executable "

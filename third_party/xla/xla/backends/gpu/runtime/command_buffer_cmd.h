@@ -73,6 +73,7 @@ namespace xla::gpu {
 // clang-format off
 #define COMMAND_BUFFER_CMD_LIST(V)                               \
   V(kEmptyCmd, "EmptyCmd")                                       \
+  V(kChildCmd, "ChildCmd")                                       \
   V(kTracedCommandBufferCmd, "TracedCommandBufferCmd")           \
   V(kComputationIdCmd, "ComputationIdCmd")                       \
   V(kLaunchCmd, "LaunchCmd")                                     \
@@ -740,6 +741,39 @@ class Memset32Cmd : public CommandBufferCmd {
  private:
   BufferAllocation::Slice dst_;
   uint32_t bit_pattern_;
+};
+
+//===----------------------------------------------------------------------===//
+// ChildCmd
+//===----------------------------------------------------------------------===//
+
+class ChildCmd : public CommandBufferCmd {
+ public:
+  ChildCmd(CommandBufferCmdExecutor child_commands,
+           ResourceUseVector resources = {});
+
+  absl::Status Initialize(const Thunk::InitializeParams& params,
+                          StateManager& state) override;
+
+  absl::StatusOr<const se::CommandBuffer::Command*> Record(
+      const Thunk::ExecuteParams& execute_params,
+      const RecordParams& record_params, RecordAction record_action,
+      se::CommandBuffer* command_buffer) override;
+
+  bool requires_initialization() override;
+
+  bool force_update() override;
+
+  BufferUseVector buffers() const override;
+
+ private:
+  CommandBufferCmdExecutor child_commands_;
+
+  // child command buffer is created at initialization time and then use the
+  // move semantics to move it to the command buffer implementation. We do not
+  // use the copy semantics because we will lose track of of the grahp nodes for
+  // underlying implementation.
+  std::unique_ptr<se::CommandBuffer> child_command_buffer_;
 };
 
 //===----------------------------------------------------------------------===//

@@ -124,12 +124,12 @@ class GpuCommandBuffer : public CommandBuffer {
                             const BlockDim& blocks, const Kernel& kernel,
                             const KernelArgs& args) override;
 
-  absl::StatusOr<const Command*> CreateNestedCommand(
-      CommandBuffer& nested,
+  absl::StatusOr<const Command*> CreateChildCommand(
+      ChildCommandType type, CommandBuffer& nested,
       absl::Span<const Command* const> dependencies) override;
 
-  absl::Status UpdateNestedCommand(const Command* command,
-                                   const CommandBuffer& nested) override;
+  absl::Status UpdateChildCommand(ChildCommandType type, const Command* command,
+                                  const CommandBuffer& nested) override;
 
   absl::StatusOr<const Command*> CreateMemcpyD2D(
       DeviceMemoryBase* dst, const DeviceMemoryBase& src, uint64_t size,
@@ -329,12 +329,13 @@ class GpuCommandBuffer : public CommandBuffer {
 
   // Adds a new nested command buffer node to the graph.
   virtual absl::StatusOr<GraphNodeHandle> CreateChildNode(
-      absl::Span<const GraphNodeHandle> dependencies,
+      ChildCommandType type, absl::Span<const GraphNodeHandle> dependencies,
       CommandBuffer& nested) = 0;
 
-  // Associate another command buffer with this child node. Will return an
-  // error if the given node has not been created as a child node.
-  virtual absl::Status UpdateChildNode(GraphNodeHandle node_handle,
+  // Updates an existing child node. Will return an error if the given node has
+  // not been created as a child node.
+  virtual absl::Status UpdateChildNode(ChildCommandType type,
+                                       GraphNodeHandle node_handle,
                                        const CommandBuffer& nested) = 0;
 
   // Adds a new kernel launch node to the graph.
