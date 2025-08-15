@@ -19,7 +19,6 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -72,10 +71,10 @@ class HostOffloadingNanoRtExecutable : public HostOffloadingExecutable {
   ProgramShape program_shape_;
   HloInputOutputAliasConfig alias_config_;
   std::unique_ptr<xla::cpu::NanoRtExecutable> executable_;
-  tsl::thread::ThreadPool eigen_intraop_pool_;
-  Eigen::ThreadPoolDevice eigen_intraop_device_;
   const bool needs_layout_conversion_;
   std::shared_ptr<DeviceAssignment> device_assignment_;
+
+  Eigen::ThreadPoolDevice intra_op_device_;
 };
 
 }  // namespace xla
