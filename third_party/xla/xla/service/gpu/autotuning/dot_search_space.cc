@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -171,9 +172,28 @@ std::vector<TritonGemmConfig> TritonDotFusionSearchSpace::OptimizeConfigSet(
     return configs;
   }
 
-  auto split_limits = std::minmax_element(
-      configs.begin(), configs.end(),
-      [](const auto& a, const auto& b) { return a.split_k < b.split_k; });
+  absl::flat_hash_map<std::pair<int, int>, std::pair<int, int>>
+      m_n_to_split_limits;
+  std::pair<int, int> global_split_limits;
+  auto update_split_limits = [](auto& limits, int value) {
+    limits = std::minmax({limits.first, limits.second, value});
+  };
+  for (const TritonGemmConfig& config : configs) {
+    auto m_n_key = std::make_pair(config.block_m, config.block_n);
+    auto& split_limits =
+        m_n_to_split_limits.try_emplace(m_n_key, config.split_k, config.split_k)
+            .first->second;
+    update_split_limits(split_limits, config.split_k);
+    update_split_limits(global_split_limits, config.split_k);
+  }
+
+  auto get_split_limits = [&](int block_m, int block_n) {
+    auto m_n_key = std::make_pair(block_m, block_n);
+    auto split_limits_it = m_n_to_split_limits.find(m_n_key);
+    return split_limits_it == m_n_to_split_limits.end()
+               ? global_split_limits
+               : split_limits_it->second;
+  };
   absl::flat_hash_set<TritonGemmConfig> filter;
   for (TritonGemmConfig config : hints) {
     // Our default config set does not take problem size into account, so we
@@ -188,8 +208,9 @@ std::vector<TritonGemmConfig> TritonDotFusionSearchSpace::OptimizeConfigSet(
         std::clamp(config.block_k, min_contracting_tile_size_,
                    GetMaxContractingTileSize({config.block_m, config.block_n},
                                              /*contracting_split=*/1));
-    config.split_k = std::clamp(config.split_k, split_limits.first->split_k,
-                                split_limits.second->split_k);
+    const auto& split_limits = get_split_limits(config.block_m, config.block_n);
+    config.split_k =
+        std::clamp(config.split_k, split_limits.first, split_limits.second);
     VLOG(10) << "Adding config to hint filter: " << config.ToString();
     filter.insert(config);
   }
