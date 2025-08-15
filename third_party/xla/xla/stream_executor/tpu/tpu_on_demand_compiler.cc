@@ -108,7 +108,7 @@ class TpuCompiler : public Compiler {
     }
 
     std::unique_ptr<Executable> exec =
-        std::make_unique<TpuExecutable>(result, std::move(module));
+        std::make_unique<legacy::TpuExecutable>(result, std::move(module));
     return exec;
   }
 
@@ -175,7 +175,7 @@ class TpuCompiler : public Compiler {
       TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                           ApiConverter::FromC(c_module));
       std::shared_ptr<HloModule> module_shared(module.release());
-      executables.emplace_back(std::make_unique<TpuExecutable>(
+      executables.emplace_back(std::make_unique<legacy::TpuExecutable>(
           se_executables[i], std::move(module_shared)));
     }
 
