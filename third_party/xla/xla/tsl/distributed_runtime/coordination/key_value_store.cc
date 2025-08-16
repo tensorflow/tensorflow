@@ -15,11 +15,13 @@ limitations under the License.
 
 #include "xla/tsl/distributed_runtime/coordination/key_value_store.h"
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/base/internal/endian.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
@@ -65,6 +67,28 @@ std::optional<std::string> KeyValueStore::Get(absl::string_view key) {
   if (it == data_.end()) {
     return std::nullopt;
   }
+  return it->second;
+}
+
+absl::StatusOr<std::string> KeyValueStore::IncrementBy(absl::string_view key,
+                                                       int64_t increment) {
+  absl::MutexLock l(mu_);
+
+  auto [it, inserted] = data_.try_emplace(key, "");
+  if (inserted) {
+    std::string new_value(sizeof(int64_t), '\0');
+    it->second = std::move(new_value);
+  } else if (it->second.size() != sizeof(int64_t)) {
+    return absl::FailedPreconditionError(absl::StrCat(
+        "key ", key, " has an unexpected value size: ", it->second.size(),
+        " bytes, expected ", sizeof(int64_t), " bytes."));
+  }
+  int64_t new_value =
+      static_cast<int64_t>(absl::big_endian::Load64(it->second.data())) +
+      increment;
+
+  absl::big_endian::Store64(it->second.data(), new_value);
+  NotifyCallbacksForKey(key, it->second);
   return it->second;
 }
 

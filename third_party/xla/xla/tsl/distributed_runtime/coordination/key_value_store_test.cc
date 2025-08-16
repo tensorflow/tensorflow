@@ -202,5 +202,39 @@ TEST(KeyValueStore, CallbacksCalledOnDestruction) {
   EXPECT_TRUE(callback_called);
 }
 
+TEST(KeyValueStore, IncrementByPositiveValueSucceeds) {
+  KeyValueStore store;
+  ASSERT_OK(store.Put("foo",
+                      absl::string_view("\x00\x00\x00\x00\x00\x00\x00\x03", 8),
+                      /*allow_overwrite=*/true));
+  EXPECT_THAT(store.IncrementBy("foo", 2),
+              IsOkAndHolds(std::string("\x00\x00\x00\x00\x00\x00\x00\x05", 8)));
+}
+
+TEST(KeyValueStore, IncrementByNegativeValueSucceeds) {
+  KeyValueStore store;
+  ASSERT_OK(store.Put("foo",
+                      absl::string_view("\x00\x00\x00\x00\x00\x00\x00\x02", 8),
+                      /*allow_overwrite=*/true));
+  // Result will be the two's complement of the positive value.
+  EXPECT_THAT(store.IncrementBy("foo", -5),
+              IsOkAndHolds(std::string("\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFD", 8)));
+}
+
+TEST(KeyValueStore, IncrementByWithoutExistingValueSucceeds) {
+  // Result will be the increment value. This behavior is consistent with
+  // other KV store implementations.
+  KeyValueStore store;
+  EXPECT_THAT(store.IncrementBy("foo", 2),
+              IsOkAndHolds(std::string("\x00\x00\x00\x00\x00\x00\x00\x02", 8)));
+}
+
+TEST(KeyValueStore, IncrementByWithInvalidValueFails) {
+  KeyValueStore store;
+  ASSERT_OK(store.Put("foo", "invalid", /*allow_overwrite=*/true));
+  EXPECT_THAT(store.IncrementBy("foo", 2),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
+}
+
 }  // namespace
 }  // namespace tsl
