@@ -36,47 +36,10 @@ namespace tfcompile {
 // data and meta-information is available in aot.
 struct CompileResult {
   // Contains object file and meta-info.
- private:
   std::unique_ptr<xla::cpu::CpuAotCompilationResult> aot;
-
- public:
   xla::ProgramShapeProto program_shape;  // Static shape of args and results.
   string entry_point;                    // Name of generated function.
   int pointer_size = 0;                  // Size of a pointer in bytes.
-
-  void set_aot(std::unique_ptr<xla::cpu::CpuAotCompilationResult> aot) {
-    this->aot = std::move(aot);
-  }
-
-  bool is_aot_thunks() const {
-    return dynamic_cast<xla::cpu::CpuAotCompilationResultThunks*>(aot.get());
-  }
-
-  xla::cpu::CpuAotCompilationResult* get_aot() const { return aot.get(); }
-
-  absl::StatusOr<const xla::cpu::CpuAotCompilationResultThunks*>
-  get_aot_thunks() const {
-    auto* aot_thunks =
-        tsl::down_cast<xla::cpu::CpuAotCompilationResultThunks*>(aot.get());
-    if (!aot_thunks) {
-      return absl::InternalError(
-          "Failed to cast to CpuAotCompilationResultThunks");
-    }
-
-    return aot_thunks;
-  }
-
-  absl::StatusOr<const xla::cpu::CpuAotCompilationResultLegacy*>
-  get_aot_legacy() const {
-    auto* aot_legacy =
-        tsl::down_cast<xla::cpu::CpuAotCompilationResultLegacy*>(aot.get());
-    if (!aot_legacy) {
-      return absl::InternalError(
-          "Failed to cast to CpuAotCompilationResultLegacy");
-    }
-
-    return aot_legacy;
-  }
 };
 
 // CompileGraph compiles the graph_def into an object file containing a function
