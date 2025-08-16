@@ -142,7 +142,6 @@ cc_library(
         ":shard_map_export",
         ":shard_map_import",
         "//xla/service:hlo_proto_cc",
-        "//xla/service/spmd/shardy/round_trip_common:export_named_computations",
         "//xla/service/spmd/shardy/round_trip_common:pipeline_passes",
         "//xla/service/spmd/shardy/stablehlo_round_trip:export_shardings",
         "@llvm-project//llvm:Support",
