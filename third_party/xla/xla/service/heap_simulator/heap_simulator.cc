@@ -2359,55 +2359,17 @@ template <typename BufferType>
 typename GlobalDecreasingSizeBestFitHeap<BufferType>::FreeChunks
 GlobalDecreasingSizeBestFitHeap<BufferType>::MakeFreeChunks(
     const BufferInterval& buffer_interval, int64_t max_colocation_size) const {
-  // Map free chunk offsets -> ends.
-  // We use `greater` for the comparison so that we can use `lower_bound` to
-  // find the largest key less than or equal to the lookup value.
-  FreeChunks free_chunks{
-      {0, INT64_MAX}};  // Initialize with "infinite" free memory.
-
-  // Subtract chunks that are in use from the free chunks.
+  // 1. Collect the intervals we want to subtract.
+  // 2. Sort the intervals by start time.
+  // 3. Iterate through them and create a new interval for each gap between
+  //    non-removed intervals.
+  // 4. Round the endpoints of the intervals taking into account the alignment.
+  auto collocations = GetTransitiveColocations(buffer_interval);
+  std::vector<std::pair<int64_t, int64_t>> intervals_to_subtract;
   auto subtract_used_chunk = [&](const BufferIntervalTreeNode* node) {
     const Chunk& used_chunk = node->chunk;
-    // Find the free chunks containing the start and end of the used chunk.
-    auto it_end = free_chunks.lower_bound(used_chunk.chunk_end());
-    if (it_end == free_chunks.end()) {
-      return;
-    }
-    auto it_start = free_chunks.lower_bound(used_chunk.offset);
-
-    // Store original free chunk end, in case `it_start == it_end`.
-    int64_t free_chunk_end = it_end->second;
-
-    // Subtract from free chunk containing start of used range, removing if it
-    // becomes too small for the buffer.
-    if (it_start != free_chunks.end()) {
-      if (used_chunk.offset - it_start->first >= buffer_interval.size) {
-        it_start->second = std::min(it_start->second, used_chunk.offset);
-      } else {
-        ++it_start;  // Increment iterator so that this entry is erased
-                     // below.
-      }
-    }
-
-    // Erase from the start chunk (possibly inclusive) to the end chunk
-    // (always inclusive). We iterate from end to start, as the map is in
-    // reverse order.
-    free_chunks.erase(it_end, it_start);
-
-    // Create a new free chunk after the used chunk, if it is large enough.
-    int64_t chunk_end_aligned = used_chunk.chunk_end();
-    if (alignment_ != 1) {
-      if (absl::has_single_bit(static_cast<uint64_t>(alignment_))) {
-        // Alignment is 2^n, add 2^n-1 and then zero the last n bits.
-        chunk_end_aligned =
-            (chunk_end_aligned + alignment_ - 1) & ~(alignment_ - 1);
-      } else {
-        chunk_end_aligned = RoundUpTo(used_chunk.chunk_end(), alignment_);
-      }
-    }
-    if (free_chunk_end - chunk_end_aligned >= max_colocation_size) {
-      CHECK(free_chunks.insert({chunk_end_aligned, free_chunk_end}).second);
-    }
+    intervals_to_subtract.emplace_back(used_chunk.offset,
+                                       used_chunk.chunk_end());
   };
 
   interval_tree_.ApplyToNodesOverlappingInTime(
@@ -2422,6 +2384,31 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::MakeFreeChunks(
     interval_tree_.ApplyToNodesOverlappingInTime(interval.start, interval.end,
                                                  subtract_used_chunk);
   }
+
+  std::sort(intervals_to_subtract.begin(), intervals_to_subtract.end());
+  FreeChunks free_chunks;
+  int64_t last_active = 0;
+  for (auto [st, en] : intervals_to_subtract) {
+    if (st > last_active) {
+      // There is a new free chunk.
+      int64_t free_chunk_end = st;
+      int64_t chunk_end_aligned = last_active;
+      if (alignment_ != 1) {
+        if (absl::has_single_bit(static_cast<uint64_t>(alignment_))) {
+          // Alignment is 2^n, add 2^n-1 and then zero the last n bits.
+          chunk_end_aligned =
+              (chunk_end_aligned + alignment_ - 1) & ~(alignment_ - 1);
+        } else {
+          chunk_end_aligned = RoundUpTo(last_active, alignment_);
+        }
+      }
+      if (free_chunk_end - chunk_end_aligned >= max_colocation_size) {
+        CHECK(free_chunks.insert({chunk_end_aligned, free_chunk_end}).second);
+      }
+    }
+    last_active = std::max(last_active, en);
+  }
+  free_chunks.emplace(last_active, INT64_MAX);
 
   return free_chunks;
 }
