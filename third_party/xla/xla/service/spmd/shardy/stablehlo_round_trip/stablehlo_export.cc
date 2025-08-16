@@ -36,7 +36,8 @@ void addStablehloExportPipeline(
   // rewriters shouldn't be applied before converting to HLO as they apply
   // folding.
   pm.addPass(createExportOpsPass(options.keepHloShardingConstraints));
-  pm.addPass(createStablehloRoundTripShardMapExportPass());
+  pm.addPass(createStablehloRoundTripShardMapExportPass(
+      options.keepShardMapBodyAsFunc, options.keepHloShardingConstraints));
   pm.addPass(createExportNamedComputationsPass());
   // If we don't add a sharding to a control flow op without one,
   // StableHLO -> HLO conversion won't add a sharding for that op even if a

@@ -47,7 +47,10 @@ absl::StatusOr<std::unique_ptr<xla::HloModule>> ConvertShardyToHlo(
   // TODO(hanruobing): This export pipeline replaces any sdy.sharding_constraint
   // with an mhlo.copy rather than a stablehlo.custom_call @Sharding, we may
   // need to add an option to to convert to custom call @Sharding.
-  xla::sdy::addStablehloExportPipeline(pm);
+  xla::sdy::StablehloExportPipelineOptions options;
+  options.keepHloShardingConstraints = true;
+  options.keepShardMapBodyAsFunc = true;
+  xla::sdy::addStablehloExportPipeline(pm, options);
 
   mlir::BaseScopedDiagnosticHandler diagnostic_handler(
       shardy_stablehlo_module_copy->getContext());
