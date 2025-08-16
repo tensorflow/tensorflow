@@ -114,11 +114,13 @@ tt.func @major_3d(%arg0: !tt.ptr<i4>) -> (tensor<8x8x8xi8>) {
 // -----
 
 // CHECK-LABEL: @triton_xla_extract_2d
-func.func @triton_xla_extract_2d(%arg0: tensor<128x128xi4>) -> (tensor<16x16xi8>) {
-  // CHECK: %[[EXTRACT:.*]] = triton_xla.extract %arg0[0, 0] [16, 8] [1, 1] {layout = array<i64: 1, 0>} : tensor<128x64xi8> to tensor<16x8xi8>
+func.func @triton_xla_extract_2d(%arg0: !tt.ptr<i4>) -> (tensor<16x16xi8>) {
+  // CHECK: %[[EXTRACT:.*]] = triton_xla.extract %arg0[0, 0] [16, 8] [1, 1]
+  // CHECK-SAME: {layout = array<i64: 1, 0>, shape = array<i64: 128, 64>}
+  // CHECK-SAME: : !tt.ptr<i8> to tensor<16x8xi8>
   %c0 = arith.constant 0 : index
   %extracted_tensor = triton_xla.extract %arg0 [0, %c0] [16, 16] [1, 1]
-    {layout = array<i64:1, 0>} : tensor<128x128xi4> to tensor<16x16xi4>
+    {layout = array<i64:1, 0>, shape = array<i64: 128, 128>} : !tt.ptr<i4> to tensor<16x16xi4>
   %ext = arith.extsi %extracted_tensor : tensor<16x16xi4> to tensor<16x16xi8>
   // CHECK: %[[SHLI:.*]] = arith.shli %[[EXTRACT]]
   // CHECK: %[[SHRI_LO:.*]] = arith.shrsi %[[SHLI]]

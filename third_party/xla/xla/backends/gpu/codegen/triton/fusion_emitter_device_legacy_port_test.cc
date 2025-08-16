@@ -264,7 +264,7 @@ ENTRY e {
       CreateTritonIrAndFileCheck(*module_and_metadata.computation,
                                  module_and_metadata.block_level_parameters,
                                  R"(
-CHECK: %[[LOAD:.*]] = triton_xla.extract {{.*}} : tensor<2x2xi8> to tensor<16x16xi8>
+CHECK: %[[LOAD:.*]] = triton_xla.extract {{.*}} : !tt.ptr<i8> to tensor<16x16xi8>
 CHECK: %[[TRUNCI:.*]] = arith.trunci %[[LOAD]] : tensor<16x16xi8> to tensor<16x16xi1>
 CHECK: %{{.*}} = arith.andi %[[TRUNCI]], %{{.*}} : tensor<16x16xi1>
 )"));
