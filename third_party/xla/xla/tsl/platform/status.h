@@ -103,11 +103,6 @@ ABSL_DEPRECATE_AND_INLINE() inline absl::Status OkStatus() {
   return absl::OkStatus();
 };
 
-ABSL_DEPRECATE_AND_INLINE()
-inline absl::Status FromAbslStatus(const absl::Status& s) { return s; }
-ABSL_DEPRECATE_AND_INLINE()
-inline absl::Status ToAbslStatus(const ::absl::Status& s) { return s; }
-
 // Given `Status.message()` does not guarantee to be always backed by a
 // null-terminated string, we have this utility function when it's needed for
 // the Tensorflow C-API.
