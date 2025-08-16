@@ -495,8 +495,9 @@ TEST_F(Tf2HloTest, GpuCompile) {
   EXPECT_OK(result);
 #else
   LOG(INFO) << "Non-GPU compile failure";
-  EXPECT_THAT(result, StatusIs(absl::StatusCode::kUnimplemented,
-                               HasSubstr("CUDA or ROCM build required")));
+  EXPECT_THAT(result,
+              absl_testing::StatusIs(absl::StatusCode::kUnimplemented,
+                                     HasSubstr("CUDA or ROCM build required")));
 #endif
 }
 
