@@ -5225,17 +5225,18 @@ absl::Status AlgebraicSimplifierVisitor::HandleBroadcast(
       HloInstruction* replaced_inst = operand;
       if (replaced_inst->original_value()) {
         HloInstruction* replacing_inst = operand->mutable_operand(0);
-        auto recovery_computation = [](xla::HloComputation::Builder& builder,
-                                       const xla::Shape& input_shape,
-                                       const xla::Shape& output_shape) {
+        auto build_entry_computation = [](xla::HloComputation::Builder& builder,
+                                          const xla::Shape& input_shape,
+                                          const xla::Shape& output_shape) {
           xla::HloInstruction* param = builder.AddInstruction(
               xla::HloInstruction::CreateParameter(0, input_shape, "p"));
           return builder.AddInstruction(
               xla::HloInstruction::CreateReshape(output_shape, param));
         };
         HloModule* module = broadcast->parent()->parent();
-        module->mutable_original_value_recovery_table().AddRecoveryComputation(
-            replaced_inst, replacing_inst, recovery_computation);
+        module->mutable_original_value_recovery_table()
+            .BuildAndAddRecoveryModule(replaced_inst, replacing_inst,
+                                       build_entry_computation);
       }
 
       return ReplaceWithNewInstruction(

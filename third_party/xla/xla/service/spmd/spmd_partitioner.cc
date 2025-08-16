@@ -5965,5 +5965,45 @@ absl::Status SpmdPartitioner::PreprocessHlos(
   return absl::OkStatus();
 }
 
+void SpmdPartitioningVisitor::SetPartitionedHlo(
+    const HloInstruction* hlo, PartitionedHlo&& partitioned_hlo) {
+  CHECK_EQ(partitioned_instructions_.count(hlo), 0);
+  if (hlo->original_value() && !partitioned_hlo.sharding().IsReplicated()) {
+    SpmdBuilder builder("recovery_computation", nullptr);
+    auto* param = builder.AddInstruction(xla::HloInstruction::CreateParameter(
+        0, partitioned_hlo.hlo()->shape(), "param"));
+    param->set_sharding(partitioned_hlo.sharding());
+    xla::HloModuleConfig config;
+    auto recovery_module =
+        std::make_unique<HloModule>("recovery_module", config);
+    PartitionedHlo::ReshardCache reshard_cache;
+    int64_t next_channel_id = hlo_query::NextChannelId(*recovery_module);
+
+    xla::spmd::PartitionedHlo::PartitioningState partitioning_state =
+        partitioned_hlo.state();
+    partitioning_state.b = &builder;
+    partitioning_state.module = recovery_module.get();
+    partitioning_state.partition_id =
+        partitioning_state.collective_ops_creator.create_partition_id(&builder);
+    partitioning_state.next_channel_id = &next_channel_id;
+    partitioning_state.reshard_cache = &reshard_cache;
+
+    PartitionedHlo param_partitioned_hlo(param, partitioned_hlo.base_shape(),
+                                         partitioning_state);
+    // Creates computation to recover the partitioned value.
+    param_partitioned_hlo.Replicate();
+    recovery_module->AddEntryComputation(builder.Build());
+
+    // Adds recovery computation to the original value recovery table.
+    auto* module = const_cast<HloModule*>(hlo->parent()->parent());
+    module->mutable_original_value_recovery_table().AddRecoveryModule(
+        /*replaced_inst=*/hlo, /*replacing_inst=*/partitioned_hlo.hlo(),
+        std::move(recovery_module));
+  }
+
+  partitioned_instructions_.emplace(hlo, partitioned_hlo);
+  changed_ = true;
+}
+
 }  // namespace spmd
 }  // namespace xla
