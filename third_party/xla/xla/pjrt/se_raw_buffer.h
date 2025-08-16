@@ -55,7 +55,7 @@ class PjRtStreamExecutorDeviceEvent : public PjRtDeviceEvent {
   const char* callee_method_;
 };
 
-class PjRtStreamExecutorRawBuffer : public PjRtRawBuffer {
+class PjRtStreamExecutorRawBuffer : public CommonPjRtRawBuffer {
  public:
   PjRtStreamExecutorRawBuffer(PjRtStreamExecutorClient* client,
                               PjRtMemorySpace* memory_space,
@@ -72,15 +72,38 @@ class PjRtStreamExecutorRawBuffer : public PjRtRawBuffer {
                                             : nullptr;
   }
 
+  void* OpaqueDeviceMemoryDataPointer() const override {
+    return device_buffer_->opaque();
+  }
+
   size_t GetOnDeviceSizeInBytes() const override {
     return device_buffer_->mem().size();
   }
 
-  PjRtFuture<> CopyRawHostToDevice(const void* src, int64_t offset,
-                                   int64_t transfer_size) override;
+  ShapedBuffer AsShapedBuffer(const xla::Shape&);
 
-  PjRtFuture<> CopyRawDeviceToHost(void* dst, int64_t offset,
-                                   int64_t transfer_size) override;
+  absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
+  CopyRawHostToDeviceAndReturnEvent(const void* src, int64_t offset,
+                                    int64_t transfer_size) override;
+
+  absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
+  CopyRawDeviceToHostAndReturnEvent(void* dst, int64_t offset,
+                                    int64_t transfer_size) override;
+
+  absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> MakeAllocationReadyEvent()
+      override;
+
+  void ReadDynamicShape(tsl::AsyncValueRef<xla::Shape> output_shape,
+                        xla::Shape shape) override;
+
+  void CopyToLiteralAsync(
+      PjRtFuture<>::Promise promise,
+      tsl::RCReference<PjRtDeviceEventPromise> device_promise,
+      MutableLiteralBase* literal, xla::Shape shape) override;
+  void CopyTo(tsl::RCReference<CommonPjRtRawBuffer> dst_raw_buffer,
+              tsl::RCReference<PjRtDeviceEventPromise> definition_event_promise,
+              tsl::RCReference<PjRtDeviceEventPromise> src_usage_event_promise,
+              ::tsl::AsyncValueRef<bool> allocation_event) override;
 
  private:
   PjRtStreamExecutorClient* client_;

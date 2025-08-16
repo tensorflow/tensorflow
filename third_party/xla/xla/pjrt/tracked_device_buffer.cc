@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/pjrt/event_pool.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/se_raw_buffer.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
@@ -297,6 +298,27 @@ TrackedDeviceBuffer::LockUseAndTransferUsageEvents() {
   CHECK(in_use_);
   in_use_ = false;
   return std::move(usage_events_);
+}
+
+std::vector<tsl::RCReference<tsl::AsyncValue>>
+TrackedDeviceBuffer::GetAsyncValueDefinitionEvents() {
+  std::vector<tsl::RCReference<tsl::AsyncValue>> avs;
+  avs.reserve(definition_events_.size());
+  for (const auto& ev : definition_events_) {
+    avs.push_back(ev.CopyRCRef());
+  }
+  return avs;
+}
+
+tsl::RCReference<CommonPjRtRawBuffer> TrackedDeviceBuffer::GetRawBuffer(
+    PjRtMemorySpace* memory_space) {
+  return tsl::MakeRef<PjRtStreamExecutorRawBuffer>(
+      tensorflow::down_cast<PjRtStreamExecutorClient*>(memory_space->client()),
+      memory_space,
+      tensorflow::down_cast<PjRtStreamExecutorDevice*>(
+          memory_space->devices()[0])
+          ->local_device_state(),
+      device_memory_);
 }
 
 void GetDeviceBufferEvents(
