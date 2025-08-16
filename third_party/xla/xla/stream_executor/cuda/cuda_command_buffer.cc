@@ -281,10 +281,10 @@ CudaCommandBuffer::CreateConditionalNode(
 
   std::vector<CUgraphNode> deps = ToCudaGraphHandles(dependencies);
   CUgraphNode node_handle = nullptr;
-  TF_RETURN_IF_ERROR(
-      cuda::ToStatus(cuGraphAddNode(&node_handle, graph_, deps.data(),
-                                    deps.size(), &cu_params),
-                     "Failed to add conditional node to a CUDA graph"));
+  TF_RETURN_IF_ERROR(cuda::ToStatus(
+      cuGraphAddNode_v2(&node_handle, graph_, deps.data(),
+                        /*dependencyData=*/nullptr, deps.size(), &cu_params),
+      "Failed to add conditional node to a CUDA graph"));
 
   VLOG(2) << "Created conditional CUDA graph "
           << cu_params.conditional.phGraph_out[0];
@@ -463,8 +463,8 @@ absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateChildNode(
 
     CUgraphNode node_handle;
     TF_RETURN_IF_ERROR(cuda::ToStatus(
-        cuGraphAddNode(&node_handle, graph_, deps.data(), deps.size(),
-                       &nodeParams),
+        cuGraphAddNode_v2(&node_handle, graph_, deps.data(),
+                          /*dependencyData=*/nullptr, deps.size(), &nodeParams),
         "Failed to create a child graph node and add it to a CUDA graph"));
     return FromCudaGraphHandle(node_handle);
 #else
