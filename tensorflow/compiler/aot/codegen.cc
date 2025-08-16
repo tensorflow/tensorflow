@@ -644,7 +644,7 @@ absl::StatusOr<std::string> GetThunkSpecificConstantAllocationsInitializers(
 
 absl::Status ExtendRewrites(
     std::vector<std::pair<std::string, std::string>>& rewrites,
-    const xla::cpu::CpuAotCompilationResultThunks* aot_thunks,
+    const xla::cpu::CpuAotCompilationResult* aot_thunks,
     const MetadataResult& metadata_result, const CodegenOpts& codegen_opts,
     const EmbeddedConstantBuffers& embedded_constant_buffers) {
   std::vector<xla::cpu::SymbolProto> entry_point_symbols =
@@ -838,7 +838,7 @@ absl::Status GenerateHeader(
   TF_RETURN_IF_ERROR(ValidateFeedFetchCppNames(config));
 
   const std::vector<BufferInfo>& buffer_infos =
-      compile_result.get_aot()->buffer_infos();
+      compile_result.aot->buffer_infos();
 
   const std::vector<int32> arg_index_table =
       ::xla::cpu::CreateArgIndexTableFromBufferInfos(buffer_infos);
@@ -1186,9 +1186,9 @@ class {{CLASS}} final : public tensorflow::{{COMPUTATION_CLASS_BASE}} {
        absl::StrJoin(buffer_infos_as_strings, ",\n")},
   };
 
-  TF_RETURN_IF_ERROR(
-      ExtendRewrites(rewrites, compile_result.get_aot_thunks().value(),
-                     metadata_result, opts, embedded_constant_buffers));
+  TF_RETURN_IF_ERROR(ExtendRewrites(rewrites, compile_result.aot.get(),
+                                    metadata_result, opts,
+                                    embedded_constant_buffers));
   absl::StrReplaceAll(rewrites, header);
   return absl::OkStatus();
 }
@@ -1206,14 +1206,14 @@ static string CreateUniqueIdentifier(const CodegenOpts& opts,
 
 absl::StatusOr<EmbeddedConstantBuffers> GenerateConstantBuffersData(
     const CodegenOpts& opts, const CompileResult& compile_result) {
-  TF_ASSIGN_OR_RETURN(auto aot_thunk_result, compile_result.get_aot_thunks());
+  auto aot_thunk_result = compile_result.aot.get();
 
   // Create a temporary object for aot_thunk_result to be able to call
   // LoadExecutable without moving the original object.
   TF_ASSIGN_OR_RETURN(auto serialized, aot_thunk_result->SerializeAsString());
   TF_ASSIGN_OR_RETURN(
       auto aot_thunk_result_temp,
-      xla::cpu::CpuAotCompilationResultThunks::FromString(serialized, nullptr));
+      xla::cpu::CpuAotCompilationResult::FromString(serialized, nullptr));
 
   TF_ASSIGN_OR_RETURN(
       auto executable,
@@ -1274,10 +1274,9 @@ absl::Status GenerateMetadata(const CodegenOpts& opts,
   protobufs_to_embed.push_back(
       ProtobufToEmbed{CreateUniqueIdentifier(opts, "HloProfilePrinterData"),
                       "::xla::HloProfilePrinterData", nullptr});
-  protobufs_to_embed.push_back(
-      ProtobufToEmbed{CreateUniqueIdentifier(opts, "CompilationResultProto"),
-                      "::xla::cpu::CompilationResultProto",
-                      &compile_result.get_aot_thunks().value()->proto()});
+  protobufs_to_embed.push_back(ProtobufToEmbed{
+      CreateUniqueIdentifier(opts, "CompilationResultProto"),
+      "::xla::cpu::CompilationResultProto", &compile_result.aot->proto()});
 
   TF_ASSIGN_OR_RETURN(
       EmbeddedProtocolBuffers embedded_protobufs,
