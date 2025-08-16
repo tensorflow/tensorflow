@@ -136,6 +136,10 @@ CastFunctorType GetCpuCastFromFloat8e5m2(DataType dst_dtype);
 
 CastFunctorType GetCpuCastFromFloat8e4m3fn(DataType dst_dtype);
 
+CastFunctorType GetCpuCastFromFloat8e5m2fnuz(DataType dst_dtype);
+
+CastFunctorType GetCpuCastFromFloat8e4m3fnuz(DataType dst_dtype);
+
 CastFunctorType GetCpuCastFromInt4(DataType dst_dtype);
 
 CastFunctorType GetCpuCastFromUint4(DataType dst_dtype);
@@ -176,6 +180,10 @@ CastFunctorType GetGpuCastFromBfloat(DataType dst_dtype);
 CastFunctorType GetGpuCastFromFloat8e5m2(DataType dst_dtype);
 
 CastFunctorType GetGpuCastFromFloat8e4m3fn(DataType dst_dtype);
+
+CastFunctorType GetGpuCastFromFloat8e5m2fnuz(DataType dst_dtype);
+
+CastFunctorType GetGpuCastFromFloat8e4m3fnuz(DataType dst_dtype);
 
 CastFunctorType GetGpuCastFromInt4(DataType dst_dtype);
 
