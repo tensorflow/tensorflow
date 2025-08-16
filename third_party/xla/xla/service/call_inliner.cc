@@ -64,8 +64,16 @@ void RecursivelyUpdateOpName(HloInstruction* hlo, absl::string_view prefix) {
   // produce incorrect metadata for computations with multiple callsites.
   // However we're still seeing some missing prefix metadata that we'll need to
   // figure out that recursing into calls does appear to help with.
+  auto is_shardy_manual_computation = [](HloInstruction* op) {
+    return op->opcode() == HloOpcode::kCall &&
+           op->called_computations().size() == 1 &&
+           absl::StrContains(op->called_computations()[0]->name(),
+                             static_cast<std::string_view>(
+                                 sdy::kManualComputationBodyFuncName.str()));
+  };
   if (GetInstructionCallContext(hlo->opcode()) == CallContext::kControlFlow &&
-      hlo->opcode() != HloOpcode::kCall) {
+      (hlo->opcode() != HloOpcode::kCall ||
+       is_shardy_manual_computation(hlo))) {
     for (HloComputation* computation : hlo->called_computations()) {
       for (HloInstruction* instruction : computation->instructions()) {
         RecursivelyUpdateOpName(instruction, prefix);
