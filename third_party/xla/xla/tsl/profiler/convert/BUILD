@@ -34,6 +34,7 @@ cc_library(
     visibility = internal_visibility([
         "//xla/tsl/profiler:internal",
         "//xla/tsl/profiler:xla_profiler_backends",
+        "//perftools/accelerators/xsymbol/pipelines/enricher:__pkg__",
         "//xla/python:__pkg__",
     ]),
     deps = [

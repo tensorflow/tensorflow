@@ -9,6 +9,7 @@ package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = internal_visibility([
         "//xla/tsl/profiler:internal",
+        "//perftools/accelerators/xsymbol/pipelines/enricher:__pkg__",
     ]),
     licenses = ["notice"],
 )
