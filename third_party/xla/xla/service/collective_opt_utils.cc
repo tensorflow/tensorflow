@@ -78,7 +78,6 @@ std::optional<int64_t> GetScalarInt64Value(const HloInstruction* constant) {
   return constant->literal().GetIntegralAsS64(multi_index);
 }
 
-
 // Computes an index into a lookup table for a given device
 // ID (partition-id/replica-id/flattened-id) recursively.
 // This function resolves an index value that may be computed directly from a
@@ -244,6 +243,110 @@ bool IsPerIdOffset(const HloInstruction* offset, int64_t shard_size,
     }
     return IsPerIdOffset(offset->operand(1), shard_size, map_id, group_size,
                          instruction, is_cross_module, use_global_device_ids);
+  }
+
+  if (offset->opcode() == HloOpcode::kSubtract) {
+    // Handle subtraction pattern: (id * slice_size) - table_lookup[id]
+    VLOG(2) << "Checking subtraction pattern: " << offset->ToString();
+
+    // Check if the first operand is a multiplication with partition-id
+    if (offset->operand(0)->opcode() == HloOpcode::kMultiply) {
+      auto* mult = offset->operand(0);
+      const HloInstruction* id_operand = nullptr;
+      int64_t slice_size = -1;
+
+      // Find which operand is the ID and which is the slice size
+      if (mult->operand(0)->IsConstant()) {
+        slice_size = *GetScalarInt64Value(mult->operand(0));
+        id_operand = mult->operand(1);
+      } else if (mult->operand(1)->IsConstant()) {
+        slice_size = *GetScalarInt64Value(mult->operand(1));
+        id_operand = mult->operand(0);
+      }
+
+      if (slice_size > 0 && id_operand) {
+        // Check if the second operand is a table lookup
+        if (IsTableLookup(offset->operand(1))) {
+          VLOG(2) << "Found subtraction pattern with table lookup";
+
+          // Verify that the table lookup uses the same ID as the multiplication
+          auto* table_lookup = offset->operand(1);
+          while (table_lookup->opcode() == HloOpcode::kReshape ||
+                 table_lookup->opcode() == HloOpcode::kBitcast ||
+                 table_lookup->opcode() == HloOpcode::kCopy) {
+            table_lookup = table_lookup->operand(0);
+          }
+
+          bool index_matches = false;
+          if (table_lookup->operand(1) == id_operand) {
+            index_matches = true;
+          } else if (table_lookup->operand(1)->opcode() ==
+                         HloOpcode::kConvert &&
+                     table_lookup->operand(1)->operand(0) == id_operand) {
+            index_matches = true;
+          } else if (id_operand->opcode() == HloOpcode::kConvert &&
+                     id_operand->operand(0) == table_lookup->operand(1)) {
+            index_matches = true;
+          }
+
+          if (index_matches) {
+            const int64_t num_groups =
+                iota_group ? 1 : instruction->replica_groups().size();
+
+            // For each partition ID, verify the offset calculation
+            for (int64_t i = 0; i < num_groups; ++i) {
+              for (int64_t j = 0; j < group_size; ++j) {
+                int64_t id =
+                    iota_group
+                        ? j
+                        : instruction->replica_groups()[i].replica_ids(j);
+
+                // Calculate expected offset: (id * slice_size) -
+                // table_lookup[id]
+                int64_t expected_mult = id * slice_size;
+
+                // Get table lookup value - use the original ID operand for
+                // mapping
+                const HloInstruction* index_operand = table_lookup->operand(1);
+                if (index_operand->opcode() == HloOpcode::kConvert) {
+                  index_operand = index_operand->operand(0);
+                }
+                int64_t table_index = GetIndexForId(index_operand, id, map_id);
+                if (table_index < 0) {
+                  VLOG(2) << "Failed to get table index for ID " << id;
+                  return false;
+                }
+
+                int64_t table_value;
+                if (table_lookup->operand(0)->opcode() == HloOpcode::kIota) {
+                  table_value = table_index;
+                } else {
+                  table_value =
+                      *table_lookup->operand(0)->literal().GetIntegralAsS64(
+                          {table_index});
+                }
+
+                int64_t expected_offset = expected_mult - table_value;
+
+                // Check if this matches the expected pattern for reduce-scatter
+                if (expected_offset != shard_size * j) {
+                  VLOG(2) << "Subtraction pattern offset " << expected_offset
+                          << " doesn't match expected " << (shard_size * j)
+                          << " for ID " << id;
+                  return false;
+                }
+              }
+            }
+
+            VLOG(2) << "Subtraction pattern validation successful";
+            return true;
+          }
+        }
+      }
+    }
+
+    VLOG(2) << "Subtraction pattern not recognized: " << offset->ToString();
+    return false;
   }
 
   const int64_t num_groups =
