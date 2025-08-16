@@ -1323,6 +1323,7 @@ class HloConstantInstruction : public HloInstruction {
   }
   // Returns whether there is literal associated with this instruction.
   bool HasLiteral() const { return static_cast<bool>(literal_); }
+  void DropLiteral() { literal_ = nullptr; }
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
