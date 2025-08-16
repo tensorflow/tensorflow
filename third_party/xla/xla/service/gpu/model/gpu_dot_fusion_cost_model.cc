@@ -16,7 +16,9 @@ limitations under the License.
 #include "xla/service/gpu/model/gpu_dot_fusion_cost_model.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
+#include <utility>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
@@ -224,15 +226,11 @@ absl::StatusOr<absl::Duration> CalculateL2Time(
   // TODO(maniananth): L2 bandwidth has been hardcoded for H100 based on
   // microbenchmarking L2 bandwidth within a partition, but we should add this
   // to the device info and extend for more GPUs.
-  // TODO(maniananth): Enforcing this check will cause unit tests written for
-  // RTX A6000 device descriptions to fail. We should enable this check once we
-  // have the L2 bandwidth for RTX A6000 or move unit tests to use H100
-  // device description.
-  // if (device_info.cuda_compute_capability() !=
-  //     se::CudaComputeCapability(9, 0)) {
-  //   return absl::InvalidArgumentError(
-  //       "L2 time calculation is only supported for H100 GPUs.");
-  // }
+  if (device_info.cuda_compute_capability() !=
+      se::CudaComputeCapability(9, 0)) {
+    return absl::InvalidArgumentError(
+        "L2 time calculation is only supported for H100 GPUs.");
+  }
 
   GpuDotFusionCostModel::DotProblemDimensions dims(*dot);
   int64_t tile_m = tile_shape[0], tile_n = tile_shape[1];
@@ -244,13 +242,33 @@ absl::StatusOr<absl::Duration> CalculateL2Time(
                        device_l2_bandwidth);
 }
 
+float GetEffectiveHbmBandwidth(int64_t dma_size,
+                               const se::DeviceDescription& device_info) {
+  std::vector<std::pair<int64_t, float>> hbm_bandwidth_TBps_lookup_h100 = {
+      {8192, 1.42},         {16384, 3.03},        {32768, 6.02},
+      {65536, 11.77},       {131072, 23.68},      {262144, 47.35},
+      {524288, 92.56},      {1048576, 179.06},    {2097152, 346.75},
+      {4194304, 639.38},    {8388608, 1069.98},   {16777216, 1583.95},
+      {33554432, 1974.72},  {67108864, 2343.19},  {134217728, 2632.96},
+      {268435456, 2766.69}, {536870912, 2968.89}, {1073741824, 3126}};
+  auto it1 = std::lower_bound(
+      hbm_bandwidth_TBps_lookup_h100.begin(),
+      hbm_bandwidth_TBps_lookup_h100.end(), dma_size,
+      [](std::pair<int64_t, float> a, int64_t b) { return a.first < b; });
+  if (it1 == hbm_bandwidth_TBps_lookup_h100.end()) {
+    return hbm_bandwidth_TBps_lookup_h100.begin()->second;
+  }
+  if (it1 == hbm_bandwidth_TBps_lookup_h100.end() - 1) {
+    return it1->second;
+  }
+  auto it2 = it1 + 1;
+  return std::lerp(it1->second, it2->second,
+                   (dma_size - it1->first) / (it2->first - it1->first)) *
+         (1 << 30);
+}
+
 absl::Duration CalculateHbmTime(const HloDotInstruction* dot,
                                 const se::DeviceDescription& device_info) {
-  // TODO(maniananth): Implement HBM derate lookup using profiled tables.
-  float hbm_bandwidth_utilization_rate = 0.8;
-  float dram_bandwidth =
-      device_info.memory_bandwidth() * hbm_bandwidth_utilization_rate;
-
   GpuDotFusionCostModel::DotProblemDimensions dims(*dot);
   PrimitiveType lhs_element_type = dot->operand(0)->shape().element_type();
   PrimitiveType rhs_element_type = dot->operand(1)->shape().element_type();
@@ -270,6 +288,11 @@ absl::Duration CalculateHbmTime(const HloDotInstruction* dot,
   // loop and epilogue loop are executed sequentially.
   int64_t main_loop_bytes = lhs_tile_bytes + rhs_tile_bytes;
   int64_t epilogue_bytes = output_tile_bytes;
+
+  // Calculate the effective HBM bandwidth for the input and output bytes using
+  // the derate lookup table.
+  float dram_bandwidth =
+      GetEffectiveHbmBandwidth(main_loop_bytes + epilogue_bytes, device_info);
 
   // Calculate the HBM time using the effective bandwidth for each transfer
   // size. In the current implementation, we are assuming that the main loop and
