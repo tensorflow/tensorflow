@@ -179,7 +179,8 @@ ENTRY main {
   config.set_debug_options(GetDebugOptionsForTest());
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text, config));
-  auto actual = ExecuteAndTransfer(std::move(module), {&permutation});
+  TF_ASSERT_OK_AND_ASSIGN(Literal actual,
+                          Execute(std::move(module), {&permutation}));
   Literal expected = LiteralUtil::CreateR2<int32_t>(
       {{3, 0, 2, 1}, {1, 3, 2, 0}, {3, 2, 0, 1}});
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, actual));

@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/platform/test.h"
@@ -113,8 +114,8 @@ class MultiOutputFusionTest : public HloTestBase {
     Literal expect(ShapeUtil::MakeShapeWithDescendingLayout(F32, {size, size}));
     expect.PopulateWithValue<float>(size * 1.5f * 3.5f);
     Literal literal_r0 = LiteralUtil::CreateR0<float>(-9.0f);
-    auto actual =
-        ExecuteAndTransfer(std::move(hlo_module), {&literal_r0, &arg1});
+    TF_ASSERT_OK_AND_ASSIGN(
+        Literal actual, Execute(std::move(hlo_module), {&literal_r0, &arg1}));
     EXPECT_TRUE(LiteralTestUtil::Near(expect, actual, error_spec_));
   }
 
@@ -177,7 +178,8 @@ class MultiOutputFusionTest : public HloTestBase {
     input1.PopulateWithValue(1.);
 
     Literal expect = LiteralUtil::CreateR1<float>({size * 1.5f * 3.5f});
-    auto actual = ExecuteAndTransfer(std::move(hlo_module), {&input0, &input1});
+    TF_ASSERT_OK_AND_ASSIGN(Literal actual,
+                            Execute(std::move(hlo_module), {&input0, &input1}));
     EXPECT_TRUE(LiteralTestUtil::Near(expect, actual, error_spec_));
   }
 };
@@ -209,7 +211,8 @@ TEST_F(MultiOutputFusionTest, MultiOutputLoopFusion) {
     })";
   auto module = ParseAndReturnVerifiedModule(testcase).value();
   auto param = LiteralUtil::CreateR1<float>({1.0, 2.0, 3.0, -1.0});
-  Literal result = ExecuteNoHloPasses(std::move(module), {&param});
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&param},
+                                                  /*run_hlo_passes=*/false));
   LiteralTestUtil::ExpectR1Equal<float>({0.0, 4.0, 9.0, 1.0}, result);
 }
 
@@ -236,7 +239,8 @@ TEST_F(MultiOutputFusionTest, MultiOutputLoopFusionBitcastCompatibleShapes) {
     })";
   auto module = ParseAndReturnVerifiedModule(testcase).value();
   auto param = LiteralUtil::CreateR1<float>({1.0, 2.0, 3.0, -1.0});
-  Literal result = ExecuteNoHloPasses(std::move(module), {&param});
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&param},
+                                                  /*run_hlo_passes=*/false));
   LiteralTestUtil::ExpectR1Equal<float>({0.0, 4.0, 9.0, 1.0}, result);
 }
 
@@ -269,7 +273,8 @@ TEST_F(MultiOutputFusionTest, MultiOutputLoopFeedingMap) {
     })";
   auto module = ParseAndReturnVerifiedModule(testcase).value();
   auto param = LiteralUtil::CreateR1<float>({1.0, 2.0, 3.0});
-  Literal result = ExecuteNoHloPasses(std::move(module), {&param});
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&param},
+                                                  /*run_hlo_passes=*/false));
   LiteralTestUtil::ExpectR1Equal<float>({0.0, 4.0, 9.0}, result);
 }
 
