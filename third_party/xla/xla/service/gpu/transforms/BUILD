@@ -775,6 +775,7 @@ cc_library(
         "//xla:window_util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
+        "//xla/hlo/transforms/simplifiers:algebraic_simplifier",
         "//xla/service:hlo_creation_utils",
         "//xla/service:pattern_matcher",
         "//xla/service/gpu:backend_configs_cc",

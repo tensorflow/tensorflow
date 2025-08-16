@@ -33,6 +33,8 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+class TritonGemmConfig;
+
 class TritonFusion : public FusionInterface {
  public:
   struct LaunchConfig {
@@ -50,7 +52,9 @@ class TritonFusion : public FusionInterface {
   // Returns the launch config for Triton fusions that have a block level fusion
   // config.
   // Not supported for MatMul fusions yet.
-  std::optional<LaunchConfig> launch_config() const;
+  std::optional<LaunchConfig> launch_config(
+      TritonGemmConfig* config = nullptr,
+      const HloComputation* hlo_computation = nullptr) const;
 
   // Generates a Triton kernel for the given fusion into the provided LLVM
   // module, and returns the `TritonWrapperResult` corresponding to the

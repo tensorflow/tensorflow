@@ -854,6 +854,58 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   AlgebraicSimplifier* simplifier_ = nullptr;
 };
 
+// Captures multiple HloInstruction pointers and verifies that their target
+// is identical.
+//
+// Example:
+// Pattern cos(x) / sin(x) with cos and sin intended to operate on the same
+// HloInstruction:
+//  UniqueHloInstruction x;
+//  bool m = Match(
+//      instr, m::Divide(m::Cos(m::Op().WithPredicate(x.CaptureOrVerifyFn())),
+//                       m::Sin(m::Op().WithPredicate(x.CaptureOrVerifyFn()))));
+// m is true and x.Instr() returns an HloInstruction pointer to the operand of
+// cosine and sine iff HloInstruction *instr points to a division of a cosine by
+// a sine that operate on the same instruction.
+class UniqueHloInstruction {
+ public:
+  UniqueHloInstruction()
+      : is_set_(false),
+        instr_(nullptr),
+        capture_or_verify_([this](const HloInstruction* instr) -> bool {
+          return CaptureOrVerify(const_cast<HloInstruction*>(instr));
+        }) {}
+  HloInstruction* Instr() const { return instr_; }
+  void SetInstr(HloInstruction* instr) {
+    is_set_ = true;
+    instr_ = instr;
+  }
+
+  // Stores instr when invoked the first time. Otherwise, compares instr to the
+  // stored value and sets the stored value to nullptr if the comparison fails.
+  bool CaptureOrVerify(HloInstruction* instr) {
+    if (is_set_ && instr != instr_) {
+      instr_ = nullptr;
+    }
+    if (!is_set_) {
+      is_set_ = true;
+      instr_ = instr;
+    }
+    return instr_;
+  }
+
+  // Returns a std::function for capturing or verifying an instruction using
+  // WithPredicate.
+  std::function<bool(const HloInstruction*)> CaptureOrVerifyFn() const {
+    return capture_or_verify_;
+  }
+
+ private:
+  bool is_set_;
+  HloInstruction* instr_;
+  std::function<bool(const HloInstruction*)> capture_or_verify_;
+};
+
 }  // namespace xla
 
 #endif  // XLA_HLO_TRANSFORMS_SIMPLIFIERS_ALGEBRAIC_SIMPLIFIER_H_
