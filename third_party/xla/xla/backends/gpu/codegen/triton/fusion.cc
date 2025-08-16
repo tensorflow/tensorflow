@@ -199,19 +199,18 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
         triton_config.set_num_ctas(1);
       }
 
-      // TODO(bchetioui): move calculation of launch dimensions to
-      // 'launch_config()'.
       TF_ASSIGN_OR_RETURN(
           TritonGemmConfig config,
           TritonGemmConfig::FromProto(backend_config.triton_gemm_config()));
 
-      TF_ASSIGN_OR_RETURN(auto analysis, TritonFusionAnalysis::Execute(
-                                             *hlo_computation, config.split_k));
-
-      TF_ASSIGN_OR_RETURN(
-          launch_dimensions,
-          GetMatMulLaunchDimensions(analysis, analysis_.fusion(), config,
-                                    analysis_.device_info()));
+      auto launch_config = this->launch_config(&config, hlo_computation);
+      if (launch_config.has_value()) {
+        launch_dimensions = std::move(launch_config->launch_dimensions);
+      } else {
+        // Failed to get launch config from the matmul config. Return empty
+        // result. This will be retried with the default config.
+        return absl::OkStatus();
+      }
     }
 
     llvm::Function* impl_fn =
@@ -276,7 +275,8 @@ int64_t GetNumberOfBlocks(absl::Span<const int64_t> dimensions,
 }
 }  // namespace
 
-std::optional<TritonFusion::LaunchConfig> TritonFusion::launch_config() const {
+std::optional<TritonFusion::LaunchConfig> TritonFusion::launch_config(
+    TritonGemmConfig* config, const HloComputation* hlo_computation) const {
   if (analysis_.fusion_backend_config().has_block_level_fusion_config()) {
     BlockLevelParameters block_level_parameters =
         BlockLevelParameters::FromBlockLevelFusionConfig(
@@ -300,6 +300,24 @@ std::optional<TritonFusion::LaunchConfig> TritonFusion::launch_config() const {
                               WarpSize(analysis_.device_info()))};
     launch_config.block_level_parameters = std::move(block_level_parameters);
     return launch_config;
+  }
+
+  if (config == nullptr || hlo_computation == nullptr) {
+    return std::nullopt;
+  }
+
+  // For Matmul
+  if (auto analysis =
+          TritonFusionAnalysis::Execute(*hlo_computation, config->split_k);
+      analysis.ok()) {
+    LaunchConfig launch_config;
+    if (auto launch_dimensions =
+            GetMatMulLaunchDimensions(analysis.value(), analysis_.fusion(),
+                                      *config, analysis_.device_info());
+        launch_dimensions.ok()) {
+      launch_config.launch_dimensions = *launch_dimensions;
+      return launch_config;
+    }
   }
 
   // MatMul is not yet supported.
