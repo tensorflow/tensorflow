@@ -27,15 +27,9 @@ limitations under the License.
 namespace tensorflow {
 // NOLINTBEGIN(misc-unused-using-decls)
 #ifdef SWIG
-using tsl::FromAbslStatus;
 using tsl::OkStatus;
 using tsl::Status;
-using tsl::ToAbslStatus;
 #else
-ABSL_DEPRECATE_AND_INLINE()
-inline ::absl::Status FromAbslStatus(const ::absl::Status& s) { return s; }
-ABSL_DEPRECATE_AND_INLINE()
-inline ::absl::Status ToAbslStatus(const ::absl::Status& s) { return s; }
 ABSL_DEPRECATE_AND_INLINE()
 inline ::absl::Status OkStatus() { return ::absl::OkStatus(); };
 using Status ABSL_DEPRECATE_AND_INLINE() = ::absl::Status;
