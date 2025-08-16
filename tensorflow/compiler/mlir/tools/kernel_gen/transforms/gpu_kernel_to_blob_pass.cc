@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/service/gpu/llvm_gpu_backend/nvptx_backend.h"
 #include "xla/stream_executor/cuda/cuda_asm_compiler.h"
 #elif TENSORFLOW_USE_ROCM
+#include "xla/service/gpu/llvm_gpu_backend/amdgpu_backend.h"
 #include "xla/stream_executor/gpu/asm_compiler.h"
 #include "tensorflow/core/platform/rocm_rocdl_path.h"
 #endif
