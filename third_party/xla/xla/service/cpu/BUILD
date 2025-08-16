@@ -248,6 +248,7 @@ cc_library(
         "//xla/hlo/transforms:literal_canonicalizer",
         "//xla/hlo/transforms:operand_upcaster",
         "//xla/hlo/transforms:while_loop_trip_count_annotator",
+        "//xla/hlo/transforms/expanders:acosh_expander",
         "//xla/hlo/transforms/expanders:bitcast_dtypes_expander",
         "//xla/hlo/transforms/expanders:cholesky_expander",
         "//xla/hlo/transforms/expanders:comparison_expander",

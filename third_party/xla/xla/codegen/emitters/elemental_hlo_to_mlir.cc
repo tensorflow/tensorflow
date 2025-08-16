@@ -1023,6 +1023,8 @@ absl::StatusOr<SmallVector<Value, 1>> HloToMlir(
       return {MapHloOp<mhlo::AbsOp>(
           PrimitiveTypeToMlirType(element_type, builder), arg_types, operands,
           /*attributes=*/{}, builder)};
+    case HloOpcode::kAcosh:
+      return MapElementwiseOp<mhlo::AcoshOp>(arg_types, operands, builder);
     case HloOpcode::kAdd:
       if (element_type == PRED) {
         return MapElementwiseOp<mhlo::OrOp>(arg_types, operands, builder);
