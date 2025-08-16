@@ -1213,6 +1213,7 @@ cc_library(
     deps = [
         ":mutex",
         ":thread_annotations",
+        "@com_google_absl//absl/base:nullability",
         "@local_xla//xla/tsl/platform:logging",
     ],
 )
