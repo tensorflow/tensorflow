@@ -9,6 +9,7 @@ load(
     "@local_xla//xla/tsl/platform/default:cuda_build_defs.bzl",
     "cuda_rpath_flags",
     "if_cuda_is_configured",
+    "if_cuda_newer_than",
 )
 load(
     "//xla/tsl:tsl.default.bzl",
@@ -31,8 +32,10 @@ cc_library(
         "cublas_stub.cc",
         "cublas.tramp.S",
     ]),
-    linkopts = if_cuda_is_configured(cuda_rpath_flags(
-        "nvidia/cublas/lib",
+    linkopts = if_cuda_is_configured(if_cuda_newer_than(
+        "13_0",
+        if_false = cuda_rpath_flags("nvidia/cublas/lib"),
+        if_true = cuda_rpath_flags("nvidia/cu13/lib"),
     )),
     local_defines = [
         "IMPLIB_EXPORT_SHIMS=1",
@@ -123,7 +126,11 @@ cc_library(
         ],
         "//conditions:default": [],
     }),
-    linkopts = if_cuda_is_configured(cuda_rpath_flags("nvidia/cuda_runtime/lib")),
+    linkopts = if_cuda_is_configured(if_cuda_newer_than(
+        "13_0",
+        if_false = cuda_rpath_flags("nvidia/cuda_runtime/lib"),
+        if_true = cuda_rpath_flags("nvidia/cu13/lib"),
+    )),
     local_defines = [
         "IMPLIB_EXPORT_SHIMS=1",
     ],
@@ -209,7 +216,11 @@ cc_library(
         "cufft_stub.cc",
         "cufft.tramp.S",
     ]),
-    linkopts = if_cuda_is_configured(cuda_rpath_flags("nvidia/cufft/lib")),
+    linkopts = if_cuda_is_configured(if_cuda_newer_than(
+        "13_0",
+        if_false = cuda_rpath_flags("nvidia/cufft/lib"),
+        if_true = cuda_rpath_flags("nvidia/cu13/lib"),
+    )),
     local_defines = [
         "IMPLIB_EXPORT_SHIMS=1",
     ],
@@ -241,7 +252,11 @@ cc_library(
         "cupti.tramp.S",
     ]),
     data = if_cuda_is_configured(["@local_config_cuda//cuda:cupti_dsos"]),
-    linkopts = if_cuda_is_configured(cuda_rpath_flags("nvidia/cuda_cupti/lib")),
+    linkopts = if_cuda_is_configured(if_cuda_newer_than(
+        "13_0",
+        if_false = cuda_rpath_flags("nvidia/cuda_cupti/lib"),
+        if_true = cuda_rpath_flags("nvidia/cu13/lib"),
+    )),
     local_defines = [
         "IMPLIB_EXPORT_SHIMS=1",
     ],
@@ -273,7 +288,11 @@ cc_library(
         "cusolver_stub.cc",
         "cusolver.tramp.S",
     ]),
-    linkopts = if_cuda_is_configured(cuda_rpath_flags("nvidia/cusolver/lib")),
+    linkopts = if_cuda_is_configured(if_cuda_newer_than(
+        "13_0",
+        if_false = cuda_rpath_flags("nvidia/cusolver/lib"),
+        if_true = cuda_rpath_flags("nvidia/cu13/lib"),
+    )),
     local_defines = [
         "IMPLIB_EXPORT_SHIMS=1",
     ],
@@ -304,7 +323,11 @@ cc_library(
         "cusparse_stub.cc",
         "cusparse.tramp.S",
     ]),
-    linkopts = if_cuda_is_configured(cuda_rpath_flags("nvidia/cusparse/lib")),
+    linkopts = if_cuda_is_configured(if_cuda_newer_than(
+        "13_0",
+        if_false = cuda_rpath_flags("nvidia/cusparse/lib"),
+        if_true = cuda_rpath_flags("nvidia/cu13/lib"),
+    )),
     local_defines = [
         "IMPLIB_EXPORT_SHIMS=1",
     ],
