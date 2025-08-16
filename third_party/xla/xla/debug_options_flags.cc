@@ -316,7 +316,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_experimental_collective_cse_distance_threshold(0);
 
-  opts.set_xla_gpu_experimental_enable_subchannel_dequantisation_fusion(false);
+  opts.set_xla_gpu_experimental_enable_subchannel_dequantisation_fusion(true);
   opts.set_xla_partitioning_algorithm(
       DebugOptions::PARTITIONING_ALGORITHM_NOOP);
 
