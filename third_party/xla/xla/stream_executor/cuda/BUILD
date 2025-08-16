@@ -1522,6 +1522,10 @@ cc_library(
 cc_library(
     name = "compilation_options",
     hdrs = ["compilation_options.h"],
+    visibility = internal_visibility([
+        "//third_party/py/jax:__subpackages__",
+        ":friends",
+    ]),
     deps = ["@com_google_absl//absl/strings:str_format"],
 )
 
