@@ -21,7 +21,6 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/IR/Argument.h"
@@ -175,9 +174,8 @@ absl::StatusOr<llvm::Function*> Rsqrt::CreateDefinition(
   // 2. The target CPU does not support AVX512F for F64, or
   // 3. The target CPU does not support AVX for F32.
   if (options.disable_platform_dependent_math ||
-      (type.element_type() == F64 &&
-       !absl::StrContains(options.features, "+avx512f")) ||
-      !absl::StrContains(options.features, "+avx")) {
+      (type.element_type() == F64 && !options.Contains("+avx512f")) ||
+      !options.Contains("+avx")) {
     LOG_EVERY_N(INFO, 1000) << "Falling back to 1 / sqrt(x) for " << type.name()
                             << " " << options.disable_platform_dependent_math;
     // We can't use the same approximation algorithm for F64 without AVX512 or
@@ -196,8 +194,20 @@ absl::StatusOr<llvm::Function*> Rsqrt::CreateDefinition(
   llvm::Value* y_approx = rsqrt_intrinsic.CreateCall(builder, x);
 
   // Eigen only does 1 step for F32, but that only gives within 2 ULPs and we
-  // are targeting 1.
-  const size_t num_steps = 2;
+  // are targeting 1. AMD's SSE/AVX rsqrt intrinsics are more accurate; their
+  // avx512f intrinsics have the same accuracy as Intel's avx512f intrinsics.
+  const bool using_avx512 =
+      options.Contains("+avx512f") &&
+      (type.element_type() == F64 ||
+       (type.element_type() == F32 && type.vector_width().value_or(1) > 8));
+  // As a heuristic, we check for SSE4a to determine if we are on AMD.
+  // This feature was added in 2007 and is set on all AMD CPUs since then, and
+  // no intel cpus. This is a bit of a hack though, as there is no strict link
+  // between increased precision and SSE4a; Intel could decide to add it in the
+  // future but they are very unlikely to do so as they haven't in the past 18
+  // years.
+  const bool is_amd = options.Contains("+sse4a");
+  const size_t num_steps = (is_amd && !using_avx512) ? 1 : 2;
   llvm::Value* refined_result =
       NewtonRaphsonRsqrtIteration(builder, x, y_approx, input_type, num_steps);
 

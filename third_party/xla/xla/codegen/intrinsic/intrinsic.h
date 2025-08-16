@@ -1,3 +1,4 @@
+#include "absl/strings/match.h"
 /* Copyright 2025 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -104,6 +105,10 @@ struct IntrinsicOptions {
   // Disables math functions that do not have the same results across e.g.
   // AMD vs. Intel CPUs.
   bool disable_platform_dependent_math = false;
+
+  bool Contains(absl::string_view feature) const {
+    return absl::StrContains(features, feature);
+  }
 };
 
 // Intrinsics are provided by XLA to expose special features (functions) that
