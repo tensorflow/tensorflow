@@ -4439,6 +4439,95 @@ ENTRY %main.44_spmd (param.4: f32[1,128], param.5: f32[1,128], param.3: f32[1,12
       });
 }
 
+TEST_F(HostOffloaderTest, PreExistingAllocateBufferMultipleUsers) {
+  const absl::string_view hlo_string = R"(
+HloModule module, entry_computation_layout={(f32[16,16,16]{2,1,0:T(8,128)})->(f32[16,16,16]{2,1,0:T(8,128)S(5)}, f32[16,16,16]{2,1,0:T(8,128)})}, num_partitions=4
+
+region_0.24_spmd.clone (loop_peel_param: (s32[], f32[16,16,16], f32[16,16,16], f32[16,16,16], s32[], /*index=5*/f32[16,16])) -> (s32[], f32[16,16,16], f32[16,16,16], f32[16,16,16], s32[], /*index=5*/f32[16,16]) {
+  loop_peel_param = (s32[]{:T(256)}, f32[16,16,16]{2,1,0:T(8,128)}, f32[16,16,16]{2,1,0:T(8,128)}, f32[16,16,16]{2,1,0:T(8,128)}, s32[]{:T(256)}, /*index=5*/f32[16,16]{1,0:T(8,128)}) parameter(0)
+  get-tuple-element.25 = s32[]{:T(256)} get-tuple-element(loop_peel_param), index=0
+  constant.17 = s32[]{:T(256)} constant(1)
+  add.7 = s32[]{:T(256)} add(get-tuple-element.25, constant.17)
+  get-tuple-element.31 = f32[16,16,16]{2,1,0:T(8,128)} get-tuple-element(loop_peel_param), index=1
+  get-tuple-element.32 = f32[16,16,16]{2,1,0:T(8,128)} get-tuple-element(loop_peel_param), index=3
+  constant.18 = s32[]{:T(256)} constant(0)
+  dynamic-slice.2 = f32[1,16,16]{2,1,0:T(8,128)} dynamic-slice(get-tuple-element.32, get-tuple-element.25, constant.18, constant.18), dynamic_slice_sizes={1,16,16}
+  constant.19 = f32[]{:T(256)} constant(1)
+  broadcast.5 = f32[1,16,16]{2,1,0:T(8,128)} broadcast(constant.19), dimensions={}
+  add.8 = f32[1,16,16]{2,1,0:T(8,128)} add(dynamic-slice.2, broadcast.5)
+  sine.4 = f32[1,16,16]{2,1,0:T(8,128)} sine(add.8)
+  dynamic-update-slice.4 = f32[16,16,16]{2,1,0:T(8,128)} dynamic-update-slice(get-tuple-element.31, sine.4, get-tuple-element.25, constant.18, constant.18)
+  get-tuple-element.33 = f32[16,16,16]{2,1,0:T(8,128)} get-tuple-element(loop_peel_param), index=2
+  get-tuple-element.41 = f32[16,16]{1,0:T(8,128)} get-tuple-element(loop_peel_param), index=5
+  custom-call.6 = f32[16,16]{1,0:T(8,128)} custom-call(get-tuple-element.41), custom_call_target="MoveToHost"
+  bitcast.2 = f32[1,16,16]{2,1,0:T(8,128)} bitcast(custom-call.6)
+  get-tuple-element.34 = s32[]{:T(256)} get-tuple-element(loop_peel_param), index=4
+  dynamic-update-slice.6 = f32[16,16,16]{2,1,0:T(8,128)} dynamic-update-slice(get-tuple-element.33, bitcast.2, get-tuple-element.34, constant.18, constant.18), backend_config={"flag_configs":[],"scoped_memory_configs":[],"indices_config":{"index_known_bits":[{"zeroes":"0","ones":"0","bitwidth":"32"},{"zeroes":"4294967295","ones":"0","bitwidth":"32"},{"zeroes":"4294967295","ones":"0","bitwidth":"32"}],"is_index_aligned":[true,true,false]},"used_scoped_memory_configs":[]}
+  cosine.3 = f32[1,16,16]{2,1,0:T(8,128)} cosine(add.8)
+  bitcast.3 = f32[16,16]{1,0:T(8,128)} bitcast(cosine.3)
+  ROOT tuple.4 = (s32[]{:T(256)}, f32[16,16,16]{2,1,0:T(8,128)}, f32[16,16,16]{2,1,0:T(8,128)}, f32[16,16,16]{2,1,0:T(8,128)}, s32[]{:T(256)}, /*index=5*/f32[16,16]{1,0:T(8,128)}) tuple(add.7, dynamic-update-slice.4, dynamic-update-slice.6, get-tuple-element.32, get-tuple-element.25, /*index=5*/bitcast.3)
+}
+
+region_1.32_spmd.clone (loop_peel_cond_param: (s32[], f32[16,16,16], f32[16,16,16], f32[16,16,16], s32[], /*index=5*/f32[16,16])) -> pred[] {
+  loop_peel_cond_param = (s32[]{:T(256)}, f32[16,16,16]{2,1,0:T(8,128)}, f32[16,16,16]{2,1,0:T(8,128)}, f32[16,16,16]{2,1,0:T(8,128)}, s32[]{:T(256)}, /*index=5*/f32[16,16]{1,0:T(8,128)}) parameter(0)
+  get-tuple-element.24 = s32[]{:T(256)} get-tuple-element(loop_peel_cond_param), index=0
+  constant.16 = s32[]{:T(256)} constant(16)
+  ROOT compare.1 = pred[]{:T(1024)} compare(get-tuple-element.24, constant.16), direction=LT
+}
+
+ENTRY main.39_spmd (param.2: f32[16,16,16]) -> (f32[16,16,16], f32[16,16,16]) {
+  constant.8 = s32[]{:T(256)} constant(1)
+  custom-call.4 = f32[16,16,16]{2,1,0:T(8,128)} custom-call(), custom_call_target="AllocateBuffer"
+  param.2 = f32[16,16,16]{2,1,0:T(8,128)} parameter(0), sharding={replicated}
+  slice = f32[1,16,16]{2,1,0:T(8,128)} slice(param.2), slice={[0:1], [0:16], [0:16]}
+  constant.15 = f32[]{:T(256)} constant(1)
+  broadcast.4 = f32[1,16,16]{2,1,0:T(8,128)} broadcast(constant.15), dimensions={}
+  add.6 = f32[1,16,16]{2,1,0:T(8,128)} add(slice, broadcast.4)
+  sine.3 = f32[1,16,16]{2,1,0:T(8,128)} sine(add.6)
+  constant.7 = s32[]{:T(256)} constant(0)
+  dynamic-update-slice.3 = f32[16,16,16]{2,1,0:T(8,128)} dynamic-update-slice(custom-call.4, sine.3, constant.7, constant.7, constant.7)
+  cosine.2 = f32[1,16,16]{2,1,0:T(8,128)} cosine(add.6)
+  bitcast = f32[16,16]{1,0:T(8,128)} bitcast(cosine.2)
+  tuple.5 = (s32[]{:T(256)}, f32[16,16,16]{2,1,0:T(8,128)}, f32[16,16,16]{2,1,0:T(8,128)}, f32[16,16,16]{2,1,0:T(8,128)}, s32[]{:T(256)}, /*index=5*/f32[16,16]{1,0:T(8,128)}) tuple(constant.8, dynamic-update-slice.3, custom-call.4, param.2, constant.7, /*index=5*/bitcast)
+  while.1 = (s32[]{:T(256)}, f32[16,16,16]{2,1,0:T(8,128)}, f32[16,16,16]{2,1,0:T(8,128)}, f32[16,16,16]{2,1,0:T(8,128)}, s32[]{:T(256)}, /*index=5*/f32[16,16]{1,0:T(8,128)}) while(tuple.5), condition=region_1.32_spmd.clone, body=region_0.24_spmd.clone
+  get-tuple-element.40 = f32[16,16,16]{2,1,0:T(8,128)} get-tuple-element(while.1), index=2
+  get-tuple-element.42 = f32[16,16]{1,0:T(8,128)} get-tuple-element(while.1), index=5
+  custom-call.7 = f32[16,16]{1,0:T(8,128)} custom-call(get-tuple-element.42), custom_call_target="MoveToHost"
+  bitcast.1 = f32[1,16,16]{2,1,0:T(8,128)} bitcast(custom-call.7)
+  get-tuple-element.39 = s32[]{:T(256)} get-tuple-element(while.1), index=4
+  dynamic-update-slice.7 = f32[16,16,16]{2,1,0:T(8,128)} dynamic-update-slice(get-tuple-element.40, bitcast.1, get-tuple-element.39, constant.7, constant.7), backend_config={"flag_configs":[],"scoped_memory_configs":[],"indices_config":{"index_known_bits":[{"zeroes":"0","ones":"0","bitwidth":"32"},{"zeroes":"4294967295","ones":"0","bitwidth":"32"},{"zeroes":"4294967295","ones":"0","bitwidth":"32"}],"is_index_aligned":[true,true,false]},"used_scoped_memory_configs":[]}
+  get-tuple-element.44 = f32[16,16,16]{2,1,0:T(8,128)} get-tuple-element(while.1), index=1
+  ROOT tuple.6 = (f32[16,16,16]{2,1,0:T(8,128)}, f32[16,16,16]{2,1,0:T(8,128)}) tuple(dynamic-update-slice.7, get-tuple-element.44)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  EXPECT_TRUE(changed);
+  VLOG(1) << module->ToString();
+
+  // We expect there to be two AllocateBuffer instructions, one in host memory
+  // and one in default memory.
+  int host_memory_space_count = 0;
+  int default_memory_space_count = 0;
+  for (HloComputation* computation : module->computations()) {
+    for (HloInstruction* instruction : computation->instructions()) {
+      if (instruction->IsCustomCall("AllocateBuffer")) {
+        if (instruction->shape().layout().memory_space() ==
+            Layout::kHostMemorySpace) {
+          host_memory_space_count++;
+        } else if (instruction->shape().layout().memory_space() ==
+                   Layout::kDefaultMemorySpace) {
+          default_memory_space_count++;
+        }
+      }
+    }
+  }
+  EXPECT_EQ(host_memory_space_count, 1);
+  EXPECT_EQ(default_memory_space_count, 1);
+}
+
 }  // namespace
 
 }  // namespace xla
