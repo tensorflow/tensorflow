@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 
 // Placeholder for lineage logging import.
+// Placeholder for lineage logging additional import.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
@@ -47,6 +48,9 @@ class MetricException : public std::exception {
 };
 
 void DefineMetricsModule(py::module main_module) {
+  // Deduplicate writes from lineage log. This should reduce the number of
+  // outgoing calls to UMB from lineage log. See b/415794129 for details.
+  // Placeholder for lineage logging enable dedupe call.
   auto m = main_module.def_submodule("metrics");
 
   m.doc() = "Python bindings for TensorFlow SavedModel and Checkpoint Metrics.";
