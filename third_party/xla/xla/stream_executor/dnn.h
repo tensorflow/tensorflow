@@ -588,9 +588,6 @@ class ConvolutionDescriptor {
     return *this;
   }
 
-  // TODO(timshen): remove this function. No users of this class is setting a
-  // non-default pad alignment.
-  PadAlignment pad_alignment() const { return PadAlignment::kDefault; }
   int group_count() const { return proto_.group_count(); }
   int ndims() const { return padding().size(); }
   bool convolution_not_crosscorr() const {
@@ -606,10 +603,17 @@ class ConvolutionDescriptor {
   }
 
   absl::Span<const int64_t> padding() const {
+    check_padding_is_default(AsInt64Slice(proto_.paddings()));
     return AsInt64Slice(proto_.paddings());
   }
 
  private:
+  void check_padding_is_default(absl::Span<const int64_t> padding) const {
+    for (auto p : padding) {
+      CHECK_EQ(p, static_cast<int64_t>(PadAlignment::kDefault));
+    }
+  }
+
   absl::Span<int64_t> strides() {
     return AsInt64Slice(proto_.mutable_strides());
   }
@@ -619,6 +623,7 @@ class ConvolutionDescriptor {
   }
 
   absl::Span<int64_t> padding() {
+    check_padding_is_default(AsInt64Slice(proto_.mutable_paddings()));
     return AsInt64Slice(proto_.mutable_paddings());
   }
 
