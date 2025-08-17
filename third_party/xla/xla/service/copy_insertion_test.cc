@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
@@ -2877,6 +2878,49 @@ ENTRY main {
   EXPECT_EQ(CountCopies(*module), 1);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Scatter(op::Copy(op::Iota()), op::Fusion(), op::Iota()));
+}
+
+TEST_F(CopyInsertionTest, VariadicScatterSharedOperand) {
+  // If an in-place op has additional operand(s) that have the same value as the
+  // in-place buffer, a copy needs to be inserted.
+  absl::string_view hlo_string = R"(
+HloModule Module
+
+update_s32 {
+  operand_0 = s32[] parameter(0)
+  operand_1 = s32[] parameter(1)
+  operand_2 = s32[] parameter(2)
+  update_0 = s32[] parameter(3)
+  update_1 = s32[] parameter(4)
+  update_2 = s32[] parameter(5)
+  ROOT tuple = (s32[], s32[], s32[]) tuple(update_0, update_1, update_2)
+}
+
+fused_computation {
+  iota.1 = s32[73729]{0} iota(), iota_dimension=0
+  ROOT indices.1 = s32[73729]{0} reverse(iota.1), dimensions={0}
+}
+
+ENTRY main {
+  zero = s32[] constant(0)
+  data = s32[73729]{0} iota(), iota_dimension=0
+  iota.2 = s32[73729]{0} iota(), iota_dimension=0
+  fusion = s32[73729]{0} fusion(), kind=kLoop, calls=fused_computation
+  ROOT scatter = (s32[73729]{0}, s32[73729]{0}, s32[73729]{0}) scatter(data, data, data, fusion, iota.2, iota.2, iota.2), update_window_dims={}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=update_s32
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  CopyInsertion copy_insertion(&alias_info_,
+                               /*use_region_based_live_range_analysis=*/-1);
+  ASSERT_IS_OK(copy_insertion.Run(module.get()));
+  ASSERT_IS_OK(copy_insertion.RemoveUnnecessaryCopies(module.get()));
+  VLOG(2) << module->ToString();
+  EXPECT_EQ(CountCopies(*module), 2);
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      op::Scatter(op::Iota(), op::Copy(op::Iota()), op::Copy(op::Iota()),
+                  op::Fusion(), op::Iota(), op::Iota(), op::Iota()));
 }
 
 TEST_F(CopyInsertionTest, HorizontalLoopFusionNoCopy) {
