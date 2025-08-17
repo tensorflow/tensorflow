@@ -942,8 +942,8 @@ ENTRY main {
 }
 
 TEST_F(ScatterTest, MultioutputSameOperand) {
-  // TODO(b/435078848): Currently only works on GPU and Interpreter.
-  if (!test::DeviceTypeIsOneOf({test::kGpu, test::kInterpreter})) {
+  // TODO(b/435078848): Currently fails on XLA/CPU.
+  if (test::DeviceTypeIsOneOf({test::kCpu})) {
     GTEST_SKIP();
   }
   constexpr char hlo_text[] = R"(
