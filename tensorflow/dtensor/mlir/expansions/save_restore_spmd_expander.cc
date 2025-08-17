@@ -338,7 +338,7 @@ StatusOr<mlir::TF::CaseOp> ConditionalSave(
 
         mlir::TF::SaveV2Op::create(
             fn_builder, location, specs.new_prefixes[save_op_index],
-            /*tensor_name=*/tensor_names,
+            /*tensor_names=*/tensor_names,
             /*shape_and_slices=*/
             StringConst(
                 fn_builder, location,
