@@ -68,6 +68,7 @@ cc_library(
         "//xla/service/spmd/shardy:constants",
         "@com_google_absl//absl/log:check",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InliningUtils",
         "@llvm-project//mlir:Pass",
