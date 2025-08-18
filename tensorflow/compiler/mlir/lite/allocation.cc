@@ -71,7 +71,7 @@ FileCopyAllocation::FileCopyAllocation(const char* filename,
   copied_buffer_.reset(const_cast<char const*>(buffer.release()));
 }
 
-FileCopyAllocation::~FileCopyAllocation() {}
+FileCopyAllocation::~FileCopyAllocation() = default;
 
 const void* FileCopyAllocation::base() const { return copied_buffer_.get(); }
 
