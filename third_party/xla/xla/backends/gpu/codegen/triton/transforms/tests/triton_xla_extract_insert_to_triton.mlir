@@ -6,14 +6,13 @@
 // RUN: -triton-xla-extract-insert-to-triton="gpu_device_info='cuda_compute_capability {major: 9}' tma_enabled=1" \
 // RUN: | FileCheck %s --check-prefix=CHECK-TMA
 
-func.func @lower_extract_insert(%arg0: tensor<512x128xbf16>,
-          %arg1: tensor<256x256xbf16>) -> tensor<256x256xbf16> {
+func.func @lower_extract_insert(%arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>) {
   %extracted_tensor = triton_xla.extract %arg0 [0, 0] [16, 64] [1, 1]
-    {layout = array<i64:1, 0>} : tensor<512x128xbf16> to tensor<16x64xbf16>
-  %updated_tensor = triton_xla.insert %extracted_tensor into
-    %arg1 [0, 0] [16, 64] [1, 1] {layout = array<i64:1, 0>}
-    : tensor<16x64xbf16> into tensor<256x256xbf16>
-  func.return %updated_tensor : tensor<256x256xbf16>
+    {shape = array<i64:512, 128>, layout = array<i64:1, 0>} : !tt.ptr<bf16> to tensor<16x64xbf16>
+  triton_xla.insert %extracted_tensor into
+    %arg1 [0, 0] [16, 64] [1, 1] {shape = array<i64:256, 256>, layout = array<i64:1, 0>}
+    : tensor<16x64xbf16> into !tt.ptr<bf16>
+  func.return
 }
 
 // CHECK-LABEL: tt.func @lower_extract_insert
@@ -35,15 +34,13 @@ func.func @lower_extract_insert(%arg0: tensor<512x128xbf16>,
 
 // -----
 
-func.func @non_perfect_tile_shape(
-                %arg0: tensor<300x300xbf16>, %arg1: tensor<300x300xbf16>)
-                -> tensor<300x300xbf16> {
+func.func @non_perfect_tile_shape(%arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>) {
   %extracted_tensor = triton_xla.extract %arg0 [0, 0] [8, 8] [1, 1]
-    {layout = array<i64:1, 0>} : tensor<300x300xbf16> to tensor<8x8xbf16>
-  %updated_tensor = triton_xla.insert %extracted_tensor into
-    %arg1 [0, 0] [8, 8] [1, 1] {layout = array<i64:1, 0>}
-    : tensor<8x8xbf16> into tensor<300x300xbf16>
-  func.return %updated_tensor : tensor<300x300xbf16>
+    {shape = array<i64:300, 300>, layout = array<i64:1, 0>} : !tt.ptr<bf16> to tensor<8x8xbf16>
+  triton_xla.insert %extracted_tensor into
+    %arg1 [0, 0] [8, 8] [1, 1] {shape = array<i64:300, 300>, layout = array<i64:1, 0>}
+    : tensor<8x8xbf16> into !tt.ptr<bf16>
+  func.return
 }
 
 // CHECK-LABEL: tt.func @non_perfect_tile_shape
@@ -54,14 +51,13 @@ func.func @non_perfect_tile_shape(
 
 // -----
 
-func.func @incompatible_tma_global_strides(%arg0: tensor<234x234xbf16>,
-          %arg1: tensor<123x123xbf16>) -> tensor<123x123xbf16> {
+func.func @incompatible_tma_global_strides(%arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>) {
   %extracted_tensor = triton_xla.extract %arg0 [0, 0] [16, 64] [128, 1]
-    {layout = array<i64:1, 0>} : tensor<234x234xbf16> to tensor<16x64xbf16>
-  %updated_tensor = triton_xla.insert %extracted_tensor into
-    %arg1 [0, 0] [16, 64] [128, 1] {layout = array<i64:1, 0>}
-    : tensor<16x64xbf16> into tensor<123x123xbf16>
-  func.return %updated_tensor : tensor<123x123xbf16>
+    {shape = array<i64:234, 234>, layout = array<i64:1, 0>} : !tt.ptr<bf16> to tensor<16x64xbf16>
+  triton_xla.insert %extracted_tensor into
+    %arg1 [0, 0] [16, 64] [128, 1] {shape = array<i64:123, 123>, layout = array<i64:1, 0>}
+    : tensor<16x64xbf16> into !tt.ptr<bf16>
+  func.return
 }
 
 // CHECK-TMA-LABEL: tt.func @incompatible_tma_global_strides
@@ -75,22 +71,21 @@ func.func @incompatible_tma_global_strides(%arg0: tensor<234x234xbf16>,
 #indexing_map = #xla.indexing_map<"(pid_0) -> (pid_0 * 32), domain: pid_0 in [0, 1]">
 module {
   func.func @slice_with_tiling_that_needs_padding_has_boundary_checks(
-          %arg0: tensor<64xf32>, %arg1: tensor<63xf32>, %arg2: tensor<63xf32>)
-          -> (tensor<63xf32>, tensor<63xf32>) {
+          %arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>, %arg2: !tt.ptr<f32>) {
     %cst = arith.constant dense<0.000000e+00> : tensor<32xf32>
     %0 = tt.get_program_id x : i32
     %1 = arith.extsi %0 : i32 to i64
     %2 = arith.index_castui %1 : i64 to index
     %3 = xla.apply_indexing #indexing_map(%2)
     %extracted_tile = triton_xla.extract %arg0[%3][32][1]
-      {layout = array<i64:0>} : tensor<64xf32> to tensor<32xf32>
+      {shape = array<i64:64>, layout = array<i64:0>} : !tt.ptr<f32> to tensor<32xf32>
     %4 = math.absf %extracted_tile : tensor<32xf32>
     %5 = arith.subf %cst, %4 : tensor<32xf32>
-    %inserted_tile = triton_xla.insert %5 into %arg1[%3][32][1]
-      {layout = array<i64:0>} : tensor<32xf32> into tensor<63xf32>
-    %inserted_tile_2 = triton_xla.insert %4 into %arg2[%3][32][1]
-      {layout = array<i64:0>} : tensor<32xf32> into tensor<63xf32>
-    return %inserted_tile, %inserted_tile_2 : tensor<63xf32>, tensor<63xf32>
+    triton_xla.insert %5 into %arg1[%3][32][1]
+      {shape = array<i64:63>, layout = array<i64:0>} : tensor<32xf32> into !tt.ptr<f32>
+    triton_xla.insert %4 into %arg2[%3][32][1]
+      {shape = array<i64:63>, layout = array<i64:0>} : tensor<32xf32> into !tt.ptr<f32>
+    func.return
   }
 }
 
@@ -106,22 +101,21 @@ module {
 #indexing_map = #xla.indexing_map<"(pid_0) -> (pid_0 * 32), domain: pid_0 in [0, 1]">
 module {
   func.func @slice_with_extra_output_that_can_reuse_tile_due_to_padding(
-            %arg0: tensor<64xf32>, %arg1: tensor<63xf32>, %arg2: tensor<64xf32>)
-            -> (tensor<63xf32>, tensor<64xf32>) {
+            %arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>, %arg2: !tt.ptr<f32>) {
     %cst = arith.constant dense<0.000000e+00> : tensor<32xf32>
     %0 = tt.get_program_id x : i32
     %1 = arith.extsi %0 : i32 to i64
     %2 = arith.index_castui %1 : i64 to index
     %3 = xla.apply_indexing #indexing_map(%2)
     %extracted_tile = triton_xla.extract %arg0[%3][32][1]
-      {layout = array<i64:0>} : tensor<64xf32> to tensor<32xf32>
+      {shape = array<i64:64>, layout = array<i64:0>} : !tt.ptr<f32> to tensor<32xf32>
     %4 = math.absf %extracted_tile : tensor<32xf32>
     %5 = arith.subf %cst, %4 : tensor<32xf32>
-    %inserted_tile = triton_xla.insert %5 into %arg1[%3][32][1]
-      {layout = array<i64:0>} : tensor<32xf32> into tensor<63xf32>
-    %inserted_tile_2 = triton_xla.insert %4 into %arg2[%3][32][1]
-      {layout = array<i64:0>} : tensor<32xf32> into tensor<64xf32>
-    return %inserted_tile, %inserted_tile_2 : tensor<63xf32>, tensor<64xf32>
+    triton_xla.insert %5 into %arg1[%3][32][1]
+      {shape = array<i64:63>, layout = array<i64:0>} : tensor<32xf32> into !tt.ptr<f32>
+    triton_xla.insert %4 into %arg2[%3][32][1]
+      {shape = array<i64:64>, layout = array<i64:0>} : tensor<32xf32> into !tt.ptr<f32>
+    func.return
   }
 }
 
@@ -134,14 +128,14 @@ module {
 
 // -----
 
-func.func @extract_with_non_unit_minor_dim_stride(%arg0: tensor<1024x1024xbf16>,
-                          %arg1: tensor<256x256xbf16>) -> tensor<256x256xbf16> {
+func.func @extract_with_non_unit_minor_dim_stride(%arg0: !tt.ptr<bf16>,
+                          %arg1: !tt.ptr<bf16>) {
   %extracted_tensor = triton_xla.extract %arg0 [0, 0] [16, 64] [2, 2]
-    {layout = array<i64:1, 0>} : tensor<1024x1024xbf16> to tensor<16x64xbf16>
-  %updated_tensor = triton_xla.insert %extracted_tensor into
-    %arg1 [0, 0] [16, 64] [1, 1] {layout = array<i64:1, 0>}
-    : tensor<16x64xbf16> into tensor<256x256xbf16>
-  func.return %updated_tensor : tensor<256x256xbf16>
+    {shape = array<i64:1024, 1024>, layout = array<i64:1, 0>} : !tt.ptr<bf16> to tensor<16x64xbf16>
+  triton_xla.insert %extracted_tensor into
+    %arg1 [0, 0] [16, 64] [1, 1] {shape = array<i64:256, 256>, layout = array<i64:1, 0>}
+    : tensor<16x64xbf16> into !tt.ptr<bf16>
+  func.return
 }
 
 // CHECK-LABEL: tt.func @extract_with_non_unit_minor_dim_stride
@@ -151,17 +145,16 @@ func.func @extract_with_non_unit_minor_dim_stride(%arg0: tensor<1024x1024xbf16>,
 
 // -----
 
-func.func @extract_with_non_static_strides(%arg0: tensor<1024x1024xbf16>,
-                          %arg1: tensor<256x256xbf16>) -> tensor<256x256xbf16> {
+func.func @extract_with_non_static_strides(%arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>) {
   %0 = tt.get_program_id x : i32
   %1 = arith.extsi %0 : i32 to i64
   %2 = arith.index_castui %1 : i64 to index
   %extracted_tensor = triton_xla.extract %arg0 [0, 0] [16, 64] [%2, 1]
-    {layout = array<i64:1, 0>} : tensor<1024x1024xbf16> to tensor<16x64xbf16>
-  %updated_tensor = triton_xla.insert %extracted_tensor into
-    %arg1 [0, 0] [16, 64] [1, 1] {layout = array<i64:1, 0>}
-    : tensor<16x64xbf16> into tensor<256x256xbf16>
-  func.return %updated_tensor : tensor<256x256xbf16>
+    {shape = array<i64:1024, 1024>, layout = array<i64:1, 0>} : !tt.ptr<bf16> to tensor<16x64xbf16>
+  triton_xla.insert %extracted_tensor into
+    %arg1 [0, 0] [16, 64] [1, 1] {shape = array<i64:256, 256>, layout = array<i64:1, 0>}
+    : tensor<16x64xbf16> into !tt.ptr<bf16>
+  func.return
 }
 
 // CHECK-LABEL: tt.func @extract_with_non_static_strides
@@ -171,14 +164,13 @@ func.func @extract_with_non_static_strides(%arg0: tensor<1024x1024xbf16>,
 
 // -----
 
-func.func @lower_extract_insert_1d(%arg0: tensor<128xbf16>,
-          %arg1: tensor<256xbf16>) -> tensor<256xbf16> {
+func.func @lower_extract_insert_1d(%arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>) {
   %extracted_tensor = triton_xla.extract %arg0 [0] [16] [1]
-    {layout = array<i64:0>} : tensor<128xbf16> to tensor<16xbf16>
-  %updated_tensor = triton_xla.insert %extracted_tensor into
-    %arg1 [0] [16] [1] {layout = array<i64:0>}
-    : tensor<16xbf16> into tensor<256xbf16>
-  func.return %updated_tensor : tensor<256xbf16>
+    {shape = array<i64:128>, layout = array<i64:0>} : !tt.ptr<bf16> to tensor<16xbf16>
+  triton_xla.insert %extracted_tensor into
+    %arg1 [0] [16] [1] {shape = array<i64:256>, layout = array<i64:0>}
+    : tensor<16xbf16> into !tt.ptr<bf16>
+  func.return
 }
 
 // CHECK-LABEL: tt.func @lower_extract_insert_1d
@@ -198,17 +190,16 @@ func.func @lower_extract_insert_1d(%arg0: tensor<128xbf16>,
 
 // -----
 
-func.func @lower_extract_insert_5d(%arg0: tensor<16x16x16x16x16xbf16>,
-          %arg1: tensor<32x32x32x32x32xbf16>) -> tensor<32x32x32x32x32xbf16> {
+func.func @lower_extract_insert_5d(%arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>) {
   %extracted_tensor = triton_xla.extract
                       %arg0 [0, 0, 0, 0, 0] [8, 8, 8, 8, 8] [1, 1, 1, 1, 1]
-                      {layout = array<i64:4, 3, 2, 1, 0>}
-                      : tensor<16x16x16x16x16xbf16> to tensor<8x8x8x8x8xbf16>
-  %updated_tensor = triton_xla.insert %extracted_tensor into
+                      {shape = array<i64:16, 16, 16, 16, 16>, layout = array<i64:4, 3, 2, 1, 0>}
+                      : !tt.ptr<bf16> to tensor<8x8x8x8x8xbf16>
+  triton_xla.insert %extracted_tensor into
                     %arg1 [0, 0, 0, 0, 0] [8, 8, 8, 8, 8] [1, 1, 1, 1, 1]
-                    {layout = array<i64:4, 3, 2, 1, 0>}
-                    : tensor<8x8x8x8x8xbf16> into tensor<32x32x32x32x32xbf16>
-  func.return %updated_tensor : tensor<32x32x32x32x32xbf16>
+                    {shape = array<i64:32, 32, 32, 32, 32>, layout = array<i64:4, 3, 2, 1, 0>}
+                    : tensor<8x8x8x8x8xbf16> into !tt.ptr<bf16>
+  func.return
 }
 
 // CHECK-LABEL: tt.func @lower_extract_insert_5d
@@ -230,14 +221,13 @@ func.func @lower_extract_insert_5d(%arg0: tensor<16x16x16x16x16xbf16>,
 
 // -----
 
-func.func @extract_insert_with_zero_stride(%arg0: tensor<512x128xbf16>,
-          %arg1: tensor<256x256xbf16>) -> tensor<256x256xbf16> {
+func.func @extract_insert_with_zero_stride(%arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>) {
   %extracted_tensor = triton_xla.extract %arg0 [0, 0] [1, 64] [0, 1]
-    {layout = array<i64:1, 0>} : tensor<512x128xbf16> to tensor<1x64xbf16>
-  %updated_tensor = triton_xla.insert %extracted_tensor into
-    %arg1 [0, 0] [1, 64] [0, 1] {layout = array<i64:1, 0>}
-    : tensor<1x64xbf16> into tensor<256x256xbf16>
-  func.return %updated_tensor : tensor<256x256xbf16>
+    {shape = array<i64:512, 128>, layout = array<i64:1, 0>} : !tt.ptr<bf16> to tensor<1x64xbf16>
+  triton_xla.insert %extracted_tensor into
+    %arg1 [0, 0] [1, 64] [0, 1] {shape = array<i64:256, 256>, layout = array<i64:1, 0>}
+    : tensor<1x64xbf16> into !tt.ptr<bf16>
+  func.return
 }
 
 // CHECK-TMA-LABEL: tt.func @extract_insert_with_zero_stride
@@ -245,14 +235,14 @@ func.func @extract_insert_with_zero_stride(%arg0: tensor<512x128xbf16>,
 
 // -----
 
-func.func @incompatible_tma_const_offset_not_divisible_by_16_bytes(%arg0: tensor<512x128xbf16>,
-          %arg1: tensor<256x256xbf16>) -> tensor<256x256xbf16> {
+func.func @incompatible_tma_const_offset_not_divisible_by_16_bytes(
+          %arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>) {
   %extracted_tensor = triton_xla.extract %arg0 [0, 15] [1, 64] [1, 1]
-    {layout = array<i64:1, 0>} : tensor<512x128xbf16> to tensor<1x64xbf16>
-  %updated_tensor = triton_xla.insert %extracted_tensor into
-    %arg1 [0, 16] [1, 64] [1, 1] {layout = array<i64:1, 0>}
-    : tensor<1x64xbf16> into tensor<256x256xbf16>
-  func.return %updated_tensor : tensor<256x256xbf16>
+    {shape = array<i64:512, 128>, layout = array<i64:1, 0>} : !tt.ptr<bf16> to tensor<1x64xbf16>
+  triton_xla.insert %extracted_tensor into
+    %arg1 [0, 16] [1, 64] [1, 1] {shape = array<i64:256, 256>, layout = array<i64:1, 0>}
+    : tensor<1x64xbf16> into !tt.ptr<bf16>
+  func.return
 }
 
 // CHECK-TMA-LABEL: tt.func @incompatible_tma_const_offset_not_divisible_by_16_bytes
@@ -267,21 +257,20 @@ func.func @incompatible_tma_const_offset_not_divisible_by_16_bytes(%arg0: tensor
 #indexing_map2 = #xla.indexing_map<"(pid_0) -> ((pid_0 mod 9) * 16), domain: pid_0 in [0, 575]">
 module {
   func.func @incompatible_tma_dynamic_offset_not_divisible_by_16_bytes(
-            %arg0: tensor<4x8320xbf16>, %arg1: tensor<4x64x130xbf16>)
-            -> tensor<4x64x130xbf16> {
+            %arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>) {
     %0 = tt.get_program_id x : i32
     %1 = arith.extsi %0 : i32 to i64
     %2 = arith.index_castui %1 : i64 to index
     %3 = xla.apply_indexing #indexing_map(%2)
     %extracted_tile = triton_xla.extract %arg0[0, %3] [16, 16] [1, 1]
-      {layout = array<i64: 1, 0>} : tensor<4x8320xbf16> to tensor<16x16xbf16>
+      {shape = array<i64:4, 8320>, layout = array<i64: 1, 0>} : !tt.ptr<bf16> to tensor<16x16xbf16>
     %4 = tt.reshape %extracted_tile : tensor<16x16xbf16> -> tensor<16x1x16xbf16>
     %5 = xla.apply_indexing #indexing_map1(%2)
     %6 = xla.apply_indexing #indexing_map2(%2)
-    %inserted_tile = triton_xla.insert %4 into %arg1[0, %5, %6] [16, 1, 16] [1, 1, 1]
-      {layout = array<i64: 2, 1, 0>}
-      : tensor<16x1x16xbf16> into tensor<4x64x130xbf16>
-    return %inserted_tile : tensor<4x64x130xbf16>
+    triton_xla.insert %4 into %arg1[0, %5, %6] [16, 1, 16] [1, 1, 1]
+      {shape = array<i64: 4, 64, 130>, layout = array<i64: 2, 1, 0>}
+      : tensor<16x1x16xbf16> into !tt.ptr<bf16>
+    func.return
   }
 }
 

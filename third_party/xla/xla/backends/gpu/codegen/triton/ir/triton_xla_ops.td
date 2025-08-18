@@ -41,23 +41,10 @@ class TTXLA_Op<string mnemonic, list<Trait> traits = []> :
 class TTXLA_OpWithOffsetSizesAndStrides<string mnemonic,
                                         list<Trait> traits = []>
     : TTXLA_Op<mnemonic, !listconcat(traits, [
-      Pure,
       AttrSizedOperandSegments,
-      OffsetSizeAndStrideOpInterface,
-      DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
+      OffsetSizeAndStrideOpInterface
   ])> {
-  let results = (outs AnyRankedTensor:$result);
   code extraBaseClassDeclaration = [{
-    /// Return the type of the base tensor operand.
-    ::mlir::RankedTensorType getSrcType() {
-      return ::llvm::cast<RankedTensorType>(getSrc().getType());
-    }
-
-    /// Return the type of the result tensor.
-    ::mlir::RankedTensorType getResultType() {
-      return ::llvm::cast<RankedTensorType>(getResult().getType());
-    }
-
     SmallVector<Value> getOffsetsAsValues(::mlir::ImplicitLocOpBuilder &b) {
       return ::mlir::getValueOrCreateConstantIndexOp(b, b.getLoc(),
         getMixedOffsets());
@@ -72,106 +59,111 @@ class TTXLA_OpWithOffsetSizesAndStrides<string mnemonic,
       return ::mlir::getValueOrCreateConstantIndexOp(b, b.getLoc(),
         getMixedStrides());
     }
-
-    /// Return the expected rank of each of the `static_offsets`, `static_sizes`
-    /// and `static_strides` attributes.
-    std::array<unsigned, 3> getArrayAttrMaxRanks() {
-      unsigned rank = getResultType().getRank();
-      return {rank, rank, rank};
-    }
   }];
   let hasVerifier = 1;
   let hasCanonicalizer = 1;
 }
 
-def TTXLA_ExtractOp : TTXLA_OpWithOffsetSizesAndStrides<"extract", []> {
-  let summary = "Extract a tile from a tensor.";
+def TTXLA_ExtractOp : TTXLA_OpWithOffsetSizesAndStrides<"extract", [
+      DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
+  let summary = "Extract a tile from a pointer.";
   let description = [{
-    Offsets, strides, and destination tensor size are used to specify the tile
-    to extract. Minor-to-major layout should also be specified.
+    Offsets, strides, and sizes operands specify the result tensor tile
+    to extract. Shape and minor-to-major layout specify the layout of the source
+    pointer.
 
     Assembly format: %src [%offsets] [%sizes] [%strides]
-      {xla layout} : src_tensor to dst_tensor
+      {shape = array<i64:...>, layout = array<i64:...>} : ptr_type to tensor_type
 
     Example:
       ```
       %extracted_tensor = triton_xla.extract %src [0, 0] [16, 64] [128, 1]
-        {layout = array<i64:1, 0>} : tensor<512x128xbf16> to tensor<16x64xbf16>
+        {shape = array<i64:512, 128>, layout = array<i64:1, 0>}
+        : !tt.ptr<bf16> to tensor<16x64xbf16>
       ```
   }];
   let builders = [
     OpBuilder<(ins "RankedTensorType":$result_type, "Value":$src,
       "ValueRange":$offsets,  "ValueRange":$strides,
-      CArg<"ArrayRef<int64_t>", "{}">:$layout,
-      CArg<"ArrayRef<NamedAttribute>", "{}">:$attrs)>,
+      CArg<"ArrayRef<int64_t>">:$shape,
+      CArg<"ArrayRef<int64_t>">:$layout)>,
     OpBuilder<(ins "RankedTensorType":$result_type, "Value":$src,
       "ArrayRef<OpFoldResult>":$offsets,  "ArrayRef<OpFoldResult>":$strides,
-      CArg<"ArrayRef<int64_t>", "{}">:$layout,
-      CArg<"ArrayRef<NamedAttribute>", "{}">:$attrs)>
+      CArg<"ArrayRef<int64_t>">:$shape,
+      CArg<"ArrayRef<int64_t>">:$layout)>
   ];
 
   let arguments = (ins
-    AnyStaticShapeTensor:$src,
+    TT_Ptr:$src,
     Variadic<Index>:$offsets,
     Variadic<Index>:$sizes,
     Variadic<Index>:$strides,
     DenseI64ArrayAttr:$static_offsets,
     DenseI64ArrayAttr:$static_sizes,
     DenseI64ArrayAttr:$static_strides,
+    DenseI64ArrayAttr:$shape,
     DenseI64ArrayAttr:$layout
   );
+  let results = (outs AnyRankedTensor:$result);
+
   let assemblyFormat = [{
     $src ``
     custom<DynamicIndexList>($offsets, $static_offsets)
     custom<DynamicIndexList>($sizes, $static_sizes)
     custom<DynamicIndexList>($strides, $static_strides)
-    attr-dict `:` type($src) `to` type($result)
+    attr-dict `:` qualified(type($src)) `to` type($result)
   }];
   let extraClassDeclaration = extraBaseClassDeclaration # [{
+    /// Return the expected rank of each of the `static_offsets`, `static_sizes`
+    /// and `static_strides` attributes.
+    std::array<unsigned, 3> getArrayAttrMaxRanks() {
+      unsigned rank = getType().getRank();
+      return {rank, rank, rank};
+    }
     /// Return the number of leading operands before the `offsets`, `sizes` and
     /// and `strides` operands.
     static unsigned getOffsetSizeAndStrideStartOperandIndex() { return 1; }
   }];
 }
 
-def TTXLA_InsertOp : TTXLA_OpWithOffsetSizesAndStrides<"insert", [
-    TypesMatchWith<"expected result type to match dest type",
-                   "dst", "result", "$_self">
-  ]> {
-  let summary = "Insert a tile into a tensor.";
+def TTXLA_InsertOp : TTXLA_OpWithOffsetSizesAndStrides<"insert"> {
+  let summary = "Insert a tile into a pointer.";
   let description = [{
     Offsets, strides, and source tensor size are used to specify the tile to
-    insert into. Minor-to-major layout should also be specified.
+    insert. Shape and minor-to-major layout specify the layout of the
+    destination pointer.
 
     Assembly format: %src into %dst [%offsets] [%sizes] [%strides]
-      {xla layout} : src_tensor into dst_tensor
+      {shape = array<i64:...>, layout = array<i64:...>} : tensor_type into ptr_type
 
     Example:
       ```
-      %updated_tensor = triton_xla.insert %src into
-        %dst [0, 0] [8, 8] [1, 1] {layout = array<i64:1, 0>}
+      triton_xla.insert %src into %dst [0, 0] [8, 8] [1, 1]
+        {shape = array<i64:512, 128>, layout = array<i64:1, 0>}
+        : tensor<8x8xbf16> into !tt.ptr<bf16>
       ```
   }];
   let builders = [
     OpBuilder<(ins "Value":$src, "Value":$dst,
       "ValueRange":$offsets,  "ValueRange":$strides,
-      CArg<"ArrayRef<int64_t>", "{}">:$layout,
-      CArg<"ArrayRef<NamedAttribute>", "{}">:$attrs)>,
+      CArg<"ArrayRef<int64_t>">:$shape,
+      CArg<"ArrayRef<int64_t>">:$layout)>,
     OpBuilder<(ins "Value":$src, "Value":$dst,
       "ArrayRef<OpFoldResult>":$offsets,  "ArrayRef<OpFoldResult>":$strides,
-      CArg<"ArrayRef<int64_t>", "{}">:$layout,
-      CArg<"ArrayRef<NamedAttribute>", "{}">:$attrs)>
+      CArg<"ArrayRef<int64_t>">:$shape,
+      CArg<"ArrayRef<int64_t>">:$layout)>
   ];
 
   let arguments = (ins
     AnyStaticShapeTensor:$src,
-    AnyStaticShapeTensor:$dst,
+    TT_Ptr:$dst,
     Variadic<Index>:$offsets,
     Variadic<Index>:$sizes,
     Variadic<Index>:$strides,
     DenseI64ArrayAttr:$static_offsets,
     DenseI64ArrayAttr:$static_sizes,
     DenseI64ArrayAttr:$static_strides,
+    DenseI64ArrayAttr:$shape,
     DenseI64ArrayAttr:$layout
   );
 
@@ -180,10 +172,16 @@ def TTXLA_InsertOp : TTXLA_OpWithOffsetSizesAndStrides<"insert", [
     custom<DynamicIndexList>($offsets, $static_offsets)
     custom<DynamicIndexList>($sizes, $static_sizes)
     custom<DynamicIndexList>($strides, $static_strides)
-    attr-dict `:` type($src) `into` type($dst)
+    attr-dict `:` type($src) `into` qualified(type($dst))
   }];
 
   let extraClassDeclaration = extraBaseClassDeclaration # [{
+    /// Return the expected rank of each of the `static_offsets`, `static_sizes`
+    /// and `static_strides` attributes.
+    std::array<unsigned, 3> getArrayAttrMaxRanks() {
+      unsigned rank = getSrc().getType().getRank();
+      return {rank, rank, rank};
+    }
     /// Return the number of leading operands before the `offsets`, `sizes` and
     /// and `strides` operands.
     static unsigned getOffsetSizeAndStrideStartOperandIndex() { return 2; }

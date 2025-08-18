@@ -344,16 +344,18 @@ ScalarOrTensor EmitParameterExtract(EmitterLocOpBuilder& b,
   // For a pointer to a scalar or a zero-dimensional tensor, load the base
   // pointer directly. This shortcut is necessary because Triton does not
   // support 0-D tensors.
+  // TODO(csigg): This should be handled in the extract/insert rewrite.
   if (tile_info.padded_tile_sizes().empty()) {
-    return ScalarOrTensor(
-        b.create<mlir::tensor::ExtractOp>(parent_base_ptr, {}));
+    return ScalarOrTensor(ttir::LoadOp::create(
+        b, parent_base_ptr, ttir::CacheModifier::NONE,
+        ttir::EvictionPolicy::NORMAL, /*isVolatile=*/false));
   }
 
   return ScalarOrTensor(b.create<mtx::ExtractOp>(
       mlir::RankedTensorType::get(tile_info.padded_tile_sizes(),
                                   tile_info.storage_type()),
       parent_base_ptr, tile_info.offsets(), tile_info.tile_strides(),
-      tile_info.minor_to_major_layout()));
+      tile_info.original_shape(), tile_info.minor_to_major_layout()));
 }
 
 absl::StatusOr<ScalarOrTensor> EmitScope(
@@ -1515,11 +1517,12 @@ using ::xla::gpu::ir_emitter_triton_internal::DumpTritonIR;
 // Generate Triton IR inside 'fn', using the given block_level_parameters.
 // TODO(b/421837868): `BlockLevelParameters` should hold all the necessary
 // tiling information.
-absl::StatusOr<SmallVector<Value>> EmitGeneric(
-    mlir::OpBuilder builder, absl::string_view libdevice_path,
-    const se::DeviceDescription& device_info,
-    const HloFusionInstruction* fusion, mlir::FunctionOpInterface fn,
-    const BlockLevelParameters& block_level_parameters) {
+absl::Status EmitGeneric(mlir::OpBuilder builder,
+                         absl::string_view libdevice_path,
+                         const se::DeviceDescription& device_info,
+                         const HloFusionInstruction* fusion,
+                         mlir::FunctionOpInterface fn,
+                         const BlockLevelParameters& block_level_parameters) {
   if (VLOG_IS_ON(6)) {
     VLOG(6) << "Emitting Triton IR for fusion\n"
             << ExtractInstructionIntoNewModule(*fusion)->ToString();
@@ -1580,7 +1583,6 @@ absl::StatusOr<SmallVector<Value>> EmitGeneric(
       EmitTiledComputation(b, libdevice_path, device_info, fusion,
                            tiled_hlo_computation, fn, pid, values));
 
-  SmallVector<Value> insert_results;
   for (auto [root, result, parent_base_ptr] :
        llvm::zip(tiled_hlo_computation.GetRoots(), results,
                  fn.getArguments().drop_front(computation->num_parameters()))) {
@@ -1596,11 +1598,9 @@ absl::StatusOr<SmallVector<Value>> EmitGeneric(
     }
 
     if (result.IsScalar()) {
-      ValueRange indices = {};
-      insert_results.push_back(
-          b.create<mlir::tensor::InsertOp>(result.UnwrapScalar(),
-                                           parent_base_ptr, indices)
-              .getResult());
+      // TODO(csigg): Handle this in extract/insert rewrite.
+      ttir::StoreOp::create(b, parent_base_ptr, result.UnwrapScalar(),
+                            /*mask=*/nullptr);
       continue;
     }
 
@@ -1615,12 +1615,13 @@ absl::StatusOr<SmallVector<Value>> EmitGeneric(
         << "Unexpected scalar encountered. Expected padded_tile_sizes() to be "
            "non-empty.";
 
-    insert_results.push_back(b.create<mtx::InsertOp>(
-        result.UnwrapTensor(), parent_base_ptr, tile_info.offsets(),
-        tile_info.tile_strides(), tile_info.minor_to_major_layout()));
+    mtx::InsertOp::create(b, result.UnwrapTensor(), parent_base_ptr,
+                          tile_info.offsets(), tile_info.tile_strides(),
+                          tile_info.original_shape(),
+                          tile_info.minor_to_major_layout());
   }
 
-  return insert_results;
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -1678,30 +1679,10 @@ absl::Status CreateInternalError(absl::string_view message,
 
 // Legacy emitter works with tt.func. New emitter works with func.func.
 // TODO(b/393299275): Remove legacy optionality once migration is complete.
-void AppendFuncArgType(absl::Span<const int64_t> dims,
-                       absl::string_view fusion_kind, Type ir_type,
+void AppendFuncArgType(absl::Span<const int64_t> dims, Type ir_type,
                        SmallVector<Type>& fn_arg_types) {
-  if (fusion_kind == kTritonGemmFusionKind) {
-    fn_arg_types.push_back(ttir::PointerType::get(
-        StorageType(ir_type), mlir::NVVM::kGlobalMemorySpace));
-  } else {
-    fn_arg_types.push_back(mlir::RankedTensorType::get(
-        llvm::ArrayRef<int64_t>(dims.data(), dims.size()),
-        StorageType(ir_type)));
-  }
-}
-
-// Only needed for the new emitter since we are using func.func instead of
-// tt.func.
-// TODO(b/393299275): Remove legacy optionality once migration is complete.
-void AppendFuncResultType(absl::string_view fusion_kind,
-                          absl::Span<const int64_t> dims, Type ir_type,
-                          SmallVector<Type>& fn_result_types) {
-  if (fusion_kind != kTritonGemmFusionKind) {
-    fn_result_types.push_back(mlir::RankedTensorType::get(
-        llvm::ArrayRef<int64_t>(dims.data(), dims.size()),
-        StorageType(ir_type)));
-  }
+  fn_arg_types.push_back(ttir::PointerType::get(
+      StorageType(ir_type), mlir::NVVM::kGlobalMemorySpace));
 }
 
 // Legacy emitter works with tt.func. New emitter works with func.func.
@@ -1709,30 +1690,27 @@ void AppendFuncResultType(absl::string_view fusion_kind,
 mlir::FunctionOpInterface CreateFuncOp(EmitterLocOpBuilder& b,
                                        absl::string_view fn_name,
                                        absl::string_view fusion_kind,
-                                       SmallVector<Type>& fn_arg_types,
-                                       SmallVector<Type>& fn_result_types) {
-  mlir::FunctionOpInterface fn;
-  if (fusion_kind == kTritonGemmFusionKind) {
-    fn = b.create<ttir::FuncOp>(fn_name,
-                                b.getFunctionType(fn_arg_types, std::nullopt));
-    for (int i = 0; i < fn.getNumArguments(); ++i) {
-      fn.setArgAttr(i, "tt.divisibility", b.getIntegerAttr(b.getI32Type(), 16));
-    }
-  } else {
-    fn = b.create<mlir::func::FuncOp>(
-        fn_name, b.getFunctionType(fn_arg_types, fn_result_types));
+                                       SmallVector<Type>& fn_arg_types) {
+  if (fusion_kind != kTritonGemmFusionKind) {
+    return b.create<mlir::func::FuncOp>(fn_name,
+                                        b.getFunctionType(fn_arg_types, {}));
   }
-  return fn;
+  auto func = b.create<ttir::FuncOp>(
+      fn_name, b.getFunctionType(fn_arg_types, std::nullopt));
+  auto divisibility_attr = b.getI32IntegerAttr(16);
+  for (int i = 0; i < func.getNumArguments(); ++i) {
+    func.setArgAttr(i, "tt.divisibility", divisibility_attr);
+  }
+  return func;
 }
 
 // Legacy emitter works with tt.return. New emitter works with func.return.
 // TODO(b/393299275): Remove legacy optionality once migration is complete.
-void EmitReturnOp(EmitterLocOpBuilder& b, absl::string_view fusion_kind,
-                  SmallVector<Value> insert_results) {
+void EmitReturnOp(EmitterLocOpBuilder& b, absl::string_view fusion_kind) {
   if (fusion_kind == kTritonGemmFusionKind) {
     b.create<ttir::ReturnOp>();
   } else {
-    b.create<mlir::func::ReturnOp>(insert_results);
+    b.create<mlir::func::ReturnOp>();
   }
 }
 
@@ -1803,23 +1781,17 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
       TF_ASSIGN_OR_RETURN(ir_type, TritonType(b, type));
     }
 
-    AppendFuncArgType(p->shape().dimensions(), fusion_kind, ir_type,
-                      fn_arg_types);
+    AppendFuncArgType(p->shape().dimensions(), ir_type, fn_arg_types);
   }
-
-  SmallVector<Type> fn_result_types;
 
   for (const ShapeUtil::IndexedShape& s :
        ShapeUtil::GetLeafShapes(fusion->shape())) {
     TF_ASSIGN_OR_RETURN(Type triton_ty, TritonType(b, s.shape.element_type()));
-    AppendFuncArgType(s.shape.dimensions(), fusion_kind, triton_ty,
-                      fn_arg_types);
-    AppendFuncResultType(fusion_kind, s.shape.dimensions(), triton_ty,
-                         fn_result_types);
+    AppendFuncArgType(s.shape.dimensions(), triton_ty, fn_arg_types);
   }
 
   mlir::FunctionOpInterface fn =
-      CreateFuncOp(b, fn_name, fusion_kind, fn_arg_types, fn_result_types);
+      CreateFuncOp(b, fn_name, fusion_kind, fn_arg_types);
 
   fn.addEntryBlock();
   b.setInsertionPointToStart(&fn.front());
@@ -1827,7 +1799,6 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
   std::string libdevice_path =
       GetLibdevicePath(fusion->GetModule()->config(), device_info);
 
-  SmallVector<Value> insert_results;
   if (fusion_kind == kTritonGemmFusionKind) {
     if (absl::c_contains(
             fusion->GetModule()
@@ -1841,14 +1812,13 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
                                   block_level_parameters));
   } else if (fusion_kind == kTritonFusionKind ||
              fusion_kind == kTritonNestedGemmFusionKind) {
-    TF_ASSIGN_OR_RETURN(insert_results,
-                        EmitGeneric(b, libdevice_path, device_info, fusion, fn,
-                                    block_level_parameters));
+    TF_RETURN_IF_ERROR(EmitGeneric(b, libdevice_path, device_info, fusion, fn,
+                                   block_level_parameters));
   } else {
     return Internal("Unsupported fusion kind: %s", fusion_kind);
   }
 
-  EmitReturnOp(b, fusion_kind, insert_results);
+  EmitReturnOp(b, fusion_kind);
 
   if (DumpingEnabledForHloModule(*hlo_computation->parent())) {
     auto suffix = absl::StrCat(fusion->name(), ".before_validation.ttir");

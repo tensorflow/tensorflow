@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -213,7 +214,7 @@ class TritonXlaExtractOpConversionPattern
       ConversionPatternRewriter &r) const override {
     // Convert the tensor type using the TypeConverter
     auto new_result_type = mlir::cast<mlir::RankedTensorType>(
-        getTypeConverter()->convertType(op.getResultType()));
+        getTypeConverter()->convertType(op.getType()));
 
     ImplicitLocOpBuilder builder(op.getLoc(), r);
     // We can safely assume these are static because they were checked in
@@ -233,9 +234,13 @@ class TritonXlaExtractOpConversionPattern
     tile_offsets_values[converter_.packed_dimension()] =
         div(r, tile_offsets_values[converter_.packed_dimension()], 2);
 
+    SmallVector<int64_t> shape = llvm::to_vector(adaptor.getShape());
+    shape[converter_.packed_dimension()] =
+        (shape[converter_.packed_dimension()] + 1) / 2;
+
     r.replaceOpWithNewOp<mtx::ExtractOp>(
         op, new_result_type, adaptor.getSrc(), tile_offsets_values,
-        tile_strides_values, adaptor.getLayout());
+        tile_strides_values, shape, adaptor.getLayout());
     return success();
   }
 
@@ -611,7 +616,7 @@ absl::StatusOr<int> GetPackedDimension(MLIRContext *ctx,
       // Make sure the packed dimension is not dynamic and has a stride of 1.
       auto tile_strides = extract_op.getStaticStrides();
       auto tile_sizes = extract_op.getStaticSizes();
-      auto original_shape = extract_op.getSrcType().getShape();
+      auto original_shape = extract_op.getShape();
 
       if (mlir::ShapedType::isDynamicShape(tile_strides) ||
           mlir::ShapedType::isDynamicShape(tile_sizes) ||
