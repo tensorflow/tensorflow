@@ -83,7 +83,18 @@ DeviceProperties GetLocalGPUInfo(PlatformDeviceId platform_device_id) {
 
   device.set_vendor("NVIDIA");
   device.set_model(properties.name);
-  device.set_frequency(properties.clockRate * 1e-3);
+
+  int clockRate;
+  error = cudaDeviceGetAttribute(&clockRate, cudaDevAttrClockRate,
+                                 platform_device_id.value());
+  if (error != cudaSuccess) {
+    device.set_type("ERROR");
+    LOG(ERROR) << "Failed to get device attribute clockRate, error code: "
+               << error;
+    return device;
+  }
+
+  device.set_frequency(clockRate * 1e-3);
   device.set_num_cores(properties.multiProcessorCount);
   device.set_num_registers(properties.regsPerMultiprocessor);
   // For compute capability less than 5, l1 cache size is configurable to
@@ -99,8 +110,21 @@ DeviceProperties GetLocalGPUInfo(PlatformDeviceId platform_device_id) {
   device.set_memory_size(properties.totalGlobalMem);
   // 8 is the number of bits per byte. 2 is accounted for
   // double data rate (DDR).
-  device.set_bandwidth(properties.memoryBusWidth / 8 *
-                       properties.memoryClockRate * 2ULL);
+
+  int memoryClockRate;
+#if CUDART_VERSION >= 13000
+  error = cudaDeviceGetAttribute(&memoryClockRate, cudaDevAttrMemoryClockRate,
+                                 platform_device_id.value());
+  if (error != cudaSuccess) {
+    device.set_type("ERROR");
+    LOG(ERROR) << "Failed to get device attribute memoryClockRate, error code: "
+               << error;
+    return device;
+  }
+#else
+  memoryClockRate = properties.memoryClockRate;
+#endif
+  device.set_bandwidth(properties.memoryBusWidth / 8 * memoryClockRate * 2ULL);
 
   (*device.mutable_environment())["architecture"] =
       strings::StrCat(properties.major, ".", properties.minor);
