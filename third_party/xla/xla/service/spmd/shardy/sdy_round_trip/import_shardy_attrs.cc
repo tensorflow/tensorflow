@@ -141,12 +141,6 @@ void handleFuncResultSharding(CustomCallOp funcResultSharding, FuncOp funcOp,
     } else if (use.getOwner() != funcResultSharding &&
                !dynCastX64CombineCustomCall(use.getOwner())) {
       hasNonFuncReturnUses = true;
-      LOG(WARNING) << std::string_view(  // non-absl ok
-                          kFuncResultShardingTargetName)
-                   << " custom-call has a user that isn't `func.return` ("
-                   << std::string_view(  // non-absl ok
-                          use.getOwner()->getName().getStringRef())
-                   << "). Please file a bug with a reproducer.";
     }
   }
   if (hasNonFuncReturnUses && !x64CombineOp) {
