@@ -1099,7 +1099,8 @@ void StreamExecutorGpuClient::CopyToRemoteDevice(
 absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 StreamExecutorGpuClient::MakeCrossHostReceiveBuffers(
     absl::Span<const Shape> shapes, PjRtDevice* device,
-    PjRtCrossHostRecvNotifier notifier) {
+    absl::Span<const int64_t> uuids,
+    PjRtCrossHostRecvNotifierWithUuids notifier) {
   // Validate arguments.
   if (shapes.empty()) {
     return InvalidArgument(
@@ -1141,9 +1142,11 @@ StreamExecutorGpuClient::MakeCrossHostReceiveBuffers(
   // Acquire a hold on the buffer to access the underlying memory.
   PjRtStreamExecutorBuffer::ScopedHold hold = buffer->GetBufferWithUsageHold();
 
+  std::vector<int64_t> uuids_vec(uuids.begin(), uuids.end());
   auto recv = [this, gpu_collectives, notifier, local_device, definition_event,
                stream, mem = hold->device_memory(), shape = shapes[0],
-               dtype = buffer->element_type()]() mutable {
+               dtype = buffer->element_type(),
+               uuids = std::move(uuids_vec)]() mutable {
     auto f = [&]() -> absl::Status {
       // Create a CliqueId.
       TF_ASSIGN_OR_RETURN(CliqueId clique_id,
@@ -1154,10 +1157,11 @@ StreamExecutorGpuClient::MakeCrossHostReceiveBuffers(
       //
       // TODO(mwhittaker): Implement cancellation.
       notifier(PjRtCrossHostRecvState{
-          /*descriptors=*/{
-              PjRtCrossHostRecvDescriptors{{clique_id.ToString()}}},
-          /*cancel_notifier=*/nullptr,
-      });
+                   /*descriptors=*/{
+                       PjRtCrossHostRecvDescriptors{{clique_id.ToString()}}},
+                   /*cancel_notifier=*/nullptr,
+               },
+               uuids);
 
       // Create a communicator.
       //

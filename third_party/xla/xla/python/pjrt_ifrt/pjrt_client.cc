@@ -1516,52 +1516,54 @@ absl::Status PjRtClient::CrossHostSendBuffers(
 absl::StatusOr<PjRtArray::PjRtBuffers> PjRtClient::CrossHostReceiveBuffers(
     absl::Span<const xla::Shape> shapes, xla::PjRtDevice* device,
     const std::vector<int64_t>& keys) {
-  auto notifier = [this, keys](
-                      absl::StatusOr<xla::PjRtCrossHostRecvState> recv_state) {
-    if (!recv_state.ok()) {
-      LOG(FATAL) << "Invalid PjRtCrossHostRecvState passed to "
-                    "xla::PjRtCrossHostRecvNotifier callback in "
-                    "xla::PjRtClient::MakeCrossHostReceiveBuffers: "
-                 << recv_state.status();
-    }
-    auto on_canceled = [](const absl::Status& status) {
-      if (!status.ok()) {
-        LOG(FATAL) << "Invalid status passed to `on_canceled` callback in "
-                      "xla::PjRtCrossHostSendCancelNotifier in "
-                      "xla::PjRtClient::MakeCrossHostReceiveBuffers: "
-                   << status;
-      }
-    };
-    if (recv_state->descriptors.size() != keys.size()) {
-      absl::Status error_status = absl::InternalError(absl::StrFormat(
-          "Descriptors must be the same size as keys. Descriptors: %d, "
-          "keys: %d",
-          recv_state->descriptors.size(), keys.size()));
-      CHECK_NOTNULL(recv_state->cancel_notifier);
-      for (auto& descriptor : recv_state->descriptors) {
-        recv_state->cancel_notifier(descriptor.serialized_descriptors.front(),
-                                    error_status, on_canceled);
-      }
-      return;
-    }
-    for (int i = 0; i < keys.size(); ++i) {
-      std::string key = absl::StrCat(kKeyPrefix, keys[i]);
-      absl::Status kv_status = kv_store_->Set(
-          key, recv_state->descriptors[i].serialized_descriptors.front());
-      if (!kv_status.ok()) {
-        CHECK_NOTNULL(recv_state->cancel_notifier);
-        absl::Status error_status = absl::InternalError(absl::StrFormat(
-            "Failed to set key %s: %s", key, kv_status.message()));
-        recv_state->cancel_notifier(
-            recv_state->descriptors[i].serialized_descriptors.front(),
-            error_status, on_canceled);
-        return;
-      }
-    }
-  };
+  PjRtCrossHostRecvNotifierWithUuids notifier =
+      [this](absl::StatusOr<xla::PjRtCrossHostRecvState> recv_state,
+             absl::Span<const int64_t> uuids) {
+        if (!recv_state.ok()) {
+          LOG(FATAL) << "Invalid PjRtCrossHostRecvState passed to "
+                        "xla::PjRtCrossHostRecvNotifier callback in "
+                        "xla::PjRtClient::MakeCrossHostReceiveBuffers: "
+                     << recv_state.status();
+        }
+        auto on_canceled = [](const absl::Status& status) {
+          if (!status.ok()) {
+            LOG(FATAL) << "Invalid status passed to `on_canceled` callback in "
+                          "xla::PjRtCrossHostSendCancelNotifier in "
+                          "xla::PjRtClient::MakeCrossHostReceiveBuffers: "
+                       << status;
+          }
+        };
+        if (recv_state->descriptors.size() != uuids.size()) {
+          absl::Status error_status = absl::InternalError(absl::StrFormat(
+              "Descriptors must be the same size as keys. Descriptors: %d, "
+              "keys: %d",
+              recv_state->descriptors.size(), uuids.size()));
+          CHECK_NOTNULL(recv_state->cancel_notifier);
+          for (auto& descriptor : recv_state->descriptors) {
+            recv_state->cancel_notifier(
+                descriptor.serialized_descriptors.front(), error_status,
+                on_canceled);
+          }
+          return;
+        }
+        for (int i = 0; i < uuids.size(); ++i) {
+          std::string key = absl::StrCat(kKeyPrefix, uuids[i]);
+          absl::Status kv_status = kv_store_->Set(
+              key, recv_state->descriptors[i].serialized_descriptors.front());
+          if (!kv_status.ok()) {
+            CHECK_NOTNULL(recv_state->cancel_notifier);
+            absl::Status error_status = absl::InternalError(absl::StrFormat(
+                "Failed to set key %s: %s", key, kv_status.message()));
+            recv_state->cancel_notifier(
+                recv_state->descriptors[i].serialized_descriptors.front(),
+                error_status, on_canceled);
+            return;
+          }
+        }
+      };
   TF_ASSIGN_OR_RETURN(auto recv_buffers,
                       pjrt_client_->MakeCrossHostReceiveBuffers(
-                          shapes, device, std::move(notifier)));
+                          shapes, device, keys, std::move(notifier)));
   PjRtArray::PjRtBuffers buffers;
   buffers.reserve(recv_buffers.size());
   for (auto& recv_buffer : recv_buffers) {
