@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 // Needed for encoding and decoding ResourceDeleter Variant.
 #include "absl/strings/str_join.h"
+#include "absl/synchronization/notification.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_client_cq_tag.h"
@@ -277,7 +278,7 @@ class RpcServiceImpl : public grpc::RpcService::Service {
     }
 
     std::vector<Tensor>* rets = new std::vector<Tensor>;
-    Notification notification;
+    absl::Notification notification;
     fn_lib->Run(
         opts, handle, args, rets,
         [rets, response, &notification, &status](const absl::Status& st) {

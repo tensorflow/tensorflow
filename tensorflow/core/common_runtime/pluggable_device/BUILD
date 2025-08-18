@@ -60,6 +60,7 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@local_xla//xla/stream_executor:device_memory",
         "@local_xla//xla/stream_executor:stream_executor_h",
         "@local_xla//xla/stream_executor/integrations:device_mem_allocator",
@@ -108,6 +109,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/synchronization",
         "@local_xla//xla/pjrt:pjrt_api",
         "@local_xla//xla/pjrt/c:pjrt_c_api_hdrs",
         "@local_xla//xla/stream_executor:stream_executor_h",
@@ -135,6 +137,7 @@ cc_library(
         "//tensorflow/core/platform:stream_executor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/synchronization",
         "@local_xla//xla/stream_executor:stream_executor_h",
         "@local_xla//xla/stream_executor/integrations:device_mem_allocator",
     ] + if_static([

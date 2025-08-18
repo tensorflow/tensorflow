@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/strings/match.h"
 #include "absl/strings/substitute.h"
+#include "absl/synchronization/notification.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/platform/types.h"
@@ -193,7 +193,7 @@ TEST_F(UtilsTest, ExecuteWithTimeout) {
       1000 /* timeout_in_ms */, thread_pool.get()));
 
   // This should time out.
-  Notification notification;
+  absl::Notification notification;
   ASSERT_FALSE(ExecuteWithTimeout(
       [&notification]() { notification.WaitForNotification(); },
       1 /* timeout_in_ms */, thread_pool.get()));

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/synchronization/notification.h"
 #include "tensorflow/core/debug/debug_graph_utils.h"
 #include "tensorflow/core/debug/debug_grpc_testlib.h"
 #include "tensorflow/core/debug/debug_io_utils.h"
@@ -192,7 +193,7 @@ TEST_F(GrpcDebugTest, SendMultipleDebugTensorsSynchronizedViaGrpcTest) {
       new thread::ThreadPool(Env::Default(), "grpc_debug_test", kSends);
 
   mutex mu;
-  Notification all_done;
+  absl::Notification all_done;
   int tensor_count TF_GUARDED_BY(mu) = 0;
   std::vector<absl::Status> statuses TF_GUARDED_BY(mu);
 
