@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <ios>
 #include <memory>
 #include <optional>
@@ -265,6 +266,59 @@ bool MatchAndLogIfFailed(HloInstruction* instr, absl::string_view desc,
   LOG(ERROR) << "Failed to match " << desc << ":\n" << os.str();
   return false;
 }
+
+// Captures multiple HloInstruction pointers and verifies that their target
+// is identical.
+//
+// Example:
+// Pattern cos(x) / sin(x) with cos and sin intended to operate on the same
+// HloInstruction:
+//  UniqueHloInstruction x;
+//  bool m = Match(
+//    instr, m::Divide(m::Cos(m::Op().WithPredicate(x.capture_or_verify_fn())),
+//                    m::Sin(m::Op().WithPredicate(x.capture_or_verify_fn()))));
+// m is true and x.instr() returns an HloInstruction pointer to the operand of
+// cosine and sine iff HloInstruction *instr points to a division of a cosine by
+// a sine that operate on the same instruction.
+class UniqueHloInstruction {
+ public:
+  UniqueHloInstruction()
+      : is_set_(false),
+        instr_(nullptr),
+        capture_or_verify_([this](const HloInstruction* instr) -> bool {
+          return CaptureOrVerify(const_cast<HloInstruction*>(instr));
+        }) {}  // NOLINT(google-readability-const-cast): const_cast is needed
+               // to make it compatible with the WithPredicate API.
+  HloInstruction* instr() const { return instr_; }
+  void set_instr(HloInstruction* instr) {
+    is_set_ = true;
+    instr_ = instr;
+  }
+
+  // Stores instr when invoked the first time. Otherwise, compares instr to the
+  // stored value and sets the stored value to nullptr if the comparison fails.
+  bool CaptureOrVerify(HloInstruction* instr) {
+    if (is_set_ && instr != instr_) {
+      instr_ = nullptr;
+    }
+    if (!is_set_) {
+      is_set_ = true;
+      instr_ = instr;
+    }
+    return instr_ != nullptr;
+  }
+
+  // Returns a std::function for capturing or verifying an instruction using
+  // WithPredicate.
+  std::function<bool(const HloInstruction*)> capture_or_verify_fn() const {
+    return capture_or_verify_;
+  }
+
+ private:
+  bool is_set_;
+  HloInstruction* instr_;
+  std::function<bool(const HloInstruction*)> capture_or_verify_;
+};
 
 namespace match {
 
