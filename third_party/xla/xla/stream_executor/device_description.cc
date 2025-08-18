@@ -21,46 +21,59 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/lib/math/math_util.h"
-#include "tsl/platform/logging.h"
 
 namespace stream_executor {
 
-DeviceDescription::DeviceDescription(const GpuDeviceInfoProto &proto)
-    : block_dim_limit_(BlockDim(proto.block_dim_limit_x(),
-                                proto.block_dim_limit_y(),
-                                proto.block_dim_limit_z())),
-      threads_per_core_limit_(proto.threads_per_core_limit()),
-      threads_per_block_limit_(proto.threads_per_block_limit()),
-      threads_per_warp_(proto.threads_per_warp()),
-      registers_per_core_limit_(proto.registers_per_core_limit()),
-      registers_per_block_limit_(proto.registers_per_block_limit()),
-      device_memory_size_(proto.device_memory_size()),
-      l2_cache_size_(proto.l2_cache_size()),
-      memory_bandwidth_(proto.memory_bandwidth()),
-      shared_memory_per_core_(proto.shared_memory_per_core()),
-      shared_memory_per_block_(proto.shared_memory_per_block()),
-      shared_memory_per_block_optin_(proto.shared_memory_per_block_optin()),
-      clock_rate_ghz_(proto.clock_rate_ghz()),
-      gpu_compute_capability_(
-          proto.has_cuda_compute_capability()
-              ? GpuComputeCapability(stream_executor::CudaComputeCapability(
-                    proto.cuda_compute_capability()))
-              : GpuComputeCapability(stream_executor::RocmComputeCapability(
-                    proto.rocm_compute_capability()))),
-      core_count_(proto.core_count()),
-      fpus_per_core_(proto.fpus_per_core()) {}
+absl::StatusOr<DeviceDescription> DeviceDescription::FromProto(
+    const GpuDeviceInfoProto& proto) {
+  DeviceDescription device_description;
+  device_description.block_dim_limit_ =
+      BlockDim(proto.block_dim_limit_x(), proto.block_dim_limit_y(),
+               proto.block_dim_limit_z());
+  device_description.threads_per_core_limit_ = proto.threads_per_core_limit();
+  device_description.threads_per_block_limit_ = proto.threads_per_block_limit();
+  device_description.threads_per_warp_ = proto.threads_per_warp();
+  device_description.registers_per_core_limit_ =
+      proto.registers_per_core_limit();
+  device_description.registers_per_block_limit_ =
+      proto.registers_per_block_limit();
+  device_description.device_memory_size_ = proto.device_memory_size();
+  device_description.l2_cache_size_ = proto.l2_cache_size();
+  device_description.memory_bandwidth_ = proto.memory_bandwidth();
+  device_description.shared_memory_per_core_ = proto.shared_memory_per_core();
+  device_description.shared_memory_per_block_ = proto.shared_memory_per_block();
+  device_description.shared_memory_per_block_optin_ =
+      proto.shared_memory_per_block_optin();
+  device_description.clock_rate_ghz_ = proto.clock_rate_ghz();
+
+  if (proto.has_cuda_compute_capability()) {
+    device_description.gpu_compute_capability_ =
+        CudaComputeCapability(proto.cuda_compute_capability());
+  }
+  if (proto.has_rocm_compute_capability()) {
+    device_description.gpu_compute_capability_ =
+        RocmComputeCapability(proto.rocm_compute_capability());
+  }
+  device_description.core_count_ = proto.core_count();
+  device_description.fpus_per_core_ = proto.fpus_per_core();
+
+  return device_description;
+}
 
 GpuDeviceInfoProto DeviceDescription::ToGpuProto() const {
   stream_executor::GpuDeviceInfoProto proto;
-  if (auto *ptr = std::get_if<stream_executor::CudaComputeCapability>(
-          &gpu_compute_capability_))
+  if (auto* ptr = std::get_if<stream_executor::CudaComputeCapability>(
+          &gpu_compute_capability_)) {
     *proto.mutable_cuda_compute_capability() = ptr->ToProto();
-  if (auto *ptr = std::get_if<stream_executor::RocmComputeCapability>(
-          &gpu_compute_capability_))
+  }
+  if (auto* ptr = std::get_if<stream_executor::RocmComputeCapability>(
+          &gpu_compute_capability_)) {
     *proto.mutable_rocm_compute_capability() = ptr->ToProto();
+  }
 
   proto.set_threads_per_block_limit(threads_per_block_limit_);
   proto.set_threads_per_warp(threads_per_warp_);
