@@ -151,7 +151,7 @@ inline absl::Status CreateWithUpdatedMessage(const absl::Status& status,
 inline absl::Status Create(
     absl::StatusCode code, absl::string_view message,
     const std::unordered_map<std::string, std::string>& payloads) {
-  Status status(code, message);
+  absl::Status status(code, message);
   InsertPayloads(status, payloads);
   return status;
 }
