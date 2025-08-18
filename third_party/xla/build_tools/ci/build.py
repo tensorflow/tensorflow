@@ -108,7 +108,7 @@ class BuildType(enum.Enum):
 
   XLA_LINUX_X86_CPU_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_ARM64_CPU_GITHUB_ACTIONS = enum.auto()
-  XLA_LINUX_X86_GPU_T4_GITHUB_ACTIONS = enum.auto()
+  XLA_LINUX_X86_GPU_L4_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_X86_GPU_ONEAPI_GITHUB_ACTIONS = enum.auto()
 
   # Presubmit builds for regression testing.
@@ -122,10 +122,10 @@ class BuildType(enum.Enum):
   XLA_MACOS_ARM64_CPU_KOKORO = enum.auto()
 
   JAX_LINUX_X86_CPU_GITHUB_ACTIONS = enum.auto()
-  JAX_LINUX_X86_GPU_T4_GITHUB_ACTIONS = enum.auto()
+  JAX_LINUX_X86_GPU_L4_GITHUB_ACTIONS = enum.auto()
 
   TENSORFLOW_LINUX_X86_CPU_GITHUB_ACTIONS = enum.auto()
-  TENSORFLOW_LINUX_X86_GPU_T4_GITHUB_ACTIONS = enum.auto()
+  TENSORFLOW_LINUX_X86_GPU_L4_GITHUB_ACTIONS = enum.auto()
 
   @classmethod
   def from_str(cls, s):
@@ -327,7 +327,7 @@ Build(
 )
 
 nvidia_gpu_build_with_compute_capability(
-    type_=BuildType.XLA_LINUX_X86_GPU_T4_GITHUB_ACTIONS,
+    type_=BuildType.XLA_LINUX_X86_GPU_L4_GITHUB_ACTIONS,
     configs=("warnings", "rbe_linux_cuda_nvcc"),
     compute_capability=75,
 )
@@ -584,7 +584,7 @@ Build(
 )
 
 Build(
-    type_=BuildType.JAX_LINUX_X86_GPU_T4_GITHUB_ACTIONS,
+    type_=BuildType.JAX_LINUX_X86_GPU_L4_GITHUB_ACTIONS,
     repo="google/jax",
     configs=("rbe_linux_x86_64_cuda",),
     target_patterns=("//tests:gpu_tests", "//tests:backend_independent_tests"),
@@ -650,7 +650,7 @@ Build(
 )
 
 Build(
-    type_=BuildType.TENSORFLOW_LINUX_X86_GPU_T4_GITHUB_ACTIONS,
+    type_=BuildType.TENSORFLOW_LINUX_X86_GPU_L4_GITHUB_ACTIONS,
     repo="tensorflow/tensorflow",
     configs=(
         "release_gpu_linux",
