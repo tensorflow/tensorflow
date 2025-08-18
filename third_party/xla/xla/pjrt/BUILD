@@ -601,6 +601,7 @@ cc_library(
     visibility = internal_visibility(["//xla:friends"]),
     deps = [
         ":abstract_tracked_device_buffer",
+        ":common_pjrt_client",
         ":event_pool",
         ":host_callback",
         ":host_memory_spaces",
@@ -617,6 +618,7 @@ cc_library(
         ":raw_buffer",
         ":semaphore",
         ":stream_executor_executable",
+        ":thread_pool_async_work_runner",
         ":transpose",
         ":utils",
         "//xla:executable_run_options",

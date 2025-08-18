@@ -125,6 +125,7 @@ limitations under the License.
 #include "xla/pjrt/se_raw_buffer.h"
 #include "xla/pjrt/semaphore.h"
 #include "xla/pjrt/stream_executor_executable.h"
+#include "xla/pjrt/thread_pool_async_work_runner.h"
 #include "xla/pjrt/tracked_device_buffer.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/pjrt/utils.h"
@@ -300,6 +301,7 @@ PjRtStreamExecutorClient::PjRtStreamExecutorClient(
       thread_pool_(
           tsl::Env::Default(), "pjrt_thread_pool",
           std::max<int>(DefaultThreadPoolSize(), client->device_count())),
+      async_work_runner_(MakeThreadPoolAsyncWorkRunner(&thread_pool_)),
       transpose_cache_(1024) {
   if (owned_allocator_ != nullptr) {
     allocator_ = owned_allocator_.get();
@@ -475,6 +477,11 @@ void MaybeWaitForEventOnStream(const BufferSequencingEventRef& event,
 }
 
 }  // namespace
+
+absl::StatusOr<int64_t> PjRtStreamExecutorClient::GetOnDeviceBytesCount(
+    PjRtMemorySpace* memory_space, const xla::Shape& shape) const {
+  return client()->backend().transfer_manager()->GetByteSizeRequirement(shape);
+}
 
 absl::StatusOr<std::unique_ptr<PjRtStreamExecutorBuffer>>
 AllocateDestinationBuffer(const Shape& on_host_shape, PjRtDevice* device,
