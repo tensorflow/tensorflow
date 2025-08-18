@@ -127,8 +127,8 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
             call_instruction_name =
                 call_original_value->leaf_begin()->second->instruction_name;
           }
-          absl::StrAppend(&original_array->instruction_name, "/",
-                          call_instruction_name);
+          original_array->instruction_name = absl::StrCat(
+              call_instruction_name, "/", original_array->instruction_name);
         }
       }
     }

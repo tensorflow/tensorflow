@@ -74,10 +74,10 @@ TEST_F(PropagateOriginalValueTest, CallInlinerMultipleCallSites) {
   const absl::string_view hlo_string = R"(
 // CHECK-LABEL:test
 // CHECK: %[[LHS:.*]] =
-// CHECK:  %[[RHS1:.*]] = f32[] constant(2), origin={{[{]}}{"rhs/call.1"}
-// CHECK: %[[ADD1:.*]] = f32[] add(%[[LHS]], %[[RHS1]]), origin={{[{]}}{"add/call.1"}
-// CHECK:  %[[RHS2:.*]] = f32[] constant(2), origin={{[{]}}{"rhs/call.2"}
-// CHECK: %[[ADD2:.*]] = f32[] add(%[[LHS]], %[[RHS2]]), origin={{[{]}}{"add/call.2"}
+// CHECK:  %[[RHS1:.*]] = f32[] constant(2), origin={{[{]}}{"call.1/rhs"}
+// CHECK: %[[ADD1:.*]] = f32[] add(%[[LHS]], %[[RHS1]]), origin={{[{]}}{"call.1/add"}
+// CHECK:  %[[RHS2:.*]] = f32[] constant(2), origin={{[{]}}{"call.2/rhs"}
+// CHECK: %[[ADD2:.*]] = f32[] add(%[[LHS]], %[[RHS2]]), origin={{[{]}}{"call.2/add"}
 
   HloModule test
 
@@ -102,8 +102,8 @@ TEST_F(PropagateOriginalValueTest, CallInlinerNoCallInstructionName) {
   const absl::string_view hlo_string = R"(
 // CHECK-LABEL:test
 // CHECK: %[[LHS:.*]] =
-// CHECK:  %[[RHS:.*]] = f32[] constant(2), origin={{[{]}}{"rhs/"}
-// CHECK: %[[ADD:.*]] = f32[] add(%[[LHS]], %[[RHS]]), origin={{[{]}}{"add/"}
+// CHECK:  %[[RHS:.*]] = f32[] constant(2), origin={{[{]}}{"/rhs"}
+// CHECK: %[[ADD:.*]] = f32[] add(%[[LHS]], %[[RHS]]), origin={{[{]}}{"/add"}
 
   HloModule test
 
