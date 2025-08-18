@@ -192,13 +192,24 @@ TEST_F(Tf2HloTest, Tuple) {
   TF_ASSERT_OK(result.status());
 }
 
+struct SpmdTestCase {
+  std::string test_name;
+  std::string mlir_file;
+  std::string expected_metadata;
+};
+
 // Spmd and device assignment is given
-TEST_F(Tf2HloTest, Spmd) {
+class Tf2HloSpmdTest : public Tf2HloTest,
+                       public ::testing::WithParamInterface<SpmdTestCase> {};
+
+TEST_P(Tf2HloSpmdTest, SpmdTest) {
+  const SpmdTestCase& test_case = GetParam();
+
   // Create test input module
   constexpr absl::string_view kDataDirectory =
       "tensorflow/compiler/mlir/tfrt/transforms/ifrt/testdata";
   std::string mlir_module_path = tensorflow::GetDataDependencyFilepath(
-      absl::StrCat(kDataDirectory, "/tf2hlo_spmd_with_device_assignment.mlir"));
+      absl::StrCat(kDataDirectory, "/", test_case.mlir_file));
 
   mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
       mlir::parseSourceFile<mlir::ModuleOp>(mlir_module_path, context_.get());
@@ -243,39 +254,78 @@ TEST_F(Tf2HloTest, Spmd) {
 
   tensorflow::tpu::TPUCompileMetadataProto expected_compile_metadata;
   ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
-      R"pb(
-        args {
-          dtype: DT_FLOAT
-          shape {
-            dim { size: 4 }
-            dim { size: 64 }
-          }
-          kind: PARAMETER
-          sharding {
-            type: OTHER
-            tile_assignment_dimensions: 2
-            tile_assignment_dimensions: 1
-            tile_assignment_devices: 0
-            tile_assignment_devices: 1
-          }
-          is_bounded_dynamic_dim: false
-        }
-        retvals { sharding {} }
-        num_replicas: 1
-        num_cores_per_replica: 2
-        device_assignment {
-          replica_count: 1
-          computation_count: 2
-          computation_devices { replica_device_ids: 0 }
-          computation_devices { replica_device_ids: 1 }
-        }
-        use_spmd_for_xla_partitioning: true
-        compile_options {}
-      )pb",
-      &expected_compile_metadata));
+      test_case.expected_metadata, &expected_compile_metadata));
 
   EXPECT_THAT(result->compile_metadata, EqualsProto(expected_compile_metadata));
 }
+INSTANTIATE_TEST_SUITE_P(
+    SpmdTests, Tf2HloSpmdTest,
+    ::testing::ValuesIn<SpmdTestCase>({
+        {"SpmdWithDeviceAssignment", "tf2hlo_spmd_with_device_assignment.mlir",
+         R"pb(
+           args {
+             dtype: DT_FLOAT
+             shape {
+               dim { size: 4 }
+               dim { size: 64 }
+             }
+             kind: PARAMETER
+             sharding {
+               type: OTHER
+               tile_assignment_dimensions: 2
+               tile_assignment_dimensions: 1
+               tile_assignment_devices: 0
+               tile_assignment_devices: 1
+             }
+             is_bounded_dynamic_dim: false
+           }
+           retvals { sharding {} }
+           num_replicas: 1
+           num_cores_per_replica: 2
+           device_assignment {
+             replica_count: 1
+             computation_count: 2
+             computation_devices { replica_device_ids: 0 }
+             computation_devices { replica_device_ids: 1 }
+           }
+           use_spmd_for_xla_partitioning: true
+           compile_options {}
+         )pb"},
+        {"SpmdShardy", "tf2hlo_spmd_shardy.mlir",
+         R"pb(
+           args {
+             dtype: DT_FLOAT
+             shape {
+               dim { size: 4 }
+               dim { size: 64 }
+             }
+             kind: PARAMETER
+             sharding {
+               type: OTHER
+               tile_assignment_dimensions: 2
+               tile_assignment_dimensions: 1
+               iota_reshape_dims: 2
+               iota_transpose_perm: 0
+             }
+             is_bounded_dynamic_dim: false
+           }
+           retvals { sharding {} }
+           num_replicas: 1
+           num_cores_per_replica: 2
+           device_assignment {
+             replica_count: 1
+             computation_count: 2
+             computation_devices { replica_device_ids: 0 }
+             computation_devices { replica_device_ids: 1 }
+           }
+           use_spmd_for_xla_partitioning: true
+           use_shardy_partitioner: true
+           compile_options {}
+         )pb"},
+    }),
+    [](const ::testing::TestParamInfo<Tf2HloSpmdTest::ParamType>& info) {
+      return info.param.test_name;
+    });
 
 // Spmd and use default device assignment b/c no device assignment is given
 TEST_F(Tf2HloTest, UsingDefaultDeviceAssignment) {

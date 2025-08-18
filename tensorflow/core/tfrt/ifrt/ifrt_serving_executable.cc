@@ -225,29 +225,6 @@ GetHostCallbackModulesAndRemoveHostFuncs(mlir::ModuleOp module) {
   return host_callback_modules;
 }
 
-absl::StatusOr<bool> GetUseShardyPartitioner(mlir::ModuleOp module) {
-  std::optional<bool> use_shardy_partitioner;
-  mlir::WalkResult result = module->walk([&](mlir::TF::XlaCallModuleOp op) {
-    if (!use_shardy_partitioner.has_value()) {
-      use_shardy_partitioner = op.getUseShardyPartitioner();
-    } else if (*use_shardy_partitioner != op.getUseShardyPartitioner()) {
-      return mlir::WalkResult::interrupt();
-    }
-    return mlir::WalkResult::advance();
-  });
-  if (result.wasInterrupted()) {
-    return absl::FailedPreconditionError(
-        "use_shardy_partitioner is not consistent across XlaCallModuleOps");
-  }
-
-  if (!use_shardy_partitioner.has_value()) {
-    // If the module doesn't contain any XlaCallModuleOp, disable Shardy.
-    use_shardy_partitioner = false;
-  }
-  VLOG(2) << "use_shardy_partitioner: " << *use_shardy_partitioner;
-  return *use_shardy_partitioner;
-}
-
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<IfrtServingExecutable>>
@@ -452,9 +429,6 @@ IfrtServingExecutable::CreateExecutableSynchronously(
     tensorflow::DumpMlirOpToFile("module_for_bridge_phase2", *module_copy);
   }
 
-  TF_ASSIGN_OR_RETURN(bool use_shardy_partitioner,
-                      GetUseShardyPartitioner(module_copy.get()));
-
   Tf2HloArg tf2hlo_arg{
       .module = module_copy.get(),
       .input_dtypes_and_shapes = std::vector<DtypeAndShape>(
@@ -539,7 +513,7 @@ IfrtServingExecutable::CreateExecutableSynchronously(
   xla_compile_options.executable_build_options.set_use_spmd_partitioning(
       original_compile_metadata_.use_spmd_for_xla_partitioning());
   xla_compile_options.executable_build_options.set_use_shardy_partitioner(
-      use_shardy_partitioner);
+      compile_metadata.use_shardy_partitioner());
   xla_compile_options.parameter_is_tupled_arguments = false;
   // Use portable execution for single device + core selection.
   if (UsePortableExecution(compile_metadata)) {
