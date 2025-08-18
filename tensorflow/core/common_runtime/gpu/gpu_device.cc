@@ -44,6 +44,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_split.h"
+#include "absl/synchronization/notification.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/tsl/framework/allocator.h"
@@ -958,14 +959,14 @@ Status BaseGPUDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
     Tensor copy(cpu_allocator(numa_node), DT_VARIANT, parsed.shape());
     Variant* copy_variant = copy.flat<Variant>().data();
 
-    std::list<Notification> notifications;
+    std::list<absl::Notification> notifications;
     Status copy_status;
     auto copier = [this, &alloc_attrs, &notifications, &copy_status](
                       const Tensor& from, Tensor* to) {
       // Copier isn't run in a multithreaded environment, so we don't
       // have to worry about the notifications list being modified in parallel.
       notifications.emplace_back();
-      Notification& n = *notifications.rbegin();
+      absl::Notification& n = *notifications.rbegin();
       return MaybeCopyTensorToGPU(alloc_attrs, from, to,
                                   [&n, &copy_status](const Status& s) {
                                     if (copy_status.ok()) {
@@ -991,7 +992,7 @@ Status BaseGPUDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
     *tensor = std::move(copy);
     return copy_status;
   } else {
-    Notification n;
+    absl::Notification n;
     Status status;
     TF_RETURN_IF_ERROR(MaybeCopyTensorToGPU(alloc_attrs, parsed, tensor,
                                             [&n, &status](const Status& s) {

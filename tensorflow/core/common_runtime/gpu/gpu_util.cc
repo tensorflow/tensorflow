@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
+#include "absl/synchronization/notification.h"
 #include "xla/layout_util.h"
 #include "xla/shape.h"
 
@@ -577,7 +578,7 @@ uint64 GPUUtil::Checksum(Device* gpu_device,
                          const Tensor& tensor) {
   Tensor copy(tensor.dtype(), tensor.shape());
   absl::Status s;
-  Notification n;
+  absl::Notification n;
   CopyGPUTensorToCPU(gpu_device, device_context, &tensor, &copy,
                      [&s, &n](absl::Status status) {
                        s.Update(status);

@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/synchronization/notification.h"
 #include "tensorflow/core/common_runtime/allocator_retry.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/platform/env.h"
@@ -173,7 +174,7 @@ class GPUAllocatorRetryTest : public ::testing::Test {
   std::unique_ptr<AlternatingBarrier> barrier_;
   std::vector<Thread*> consumers_;
   std::vector<int> consumer_count_;
-  Notification notifier_;
+  absl::Notification notifier_;
   mutex mu_;
   bool has_failed_ TF_GUARDED_BY(mu_) = false;
   int count_ TF_GUARDED_BY(mu_) = 0;
