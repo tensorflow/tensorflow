@@ -1946,6 +1946,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/platform:status_matchers",
         "//tensorflow/core/platform:statusor",
         "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest_main",
         "@local_xla//xla/client:client_library",
         "@local_xla//xla/client:local_client",

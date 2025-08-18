@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/synchronization/notification.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/const_op.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
@@ -244,7 +244,7 @@ TEST(QueueRunnerTest, RealEnqueueDequeue) {
 }
 
 void JoinThread(QueueRunner* queue_runner, bool* join_succeeded,
-                Notification* join_done) {
+                absl::Notification* join_done) {
   EXPECT_EQ(queue_runner->Join().code(), Code::CANCELLED);
   *join_succeeded = true;
   join_done->Notify();
@@ -272,7 +272,7 @@ TEST(QueueRunnerTest, SessionCloseCancelPendingEnqueue) {
   // The expected behavior is the QueueRunner::Join() call is blocked until
   // Session::Close() is called.
   bool join_succeeded = false;
-  Notification join_done;
+  absl::Notification join_done;
   Env::Default()->SchedClosure(
       std::bind(&JoinThread, qr.get(), &join_succeeded, &join_done));
 

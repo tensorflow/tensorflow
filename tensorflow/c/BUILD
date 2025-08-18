@@ -659,6 +659,7 @@ tf_cuda_library(
         "//tensorflow/core/platform",
         "//tensorflow/core/platform:blocking_counter",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@local_xla//xla/tsl/c:tsl_status_internal",
     ],
     alwayslink = 1,
@@ -797,6 +798,7 @@ tf_cuda_library(
         "//tensorflow/core/platform:notification",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@local_xla//xla/tsl/c:tsl_status_internal",
     ] + select({
         "//tensorflow:android": [

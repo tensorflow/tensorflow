@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/synchronization/notification.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/framework/device.h"
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
@@ -95,7 +96,7 @@ tfrt::AsyncValueRef<TensorWrapperType> TransferTensorToDevice(
           result.SetError(absl::InternalError(s.message()));
           return;
         }
-        tensorflow::Notification n;
+        absl::Notification n;
         absl::Status status;
         tensorflow::CopyTensor::ViaDMA(
             "copy", src_device_context, dst_device_context, src_device,

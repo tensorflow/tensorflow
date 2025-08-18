@@ -24,6 +24,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/synchronization/notification.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/function_ops.h"
 #include "tensorflow/cc/ops/math_ops.h"
@@ -46,7 +47,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/statusor.h"
@@ -285,7 +285,7 @@ TEST_F(DeviceCompilerTest, CompileAsyncSuccess) {
   // `RegisterCompilation` is the last call that happens just before the async
   // compilation completes. We use the completion of this call to determine when
   // the compilation finshes to verify expected behavior.
-  Notification done;
+  absl::Notification done;
   EXPECT_CALL(*mock_profiler_,
               ShouldCompileCluster(_, DeviceCompileMode::kAsync, 1))
       .WillOnce(Return(true));

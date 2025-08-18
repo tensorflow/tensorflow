@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/c/c_api_experimental.h"
 
 #include "absl/strings/substitute.h"
+#include "absl/synchronization/notification.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/checkpoint_reader.h"
@@ -533,7 +534,7 @@ TF_CAPI_EXPORT extern void TFE_CollectiveOpsCheckPeerHealth(
   tensorflow::EagerContext* context =
       tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
   auto collective_executor_handle = context->GetCollectiveExecutorHandle();
-  tensorflow::Notification done;
+  absl::Notification done;
   collective_executor_handle->get()->remote_access()->CheckPeerHealth(
       task, timeout_in_ms, [&done, status](const Status& s) {
         status->status = s;

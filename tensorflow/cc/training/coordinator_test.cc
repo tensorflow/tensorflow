@@ -21,9 +21,9 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
+#include "absl/synchronization/notification.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
-#include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/status.h"
@@ -36,8 +36,8 @@ namespace {
 
 using error::Code;
 
-void WaitForStopThread(Coordinator* coord, Notification* about_to_wait,
-                       Notification* done) {
+void WaitForStopThread(Coordinator* coord, absl::Notification* about_to_wait,
+                       absl::Notification* done) {
   about_to_wait->Notify();
   coord->WaitForStop();
   done->Notify();
@@ -47,8 +47,8 @@ TEST(CoordinatorTest, TestStopAndWaitOnStop) {
   Coordinator coord;
   EXPECT_EQ(coord.ShouldStop(), false);
 
-  Notification about_to_wait;
-  Notification done;
+  absl::Notification about_to_wait;
+  absl::Notification done;
   Env::Default()->SchedClosure(
       std::bind(&WaitForStopThread, &coord, &about_to_wait, &done));
   about_to_wait.WaitForNotification();
@@ -76,13 +76,13 @@ class MockQueueRunner : public RunnerInterface {
   }
 
   void StartCounting(std::atomic<int>* counter, int until,
-                     Notification* start = nullptr) {
+                     absl::Notification* start = nullptr) {
     thread_pool_->Schedule(
         std::bind(&MockQueueRunner::CountThread, this, counter, until, start));
   }
 
   void StartSettingStatus(const absl::Status& status, BlockingCounter* counter,
-                          Notification* start) {
+                          absl::Notification* start) {
     thread_pool_->Schedule(std::bind(&MockQueueRunner::SetStatusThread, this,
                                      status, counter, start));
   }
@@ -104,7 +104,8 @@ class MockQueueRunner : public RunnerInterface {
   void Stop() { stopped_ = true; }
 
  private:
-  void CountThread(std::atomic<int>* counter, int until, Notification* start) {
+  void CountThread(std::atomic<int>* counter, int until,
+                   absl::Notification* start) {
     if (start != nullptr) start->WaitForNotification();
     while (!coord_->ShouldStop() && counter->load() < until) {
       (*counter)++;
@@ -113,7 +114,7 @@ class MockQueueRunner : public RunnerInterface {
     coord_->RequestStop().IgnoreError();
   }
   void SetStatusThread(const absl::Status& status, BlockingCounter* counter,
-                       Notification* start) {
+                       absl::Notification* start) {
     start->WaitForNotification();
     SetStatus(status);
     counter->DecrementCount();
@@ -151,7 +152,7 @@ TEST(CoordinatorTest, TestRealStop) {
 TEST(CoordinatorTest, TestRequestStop) {
   Coordinator coord;
   std::atomic<int> counter(0);
-  Notification start;
+  absl::Notification start;
   std::unique_ptr<MockQueueRunner> qr;
   for (int i = 0; i < 10; i++) {
     qr = std::make_unique<MockQueueRunner>(&coord);
@@ -183,7 +184,7 @@ TEST(CoordinatorTest, TestJoin) {
 
 TEST(CoordinatorTest, StatusReporting) {
   Coordinator coord({Code::CANCELLED, Code::OUT_OF_RANGE});
-  Notification start;
+  absl::Notification start;
   BlockingCounter counter(3);
 
   std::unique_ptr<MockQueueRunner> qr1(new MockQueueRunner(&coord));

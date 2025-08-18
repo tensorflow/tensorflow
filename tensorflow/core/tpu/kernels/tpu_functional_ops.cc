@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/strip.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/synchronization/notification.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/compiler/jit/shape_inference.h"
 #include "tensorflow/compiler/tf2xla/sharding_util.h"
@@ -1467,7 +1468,7 @@ absl::Status TPUPartitionedCallOp::InitializeVarOnTPU(
 
   std::vector<Tensor> dummy_args;
   std::vector<Tensor>* dummy_rets = new std::vector<Tensor>;
-  Notification done;
+  absl::Notification done;
   absl::Status status;
   tsl::profiler::TraceMe trace_me("TPUPartitionedCallOp-InitializeVarOnTPU");
   library_runtime_->Run(opts, fhandle, dummy_args, dummy_rets,
