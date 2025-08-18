@@ -2315,7 +2315,7 @@ CpuCompiler::CompileAheadOfTimeThunks(
                 cpu_executable->hlo_profile_printer_data())
           : nullptr;
 
-  return CpuAotCompilationResultThunks::Create(
+  return CpuAotCompilationResult::Create(
       &cpu_executable->module(), &cpu_executable->buffer_assignment(),
       cpu_executable->module_name(), std::move(obj_files),
       cpu_executable->get_compiled_symbols_proto(), thunk_sequence,

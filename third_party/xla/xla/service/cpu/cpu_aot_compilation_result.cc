@@ -74,27 +74,8 @@ se::Platform::Id CpuAotCompilationOptions::PlatformId() const {
   return se::host::kHostPlatformId;
 }
 
-CpuAotCompilationResultLegacy::CpuAotCompilationResultLegacy(
-    ObjectFileData object_file_data, std::vector<BufferInfo> buffer_infos,
-    int64_t result_buffer_index, std::unique_ptr<HloModule> module,
-    std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data)
-    : object_file_data_(std::move(object_file_data)),
-      buffer_infos_(std::move(buffer_infos)),
-      result_buffer_index_(result_buffer_index),
-      module_(std::move(module)),
-      hlo_profile_printer_data_(std::move(hlo_profile_printer_data)) {}
-
-const HloModule* CpuAotCompilationResultLegacy::optimized_module() const {
-  return module_.get();
-}
-
-std::unique_ptr<HloModule>
-CpuAotCompilationResultLegacy::consume_optimized_module() {
-  return std::move(module_);
-}
-
-/*static*/ absl::StatusOr<std::unique_ptr<CpuAotCompilationResultThunks>>
-CpuAotCompilationResultThunks::Create(
+/*static*/ absl::StatusOr<std::unique_ptr<CpuAotCompilationResult>>
+CpuAotCompilationResult::Create(
     const HloModule* hlo_module, const BufferAssignment* buffer_assignment,
     absl::string_view function_name, std::vector<ObjFileProto> obj_files,
     std::vector<SymbolProto> symbols, const ThunkSequence& thunks,
@@ -124,14 +105,14 @@ CpuAotCompilationResultThunks::Create(
     }
   }
 
-  return absl::WrapUnique(new CpuAotCompilationResultThunks(
+  return absl::WrapUnique(new CpuAotCompilationResult(
       hlo_module, buffer_assignment, function_name, std::move(obj_files),
       std::move(symbols), thunk_proto, std::move(temp_allocation_index),
       std::move(buffer_infos), std::move(function_library),
       std::move(hlo_profile_printer_data)));
 }
 
-CpuAotCompilationResultThunks::CpuAotCompilationResultThunks(
+CpuAotCompilationResult::CpuAotCompilationResult(
     const HloModule* hlo_module, const BufferAssignment* buffer_assignment,
     absl::string_view function_name, std::vector<ObjFileProto> obj_files,
     std::vector<SymbolProto> symbols, const ThunkSequenceProto& thunks,
@@ -165,7 +146,7 @@ CpuAotCompilationResultThunks::CpuAotCompilationResultThunks(
 }
 
 absl::StatusOr<std::unique_ptr<Executable>>
-CpuAotCompilationResultThunks::LoadExecutable(
+CpuAotCompilationResult::LoadExecutable(
     [[maybe_unused]] Compiler* compiler,
     const se::StreamExecutor* stream_exec) const&& {
   // Compiler would be used only to get the BufferSizeBytesFunction. Doing this

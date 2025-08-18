@@ -42,10 +42,9 @@ XlaCompiledCpuFunctionThunks::XlaCompiledCpuFunctionThunks(
       std::make_unique<xla::cpu::AotCompiledFunctionLibrary>(
           function_library_symbol_map());
 
-  auto aot_compilation_result =
-      xla::cpu::CpuAotCompilationResultThunks::FromString(
-          static_data.compilation_result_proto_->SerializeAsString(),
-          function_library.release());
+  auto aot_compilation_result = xla::cpu::CpuAotCompilationResult::FromString(
+      static_data.compilation_result_proto_->SerializeAsString(),
+      function_library.release());
 
   // To load a CPU executable we don't need a compiler or a stream executor.
   TF_CHECK_OK(aot_compilation_result.status());
