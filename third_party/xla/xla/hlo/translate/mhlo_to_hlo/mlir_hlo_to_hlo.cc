@@ -42,6 +42,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/LogicalResult.h"
+#include "llvm/Support/Path.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -6087,7 +6088,15 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
                                                     : implicit_operands.front();
         xla::XlaScopedOpMetadataAssignment op_metadata(
             builder, GetOpNameMetadataFromLocation(arg));
-        lowering[arg] = xla::Parameter(builder, 0, arg_shapes[0], kArgPrefix);
+        // Use the user-specified op_name from the location if available,
+        // otherwise use the default prefix.
+        std::string name = mhlo::GetDebugNameFromLocation(arg.getLoc());
+        if (!name.empty()) {
+          name = llvm::sys::path::stem(name);
+        } else {
+          name = kArgPrefix;
+        }
+        lowering[arg] = xla::Parameter(builder, 0, arg_shapes[0], name);
       } else {
         // Applicable only for IfOp or CaseOp. No implicit operands implies no
         // xla parameters. In this case, we create an empty tuple as the
@@ -6111,12 +6120,19 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
         // debugging.
         xla::XlaScopedOpMetadataAssignment op_metadata(
             builder, GetOpNameMetadataFromLocation(arg));
+        // Use the user-specified op_name from the location if available,
+        // otherwise use the default prefix.
+        std::string name = mhlo::GetDebugNameFromLocation(arg.getLoc());
+        if (!name.empty()) {
+          name = llvm::sys::path::stem(name);
+        } else {
+          name = absl::StrCat(kArgPrefix, num);
+        }
         if (entry_args_same_across_replicas.empty()) {
-          lowering[arg] = xla::Parameter(builder, num, shape,
-                                         absl::StrCat(kArgPrefix, num));
+          lowering[arg] = xla::Parameter(builder, num, shape, name);
         } else {
           lowering[arg] = xla::Parameter(
-              builder, num, shape, absl::StrCat(kArgPrefix, num),
+              builder, num, shape, name,
               std::vector<bool>(entry_args_same_across_replicas[num],
                                 xla::ShapeUtil::GetLeafCount(shape)));
         }

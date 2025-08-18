@@ -4005,5 +4005,18 @@ TEST(XlaBuilderTest, InfeedTokenSharding) {
   }
 }
 
+TEST(XlaBuilderTest, InstructionNameFromMetadata) {
+  XlaBuilder b(TestName());
+  OpMetadata metadata;
+  metadata.set_op_name("jit(fn)/sin");
+  XlaScopedOpMetadataAssignment op_metadata(&b, metadata);
+  ConstantR0<float>(&b, 1.0f);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(b));
+  HloInstruction* constant = module->entry_computation()->root_instruction();
+  EXPECT_EQ(constant->name().substr(0, constant->name().find_first_of('.')),
+            "sin");
+}
+
 }  // namespace
 }  // namespace xla
