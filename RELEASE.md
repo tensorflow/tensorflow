@@ -47,14 +47,21 @@ This release contains contributions from many people at Google, as well as:
 * `tf.data`
     * Adds `autotune.min_parallelism` to `tf.data.Options` to enable faster input pipeline warm up.
 * `tf.lite`
-    * tf.lite will be deprecated, in favor of the new repo https://github.com/google-ai-edge/LiteRT.
-    * The duplicated source will also be removed from the TF repo.
+    * LiteRT announced a [new release](https://developers.googleblog.com/en/litert-maximum-performance-simplified/) at Google IO ‘25 that improves upon TFLite, particularly in terms of NPU and GPU hardware acceleration and performance for on-device ML and AI applications. The APIs are available in Kotlin and C++.
+    * Additionally, LiteRT code base will decouple from TensorFlow repository, and `tf.lite` will be removed in future TensorFlow Python package. More details to follow in future release notes.
+    * Migrate to LiteRT for continued updates; the new repo can be found at https://github.com/google-ai-edge/LiteRT.  For more information and NPU EAP signup, reach out to the team at: [g.co/ai/LiteRT-NPU-EAP](https://g.co/ai/LiteRT-NPU-EAP).
 
 ## Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:
 
 1ndig0, 372046933, abhinav, afzpatel, Akhil Goel, Alain Carlucci, Aleksei, Alen Huang, Alex, Amrinfathima-Mcw, Aravindh Balaji, Armand Picard, Aseem Athale, Ashiq Imran, Assoap, Chao, Chase Riley Roberts, Chenhao Jiang, chunhsue, chuntl, Chunyu Jin, Corentin Kerisit, Crefeda Rodrigues, dependabot[bot], Dragan Mladjenovic, Elen Kalda, Felix Thomasmathibalan, gabeweisz, Gauri Deshpande, Georg Stefan Schmid, Guozhong Zhuang, Harsha H S, Harshith_N, Hugo Mano, Ian Tayler Lessa, Jack Wolfard, James Ward, Jane Liu, Jaroslav Sevcik, JD, Jerry-Ge, Jian Li, Jinzhe Zeng, jiunkaiy, Johannes Reifferscheid, johnnkp, junweifu, Kanvi Khanna, Kasper Nielsen, Linzb-Xyz, Luke Hutton, Mahmoud Abuzaina, Mathew Odden, Michael Platings, misterBart, Mitchell Ludwig, Mmakevic-Amd, mraunak, NamanAgarwal0905, Namrata-Ibm, Neuropilot-Captain, nhatle, Nicholas Wilson, Nikhil Shinde, Olli Lupton, Patrick J. Lopresti, Pavel Emeliyanenko, Pearu Peterson, pemeliya, Peng Sun, Philipp Hack, Pratham-Mcw, RahulSudarMCW, RakshithGB, Rakshithgb-Fujitsu, RuslanSemchenko, Ruturaj Vaidya, Sachin Muradi, sandeepgupta12, SaoirseARM, Sergey Kozub, Sevin Fide Varoglu, Shanbin Ke, Shaogang Wang, Shraiysh Vaishay, Siddhartha Menon, spiao, Swatheesh Muralidharan, Tai Ly, Terry Sun, Thibaut Goetghebuer-Planchon, Thomas Dickerson, Tilak, Tj Xu, Trevor Morris, tyb0807, vfdev, Wei Wang, wokron, wondertx, Xuefei Jiang, Yaowei Zhou, Zentrik, Ziyun Cheng, Zoranjovanovic-Ns
+
+# Release 2.19.1
+
+### Bug Fixes and Other Changes
+
+* Fix save_model.save for Serving embedding and add SparseCore Reshard.
 
 # Release 2.19.0
 
