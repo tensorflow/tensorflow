@@ -25,7 +25,7 @@ limitations under the License.
 #include "experimental.h"  // xnnpack
 #include "xnnpack.h"
 #include "absl/algorithm/container.h"
-#include "absl/base/optimization.h"
+#include "absl/base/no_destructor.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/bind_front.h"
 #include "absl/functional/function_ref.h"
@@ -44,7 +44,6 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
-#include "xla/util.h"
 
 namespace xla::cpu {
 
@@ -286,6 +285,11 @@ XnnFusionThunk::BufferUses XnnFusionThunk::buffer_uses() const {
   return buffer_uses;
 }
 
+const XnnThreadpool& GetXnnThreadpool(const Thunk::ExecuteParams& params) {
+  static absl::NoDestructor<XnnThreadpool> no_threadpool(nullptr);
+  return params.xnn_params ? params.xnn_params->threadpool : *no_threadpool;
+}
+
 tsl::AsyncValueRef<XnnFusionThunk::ExecuteEvent> XnnFusionThunk::Execute(
     const ExecuteParams& params) {
   VLOG(3) << absl::StreamFormat("XNN %s `%s`: %s", fusion_kind(),
@@ -329,15 +333,11 @@ tsl::AsyncValueRef<XnnFusionThunk::ExecuteEvent> XnnFusionThunk::Execute(
                                   results_buffers[i].opaque());
   }
 
-  if (ABSL_PREDICT_FALSE(params.xnn_params == nullptr)) {
-    return Internal("XNN params are not set");
-  }
-
   DCHECK(builder_ || capturing_builder_) << "One of the builders must be set.";
 
   auto invoke = [&](typename XnnExecutablePool::BorrowedObject executable) {
     auto executed = executable->Invoke(
-        params.xnn_params->threadpool, absl::MakeSpan(arguments_buffers),
+        GetXnnThreadpool(params), absl::MakeSpan(arguments_buffers),
         absl::MakeSpan(results_buffers), [&](size_t id) {
           return absl::c_linear_search(captured_arguments_ids_, id);
         });
@@ -349,8 +349,8 @@ tsl::AsyncValueRef<XnnFusionThunk::ExecuteEvent> XnnFusionThunk::Execute(
 
   // Borrow XnnExecutable from the pool.
   TF_ASSIGN_OR_RETURN(auto executable,
-                      xnn_executable_pool_.GetOrCreate(
-                          params.xnn_params->threadpool, arguments_buffers));
+                      xnn_executable_pool_.GetOrCreate(GetXnnThreadpool(params),
+                                                       arguments_buffers));
 
   // If XNN graph doesn't capture any of the arguments by value, we can execute
   // XnnExecutable immediately.
@@ -359,8 +359,8 @@ tsl::AsyncValueRef<XnnFusionThunk::ExecuteEvent> XnnFusionThunk::Execute(
   }
 
   // Otherwise reset XnnExecutable to capture new arguments buffers.
-  TF_RETURN_IF_ERROR(UpdateXnnExecutable(params.xnn_params->threadpool,
-                                         *executable, arguments_buffers));
+  TF_RETURN_IF_ERROR(UpdateXnnExecutable(GetXnnThreadpool(params), *executable,
+                                         arguments_buffers));
   return invoke(std::move(executable));
 }
 
