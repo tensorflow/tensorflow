@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
+#include "absl/synchronization/notification.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
@@ -441,7 +442,7 @@ absl::Status KernelAndDeviceFunc::Run(
                                   tsl::profiler::TraceMeLevel::kInfo);
   // Don't try to handle packed or remote inputs synchronously.
   if (inputs.HasRemoteOrPackedInputs() || eager_func_params.has_value()) {
-    Notification n;
+    absl::Notification n;
     absl::Status status;
     RunAsync(step_container, inputs, outputs, cancellation_manager,
              eager_func_params, coordination_service_agent,

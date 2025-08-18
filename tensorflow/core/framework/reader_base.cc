@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/reader_base.h"
 
+#include "absl/synchronization/notification.h"
 #include "tensorflow/core/framework/reader_base.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/coding.h"
@@ -201,7 +202,7 @@ void ReaderBase::Read(QueueInterface* queue, tstring* key, tstring* value,
 string ReaderBase::GetNextWorkLocked(QueueInterface* queue,
                                      OpKernelContext* context) const {
   string work;
-  Notification n;
+  absl::Notification n;
   queue->TryDequeue(
       context, [context, &n, &work](const QueueInterface::Tuple& tuple) {
         if (context->status().ok()) {

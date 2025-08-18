@@ -219,6 +219,7 @@ tf_kernel_library(
         "//tensorflow/core/activity_watcher:activity_watcher_utils",
         "//tensorflow/core/profiler/lib:connected_traceme",
         "//tensorflow/core/profiler/lib:traceme",
+        "@com_google_absl//absl/synchronization",
     ] + if_nccl([
         "//tensorflow/core/nccl:collective_communicator",
     ]),
@@ -715,6 +716,7 @@ cc_library(
         "//tensorflow/core/platform:numbers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
         "@local_xla//xla/tsl/platform:types",
     ],
@@ -731,6 +733,7 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -926,6 +929,7 @@ tf_kernel_library(
     deps = ARRAY_DEPS + [
         "//tensorflow/core:gpu_runtime",
         "//tensorflow/core/debug:debug_io_utils",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -2949,6 +2953,7 @@ tf_kernel_library(
         "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core/util:determinism_for_kernels",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -6968,7 +6973,6 @@ filegroup(
         "whole_file_read_ops.cc",
         "xent_op.cc",
         ":portable_extended_ops_headers",
-    ] + [
         "//tensorflow/core/kernels/data:portable_all_op_kernels",
         "//tensorflow/core/kernels/image:adjust_contrast_op.cc",
         "//tensorflow/core/kernels/image:adjust_hue_op.cc",
@@ -7193,6 +7197,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@com_google_protobuf//:protobuf",
         "@ducc//:fft_wrapper",
         "@eigen_archive//:eigen3",
@@ -7993,6 +7998,7 @@ cc_library(
         "//tensorflow/core/framework:graph_proto_cc",
         "//tensorflow/core/framework:node_def_proto_cc",
         "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 

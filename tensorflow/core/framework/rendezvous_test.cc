@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/rendezvous.h"
 
 #include "absl/status/status.h"
+#include "absl/synchronization/notification.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -23,7 +24,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/platform/types.h"
@@ -172,7 +171,7 @@ TEST_F(LocalRendezvousTest, CancelBeforeRecv) {
 
 TEST_F(LocalRendezvousTest, CancelAfterRecv) {
   auto* cm = new CancellationManager();
-  Notification n;
+  absl::Notification n;
   SchedClosure([cm, &n]() {
     Env::Default()->SleepForMicroseconds(10000);
     cm->StartCancel();
@@ -192,7 +191,7 @@ TEST_F(LocalRendezvousTest, CancelAfterRecv) {
 
 TEST_F(LocalRendezvousTest, CancelEmptyQueue) {
   auto* cm = new CancellationManager();
-  Notification n;
+  absl::Notification n;
   SchedClosure([this, cm, &n]() {
     Env::Default()->SleepForMicroseconds(10000);
     Rendezvous::Args args;
@@ -223,10 +222,10 @@ TEST_F(LocalRendezvousTest, CancelMultiple) {
   Rendezvous::Args args;
   Rendezvous::Args args_with_cancellation;
   args_with_cancellation.cancellation_manager = cm;
-  Notification n0;
-  Notification n1;
-  Notification n2;
-  Notification n3;
+  absl::Notification n0;
+  absl::Notification n1;
+  absl::Notification n2;
+  absl::Notification n3;
   absl::Status s0;
   absl::Status s1;
   absl::Status s2;
@@ -282,7 +281,7 @@ TEST_F(LocalRendezvousTest, CancelMultiple) {
 struct BlockingState {
   mutex lock;
   int counter = 0;
-  Notification done;
+  absl::Notification done;
 };
 
 TEST_F(LocalRendezvousTest, RandomSendRecv) {
@@ -416,7 +415,7 @@ TEST_F(LocalRendezvousTest, TransferDummyDeviceContext) {
 
   TF_ASSERT_OK(rendez_->Send(KeyFoo(), args, V("hello"), false));
 
-  Notification n;
+  absl::Notification n;
   Rendezvous::Args args1;
   args1.device_context = new DummyDeviceContext(1);
   rendez_->RecvAsync(

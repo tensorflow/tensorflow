@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
+#include "absl/synchronization/notification.h"
 #include "absl/types/variant.h"
 #include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/core/common_runtime/composite_device.h"
@@ -1093,7 +1094,7 @@ absl::Status TensorHandle::CopyToDevice(const EagerContext& ctx,
   // but more than necessary (since it waits for operations that might have
   // nothing to do with this tensor to complete).
   TF_RETURN_IF_ERROR(srcd->Sync());
-  tensorflow::Notification n;
+  absl::Notification n;
   absl::Status status;
   tensorflow::CopyTensor::ViaDMA("copy", src_device_context, dst_device_context,
                                  srcd, dstd, tensorflow::AllocatorAttributes(),

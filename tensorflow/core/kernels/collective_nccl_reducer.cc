@@ -16,6 +16,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#include "absl/synchronization/notification.h"
 #include "tensorflow/core/common_runtime/collective_util.h"
 #include "tensorflow/core/nccl/nccl_manager.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
@@ -24,11 +25,11 @@ namespace tensorflow {
 
 void NcclReducer::Run(StatusCallback done) {
   Tensor group_size;
-  std::unique_ptr<Notification> group_size_ready;
+  std::unique_ptr<absl::Notification> group_size_ready;
   Status group_size_status;
-  std::unique_ptr<Notification> nccl_done;
+  std::unique_ptr<absl::Notification> nccl_done;
   if (col_params_->final_op) {
-    group_size_ready = std::make_unique<Notification>();
+    group_size_ready = std::make_unique<absl::Notification>();
     // Create an on-device scalar value from group_size_.
     // TODO(ayushd, tucker): avoid this copy by either reusing across
     // invocations or providing the scalar to the kernel in host memory.
@@ -64,14 +65,14 @@ void NcclReducer::Run(StatusCallback done) {
         col_ctx_->output->dtype(), TensorShape({}));
     DeviceContext* op_dev_ctx = col_ctx_->op_ctx->op_device_context();
     // Enqueue copy on gpu stream.
-    Notification* copy_note = group_size_ready.get();
+    absl::Notification* copy_note = group_size_ready.get();
     op_dev_ctx->CopyCPUTensorToDevice(
         &group_size_val, col_ctx_->device, &group_size,
         [copy_note, &group_size_status](const Status& s) {
           group_size_status = s;
           copy_note->Notify();
         });
-    nccl_done = std::make_unique<Notification>();
+    nccl_done = std::make_unique<absl::Notification>();
   }
 
   Status nccl_status;
@@ -79,7 +80,7 @@ void NcclReducer::Run(StatusCallback done) {
   // `nccl_done` so that we can then perform `final_op`.
   StatusCallback done_callback;
   if (col_params_->final_op) {
-    Notification* nccl_note = nccl_done.get();
+    absl::Notification* nccl_note = nccl_done.get();
     done_callback = [nccl_note, &nccl_status](const Status& s) {
       nccl_status = s;
       nccl_note->Notify();

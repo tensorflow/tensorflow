@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/notification.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -273,7 +274,7 @@ class BatchResource : public serving::BatchResourceBase {
     // times in parallel with the same rendezvous, a _Send node from one run
     // might be matched with a _Recv node of a different run. Not setting the
     // rendezvous causes a new rendezvous to be used for each run.
-    Notification done_notif;
+    absl::Notification done_notif;
 
     auto* flib = last_task_context->function_library();
     FunctionLibraryRuntime::Handle fhandle =

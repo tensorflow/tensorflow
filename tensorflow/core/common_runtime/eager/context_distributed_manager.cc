@@ -28,6 +28,7 @@ limitations under the License.
 #include <vector>
 
 #include "google/protobuf/any.pb.h"
+#include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/macros.h"
@@ -205,13 +206,13 @@ class ClientCreationState : public ResourceBase {
   // codepath in the first thread, esp. every early return for errors, etc.,
   // i.e. an error might need to notify both ready_notification_ and
   // done_notification_.
-  Notification ready_notification_;
+  absl::Notification ready_notification_;
 
   // The first task notifies after the PjRT GPU client is created or if
   // there is an error. It must notify every codepath in the first
   // thread, esp. every early return for errors, etc., i.e. an error might need
   // to notify both ready_notification_ and done_notification_.
-  Notification done_notification_;
+  absl::Notification done_notification_;
 };
 
 absl::StatusOr<ClientCreationState*> GetOrCreateClientCreationState() {
@@ -1174,7 +1175,7 @@ absl::Status EagerContextDistributedManager::CheckRemoteAlive(
   GetStatusRequest request;
   GetStatusResponse response;
   absl::Status remote_status;
-  Notification done;
+  absl::Notification done;
   wi->GetStatusAsync(/*opts_=*/nullptr, &request, &response, /*fail_fast=*/true,
                      [&remote_status, &done](const absl::Status& s) {
                        remote_status = s;

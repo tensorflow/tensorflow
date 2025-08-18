@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/base/call_once.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/match.h"
+#include "absl/synchronization/notification.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
@@ -248,7 +249,7 @@ string OpKernel::TraceString(const OpKernelContext& ctx, bool verbose) const {
 }
 
 void AsyncOpKernel::Compute(OpKernelContext* context) {
-  Notification n;
+  absl::Notification n;
   ComputeAsync(context, [&n]() { n.Notify(); });
   n.WaitForNotification();
 }

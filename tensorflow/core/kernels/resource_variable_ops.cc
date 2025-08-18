@@ -47,6 +47,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/synchronization/notification.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/types.pb.h"
 #define EIGEN_USE_THREADS
@@ -102,7 +103,7 @@ namespace {
 absl::Status CopyVariable(int output_idx, OpKernelContext* ctx,
                           const Tensor* t) {
   Tensor* output;
-  Notification n;
+  absl::Notification n;
   absl::Status status;
   AllocatorAttributes attr;
   if (t->dtype() == DT_VARIANT) {
