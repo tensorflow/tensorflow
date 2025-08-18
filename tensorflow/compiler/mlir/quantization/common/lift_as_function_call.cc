@@ -114,8 +114,8 @@ ValueRange CreateTFPartitionedCallOp(OpBuilder& builder,
                                      const StringRef func_name,
                                      const TypeRange output_types,
                                      const ValueRange args) {
-  TF::PartitionedCallOp call_op = builder.create<TF::PartitionedCallOp>(
-      location, output_types, args,
+  TF::PartitionedCallOp call_op = TF::PartitionedCallOp::create(
+      builder, location, output_types, args,
       /*args_attrs=*/nullptr, /*res_attrs=*/nullptr,
       FlatSymbolRefAttr::get(builder.getStringAttr(func_name)),
       /*config=*/"", /*config_proto=*/"", /*executor_type=*/"");
@@ -145,17 +145,17 @@ ValueRange CreateTFXlaCallModuleOp(OpBuilder& builder, const Location location,
   auto empty_array_attr = ArrayAttr::get(ctx, {});
   auto platforms = ArrayAttr::get(ctx, {StringAttr::get(ctx, kPlatformCpu)});
 
-  auto call_op = builder.create<TF::XlaCallModuleOp>(
-      location,
-      /*output=*/output_types,
-      /*args=*/args,
-      /*version=*/kDefaultVersion, /*module=*/"",
-      /*Sout=*/ArrayAttr::get(ctx, shape_attrs),
-      /*dim_args_spec=*/empty_array_attr,
-      /*platforms=*/platforms,
-      /*function_list=*/empty_array_attr,
-      /*has_token_input_output=*/false,
-      /*disabled_checks=*/empty_array_attr);
+  auto call_op =
+      TF::XlaCallModuleOp::create(builder, location,
+                                  /*output=*/output_types,
+                                  /*args=*/args,
+                                  /*version=*/kDefaultVersion, /*module=*/"",
+                                  /*Sout=*/ArrayAttr::get(ctx, shape_attrs),
+                                  /*dim_args_spec=*/empty_array_attr,
+                                  /*platforms=*/platforms,
+                                  /*function_list=*/empty_array_attr,
+                                  /*has_token_input_output=*/false,
+                                  /*disabled_checks=*/empty_array_attr);
 
   // Set the function name. This will be controlled by the
   // XlaCallModuleSerialization related passes directly, which means that the
@@ -348,7 +348,8 @@ SmallVector<Value, 4> LiftAsFunctionCall(
     arg_locs.push_back(arg.getLoc());
   }
 
-  auto wrap_func = builder.create<func::FuncOp>(location, func_name, func_type);
+  auto wrap_func =
+      func::FuncOp::create(builder, location, func_name, func_type);
   wrap_func.setVisibility(SymbolTable::Visibility::Private);
   // The callee function for TF::XlaCallModuleOp must have this attribute.
   if (call_op_type == FunctionCallOpType::TFXlaCallModuleOp) {
@@ -386,7 +387,7 @@ SmallVector<Value, 4> LiftAsFunctionCall(
   for (Value result : results) {
     return_values.push_back(mapping.lookupOrNull(result));
   }
-  builder.create<func::ReturnOp>(location, return_values);
+  func::ReturnOp::create(builder, location, return_values);
 
   // Create a function call to the newly created function.
   StringAttr new_func_name =
