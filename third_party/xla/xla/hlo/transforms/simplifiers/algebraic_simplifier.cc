@@ -4918,21 +4918,29 @@ absl::Status AlgebraicSimplifierVisitor::HandleMultiply(
 
   VLOG(10) << "trying transform [sqrt(x) * sqrt(x) => x], for x >= 0 "
            << multiply->ToString();
-  if (Match(multiply,
-            m::Multiply(m::Sqrt(m::Op(&lhs)), m::Sqrt(m::Op(&rhs)))) &&
-      lhs == rhs && IsNonNegative(lhs, options_)) {
-    return ReplaceInstruction(multiply, lhs);
+  UniqueHloInstruction sqrt_x;
+  if (Match(
+          multiply,
+          m::Multiply(
+              m::Sqrt(m::Op().WithPredicate(sqrt_x.capture_or_verify_fn())),
+              m::Sqrt(m::Op().WithPredicate(sqrt_x.capture_or_verify_fn())))) &&
+      IsNonNegative(sqrt_x.instr(), options_)) {
+    return ReplaceInstruction(multiply, sqrt_x.instr());
   }
 
   VLOG(10) << "trying transform [rsqrt(x) * rsqrt(x) => 1/x], for x >= 0 "
            << multiply->ToString();
+  UniqueHloInstruction rsqrt_x;
   if (Match(multiply,
-            m::Multiply(m::Rsqrt(m::Op(&lhs)), m::Rsqrt(m::Op(&rhs)))) &&
-      lhs == rhs && IsNonNegative(lhs, options_)) {
+            m::Multiply(
+                m::Rsqrt(m::Op().WithPredicate(rsqrt_x.capture_or_verify_fn())),
+                m::Rsqrt(
+                    m::Op().WithPredicate(rsqrt_x.capture_or_verify_fn())))) &&
+      IsNonNegative(rsqrt_x.instr(), options_)) {
     return ReplaceWithNewInstruction(
-        multiply,
-        HloInstruction::CreateBinary(multiply->shape(), HloOpcode::kDivide,
-                                     MakeScalarLike(lhs, 1), lhs));
+        multiply, HloInstruction::CreateBinary(
+                      multiply->shape(), HloOpcode::kDivide,
+                      MakeScalarLike(rsqrt_x.instr(), 1), rsqrt_x.instr()));
   }
 
   return TryToReorderConvAddMultiply(multiply);
