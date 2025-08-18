@@ -176,7 +176,7 @@ XlaJitCompiledCpuFunction::Compile(
     // information to the XlaCompiledCpuFunction.
     TF_ASSIGN_OR_RETURN(
         auto compilation_result,
-        xla::cpu::CpuAotCompilationResultThunks::Create(
+        xla::cpu::CpuAotCompilationResult::Create(
             &cpu_executable->module(), &cpu_executable->buffer_assignment(),
             cpu_executable->module_name(),
             // Symbols and object files are not needed since the function

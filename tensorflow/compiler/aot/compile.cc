@@ -112,9 +112,9 @@ absl::Status CompileXla(xla::CompileOnlyClient* client,
     return errors::Unknown("XLA compilation failed: ",
                            aot_or.status().message());
   }
-  compile_result->set_aot(
+  compile_result->aot =
       xla::unique_ptr_down_cast<xla::cpu::CpuAotCompilationResult>(
-          std::move(aot_or.value().back())));
+          std::move(aot_or.value().back()));
   compile_result->entry_point = aot_opts.entry_point_name();
   compile_result->pointer_size =
       xla::CompileOnlyClient::PointerSizeForTriple(aot_opts.triple());
@@ -323,7 +323,7 @@ absl::Status Main(const MainFlags& flags) {
   // Write output files.
   Env* env = Env::Default();
 
-  const auto obj_files = compile_result.get_aot_thunks().value()->obj_files();
+  const auto obj_files = compile_result.aot->obj_files();
   DCHECK_EQ(obj_files.size(), 1);
   const absl::string_view obj_file = obj_files[0];
   TF_RETURN_IF_ERROR(
