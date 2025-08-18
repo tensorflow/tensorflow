@@ -401,8 +401,9 @@ GetPossibleMatmulAutotuneTritonConfigs(
     const se::CudaComputeCapability& compute_capability,
     const se::SemanticVersion& toolkit_version,
     const DebugOptions& debug_options) {
-  se::DeviceDescription device_description(
-      se::GpuDeviceInfoProto::default_instance());
+  TF_ASSIGN_OR_RETURN(se::DeviceDescription device_description,
+                      se::DeviceDescription::FromProto(
+                          se::GpuDeviceInfoProto::default_instance()));
   device_description.set_gpu_compute_capability(compute_capability);
   // Using H100 numbers as the most relevant example here.
   // https://docs.nvidia.com/cuda/cuda-c-programming-guide/#features-and-technical-specifications-technical-specifications-per-compute-capability

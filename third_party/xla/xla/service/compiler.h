@@ -20,6 +20,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_COMPILER_H_
 #define XLA_SERVICE_COMPILER_H_
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -27,10 +28,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
+#include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
@@ -39,11 +43,18 @@ limitations under the License.
 #include "xla/service/buffer_value.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/executable.h"
+#include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/metrics_hook_interface.h"
+#include "xla/shape.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/threadpool.h"
+#include "xla/util.h"
 #include "tsl/platform/protobuf.h"
-#include "tsl/platform/threadpool.h"
 
 namespace mlir {
 class DialectRegistry;
@@ -122,8 +133,10 @@ class Compiler {
  public:
   // Description of a target device for compilation.
   struct TargetConfig {
-    explicit TargetConfig(const se::GpuTargetConfigProto& proto);
     explicit TargetConfig(se::StreamExecutor* s);
+
+    static absl::StatusOr<TargetConfig> FromProto(
+        const se::GpuTargetConfigProto& proto);
 
     se::GpuTargetConfigProto ToProto() const;
 
@@ -140,6 +153,9 @@ class Compiler {
     std::string platform_name;
     se::dnn::VersionInfo dnn_version_info;
     std::string device_description_str;
+
+   private:
+    TargetConfig() = default;
   };
 
   struct CompileOptions {

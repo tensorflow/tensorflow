@@ -21,10 +21,22 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/const_init.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
+#include "xla/debug_options_flags.h"
+#include "xla/hlo/ir/hlo_module_group.h"
+#include "xla/service/metrics_hook_interface.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/semantic_version.h"
+#include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/logging.h"
 
 namespace xla {
 
@@ -43,15 +55,21 @@ Compiler::TargetConfig::TargetConfig(se::StreamExecutor* s)
   }
 }
 
-Compiler::TargetConfig::TargetConfig(const se::GpuTargetConfigProto& proto)
-    : device_description({proto.gpu_device_info()}),
-      platform_name(proto.platform_name()),
-      dnn_version_info(proto.dnn_version_info()),
-      device_description_str(proto.device_description_str()) {
+absl::StatusOr<Compiler::TargetConfig> Compiler::TargetConfig::FromProto(
+    const se::GpuTargetConfigProto& proto) {
+  TargetConfig target_config;
+  TF_ASSIGN_OR_RETURN(
+      target_config.device_description,
+      stream_executor::DeviceDescription::FromProto(proto.gpu_device_info()));
+  target_config.platform_name = proto.platform_name();
+  target_config.dnn_version_info =
+      se::dnn::VersionInfo(proto.dnn_version_info());
+  target_config.device_description_str = proto.device_description_str();
   se::SemanticVersion runtime_version(proto.runtime_version().major(),
                                       proto.runtime_version().minor(),
                                       proto.runtime_version().patch());
-  device_description.set_runtime_version(runtime_version);
+  target_config.device_description.set_runtime_version(runtime_version);
+  return target_config;
 }
 
 se::GpuTargetConfigProto Compiler::TargetConfig::ToProto() const {

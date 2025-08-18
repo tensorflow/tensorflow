@@ -1451,7 +1451,10 @@ xla_cc_test(
     deps = [
         ":fusion_wrapper",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_description_proto_cc",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -2351,6 +2354,8 @@ xla_cc_test(
         "//xla/service:pattern_matcher",
         "//xla/stream_executor:device_description",
         "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status:statusor",
     ],
 )
 
@@ -2711,10 +2716,11 @@ xla_cc_test(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/stream_executor:device_description",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -2913,9 +2919,9 @@ xla_cc_test(
         ":tree_reduction_rewriter",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/stream_executor:device_description",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 

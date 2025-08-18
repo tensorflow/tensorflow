@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -41,11 +42,14 @@ limitations under the License.
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/pjrt/proto/execute_options.pb.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/compiler.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_value.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -128,7 +132,8 @@ absl::StatusOr<CompileOptions> CompileOptions::FromProto(
                       LoadEnvOptionOverrides(proto.env_option_overrides()));
 
   if (proto.has_target_config()) {
-    output.target_config = xla::Compiler::TargetConfig(proto.target_config());
+    TF_ASSIGN_OR_RETURN(output.target_config, Compiler::TargetConfig::FromProto(
+                                                  proto.target_config()));
   }
   return output;
 }

@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
@@ -92,8 +93,12 @@ auto IsValidConfig() {
 
 class DefaultDeviceDotSearchSpaceTest : public HloHardwareIndependentTestBase {
  protected:
-  se::DeviceDescription device_description_{
-      se::GpuDeviceInfoProto::default_instance()};
+  se::DeviceDescription device_description_ = []() {
+    auto device_description_ = se::DeviceDescription::FromProto(
+        se::GpuDeviceInfoProto::default_instance());
+    TF_CHECK_OK(device_description_.status());
+    return *device_description_;
+  }();
 
   absl::StatusOr<std::unique_ptr<VerifiedHloModule>> GetDefaultDotModule(
       int lhs_parallel_dim = 1024, int rhs_parallel_dim = 1024,

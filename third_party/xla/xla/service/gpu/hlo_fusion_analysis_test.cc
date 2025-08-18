@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_traversal.h"
@@ -22,8 +23,8 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
@@ -319,7 +320,9 @@ TEST_F(HloFusionAnalysisTest, InvalidDevice) {
     })"));
 
   stream_executor::GpuDeviceInfoProto device_info_proto;
-  stream_executor::DeviceDescription device_info(device_info_proto);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto device_info,
+      stream_executor::DeviceDescription::FromProto(device_info_proto));
   device_info.set_threads_per_warp(32);
 
   auto* root = module->entry_computation()->root_instruction();

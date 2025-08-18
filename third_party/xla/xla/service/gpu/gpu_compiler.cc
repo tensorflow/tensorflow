@@ -1874,7 +1874,7 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
           "Failed to parse GpuTargetConfigProto");
     }
 
-    return Compiler::TargetConfig{gpu_target_config_proto};
+    return Compiler::TargetConfig::FromProto(gpu_target_config_proto);
   }
   if (executor) {
     Compiler::TargetConfig target_config = Compiler::TargetConfig{executor};
