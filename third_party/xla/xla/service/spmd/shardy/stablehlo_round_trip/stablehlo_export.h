@@ -33,6 +33,12 @@ struct StablehloExportPipelineOptions
         "calls - the HLO sharding constraint op. Else export "
         "them to MHLO copy ops. By default, export to MHLO copy ops."),
     llvm::cl::init(false)};
+  Option<bool> keepShardMapBodyAsFunc{
+      *this, "keep-shard-map-body-as-func",
+      llvm::cl::desc(
+          "Whether to keep the body of the shard map as a function. Else the "
+          "body will be inlined. By default, inline the body."),
+      llvm::cl::init(false)};
 };
 
 // Register the xla-sdy-stablehlo-export-pipeline.
