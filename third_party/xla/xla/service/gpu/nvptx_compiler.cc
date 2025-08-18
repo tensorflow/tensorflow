@@ -203,8 +203,14 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
                                              dnn_version, toolkit_version);
     pipeline.AddPass<ConvPaddingLegalization>();
     pipeline.AddPass<CudnnPadForConvolutions>(cuda_compute_capability);
-    pipeline.AddPass<CudnnVectorizeConvolutions>(cuda_compute_capability,
-                                                 dnn_version);
+    if (!cuda_compute_capability.IsAtLeast(
+            se::CudaComputeCapability::CudaComputeCapabilities::kHopper)) {
+      // CUDNN vectorization is not performant on Hopper and later.
+      // The official guidance is not to use the vectorized layouts anymore on
+      // these newer architectures.
+      pipeline.AddPass<CudnnVectorizeConvolutions>(cuda_compute_capability,
+                                                   dnn_version);
+    }
   }
   // The conv padding/vectorization passes which we need to get rid of.  They
   // also leave behind unnecessary tuple/get-tuple-element pairs that
