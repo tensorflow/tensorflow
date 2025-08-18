@@ -1949,7 +1949,9 @@ module {
 // CHECK-DIRECT: stablehlo.set_dimension_size
 
 // -----
-// CHECK: HloModule
+
+// CHECK-LABEL: HloModule main
+
 // CHECK: ENTRY
 // CHECK: %[[ARG0:.*]] = f32[192] parameter(0)
 // CHECK: ROOT %[[RESULT:.*]] = f32[1,17,17,192] broadcast(%[[ARG0]]), dimensions={3}, origin={{[{][{]}}"broadcast.2342"{{[}][}]}}
@@ -1962,7 +1964,9 @@ module {
 }
 
 // -----
-// CHECK: HloModule
+
+// CHECK-LABEL: HloModule main
+
 // CHECK: ENTRY
 func.func @main() -> tensor<128x2048xf32> {
   // CHECK-NEXT: %after-all.1 = token[] after-all(), sharding={manual}
@@ -1979,7 +1983,8 @@ func.func @main() -> tensor<128x2048xf32> {
 
 // -----
 
-// CHECK-LABLE: HloModule main
+// CHECK-LABEL: HloModule main
+
 //       CHECK: ENTRY
 func.func @main(%arg0: tensor<2x4xf32>) -> tensor<2x4xf32> {
   //               CHECK: custom-call({{.*}}), custom_call_target="foo",
