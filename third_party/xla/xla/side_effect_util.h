@@ -110,6 +110,9 @@ extern const char kCollectivesGroupAttr[];
 
 extern const char kNumSlotVariables[];
 extern const char kNumHyperparameters[];
+
+// XLA frontend attribute for specifying the tag of a log instruction.
+extern const char kLogTag[];
 }  // namespace xla
 
 #endif  // XLA_SIDE_EFFECT_UTIL_H_
