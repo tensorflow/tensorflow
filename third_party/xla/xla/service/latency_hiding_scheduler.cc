@@ -659,7 +659,8 @@ void AsyncTracker::SetConcurrentResourceLimits(
        GetTargetDefinedResourceTypeBegin() + GetNumTargetDefinedResources();
        ++resource_type) {
     CHECK_GT(GetNumAvailableResources(resource_type), 0)
-        << "Target-defined resource with id " << resource_type
+        << "Target-defined resource " << GetResourceName(resource_type)
+        << " with id " << resource_type
         << " has a concurrency limit of 0. Please set it to a positive value "
            "by making sure GetNumTargetDefinedResources returns the correct "
            "limit.";
