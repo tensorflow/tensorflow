@@ -1744,6 +1744,7 @@ xla_test(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/log:log_sink",
         "@com_google_absl//absl/log:scoped_mock_log",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
