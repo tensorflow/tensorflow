@@ -26,6 +26,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/synchronization/notification.h"
 #include "xla/tsl/platform/criticality.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/notification.h"
@@ -405,7 +406,7 @@ TEST(BatchTest, DeletionBlocksUntilClosed) {
   batch->AddTask(std::make_unique<FakeTask>(3));
   EXPECT_FALSE(batch->IsClosed());
 
-  Notification do_delete, deleted;
+  absl::Notification do_delete, deleted;
   std::unique_ptr<Thread> delete_thread(Env::Default()->StartThread(
       ThreadOptions(), "test", [&batch, &do_delete, &deleted]() {
         do_delete.WaitForNotification();

@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/synchronization/notification.h"
 #include "tensorflow/core/kernels/batching_util/fake_clock_env.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -109,7 +110,7 @@ TEST(PeriodicFunctionTest, StartupDelayRace) {
 
   mutex mu;
   int counter = 0;
-  std::unique_ptr<Notification> listener(new Notification);
+  std::unique_ptr<absl::Notification> listener(new absl::Notification);
 
   FakeClockEnv fake_clock_env(Env::Default());
   PeriodicFunction::Options options;
@@ -130,7 +131,7 @@ TEST(PeriodicFunctionTest, StartupDelayRace) {
     mutex_lock l(mu);
     EXPECT_EQ(1, counter);
     // A notification can only be notified once.
-    listener = std::make_unique<Notification>();
+    listener = std::make_unique<absl::Notification>();
   }
   fake_clock_env.BlockUntilThreadsAsleep(1);
   fake_clock_env.AdvanceByMicroseconds(kPeriodMicros);

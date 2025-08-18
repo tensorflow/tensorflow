@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/remote_device.h"
 
+#include "absl/synchronization/notification.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_testlib.h"
@@ -23,7 +24,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
-#include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
@@ -64,7 +64,7 @@ class RemoteDeviceTest : public ::testing::Test {
   }
 
   void SetUp() override {
-    Notification n;
+    absl::Notification n;
     NewRemoteDevices(Env::Default(), worker_cache_.get(), remote_name_,
                      [&n, this](const Status& s, std::vector<Device*>* found) {
                        TF_CHECK_OK(s);
