@@ -372,26 +372,6 @@ CrossProgramPrefetches FindCrossProgramPrefetches(
 
 }  // namespace
 
-std::string AllocationValue::ToString() const {
-  std::string out = absl::StrCat("computation = ", computation()->name());
-  absl::StrAppend(
-      &out, (requires_contiguous_allocation_ ? " (contiguous alloc)" : ""));
-  absl::StrAppend(&out, "\n position:\n");
-  absl::StrAppend(&out, "  ", defining_position_.ToString(), "\n");
-  absl::StrAppend(&out, " uses:\n");
-  for (const Use& use : uses_) {
-    absl::StrAppend(&out, "  ", use.hlo_use.ToString(), "\n");
-  }
-  return out;
-}
-
-std::string AllocationValue::ToShortString() const {
-  return absl::StrCat("computation = ", computation()->name(),
-                      ", position = ", defining_position_.ToString(),
-                      ", value = ", value_->ToShortString(),
-                      (requires_contiguous_allocation_ ? " (cont alloc)" : ""));
-}
-
 bool MsaAlgorithm::IsIntervalPinnedToAlternateMemory(
     const MsaBufferInterval& interval) const {
   const Shape& shape = interval.buffer->shape();
