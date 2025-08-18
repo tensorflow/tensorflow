@@ -407,6 +407,22 @@ enum CompilationEvent {
   COMPILATION_EVENT_RECOMPILATION = 2;
 }
 
+// The type of profile generation strategy used to generate the profile.
+enum ProfileGenerationStrategy {
+  PROFILE_GENERATION_STRATEGY_UNKNOWN = 0;
+  PROFILE_GENERATION_STRATEGY_GA = 1;
+  PROFILE_GENERATION_STRATEGY_FANTA = 2;
+  PROFILE_GENERATION_STRATEGY_CFO = 3;
+  // The profile was generated using exhaustive search.
+  PROFILE_GENERATION_STRATEGY_EXHAUSTIVE = 4;
+  // The profile was generated using a learned cost model with a GNN
+  // architecture.
+  PROFILE_GENERATION_STRATEGY_LCM_GNN = 5;
+  // The profile was generated using a learned cost model with a MOE
+  // architecture.
+  PROFILE_GENERATION_STRATEGY_LCM_MOE = 6;
+}
+
 // Symbolization metadata for HLO Instructions.
 //
 // This metadata is used for debugging XLA code generation, as well as
@@ -460,6 +476,8 @@ message OpMetadata {
     ProfileSource profile_source = 3;
     // The compilation event that triggered the use of the profiles.
     CompilationEvent compilation_event = 4;
+    // The type of profile generation strategy used to generate the profile.
+    ProfileGenerationStrategy profile_generation_strategy = 5;
   }
 
   // Profile information for the Op.
