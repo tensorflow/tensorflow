@@ -308,8 +308,8 @@ int64_t SymbolicExpr::Evaluate(
 }
 
 SymbolicExpr SymbolicExpr::ReplaceVariables(
-    absl::Span<const SymbolicExpr> substitutions,
-    SymbolicExprContext* ctx) const {
+    absl::Span<const SymbolicExpr> substitutions) const {
+  SymbolicExprContext* ctx = GetContext();
   switch (GetType()) {
     case SymbolicExprType::kConstant:
       return *this;
@@ -328,8 +328,8 @@ SymbolicExpr SymbolicExpr::ReplaceVariables(
     case SymbolicExprType::kMod:
     case SymbolicExprType::kMax:
     case SymbolicExprType::kMin: {
-      SymbolicExpr new_lhs = GetLHS().ReplaceVariables(substitutions, ctx);
-      SymbolicExpr new_rhs = GetRHS().ReplaceVariables(substitutions, ctx);
+      SymbolicExpr new_lhs = GetLHS().ReplaceVariables(substitutions);
+      SymbolicExpr new_rhs = GetRHS().ReplaceVariables(substitutions);
       if (new_lhs == GetLHS() && new_rhs == GetRHS()) {
         return *this;
       }
