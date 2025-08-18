@@ -1215,7 +1215,7 @@ class FunctionTest(xla_test.XLATestCase):
       hlo = f.experimental_get_compiler_ir(inputs)(stage='hlo')
 
       # Test that reduction occurs only once.
-      self.assertGreater(hlo.count('reduce'), 1)
+      self.assertEqual(hlo.count('reduce'), 1)
       self._compareTwoMethodsCompilerIROutput(f, [inputs], {})
 
   def testExperimentalGetCompilerIRBasic(self):
