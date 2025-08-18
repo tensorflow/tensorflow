@@ -242,7 +242,9 @@ const StatTypeMap& GetStatTypeMap() {
        {"element_id", kElementId},
        {"parent_id", kParentId},
        {"core_type", kCoreType},
+       {"_ipl_stage_id", kInputPipelineStageId},
        {"_ipl_stage_name", kInputPipelineStageName},
+       {"_ipl_stage_cat", kInputPipelineStageCategory},
        // XPlane semantics related.
        {"_pt", kProducerType},
        {"_ct", kConsumerType},
