@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/batching_util/adaptive_shared_batch_scheduler.h"
 
+#include "absl/synchronization/notification.h"
 #include "tensorflow/core/kernels/batching_util/fake_clock_env.h"
-#include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/macros.h"
@@ -58,7 +58,8 @@ absl::Status ScheduleTask(size_t task_size,
 // 'env' in a loop until 'stop' is notified. Useful for allowing objects that
 // use the clock to be destroyed.
 std::unique_ptr<Thread> CreateFakeClockAdvancerThread(
-    test_util::FakeClockEnv* env, Notification* start, Notification* stop) {
+    test_util::FakeClockEnv* env, absl::Notification* start,
+    absl::Notification* stop) {
   return std::unique_ptr<Thread>(Env::Default()->StartThread(
       {}, "FakeClockAdvancerThread", [env, start, stop] {
         start->WaitForNotification();
@@ -105,7 +106,7 @@ TEST(AdaptiveSharedBatchSchedulerTest, InFlightBatchesLimit) {
   options.batches_to_average_over = 1000;
   mutex mu;
   int processed_batches = 0;
-  Notification finish_processing;
+  absl::Notification finish_processing;
   auto queue_callback = [&mu, &processed_batches, &finish_processing](
                             std::unique_ptr<Batch<FakeTask>> batch) {
     ASSERT_TRUE(batch->IsClosed());
@@ -141,7 +142,7 @@ TEST(AdaptiveSharedBatchSchedulerTest, InFlightBatchesLimit) {
 
 TEST(AdaptiveSharedBatchSchedulerTest, InFlightBatchesLimitTuning) {
   test_util::FakeClockEnv env(Env::Default());
-  Notification start_teardown, stop_teardown;
+  absl::Notification start_teardown, stop_teardown;
   std::unique_ptr<Thread> teardown_thread =
       CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
   {
@@ -203,7 +204,7 @@ TEST(AdaptiveSharedBatchSchedulerTest, InFlightBatchesLimitTuning) {
 
 TEST(AdaptiveSharedBatchSchedulerTest, FullBatchSchedulingBoostMicros) {
   test_util::FakeClockEnv env(Env::Default());
-  Notification start_teardown, stop_teardown;
+  absl::Notification start_teardown, stop_teardown;
   std::unique_ptr<Thread> teardown_thread =
       CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
   {
@@ -215,7 +216,7 @@ TEST(AdaptiveSharedBatchSchedulerTest, FullBatchSchedulingBoostMicros) {
     options.full_batch_scheduling_boost_micros = 100;
     mutex mu;
     int processed_batches = 0;
-    Notification finish_processing;
+    absl::Notification finish_processing;
     auto queue_callback = [&mu, &processed_batches, &finish_processing](
                               std::unique_ptr<Batch<FakeTask>> batch) {
       ASSERT_TRUE(batch->IsClosed());
@@ -277,7 +278,7 @@ TEST(AdaptiveSharedBatchSchedulerTest, FullBatchSchedulingBoostMicros) {
 
 TEST(AdaptiveSharedBatchSchedulerTest, FIFO) {
   test_util::FakeClockEnv env(Env::Default());
-  Notification start_teardown, stop_teardown;
+  absl::Notification start_teardown, stop_teardown;
   std::unique_ptr<Thread> teardown_thread =
       CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
   {
@@ -290,7 +291,7 @@ TEST(AdaptiveSharedBatchSchedulerTest, FIFO) {
     options.fifo_scheduling = true;
     mutex mu;
     int processed_batches = 0;
-    Notification finish_processing;
+    absl::Notification finish_processing;
     auto queue_callback = [&mu, &processed_batches, &finish_processing](
                               std::unique_ptr<Batch<FakeTask>> batch) {
       ASSERT_TRUE(batch->IsClosed());
@@ -352,7 +353,7 @@ TEST(AdaptiveSharedBatchSchedulerTest, DeleteQueue) {
   options.batches_to_average_over = 1000;
   mutex mu;
   int processed_batches = 0;
-  Notification finish_processing;
+  absl::Notification finish_processing;
   auto queue_callback = [&mu, &processed_batches, &finish_processing](
                             std::unique_ptr<Batch<FakeTask>> batch) {
     ASSERT_TRUE(batch->IsClosed());
@@ -389,7 +390,7 @@ TEST(AdaptiveSharedBatchSchedulerTest, QueueCapacityInfo) {
   options.batches_to_average_over = 1000;
   mutex mu;
   int processed_batches = 0;
-  Notification finish_processing;
+  absl::Notification finish_processing;
   auto queue_callback = [&mu, &processed_batches, &finish_processing](
                             std::unique_ptr<Batch<FakeTask>> batch) {
     ASSERT_TRUE(batch->IsClosed());

@@ -25,6 +25,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/notification.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
@@ -569,12 +570,12 @@ class BatchResourceBaseTest : public ::testing::Test {
       process_func_batch_called_.Notify();
     }
 
-    Notification& process_func_batch_called() {
+    absl::Notification& process_func_batch_called() {
       return process_func_batch_called_;
     }
 
    private:
-    mutable Notification process_func_batch_called_;
+    mutable absl::Notification process_func_batch_called_;
   };
 
   BatchResourceBaseTest() {
