@@ -658,6 +658,47 @@ ENTRY %AllReduce {
               GmockMatch(m::ReduceScatter(m::Parameter(0))));
 }
 
+TEST_F(GpuReduceScatterCreatorTest, SubtractionPatternWithTableLookup) {
+  absl::string_view hlo_string = R"(
+HloModule SubtractionPattern
+
+%sum {
+  %a = f32[] parameter(0)
+  %b = f32[] parameter(1)
+  ROOT %add = f32[] add(%a, %b)
+}
+
+ENTRY %SubtractionPattern {
+  %param = f32[4,64,1024]{2,1,0} parameter(0)
+  %all-reduce = f32[4,64,1024]{2,1,0} all-reduce(%param),
+    replica_groups={{0,1,2,3},{4,5,6,7}}, to_apply=%sum, channel_id=1, use_global_device_ids=true
+  %pid = u32[] partition-id()
+  %table = s32[8]{0} constant({0, 0, 0, 0, 64, 64, 64, 64})
+  %id = s32[1] dynamic-slice(%table, %pid), dynamic_slice_sizes={1}
+  %reshape = s32[] reshape(%id)
+  %slice_size = s32[] constant(16)
+  %pid_s32 = s32[] convert(%pid)
+  %multiply = s32[] multiply(%pid_s32, %slice_size)
+  %offset = s32[] subtract(%multiply, %reshape)
+  %zero = s32[] constant(0)
+  ROOT %dynamic-slice = f32[4,16,1024] dynamic-slice(%all-reduce, %zero, %offset, %zero),
+    dynamic_slice_sizes={4,16,1024}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, RunPass(hlo_string,
+                                               /*num_replicas=*/1,
+                                               /*num_partitions=*/8,
+                                               /*use_spmd_partitioning=*/true,
+                                               /*expect_change=*/true));
+  ASSERT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::ReduceScatter(m::Parameter(0))));
+  const auto* rs = Cast<HloReduceScatterInstruction>(
+      module->entry_computation()->root_instruction());
+  EXPECT_EQ(rs->scatter_dimension(), 1) << rs->ToString();
+  EXPECT_EQ(AllReduceCount(module), 0);
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
