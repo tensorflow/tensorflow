@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <Python.h>
 
+#include "absl/status/status.h"
 #include "pybind11/cast.h"  // from @pybind11
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/c/tf_status_internal.h"
@@ -71,7 +72,7 @@ inline pybind11::dict TFStatusPayloadToDict(TF_Status* status) {
 inline void MaybeRaiseFromStatus(const absl::Status& status) {
   if (!status.ok()) {
     PyErr_SetString(internal::StatusToPyExc(status),
-                    tsl::NullTerminatedMessage(status));
+                    absl::StatusMessageAsCStr(status));
     throw pybind11::error_already_set();
   }
 }
