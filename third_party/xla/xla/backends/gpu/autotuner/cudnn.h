@@ -66,6 +66,8 @@ class CudnnBackend : public GpuCodegenBackend {
   absl::StatusOr<std::unique_ptr<BackendConfig>> GetDefaultConfig(
       const HloInstruction& instr) override;
 
+  // Can replace the instruction with a new one in the parent computation, to
+  // apply the configs with non-zero workspace size.
   absl::Status ApplyConfig(HloInstruction& instr,
                            const BackendConfig& config) override;
 };
