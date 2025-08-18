@@ -407,7 +407,7 @@ RocmBandwidthSettings CreateSettings(
     if (*se.functor == nullptr) {
       const char* dlsym_error = dlerror();
       if (dlsym_error) {
-        VLOG(0) << "Error: " << dlsym_error;
+        LOG(WARNING) << dlsym_error;
       }
     }
   }
