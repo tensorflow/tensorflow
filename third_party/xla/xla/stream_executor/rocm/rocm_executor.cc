@@ -372,8 +372,9 @@ absl::Status EnablePeerAccess(Context* from, Context* to) {
   }
 
   ScopedActivateContext activated(from);
-  hipError_t result = wrap::hipCtxEnablePeerAccess(
-      tensorflow::down_cast<RocmContext*>(to)->context(), 0 /* = flags */);
+  hipError_t result =
+      wrap::hipDeviceEnablePeerAccess(to->device_ordinal(), 0 /* = flags */);
+
   if (result != hipSuccess && result != hipErrorPeerAccessAlreadyEnabled) {
     return absl::InternalError(
         absl::StrFormat("failed to enable peer access from %d to %d: %s",
