@@ -106,7 +106,7 @@ INSTANTIATE_TEST_SUITE_P(PositiveAndNegative, SymbolicExprEvaluateDivModTest,
 TEST_F(SymbolicExprTest, ReplaceVariables) {
   SymbolicExpr expr_to_sub = ctx.Parse("(v0 + v1)");
   std::vector<SymbolicExpr> substitutions{{}, ctx.Parse("(v2 * 10)")};
-  SymbolicExpr result = expr_to_sub.ReplaceVariables(substitutions, &ctx);
+  SymbolicExpr result = expr_to_sub.ReplaceVariables(substitutions);
   EXPECT_EQ(result.ToString(), "(v0 + (v2 * 10))");
 }
 
