@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/hlo/ir/tile_assignment.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
+#include "xla/service/call_graph.h"
 #include "xla/service/dot_as_convolution_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -1234,6 +1235,33 @@ TEST_F(HloShardingUtilTestWithHlo, InferDotOperandShardingTest2) {
   EXPECT_EQ(InferDotOperandSharding(nullptr, &lhs_sharding, 1, dnums, false,
                                     may_combine_partial_sharding),
             HloSharding::Replicate());
+}
+
+TEST_F(HloShardingUtilTestWithHlo, MultipleCallSitesForIota) {
+  absl::string_view hlo_string = R"(
+    HloModule module
+
+    call_computation {
+      %param = (s32[4096,4096]) parameter(0)
+      ROOT %gte = s32[4096,4096] get-tuple-element(%param), index=0
+    }
+
+    ENTRY %main {
+      %iota = s32[4096,4096] iota(), iota_dimension=0
+      %tuple = (s32[4096,4096]) tuple(%iota)
+      %call.0 = s32[4096,4096] call(%tuple), to_apply=call_computation
+      %call.1 = s32[4096,4096] call(%tuple), to_apply=call_computation
+      ROOT %add = s32[4096,4096] add(%call.0, %call.1)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  // TODO(b/260601110): Actually recognize the iota.
+  auto call_graph = CallGraph::Build(module.get());
+  EXPECT_EQ(
+      GetDimensionForIota(module->GetComputationWithName("call_computation")
+                              ->root_instruction(),
+                          *call_graph),
+      std::nullopt);
 }
 
 }  // namespace
