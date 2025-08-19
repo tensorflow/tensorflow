@@ -773,6 +773,13 @@ tf_proto_library(
     visibility = ["//visibility:public"],
 )
 
+tf_proto_library(
+    name = "tf_graph_to_hlo_compiler_proto",
+    srcs = ["tf_graph_to_hlo_compiler.proto"],
+    protodeps = tf_additional_all_protos(),
+    visibility = ["//visibility:public"],
+)
+
 cc_library(
     name = "device_compiler",
     hdrs = ["device_compiler.h"],
@@ -1552,13 +1559,18 @@ cc_library(
     srcs = ["tf_graph_to_hlo_compiler.cc"],
     hdrs = ["tf_graph_to_hlo_compiler.h"],
     deps = [
+        ":tf_graph_to_hlo_compiler_proto_cc",
         ":tf_to_hlo_compiler",
         "//tensorflow/compiler/tf2xla:xla_argument",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:path",
+        "@local_xla//xla/tsl/lib/strings:proto_serialization",
     ],
 )
 
@@ -1926,6 +1938,7 @@ tf_cuda_cc_test(
         ":device_compilation_cluster_signature",
         ":device_compiler",
         ":device_compiler_client",
+        ":tf_graph_to_hlo_compiler_proto_cc",
         ":xla_compile_util",
         ":xla_device_compiler_client",
         ":xla_gpu_device",
@@ -1940,18 +1953,26 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core/framework:fake_input",
         "//tensorflow/core/kernels:ops_testutil",
+        "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:notification",
+        "//tensorflow/core/platform:refcount",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:status_matchers",
         "//tensorflow/core/platform:statusor",
+        "//tensorflow/core/platform:test",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:path",
         "@local_xla//xla/client:client_library",
         "@local_xla//xla/client:local_client",
         "@local_xla//xla/hlo/builder:xla_computation",
         "@local_xla//xla/stream_executor:platform_manager",
+        "@local_xla//xla/tsl/lib/strings:proto_serialization",
     ],
 )
 
