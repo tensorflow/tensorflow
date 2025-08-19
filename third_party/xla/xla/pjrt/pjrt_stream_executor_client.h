@@ -405,6 +405,24 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
   absl::StatusOr<int64_t> GetOnDeviceBytesCount(
       PjRtMemorySpace* memory_space, const xla::Shape& shape) const override;
 
+  absl::StatusOr<xla::Shape> MakeDefaultShapeForMemorySpace(
+      PjRtMemorySpace* memory_space, xla::Shape shape,
+      const xla::Layout* layout) const override;
+
+  absl::StatusOr<tsl::RCReference<CommonPjRtRawBuffer>> AllocateRawBuffer(
+      PjRtMemorySpace* memory_space, size_t on_device_bytes_count,
+      bool retry_on_oom, tsl::AsyncValueRef<bool> allocate_after) override;
+
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> DefineBuffer(
+      const Shape& on_device_shape,
+      tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
+      absl::InlinedVector<tsl::RCReference<PjRtDeviceEvent>, 4>
+          definition_device_events,
+      bool raw_buffer_is_mutable) override;
+
+  void WaitForAllocation(se::Stream* stream,
+                         const CommonPjRtRawBuffer& raw_buffer);
+
  protected:
   friend class PjRtStreamExecutorBuffer;
   friend class PjRtStreamExecutorRawBuffer;

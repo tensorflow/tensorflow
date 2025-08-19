@@ -144,16 +144,6 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
                                       int64_t offset,
                                       int64_t transfer_size) override;
 
-  tsl::RCReference<PjRtDeviceEvent> CopyRawHostToDevice(
-      LocalDeviceState* local_device,
-      tsl::RCReference<RawSEDeviceMemory> device_buffer, const void* src,
-      int64_t offset, int64_t transfer_size) override;
-
-  tsl::RCReference<PjRtDeviceEvent> CopyRawDeviceToHost(
-      LocalDeviceState* local_device,
-      tsl::RCReference<RawSEDeviceMemory> device_buffer, void* dst,
-      int64_t offset, int64_t transfer_size) override;
-
   void CopyToRemoteDevice(PjRtBuffer* buffer,
                           absl::string_view serialized_descriptor,
                           PjRtBuffer::RemoteSendCallback on_done) override;
