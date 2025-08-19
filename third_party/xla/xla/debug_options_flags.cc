@@ -1123,7 +1123,9 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "  `XNN_GRAPH_FUSION_MODE_GREEDY` - greedy extraction of "
       "XNNPACK-compatible subgraphs starting from root instructions,\n"
       "  `XNN_GRAPH_FUSION_MODE_GREEDY_SLINKY` - same as GREEDY plus "
-      "operations that are only supported with slinky."));
+      "operations that are only supported with slinky,"
+      "  `XNN_GRAPH_FUSION_MODE_BYPASS_COST_MODEL` - test-only value for "
+      "disabling XNNPACK cost models."));
   flag_list->push_back(tsl::Flag(
       "xla_cpu_parallel_codegen_split_count",
       int32_setter_for(&DebugOptions::set_xla_cpu_parallel_codegen_split_count),
