@@ -101,6 +101,11 @@ limitations under the License.
 #include "tsl/platform/protobuf.h"
 #include "tsl/profiler/lib/traceme.h"
 
+#if defined(PLATFORM_WINDOWS)
+// Required to build successfully with Mingw
+#undef CreateEvent
+#endif
+
 namespace xla {
 
 PjRtFuture<>::Promise CreatePromiseForEvent(
