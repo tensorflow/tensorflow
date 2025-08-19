@@ -578,6 +578,9 @@ message DebugOptions {
   // Specifies the behavior of per kernel autotuning cache.
   optional AutotuneCacheMode xla_gpu_experimental_autotune_cache_mode = 324;
 
+  // Specifies the directory to store per kernel autotuning cache.
+  optional string xla_gpu_experimental_autotuner_cache_dir = 407;
+
   // Specifies the distance threshold in ScheduleAwareCollectiveOpsCSE
   optional int64 xla_gpu_experimental_collective_cse_distance_threshold = 374;
 
@@ -1324,7 +1327,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 407
+  // Next id: 408
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

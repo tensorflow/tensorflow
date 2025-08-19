@@ -54,7 +54,7 @@ absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
 
   std::unique_ptr<AutotunerCacheInterface> cache = nullptr;
   const std::string& cache_dir =
-      debug_options.xla_gpu_per_fusion_autotune_cache_dir();
+      debug_options.xla_gpu_experimental_autotuner_cache_dir();
   if (!cache_dir.empty()) {
     FileBasedCacheConfig cache_config;
     cache_config.autotune_cache_dir = cache_dir;

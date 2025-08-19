@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/autotuning/autotuner_pass.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -134,7 +135,7 @@ TEST_F(AutotunerPassTest, CublasGemmIsAutotunedAndCached) {
   std::string cache_dir = ::testing::TempDir();
   module->mutable_config()
       .mutable_debug_options()
-      .set_xla_gpu_per_fusion_autotune_cache_dir(cache_dir);
+      .set_xla_gpu_experimental_autotuner_cache_dir(cache_dir);
 
   tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "autotuning",
                                       /*num_threads=*/4);
@@ -164,11 +165,22 @@ TEST_F(AutotunerPassTest, CublasGemmIsAutotunedAndCached) {
   ASSERT_TRUE(gpu_backend_config_after_first_run.gemm_backend_config()
                   .has_selected_algorithm());
 
-  // Find the cache file.
-  std::vector<std::string> cache_files;
-  TF_ASSERT_OK(tsl::Env::Default()->GetMatchingPaths(
-      tsl::io::JoinPath(cache_dir, "*"), &cache_files));
-  ASSERT_GE(cache_files.size(), 1);
+  // Find the cache file and make sure it's not empty.
+  std::vector<std::string> children;
+  TF_ASSERT_OK(tsl::Env::Default()->GetChildren(cache_dir, &children));
+  std::string cache_file;
+  for (const auto& child : children) {
+    std::string filename = tsl::io::JoinPath(cache_dir, child);
+    if (!tsl::Env::Default()->IsDirectory(filename).ok()) {
+      uint64_t file_size;
+      TF_ASSERT_OK(tsl::Env::Default()->GetFileSize(filename, &file_size));
+      if (file_size > 0) {
+        cache_file = filename;
+        break;
+      }
+    }
+  }
+  ASSERT_FALSE(cache_file.empty());
 
   // Clear the selected algorithm to simulate a pre-autotuning state.
   HloInstruction* custom_call =

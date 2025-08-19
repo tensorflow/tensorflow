@@ -406,6 +406,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_autotune_cache_mode(
       DebugOptions::AUTOTUNE_CACHE_MODE_UPDATE);
 
+  opts.set_xla_gpu_experimental_autotuner_cache_dir("");
+
   opts.set_xla_gpu_autotune_gemm_rtol(0.1f);
 
   opts.set_xla_enable_command_buffers_during_profiling(false);
