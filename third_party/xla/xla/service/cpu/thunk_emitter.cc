@@ -1157,10 +1157,15 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitDotThunk(
       // Decide whether to use XNNPACK or Eigen.
       bool use_xnn = hlo_module_config_.debug_options().xla_cpu_use_xnnpack();
       if (use_xnn) {
+        const bool use_cost_model =
+            hlo_module_config_.debug_options()
+                .xla_cpu_experimental_xnn_graph_fusion_mode() !=
+            DebugOptions::XNN_GRAPH_FUSION_MODE_BYPASS_COST_MODEL;
         TF_ASSIGN_OR_RETURN(
-            use_xnn, IsDotSupportedByXnn(dnums, lhs->shape(), rhs->shape(),
-                                         instruction->shape(),
-                                         &target_machine_features_));
+            use_xnn,
+            IsDotSupportedByXnn(dnums, lhs->shape(), rhs->shape(),
+                                instruction->shape(), &target_machine_features_,
+                                use_cost_model));
       }
 
       if (use_xnn) {
