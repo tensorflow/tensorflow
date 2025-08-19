@@ -33,8 +33,11 @@ tsl::DeviceReservation IfrtServingCoreSelector::ReserveDevice(
   absl::MutexLock lock(&mu_);
   int64_t run_count = run_counter_[program_id]++;
   if (run_count < num_cores_) {
-    // This DeviceReservation isn't made through the core selector, so set
-    // the selector to nullptr.
+    // If run_count is less than the number of TPU cores, we use run_count
+    // as device index to iterate through all the TPU cores for the given
+    // program, so that the program can get warmed up on all the TPU cores
+    // when there are enough warmup requests. Set the selector to nullptr,
+    // since this `DeviceReservation` isn't made through the selector.
     return tsl::DeviceReservation(run_count, /*selector=*/nullptr);
   }
   return device_selector_->ReserveDevice(absl::StrCat(program_id));
