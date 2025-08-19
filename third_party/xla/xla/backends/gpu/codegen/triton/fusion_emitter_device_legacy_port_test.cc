@@ -264,7 +264,7 @@ ENTRY e {
       CreateTritonIrAndFileCheck(*module_and_metadata.computation,
                                  module_and_metadata.block_level_parameters,
                                  R"(
-CHECK: %[[LOAD:.*]] = triton_xla.extract {{.*}} : !tt.ptr<i8> to tensor<16x16xi8>
+CHECK: %[[LOAD:.*]] = triton_xla.extract {{.*}} : tensor<16x16xi8>
 CHECK: %[[TRUNCI:.*]] = arith.trunci %[[LOAD]] : tensor<16x16xi8> to tensor<16x16xi1>
 CHECK: %{{.*}} = arith.andi %[[TRUNCI]], %{{.*}} : tensor<16x16xi1>
 )"));
@@ -352,12 +352,12 @@ ENTRY e {
     CHECK: func.func @triton_fn(%[[ARG0:.*]]: tensor<2x4xf32>, %[[ARG1:.*]]: tensor<4x5x2xf32>, %[[ARG2:.*]]: tensor<i32>, %[[ARG3:.*]]: tensor<i32>, %[[ARG4:.*]]: tensor<i32>, %[[ARG5:.*]]: tensor<4x5xf32>) -> tensor<4x5xf32> {
     CHECK-DAG: %[[c3:.*]] = arith.constant 3 : i32
     CHECK-DAG: %[[c0:.*]] = arith.constant 0 : i32
-    CHECK-DAG: triton_xla.extract %[[ARG0]][0, 0] [32, 32] [1, 1]
+    CHECK-DAG: triton_xla.extract from  %[[ARG0]] {{.*}} [0, 0] [32, 32] [1, 1]
     CHECK: %[[V2:.*]] = tensor.extract %[[ARG2]][] : tensor<i32>
     CHECK: %[[CLAMP0:.*]] = arith.maxsi %[[V2]], %[[c0]] : i32
     CHECK: %[[CLAMP1:.*]] = arith.minsi %[[CLAMP0]], %[[c3]] : i32
     CHECK: %[[OFFSET:.*]] = arith.index_castui %[[CLAMP1]] : i32 to index
-    CHECK: triton_xla.extract %[[ARG1]][%[[OFFSET]], 0, 0] [1, 32, 32] [0, 1, 1]
+    CHECK: triton_xla.extract from %[[ARG1]] {{.*}} [%[[OFFSET]], 0, 0] [1, 32, 32] [0, 1, 1]
     CHECK: tt.dot
   )"));
 }

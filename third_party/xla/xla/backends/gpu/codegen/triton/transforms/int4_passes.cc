@@ -234,13 +234,13 @@ class TritonXlaExtractOpConversionPattern
     tile_offsets_values[converter_.packed_dimension()] =
         div(r, tile_offsets_values[converter_.packed_dimension()], 2);
 
-    SmallVector<int64_t> shape = llvm::to_vector(adaptor.getShape());
+    SmallVector<int64_t> shape = llvm::to_vector(adaptor.getSrcShape());
     shape[converter_.packed_dimension()] =
         (shape[converter_.packed_dimension()] + 1) / 2;
 
     r.replaceOpWithNewOp<mtx::ExtractOp>(
         op, new_result_type, adaptor.getSrc(), tile_offsets_values,
-        tile_strides_values, shape, adaptor.getLayout());
+        tile_strides_values, shape, adaptor.getSrcLayout());
     return success();
   }
 
@@ -616,7 +616,7 @@ absl::StatusOr<int> GetPackedDimension(MLIRContext *ctx,
       // Make sure the packed dimension is not dynamic and has a stride of 1.
       auto tile_strides = extract_op.getStaticStrides();
       auto tile_sizes = extract_op.getStaticSizes();
-      auto original_shape = extract_op.getShape();
+      auto original_shape = extract_op.getSrcShape();
 
       if (mlir::ShapedType::isDynamicShape(tile_strides) ||
           mlir::ShapedType::isDynamicShape(tile_sizes) ||
@@ -625,7 +625,7 @@ absl::StatusOr<int> GetPackedDimension(MLIRContext *ctx,
             "dynamic shapes, tile strides, and tile sizes not supported");
       }
 
-      for (auto dim : extract_op.getLayout()) {
+      for (auto dim : extract_op.getSrcLayout()) {
         if (tile_strides[dim] == 1 && tile_sizes[dim] > 1 &&
             original_shape[dim] > 1) {
           return dim;

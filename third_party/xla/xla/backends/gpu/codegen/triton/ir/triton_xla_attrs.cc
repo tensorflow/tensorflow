@@ -13,9 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
+
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/OpDefinition.h"  // IWYU pragma: keep
 #include "mlir/IR/Types.h"
 #include "mlir/Support/LLVM.h"
@@ -92,6 +95,34 @@ void TmaDescriptorAttr::print(mlir::AsmPrinter& printer) const {
             << stringifySwizzleMode(getSwizzleMode().getValue()) << "\"";
   }
   printer << ">";
+}
+
+AffineMap LayoutAttr::getAffineMap() const {
+  return AffineMap::getPermutationMap(getMinorToMajor(), getContext());
+}
+
+LogicalResult LayoutAttr::verifyLayout(
+    ArrayRef<int64_t> shape,
+    function_ref<InFlightDiagnostic()> emit_error) const {
+  if (getMinorToMajor().size() != shape.size()) {
+    emit_error() << "layout has " << getMinorToMajor().size()
+                 << " dimensions, but shape has " << shape.size();
+    return failure();
+  }
+  return success();
+}
+
+LogicalResult LayoutAttr::getStridesAndOffset(ArrayRef<int64_t> shape,
+                                              SmallVectorImpl<int64_t>& strides,
+                                              int64_t& offset) const {
+  strides.resize(shape.size());
+  int64_t size_product = 1;
+  for (auto dim : getMinorToMajor().asArrayRef()) {
+    strides[dim] = size_product;
+    size_product *= shape[dim];
+  }
+  offset = 0;
+  return success();
 }
 
 }  // namespace mlir::triton::xla
