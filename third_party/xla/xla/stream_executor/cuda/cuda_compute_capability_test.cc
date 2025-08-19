@@ -46,6 +46,11 @@ TEST(CudaComputeCapabilityTest, FromString) {
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
+TEST(CudaComputeCapabilityTest, FromIntWithAutoFeatureExtension) {
+  EXPECT_EQ(CudaComputeCapability::FromIntWithAutoFeatureExtension(100, 52),
+            CudaComputeCapability(100, 52));
+}
+
 TEST(CudaComputeCapabilityTest, ToProto) {
   CudaComputeCapabilityProto proto = CudaComputeCapability(100, 5).ToProto();
   EXPECT_EQ(proto.major(), 100);

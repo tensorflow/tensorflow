@@ -51,6 +51,17 @@ struct CudaComputeCapability {
   static absl::StatusOr<CudaComputeCapability> FromString(
       absl::string_view cuda_arch_name);
 
+  // Returns a CudaComputeCapability with the given major and minor versions
+  // and the accelerated feature extension enabled if supported.
+  // This function only exists for forward compatibility reasons.
+  // It will preserve the behaviour of automatically enabling the accelerated
+  // feature extension for newer compute capabilities, even once
+  // `CudaComputeCapability` supports extensions natively.
+  // TODO(hebecker): Remove this function once extensions are supported
+  // natively and all users have been migrated.
+  static CudaComputeCapability FromIntWithAutoFeatureExtension(int major,
+                                                               int minor);
+
   explicit CudaComputeCapability(const CudaComputeCapabilityProto &proto) {
     this->major = proto.major();
     this->minor = proto.minor();
