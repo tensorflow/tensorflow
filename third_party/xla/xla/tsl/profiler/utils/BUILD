@@ -23,6 +23,7 @@ package_group(
 cc_library(
     name = "math_utils",
     hdrs = ["math_utils.h"],
+    visibility = internal_visibility([":friends"]),
 )
 
 cc_library(
