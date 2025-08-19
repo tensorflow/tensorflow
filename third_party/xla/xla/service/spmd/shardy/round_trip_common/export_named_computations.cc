@@ -61,13 +61,13 @@ using ::mlir::sdy::NamedComputationOp;
 using ::mlir::sdy::TensorShardingPerValueAttr;
 
 using ComputationKey = std::tuple<StringRef, TensorShardingPerValueAttr,
-                                  TensorShardingPerValueAttr>;
+                                  TensorShardingPerValueAttr, ManualAxesAttr>;
 
 StringAttr createFuncOp(NamedComputationOp namedComputationOp,
                         mlir::IRRewriter& rewriter, SymbolTable& symbolTable,
                         std::optional<TensorShardingPerValueAttr> inShardings,
                         std::optional<TensorShardingPerValueAttr> outShardings,
-                        ManualAxesAttr manualAxesAttr = ManualAxesAttr()) {
+                        ManualAxesAttr manualAxesAttr) {
   auto funcOp = FuncOp::create(
       rewriter, namedComputationOp.getLoc(), namedComputationOp.getName(),
       rewriter.getFunctionType(namedComputationOp.getBody().getArgumentTypes(),
@@ -108,21 +108,18 @@ StringAttr createFuncOpOrGetFromCache(
     ManualAxesAttr manualAxesAttr,
     std::optional<TensorShardingPerValueAttr> inShardings,
     std::optional<TensorShardingPerValueAttr> outShardings) {
-  // TODO(enver): Support deduplicate also for ones with manual axes.
-  if (manualAxesAttr) {
-    return createFuncOp(namedComputationOp, rewriter, symbolTable, inShardings,
-                        outShardings, manualAxesAttr);
-  }
   auto key = std::make_tuple(namedComputationOp.getName(),
                              namedComputationOp.getInShardings().value_or(
                                  TensorShardingPerValueAttr()),
                              namedComputationOp.getOutShardings().value_or(
-                                 TensorShardingPerValueAttr()));
+                                 TensorShardingPerValueAttr()),
+                             manualAxesAttr);
   if (auto it = funcCache.find(key); it != funcCache.end()) {
     return it->second;
   }
-  StringAttr funcSymName = createFuncOp(namedComputationOp, rewriter,
-                                        symbolTable, inShardings, outShardings);
+  StringAttr funcSymName =
+      createFuncOp(namedComputationOp, rewriter, symbolTable, inShardings,
+                   outShardings, manualAxesAttr);
   funcCache.try_emplace(key, funcSymName);
   return funcSymName;
 }
