@@ -493,7 +493,8 @@ absl::StatusOr<Value> EmitBroadcast(EmitterLocOpBuilder b,
     const TensorIterationSpec::DimIterationSpec* spec =
         analysis->IterSpec(side.scope, &broadcast, dim.index);
     if (spec != nullptr && spec->at(0).stride > 0) {
-      out_shape.push_back(dim.block_size);
+      out_shape.push_back(
+          (spec->at(0).broadcast_multiplier != 1) ? 1 : dim.block_size);
       non_trivial_broadcast |= spec->at(0).subfragments.size() != 1;
     }
   }
