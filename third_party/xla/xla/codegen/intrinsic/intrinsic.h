@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
@@ -104,6 +105,10 @@ struct IntrinsicOptions {
   // Disables math functions that do not have the same results across e.g.
   // AMD vs. Intel CPUs.
   bool disable_platform_dependent_math = false;
+
+  bool Contains(absl::string_view feature) const {
+    return absl::StrContains(features, feature);
+  }
 };
 
 // Intrinsics are provided by XLA to expose special features (functions) that

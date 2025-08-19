@@ -363,6 +363,7 @@ xla_cc_test(
         ":test_matchers",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/log",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:JITLink",
@@ -386,6 +387,7 @@ xla_cc_test(
         "//xla/tsl/platform:test_benchmark",
         "//xla/tsl/platform:test_main",
         "@llvm-project//llvm:Target",
+        "@llvm-project//llvm:TargetParser",
         "@llvm-project//llvm:ir_headers",
     ],
 )
