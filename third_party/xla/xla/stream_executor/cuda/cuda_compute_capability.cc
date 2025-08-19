@@ -42,4 +42,13 @@ absl::StatusOr<CudaComputeCapability> CudaComputeCapability::FromString(
   }
   return CudaComputeCapability(major, minor);
 }
+
+CudaComputeCapability CudaComputeCapability::FromIntWithAutoFeatureExtension(
+    int major, int minor) {
+  // We don't do anything special here, as the extensions are hardcoded in
+  // `ShouldUsePtxExtension` anyway. This implementation will change with the
+  // integration of extensions into `CudaComputeCapability`.
+  return CudaComputeCapability(major, minor);
+}
+
 }  // namespace stream_executor
