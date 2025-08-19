@@ -118,14 +118,17 @@ CommandBufferConfig GetCommandBufferConfig(
   return config;
 }
 
+// Maps Thunk::Kind to DebugOptions::CommandBufferCmdType for checking
+// command buffer eligibility against the `--xla_gpu_enable_command_buffer`
+// flag. Returns std::nullopt if a thunk is not supported.
 std::optional<DebugOptions::CommandBufferCmdType> GetCommandBufferCmdType(
-    const Thunk* thunk) {
-  auto kind = thunk->kind();
+    const Thunk& thunk) {
+  auto kind = thunk.kind();
   switch (kind) {
     case Thunk::kCopy:
-      if (dynamic_cast<const DynamicMemcpyThunk*>(thunk)) {
+      if (dynamic_cast<const DynamicMemcpyThunk*>(&thunk)) {
         return DebugOptions::DYNAMIC_SLICE_COPY_FUSION;
-      } else if (dynamic_cast<const DeviceToDeviceCopyThunk*>(thunk)) {
+      } else if (dynamic_cast<const DeviceToDeviceCopyThunk*>(&thunk)) {
         return DebugOptions::FUSION;
       } else {
         // Only copy within the same device can be converted to command buffers.
@@ -168,49 +171,73 @@ bool AllThunksInSequentialThunkAreConvertible(
 size_t CheckAsyncRegion(absl::Span<std::unique_ptr<Thunk>> thunks,
                         const CommandBufferConfig& config);
 
-bool IsConvertible(const Thunk* thunk, const CommandBufferConfig& config) {
-  if (thunk->IsAsyncDone()) {
+// Returns true if the WhileThunk is convertible to a command buffer operation.
+// This requires that all thunks in both the condition and body sequences are
+// convertible.
+bool IsConvertible(const WhileThunk& while_thunk,
+                   const CommandBufferConfig& config) {
+  return AllThunksInSequentialThunkAreConvertible(
+             while_thunk.body_thunk_sequence(), config) &&
+         AllThunksInSequentialThunkAreConvertible(
+             while_thunk.condition_thunk_sequence(), config);
+}
+
+// Returns true if the ConditionalThunk is convertible to a command buffer
+// operation. This requires that all thunks in all branch sequences are
+// convertible.
+bool IsConvertible(const ConditionalThunk& conditional_thunk,
+                   const CommandBufferConfig& config) {
+  for (const auto& branch : conditional_thunk.branch_thunks()) {
+    if (!AllThunksInSequentialThunkAreConvertible(branch.get(), config)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// Returns true if the CustomCallThunk is convertible to a command buffer
+// operation. Checks if the custom call target is in the legacy allowlist or if
+// the registered FFI handler is compatible with command buffers.
+bool IsConvertible(const CustomCallThunk& custom_call_thunk,
+                   const CommandBufferConfig& config) {
+  const std::string& target_name = custom_call_thunk.target_name();
+  if (config.enabled_legacy_custom_call_targets.contains(target_name)) {
+    VLOG(3) << "Recording legacy custom call target " << target_name
+            << " into command buffer.";
     return true;
   }
+
+  // Check if FFI handler is compatible with command buffers.
+  absl::StatusOr<ffi::HandlerRegistration> registration =
+      ffi::FindHandler(target_name, "gpu");
+  return registration.ok()
+             ? ffi::IsCommandBufferCompatible(registration->traits)
+             : false;
+}
+
+// Returns true if the given Thunk is convertible to a command buffer operation
+// based on the provided `config`.
+bool IsConvertible(const Thunk& thunk, const CommandBufferConfig& config) {
+  // Done thunks are noops in terms of command buffer.
+  if (thunk.IsAsyncDone()) {
+    return true;
+  }
+
   auto cmd_type = GetCommandBufferCmdType(thunk);
   if (!cmd_type.has_value() || !config.enabled_commands.contains(*cmd_type)) {
     return false;  // Thunk kind is not supported for command buffer conversion.
   }
-  // We only convert WhileThunk if all of its thunks are convertible.
-  if (thunk->kind() == Thunk::kWhile) {
-    const auto* while_thunk = static_cast<const WhileThunk*>(thunk);
-    return AllThunksInSequentialThunkAreConvertible(
-               while_thunk->body_thunk_sequence(), config) &&
-           AllThunksInSequentialThunkAreConvertible(
-               while_thunk->condition_thunk_sequence(), config);
-  }
-  // We only convert ConditionalThunk if all of its thunks in all branches are
-  // convertible.
-  if (thunk->kind() == Thunk::kConditional) {
-    const auto* conditional_thunk = static_cast<const ConditionalThunk*>(thunk);
-    for (const auto& branch : conditional_thunk->branch_thunks()) {
-      if (!AllThunksInSequentialThunkAreConvertible(branch.get(), config)) {
-        return false;
-      }
-    }
-    return true;
+
+  if (thunk.kind() == Thunk::kWhile) {
+    return IsConvertible(static_cast<const WhileThunk&>(thunk), config);
   }
 
-  if (thunk->kind() == Thunk::kCustomCall) {
-    const auto* custom_call_thunk = static_cast<const CustomCallThunk*>(thunk);
-    const std::string& target_name = custom_call_thunk->target_name();
-    if (config.enabled_legacy_custom_call_targets.contains(target_name)) {
-      VLOG(3) << "Recording legacy custom call target " << target_name
-              << " into command buffer.";
-      return true;
-    }
+  if (thunk.kind() == Thunk::kConditional) {
+    return IsConvertible(static_cast<const ConditionalThunk&>(thunk), config);
+  }
 
-    // Check if FFI handler is compatible with command buffers.
-    absl::StatusOr<ffi::HandlerRegistration> registration =
-        ffi::FindHandler(target_name, "gpu");
-    return registration.ok()
-               ? ffi::IsCommandBufferCompatible(registration->traits)
-               : false;
+  if (thunk.kind() == Thunk::kCustomCall) {
+    return IsConvertible(static_cast<const CustomCallThunk&>(thunk), config);
   }
   return true;
 }
@@ -219,7 +246,7 @@ bool AllThunksInSequentialThunkAreConvertible(
     SequentialThunk* seq_thunk, const CommandBufferConfig& config) {
   for (size_t i = 0; i < seq_thunk->thunks().size(); ++i) {
     auto& thunk = seq_thunk->thunks()[i];
-    if (!IsConvertible(thunk.get(), config)) {
+    if (!IsConvertible(*thunk.get(), config)) {
       return false;
     }
     if (thunk->IsAsyncStart()) {
@@ -234,11 +261,14 @@ bool AllThunksInSequentialThunkAreConvertible(
   return true;
 }
 
-// Collect the sequence of thunks that contains the async start and its
-// corresponding done thunk. If there is another start thunk
-// between the original start and done, we may potentially extend the sequence
-// to include its corresponding done thunk. For example, if we call this
-// function on async-start_a in the following sequence:
+// Collects and returns the size of the shortest non-empty sequence of thunks
+// that form a valid async region.
+// The sequence considered as a valid async region if each start thunk has a
+// corresponding done thunk and vice versa, and all thunks in between are
+// convertible. If there is another start thunk between the original start and
+// done, we may potentially extend the sequence to include its corresponding
+// done thunk. For example, if we call this function on async-start_a in the
+// following sequence:
 //
 // async_start_a
 // async_start_b
@@ -247,9 +277,6 @@ bool AllThunksInSequentialThunkAreConvertible(
 //
 // The returned sequence will contain async_done_b. So that all async pairs
 // are captured by the same command buffer.
-
-// Returns the size of the shortest non-empty sequence of thunks that form a
-// valid async region.
 size_t CheckAsyncRegion(absl::Span<std::unique_ptr<Thunk>> thunks,
                         const CommandBufferConfig& config) {
   absl::flat_hash_set<AsyncEventsUniqueId> unpaired_ids_of_async_starts;
@@ -258,7 +285,7 @@ size_t CheckAsyncRegion(absl::Span<std::unique_ptr<Thunk>> thunks,
     auto& thunk = thunks[i];
 
     // Check if thunk is convertible
-    if (!IsConvertible(thunk.get(), config)) {
+    if (!IsConvertible(*thunk, config)) {
       return 0;  // All thunks in the region must be convertible.
     }
 
@@ -295,84 +322,99 @@ absl::Span<std::unique_ptr<Thunk>> CollectAndCheckAsyncRegion(
   return thunks.subspan(0, CheckAsyncRegion(thunks, config));
 }
 
+absl::StatusOr<CommandBufferCmdExecutor::SynchronizationMode>
+GetSynchronizationMode(
+    DebugOptions::CommandBufferSchedulingMode scheduling_mode) {
+  switch (scheduling_mode) {
+    case DebugOptions::SERIALIZE:
+      return CommandBufferCmdExecutor::SynchronizationMode::kSerialize;
+    case DebugOptions::CONCURRENT:
+      return CommandBufferCmdExecutor::SynchronizationMode::kConcurrent;
+    case DebugOptions::LHS:
+      return CommandBufferCmdExecutor::SynchronizationMode::kLHS;
+    default:
+      return Internal("Unsupported command buffer scheduling mode: %d",
+                      scheduling_mode);
+  }
+}
+
+absl::StatusOr<std::unique_ptr<CommandBufferThunk>>
+ConvertThunksToCommandBuffer(
+    std::vector<std::unique_ptr<Thunk>> thunks_to_convert,
+    CommandBufferCmdExecutor::SynchronizationMode synchronization_mode,
+    const DebugOptions& debug_options) {
+  TF_ASSIGN_OR_RETURN(
+      CommandBufferCmdExecutor cmd_executor,
+      ConvertToCommands(thunks_to_convert,
+                        ConvertToCommandsOptions{synchronization_mode}));
+
+  Thunk::ThunkInfo thunk_info;
+  thunk_info.profile_annotation = "command_buffer";
+  return std::make_unique<CommandBufferThunk>(
+      std::move(cmd_executor), std::move(thunk_info),
+      std::make_unique<SequentialThunk>(Thunk::ThunkInfo(),
+                                        std::move(thunks_to_convert)),
+      debug_options.xla_enable_command_buffers_during_profiling());
+}
+
+absl::Status FlushCommandBuffer(
+    CommandBufferCmdExecutor::SynchronizationMode synchronization_mode,
+    const DebugOptions& debug_options,
+    std::vector<std::unique_ptr<Thunk>>& current_command_buffer_thunks,
+    std::vector<std::unique_ptr<Thunk>>& new_thunks, bool& changed) {
+  // If we don't have enough thunks to form a command buffer, we just add
+  // them to the new thunks sequence as is.
+  if (current_command_buffer_thunks.size() <
+      std::max(1, debug_options.xla_gpu_graph_min_graph_size())) {
+    new_thunks.insert(
+        new_thunks.end(),
+        std::make_move_iterator(current_command_buffer_thunks.begin()),
+        std::make_move_iterator(current_command_buffer_thunks.end()));
+    current_command_buffer_thunks.clear();
+    return absl::OkStatus();
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      auto cmd_buffer_thunk,
+      ConvertThunksToCommandBuffer(std::move(current_command_buffer_thunks),
+                                   synchronization_mode, debug_options));
+  current_command_buffer_thunks.clear();
+
+  // Check that the command buffer thunk is not empty
+  assert(cmd_buffer_thunk->thunks() != nullptr &&
+         !cmd_buffer_thunk->thunks()->thunks().empty());
+  new_thunks.push_back(std::move(cmd_buffer_thunk));
+  changed = true;
+  return absl::OkStatus();
+}
+
 }  // namespace
 
 absl::StatusOr<bool> CommandBufferConversionPass::Run(
-    SequentialThunk* root_thunk_ptr, const DebugOptions& debug_options,
+    SequentialThunk* root_thunk, const DebugOptions& debug_options,
     const se::DeviceDescription& device_info) {
   tsl::profiler::TraceMe traceme("CommandBufferConversionPass");
 
   CommandBufferConfig config =
       GetCommandBufferConfig(debug_options, device_info);
 
-  CommandBufferCmdExecutor::SynchronizationMode synchronization_mode;
-  auto mode = debug_options.xla_gpu_command_buffer_scheduling_mode();
-  switch (mode) {
-    case DebugOptions::SERIALIZE:
-      synchronization_mode =
-          CommandBufferCmdExecutor::SynchronizationMode::kSerialize;
-      break;
-    case DebugOptions::CONCURRENT:
-      synchronization_mode =
-          CommandBufferCmdExecutor::SynchronizationMode::kConcurrent;
-      break;
-    case DebugOptions::LHS:
-      synchronization_mode =
-          CommandBufferCmdExecutor::SynchronizationMode::kLHS;
-      break;
-    default:
-      return Internal("Unsupported command buffer scheduling mode: %d", mode);
-  }
+  TF_ASSIGN_OR_RETURN(
+      CommandBufferCmdExecutor::SynchronizationMode synchronization_mode,
+      GetSynchronizationMode(
+          debug_options.xla_gpu_command_buffer_scheduling_mode()));
 
   bool changed = false;
 
-  auto convert_thunks_to_command_buffer =
-      [&](std::vector<std::unique_ptr<Thunk>>& thunks_to_convert)
-      -> absl::StatusOr<std::unique_ptr<CommandBufferThunk>> {
-    TF_ASSIGN_OR_RETURN(
-        CommandBufferCmdExecutor cmd_executor,
-        ConvertToCommands(thunks_to_convert,
-                          ConvertToCommandsOptions{synchronization_mode}));
-
-    Thunk::ThunkInfo thunk_info;
-    thunk_info.profile_annotation = "command_buffer";
-    return std::make_unique<CommandBufferThunk>(
-        std::move(cmd_executor), std::move(thunk_info),
-        std::make_unique<SequentialThunk>(Thunk::ThunkInfo(),
-                                          std::move(thunks_to_convert)),
-        debug_options.xla_enable_command_buffers_during_profiling());
-  };
-
   std::vector<std::unique_ptr<Thunk>> current_command_buffer_thunks;
-
   std::vector<std::unique_ptr<Thunk>> new_thunks;
 
   auto flush_command_buffer = [&]() -> absl::Status {
-    // If we don't have enough thunks to form a command buffer, we just add
-    // them to the new thunks sequence as is.
-    if (current_command_buffer_thunks.size() <
-        std::max(1, debug_options.xla_gpu_graph_min_graph_size())) {
-      new_thunks.insert(
-          new_thunks.end(),
-          std::make_move_iterator(current_command_buffer_thunks.begin()),
-          std::make_move_iterator(current_command_buffer_thunks.end()));
-      current_command_buffer_thunks.clear();
-      return absl::OkStatus();
-    }
-
-    TF_ASSIGN_OR_RETURN(
-        auto cmd_buffer_thunk,
-        convert_thunks_to_command_buffer(current_command_buffer_thunks));
-    // Check that the command buffer thunk is not empty
-    assert(cmd_buffer_thunk->thunks() != nullptr &&
-           !cmd_buffer_thunk->thunks()->thunks().empty());
-    new_thunks.push_back(std::move(cmd_buffer_thunk));
-    changed = true;
-    current_command_buffer_thunks.clear();
-    return absl::OkStatus();
+    return FlushCommandBuffer(synchronization_mode, debug_options,
+                              current_command_buffer_thunks, new_thunks,
+                              changed);
   };
 
-  auto& original_thunks = root_thunk_ptr->thunks();
+  auto& original_thunks = root_thunk->thunks();
 
   for (size_t i = 0; i < original_thunks.size(); ++i) {
     auto& thunk = original_thunks[i];
@@ -394,15 +436,13 @@ absl::StatusOr<bool> CommandBufferConversionPass::Run(
         i += region.size() - 1;
         continue;
       }
-    } else if (IsConvertible(thunk.get(), config) && !thunk->IsAsyncDone()) {
+    } else if (IsConvertible(*thunk.get(), config) && !thunk->IsAsyncDone()) {
       // Check if thunk is convertible and not an async done: async done thunks
       // can be only added to the current_command_buffer_thunks as part of a
       // valid async regions.
-
       current_command_buffer_thunks.push_back(std::move(thunk));
       continue;
     }
-
     if (thunk->kind() == Thunk::kWhile) {
       // If a `WhileThunk` itself is not eligible for conversion into a
       // command buffer, we attempt to convert thunks within its body
@@ -420,10 +460,10 @@ absl::StatusOr<bool> CommandBufferConversionPass::Run(
     new_thunks.push_back(std::move(thunk));
   }
 
+  // Flush the last command buffer.
   TF_RETURN_IF_ERROR(flush_command_buffer());
 
-  root_thunk_ptr->thunks() = std::move(new_thunks);
-
+  root_thunk->thunks() = std::move(new_thunks);
   return changed;
 }
 
