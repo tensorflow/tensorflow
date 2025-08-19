@@ -2566,6 +2566,67 @@ TEST_P(SpmdPartitioningTest, LargeEdgePadAlongCrossPartitionDimension) {
   EXPECT_THAT(root, op::DynamicSlice(op::Pad(all_reduce, _), _, _));
 }
 
+TEST_P(SpmdPartitioningTest, LargeRightPadOnSliceHaloExchange) {
+  const char* const hlo_string = R"(
+  HloModule module
+
+  ENTRY main() -> f64[11] {
+        %constant.946 = f64[] constant(0)
+        %p.0 = f64[12272]{0} parameter(0),
+           sharding={devices=[2]<=[2,1]T(1,0)}
+        %slice.1057 = f64[1]{0} slice(%p.0),
+           slice={[12271:12272]},
+           sharding={devices=[2]<=[2,1]T(1,0)}
+        ROOT %pad.1059 = f64[11]{0} pad(%slice.1057, %constant.946),
+           padding=0_10, sharding={devices=[2]<=[2,1]T(1,0)}
+      }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      AllOf(op::Shape("f64[6]"),
+            op::Select(op::Compare(),
+                       op::DynamicSlice(
+                           op::Pad(op::Concatenate(_, _, op::Broadcast(_)),
+                                   op::Constant()),
+                           _),
+                       op::Broadcast(_))));
+}
+
+TEST_P(SpmdPartitioningTest, LargeLeftPadOnSliceHaloExchange) {
+  const char* const hlo_string = R"(
+  HloModule module
+
+  ENTRY main() -> f64[11] {
+        %constant.946 = f64[] constant(0)
+        %p.0 = f64[12272]{0} parameter(0),
+           sharding={devices=[2]<=[2,1]T(1,0)}
+        %slice.1057 = f64[1]{0} slice(%p.0),
+           slice={[12271:12272]},
+           sharding={devices=[2]<=[2,1]T(1,0)}
+        ROOT %pad.1059 = f64[11]{0} pad(%slice.1057, %constant.946),
+           padding=10_0, sharding={devices=[2]<=[2,1]T(1,0)}
+      }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      AllOf(op::Shape("f64[6]"),
+            op::Select(_,
+                       op::DynamicSlice(
+                           op::Pad(op::Concatenate(op::Broadcast(_),
+                                                   op::CollectivePermute(), _),
+                                   op::Constant()),
+                           _),
+                       op::Broadcast(_))));
+}
+
 TEST_P(SpmdPartitioningTest, PadAlongPartitionedDimensionWithInteriorPadding) {
   absl::string_view hlo_string = R"(
 HloModule module
