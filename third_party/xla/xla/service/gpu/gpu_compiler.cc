@@ -514,11 +514,8 @@ GpuThunkAotCompilationResult::LoadExecutable(
   TF_ASSIGN_OR_RETURN(auto output_info,
                       GetOutputInfo(*hlo_module, *buffer_assignment));
   const Shape& output_shape = hlo_module->result_shape();
-  int64_t debug_buffer_assignment_show_max =
-      hlo_module->config()
-          .debug_options()
-          .xla_debug_buffer_assignment_show_max();
-
+  DebugOptions debug_options = hlo_module->config().debug_options();
+  std::string hlo_module_name = hlo_module->name();
   {
     tsl::profiler::TraceMe traceme("CreateGpuExecutable");
     std::unique_ptr<GpuAliasInfo> alias_info =
@@ -529,16 +526,16 @@ GpuThunkAotCompilationResult::LoadExecutable(
         /*dnn_compiled_graphs=*/
         BinaryMap(proto_.dnn_compiled_graphs().cbegin(),
                   proto_.dnn_compiled_graphs().cend()),
-        /*gpu_version=*/gpu_device_info.gpu_compute_capability(),
         /*executable=*/ir_emitter->ConsumeThunkSequence(),
         /*constants=*/std::move(constants),
         /*output_info=*/std::move(output_info),
-        /*module_name=*/std::move(hlo_module->name()),
+        /*module_name=*/std::move(hlo_module_name),
         /*output_shape=*/std::move(output_shape),
         /*mlir_allocations=*/std::nullopt,
         /*buffer_assignment=*/std::move(buffer_assignment),
         /*alias_info=*/std::move(alias_info),
-        /*debug_buffer_assignment_show_max=*/debug_buffer_assignment_show_max,
+        /*debug_options=*/std::move(debug_options),
+        /*device_description=*/gpu_device_info,
         /*debug_module=*/std::move(hlo_module),
         /*enable_debug_info_manager=*/true});
   }
@@ -1453,7 +1450,7 @@ absl::Status GpuCompiler::OptimizeHloModule(
 
   TF_RETURN_IF_ERROR(RunPreSPMDPartitionerPasses(hlo_module));
   // Set max_windowed_einsum_iteration to slice_size, as there will be
-  // siginificant overhead when scaled beyond the maximum size of the
+  // significant overhead when scaled beyond the maximum size of the
   // fast-interconnect domain.
   TF_RETURN_IF_ERROR(
       RunSPMDPasses(hlo_module, gpu_target_config, alias_info,
@@ -2500,19 +2497,6 @@ GpuCompiler::CompileToBackendResult(
                                    std::move(compile_module_results)};
 }
 
-absl::StatusOr<bool> RunThunkPasses(SequentialThunk* root_thunk,
-                                    const DebugOptions& debug_options,
-                                    const se::DeviceDescription& device_info) {
-  ThunkPassPipeline pipeline("thunk-passes");
-  pipeline.AddPass(std::make_unique<CommandBufferConversionPass>());
-  TF_ASSIGN_OR_RETURN(bool changed,
-                      pipeline.Run(root_thunk, debug_options, device_info));
-  if (changed) {
-    LOG(INFO) << "Thunk passes changed the thunk tree.";
-  }
-  return changed;
-}
-
 absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
     const CompileOptions& options) {
@@ -2593,26 +2577,11 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   // read a few config values from the module, before it becomes invalid.
   bool embed_ir_in_executable =
       module->config().debug_options().xla_embed_ir_in_executable();
-  int64_t debug_buffer_assignment_show_max =
-      module->config().debug_options().xla_debug_buffer_assignment_show_max();
 
   tsl::profiler::ScopedAnnotation annotation([&] {
     return absl::StrFormat("XlaCreateGpuExecutable:#module=%s#",
                            module->name());
   });
-
-  if (debug_opts.xla_gpu_experimental_enable_command_buffer_on_thunks()) {
-    TF_ASSIGN_OR_RETURN(
-        bool thunk_sequence_changed,
-        RunThunkPasses(res.compile_module_results.executable.get(), debug_opts,
-                       gpu_device_info));
-
-    if (thunk_sequence_changed && DumpingEnabledForHloModule(*module)) {
-      DumpToFileInDirOrStdout(
-          *module, "", "thunk_sequence_after_thunk_passes.txt",
-          res.compile_module_results.executable->ToString(/*indent=*/0));
-    }
-  }
 
   std::unique_ptr<GpuAliasInfo> alias_info = GetAliasInfo(gpu_device_info);
   const GpuAliasInfo* alias_info_ptr = alias_info.get();
@@ -2626,7 +2595,6 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
           /*binary=*/std::move(res.backend_result.binary),
           /*dnn_compiled_graphs=*/
           std::move(dnn_compiled_graphs),
-          /*gpu_version=*/gpu_device_info.gpu_compute_capability(),
           /*executable=*/std::move(res.compile_module_results.executable),
           /*constants=*/std::move(res.compile_module_results.constants),
           /*output_info=*/std::move(res.compile_module_results.output_info),
@@ -2639,8 +2607,8 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
           /*buffer_assignment=*/
           std::move(res.compile_module_results.buffer_assignment),
           /*alias_info=*/std::move(alias_info),
-          /*debug_buffer_assignment_show_max=*/
-          debug_buffer_assignment_show_max,
+          /*debug_options=*/std::move(debug_opts),
+          /*device_description=*/gpu_device_info,
           /*debug_module=*/options.is_autotuning_compilation
               ? std::unique_ptr<HloModule>()
               : std::move(module),

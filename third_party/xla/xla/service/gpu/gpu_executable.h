@@ -97,7 +97,6 @@ class GpuExecutable : public Executable {
     std::string asm_text;
     std::vector<uint8_t> binary;
     BinaryMap dnn_compiled_graphs;
-    se::GpuComputeCapability gpu_version;
     std::unique_ptr<SequentialThunk> executable;
     std::vector<ConstantInfo> constants;
     absl::flat_hash_map<ShapeIndex, OutputInfo> output_info;
@@ -106,7 +105,8 @@ class GpuExecutable : public Executable {
     std::optional<std::vector<BufferAllocation>> mlir_allocations;
     std::unique_ptr<const BufferAssignment> buffer_assignment;
     std::unique_ptr<GpuAliasInfo> alias_info;
-    int64_t debug_buffer_assignment_show_max;
+    DebugOptions debug_options;
+    se::DeviceDescription device_description;
     std::unique_ptr<HloModule> debug_module = nullptr;
     bool enable_debug_info_manager = true;
   };
