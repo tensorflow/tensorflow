@@ -364,6 +364,7 @@ cc_library(
         ":sharding_utils",
         "//tensorflow/compiler/mlir/tfrt/transforms/ifrt:ifrt_types",
         "//tensorflow/core:framework",
+        "//tensorflow/core/platform:context",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
