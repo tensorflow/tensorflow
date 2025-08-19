@@ -936,60 +936,6 @@ PjRtFuture<> StreamExecutorGpuClient::CopyRawSubBufferToHost(
       });
 }
 
-tsl::RCReference<PjRtDeviceEvent> StreamExecutorGpuClient::CopyRawHostToDevice(
-    LocalDeviceState* local_device,
-    tsl::RCReference<RawSEDeviceMemory> device_buffer, const void* src,
-    int64_t offset, int64_t transfer_size) {
-  auto promise = PjRtFuture<>::CreatePromise();
-  se::Stream* stream = local_device->host_to_device_stream();
-  auto device_event = BufferSequencingEvent::Create(thread_pool());
-  thread_pool()->Schedule([this, device_event, local_device, stream,
-                           buffer = std::move(device_buffer), src, offset,
-                           transfer_size, promise]() mutable {
-    se::DeviceMemoryBase sub_buffer = buffer->mem();
-    if (transfer_size < sub_buffer.size()) {
-      sub_buffer = sub_buffer.GetByteSlice(offset, transfer_size);
-    }
-    auto status = stream->Memcpy(&sub_buffer, src, transfer_size);
-    if (status.ok()) {
-      status = AllocateAndRecordEvent(device_event, local_device, stream);
-    }
-    if (!status.ok()) {
-      SetEventAsError(device_event, status);
-    }
-  });
-  return tsl::MakeRef<PjRtStreamExecutorDeviceEvent>(std::move(device_event),
-                                                     "StreamExecutorGpuClient",
-                                                     "CopyRawHostToDevice");
-}
-
-tsl::RCReference<PjRtDeviceEvent> StreamExecutorGpuClient::CopyRawDeviceToHost(
-    LocalDeviceState* local_device,
-    tsl::RCReference<RawSEDeviceMemory> device_buffer, void* dst,
-    int64_t offset, int64_t transfer_size) {
-  auto promise = PjRtFuture<>::CreatePromise();
-  se::Stream* stream = local_device->GetDeviceToHostStream();
-  auto device_event = BufferSequencingEvent::Create(thread_pool());
-  thread_pool()->Schedule([this, device_event, local_device, stream,
-                           buffer = std::move(device_buffer), dst, offset,
-                           transfer_size, promise]() mutable {
-    se::DeviceMemoryBase sub_buffer = buffer->mem();
-    if (transfer_size < sub_buffer.size()) {
-      sub_buffer = sub_buffer.GetByteSlice(offset, transfer_size);
-    }
-    auto status = stream->Memcpy(dst, sub_buffer, transfer_size);
-    if (status.ok()) {
-      status = AllocateAndRecordEvent(device_event, local_device, stream);
-    }
-    if (!status.ok()) {
-      SetEventAsError(device_event, status);
-    }
-  });
-  return tsl::MakeRef<PjRtStreamExecutorDeviceEvent>(std::move(device_event),
-                                                     "StreamExecutorGpuClient",
-                                                     "CopyRawDeviceToHost");
-}
-
 absl::Status StreamExecutorGpuClient::UpdateCompileOptionsInternal(
     CompileOptions* options, ExecutableExtras* returned_extras,
     bool lookup_addressable_devices) {

@@ -65,7 +65,14 @@ class PjRtStreamExecutorRawBuffer : public CommonPjRtRawBuffer {
         memory_space_(memory_space),
         local_device_(local_device),
         device_buffer_(device_buffer) {}
+
   PjRtMemorySpace* memory_space() const override { return memory_space_; }
+
+  LocalDeviceState* local_device() const { return local_device_; }
+
+  const tsl::RCReference<RawSEDeviceMemory>& device_buffer() const {
+    return device_buffer_;
+  }
 
   void* GetHostPointer() const override {
     return client_->IsOnCpu(memory_space()) ? device_buffer_->opaque()

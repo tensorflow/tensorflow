@@ -602,6 +602,7 @@ cc_library(
     deps = [
         ":abstract_tracked_device_buffer",
         ":common_pjrt_client",
+        ":device_event",
         ":event_pool",
         ":host_callback",
         ":host_memory_spaces",
