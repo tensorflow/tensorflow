@@ -59,12 +59,14 @@ void addSdyRoundTripExportPipeline(mlir::OpPassManager& pm,
 
 void addSdyRoundTripImportPipeline(mlir::OpPassManager& pm,
                                    bool enableConstantImport,
+                                   bool importFuncCalls,
                                    bool importOnlyUninlineableFuncCalls,
                                    bool liftAndDedupMeshes) {
   addCommonPreImportPasses(pm, enableConstantImport);
   pm.addPass(createSdyRoundTripImportShardyAttrsPass());
   pm.addPass(createSdyRoundTripShardMapImportPass());
-  addCommonPostImportPasses(pm, importOnlyUninlineableFuncCalls);
+  addCommonPostImportPasses(pm, importFuncCalls,
+                            importOnlyUninlineableFuncCalls);
   if (liftAndDedupMeshes) {
     // Lift and dedup meshes required here because of sdy shardings added
     // directly to hlo in tf2xla.
@@ -105,6 +107,9 @@ struct SdyRoundTripImportPipelineOptions
   Option<bool> enableConstantImport{*this, "enable-constant-import",
                                     llvm::cl::desc("Enable constant import."),
                                     llvm::cl::init(true)};
+  Option<bool> importFuncCalls{*this, "import-func-calls",
+                               llvm::cl::desc("Import func calls."),
+                               llvm::cl::init(false)};
   // TODO(b/430894772): Drop the flag and import all func calls always.
   Option<bool> importOnlyUninlineableFuncCalls{
       *this, "import-only-uninlineable-func-calls",
@@ -117,9 +122,9 @@ struct SdyRoundTripImportPipelineOptions
 
 void sdyRoundTripImportPipeline(
     mlir::OpPassManager& pm, const SdyRoundTripImportPipelineOptions& options) {
-  addSdyRoundTripImportPipeline(pm, options.enableConstantImport,
-                                options.importOnlyUninlineableFuncCalls,
-                                options.liftAndDedupMeshes);
+  addSdyRoundTripImportPipeline(
+      pm, options.enableConstantImport, options.importFuncCalls,
+      options.importOnlyUninlineableFuncCalls, options.liftAndDedupMeshes);
 }
 
 }  // namespace

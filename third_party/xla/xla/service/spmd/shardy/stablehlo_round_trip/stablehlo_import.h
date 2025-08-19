@@ -64,8 +64,7 @@ void registerStablehloImportShardingsPass();
 void registerStablehloImportPipeline();
 
 // Add the xla-sdy-stablehlo-import-pipeline in `pm`. The pipeline, including a
-// sequence of passes, imports a StableHLO module into the SDY (Shardonnay)
-// dialect.
+// sequence of passes, imports a StableHLO module into the SDY (Shardy) dialect.
 //
 // `allowPropagationToArgs` and `allowPropagationToResults` indicate for each
 // argument and result of the main function respectively, whether their existing
@@ -77,6 +76,7 @@ void registerStablehloImportPipeline();
 void addStablehloImportPipeline(mlir::OpPassManager& pm,
                                 mlir::ArrayRef<bool> allowPropagationToArgs,
                                 mlir::ArrayRef<bool> allowPropagationToResults,
+                                bool importFuncCalls = true,
                                 bool importOnlyUninlineableFuncCalls = true);
 
 // Creates ImportShardingsPass that converts `mhlo.sharding` to `mesh` and
