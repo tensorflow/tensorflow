@@ -28,9 +28,15 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/profiler/utils/xplane_schema.h"
+#include "xla/tsl/profiler/utils/xplane_utils.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace xla::gpu {
+
+using ::tensorflow::profiler::XLine;
+using ::tensorflow::profiler::XPlane;
+using ::tensorflow::profiler::XSpace;
 
 // Checks if an event is a memcpy operation.
 bool IsMemcpy(const tensorflow::profiler::XEvent& event,
@@ -43,8 +49,8 @@ bool IsMemcpy(const tensorflow::profiler::XEvent& event,
   return false;
 }
 
-absl::StatusOr<LineStats> ProcessLineEvents(
-    const tensorflow::profiler::XLine& line, int64_t memcpy_details_id) {
+absl::StatusOr<LineStats> ProcessLineEvents(const XLine& line,
+                                            int64_t memcpy_details_id) {
   LineStats stats;
   for (const auto& event : line.events()) {
     stats.total_time_ps += event.duration_ps();
@@ -55,8 +61,7 @@ absl::StatusOr<LineStats> ProcessLineEvents(
   return stats;
 }
 
-absl::StatusOr<LineStats> ProcessLineEvents(
-    const tensorflow::profiler::XLine& line) {
+absl::StatusOr<LineStats> ProcessLineEvents(const XLine& line) {
   LineStats line_stats;
   for (const auto& event : line.events()) {
     line_stats.total_time_ps += event.duration_ps();
@@ -64,8 +69,7 @@ absl::StatusOr<LineStats> ProcessLineEvents(
   return line_stats;
 }
 
-absl::StatusOr<int64_t> GetTotalTimePs(
-    const tensorflow::profiler::XPlane& plane) {
+absl::StatusOr<int64_t> GetTotalTimePs(const XPlane& plane) {
   int64_t total_time_ps = 0;
   for (const auto& line : plane.lines()) {
     TF_ASSIGN_OR_RETURN(xla::gpu::LineStats line_stats,
@@ -75,46 +79,38 @@ absl::StatusOr<int64_t> GetTotalTimePs(
   return total_time_ps;
 }
 
-absl::StatusOr<int64_t> GetWallTimePs(
-    const tensorflow::profiler::XSpace& xspace) {
+absl::StatusOr<int64_t> GetWallTimePs(const XSpace& xspace) {
   int64_t wall_time_ps = 0;
-  for (const tensorflow::profiler::XPlane& plane : xspace.planes()) {
-    if (plane.name() != "Task Environment") {
-      continue;
+  if (const XPlane* env_plane = tsl::profiler::FindPlaneWithName(
+          xspace, tsl::profiler::kTaskEnvPlaneName)) {
+    std::optional<int64_t> start_time_ns;
+    std::optional<int64_t> stop_time_ns;
+    tsl::profiler::XPlaneVisitor visitor(env_plane, {},
+                                         {tsl::profiler::FindTaskEnvStatType});
+    if (auto stat = visitor.GetStat(
+            tsl::profiler::TaskEnvStatType::kEnvProfileStartTime)) {
+      start_time_ns = stat->UintValue();
     }
-    int64_t start_time_ns = 0;
-    int64_t stop_time_ns = 0;
-    absl::flat_hash_map<std::string, int64_t> stat_metadata_map;
-    for (const auto& stat_metadata : plane.stat_metadata()) {
-      stat_metadata_map[stat_metadata.second.name()] =
-          stat_metadata.second.id();
-    }
-
-    for (const auto& stat : plane.stats()) {
-      if (stat.metadata_id() == stat_metadata_map["profile_start_time"]) {
-        start_time_ns = stat.uint64_value();
-      } else if (stat.metadata_id() == stat_metadata_map["profile_stop_time"]) {
-        stop_time_ns = stat.uint64_value();
-      }
+    if (auto stat = visitor.GetStat(
+            tsl::profiler::TaskEnvStatType::kEnvProfileStopTime)) {
+      stop_time_ns = stat->UintValue();
     }
 
-    if (start_time_ns > 0 && stop_time_ns > 0) {
-      wall_time_ps = (stop_time_ns - start_time_ns) * 1000;  // ns to ps
+    if (start_time_ns.has_value() && stop_time_ns.has_value()) {
+      wall_time_ps = (*stop_time_ns - *start_time_ns) * 1000;  // ns to ps
     }
-    break;
   }
   return wall_time_ps;
 }
 
-absl::StatusOr<GpuDeviceStats> CalculateGpuDeviceStats(
-    const tensorflow::profiler::XSpace& xspace) {
+absl::StatusOr<GpuDeviceStats> CalculateGpuDeviceStats(const XSpace& xspace) {
   GpuDeviceStats result;
   int64_t total_time_ps = 0;
   int64_t memcpy_time_ps = 0;
   absl::string_view device_name = "/device:GPU:0";
 
   // Iterate over planes to find the device
-  for (const tensorflow::profiler::XPlane& plane : xspace.planes()) {
+  for (const XPlane& plane : xspace.planes()) {
     if (plane.name() != device_name) {
       continue;  // Skip planes that aren't the target device.
     }
@@ -152,18 +148,14 @@ absl::StatusOr<GpuDeviceStats> CalculateGpuDeviceStats(
   return result;
 }
 
-absl::StatusOr<xla::gpu::CpuStats> CalculateCpuStats(
-    const tensorflow::profiler::XSpace& xspace) {
+absl::StatusOr<xla::gpu::CpuStats> CalculateCpuStats(const XSpace& xspace) {
   xla::gpu::CpuStats result;
 
-  // Iterate over planes to find the CPU plane
-  for (const tensorflow::profiler::XPlane& plane : xspace.planes()) {
-    if (plane.name() != "/host:CPU") {
-      continue;  // Skip planes that aren't the target device.
-    }
-    TF_ASSIGN_OR_RETURN(int64_t total_time_ps, GetTotalTimePs(plane));
+  // Process the host CPU plane
+  if (const XPlane* host_plane = tsl::profiler::FindPlaneWithName(
+          xspace, tsl::profiler::kHostThreadsPlaneName)) {
+    TF_ASSIGN_OR_RETURN(int64_t total_time_ps, GetTotalTimePs(*host_plane));
     result.cpu_time_us = static_cast<double>(total_time_ps) / 1e6;
-    break;  // Assuming only one /host:CPU plane
   }
 
   // Calculate Wall Time from the "Task Environment" plane
@@ -180,7 +172,7 @@ absl::Status Run(absl::string_view input_file, absl::string_view device_type) {
   LOG(INFO) << "Input file: " << input_file;
   // Read the XSpace protobuf
   tsl::Env* env = tsl::Env::Default();
-  tensorflow::profiler::XSpace xspace_proto;
+  XSpace xspace_proto;
   TF_RETURN_IF_ERROR(
       tsl::ReadBinaryProto(env, std::string(input_file), &xspace_proto));
 
