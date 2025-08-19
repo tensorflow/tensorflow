@@ -272,148 +272,27 @@ diff --ruN a/stablehlo/stablehlo/dialect/Base.td b/stablehlo/stablehlo/dialect/B
 diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
 --- stablehlo/stablehlo/dialect/StablehloOps.cpp
 +++ stablehlo/stablehlo/dialect/StablehloOps.cpp
-@@ -535,6 +535,140 @@
+@@ -535,7 +535,18 @@
      }
    }
  
-+  return verifyKnownCustomCalls();
-+}
-+
-+// A few custom calls are used throughout the ecosystem, this verification aims
-+// to allow erroring in StableHLO for these custom calls.
-+LogicalResult CustomCallOp::verifyKnownCustomCalls() {
-+  // We have already verified that the output_operand_aliases have consistent
-+  // types and valid indices. Here we verify buffer releated special custom_call
-+  // targets, and also verify that buffer operands used non-special custom_call
-+  // ops meet this requirements:
-+  //   A result with a buffer type should be mentioned in one pair of
-+  //   output-operand-aliasing and an operand with a buffer type can only appear
-+  //   at most once in output-operand-aliasing.
-+  if (getCallTargetName() == kCreateBufferCustomCallTarget) {
-+    if (!getInputs().empty()) {
-+      return emitOpError()
-+             << "CreateBuffer custom_call shouldn't have any inputs";
-+    }
-+    if (getNumResults() != 1) {
-+      return emitOpError() << "CreateBuffer custom_call should have one result";
-+    }
-+    if (!isa<MemRefType>(getResult(0).getType())) {
-+      return emitOpError()
-+             << "CreateBuffer custom_call should have a memref result";
-+    }
-+    return success();
-+  }
-+
-+  if (getCallTargetName() == kPinCustomCallTarget) {
-+    if (getInputs().size() != 1) {
-+      return emitOpError() << "Pin custom_call should have one input";
-+    }
-+    Type inputType = getInputs()[0].getType();
-+    if (!isa<TensorType>(inputType)) {
-+      return emitOpError() << "Pin custom_call should have a tensor input";
-+    }
-+    if (getNumResults() != 1) {
-+      return emitOpError() << "Pin custom_call should have one output";
-+    }
-+    Type outputType = getResult(0).getType();
-+    if (!isa<MemRefType>(outputType)) {
-+      return emitOpError() << "Pin custom_call should have a memref output";
-+    }
-+
-+    if (failed(verifyCompatibleShape(inputType, outputType)) ||
-+        getElementTypeOrSelf(inputType) != getElementTypeOrSelf(outputType)) {
-+      return emitOpError()
-+             << "Pin custom_call should have compatible input and output types";
-+    }
-+
-+    return success();
-+  }
-+
-+  if (getCallTargetName() == kUnpinCustomCallTarget) {
-+    if (getInputs().size() != 1) {
-+      return emitOpError() << "Unpin custom_call should have one input";
-+    }
-+    Type inputType = getInputs()[0].getType();
-+    if (!isa<MemRefType>(inputType)) {
-+      return emitOpError() << "Unpin custom_call should have a memref input";
-+    }
-+    if (getNumResults() != 1) {
-+      return emitOpError() << "Unpin custom_call should have one output";
-+    }
-+    Type outputType = getResult(0).getType();
-+    if (!isa<TensorType>(outputType)) {
-+      return emitOpError() << "Unpin custom_call should have a tensor output";
-+    }
-+
-+    if (failed(verifyCompatibleShape(inputType, outputType)) ||
-+        getElementTypeOrSelf(inputType) != getElementTypeOrSelf(outputType)) {
-+      return emitOpError() << "Unpin custom_call should have compatible input "
-+                              "and output types";
-+    }
-+
-+    return success();
-+  }
-+
-+  auto getOperandPartType = [&](int64_t operandIndex,
-+                                ::llvm::ArrayRef<int64_t> operandTupleIndices) {
-+    Type operandPart = getOperand(operandIndex).getType();
-+    for (auto i : operandTupleIndices) {
-+      operandPart = cast<TupleType>(operandPart).getType(i);
-+    }
-+    return operandPart;
-+  };
-+  auto printIndices = [](ArrayRef<int64_t> indices) {
-+    std::vector<std::string> stringIndices;
-+    llvm::transform(indices, std::back_inserter(stringIndices),
-+                    [](int v) { return llvm::Twine(v).str(); });
-+    return "[" + llvm::join(stringIndices, ", ") + "]";
-+  };
-+
-+  auto aliasArrayAttr = getOutputOperandAliases();
-+  std::set<std::pair<int64_t, std::vector<int64_t>>> operandParts;
-+  std::set<std::vector<int64_t>> outputParts;
+-  return success();
++  std::vector<::llvm::ArrayRef<int64_t>> outputTupleIndicesArray;
++  std::vector<int64_t> operandIndicesArray;
++  std::vector<::llvm::ArrayRef<int64_t>> operandTupleIndicesArray;
 +  for (auto attr : aliasArrayAttr) {
 +    auto alias = cast<OutputOperandAliasAttr>(attr);
-+    auto outputTupleIndices = alias.getOutputTupleIndices();
-+    auto operandIndex = alias.getOperandIndex();
-+    auto operandTupleIndices = alias.getOperandTupleIndices();
-+    Type operandPartType =
-+        getOperandPartType(operandIndex, operandTupleIndices);
-+    if (!isa<MemRefType>(operandPartType)) continue;
-+
-+    if (!outputParts.insert(outputTupleIndices).second) {
-+      emitOpError() << "buffer output " + printIndices(outputTupleIndices) +
-+                           " is used in output_operand_alias more than once";
-+    }
-+    if (!operandParts.insert(std::make_pair(operandIndex, operandTupleIndices))
-+             .second) {
-+      emitOpError() << "buffer operand " + std::to_string(operandIndex) +
-+                           printIndices(operandTupleIndices) +
-+                           " is used in output_operand_alias more than once";
-+    }
++    outputTupleIndicesArray.push_back(alias.getOutputTupleIndices());
++    operandIndicesArray.push_back(alias.getOperandIndex());
++    operandTupleIndicesArray.push_back(alias.getOperandTupleIndices());
 +  }
-+
-+  Type resultType = getNumResults() == 1
-+                        ? getResult(0).getType()
-+                        : TupleType::get(getContext(), getResultTypes());
-+  if (failed(hlo::mapOverLeafTypes(
-+          resultType,
-+          [&](Type type, ArrayRef<int64_t> indices) -> LogicalResult {
-+            if (!isa<MemRefType>(type)) return success();
-+            if (outputParts.find(indices) == outputParts.end()) {
-+              return emitOpError()
-+                     << "buffer output " + printIndices(indices) +
-+                            " is not used in output_operand_alias";
-+            }
-+            return success();
-+          }))) {
-+    return failure();
-+  }
-+
-   return success();
++  return hlo::verifyKnownCustomCalls(
++      getLoc(), getOperation(), getCallTargetName(), outputTupleIndicesArray,
++      operandIndicesArray, operandTupleIndicesArray);
  }
  
-@@ -3850,16 +3984,21 @@
+ void CustomCallOp::getEffects(
+@@ -3850,16 +3861,21 @@
  // `element_types`, create two block arguments, one for lhs and one for rhs, and
  // generates stablehlo.compare op to compare them with the given `direction`.
  //
@@ -461,13 +340,11 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.h b/stablehlo/stablehlo/di
  template <typename OpTy>
  void buildReduceBody(Type elementType, Region &body, OpBuilder &builder) {
    OpBuilder::InsertionGuard guard(builder);
-@@ -200,6 +210,9 @@
+@@ -199,7 +209,6 @@
+ struct PrecisionConfigAttr : public ArrayAttr {
    static ArrayAttr get(MLIRContext *context, ArrayRef<Precision> precisions);
  };
- 
-+constexpr StringRef kCreateBufferCustomCallTarget = "CreateBuffer";
-+constexpr StringRef kPinCustomCallTarget = "Pin";
-+constexpr StringRef kUnpinCustomCallTarget = "Unpin";
+-
  }  // end namespace stablehlo
  }  // end namespace mlir
  
@@ -509,15 +386,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/d
    let results = (outs HLO_Tuple:$result);
  
    let assemblyFormat = [{
-@@ -2553,6 +2553,7 @@
-   let extraClassDeclaration = commonClassDeclaration # [{
-     mlir::Attribute getBackendConfigOrDefault();
-     bool hasEmptyBackendConfig();
-+    LogicalResult verifyKnownCustomCalls();
-   }];
- }
- 
-@@ -3346,7 +3347,7 @@
+@@ -3346,7 +3346,7 @@
    }];
  
    let arguments = (ins
@@ -526,6 +395,190 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/d
    );
  
    let assemblyFormat = "$results attr-dict (`:` type($results)^)?";
+diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo/dialect/TypeInference.cpp
+--- stablehlo/stablehlo/dialect/TypeInference.cpp
++++ stablehlo/stablehlo/dialect/TypeInference.cpp
+@@ -78,6 +78,10 @@
+ namespace hlo {
+ namespace {
+ 
++constexpr StringRef kCreateBufferCustomCallTarget = "CreateBuffer";
++constexpr StringRef kPinCustomCallTarget = "Pin";
++constexpr StringRef kUnpinCustomCallTarget = "Unpin";
++
+ //===----------------------------------------------------------------------===//
+ // Utils for quantization specific verifications
+ //===----------------------------------------------------------------------===//
+@@ -5117,5 +5121,151 @@
+   return success();
+ }
+ 
++LogicalResult verifyKnownCustomCalls(
++    std::optional<Location> location, Operation* op, StringRef callTargetName,
++    ::llvm::ArrayRef<::llvm::ArrayRef<int64_t>> outputTupleIndicesArray,
++    ::llvm::ArrayRef<int64_t> operandIndicesArray,
++    ::llvm::ArrayRef<::llvm::ArrayRef<int64_t>> operandTupleIndicesArray) {
++  // We have already verified that the output_operand_aliases have consistent
++  // types and valid indices. Here we verify buffer releated special custom_call
++  // targets, and also verify that buffer operands used non-special custom_call
++  // ops meet this requirements:
++  //   A result with a buffer type should be mentioned in one pair of
++  //   output-operand-aliasing and an operand with a buffer type can only appear
++  //   at most once in output-operand-aliasing.
++  auto inputTypes = op->getOperandTypes();
++  auto outputTypes = op->getResultTypes();
++  if (callTargetName == kCreateBufferCustomCallTarget) {
++    if (!inputTypes.empty()) {
++      return emitOptionalError(
++          location, "CreateBuffer custom_call shouldn't have any inputs");
++    }
++    if (outputTypes.size() != 1) {
++      return emitOptionalError(
++          location, "CreateBuffer custom_call should have one result");
++    }
++    if (!isa<MemRefType>(outputTypes[0])) {
++      return emitOptionalError(
++          location, "CreateBuffer custom_call should have a memref result");
++    }
++    return success();
++  }
++
++  if (callTargetName == kPinCustomCallTarget) {
++    if (inputTypes.size() != 1) {
++      return emitOptionalError(location,
++                               "Pin custom_call should have one input");
++    }
++    if (!isa<TensorType>(inputTypes[0])) {
++      return emitOptionalError(location,
++                               "Pin custom_call should have a tensor input");
++    }
++    if (outputTypes.size() != 1) {
++      return emitOptionalError(location,
++                               "Pin custom_call should have one output");
++    }
++    if (!isa<MemRefType>(outputTypes[0])) {
++      return emitOptionalError(location,
++                               "Pin custom_call should have a memref output");
++    }
++
++    if (failed(verifyCompatibleShape(inputTypes[0], outputTypes[0])) ||
++        getElementTypeOrSelf(inputTypes[0]) !=
++            getElementTypeOrSelf(outputTypes[0])) {
++      return emitOptionalError(
++          location,
++          "Pin custom_call should have compatible input and output types");
++    }
++
++    return success();
++  }
++
++  if (callTargetName == kUnpinCustomCallTarget) {
++    if (inputTypes.size() != 1) {
++      return emitOptionalError(location,
++                               "Unpin custom_call should have one input");
++    }
++    if (!isa<MemRefType>(inputTypes[0])) {
++      return emitOptionalError(location,
++                               "Unpin custom_call should have a memref input");
++    }
++    if (outputTypes.size() != 1) {
++      return emitOptionalError(location,
++                               "Unpin custom_call should have one output");
++    }
++    if (!isa<TensorType>(outputTypes[0])) {
++      return emitOptionalError(location,
++                               "Unpin custom_call should have a tensor output");
++    }
++
++    if (failed(verifyCompatibleShape(inputTypes[0], outputTypes[0])) ||
++        getElementTypeOrSelf(inputTypes[0]) !=
++            getElementTypeOrSelf(outputTypes[0])) {
++      return emitOptionalError(location,
++                               "Unpin custom_call should have compatible input "
++                               "and output types");
++    }
++
++    return success();
++  }
++
++  auto getOperandPartType = [&](int64_t operandIndex,
++                                ::llvm::ArrayRef<int64_t> operandTupleIndices) {
++    Type operandPart = inputTypes[operandIndex];
++    for (auto i : operandTupleIndices) {
++      operandPart = cast<TupleType>(operandPart).getType(i);
++    }
++    return operandPart;
++  };
++  auto printIndices = [](ArrayRef<int64_t> indices) {
++    std::vector<std::string> stringIndices;
++    llvm::transform(indices, std::back_inserter(stringIndices),
++                    [](int v) { return llvm::Twine(v).str(); });
++    return "[" + llvm::join(stringIndices, ", ") + "]";
++  };
++
++  std::set<std::pair<int64_t, std::vector<int64_t>>> operandParts;
++  std::set<std::vector<int64_t>> outputParts;
++  for (auto [outputTupleIndices, operandIndex, operandTupleIndices] :
++       llvm::zip(outputTupleIndicesArray, operandIndicesArray,
++                 operandTupleIndicesArray)) {
++    Type operandPartType =
++        getOperandPartType(operandIndex, operandTupleIndices);
++    if (!isa<MemRefType>(operandPartType)) continue;
++
++    if (!outputParts.insert(outputTupleIndices).second) {
++      return emitOptionalError(
++          location, "buffer output " + printIndices(outputTupleIndices) +
++                        " is used in output_operand_alias more than once");
++    }
++    if (!operandParts.insert(std::make_pair(operandIndex, operandTupleIndices))
++             .second) {
++      return emitOptionalError(
++          location, "buffer operand " + std::to_string(operandIndex) +
++                        printIndices(operandTupleIndices) +
++                        " is used in output_operand_alias more than once");
++    }
++  }
++
++  Type resultType = outputTypes.size() == 1
++                        ? outputTypes[0]
++                        : TupleType::get(op->getContext(), outputTypes);
++  if (failed(hlo::mapOverLeafTypes(
++          resultType,
++          [&](Type type, ArrayRef<int64_t> indices) -> LogicalResult {
++            if (!isa<MemRefType>(type)) return success();
++            if (outputParts.find(indices) == outputParts.end()) {
++              return emitOptionalError(
++                  location, "buffer output " + printIndices(indices) +
++                                " is not used in output_operand_alias");
++            }
++            return success();
++          }))) {
++    return failure();
++  }
++
++  return success();
++}
++
+ }  // end namespace hlo
+ }  // end namespace mlir
+diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.h b/stablehlo/stablehlo/dialect/TypeInference.h
+--- stablehlo/stablehlo/dialect/TypeInference.h
++++ stablehlo/stablehlo/dialect/TypeInference.h
+@@ -605,6 +605,14 @@
+ LogicalResult verifyResultAccuracyAttr(
+     ::llvm::function_ref<::mlir::InFlightDiagnostic()> emitError, APFloat atol,
+     APFloat rtol, int64_t ulps, StringRef mode);
++
++// A few custom calls are used throughout the ecosystem, this verification aims
++// to allow erroring in StableHLO for these custom calls.
++LogicalResult verifyKnownCustomCalls(
++    std::optional<Location> location, Operation* op, StringRef callTargetName,
++    ::llvm::ArrayRef<::llvm::ArrayRef<int64_t>> outputTupleIndicesArray,
++    ::llvm::ArrayRef<int64_t> operandIndicesArray,
++    ::llvm::ArrayRef<::llvm::ArrayRef<int64_t>> operandTupleIndicesArray);
+ }  // end namespace hlo
+ }  // end namespace mlir
+ 
 diff --ruN a/stablehlo/stablehlo/dialect/Version.h b/stablehlo/stablehlo/dialect/Version.h
 --- stablehlo/stablehlo/dialect/Version.h
 +++ stablehlo/stablehlo/dialect/Version.h
