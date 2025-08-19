@@ -50,6 +50,12 @@ message JobInfo {
   optional int64 task_uid = 6;
 }
 
+// Key-Value pair for metrics metadata tags.
+message TagMetric {
+  string key = 1;
+  string value = 2;
+}
+
 // Defines XLA compilation metrics.
 message CompilationLogEntry {
   // Time when the event captured by this log entry occurred.
@@ -78,4 +84,6 @@ message CompilationLogEntry {
   JobInfo job_info = 7;
   // HLO module name.
   string hlo_module_name = 8;
+  // Metadata tags for identifying/filtering jobs
+  repeated TagMetric tag = 9;
 }
