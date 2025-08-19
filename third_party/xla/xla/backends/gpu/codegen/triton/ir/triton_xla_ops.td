@@ -72,25 +72,25 @@ def TTXLA_ExtractOp : TTXLA_OpWithOffsetSizesAndStrides<"extract", [
     to extract. Shape and minor-to-major layout specify the layout of the source
     pointer.
 
-    Assembly format: %src [%offsets] [%sizes] [%strides]
-      {shape = array<i64:...>, layout = array<i64:...>} : ptr_type to tensor_type
+    Assembly format:
+      from %src as memref<...> [%offsets] [%sizes] [%strides] : tensor_type
 
     Example:
       ```
-      %extracted_tensor = triton_xla.extract %src [0, 0] [16, 64] [128, 1]
-        {shape = array<i64:512, 128>, layout = array<i64:1, 0>}
-        : !tt.ptr<bf16> to tensor<16x64xbf16>
+      %extracted_tensor = triton_xla.extract from %src
+        as memref<512x128xbf16, #triton_xla.layout<[1, 0]>>
+        [0, 0] [16, 64] [128, 1] : tensor<16x64xbf16>
       ```
   }];
   let builders = [
     OpBuilder<(ins "RankedTensorType":$result_type, "Value":$src,
       "ValueRange":$offsets,  "ValueRange":$strides,
-      CArg<"ArrayRef<int64_t>">:$shape,
-      CArg<"ArrayRef<int64_t>">:$layout)>,
+      CArg<"ArrayRef<int64_t>">:$src_shape,
+      CArg<"ArrayRef<int64_t>">:$src_layout)>,
     OpBuilder<(ins "RankedTensorType":$result_type, "Value":$src,
       "ArrayRef<OpFoldResult>":$offsets,  "ArrayRef<OpFoldResult>":$strides,
-      CArg<"ArrayRef<int64_t>">:$shape,
-      CArg<"ArrayRef<int64_t>">:$layout)>
+      CArg<"ArrayRef<int64_t>">:$src_shape,
+      CArg<"ArrayRef<int64_t>">:$src_layout)>
   ];
 
   let arguments = (ins
@@ -101,17 +101,17 @@ def TTXLA_ExtractOp : TTXLA_OpWithOffsetSizesAndStrides<"extract", [
     DenseI64ArrayAttr:$static_offsets,
     DenseI64ArrayAttr:$static_sizes,
     DenseI64ArrayAttr:$static_strides,
-    DenseI64ArrayAttr:$shape,
-    DenseI64ArrayAttr:$layout
+    DenseI64ArrayAttr:$src_shape,
+    DenseI64ArrayAttr:$src_layout
   );
   let results = (outs AnyRankedTensor:$result);
 
   let assemblyFormat = [{
-    $src ``
+    `from` $src `as` custom<AsMemRefType>(type($src), $src_shape, $src_layout)
     custom<DynamicIndexList>($offsets, $static_offsets)
     custom<DynamicIndexList>($sizes, $static_sizes)
     custom<DynamicIndexList>($strides, $static_strides)
-    attr-dict `:` qualified(type($src)) `to` type($result)
+    attr-dict `:` type($result)
   }];
   let extraClassDeclaration = extraBaseClassDeclaration # [{
     /// Return the expected rank of each of the `static_offsets`, `static_sizes`
@@ -133,25 +133,25 @@ def TTXLA_InsertOp : TTXLA_OpWithOffsetSizesAndStrides<"insert"> {
     insert. Shape and minor-to-major layout specify the layout of the
     destination pointer.
 
-    Assembly format: %src into %dst [%offsets] [%sizes] [%strides]
-      {shape = array<i64:...>, layout = array<i64:...>} : tensor_type into ptr_type
+    Assembly format:
+      %src into %dst as memref<...> [%offsets] [%sizes] [%strides] : tensor_type
 
     Example:
       ```
-      triton_xla.insert %src into %dst [0, 0] [8, 8] [1, 1]
-        {shape = array<i64:512, 128>, layout = array<i64:1, 0>}
-        : tensor<8x8xbf16> into !tt.ptr<bf16>
+      triton_xla.insert %src into %dst
+        as memref<512x128xbf16, #triton_xla.layout<[1, 0]>>
+        [0, 0] [8, 8] [1, 1] : tensor<8x8xbf16>
       ```
   }];
   let builders = [
     OpBuilder<(ins "Value":$src, "Value":$dst,
       "ValueRange":$offsets,  "ValueRange":$strides,
-      CArg<"ArrayRef<int64_t>">:$shape,
-      CArg<"ArrayRef<int64_t>">:$layout)>,
+      CArg<"ArrayRef<int64_t>">:$dst_shape,
+      CArg<"ArrayRef<int64_t>">:$dst_layout)>,
     OpBuilder<(ins "Value":$src, "Value":$dst,
       "ArrayRef<OpFoldResult>":$offsets,  "ArrayRef<OpFoldResult>":$strides,
-      CArg<"ArrayRef<int64_t>">:$shape,
-      CArg<"ArrayRef<int64_t>">:$layout)>
+      CArg<"ArrayRef<int64_t>">:$dst_shape,
+      CArg<"ArrayRef<int64_t>">:$dst_layout)>
   ];
 
   let arguments = (ins
@@ -163,16 +163,17 @@ def TTXLA_InsertOp : TTXLA_OpWithOffsetSizesAndStrides<"insert"> {
     DenseI64ArrayAttr:$static_offsets,
     DenseI64ArrayAttr:$static_sizes,
     DenseI64ArrayAttr:$static_strides,
-    DenseI64ArrayAttr:$shape,
-    DenseI64ArrayAttr:$layout
+    DenseI64ArrayAttr:$dst_shape,
+    DenseI64ArrayAttr:$dst_layout
   );
 
   let assemblyFormat = [{
-    $src `into` $dst ``
+    $src `into`
+    $dst `as` custom<AsMemRefType>(type($dst), $dst_shape, $dst_layout)
     custom<DynamicIndexList>($offsets, $static_offsets)
     custom<DynamicIndexList>($sizes, $static_sizes)
     custom<DynamicIndexList>($strides, $static_strides)
-    attr-dict `:` type($src) `into` qualified(type($dst))
+    attr-dict `:` type($src)
   }];
 
   let extraClassDeclaration = extraBaseClassDeclaration # [{

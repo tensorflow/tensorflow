@@ -37,6 +37,47 @@ using mlir::LogicalResult;
 using mlir::Type;
 
 namespace mlir::triton::xla {
+
+// Parser hook for triton_xla.extract/insert ops assembly format.
+ParseResult parseAsMemRefType(OpAsmParser& parser, Type& type,
+                              DenseI64ArrayAttr& shape,
+                              DenseI64ArrayAttr& order) {
+  MemRefType memref_type;
+  if (parser.parseCustomTypeWithFallback(memref_type)) {
+    return failure();
+  };
+
+  int address_space = 1;
+  if (auto attr = dyn_cast_or_null<IntegerAttr>(memref_type.getMemorySpace())) {
+    address_space = attr.getInt();
+  }
+  type = PointerType::get(memref_type.getElementType(), address_space);
+  shape = DenseI64ArrayAttr::get(parser.getContext(), memref_type.getShape());
+
+  LayoutAttr layout = dyn_cast<LayoutAttr>(memref_type.getLayout());
+  if (!layout) {
+    parser.emitError(parser.getCurrentLocation())
+        << "expected layout attribute";
+    return failure();
+  }
+  order = layout.getMinorToMajor();
+
+  return success();
+}
+
+// Printer hook for triton_xla.extract/insert ops assembly format.
+void printAsMemRefType(OpAsmPrinter& printer, Operation* op, PointerType type,
+                       DenseI64ArrayAttr shape, DenseI64ArrayAttr order) {
+  auto layout = LayoutAttr::get(
+      op->getContext(), DenseI64ArrayAttr::get(op->getContext(), order));
+  Attribute memory_space;
+  if (int addr_space = type.getAddressSpace(); addr_space != 1) {
+    memory_space = Builder(op).getI32IntegerAttr(addr_space);
+  }
+  printer << MemRefType::get(shape, type.getPointeeType(), layout,
+                             memory_space);
+}
+
 //===----------------------------------------------------------------------===//
 // ExtractOp
 //===----------------------------------------------------------------------===//
@@ -51,10 +92,10 @@ LogicalResult ExtractOp::verify() {
   if (rank == 0) {
     return emitError("cannot extract a 0-d tensor");
   }
-  if (rank != getShape().size()) {
+  if (rank != getSrcShape().size()) {
     return emitError("shape attribute has a wrong size");
   }
-  if (rank != getLayout().size()) {
+  if (rank != getSrcLayout().size()) {
     return emitError("layout attribute has a wrong size");
   }
   if (getType().getElementType() != getSrc().getType().getPointeeType()) {
@@ -106,7 +147,7 @@ class ExtractOpOffsetsSizesStridesFolder final
     auto disable_attrs = to_vector(op->getDiscardableAttrs());
     auto new_op = rewriter.replaceOpWithNewOp<ExtractOp>(
         op, op.getType(), op.getSrc(), mixed_offsets, mixed_strides,
-        op.getShape(), op.getLayout());
+        op.getSrcShape(), op.getSrcLayout());
     new_op->setDiscardableAttrs(disable_attrs);
     return success();
   }
@@ -126,10 +167,10 @@ LogicalResult InsertOp::verify() {
   if (rank == 0) {
     return emitError("cannot insert a 0-d tensor");
   }
-  if (rank != getShape().size()) {
+  if (rank != getDstShape().size()) {
     return emitError("shape attribute has a wrong size");
   }
-  if (rank != getLayout().size()) {
+  if (rank != getDstLayout().size()) {
     return emitError("layout attribute has a wrong size");
   }
   if (getSrc().getType().getElementType() !=
@@ -180,7 +221,7 @@ class InsertOpOffsetsSizesStridesFolder final
     auto disable_attrs = to_vector(op->getDiscardableAttrs());
     auto new_op = rewriter.replaceOpWithNewOp<InsertOp>(
         op, op.getSrc(), op.getDst(), mixed_offsets, mixed_strides,
-        op.getShape(), op.getLayout());
+        op.getDstShape(), op.getDstLayout());
     new_op->setDiscardableAttrs(disable_attrs);
     return success();
   }

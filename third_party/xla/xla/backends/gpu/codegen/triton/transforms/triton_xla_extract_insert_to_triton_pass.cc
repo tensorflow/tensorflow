@@ -14,13 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
-#include <cmath>
 #include <cstdint>
 #include <memory>
 #include <numeric>
 #include <optional>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/log/check.h"
@@ -529,26 +527,26 @@ class RewriteExtract : public mlir::OpRewritePattern<ExtractOp> {
     ::xla::EmitterLocOpBuilder builder(op.getLoc(), rewriter);
     RankedTensorType tile_type = op.getType();
     ArrayRef<int64_t> tile_shape = tile_type.getShape();
+    ArrayRef<int64_t> src_shape = op.getSrcShape();
+    ArrayRef<int64_t> src_layout = op.getSrcLayout();
 
     auto offsets = op.getOffsetsAsValues(builder);
-    if (CanUseTma(tma_enabled_, *device_description_, op.getShape(), tile_shape,
-                  op.getStaticStrides(), offsets, op.getSrc(),
-                  op.getLayout())) {
+    if (CanUseTma(tma_enabled_, *device_description_, src_shape, tile_shape,
+                  op.getStaticStrides(), offsets, op.getSrc(), src_layout)) {
       SmallVector<int64_t> strides = llvm::to_vector(op.getStaticStrides());
-      if (auto result =
-              CanonicalizeTileStrides(strides, tile_shape, op.getShape());
+      if (auto result = CanonicalizeTileStrides(strides, tile_shape, src_shape);
           !result.ok()) {
         return rewriter.notifyMatchFailure(op, result.message());
       }
 
-      AddTmaAttributes(builder, op.getSrc(), op.getShape(), op.getLayout(),
-                       tile_shape, strides);
+      AddTmaAttributes(builder, op.getSrc(), src_shape, src_layout, tile_shape,
+                       strides);
 
       SmallVector<int64_t> normalized_tile_shape =
-          Normalize(tile_shape, op.getLayout());
+          Normalize(tile_shape, src_layout);
       auto normalized_tile_type = RankedTensorType::get(
           normalized_tile_shape, tile_type.getElementType());
-      auto normalized_offsets = Normalize(offsets, op.getLayout());
+      auto normalized_offsets = Normalize(offsets, src_layout);
 
       // tensor -> !tt.tensordesc<tile_type>
       auto cast_to_tensor_desc =
@@ -564,11 +562,11 @@ class RewriteExtract : public mlir::OpRewritePattern<ExtractOp> {
           IndexCastUI(builder, builder.getI32Type(), normalized_offsets));
 
       // Insert a transpose if the layout is not normalized.
-      if (!IsNormalizedLayout(op.getLayout())) {
+      if (!IsNormalizedLayout(src_layout)) {
         // Transpose an already normalized tensor back to the original layout.
-        auto transpose = builder.create<TransOp>(
-            op.getType(), descriptor_load,
-            GetInverseLayoutPermutation(op.getLayout()));
+        auto transpose =
+            builder.create<TransOp>(op.getType(), descriptor_load,
+                                    GetInverseLayoutPermutation(src_layout));
         rewriter.replaceOp(op, transpose);
         return mlir::success();
       }
@@ -577,12 +575,12 @@ class RewriteExtract : public mlir::OpRewritePattern<ExtractOp> {
       return mlir::success();
     }
 
-    auto ptr = CreateAddPtrOp(builder, op.getSrc(), offsets, op.getShape(),
-                              op.getLayout());
+    auto ptr =
+        CreateAddPtrOp(builder, op.getSrc(), offsets, src_shape, src_layout);
     auto strides = op.getStridesAsValues(builder);
-    ptr = CreateMakeTensorPtrOp(builder, ptr, op.getShape(), tile_shape,
-                                offsets, strides, op.getLayout());
-    auto boundary_checks = ComputeBoundaryChecks(op.getShape(), tile_shape);
+    ptr = CreateMakeTensorPtrOp(builder, ptr, src_shape, tile_shape, offsets,
+                                strides, src_layout);
+    auto boundary_checks = ComputeBoundaryChecks(src_shape, tile_shape);
     std::optional<PaddingOption> padding;
     if (!boundary_checks.empty()) {
       padding = PaddingOption::PAD_ZERO;
@@ -626,26 +624,26 @@ class RewriteInsert : public mlir::OpRewritePattern<InsertOp> {
     ::xla::EmitterLocOpBuilder builder(op.getLoc(), rewriter);
     RankedTensorType tile_type = op.getSrc().getType();
     ArrayRef<int64_t> tile_shape = tile_type.getShape();
+    ArrayRef<int64_t> dst_shape = op.getDstShape();
+    ArrayRef<int64_t> dst_layout = op.getDstLayout();
 
     auto offsets = op.getOffsetsAsValues(builder);
-    if (CanUseTma(tma_enabled_, *device_description_, op.getShape(), tile_shape,
-                  op.getStaticStrides(), offsets, op.getDst(),
-                  op.getLayout())) {
+    if (CanUseTma(tma_enabled_, *device_description_, dst_shape, tile_shape,
+                  op.getStaticStrides(), offsets, op.getDst(), dst_layout)) {
       SmallVector<int64_t> strides = llvm::to_vector(op.getStaticStrides());
-      if (auto result =
-              CanonicalizeTileStrides(strides, tile_shape, op.getShape());
+      if (auto result = CanonicalizeTileStrides(strides, tile_shape, dst_shape);
           !result.ok()) {
         return rewriter.notifyMatchFailure(op, result.message());
       }
 
-      AddTmaAttributes(builder, op.getDst(), op.getShape(), op.getLayout(),
-                       tile_shape, strides);
+      AddTmaAttributes(builder, op.getDst(), dst_shape, dst_layout, tile_shape,
+                       strides);
 
       SmallVector<int64_t> normalized_tile_shape =
-          Normalize(tile_shape, op.getLayout());
+          Normalize(tile_shape, dst_layout);
       auto normalized_tile_type = RankedTensorType::get(
           normalized_tile_shape, tile_type.getElementType());
-      auto normalized_offsets = Normalize(offsets, op.getLayout());
+      auto normalized_offsets = Normalize(offsets, dst_layout);
 
       // tensor -> !tt.tensordesc<tile_type>
       auto cast_to_tensor_desc =
@@ -658,9 +656,9 @@ class RewriteInsert : public mlir::OpRewritePattern<InsertOp> {
 
       // Insert a transpose if the layout is not normalized.
       auto src = op.getSrc();
-      if (!IsNormalizedLayout(op.getLayout())) {
+      if (!IsNormalizedLayout(dst_layout)) {
         // Transpose to a normalized tensor by simply reversing the layout.
-        auto transpose_order = llvm::to_vector_of<int32_t>(op.getLayout());
+        auto transpose_order = llvm::to_vector_of<int32_t>(dst_layout);
         std::reverse(transpose_order.begin(), transpose_order.end());
         src = builder.create<TransOp>(normalized_tile_type, op.getSrc(),
                                       transpose_order);
@@ -669,13 +667,13 @@ class RewriteInsert : public mlir::OpRewritePattern<InsertOp> {
           cast_to_tensor_desc, src,
           IndexCastUI(builder, builder.getI32Type(), normalized_offsets));
     } else {
-      auto ptr = CreateAddPtrOp(builder, op.getDst(), offsets, op.getShape(),
-                                op.getLayout());
+      auto ptr =
+          CreateAddPtrOp(builder, op.getDst(), offsets, dst_shape, dst_layout);
       auto strides = op.getStridesAsValues(builder);
-      ptr = CreateMakeTensorPtrOp(builder, ptr, op.getShape(), tile_shape,
-                                  offsets, strides, op.getLayout());
+      ptr = CreateMakeTensorPtrOp(builder, ptr, dst_shape, tile_shape, offsets,
+                                  strides, dst_layout);
       builder.create<StoreOp>(ptr, op.getSrc(),
-                              ComputeBoundaryChecks(op.getShape(), tile_shape),
+                              ComputeBoundaryChecks(dst_shape, tile_shape),
                               CacheModifier::NONE, EvictionPolicy::NORMAL);
     }
     rewriter.eraseOp(op);
