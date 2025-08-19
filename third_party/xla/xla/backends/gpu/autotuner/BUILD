@@ -1,6 +1,11 @@
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load("//xla:xla.default.bzl", "xla_cc_binary")
 load("//xla/tests:build_defs.bzl", "xla_test")
+load(
+    "//xla/tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -538,20 +543,6 @@ xla_test(
 )
 
 cc_library(
-    name = "factory",
-    hdrs = ["factory.h"],
-    tags = ["gpu"],
-    deps = [
-        ":block_level_emitter",
-        ":cublas",
-        ":triton",
-        "//xla/backends/autotuner:codegen_backend",
-        "//xla/service:compiler",
-        "//xla/stream_executor:stream_executor_h",
-    ],
-)
-
-cc_library(
     name = "gpu_profiler",
     srcs = ["gpu_profiler.cc"],
     hdrs = ["gpu_profiler.h"],
@@ -579,6 +570,59 @@ cc_library(
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:casts",
+    ],
+)
+
+cc_library(
+    name = "factory_cuda",
+    srcs = ["factory_cuda.cc"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        ":cublas",
+        ":cublaslt",
+        ":cudnn",
+        ":factory",
+        ":triton",
+        "//xla/backends/autotuner:codegen_backend",
+        "//xla/service:compiler",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/cuda:cuda_platform_id",
+        "//xla/stream_executor/platform:platform_object_registry",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "factory_rocm",
+    srcs = ["factory_rocm.cc"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
+    deps = [
+        ":cublas",
+        ":factory",
+        ":triton",
+        "//xla/backends/autotuner:codegen_backend",
+        "//xla/service:compiler",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/platform:platform_object_registry",
+        "//xla/stream_executor/rocm:rocm_platform_id",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "factory",
+    hdrs = ["factory.h"],
+    deps = [
+        "//xla/backends/autotuner:codegen_backend",
+        "//xla/service:compiler",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:stream_executor_h",
     ],
 )
 
@@ -629,6 +673,7 @@ xla_cc_binary(
         "//xla:debug_options_flags",
         "//xla:xla_proto_cc",
         "//xla/backends/autotuner",
+        "//xla/backends/autotuner:codegen_backend",
         "//xla/backends/autotuner:file_based_autotuner_cache",
         "//xla/backends/autotuner:profiler",
         "//xla/hlo/ir:hlo",
@@ -639,6 +684,7 @@ xla_cc_binary(
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor/cuda:cuda_platform_id",
+        "//xla/stream_executor/platform:platform_object_registry",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
@@ -651,5 +697,5 @@ xla_cc_binary(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@local_tsl//tsl/platform:platform_port",
-    ],
+    ] + if_cuda_is_configured([":factory_cuda"]) + if_rocm_is_configured([":factory_rocm"]),
 )

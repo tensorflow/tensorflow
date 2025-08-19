@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/autotuner/autotuner.h"
+#include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/autotuner/file_based_autotuner_cache.h"
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/backends/gpu/autotuner/factory.h"
@@ -39,8 +40,8 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/service/compiler.h"
 #include "xla/service/platform_util.h"
-#include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform/platform_object_registry.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -63,10 +64,11 @@ Usage:
     [--autotune_cache_dir=path/to/cache_dir] \
     [--autotune_cache_mode=READ|WRITE|READ_WRITE]
 )";
-
 }  // namespace
 
 namespace xla {
+namespace gpu {
+namespace {
 
 absl::StatusOr<std::unique_ptr<HloModule>> GetModule(
     const std::string& hlo_file) {
@@ -84,10 +86,6 @@ absl::Status Autotune(HloModule& module, const std::string& autotune_cache_dir,
   TF_ASSIGN_OR_RETURN(se::Platform * platform,
                       se::PlatformManager::PlatformWithName(
                           absl::AsciiStrToUpper(platform_name)));
-  // TODO: b/407494793 - Add support for ROCM.
-  if (platform->id() != se::cuda::kCudaPlatformId) {
-    return absl::InternalError("Only CUDA is supported");
-  }
   if (platform->VisibleDeviceCount() == 0) {
     return absl::InternalError("No devices found");
   }
@@ -96,10 +94,14 @@ absl::Status Autotune(HloModule& module, const std::string& autotune_cache_dir,
                       xla::Compiler::GetForPlatform(platform));
   se::StreamExecutor* stream_executor = platform->ExecutorForDevice(0).value();
   DebugOptions debug_options = GetDebugOptionsFromFlags();
-  auto backends = gpu::GetAllGpuCodegenBackends(stream_executor, &debug_options,
-                                                compiler.get());
 
-  auto profiler = gpu::GpuProfiler::Create(stream_executor, ProfileOptions());
+  auto& registry = stream_executor::PlatformObjectRegistry::GetGlobalRegistry();
+  TF_ASSIGN_OR_RETURN(const GetCodegenBackends::Type& get_codegen_backends,
+                      registry.FindObject<GetCodegenBackends>(platform->id()));
+  std::vector<std::unique_ptr<CodegenBackend>> backends =
+      get_codegen_backends(stream_executor, &debug_options, compiler.get());
+
+  auto profiler = GpuProfiler::Create(stream_executor, ProfileOptions());
   if (profiler == nullptr) {
     return absl::InternalError("Failed to create profiler");
   }
@@ -146,6 +148,8 @@ absl::Status Autotune(HloModule& module, const std::string& autotune_cache_dir,
   return autotuner->Autotune(&module, should_autotune);
 }
 
+}  // namespace
+}  // namespace gpu
 }  // namespace xla
 
 int main(int argc, char* argv[]) {
@@ -166,10 +170,10 @@ int main(int argc, char* argv[]) {
     LOG(QFATAL) << usage_string;
   }
   tsl::port::InitMain(usage_string.c_str(), &argc, &argv);
-  auto module = xla::GetModule(hlo_file);
+  auto module = xla::gpu::GetModule(hlo_file);
   CHECK_OK(module.status());
-  CHECK_OK(
-      xla::Autotune(*module.value(), autotune_cache_dir, autotune_cache_mode));
+  CHECK_OK(xla::gpu::Autotune(*module.value(), autotune_cache_dir,
+                              autotune_cache_mode));
   std::cout << module.value()->ToString() << std::endl;
   return 0;
 }
