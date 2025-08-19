@@ -265,7 +265,7 @@ py_library(
     ],
 )
 
-tf_py_test(
+py_test(
     name = "training_utils_v1_test",
     srcs = ["training_utils_v1_test.py"],
     srcs_version = "PY3",
@@ -277,7 +277,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+py_test(
     name = "data_adapter_test",
     srcs = ["data_adapter_test.py"],
     srcs_version = "PY3",
