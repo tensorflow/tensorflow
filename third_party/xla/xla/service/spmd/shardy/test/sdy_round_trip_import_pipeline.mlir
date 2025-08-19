@@ -404,13 +404,13 @@ func.func private @baz(%arg0: tensor<8xf32>) -> tensor<8xf32> {
 // -----
 // CHECK-LABEL: func @uninlineable_call
 func.func @uninlineable_call(%arg0: tensor<8xf32>) -> tensor<8xf32> {
-  // CHECK: %0 = sdy.named_computation<"foo">(%arg0)
+  // CHECK: %0 = call @foo(%arg0)
   // CHECK: return %0 : tensor<8xf32>
   %0 = call @foo(%arg0) {mhlo.frontend_attributes = {inlineable = "false"}} : (tensor<8xf32>) -> tensor<8xf32>
   return %0 : tensor<8xf32>
 }
 
-// CHECK-NOT: func private @foo
+// CHECK: func private @foo
 func.func private @foo(%arg0: tensor<8xf32>) -> tensor<8xf32> {
   %0 = stablehlo.add %arg0, %arg0 : tensor<8xf32>
   return %0 : tensor<8xf32>
