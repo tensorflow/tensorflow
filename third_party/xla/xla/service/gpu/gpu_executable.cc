@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/map_util.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/dump.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/buffer_allocations.h"
@@ -55,6 +56,8 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu/resource_requests.h"
 #include "xla/service/gpu/stream_executor_util.h"
+#include "xla/service/gpu/transforms/command_buffer_conversion_pass.h"
+#include "xla/service/gpu/transforms/thunk_pass_pipeline.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/maybe_owning_device_memory.h"
 #include "xla/service/rendezvous.h"
@@ -108,8 +111,33 @@ static absl::flat_hash_set<ExecutionStreamId> GetExecutionStreamIds(
   return stream_ids;
 }
 
+static absl::Status RunThunkPasses(const DebugOptions& debug_options,
+                                   const se::DeviceDescription& device_info,
+                                   SequentialThunk* root_thunk,
+                                   HloModule* hlo_module) {
+  ThunkPassPipeline pipeline("thunk-passes");
+  if (debug_options.xla_gpu_experimental_enable_command_buffer_on_thunks()) {
+    pipeline.AddPass(std::make_unique<CommandBufferConversionPass>());
+  }
+  TF_ASSIGN_OR_RETURN(bool changed,
+                      pipeline.Run(root_thunk, debug_options, device_info));
+  if (changed) {
+    VLOG(3) << "Thunk passes changed the thunk tree.";
+    if (hlo_module && DumpingEnabledForHloModule(*hlo_module)) {
+      DumpToFileInDirOrStdout(
+          *hlo_module, "",
+          absl::StrCat("thunk_sequence_after_thunk_passes", ".txt"),
+          root_thunk->ToString(/*indent=*/0));
+    }
+  }
+  return absl::OkStatus();
+}
+
 absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(
     Params params) {
+  TF_RETURN_IF_ERROR(
+      RunThunkPasses(params.debug_options, params.device_description,
+                     params.executable.get(), params.debug_module.get()));
   return std::unique_ptr<GpuExecutable>(new GpuExecutable(std::move(params)));
 }
 
@@ -120,7 +148,7 @@ GpuExecutable::GpuExecutable(GpuExecutable::Params params)
       text_(std::move(params.asm_text)),
       binary_(std::move(params.binary)),
       dnn_compiled_graphs_(std::move(params.dnn_compiled_graphs)),
-      gpu_version_(params.gpu_version),
+      gpu_version_(params.device_description.gpu_compute_capability()),
       thunks_(std::move(params.executable)),
       execution_stream_ids_(GetExecutionStreamIds(*thunks_)),
       module_name_(params.module_name),
@@ -129,7 +157,7 @@ GpuExecutable::GpuExecutable(GpuExecutable::Params params)
       buffer_assignment_(std::move(params.buffer_assignment)),
       alias_info_(std::move(params.alias_info)),
       debug_buffer_assignment_show_max_(
-          params.debug_buffer_assignment_show_max),
+          params.debug_options.xla_debug_buffer_assignment_show_max()),
       constants_(std::move(params.constants)),
       output_info_(std::move(params.output_info)),
       enable_debug_info_manager_(params.enable_debug_info_manager) {
