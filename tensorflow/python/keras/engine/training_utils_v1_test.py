@@ -14,10 +14,11 @@
 # ==============================================================================
 """Tests for training_utils_v1."""
 
-import tensorflow as tf
+from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import training_utils_v1
+from tensorflow.python.platform import test
 
-class TrainingUtilsV1Test(tf.test.TestCase):
+class TrainingUtilsV1Test(test.TestCase):
 
   def test_invalid_string_class_weight_keys(self):
     """Test that invalid string keys in class_weight raise ValueError."""
@@ -70,4 +71,4 @@ class TrainingUtilsV1Test(tf.test.TestCase):
 
 
 if __name__ == '__main__':
-  tf.test.main()
+  test.main()

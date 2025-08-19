@@ -273,6 +273,7 @@ py_test(
         ":engine",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/framework:test_util",
         "//tensorflow/python/platform:test",
     ],
 )
@@ -285,7 +286,9 @@ py_test(
         ":data_adapter",
         ":engine",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/framework:test_util",
         "//tensorflow/python/platform:test",
     ],
 )

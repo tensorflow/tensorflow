@@ -14,8 +14,8 @@
 # ==============================================================================
 """Tests for tensorflow.python.keras.engine.data_adapter."""
 
-import tensorflow as tf
-
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import data_adapter
 from tensorflow.python.platform import test
 
@@ -54,8 +54,8 @@ class DataAdapterTest(test.TestCase):
         ValueError,
         "Complex class weights are not supported"):
       data_adapter._make_class_weight_map_fn({
-          0: tf.complex64(1.0 + 0j),
-          1: tf.complex64(2.0 + 0j)
+          0: dtypes.complex64(1.0 + 0j),
+          1: dtypes.complex64(2.0 + 0j)
       })
 
   def test_make_class_weight_map_fn_valid_contiguous_keys(self):
@@ -105,4 +105,4 @@ class DataAdapterTest(test.TestCase):
 
 
 if __name__ == '__main__':
-  tf.test.main()
+  test.main()
