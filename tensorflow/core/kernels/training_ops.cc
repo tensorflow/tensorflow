@@ -182,18 +182,13 @@ struct SparseApplyAdagrad<CPUDevice, T, Tindex, has_epsilon> {
     const Eigen::TensorOpCost cost(in_bytes, out_bytes, cycles);
 
     if (inner_dim > 1) {
-      for (Tindex i = 0; i < N; ++i) {
-        const Tindex index = internal::SubtleMustCopy(indices(i));
-        if (!FastBoundsCheck(index, first_dim_size)) {
-          return errors::InvalidArgument(
-              strings::StrCat("Index ", index, " at offset ", i,
-                              " in indices is out of range"));
-        }
-      }
-
       const auto shard = [&](Tindex start_idx, Tindex end_idx) -> void {
         for (Tindex i = start_idx; i < end_idx; ++i) {
           const Tindex index = internal::SubtleMustCopy(indices(i));
+          if (index < 0 || index >= first_dim_size) {
+            // Skip out-of-range indices to match GPU behavior
+            continue;
+          }
           auto a = accum.template chip<0>(index);
           auto g = grad.template chip<0>(i);
           auto v = var.template chip<0>(index);
@@ -210,18 +205,13 @@ struct SparseApplyAdagrad<CPUDevice, T, Tindex, has_epsilon> {
 
       d.parallelFor(N, cost, shard);
     } else {
-      for (Tindex i = 0; i < N; ++i) {
-        const Tindex index = internal::SubtleMustCopy(indices(i));
-        if (!FastBoundsCheck(index, first_dim_size)) {
-          return errors::InvalidArgument(
-              strings::StrCat("Index ", index, " at offset ", i,
-                              " in indices is out of range"));
-        }
-      }
-
       const auto shard = [&](Tindex start_idx, Tindex end_idx) -> void {
         for (Tindex i = start_idx; i < end_idx; ++i) {
           const Tindex index = internal::SubtleMustCopy(indices(i));
+          if (index < 0 || index >= first_dim_size) {
+            // Skip out-of-range indices to match GPU behavior
+            continue;
+          }
           T& a = accum(index);
           const T& g = grad(i);
           if (update_slots) {
@@ -2501,10 +2491,10 @@ class SparseApplyAdagradDAOp : public OpKernel {
 
         for (Tindex i = 0; i < N; i++) {
           const Tindex index = internal::SubtleMustCopy(indices_vec(i));
-          OP_REQUIRES(ctx, FastBoundsCheck(index, first_dim_size),
-                      errors::InvalidArgument(
-                          strings::StrCat("Index ", index, " at offset ", i,
-                                          " in indices is out of range")));
+          if (index < 0 || index >= first_dim_size) {
+            // Skip out-of-range indices to match GPU behavior
+            continue;
+          }
           auto ga = gradient_accum_flat.template chip<0>(index);
           auto da = gradient_squared_accum_flat.template chip<0>(index);
           auto g = grad_flat.template chip<0>(i);
@@ -2538,10 +2528,10 @@ class SparseApplyAdagradDAOp : public OpKernel {
 
         for (Tindex i = 0; i < N; i++) {
           const Tindex index = internal::SubtleMustCopy(indices_vec(i));
-          OP_REQUIRES(ctx, FastBoundsCheck(index, first_dim_size),
-                      errors::InvalidArgument(
-                          strings::StrCat("Index ", index, " at offset ", i,
-                                          " in indices is out of range")));
+          if (index < 0 || index >= first_dim_size) {
+            // Skip out-of-range indices to match GPU behavior
+            continue;
+          }
           T& ga = gradient_accum_flat(index);
           T& da = gradient_squared_accum_flat(index);
           const double g = grad_flat(i);
