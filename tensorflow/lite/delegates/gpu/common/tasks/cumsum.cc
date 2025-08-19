@@ -65,20 +65,42 @@ void Cumsum::GetCumsumCode(const OperationDef& op_def) {
   }
   c += "  int S = GLOBAL_ID_2;\n";
   c += "  if (S >= " + task_sizes[Axis::CHANNELS] + ") return;\n";
-  c += "  args.src_tensor::type res = args.src_tensor::zero_value;\n";
+  if (definition_.precision == CalculationsPrecision::F16) {
+    c += "  float4 res = TO_FLOAT4(args.src_tensor::zero_value);\n";
+  } else {
+    c += "  args.src_tensor::type res = args.src_tensor::zero_value;\n";
+  }
   c += "  for (; " + index_name[axis_] + " < " + limit + "; " +
        index_name[axis_] + "++) {\n";
-  c += "    args.src_tensor::type curr = args.src_tensor.Read(" + indexes +
-       ");\n";
+  if (definition_.precision == CalculationsPrecision::F16) {
+    c +=
+        "    float4 curr = TO_FLOAT4(args.src_tensor.Read(" + indexes + "));\n";
+  } else {
+    c += "    args.src_tensor::type curr = args.src_tensor.Read(" + indexes +
+         ");\n";
+  }
+
   if (axis_ == Axis::CHANNELS) {
-    c += "    res.x = res.w + curr.x;\n";
-    c += "    res.y = res.x + curr.y;\n";
-    c += "    res.z = res.y + curr.z;\n";
-    c += "    res.w = res.z + curr.w;\n";
+    if (definition_.precision == CalculationsPrecision::F16) {
+      c += "    res.x = res.w + curr.x;\n";
+      c += "    res.y = res.x + curr.y;\n";
+      c += "    res.z = res.y + curr.z;\n";
+      c += "    res.w = res.z + curr.w;\n";
+    } else {
+      c += "    res.x = res.w + curr.x;\n";
+      c += "    res.y = res.x + curr.y;\n";
+      c += "    res.z = res.y + curr.z;\n";
+      c += "    res.w = res.z + curr.w;\n";
+    }
   } else {
     c += "    res += curr;\n";
   }
-  c += "    args.dst_tensor.Write(res, " + indexes + ");\n";
+  if (definition_.precision == CalculationsPrecision::F16) {
+    c += "    args.dst_tensor.Write(TO_FLT4(res), " + indexes + ");\n";
+  } else {
+    c += "    args.dst_tensor.Write(res, " + indexes + ");\n";
+  }
+
   c += "  }\n";
   c += "}\n";
   code_ = c;
