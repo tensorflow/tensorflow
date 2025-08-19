@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_TRANSFORMS_COMMAND_BUFFER_CONVERSION_PASS_H_
-#define XLA_SERVICE_GPU_TRANSFORMS_COMMAND_BUFFER_CONVERSION_PASS_H_
+#ifndef XLA_BACKENDS_GPU_RUNTIME_COMMAND_BUFFER_CONVERSION_PASS_H_
+#define XLA_BACKENDS_GPU_RUNTIME_COMMAND_BUFFER_CONVERSION_PASS_H_
 
 #include <memory>
 #include <string>
@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
-#include "xla/service/gpu/transforms/thunk_pass_pipeline.h"
+#include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla {
@@ -53,4 +53,4 @@ class CommandBufferConversionPass : public ThunkPassInterface {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_TRANSFORMS_COMMAND_BUFFER_CONVERSION_PASS_H_
+#endif  // XLA_BACKENDS_GPU_RUNTIME_COMMAND_BUFFER_CONVERSION_PASS_H_

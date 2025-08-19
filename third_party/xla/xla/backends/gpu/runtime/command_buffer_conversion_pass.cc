@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/transforms/command_buffer_conversion_pass.h"
+#include "xla/backends/gpu/runtime/command_buffer_conversion_pass.h"
 
 #include <algorithm>
 #include <cassert>

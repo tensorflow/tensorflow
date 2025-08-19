@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/transforms/thunk_pass_pipeline.h"
+#include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
 
 #include <memory>
 #include <vector>
