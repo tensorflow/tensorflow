@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_TRANSFORMS_COLLECTIVES_COLLECTIVE_OPS_UTILS_H_
 #define XLA_SERVICE_GPU_TRANSFORMS_COLLECTIVES_COLLECTIVE_OPS_UTILS_H_
 
+#include <cstdint>
+
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -46,15 +48,8 @@ enum class GPUTopologyType {
   MULTI_HOST = 2,
 };
 
-// Returns the given device topology. Currently this function is
-// heuristic based: it can be the case it will not detect a multi host case when
-// a user decides to use < 8 GPUs per host. Moreover it tells nothing about how
-// fast the interconnect between hosts is (Infiniband, NVLINK, DCN, etc.).
-//
-// Will return `UNKNOWN` on any platform other than Hopper and Ampere.
-GPUTopologyType GetTopologyType(
-    const HloModuleConfig& config,
-    const se::DeviceDescription& device_description);
+bool IsNVLinkConnected(const HloModuleConfig& config,
+                       int64_t nvlink_slice_size);
 
 }  // namespace gpu
 }  // namespace xla
