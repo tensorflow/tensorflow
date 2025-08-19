@@ -52,6 +52,7 @@ load("//third_party/py:python_init_repositories.bzl", "python_init_repositories"
 python_init_repositories(
     requirements = {
         "3.11": "//:requirements_lock_3_11.txt",
+        "3.12": "//:requirements_lock_3_12.txt",
     },
 )
 
