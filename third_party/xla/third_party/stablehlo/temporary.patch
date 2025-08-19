@@ -690,6 +690,76 @@ diff --ruN a/stablehlo/stablehlo/dialect/VhloTypes.td b/stablehlo/stablehlo/dial
 +}
 +
  #endif  // STABLEHLO_DIALECT_VHLO_TYPES
+diff --ruN a/stablehlo/stablehlo/reference/Ops.cpp b/stablehlo/stablehlo/reference/Ops.cpp
+--- stablehlo/stablehlo/reference/Ops.cpp
++++ stablehlo/stablehlo/reference/Ops.cpp
+@@ -95,7 +95,8 @@
+ 
+ Tensor dotGeneralOp(const Tensor &lhs, const Tensor &rhs,
+                     const Axes &lhsContractingDimensions,
+-                    const Axes &rhsContractingDimensions) {
++                    const Axes &rhsContractingDimensions,
++                    RankedTensorType resultType) {
+   SmallVector<ShapedTypeComponents> inferredDotGeneralType;
+   if (failed(hlo::inferDotGeneralOp(
+           /*location=*/{}, lhs.getType(), rhs.getType(),
+@@ -109,7 +110,7 @@
+                       /*rhsBatchingDimensions*/ {}, lhsContractingDimensions,
+                       rhsContractingDimensions,
+                       RankedTensorType::get(inferredDotGeneralType[0].getDims(),
+-                                            lhs.getElementType()));
++                                            resultType.getElementType()));
+ }
+ 
+ Tensor padOp(const Tensor &operand, const Tensor &paddingValue,
+@@ -1613,7 +1614,8 @@
+ 
+     auto dotProduct =
+         dotGeneralOp(reversedLhsWindow, rhs, lhsContractingDimensions,
+-                     rhsContractingDimensions);
++                     rhsContractingDimensions,
++                     cast<RankedTensorType>(result.getType()));
+ 
+     Sizes resultNonSpatialDims;
+     for (auto i = 0; i < result.getRank(); ++i)
+diff --ruN a/stablehlo/stablehlo/tests/interpret/convolution.mlir b/stablehlo/stablehlo/tests/interpret/convolution.mlir
+--- stablehlo/stablehlo/tests/interpret/convolution.mlir
++++ stablehlo/stablehlo/tests/interpret/convolution.mlir
+@@ -23,6 +23,34 @@
+                                          [[10], [26]],
+                                          [[46], [62]]
+                                         ]]> : tensor<1x2x2x1xi64>
++  func.return
++}
++
++// -----
++
++func.func @convolution_op_test_si8() {
++  %lhs = stablehlo.constant dense<[[
++                                    [[1], [2], [5], [6]],
++                                    [[3], [4], [7], [8]],
++                                    [[10], [11], [14], [15]],
++                                    [[12], [13], [16], [17]]
++                                  ]]> : tensor<1x4x4x1xi8>
++  %rhs = stablehlo.constant dense<10> : tensor<3x3x1x1xi8>
++  %result = stablehlo.convolution(%lhs, %rhs)
++    dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
++    window = {
++      stride = [4, 4],
++      lhs_dilate = [2, 2]
++    } {
++      batch_group_count = 1 : i64,
++      feature_group_count = 1 : i64,
++      precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>]
++    }
++  : (tensor<1x4x4x1xi8>, tensor<3x3x1x1xi8>) -> tensor<1x2x2x1xi32>
++  check.expect_eq_const %result, dense<[[
++                                         [[100], [260]],
++                                         [[460], [620]]
++                                        ]]> : tensor<1x2x2x1xi32>
+   func.return
+ }
+ 
 diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo.mlir b/stablehlo/stablehlo/tests/ops_stablehlo.mlir
 --- stablehlo/stablehlo/tests/ops_stablehlo.mlir
 +++ stablehlo/stablehlo/tests/ops_stablehlo.mlir
