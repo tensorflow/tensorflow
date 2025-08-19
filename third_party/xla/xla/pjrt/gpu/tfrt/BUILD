@@ -17,6 +17,7 @@ xla_gpu_internal_packages()
 cc_library(
     name = "tfrt_gpu_client",
     srcs = [
+        "tfrt_gpu_async_host_to_device_transfer_manager.cc",
         "tfrt_gpu_buffer.cc",
         "tfrt_gpu_client.cc",
         "tfrt_gpu_device.cc",
@@ -24,6 +25,7 @@ cc_library(
         "utils.cc",
     ],
     hdrs = [
+        "tfrt_gpu_async_host_to_device_transfer_manager.h",
         "tfrt_gpu_buffer.h",
         "tfrt_gpu_client.h",
         "tfrt_gpu_device.h",
