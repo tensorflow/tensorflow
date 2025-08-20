@@ -22,4 +22,5 @@ bazel test \
       --verbose_failures -c opt \
       --build_tag_filters=gpu,oneapi-only,requires-gpu-intel,-requires-gpu-amd,-requires-gpu-nvidia,-no_oss,-cuda-only,-rocm-only,-no-oneapi \
       --test_tag_filters=gpu,oneapi-only,requires-gpu-intel,-requires-gpu-amd,-requires-gpu-nvidia,-no_oss,-cuda-only,-rocm-only,-no-oneapi \
-      //xla/stream_executor/sycl:sycl_status_test
+      //xla/stream_executor/sycl:sycl_status_test \
+      //xla/stream_executor/sycl:sycl_kernel_test_intelgpu_any
