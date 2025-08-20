@@ -18,6 +18,7 @@ limitations under the License.
 #include <atomic>
 #include <cstdint>
 #include <memory>
+#include <utility>
 
 #include "absl/base/no_destructor.h"
 #include "absl/base/optimization.h"
@@ -34,21 +35,40 @@ StreamExecutor::ResourceTypeId StreamExecutor::GetNextResourceTypeId() {
 StreamExecutor::Resource* StreamExecutor::GetOrNullResource(
     ResourceTypeId type_id) {
   absl::MutexLock lock(&resource_mutex_);
-  if (auto it = resources_.find(type_id); it != resources_.end()) {
-    return it->second.get();
-  }
-  return nullptr;
+  auto it = resources_.find(type_id);
+  return (it != resources_.end()) ? it->second.get() : nullptr;
 }
 
 StreamExecutor::Resource* StreamExecutor::GetOrCreateResource(
     ResourceTypeId type_id,
     absl::FunctionRef<std::unique_ptr<Resource>()> create) {
-  absl::MutexLock lock(&resource_mutex_);
-  auto [it, inserted] = resources_.try_emplace(type_id, create());
-  if (ABSL_PREDICT_FALSE(inserted)) {
-    it->second = create();
+  // First, try to find the resource under lock
+  {
+    absl::MutexLock lock(&resource_mutex_);
+    auto it = resources_.find(type_id);
+    if (ABSL_PREDICT_TRUE(it != resources_.end())) {
+      return it->second.get();
+    }
   }
-  return it->second.get();
+
+  // Resource not found, create it outside the lock
+  auto resource = create();
+  Resource* ptr = resource.get();
+
+  // Acquire lock again to insert the new resource
+  {
+    absl::MutexLock lock(&resource_mutex_);
+    auto it = resources_.find(type_id);
+    if (ABSL_PREDICT_TRUE(it == resources_.end())) {
+      // We won the race — insert our resource
+      resources_.emplace(type_id, std::move(resource));
+    } else {
+      // Another thread inserted it in the meantime
+      ptr = it->second.get();
+    }
+  }
+
+  return ptr;
 }
 
 }  // namespace stream_executor
