@@ -18,12 +18,14 @@ limitations under the License.
 #include <cassert>
 #include <cstdint>
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/TypeSwitch.h"  // IWYU pragma: keep
 #include "llvm/Support/LogicalResult.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/IR/Builders.h"  // IWYU pragma: keep
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/DialectImplementation.h"  // IWYU pragma: keep
 #include "mlir/IR/MLIRContext.h"  // IWYU pragma: keep
 #include "mlir/IR/OperationSupport.h"
@@ -78,6 +80,21 @@ void printAsMemRefType(OpAsmPrinter& printer, Operation* op, PointerType type,
                              memory_space);
 }
 
+LogicalResult verifyShapeMatchesSizes(Operation* op,
+                                      ArrayRef<int64_t> shape_sizes,
+                                      ArrayRef<OpFoldResult> operand_sizes) {
+  for (auto [shape_size, operand_size] :
+       llvm::zip_equal(shape_sizes, operand_sizes)) {
+    auto attr =
+        dyn_cast_if_present<IntegerAttr>(dyn_cast<Attribute>(operand_size));
+    if (attr && shape_size != ShapedType::kDynamic &&
+        shape_size != attr.getValue()) {
+      return op->emitError("shape size must match operand size");
+    }
+  }
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // ExtractOp
 //===----------------------------------------------------------------------===//
@@ -101,7 +118,8 @@ LogicalResult ExtractOp::verify() {
   if (getType().getElementType() != getSrc().getType().getPointeeType()) {
     return emitError("src pointee type must match result element type");
   }
-  return success();
+  return verifyShapeMatchesSizes(getOperation(), getType().getShape(),
+                                 getMixedSizes());
 }
 
 void ExtractOp::build(OpBuilder& b, OperationState& result,
@@ -177,7 +195,8 @@ LogicalResult InsertOp::verify() {
       getDst().getType().getPointeeType()) {
     return emitError("dst pointee type must match src element type");
   }
-  return success();
+  return verifyShapeMatchesSizes(getOperation(), getSrc().getType().getShape(),
+                                 getMixedSizes());
 }
 
 void InsertOp::build(OpBuilder& b, OperationState& result, Value src, Value dst,
