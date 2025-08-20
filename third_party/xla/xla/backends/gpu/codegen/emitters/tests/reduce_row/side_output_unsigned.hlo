@@ -1,4 +1,4 @@
-// RUN: test_correctness %s
+// RUN: gpu_test_correctness %s
 
 add {
   lhs = u32[] parameter(0)

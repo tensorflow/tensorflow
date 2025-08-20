@@ -27,22 +27,6 @@ copy_file(
     is_executable = True,
 )
 
-copy_file(
-    name = "cpu_test_correctness_copy",
-    testonly = True,
-    src = "//xla/backends/cpu/codegen/tools:test_correctness",
-    out = "cpu_test_correctness",
-    is_executable = True,
-)
-
-copy_file(
-    name = "gpu_test_correctness_copy",
-    testonly = True,
-    src = "//xla/backends/gpu/codegen/tools:test_correctness",
-    out = "gpu_test_correctness",
-    is_executable = True,
-)
-
 lit_test_suite(
     name = "tests",
     srcs = glob(["**/*.hlo"]),
@@ -52,9 +36,9 @@ lit_test_suite(
     hermetic_cuda_data_dir = "%S/../../../../../../cuda_nvcc",
     tools = [
         ":cpu_fusion_to_mlir_copy",
-        ":cpu_test_correctness_copy",
         ":gpu_fusion_to_mlir_copy",
-        ":gpu_test_correctness_copy",
+        "//xla/backends/cpu/codegen/tools:cpu_test_correctness",
+        "//xla/backends/gpu/codegen/tools:gpu_test_correctness",
         "//xla/codegen/tools:emitters_opt",
         "@llvm-project//llvm:FileCheck",
     ],

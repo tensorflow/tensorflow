@@ -46,9 +46,9 @@ cc_library(
 )
 
 xla_cc_binary(
-    name = "test_correctness",
+    name = "cpu_test_correctness",
     testonly = True,
-    srcs = ["test_correctness.cc"],
+    srcs = ["cpu_test_correctness.cc"],
     deps = [
         "//xla:debug_options_flags",
         "//xla:error_spec",

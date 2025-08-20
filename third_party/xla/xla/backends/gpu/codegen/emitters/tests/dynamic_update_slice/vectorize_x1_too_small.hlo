@@ -1,6 +1,6 @@
 // RUN: fusion_to_mlir %s | emitters_opt -xla-test-optimize \
 // RUN:   -xla-gpu-test-transform-loops | FileCheck %s
-// RUN: test_correctness %s --bijection_inputs=dus:1
+// RUN: gpu_test_correctness %s --bijection_inputs=dus:1
 
 dus {
   %input = f32[40,40,300] parameter(0)

@@ -1,4 +1,4 @@
-// RUN: test_correctness %s
+// RUN: gpu_test_correctness %s
 // RUN: fusion_to_mlir %s | FileCheck %s
 
 region {
