@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_proto_util.h"
 
@@ -29,7 +30,7 @@ namespace xla {
 
 void XlaDebugInfoManager::RegisterModule(
     std::shared_ptr<const HloModule> hlo_module,
-    BufferAssignmentProto buffer_assignment) {
+    std::shared_ptr<const BufferAssignment> buffer_assignment) {
   CHECK(hlo_module != nullptr);
   absl::MutexLock lock(&mutex_);
   auto result = modules_.try_emplace(hlo_module->unique_id());
@@ -87,7 +88,10 @@ void XlaDebugInfoManager::StopTracing(
     module_debug_info->clear();
     for (const auto& m : modules_to_serialize) {
       auto hlo_proto = std::make_unique<HloProto>(MakeHloProto(*m.hlo_module));
-      *hlo_proto->mutable_buffer_assignment() = m.buffer_assignment;
+      if (m.buffer_assignment != nullptr) {
+        *hlo_proto->mutable_buffer_assignment() =
+            m.buffer_assignment->ToProto();
+      }
       module_debug_info->emplace_back(std::move(hlo_proto));
     }
   }

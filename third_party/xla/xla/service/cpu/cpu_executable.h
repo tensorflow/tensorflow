@@ -220,7 +220,7 @@ class CpuExecutable : public Executable {
       symbol_type_id_to_function_type_id_;
 
   // Buffer assignment for the buffers we need to allocate.
-  const std::unique_ptr<const BufferAssignment> assignment_;
+  std::shared_ptr<const BufferAssignment> assignment_;
 
   // The LLVM IR, in string format, of the unoptimized module generated for this
   // CpuExecutable. We save a string instead of an llvm::Module* because leaving

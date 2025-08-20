@@ -277,7 +277,7 @@ class GpuExecutable : public Executable {
   // See the comment on GetAllocations().
   //
   // This object is also used for dumping debug info.
-  std::unique_ptr<const xla::BufferAssignment> buffer_assignment_;
+  std::shared_ptr<const xla::BufferAssignment> buffer_assignment_;
 
   // Backend specific aliasing information whether operands can/should share the
   // buffer with the user.
