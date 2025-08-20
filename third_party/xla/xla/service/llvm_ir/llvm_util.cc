@@ -56,6 +56,7 @@ limitations under the License.
 #include "llvm/Support/Alignment.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CodeGen.h"
+#include "llvm/Support/TypeSize.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/TargetParser/Triple.h"
 #include "llvm/Transforms/Utils/Cloning.h"
@@ -896,6 +897,154 @@ void EmitEarlyReturn(llvm::Value* condition, llvm::IRBuilderBase* b,
 
   b->CreateCondBr(condition, continued, return_block);
   b->SetInsertPoint(continued, continued->getFirstInsertionPt());
+}
+
+absl::StatusOr<llvm::Value*> EmitReducePrecisionIR(
+    PrimitiveType src_ty, llvm::Value* x, int64_t dest_exponent_bits,
+    int64_t dest_mantissa_bits, bool quiet_nans, llvm::IRBuilderBase* b) {
+  using llvm::APInt;
+
+  if (!primitive_util::IsFloatingPointType(src_ty)) {
+    return Unimplemented(
+        "ReducePrecision cannot accept non-floating-point type %s.",
+        PrimitiveType_Name(src_ty));
+  }
+
+  // Integer and float types for casting and constant generation.
+  llvm::Type* const value_type = x->getType();
+  llvm::Type* const float_scalar_type = value_type->getScalarType();
+  const int nbits = float_scalar_type->getPrimitiveSizeInBits();
+  llvm::Type* int_work_type = b->getIntNTy(nbits);
+  unsigned width = 1;
+  if (auto* vec_ty = llvm::dyn_cast<llvm::FixedVectorType>(value_type)) {
+    width = vec_ty->getNumElements();
+    int_work_type = llvm::VectorType::get(int_work_type,
+                                          llvm::ElementCount::getFixed(width));
+  }
+
+  // Helper to create a splatted vector constant. If the input is scalar, this
+  // will just produce a scalar ConstantInt.
+  auto int_const = [&](const APInt& val) -> llvm::Constant* {
+    return llvm::ConstantInt::get(int_work_type, val);
+  };
+
+  // SignificandWidth includes the implicit extra bit.
+  int src_mantissa_bits = primitive_util::SignificandWidth(src_ty) - 1;
+  int src_exponent_bits = nbits - 1 - src_mantissa_bits;
+
+  // Cast the input value to an integer for bitwise manipulation.
+  llvm::Value* x_as_int = b->CreateBitCast(x, int_work_type);
+
+  // Clear the sign bit, it does not participate in rounding and we will restore
+  // it later.
+  APInt sign_bit_mask(nbits, 1);
+  sign_bit_mask <<= nbits - 1;
+  llvm::Value* x_abs_bits = b->CreateAnd(x_as_int, int_const(~sign_bit_mask));
+
+  APInt exp_bits_mask(nbits, 1);
+  exp_bits_mask = ((exp_bits_mask << src_exponent_bits) - 1)
+                  << src_mantissa_bits;
+  auto x_is_nan = b->CreateICmpUGT(x_abs_bits, int_const(exp_bits_mask));
+
+  if (dest_mantissa_bits < src_mantissa_bits) {
+    // Last remaining mantissa bit.
+    APInt last_mantissa_bit_mask(nbits, 1);
+    last_mantissa_bit_mask <<= src_mantissa_bits - dest_mantissa_bits;
+
+    // Compute rounding bias for round-to-nearest with ties to even.  This is
+    // equal to a base value of 0111... plus one bit if the last remaining
+    // mantissa bit is 1.
+    APInt base_rounding_bias = last_mantissa_bit_mask.lshr(1) - 1;
+    llvm::Value* x_last_mantissa_bit =
+        b->CreateLShr(b->CreateAnd(x_as_int, int_const(last_mantissa_bit_mask)),
+                      (src_mantissa_bits - dest_mantissa_bits));
+    llvm::Value* x_rounding_bias =
+        b->CreateAdd(x_last_mantissa_bit, int_const(base_rounding_bias));
+
+    // Add rounding bias, and mask out truncated bits.  Note that the case
+    // where adding the rounding bias overflows into the exponent bits is
+    // correct; the non-masked mantissa bits will all be zero, and the
+    // exponent will be incremented by one.
+    APInt truncation_mask = ~(last_mantissa_bit_mask - 1);
+    llvm::Value* x_rounded = b->CreateAdd(x_as_int, x_rounding_bias);
+    x_rounded = b->CreateAnd(x_rounded, int_const(truncation_mask));
+    if (quiet_nans) {
+      x_as_int = b->CreateSelect(x_is_nan, x_as_int, x_rounded);
+    } else {
+      x_as_int = x_rounded;
+    }
+  }
+
+  if (dest_exponent_bits < src_exponent_bits) {
+    // An exponent of 2^(n-1)-1 -- that is, 0111... with the zero in the most-
+    // significant bit -- is equal to 1.0f for all exponent sizes.  Adding
+    // 2^(n-1)-1 to this gives us the highest non-infinite exponent for a bit-
+    // size of n, and subtracting 2^(n-1)-1 from this gives us the lowest'
+    // exponent (corresponding to 0.0f).
+    //
+    // Thus, the f32 exponent corresponding to the highest non-infinite
+    // exponent for a bit size of n is (2^7-1) + 2^(n-1)-1, and the f32
+    // exponent corresponding to the lowest exponent for a bit size of n is
+    // (2^7-1) - 2^(n-1)-1.
+    //
+    // Note that we have already checked that exponents_bits >= 1.
+    APInt exponent_bias(nbits, 1);
+    exponent_bias = (exponent_bias << (src_exponent_bits - 1)) - 1;
+
+    APInt reduced_exponent_bias(nbits, 1);
+    reduced_exponent_bias =
+        (reduced_exponent_bias << (dest_exponent_bits - 1)) - 1;
+
+    APInt reduced_max_exponent = exponent_bias + reduced_exponent_bias;
+    APInt reduced_min_exponent = exponent_bias - reduced_exponent_bias;
+
+    // Do we overflow or underflow?
+    llvm::Value* x_exponent = b->CreateAnd(x_as_int, int_const(exp_bits_mask));
+    llvm::Value* x_overflows = b->CreateICmpUGT(
+        x_exponent, int_const(reduced_max_exponent << src_mantissa_bits));
+    llvm::Value* x_underflows = b->CreateICmpULE(
+        x_exponent, int_const(reduced_min_exponent << src_mantissa_bits));
+
+    // Compute appropriately-signed values of zero and infinity.
+    llvm::Value* x_signed_zero =
+        b->CreateAnd(x_as_int, int_const(sign_bit_mask));
+    llvm::Value* x_signed_inf =
+        b->CreateOr(x_signed_zero, int_const(exp_bits_mask));
+
+    // Force to zero or infinity if overflow or underflow.  (Note that this
+    // truncates all denormal values to zero, rather than rounding them.)
+    x_as_int = b->CreateSelect(x_overflows, x_signed_inf, x_as_int);
+    x_as_int = b->CreateSelect(x_underflows, x_signed_zero, x_as_int);
+  }
+
+  // Cast the result back to a floating-point type.
+  llvm::Value* result = b->CreateBitCast(x_as_int, value_type);
+
+  // Correct result for NaN inputs.
+  //
+  // The exponent handling will "normalize" NaN values to infinities, which is
+  // undesirable (except in the case with no mantissa bits, in which case it
+  // is mandatory).  This logic also handles cases where mantissa-rounding
+  // causes a NaN's mantissa to overflow into the exponent bits, which would
+  // otherwise create an erroneous zero value.
+
+  if (dest_mantissa_bits > 0) {
+    if (quiet_nans) {
+      APInt qnan_mask(nbits, 1);
+      qnan_mask <<= src_mantissa_bits - 1;
+      llvm::Value* x_with_qnan_bit_set =
+          b->CreateOr(x_as_int, int_const(qnan_mask));
+      x_with_qnan_bit_set = b->CreateBitCast(x_with_qnan_bit_set, value_type);
+      result = b->CreateSelect(x_is_nan, x_with_qnan_bit_set, result);
+    } else {
+      result = b->CreateSelect(x_is_nan, x, result);
+    }
+  } else {
+    result = b->CreateSelect(x_is_nan,
+                             llvm::ConstantFP::getInfinity(value_type), result);
+  }
+
+  return result;
 }
 
 }  // namespace llvm_ir

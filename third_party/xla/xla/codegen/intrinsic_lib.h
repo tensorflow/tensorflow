@@ -85,8 +85,10 @@ class IntrinsicFunctionLib {
   // Will insert definitions marked as always inline and then run LLVM inliner,
   // constant propagation and early CSE passes to remove dead code.
   // Returns the set of function names that were replaced.
-  absl::flat_hash_set<absl::string_view> RewriteIntrinsicFunctions(
+  absl::flat_hash_set<absl::string_view> DefineIntrinsicFunctions(
       llvm::Module& module);
+
+  bool IsIntrinsicFunction(absl::string_view function_name) const;
 
  private:
   std::vector<std::unique_ptr<IntrinsicFunction>> intrinsic_functions_;
