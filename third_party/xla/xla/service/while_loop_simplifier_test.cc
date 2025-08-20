@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -1346,6 +1347,138 @@ ENTRY %main.44 (Arg_0.1: f32[]) -> (f32[], f32[3], f32[3]) {
   EXPECT_TRUE(ShapeUtil::Equal(
       new_while->while_condition()->parameter_instruction(0)->shape(),
       new_while_shape));
+  EXPECT_TRUE(TupleSimplifier().Run(m.get()).ok());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              op::Tuple(op::GetTupleElement(op::While(), 1),
+                        op::GetTupleElement(op::While(), 2),
+                        op::GetTupleElement(op::While(), 2)));
+}
+
+TEST_F(WhileLoopSimplifierTest, RemoveDynUpdSliceTwoPairs) {
+  const std::string hlo_string = R"(
+  HloModule dus
+
+%while.body (arg_tuple: (f32[3], f32[3], f32[3], f32[3], s32[])) -> (f32[3], f32[3], f32[3], f32[3], s32[]) {
+  %arg_tuple = (f32[3], f32[3], f32[3], f32[3], s32[]) parameter(0)
+  %get-tuple-element.0 = f32[3] get-tuple-element(%arg_tuple), index=0
+  %get-tuple-element.1 = f32[3] get-tuple-element(%arg_tuple), index=1
+  %get-tuple-element.2 = f32[3] get-tuple-element(%arg_tuple), index=2
+  %get-tuple-element.3 = f32[3] get-tuple-element(%arg_tuple), index=3
+  %get-tuple-element.4 = s32[] get-tuple-element(%arg_tuple), index=4
+  %constant.1 = s32[] constant(1)
+  %constant.v0 = f32[1] constant({0.0})
+  %constant.v1 = f32[1] constant({1.0})
+  %dynamic-update-slice.0 = f32[3] dynamic-update-slice(%get-tuple-element.0, %constant.v0, s32[] %constant.1)
+  %dynamic-update-slice.1 = f32[3] dynamic-update-slice(%get-tuple-element.1, %constant.v1, s32[] %get-tuple-element.4)
+  %dynamic-update-slice.2 = f32[3] dynamic-update-slice(%get-tuple-element.2, %constant.v1, s32[] %get-tuple-element.4)
+  %dynamic-update-slice.3 = f32[3] dynamic-update-slice(%get-tuple-element.3, %constant.v0, s32[] %constant.1)
+  %add = add(s32[] %get-tuple-element.4, s32[] %constant.1)
+  ROOT %tuple = tuple(%dynamic-update-slice.0, %dynamic-update-slice.1, %dynamic-update-slice.2, %dynamic-update-slice.3, %add)
+}
+
+%while.condition (arg_tuple.cond:(f32[3], f32[3], f32[3], f32[3], s32[])) -> pred[] {
+  %arg_tuple.cond = (f32[3], f32[3], f32[3], f32[3], s32[]) parameter(0)
+  %get-tuple-element.cond = s32[] get-tuple-element(%arg_tuple.cond), index=4
+  %constant.3 = s32[] constant(3)
+  ROOT %compare = pred[] compare(s32[] %get-tuple-element.cond, s32[] %constant.3), direction=LT
+}
+
+ENTRY %main (arg.0: f32[3], arg.1: f32[3]) -> (f32[3], f32[3], f32[3], f32[3]) {
+  %constant.0 = s32[] constant(0)
+  %arg.0 = f32[3] parameter(0)
+  %arg.1 = f32[3] parameter(1)
+  %input = tuple(%arg.0, %arg.1, %arg.1, %arg.0, %constant.0)
+  %while = while(%input), condition=%while.condition, body=%while.body
+  %get-tuple-element.out0 = f32[3] get-tuple-element(%while), index=0
+  %get-tuple-element.out1 = f32[3] get-tuple-element(%while), index=1
+  %get-tuple-element.out2 = f32[3] get-tuple-element(%while), index=2
+  %get-tuple-element.out3 = f32[3] get-tuple-element(%while), index=3
+  ROOT %root = tuple(%get-tuple-element.out0, %get-tuple-element.out1, %get-tuple-element.out2, %get-tuple-element.out3)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_TRUE(WhileLoopSimplifier().Run(module.get()).value());
+  HloInstruction* new_while = FindFirstWhile(module.get());
+  Shape new_while_shape = ParseShape("(f32[3], f32[3], s32[])").value();
+  EXPECT_TRUE(ShapeUtil::Equal(new_while->shape(), new_while_shape));
+  EXPECT_TRUE(ShapeUtil::Equal(
+      new_while->while_body()->root_instruction()->shape(), new_while_shape));
+  EXPECT_TRUE(ShapeUtil::Equal(
+      new_while->while_body()->parameter_instruction(0)->shape(),
+      new_while_shape));
+  EXPECT_TRUE(ShapeUtil::Equal(
+      new_while->while_condition()->parameter_instruction(0)->shape(),
+      new_while_shape));
+  EXPECT_TRUE(TupleSimplifier().Run(module.get()).ok());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Tuple(op::GetTupleElement(op::While(), 0),
+                        op::GetTupleElement(op::While(), 1),
+                        op::GetTupleElement(op::While(), 1),
+                        op::GetTupleElement(op::While(), 0)));
+}
+
+TEST_F(WhileLoopSimplifierTest, RemoveMixedRegularAndDynUpdSlice) {
+  const std::string hlo_string = R"(
+  HloModule dus
+
+%while.body (arg_tuple: (f32[3], f32[2], f32[2], f32[3], s32[])) -> (f32[3], f32[2], f32[2], f32[3], s32[]) {
+  %arg_tuple = (f32[3], f32[2], f32[2], f32[3], s32[]) parameter(0)
+  %get-tuple-element.0 = f32[3] get-tuple-element(%arg_tuple), index=0
+  %get-tuple-element.1 = f32[2] get-tuple-element(%arg_tuple), index=1
+  %get-tuple-element.2 = f32[2] get-tuple-element(%arg_tuple), index=2
+  %get-tuple-element.3 = f32[3] get-tuple-element(%arg_tuple), index=3
+  %get-tuple-element.4 = s32[] get-tuple-element(%arg_tuple), index=4
+  %constant.1 = s32[] constant(1)
+  %constant.v0 = f32[1] constant({0.0})
+  %constant.v1 = f32[1] constant({1.0})
+  %dynamic-update-slice.0 = f32[3] dynamic-update-slice(%get-tuple-element.0, %constant.v0, s32[] %constant.1)
+  %dynamic-update-slice.3 = f32[3] dynamic-update-slice(%get-tuple-element.3, %constant.v0, s32[] %constant.1)
+  %add = add(s32[] %get-tuple-element.4, s32[] %constant.1)
+  ROOT %tuple = tuple(%dynamic-update-slice.0, %get-tuple-element.1, %get-tuple-element.2, %dynamic-update-slice.3, %add)
+}
+
+%while.condition (arg_tuple.cond:(f32[3], f32[2], f32[2], f32[3], s32[])) -> pred[] {
+  %arg_tuple.cond = (f32[3], f32[2], f32[2], f32[3], s32[]) parameter(0)
+  %get-tuple-element.cond = s32[] get-tuple-element(%arg_tuple.cond), index=4
+  %constant.3 = s32[] constant(3)
+  ROOT %compare = pred[] compare(s32[] %get-tuple-element.cond, s32[] %constant.3), direction=LT
+}
+
+ENTRY %main (arg.0: f32[3], arg.1: f32[2]) -> (f32[3], f32[2], f32[2], f32[3]) {
+  %constant.0 = s32[] constant(0)
+  %arg.0 = f32[3] parameter(0)
+  %arg.1 = f32[2] parameter(1)
+  %input = tuple(%arg.0, %arg.1, %arg.1, %arg.0, %constant.0)
+  %while = while(%input), condition=%while.condition, body=%while.body
+  %get-tuple-element.out0 = f32[3] get-tuple-element(%while), index=0
+  %get-tuple-element.out1 = f32[2] get-tuple-element(%while), index=1
+  %get-tuple-element.out2 = f32[2] get-tuple-element(%while), index=2
+  %get-tuple-element.out3 = f32[3] get-tuple-element(%while), index=3
+  ROOT %root = tuple(%get-tuple-element.out0, %get-tuple-element.out1, %get-tuple-element.out2, %get-tuple-element.out3)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  ASSERT_TRUE(WhileLoopSimplifier().Run(module.get()).value());
+  HloInstruction* new_while = FindFirstWhile(module.get());
+  Shape new_while_shape = ParseShape("(f32[3], f32[2], s32[])").value();
+  EXPECT_TRUE(ShapeUtil::Equal(new_while->shape(), new_while_shape));
+  EXPECT_TRUE(ShapeUtil::Equal(
+      new_while->while_body()->root_instruction()->shape(), new_while_shape));
+  EXPECT_TRUE(ShapeUtil::Equal(
+      new_while->while_body()->parameter_instruction(0)->shape(),
+      new_while_shape));
+  EXPECT_TRUE(ShapeUtil::Equal(
+      new_while->while_condition()->parameter_instruction(0)->shape(),
+      new_while_shape));
+  EXPECT_TRUE(TupleSimplifier().Run(module.get()).ok());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Tuple(op::GetTupleElement(op::While(), 0),
+                        op::GetTupleElement(op::While(), 1), op::Parameter(1),
+                        op::GetTupleElement(op::While(), 0)));
 }
 
 }  // namespace
