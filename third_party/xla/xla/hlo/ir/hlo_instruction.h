@@ -2041,26 +2041,43 @@ class HloInstruction {
 
   // Sets the debug metadata for this instruction, excluding creation_pass_id,
   // which should never be copied anywhere.
-  void set_metadata(const OpMetadata& metadata) { *metadata_ = metadata; }
+  void set_metadata(const OpMetadata& metadata) {
+    if (&metadata == kEmptyMetadata) {
+      metadata_.reset();
+    } else {
+      mutable_metadata() = metadata;
+    }
+  }
 
   void set_size_of_generated_code_in_bytes(int64_t code_size_in_bytes) {
-    metadata_->set_size_of_generated_code_in_bytes(code_size_in_bytes);
+    mutable_metadata().set_size_of_generated_code_in_bytes(code_size_in_bytes);
   }
   void set_size_of_memory_working_set_in_bytes(
       int64_t working_set_size_in_bytes) {
-    metadata_->set_size_of_memory_working_set_in_bytes(
+    mutable_metadata().set_size_of_memory_working_set_in_bytes(
         working_set_size_in_bytes);
   }
   void set_metadata_op_name(const std::string& name) {
-    metadata_->set_op_name(name);
+    mutable_metadata().set_op_name(name);
   }
   void set_metadata_deduplicated_name(std::string deduplicated_name) {
-    metadata_->set_deduplicated_name(std::move(deduplicated_name));
+    mutable_metadata().set_deduplicated_name(std::move(deduplicated_name));
   }
   void set_metadata_scheduling_name(absl::string_view name) {
-    metadata_->set_scheduling_name(std::string(name));
+    mutable_metadata().set_scheduling_name(name);
   }
-  const OpMetadata& metadata() const { return *metadata_; }
+
+  const OpMetadata& metadata() const {
+    OpMetadata* m = metadata_.get();
+    return (m == nullptr) ? *kEmptyMetadata : *m;
+  }
+
+  OpMetadata& mutable_metadata() {
+    if (metadata_ == nullptr) {
+      metadata_ = std::make_unique<OpMetadata>();
+    }
+    return *metadata_;
+  }
 
   // Get the computation containing this instruction.
   const HloComputation* parent() const { return parent_; }
@@ -2553,8 +2570,6 @@ class HloInstruction {
     ResultAccuracy result_accuracy;
   };
 
-  static const Rare* const kEmptyRare;
-
   bool has_rare() const { return rare_ != nullptr; }
 
   // Return the allocated rare state, or the pointer to the static empty rare
@@ -2638,6 +2653,7 @@ class HloInstruction {
 
   // If needed, points off to allocated struct holding out-of-line info
   // for things that are rarely filled
+  static const Rare* const kEmptyRare;
   std::unique_ptr<Rare> rare_;
 
   // The users of this instruction. Users are HLOs where this instruction is an
@@ -2669,7 +2685,8 @@ class HloInstruction {
 
   // Metadata for debugging.  Allocate it on heap, so that it does not increase
   // the memory footprint of HloInstruction.
-  std::unique_ptr<OpMetadata> metadata_ = std::make_unique<OpMetadata>();
+  static const OpMetadata* const kEmptyMetadata;
+  std::unique_ptr<OpMetadata> metadata_;
 };
 
 // Explicit instantiations in hlo_instruction.cc.
