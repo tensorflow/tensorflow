@@ -23,8 +23,8 @@
 # This script only builds modules and tests, it doesn't execute them. It
 # can be run on any system and doesn't need an Intel GPU.
 bazel build \
-      --config=sycl_hermetic --verbose_failures -c opt\
+      --config=sycl_hermetic --verbose_failures -c opt \
       --build_tag_filters=gpu,oneapi-only,requires-gpu-intel,-requires-gpu-amd,-requires-gpu-nvidia,-no_oss,-cuda-only,-rocm-only,-no-oneapi \
       --test_tag_filters=gpu,oneapi-only,requires-gpu-intel,-requires-gpu-amd,-requires-gpu-nvidia,-no_oss,-cuda-only,-rocm-only,-no-oneapi \
-      //xla/stream_executor/sycl:stream_executor_sycl \
-      //xla/stream_executor/sycl:sycl_status_test
+      --show_result=30 \
+      //xla/stream_executor/sycl/...
