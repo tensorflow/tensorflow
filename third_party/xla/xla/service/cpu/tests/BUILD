@@ -313,6 +313,11 @@ xla_cc_test(
     name = "onednn_convolution_test",
     srcs = ["onednn_convolution_test.cc"],
     copts = tsl_copts(),
+    tags = [
+        # TODO: reenable once onednn is supported by the thunk runtime.
+        "no_oss",
+        "notap",
+    ],
     deps = [
         "//xla:literal",
         "//xla:shape_util",
@@ -354,6 +359,11 @@ xla_cc_test(
     name = "onednn_layer_norm_test",
     srcs = ["onednn_layer_norm_test.cc"],
     copts = tsl_copts(),
+    tags = [
+        # TODO: reenable once onednn is supported by the thunk runtime.
+        "no_oss",
+        "notap",
+    ],
     deps = [
         "//xla/hlo/testlib:test",
         "//xla/service:cpu_plugin",
@@ -368,6 +378,11 @@ xla_cc_test(
     srcs = ["onednn_softmax_test.cc"],
     copts = tsl_copts(),
     shard_count = if_graph_api(4, 1),
+    tags = [
+        # TODO: reenable once onednn is supported by the thunk runtime.
+        "no_oss",
+        "notap",
+    ],
     deps = [
         "//xla:literal",
         "//xla:shape_util",
