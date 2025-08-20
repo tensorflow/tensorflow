@@ -63,6 +63,25 @@ std::vector<ExecutionInput> CreateExecutionInputsFromBuffers(
   return inputs;
 }
 
+int GetScratchBytes(const Executable* executable) {
+  int scratch_bytes = 0;
+  for (const auto& allocation : executable->GetAllocations()) {
+    if (allocation.IsPreallocatedTempBuffer()) {
+      for (const auto& [buffer, offset] : allocation.assigned_buffers()) {
+        // Scratch space is allocated as the second element in the output tuple
+        // of the instruction.
+        const auto& shape_index = buffer->positions().front().index;
+        bool is_second_element_in_output_tuple =
+            !shape_index.empty() && shape_index[0] == 1;
+        if (is_second_element_in_output_tuple) {
+          scratch_bytes += offset.size;
+        }
+      }
+    }
+  }
+  return scratch_bytes;
+}
+
 }  // namespace
 
 std::unique_ptr<GpuProfiler> GpuProfiler::Create(
@@ -106,6 +125,8 @@ absl::StatusOr<ProfileResult> GpuProfiler::Profile(
   const GpuInputBuffers& gpu_buffers =
       tsl::down_cast<const GpuInputBuffers&>(buffers);
   const RedzoneBuffers& rz_buffers = gpu_buffers.redzone_buffers;
+  ProfileResult result;
+  result.scratch_bytes = GetScratchBytes(executable);
   {
     // Warm up run.
     std::vector<ExecutionInput> execution_inputs =
@@ -128,11 +149,11 @@ absl::StatusOr<ProfileResult> GpuProfiler::Profile(
       ExecutionOutput execution_output,
       Execute(executable, std::move(execution_inputs), &profile));
 
+  result.duration = absl::Nanoseconds(profile.compute_time_ns());
   if (options_.should_populate_output_buffer) {
-    return ProfileResult{absl::Nanoseconds(profile.compute_time_ns()),
-                         execution_output.Commit().ConsumeResult()};
+    result.output_buffer = execution_output.Commit().ConsumeResult();
   }
-  return ProfileResult{absl::Nanoseconds(profile.compute_time_ns())};
+  return result;
 }
 
 absl::StatusOr<ExecutionOutput> GpuProfiler::Execute(

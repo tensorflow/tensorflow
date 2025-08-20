@@ -44,6 +44,7 @@ struct ProfileOptions {
 struct ProfileResult {
   absl::Duration duration = absl::ZeroDuration();
   std::optional<ScopedShapedBuffer> output_buffer = std::nullopt;
+  int scratch_bytes = 0;
 };
 
 struct InputBuffers {
