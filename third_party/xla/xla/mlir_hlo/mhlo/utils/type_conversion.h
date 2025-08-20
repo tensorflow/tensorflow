@@ -53,6 +53,7 @@ namespace stablehlo {
 //   * Index types (index).
 //   * Tensor types.
 //   * Tuple types.
+//   * Buffer types.
 // Types which are specific to individual dialects like !stablehlo.token
 // and !mhlo.token are handled in subclasses.
 class HloTypeConverter : public TypeConverter {

@@ -35,6 +35,7 @@ limitations under the License.
 #include "tsl/platform/protobuf.h"
 
 using mlir::Builder;
+using mlir::MemRefType;
 using mlir::MLIRContext;
 using mlir::RankedTensorType;
 using mlir::UnrankedTensorType;
@@ -139,6 +140,29 @@ TEST(TypeToShapeTest, ConvertTensorTypeToTypes) {
                       {8, 128}, VectorType::get({16, 16}, b.getF32Type())))
           .ToProto(),
       EqualsProto(Shape().ToProto()));
+}
+
+TEST(TypeToShapeTest, ConvertBufferTypeToTypes) {
+  MLIRContext context;
+  Builder builder(&context);
+
+  Shape shape1 = ShapeUtil::MakeShapeWithDenseLayout(PrimitiveType::F32,
+                                                     {10, 20, 30}, {1, 0, 2});
+
+  EXPECT_THAT(
+      TypeToShape(ConvertShapeToType<MemRefType>(shape1, builder).value())
+          .ToProto(),
+      EqualsProto(
+          ShapeUtil::MakeValidatedBufferShape(shape1).value().ToProto()));
+
+  Shape shape2 = ShapeUtil::MakeShapeWithDenseLayout(PrimitiveType::F32,
+                                                     {10, 20, 30}, {2, 1, 0});
+
+  EXPECT_THAT(
+      TypeToShape(ConvertShapeToType<MemRefType>(shape2, builder).value())
+          .ToProto(),
+      EqualsProto(
+          ShapeUtil::MakeValidatedBufferShape(shape2).value().ToProto()));
 }
 
 }  // namespace

@@ -3179,3 +3179,107 @@ func.func @main(%arg0: tensor<192xf32>) -> tensor<1x17x17x192xf32> {
   %0 = "mhlo.broadcast_in_dim"(%arg0) <{broadcast_dimensions = dense<3> : tensor<1xi64>}> {mhlo.original_value = "{{\22broadcast.2342\22}}"} : (tensor<192xf32>) -> tensor<1x17x17x192xf32>
   return %0 : tensor<1x17x17x192xf32>
 }
+
+// -----
+
+// CHECK: HloModule
+// CHECK: ENTRY
+func.func @main() -> memref<2xf32> {
+  // CHECK: custom-call(), custom_call_target="CreateBuffer"
+  %0 = "mhlo.custom_call"() {
+    call_target_name = "CreateBuffer",
+    api_version = 4 : i32
+  } : () -> memref<2xf32>
+  func.return %0 : memref<2xf32>
+}
+
+// -----
+
+// CHECK: HloModule main
+// CHECK: ENTRY
+func.func @main(%arg0: tensor<2xf32>) -> memref<2xf32> {
+  //               CHECK: custom-call({{.*}}), custom_call_target="Pin",
+  // CHECK-SAME{LITERAL}: output_to_operand_aliasing={{}: (0, {})}
+  %0 = "mhlo.custom_call"(%arg0) {
+    call_target_name = "Pin",
+    api_version = 4 : i32
+  } : (tensor<2xf32>) -> memref<2xf32>
+  func.return %0 : memref<2xf32>
+}
+
+// -----
+
+// CHECK: HloModule
+// CHECK: ENTRY
+func.func @main(%arg0: memref<2xf32>) -> tensor<2xf32> {
+  //               CHECK: custom-call({{.*}}), custom_call_target="Unpin",
+  // CHECK-SAME{LITERAL}: output_to_operand_aliasing={{}: (0, {})}
+  %0 = "mhlo.custom_call"(%arg0) {
+    call_target_name = "Unpin",
+    api_version = 4 : i32
+  } : (memref<2xf32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+}
+
+// -----
+
+// CHECK: HloModule main
+// CHECK: ENTRY
+func.func @main(%arg0: memref<2x4xf32>) -> memref<2x4xf32> {
+  //               CHECK: custom-call({{.*}}), custom_call_target="foo",
+  // CHECK-SAME{LITERAL}: output_to_operand_aliasing={{}: (0, {})}
+  %0 = "mhlo.custom_call"(%arg0) {
+    call_target_name = "foo",
+    api_version = 4 : i32,
+    output_operand_aliases = [
+      #mhlo.output_operand_alias<output_tuple_indices = [],
+        operand_index = 0,
+        operand_tuple_indices = []>]
+  } : (memref<2x4xf32>) -> memref<2x4xf32>
+  func.return %0 : memref<2x4xf32>
+}
+
+// -----
+
+// CHECK: HloModule
+// CHECK: ENTRY
+func.func @main(%arg0: tensor<2xf32>, %arg1: memref<2xf32>) -> tuple<tensor<2xf32>, memref<2xf32>> {
+  // CHECK: %{{.*}} = (f32[2], b(f32[2])) tuple(%{{.*}}, %{{.*}}),
+  %0 = "mhlo.tuple"(%arg0, %arg1) : (tensor<2xf32>, memref<2xf32>) -> tuple<tensor<2xf32>, memref<2xf32>>
+  func.return %0 : tuple<tensor<2xf32>, memref<2xf32>>
+}
+
+// -----
+
+// CHECK: HloModule main
+// CHECK: ENTRY
+func.func @main(%arg0: tuple<tensor<2xf32>, memref<2xf32>>) -> memref<2xf32> {
+  // CHECK: %{{.*}} = b(f32[2]) get-tuple-element(%{{.*}})
+  %0 = "mhlo.get_tuple_element"(%arg0) {
+    index = 1 : i32
+  } : (tuple<tensor<2xf32>, memref<2xf32>>) -> memref<2xf32>
+  func.return %0 : memref<2xf32>
+}
+
+// -----
+
+// CHECK: HloModule
+// CHECK: ENTRY
+func.func @main(%arg0: tensor<i1>, %arg1: memref<2xf32>) -> memref<2xf32> {
+  // CHECK: %{{.*}} = (pred[], b(f32[2])) while(%{{.*}}), condition=%{{.*}}, body=%{{.*}}
+  %0:2 = mhlo.while(%iterArg0 = %arg0, %iterArg1 = %arg1) : tensor<i1>, memref<2xf32>
+    cond {
+      mhlo.return %iterArg0 : tensor<i1>
+    } do {
+      %1 = "mhlo.custom_call"(%iterArg1) {
+        call_target_name = "foo",
+        api_version = 4 : i32,
+        output_operand_aliases = [
+          #mhlo.output_operand_alias<output_tuple_indices = [],
+            operand_index = 0,
+            operand_tuple_indices = []>]
+      } : (memref<2xf32>) -> memref<2xf32>
+      mhlo.return %iterArg0, %1 : tensor<i1>, memref<2xf32>
+    }
+  func.return %0#1: memref<2xf32>
+}

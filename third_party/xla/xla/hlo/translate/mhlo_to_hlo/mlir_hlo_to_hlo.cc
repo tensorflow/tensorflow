@@ -79,6 +79,7 @@ limitations under the License.
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/dynamic_parameter_binding.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
@@ -2622,6 +2623,19 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
 
   auto aliasInfo = xla::ConvertOutputOperandAliasing<
       mlir::stablehlo::OutputOperandAliasAttr>(op.getOutputOperandAliases());
+  // Pin and Unpin are the boundary to transition into or out of a buffer
+  // chain and their operands and results are not different types. XLA/HLO
+  // requires alias info for Pin and Unpin custom calls, such as to support
+  // copy insertion to add the needed copies of the Pin operand and the Unpin
+  // result. We keep this detail within XLA/HLO and do not require StableHLO
+  // users to add alias of different types to theses custom calls.
+  if (absl::string_view(op.getCallTargetName()) ==
+          xla::kUnpinCustomCallTarget ||
+      absl::string_view(op.getCallTargetName()) == xla::kPinCustomCallTarget) {
+    aliasInfo = {std::make_pair(
+        xla::ShapeIndex(),
+        std::make_pair(static_cast<int64_t>(0), xla::ShapeIndex()))};
+  }
   auto output_operand_aliasing = absl::MakeSpan(*aliasInfo);
 
   auto custom_call_schedule = xla::SCHEDULE_NONE;
@@ -4311,6 +4325,14 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
   auto aliasInfo =
       xla::ConvertOutputOperandAliasing<mlir::mhlo::OutputOperandAliasAttr>(
           op.getOutputOperandAliases());
+  // XLA/HLO requires alias info for Pin and Unpin custom calls.
+  if (absl::string_view(op.getCallTargetName()) ==
+          xla::kUnpinCustomCallTarget ||
+      absl::string_view(op.getCallTargetName()) == xla::kPinCustomCallTarget) {
+    aliasInfo = {std::make_pair(
+        xla::ShapeIndex(),
+        std::make_pair(static_cast<int64_t>(0), xla::ShapeIndex()))};
+  }
   auto output_operand_aliasing = absl::MakeSpan(*aliasInfo);
   auto custom_call_schedule =
       xla::ConvertCustomCallSchedule(op.getCustomCallSchedule());
