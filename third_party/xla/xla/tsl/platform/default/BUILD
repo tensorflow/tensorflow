@@ -16,6 +16,10 @@ load(
     "tsl_grpc_cc_dependencies",
 )
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
+load(
+    "//xla/tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_newer_than",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -70,9 +74,11 @@ cc_library(
     srcs = ["cuda_root_path.cc"],
     hdrs = ["@local_tsl//tsl/platform:cuda_root_path.h"],
     compatible_with = [],
-    data = if_cuda_tools([
-        "@cuda_nvcc//:nvvm",
-    ]),
+    data = if_cuda_tools(if_cuda_newer_than(
+        "13_0",
+        if_false = ["@cuda_nvcc//:nvvm"],
+        if_true = ["@cuda_nvvm//:nvvm"],
+    )),
     tags = [
         "manual",
         "no_oss",
