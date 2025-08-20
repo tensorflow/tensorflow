@@ -19,7 +19,7 @@ lit_test_suite(
     hermetic_cuda_data_dir = "%S/../../../../../../../../cuda_nvcc",
     tools = [
         "//xla/backends/gpu/codegen/tools:fusion_to_mlir",
-        "//xla/backends/gpu/codegen/tools:test_correctness",
+        "//xla/backends/gpu/codegen/tools:gpu_test_correctness",
         "//xla/codegen/tools:emitters_opt",
         "@llvm-project//llvm:FileCheck",
     ],

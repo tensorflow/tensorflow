@@ -53,7 +53,6 @@ _XLA_SHARED_OBJECT_SENSITIVE_DEPS = [
     Label("//xla/stream_executor:device_description_proto_cc_impl"),
     Label("//xla/stream_executor:stream_executor_impl"),
     Label("//xla/stream_executor/cuda:cuda_compute_capability_proto_cc_impl"),
-    Label("//xla/stream_executor/gpu:gpu_init_impl"),
     Label("//xla/backends/cpu/runtime:thunk_proto_cc_impl"),
     "@com_google_protobuf//:protobuf",
     "//xla/tsl/framework:allocator_registry_impl",

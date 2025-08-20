@@ -1,5 +1,5 @@
 // RUN: fusion_to_mlir %s | FileCheck %s
-// RUN: test_correctness %s
+// RUN: gpu_test_correctness %s
 
 add {
   p0 = s32[] parameter(0)

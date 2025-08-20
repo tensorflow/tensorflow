@@ -79,9 +79,9 @@ xla_cc_binary(
 )
 
 xla_cc_binary(
-    name = "test_correctness",
+    name = "gpu_test_correctness",
     testonly = 1,
-    srcs = ["test_correctness.cc"],
+    srcs = ["gpu_test_correctness.cc"],
     # We want to use this tool for lit tests. Due to hermetic cuda, we need to
     # set linkopts in such a way that dynamic libraries are found, which are
     # symlinked from the lit_lib directory.

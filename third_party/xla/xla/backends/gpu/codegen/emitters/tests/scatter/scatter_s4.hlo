@@ -1,4 +1,4 @@
-// RUN: test_correctness %s --bijection_inputs=scatter:2
+// RUN: gpu_test_correctness %s --bijection_inputs=scatter:2
 
 add {
   p0 = s4[] parameter(0)

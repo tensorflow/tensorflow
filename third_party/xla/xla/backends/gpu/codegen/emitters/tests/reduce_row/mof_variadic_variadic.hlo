@@ -1,6 +1,6 @@
 // Regression test for a compilation crash with a MOF with two variadic
 // reductions.
-// RUN: test_correctness %s
+// RUN: gpu_test_correctness %s
 
 add {
   p0 = f32[] parameter(0)
