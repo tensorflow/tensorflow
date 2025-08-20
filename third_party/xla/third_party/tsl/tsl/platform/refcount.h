@@ -20,9 +20,9 @@ limitations under the License.
 #include <map>
 #include <memory>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/logging.h"
-#include "tsl/platform/mutex.h"
-#include "tsl/platform/thread_annotations.h"
 
 namespace tsl {
 namespace core {
@@ -155,29 +155,29 @@ class WeakRefCounted : public RefCounted {
   struct WeakRefData : public RefCounted {
     explicit WeakRefData(WeakRefCounted* ptr) : ptr(ptr), next_notifier_id(1) {}
 
-    mutable mutex mu;
-    WeakRefCounted* ptr TF_GUARDED_BY(mu);
+    mutable absl::Mutex mu;
+    WeakRefCounted* ptr ABSL_GUARDED_BY(mu);
     std::map<int, WeakNotifyFn> notifiers;
     int next_notifier_id;
 
     // Notifies WeakPtr instances that this object is being destructed.
     void Notify() {
-      mutex_lock ml(mu);
+      absl::MutexLock ml(&mu);
 
       while (!notifiers.empty()) {
         auto iter = notifiers.begin();
         WeakNotifyFn notify_fn = std::move(iter->second);
         notifiers.erase(iter);
 
-        mu.unlock();
+        mu.Unlock();
         notify_fn();
-        mu.lock();
+        mu.Lock();
       }
       ptr = nullptr;
     }
 
     WeakRefCounted* GetNewRef() {
-      mutex_lock ml(mu);
+      absl::MutexLock ml(&mu);
       if (ptr != nullptr && ptr->TryRef()) {
         return ptr;
       }
@@ -188,7 +188,7 @@ class WeakRefCounted : public RefCounted {
     // Returns 0 if insertion fails due to the object is being destroyed.
     // 0 is also used by WeakPtr to represent "no notify_fn".
     int AddNotifier(WeakNotifyFn notify_fn) {
-      mutex_lock ml(mu);
+      absl::MutexLock ml(&mu);
       if (ptr == nullptr) {
         return 0;
       }
@@ -198,7 +198,7 @@ class WeakRefCounted : public RefCounted {
     }
 
     int DupNotifier(int notifier_id) {
-      mutex_lock ml(mu);
+      absl::MutexLock ml(&mu);
       auto iter = notifiers.find(notifier_id);
       if (iter != notifiers.end()) {
         int notifier_id = next_notifier_id++;
@@ -209,7 +209,7 @@ class WeakRefCounted : public RefCounted {
     }
 
     void RemoveNotifier(int notifier_id) {
-      mutex_lock ml(mu);
+      absl::MutexLock ml(&mu);
       notifiers.erase(notifier_id);
     }
   };
