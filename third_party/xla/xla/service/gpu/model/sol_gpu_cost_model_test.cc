@@ -88,7 +88,28 @@ TEST(SolGPUCostModelGetConfigTest, ConfigForHopper) {
   EXPECT_EQ(static_cast<int>(config.nic_speed_gbps), 25);
 }
 
-TEST(SolGPUCostModelGetConfigTest, ConfigForNewerThanHopper) {
+TEST(SolGPUCostModelGetConfigTest, ConfigForBlackwell) {
+  constexpr absl::string_view kDummyModule = R"(
+    HloModule noop
+
+    ENTRY main {
+      ROOT constant = f32[] constant(0)
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kDummyModule));
+
+  se::DeviceDescription device_info;
+  device_info.set_name("NVIDIA B200");
+  SolGPUCostModel::Config config =
+      SolGPUCostModel::GetConfig(module.get(), device_info);
+  EXPECT_EQ(static_cast<int>(config.nic_speed_gbps), 50);
+  // Allow a tolerance of 10 nanoseconds for chunk_prep_time
+  EXPECT_LT(absl::AbsDuration(config.chunk_prep_time - absl::Microseconds(2)),
+            absl::Nanoseconds(10));
+}
+
+TEST(SolGPUCostModelGetConfigTest, ConfigForDefaultGPU) {
   constexpr absl::string_view kDummyModule = R"(
     HloModule noop
 
