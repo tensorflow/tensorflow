@@ -21,7 +21,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
-#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/shape.h"
@@ -30,12 +29,6 @@ limitations under the License.
 namespace xla::cpu {
 
 inline constexpr absl::string_view kXnnFusionKind = "__xnn_fusion";
-
-// Returns true if XNNPACK should use thread pool to execute given HLO
-// instruction or computation. We rely on simple heuristics to determine if
-// thread pool is beneficial.
-bool XnnShouldUseThreadPool(const HloInstruction* hlo);
-bool XnnShouldUseThreadPool(const HloComputation* computation);
 
 // Returns true if the dot operation is supported by XNNPACK. Returns an error
 // if the dot operation shape is invalid.
