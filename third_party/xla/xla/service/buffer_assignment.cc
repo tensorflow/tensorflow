@@ -404,8 +404,10 @@ std::string BufferAllocation::ToShortString(bool human_readable_size) const {
   if (is_entry_computation_parameter()) {
     const HloInstruction* param = GetEntryParameterInstruction(*this);
     StrAppend(&output, ", parameter ", parameter_number(), ", shape |",
-              param ? param->shape().ToString(/*print_layout=*/false)
-                    : "<unknown shape>",
+              param
+                  ? ShapeUtil::GetSubshape(param->shape(), param_shape_index())
+                        .ToString(/*print_layout=*/false)
+                  : "<unknown shape>",
               "| at ShapeIndex ", param_shape_index().ToString());
   }
   if (const HloInstruction* instr = GetOutputInstruction(*this)) {
