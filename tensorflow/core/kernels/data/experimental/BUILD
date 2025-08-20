@@ -179,6 +179,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -665,6 +666,7 @@ tf_kernel_library(
         "//tensorflow/core/kernels/data:parallel_map_dataset_op",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 

@@ -15,12 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/rpc/rpc_rendezvous_mgr.h"
 
+#include "absl/synchronization/notification.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/distributed_runtime/test_utils.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/control_flow.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/env.h"
@@ -201,7 +201,7 @@ TEST_F(RpcRendezvousMgrTest, LocalCancel) {
   auto* cm = new CancellationManager();
   const int64_t step_id = 123;
   tsl::core::RefCountPtr<RemoteRendezvous> rendez = rmgr_.Find(step_id);
-  Notification n;
+  absl::Notification n;
   SchedClosure([this, cm, &n]() {
     env.env->SleepForMicroseconds(100 * 1000);
     cm->StartCancel();
@@ -224,7 +224,7 @@ TEST_F(RpcRendezvousMgrTest, CancelAfterReceived) {
   auto* cm = new CancellationManager();
   const int64_t step_id = 123;
   tsl::core::RefCountPtr<RemoteRendezvous> rendez = rmgr_.Find(step_id);
-  Notification n;
+  absl::Notification n;
   SchedClosure([this, rendez = rendez.get(), key, cm, &n]() {
     env.env->SleepForMicroseconds(100 * 1000);
     TF_ASSERT_OK(rendez->Send(key, Rendezvous::Args(), V("peach"), false));
@@ -269,7 +269,7 @@ TEST_F(RpcRendezvousMgrTest, TransferDummyDeviceContext) {
     TF_ASSERT_OK(rendez->Send(key, args, V("peach"), false));
   }
   {
-    Notification n;
+    absl::Notification n;
     rmgr_.RecvLocalAsync(
         step_id, key,
         [&n](const absl::Status& s, const Rendezvous::Args send_args,

@@ -162,15 +162,16 @@ tf_cc_test(
     ],
     # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     deps = [
+        ":grpc_channel",
         ":grpc_worker_cache",
         "//tensorflow/c:tf_status_headers",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/distributed_runtime:test_utils",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_channel",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:strcat",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -296,6 +297,7 @@ cc_library(
         "//tensorflow/core/distributed_runtime:worker_cache",
         "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core/distributed_runtime:worker_interface",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -490,6 +492,7 @@ tf_cuda_cc_tests(
         "//tensorflow/core/distributed_runtime:test_utils",
         "//tensorflow/core/platform:blocking_counter",
         "//tensorflow/core/protobuf:master_proto_cc",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 

@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/synchronization/notification.h"
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
@@ -157,7 +158,7 @@ class RemoteCopyNode : public AsyncEagerNode {
     // send_status_ is safe to read only after send_done_.WaitForNotification()
     // has returned.
     absl::Status send_status_;
-    Notification send_done_;
+    absl::Notification send_done_;
     TensorShape src_shape_;
   };
 
