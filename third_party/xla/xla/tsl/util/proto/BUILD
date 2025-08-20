@@ -53,6 +53,7 @@ tsl_cc_test(
     deps = [
         ":proto_matchers",
         ":proto_matchers_test_protos_cc",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:protobuf",
