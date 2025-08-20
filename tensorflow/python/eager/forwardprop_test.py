@@ -968,6 +968,23 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
       self.assertAllClose(1.0, result)
       self.assertIsNone(acc.jvp(result))
 
+  def testForwardAccumulatorShapeMismatchRaises(self):
+    primals  = constant_op.constant([[1., 2., 3.],
+                                    [4., 5., 6.]])     # (2, 3)
+    tangents = constant_op.constant([0.1, 0.2, 0.3])    # (3,)  <-- mismatch
+    with self.assertRaisesRegex(ValueError,
+                                r"primals and tangents must have the same shape"):
+      forwardprop.ForwardAccumulator(primals, tangents)
+
+  def testForwardAccumulatorShapeMatchOK(self):
+    primals  = constant_op.constant([[1., 2., 3.],
+                                    [4., 5., 6.]])     # (2, 3)
+    tangents = constant_op.constant([[0.1, 0.2, 0.3],
+                                    [0.0, 0.0, 0.0]])  # (2, 3)
+    with forwardprop.ForwardAccumulator(primals, tangents) as acc:
+      y = primals * 2.0
+    self.assertAllClose(tangents * 2.0, acc.jvp(y))
+
 
 @def_function.function
 def _has_loop(iters, y):
