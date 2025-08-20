@@ -26,9 +26,8 @@ limitations under the License.
 #include "xla/service/hlo_module_util.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tests/test_utils.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -191,7 +190,9 @@ ENTRY %AddDependency (p0: f32[], p1: f32[]) -> f32[] {
   auto p0 = LiteralUtil::CreateR0<float>(10.0);
   auto p1 = LiteralUtil::CreateR0<float>(3.0);
   auto expected = LiteralUtil::CreateR0<float>(-156.0);
-  EXPECT_EQ(expected, ExecuteNoHloPasses(std::move(module), {&p0, &p1}));
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&p0, &p1},
+                                                  /*run_hlo_passes=*/false));
+  EXPECT_EQ(result, expected);
 }
 
 TEST_F(TokenHloTest, AddDependencyOfOperation) {
@@ -221,7 +222,9 @@ ENTRY %AddDependency (p0: f32[], p1: f32[]) -> f32[] {
   auto p0 = LiteralUtil::CreateR0<float>(10.0);
   auto p1 = LiteralUtil::CreateR0<float>(3.0);
   auto expected = LiteralUtil::CreateR0<float>(2184.0);
-  EXPECT_EQ(expected, ExecuteNoHloPasses(std::move(module), {&p0, &p1}));
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&p0, &p1},
+                                                  /*run_hlo_passes=*/false));
+  EXPECT_EQ(result, expected);
 }
 
 TEST_F(TokenHloTest, AddDependencyOfConstant) {
@@ -241,7 +244,9 @@ ENTRY %AddDependency (p0: f32[]) -> f32[] {
       ParseAndReturnVerifiedModule(module_string, GetModuleConfigForTest()));
   auto p0 = LiteralUtil::CreateR0<float>(10.0);
   auto expected = LiteralUtil::CreateR0<float>(420.0);
-  EXPECT_EQ(expected, ExecuteNoHloPasses(std::move(module), {&p0}));
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&p0},
+                                                  /*run_hlo_passes=*/false));
+  EXPECT_EQ(result, expected);
 }
 
 TEST_F(TokenHloTest, AddDependencyAsRoot) {
@@ -259,7 +264,9 @@ ENTRY %AddDependency (p: f32[3]) -> f32[3] {
       ParseAndReturnVerifiedModule(module_string, GetModuleConfigForTest()));
   auto input = LiteralUtil::CreateR1<float>({1.0, 3.0, 7.0});
   auto expected = LiteralUtil::CreateR1<float>({-1.0, -3.0, -7.0});
-  EXPECT_EQ(expected, ExecuteNoHloPasses(std::move(module), {&input}));
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&input},
+                                                  /*run_hlo_passes=*/false));
+  EXPECT_EQ(result, expected);
 }
 
 TEST_F(TokenHloTest, TupleShapedAddDependency) {
@@ -283,7 +290,9 @@ ENTRY %TupleShapedAddDependency (p0: f32[3], p1: f32[3]) -> f32[3] {
   auto p0 = LiteralUtil::CreateR1<float>({3.0, 3.0, 47.0});
   auto p1 = LiteralUtil::CreateR1<float>({1.0, -2.0, 2.0});
   auto expected = LiteralUtil::CreateR1<float>({2.0, 5.0, 45.0});
-  EXPECT_EQ(expected, ExecuteNoHloPasses(std::move(module), {&p0, &p1}));
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&p0, &p1},
+                                                  /*run_hlo_passes=*/false));
+  EXPECT_EQ(result, expected);
 }
 
 }  // namespace
