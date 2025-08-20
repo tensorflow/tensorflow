@@ -58,6 +58,7 @@ class SymbolicExpr {
   bool operator!() const { return impl_ == nullptr; }
   bool operator==(SymbolicExpr other) const { return impl_ == other.impl_; }
   bool operator!=(SymbolicExpr other) const { return !(*this == other); }
+  bool operator<(const SymbolicExpr& other) const;
 
   SymbolicExprContext* GetContext() const;
   SymbolicExprType GetType() const;

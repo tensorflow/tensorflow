@@ -124,18 +124,21 @@ TEST_F(SymbolicExprTest, UniquingWorks) {
   EXPECT_NE(add1, add3);
 }
 
-TEST_F(SymbolicExprTest, DISABLED_Canonicalization) {
+TEST_F(SymbolicExprTest, Canonicalization) {
   SymbolicExpr constants = (c2 * 3) + 5;
   EXPECT_EQ(constants.Canonicalize().ToString(), "11");
+
+  SymbolicExpr add_commutativity = c2 + v0;
+  EXPECT_EQ(add_commutativity.Canonicalize().ToString(), "(v0 + 2)");
 
   SymbolicExpr neutral_element = (v0 + 0) * 1 + (v1 * 0);
   EXPECT_EQ(neutral_element.Canonicalize().ToString(), "v0");
 
-  SymbolicExpr add_associativity = (v0 + 2) + 3;
-  EXPECT_EQ(add_associativity.Canonicalize().ToString(), "(v0 + 5)");
+  SymbolicExpr add_combining_constants = (c2 + v0) + 3;
+  EXPECT_EQ(add_combining_constants.Canonicalize().ToString(), "(v0 + 5)");
 
-  SymbolicExpr add_commutativity = c2 + v0;
-  EXPECT_EQ(add_commutativity.Canonicalize().ToString(), "(v0 + 2)");
+  SymbolicExpr mul_combining_constants = (c2 * v0) * 3;
+  EXPECT_EQ(mul_combining_constants.Canonicalize().ToString(), "(v0 * 6)");
 
   SymbolicExpr combination = (v0 * 3) + (v0 * 2);
   EXPECT_EQ(combination.Canonicalize().ToString(), "(v0 * 5)");
@@ -164,6 +167,11 @@ TEST_F(SymbolicExprTest, DISABLED_Canonicalization) {
   EXPECT_EQ(complex_expression.Canonicalize().ToString(),
             "(((v0 * 3) + (v1 * -1)) + 5)");
 
+  SymbolicExpr nested_dist = (c2 * (v0 + 1) + 3) * 4;
+  EXPECT_EQ(nested_dist.Canonicalize().ToString(), "((v0 * 8) + 20)");
+}
+
+TEST_F(SymbolicExprTest, DISABLED_Canonicalization_MinMaxDiv) {
   // Min - Max
   EXPECT_EQ((c2.min(5) + c2.max(7)).Canonicalize().ToString(), "9");
   EXPECT_EQ((v0.max(v0)).Canonicalize().ToString(), "v0");
