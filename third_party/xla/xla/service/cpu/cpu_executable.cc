@@ -160,6 +160,12 @@ CpuExecutable::CpuExecutable(
     XlaDebugInfoManager::Get()->RegisterModule(shared_module(),
                                                assignment_->ToProto());
   }
+
+  // Once we compiled HLO module to CPU executable, we don't need to keep the
+  // pass metadata around.
+  if (has_module()) {
+    shared_module()->metadata()->ClearPassMetadata();
+  }
 }
 
 CpuExecutable::~CpuExecutable() {
