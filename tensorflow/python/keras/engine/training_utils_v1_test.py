@@ -14,7 +14,6 @@
 # ==============================================================================
 """Tests for training_utils_v1."""
 
-from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import training_utils_v1
 from tensorflow.python.platform import test
 
