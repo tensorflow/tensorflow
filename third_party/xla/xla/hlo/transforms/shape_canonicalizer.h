@@ -34,14 +34,13 @@ class ShapeCanonicalizer : public HloModulePass {
 
   explicit ShapeCanonicalizer(ShapePool* shape_pool);
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
   absl::string_view name() const override { return "shape-canonicalizer"; }
 
  protected:
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
   ShapePool* shape_pool_;
 };
 

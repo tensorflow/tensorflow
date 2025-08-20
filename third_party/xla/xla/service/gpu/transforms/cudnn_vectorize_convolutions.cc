@@ -596,7 +596,7 @@ static absl::StatusOr<bool> TryVectorizeConv(
 
 }  // namespace
 
-absl::StatusOr<bool> CudnnVectorizeConvolutions::Run(
+absl::StatusOr<bool> CudnnVectorizeConvolutions::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

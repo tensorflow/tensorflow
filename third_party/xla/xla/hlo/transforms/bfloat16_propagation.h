@@ -73,13 +73,6 @@ class BFloat16Propagation : public HloModulePass {
   static constexpr absl::string_view kName = "bfloat16-propagation";
   absl::string_view name() const override { return kName; }
 
-  // Runs the pass on the given module. Returns whether the module was changed
-  // (precision reductions were added).
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
   // Returns whether we should avoid changing the precision of inst regardless
   // of the producers and users.
   virtual bool ShouldKeepPrecisionUnchanged(const HloInstruction* inst);
@@ -90,6 +83,12 @@ class BFloat16Propagation : public HloModulePass {
 
  protected:
   const FloatSupport* bfloat16_support_;
+
+  // Runs the pass on the given module. Returns whether the module was changed
+  // (precision reductions were added).
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   // ***************************

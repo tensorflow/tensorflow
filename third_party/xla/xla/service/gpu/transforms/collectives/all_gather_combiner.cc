@@ -75,7 +75,7 @@ std::optional<AllGatherCombiner::GroupKey> CustomCombinerKey(
 
 }  // namespace
 
-absl::StatusOr<bool> GpuAllGatherCombiner::Run(
+absl::StatusOr<bool> GpuAllGatherCombiner::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Combiner threshold is specified. Running parent pass code.

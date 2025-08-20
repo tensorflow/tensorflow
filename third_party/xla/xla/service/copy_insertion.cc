@@ -1499,7 +1499,7 @@ absl::Status CopyInsertion::RemoveUnnecessaryCopies(
   return absl::OkStatus();
 }
 
-absl::StatusOr<bool> CopyInsertion::Run(
+absl::StatusOr<bool> CopyInsertion::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Copy insertion is performed in three steps:

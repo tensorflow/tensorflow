@@ -193,7 +193,7 @@ GpusolverRewriter::GpusolverRewriter(
         solver_context_creator)
     : solver_context_creator_(std::move(solver_context_creator)) {}
 
-absl::StatusOr<bool> GpusolverRewriter::Run(
+absl::StatusOr<bool> GpusolverRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

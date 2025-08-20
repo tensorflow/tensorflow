@@ -371,9 +371,9 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
   const se::DeviceDescription &device_description_;
 };
 
-absl::StatusOr<bool> TreeReductionRewriter::Run(
-    HloModule *module,
-    const absl::flat_hash_set<absl::string_view> &execution_threads) {
+absl::StatusOr<bool> TreeReductionRewriter::RunImpl(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(5) << "Rewriter input: " << module->ToString();
   TF_ASSIGN_OR_RETURN(bool changed,
                       ReductionRewriterVisitor(device_description_)

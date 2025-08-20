@@ -209,7 +209,7 @@ absl::StatusOr<bool> MaybeSwapOperands(HloComputation* computation) {
 
 }  // namespace
 
-absl::StatusOr<bool> GemmFusionSwapOperands::Run(
+absl::StatusOr<bool> GemmFusionSwapOperands::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool any_changed = false;

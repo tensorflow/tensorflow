@@ -219,8 +219,8 @@ class HloMemoryScheduler : public HloModulePass {
 
   absl::string_view name() const override { return "hlo-memory-scheduler"; }
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
+ protected:
+  absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
@@ -234,8 +234,9 @@ class HloTrivialScheduler : public HloModulePass {
  public:
   HloTrivialScheduler() = default;
   absl::string_view name() const override { return "hlo-trivial-scheduler"; }
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
+
+ protected:
+  absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 };
@@ -246,8 +247,9 @@ class HloDescheduler : public HloModulePass {
  public:
   HloDescheduler() = default;
   absl::string_view name() const override { return "hlo-descheduler"; }
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
+
+ protected:
+  absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 };

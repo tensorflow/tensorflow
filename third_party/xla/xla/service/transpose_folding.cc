@@ -189,7 +189,7 @@ TransposeFolding::TransposeFolding(
           std::move(dot_can_fold_transpose_operand)),
       transposable_conv_operands_(std::move(transposable_conv_operands)) {}
 
-absl::StatusOr<bool> TransposeFolding::Run(
+absl::StatusOr<bool> TransposeFolding::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Modifying the graph while traversing is dangerous, so we find all folding

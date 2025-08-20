@@ -423,13 +423,6 @@ class AlgebraicSimplifier : public HloModulePass {
   ~AlgebraicSimplifier() override = default;
   absl::string_view name() const override { return "algsimp"; }
 
-  // Run algebraic simplification on the given computation. Returns whether the
-  // computation was changed.
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
   // Create constant from literal with tiles and element size updated in the
   // constant's layout.
   std::unique_ptr<HloInstruction> CreateConstantWithLayoutUpdated(
@@ -440,6 +433,12 @@ class AlgebraicSimplifier : public HloModulePass {
   }
 
  protected:
+  // Run algebraic simplification on the given computation. Returns whether the
+  // computation was changed.
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
   AlgebraicSimplifierOptions options_;
 };
 

@@ -44,16 +44,16 @@ class WhileLoopPipelineUnroller : public HloModulePass {
     return "while_loop_pipeline_unroller";
   }
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
   // The pipeline depth of a while loop is the number of loop iterations that
   // pipelined loop inputs live throughout. This is used to determine how many
   // times to unroll the loop in order to remove aliasing interference.
   static int64_t ComputeWhileLoopPipelineDepth(
       const HloInstruction& while_instruction);
+
+ protected:
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 };
 }  // namespace xla
 

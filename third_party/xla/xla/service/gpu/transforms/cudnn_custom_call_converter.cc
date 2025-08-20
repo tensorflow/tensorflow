@@ -55,9 +55,9 @@ class CustomCallVisitor : public DfsHloRewriteVisitor {
 
 }  // namespace
 
-absl::StatusOr<bool> CuDnnCustomCallConverter::Run(
-    HloModule *module,
-    const absl::flat_hash_set<absl::string_view> &execution_threads) {
+absl::StatusOr<bool> CuDnnCustomCallConverter::RunImpl(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   return CustomCallVisitor().RunOnModule(module, execution_threads);
 }
 

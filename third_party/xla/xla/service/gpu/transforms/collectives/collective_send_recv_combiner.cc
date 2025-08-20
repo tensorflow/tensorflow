@@ -144,7 +144,7 @@ static absl::Status CreateAsyncStartAndAsyncDone(
   return absl::OkStatus();
 }
 
-absl::StatusOr<bool> CollectiveSendRecvCombiner::Run(
+absl::StatusOr<bool> CollectiveSendRecvCombiner::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

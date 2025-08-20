@@ -260,7 +260,7 @@ class ScatterSliceSimplifierVisitor : public DfsHloRewriteVisitor {
 
 }  // namespace
 
-absl::StatusOr<bool> ScatterSliceSimplifier::Run(
+absl::StatusOr<bool> ScatterSliceSimplifier::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   return ScatterSliceSimplifierVisitor{}.RunOnModule(module, execution_threads);

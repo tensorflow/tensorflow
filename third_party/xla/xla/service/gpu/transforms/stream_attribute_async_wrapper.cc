@@ -55,11 +55,11 @@ static absl::StatusOr<bool> AsynchronizeInstruction(HloInstruction* instr) {
 }
 }  // namespace
 
-absl::StatusOr<bool> StreamAttributeAsyncWrapper::Run(
+absl::StatusOr<bool> StreamAttributeAsyncWrapper::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  XLA_VLOG_LINES(
-      2, "StreamAttributeAsyncWrapper::Run(), before:\n" + module->ToString());
+  XLA_VLOG_LINES(2, "StreamAttributeAsyncWrapper::RunImpl(), before:\n" +
+                        module->ToString());
   bool changed = false;
   for (const HloComputation* comp :
        module->MakeNonfusionComputations(execution_threads)) {
@@ -68,8 +68,8 @@ absl::StatusOr<bool> StreamAttributeAsyncWrapper::Run(
       changed |= result;
     }
   }
-  XLA_VLOG_LINES(
-      2, "StreamAttributeAsyncWrapper::Run(), after:\n" + module->ToString());
+  XLA_VLOG_LINES(2, "StreamAttributeAsyncWrapper::RunImpl(), after:\n" +
+                        module->ToString());
   return changed;
 }
 

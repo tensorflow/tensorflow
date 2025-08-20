@@ -235,7 +235,7 @@ class MoveCopyToUsersVisitor : public DfsHloRewriteVisitor {
 
 }  // end namespace
 
-absl::StatusOr<bool> MoveCopyToUsers::Run(
+absl::StatusOr<bool> MoveCopyToUsers::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   return MoveCopyToUsersVisitor{}.RunOnModule(module, execution_threads);

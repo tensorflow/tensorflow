@@ -2635,7 +2635,7 @@ absl::Status LayoutAssignment::PropagateComputationLayouts(
   return absl::OkStatus();
 }
 
-absl::StatusOr<bool> LayoutAssignment::Run(
+absl::StatusOr<bool> LayoutAssignment::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(2) << "Running layout assignment on module " << module->name();

@@ -35,13 +35,13 @@ class ReduceScatterDecomposer : public HloModulePass {
   absl::string_view name() const override {
     return "reduce-scatter-decomposer";
   }
-
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
   std::function<void(Shape&)> update_layout_;
   std::function<bool(const HloInstruction*)> should_decompose_;
+
+ protected:
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 };
 
 }  // namespace xla

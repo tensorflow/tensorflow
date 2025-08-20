@@ -23,7 +23,7 @@ limitations under the License.
 
 namespace xla::gpu {
 
-absl::StatusOr<bool> PGLEAccuracyChecker::Run(
+absl::StatusOr<bool> PGLEAccuracyChecker::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   TF_RETURN_IF_ERROR(pgle_estimator_.CheckAccuracy(*module));
