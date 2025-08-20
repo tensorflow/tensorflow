@@ -325,6 +325,9 @@ class PjRtClient final
     return tsl::RCReference<UserContext>();
   }
 
+  // Returns the latest set of incarnation ids for every task.
+  absl::StatusOr<absl::flat_hash_map<int, IncarnationId>> Incarnations() const;
+
   static char ID;  // NOLINT
 
  private:

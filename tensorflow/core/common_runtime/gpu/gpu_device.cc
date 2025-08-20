@@ -1947,7 +1947,7 @@ Status BaseGPUDeviceFactory::CreateDevices(
               /*host_memory_allocator=*/std::move(pjrt_gpu_host_allocator),
               /*should_stage_host_to_device_transfers=*/true,
               /*gpu_run_options=*/std::move(gpu_run_options),
-              /*kv_store=*/nullptr, /*distributed_client=*/nullptr,
+              /*kv_store=*/nullptr,
               /*abort_collectives_on_failure=*/false, /*gpu_topology=*/nullptr,
               /*num_nodes=*/std::nullopt);
 

@@ -32,6 +32,7 @@ namespace gpu {
 class ResourceRequests : public Thunk::ResourceRequestsInterface {
  public:
   absl::Status AddClique(const GpuCliqueKey& clique_key) final;
+  std::vector<GpuCliqueKey> CliqueKeys() const;
 
   absl::StatusOr<Thunk::CollectiveCliques> AcquireCollectiveCliques(
       const Thunk::CollectiveExecuteParams& params,
