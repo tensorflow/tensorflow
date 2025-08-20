@@ -341,10 +341,13 @@ SolLatencyEstimator::Create(
 
 /*static*/ bool SolLatencyEstimator::IsSupportedForModule(
     const HloModule& module, const se::DeviceDescription& gpu_device_info) {
+  bool is_supported_device =
+      gpu_device_info.cuda_compute_capability().IsHopper() ||
+      gpu_device_info.cuda_compute_capability().IsBlackwell();
   if (IsPassEnabledAtOptimizationEffort<LatencyHidingScheduler>(module)) {
     // If the user enabled opt effort we turn the estimator on if we're
-    // compiling for Hopper.
-    return gpu_device_info.cuda_compute_capability().IsHopper();
+    // compiling for Hopper/Blackwell.
+    return is_supported_device;
   }
   // If this flag is on by default then we provide users an escape hatch in case
   // they find the new cost model less profitable than T-shirt sizes.
@@ -353,10 +356,9 @@ SolLatencyEstimator::Create(
            .xla_gpu_enable_analytical_sol_latency_estimator()) {
     return false;
   }
-  // Otherwise we are more conservative and we turn it on only for Hopper and if
-  // `module` contains only supported collectives.
-  return gpu_device_info.cuda_compute_capability().IsHopper() &&
-         HasOnlySupportedCollectives(module);
+  // Otherwise we are more conservative and we turn it on only for
+  // Hopper/Blackwell and if `module` contains only supported collectives.
+  return is_supported_device && HasOnlySupportedCollectives(module);
 }
 
 LatencyEstimator::TimeCost SolLatencyEstimator::GetLatencyBetween(

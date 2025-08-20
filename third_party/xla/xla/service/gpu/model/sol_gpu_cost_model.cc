@@ -58,6 +58,21 @@ static auto& device_to_cfg =
             },
         },
         {
+            "NVIDIA B200",
+            {
+                /*nccl_op_launch_time=*/absl::Microseconds(
+                    100.0f * kDefaultNcclCostModelCoeff),
+                /*nic_speed_gbps=*/
+                111.12f * kDefaultNcclCostModelCoeff,
+                /*chunk_prep_time=*/
+                absl::Microseconds(4.45f * kDefaultNcclCostModelCoeff),
+                /*rtt=*/
+                absl::Microseconds(46.67f * kDefaultNcclCostModelCoeff),
+                /*gpus_per_node=*/8,
+                /*chunk_size_bytes=*/kDefaultNcclCostModelChunkSizeBytes,
+            },
+        },
+        {
             kUnknownKey,
             {
                 /*nccl_op_launch_time=*/absl::Microseconds(
@@ -84,8 +99,11 @@ SolGPUCostModel::Config GetPlatformConfig(
     const se::DeviceDescription& device_info) {
   std::string key = device_info.name();
   if (!device_to_cfg.contains(key)) {
+    LOG(WARNING) << "No SoL config found for device: " << device_info.name()
+                 << ". Using default config.";
     return device_to_cfg[kUnknownKey];
   }
+  VLOG(2) << "[SoL] Using config for device: " << device_info.name();
   return device_to_cfg[key];
 }
 
