@@ -245,7 +245,19 @@ PYBIND11_MODULE(_pywrap_tensorflow_interpreter_wrapper, m) {
           R"pbdoc(
              ask the interpreter to set the number of threads to use.
           )pbdoc")
-      .def("interpreter", [](InterpreterWrapper& self) {
-        return reinterpret_cast<intptr_t>(self.interpreter());
-      });
+      .def("interpreter",
+           [](InterpreterWrapper& self) {
+             return reinterpret_cast<intptr_t>(self.interpreter());
+           })
+      .def(
+          "LoadStableDelegate",
+          [](InterpreterWrapper& self, const std::string& config_path) {
+            return tensorflow::PyoOrThrow(
+                self.LoadStableDelegateCPP(config_path));
+          },
+          R"pbdoc(
+            Load stable delegate from configuration file in JSON format.
+            Returns a pointer to the TfLiteDelegate object which can be used
+            in ModifyGraphWithDelegate method.
+          )pbdoc");
 }
