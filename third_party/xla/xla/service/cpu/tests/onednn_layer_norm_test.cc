@@ -26,7 +26,6 @@ class LayerNormTest : public HloTestBase {
  protected:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
-    debug_options.set_xla_cpu_use_thunk_runtime(false);
     return debug_options;
   }
 
