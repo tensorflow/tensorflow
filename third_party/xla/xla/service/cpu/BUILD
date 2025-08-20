@@ -238,6 +238,7 @@ cc_library(
         "//xla/backends/cpu/runtime:thunk_proto_serdes",
         "//xla/backends/cpu/transforms:dot_library_rewriter",
         "//xla/backends/cpu/transforms:xnn_graph_fusion",
+        "//xla/backends/cpu/transforms/collectives:all_reduce_combiner",
         "//xla/hlo/analysis:alias_info",
         "//xla/hlo/analysis:hlo_ordering",
         "//xla/hlo/analysis:indexed_array_analysis",

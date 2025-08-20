@@ -66,7 +66,8 @@ std::map<std::thread::id, string>& GetThreadNameRegistry()
 class PThread : public Thread {
  public:
   PThread(const ThreadOptions& thread_options, const std::string& name,
-          absl::AnyInvocable<void()> fn) {
+          absl::AnyInvocable<void()> fn, bool detached = false)
+      : detached_(detached) {
     ThreadParams* params = new ThreadParams;
     params->name = name;
     params->fn = std::move(fn);
@@ -75,6 +76,9 @@ class PThread : public Thread {
     if (thread_options.stack_size != 0) {
       pthread_attr_setstacksize(&attributes, thread_options.stack_size);
     }
+    if (detached) {
+      pthread_attr_setdetachstate(&attributes, PTHREAD_CREATE_DETACHED);
+    }
     int ret = pthread_create(&thread_, &attributes, &ThreadFn, params);
     // There is no mechanism for the thread creation API to fail, so we CHECK.
     CHECK_EQ(ret, 0) << "Thread " << name
@@ -82,7 +86,11 @@ class PThread : public Thread {
     pthread_attr_destroy(&attributes);
   }
 
-  ~PThread() override { pthread_join(thread_, nullptr); }
+  ~PThread() override {
+    if (!detached_) {
+      pthread_join(thread_, nullptr);
+    }
+  }
 
  private:
   struct ThreadParams {
@@ -105,6 +113,7 @@ class PThread : public Thread {
   }
 
   pthread_t thread_;
+  bool detached_;
 };
 
 class PosixEnv : public Env {
@@ -141,6 +150,11 @@ class PosixEnv : public Env {
   Thread* StartThread(const ThreadOptions& thread_options, const string& name,
                       absl::AnyInvocable<void()> fn) override {
     return new PThread(thread_options, name, std::move(fn));
+  }
+  void StartDetachedThread(const ThreadOptions& thread_options,
+                           const string& name,
+                           absl::AnyInvocable<void()> fn) override {
+    PThread detached(thread_options, name, std::move(fn), /*detached=*/true);
   }
 
   int64_t GetCurrentThreadId() override {
