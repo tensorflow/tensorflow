@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/synchronization/notification.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op.h"
@@ -294,7 +295,7 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
 
      private:
       struct InvocationResult {
-        Notification notification;
+        absl::Notification notification;
         absl::Status status;
         bool end_of_sequence;
         std::vector<Tensor> out_tensors;

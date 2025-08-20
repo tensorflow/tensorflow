@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/rpc/rpc_rendezvous_mgr.h"
 
+#include <memory>
+
+#include "absl/synchronization/notification.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
@@ -136,7 +139,7 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
   // Start the main RecvTensor call, checking for an async abort.
   void StartRTCall(std::function<void()> recv_done) {
     resp_.InitAlloc(dst_device_, alloc_attrs_);
-    auto abort_checked = std::make_shared<Notification>();
+    auto abort_checked = std::make_shared<absl::Notification>();
     auto cb = [this, abort_checked,
                recv_done = std::move(recv_done)](const absl::Status& s) {
       // Make sure the Rendezvous abort checking is finished before running the

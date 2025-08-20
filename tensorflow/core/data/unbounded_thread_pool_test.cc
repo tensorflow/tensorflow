@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/synchronization/notification.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/test.h"
@@ -63,7 +64,7 @@ TEST(UnboundedThreadPool, MultipleBlockingThreads) {
   std::vector<int> round_sizes = {5, 10, 15, 20};
 
   for (const int round_size : round_sizes) {
-    Notification n;
+    absl::Notification n;
     BlockingCounter bc(round_size);
     for (int j = 0; j < round_size; ++j) {
       threads.push_back(thread_factory->StartThread("", [&bc, &n]() {
