@@ -5363,21 +5363,17 @@ cc_library(
 
 cc_library(
     name = "xla_debug_info_manager",
-    srcs = [
-        "xla_debug_info_manager.cc",
-    ],
-    hdrs = [
-        "xla_debug_info_manager.h",
-    ],
+    srcs = ["xla_debug_info_manager.cc"],
+    hdrs = ["xla_debug_info_manager.h"],
     deps = [
         ":hlo_proto_cc",
         ":hlo_proto_util",
         "//xla/hlo/ir:hlo",
+        "//xla/service:buffer_assignment",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform:status",
     ],
 )
 
@@ -5390,6 +5386,7 @@ xla_cc_test(
         ":xla_debug_info_manager",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/service:buffer_assignment",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/synchronization",

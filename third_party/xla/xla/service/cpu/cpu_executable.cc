@@ -157,8 +157,7 @@ CpuExecutable::CpuExecutable(
                  std::move(hlo_profile_index_map)),
       assignment_(std::move(assignment)) {
   if (assignment_ && has_module()) {
-    XlaDebugInfoManager::Get()->RegisterModule(shared_module(),
-                                               assignment_->ToProto());
+    XlaDebugInfoManager::Get()->RegisterModule(shared_module(), assignment_);
   }
 
   // Once we compiled HLO module to CPU executable, we don't need to keep the

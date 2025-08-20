@@ -171,7 +171,7 @@ GpuExecutable::GpuExecutable(GpuExecutable::Params params)
   }
   if (has_module() && enable_debug_info_manager_) {
     XlaDebugInfoManager::Get()->RegisterModule(shared_module(),
-                                               buffer_assignment_->ToProto());
+                                               buffer_assignment_);
   }
 }
 
