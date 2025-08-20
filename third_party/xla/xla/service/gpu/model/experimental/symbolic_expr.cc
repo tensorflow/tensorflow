@@ -21,6 +21,7 @@ limitations under the License.
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -328,6 +329,39 @@ SymbolicExpr CanonicalizeMul(SymbolicExpr lhs, SymbolicExpr rhs) {
   return ctx->CreateBinaryOp(SymbolicExprType::kMul, res_lhs, res_rhs);
 }
 
+std::optional<int64_t> SubtractAndGetConstDiff(SymbolicExpr lhs,
+                                               SymbolicExpr rhs) {
+  SymbolicExpr diff = (lhs - rhs).Canonicalize();
+  if (diff.GetType() == SymbolicExprType::kConstant) {
+    return diff.GetValue();
+  }
+  return std::nullopt;
+}
+
+SymbolicExpr CanonicalizeMin(SymbolicExpr lhs, SymbolicExpr rhs) {
+  SymbolicExprContext* ctx = lhs.GetContext();
+  if (auto diff = SubtractAndGetConstDiff(lhs, rhs)) {  // min(X, X + k) = X
+    return (diff.value() <= 0) ? lhs : rhs;
+  }
+
+  if (rhs < lhs) {
+    std::swap(lhs, rhs);
+  }
+  return ctx->CreateBinaryOp(SymbolicExprType::kMin, lhs, rhs);
+}
+
+SymbolicExpr CanonicalizeMax(SymbolicExpr lhs, SymbolicExpr rhs) {
+  SymbolicExprContext* ctx = lhs.GetContext();
+  if (auto diff = SubtractAndGetConstDiff(lhs, rhs)) {  // max(X, X + k) = X + k
+    return (diff.value() >= 0) ? lhs : rhs;
+  }
+
+  if (rhs < lhs) {
+    std::swap(lhs, rhs);
+  }
+  return ctx->CreateBinaryOp(SymbolicExprType::kMax, lhs, rhs);
+}
+
 }  // namespace
 
 class SymbolicExprStorage : public mlir::StorageUniquer::BaseStorage {
@@ -527,6 +561,12 @@ SymbolicExpr SymbolicExpr::Canonicalize() const {
                              this->GetRHS().Canonicalize());
     case SymbolicExprType::kMul:
       return CanonicalizeMul(this->GetLHS().Canonicalize(),
+                             this->GetRHS().Canonicalize());
+    case SymbolicExprType::kMin:
+      return CanonicalizeMin(this->GetLHS().Canonicalize(),
+                             this->GetRHS().Canonicalize());
+    case SymbolicExprType::kMax:
+      return CanonicalizeMax(this->GetLHS().Canonicalize(),
                              this->GetRHS().Canonicalize());
     default:
       // TODO(b/433693793): Implement canonicalization for other types.

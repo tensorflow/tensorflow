@@ -124,7 +124,7 @@ TEST_F(SymbolicExprTest, UniquingWorks) {
   EXPECT_NE(add1, add3);
 }
 
-TEST_F(SymbolicExprTest, Canonicalization) {
+TEST_F(SymbolicExprTest, Canonicalization_Basic) {
   SymbolicExpr constants = (c2 * 3) + 5;
   EXPECT_EQ(constants.Canonicalize().ToString(), "11");
 
@@ -171,17 +171,18 @@ TEST_F(SymbolicExprTest, Canonicalization) {
   EXPECT_EQ(nested_dist.Canonicalize().ToString(), "((v0 * 8) + 20)");
 }
 
-TEST_F(SymbolicExprTest, DISABLED_Canonicalization_MinMaxDiv) {
+TEST_F(SymbolicExprTest, Canonicalization_MinMax) {
   // Min - Max
   EXPECT_EQ((c2.min(5) + c2.max(7)).Canonicalize().ToString(), "9");
   EXPECT_EQ((v0.max(v0)).Canonicalize().ToString(), "v0");
   EXPECT_EQ((v0.min(v0)).Canonicalize().ToString(), "v0");
   EXPECT_EQ((v0.max(v0 + 1)).Canonicalize().ToString(), "(v0 + 1)");
-  EXPECT_EQ((v0.min(v0 - 1)).Canonicalize().ToString(), "(v0 - 1)");
+  EXPECT_EQ((v0.min(v0 - 1)).Canonicalize().ToString(), "(v0 + -1)");
+  EXPECT_EQ((v0.min(v1) + v0.min(v1)).Canonicalize().ToString(),
+            "(min(v0, v1) * 2)");
+}
 
-  SymbolicExpr non_affine_terms = (v0.min(v1) + v0.min(v1));
-  EXPECT_EQ(non_affine_terms.Canonicalize().ToString(), "(min(v0, v1) * 2)");
-
+TEST_F(SymbolicExprTest, DISABLED_Canonicalization_DivMod) {
   // FloorDiv, CeilDiv, and Mod simplifications.
   EXPECT_EQ((v0.floorDiv(1)).Canonicalize().ToString(), "v0");
   EXPECT_EQ((v0.ceilDiv(1)).Canonicalize().ToString(), "v0");
