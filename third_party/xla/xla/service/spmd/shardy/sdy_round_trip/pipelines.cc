@@ -26,6 +26,7 @@ limitations under the License.
 #include "shardy/dialect/sdy/transforms/import/passes.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/spmd/shardy/round_trip_common/pipeline_passes.h"
+#include "xla/service/spmd/shardy/sdy_round_trip/clone_manual_computation_calls.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/dedup_meshes.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/export_ops.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/export_shardy_attrs.h"
@@ -64,6 +65,9 @@ void addSdyRoundTripImportPipeline(mlir::OpPassManager& pm,
                                    bool liftAndDedupMeshes) {
   addCommonPreImportPasses(pm, enableConstantImport);
   pm.addPass(createSdyRoundTripImportShardyAttrsPass());
+  // TODO(b/430894772): Drop the pass and handle cloning inside shard map import
+  // pass.
+  pm.addPass(createSdyRoundTripCloneManualComputationCallsPass());
   pm.addPass(createSdyRoundTripShardMapImportPass());
   addCommonPostImportPasses(pm, importFuncCalls,
                             importOnlyUninlineableFuncCalls);
