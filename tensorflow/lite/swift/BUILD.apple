@@ -170,7 +170,7 @@ swift_library(
     tags = TFL_DEFAULT_TAGS + ["nobuilder"],
     deps = [
         ":Resources",
-        ":TensorFlowLiteMetalDelegate",  # The test only needs Metal delegate.
+        ":TensorFlowLiteAllDelegates",
     ],
 )
 
