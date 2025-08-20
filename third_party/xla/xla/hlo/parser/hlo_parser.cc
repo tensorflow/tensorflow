@@ -267,6 +267,7 @@ class HloParserImpl : public HloParser {
 
   // Stand alone parsing utils for various aggregate data types.
   absl::StatusOr<Shape> ParseShapeOnly();
+  absl::StatusOr<std::vector<Shape>> ParseShapeListOnly();
   absl::StatusOr<Layout> ParseLayoutOnly();
   absl::StatusOr<HloSharding> ParseShardingOnly();
   absl::StatusOr<std::shared_ptr<OriginalValue>> ParseOriginalValueOnly(
@@ -7281,6 +7282,18 @@ absl::StatusOr<Shape> HloParserImpl::ParseShapeOnly() {
   return shape;
 }
 
+absl::StatusOr<std::vector<Shape>> HloParserImpl::ParseShapeListOnly() {
+  lexer_.Lex();
+  std::vector<Shape> shapes;
+  if (!ParseShapeList(&shapes)) {
+    return InvalidArgument("Syntax error:\n%s", GetError());
+  }
+  if (lexer_.GetKind() != TokKind::kEof) {
+    return InvalidArgument("Syntax error:\nExtra content after shape");
+  }
+  return shapes;
+}
+
 absl::StatusOr<Layout> HloParserImpl::ParseLayoutOnly() {
   lexer_.Lex();
   Layout layout;
@@ -7572,6 +7585,11 @@ absl::StatusOr<PaddingConfig> ParsePaddingConfig(absl::string_view str) {
 absl::StatusOr<Shape> ParseShape(absl::string_view str) {
   HloParserImpl parser(str);
   return parser.ParseShapeOnly();
+}
+
+absl::StatusOr<std::vector<Shape>> ParseShapeList(absl::string_view str) {
+  HloParserImpl parser(str);
+  return parser.ParseShapeListOnly();
 }
 
 absl::StatusOr<Layout> ParseLayout(absl::string_view str) {

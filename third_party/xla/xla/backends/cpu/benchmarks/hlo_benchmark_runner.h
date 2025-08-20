@@ -90,6 +90,12 @@ absl::StatusOr<std::pair<std::unique_ptr<HloModule>,
                          std::unique_ptr<RunHloModuleIterationLiterals>>>
 LoadHloModuleAndMaybeIterationLiterals(absl::string_view hlo_path);
 
+// Loads an HLO module. If the user provides an HloSnapshot or a
+// HloUnoptimizedSnapshot the iteration literals will be loaded as well.
+absl::StatusOr<std::pair<std::unique_ptr<HloModule>,
+                         std::unique_ptr<RunHloModuleIterationLiterals>>>
+LoadHloModuleAndMaybeIterationLiteralsFromString(absl::string_view hlo_data);
+
 }  // namespace xla::cpu
 
 #endif  // XLA_BACKENDS_CPU_BENCHMARKS_HLO_BENCHMARK_RUNNER_H_
