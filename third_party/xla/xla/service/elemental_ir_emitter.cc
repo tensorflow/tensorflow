@@ -21,6 +21,7 @@ limitations under the License.
 #include <functional>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -71,6 +72,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
@@ -79,6 +81,7 @@ limitations under the License.
 namespace xla {
 
 using absl::StrCat;
+using llvm_ir::EmitReducePrecisionIR;
 using llvm_ir::IrArray;
 using llvm_ir::IrName;
 using llvm_ir::SetToFirstInsertPoint;
@@ -87,258 +90,7 @@ using xla::float8_fnuz_ir_emitter::EmitFloatingToF8fnuz;
 
 using IntrinsicType = xla::codegen::intrinsics::Type;
 
-absl::StatusOr<llvm::Value*> EmitReducePrecisionIR(
-    PrimitiveType src_ty, llvm::Value* x, int64_t dest_exponent_bits,
-    int64_t dest_mantissa_bits, bool quiet_nans, llvm::IRBuilderBase* b) {
-  using llvm::APInt;
-
-  if (!primitive_util::IsFloatingPointType(src_ty)) {
-    return Unimplemented(
-        "ReducePrecision cannot accept non-floating-point type %s.",
-        PrimitiveType_Name(src_ty));
-  }
-
-  // Integer and float types for casting and constant generation.
-  llvm::Type* float_type = x->getType();
-  int64_t nbits = float_type->getPrimitiveSizeInBits();
-  llvm::IntegerType* int_type = b->getIntNTy(nbits);
-
-  // SignificandWidth includes the implicit extra bit.
-  int src_mantissa_bits = primitive_util::SignificandWidth(src_ty) - 1;
-  int src_exponent_bits = nbits - 1 - src_mantissa_bits;
-
-  // Cast the input value to an integer for bitwise manipulation.
-  llvm::Value* x_as_int = b->CreateBitCast(x, int_type);
-
-  // Clear the sign bit, it does not participate in rounding and we will restore
-  // it later.
-  APInt sign_bit_mask(nbits, 1);
-  sign_bit_mask <<= nbits - 1;
-  llvm::Value* x_abs_bits =
-      b->CreateAnd(x_as_int, llvm::ConstantInt::get(int_type, ~sign_bit_mask));
-
-  APInt exp_bits_mask(nbits, 1);
-  exp_bits_mask = ((exp_bits_mask << src_exponent_bits) - 1)
-                  << src_mantissa_bits;
-  auto x_is_nan = b->CreateICmpUGT(
-      x_abs_bits, llvm::ConstantInt::get(int_type, exp_bits_mask));
-
-  if (dest_mantissa_bits < src_mantissa_bits) {
-    // Last remaining mantissa bit.
-    APInt last_mantissa_bit_mask(nbits, 1);
-    last_mantissa_bit_mask <<= src_mantissa_bits - dest_mantissa_bits;
-
-    // Compute rounding bias for round-to-nearest with ties to even.  This is
-    // equal to a base value of 0111... plus one bit if the last remaining
-    // mantissa bit is 1.
-    APInt base_rounding_bias = last_mantissa_bit_mask.lshr(1) - 1;
-    llvm::Value* x_last_mantissa_bit = b->CreateLShr(
-        b->CreateAnd(x_as_int,
-                     llvm::ConstantInt::get(int_type, last_mantissa_bit_mask)),
-        (src_mantissa_bits - dest_mantissa_bits));
-    llvm::Value* x_rounding_bias =
-        b->CreateAdd(x_last_mantissa_bit,
-                     llvm::ConstantInt::get(int_type, base_rounding_bias));
-
-    // Add rounding bias, and mask out truncated bits.  Note that the case
-    // where adding the rounding bias overflows into the exponent bits is
-    // correct; the non-masked mantissa bits will all be zero, and the
-    // exponent will be incremented by one.
-    APInt truncation_mask = ~(last_mantissa_bit_mask - 1);
-    llvm::Value* x_rounded = b->CreateAdd(x_as_int, x_rounding_bias);
-    x_rounded = b->CreateAnd(x_rounded,
-                             llvm::ConstantInt::get(int_type, truncation_mask));
-    if (quiet_nans) {
-      x_as_int = b->CreateSelect(x_is_nan, x_as_int, x_rounded);
-    } else {
-      x_as_int = x_rounded;
-    }
-  }
-
-  if (dest_exponent_bits < src_exponent_bits) {
-    // An exponent of 2^(n-1)-1 -- that is, 0111... with the zero in the most-
-    // significant bit -- is equal to 1.0f for all exponent sizes.  Adding
-    // 2^(n-1)-1 to this gives us the highest non-infinite exponent for a bit-
-    // size of n, and subtracting 2^(n-1)-1 from this gives us the lowest'
-    // exponent (corresponding to 0.0f).
-    //
-    // Thus, the f32 exponent corresponding to the highest non-infinite
-    // exponent for a bit size of n is (2^7-1) + 2^(n-1)-1, and the f32
-    // exponent corresponding to the lowest exponent for a bit size of n is
-    // (2^7-1) - 2^(n-1)-1.
-    //
-    // Note that we have already checked that exponents_bits >= 1.
-    APInt exponent_bias(nbits, 1);
-    exponent_bias = (exponent_bias << (src_exponent_bits - 1)) - 1;
-
-    APInt reduced_exponent_bias(nbits, 1);
-    reduced_exponent_bias =
-        (reduced_exponent_bias << (dest_exponent_bits - 1)) - 1;
-
-    APInt reduced_max_exponent = exponent_bias + reduced_exponent_bias;
-    APInt reduced_min_exponent = exponent_bias - reduced_exponent_bias;
-
-    // Do we overflow or underflow?
-    llvm::Value* x_exponent =
-        b->CreateAnd(x_as_int, llvm::ConstantInt::get(int_type, exp_bits_mask));
-    llvm::Value* x_overflows = b->CreateICmpUGT(
-        x_exponent, llvm::ConstantInt::get(
-                        int_type, reduced_max_exponent << src_mantissa_bits));
-    llvm::Value* x_underflows = b->CreateICmpULE(
-        x_exponent, llvm::ConstantInt::get(
-                        int_type, reduced_min_exponent << src_mantissa_bits));
-
-    // Compute appropriately-signed values of zero and infinity.
-    llvm::Value* x_signed_zero =
-        b->CreateAnd(x_as_int, llvm::ConstantInt::get(int_type, sign_bit_mask));
-    llvm::Value* x_signed_inf = b->CreateOr(
-        x_signed_zero, llvm::ConstantInt::get(int_type, exp_bits_mask));
-
-    // Force to zero or infinity if overflow or underflow.  (Note that this
-    // truncates all denormal values to zero, rather than rounding them.)
-    x_as_int = b->CreateSelect(x_overflows, x_signed_inf, x_as_int);
-    x_as_int = b->CreateSelect(x_underflows, x_signed_zero, x_as_int);
-  }
-
-  // Cast the result back to a floating-point type.
-  llvm::Value* result = b->CreateBitCast(x_as_int, float_type);
-
-  // Correct result for NaN inputs.
-  //
-  // The exponent handling will "normalize" NaN values to infinities, which is
-  // undesirable (except in the case with no mantissa bits, in which case it
-  // is mandatory).  This logic also handles cases where mantissa-rounding
-  // causes a NaN's mantissa to overflow into the exponent bits, which would
-  // otherwise create an erroneous zero value.
-
-  if (dest_mantissa_bits > 0) {
-    if (quiet_nans) {
-      APInt qnan_mask(nbits, 1);
-      qnan_mask <<= src_mantissa_bits - 1;
-      llvm::Value* x_with_qnan_bit_set =
-          b->CreateOr(x_as_int, llvm::ConstantInt::get(int_type, qnan_mask));
-      x_with_qnan_bit_set = b->CreateBitCast(x_with_qnan_bit_set, float_type);
-      result = b->CreateSelect(x_is_nan, x_with_qnan_bit_set, result);
-    } else {
-      result = b->CreateSelect(x_is_nan, x, result);
-    }
-  } else {
-    result = b->CreateSelect(x_is_nan,
-                             llvm::ConstantFP::getInfinity(float_type), result);
-  }
-
-  return result;
-}
-
 namespace {
-
-template <PrimitiveType fx_type, int f8_exponent_bits>
-llvm::Value* handle_halfway_points_FxToF8(llvm::Value* fx_abs_bits,
-                                          llvm::Value* f8_bits,
-                                          llvm::IRBuilderBase* b) {
-  using llvm::APFloat;
-  using llvm::APInt;
-  using llvm::Value;
-  static_assert(fx_type == F16 || fx_type == F32 || fx_type == F64);
-  static_assert(3 <= f8_exponent_bits && f8_exponent_bits <= 4);
-
-  const llvm::fltSemantics* fx_semantics;
-  llvm::IntegerType* ix_type;
-
-  if constexpr (fx_type == F16) {
-    fx_semantics = &llvm::APFloat::IEEEhalf();
-    ix_type = b->getInt16Ty();
-  } else if constexpr (fx_type == F32) {
-    fx_semantics = &llvm::APFloat::IEEEsingle();
-    ix_type = b->getInt32Ty();
-  } else if constexpr (fx_type == F64) {
-    fx_semantics = &llvm::APFloat::IEEEdouble();
-    ix_type = b->getInt64Ty();
-  }
-
-  auto ix_const = [fx_semantics, ix_type](APFloat val) {
-    bool losesInfo;
-    val.convert(*fx_semantics, llvm::RoundingMode::NearestTiesToEven,
-                &losesInfo);
-    return llvm::ConstantInt::get(ix_type, val.bitcastToAPInt());
-  };
-
-  llvm::IntegerType* i8_type = b->getInt8Ty();
-  auto i8_const = [i8_type](int val) {
-    return llvm::ConstantInt::get(i8_type, val);
-  };
-
-  // F16 values that are halfway between denormal F8 values. This is used to
-  // determine how to round to denormal F8 values.
-  const APFloat halfway_points_e4[8] = {
-      APFloat(0x1.0p-10),  // halfway between [0/8 * 2^-6, 1/8 * 2^-6]
-      APFloat(0x1.8p-9),   // halfway between [1/8 * 2^-6, 2/8 * 2^-6]
-      APFloat(0x1.4p-8),   // halfway between [2/8 * 2^-6, 3/8 * 2^-6]
-      APFloat(0x1.Cp-8),   // halfway between [3/8 * 2^-6, 4/8 * 2^-6]
-      APFloat(0x1.2p-7),   // halfway between [4/8 * 2^-6, 5/8 * 2^-6]
-      APFloat(0x1.6p-7),   // halfway between [5/8 * 2^-6, 6/8 * 2^-6]
-      APFloat(0x1.Ap-7),   // halfway between [6/8 * 2^-6, 7/8 * 2^-6]
-      APFloat(0x1.Ep-7)    // halfway between [7/8 * 2^-6, 8/8 * 2^-6]
-  };
-
-  const APFloat halfway_points_e3[16] = {
-      APFloat(0x1.0p-7),  // halfway between [0/16 * 2^-2, 1/16 * 2^-2]
-      APFloat(0x1.8p-6),  // halfway between [1/16 * 2^-2, 2/16 * 2^-2]
-      APFloat(0x1.4p-5),  // halfway between [2/16 * 2^-2, 3/16 * 2^-2]
-      APFloat(0x1.Cp-5),  // halfway between [3/16 * 2^-2, 4/16 * 2^-2]
-      APFloat(0x1.2p-4),  // halfway between [4/16 * 2^-2, 5/16 * 2^-2]
-      APFloat(0x1.6p-4),  // halfway between [5/16 * 2^-2, 6/16 * 2^-2]
-      APFloat(0x1.Ap-4),  // halfway between [6/16 * 2^-2, 7/16 * 2^-2]
-      APFloat(0x1.Ep-4),  // halfway between [7/16 * 2^-2, 8/16 * 2^-2]
-      APFloat(0x1.1p-3),  // halfway between [8/16 * 2^-2, 9/16 * 2^-2]
-      APFloat(0x1.3p-3),  // halfway between [9/16 * 2^-2, 10/16 * 2^-2]
-      APFloat(0x1.5p-3),  // halfway between [10/16 * 2^-2, 11/16 * 2^-2]
-      APFloat(0x1.7p-3),  // halfway between [11/16 * 2^-2, 12/16 * 2^-2]
-      APFloat(0x1.9p-3),  // halfway between [12/16 * 2^-2, 13/16 * 2^-2]
-      APFloat(0x1.Bp-3),  // halfway between [13/16 * 2^-2, 14/16 * 2^-2]
-      APFloat(0x1.Dp-3),  // halfway between [14/16 * 2^-2, 15/16 * 2^-2]
-      APFloat(0x1.Fp-3),  // halfway between [15/16 * 2^-2, 16/16 * 2^-2]
-  };
-
-  const APFloat* halfway_points;
-  int arr_sz;
-  if constexpr (f8_exponent_bits == 4) {
-    halfway_points = halfway_points_e4;
-    arr_sz = 8;
-  } else if constexpr (f8_exponent_bits == 3) {
-    halfway_points = halfway_points_e3;
-    arr_sz = 16;
-  }
-
-  // Handle case where output is denormal. If we're rounding to a denormal
-  // value, ignore the current value of f8_bits and set it to the correct
-  // denormal value. We emit the equivalent of the following:
-  //
-  //   if (f16_abs_bits <= halfway_points[0]) {
-  //     f8_bits = 0;
-  //   } else if (f16_abs_bits < halfway_points[1]) {
-  //     f8_bits = 1;
-  //   } else if (f16_abs_bits <= halfway_points[2]) {
-  //   ...  // More if-else statements. The comparisons alternate between <=
-  //   ...  // and < to handle round-to-even properly.
-  //   } else if (f16_abs_bits < halfway_points[7])  {
-  //     f8_bits = 7;
-  //   }
-  for (int i = arr_sz - 1; i >= 0; i--) {
-    Value* comparison;
-    llvm::Constant* half_way_point = ix_const(halfway_points[i]);
-
-    if (i % 2 == 0) {
-      comparison = b->CreateICmpULE(fx_abs_bits, half_way_point);
-    } else {
-      comparison = b->CreateICmpULT(fx_abs_bits, half_way_point);
-    }
-
-    f8_bits = b->CreateSelect(comparison, i8_const(i), f8_bits);
-  }
-
-  return f8_bits;
-}
 
 absl::StatusOr<llvm::Value*> EmitF16ToF8e5m2(llvm::Value* f16_value,
                                              llvm::IRBuilderBase* b) {
@@ -469,8 +221,8 @@ absl::StatusOr<llvm::Value*> EmitFxToF8e(llvm::Value* fx_value,
   Value* f8_bits = b->CreateTrunc(fx_reduced, i8_type);
 
   // Handle Fx values that are halfway between denormal F8 values.
-  f8_bits = handle_halfway_points_FxToF8<fx_type, f8_exponent_bits>(fx_abs_bits,
-                                                                    f8_bits, b);
+  f8_bits = llvm_ir::HandleHalfwayPointsFxToF8<fx_type, f8_exponent_bits>(
+      fx_abs_bits, f8_bits, std::nullopt, b);
 
   // Set the sign bit.
   //   f8_bits |= f8_sign
@@ -608,192 +360,23 @@ llvm::Value* EmitToF16F8e(llvm::Value* f8_value, llvm::IRBuilderBase* b) {
   return b->CreateBitCast(f16_as_int, b->getHalfTy());
 }
 
-llvm::Value* EmitF16ToF8e4m3fn(llvm::Value* f16_value, llvm::IRBuilderBase* b) {
-  using llvm::APInt;
-  using llvm::Value;
-
-  llvm::IntegerType* i8_type = b->getInt8Ty();
-  llvm::IntegerType* i16_type = b->getInt16Ty();
-  auto i8_const = [i8_type](int val) {
-    return llvm::ConstantInt::get(i8_type, val);
-  };
-  auto i16_const = [i16_type](int val) {
-    return llvm::ConstantInt::get(i16_type, val);
-  };
-
-  // Cast the input value to an integer for bitwise manipulation. Get the
-  // absolute value of the input value.
-  //   f16_as_int = bitcast(f16_value, int)
-  //   f16_abs_bits = f16_as_int & 0x7FFF
-  Value* f16_as_int = b->CreateBitCast(f16_value, i16_type);
-  llvm::Value* f16_abs_bits = b->CreateAnd(f16_as_int, i16_const(0x7FFF));
-
-  // Get the sign.
-  //   f8_sign = (f16_as_int & 0x8000) >> 8
-  Value* f16_sign = b->CreateAnd(f16_as_int, i16_const(0x8000));
-  f16_sign = b->CreateLShr(f16_sign, i16_const(8));
-  Value* f8_sign = b->CreateTrunc(f16_sign, i8_type);
-
-  // Truncate the mantissa to 3 bits. ReducePrecision cannot deal with
-  // f8E4M3FN's NaN representations, so don't use ReducePrecision to handle
-  // exponent reduction. Denormal values are not handled properly here and are
-  // dealt with later in this function.
-  absl::StatusOr<Value*> f16_reduced_statusor = EmitReducePrecisionIR(
-      /*src_ty=*/F16, f16_value,
-      /*dest_exponent_bits=*/5,
-      /*dest_mantissa_bits=*/3,
-      /*quiet_nans=*/false, b);
-  CHECK_OK(f16_reduced_statusor.status());  // Crash OK
-  Value* f16_reduced = f16_reduced_statusor.value();
-  f16_reduced = b->CreateBitCast(f16_reduced, i16_type);
-
-  // Remove the sign bit.
-  //   f16_reduced = f16_reduced & 0x7FFF
-  f16_reduced = b->CreateAnd(f16_reduced, i16_const(0x7FFF));
-
-  // Bits of the F16 representation of the smallest F8 normal value.
-  constexpr int min_normal_value = 0x2400;
-
-  // Round values smaller than the smallest F8 normal value up to the smallest
-  // F8 normal value. The case where we round to a denormal value is handled
-  // later.
-  //    f16_reduced = max(f16_reduced, min_normal_value)
-  f16_reduced = b->CreateSelect(
-      b->CreateICmpULT(f16_reduced, i16_const(min_normal_value)),
-      i16_const(min_normal_value), f16_reduced);
-
-  constexpr int exponent_bias_difference = 15 - 7;
-  constexpr int f8_exponent_bits = 4;
-  constexpr int f16_mantissa_bits = 10;
-  constexpr int f8_mantissa_bits = 3;
-  constexpr int mantissa_bits_difference = f16_mantissa_bits - f8_mantissa_bits;
-
-  // Adjust the exponent by subtracting the difference in exponent bias.
-  //   f16_reduced -= (exponent_bias_difference << f16_mantissa_bits)
-  f16_reduced = b->CreateSub(
-      f16_reduced, i16_const(exponent_bias_difference << f16_mantissa_bits));
-
-  // Shift to convert to F8.
-  //   f8_bits = f16_reduced >> mantissa_bits_difference;
-  Value* f8_bits =
-      b->CreateLShr(f16_reduced, i16_const(mantissa_bits_difference));
-  f8_bits = b->CreateTrunc(f8_bits, i8_type);
-
-  // Bits of the highest F16 value that gets converted to a finite F8 value.
-  // In binary: 0 10111 1101111111
-  constexpr int max_finite_value = 0x5F7F;
-
-  // If we're above the maximum F8 value, output NaN.
-  //   f8_bits = f16_abs_bits > max_finite_value ? 0x7F : f8_bits
-  f8_bits = b->CreateSelect(
-      b->CreateICmpUGT(f16_abs_bits, i16_const(max_finite_value)),
-      i8_const(0x7F), f8_bits);
-
-  // Handle F16 values that are halfway between denormal F8 values.
-  f8_bits = handle_halfway_points_FxToF8<F16, f8_exponent_bits>(f16_abs_bits,
-                                                                f8_bits, b);
-
-  // Set the sign bit.
-  //   f8_bits |= f8_sign
-  f8_bits = b->CreateOr(f8_bits, f8_sign);
-  return f8_bits;
+llvm::Value* EmitF16ToF8e4m3fn(llvm::Value* f16_value, llvm::Module* module,
+                               llvm::IRBuilderBase* b) {
+  llvm::Function* fptrunc =
+      codegen::intrinsics::FpTrunc::GetOrInsertDeclaration(
+          module, IntrinsicType::S(F16), IntrinsicType::S(F8E4M3FN));
+  return b->CreateCall(fptrunc, {f16_value});
 }
-
-llvm::Value* EmitF8e4m3fnToF16(llvm::Value* f8_value, llvm::IRBuilderBase* b) {
-  using llvm::APInt;
-  using llvm::Value;
-
-  llvm::IntegerType* i8_type = b->getInt8Ty();
-  llvm::IntegerType* i16_type = b->getInt16Ty();
-  auto i8_const = [i8_type](int val) {
-    return llvm::ConstantInt::get(i8_type, val);
-  };
-  auto i16_const = [i16_type](int val) {
-    return llvm::ConstantInt::get(i16_type, val);
-  };
-
-  // Cast the input value to an integer for bitwise manipulation. Get the
-  // absolute value of the input value.
-  //   f8_as_int = bitcast(f16_value, int)
-  //   f8_abs_bits = f8_as_int & 0x7F
-  Value* f8_as_int = b->CreateBitCast(f8_value, i8_type);
-  Value* f8_abs_bits = b->CreateAnd(f8_as_int, i8_const(0x7F));
-
-  // We assume below that the value is neither NaN nor denormal. If it NaN or
-  // denormal, the output is set to NaN or zero at the end using Select
-  // instructions.
-
-  // Get the sign:
-  //   f16_sign = (f8_as_int & 0x80) << 8
-  Value* f8_sign = b->CreateAnd(f8_as_int, i8_const(0x80));
-  Value* f16_sign = b->CreateZExt(f8_sign, i16_type);
-  f16_sign = b->CreateShl(f16_sign, i16_const(8));
-
-  constexpr int exponent_bias_difference = 15 - 7;
-  constexpr int f16_mantissa_bits = 10;
-  constexpr int f8_mantissa_bits = 3;
-  constexpr int mantissa_bits_difference = f16_mantissa_bits - f8_mantissa_bits;
-  constexpr int f8_mantissa_mask = (1 << f8_mantissa_bits) - 1;
-
-  // Get the exponent:
-  //   f8_exponent = (f8_as_int & 0x78) >> f8_mantissa_bits
-  Value* f8_exponent_bits = b->CreateAnd(f8_as_int, i8_const(0x78));
-  Value* f8_exponent =
-      b->CreateLShr(f8_exponent_bits, i8_const(f8_mantissa_bits));
-
-  // Adjust the exponent by adding the difference in exponent bias:
-  //   f16_exponent = (f8_exponent + exponent_bias_difference)
-  //                  << f16_mantissa_bits
-  Value* f16_exponent =
-      b->CreateAdd(f8_exponent, i8_const(exponent_bias_difference));
-  f16_exponent = b->CreateZExt(f16_exponent, i16_type);
-  f16_exponent = b->CreateShl(f16_exponent, i16_const(f16_mantissa_bits));
-
-  // Get the mantissa:
-  //   f16_mantissa = (f8_mantissa & f8_mantissa_mask)
-  //                  << mantissa_bits_difference
-  Value* f8_mantissa = b->CreateAnd(f8_as_int, i8_const(f8_mantissa_mask));
-  Value* f16_mantissa = b->CreateZExt(f8_mantissa, i16_type);
-  f16_mantissa =
-      b->CreateShl(f16_mantissa, i16_const(mantissa_bits_difference));
-
-  // Combine the exponent and mantissa:
-  //   f16_as_int = f16_exponent | f16_mantissa
-  Value* f16_as_int = b->CreateOr(f16_exponent, f16_mantissa);
-
-  // Set output to NaN if input is NaN
-  //   f16_as_int = f8_abs_bits == 0x7F ? 0x7E00 : f16_as_int
-  Value* is_nan = b->CreateICmpEQ(f8_abs_bits, i8_const(0x7F));
-  f16_as_int = b->CreateSelect(is_nan, i16_const(0x7E00), f16_as_int);
-
-  // Map from F8 denormal value to F16 value.
-  int f8_denormal_to_f16[8] = {
-      0x0000,  // 0
-      0x1800,  // 1/8 * 2^-6
-      0x1C00,  // 2/8 * 2^-6
-      0x1E00,  // 3/8 * 2^-6
-      0x2000,  // 4/8 * 2^-6
-      0x2100,  // 5/8 * 2^-6
-      0x2200,  // 6/8 * 2^-6
-      0x2300,  // 7/8 * 2^-6
-  };
-
-  // If the F8 value is denormal, use the map above to determine the correct F16
-  // value.
-  //    if (f8_abs_bits < 8) { f16_as_int = f8_denormal_to_f16[f8_abs_bits]; }
-  for (int i = 0; i < ABSL_ARRAYSIZE(f8_denormal_to_f16); i++) {
-    Value* is_denormal_value = b->CreateICmpEQ(f8_abs_bits, i8_const(i));
-    f16_as_int = b->CreateSelect(is_denormal_value,
-                                 i16_const(f8_denormal_to_f16[i]), f16_as_int);
-  }
-
-  // Set the sign bit.
-  //   f16_as_int |= f16_sign
-  f16_as_int = b->CreateOr(f16_as_int, f16_sign);
-  return b->CreateBitCast(f16_as_int, b->getHalfTy());
+llvm::Value* EmitF8e4m3fnToF16(llvm::Value* f8_value, llvm::Module* module,
+                               llvm::IRBuilderBase* b) {
+  llvm::Function* fptrunc =
+      codegen::intrinsics::FpTrunc::GetOrInsertDeclaration(
+          module, IntrinsicType::S(F8E4M3FN), IntrinsicType::S(F16));
+  return b->CreateCall(fptrunc, {f8_value});
 }
 
 llvm::Value* EmitF16ToF8e4m3b11fnuz(llvm::Value* f16_value,
+                                    llvm::Module* module,
                                     llvm::IRBuilderBase* b) {
   using llvm::APInt;
   using llvm::Value;
@@ -813,7 +396,7 @@ llvm::Value* EmitF16ToF8e4m3b11fnuz(llvm::Value* f16_value,
   // Re-scale the f16, then convert as-if it were e4m3fn.
   f16_value = b->CreateFMul(
       f16_value, llvm::ConstantFP::get(f16_value->getType(), 1 << (11 - 7)));
-  auto* f8_value = EmitF16ToF8e4m3fn(f16_value, b);
+  auto* f8_value = EmitF16ToF8e4m3fn(f16_value, module, b);
 
   // e4m3b11 overflows to NaN.
   f8_value = b->CreateSelect(no_overflow, f8_value, i8_const(0x80));
@@ -822,7 +405,7 @@ llvm::Value* EmitF16ToF8e4m3b11fnuz(llvm::Value* f16_value,
   return f8_value;
 }
 
-llvm::Value* EmitF8e4m3b11fnuzToF16(llvm::Value* f8_value,
+llvm::Value* EmitF8e4m3b11fnuzToF16(llvm::Value* f8_value, llvm::Module* module,
                                     llvm::IRBuilderBase* b) {
   using llvm::APInt;
   using llvm::Value;
@@ -842,7 +425,7 @@ llvm::Value* EmitF8e4m3b11fnuzToF16(llvm::Value* f8_value,
   Value* f16_sign_bit =
       b->CreateShl(b->CreateZExt(f8_sign_bit, i16_type), 16 - 8);
 
-  auto* f16_value = EmitF8e4m3fnToF16(f8_value, b);
+  auto* f16_value = EmitF8e4m3fnToF16(f8_value, module, b);
   f16_value = b->CreateFMul(
       f16_value,
       llvm::ConstantFP::get(f16_value->getType(), 1.0 / (1 << (11 - 7))));
@@ -1163,16 +746,15 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerUnaryOp(
               b_);
         }
         if (to_type == F8E4M3FN) {
-          return EmitF16ToF8e4m3fn(
-              EmitIntegralToFloating(operand_value, from_type, F16, module_,
-                                     b_),
-              b_);
+          operand_value = EmitIntegralToFloating(operand_value, from_type, F16,
+                                                 module_, b_);
+          return EmitF16ToF8e4m3fn(operand_value, module_, b_);
         }
         if (to_type == F8E4M3B11FNUZ) {
           return EmitF16ToF8e4m3b11fnuz(
               EmitIntegralToFloating(operand_value, from_type, F16, module_,
                                      b_),
-              b_);
+              module_, b_);
         }
         if (to_type == F4E2M1FN) {
           return EmitF16ToF4e2m1fn(
@@ -1357,7 +939,10 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       }
       if (from_type == F8E4M3FN) {
         TF_RET_CHECK(to_type != F8E4M3FN);
-        operand_value = EmitF8e4m3fnToF16(operand_value, b_);
+        llvm::Function* fptrunc =
+            codegen::intrinsics::FpTrunc::GetOrInsertDeclaration(
+                module_, IntrinsicType::S(F8E4M3FN), IntrinsicType::S(F16));
+        operand_value = b_->CreateCall(fptrunc, {operand_value});
         from_type = F16;
         if (from_type == to_type) {
           return operand_value;
@@ -1365,7 +950,7 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       }
       if (from_type == F8E4M3B11FNUZ) {
         TF_RET_CHECK(to_type != F8E4M3B11FNUZ);
-        operand_value = EmitF8e4m3b11fnuzToF16(operand_value, b_);
+        operand_value = EmitF8e4m3b11fnuzToF16(operand_value, module_, b_);
         from_type = F16;
         if (from_type == to_type) {
           return operand_value;
@@ -1465,7 +1050,10 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
               operand_value,
               llvm_ir::PrimitiveTypeToIrType(F16, module_->getContext()));
         }
-        return EmitF16ToF8e4m3fn(operand_value, b_);
+        llvm::Function* fptrunc =
+            codegen::intrinsics::FpTrunc::GetOrInsertDeclaration(
+                module_, IntrinsicType::S(F16), IntrinsicType::S(F8E4M3FN));
+        return b_->CreateCall(fptrunc, {operand_value});
       }
       if (to_type == F8E4M3B11FNUZ) {
         // Cast to F16 first. Casts to F8E4M3B11FNUZ must be from F16.
@@ -1474,7 +1062,7 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
               operand_value,
               llvm_ir::PrimitiveTypeToIrType(F16, module_->getContext()));
         }
-        return EmitF16ToF8e4m3b11fnuz(operand_value, b_);
+        return EmitF16ToF8e4m3b11fnuz(operand_value, module_, b_);
       }
       if (to_type == F4E2M1FN) {
         // Cast to F16 first. Casts to F4E2M1FN must be from F16.
@@ -2052,8 +1640,8 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatBinaryOp(
         lhs_value = EmitToF16F8e<4>(lhs_value, b_);
         rhs_value = EmitToF16F8e<4>(rhs_value, b_);
       } else if (operand_type == F8E4M3FN) {
-        lhs_value = EmitF8e4m3fnToF16(lhs_value, b_);
-        rhs_value = EmitF8e4m3fnToF16(rhs_value, b_);
+        lhs_value = EmitF8e4m3fnToF16(lhs_value, module_, b_);
+        rhs_value = EmitF8e4m3fnToF16(rhs_value, module_, b_);
       } else if (operand_type == F4E2M1FN) {
         lhs_value = EmitF4e2m1fnToF16(lhs_value, b_);
         rhs_value = EmitF4e2m1fnToF16(rhs_value, b_);

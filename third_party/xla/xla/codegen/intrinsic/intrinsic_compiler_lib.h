@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_CODEGEN_INTRINSIC_INTRINSIC_COMPILER_LIB_H_
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/function_ref.h"
 #include "absl/strings/string_view.h"
 #include "llvm/IR/Module.h"
 
@@ -34,7 +35,7 @@ void RunInlineAndOptPasses(llvm::Module& module);
 // removed by GlobalDCEPass.
 void RemoveFromCompilerUsed(
     llvm::Module& module,
-    absl::flat_hash_set<absl::string_view> replaced_functions);
+    absl::FunctionRef<bool(absl::string_view)> should_remove);
 
 }  // namespace xla::codegen::intrinsic
 

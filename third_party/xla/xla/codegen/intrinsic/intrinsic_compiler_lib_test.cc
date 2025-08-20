@@ -103,7 +103,8 @@ TEST_F(RemoveFromCompilerUsedTest, RemovesSpecifiedFunctions) {
   CreateCompilerUsedArray({"func1", "func2", "func3", "func4"});
   absl::flat_hash_set<absl::string_view> to_remove = {"func2", "func4"};
 
-  RemoveFromCompilerUsed(*module_, to_remove);
+  RemoveFromCompilerUsed(*module_,
+                         [&](auto n) { return to_remove.contains(n); });
 
   std::vector<std::string> remaining = GetCompilerUsedFunctionNames();
   EXPECT_EQ(remaining.size(), 2) << absl::StrJoin(remaining, ", ");
@@ -117,7 +118,8 @@ TEST_F(RemoveFromCompilerUsedTest, RemovesEntireArrayWhenAllFunctionsRemoved) {
   CreateCompilerUsedArray({"func1", "func2"});
   absl::flat_hash_set<absl::string_view> to_remove = {"func1", "func2"};
 
-  RemoveFromCompilerUsed(*module_, to_remove);
+  RemoveFromCompilerUsed(*module_,
+                         [&](auto n) { return to_remove.contains(n); });
 
   EXPECT_EQ(module_->getNamedGlobal("llvm.compiler.used"), nullptr);
 }
@@ -127,7 +129,8 @@ TEST_F(RemoveFromCompilerUsedTest, HandlesNoCompilerUsedArray) {
   absl::flat_hash_set<absl::string_view> to_remove = {"func1"};
 
   // Act - should not crash
-  RemoveFromCompilerUsed(*module_, to_remove);
+  RemoveFromCompilerUsed(*module_,
+                         [&](auto n) { return to_remove.contains(n); });
 
   EXPECT_EQ(module_->getNamedGlobal("llvm.compiler.used"), nullptr);
 }
@@ -136,7 +139,8 @@ TEST_F(RemoveFromCompilerUsedTest, DoesNothingWhenNoMatches) {
   CreateCompilerUsedArray({"func1", "func2"});
   absl::flat_hash_set<absl::string_view> to_remove = {"nonexistent"};
 
-  RemoveFromCompilerUsed(*module_, to_remove);
+  RemoveFromCompilerUsed(*module_,
+                         [&](auto n) { return to_remove.contains(n); });
 
   std::vector<std::string> remaining = GetCompilerUsedFunctionNames();
   EXPECT_EQ(remaining.size(), 2);
@@ -150,7 +154,8 @@ TEST_F(RemoveFromCompilerUsedTest, HandlesEmptyRemovalSet) {
   CreateCompilerUsedArray({"func1", "func2"});
   absl::flat_hash_set<absl::string_view> to_remove = {};
 
-  RemoveFromCompilerUsed(*module_, to_remove);
+  RemoveFromCompilerUsed(*module_,
+                         [&](auto n) { return to_remove.contains(n); });
 
   std::vector<std::string> remaining = GetCompilerUsedFunctionNames();
   EXPECT_EQ(remaining.size(), 2);

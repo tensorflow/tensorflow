@@ -16,15 +16,12 @@ limitations under the License.
 #include "xla/codegen/intrinsic/intrinsic_compiler_lib.h"
 
 #include <utility>
-#include <vector>
 
-#include "absl/container/flat_hash_set.h"
+#include "absl/functional/function_ref.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Analysis/CGSCCPassManager.h"
 #include "llvm/Analysis/LoopAnalysisManager.h"
 #include "llvm/IR/Constant.h"
-#include "llvm/IR/Constants.h"
-#include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/Module.h"
@@ -36,6 +33,7 @@ limitations under the License.
 #include "llvm/Transforms/InstCombine/InstCombine.h"
 #include "llvm/Transforms/Scalar/DCE.h"
 #include "llvm/Transforms/Scalar/EarlyCSE.h"
+#include "llvm/Transforms/Utils/ModuleUtils.h"
 
 namespace xla::codegen::intrinsic {
 
@@ -66,65 +64,15 @@ void RunInlineAndOptPasses(llvm::Module& module) {
   mpm.run(module, mam);
 }
 
-constexpr absl::string_view kCompilerUsedName = "llvm.compiler.used";
-
 void RemoveFromCompilerUsed(
     llvm::Module& module,
-    absl::flat_hash_set<absl::string_view> replaced_functions) {
-  if (replaced_functions.empty()) {
-    return;
-  }
-
-  llvm::GlobalVariable* compiler_used =
-      module.getNamedGlobal(kCompilerUsedName);
-  if (!compiler_used) {
-    return;
-  }
-
-  llvm::ConstantArray* old_array =
-      llvm::dyn_cast<llvm::ConstantArray>(compiler_used->getInitializer());
-  if (!old_array) {
-    return;
-  }
-
-  // Collect the constants that should be kept.
-  std::vector<llvm::Constant*> elements;
-  elements.reserve(old_array->getNumOperands());
-  for (int i = 0; i < old_array->getNumOperands(); ++i) {
-    auto* operand = old_array->getOperand(i);
-    llvm::GlobalValue* gv =
-        llvm::dyn_cast<llvm::GlobalValue>(operand->stripPointerCasts());
-
-    if (gv && replaced_functions.contains(gv->getName())) {
-      continue;
+    absl::FunctionRef<bool(absl::string_view)> should_remove) {
+  llvm::removeFromUsedLists(module, [&](llvm::Constant* c) {
+    if (auto* f = llvm::dyn_cast<llvm::Function>(c)) {
+      return should_remove(f->getName());
     }
-    elements.push_back(operand);
-  }
-
-  // If all functions were removed, erase the global entirely.
-  if (elements.empty()) {
-    compiler_used->eraseFromParent();
-    return;
-  }
-
-  // If only some functions were removed, modify the existing global in-place.
-  if (elements.size() < old_array->getNumOperands()) {
-    llvm::ArrayType* new_array_type = llvm::ArrayType::get(
-        old_array->getType()->getElementType(), elements.size());
-    llvm::Constant* new_array_init =
-        llvm::ConstantArray::get(new_array_type, elements);
-
-    // Create a new global llvm.compiler.used with the new contents.
-    auto new_global =
-        new llvm::GlobalVariable(module, new_array_type, false,
-                                 compiler_used->getLinkage(), new_array_init);
-    new_global->copyAttributesFrom(compiler_used);
-    new_global->setSection(compiler_used->getSection());
-    new_global->setAlignment(compiler_used->getAlign());
-    new_global->takeName(compiler_used);
-
-    compiler_used->eraseFromParent();
-  }
+    return false;
+  });
 }
 
 }  // namespace xla::codegen::intrinsic

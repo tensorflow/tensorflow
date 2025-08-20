@@ -217,9 +217,11 @@ GetCalledApproximatableFunctions(
   absl::flat_hash_map<absl::string_view, absl::flat_hash_set<absl::string_view>>
       called_targets;
   VisitFunctionCalls(module, [&](const llvm::CallInst& call) {
-    if (auto it = targets.find(call.getCalledFunction()->getName());
-        it != targets.end()) {
-      called_targets[it->second].insert(it->first);
+    if (call.getCalledFunction() != nullptr) {
+      if (auto it = targets.find(call.getCalledFunction()->getName());
+          it != targets.end()) {
+        called_targets[it->second].insert(it->first);
+      }
     }
   });
   return called_targets;
@@ -289,7 +291,7 @@ void CreateDefinitionAndReplaceDeclaration(llvm::Module& module,
 }
 
 absl::flat_hash_set<absl::string_view>
-IntrinsicFunctionLib::RewriteIntrinsicFunctions(llvm::Module& module) {
+IntrinsicFunctionLib::DefineIntrinsicFunctions(llvm::Module& module) {
   // Find each called target function, generate the definition and insert it
   // into the module.
   // Keep track of the function names we replaced so we can remove them from
@@ -313,4 +315,8 @@ IntrinsicFunctionLib::RewriteIntrinsicFunctions(llvm::Module& module) {
   return replaced_functions;
 }
 
+bool IntrinsicFunctionLib::IsIntrinsicFunction(
+    absl::string_view function_name) const {
+  return targets_.contains(function_name);
+}
 }  // namespace xla::codegen

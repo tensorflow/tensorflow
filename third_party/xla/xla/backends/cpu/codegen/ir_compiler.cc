@@ -398,10 +398,11 @@ llvm::Error IrCompiler::RunIrPasses(llvm::Module& module,
     }
   }
 
-  auto replaced_functions = intrinsic_lib.RewriteIntrinsicFunctions(module);
+  auto replaced_functions = intrinsic_lib.DefineIntrinsicFunctions(module);
   RewriteToPolynomialApproximations(&module, options_.fast_math_flags);
   if (!replaced_functions.empty()) {
-    codegen::intrinsic::RemoveFromCompilerUsed(module, replaced_functions);
+    codegen::intrinsic::RemoveFromCompilerUsed(
+        module, [&](auto n) { return intrinsic_lib.IsIntrinsicFunction(n); });
     codegen::intrinsic::RunInlineAndOptPasses(module);
   }
 
