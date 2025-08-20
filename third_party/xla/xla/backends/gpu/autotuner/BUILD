@@ -630,6 +630,7 @@ xla_test(
     name = "gpu_profiler_test",
     srcs = ["gpu_profiler_test.cc"],
     backends = ["gpu"],
+    tags = ["cuda-only"],
     deps = [
         ":gpu_profiler",
         "//xla:executable_run_options",
@@ -643,6 +644,8 @@ xla_test(
         "//xla/service:platform_util",
         "//xla/service:shaped_buffer",
         "//xla/service:transfer_manager",
+        "//xla/service/gpu:gpu_compiler",
+        "//xla/service/gpu:nvptx_compiler_impl",
         "//xla/stream_executor:device_memory_allocator",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:stream_executor_h",
