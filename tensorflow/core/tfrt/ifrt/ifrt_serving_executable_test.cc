@@ -233,6 +233,32 @@ TEST_F(IfrtServingExecutableTest, SpmdTwoReturns) {
               ElementsAre(TensorEq(expected_out0), TensorEq(expected_out1)));
 }
 
+TEST_F(IfrtServingExecutableTest, SpmdXlaCallModuleShardy) {
+  int64_t program_id = 111111;
+  EXPECT_CALL(selector_, ReserveDevice(absl::StrCat(program_id))).Times(0);
+  auto executable = helper_->MakeExecutable(
+      program_id,
+      GetMlirModulePath("spmd_executable_xla_call_module_shardy.mlir"));
+
+  auto x = AsTensor<int32_t>({11, 12, 13, 14, 15, 16, 17, 18},
+                             tensorflow::TensorShape({4, 2}));
+  auto y = AsTensor<int32_t>({8, 7, 6, 5, 4, 3, 2, 1},
+                             tensorflow::TensorShape({4, 2}));
+
+  const auto expected_out0 = AsTensor<int32_t>({3, 5, 7, 9, 11, 13, 15, 17},
+                                               tensorflow::TensorShape({4, 2}));
+  const auto expected_out1 = AsTensor<int32_t>({19, 19, 19, 19, 19, 19, 19, 19},
+                                               tensorflow::TensorShape({4, 2}));
+
+  std::vector<tensorflow::Tensor> inputs{x, y};
+
+  TF_ASSERT_OK_AND_ASSIGN(auto result,
+                          executable->Execute(absl::MakeSpan(inputs), {}));
+
+  EXPECT_THAT(result,
+              ElementsAre(TensorEq(expected_out0), TensorEq(expected_out1)));
+}
+
 TEST_F(IfrtServingExecutableTest, NoReturn) {
   int64_t program_id = 111111;
   EXPECT_CALL(selector_, ReserveDevice(absl::StrCat(program_id)))
