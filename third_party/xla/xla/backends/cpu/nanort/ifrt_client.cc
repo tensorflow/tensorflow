@@ -163,24 +163,23 @@ class NanoArray final : public NanoValue<NanoArray, ifrt::Array> {
   // need to support deletion of the NanoArray that created the buffer.
   using DataPtr = std::shared_ptr<void>;
 
-  NanoArray(NanoIfrtClient* client, ifrt::DType dtype, ifrt::Shape shape,
+  NanoArray(NanoIfrtClient* client, ifrt::DType dtype, const ifrt::Shape& shape,
             DataPtr data, ifrt::ShardingRef sharding)
       : NanoValue<NanoArray, ifrt::Array>(client),
-        dtype_(std::move(dtype)),
-        shape_(std::move(shape)),
+        dtype_(dtype),
+        shape_(shape),
         data_(std::move(data)),
         sharding_(std::move(sharding)) {}
 
   // Allocates a new array of the given type and shape.
   static absl::StatusOr<tsl::RCReference<NanoArray>> Allocate(
-      NanoIfrtClient* client, ifrt::DType dtype, ifrt::Shape shape,
+      NanoIfrtClient* client, ifrt::DType dtype, const ifrt::Shape& shape,
       ifrt::ShardingRef sharding) {
     TF_RET_CHECK(dtype.byte_size().has_value());
     TF_ASSIGN_OR_RETURN(
         DataPtr data_ptr,
         AllocateData(dtype.byte_size().value() * shape.num_elements()));
-    return tsl::TakeRef(new NanoArray(client, dtype, std::move(shape),
-                                      std::move(data_ptr),
+    return tsl::TakeRef(new NanoArray(client, dtype, shape, std::move(data_ptr),
                                       std::move(sharding)));
   }
 
@@ -188,23 +187,21 @@ class NanoArray final : public NanoValue<NanoArray, ifrt::Array> {
   // without a copy if the copy semantics allow it and the layout is row major
   // and dense.
   static absl::StatusOr<tsl::RCReference<NanoArray>> FromBuffer(
-      NanoIfrtClient* client, void* data, ifrt::DType dtype, ifrt::Shape shape,
-      ifrt::ShardingRef sharding,
+      NanoIfrtClient* client, void* data, ifrt::DType dtype,
+      const ifrt::Shape& shape, ifrt::ShardingRef sharding,
       std::optional<absl::Span<const int64_t>> byte_strides, bool make_copy,
       std::function<void()> on_done_with_host_buffer) {
-    auto size = dtype.byte_size().value_or(0) * shape.num_elements();
-    TF_RET_CHECK(size > 0);
     DataPtr data_ptr;
 
     bool layout_compatible = LayoutCompatible(dtype, shape, byte_strides);
     bool aligned = reinterpret_cast<uintptr_t>(data) % MinAlign() == 0;
 
-    if (!layout_compatible || !aligned) {
-      // Input is not aligned, or has a weird layout, so we need to copy it.
-      make_copy = true;
-    }
+    // If input is not aligned, or has a weird layout, we need to copy it (or if
+    // a copy was required by the buffer semantics).
+    if (ABSL_PREDICT_FALSE(make_copy || !layout_compatible || !aligned)) {
+      int64_t size = dtype.byte_size().value_or(0) * shape.num_elements();
+      TF_RET_CHECK(size > 0);
 
-    if (ABSL_PREDICT_FALSE(make_copy)) {
       TF_ASSIGN_OR_RETURN(data_ptr, AllocateData(size));
       if (layout_compatible) {
         // Input has a compatible layout, so we can just do a memcpy.
@@ -234,9 +231,9 @@ class NanoArray final : public NanoValue<NanoArray, ifrt::Array> {
             }
           });
     }
-    TF_RET_CHECK(data_ptr != nullptr);
-    return tsl::TakeRef(new NanoArray(client, dtype, std::move(shape),
-                                      std::move(data_ptr),
+
+    DCHECK(data_ptr) << "data_ptr should be allocated";
+    return tsl::TakeRef(new NanoArray(client, dtype, shape, std::move(data_ptr),
                                       std::move(sharding)));
   }
 
@@ -634,12 +631,12 @@ class ShardedNanoArray final : public NanoValue<ShardedNanoArray, ifrt::Array> {
   ABSL_ATTRIBUTE_UNUSED static char ID;  // NOLINT
 
  private:
-  ShardedNanoArray(NanoIfrtClient* client, ifrt::DType dtype, ifrt::Shape shape,
-                   ifrt::ShardingRef sharding,
+  ShardedNanoArray(NanoIfrtClient* client, ifrt::DType dtype,
+                   const ifrt::Shape& shape, ifrt::ShardingRef sharding,
                    std::vector<tsl::RCReference<NanoArray>> shards)
       : NanoValue<ShardedNanoArray, ifrt::Array>(client),
-        dtype_(std::move(dtype)),
-        shape_(std::move(shape)),
+        dtype_(dtype),
+        shape_(shape),
         sharding_(std::move(sharding)),
         shards_(std::move(shards)) {}
 
@@ -1071,10 +1068,9 @@ class NanoExecutable final
       TF_ASSIGN_OR_RETURN(auto ifrt_type,
                           ifrt::ToDType(result_shapes[i].element_type()));
       ifrt::Shape ifrt_shape(result_shapes[i].dimensions());
-      TF_ASSIGN_OR_RETURN(
-          result_arrays.emplace_back(),
-          NanoArray::Allocate(client_, ifrt_type, std::move(ifrt_shape),
-                              output_shardings_[i]));
+      TF_ASSIGN_OR_RETURN(result_arrays.emplace_back(),
+                          NanoArray::Allocate(client_, ifrt_type, ifrt_shape,
+                                              output_shardings_[i]));
     }
 
     return result_arrays;
@@ -1266,9 +1262,8 @@ absl::StatusOr<ifrt::ArrayRef> NanoIfrtClient::MakeArrayFromHostBuffer(
       make_copy = false;
       break;
   }
-  return NanoArray::FromBuffer(this, const_cast<void*>(data), dtype,
-                               std::move(shape), std::move(sharding),
-                               byte_strides, make_copy,
+  return NanoArray::FromBuffer(this, const_cast<void*>(data), dtype, shape,
+                               std::move(sharding), byte_strides, make_copy,
                                std::move(on_done_with_host_buffer));
 }
 
