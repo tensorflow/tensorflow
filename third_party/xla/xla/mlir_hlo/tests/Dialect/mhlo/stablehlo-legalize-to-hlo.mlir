@@ -2539,3 +2539,133 @@ func.func @op_unary_einsum_deprecated(%arg0: tensor<8x16xf32>) -> tensor<8xf32> 
   } : (tensor<8x16xf32>) -> tensor<8xf32>
   func.return %0 : tensor<8xf32>
 }
+
+// -----
+
+// CHECK-LABEL: "custom_call_op_create_buffer"
+func.func @custom_call_op_create_buffer() -> memref<2xf32> {
+  //      CHECK: "mhlo.custom_call"
+  // CHECK-SAME: "CreateBuffer"
+  // CHECK-SAME: () -> memref<2xf32>
+  %0 = "stablehlo.custom_call"() {
+    call_target_name = "CreateBuffer",
+    api_version = 4 : i32
+  } : () -> memref<2xf32>
+  func.return %0 : memref<2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: "custom_call_op_pin"
+func.func @custom_call_op_pin(%arg0: tensor<2xf32>) -> memref<2xf32> {
+  //      CHECK: "mhlo.custom_call"
+  // CHECK-SAME: "Pin"
+  // CHECK-SAME: (tensor<2xf32>) -> memref<2xf32>
+  %0 = "stablehlo.custom_call"(%arg0) {
+    call_target_name = "Pin",
+    api_version = 4 : i32
+  } : (tensor<2xf32>) -> memref<2xf32>
+  func.return %0 : memref<2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: "custom_call_op_unpin"
+func.func @custom_call_op_unpin(%arg0: memref<2xf32>) -> tensor<2xf32> {
+  //      CHECK: "mhlo.custom_call"
+  // CHECK-SAME: "Unpin"
+  // CHECK-SAME: (memref<2xf32>) -> tensor<2xf32>
+  %0 = "stablehlo.custom_call"(%arg0) {
+    call_target_name = "Unpin",
+    api_version = 4 : i32
+  } : (memref<2xf32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: "custom_call_op_with_buffer_type"
+func.func @custom_call_op_with_buffer_type(%arg0: memref<2x4xf32>) -> memref<2x4xf32> {
+  //      CHECK: "mhlo.custom_call"
+  // CHECK-SAME: "foo"
+  // CHECK-SAME: #mhlo.output_operand_alias<output_tuple_indices = [], operand_index = 0, operand_tuple_indices = []>
+  // CHECK-SAME: (memref<2x4xf32>) -> memref<2x4xf32>
+  %0 = "stablehlo.custom_call"(%arg0) {
+    call_target_name = "foo",
+    api_version = 4 : i32,
+    output_operand_aliases = [
+      #stablehlo.output_operand_alias<output_tuple_indices = [],
+        operand_index = 0,
+        operand_tuple_indices = []>]
+  } : (memref<2x4xf32>) -> memref<2x4xf32>
+  func.return %0 : memref<2x4xf32>
+}
+
+// -----
+
+// CHECK-LABEL: "custom_call_op_with_buffer_type_with_layout"
+#map = affine_map<(d0, d1) -> (d1, d0)>
+func.func @custom_call_op_with_buffer_type_with_layout(%arg0: memref<2x4xf32, #map>) -> memref<2x4xf32, #map> {
+  //      CHECK: "mhlo.custom_call"
+  // CHECK-SAME: "foo"
+  // CHECK-SAME: #mhlo.output_operand_alias<output_tuple_indices = [], operand_index = 0, operand_tuple_indices = []>
+  // CHECK-SAME: (memref<2x4xf32, #map>) -> memref<2x4xf32, #map>
+  %0 = "stablehlo.custom_call"(%arg0) {
+    call_target_name = "foo",
+    api_version = 4 : i32,
+    output_operand_aliases = [
+      #stablehlo.output_operand_alias<output_tuple_indices = [],
+        operand_index = 0,
+        operand_tuple_indices = []>]
+  } : (memref<2x4xf32, #map>) -> memref<2x4xf32, #map>
+  func.return %0 : memref<2x4xf32, #map>
+}
+
+// -----
+
+// CHECK-LABEL: "tuple_op_with_buffer_type"
+func.func @tuple_op_with_buffer_type(%arg0: tensor<2xf32>, %arg1: memref<2xf32>) -> tuple<tensor<2xf32>, memref<2xf32>> {
+  // CHECK: "mhlo.tuple"(%{{.*}}, %{{.*}}) : (tensor<2xf32>, memref<2xf32>) -> tuple<tensor<2xf32>, memref<2xf32>>
+  %0 = "stablehlo.tuple"(%arg0, %arg1) : (tensor<2xf32>, memref<2xf32>) -> tuple<tensor<2xf32>, memref<2xf32>>
+  func.return %0 : tuple<tensor<2xf32>, memref<2xf32>>
+}
+
+// -----
+
+// CHECK-LABEL: "get_tuple_element_op_with_buffer_type"
+func.func @get_tuple_element_op_with_buffer_type(%arg0: tuple<tensor<2xf32>, memref<2xf32>>) -> memref<2xf32> {
+  // CHECK: "mhlo.get_tuple_element"(%{{.*}}) {{.*}}: (tuple<tensor<2xf32>, memref<2xf32>>) -> memref<2xf32>
+  %0 = "stablehlo.get_tuple_element"(%arg0) {
+    index = 1 : i32
+  } : (tuple<tensor<2xf32>, memref<2xf32>>) -> memref<2xf32>
+  func.return %0 : memref<2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: "while_op_with_buffer_type"
+func.func @while_op_with_buffer_type(%arg0: tensor<i1>, %arg1: memref<2xf32>) -> memref<2xf32> {
+  //      CHECK: "mhlo.while"({{.*}}, {{.*}}) ({
+  // CHECK-NEXT:   ^bb{{.*}}({{.*}}, {{.*}}):
+  // CHECK-NEXT:     "mhlo.return"
+  // CHECK-NEXT:   }, {
+  // CHECK-NEXT:   ^bb{{.*}}({{.*}}, {{.*}}):
+  // CHECK-NEXT:     "mhlo.custom_call"
+  // CHECK-NEXT:     "mhlo.return"
+  // CHECK-NEXT: }) : (tensor<i1>, memref<2xf32>) -> (tensor<i1>, memref<2xf32>)
+  %0:2 = stablehlo.while(%iterArg0 = %arg0, %iterArg1 = %arg1) : tensor<i1>, memref<2xf32>
+    cond {
+      stablehlo.return %iterArg0 : tensor<i1>
+    } do {
+      %1 = "stablehlo.custom_call"(%iterArg1) {
+        call_target_name = "foo",
+        api_version = 4 : i32,
+        output_operand_aliases = [
+          #stablehlo.output_operand_alias<output_tuple_indices = [],
+            operand_index = 0,
+            operand_tuple_indices = []>]
+      } : (memref<2xf32>) -> memref<2xf32>
+      stablehlo.return %iterArg0, %1 : tensor<i1>, memref<2xf32>
+    }
+  func.return %0#1: memref<2xf32>
+}

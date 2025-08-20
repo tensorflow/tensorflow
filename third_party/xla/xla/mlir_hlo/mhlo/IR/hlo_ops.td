@@ -1494,11 +1494,11 @@ def MHLO_WhileOp: MHLO_Op<"while", [
     }) : (tensor<i32>, tensor<i32>) -> (tensor<i32>, tensor<i32>)
     ```
   }];
-  let arguments = (ins Variadic<MHLO_TensorOrToken>:$operand);
+  let arguments = (ins Variadic<MHLO_TensorOrTokenOrBuffer>:$operand);
 
   let regions = (region SizedRegion<1>:$cond, SizedRegion<1>:$body);
 
-  let results = (outs Variadic<MHLO_TensorOrToken>);
+  let results = (outs Variadic<MHLO_TensorOrTokenOrBuffer>);
 
   let extraClassDeclaration = [{
     // Method of OpAsmOpInterface used during custom printing to name the block
@@ -1800,7 +1800,7 @@ def MHLO_GetTupleElementOp: MHLO_Op<"get_tuple_element", [Pure,
     ConfinedAttr<I32Attr, [IntNonNegative]>:$index
   );
 
-  let results = (outs MHLO_TensorOrTokenOrTuple);
+  let results = (outs MHLO_TensorOrTokenOrTupleOrBuffer);
 
   let hasFolder = 1;
 
@@ -1823,7 +1823,7 @@ def MHLO_TupleOp : MHLO_Op<"tuple", [Pure,
     %result = mhlo.tuple %val0, %val1 : tuple<tensor<2xf32>, tuple<tensor<i32>>>
     ```
    }];
-  let arguments = (ins Variadic<MHLO_TensorOrTokenOrTuple>:$val);
+  let arguments = (ins Variadic<MHLO_TensorOrTokenOrTupleOrBuffer>:$val);
   let results = (outs MHLO_Tuple:$result);
 
   let hasCanonicalizer = 1;
@@ -3467,7 +3467,7 @@ def MHLO_ReturnOp : MHLO_Op<"return", [Pure, Terminator]> {
   }];
 
   let arguments = (ins
-    Variadic<MHLO_TensorOrTokenOrTuple >:$results
+    Variadic<MHLO_TensorOrTokenOrTupleOrBuffer >:$results
   );
 
   // Disable conversion operator for return op as the op is not an actual XLA
