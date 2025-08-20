@@ -67,6 +67,8 @@ cc_library(
         ":graph_url_generator",
         ":hlo_gumgraph_renderer_util",
         ":op_metric_getter",
+        "//xla:printer",
+        "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/tools/hlo_diff:hlo_diff_result",
         "//xla/hlo/tools/hlo_diff:hlo_diff_summary",

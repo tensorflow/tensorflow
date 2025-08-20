@@ -35,11 +35,14 @@
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/tools/hlo_diff/hlo_diff_result.h"
 #include "xla/hlo/tools/hlo_diff/hlo_diff_summary.h"
 #include "xla/hlo/tools/hlo_diff/render/graph_url_generator.h"
 #include "xla/hlo/tools/hlo_diff/render/hlo_gumgraph_renderer_util.h"
 #include "xla/hlo/tools/hlo_diff/render/op_metric_getter.h"
+#include "xla/printer.h"
+#include "xla/shape_util.h"
 #include "tsl/platform/fingerprint.h"
 
 namespace xla {
@@ -208,6 +211,11 @@ std::string PrintCss() {
     span.grey {
       color: #999999;
     }
+
+    span.hlo-instruction:hover {
+      border: 1px solid #4285F4;
+    }
+
     </style>
   )html";
 }
@@ -361,18 +369,84 @@ std::string PrintTextbox(absl::string_view title, absl::string_view content,
 
 /*** Summary logic ***/
 
+// Generates HTML for a single HloComputation with diff highlights.
+std::string PrintHloComputationToHtml(const HloComputation* comp) {
+  if (comp == nullptr) {
+    return "";
+  }
+  StringPrinter printer;
+
+  // Mimic HloComputation::Print structure with default options.
+  printer.Append("%");
+  printer.Append(comp->name());
+  printer.Append(" ");
+  ShapeUtil::PrintHumanString(&printer,
+                              comp->ComputeProgramShape(/*include_ids=*/true));
+  printer.Append(" ");
+  printer.Append("{\n");
+
+  // Print instructions in this computation.
+  {
+    // Options for printing individual instructions.
+    // Default indent_amount + 1 = 1. is_in_nested_computation = true.
+    HloPrintOptions instruction_print_options = HloPrintOptions::Default();
+    instruction_print_options.set_indent_amount(1);
+    instruction_print_options.set_is_in_nested_computation(true);
+
+    CanonicalNameMap name_map;
+    name_map.Reserve(comp->instruction_count());
+
+    // Iterate through instructions in the default order: post-order.
+    std::vector<HloInstruction*> instruction_order =
+        comp->MakeInstructionPostOrder();
+    for (const HloInstruction* instruction : instruction_order) {
+      DCHECK_EQ(comp, instruction->parent());
+      printer.Append("  ");  // Instruction indentation (2 spaces)
+
+      printer.Append("<span class=\"hlo-instruction\">");
+
+      if (instruction == comp->root_instruction()) {
+        printer.Append("ROOT ");
+      }
+      instruction->PrintWithCanonicalNameMap(
+          &printer, instruction_print_options, &name_map);
+      printer.Append("</span>\n");
+    }
+  }
+
+  printer.Append("}");  // Closing brace for computation.
+
+  // Default print_ids is true, so execution thread is printed if not main.
+  if (!comp->IsMainThread()) {
+    printer.Append(", execution_thread=\"");
+    printer.Append(comp->execution_thread());
+    printer.Append("\"");
+  }
+
+  return std::move(printer).ToString();
+}
+
 // Prints a pair of instructions or computations in a text box.
 template <typename T>
 std::string PrintHloTextboxPair(const T* left_node, const T* right_node) {
   std::string left_title = "None", right_title = "None", left_text, right_text;
   if (left_node != nullptr) {
     left_title = left_node->name();
-    left_text = left_node->ToString();
+    if constexpr (std::is_same_v<T, HloComputation>) {
+      left_text = PrintHloComputationToHtml(left_node);
+    } else {
+      left_text = left_node->ToString();
+    }
   }
   if (right_node != nullptr) {
     right_title = right_node->name();
-    right_text = right_node->ToString();
+    if constexpr (std::is_same_v<T, HloComputation>) {
+      right_text = PrintHloComputationToHtml(right_node);
+    } else {
+      right_text = right_node->ToString();
+    }
   }
+
   uint64_t fingerprint =
       tsl::Fingerprint64(absl::StrCat(left_text, right_text));
   return PrintDiv(
