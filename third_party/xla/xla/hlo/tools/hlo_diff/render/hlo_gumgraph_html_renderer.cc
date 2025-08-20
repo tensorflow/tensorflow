@@ -216,6 +216,10 @@ std::string PrintCss() {
       border: 1px solid #4285F4;
     }
 
+    span.bordered {
+      border: 1px solid #4285F4;
+    }
+
     span.red-highlight {
       background-color: #fad2cf;
     }
@@ -251,6 +255,39 @@ std::string PrintJavascript() {
     const sibling = document.getElementById(id + '-' + (isLeft ? 'right' : 'left'));
     sibling.scrollTop = textbox.scrollTop;
     sibling.scrollLeft = textbox.scrollLeft;
+  }
+  </script>
+  )html";
+}
+
+std::string PrintJavascriptForHoverEvent() {
+  return R"html(
+  <script>
+  const allSpans = document.querySelectorAll('span[data-diffid]');
+  allSpans.forEach(span => {
+      span.addEventListener('mouseover', handleMouseOver);
+      span.addEventListener('mouseout', handleMouseOut);
+  });
+  function handleMouseOver(event) {
+      const diffId = event.target.getAttribute('data-diffid');
+      if (!diffId) {
+          return;
+      }
+      const relatedSpans = document.querySelectorAll(`span[data-diffid="${diffId}"]`);
+      relatedSpans.forEach(relatedSpan => {
+          relatedSpan.classList.add('bordered');
+      });
+  }
+
+  function handleMouseOut(event) {
+      const diffId = event.target.getAttribute('data-diffid');
+      if (!diffId) {
+          return;
+      }
+      const relatedSpans = document.querySelectorAll(`span[data-diffid="${diffId}"]`);
+      relatedSpans.forEach(relatedSpan => {
+          relatedSpan.classList.remove('bordered');
+      });
   }
   </script>
   )html";
@@ -383,6 +420,7 @@ std::string PrintTextbox(absl::string_view title, absl::string_view content,
 // span element in the HTML output.
 struct Attributes {
   std::string highlight;
+  std::string diffid;
 };
 
 // Generate span attributes for all instructions given diff result.
@@ -397,8 +435,19 @@ absl::flat_hash_map<const HloInstruction*, Attributes> GenerateSpanAttributes(
   }
   for (const auto& [l_instruction, r_instruction] :
        diff_result.changed_instructions) {
-    span_attributes[l_instruction] = {"yellow-highlight"};
-    span_attributes[r_instruction] = {"yellow-highlight"};
+    span_attributes[l_instruction] = {
+        "yellow-highlight",
+        absl::StrCat(l_instruction->name(), "::", r_instruction->name())};
+    span_attributes[r_instruction] = {
+        "yellow-highlight",
+        absl::StrCat(l_instruction->name(), "::", r_instruction->name())};
+  }
+  for (const auto& [l_instruction, r_instruction] :
+       diff_result.unchanged_instructions) {
+    span_attributes[l_instruction] = {
+        "", absl::StrCat(l_instruction->name(), "::", r_instruction->name())};
+    span_attributes[r_instruction] = {
+        "", absl::StrCat(l_instruction->name(), "::", r_instruction->name())};
   }
   return span_attributes;
 };
@@ -445,8 +494,14 @@ std::string PrintHloComputationToHtml(
           it != span_attributes.end() && !it->second.highlight.empty()
               ? std::string(it->second.highlight)
               : "";
+      std::string diffid =
+          it != span_attributes.end() && !it->second.diffid.empty()
+              ? absl::StrCat("data-diffid=\"",
+                             EscapeStringForHtmlAttribute(it->second.diffid),
+                             "\"")
+              : "";
       printer.Append(absl::StrCat("<span class=\"hlo-instruction ",
-                                  highlight_class, "\" >"));
+                                  highlight_class, "\"", diffid, " >"));
 
       if (instruction == comp->root_instruction()) {
         printer.Append("ROOT ");
@@ -1046,6 +1101,8 @@ void RenderHtml(const DiffResult& diff_result, const DiffSummary& diff_summary,
                               filtered_diff_result.changed_instructions.size()),
               PrintChangedInstructions(
                   filtered_diff_result.changed_instructions, url_generator))));
+
+  out << PrintJavascriptForHoverEvent();
 }
 
 }  // namespace hlo_diff
