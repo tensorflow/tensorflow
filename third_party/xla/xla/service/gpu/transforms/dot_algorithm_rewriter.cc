@@ -309,7 +309,7 @@ void RewriteF32ToTF32X3(HloInstruction* instr) {
 
 }  // namespace
 
-absl::StatusOr<bool> DotAlgorithmRewriter::Run(
+absl::StatusOr<bool> DotAlgorithmRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

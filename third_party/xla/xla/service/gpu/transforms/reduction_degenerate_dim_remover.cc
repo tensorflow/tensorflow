@@ -119,9 +119,9 @@ class ReductionDegenerateDimRemoverVisitor : public DfsHloRewriteVisitor {
   }
 };
 
-absl::StatusOr<bool> ReductionDegenerateDimRemover::Run(
-    HloModule *module,
-    const absl::flat_hash_set<absl::string_view> &execution_threads) {
+absl::StatusOr<bool> ReductionDegenerateDimRemover::RunImpl(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   TF_ASSIGN_OR_RETURN(bool changed,
                       ReductionDegenerateDimRemoverVisitor().RunOnModule(
                           module, execution_threads));

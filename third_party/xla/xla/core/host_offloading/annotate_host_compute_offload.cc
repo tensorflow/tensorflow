@@ -51,8 +51,7 @@ void AnnotateComputationHostOffload(HloComputation& computation) {
 }
 }  // namespace
 
-
-absl::StatusOr<bool> AnnotateHostComputeOffload::Run(
+absl::StatusOr<bool> AnnotateHostComputeOffload::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool modified = false;

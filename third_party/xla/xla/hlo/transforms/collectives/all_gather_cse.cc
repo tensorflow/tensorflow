@@ -30,7 +30,7 @@ limitations under the License.
 
 namespace xla {
 
-absl::StatusOr<bool> AllGatherCSE::Run(
+absl::StatusOr<bool> AllGatherCSE::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(2) << "Running AllGatherCSE pass";
