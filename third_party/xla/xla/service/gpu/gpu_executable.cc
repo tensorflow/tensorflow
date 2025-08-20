@@ -152,7 +152,7 @@ GpuExecutable::GpuExecutable(GpuExecutable::Params params)
       thunks_(std::move(params.executable)),
       execution_stream_ids_(GetExecutionStreamIds(*thunks_)),
       module_name_(params.module_name),
-      output_shape_(params.output_shape),
+      program_shape_(params.program_shape),
       allocations_(std::move(params.mlir_allocations)),
       buffer_assignment_(std::move(params.buffer_assignment)),
       alias_info_(std::move(params.alias_info)),
@@ -744,8 +744,9 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
   const int device_ordinal = run_options->device_ordinal() != -1
                                  ? run_options->device_ordinal()
                                  : executor->device_ordinal();
-  ExecutionOutput result(/*on_device_shape=*/output_shape_, memory_allocator,
-                         device_ordinal, executor->device_ordinal());
+  ExecutionOutput result(/*on_device_shape=*/program_shape_.result(),
+                         memory_allocator, device_ordinal,
+                         executor->device_ordinal());
 
   TF_ASSIGN_OR_RETURN(
       BufferAllocations buffer_allocations,
@@ -824,14 +825,15 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
         // result, if the ExecutionOutput is not committed.
         result.AddAliasedIndex(index);
       } else if (!output_info.passthrough &&
-                 !ShapeUtil::GetSubshape(output_shape_, index).IsTuple()) {
+                 !ShapeUtil::GetSubshape(program_shape_.result(), index)
+                      .IsTuple()) {
         // The guard is above is not to insert copy-protection when aliasing
         // pass-through params, as we do not need to write into the output
         // buffer.
         VLOG(3) << "Using copy-protection: aliasing is specified, but the "
                    "buffer is not donated; allocating a fresh buffer";
-        int64_t allocation_size =
-            ShapeUtil::ByteSizeOf(ShapeUtil::GetSubshape(output_shape_, index));
+        int64_t allocation_size = ShapeUtil::ByteSizeOf(
+            ShapeUtil::GetSubshape(program_shape_.result(), index));
         absl::StatusOr<se::OwningDeviceMemory> allocated_buffer =
             memory_allocator->Allocate(device_ordinal, allocation_size,
                                        /*retry_on_failure=*/true,

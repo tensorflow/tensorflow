@@ -4267,10 +4267,20 @@ cc_library(
         "//xla:printer",
         "//xla:shape_layout",
         "//xla:shape_util",
-        "//xla:types",
         "//xla:xla_data_proto_cc",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_cc_test(
+    name = "computation_layout_test",
+    srcs = ["computation_layout_test.cc"],
+    deps = [
+        ":computation_layout",
+        "//xla:shape_util",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
