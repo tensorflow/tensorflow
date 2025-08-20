@@ -79,12 +79,12 @@
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/status_to_from_proto.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "xla/tsl/protobuf/status.pb.h"
+#include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 
@@ -109,14 +109,9 @@ using ::testing::ReturnRef;
 using ::testing::SizeIs;
 using ::testing::StrEq;
 using ::tsl::protobuf::TextFormat;
-using ::tsl::testing::IsOk;
-using ::tsl::testing::IsOkAndHolds;
-using ::tsl::testing::StatusIs;
 
-#if defined(PLATFORM_GOOGLE)
-using ::testing::EquivToProto;
-using ::testing::proto::Partially;
-#endif
+using ::tsl::proto_testing::EquivToProto;
+using ::tsl::proto_testing::Partially;
 
 constexpr uint64_t kSessionId = 12345;
 
@@ -1146,8 +1141,6 @@ TEST_P(IfrtBackendHandlerTest, DestructArrayTest) {
               absl_testing::StatusIs(absl::StatusCode::kNotFound));
 }
 
-// TODO(b/315809436): Test needs rewrite because protobuf matchers are not OSS
-#if defined(PLATFORM_GOOGLE)
 TEST_P(IfrtBackendHandlerTest, CompileSuccess) {
   std::vector<MockDevice> devices(4);
   for (int i = 0; i < 4; ++i) {
@@ -1171,8 +1164,8 @@ TEST_P(IfrtBackendHandlerTest, CompileSuccess) {
   EXPECT_CALL(*executable, GetReadyFuture())
       .WillOnce(Return(Future<>(absl::OkStatus())));
 
-  ASSERT_OK_AND_ASSIGN(CompileResponse response,
-                       CompileTestLoadedExecutable(std::move(executable)));
+  TF_ASSERT_OK_AND_ASSIGN(CompileResponse response,
+                          CompileTestLoadedExecutable(std::move(executable)));
   EXPECT_THAT(response, Partially(EquivToProto(R"pb(
                 name: "executable_name"
                 num_devices: 4
@@ -1182,7 +1175,6 @@ TEST_P(IfrtBackendHandlerTest, CompileSuccess) {
               )pb")));
   TF_EXPECT_OK(CheckFuture(response.ready_future_handle()));
 }
-#endif
 
 TEST_P(IfrtBackendHandlerTest, CompileFailure) {
   ASSERT_THAT(
@@ -1191,8 +1183,6 @@ TEST_P(IfrtBackendHandlerTest, CompileFailure) {
                              StrEq("injected error")));
 }
 
-// TODO(b/315809436): Test needs rewrite because protobuf matchers are not OSS
-#if defined(PLATFORM_GOOGLE)
 TEST_P(IfrtBackendHandlerTest, LoadedExecutableMetadata) {
   MockLoadedExecutable* executable;
   uint64_t handle;
@@ -1300,10 +1290,7 @@ TEST_P(IfrtBackendHandlerTest, LoadedExecutableMetadata) {
     EXPECT_TRUE(metadata_response.has_output_layouts_error());
   }
 }
-#endif
 
-// TODO(b/315809436): Test needs rewrite because protobuf matchers are not OSS
-#if defined(PLATFORM_GOOGLE)
 TEST_P(IfrtBackendHandlerTest, LoadedExecutableExecute) {
   TF_ASSERT_OK_AND_ASSIGN(xla::ifrt::Device* const device,
                           mock_client_->LookupDevice(DeviceId(0)));
@@ -1400,7 +1387,6 @@ TEST_P(IfrtBackendHandlerTest, LoadedExecutableExecute) {
       absl_testing::StatusIs(absl::StatusCode::kNotFound,
                              HasSubstr("Unknown future handle")));
 }
-#endif
 
 TEST_P(IfrtBackendHandlerTest, LoadedExecutableExecuteErrorWithClientHandles) {
   TF_ASSERT_OK_AND_ASSIGN(xla::ifrt::Device* const device,
