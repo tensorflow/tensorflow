@@ -216,6 +216,16 @@ std::string PrintCss() {
       border: 1px solid #4285F4;
     }
 
+    span.red-highlight {
+      background-color: #fad2cf;
+    }
+    span.green-highlight {
+      background-color: #ceead6;
+    }
+    span.yellow-highlight {
+      background-color: #feefc3;
+    }
+
     </style>
   )html";
 }
@@ -369,8 +379,35 @@ std::string PrintTextbox(absl::string_view title, absl::string_view content,
 
 /*** Summary logic ***/
 
+// The attributes of an instruction that will be applied to the corresponding
+// span element in the HTML output.
+struct Attributes {
+  std::string highlight;
+};
+
+// Generate span attributes for all instructions given diff result.
+absl::flat_hash_map<const HloInstruction*, Attributes> GenerateSpanAttributes(
+    const DiffResult& diff_result) {
+  absl::flat_hash_map<const HloInstruction*, Attributes> span_attributes;
+  for (auto& instruction : diff_result.left_module_unmatched_instructions) {
+    span_attributes[instruction] = {"red-highlight"};
+  }
+  for (auto& instruction : diff_result.right_module_unmatched_instructions) {
+    span_attributes[instruction] = {"green-highlight"};
+  }
+  for (const auto& [l_instruction, r_instruction] :
+       diff_result.changed_instructions) {
+    span_attributes[l_instruction] = {"yellow-highlight"};
+    span_attributes[r_instruction] = {"yellow-highlight"};
+  }
+  return span_attributes;
+};
+
 // Generates HTML for a single HloComputation with diff highlights.
-std::string PrintHloComputationToHtml(const HloComputation* comp) {
+std::string PrintHloComputationToHtml(
+    const HloComputation* comp,
+    const absl::flat_hash_map<const HloInstruction*, Attributes>&
+        span_attributes) {
   if (comp == nullptr) {
     return "";
   }
@@ -403,7 +440,13 @@ std::string PrintHloComputationToHtml(const HloComputation* comp) {
       DCHECK_EQ(comp, instruction->parent());
       printer.Append("  ");  // Instruction indentation (2 spaces)
 
-      printer.Append("<span class=\"hlo-instruction\">");
+      auto it = span_attributes.find(instruction);
+      std::string highlight_class =
+          it != span_attributes.end() && !it->second.highlight.empty()
+              ? std::string(it->second.highlight)
+              : "";
+      printer.Append(absl::StrCat("<span class=\"hlo-instruction ",
+                                  highlight_class, "\" >"));
 
       if (instruction == comp->root_instruction()) {
         printer.Append("ROOT ");
@@ -428,12 +471,15 @@ std::string PrintHloComputationToHtml(const HloComputation* comp) {
 
 // Prints a pair of instructions or computations in a text box.
 template <typename T>
-std::string PrintHloTextboxPair(const T* left_node, const T* right_node) {
+std::string PrintHloTextboxPair(
+    const T* left_node, const T* right_node,
+    const absl::flat_hash_map<const HloInstruction*, Attributes>&
+        span_attributes) {
   std::string left_title = "None", right_title = "None", left_text, right_text;
   if (left_node != nullptr) {
     left_title = left_node->name();
     if constexpr (std::is_same_v<T, HloComputation>) {
-      left_text = PrintHloComputationToHtml(left_node);
+      left_text = PrintHloComputationToHtml(left_node, span_attributes);
     } else {
       left_text = left_node->ToString();
     }
@@ -441,7 +487,7 @@ std::string PrintHloTextboxPair(const T* left_node, const T* right_node) {
   if (right_node != nullptr) {
     right_title = right_node->name();
     if constexpr (std::is_same_v<T, HloComputation>) {
-      right_text = PrintHloComputationToHtml(right_node);
+      right_text = PrintHloComputationToHtml(right_node, span_attributes);
     } else {
       right_text = right_node->ToString();
     }
@@ -466,26 +512,33 @@ template <typename T>
 using DecorationPrinter = std::string(const T*, const T*);
 
 template <typename T>
-std::string PrintNodePairContent(const T* left_node, const T* right_node,
-                                 GraphUrlGenerator* url_generator) {
+std::string PrintNodePairContent(
+    const T* left_node, const T* right_node,
+    const absl::flat_hash_map<const HloInstruction*, Attributes>&
+        span_attributes,
+    GraphUrlGenerator* url_generator) {
   std::string url;
   if (url_generator != nullptr) {
     url = url_generator->GenerateWithSelectedNodes(left_node, right_node);
   }
-  return absl::StrCat(PrintHloTextboxPair(left_node, right_node),
-                      url.empty() ? ""
-                                  : PrintDiv(PrintLink("Model Explorer", url),
-                                             {"model-explorer-url"}));
+  return absl::StrCat(
+      PrintHloTextboxPair(left_node, right_node, span_attributes),
+      url.empty()
+          ? ""
+          : PrintDiv(PrintLink("Model Explorer", url), {"model-explorer-url"}));
 }
 
 // Prints a pair of instructions or computations. If url_generator is not
 // null, a link to the pair of instructions or computations in model
 // explorer will be printed.
 template <typename T>
-std::string PrintNodePair(const T* left_node, const T* right_node,
-                          GraphUrlGenerator* url_generator,
-                          std::optional<absl::FunctionRef<DecorationPrinter<T>>>
-                              decoration_printer = std::nullopt) {
+std::string PrintNodePair(
+    const T* left_node, const T* right_node,
+    const absl::flat_hash_map<const HloInstruction*, Attributes>&
+        span_attributes,
+    GraphUrlGenerator* url_generator,
+    std::optional<absl::FunctionRef<DecorationPrinter<T>>> decoration_printer =
+        std::nullopt) {
   std::vector<std::string> nodes;
   if (left_node != nullptr) {
     nodes.push_back(std::string(left_node->name()));
@@ -499,9 +552,9 @@ std::string PrintNodePair(const T* left_node, const T* right_node,
     decoration =
         PrintSpan((*decoration_printer)(left_node, right_node), {"decoration"});
   }
-  return PrintDetails(
-      absl::StrCat(text, " ", decoration),
-      PrintNodePairContent<T>(left_node, right_node, url_generator));
+  return PrintDetails(absl::StrCat(text, " ", decoration),
+                      PrintNodePairContent<T>(left_node, right_node,
+                                              span_attributes, url_generator));
 }
 
 // The location of the instruction in the diff result.
@@ -516,11 +569,12 @@ std::string PrintInstructionsAsList(
   for (const HloInstruction* inst : instructions) {
     std::string link;
     if (location == InstructionLocation::kLeft) {
-      link = PrintNodePair<HloInstruction>(inst, /*right_node=*/nullptr,
-                                           url_generator);
+      link =
+          PrintNodePair<HloInstruction>(inst, /*right_node=*/nullptr,
+                                        /*span_attributes=*/{}, url_generator);
     } else {
       link = PrintNodePair<HloInstruction>(
-          /*left_node=*/nullptr, inst, url_generator);
+          /*left_node=*/nullptr, inst, /*span_attributes=*/{}, url_generator);
     }
     instructions_list.push_back(link);
   }
@@ -535,7 +589,8 @@ std::string PrintNodePairsAsList(
     std::optional<absl::FunctionRef<DecorationPrinter<T>>> decoration_printer) {
   std::vector<std::string> pair_list;
   for (const auto& pair : node_pairs) {
-    pair_list.push_back(PrintNodePair(pair.first, pair.second, url_generator,
+    pair_list.push_back(PrintNodePair(pair.first, pair.second,
+                                      /*span_attributes=*/{}, url_generator,
                                       decoration_printer));
   }
   return PrintList(pair_list);
@@ -714,7 +769,7 @@ std::string PrintUnmatchedMetricsDiff(
       right_inst = inst;
     }
     metrics_diff_list.push_back(PrintNodePair<HloInstruction>(
-        left_inst, right_inst, url_generator,
+        left_inst, right_inst, /*span_attributes=*/{}, url_generator,
         [&metrics_diff](const HloInstruction* inst,
                         const HloInstruction*) -> std::string {
           return absl::StrFormat("%.2f (us)", metrics_diff / 1e6);
@@ -753,7 +808,7 @@ std::string PrintMatchedMetricsDiff(
     const HloInstruction* right_inst = entry.first.second;
     double metrics_diff = entry.second;
     metrics_diff_list.push_back(PrintNodePair<HloInstruction>(
-        left_inst, right_inst, url_generator,
+        left_inst, right_inst, /*span_attributes=*/{}, url_generator,
         [&metrics_diff](const HloInstruction* left_inst,
                         const HloInstruction* right_inst) -> std::string {
           return absl::StrFormat("%+.2f (us)", metrics_diff / 1e6);
@@ -821,8 +876,11 @@ std::string PrintDiffMetrics(const DiffMetrics& diff_metrics) {
 }
 
 // Prints the computation summary
-std::string PrintComputationSummary(const ComputationDiffPattern& diff_pattern,
-                                    GraphUrlGenerator* url_generator) {
+std::string PrintComputationSummary(
+    const ComputationDiffPattern& diff_pattern,
+    const absl::flat_hash_map<const HloInstruction*, Attributes>&
+        span_attributes,
+    GraphUrlGenerator* url_generator) {
   const ComputationGroup& sample = diff_pattern.computation_groups[0];
   // We only support unmatched computation and one-to-one computation pairs.
   if (sample.left_computations.size() > 1 ||
@@ -843,7 +901,7 @@ std::string PrintComputationSummary(const ComputationDiffPattern& diff_pattern,
             ? nullptr
             : computation_group.right_computations[0];
     computation_pair_list[i - 1] = PrintNodePair<HloComputation>(
-        left_computation, right_computation, url_generator);
+        left_computation, right_computation, span_attributes, url_generator);
   }
   const HloComputation* left_computation =
       sample.left_computations.empty() ? nullptr : sample.left_computations[0];
@@ -851,8 +909,8 @@ std::string PrintComputationSummary(const ComputationDiffPattern& diff_pattern,
                                                 ? nullptr
                                                 : sample.right_computations[0];
   std::vector<std::string> contents;
-  contents.push_back(
-      PrintNodePairContent(left_computation, right_computation, url_generator));
+  contents.push_back(PrintNodePairContent(left_computation, right_computation,
+                                          span_attributes, url_generator));
   if (!computation_pair_list.empty()) {
     contents.push_back(
         PrintDetails(absl::StrFormat("%d other similar computations",
@@ -875,6 +933,8 @@ std::string PrintComputationSummary(const ComputationDiffPattern& diff_pattern,
 // Prints the summary of the repetitive diff patterns.
 std::string PrintRepetitiveDiffPatterns(
     absl::Span<const ComputationDiffPattern> diff_patterns,
+    const absl::flat_hash_map<const HloInstruction*, Attributes>&
+        span_attributes,
     GraphUrlGenerator* url_generator) {
   // Sort the diff patterns by the number of computations in each group in
   // descending order.
@@ -900,8 +960,9 @@ std::string PrintRepetitiveDiffPatterns(
       });
   std::string computation_group_list;
   for (const ComputationDiffPattern& diff_pattern : sorted_diff_patterns) {
-    absl::StrAppend(&computation_group_list,
-                    PrintComputationSummary(diff_pattern, url_generator));
+    absl::StrAppend(
+        &computation_group_list,
+        PrintComputationSummary(diff_pattern, span_attributes, url_generator));
   }
   return computation_group_list;
 }
@@ -918,6 +979,9 @@ void RenderHtml(const DiffResult& diff_result, const DiffSummary& diff_summary,
 
   DiffResult filtered_diff_result =
       FilterDiffResultByOpcode(diff_result, ignored_opcodes);
+
+  absl::flat_hash_map<const HloInstruction*, Attributes> span_attributes =
+      GenerateSpanAttributes(diff_result);
 
   out << PrintCss() << PrintJavascript();
 
@@ -955,7 +1019,7 @@ void RenderHtml(const DiffResult& diff_result, const DiffSummary& diff_summary,
   out << PrintSectionWithHeader(
       "Diffs grouped by computation (Ordered by # of different instructions)",
       PrintRepetitiveDiffPatterns(diff_summary.computation_diff_patterns,
-                                  url_generator));
+                                  span_attributes, url_generator));
 
   // Print full diff results
   out << PrintSectionWithHeader(
