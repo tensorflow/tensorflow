@@ -346,7 +346,7 @@ namespace {
 
 absl::StatusOr<std::pair<std::unique_ptr<HloModule>,
                          std::unique_ptr<RunHloModuleIterationLiterals>>>
-LoadFromHloSnapshotOrHloModuleProto(const std::string& hlo_data,
+LoadFromHloSnapshotOrHloModuleProto(absl::string_view hlo_data,
                                     absl::string_view extension) {
   auto iteration_literals_proto =
       std::make_unique<RunHloModuleIterationLiterals>();
@@ -406,6 +406,17 @@ LoadHloModuleAndMaybeIterationLiterals(absl::string_view hlo_path) {
 
   return LoadFromHloSnapshotOrHloModuleProto(hlo_data,
                                              tsl::io::Extension(hlo_path));
+}
+
+absl::StatusOr<std::pair<std::unique_ptr<HloModule>,
+                         std::unique_ptr<RunHloModuleIterationLiterals>>>
+LoadHloModuleAndMaybeIterationLiteralsFromString(absl::string_view hlo_data) {
+  HloUnoptimizedSnapshot unoptimized_snapshot;
+  if (unoptimized_snapshot.ParseFromString(hlo_data)) {
+    return LoadFromHloUnoptimizedSnapshot(unoptimized_snapshot);
+  }
+
+  return LoadFromHloSnapshotOrHloModuleProto(hlo_data, "hlo");
 }
 
 }  // namespace xla::cpu
