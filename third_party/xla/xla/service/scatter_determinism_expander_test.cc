@@ -201,7 +201,8 @@ TEST_F(ScatterDeterminismExpanderTest, ScalarScatterAddCorrectnessTest) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr));
   auto cloned_module = module->Clone();
-  Literal expected_literal = ExecuteAndTransfer(std::move(cloned_module), {});
+  TF_ASSERT_OK_AND_ASSIGN(Literal expected_literal,
+                          Execute(std::move(cloned_module), {}));
   auto expected_result = expected_literal.data<float>();
 
   ScatterDeterminismExpander scatter_determinism_expander;
@@ -210,7 +211,8 @@ TEST_F(ScatterDeterminismExpanderTest, ScalarScatterAddCorrectnessTest) {
 
   EXPECT_TRUE(result);
 
-  Literal result_literal = ExecuteAndTransfer(std::move(module), {});
+  TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
+                          Execute(std::move(module), {}));
 
   auto result_data = result_literal.data<float>();
   std::vector<float> actual_result(result_data.begin(), result_data.end());
@@ -242,7 +244,8 @@ TEST_F(ScatterDeterminismExpanderTest,
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr));
   auto cloned_module = module->Clone();
-  Literal expected_literal = ExecuteAndTransfer(std::move(cloned_module), {});
+  TF_ASSERT_OK_AND_ASSIGN(Literal expected_literal,
+                          Execute(std::move(cloned_module), {}));
   auto expected_result = expected_literal.data<float>();
 
   ScatterDeterminismExpander scatter_determinism_expander;
@@ -251,7 +254,8 @@ TEST_F(ScatterDeterminismExpanderTest,
 
   EXPECT_TRUE(result);
 
-  Literal result_literal = ExecuteAndTransfer(std::move(module), {});
+  TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
+                          Execute(std::move(module), {}));
 
   auto result_data = result_literal.data<float>();
   std::vector<float> actual_result(result_data.begin(), result_data.end());
@@ -283,7 +287,8 @@ TEST_F(ScatterDeterminismExpanderTest,
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr));
   auto cloned_module = module->Clone();
-  Literal expected_literal = ExecuteAndTransfer(std::move(cloned_module), {});
+  TF_ASSERT_OK_AND_ASSIGN(Literal expected_literal,
+                          Execute(std::move(cloned_module), {}));
   auto expected_result = expected_literal.data<float>();
 
   ScatterDeterminismExpander scatter_determinism_expander;
@@ -292,7 +297,8 @@ TEST_F(ScatterDeterminismExpanderTest,
 
   EXPECT_TRUE(result);
 
-  Literal result_literal = ExecuteAndTransfer(std::move(module), {});
+  TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
+                          Execute(std::move(module), {}));
 
   auto result_data = result_literal.data<float>();
   std::vector<float> actual_result(result_data.begin(), result_data.end());
@@ -324,7 +330,8 @@ TEST_F(ScatterDeterminismExpanderTest,
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr));
   auto cloned_module = module->Clone();
-  Literal expected_literal = ExecuteAndTransfer(std::move(cloned_module), {});
+  TF_ASSERT_OK_AND_ASSIGN(Literal expected_literal,
+                          Execute(std::move(cloned_module), {}));
   auto expected_result = expected_literal.data<float>();
   ScatterDeterminismExpander scatter_determinism_expander;
   TF_ASSERT_OK_AND_ASSIGN(
@@ -332,7 +339,8 @@ TEST_F(ScatterDeterminismExpanderTest,
 
   EXPECT_TRUE(result);
 
-  Literal result_literal = ExecuteAndTransfer(std::move(module), {});
+  TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
+                          Execute(std::move(module), {}));
 
   auto result_data = result_literal.data<float>();
   std::vector<float> actual_result(result_data.begin(), result_data.end());
@@ -364,7 +372,8 @@ TEST_F(ScatterDeterminismExpanderTest,
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr));
   auto cloned_module = module->Clone();
-  Literal expected_literal = ExecuteAndTransfer(std::move(cloned_module), {});
+  TF_ASSERT_OK_AND_ASSIGN(Literal expected_literal,
+                          Execute(std::move(cloned_module), {}));
   auto expected_result = expected_literal.data<float>();
   ScatterDeterminismExpander scatter_determinism_expander;
   TF_ASSERT_OK_AND_ASSIGN(
@@ -372,7 +381,8 @@ TEST_F(ScatterDeterminismExpanderTest,
 
   EXPECT_TRUE(result);
 
-  Literal result_literal = ExecuteAndTransfer(std::move(module), {});
+  TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
+                          Execute(std::move(module), {}));
 
   auto result_data = result_literal.data<float>();
   std::vector<float> actual_result(result_data.begin(), result_data.end());
@@ -404,7 +414,8 @@ TEST_F(ScatterDeterminismExpanderTest,
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr));
   auto cloned_module = module->Clone();
-  Literal expected_literal = ExecuteAndTransfer(std::move(cloned_module), {});
+  TF_ASSERT_OK_AND_ASSIGN(Literal expected_literal,
+                          Execute(std::move(cloned_module), {}));
   auto expected_result = expected_literal.data<float>();
   ScatterDeterminismExpander scatter_determinism_expander;
   TF_ASSERT_OK_AND_ASSIGN(
@@ -412,7 +423,8 @@ TEST_F(ScatterDeterminismExpanderTest,
 
   EXPECT_TRUE(result);
 
-  Literal result_literal = ExecuteAndTransfer(std::move(module), {});
+  TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
+                          Execute(std::move(module), {}));
 
   auto result_data = result_literal.data<float>();
   std::vector<float> actual_result(result_data.begin(), result_data.end());
@@ -444,7 +456,8 @@ TEST_F(ScatterDeterminismExpanderTest,
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr));
   auto cloned_module = module->Clone();
-  Literal expected_literal = ExecuteAndTransfer(std::move(cloned_module), {});
+  TF_ASSERT_OK_AND_ASSIGN(Literal expected_literal,
+                          Execute(std::move(cloned_module), {}));
   auto expected_result = expected_literal.data<float>();
 
   ScatterDeterminismExpander scatter_determinism_expander;
@@ -453,7 +466,8 @@ TEST_F(ScatterDeterminismExpanderTest,
 
   EXPECT_TRUE(result);
 
-  Literal result_literal = ExecuteAndTransfer(std::move(module), {});
+  TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
+                          Execute(std::move(module), {}));
 
   auto result_data = result_literal.data<float>();
   std::vector<float> actual_result(result_data.begin(), result_data.end());
@@ -485,7 +499,8 @@ TEST_F(ScatterDeterminismExpanderTest,
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr));
   auto cloned_module = module->Clone();
-  Literal expected_literal = ExecuteAndTransfer(std::move(cloned_module), {});
+  TF_ASSERT_OK_AND_ASSIGN(Literal expected_literal,
+                          Execute(std::move(cloned_module), {}));
   auto expected_result = expected_literal.data<float>();
 
   ScatterDeterminismExpander scatter_determinism_expander;
@@ -494,7 +509,8 @@ TEST_F(ScatterDeterminismExpanderTest,
 
   EXPECT_TRUE(result);
 
-  Literal result_literal = ExecuteAndTransfer(std::move(module), {});
+  TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
+                          Execute(std::move(module), {}));
 
   auto result_data = result_literal.data<float>();
   std::vector<float> actual_result(result_data.begin(), result_data.end());
@@ -526,7 +542,8 @@ TEST_F(ScatterDeterminismExpanderTest,
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr));
   auto cloned_module = module->Clone();
-  Literal expected_literal = ExecuteAndTransfer(std::move(cloned_module), {});
+  TF_ASSERT_OK_AND_ASSIGN(Literal expected_literal,
+                          Execute(std::move(cloned_module), {}));
   auto expected_result = expected_literal.data<float>();
 
   ScatterDeterminismExpander scatter_determinism_expander;
@@ -535,7 +552,8 @@ TEST_F(ScatterDeterminismExpanderTest,
 
   EXPECT_TRUE(result);
 
-  Literal result_literal = ExecuteAndTransfer(std::move(module), {});
+  TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
+                          Execute(std::move(module), {}));
 
   auto result_data = result_literal.data<float>();
   std::vector<float> actual_result(result_data.begin(), result_data.end());
@@ -567,7 +585,8 @@ TEST_F(ScatterDeterminismExpanderTest,
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr));
   auto cloned_module = module->Clone();
-  Literal expected_literal = ExecuteAndTransfer(std::move(cloned_module), {});
+  TF_ASSERT_OK_AND_ASSIGN(Literal expected_literal,
+                          Execute(std::move(cloned_module), {}));
   auto expected_result = expected_literal.data<float>();
 
   ScatterDeterminismExpander scatter_determinism_expander;
@@ -576,7 +595,8 @@ TEST_F(ScatterDeterminismExpanderTest,
 
   EXPECT_TRUE(result);
 
-  Literal result_literal = ExecuteAndTransfer(std::move(module), {});
+  TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
+                          Execute(std::move(module), {}));
 
   auto result_data = result_literal.data<float>();
   std::vector<float> actual_result(result_data.begin(), result_data.end());
@@ -617,7 +637,8 @@ TEST_F(ScatterDeterminismExpanderTest,
                           ParseAndReturnVerifiedModule(kModuleStr));
 
   auto cloned_module = module->Clone();
-  Literal expected_literal = ExecuteAndTransfer(std::move(cloned_module), {});
+  TF_ASSERT_OK_AND_ASSIGN(Literal expected_literal,
+                          Execute(std::move(cloned_module), {}));
   auto expected_result = expected_literal.data<float>();
 
   ScatterDeterminismExpander scatter_determinism_expander;
@@ -626,7 +647,8 @@ TEST_F(ScatterDeterminismExpanderTest,
 
   EXPECT_TRUE(result);
 
-  Literal result_literal = ExecuteAndTransfer(std::move(module), {});
+  TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
+                          Execute(std::move(module), {}));
 
   auto result_data = result_literal.data<float>();
   std::vector<float> actual_result(result_data.begin(), result_data.end());
@@ -667,7 +689,8 @@ TEST_F(ScatterDeterminismExpanderTest,
                           ParseAndReturnVerifiedModule(kModuleStr));
 
   auto cloned_module = module->Clone();
-  Literal expected_literal = ExecuteAndTransfer(std::move(cloned_module), {});
+  TF_ASSERT_OK_AND_ASSIGN(Literal expected_literal,
+                          Execute(std::move(cloned_module), {}));
   auto expected_result = expected_literal.data<float>();
 
   ScatterDeterminismExpander scatter_determinism_expander;
@@ -676,7 +699,8 @@ TEST_F(ScatterDeterminismExpanderTest,
 
   EXPECT_TRUE(result);
 
-  Literal result_literal = ExecuteAndTransfer(std::move(module), {});
+  TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
+                          Execute(std::move(module), {}));
 
   auto result_data = result_literal.data<float>();
   std::vector<float> actual_result(result_data.begin(), result_data.end());
@@ -717,7 +741,8 @@ TEST_F(ScatterDeterminismExpanderTest,
                           ParseAndReturnVerifiedModule(kModuleStr));
 
   auto cloned_module = module->Clone();
-  Literal expected_literal = ExecuteAndTransfer(std::move(cloned_module), {});
+  TF_ASSERT_OK_AND_ASSIGN(Literal expected_literal,
+                          Execute(std::move(cloned_module), {}));
   auto expected_result = expected_literal.data<float>();
 
   ScatterDeterminismExpander scatter_determinism_expander;
@@ -726,7 +751,8 @@ TEST_F(ScatterDeterminismExpanderTest,
 
   EXPECT_TRUE(result);
 
-  Literal result_literal = ExecuteAndTransfer(std::move(module), {});
+  TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
+                          Execute(std::move(module), {}));
 
   auto result_data = result_literal.data<float>();
   std::vector<float> actual_result(result_data.begin(), result_data.end());
@@ -767,7 +793,8 @@ TEST_F(ScatterDeterminismExpanderTest,
                           ParseAndReturnVerifiedModule(kModuleStr));
 
   auto cloned_module = module->Clone();
-  Literal expected_literal = ExecuteAndTransfer(std::move(cloned_module), {});
+  TF_ASSERT_OK_AND_ASSIGN(Literal expected_literal,
+                          Execute(std::move(cloned_module), {}));
   auto expected_result = expected_literal.data<float>();
 
   ScatterDeterminismExpander scatter_determinism_expander;
@@ -776,7 +803,8 @@ TEST_F(ScatterDeterminismExpanderTest,
 
   EXPECT_TRUE(result);
 
-  Literal result_literal = ExecuteAndTransfer(std::move(module), {});
+  TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
+                          Execute(std::move(module), {}));
 
   auto result_data = result_literal.data<float>();
   std::vector<float> actual_result(result_data.begin(), result_data.end());
@@ -931,8 +959,8 @@ TEST_F(ScatterDeterminismExpanderTest, ScalarScatterAddReproducibilityTest) {
   EXPECT_TRUE(result);
 
   auto cloned_module = module->Clone();
-  Literal first_result_literal =
-      ExecuteAndTransfer(std::move(cloned_module), {});
+  TF_ASSERT_OK_AND_ASSIGN(Literal first_result_literal,
+                          Execute(std::move(cloned_module), {}));
   auto first_result_span = first_result_literal.data<float>();
   std::vector<float> first_result(first_result_span.begin(),
                                   first_result_span.end());
@@ -943,7 +971,8 @@ TEST_F(ScatterDeterminismExpanderTest, ScalarScatterAddReproducibilityTest) {
   for (int i = 0; i < num_trials; ++i) {
     auto cloned_module = module->Clone();
 
-    Literal result_literal = ExecuteAndTransfer(std::move(cloned_module), {});
+    TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
+                            Execute(std::move(cloned_module), {}));
 
     auto result_data = result_literal.data<float>();
     std::vector<float> actual_result(result_data.begin(), result_data.end());
@@ -1003,8 +1032,8 @@ TEST_F(ScatterDeterminismExpanderTest, NonScalarScatterAddReproducibilityTest) {
   EXPECT_TRUE(result);
 
   auto cloned_module = module->Clone();
-  Literal first_result_literal =
-      ExecuteAndTransfer(std::move(cloned_module), {});
+  TF_ASSERT_OK_AND_ASSIGN(Literal first_result_literal,
+                          Execute(std::move(cloned_module), {}));
   auto first_result_span = first_result_literal.data<float>();
   std::vector<float> first_result(first_result_span.begin(),
                                   first_result_span.end());
@@ -1015,7 +1044,8 @@ TEST_F(ScatterDeterminismExpanderTest, NonScalarScatterAddReproducibilityTest) {
   for (int i = 0; i < num_trials; ++i) {
     auto cloned_module = module->Clone();
 
-    Literal result_literal = ExecuteAndTransfer(std::move(cloned_module), {});
+    TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
+                            Execute(std::move(cloned_module), {}));
 
     auto result_data = result_literal.data<float>();
     std::vector<float> actual_result(result_data.begin(), result_data.end());

@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace op = xla::testing::opcode_matchers;
@@ -71,7 +72,8 @@ TEST_F(MapInlinerTest, MapMax) {
               op::Maximum(lhs, rhs));
 
   // Verify execution on CPU.
-  auto result = ExecuteAndTransfer(hlo_module->Clone(), {});
+  TF_ASSERT_OK_AND_ASSIGN(const Literal result,
+                          Execute(std::move(hlo_module), {}));
   auto expected = LiteralUtil::CreateR1<float>({4, 3, 3, 4});
   EXPECT_TRUE(LiteralTestUtil::Equal(result, expected));
 }
@@ -105,7 +107,8 @@ TEST_F(MapInlinerTest, MapConstant) {
   EXPECT_THAT(root, op::Broadcast(op::Constant()));
 
   // Verify execution on CPU.
-  auto result = ExecuteAndTransfer(hlo_module->Clone(), {});
+  TF_ASSERT_OK_AND_ASSIGN(const Literal result,
+                          Execute(std::move(hlo_module), {}));
   auto expected = LiteralUtil::CreateR2<float>({{2, 2, 2, 2}, {2, 2, 2, 2}});
   EXPECT_TRUE(LiteralTestUtil::Equal(result, expected));
 }
@@ -143,7 +146,8 @@ TEST_F(MapInlinerTest, MapSubtractOppositeOrder) {
           op::Subtract(rhs, lhs));
 
   // Verify execution on CPU.
-  auto result = ExecuteAndTransfer(hlo_module->Clone(), {});
+  TF_ASSERT_OK_AND_ASSIGN(const Literal result,
+                          Execute(std::move(hlo_module), {}));
   auto expected = LiteralUtil::CreateR1<float>({3, 1, -1, -3});
   EXPECT_TRUE(LiteralTestUtil::Equal(result, expected));
 }
@@ -174,7 +178,8 @@ TEST_F(MapInlinerTest, MapParameter) {
   EXPECT_THAT(hlo_module->entry_computation()->root_instruction(), rhs);
 
   // Verify execution on CPU.
-  auto result = ExecuteAndTransfer(hlo_module->Clone(), {});
+  TF_ASSERT_OK_AND_ASSIGN(const Literal result,
+                          Execute(std::move(hlo_module), {}));
   auto expected = LiteralUtil::CreateR0<float>(4);
   EXPECT_TRUE(LiteralTestUtil::Equal(result, expected));
 }

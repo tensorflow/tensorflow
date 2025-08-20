@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -26,6 +25,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/log/log.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
@@ -84,7 +84,7 @@ TEST_F(HloCseTest, CombineTwoConstants) {
   HloInstruction* constant = *computation->instructions().begin();
   EXPECT_EQ(42.0f, constant->literal().Get<float>({}));
 
-  auto result = ExecuteAndTransfer(module->Clone(), {});
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(module->Clone(), {}));
   auto expected = LiteralUtil::CreateR0<float>(84.0);
   EXPECT_TRUE(LiteralTestUtil::Near(expected, result, ErrorSpec(1e-4)));
 }
@@ -114,7 +114,7 @@ TEST_F(HloCseTest, CombineTwoConstantsDifferentLayouts) {
   EXPECT_EQ(3, computation->instruction_count());
   EXPECT_THAT(add, op::Add(constant1, constant2));
 
-  auto result = ExecuteAndTransfer(module->Clone(), {});
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(module->Clone(), {}));
   auto expected = LiteralUtil::CreateR2<float>({{2.0, 4.0}, {6.0, 8.0}});
   EXPECT_TRUE(LiteralTestUtil::Near(expected, result, ErrorSpec(1e-4)));
 }

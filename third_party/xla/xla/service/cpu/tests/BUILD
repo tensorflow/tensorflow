@@ -79,6 +79,7 @@ xla_cc_test(
         "//xla/service/cpu:cpu_instruction_fusion",
         "//xla/tests:hlo_test_base",
         "//xla/tests:literal_test_util",
+        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
     ],
