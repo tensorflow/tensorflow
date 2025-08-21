@@ -125,25 +125,6 @@ absl::StatusOr<Literal> HloRunnerAgnosticTestBase::Execute(
   return test_runner_->Execute(std::move(module), arguments, run_hlo_passes);
 }
 
-Literal HloRunnerAgnosticTestBase::ExecuteNoHloPasses(
-    std::unique_ptr<HloModule> module,
-    absl::Span<const Literal* const> arguments) {
-  absl::StatusOr<Literal> result = Execute(std::move(module), arguments,
-                                           /*run_hlo_passes=*/false);
-  CHECK_OK(result.status());
-  return *std::move(result);
-}
-
-Literal HloRunnerAgnosticTestBase::ExecuteAndTransfer(
-    std::unique_ptr<HloModule> module,
-    absl::Span<const Literal* const> arguments) {
-  CHECK_OK(PreprocessModuleForTestRunner(module.get()));
-  absl::StatusOr<Literal> result = test_runner_->Execute(
-      std::move(module), arguments, /*run_hlo_passes=*/true);
-  CHECK_OK(result.status());
-  return *std::move(result);
-}
-
 absl::StatusOr<std::vector<Literal>>
 HloRunnerAgnosticTestBase::ExecuteReplicated(
     std::unique_ptr<HloModule> module,
