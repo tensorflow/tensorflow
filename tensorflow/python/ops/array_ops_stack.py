@@ -183,7 +183,7 @@ def unstack(value, num=None, axis=0, name="unstack"):
   must be a constant value.
 
   If you actually need a variable number of tensors in a single `tf.function`
-  trace, you will need to use exlicit loops and a `tf.TensorArray` instead.
+  trace, you will need to use explicit loops and a `tf.TensorArray` instead.
 
   Args:
     value: A rank `R > 0` `Tensor` to be unstacked.

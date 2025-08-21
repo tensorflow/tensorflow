@@ -863,13 +863,13 @@ def decode_raw(input_bytes,
 
   This is because each byte in the input is converted to a new value on the
   output (if output type is `uint8` or `int8`, otherwise chunks of inputs get
-  coverted to a new value):
+  converted to a new value):
 
   >>> tf.io.decode_raw(tf.constant("123"), tf.uint8)
   <tf.Tensor: shape=(3,), dtype=uint8, numpy=array([49, 50, 51], dtype=uint8)>
   >>> tf.io.decode_raw(tf.constant("1234"), tf.uint8)
   <tf.Tensor: shape=(4,), dtype=uint8, numpy=array([49, 50, 51, 52], ...
-  >>> # chuncked output
+  >>> # chunked output
   >>> tf.io.decode_raw(tf.constant("12"), tf.uint16)
   <tf.Tensor: shape=(1,), dtype=uint16, numpy=array([12849], dtype=uint16)>
   >>> tf.io.decode_raw(tf.constant("1234"), tf.uint16)
