@@ -121,6 +121,13 @@ class HloVerifierTestForCollectiveDeadlocks
             /*verify_no_collective_deadlocks=*/true) {}
 };
 
+class HloVeriferSkipCheckReplicaGroups : public HloHardwareIndependentTestBase {
+ public:
+  HloVeriferSkipCheckReplicaGroups()
+      : HloHardwareIndependentTestBase(
+            HloVerifierOpts{}.WithCheckReplicaGroups(false)) {}
+};
+
 TEST_F(HloVerifierTest, DifferentOperandParents) {
   HloComputation::Builder builder(TestName());
   const Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
@@ -4652,6 +4659,47 @@ TEST_F(HloVerifierTest, VerifyMatchingSendSameChannelDifferentAttributes) {
                   absl::StatusCode::kInternal,
                   HasSubstr("Host-transfer send/recv instructions that use the "
                             "same channel must be identical")));
+}
+
+TEST_F(HloVerifierTest, MismatchPartitionCount) {
+  const char* const hlo = R"(
+HloModule all_gather_module
+
+ENTRY main {
+  %data = f32[1024]{0} parameter(0)
+  // all-gather on 4 partitions.
+  ROOT %ag = f32[4096]{0} all-gather(%data),
+    dimensions={0}, replica_groups={{0,1,2,3}},
+    use_global_device_ids=true, channel_id=1
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnUnverifiedModule(hlo));
+  module->mutable_config().set_replica_count(1);
+  module->mutable_config().set_num_partitions(8);
+  EXPECT_THAT(
+      verifier().Run(module.get()),
+      absl_testing::StatusIs(absl::StatusCode::kInternal,
+                             HasSubstr("replica groups should contain")));
+}
+
+TEST_F(HloVeriferSkipCheckReplicaGroups, MismatchPartitionCount) {
+  const char* const hlo = R"(
+HloModule all_gather_module
+
+ENTRY main {
+  %data = f32[1024]{0} parameter(0)
+  // all-gather on 4 partitions.
+  ROOT %ag = f32[4096]{0} all-gather(%data),
+    dimensions={0}, replica_groups={{0,1,2,3}},
+    use_global_device_ids=true, channel_id=1
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnUnverifiedModule(hlo));
+  module->mutable_config().set_replica_count(1);
+  module->mutable_config().set_num_partitions(8);
+  EXPECT_THAT(verifier().Run(module.get()), absl_testing::IsOk());
 }
 
 TEST_F(HloVerifierTest, ScaledDotWithNoScalesFails) {

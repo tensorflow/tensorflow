@@ -85,6 +85,8 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
       HloPredicate instruction_can_change_layout_func = {},
       bool verify_no_collective_deadlocks = false);
 
+  explicit HloHardwareIndependentTestBase(HloVerifierOpts&& verifier_opts);
+
   // Creates a new HLO module for a test. The module created will have
   // TestName() for its name; it will also automatically populate its debug
   // options from command-line flags. If you want a fresh HloModule object and
