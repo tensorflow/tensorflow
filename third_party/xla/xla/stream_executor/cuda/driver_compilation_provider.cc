@@ -87,11 +87,19 @@ absl::StatusOr<Assembly> DriverCompilationProvider::CompileAndLink(
 #if CUDA_VERSION >= 12000
   // Even though CUDA 11.8 has Hopper support, SM 9.0a and most Hopper features
   // (WGMMA, TMA, and more) are only supported in CUDA 12+.
-  if (cc.major == 9 && cc.minor == 0) {
+  if (cc.feature_extension ==
+      CudaComputeCapability::FeatureExtension::kAcceleratedFeatures) {
     target =
         static_cast<CUjit_target>(target + CU_COMPUTE_ACCELERATED_TARGET_BASE);
   }
 #endif
+
+  if (cc.feature_extension ==
+      CudaComputeCapability::FeatureExtension::kForwardCompatibleFeatures) {
+    return absl::UnimplementedError(
+        "Compiling forward compatible kernels is not implemented yet.");
+  }
+
   constexpr size_t kErrorLogBufferSize = 512 * 1024;  // 4 KiB
   std::string error_log_buffer(kErrorLogBufferSize, '\0');
 
@@ -166,8 +174,8 @@ absl::StatusOr<Assembly> DriverCompilationProvider::CompileAndLink(
   CHECK(info_log_buffer_size() <= kInfoLogBufferSize);
   info_log_buffer.resize(info_log_buffer_size());
 
-  absl::string_view extension = ShouldUsePtxExtension(cc) ? "a" : "";
-  std::string architecture = absl::StrCat("sm_", cc.major, cc.minor, extension);
+  std::string architecture =
+      cc.GetPtxAsTargetName(CudaComputeCapability::CompileMode::kSass);
 
   if (result != CUDA_SUCCESS) {
     VLOG(3) << "Driver compilation error log output: " << error_log_buffer;

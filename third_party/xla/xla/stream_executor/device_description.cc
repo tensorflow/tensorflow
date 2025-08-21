@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/lib/math/math_util.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor {
 
@@ -51,8 +52,9 @@ absl::StatusOr<DeviceDescription> DeviceDescription::FromProto(
   device_description.clock_rate_ghz_ = proto.clock_rate_ghz();
 
   if (proto.has_cuda_compute_capability()) {
-    device_description.gpu_compute_capability_ =
-        CudaComputeCapability(proto.cuda_compute_capability());
+    TF_ASSIGN_OR_RETURN(
+        device_description.gpu_compute_capability_,
+        CudaComputeCapability::FromProto(proto.cuda_compute_capability()));
   }
   if (proto.has_rocm_compute_capability()) {
     device_description.gpu_compute_capability_ =

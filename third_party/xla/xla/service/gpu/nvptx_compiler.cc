@@ -295,7 +295,7 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
            .xla_gpu_experimental_disable_binary_libraries()) {
     for (const CublasPaddingRequirement& requirement :
          CublasPaddingRequirements) {
-      if (cuda_compute_capability.IsAtLeast(
+      if (cuda_compute_capability.SupportsAllFeaturesOf(
               requirement.min_compute_capability)) {
         pre_pipeline.AddPass<CublasPadForGemms>(cuda_compute_capability,
                                                 requirement.data_type,

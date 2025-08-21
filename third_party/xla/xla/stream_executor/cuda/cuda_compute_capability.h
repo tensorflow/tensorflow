@@ -17,20 +17,51 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_CUDA_CUDA_COMPUTE_CAPABILITY_H_
 
 #include <cassert>
+#include <cstdint>
 #include <string>
+#include <tuple>
 #include <utility>
 
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.pb.h"
 
 namespace stream_executor {
 
-// CUDA compute capability, as reported by the device description.
+// This type represents either
+// - a compute capability of a NVIDIA GPU.
+// - a compilation target compute capability.
+//
+// A CUDA compute capability is a pair of major and minor versions, e.g. 8.0,
+// 9.2, 10.1 plus potentially a feature extension, e.g. 9.0a, 10.0f.
+//
+// Feature extensions only make sense when talking about a compilation target
+// compute capability since they restrict on which GPUs the generated code can
+// be run.
+//
+// 1. The accelerated feature extension "a":
+//   Kernels compiled with this extension can only be run on GPUs with the same
+//   compute capability. For example, a sm_90a kernel can run on a sm_90 GPU,
+//   but not on a sm_91 GPU.
+//
+// 2. The forward compatible feature extension "f":
+//   Kernels compiled with this extension can only be run on GPUs with the same
+//   major version and a later or same minor version. For example, a sm_100f
+//   kernel can run on a sm_100 or sm_103 GPUs, but not on a sm_120 GPU.
 struct CudaComputeCapability {
   int major = 0;
   int minor = 0;
+
+  enum class FeatureExtension : uint8_t {
+    kNone,  // No additional features - Generated PTX will run on all GPUs with
+            // a higher compute capability. Example: sm_90
+    kAcceleratedFeatures,  // Enables features that only work on GPUs with the
+                           // same compute capability. Example: sm_90a
+    kForwardCompatibleFeatures  // Enables features that only work on GPUs
+                                // within the same major version and a later
+                                // minor version. Example: sm_100f
+  };
+  FeatureExtension feature_extension = FeatureExtension::kNone;
 
   // MSVC does not like "PASCAL" symbol.
   enum CudaComputeCapabilities {
@@ -42,53 +73,89 @@ struct CudaComputeCapability {
   };
 
   constexpr CudaComputeCapability() = default;
-  constexpr CudaComputeCapability(int major, int minor) {
-    this->major = major;
-    this->minor = minor;
-  }
+  constexpr CudaComputeCapability(int major, int minor)
+      : CudaComputeCapability(major, minor, FeatureExtension::kNone) {}
 
-  // Parses the architecture name in the format "major.minor", example: "8.6".
+  constexpr CudaComputeCapability(int major, int minor,
+                                  FeatureExtension feature_extension)
+      : major{major}, minor{minor}, feature_extension{feature_extension} {}
+
+  static absl::StatusOr<CudaComputeCapability> FromProto(
+      const CudaComputeCapabilityProto& proto);
+
+  // Parses the architecture name in the format
+  // "major.minor<feature_extension>", example: "8.6" or "9.0a" or "10.0f".
   static absl::StatusOr<CudaComputeCapability> FromString(
       absl::string_view cuda_arch_name);
 
   // Returns a CudaComputeCapability with the given major and minor versions
   // and the accelerated feature extension enabled if supported.
-  // This function only exists for forward compatibility reasons.
-  // It will preserve the behaviour of automatically enabling the accelerated
-  // feature extension for newer compute capabilities, even once
-  // `CudaComputeCapability` supports extensions natively.
+  // This function only exists for backwards compatibility reasons.
   // TODO(hebecker): Remove this function once extensions are supported
   // natively and all users have been migrated.
   static CudaComputeCapability FromIntWithAutoFeatureExtension(int major,
                                                                int minor);
 
-  explicit CudaComputeCapability(const CudaComputeCapabilityProto &proto) {
-    this->major = proto.major();
-    this->minor = proto.minor();
+  constexpr static CudaComputeCapability Pascal() {
+    return CudaComputeCapability{kPascal, 0};
   }
 
-  static CudaComputeCapability Volta() {
+  constexpr static CudaComputeCapability Volta() {
     return CudaComputeCapability{kVolta, 0};
   }
 
-  static CudaComputeCapability Ampere() {
+  constexpr static CudaComputeCapability Ampere() {
     return CudaComputeCapability{kAmpere, 0};
   }
 
-  static CudaComputeCapability Hopper() {
-    return CudaComputeCapability{kHopper, 0};
+  // Includes all GPUs with compute capability 9.0, notably H100, H200, and
+  // GH200. When comparing with `IsAtLeast` this will only be true for GPUs with
+  // compute capability 9.0.
+  constexpr static CudaComputeCapability H100Family() {
+    return CudaComputeCapability{kHopper, 0,
+                                 FeatureExtension::kAcceleratedFeatures};
   }
 
-  static CudaComputeCapability Blackwell() {
-    return CudaComputeCapability{kBlackwell, 0};
+  // Includes all GPUs with compute capability 9.x. When comparing with
+  // `IsAtLeast` this will return true for all compute capabilities of at
+  // least 9.0.
+  constexpr static CudaComputeCapability Hopper() {
+    return CudaComputeCapability{kHopper, 0, FeatureExtension::kNone};
   }
 
+  // Includes all GPUs with compute capability 10.0, notably B200 and GB200.
+  // When comparing with `IsAtLeast` this will only be true for GPUs with
+  // compute capability 10.0.
+  constexpr static CudaComputeCapability B200Family() {
+    return CudaComputeCapability{kBlackwell, 0,
+                                 FeatureExtension::kAcceleratedFeatures};
+  }
+
+  // Includes all GPUs with compute capability 10.x. When comparing with
+  // `IsAtLeast` this will true for all compute capabilities of 10.0 or higher.
+  constexpr static CudaComputeCapability Blackwell() {
+    return CudaComputeCapability{kBlackwell, 0, FeatureExtension::kNone};
+  }
+
+  // Includes all GPUs with compute capability 10.x. When comparing with
+  // `IsAtLeast` this will true for all 10.x compute capabilities but not for
+  // compute capabilities with a higher major version.
+  constexpr static CudaComputeCapability BlackwellGenerationOnly() {
+    return CudaComputeCapability{kBlackwell, 0,
+                                 FeatureExtension::kForwardCompatibleFeatures};
+  }
+
+  // Returns true if the compute capability is at least
+  // `other_major.other_minor`. It is equivalent to
+  // this->SupportsAllFeaturesOf(CudaComputeCapability{other_major,
+  // other_minor}).
   bool IsAtLeast(int other_major, int other_minor = 0) const {
-    return IsAtLeast(CudaComputeCapability{other_major, other_minor});
+    return SupportsAllFeaturesOf(
+        CudaComputeCapability{other_major, other_minor});
   }
 
-  bool IsAtLeast(const CudaComputeCapability &cc) const {
-    return !(*this < cc);
+  bool IsAtLeastPascal() const {
+    return major >= CudaComputeCapabilities::kPascal;
   }
 
   bool IsAtLeastVolta() const {
@@ -109,7 +176,16 @@ struct CudaComputeCapability {
     return major >= CudaComputeCapabilities::kBlackwell;
   }
 
+  bool IsPascal() const { return major == CudaComputeCapabilities::kPascal; }
+
+  bool IsVolta() const { return major == CudaComputeCapabilities::kVolta; }
+
   bool IsAmpere() const { return major == CudaComputeCapabilities::kAmpere; }
+
+  bool IsAda() const {
+    constexpr int kAdaMinor = 9;
+    return major == CudaComputeCapabilities::kAmpere && minor == kAdaMinor;
+  }
 
   bool IsHopper() const { return major == CudaComputeCapabilities::kHopper; }
 
@@ -117,45 +193,63 @@ struct CudaComputeCapability {
     return major == CudaComputeCapabilities::kBlackwell;
   }
 
-  bool operator<(const CudaComputeCapability &other) const {
-    return ToPair() < other.ToPair();
+  // Returns true if a kernel compiled for compute capability `other` can be run
+  // on a GPU with compute capability `this`.
+  bool SupportsAllFeaturesOf(const CudaComputeCapability& other) const {
+    switch (other.feature_extension) {
+      case FeatureExtension::kNone:
+        return std::tie(major, minor) >= std::tie(other.major, other.minor);
+      case FeatureExtension::kAcceleratedFeatures:
+        return std::tie(major, minor) == std::tie(other.major, other.minor);
+      case FeatureExtension::kForwardCompatibleFeatures:
+        return major == other.major && minor >= other.minor;
+    }
   }
 
-  bool operator==(const CudaComputeCapability &other) const {
-    return ToPair() == other.ToPair();
+  // Returns true if a kernel compiled for compute capability `this` can be run
+  // on a GPU with compute capability `other`.
+  bool CanRunOn(const CudaComputeCapability& other) const {
+    return other.SupportsAllFeaturesOf(*this);
   }
 
-  bool operator!=(const CudaComputeCapability &other) const {
-    return !(*this == other);
+  // Returns a string representation of the compute capability. The format is
+  // not guaranteed to follow any standard and should only be used for logging.
+  std::string ToString() const;
+
+  friend bool operator==(const CudaComputeCapability& lhs,
+                         const CudaComputeCapability& rhs) {
+    return std::tie(lhs.major, lhs.minor, lhs.feature_extension) ==
+           std::tie(rhs.major, rhs.minor, rhs.feature_extension);
   }
 
-  bool operator>(const CudaComputeCapability &other) const {
-    return ToPair() > other.ToPair();
+  friend bool operator!=(const CudaComputeCapability& lhs,
+                         const CudaComputeCapability& rhs) {
+    return !(lhs == rhs);
   }
 
-  bool operator>=(const CudaComputeCapability &other) const {
-    return ToPair() >= other.ToPair();
-  }
-
-  bool operator<=(const CudaComputeCapability &other) const {
-    return ToPair() <= other.ToPair();
-  }
-
-  std::string ToString() const { return absl::StrCat(major, ".", minor); }
-
-  std::pair<int, int> ToPair() const { return std::make_pair(major, minor); }
-
-  CudaComputeCapabilityProto ToProto() const {
-    CudaComputeCapabilityProto proto;
-    proto.set_major(major);
-    proto.set_minor(minor);
-    return proto;
-  }
+  CudaComputeCapabilityProto ToProto() const;
 
   template <typename H>
-  friend H AbslHashValue(H state, const CudaComputeCapability &cc) {
-    return H::combine(std::move(state), cc.major, cc.minor);
+  friend H AbslHashValue(H state, const CudaComputeCapability& cc) {
+    return H::combine(std::move(state), cc.major, cc.minor,
+                      cc.feature_extension);
   }
+
+  // Represents the compile mode as it can be passed to tools like NVCC,
+  // ptxas, or nvprune.
+  enum class CompileMode : uint8_t {
+    kPtx,  // This means nvcc/ptxas will generate PTX for the given compute
+           // architecture.
+    kLto,  // This means nvcc/ptxas will generate NVVM-IR for Link Time
+           // Optimization.
+    kSass  // This means nvcc/ptxas will generate SASS for the given compute
+           // architecture.
+  };
+
+  // Returns the target identifier that can be passed to ptxas's `--gpu-name`
+  // option.
+  std::string GetPtxAsTargetName(
+      CompileMode compile_mode = CompileMode::kSass) const;
 };
 
 }  // namespace stream_executor

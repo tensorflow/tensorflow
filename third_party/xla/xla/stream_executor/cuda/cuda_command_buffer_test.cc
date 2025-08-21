@@ -67,8 +67,9 @@ TEST(CudaCommandBufferTest, CuDnnExplicitConstructionAndUpdateWork) {
     GTEST_SKIP() << "Requires cuDNN 9.7.0 or later.";
   }
 
-  if (executor->GetDeviceDescription().cuda_compute_capability() <
-      CudaComputeCapability::Ampere()) {
+  if (!executor->GetDeviceDescription()
+           .cuda_compute_capability()
+           .IsAtLeastAmpere()) {
     GTEST_SKIP() << "Requires at least an Ampere GPU.";
   }
 

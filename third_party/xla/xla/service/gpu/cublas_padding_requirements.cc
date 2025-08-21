@@ -22,6 +22,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/shape.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 
@@ -36,7 +37,7 @@ bool DimensionRequiresPadding(const int64_t size, const PrimitiveType data_type,
       absl::Overload(
           [&](const se::CudaComputeCapability& cc) {
             for (const auto& req : CublasPaddingRequirements) {
-              if (cc.IsAtLeast(req.min_compute_capability) &&
+              if (cc.SupportsAllFeaturesOf(req.min_compute_capability) &&
                   data_type == req.data_type && size % req.multiple_of != 0) {
                 return true;
               }

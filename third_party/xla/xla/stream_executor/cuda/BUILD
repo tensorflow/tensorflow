@@ -693,10 +693,9 @@ xla_cc_test(
     deps = [
         ":ptx_compiler_helpers",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -1000,6 +999,7 @@ cuda_only_cc_library(
     ],
     deps = [
         ":cuda_command_buffer",
+        ":cuda_compute_capability",
         ":cuda_context",
         ":cuda_event",
         ":cuda_kernel",
@@ -1992,6 +1992,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -2007,9 +2008,10 @@ xla_cc_test(
     deps = [
         ":cuda_compute_capability",
         ":cuda_compute_capability_proto_cc",
-        "//xla/tsl/platform:status_matchers",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/hash:hash_testing",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
     ],
 )

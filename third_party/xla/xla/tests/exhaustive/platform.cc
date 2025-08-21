@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
 
@@ -71,8 +72,8 @@ Platform::Value GetPlatformValue(const stream_executor::Platform& platform) {
 bool Platform::IsNvidiaP100() const {
   return std::holds_alternative<stream_executor::CudaComputeCapability>(
              value_) &&
-         !std::get<stream_executor::CudaComputeCapability>(value_).IsAtLeast(
-             stream_executor::CudaComputeCapability::Volta());
+         std::get<stream_executor::CudaComputeCapability>(value_) ==
+             stream_executor::CudaComputeCapability::Pascal();
 }
 
 bool Platform::IsNvidiaV100() const {
