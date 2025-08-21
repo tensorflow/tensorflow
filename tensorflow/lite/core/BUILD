@@ -181,6 +181,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = [
         "//tensorflow/lite:__subpackages__",
+        "//third_party/deepmind/lyria_live/internal/odml:__subpackages__",
         "//third_party/odml/litert/litert:__subpackages__",
     ] + core_cc_api_stable_visibility_allowlist(),
     deps = [
