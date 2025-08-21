@@ -20,13 +20,14 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
+
 namespace stream_executor {
 // This is the input to various PTX compilation and linking functions. The
-// struct holds either PTX or CUBIN in `bytes` and a compilation profile in
-// `profile`. `profile` can either be a compile profile `compute_XY` or a SASS
-// profile `sm_XY`.
+// struct holds either PTX or CUBIN in `bytes`.
 struct CubinOrPTXImage {
-  std::string profile;
+  bool is_ptx;
+  CudaComputeCapability cc;
   std::vector<uint8_t> bytes;
 };
 }  // namespace stream_executor
