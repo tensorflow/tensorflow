@@ -1851,6 +1851,9 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
             DebugOptions::GENERIC_TRITON_EMITTER_DISABLE_LEGACY_GEMM)) {
       return Internal("Legacy GEMM emitter is disabled.");
     }
+    if (block_level_parameters.is_tma_allowed) {
+      return Internal("TMA is not supported by the legacy GEMM emitter.");
+    }
     TF_RETURN_IF_ERROR(EmitMatMul(b, libdevice_path, device_info, fusion, fn,
                                   block_level_parameters));
   } else if (fusion_kind == kTritonFusionKind ||
