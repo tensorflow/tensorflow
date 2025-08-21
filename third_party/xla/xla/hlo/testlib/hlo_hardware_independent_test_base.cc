@@ -76,6 +76,11 @@ HloHardwareIndependentTestBase::HloHardwareIndependentTestBase(
       verify_no_collective_deadlocks);
 }
 
+HloHardwareIndependentTestBase::HloHardwareIndependentTestBase(
+    HloVerifierOpts&& verifier_opts) {
+  hlo_verifier_ = std::make_unique<HloVerifier>(std::move(verifier_opts));
+}
+
 std::unique_ptr<HloModule>
 HloHardwareIndependentTestBase::CreateNewUnverifiedModule(
     const std::string& name) const {

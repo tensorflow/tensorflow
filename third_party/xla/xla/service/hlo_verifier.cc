@@ -498,13 +498,16 @@ static absl::Status CheckReplicaGroups(HloInstruction* hlo,
 }
 
 static absl::Status CheckCommonAllGatherInvariants(
-    HloInstruction* hlo, int64_t* computed_shard_count) {
+    HloInstruction* hlo, int64_t* computed_shard_count,
+    bool check_replica_groups) {
   auto ag = Cast<HloAllGatherInstruction>(hlo);
   CHECK_NE(computed_shard_count, nullptr) << "Expected a shard count as input";
   TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
                       GetCollectiveOpGroupMode(ag->channel_id().has_value(),
                                                ag->use_global_device_ids()));
-  TF_RETURN_IF_ERROR(CheckReplicaGroups(ag, group_mode));
+  if (check_replica_groups) {
+    TF_RETURN_IF_ERROR(CheckReplicaGroups(ag, group_mode));
+  }
   TF_RET_CHECK(ag->all_gather_dimension() >= 0);
   TF_RET_CHECK(ag->operand_count() >= 1);
 
@@ -547,7 +550,8 @@ static absl::Status CheckCommonAllGatherInvariants(
 absl::Status ShapeVerifier::HandleAllGather(HloInstruction* hlo) {
   auto ag = Cast<HloAllGatherInstruction>(hlo);
   int64_t shard_count;
-  TF_RETURN_IF_ERROR(CheckCommonAllGatherInvariants(hlo, &shard_count));
+  TF_RETURN_IF_ERROR(CheckCommonAllGatherInvariants(
+      hlo, &shard_count, opts_.ShouldCheckReplicaGroups()));
   std::vector<const Shape*> operand_shapes;
   for (const HloInstruction* operand : hlo->operands()) {
     operand_shapes.push_back(&operand->shape());
@@ -560,7 +564,8 @@ absl::Status ShapeVerifier::HandleAllGather(HloInstruction* hlo) {
 absl::Status ShapeVerifier::HandleAllGatherStart(HloInstruction* hlo) {
   auto ag = Cast<HloAllGatherInstruction>(hlo);
   int64_t shard_count;
-  TF_RETURN_IF_ERROR(CheckCommonAllGatherInvariants(hlo, &shard_count));
+  TF_RETURN_IF_ERROR(CheckCommonAllGatherInvariants(
+      hlo, &shard_count, opts_.ShouldCheckReplicaGroups()));
   std::vector<const Shape*> operand_shapes;
   for (const HloInstruction* operand : hlo->operands()) {
     operand_shapes.push_back(&operand->shape());
@@ -577,12 +582,13 @@ absl::Status ShapeVerifier::HandleAllGatherDone(HloInstruction* hlo) {
 
 absl::Status ShapeVerifier::HandleAllReduce(HloInstruction* hlo) {
   auto ar = Cast<HloAllReduceInstruction>(hlo);
-  TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
-                      GetCollectiveOpGroupMode(ar->channel_id().has_value(),
-                                               ar->use_global_device_ids()));
-  TF_RETURN_IF_ERROR(
-      CheckReplicaGroups(ar, group_mode, /*uniform_replica_group_size=*/false));
-
+  if (opts_.ShouldCheckReplicaGroups()) {
+    TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
+                        GetCollectiveOpGroupMode(ar->channel_id().has_value(),
+                                                 ar->use_global_device_ids()));
+    TF_RETURN_IF_ERROR(CheckReplicaGroups(
+        ar, group_mode, /*uniform_replica_group_size=*/false));
+  }
   std::vector<const Shape*> operand_shapes;
   for (const HloInstruction* operand : hlo->operands()) {
     operand_shapes.push_back(&operand->shape());
@@ -595,7 +601,9 @@ absl::Status ShapeVerifier::HandleReduceScatter(HloInstruction* hlo) {
   TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
                       GetCollectiveOpGroupMode(ars->channel_id().has_value(),
                                                ars->use_global_device_ids()));
-  TF_RETURN_IF_ERROR(CheckReplicaGroups(ars, group_mode));
+  if (opts_.ShouldCheckReplicaGroups()) {
+    TF_RETURN_IF_ERROR(CheckReplicaGroups(ars, group_mode));
+  }
   TF_RET_CHECK(ars->scatter_dimension() >= 0);
   TF_RET_CHECK(ars->operand_count() >= 1);
 
@@ -635,12 +643,13 @@ absl::Status ShapeVerifier::HandleReduceScatter(HloInstruction* hlo) {
 
 absl::Status ShapeVerifier::HandleAllReduceStart(HloInstruction* hlo) {
   auto ar = Cast<HloAllReduceInstruction>(hlo);
-  TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
-                      GetCollectiveOpGroupMode(ar->channel_id().has_value(),
-                                               ar->use_global_device_ids()));
-  TF_RETURN_IF_ERROR(
-      CheckReplicaGroups(ar, group_mode, /*uniform_replica_group_size=*/false));
-
+  if (opts_.ShouldCheckReplicaGroups()) {
+    TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
+                        GetCollectiveOpGroupMode(ar->channel_id().has_value(),
+                                                 ar->use_global_device_ids()));
+    TF_RETURN_IF_ERROR(CheckReplicaGroups(
+        ar, group_mode, /*uniform_replica_group_size=*/false));
+  }
   std::vector<const Shape*> operand_shapes;
   for (const HloInstruction* operand : hlo->operands()) {
     operand_shapes.push_back(&operand->shape());
@@ -660,8 +669,9 @@ absl::Status ShapeVerifier::HandleAllToAll(HloInstruction* hlo) {
                       GetCollectiveOpGroupMode(
                           all_to_all->channel_id().has_value(), std::nullopt));
 
-  TF_RETURN_IF_ERROR(CheckReplicaGroups(hlo, group_mode));
-
+  if (opts_.ShouldCheckReplicaGroups()) {
+    TF_RETURN_IF_ERROR(CheckReplicaGroups(hlo, group_mode));
+  }
   TF_RET_CHECK(all_to_all != nullptr);
   const int64_t split_count = GetSubgroupSize(all_to_all, group_mode);
   if (all_to_all->split_dimension()) {
@@ -683,11 +693,14 @@ absl::Status ShapeVerifier::HandleAllToAll(HloInstruction* hlo) {
 
 absl::Status ShapeVerifier::HandleRaggedAllToAll(HloInstruction* hlo) {
   auto* all_to_all = Cast<HloRaggedAllToAllInstruction>(hlo);
-  TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
-                      GetCollectiveOpGroupMode(
-                          all_to_all->channel_id().has_value(), std::nullopt));
+  if (opts_.ShouldCheckReplicaGroups()) {
+    TF_ASSIGN_OR_RETURN(
+        CollectiveOpGroupMode group_mode,
+        GetCollectiveOpGroupMode(all_to_all->channel_id().has_value(),
+                                 std::nullopt));
 
-  TF_RETURN_IF_ERROR(CheckReplicaGroups(hlo, group_mode));
+    TF_RETURN_IF_ERROR(CheckReplicaGroups(hlo, group_mode));
+  }
 
   const int64_t kNumRaggedOperands = 6;
   TF_RET_CHECK(all_to_all != nullptr);
