@@ -331,13 +331,6 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
       absl::Status error, const Shape& shape, PjRtMemorySpace* memory) override;
 
-  absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
-      const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
-      std::optional<absl::Span<int64_t const>> byte_strides,
-      HostBufferSemantics host_buffer_semantics,
-      absl::AnyInvocable<void() &&> on_done_with_host_buffer,
-      PjRtMemorySpace* memory_space, const Layout* device_layout) override;
-
   using PjRtClient::BufferFromHostLiteral;
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
       const LiteralSlice& literal, PjRtMemorySpace* memory_space,
@@ -419,6 +412,14 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
       absl::InlinedVector<tsl::RCReference<PjRtDeviceEvent>, 4>
           definition_device_events,
       bool raw_buffer_is_mutable) override;
+
+  absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> LinearizeHostBufferInto(
+      const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
+      std::optional<absl::Span<int64_t const>> byte_strides,
+      HostBufferSemantics host_buffer_semantics,
+      absl::AnyInvocable<void() &&> on_done_with_host_buffer,
+      const xla::Shape& device_shape,
+      tsl::RCReference<CommonPjRtRawBuffer> raw_buffer) override;
 
   void WaitForAllocation(se::Stream* stream,
                          const CommonPjRtRawBuffer& raw_buffer);
@@ -508,14 +509,6 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
       std::optional<HloModuleProto> unoptimized_hlo_module_proto,
       std::vector<std::unique_ptr<LocalExecutable>> local_executables,
       CompileOptions compile_options);
-
-  absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBufferInternal(
-      const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
-      std::optional<absl::Span<int64_t const>> byte_strides,
-      HostBufferSemantics host_buffer_semantics,
-      absl::AnyInvocable<void() &&> on_done_with_host_buffer,
-      PjRtDevice* device, const Layout* device_layout,
-      PjRtMemorySpace* memory_space);
 
   const PjRtPlatformId platform_id_;
   const std::string platform_name_;
