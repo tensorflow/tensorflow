@@ -1441,7 +1441,7 @@ class DynamicRaggedShape(extension_type.BatchableExtensionType):
       """Merges all information between two specs.
 
       Specs are expected to represent the same information modulo
-      num_row_partitons.
+      num_row_partitions.
 
       If the specs are of different ranks, then fail.
 
@@ -2163,7 +2163,7 @@ class _Broadcaster:
     If you add target_shape.row_partitions, you will get the full broadcasted
     shape.
 
-    If inner_dimensions==False, the result is a dense tensor that satsifies
+    If inner_dimensions==False, the result is a dense tensor that satisfies
     certain properties:
     1. broadcast_to(result, target_shape.inner_shape) will give the result
        if inner_dimensions==True.
@@ -3048,7 +3048,7 @@ def _next_layer_gather_index(bc, original_rp, broadcast_rp):
     # Several optimizations can occur here.
     # old_row_starts == old_value_rowids, because:
     #   if you are broadcasting, then the source has uniform row length of 1,
-    #   implying original_rp.row_splits == tf.range(orgininal_rp.nvals + 1)
+    #   implying original_rp.row_splits == tf.range(original_rp.nvals + 1)
     # When broadcasting, there is no need to add offsets to the
     # source, because the source has size 1.
     # Also, this is always valid, because we enforce source and destination
