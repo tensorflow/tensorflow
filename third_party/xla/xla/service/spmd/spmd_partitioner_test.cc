@@ -16497,6 +16497,82 @@ ENTRY entry {
               ::testing::ElementsAre(8, 10, 12, 14, 9, 11, 13, 15))));
 }
 
+TEST_P(SpmdPartitioningTest, ShardingPreprocessOrderWhile) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+%body (body_param: (s32[], token[], token[])) -> (s32[], token[], token[]) {
+  ROOT %body_param = (s32[], token[], token[]) parameter(0)
+}
+
+%cond (cond_param: (s32[], token[], token[])) -> pred[] {
+  %cond_param = (s32[], token[], token[]) parameter(0)
+  %get-tuple-element = s32[] get-tuple-element(%cond_param), index=0
+  %val = s32[] constant(4)
+  ROOT %less = pred[] compare(%get-tuple-element, %val), direction=LT
+}
+
+ENTRY entry {
+  %param = s32[] parameter(0), sharding={replicated}
+  %after-all.0 = token[] after-all()
+  %after-all.1 = token[] after-all()
+  %tuple = (s32[], token[], token[]) tuple(%param, %after-all.0, %after-all.1)
+  ROOT %while = (s32[], token[], token[]) while(%tuple), condition=%cond, body=%body
+}
+)";
+
+  HloModuleConfig config = GetModuleConfigForTest();
+  config.set_use_spmd_partitioning(true);
+  config.set_num_partitions(2);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string, config));
+
+  HloInstruction* while_op = module->entry_computation()->root_instruction();
+  HloComputation* new_cond =
+      module->AddEmbeddedComputation(while_op->while_condition()->Clone());
+  while_op->set_while_condition(new_cond);
+  SpmdPartitioner partitioner(/*num_partitions=*/2, /*num_replicas=*/1,
+                              /*options=*/{});
+  TF_EXPECT_OK(partitioner.Run(module.get()).status());
+}
+
+TEST_P(SpmdPartitioningTest, ShardingPreprocessOrderConditional) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+%branch.then (param: ()) -> s32[] {
+  %param = () parameter(0)
+  ROOT %const.0 = s32[] constant(0)
+}
+
+%branch.else (param: ()) -> s32[] {
+  %param = () parameter(0)
+  ROOT %const.1 = s32[] constant(1)
+}
+
+ENTRY entry {
+  %param = pred[] parameter(0), sharding={replicated}
+  %tuple.0 = () tuple()
+  %tuple.1 = () tuple()
+  ROOT %conditional = s32[] conditional(%param, %tuple.0, %tuple.1), true_computation=%branch.then, false_computation=%branch.else
+}
+)";
+
+  HloModuleConfig config = GetModuleConfigForTest();
+  config.set_use_spmd_partitioning(true);
+  config.set_num_partitions(2);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string, config));
+  HloInstruction* conditional_op =
+      module->entry_computation()->root_instruction();
+  HloInstruction* new_true_param = module->entry_computation()->AddInstruction(
+      conditional_op->mutable_operand(1)->Clone());
+  TF_ASSERT_OK(conditional_op->ReplaceOperandWith(1, new_true_param));
+  SpmdPartitioner partitioner(/*num_partitions=*/2, /*num_replicas=*/1,
+                              /*options=*/{});
+  TF_EXPECT_OK(partitioner.Run(module.get()).status());
+}
+
 }  // namespace
 }  // namespace spmd
 }  // namespace xla
