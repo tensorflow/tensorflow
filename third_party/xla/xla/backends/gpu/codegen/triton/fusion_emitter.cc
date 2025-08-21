@@ -1953,7 +1953,8 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
       log_stream.emplace(path, err, llvm::sys::fs::OF_None);
       if (err) {
         log_stream.reset();
-        LOG(ERROR) << err.message();
+        LOG(ERROR) << "Failed to dump triton passes to " << path << ": "
+                   << err.message();
       } else {
         pm.getContext()->disableMultithreading();
         auto print_always = [](mlir::Pass*, mlir::Operation*) { return true; };

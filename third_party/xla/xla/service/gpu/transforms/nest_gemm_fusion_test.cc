@@ -40,7 +40,6 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 
 using ::testing::ElementsAre;
-using ::tsl::testing::IsOkAndHolds;
 
 namespace xla {
 
@@ -190,36 +189,68 @@ ENTRY e {
 
 TEST_F(NestGemmFusionTest, UnsupportedComputationsAreNotChanged) {
   // Fusions other than kTritonNestedGemmFusionKind are not supported.
-  // In this case pass should not make any changes to the module.
+  // In this case pass should only change the supported fusions.
   absl::string_view hlo = R"(
 identity {
   ROOT result = f32[128,128]{1,0} parameter(0)
 }
 
-triton_dot {
+unsupported_fusion {
   p0 = f32[128,128]{1,0} parameter(0)
+  // This fusion is not supported by nest_gemm_fusion pass.
   cp0 = f32[128,128]{1,0} fusion(p0), kind=kCustom, calls=identity
   p1 = f32[128,128]{1,0} parameter(1)
   ROOT result = f32[128,128]{1,0} dot(cp0, p1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 
+supported_fusion {
+  lhs = f32[8192,512] parameter(0)
+  rhs = f32[512,512] parameter(1)
+  ROOT dot = f32[8192,512] dot(lhs, rhs),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
 ENTRY e {
   p0 = f32[128,128]{1,0} parameter(0)
   p1 = f32[128,128]{1,0} parameter(1)
-  ROOT result = f32[128,128] fusion(p0, p1), kind=kCustom, calls=triton_dot,
+  r1 = f32[128,128] fusion(p0, p1), kind=kCustom, calls=unsupported_fusion,
     backend_config={"fusion_backend_config": {kind: "__triton_gemm",
     "triton_gemm_config": {
       "block_m":32,"block_n":16,"block_k":128,
-      "split_k":1,"num_stages":1,"num_warps":4, "num_ctas":1}}}}
+      "split_k":1,"num_stages":1,"num_warps":4, "num_ctas":1}}}
+  p2 = f32[8192,512] parameter(2)
+  p3 = f32[512,512] parameter(3)
+  r2 = f32[8192,512] fusion(p2, p3), kind=kCustom, calls=supported_fusion,
+    backend_config={
+      "fusion_backend_config": {
+        "kind":"__triton_gemm",  "triton_gemm_config": {
+          "block_m":"64", "block_n":"256", "block_k":"32",
+          "split_k":"1", "num_stages":"5", "num_warps":"4", "num_ctas":"3"
+        }
+      }
+    }
+  ROOT result = (f32[128,128], f32[8192,512]) tuple(r1, r2)
+}
 )";
-
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
-  size_t hash_before = absl::HashOf(module.get());
   TF_ASSERT_OK_AND_ASSIGN(
       bool updated, NestGemmFusion(compute_capability_).Run(module.get()));
-  EXPECT_FALSE(updated);
-  EXPECT_EQ(absl::HashOf(module.get()), hash_before);
+  EXPECT_TRUE(updated);
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kTuple);
+  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kFusion);
+  EXPECT_EQ(root->operand(0)
+                ->backend_config<GpuBackendConfig>()
+                ->fusion_backend_config()
+                .kind(),
+            "__triton_gemm");
+  EXPECT_EQ(root->operand(1)->opcode(), HloOpcode::kFusion);
+  EXPECT_EQ(root->operand(1)
+                ->backend_config<GpuBackendConfig>()
+                ->fusion_backend_config()
+                .kind(),
+            "__triton_nested_gemm_fusion");
 }
 
 class NestGemmFusionReshapeTest
