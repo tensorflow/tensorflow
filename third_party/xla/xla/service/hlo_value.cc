@@ -36,7 +36,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
-#include "tsl/platform/logging.h"
 
 namespace xla {
 
@@ -75,7 +74,8 @@ HloValue::HloValue(HloValue::Id id, HloInstruction* instruction,
                    const ShapeIndex& index, bool is_phi)
     : BufferValue(instruction, index, id),
       uses_([this] { return ComputeUses(); }),
-      is_phi_(is_phi) {
+      is_phi_(is_phi),
+      live_out_of_module_(false) {
   // The defining position is always the first element in the positions_ vector.
   positions_.push_back(HloPosition{instruction, index});
 }
