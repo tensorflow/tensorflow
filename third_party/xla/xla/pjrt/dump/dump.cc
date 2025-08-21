@@ -84,6 +84,9 @@ absl::Status DumpCompileInputs(absl::string_view dump_to_path,
   std::string options_file_name =
       tsl::io::JoinPath(dump_sub_dir, "compile_options.pb");
   LOG(INFO) << "Dumping compile options to " << options_file_name;
+  // Unset xla_dump_to when dumping so that reproducers don't dump by default
+  compile_options.executable_build_options.mutable_debug_options()
+      ->clear_xla_dump_to();
   TF_RETURN_IF_ERROR(tsl::WriteStringToFile(
       tsl::Env::Default(), options_file_name,
       compile_options.ToProto().value().SerializeAsString()));
