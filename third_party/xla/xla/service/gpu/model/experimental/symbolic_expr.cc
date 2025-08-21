@@ -222,11 +222,6 @@ void ExtractTerms(SymbolicExpr expr,
 SymbolicExpr CanonicalizeAdd(SymbolicExpr lhs, SymbolicExpr rhs) {
   SymbolicExprContext* ctx = lhs.GetContext();
 
-  // Constant folding
-  if (lhs.GetType() == SymbolicExprType::kConstant &&
-      rhs.GetType() == SymbolicExprType::kConstant) {
-    return ctx->CreateConstant(lhs.GetValue() + rhs.GetValue());
-  }
   // Neutral element
   if (lhs.GetType() == SymbolicExprType::kConstant && lhs.GetValue() == 0) {
     return rhs;
@@ -285,11 +280,6 @@ SymbolicExpr CanonicalizeAdd(SymbolicExpr lhs, SymbolicExpr rhs) {
 
 SymbolicExpr CanonicalizeMul(SymbolicExpr lhs, SymbolicExpr rhs) {
   SymbolicExprContext* ctx = lhs.GetContext();
-
-  if (lhs.GetType() == SymbolicExprType::kConstant &&
-      rhs.GetType() == SymbolicExprType::kConstant) {
-    return ctx->CreateConstant(lhs.GetValue() * rhs.GetValue());
-  }
 
   // Commutativity: C * X => X * C
   if (lhs.GetType() == SymbolicExprType::kConstant) {
@@ -552,25 +542,37 @@ SymbolicExpr SymbolicExpr::Canonicalize() const {
     return *this;
   }
 
-  switch (GetType()) {
+  SymbolicExprType type = GetType();
+  if (type == SymbolicExprType::kConstant ||
+      type == SymbolicExprType::kVariable) {
+    return *this;
+  }
+
+  SymbolicExpr lhs = this->GetLHS().Canonicalize();
+  SymbolicExpr rhs = this->GetRHS().Canonicalize();
+
+  if (lhs.GetType() == SymbolicExprType::kConstant &&
+      rhs.GetType() == SymbolicExprType::kConstant) {
+    return GetContext()->CreateConstant(
+        SymbolicExpr(GetContext()->CreateBinaryOp(type, lhs, rhs))
+            .Evaluate({}));
+  }
+
+  switch (type) {
     case SymbolicExprType::kConstant:
     case SymbolicExprType::kVariable:
       return *this;
     case SymbolicExprType::kAdd:
-      return CanonicalizeAdd(this->GetLHS().Canonicalize(),
-                             this->GetRHS().Canonicalize());
+      return CanonicalizeAdd(lhs, rhs);
     case SymbolicExprType::kMul:
-      return CanonicalizeMul(this->GetLHS().Canonicalize(),
-                             this->GetRHS().Canonicalize());
+      return CanonicalizeMul(lhs, rhs);
     case SymbolicExprType::kMin:
-      return CanonicalizeMin(this->GetLHS().Canonicalize(),
-                             this->GetRHS().Canonicalize());
+      return CanonicalizeMin(lhs, rhs);
     case SymbolicExprType::kMax:
-      return CanonicalizeMax(this->GetLHS().Canonicalize(),
-                             this->GetRHS().Canonicalize());
+      return CanonicalizeMax(lhs, rhs);
     default:
       // TODO(b/433693793): Implement canonicalization for other types.
-      return *this;
+      return GetContext()->CreateBinaryOp(type, lhs, rhs);
   }
 }
 
