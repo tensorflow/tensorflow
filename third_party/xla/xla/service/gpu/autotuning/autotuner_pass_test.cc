@@ -35,8 +35,10 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/nvptx_compiler.h"
 #include "xla/service/platform_util.h"
+#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/status_matchers.h"
@@ -48,7 +50,6 @@ namespace xla {
 namespace gpu {
 namespace {
 
-using ::tsl::testing::IsOkAndHolds;
 namespace se = stream_executor;
 
 se::StreamExecutor* GpuExecutor() {
@@ -60,9 +61,13 @@ se::StreamExecutor* GpuExecutor() {
 
 class AutotunerPassTest : public HloHardwareIndependentTestBase {
  protected:
-  AutotunerPassTest() : stream_executor_(GpuExecutor()) {}
+  AutotunerPassTest()
+      : stream_executor_(GpuExecutor()),
+        allocator_(std::make_unique<se::StreamExecutorMemoryAllocator>(
+            stream_executor_)) {}
 
-  stream_executor::StreamExecutor* stream_executor_;
+  se::StreamExecutor* stream_executor_;
+  std::unique_ptr<se::DeviceMemoryAllocator> allocator_;
   NVPTXCompiler compiler_;
 };
 
@@ -100,8 +105,8 @@ TEST_F(AutotunerPassTest, CublasGemmIsAutotuned) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<AutotunerPass> pass,
       AutotunerPass::Create(std::move(backends),
-                            module->config().debug_options(), stream_executor_,
-                            &thread_pool));
+                            module->config().debug_options(), allocator_.get(),
+                            stream_executor_, &thread_pool));
   EXPECT_THAT(pass->Run(module.get(), /*execution_threads=*/{}),
               tsl::testing::IsOkAndHolds(true));
 }
@@ -145,11 +150,12 @@ TEST_F(AutotunerPassTest, CublasGemmIsAutotunedAndCached) {
     std::vector<std::unique_ptr<CodegenBackend>> backends;
     backends.push_back(std::make_unique<CublasBackend>(
         stream_executor_, &module->config().debug_options(), &compiler_));
+
     TF_ASSERT_OK_AND_ASSIGN(
         std::unique_ptr<AutotunerPass> pass,
-        AutotunerPass::Create(std::move(backends),
-                              module->config().debug_options(),
-                              stream_executor_, &thread_pool));
+        AutotunerPass::Create(
+            std::move(backends), module->config().debug_options(),
+            allocator_.get(), stream_executor_, &thread_pool));
     EXPECT_THAT(pass->Run(module.get(), /*execution_threads=*/{}),
                 tsl::testing::IsOkAndHolds(true));
   }
@@ -202,9 +208,9 @@ TEST_F(AutotunerPassTest, CublasGemmIsAutotunedAndCached) {
         stream_executor_, &module->config().debug_options(), &compiler_));
     TF_ASSERT_OK_AND_ASSIGN(
         std::unique_ptr<AutotunerPass> pass2,
-        AutotunerPass::Create(std::move(backends2),
-                              module->config().debug_options(),
-                              stream_executor_, &thread_pool));
+        AutotunerPass::Create(
+            std::move(backends2), module->config().debug_options(),
+            allocator_.get(), stream_executor_, &thread_pool));
     EXPECT_THAT(pass2->Run(module.get(), /*execution_threads=*/{}),
                 tsl::testing::IsOkAndHolds(true));
   }

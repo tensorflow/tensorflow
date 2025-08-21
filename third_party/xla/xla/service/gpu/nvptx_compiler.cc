@@ -366,7 +366,8 @@ absl::Status NVPTXCompiler::AddConvAndGemmAutotuningPasses(
         std::make_unique<CublasLtBackend>(stream_exec, &debug_options, this));
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<AutotunerPass> autotuner_pass,
-        AutotunerPass::Create(std::move(backends), debug_options, stream_exec,
+        AutotunerPass::Create(std::move(backends), debug_options,
+                              options.device_allocator, stream_exec,
                               thread_pool));
     pipeline->AddPass(std::move(autotuner_pass));
   } else {

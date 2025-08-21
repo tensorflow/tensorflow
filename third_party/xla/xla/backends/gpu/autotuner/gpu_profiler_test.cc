@@ -115,8 +115,11 @@ class GpuProfilerTest : public HloHardwareIndependentTestBase {
     std::vector<se::StreamExecutor*> executors =
         PlatformUtil::GetStreamExecutors(platform).value();
     stream_exec_ = executors[0];
+    allocator_ =
+        std::make_unique<se::StreamExecutorMemoryAllocator>(stream_exec_);
   }
   se::StreamExecutor* stream_exec_;
+  std::unique_ptr<se::DeviceMemoryAllocator> allocator_;
 };
 
 TEST_F(GpuProfilerTest, ProfileWithSharedBuffersWithoutOutputBuffer) {
@@ -134,7 +137,7 @@ TEST_F(GpuProfilerTest, ProfileWithSharedBuffersWithoutOutputBuffer) {
 
   ProfileOptions options;
   options.should_populate_output_buffer = false;
-  auto profiler = GpuProfiler::Create(stream_exec_, options);
+  auto profiler = GpuProfiler::Create(stream_exec_, allocator_.get(), options);
   TF_ASSERT_OK_AND_ASSIGN(auto profiles, profiler->ProfileWithSharedBuffers(
                                              std::move(executables)));
   EXPECT_EQ(profiles.size(), 2);
@@ -164,7 +167,8 @@ TEST_F(GpuProfilerTest, ProfileWithSharedBuffers) {
   std::vector<std::unique_ptr<Executable>> executables;
   executables.push_back(std::make_unique<MockExecutable>(module, 1));
 
-  auto profiler = GpuProfiler::Create(stream_exec_, ProfileOptions());
+  auto profiler =
+      GpuProfiler::Create(stream_exec_, allocator_.get(), ProfileOptions());
   TF_ASSERT_OK_AND_ASSIGN(auto profiles, profiler->ProfileWithSharedBuffers(
                                              std::move(executables)));
   EXPECT_THAT(profiles, ElementsAre(IsOkAndHolds(Field(
@@ -186,7 +190,8 @@ TEST_F(GpuProfilerTest, FailingExecutablesReturnStatus) {
       std::make_unique<MockExecutable>(module, 2000, /*should_fail=*/true));
   executables.push_back(std::make_unique<MockExecutable>(module, 3000));
 
-  auto profiler = GpuProfiler::Create(stream_exec_, ProfileOptions());
+  auto profiler =
+      GpuProfiler::Create(stream_exec_, allocator_.get(), ProfileOptions());
   TF_ASSERT_OK_AND_ASSIGN(auto profiles, profiler->ProfileWithSharedBuffers(
                                              std::move(executables)));
   EXPECT_EQ(profiles.size(), 3);
@@ -210,7 +215,8 @@ TEST_F(GpuProfilerTest, CreateInputBuffersAndProfile) {
                           ParseAndReturnVerifiedModule(kHloModule));
   MockExecutable mock_executable(module, 1000);
 
-  auto profiler = GpuProfiler::Create(stream_exec_, ProfileOptions());
+  auto profiler =
+      GpuProfiler::Create(stream_exec_, allocator_.get(), ProfileOptions());
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<InputBuffers> buffers,
                           profiler->CreateInputBuffers(&mock_executable));
   TF_ASSERT_OK_AND_ASSIGN(ProfileResult profile,
@@ -234,7 +240,7 @@ TEST_P(GpuProfilerTestWithRedzonePadding, CheckInputBuffers) {
   MockExecutable mock_executable(module, 1000);
   ProfileOptions options;
   options.redzone_padding_bytes = GetParam();
-  auto profiler = GpuProfiler::Create(stream_exec_, options);
+  auto profiler = GpuProfiler::Create(stream_exec_, allocator_.get(), options);
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<InputBuffers> buffers,
                           profiler->CreateInputBuffers(&mock_executable));
   TF_EXPECT_OK(profiler->CheckInputBuffers(*buffers));
@@ -246,7 +252,7 @@ INSTANTIATE_TEST_SUITE_P(GpuProfilerTestWithRedzonePadding,
 
 TEST_F(GpuProfilerTest, CheckOutputBufferWhenBuffersAreSame) {
   ProfileOptions options;
-  auto profiler = GpuProfiler::Create(stream_exec_, options);
+  auto profiler = GpuProfiler::Create(stream_exec_, allocator_.get(), options);
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, stream_exec_->CreateStream());
   auto allocator =
@@ -264,7 +270,7 @@ TEST_F(GpuProfilerTest, CheckOutputBufferWhenBuffersAreSame) {
 
 TEST_F(GpuProfilerTest, CheckOutputBufferWhenBuffersAreDifferent) {
   ProfileOptions options;
-  auto profiler = GpuProfiler::Create(stream_exec_, options);
+  auto profiler = GpuProfiler::Create(stream_exec_, allocator_.get(), options);
   TF_ASSERT_OK_AND_ASSIGN(auto stream, stream_exec_->CreateStream());
   auto allocator =
       std::make_unique<stream_executor::StreamExecutorMemoryAllocator>(
@@ -304,7 +310,8 @@ ENTRY %entry_computation (transpose.562: bf16[32,120,6,512], Arg_1.2: f32[3072,5
   TF_ASSERT_OK_AND_ASSIGN(auto gpu_executable,
                           compiler.RunBackend(std::move(module), stream_exec_,
                                               GpuCompiler::CompileOptions()));
-  auto profiler = GpuProfiler::Create(stream_exec_, ProfileOptions());
+  auto profiler =
+      GpuProfiler::Create(stream_exec_, allocator_.get(), ProfileOptions());
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<InputBuffers> buffers,
                           profiler->CreateInputBuffers(gpu_executable.get()));
   TF_ASSERT_OK_AND_ASSIGN(ProfileResult profile,
