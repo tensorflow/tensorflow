@@ -1555,15 +1555,15 @@ cc_library(
         "//xla/hlo/pass:hlo_pass",
         "//xla/service:hlo_cost_analysis",
         "//xla/service/llvm_ir:dynamic_update_slice_util",
+        "//xla/tsl/platform:status",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/platform:status",
     ],
 )
 
@@ -1581,8 +1581,8 @@ xla_cc_test(
         "//xla/hlo/testlib:test",
         "//xla/service:hlo_cost_analysis",
         "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:statusor",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
