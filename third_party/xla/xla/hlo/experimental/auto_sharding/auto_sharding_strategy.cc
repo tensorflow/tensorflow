@@ -364,6 +364,13 @@ BuildStrategyAndCost(
                               {}, *strategy_group);
         break;
       }
+      case HloOpcode::kGetDimensionSize: {
+        strategy_group = CreateLeafStrategyGroupWithoutInNodes(instruction_id,
+                                                               strategy_groups);
+        AddReplicatedStrategy(ins, ins->shape(), cluster_env, strategy_map, 0,
+                              {}, *strategy_group);
+        break;
+      }
       case HloOpcode::kScatter: {
         strategy_group = CreateLeafStrategyGroup(instruction_id, ins,
                                                  strategy_map, strategy_groups);
