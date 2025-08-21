@@ -145,18 +145,6 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
                                   absl::Span<const Literal* const> arguments,
                                   bool run_hlo_passes = true);
 
-  // Same as above, except the module will be executed without running any HLO
-  // passes on it.
-  ABSL_DEPRECATED(
-      "Use Execute() or another alternative that returns a StatusOr.")
-  Literal ExecuteNoHloPasses(std::unique_ptr<HloModule> module,
-                             absl::Span<const Literal* const> arguments);
-
-  ABSL_DEPRECATED(
-      "Use Execute() or another alternative that returns a StatusOr.")
-  Literal ExecuteAndTransfer(std::unique_ptr<HloModule> module,
-                             absl::Span<const Literal* const> arguments);
-
   // Compile the given module to an executable.
   absl::StatusOr<std::unique_ptr<OpaqueExecutable>> CreateExecutable(
       std::unique_ptr<HloModule> module, bool run_hlo_passes) {
