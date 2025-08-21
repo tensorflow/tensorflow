@@ -88,6 +88,28 @@ absl::StatusOr<bool> FlattenNode(const CallGraphNode& node) {
   return changed;
 }
 
+// Annotates flatten computations with callee instruction types.
+absl::Status AnnotateNode(const CallGraphNode& node) {
+  for (auto& callsite : node.callsites()) {
+    HloInstruction* instruction = callsite.instruction();
+
+    if (instruction->opcode() == HloOpcode::kFusion) {
+      for (HloComputation* computation : instruction->called_computations()) {
+        computation->SetFusionInstruction(instruction);
+      }
+    }
+  }
+
+  // Correctly handle dead code: if a fusion computation is no longer used, it
+  // should not have a fusion instruction set.
+  if (node.callers().empty() &&
+      node.computation()->FusionInstruction() != nullptr) {
+    node.computation()->SetFusionInstruction(nullptr);
+  }
+
+  return absl::OkStatus();
+}
+
 }  // namespace
 
 absl::StatusOr<bool> FlattenCallGraph::Run(
@@ -95,14 +117,29 @@ absl::StatusOr<bool> FlattenCallGraph::Run(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(3, "Before flatten call graph:\n" + module->ToString());
 
-  // Flatten original call graph.
-  std::unique_ptr<CallGraph> call_graph =
-      CallGraph::Build(module, execution_threads);
-  TF_ASSIGN_OR_RETURN(bool changed,
-                      call_graph->VisitNodesWithReturn(FlattenNode));
+  bool changed = false;
+  {  // Flatten original call graph.
+    std::unique_ptr<CallGraph> call_graph =
+        CallGraph::Build(module, execution_threads);
+    TF_ASSIGN_OR_RETURN(bool flattened,
+                        call_graph->VisitNodesWithReturn(FlattenNode));
+    changed |= flattened;
+  }
+
+  if (!changed) {
+    return false;
+  }
+
+  // TODO(b/418034360): Remove this step once the fusion instruction is
+  // automatically maintained.
+  {  // Annotate flattened computations with callee types.
+    std::unique_ptr<CallGraph> call_graph =
+        CallGraph::Build(module, execution_threads);
+    TF_RETURN_IF_ERROR(call_graph->VisitNodes(AnnotateNode));
+  }
 
   XLA_VLOG_LINES(3, "After flatten call graph:\n" + module->ToString());
-  return changed;
+  return true;
 }
 
 }  // namespace xla
