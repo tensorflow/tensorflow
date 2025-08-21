@@ -985,6 +985,29 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
       y = primals * 2.0
     self.assertAllClose(tangents * 2.0, acc.jvp(y))
 
+  def testForwardAccumulatorFlatVectorCountMatchesButShapeMismatchRaises(self):
+    # primals has 6 elements but is shaped (2, 3)
+    primals  = constant_op.constant([[1., 2., 3.],
+                                    [4., 5., 6.]])
+    # tangents has the *same number of elements* (6) but shape is (6,)
+    tangents = constant_op.constant([0.1, 0.2, 0.3, 0.0, 0.0, 0.0])
+
+    # Even though the element count matches, shapes do not → must raise.
+    with self.assertRaisesRegex(
+        ValueError, r"primals and tangents must have the same shape"):
+      forwardprop.ForwardAccumulator(primals, tangents)
+
+  def testForwardAccumulatorFlatVectorReshapeMatchOK(self):
+    primals  = constant_op.constant([[1., 2., 3.],
+                                    [4., 5., 6.]])
+    tangents = constant_op.constant([0.1, 0.2, 0.3, 0.0, 0.0, 0.0])
+    tangents = array_ops.reshape(tangents, primals.shape)  # (2,3)
+
+    with forwardprop.ForwardAccumulator(primals, tangents) as acc:
+      y = primals * 2.0
+    self.assertAllClose(tangents * 2.0, acc.jvp(y))
+
+
 
 @def_function.function
 def _has_loop(iters, y):
