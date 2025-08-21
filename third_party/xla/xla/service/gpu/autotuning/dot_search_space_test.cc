@@ -188,7 +188,7 @@ TEST_F(DotSearchSpaceTest, SerializesSearchSpace) {
 
   EXPECT_EQ(search_space.ToString(),
             "problem_size_BxMxNxKxE: 1x1024x1024x1024x(16->16) "
-            "tile_range_SxMxNxK: [1-64]x[16-256]x[16-512]x[16-?] "
+            "tile_range_SxMxNxK: [1-64]x[16-256]x[8-512]x[16-?] "
             "desired_total_warps: 2640 occupancy_optimization: 1 "
             "warps_per_cta: [2-?]");
 }
@@ -307,7 +307,7 @@ TEST_F(DotSearchSpaceTest,
                           /*contracting_dim=*/64));
   TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
   EXPECT_THAT(search_space.GenerateConfigs(),
-              AllOf(SizeIs(1), Each(AllOf(BlockMIs(Eq(16)), BlockNIs(Eq(16)),
+              AllOf(SizeIs(1), Each(AllOf(BlockMIs(Eq(16)), BlockNIs(Eq(8)),
                                           SplitKIs(Eq(4))))));
 }
 
@@ -341,7 +341,7 @@ TEST_F(DotSearchSpaceTest, HonorsMinimumOutputTileSizeForTinyProblem) {
 
   EXPECT_THAT(
       search_space.GenerateConfigs(),
-      AllOf(Not(IsEmpty()), Each(BlockMIs(Ge(16))), Each(BlockNIs(Ge(16)))));
+      AllOf(Not(IsEmpty()), Each(BlockMIs(Ge(16))), Each(BlockNIs(Ge(8)))));
 }
 
 TEST_F(DotSearchSpaceTest, AssignsEnoughWarpsPerScheduler) {

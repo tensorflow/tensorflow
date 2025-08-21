@@ -19,5 +19,6 @@ temporary_patch_list = [
     "//third_party/triton:temporary/tutorial_fixes.patch",
     "//third_party/triton:temporary/ws_fix.patch",
     "//third_party/triton:temporary/ws_ub_fix.patch",
+    "//third_party/triton:temporary/small_n_wgmma_support.patch",
     # Add new patches just above this line
 ]
