@@ -40,6 +40,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/strip.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/status_macros.h"
@@ -426,8 +427,13 @@ absl::StatusOr<std::vector<uint8_t>> BundleGpuAsmUsingFatbin(
   }
   assert(images.size() == image_paths.size());
   for (int i = 0; i < images.size(); i++) {
+    absl::string_view kind = images[i].is_ptx ? "ptx" : "elf";
     fatbinary_args.push_back(absl::StrFormat(
-        "--image=profile=%s,file=%s", images[i].profile, image_paths[i]));
+        "--image3=kind=%s,sm=%s,file=%s", kind,
+        absl::StripPrefix(images[i].cc.GetPtxAsTargetName(
+                              CudaComputeCapability::CompileMode::kSass),
+                          "sm_"),
+        image_paths[i]));
   }
   if (VLOG_IS_ON(3)) {
     VLOG(3) << absl::StrJoin(fatbinary_args, " ");

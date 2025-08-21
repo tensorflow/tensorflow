@@ -1387,6 +1387,7 @@ xla_test(
 cc_library(
     name = "cubin_or_ptx_image",
     hdrs = ["cubin_or_ptx_image.h"],
+    deps = [":cuda_compute_capability"],
 )
 
 cc_library(
@@ -1419,7 +1420,6 @@ cc_library(
         ":ptx_compiler_helpers",
         "//xla:status_macros",
         "//xla:util",
-        "//xla/stream_executor:device_description",
         "//xla/stream_executor:semantic_version",
         "//xla/stream_executor/gpu:gpu_asm_opts",
         "//xla/tsl/platform:env",
@@ -1474,6 +1474,26 @@ stage_in_bin_subdirectory(
     name = "nvdisasm",
     testonly = True,
     data = [":dummy_cuda_binary"],
+)
+
+xla_cc_test(
+    name = "subprocess_compilation_no_fakes_test",
+    srcs = ["subprocess_compilation_no_fakes_test.cc"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        ":cubin_or_ptx_image",
+        ":cuda_compute_capability",
+        ":subprocess_compilation",
+        "//xla/stream_executor/gpu:gpu_asm_opts",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:path",
+    ],
 )
 
 xla_cc_test(
