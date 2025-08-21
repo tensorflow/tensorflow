@@ -88,6 +88,7 @@ cc_library(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:types",
+        "@com_google_absl//absl/strings",
         "@local_config_cuda//cuda:cuda_headers",
         "@local_tsl//tsl/platform",
         "@local_tsl//tsl/platform:path",
