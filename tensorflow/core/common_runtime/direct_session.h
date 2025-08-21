@@ -23,6 +23,7 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/synchronization/notification.h"
 #include "tensorflow/core/common_runtime/costmodel_manager.h"
 #include "tensorflow/core/common_runtime/debugger_state_interface.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -212,7 +213,7 @@ class DirectSession : public Session {
   // are the set of pending feeds and 'pending_outputs' are the set of pending
   // fetches.
   struct PartialRunState : public RunState {
-    Notification executors_done;
+    absl::Notification executors_done;
     std::unordered_map<string, bool> pending_inputs;   // true if fed
     std::unordered_map<string, bool> pending_outputs;  // true if fetched
     core::RefCountPtr<IntraProcessRendezvous> rendez = nullptr;
@@ -305,8 +306,9 @@ class DirectSession : public Session {
   // operation_timeout_in_ms is greater than 0.
   //
   // If the timeout expires, the `cm->StartCancel()` will be called.
-  absl::Status WaitForNotification(Notification* n, int64_t timeout_in_ms);
-  void WaitForNotification(Notification* n, RunState* run_state,
+  absl::Status WaitForNotification(absl::Notification* n,
+                                   int64_t timeout_in_ms);
+  void WaitForNotification(absl::Notification* n, RunState* run_state,
                            CancellationManager* cm, int64_t timeout_in_ms);
 
   absl::Status CheckNotClosed() {

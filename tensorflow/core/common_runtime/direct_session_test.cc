@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
+#include "absl/synchronization/notification.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -2056,9 +2057,9 @@ class CancellationMgrPollingOp : public OpKernel {
     }
     notification.Notify();
   }
-  static Notification notification;
+  static absl::Notification notification;
 };
-Notification CancellationMgrPollingOp::notification;
+absl::Notification CancellationMgrPollingOp::notification;
 
 REGISTER_KERNEL_BUILDER(Name("CancellationMgrPollingOp").Device(DEVICE_CPU),
                         CancellationMgrPollingOp);

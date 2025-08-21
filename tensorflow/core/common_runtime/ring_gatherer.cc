@@ -20,6 +20,7 @@ limitations under the License.
 #include <functional>
 #include <utility>
 
+#include "absl/synchronization/notification.h"
 #include "tensorflow/core/common_runtime/collective_rma_local.h"
 #include "tensorflow/core/common_runtime/collective_util.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -102,7 +102,7 @@ void RingGatherer::Run(StatusCallback done) {
   {
     tsl::profiler::TraceMe activity("MemCpyAsync",
                                     tsl::profiler::TraceMeLevel::kInfo);
-    Notification note;
+    absl::Notification note;
     absl::Status status;
     Tensor alias_chunk(ca_->ChunkAlias(col_params_->subdiv_rank[0]));
     CollectiveRemoteAccessLocal::MemCpyAsync(
@@ -148,7 +148,7 @@ bool RingGatherer::RunAsyncParts() {
     // write) unless we do.
     tsl::profiler::TraceMe activity("WaitForQueuedEvents",
                                     tsl::profiler::TraceMeLevel::kInfo);
-    Notification note;
+    absl::Notification note;
     absl::Status s = gpu_info->default_context->ThenExecute(
         col_ctx_->device, gpu_info->stream, [&note]() { note.Notify(); });
     if (s.ok()) {
