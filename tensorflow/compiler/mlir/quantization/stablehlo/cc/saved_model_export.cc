@@ -156,8 +156,8 @@ ExportedModel CreateExportedModelFromGraphDef(
     const std::vector<AssetFileDef>& asset_file_defs) {
   ExportedModel exported_model{};
   *exported_model.mutable_graph_def() = graph_def;
-  exported_model.set_init_node_name(std::string(init_node_name));
-  exported_model.set_checkpoint_dir(std::string(checkpoint_dir));
+  exported_model.set_init_node_name(init_node_name);
+  exported_model.set_checkpoint_dir(checkpoint_dir);
 
   exported_model.mutable_function_aliases()->insert(function_aliases.begin(),
                                                     function_aliases.end());
