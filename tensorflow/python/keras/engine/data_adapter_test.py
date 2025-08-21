@@ -15,7 +15,6 @@
 """Tests for tensorflow.python.keras.engine.data_adapter."""
 
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import data_adapter
 from tensorflow.python.platform import test
 
