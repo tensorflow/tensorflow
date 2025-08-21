@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_module_metadata.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/cpu_runtime.h"
 #include "xla/service/custom_call_status.h"
@@ -161,9 +162,9 @@ CpuExecutable::CpuExecutable(
   }
 
   // Once we compiled HLO module to CPU executable, we don't need to keep the
-  // pass metadata around.
+  // HLO module metadata around.
   if (has_module()) {
-    shared_module()->metadata()->ClearPassMetadata();
+    *shared_module()->metadata() = HloModuleMetadata(tsl::Env::Default());
   }
 }
 
