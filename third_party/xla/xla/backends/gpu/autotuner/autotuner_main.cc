@@ -40,9 +40,11 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/service/compiler.h"
 #include "xla/service/platform_util.h"
+#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/platform_object_registry.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -101,7 +103,11 @@ absl::Status Autotune(HloModule& module, const std::string& autotune_cache_dir,
   std::vector<std::unique_ptr<CodegenBackend>> backends =
       get_codegen_backends(stream_executor, &debug_options, compiler.get());
 
-  auto profiler = GpuProfiler::Create(stream_executor, ProfileOptions());
+  std::unique_ptr<se::DeviceMemoryAllocator> allocator =
+      std::make_unique<stream_executor::StreamExecutorMemoryAllocator>(
+          stream_executor);
+  auto profiler =
+      GpuProfiler::Create(stream_executor, allocator.get(), ProfileOptions());
   if (profiler == nullptr) {
     return absl::InternalError("Failed to create profiler");
   }
