@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/nvptx_compiler.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/nvjitlink_support.h"
 #include "xla/stream_executor/cuda/ptx_compilation_method.h"
 #include "xla/stream_executor/cuda/ptx_compiler_support.h"
@@ -48,7 +50,6 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/path.h"
@@ -148,12 +149,15 @@ class NVPTXCompilationTests
                              PtxCompilationMethod compilation_method,
                              PtxLinkingMethod linking_method) {
     using CudaComputeCapability = stream_executor::CudaComputeCapability;
-    if (!::testing::Value(backend()
-                              .default_stream_executor()
-                              ->GetDeviceDescription()
-                              .gpu_compute_capability(),
-                          ::testing::VariantWith<CudaComputeCapability>(
-                              CudaComputeCapability{9, 0})) &&
+    if (!::testing::Value(
+            backend()
+                .default_stream_executor()
+                ->GetDeviceDescription()
+                .gpu_compute_capability(),
+            ::testing::VariantWith<CudaComputeCapability>(
+                CudaComputeCapability{9, 0,
+                                      CudaComputeCapability::FeatureExtension::
+                                          kAcceleratedFeatures})) &&
         name == "requires_sm90a") {
       GTEST_SKIP() << "This test requires SM 9.0a";
     }

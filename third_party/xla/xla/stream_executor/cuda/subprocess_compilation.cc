@@ -294,16 +294,13 @@ absl::StatusOr<cuda::Assembly> CompileGpuAsmUsingPtxAs(
     tsl::Env::Default()->DeleteFile(cubin_path).IgnoreError();
   };
   tsl::SubProcess ptxas_info_dumper;
-  // On Hopper, default to sm_90a so that all instructions can be used. But
-  // only sm_90 is forward compatible, so don't use sm_90a with newer hardware:
-  // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#ptx-compatibility
-  std::string extension = ShouldUsePtxExtension(cc) ? "a" : "";
   std::vector<std::string> ptxas_args = {
       std::string{ptxas_path},
       ptx_path,
       "-o",
       cubin_path,
-      absl::StrCat("-arch=sm_", cc.major, cc.minor, extension),
+      absl::StrCat("-arch=", cc.GetPtxAsTargetName(
+                                 CudaComputeCapability::CompileMode::kSass)),
       "--warn-on-spills"};
   if (VLOG_IS_ON(2) || dump_compilation_log) {
     ptxas_args.push_back("-v");
@@ -522,8 +519,7 @@ absl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
   };
   std::vector<std::string> args;
   args.push_back(std::string{nvlink_path});
-  absl::string_view extension = ShouldUsePtxExtension(cc) ? "a" : "";
-  args.push_back(absl::StrCat("-arch=sm_", cc.major, cc.minor, extension));
+  args.push_back(absl::StrCat("-arch=", cc.GetPtxAsTargetName()));
   for (int i = 0; i < images.size(); i++) {
     args.push_back(temp_files[i]);
   }

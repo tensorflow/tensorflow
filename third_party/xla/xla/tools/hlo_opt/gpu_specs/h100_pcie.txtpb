@@ -15,7 +15,7 @@
 gpu_device_info {
   cuda_compute_capability {
     major: 9
-    minor: 0
+    feature_extension: ACCELERATED_FEATURES
   }
   block_dim_limit_x: 2147483647
   block_dim_limit_y: 65535

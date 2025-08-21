@@ -100,8 +100,6 @@ class CudaExecutor : public GpuExecutor {
       std::optional<std::variant<StreamPriority, int>> priority) override;
   absl::StatusOr<std::unique_ptr<CommandBuffer>> CreateCommandBuffer(
       CommandBuffer::Mode mode) override;
-  int cc_major() const { return cc_major_; }
-  int cc_minor() const { return cc_minor_; }
 
   absl::StatusOr<std::unique_ptr<DeviceDescription>> CreateDeviceDescription()
       const override {
@@ -183,12 +181,6 @@ class CudaExecutor : public GpuExecutor {
 
   // True if delay kernels are supported.
   bool delay_kernels_supported_ = false;
-
-  // The major version of the compute capability for device_.
-  int cc_major_;
-
-  // The minor version of the compute capability for device_.
-  int cc_minor_;
 
   // The NUMA node of the CPU closest to device_
   int numa_node_;

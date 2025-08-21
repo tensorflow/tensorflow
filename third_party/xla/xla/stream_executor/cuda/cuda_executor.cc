@@ -53,6 +53,7 @@ limitations under the License.
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/cuda/cuda_command_buffer.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_context.h"
 #include "xla/stream_executor/cuda/cuda_event.h"
 #include "xla/stream_executor/cuda/cuda_kernel.h"
@@ -274,16 +275,21 @@ absl::StatusOr<std::string> GetDeviceName(CUdevice device) {
 }
 
 // Returns the compute capability for the device; i.e (3, 5).
-absl::Status GetComputeCapability(int* cc_major, int* cc_minor,
-                                  CUdevice device) {
-  *cc_major = 0;
-  *cc_minor = 0;
-
+absl::StatusOr<CudaComputeCapability> GetComputeCapability(CUdevice device) {
+  int cc_major = 0;
   TF_RETURN_IF_ERROR(cuda::ToStatus(cuDeviceGetAttribute(
-      cc_major, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR, device)));
+      &cc_major, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR, device)));
 
-  return cuda::ToStatus(cuDeviceGetAttribute(
-      cc_minor, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR, device));
+  int cc_minor = 0;
+  TF_RETURN_IF_ERROR(cuda::ToStatus(cuDeviceGetAttribute(
+      &cc_minor, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR, device)));
+
+  bool has_accelerated_features = cc_major >= 9;
+  return CudaComputeCapability(
+      cc_major, cc_minor,
+      has_accelerated_features
+          ? CudaComputeCapability::FeatureExtension::kAcceleratedFeatures
+          : CudaComputeCapability::FeatureExtension::kNone);
 }
 
 // Helper function that turns the integer output of cuDeviceGetAttribute to type
@@ -723,7 +729,6 @@ absl::Status CudaExecutor::Init() {
   TF_ASSIGN_OR_RETURN(CudaContext * context,
                       CudaContext::Create(device_ordinal(), device_));
   cuda_context_ = context;
-  TF_RETURN_IF_ERROR(GetComputeCapability(&cc_major_, &cc_minor_, device_));
   TF_ASSIGN_OR_RETURN(delay_kernels_supported_, DelayKernelIsSupported());
   numa_node_ = ReadNumaNode(GetPCIBusID(device_), device_ordinal())
                    .value_or(tsl::port::kNUMANoAffinity);
@@ -805,10 +810,6 @@ absl::StatusOr<std::unique_ptr<Kernel>> CudaExecutor::LoadKernel(
     cuda_kernel->set_gpu_function(function);
 
   } else if (spec.has_cuda_ptx_in_memory()) {
-    if (cc_major_ == 0 && cc_minor_ == 0) {
-      return absl::InternalError("Compute capability not set");
-    }
-
     const char* ptx = spec.cuda_ptx_in_memory()->ptx.data();
     if (ptx == nullptr) {
       LOG(FATAL) << "Loader spec has no ptx for kernel " << kernel_name;
@@ -919,10 +920,6 @@ absl::StatusOr<ModuleHandle> CudaExecutor::LoadModule(
     return LoadModuleFromCuBin(
         reinterpret_cast<const char*>(spec.cuda_cubin_in_memory().data()));
   } else if (spec.has_cuda_ptx_in_memory()) {
-    if (cc_major_ == 0 && cc_minor_ == 0) {
-      return absl::InternalError("Compute capability not set");
-    }
-
     if (!spec.cuda_ptx_in_memory()) {
       return absl::InternalError("PTX not found in spec");
     }
@@ -1279,10 +1276,7 @@ CudaExecutor::CreateCommandBuffer(CommandBuffer::Mode mode) {
 absl::StatusOr<std::unique_ptr<DeviceDescription>>
 CudaExecutor::CreateDeviceDescription(int device_ordinal) {
   TF_ASSIGN_OR_RETURN(CUdevice device, GetDevice(device_ordinal));
-
-  int cc_major;
-  int cc_minor;
-  TF_RETURN_IF_ERROR(GetComputeCapability(&cc_major, &cc_minor, device));
+  TF_ASSIGN_OR_RETURN(CudaComputeCapability cc, GetComputeCapability(device));
 
   DeviceDescription desc;
   int32_t driver_version{};
@@ -1381,22 +1375,21 @@ CudaExecutor::CreateDeviceDescription(int device_ordinal) {
     desc.set_name(device_name);
   }
 
-  desc.set_platform_version(
-      absl::StrCat("Compute Capability ", cc_major, ".", cc_minor));
+  desc.set_platform_version(absl::StrCat("Compute Capability ", cc.ToString()));
 
   // TODO(leary) should be a way to query this from the driver, but this is
   // unlikely to change for us any time soon.
   desc.set_device_address_bits(64);
 
   desc.set_device_vendor("NVIDIA Corporation");
-  desc.set_cuda_compute_capability(cc_major, cc_minor);
+  desc.set_cuda_compute_capability(cc);
   desc.set_shared_memory_per_core(GetMaxSharedMemoryPerCore(device).value());
   desc.set_shared_memory_per_block(GetMaxSharedMemoryPerBlock(device).value());
   desc.set_shared_memory_per_block_optin(
       GetMaxSharedMemoryPerBlockOptin(device).value());
   int core_count = GetMultiprocessorCount(device).value();
   desc.set_core_count(core_count);
-  desc.set_fpus_per_core(fpus_per_core(cc_major, cc_minor));
+  desc.set_fpus_per_core(fpus_per_core(cc.major, cc.minor));
   desc.set_threads_per_core_limit(
       GetMaxThreadsPerMultiprocessor(device).value());
   desc.set_registers_per_block_limit(GetMaxRegistersPerBlock(device).value());
@@ -1420,8 +1413,8 @@ CudaExecutor::CreateDeviceDescription(int device_ordinal) {
   //
   // For now, this identifier is good enough.
   desc.set_model_str(absl::StrFormat(
-      "sm_%d.%d with %dB RAM, %d cores, %dKHz clock, %dKHz mem clock, %dB L2$",
-      cc_major, cc_minor, device_memory_size, core_count, sm_clock_khz,
+      "sm_%s with %dB RAM, %d cores, %dKHz clock, %dKHz mem clock, %dB L2$",
+      cc.ToString(), device_memory_size, core_count, sm_clock_khz,
       value_or(mem_clock_khz, 0), l2_cache_bytes));
 
   return std::make_unique<DeviceDescription>(std::move(desc));

@@ -62,6 +62,7 @@ cc_library(
         "//xla/service:shaped_buffer",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:platform",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tests:client_library_test_base",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/util:command_line_flags",

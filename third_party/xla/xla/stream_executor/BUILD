@@ -64,6 +64,7 @@ cc_library(
         ":semantic_version",
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tsl/lib/math:math_util",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",

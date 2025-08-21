@@ -67,9 +67,9 @@ TEST(CudaExecutorTest, CreateDeviceDescription) {
   EXPECT_THAT(result->model_str(), Not(IsEmpty()));
   EXPECT_THAT(result->device_vendor(), "NVIDIA Corporation");
 
-  EXPECT_THAT(
-      result->gpu_compute_capability(),
-      VariantWith<CudaComputeCapability>(Ge(CudaComputeCapability{1, 0})));
+  EXPECT_THAT(result->gpu_compute_capability(),
+              VariantWith<CudaComputeCapability>(::testing::Field(
+                  "major", &CudaComputeCapability::major, Ge(1))));
 }
 
 TEST(CudaExecutorTest, GetCudaKernel) {

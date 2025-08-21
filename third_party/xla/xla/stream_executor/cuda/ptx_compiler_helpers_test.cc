@@ -18,14 +18,11 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/test.h"
 
 namespace stream_executor {
 namespace {
-using ::tsl::testing::IsOk;
-using ::tsl::testing::StatusIs;
 
 // When the compilation succeeds, then the error log is empty.
 constexpr absl::string_view kPtxasLogSuccessfulCompilation = R"(

@@ -19,13 +19,14 @@ limitations under the License.
 #include <array>
 
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
 
 struct CublasPaddingRequirement {
-  int min_compute_capability;
+  se::CudaComputeCapability min_compute_capability;
   PrimitiveType data_type;
   int multiple_of;
 };
@@ -37,9 +38,9 @@ struct HipblasPaddingRequirement {
 
 // List of padding requirements per compute capability and data type.
 constexpr std::array<CublasPaddingRequirement, 3> CublasPaddingRequirements{
-    {{se::CudaComputeCapability::kVolta, S8, 4},
-     {se::CudaComputeCapability::kVolta, F16, 8},
-     {se::CudaComputeCapability::kAmpere, BF16, 8}}};
+    {{se::CudaComputeCapability::Volta(), S8, 4},
+     {se::CudaComputeCapability::Volta(), F16, 8},
+     {se::CudaComputeCapability::Ampere(), BF16, 8}}};
 
 constexpr std::array<HipblasPaddingRequirement, 2> HipblasPaddingRequirements{
     {{/*rocm gpu arch,*/ F16, 8}, {/*rocm gpu arch,*/ BF16, 8}}};

@@ -97,13 +97,9 @@ absl::StatusOr<cuda::Assembly> CompileGpuAsmUsingLibNvPtxCompiler(
   absl::Cleanup compiler_cleaner = [&compiler_handle] {
     nvPTXCompilerDestroy(&compiler_handle);
   };
-  // On Hopper, default to sm_90a so that all instructions can be used. But
-  // only sm_90 is forward compatible, so don't use sm_90a with newer hardware:
-  // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#ptx-compatibility
-  absl::string_view extension = ShouldUsePtxExtension(cc) ? "a" : "";
-  std::string architecture = absl::StrCat("sm_", cc.major, cc.minor, extension);
 
-  options.extra_flags.emplace_back(absl::StrCat("-arch=", architecture));
+  options.extra_flags.emplace_back(
+      absl::StrCat("-arch=", cc.GetPtxAsTargetName()));
   options.extra_flags.emplace_back("--warn-on-spills");
 
   if (VLOG_IS_ON(2) || dump_compilation_log) {
@@ -143,8 +139,9 @@ absl::StatusOr<cuda::Assembly> CompileGpuAsmUsingLibNvPtxCompiler(
     //      ptxas fatal   : Value 'sm_80' is not defined for option 'gpu-name'
     if (absl::StrContains(*error_log, "ptxas fatal   : Value '") &&
         absl::StrContains(*error_log, "is not defined for option 'gpu-name'")) {
-      return absl::UnimplementedError(absl::StrFormat(
-          "Linked libnvptxcompiler is too old for %s.", architecture));
+      return absl::UnimplementedError(
+          absl::StrFormat("Linked libnvptxcompiler is too old for %s.",
+                          cc.GetPtxAsTargetName()));
     }
     if (IsPtxRegisterAllocationError(*error_log)) {
       return PtxRegisterAllocationError(*error_log);
