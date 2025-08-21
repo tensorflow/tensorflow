@@ -3611,8 +3611,7 @@ class Subgraph {
         logging_context, output_tensor, 4, node->outputs->data[0],
         BuiltinOperator_CONV_2D, node_index));
 
-    bool dynamically_quantized = (delegate.enable_latest_operators() &&
-                                  (input_tensor.type == kTfLiteFloat32 &&
+    bool dynamically_quantized = ((input_tensor.type == kTfLiteFloat32 &&
                                    filter_tensor.type == kTfLiteInt8));
     if (input_tensor.type != output_tensor.type ||
         ((input_tensor.type != filter_tensor.type) && !dynamically_quantized)) {
@@ -4533,8 +4532,7 @@ class Subgraph {
         CheckTensorFloat32OrQUInt8Type(delegate, logging_context, output_tensor,
                                        node->outputs->data[0], node_index));
 
-    bool dynamically_quantized = (delegate.enable_latest_operators() &&
-                                  (input_tensor.type == kTfLiteFloat32 &&
+    bool dynamically_quantized = ((input_tensor.type == kTfLiteFloat32 &&
                                    (filter_tensor.type == kTfLiteInt4 ||
                                     filter_tensor.type == kTfLiteInt8)));
     bool supported_srq = (input_tensor.type == kTfLiteInt8 &&
