@@ -67,7 +67,12 @@ std::string PrintCss() {
     .section > .header {
       font-size: 16px;
       font-weight: bold;
-      margin-bottom: 5px;
+      padding: 0.5rem;
+      background-color: white; /* Add a background to cover content while sticking */
+      position: sticky;
+      top: 0;
+      z-index: 2; /* Ensure it stays above other content */
+      border-bottom: 1px solid #cccccc;
     }
     .section > .content {
       font-size: 14px;
@@ -231,6 +236,11 @@ std::string PrintCss() {
     span.yellow-highlight {
       background-color: #feefc3;
     }
+    span.temp-highlight {
+      background-color: #a8c7fa;
+      opacity: 0.7;
+      transition: background-color 0.5s ease-out;
+    }
 
     .hlo-instruction.hidden {
       display: none;
@@ -265,16 +275,6 @@ std::string PrintJavascript() {
       tooltip.textContent = 'Click to copy';
     }, 2000);
   }
-
-  function TextboxOnScroll(event) {
-    const textbox = event.target;
-    const idParts = textbox.id.split('-');
-    const id = idParts[0];
-    const isLeft = idParts[1] == 'left';
-    const sibling = document.getElementById(id + '-' + (isLeft ? 'right' : 'left'));
-    sibling.scrollTop = textbox.scrollTop;
-    sibling.scrollLeft = textbox.scrollLeft;
-  }
   </script>
   )html";
 }
@@ -286,6 +286,7 @@ std::string PrintJavascriptForHoverEvent() {
   allSpans.forEach(span => {
       span.addEventListener('mouseover', handleMouseOver);
       span.addEventListener('mouseout', handleMouseOut);
+      span.addEventListener('click', handleSpanClick);
   });
   function handleMouseOver(event) {
       const diffId = event.target.getAttribute('data-diffid');
@@ -307,6 +308,53 @@ std::string PrintJavascriptForHoverEvent() {
       relatedSpans.forEach(relatedSpan => {
           relatedSpan.classList.remove('bordered');
       });
+  }
+
+  function handleSpanClick(event) {
+      const diffId = event.target.getAttribute('data-diffid');
+      if (!diffId) {
+          return;
+      }
+
+      const clickedSpan = event.target;
+      const clickedPre = clickedSpan.closest('.hlo-textbox').querySelector('pre');
+      if (!clickedPre) return;
+
+      const idParts = clickedPre.id.split('-');
+      const fingerprint = idParts[0];
+      const isLeft = idParts[1] === 'left';
+      const siblingPreId = fingerprint + '-' + (isLeft ? 'right' : 'left');
+      const siblingPre = document.getElementById(siblingPreId);
+
+      if (siblingPre) {
+          const targetSpan = siblingPre.querySelector(`span[data-diffid="${diffId}"]`);
+          if (targetSpan) {
+              // Calculate the vertical offset of the clicked span from the top of its visible area.
+              const clickedSpanViewportOffset = clickedSpan.offsetTop - clickedPre.scrollTop;
+
+              // Calculate the percentage of this offset within the clickedPre's visible height.
+              const percentage = clickedPre.clientHeight > 0 ?
+                  clickedSpanViewportOffset / clickedPre.clientHeight : 0;
+
+              // Calculate the desired offset for the targetSpan within the siblingPre's visible area.
+              const desiredSiblingViewportOffset = percentage * siblingPre.clientHeight;
+
+              // Calculate the new scrollTop for siblingPre to achieve this alignment.
+              const newScrollTop = targetSpan.offsetTop - desiredSiblingViewportOffset;
+
+              // Scroll the siblingPre element smoothly.
+              siblingPre.scrollTo({
+                  top: Math.max(0, newScrollTop),
+                  behavior: 'smooth'
+              });
+
+              // Temporarily highlight the target span
+              targetSpan.classList.add('temp-highlight');
+              setTimeout(() => {
+                  targetSpan.classList.remove('temp-highlight');
+              }, 1500); // Remove highlight after 1.5 seconds
+          }
+      }
   }
   </script>
   )html";
