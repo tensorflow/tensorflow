@@ -59,7 +59,7 @@ class CpuExecutable : public Executable {
   // `entry_function_name` in the `jit`.
   static absl::StatusOr<std::unique_ptr<CpuExecutable>> Create(
       std::unique_ptr<FunctionLibrary> function_library,
-      std::unique_ptr<const BufferAssignment> assignment,
+      std::unique_ptr<BufferAssignment> assignment,
       std::unique_ptr<HloModule> hlo_module,
       const std::string& entry_function_name,
       std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
@@ -68,7 +68,7 @@ class CpuExecutable : public Executable {
   // Creates a CpuExecutable from a thunk sequence.
   static absl::StatusOr<std::unique_ptr<CpuExecutable>> Create(
       std::unique_ptr<FunctionLibrary> function_library,
-      std::unique_ptr<const BufferAssignment> assignment,
+      std::unique_ptr<BufferAssignment> assignment,
       std::unique_ptr<HloModule> hlo_module, ThunkSequence thunks,
       std::vector<ConstantAllocation> constants,
       std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
@@ -169,6 +169,10 @@ class CpuExecutable : public Executable {
     return std::move(function_library_);
   }
 
+  // Finalize construction of the CpuExecutable and finalize all internal data
+  // structures that might have been used at compile time.
+  void Finalize();
+
  private:
   // Creates an array suitable for passing as the "buffer_table" argument to the
   // JIT compiled function pointer.
@@ -220,7 +224,7 @@ class CpuExecutable : public Executable {
       symbol_type_id_to_function_type_id_;
 
   // Buffer assignment for the buffers we need to allocate.
-  std::shared_ptr<const BufferAssignment> assignment_;
+  std::shared_ptr<BufferAssignment> assignment_;
 
   // The LLVM IR, in string format, of the unoptimized module generated for this
   // CpuExecutable. We save a string instead of an llvm::Module* because leaving
@@ -258,7 +262,7 @@ class CpuExecutable : public Executable {
   CpuExecutable(std::unique_ptr<HloModule> hlo_module,
                 std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
                 std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map,
-                std::unique_ptr<const BufferAssignment> assignment);
+                std::unique_ptr<BufferAssignment> assignment);
   CpuExecutable(const CpuExecutable&) = delete;
   CpuExecutable& operator=(const CpuExecutable&) = delete;
 };
