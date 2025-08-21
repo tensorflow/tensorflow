@@ -127,6 +127,11 @@ static absl::StatusOr<mlir::Type> ConvertShapeToType(const Shape& shape,
   if (shape.IsToken()) {
     return mlir::stablehlo::TokenType::get(builder.getContext());
   }
+  if (shape.IsBuffer()) {
+    return ConvertTensorShapeToType<mlir::MemRefType>(shape.buffer_shape(),
+                                                      builder);
+  }
+
   return ConvertTensorShapeToType<TypeT>(shape, builder);
 }
 
