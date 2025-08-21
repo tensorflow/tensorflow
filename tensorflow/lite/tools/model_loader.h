@@ -23,7 +23,6 @@ limitations under the License.
 #include <cstdlib>
 #include <memory>
 #include <string>
-#include <vector>
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/core/model_builder.h"
