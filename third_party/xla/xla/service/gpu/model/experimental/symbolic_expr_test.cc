@@ -182,7 +182,7 @@ TEST_F(SymbolicExprTest, Canonicalization_MinMax) {
             "(min(v0, v1) * 2)");
 }
 
-TEST_F(SymbolicExprTest, DISABLED_Canonicalization_DivMod) {
+TEST_F(SymbolicExprTest, Canonicalization_DivMod) {
   // FloorDiv, CeilDiv, and Mod simplifications.
   EXPECT_EQ((v0.floorDiv(1)).Canonicalize().ToString(), "v0");
   EXPECT_EQ((v0.ceilDiv(1)).Canonicalize().ToString(), "v0");
