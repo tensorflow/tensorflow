@@ -22,6 +22,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/synchronization/notification.h"
 #include "tensorflow/core/common_runtime/composite_device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/device_set.h"
@@ -494,7 +495,7 @@ class ProcessFunctionLibraryRuntime {
     bool is_cross_process_ TF_GUARDED_BY(mu_) = false;
     bool init_started_ TF_GUARDED_BY(mu_) = false;
     absl::Status init_result_ TF_GUARDED_BY(mu_);
-    Notification init_done_;
+    absl::Notification init_done_;
   };
 
   mutable mutex mu_;

@@ -231,6 +231,7 @@ tf_cuda_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/synchronization",
         "@eigen_archive//:eigen3",
     ] + if_static([
         ":graph_constructor",
@@ -683,6 +684,7 @@ cc_library(
         "//tensorflow/core/profiler/lib:traceme_encode",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
         "@local_xla//xla/tsl/platform:env",
@@ -902,6 +904,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:variant",
     ],
@@ -1125,6 +1128,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         "//tensorflow/core/profiler/lib:traceme",
+        "@com_google_absl//absl/synchronization",
     ],
     alwayslink = 1,
 )
@@ -1757,6 +1761,7 @@ cc_library(
         ":process_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -1778,6 +1783,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/lib:traceme",
+        "@com_google_absl//absl/synchronization",
     ],
     alwayslink = 1,
 )
@@ -1800,6 +1806,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/lib:traceme",
+        "@com_google_absl//absl/synchronization",
     ],
     alwayslink = 1,
 )
@@ -2090,6 +2097,7 @@ tf_cuda_library(
         ":step_stats_collector",
         ":threadpool_device",
         ":threadpool_device_factory",
+        "@com_google_absl//absl/synchronization",
     ] + if_macos(
         [],
         [":replicate_constants_pass"],  # TODO(b/301469885): Remove.
@@ -2103,6 +2111,7 @@ tf_cuda_library(
     deps = [
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core/grappler:grappler_item",
+        "@com_google_absl//absl/synchronization",
     ] + if_static([":core_cpu_impl"]) + tf_protos_all() + tf_protos_grappler(),
 )
 
@@ -2113,6 +2122,7 @@ tf_cuda_library(
     deps = [
         ":core_cpu_base_no_ops",
         "//tensorflow/core/grappler:grappler_item",
+        "@com_google_absl//absl/synchronization",
     ] + tf_protos_all() + tf_protos_grappler(),
 )
 
@@ -2139,6 +2149,7 @@ tf_cuda_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@eigen_archive//:eigen3",
     ] + tf_additional_core_deps() + if_static([
         ":core_cpu_impl",
@@ -2216,6 +2227,7 @@ tf_cuda_library(
         "//tensorflow/core/profiler/lib:traceme_encode",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
     ],
@@ -2512,6 +2524,7 @@ tf_cc_tests(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@eigen_archive//:eigen3",
     ],
 )
@@ -2591,6 +2604,7 @@ tf_cc_tests(
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/util:protos_test_cc",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@eigen_archive//:eigen3",
     ],
 )
@@ -2830,6 +2844,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:function_ops",
         "//tensorflow/core/kernels:resource_variable_ops",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -2853,6 +2868,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -2949,6 +2965,7 @@ tf_cuda_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest",
         "@eigen_archive//:eigen3",
         "@local_xla//xla/tsl/platform:status_matchers",
@@ -2970,6 +2987,7 @@ tf_cc_test(
         "@com_google_googletest//:gtest",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
         "@local_xla//xla/tsl/platform:status_matchers",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -3134,6 +3152,7 @@ tf_cc_test(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest",
         "@local_xla//xla/tsl/platform:status_matchers",
     ],
@@ -3167,6 +3186,7 @@ tf_cc_test(
         "//tensorflow/core/kernels:matmul_op",
         "//tensorflow/core/kernels:random_ops",
         "//tensorflow/core/kernels:shape_ops",
+        "@com_google_absl//absl/synchronization",
         "@eigen_archive//:eigen3",
     ],
 )

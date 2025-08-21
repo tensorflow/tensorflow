@@ -14,12 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/collective_executor_mgr.h"
 
+#include "absl/synchronization/notification.h"
 #include "tensorflow/core/common_runtime/collective_param_resolver_local.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/device_resolver_local.h"
-#include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/nccl/collective_communicator.h"
@@ -80,7 +80,7 @@ TEST_F(CollectiveExecutorMgrTest, FindOrCreate) {
 
 TEST_F(CollectiveExecutorMgrTest, StepSequenceRelated) {
   EXPECT_EQ(CollectiveExecutor::kInvalidId, cme_->NextStepId(123));
-  Notification ss_note;
+  absl::Notification ss_note;
   absl::Status ss_status;
   cme_->RefreshStepIdSequenceAsync(
       123, [&ss_status, &ss_note](const absl::Status& s) {
@@ -91,7 +91,7 @@ TEST_F(CollectiveExecutorMgrTest, StepSequenceRelated) {
   EXPECT_FALSE(ss_status.ok());
   EXPECT_EQ(ss_status.message(),
             "CollectiveExecutorMgr does not implement RefreshStepIdSequence.");
-  Notification gs_note;
+  absl::Notification gs_note;
   absl::Status gs_status;
   GetStepSequenceRequest* req = nullptr;
   GetStepSequenceResponse* resp = nullptr;

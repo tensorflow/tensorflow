@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
+#include "absl/synchronization/notification.h"
 #include "tensorflow/cc/ops/array_ops_internal.h"
 #include "tensorflow/cc/ops/function_ops.h"
 #include "tensorflow/cc/ops/functional_ops.h"
@@ -201,7 +202,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
           test::function::FunctionTestSchedClosure(fn);
         };
     opts.runner = &runner;
-    Notification done;
+    absl::Notification done;
     std::vector<Tensor> out;
     absl::Status status;
     flr->Run(opts, handle, args, &out, [&status, &done](const absl::Status& s) {
@@ -279,7 +280,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
           test::function::FunctionTestSchedClosure(fn);
         };
     opts.runner = &runner;
-    Notification done;
+    absl::Notification done;
     absl::Status status;
     flr->Run(opts, handle, frame, [&status, &done](const absl::Status& s) {
       status = s;

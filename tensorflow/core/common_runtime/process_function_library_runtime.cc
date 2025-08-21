@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/synchronization/notification.h"
 #include "absl/types/optional.h"
 #include "absl/types/variant.h"
 #include "xla/tsl/platform/status.h"
@@ -797,7 +798,7 @@ absl::Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     counter.Wait();
   } else {
     for (auto& pair : *subgraphs) {
-      Notification n;
+      absl::Notification n;
       absl::Status* status = &instantiate_status[i];
       ComponentFunctionData* comp_data = &data->glue_[pair.first];
       comp_data->name = name_generator.GetName();
@@ -1019,7 +1020,7 @@ absl::Status ProcessFunctionLibraryRuntime::RunMultiDeviceSync(
       VLOG(4) << "    with " << opts_copy.DebugString();
 
       std::vector<std::unique_ptr<CleanUpItem>> cleanup_items;
-      Notification n;
+      absl::Notification n;
       absl::Status s;
       std::vector<FunctionRet> comp_rets;
       RunInternal(opts_copy, comp_handle, comp_args.args, &comp_rets,
@@ -1160,7 +1161,7 @@ absl::Status ProcessFunctionLibraryRuntime::Instantiate(
   }
 
   absl::Status status;
-  Notification notification;
+  absl::Notification notification;
   InstantiateRemote(function_name, attrs, options, handle,
                     [&status, &notification](const absl::Status& s) {
                       status = s;
@@ -1613,7 +1614,7 @@ absl::Status ProcessFunctionLibraryRuntime::RunSync(
   } else {
     // TODO(b/207484417): Either handle or avoid/delete this fallback path.
     metrics::IncrementTestCounter("pflr_runsync", "async");
-    Notification n;
+    absl::Notification n;
     absl::Status s;
     Run(orig_opts, handle, args, rets, [&n, &s](const absl::Status& status) {
       s.Update(status);
@@ -1628,7 +1629,7 @@ absl::Status ProcessFunctionLibraryRuntime::RunSync(
     const FunctionLibraryRuntime::Options& opts,
     FunctionLibraryRuntime::Handle handle, CallFrameInterface* frame) const {
   // TODO(b/207485199): Implement this as synchronous code.
-  Notification n;
+  absl::Notification n;
   absl::Status s;
   Run(opts, handle, frame, [&n, &s](const absl::Status& status) {
     s.Update(status);

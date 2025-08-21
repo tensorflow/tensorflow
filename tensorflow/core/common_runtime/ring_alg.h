@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/synchronization/notification.h"
 #include "tensorflow/core/common_runtime/base_collective_executor.h"
 #include "tensorflow/core/framework/collective.h"
 
@@ -110,7 +111,7 @@ class RingAlg : public CollectiveImplementationInterface {
   int group_size_;
   int num_subdivs_;
   Tensor group_size_tensor_;
-  Notification group_size_tensor_ready_;
+  absl::Notification group_size_tensor_ready_;
   std::unique_ptr<CollectiveAdapter> ca_;
   mutex status_mu_;
   absl::Status status_ TF_GUARDED_BY(status_mu_);

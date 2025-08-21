@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/rendezvous_util.h"
 
+#include "absl/synchronization/notification.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
@@ -56,7 +57,7 @@ TEST_F(RendezvousUtilTest, SendBeforeRecv) {
       rendez_, nullptr, {}, {MakeStringKey("hello1"), MakeStringKey("hello2")},
       {V("hello1"), V("hello2")}));
 
-  Notification n;
+  absl::Notification n;
   std::vector<Tensor> received_keys;
   RecvOutputsFromRendezvousAsync(
       rendez_, nullptr, {}, {MakeStringKey("hello1"), MakeStringKey("hello2")},
@@ -70,7 +71,7 @@ TEST_F(RendezvousUtilTest, SendBeforeRecv) {
 
 TEST_F(RendezvousUtilTest, RecvBeforeSend) {
   // Fire off recvs, wait for a notification in the callback.
-  Notification n;
+  absl::Notification n;
   std::vector<Tensor> received_keys;
   RecvOutputsFromRendezvousAsync(
       rendez_, nullptr, {}, {MakeStringKey("hello1"), MakeStringKey("hello2")},
@@ -101,7 +102,7 @@ TEST(RendezvousUtilCallerThreadTest, RecvBeforeSend) {
   Rendezvous* rendez_ = NewLocalRendezvous();
 
   // Fire off recvs, wait for a notification in the callback.
-  Notification n;
+  absl::Notification n;
   std::vector<Tensor> received_keys;
   RecvOutputsFromRendezvousAsync(
       rendez_, nullptr, {}, {MakeStringKey("hello1"), MakeStringKey("hello2")},

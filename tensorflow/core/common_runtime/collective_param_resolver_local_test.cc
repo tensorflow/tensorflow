@@ -17,6 +17,7 @@ limitations under the License.
 #include <atomic>
 
 #include "absl/strings/str_join.h"
+#include "absl/synchronization/notification.h"
 #include "tensorflow/core/common_runtime/collective_executor_mgr.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -25,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
-#include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/blocking_counter.h"
@@ -163,7 +163,7 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteDefaultRanking) {
 TEST_F(CollectiveParamResolverLocalTest, CompleteParamsReduction1Task) {
   CollectiveParams* cps[NUM_DEVS];
   absl::Status statuses[NUM_DEVS];
-  Notification note[NUM_DEVS];
+  absl::Notification note[NUM_DEVS];
   for (int i = 0; i < NUM_DEVS; ++i) {
     cps[i] = new CollectiveParams();
     CollectiveParams* cp = cps[i];
@@ -227,7 +227,7 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteParamsBroadcast1Task) {
   constexpr int kInstanceKey = 5;
   CollectiveParams* cps[NUM_DEVS];
   absl::Status statuses[NUM_DEVS];
-  Notification note[NUM_DEVS];
+  absl::Notification note[NUM_DEVS];
   for (int i = 0; i < NUM_DEVS; ++i) {
     cps[i] = new CollectiveParams();
     CollectiveParams* cp = cps[i];
@@ -269,7 +269,7 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteParamsBroadcastForgotSender) {
   constexpr int kInstanceKey = 8;
   CollectiveParams* cps[NUM_DEVS];
   absl::Status statuses[NUM_DEVS];
-  Notification note[NUM_DEVS];
+  absl::Notification note[NUM_DEVS];
   for (int i = 0; i < NUM_DEVS; ++i) {
     cps[i] = new CollectiveParams();
     CollectiveParams* cp = cps[i];
@@ -423,7 +423,7 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteParamsAfterAbortion) {
 
   auto complete_params = [this, &cancel_mgr](int group_key, int instance_key) {
     string device = "/job:localhost/replica:0/task:0/device:CPU:0";
-    Notification done;
+    absl::Notification done;
     auto* cp = MakeCollectiveParams(group_key, instance_key,
                                     /*is_source*/ true);
     core::ScopedUnref unref(cp);
@@ -462,7 +462,7 @@ TEST_F(CollectiveParamResolverLocalTest, AbortNormalCompleteParamsAsync) {
             int key = 100;
             while (true) {
               absl::Status status;
-              Notification n;
+              absl::Notification n;
               auto* cp =
                   MakeCollectiveParams(/* group_key*/ key, /*instance_key*/ key,
                                        /*is_source*/ i == 0);

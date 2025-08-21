@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "absl/types/optional.h"
 #include "xla/tsl/platform/errors.h"
@@ -751,7 +752,7 @@ absl::Status DirectSession::RunInternal(
     args.rendezvous = rendezvous.get();
 
     // `barrier` will delete itself after the final executor finishes.
-    Notification executors_done;
+    absl::Notification executors_done;
     ExecutorBarrier* barrier = new ExecutorBarrier(
         num_executors, rendezvous.get(),
         [&run_state, &executors_done](const absl::Status& ret) {
@@ -1836,7 +1837,8 @@ bool DirectSession::PartialRunState::PendingDone() const {
   return true;
 }
 
-void DirectSession::WaitForNotification(Notification* n, RunState* run_state,
+void DirectSession::WaitForNotification(absl::Notification* n,
+                                        RunState* run_state,
                                         CancellationManager* cm,
                                         int64_t timeout_in_ms) {
   const absl::Status status = WaitForNotification(n, timeout_in_ms);
@@ -1853,8 +1855,8 @@ void DirectSession::WaitForNotification(Notification* n, RunState* run_state,
   }
 }
 
-absl::Status DirectSession::WaitForNotification(Notification* notification,
-                                                int64_t timeout_in_ms) {
+absl::Status DirectSession::WaitForNotification(
+    absl::Notification* notification, int64_t timeout_in_ms) {
   if (timeout_in_ms > 0) {
     const bool notified = notification->WaitForNotificationWithTimeout(
         absl::Milliseconds(timeout_in_ms));
