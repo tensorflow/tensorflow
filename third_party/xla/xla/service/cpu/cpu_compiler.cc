@@ -1816,7 +1816,10 @@ absl::StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   AliasInfo alias_info;
   cpu_executable->set_debug_info(
       cpu_executable->buffer_assignment().StatsString(&alias_info));
+
   VLOG(1) << "Compilation finished";
+  cpu_executable->Finalize();
+
   return std::unique_ptr<Executable>(std::move(cpu_executable));
 }
 

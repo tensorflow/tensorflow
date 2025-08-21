@@ -85,7 +85,7 @@ namespace cpu {
 
 absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
     std::unique_ptr<FunctionLibrary> function_library,
-    std::unique_ptr<const BufferAssignment> assignment,
+    std::unique_ptr<BufferAssignment> assignment,
     std::unique_ptr<HloModule> hlo_module,
     const std::string& entry_function_name,
     std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
@@ -113,7 +113,7 @@ absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
 
 absl::StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
     std::unique_ptr<FunctionLibrary> function_library,
-    std::unique_ptr<const BufferAssignment> assignment,
+    std::unique_ptr<BufferAssignment> assignment,
     std::unique_ptr<HloModule> hlo_module, ThunkSequence thunks,
     std::vector<ConstantAllocation> constants,
     std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
@@ -153,7 +153,7 @@ CpuExecutable::CpuExecutable(
     std::unique_ptr<HloModule> hlo_module,
     std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
     std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map,
-    std::unique_ptr<const BufferAssignment> assignment)
+    std::unique_ptr<BufferAssignment> assignment)
     : Executable(std::move(hlo_module), std::move(hlo_profile_printer_data),
                  std::move(hlo_profile_index_map)),
       assignment_(std::move(assignment)) {
@@ -560,6 +560,8 @@ int64_t CpuExecutable::SizeOfGeneratedCodeInBytes() const {
   // TODO(ezhulenev): Delete this function, it's not really used anywhere.
   return 0;
 }
+
+void CpuExecutable::Finalize() { assignment_->Finalize(); }
 
 }  // namespace cpu
 }  // namespace xla

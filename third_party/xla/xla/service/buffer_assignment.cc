@@ -1307,6 +1307,16 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>> BufferAssignment::FromProto(
   return buffer_assignment;
 }
 
+void BufferAssignment::Finalize() {
+  hlo_ordering_.reset();
+  hlo_live_range_.reset();
+
+  for (BufferAllocation& allocation : allocations_) {
+    allocation.heap_traces_.clear();
+    allocation.heap_traces_.shrink_to_fit();
+  }
+}
+
 /* static */
 absl::StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
     const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,

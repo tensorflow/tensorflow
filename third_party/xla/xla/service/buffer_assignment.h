@@ -514,10 +514,18 @@ class BufferAssignment {
 
   HloAliasAnalysis& alias_analysis() const { return *alias_analysis_; }
 
-  const HloOrdering& hlo_ordering() const { return *hlo_ordering_; }
+  const HloOrdering& hlo_ordering() const {
+    DCHECK(hlo_ordering_) << "BufferAssignment was finalized and does not have "
+                             "an HloOrdering anymore.";
+    return *hlo_ordering_;
+  }
 
   // Returns the HloLiveRange object used to construct this assignment.
-  const HloLiveRange& hlo_live_range() const { return *hlo_live_range_; }
+  const HloLiveRange& hlo_live_range() const {
+    DCHECK(hlo_ordering_) << "BufferAssignment was finalized and does not have "
+                             "an HloLiveRange anymore.";
+    return *hlo_live_range_;
+  }
 
   // Is in use by many compilers to dump the buffer-assignment info.
   std::string ToString() const;
@@ -561,6 +569,13 @@ class BufferAssignment {
     int64_t total_allocation_bytes = 0;
   };
   const Stats& GetStats() const { return stats_; }
+
+  // Once HLO graph has all buffers assigned, finalizes the BufferAssignment by
+  // freeing the internal data structures that are no longer needed at run time.
+  //
+  // WARNING: Accessing HloOrdering or HloLiveRange after calling this method
+  // will result in a crash.
+  void Finalize();
 
  private:
   // Only BufferAssigner can build or modify BufferAssignments.
@@ -651,7 +666,7 @@ class BufferAssignment {
 
   const HloModule* module_;
 
-  const std::unique_ptr<HloOrdering> hlo_ordering_;
+  std::unique_ptr<HloOrdering> hlo_ordering_;
 
   // Function which returns the buffer size for a given logical buffer (shape).
   BufferValue::SizeFunction buffer_size_;
