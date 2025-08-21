@@ -1163,10 +1163,21 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
         attributes.push_back(builder_->getNamedAttr(
             "api_version", mlir::mhlo::CustomCallApiVersionAttr::get(
                                builder_->getContext(), mlir_api_version)));
-        attributes.push_back(builder_->getNamedAttr(
-            "output_operand_aliases",
-            ConvertOutputOperandAliasing(instruction->output_operand_aliasing(),
-                                         builder_)));
+        // We consider the output operand alias associated with Pin and Unpin
+        // an XLA/HLO implementation detail, such as to tell copy insertion that
+        // if there is a needed we can copy the operand of Pin and the result of
+        // Unpin, but can't copy the result of Pin and the operand of Unpin.
+        // The Pin and Unpin operand and result aren't alias from users's
+        // perspective, and they don't have the same types. For these reasons,
+        // we don't want to expose this implementation detail to MHLO/StableHLO
+        // users.
+        if (!custom_call->IsCustomCall(kPinCustomCallTarget) &&
+            !custom_call->IsCustomCall(kUnpinCustomCallTarget)) {
+          attributes.push_back(builder_->getNamedAttr(
+              "output_operand_aliases",
+              ConvertOutputOperandAliasing(
+                  instruction->output_operand_aliasing(), builder_)));
+        }
         // XLA Feature - MHLO Only
         return func_builder
             ->create<mlir::mhlo::CustomCallOp>(loc, result_type, operands,
@@ -1181,10 +1192,13 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       attributes.push_back(builder_->getNamedAttr(
           "api_version", mlir::stablehlo::CustomCallApiVersionAttr::get(
                              builder_->getContext(), mlir_api_version)));
-      attributes.push_back(builder_->getNamedAttr(
-          "output_operand_aliases",
-          stablehlo::ConvertOutputOperandAliasing(
-              instruction->output_operand_aliasing(), builder_)));
+      if (!custom_call->IsCustomCall(kPinCustomCallTarget) &&
+          !custom_call->IsCustomCall(kUnpinCustomCallTarget)) {
+        attributes.push_back(builder_->getNamedAttr(
+            "output_operand_aliases",
+            stablehlo::ConvertOutputOperandAliasing(
+                instruction->output_operand_aliasing(), builder_)));
+      }
       return func_builder
           ->create<mlir::stablehlo::CustomCallOp>(loc, result_type, operands,
                                                   attributes)

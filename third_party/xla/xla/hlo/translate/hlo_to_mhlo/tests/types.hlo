@@ -7,6 +7,10 @@ ENTRY %tfcompile.1 {
   // CHECK-NEXT: %[[VAL_0:.*]] = mhlo.constant dense<1.000000e+00> : tensor<f32>
   %constant.0 = f32[] constant(1)
 
+  // CHECK-NEXT: %[[VAL_9:.*]] = mhlo.custom_call @Pin(%[[VAL_0]])
+  // CHECK-SAME:(tensor<f32>) -> memref<f32>
+  %custom-call.0 = b(f32[]) custom-call(%constant.0), custom_call_target="Pin", output_to_operand_aliasing={{}: (0, {})}, api_version=API_VERSION_TYPED_FFI
+
   // CHECK-NEXT: %[[VAL_1:.*]] = mhlo.constant dense<1.000000e+00> : tensor<f64>
   %constant.1 = f64[] constant(1)
 

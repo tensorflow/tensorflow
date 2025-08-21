@@ -68,3 +68,38 @@ test_custom_call_ragged_all_to_all {
   %Arg_5.6 = s32[3] parameter(5)
   ROOT %custom-call.7 = f32[6] ragged-all-to-all(f32[6] %Arg_0.1, f32[6] %Arg_1.2, s32[3] %Arg_2.3, s32[3] %Arg_3.4, s32[3] %Arg_4.5, /*index=5*/s32[3] %Arg_5.6), channel_id=1, replica_groups={{0,1,2}}
 }
+
+// CHECK-LABEL:  func private @test_custom_call_create_buffer
+//  CHECK-SAME:  () -> memref<2x4xf32>
+//  CHECK-NEXT: mhlo.custom_call @CreateBuffer()
+//   CHECK-NOT:  output_to_operand_aliasing
+test_custom_call_create_buffer {
+  ROOT %custom-call.2 = b(f32[2,4]) custom-call(), custom_call_target="CreateBuffer", api_version=API_VERSION_TYPED_FFI
+}
+
+// CHECK-LABEL:  func private @test_custom_call_pin
+//  CHECK-SAME:  (%[[Arg:.*]]: tensor<4x16xf32>) -> memref<4x16xf32>
+//  CHECK-NEXT: mhlo.custom_call @Pin(%[[Arg]])
+//   CHECK-NOT:  output_to_operand_aliasing
+test_custom_call_pin {
+  %Arg_0.1 = f32[4, 16] parameter(0)
+  ROOT %custom-call.2 = b(f32[4, 16]) custom-call(%Arg_0.1), custom_call_target="Pin", output_to_operand_aliasing={{}: (0, {})}, api_version=API_VERSION_TYPED_FFI
+}
+
+// CHECK-LABEL:  func private @test_custom_call_unpin
+//  CHECK-SAME:  (%[[Arg:.*]]: memref<4x16xf32>) -> tensor<4x16xf32>
+//  CHECK-NEXT: mhlo.custom_call @Unpin(%[[Arg]])
+//   CHECK-NOT:  output_to_operand_aliasing
+test_custom_call_unpin {
+  %Arg_0.1 = b(f32[4, 16]) parameter(0)
+  ROOT %custom-call.2 = f32[4, 16] custom-call(%Arg_0.1), custom_call_target="Unpin", output_to_operand_aliasing={{}: (0, {})}, api_version=API_VERSION_TYPED_FFI
+}
+
+// CHECK-LABEL:  func private @test_custom_call_other_with_buffers
+//  CHECK-SAME:  (%[[Arg:.*]]: memref<4x16xf32>) -> memref<4x16xf32>
+//  CHECK-NEXT: mhlo.custom_call @foo(%[[Arg]])
+//  CHECK-SAME:  output_operand_aliases = [#mhlo.output_operand_alias<output_tuple_indices = [], operand_index = 0, operand_tuple_indices = []>]
+test_custom_call_other_with_buffers {
+  %Arg_0.1 = b(f32[4, 16]) parameter(0)
+  ROOT %custom-call.2 = b(f32[4, 16]) custom-call(%Arg_0.1), custom_call_target="foo", output_to_operand_aliasing={{}: (0, {})}, api_version=API_VERSION_TYPED_FFI
+}
