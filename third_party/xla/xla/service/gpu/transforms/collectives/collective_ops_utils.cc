@@ -24,7 +24,6 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -163,17 +162,23 @@ absl::StatusOr<GPUCommunicationType> CommunicationType(
   return GPUCommunicationType::UNDEFINED;
 }
 
-bool IsNVLinkConnected(const HloModuleConfig& config,
-                       int64_t nvlink_slice_size) {
-  int hlo_device_count = config.num_partitions() * config.replica_count();
-  if (hlo_device_count <= nvlink_slice_size) {
-    VLOG(1) << "NVLink connected: HLO device count " << hlo_device_count
-            << " <= NVLink slice size " << nvlink_slice_size;
-    return true;
+GPUTopologyType GetTopologyType(
+    const HloModuleConfig& config,
+    const se::DeviceDescription& device_description) {
+  se::CudaComputeCapability cc = device_description.cuda_compute_capability();
+  // TODO: b/390095346 - Use topology information once available at compile
+  // time.
+  if (cc.IsHopper()) {
+    return config.num_partitions() * config.replica_count() > 8
+               ? GPUTopologyType::MULTI_HOST
+               : GPUTopologyType::SINGLE_HOST;
   }
-  VLOG(1) << "Not NVLink connected: HLO device count " << hlo_device_count
-          << " > NVLink slice size " << nvlink_slice_size;
-  return false;
+  if (cc.IsAmpere()) {
+    return config.num_partitions() * config.replica_count() > 16
+               ? GPUTopologyType::MULTI_HOST
+               : GPUTopologyType::SINGLE_HOST;
+  }
+  return GPUTopologyType::UNKNOWN;
 }
 
 }  // namespace gpu
