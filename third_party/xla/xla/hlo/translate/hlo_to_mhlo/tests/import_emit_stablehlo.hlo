@@ -2242,7 +2242,7 @@ ENTRY %main.3 (Arg_0.1: f32[3,4]) -> f32[3,4,1] {
 
 // CHECK-LABEL: module @main attributes {mhlo.cross_program_prefetches = [], mhlo.input_output_alias = [], mhlo.is_dynamic = false, mhlo.use_auto_spmd_partitioning = false} {
 // CHECK:         func.func @main(%[[VAL_0:.*]]: tensor<4x4xf32>, %[[VAL_1:.*]]: tensor<3x4xf32>) -> tuple<tensor<4x4xf32>, tensor<3x4xf32>> {
-// CHECK:           %[[VAL_2:.*]]:2 = stablehlo.optimization_barrier %[[VAL_0]], %[[VAL_1]] : tensor<4x4xf32>, tensor<3x4xf32>
+// CHECK:           %[[VAL_2:.*]]:2 = stablehlo.optimization_barrier {mhlo.sharding = "{{\{\{}}replicated}, {devices=[1,2]<=[2]}}"} %[[VAL_0]], %[[VAL_1]] : tensor<4x4xf32>, tensor<3x4xf32>
 // CHECK:           %[[VAL_3:.*]] = stablehlo.tuple %[[VAL_2]]#0, %[[VAL_2]]#1 {xla_shape = "(f32[4,4]{1,0}, f32[3,4]{1,0})"} : tuple<tensor<4x4xf32>, tensor<3x4xf32>>
 // CHECK:           return %[[VAL_3]] : tuple<tensor<4x4xf32>, tensor<3x4xf32>>
 // CHECK:         }

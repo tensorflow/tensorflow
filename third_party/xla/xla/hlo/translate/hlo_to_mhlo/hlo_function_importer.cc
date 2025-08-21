@@ -2060,7 +2060,7 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       FlattenTupleValue(func_builder, loc, operands[0], flattened_operands);
 
       auto op = func_builder->create<mlir::stablehlo::OptimizationBarrierOp>(
-          loc, flattened_operand_types, flattened_operands);
+          loc, flattened_operand_types, flattened_operands, attributes);
 
       return CreateTupleFromOpResults(func_builder, loc, op.getOperation(),
                                       operands[0].getType());
