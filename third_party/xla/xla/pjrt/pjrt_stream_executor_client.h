@@ -508,7 +508,7 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> LoadInternal(
       std::optional<HloModuleProto> unoptimized_hlo_module_proto,
       std::vector<std::unique_ptr<LocalExecutable>> local_executables,
-      CompileOptions compile_options);
+      CompileOptions compile_options, bool dump);
 
   const PjRtPlatformId platform_id_;
   const std::string platform_name_;
