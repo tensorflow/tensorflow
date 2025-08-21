@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 
-#include <cstdint>
-
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
@@ -34,52 +32,65 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
-using ::absl_testing::IsOkAndHolds;
 using ::testing::Test;
+using ::tsl::testing::IsOkAndHolds;
 
-bool IsNVLinkConnected(int num_partitions, int replica_count,
-                       int64_t nvlink_slice_size) {
+GPUTopologyType GetTopologyType(se::CudaComputeCapability compute_capability,
+                                int num_partitions, int replica_count) {
   HloModuleConfig config;
   config.set_num_partitions(num_partitions);
   config.set_replica_count(replica_count);
-  return xla::gpu::IsNVLinkConnected(config, nvlink_slice_size);
+  se::DeviceDescription device_description;
+  device_description.set_gpu_compute_capability(compute_capability);
+  return xla::gpu::GetTopologyType(config, device_description);
 }
 
-TEST(IsNVLinkConnectedTest, SingleHostSingleDevice) {
-  // H100/B200
-  EXPECT_TRUE(IsNVLinkConnected(
-      /*num_partitions=*/1, /*replica_count=*/1, /*nvlink_slice_size=*/8));
-  // A100
-  EXPECT_TRUE(IsNVLinkConnected(
-      /*num_partitions=*/1, /*replica_count=*/1, /*nvlink_slice_size=*/16));
+TEST(GetTopologyTypeTest, SingleHostSingleDevice) {
+  EXPECT_THAT(GetTopologyType(se::CudaComputeCapability::Ampere(),
+                              /*num_partitions=*/1, /*replica_count=*/1),
+              GPUTopologyType::SINGLE_HOST);
+  EXPECT_THAT(GetTopologyType(se::CudaComputeCapability::Hopper(),
+                              /*num_partitions=*/1, /*replica_count=*/1),
+              GPUTopologyType::SINGLE_HOST);
 }
 
-TEST(IsNVLinkConnectedTest, SingleHostMultiDevices) {
-  // H100/B200
-  EXPECT_TRUE(IsNVLinkConnected(
-      /*num_partitions=*/8, /*replica_count=*/1, /*nvlink_slice_size=*/8));
-  EXPECT_TRUE(IsNVLinkConnected(
-      /*num_partitions=*/1, /*replica_count=*/8, /*nvlink_slice_size=*/8));
-
-  // A100
-  EXPECT_TRUE(IsNVLinkConnected(
-      /*num_partitions=*/1, /*replica_count=*/16, /*nvlink_slice_size=*/16));
-  EXPECT_TRUE(IsNVLinkConnected(
-      /*num_partitions=*/16, /*replica_count=*/1, /*nvlink_slice_size=*/16));
+TEST(GetTopologyTypeTest, SingleHostMultiDevices) {
+  EXPECT_THAT(GetTopologyType(se::CudaComputeCapability::Ampere(),
+                              /*num_partitions=*/16, /*replica_count=*/1),
+              GPUTopologyType::SINGLE_HOST);
+  EXPECT_THAT(GetTopologyType(se::CudaComputeCapability::Ampere(),
+                              /*num_partitions=*/1, /*replica_count=*/16),
+              GPUTopologyType::SINGLE_HOST);
+  EXPECT_THAT(GetTopologyType(se::CudaComputeCapability::Hopper(),
+                              /*num_partitions=*/8, /*replica_count=*/1),
+              GPUTopologyType::SINGLE_HOST);
+  EXPECT_THAT(GetTopologyType(se::CudaComputeCapability::Hopper(),
+                              /*num_partitions=*/1, /*replica_count=*/8),
+              GPUTopologyType::SINGLE_HOST);
 }
 
-TEST(IsNVLinkConnectedTest, MultiHosts) {
-  // H100/B200
-  EXPECT_FALSE(IsNVLinkConnected(
-      /*num_partitions=*/16, /*replica_count=*/1, /*nvlink_slice_size=*/8));
-  EXPECT_FALSE(IsNVLinkConnected(
-      /*num_partitions=*/1, /*replica_count=*/16, /*nvlink_slice_size=*/8));
+TEST(GetTopologyTypeTest, MultiHosts) {
+  EXPECT_THAT(GetTopologyType(se::CudaComputeCapability::Ampere(),
+                              /*num_partitions=*/32, /*replica_count=*/1),
+              GPUTopologyType::MULTI_HOST);
+  EXPECT_THAT(GetTopologyType(se::CudaComputeCapability::Ampere(),
+                              /*num_partitions=*/1, /*replica_count=*/32),
+              GPUTopologyType::MULTI_HOST);
+  EXPECT_THAT(GetTopologyType(se::CudaComputeCapability::Hopper(),
+                              /*num_partitions=*/16, /*replica_count=*/1),
+              GPUTopologyType::MULTI_HOST);
+  EXPECT_THAT(GetTopologyType(se::CudaComputeCapability::Hopper(),
+                              /*num_partitions=*/1, /*replica_count=*/16),
+              GPUTopologyType::MULTI_HOST);
+}
 
-  // A100
-  EXPECT_FALSE(IsNVLinkConnected(
-      /*num_partitions=*/1, /*replica_count=*/32, /*nvlink_slice_size=*/16));
-  EXPECT_FALSE(IsNVLinkConnected(
-      /*num_partitions=*/32, /*replica_count=*/1, /*nvlink_slice_size=*/16));
+TEST(GetTopologyTypeTest, NonAmpereAndHopper) {
+  EXPECT_EQ(GetTopologyType(se::CudaComputeCapability::Volta(),
+                            /*num_partitions=*/1, /*replica_count=*/1),
+            GPUTopologyType::UNKNOWN);
+  EXPECT_EQ(GetTopologyType(se::CudaComputeCapability::Blackwell(),
+                            /*num_partitions=*/1, /*replica_count=*/1),
+            GPUTopologyType::UNKNOWN);
 }
 
 class CommunicationTypeTest : public Test {
@@ -111,7 +122,7 @@ TEST_F(CommunicationTypeTest, DetectsSingleHost8Devices) {
       module->entry_computation()->root_instruction());
   EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
                                 device_info().gpu_compute_capability()),
-              IsOkAndHolds(GPUCommunicationType::SINGLE_HOST));
+              absl_testing::IsOkAndHolds(GPUCommunicationType::SINGLE_HOST));
 }
 
 TEST_F(CommunicationTypeTest, DetectsSingleHost4Devices) {
@@ -134,7 +145,7 @@ TEST_F(CommunicationTypeTest, DetectsSingleHost4Devices) {
       module->entry_computation()->root_instruction());
   EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
                                 device_info().gpu_compute_capability()),
-              IsOkAndHolds(GPUCommunicationType::SINGLE_HOST));
+              absl_testing::IsOkAndHolds(GPUCommunicationType::SINGLE_HOST));
 }
 
 TEST_F(CommunicationTypeTest, DetectsSingleHost16Devices) {
@@ -157,7 +168,7 @@ TEST_F(CommunicationTypeTest, DetectsSingleHost16Devices) {
       module->entry_computation()->root_instruction());
   EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
                                 device_info().gpu_compute_capability()),
-              IsOkAndHolds(GPUCommunicationType::SINGLE_HOST));
+              absl_testing::IsOkAndHolds(GPUCommunicationType::SINGLE_HOST));
 }
 
 TEST_F(CommunicationTypeTest, DetectRailAlignedAllDevices) {
@@ -180,7 +191,7 @@ TEST_F(CommunicationTypeTest, DetectRailAlignedAllDevices) {
       module->entry_computation()->root_instruction());
   EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
                                 device_info().gpu_compute_capability()),
-              IsOkAndHolds(GPUCommunicationType::RAIL_ALIGNED));
+              absl_testing::IsOkAndHolds(GPUCommunicationType::RAIL_ALIGNED));
 }
 
 TEST_F(CommunicationTypeTest, DetectRailAlignedHalfMesh) {
@@ -206,7 +217,7 @@ TEST_F(CommunicationTypeTest, DetectRailAlignedHalfMesh) {
       module->entry_computation()->root_instruction());
   EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
                                 device_info().gpu_compute_capability()),
-              IsOkAndHolds(GPUCommunicationType::RAIL_ALIGNED));
+              absl_testing::IsOkAndHolds(GPUCommunicationType::RAIL_ALIGNED));
 }
 
 TEST_F(CommunicationTypeTest, DetectNonRailAligned) {
@@ -227,9 +238,10 @@ TEST_F(CommunicationTypeTest, DetectNonRailAligned) {
 
   HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
       module->entry_computation()->root_instruction());
-  EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
-                                device_info().gpu_compute_capability()),
-              IsOkAndHolds(GPUCommunicationType::NON_RAIL_ALIGNED));
+  EXPECT_THAT(
+      CommunicationType(/*num_devices_per_host=*/8, *instr,
+                        device_info().gpu_compute_capability()),
+      absl_testing::IsOkAndHolds(GPUCommunicationType::NON_RAIL_ALIGNED));
 }
 
 TEST_F(CommunicationTypeTest, DetectsSingleHost16DevicesForEmptyReplicaGroups) {
@@ -250,7 +262,7 @@ TEST_F(CommunicationTypeTest, DetectsSingleHost16DevicesForEmptyReplicaGroups) {
       module->entry_computation()->root_instruction());
   EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/16, *instr,
                                 device_info().gpu_compute_capability()),
-              IsOkAndHolds(GPUCommunicationType::SINGLE_HOST));
+              absl_testing::IsOkAndHolds(GPUCommunicationType::SINGLE_HOST));
 }
 
 TEST_F(CommunicationTypeTest, DetectsRailAligned8DevicesForEmptyReplicaGroups) {
@@ -271,7 +283,7 @@ TEST_F(CommunicationTypeTest, DetectsRailAligned8DevicesForEmptyReplicaGroups) {
       module->entry_computation()->root_instruction());
   EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
                                 device_info().gpu_compute_capability()),
-              IsOkAndHolds(GPUCommunicationType::RAIL_ALIGNED));
+              absl_testing::IsOkAndHolds(GPUCommunicationType::RAIL_ALIGNED));
 }
 
 TEST_F(CommunicationTypeTest, DetectsNonRailAligned16Devices) {
@@ -290,9 +302,10 @@ TEST_F(CommunicationTypeTest, DetectsNonRailAligned16Devices) {
 
   HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
       module->entry_computation()->root_instruction());
-  EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
-                                device_info().gpu_compute_capability()),
-              IsOkAndHolds(GPUCommunicationType::NON_RAIL_ALIGNED));
+  EXPECT_THAT(
+      CommunicationType(/*num_devices_per_host=*/8, *instr,
+                        device_info().gpu_compute_capability()),
+      absl_testing::IsOkAndHolds(GPUCommunicationType::NON_RAIL_ALIGNED));
 }
 
 TEST_F(CommunicationTypeTest, DetectsSingleHostCollectivePermute) {
@@ -312,7 +325,7 @@ TEST_F(CommunicationTypeTest, DetectsSingleHostCollectivePermute) {
       module->entry_computation()->root_instruction());
   EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
                                 device_info().gpu_compute_capability()),
-              IsOkAndHolds(GPUCommunicationType::SINGLE_HOST));
+              absl_testing::IsOkAndHolds(GPUCommunicationType::SINGLE_HOST));
 }
 
 TEST_F(CommunicationTypeTest, DetectsNonRailAlignedCollectivePermute) {
@@ -331,9 +344,10 @@ TEST_F(CommunicationTypeTest, DetectsNonRailAlignedCollectivePermute) {
 
   HloChannelInstruction* instr = Cast<HloChannelInstruction>(
       module->entry_computation()->root_instruction());
-  EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
-                                device_info().gpu_compute_capability()),
-              IsOkAndHolds(GPUCommunicationType::NON_RAIL_ALIGNED));
+  EXPECT_THAT(
+      CommunicationType(/*num_devices_per_host=*/8, *instr,
+                        device_info().gpu_compute_capability()),
+      absl_testing::IsOkAndHolds(GPUCommunicationType::NON_RAIL_ALIGNED));
 }
 
 TEST_F(CommunicationTypeTest, DetectsRailAlignedCollectivePermute) {
@@ -353,7 +367,7 @@ TEST_F(CommunicationTypeTest, DetectsRailAlignedCollectivePermute) {
       module->entry_computation()->root_instruction());
   EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
                                 device_info().gpu_compute_capability()),
-              IsOkAndHolds(GPUCommunicationType::RAIL_ALIGNED));
+              absl_testing::IsOkAndHolds(GPUCommunicationType::RAIL_ALIGNED));
 }
 
 }  // namespace
