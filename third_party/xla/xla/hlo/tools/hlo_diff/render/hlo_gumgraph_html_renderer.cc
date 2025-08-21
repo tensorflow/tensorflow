@@ -212,12 +212,14 @@ std::string PrintCss() {
       color: #999999;
     }
 
-    span.hlo-instruction:hover {
-      border: 1px solid #4285F4;
+    span.hlo-instruction {
+      display: inline-block;
     }
-
+    span.hlo-instruction:hover {
+      border: 2px solid #4285F4;
+    }
     span.bordered {
-      border: 1px solid #4285F4;
+      border: 2px solid #4285F4;
     }
 
     span.red-highlight {
@@ -228,6 +230,23 @@ std::string PrintCss() {
     }
     span.yellow-highlight {
       background-color: #feefc3;
+    }
+
+    .hlo-instruction.hidden {
+      display: none;
+    }
+    button {
+      background-color: #3f51b5;
+      color: white;
+      font-weight: bold;
+      padding: 0.2rem 0.5rem;
+      margin-left: 1rem;
+      border-radius: 0.5rem;
+      transition: all 0.2s ease-in-out;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+    }
+    button:hover {
+      transform: translateY(-1px) scale(1.02);
     }
 
     </style>
@@ -289,6 +308,24 @@ std::string PrintJavascriptForHoverEvent() {
           relatedSpan.classList.remove('bordered');
       });
   }
+  </script>
+  )html";
+}
+
+std::string PrintJavascriptForToggleButton() {
+  return R"html(
+  <script>
+  const toggleButton = document.getElementById('toggleButton');
+    const hloInstructions = document.querySelectorAll('.hlo-instruction:not(.highlighted)');
+    let isHidden = false;
+
+    toggleButton.addEventListener('click', () => {
+      isHidden = !isHidden;
+      hloInstructions.forEach(instruction => {
+        instruction.classList.toggle('hidden', isHidden);
+      });
+      toggleButton.textContent = isHidden ? 'Show Unchanged Instructions' : 'Hide Unchanged Instructions';
+    });
   </script>
   )html";
 }
@@ -374,6 +411,12 @@ std::string PrintAttributesList(absl::Span<const std::string> items) {
                                                   PrintDiv(item, {"item"}));
                                 }),
                   {"attributes-list"});
+}
+
+// Prints a button
+std::string PrintButton(absl::string_view id, absl::string_view text) {
+  return absl::StrFormat(
+      R"html(<button id="%s" class="button">%s</button>)html", id, text);
 }
 
 // The position of the tooltip.
@@ -487,12 +530,11 @@ std::string PrintHloComputationToHtml(
         comp->MakeInstructionPostOrder();
     for (const HloInstruction* instruction : instruction_order) {
       DCHECK_EQ(comp, instruction->parent());
-      printer.Append("  ");  // Instruction indentation (2 spaces)
 
       auto it = span_attributes.find(instruction);
       std::string highlight_class =
           it != span_attributes.end() && !it->second.highlight.empty()
-              ? std::string(it->second.highlight)
+              ? std::string(it->second.highlight) + " highlighted"
               : "";
       std::string diffid =
           it != span_attributes.end() && !it->second.diffid.empty()
@@ -502,13 +544,13 @@ std::string PrintHloComputationToHtml(
               : "";
       printer.Append(absl::StrCat("<span class=\"hlo-instruction ",
                                   highlight_class, "\"", diffid, " >"));
-
+      printer.Append("  ");  // Instruction indentation (2 spaces)
       if (instruction == comp->root_instruction()) {
         printer.Append("ROOT ");
       }
       instruction->PrintWithCanonicalNameMap(
           &printer, instruction_print_options, &name_map);
-      printer.Append("</span>\n");
+      printer.Append("</span>");
     }
   }
 
@@ -1072,7 +1114,8 @@ void RenderHtml(const DiffResult& diff_result, const DiffSummary& diff_summary,
 
   // Print repetitive computation groups
   out << PrintSectionWithHeader(
-      "Diffs grouped by computation (Ordered by # of different instructions)",
+      "Diffs grouped by computation (Ordered by # of different instructions) " +
+          PrintButton("toggleButton", "Hide Unchanged Instructions"),
       PrintRepetitiveDiffPatterns(diff_summary.computation_diff_patterns,
                                   span_attributes, url_generator));
 
@@ -1103,6 +1146,7 @@ void RenderHtml(const DiffResult& diff_result, const DiffSummary& diff_summary,
                   filtered_diff_result.changed_instructions, url_generator))));
 
   out << PrintJavascriptForHoverEvent();
+  out << PrintJavascriptForToggleButton();
 }
 
 }  // namespace hlo_diff
