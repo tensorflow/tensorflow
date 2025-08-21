@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "mhlo/IR/register.h"
@@ -157,6 +158,31 @@ void setFuncArgFrontendAttrs(FuncOp funcOp, unsigned int index,
                     DictionaryAttr::get(funcOp.getContext(), frontendAttrs));
 }
 
+std::optional<TensorShardingAttr> adjustShardingInternal(
+    mlir::MLIRContext* context, int idx, TensorShardingAttr sharding,
+    int64_t rank, absl::Span<const bool> allowSpmdShardingPropagation) {
+  bool allowPropagation = false;
+  if (!allowSpmdShardingPropagation.empty()) {
+    allowPropagation = allowSpmdShardingPropagation.size() == 1
+                           ? allowSpmdShardingPropagation[0]
+                           : allowSpmdShardingPropagation[idx];
+  }
+
+  if (allowPropagation) {
+    return std::nullopt;
+  }
+
+  // Close all dimensions if sharding propagation is not allowed.
+  if (sharding) {
+    sharding = sharding.getClosedLike(sharding);
+  } else {
+    sharding = TensorShardingAttr::getFullyClosed(context, rank,
+                                                  MeshAttr::get(context, {}));
+  }
+
+  return sharding;
+}
+
 }  // namespace
 
 void setFrontendAttribute(Operation* op, StringRef name, Attribute value) {
@@ -210,29 +236,24 @@ void loadAllRequiredDialects(mlir::MLIRContext* context) {
   context->loadAllAvailableDialects();
 }
 
+void adjustInputSharding(
+    FuncOp func, int idx, TensorShardingAttr sharding, int64_t rank,
+    absl::Span<const bool> allowSpmdShardingPropagationToParameters) {
+  if (std::optional<TensorShardingAttr> adjustedSharding =
+          adjustShardingInternal(func.getContext(), idx, sharding, rank,
+                                 allowSpmdShardingPropagationToParameters)) {
+    mlir::sdy::setSharding(func.getArgument(idx), *adjustedSharding);
+  }
+}
+
 void adjustOutputSharding(
     FuncOp func, int idx, TensorShardingAttr sharding, int64_t rank,
     absl::Span<const bool> allowSpmdShardingPropagationToOutput) {
-  bool allowPropagation = false;
-  if (!allowSpmdShardingPropagationToOutput.empty()) {
-    allowPropagation = allowSpmdShardingPropagationToOutput.size() == 1
-                           ? allowSpmdShardingPropagationToOutput[0]
-                           : allowSpmdShardingPropagationToOutput[idx];
+  if (std::optional<TensorShardingAttr> adjustedSharding =
+          adjustShardingInternal(func.getContext(), idx, sharding, rank,
+                                 allowSpmdShardingPropagationToOutput)) {
+    setFuncResultSharding(func, idx, *adjustedSharding);
   }
-
-  if (allowPropagation) {
-    return;
-  }
-
-  // Close all dimensions if sharding propagation to outputs is not allowed.
-  if (sharding) {
-    sharding = sharding.getClosedLike(sharding);
-  } else {
-    sharding = TensorShardingAttr::getFullyClosed(
-        func.getContext(), rank,
-        MeshAttr::get(func.getContext(), mlir::ArrayRef<MeshAxisAttr>{}));
-  }
-  setFuncResultSharding(func, idx, sharding);
 }
 
 CustomCallOp cloneCustomCallWithNewResultTypes(CustomCallOp op,

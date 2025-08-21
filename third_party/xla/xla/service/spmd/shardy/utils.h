@@ -80,6 +80,13 @@ bool hasKey(mlir::DictionaryAttr dictAttr, mlir::StringRef key);
 
 void loadAllRequiredDialects(mlir::MLIRContext* context);
 
+// Adjusts the input sharding based on allowSpmdShardingPropagationToParameters
+// flag.
+void adjustInputSharding(
+    mlir::func::FuncOp func, int idx, mlir::sdy::TensorShardingAttr sharding,
+    int64_t rank,
+    absl::Span<const bool> allowSpmdShardingPropagationToParameters);
+
 // Adjusts the output sharding based on allowSpmdShardingPropagationToOutput
 // flag.
 void adjustOutputSharding(
