@@ -1913,7 +1913,12 @@ absl::Status EmitMatMul(EmitterLocOpBuilder& b,
                       TritonFusionAnalysis::Execute(
                           *fusion->called_computation(), config.split_k));
 
-  TF_RETURN_IF_ERROR(CheckGemmTilingComplexityHeuristic(config));
+  absl::Status status = CheckGemmTilingComplexityHeuristic(config);
+  if (!status.ok()) {
+    VLOG(1) << "EmitMatMul heuristic check failed: "
+            << fusion->called_computation()->ToString() << status.message();
+    return status;
+  }
 
   const HloComputation* computation = fusion->fused_instructions_computation();
   const HloInstruction* instr =

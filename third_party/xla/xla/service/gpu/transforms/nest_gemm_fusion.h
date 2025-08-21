@@ -29,8 +29,7 @@ limitations under the License.
 
 namespace xla::gpu {
 
-// Rewrites Triton GEMM fusions to generic Triton fusions. Any other fusions are
-// left unchanged.
+// Rewrites supported Triton GEMM fusions to generic Triton fusions.
 //
 // Fusions with kind kCustom and fusion_backend_config.kind "__triton_gemm" are
 // rewritten to fusion_backend_config.kind
