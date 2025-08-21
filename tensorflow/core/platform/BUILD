@@ -479,15 +479,6 @@ cc_library(
 )
 
 cc_library(
-    name = "notification",
-    hdrs = ["notification.h"],
-    deps = [
-        ":platform",
-        "@local_tsl//tsl/platform:notification",
-    ],
-)
-
-cc_library(
     name = "null_file_system",
     hdrs = ["null_file_system.h"],
     deps = [
@@ -1381,7 +1372,6 @@ filegroup(
         "mem.h",
         "mutex.h",
         "net.h",
-        "notification.h",
         "null_file_system.h",
         "numa.h",
         "path.h",
@@ -1658,7 +1648,6 @@ filegroup(
         "cpu_feature_guard.h",
         "error_logging.h",
         "fingerprint.h",
-        "notification.h",
         "platform_strings.cc",
         "platform_strings.h",
         "platform_strings_computed.h",

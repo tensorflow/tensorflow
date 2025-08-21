@@ -44,7 +44,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/device_properties.pb.h"

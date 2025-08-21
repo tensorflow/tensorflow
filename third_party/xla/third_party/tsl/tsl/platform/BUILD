@@ -353,7 +353,6 @@ filegroup(
         "init_main.h",
         "mem.h",
         "net.h",
-        "notification.h",
         "null_file_system.h",
         "numa.h",
         "path.h",
@@ -483,7 +482,6 @@ filegroup(
     srcs = [
         "error_logging.h",
         "fingerprint.h",
-        "notification.h",
         "random.cc",
         "random.h",
         "test_benchmark.h",
@@ -1137,17 +1135,6 @@ cc_library(
         "@local_xla//xla/tsl/platform:test_main",
     ],
     alwayslink = 1,
-)
-
-cc_library(
-    name = "notification",
-    hdrs = ["notification.h"],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/time",
-    ],
 )
 
 cc_library(

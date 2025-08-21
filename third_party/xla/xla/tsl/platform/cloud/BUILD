@@ -49,7 +49,6 @@ cc_library(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:types",
-        "@local_tsl//tsl/platform:notification",
         "@local_tsl//tsl/platform:stringpiece",
         "@local_tsl//tsl/platform:thread_annotations",
     ],
@@ -69,7 +68,6 @@ cc_library(
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
-        "@local_tsl//tsl/platform:notification",
         "@local_tsl//tsl/platform:stringpiece",
         "@local_tsl//tsl/platform:thread_annotations",
     ],
@@ -389,7 +387,6 @@ tsl_cc_test(
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:blocking_counter",
-        "@local_tsl//tsl/platform:notification",
     ],
 )
 

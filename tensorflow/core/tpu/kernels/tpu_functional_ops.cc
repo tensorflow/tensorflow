@@ -83,7 +83,6 @@ limitations under the License.
 #include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/hash.h"
-#include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/strcat.h"

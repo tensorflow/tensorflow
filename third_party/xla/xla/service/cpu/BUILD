@@ -133,7 +133,6 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:notification",
     ],
 )
 

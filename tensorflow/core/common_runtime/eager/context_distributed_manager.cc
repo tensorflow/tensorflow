@@ -48,7 +48,6 @@ limitations under the License.
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"

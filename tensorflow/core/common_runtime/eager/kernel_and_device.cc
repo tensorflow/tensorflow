@@ -45,7 +45,6 @@ limitations under the License.
 #include "tensorflow/core/platform/denormal.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
-#include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/platform/setround.h"
 #include "tensorflow/core/profiler/lib/annotated_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme.h"

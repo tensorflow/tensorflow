@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/public/version.h"
 

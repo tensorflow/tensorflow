@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {

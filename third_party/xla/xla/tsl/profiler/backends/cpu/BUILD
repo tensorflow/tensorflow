@@ -71,7 +71,6 @@ tsl_cc_test(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:notification",
     ],
 )
 

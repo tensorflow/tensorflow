@@ -58,7 +58,6 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"

@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/core/platform/cloud/file_block_cache.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/thread_annotations.h"

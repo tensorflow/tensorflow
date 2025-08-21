@@ -29,7 +29,6 @@ limitations under the License.
 #include "absl/synchronization/notification.h"
 #include "xla/tsl/platform/criticality.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
 
