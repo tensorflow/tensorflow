@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
+#include "xla/backends/gpu/runtime/host_execute_thunk.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
@@ -48,6 +49,12 @@ namespace gpu {
 using CollectivesAsyncEvents =
     absl::flat_hash_map<std::variant<mlir::Operation*, const HloInstruction*>,
                         std::shared_ptr<CollectiveThunk::AsyncEvents>>;
+
+// Maps host offloading start ops to their async events so we can emit done
+// thunk sharing events with corresponding start thunk.
+using InstructionToHostExecuteAsyncEvents =
+    absl::flat_hash_map<const HloInstruction*,
+                        std::shared_ptr<HostExecuteAsyncEvents>>;
 
 // IrEmitterContext encapsulates common (mutable and immutable) data structures
 // used by both IrEmitterNested and IrEmitterUnnested, such as the buffer
@@ -125,6 +132,11 @@ class IrEmitterContext {
     return collectives_async_events_;
   }
 
+  InstructionToHostExecuteAsyncEvents&
+  instruction_to_host_execute_async_events() {
+    return instruction_to_host_execute_async_events_;
+  }
+
   bool emit_kernels() const { return emit_kernels_; }
 
  private:
@@ -141,6 +153,7 @@ class IrEmitterContext {
   KernelReuseCache kernel_cache_;
 
   CollectivesAsyncEvents collectives_async_events_;
+  InstructionToHostExecuteAsyncEvents instruction_to_host_execute_async_events_;
 
   // We should not emit kernels when loading thunks from a compilation result.
   const bool emit_kernels_;
