@@ -24,9 +24,9 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -38,14 +38,13 @@ limitations under the License.
 #include "xla/service/cpu/ir_emission_utils.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/llvm_ir/dynamic_update_slice_util.h"
+#include "xla/shape.h"
 #include "xla/shape_partition.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/util.h"
 #include "tsl/platform/cpu_info.h"
-#include "tsl/platform/logging.h"  // IWYU pragma: keep
-#include "tsl/platform/status.h"
 
-namespace xla {
-namespace cpu {
+namespace xla::cpu {
 
 class SimpleCostModel : public ParallelCostModel {
  public:
@@ -283,22 +282,14 @@ bool ParallelTaskAssigner::AssignParallelTasksHelper(
       continue;
     }
 
-    // Outline 'instruction' in 'computation' for parallel task assignment.
-    auto* call = module->OutlineExpressionFromComputation(
-        {instruction}, absl::StrCat("parallel_", instruction->name()),
-        computation);
-
-    // Set assigned dimension partitioning to 'instruction'.
-    auto* new_root = call->to_apply()->root_instruction();
     BackendConfig backend_config;
     absl::c_copy(dim_partition_counts,
                  tsl::protobuf::RepeatedFieldBackInserter(
                      backend_config.mutable_outer_dimension_partitions()));
-    TF_CHECK_OK(new_root->set_backend_config(backend_config));
+    TF_CHECK_OK(instruction->set_backend_config(backend_config));
 
     VLOG(2) << "Assigned parallel task count: " << total_partition_count
-            << " to instruction: " << new_root->name()
-            << " parent: " << new_root->parent()->name();
+            << " to instruction: " << instruction->name();
     changed = true;
   }
   return changed;
@@ -324,5 +315,4 @@ void ParallelTaskAssigner::ComputeTargetParallelTasks(
   }
 }
 
-}  // namespace cpu
-}  // namespace xla
+}  // namespace xla::cpu

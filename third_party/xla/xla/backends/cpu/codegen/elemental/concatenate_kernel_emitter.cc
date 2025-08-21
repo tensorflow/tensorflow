@@ -48,9 +48,7 @@ limitations under the License.
 namespace xla::cpu {
 
 static absl::Status CanDoFastConcatenate(const HloInstruction* concatenate) {
-  if (!concatenate->parent()
-           ->root_instruction()
-           ->template backend_config<BackendConfig>()
+  if (!concatenate->backend_config<BackendConfig>()
            ->outer_dimension_partitions()
            .empty()) {
     return absl::Status(
