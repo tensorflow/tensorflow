@@ -420,6 +420,27 @@ struct RewriteVectorInsert : OpRewritePattern<mv::InsertOp> {
   }
 };
 
+struct RewriteVectorFromElements : OpRewritePattern<mv::FromElementsOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mv::FromElementsOp op,
+                                PatternRewriter& rewriter) const override {
+    auto vector = op.getDest();
+    auto vector_type = vector.getType();
+    if (vector_type.getRank() < 2) {
+      return rewriter.notifyMatchFailure(op, "the vector is already flat");
+    }
+    auto loc = op.getLoc();
+    mlir::ImplicitLocOpBuilder b(loc, rewriter);
+    auto new_from_elements = b.create<mv::FromElementsOp>(
+        GetFlattenedType(vector_type), op.getElements());
+    auto cast_to_orig_type = b.create<UnrealizedConversionCastOp>(
+        vector_type, new_from_elements.getResult());
+    rewriter.replaceOp(op, cast_to_orig_type.getResult(0));
+    return mlir::success();
+  }
+};
+
 struct RewriteAtomicRMW : OpRewritePattern<AtomicRMWOp> {
   using OpRewritePattern::OpRewritePattern;
 
@@ -746,6 +767,7 @@ class FlattenTensorsPass
         RewriteTensorExtract,
         RewriteTensorInsert,
         RewriteVectorExtract,
+        RewriteVectorFromElements,
         RewriteVectorInsert,
         RewriteVectorTransferRead,
         RewriteCpuLoad
