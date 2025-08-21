@@ -369,6 +369,24 @@ class ForwardAccumulator():
             "indicate an error. If it was intended, please sum the "
             "corresponding tangents.")
       primal_ids.add(id(primal))
+
+    # Early shape validation (non-batched): tangents must match primals' shape.
+    flat_p = nest.flatten(primals)
+    flat_t = nest.flatten(tangents)
+    if len(flat_p) != len(flat_t):
+      raise ValueError("primals and tangents must have the same structure; "
+                      f"got {len(flat_p)} vs {len(flat_t)} elements")
+    for p, t in zip(flat_p, flat_t):
+      # Use TensorShape so unknown dims remain compatible.
+      p_shape = tensor_shape.TensorShape(getattr(p, "shape", None))
+      t_shape = tensor_shape.TensorShape(getattr(t, "shape", None))
+      try:
+        t_shape.assert_is_compatible_with(p_shape)
+      except (ValueError, TypeError) as e:
+        raise ValueError(
+            "primals and tangents must have the same shape; "
+            f"got primal shape {p_shape} vs tangent shape {t_shape}"
+        ) from e
     self._watch(primals, tangents)
 
   def __enter__(self):
