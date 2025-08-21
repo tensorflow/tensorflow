@@ -2799,6 +2799,64 @@ absl::StatusOr<std::string> PjRtCApiTopologyDescription::Serialize() const {
   return out;
 }
 
+absl::StatusOr<Layout> PjRtCApiTopologyDescription::GetDefaultLayout(
+    PrimitiveType element_type, absl::Span<const int64_t> dims) const {
+  const PJRT_Api* c_api = c_api_;
+  PJRT_Layouts_Extension* extension =
+      pjrt::FindExtension<PJRT_Layouts_Extension>(
+          c_api, PJRT_Extension_Type::PJRT_Extension_Type_Layouts);
+  if (extension == nullptr ||
+      extension->PJRT_Layouts_PJRT_Topology_GetDefaultLayout == nullptr) {
+    return Unimplemented(
+        "PJRT C API does not implement "
+        "PJRT_Layouts_PJRT_Topology_GetDefaultLayout.");
+  }
+  PJRT_Layouts_PJRT_Topology_GetDefaultLayout_Args args;
+  args.struct_size =
+      PJRT_Layouts_PJRT_Topology_GetDefaultLayout_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.topology_description = c_topology_;
+  args.type = pjrt::ConvertToPjRtBufferType(element_type);
+  args.dims = dims.data();
+  args.num_dims = dims.size();
+  RETURN_STATUS_IF_PJRT_ERROR(
+      extension->PJRT_Layouts_PJRT_Topology_GetDefaultLayout(&args), c_api);
+
+  // Clean up `PJRT_Layouts_MemoryLayout`.
+  std::unique_ptr<PJRT_Layouts_MemoryLayout,
+                  pjrt::PJRT_Layouts_MemoryLayoutDeleter>
+      layout_destroyer(args.layout, pjrt::MakeMemoryLayoutDeleter(c_api));
+
+  if (extension->PJRT_Layouts_MemoryLayout_Serialize == nullptr) {
+    return Unimplemented(
+        "PJRT_Layouts_MemoryLayout_Serialize is not implemented.");
+  }
+
+  // TODO(b/338478940): Wrap `args.layout` into a subclass of `PjRtLayout`.
+  PJRT_Layouts_MemoryLayout_Serialize_Args serialize_args;
+  serialize_args.struct_size =
+      PJRT_Layouts_MemoryLayout_Serialize_Args_STRUCT_SIZE;
+  serialize_args.extension_start = nullptr;
+  serialize_args.layout = args.layout;
+  RETURN_STATUS_IF_PJRT_ERROR(
+      extension->PJRT_Layouts_MemoryLayout_Serialize(&serialize_args), c_api);
+
+  // Clean up `PJRT_Layouts_SerializedLayout`.
+  absl::Cleanup cleanup = [&serialize_args] {
+    if (serialize_args.serialized_layout_deleter) {
+      serialize_args.serialized_layout_deleter(
+          serialize_args.serialized_layout);
+    }
+  };
+
+  std::string serialized_layout(serialize_args.serialized_bytes,
+                                serialize_args.serialized_bytes_size);
+  TF_ASSIGN_OR_RETURN(std::shared_ptr<const PjRtLayout> pjrt_layout,
+                      PjRtLayout::Deserialize(serialized_layout));
+
+  return pjrt_layout->xla_layout();
+}
+
 void PjRtCApiTopologyDescription::InitAttributes() {
   PJRT_TopologyDescription_Attributes_Args args;
   args.struct_size = PJRT_TopologyDescription_Attributes_Args_STRUCT_SIZE;
