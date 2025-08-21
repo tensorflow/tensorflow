@@ -95,6 +95,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/fft_thunk.h"
 #include "xla/backends/gpu/runtime/gemm_thunk.h"
 #include "xla/backends/gpu/runtime/gpublas_lt_matmul_thunk.h"
+#include "xla/backends/gpu/runtime/host_execute_thunk.h"
 #include "xla/backends/gpu/runtime/host_send_recv_thunk.h"
 #include "xla/backends/gpu/runtime/infeed_thunk.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
@@ -178,6 +179,7 @@ limitations under the License.
 #include "xla/stream_executor/platform/platform_object_registry.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tools/hlo_decomposer.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
@@ -190,6 +192,17 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+
+namespace {
+// TODO: move into a host_execute specific file.
+bool IsHostExecuteCustomCall(const HloInstruction& hlo) {
+  return hlo.opcode() == HloOpcode::kCustomCall &&
+         hlo.custom_call_target() ==
+             "HostExecute";  // TODO: this constant string should be shared with
+                             // the TPU one
+}
+
+}  // namespace
 
 IrEmitterUnnested::IrEmitterUnnested(IrEmitterContext* ir_emitter_context)
     : IrEmitter(ir_emitter_context, /*is_nested=*/false),
@@ -3015,6 +3028,16 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
         }
         case HloOpcode::kCall:
         case HloOpcode::kCustomCall: {
+          if (IsHostExecuteCustomCall(*wrapped)) {
+            auto custom_call = Cast<HloCustomCallInstruction>(wrapped);
+
+            auto async_events =
+                GetInstructionToHostExecuteAsyncEvents().at(custom_call);
+
+            AddThunkToThunkSequence(std::make_unique<HostExecuteDoneThunk>(
+                Thunk::ThunkInfo::WithProfileAnnotation(instr), async_events));
+            return absl::OkStatus();
+          }
           // Wait until the concurrent stream has finished.
           auto* async_done = Cast<HloAsyncInstruction>(instr);
           const ExecutionStreamAssignment& stream_assignment =
@@ -3088,6 +3111,66 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
           return EmitAsyncComputation(instr);
         }
         case HloOpcode::kCustomCall: {
+          if (IsHostExecuteCustomCall(*wrapped)) {
+            auto custom_call = Cast<HloCustomCallInstruction>(wrapped);
+
+            std::unique_ptr<HloModule> hlo_module =
+                ExtractComputationIntoNewModule(
+                    *custom_call->called_computation());
+
+            // All offloaded computations are marked as host computations from
+            // the perspective of the GPU backend. Since these will execute on
+            // the main thread from the CPU backend perspective, we need to mark
+            // them as such.
+            for (auto* computation : hlo_module->computations()) {
+              computation->SetExecutionThread(
+                  HloInstruction::kMainExecutionThread);
+            }
+
+            absl::InlinedVector<HostExecuteStartThunk::SliceAndShape, 4>
+                operand_slices;
+            for (HloInstruction* operand : wrapped->operands()) {
+              for (auto& indexed : ShapeUtil::GetLeafShapes(operand->shape())) {
+                TF_ASSIGN_OR_RETURN(
+                    auto slice,
+                    ir_emitter_context_->buffer_assignment().GetUniqueSlice(
+                        operand, indexed.index));
+                operand_slices.push_back({slice, indexed.shape});
+              }
+            }
+
+            // Collect buffer slices for all results.
+            absl::InlinedVector<HostExecuteStartThunk::SliceAndShape, 4>
+                result_slices;
+            for (auto& indexed : ShapeUtil::GetLeafShapes(wrapped->shape())) {
+              TF_ASSIGN_OR_RETURN(
+                  auto slice,
+                  ir_emitter_context_->buffer_assignment().GetUniqueSlice(
+                      wrapped, indexed.index));
+              result_slices.push_back({slice, indexed.shape});
+            }
+
+            auto thunk = std::make_unique<HostExecuteStartThunk>(
+                Thunk::ThunkInfo::WithProfileAnnotation(instr), *hlo_module,
+                std::move(operand_slices), std::move(result_slices));
+
+            auto async_events = thunk->async_events();
+
+            auto [it, inserted] =
+                GetInstructionToHostExecuteAsyncEvents().emplace(custom_call,
+                                                                 async_events);
+
+            if (!inserted) {
+              return Internal(
+                  "Async events already exist for host offloading custom call "
+                  "%s.",
+                  custom_call->ToString());
+            }
+
+            AddThunkToThunkSequence(std::move(thunk));
+
+            return absl::OkStatus();
+          }
           return EmitAsyncCustomCallStart(instr);
         }
         default:

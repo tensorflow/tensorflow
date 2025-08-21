@@ -1837,5 +1837,53 @@ TEST(TfrtGpuClientTest, MultipleDeviceShareDmaMapping) {
   TF_EXPECT_OK(client->DmaUnmap(host_dma_ptr.get()));
 }
 
+TEST(TfrtGpuClientTest, HostExecuteRuntimeTest) {
+  static constexpr char const* kProgram = R"(
+    HloModule module
+
+    add_inplace {
+      p0 = f32[] parameter(0)
+      ROOT add = f32[] add(p0, p0)
+    }
+
+    ENTRY entry {
+      %p0 = f32[] parameter(0)
+      %start =
+        ((f32[]), f32[], s32[]) custom-call-start(%p0),
+          custom_call_target="HostExecute",
+          async_execution_thread="host",
+          to_apply=%add_inplace,
+          output_to_operand_aliasing={{}: (0, {})}
+      ROOT %done = f32[] custom-call-done(%start)
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtGpuClient(GpuClientOptions()));
+  TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                          CompileExecutable(kProgram, *client));
+
+  auto device = client->addressable_devices()[0];
+  TF_EXPECT_OK(device->default_memory_space());
+
+  Shape shape = ShapeUtil::MakeShape(F32, {});
+  constexpr float data[] = {0.1f};
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto input,
+      client->BufferFromHostBuffer(
+          data, shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall,
+          /*on_done_with_host_buffer=*/nullptr, *device->default_memory_space(),
+          /*device_layout=*/nullptr));
+  EXPECT_EQ(input->memory_space()->kind(), "device");
+
+  ExecuteOptions opts;
+  auto result = executable->Execute(/*argument_handles=*/{{input.get()}}, opts);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::Literal> result_literal,
+                          ExtractSingleResult(result));
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR0<float>(0.2f),
+                                     *result_literal));
+}
+
 }  // namespace
 }  // namespace xla

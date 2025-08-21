@@ -334,6 +334,11 @@ class IrEmitterUnnested : public IrEmitter {
     return ir_emitter_context_->collectives_async_events();
   }
 
+  InstructionToHostExecuteAsyncEvents&
+  GetInstructionToHostExecuteAsyncEvents() {
+    return ir_emitter_context_->instruction_to_host_execute_async_events();
+  }
+
   // The thunk sequence this IrEmitter generates for the input computation.
   ThunkSequence thunk_sequence_;
   ThunkSequence scoped_thunk_sequence_;
