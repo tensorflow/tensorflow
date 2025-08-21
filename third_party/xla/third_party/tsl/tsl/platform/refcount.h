@@ -20,6 +20,7 @@ limitations under the License.
 #include <map>
 #include <memory>
 
+#include "absl/base/nullability.h"
 #include "xla/tsl/platform/logging.h"
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/thread_annotations.h"
@@ -98,7 +99,8 @@ ABSL_MUST_USE_RESULT RefCountPtr<T> GetNewRef(T* ptr) {
 
 // A unique_ptr that unrefs the owned object on destruction.
 template <typename T>
-class RefCountPtr : public std::unique_ptr<T, RefCountDeleter> {
+class ABSL_NULLABILITY_COMPATIBLE RefCountPtr
+    : public std::unique_ptr<T, RefCountDeleter> {
  public:
   using std::unique_ptr<T, RefCountDeleter>::unique_ptr;
   ABSL_MUST_USE_RESULT RefCountPtr GetNewRef() const {
