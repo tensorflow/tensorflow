@@ -1981,6 +1981,10 @@ class HloInstruction {
   }
 
   void set_statistics_viz(StatisticsViz statistics_viz) {
+    if (!has_rare() && statistics_viz.stat_index_to_visualize() == 0 &&
+        statistics_viz.statistics().empty()) {
+      return;
+    }
     mutable_rare()->statistics_viz = std::move(statistics_viz);
   }
 
