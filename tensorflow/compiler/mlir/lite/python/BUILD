@@ -163,7 +163,16 @@ py_strict_library(
         ":_pywrap_converter_api",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib_py",
         "//tensorflow/python:pywrap_tensorflow",
-    ],
+    ] + if_pywrap(
+        if_true = [] + select({
+            "//conditions:default": [],
+            # This reqirement is for LiteRT only as tensorflow/compiler/mlirt/lite is
+            # duplicated in LiteRT/tflite/converter.
+            "//tensorflow:disable_tf_lite_py": [
+                "//tensorflow/lite/python:pywrap_tflite",
+            ],
+        }),
+    ),
 )
 
 config_setting(
@@ -186,7 +195,7 @@ cc_library(
     hdrs = ["converter_python_api.h"],
     features = ["-parse_headers"],
     visibility = [
-        "//tensorflow/python:__subpackages__",
+        "//visibility:public",
     ],
     deps = [
         ":flatbuffer_to_mlir",
@@ -240,9 +249,7 @@ tf_python_pybind_extension(
     pytype_srcs = [
         "_pywrap_converter_api.pyi",
     ],
-    visibility = [
-        "//tensorflow/python:__pkg__",
-    ],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib",
         "//tensorflow/python/lib/core:pybind11_lib",
