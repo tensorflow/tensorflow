@@ -620,6 +620,40 @@ std::string GetSelectedGemmBackendAsString(const HloModule* module) {
   return "";
 }
 
+bool HasBroadcastAncestor(const HloInstruction& dot) {
+  absl::flat_hash_set<const HloInstruction*> visited;
+  std::vector<const HloInstruction*> worklist;
+  worklist.push_back(&dot);
+  visited.insert(&dot);
+
+  while (!worklist.empty()) {
+    const HloInstruction* current = worklist.back();
+    worklist.pop_back();
+
+    if (current->opcode() == HloOpcode::kBroadcast) {
+      return true;
+    }
+
+    for (const HloInstruction* operand : current->operands()) {
+      if (visited.insert(operand).second) {
+        worklist.push_back(operand);
+      }
+    }
+  }
+  return false;
+}
+
+// CUDA_ERROR_MISALIGNED_ADDRESS errors are happening for some cases when
+// pipelining stages are > 2. The pattern observed is that these happen in the
+// presence of a broadcast.
+void RestrictTmaConfigs(std::vector<TritonGemmConfig>& configs) {
+  for (TritonGemmConfig& config : configs) {
+    if (config.is_tma_allowed && config.num_stages > 2) {
+      config.is_tma_allowed = false;
+    }
+  }
+}
+
 }  // anonymous namespace
 
 absl::Status GemmFusionAutotunerRewriterVisitor::HandleFusion(
@@ -863,10 +897,10 @@ GemmFusionAutotunerImpl::GenerateTritonConfigs(const HloDotInstruction& dot) {
       supports_contracting_split &&
       debug_options_.xla_gpu_enable_split_k_autotuning();
 
-  // Allow TMA tuning for Hopper+ devices when TMA flag is passed.
-  bool autotune_tma = debug_options_.xla_gpu_experimental_enable_triton_tma() &&
-                      stream_executor::gpu::IsTmaAvailableForDevice(
-                          config_.GetDeviceDescription());
+  // Use TMA for Hopper+ devices when TMA flag is passed.
+  bool use_tma = debug_options_.xla_gpu_experimental_enable_triton_tma() &&
+                 stream_executor::gpu::IsTmaAvailableForDevice(
+                     config_.GetDeviceDescription());
   TritonDotFusionSearchSpace search_space(config_.GetDeviceDescription(), &dot);
   VLOG(1) << "Generating configs from search space: "
           << search_space.ToString();
@@ -876,12 +910,20 @@ GemmFusionAutotunerImpl::GenerateTritonConfigs(const HloDotInstruction& dot) {
       /*force_contracting_split=*/autotune_contracting_split
           ? std::nullopt
           : std::make_optional(1),
-      /*autotune_tma=*/autotune_tma);
+      /*use_tma=*/use_tma);
+
+  // TODO(b/421858850): Restricting configs for dots from broadcasts is a
+  // temporary solution. We should remove this once we have a fix for the error.
+  auto default_configs = GetDefaultTritonConfigs();
+  if (HasBroadcastAncestor(dot)) {
+    RestrictTmaConfigs(configs);
+    RestrictTmaConfigs(default_configs);
+  }
 
   if (!debug_options_.xla_gpu_exhaustive_tiling_search()) {
     VLOG(1) << "Restricting configs to the default set.";
-    configs = search_space.OptimizeConfigSet(
-        configs, /*hints=*/GetDefaultTritonConfigs());
+    configs =
+        search_space.OptimizeConfigSet(configs, /*hints=*/default_configs);
   }
   if (!IsAutotuningEnabled()) {
     // Keep the first config, which likely does not spill registers.

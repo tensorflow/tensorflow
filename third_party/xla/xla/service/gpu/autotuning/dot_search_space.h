@@ -44,11 +44,11 @@ class TritonDotFusionSearchSpace {
   // Generates the list of promising configs in the search space for the
   // autotuner to try. If `force_contracting_split` is set, the search space
   // will be restricted to only include configs with the given split_k factor.
-  // If `autotune_tma` is set, the search space will be extended with TMA
-  // parameterization.
+  // If `use_tma` is set, the search space will allow TMA to be used, if
+  // possible.
   std::vector<TritonGemmConfig> GenerateConfigs(
       std::optional<int64_t> force_contracting_split = std::nullopt,
-      bool autotune_tma = false) const;
+      bool use_tma = false) const;
 
   // Restrict the set of configs to the ones compatible with the hints list.
   // Generally, this will mean that configs are restricted to the ones that

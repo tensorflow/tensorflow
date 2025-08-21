@@ -1705,8 +1705,6 @@ TEST_F(GemmFusionAutotunerTest, VerifyHopperConfigsAreDifferentFromBlackwell) {
   EXPECT_NE(blackwell_configs_set, hopper_configs_set);
 }
 
-// TODO(b/315957220): Remove the experimental flags once TMA is enabled by
-// default.
 class GemmFusionAutotunerEnableTma : public GemmFusionAutotunerTest {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
@@ -1714,7 +1712,6 @@ class GemmFusionAutotunerEnableTma : public GemmFusionAutotunerTest {
         GemmFusionAutotunerTest::GetDebugOptionsForTest();
     debug_options.add_xla_gpu_unsupported_generic_triton_emitter_features(
         DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM);
-    debug_options.set_xla_gpu_experimental_enable_triton_tma(true);
     return debug_options;
   }
 };
@@ -1755,19 +1752,59 @@ TEST_F(GemmFusionAutotunerEnableTma,
   std::set<TritonGemmConfig> hopper_configs_set(hopper_configs.begin(),
                                                 hopper_configs.end());
 
-  // Expect that both configs are greater than zero and that the number of
-  // configs for Hopper is twice the number of configs for Ampere. This is
-  // because Hopper expects the same configs with and without TMA.
+  // Expect that both configs are greater than zero. Expect that all Hopper
+  // configs use TMA and none of the Ampere configs use TMA.
   EXPECT_GT(ampere_configs_set.size(), 0);
   EXPECT_GT(hopper_configs_set.size(), 0);
-  EXPECT_EQ(ampere_configs_set.size() * 2, hopper_configs_set.size());
 
   auto count_tma_allowed = [](const std::vector<TritonGemmConfig>& configs) {
     return std::count_if(
         configs.begin(), configs.end(),
         [](const TritonGemmConfig& config) { return config.is_tma_allowed; });
   };
-  EXPECT_EQ(count_tma_allowed(hopper_configs), hopper_configs.size() / 2);
+  EXPECT_EQ(count_tma_allowed(hopper_configs), hopper_configs.size());
+  EXPECT_EQ(count_tma_allowed(ampere_configs), 0);
+
+  EXPECT_TRUE(RunAndCompare(std::move(module),
+                            ErrorSpec{/*aabs=*/5e-3, /*arel=*/5e-3}));
+}
+
+TEST_F(GemmFusionAutotunerEnableTma,
+       TmaConfigsGeneratedAndRunCorrectlyForDotsOfBroadcasts) {
+  if (isRocm()) {
+    GTEST_SKIP() << "Not supported on ROCm.";
+  }
+
+  std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
+    ENTRY e {
+      p0 = f32[64] parameter(0)
+      p0b = f32[64,64] broadcast(p0), dimensions={0}
+      p1 = f32[64,64] parameter(1)
+      ROOT r = f32[64,64] dot(p0b, p1),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    })")
+                                                  .value();
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      const std::vector<TritonGemmConfig> hopper_configs,
+      GetPossibleMatmulAutotuneTritonConfigs(
+          *Cast<HloDotInstruction>(
+              module->entry_computation()->root_instruction()),
+          se::CudaComputeCapability(se::CudaComputeCapability::kHopper, 0),
+          GetToolkitVersion(), GetDebugOptionsForTest()));
+
+  int count_tma_stages_lte_2_allowed = 0;
+  bool all_tma_stages_gt_2_not_allowed = true;
+  for (const auto& config : hopper_configs) {
+    if (config.num_stages > 2 && config.is_tma_allowed) {
+      all_tma_stages_gt_2_not_allowed = false;
+    }
+    if (config.num_stages <= 2 && config.is_tma_allowed) {
+      count_tma_stages_lte_2_allowed++;
+    }
+  }
+  EXPECT_GT(count_tma_stages_lte_2_allowed, 0);
+  EXPECT_TRUE(all_tma_stages_gt_2_not_allowed);
 
   EXPECT_TRUE(RunAndCompare(std::move(module),
                             ErrorSpec{/*aabs=*/5e-3, /*arel=*/5e-3}));
