@@ -461,7 +461,7 @@ SymbolicExpr CanonicalizeCeilDiv(SymbolicExpr lhs, SymbolicExpr rhs) {
     if (divisor > 0) {
       return ((lhs + divisor - 1).Canonicalize()).floorDiv(rhs).Canonicalize();
     }
-    // TODO(b/433693793): Handle negative divisor for ceildiv.
+    return (-(lhs.floorDiv(-divisor))).Canonicalize();
   }
 
   return ctx->CreateBinaryOp(SymbolicExprType::kCeilDiv, lhs, rhs);
@@ -743,13 +743,11 @@ SymbolicExpr SymbolicExpr::operator+(int64_t v) const {
   return *this + GetContext()->CreateConstant(v);
 }
 SymbolicExpr SymbolicExpr::operator+(SymbolicExpr other) const {
-  // TODO(b/433693793): This should be modified when we introduce the
-  // simplification logic.
   return GetContext()->CreateBinaryOp(SymbolicExprType::kAdd, *this, other);
 }
 
 SymbolicExpr SymbolicExpr::operator-() const {
-  return *this * GetContext()->CreateConstant(-1);
+  return (*this * GetContext()->CreateConstant(-1)).Canonicalize();
 }
 SymbolicExpr SymbolicExpr::operator-(int64_t v) const { return *this + (-v); }
 SymbolicExpr SymbolicExpr::operator-(SymbolicExpr other) const {
