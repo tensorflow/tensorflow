@@ -78,6 +78,16 @@ bool IsBufferOnDevice(se::Stream* stream, const void* ptr) {
   return memory_type.ok() && *memory_type == se::MemoryType::kDevice;
 }
 
+// We ignore memory spaces in shape comparison since the memory can be on device
+// or host, and both are valid for the host offloading case.
+// If the memory is on device we copy it to host memory, and if it is on host
+// memory we use it as is.
+bool CompareShapesIgnoringMemorySpace(const Shape& shape1,
+                                      const Shape& shape2) {
+  auto eq = Shape::Equal().IgnoreMemorySpaceInLayout();
+  return eq(shape1, shape2);
+}
+
 class HostExecuteCallFrame {
  public:
   static absl::StatusOr<HostExecuteCallFrame> Create(
@@ -133,7 +143,8 @@ absl::Status HostExecuteCallFrame::ValidateArgsAndResults(
   }
 
   for (int i = 0; i < args.size(); ++i) {
-    if (args[i].shape != program_shape.parameters(i)) {
+    if (!CompareShapesIgnoringMemorySpace(args[i].shape,
+                                          program_shape.parameters(i))) {
       return InvalidArgument(
           "Argument shape %s does not match program shape %s.",
           args[i].shape.ToString(/*print_layout=*/true),
@@ -145,7 +156,8 @@ absl::Status HostExecuteCallFrame::ValidateArgsAndResults(
 
   if (program_result_shape.IsTuple()) {
     for (int i = 0; i < results.size(); ++i) {
-      if (results[i].shape != program_result_shape.tuple_shapes(i)) {
+      if (!CompareShapesIgnoringMemorySpace(
+              results[i].shape, program_result_shape.tuple_shapes(i))) {
         return InvalidArgument(
             "Result shape %s does not match program shape %s at index %d.",
             results[i].shape.ToString(/*print_layout=*/true),
@@ -167,7 +179,8 @@ absl::Status HostExecuteCallFrame::ValidateArgsAndResults(
         program_result_shape.ToString(/*print_layout=*/true), results.size());
   }
 
-  if (results[0].shape != program_shape.result()) {
+  if (!CompareShapesIgnoringMemorySpace(results[0].shape,
+                                        program_shape.result())) {
     return InvalidArgument(
         "Result shape %s does not match program shape %s.",
         results[0].shape.ToString(/*print_layout=*/true),
