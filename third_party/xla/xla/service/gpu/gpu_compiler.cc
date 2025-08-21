@@ -624,7 +624,9 @@ absl::Status RunPreSPMDPartitionerPasses(HloModule* hlo_module) {
   pre_spmd_pipeline.AddPass<TopkRewriter>(
       [](const HloSortInstruction*, int64_t) { return true; });
 
-  return pre_spmd_pipeline.Run(hlo_module).status();
+  return pre_spmd_pipeline
+      .Run(hlo_module, {HloInstruction::kMainExecutionThread})
+      .status();
 }
 
 absl::Status RunSPMDPasses(
@@ -664,7 +666,8 @@ absl::Status RunSPMDPasses(
         std::nullopt,
 #endif  // PLATFORM_GOOGLE
         max_windowed_einsum_iteration);
-    return spmd_pipeline.Run(hlo_module).status();
+    return spmd_pipeline.Run(hlo_module, {HloInstruction::kMainExecutionThread})
+        .status();
   } else {
     HloPassPipeline sharding_removal_pipeline("sharding-removal");
     // Remove redundant sharding ops when partition_count == 1.
@@ -675,7 +678,9 @@ absl::Status RunSPMDPasses(
           /*runSdyShardingPropagation=*/false);
     }
     sharding_removal_pipeline.AddPass<HloDCE>();
-    return sharding_removal_pipeline.Run(hlo_module).status();
+    return sharding_removal_pipeline
+        .Run(hlo_module, {HloInstruction::kMainExecutionThread})
+        .status();
   }
 }
 
@@ -908,7 +913,8 @@ absl::Status RunOptimizationPasses(
   pipeline.AddPass<SplitkRewriter>(gpu_target_config.device_description);
   pipeline.AddPass<HloComputationDeduplicator>(
       /*mark_fusion_duplications=*/false);
-  return pipeline.Run(hlo_module).status();
+  return pipeline.Run(hlo_module, {HloInstruction::kMainExecutionThread})
+      .status();
 }
 
 absl::Status RunCollectiveOptimizationPasses(
@@ -1078,7 +1084,9 @@ absl::Status RunCollectiveOptimizationPasses(
   // modifications.
   collectives_pipeline.AddPass<WhileLoopTripCountAnnotator>();
 
-  return collectives_pipeline.Run(hlo_module).status();
+  return collectives_pipeline
+      .Run(hlo_module, {HloInstruction::kMainExecutionThread})
+      .status();
 }
 
 absl::Status RunLayoutAssignmentPasses(
@@ -1108,7 +1116,8 @@ absl::Status RunLayoutAssignmentPasses(
   // the creation of invalid transpose/bitcast operations within
   // host memory offloading segments.
   pipeline.AddPass<HostOffloadLegalize>();
-  return pipeline.Run(hlo_module).status();
+  return pipeline.Run(hlo_module, {HloInstruction::kMainExecutionThread})
+      .status();
 }
 
 absl::Status RunFusionPasses(HloModule* hlo_module,
@@ -1122,10 +1131,11 @@ absl::Status RunFusionPasses(HloModule* hlo_module,
   pre_fusion.AddPass<AddTrackingSuffixToInstructionNames>();
   TF_RETURN_IF_ERROR(pre_fusion.Run(hlo_module).status());
 
-  TF_RETURN_IF_ERROR(FusionPipeline(hlo_module->config().debug_options(),
-                                    shape_size_fn, thread_pool, gpu_device_info)
-                         .Run(hlo_module)
-                         .status());
+  TF_RETURN_IF_ERROR(
+      FusionPipeline(hlo_module->config().debug_options(), shape_size_fn,
+                     thread_pool, gpu_device_info)
+          .Run(hlo_module, {HloInstruction::kMainExecutionThread})
+          .status());
 
   if (VLOG_IS_ON(2)) {
     HloFusionStatsVisitor stats;
@@ -1233,7 +1243,8 @@ absl::Status RunPostFusionPasses(
 
   AddDoubleBufferingPasses(*hlo_module, pipeline);
 
-  return pipeline.Run(hlo_module).status();
+  return pipeline.Run(hlo_module, {HloInstruction::kMainExecutionThread})
+      .status();
 }
 
 absl::Status RunPostFusionSimplificationPasses(
@@ -1262,7 +1273,8 @@ absl::Status RunPostFusionSimplificationPasses(
     pipeline.AddPass<ExplicitStreamAnnotationAsyncWrapper>();
   }
   pipeline.AddPass<ExplicitCollectivesGroupAsyncWrapper>();
-  return pipeline.Run(hlo_module).status();
+  return pipeline.Run(hlo_module, {HloInstruction::kMainExecutionThread})
+      .status();
 }
 
 absl::Status RunPostFusionVerificationPasses(
@@ -1281,7 +1293,8 @@ absl::Status RunPostFusionVerificationPasses(
     }
   }
 
-  return pipeline.Run(hlo_module).status();
+  return pipeline.Run(hlo_module, {HloInstruction::kMainExecutionThread})
+      .status();
 }
 
 absl::Status RunLayoutNormalizationPasses(
@@ -1301,7 +1314,9 @@ absl::Status RunLayoutNormalizationPasses(
   // Layout normalization will create scatters that are not simplified and
   // also have unsorted update_window_dims.
   layout_normalization_pipeline.AddPass<ScatterSimplifier>();
-  return layout_normalization_pipeline.Run(hlo_module).status();
+  return layout_normalization_pipeline
+      .Run(hlo_module, {HloInstruction::kMainExecutionThread})
+      .status();
 }
 
 absl::Status RunAsyncDotPasses(HloModule* hlo_module) {
@@ -1323,7 +1338,8 @@ absl::Status RunAsyncDotPasses(HloModule* hlo_module) {
       return false;
     });
   }
-  return pipeline.Run(hlo_module).status();
+  return pipeline.Run(hlo_module, {HloInstruction::kMainExecutionThread})
+      .status();
 }
 
 absl::Status RunDynamicSliceFusionPasses(HloModule* hlo_module,
@@ -1350,7 +1366,9 @@ absl::Status RunDynamicSliceFusionPasses(HloModule* hlo_module,
           });
       return hero_op.has_value();
     });
-    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
+    TF_RETURN_IF_ERROR(
+        pipeline.Run(hlo_module, {HloInstruction::kMainExecutionThread})
+            .status());
   }
 
   return absl::OkStatus();
@@ -1420,7 +1438,8 @@ absl::Status GpuCompiler::RunCollectiveScheduleLinearizerPasses(
       [this, stream_exec](const HloModule* module) {
         return RequiresCollectiveScheduleLinearizer(module, stream_exec);
       });
-  return pipeline.Run(hlo_module).status();
+  return pipeline.Run(hlo_module, {HloInstruction::kMainExecutionThread})
+      .status();
 }
 
 // Runs optimization passes on the given HLO module.
@@ -1533,7 +1552,7 @@ absl::Status GpuCompiler::RunPreSchedulingCopyInsertion(
     const GpuAliasInfo* alias_info) {
   return PreSchedulingCopyInsertionPipeline(hlo_module.config(), alias_info,
                                             device_description)
-      .Run(&hlo_module)
+      .Run(&hlo_module, {HloInstruction::kMainExecutionThread})
       .status();
 }
 
@@ -1731,7 +1750,9 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     // annotations, this pass will add the annotations.
     pipeline.AddPass<SubByteNormalization>(
         SubByteNormalization::SET_ELEMENT_SIZE);
-    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
+    TF_RETURN_IF_ERROR(
+        pipeline.Run(hlo_module, {HloInstruction::kMainExecutionThread})
+            .status());
   }
 
   HloPassPipeline pipeline("post-layout_assignment");
@@ -1846,7 +1867,9 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
       "end-of-post-layout_assignment");
 #endif  // NDEBUG
 
-  TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
+  TF_RETURN_IF_ERROR(
+      pipeline.Run(hlo_module, {HloInstruction::kMainExecutionThread})
+          .status());
   return absl::OkStatus();
 }
 
@@ -2757,7 +2780,7 @@ absl::Status GpuCompiler::RunPreSchedulingPasses(
                                                        gpu_device_info);
     }
   }
-  return pipeline.Run(module).status();
+  return pipeline.Run(module, {HloInstruction::kMainExecutionThread}).status();
 }
 
 HloCostAnalysis::Options CreateHloAnalysisOpts(
@@ -2899,7 +2922,8 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
                    module->config().debug_options().xla_ignore_channel_id(),
                    HloVerifierOpts{}.VerifyInstructionNameUnchanged());
   }
-  return main_pipeline.Run(module).status();
+  return main_pipeline.Run(module, {HloInstruction::kMainExecutionThread})
+      .status();
 }
 
 absl::Status GpuCompiler::LoadAutotuneResultsFromFile(

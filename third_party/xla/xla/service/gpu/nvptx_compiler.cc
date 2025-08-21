@@ -262,7 +262,9 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   // CudnnConvPadForTensorCores may add instructions which can be simplified
   // by constant folding.
   pipeline.AddPass<HloConstantFolding>();
-  TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
+  TF_RETURN_IF_ERROR(
+      pipeline.Run(hlo_module, {HloInstruction::kMainExecutionThread})
+          .status());
 
   return absl::OkStatus();
 }
@@ -306,7 +308,9 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
   // Padding a gemm operand that's a constant results in pad(constant).  Run
   // constant-folding to simplify this into a new constant.
   pre_pipeline.AddPass<HloConstantFolding>();
-  TF_RETURN_IF_ERROR(pre_pipeline.Run(hlo_module).status());
+  TF_RETURN_IF_ERROR(
+      pre_pipeline.Run(hlo_module, {HloInstruction::kMainExecutionThread})
+          .status());
 
   TF_RETURN_IF_ERROR(GpuCompiler::OptimizeHloPostLayoutAssignment(
       hlo_module, stream_exec, options, gpu_target_config, alias_info,
@@ -317,7 +321,9 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
   // Transform TriangularSolve ops into custom-calls, so we can add temp
   // memory.
   post_pipeline.AddPass<TriangularSolveRewriter>();
-  TF_RETURN_IF_ERROR(post_pipeline.Run(hlo_module).status());
+  TF_RETURN_IF_ERROR(
+      post_pipeline.Run(hlo_module, {HloInstruction::kMainExecutionThread})
+          .status());
 
   return absl::OkStatus();
 }
@@ -408,9 +414,12 @@ absl::Status NVPTXCompiler::RunCudnnCompilerPasses(
                            module->name(), module->unique_id());
   });
   CuDnnFusionCompiler fusion_compiler(*stream_exec, *dnn_compiled_graphs);
-  TF_RETURN_IF_ERROR(fusion_compiler.Run(module).status());
+  TF_RETURN_IF_ERROR(
+      fusion_compiler.Run(module, {HloInstruction::kMainExecutionThread})
+          .status());
   CuDnnCustomCallCompiler call_compiler(*stream_exec, *dnn_compiled_graphs);
-  return call_compiler.Run(module).status();
+  return call_compiler.Run(module, {HloInstruction::kMainExecutionThread})
+      .status();
 }
 
 namespace {
