@@ -103,14 +103,6 @@ inline ::llvm::hash_code hash_value(SymbolicExpr expr) {
   return ::llvm::hash_value(expr.GetImpl());
 }
 
-// Maps a set of input variables to a set of output SymbolicExpr trees.
-struct SymbolicMap {
-  int64_t num_dimensions;
-  int64_t num_ranges;
-  int64_t num_symbols;
-  std::vector<SymbolicExpr> exprs;
-};
-
 class SymbolicExprContext {
  public:
   SymbolicExprContext();
