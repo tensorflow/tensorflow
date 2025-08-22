@@ -60,15 +60,6 @@ using ::mlir::func::FuncOp;
 using ::mlir::sdy::kShardingAttr;
 using ::mlir::sdy::NamedComputationOp;
 
-bool isInlineableCallOp(CallOp callOp) {
-  if (hasFrontendAttr(callOp, kXlaBackendConfigAttr)) {
-    return false;
-  }
-  auto inlineableAttr =
-      tryGetFrontendAttr<mlir::BoolAttr>(callOp, kXlaInlineableAttr);
-  return !inlineableAttr || inlineableAttr->getValue();
-}
-
 void importCallOp(
     CallOp callOp,
     llvm::SmallDenseMap<StringRef, mlir::Region*>& calleeNameToMovedRegion,
@@ -137,9 +128,6 @@ class ImportFuncCallsPass
     for (mlir::CallGraphNode* node : llvm::reverse(rpo)) {
       if (node->isExternal()) continue;
       node->getCallableRegion()->walk([&](CallOp op) {
-        if (onlyUninlineable && isInlineableCallOp(op)) {
-          return;
-        }
         importCallOp(op, calleeNameToMovedRegion, rewriter, symbolTable);
       });
     }
@@ -154,10 +142,7 @@ class ImportFuncCallsPass
 
   StringRef getDescription() const override {
     return "Creates a pass to convert a CallOp to a NamedComputationOp with "
-           "the function body inlined and the name of the callee. If "
-           "onlyUninlineable is true, handle only CallOps with a "
-           "backend_config or inlineable=false frontend attr. Otherwise, "
-           "handle call CallOps.";
+           "the function body inlined and the name of the callee.";
   }
 
   void getDependentDialects(mlir::DialectRegistry& registry) const final {
@@ -170,28 +155,16 @@ class ImportFuncCallsPass
   ImportFuncCallsPass(ImportFuncCallsPass&&) = delete;
   ImportFuncCallsPass& operator=(ImportFuncCallsPass&&) = delete;
   ~ImportFuncCallsPass() override = default;
-  ImportFuncCallsPass(bool onlyUninlineable) : ImportFuncCallsPass() {
-    this->onlyUninlineable = onlyUninlineable;
-  }
-
- protected:
-  ::mlir::Pass::Option<bool> onlyUninlineable{
-      *this, "only-uninlineable",
-      ::llvm::cl::desc(
-          "Whether to convert only unlineable func calls, that is, the ones "
-          "with a `backend_config` or `inlineable=false` frontend attr."),
-      ::llvm::cl::init(true)};
 };
 
 }  // namespace
 
-std::unique_ptr<mlir::Pass> createImportFuncCallsPass(bool onlyUninlineable) {
-  return std::make_unique<ImportFuncCallsPass>(onlyUninlineable);
+std::unique_ptr<mlir::Pass> createImportFuncCallsPass() {
+  return std::make_unique<ImportFuncCallsPass>();
 }
 
 void registerImportFuncCallsPass() {
-  mlir::registerPass(
-      [] { return createImportFuncCallsPass(/*onlyUninlineable=*/true); });
+  mlir::registerPass([] { return createImportFuncCallsPass(); });
 }
 
 }  // namespace sdy
