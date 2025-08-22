@@ -2051,12 +2051,23 @@ PatternMatchMergeOrSplitSharding(const Shape& shape, const Shape& base_shape,
 
   std::vector<int64_t> diff_index;
   for (int64_t i = 0; i < target.TiledDataRank(); ++i) {
-    if (source.tile_assignment().dim(i) != target.tile_assignment().dim(i)) {
-      diff_index.push_back(i);
+    int64_t si = source.tile_assignment().dim(i);
+    int64_t ti = target.tile_assignment().dim(i);
+    if (si == ti) {
+      continue;
     }
-  }
-  if (diff_index.size() < 2) {
-    return std::nullopt;
+    if (ti == 1) {
+      diff_index.push_back(i);
+      continue;
+    }
+    auto [min, max] = std::minmax(si, ti);
+    if (max % min != 0) {
+      continue;
+    }
+    if (CeilOfRatio(base_shape.dimensions(i), min) * min % max != 0) {
+      continue;
+    }
+    diff_index.push_back(i);
   }
 
   // Iterate every pair of elements in diff_index.
@@ -2086,36 +2097,18 @@ PatternMatchMergeOrSplitSharding(const Shape& shape, const Shape& base_shape,
             // i is the dimension without size 1 in either source or target
             // j is the dimension with size 1 in either source or target
           }
-          if (target.tile_assignment().dim(j) == 1) {
-            // dim of size 1 is in the target
-            if (shape.dimensions(i) % source.tile_assignment().dim(j) != 0) {
-              continue;
-            }
-            new_dim_size = source.tile_assignment().dim(i);
-          } else {
-            // dim of size 1 is in the source
-            if (base_shape.dimensions(i) % source.tile_assignment().dim(i) !=
-                0) {
-              continue;
-            }
-            new_dim_size = target.tile_assignment().dim(i);
-          }
+          new_dim_size = std::min(source.tile_assignment().dim(i),
+                                  target.tile_assignment().dim(i));
           break;
         }
         case 0: {
           if (source.tile_assignment().dim(i) <
               target.tile_assignment().dim(i)) {
             std::swap(i, j);
-            // After the swap, we always have the following.
-            // source.tile_assignment().dim(i) > target.tile_assignment().dim(i)
-            // source.tile_assignment().dim(j) < target.tile_assignment().dim(j)
           }
           if (source.tile_assignment().dim(i) !=
               target.tile_assignment().dim(i) *
                   target.tile_assignment().dim(j)) {
-            continue;
-          }
-          if (base_shape.dimensions(i) % source.tile_assignment().dim(i) != 0) {
             continue;
           }
           new_dim_size = target.tile_assignment().dim(i);
