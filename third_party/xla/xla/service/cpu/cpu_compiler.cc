@@ -473,6 +473,7 @@ std::unique_ptr<HloPassFix<HloPassPipeline>> CreateSimplificationPipeline(
   options.set_supports_non_canonical_dots(false);
   options.set_executing_on_cpu(true);
   options.set_enable_onednn_support(is_onednn_compatible);
+  options.set_rewrite_no_op_bitcast_convert_to_bitcast(true);
   pipeline->AddPass<AlgebraicSimplifier>(options);
   pipeline->AddPass<SortSimplifier>();
   pipeline->AddPass<HloDCE>();
@@ -947,6 +948,7 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     options.set_executing_on_cpu(true);
     // oneDNN support is currently enabled only when thunk runtime is turned off
     options.set_enable_onednn_support(is_onednn_compatible);
+    options.set_rewrite_no_op_bitcast_convert_to_bitcast(true);
     pipeline.AddPass<AlgebraicSimplifier>(options);
     pipeline.AddPass<HloDCE>();
     pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);

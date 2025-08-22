@@ -355,6 +355,14 @@ class AlgebraicSimplifierOptions {
 
   void set_run_to_fixed_point(bool value) { run_to_fixed_point_ = value; }
 
+  bool rewrite_no_op_bitcast_convert_to_bitcast() const {
+    return rewrite_no_op_bitcast_convert_to_bitcast_;
+  }
+
+  void set_rewrite_no_op_bitcast_convert_to_bitcast(bool value) {
+    rewrite_no_op_bitcast_convert_to_bitcast_ = value;
+  }
+
  private:
   // Metadata struct can be used to store any metadata information encapsulated
   // with the AlgebraicSimplifierOptions that can be later used in an
@@ -401,6 +409,7 @@ class AlgebraicSimplifierOptions {
   bool enable_onednn_support_{false};
   bool rewrite_reshape_transpose_as_slice_concatenate_{true};
   bool run_to_fixed_point_{true};
+  bool rewrite_no_op_bitcast_convert_to_bitcast_{false};
   Metadata metadata_;
 };
 
