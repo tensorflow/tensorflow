@@ -45,6 +45,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/str_replace.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
@@ -495,6 +496,19 @@ std::string SanitizeFileName(std::string file_name) {
     }
   }
   return file_name;
+}
+
+std::string SanitizeOpName(std::string op_name, char separator,
+                           const std::string& replace_with) {
+  auto pos = op_name.rfind(separator);
+  if (pos > 0 && pos != std::string::npos) {
+    std::string suffix = op_name.substr(pos + 1);
+    if (std::all_of(suffix.begin(), suffix.end(), absl::ascii_isdigit)) {
+      op_name = op_name.substr(0, pos);
+    }
+  }
+  return absl::StrReplaceAll(op_name,
+                             {{std::string(1, separator), replace_with}});
 }
 
 bool DistinctNumbersAreConsecutiveIfSorted(absl::Span<const int64_t> seq) {

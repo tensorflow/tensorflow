@@ -4976,12 +4976,8 @@ absl::StatusOr<XlaOp> XlaBuilder::AddInstruction(
       absl::string_view name = (last_slash_pos == absl::string_view::npos)
                                    ? op_name
                                    : op_name.substr(last_slash_pos + 1);
-      // Further strip any numeric identifier suffixes.
-      if (absl::StrContains(name, kNameSeparator)) {
-        instr.set_name(GetBaseName(std::string(name), kNameSeparator));
-      } else {
-        instr.set_name(name);
-      }
+      instr.set_name(
+          xla::SanitizeOpName(std::string(name), kNameSeparator, "_"));
     } else {
       instr.set_name(instr.opcode());
     }

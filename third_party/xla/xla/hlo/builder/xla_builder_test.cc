@@ -4018,5 +4018,18 @@ TEST(XlaBuilderTest, InstructionNameFromMetadata) {
             "sin");
 }
 
+TEST(XlaBuilderTest, InstructionNameFromMetadataWithDot) {
+  XlaBuilder b(TestName());
+  OpMetadata metadata;
+  metadata.set_op_name("inputs.x");
+  XlaScopedOpMetadataAssignment op_metadata(&b, metadata);
+  ConstantR0<float>(&b, 1.0f);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(b));
+  HloInstruction* constant = module->entry_computation()->root_instruction();
+  EXPECT_EQ(constant->name().substr(0, constant->name().find_first_of('.')),
+            "inputs_x");
+}
+
 }  // namespace
 }  // namespace xla

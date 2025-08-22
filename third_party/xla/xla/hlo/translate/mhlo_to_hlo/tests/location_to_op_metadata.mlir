@@ -148,3 +148,23 @@ func.func @main(%arg0: tensor<1x2xf32>, %arg1: tensor<1x2xf32>) -> tensor<1x2xf3
 }
 
 // CHECK: my_add{{.*}}, metadata={op_name="my_add"}
+
+// -----
+
+// CHECK-LABEL: %main
+func.func @main(%arg0: tensor<2xf32> loc("inputs.x"), %arg1: tensor<2xf32> loc("inputs.y")) -> tensor<2xf32> {
+  %0 = "mhlo.add"(%arg0, %arg1) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32> loc("my_add")
+  func.return %0 : tensor<2xf32>
+}
+
+// CHECK: inputs_x{{.*}}, metadata={op_name="inputs.x"}
+
+// -----
+
+// CHECK-LABEL: %main
+func.func @main(%arg0: tensor<2xf32> loc("Arg_0.1"), %arg1: tensor<2xf32> loc("Arg_1.1")) -> tensor<2xf32> {
+  %0 = "mhlo.add"(%arg0, %arg1) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32> loc("my_add")
+  func.return %0 : tensor<2xf32>
+}
+
+// CHECK: Arg_0{{.*}}, metadata={op_name="Arg_0.1"}

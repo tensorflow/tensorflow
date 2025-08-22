@@ -113,6 +113,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/types.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 #define DEBUG_TYPE "xla-translate"
@@ -6013,6 +6014,11 @@ xla::OpMetadata GetOpNameMetadataFromLocation(Value value) {
   return m;
 }
 
+std::string SanitizeOpName(std::string name) {
+  name = llvm::sys::path::filename(name);
+  return xla::SanitizeOpName(name, '.', "_");
+}
+
 }  // namespace
 
 LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
@@ -6114,7 +6120,7 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
         // otherwise use the default prefix.
         std::string name = mhlo::GetDebugNameFromLocation(arg.getLoc());
         if (!name.empty()) {
-          name = llvm::sys::path::stem(name);
+          name = SanitizeOpName(name);
         } else {
           name = kArgPrefix;
         }
@@ -6146,7 +6152,7 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
         // otherwise use the default prefix.
         std::string name = mhlo::GetDebugNameFromLocation(arg.getLoc());
         if (!name.empty()) {
-          name = llvm::sys::path::stem(name);
+          name = SanitizeOpName(name);
         } else {
           name = absl::StrCat(kArgPrefix, num);
         }
