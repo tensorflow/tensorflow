@@ -485,7 +485,9 @@ cc_library(
     srcs = ["grpc_host_buffer.cc"],
     hdrs = ["grpc_host_buffer.h"],
     deps = [
+        ":global_flags",
         ":host_buffer",
+        "//xla/pjrt:semaphore",
         "//xla/pjrt/distributed:util",
         "//xla/python/ifrt",
         "//xla/python/ifrt_proxy/common:grpc_ifrt_service_cc_grpc_proto",
