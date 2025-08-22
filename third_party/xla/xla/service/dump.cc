@@ -124,12 +124,14 @@ absl::Status CreateDirIfNeeded(const std::string& dir, tsl::Env* env) {
 
 std::string RenderGraph(absl::string_view label, const HloModule& module,
                         RenderedGraphFormat format,
-                        bool show_fusion_subcomputations) {
+                        bool show_fusion_subcomputations,
+                        const DebugOptions* dump_options) {
   HloRenderOptions hlo_render_options;
   hlo_render_options.show_fusion_subcomputations = show_fusion_subcomputations;
-  absl::StatusOr<std::string> rendered_graph =
-      RenderGraph(*module.entry_computation(), label,
-                  module.config().debug_options(), format, hlo_render_options);
+  const DebugOptions& opts =
+      dump_options ? *dump_options : module.config().debug_options();
+  absl::StatusOr<std::string> rendered_graph = RenderGraph(
+      *module.entry_computation(), label, opts, format, hlo_render_options);
   if (rendered_graph.ok()) {
     return std::move(rendered_graph).value();
   }
@@ -465,7 +467,8 @@ static bool IsTrivial(const HloComputation& computation) {
 // Returns full file paths of all dumps of the module.
 static std::vector<std::string> DumpHloModuleImpl(
     const HloModule& module, const BufferAssignment* buffer_assn,
-    string_view prefix, string_view suffix, const CanonicalDebugOptions& opts) {
+    string_view prefix, string_view suffix, const CanonicalDebugOptions& opts,
+    const DebugOptions& debug_options) {
   tsl::profiler::ScopedAnnotation annotation([&] {
     return absl::StrFormat("XlaDumpHloModule:#module=%s,program_id=%d#",
                            module.name(), module.unique_id());
@@ -507,17 +510,22 @@ static std::vector<std::string> DumpHloModuleImpl(
   if (opts.dump_as_dot) {
     file_paths.push_back(DumpToFileInDirImpl(
         StrFormat("%s.dot", filename),
-        RenderGraph(filename, module, RenderedGraphFormat::kDot), opts));
+        RenderGraph(filename, module, RenderedGraphFormat::kDot,
+                    /*show_fusion_subcomputations=*/true, &debug_options),
+        opts));
   }
 
   if (opts.dump_as_html) {
     file_paths.push_back(DumpToFileInDirImpl(
         StrFormat("%s.html", filename),
-        RenderGraph(filename, module, RenderedGraphFormat::kHtml), opts));
+        RenderGraph(filename, module, RenderedGraphFormat::kHtml,
+                    /*show_fusion_subcomputations=*/true, &debug_options),
+        opts));
     if (absl::StrContains(filename, kAfterOptimizationsDumpName)) {
       file_paths.push_back(DumpToFileInDirImpl(
           StrFormat("%s.top_level.html", filename),
-          RenderGraph(filename, module, RenderedGraphFormat::kHtml, false),
+          RenderGraph(filename, module, RenderedGraphFormat::kHtml,
+                      /*show_fusion_subcomputations=*/false, &debug_options),
           opts));
     }
   }
@@ -554,7 +562,9 @@ static std::vector<std::string> DumpHloModuleImpl(
   // Special case for rendering graphs as URLs.  We'll dump them to a file
   // because why not, but we always log them to stdout as well.
   if (opts.dump_as_url) {
-    std::string url = RenderGraph(filename, module, RenderedGraphFormat::kUrl);
+    std::string url =
+        RenderGraph(filename, module, RenderedGraphFormat::kUrl,
+                    /*show_fusion_subcomputations=*/true, &debug_options);
     std::cout << filename << " --> " << url << std::endl;
     if (!opts.dumping_to_stdout()) {
       file_paths.push_back(
@@ -601,13 +611,18 @@ static void DumpHloModuleMetadata(
 
 std::vector<std::string> DumpHloModuleIfEnabledImpl(
     const HloModule& module, const BufferAssignment* buffer_assn,
-    string_view name) {
-  CanonicalDebugOptions opts(module.config().debug_options());
+    const DebugOptions* maybe_dump_options, string_view name) {
+  const DebugOptions& dump_options = maybe_dump_options
+                                         ? *maybe_dump_options
+                                         : module.config().debug_options();
+  CanonicalDebugOptions opts(dump_options);
   if (opts.should_dump_module(module.name())) {
     std::vector<std::string> filepaths = DumpHloModuleImpl(
-        module, /*buffer_assn=*/buffer_assn, TimestampFor(module), name, opts);
+        module, /*buffer_assn=*/buffer_assn,
+        TimestampFor(module, &dump_options), name, opts, dump_options);
     std::optional<std::string> maybe_debug_options_filepath =
-        DumpNonDefaultDebugOptions(module, kNonDefaultDebugOptionsDumpSuffix);
+        DumpNonDefaultDebugOptions(module, kNonDefaultDebugOptionsDumpSuffix,
+                                   maybe_dump_options);
     if (maybe_debug_options_filepath.has_value()) {
       filepaths.push_back(*maybe_debug_options_filepath);
     }
@@ -620,8 +635,12 @@ std::vector<std::string> DumpHloModuleIfEnabledImpl(
 
 // Get a timestamp which we can use as a filename prefix specific to this
 // module.
-std::string TimestampFor(const HloModule& module) {
-  if (!module.config().debug_options().xla_dump_include_timestamp()) {
+std::string TimestampFor(const HloModule& module,
+                         const DebugOptions* debug_options_override) {
+  const DebugOptions& opts = debug_options_override
+                                 ? *debug_options_override
+                                 : module.config().debug_options();
+  if (!opts.xla_dump_include_timestamp()) {
     return "";
   }
   absl::MutexLock lock(&mu);
@@ -901,23 +920,30 @@ std::string GetNonDefaultDebugOptions(const DebugOptions& debug_options) {
 }
 
 std::optional<std::string> DumpNonDefaultDebugOptions(
-    const HloModule& module, absl::string_view suffix) {
+    const HloModule& module, absl::string_view suffix,
+    const DebugOptions* dump_options) {
+  // Substance of the which-options-have-non-default-values logic always based
+  // on the options embedded in the HloModule
   const DebugOptions& debug_options = module.config().debug_options();
   std::string filename = FilenameFor(module, "", suffix);
   std::string nonDefaultDebugOptions = GetNonDefaultDebugOptions(debug_options);
-  return DumpToFileInDirImpl(filename, nonDefaultDebugOptions,
-                             CanonicalDebugOptions(debug_options));
+  // Options steering where the dump is actually written to can be overriden
+  CanonicalDebugOptions opts(dump_options ? *dump_options : debug_options);
+  return DumpToFileInDirImpl(filename, nonDefaultDebugOptions, opts);
 }
 
-std::vector<std::string> DumpHloModuleIfEnabled(const HloModule& module,
-                                                string_view name) {
-  return DumpHloModuleIfEnabledImpl(module, /*buffer_assn=*/nullptr, name);
+std::vector<std::string> DumpHloModuleIfEnabled(
+    const HloModule& module, string_view name,
+    const DebugOptions* dump_options) {
+  return DumpHloModuleIfEnabledImpl(module, /*buffer_assn=*/nullptr,
+                                    dump_options, name);
 }
 
 std::vector<std::string> DumpHloModuleIfEnabled(
     const HloModule& module, const BufferAssignment& buffer_assn,
     string_view name) {
-  return DumpHloModuleIfEnabledImpl(module, &buffer_assn, name);
+  return DumpHloModuleIfEnabledImpl(module, &buffer_assn,
+                                    /*maybe_dump_options=*/nullptr, name);
 }
 
 std::vector<std::string> DumpHloModuleProtoIfEnabled(
@@ -931,7 +957,8 @@ std::vector<std::string> DumpHloModuleProtoIfEnabled(
   CanonicalDebugOptions opts(module->config().debug_options());
   if (opts.should_dump_module(module->name())) {
     return DumpHloModuleImpl(*module, /*buffer_assn=*/nullptr,
-                             TimestampFor(*module), name, opts);
+                             TimestampFor(*module), name, opts,
+                             module->config().debug_options());
   }
   return {};
 }
@@ -996,7 +1023,8 @@ std::vector<std::string> DumpHloModuleBetweenPassesIfEnabled(
       StrFormat("%04d.%s.after_%s.before_%s", step_number, pipeline_name,
                 after_pass_name, before_pass_name);
   return DumpHloModuleImpl(module, /*buffer_assn=*/nullptr, timestamp,
-                           filename_suffix, opts);
+                           filename_suffix, opts,
+                           module.config().debug_options());
 }
 
 void DumpHloModuleDuringPassIfEnabled(string_view pass_name,
@@ -1014,7 +1042,7 @@ void DumpHloModuleDuringPassIfEnabled(string_view pass_name,
   std::string filename_suffix =
       StrFormat("%04d.%s.%s", step_number, pass_name, step_name);
   DumpHloModuleImpl(module, /*buffer_assn=*/nullptr, timestamp, filename_suffix,
-                    opts);
+                    opts, module.config().debug_options());
 }
 
 void DumpHloSnapshotIfEnabled(const HloModule& module,
