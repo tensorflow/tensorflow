@@ -121,6 +121,31 @@ bool L2NormalizeReduceAxis(Value sq_op, DenseElementsAttr axis) {
   return true;
 }
 
+// Checks if a ReshapeOp is equivalent to a `keep_dims=true` reduction by
+// adding a trailing dimension of size 1. In the L2 normalization pattern, a
+// `Sum` op reduces along the last axis, and this reshape is used to add back
+// the reduced dimension to keep the original rank. This is used in declarative
+// patterns to fuse L2 normalization operations.
+bool IsL2NormalizationKeepDimsReshape(Value reshape_output) {
+  auto producer = reshape_output.getDefiningOp<TFL::ReshapeOp>();
+  if (!producer) {
+    return false;
+  }
+
+  auto input_type = mlir::dyn_cast<ShapedType>(producer.getInput().getType());
+  auto output_type = mlir::dyn_cast<ShapedType>(reshape_output.getType());
+  if (!input_type || !output_type || !input_type.hasRank() ||
+      !output_type.hasRank()) {
+    return false;
+  }
+
+  const auto input_shape = input_type.getShape();
+  const auto output_shape = output_type.getShape();
+
+  return output_shape.size() == input_shape.size() + 1 &&
+         output_shape.back() == 1 && output_shape.drop_back() == input_shape;
+}
+
 // Is rankx2xi32 padding array "balanced"
 // i.e. 0 <= [d][1] - [d][0] <= 1 for all spatial dims d (and 0 elsewhere).
 template <typename T>
