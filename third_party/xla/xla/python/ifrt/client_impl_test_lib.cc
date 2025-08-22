@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <optional>
+#include <string>
+
 #include "absl/container/flat_hash_set.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/test_util.h"
@@ -36,6 +39,10 @@ TEST(ClientImplTest, RuntimeTypeAndPlatform) {
   EXPECT_THAT(client->runtime_type(), Not(IsEmpty()));
   EXPECT_THAT(client->platform_name(), Not(IsEmpty()));
   EXPECT_THAT(client->platform_version(), Not(IsEmpty()));
+
+  auto runtime_abi = client->runtime_executable_version(std::nullopt);
+  EXPECT_THAT(runtime_abi, Not(IsEmpty()));
+
   client->platform_id();
 }
 
@@ -106,6 +113,29 @@ TEST(ClientImplTest, DefaultDeviceAssignment) {
       }
     }
   }
+}
+
+TEST(RuntimeExecutableVersionTest,
+     CurrentRuntimeExecutableVersionIsCompatible) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  absl::StatusOr<std::string> runtime_abi_version =
+      client->runtime_executable_version(std::nullopt);
+
+  if (!runtime_abi_version.empty()) {
+    GTEST_SKIP()
+        << "Skipping test because runtime_abi_version is unimplemented";
+  }
+  EXPECT_TRUE(client->IsSerializedExecutableCompatible(*runtime_abi_version,
+                                                       std::nullopt));
+}
+
+TEST(RuntimeExecutableVersionTest,
+     InvalidRuntimeExecutableVersionIsNotCompatible) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  std::string runtime_abi_version = "arbitrary_invalid_string";
+
+  EXPECT_FALSE(client->IsSerializedExecutableCompatible(runtime_abi_version,
+                                                        std::nullopt));
 }
 
 }  // namespace
