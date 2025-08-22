@@ -424,6 +424,17 @@ py_strict_test(
         ]),
 )
 
+nanobind_pywrap_extension(
+    name = "_gpu_ondevice_tracing",
+    srcs = ["gpu_ondevice_tracing.cc"],
+    visibility = ["//perftools/accelerators/xprof/api/python:__subpackages__"],
+    deps = [
+        "//xla/tsl/profiler/backends/gpu:ondevice_event_receiver",
+        "//xla/tsl/profiler/backends/gpu:ondevice_trace_event",
+        "@nanobind",
+    ],
+)
+
 cc_library(
     name = "logging",
     srcs = ["logging.cc"],
