@@ -208,6 +208,11 @@ struct AutoShardingOption {
   // ops in a principled manner.
   bool insert_resharding_reshapes_for_non_dot_ops = false;
 
+  // When folding the sharding attribute to its operand, if the module is
+  // transformed to Shardy in later steps, we should not replace the sharding
+  // custom call with copy.
+  bool replace_sharding_with_copy = true;
+
   // The number of slices used
   std::optional<int64_t> num_dcn_slices = std::nullopt;
 
