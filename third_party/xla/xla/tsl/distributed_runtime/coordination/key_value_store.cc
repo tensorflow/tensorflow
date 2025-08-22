@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/tsl/distributed_runtime/coordination/key_value_store.h"
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <utility>
@@ -23,7 +24,9 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 
@@ -65,6 +68,19 @@ std::optional<std::string> KeyValueStore::Get(absl::string_view key) {
   if (it == data_.end()) {
     return std::nullopt;
   }
+  return it->second;
+}
+
+absl::StatusOr<std::string> KeyValueStore::IncrementBy(absl::string_view key,
+                                                       int64_t increment) {
+  absl::MutexLock l(&mu_);
+  auto [it, inserted] = data_.try_emplace(key, "0");
+  int val;
+  if (!absl::SimpleAtoi(it->second, &val)) {
+    return absl::FailedPreconditionError(absl::StrFormat(
+        "Failed to parse value \"%s\" as an integer.", it->second));
+  }
+  it->second = absl::StrCat(val + increment);
   return it->second;
 }
 

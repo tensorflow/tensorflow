@@ -202,5 +202,34 @@ TEST(KeyValueStore, CallbacksCalledOnDestruction) {
   EXPECT_TRUE(callback_called);
 }
 
+TEST(KeyValueStore, IncrementByPositiveValueSucceeds) {
+  KeyValueStore store;
+  ASSERT_OK(store.Put("foo", "3",
+                      /*allow_overwrite=*/true));
+  EXPECT_THAT(store.IncrementBy("foo", 2), IsOkAndHolds("5"));
+}
+
+TEST(KeyValueStore, IncrementByNegativeValueSucceeds) {
+  KeyValueStore store;
+  ASSERT_OK(store.Put("foo", "3",
+                      /*allow_overwrite=*/true));
+  // Result will be the two's complement of the positive value.
+  EXPECT_THAT(store.IncrementBy("foo", -5), IsOkAndHolds("-2"));
+}
+
+TEST(KeyValueStore, IncrementByWithoutExistingValueSucceeds) {
+  // Result will be the increment value. This behavior is consistent with
+  // other KV store implementations.
+  KeyValueStore store;
+  EXPECT_THAT(store.IncrementBy("foo", 2), IsOkAndHolds("2"));
+}
+
+TEST(KeyValueStore, IncrementByWithInvalidValueFails) {
+  KeyValueStore store;
+  ASSERT_OK(store.Put("foo", "invalid", /*allow_overwrite=*/true));
+  EXPECT_THAT(store.IncrementBy("foo", 2),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
+}
+
 }  // namespace
 }  // namespace tsl
