@@ -32,7 +32,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "grpcpp/channel.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
-#include "tsl/platform/env.h"
+#include "xla/tsl/platform/env.h"
 
 namespace tsl {
 class CoordinationServiceAgent;
@@ -91,7 +91,7 @@ class DistributedRuntimeClient {
     bool poll_for_error_from_service_at_startup = true;
 
     // If true, a multi-controller JAX job can continue even if this client
-    // fails. Otherwise, the job will fail when the task failes.
+    // fails. Otherwise, the job will fail when the task fails.
     bool recoverable = false;
   };
 
@@ -118,6 +118,11 @@ class DistributedRuntimeClient {
 
   // Returns `NotFoundError` immediately if the key is not found.
   virtual absl::StatusOr<std::string> KeyValueTryGet(absl::string_view key) = 0;
+
+  // Returns `FailedPreconditionError` if the corresponding value is not int
+  // convertible.
+  virtual absl::StatusOr<int64_t> KeyValueIncrement(absl::string_view key,
+                                                    int64_t increment) = 0;
 
   // Get all key-value pairs under a directory (key).
   // A value is considered to be in the directory if its key is prefixed with

@@ -57,6 +57,8 @@ using tensorflow::GetTaskStateRequest;
 using tensorflow::GetTaskStateResponse;
 using tensorflow::HeartbeatRequest;
 using tensorflow::HeartbeatResponse;
+using tensorflow::IncrementKeyValueRequest;
+using tensorflow::IncrementKeyValueResponse;
 using tensorflow::InsertKeyValueRequest;
 using tensorflow::InsertKeyValueResponse;
 using tensorflow::PollForErrorRequest;
@@ -243,6 +245,16 @@ class GrpcCoordinationClient : public CoordinationClient {
     new RPCState<protobuf::Message>(
         &stub_, cq_, "/tensorflow.CoordinationService/TryGetKeyValue", *request,
         response, std::move(done), /*call_opts=*/nullptr,
+        /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
+        &target_);
+  }
+
+  void IncrementKeyValueAsync(const IncrementKeyValueRequest* request,
+                              IncrementKeyValueResponse* response,
+                              StatusCallback done) override {
+    new RPCState<protobuf::Message>(
+        &stub_, cq_, "/tensorflow.CoordinationService/IncrementKeyValue",
+        *request, response, std::move(done), /*call_opts=*/nullptr,
         /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
         &target_);
   }
