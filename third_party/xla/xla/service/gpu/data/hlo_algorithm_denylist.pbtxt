@@ -5,6 +5,7 @@ entries {
     wait_on_operation_queues: []
     cudnn_conv_backend_config: { activation_mode: kNone conv_result_scale: 1 side_input_scale: 0 leakyrelu_alpha: 0 }
     force_earliest_schedule: false
+    device_type: DEVICE_TYPE_DEVICE
   }
   cc: { major: 7 minor: 0 }
   cudnn_version: { major: 7 minor: 6 patch: 0 }
@@ -19,6 +20,7 @@ entries {
     wait_on_operation_queues: []
     cudnn_conv_backend_config: { activation_mode: kNone conv_result_scale: 1 side_input_scale: 0 leakyrelu_alpha: 0 }
     force_earliest_schedule: false
+    device_type: DEVICE_TYPE_DEVICE
   }
   cc: { major: 7 minor: 0 }
   cudnn_version: { major: 7 minor: 6 patch: 2 }
@@ -33,6 +35,7 @@ entries {
     wait_on_operation_queues: []
     cudnn_conv_backend_config: { activation_mode: kNone conv_result_scale: 1 side_input_scale: 0 leakyrelu_alpha: 0 }
     force_earliest_schedule: false
+    device_type: DEVICE_TYPE_DEVICE
   }
   cc: { major: 7 minor: 0 }
   cudnn_version: { major: 7 minor: 6 patch: 2 }

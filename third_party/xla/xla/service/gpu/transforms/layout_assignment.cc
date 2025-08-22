@@ -629,6 +629,37 @@ absl::Status GpuLayoutAssignment::AddBackendConstraints(
       LayoutUtil::SetToDefaultLayout(&operand_shape);
       TF_RETURN_IF_ERROR(SetOperandLayout(operand_shape, instruction, 0));
       TF_RETURN_IF_ERROR(SetInstructionLayout(operand_shape, instruction));
+    } else if (instruction->opcode() == HloOpcode::kAsyncStart) {
+      HloComputation* called_computation =
+          instruction->async_wrapped_computation();
+
+      if (called_computation->execution_thread() !=
+          HloInstruction::kHostThread) {
+        continue;
+      }
+
+      Shape new_shape = instruction->shape();
+      *new_shape.mutable_tuple_shapes(0) = ShapeUtil::MakeTupleShape(
+          called_computation->ComputeProgramShape().parameters());
+      *new_shape.mutable_tuple_shapes(1) =
+          called_computation->ComputeProgramShape().result();
+      TF_RETURN_IF_ERROR(SetInstructionLayout(new_shape, instruction,
+                                              /*mandatory=*/true, /*dfs=*/true,
+                                              /*allow_alias=*/true));
+    } else if (instruction->opcode() == HloOpcode::kAsyncDone) {
+      HloComputation* called_computation =
+          instruction->async_wrapped_computation();
+
+      if (called_computation->execution_thread() !=
+          HloInstruction::kHostThread) {
+        continue;
+      }
+
+      Shape new_shape = called_computation->root_instruction()->shape();
+
+      TF_RETURN_IF_ERROR(SetInstructionLayout(new_shape, instruction,
+                                              /*mandatory=*/true, /*dfs=*/true,
+                                              /*allow_alias=*/true));
     }
   }
   return absl::OkStatus();
