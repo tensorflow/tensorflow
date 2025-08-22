@@ -22,6 +22,7 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -49,9 +50,8 @@
 #include "xla/python/ifrt_proxy/common/types.h"
 #include "xla/service/computation_placer.h"
 #include "xla/tsl/concurrency/ref_count.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
-#include "tsl/platform/platform.h"
+#include "xla/tsl/util/proto/proto_matchers.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 
 namespace xla {
@@ -66,13 +66,9 @@ using ::testing::Pointee;
 using ::testing::Return;
 using ::testing::SizeIs;
 using ::testing::UnorderedElementsAre;
-using ::tsl::testing::IsOk;
-using ::tsl::testing::IsOkAndHolds;
 
-#if defined(PLATFORM_GOOGLE)
-using ::testing::EquivToProto;
-using ::testing::proto::Partially;
-#endif
+using ::tsl::proto_testing::EquivToProto;
+using ::tsl::proto_testing::Partially;
 
 class ClientTest : public ::testing::TestWithParam</*protocol_version=*/int> {
  protected:
@@ -430,8 +426,6 @@ TEST_P(ClientTest, CopyArraysCustomLayoutSuccess) {
       layout_2_->ToString());
 }
 
-// TODO(b/315809436): Test needs rewrite because protobuf matchers are not OSS
-#if defined(PLATFORM_GOOGLE)
 TEST_P(ClientTest, GetDefaultDeviceAssignmentSuccess) {
   IfrtResponse response;
   xla::DeviceAssignment assignment(1, 3);
@@ -453,10 +447,7 @@ TEST_P(ClientTest, GetDefaultDeviceAssignmentSuccess) {
   EXPECT_EQ(assignment_got.replica_count(), 1);
   EXPECT_EQ(assignment_got.computation_count(), 3);
 }
-#endif
 
-// TODO(b/315809436): Test needs rewrite because protobuf matchers are not OSS
-#if defined(PLATFORM_GOOGLE)
 TEST_P(ClientTest, GetDefaultDeviceAssignmentFailure) {
   EXPECT_CALL(*session_, Enqueue(Pointee(Partially(EquivToProto(
                              R"pb(
@@ -471,7 +462,6 @@ TEST_P(ClientTest, GetDefaultDeviceAssignmentFailure) {
   EXPECT_THAT(client_->GetDefaultDeviceAssignment(1, 3),
               Not(absl_testing::IsOk()));
 }
-#endif
 
 INSTANTIATE_TEST_SUITE_P(
     ClientTestWithAllVersions, ClientTest,
