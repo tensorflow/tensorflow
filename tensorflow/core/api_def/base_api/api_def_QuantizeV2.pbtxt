@@ -18,6 +18,12 @@ If the `axis` attribute is specified, this must be a 1-D tensor whose size
 matches the `axis` dimension of the input and output tensors.
 END
   }
+  in_arg {
+    name: "round_mode"
+    description: <<END
+`round_mode='HALF_TO_EVEN'` only supported for mode 'SCALED'.
+END
+  }
   out_arg {
     name: "output"
     description: <<END
