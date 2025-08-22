@@ -42,9 +42,10 @@ class BlockLevelEmitterBackend : public GpuCodegenBackend {
   explicit BlockLevelEmitterBackend(
       stream_executor::StreamExecutor* absl_nonnull stream_executor,
       const DebugOptions* absl_nonnull debug_options,
-      Compiler* absl_nonnull compiler)
+      Compiler* absl_nonnull compiler, bool use_default_config = false)
       : GpuCodegenBackend("BlockLevelEmitter", stream_executor, debug_options,
-                          compiler) {}
+                          compiler),
+        use_default_config_(use_default_config) {}
 
   // Returns all supported block-level tiling configurations for the given
   // instruction.
@@ -61,6 +62,14 @@ class BlockLevelEmitterBackend : public GpuCodegenBackend {
 
   // Determines whether the given HLO instruction is supported by this backend.
   bool IsSupported(const HloInstruction& instr);
+
+ private:
+  // If true, the backend will return a single default configuration in
+  // GetSupportedConfigs instead of generating all supported configurations.
+  // This is useful to autotune between different backends without increasing
+  // compile time by too much. It will use the default config, likely already
+  // assigned by the cost model.
+  bool use_default_config_;
 };
 
 }  // namespace gpu

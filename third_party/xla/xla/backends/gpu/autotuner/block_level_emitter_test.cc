@@ -531,5 +531,57 @@ ENTRY %main {
   EXPECT_THAT(executable, absl_testing::IsOk());
 }
 
+TEST_F(TritonBlockLevelFusionEmitterBackendTest, UseDefaultConfigFlag) {
+  auto backend = BlockLevelEmitterBackend(
+      PlatformUtil::GetDefaultPlatform().value()->ExecutorForDevice(0).value(),
+      &debug_options_, &compiler_, /*use_default_config=*/true);
+  // Parse an HLO module containing a kCustom Triton fusion with a backend
+  // config that includes block-level tiling parameters.
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule m
+%wrapped_transpose_computation {
+  %param_0 = f32[16,64]{1,0} parameter(0)
+  ROOT %transpose.3.1 = f32[64,16]{1,0} transpose(%param_0), dimensions={1,0}
+}
+
+ENTRY %main {
+  %p0 = f32[16,64]{1,0} parameter(0), metadata={op_name="a"}
+  ROOT %wrapped_transpose = f32[64,16]{1,0} fusion(%p0), kind=kCustom,
+  calls=%wrapped_transpose_computation,
+  metadata={op_name="a"},
+  backend_config={
+  "fusion_backend_config": {
+    "kind": "__triton",
+    "block_level_fusion_config": {
+      "output_tiles": [
+        {"sizes": ["4","16"]}
+      ],
+      "num_warps": "2",
+      "num_ctas": 1,
+      "num_stages": 1
+    }
+  }}
+}
+)"));
+  // Call GetSupportedConfigs on the root instruction (the fusion op).`
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<std::unique_ptr<BackendConfig>> configs,
+      backend.GetSupportedConfigs(
+          *(module->entry_computation()->root_instruction())));
+  // With the use_default_config flag set to true, we expect a single config
+  // to be returned.
+  ASSERT_EQ(configs.size(), 1);
+  // We expect this config to be equal to the one in the HLO instruction.
+  BlockLevelFusionConfig block_level_fusion_config;
+  ASSERT_TRUE(configs[0]->UnpackTo(&block_level_fusion_config));
+  EXPECT_THAT(block_level_fusion_config, EqualsProto(R"pb(
+                output_tiles { sizes: 4 sizes: 16 }
+                num_warps: 2
+                num_ctas: 1
+                num_stages: 1
+              )pb"));
+}
+
 }  // namespace gpu
 }  // namespace xla
