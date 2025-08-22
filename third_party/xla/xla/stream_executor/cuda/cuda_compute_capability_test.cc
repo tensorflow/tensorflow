@@ -84,17 +84,6 @@ TEST(CudaComputeCapabilityTest, FromString) {
               StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
-TEST(CudaComputeCapabilityTest, FromIntWithAutoFeatureExtension) {
-  EXPECT_EQ(CudaComputeCapability::FromIntWithAutoFeatureExtension(8, 0),
-            CudaComputeCapability(8, 0));
-  EXPECT_EQ(
-      CudaComputeCapability::FromIntWithAutoFeatureExtension(9, 0),
-      CudaComputeCapability(
-          9, 0, CudaComputeCapability::FeatureExtension::kAcceleratedFeatures));
-  EXPECT_EQ(CudaComputeCapability::FromIntWithAutoFeatureExtension(100, 52),
-            CudaComputeCapability(100, 52));
-}
-
 TEST(CudaComputeCapabilityTest, ToProto) {
   CudaComputeCapabilityProto proto0 =
       CudaComputeCapability(100, 5,

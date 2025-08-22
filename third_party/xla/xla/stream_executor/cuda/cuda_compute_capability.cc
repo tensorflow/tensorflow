@@ -141,13 +141,4 @@ CudaComputeCapabilityProto CudaComputeCapability::ToProto() const {
   return proto;
 }
 
-CudaComputeCapability CudaComputeCapability::FromIntWithAutoFeatureExtension(
-    int major, int minor) {
-  if (major == 9 || major == 10) {
-    return CudaComputeCapability{major, minor,
-                                 FeatureExtension::kAcceleratedFeatures};
-  }
-  return CudaComputeCapability{major, minor, FeatureExtension::kNone};
-}
-
 }  // namespace stream_executor

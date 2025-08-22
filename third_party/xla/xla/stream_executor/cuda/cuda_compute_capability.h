@@ -88,14 +88,6 @@ struct CudaComputeCapability {
   static absl::StatusOr<CudaComputeCapability> FromString(
       absl::string_view cuda_arch_name);
 
-  // Returns a CudaComputeCapability with the given major and minor versions
-  // and the accelerated feature extension enabled if supported.
-  // This function only exists for backwards compatibility reasons.
-  // TODO(hebecker): Remove this function once extensions are supported
-  // natively and all users have been migrated.
-  static CudaComputeCapability FromIntWithAutoFeatureExtension(int major,
-                                                               int minor);
-
   constexpr static CudaComputeCapability Pascal() {
     return CudaComputeCapability{kPascal, 0};
   }
