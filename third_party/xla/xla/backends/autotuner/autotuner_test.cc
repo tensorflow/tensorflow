@@ -453,5 +453,50 @@ TEST_F(AutotunerTest, AutotuneWithBufferCheck) {
   auto dummy_instr = HloInstruction::CreateConstant(LiteralUtil::CreateR0(1));
   EXPECT_THAT(autotuner->Autotune(dummy_instr.get()), IsOk());
 }
+
+TEST_F(AutotunerTest, AutotuneWithScratchBytesOptimization) {
+  std::vector<std::unique_ptr<BackendConfig>> configs;
+  configs.push_back(GetTestConfig("config_more_time_less_scratch"));
+  configs.push_back(GetTestConfig("config_less_time_more_scratch"));
+  auto backend_1 = std::make_unique<MockCodegenBackend>();
+  EXPECT_CALL(*backend_1, GetSupportedConfigs)
+      .WillOnce(Return(std::move(configs)));
+  EXPECT_CALL(*backend_1, Compile(_, _))
+      .WillOnce(Return(std::unique_ptr<Executable>()))
+      .WillOnce(Return(std::unique_ptr<Executable>()));
+
+  EXPECT_CALL(*backend_1,
+              ApplyConfig(_, ConfigMatcher("config_more_time_less_scratch")))
+      .Times(1)
+      .WillRepeatedly(Return(absl::OkStatus()));
+
+  auto profiler = std::make_unique<MockProfiler>();
+  EXPECT_CALL(*profiler, CreateInputBuffers(_))
+      .WillOnce(Return(std::make_unique<InputBuffers>()));
+  EXPECT_CALL(*profiler, Profile(_, _))
+      .WillOnce(Return(ProfileResult({
+          /*duration=*/absl::Microseconds(2),
+          /*output_buffer=*/std::nullopt,
+          /*scratch_bytes=*/100,
+      })))
+      .WillOnce(Return(ProfileResult({
+          /*duration=*/absl::Microseconds(1),
+          /*output_buffer=*/std::nullopt,
+          /*scratch_bytes=*/200,
+      })));
+
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  backends.push_back(std::move(backend_1));
+  AutotuneConfig config;
+  config.optimize_scratch_bytes = true;
+  config.scratch_bytes_window_size_us = 2;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto autotuner,
+      Autotuner::Create(std::move(backends), std::move(profiler), config,
+                        std::make_unique<MockAutotunerCache>()));
+  auto dummy_instr = HloInstruction::CreateConstant(LiteralUtil::CreateR0(1));
+  EXPECT_THAT(autotuner->Autotune(dummy_instr.get()), IsOk());
+}
+
 }  // namespace
 }  // namespace xla

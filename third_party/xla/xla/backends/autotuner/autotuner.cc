@@ -201,7 +201,12 @@ absl::StatusOr<Autotuner::Config> Autotuner::ProfileAndPickBest(
     return absl::InternalError("No executables to profile!");
   }
   VLOG(1) << "Profiling " << candidates.size() << " executable candidates.";
-  Config best_config{nullptr, nullptr};
+  struct ConfigAndScratchBytes {
+    Config* config;
+    int scratch_bytes;
+  };
+  std::vector<ConfigAndScratchBytes> top_configs_and_scratch_bytes;
+  Config* min_duration_config = nullptr;
   absl::Duration min_duration = absl::InfiniteDuration();
 
   TF_ASSIGN_OR_RETURN(
@@ -237,22 +242,46 @@ absl::StatusOr<Autotuner::Config> Autotuner::ProfileAndPickBest(
       }
     }
 
-    if (profile_result.value().duration < min_duration) {
-      min_duration = profile_result.value().duration;
-      best_config = std::move(candidates[i].config);
+    absl::Duration duration = profile_result.value().duration;
+    if (autotune_config_.optimize_scratch_bytes &&
+        duration <
+            min_duration + absl::Microseconds(
+                               autotune_config_.scratch_bytes_window_size_us)) {
+      top_configs_and_scratch_bytes.push_back(
+          {&candidates[i].config, profile_result.value().scratch_bytes});
+    }
+    if (duration < min_duration) {
+      min_duration = duration;
+      min_duration_config = &candidates[i].config;
     }
   }
-  if (best_config.codegen_backend == nullptr) {
+  if (min_duration_config == nullptr) {
     return absl::InternalError("No valid config found!");
   }
 
+  Config* best_config = min_duration_config;
+  if (autotune_config_.optimize_scratch_bytes) {
+    Config* best_scratch_bytes_config = nullptr;
+    int min_scratch_bytes = -1;
+    for (auto& config_and_scratch : top_configs_and_scratch_bytes) {
+      if (best_scratch_bytes_config == nullptr ||
+          config_and_scratch.scratch_bytes < min_scratch_bytes) {
+        best_scratch_bytes_config = config_and_scratch.config;
+        min_scratch_bytes = config_and_scratch.scratch_bytes;
+      }
+    }
+    if (best_scratch_bytes_config != nullptr) {
+      best_config = best_scratch_bytes_config;
+    }
+  }
+
   AutotunerCacheEntry cache_entry;
-  cache_entry.set_codegen_backend(best_config.codegen_backend->name());
-  *cache_entry.mutable_backend_config() = *best_config.backend_config;
+  cache_entry.set_codegen_backend(min_duration_config->codegen_backend->name());
+  *cache_entry.mutable_backend_config() = *best_config->backend_config;
   if (cache_) {
     TF_RETURN_IF_ERROR(cache_->Insert(instr, cache_entry));
   }
-  return best_config;
+  return std::move(*best_config);
 }
 
 absl::StatusOr<ScopedShapedBuffer> Autotuner::GetReferenceOutput(
