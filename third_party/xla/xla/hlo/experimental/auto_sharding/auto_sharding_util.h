@@ -63,6 +63,10 @@ inline bool IsSPMDShardToFullShapeCustomCall(const HloInstruction* ins) {
   return ins->IsCustomCall("SPMDShardToFullShape");
 }
 
+inline bool IsShardingCustomCall(const HloInstruction* ins) {
+  return ins->IsCustomCall("Sharding");
+}
+
 inline std::pair<int, int> ParseMeshDims(const std::string& strategy_name) {
   if (absl::StrContains(strategy_name, "{0,1}")) {
     return {0, 1};

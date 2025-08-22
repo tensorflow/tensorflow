@@ -957,6 +957,8 @@ BuildStrategyAndCost(
                 "annotation.");
           }
           generate_non_following_strategies(false);
+        } else if (IsShardingCustomCall(ins)) {
+          generate_non_following_strategies(false);
         } else if (IsTopKCustomCall(ins)) {
           generate_non_following_strategies(false, {0});
         } else if (IsPartialReduceCustomCall(ins)) {
