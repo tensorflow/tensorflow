@@ -176,6 +176,7 @@ cc_library(
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:types",
+        "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/builder:xla_computation",
