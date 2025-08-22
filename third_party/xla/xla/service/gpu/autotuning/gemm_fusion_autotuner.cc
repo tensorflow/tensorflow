@@ -621,6 +621,26 @@ std::string GetSelectedGemmBackendAsString(const HloModule* module) {
   return "";
 }
 
+bool HasBroadcastProducer(const HloInstruction& instr) {
+  return HloBfsFindIf({&instr},
+                      [](const HloInstruction* node) {
+                        return node->opcode() == HloOpcode::kBroadcast;
+                      })
+      .has_value();
+}
+
+// CUDA_ERROR_MISALIGNED_ADDRESS errors are happening for some cases when
+// pipelining stages are > 2. The pattern observed is that these happen in the
+// presence of a broadcast.
+void RestrictTmaConfigs(std::vector<TritonGemmConfig>& configs) {
+  configs.erase(std::remove_if(configs.begin(), configs.end(),
+                               [&](const TritonGemmConfig& config) {
+                                 return config.is_tma_allowed &&
+                                        config.num_stages > 2;
+                               }),
+                configs.end());
+}
+
 }  // anonymous namespace
 
 absl::Status GemmFusionAutotunerRewriterVisitor::HandleFusion(
@@ -879,10 +899,18 @@ GemmFusionAutotunerImpl::GenerateTritonConfigs(const HloDotInstruction& dot) {
           : std::make_optional(1),
       /*autotune_tma=*/autotune_tma);
 
+  // TODO(b/421858850): Restricting configs for dots from broadcasts is a
+  // temporary solution. We should remove this once we have a fix for the error.
+  auto default_configs = GetDefaultTritonConfigs();
+  if (HasBroadcastProducer(dot)) {
+    RestrictTmaConfigs(configs);
+    RestrictTmaConfigs(default_configs);
+  }
+
   if (!debug_options_.xla_gpu_exhaustive_tiling_search()) {
     VLOG(1) << "Restricting configs to the default set.";
-    configs = search_space.OptimizeConfigSet(
-        configs, /*hints=*/GetDefaultTritonConfigs());
+    configs =
+        search_space.OptimizeConfigSet(configs, /*hints=*/default_configs);
   }
   if (!IsAutotuningEnabled()) {
     // Keep the first config, which likely does not spill registers.

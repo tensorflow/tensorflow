@@ -24,6 +24,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -1768,6 +1769,43 @@ TEST_F(GemmFusionAutotunerEnableTma,
         [](const TritonGemmConfig& config) { return config.is_tma_allowed; });
   };
   EXPECT_EQ(count_tma_allowed(hopper_configs), hopper_configs.size() / 2);
+
+  EXPECT_TRUE(RunAndCompare(std::move(module),
+                            ErrorSpec{/*aabs=*/5e-3, /*arel=*/5e-3}));
+}
+
+TEST_F(GemmFusionAutotunerEnableTma,
+       TmaConfigsGeneratedAndRunCorrectlyForDotsOfBroadcasts) {
+  if (isRocm()) {
+    GTEST_SKIP() << "Not supported on ROCm.";
+  }
+
+  std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
+    ENTRY e {
+      p0 = f32[64] parameter(0)
+      p0b = f32[64,64] broadcast(p0), dimensions={0}
+      p1 = f32[64,64] parameter(1)
+      ROOT r = f32[64,64] dot(p0b, p1),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    })")
+                                                  .value();
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      const std::vector<TritonGemmConfig> hopper_configs,
+      GetPossibleMatmulAutotuneTritonConfigs(
+          *Cast<HloDotInstruction>(
+              module->entry_computation()->root_instruction()),
+          se::CudaComputeCapability(se::CudaComputeCapability::kHopper, 0),
+          GetToolkitVersion(), GetDebugOptionsForTest()));
+
+  auto is_disallowed_tma_config = [](const TritonGemmConfig& c) {
+    return c.num_stages > 2 && c.is_tma_allowed;
+  };
+  auto is_allowed_tma_config = [](const TritonGemmConfig& c) {
+    return c.num_stages <= 2 && c.is_tma_allowed;
+  };
+  EXPECT_FALSE(absl::c_any_of(hopper_configs, is_disallowed_tma_config));
+  EXPECT_TRUE(absl::c_any_of(hopper_configs, is_allowed_tma_config));
 
   EXPECT_TRUE(RunAndCompare(std::move(module),
                             ErrorSpec{/*aabs=*/5e-3, /*arel=*/5e-3}));
