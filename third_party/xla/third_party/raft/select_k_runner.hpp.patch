@@ -1,0 +1,17 @@
+--- /dev/null	2025-08-20 16:29:02.164000374 +0000
++++ b/select_k_runner.hpp	2025-08-20 20:47:22.000000000 +0000
+@@ -0,0 +1,14 @@
++#pragma once
++
++#include <cstdint>
++
++#include "raft/core/resources.hpp"
++
++namespace myraft {
++
++void run_select_k(raft::resources const& res, const float* d_data_in,
++                  float* d_data_out, std::uint32_t* d_indices_out,
++                  std::uint32_t batch, std::uint32_t n, std::uint32_t k,
++                  bool select_min, bool sorted);
++
++}  // namespace myraft
