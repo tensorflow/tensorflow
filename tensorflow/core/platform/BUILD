@@ -481,10 +481,6 @@ cc_library(
 cc_library(
     name = "notification",
     hdrs = ["notification.h"],
-    deps = [
-        ":platform",
-        "@local_tsl//tsl/platform:notification",
-    ],
 )
 
 cc_library(

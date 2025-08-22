@@ -21,10 +21,10 @@ limitations under the License.
 #include <random>
 #include <vector>
 
+#include "absl/synchronization/notification.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/threadpool.h"
-#include "tsl/platform/notification.h"
 
 namespace tsl {
 
