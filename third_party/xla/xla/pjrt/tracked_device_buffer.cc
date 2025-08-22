@@ -52,39 +52,34 @@ namespace xla {
 
 void BufferSequencingEvent::SetSequencingEvent(EventPool::Handle event,
                                                se::Stream* stream) {
-  {
-    absl::MutexLock lock(&mu_);
-    CHECK(!event_.event());
-    event_ = std::move(event);
-    CHECK(streams_defined_on_.empty());
-    streams_defined_on_.push_back(stream);
-    sequence_number_.store(event_.sequence_number(), std::memory_order_seq_cst);
-  }
-  defined_status_.emplace(absl::OkStatus());
+  EventState state;
+  state.event = std::move(event);
+  state.definition_stream = stream;
+  event_.emplace(std::move(state));
 }
 
 void BufferSequencingEvent::SetDefinedStatus(absl::Status status) {
   CHECK(!status.ok());
-  defined_status_.emplace(status);
-}
-
-bool BufferSequencingEvent::EventHasBeenRecorded() const {
-  return event_.event() != nullptr;
+  event_.SetError(status);
 }
 
 uint64_t BufferSequencingEvent::sequence_number() const {
-  uint64_t seq = sequence_number_.load(std::memory_order_seq_cst);
-  return seq;
+  return event_->event.sequence_number();
 }
 
 void BufferSequencingEvent::WaitForEventOnStream(se::Stream* stream) {
-  absl::MutexLock lock(&mu_);
-
   // We cannot wait for an event until ThenRecordEvent has been called; on GPU
   // newly created events are deemed to have already happened past.
-  mu_.Await(
-      absl::Condition(this, &BufferSequencingEvent::EventHasBeenRecorded));
+  tsl::BlockUntilReady(event_);
 
+  if (event_.IsError()) {
+    return;
+  }
+  if (event_->definition_stream == stream) {
+    return;
+  }
+
+  absl::MutexLock lock(&mu_);
   // The set of defined streams is expected to be very small indeed (usually
   // 1-2), so a simple linear scan should be fast enough.
   if (std::find(streams_defined_on_.begin(), streams_defined_on_.end(),
@@ -93,31 +88,30 @@ void BufferSequencingEvent::WaitForEventOnStream(se::Stream* stream) {
     return;
   }
 
-  stream->WaitFor(event_.event()).IgnoreError();
+  stream->WaitFor(event_->event.event()).IgnoreError();
   streams_defined_on_.push_back(stream);
 }
 
 absl::Status BufferSequencingEvent::WaitForEventOnExternalStream(
     std::intptr_t stream) {
-  absl::MutexLock lock(&mu_);
-
-  // We cannot wait for an event until ThenRecordEvent has been called; on GPU
-  // newly created events are deemed to have already happened past.
-  // TODO(skyewm): do we need this? WaitForEventOnExternalStream is only
-  // implemented for GPU.
-  mu_.Await(
-      absl::Condition(this, &BufferSequencingEvent::EventHasBeenRecorded));
-
-  return event_.event()->WaitForEventOnExternalStream(stream);
+  tsl::BlockUntilReady(event_);
+  if (const auto* error = event_.GetErrorIfPresent()) {
+    return *error;
+  }
+  return event_->event.event()->WaitForEventOnExternalStream(stream);
 }
 
 bool BufferSequencingEvent::IsPredeterminedErrorOrDefinedOn(
     se::Stream* stream) {
-  tsl::BlockUntilReady(defined_status_);
-  CHECK(defined_status_.IsConcrete());
+  tsl::BlockUntilReady(event_);
+  CHECK(event_.IsAvailable());
 
   // IsPredeterminedError
-  if (!defined_status_->ok()) {
+  if (event_.IsError()) {
+    return true;
+  }
+
+  if (event_->definition_stream == stream) {
     return true;
   }
 
@@ -128,14 +122,12 @@ bool BufferSequencingEvent::IsPredeterminedErrorOrDefinedOn(
 }
 
 bool BufferSequencingEvent::IsComplete() {
-  absl::MutexLock lock(&mu_);
+  tsl::BlockUntilReady(event_);
+  if (event_.IsError()) {
+    return true;
+  }
 
-  // We cannot wait for an event until ThenRecordEvent has been called; on
-  // GPU newly created events are deemed to have already happened past.
-  mu_.Await(
-      absl::Condition(this, &BufferSequencingEvent::EventHasBeenRecorded));
-
-  return event_.event()->PollForStatus() == se::Event::Status::kComplete;
+  return event_->event.event()->PollForStatus() == se::Event::Status::kComplete;
 }
 
 void BufferSequencingEvent::ExecuteOrAddToFutureTasks(
@@ -154,10 +146,9 @@ void BufferSequencingEvent::ExecuteOrAddToFutureTasks(
 
   // Execute the `task` when definition event becomes available. If it's already
   // available, the task will be executed immediately.
-  defined_status_.AndThen(
-      [this, traced_task = std::move(traced_task)]() mutable {
-        thread_pool_->Schedule(std::move(traced_task));
-      });
+  event_.AndThen([this, traced_task = std::move(traced_task)]() mutable {
+    thread_pool_->Schedule(std::move(traced_task));
+  });
 }
 
 ShapedBuffer RawSEDeviceMemory::AsShapedBuffer(
@@ -273,7 +264,7 @@ void TrackedDeviceBuffer::AddUsageEvent(se::Stream* usage_stream,
 
   // If the event is 0, it means that the event is not recorded yet and the task
   // related to this event is deferred, so just add it.
-  if (*event == 0) {
+  if (!event->IsDefined()) {
     usage_events_.push_back({usage_stream, event, reference_held});
     return;
   }
@@ -281,7 +272,7 @@ void TrackedDeviceBuffer::AddUsageEvent(se::Stream* usage_stream,
   for (auto& existing : usage_events_) {
     // If the existing event is 0, it means that the event is not recorded yet
     // and the task related to this event is deferred, so don't replace it.
-    if (*existing.event == 0) continue;
+    if (!existing.event->IsDefined()) continue;
     if (existing.stream == usage_stream) {
       if (*existing.event < *event) {
         existing.event = event;
