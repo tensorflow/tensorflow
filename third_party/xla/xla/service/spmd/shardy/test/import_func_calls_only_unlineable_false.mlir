@@ -26,7 +26,7 @@ func.func private @foo(%arg0: tensor<8x2xi32>) -> tensor<8x2xi32> {
 
 // CHECK-LABEL: func @backend_config_out_shardings
 func.func @backend_config_out_shardings(%arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>}) -> (tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>}) {
-  // CHECK-NEXT: %[[NC:.*]] = sdy.named_computation<"bar">(%arg0) out_shardings=[<@mesh, [{"x"}, {"y"}]>] (%arg1: tensor<8x2xi32>) {
+  // CHECK-NEXT: %[[NC:.*]] = sdy.named_computation<"bar">(%arg0) in_shardings=[<@mesh, [{"x"}, {}]>] out_shardings=[<@mesh, [{"x"}, {"y"}]>] (%arg1: tensor<8x2xi32>) {
   // CHECK-NEXT:   %[[MULT:.*]] = stablehlo.multiply %arg1, %arg1 {mhlo.frontend_attributes = {_xla_compute_type = "host"}} : tensor<8x2xi32>
   // CHECK-NEXT:   sdy.return %[[MULT]] : tensor<8x2xi32>
   // CHECK-NEXT: } {mhlo.frontend_attributes = {backend_config = "{\22flag_configs\22:[],\22scoped_memory_configs\22:[],\22device_type\22:\22DEVICE_TYPE_HOST\22,\22used_scoped_memory_configs\22:[]}"},
@@ -112,14 +112,14 @@ sdy.mesh @mesh = #sdy.mesh<["x"=2, "y"=2]>
 
 // CHECK-LABEL: func @multiple_call_ops_same_name
 func.func @multiple_call_ops_same_name(%arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>}) -> (tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>}) {
-  // CHECK-NEXT: %[[NC_0:.*]] = sdy.named_computation<"foobar">(%arg0) out_shardings=[<@mesh, [{"x"}, {"y"}]>] (%arg1: tensor<8x2xi32>) {
+  // CHECK-NEXT: %[[NC_0:.*]] = sdy.named_computation<"foobar">(%arg0) in_shardings=[<@mesh, [{"x"}, {}]>] out_shardings=[<@mesh, [{"x"}, {"y"}]>] (%arg1: tensor<8x2xi32>) {
   // CHECK-NEXT:   %[[MULT_0:.*]] = stablehlo.multiply %arg1, %arg1 {mhlo.frontend_attributes = {_xla_compute_type = "host"}} : tensor<8x2xi32>
   // CHECK-NEXT:   sdy.return %[[MULT_0]] : tensor<8x2xi32>
   // CHECK-NEXT: } {mhlo.frontend_attributes = {backend_config = "{\22flag_configs\22:[],\22scoped_memory_configs\22:[],\22device_type\22:\22DEVICE_TYPE_HOST\22,\22used_scoped_memory_configs\22:[]}"},
   // CHECK-SAME:    random_attr = "random_value"}
   // CHECK-SAME: (tensor<8x2xi32>) -> tensor<8x2xi32>
 
-  // CHECK-NEXT: %[[NC_1:.*]] = sdy.named_computation<"foobar">(%[[NC_0]]) out_shardings=[<@mesh, [{"x"}, {"y"}]>] (%arg1: tensor<8x2xi32>) {
+  // CHECK-NEXT: %[[NC_1:.*]] = sdy.named_computation<"foobar">(%[[NC_0]]) in_shardings=[<@mesh, [{"x"}, {}]>] out_shardings=[<@mesh, [{"x"}, {"y"}]>] (%arg1: tensor<8x2xi32>) {
   // CHECK-NEXT:   %[[MULT_1:.*]] = stablehlo.multiply %arg1, %arg1 {mhlo.frontend_attributes = {_xla_compute_type = "host"}} : tensor<8x2xi32>
   // CHECK-NEXT:   sdy.return %[[MULT_1]] : tensor<8x2xi32>
   // CHECK-NEXT: } {mhlo.frontend_attributes = {backend_config = "{\22flag_configs\22:[],\22scoped_memory_configs\22:[],\22device_type\22:\22DEVICE_TYPE_HOST\22,\22used_scoped_memory_configs\22:[]}"},
