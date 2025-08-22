@@ -115,22 +115,8 @@ class AutotuneCacheKey {
   static constexpr int kCurrentVersion = 10;
 
   AutotuneCacheKey(const se::DeviceDescription& device_description,
-                   const HloInstruction& instruction)
-      : AutotuneCacheKey(DeviceDescriptionToCacheKey(device_description),
-                         instruction.ToString()) {}
-
-  AutotuneCacheKey(absl::string_view model_str,
-                   const HloInstruction& instruction);
-
-  explicit AutotuneCacheKey(absl::string_view model_str,
-                            absl::string_view hlo_canonical)
-      : model_str_(model_str), hlo_canonical_(hlo_canonical) {}
-
-  explicit AutotuneCacheKey(absl::string_view model_str,
-                            absl::string_view hlo_canonical, int version)
-      : model_str_(model_str),
-        hlo_canonical_(hlo_canonical),
-        version_(version) {}
+                   const HloInstruction& instruction,
+                   int version = kCurrentVersion);
 
   absl::string_view GetModelStr() const { return model_str_; }
 
@@ -156,7 +142,22 @@ class AutotuneCacheKey {
   static std::string DeviceDescriptionToCacheKey(
       const se::DeviceDescription& device_description);
 
+  static std::string HloInstructionToCanonicalString(
+      const HloInstruction& instr);
+
  private:
+  friend class AutotunerUtil;
+
+  explicit AutotuneCacheKey(absl::string_view model_str,
+                            absl::string_view hlo_canonical)
+      : model_str_(model_str), hlo_canonical_(hlo_canonical) {}
+
+  explicit AutotuneCacheKey(absl::string_view model_str,
+                            absl::string_view hlo_canonical, int version)
+      : model_str_(model_str),
+        hlo_canonical_(hlo_canonical),
+        version_(version) {}
+
   std::string model_str_;
   std::string hlo_canonical_;
   int version_ = kCurrentVersion;
@@ -208,11 +209,6 @@ class AutotuneConfig {
   static AutotuneConfig FromDebugOptions(const DeviceOrDevicelessConfig& config,
                                          const DebugOptions& opts);
 
-  std::string GetModelStr() const {
-    return AutotuneCacheKey::DeviceDescriptionToCacheKey(
-        GetDeviceDescription());
-  }
-
   se::StreamExecutor* GetExecutor() const { return config_.GetExecutor(); }
 
   se::DeviceMemoryAllocator* GetAllocator() const {
@@ -250,16 +246,11 @@ class AutotuneConfig {
 
 using AutotuneNoCacheFn = std::function<absl::StatusOr<AutotuneResult>()>;
 
-struct AutotunerUtil {
+class AutotunerUtil {
+ public:
   static absl::StatusOr<AutotuneResult> Autotune(
       const HloInstruction* instr, const AutotuneConfig& config,
       const AutotuneNoCacheFn& autotune_fn);
-
-  // Returns the same cache key that would be used inside Autotune().
-  //
-  // Normally, we don't have to use this low level method.
-  static AutotuneCacheKey GetKey(const HloInstruction* instr,
-                                 const AutotuneConfig& config);
 
   // Checks if the key is in the autotune cache.
   //

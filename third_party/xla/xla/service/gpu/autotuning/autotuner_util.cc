@@ -43,9 +43,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/service/dump.h"
 #include "xla/service/gpu/autotuning/autotuner_status_key.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -235,9 +237,8 @@ absl::StatusOr<std::string> AutotuneResultsToString(
     std::string textproto;
     if (tsl::protobuf::TextFormat::PrintToString(results, &textproto)) {
       return textproto;
-    } else {
-      return Internal("Failed to serialize autotune results.");
     }
+    return Internal("Failed to serialize autotune results.");
   }
   return results.SerializeAsString();
 }
@@ -247,8 +248,8 @@ namespace {
 void SerializeAutotuneEntry(AutotuneResults* results, const AutotuneCacheKey& k,
                             const AutotuneResult* res) {
   auto& entry = *results->add_results();
-  entry.set_device(std::string(k.GetModelStr()));
-  entry.set_hlo(std::string(k.GetHlo()));
+  entry.set_device(k.GetModelStr());
+  entry.set_hlo(k.GetHlo());
   entry.set_version(k.GetVersion());
   *entry.mutable_result() = *res;
 }
@@ -297,12 +298,13 @@ void SerializeAutotuneEntry(AutotuneResults* results, const AutotuneCacheKey& k,
   return autotune_cache.empty();
 }
 
-std::string ToCanonicalString(const HloInstruction* instr) {
+std::string AutotuneCacheKey::HloInstructionToCanonicalString(
+    const HloInstruction& instr) {
   auto options = HloPrintOptions::Canonical();
-  if (instr->opcode() != HloOpcode::kFusion) {
+  if (instr.opcode() != HloOpcode::kFusion) {
     options.set_print_backend_config(true);
     options.set_sort_backend_config(true);
-    return instr->ToString(options);
+    return instr.ToString(options);
   }
   options.set_print_subcomputation_mode(
       HloPrintOptions::PrintSubcomputationMode::kOff);
@@ -314,12 +316,8 @@ std::string ToCanonicalString(const HloInstruction* instr) {
 
   // TODO(b/266210099): This is unsound. We should probably do the fingerprint
   // of the HLO computation proto instead.
-  return instr->called_computations()[0]->ToString(options);
+  return instr.called_computations()[0]->ToString(options);
 }
-
-AutotuneCacheKey::AutotuneCacheKey(absl::string_view model_str,
-                                   const HloInstruction& instr)
-    : AutotuneCacheKey(model_str, ToCanonicalString(&instr)) {}
 
 /*static*/ std::string AutotuneCacheKey::DeviceDescriptionToCacheKey(
     const se::DeviceDescription& device_description) {
@@ -442,11 +440,6 @@ AutotuneConfig AutotuneConfig::FromDebugOptions(
                         autotune_cache_dir, autotune_cache_mode);
 }
 
-/*static*/ AutotuneCacheKey AutotunerUtil::GetKey(
-    const HloInstruction* instr, const AutotuneConfig& config) {
-  return AutotuneCacheKey(config.GetModelStr(), *instr);
-}
-
 /*static*/ absl::StatusOr<bool> AutotunerUtil::IsInCache(
     const AutotuneCacheKey& key, const AutotuneConfig& config) {
   TF_ASSIGN_OR_RETURN(std::optional<AutotuneResult> opt_res,
@@ -467,7 +460,7 @@ AutotuneConfig AutotuneConfig::FromDebugOptions(
 /*static*/ absl::StatusOr<AutotuneResult> AutotunerUtil::Autotune(
     const HloInstruction* instr, const AutotuneConfig& config,
     const AutotuneNoCacheFn& autotune_fn) {
-  const AutotuneCacheKey key = GetKey(instr, config);
+  const AutotuneCacheKey key(config.GetDeviceDescription(), *instr);
   TF_ASSIGN_OR_RETURN(std::optional<AutotuneResult> opt_res,
                       TryFindInCache(key, config.autotune_cache_dir()));
   if (opt_res.has_value()) {
@@ -607,6 +600,12 @@ void AddVersionToAutotuneResults(AutotuneResults& results) {
     }
   }
 }
+
+AutotuneCacheKey::AutotuneCacheKey(
+    const se::DeviceDescription& device_description,
+    const HloInstruction& instruction, int version)
+    : AutotuneCacheKey(DeviceDescriptionToCacheKey(device_description),
+                       HloInstructionToCanonicalString(instruction), version) {}
 
 }  // namespace gpu
 }  // namespace xla
