@@ -249,9 +249,7 @@ class PjRtCApiTopologyDescription : public PjRtTopologyDescription {
 
   absl::StatusOr<Layout> GetDefaultLayout(
       PrimitiveType element_type,
-      absl::Span<const int64_t> dims) const override {
-    return Unimplemented("PJRT C API does not support GetDefaultLayout");
-  }
+      absl::Span<const int64_t> dims) const override;
 
  private:
   std::unique_ptr<PjRtCApiCompiler> compiler_;
