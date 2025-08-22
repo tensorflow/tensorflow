@@ -130,4 +130,17 @@ cc_library(
     name = "ref_count",
     hdrs = ["ref_count.h"],
     compatible_with = get_compatible_with_portable(),
+    deps = ["@com_google_absl//absl/base:nullability"],
+)
+
+tsl_cc_test(
+    name = "ref_count_test",
+    srcs = ["ref_count_test.cc"],
+    deps = [
+        ":ref_count",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_benchmark",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/base:nullability",
+    ],
 )
