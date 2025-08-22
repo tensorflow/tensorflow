@@ -1,0 +1,39 @@
+// This patch should be upstreamed. It is exactly what this is already in
+// upstream for createConvertTritonGPUToLLVMPass, but not for the new
+// createAllocateSharedMemoryNvPass. Other option is to pass 84 as ptx version
+// in the pipeline, but we should be consistent with the other passes.
+
+--- a/third_party/nvidia/include/TritonNVIDIAGPUToLLVM/Passes.h	2025-07-31 05:01:16.000000000 -0700
++++ b/third_party/nvidia/include/TritonNVIDIAGPUToLLVM/Passes.h	2025-08-04 08:45:47.000000000 -0700
+@@ -23,6 +23,8 @@
+ std::unique_ptr<OperationPass<ModuleOp>>
+ createConvertTritonGPUToLLVMPass(int32_t computeCapability, int32_t ptxVersion);
+ std::unique_ptr<OperationPass<ModuleOp>>
++createAllocateSharedMemoryNvPass(int32_t computeCapability);
++std::unique_ptr<OperationPass<ModuleOp>>
+ createAllocateSharedMemoryNvPass(int32_t computeCapability, int32_t ptxVersion);
+ 
+ #define GEN_PASS_REGISTRATION
+
+--- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/Allocation.cpp	2025-07-31 05:01:16.000000000 -0700
++++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/Allocation.cpp	2025-08-04 08:58:21.000000000 -0700
+@@ -26,6 +26,8 @@
+           AllocateSharedMemoryNv> {
+   using AllocateSharedMemoryNvBase::AllocateSharedMemoryNvBase;
+ 
++  AllocateSharedMemoryNv(int32_t computeCapability)
++      : AllocateSharedMemoryNvBase({computeCapability}) {}
+   AllocateSharedMemoryNv(int32_t computeCapability, int32_t ptxVersion)
+       : AllocateSharedMemoryNvBase({computeCapability, ptxVersion}) {}
+ 
+@@ -77,6 +79,10 @@
+ } // namespace mlir::triton::nvidia_gpu
+ 
+ namespace mlir::triton {
++std::unique_ptr<OperationPass<ModuleOp>>
++createAllocateSharedMemoryNvPass(int32_t computeCapability) {
++  return std::make_unique<AllocateSharedMemoryNv>(computeCapability);
++}
+ std::unique_ptr<OperationPass<ModuleOp>>
+ createAllocateSharedMemoryNvPass(int32_t computeCapability,
+                                  int32_t ptxVersion) {
