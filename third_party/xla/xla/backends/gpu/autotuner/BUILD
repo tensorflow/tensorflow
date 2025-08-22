@@ -576,6 +576,56 @@ cc_library(
 )
 
 cc_library(
+    name = "native_emitter",
+    srcs = ["native_emitter.cc"],
+    hdrs = ["native_emitter.h"],
+    deps = [
+        ":gpu_codegen_backend",
+        "//xla:autotuning_proto_cc",
+        "//xla:xla_proto_cc",
+        "//xla/backends/autotuner:codegen_backend",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:compiler",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+xla_test(
+    name = "native_emitter_test",
+    srcs = ["native_emitter_test.cc"],
+    backends = [
+        "a100",
+        "h100",
+        "b200",
+    ],
+    tags = [
+        "cuda-only",
+        "no_mac",
+    ],
+    deps = [
+        ":native_emitter",
+        "//xla/backends/autotuner:codegen_backend",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/service:platform_util",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu:nvptx_compiler",
+        "//xla/service/gpu:nvptx_compiler_impl",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "factory_cuda",
     srcs = ["factory_cuda.cc"],
     tags = [
