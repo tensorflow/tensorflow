@@ -214,7 +214,8 @@ HloSharding HloSharding::Subgroup(
                        /*replicate_on_last_tile_dim=*/false, metadata);
   }
   // If there is only one type of subgrouping and there is no tiling on data
-  // dimensions, it can be canonicalized to a simple manual/replicated sharding.
+  // dimensions, it can be canonicalized to a simple manual/replicated/unreduced
+  // sharding.
   if (absl::c_all_of(
           subgroup_types,
           [&](const OpSharding::Type t) { return t == subgroup_types[0]; }) &&
@@ -225,6 +226,9 @@ HloSharding HloSharding::Subgroup(
     }
     if (subgroup_types[0] == OpSharding::REPLICATED) {
       return Replicate(metadata);
+    }
+    if (subgroup_types[0] == OpSharding::UNREDUCED) {
+      return Unreduced(metadata);
     }
   }
   // Normalize the subgroups to simplify two cases:
