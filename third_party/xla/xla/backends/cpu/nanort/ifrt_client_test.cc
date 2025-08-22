@@ -147,7 +147,7 @@ static absl::StatusOr<ifrt::ArrayRef> MakeArrayFromLiteral(
       ifrt::Shape(literal.shape().dimensions()),
       /*byte_strides=*/std::nullopt, std::move(sharding),
       ifrt::Client::HostBufferSemantics::kImmutableZeroCopy,
-      /*on_done_with_host_buffer=*/{});
+      /*on_done_with_host_buffer=*/nullptr);
 }
 
 static void BM_IfRtAddScalars(benchmark::State& state) {
