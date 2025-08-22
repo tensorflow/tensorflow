@@ -524,6 +524,26 @@ uint64_t HloModule::ToFingerprint(const HloPrintOptions& options) const {
   return printer.ToFingerprint();
 }
 
+/*static*/ uint64_t HloModule::ComputationToFingerprint(
+    const HloComputation* computation, const HloPrintOptions& options) {
+  HighwayHashPrinter printer;
+  computation->Print(&printer, options,
+                     computation->MakeInstructionPostOrder());
+  return printer.ToFingerprint();
+}
+
+/*static*/ uint64_t HloModule::InstructionToFingerprint(
+    const HloInstruction* instruction, const HloPrintOptions& options) {
+  HighwayHashPrinter printer;
+  instruction->Print(&printer, options);
+  return printer.ToFingerprint();
+}
+
+/*static*/ uint64_t HloModule::EmptyFingerprint() {
+  HighwayHashPrinter printer;
+  return printer.ToFingerprint();
+}
+
 HloModuleProto HloModule::ToProto() const {
   HloModuleProto proto;
   proto.set_id(unique_id_);
@@ -1159,10 +1179,8 @@ class FingerprintMap {
   uint64_t GetFingerprint(const HloComputation* computation) {
     auto result = fingerprint_map_.try_emplace(computation, 0);
     if (result.second) {
-      HighwayHashPrinter printer;
-      computation->Print(&printer, print_options_,
-                         computation->MakeInstructionPostOrder());
-      result.first->second = printer.ToFingerprint();
+      result.first->second =
+          HloModule::ComputationToFingerprint(computation, print_options_);
     }
     return result.first->second;
   }
