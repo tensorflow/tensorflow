@@ -341,8 +341,14 @@ message BlockScaledDotBackendConfig {
   int32 block_size = 1;
 }
 
+enum DeviceType {
+  DEVICE_TYPE_INVALID = 0;
+  DEVICE_TYPE_DEVICE = 1;
+  DEVICE_TYPE_HOST = 2;
+}
+
 // Generic backend config for XLA:GPU
-// Next-Id: 14
+// Next-Id: 15
 message GpuBackendConfig {
   // Specifies which operation queue the current instruction will run on.
   // A backend may have multiple operation queues to run instructions
@@ -391,4 +397,7 @@ message GpuBackendConfig {
   // Reification cost for the instruction which attaches this
   // `GpuBackendConfig`.
   repeated ReificationCost reification_cost = 12;
+
+  // Specifies the device type for the instruction.
+  DeviceType device_type = 14;
 }

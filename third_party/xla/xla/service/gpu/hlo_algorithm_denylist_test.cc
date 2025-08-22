@@ -80,7 +80,7 @@ TEST_F(DenylistTest, DefaultTest) {
       ENTRY main {
           arg1 = f16[256,224,224,4]{3,2,1,0} parameter(0)
           arg2 = f16[7,7,4,64]{2,1,0,3} parameter(1)
-          ROOT root = (f16[256,112,112,64]{3,2,1,0}, u8[0]{0}) custom-call(arg1, arg2), window={size=7x7 stride=2x2 pad=3_3x3_3}, dim_labels=b01f_01io->b01f, custom_call_target="__cudnn$convForward", backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"cudnn_conv_backend_config":{"activation_mode":"kNone","conv_result_scale":1,"side_input_scale":0,"leakyrelu_alpha":0},"force_earliest_schedule":false,"reification_cost":[]}
+          ROOT root = (f16[256,112,112,64]{3,2,1,0}, u8[0]{0}) custom-call(arg1, arg2), window={size=7x7 stride=2x2 pad=3_3x3_3}, dim_labels=b01f_01io->b01f, custom_call_target="__cudnn$convForward", backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"cudnn_conv_backend_config":{"activation_mode":"kNone","conv_result_scale":1,"side_input_scale":0,"leakyrelu_alpha":0},"force_earliest_schedule":false,"reification_cost":[],"device_type":"DEVICE_TYPE_DEVICE"}
       }
   )hlo"));
 
@@ -119,7 +119,7 @@ TEST_F(DenylistTest, NoBlasVersionSet) {
       ENTRY main {
           arg1 = f16[256,224,224,4]{3,2,1,0} parameter(0)
           arg2 = f16[7,7,4,64]{2,1,0,3} parameter(1)
-          ROOT root = (f16[256,112,112,64]{3,2,1,0}, u8[0]{0}) custom-call(arg1, arg2), window={size=7x7 stride=2x2 pad=3_3x3_3}, dim_labels=b01f_01io->b01f, custom_call_target="__cudnn$convForward", backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"cudnn_conv_backend_config":{"activation_mode":"kNone","conv_result_scale":1,"side_input_scale":0,"leakyrelu_alpha":0},"force_earliest_schedule":false,"reification_cost":[]}
+          ROOT root = (f16[256,112,112,64]{3,2,1,0}, u8[0]{0}) custom-call(arg1, arg2), window={size=7x7 stride=2x2 pad=3_3x3_3}, dim_labels=b01f_01io->b01f, custom_call_target="__cudnn$convForward", backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"cudnn_conv_backend_config":{"activation_mode":"kNone","conv_result_scale":1,"side_input_scale":0,"leakyrelu_alpha":0},"force_earliest_schedule":false,"reification_cost":[],"device_type":"DEVICE_TYPE_DEVICE"}
       }
   )hlo"));
 
@@ -150,7 +150,7 @@ TEST_F(DenylistTest, EntryFromHardcodedList) {
          arg1 = f32[512,512,7,7]{3,2,1,0} parameter(0)
          arg2 = f32[512,512,3,3]{3,2,1,0} parameter(1)
          arg3 = f32[512]{0} parameter(2)
-         ROOT root = (f32[512,512,7,7]{3,2,1,0}, u8[0]{0}) custom-call(arg1, arg2, arg3), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_oi01->bf01, custom_call_target="__cudnn$convBiasActivationForward", backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"cudnn_conv_backend_config":{"activation_mode":"kNone","conv_result_scale":1,"side_input_scale":0,"leakyrelu_alpha":0},"force_earliest_schedule":false,"reification_cost":[]}
+         ROOT root = (f32[512,512,7,7]{3,2,1,0}, u8[0]{0}) custom-call(arg1, arg2, arg3), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_oi01->bf01, custom_call_target="__cudnn$convBiasActivationForward", backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"cudnn_conv_backend_config":{"activation_mode":"kNone","conv_result_scale":1,"side_input_scale":0,"leakyrelu_alpha":0},"force_earliest_schedule":false,"reification_cost":[],"device_type":"DEVICE_TYPE_DEVICE"}
       }
   )hlo"));
 
@@ -180,7 +180,7 @@ TEST_F(DenylistTest, GenerateDenyListEntry) {
          arg1 = f32[512,512,7,7]{3,2,1,0} parameter(0)
          arg2 = f32[512,512,3,3]{3,2,1,0} parameter(1)
          arg3 = f32[512]{0} parameter(2)
-         ROOT root = (f32[512,512,7,7]{3,2,1,0}, u8[0]{0}) custom-call(arg1, arg2, arg3), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_oi01->bf01, custom_call_target="__cudnn$convBiasActivationForward", backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"cudnn_conv_backend_config":{"activation_mode":"kNone","conv_result_scale":1,"side_input_scale":0,"leakyrelu_alpha":0},"force_earliest_schedule":false,"reification_cost":[]}
+         ROOT root = (f32[512,512,7,7]{3,2,1,0}, u8[0]{0}) custom-call(arg1, arg2, arg3), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_oi01->bf01, custom_call_target="__cudnn$convBiasActivationForward", backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"cudnn_conv_backend_config":{"activation_mode":"kNone","conv_result_scale":1,"side_input_scale":0,"leakyrelu_alpha":0},"force_earliest_schedule":false,"reification_cost":[],"device_type":"DEVICE_TYPE_DEVICE"}
       }
   )hlo"));
 
