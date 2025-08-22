@@ -172,7 +172,11 @@ absl::Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
   // CudnnConvPadForTensorCores may add instructions which can be simplified
   // by constant folding.
   pipeline.AddPass<HloConstantFolding>();
-  TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
+  TF_RETURN_IF_ERROR(
+      pipeline
+          .Run(hlo_module,
+               /*execution_threads=*/{HloInstruction::kMainExecutionThread})
+          .status());
 
   return absl::OkStatus();
 }
@@ -195,7 +199,11 @@ absl::Status AMDGPUCompiler::OptimizeHloPostLayoutAssignment(
   // Padding a gemm operand that's a constant results in pad(constant).  Run
   // constant-folding to simplify this into a new constant.
   pre_pipeline.AddPass<HloConstantFolding>();
-  TF_RETURN_IF_ERROR(pre_pipeline.Run(hlo_module).status());
+  TF_RETURN_IF_ERROR(
+      pre_pipeline
+          .Run(hlo_module,
+               /*execution_threads=*/{HloInstruction::kMainExecutionThread})
+          .status());
 
   TF_RETURN_IF_ERROR(GpuCompiler::OptimizeHloPostLayoutAssignment(
       hlo_module, stream_exec, options, gpu_target_config, alias_info,
@@ -207,7 +215,11 @@ absl::Status AMDGPUCompiler::OptimizeHloPostLayoutAssignment(
   // memory.
   post_pipeline.AddPass<TriangularSolveRewriter>();
 
-  TF_RETURN_IF_ERROR(post_pipeline.Run(hlo_module).status());
+  TF_RETURN_IF_ERROR(
+      post_pipeline
+          .Run(hlo_module,
+               /*execution_threads=*/{HloInstruction::kMainExecutionThread})
+          .status());
 
   return absl::OkStatus();
 }
