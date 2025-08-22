@@ -52,8 +52,13 @@ CuDnnThunk::CuDnnThunk(std::string fingerprint, ThunkInfo thunk_info,
 
 absl::Status CuDnnThunk::Initialize(const InitializeParams& params) {
   absl::Status ret = absl::OkStatus();
+  // Calling AsDnn outside call_once ensures that cuDNN handles get created for
+  // all GPUs in programs using cuDNN during the executable initialization
+  // phase. It's sufficient to deserialize the graph once using just one of
+  // them.
+  se::dnn::DnnSupport* dnn = params.stream->parent()->AsDnn();
   absl::call_once(once_flag_, [&] {
-    auto result = params.stream->parent()->AsDnn()->DeserializeGraph(
+    auto result = dnn->DeserializeGraph(
         *params.stream, params.src.dnn_compiled_graphs.at(fingerprint_));
     std::string().swap(fingerprint_);
     if (result.ok()) {
