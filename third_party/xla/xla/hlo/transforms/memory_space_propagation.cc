@@ -54,7 +54,9 @@ absl::StatusOr<bool> MemorySpacePropagation::Run(
              operand_idx < instruction->fused_parameters().size();
              ++operand_idx) {
           ShapeUtil::ForEachLeafShape(
-              instruction->operand(operand_idx)->shape(),
+              propagate_from_parameters_
+                  ? instruction->fused_parameter(operand_idx)->shape()
+                  : instruction->operand(operand_idx)->shape(),
               [&](const Shape& sub_shape, const ShapeIndex& index) {
                 modified |=
                     Propagate(index, instruction->fused_parameter(operand_idx),
