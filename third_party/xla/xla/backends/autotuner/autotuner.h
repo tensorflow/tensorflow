@@ -47,6 +47,14 @@ struct AutotuneConfig {
   float relative_tolerance = 1e-6;
   // Whether to crash the process on check failure.
   bool crash_on_check_failure = false;
+  // If true, in addition to the duration, the best algorithm will be chosen
+  // based on the scratch bytes. This is only useful if backends use scratch
+  // space for temporary tensors. The best config will be the one with the
+  // smallest scratch space among top minimum duration configs in
+  // scratch_bytes_window_size_us window.
+  bool optimize_scratch_bytes = false;
+  // Window size in microseconds to consider for scratch bytes optimization.
+  int scratch_bytes_window_size_us = 4;
 };
 
 class Autotuner {
