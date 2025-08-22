@@ -561,7 +561,12 @@ int64_t CpuExecutable::SizeOfGeneratedCodeInBytes() const {
   return 0;
 }
 
-void CpuExecutable::Finalize() { assignment_->Finalize(); }
+void CpuExecutable::Finalize() {
+  if (has_module()) {
+    shared_module()->Finalize();
+  }
+  assignment_->Finalize();
+}
 
 }  // namespace cpu
 }  // namespace xla
