@@ -15135,19 +15135,10 @@ TEST_P(SpmdPartitioningTest, GatherCostModelForUnmatchedSharding) {
   const char* const hlo_string = R"(
 HloModule pjit
 
-region_10.581.clone {
-  Arg_0.53 = bf16[] parameter(0)
-  Arg_1.53 = bf16[] parameter(1)
-  ROOT add.1294 = bf16[] add(Arg_0.53, Arg_1.53)
-}
-
 ENTRY %main.21 {
   p0 = bf16[8192,128]{1,0} parameter(0), sharding={devices=[2,4,2]<=[2,4,2]T(2,1,0) last_tile_dim_replicate}
   p1 = s32[16384,1]{1,0} parameter(1), sharding={devices=[8,1,2]<=[16] last_tile_dim_replicate}
-  gather.0 = bf16[16384,128]{1,0} gather(p0, p1), offset_dims={1}, collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=1, slice_sizes={1,128}, sharding={devices=[8,2]<=[16]}
-  constant.2467 = bf16[] constant(0)
-  reduce.1749 = bf16[16384]{0} reduce(gather.0, constant.2467), dimensions={1}, to_apply=region_10.581.clone, sharding={devices=[8,2]<=[16] last_tile_dim_replicate}
-  ROOT copy.1 = bf16[16384]{0} copy(reduce.1749), sharding={devices=[8,2]<=[16] last_tile_dim_replicate}
+  ROOT gather.0 = bf16[16384,128]{1,0} gather(p0, p1), offset_dims={1}, collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=1, slice_sizes={1,128}, sharding={devices=[8,2]<=[16]}
 }
 )";
 
