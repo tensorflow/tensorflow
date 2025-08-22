@@ -928,6 +928,27 @@ TEST(CoordinationServiceTest, TryGetKeyValue) {
   EXPECT_THAT(result.status(), StatusIs(absl::StatusCode::kNotFound));
 }
 
+TEST(CoordinationServiceTest, IncrementKeyValue) {
+  const CoordinationServiceConfig config =
+      GetCoordinationServiceConfig(/*num_tasks=*/1);
+  auto client_cache = std::make_unique<TestCoordinationClientCache>();
+  std::unique_ptr<CoordinationService> coord_service =
+      CoordinationService::Create(Env::Default(), config,
+                                  std::move(client_cache));
+  ASSERT_OK(coord_service->InsertKeyValue("test_key", "1"));
+  ASSERT_OK(coord_service->IncrementKeyValue("test_key", 3));
+  ASSERT_OK_AND_ASSIGN(std::string result_0,
+                       coord_service->TryGetKeyValue("test_key"));
+  EXPECT_EQ(result_0, "4");
+  ASSERT_OK(coord_service->IncrementKeyValue("test_key_2", 10));
+  ASSERT_OK_AND_ASSIGN(std::string result_1,
+                       coord_service->TryGetKeyValue("test_key_2"));
+  EXPECT_EQ(result_1, "10");
+  ASSERT_OK(coord_service->InsertKeyValue("test_key_3", "bad_value"));
+  EXPECT_THAT(coord_service->IncrementKeyValue("test_key_3", 10),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
+}
+
 TEST_F(CoordinateTwoTasksTest, GetKeyValueDir_SingleValueInDirectory) {
   EnableCoordinationService();
   KeyValueEntry kv = CreateKv("dir/path", "value0");
