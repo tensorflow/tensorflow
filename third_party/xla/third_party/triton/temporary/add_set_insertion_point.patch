@@ -1,0 +1,29 @@
+// Remove once it is upstreamed. Tracking bug: b/440003867
+--- a/lib/Dialect/TritonNvidiaGPU/Transforms/InterleaveTMem.cpp	2025-07-31 05:01:16.000000000 -0700
++++ b/lib/Dialect/TritonNvidiaGPU/Transforms/InterleaveTMem.cpp	2025-08-19 22:42:39.000000000 -0700
+@@ -63,6 +63,7 @@
+ std::pair<Value, AccessRange>
+ findBufferAccessMemdescSubview(Operation *subview) {
+   OpBuilder builder(subview->getContext());
++  builder.setInsertionPoint(subview);
+   Location loc = subview->getLoc();
+   TypedValue<ttg::MemDescType> src;
+   SmallVector<int64_t> shape;
+
+--- a/test/TritonNvidiaGPU/interleave_tmem.mlir	2025-07-31 05:01:16.000000000 -0700
++++ b/test/TritonNvidiaGPU/interleave_tmem.mlir	2025-08-19 22:57:53.000000000 -0700
+@@ -124,12 +124,12 @@
+   %subview0 = ttg.memdesc_index %alloc0, %c0 : !ttg.memdesc<1x128x128xf32, #tmem, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x128xf32, #tmem, #ttng.tensor_memory, mutable>
+   // CHECK: [[ALLOC1:%.+]] = ttng.tmem_alloc
+   %alloc1 = ttng.tmem_alloc : () -> !ttg.memdesc<1x128x128xf32, #tmem, #ttng.tensor_memory, mutable>
+-  // CHECK-NEXT: [[SUBVIEW1:%.+]] = ttg.memdesc_index [[ALLOC1]]
++  // CHECK: [[SUBVIEW1:%.+]] = ttg.memdesc_index [[ALLOC1]]
+   %subview1 = ttg.memdesc_index %alloc1, %c0 : !ttg.memdesc<1x128x128xf32, #tmem, #ttng.tensor_memory, mutable> -> !ttg.memdesc<128x128xf32, #tmem, #ttng.tensor_memory, mutable>
+   // CHECK-NEXT: tmem_store %arg0, [[SUBVIEW1]]
+   ttng.tmem_store %arg0, %subview1, %true : tensor<128x128xf32, #blocked> -> !ttg.memdesc<128x128xf32, #tmem, #ttng.tensor_memory, mutable>
+   // CHECK-NEXT: [[ALLOC0:%.+]] = ttng.tmem_alloc
+-  // CHECK-NEXT: [[SUBVIEW0:%.+]] = ttg.memdesc_index [[ALLOC0]]
++  // CHECK: [[SUBVIEW0:%.+]] = ttg.memdesc_index [[ALLOC0]]
+   // CHECK-NEXT: tmem_store %arg0, [[SUBVIEW0]]
+   ttng.tmem_store %arg0, %subview0, %true : tensor<128x128xf32, #blocked> -> !ttg.memdesc<128x128xf32, #tmem, #ttng.tensor_memory, mutable>
+   tt.return

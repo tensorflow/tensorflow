@@ -95,8 +95,9 @@ absl::Status CreateTritonPipeline(
   pm->addPass(mlir::createCanonicalizerPass());
 
   if (cc.has_amd_matrix_core()) {
-    pm->addPass(
-        mlir::createTritonAMDGPUStreamPipeline({num_stages, 0, 0, false}));
+    pm->addPass(mlir::createTritonAMDGPUStreamPipeline(
+        {num_stages, /*global_prefetch=*/0, /*local_prefetch=*/0,
+         /*use_async_copy=*/false, /*use_block_pingpong=*/false}));
     // TODO(ROCm) Modify when corresponding run time flags are introduced.
     if (/*use_async_copy=*/false) {  // Not enabled by default.
       pm->addPass(mlir::createTritonAMDGPUCoalesceAsyncCopy());
@@ -116,7 +117,7 @@ absl::Status CreateTritonPipeline(
   if (cc.has_amd_matrix_core()) {
     pm->addPass(mt::gpu::createTritonGPUReorderInstructions());
   }
-  if (/*(use_block_pingpong == "none") ==*/false) {
+  if (/*use_block_pingpong=*/false) {
     pm->addPass(mlir::createTritonAMDGPUBlockPingpong({num_stages}));
   }
   if (/*use_buffer_ops=*/false) {  // Not enabled by default.

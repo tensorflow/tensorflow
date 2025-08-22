@@ -1,0 +1,15 @@
+Adding the type annotation for the args caused pytype to complain that triton.language.core.tuple is not a container.
+That's because pytype expands the variadic argument type to tuple[], and this file also defines own `tuple` type, so wrong type is assumed.
+This patch has to be removed once b/438115892 is fixed.
+
+--- a/python/triton/language/core.py	2025-07-31 05:01:16.000000000 -0700
++++ b/python/triton/language/core.py	2025-08-12 00:25:59.000000000 -0700
+@@ -2784,7 +2784,7 @@
+ @builtin
+ def map_elementwise(
+     scalar_fn: Callable[..., Tuple[tensor, ...]],
+-    *args: tensor,
++    *args,
+     pack=1,
+     _semantic=None,
+     _generator=None,
