@@ -16,6 +16,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -30,7 +31,9 @@
 #include "grpcpp/support/status.h"
 #include "grpcpp/support/sync_stream.h"
 #include "xla/pjrt/distributed/util.h"
+#include "xla/pjrt/semaphore.h"
 #include "xla/python/ifrt/future.h"
+#include "xla/python/ifrt_proxy/client/global_flags.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.grpc.pb.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/prof_util.h"
@@ -54,6 +57,16 @@ static void SetDataFromStringView(GrpcHostBufferStoreRequest& req,
 #endif
 }
 
+static std::shared_ptr<xla::Semaphore::ScopedReservation>
+ScopedAcquireSemaphore(std::optional<xla::Semaphore>& semaphore) {
+  if (!semaphore.has_value()) {
+    return nullptr;
+  }
+  auto reservation = semaphore->ScopedAcquire(1);
+  return std::make_shared<xla::Semaphore::ScopedReservation>(
+      std::move(reservation));
+}
+
 GrpcClientHostBufferStore::GrpcClientHostBufferStore(
     std::shared_ptr<grpc::GrpcIfrtService::StubInterface> stub,
     IfrtProxyVersion version, uint64_t session_id)
@@ -61,7 +74,16 @@ GrpcClientHostBufferStore::GrpcClientHostBufferStore(
       version_(std::move(version)),
       session_id_(session_id),
       work_queue_(std::make_unique<tsl::UnboundedWorkQueue>(
-          tsl::Env::Default(), "HostBufferStoreLookupsWorkQueue")) {}
+          tsl::Env::Default(), "HostBufferStoreLookupsWorkQueue")) {
+  if (GetGlobalClientFlags()->grpc_max_ongoing_host_buffer_stores > 0) {
+    store_throttler_.emplace(
+        GetGlobalClientFlags()->grpc_max_ongoing_host_buffer_stores);
+  }
+  if (GetGlobalClientFlags()->grpc_max_ongoing_host_buffer_lookups > 0) {
+    lookup_throttler_.emplace(
+        GetGlobalClientFlags()->grpc_max_ongoing_host_buffer_lookups);
+  }
+}
 
 GrpcClientHostBufferStore::~GrpcClientHostBufferStore() {
   LOG(INFO) << "Waiting for destruction of HostBufferStoreLookupsWorkQueue...";
@@ -78,7 +100,9 @@ Future<> GrpcClientHostBufferStore::Store(uint64_t handle,
 
   std::unique_ptr<std::string> buffered_data;
 
-  work_queue_->Schedule([this, handle, promise, data, flow]() mutable -> void {
+  auto reservation = ScopedAcquireSemaphore(store_throttler_);
+  work_queue_->Schedule([this, reservation = std::move(reservation), handle,
+                         promise, data, flow]() mutable -> void {
     auto span = flow.Span<XFlowHelper::kRecv>();
     GrpcHostBufferStoreMetadata metadata;
     metadata.set_session_id(session_id_);
@@ -138,6 +162,8 @@ Future<> GrpcClientHostBufferStore::Store(uint64_t handle,
   context.AddMetadata("ifrt-proxy-grpc-host-buffer-store-metadata-bin",
                       metadata.SerializeAsString());
 
+  auto reservation = ScopedAcquireSemaphore(store_throttler_);
+
   GrpcHostBufferStoreResponse response;
   auto writer = stub_->HostBufferStore(&context, &response);
 
@@ -172,7 +198,9 @@ Future<absl::Cord> GrpcClientHostBufferStore::Lookup(uint64_t handle) {
   XFlowHelper flow("GrpcClientHostBufferStore::Lookup");
   flow.InstantActivity<XFlowHelper::kSend>();
 
-  work_queue_->Schedule([this, handle, promise, flow]() mutable -> void {
+  auto reservation = ScopedAcquireSemaphore(lookup_throttler_);
+  work_queue_->Schedule([this, reservation = std::move(reservation), handle,
+                         promise, flow]() mutable -> void {
     auto span = flow.Span<XFlowHelper::kRecv>();
     GrpcHostBufferLookupRequest request;
     request.set_handle(handle);
