@@ -8,7 +8,6 @@ if_enable_mkl is a conditional to check if building with MKL and MKL is enabled.
 if_mkldnn_openmp checks if we are building x86 backend with OpenMP.
 if_onednn_async checks if we are building x86 backend (only Intel) with experimental async runtime support.
 if_mkldnn_aarch64_acl checks if we are building with Arm Compute Library.
-if_mkldnn_aarch64_acl_openmp checks if we are building ACL with OpenMP.
 
 mkl_repository is a repository rule for creating MKL repository rule that can
 be pointed to either a local folder, or download it from the internet.
@@ -158,12 +157,6 @@ def if_mkldnn_openmp(if_true, if_false = []):
 def if_mkldnn_aarch64_acl(if_true, if_false = []):
     return select({
         "@local_xla//xla/tsl/mkl:build_with_mkl_aarch64": if_true,
-        "//conditions:default": if_false,
-    })
-
-def if_mkldnn_aarch64_acl_openmp(if_true, if_false = []):
-    return select({
-        "@local_xla//xla/tsl/mkl:build_with_mkl_aarch64_openmp": if_true,
         "//conditions:default": if_false,
     })
 

@@ -11,7 +11,6 @@ load(
     "if_enable_mkl",
     "if_mkl",
     "if_mkldnn_aarch64_acl",
-    "if_mkldnn_aarch64_acl_openmp",
     "if_mkldnn_openmp",
     "if_onednn_async",
     "onednn_v3_define",
@@ -345,7 +344,6 @@ def tsl_copts(
         if_onednn_async(["-DENABLE_ONEDNN_ASYNC"]) +
         onednn_v3_define() +
         if_mkldnn_aarch64_acl(["-DDNNL_AARCH64_USE_ACL=1"]) +
-        if_mkldnn_aarch64_acl_openmp(["-DENABLE_ONEDNN_OPENMP"]) +
         if_enable_acl(["-DXLA_CPU_USE_ACL=1", "-fexceptions"]) +
         if_android_arm(["-mfpu=neon", "-fomit-frame-pointer"]) +
         if_linux_x86_64(["-msse3"]) +
