@@ -292,6 +292,8 @@ struct PjRtCrossHostRecvState {
 };
 using PjRtCrossHostRecvNotifier =
     std::function<void(absl::StatusOr<PjRtCrossHostRecvState>)>;
+using PjRtCrossHostRecvNotifierWithUuids = std::function<void(
+    absl::StatusOr<PjRtCrossHostRecvState>, absl::Span<const int64_t>)>;
 
 // A sized chunk of host data. The host data can be either in host layout or in
 // device layout, and it can be one part of the entire buffer. The PjRt
@@ -947,6 +949,23 @@ class PjRtClient {
   MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
                               PjRtDevice* device,
                               PjRtCrossHostRecvNotifier notifier) {
+    PjRtCrossHostRecvNotifierWithUuids notifier_uuids =
+        [notifier = std::move(notifier)](
+            absl::StatusOr<PjRtCrossHostRecvState> recv_state,
+            absl::Span<const int64_t> uuids) { return notifier(recv_state); };
+    return MakeCrossHostReceiveBuffers(shapes, device, /*uuids=*/{},
+                                       std::move(notifier_uuids));
+  }
+
+  // This overload allows the caller to specify a list of unique identifiers
+  // (uuids) for each transferred buffer, which are passed to the notifier
+  // function. This is for compatibility with the PJRT C API, where the notifier
+  // cannot capture the uuids since it must be a raw function pointer.
+  virtual absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
+  MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
+                              PjRtDevice* device,
+                              absl::Span<const int64_t> uuids,
+                              PjRtCrossHostRecvNotifierWithUuids notifier) {
     return absl::UnimplementedError(
         "MakeCrossHostReceiveBuffers is not implemented.");
   }

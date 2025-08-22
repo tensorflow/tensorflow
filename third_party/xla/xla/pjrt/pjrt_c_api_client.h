@@ -368,9 +368,10 @@ class PjRtCApiClient : public PjRtClient {
       PjRtBuffer* buffer) override;
 
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
-  MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
-                              PjRtDevice* device,
-                              PjRtCrossHostRecvNotifier notifier) override;
+  MakeCrossHostReceiveBuffers(
+      absl::Span<const Shape> shapes, PjRtDevice* device,
+      absl::Span<const int64_t> uuids,
+      PjRtCrossHostRecvNotifierWithUuids notifier) override;
 
   absl::Status DmaMap(void* data, size_t size) override;
 
@@ -397,8 +398,8 @@ class PjRtCApiClient : public PjRtClient {
     return nullptr;
   }
 
-  using CrossHostRecvNotifierFunction =
-      std::function<void(PJRT_Error*, const char**, size_t*, size_t)>;
+  using CrossHostRecvNotifierFunction = std::function<void(
+      PJRT_Error*, const char**, size_t*, size_t, const int64_t*, size_t)>;
 
  private:
   void InitDevicesAndMemorySpaces();

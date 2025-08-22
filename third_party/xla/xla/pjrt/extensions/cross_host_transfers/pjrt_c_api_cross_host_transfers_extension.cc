@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/pjrt/extensions/cross_host_transfers/pjrt_c_api_cross_host_transfers_extension.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -34,13 +35,14 @@ limitations under the License.
 namespace pjrt {
 
 namespace {
-static xla::PjRtCrossHostRecvNotifier CCrossHostRecvNotifierToCpp(
+static xla::PjRtCrossHostRecvNotifierWithUuids CCrossHostRecvNotifierToCpp(
     const PJRT_Transfers_CrossHostRecvNotifierInfo& c_notifier) {
   return [user_arg = c_notifier.user_arg, notifier = c_notifier.notifier](
-             absl::StatusOr<xla::PjRtCrossHostRecvState> recv_state) {
+             absl::StatusOr<xla::PjRtCrossHostRecvState> recv_state,
+             absl::Span<const int64_t> uuids) {
     if (!recv_state.ok()) {
       auto error = new PJRT_Error{recv_state.status()};
-      return notifier(error, nullptr, nullptr, 0, user_arg);
+      return notifier(error, nullptr, nullptr, 0, nullptr, 0, user_arg);
     }
     auto& descriptors = recv_state->descriptors;
     std::vector<size_t> descriptors_sizes;
@@ -54,7 +56,8 @@ static xla::PjRtCrossHostRecvNotifier CCrossHostRecvNotifierToCpp(
           descriptors[i].serialized_descriptors.front().size());
     }
     return notifier(nullptr, serialized_descriptors.data(),
-                    descriptors_sizes.data(), descriptors.size(), user_arg);
+                    descriptors_sizes.data(), descriptors.size(), uuids.data(),
+                    uuids.size(), user_arg);
   };
 }
 }  // namespace
@@ -74,12 +77,17 @@ PJRT_Error* PJRT_Transfers_PJRT_Client_MakeCrossHostReceiveBuffers(
                                  args->shape_num_dims[i], args->layouts[i]));
     shapes.push_back(std::move(shape));
   }
-  xla::PjRtCrossHostRecvNotifier notifier =
+  std::vector<int64_t> uuids;
+  uuids.reserve(args->num_uuids);
+  for (int i = 0; i < args->num_uuids; ++i) {
+    uuids.push_back(args->uuids[i]);
+  }
+  xla::PjRtCrossHostRecvNotifierWithUuids notifier =
       CCrossHostRecvNotifierToCpp(args->notifier);
-  PJRT_ASSIGN_OR_RETURN(
-      std::vector<std::unique_ptr<xla::PjRtBuffer>> buffers,
-      args->client->client->MakeCrossHostReceiveBuffers(
-          absl::MakeSpan(shapes), args->device->device, std::move(notifier)));
+  PJRT_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<xla::PjRtBuffer>> buffers,
+                        args->client->client->MakeCrossHostReceiveBuffers(
+                            absl::MakeSpan(shapes), args->device->device,
+                            absl::MakeSpan(uuids), std::move(notifier)));
   args->num_buffers = buffers.size();
   for (int i = 0; i < buffers.size(); ++i) {
     args->buffers[i] = new PJRT_Buffer{std::move(buffers[i]), args->client};

@@ -20,7 +20,6 @@ limitations under the License.
 #include <cstdint>
 
 #include "xla/pjrt/c/pjrt_c_api.h"
-#include "xla/pjrt/pjrt_client.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -36,7 +35,8 @@ extern "C" {
 
 typedef void (*PJRT_Transfers_CrossHostRecvNotifier)(
     PJRT_Error* error, const char** serialized_descriptors,
-    size_t* descriptors_sizes, size_t num_descriptors, void* user_arg);
+    size_t* descriptors_sizes, size_t num_descriptors, const int64_t* uuids,
+    size_t num_uuids, void* user_arg);
 
 struct PJRT_Transfers_CrossHostRecvNotifierInfo {
   void* user_arg;
@@ -54,6 +54,8 @@ struct PJRT_Transfers_PJRT_Client_MakeCrossHostReceiveBuffers_Args {
   PJRT_Buffer_Type* element_types;
   PJRT_Buffer_MemoryLayout** layouts;
   PJRT_Device* device;
+  const int64_t* uuids;
+  size_t num_uuids;
   PJRT_Transfers_CrossHostRecvNotifierInfo notifier;
   PJRT_Buffer** buffers;  // out
   size_t num_buffers;     // out
