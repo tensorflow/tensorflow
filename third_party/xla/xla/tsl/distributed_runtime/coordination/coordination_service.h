@@ -179,6 +179,12 @@ class CoordinationService {
   // does not exist, return NotFound error.
   absl::StatusOr<std::string> TryGetKeyValue(absl::string_view key);
 
+  // Increment a configuration key-value by the provided increment. If the key
+  // does not exist, the value is initialized to 0 and then incremented. The
+  // result after incrementing is returned.
+  absl::StatusOr<std::string> IncrementKeyValue(absl::string_view key,
+                                                int64_t increment);
+
   // Gets all values under a directory (key).
   // A value is considered to be in the directory if its key is prefixed with
   // the directory. This is not a blocking call. Agent does not need to be

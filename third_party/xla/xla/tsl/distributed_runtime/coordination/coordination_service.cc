@@ -1050,6 +1050,13 @@ absl::StatusOr<std::string> CoordinationService::TryGetKeyValue(
   return *std::move(s);
 }
 
+absl::StatusOr<std::string> CoordinationService::IncrementKeyValue(
+    absl::string_view key, int64_t increment) {
+  VLOG(3) << "CoordinationService::IncrementKeyValue(key=" << key
+          << ", increment=" << increment << ")";
+  return store_.IncrementBy(NormalizeKey(key), increment);
+}
+
 std::vector<KeyValueEntry> CoordinationService::GetKeyValueDir(
     absl::string_view directory_key) {
   VLOG(3) << "CoordinationService::GetKeyValueDir(directory_key="
