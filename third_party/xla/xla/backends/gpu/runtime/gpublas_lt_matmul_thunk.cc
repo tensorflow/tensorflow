@@ -23,17 +23,16 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/gpu/stream_executor_util.h"
-#include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/stream.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -89,7 +88,7 @@ CublasLtMatmulThunk::CublasLtMatmulThunk(
   // pointer to the actual instruction, in this case Matmul plans are not
   // cached.
   if (instr != nullptr) {
-    canonical_hlo_ = xla::gpu::AutotuneCacheKey("unused", *instr).GetHlo();
+    canonical_hlo_ = AutotuneCacheKey::HloInstructionToCanonicalString(*instr);
   }
 }
 

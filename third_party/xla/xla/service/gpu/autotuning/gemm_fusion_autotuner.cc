@@ -179,7 +179,8 @@ class GemmFusionCollector : public ConstDfsHloVisitorWithDefault {
       return absl::OkStatus();
     }
 
-    AutotuneCacheKey key = AutotunerUtil::GetKey(hlo, impl_->GetConfig());
+    AutotuneCacheKey key =
+        AutotuneCacheKey(impl_->GetConfig().GetDeviceDescription(), *hlo);
     auto [iterator, inserted] = result_.fusion_count_map.insert({key, 1});
     if (inserted) {
       result_.fingerprint += key.GetHlo();
@@ -1281,7 +1282,8 @@ absl::Status GemmFusionAutotunerImpl::Autotune(
           /*contents=*/module->ToString());
     }
 
-    const AutotuneCacheKey key = AutotunerUtil::GetKey(fusion, config_);
+    const AutotuneCacheKey key =
+        AutotuneCacheKey(config_.GetDeviceDescription(), *fusion);
     TF_ASSIGN_OR_RETURN(
         bool added, AutotunerUtil::AddResult(key, std::move(best), config_));
     if (!added) {
@@ -1415,7 +1417,8 @@ absl::StatusOr<bool> GemmFusionAutotuner::Run(
   if (!autotuner.IsAutotuningEnabled()) {
     // Pick the first option for each gemm instead of autotuning.
     for (const auto& [fusion, tilings] : config_sets) {
-      const AutotuneCacheKey key = AutotunerUtil::GetKey(fusion, config_);
+      const AutotuneCacheKey key =
+          AutotuneCacheKey(config_.GetDeviceDescription(), *fusion);
       AutotuneResult res = FromConfig(tilings[0]);
       *res.mutable_run_time() =
           tsl::proto_utils::ToDurationProto(absl::ZeroDuration());
@@ -1429,7 +1432,8 @@ absl::StatusOr<bool> GemmFusionAutotuner::Run(
     VLOG(1) << "Overriding GEMM autotuner with the following config: "
             << gemm_key.DebugString();
     for (const auto& [fusion, unused] : config_sets) {
-      const AutotuneCacheKey key = AutotunerUtil::GetKey(fusion, config_);
+      const AutotuneCacheKey key =
+          AutotuneCacheKey(config_.GetDeviceDescription(), *fusion);
       AutotuneResult res;
       *res.mutable_triton() = gemm_key;
       *res.mutable_run_time() =

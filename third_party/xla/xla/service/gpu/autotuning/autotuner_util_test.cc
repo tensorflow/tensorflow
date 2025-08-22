@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/hash/hash_testing.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/dump.h"
 #include "xla/service/gpu/autotuning/autotuner_status_key.h"
@@ -48,7 +50,6 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/tsl/platform/status.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla.pb.h"
@@ -59,15 +60,39 @@ namespace xla {
 namespace gpu {
 namespace {
 
-using ::testing::ElementsAre;
 using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::Ne;
 using ::testing::Not;
 using ::testing::TempDir;
 using ::testing::UnorderedElementsAre;
-using ::tsl::testing::IsOkAndHolds;
-using ::tsl::testing::StatusIs;
+
+static constexpr absl::string_view kDeviceDescriptionTextProto = R"pb(
+  core_count: 108
+  clock_rate_ghz: 1.41
+  memory_bandwidth: 1555000000000
+  l2_cache_size: 41943040
+  cuda_compute_capability { major: 8 }
+)pb";
+
+static constexpr absl::string_view kDotFusionHloText = R"hlo(
+    HloModule module
+    fused_computation {
+          tmp_0 = f16[1,16,17,3]{3,2,1,0} parameter(0) 
+          tmp_1 = f16[16,51]{1,0} bitcast(f16[1,16,17,3]{3,2,1,0} tmp_0)
+          tmp_2 = s8[16,17,3]{2,1,0} parameter(1)
+          tmp_3 = s8[51,16]{0,1} bitcast(s8[16,17,3]{2,1,0} tmp_2)
+          tmp_4 = f16[51,16]{0,1} convert(s8[51,16]{0,1} tmp_3)
+          tmp_5 = f16[16,16]{1,0} dot(f16[16,51]{1,0} tmp_1, f16[51,16]{0,1} tmp_4), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+          ROOT tmp_6 = f16[1,16,16]{2,1,0} bitcast(f16[16,16]{1,0} tmp_5)
+    }
+    
+    ENTRY main {
+          p0 = f16[1,16,17,3]{3,2,1,0} parameter(0) 
+          p1 = s8[16,17,3]{2,1,0} parameter(1)
+          ROOT fusion = f16[1,16,16]{2,1,0} fusion(p0, p1), kind=kCustom, calls=fused_computation
+    }
+  )hlo";
 
 class AutotunerUtilTest : public HloTestBase {
  protected:
@@ -82,26 +107,24 @@ ENTRY e {
     lhs_contracting_dims={2,3}, rhs_contracting_dims={1,2}
 })";
 
-  static constexpr absl::string_view kResultText = R"(
-version: 3
-results {
-  device: "CUDA: 8.0, Cores: 108, GPU clock: 1.41 GHz, Memory bandwidth: 1555 GB/s, L2 cache: 40 MB"
-  hlo: "{\n  tmp_0 = f16[1,16,17,3]{3,2,1,0} parameter(0)\n  tmp_1 = f16[16,51]{1,0} bitcast(f16[1,16,17,3]{3,2,1,0} tmp_0)\n  tmp_2 = s8[16,17,3]{2,1,0} parameter(1)\n  tmp_3 = s8[51,16]{0,1} bitcast(s8[16,17,3]{2,1,0} tmp_2)\n  tmp_4 = f16[51,16]{0,1} convert(s8[51,16]{0,1} tmp_3)\n  tmp_5 = f16[16,16]{1,0} dot(f16[16,51]{1,0} tmp_1, f16[51,16]{0,1} tmp_4), lhs_contracting_dims={1}, rhs_contracting_dims={0}\n  ROOT tmp_6 = f16[1,16,16]{2,1,0} bitcast(f16[16,16]{1,0} tmp_5)\n}"
-  result {
-    run_time {
-      nanos: 31744
-    }
-    triton {
-      block_m: 32
-      block_n: 32
-      block_k: 32
-      split_k: 1
-      num_stages: 1
-      num_warps: 4
-      num_ctas: 1
-    }
-  }
-})";
+  static constexpr absl::string_view kResultText = R"pb(
+    version: 3
+    results {
+      device: "CUDA: 8.0, Cores: 108, GPU clock: 1.41 GHz, Memory bandwidth: 1555 GB/s, L2 cache: 40 MB"
+      hlo: "{\n  tmp_0 = f16[1,16,17,3]{3,2,1,0} parameter(0)\n  tmp_1 = f16[16,51]{1,0} bitcast(f16[1,16,17,3]{3,2,1,0} tmp_0)\n  tmp_2 = s8[16,17,3]{2,1,0} parameter(1)\n  tmp_3 = s8[51,16]{0,1} bitcast(s8[16,17,3]{2,1,0} tmp_2)\n  tmp_4 = f16[51,16]{0,1} convert(s8[51,16]{0,1} tmp_3)\n  tmp_5 = f16[16,16]{1,0} dot(f16[16,51]{1,0} tmp_1, f16[51,16]{0,1} tmp_4), lhs_contracting_dims={1}, rhs_contracting_dims={0}\n  ROOT tmp_6 = f16[1,16,16]{2,1,0} bitcast(f16[16,16]{1,0} tmp_5)\n}"
+      result {
+        run_time { nanos: 31744 }
+        triton {
+          block_m: 32
+          block_n: 32
+          block_k: 32
+          split_k: 1
+          num_stages: 1
+          num_warps: 4
+          num_ctas: 1
+        }
+      }
+    })pb";
 
   void SetUp() override {
     AutotunerUtil::ClearAutotuneResults();
@@ -180,13 +203,24 @@ TEST_F(AutotunerUtilTest, LoadAutotuneResultsFromFile_TextProto1) {
   TF_EXPECT_OK(AutotunerUtil::LoadAutotuneResultsFromFile(kFilePath));
   EXPECT_FALSE(AutotunerUtil::ResultCacheIsEmpty());
 
+  stream_executor::GpuDeviceInfoProto device_description_proto;
+  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      kDeviceDescriptionTextProto, &device_description_proto));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(kDotFusionHloText));
+
   AutotuneResults results;
-  EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
-      std::string(kResultText), &results));
+  EXPECT_TRUE(
+      tsl::protobuf::TextFormat::ParseFromString(kResultText, &results));
   ASSERT_GT(results.results().size(), 0);
   AddVersionToAutotuneResults(results);
-  AutotuneCacheKey key(results.results(0).device(), results.results(0).hlo(),
-                       results.results(0).version());
+  TF_ASSERT_OK_AND_ASSIGN(
+      stream_executor::DeviceDescription device_description,
+      stream_executor::DeviceDescription::FromProto(device_description_proto));
+  AutotuneCacheKey key(device_description,
+                       *module->entry_computation()->root_instruction());
+
   auto options = DebugOptions();
   options.set_xla_gpu_require_complete_aot_autotune_results(true);
   stream_executor::StreamExecutor* executor = NewStreamExecutor();
@@ -194,7 +228,8 @@ TEST_F(AutotunerUtilTest, LoadAutotuneResultsFromFile_TextProto1) {
       DeviceOrDevicelessConfig{DeviceConfig{executor}}, options);
 
   EXPECT_THAT(AutotunerUtil::IsInCache(key, config),
-              absl_testing::IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true))
+      << "Cache key: " << key.ToString();
 }
 
 TEST_F(AutotunerUtilTest, LoadAutotuneResultsFromFile_TextProto2) {
@@ -363,7 +398,7 @@ class FileBasedCacheTest : public AutotunerUtilTest {
   }
 
   AutotuneCacheKey GetCacheKey() const {
-    return AutotunerUtil::GetKey(dot_, GetConfig());
+    return AutotuneCacheKey(GetConfig().GetDeviceDescription(), *dot_);
   }
 
   std::string GetCacheFilename() const {
@@ -547,14 +582,27 @@ TEST(AutotuneCacheKeyTest, DeviceDescriptionToCacheKey) {
 }
 
 TEST(AutotuneCacheKeyTest, VersionIsIncludedInCacheKey) {
-  AutotuneCacheKey key = AutotuneCacheKey("model", "hlo");
+  stream_executor::DeviceDescription empty_device_description;
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(kDotFusionHloText));
+  AutotuneCacheKey key =
+      AutotuneCacheKey(empty_device_description,
+                       *module->entry_computation()->root_instruction());
   EXPECT_THAT(key.ToString(),
               HasSubstr(absl::StrFormat("version=%d", key.GetVersion())));
 }
 
 TEST(AutotuneCacheKeyTest, VersionChangeInvalidateCacheKey) {
-  AutotuneCacheKey key0 = AutotuneCacheKey("model", "hlo", /*version=*/0);
-  AutotuneCacheKey key1 = AutotuneCacheKey("model", "hlo", /*version=*/1);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(kDotFusionHloText));
+  stream_executor::DeviceDescription empty_device_description;
+
+  AutotuneCacheKey key0 = AutotuneCacheKey(
+      empty_device_description,
+      *module->entry_computation()->root_instruction(), /*version=*/0);
+  AutotuneCacheKey key1 = AutotuneCacheKey(
+      empty_device_description,
+      *module->entry_computation()->root_instruction(), /*version=*/1);
   EXPECT_FALSE(key0 == key1);
   EXPECT_NE(key0.ToString(), key1.ToString());
   EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly({
