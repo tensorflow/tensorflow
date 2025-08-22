@@ -47,6 +47,9 @@ struct SourceTargetPair {
   }
 };
 
+constexpr char kSendRecvSourceTargetPairsAttr[] =
+    "_xla_send_recv_source_target_pairs";
+
 // SourceTargetPairs represents a list of (source, target)
 // pairs used in a collective permute instruction
 // e.g. {{0,1},{1,2},{2,3},{3,0}}.
@@ -76,6 +79,27 @@ class SourceTargetPairs {
       }
       res.emplace_back(group.replica_ids(0), group.replica_ids(1));
     }
+    return res;
+  }
+
+  static absl::StatusOr<SourceTargetPairs> FromInstruction(
+      const HloInstruction* instruction) {
+    auto source_target_pairs = instruction->frontend_attributes().map().find(
+        kSendRecvSourceTargetPairsAttr);
+    if (source_target_pairs != instruction->frontend_attributes().map().end()) {
+      TF_ASSIGN_OR_RETURN(SourceTargetPairs res,
+                          FromString(source_target_pairs->second));
+      return res;
+    }
+    return Internal(
+        "Instruction %s does not have source-target pairs attribute",
+        instruction->ToString());
+  }
+
+  static SourceTargetPairs Join(SourceTargetPairs a, SourceTargetPairs b) {
+    SourceTargetPairs res;
+    res.pairs_.insert(res.pairs_.end(), a.pairs_.begin(), a.pairs_.end());
+    res.pairs_.insert(res.pairs_.end(), b.pairs_.begin(), b.pairs_.end());
     return res;
   }
 

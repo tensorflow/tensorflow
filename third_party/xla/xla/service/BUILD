@@ -5286,6 +5286,7 @@ xla_cc_test(
         ":computation_placer",
         ":global_device_id",
         ":hlo_module_config",
+        ":source_target_pairs",
         "//xla:array2d",
         "//xla:literal_util",
         "//xla:shape_util",

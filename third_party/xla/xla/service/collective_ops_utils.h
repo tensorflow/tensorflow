@@ -201,6 +201,8 @@ bool IsExclusivelyCrossReplica(absl::Span<const ReplicaGroup> replica_groups,
                                bool use_global_ids, bool has_channel_id,
                                const DeviceAssignment& device_assignment);
 
+bool HasDuplicateSourcesOrTargets(const SourceTargetPairs& pairs);
+
 // A custom call target that can be used to create a nop that can legally
 // replace a collective op.
 inline constexpr absl::string_view kNopCustomCallTarget = "AllocateBuffer";
@@ -308,9 +310,6 @@ struct RendezvousKey {
 inline bool MayPipelineSendRecvChannel(int64_t channel_id) {
   return channel_id > 0;
 }
-
-constexpr char kSendRecvSourceTargetPairsAttr[] =
-    "_xla_send_recv_source_target_pairs";
 
 // When a Send or Recv is annotated with frontend attribute
 // _xla_send_recv_pipeline="1", asynchronous stream kP2P1 is used to execute the
