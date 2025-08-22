@@ -22,6 +22,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/autotuning.pb.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "xla/service/gpu/nvptx_compiler.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.pb.h"
-#include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
@@ -116,8 +116,7 @@ TEST_F(FissionBackendTest, GetSupportedConfigsForUnsupportedInstructionFails) {
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
       backend_.GetSupportedConfigs(
           (*module->entry_computation()->root_instruction()));
-  EXPECT_THAT(configs.status(),
-              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(configs.status(), StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_F(FissionBackendTest, GetDefaultConfigFails) {
@@ -127,8 +126,7 @@ TEST_F(FissionBackendTest, GetDefaultConfigFails) {
   absl::StatusOr<std::unique_ptr<BackendConfig>> config =
       backend_.GetDefaultConfig(
           (*module->entry_computation()->root_instruction()));
-  EXPECT_THAT(config.status(),
-              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(config.status(), StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_F(FissionBackendTest, ApplyCublasConfigToFusionInstruction) {
@@ -142,7 +140,7 @@ TEST_F(FissionBackendTest, ApplyCublasConfigToFusionInstruction) {
       *hlo_module->entry_computation()->root_instruction(), any));
   EXPECT_THAT(RunFileCheck(hlo_module->ToString(),
                            "CHECK: \"selected_algorithm\":\"3\""),
-              absl_testing::IsOkAndHolds(true));
+              IsOkAndHolds(true));
 }
 
 TEST_F(FissionBackendTest, ApplyCustomKernelConfigToFusionInstruction) {
@@ -155,7 +153,7 @@ TEST_F(FissionBackendTest, ApplyCustomKernelConfigToFusionInstruction) {
   TF_EXPECT_OK(backend_.ApplyConfig(
       *hlo_module->entry_computation()->root_instruction(), any));
   EXPECT_THAT(RunFileCheck(hlo_module->ToString(), "CHECK: \"kernel_index\":3"),
-              absl_testing::IsOkAndHolds(true));
+              IsOkAndHolds(true));
 }
 
 }  // namespace
