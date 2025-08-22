@@ -120,7 +120,7 @@ void SpmdLogger::RegisterLogEntry(HloInstruction* hlo,
     max_value = std::max<int64_t>(max_value, ShapeSizeInBytes(inst->shape()));
     absl::StrAppend(&report, "     * ", inst->ToString(), "\n");
   }
-  entries_.push_back(std::make_pair(max_value, report));
+  entries_.push_back({max_value, report});
 }
 
 /* static */ std::string SpmdLogger::ReportBeforePartition(
@@ -3215,7 +3215,7 @@ absl::Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
   auto insert_sharding_pair = [&](const HloSharding& in_sharding,
                                   const HloSharding& out_sharding) {
     if (in_sharding.NumTiles() == out_sharding.NumTiles()) {
-      sharding_pairs.push_back(std::make_pair(in_sharding, out_sharding));
+      sharding_pairs.push_back({in_sharding, out_sharding});
     }
   };
 
@@ -5220,7 +5220,7 @@ SpmdPartitioner::AllGatherShardsInternal(
     int64_t* next_channel_id, absl::Span<const int64_t> selected_dims,
     const SPMDCollectiveOpsCreator& collectives_creator, bool per_dim_ag) {
   if (selected_dims.empty()) {
-    return std::make_pair(operand, nullptr);
+    return {operand, nullptr};
   }
   CHECK(!sharding.IsTileMaximal());
   if (per_dim_ag || selected_dims.size() == 1) {
@@ -5255,7 +5255,7 @@ SpmdPartitioner::AllGatherShardsInternal(
             /*all_gather_dimension=*/*it);
       }
     }
-    return std::make_pair(result, result);
+    return {result, result};
   }
 
   std::vector<int64_t> shape;
@@ -5342,7 +5342,7 @@ SpmdPartitioner::AllGatherShardsInternal(
         i, ag_shape.dimensions(i) * sharding.tile_assignment().dim(i));
   }
   result = b->AddInstruction(HloInstruction::CreateReshape(ag_shape, result));
-  return std::make_pair(result, ag);
+  return {result, ag};
 }
 
 HloInstruction* SpmdPartitioner::AllReduceAlongShardingDims(
