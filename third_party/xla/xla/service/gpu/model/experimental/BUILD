@@ -210,6 +210,25 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "symbolic_map",
+    srcs = ["symbolic_map.cc"],
+    hdrs = ["symbolic_map.h"],
+    deps = [
+        ":symbolic_expr",
+    ],
+)
+
+xla_cc_test(
+    name = "symbolic_map_test",
+    srcs = ["symbolic_map_test.cc"],
+    deps = [
+        ":symbolic_expr",
+        ":symbolic_map",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "symbolic_expr",
     srcs = ["symbolic_expr.cc"],
     hdrs = ["symbolic_expr.h"],
