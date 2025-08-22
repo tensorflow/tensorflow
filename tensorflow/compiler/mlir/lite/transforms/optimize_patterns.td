@@ -389,14 +389,17 @@ def ConstAPFloatNegLargestOrNegInfinity : Constraint<CPred<
 def L2NormValidReduceIndex : Constraint<CPred<
   "L2NormalizeReduceAxis($0, llvm::cast<DenseElementsAttr>($1))">>;
 
+// Checks if the ReshapeOp adds a trailing dimension of size 1.
+def IsL2NormalizationKeepDimsReshape
+    : Constraint<CPred<"IsL2NormalizationKeepDimsReshape($0)">>;
+
 // Currently L2Normalization doesn't support activation function
 // in TFLite.
 // TODO(karimnosseir): Add constraints that the kernel code assumes.
 // constraint on axis and depth.
 multiclass L2NormalizePatterns<Op FirstOp, Op SecondOp> {
-  // This pattern constructs L2NormalizationOp from
-  // Mul->Rsqrt->Sum->Square Or
-  // Div->sqrt->Sum->Square
+  // Fuses `(x * rsqrt(sum(square(x))))` or `(x / sqrt(sum(square(x))))`
+  // into a L2NormalizationOp.
   def L2NormalizePattern1#FirstOp#SecondOp : Pat<
                   (FirstOp $x,
                      (SecondOp
@@ -438,6 +441,74 @@ multiclass L2NormalizePatterns<Op FirstOp, Op SecondOp> {
            [(L2NormValidReduceIndex $sq_op, $axis),
             (ConstDoubleValueLessThan<"1e-3"> $epsilon)]>;
 
+  // Fuses L2 norm with Mul(x,x) instead of Square(x) and a reshape that
+  // emulates keep_dims.
+  def L2NormalizePattern4#FirstOp#SecondOp : Pat<
+      (FirstOp $x,
+          (TFL_ReshapeOp:$reshape_op
+              (SecondOp
+                  (TFL_SumOp
+                      (TFL_MulOp:$mul_op $x, $x, TFL_AF_None),
+                      (Arith_ConstantOp I32ElementsAttr:$axis),
+                      ConstBoolAttrFalse
+                  )
+              ),
+              (Arith_ConstantOp $shape)
+          ),
+          TFL_AF_None
+      ),
+      (TFL_L2NormalizationOp $x, TFL_AF_None),
+      [(L2NormValidReduceIndex $mul_op, $axis), 
+       (IsL2NormalizationKeepDimsReshape $reshape_op)]
+  >;
+
+  // Fuses L2 norm with Mul(x,x), a reshape, and a small constant add for
+  // numerical stability.
+  def L2NormalizePattern5#FirstOp#SecondOp : Pat<
+      (FirstOp $x,
+          (TFL_ReshapeOp:$reshape_op
+              (TFL_AddOp
+                  (SecondOp
+                    (TFL_SumOp
+                        (TFL_MulOp:$mul_op $x, $x, TFL_AF_None),
+                        (Arith_ConstantOp I32ElementsAttr:$axis),
+                        ConstBoolAttrFalse
+                    )
+                  ), (Arith_ConstantOp $epsilon), TFL_AF_None
+              ),
+              (Arith_ConstantOp $shape)
+          ),
+          TFL_AF_None
+      ),
+      (TFL_L2NormalizationOp $x, TFL_AF_None),
+      [(L2NormValidReduceIndex $mul_op, $axis), 
+       (IsL2NormalizationKeepDimsReshape $reshape_op),
+       (ConstDoubleValueLessThan<"1e-3"> $epsilon)]
+  >;
+
+  // Fuses L2 norm with Mul(x,x), a reshape, and a small constant maximum for
+  // numerical stability.
+  def L2NormalizePattern6#FirstOp#SecondOp : Pat<
+      (FirstOp $x,
+          (TFL_ReshapeOp:$reshape_op
+              (TFL_MaximumOp
+                  (SecondOp
+                    (TFL_SumOp
+                        (TFL_MulOp:$mul_op $x, $x, TFL_AF_None),
+                        (Arith_ConstantOp I32ElementsAttr:$axis),
+                        ConstBoolAttrFalse
+                    )
+                  ), (Arith_ConstantOp $epsilon)
+              ),
+              (Arith_ConstantOp $shape)
+          ),
+          TFL_AF_None
+      ),
+      (TFL_L2NormalizationOp $x, TFL_AF_None),
+      [(L2NormValidReduceIndex $mul_op, $axis), 
+       (IsL2NormalizationKeepDimsReshape $reshape_op),
+       (ConstDoubleValueLessThan<"1e-3"> $epsilon)]
+  >;
 }
 
 foreach L2NormalizePairs = [[TFL_MulOp, TFL_RsqrtOp], [TFL_DivOp, TFL_SqrtOp]]
