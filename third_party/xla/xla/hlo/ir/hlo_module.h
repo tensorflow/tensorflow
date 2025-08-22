@@ -498,10 +498,18 @@ class HloModule {
   uint64_t RandomNew64() const;
 
   // Returns the NameUniquer for uniquing instruction names in this module.
-  NameUniquer& instruction_name_uniquer() { return instruction_name_uniquer_; }
+  NameUniquer& instruction_name_uniquer() {
+    DCHECK(computation_name_uniquer_.has_value())
+        << "Can't get instruction name uniquer after HloModule was finalized";
+    return *instruction_name_uniquer_;
+  }
 
   // Returns the NameUniquer for uniquing computation names in this module.
-  NameUniquer& computation_name_uniquer() { return computation_name_uniquer_; }
+  NameUniquer& computation_name_uniquer() {
+    DCHECK(computation_name_uniquer_.has_value())
+        << "Can't get computation name uniquer after HloModule was finalized";
+    return *computation_name_uniquer_;
+  }
 
   // Assign a new unique dense id for an instruction
   int64_t NewUniqueInstructionId() {
@@ -569,13 +577,13 @@ class HloModule {
 
   void SetAndUniquifyInstrName(HloInstruction* instr, absl::string_view name) {
     instr->SetAndSanitizeName(name);
-    instr->UniquifyName(&instruction_name_uniquer_);
+    instr->UniquifyName(&instruction_name_uniquer());
   }
 
   void SetAndUniquifyComputationName(HloComputation* computation,
                                      absl::string_view name) {
     computation->SetAndSanitizeName(name);
-    computation->UniquifyName(&computation_name_uniquer_);
+    computation->UniquifyName(&computation_name_uniquer());
   }
 
   absl::Status CheckUniqueNamesAndIdsForComputationsAndInstructions() const;
@@ -736,6 +744,12 @@ class HloModule {
   // Getter for the specific stack frame. Argument is a 1-based index.
   StackFrame get_stack_frame(int id) const;
 
+  // Finalizes this module by destroying internal data structures that might be
+  // used for building or modifying the module. It is undefined behavior to
+  // modify the module (add computations or instructions) after the call. Should
+  // be called once, after HLO module is compiled to executable.
+  void Finalize();
+
  private:
   friend class HloComputation;
 
@@ -766,9 +780,9 @@ class HloModule {
   mutable absl::Mutex rng_mutex_;
 
   // Unique name generator for computation and instruction names, which are
-  // unique per module.
-  NameUniquer computation_name_uniquer_{/*separator=*/"."};
-  NameUniquer instruction_name_uniquer_{/*separator=*/"."};
+  // unique per module. Will be reset to nullopt when Finalize() is called.
+  std::optional<NameUniquer> computation_name_uniquer_{/*separator=*/"."};
+  std::optional<NameUniquer> instruction_name_uniquer_{/*separator=*/"."};
   int64_t next_unique_id_ = 0;
 
   // Used to keep track of the next unique module id that should be assigned.
