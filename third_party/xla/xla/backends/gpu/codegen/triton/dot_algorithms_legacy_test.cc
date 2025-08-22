@@ -442,14 +442,13 @@ TEST_F(BlasAlgorithmTest, Algorithm_TF32_TF32_F32_X3) {
     case CudaComputeCapabilities::kBlackwell:
     case CudaComputeCapabilities::kAmpere:
     case CudaComputeCapabilities::kHopper:
-      EXPECT_THAT(
-          kernel_names,
-          ::testing::UnorderedElementsAre(
-              ::testing::HasSubstr("bitcast_convert_subtract"),
-              ::testing::HasSubstr("bitcast_convert_subtract"),
-              ::testing::HasSubstr("loop_select_fusion"),
-              ::testing::HasSubstr("gemm_"), ::testing::HasSubstr("gemm_"),
-              ::testing::HasSubstr("gemm_")));
+      EXPECT_THAT(kernel_names, ::testing::UnorderedElementsAre(
+                                    ::testing::HasSubstr("loop_and_subtract"),
+                                    ::testing::HasSubstr("loop_and_subtract"),
+                                    ::testing::HasSubstr("loop_select_fusion"),
+                                    ::testing::HasSubstr("gemm_"),
+                                    ::testing::HasSubstr("gemm_"),
+                                    ::testing::HasSubstr("gemm_")));
       break;
     default:
       GTEST_SKIP() << "Unsupported compute capability: " << cc.major

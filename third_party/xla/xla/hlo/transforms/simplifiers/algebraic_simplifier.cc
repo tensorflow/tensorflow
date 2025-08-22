@@ -1626,6 +1626,16 @@ absl::Status AlgebraicSimplifierVisitor::HandleBitcastConvert(
   if (replaced) {
     return absl::OkStatus();
   }
+  if (options_.is_layout_sensitive() &&
+      options_.rewrite_no_op_bitcast_convert_to_bitcast() &&
+      // Equal shape ignoring element type implies same bitwidth, as for
+      // different bitwidth shape inference would yield a different shape for
+      // the output. A bitcast-convert with same shape but different bitwidth
+      // would fail the HloVerifier.
+      ShapeUtil::EqualIgnoringElementType(bitcast->shape(), operand->shape())) {
+    ReplaceWithBitcast(bitcast);
+    return absl::OkStatus();
+  }
   // Eliminate bitcast converts between same shape.
   ReplaceInstructionIfCompatible(bitcast, bitcast->mutable_operand(0));
   return absl::OkStatus();

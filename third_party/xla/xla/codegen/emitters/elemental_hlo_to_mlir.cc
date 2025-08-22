@@ -1172,6 +1172,13 @@ absl::StatusOr<SmallVector<Value, 1>> HloToMlir(
     case HloOpcode::kConvert:
       return EmitConvert(instr, arg_types, operands, builder);
     case HloOpcode::kBitcast:
+      // Handle bitcasts that are actually a bitcast-convert.
+      if (element_type != instr->operand(0)->shape().element_type()) {
+        return MapHloOp<mhlo::BitcastConvertOp>(
+            PrimitiveTypeToMlirType(element_type, builder), arg_types, operands,
+            /*attributes=*/{}, builder);
+      }
+      return operands;
     case HloOpcode::kCopy:
     case HloOpcode::kSlice:
     case HloOpcode::kBroadcast:
