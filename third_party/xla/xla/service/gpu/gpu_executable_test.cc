@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/shape_layout.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
@@ -153,6 +154,24 @@ TEST(GpuExecutableTest, RunThunkPasses) {
                   .ok());
 
   EXPECT_EQ(dump_files.size(), 1);
+}
+
+TEST(GpuExecutableTest, ComputeComputationLayout) {
+  GpuExecutable::Params params;
+  params.module_name = "test_module";
+  params.program_shape.AddParameter(ShapeUtil::MakeShape(F32, {1, 2, 3}), "p0");
+  params.program_shape.AddParameter(ShapeUtil::MakeShape(U8, {1}), "p1");
+  *params.program_shape.mutable_result() = ShapeUtil::MakeShape(F64, {2});
+  params.executable =
+      std::make_unique<SequentialThunk>(Thunk::ThunkInfo{}, ThunkSequence{});
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> executable,
+                          GpuExecutable::Create(std::move(params)));
+  EXPECT_THAT(executable->compute_computation_layout().parameter_layouts(),
+              ElementsAre(ShapeLayout(ShapeUtil::MakeShape(F32, {1, 2, 3})),
+                          ShapeLayout(ShapeUtil::MakeShape(U8, {1}))));
+  EXPECT_EQ(executable->compute_computation_layout().result_layout(),
+            ShapeLayout(ShapeUtil::MakeShape(F64, {2})));
 }
 
 }  // namespace

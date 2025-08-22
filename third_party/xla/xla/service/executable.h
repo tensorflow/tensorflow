@@ -370,9 +370,18 @@ class Executable {
 
   // The shape (including layout) that results from this execution. This is the
   // shape of the DeviceMemoryBase result value in ExecuteOnStream above.
-  const Shape& result_shape() const {
+  virtual Shape result_shape() const {
     CHECK(hlo_module_ != nullptr);
     return hlo_module_->config().entry_computation_layout().result_shape();
+  }
+
+  virtual ComputationLayout compute_computation_layout() const {
+    CHECK(hlo_module_ != nullptr);
+    return hlo_module_->compute_computation_layout();
+  }
+
+  virtual std::string name() const {
+    return has_module() ? module().name() : "<unknown executable>";
   }
 
   // Returns the size of the executable in bytes. Returns -1 if this query is

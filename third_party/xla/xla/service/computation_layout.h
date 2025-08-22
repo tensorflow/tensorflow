@@ -16,14 +16,16 @@ limitations under the License.
 #ifndef XLA_SERVICE_COMPUTATION_LAYOUT_H_
 #define XLA_SERVICE_COMPUTATION_LAYOUT_H_
 
-#include <memory>
+#include <cstdint>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/status/statusor.h"
+#include "xla/layout.h"
 #include "xla/printer.h"
+#include "xla/shape.h"
 #include "xla/shape_layout.h"
-#include "xla/types.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -62,6 +64,15 @@ class ComputationLayout {
   // Returns the ShapeLayouts of the parameters of the computation.
   const std::vector<ShapeLayout>& parameter_layouts() const {
     return parameter_layouts_;
+  }
+
+  std::vector<Shape> parameter_shapes() const {
+    std::vector<Shape> shapes;
+    shapes.reserve(parameter_layouts_.size());
+    for (const ShapeLayout& shape_layout : parameter_layouts_) {
+      shapes.push_back(shape_layout.shape());
+    }
+    return shapes;
   }
 
   // Returns the ShapeLayout of a result of the computation.

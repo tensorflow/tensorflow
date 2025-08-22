@@ -115,33 +115,26 @@ bool ShouldRewriteLoopTransposeFusion(
          is_bitcasted_transpose_with_power_of_two_minor_dim;
 }
 
-// Pattern matches reduction fusions that can likely be handled better by
-// Triton than by other emitters.
-// At present we try to match closely for s32 dots that have been rewritten as
-// reductions.
+bool ContainsReduction(const HloFusionInstruction* fusion) {
+  for (const HloInstruction* instruction :
+       fusion->fused_instructions_computation()->instructions()) {
+    LOG(INFO) << "found instruction: " << instruction->ToString();
+    if (instruction->opcode() == HloOpcode::kReduce) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Pattern matches reduction fusions that are not multi-output. They will later
+// be autotuned between Triton and Native Emitters.
 bool ShouldRewriteReductionFusion(
     const HloFusionInstruction* fusion,
     const se::DeviceDescription& device_description) {
   if (fusion->IsMultiOutputFusion()) {
     return false;
   }
-  const HloInstruction* root =
-      fusion->fused_instructions_computation()->root_instruction();
-  if (const bool is_reduce_fusion = root->opcode() == HloOpcode::kReduce;
-      !is_reduce_fusion) {
-    return false;
-  }
-  // All inputs are s32.
-  for (const auto* operand : root->operands()) {
-    if (operand->shape().element_type() != S32) {
-      return false;
-    }
-  }
-  if (const bool is_output_s32 = root->shape().element_type() == S32;
-      !is_output_s32) {
-    return false;
-  }
-  return true;
+  return ContainsReduction(fusion);
 }
 
 absl::StatusOr<bool> ShouldTryRewriteFusion(
@@ -189,6 +182,10 @@ absl::StatusOr<bool> ProcessFusionInstruction(
   if (backend_config.has_fusion_backend_config() &&
       backend_config.fusion_backend_config().has_block_level_fusion_config()) {
     // Fusion is already block-level! Skip.
+    return false;
+  }
+  if (backend_config.has_native_emitter_backend_config()) {
+    // Fusion has been specifically set to use the native emitter. Skip.
     return false;
   }
 

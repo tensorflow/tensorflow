@@ -909,8 +909,8 @@ absl::StatusOr<std::unique_ptr<GlobalData>> Service::Execute(
       GlobalDataHandle output,
       ExecuteAndRegisterResult(
           executable.get(), replicated_arguments, execute_backend_.get(),
-          SingleComputationDeviceHandle(),
-          "result of " + executable->module().name(), execution_profile));
+          SingleComputationDeviceHandle(), "result of " + executable->name(),
+          execution_profile));
 
   if (executable->dumping_snapshot()) {
     TF_ASSIGN_OR_RETURN(const ShapedBuffer* result_buffer,

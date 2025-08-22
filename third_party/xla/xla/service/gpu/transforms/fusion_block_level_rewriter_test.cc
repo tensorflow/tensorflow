@@ -94,6 +94,27 @@ ENTRY entry {
 }
 
 TEST_F(FusionBlockLevelRewriterTest,
+       DoesNotRewriteFusionThatHasNativeEmitterConfig) {
+  const absl::string_view hlo_text = R"(
+fusion_computation {
+  ROOT param_0 = f32[10,10] parameter(0)
+}
+
+ENTRY entry {
+  param_0 = f32[10,10] parameter(0)
+  ROOT fusion = f32[10,10] fusion(param_0), kind=kCustom,
+    calls=fusion_computation,
+    backend_config={"native_emitter_backend_config": {}}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  EXPECT_THAT(
+      FusionBlockLevelRewriter(device_info_, HloCostAnalysis::DefaultShapeSize)
+          .Run(module.get()),
+      absl_testing::IsOkAndHolds(false));
+}
+
+TEST_F(FusionBlockLevelRewriterTest,
        RewritesFusionThatIsNotBlockLevelAndCanBeTiledAndCodegenedCorrectly) {
   const absl::string_view hlo_text = R"(
 fusion_computation {
