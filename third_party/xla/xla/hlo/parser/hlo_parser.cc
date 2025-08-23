@@ -80,6 +80,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/status.h"
+#include "xla/tuple_tree.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -270,8 +271,7 @@ class HloParserImpl : public HloParser {
   absl::StatusOr<std::vector<Shape>> ParseShapeListOnly();
   absl::StatusOr<Layout> ParseLayoutOnly();
   absl::StatusOr<HloSharding> ParseShardingOnly();
-  absl::StatusOr<std::shared_ptr<OriginalValue>> ParseOriginalValueOnly(
-      Shape shape);
+  absl::StatusOr<std::shared_ptr<OriginalValue>> ParseOriginalValueOnly();
   absl::StatusOr<FrontendAttributes> ParseFrontendAttributesOnly();
   absl::StatusOr<StatisticsViz> ParseStatisticsVizOnly();
   absl::StatusOr<std::vector<bool>> ParseParameterReplicationOnly();
@@ -592,7 +592,9 @@ class HloParserImpl : public HloParser {
                   uint64_t lexer_skip_mask = kNoneMask);
   bool ParseUnsignedIntegerType(PrimitiveType* primitive_type);
   bool ParseOriginalArray(OriginalArray& original_array);
-  bool ParseOriginalValue(std::shared_ptr<OriginalValue>& original_value);
+  bool ParseOriginalValueArrays(
+      std::vector<std::pair<ShapeIndex, std::optional<OriginalArray>>>&
+          original_value_arrays);
   bool ParseOriginalValueRecoveryTable(
       OriginalValueRecoveryTable& original_value_recovery_table);
   bool ParseCollectiveOpGroupMode(CollectiveOpGroupMode* result);
@@ -5237,16 +5239,12 @@ bool HloParserImpl::ParseAttributeHelper(
         return true;
       }
       case AttrTy::kOriginalValue: {
-        // By the time this attribute is added, the instruction shape should
-        // have been inferred.
-        if (!shape) {
-          return TokenError("expects instruction shape");
-        }
-        std::shared_ptr<OriginalValue> result =
-            std::make_shared<OriginalValue>(*shape);
-        if (!ParseOriginalValue(result)) {
+        std::vector<std::pair<ShapeIndex, std::optional<OriginalArray>>> arrays;
+        if (!ParseOriginalValueArrays(arrays)) {
           return false;
         }
+        auto result = std::make_shared<OriginalValue>(
+            TupleTree<std::optional<OriginalArray>>(absl::MakeSpan(arrays)));
         static_cast<optional<std::shared_ptr<OriginalValue>>*>(attr_out_ptr)
             ->emplace(std::move(result));
         return true;
@@ -6627,8 +6625,9 @@ bool HloParserImpl::ParseOriginalArray(OriginalArray& original_array) {
 }
 
 // original_value ::= '{' '('* original_array [','] ')'* | original_value '}'
-bool HloParserImpl::ParseOriginalValue(
-    std::shared_ptr<OriginalValue>& original_value) {
+bool HloParserImpl::ParseOriginalValueArrays(
+    std::vector<std::pair<ShapeIndex, std::optional<OriginalArray>>>&
+        original_value_arrays) {
   VLOG(kDebugLevel) << "ParseOriginalValue";
 
   if (!ParseToken(TokKind::kLbrace, "Expects '{'")) {
@@ -6651,13 +6650,15 @@ bool HloParserImpl::ParseOriginalValue(
       if (!ParseOriginalArray(original_array)) {
         return false;
       }
-      if (!original_array.instruction_name.empty()) {
-        *original_value->mutable_element(leaf_shape_index) = original_array;
-      } else {
+      if (original_array.instruction_name.empty()) {
         // The original value is not expected to have any leaf without values.
         // However we should not fail the execution here. This should
         // be done in HloVerifier instead.
         LOG(WARNING) << "Found an empty leaf node in an original value";
+        original_value_arrays.emplace_back(leaf_shape_index, std::nullopt);
+      } else {
+        original_value_arrays.emplace_back(leaf_shape_index,
+                                           std::move(original_array));
       }
     } else {
       return false;
@@ -7319,13 +7320,14 @@ absl::StatusOr<HloSharding> HloParserImpl::ParseShardingOnly() {
 }
 
 absl::StatusOr<std::shared_ptr<OriginalValue>>
-HloParserImpl::ParseOriginalValueOnly(Shape shape) {
+HloParserImpl::ParseOriginalValueOnly() {
   lexer_.Lex();
-  std::shared_ptr<OriginalValue> original_value =
-      std::make_shared<OriginalValue>(shape);
-  if (!ParseOriginalValue(original_value)) {
+  std::vector<std::pair<ShapeIndex, std::optional<OriginalArray>>> arrays;
+  if (!ParseOriginalValueArrays(arrays)) {
     return InvalidArgument("Syntax error:\n%s", GetError());
   }
+  auto original_value = std::make_shared<OriginalValue>(
+      TupleTree<std::optional<OriginalArray>>(absl::MakeSpan(arrays)));
   if (lexer_.GetKind() != TokKind::kEof) {
     return InvalidArgument("Syntax error:\nExtra content after original value");
   }
@@ -7526,9 +7528,9 @@ absl::StatusOr<HloSharding> ParseSharding(absl::string_view str) {
 }
 
 absl::StatusOr<std::shared_ptr<OriginalValue>> ParseOriginalValue(
-    absl::string_view str, const Shape& shape) {
+    absl::string_view str) {
   HloParserImpl parser(str);
-  return parser.ParseOriginalValueOnly(shape);
+  return parser.ParseOriginalValueOnly();
 }
 
 absl::StatusOr<FrontendAttributes> ParseFrontendAttributes(

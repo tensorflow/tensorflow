@@ -2751,8 +2751,8 @@ absl::Status VerifyOriginalValue(const HloModule& module) {
       if (auto original_value = instruction->original_value()) {
         // An original value is expected to have intermediate nodes that are
         // always nullopt and leaves with actual values.
-        for (const auto& leaf : original_value->leaves()) {
-          if (!leaf.second.has_value()) {
+        for (const auto& pair : original_value->original_arrays()) {
+          if (!pair.second.has_value()) {
             return Internal(
                 "Leaf nodes in an original value is expected to contain values."
                 " Instruction: %s.",

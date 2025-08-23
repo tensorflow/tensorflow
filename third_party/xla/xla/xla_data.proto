@@ -1193,14 +1193,13 @@ message OriginalArrayProto {
   repeated int64 shape_index = 2;
 }
 
-message OriginalValueNodeProto {
+message OriginalValueElementProto {
   repeated int64 shape_index = 1;
   OriginalArrayProto original_array = 2;
 }
 
 message OriginalValueProto {
-  ShapeProto shape = 1;
-  repeated OriginalValueNodeProto leaves = 2;
+  repeated OriginalValueElementProto elements = 1;
 }
 
 message GemmPerfTableEntry {

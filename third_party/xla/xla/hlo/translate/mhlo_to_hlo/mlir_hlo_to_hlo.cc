@@ -6450,12 +6450,7 @@ std::optional<xla::OriginalValueProto> CreateOriginalValueFromOp(
   if (!original_value_attr) {
     return std::nullopt;
   }
-  mlir::FailureOr<xla::Shape> shape_or = ExtractXlaShape(op);
-  if (failed(shape_or)) {
-    return std::nullopt;
-  }
-  return xla::ConvertOriginalValue(original_value_attr.getValue(),
-                                   shape_or.value());
+  return xla::ConvertOriginalValue(original_value_attr.getValue());
 }
 
 }  // namespace mlir

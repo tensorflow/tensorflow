@@ -99,7 +99,7 @@ std::optional<xla::OpSharding> ExtractShardyResultShardingFromFrontendAttrs(
 // Returns an OriginalValueProto that represents a value in the unoptimized HLO
 // graph.
 std::optional<xla::OriginalValueProto> ConvertOriginalValue(
-    llvm::StringRef original_value, const xla::Shape& shape);
+    llvm::StringRef original_value);
 
 std::optional<xla::HloInputOutputAliasProto> ConvertInputOutputAlias(
     llvm::ArrayRef<mlir::Attribute> aliasing);

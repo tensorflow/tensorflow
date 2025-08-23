@@ -19,17 +19,23 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/utils/pointer_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tuple_tree.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -56,76 +62,76 @@ OriginalArray OriginalArray::FromProto(
           ShapeIndex(original_array_proto.shape_index())};
 }
 
-std::string OriginalValueToString(const OriginalValue& original_value,
-                                  const Shape& shape,
-                                  std::vector<int64_t>& shape_index) {
-  std::string result;
-  if (shape.IsTuple()) {
-    if (shape.tuple_shapes().empty()) {
-      return "()";
+namespace {
+using Node = TupleTree<std::optional<OriginalArray>>::Node;
+
+std::string NodeToString(const Node& node) {
+  if (node.IsLeaf()) {
+    const std::optional<OriginalArray>& leaf_val = node.value();
+    if (leaf_val.has_value()) {
+      return absl::StrCat("{", leaf_val->ToString(), "}");
     }
-    shape_index.push_back(0);
-    absl::StrAppend(&result, "(",
-                    OriginalValueToString(original_value, shape.tuple_shapes(0),
-                                          shape_index));
-    shape_index.pop_back();
-    for (int64_t i = 1; i < shape.tuple_shapes().size(); ++i) {
-      shape_index.push_back(i);
-      absl::StrAppend(&result, ", ",
-                      OriginalValueToString(
-                          original_value, shape.tuple_shapes(i), shape_index));
-      shape_index.pop_back();
-    }
-    absl::StrAppend(&result, ")");
-    return result;
+    return "{}";
   }
 
-  const auto& leaf = original_value.element(shape_index);
-  if (leaf.has_value()) {
-    absl::StrAppend(&result, "{", leaf->ToString(), "}");
-  } else {
-    absl::StrAppend(&result, "{}");
+  if (node.children().empty()) {
+    return "()";
   }
-  return result;
+
+  std::vector<std::string> children_str;
+  for (const auto& child : node.children()) {
+    children_str.push_back(NodeToString(child));
+  }
+
+  return absl::StrCat("(", absl::StrJoin(children_str, ", "), ")");
 }
+}  // namespace
 
 std::string OriginalValue::ToString() const {
-  std::vector<int64_t> shape_index;
-  return OriginalValueToString(*this, shape(), shape_index);
+  auto node_or = tree_.ToNode();
+  CHECK_OK(node_or.status());
+  return NodeToString(*node_or);
 }
 
 OriginalValueProto OriginalValue::ToProto() const {
   OriginalValueProto original_value_proto;
-  *original_value_proto.mutable_shape() = shape().ToProto();
-  for (const auto& leaf : leaves()) {
-    OriginalValueNodeProto* original_value_node_proto =
-        original_value_proto.add_leaves();
-    for (const auto& index : leaf.first) {
-      original_value_node_proto->add_shape_index(index);
+  tree_.ForEachElement([&original_value_proto](
+                           const ShapeIndex& index,
+                           const std::optional<OriginalArray>& value) {
+    OriginalValueElementProto* original_value_node_proto =
+        original_value_proto.add_elements();
+    for (const auto& i : index) {
+      original_value_node_proto->add_shape_index(i);
     }
-    *original_value_node_proto->mutable_original_array() =
-        leaf.second->ToProto();
-  }
+    if (value.has_value()) {
+      *original_value_node_proto->mutable_original_array() = value->ToProto();
+    }
+  });
   return original_value_proto;
 }
 
 std::shared_ptr<OriginalValue> OriginalValue::FromProto(
     const xla::OriginalValueProto& original_value_proto) {
-  xla::Shape original_value_shape(
-      Shape::FromProto(original_value_proto.shape()).value_or(Shape()));
-  auto original_value = std::make_shared<OriginalValue>(original_value_shape);
-
-  for (const auto& leaf : original_value_proto.leaves()) {
-    *original_value->mutable_element(ShapeIndex(leaf.shape_index())) =
-        OriginalArray::FromProto(leaf.original_array());
+  std::vector<std::pair<ShapeIndex, std::optional<OriginalArray>>> nodes;
+  for (const auto& leaf : original_value_proto.elements()) {
+    ShapeIndex index(leaf.shape_index());
+    if (leaf.has_original_array()) {
+      nodes.emplace_back(index,
+                         OriginalArray::FromProto(leaf.original_array()));
+    } else {
+      // This case should not happen based on ToProto, but handling defensively.
+      nodes.emplace_back(index, std::nullopt);
+    }
   }
-  return original_value;
+  return std::make_shared<OriginalValue>(
+      TupleTree<std::optional<OriginalArray>>(absl::MakeSpan(nodes)));
 }
 
 std::shared_ptr<OriginalValue> OriginalValue::CreateFromInstruction(
     const HloInstruction* instruction, absl::string_view prefix) {
   std::shared_ptr<OriginalValue> original_value =
-      std::make_shared<OriginalValue>(instruction->shape());
+      std::make_shared<OriginalValue>(
+          TupleTree<std::optional<OriginalArray>>(instruction->shape()));
 
   if (instruction->opcode() == HloOpcode::kGetTupleElement) {
     const auto* tuple = instruction->operand(0);
@@ -148,7 +154,7 @@ std::shared_ptr<OriginalValue> OriginalValue::CreateFromInstruction(
                                       {operand_number});
     }
   } else {
-    for (auto& leaf : original_value->leaves()) {
+    for (auto& leaf : original_value->mutable_original_arrays()) {
       leaf.second = {absl::StrCat(prefix, instruction->name()), leaf.first};
     }
   }
@@ -178,23 +184,24 @@ void CopyOriginalValue(const HloInstruction* src_instruction,
   }
 
   std::shared_ptr<OriginalValue> original_value_clone =
-      std::make_shared<OriginalValue>(original_value->shape());
+      std::make_shared<OriginalValue>();
   original_value_clone->CopySubtreeFrom(*original_value, {}, {});
   dest_instruction->set_original_value(original_value_clone);
 }
 
 void DeduplicateOriginalValues(HloModule* module) {
-  absl::flat_hash_set<OriginalValuePointer> unique_original_values;
+  absl::flat_hash_set<std::shared_ptr<OriginalValue>,
+                      PointeeHash<OriginalValue>, PointeeEqual<OriginalValue>>
+      unique_original_values;
   for (HloComputation* computation : module->computations()) {
     for (HloInstruction* instruction : computation->instructions()) {
       if (std::shared_ptr<OriginalValue> original_value =
               instruction->original_value()) {
-        OriginalValuePointer original_value_ptr(original_value);
-        auto p = unique_original_values.insert(original_value_ptr);
+        auto p = unique_original_values.insert(original_value);
         if (!p.second) {
           // Reassign the pointer with the existing identical object and release
           // the duplicate.
-          instruction->set_original_value(p.first->original_value);
+          instruction->set_original_value(*p.first);
         }
       }
     }
