@@ -522,6 +522,15 @@ class HloSharding {
     return -1;
   }
 
+  // Returns the unreduced subgroup dim, or -1 if it doesn't exist.
+  int64_t SubgroupUnreducedDim() const {
+    auto it = absl::c_find(subgroup_types_, OpSharding::UNREDUCED);
+    if (it != subgroup_types_.end()) {
+      return (it - subgroup_types_.begin()) + TiledDataRank();
+    }
+    return -1;
+  }
+
   // Returns the data rank for tiled sharding. It doesn't include subgroup dims.
   int64_t TiledDataRank() const {
     CHECK(IsTiled());

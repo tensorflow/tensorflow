@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -168,10 +169,6 @@ LogicalResult exportFunc(FuncOp funcOp, const SymbolTable& symbolTable,
 
     if (ArrayRef<TensorShardingAttr> shardings = mlir::sdy::getShardings(op);
         !shardings.empty()) {
-      if (allShardingsUnreduced(shardings)) {
-        setFrontendAttribute(op, kHasUnreducedAxes,
-                             builder.getStringAttr("true"));
-      }
       setHloShardingAttr(op, shardings, getMeshAttr, manualAxes);
       op->removeAttr(kShardingAttr);
     } else if (addMissingShardingToControlFlow &&
@@ -312,6 +309,11 @@ HloSharding convertToHloSharding(
   if (mesh.getAxes().size() == manualAxes.size()) {
     return HloSharding::Manual();
   }
+  // TODO(b/438306205): Remove this check once we support both unreduced and
+  // manual axes in subgroup sharding.
+  CHECK(sdySharding.getUnreducedAxes().empty() || manualAxes.empty())
+      << "Only one of unreduced and manual axes can be present: "
+      << mlir::sdy::attributeToString(sdySharding);
 
   // Iterate the dim shardings.
   for (auto [index, dimSharding] :
@@ -339,24 +341,35 @@ HloSharding convertToHloSharding(
   SmallVector<int> transposePerm(meshAxisRefs.size());
 
   int64_t totalReplicatedSize = 1;
-  int64_t replicatedPos = shardedPos;
+  int64_t totalUnreducedSize = 1;
+  int64_t replicatedOrUnreducedPos = shardedPos;
+  const llvm::SmallDenseSet<AxisRefAttr> unreducedAxes(
+      sdySharding.getUnreducedAxes().begin(),
+      sdySharding.getUnreducedAxes().end());
   for (auto [axisIndex, axisRef] : llvm::enumerate(meshAxisRefs)) {
     reshapeDims[axisIndex] = axisRef.getSize(mesh);
 
     auto shardedPosIt = axisRefToShardedPos.find(axisRef);
     if (shardedPosIt == axisRefToShardedPos.end()) {
-      // Axis is replicated
-      transposePerm[replicatedPos++] = axisIndex;
-      totalReplicatedSize *= axisRef.getSize(mesh);
+      // Axis is unreduced or replicated.
+      if (unreducedAxes.contains(axisRef)) {
+        totalUnreducedSize *= axisRef.getSize(mesh);
+      } else {
+        totalReplicatedSize *= axisRef.getSize(mesh);
+      }
+      transposePerm[replicatedOrUnreducedPos++] = axisIndex;
     } else {
-      // Axis is sharded or manual
+      // Axis is sharded or manual.
       transposePerm[shardedPosIt->second] = axisIndex;
     }
   }
-
   if (totalReplicatedSize > 1) {
     tileAssignmentDims.push_back(totalReplicatedSize);
     types.push_back(OpSharding::REPLICATED);
+  }
+  if (totalUnreducedSize > 1) {
+    tileAssignmentDims.push_back(totalUnreducedSize);
+    types.push_back(OpSharding::UNREDUCED);
   }
 
   // Handle arbitrary device ID list.

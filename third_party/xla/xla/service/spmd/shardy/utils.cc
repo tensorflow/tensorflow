@@ -326,6 +326,7 @@ SmallVector<AxisRefAttr> getOrderedAxisRefs(Attribute shardingOrAxisList,
     for (DimensionShardingAttr dimSharding : sharding.getDimShardings()) {
       consumeAxisRefList(dimSharding.getAxes());
     }
+    consumeAxisRefList(sharding.getUnreducedAxes());
   } else {
     consumeAxisRefList(
         mlir::cast<AxisRefListAttr>(shardingOrAxisList).getValue());
