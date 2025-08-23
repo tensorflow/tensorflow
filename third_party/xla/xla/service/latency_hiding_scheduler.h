@@ -160,6 +160,10 @@ struct SchedulerConfig {
   // If the above flag is also set, force the scheduler to provide maximum delay
   // to nodes at the stat of a scheduling group.
   bool aggressive_flexible_annotation_scheduling = false;
+  // Prioritize  flexible annotation scheduling over memory pressure; this is
+  // useful when the memory pressure is high. Without this, under high memory
+  // pressure, aggressive_flexible_annotation_scheduling is not respected.
+  bool force_delay_over_memory_pressure = false;
   // If true, estimate the fragmentation size of the module by running the heap
   // simulator.
   bool estimate_fragmentation_size = false;
