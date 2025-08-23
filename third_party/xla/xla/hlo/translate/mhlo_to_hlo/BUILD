@@ -128,6 +128,7 @@ cc_library(
     hdrs = ["module_attributes_exporter.h"],
     deps = [
         "//xla:xla_data_proto_cc",
+        "//xla/mlir_hlo:unregistered_attributes",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",
         "//xla/tsl/platform:errors",
@@ -194,6 +195,7 @@ cc_library(
         "//xla/mlir_hlo",
         "//xla/mlir_hlo:mhlo_passes",
         "//xla/mlir_hlo:stablehlo_extension_passes",
+        "//xla/mlir_hlo:unregistered_attributes",
         "//xla/service:collective_ops_utils",
         "//xla/service:computation_layout",
         "//xla/service:hlo_module_config",

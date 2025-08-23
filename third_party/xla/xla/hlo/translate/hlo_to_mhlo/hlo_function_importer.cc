@@ -78,6 +78,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/mlir_hlo/utils/unregistered_attributes.h"
 #include "xla/primitive_util.h"
 #include "xla/protobuf_util.h"
 #include "xla/service/hlo.pb.h"
@@ -518,7 +519,7 @@ absl::StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
   }
   if (computation.execution_thread() != "main") {
     function->setAttr(
-        "execution_thread",
+        kExecutionThread,
         builder_->getStringAttr(ToStringRef(computation.execution_thread())));
   }
 

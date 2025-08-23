@@ -101,6 +101,7 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/mlir_hlo/stablehlo_ext/transforms/passes.h"
+#include "xla/mlir_hlo/utils/unregistered_attributes.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/hlo.pb.h"
@@ -127,8 +128,8 @@ using ::tsl::uint32;
 using ::tsl::uint64;
 using ::tsl::uint8;
 
-// Boolean attribute.
-constexpr char kJaxBufferDonor[] = "jax.buffer_donor";
+// All Module level and Function level attributes must be included in:
+//   xla/mlir_hlo/utils/unregistered_attributes.h
 
 // BitcastOp lowering strings.
 constexpr char kResultLayout[] = "result_layout";
@@ -151,32 +152,11 @@ constexpr char kReductionInputSizeOverride[] = "reduction_input_size_override";
 constexpr char kReplicaGroups[] = "replica_groups";
 constexpr char kTopK[] = "top_k";
 
-// MHLO attributes. Module level attributes require namespacing.
-constexpr char kMhloCrossProgramPrefetches[] = "mhlo.cross_program_prefetches";
-constexpr char kMhloInputOutputAlias[] = "mhlo.input_output_alias";
-constexpr char kMhloIsDynamic[] = "mhlo.is_dynamic";
-constexpr char kMhloLiteral[] = "mhlo.literal";
-constexpr char kMhloReplication[] = "mhlo.is_same_data_across_replicas";
-constexpr char kMhloSpmdOutputSharding[] = "mhlo.spmd_output_sharding";
-constexpr char kMhloSpmdParametersShardings[] =
-    "mhlo.spmd_parameters_shardings";
-constexpr char kMhloUseAutoSpmdPartitioning[] =
-    "mhlo.use_auto_spmd_partitioning";
-constexpr char kMhloXlaEntryComputationParameterLayouts[] =
-    "mhlo.xla_entry_computation_parameter_layouts";
-constexpr char kMhloXlaEntryComputationParameterTiles[] =
-    "mhlo.xla_entry_computation_parameter_tiles";
-constexpr char kMhloXlaEntryComputationResultLayout[] =
-    "mhlo.xla_entry_computation_result_layout";
-constexpr char kMhloXlaEntryComputationResultTiles[] =
-    "mhlo.xla_entry_computation_result_tiles";
-
 // Miscellaneous string literals.
 constexpr char kArgEmptyTuple[] = "arg_empty_tuple";
 constexpr char kArgPrefix[] = "Arg_";
 constexpr char kArgTuple[] = "arg_tuple";
 constexpr char kDefaultLayoutAttrName[] = "xla_shape";
-constexpr char kExecutionThread[] = "execution_thread";
 // Array attribute. Same shape as infeed result, but contains a
 // minor_to_major array for every tensor.
 constexpr char kLayout[] = "layout";
@@ -2615,7 +2595,7 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
 
   absl::StatusOr<xla::Literal> literal;
   const xla::Literal* literal_ptr = nullptr;
-  auto literal_attr = op->getAttrOfType<DenseElementsAttr>(kMhloLiteral);
+  auto literal_attr = op->getAttrOfType<DenseElementsAttr>(xla::kMhloLiteral);
   if (literal_attr) {
     literal = mhlo::CreateLiteralFromAttribute(literal_attr, {});
     if (!literal.ok()) return failure();
@@ -4316,7 +4296,7 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
 
   absl::StatusOr<xla::Literal> literal;
   const xla::Literal* literal_ptr = nullptr;
-  auto literal_attr = op->getAttrOfType<DenseElementsAttr>(kMhloLiteral);
+  auto literal_attr = op->getAttrOfType<DenseElementsAttr>(xla::kMhloLiteral);
   if (literal_attr) {
     literal = mhlo::CreateLiteralFromAttribute(literal_attr, {});
     if (!literal.ok()) return failure();
@@ -5851,14 +5831,14 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::func::FuncOp f) {
     bool any_arg_replicated = false;
     entry_args_same_across_replicas.reserve(f.getNumArguments());
     for (int64_t i = 0; i < f.getNumArguments(); ++i) {
-      auto attr = f.getArgAttrOfType<mlir::BoolAttr>(i, kMhloReplication);
+      auto attr = f.getArgAttrOfType<mlir::BoolAttr>(i, xla::kMhloReplication);
       entry_args_same_across_replicas.push_back(attr != nullptr &&
                                                 attr.getValue());
       any_arg_replicated |= entry_args_same_across_replicas.back();
       // Pass the alias info to the builder so that it will build the alias info
       // into the resulting HloModule.
       auto buffer_donor =
-          f.getArgAttrOfType<mlir::BoolAttr>(i, kJaxBufferDonor);
+          f.getArgAttrOfType<mlir::BoolAttr>(i, xla::kJaxBufferDonor);
       if (buffer_donor) {
         if (options_.use_tuple_args) {
           builder->AddBufferDonor(/*param_number=*/0, /*param_index=*/{i});
@@ -5903,7 +5883,7 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::func::FuncOp f) {
     return failure();
   }
   if (auto execution_thread =
-          f->getAttrOfType<mlir::StringAttr>(kExecutionThread)) {
+          f->getAttrOfType<mlir::StringAttr>(xla::kExecutionThread)) {
     absl::Status status = xla::internal::XlaBuilderFriend::SetExecutionThread(
         &module_builder_, computation, execution_thread.str());
     if (!status.ok()) {
@@ -6226,6 +6206,8 @@ absl::Status PrepareForExport(mlir::ModuleOp module) {
   pm.enableVerifier(enableVerifier);
 
   pm.addNestedPass<mlir::func::FuncOp>(mhlo::createPrepareForExportPass());
+  pm.addPass(
+      stablehlo_ext::createStablehloSanitizeUnregisteredAttributesPass());
   if (hasShapeOps) {
     // Experimental support for exporting dynamic MHLO programs to HLO.
     // Only bounded dynamism is planned to be supported; unbounded dynamism
@@ -6295,14 +6277,15 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
                       converter.ConsumeMainProto());
   StringRef module_name = module.getName() ? *module.getName() : kMain;
   hlo_module.set_name(module_name.str());
-  if (auto cross_program_prefetches =
-          module->getAttrOfType<mlir::ArrayAttr>(kMhloCrossProgramPrefetches)) {
+  if (auto cross_program_prefetches = module->getAttrOfType<mlir::ArrayAttr>(
+          xla::kMhloCrossProgramPrefetches)) {
     for (const auto& prefetch :
          Convert_cross_program_prefetches(cross_program_prefetches)) {
       *hlo_module.add_cross_program_prefetches() = std::move(prefetch);
     }
   }
-  if (auto is_dynamic = module->getAttrOfType<mlir::BoolAttr>(kMhloIsDynamic)) {
+  if (auto is_dynamic =
+          module->getAttrOfType<mlir::BoolAttr>(xla::kMhloIsDynamic)) {
     hlo_module.set_is_dynamic(is_dynamic.getValue());
   }
   if (auto frontend_attributes =
@@ -6310,25 +6293,25 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
     CreateFrontendAttributes(frontend_attributes,
                              *hlo_module.mutable_frontend_attributes());
   }
-  if (auto use_auto_spmd_partitioning =
-          module->getAttrOfType<mlir::BoolAttr>(kMhloUseAutoSpmdPartitioning)) {
+  if (auto use_auto_spmd_partitioning = module->getAttrOfType<mlir::BoolAttr>(
+          xla::kMhloUseAutoSpmdPartitioning)) {
     hlo_module.set_use_auto_spmd_partitioning(
         use_auto_spmd_partitioning.getValue());
   }
-  if (auto spmd_output_sharding =
-          module->getAttrOfType<mlir::StringAttr>(kMhloSpmdOutputSharding)) {
+  if (auto spmd_output_sharding = module->getAttrOfType<mlir::StringAttr>(
+          xla::kMhloSpmdOutputSharding)) {
     *hlo_module.mutable_spmd_output_sharding() =
         *xla::ConvertSharding(spmd_output_sharding.getValue());
   }
   if (auto input_output_alias =
-          module->getAttrOfType<mlir::ArrayAttr>(kMhloInputOutputAlias)) {
+          module->getAttrOfType<mlir::ArrayAttr>(xla::kMhloInputOutputAlias)) {
     if (std::optional<xla::HloInputOutputAliasProto> input_output_alias_proto =
             xla::ConvertInputOutputAlias(input_output_alias.getValue())) {
       *hlo_module.mutable_input_output_alias() = *input_output_alias_proto;
     }
   }
   if (auto spmd_parameters_sharding = module->getAttrOfType<mlir::ArrayAttr>(
-          kMhloSpmdParametersShardings)) {
+          xla::kMhloSpmdParametersShardings)) {
     for (const auto& sharding : spmd_parameters_sharding.getValue()) {
       *hlo_module.add_spmd_parameters_shardings() = *xla::ConvertSharding(
           mlir::cast<mlir::StringAttr>(sharding).getValue());
@@ -6336,28 +6319,28 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
   }
   if (auto xla_entry_computation_parameter_layout =
           module->getAttrOfType<mlir::ArrayAttr>(
-              kMhloXlaEntryComputationParameterLayouts)) {
+              xla::kMhloXlaEntryComputationParameterLayouts)) {
     auto status = mhlo::ExportModuleEntryComputationParameterLayouts(
         xla_entry_computation_parameter_layout, hlo_module);
     if (!status.ok()) return status;
   }
   if (auto xla_entry_computation_parameter_tiles =
           module->getAttrOfType<mlir::ArrayAttr>(
-              kMhloXlaEntryComputationParameterTiles)) {
+              xla::kMhloXlaEntryComputationParameterTiles)) {
     auto status = mhlo::ExportModuleEntryComputationParameterTiles(
         xla_entry_computation_parameter_tiles, hlo_module);
     if (!status.ok()) return status;
   }
   if (auto xla_entry_computation_result_layout =
           module->getAttrOfType<mlir::ArrayAttr>(
-              kMhloXlaEntryComputationResultLayout)) {
+              xla::kMhloXlaEntryComputationResultLayout)) {
     auto status = mhlo::ExportModuleEntryComputationResultLayout(
         xla_entry_computation_result_layout, hlo_module);
     if (!status.ok()) return status;
   }
   if (auto xla_entry_computation_result_tiles =
           module->getAttrOfType<mlir::ArrayAttr>(
-              kMhloXlaEntryComputationResultTiles)) {
+              xla::kMhloXlaEntryComputationResultTiles)) {
     auto status = mhlo::ExportModuleEntryComputationResultTiles(
         xla_entry_computation_result_tiles, hlo_module);
     if (!status.ok()) return status;
