@@ -118,14 +118,15 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
     new_hlo_pointer->CopyOriginalValue(hlo, /*clone=*/true);
     if (std::shared_ptr<OriginalValue> original_value =
             new_hlo_pointer->original_value()) {
-      for (auto& leaf : original_value->leaves()) {
-        std::optional<OriginalArray>& original_array = leaf.second;
+      for (auto& pair : original_value->mutable_original_arrays()) {
+        std::optional<OriginalArray>& original_array = pair.second;
         if (original_array.has_value()) {
           std::string call_instruction_name;
           if (std::shared_ptr<OriginalValue> call_original_value =
                   call_->original_value()) {
-            call_instruction_name =
-                call_original_value->leaf_begin()->second->instruction_name;
+            call_instruction_name = call_original_value->original_arrays()
+                                        .begin()
+                                        ->second->instruction_name;
           }
           original_array->instruction_name = absl::StrCat(
               call_instruction_name, "/", original_array->instruction_name);

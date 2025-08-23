@@ -280,6 +280,12 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "pointer_utils",
+    hdrs = ["pointer_utils.h"],
+    deps = ["@com_google_absl//absl/hash"],
+)
+
 xla_cc_test(
     name = "hlo_traversal_test",
     srcs = ["hlo_traversal_test.cc"],
