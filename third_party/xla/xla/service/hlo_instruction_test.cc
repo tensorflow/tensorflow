@@ -2172,10 +2172,10 @@ TEST_F(HloInstructionTest, CanonicalStringificationFusion) {
   computation->SetExecutionThread(kParallelThreadName);
   HloInstruction* fusion = computation->CreateFusionInstruction(
       {dot, reshape}, HloInstruction::FusionKind::kLoop);
-  fusion->set_called_computations_execution_thread(
-      kParallelThreadName,
-      /*skip_async_execution_thread_overwrite*/ false);
+  fusion->set_called_computations_execution_thread(kParallelThreadName);
 
+  // Fusion is embedded call context, so the execution thread is not printed.
+  // here.
   const std::string expected_fusion =
       R"(f32[5,20]{1,0} fusion(f32[5,10]{1,0}, f32[20,10]{1,0}), kind=kLoop, calls=
 {
@@ -2183,7 +2183,7 @@ TEST_F(HloInstructionTest, CanonicalStringificationFusion) {
   tmp_1 = f32[20,10]{1,0} parameter(1)
   tmp_2 = f32[10,20]{1,0} transpose(f32[20,10]{1,0} tmp_1), dimensions={1,0}
   ROOT tmp_3 = f32[5,20]{1,0} dot(f32[5,10]{1,0} tmp_0, f32[10,20]{1,0} tmp_2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-}, execution_thread="parallel_thread")";
+})";
   EXPECT_EQ(fusion->ToString(options), expected_fusion);
 }
 

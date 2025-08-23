@@ -1432,12 +1432,10 @@ class HloCallableInstruction : public HloInstruction {
   HloInstruction* called_computation_root() const;
 
   // Recursively sets all nested called computation to have thread name as
-  // `execution_thread`. if `skip_async_execution_thread_overwrite` is true,
-  // skip overwrite async instruction and its comptuations thread name
-  // overwriting.
-  void RecursivelySetComputationsThreadName(
-      absl::string_view execution_thread,
-      bool skip_async_execution_thread_overwrite);
+  // `execution_thread`. Embedded computation (as opposed to ControlFlow)
+  // computations thread name overwriting is skipped since callsite decides the
+  // thread name.
+  void RecursivelySetComputationsThreadName(absl::string_view execution_thread);
 
   static bool ClassOf(const HloInstruction* hlo) {
     return hlo->opcode() == HloOpcode::kFusion ||

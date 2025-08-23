@@ -796,8 +796,7 @@ HloInstruction* InstructionFusion::AddFusionInstruction(
     TF_CHECK_OK(computation->ReplaceInstruction(consumer, fusion_instruction));
   }
   fusion_instruction->set_called_computations_execution_thread(
-      computation->execution_thread(),
-      /*skip_async_execution_thread_overwrite=*/false);
+      computation->execution_thread());
   return fusion_instruction;
 }
 
