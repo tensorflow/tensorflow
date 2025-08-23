@@ -1305,8 +1305,7 @@ HloInstruction* PriorityFusion::Fuse(HloInstruction* producer,
   }
 
   fusion_instruction->set_called_computations_execution_thread(
-      computation->execution_thread(),
-      /*skip_async_execution_thread_overwrite=*/false);
+      computation->execution_thread());
 
   if (HloPredicateIsOp<HloOpcode::kFusion>(producer)) {
     if (use_multi_output_fusion) {
