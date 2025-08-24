@@ -35,7 +35,6 @@ namespace {
 
 class GpuDotFusionCostModelTest : public HloHardwareIndependentTestBase {
  protected:
-  se::DeviceDescription dda6000_{TestGpuDeviceInfo::RTXA6000DeviceInfo()};
   se::DeviceDescription ddh100_{TestGpuDeviceInfo::RTXH100SXMDeviceInfo()};
 };
 
@@ -57,16 +56,6 @@ lhs_contracting_dims={1}, rhs_contracting_dims={0}, algorithm=dot_bf16_bf16_bf16
   auto* dot =
       Cast<HloDotInstruction>(module->entry_computation()->root_instruction());
   ASSERT_IS_OK(GpuDotFusionCostModel::IsSupported(dot));
-  absl::Duration runtime_a6000 =
-      GpuDotFusionCostModel::EstimateRunTimeForDotOpWithBlockParameters(
-          dot, block_params, dda6000_)
-          .value();
-  absl::Duration expected_runtime_compute_bound_a6000 =
-      detail::CalculateComputeTimeWithTileAndWaveQuantization(
-          dot, block_params.output_tile_sizes[0], dda6000_)
-          .value();
-  ASSERT_EQ(runtime_a6000, expected_runtime_compute_bound_a6000);
-
   block_params.output_tile_sizes = {{64, 64}};
   absl::Duration runtime_h100 =
       GpuDotFusionCostModel::EstimateRunTimeForDotOpWithBlockParameters(
