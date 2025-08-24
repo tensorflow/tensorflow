@@ -77,7 +77,7 @@ class ManualComputationPattern : public OpConversionPattern<CallOp> {
   mlir::LogicalResult matchAndRewrite(
       CallOp callOp, OpAdaptor adaptor,
       mlir::ConversionPatternRewriter& rewriter) const override {
-    if (!callOp.getCallee().contains(kManualComputationBodyFuncName)) {
+    if (!callOp.getCallee().contains(kManualComputationFuncName)) {
       return mlir::failure();
     }
 
@@ -219,7 +219,7 @@ class SdyRoundTripShardMapImportPass
     MLIRContext& context = getContext();
     mlir::ConversionTarget target(context);
     target.addDynamicallyLegalOp<CallOp>([](CallOp op) {
-      return !op.getCallee().contains(kManualComputationBodyFuncName);
+      return !op.getCallee().contains(kManualComputationFuncName);
     });
     target.addLegalOp<sdy::ManualComputationOp, sdy::ReturnOp, CustomCallOp>();
     mlir::RewritePatternSet patterns(&context);

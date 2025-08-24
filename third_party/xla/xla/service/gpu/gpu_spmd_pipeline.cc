@@ -17,9 +17,12 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <string>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
+#include "absl/strings/match.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_schedule.h"
@@ -32,6 +35,8 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/reshape_mover.h"
 #include "xla/hlo/transforms/simplifiers/sort_simplifier.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
+#include "xla/service/call_graph.h"
+#include "xla/service/call_inliner.h"
 #include "xla/service/conditional_simplifier.h"
 #include "xla/service/gather_expander.h"
 #include "xla/service/gpu/transforms/algebraic_simplifier.h"
@@ -39,6 +44,7 @@ limitations under the License.
 #include "xla/service/scatter_expander.h"
 #include "xla/service/sharding_propagation.h"
 #include "xla/service/spmd/collective_permute_motion.h"
+#include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/shardy/shardy_xla_pass.h"
 #include "xla/service/spmd/stateful_rng_spmd_partitioner.h"
 #include "xla/service/while_loop_constant_sinking.h"
@@ -128,6 +134,20 @@ void AddSPMDPasses(
       /*disable_ag_rewrite_for_multiple_consumers=*/true,
       /*enable_partial_windowed_einsums=*/true, oper_size_threshold,
       max_windowed_einsum_iteration);
+  // NOTE: even though the inliner is called in `RunPreSPMDPartitionerPasses`,
+  // it doesn't inline functions needed for ShardyXLA. ShardyXLA will also leave
+  // functions called `kInlineableManualComputationFuncName` not inlined, so
+  // we need to call the inliner again here.
+  spmd_pipeline.AddPass<xla::CallInliner>(
+      /*single_call_site=*/false,
+      /*update_domain=*/false,
+      /*composites_to_preserve=*/absl::flat_hash_set<std::string>{},
+      /*uniquify_channel_ids=*/false,
+      /*should_inline=*/
+      [](const xla::CallGraph& call_graph, xla::HloInstruction* instruction) {
+        return absl::StrContains(instruction->to_apply()->name(),
+                                 sdy::kInlineableManualComputationFuncName);
+      });
   spmd_pipeline.AddPass<CollectivePermuteMotion>();
 }
 

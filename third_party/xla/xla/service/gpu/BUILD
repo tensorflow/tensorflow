@@ -2306,6 +2306,8 @@ cc_library(
         "//xla/hlo/transforms/simplifiers:reshape_mover",
         "//xla/hlo/transforms/simplifiers:sort_simplifier",
         "//xla/hlo/transforms/simplifiers:tuple_simplifier",
+        "//xla/service:call_graph",
+        "//xla/service:call_inliner",
         "//xla/service:conditional_simplifier",
         "//xla/service:gather_expander",
         "//xla/service:hlo_module_config",
@@ -2316,10 +2318,13 @@ cc_library(
         "//xla/service/gpu/transforms:algebraic_simplifier",
         "//xla/service/spmd:collective_permute_motion",
         "//xla/service/spmd:stateful_rng_spmd_partitioner",
+        "//xla/service/spmd/shardy:constants",
         "//xla/service/spmd/shardy:shardy_xla_pass",
         "//xla/stream_executor:device_description",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
     ],
 )
 
