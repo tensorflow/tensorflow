@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -125,7 +126,7 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
     ThunkInfo thunk_info, std::string target_name,
     XLA_FFI_Handler_Bundle bundle, std::vector<std::optional<Slice>> operands,
     std::vector<std::optional<Slice>> results, AttributesMap attributes,
-    const HloComputation* called_computation) {
+    std::unique_ptr<HloComputation> called_computation) {
   auto execution_state = std::make_unique<ffi::ExecutionState>();
 
   // Initialize FFI handler state if it has an instantiate callback.
@@ -153,7 +154,7 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
   return absl::WrapUnique(new CustomCallThunk(
       thunk_info, std::move(target_name), bundle, std::move(operands),
       std::move(results), std::move(call_frame), std::move(execution_state),
-      called_computation));
+      std::move(called_computation)));
 }
 
 CustomCallThunk::CustomCallThunk(ThunkInfo thunk_info, std::string target_name,
@@ -173,7 +174,7 @@ CustomCallThunk::CustomCallThunk(
     XLA_FFI_Handler_Bundle bundle, std::vector<std::optional<Slice>> operands,
     std::vector<std::optional<Slice>> results, CallFrame call_frame,
     std::unique_ptr<ffi::ExecutionState> execution_state,
-    const HloComputation* called_computation)
+    std::unique_ptr<HloComputation> called_computation)
     : Thunk(Thunk::kCustomCall, thunk_info),
       target_name_(std::move(target_name)),
       operands_(std::move(operands)),
@@ -182,7 +183,7 @@ CustomCallThunk::CustomCallThunk(
       call_frame_(std::move(call_frame)),
       call_frames_([this] { return call_frame_->Copy(); }),
       execution_state_(std::move(execution_state)),
-      called_computation_(called_computation) {}
+      called_computation_(std::move(called_computation)) {}
 
 absl::Status CustomCallThunk::ExecuteCustomCall(const ExecuteParams& params) {
   // gpu_stream is CUstream or e.g. the equivalent type in ROCm.
@@ -272,7 +273,7 @@ absl::Status CustomCallThunk::ExecuteFfiHandler(
   CallOptions options = {run_id,
                          device_ordinal,
                          CallOptions::GpuOptions{stream, allocator},
-                         called_computation_,
+                         called_computation_.get(),
                          execution_context,
                          execution_state_.get()};
   return Call(handler, *call_frame, options, stage);

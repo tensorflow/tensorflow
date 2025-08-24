@@ -897,7 +897,9 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
     return CustomCallThunk::Create(
         thunk_info, call_target_name, registration->bundle, std::move(ops),
         std::move(res), std::move(attributes),
-        called_computations.empty() ? nullptr : called_computations[0]);
+        called_computations.empty()
+            ? nullptr
+            : called_computations[0]->Clone(/*suffix=*/""));
   };
 
   auto legacy_thunk =
