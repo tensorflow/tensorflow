@@ -43,7 +43,6 @@ limitations under the License.
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/autotuner/cublas.h"
 #include "xla/backends/gpu/autotuner/cublaslt.h"
-#include "xla/backends/gpu/autotuner/factory.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_fix.h"
@@ -63,7 +62,6 @@ limitations under the License.
 #include "xla/service/gpu/autotuning/autotuner_pass.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/autotuning/conv_algorithm_picker.h"
-#include "xla/service/gpu/autotuning/gemm_algorithm_picker.h"
 #include "xla/service/gpu/autotuning/gemm_fusion_autotuner.h"
 #include "xla/service/gpu/cublas_padding_requirements.h"
 #include "xla/service/gpu/gpu_compiler.h"
@@ -100,9 +98,11 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/cuda/cuda_solver_context.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -356,7 +356,8 @@ absl::Status NVPTXCompiler::AddConvAndGemmAutotuningPasses(
           .debug_options()
           .xla_gpu_experimental_disable_binary_libraries() ||
       debug_options.xla_gpu_autotune_level() == 0 ||
-      debug_options.xla_gpu_exclude_nondeterministic_ops()) {
+      debug_options.xla_gpu_exclude_nondeterministic_ops() ||
+      stream_exec == nullptr) {
     return absl::OkStatus();
   }
 
@@ -364,29 +365,30 @@ absl::Status NVPTXCompiler::AddConvAndGemmAutotuningPasses(
   // loaded in the GpuConvAlgorithmPicker but should be loaded in the autotuner.
   pipeline->AddPass<GpuConvAlgorithmPicker>(autotune_config);
 
-  if (debug_options.xla_gpu_experimental_use_autotuner_pass()) {
-    std::vector<std::unique_ptr<CodegenBackend>> backends;
-    backends.push_back(
-        std::make_unique<CublasBackend>(stream_exec, &debug_options, this));
-    backends.push_back(
-        std::make_unique<CublasLtBackend>(stream_exec, &debug_options, this));
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<AutotunerPass> autotuner_pass,
-        AutotunerPass::Create(std::move(backends), debug_options,
-                              options.device_allocator, stream_exec,
-                              thread_pool));
-    pipeline->AddPass(std::move(autotuner_pass));
+  // If present, use the device allocator from the compilation options.
+  // Otherwise, use the stream executor allocator, which needs to be deallocated
+  // after use. The device allocator from options is expected to remain valid
+  // throughout the compilation process.
+  std::unique_ptr<se::DeviceMemoryAllocator> stream_executor_allocator;
+  se::DeviceMemoryAllocator* allocator;
+  if (options.device_allocator == nullptr) {
+    stream_executor_allocator =
+        std::make_unique<se::StreamExecutorMemoryAllocator>(stream_exec);
+    allocator = stream_executor_allocator.get();
   } else {
-    // On Ampere or later, GemmAlgorithmPicker just provides a way to "warmup"
-    // the
-    // execution. But we already do that during GemmFusionAutotuner pass. In
-    // that case, we do a recursive compilation call that has
-    // 'is_autotuning_compilation' set to true.
-    if (!std::get<se::CudaComputeCapability>(gpu_version).IsAtLeastAmpere() ||
-        options.is_autotuning_compilation) {
-      pipeline->AddPass<GemmAlgorithmPicker>(autotune_config);
-    }
+    allocator = options.device_allocator;
   }
+
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  backends.push_back(
+      std::make_unique<CublasBackend>(stream_exec, &debug_options, this));
+  backends.push_back(
+      std::make_unique<CublasLtBackend>(stream_exec, &debug_options, this));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<AutotunerPass> autotuner_pass,
+      AutotunerPass::Create(std::move(backends), debug_options, allocator,
+                            stream_exec, thread_pool));
+  pipeline->AddPass(std::move(autotuner_pass));
   return absl::OkStatus();
 }
 
