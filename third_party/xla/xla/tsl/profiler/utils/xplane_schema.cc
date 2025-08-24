@@ -49,6 +49,7 @@ const absl::string_view kTFStreamzPlaneName = "/host:tfstreamz";
 const absl::string_view kPythonTracerPlaneName = "/host:python-tracer";
 const absl::string_view kHostCpusPlaneName = "Host CPUs";
 const absl::string_view kSyscallsPlaneName = "Syscalls";
+const absl::string_view kProfileOptionsName = "Profile Options";
 
 const absl::string_view kStepLineName = "Steps";
 const absl::string_view kSparseCoreStepLineName = "Sparse Core Steps";

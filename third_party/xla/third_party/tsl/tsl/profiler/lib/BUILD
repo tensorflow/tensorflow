@@ -207,6 +207,8 @@ cc_library(
         "@local_xla//xla/tsl/profiler:internal",
     ]),
     deps = [
+        "//tensorflow/core/profiler/utils:xplane_builder",
+        "//tensorflow/core/profiler/utils:xplane_utils",
         "//tsl/platform:thread_annotations",
         "//tsl/profiler/protobuf:profiler_options_proto_cc",
         "//tsl/profiler/protobuf:xplane_proto_cc",
@@ -216,6 +218,7 @@ cc_library(
         "@local_xla//xla/tsl/platform:errors",
         "@local_xla//xla/tsl/platform:logging",
         "@local_xla//xla/tsl/platform:types",
+        "@local_xla//xla/tsl/profiler/utils:xplane_schema",
     ] + if_not_android([
         ":profiler_collection",
         ":profiler_factory",
