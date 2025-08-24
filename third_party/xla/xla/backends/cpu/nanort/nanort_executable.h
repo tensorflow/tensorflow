@@ -155,7 +155,7 @@ class NanoRtExecutable {
   template <size_t n>
   class ManagedTemp {
    public:
-    explicit ManagedTemp(size_t size) : data_(size) {}
+    explicit ManagedTemp(size_t size) : data_(size, std::byte{0}) {}
 
     ManagedTemp(const ManagedTemp&) = delete;
     ManagedTemp& operator=(const ManagedTemp&) = delete;
