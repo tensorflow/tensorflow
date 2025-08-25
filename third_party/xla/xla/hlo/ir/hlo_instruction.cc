@@ -2700,6 +2700,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kIota:
     case HloOpcode::kDot:
     case HloOpcode::kRaggedDot:
+    case HloOpcode::kScaledDot:
     case HloOpcode::kDomain:
     case HloOpcode::kGetDimensionSize:
     case HloOpcode::kSetDimensionSize:

@@ -724,6 +724,8 @@ absl::Status RunOptimizationPasses(
     absl::string_view platform_name) {
   const DebugOptions& debug_options = hlo_module->config().debug_options();
 
+  se::GpuComputeCapability gpu_version =
+      gpu_target_config.device_description.gpu_compute_capability();
   HloPassPipeline pipeline("optimization");
   AddHloVerifier(&pipeline, !debug_options.xla_ignore_channel_id());
   if (debug_options.xla_detect_unstable_reductions() !=
@@ -731,7 +733,7 @@ absl::Status RunOptimizationPasses(
     pipeline.AddPass<UnstableReductionDetector>();
   }
   pipeline.AddPass<RaggedDotRewriter>();
-  pipeline.AddPass<ScaledDotRewriter>();
+  pipeline.AddPass<ScaledDotRewriter>(gpu_version);
   pipeline.AddPass<BatchedGatherScatterNormalizer>();
   if (debug_options.xla_gpu_multi_streamed_windowed_einsum()) {
     pipeline.AddPass<WindowedEinsumHandler>();
@@ -744,8 +746,7 @@ absl::Status RunOptimizationPasses(
   pipeline.AddPass<DotDecomposer>();
 
   HloPredicate upcaster_filter = [&](const HloInstruction* instr) {
-    const auto* cuda_cc = std::get_if<se::CudaComputeCapability>(
-        &gpu_target_config.device_description.gpu_compute_capability());
+    const auto* cuda_cc = std::get_if<se::CudaComputeCapability>(&gpu_version);
     if (cuda_cc != nullptr &&
         !cuda_cc->IsAtLeast(se::CudaComputeCapability::kVolta)) {
       return true;
@@ -875,9 +876,6 @@ absl::Status RunOptimizationPasses(
   // Expand the sort op to support stable sorting if required.
   pipeline.AddPass<StableSortExpander>();
 
-  se::GpuComputeCapability gpu_version =
-      gpu_target_config.device_description.gpu_compute_capability();
-
   // Build simplification pipeline.  The passes in here are run to a fixed
   // point.
   [&, &pipeline =
@@ -895,8 +893,7 @@ absl::Status RunOptimizationPasses(
     pipeline.AddPass<ScatterExpander>(
         ScatterExpander::kEliminateSimpleScatters);
     pipeline.AddPass<ScatterSliceSimplifier>();
-    pipeline.AddPass<DotStrengthReduction>(
-        gpu_target_config.device_description.gpu_compute_capability());
+    pipeline.AddPass<DotStrengthReduction>(gpu_version);
     pipeline.AddPass<GpuAlgebraicSimplifier>(layout_insensitive_algsimp_opts,
                                              gpu_version);
     pipeline.AddPass<BitcastDtypesExpander>();

@@ -58,6 +58,7 @@ cc_library(
     hdrs = ["hlo_evaluator.h"],
     deps = [
         ":hlo_evaluator_interface",
+        "//third_party/protobuf:protobuf_lite",
         "//xla:array2d",
         "//xla:comparison_util",
         "//xla:literal",

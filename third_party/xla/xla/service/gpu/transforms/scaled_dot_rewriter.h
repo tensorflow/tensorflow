@@ -22,6 +22,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
@@ -30,12 +31,18 @@ namespace gpu {
 // instructions, including Convert, Broadcast, Reshape, Multiply, and Dot.
 class ScaledDotRewriter : public HloModulePass {
  public:
+  explicit ScaledDotRewriter(se::GpuComputeCapability compute_capability)
+      : compute_capability_(compute_capability) {}
+
   absl::string_view name() const override { return "scaled-dot-rewriter"; }
 
   using HloPassInterface::Run;
   absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+ private:
+  const se::GpuComputeCapability compute_capability_;
 };
 
 }  // namespace gpu

@@ -157,6 +157,62 @@ absl::StatusOr<HloInstruction*> Dequantize(HloInstruction* dot,
           operand->shape(), HloOpcode::kMultiply, operand, broadcasted_scale));
   return dequantized;
 }
+
+// Returns true if the operand type is supported by the scaled dot operation.
+// The source of truth is triton doc for dot_scaled operation.
+// https://triton-lang.org/main/python-api/generated/triton.language.dot_scaled.html#triton.language.dot_scaled
+bool DoesTritonSupportOperandType(const HloInstruction* operand) {
+  PrimitiveType type = operand->shape().element_type();
+  switch (type) {
+    case PrimitiveType::F16:
+    case PrimitiveType::BF16:
+    case PrimitiveType::F8E4M3:
+    case PrimitiveType::F8E4M3FN:
+    case PrimitiveType::F8E5M2:
+    case PrimitiveType::F4E2M1FN:
+      return true;
+    default:
+      return false;
+  }
+}
+
+// Returns true if the operand type is supported by the scaled dot operation.
+// The source of truth is triton doc for dot_scaled operation.
+// https://triton-lang.org/main/python-api/generated/triton.language.dot_scaled.html#triton.language.dot_scaled
+bool DoesTritonSupportScaleType(const HloInstruction* scale) {
+  PrimitiveType type = scale->shape().element_type();
+  switch (type) {
+    case PrimitiveType::F8E8M0FNU:
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool IsRewriteRequired(HloInstruction* instruction) {
+  if (!instruction->GetModule()
+           ->config()
+           .debug_options()
+           .xla_gpu_experimental_enable_scaled_dot()) {
+    return true;  // Always rewrite if the flag is not set.
+  }
+  HloScaledDotInstruction* dot = Cast<HloScaledDotInstruction>(instruction);
+  if (!DoesTritonSupportOperandType(dot->operand(0))) {
+    return true;
+  }
+  if (!DoesTritonSupportScaleType(dot->operand(1))) {
+    return true;
+  }
+  if (!DoesTritonSupportOperandType(dot->operand(2))) {
+    return true;
+  }
+  if (!DoesTritonSupportScaleType(dot->operand(3))) {
+    return true;
+  }
+
+  return false;
+}
+
 }  // namespace
 
 absl::StatusOr<bool> ScaledDotRewriter::Run(
@@ -166,6 +222,9 @@ absl::StatusOr<bool> ScaledDotRewriter::Run(
     for (HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
       if (instruction->opcode() != HloOpcode::kScaledDot) {
+        continue;
+      }
+      if (!IsRewriteRequired(instruction)) {
         continue;
       }
       changed = true;
