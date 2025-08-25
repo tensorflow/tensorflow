@@ -301,9 +301,11 @@ CoordinationService::GetCountOfOutOfSyncTasksPerBarrier() {
       }
     }
   }
-  VLOG(1) << "out_of_sync_tasks_per_barrier: "
-          << absl::StrJoin(out_of_sync_tasks_per_barrier, ",",
-                           absl::PairFormatter("="));
+  if (!out_of_sync_tasks_per_barrier.empty()) {
+    LOG(INFO) << "out_of_sync_tasks_per_barrier: "
+              << absl::StrJoin(out_of_sync_tasks_per_barrier, ",",
+                               absl::PairFormatter("="));
+  }
 
   return out_of_sync_tasks_per_barrier;
 }
@@ -525,9 +527,17 @@ CoordinationService::ConnectAfterBarrierPasses(absl::string_view task_name,
           done = std::move(done)](absl::Status s,
                                   int64_t unused_counter) mutable {
     state_mu_.AssertHeld();
-    if (s.ok() && incarnation == cluster_state_[task]->GetTaskIncarnation()) {
+    const std::unique_ptr<TaskState>& task_state = cluster_state_[task];
+    if (s.ok() && incarnation == task_state->GetTaskIncarnation()) {
       // Connect task to service.
-      cluster_state_[task]->Connect();
+      task_state->Connect();
+      if (task_state->IsRecoverable() &&
+          absl::GetFlag(FLAGS_leave_barriers_on_recoverable_agent_restart)) {
+        // We want to mark the task unsynced when it connects again. When the
+        // task passes a barrier with other tasks, it will be removed from the
+        // unsynced set.
+        unsynced_recoverable_jobs_.insert(task);
+      }
       done(absl::OkStatus());
       ClusterStateUpdated();
     } else if (s.ok() || absl::IsCancelled(s)) {
@@ -1328,6 +1338,9 @@ void CoordinationService::BarrierAsyncLocked(
     // Initialize new barrier instance state.
     if (!InitializeBarrier(barrier, barrier_id, counter, timeout, task,
                            participating_tasks, done)) {
+      LOG(WARNING) << "Barrier init failed for barrier: "
+                   << BarrierName(barrier_id, counter)
+                   << " task: " << GetTaskName(task);
       return;  // Exit early if barrier init failed.
     }
   }
@@ -1762,7 +1775,8 @@ void CoordinationService::ReachBarrier(BarrierState* barrier,
         if (unsynced_recoverable_jobs_.contains(GetTaskName(task))) {
           LOG(INFO)
               << "Removing task " << GetTaskName(task)
-              << " from unsynced recoverable jobset, since it is synced now";
+              << " from unsynced recoverable jobset, since it is synced now "
+              << " with barrier " << BarrierName(*barrier);
           unsynced_recoverable_jobs_.erase(GetTaskName(task));
         }
       }
