@@ -39,18 +39,18 @@ class XnnMatcher : public LibraryMatcher {
 
   // Returns the set of supported HLO instructions.
   absl::flat_hash_set<HloOpcode> SupportedOps() const override {
-    static const auto* kSupportedOps = []() {
-      static auto* supported_ops =
-          new absl::flat_hash_set<HloOpcode>{HloOpcode::kDot};
+    static const auto& kSupportedOps = []() {
+      static absl::NoDestructor<absl::flat_hash_set<HloOpcode>> supported_ops{
+          {HloOpcode::kDot, HloOpcode::kReduce, HloOpcode::kConstant}};
       for (const auto& [op, _] : GetXnnUnaryOpMap()) {
         supported_ops->insert(op);
       }
       for (const auto& [op, _] : GetXnnBinaryOpMap()) {
         supported_ops->insert(op);
       }
-      return supported_ops;
+      return *supported_ops;
     }();
-    return *kSupportedOps;
+    return kSupportedOps;
   }
 
   // Returns true if the HLO instruction is supported by the library.
@@ -60,8 +60,17 @@ class XnnMatcher : public LibraryMatcher {
           instr->dot_dimension_numbers(), instr->operand(0)->shape(),
           instr->operand(1)->shape(), instr->shape(), target_machine_features_);
     }
+    if (instr->opcode() == HloOpcode::kReduce) {
+      return IsReduceOpSupportedByXnn(instr);
+    }
     if (instr->IsConstant()) {
       return IsConstantSupportedByXnn(instr);
+    }
+    // FIXME(b/440970353): The fusion pass is not quite correct at the moment,
+    // this needs to be investiated. Once the underlying issue is fixed
+    // the early return should be removed.
+    if (fuse_reduce_) {
+      return false;
     }
     if (instr->IsElementwise()) {
       return IsElementwiseOpSupportedByXnn(instr);
@@ -74,6 +83,9 @@ class XnnMatcher : public LibraryMatcher {
   // `--xla_cpu_experimental_xnn_fusion_type` flag.
   bool ShouldCreateFusion(const HloInstruction* instr) override {
     if (fuse_dot_ && instr->opcode() == HloOpcode::kDot) {
+      return true;
+    }
+    if (fuse_reduce_ && instr->opcode() == HloOpcode::kReduce) {
       return true;
     }
     return fuse_eltwise_ && instr->IsElementwise();
