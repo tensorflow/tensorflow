@@ -1972,6 +1972,9 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
     }
   }
 
+  pm.addPass(mlir::triton::xla::CreateTritonXLASqueezeDimsPass());
+  pm.addPass(mlir::triton::xla::CreateTritonXLAFoldTransposePass());
+
   if (is_xla_fusion) {
     pm.addPass(
         mlir::triton::xla::CreateInt4ToPackedInt4RewritePass(device_info));
@@ -1979,9 +1982,6 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
 
   pm.addPass(mlir::triton::xla::CreateTritonXLAExtractInsertToTritonPass(
       device_info, block_level_parameters.is_tma_allowed));
-
-  pm.addPass(mlir::triton::xla::CreateTritonXLASqueezeDimsPass());
-  pm.addPass(mlir::triton::xla::CreateTritonXLAFoldTransposePass());
 
   // Lower affine expressions into arithmetic ops.
   pm.addPass(mlir::createLowerAffinePass());
