@@ -30,8 +30,6 @@ using GlobalDeviceId = GlobalDeviceId;
 // Returns a comma-separated string of global device IDs.
 std::string GlobalDeviceIdsToString(absl::Span<GlobalDeviceId const> ids);
 
-using ::tsl::IncarnationId;  // NOLINT(misc-unused-using-decls)
-
 }  // namespace xla
 
 #endif  // XLA_SERVICE_GLOBAL_DEVICE_ID_H_

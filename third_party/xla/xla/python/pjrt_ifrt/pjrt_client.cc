@@ -856,7 +856,7 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> PjRtClient::Create(
 
   // Start a background thread to monitor the status of all processes.
   if (client->distributed_client_) {
-    absl::StatusOr<tsl::CoordinationServiceAgent*> agent =
+    absl::StatusOr<xla::CoordinationServiceAgent*> agent =
         client->distributed_client_->GetCoordinationServiceAgent();
     if (agent.ok()) {
       client->global_process_info_thread_.reset(
