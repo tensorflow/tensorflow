@@ -54,6 +54,9 @@ class MemorySpaceAssignmentUtils {
   static bool DoesInstructionMatchFilter(const HloPositionMatcher& filter,
                                          const HloInstruction& instruction);
 
+  static bool DoesInstructionMatchRandomFilter(
+      const HloPositionMatcher& filter, const HloInstruction& instruction);
+
   static bool DoesPositionMatchFilter(const HloPositionMatcher& filter,
                                       const MsaBufferInterval& buffer_interval);
 
