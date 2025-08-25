@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/layout_util.h"
 #include "xla/literal_util.h"
 #include "xla/service/call_inliner.h"
@@ -43,9 +44,9 @@ limitations under the License.
 #include "xla/service/tuple_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -81,6 +82,8 @@ WidenWhileCondition(HloComputation* narrow_condition, const Shape& wide_shape) {
   HloInstruction* call_narrow_cond = wide_while_cond->AddInstruction(
       HloInstruction::CreateCall(ShapeUtil::MakeShape(PRED, {}),
                                  {truncated_parameter}, narrow_condition));
+  call_narrow_cond->set_original_value(
+      std::make_shared<OriginalValue>(OriginalValue::SyntheticCall()));
 
   wide_while_cond->set_root_instruction(call_narrow_cond);
 
@@ -110,6 +113,8 @@ WidenWhileBody(HloComputation* narrow_body, const Shape& wide_shape) {
   HloInstruction* call_narrow_body =
       wide_while_body->AddInstruction(HloInstruction::CreateCall(
           narrow_shape, {truncated_parameter}, narrow_body));
+  call_narrow_body->set_original_value(
+      std::make_shared<OriginalValue>(OriginalValue::SyntheticCall()));
 
   std::vector<HloInstruction*> live_through_values;
   for (int i = narrow_shape.tuple_shapes().size();

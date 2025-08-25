@@ -256,7 +256,7 @@ void HloHardwareIndependentTestBase::RunAndFilecheckHloRewrite(
         RunFileCheck(
             module->ToString(HloPrintOptions().set_print_large_constants(true)),
             *expected));
-    EXPECT_TRUE(filecheck_matches);
+    EXPECT_TRUE(filecheck_matches) << module->ToString();
     if (after_pass_checks) {
       after_pass_checks(module.get());
     }
@@ -300,7 +300,7 @@ void HloHardwareIndependentTestBase::RunAndFilecheckHloModuleGroupRewrite(
         RunFileCheck(module_group.module(index).ToString(
                          HloPrintOptions().set_print_large_constants(true)),
                      expected_str));
-    EXPECT_TRUE(filecheck_matches);
+    EXPECT_TRUE(filecheck_matches) << module_group.module(index).ToString();
     index++;
   }
 }

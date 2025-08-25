@@ -15,14 +15,23 @@ limitations under the License.
 
 #include "xla/service/select_and_scatter_expander.h"
 
+#include <cstdint>
+#include <memory>
 #include <numeric>
 #include <vector>
 
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/literal_util.h"
 #include "xla/service/call_inliner.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 
 namespace xla {
 
@@ -93,6 +102,8 @@ absl::StatusOr<HloInstruction*> SelectAndScatterExpander::ExpandInstruction(
     auto* call = builder.AddInstruction(
         HloInstruction::CreateCall(sas->select()->root_instruction()->shape(),
                                    {operand_lhs, operand_rhs}, sas->select()));
+    call->set_original_value(
+        std::make_shared<OriginalValue>(OriginalValue::SyntheticCall()));
 
     auto* pred = builder.AddInstruction(HloInstruction::CreateBinary(
         call->shape(), HloOpcode::kAnd, call, lhs_first_in_window));

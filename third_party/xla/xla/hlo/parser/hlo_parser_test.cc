@@ -1548,6 +1548,18 @@ ENTRY %test (v1: f32[], v2: f32[3], v3: f32[2,3]) -> ((f32[], f32[3]), f32[2,3])
 },
 
 {
+"OriginalValueSynthetic",
+R"(HloModule test, entry_computation_layout={(f32[])->f32[]}
+
+ENTRY %test (v1: f32[]) -> f32[] {
+  %v1 = f32[] parameter(0), origin={[synthetic_call]}
+  ROOT %add = f32[] add(f32[] %v1, f32[] %v1), origin={[synthetic_call]}
+}
+
+)"
+},
+
+{
 "OriginalValueRecoveryTable",
 R"(HloModule test, entry_computation_layout={(f32[192]{0})->f32[1,17,17,192]{3,2,1,0}}, origin_recovery_table={
   {"broadcast.2340"} : {"reshape.2341"}
