@@ -24,7 +24,6 @@ limitations under the License.
 #include <memory>
 #include <numeric>
 #include <optional>
-#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -2538,119 +2537,7 @@ absl::Status VerifyAsynchronousInstructionPairs(const HloModule& module) {
   return absl::OkStatus();
 }
 
-// Helper function to match source-target pairs for a pair of send/recv
-// instructions.
-absl::Status VerifySourceTargetPairs(const HloInstruction* first,
-                                     const HloInstruction* second) {
-  if (first == nullptr || second == nullptr) {
-    return Internal("Expected send or recv instruction to be non-null");
-  }
-  auto send_source_target_pairs =
-      first->frontend_attributes().map().find(kSendRecvSourceTargetPairsAttr);
-  auto recv_source_target_pairs =
-      second->frontend_attributes().map().find(kSendRecvSourceTargetPairsAttr);
-  // Source-target pairs should be set or unset for both send and recv.
-  if ((send_source_target_pairs == first->frontend_attributes().map().end()) !=
-      (recv_source_target_pairs == second->frontend_attributes().map().end())) {
-    return Internal(
-        "Expected both send and recv instruction to have source-target pairs "
-        "set, but found %s and %s",
-        first->ToString(), second->ToString());
-  }
-
-  // Skip checks if source-target pairs are unset for both send and recv
-  if (send_source_target_pairs == first->frontend_attributes().map().end()) {
-    return absl::OkStatus();
-  }
-
-  if (send_source_target_pairs->second != recv_source_target_pairs->second) {
-    return Internal(
-        "Expected send and recv instructions to have the same source-target "
-        "pairs, but found %s and %s",
-        first->ToString(), second->ToString());
-  }
-
-  TF_ASSIGN_OR_RETURN(
-      SourceTargetPairs send_source_target_pairs_array,
-      SourceTargetPairs::FromString(send_source_target_pairs->second));
-  if (collective_permute_cycle::HasCycles(send_source_target_pairs_array)) {
-    return Internal(
-        "Expected send and recv instructions to have non-cyclical "
-        "source-target pairs, but found %s",
-        first->ToString());
-  }
-  std::set<int> sources;
-  std::set<int> targets;
-  for (int i = 0; i < send_source_target_pairs_array.size(); ++i) {
-    sources.insert(send_source_target_pairs_array[i].source);
-    targets.insert(send_source_target_pairs_array[i].target);
-  }
-  if (sources.size() != send_source_target_pairs_array.size() ||
-      targets.size() != send_source_target_pairs_array.size()) {
-    return Internal(
-        "Expected send and recv instructions to have unique source and target "
-        "pairs, but found %s",
-        first->ToString());
-  }
-
-  return absl::OkStatus();
-}
-
-enum class DfaState { kNoException, kExpectSend, kExpectRecv };
-
-// Helper function to handle the state transitions for a Send instruction.
-absl::Status HandleSendInstruction(const HloInstruction* instruction,
-                                   DfaState& current_state,
-                                   const HloInstruction*& current_instruction) {
-  if (DynCast<HloSendInstruction>(instruction)->is_host_transfer()) {
-    return absl::OkStatus();
-  }
-  switch (current_state) {
-    case DfaState::kNoException:
-      current_instruction = instruction;
-      current_state = DfaState::kExpectRecv;
-      break;
-    case DfaState::kExpectSend:
-      TF_RETURN_IF_ERROR(
-          VerifySourceTargetPairs(current_instruction, instruction));
-      current_state = DfaState::kNoException;
-      current_instruction = nullptr;
-      break;
-    case DfaState::kExpectRecv:
-      return Internal("Expected recv to match send, but found %s",
-                      instruction->ToString());
-    default:
-      break;
-  }
-  return absl::OkStatus();
-}
-
-// Helper function to handle the state transitions for a Recv instruction.
-absl::Status HandleRecvInstruction(const HloInstruction* instruction,
-                                   DfaState& current_state,
-                                   const HloInstruction*& current_instruction) {
-  if (DynCast<HloRecvInstruction>(instruction)->is_host_transfer()) {
-    return absl::OkStatus();
-  }
-  switch (current_state) {
-    case DfaState::kNoException:
-      current_instruction = instruction;
-      current_state = DfaState::kExpectSend;
-      break;
-    case DfaState::kExpectSend:
-      return Internal("Expected send to match recv, but found %s",
-                      instruction->ToString());
-    case DfaState::kExpectRecv:
-      TF_RETURN_IF_ERROR(
-          VerifySourceTargetPairs(current_instruction, instruction));
-      current_state = DfaState::kNoException;
-      current_instruction = nullptr;
-      break;
-    default:
-      break;
-  }
-  return absl::OkStatus();
-}
+enum class DfaState { kNoExpectation, kExpectSend, kExpectRecv };
 
 // Checks that the send/recv instructions in the module do not deadlock. This is
 // only done on scheduled modules and is specific to device-to-device
@@ -2659,53 +2546,293 @@ absl::Status HandleRecvInstruction(const HloInstruction* instruction,
 // 2. no two send instructions are scheduled in a row
 // 3. no two recv instructions are scheduled in a row
 // 4. the program does not terminate with a dangling send or recv
-absl::Status VerifyNoCollectiveDeadlocks(const HloModule& module) {
-  DfaState current_state = DfaState::kNoException;
-  const HloInstruction* current_instruction = nullptr;
-  // TODO: b/434020459 - start the static verification in ENTRY and run the
-  // function recursively instead of iterating through all computations
-  // serially
+absl::Status VerifyNoConflictingSourceTargetPairs(
+    const HloInstruction* instruction, SourceTargetPairs source_target_pairs) {
+  // Check for cycles
+  if (collective_permute_cycle::HasCycles(source_target_pairs)) {
+    return Internal(
+        "Expected send and recv instructions to have non-cyclical "
+        "source-target pairs, but found %s",
+        instruction->ToString());
+  }
+  // Check for duplicate sources and targets
+  if (HasDuplicateSourcesOrTargets(source_target_pairs)) {
+    return Internal(
+        "Expected send and recv instructions to have unique source and target "
+        "pairs, but found %s",
+        instruction->ToString());
+  }
+  return absl::OkStatus();
+}
 
-  for (auto& [computation_id, sequence] : module.schedule().sequences()) {
-    for (const HloInstruction* instruction : sequence.instructions()) {
-      switch (instruction->opcode()) {
-        case HloOpcode::kSend:
-          TF_RETURN_IF_ERROR(HandleSendInstruction(instruction, current_state,
-                                                   current_instruction));
-          break;
-        case HloOpcode::kRecv:
-          TF_RETURN_IF_ERROR(HandleRecvInstruction(instruction, current_state,
-                                                   current_instruction));
-          break;
-        case HloOpcode::kAllGather:
-        case HloOpcode::kAllReduce:
-        case HloOpcode::kAllToAll:
-        case HloOpcode::kRaggedAllToAll:
-        case HloOpcode::kCollectivePermute:
-        case HloOpcode::kReduceScatter:
-        case HloOpcode::kCollectiveBroadcast:
-          switch (current_state) {
-            case DfaState::kExpectSend:
-            case DfaState::kExpectRecv:
-              return Internal("Expected send or recv, but found %s",
-                              instruction->ToString());
-            default:
-              break;
-          }
-          break;
-        default:
-          break;
+// Checks that the given instruction
+// (1) does not contain a cycle
+// (2) does not form a cycle with any of the instructions in the provided set
+// (3) does not have duplicate sources or targets
+// (4) does not contain duplicate sources or targets with any of the
+//     instructions in the provided set
+// If all 4 checks pass, insert the instruction into the provided set of
+// instructions
+template <typename T>
+absl::Status VerifyNoConflictingSendOrRecv(
+    const T* instruction, absl::flat_hash_set<const T*>& instructions) {
+  TF_ASSIGN_OR_RETURN(SourceTargetPairs source_target_pairs_array,
+                      SourceTargetPairs::FromInstruction(instruction));
+  for (const T* existing_instruction : instructions) {
+    TF_ASSIGN_OR_RETURN(
+        SourceTargetPairs existing_source_target_pairs_array,
+        SourceTargetPairs::FromInstruction(existing_instruction));
+    TF_RETURN_IF_ERROR(VerifyNoConflictingSourceTargetPairs(
+        existing_instruction,
+        SourceTargetPairs::Join(source_target_pairs_array,
+                                existing_source_target_pairs_array)));
+  }
+  instructions.insert(instruction);
+  return absl::OkStatus();
+}
+
+template <typename T>
+absl::StatusOr<bool> ShouldSkipDeadlockCheck(const T* instruction) {
+  if (instruction->is_host_transfer()) {
+    return true;
+  }
+  // TODO: b/441038687 - Remove kSendRecvValidationAttr
+  // TODO: b/441088186 - update static analyzer logic to also handle
+  // instructions annotated with _xla_send_recv_pipeline
+  // For now we will skip checks for instructions annotated with
+  // _xla_send_recv_pipeline and _xla_send_recv_validation, since they introduce
+  // extra constraints that have not been modeled by this function.
+  if (instruction->frontend_attributes().map().contains(
+          kSendRecvPipelineAttr) ||
+      instruction->frontend_attributes().map().contains(
+          kSendRecvValidationAttr)) {
+    return true;
+  }
+  // Check that the instruction itself does not have conflicting
+  // source-target pairs.
+  TF_ASSIGN_OR_RETURN(SourceTargetPairs source_target_pairs_array,
+                      SourceTargetPairs::FromInstruction(instruction));
+  TF_RETURN_IF_ERROR(VerifyNoConflictingSourceTargetPairs(
+      instruction, source_target_pairs_array));
+  return false;
+}
+
+// Finds a matching instruction (Send or Recv) for the given instruction in the
+// provided set of candidates. Matching is based on the
+// kSendRecvSourceTargetPairsAttr.
+template <typename T, typename U>
+const U* FindMatchingInstruction(
+    const T* instruction, const absl::flat_hash_set<const U*>& candidates) {
+  auto it = instruction->frontend_attributes().map().find(
+      kSendRecvSourceTargetPairsAttr);
+  if (it == instruction->frontend_attributes().map().end()) {
+    return nullptr;  // Should not happen based on checks in caller
+  }
+  const std::string& source_target_pairs = it->second;
+
+  for (const U* candidate : candidates) {
+    auto candidate_it = candidate->frontend_attributes().map().find(
+        kSendRecvSourceTargetPairsAttr);
+    if (candidate_it != candidate->frontend_attributes().map().end() &&
+        candidate_it->second == source_target_pairs) {
+      return candidate;
+    }
+  }
+  return nullptr;
+}
+
+absl::Status CheckDeadlocksForSend(
+    const HloSendInstruction* send, DfaState& current_state,
+    absl::flat_hash_set<const HloSendInstruction*>& pending_send_instructions,
+    absl::flat_hash_set<const HloRecvInstruction*>& pending_recv_instructions) {
+  TF_ASSIGN_OR_RETURN(bool skip, ShouldSkipDeadlockCheck(send));
+  if (skip) {
+    return absl::OkStatus();
+  }
+  switch (current_state) {
+    case DfaState::kNoExpectation:
+      pending_send_instructions.insert(send);
+      current_state = DfaState::kExpectRecv;
+      break;
+    case DfaState::kExpectRecv:
+      if (!VerifyNoConflictingSendOrRecv(send, pending_send_instructions)
+               .ok()) {
+        return Internal("Expected recv, but found %s", send->ToString());
+      }
+      break;
+    case DfaState::kExpectSend:
+      const HloRecvInstruction* recv =
+          FindMatchingInstruction(send, pending_recv_instructions);
+      if (recv != nullptr) {
+        pending_recv_instructions.erase(recv);
+        if (pending_recv_instructions.empty()) {
+          current_state = DfaState::kNoExpectation;
+        }
+      } else {
+        // We couldn't find a matching recv instruction, so we will put this
+        // send in the set of unmatched send instructions.
+        pending_send_instructions.insert(send);
+      }
+      break;
+  }
+  return absl::OkStatus();
+}
+
+absl::Status CheckDeadlocksForRecv(
+    const HloRecvInstruction* recv, DfaState& current_state,
+    absl::flat_hash_set<const HloSendInstruction*>& send_instructions,
+    absl::flat_hash_set<const HloRecvInstruction*>& recv_instructions) {
+  TF_ASSIGN_OR_RETURN(bool skip, ShouldSkipDeadlockCheck(recv));
+  if (skip) {
+    return absl::OkStatus();
+  }
+  switch (current_state) {
+    case DfaState::kNoExpectation:
+      recv_instructions.insert(recv);
+      current_state = DfaState::kExpectSend;
+      break;
+    case DfaState::kExpectSend:
+      if (!VerifyNoConflictingSendOrRecv(recv, recv_instructions).ok()) {
+        return Internal("Expected send, but found %s", recv->ToString());
+      }
+      break;
+    case DfaState::kExpectRecv:
+      const HloSendInstruction* send =
+          FindMatchingInstruction(recv, send_instructions);
+      if (send != nullptr) {
+        send_instructions.erase(send);
+        if (send_instructions.empty()) {
+          current_state = DfaState::kNoExpectation;
+        }
+      } else {
+        // We couldn't find a matching send instruction, so we will put this
+        // recv in the set of unmatched recv instructions.
+        recv_instructions.insert(recv);
+      }
+      break;
+  }
+  return absl::OkStatus();
+}
+
+absl::Status CheckDeadlocksForOtherCollectives(
+    const HloInstruction* instruction, DfaState& current_state,
+    absl::flat_hash_set<const HloSendInstruction*>& send_instructions,
+    absl::flat_hash_set<const HloRecvInstruction*>& recv_instructions) {
+  switch (current_state) {
+    case DfaState::kExpectSend:
+    case DfaState::kExpectRecv:
+      // We have some left-over unmatched send or recv instructions.
+      if (!send_instructions.empty() || !recv_instructions.empty()) {
+        return Internal(
+            "Expected send and recv instructions to have the same "
+            "source-target pairs, but could not match some "
+            "instructions. Introducing the following instruction will "
+            "cause a deadlock:\n%s",
+            instruction->ToString());
+      }
+      return Internal("Expected send or recv, but found %s",
+                      instruction->ToString());
+    default:
+      break;
+  }
+  return absl::OkStatus();
+}
+
+bool IsOtherCollective(const HloInstruction* instruction) {
+  switch (instruction->opcode()) {
+    case HloOpcode::kAllGather:
+    case HloOpcode::kAllReduce:
+    case HloOpcode::kAllToAll:
+    case HloOpcode::kRaggedAllToAll:
+    case HloOpcode::kCollectivePermute:
+    case HloOpcode::kReduceScatter:
+    case HloOpcode::kCollectiveBroadcast:
+      return true;
+    default:
+      return false;
+  }
+}
+
+absl::Status VerifyNoCollectiveDeadlocksRecursive(
+    const HloComputation* computation, DfaState& current_state,
+    absl::flat_hash_set<const HloSendInstruction*>& send_instructions,
+    absl::flat_hash_set<const HloRecvInstruction*>& recv_instructions) {
+  for (const HloInstruction* instruction : computation->instructions()) {
+    if (instruction->called_computations().empty()) {
+      if (instruction->opcode() == HloOpcode::kSend) {
+        TF_RETURN_IF_ERROR(CheckDeadlocksForSend(
+            DynCast<HloSendInstruction>(instruction), current_state,
+            send_instructions, recv_instructions));
+      } else if (instruction->opcode() == HloOpcode::kRecv) {
+        TF_RETURN_IF_ERROR(CheckDeadlocksForRecv(
+            DynCast<HloRecvInstruction>(instruction), current_state,
+            send_instructions, recv_instructions));
+      } else if (IsOtherCollective(instruction)) {
+        TF_RETURN_IF_ERROR(CheckDeadlocksForOtherCollectives(
+            instruction, current_state, send_instructions, recv_instructions));
+      } else {
+        continue;
+      }
+    } else {
+      for (const HloComputation* computation :
+           instruction->called_computations()) {
+        TF_RETURN_IF_ERROR(VerifyNoCollectiveDeadlocksRecursive(
+            computation, current_state, send_instructions, recv_instructions));
       }
     }
   }
-  return current_state == DfaState::kNoException
-             ? absl::OkStatus()
-             : Internal(
-                   "Program terminated with dangling send or recv. Last "
-                   "checked instruction: %s",
-                   current_instruction == nullptr
-                       ? ""
-                       : current_instruction->ToString());
+  return absl::OkStatus();
+}
+
+absl::Status CheckPendingSendRecvDeadlocks(
+    absl::flat_hash_set<const HloSendInstruction*>& send_instructions,
+    absl::flat_hash_set<const HloRecvInstruction*>& recv_instructions) {
+  if (recv_instructions.empty() && !send_instructions.empty()) {
+    return Internal("Expected recv to match send");
+  }
+  if (send_instructions.empty() && !recv_instructions.empty()) {
+    return Internal("Expected send to match recv");
+  }
+  std::string last_checked_instructions = "";
+  for (const HloSendInstruction* send_instruction : send_instructions) {
+    const HloRecvInstruction* recv_instruction =
+        FindMatchingInstruction(send_instruction, recv_instructions);
+    if (recv_instruction != nullptr) {
+      recv_instructions.erase(recv_instruction);
+    } else {
+      absl::StrAppend(&last_checked_instructions, send_instruction->ToString(),
+                      ",");
+    }
+  }
+  for (const HloRecvInstruction* recv_instruction : recv_instructions) {
+    const HloSendInstruction* send_instruction =
+        FindMatchingInstruction(recv_instruction, send_instructions);
+    if (send_instruction != nullptr) {
+      send_instructions.erase(send_instruction);
+    } else {
+      absl::StrAppend(&last_checked_instructions, recv_instruction->ToString(),
+                      ",");
+    }
+  }
+  if (!last_checked_instructions.empty()) {
+    return Internal("Deadlock detected. Last checked instructions: %s",
+                    last_checked_instructions);
+  }
+  return absl::OkStatus();
+}
+
+absl::Status VerifyNoCollectiveDeadlocks(const HloModule& module) {
+  DfaState current_state = DfaState::kNoExpectation;
+  absl::flat_hash_set<const HloSendInstruction*> send_instructions;
+  absl::flat_hash_set<const HloRecvInstruction*> recv_instructions;
+  TF_RETURN_IF_ERROR(VerifyNoCollectiveDeadlocksRecursive(
+      module.entry_computation(), current_state, send_instructions,
+      recv_instructions));
+  if (current_state != DfaState::kNoExpectation) {
+    TF_RETURN_IF_ERROR(
+        CheckPendingSendRecvDeadlocks(send_instructions, recv_instructions));
+  }
+  return absl::OkStatus();
 }
 
 // Checks that the asynchronous computation only has a root and parameter

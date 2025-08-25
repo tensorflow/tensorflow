@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/service/source_target_pairs.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/statusor.h"
@@ -871,5 +872,18 @@ bool IsExclusivelyCrossReplica(absl::Span<const ReplicaGroup> replica_groups,
     }
   }
   return true;
+}
+
+bool HasDuplicateSourcesOrTargets(const SourceTargetPairs& pairs) {
+  std::set<int> sources;
+  std::set<int> targets;
+  for (int i = 0; i < pairs.size(); ++i) {
+    sources.insert(pairs[i].source);
+    targets.insert(pairs[i].target);
+  }
+  if (sources.size() != pairs.size() || targets.size() != pairs.size()) {
+    return true;
+  }
+  return false;
 }
 }  // end namespace xla
