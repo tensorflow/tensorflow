@@ -219,6 +219,7 @@ std::string PrintCss() {
 
     span.hlo-instruction {
       display: inline-block;
+      cursor: pointer;
     }
     span.hlo-instruction:hover {
       border: 2px solid #4285F4;
@@ -259,6 +260,38 @@ std::string PrintCss() {
       transform: translateY(-1px) scale(1.02);
     }
 
+    /* Styles for the system message pop-up */
+    .system-message-container {
+        /* Position fixed at the bottom of the viewport */
+        position: fixed;
+        bottom: 7px;
+        left: 50%;
+        transform: translateX(-50%) translateY(100%);
+
+        /* Appearance and transitions */
+        background-color: #F5F3FF;
+        border: 2px solid #8B5CF6;
+        opacity: 0;
+        visibility: hidden;
+        transition: transform 0.3s ease-in-out, opacity 0.3s ease-in-out, visibility 0s 0.3s;
+        z-index: 1000;
+    }
+
+    /* Class to show the message */
+    .system-message-container.show-message {
+        transform: translateX(-50%) translateY(0);
+        opacity: 1;
+        visibility: visible;
+        transition: transform 0.3s ease-in-out, opacity 0.3s ease-in-out;
+    }
+
+    .system-message-container.show-message span {
+      color: #4C1D95;
+      font-weight: 500;
+      font-size: 16px;
+      padding: 1.5rem;
+    }
+
     </style>
   )html";
 }
@@ -282,6 +315,20 @@ std::string PrintJavascript() {
 std::string PrintJavascriptForHoverEvent() {
   return R"html(
   <script>
+  function ShowSystemMessage(message) {
+      const messageContainer = document.getElementById('system-message');
+      const messageText = messageContainer.querySelector('span');
+      messageText.textContent = message;
+
+      // Show the message pop-up
+      messageContainer.classList.add('show-message');
+
+      // Automatically hide the message after 3 seconds
+      setTimeout(() => {
+      messageContainer.classList.remove('show-message');
+      }, 3000);
+  }
+
   const allSpans = document.querySelectorAll('span[data-diffid]');
   allSpans.forEach(span => {
       span.addEventListener('mouseover', handleMouseOver);
@@ -353,6 +400,8 @@ std::string PrintJavascriptForHoverEvent() {
               setTimeout(() => {
                   targetSpan.classList.remove('temp-highlight');
               }, 1500); // Remove highlight after 1.5 seconds
+          } else {
+              ShowSystemMessage("Corresponding instruction is in another computation.");
           }
       }
   }
@@ -408,9 +457,11 @@ std::string EscapeStringForHtmlAttribute(absl::string_view str) {
 
 // Prints the div html block.
 std::string PrintDiv(absl::string_view content,
-                     absl::Span<const absl::string_view> class_names) {
-  return absl::StrFormat(R"html(<div class="%s">%s</div>)html",
-                         absl::StrJoin(class_names, " "), content);
+                     absl::Span<const absl::string_view> class_names,
+                     absl::string_view id = "") {
+  std::string div_id = id.empty() ? "" : absl::StrCat(" id=\"", id, "\"");
+  return absl::StrFormat(R"html(<div class="%s"%s>%s</div>)html",
+                         absl::StrJoin(class_names, " "), div_id, content);
 }
 
 // Print the span html block.
@@ -439,6 +490,12 @@ std::string PrintSectionWithHeader(absl::string_view header,
   return PrintDiv(absl::StrCat(PrintDiv(header, {"header"}),
                                PrintDiv(content, {"content"})),
                   {"section"});
+}
+
+// Prints a system message placeholder.
+std::string PrintSystemMessagePlaceholder() {
+  return PrintDiv(PrintSpan("System message placeholder", {}),
+                  {"system-message-container"}, "system-message");
 }
 
 // Prints a list of items.
@@ -1193,6 +1250,7 @@ void RenderHtml(const DiffResult& diff_result, const DiffSummary& diff_summary,
               PrintChangedInstructions(
                   filtered_diff_result.changed_instructions, url_generator))));
 
+  out << PrintSystemMessagePlaceholder();
   out << PrintJavascriptForHoverEvent();
   out << PrintJavascriptForToggleButton();
 }
