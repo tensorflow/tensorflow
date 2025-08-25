@@ -921,6 +921,29 @@ xla_test(
 )
 
 cc_library(
+    name = "raft_select_k_thunk",
+    srcs = ["raft_select_k_thunk.cc"],
+    hdrs = ["raft_select_k_thunk.h"],
+    deps = [
+        ":raft_select_k_exec",
+        ":thunk",
+        ":thunk_proto_cc",
+        "//xla:types",
+        "//xla/codegen/emitters:kernel_arguments",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:buffer_assignment",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:stream",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@local_config_cuda//cuda:cuda_headers",
+    ],
+)
+
+cc_library(
     name = "memset_thunk",
     srcs = ["memset_thunk.cc"],
     hdrs = ["memset_thunk.h"],

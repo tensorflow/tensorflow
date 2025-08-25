@@ -60,9 +60,32 @@ absl::StatusOr<HloInstruction*> SmallBufferOptimization(
                            data_shape.ToString());
   }
   bool has_batch = data_shape.dimensions().size() == 2;
-  constexpr size_t max_k = 16;
-  constexpr size_t min_n = 1024;
+  size_t max_k = 16;
+  size_t min_n = 1024;
+  size_t batch = 0;
+  if (has_batch) {
+    batch = data_shape.dimensions(0);
+  }
   size_t n = data_shape.dimensions(has_batch ? 1 : 0);
+  // The heuristic for deciding when to use TopK kernels versus Sort + Slice was
+  // developed as part of the initial research in b/409009349
+  if (data_shape.element_type() == F32) {
+    min_n = 0;
+    max_k = 128;
+    if (batch >= 64 && n >= 16384) {
+      max_k = 256;
+    }
+  } else if (data_shape.element_type() == BF16) {
+    min_n = 0;
+    max_k = 128;
+    if (batch >= 16 && n >= 65536) {
+      max_k = 256;
+    }
+    if (batch >= 64 && batch <= 128 && n >= 8192 && n <= 32768) {
+      max_k = 64;
+    }
+  }
+
   size_t k = topk->shape().tuple_shapes(0).dimensions(has_batch ? 1 : 0);
   if (k > max_k) {
     return InvalidArgument("k too large (%d), must be <= %d", k, max_k);
