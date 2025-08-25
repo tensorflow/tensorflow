@@ -121,7 +121,9 @@ bool IsAtLeastCuda12300(const se::StreamExecutor* stream_executor) {
       &device_description.gpu_compute_capability());
   if (cuda_cc != nullptr) {
     if (device_description.driver_version() >=
-        stream_executor::SemanticVersion(12, 3, 0)) {
+            stream_executor::SemanticVersion(12, 3, 0) &&
+        device_description.runtime_version() >=
+            stream_executor::SemanticVersion(12, 3, 0)) {
       return true;
     }
   }
@@ -135,7 +137,9 @@ bool IsAtLeastCuda12900(const se::StreamExecutor* stream_executor) {
       &device_description.gpu_compute_capability());
   if (cuda_cc != nullptr) {
     if (device_description.driver_version() >=
-        stream_executor::SemanticVersion(12, 9, 0)) {
+            stream_executor::SemanticVersion(12, 9, 0) &&
+        device_description.runtime_version() >=
+            stream_executor::SemanticVersion(12, 9, 0)) {
       return true;
     }
   }
