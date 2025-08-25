@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/alias_info.h"
@@ -53,7 +54,7 @@ namespace {
 
 class HostOffloaderTest : public HloHardwareIndependentTestBase {
  protected:
-  absl::StatusOr<bool> RunHostOffloader(HloModule* module) {
+  absl::StatusOr<bool> RunHostOffloader(HloModule* module) const {
     TF_EXPECT_OK(verifier().Run(module).status());
     if (module->has_schedule()) {
       return absl::InternalError("Expected a non-scheduled module");
@@ -68,12 +69,13 @@ class HostOffloaderTest : public HloHardwareIndependentTestBase {
     return changed;
   }
 
-  void TestShapeHasMemorySpace(const Shape& shape, int64_t memory_space) {
+  static void TestShapeHasMemorySpace(const Shape& shape,
+                                      int64_t memory_space) {
     ASSERT_TRUE(shape.has_layout());
     EXPECT_EQ(shape.layout().memory_space(), memory_space);
   }
 
-  bool HaveRemainingOffloadAnnotations(const HloModule* module) {
+  static bool HaveRemainingOffloadAnnotations(const HloModule* module) {
     for (const HloComputation* computation : module->computations()) {
       for (const HloInstruction* instruction : computation->instructions()) {
         if (instruction->IsCustomCall(
@@ -84,6 +86,12 @@ class HostOffloaderTest : public HloHardwareIndependentTestBase {
       }
     }
     return false;
+  }
+
+  static void DisableAutomaticHostComputeOffload(HloModule* module) {
+    module->mutable_config()
+        .mutable_debug_options()
+        .set_xla_disable_automatic_host_compute_offload(true);
   }
 
   AliasInfo alias_info_;
@@ -4526,6 +4534,27 @@ ENTRY main.39_spmd (param.2: f32[16,16,16]) -> (f32[16,16,16], f32[16,16,16]) {
   }
   EXPECT_EQ(host_memory_space_count, 1);
   EXPECT_EQ(default_memory_space_count, 1);
+}
+
+TEST_F(HostOffloaderTest, AutomaticHostComputeOffloadDisabled) {
+  const absl::string_view hlo_string = R"(
+    HloModule module, entry_computation_layout={(f32[1024]{0})->f32[1024]{0}}
+
+    ENTRY main {
+      param = f32[1024]{0} parameter(0)
+      to_host = f32[1024]{0} custom-call(param), custom_call_target="MoveToHost"
+      tanh = f32[1024]{0} tanh(to_host)
+      ROOT to_device = f32[1024]{0} custom-call(tanh), custom_call_target="MoveToDevice"
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  DisableAutomaticHostComputeOffload(module.get());
+  // Normally, the tanh will be offloaded to host compute, but because we have
+  // disabled automatic host compute offloading, we expect an error.
+  absl::StatusOr<bool> changed = RunHostOffloader(module.get());
+  EXPECT_THAT(changed,
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 }  // namespace

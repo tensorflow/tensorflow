@@ -127,6 +127,9 @@ message DebugOptions {
   //--------------------------------------------------------------------------//
   // go/keep-sorted start
 
+  // Return an error if HostOffloader would have automatically offloaded some
+  // compute to the host.
+  optional bool xla_disable_automatic_host_compute_offload = 408;
   // Perform hash-based cycle detection in fixed-point loops.
   optional bool xla_hlo_pass_fix_detect_cycles = 370;
   // Crash if HloPassFix can not converge after a fixed number of iterations.
@@ -1328,7 +1331,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 408
+  // Next id: 409
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
