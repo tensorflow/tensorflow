@@ -33,6 +33,9 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/log_entry.h"
+#include "absl/log/log_sink.h"
+#include "absl/log/log_sink_registry.h"
 #include "absl/status/status.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/numbers.h"
@@ -56,7 +59,7 @@ namespace {
 
 // Log sink is used to collect recent warning and error log messages to be
 // attached to the error status.
-class StatusLogSink : public TFLogSink {
+class StatusLogSink : public absl::LogSink {
  public:
   static StatusLogSink* GetInstance() {
     static StatusLogSink* const sink = new StatusLogSink();
@@ -78,7 +81,7 @@ class StatusLogSink : public TFLogSink {
       }
 
       if (num_messages_ > 0) {
-        TFAddLogSink(this);
+        absl::AddLogSink(this);
       }
     });
   }
@@ -91,7 +94,7 @@ class StatusLogSink : public TFLogSink {
     }
   }
 
-  void Send(const TFLogEntry& entry) override TF_LOCKS_EXCLUDED(mu_) {
+  void Send(const absl::LogEntry& entry) override TF_LOCKS_EXCLUDED(mu_) {
     if (entry.log_severity() < absl::LogSeverity::kWarning) return;
 
     absl::MutexLock lock(&mu_);

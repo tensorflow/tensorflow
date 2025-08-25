@@ -25,7 +25,6 @@ limitations under the License.
 #include <ostream>
 #include <string>
 #include <tuple>
-#include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -35,7 +34,6 @@ limitations under the License.
 #include "absl/base/log_severity.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "absl/log/log_sink.h"
 #include "absl/log/scoped_mock_log.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
@@ -1908,15 +1906,12 @@ ENTRY %main {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kHlo, config));
-  // absl::ScopedMockLog only works if we're actually using ABSL logging, and
-  // TSL supports a homegrown logging implementation, so we should only check
-  // the log is emitted when ABSL logging is used.
+
   absl::ScopedMockLog mock_log(absl::MockLogDefault::kIgnoreUnexpected);
-  if constexpr (std::is_same_v<absl::LogSink, tsl::TFLogSink>) {
-    EXPECT_CALL(mock_log,
-                Log(absl::LogSeverity::kWarning, EndsWith("/gpu_compiler.cc"),
-                    StartsWith("Using fallback sort algorithm")));
-  }
+  EXPECT_CALL(mock_log,
+              Log(absl::LogSeverity::kWarning, EndsWith("/gpu_compiler.cc"),
+                  StartsWith("Using fallback sort algorithm")));
+
   // StartCapturingLogs has to be called even if we expect not to capture any
   // logs.
   mock_log.StartCapturingLogs();
