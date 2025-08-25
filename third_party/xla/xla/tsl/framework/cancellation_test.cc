@@ -24,7 +24,6 @@ limitations under the License.
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/threadpool.h"
-#include "tsl/platform/notification.h"
 
 namespace tsl {
 

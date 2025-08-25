@@ -31,7 +31,6 @@ limitations under the License.
 #include "xla/tsl/platform/types.h"
 #include "xla/tsl/profiler/utils/math_utils.h"
 #include "xla/tsl/profiler/utils/time_utils.h"
-#include "tsl/platform/notification.h"
 
 namespace tsl {
 namespace profiler {

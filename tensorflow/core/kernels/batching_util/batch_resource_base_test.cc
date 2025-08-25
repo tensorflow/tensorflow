@@ -48,7 +48,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/batching_util/shared_batch_scheduler.h"
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
 #include "tsl/platform/status.h"

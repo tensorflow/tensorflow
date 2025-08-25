@@ -373,7 +373,6 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform:hash",
-        "@local_tsl//tsl/platform:notification",
         "@local_tsl//tsl/platform:stringpiece",
         "@local_tsl//tsl/platform:thread_annotations",
     ],
@@ -419,7 +418,6 @@ tsl_cc_test(
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:test",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:notification",
     ],
 )
 

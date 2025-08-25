@@ -87,14 +87,6 @@ cc_library(
 )
 
 cc_library(
-    name = "notification",
-    hdrs = ["notification.h"],
-    deps = [
-        "//tensorflow/core/platform:notification",
-    ],
-)
-
-cc_library(
     name = "raw_coding",
     hdrs = ["raw_coding.h"],
     deps = [
@@ -204,7 +196,6 @@ filegroup(
         "arena.h",
         "bitmap.h",
         "bits.h",
-        "notification.h",
         "threadpool.h",
         "threadpool_interface.h",
         "threadpool_options.h",
@@ -220,7 +211,6 @@ filegroup(
         "bits.h",
         "coding.h",
         "errors.h",
-        "notification.h",
         "raw_coding.h",
         "refcount.h",
         "status.h",
@@ -289,7 +279,6 @@ filegroup(
         "bits.h",
         "coding.h",
         "errors.h",
-        "notification.h",
         "raw_coding.h",
         "refcount.h",
         "status.h",
