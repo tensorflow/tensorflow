@@ -17,13 +17,17 @@ limitations under the License.
 #define XLA_HLO_IR_HLO_ORIGINAL_VALUE_H_
 
 #include <algorithm>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 
+#include "absl/log/check.h"
 #include "absl/strings/string_view.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/lib/gtl/iterator_range.h"
 #include "xla/tuple_tree.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -58,16 +62,33 @@ struct OriginalArray {
   }
 };
 
+// Represents a synthetic value, e.g., from a call instruction that doesn't
+// have a direct mapping to original arrays and should be removed by inlining.
+struct SyntheticCall {};
+
+namespace internal {
+TupleTree<std::optional<OriginalArray>>& EmptyOriginalValueTupleTree();
+}  // namespace internal
+
 // The information of an HLO value produced by an instruction in an unoptimized
 // HLO module.
 class OriginalValue {
  public:
-  OriginalValue() = default;
+  OriginalValue() : data_(TupleTree<std::optional<OriginalArray>>()) {}
+
+  // Constructor for a normal value with array information.
   explicit OriginalValue(
-      TupleTree<std::optional<OriginalArray>>::Node&& root_node)
-      : tree_(std::move(root_node)) {}
-  explicit OriginalValue(TupleTree<std::optional<OriginalArray>>&& tree)
-      : tree_(std::move(tree)) {}
+      TupleTree<std::optional<OriginalArray>>::Node&& root_node);
+  explicit OriginalValue(TupleTree<std::optional<OriginalArray>>&& tree);
+  explicit OriginalValue(const TupleTree<std::optional<OriginalArray>>& tree);
+
+  // Constructor for a synthetic value.
+  explicit OriginalValue(SyntheticCall synthetic) : data_(synthetic) {}
+
+  bool is_synthetic_call() const {
+    return std::holds_alternative<SyntheticCall>(data_);
+  }
+
   std::string ToString() const;
   OriginalValueProto ToProto() const;
   static std::shared_ptr<OriginalValue> FromProto(
@@ -75,27 +96,49 @@ class OriginalValue {
   static std::shared_ptr<OriginalValue> CreateFromInstruction(
       const HloInstruction* instruction, absl::string_view prefix = "");
 
+  const TupleTree<std::optional<OriginalArray>>& tree() const {
+    CHECK(!is_synthetic_call())
+        << "Cannot get tree from a synthetic OriginalValue";
+    return std::get<TupleTree<std::optional<OriginalArray>>>(data_);
+  }
+  TupleTree<std::optional<OriginalArray>>* mutable_tree() {
+    CHECK(!is_synthetic_call())
+        << "Cannot get tree from a synthetic OriginalValue";
+    return &std::get<TupleTree<std::optional<OriginalArray>>>(data_);
+  }
+
   const std::optional<OriginalArray>& original_array(
       ShapeIndexView index) const {
-    return tree_.element(index);
+    return tree().element(index);
   }
   std::optional<OriginalArray>* mutable_original_array(ShapeIndexView index) {
-    return tree_.mutable_element(index);
+    return mutable_tree()->mutable_element(index);
   }
 
   // Returns a const iterator over the pairs of ShapeIndex and
   // std::optional<OriginalArray>.
-  auto original_arrays() const { return tree_.leaves(); }
+  auto original_arrays() const {
+    if (is_synthetic_call()) {
+      return std::as_const(internal::EmptyOriginalValueTupleTree()).leaves();
+    }
+    return tree().leaves();
+  }
   // Returns a non-const iterator over the pairs of ShapeIndex and
   // std::optional<OriginalArray>.
-  auto mutable_original_arrays() { return tree_.leaves(); }
-
-  void CopySubtreeFrom(const OriginalValue& other, const ShapeIndex& src_index,
-                       const ShapeIndex& dst_index) {
-    tree_.CopySubtreeFrom(other.tree_, src_index, dst_index);
+  auto mutable_original_arrays() {
+    if (is_synthetic_call()) {
+      return internal::EmptyOriginalValueTupleTree().leaves();
+    }
+    return mutable_tree()->leaves();
   }
 
   bool operator==(const OriginalValue& other) const {
+    if (is_synthetic_call() != other.is_synthetic_call()) {
+      return false;
+    }
+    if (is_synthetic_call()) {
+      return true;  // Synthetic == Synthetic
+    }
     auto this_original_arrays = original_arrays();
     auto other_original_arrays = other.original_arrays();
     return std::equal(this_original_arrays.begin(), this_original_arrays.end(),
@@ -109,14 +152,22 @@ class OriginalValue {
 
   template <typename H>
   friend H AbslHashValue(H h, const OriginalValue& value) {
-    for (const auto& leaf : value.original_arrays()) {
-      h = H::combine(std::move(h), leaf.first, leaf.second);
+    h = H::combine(std::move(h), value.is_synthetic_call());
+    if (!value.is_synthetic_call()) {
+      auto leaves = value.original_arrays();
+      int64_t leaf_count = 0;
+      for (const auto& leaf : leaves) {
+        leaf_count++;
+        h = H::combine(std::move(h), leaf.first, leaf.second);
+      }
+      h = H::combine(std::move(h), leaf_count);
     }
     return h;
   }
 
  private:
-  TupleTree<std::optional<OriginalArray>> tree_;
+  void ClearInternalNodeValues();
+  std::variant<SyntheticCall, TupleTree<std::optional<OriginalArray>>> data_;
 };
 
 // Copies the original value of the source to the destination instruction. This
