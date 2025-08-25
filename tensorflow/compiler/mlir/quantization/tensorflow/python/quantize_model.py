@@ -806,13 +806,18 @@ def quantize(
     *,
     overwrite_output_directory: bool = False,
 ) -> autotrackable.AutoTrackable:
-  """Quantizes the SavedModel with the given quantization options.
+  """
+Quantizes a TensorFlow SavedModel using the specified quantization options.
 
-  Example usage:
-  ```python
-  # Quantizing a model trained with QAT.
+This function supports both Quantization-Aware Training (QAT) models and 
+Post-Training Quantization (PTQ) models. For PTQ models, a representative 
+dataset is required for calibration.
+
+Example usage:
+
+  # 1. Quantizing a QAT-trained model
   quantization_options = tf.quantization.experimental.QuantizationOptions(
-      signature_keys=['your_signature_key'],
+      signature_keys=['your_signature_key']
   )
   tf.quantization.experimental.quantize_saved_model(
       '/tmp/input_model',
@@ -820,30 +825,24 @@ def quantize(
       quantization_options=quantization_options,
   )
 
-  # When quantizing a model trained without QAT (Post-Training Quantization),
-  # a representative dataset is required.
+  # 2. Post-Training Quantization with representative dataset
   representative_dataset = [{"input": tf.random.uniform(shape=(3, 3))}
-                        for _ in range(256)]
+                            for _ in range(256)]
   tf.quantization.experimental.quantize_saved_model(
       '/tmp/input_model',
       '/tmp/output_model',
       quantization_options=quantization_options,
       representative_dataset={'your_signature_key': representative_dataset},
-    )
-
-  # In addition to preset quantization methods, fine-grained control of
-  # quantization for each component is also supported.
-  _QuantizationComponentSpec = (
-      tf.quantization.experimental.QuantizationComponentSpec
   )
+
+  # 3. Fine-grained control of quantization per component
+  _QuantizationComponentSpec = tf.quantization.experimental.QuantizationComponentSpec
   quantization_options = tf.quantization.experimental.QuantizationOptions(
       signature_keys=['your_signature_key'],
       quantization_method=tf.quantization.experimental.QuantizationMethod(
           quantization_component_specs=[
               _QuantizationComponentSpec(
-                  quantization_component=(
-                      _QuantizationComponentSpec.COMPONENT_ACTIVATION
-                  ),
+                  quantization_component=_QuantizationComponentSpec.COMPONENT_ACTIVATION,
                   tensor_type=_QuantizationComponentSpec.TENSORTYPE_INT_8,
               )
           ]
@@ -854,36 +853,29 @@ def quantize(
       '/tmp/output_model',
       quantization_options=quantization_options,
   )
-  ```
 
-  Args:
-    saved_model_path: Path to the saved model. When representative_dataset is
-      not provided, this should be a model trained with QAT.
-    output_directory: The path to save the output SavedModel. Set
-      `overwrite_output_directory` to `True` to overwrite any existing contents
-      in the directory if not empty.
-    quantization_options: A set of options for quantization. If None, it uses
-      post-training static range quantization with XLA opset by default.
-    representative_dataset: an iterator that returns a dictionary of {input_key:
-      input_value} or a map from signature key to a dictionary of {input_key:
-      input_value} that feeds calibration data for quantizing model. The
-      representative should be provided when the model is a PTQ model. It can be
-      provided either via this parameter or via the `representative_datasets`
-      field in `QuantizationOptions`.
-    overwrite_output_directory: If set to true, overwrites the output directory
-      iff it isn't empty. The default value is false.
+Args:
+    saved_model_path (str): Path to the SavedModel. Required for QAT models.
+    output_directory (str, optional): Directory to save the quantized model. 
+        Set `overwrite_output_directory=True` to overwrite if it exists.
+    quantization_options (_QuantizationOptions, optional): Options for quantization. 
+        If None, uses default post-training static range quantization.
+    representative_dataset (iterator or dict, optional): Provides calibration data 
+        for PTQ models. Required if the model is not QAT. Can be either an iterator 
+        yielding {input_key: input_value} or a mapping from signature key to such dicts.
+    overwrite_output_directory (bool, optional): Whether to overwrite the output directory 
+        if it exists and is not empty. Defaults to False.
 
-  Returns:
-    A SavedModel object with TF quantization applied, or None if no quantization
-    is performed.
+Returns:
+    AutoTrackable: A quantized SavedModel object, or None if no quantization is performed.
 
-  Raises:
-    ValueError: When 1) representative_dataset is not provided for non QAT model
-      for enabling static range quantization, 2) invalid value is provided as
-      a quantization method, or 3) provide representative dataset via both
-      argument and QuantizationOptions.
-    ValueError: When the specified quantization method is not yet supported.
-  """
+Raises:
+    ValueError: 
+        - If `representative_dataset` is missing for a PTQ model.
+        - If an invalid quantization method is provided.
+        - If `representative_dataset` is provided both via argument and via `QuantizationOptions`.
+        - If `output_directory` exists and `overwrite_output_directory` is False.
+"""
   _verify_output_dir(output_directory, overwrite_output_directory)
 
   # Set default values for None arguments.
