@@ -778,7 +778,9 @@ TfLiteStatus InterpreterBuilder::operator()(
     std::unique_ptr<Interpreter>* interpreter, int num_threads) {
   TfLiteStatus status = SetNumThreads(num_threads);
   if (status != kTfLiteOk) {
-    interpreter->reset();
+    if (interpreter) {
+      interpreter->reset();
+    }
     return status;
   }
   return (*this)(interpreter);
@@ -791,17 +793,11 @@ TfLiteStatus InterpreterBuilder::operator()(
                          "Null output pointer passed to InterpreterBuilder.");
     return kTfLiteError;
   }
-
-  // Safe exit by deleting partially created interpreter, to reduce verbosity
-  // on error conditions. Use by return cleanup_on_error();
-  auto cleanup_and_error = [&interpreter]() {
-    interpreter->reset();
-    return kTfLiteError;
-  };
+  interpreter->reset();
 
   if (!model_) {
     TF_LITE_REPORT_ERROR(error_reporter_, "Null pointer passed in as model.");
-    return cleanup_and_error();
+    return kTfLiteError;
   }
 
   if (model_->version() != TFLITE_SCHEMA_VERSION) {
@@ -809,12 +805,12 @@ TfLiteStatus InterpreterBuilder::operator()(
                          "Model provided is schema version %d not equal "
                          "to supported version %d.\n",
                          model_->version(), TFLITE_SCHEMA_VERSION);
-    return cleanup_and_error();
+    return kTfLiteError;
   }
 
   if (BuildLocalIndexToRegistrationMapping() != kTfLiteOk) {
     TF_LITE_REPORT_ERROR(error_reporter_, "Registration failed.\n");
-    return cleanup_and_error();
+    return kTfLiteError;
   }
 
   // Flatbuffer model schemas define a list of opcodes independent of the
@@ -827,32 +823,32 @@ TfLiteStatus InterpreterBuilder::operator()(
 
   if (subgraphs->size() == 0) {
     TF_LITE_REPORT_ERROR(error_reporter_, "No subgraph in the model.\n");
-    return cleanup_and_error();
+    return kTfLiteError;
   }
 
   if (!buffers) {
     TF_LITE_REPORT_ERROR(error_reporter_, "No buffers in the model.\n");
-    return cleanup_and_error();
+    return kTfLiteError;
   }
 
-  *interpreter = std::make_unique<Interpreter>(error_reporter_);
+  auto tmp_interpreter = std::make_unique<Interpreter>(error_reporter_);
   if (subgraphs->size() > 1) {
-    (*interpreter)->AddSubgraphs(subgraphs->size() - 1);
+    tmp_interpreter->AddSubgraphs(subgraphs->size() - 1);
   }
 
   // Set num threads after all the subgraphs are added.
-  (*interpreter)->SetNumThreads(num_threads_);
+  tmp_interpreter->SetNumThreads(num_threads_);
 
   // Set Interpreter options
-  (*interpreter)->ApplyOptionsImpl(&options_);
+  tmp_interpreter->ApplyOptionsImpl(&options_);
 
-  (*interpreter)
-      ->SetProfilerImpl(tflite::profiling::MaybeCreatePlatformProfiler());
+  tmp_interpreter->SetProfilerImpl(
+      tflite::profiling::MaybeCreatePlatformProfiler());
 
   bool telemetry_registered = telemetry_profiler_ != nullptr;
   std::unique_ptr<TfLiteTelemetryInterpreterSettings> telemetry_settings;
   if (telemetry_registered) {
-    (*interpreter)->AddProfiler(std::move(telemetry_profiler_));
+    tmp_interpreter->AddProfiler(std::move(telemetry_profiler_));
     telemetry_settings = std::make_unique<TfLiteTelemetryInterpreterSettings>();
     telemetry_settings->subgraph_infos.resize(subgraphs->size());
   }
@@ -861,7 +857,7 @@ TfLiteStatus InterpreterBuilder::operator()(
        ++subgraph_index) {
     const tflite::SubGraph* subgraph = (*subgraphs)[subgraph_index];
     tflite::Subgraph* modified_subgraph =
-        (*interpreter)->subgraph(subgraph_index);
+        tmp_interpreter->subgraph(subgraph_index);
     modified_subgraph->allocation_ = allocation_;
     auto* subgraph_info =
         telemetry_registered
@@ -873,10 +869,10 @@ TfLiteStatus InterpreterBuilder::operator()(
       TF_LITE_REPORT_ERROR(error_reporter_,
                            "Did not get tensors in subgraph %d.\n",
                            subgraph_index);
-      return cleanup_and_error();
+      return kTfLiteError;
     }
     if (modified_subgraph->AddTensors(tensors->size()) != kTfLiteOk) {
-      return cleanup_and_error();
+      return kTfLiteError;
     }
     // Parse inputs/outputs
     modified_subgraph->SetInputs(
@@ -889,9 +885,9 @@ TfLiteStatus InterpreterBuilder::operator()(
     // nodes.
     if (ParseTensors(buffers, tensors, modified_subgraph, subgraph_info) !=
         kTfLiteOk)
-      return cleanup_and_error();
+      return kTfLiteError;
     if (operators && ParseNodes(operators, modified_subgraph) != kTfLiteOk)
-      return cleanup_and_error();
+      return kTfLiteError;
 
     std::vector<int> variables;
     for (int i = 0; i < modified_subgraph->tensors_size(); ++i) {
@@ -906,14 +902,14 @@ TfLiteStatus InterpreterBuilder::operator()(
     }
   }
 
-  if (ParseSignatureDefs(model_->signature_defs(), interpreter->get()) !=
+  if (ParseSignatureDefs(model_->signature_defs(), tmp_interpreter.get()) !=
       kTfLiteOk) {
-    return cleanup_and_error();
+    return kTfLiteError;
   }
 
   if (options_.GetUseSignatureTensorNames()) {
-    for (auto& signature_def : (*interpreter)->signature_defs_) {
-      auto* subgraph = (*interpreter)->subgraph(signature_def.subgraph_index);
+    for (auto& signature_def : tmp_interpreter->signature_defs_) {
+      auto* subgraph = tmp_interpreter->subgraph(signature_def.subgraph_index);
       for (auto& [name, tensor_index] : signature_def.inputs) {
         auto tensor = subgraph->tensor(tensor_index);
         tensor->name = name.c_str();
@@ -925,33 +921,35 @@ TfLiteStatus InterpreterBuilder::operator()(
     }
   }
 
-  if ((*interpreter)->SetMetadata(metadata_) != kTfLiteOk) {
-    return cleanup_and_error();
+  if (tmp_interpreter->SetMetadata(metadata_) != kTfLiteOk) {
+    return kTfLiteError;
   }
 
   if (ShouldCreateLazyDelegateProviders(num_fp32_tensors_)) {
-    (*interpreter)->lazy_delegate_providers_ =
+    tmp_interpreter->lazy_delegate_providers_ =
         op_resolver_.GetDelegateCreators();
   }
 
   if (telemetry_registered) {
     ParseConversionMetadata(telemetry_settings.get());
-    (*interpreter)->SetTelemetrySettings(std::move(telemetry_settings));
+    tmp_interpreter->SetTelemetrySettings(std::move(telemetry_settings));
     // Reports model and interpreter settings if telemetry is applied.
-    (*interpreter)->ReportTelemetrySettings(kTelemetryBuilderEventName);
+    tmp_interpreter->ReportTelemetrySettings(kTelemetryBuilderEventName);
   }
 
-  TfLiteStatus status = ApplyDelegates(interpreter->get());
-  if (status != kTfLiteOk) {
-    interpreter->reset();
+  if (TfLiteStatus status = ApplyDelegates(tmp_interpreter.get());
+      status != kTfLiteOk) {
+    TF_LITE_REPORT_ERROR(error_reporter_, "Failed to apply delegates.\n");
+    return status;
   }
 
   // Apply Interpreter options again for dynamic allocation.
   if (options_.GetDynamicAllocationForLargeTensors()) {
-    (*interpreter)->ApplyOptionsImpl(&options_);
+    tmp_interpreter->ApplyOptionsImpl(&options_);
   }
 
-  return status;
+  *interpreter = std::move(tmp_interpreter);
+  return kTfLiteOk;
 }
 
 void InterpreterBuilder::AddDelegate(TfLiteDelegate* delegate) {
