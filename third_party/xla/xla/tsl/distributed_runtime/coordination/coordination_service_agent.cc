@@ -25,7 +25,6 @@ limitations under the License.
 #include <optional>
 #include <random>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -36,6 +35,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
@@ -47,6 +47,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/tsl/distributed_runtime/call_options.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
+#include "xla/tsl/distributed_runtime/coordination/coordination_service.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service_error_util.h"
 #include "xla/tsl/framework/cancellation.h"
 #include "xla/tsl/lib/monitoring/gauge.h"
@@ -723,6 +724,37 @@ absl::StatusOr<std::string> CoordinationServiceAgent::TryGetKeyValue(
       });
   n.WaitForNotification();
 
+  return result;
+}
+
+absl::StatusOr<int64_t> CoordinationServiceAgent::IncrementKeyValue(
+    absl::string_view key, int64_t increment) {
+  absl::Notification n;
+  absl::StatusOr<int64_t> result;
+  IncrementKeyValueRequest request;
+  request.set_key(key.data(), key.size());
+  request.set_increment(increment);
+  VLOG(3) << "IncrementKeyValueRequest: " << request.DebugString();
+  IncrementKeyValueResponse response;
+  leader_client_->IncrementKeyValueAsync(
+      &request, &response, [&](const absl::Status& s) {
+        if (s.ok()) {
+          int64_t result_value;
+          if (!absl::SimpleAtoi(response.kv().value(), &result_value)) {
+            result = absl::InternalError(absl::StrCat(
+                "Failed to parse increment key value: ", response.kv().value(),
+                " for key: ", key));
+            return;
+          }
+          result = result_value;
+          VLOG(3) << "IncrementKeyValueResponse: " << result.value();
+        } else {
+          result = s;
+          VLOG(3) << "IncrementKeyValueResponse: " << s;
+        }
+        n.Notify();
+      });
+  n.WaitForNotification();
   return result;
 }
 
