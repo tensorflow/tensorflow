@@ -393,8 +393,8 @@ xla_cc_test(
         "//xla:xla_data_proto_cc",
         "//xla/tsl/platform:test_benchmark",
         "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Target",
-        "@llvm-project//llvm:TargetParser",
         "@llvm-project//llvm:ir_headers",
     ],
 )

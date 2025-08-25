@@ -66,6 +66,7 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/cpu_features.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/backends/cpu/codegen/polynomial_approximations.h"
+#include "xla/codegen/intrinsic/intrinsic.h"
 #include "xla/codegen/intrinsic/intrinsic_compiler_lib.h"
 #include "xla/codegen/intrinsic_lib.h"
 #include "xla/service/cpu/backend_config.pb.h"
@@ -345,10 +346,30 @@ llvm::Error IrCompiler::RunIrPasses(llvm::Module& module,
       std::make_unique<llvm::TargetLibraryInfoImpl>(target_triple);
   target_library_info_impl->addVectorizableFunctions(
       PolynomialApproximationsVectorization());
+
+  xla::codegen::intrinsics::DeviceType device_type;
+  if (target_triple.isX86()) {
+    // As a heuristic, we check for SSE4a to determine if we are on AMD.
+    // This feature was added in 2007 and is set on all AMD CPUs since then, and
+    // no intel cpus. This is a bit of a hack though, as there is no strict link
+    // between increased precision and SSE4a; Intel could decide to add it in
+    // the future but they are very unlikely to do so as they haven't in the
+    // past 18 years.
+    if (target_machine->getTargetFeatureString().contains("+sse4a")) {
+      device_type = xla::codegen::intrinsics::DeviceType::kAmdCpu;
+    } else {
+      device_type = xla::codegen::intrinsics::DeviceType::kIntelCpu;
+    }
+  } else if (target_triple.isAArch64() || target_triple.isARM()) {
+    device_type = xla::codegen::intrinsics::DeviceType::kArmCpu;
+  } else {
+    LOG(FATAL) << "Unsupported CPU type: " << target_triple.str();
+  }
+
   codegen::IntrinsicFunctionLib intrinsic_lib(
-      {target_machine->getTargetFeatureString().str(),
-       /*disable_platform_dependent_math=*/options_
-           .disable_platform_dependent_math});
+      {target_machine->getTargetFeatureString().str(), device_type,
+       /*disable_platform_dependent_math=*/
+       options_.disable_platform_dependent_math});
   target_library_info_impl->addVectorizableFunctions(
       intrinsic_lib.Vectorizations());
 
