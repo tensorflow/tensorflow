@@ -6175,11 +6175,31 @@ AllocationResult MsaAlgorithm::Evict(const AllocationRequest& request,
              !edge_time_indices_.contains(next_eviction_end_time));
     return next_eviction_end_time;
   };
+  int64_t original_end_time = eviction_mem_interval.end;
   for (; eviction_mem_interval.end > eviction_end_time;
        eviction_mem_interval.end = next_eviction_end_time_candidate()) {
-    Chunk chunk_candidate =
-        FindChunkCandidate(eviction_mem_interval, preferred_offset);
-    if (chunk_candidate.offset == preferred_offset) {
+    Chunk chunk_candidate;
+    // If the buffer has no colocations, then use the fast algorithm to find
+    // the earliest end time with a free chunk at the preferred offset.
+    if (GetTransitiveColocations(eviction_mem_interval).empty()) {
+      int64_t earliest_end_with_free_chunk =
+          FindLatestEndWithFreeChunkAtPreferredOffset(eviction_mem_interval,
+                                                      preferred_offset);
+      if (earliest_end_with_free_chunk <= eviction_end_time) {
+        eviction_mem_interval.end = eviction_end_time;
+        break;
+      }
+      eviction_mem_interval.end = earliest_end_with_free_chunk;
+      chunk_candidate =
+          Chunk::FromOffsetSize(preferred_offset, eviction_mem_interval.size);
+    } else {
+      chunk_candidate =
+          FindChunkCandidate(eviction_mem_interval, preferred_offset);
+    }
+
+    if (chunk_candidate.offset == preferred_offset &&
+        (eviction_mem_interval.end == original_end_time ||
+         edge_time_indices_.contains(eviction_mem_interval.end))) {
       AddToPendingChunks(eviction_mem_interval, chunk_candidate);
       break;
     }
