@@ -28,11 +28,11 @@ namespace xla::gpu {
 namespace {
 
 class CommandBufferTest : public HloPjRtTestBase,
-                          public ::testing::WithParamInterface<bool> {
+                          public ::testing::WithParamInterface<
+                              DebugOptions::CommandBufferSchedulingMode> {
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloPjRtTestBase::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_command_buffer_scheduling_mode(
-        DebugOptions::CONCURRENT);
+    debug_options.set_xla_gpu_command_buffer_scheduling_mode(GetParam());
     return debug_options;
   }
 };
@@ -275,7 +275,8 @@ TEST_P(CommandBufferTest, WhileLoop) {
 }
 
 INSTANTIATE_TEST_SUITE_P(CommandBufferTests, CommandBufferTest,
-                         ::testing::Values(false, true));
+                         ::testing::Values(DebugOptions::LHS,
+                                           DebugOptions::CONCURRENT));
 
 }  // namespace
 }  // namespace xla::gpu
