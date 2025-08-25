@@ -151,6 +151,20 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
   tsl::RCReference<xla::ifrt::UserContext> CreateUserContext() override {
     return tsl::RCReference<xla::ifrt::UserContext>();
   }
+  // TODO(b/439679949) - Proxy implementations when available.
+  std::string runtime_executable_version(
+      std::optional<std::string> platform_type) const override {
+    return "";
+  }
+  bool IsSerializedExecutableCompatible(
+      std::string ifrt_executable_version,
+      std::optional<std::string> platform_type) const override {
+    return false;
+  }
+  bool IsSerializedExecutableCompatible(
+      absl::string_view serialized_executable) const override {
+    return false;
+  }
 
   // For llvm::RTTIExtends.
   static char ID;  // NOLINT

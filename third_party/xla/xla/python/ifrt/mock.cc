@@ -19,11 +19,13 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 
 #include <gmock/gmock.h>
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
@@ -228,6 +230,22 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
   ON_CALL(*this, Attributes).WillByDefault([this]() -> const AttributeMap& {
     return delegated_->Attributes();
   });
+  ON_CALL(*this, runtime_executable_version)
+      .WillByDefault(
+          [this](std::optional<std::string> platform_type) -> std::string {
+            return delegated_->runtime_executable_version(platform_type);
+          });
+  ON_CALL(*this, IsSerializedExecutableCompatible(_, _))
+      .WillByDefault([this](std::string ifrt_executable_version,
+                            std::optional<std::string> platform_type) -> bool {
+        return delegated_->IsSerializedExecutableCompatible(
+            ifrt_executable_version, platform_type);
+      });
+  ON_CALL(*this, IsSerializedExecutableCompatible(_))
+      .WillByDefault([this](absl::string_view serialized_executable) -> bool {
+        return delegated_->IsSerializedExecutableCompatible(
+            serialized_executable);
+      });
 }
 // LINT.ThenChange()
 
