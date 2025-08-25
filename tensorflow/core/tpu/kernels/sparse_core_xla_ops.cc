@@ -843,8 +843,7 @@ class XlaSparseDenseMatmulGradWithCsrInputOp : public XlaOpKernel {
 
     std::vector<XlaCompiler::Argument> arguments(num_arguments);
 
-    // For tables and slot variables, we use the derived type and the shape is
-    // {1, feature_width}.
+    // For tables and slot variables, use the derived type and a per-slot width.
     xla::PrimitiveType table_primitive_type;
     OP_REQUIRES_OK(
         ctx, DataTypeToPrimitiveType(table_dtype_, &table_primitive_type));
@@ -852,9 +851,14 @@ class XlaSparseDenseMatmulGradWithCsrInputOp : public XlaOpKernel {
     for (int32_t i = 0; i < num_arguments; ++i) {
       arguments[i].kind = XlaCompiler::Argument::kParameter;
       if (i > 0 && i < tables_inputs.size() + 1) {
+        // Per-table (embedding or slot) argument. Get width from the
+        // corresponding table.
+        const TensorShape& table_shape = tables_shapes[i - 1];
+        int64_t slot_width =
+            table_shape.dims() == 1 ? 1 : table_shape.dim_size(1);
         arguments[i].type = table_dtype_;
         arguments[i].shape =
-            xla::ShapeUtil::MakeShape(table_primitive_type, {1, feature_width});
+            xla::ShapeUtil::MakeShape(table_primitive_type, {1, slot_width});
       } else {
         arguments[i].type = DT_FLOAT;
         arguments[i].shape =
@@ -1394,13 +1398,24 @@ class XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputOp
 
     std::vector<XlaCompiler::Argument> arguments(num_arguments);
 
-    // For all the arguments, we use the float type and the shape is
-    // {1, feature_width}.
+    // Use float type for all args but allow per-table (slot) widths.
+    // Arg 0 is lookup_gradients with shape {1, feature_width}.
+    // Table args (1..num_tables_inputs) mirror each slot's width; hyperparams
+    // remain {1, feature_width}.
+    std::vector<xla::XlaOp> _tables_dummy;
+    std::vector<TensorShape> tables_shapes;
+    TF_RETURN_IF_ERROR(
+        ctx->InputList("tables", &_tables_dummy, &tables_shapes));
+
     for (int32_t i = 0; i < num_arguments; ++i) {
       arguments[i].kind = XlaCompiler::Argument::kParameter;
       arguments[i].type = DT_FLOAT;
-      arguments[i].shape =
-          xla::ShapeUtil::MakeShape(xla::F32, {1, feature_width});
+      int64_t width = feature_width;
+      if (i > 0 && i <= num_tables_inputs) {
+        const TensorShape& ts = tables_shapes[i - 1];
+        width = ts.dims() == 1 ? 1 : ts.dim_size(1);
+      }
+      arguments[i].shape = xla::ShapeUtil::MakeShape(xla::F32, {1, width});
     }
 
     TF_RETURN_IF_ERROR(
