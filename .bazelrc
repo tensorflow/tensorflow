@@ -77,8 +77,8 @@
 # third_party/tensorflow/core/public/release_version.h and
 # third_party/tensorflow/tools/pip_package/setup.oss.py.tpl
 build --repo_env=ML_WHEEL_TYPE="nightly"
-build --repo_env=ML_WHEEL_BUILD_DATE="20250716"
-build --repo_env=ML_WHEEL_VERSION_SUFFIX=".630"
+build --repo_env=ML_WHEEL_BUILD_DATE=""
+build --repo_env=ML_WHEEL_VERSION_SUFFIX=""
 
 # For projects which use TensorFlow as part of a Bazel build process, putting
 # nothing in a bazelrc will default to a monolithic build. The following line

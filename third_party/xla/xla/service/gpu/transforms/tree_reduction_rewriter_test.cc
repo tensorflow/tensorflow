@@ -38,7 +38,7 @@ class TreeReductionRewriterTest : public HloHardwareIndependentTestBase {
             stream_executor::GpuDeviceInfoProto{}));
     device_description.set_threads_per_warp(32);
     RunAndFilecheckHloRewrite(
-        hlo, gpu::TreeReductionRewriter{device_description}, expected); 
+        hlo, gpu::TreeReductionRewriter{device_description}, expected);
   }
 };
 
