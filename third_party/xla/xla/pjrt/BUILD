@@ -634,6 +634,7 @@ cc_library(
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/ir:hlo",
         "//xla/pjrt/distributed:protocol_proto_cc",
+        "//xla/pjrt/dump",
         "//xla/pjrt/profiling:device_time_measurement",
         "//xla/pjrt/profiling:profiling_context",
         "//xla/service:buffer_assignment",
