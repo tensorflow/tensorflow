@@ -25,7 +25,7 @@ _PHYSICAL_DEVICE_DESCRIPTION_REGEX = re.compile(
 
 # compute_capability is a (major version, minor version) pair, or None if this
 # is not an Nvidia GPU.
-GpuInfo = collections.namedtuple('gpu_info', ['name', 'compute_capability'])
+GpuInfo = collections.namedtuple('GpuInfo', ['name', 'compute_capability'])
 
 
 def compute_capability_from_device_desc(device_attrs):
