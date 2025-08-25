@@ -402,6 +402,7 @@ cc_library(
         "//xla/backends/gpu/runtime:nvshmem_send_thunk",
         "//xla/backends/gpu/runtime:outfeed_thunk",
         "//xla/backends/gpu/runtime:p2p_thunk_common",
+        "//xla/backends/gpu/runtime:raft_select_k_thunk",
         "//xla/backends/gpu/runtime:ragged_all_to_all_thunk",
         "//xla/backends/gpu/runtime:recv_thunk",
         "//xla/backends/gpu/runtime:replica_id_thunk",

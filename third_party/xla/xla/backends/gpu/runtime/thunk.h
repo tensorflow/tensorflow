@@ -181,6 +181,7 @@ class Thunk {
     kNvshmemSendDone,
     kOutfeed,
     kPartitionId,
+    kRaftSelectK,
     kRaggedAllToAll,
     kRaggedAllToAllDone,
     kRaggedAllToAllStart,

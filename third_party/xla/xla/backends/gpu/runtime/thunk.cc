@@ -300,6 +300,7 @@ Thunk::ExecuteParams::ExecuteParams(
     CASE(kNvshmemSendDone);
     CASE(kOutfeed);
     CASE(kPartitionId);
+    CASE(kRaftSelectK);
     CASE(kRaggedAllToAll);
     CASE(kRaggedAllToAllDone);
     CASE(kRaggedAllToAllStart);
