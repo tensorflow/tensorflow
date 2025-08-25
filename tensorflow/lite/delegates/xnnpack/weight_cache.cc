@@ -420,7 +420,7 @@ bool MMapWeightCacheProvider::Load() {
       header.buffer_list_size == mmap_handle.size() - header.buffer_list_offset,
       "invalid size for buffer list descriptor.");
 
-  // Verifiy the flabuffer part of the file.
+  // Verify the flatbuffer part of the file.
   flatbuffers::Verifier verifier(mmap_handle.data() + header.buffer_list_offset,
                                  header.buffer_list_size);
   XNNPACK_RETURN_CHECK(cache::schema::VerifyBufferListBuffer(verifier),
