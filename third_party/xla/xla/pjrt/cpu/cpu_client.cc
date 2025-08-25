@@ -74,6 +74,7 @@ limitations under the License.
 #include "xla/pjrt/cpu/raw_buffer.h"
 #include "xla/pjrt/cpu/tracked_cpu_device_buffer.h"
 #include "xla/pjrt/device_event.h"
+#include "xla/pjrt/dump/dump.h"
 #include "xla/pjrt/host_callback.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/host_to_device_transfer_manager.h"
@@ -589,6 +590,20 @@ static absl::StatusOr<std::unique_ptr<xla::Executable>> CompileAheadOfTime(
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 PjRtCpuClient::CompileAndLoad(mlir::ModuleOp module, CompileOptions options) {
+  // Dump compile inputs to the specified path if populated.
+  if (options.executable_build_options.has_debug_options()) {
+    std::string dump_path =
+        options.executable_build_options.debug_options().xla_dump_to();
+    if (!dump_path.empty()) {
+      LOG(INFO) << "Dumping compile inputs to " << dump_path;
+      auto dump_status =
+          pjrt::DumpCompileInputs(dump_path, options, module, topology_);
+      if (!dump_status.ok()) {
+        LOG(WARNING) << "Failed to dump compile inputs: " << dump_status;
+      }
+    }
+  }
+
   XlaComputation xla_computation;
   ExecutableBuildOptions& exec_build_options = options.executable_build_options;
   TF_RETURN_IF_ERROR(MlirToXlaComputation(
