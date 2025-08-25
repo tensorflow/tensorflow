@@ -26,13 +26,16 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/ascii.h"
+#include "xla/backends/autotuner/autotuner.h"
 #include "xla/backends/autotuner/autotuner_cache.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/autotuner/cublas.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/nvptx_compiler.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_memory_allocator.h"
@@ -59,6 +62,11 @@ se::StreamExecutor* GpuExecutor() {
   return platform->ExecutorForDevice(0).value();
 }
 
+bool IsCublasGemmInstruction(const HloInstruction& instruction) {
+  return instruction.opcode() == HloOpcode::kCustomCall &&
+         IsCublasGemm(instruction);
+}
+
 class AutotunerPassTest : public HloHardwareIndependentTestBase {
  protected:
   AutotunerPassTest()
@@ -71,28 +79,29 @@ class AutotunerPassTest : public HloHardwareIndependentTestBase {
   NVPTXCompiler compiler_;
 };
 
-TEST_F(AutotunerPassTest, CublasGemmIsAutotuned) {
-  const char kCublasCustomCallHlo[] = R"(
-    HloModule module, entry_computation_layout={(f32[100,100]{1,0}, f32[100,100]{1,0})->f32[100,100]{1,0}}
+const char kCublasCustomCallHlo[] = R"(
+HloModule module, entry_computation_layout={(f32[100,100]{1,0}, f32[100,100]{1,0})->f32[100,100]{1,0}}
 
-    ENTRY %main (arg0: f32[100,100], arg1: f32[100,100]) -> f32[100,100] {
-      %arg0 = f32[100,100]{1,0} parameter(0)
-      %arg1 = f32[100,100]{1,0} parameter(1)
-      %custom-call.1 = (f32[100,100]{1,0}, s8[80000]{0}) custom-call(%arg0, %arg1),
-      custom_call_target="__cublas$gemm",
-      backend_config={
-        "gemm_backend_config":{
-          "dot_dimension_numbers":
-            {
-              "lhs_contracting_dimensions":["1"],
-              "rhs_contracting_dimensions":["0"],
-              "lhs_batch_dimensions":[],
-              "rhs_batch_dimensions":[]
-          }
-        }
+ENTRY %main (arg0: f32[100,100], arg1: f32[100,100]) -> f32[100,100] {
+  %arg0 = f32[100,100]{1,0} parameter(0)
+  %arg1 = f32[100,100]{1,0} parameter(1)
+  %custom-call.1 = (f32[100,100]{1,0}, s8[80000]{0}) custom-call(%arg0, %arg1),
+  custom_call_target="__cublas$gemm",
+  backend_config={
+    "gemm_backend_config":{
+      "dot_dimension_numbers":
+        {
+          "lhs_contracting_dimensions":["1"],
+          "rhs_contracting_dimensions":["0"],
+          "lhs_batch_dimensions":[],
+          "rhs_batch_dimensions":[]
       }
-      ROOT %get-tuple-element = f32[100,100]{1,0} get-tuple-element(%custom-call.1), index=0
-    })";
+    }
+  }
+  ROOT %get-tuple-element = f32[100,100]{1,0} get-tuple-element(%custom-call.1), index=0
+})";
+
+TEST_F(AutotunerPassTest, CublasGemmIsAutotuned) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kCublasCustomCallHlo));
 
@@ -106,33 +115,49 @@ TEST_F(AutotunerPassTest, CublasGemmIsAutotuned) {
       std::unique_ptr<AutotunerPass> pass,
       AutotunerPass::Create(std::move(backends),
                             module->config().debug_options(), allocator_.get(),
-                            stream_executor_, &thread_pool));
+                            stream_executor_, &thread_pool,
+                            IsCublasGemmInstruction));
   EXPECT_THAT(pass->Run(module.get(), /*execution_threads=*/{}),
               tsl::testing::IsOkAndHolds(true));
+  // Verify that the backend config has been updated in the HLO.
+  auto gemm =
+      module->entry_computation()->GetInstructionWithName("custom-call.1");
+  TF_ASSERT_OK_AND_ASSIGN(auto gpu_backend_config_after_first_run,
+                          gemm->backend_config<GpuBackendConfig>());
+  ASSERT_TRUE(gpu_backend_config_after_first_run.gemm_backend_config()
+                  .has_selected_algorithm());
+}
+
+TEST_F(AutotunerPassTest, CublasGemmIsNotAutotunedWhenFilterReturnsFalse) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kCublasCustomCallHlo));
+
+  tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "autotuning",
+                                      /*num_threads=*/4);
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  backends.push_back(std::make_unique<CublasBackend>(
+      stream_executor_, &module->config().debug_options(), &compiler_));
+
+  auto should_autotune = [](const HloInstruction& instruction) {
+    return false;
+  };
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<AutotunerPass> pass,
+      AutotunerPass::Create(std::move(backends),
+                            module->config().debug_options(), allocator_.get(),
+                            stream_executor_, &thread_pool, should_autotune));
+  EXPECT_THAT(pass->Run(module.get(), /*execution_threads=*/{}),
+              tsl::testing::IsOkAndHolds(true));
+  // Verify that the backend config has *not* been updated in the HLO.
+  auto gemm =
+      module->entry_computation()->GetInstructionWithName("custom-call.1");
+  TF_ASSERT_OK_AND_ASSIGN(auto gpu_backend_config_after_first_run,
+                          gemm->backend_config<GpuBackendConfig>());
+  ASSERT_FALSE(gpu_backend_config_after_first_run.gemm_backend_config()
+                   .has_selected_algorithm());
 }
 
 TEST_F(AutotunerPassTest, CublasGemmIsAutotunedAndCached) {
-  const char kCublasCustomCallHlo[] = R"(
-    HloModule module, entry_computation_layout={(f32[100,100]{1,0}, f32[100,100]{1,0})->f32[100,100]{1,0}}
-
-    ENTRY %main (arg0: f32[100,100], arg1: f32[100,100]) -> f32[100,100] {
-      %arg0 = f32[100,100]{1,0} parameter(0)
-      %arg1 = f32[100,100]{1,0} parameter(1)
-      %custom-call.1 = (f32[100,100]{1,0}, s8[80000]{0}) custom-call(%arg0, %arg1),
-      custom_call_target="__cublas$gemm",
-      backend_config={
-        "gemm_backend_config":{
-          "dot_dimension_numbers":
-            {
-              "lhs_contracting_dimensions":["1"],
-              "rhs_contracting_dimensions":["0"],
-              "lhs_batch_dimensions":[],
-              "rhs_batch_dimensions":[]
-          }
-        }
-      }
-      ROOT %get-tuple-element = f32[100,100]{1,0} get-tuple-element(%custom-call.1), index=0
-    })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kCublasCustomCallHlo));
 
@@ -153,9 +178,10 @@ TEST_F(AutotunerPassTest, CublasGemmIsAutotunedAndCached) {
 
     TF_ASSERT_OK_AND_ASSIGN(
         std::unique_ptr<AutotunerPass> pass,
-        AutotunerPass::Create(
-            std::move(backends), module->config().debug_options(),
-            allocator_.get(), stream_executor_, &thread_pool));
+        AutotunerPass::Create(std::move(backends),
+                              module->config().debug_options(),
+                              allocator_.get(), stream_executor_, &thread_pool,
+                              IsCublasGemmInstruction));
     EXPECT_THAT(pass->Run(module.get(), /*execution_threads=*/{}),
                 tsl::testing::IsOkAndHolds(true));
   }
@@ -208,9 +234,10 @@ TEST_F(AutotunerPassTest, CublasGemmIsAutotunedAndCached) {
         stream_executor_, &module->config().debug_options(), &compiler_));
     TF_ASSERT_OK_AND_ASSIGN(
         std::unique_ptr<AutotunerPass> pass2,
-        AutotunerPass::Create(
-            std::move(backends2), module->config().debug_options(),
-            allocator_.get(), stream_executor_, &thread_pool));
+        AutotunerPass::Create(std::move(backends2),
+                              module->config().debug_options(),
+                              allocator_.get(), stream_executor_, &thread_pool,
+                              IsCublasGemmInstruction));
     EXPECT_THAT(pass2->Run(module.get(), /*execution_threads=*/{}),
                 tsl::testing::IsOkAndHolds(true));
   }

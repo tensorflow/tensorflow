@@ -319,6 +319,7 @@ xla_test(
     tags = ["cuda-only"],
     deps = [
         ":autotuner_pass",
+        "//xla/backends/autotuner",
         "//xla/backends/autotuner:autotuner_cache_proto_cc",
         "//xla/backends/autotuner:codegen_backend",
         "//xla/backends/gpu/autotuner:cublas",
@@ -326,6 +327,7 @@ xla_test(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service:platform_util",
         "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu:cublas_cudnn",
         "//xla/service/gpu:nvptx_compiler_impl",
         "//xla/stream_executor:device_memory_allocator",
         "//xla/stream_executor:platform_manager",
@@ -340,7 +342,6 @@ xla_test(
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/platform:status",
     ],
 )
 
@@ -796,7 +797,6 @@ cc_library(
         "//xla/backends/gpu/autotuner:gpu_profiler",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
-        "//xla/service/gpu:cublas_cudnn",
         "//xla/stream_executor:device_memory_allocator",
         "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/platform:env",
