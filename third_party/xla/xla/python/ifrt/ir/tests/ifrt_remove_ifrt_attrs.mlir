@@ -2,7 +2,11 @@
 
 // CHECK-LABEL: @ifrt_attributes_are_removed
 // CHECK-NOT: ifrt
-module @ifrt_attributes_are_removed attributes {ifrt.num_devices = 2} {
+module @ifrt_attributes_are_removed attributes {
+        ifrt.num_devices = 2,
+        ifrt.compile_options_key = "test_override",
+        ifrt.is_sdy_partitioned,
+        ifrt.local_view} {
   func.func @main(
       %arg0: tensor<2x2xi32> {
         ifrt.sharding = #ifrt.sharding_param<1x1 to [0] on 1>})
