@@ -289,6 +289,8 @@ absl::StatusOr<bool> DotLibraryRewriter::ProcessComputation(
   for (auto it = instructions.rbegin(); it != instructions.rend(); ++it) {
     if (fuse_dot_ && (*it)->opcode() == HloOpcode::kDot) {
       fusion_starters.push_back(*it);
+    } else if (fuse_reduce_ && (*it)->opcode() == HloOpcode::kReduce) {
+      fusion_starters.push_back(*it);
     } else if (fuse_eltwise_ && (*it)->IsElementwise()) {
       eltwise_ops.push_back(*it);
     }
