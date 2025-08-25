@@ -50,7 +50,7 @@ def while_loop(condition: Callable[..., Any],
       (equivalent to an empty list).
     infeed_queue: if not None, the infeed queue from which to append a tuple of
       arguments as inputs to condition.
-    name: (Deprecated) Does nothing.
+    name: This argument is unused and has no effect.
 
   Returns:
     The final values of the loop-carried tensors.
@@ -198,7 +198,7 @@ def repeat(
       (equivalent to an empty list).
     infeed_queue: if not None, the infeed queue from which to append a tuple of
       arguments as inputs to condition.
-    name: (Deprecated) Does nothing.
+    name:  This argument is unused and has no effect.
 
   Returns:
     The final values of the loop-carried tensors.

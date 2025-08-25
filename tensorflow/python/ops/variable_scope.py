@@ -2542,7 +2542,10 @@ def variable_op_scope(values,
                       dtype=None,
                       use_resource=None,
                       constraint=None):
-  """Deprecated: context manager for defining an op that creates variables."""
+  """This context manager is deprecated. 
+      It was previously used for defining an op that creates variables. 
+      Avoid using it in new code — use standard variable creation APIs instead. 
+      It will be removed in a future release."""
   logging.warn("tf.variable_op_scope(values, name, default_name) is deprecated,"
                " use tf.variable_scope(name, default_name, values)")
   with variable_scope(

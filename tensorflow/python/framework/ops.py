@@ -199,7 +199,7 @@ def _as_graph_element(obj):
   return None
 
 
-# Deprecated - legacy purposes only.
+# legacy purposes only.
 def is_dense_tensor_like(t) -> bool:
   return isinstance(t, core_tf_types.Tensor)
 
@@ -2105,7 +2105,7 @@ class Graph(pywrap_tf_session.PyGraph):
     self.experimental_acd_manager = None
     # Set to True if this graph is being built in an
     # AutomaticControlDependencies context.
-    # Deprecated: use acd_manager instead.
+    # Use acd_manager instead.
     self._add_control_dependencies = False
 
     # Cache for OpDef protobufs retrieved via the C API.
@@ -2645,7 +2645,7 @@ class Graph(pywrap_tf_session.PyGraph):
         proto).
       op_def: (Optional.) The `OpDef` proto that describes the `op_type` that
         the operation will have.
-      compute_shapes: (Optional.) Deprecated. Has no effect (shapes are always
+      compute_shapes: (Optional.) Has no effect (shapes are always
         computed).
       compute_device: (Optional.) If True, device functions will be executed to
         compute the device property of the Operation.

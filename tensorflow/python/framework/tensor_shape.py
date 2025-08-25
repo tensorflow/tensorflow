@@ -898,7 +898,7 @@ class TensorShape(trace.TraceType, trace_type.Serializable):
 
   @property
   def dims(self):
-    """Deprecated.  Returns list of dimensions for this shape.
+    """ Returns list of dimensions for this shape.
 
     Suggest `TensorShape.as_list` instead.
 
@@ -912,7 +912,7 @@ class TensorShape(trace.TraceType, trace_type.Serializable):
 
   @property
   def ndims(self):
-    """Deprecated accessor for `rank`."""
+    """Accessor for `rank`. Use `rank` instead."""
     return self.rank
 
   def __len__(self):

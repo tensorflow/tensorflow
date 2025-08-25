@@ -466,18 +466,15 @@ def run_main():
       type=str,
       default="save/restore_all",
       help="""\
-      The name of the master restore operator. Deprecated, unused by updated \
-      loading code.
-      """,
+      The name of the master restore operator. This argument is no longer \
+      used in the updated loading code.""",
   )
   parser.add_argument(
       "--filename_tensor_name",
       type=str,
       default="save/Const:0",
       help="""\
-      The name of the tensor holding the save path. Deprecated, unused by \
-      updated loading code.
-      """,
+      The name of the tensor holding the save path.This argument is no longer used in the updated loading code.""",
   )
   parser.add_argument(
       "--clear_devices",

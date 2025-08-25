@@ -198,7 +198,7 @@ def to_arg_names(function_type):
 class FunctionSpec(object):
   """Specification of how to bind arguments to a function.
 
-  Deprecated. Please use FunctionType instead.
+   Please use FunctionType instead.
   """
 
   @classmethod

@@ -205,7 +205,7 @@ def foldl_v2(fn,
       as the initial value for the accumulator.
     parallel_iterations: (optional) The number of iterations allowed to run in
       parallel.
-    back_prop: (optional) Deprecated. False disables support for back
+    back_prop: (optional) False disables support for back
       propagation. Prefer using `tf.stop_gradient` instead.
     swap_memory: (optional) True enables GPU-CPU memory swapping.
     name: (optional) Name prefix for the returned tensors.
@@ -402,7 +402,7 @@ def foldr_v2(fn,
       as the initial value for the accumulator.
     parallel_iterations: (optional) The number of iterations allowed to run in
       parallel.
-    back_prop: (optional) Deprecated. False disables support for back
+    back_prop: (optional) False disables support for back
       propagation. Prefer using `tf.stop_gradient` instead.
     swap_memory: (optional) True enables GPU-CPU memory swapping.
     name: (optional) Name prefix for the returned tensors.
@@ -756,8 +756,10 @@ def scan_v2(fn,
       initial value for the accumulator, and the expected output type of `fn`.
     parallel_iterations: (optional) The number of iterations allowed to run in
       parallel.
-    back_prop: (optional) Deprecated. False disables support for back
-      propagation. Prefer using `tf.stop_gradient` instead.
+    back_prop: (Optional) This argument is deprecated. 
+    Set to False to disable support for backpropagation. 
+    Prefer using `tf.stop_gradient` instead. 
+    This argument will be removed in a future release.
     swap_memory: (optional) True enables GPU-CPU memory swapping.
     infer_shape: (optional) False disables tests for consistent output shapes.
     reverse: (optional) True scans the tensor last to first (instead of first to

@@ -1254,7 +1254,7 @@ def is_tf_type(x):  # pylint: disable=invalid-name
   return isinstance(x, tf_type_classes)
 
 
-# Deprecated alias for tensor_util.is_tf_type.
+# Alias for tensor_util.is_tf_type. Use `tensor_util.is_tf_type` instead.
 is_tensor = is_tf_type
 
 

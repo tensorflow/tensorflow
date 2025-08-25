@@ -2441,7 +2441,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
   @property
   @doc_controls.do_not_generate_docs
   def state_updates(self):
-    """Deprecated, do NOT use!
+    """ Do NOT use!, Will be removed in future.
 
     Returns the `updates` from all layers that are stateful.
 

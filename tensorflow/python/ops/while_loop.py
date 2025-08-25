@@ -146,8 +146,7 @@ def while_loop_v2(cond,
     shape_invariants: The shape invariants for the loop variables.
     parallel_iterations: The number of iterations allowed to run in parallel. It
       must be a positive integer.
-    back_prop: (optional) Deprecated. False disables support for back
-      propagation. Prefer using `tf.stop_gradient` instead.
+    back_prop: (optional) Use `tf.stop_gradient` to disable backpropagation instead. 
     swap_memory: Whether GPU-CPU memory swap is enabled for this loop.
     maximum_iterations: Optional maximum number of iterations of the while loop
       to run.  If provided, the `cond` output is AND-ed with an additional

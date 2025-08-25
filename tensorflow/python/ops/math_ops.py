@@ -1544,7 +1544,7 @@ def truediv(x, y, name=None):
 @dispatch.add_dispatch_support
 @deprecation.deprecated(
     date=None,
-    instructions="Deprecated in favor of operator or tf.math.divide.")
+    instructions="This argument is deprecated. Use the division operator (`/`) or `tf.math.divide` instead. It will be removed in a future release.")
 def div(x, y, name=None):
   """Divides x / y elementwise (using Python 2 division operator semantics).
 
@@ -2184,7 +2184,10 @@ def reduce_sum_v1(input_tensor,
     keepdims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
-    keep_dims: Deprecated alias for `keepdims`.
+    keep_dims: This is a deprecated alias for `keepdims`. 
+    Use `keepdims` instead. 
+    This alias will be removed in a future release.
+
 
   Returns:
     The reduced tensor, of the same dtype as the input_tensor.
@@ -2385,7 +2388,10 @@ def count_nonzero(input_tensor=None,
     dtype: The output dtype; defaults to `tf.int64`.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
-    keep_dims: Deprecated alias for `keepdims`.
+    keep_dims: This is a deprecated alias for `keepdims`. 
+    Use `keepdims` instead. 
+    This alias will be removed in a future release.
+
     input: Overrides input_tensor. For compatibility.
 
   Returns:
@@ -2516,7 +2522,10 @@ def reduce_mean_v1(input_tensor,
     keepdims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
-    keep_dims: Deprecated alias for `keepdims`.
+    keep_dims: This is a deprecated alias for `keepdims`. 
+    Use `keepdims` instead. 
+    This alias will be removed in a future release.
+
 
   Returns:
     The reduced tensor.
@@ -2811,7 +2820,10 @@ def reduce_prod_v1(input_tensor,
     keepdims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
-    keep_dims: Deprecated alias for `keepdims`.
+    keep_dims: This is a deprecated alias for `keepdims`. 
+    Use `keepdims` instead. 
+    This alias will be removed in a future release.
+
 
   Returns:
     The reduced tensor.
@@ -2879,7 +2891,10 @@ def reduce_min_v1(input_tensor,
     keepdims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
-    keep_dims: Deprecated alias for `keepdims`.
+    keep_dims: This is a deprecated alias for `keepdims`. 
+    Use `keepdims` instead. 
+    This alias will be removed in a future release.
+
 
   Returns:
     The reduced tensor.
@@ -3007,7 +3022,10 @@ def reduce_max_v1(input_tensor,
     keepdims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
-    keep_dims: Deprecated alias for `keepdims`.
+    keep_dims: This is a deprecated alias for `keepdims`. 
+    Use `keepdims` instead. 
+    This alias will be removed in a future release.
+
 
   Returns:
     The reduced tensor.
@@ -3122,7 +3140,10 @@ def reduce_all_v1(input_tensor,
     keepdims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
-    keep_dims: Deprecated alias for `keepdims`.
+    keep_dims: This is a deprecated alias for `keepdims`. 
+    Use `keepdims` instead. 
+    This alias will be removed in a future release.
+
 
   Returns:
     The reduced tensor.
@@ -3228,7 +3249,10 @@ def reduce_any_v1(input_tensor,
     keepdims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
-    keep_dims: Deprecated alias for `keepdims`.
+    keep_dims: This is a deprecated alias for `keepdims`. 
+    Use `keepdims` instead. 
+    This alias will be removed in a future release.
+
 
   Returns:
     The reduced tensor.
@@ -3337,7 +3361,10 @@ def reduce_logsumexp_v1(input_tensor,
     keepdims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
-    keep_dims: Deprecated alias for `keepdims`.
+    keep_dims: This is a deprecated alias for `keepdims`. 
+    Use `keepdims` instead. 
+    This alias will be removed in a future release.
+
 
   Returns:
     The reduced tensor.

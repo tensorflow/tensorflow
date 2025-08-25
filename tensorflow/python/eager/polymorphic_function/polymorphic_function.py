@@ -1629,9 +1629,9 @@ def function(
       `tf.autograph.experimental.Feature` values.
     experimental_attributes: Optional dictionary of attributes to include in the
       generated FunctionDefs.
-    experimental_relax_shapes: Deprecated. Use `reduce_retracing` instead.
-    experimental_compile: Deprecated alias to 'jit_compile'.
-    experimental_follow_type_hints: Deprecated. Please use input_signature or
+    experimental_relax_shapes: Use `reduce_retracing` instead.
+    experimental_compile:  Use 'jit_compile' instead.
+    experimental_follow_type_hints: Please use input_signature or
       reduce_retracing instead.
 
   Returns:

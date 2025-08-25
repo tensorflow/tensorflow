@@ -178,9 +178,11 @@ def get_file(fname,
       fname: Name of the file. If an absolute path `/path/to/file.txt` is
           specified the file will be saved at that location.
       origin: Original URL of the file.
-      untar: Deprecated in favor of `extract` argument.
+      untar: Use the `extract` argument instead.
+          It will be removed in future.
           boolean, whether the file should be decompressed
-      md5_hash: Deprecated in favor of `file_hash` argument.
+      md5_hash:Use the `file_hash` argument instead. 
+      It will be removed in future.
           md5 hash of the file for verification
       file_hash: The expected hash string of the file after download.
           The sha256 and md5 hash algorithms are both supported.

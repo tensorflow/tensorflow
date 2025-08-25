@@ -159,7 +159,7 @@ class VariableAggregation(enum.Enum):
 if VariableAggregationV2.__doc__ is not None:
   VariableAggregation.__doc__ = (
       VariableAggregationV2.__doc__
-      + "* `ONLY_FIRST_TOWER`: Deprecated alias for `ONLY_FIRST_REPLICA`.\n  "
+      + "* `ONLY_FIRST_TOWER`: Use `ONLY_FIRST_REPLICA` instead`.\n  "
   )
 
 

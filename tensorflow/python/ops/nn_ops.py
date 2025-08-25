@@ -3942,7 +3942,10 @@ def log_softmax(logits, axis=None, name=None, dim=None):
     axis: The dimension softmax would be performed on. The default is -1 which
       indicates the last dimension.
     name: A name for the operation (optional).
-    dim: Deprecated alias for `axis`.
+    dim: This is a deprecated alias for `axis`. 
+    Use `axis` instead. 
+    This alias will be removed in a future release.
+
 
   Returns:
     A `Tensor`. Has the same type as `logits`. Same shape as `logits`.
@@ -4100,7 +4103,10 @@ def softmax_cross_entropy_with_logits_v2_helper(
     logits: Unscaled log probabilities.
     axis: The class dimension. Defaulted to -1 which is the last dimension.
     name: A name for the operation (optional).
-    dim: Deprecated alias for axis.
+    dim: This is a deprecated alias for `axis`. 
+    Use `axis` instead. 
+    This alias will be removed in a future release.
+
 
   Returns:
     A `Tensor` that contains the softmax cross entropy loss. Its type is the
@@ -6105,13 +6111,19 @@ def fractional_max_pool(value,
       `value  20 5  16 3  7`
       If the pooling sequence is [0, 2, 4], then 16, at index 2 will be used
       twice.  The result would be [20, 16] for fractional max pooling.
-    deterministic: An optional `bool`.  Deprecated; use `fractional_max_pool_v2`
-      instead.
+    deterministic: An optional `bool`. 
+    This argument is deprecated. 
+    Use `fractional_max_pool_v2` instead. 
+    It will be removed in a future release.
+
     seed: An optional `int`.  Defaults to `0`.  If set to be non-zero, the
       random number generator is seeded by the given seed.  Otherwise it is
       seeded by a random seed.
-    seed2: An optional `int`.  Deprecated; use `fractional_max_pool_v2` instead.
-    name: A name for the operation (optional).
+    seed2: An optional `int`. 
+      This argument is deprecated. 
+      Use `fractional_max_pool_v2` instead. 
+      It will be removed in a future release.
+      name: A name for the operation (optional).
 
   Returns:
   A tuple of `Tensor` objects (`output`, `row_pooling_sequence`,
@@ -6297,12 +6309,16 @@ def fractional_avg_pool(value,
       `value  20 5  16 3  7`
       If the pooling sequence is [0, 2, 4], then 16, at index 2 will be used
       twice.  The result would be [20, 16] for fractional avg pooling.
-    deterministic: An optional `bool`.  Deprecated; use `fractional_avg_pool_v2`
-      instead.
+    deterministic: An optional `bool`. 
+      This argument is deprecated. 
+      Use `fractional_avg_pool_v2` instead. 
+      It will be removed in a future release.
+
     seed: An optional `int`.  Defaults to `0`.  If set to be non-zero, the
       random number generator is seeded by the given seed.  Otherwise it is
       seeded by a random seed.
-    seed2: An optional `int`.  Deprecated; use `fractional_avg_pool_v2` instead.
+    seed2: An optional `int`. Use `fractional_avg_pool_v2` instead. 
+    It will be removed in a future release.
     name: A name for the operation (optional).
 
   Returns:

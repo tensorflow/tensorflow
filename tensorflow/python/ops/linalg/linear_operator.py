@@ -232,8 +232,6 @@ class LinearOperator(
     Args:
       dtype: The type of the this `LinearOperator`.  Arguments to `matmul` and
         `solve` will have to be this type.
-      graph_parents: (Deprecated) Python list of graph prerequisites of this
-        `LinearOperator` Typically tensors that are passed during initialization
       is_non_singular:  Expect that this operator is non-singular.
       is_self_adjoint:  Expect that this operator is equal to its hermitian
         transpose.  If `dtype` is real, this is equivalent to being symmetric.

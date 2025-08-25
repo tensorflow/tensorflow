@@ -370,11 +370,10 @@ class TPUEmbedding(autotrackable.AutoTrackable):
         calculate this from the global input shapes, you can use
         `num_replicas_in_sync` property of your strategy object. May be set to
         None if not created under a TPUStrategy.
-      per_replica_batch_size: (Deprecated) The per replica batch size that you
-        intend to use. Note that is fixed and the same batch size must be used
-        for both training and evaluation. If you want to calculate this from the
-        global batch size, you can use `num_replicas_in_sync` property of your
-        strategy object. May be set to None if not created under a TPUStrategy.
+      per_replica_batch_size: 
+        The batch size for each replica. 
+        To calculate from a global batch size, use the `num_replicas_in_sync` 
+        property of your strategy object. Can be set to None if not using a TPUStrategy.
 
     Raises:
       ValueError: If per_replica_input_shapes is inconsistent with the output

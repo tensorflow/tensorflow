@@ -185,7 +185,7 @@ class ConcreteFunction(Callable, metaclass=abc.ABCMeta):
 # TODO(fmuham): Remove the export as GenericFunction in future release.
 @tf_export(
     "types.experimental.PolymorphicFunction",
-    "types.experimental.GenericFunction",  # Deprecated
+    "types.experimental.GenericFunction",  # This will be removed in future release.
     v1=[],
 )
 class PolymorphicFunction(Callable, metaclass=abc.ABCMeta):

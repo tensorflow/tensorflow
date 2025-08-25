@@ -387,7 +387,7 @@ def import_graph_def(graph_def,
     name: (Optional.) A prefix that will be prepended to the names in
       `graph_def`. Note that this does not apply to imported function names.
       Defaults to `"import"`.
-    op_dict: (Optional.) Deprecated, do not use.
+    op_dict: (Optional.) Do not use.
     producer_op_list: (Optional.) An `OpList` proto with the (possibly stripped)
       list of `OpDef`s used by the producer of the graph. If provided,
       unrecognized attrs for ops in `graph_def` that have their default value

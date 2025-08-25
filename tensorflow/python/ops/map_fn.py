@@ -263,7 +263,8 @@ def map_fn(fn,
       be unstacked along their first dimension.  `fn` will be applied to the
       nested sequence of the resulting slices.  `elems` may include ragged and
       sparse tensors. `elems` must consist of at least one tensor.
-    dtype: Deprecated: Equivalent to `fn_output_signature`.
+    dtype: This argument is deprecated and is equivalent to `fn_output_signature`. 
+    Use `fn_output_signature` instead.
     parallel_iterations: (optional) The number of iterations allowed to run in
       parallel. When graph building, the default value is 10. While executing
       eagerly, the default value is set to 1.
@@ -647,6 +648,6 @@ def map_fn_v2(fn,
 # Docstring for v2 is the same as v1, except that back_prop is deprecated.
 map_fn_v2.__doc__ = re.sub(
     r"(  back_prop: \(optional\) )(.*)",
-    r"\1Deprecated: prefer using `tf.stop_gradient` instead.  \2",
+    r"\1Deprecated: prefer using `tf.stop_gradient` instead.This argument will be released in a future versions.  \2",
     map_fn.__doc__)
 assert "prefer using `tf.stop_gradient` instead" in map_fn_v2.__doc__

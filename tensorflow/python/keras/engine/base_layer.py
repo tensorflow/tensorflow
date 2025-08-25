@@ -1467,7 +1467,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         may also be zero-argument callables which create a loss tensor.
       **kwargs: Additional keyword arguments for backward compatibility.
         Accepted values:
-          inputs - Deprecated, will be automatically inferred.
+          inputs - Will be automatically inferred.
     """
     kwargs.pop('inputs', None)
     if kwargs:
@@ -1704,7 +1704,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         that returns an update op. A zero-arg callable should be passed in
         order to disable running the updates by setting `trainable=False`
         on this Layer, when executing in Eager mode.
-      inputs: Deprecated, will be automatically inferred.
+      inputs: Will be automatically inferred.
     """
     if inputs is not None:
       tf_logging.warning(
@@ -1862,7 +1862,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
   @doc_controls.do_not_generate_docs
   def get_updates_for(self, inputs):
-    """Deprecated, do NOT use!
+    """Do NOT use!,Will be removed in a future version!
 
     Retrieves updates relevant to a specific set of inputs.
 
@@ -1879,7 +1879,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
   @doc_controls.do_not_generate_docs
   def get_losses_for(self, inputs):
-    """Deprecated, do NOT use!
+    """ Do NOT use!,Will be removed in a future version!
 
     Retrieves losses relevant to a specific set of inputs.
 
@@ -2183,13 +2183,13 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   @property
   @doc_controls.do_not_doc_inheritable
   def inbound_nodes(self):
-    """Deprecated, do NOT use! Only for compatibility with external Keras."""
+    """Do NOT use! Only for compatibility with external Keras."""
     return self._inbound_nodes
 
   @property
   @doc_controls.do_not_doc_inheritable
   def outbound_nodes(self):
-    """Deprecated, do NOT use! Only for compatibility with external Keras."""
+    """Do NOT use! Only for compatibility with external Keras."""
     return self._outbound_nodes
 
   ##############################################################################
@@ -2198,7 +2198,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
   @doc_controls.do_not_doc_inheritable
   def apply(self, inputs, *args, **kwargs):
-    """Deprecated, do NOT use!
+    """Do NOT use!, Will be removed in a future version!
 
     This is an alias of `self.__call__`.
 
@@ -2217,7 +2217,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
   @doc_controls.do_not_doc_inheritable
   def add_variable(self, *args, **kwargs):
-    """Deprecated, do NOT use! Alias for `add_weight`."""
+    """Do NOT use! Alias for `add_weight`."""
     warnings.warn('`layer.add_variable` is deprecated and '
                   'will be removed in a future version. '
                   'Please use `layer.add_weight` method instead.')
@@ -2339,7 +2339,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
   @property
   def _compute_dtype(self):
-    """Deprecated alias of `compute_dtype`."""
+    """ Alias of `compute_dtype`."""
     return self._dtype_policy.compute_dtype
 
   @property

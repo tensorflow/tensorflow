@@ -989,8 +989,9 @@ def decode_raw_v1(
       Whether the `input_bytes` data is in little-endian format. Data will be
       converted into host byte order if necessary.
     name: A name for the operation (optional).
-    bytes: Deprecated parameter. Use `input_bytes` instead.
-
+    bytes: This parameter is deprecated. 
+      Use `input_bytes` instead. 
+      It will be removed in a future release.
   Returns:
     A `Tensor` object storing the decoded bytes.
   """

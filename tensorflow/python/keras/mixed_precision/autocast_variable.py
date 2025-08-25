@@ -103,7 +103,7 @@ class AutoCastVariable(variables.Variable, core.Tensor):
 
   @property
   def true_dtype(self):
-    """Deprecated alias of `dtype`."""
+    """Alias of `dtype`."""
     return self._variable.dtype
 
   @property
