@@ -1515,7 +1515,8 @@ void HloModule::OriginalValueRecoveryTable::AddRecoveryModule(
     std::unique_ptr<HloModule> recovery_module) {
   const std::shared_ptr<OriginalValue>& replaced_original_value =
       replaced_inst->original_value();
-  if (!replaced_original_value) {
+  if (!replaced_original_value ||
+      replaced_original_value->is_synthetic_call()) {
     return;
   }
   std::shared_ptr<OriginalValue> replacing_original_value =
