@@ -270,6 +270,26 @@ void CoordinationServiceRpcHandler::TryGetKeyValueAsync(
   done(absl::OkStatus());
 }
 
+void CoordinationServiceRpcHandler::IncrementKeyValueAsync(
+    const tensorflow::IncrementKeyValueRequest* request,
+    tensorflow::IncrementKeyValueResponse* response, StatusCallback done) {
+  absl::ReaderMutexLock l(&mu_);
+  if (service_ == nullptr) {
+    done(MakeCoordinationError(
+        absl::InternalError("Coordination service is not enabled.")));
+    return;
+  }
+  auto result =
+      service_->IncrementKeyValue(request->key(), request->increment());
+  if (!result.ok()) {
+    done(MakeCoordinationError(result.status()));
+    return;
+  }
+  response->mutable_kv()->set_key(request->key());
+  response->mutable_kv()->set_value(result.value());
+  done(absl::OkStatus());
+}
+
 void CoordinationServiceRpcHandler::GetKeyValueDirAsync(
     const tensorflow::GetKeyValueDirRequest* request,
     tensorflow::GetKeyValueDirResponse* response, StatusCallback done) {
