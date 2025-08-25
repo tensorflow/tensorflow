@@ -47,10 +47,10 @@ MemoryUsage GetMemoryUsage() {
   if (getrusage(RUSAGE_SELF, &res) == 0) {
     result.mem_footprint_kb = res.ru_maxrss;
   }
-#if defined(__NO_MALLINFO__)
+#if defined(__NO_MALLINFO__) || !defined(__GLIBC__)
   result.total_allocated_bytes = -1;
   result.in_use_allocated_bytes = -1;
-#elif defined(__GLIBC__) && __GLIBC_MINOR__ >= 33
+#elif __GLIBC_MINOR__ >= 33
   const auto mem = mallinfo2();
   result.total_allocated_bytes = mem.arena;
   result.in_use_allocated_bytes = mem.uordblks;
