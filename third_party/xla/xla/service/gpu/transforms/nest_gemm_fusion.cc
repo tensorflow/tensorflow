@@ -1088,32 +1088,61 @@ class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
         compute_capability_(compute_capability) {}
 
  private:
-  absl::Status AcceptDotInstruction(const HloDotInstruction* dot) {
-    auto dims = dot->dot_dimension_numbers();
+  absl::Status AcceptDotOperand(const HloInstruction* operand,
+                                absl::Span<const int64_t> batch_dims,
+                                absl::Span<const int64_t> contracting_dims,
+                                bool is_lhs) {
+    if (contracting_dims.size() != 1) {
+      return absl::InternalError(
+          absl::StrCat("Expected ", is_lhs ? "LHS" : "RHS",
+                       " operand with exactly one contracting dimension, got ",
+                       contracting_dims.size()));
+    }
 
+    TF_ASSIGN_OR_RETURN(
+        std::vector<int64_t> non_contracting_dimensions,
+        GetNonContractingDims(operand->shape(), batch_dims, contracting_dims));
+
+    if (non_contracting_dimensions.size() != 1) {
+      return absl::InternalError(absl::StrCat(
+          "Expected ", is_lhs ? "LHS" : "RHS",
+          " operand with exactly one non-contracting dimension, got ",
+          non_contracting_dimensions.size()));
+    }
+
+    if (is_lhs) {
+      if (non_contracting_dimensions[0] >= contracting_dims[0]) {
+        return absl::InternalError(absl::StrCat(
+            "Expected LHS non-contracting dimension to be before contracting "
+            "dimension, got ",
+            non_contracting_dimensions[0], " >= ", contracting_dims[0]));
+      }
+    } else {
+      if (non_contracting_dimensions[0] <= contracting_dims[0]) {
+        return absl::InternalError(absl::StrCat(
+            "Expected RHS non-contracting dimension to be after contracting "
+            "dimension, got ",
+            non_contracting_dimensions[0], " <= ", contracting_dims[0]));
+      }
+    }
+    return absl::OkStatus();
+  }
+
+  absl::Status AcceptDotInstruction(const HloDotInstruction* dot) {
     if (IsFeatureEnabled(
             dot->GetModule(),
             DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_GEMM_SHAPES)) {
       return absl::OkStatus();
     }
-    if (dot->shape().dimensions().size() != 2 ||
-        dot->operand(0)->shape().dimensions().size() != 2 ||
-        dot->operand(1)->shape().dimensions().size() != 2) {
-      return absl::InternalError(
-          absl::StrCat("Only basic 2D dot shape is supported in nested GEMM "
-                       "fusion, got ",
-                       dot->shape().ToString()));
-    }
-    if (dims.lhs_contracting_dimensions().size() != 1 ||
-        dims.lhs_contracting_dimensions(0) != 1 ||
-        dims.rhs_contracting_dimensions().size() != 1 ||
-        dims.rhs_contracting_dimensions(0) != 0) {
-      return absl::InternalError(
-          absl::StrCat("Expected dot with LHS contracting dimension 1 "
-                       "and RHS contracting dimension 0, got ",
-                       dims.SerializeAsString()));
-    }
-
+    const HloInstruction* lhs = dot->operand(0);
+    const HloInstruction* rhs = dot->operand(1);
+    auto dims = dot->dot_dimension_numbers();
+    TF_RETURN_IF_ERROR(AcceptDotOperand(lhs, dims.lhs_batch_dimensions(),
+                                        dims.lhs_contracting_dimensions(),
+                                        /*is_lhs=*/true));
+    TF_RETURN_IF_ERROR(AcceptDotOperand(rhs, dims.rhs_batch_dimensions(),
+                                        dims.rhs_contracting_dimensions(),
+                                        /*is_lhs=*/false));
     return absl::OkStatus();
   }
 
