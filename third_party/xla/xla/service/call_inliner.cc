@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -33,6 +34,7 @@ limitations under the License.
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/ir/hlo_schedule.h"
@@ -345,7 +347,8 @@ bool CallInliner::ShouldInline(const CallGraph& call_graph,
 
 absl::StatusOr<bool> CallInliner::InlineAndLegalize(
     const CallGraph& call_graph, HloComputation* computation,
-    absl::Span<HloInstruction* const> instruction_sequence) const {
+    absl::Span<HloInstruction* const> instruction_sequence,
+    std::optional<InlinedInstructionMap*> inline_map) {
   HloModule* module = computation->parent();
   bool did_node_mutate = false;
   std::vector<HloInstruction*> inlined_instructions;
@@ -358,23 +361,29 @@ absl::StatusOr<bool> CallInliner::InlineAndLegalize(
       // The caller instruction will get removed after inlining. Record the
       // callee computation beforehand, so we can find its schedule.
       HloComputation* callee = instruction->to_apply();
-      TF_ASSIGN_OR_RETURN(CallInliner::InlinedInstructionMap inline_map,
-                          Inline(instruction));
+      TF_ASSIGN_OR_RETURN(
+          CallInliner::InlinedInstructionMap inline_map_cur_call,
+          Inline(instruction));
       if (module->has_schedule()) {
         for (HloInstruction* inlined_instruction :
              module->schedule().sequence(callee).instructions()) {
           // Parameters were already added to sequence as operands to the
           // call.
           if (inlined_instruction->opcode() != HloOpcode::kParameter) {
-            inlined_instructions.push_back(inline_map[inlined_instruction]);
+            inlined_instructions.push_back(
+                inline_map_cur_call[inlined_instruction]);
           }
         }
       }
       if (update_domain_) {
         HloDomainIsolator isolator([]() { return ShardingDomainCreator{}; });
-        for (const auto& [call_inst, inlined_inst] : inline_map) {
+        for (const auto& [call_inst, inlined_inst] : inline_map_cur_call) {
           TF_RETURN_IF_ERROR(isolator.UpdateDomains(inlined_inst).status());
         }
+      }
+      if (inline_map.has_value()) {
+        inline_map.value()->insert(inline_map_cur_call.begin(),
+                                   inline_map_cur_call.end());
       }
       did_node_mutate = true;
     } else if (module->has_schedule()) {
@@ -396,8 +405,8 @@ absl::StatusOr<bool> CallInliner::InlineAndLegalize(
   return did_node_mutate;
 }
 
-absl::StatusOr<bool> CallInliner::Run(
-    HloModule* module,
+absl::StatusOr<bool> CallInliner::RunWithInlineMap(
+    HloModule* module, std::optional<InlinedInstructionMap*> inline_map,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
   // Because call graph nodes are visited in post-order (callees before callers)
@@ -415,12 +424,12 @@ absl::StatusOr<bool> CallInliner::Run(
               HloInstructionSequence& sequence =
                   module->schedule().GetOrCreateSequence(node.computation());
               return InlineAndLegalize(*call_graph, node.computation(),
-                                       sequence.instructions());
+                                       sequence.instructions(), inline_map);
             }
 
             return InlineAndLegalize(
                 *call_graph, node.computation(),
-                node.computation()->MakeInstructionPostOrder());
+                node.computation()->MakeInstructionPostOrder(), inline_map);
           }));
   if (did_mutate) {
     // Run DCE to remove called computations which are now becoming unused.
@@ -434,6 +443,50 @@ absl::StatusOr<bool> CallInliner::Run(
     }
   }
   return did_mutate;
+}
+
+absl::StatusOr<bool> CallInliner::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  return RunWithInlineMap(module, std::nullopt, execution_threads);
+}
+
+bool IsInlineableComputation(HloComputation* computation) {
+  auto is_inlineable_call_op = [](HloInstruction* instruction) {
+    bool prerequisite = instruction->opcode() == HloOpcode::kCall &&
+                        !instruction->has_backend_config() &&
+                        !instruction->parent()->IsAsyncComputation();
+    if (!prerequisite || !InlineInstruction(instruction)) {
+      return false;
+    }
+    return true;
+  };
+  return absl::c_any_of(computation->instructions(), is_inlineable_call_op);
+}
+
+const HloInstruction* InlinedModule::get_inlined_inst(
+    const HloInstruction* inst) {
+  auto it = clone_context->cloned_instructions().find(inst);
+  if (it != clone_context->cloned_instructions().end()) {
+    auto it2 = clone_inlined_map.find(it->second);
+    if (it2 != clone_inlined_map.end()) {
+      return it2->second;
+    }
+    return it->second;
+  }
+  return nullptr;
+}
+
+absl::StatusOr<InlinedModule> GetInlinedModule(HloModule* module) {
+  auto [cloned_module, clone_context] =
+      module->CloneWithContext("inline", module->config());
+  CallInliner::InlinedInstructionMap clone_inlined_map;
+  CallInliner inliner;
+  TF_RETURN_IF_ERROR(
+      inliner.RunWithInlineMap(cloned_module.get(), &clone_inlined_map, {})
+          .status());
+  return InlinedModule{std::move(cloned_module), std::move(clone_context),
+                       std::move(clone_inlined_map)};
 }
 
 }  // namespace xla
