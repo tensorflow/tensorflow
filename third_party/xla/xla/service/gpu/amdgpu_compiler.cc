@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/service/gpu/autotuning/conv_algorithm_picker.h"
 #include "xla/service/gpu/autotuning/gemm_algorithm_picker.h"
 #include "xla/service/gpu/autotuning/gemm_fusion_autotuner.h"
+#include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/cublas_padding_requirements.h"
 #include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/gpu/llvm_gpu_backend/amdgpu_backend.h"
@@ -266,11 +267,15 @@ absl::Status AMDGPUCompiler::AddConvAndGemmAutotuningPasses(
   if (debug_options.xla_gpu_experimental_use_autotuner_pass()) {
     backends.push_back(
         std::make_unique<CublasBackend>(stream_exec, &debug_options, this));
+    auto should_autotune = [](const HloInstruction& instruction) -> bool {
+      return instruction.opcode() == HloOpcode::kCustomCall &&
+             IsCublasGemm(instruction);
+    };
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<AutotunerPass> autotuner_pass,
         AutotunerPass::Create(std::move(backends), debug_options,
                               options.device_allocator, stream_exec,
-                              thread_pool));
+                              thread_pool, should_autotune));
     pipeline->AddPass(std::move(autotuner_pass));
   } else {
     pipeline->AddPass<GemmAlgorithmPicker>(autotune_config);
