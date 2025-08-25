@@ -65,7 +65,7 @@ class DistributedRuntimeCoordinationServiceClient
   absl::Status WaitAtBarrier(
       std::string barrier_id, absl::Duration timeout,
       std::optional<absl::Span<const int32_t>> process_ids) override;
-  absl::StatusOr<std::vector<int32_t>> GetLiveNodes(
+  absl::StatusOr<absl::flat_hash_map<int32_t, IncarnationId>> GetLiveNodes(
       absl::Span<const int32_t> nodes) override;
   absl::StatusOr<tsl::CoordinationServiceAgent*> GetCoordinationServiceAgent()
       override;
@@ -200,7 +200,7 @@ absl::Status DistributedRuntimeCoordinationServiceClient::WaitAtBarrier(
   return coord_agent_->WaitAtBarrier(barrier_id, timeout, tasks);
 }
 
-absl::StatusOr<std::vector<int32_t>>
+absl::StatusOr<absl::flat_hash_map<int32_t, IncarnationId>>
 DistributedRuntimeCoordinationServiceClient::GetLiveNodes(
     absl::Span<const int32_t> nodes) {
   // Note that jax.distributed uses terms "process" and "node", and the
@@ -219,13 +219,14 @@ DistributedRuntimeCoordinationServiceClient::GetLiveNodes(
   }
 
   // Get the set of live tasks.
-  TF_ASSIGN_OR_RETURN(const std::vector<tensorflow::CoordinatedTask> live_tasks,
-                      coord_agent_->GetAliveTasks(tasks));
+  TF_ASSIGN_OR_RETURN(
+      const std::vector<tsl::CoordinationServiceAgent::AliveTask> live_tasks,
+      coord_agent_->GetAliveTasks(tasks));
 
   // Extract the node ids from the live tasks.
-  std::vector<int32_t> live_nodes(live_tasks.size());
-  for (int i = 0; i < live_tasks.size(); ++i) {
-    live_nodes[i] = live_tasks[i].task_id();
+  absl::flat_hash_map<int32_t, IncarnationId> live_nodes;
+  for (const tsl::CoordinationServiceAgent::AliveTask& task : live_tasks) {
+    live_nodes[task.task_id] = task.incarnation_id;
   }
   return live_nodes;
 }
