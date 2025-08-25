@@ -18,17 +18,12 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
-#include <functional>
 #include <initializer_list>
-#include <iterator>
 #include <memory>
-#include <random>
 #include <vector>
 
 #include "absl/functional/function_ref.h"
-#include "absl/strings/str_cat.h"
 #include "xla/array.h"
-#include "xla/types.h"
 #include "xla/util.h"
 
 namespace xla {
