@@ -861,6 +861,36 @@ ENTRY main {
   EXPECT_EQ(root->to_apply()->root_instruction()->metadata().op_name(), "");
 }
 
+TEST_F(CallInlinerTest, GetInlinedModule) {
+  const char* hlo = R"(
+
+reducer {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  ROOT add = f32[] add(x, y)
+}
+
+callee {
+  input = f32[128,32] parameter(0)
+  const = f32[] constant(0)
+  ROOT reduce = f32[128] reduce(input, const), dimensions={1}, to_apply=reducer, metadata={op_name="reduce"}
+}
+
+ENTRY main {
+  input = f32[128,32] parameter(0)
+  ROOT result = f32[128] call(input), to_apply=callee, metadata={op_name="x"}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(hlo));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto inlined_module, GetInlinedModule(m.get()));
+  auto root = inlined_module.module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Reduce());
+  EXPECT_EQ(root->metadata().op_name(), "x/reduce");
+  EXPECT_EQ(root->to_apply()->root_instruction()->metadata().op_name(), "");
+}
+
 TEST_F(CallInlinerTest, InliningDoesNotDuplicateLongOpNames) {
   const char* hlo = R"(
 callee {
