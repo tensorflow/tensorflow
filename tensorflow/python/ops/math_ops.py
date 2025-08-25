@@ -3087,11 +3087,11 @@ def reduce_max_with_dims(input_tensor,
                              "keep_dims is deprecated, use keepdims instead",
                              "keep_dims")
 def reduce_all_v1(input_tensor,
-                  axis=None,
-                  keepdims=None,
-                  name=None,
-                  reduction_indices=None,
-                  keep_dims=None):
+                   axis=None,
+                   keepdims=None,
+                   name=None,
+                   reduction_indices=None,
+                   keep_dims=None):
   """Computes `tf.math.logical_and` of elements across dimensions of a tensor.
 
   This is the reduction operation for the elementwise `tf.math.logical_and` op.
@@ -3845,7 +3845,7 @@ def _as_indexed_slices(x, optimize=True):
     An IndexedSlices object.
 
   Raises:
-    TypeError: If 'x' is not a Tensor or an IndexedSlices object.
+    TypeError: If 'x' is not a Tensor or IndexedSlices object.
   """
   # TODO(touts): op_scope
   if not isinstance(x, (tensor_lib.Tensor, indexed_slices.IndexedSlices)):
@@ -3966,6 +3966,24 @@ def add(x, y, name=None):
   with ops.name_scope(name, "Add", [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
     y = ops.convert_to_tensor(y, dtype_hint=x.dtype.base_dtype, name="y")
+    
+    # Bug fix: Prevent overflow/underflow when mixing integer types
+    if (x.dtype.is_integer and y.dtype.is_integer and x.dtype != y.dtype):
+      # Determine safe dtype based on combined value ranges
+      combined_range = max(abs(x.dtype.min), abs(x.dtype.max), 
+                          abs(y.dtype.min), abs(y.dtype.max))
+      if combined_range <= 127:
+        safe_dtype = dtypes.int8
+      elif combined_range <= 32767:
+        safe_dtype = dtypes.int16
+      elif combined_range <= 2147483647:
+        safe_dtype = dtypes.int32
+      else:
+        safe_dtype = dtypes.int64
+      
+      x = math_ops.cast(x, safe_dtype)
+      y = math_ops.cast(y, safe_dtype)
+    
     if x.dtype == dtypes.string:
       return gen_math_ops.add(x, y, name=name)
     else:
@@ -4209,7 +4227,7 @@ def log_sigmoid(x, name=None):
 
   If a negative number is large, its log_sigmoid will approach to the number
   itself since the formula will be `y = log( 1 / (1 + <large_num>) )` which is
-  `log (1) - log ( (1 + <large_num>) )` which approximates to `- <large_num>`
+  `log(1) - log ( (1 + <large_num>) )` which approximates to `- <large_num>`
   that is the number itself.
 
   >>> x = tf.constant([-100.0, -50.0, -1.0, 0.0])
