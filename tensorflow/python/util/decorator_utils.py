@@ -84,7 +84,7 @@ def add_notice_to_docstring(doc,
     suffix_str: Is added to the end of the first line.
     notice: A list of strings. The main notice warning body.
     notice_type: The type of notice to use. Should be one of `[Caution,
-    Deprecated, Important, Note, Warning]`
+    Important, Note, Warning]`
 
   Returns:
     A new docstring, with the notice attached.
@@ -92,7 +92,7 @@ def add_notice_to_docstring(doc,
   Raises:
     ValueError: If `notice` is empty.
   """
-  allowed_notice_types = ['Deprecated', 'Warning', 'Caution', 'Important',
+  allowed_notice_types = ['Warning', 'Caution', 'Important',
                           'Note']
   if notice_type not in allowed_notice_types:
     raise ValueError(

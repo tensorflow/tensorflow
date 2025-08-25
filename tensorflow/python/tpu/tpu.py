@@ -329,7 +329,7 @@ def replicate(
       `DeviceAssignment` may be omitted if each replica of the computation uses
       only one core, and there is either only one replica, or the number of
       replicas is equal to the number of cores in the TPU system.
-    name: (Deprecated) Does nothing.
+    name: This argument is unused and has no effect.
     maximum_shapes: A nested structure of tf.TensorShape representing the shape
       to which the respective component of each input element in each replica
       should be padded. Any unknown dimensions (e.g.
@@ -597,7 +597,7 @@ def split_compile_and_replicate(
       `DeviceAssignment` may be omitted if each replica of the computation uses
       only one core, and there is either only one replica, or the number of
       replicas is equal to the number of cores in the TPU system.
-    name: (Deprecated) Does nothing.
+    name:  This argument is unused and has no effect.
     use_tpu: When false, the input `computation` is executed on the XLA CPU/GPU
       backends. Currently, only supports a default placement (computation is
       placed on GPU if one is available, and on CPU if not).
@@ -1187,7 +1187,7 @@ def split_compile_and_shard(
       `DeviceAssignment` may be omitted if each shard of the computation uses
       only one core, and there is either only one shard, or the number of shards
       is equal to the number of cores in the TPU system.
-    name: (Deprecated) Does nothing.
+    name:  This argument is unused and has no effect.
     xla_options: An instance of `tpu.XLAOptions` which indicates the options
       passed to XLA compiler. Use `None` for default options.
   Returns:
@@ -1353,7 +1353,7 @@ def shard(
       `DeviceAssignment` may be omitted if each shard of the computation uses
       only one core, and there is either only one shard, or the number of shards
       is equal to the number of cores in the TPU system.
-    name: (Deprecated) Does nothing.
+    name:  This argument is unused and has no effect.
     xla_options: An instance of `tpu.XLAOptions` which indicates the options
       passed to XLA compiler. Use `None` for default options.
   Returns:
@@ -1421,7 +1421,7 @@ def batch_parallel(
       `DeviceAssignment` may be omitted if each shard of the computation uses
       only one core, and there is either only one shard, or the number of shards
       is equal to the number of cores in the TPU system.
-    name: (Deprecated) Does nothing.
+    name:  This argument is unused and has no effect.
     xla_options: An instance of `tpu.XLAOptions` which indicates the options
       passed to XLA compiler. Use `None` for default options.
   Returns:
@@ -1474,7 +1474,7 @@ def rewrite(
       mapping between logical cores in the computation with physical cores in
       the TPU topology. May be omitted for a single-core computation, in which
       case the core attached to task 0, TPU device 0 is used.
-    name: (Deprecated) Does nothing.
+    name:  This argument is unused and has no effect.
     xla_options: An instance of `tpu.XLAOptions` which indicates the options
       passed to XLA compiler. Use `None` for default options.
   Returns:

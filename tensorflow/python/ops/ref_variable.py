@@ -313,7 +313,9 @@ class RefVariable(variable_v1.VariableV1, core.Tensor):
       dtype: If set, initial_value will be converted to the given type. If None,
         either the datatype will be kept (if initial_value is a Tensor) or
         float32 will be used (if it is a Python object convertible to a Tensor).
-      expected_shape: Deprecated. Ignored.
+      expected_shape: This argument is deprecated and has no effect. 
+    It is ignored and will be removed in a future release.
+
       constraint: An optional projection function to be applied to the variable
         after being updated by an `Optimizer` (e.g. used to implement norm
         constraints or value constraints for layer weights). The function must

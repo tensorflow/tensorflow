@@ -63,7 +63,7 @@ flags.DEFINE_integer('duration_ms', 0,
 flags.DEFINE_integer(
     'num_tracing_attempts', 3, 'Automatically retry N times when no trace '
     'event is collected.')
-flags.DEFINE_boolean('include_dataset_ops', True, 'Deprecated.')
+flags.DEFINE_boolean('include_dataset_ops', True, 'This flag is unused and kept only for backward compatibility.')
 flags.DEFINE_integer(
     'host_tracer_level', 2, 'Adjust host tracer level to control the verbosity '
     ' of the TraceMe event being collected.')
@@ -76,7 +76,7 @@ flags.DEFINE_integer(
 flags.DEFINE_integer(
     'num_queries', 100,
     'This script will run monitoring for num_queries before it stops.')
-flags.DEFINE_boolean('display_timestamp', True, 'Deprecated.')
+flags.DEFINE_boolean('display_timestamp', True, 'This flag is unused and kept only for backward compatibility.')
 
 
 def get_workers_list(cluster_resolver):

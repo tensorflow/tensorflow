@@ -1306,7 +1306,7 @@ class ModelCheckpoint(Callback):
         raise TypeError('If save_weights_only is False, then `options` must be'
                         'either None or a tf.saved_model.SaveOptions')
 
-    # Deprecated field `load_weights_on_restart` is for loading the checkpoint
+    # Field `load_weights_on_restart` is for loading the checkpoint
     # file from `filepath` at the start of `model.fit()`
     # TODO(rchao): Remove the arg during next breaking release.
     if 'load_weights_on_restart' in kwargs:
@@ -1317,7 +1317,7 @@ class ModelCheckpoint(Callback):
     else:
       self.load_weights_on_restart = False
 
-    # Deprecated field `period` is for the number of epochs between which
+    # Field `period` is for the number of epochs between which
     # the model is saved.
     if 'period' in kwargs:
       self.period = kwargs['period']

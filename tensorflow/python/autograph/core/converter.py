@@ -233,7 +233,7 @@ class ProgramContext(object):
 
   Attributes:
     options: ConversionOptions
-    autograph_module: Deprecated. Do not use.
+    autograph_module:  Do not use.(Removed in future versions)
   """
 
   def __init__(self, options, autograph_module=None):

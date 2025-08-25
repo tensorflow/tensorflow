@@ -390,8 +390,9 @@ def weighted_cross_entropy_with_logits(labels=None,
     logits: A `Tensor` of type `float32` or `float64`.
     pos_weight: A coefficient to use on the positive examples.
     name: A name for the operation (optional).
-    targets: Deprecated alias for labels.
-
+    targets: This is a deprecated alias for `labels`. 
+    Use `labels` instead. 
+    This alias will be removed in a future release.
   Returns:
     A `Tensor` of the same shape as `logits` with the componentwise
     weighted logistic losses.
@@ -574,7 +575,9 @@ def l2_normalize(x, axis=None, epsilon=1e-12, name=None, dim=None):
     epsilon: A lower bound value for the norm. Will use `sqrt(epsilon)` as the
       divisor if `norm < sqrt(epsilon)`.
     name: A name for this operation (optional).
-    dim: Deprecated, do not use.
+    dim: This argument is deprecated and should not be used. 
+    It does not have a replacement and will be removed in a future release.
+
 
   Returns:
     A `Tensor` with the same shape as `x`.

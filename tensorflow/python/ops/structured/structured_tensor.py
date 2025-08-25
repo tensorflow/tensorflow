@@ -581,7 +581,7 @@ class StructuredTensor(extension_type.BatchableExtensionType):
   # TODO(martinz): for backwards compatibility
   @property
   def _row_partitions(self):
-    """Deprecated form of row_partitions."""
+    """Return the row partitions of this operator."""
     return self.row_partitions
 
   # TODO(edloper): Make this a func instead of a property?  Or make nrows

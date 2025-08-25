@@ -61,10 +61,10 @@ def _add_deprecated_function_notice_to_docstring(doc, date, instructions):
   return decorator_utils.add_notice_to_docstring(
       doc,
       instructions,
-      'DEPRECATED FUNCTION',
-      '(deprecated)',
+      'FUNCTION NOTE',
+      '',
       main_text,
-      notice_type='Deprecated')
+      notice_type='Note')
 
 
 def _add_deprecated_arg_notice_to_docstring(doc, date, instructions,
@@ -83,7 +83,7 @@ def _add_deprecated_arg_notice_to_docstring(doc, date, instructions,
           (deprecation_string, 'in a future version' if date is None else
            ('after %s' % date)), 'Instructions for updating:'
       ],
-      notice_type='Deprecated')
+      notice_type='Note')
 
 
 def _add_deprecated_arg_value_notice_to_docstring(doc, date, instructions,
@@ -105,7 +105,7 @@ def _add_deprecated_arg_value_notice_to_docstring(doc, date, instructions,
           'They will be removed %s.' %
           (deprecation_string, when), 'Instructions for updating:'
       ],
-      notice_type='Deprecated')
+      notice_type='Note')
 
 
 def _validate_deprecation_args(date, instructions):
@@ -225,7 +225,7 @@ def deprecated_alias(deprecated_name, name, func_or_class, warn_once=True):
           'DEPRECATED CLASS',
           '(deprecated)', [('THIS CLASS IS DEPRECATED. '
                             'It will be removed in a future version. ')],
-          notice_type='Deprecated')
+          notice_type='Note')
       __name__ = func_or_class.__name__
       __module__ = _call_location(outer=True)
 
@@ -283,7 +283,7 @@ def deprecated_endpoints(*args):
   @deprecation_endpoints decorator is added.
 
   Args:
-    *args: Deprecated endpoint names.
+    *args:  Previously used for endpoint names. This argument is no longer used.
 
   Returns:
     A function that takes symbol as an argument and adds

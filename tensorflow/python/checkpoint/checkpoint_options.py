@@ -73,7 +73,7 @@ class CheckpointOptions(object):
         is for example useful if you want to save to a local directory, such as
         "/tmp" when running in a distributed setting. In that case pass a device
         for the host where the "/tmp" directory is accessible.
-      experimental_enable_async_checkpoint: bool Type. Deprecated, please use
+      experimental_enable_async_checkpoint: bool Type. Please use
         the enable_async option.
       experimental_write_callbacks: List[Callable]. A list of callback functions
         that will be executed after each saving event finishes (i.e. after

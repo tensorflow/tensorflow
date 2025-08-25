@@ -145,7 +145,7 @@ def get_canonical_name(
 
   Args:
     api_names: API names iterable.
-    deprecated_api_names: Deprecated API names iterable.
+    deprecated_api_names:Previously used API names. This argument is no longer used.
 
   Returns:
     Returns one of the following in decreasing preference:
@@ -265,7 +265,7 @@ class api_export(object):  # pylint: disable=invalid-name
       api_name: API you want to generate Currently, only `tensorflow`.
       v1: Names for the TensorFlow V1 API. If not set, we will use V2 API names
         both for TensorFlow V1 and V2 APIs.
-      allow_multiple_exports: Deprecated.
+      allow_multiple_exports: This argument is no longer used or will be removed in future releases.
     """
     self._names = args
     self._names_v1 = v1 if v1 is not None else args
@@ -385,7 +385,7 @@ class ExportType(Protocol):
       self,
       *v2: str,
       v1: Optional[Sequence[str]] = None,
-      allow_multiple_exports: bool = True,  # Deprecated, no-op
+      allow_multiple_exports: bool = True,  # no longer used
   ) -> api_export:
     ...
 

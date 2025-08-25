@@ -675,7 +675,10 @@ def norm(tensor,
     keepdims: If True, the axis indicated in `axis` are kept with size 1.
       Otherwise, the dimensions in `axis` are removed from the output shape.
     name: The name of the op.
-    keep_dims: Deprecated alias for `keepdims`.
+    keep_dims: This is a deprecated alias for `keepdims`. 
+    Use `keepdims` instead. 
+    This alias will be removed in a future release.
+
 
   Returns:
     output: A `Tensor` of the same type as tensor, containing the vector or

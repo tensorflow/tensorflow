@@ -828,8 +828,8 @@ def to_graph_v1(entity,
     entity: Python callable or class to convert.
     recursive: Whether to recursively convert any functions that the converted
       function may call.
-    arg_values: Deprecated.
-    arg_types: Deprecated.
+    arg_values: Do not use. Will be removed in a future version.
+    arg_types: Do not use. Will be removed in a future version.
     experimental_optional_features: `None`, a tuple of, or a single
       `tf.autograph.experimental.Feature` value.
 
@@ -883,9 +883,9 @@ def to_code_v1(entity,
     entity: Python callable or class.
     recursive: Whether to recursively convert any functions that the converted
       function may call.
-    arg_values: Deprecated.
-    arg_types: Deprecated.
-    indentation: Deprecated.
+    arg_values: Do not use. Will be removed in a future version.
+    arg_types: Do not use. Will be removed in a future version.
+    indentation: Do not use. Will be removed in a future version.
     experimental_optional_features: `None`, a tuple of, or a single
       `tf.autograph.experimental.Feature` value.
 

@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Deprecated experimental Keras SavedModel implementation."""
-
+"""Experimental Keras SavedModel implementation. 
+ Will be removed in a future release."""
 import os
 import warnings
 from tensorflow.python.checkpoint import graph_view

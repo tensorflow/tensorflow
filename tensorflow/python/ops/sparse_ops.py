@@ -506,7 +506,8 @@ def sparse_add(a, b, threshold=None, thresh=None):
       dtype should match that of the values if they are real; if the latter are
       complex64/complex128, then the dtype should be float32/float64,
       correspondingly.
-    thresh: Deprecated alias for `threshold`.
+    thresh:  Use `threshold` instead. 
+      It will be removed in a future release.
 
   Returns:
     A `SparseTensor` or a `Tensor`, representing the sum.
@@ -1027,7 +1028,8 @@ def sparse_split(keyword_required=KeywordRequired(),
       range [-rank, rank), where rank is the number of dimensions in the input
       `SparseTensor`.
     name: A name for the operation (optional).
-    split_dim: Deprecated old name for axis.
+    split_dim:  Use `axis` instead. 
+      It will be removed in a future release.
 
   Returns:
     `num_split` `SparseTensor` objects resulting from splitting `value`.
@@ -1406,8 +1408,11 @@ def sparse_reduce_max(sp_input, axis=None, keepdims=None,
     axis: The dimensions to reduce; list or scalar. If `None` (the
       default), reduces all dimensions.
     keepdims: If true, retain reduced dimensions with length 1.
-    reduction_axes: Deprecated name of `axis`.
-    keep_dims:  Deprecated alias for `keepdims`.
+    reduction_axes: Use `axis` instead. 
+      It will be removed in a future release.
+
+    keep_dims: Use `keepdims` instead. 
+      It will be removed in a future release.
 
   Returns:
     The reduced Tensor.
@@ -1456,8 +1461,9 @@ def sparse_reduce_max_sparse(sp_input,
     axis: The dimensions to reduce; list or scalar. If `None` (the
       default), reduces all dimensions.
     keepdims: If true, retain reduced dimensions with length 1.
-    reduction_axes: Deprecated name of axis.
-    keep_dims: Deprecated alias for `keepdims`.
+    reduction_axes: Use `axis` instead. 
+      It will be removed in a future release.
+      keep_dims: Use `keepdims` instead. 
 
   Returns:
     The reduced SparseTensor.
@@ -1607,9 +1613,9 @@ def sparse_reduce_sum(sp_input, axis=None, keepdims=None,
     axis: The dimensions to reduce; list or scalar. If `None` (the
       default), reduces all dimensions.
     keepdims: If true, retain reduced dimensions with length 1.
-    reduction_axes: Deprecated name of `axis`.
-    keep_dims: Deprecated alias for `keepdims`.
-
+    reduction_axes:  Use `axis` instead. 
+      It will be removed in a future release.
+    keep_dims:  Use `keepdims` instead. 
   Returns:
     The reduced Tensor.
   """
@@ -1657,9 +1663,8 @@ def sparse_reduce_sum_sparse(sp_input,
     axis: The dimensions to reduce; list or scalar. If `None` (the
       default), reduces all dimensions.
     keepdims: If true, retain reduced dimensions with length 1.
-    reduction_axes: Deprecated name of axis.
-    keep_dims: Deprecated alias for `keepdims`.
-
+    reduction_axes:  Use `axis` instead. 
+    keep_dims: Use `keepdims` instead.
   Returns:
     The reduced SparseTensor.
   """

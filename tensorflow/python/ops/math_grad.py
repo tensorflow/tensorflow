@@ -63,7 +63,7 @@ def SmartBroadcastGradientArgs(x, y, grad=None):
   Args:
     x: The first argument of a broadcasting binary op.
     y: The second argument of a broadcasting binary op.
-    grad: Deprecated.
+    grad: This argument has no effect and will be removed in a future release.
 
   Returns:
     A pair of triples, one per argument with

@@ -4268,7 +4268,8 @@ def squeeze(input, axis=None, name=None, squeeze_dims=None):
       `[-rank(input), rank(input))`. Must be specified if `input` is a
       `RaggedTensor`.
     name: A name for the operation (optional).
-    squeeze_dims: Deprecated keyword argument that is now axis.
+    squeeze_dims: Use the `axis` argument instead. 
+    This keyword is deprecated and will be removed in a future release.
 
   Returns:
     A `Tensor`. Has the same type as `input`.
@@ -4962,8 +4963,10 @@ def gather(params,
       `axis + 1`.
     indices: The index `Tensor`.  Must be one of the following types: `int32`,
       `int64`. The values must be in range `[0, params.shape[axis])`.
-    validate_indices: Deprecated, does nothing. Indices are always validated on
-      CPU, never validated on GPU.
+    validate_indices: This argument is deprecated and has no effect. 
+    Indices are always validated on CPU and never validated on GPU. 
+    It will be removed in a future release.
+
 
       Caution: On CPU, if an out of bound index is found, an error is raised.
       On GPU, if an out of bound index is found, a 0 is stored in the

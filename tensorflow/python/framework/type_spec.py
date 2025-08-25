@@ -324,7 +324,7 @@ class TypeSpec(
   def most_specific_compatible_type(self, other: "TypeSpec") -> "TypeSpec":
     """Returns the most specific TypeSpec compatible with `self` and `other`.
 
-    Deprecated. Please use `most_specific_common_supertype` instead.
+    Please use `most_specific_common_supertype` instead.
     Do not override this function.
 
     Args:

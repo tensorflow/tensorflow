@@ -882,9 +882,9 @@ class LSTMCell(LayerRNNCell):
       proj_clip: (optional) A float value.  If `num_proj > 0` and `proj_clip` is
         provided, then the projected values are clipped elementwise to within
         `[-proj_clip, proj_clip]`.
-      num_unit_shards: Deprecated, will be removed by Jan. 2017. Use a
+      num_unit_shards: Will be removed by Jan. 2017. Use a
         variable_scope partitioner instead.
-      num_proj_shards: Deprecated, will be removed by Jan. 2017. Use a
+      num_proj_shards: Will be removed by Jan. 2017. Use a
         variable_scope partitioner instead.
       forget_bias: Biases of the forget gate are initialized by default to 1 in
         order to reduce the scale of forgetting at the beginning of the

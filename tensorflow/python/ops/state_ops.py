@@ -37,7 +37,7 @@ from tensorflow.python.util.tf_export import tf_export
 # pylint: disable=protected-access,g-doc-return-or-yield,g-doc-args
 def variable_op(shape, dtype, name="Variable", set_shape=True, container="",
                 shared_name=""):
-  """Deprecated. Used variable_op_v2 instead."""
+  """ Used variable_op_v2 instead."""
   if not set_shape:
     shape = tensor_shape.unknown_shape()
   ret = gen_state_ops.variable(shape=shape, dtype=dtype, name=name,
