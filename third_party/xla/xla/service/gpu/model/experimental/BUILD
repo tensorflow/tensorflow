@@ -210,6 +210,15 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "symbolic_map",
+    srcs = ["symbolic_map.cc"],
+    hdrs = ["symbolic_map.h"],
+    deps = [
+        ":symbolic_expr",
+    ],
+)
+
+cc_library(
     name = "symbolic_expr",
     srcs = ["symbolic_expr.cc"],
     hdrs = ["symbolic_expr.h"],
