@@ -63,10 +63,11 @@ constexpr absl::string_view kStablehloModuleStr = R"(
   }
   )";
 
+constexpr absl::string_view kStablehloBytecodeFormat = "bytecode";
 constexpr absl::string_view kPhaseName = "stablehlo_to_optimized_stablehlo";
 
 std::vector<xla::PjRtPartialProgramProto> PrepareInputPartialPrograms(
-    const std::string& next_phase, size_t program_format) {
+    const std::string& next_phase, const absl::string_view program_format) {
   std::string program_code{kStablehloModuleStr};
 
   mlir::MLIRContext context;
@@ -210,8 +211,7 @@ TEST_F(PhaseCompileExtensionTest, RunPhases) {
   // Prepare the input programs.
   auto partial_programs_in = PrepareInputPartialPrograms(
       /*next_phase=*/std::string(kPhaseName),
-      /*program_format=*/0);  // 0 expresses StableHLO bytecode per the
-                              // sample plugin used in this test.
+      /*program_format=*/kStablehloBytecodeFormat);
 
   // Run the partial compile phase.
   std::vector<std::string> phases_to_run = {std::string(kPhaseName)};
@@ -237,7 +237,7 @@ TEST_F(PhaseCompileExtensionTest,
   // Prepare the input programs.
   auto partial_programs_in =
       PrepareInputPartialPrograms(/*next_phase=*/std::string(kPhaseName),
-                                  /*program_format=*/0);
+                                  /*program_format=*/kStablehloBytecodeFormat);
 
   // Run the partial compile phase.
   std::vector<std::string> phases_to_run = {};
@@ -257,7 +257,7 @@ TEST_F(PhaseCompileExtensionTest,
   // Prepare the input programs.
   auto partial_programs_in =
       PrepareInputPartialPrograms(/*next_phase=*/std::string(kPhaseName),
-                                  /*program_format=*/0);
+                                  /*program_format=*/kStablehloBytecodeFormat);
 
   // Run the partial compile phase.
   std::vector<std::string> phases_to_run = {"IllegalPhaseName"};

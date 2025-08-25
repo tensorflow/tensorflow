@@ -88,7 +88,7 @@ absl::StatusOr<std::string> StablehloTypeSerialization::Serialize(
 
 namespace {
 
-enum SamplePartialProgramFormat { kStablehloBytecode = 0, kUnknown = -1 };
+constexpr absl::string_view kStablehloBytecodeFormat = "bytecode";
 
 constexpr absl::string_view kNextPhaseName = "some_next_phase";
 
@@ -99,8 +99,7 @@ absl::Status PhaseValidator(
   }
 
   for (const auto& input_program : input_programs) {
-    if (input_program.program_format() !=
-        SamplePartialProgramFormat::kStablehloBytecode) {
+    if (input_program.program_format() != kStablehloBytecodeFormat) {
       return absl::InvalidArgumentError(
           "Input programs are not in expected format.");
     }
@@ -151,8 +150,7 @@ absl::StatusOr<std::vector<xla::PjRtPartialProgramProto>> PhaseCompiler(
 
     xla::PjRtPartialProgramProto serialized_output_object;
     serialized_output_object.set_program(serialized_output_status.value());
-    serialized_output_object.set_program_format(
-        static_cast<size_t>(SamplePartialProgramFormat::kStablehloBytecode));
+    serialized_output_object.set_program_format(kStablehloBytecodeFormat);
     serialized_output_object.set_generating_phase(kPhaseName);
     serialized_output_object.add_next_phases({std::string(kNextPhaseName)});
     serialized_output_object.set_version("1.0");
