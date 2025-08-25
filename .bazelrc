@@ -76,7 +76,7 @@
 # The generated version suffix is used in
 # third_party/tensorflow/core/public/release_version.h and
 # third_party/tensorflow/tools/pip_package/setup.oss.py.tpl
-build --repo_env=ML_WHEEL_TYPE="nightly"
+build --repo_env=ML_WHEEL_TYPE="snapshot"
 build --repo_env=ML_WHEEL_BUILD_DATE=""
 build --repo_env=ML_WHEEL_VERSION_SUFFIX=""
 
