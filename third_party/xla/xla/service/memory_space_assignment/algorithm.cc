@@ -55,6 +55,7 @@ limitations under the License.
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/analysis/hlo_operand_index.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
@@ -2025,7 +2026,8 @@ int64_t MsaAlgorithm::MaxReservedScopedMemory() {
 }
 
 std::optional<int64_t> MsaAlgorithm::EarliestBlockAllocatedWeightStartTime(
-    int64_t definition_time, int64_t use_time, int64_t buffer_size,
+    int64_t earliest_start_time_candidate, int64_t first_use_time,
+    int64_t last_use_time, int64_t buffer_size,
     int64_t block_allocated_weights_bytes_limit,
     std::vector<int64_t>& prefetch_end_times) {
   auto can_find_chunk_within_limit =
@@ -2042,20 +2044,21 @@ std::optional<int64_t> MsaAlgorithm::EarliestBlockAllocatedWeightStartTime(
         return chunk_candidate.chunk_end() <=
                block_allocated_weights_bytes_limit;
       };
-  if (can_find_chunk_within_limit(definition_time, use_time, buffer_size,
+  if (can_find_chunk_within_limit(earliest_start_time_candidate, last_use_time,
+                                  buffer_size,
                                   block_allocated_weights_bytes_limit)) {
-    return definition_time;
+    return earliest_start_time_candidate;
   }
   // Find the first start_time = end_time + 1, where end_time comes from the
   // prefetch_end_times list.
   auto it_begin =
       std::upper_bound(prefetch_end_times.begin(), prefetch_end_times.end(),
-                       definition_time - 1);
+                       earliest_start_time_candidate - 1);
   auto it_end = std::upper_bound(prefetch_end_times.begin(),
-                                 prefetch_end_times.end(), use_time - 1);
+                                 prefetch_end_times.end(), first_use_time - 1);
   for (auto it = it_begin; it != it_end; ++it) {
     int64_t start_time = *it + 1;
-    if (can_find_chunk_within_limit(start_time, use_time, buffer_size,
+    if (can_find_chunk_within_limit(start_time, last_use_time, buffer_size,
                                     block_allocated_weights_bytes_limit)) {
       return start_time;
     }
@@ -2063,18 +2066,58 @@ std::optional<int64_t> MsaAlgorithm::EarliestBlockAllocatedWeightStartTime(
   return std::nullopt;
 }
 
+namespace {
+
+absl::flat_hash_set<HloPosition> GetParameterInstructionsAliasedToOutput(
+    const HloInputOutputAliasConfig& alias_config,
+    const HloInstruction* root_instruction) {
+  absl::flat_hash_set<HloPosition> aliased_parameter_positions;
+  alias_config.ForEachAlias([&](const ShapeIndex& output_index,
+                                const HloInputOutputAliasConfig::Alias& alias) {
+    HloInstruction* parameter_instruction =
+        root_instruction->parent()->parameter_instruction(
+            alias.parameter_number);
+    aliased_parameter_positions.insert(
+        {parameter_instruction, alias.parameter_index});
+  });
+  return aliased_parameter_positions;
+}
+
+}  // namespace
+
 void MsaAlgorithm::AllocateBlockAllocatedWeights() {
   if (options_.reserved_bytes_for_block_allocated_weights == 0) {
     return;
   }
   // Get all block allocated weight values in ascending order of first use time.
+  absl::flat_hash_set<HloPosition> aliased_parameter_positions =
+      GetParameterInstructionsAliasedToOutput(
+          module_->input_output_alias_config(),
+          module_->entry_computation()->root_instruction());
   std::vector<const HloValue*> block_allocated_weight_values;
+  absl::flat_hash_map<const HloValue*, const HloValue*>
+      sliced_value_to_original_value;
   for (const HloPosition& position :
        options_.block_allocated_weights_positions) {
+    if (aliased_parameter_positions.contains(position)) {
+      continue;
+    }
     const HloValue* value =
         &alias_analysis_.dataflow_analysis().GetUniqueValueAt(
             position.instruction, position.index);
     block_allocated_weight_values.push_back(value);
+    // For block allocated weights that are sliced before use, we will try to
+    // add an async sliced copy to the alternate memory for every slice as a
+    // part of block allocations.
+    for (const HloUse& use : value->GetUses()) {
+      if (use.instruction->opcode() == HloOpcode::kSlice) {
+        const HloValue* slice_value =
+            &alias_analysis_.dataflow_analysis().GetUniqueValueAt(
+                use.instruction, {});
+        block_allocated_weight_values.push_back(slice_value);
+        sliced_value_to_original_value[slice_value] = value;
+      }
+    }
   }
 
   const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
@@ -2088,7 +2131,12 @@ void MsaAlgorithm::AllocateBlockAllocatedWeights() {
     LiveRange& live_range = value_to_live_ranges[value];
     live_range.first_use_time = std::numeric_limits<int64_t>::max();
     live_range.last_use_time = -1;
+    bool is_original_value = !sliced_value_to_original_value.contains(value);
     for (const HloUse& use : value->GetUses()) {
+      // For a weight only consider uses that are not slices.
+      if (is_original_value && use.instruction->opcode() == HloOpcode::kSlice) {
+        continue;
+      }
       auto it = instruction_schedule.find(use.instruction);
       if (it == instruction_schedule.end()) {
         continue;
@@ -2097,7 +2145,22 @@ void MsaAlgorithm::AllocateBlockAllocatedWeights() {
           std::min(live_range.first_use_time, it->second);
       live_range.last_use_time = std::max(live_range.last_use_time, it->second);
     }
+    if (live_range.last_use_time == -1) {
+      // If the value is not used directly, we can skip it.
+      finalized_values_.insert(value);
+    }
   }
+
+  // Erase all the values from block_allocated_weight_values that are not used
+  // directly and have been finalized.
+  block_allocated_weight_values.erase(
+      std::remove_if(block_allocated_weight_values.begin(),
+                     block_allocated_weight_values.end(),
+                     [&](const HloValue* value) {
+                       return value_to_live_ranges.at(value).last_use_time ==
+                              -1;
+                     }),
+      block_allocated_weight_values.end());
 
   absl::c_sort(block_allocated_weight_values,
                [&](const HloValue* a, const HloValue* b) {
@@ -2127,27 +2190,37 @@ void MsaAlgorithm::AllocateBlockAllocatedWeights() {
       options_.max_outstanding_prefetches_for_block_allocations;
   std::vector<int64_t> prefetch_end_times;
 
-  for (const HloValue* value : block_allocated_weight_values) {
-    LiveRange live_range = value_to_live_ranges.at(value);
+  absl::flat_hash_map<const HloValue*, Allocation*> value_to_pinned_allocation;
+
+  for (const HloValue* maybe_sliced_value : block_allocated_weight_values) {
+    LiveRange live_range = value_to_live_ranges.at(maybe_sliced_value);
     int64_t first_use_time = live_range.first_use_time;
     int64_t last_use_time = live_range.last_use_time;
+    auto it = sliced_value_to_original_value.find(maybe_sliced_value);
+    const HloValue* original_value;
+    if (it != sliced_value_to_original_value.end()) {
+      original_value = it->second;
+    } else {
+      original_value = maybe_sliced_value;
+    }
     int64_t definition_time =
-        instruction_schedule.at(value->defining_instruction());
+        instruction_schedule.at(original_value->defining_instruction());
     int64_t end_time = last_use_time;
-    int64_t buffer_size = buffer_intervals_.at(value).size;
+    int64_t buffer_size = buffer_intervals_.at(maybe_sliced_value).size;
     int64_t earliest_start_time_candidate =
         std::max(definition_time, previous_start_time);
-
+    CHECK_LE(earliest_start_time_candidate, first_use_time);
     // Find the earliest start time for which a chunk can be allocated for the
     // block allocated weight.
     std::optional<int64_t> optional_start_time =
         EarliestBlockAllocatedWeightStartTime(
-            earliest_start_time_candidate, end_time, buffer_size,
-            block_allocated_weights_bytes_limit, prefetch_end_times);
+            earliest_start_time_candidate, first_use_time, end_time,
+            buffer_size, block_allocated_weights_bytes_limit,
+            prefetch_end_times);
 
     if (!optional_start_time.has_value()) {
       LOG(WARNING) << "Could not find a chunk for block allocated weight: "
-                   << value->defining_position().ToString()
+                   << maybe_sliced_value->defining_position().ToString()
                    << " buffer size: " << buffer_size
                    << " within limit: " << block_allocated_weights_bytes_limit;
       continue;
@@ -2165,12 +2238,12 @@ void MsaAlgorithm::AllocateBlockAllocatedWeights() {
     if (n_in_flight_prefetches > max_in_flight_prefetches_allowed) {
       LOG(WARNING)
           << "Block allocated weight exceeds max prefetches in flight: "
-          << value->defining_position().ToString() << " "
+          << maybe_sliced_value->defining_position().ToString() << " "
           << n_in_flight_prefetches << " " << max_in_flight_prefetches_allowed;
       continue;
     }
 
-    MsaBufferInterval interval = MsaBufferInterval{/*buffer=*/value,
+    MsaBufferInterval interval = MsaBufferInterval{/*buffer=*/original_value,
                                                    /*size=*/buffer_size,
                                                    /*start=*/start_time,
                                                    /*end=*/end_time,
@@ -2182,13 +2255,28 @@ void MsaAlgorithm::AllocateBlockAllocatedWeights() {
     CHECK_LE(chunk_candidate.chunk_end(), block_allocated_weights_bytes_limit);
 
     // Add a pinned allocation in the default memory as the prev allocation
-    // for the copy allocation.
-    allocations_->push_back(std::make_unique<PinnedAllocation>(
-        value->defining_position(), MemorySpace::kDefault, kDummyChunk,
-        definition_time, end_time));
+    // for the copy allocation or extend the existing pinned allocation.
+    auto pinned_allocation_it = value_to_pinned_allocation.find(original_value);
+    Allocation* pinned_allocation;
+    if (pinned_allocation_it == value_to_pinned_allocation.end()) {
+      allocations_->push_back(std::make_unique<PinnedAllocation>(
+          original_value->defining_position(), MemorySpace::kDefault,
+          kDummyChunk, definition_time, end_time));
+      value_to_pinned_allocation[original_value] = allocations_->back().get();
+      pinned_allocation = allocations_->back().get();
+    } else {
+      pinned_allocation = pinned_allocation_it->second;
+      pinned_allocation->Extend(end_time);
+    }
 
+    HloInstruction* sync_mem_op = nullptr;
+    if (original_value != maybe_sliced_value) {
+      sync_mem_op = maybe_sliced_value->defining_instruction();
+    }
+
+    // Add an async slice copy for the block allocated weight value.
     AddAsyncCopyOrOtherMemOp(
-        /*prev_allocation=*/*(allocations_->back().get()),
+        /*prev_allocation=*/*pinned_allocation,
         /*memory_space=*/MemorySpace::kAlternate,
         /*chunk=*/chunk_candidate,
         /*exclusive_start_time=*/InclusiveToExclusiveStartTime(start_time),
@@ -2196,10 +2284,14 @@ void MsaAlgorithm::AllocateBlockAllocatedWeights() {
         /*copy_done_schedule_before_time=*/first_use_time,
         /*allocations=*/allocations_,
         /*aliased_offset=*/nullptr,
-        /*resource=*/0.0);
+        /*resource=*/0.0,
+        /*cross_program_prefetch_index=*/std::nullopt,
+        /*sync_mem_op=*/sync_mem_op);
 
     previous_start_time = start_time;
-    prefetch_end_times.push_back(end_time);
+    auto const sorted_position = std::lower_bound(
+        prefetch_end_times.begin(), prefetch_end_times.end(), end_time);
+    prefetch_end_times.insert(sorted_position, end_time);
 
     // Bookkeeping Checklist:
     // Commit the chunk to the alternate memory.
@@ -2210,14 +2302,22 @@ void MsaAlgorithm::AllocateBlockAllocatedWeights() {
 
     // Commit the chunk to the alternate memory.
     AddToPendingChunks(interval, chunk_candidate);
-    for (const HloUse& use : value->GetUses()) {
+
+    for (const HloUse& use : maybe_sliced_value->GetUses()) {
+      if (original_value == maybe_sliced_value &&
+          use.instruction->opcode() == HloOpcode::kSlice) {
+        // The use is a slice of the original value, so we don't need to add it
+        // to the alternate memory map or to the uses of the copy allocation.
+        continue;
+      }
       allocations_->back()->AddUse(use);
       // Add entries to operands in alternate memory map.
       operands_in_alternate_memory_map_[use.instruction].insert(
           std::make_pair(use.operand_number, use.operand_index));
     }
+
     // Add the value to the finalized values set.
-    finalized_values_.insert(value);
+    finalized_values_.insert(maybe_sliced_value);
     // Add a repack allocation block to the repack allocation blocks list.
     repack_allocation_blocks_.push_back(MakeRepackAllocationBlock(
         start_time, end_time, chunk_candidate.size, chunk_candidate.offset,

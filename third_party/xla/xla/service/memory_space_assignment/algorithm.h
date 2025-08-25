@@ -346,8 +346,8 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // use_time and the end time is the use_time. The chunk.end() should be less
   // than the block_allocated_weights_bytes_limit.
   std::optional<int64_t> EarliestBlockAllocatedWeightStartTime(
-      int64_t definition_time, int64_t use_time, int64_t buffer_size,
-      int64_t block_allocated_weights_bytes_limit,
+      int64_t definition_time, int64_t first_use_time, int64_t last_use_time,
+      int64_t buffer_size, int64_t block_allocated_weights_bytes_limit,
       std::vector<int64_t>& prefetch_end_times);
 
  protected:
