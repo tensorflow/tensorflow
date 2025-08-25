@@ -83,7 +83,6 @@ build:warnings --copt=-Wunused-but-set-parameter
 build:warnings --copt=-Wunused-comparison
 build:warnings --copt=-Wvla
 build:warnings --copt=-Wctad-maybe-unsupported
-build:warnings --copt=-Wthread-safety-beta
 build:warnings --copt=-Wno-trigraphs
 build:warnings --copt=-Woverloaded-virtual
 build:warnings --copt=-Wno-invalid-offsetof
