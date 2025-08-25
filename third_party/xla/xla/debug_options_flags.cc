@@ -450,6 +450,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_enable_command_buffer_on_thunks(true);
   opts.set_xla_detect_unstable_reductions(
       DebugOptions::UNSTABLE_REDUCTION_DETECTION_MODE_NONE);
+  opts.set_xla_gpu_enable_scaled_dot_fusion(false);
   return opts;
 }
 
@@ -2551,6 +2552,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 "that checks for unstable reductions in HLO computations. "
                 "Acceptable values are: 'none', 'log', and 'crash'. 'none' is "
                 "the default."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_scaled_dot_fusion",
+      bool_setter_for(&DebugOptions::set_xla_gpu_enable_scaled_dot_fusion),
+      debug_options->xla_gpu_enable_scaled_dot_fusion(),
+      "Enable scaled-dot fusion."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

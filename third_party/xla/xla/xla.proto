@@ -534,6 +534,9 @@ message DebugOptions {
   // Whether reduction epilogue fusion is enabled in fusion passes.
   optional bool xla_gpu_enable_reduction_epilogue_fusion = 243;
 
+  // Whether to enable the scaled dot fusion emitter.
+  optional bool xla_gpu_enable_scaled_dot_fusion = 408;
+
   // Enable the scatter determinism expander, an optimized pass that
   // rewrites scatter operations to ensure deterministic behavior with high
   // performance.
@@ -1328,7 +1331,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 408
+  // Next id: 409
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

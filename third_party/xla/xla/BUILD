@@ -867,8 +867,8 @@ cc_library(
     visibility = internal_visibility([":friends"]),
     deps = [
         ":array",
-        ":types",
-        "//xla/tsl/platform:logging",
+        ":util",
+        "@com_google_absl//absl/functional:function_ref",
     ],
 )
 

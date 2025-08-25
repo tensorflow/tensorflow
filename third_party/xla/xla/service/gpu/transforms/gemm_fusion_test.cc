@@ -1455,6 +1455,28 @@ TEST_F(SmallDotGemmFusionTest, Int4WithMinorBatchDimIsNotRewritten) {
   EXPECT_FALSE(result);
 }
 
+TEST_F(GemmFusionTest, ScaledDotIsFused) {
+  constexpr absl::string_view kHloText = R"(
+    HloModule ScaledDotIsFused
+
+    ENTRY entry {
+     lhs = bf16[4,4] parameter(0)
+     lhs_scale = bf16[1,1] parameter(1)
+     rhs = bf16[4,4] parameter(2)
+     rhs_scale = bf16[1,1] parameter(3)
+     ROOT dot = bf16[4,4] scaled-dot(lhs, lhs_scale, rhs, rhs_scale),
+         lhs_contracting_dims={1},
+         rhs_contracting_dims={1}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto verified_module,
+                          ParseAndReturnVerifiedModule(kHloText));
+  TF_ASSERT_OK_AND_ASSIGN(auto result,
+                          GemmFusion(gpu_version_).Run(verified_module.get()));
+  EXPECT_TRUE(result);
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
