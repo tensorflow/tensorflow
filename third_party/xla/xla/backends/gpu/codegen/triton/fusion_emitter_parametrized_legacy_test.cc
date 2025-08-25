@@ -75,6 +75,9 @@ class MixedTypeTest : public GpuCodegenTest,
     debug_options.set_xla_gpu_cublas_fallback(false);
     // Always rewrite Gemms with Triton regardless of size.
     debug_options.set_xla_gpu_gemm_rewrite_size_threshold(0);
+    // That is a test for legacy Triton emitter that is being replaced by the
+    // generic Triton emitter.
+    debug_options.clear_xla_gpu_unsupported_generic_triton_emitter_features();
     return debug_options;
   }
 };

@@ -58,9 +58,10 @@ class TritonTest : public GpuCodegenTest {
         .set_xla_gpu_experimental_enable_subchannel_dequantisation_fusion(true);
     // TODO(b/393299275): remove this once flag is on by default and test is
     // updated.
-    // Note that we do NOT set
-    // xla_gpu_unsupported_generic_triton_emitter_opts1 here as test
-    // will run the pass forcefully later.
+    // Note that we clear
+    // xla_gpu_unsupported_generic_triton_emitter_opts here to disable
+    // nest gemm fusion pass as test will run the pass manually.
+    debug_options.clear_xla_gpu_unsupported_generic_triton_emitter_features();
     return debug_options;
   }
 
