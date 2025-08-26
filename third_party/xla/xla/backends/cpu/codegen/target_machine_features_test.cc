@@ -26,42 +26,44 @@ limitations under the License.
 namespace xla::cpu {
 namespace {
 
-struct Avx512Bf16TestSpec {
+struct Avx512Bf16Fp16TestSpec {
   std::string cpu_name;
   std::string features;
   bool has_avx512bf16;
+  bool has_avx512fp16;
 };
 
-class Avx512Bf16Test
+class Avx512Bf16Fp16Test
     : public TargetMachineTestBase,
-      public ::testing::WithParamInterface<Avx512Bf16TestSpec> {
+      public ::testing::WithParamInterface<Avx512Bf16Fp16TestSpec> {
  public:
   static std::string Name(
-      const ::testing::TestParamInfo<Avx512Bf16TestSpec>& info) {
+      const ::testing::TestParamInfo<Avx512Bf16Fp16TestSpec>& info) {
     return info.param.cpu_name;
   }
 };
 
-TEST_P(Avx512Bf16Test, CheckAvailability) {
-  Avx512Bf16TestSpec spec = GetParam();
+TEST_P(Avx512Bf16Fp16Test, CheckAvailability) {
+  Avx512Bf16Fp16TestSpec spec = GetParam();
   const char* triple_string = "x86_64-unknown-linux-gnu";
   std::unique_ptr<TargetMachineFeatures> features =
       CreateTargetMachineFeatures(triple_string, spec.cpu_name, spec.features);
   EXPECT_EQ(features->has_avx512bf16(), spec.has_avx512bf16);
+  EXPECT_EQ(features->has_avx512fp16(), spec.has_avx512fp16);
 }
 
-std::vector<Avx512Bf16TestSpec> GetAvx512Bf16TestSpecs() {
-  return std::vector<Avx512Bf16TestSpec>{
-      Avx512Bf16TestSpec{"znver3", "+avx,+avx2", false},
-      Avx512Bf16TestSpec{"sapphirerapids",
-                         "+avx512vnni,+avx512bf16,+amx-bf16,+amx-int8,"
-                         "+amx-tile,+amx-transpose",
-                         true}};
+std::vector<Avx512Bf16Fp16TestSpec> GetAvx512Bf16Fp16TestSpecs() {
+  return std::vector<Avx512Bf16Fp16TestSpec>{
+      Avx512Bf16Fp16TestSpec{"znver3", "+avx,+avx2", false, false},
+      Avx512Bf16Fp16TestSpec{"sapphirerapids",
+                             "+avx512vnni,+avx512bf16,+avx512fp16,+amx-bf16,"
+                             "+amx-int8,+amx-tile,+amx-transpose",
+                             true, true}};
 }
 
-INSTANTIATE_TEST_SUITE_P(Avx512Bf16Suite, Avx512Bf16Test,
-                         ::testing::ValuesIn(GetAvx512Bf16TestSpecs()),
-                         Avx512Bf16Test::Name);
+INSTANTIATE_TEST_SUITE_P(Avx512Bf16Fp16Suite, Avx512Bf16Fp16Test,
+                         ::testing::ValuesIn(GetAvx512Bf16Fp16TestSpecs()),
+                         Avx512Bf16Fp16Test::Name);
 
 }  // namespace
 }  // namespace xla::cpu
