@@ -1,4 +1,4 @@
-// RUN: sdy_opt %s -xla-sdy-stablehlo-export-pipeline='keep-hlo-sharding-constraints=true keep-shard-map-body-as-func=true' -xla-sdy-stablehlo-import-pipeline 2>&1 | FileCheck %s
+// RUN: sdy_opt %s -xla-sdy-stablehlo-export-pipeline='keep-hlo-sharding-constraints=true' -xla-sdy-stablehlo-import-pipeline 2>&1 | FileCheck %s
 
 sdy.mesh @mesh = <["a"=4, "b"=2]>
 

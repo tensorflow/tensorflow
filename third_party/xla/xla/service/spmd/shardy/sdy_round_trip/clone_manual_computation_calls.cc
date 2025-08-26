@@ -68,7 +68,7 @@ class SdyRoundTripCloneManualComputationCallsPass
     // Clone multiple calls to the same function.
     llvm::DenseSet<StringRef> seenCalleeNames;
     moduleOp->walk([&](CallOp op) {
-      if (!op.getCallee().contains(kManualComputationBodyFuncName)) {
+      if (!op.getCallee().contains(kManualComputationFuncName)) {
         return;
       }
       if (seenCalleeNames.insert(op.getCallee()).second) {
