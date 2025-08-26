@@ -237,32 +237,155 @@ namespace {
 // execution graph from a command sequence.
 class CommandOperation : public ExecutionGraph::Operation {
  public:
-  explicit CommandOperation(const CommandBufferCmd* cmd)
+  explicit CommandOperation(CommandBufferCmd::BufferUseVector buffers,
+                            ResourceUseVector resources,
+                            const CommandBufferCmd* cmd)
       : name_(absl::StrFormat("cmd %s: %s", cmd->ToString(),
                               cmd->profile_annotation())),
-        buffers_(cmd->buffers()),
-        resources_(cmd->resources()) {}
+        buffers_(std::move(buffers)),
+        resources_(std::move(resources)),
+        cmd_(cmd),
+        token_(Resource::Create(Resource::Kind::kToken)) {
+    resources_.push_back(ResourceUse::Write(token_));
+  }
 
   absl::string_view name() const final { return name_; }
   absl::Span<const BufferUse> BufferUses() const final { return buffers_; }
   absl::Span<const ResourceUse> ResourceUses() const final {
     return resources_;
   }
+  void add_resouce_use(ResourceUse resource_use) {
+    resources_.push_back(resource_use);
+  }
+
+  std::shared_ptr<Resource> token() const { return token_; }
+  const CommandBufferCmd* cmd() const { return cmd_; }
+
+  std::string ToString() const final {
+    std::vector<std::string> resource_reprs;
+    resource_reprs.reserve(resources_.size());
+    for (const ResourceUse& use : resources_) {
+      absl::string_view access =
+          use.access() == ResourceUse::kRead ? "read" : "write";
+      absl::string_view kind = Resource::ToString(use.resource()->kind());
+      resource_reprs.push_back(
+          absl::StrFormat("%s@%p(%s)", kind, use.resource().get(), access));
+    }
+
+    return absl::StrFormat("%s resources=[%s]", cmd_->ToString(),
+                           absl::StrJoin(resource_reprs, ", "));
+  }
 
  private:
   std::string name_;
   CommandBufferCmd::BufferUseVector buffers_;
   ResourceUseVector resources_;
+  const CommandBufferCmd* cmd_;
+
+  // The token resource is used to specify dependency other than buffer data
+  // flow, e.g, LHS topology will use token resouce to specify dependency across
+  // commands.
+  std::shared_ptr<Resource> token_;
 };
 }  // namespace
 
 static std::vector<CommandOperation> CreateCommandOperations(
-    const CommandBufferCmdSequence& commands) {
+    const CommandBufferCmdSequence& commands,
+    CommandBufferCmdExecutor::SynchronizationMode synchronization_mode) {
   std::vector<CommandOperation> operations;
   operations.reserve(commands.size());
-  for (const std::unique_ptr<CommandBufferCmd>& cmd : commands) {
-    operations.emplace_back(cmd.get());
+  VLOG(3) << "CreateCommandOperations with synchronization mode: "
+          << (synchronization_mode ==
+                      CommandBufferCmdExecutor::SynchronizationMode::kConcurrent
+                  ? "Concurrent"
+                  : "LHS");
+  if (synchronization_mode ==
+      CommandBufferCmdExecutor::SynchronizationMode::kConcurrent) {
+    // For concurrent synchronization mode, pass in buffer and resouces for
+    // dependency inference.
+    for (const std::unique_ptr<CommandBufferCmd>& cmd : commands) {
+      operations.emplace_back(cmd->buffers(), cmd->resources(), cmd.get());
+    }
   }
+
+  if (synchronization_mode ==
+      CommandBufferCmdExecutor::SynchronizationMode::kLHS) {
+    // For LHS mode, don't pass in buffers.
+    // Will use token resource to specify dependency across commands.
+    for (const std::unique_ptr<CommandBufferCmd>& cmd : commands) {
+      operations.emplace_back(CommandBufferCmd::BufferUseVector{},
+                              cmd->resources(), cmd.get());
+    }
+
+    auto is_async_start = [](const CommandOperation& op) -> bool {
+      auto* collective_cmd = dynamic_cast<const CollectiveCmd*>(op.cmd());
+      return (collective_cmd && collective_cmd->IsAsync());
+    };
+
+    auto is_async_done = [](const CommandOperation& op) -> bool {
+      auto* async_done_cmd = dynamic_cast<const AsyncDoneCmd*>(op.cmd());
+      return (async_done_cmd && async_done_cmd->IsAsync());
+    };
+
+    auto find_async_start_cmd_id = [&](int64_t async_done_cmd_id) -> int64_t {
+      auto* async_done_cmd = dynamic_cast<const AsyncDoneCmd*>(
+          operations[async_done_cmd_id].cmd());
+      CHECK(async_done_cmd);
+      for (int64_t j = async_done_cmd_id - 1; j >= 0; --j) {
+        if (is_async_start(operations[j])) {
+          auto* async_start_cmd =
+              dynamic_cast<const CollectiveCmd*>(operations[j].cmd());
+          if (async_start_cmd->IsAsync() &&
+              async_start_cmd->async_events() ==
+                  async_done_cmd->async_events()) {
+            return j;
+          }
+        }
+      }
+      return -1;
+    };
+
+    for (int64_t i = 0; i < operations.size(); ++i) {
+      if (is_async_start(operations[i])) {
+        for (int64_t j = i - 1; j >= 0; --j) {
+          if (is_async_start(operations[j])) {
+            continue;
+          }
+          operations[i].add_resouce_use(
+              ResourceUse::Read(operations[j].token()));
+          break;
+        }
+      } else if (is_async_done(operations[i])) {
+        int64_t async_start_cmd_id = find_async_start_cmd_id(i);
+        CHECK_NE(async_start_cmd_id, -1);
+        operations[i].add_resouce_use(
+            ResourceUse::Read(operations[async_start_cmd_id].token()));
+        CHECK_GT(i, 0);
+        if ((i - 1) != async_start_cmd_id) {
+          operations[i].add_resouce_use(
+              ResourceUse::Read(operations[i - 1].token()));
+        }
+      } else {
+        for (int64_t j = i - 1; j >= 0; --j) {
+          if (is_async_start(operations[j])) {
+            // The first command in the async group does not depend on the async
+            // command
+            continue;
+          }
+          operations[i].add_resouce_use(
+              ResourceUse::Read(operations[j].token()));
+          break;
+        }
+      }
+    }
+  }
+
+  if (VLOG_IS_ON(2)) {
+    for (const CommandOperation& op : operations) {
+      VLOG(2) << op.ToString();
+    }
+  }
+
   return operations;
 }
 
@@ -274,10 +397,11 @@ absl::StatusOr<CommandBufferCmdExecutor> CommandBufferCmdExecutor::Create(
   // In automatic synchronization mode construct an execution graph for the
   // sequence of commands and derive the structure of command dependencies
   // from the buffer use conflicts.
-  if (synchronization_mode == SynchronizationMode::kConcurrent) {
-    auto operations = CreateCommandOperations(commands);
+  if (synchronization_mode != SynchronizationMode::kSerialize) {
+    auto operations = CreateCommandOperations(commands, synchronization_mode);
     TF_ASSIGN_OR_RETURN(execution_graph,
                         ExecutionGraph::Create<CommandOperation>(operations));
+    VLOG(3) << "Execution graph: " << execution_graph->ToString();
   }
 
   return CommandBufferCmdExecutor(synchronization_mode, std::move(commands),
@@ -369,7 +493,8 @@ CommandBufferCmdExecutor::RecordCreate(
     return std::vector<const se::CommandBuffer::Command*>{};
   }
 
-  // Keep a state associated with commands in the sequence in the state manager.
+  // Keep a state associated with commands in the sequence in the state
+  // manager.
   CommandBufferCmd::StateManager& state = record_params.state;
 
   // Collect sink commands while recording the command sequence.
@@ -396,9 +521,9 @@ CommandBufferCmdExecutor::RecordCreate(
     std::vector<const se::CommandBuffer::Command*> command_dependencies =
         Dependencies(record_params, command_buffer, id);
 
-    // Source command must depend on external dependencies passed by the caller,
-    // internal commands dependencies are defined by the command sequence
-    // structure (buffer and resource dependencies).
+    // Source command must depend on external dependencies passed by the
+    // caller, internal commands dependencies are defined by the command
+    // sequence structure (buffer and resource dependencies).
     auto record_action =
         IsSource(id) ? CommandBufferCmd::RecordCreate{dependencies}
                      : CommandBufferCmd::RecordCreate{command_dependencies};
@@ -439,7 +564,8 @@ absl::Status CommandBufferCmdExecutor::RecordUpdate(
     return absl::OkStatus();
   }
 
-  // Keep a state associated with commands in the sequence in the state manager.
+  // Keep a state associated with commands in the sequence in the state
+  // manager.
   CommandBufferCmd::StateManager& state = record_params.state;
 
   // Check if command `id` has to be updated based on the buffer allocations
@@ -544,7 +670,6 @@ CommandBufferCmdExecutor::Dependencies(const RecordParams& record_params,
                                        se::CommandBuffer* command_buffer,
                                        CommandId id) const {
   // Source commands have no dependencies.
-  VLOG(2) << "CommandSequence is :\n" << commands_.ToString();
   if (IsSource(id)) {
     VLOG(2) << "Command ID " << id
             << " is a source command, empty dependencies";
@@ -557,54 +682,6 @@ CommandBufferCmdExecutor::Dependencies(const RecordParams& record_params,
     for (const ExecutionGraph::NodeEdge& in_edge :
          execution_graph_->in_edges(id)) {
       dependencies_ids.push_back(in_edge.id);
-    }
-  } else if (synchronization_mode_ == SynchronizationMode::kLHS) {
-    CHECK(id < commands_.size());
-    auto is_async_start = [](const CommandBufferCmd* cmd) -> bool {
-      return cmd->command_type() == CommandBufferCmdType::kAllGatherCmd ||
-             cmd->command_type() == CommandBufferCmdType::kAllReduceCmd ||
-             cmd->command_type() == CommandBufferCmdType::kReduceScatterCmd ||
-             cmd->command_type() == CommandBufferCmdType::kAllToAllCmd;
-    };
-
-    auto find_async_start_cmd_id =
-        [&](const AsyncDoneCmd* async_done_cmd) -> CommandId {
-      CHECK(async_done_cmd->async_events() != nullptr);
-      for (CommandId i = id - 1; i >= 0; --i) {
-        if (is_async_start(commands_[i].get()) &&
-            static_cast<const CollectiveCmd*>(commands_[i].get())
-                    ->async_events() == async_done_cmd->async_events()) {
-          return i;
-        }
-      }
-      return -1;
-    };
-
-    if (commands_[id]->command_type() == CommandBufferCmdType::kAsyncDone) {
-      // Add dependency on the async start command.
-      auto async_start_cmd_id = find_async_start_cmd_id(
-          static_cast<const AsyncDoneCmd*>(commands_[id].get()));
-      CHECK_NE(async_start_cmd_id, -1);
-      dependencies_ids.push_back(async_start_cmd_id);
-
-      // Add dependency on the last command in async region.
-      for (CommandId i = id - 1; i > async_start_cmd_id; --i) {
-        if (is_async_start(commands_[i].get()) &&
-            static_cast<const CollectiveCmd*>(commands_[i].get())->IsAsync()) {
-          continue;
-        }
-        dependencies_ids.push_back(i);
-        break;
-      }
-    } else {
-      for (CommandId i = id - 1; i >= 0; --i) {
-        if (is_async_start(commands_[i].get()) &&
-            static_cast<const CollectiveCmd*>(commands_[i].get())->IsAsync()) {
-          continue;
-        }
-        dependencies_ids.push_back(i);
-        break;
-      }
     }
   } else {
     dependencies_ids.push_back(id - 1);
@@ -620,10 +697,10 @@ CommandBufferCmdExecutor::Dependencies(const RecordParams& record_params,
 
     if (record_state->command == nullptr) {
       // Some commands might end up not recording anything into the command
-      // buffer, e.g. memcpy commands where source and destination are the same.
-      // We have to follow dependencies of such commands to find the real
-      // dependencies, so we don't record a command that is immediately ready to
-      // execute, as it will create data races.
+      // buffer, e.g. memcpy commands where source and destination are the
+      // same. We have to follow dependencies of such commands to find the
+      // real dependencies, so we don't record a command that is immediately
+      // ready to execute, as it will create data races.
       auto deps = Dependencies(record_params, command_buffer, dependency_id);
       dependencies.insert(dependencies.end(), deps.begin(), deps.end());
     } else {
@@ -650,13 +727,13 @@ absl::StatusOr<std::string> CommandBufferCmdExecutor::RenderExecutionGraph() {
     return Unimplemented("No execution graph renderer registered");
   }
 
-  if (synchronization_mode_ != SynchronizationMode::kConcurrent) {
+  if (synchronization_mode_ == SynchronizationMode::kSerialize) {
     return Unimplemented(
         "Execution graph rendering is only supported for "
-        "concurrent synchronization mode");
+        "concurrent/LHS synchronization mode");
   }
 
-  auto operations = CreateCommandOperations(commands_);
+  auto operations = CreateCommandOperations(commands_, synchronization_mode_);
   absl::InlinedVector<const ExecutionGraph::Operation*, 32> operations_ptrs;
   operations_ptrs.reserve(operations.size());
   for (const auto& operation : operations) {
@@ -737,9 +814,9 @@ absl::StatusOr<se::CommandBuffer*> TracedCommandBuffer::GetOrTraceCommandBuffer(
     }
   }
 
-  // Create a new entry by calling a user-provided tracing function, replace the
-  // last entry with it, move it to front and return a pointer to cached command
-  // buffer.
+  // Create a new entry by calling a user-provided tracing function, replace
+  // the last entry with it, move it to front and return a pointer to cached
+  // command buffer.
   TF_ASSIGN_OR_RETURN(
       entries_[capacity_ - 1].command_buffer,
       se::TraceCommandBufferFactory::Create(executor, stream, trace));
