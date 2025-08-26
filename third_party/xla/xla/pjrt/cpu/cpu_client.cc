@@ -590,19 +590,7 @@ static absl::StatusOr<std::unique_ptr<xla::Executable>> CompileAheadOfTime(
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 PjRtCpuClient::CompileAndLoad(mlir::ModuleOp module, CompileOptions options) {
-  // Dump compile inputs to the specified path if populated.
-  if (options.executable_build_options.has_debug_options()) {
-    std::string dump_path =
-        options.executable_build_options.debug_options().xla_dump_to();
-    if (!dump_path.empty()) {
-      LOG(INFO) << "Dumping compile inputs to " << dump_path;
-      auto dump_status =
-          pjrt::DumpCompileInputs(dump_path, options, module, topology_);
-      if (!dump_status.ok()) {
-        LOG(WARNING) << "Failed to dump compile inputs: " << dump_status;
-      }
-    }
-  }
+  TF_RETURN_IF_ERROR(pjrt::MaybeDumpCompileInputs(options, module, topology_));
 
   XlaComputation xla_computation;
   ExecutableBuildOptions& exec_build_options = options.executable_build_options;
