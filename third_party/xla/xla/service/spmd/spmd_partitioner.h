@@ -426,6 +426,13 @@ class SpmdPartitioner : public HloModulePass {
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
 
+  // Preprocesses the graph to make sure that computations called in
+  // control-flow contexts (call, while, conditional) have matching sharding
+  // annotations on callee parameters and the caller arguments.
+  absl::StatusOr<bool> PreprocessCallSites(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
+
   void set_execution_threads(
       const absl::flat_hash_set<absl::string_view>& execution_threads) {
     execution_threads_ = execution_threads;

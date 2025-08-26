@@ -5452,6 +5452,8 @@ absl::StatusOr<bool> SpmdPartitioner::Run(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   set_execution_threads(execution_threads);
   TF_RETURN_IF_ERROR(PreprocessSharding(module, execution_threads));
+  TF_ASSIGN_OR_RETURN(bool changed,
+                      PreprocessCallSites(module, execution_threads));
   TF_RETURN_IF_ERROR(PreprocessHlos(module, execution_threads));
 
   XLA_VLOG_LINES(1, SpmdLogger::ReportBeforePartition(
@@ -5461,15 +5463,11 @@ absl::StatusOr<bool> SpmdPartitioner::Run(
   // that unreduced sharding can be recovered at the end of this pass.
   TF_RETURN_IF_ERROR(ConvertUnreducedSharding(module, execution_threads));
 
-  FlattenCallGraph flatten;
-  TF_ASSIGN_OR_RETURN(auto changed, flatten.Run(module));
-
   SpmdLogger logger(options_.report_instruction_count,
                     /*disabled=*/!VLOG_IS_ON(1));
   auto program_shape = module->entry_computation()->ComputeProgramShape();
   int64_t next_channel_id = hlo_query::NextChannelId(*module);
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
-  CHECK(call_graph->IsFlattened());
   TF_RETURN_IF_ERROR(
       call_graph->VisitNodes([&](const CallGraphNode& node) -> absl::Status {
         HloComputation* computation = node.computation();
@@ -5495,10 +5493,8 @@ absl::StatusOr<bool> SpmdPartitioner::Run(
         if (node.caller_callsites().empty()) {
           return absl::OkStatus();
         }
-        if (node.caller_callsites().size() > 1) {
-          return absl::InternalError(
-              "Expected CFG to be flattened before SPMD partitioner.");
-        }
+        // PreprocessCallSites made sure a computation is only used by a single
+        // opcode and with a single sharding on the arguments.
         HloInstruction* caller = node.caller_callsites()[0].instruction();
         switch (caller->opcode()) {
           case HloOpcode::kWhile: {
@@ -5596,7 +5592,6 @@ absl::StatusOr<bool> SpmdPartitioner::Run(
     pass.AddPass<TupleSimplifier>();
     pass.AddPass<HloDCE>(/*remove_cross_partition_collective_ops=*/true);
     pass.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
-    pass.AddPass<FlattenCallGraph>();
     TF_RETURN_IF_ERROR(pass.Run(module, execution_threads).status());
   }
 
@@ -5647,42 +5642,6 @@ absl::Status SpmdPartitioner::PreprocessSharding(
               HloSharding::Single(hlo->shape(), HloSharding::Replicate()));
         }
       }
-
-      // For control-flow constructs, we must make sure that the inputs and
-      // outputs of the called computation have the same sharding as the
-      // arguments being passed in.
-      switch (hlo->opcode()) {
-        case HloOpcode::kWhile: {
-          hlo->while_condition()->parameter_instruction(0)->set_sharding(
-              hlo->sharding());
-          hlo->while_body()->parameter_instruction(0)->set_sharding(
-              hlo->sharding());
-          // The condition root must be replicated so that all partitions follow
-          // the same control flow.
-          HloInstruction* cond_root =
-              hlo->while_condition()->root_instruction();
-          const HloSharding cond_root_sharding =
-              hlo_sharding_util::ReplicateAllDataDims(cond_root->sharding());
-          cond_root->set_sharding(cond_root_sharding);
-          break;
-        }
-        case HloOpcode::kConditional: {
-          for (int64_t i = 0; i < hlo->branch_count(); ++i) {
-            hlo->branch_computation(i)->parameter_instruction(0)->set_sharding(
-                hlo->operand(i + 1)->sharding());
-          }
-          break;
-        }
-        case HloOpcode::kCall: {
-          for (int64_t i = 0; i < hlo->operand_count(); ++i) {
-            hlo->to_apply()->parameter_instruction(i)->set_sharding(
-                hlo->operand(i)->sharding());
-          }
-          break;
-        }
-        default:
-          break;
-      }
     }
   }
 
@@ -5714,7 +5673,6 @@ absl::Status SpmdPartitioner::PreprocessSharding(
           << param->sharding().ToString();
     }
   }
-
   return absl::OkStatus();
 }
 
@@ -5992,6 +5950,229 @@ absl::Status SpmdPartitioner::PreprocessHlos(
     }
   }
   return absl::OkStatus();
+}
+
+namespace {
+struct CallSiteInfo {
+  HloOpcode opcode;
+  std::vector<std::shared_ptr<const HloSharding>> param_sharding;
+
+  bool operator==(const CallSiteInfo& other) const {
+    if (opcode != other.opcode) {
+      return false;
+    }
+    if (param_sharding.size() != other.param_sharding.size()) {
+      return false;
+    }
+    for (int64_t i = 0; i < param_sharding.size(); ++i) {
+      if (*param_sharding[i] != *other.param_sharding[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  template <typename H>
+  friend H AbslHashValue(H h, const CallSiteInfo& call_site_info) {
+    h = H::combine(std::move(h), call_site_info.opcode);
+    for (const auto& param_sharding : call_site_info.param_sharding) {
+      h = H::combine(std::move(h), *param_sharding);
+    }
+    return h;
+  }
+};
+
+// We want to group the call-sites of every computation (that's used in a
+// control-flow context) based on (a) the opcode of the caller, and (b) how the
+// parameters are sharded.
+// Given a computation and a calling instruction for that computation,
+// `GetCallSiteInfos` extracts the aforementioned information.
+absl::StatusOr<std::vector<CallSiteInfo>> GetCallSiteInfos(
+    HloInstruction* caller, HloComputation* computation) {
+  std::vector<CallSiteInfo> call_site_infos;
+  // For `while` and `call`, a computation should only be referenced once, so we
+  // only have a single callsite info. For `conditional`, we may have the same
+  // computation called on multiple branches, and with different sharding, so we
+  // may need multiple.
+  switch (caller->opcode()) {
+    case HloOpcode::kWhile: {
+      CallSiteInfo call_site_info;
+      call_site_info.opcode = caller->opcode();
+      call_site_info.param_sharding.push_back(caller->sharding_ptr());
+      call_site_infos.push_back(call_site_info);
+      break;
+    }
+    case HloOpcode::kCall: {
+      CallSiteInfo call_site_info;
+      call_site_info.opcode = caller->opcode();
+      call_site_info.param_sharding.reserve(caller->operand_count());
+      for (HloInstruction* operand : caller->operands()) {
+        call_site_info.param_sharding.push_back(operand->sharding_ptr());
+      }
+      call_site_infos.push_back(call_site_info);
+      break;
+    }
+    case HloOpcode::kConditional: {
+      for (int64_t i = 0; i < caller->branch_count(); ++i) {
+        if (caller->branch_computation(i) == computation) {
+          CallSiteInfo call_site_info;
+          call_site_info.opcode = caller->opcode();
+          call_site_info.param_sharding.push_back(
+              caller->operand(i + 1)->sharding_ptr());
+          call_site_infos.push_back(call_site_info);
+        }
+      }
+      break;
+    }
+    default:
+      return absl::InternalError("Unexpected opcode in call context.");
+  }
+  return call_site_infos;
+}
+
+// Do we already know which computation callsites that use a particular sharding
+// should refer to? If not, create one, otherwise reuse the existing one.
+HloComputation* GetCanonicalComputation(
+    HloComputation* computation, const CallSiteInfo& call_site_info,
+    absl::flat_hash_map<CallSiteInfo, HloComputation*>& info_to_computation,
+    bool& changed) {
+  HloComputation* canonical_computation = nullptr;
+  if (auto it = info_to_computation.find(call_site_info);
+      it == info_to_computation.end()) {
+    if (info_to_computation.empty()) {
+      // Don't actually make a copy for the first callsite info we
+      // encounter, just reuse the original computation. This is
+      // likely the common case - either there's only one callsite,
+      // or all the callsites agree on how the arguments are
+      // partitioned.
+      canonical_computation = computation;
+    } else {
+      canonical_computation =
+          computation->parent()->AddEmbeddedComputation(computation->Clone());
+      changed = true;
+    }
+    info_to_computation[call_site_info] = canonical_computation;
+  } else {
+    canonical_computation = it->second;
+  }
+  return canonical_computation;
+}
+}  // namespace
+
+absl::StatusOr<bool> SpmdPartitioner::PreprocessCallSites(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  bool changed = false;
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
+
+  // For each computation that is used in multiple contexts, make
+  // duplicates that will avoid conflicts.
+  absl::flat_hash_map<HloComputation*,
+                      absl::flat_hash_map<CallSiteInfo, HloComputation*>>
+      canonical_computations;
+  TF_RETURN_IF_ERROR(call_graph->VisitNodes([&](const CallGraphNode& node)
+                                                -> absl::Status {
+    HloComputation* computation = node.computation();
+    if (!execution_threads.empty() &&
+        !execution_threads.contains(computation->execution_thread())) {
+      return absl::OkStatus();
+    }
+    if (node.context() != CallContext::kControlFlow) {
+      return absl::OkStatus();
+    }
+    for (const CallSite& call_site : node.caller_callsites()) {
+      HloInstruction* caller = call_site.instruction();
+      absl::flat_hash_map<CallSiteInfo, HloComputation*>& info_to_computation =
+          canonical_computations[computation];
+      TF_ASSIGN_OR_RETURN(std::vector<CallSiteInfo> call_site_infos,
+                          GetCallSiteInfos(caller, computation));
+      switch (caller->opcode()) {
+        case HloOpcode::kWhile:
+        case HloOpcode::kCall: {
+          CHECK_EQ(call_site_infos.size(), 1)
+              << "Unexpected number of call site infos for "
+              << caller->ToString();
+          const CallSiteInfo& call_site_info = call_site_infos[0];
+          HloComputation* canonical_computation = GetCanonicalComputation(
+              computation, call_site_info, info_to_computation, changed);
+          call_site.instruction()->ReplaceCalledComputations(
+              [&](HloComputation* called) {
+                return (called == computation) ? canonical_computation : called;
+              });
+          break;
+        }
+        case HloOpcode::kConditional: {
+          // Since call_site_infos only contains information for branches
+          // that refer to `computation`, rather than all branches, we need
+          // to keep track of how many branches of this kConditional
+          // actually point to `computation`. (Note that in most cases, this
+          // will be 1, but more general cases are supported.)
+          int64_t matched_branches = 0;
+          for (int i = 0; i < caller->branch_count(); ++i) {
+            HloComputation* branch = caller->branch_computation(i);
+            if (branch != computation) {
+              continue;
+            }
+            const CallSiteInfo& call_site_info =
+                call_site_infos[matched_branches++];
+            HloComputation* canonical_computation = GetCanonicalComputation(
+                computation, call_site_info, info_to_computation, changed);
+            call_site.instruction()->set_branch_computation(
+                i, canonical_computation);
+          }
+          break;
+        }
+        default:
+          return absl::InternalError("Unexpected opcode in call context.");
+      }
+    }
+    return absl::OkStatus();
+  }));
+
+  // We've ensured that there are no more conflicts between different callsites
+  // of the same computation by specializing the required computations. So now
+  // we can continue the fixup process under the assumption we can always
+  // propagate from arguments to the corresponding parameters.
+  for (HloComputation* computation :
+       module->MakeComputationPostOrder(execution_threads)) {
+    for (HloInstruction* hlo : computation->MakeInstructionPostOrder()) {
+      // We must make sure that the inputs and outputs of the called computation
+      // have the same sharding as the arguments being passed in.
+      switch (hlo->opcode()) {
+        case HloOpcode::kWhile: {
+          hlo->while_condition()->parameter_instruction(0)->set_sharding(
+              hlo->sharding());
+          hlo->while_body()->parameter_instruction(0)->set_sharding(
+              hlo->sharding());
+          // The condition root must be replicated so that all partitions follow
+          // the same control flow.
+          HloInstruction* cond_root =
+              hlo->while_condition()->root_instruction();
+          const HloSharding cond_root_sharding =
+              hlo_sharding_util::ReplicateAllDataDims(cond_root->sharding());
+          cond_root->set_sharding(cond_root_sharding);
+          break;
+        }
+        case HloOpcode::kConditional: {
+          for (int64_t i = 0; i < hlo->branch_count(); ++i) {
+            hlo->branch_computation(i)->parameter_instruction(0)->set_sharding(
+                hlo->operand(i + 1)->sharding());
+          }
+          break;
+        }
+        case HloOpcode::kCall: {
+          for (int64_t i = 0; i < hlo->operand_count(); ++i) {
+            hlo->to_apply()->parameter_instruction(i)->set_sharding(
+                hlo->operand(i)->sharding());
+          }
+          break;
+        }
+        default:
+          break;
+      }
+    }
+  }
+  return changed;
 }
 
 void SpmdPartitioningVisitor::SetPartitionedHlo(

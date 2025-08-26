@@ -288,18 +288,18 @@ TEST_P(SpmdPartitioningTest, PartitionCall) {
 HloModule jit_f
 
 g {
-  Arg_0.6 = s32[8,2]{1,0} parameter(0), sharding={devices=[2,2]<=[4]}
-  constant.0 = s32[] constant(2), sharding={replicated}
-  broadcast.0 = s32[8,2]{1,0} broadcast(constant.0), dimensions={}, sharding={devices=[2,2]<=[4]}
-  ROOT multiply.9 = s32[8,2]{1,0} multiply(Arg_0.6, broadcast.0), sharding={devices=[2,2]<=[4]}
+  param = s32[8,2]{1,0} parameter(0), sharding={devices=[2,2]<=[4]}
+  constant.0 = s32[] constant(0), sharding={replicated}
+  broadcast = s32[8,2]{1,0} broadcast(constant.0), dimensions={}, sharding={devices=[2,2]<=[4]}
+  ROOT multiply = s32[8,2]{1,0} multiply(param, broadcast), sharding={devices=[2,2]<=[4]}
 }
 
 ENTRY main {
-  Arg_0.1 = s32[8,2]{1,0} parameter(0), sharding={devices=[2,2]<=[4]}
-  constant.1 = s32[] constant(3), sharding={replicated}
-  broadcast.1 = s32[8,2]{1,0} broadcast(constant.1), dimensions={}, sharding={devices=[2,2]<=[4]}
-  multiply.4 = s32[8,2]{1,0} multiply(Arg_0.1, broadcast.1), sharding={devices=[2,2]<=[4]}
-  ROOT call = s32[8,2]{1,0} call(multiply.4), to_apply=g, sharding={devices=[2,2]<=[4]}, backend_config={"flag_configs":[],"scoped_memory_configs":[],"compute_type":"COMPUTE_TYPE_DEFAULT","device_type":"DEVICE_TYPE_HOST","used_scoped_memory_configs":[]}
+  input = s32[8,2]{1,0} parameter(0), sharding={devices=[2,2]<=[4]}
+  constant.3 = s32[] constant(3), sharding={replicated}
+  broadcast = s32[8,2]{1,0} broadcast(constant.3), dimensions={}, sharding={devices=[2,2]<=[4]}
+  multiply = s32[8,2]{1,0} multiply(input, broadcast), sharding={devices=[2,2]<=[4]}
+  ROOT call = s32[8,2]{1,0} call(multiply), to_apply=g, sharding={devices=[2,2]<=[4]}, backend_config={"flag_configs":[],"scoped_memory_configs":[],"compute_type":"COMPUTE_TYPE_DEFAULT","device_type":"DEVICE_TYPE_HOST","used_scoped_memory_configs":[]}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/4));
@@ -311,6 +311,124 @@ ENTRY main {
   EXPECT_THAT(call_comp_root, AllOf(op::Multiply(op::Parameter(0),
                                                  op::Broadcast(op::Constant())),
                                     op::Shape("s32[4,1]")));
+}
+
+TEST_P(SpmdPartitioningTest, PartitionCallMultipleCallsites) {
+  absl::string_view hlo_string = R"(
+HloModule jit_f
+
+g {
+  param = s32[8,2]{1,0} parameter(0), sharding={devices=[2,2]<=[4]}
+  constant.0 = s32[] constant(0), sharding={replicated}
+  broadcast = s32[8,2]{1,0} broadcast(constant.0), dimensions={}, sharding={devices=[2,2]<=[4]}
+  ROOT multiply = s32[8,2]{1,0} multiply(param, broadcast), sharding={devices=[2,2]<=[4]}
+}
+
+ENTRY main {
+  input = s32[8,2]{1,0} parameter(0), sharding={devices=[2,2]<=[4]}
+  constant.3 = s32[] constant(3), sharding={replicated}
+  broadcast = s32[8,2]{1,0} broadcast(constant.3), dimensions={}, sharding={devices=[2,2]<=[4]}
+  multiply = s32[8,2]{1,0} multiply(input, broadcast), sharding={devices=[2,2]<=[4]}
+  call.0 = s32[8,2]{1,0} call(multiply), to_apply=g, sharding={devices=[2,2]<=[4]}
+  add = s32[8,2]{1,0} add(input, broadcast), sharding={devices=[2,2]<=[4]}
+  call.1 = s32[8,2]{1,0} call(add), to_apply=g, sharding={devices=[2,2]<=[4]}
+  ROOT root = s32[8,2]{1,0} add(call.0, call.1), sharding={devices=[2,2]<=[4]}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root,
+              AllOf(op::Add(op::Call(), op::Call()), op::Shape("s32[4,1]")));
+  const HloInstruction* call0 = root->operand(0);
+  const HloInstruction* call1 = root->operand(1);
+  EXPECT_EQ(call0->to_apply(), call1->to_apply());
+  const HloInstruction* call_comp_root = call0->to_apply()->root_instruction();
+  EXPECT_THAT(call_comp_root, AllOf(op::Multiply(op::Parameter(0),
+                                                 op::Broadcast(op::Constant())),
+                                    op::Shape("s32[4,1]")));
+}
+
+TEST_P(SpmdPartitioningTest, PartitionCallMultipleMismatchedCallsites) {
+  absl::string_view hlo_string = R"(
+HloModule jit_f
+
+g {
+  param = s32[8,2]{1,0} parameter(0), sharding={devices=[2,2]<=[4]}
+  constant.0 = s32[] constant(0), sharding={replicated}
+  broadcast = s32[8,2]{1,0} broadcast(constant.0), dimensions={}, sharding={devices=[2,2]<=[4]}
+  ROOT multiply = s32[8,2]{1,0} multiply(param, broadcast), sharding={devices=[2,2]<=[4]}
+}
+
+ENTRY main {
+  input0 = s32[8,2]{1,0} parameter(0), sharding={devices=[2,2]<=[4]}
+  input1 = s32[8,2]{1,0} parameter(1), sharding={devices=[4,1]<=[4]}
+  multiply = s32[8,2]{1,0} multiply(input0, input0), sharding={devices=[2,2]<=[4]}
+  call.0 = s32[8,2]{1,0} call(multiply), to_apply=g, sharding={devices=[2,2]<=[4]}
+  add = s32[8,2]{1,0} add(input1, input1), sharding={devices=[4,1]<=[4]}
+  call.1 = s32[8,2]{1,0} call(add), to_apply=g, sharding={devices=[2,2]<=[4]}
+  ROOT root = s32[8,2]{1,0} add(call.0, call.1), sharding={devices=[2,2]<=[4]}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root,
+              AllOf(op::Add(op::Call(), op::Call()), op::Shape("s32[4,1]")));
+  const HloInstruction* call0 = root->operand(0);
+  const HloInstruction* call1 = root->operand(1);
+  EXPECT_NE(call0->to_apply(), call1->to_apply());
+  EXPECT_THAT(call0->operand(0),
+              AllOf(op::Multiply(op::Parameter(0), op::Parameter(0)),
+                    op::Shape("s32[4,1]")));
+  EXPECT_THAT(call1->operand(0),
+              AllOf(op::Add(op::Parameter(1), op::Parameter(1)),
+                    op::Shape("s32[2,2]")));
+  const HloInstruction* call0_comp_root = call0->to_apply()->root_instruction();
+  EXPECT_THAT(
+      call0_comp_root,
+      AllOf(op::Multiply(op::Parameter(0), op::Broadcast(op::Constant())),
+            op::Shape("s32[4,1]")));
+  const HloInstruction* call1_comp_root = call1->to_apply()->root_instruction();
+  EXPECT_THAT(call1_comp_root,
+              AllOf(op::Multiply(op::Reshape(), op::Broadcast(op::Constant())),
+                    op::Shape("s32[4,1]")));
+}
+
+TEST_P(SpmdPartitioningTest, PartitionConditionalMismatchedBranches) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+branch_ceil {
+  param = f32[8,2] parameter(0), sharding={devices=[2,2]<=[4]}
+  ROOT tgte1 = f32[8,2] ceil(param), sharding={devices=[2,2]<=[4]}
+}
+
+branch_floor {
+  param = f32[8,2] parameter(0), sharding={devices=[2,2]<=[4]}
+  ROOT tgte1 = f32[8,2] floor(param), sharding={devices=[2,2]<=[4]}
+}
+
+ENTRY entry {
+  p0 = f32[8,2] parameter(0), sharding={devices=[2,2]<=[4]}
+  p1 = f32[8,2] parameter(1), sharding={devices=[4,1]<=[4]}
+  b0 = s32[] parameter(2), sharding={replicated}
+  ROOT conditional = f32[8,2] conditional(b0, p0, p1, p0, p0),
+    branch_computations={branch_ceil, branch_floor, branch_ceil, branch_floor},
+    sharding={devices=[2,2]<=[4]}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::Conditional(op::Parameter(2), op::Parameter(0),
+                                          op::Parameter(1), op::Parameter(0),
+                                          op::Parameter(0)),
+                          op::Shape("f32[4,1]")));
+
+  EXPECT_EQ(root->branch_computation(0), root->branch_computation(2));
+  EXPECT_NE(root->branch_computation(1), root->branch_computation(3));
 }
 
 TEST_P(SpmdPartitioningTest, TiledToReplicated) {
