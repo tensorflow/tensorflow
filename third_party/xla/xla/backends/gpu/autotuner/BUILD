@@ -559,6 +559,7 @@ cc_library(
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:device_memory_allocator",
         "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor:stream_executor_memory_allocator",
         "//xla/stream_executor/gpu:redzone_allocator",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",

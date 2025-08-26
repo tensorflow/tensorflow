@@ -49,7 +49,7 @@ absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
     stream_executor::StreamExecutor* stream_executor,
     tsl::thread::ThreadPool* thread_pool, InstructionFilterFn should_autotune) {
   std::unique_ptr<GpuProfiler> profiler =
-      GpuProfiler::Create(stream_executor, allocator, ProfileOptions());
+      GpuProfiler::Create(stream_executor, ProfileOptions(), allocator);
 
   std::unique_ptr<AutotunerCacheInterface> cache = nullptr;
   const std::string& cache_dir =
