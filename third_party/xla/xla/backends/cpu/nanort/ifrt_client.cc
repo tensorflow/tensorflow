@@ -1382,6 +1382,13 @@ absl::StatusOr<std::vector<ifrt::ArrayRef>> NanoIfrtClient::RemapArrays(
   return absl::UnimplementedError("RemapArrays is not implemented.");
 }
 
+absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> NanoIfrtClient::ReshardArrays(
+    absl::Span<xla::ifrt::ArrayRef> arrays,
+    absl::Span<const xla::ifrt::ArraySpec> specs,
+    xla::ifrt::ArrayCopySemantics semantics) {
+  return absl::UnimplementedError("ReshardArrays is not implemented.");
+}
+
 ifrt::Future<> NanoIfrtClient::GetReadyFuture(
     absl::Span<const ifrt::ValueRef> values) {
   return Ready();

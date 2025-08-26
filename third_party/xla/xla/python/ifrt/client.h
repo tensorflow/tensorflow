@@ -253,6 +253,16 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
       const RemapPlan& plan, absl::Span<xla::ifrt::ArrayRef> arrays,
       ArrayCopySemantics semantics) = 0;
 
+  // Reshards arrays to new arrays according to the given specs.
+  //
+  // If destination specs have the layout specifications, applies it to the
+  // output arrays, if not, uses the device-default layout.
+  //
+  // NOTE: `ArrayCopySemantics::kReuseInput` is not allowed.
+  virtual absl::StatusOr<std::vector<ArrayRef>> ReshardArrays(
+      absl::Span<ArrayRef> arrays, absl::Span<const ArraySpec> specs,
+      ArrayCopySemantics semantics) = 0;
+
   // Returns a future that becomes ready once all of the values become ready.
   //
   // Timing and error semantics:

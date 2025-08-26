@@ -1577,6 +1577,12 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> PjRtClient::RemapArrays(
   return PjRtCompatibleClientRemapArrays(this, plan, arrays, semantics);
 }
 
+absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> PjRtClient::ReshardArrays(
+    absl::Span<ArrayRef> arrays, absl::Span<const ArraySpec> specs,
+    ArrayCopySemantics semantics) {
+  return Unimplemented("ReshardArrays not available with pjrt-ifrt client.");
+}
+
 Future<> PjRtClient::GetReadyFuture(absl::Span<const ValueRef> values) {
   absl::InlinedVector<Future<>, 1> futures;
   futures.reserve(values.size());

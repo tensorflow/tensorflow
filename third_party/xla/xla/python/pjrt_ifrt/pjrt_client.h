@@ -219,6 +219,10 @@ class PjRtClient final
       const RemapPlan& plan, absl::Span<xla::ifrt::ArrayRef> arrays,
       ArrayCopySemantics semantics) override;
 
+  absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> ReshardArrays(
+      absl::Span<ArrayRef> arrays, absl::Span<const ArraySpec> specs,
+      ArrayCopySemantics semantics) override;
+
   Future<> GetReadyFuture(absl::Span<const ValueRef> values) override;
 
   absl::StatusOr<tsl::RCReference<Tuple>> MakeTuple(
