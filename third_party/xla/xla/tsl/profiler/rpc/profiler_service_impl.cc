@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_replace.h"
 #include "absl/synchronization/mutex.h"
 #include "grpcpp/support/status.h"
@@ -59,6 +60,11 @@ absl::Status CollectDataToRepository(const ProfileRequest& request,
   TF_RETURN_IF_ERROR(profiler->CollectData(&xspace));
   VLOG(3) << "Collected XSpace to repository.";
   response->set_empty_trace(IsEmpty(xspace));
+
+  if (request.emit_xspace()) {
+    response->set_raw_xspace(xspace.SerializeAsCord());
+    return absl::OkStatus();
+  }
 
   return SaveXSpace(request.repository_root(), request.session_id(),
                     request.host_name(), xspace);
