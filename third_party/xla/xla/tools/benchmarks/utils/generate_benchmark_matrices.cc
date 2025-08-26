@@ -111,8 +111,9 @@ GetHardwareToContainerImage() {
   static const auto* kHardwareToContainerImage = new absl::flat_hash_map<
       std::string, std::string>{
       {"CPU_X86",
-       "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/"
-       "ml-build:infrastructure-public-image-530371eedb7e"},
+       "us-docker.pkg.dev/ml-oss-artifacts-transient/"
+       "ml-public-testing-container/"
+       "ml-build:infrastructure-public-image-a9244380692c"},
       {"CPU_ARM64",
        "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/"
        "ml-build-arm64:latest"},
