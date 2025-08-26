@@ -380,6 +380,7 @@ void PjRtCApiClient::UpdateGlobalProcessInfo(
   std::vector<PJRT_ProcessInfo> process_infos;
   for (const tensorflow::CoordinatedTaskStateInfo& info : infos) {
     PJRT_ProcessInfo process_info;
+    process_info.struct_size = PJRT_ProcessInfo_STRUCT_SIZE;
     process_info.task_id = info.task().task_id();
     process_info.incarnation_id = info.incarnation();
     process_info.state = translate_state(info.state());
