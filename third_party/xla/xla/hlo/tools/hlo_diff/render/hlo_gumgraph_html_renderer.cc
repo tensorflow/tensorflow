@@ -240,7 +240,12 @@ std::string PrintCss() {
     span.temp-highlight {
       background-color: #a8c7fa;
       opacity: 0.7;
-      transition: background-color 0.5s ease-out;
+      animation: breathe-highlight 1s infinite alternate;
+    }
+    @keyframes breathe-highlight {
+      0% { opacity: 0.7; }
+      50% { opacity: 0.9; }
+      100% { opacity: 0.7; }
     }
 
     .hlo-instruction.hidden {
@@ -334,6 +339,7 @@ std::string PrintJavascriptForHoverEvent() {
       span.addEventListener('mouseover', handleMouseOver);
       span.addEventListener('mouseout', handleMouseOut);
       span.addEventListener('click', handleSpanClick);
+      span.addEventListener('dblclick', handleSpanDoubleClick);
   });
   function handleMouseOver(event) {
       const diffId = event.target.getAttribute('data-diffid');
@@ -399,9 +405,62 @@ std::string PrintJavascriptForHoverEvent() {
               targetSpan.classList.add('temp-highlight');
               setTimeout(() => {
                   targetSpan.classList.remove('temp-highlight');
-              }, 1500); // Remove highlight after 1.5 seconds
+              }, 2000); // Remove highlight after 2 seconds
           } else {
-              ShowSystemMessage("Corresponding instruction is in another computation.");
+              ShowSystemMessage("Corresponding instruction is in another computation, double click to jump to it.");
+          }
+      }
+  }
+
+  function handleSpanDoubleClick(event) {
+      const diffId = event.target.getAttribute('data-diffid');
+      if (!diffId) {
+          return;
+      }
+
+      const clickedSpan = event.target;
+      const clickedPre = clickedSpan.closest('.hlo-textbox').querySelector('pre');
+      if (!clickedPre) return;
+
+      const idParts = clickedPre.id.split('-');
+      const fingerprint = idParts[0];
+      const isLeft = idParts[1] === 'left';
+      const siblingPreId = fingerprint + '-' + (isLeft ? 'right' : 'left');
+      const siblingPre = document.getElementById(siblingPreId);
+
+      if (siblingPre) {
+          const targetSpan = siblingPre.querySelector(`span[data-diffid="${diffId}"]`);
+          if (!targetSpan) {
+              // Case 2: Corresponding span NOT found in siblingPre.
+              // Search for the span with the same diffId in other hlo-textbox-pairs.
+              const allMatchingSpans = document.querySelectorAll(`span[data-diffid="${diffId}"]`);
+              let foundSpanInOtherPre = null;
+              allMatchingSpans.forEach(span => {
+                  if (span !== clickedSpan) {
+                      foundSpanInOtherPre = span;
+                  }
+              });
+
+              if (foundSpanInOtherPre) {
+                  const foundPre = foundSpanInOtherPre.closest('.hlo-textbox').querySelector('pre');
+                  if (foundPre) {
+                      // Find ancestor detail and open it.
+                      let parentDetails = foundSpanInOtherPre.closest('details');
+                      while (parentDetails) {
+                          parentDetails.open = true;
+                          parentDetails = parentDetails.parentElement ? parentDetails.parentElement.closest('details') : null;
+                      }
+
+                      // Scroll the foundPre to make the foundSpanInOtherPre visible.
+                      foundSpanInOtherPre.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+                      // Temporarily highlight the found span
+                      foundSpanInOtherPre.classList.add('temp-highlight');
+                      setTimeout(() => {
+                          foundSpanInOtherPre.classList.remove('temp-highlight');
+                      }, 3000);
+                  }
+              }
           }
       }
   }
@@ -553,13 +612,10 @@ std::string PrintTextbox(absl::string_view title, absl::string_view content,
                          absl::string_view id = "") {
   return absl::StrCat(
       PrintDiv(title, {"title"}),
-      PrintDiv(
-          absl::StrCat(
-              absl::StrFormat(
-                  R"html(<pre onscroll="TextboxOnScroll(event)" id="%s">%s</pre>)html",
-                  id, content),
-              PrintClickToCopyButton("📋", content)),
-          {"textbox"}));
+      PrintDiv(absl::StrCat(absl::StrFormat(R"html(<pre id="%s">%s</pre>)html",
+                                            id, content),
+                            PrintClickToCopyButton("📋", content)),
+               {"textbox"}));
 }
 
 /*** Summary logic ***/
