@@ -127,7 +127,8 @@ You can find more community-supported platforms and configurations in the
 
 Build Type                    | Status                                                                                                                                                                           | Artifacts
 ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------
-**Linux CPU**                 | [![Status](https://storage.googleapis.com/tensorflow-kokoro-build-badges/ubuntu-cc.svg)](https://storage.googleapis.com/tensorflow-kokoro-build-badges/ubuntu-cc.html)           | [PyPI](https://pypi.org/project/tf-nightly/)
+**Linux CPU**                 | [![Status](https://github.com/tensorflow/tensorflow/actions/workflows/pylint-presubmit.yml/badge.svg)](https://github.com/tensorflow/tensorflow/actions/workflows/pylint-presubmit.yml) | [PyPI](https://pypi.org/project/tf-nightly/) |
+
 **Linux GPU**                 | [![Status](https://storage.googleapis.com/tensorflow-kokoro-build-badges/ubuntu-gpu-py3.svg)](https://storage.googleapis.com/tensorflow-kokoro-build-badges/ubuntu-gpu-py3.html) | [PyPI](https://pypi.org/project/tf-nightly-gpu/)
 **Linux XLA**                 | [![Status](https://storage.googleapis.com/tensorflow-kokoro-build-badges/ubuntu-xla.svg)](https://storage.googleapis.com/tensorflow-kokoro-build-badges/ubuntu-xla.html)         | TBA
 **macOS**                     | [![Status](https://storage.googleapis.com/tensorflow-kokoro-build-badges/macos-py2-cc.svg)](https://storage.googleapis.com/tensorflow-kokoro-build-badges/macos-py2-cc.html)     | [PyPI](https://pypi.org/project/tf-nightly/)
