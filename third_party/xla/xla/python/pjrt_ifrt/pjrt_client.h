@@ -361,7 +361,7 @@ class PjRtClient final
   // from a cross-host send onto device.
   absl::StatusOr<PjRtBuffers> CrossHostReceiveBuffers(
       absl::Span<const xla::Shape> shapes, xla::PjRtDevice* device,
-      const std::vector<int64_t>& keys);
+      std::vector<int64_t> keys);
 
   // Copies arrays from source to destination devices when at least one of the
   // (source, destination) pairs is cross-host using an experimental DCN

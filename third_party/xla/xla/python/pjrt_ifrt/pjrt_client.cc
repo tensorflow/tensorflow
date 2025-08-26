@@ -1337,7 +1337,8 @@ PjRtClient::CopyArraysForCrossHost(absl::Span<ArrayRef> arrays,
               "PjRtClient::CopyArraysForCrossHost");
         }
       }
-      TF_RETURN_IF_ERROR(CrossHostSendBuffers(send_buffers, transfer_keys));
+      TF_RETURN_IF_ERROR(
+          CrossHostSendBuffers(send_buffers, std::move(transfer_keys)));
       ++j;
     } else if (dst_devices->devices()[i]->IsAddressable()) {
       std::vector<xla::Shape> recv_shapes;
@@ -1362,9 +1363,9 @@ PjRtClient::CopyArraysForCrossHost(absl::Span<ArrayRef> arrays,
           GetPjRtGlobalDeviceId(dst_devices->devices()[i]->Id()));
       TF_ASSIGN_OR_RETURN(xla::PjRtDevice * pjrt_device,
                           pjrt_client_->LookupDevice(pjrt_global_device_id));
-      TF_ASSIGN_OR_RETURN(
-          recv_buffers.emplace_back(),
-          CrossHostReceiveBuffers(recv_shapes, pjrt_device, transfer_keys));
+      TF_ASSIGN_OR_RETURN(recv_buffers.emplace_back(),
+                          CrossHostReceiveBuffers(recv_shapes, pjrt_device,
+                                                  std::move(transfer_keys)));
     }
   }
 
@@ -1515,8 +1516,8 @@ absl::Status PjRtClient::CrossHostSendBuffers(
 
 absl::StatusOr<PjRtArray::PjRtBuffers> PjRtClient::CrossHostReceiveBuffers(
     absl::Span<const xla::Shape> shapes, xla::PjRtDevice* device,
-    const std::vector<int64_t>& keys) {
-  auto notifier = [this, keys](
+    std::vector<int64_t> keys) {
+  auto notifier = [this, keys = std::move(keys)](
                       absl::StatusOr<xla::PjRtCrossHostRecvState> recv_state) {
     if (!recv_state.ok()) {
       LOG(FATAL) << "Invalid PjRtCrossHostRecvState passed to "
@@ -1544,7 +1545,7 @@ absl::StatusOr<PjRtArray::PjRtBuffers> PjRtClient::CrossHostReceiveBuffers(
       }
       return;
     }
-    for (int i = 0; i < keys.size(); ++i) {
+    for (int i = 0, n = keys.size(); i < n; ++i) {
       std::string key = absl::StrCat(kKeyPrefix, keys[i]);
       absl::Status kv_status = kv_store_->Set(
           key, recv_state->descriptors[i].serialized_descriptors.front());
