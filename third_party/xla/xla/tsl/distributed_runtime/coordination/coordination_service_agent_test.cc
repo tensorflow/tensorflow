@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 
 #include <memory>
-#include <ostream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -25,6 +24,8 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
+#include "absl/strings/string_view.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "xla/tsl/distributed_runtime/call_options.h"
@@ -50,6 +51,7 @@ using ::testing::Return;
 using ::testing::SetArgPointee;
 using ::testing::UnorderedPointwise;
 using ::testing::WithArgs;
+using ::tsl::testing::IsOkAndHolds;
 using ::tsl::testing::StatusIs;
 
 MATCHER(KvEq, "simple KeyValueEntry matcher") {
@@ -79,6 +81,10 @@ class TestCoordinationClient : public CoordinationClient {
               (override));
   MOCK_METHOD(void, TryGetKeyValueAsync,
               (const TryGetKeyValueRequest*, TryGetKeyValueResponse*,
+               StatusCallback),
+              (override));
+  MOCK_METHOD(void, IncrementKeyValueAsync,
+              (const IncrementKeyValueRequest*, IncrementKeyValueResponse*,
                StatusCallback),
               (override));
   MOCK_METHOD(void, GetKeyValueDirAsync,
@@ -369,6 +375,23 @@ TEST_F(CoordinationServiceAgentTest, TryGetKeyValue_Simple_Success) {
   EXPECT_EQ(*result, test_value);
 }
 
+TEST_F(CoordinationServiceAgentTest, IncrementKeyValue_Simple_Success) {
+  constexpr absl::string_view test_key = "test_key";
+  constexpr absl::string_view test_value = "11";
+  // Mock server response: set key-value pair and invoke done callback.
+  IncrementKeyValueResponse mocked_response;
+  auto kv = mocked_response.mutable_kv();
+  kv->set_key(test_key);
+  kv->set_value(test_value);
+  ON_CALL(*GetClient(), IncrementKeyValueAsync(_, _, _))
+      .WillByDefault(DoAll(SetArgPointee<1>(mocked_response),
+                           InvokeArgument<2>(absl::OkStatus())));
+  // Initialize coordination agent.
+  InitializeAgent();
+  auto result = agent_->IncrementKeyValue(test_key, 1);
+  EXPECT_THAT(result, IsOkAndHolds(11));
+}
+
 TEST_F(CoordinationServiceAgentTest, GetKeyValueDir_Simple_Success) {
   const std::string test_key = "test_key_dir";
   std::vector<KeyValueEntry> test_values;
@@ -437,17 +460,17 @@ TEST_F(CoordinationServiceAgentTest, ConnectAfterReset_WithErrorPolling) {
   CoordinationServiceConfig config;
   config.set_poll_for_error_from_service_at_startup(true);
   InitializeAgent(config);
-  // The agent will be in ERROR state after the first call to Connect() because
-  // the error polling thread will be created and will immediately return an
-  // error.
+  // The agent will be in ERROR state after the first call to Connect()
+  // because the error polling thread will be created and will immediately
+  // return an error.
   TF_ASSERT_OK(agent_->Connect());
   // Wait a bit for the error polling thread to start.
   absl::SleepFor(absl::Seconds(2));
   ASSERT_TRUE(agent_->IsError());
 
   TF_ASSERT_OK(agent_->Reset());
-  // Agent should be able to reconnect to the service after resetting. The error
-  // polling thread will be recreated when the agent is connected again.
+  // Agent should be able to reconnect to the service after resetting. The
+  // error polling thread will be recreated when the agent is connected again.
   TF_EXPECT_OK(agent_->Connect());
   absl::SleepFor(absl::Seconds(2));
   // The agent should again be in ERROR state after Connect().
