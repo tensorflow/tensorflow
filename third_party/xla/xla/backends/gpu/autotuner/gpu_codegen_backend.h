@@ -73,6 +73,7 @@ class GpuCodegenBackend : public CodegenBackend {
         false);
 
     Compiler::CompileOptions options;
+    options.is_autotuning_compilation = true;
     TF_ASSIGN_OR_RETURN(auto optimized_module,
                         RunHloPasses(std::move(hlo_module), options));
     return compiler_->RunBackend(std::move(optimized_module), stream_executor_,
@@ -95,7 +96,7 @@ class GpuCodegenBackend : public CodegenBackend {
   std::string name_;
   stream_executor::StreamExecutor* stream_executor_;
   Compiler::TargetConfig target_config_;
-  const DebugOptions& debug_options_;
+  const DebugOptions debug_options_;
   // TODO(b/407494653): remove compiler when we don't need to run any HLO passes
   // and the codegen backend can directly produce an executable without a
   // compiler instance.
