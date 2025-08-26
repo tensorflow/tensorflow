@@ -2056,11 +2056,11 @@ PatternMatchMergeOrSplitSharding(const Shape& shape, const Shape& base_shape,
     if (si == ti) {
       continue;
     }
-    if (ti == 1) {
+    auto [min, max] = std::minmax(si, ti);
+    if (min == 1) {
       diff_index.push_back(i);
       continue;
     }
-    auto [min, max] = std::minmax(si, ti);
     if (max % min != 0) {
       continue;
     }
