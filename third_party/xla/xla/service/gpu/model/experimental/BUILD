@@ -215,6 +215,8 @@ cc_library(
     hdrs = ["symbolic_map.h"],
     deps = [
         ":symbolic_expr",
+        "@com_google_absl//absl/log:check",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -225,6 +227,7 @@ xla_cc_test(
         ":symbolic_expr",
         ":symbolic_map",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
     ],
 )
 

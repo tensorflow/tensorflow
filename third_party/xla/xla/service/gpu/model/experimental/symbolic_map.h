@@ -19,17 +19,21 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include "llvm/ADT/SmallVector.h"
 #include "xla/service/gpu/model/experimental/symbolic_expr.h"
 
 namespace xla {
 namespace gpu {
 
+class SymbolicExprContext;
+
 // Maps a set of input variables to a set of output SymbolicExpr trees.
 class SymbolicMap {
  public:
-  SymbolicMap(int64_t num_dimensions, int64_t num_symbols,
-              std::vector<SymbolicExpr> exprs);
+  static SymbolicMap Get(SymbolicExprContext* ctx, int64_t num_dimensions,
+                         int64_t num_symbols, std::vector<SymbolicExpr> exprs);
 
+  SymbolicExprContext* GetContext() const { return ctx_; }
   int64_t GetNumDims() const { return num_dimensions_; }
   int64_t GetNumSymbols() const { return num_symbols_; }
   int64_t GetNumResults() const { return exprs_.size(); }
@@ -42,7 +46,18 @@ class SymbolicMap {
   // at the same index. Symbols are not considered in this check.
   bool IsIdentity() const;
 
+  // Returns true if all result expressions are constant.
+  bool IsConstant() const;
+
+  // Returns a vector containing the values of all the results. CHECK-fails if
+  // any result expression is not a constant.
+  llvm::SmallVector<int64_t> GetConstantResults() const;
+
  private:
+  SymbolicMap(SymbolicExprContext* ctx, int64_t num_dimensions,
+              int64_t num_symbols, std::vector<SymbolicExpr> exprs);
+
+  SymbolicExprContext* ctx_;
   int64_t num_dimensions_;
   int64_t num_symbols_;
   std::vector<SymbolicExpr> exprs_;

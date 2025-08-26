@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/service/gpu/model/experimental/symbolic_expr.h"
 
@@ -24,35 +25,60 @@ namespace xla {
 namespace gpu {
 namespace {
 
+using ::testing::ElementsAre;
+
 TEST(SymbolicMapTest, IsEmpty) {
   SymbolicExprContext ctx;
-  EXPECT_TRUE(SymbolicMap(0, 0, {}).IsEmpty());
-  EXPECT_TRUE(SymbolicMap(2, 1, {}).IsEmpty());
-  EXPECT_FALSE(SymbolicMap(1, 0, {ctx.CreateVariable(0)}).IsEmpty());
+  EXPECT_TRUE(SymbolicMap::Get(&ctx, 0, 0, {}).IsEmpty());
+  EXPECT_TRUE(SymbolicMap::Get(&ctx, 2, 1, {}).IsEmpty());
+  EXPECT_FALSE(SymbolicMap::Get(&ctx, 1, 0, {ctx.CreateVariable(0)}).IsEmpty());
 }
 
 TEST(SymbolicMapTest, IsIdentity) {
   SymbolicExprContext ctx;
 
-  // True identity
-  EXPECT_TRUE(SymbolicMap(2, 0, {ctx.CreateVariable(0), ctx.CreateVariable(1)})
-                  .IsIdentity());
-  // True identity with symbols
-  EXPECT_TRUE(SymbolicMap(2, 1, {ctx.CreateVariable(0), ctx.CreateVariable(1)})
-                  .IsIdentity());
+  SymbolicMap true_identity = SymbolicMap::Get(
+      &ctx, 2, 0, {ctx.CreateVariable(0), ctx.CreateVariable(1)});
+  EXPECT_TRUE(true_identity.IsIdentity());
 
-  // False: Wrong number of results
-  EXPECT_FALSE(SymbolicMap(2, 0, {ctx.CreateVariable(0)}).IsIdentity());
-  EXPECT_FALSE(SymbolicMap(1, 0, {ctx.CreateVariable(0), ctx.CreateVariable(1)})
-                   .IsIdentity());
+  SymbolicMap true_identity_with_symbols = SymbolicMap::Get(
+      &ctx, 2, 1, {ctx.CreateVariable(0), ctx.CreateVariable(1)});
+  EXPECT_TRUE(true_identity_with_symbols.IsIdentity());
 
-  // False: Wrong expression type
-  EXPECT_FALSE(SymbolicMap(2, 0, {ctx.CreateVariable(0), ctx.CreateConstant(1)})
-                   .IsIdentity());
+  SymbolicMap few_results =
+      SymbolicMap::Get(&ctx, 2, 0, {ctx.CreateVariable(0)});
+  EXPECT_FALSE(few_results.IsIdentity());
 
-  // False: Wrong variable ID
-  EXPECT_FALSE(SymbolicMap(2, 0, {ctx.CreateVariable(1), ctx.CreateVariable(0)})
-                   .IsIdentity());
+  SymbolicMap too_many_results = SymbolicMap::Get(
+      &ctx, 1, 0, {ctx.CreateVariable(0), ctx.CreateVariable(1)});
+  EXPECT_FALSE(too_many_results.IsIdentity());
+
+  SymbolicMap wrong_expr_type = SymbolicMap::Get(
+      &ctx, 2, 0, {ctx.CreateVariable(0), ctx.CreateConstant(1)});
+  EXPECT_FALSE(wrong_expr_type.IsIdentity());
+
+  SymbolicMap unordered_variable_id = SymbolicMap::Get(
+      &ctx, 2, 0, {ctx.CreateVariable(1), ctx.CreateVariable(0)});
+  EXPECT_FALSE(unordered_variable_id.IsIdentity());
+}
+
+TEST(SymbolicMapTest, GetConstantResults) {
+  SymbolicExprContext ctx;
+
+  SymbolicMap all_constants_map = SymbolicMap::Get(
+      &ctx, 0, 0, {ctx.CreateConstant(5), ctx.CreateConstant(10)});
+  EXPECT_TRUE(all_constants_map.IsConstant());
+  EXPECT_THAT(all_constants_map.GetConstantResults(), ElementsAre(5, 10));
+
+  SymbolicMap mixed_map = SymbolicMap::Get(
+      &ctx, 1, 0, {ctx.CreateConstant(5), ctx.CreateVariable(0)});
+  EXPECT_FALSE(mixed_map.IsConstant());
+  EXPECT_DEATH(mixed_map.GetConstantResults(),
+               "Cannot get constant results from a non-constant map");
+
+  SymbolicMap no_results_map = SymbolicMap::Get(&ctx, 0, 0, {});
+  EXPECT_TRUE(no_results_map.IsConstant());
+  EXPECT_THAT(no_results_map.GetConstantResults(), ElementsAre());
 }
 
 }  // namespace
