@@ -2118,21 +2118,10 @@ PatternMatchMergeOrSplitSharding(const Shape& shape, const Shape& base_shape,
           continue;
       }
 
-      auto reshaped_sharding =
+      HloSharding reshaped_sharding =
           hlo_sharding_util::SplitShardingDimension(source, i, new_dim_size);
-      std::vector<int64_t> dimensions(
-          reshaped_sharding.tile_assignment().dimensions().begin(),
-          reshaped_sharding.tile_assignment().dimensions().end());
-      std::swap(dimensions[i + 1], dimensions[j + (j > i ? 1 : 0)]);
-      auto target_tile_assignment =
-          target.tile_assignment().Reshape(dimensions);
-      auto new_sharding =
-          source.HasPartialReplication()
-              ? HloSharding::PartialTile(target_tile_assignment,
-                                         source.metadata())
-              : HloSharding::Tile(target_tile_assignment, source.metadata());
-      VLOG(10) << "Reshaped sharding before: " << reshaped_sharding.ToString();
-      VLOG(10) << "Reshaped sharding: " << new_sharding.ToString();
+      HloSharding new_sharding =
+          hlo_sharding_util::SplitShardingDimension(target, i, new_dim_size);
       return std::make_tuple(std::move(reshaped_sharding),
                              std::move(new_sharding), i);
     }
@@ -2232,12 +2221,6 @@ std::optional<PartitionedHlo> PartitionedHlo::TryComplexReshardHandling(
   if (auto reshape = PatternMatchMergeOrSplitSharding(
           this->hlo()->shape(), this->base_shape(), sharding(), target)) {
     auto& [before_sharding, new_reshaped_sharding, source_dim] = *reshape;
-    VLOG(10) << "Matched \"pattern_match_reshape()\": "
-             << std::get<0>(*reshape).ToString();
-    VLOG(10) << "Original shape: " << hlo()->shape().ToString();
-    VLOG(10) << "Dim to split: " << std::get<1>(*reshape) << " size "
-             << sharding().tile_assignment().dim(source_dim);
-    VLOG(10) << "Before sharding: " << before_sharding.ToString();
     PartitionedHlo reshaped = SplitReshapeHelper(
         *this, source_dim, this->hlo()->shape().dimensions(source_dim),
         before_sharding);
