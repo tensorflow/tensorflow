@@ -252,6 +252,7 @@ cc_library(
     srcs = ["cupti_pm_sampler_factory.cc"],
     hdrs = [
         "cupti_pm_sampler.h",
+        "cupti_pm_sampler_impl.h",
         "cupti_pm_sampler_factory.h",
     ],
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
