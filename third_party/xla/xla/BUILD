@@ -867,8 +867,7 @@ cc_library(
     visibility = internal_visibility([":friends"]),
     deps = [
         ":array",
-        ":types",
-        "//xla/tsl/platform:logging",
+        ":util",
     ],
 )
 

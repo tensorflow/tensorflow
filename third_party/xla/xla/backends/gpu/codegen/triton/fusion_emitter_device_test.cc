@@ -3677,6 +3677,27 @@ INSTANTIATE_TEST_SUITE_P(
                        ::testing::ValuesIn(AllXlaDataTypes())),
     DotUnsetAlgorithmEmitterTest::ParamToString);
 
+TEST_F(TritonEmitterTest, ScaledDotIsSupportedByReferencePlatform) {
+  if (!std::get_if<se::CudaComputeCapability>(&GpuComputeCapability())) {
+    GTEST_SKIP() << "Ignore scaled dot test on ROCM.";
+  }
+  constexpr absl::string_view kHloText = R"(
+    HloModule ScaledDotIsSupportedByReferencePlatform
+
+    ENTRY entry {
+     lhs = bf16[4,4] parameter(0)
+     lhs_scale = bf16[1,1] parameter(1)
+     rhs = bf16[4,4] parameter(2)
+     rhs_scale = bf16[1,1] parameter(3)
+     ROOT dot = bf16[4,4] scaled-dot(lhs, lhs_scale, rhs, rhs_scale),
+         lhs_contracting_dims={1},
+         rhs_contracting_dims={1}
+    }
+  )";
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
 TEST_F(TritonEmitterTest, RocmWarpSizeIsSetCorrectly) {
   if (std::get_if<se::CudaComputeCapability>(&GpuComputeCapability())) {
     GTEST_SKIP() << "Warp size is always 32 on CUDA";

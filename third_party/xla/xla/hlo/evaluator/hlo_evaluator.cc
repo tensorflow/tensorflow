@@ -1128,6 +1128,31 @@ absl::StatusOr<Literal> HloEvaluator::EvaluateDotOp(
   return Evaluate(cloned_instruction.get());
 }
 
+absl::StatusOr<Literal> HloEvaluator::EvaluateScaledDotOp(
+    const DotDimensionNumbers& dim_numbers,
+    const PrecisionConfig& precision_config, const Literal& lhs,
+    const Literal& lhs_scale, const Literal& rhs, const Literal& rhs_scale) {
+  std::unique_ptr<HloInstruction> lhs_instr =
+      HloInstruction::CreateConstant(lhs.Clone());
+  std::unique_ptr<HloInstruction> lhs_scale_instr =
+      HloInstruction::CreateConstant(lhs_scale.Clone());
+  std::unique_ptr<HloInstruction> rhs_instr =
+      HloInstruction::CreateConstant(rhs.Clone());
+  std::unique_ptr<HloInstruction> rhs_scale_instr =
+      HloInstruction::CreateConstant(rhs_scale.Clone());
+
+  TF_ASSIGN_OR_RETURN(
+      Shape dot_shape,
+      ShapeInference::InferDotOpShape(lhs.shape(), rhs.shape(), dim_numbers,
+                                      /*preferred_element_type=*/std::nullopt));
+
+  std::unique_ptr<HloInstruction> cloned_instruction =
+      HloInstruction::CreateScaledDot(
+          dot_shape, lhs_instr.get(), lhs_scale_instr.get(), rhs_instr.get(),
+          rhs_scale_instr.get(), dim_numbers, precision_config);
+  return Evaluate(cloned_instruction.get());
+}
+
 absl::Status HloEvaluator::EvaluateParameterFromCallerArgument(
     const HloInstruction* parameter, const ShapeIndex& shape_index,
     PrecomputedAnalyses analyses) {
