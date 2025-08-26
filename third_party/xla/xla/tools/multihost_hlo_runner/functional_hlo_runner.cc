@@ -598,7 +598,7 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
           running_options.profiler->CreateSession();
         }
       }
-      execute_options.launch_id = repeat + 1;
+      execute_options.launch_id = repeat + 1 + running_options.base_run_id;
       if (running_options.execution_profiles != nullptr) {
         execute_options.execution_profile =
             &running_options.execution_profiles->emplace_back();
