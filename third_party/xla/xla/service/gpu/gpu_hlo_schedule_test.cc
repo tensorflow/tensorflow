@@ -22,7 +22,6 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <tuple>
-#include <type_traits>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -30,7 +29,6 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/base/log_severity.h"
 #include "absl/log/log.h"
-#include "absl/log/log_sink.h"
 #include "absl/log/scoped_mock_log.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
@@ -1809,15 +1807,10 @@ TEST_F(GpuHloScheduleTest, LogAnErrorWhenArgumentSizeExceedsMemoryLimit) {
       auto module, ParseAndReturnVerifiedModule(kHloText, module_config));
 
   absl::ScopedMockLog mock_log(absl::MockLogDefault::kIgnoreUnexpected);
-  // absl::ScopedMockLog only works if we're actually using ABSL logging, and
-  // TSL supports a homegrown logging implementation, so we should only check
-  // the log is emitted when ABSL logging is used.
-  if constexpr (std::is_same_v<absl::LogSink, tsl::TFLogSink>) {
-    EXPECT_CALL(mock_log,
-                Log(absl::LogSeverity::kError, _,
-                    EndsWith("This indicates an error in the calculation!")))
-        .Times(1);
-  }
+  EXPECT_CALL(mock_log,
+              Log(absl::LogSeverity::kError, _,
+                  EndsWith("This indicates an error in the calculation!")))
+      .Times(1);
   mock_log.StartCapturingLogs();
   TF_ASSERT_OK_AND_ASSIGN(auto metadata, ScheduleGpuModule(module.get()));
   EXPECT_EQ(metadata.scheduler_mem_limit, 0);

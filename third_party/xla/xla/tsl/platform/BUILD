@@ -5,13 +5,13 @@ load(
 load(
     "//xla/tsl:tsl.bzl",
     "if_not_fuchsia",
+    "if_oss",
     "internal_visibility",
     "tsl_copts",
 )
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load(
     "//xla/tsl/platform:build_config.bzl",
-    "tf_logging_deps",
     "tf_platform_alias",
     "tf_platform_deps",
     "tf_protobuf_compiler_deps",
@@ -51,7 +51,6 @@ exports_files(
         "rocm_rocdl_path.h",
         "resource_loader.h",
         "file_system.cc",
-        "logging.h",
         "file_system.h",
         "file_system_helper.cc",
         "file_system_helper.h",
@@ -305,6 +304,7 @@ filegroup(
     name = "xla_cpu_runtime_srcs",
     srcs = [
         "dynamic_annotations.h",
+        "env_time.h",
         "macros.h",
     ],
     compatible_with = get_compatible_with_portable(),
@@ -468,12 +468,31 @@ cc_library(
 
 cc_library(
     name = "logging",
+    srcs = ["logging.cc"],
+    hdrs = ["logging.h"],
     compatible_with = get_compatible_with_portable(),
-    textual_hdrs = ["logging.h"],
     visibility = [
         "//visibility:public",
     ],
-    deps = tf_logging_deps(),
+    deps = [
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/log:globals",
+        "@com_google_absl//absl/log:vlog_is_on",
+        "@com_google_absl//absl/strings:string_view",
+    ] + if_oss([":logging_initializer"]),
+)
+
+cc_library(
+    name = "logging_initializer",
+    srcs = ["logging_initializer.cc"],
+    deps = [
+        "@com_google_absl//absl/base:log_severity",
+        "@com_google_absl//absl/log:globals",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+    alwayslink = True,
 )
 
 tsl_cc_test(
@@ -486,11 +505,11 @@ tsl_cc_test(
         ":logging",
         ":statusor",
         ":test",
-        "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:stacktrace_handler",
     ],
@@ -518,6 +537,9 @@ cc_library(
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/log:log_entry",
+        "@com_google_absl//absl/log:log_sink",
+        "@com_google_absl//absl/log:log_sink_registry",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
