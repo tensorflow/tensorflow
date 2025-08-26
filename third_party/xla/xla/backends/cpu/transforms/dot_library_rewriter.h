@@ -94,9 +94,9 @@ class DotLibraryRewriter : public HloModulePass {
   // Merges two fusions `main` and `neighbor` together. `main` is the current
   // fusion instruction we are growing. `neighbor` is a neighboring fusion node
   // found through BFS from `main`.
-  absl::Status MergeFusionInstructions(HloFusionInstruction* main,
-                                       HloFusionInstruction* neighbor,
-                                       FusionDirection dir);
+  absl::StatusOr<HloFusionInstruction*> MergeFusionInstructions(
+      HloFusionInstruction* main, HloFusionInstruction* neighbor,
+      FusionDirection dir);
 
   // Fuses `to_fuse` into the fusion `fusion` based on the specified direction.
   // Returns the pointer to the new `to_fuse` node in the fusion region.

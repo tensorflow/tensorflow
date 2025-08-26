@@ -199,19 +199,24 @@ void DotLibraryRewriter::AddFusionCandidates(
   }
 }
 
-absl::Status DotLibraryRewriter::MergeFusionInstructions(
-    HloFusionInstruction* main, HloFusionInstruction* neighbor,
-    FusionDirection dir) {
+absl::StatusOr<HloFusionInstruction*>
+DotLibraryRewriter::MergeFusionInstructions(HloFusionInstruction* main,
+                                            HloFusionInstruction* neighbor,
+                                            FusionDirection dir) {
   VLOG(3) << "  " << FusionDirectionToString(dir)
           << ": Fusing with: " << neighbor->ToString();
   if (dir == FusionDirection::kUp) {
     main->MergeFusionInstruction(neighbor);
     TF_RETURN_IF_ERROR(main->parent()->RemoveInstruction(neighbor));
-  } else if (dir == FusionDirection::kDown) {
+    return main;
+  }
+  if (dir == FusionDirection::kDown) {
     neighbor->MergeFusionInstruction(main);
     TF_RETURN_IF_ERROR(neighbor->parent()->RemoveInstruction(main));
+    return neighbor;
   }
-  return absl::OkStatus();
+  return InvalidArgument("Invalid fusion direction: %s",
+                         FusionDirectionToString(dir));
 }
 
 absl::StatusOr<HloInstruction*> DotLibraryRewriter::GrowFusion(
@@ -246,15 +251,17 @@ absl::Status DotLibraryRewriter::FuseNeighbors(HloFusionInstruction* fusion,
     auto [instr, dir] = frontier.front();
     frontier.pop();
     if (dir != FusionDirection::kUp && dir != FusionDirection::kDown) {
-      return InvalidArgument("Invalid travel direction: %c", dir);
+      return InvalidArgument("Invalid travel direction: %s",
+                             FusionDirectionToString(dir));
     }
 
     // If `instr` is another fusion of the same library type, fuse it.
     // We don't need to add its neighbors to the frontier because anything that
     // can be fused would have already been fused into `instr`.
     if (IsCustomFusionWithKind(instr, lib->fusion_kind())) {
-      TF_RETURN_IF_ERROR(MergeFusionInstructions(
-          fusion, Cast<HloFusionInstruction>(instr), dir));
+      TF_ASSIGN_OR_RETURN(fusion,
+                          MergeFusionInstructions(
+                              fusion, Cast<HloFusionInstruction>(instr), dir));
       continue;
     }
 
