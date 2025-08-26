@@ -237,7 +237,7 @@ class DeterminantOpGpu : public AsyncOpKernel {
     auto info_checker = [context, done](
                             const Status& status,
                             const std::vector<HostLapackInfo>& host_infos) {
-      if (!status.ok() && errors::IsInvalidArgument(status) &&
+      if (!status.ok() && absl::IsInvalidArgument(status) &&
           !host_infos.empty()) {
         for (int i = 0; i < host_infos[0].size(); ++i) {
           // It is OK for a matrix to be singular (signaled by info > 0),
@@ -383,7 +383,7 @@ class LogDeterminantOpGpu : public AsyncOpKernel {
     auto info_checker = [context, done](
                             const Status& status,
                             const std::vector<HostLapackInfo>& host_infos) {
-      if (!status.ok() && errors::IsInvalidArgument(status) &&
+      if (!status.ok() && absl::IsInvalidArgument(status) &&
           !host_infos.empty()) {
         for (int i = 0; i < host_infos[0].size(); ++i) {
           // It is OK for a matrix to be singular (signaled by info > 0),
