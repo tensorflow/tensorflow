@@ -6973,27 +6973,25 @@ absl::Status CudnnGraph::PopulateOrUpdateRawCommandBuffer(
 }  // namespace gpu
 
 void initialize_cudnn() {
-  static std::atomic<bool> registered{false};
-  if (registered.load(std::memory_order_acquire)) return;
+  static absl::once_flag once;
+  absl::call_once(once, [] {
+    absl::Status status =
+        PluginRegistry::Instance()->RegisterFactory<PluginRegistry::DnnFactory>(
+            cuda::kCudaPlatformId, "cuDNN",
+            [](StreamExecutor* parent) -> dnn::DnnSupport* {
+              gpu::CudnnSupport* dnn = new gpu::CudnnSupport(parent);
+              if (!dnn->Init().ok()) {
+                // Note: Init() will log a more specific error.
+                delete dnn;
+                return nullptr;
+              }
+              return dnn;
+            });
 
-  absl::Status status =
-      PluginRegistry::Instance()->RegisterFactory<PluginRegistry::DnnFactory>(
-          cuda::kCudaPlatformId, "cuDNN",
-          [](StreamExecutor* parent) -> dnn::DnnSupport* {
-            gpu::CudnnSupport* dnn = new gpu::CudnnSupport(parent);
-            if (!dnn->Init().ok()) {
-              // Note: Init() will log a more specific error.
-              delete dnn;
-              return nullptr;
-            }
-            return dnn;
-          });
-
-  if (status.ok()) {
-    registered.store(true, std::memory_order_release);
-  } else {
-    LOG(INFO) << "Unable to register cuDNN factory: " << status.message();
-  }
+    if (!status.ok()) {
+      LOG(INFO) << "Unable to register cuDNN factory: " << status.message();
+    }
+  });
 }
 
 }  // namespace stream_executor
