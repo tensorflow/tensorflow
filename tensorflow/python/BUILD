@@ -1580,6 +1580,13 @@ pywrap_library(
                 "-ldl",
                 "-lm",
             ],
+            "//tensorflow:linux_aarch64_with_mkl": [
+                "-z defs",
+                "-lpthread",
+                "-ldl",
+                "-lm",
+                "-lomp",  # OpenMP requires explicit linking when using Hermetic C++
+            ],
             "//conditions:default": [
                 "-z defs",
                 "-lpthread",

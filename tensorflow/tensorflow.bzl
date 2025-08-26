@@ -516,10 +516,21 @@ def tf_openmp_copts():
         "//conditions:default": [],
     })
 
-def tf_openmp_lopts():
-    # When compiling on Windows, force MSVC to use libiomp that was compiled
-    # as part of this build.
+def tf_openmp_deps():
     return select({
+        # OpenMP requires explicit dependencies when using Hermetic C++ because the -nodefaultlibs flag
+        # prevents the automatic inclusion
+        "@local_xla//xla/tsl/mkl:build_with_mkl_lnx_openmp": ["@rules_ml_toolchain//cc/sysroots:linux_aarch64_openmp"],
+        "//conditions:default": [],
+    })
+
+def tf_openmp_lopts():
+    return select({
+        # OpenMP requires explicit linking when using Hermetic C++ because the -nodefaultlibs flag
+        # prevents the automatic inclusion
+        "@local_xla//xla/tsl/mkl:build_with_mkl_lnx_openmp": ["-fopenmp", "-lomp"],
+        # When compiling on Windows, force MSVC to use libiomp that was compiled
+        # as part of this build.
         "@local_xla//xla/tsl/mkl:build_with_mkl_windows_openmp": [windows_llvm_openmp_linkopts()],
         "//conditions:default": [],
     })
@@ -1595,6 +1606,7 @@ def tf_cc_test(
             ],
             clean_dep("@local_xla//third_party/compute_library:build_with_acl"): [
                 "-fopenmp",
+                "-lomp",
                 "-lm",
             ],
         }) + linkopts + _rpath_linkopts(name),
@@ -1638,6 +1650,7 @@ def tf_cc_shared_test(
             ],
             clean_dep("@local_xla//third_party/compute_library:build_with_acl"): [
                 "-fopenmp",
+                "-lomp",
                 "-lm",
             ],
         }) + linkopts + _rpath_linkopts(name),
@@ -1869,7 +1882,7 @@ def tf_cc_test_mkl(
                     "-lm",
                 ],
             }) + _rpath_linkopts(src_to_test_name(src)) + tf_openmp_lopts(),
-            deps = deps + tf_binary_dynamic_kernel_deps(kernels) + if_mkl_ml(["@local_xla//xla/tsl/mkl:intel_binary_blob"]),
+            deps = deps + tf_openmp_deps() + tf_binary_dynamic_kernel_deps(kernels) + if_mkl_ml(["@local_xla//xla/tsl/mkl:intel_binary_blob"]),
             data = data + tf_binary_dynamic_kernel_dsos(),
             exec_properties = tf_exec_properties({"tags": tags}),
             linkstatic = linkstatic,
@@ -2118,7 +2131,7 @@ def tf_mkl_kernel_library(
         prefix = None,
         srcs = None,
         hdrs = None,
-        deps = None,
+        deps = [],
         alwayslink = 1,
         # Adding an explicit `-fexceptions` because `allow_exceptions = True`
         # in `tf_copts` doesn't work internally.
@@ -2148,7 +2161,7 @@ def tf_mkl_kernel_library(
         name = name,
         srcs = if_mkl(srcs),
         hdrs = hdrs,
-        deps = deps,
+        deps = deps + tf_openmp_deps(),
         linkopts = linkopts,
         alwayslink = alwayslink,
         copts = copts + if_override_eigen_strong_inline(["/DEIGEN_STRONG_INLINE=inline"]),
