@@ -276,6 +276,7 @@ def nvidia_gpu_build_with_compute_capability(
       options={
           "run_under": "//build_tools/ci:parallel_gpu_execute",
           "//xla/tsl:ci_build": True,
+          "@cuda_driver//:enable_forward_compatibility": "true",
           **_DEFAULT_BAZEL_OPTIONS,
       },
       repo_env={"TF_CUDA_COMPUTE_CAPABILITIES": f"{compute_capability/10}"},
