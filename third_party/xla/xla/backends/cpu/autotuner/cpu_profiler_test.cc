@@ -50,7 +50,7 @@ absl::StatusOr<std::unique_ptr<Executable>> CompileHloModule(
 
 class CpuProfilerTest : public HloHardwareIndependentTestBase {
  public:
-  CpuProfilerTest() { profile_options_.should_populate_output_buffer = false; }
+  CpuProfilerTest() = default;
   ProfileOptions profile_options_;
 };
 

@@ -159,9 +159,14 @@ absl::StatusOr<ProfileResult> GpuProfiler::Profile(
       Execute(executable, std::move(execution_inputs), &profile));
 
   result.duration = absl::Nanoseconds(profile.compute_time_ns());
-  if (options_.should_populate_output_buffer) {
-    result.output_buffer = execution_output.Commit().ConsumeResult();
+  ScopedShapedBuffer output_buffers = execution_output.Commit().ConsumeResult();
+  if (output_buffers.on_device_shape().IsTuple() &&
+      !output_buffers.on_device_shape().tuple_shapes().empty()) {
+    result.output_buffer = output_buffers.TakeSubTree({0});
+  } else {
+    result.output_buffer = std::move(output_buffers);
   }
+
   return result;
 }
 
