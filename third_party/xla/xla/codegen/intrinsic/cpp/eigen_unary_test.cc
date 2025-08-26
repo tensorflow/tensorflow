@@ -32,6 +32,7 @@ TEST(EigenUnaryTest, FastTanhfIsVectorized) {
   EXPECT_THAT(avx2, ContainsRegex("llvm.x86"));
   EXPECT_THAT(avx2, Not(ContainsRegex("llvm.aarch64")));
   EXPECT_THAT(avx2, Not(ContainsRegex("llvm.fma.v4f32")));
+  EXPECT_THAT(avx2, ContainsRegex("xla.tanh.v4f32"));
 
   const std::string avx512 = llvm_ir::kEigenUnaryLlAvx512Ir;
   EXPECT_THAT(avx512, ContainsRegex("fmul <4 x float>"));
