@@ -59,7 +59,6 @@ limitations under the License.
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/types.h"
@@ -2981,6 +2980,18 @@ ENTRY entry {
           "num_ctas":"1",
           "num_stages":"1"}}}
 })";
+
+  TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText, "fdot", R"(
+  // Ensure that masking is applied only conditionally to both operands.
+  CHECK:      %[[MASKED_OPERAND0:.*]] = scf.if
+  CHECK:        %[[SELECT0:.*]] = arith.select
+  CHECK-NEXT:   scf.yield %[[SELECT0]]
+  CHECK:      %[[MASKED_OPERAND1:.*]] = scf.if
+  CHECK:        %[[SELECT1:.*]] = arith.select
+  CHECK-NEXT:   scf.yield %[[SELECT1]]
+  CHECK:      tt.dot %[[MASKED_OPERAND0]], %[[MASKED_OPERAND1]]
+)"));
+
   EXPECT_TRUE(RunAndCompareNoHloPasses(
       kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
 }
