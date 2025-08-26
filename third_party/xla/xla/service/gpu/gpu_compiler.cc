@@ -2685,9 +2685,9 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
           /*alias_info=*/std::move(alias_info),
           /*debug_options=*/std::move(debug_opts),
           /*device_description=*/gpu_device_info,
-          // TODO b/407494653: AutotunerPass requires module to compile.
-          // Remove module on autotuning runs once this is fixed.
-          /*debug_module=*/std::move(module),
+          /*debug_module=*/options.is_autotuning_compilation
+              ? std::unique_ptr<HloModule>()
+              : std::move(module),
           /*enable_debug_info_manager=*/!options.is_autotuning_compilation}));
 
   if (embed_ir_in_executable) {

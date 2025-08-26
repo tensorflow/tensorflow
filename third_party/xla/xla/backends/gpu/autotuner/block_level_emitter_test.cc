@@ -21,7 +21,6 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/substitute.h"
 #include "xla/autotuning.pb.h"
@@ -64,21 +63,20 @@ int CountTmaAllowed(
 class TritonBlockLevelFusionEmitterBackendTest
     : public HloHardwareIndependentTestBase {
  protected:
-  TritonBlockLevelFusionEmitterBackendTest() {
+  TritonBlockLevelFusionEmitterBackendTest()
+      : backend_(PlatformUtil::GetDefaultPlatform()
+                     .value()
+                     ->ExecutorForDevice(0)
+                     .value(),
+                 &debug_options_, &compiler_) {
     // TODO(b/315957220): Remove the experimental flags once TMA is enabled by
     // default.
     debug_options_.set_xla_gpu_experimental_enable_triton_tma(true);
-    backend_ = std::make_unique<BlockLevelEmitterBackend>(
-        PlatformUtil::GetDefaultPlatform()
-            .value()
-            ->ExecutorForDevice(0)
-            .value(),
-        &debug_options_, &compiler_);
   }
 
   DebugOptions debug_options_;
   NVPTXCompiler compiler_;
-  std::unique_ptr<BlockLevelEmitterBackend> backend_;
+  BlockLevelEmitterBackend backend_;
 };
 
 // Verifies that GetDefaultConfig correctly parses and returns the
@@ -118,7 +116,7 @@ ENTRY %main {
   // Call GetDefaultConfig on the root instruction (the fusion op).
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<BackendConfig> config,
-      backend_->GetDefaultConfig(
+      backend_.GetDefaultConfig(
           *(module->entry_computation()->root_instruction())));
   // Verify that the returned config is indeed a BlockLevelFusionConfig.
   BlockLevelFusionConfig block_level_fusion_config;
@@ -162,7 +160,7 @@ ENTRY %main {
   // Call GetDefaultConfig on the root instruction (the fusion op).
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<BackendConfig> config,
-      backend_->GetDefaultConfig(
+      backend_.GetDefaultConfig(
           *(module->entry_computation()->root_instruction())));
   // Verify that the returned config is indeed a BlockLevelFusionConfig.
   BlockLevelFusionConfig block_level_fusion_config;
@@ -209,7 +207,7 @@ ENTRY %main {
   // Call GetDefaultConfig on the root instruction (the fusion op).
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<BackendConfig> config,
-      backend_->GetDefaultConfig(
+      backend_.GetDefaultConfig(
           *(module->entry_computation()->root_instruction())));
   // Verify that the returned config is indeed a BlockLevelFusionConfig.
   BlockLevelFusionConfig block_level_fusion_config;
@@ -258,7 +256,7 @@ ENTRY %main {
   // Call GetDefaultConfig on the root instruction (the fusion op).
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<BackendConfig> config,
-      backend_->GetDefaultConfig(
+      backend_.GetDefaultConfig(
           *(module->entry_computation()->root_instruction())));
   // Verify that the returned config is indeed a BlockLevelFusionConfig.
   BlockLevelFusionConfig block_level_fusion_config;
@@ -303,7 +301,7 @@ ENTRY %main {
   // Call GetSupportedConfigs on the root instruction (the fusion op).
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<std::unique_ptr<BackendConfig>> configs,
-      backend_->GetSupportedConfigs(
+      backend_.GetSupportedConfigs(
           *(module->entry_computation()->root_instruction())));
 
   // If device supports TMA, the backend should generate 70 combinations:
@@ -315,7 +313,7 @@ ENTRY %main {
   // The middle dimension (d1 = 1) must always have tile size 1.
   //
   // If device doesn't support TMA, we currently expect half the number (35).
-  bool is_tma_supported = backend_->target_config()
+  bool is_tma_supported = backend_.target_config()
                               .device_description.cuda_compute_capability()
                               .IsAtLeastHopper();
   if (is_tma_supported) {
@@ -387,7 +385,7 @@ backend_config={"fusion_backend_config":{"kind":"__triton"}}
   // Call GetSupportedConfigs on the root instruction (the fusion op).
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<std::unique_ptr<BackendConfig>> configs,
-      backend_->GetSupportedConfigs(
+      backend_.GetSupportedConfigs(
           *(module->entry_computation()->root_instruction())));
 
   // If device supports TMA, expect 40 total configurations:
@@ -397,7 +395,7 @@ backend_config={"fusion_backend_config":{"kind":"__triton"}}
   // The middle dimension (d1 = 0) must always have tile size 0.
   //
   // If device doesn't support TMA, we currently expect half the number (20).
-  bool is_tma_supported = backend_->target_config()
+  bool is_tma_supported = backend_.target_config()
                               .device_description.cuda_compute_capability()
                               .IsAtLeastHopper();
   if (is_tma_supported) {
@@ -466,7 +464,7 @@ ENTRY %main {
   // Call GetDefaultConfig on the root instruction (the fusion op).
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<BackendConfig> config,
-      backend_->GetDefaultConfig(
+      backend_.GetDefaultConfig(
           *(module->entry_computation()->root_instruction())));
   // Verify that the returned config is indeed a BlockLevelFusionConfig.
   BlockLevelFusionConfig block_level_fusion_config;
@@ -482,7 +480,7 @@ ENTRY %main {
               )pb"));
 
   // Apply the generated config to the fusion instruction.
-  EXPECT_THAT(backend_->ApplyConfig(*instr, *config), absl_testing::IsOk());
+  EXPECT_THAT(backend_.ApplyConfig(*instr, *config), absl_testing::IsOk());
   TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_backend_config,
                           instr->backend_config<GpuBackendConfig>());
   // Ensure that the backend config on the instruction matches what was applied.
@@ -524,10 +522,10 @@ ENTRY %main {
   // Call GetDefaultConfig on the root instruction (the fusion op).
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<BackendConfig> config,
-      backend_->GetDefaultConfig(
+      backend_.GetDefaultConfig(
           *(module->entry_computation()->root_instruction())));
   // Attempt to compile the root instruction using the retrieved backend config.
-  absl::StatusOr<std::unique_ptr<Executable>> executable = backend_->Compile(
+  absl::StatusOr<std::unique_ptr<Executable>> executable = backend_.Compile(
       *(module->entry_computation()->root_instruction()), *config);
   // Verify that compilation succeeded and returned a valid executable.
   EXPECT_THAT(executable, absl_testing::IsOk());

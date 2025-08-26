@@ -69,21 +69,20 @@ const char kHlo[] = R"(
 
 class TritonBackendTest : public HloHardwareIndependentTestBase {
  protected:
-  TritonBackendTest() {
+  TritonBackendTest()
+      : backend_(PlatformUtil::GetDefaultPlatform()
+                     .value()
+                     ->ExecutorForDevice(0)
+                     .value(),
+                 &debug_options_, &compiler_) {
     // TODO(b/315957220): Remove the experimental flags once TMA is enabled by
     // default.
     debug_options_.set_xla_gpu_experimental_enable_triton_tma(true);
-    backend_ =
-        std::make_unique<TritonBackend>(PlatformUtil::GetDefaultPlatform()
-                                            .value()
-                                            ->ExecutorForDevice(0)
-                                            .value(),
-                                        &debug_options_, &compiler_);
   }
 
   DebugOptions debug_options_;
   NVPTXCompiler compiler_;
-  std::unique_ptr<TritonBackend> backend_;
+  TritonBackend backend_;
 };
 
 TEST_F(TritonBackendTest, GetSupportedConfigs) {
@@ -91,12 +90,12 @@ TEST_F(TritonBackendTest, GetSupportedConfigs) {
                           ParseAndReturnVerifiedModule(kHlo));
 
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
-      backend_->GetSupportedConfigs(
+      backend_.GetSupportedConfigs(
           *(module->entry_computation()->root_instruction()));
   EXPECT_THAT(configs, absl_testing::IsOk());
   EXPECT_GT(configs.value().size(), 0);
 
-  if (backend_->target_config()
+  if (backend_.target_config()
           .device_description.cuda_compute_capability()
           .IsAtLeastHopper()) {
     auto count_tma_allowed =
@@ -120,11 +119,11 @@ TEST_F(TritonBackendTest, GetSupportedConfigsRestrictedDefaultSearch) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kHlo));
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> default_configs =
-      backend_->GetSupportedConfigs(
+      backend_.GetSupportedConfigs(
           *(module->entry_computation()->root_instruction()));
   debug_options_.set_xla_gpu_exhaustive_tiling_search(true);
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
-      exhaustive_configs = backend_->GetSupportedConfigs(
+      exhaustive_configs = backend_.GetSupportedConfigs(
           *(module->entry_computation()->root_instruction()));
   EXPECT_THAT(default_configs, IsOk());
   EXPECT_THAT(exhaustive_configs, IsOk());
@@ -139,7 +138,7 @@ TEST_F(TritonBackendTest, GetSupportedConfigsForUnsupportedInstruction) {
                                           ->called_computations()[0]
                                           ->root_instruction();
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
-      backend_->GetSupportedConfigs(*unsupported_instr);
+      backend_.GetSupportedConfigs(*unsupported_instr);
   EXPECT_THAT(configs, absl_testing::IsOk());
   EXPECT_THAT(configs.value(), testing::IsEmpty());
 }
@@ -151,7 +150,7 @@ TEST_F(TritonBackendTest, GetDefaultConfig) {
       TritonGemmConfig(64, 64, 64, 1, 1, 2, 1, false).ToProto();
 
   absl::StatusOr<std::unique_ptr<BackendConfig>> config =
-      backend_->GetDefaultConfig(
+      backend_.GetDefaultConfig(
           *(module->entry_computation()->root_instruction()));
 
   EXPECT_THAT(config, absl_testing::IsOk());
@@ -168,7 +167,7 @@ TEST_F(TritonBackendTest, GetDefaultConfigForUnsupportedInstruction) {
                                           ->called_computations()[0]
                                           ->root_instruction();
   absl::StatusOr<std::unique_ptr<BackendConfig>> config =
-      backend_->GetDefaultConfig(*unsupported_instr);
+      backend_.GetDefaultConfig(*unsupported_instr);
   EXPECT_THAT(config.status(), StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
@@ -177,9 +176,9 @@ TEST_F(TritonBackendTest, Compile) {
                           ParseAndReturnVerifiedModule(kHlo));
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<BackendConfig> config,
-      backend_->GetDefaultConfig(
+      backend_.GetDefaultConfig(
           *(module->entry_computation()->root_instruction())));
-  absl::StatusOr<std::unique_ptr<Executable>> executable = backend_->Compile(
+  absl::StatusOr<std::unique_ptr<Executable>> executable = backend_.Compile(
       *(module->entry_computation()->root_instruction()), *config);
   EXPECT_THAT(executable, absl_testing::IsOk());
 }
