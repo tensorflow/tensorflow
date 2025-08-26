@@ -30,5 +30,18 @@ SymbolicMap::SymbolicMap(int64_t num_dimensions, int64_t num_symbols,
       num_symbols_(num_symbols),
       exprs_(std::move(exprs)) {}
 
+bool SymbolicMap::IsIdentity() const {
+  if (num_dimensions_ != GetNumResults()) {
+    return false;
+  }
+  for (int i = 0; i < num_dimensions_; ++i) {
+    const auto& expr = exprs_[i];
+    if (expr.GetType() != SymbolicExprType::kVariable || expr.GetValue() != i) {
+      return false;
+    }
+  }
+  return true;
+}
+
 }  // namespace gpu
 }  // namespace xla

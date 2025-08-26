@@ -36,6 +36,12 @@ class SymbolicMap {
   const std::vector<SymbolicExpr>& GetResults() const { return exprs_; }
   SymbolicExpr GetResult(unsigned idx) const { return exprs_[idx]; }
 
+  bool IsEmpty() const { return exprs_.empty(); }
+
+  // Returns true if each result expression is a direct mapping of the dimension
+  // at the same index. Symbols are not considered in this check.
+  bool IsIdentity() const;
+
  private:
   int64_t num_dimensions_;
   int64_t num_symbols_;
