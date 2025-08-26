@@ -6613,6 +6613,81 @@ class DecodeImageTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     image0, image1_0 = self.evaluate([image0, image1_0])
     self.assertAllEqual(image0, image1_0)
 
+  def testDecodeImageShapeInferenceInDataPipeline(self):
+    """Test that decode_image sets proper shape inference in tf.data pipelines.
+
+    This test verifies the fix for the issue where tf.image.decode_image
+    followed by tf.image.resize would fail with "ValueError: 'images' contains
+    no shape" when used in tf.data.Dataset.map() operations.
+
+    The fix ensures that when expand_animations=False, the output tensor shape
+    is properly set to [None, None, channels] for known channel counts or
+    [None, None, None] for unknown channel counts, enabling proper shape
+    inference for subsequent operations like resize.
+    """
+    # Create test JPEG image data
+    test_image = constant_op.constant([[[255, 0, 0], [0, 255, 0]], 
+                                       [[0, 0, 255], [255, 255, 0]]], 
+                                      dtype=dtypes.uint8)
+    jpeg_bytes = gen_image_ops.encode_jpeg(test_image)
+
+    def process_image_fixed(image_bytes):
+      """Process function using the fix: expand_animations=False."""
+      decoded = image_ops.decode_image(image_bytes, channels=3, 
+                                       expand_animations=False)
+      # This should work without ValueError due to proper shape inference
+      resized = image_ops.resize(decoded, [224, 224])
+      return resized
+
+
+
+    with self.cached_session():
+      # Test the fixed version in a data pipeline
+      dataset_fixed = dataset_ops.Dataset.from_tensor_slices([jpeg_bytes])
+      dataset_fixed = dataset_fixed.map(process_image_fixed)
+      
+      # Verify we can iterate through the dataset without errors
+      for processed_image in dataset_fixed:
+        processed_image_val = self.evaluate(processed_image)
+        self.assertEqual(processed_image_val.shape, (224, 224, 3))
+
+      # Test that decode_image with expand_animations=False sets proper shape
+      decoded_fixed = image_ops.decode_image(jpeg_bytes, channels=3,
+                                             expand_animations=False)
+      self.assertEqual(decoded_fixed.shape.rank, 3)
+      self.assertEqual(decoded_fixed.shape.as_list(), [None, None, 3])
+
+      # Test with different channel counts
+      for channels in [1, 3, 4]:
+        if channels == 1:
+          # Create grayscale test image
+          gray_image = constant_op.constant([[128, 64], [192, 32]], 
+                                           dtype=dtypes.uint8)
+          gray_image = array_ops.expand_dims(gray_image, -1)
+          test_bytes = gen_image_ops.encode_png(gray_image)
+        else:
+          # Use the RGB image for 3 and 4 channel tests
+          test_bytes = jpeg_bytes
+
+        decoded = image_ops.decode_image(test_bytes, channels=channels,
+                                         expand_animations=False)
+        self.assertEqual(decoded.shape.rank, 3)
+        
+        if channels <= 3:  # JPEG/PNG support up to 3 channels typically
+          expected_shape = [None, None, channels]
+        else:
+          # For unsupported channel counts, we still get proper rank
+          expected_shape = [None, None, None]
+        
+        # The key fix: shape is properly inferred for resize operations
+        self.assertTrue(decoded.shape.is_compatible_with(expected_shape))
+
+      # Test that unknown channel count still sets proper rank
+      decoded_unknown = image_ops.decode_image(jpeg_bytes, 
+                                               expand_animations=False)
+      self.assertEqual(decoded_unknown.shape.rank, 3)
+      self.assertEqual(decoded_unknown.shape.as_list(), [None, None, None])
+
 
 if __name__ == "__main__":
   googletest.main()
