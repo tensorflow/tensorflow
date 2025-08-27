@@ -50,8 +50,7 @@ class HloLiveRangeTest : public HloHardwareIndependentTestBase {
   ~HloLiveRangeTest() override {}
 
   void Analyze(const HloSchedule& schedule) {
-    alias_analysis_ =
-        HloAliasAnalysis::Run(module_.get(), &alias_info_).value();
+    alias_analysis_ = HloAliasAnalysis::Run(module_.get(), &alias_info_);
     hlo_live_range_ = HloLiveRange::Run(schedule, *alias_analysis_,
                                         module_->entry_computation())
                           .value();
@@ -393,7 +392,7 @@ ENTRY %While {
   const int32_t num_runs = 20;
   std::vector<std::unique_ptr<HloLiveRange>> hlo_live_ranges;
   std::unique_ptr<HloAliasAnalysis> alias_analysis =
-      HloAliasAnalysis::Run(module_.get(), &alias_info_).value();
+      HloAliasAnalysis::Run(module_.get(), &alias_info_);
 
   for (int i = 0; i < num_runs; ++i) {
     hlo_live_ranges.push_back(HloLiveRange::Run(schedule, *alias_analysis,
@@ -458,8 +457,8 @@ ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
 
   CheckSchedule();
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> aa,
-                          HloAliasAnalysis::Run(module_.get(), &alias_info_));
+  std::unique_ptr<HloAliasAnalysis> aa =
+      HloAliasAnalysis::Run(module_.get(), &alias_info_);
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloLiveRange> hlo_live_range,
                           HloLiveRange::Run(module_->schedule(), *aa,
@@ -504,8 +503,8 @@ TEST_F(HloLiveRangeTest, Call) {
 
   TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> aa,
-                          HloAliasAnalysis::Run(module_.get(), &alias_info_));
+  std::unique_ptr<HloAliasAnalysis> aa =
+      HloAliasAnalysis::Run(module_.get(), &alias_info_);
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloLiveRange> hlo_live_range,
                           HloLiveRange::Run(module_->schedule(), *aa,

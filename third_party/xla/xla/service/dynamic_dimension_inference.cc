@@ -2761,10 +2761,10 @@ DynamicDimensionInference::DynamicDimensionInference(
       execution_threads_(execution_threads) {}
 
 absl::Status DynamicDimensionInference::AnalyzeDynamicDimensions() {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloDataflowAnalysis> dataflow_analysis,
-                      HloDataflowAnalysis::Run(*module_, /*ssa_form=*/false,
-                                               /*bitcast_defines_value=*/true,
-                                               execution_threads_));
+  std::unique_ptr<HloDataflowAnalysis> dataflow_analysis =
+      HloDataflowAnalysis::Run(*module_, /*ssa_form=*/false,
+                               /*bitcast_defines_value=*/true,
+                               execution_threads_);
   for (HloComputation* computation : module_->MakeComputationPostOrder()) {
     if (!HloInstruction::IsThreadIncluded(computation->execution_thread(),
                                           execution_threads_)) {

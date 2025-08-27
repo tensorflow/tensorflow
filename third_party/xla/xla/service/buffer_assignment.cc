@@ -1232,8 +1232,8 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>> BufferAssignment::FromProto(
     const BufferAssignmentProto& proto, const HloModule* module,
     BufferValue::SizeFunction buffer_size, const AliasInfo* alias_info) {
   // Create alias and dataflow analysis.
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                      HloAliasAnalysis::Run(module, alias_info));
+  std::unique_ptr<HloAliasAnalysis> alias_analysis =
+      HloAliasAnalysis::Run(module, alias_info);
 
   // Build a map from a unique_id to corresponding HloInstruction in the module.
   auto id_to_hlo_instruction = BuildIdToHloInstructionMap(module);
@@ -2253,8 +2253,8 @@ BufferAssigner::CreateAssignment(
         heap_buffer_interval_compare,
     std::optional<BufferAssignment::BufferIsolationOptions> isolation_options,
     std::optional<BufferValue::Color> temp_buffer_color) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                      HloAliasAnalysis::Run(module, alias_info_));
+  std::unique_ptr<HloAliasAnalysis> alias_analysis =
+      HloAliasAnalysis::Run(module, alias_info_);
 
   // Set up a schedule for each computation.
   HloSchedule schedule(module);

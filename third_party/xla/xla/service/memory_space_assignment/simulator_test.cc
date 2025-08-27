@@ -107,8 +107,7 @@ class MemorySpaceAssignmentSimulatorTest
         CostAnalysis::Create(*op_cost_manager_, cost_analysis_options,
                              &alias_info_, *module_));
 
-    TF_ASSIGN_OR_RETURN(alias_analysis_,
-                        HloAliasAnalysis::Run(module_.get(), &alias_info_));
+    alias_analysis_ = HloAliasAnalysis::Run(module_.get(), &alias_info_);
     TF_ASSIGN_OR_RETURN(hlo_live_range_,
                         HloLiveRange::Run(module_->schedule(), *alias_analysis_,
                                           module_->entry_computation()));

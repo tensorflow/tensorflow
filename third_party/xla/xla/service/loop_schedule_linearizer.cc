@@ -198,8 +198,7 @@ absl::StatusOr<bool> LoopScheduleLinearizer::Run(
       }
 
       if (alias_analysis == nullptr) {
-        TF_ASSIGN_OR_RETURN(alias_analysis,
-                            HloAliasAnalysis::Run(module, alias_info_));
+        alias_analysis = HloAliasAnalysis::Run(module, alias_info_);
       }
       TF_ASSIGN_OR_RETURN(bool updated_loop, AddControlEdgesForLoopWrites(
                                                  instruction, *alias_analysis));

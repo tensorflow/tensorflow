@@ -302,8 +302,7 @@ class MemoryBoundLoopOptimizerTest : public HloHardwareIndependentTestBase {
         cost_analysis_,
         CostAnalysis::Create(*op_cost_manager_, cost_analysis_options_,
                              &alias_info_, *module));
-    TF_ASSIGN_OR_RETURN(alias_analysis_,
-                        HloAliasAnalysis::Run(module, &alias_info_));
+    alias_analysis_ = HloAliasAnalysis::Run(module, &alias_info_);
     TF_ASSIGN_OR_RETURN(live_range_,
                         HloLiveRange::Run(module->schedule(), *alias_analysis_,
                                           module->entry_computation()));
@@ -599,8 +598,8 @@ ENTRY Entry {
       }
     };
 
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                        HloAliasAnalysis::Run(module, &alias_info_));
+    std::unique_ptr<HloAliasAnalysis> alias_analysis =
+        HloAliasAnalysis::Run(module, &alias_info_);
     TF_ASSIGN_OR_RETURN(std::unique_ptr<HloLiveRange> live_range,
                         HloLiveRange::Run(module->schedule(), *alias_analysis,
                                           module->entry_computation()));
@@ -1582,8 +1581,7 @@ ENTRY entry {
 
   // We expect operand 0 of prev_op4, op4, and next_op4 to all be prefetches of
   // same distance from the user.
-  TF_ASSERT_OK_AND_ASSIGN(auto alias_analysis,
-                          HloAliasAnalysis::Run(module.get(), &alias_info_));
+  auto alias_analysis = HloAliasAnalysis::Run(module.get(), &alias_info_);
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_live_range,
                           HloLiveRange::Run(module->schedule(), *alias_analysis,
                                             module->entry_computation()));

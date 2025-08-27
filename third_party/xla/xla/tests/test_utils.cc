@@ -334,7 +334,7 @@ absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
     const HloModule* module, std::minstd_rand0* engine, bool use_large_range,
     bool treat_gte_as_data_formatting,
     std::optional<int64_t> max_bits_of_precision) {
-  TF_ASSIGN_OR_RETURN(auto dataflow, HloDataflowAnalysis::Run(*module));
+  auto dataflow = HloDataflowAnalysis::Run(*module);
   const auto params = module->entry_computation()->parameter_instructions();
   std::vector<Literal> arguments(params.size());
   for (int i = 0; i < params.size(); ++i) {

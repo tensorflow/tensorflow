@@ -3589,7 +3589,7 @@ absl::StatusOr<bool> AutoShardingImplementation::RunAutoSharding(
                      execution_threads));
   const HloComputation* entry_computation = module->entry_computation();
   std::unique_ptr<HloAliasAnalysis> alias_analysis =
-      HloAliasAnalysis::Run(module, alias_info_).value();
+      HloAliasAnalysis::Run(module, alias_info_);
 
   // Handle donated args by resolving them into input-output aliases. While we
   // want to perform this resolution, we do not want to modify the module, which

@@ -75,8 +75,7 @@ class HloDataflowAnalysisTest : public HloHardwareIndependentTestBase,
     FlattenCallGraph flatten;
     EXPECT_TRUE(flatten.Run(module_.get()).ok());
     analysis_ =
-        HloDataflowAnalysis::Run(*module_, ssa_form, bitcast_defines_value)
-            .value();
+        HloDataflowAnalysis::Run(*module_, ssa_form, bitcast_defines_value);
     return *analysis_;
   }
 
@@ -2091,8 +2090,8 @@ ENTRY %AddDependency (p: f32[3]) -> f32[3] {
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(module_string, GetModuleConfigForTest()));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloDataflowAnalysis> analysis,
-                          HloDataflowAnalysis::Run(*module));
+  std::unique_ptr<HloDataflowAnalysis> analysis =
+      HloDataflowAnalysis::Run(*module);
   const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kAddDependency);
 
@@ -2119,8 +2118,8 @@ TEST_F(HloDataflowAnalysisTest, AllReduceStartAndDone) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloDataflowAnalysis> analysis,
-                          HloDataflowAnalysis::Run(*module));
+  std::unique_ptr<HloDataflowAnalysis> analysis =
+      HloDataflowAnalysis::Run(*module);
 
   HloInstruction* done = module->entry_computation()->root_instruction();
   HloInstruction* start = done->mutable_operand(0);
@@ -2153,8 +2152,8 @@ TEST_F(HloDataflowAnalysisTest, AllReduceStartAndDoneTwoOperands) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloDataflowAnalysis> analysis,
-                          HloDataflowAnalysis::Run(*module));
+  std::unique_ptr<HloDataflowAnalysis> analysis =
+      HloDataflowAnalysis::Run(*module);
 
   HloInstruction* done = module->entry_computation()->root_instruction();
   HloInstruction* start = done->mutable_operand(0);
@@ -2275,8 +2274,7 @@ INSTANTIATE_TEST_SUITE_P(HloDataflowAnalysisInstantiation,
 
 std::unique_ptr<HloDataflowAnalysis> RunAnalysis(const HloModule& module) {
   return HloDataflowAnalysis::Run(module, /*ssa_form=*/false,
-                                  /*bitcast_defines_value=*/false)
-      .value();
+                                  /*bitcast_defines_value=*/false);
 }
 
 using DoesNotUseOperandBufferTest = HloHardwareIndependentTestBase;
@@ -3666,9 +3664,8 @@ TEST_P(HloDataflowAnalysisTest, b409416499) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto after_layout_bitcast_module,
                           ParseAndReturnVerifiedModule(after_layout_bitcast));
-  TF_ASSERT_OK_AND_ASSIGN(auto analysis,
-                          HloDataflowAnalysis::Run(*after_layout_bitcast_module,
-                                                   /*ssa_form=*/false));
+  auto analysis = HloDataflowAnalysis::Run(*after_layout_bitcast_module,
+                                           /*ssa_form=*/false);
   HloInstruction* bitcast3 =
       FindInstruction(after_layout_bitcast_module.get(), "bitcast.3");
   HloInstruction* param2 =
@@ -3716,9 +3713,8 @@ TEST_P(HloDataflowAnalysisTest, b409756077) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto after_layout_bitcast_module,
                           ParseAndReturnVerifiedModule(after_layout_bitcast));
-  TF_ASSERT_OK_AND_ASSIGN(auto analysis,
-                          HloDataflowAnalysis::Run(*after_layout_bitcast_module,
-                                                   /*ssa_form=*/false));
+  auto analysis = HloDataflowAnalysis::Run(*after_layout_bitcast_module,
+                                           /*ssa_form=*/false);
   HloInstruction* bitcast3 =
       FindInstruction(after_layout_bitcast_module.get(), "bitcast.3");
   HloInstruction* param2 =
