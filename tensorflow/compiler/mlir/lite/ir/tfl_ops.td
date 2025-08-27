@@ -828,6 +828,8 @@ def TFL_CeilOp: TFL_Op<"ceil", [
 
   let results = (outs TFL_FpTensor:$y);
 
+  let hasFolder = 1;
+
   let extraClassDeclaration = [{
     // Returns whether the return types are compatible.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r) {
