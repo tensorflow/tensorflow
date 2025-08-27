@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service_error_util.h"
 #include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/protobuf/coordination_config.pb.h"
 #include "xla/tsl/protobuf/coordination_service.pb.h"
@@ -1161,11 +1162,10 @@ void CoordinationService::PollForErrorAsync(const CoordinatedTask& task,
 
 // Initializes a new barrier. Returns false if the barrier should fail
 // immediately.
-bool CoordinationService::InitializeBarrier(
+absl::Status CoordinationService::InitializeBarrier(
     BarrierState* barrier, absl::string_view barrier_id, int64_t counter,
     absl::Duration timeout, const CoordinatedTask& task,
-    const std::vector<CoordinatedTask>& participating_tasks,
-    BarrierCallback done) {
+    const std::vector<CoordinatedTask>& participating_tasks) {
   // Initialize barrier state.
   barrier->id = barrier_id;
   barrier->counter = counter;
@@ -1173,9 +1173,7 @@ bool CoordinationService::InitializeBarrier(
   barrier->result = absl::UnknownError("Invalid barrier result.");
   barrier->initiating_task = task;
   barrier->done_callbacks.clear();
-  if (!InitializeTasksAtBarrier(barrier, participating_tasks, done)) {
-    return false;
-  }
+  TF_RETURN_IF_ERROR(InitializeTasksAtBarrier(barrier, participating_tasks));
 
   barrier->num_pending_tasks = barrier->tasks_at_barrier.size();
 
@@ -1196,8 +1194,7 @@ bool CoordinationService::InitializeBarrier(
               " Task error: ", task_cluster_state->GetStatus().ToString())),
           barrier->id, barrier->counter);
       PassBarrier(barrier, error);
-      done(error, counter);
-      return false;
+      return error;
     }
   }
   barrier->deadline_in_micros =
@@ -1215,20 +1212,19 @@ bool CoordinationService::InitializeBarrier(
     const CoordinatedTask& task = pending_task.first;
     cluster_state_[GetTaskName(task)]->JoinBarrier(barrier_id);
   }
-  return true;
+  return absl::OkStatus();
 }
 
-bool CoordinationService::InitializeTasksAtBarrier(
+absl::Status CoordinationService::InitializeTasksAtBarrier(
     BarrierState* barrier,
-    const std::vector<CoordinatedTask>& participating_tasks,
-    BarrierCallback done) {
+    const std::vector<CoordinatedTask>& participating_tasks) {
   // Tasks were already specified for a previous barrier counter. Reset state
   // and return early.
   if (!barrier->tasks_at_barrier.empty()) {
     for (auto& it : barrier->tasks_at_barrier) {
       it.second = false;
     }
-    return true;
+    return absl::OkStatus();
   }
   if (participating_tasks.empty()) {
     // Assume barrier is for entire cluster if no tasks are specified.
@@ -1236,7 +1232,7 @@ bool CoordinationService::InitializeTasksAtBarrier(
       absl::string_view task_name = task_state.first;
       barrier->tasks_at_barrier[GetTaskFromName(task_name)] = false;
     }
-    return true;
+    return absl::OkStatus();
   }
   // Rely on the caller-specified task args.
   for (const auto& task : participating_tasks) {
@@ -1251,13 +1247,12 @@ bool CoordinationService::InitializeTasksAtBarrier(
                            "Barrier Id: ",
                            BarrierName(*barrier))),
           barrier->id, barrier->counter);
-      AddBarrierCallback(barrier, task, std::move(done));
       PassBarrier(barrier, error);
-      return false;
+      return error;
     }
     barrier->tasks_at_barrier[task] = false;
   }
-  return true;
+  return absl::OkStatus();
 }
 
 void CoordinationService::AddBarrierCallback(BarrierState* barrier,
@@ -1336,12 +1331,14 @@ void CoordinationService::BarrierAsyncLocked(
 
   if (should_initialize_new_instance) {
     // Initialize new barrier instance state.
-    if (!InitializeBarrier(barrier, barrier_id, counter, timeout, task,
-                           participating_tasks, done)) {
-      LOG(WARNING) << "Barrier init failed for barrier: "
-                   << BarrierName(barrier_id, counter)
-                   << " task: " << GetTaskName(task);
-      return;  // Exit early if barrier init failed.
+    absl::Status status = InitializeBarrier(barrier, barrier_id, counter,
+                                            timeout, task, participating_tasks);
+    if (!status.ok()) {
+      LOG(ERROR) << "Barrier (" << BarrierName(barrier_id, counter) << ") "
+                 << "failed to initialize with status: " << status
+                 << " for task: " << GetTaskName(task);
+      done(status, counter);
+      return;
     }
   }
 

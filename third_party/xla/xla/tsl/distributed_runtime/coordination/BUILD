@@ -60,6 +60,7 @@ cc_library(
         "//xla/tsl/distributed_runtime:call_options",
         "//xla/tsl/lib/gtl:int_type",
         "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status",
         "//xla/tsl/protobuf:coordination_config_proto_cc",
         "//xla/tsl/protobuf:coordination_service_proto_cc",
