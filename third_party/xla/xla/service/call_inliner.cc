@@ -397,9 +397,17 @@ absl::StatusOr<bool> CallInliner::InlineAndLegalize(
   if (did_node_mutate && uniquify_channel_ids_) {
     int unique_channel_id = 1;
     for (HloInstruction* instruction : computation->instructions()) {
-      if (dynamic_cast<HloChannelInstruction*>(instruction)) {
-        instruction->set_channel_id(unique_channel_id++);
+      if (!dynamic_cast<HloChannelInstruction*>(instruction)) {
+        continue;
       }
+      // Channel IDs for host transfers are part of the ABI, and can never be
+      // uniquified.
+      HloSendRecvInstruction* send_recv =
+          dynamic_cast<HloSendRecvInstruction*>(instruction);
+      if (send_recv && send_recv->is_host_transfer()) {
+        continue;
+      }
+      instruction->set_channel_id(unique_channel_id++);
     }
   }
   return did_node_mutate;

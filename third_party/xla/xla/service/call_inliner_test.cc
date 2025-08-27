@@ -23,9 +23,11 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/hlo_schedule.h"
@@ -951,6 +953,38 @@ ENTRY main {
   ASSERT_THAT(call_inliner.Run(m.get()), ::tsl::testing::IsOkAndHolds(true));
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               op::Subtract(op::Call(op::Parameter(0)), op::Parameter(0)));
+}
+
+TEST_F(CallInlinerTest, HostSendChannelIdNotUniquified) {
+  const char* hlo = R"(
+callee {
+  input = f32[128,32] parameter(0)
+  token.0 = token[] parameter(1)
+  send = (f32[128, 32], token[]) send(input, token.0), channel_id=1, is_host_transfer=true
+  ROOT send-done = token[] send-done(send), channel_id=1, is_host_transfer=true
+}
+
+ENTRY main {
+  input = f32[128,32] parameter(0)
+  token.0 = token[] after-all()
+  call.0 = token[] call(input, token.0), to_apply=callee
+  ROOT call.1 = token[] call(input, call.0), to_apply=callee
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(hlo));
+  CallInliner call_inliner(/*single_call_site=*/false, /*update_domain=*/false,
+                           /*composites_to_preserve=*/{},
+                           /*uniquify_channel_ids=*/true);
+  ASSERT_THAT(call_inliner.Run(m.get()), absl_testing::IsOkAndHolds(true));
+  HloComputation* entry = m->entry_computation();
+  for (HloInstruction* inst : entry->instructions()) {
+    HloSendRecvInstruction* send_recv =
+        dynamic_cast<HloSendRecvInstruction*>(inst);
+    if (send_recv && send_recv->is_host_transfer()) {
+      EXPECT_EQ(send_recv->channel_id(), 1);
+    }
+  }
 }
 
 }  // namespace
