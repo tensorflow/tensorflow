@@ -5665,14 +5665,24 @@ absl::Status SpmdPartitioner::ConvertUnreducedSharding(
       auto convert_unreduced_subgroup_sharding =
           [](HloInstruction* hlo,
              const HloSharding& sharding) -> absl::StatusOr<HloSharding> {
-        // TODO(b/438306205, b/438308782): Remove this check once the unreduced
-        // subgroup sharding is compatible with manual and replicated.
-        TF_RET_CHECK(!sharding.HasPartialReplication() &&
-                     !sharding.IsManualSubgroup())
+        // TODO(b/438306205): Remove this check once the unreduced
+        // subgroup sharding is compatible with manual.
+        TF_RET_CHECK(!sharding.IsManualSubgroup())
             << "Incompatible unreduced sharding at " << hlo->ToString();
         hlo->add_frontend_attribute(sdy::kHasUnreducedAxes, "true");
-        return HloSharding::PartialTile(sharding.tile_assignment(),
-                                        sharding.metadata());
+        TileAssignment tile_assignment = sharding.tile_assignment();
+        if (sharding.HasPartialReplication()) {
+          // When we have both replicated and unreduced, merge them into one
+          // in the tile assignment.
+          int64_t unreduced_dim = sharding.SubgroupUnreducedDim();
+          DimensionVector new_dims(tile_assignment.dimensions().begin(),
+                                   tile_assignment.dimensions().end());
+          new_dims[sharding.SubgroupReplicationDim()] *=
+              new_dims[unreduced_dim];
+          new_dims.erase(new_dims.begin() + unreduced_dim);
+          tile_assignment = tile_assignment.Reshape(new_dims);
+        }
+        return HloSharding::PartialTile(tile_assignment, sharding.metadata());
       };
       if (sharding.IsTuple()) {
         std::vector<HloSharding> subshardings = sharding.tuple_elements();
