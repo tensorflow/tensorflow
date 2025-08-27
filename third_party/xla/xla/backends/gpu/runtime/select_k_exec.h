@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_GPU_RUNTIME_RAFT_SELECT_K_EXEC_H_
-#define XLA_BACKENDS_GPU_RUNTIME_RAFT_SELECT_K_EXEC_H_
+#ifndef XLA_BACKENDS_GPU_RUNTIME_SELECT_K_EXEC_H_
+#define XLA_BACKENDS_GPU_RUNTIME_SELECT_K_EXEC_H_
 
 #include <cstdint>
 
@@ -25,7 +25,7 @@ limitations under the License.
 
 namespace xla::gpu {
 
-// Launches a RAFT Top-K selection on GPU for a batch of matrices.
+// Launches a Top-K selection on GPU for a batch of matrices.
 //
 // Args:
 //   device_ordinal: GPU device index to run the operation on.
@@ -41,14 +41,15 @@ namespace xla::gpu {
 // Returns:
 //   absl::Status indicating success or failure of the operation.
 template <typename T>
-absl::Status raft_select_k_exec(
-    int device_ordinal, ::stream_executor::DeviceMemoryAllocator* allocator,
-    ::stream_executor::Stream* stream,
-    ::stream_executor::DeviceMemoryBase data_in,
-    ::stream_executor::DeviceMemoryBase data_out,
-    ::stream_executor::DeviceMemoryBase indices_out, std::uint32_t batch,
-    std::uint32_t n, std::uint32_t k);
+absl::Status select_k_exec(int device_ordinal,
+                           ::stream_executor::DeviceMemoryAllocator* allocator,
+                           ::stream_executor::Stream* stream,
+                           ::stream_executor::DeviceMemoryBase data_in,
+                           ::stream_executor::DeviceMemoryBase data_out,
+                           ::stream_executor::DeviceMemoryBase indices_out,
+                           std::uint32_t batch, std::uint32_t n,
+                           std::uint32_t k);
 
 }  // namespace xla::gpu
 
-#endif  // XLA_BACKENDS_GPU_RUNTIME_RAFT_SELECT_K_EXEC_H_
+#endif  // XLA_BACKENDS_GPU_RUNTIME_SELECT_K_EXEC_H_

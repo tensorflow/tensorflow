@@ -13,13 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/gpu/runtime/raft_select_k_exec.h"
-
 #include <cstddef>
 #include <cstdint>
 #include <exception>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 
 #include "absl/base/optimization.h"
@@ -36,14 +35,17 @@ limitations under the License.
 #include "raft/core/resources.hpp"
 #include "raft/matrix/select_k.cuh"
 #include "raft/matrix/select_k_types.hpp"
+#include "xla/backends/gpu/runtime/select_k_exec.h"
 // NOTE: This include is required for vectorized BF16 GPU runtime support.
 // It will no longer be needed after upgrading to raft v25.10.00.
 #include "xla/backends/gpu/runtime/raft_vectorized_bf16.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/types.h"
 
 namespace xla::gpu {
 namespace se = ::stream_executor;
@@ -236,21 +238,16 @@ SelectAlgo choose_select_k_algorithm<nv_bfloat16>(uint32_t rows, uint32_t cols,
 
 // Host-side entry point for raft select_k
 template <typename T>
-absl::Status raft_select_k_exec(
-    int device_ordinal, se::DeviceMemoryAllocator* allocator,
-    se::Stream* stream, se::DeviceMemoryBase data_in,
-    se::DeviceMemoryBase data_out, se::DeviceMemoryBase indices_out,
-    std::uint32_t batch, std::uint32_t n, std::uint32_t k) {
-  // Validate input sizes
-  DCHECK_EQ(data_in.size(), static_cast<uint64_t>(batch) * n * sizeof(T));
-  DCHECK_EQ(data_out.size(), static_cast<uint64_t>(batch) * k * sizeof(T));
-  DCHECK_EQ(indices_out.size(),
-            static_cast<uint64_t>(batch) * k * sizeof(uint32_t));
-  DCHECK_GE(n, k);
-
+absl::Status select_k_exec(int device_ordinal,
+                           se::DeviceMemoryAllocator* allocator,
+                           se::Stream* stream, se::DeviceMemoryBase data_in,
+                           se::DeviceMemoryBase data_out,
+                           se::DeviceMemoryBase indices_out,
+                           std::uint32_t batch, std::uint32_t n,
+                           std::uint32_t k) {
   // Pick the most suitable algorithm
   SelectAlgo algo = choose_select_k_algorithm<T>(batch, n, k);
-  VLOG(3) << "raft_select_k_exec: "
+  VLOG(3) << "select_k_exec_raft: "
           << "device_ordinal: " << device_ordinal << ", "
           << "data_in: " << data_in.opaque() << " (" << data_in.size() << "B)"
           << ", data_out: " << data_out.opaque() << " (" << data_out.size()
@@ -263,13 +260,16 @@ absl::Status raft_select_k_exec(
   // Retrieve or create RAFT resource for this stream
   cudaStream_t cuda_stream =
       reinterpret_cast<cudaStream_t>(stream->platform_specific_handle().stream);
-  DCHECK(cuda_stream != nullptr);
+  TF_RET_CHECK(cuda_stream != nullptr)
+      << "Failed to cast se::Stream to cudaStream_t.";
   RaftStreamResource* resContainer =
       stream->GetOrCreateResource<RaftStreamResource>(
           [device_ordinal, allocator, cuda_stream] {
             return RaftStreamResource::Create(device_ordinal, allocator,
                                               cuda_stream);
           });
+  TF_RET_CHECK(resContainer != nullptr)
+      << "Failed to create or retrieve RaftStreamResource";
 
   try {
     // Wrap raw device pointers in RAFT matrix views
@@ -303,14 +303,31 @@ absl::Status raft_select_k_exec(
 }
 
 // Explicit instantiations for supported types
-template absl::Status raft_select_k_exec<float>(
+template absl::Status select_k_exec<float>(int, se::DeviceMemoryAllocator*,
+                                           se::Stream*, se::DeviceMemoryBase,
+                                           se::DeviceMemoryBase,
+                                           se::DeviceMemoryBase, std::uint32_t,
+                                           std::uint32_t, std::uint32_t);
+
+template absl::Status select_k_exec<nv_bfloat16>(
     int, se::DeviceMemoryAllocator*, se::Stream*, se::DeviceMemoryBase,
     se::DeviceMemoryBase, se::DeviceMemoryBase, std::uint32_t, std::uint32_t,
     std::uint32_t);
 
-template absl::Status raft_select_k_exec<nv_bfloat16>(
-    int, se::DeviceMemoryAllocator*, se::Stream*, se::DeviceMemoryBase,
-    se::DeviceMemoryBase, se::DeviceMemoryBase, std::uint32_t, std::uint32_t,
-    std::uint32_t);
+// Explicit specializations for xla::bfloat16
+template <>
+absl::Status select_k_exec<::xla::bfloat16>(
+    int device_ordinal, se::DeviceMemoryAllocator* allocator,
+    se::Stream* stream, se::DeviceMemoryBase data_in,
+    se::DeviceMemoryBase data_out, se::DeviceMemoryBase indices_out,
+    std::uint32_t batch, std::uint32_t n, std::uint32_t k) {
+  // Sanity check: Eigen::bfloat16 and nv_bfloat16 must be binary-compatible
+  static_assert(sizeof(::xla::bfloat16) == sizeof(nv_bfloat16),
+                "xla::bfloat16 and nv_bfloat16 must have the same size");
+
+  // Just forward to the nv_bfloat16 instantiation
+  return select_k_exec<nv_bfloat16>(device_ordinal, allocator, stream, data_in,
+                                    data_out, indices_out, batch, n, k);
+}
 
 }  // namespace xla::gpu

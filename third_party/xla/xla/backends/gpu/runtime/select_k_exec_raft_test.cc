@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/gpu/runtime/raft_select_k_exec.h"
-
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
@@ -29,7 +27,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/types/span.h"
-#include "third_party/gpus/cuda/include/cuda_bf16.h"
+#include "xla/backends/gpu/runtime/select_k_exec.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/platform.h"
@@ -38,6 +36,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/types.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -65,7 +64,7 @@ struct MaskFor<float> {
 };
 
 template <>
-struct MaskFor<nv_bfloat16> {
+struct MaskFor<::xla::bfloat16> {
   using type = uint16_t;
   static constexpr type kStartBits = 0x3C00;  // bfloat16: 1/128
 };
@@ -126,9 +125,9 @@ void RunSelectKTest() {
   TF_ASSERT_OK(stream->MemcpyH2D(absl::Span<const T>(h_data_in), &d_data_in));
 
   // Run raft select_k
-  TF_ASSERT_OK(raft_select_k_exec<T>(device_ordinal, &allocator, stream.get(),
-                                     d_data_in, d_data_out, d_indices_out,
-                                     batch, n, k));
+  TF_ASSERT_OK(select_k_exec<T>(device_ordinal, &allocator, stream.get(),
+                                d_data_in, d_data_out, d_indices_out, batch, n,
+                                k));
 
   // Copy results back to host
   std::vector<T> h_data_out(batch * k);
@@ -150,6 +149,8 @@ void RunSelectKTest() {
 
 TEST(RaftSelectKExecTest, SelectKFloat) { RunSelectKTest<float>(); }
 
-TEST(RaftSelectKExecTest, SelectKBFloat16) { RunSelectKTest<nv_bfloat16>(); }
+TEST(RaftSelectKExecTest, SelectKBFloat16) {
+  RunSelectKTest<::xla::bfloat16>();
+}
 
 }  // namespace xla::gpu
