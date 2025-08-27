@@ -117,7 +117,7 @@ class CpuLibraryTest : public TargetMachineTestBase {
     EXPECT_EQ(fusion->fusion_kind(), HloInstruction::FusionKind::kCustom);
 
     // Adjust the expected values if a convert is auto-inserted.
-    if (spec.out_dtype == "bf16" &&
+    if (!use_onednn && spec.out_dtype == "bf16" &&
         hlo_query::FindInstruction(fusion->fused_instructions_computation(),
                                    HloOpcode::kDot)) {
       ++expected.num_instructions_in_fused_computation;
@@ -153,7 +153,14 @@ class CpuLibraryFullParamTest
   bool IsDotEnabledOnCPU() {
     DotRewriteTestSpec spec = GetParam();
     bool bf16_dot_supported = absl::StrContains(spec.features, "+avx512bf16");
-    return spec.in_dtype != "bf16" || bf16_dot_supported;
+    bool fp16_dot_supported = absl::StrContains(spec.features, "+avx512fp16");
+    if (spec.in_dtype == "bf16") {
+      return bf16_dot_supported;
+    }
+    if (spec.in_dtype == "f16") {
+      return fp16_dot_supported;
+    }
+    return true;
   }
 };
 
@@ -193,6 +200,61 @@ TEST_P(CpuLibraryFullParamTest, MatMul) {
     })";
 
   RunTest(hlo_template, {HloOpcode::kDot, 2, 3, IsDotEnabledOnCPU()});
+}
+
+TEST_P(CpuLibraryFullParamTest, MatMulTransposeRHS) {
+  const absl::string_view hlo_template = R"(
+    HloModule matmul
+
+    ENTRY %main {
+      %input = $in_dtype[32,8,128,64]{3,2,1,0} parameter(0)
+      %weight = $in_dtype[32,8,128,64]{3,2,1,0} parameter(1)
+      ROOT %dot = $out_dtype[32,8,128,128]{3,2,1,0} dot(%input, %weight),
+                  lhs_batch_dims={0,1}, lhs_contracting_dims={3},
+                  rhs_batch_dims={0,1}, rhs_contracting_dims={3}
+    })";
+
+  RunTest(hlo_template, {HloOpcode::kDot, 2, 3, IsDotEnabledOnCPU()});
+}
+
+TEST_P(CpuLibraryFullParamTest, MatMulTransposeLHS) {
+  const absl::string_view hlo_template = R"(
+    HloModule matmul
+
+    ENTRY %main {
+      %input = $in_dtype[32,8,128,64]{3,2,1,0} parameter(0)
+      %weight = $in_dtype[32,8,128,64]{3,2,1,0} parameter(1)
+      ROOT %dot = $out_dtype[32,8,64,64]{3,2,1,0} dot(%input, %weight),
+                  lhs_batch_dims={0,1}, lhs_contracting_dims={2},
+                  rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+    })";
+
+  DotRewriteTestSpec spec = GetParam();
+  FusionProperties expected = {HloOpcode::kDot, 0, 0, false};
+  if (spec.lib == "onednn" && IsDotEnabledOnCPU()) {
+    expected = FusionProperties{HloOpcode::kDot, 2, 3, true};
+  }
+  RunTest(hlo_template, expected);
+}
+
+TEST_P(CpuLibraryFullParamTest, MatMulDimSizeUnqual) {
+  const absl::string_view hlo_template = R"(
+    HloModule matmul
+
+    ENTRY %main {
+      %input = $in_dtype[1,16,256,256]{3,2,1,0} parameter(0)
+      %weight = $in_dtype[1,16,256]{2,1,0} parameter(1)
+      ROOT %dot = $out_dtype[1,16,256]{2,1,0} dot(%input, %weight),
+                  lhs_batch_dims={0,1}, lhs_contracting_dims={3},
+                  rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+    })";
+
+  DotRewriteTestSpec spec = GetParam();
+  FusionProperties expected = {HloOpcode::kDot, 0, 0, false};
+  if (spec.lib == "xnn" && IsDotEnabledOnCPU()) {
+    expected = FusionProperties{HloOpcode::kDot, 2, 3, true};
+  }
+  RunTest(hlo_template, expected);
 }
 
 TEST_P(CpuLibraryFullParamTest, MatMulAndAdd) {
@@ -360,7 +422,8 @@ std::vector<DotRewriteTestSpec> GetDotRewriteTestSpecs() {
   absl::flat_hash_map<std::string, std::string> cpu_to_features = {
       {"znver3", "+avx,+avx2"},
       {"sapphirerapids",
-       "+avx512vnni,+avx512bf16,+amx-bf16,+amx-int8,+amx-tile,+amx-transpose"},
+       "+avx512vnni,+avx512bf16,+amx-bf16,+avx512fp16,+amx-int8,+amx-tile,+amx-"
+       "transpose"},
   };
 
   // Input and output data types to test per each library + CPU combination.
@@ -369,7 +432,8 @@ std::vector<DotRewriteTestSpec> GetDotRewriteTestSpecs() {
       {{"xnn", "znver3"}, {{"f32", "f32"}, {"bf16", "f32"}}},
       {{"xnn", "sapphirerapids"},
        {{"f32", "f32"}, {"bf16", "f32"}, {"bf16", "bf16"}}},
-      {{"onednn", "sapphirerapids"}, {{"f32", "f32"}}},
+      {{"onednn", "sapphirerapids"},
+       {{"f32", "f32"}, {"bf16", "bf16"}, {"f16", "f16"}}},
   };
 
   // Fusion modes to test for each library.
@@ -377,7 +441,7 @@ std::vector<DotRewriteTestSpec> GetDotRewriteTestSpecs() {
   // mode (starting fusion nodes with dots).
   absl::flat_hash_map<std::string, std::vector<std::string>> fusion_modes = {
       {"xnn", {"dot", "greedy"}},
-      {"onednn", {"dot"}},
+      {"onednn", {"dot", "greedy"}},
   };
 
   std::vector<DotRewriteTestSpec> specs;
