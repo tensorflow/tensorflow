@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <cstdlib>
-#include <cstring>
 #include <optional>
 #include <vector>
 
@@ -28,8 +27,8 @@ limitations under the License.
 namespace tsl {
 namespace {
 
-std::optional<int64_t> LogLevelStrToInt(const char* str) {
-  if (str == nullptr || strlen(str) == 0) {
+std::optional<int64_t> LogLevelStrToInt(absl::string_view str) {
+  if (str.empty()) {
     return std::nullopt;
   }
   if (int level; absl::SimpleAtoi(str, &level)) {
@@ -38,8 +37,8 @@ std::optional<int64_t> LogLevelStrToInt(const char* str) {
   return std::nullopt;
 }
 
-void UpdateVlogLevels(const char* spec) {
-  if (spec == nullptr || strlen(spec) == 0) {
+void UpdateVlogLevels(absl::string_view spec) {
+  if (spec.empty()) {
     return;
   }
   for (absl::string_view entry : absl::StrSplit(spec, ',')) {
@@ -54,6 +53,10 @@ void UpdateVlogLevels(const char* spec) {
   }
 }
 
+absl::string_view GetEnv(absl::string_view name) {
+  return absl::NullSafeStringView(std::getenv(name.data()));
+}
+
 // Initializes logging and configures it based on environment variables.
 // This class is intended to be used as a global instance, ensuring that
 // logging is initialized before any other code that might use it.
@@ -62,14 +65,13 @@ class LoggingInitializer {
   LoggingInitializer() {
     // We log everything to stderr for backwards compatibility with TSL logging.
     absl::SetStderrThreshold(absl::LogSeverityAtLeast::kInfo);
-    if (auto severity = LogLevelStrToInt(std::getenv("TF_CPP_MIN_LOG_LEVEL"))) {
+    if (auto severity = LogLevelStrToInt(GetEnv("TF_CPP_MIN_LOG_LEVEL"))) {
       absl::SetMinLogLevel(static_cast<absl::LogSeverityAtLeast>(*severity));
     }
-    if (auto threshold =
-            LogLevelStrToInt(std::getenv("TF_CPP_MAX_VLOG_LEVEL"))) {
+    if (auto threshold = LogLevelStrToInt(GetEnv("TF_CPP_MAX_VLOG_LEVEL"))) {
       absl::SetGlobalVLogLevel(*threshold);
     }
-    UpdateVlogLevels(std::getenv("TF_CPP_VMODULE"));
+    UpdateVlogLevels(GetEnv("TF_CPP_VMODULE"));
   }
 };
 
