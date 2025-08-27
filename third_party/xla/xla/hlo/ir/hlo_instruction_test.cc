@@ -146,6 +146,24 @@ ENTRY main {
   TF_EXPECT_OK(module->schedule().Verify());
 }
 
+TEST_F(HloInstructionTest, CloneImplCollectivePermuteOp) {
+  constexpr absl::string_view kHlo = R"(
+HloModule main
+
+ENTRY main {
+  arg.0 = f32[32,32]{1,0} parameter(0)
+  ROOT collective-permute.0 = (f32[32,32]{1,0}, f32[32,32]{1,0}) collective-permute(arg.0, arg.0), channel_id=388, source_target_pairs={{0,0},{4,1}}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHlo));
+
+  HloInstruction* cp = module->entry_computation()->root_instruction();
+  ASSERT_EQ(cp->opcode(), HloOpcode::kCollectivePermute);
+  auto clone = cp->CloneWithNewOperands(cp->shape(), cp->operands());
+  EXPECT_EQ(clone->operand_count(), 2);
+}
+
 TEST_F(HloInstructionTest, ComparatorWorksWith64BitUniqueIds) {
   std::unique_ptr<HloInstruction> param1 =
       HloInstruction::CreateParameter(0, Shape(F32, {4}), "param1");

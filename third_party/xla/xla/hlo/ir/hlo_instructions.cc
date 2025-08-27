@@ -1358,9 +1358,7 @@ HloCollectivePermuteInstruction::CloneWithNewOperandsImpl(
     HloCloneContext* /*context*/) const {
   if (dynamic_slice_sizes_list().empty()) {
     return std::make_unique<HloCollectivePermuteInstruction>(
-        opcode(), shape,
-        absl::Span<HloInstruction* const>(new_operands.subspan(0, 1)),
-        source_target_pairs(), channel_id());
+        opcode(), shape, new_operands, source_target_pairs(), channel_id());
   }
   return std::make_unique<HloCollectivePermuteInstruction>(
       opcode(), shape, new_operands[0], new_operands[1], new_operands[2],
