@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "llvm/ADT/DenseMap.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
 
 namespace xla {
@@ -122,6 +123,49 @@ TEST_F(SymbolicExprTest, UniquingWorks) {
   EXPECT_EQ(add1, add2);
   SymbolicExpr add3 = v0 + 99;
   EXPECT_NE(add1, add3);
+}
+
+TEST_F(SymbolicExprTest, Replace) {
+  SymbolicExpr d0 = ctx.CreateVariable(0);
+  SymbolicExpr d1 = ctx.CreateVariable(1);
+  SymbolicExpr c2 = ctx.CreateConstant(2);
+  SymbolicExpr c5 = ctx.CreateConstant(5);
+
+  SymbolicExpr expr = (d0 + c2) * (d1 + c2);
+  EXPECT_EQ(expr.Replace(d0 + c2, c5), (c5 * (d1 + c2)));
+  EXPECT_EQ(expr.Replace(d1, d0), (d0 + c2) * (d0 + c2));
+  EXPECT_EQ(expr.Replace(c2, c5), (d0 + c5) * (d1 + c5));
+  EXPECT_EQ(expr.Replace(expr, c2), c2);
+  EXPECT_EQ(expr.Replace(d1, d1), expr);
+  EXPECT_EQ(expr.Replace(ctx.CreateConstant(42), d1), expr);
+}
+
+TEST_F(SymbolicExprTest, ReplaceWithMap) {
+  SymbolicExpr d0 = ctx.CreateVariable(0);
+  SymbolicExpr d1 = ctx.CreateVariable(1);
+  SymbolicExpr c2 = ctx.CreateConstant(2);
+  SymbolicExpr c5 = ctx.CreateConstant(5);
+  SymbolicExpr c10 = ctx.CreateConstant(10);
+
+  SymbolicExpr expr = (d0 + c2) * (d1 + c2);
+
+  llvm::DenseMap<SymbolicExpr, SymbolicExpr> replace_expression;
+  replace_expression[d0 + c2] = c5;
+  replace_expression[d1] = c10;
+  EXPECT_EQ(expr.Replace(replace_expression), c5 * (c10 + c2));
+
+  llvm::DenseMap<SymbolicExpr, SymbolicExpr> replace_constant;
+  replace_constant[c2] = d0;
+  EXPECT_EQ(expr.Replace(replace_constant), (d0 + d0) * (d1 + d0));
+
+  llvm::DenseMap<SymbolicExpr, SymbolicExpr> swap_variables;
+  swap_variables[d0] = d1;
+  swap_variables[d1] = d0;
+  EXPECT_EQ(expr.Replace(swap_variables), (d1 + c2) * (d0 + c2));
+
+  llvm::DenseMap<SymbolicExpr, SymbolicExpr> no_change;
+  no_change[ctx.CreateVariable(99)] = c5;
+  EXPECT_EQ(expr.Replace(no_change), expr);
 }
 
 TEST_F(SymbolicExprTest, Canonicalization_Basic) {

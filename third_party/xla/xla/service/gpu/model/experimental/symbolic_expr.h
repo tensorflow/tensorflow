@@ -20,8 +20,10 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseMapInfo.h"
 #include "llvm/ADT/Hashing.h"
 #include "mlir/Support/LLVM.h"
@@ -71,6 +73,16 @@ class SymbolicExpr {
       absl::Span<const SymbolicExpr> substitutions) const;
   SymbolicExpr Canonicalize() const;
 
+  /// Sparse replace method. Replace `expr` by `replacement` and return the
+  /// modified expression tree.
+  SymbolicExpr Replace(SymbolicExpr expr, SymbolicExpr replacement) const;
+
+  /// Sparse replace method. If `*this` appears in `map` replaces it by
+  /// `map[*this]` and return the modified expression tree. Otherwise traverse
+  /// `*this` and apply replace with `map` on its subexpressions.
+  SymbolicExpr Replace(
+      const llvm::DenseMap<SymbolicExpr, SymbolicExpr>& replacements) const;
+
   SymbolicExpr operator+(int64_t v) const;
   SymbolicExpr operator+(SymbolicExpr other) const;
   SymbolicExpr operator-() const;
@@ -94,6 +106,11 @@ class SymbolicExpr {
   SymbolicExpr max(SymbolicExpr other) const;
 
   const ImplType* GetImpl() const { return impl_; }
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const SymbolicExpr expr) {
+    sink.Append(expr.ToString());
+  }
 
  private:
   const ImplType* impl_ = nullptr;
