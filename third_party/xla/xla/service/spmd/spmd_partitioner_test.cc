@@ -15266,7 +15266,7 @@ ENTRY %main.21 {
   XLA_VLOG_LINES(1, module->ToString());
   auto* gather = FindInstruction(module.get(), HloOpcode::kGather);
   EXPECT_NE(gather, nullptr);
-  EXPECT_THAT(gather, op::Shape("bf16[2048,64]"));
+  EXPECT_THAT(gather, op::Shape("bf16[4096,32]"));
 }
 
 TEST_P(SpmdPartitioningTest, ScatterCostModelForUnmatchedSharding) {
@@ -15417,6 +15417,29 @@ ENTRY main {
   EXPECT_EQ(NumOfInstructions(entry, HloOpcode::kAllReduce), 1);
   EXPECT_EQ(NumOfInstructions(entry, HloOpcode::kAllToAll), 0);
   EXPECT_EQ(NumOfInstructions(entry, HloOpcode::kCollectivePermute), 0);
+}
+
+TEST_P(SpmdPartitioningTest, ReshardToASingleAllToAll) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f32[8,32] parameter(0), sharding={devices=[8,4]<=[2,4,4]T(0,2,1)}
+  ROOT %copy = f32[8,32] copy(%param0), sharding={devices=[2,16]<=[32]}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/32));
+  auto param0 = AllOf(op::Parameter(0), op::Shape("f32[1,8]"));
+  auto reshape0 = AllOf(op::Reshape(op::Reshape(op::Reshape(param0))),
+                        op::Shape("f32[1,1,1,4,2]"));
+  auto all_to_all = AllOf(op::AllToAll(reshape0), op::Shape("f32[1,1,1,4,2]"));
+  auto transpose =
+      AllOf(op::Transpose(all_to_all), op::Shape("f32[1,4,1,1,2]"));
+  auto reshape1 = AllOf(op::Reshape(op::Reshape(op::Reshape(transpose))),
+                        op::Shape("f32[4,2]"));
+  auto copy = AllOf(op::Copy(reshape1), op::Shape("f32[4,2]"));
+  EXPECT_THAT(module->entry_computation()->root_instruction(), copy);
 }
 
 TEST_P(SpmdPartitioningTest, ReshardCrash) {
@@ -16205,16 +16228,21 @@ ENTRY entry {
   // TODO(b/353990256). Involuntary full rematerialization between shardings
   // {devices=[2,2,2]<=[8]} to {devices=[8,1,1]<=[8]}.
   auto param0 = AllOf(op::Parameter(0), op::Shape("f32[16,16,16]"));
-  auto param0_replicated = op::AllReduce(op::AllReduce(
-      op::AllReduce(op::DynamicUpdateSlice(op::Broadcast(), param0, _, _, _))));
+  auto param0_replicated =
+      AllOf(op::AllReduce(op::AllReduce(op::AllReduce(
+                op::DynamicUpdateSlice(op::Broadcast(), param0, _, _, _)))),
+            op::Shape("f32[32,32,32]"));
   auto param0_reshard = AllOf(op::Shape("f32[4,32,32]"),
                               op::DynamicSlice(param0_replicated, _, _, _));
   auto cholesky =
       AllOf(op::Cholesky(param0_reshard), op::Shape("f32[4,32,32]"));
-  auto cholesky_replicated =
-      op::AllReduce(op::DynamicUpdateSlice(op::Broadcast(), cholesky, _, _, _));
+  auto cholesky_partially_replicated =
+      AllOf(op::AllReduce(op::DynamicUpdateSlice(
+                op::Broadcast(), op::Copy(op::Reshape(cholesky)), _, _, _, _)),
+            op::Shape("f32[1,16,32,32]"));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              AllOf(op::DynamicSlice(cholesky_replicated, _, _, _),
+              AllOf(op::Reshape(op::DynamicSlice(cholesky_partially_replicated,
+                                                 _, _, _, _)),
                     op::Shape("f32[16,16,16]")));
 }
 

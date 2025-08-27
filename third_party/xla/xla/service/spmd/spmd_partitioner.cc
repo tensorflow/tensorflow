@@ -2031,11 +2031,10 @@ std::tuple<HloSharding, HloSharding, int64_t> CreateSplitShardingTuple(
   return std::make_tuple(std::move(split_source), std::move(split_target), dim);
 }
 
-// Matching the following patterns, where X and Y cannot be 1, Z can be 1.
-// 1. [..,X,..,Y,..] -> [..,X*Y,..,1,..]
-// 2. [..,Y,..,X,..] -> [..,1,..,X*Y,..]
-// 3. [..,X*Y,..,Z,..] -> [..,X,..,Y,..]
-// 4. [..,Z,..,X*Y,..] -> [..,Y,..,X,..]
+// Matching the following patterns, where X and Y cannot be 1.
+// 1. [..,X,..,Y,..] <-> [..,X*Y,..,1,..]
+// 2. [..,Y,..,X,..] <-> [..,1,..,X*Y,..]
+// 3. [..,X*Y,..] -> [..,X,..], Y can be in any other dimension in the result.
 // Output tuple:
 // - HloSharding: Split source sharding with the new dimension added.
 // - HloSharding: Split target sharding with the new dimension added.
@@ -2095,18 +2094,9 @@ PatternMatchMergeOrSplitSharding(const Shape& base_shape,
     }
   }
 
-  // Iterate combination of diff_index_2 and diff_index_2.
-  for (auto it_i = diff_index_2.begin(); it_i != diff_index_2.end(); ++it_i) {
-    for (auto it_j = std::next(it_i); it_j != diff_index_2.end(); ++it_j) {
-      int64_t i = *it_i;
-      int64_t j = *it_j;
-      if (source.tile_assignment().dim(i) < target.tile_assignment().dim(i)) {
-        std::swap(i, j);
-      }
-      if (source.tile_assignment().dim(i) !=
-          target.tile_assignment().dim(i) * target.tile_assignment().dim(j)) {
-        continue;
-      }
+  // Iterate each index in diff_index_2.
+  for (int64_t i : diff_index_2) {
+    if (source.tile_assignment().dim(i) > target.tile_assignment().dim(i)) {
       return CreateSplitShardingTuple(source, target, i,
                                       target.tile_assignment().dim(i));
     }
