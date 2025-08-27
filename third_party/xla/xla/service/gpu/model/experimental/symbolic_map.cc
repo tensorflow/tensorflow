@@ -29,6 +29,20 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+namespace {
+
+std::vector<SymbolicExpr> CreateVariableRange(SymbolicExprContext* ctx,
+                                              int64_t n, int64_t offset = 0) {
+  std::vector<SymbolicExpr> replacements;
+  replacements.reserve(n);
+  for (int64_t i = 0; i < n; ++i) {
+    replacements.push_back(ctx->CreateVariable(offset + i));
+  }
+  return replacements;
+}
+
+}  // namespace
+
 SymbolicMap::SymbolicMap(SymbolicExprContext* ctx, int64_t num_dimensions,
                          int64_t num_symbols, std::vector<SymbolicExpr> exprs)
     : ctx_(ctx),
@@ -94,6 +108,31 @@ SymbolicMap SymbolicMap::ReplaceDimsAndSymbols(
   }
   return SymbolicMap(ctx_, num_result_dims, num_result_symbols,
                      std::move(new_exprs));
+}
+
+SymbolicMap SymbolicMap::Compose(const SymbolicMap& other) const {
+  CHECK_EQ(GetNumDims(), other.GetNumResults())
+      << "Number of dimensions of this map must match number of results of "
+         "other map";
+  int64_t new_dims = other.GetNumDims();
+  int64_t new_syms = GetNumSymbols() + other.GetNumSymbols();
+
+  // We need to reindex the dimensions of the other map.
+  auto other_dim_replacements = CreateVariableRange(ctx_, other.GetNumDims());
+  int64_t offset = new_dims;
+  auto this_symbol_replacements =
+      CreateVariableRange(ctx_, GetNumSymbols(), offset);
+  offset += GetNumSymbols();
+  auto other_sym_replacements =
+      CreateVariableRange(ctx_, other.GetNumSymbols(), offset);
+
+  // First we reindex other map symbols.
+  SymbolicMap updated_other = other.ReplaceDimsAndSymbols(
+      other_dim_replacements, other_sym_replacements, new_dims, new_syms);
+
+  // Then we compose the maps.
+  return ReplaceDimsAndSymbols(updated_other.GetResults(),
+                               this_symbol_replacements, new_dims, new_syms);
 }
 
 bool SymbolicMap::operator==(const SymbolicMap& other) const {

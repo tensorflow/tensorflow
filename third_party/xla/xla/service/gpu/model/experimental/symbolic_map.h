@@ -63,6 +63,22 @@ class SymbolicMap {
       absl::Span<const SymbolicExpr> sym_replacements, int64_t num_result_dims,
       int64_t num_result_symbols) const;
 
+  // Composes this map with another map. The number of dimensions of this map
+  // must match the number of results of the other map. The resulting map will
+  // have the same number of dimensions as the other map, and the number of
+  // symbols will be the sum of the number of symbols in both maps.
+  //
+  // The variables in the composed map are ordered as follows:
+  // * dimensions of the other map
+  // * symbols of this map
+  // * symbols of the other map
+  //
+  // Example:
+  // this: (d0, d1, s0) -> (d0 + s0, d1)
+  // other: (d0, s0, s1) -> (d0 * 2 + 3 * s0, d0 + s1)
+  // this.compose(other): (d0, s0, s1, s2) -> (d0 * 2 + 3 * s1 + s0, d0 + s2)
+  SymbolicMap Compose(const SymbolicMap& other) const;
+
   bool operator==(const SymbolicMap& other) const;
   bool operator!=(const SymbolicMap& other) const { return !(*this == other); }
 

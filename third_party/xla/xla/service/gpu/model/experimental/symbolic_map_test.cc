@@ -113,6 +113,56 @@ TEST(SymbolicMapTest, ReplaceDimsAndSymbols) {
               ElementsAre((new_d0 * c1 + new_d1) + new_s0 * c2));
 }
 
+TEST(SymbolicMapTest, Compose) {
+  SymbolicExprContext ctx;
+  SymbolicExpr d0 = ctx.CreateVariable(0);
+  SymbolicExpr d1 = ctx.CreateVariable(1);
+
+  // Composition without Symbols
+  SymbolicMap map1_no_symbols = SymbolicMap::Get(&ctx, 1, 0, {d0 * 2});
+  SymbolicMap map2_no_symbols = SymbolicMap::Get(&ctx, 1, 0, {d0 + 5});
+  SymbolicMap composed_no_symbols = map1_no_symbols.Compose(map2_no_symbols);
+  EXPECT_THAT(composed_no_symbols.GetResults(), ElementsAre((d0 + 5) * 2));
+
+  // Composition with Symbols
+  SymbolicExpr s0_map1 = ctx.CreateVariable(/*map1_dims*/ 2);
+  SymbolicExpr s0_map2 = ctx.CreateVariable(/*map2_dims*/ 1);
+  SymbolicMap map1_symbols =
+      SymbolicMap::Get(&ctx, 2, 1, {d0 + s0_map1, d1 * 2});
+  SymbolicMap map2_symbols =
+      SymbolicMap::Get(&ctx, 1, 1, {d0 - 10, d0 + s0_map2});
+  SymbolicMap compose_with_symbols = map1_symbols.Compose(map2_symbols);
+  EXPECT_EQ(compose_with_symbols.GetNumDims(), 1);
+  EXPECT_EQ(compose_with_symbols.GetNumSymbols(), 2);
+  SymbolicExpr new_d0 = d0;
+  SymbolicExpr new_s0_map1 = ctx.CreateVariable(/*compose_dims*/ 1);
+  SymbolicExpr new_s0_map2 =
+      ctx.CreateVariable(/*compose_dims + map1_symbols.GetNumSymbols()*/ 2);
+  EXPECT_THAT(
+      compose_with_symbols.GetResults(),
+      ElementsAre((new_d0 - 10) + new_s0_map1, (new_d0 + new_s0_map2) * 2));
+
+  // Composition with identity
+  SymbolicMap id_2dim = SymbolicMap::Get(&ctx, 2, 0, {d0, d1});
+  EXPECT_EQ(map1_symbols, map1_symbols.Compose(id_2dim));
+
+  SymbolicMap id_2dim_1sym = SymbolicMap::Get(&ctx, 2, 1, {d0, d1});
+  SymbolicMap compose_with_id2dim_1sym = map1_symbols.Compose(id_2dim_1sym);
+  EXPECT_EQ(compose_with_id2dim_1sym.GetNumSymbols(), 2);
+  EXPECT_EQ(compose_with_id2dim_1sym.GetNumDims(), map1_symbols.GetNumDims());
+  EXPECT_EQ(compose_with_id2dim_1sym.GetResults(), map1_symbols.GetResults());
+
+  SymbolicMap compose_left_with_id2dim_1sym =
+      id_2dim_1sym.Compose(map1_symbols);
+  EXPECT_EQ(compose_left_with_id2dim_1sym.GetNumDims(), 2);
+  EXPECT_EQ(compose_left_with_id2dim_1sym.GetNumSymbols(), 2);
+  SymbolicExpr reindexed_map1_s0 =
+      ctx.CreateVariable(compose_left_with_id2dim_1sym.GetNumDims() +
+                         id_2dim_1sym.GetNumSymbols());
+  EXPECT_THAT(compose_left_with_id2dim_1sym.GetResults(),
+              ElementsAre(d0 + reindexed_map1_s0, d1 * 2));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
