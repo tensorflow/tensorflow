@@ -72,5 +72,10 @@ llvm::SmallVector<int64_t> SymbolicMap::GetConstantResults() const {
   return constants;
 }
 
+bool SymbolicMap::operator==(const SymbolicMap& other) const {
+  return ctx_ == other.ctx_ && num_dimensions_ == other.num_dimensions_ &&
+         num_symbols_ == other.num_symbols_ && exprs_ == other.exprs_;
+}
+
 }  // namespace gpu
 }  // namespace xla

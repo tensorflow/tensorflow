@@ -53,6 +53,9 @@ class SymbolicMap {
   // any result expression is not a constant.
   llvm::SmallVector<int64_t> GetConstantResults() const;
 
+  bool operator==(const SymbolicMap& other) const;
+  bool operator!=(const SymbolicMap& other) const { return !(*this == other); }
+
  private:
   SymbolicMap(SymbolicExprContext* ctx, int64_t num_dimensions,
               int64_t num_symbols, std::vector<SymbolicExpr> exprs);
