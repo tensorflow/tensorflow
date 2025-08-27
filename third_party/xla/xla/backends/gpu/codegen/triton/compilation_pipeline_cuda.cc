@@ -145,13 +145,15 @@ absl::Status CreateTritonPipeline(
   pm->addPass(mt::gpu::createTritonGPUCombineTensorSelectAndIf());
   pm->addPass(mt::gpu::createTritonGPUAllocateWarpGroups());
   pm->addPass(mlir::createSCFToControlFlowPass());
-  pm->addPass(mt::createAllocateSharedMemoryNvPass(ccAsInt));
+  pm->addPass(mt::createAllocateSharedMemoryNvPass(
+      ccAsInt, mlir::triton::AllocateSharedMemoryNvOptions{}.ptxVersion));
   pm->addPass(ttng::createTritonTensorMemoryAllocationPass());
   // We could add a flag to XLA to optionally enable the following pass:
   // pm->addPass(mt::instrument::createTritonInstrumentConcurrencySanitizer());
   pm->addPass(mt::gpu::createTritonGPUGlobalScratchAllocationPass());
   pm->addPass(ttng::createTritonGPUProxyFenceInsertion({ccAsInt}));
-  pm->addPass(mt::createConvertTritonGPUToLLVMPass(ccAsInt));
+  pm->addPass(mt::createConvertTritonGPUToLLVMPass(
+      ccAsInt, mlir::triton::ConvertTritonGPUToLLVMOptions{}.ptxVersion));
   pm->addPass(mlir::createCanonicalizerPass());
   pm->addPass(mlir::createCSEPass());
   pm->addPass(mt::createConvertNVGPUToLLVM());
