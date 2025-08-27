@@ -256,7 +256,7 @@ xla_cc_test(
     deps = [
         ":symbolic_expr",
         "//xla/hlo/analysis:indexing_test_utils",
-        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
     ],
 )
