@@ -283,7 +283,7 @@ absl::Status ReorderInt8NchwVect(HloCustomCallInstruction* conv,
   CudnnConvBackendConfig& config =
       *gpu_config.mutable_cudnn_conv_backend_config();
   config.set_reordered_int8_nchw_vect(true);
-  TF_RETURN_IF_ERROR(conv->set_backend_config(gpu_config));
+  conv->set_backend_config(gpu_config);
 
   // Reorder the filter.
   TF_ASSIGN_OR_RETURN(Shape filter_shape, builder->GetShape(operands[1]));

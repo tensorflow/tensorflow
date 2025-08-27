@@ -459,9 +459,8 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesReplicated(
     // Set backend configuration if it is given.
     HloInstruction* instruction =
         (*module)->entry_computation()->root_instruction();
-    absl::Status s = instruction->set_backend_config(*backend_config);
-    return s.ok() ? ::testing::AssertionSuccess()
-                  : ::testing::AssertionFailure() << s.message();
+    instruction->set_backend_config(*backend_config);
+    return ::testing::AssertionSuccess();
   }
 
   if (const absl::Status status = PreprocessModuleForTestRunner(module->get());
@@ -500,10 +499,7 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesReplicated(
     // Set backend configuration if it is given.
     HloInstruction* instruction =
         (*module)->entry_computation()->root_instruction();
-    if (const absl::Status s = instruction->set_backend_config(*backend_config);
-        !s.ok()) {
-      return ::testing::AssertionFailure() << s.message();
-    }
+    instruction->set_backend_config(*backend_config);
     return ::testing::AssertionSuccess();
   }
 
@@ -548,9 +544,8 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesReplicated(
       // Set backend configuration if it is given.
       HloInstruction* instruction =
           (*module)->entry_computation()->root_instruction();
-      absl::Status s = instruction->set_backend_config(*backend_config);
-      return s.ok() ? ::testing::AssertionSuccess()
-                    : ::testing::AssertionFailure() << s.message();
+      instruction->set_backend_config(*backend_config);
+      return ::testing::AssertionSuccess();
     }
 
     if (const absl::Status status =
