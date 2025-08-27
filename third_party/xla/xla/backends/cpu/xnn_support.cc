@@ -81,6 +81,11 @@ absl::StatusOr<bool> IsDotSupportedByXnn(
   if (!AreDtypesSupported(lhs_shape, rhs_shape, out_shape, cpu_features)) {
     return false;
   }
+  if (!IsLayoutSupportedByXnn(lhs_shape) ||
+      !IsLayoutSupportedByXnn(rhs_shape) ||
+      !IsLayoutSupportedByXnn(out_shape)) {
+    return false;
+  }
 
   // Check shapes.
   TF_ASSIGN_OR_RETURN(DotShape dot_shape, GetDotShape(dot_dimensions, lhs_shape,
