@@ -1110,6 +1110,7 @@ cc_library(
     ]),
     deps = [
         "//xla/tsl/concurrency:ref_count",
+        "//xla/tsl/lib/gtl:int_type",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/log:check",

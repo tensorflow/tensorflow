@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_USER_CONTEXT_REGISTRY_H_
 #define XLA_PYTHON_IFRT_USER_CONTEXT_REGISTRY_H_
 
-#include <cstdint>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -70,7 +69,7 @@ class UserContextRegistry {
 
   // Returns `TrackedUserContextRef` for `id`.
   // If no such `id` is found, returns `nullptr`.
-  TrackedUserContextRef Lookup(uint64_t id) const;
+  TrackedUserContextRef Lookup(UserContextId id) const;
 
   // Returns all `TrackedUserContextRef`s in the registry. Note that since the
   // registry is process-wide, the result will contain `TrackedUserContextRef`s
@@ -82,13 +81,13 @@ class UserContextRegistry {
 
   // Removes a `TrackedUserContext` entry identified by `id` from the
   // registry.
-  void Unregister(uint64_t id);
+  void Unregister(UserContextId id);
 
   mutable absl::Mutex mu_;
   // A map from `UserContext::Fingerprint()` to a weak reference of
   // `TrackedUserContext`.
-  absl::flat_hash_map<uint64_t, std::weak_ptr<TrackedUserContext>> registry_
-      ABSL_GUARDED_BY(mu_);
+  absl::flat_hash_map<UserContextId, std::weak_ptr<TrackedUserContext>>
+      registry_ ABSL_GUARDED_BY(mu_);
 };
 
 // RAII wrapper around `UserContextRef` to allow querying them via the registry
@@ -106,10 +105,10 @@ class TrackedUserContext {
  private:
   friend UserContextRegistry;
 
-  explicit TrackedUserContext(uint64_t id, UserContextRef user_context)
+  explicit TrackedUserContext(UserContextId id, UserContextRef user_context)
       : id_(id), user_context_(std::move(user_context)) {}
 
-  const uint64_t id_;
+  const UserContextId id_;
   const UserContextRef user_context_;
 };
 

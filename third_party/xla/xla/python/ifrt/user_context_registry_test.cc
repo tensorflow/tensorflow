@@ -31,45 +31,52 @@ namespace {
 
 class TestUserContext : public llvm::RTTIExtends<TestUserContext, UserContext> {
  public:
-  static UserContextRef Create(uint64_t id) {
+  static UserContextRef Create(UserContextId id) {
     return tsl::TakeRef<TestUserContext>(new TestUserContext(id));
   }
 
-  uint64_t Fingerprint() const override { return id_; }
+  uint64_t Fingerprint() const override { return id_.value(); }
+  UserContextId Id() const override { return UserContextId(id_); }
 
   std::string DebugString() const override {
-    return absl::StrCat("user context ", id_);
+    return absl::StrCat("user context ", id_.value());
   }
 
   // No new `ID` is not defined because tests below do not exercise RTTI.
 
  private:
-  explicit TestUserContext(uint64_t id) : id_(id) {}
+  explicit TestUserContext(UserContextId id) : id_(id) {}
 
-  uint64_t id_;
+  const UserContextId id_;
 };
 
 TEST(UserContextRegistryTest, GetAndLookup) {
-  UserContextRef user_context1 = TestUserContext::Create(100);
+  const UserContextId kUserContextId1(100);
+  UserContextRef user_context1 = TestUserContext::Create(kUserContextId1);
   TrackedUserContextRef tracked_user_context1 =
       UserContextRegistry::Get().Register(user_context1);
-  ASSERT_EQ(UserContextRegistry::Get().Lookup(100), tracked_user_context1);
-  EXPECT_EQ(UserContextRegistry::Get().Lookup(100)->user_context(),
+  ASSERT_EQ(UserContextRegistry::Get().Lookup(kUserContextId1),
+            tracked_user_context1);
+  EXPECT_EQ(UserContextRegistry::Get().Lookup(kUserContextId1)->user_context(),
             user_context1);
 
-  UserContextRef user_context2 = TestUserContext::Create(200);
+  const UserContextId kUserContextId2(200);
+  UserContextRef user_context2 = TestUserContext::Create(kUserContextId2);
   TrackedUserContextRef tracked_user_context2 =
       UserContextRegistry::Get().Register(user_context2);
-  ASSERT_EQ(UserContextRegistry::Get().Lookup(200), tracked_user_context2);
-  EXPECT_EQ(UserContextRegistry::Get().Lookup(200)->user_context(),
+  ASSERT_EQ(UserContextRegistry::Get().Lookup(kUserContextId2),
+            tracked_user_context2);
+  EXPECT_EQ(UserContextRegistry::Get().Lookup(kUserContextId2)->user_context(),
             user_context2);
 }
 
 TEST(UserContextRegistryTest, LookupAll) {
-  UserContextRef user_context1 = TestUserContext::Create(100);
+  const UserContextId kUserContextId1(100);
+  UserContextRef user_context1 = TestUserContext::Create(kUserContextId1);
   TrackedUserContextRef tracked_user_context1 =
       UserContextRegistry::Get().Register(user_context1);
-  UserContextRef user_context2 = TestUserContext::Create(200);
+  const UserContextId kUserContextId2(200);
+  UserContextRef user_context2 = TestUserContext::Create(kUserContextId2);
   TrackedUserContextRef tracked_user_context2 =
       UserContextRegistry::Get().Register(user_context2);
 
@@ -79,13 +86,15 @@ TEST(UserContextRegistryTest, LookupAll) {
 }
 
 TEST(UserContextRegistryTest, Unregister) {
-  EXPECT_EQ(UserContextRegistry::Get().Lookup(100), nullptr);
+  const UserContextId kUserContextId(100);
+  EXPECT_EQ(UserContextRegistry::Get().Lookup(kUserContextId), nullptr);
   {
     TrackedUserContextRef tracked_user_context =
-        UserContextRegistry::Get().Register(TestUserContext::Create(100));
-    EXPECT_NE(UserContextRegistry::Get().Lookup(100), nullptr);
+        UserContextRegistry::Get().Register(
+            TestUserContext::Create(kUserContextId));
+    EXPECT_NE(UserContextRegistry::Get().Lookup(kUserContextId), nullptr);
   }
-  EXPECT_EQ(UserContextRegistry::Get().Lookup(100), nullptr);
+  EXPECT_EQ(UserContextRegistry::Get().Lookup(kUserContextId), nullptr);
 }
 
 }  // namespace

@@ -21,9 +21,13 @@ limitations under the License.
 
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/lib/gtl/int_type.h"
 
 namespace xla {
 namespace ifrt {
+
+// Globally unique ID for a `UserContext`.
+TSL_LIB_GTL_DEFINE_INT_TYPE(UserContextId, uint64_t);
 
 // UserContext is an interface that must be implemented by any object that the
 // user would like to be associated with the runtime operations triggered by an
@@ -42,10 +46,16 @@ class UserContext : public tsl::ReferenceCounted<UserContext>,
   // may also use this as a key for holding the UserContexts in a container, and
   // so this should be efficient enough to called multiple times.
   //
-  // TODO(hyeontaek): Remove this method once we migrate the UserContext to
-  // a unique id scheme, where the id can be chosen without fingerprinting the
-  // content of the UserContext.
+  // TODO(hyeontaek): Remove this method once we migrate all users of
+  // `Fingerprint()` to `Id()`. This will require the users to stop expecting to
+  // see a small finite set of unique IDs over the lifetime of a process because
+  // `Id()` semantics allows an indefinite set of IDs.
   virtual uint64_t Fingerprint() const = 0;
+
+  // Returns the unique ID of the UserContext. This ID is expected to be
+  // globally unique for a certain context. For instance, both a global random
+  // ID and the fingerprint of the UserContext content may be used as the ID.
+  virtual UserContextId Id() const = 0;
 
   // Returns a human readable string. Meant for debugging, logging, and for
   // putting together statusz-like pages.
