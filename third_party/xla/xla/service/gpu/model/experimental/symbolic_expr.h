@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseMapInfo.h"
 #include "llvm/ADT/Hashing.h"
 #include "mlir/Support/LLVM.h"
@@ -70,6 +71,16 @@ class SymbolicExpr {
   SymbolicExpr ReplaceVariables(
       absl::Span<const SymbolicExpr> substitutions) const;
   SymbolicExpr Canonicalize() const;
+
+  /// Sparse replace method. Replace `expr` by `replacement` and return the
+  /// modified expression tree.
+  SymbolicExpr Replace(SymbolicExpr expr, SymbolicExpr replacement) const;
+
+  /// Sparse replace method. If `*this` appears in `map` replaces it by
+  /// `map[*this]` and return the modified expression tree. Otherwise traverse
+  /// `*this` and apply replace with `map` on its subexpressions.
+  SymbolicExpr Replace(
+      const llvm::DenseMap<SymbolicExpr, SymbolicExpr>& replacements) const;
 
   SymbolicExpr operator+(int64_t v) const;
   SymbolicExpr operator+(SymbolicExpr other) const;
