@@ -166,6 +166,58 @@ ENTRY DonationWithExecutionError() -> f32[2, 2] {
               HasSubstr("buffer has been deleted or donated."));
 }
 
+TEST(PjRtCpuClientTest, RuntimeDonationDenial) {
+  static constexpr char kProgram[] =
+      R"(
+HloModule RuntimeDonationDenial,
+          input_output_alias={ {}: (0, {}, must-alias) }
+
+ENTRY RuntimeDonationDenial() -> f32[2, 2] {
+    ROOT %param = f32[2, 2] parameter(0)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          ParseAndReturnUnverifiedModule(kProgram, {}));
+  XlaComputation xla_computation(hlo_module->ToProto());
+  TF_ASSERT_OK_AND_ASSIGN(auto pjrt_executable,
+                          client->CompileAndLoad(xla_computation, {}));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto fingerprint,
+                          pjrt_executable->FingerprintExecutable());
+  ASSERT_TRUE(!fingerprint.empty());
+
+  std::vector<float> data(4, 0);
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto buffer,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
+
+  {
+    ExecuteOptions options;
+    options.non_donatable_input_indices.insert(0);
+    auto result = pjrt_executable->Execute(
+        /*argument_handles=*/{{buffer.get()}}, options);
+    TF_ASSERT_OK(result);
+
+    EXPECT_FALSE(buffer->IsDeleted());
+  }
+
+  {
+    ExecuteOptions options;
+    auto result = pjrt_executable->Execute(
+        /*argument_handles=*/{{buffer.get()}}, options);
+    TF_ASSERT_OK(result);
+
+    EXPECT_TRUE(buffer->IsDeleted());
+  }
+}
+
 TEST(PjRtCpuClientTest, HloSnapshot) {
   static constexpr char kProgram[] = R"(
     HloModule add
