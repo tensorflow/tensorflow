@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "xla/service/gpu/model/experimental/symbolic_expr.h"
 
@@ -52,6 +53,15 @@ class SymbolicMap {
   // Returns a vector containing the values of all the results. CHECK-fails if
   // any result expression is not a constant.
   llvm::SmallVector<int64_t> GetConstantResults() const;
+
+  // Replaces the dimensions and symbols in the map with the given expressions.
+  // The number of dimension and symbol replacements must match the number of
+  // dimensions and symbols in the map. The new map will have the given number
+  // of dimensions and symbols.
+  SymbolicMap ReplaceDimsAndSymbols(
+      absl::Span<const SymbolicExpr> dim_replacements,
+      absl::Span<const SymbolicExpr> sym_replacements, int64_t num_result_dims,
+      int64_t num_result_symbols) const;
 
   bool operator==(const SymbolicMap& other) const;
   bool operator!=(const SymbolicMap& other) const { return !(*this == other); }

@@ -16,10 +16,13 @@ limitations under the License.
 #include "xla/service/gpu/model/experimental/symbolic_map.h"
 
 #include <cstdint>
+#include <iterator>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "xla/service/gpu/model/experimental/symbolic_expr.h"
 
@@ -70,6 +73,27 @@ llvm::SmallVector<int64_t> SymbolicMap::GetConstantResults() const {
     constants.push_back(expr.GetValue());
   }
   return constants;
+}
+
+SymbolicMap SymbolicMap::ReplaceDimsAndSymbols(
+    absl::Span<const SymbolicExpr> dim_replacements,
+    absl::Span<const SymbolicExpr> sym_replacements, int64_t num_result_dims,
+    int64_t num_result_symbols) const {
+  CHECK_EQ(dim_replacements.size(), num_dimensions_);
+  CHECK_EQ(sym_replacements.size(), num_symbols_);
+
+  llvm::SmallVector<SymbolicExpr> all_replacements;
+  all_replacements.reserve(num_dimensions_ + num_symbols_);
+  absl::c_copy(dim_replacements, std::back_inserter(all_replacements));
+  absl::c_copy(sym_replacements, std::back_inserter(all_replacements));
+
+  std::vector<SymbolicExpr> new_exprs;
+  new_exprs.reserve(exprs_.size());
+  for (const auto& expr : exprs_) {
+    new_exprs.push_back(expr.ReplaceVariables(all_replacements));
+  }
+  return SymbolicMap(ctx_, num_result_dims, num_result_symbols,
+                     std::move(new_exprs));
 }
 
 bool SymbolicMap::operator==(const SymbolicMap& other) const {

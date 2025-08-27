@@ -81,6 +81,38 @@ TEST(SymbolicMapTest, GetConstantResults) {
   EXPECT_THAT(no_results_map.GetConstantResults(), ElementsAre());
 }
 
+TEST(SymbolicMapTest, ReplaceDimsAndSymbols) {
+  SymbolicExprContext ctx;
+  SymbolicExpr d0 = ctx.CreateVariable(0);
+  SymbolicExpr d1 = ctx.CreateVariable(1);
+  SymbolicExpr s0 = ctx.CreateVariable(2);
+  SymbolicExpr s1 = ctx.CreateVariable(3);
+  SymbolicExpr c1 = ctx.CreateConstant(10);
+  SymbolicExpr c2 = ctx.CreateConstant(20);
+  SymbolicExpr c3 = ctx.CreateConstant(30);
+
+  SymbolicMap map_basic = SymbolicMap::Get(&ctx, 2, 2, {d0 + s0, d1 * s1});
+  SymbolicMap replaced_basic = map_basic.ReplaceDimsAndSymbols(
+      {c1, c2}, {c3, d0}, map_basic.GetNumDims(), map_basic.GetNumSymbols());
+  EXPECT_THAT(replaced_basic.GetResults(), ElementsAre(c1 + c3, c2 * d0));
+
+  SymbolicMap map_empty = SymbolicMap::Get(&ctx, 0, 0, {});
+  SymbolicMap replaced_empty = map_empty.ReplaceDimsAndSymbols({}, {}, 0, 0);
+  EXPECT_TRUE(replaced_empty.IsEmpty());
+
+  SymbolicMap map_change_dims = SymbolicMap::Get(&ctx, 1, 1, {d0 + s0 * c2});
+  // Replacements in the context of the NEW map (2 dims, 1 symbol)
+  SymbolicExpr new_d0 = ctx.CreateVariable(0);
+  SymbolicExpr new_d1 = ctx.CreateVariable(1);
+  SymbolicExpr new_s0 = ctx.CreateVariable(2);
+  SymbolicMap replaced_change_dims = map_change_dims.ReplaceDimsAndSymbols(
+      {new_d0 * c1 + new_d1}, {new_s0}, 2, 1);
+  EXPECT_EQ(replaced_change_dims.GetNumDims(), 2);
+  EXPECT_EQ(replaced_change_dims.GetNumSymbols(), 1);
+  EXPECT_THAT(replaced_change_dims.GetResults(),
+              ElementsAre((new_d0 * c1 + new_d1) + new_s0 * c2));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

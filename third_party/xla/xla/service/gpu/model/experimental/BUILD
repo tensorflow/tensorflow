@@ -215,7 +215,9 @@ cc_library(
     hdrs = ["symbolic_map.h"],
     deps = [
         ":symbolic_expr",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
     ],
 )
