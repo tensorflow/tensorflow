@@ -307,12 +307,12 @@ bool TritonDotFusionSearchSpace::ShouldOptimizeForOccupancy() const {
 
 TritonDotFusionSearchSpace::OutputTile
 TritonDotFusionSearchSpace::GetMinOutputTile() const {
-  // Triton currently doesn't support tiles smaller than 16x16.
+  // Triton currently doesn't support tiles smaller than 16x8.
   // TODO: b/395572776 - Lift this restriction, and calculate a smaller tile
   // based on the requested algorithm (e.g., if we want to use wgmma vs mma
   // vs fma, the minimal reasonable tile size is different).
-  constexpr OutputTile kMinSupportedTile = {16, 16};
-  constexpr OutputTile kMinWgmmaTile = {64, 16};
+  constexpr OutputTile kMinSupportedTile = {16, 8};
+  constexpr OutputTile kMinWgmmaTile = {64, 8};
   if (device_description_.cuda_compute_capability().IsAtLeastHopper() &&
       !should_optimize_for_occupancy_) {
     VLOG(5) << "Computing output_tile: Want to use wgmma, so output_tile >= "
@@ -566,11 +566,22 @@ void TritonDotFusionSearchSpace::AddContractingTiling(
   CHECK_GT(tile_rows * tile_cols, 0)
       << "Need configs with output tilings determined.";
   CHECK_GT(split, 0) << "Need config with contracting split determined.";
-  int max_tile_size =
+  const int max_tile_size =
       std::max(GetMaxContractingTileSize({tile_rows, tile_cols}, split),
                min_contracting_tile_size_);
+
+  // Number of elements on either side should not be smaller than the total
+  // number of threads.
+  const int total_threads =
+      config.config.num_warps *
+      std::max<int>(device_description_.threads_per_warp(), 1);
+  const int threads_per_contracting_dim =
+      std::max(total_threads / tile_rows, total_threads / tile_cols);
+  const int min_tile_size =
+      std::max(min_contracting_tile_size_, threads_per_contracting_dim);
+
   ConfigWithNotes new_config = config;
-  for (int k = min_contracting_tile_size_; k <= max_tile_size; k *= 2) {
+  for (int k = min_tile_size; k <= max_tile_size; k *= 2) {
     new_config.config.block_k = k;
     VLOG(10) << "Adding contracting tiling: config = " << new_config.ToString();
     updated_configs.push_back(new_config);
