@@ -53,7 +53,12 @@ static absl::StatusOr<dnnl::graph::graph> CreateExpGraph(
 
 TEST(OneDnnThreadPoolTest, Binary) {
   tsl::thread::ThreadPool threads(tsl::Env::Default(), "test", 32);
+
+#ifdef ENABLE_ONEDNN_ASYNC
+  OneDnnThreadPool threadpool(threads.AsEigenThreadPool(), /*is_async=*/true);
+#else
   OneDnnThreadPool threadpool(threads.AsEigenThreadPool());
+#endif  // ENABLE_ONEDNN_ASYNC
 
   int64_t d0 = 100;
   int64_t d1 = 1000;
@@ -99,6 +104,10 @@ TEST(OneDnnThreadPoolTest, Binary) {
 
   // Execute compiled oneDNN graph on the CPU stream.
   compiled_partitions[0].execute(stream, {src}, {dst});
+
+#ifdef ENABLE_ONEDNN_ASYNC
+  stream.wait();
+#endif
 
   for (int i = 0; i < num_elements; ++i) {
     EXPECT_NEAR(dst_data[i], std::exp(1.0f), 1e-5);
