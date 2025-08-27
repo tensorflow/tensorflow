@@ -38,13 +38,13 @@ std::vector<std::unique_ptr<CodegenBackend>> GetCodegenBackendsForCuda(
     const DebugOptions* debug_options, Compiler* compiler) {
   std::vector<std::unique_ptr<CodegenBackend>> backends;
   backends.push_back(std::make_unique<TritonBackend>(stream_executor,
-                                                     debug_options, compiler));
+                                                     *debug_options, compiler));
   backends.push_back(std::make_unique<CublasBackend>(stream_executor,
-                                                     debug_options, compiler));
+                                                     *debug_options, compiler));
   backends.push_back(std::make_unique<CublasLtBackend>(
-      stream_executor, debug_options, compiler));
-  backends.push_back(
-      std::make_unique<CudnnBackend>(stream_executor, debug_options, compiler));
+      stream_executor, *debug_options, compiler));
+  backends.push_back(std::make_unique<CudnnBackend>(stream_executor,
+                                                    *debug_options, compiler));
   return backends;
 }
 

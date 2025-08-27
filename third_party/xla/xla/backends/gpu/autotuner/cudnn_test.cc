@@ -122,7 +122,7 @@ class CudnnBackendTest : public HloHardwareIndependentTestBase {
                      .value()
                      ->ExecutorForDevice(0)
                      .value(),
-                 &debug_options_, &compiler_) {}
+                 debug_options_, &compiler_) {}
 };
 
 TEST_F(CudnnBackendTest, CanCreateCublasBackend) {

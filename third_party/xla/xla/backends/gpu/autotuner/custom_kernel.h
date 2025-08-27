@@ -35,7 +35,7 @@ namespace gpu {
 class CustomKernelBackend : public GpuCodegenBackend {
  public:
   explicit CustomKernelBackend(stream_executor::StreamExecutor* stream_executor,
-                               const DebugOptions* debug_options,
+                               const DebugOptions& debug_options,
                                Compiler* compiler)
       : GpuCodegenBackend("Cublas", stream_executor, debug_options, compiler) {}
 

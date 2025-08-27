@@ -100,7 +100,7 @@ class CublasBackendTest : public HloHardwareIndependentTestBase {
                      .value()
                      ->ExecutorForDevice(0)
                      .value(),
-                 &debug_options_, &compiler_) {}
+                 debug_options_, &compiler_) {}
 
   CublasBackendConfig ExpectedDefaultAlgorithm() {
     auto config = AutotuneResult::GemmKey();

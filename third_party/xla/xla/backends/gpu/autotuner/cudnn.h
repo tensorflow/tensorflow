@@ -57,7 +57,7 @@ namespace gpu {
 class CudnnBackend : public GpuCodegenBackend {
  public:
   explicit CudnnBackend(stream_executor::StreamExecutor* stream_executor,
-                        const DebugOptions* debug_options, Compiler* compiler)
+                        const DebugOptions& debug_options, Compiler* compiler)
       : GpuCodegenBackend("Cudnn", stream_executor, debug_options, compiler) {}
 
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>

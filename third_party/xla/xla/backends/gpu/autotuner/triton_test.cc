@@ -70,15 +70,18 @@ const char kHlo[] = R"(
 class TritonBackendTest : public HloHardwareIndependentTestBase {
  protected:
   TritonBackendTest()
-      : backend_(PlatformUtil::GetDefaultPlatform()
+      : debug_options_([]() {
+          DebugOptions debug_options;
+          // TODO(b/315957220): Remove the experimental flags once TMA is
+          // enabled by default.
+          debug_options.set_xla_gpu_experimental_enable_triton_tma(true);
+          return debug_options;
+        }()),
+        backend_(PlatformUtil::GetDefaultPlatform()
                      .value()
                      ->ExecutorForDevice(0)
                      .value(),
-                 &debug_options_, &compiler_) {
-    // TODO(b/315957220): Remove the experimental flags once TMA is enabled by
-    // default.
-    debug_options_.set_xla_gpu_experimental_enable_triton_tma(true);
-  }
+                 debug_options_, &compiler_) {}
 
   DebugOptions debug_options_;
   NVPTXCompiler compiler_;

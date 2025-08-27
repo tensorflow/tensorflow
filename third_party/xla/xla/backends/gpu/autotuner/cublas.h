@@ -47,7 +47,7 @@ namespace gpu {
 class CublasBackend : public GpuCodegenBackend {
  public:
   explicit CublasBackend(stream_executor::StreamExecutor* stream_executor,
-                         const DebugOptions* debug_options, Compiler* compiler)
+                         const DebugOptions& debug_options, Compiler* compiler)
       : GpuCodegenBackend("Cublas", stream_executor, debug_options, compiler) {}
 
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>

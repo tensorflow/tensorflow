@@ -36,7 +36,7 @@ namespace gpu {
 class TritonBackend : public GpuCodegenBackend {
  public:
   explicit TritonBackend(stream_executor::StreamExecutor* stream_executor,
-                         const DebugOptions* debug_options, Compiler* compiler)
+                         const DebugOptions& debug_options, Compiler* compiler)
       : GpuCodegenBackend("Triton", stream_executor, debug_options, compiler) {}
 
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
