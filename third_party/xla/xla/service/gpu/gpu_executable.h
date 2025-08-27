@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/computation_layout.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/buffer_allocations.h"
@@ -101,7 +102,7 @@ class GpuExecutable : public Executable {
     std::vector<ConstantInfo> constants;
     absl::flat_hash_map<ShapeIndex, OutputInfo> output_info;
     std::string module_name;
-    xla::Shape output_shape;
+    ProgramShape program_shape;
     std::optional<std::vector<BufferAllocation>> mlir_allocations;
     std::unique_ptr<const BufferAssignment> buffer_assignment;
     std::unique_ptr<GpuAliasInfo> alias_info;
@@ -121,10 +122,14 @@ class GpuExecutable : public Executable {
 
   const std::string& module_name() const { return module_name_; }
 
-  const xla::Shape& output_shape() const { return output_shape_; }
+  xla::Shape result_shape() const override { return program_shape_.result(); }
 
   const absl::flat_hash_map<ShapeIndex, OutputInfo>& output_info() const {
     return output_info_;
+  }
+
+  ComputationLayout compute_computation_layout() const override {
+    return ComputationLayout(program_shape_, /*ignore_layouts=*/false);
   }
 
   // This should be called before ExecuteOnStream.
@@ -265,7 +270,7 @@ class GpuExecutable : public Executable {
 
   std::string module_name_;
 
-  xla::Shape output_shape_;
+  ProgramShape program_shape_;
 
   // The allocations_ object contains allocations that **may** be used to
   // provide information for allocating memory for every output/temp buffer.

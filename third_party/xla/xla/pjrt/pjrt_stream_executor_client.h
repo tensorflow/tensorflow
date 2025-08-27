@@ -971,6 +971,9 @@ class PjRtStreamExecutorLoadedExecutable : public PjRtLoadedExecutable {
 
   // The unoptimized (unsharded) HloModule. Primarily used for debugging.
   std::optional<InputHloSnapshotBits> input_hlo_snapshot_bits_;
+
+  // The name of the executable.
+  std::string name_ = "<unknown executable>";
 };
 
 }  // namespace xla

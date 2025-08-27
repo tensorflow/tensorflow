@@ -214,9 +214,10 @@ class GpuOptProvider : public CompiledOptProvider {
                           gpu::ScheduleGpuModule(
                               optimized_module, gpu_compiler->GetPointerSize(),
                               device_description, alias_info.get()));
+      TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor, GetExecutor());
       TF_RETURN_IF_ERROR(gpu_compiler->RunPostSchedulingPipelines(
-          optimized_module, schedule_metadata.scheduler_mem_limit,
-          device_description, alias_info.get()));
+          optimized_module, executor, schedule_metadata.scheduler_mem_limit,
+          device_description, alias_info.get(), Compiler::CompileOptions()));
     }
 
     llvm::LLVMContext llvm_context;

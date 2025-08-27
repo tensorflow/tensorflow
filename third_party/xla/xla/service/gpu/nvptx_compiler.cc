@@ -41,9 +41,13 @@ limitations under the License.
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/backends/gpu/autotuner/block_level_emitter.h"
 #include "xla/backends/gpu/autotuner/cublas.h"
 #include "xla/backends/gpu/autotuner/cublaslt.h"
+#include "xla/backends/gpu/autotuner/native_emitter.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_fix.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
@@ -402,6 +406,59 @@ absl::Status NVPTXCompiler::AddGemmFusionAutotuningPasses(
     se::StreamExecutor* stream_executor) {
   pipeline->AddPass<GemmFusionAutotuner>(autotune_config, toolkit_version,
                                          thread_pool, key_value_store);
+  return absl::OkStatus();
+}
+
+namespace {
+
+bool ContainsReduction(const HloFusionInstruction* fusion) {
+  for (const HloInstruction* instruction :
+       fusion->fused_instructions_computation()->instructions()) {
+    if (instruction->opcode() == HloOpcode::kReduce) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool IsReductionFusion(const HloInstruction& instruction) {
+  if (instruction.opcode() != HloOpcode::kFusion ||
+      !instruction.has_backend_config()) {
+    return false;
+  }
+  auto backend_config = instruction.backend_config<GpuBackendConfig>();
+  // If it was not assigned a block level fusion config, then it already took
+  // the emitters pathway and it doesn't make sense to autotune.
+  if (!backend_config->has_fusion_backend_config() ||
+      !backend_config->fusion_backend_config()
+           .has_block_level_fusion_config()) {
+    return false;
+  }
+  return ContainsReduction(Cast<HloFusionInstruction>(&instruction));
+}
+
+}  // namespace
+
+absl::Status NVPTXCompiler::AddReductionFusionAutotuningPass(
+    HloPassPipeline* pipeline, HloModule* hlo_module,
+    const CompileOptions& options, tsl::thread::ThreadPool* thread_pool,
+    stream_executor::StreamExecutor* stream_executor) {
+  if (options.is_autotuning_compilation || stream_executor == nullptr) {
+    return absl::OkStatus();
+  }
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  auto dbg_options = hlo_module->config().debug_options();
+  backends.push_back(std::make_unique<BlockLevelEmitterBackend>(
+      stream_executor, &dbg_options, this, /*use_default_config=*/true));
+  backends.push_back(std::make_unique<NativeEmitterBackend>(
+      stream_executor, &dbg_options, this));
+
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<AutotunerPass> autotuner_pass,
+      AutotunerPass::Create(std::move(backends), dbg_options,
+                            options.device_allocator, stream_executor,
+                            thread_pool, IsReductionFusion));
+  pipeline->AddPass(std::move(autotuner_pass));
   return absl::OkStatus();
 }
 
