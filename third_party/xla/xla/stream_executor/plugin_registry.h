@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/fft.h"
@@ -85,7 +86,7 @@ class PluginRegistry {
     std::optional<FftFactory> fft;
   };
 
-  PluginRegistry();
+  PluginRegistry() = default;
 
   // Actually performs the work of registration.
   template <typename FactoryT>
@@ -98,14 +99,13 @@ class PluginRegistry {
   // not implicitly examine the default factory lists.
   bool HasFactory(const Factories& factories, PluginKind plugin_kind) const;
 
-  // The singleton itself.
-  static PluginRegistry* instance_;
-
   // The set of registered factories, keyed by platform ID.
   std::map<Platform::Id, Factories> factories_;
 
   PluginRegistry(const PluginRegistry&) = delete;
   void operator=(const PluginRegistry&) = delete;
+
+  absl::Mutex registry_mutex_;
 };
 
 // Explicit specializations are defined in plugin_registry.cc.
