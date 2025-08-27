@@ -320,7 +320,13 @@ int main(int argc, char** argv) {
       "ArrayImplTest."
       "MakeArraysFromHostBufferShardsAndCopyToHostBufferWithString:"
       // `MakeErrorArrays` is not supported in NanoIfrtClient.
-      "ArrayImplTest.MakeErrorArrays";
+      "ArrayImplTest.MakeErrorArrays:"
+      // Executable returns a wrong number of devices.
+      "LoadedExecutableImplTest.Properties:"
+      // Incorrect deleted state of donated inputs.
+      "LoadedExecutableImplTest.Donation:"
+      // Analysis methods are not implemented.
+      "LoadedExecutableImplTest.Analysis";
   xla::ifrt::test_util::SetTestFilterIfNotUserSpecified(kFilter);
 
   for (int i = 1; i < argc; i++) {

@@ -24,6 +24,8 @@ int main(int argc, char** argv) {
   const std::string disabled[] = {
       // Executable::IsDeleted always returns false with TFRT CPU backend.
       "LoadedExecutableImplTest.IsDeleted",
+      // IFRT Proxy does not support `GetHloModules`.
+      "LoadedExecutableImplTest.Analysis",
   };
 
   const std::string filter = absl::StrCat("-", absl::StrJoin(disabled, ":"));
