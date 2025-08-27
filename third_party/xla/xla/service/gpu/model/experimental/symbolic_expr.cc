@@ -36,6 +36,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/MathExtras.h"
 #include "mlir/Support/StorageUniquer.h"
@@ -680,6 +682,60 @@ SymbolicExpr SymbolicExpr::ReplaceVariables(
     }
     default:
       LOG(FATAL) << "Substitute not implemented for this type.";
+  }
+}
+
+SymbolicExpr SymbolicExpr::Replace(SymbolicExpr expr,
+                                   SymbolicExpr replacement) const {
+  llvm::DenseMap<SymbolicExpr, SymbolicExpr> replacements;
+  replacements[expr] = replacement;
+  return Replace(replacements);
+}
+
+SymbolicExpr SymbolicExpr::Replace(
+    const llvm::DenseMap<SymbolicExpr, SymbolicExpr>& replacements) const {
+  auto it = replacements.find(*this);
+  if (it != replacements.end()) {
+    return it->second;
+  }
+
+  SymbolicExprType type = GetType();
+  if (type == SymbolicExprType::kConstant ||
+      type == SymbolicExprType::kVariable) {
+    return *this;
+  }
+
+  SymbolicExpr lhs = GetLHS();
+  SymbolicExpr rhs = GetRHS();
+  SymbolicExpr new_lhs = lhs.Replace(replacements);
+  SymbolicExpr new_rhs = rhs.Replace(replacements);
+
+  if (new_lhs == lhs && new_rhs == rhs) {
+    return *this;
+  }
+  return GetContext()->CreateBinaryOp(type, new_lhs, new_rhs);
+}
+
+void SymbolicExpr::GetUsedVariables(
+    llvm::DenseSet<VariableID>& used_vars) const {
+  if (!*this) return;
+
+  switch (GetType()) {
+    case SymbolicExprType::kConstant:
+      return;
+    case SymbolicExprType::kVariable:
+      used_vars.insert(GetValue());
+      return;
+    case SymbolicExprType::kAdd:
+    case SymbolicExprType::kMul:
+    case SymbolicExprType::kFloorDiv:
+    case SymbolicExprType::kCeilDiv:
+    case SymbolicExprType::kMod:
+    case SymbolicExprType::kMin:
+    case SymbolicExprType::kMax:
+      GetLHS().GetUsedVariables(used_vars);
+      GetRHS().GetUsedVariables(used_vars);
+      return;
   }
 }
 

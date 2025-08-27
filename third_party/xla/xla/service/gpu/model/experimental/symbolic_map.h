@@ -17,9 +17,12 @@ limitations under the License.
 #define XLA_SERVICE_GPU_MODEL_EXPERIMENTAL_SYMBOLIC_MAP_H_
 
 #include <cstdint>
-#include <vector>
+#include <string>
 
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/SmallBitVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "xla/service/gpu/model/experimental/symbolic_expr.h"
 
@@ -32,13 +35,14 @@ class SymbolicExprContext;
 class SymbolicMap {
  public:
   static SymbolicMap Get(SymbolicExprContext* ctx, int64_t num_dimensions,
-                         int64_t num_symbols, std::vector<SymbolicExpr> exprs);
+                         int64_t num_symbols,
+                         llvm::SmallVector<SymbolicExpr> exprs);
 
   SymbolicExprContext* GetContext() const { return ctx_; }
   int64_t GetNumDims() const { return num_dimensions_; }
   int64_t GetNumSymbols() const { return num_symbols_; }
   int64_t GetNumResults() const { return exprs_.size(); }
-  const std::vector<SymbolicExpr>& GetResults() const { return exprs_; }
+  const llvm::SmallVector<SymbolicExpr>& GetResults() const { return exprs_; }
   SymbolicExpr GetResult(unsigned idx) const { return exprs_[idx]; }
 
   bool IsEmpty() const { return exprs_.empty(); }
@@ -79,18 +83,43 @@ class SymbolicMap {
   // this.compose(other): (d0, s0, s1, s2) -> (d0 * 2 + 3 * s1 + s0, d0 + s2)
   SymbolicMap Compose(const SymbolicMap& other) const;
 
+  SymbolicMap Replace(SymbolicExpr expr, SymbolicExpr replacement) const;
+
   bool operator==(const SymbolicMap& other) const;
   bool operator!=(const SymbolicMap& other) const { return !(*this == other); }
 
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const SymbolicMap& map) {
+    absl::Format(&sink, "SymbolicMap(dims=%d, symbols=%d, results=[\\n",
+                 map.GetNumDims(), map.GetNumSymbols());
+    std::string joined_results = absl::StrJoin(
+        map.GetResults(), ",\\n", [](std::string* out, const auto& expr) {
+          absl::StrAppend(out, "  ", expr);
+        });
+    sink.Append(joined_results);
+    if (!map.IsEmpty()) {
+      sink.Append("\\n");
+    }
+    sink.Append("])");
+  }
+
  private:
   SymbolicMap(SymbolicExprContext* ctx, int64_t num_dimensions,
-              int64_t num_symbols, std::vector<SymbolicExpr> exprs);
+              int64_t num_symbols, llvm::SmallVector<SymbolicExpr> exprs);
 
   SymbolicExprContext* ctx_;
   int64_t num_dimensions_;
   int64_t num_symbols_;
-  std::vector<SymbolicExpr> exprs_;
+  llvm::SmallVector<SymbolicExpr> exprs_;
 };
+
+// Returns a bitvector marking dimensions that are not used in any expression in
+// the map.
+llvm::SmallBitVector GetUnusedDimensionsBitVector(const SymbolicMap& map);
+
+// Returns a bitvector marking symbols that are not used in any expression in
+// the map.
+llvm::SmallBitVector GetUnusedSymbolsBitVector(const SymbolicMap& map);
 
 }  // namespace gpu
 }  // namespace xla
