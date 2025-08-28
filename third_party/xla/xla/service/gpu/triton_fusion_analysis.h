@@ -50,10 +50,9 @@ class TritonFusionAnalysis {
       const HloDotInstruction& dot, int split_k = 1);
 
   // A scope is an HLO graph that can be tiled efficiently using same or
-  // compatible tile shapes on all operations. GEMM fusion has 3 or 4 scopes
-  // defined by left operand, right operand, optional meta (third operand) and
-  // output.
-  enum class Scope { LHS = 0, RHS = 1, META = 2, OUTPUT = 3 };
+  // compatible tile shapes on all operations. GEMM dot fusion has 3 scopes
+  // defined by left operand, right operand and output.
+  enum class Scope { LHS = 0, RHS = 1, OUTPUT = 2 };
 
   using IterationSpecByInstructionMap =
       ConstHloInstructionMap<TensorIterationSpec>;

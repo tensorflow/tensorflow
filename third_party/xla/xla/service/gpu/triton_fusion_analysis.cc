@@ -234,11 +234,8 @@ bool TritonFusionAnalysis::IsBatchDimMinorForInt4Parameter(
 absl::Status TritonFusionAnalysis::ExecuteForDotFusion(
     const HloInstruction& dot, const int split_k) {
   DotRequirements lhs_requirements(kNoSplitRequirement);
-  for (const Scope scope : {Scope::LHS, Scope::RHS, Scope::META}) {
+  for (const Scope scope : {Scope::LHS, Scope::RHS}) {
     const int operand_number = static_cast<int>(scope);
-    if (dot.operand_count() < operand_number + 1) {
-      continue;  // Meta scope is optional.
-    }
     TF_ASSIGN_OR_RETURN(auto context, FusionContext::FromDotOperand(
                                           dot, operand_number, split_k));
     TF_RETURN_IF_ERROR(context.PropagateDimensionOrdersToParameters(
@@ -339,8 +336,6 @@ std::string ScopeToString(TritonFusionAnalysis::Scope s) {
       return "LHS";
     case TritonFusionAnalysis::Scope::RHS:
       return "RHS";
-    case TritonFusionAnalysis::Scope::META:
-      return "META";
     case TritonFusionAnalysis::Scope::OUTPUT:
       return "OUTPUT";
   }
