@@ -78,17 +78,17 @@ TEST(AutotuneCacheKeyTest, DeviceDescriptionToCacheKey) {
   EXPECT_EQ(AutotuneCacheKey::DeviceDescriptionToCacheKey(
                 device_description("a100_sxm_40.txtpb")),
             "CUDA: 8.0, Cores: 108, GPU clock: 1.41 GHz, Memory bandwidth: "
-            "1555 GB/s, L2 cache: 40 MB");
+            "1555 GB/s, L2 cache: 40 MB, DNN version: 0.0.0");
 
   EXPECT_EQ(AutotuneCacheKey::DeviceDescriptionToCacheKey(
                 device_description("a100_sxm_80.txtpb")),
             "CUDA: 8.0, Cores: 108, GPU clock: 1.41 GHz, Memory bandwidth: "
-            "2039 GB/s, L2 cache: 40 MB");
+            "2039 GB/s, L2 cache: 40 MB, DNN version: 0.0.0");
 
   EXPECT_EQ(AutotuneCacheKey::DeviceDescriptionToCacheKey(
                 device_description("mi200.txtpb")),
             "ROCM: gfx90a, Cores: 110, GPU clock: 1.7 GHz, Memory bandwidth: "
-            "1638 GB/s, L2 cache: 8 MB");
+            "1638 GB/s, L2 cache: 8 MB, DNN version: 0.0.0");
 }
 
 TEST(AutotuneCacheKeyTest, VersionIsIncludedInCacheKey) {

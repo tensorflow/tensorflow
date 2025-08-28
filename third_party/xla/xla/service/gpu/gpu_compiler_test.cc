@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/service/gpu/gpu_compiler.h"
 
 #include <algorithm>
-#include <cstddef>
 #include <cstdint>
 #include <iostream>
 #include <limits>
@@ -32,12 +31,14 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/base/log_severity.h"
+#include "absl/cleanup/cleanup.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/log/scoped_mock_log.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "xla/autotune_results.pb.h"
@@ -72,6 +73,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -81,7 +83,7 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -610,11 +612,36 @@ ENTRY main {
 
 class GpuCompilerTestWithAutotuneDb : public GpuCompilerTest {
  public:
-  static void SetUpTestSuite() {
+  void SetUp() override {
     std::string path =
         tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "service", "gpu",
                           "gpu_compiler_test_autotune_db.textproto");
-    TF_EXPECT_OK(AutotunerUtil::LoadAutotuneResultsFromFile(path));
+
+    tsl::Env* env = tsl::Env::Default();
+    std::string tmp_filepath = ::testing::TempDir();
+    ASSERT_TRUE(env->CreateUniqueFileName(&tmp_filepath, ".textproto"));
+
+    absl::Cleanup cleanup = [&] { TF_CHECK_OK(env->DeleteFile(tmp_filepath)); };
+
+    std::string contents;
+    TF_CHECK_OK(tsl::ReadFileToString(env, path, &contents));
+
+    // The autotuning cache entries depend on the DNN library version, but this
+    // is not relevant for these tests. Therefore we replace the DNN version
+    // with the actual version of the DNN library so that the cache entries
+    // match.
+    stream_executor::SemanticVersion dnn_version =
+        backend()
+            .default_stream_executor()
+            ->GetDeviceDescription()
+            .dnn_version();
+    constexpr absl::string_view kCudnnVersionPlaceholder = "1.2.3";
+    contents = absl::StrReplaceAll(
+        contents, {{kCudnnVersionPlaceholder, dnn_version.ToString()}});
+
+    TF_EXPECT_OK(tsl::WriteStringToFile(env, tmp_filepath, contents));
+    AutotunerUtil::ClearAutotuneResults();
+    TF_EXPECT_OK(AutotunerUtil::LoadAutotuneResultsFromFile(tmp_filepath));
   }
 
   static void TearDownTestSuite() { AutotunerUtil::ClearAutotuneResults(); }

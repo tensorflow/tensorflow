@@ -86,11 +86,12 @@ std::string AutotuneCacheKey::DeviceDescriptionToCacheKey(
   constexpr double kBytesPerMegabyte = 1 << 20;
   double l2_cache_size = device_description.l2_cache_size() / kBytesPerMegabyte;
 
-  return absl::StrCat(compute_capability,
-                      ", Cores: ", device_description.core_count(),
-                      ", GPU clock: ", device_description.clock_rate_ghz(),
-                      " GHz, Memory bandwidth: ", memory_bandwidth,
-                      " GB/s, L2 cache: ", l2_cache_size, " MB");
+  return absl::StrCat(
+      compute_capability, ", Cores: ", device_description.core_count(),
+      ", GPU clock: ", device_description.clock_rate_ghz(),
+      " GHz, Memory bandwidth: ", memory_bandwidth,
+      " GB/s, L2 cache: ", l2_cache_size,
+      " MB, DNN version: ", device_description.dnn_version().ToString());
 }
 
 AutotuneCacheKey::AutotuneCacheKey(
