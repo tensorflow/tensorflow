@@ -524,7 +524,7 @@ TEST_F(AutoShardingTest, MemoryBudgetTest) {
         ScheduleModule(&module, DFSMemoryScheduler(&alias_info_, size_fn)));
     const HloComputation* entry_computation = module.entry_computation();
     std::unique_ptr<HloAliasAnalysis> alias_analysis =
-        HloAliasAnalysis::Run(&module, &alias_info_).value();
+        HloAliasAnalysis::Run(&module, &alias_info_);
 
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<HloLiveRange> hlo_live_range,

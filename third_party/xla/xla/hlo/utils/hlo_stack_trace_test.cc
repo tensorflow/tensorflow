@@ -50,9 +50,7 @@ class HloStackTraceParameterizedTest
     ASSERT_TRUE(module_or_status.ok());
     auto module = std::move(module_or_status.value());
 
-    auto dataflow_or_status = HloDataflowAnalysis::Run(*module);
-    ASSERT_TRUE(dataflow_or_status.ok());
-    auto& dataflow = dataflow_or_status.value();
+    auto dataflow = HloDataflowAnalysis::Run(*module);
 
     std::vector<std::pair<int64_t, const HloValue*>> buffers;
     for (const HloValue* value : dataflow->values()) {

@@ -397,16 +397,15 @@ std::string HloAliasAnalysis::ToString() const {
 }
 
 /* static */
-absl::StatusOr<std::unique_ptr<HloAliasAnalysis>> HloAliasAnalysis::Run(
+std::unique_ptr<HloAliasAnalysis> HloAliasAnalysis::Run(
     const HloModule* module, const AliasInfo* alias_info) {
   VLOG(2) << "HloAliasAnalysis::Run on module " << module->name();
   XLA_VLOG_LINES(2, module->ToString());
 
   auto alias_analysis = absl::WrapUnique(new HloAliasAnalysis(module));
-  TF_ASSIGN_OR_RETURN(
-      alias_analysis->dataflow_analysis_,
+  alias_analysis->dataflow_analysis_ =
       HloDataflowAnalysis::Run(*module, /*ssa_form=*/true,
-                               /*bitcast_defines_value=*/false));
+                               /*bitcast_defines_value=*/false);
 
   size_t num_values = alias_analysis->dataflow_analysis_->values().size();
   alias_analysis->buffers_ =

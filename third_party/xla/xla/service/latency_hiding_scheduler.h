@@ -447,7 +447,7 @@ class SchedulingContext {
   std::shared_ptr<const HloAliasAnalysis> GetAliasAnalysis() const {
     // Lazy initialization of alias analysis on first use.
     if (alias_analysis_ == nullptr) {
-      alias_analysis_ = HloAliasAnalysis::Run(module_, alias_info_).value();
+      alias_analysis_ = HloAliasAnalysis::Run(module_, alias_info_);
     }
     return alias_analysis_;
   }

@@ -40,10 +40,8 @@ absl::StatusOr<bool> MemorySpacePropagation::Run(
   // between a fusion input and output and these two values are in different
   // memory spaces, we can get inconsistent memory spaces between the parameter
   // and fusion operand or root and fusion output.
-  TF_ASSIGN_OR_RETURN(auto dataflow_analysis,
-                      HloDataflowAnalysis::Run(*module, /*ssa_form=*/false,
-                                               /*bitcast_defines_value=*/true));
-  dataflow_analysis_ = std::move(dataflow_analysis);
+  dataflow_analysis_ = HloDataflowAnalysis::Run(*module, /*ssa_form=*/false,
+                                                /*bitcast_defines_value=*/true);
 
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {

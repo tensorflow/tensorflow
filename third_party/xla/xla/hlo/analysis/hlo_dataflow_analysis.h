@@ -70,7 +70,7 @@ class HloDataflowAnalysis {
   //   bitcast_defines_value : If true then the Bitcast HLO instruction defines
   //     a new HLO value in the analysis. If false then Bitcast forwards the
   //     value of its operand.
-  static absl::StatusOr<std::unique_ptr<HloDataflowAnalysis>> Run(
+  static std::unique_ptr<HloDataflowAnalysis> Run(
       const HloModule& module, bool ssa_form = false,
       bool bitcast_defines_value = false,
       absl::flat_hash_set<absl::string_view> execution_threads = {});
@@ -189,7 +189,7 @@ class HloDataflowAnalysis {
                       absl::flat_hash_set<absl::string_view> execution_threads);
 
   // Runs dataflow analysis on the module attached to this HloDataflowAnalysis.
-  absl::Status RunImpl();
+  void RunImpl();
 
   // 1. During value propagation (Propagate function), always create phi
   // values once it see multiple inputs merging at the same point. It then
@@ -218,7 +218,7 @@ class HloDataflowAnalysis {
   // Constructs and initializes the InstructionValueSets of all instructions to
   // contain exactly the HloValues defined by each instruction. These values can
   // then propagated throughout the HLO graph by calling Propagate.
-  absl::Status InitializeInstructionValueSets();
+  void InitializeInstructionValueSets();
 
   // Updates the value set of the given instruction based on the values flowing
   // into the instruction (operands and cross-computation dataflow).

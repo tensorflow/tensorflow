@@ -1158,8 +1158,8 @@ absl::Status CopyInsertion::AddCopiesForNonCopyableTransitions(
 absl::Status CopyInsertion::AddCopiesToResolveInterference(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                      HloAliasAnalysis::Run(module, alias_info_));
+  std::unique_ptr<HloAliasAnalysis> alias_analysis =
+      HloAliasAnalysis::Run(module, alias_info_);
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
     if (computation->IsAsyncComputation()) {
@@ -1238,8 +1238,8 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
     HloModule* module,
     std::function<bool(const HloValue* value)>
         should_add_target_specific_copies) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                      HloAliasAnalysis::Run(module, alias_info_));
+  std::unique_ptr<HloAliasAnalysis> alias_analysis =
+      HloAliasAnalysis::Run(module, alias_info_);
 
   // Identify which shape indices of which instructions need to be copied. Store
   // these results in 'instructions_to_copy'.
@@ -1437,8 +1437,8 @@ absl::Status CopyInsertion::RemoveUnnecessaryCopies(
     ordering = std::make_unique<DependencyHloOrdering>(module);
   }
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                      HloAliasAnalysis::Run(module, alias_info_));
+  std::unique_ptr<HloAliasAnalysis> alias_analysis =
+      HloAliasAnalysis::Run(module, alias_info_);
   CopyRemover copy_remover(*module, *alias_analysis, alias_info_,
                            ordering.get(), execution_threads);
   if (VLOG_IS_ON(3)) {

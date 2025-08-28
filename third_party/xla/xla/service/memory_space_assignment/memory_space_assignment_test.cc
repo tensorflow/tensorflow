@@ -1664,8 +1664,8 @@ ENTRY entry {
   for (int i = 0; i < sequence.instructions().size(); ++i) {
     VLOG(2) << i << " " << sequence.instructions()[i]->ToString();
   }
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                          HloAliasAnalysis::Run(module.get(), &alias_info_));
+  std::unique_ptr<HloAliasAnalysis> alias_analysis =
+      HloAliasAnalysis::Run(module.get(), &alias_info_);
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloLiveRange> live_range,
                           HloLiveRange::Run(module->schedule(), *alias_analysis,
                                             module->entry_computation()));
@@ -1720,8 +1720,8 @@ ENTRY entry {
   for (int i = 0; i < sequence.instructions().size(); ++i) {
     VLOG(2) << i << " " << sequence.instructions()[i]->ToString();
   }
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                          HloAliasAnalysis::Run(module.get(), &alias_info_));
+  std::unique_ptr<HloAliasAnalysis> alias_analysis =
+      HloAliasAnalysis::Run(module.get(), &alias_info_);
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloLiveRange> live_range,
                           HloLiveRange::Run(module->schedule(), *alias_analysis,
                                             module->entry_computation()));
@@ -1801,8 +1801,8 @@ ENTRY entry {
   for (int i = 0; i < sequence.instructions().size(); ++i) {
     VLOG(2) << i << " " << sequence.instructions()[i]->ToString();
   }
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                          HloAliasAnalysis::Run(module.get(), &alias_info_));
+  std::unique_ptr<HloAliasAnalysis> alias_analysis =
+      HloAliasAnalysis::Run(module.get(), &alias_info_);
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloLiveRange> live_range,
                           HloLiveRange::Run(module->schedule(), *alias_analysis,
                                             module->entry_computation()));
@@ -6510,8 +6510,7 @@ TEST_F(MemorySpaceAssignmentTest, EvictionsShouldntBeDelayed) {
 
   AssignMemorySpaceUsingCostAnalysis(module.get());
 
-  TF_ASSERT_OK_AND_ASSIGN(auto alias_analysis,
-                          HloAliasAnalysis::Run(module.get(), &alias_info_));
+  auto alias_analysis = HloAliasAnalysis::Run(module.get(), &alias_info_);
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_live_range,
                           HloLiveRange::Run(module->schedule(), *alias_analysis,
                                             module->entry_computation()));
@@ -11464,9 +11463,8 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchNoReuse) {
   EXPECT_EQ(cross_program_prefetches[0].parameter, 1);
   EXPECT_EQ(cross_program_prefetches[0].index, ShapeIndex({}));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<HloDataflowAnalysis> dataflow_analysis,
-      HloDataflowAnalysis::Run(*module));
+  std::unique_ptr<HloDataflowAnalysis> dataflow_analysis =
+      HloDataflowAnalysis::Run(*module);
   LOG(INFO) << "module: " << module->ToString();
   const HloValue& cross_program_prefetched_value =
       dataflow_analysis->GetValueDefinedAt(
@@ -11556,9 +11554,8 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchWithOverrideNoReuse) {
   EXPECT_EQ(cross_program_prefetches[0].parameter, 0);
   EXPECT_EQ(cross_program_prefetches[0].index, ShapeIndex({}));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<HloDataflowAnalysis> dataflow_analysis,
-      HloDataflowAnalysis::Run(*module));
+  std::unique_ptr<HloDataflowAnalysis> dataflow_analysis =
+      HloDataflowAnalysis::Run(*module);
   LOG(INFO) << "module: " << module->ToString();
   const HloValue& cross_program_prefetched_value =
       dataflow_analysis->GetValueDefinedAt(
@@ -11637,9 +11634,8 @@ TEST_F(MemorySpaceAssignmentTest, UserAnnotatedCrossProgramPrefetchNoReuse) {
   EXPECT_EQ(cross_program_prefetches[0].parameter, 0);
   EXPECT_EQ(cross_program_prefetches[0].index, ShapeIndex({}));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<HloDataflowAnalysis> dataflow_analysis,
-      HloDataflowAnalysis::Run(*module));
+  std::unique_ptr<HloDataflowAnalysis> dataflow_analysis =
+      HloDataflowAnalysis::Run(*module);
   LOG(INFO) << "module: " << module->ToString();
   const HloValue& cross_program_prefetched_value =
       dataflow_analysis->GetValueDefinedAt(
@@ -11736,9 +11732,8 @@ TEST_F(MemorySpaceAssignmentTest,
   EXPECT_EQ(cross_program_prefetches[0].parameter, 0);
   EXPECT_EQ(cross_program_prefetches[0].index, ShapeIndex({}));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<HloDataflowAnalysis> dataflow_analysis,
-      HloDataflowAnalysis::Run(*module));
+  std::unique_ptr<HloDataflowAnalysis> dataflow_analysis =
+      HloDataflowAnalysis::Run(*module);
   LOG(INFO) << "module: " << module->ToString();
   const HloValue& cross_program_prefetched_value =
       dataflow_analysis->GetValueDefinedAt(
@@ -11831,9 +11826,8 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchTupleNoReuse) {
   EXPECT_EQ(cross_program_prefetches[0].parameter, 0);
   EXPECT_EQ(cross_program_prefetches[0].index, ShapeIndex({1}));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<HloDataflowAnalysis> dataflow_analysis,
-      HloDataflowAnalysis::Run(*module));
+  std::unique_ptr<HloDataflowAnalysis> dataflow_analysis =
+      HloDataflowAnalysis::Run(*module);
   const HloValue& cross_program_prefetched_value =
       dataflow_analysis->GetValueDefinedAt(
           module->entry_computation()->parameter_instruction(0), {1});
@@ -11919,9 +11913,8 @@ TEST_F(MemorySpaceAssignmentTest,
   EXPECT_EQ(cross_program_prefetches[0].parameter, 1);
   EXPECT_EQ(cross_program_prefetches[0].index, ShapeIndex({}));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<HloDataflowAnalysis> dataflow_analysis,
-      HloDataflowAnalysis::Run(*module));
+  std::unique_ptr<HloDataflowAnalysis> dataflow_analysis =
+      HloDataflowAnalysis::Run(*module);
   LOG(INFO) << "module: " << module->ToString();
   const HloValue& cross_program_prefetched_value =
       dataflow_analysis->GetValueDefinedAt(
@@ -11977,9 +11970,8 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchReuse) {
   EXPECT_EQ(cross_program_prefetches[0].parameter, 1);
   EXPECT_EQ(cross_program_prefetches[0].index, ShapeIndex({}));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<HloDataflowAnalysis> dataflow_analysis,
-      HloDataflowAnalysis::Run(*module));
+  std::unique_ptr<HloDataflowAnalysis> dataflow_analysis =
+      HloDataflowAnalysis::Run(*module);
   const HloValue& cross_program_prefetched_value =
       dataflow_analysis->GetValueDefinedAt(
           module->entry_computation()->parameter_instruction(1), {});
@@ -12035,9 +12027,8 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchTupleReuse) {
   EXPECT_EQ(cross_program_prefetches[0].parameter, 0);
   EXPECT_EQ(cross_program_prefetches[0].index, ShapeIndex({1}));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<HloDataflowAnalysis> dataflow_analysis,
-      HloDataflowAnalysis::Run(*module));
+  std::unique_ptr<HloDataflowAnalysis> dataflow_analysis =
+      HloDataflowAnalysis::Run(*module);
   const HloValue& cross_program_prefetched_value =
       dataflow_analysis->GetValueDefinedAt(
           module->entry_computation()->parameter_instruction(0), {1});
@@ -13753,8 +13744,7 @@ ENTRY main {
   });
 
   // Check the aliasing.
-  auto alias_analysis =
-      HloAliasAnalysis::Run(module.get(), &alias_info_).value();
+  auto alias_analysis = HloAliasAnalysis::Run(module.get(), &alias_info_);
   VLOG(2) << alias_analysis->ToString();
   const HloBuffer& concat_bitcast_buffer =
       alias_analysis->GetUniqueBufferAt(concat_bitcast);
@@ -15022,8 +15012,7 @@ ENTRY entry {
   memory_space_options.max_size_in_bytes = 48;
   memory_space_options.reserved_bytes_for_block_allocated_weights = 48;
   absl::flat_hash_set<HloPosition> block_allocated_weights_positions;
-  TF_ASSERT_OK_AND_ASSIGN(auto alias_analysis,
-                          HloAliasAnalysis::Run(module.get(), &alias_info_));
+  auto alias_analysis = HloAliasAnalysis::Run(module.get(), &alias_info_);
   const HloModule& hlo_module = alias_analysis->dataflow_analysis().module();
   HloComputation* entry_computation = hlo_module.entry_computation();
   for (HloInstruction* parameter_instruction :

@@ -47,8 +47,7 @@ class FakeCostAnalysis : public CostAnalysis {
       OpCostManager& op_cost_manager, const HloModule& module,
       const CostAnalysisOptions& options) {
     std::unique_ptr<AliasInfo> alias_info = std::make_unique<AliasInfo>();
-    TF_ASSIGN_OR_RETURN(auto alias_analysis,
-                        HloAliasAnalysis::Run(&module, alias_info.get()));
+    auto alias_analysis = HloAliasAnalysis::Run(&module, alias_info.get());
     TF_ASSIGN_OR_RETURN(auto hlo_live_range,
                         HloLiveRange::Run(module.schedule(), *alias_analysis,
                                           module.entry_computation()));

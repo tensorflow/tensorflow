@@ -59,7 +59,7 @@ int64_t PeakMemoryUseOfEntryComputation(
 
   AliasInfo alias_info;
   std::unique_ptr<HloAliasAnalysis> alias_analysis =
-      HloAliasAnalysis::Run(module, &alias_info).value();
+      HloAliasAnalysis::Run(module, &alias_info);
 
   const HloSchedule& schedule = module->schedule();
 

@@ -1022,7 +1022,7 @@ absl::StatusOr<bool> BFloat16Propagation::Run(
     }
   }
 
-  TF_ASSIGN_OR_RETURN(dataflow_, HloDataflowAnalysis::Run(*module));
+  dataflow_ = HloDataflowAnalysis::Run(*module);
 
   // The first step is a forward pass (parameters to root), where we determine
   // the potential candidate instructions to use bfloat16 in the outputs that

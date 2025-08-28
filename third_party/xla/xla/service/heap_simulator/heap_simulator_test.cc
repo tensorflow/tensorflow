@@ -122,7 +122,7 @@ TEST_F(MinimumMemoryForSequenceTest, MultiComputation) {
   TF_ASSERT_OK(schedule.Verify());
 
   std::unique_ptr<HloAliasAnalysis> alias_analysis =
-      HloAliasAnalysis::Run(module.get(), &alias_info_).value();
+      HloAliasAnalysis::Run(module.get(), &alias_info_);
   EXPECT_EQ(25, HeapSimulator::MinimumMemoryForModule(schedule, *alias_analysis,
                                                       &alias_info_, size_fn)
                     .value());
@@ -235,7 +235,7 @@ TEST_F(MinimumMemoryForSequenceTest, SubcomputationAccounting) {
   };
 
   std::unique_ptr<HloAliasAnalysis> alias_analysis =
-      HloAliasAnalysis::Run(module.get(), &alias_info_).value();
+      HloAliasAnalysis::Run(module.get(), &alias_info_);
 
   // HeapSimulator accounts for subcomputations. The output buffer is aliased,
   // so we don't double count.
@@ -335,8 +335,7 @@ class HeapSimulatorTracker {
   // simulation over the entire module.
   void RunWholeModule(
       const std::vector<HloInstruction*>& full_module_sequence) {
-    alias_analysis_ =
-        HloAliasAnalysis::Run(module_.get(), &alias_info_).value();
+    alias_analysis_ = HloAliasAnalysis::Run(module_.get(), &alias_info_);
 
     // Construct the module sequence grouped by computation.
     HloSchedule schedule(module_.get());
@@ -419,7 +418,7 @@ class HeapSimulatorTracker {
     auto zero_size = [](const BufferValue& buffer) { return 0; };
     auto algorithm = std::make_unique<HeapCallRecorder>(&actual_calls_);
 
-    alias_analysis_ = HloAliasAnalysis::Run(module_.get(), alias_info).value();
+    alias_analysis_ = HloAliasAnalysis::Run(module_.get(), alias_info);
 
     HeapSimulator::Options options;
 
@@ -996,8 +995,7 @@ TEST_F(HeapSimulatorTest, AsyncCallImplicitSharding) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(auto alias_analysis,
-                          HloAliasAnalysis::Run(module.get(), &alias_info_));
+  auto alias_analysis = HloAliasAnalysis::Run(module.get(), &alias_info_);
   auto size_fn = [](const BufferValue& buffer) -> int64_t {
     const Shape& shape = buffer.shape();
     if (!shape.IsArray()) {

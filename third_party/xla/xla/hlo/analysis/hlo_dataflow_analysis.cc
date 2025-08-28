@@ -1383,7 +1383,7 @@ InstructionValueSet& HloDataflowAnalysis::GetInstructionValueSet(
   return *value_sets_.find(instruction)->second;
 }
 
-absl::Status HloDataflowAnalysis::InitializeInstructionValueSets() {
+void HloDataflowAnalysis::InitializeInstructionValueSets() {
   for (const HloComputation* computation : module_.MakeComputationPostOrder()) {
     if (!HloInstruction::IsThreadIncluded(computation->execution_thread(),
                                           execution_threads_)) {
@@ -1443,10 +1443,10 @@ absl::Status HloDataflowAnalysis::InitializeInstructionValueSets() {
             // would both define a value and propagate a value from its
             // caller. This limitation is not really a problem because the call
             // graph is typically flattened.
-            return Unimplemented(
-                "Computation %s is called in both a parallel (eg, kMap) and "
-                "sequential (eg, kCall) context",
-                computation->name());
+            LOG(FATAL)
+                << "Computation %s is called in both a parallel (eg, kMap) and "
+                   "sequential (eg, kCall) context",
+                computation->name();
           }
           if (call_graph_node.caller_callsites().empty() ||
               call_graph_node.context() == CallContext::kEmbedded) {
@@ -1580,8 +1580,6 @@ absl::Status HloDataflowAnalysis::InitializeInstructionValueSets() {
       }
     }
   }
-
-  return absl::OkStatus();
 }
 
 void HloDataflowAnalysis::OptimizePhiValues() {
@@ -1628,7 +1626,7 @@ void HloDataflowAnalysis::OptimizePhiValues() {
 }
 
 /* static */
-absl::StatusOr<std::unique_ptr<HloDataflowAnalysis>> HloDataflowAnalysis::Run(
+std::unique_ptr<HloDataflowAnalysis> HloDataflowAnalysis::Run(
     const HloModule& module, bool ssa_form, bool bitcast_defines_value,
     absl::flat_hash_set<absl::string_view> execution_threads) {
   VLOG(1) << "HloDataflowAnalysis::Run on module " << module.name();
@@ -1636,12 +1634,12 @@ absl::StatusOr<std::unique_ptr<HloDataflowAnalysis>> HloDataflowAnalysis::Run(
 
   auto dataflow_analysis = absl::WrapUnique(new HloDataflowAnalysis(
       module, ssa_form, bitcast_defines_value, execution_threads));
-  TF_RETURN_IF_ERROR(dataflow_analysis->RunImpl());
+  dataflow_analysis->RunImpl();
   return dataflow_analysis;
 }
 
-absl::Status HloDataflowAnalysis::RunImpl() {
-  TF_RETURN_IF_ERROR(InitializeInstructionValueSets());
+void HloDataflowAnalysis::RunImpl() {
+  InitializeInstructionValueSets();
   Propagate();
   OptimizePhiValues();
 
@@ -1687,8 +1685,6 @@ absl::Status HloDataflowAnalysis::RunImpl() {
   TF_DCHECK_OK(Verify());
 
   XLA_VLOG_LINES(1, ToString());
-
-  return absl::OkStatus();
 }
 
 absl::Status HloDataflowAnalysis::Verify() const {

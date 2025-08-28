@@ -191,7 +191,6 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
     for (HloComputation* computation : module->MakeNonfusionComputations()) {
       TF_CHECK_OK(computation->Accept(&hlo_cost_analysis));
     }
-    TF_CHECK_OK(HloAliasAnalysis::Run(module, &alias_info_).status());
 
     Options memory_space_options = DefaultMemorySpaceOptions();
     if (memory_space_options_override) {
@@ -312,8 +311,7 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
       options.is_allowed_in_alternate_mem_fn = is_allowed_in_alternate_mem;
     }
 
-    TF_ASSIGN_OR_RETURN(auto alias_analysis,
-                        HloAliasAnalysis::Run(module, &alias_info_));
+    auto alias_analysis = HloAliasAnalysis::Run(module, &alias_info_);
     TF_ASSIGN_OR_RETURN(std::unique_ptr<HloLiveRange> hlo_live_range,
                         HloLiveRange::Run(module->schedule(), *alias_analysis,
                                           module->entry_computation()));
@@ -423,9 +421,7 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
     // memory.
     const HloModule* module = instruction->GetModule();
     AliasInfo alias_info;
-    auto status_or_alias_analysis = HloAliasAnalysis::Run(module, &alias_info);
-    TF_CHECK_OK(status_or_alias_analysis.status());
-    auto alias_analysis = std::move(status_or_alias_analysis.value());
+    auto alias_analysis = HloAliasAnalysis::Run(module, &alias_info);
     const HloBuffer& buffer =
         alias_analysis->GetUniqueBufferAt(instruction, index);
     for (auto& pos_and_chunk : preset_assignments.chunks()) {
