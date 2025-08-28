@@ -244,3 +244,30 @@ def LegalizeCompositePack4Elements1 : Pat<
         (TFL_PackOp (variadic $i0, $i1, $i2, $i3),
           (GetCompositeAttributeAs<"values_count", "IntegerAttr"> $attrs),
           (GetCompositeAttributeAs<"axis", "IntegerAttr"> $attrs))>;
+
+def LegalizeDynamicSlice : Pat<
+        (MHLO_CompositeOp:$composite
+          (variadic $input, $begin, $size),
+          ConstantStrAttr<StrAttr, "tfl.slice">, $attrs, $_, $_),
+        (TFL_SliceOp $input, $begin, $size)>;
+
+def LegalizeDynamicSlice_1 : Pat<
+        (MHLO_CompositeOp:$composite
+          (variadic $_, $input, $begin, $size),
+          ConstantStrAttr<StrAttr, "tfl.slice">, $attrs, $_, $_),
+        (TFL_SliceOp $input, $begin, $size)>;
+
+def LegalizeBMM4dAdjY : Pat<
+        (MHLO_CompositeOp:$composite
+          (variadic $lhs, $rhs),
+          ConstantStrAttr<StrAttr, "tfl.bmm_4d_adj_y">, $attrs, $_, $_),
+        (TFL_BatchMatMulOp $lhs, $rhs, ConstBoolAttrFalse, ConstBoolAttrTrue,
+                     ConstBoolAttrFalse)>;
+
+// For dynamic shaped lhs and rhs.
+def LegalizeBMM4dAdjY_1 : Pat<
+        (MHLO_CompositeOp:$composite
+          (variadic $_, $lhs, $rhs),
+          ConstantStrAttr<StrAttr, "tfl.bmm_4d_adj_y">, $attrs, $_, $_),
+        (TFL_BatchMatMulOp $lhs, $rhs, ConstBoolAttrFalse, ConstBoolAttrTrue,
+                     ConstBoolAttrFalse)>;
