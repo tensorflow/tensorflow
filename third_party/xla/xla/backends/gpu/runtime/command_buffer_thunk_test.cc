@@ -120,10 +120,12 @@ bool IsAtLeastCuda12300(const se::StreamExecutor* stream_executor) {
   const auto* cuda_cc = std::get_if<se::CudaComputeCapability>(
       &device_description.gpu_compute_capability());
   if (cuda_cc != nullptr) {
-    if (device_description.driver_version() >=
-            stream_executor::SemanticVersion(12, 3, 0) &&
-        device_description.runtime_version() >=
-            stream_executor::SemanticVersion(12, 3, 0)) {
+    // We need a recent driver to support the feature at runtime and we need a
+    // recent version of the toolkit at compile time, so that we have access to
+    // the driver's headers.
+    if (std::min(device_description.driver_version(),
+                 device_description.compile_time_toolkit_version()) >=
+        stream_executor::SemanticVersion(12, 3, 0)) {
       return true;
     }
   }
@@ -136,10 +138,12 @@ bool IsAtLeastCuda12900(const se::StreamExecutor* stream_executor) {
   const auto* cuda_cc = std::get_if<se::CudaComputeCapability>(
       &device_description.gpu_compute_capability());
   if (cuda_cc != nullptr) {
-    if (device_description.driver_version() >=
-            stream_executor::SemanticVersion(12, 9, 0) &&
-        device_description.runtime_version() >=
-            stream_executor::SemanticVersion(12, 9, 0)) {
+    // We need a recent driver to support the feature at runtime and we need a
+    // recent version of the toolkit at compile time, so that we have access to
+    // the driver's headers.
+    if (std::min(device_description.driver_version(),
+                 device_description.compile_time_toolkit_version()) >=
+        stream_executor::SemanticVersion(12, 9, 0)) {
       return true;
     }
   }
