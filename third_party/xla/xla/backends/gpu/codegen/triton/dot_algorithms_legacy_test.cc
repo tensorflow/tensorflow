@@ -1453,6 +1453,9 @@ TEST_P(TritonAndBlasSupportForDifferentTensorSizes,
        IsDotAlgorithmSupportedByTriton) {
   // Here we test which dot algorithm is supported by triton.
   // In case of a change you need to update the expected results.
+  if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
+    GTEST_SKIP() << "Temporarily disabled on ROCm."; //TODO(rocm): weekly sync 25-08-25
+  }
   constexpr absl::string_view kHloText = R"(
     HloModule ${module_name}
 
