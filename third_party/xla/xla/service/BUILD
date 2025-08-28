@@ -3939,6 +3939,7 @@ xla_cc_test(
     srcs = ["layout_assignment_test.cc"],
     deps = [
         ":computation_layout",
+        ":hlo_verifier",
         ":layout_assignment",
         ":logical_buffer",
         ":pattern_matcher",
