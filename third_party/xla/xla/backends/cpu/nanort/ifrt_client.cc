@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/layout.h"
+#include "xla/layout_util.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -412,7 +413,8 @@ class NanoArray final : public NanoValue<NanoArray, ifrt::Array> {
   absl::StatusOr<std::shared_ptr<const PjRtLayout>> pjrt_layout()
       const override {
     TF_RETURN_IF_ERROR(ValidateNotDeleted());
-    return std::make_shared<PjRtLayout>(Layout(shape().dims()));
+    return std::make_shared<PjRtLayout>(
+        LayoutUtil::MakeDescendingLayout(shape().dims().size()));
   }
 
   absl::StatusOr<std::vector<ifrt::ArrayRef>> DisassembleIntoSingleDeviceArrays(
@@ -1489,7 +1491,8 @@ NanoIfrtClient::GetDefaultPjRtLayout(ifrt::DType dtype,
                                      absl::Span<const int64_t> dims,
                                      ifrt::Device* device,
                                      ifrt::MemoryKind memory_kind) const {
-  return std::make_shared<PjRtLayout>(Layout(dims));
+  return std::make_shared<PjRtLayout>(
+      LayoutUtil::MakeDescendingLayout(dims.size()));
 }
 
 NanoIfrtClient::NanoIfrtClient(int32_t num_devices,

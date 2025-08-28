@@ -345,6 +345,13 @@ Future<> PjRtArray::CopyToHostBuffer(
     ArrayCopySemantics semantics) {
   DCHECK(this);
   if (sharding_->devices()->size() != 1) {
+    if (sharding_->IsFullyReplicated()) {
+      absl::StatusOr<ArrayRef> replicated = FullyReplicatedShard(semantics);
+      if (!replicated.ok()) {
+        return Future<>(std::move(replicated).status());
+      }
+      return (*replicated)->CopyToHostBuffer(data, byte_strides, semantics);
+    }
     return Future<>(
         InvalidArgument("Only single-shard is implemented, but got %d",
                         sharding_->devices()->size()));
