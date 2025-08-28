@@ -416,5 +416,204 @@ TEST_F(MemorySpacePropagationTest, BitcastInFusion) {
   EXPECT_EQ(absl::HashOf(*module), absl::HashOf(*ref));
 }
 
+TEST_F(MemorySpacePropagationTest, PropagateMemorySpaceFromOperands) {
+  absl::string_view hlo_string = R"(
+    HloModule NoMemorySpace
+
+    %fused_computation {
+      %param_1.3 = s32[6]{0:T(128)} parameter(0)
+      %param_2.3 = s32[6]{0:T(128)} parameter(1)
+      %tuple = (s32[6]{0:T(128)}, s32[6]{0:T(128)}) tuple(%param_1.3, %param_2.3)
+      %gte_1.3 = s32[6]{0:T(128)} get-tuple-element(%tuple), index=0
+      %neg_1.3 = s32[6]{0:T(128)} negate(%gte_1.3)
+      ROOT %root = (s32[6]{0:T(128)}, s32[6]{0:T(128)}) tuple(%neg_1.3, %param_2.3)
+    }
+    ENTRY %entry {
+      %param0 = s32[6]{0:T(128)} parameter(0)
+      %param0_copy = s32[6]{0:T(128)S(1)} copy(%param0)
+      %param1 = s32[6]{0:T(128)} parameter(1)
+      ROOT %fusion = (s32[6]{0:T(128)}, s32[6]{0:T(128)}) fusion(%param0_copy, %param1), kind=kLoop, calls=%fused_computation
+    }
+  )";
+  absl::string_view expected_hlo_string = R"(
+    HloModule NoMemorySpace
+
+    %fused_computation {
+      %param_1.3 = s32[6]{0:T(128)S(1)} parameter(0)
+      %param_2.3 = s32[6]{0:T(128)} parameter(1)
+      %tuple = (s32[6]{0:T(128)S(1)}, s32[6]{0:T(128)}) tuple(%param_1.3, %param_2.3)
+      %gte_1.3 = s32[6]{0:T(128)S(1)} get-tuple-element(%tuple), index=0
+      %neg_1.3 = s32[6]{0:T(128)} negate(%gte_1.3)
+      ROOT %root = (s32[6]{0:T(128)}, s32[6]{0:T(128)}) tuple(%neg_1.3, %param_2.3)
+    }
+    ENTRY %entry {
+      %param0 = s32[6]{0:T(128)} parameter(0)
+      %param0_copy = s32[6]{0:T(128)S(1)} copy(%param0)
+      %param1 = s32[6]{0:T(128)} parameter(1)
+      ROOT %fusion = (s32[6]{0:T(128)}, s32[6]{0:T(128)}) fusion(%param0_copy, %param1), kind=kLoop, calls=%fused_computation
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  MemorySpacePropagation memory_space_propagation;
+  EXPECT_TRUE(memory_space_propagation.Run(module.get()).value());
+  TF_ASSERT_OK_AND_ASSIGN(auto ref,
+                          ParseAndReturnVerifiedModule(expected_hlo_string));
+  EXPECT_EQ(absl::HashOf(*module), absl::HashOf(*ref));
+}
+
+// This test tests that if propagate_from_parameters is true, the parameters
+// do _not_ get the memory space propagated from the operands. The operations
+// in the fusion get the memory space propagated from the parameters.
+TEST_F(MemorySpacePropagationTest, PropagateMemorySpaceFromFusedParameters) {
+  absl::string_view hlo_string = R"(
+    HloModule NoMemorySpace
+
+    %fused_computation {
+      %param_1.3 = s32[6]{0:T(128)S(1)} parameter(0)
+      %param_2.3 = s32[6]{0:T(128)} parameter(1)
+      %tuple = (s32[6]{0:T(128)}, s32[6]{0:T(128)}) tuple(%param_1.3, %param_2.3)
+      %gte_1.3 = s32[6]{0:T(128)} get-tuple-element(%tuple), index=0
+      %neg_1.3 = s32[6]{0:T(128)} negate(%gte_1.3)
+      ROOT %root = (s32[6]{0:T(128)}, s32[6]{0:T(128)}) tuple(%neg_1.3, %param_2.3)
+    }
+    ENTRY %entry {
+      %param0 = s32[6]{0:T(128)} parameter(0)
+      %param1 = s32[6]{0:T(128)} parameter(1)
+      %param1_copy = s32[6]{0:T(128)S(1)} copy(%param1)
+      ROOT %fusion = (s32[6]{0:T(128)}, s32[6]{0:T(128)}) fusion(%param0, %param1_copy), kind=kLoop, calls=%fused_computation
+    }
+  )";
+  absl::string_view expected_hlo_string = R"(
+    HloModule NoMemorySpace
+
+    %fused_computation {
+      %param_1.3 = s32[6]{0:T(128)S(1)} parameter(0)
+      %param_2.3 = s32[6]{0:T(128)} parameter(1)
+      %tuple = (s32[6]{0:T(128)S(1)}, s32[6]{0:T(128)}) tuple(%param_1.3, %param_2.3)
+      %gte_1.3 = s32[6]{0:T(128)S(1)} get-tuple-element(%tuple), index=0
+      %neg_1.3 = s32[6]{0:T(128)} negate(%gte_1.3)
+      ROOT %root = (s32[6]{0:T(128)}, s32[6]{0:T(128)}) tuple(%neg_1.3, %param_2.3)
+    }
+    ENTRY %entry {
+      %param0 = s32[6]{0:T(128)} parameter(0)
+      %param1 = s32[6]{0:T(128)} parameter(1)
+      %param1_copy = s32[6]{0:T(128)S(1)} copy(%param1)
+      ROOT %fusion = (s32[6]{0:T(128)}, s32[6]{0:T(128)}) fusion(%param0, %param1_copy), kind=kLoop, calls=%fused_computation
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  MemorySpacePropagation memory_space_propagation(
+      /*propagate_from_parameters=*/true);
+  EXPECT_TRUE(memory_space_propagation.Run(module.get()).value());
+  TF_ASSERT_OK_AND_ASSIGN(auto ref,
+                          ParseAndReturnVerifiedModule(expected_hlo_string));
+  EXPECT_EQ(absl::HashOf(*module), absl::HashOf(*ref));
+}
+
+// This test tests that the parameters in nested fusions get the memory space
+// propagated from the operands.
+TEST_F(MemorySpacePropagationTest,
+       PropagateMemorySpaceFromFusedParametersNestedFusion) {
+  absl::string_view hlo_string = R"(
+    HloModule NoMemorySpace
+
+    %nested_fusion {
+      %param_1.3 = s32[6]{0:T(128)} parameter(0)
+      ROOT %neg_1.3 = s32[6]{0:T(128)} negate(%param_1.3)
+    }
+
+    %fused_computation {
+      %param_1.3 = s32[6]{0:T(128)S(1)} parameter(0)
+      %param_2.3 = s32[6]{0:T(128)} parameter(1)
+      %tuple = (s32[6]{0:T(128)}, s32[6]{0:T(128)}) tuple(%param_1.3, %param_2.3)
+      %gte_1.3 = s32[6]{0:T(128)} get-tuple-element(%tuple), index=0
+      %neg_1.3 = s32[6]{0:T(128)} fusion(%gte_1.3), kind=kLoop, calls=%nested_fusion
+      ROOT %root = (s32[6]{0:T(128)}, s32[6]{0:T(128)}) tuple(%neg_1.3, %param_2.3)
+    }
+
+    ENTRY %entry {
+      %param0 = s32[6]{0:T(128)} parameter(0)
+      %param1 = s32[6]{0:T(128)} parameter(1)
+      ROOT %fusion = (s32[6]{0:T(128)}, s32[6]{0:T(128)}) fusion(%param0, %param1), kind=kLoop, calls=%fused_computation
+    }
+  )";
+  absl::string_view expected_hlo_string = R"(
+    HloModule NoMemorySpace
+
+    %nested_fusion {
+      %param_1.3 = s32[6]{0:T(128)S(1)} parameter(0)
+      ROOT %neg_1.3 = s32[6]{0:T(128)} negate(%param_1.3)
+    }
+
+    %fused_computation {
+      %param_1.3 = s32[6]{0:T(128)S(1)} parameter(0)
+      %param_2.3 = s32[6]{0:T(128)} parameter(1)
+      %tuple = (s32[6]{0:T(128)S(1)}, s32[6]{0:T(128)}) tuple(%param_1.3, %param_2.3)
+      %gte_1.3 = s32[6]{0:T(128)S(1)} get-tuple-element(%tuple), index=0
+      %neg_1.3 = s32[6]{0:T(128)} fusion(%gte_1.3), kind=kLoop, calls=%nested_fusion
+      ROOT %root = (s32[6]{0:T(128)}, s32[6]{0:T(128)}) tuple(%neg_1.3, %param_2.3)
+    }
+
+    ENTRY %entry {
+      %param0 = s32[6]{0:T(128)} parameter(0)
+      %param1 = s32[6]{0:T(128)} parameter(1)
+      ROOT %fusion = (s32[6]{0:T(128)}, s32[6]{0:T(128)}) fusion(%param0, %param1), kind=kLoop, calls=%fused_computation
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  MemorySpacePropagation memory_space_propagation(
+      /*propagate_from_parameters=*/true);
+  EXPECT_TRUE(memory_space_propagation.Run(module.get()).value());
+  TF_ASSERT_OK_AND_ASSIGN(auto ref,
+                          ParseAndReturnVerifiedModule(expected_hlo_string));
+  EXPECT_EQ(absl::HashOf(*module), absl::HashOf(*ref));
+}
+
+// This test tests that the operations in the fusion get the memory space
+// propagated from the output.
+TEST_F(MemorySpacePropagationTest, PropagateMemorySpaceFromOutput) {
+  absl::string_view hlo_string = R"(
+    HloModule NoMemorySpace
+
+    %fused_computation {
+      %param_1.3 = s32[6]{0:T(128)} parameter(0)
+      %param_2.3 = s32[6]{0:T(128)} parameter(1)
+      %neg_1.3 = s32[6]{0:T(128)} negate(%param_1.3)
+      ROOT %root = (s32[6]{0:T(128)}, s32[6]{0:T(128)}) tuple(%neg_1.3, %param_2.3)
+    }
+    ENTRY %entry {
+      %param0 = s32[6]{0:T(128)} parameter(0)
+      %param1 = s32[6]{0:T(128)} parameter(1)
+      ROOT %fusion = (s32[6]{0:T(128)S(1)}, s32[6]{0:T(128)}) fusion(%param0, %param1), kind=kLoop, calls=%fused_computation
+    }
+  )";
+  absl::string_view expected_hlo_string = R"(
+    HloModule NoMemorySpace
+
+    %fused_computation {
+      %param_1.3 = s32[6]{0:T(128)} parameter(0)
+      %param_2.3 = s32[6]{0:T(128)} parameter(1)
+      %neg_1.3 = s32[6]{0:T(128)S(1)} negate(%param_1.3)
+      ROOT %root = (s32[6]{0:T(128)S(1)}, s32[6]{0:T(128)}) tuple(%neg_1.3, %param_2.3)
+    }
+    ENTRY %entry {
+      %param0 = s32[6]{0:T(128)} parameter(0)
+      %param1 = s32[6]{0:T(128)} parameter(1)
+      ROOT %fusion = (s32[6]{0:T(128)S(1)}, s32[6]{0:T(128)}) fusion(%param0, %param1), kind=kLoop, calls=%fused_computation
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  MemorySpacePropagation memory_space_propagation(
+      /*propagate_from_parameters=*/true);
+  EXPECT_TRUE(memory_space_propagation.Run(module.get()).value());
+  TF_ASSERT_OK_AND_ASSIGN(auto ref,
+                          ParseAndReturnVerifiedModule(expected_hlo_string));
+  EXPECT_EQ(absl::HashOf(*module), absl::HashOf(*ref));
+}
+
 }  // namespace
 }  // namespace xla

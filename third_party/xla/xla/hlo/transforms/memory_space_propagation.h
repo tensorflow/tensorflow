@@ -33,6 +33,8 @@ namespace xla {
 // split config) in the layout to the fusion computations.
 class MemorySpacePropagation : public HloModulePass {
  public:
+  explicit MemorySpacePropagation(bool propagate_from_parameters = false)
+      : propagate_from_parameters_(propagate_from_parameters) {}
   ~MemorySpacePropagation() override = default;
   absl::string_view name() const override { return "memory-space-propagation"; }
   using HloPassInterface::Run;
@@ -47,6 +49,11 @@ class MemorySpacePropagation : public HloModulePass {
   // module is modified.
   bool Propagate(ShapeIndexView index, const HloInstruction* callee_instruction,
                  const Shape& src_shape) const;
+
+  // If true, the memory space propagation will propagate from the
+  // fusion parameters instead of the operands. This is useful for the cases
+  // where only the memory space of the fusion parameters is known.
+  bool propagate_from_parameters_ = false;
 
   std::unique_ptr<HloDataflowAnalysis> dataflow_analysis_;
 };
