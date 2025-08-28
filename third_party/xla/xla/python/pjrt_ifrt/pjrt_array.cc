@@ -191,6 +191,10 @@ absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
 
 absl::StatusOr<ArrayRef> PjRtArray::FullyReplicatedShard(
     ArrayCopySemantics semantics) {
+  if (sharding_->devices()->AddressableDeviceList()->empty()) {
+    return FailedPrecondition(
+        "FullyReplicatedShard: Array has no addressable shards.");
+  }
   return PjRtArray::Create(client(), GetPjRtBuffer(semantics, 0));
 }
 
