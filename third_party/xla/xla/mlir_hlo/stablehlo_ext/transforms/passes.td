@@ -208,6 +208,20 @@ def SinkConstantsToControlFlowPass : Pass<"stablehlo-ext-sink-constants-to-contr
   }];
 }
 
+def StablehloSanitizeDiscardableAttributesPass : Pass<"stablehlo-ext-sanitize-discardable-attributes", "ModuleOp"> {
+  let summary = "Removes discardable attributes that are unrecognized in XLA";
+  let description = [{
+    This pass removes discardable attributes that are unrecognized in XLA.
+    Only specific attributes are supported in HLO, and many are silently
+    dropped. This pass makes that behavior more explicit and allows users to
+    more clearly represent the HLO that will be generated.
+
+    This is especilly useful in fingerprinting XLA MLIR programs, today if
+    discardable attributes change, the fingerprint will change, even though the
+    resulting HLO is the same.
+  }];
+}
+
 def SymbolicShapeOptimizationPass : Pass<"stablehlo-ext-symbolic-shape-optimization", "func::FuncOp"> {
   let summary = "Analyzes shapes and performs shape-related optimizations";
   let description = [{

@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/hlo/translate/hlo_to_mhlo/attribute_importer.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_utils.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/mlir_hlo/utils/unregistered_attributes.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -51,9 +52,6 @@ limitations under the License.
 namespace xla {
 
 namespace {
-
-constexpr char kFrontendAttributesAttr[] = "mhlo.frontend_attributes";
-constexpr char kShardingAttr[] = "mhlo.sharding";
 
 // ============
 // Imports an old-style async start op. E.g. an HLO all-gather-start
@@ -103,8 +101,8 @@ absl::StatusOr<mlir::Operation*> ImportOldStyleAsyncStart(
   async_attributes.push_back(builder->getNamedAttr(
       "called_computation",
       mlir::FlatSymbolRefAttr::get(builder->getContext(), function.getName())));
-  async_attributes.push_back(builder->getNamedAttr(
-      "execution_thread", builder->getStringAttr("main")));
+  async_attributes.push_back(
+      builder->getNamedAttr(kExecutionThread, builder->getStringAttr("main")));
 
   // Attach the frontend_attributes and sharding attributes to the async op
   // instead of the sync op. First, semantically sharding attributes cannot be
@@ -114,8 +112,8 @@ absl::StatusOr<mlir::Operation*> ImportOldStyleAsyncStart(
   // the `mhlo.async_start` ops, so attaching them to the sync op will make them
   // disappear during StableHLO/MHLO to HLO lowering.
   for (auto it = attributes.begin(); it != attributes.end();) {
-    if (it->getName() == kShardingAttr ||
-        it->getName() == kFrontendAttributesAttr) {
+    if (it->getName() == xla::kMhloSharding ||
+        it->getName() == xla::kMhloFrontendAttributes) {
       async_attributes.push_back(*it);
       it = attributes.erase(it);
     } else {
@@ -134,7 +132,7 @@ absl::StatusOr<mlir::Operation*> ImportOldStyleAsyncStart(
   async_builder.create<mlir::func::ReturnOp>(loc, sync_operation->getResults());
   TF_RETURN_IF_ERROR(mutate_op(sync_operation));
 
-  function->setAttr("execution_thread", builder->getStringAttr("main"));
+  function->setAttr(kExecutionThread, builder->getStringAttr("main"));
 
   auto bundle_result_type =
       mlir::mhlo::AsyncBundleType::get(context, result_types);
@@ -245,7 +243,7 @@ absl::StatusOr<mlir::Operation*> ImportSend(
       // to grab a slice of the sharding. All shardings are maximal, so we
       // just need 1 of them.
       send->setAttr(
-          kShardingAttr,
+          xla::kMhloSharding,
           mlir::StringAttr::get(
               builder->getContext(),
               HloSharding::FromProto(sharding.ToProto().tuple_shardings()[0])
@@ -317,7 +315,7 @@ absl::StatusOr<mlir::Operation*> ImportRecv(
         OpSharding sharding_proto = sharding.ToProto();
         auto* tuple_shardings = sharding_proto.mutable_tuple_shardings();
         tuple_shardings->DeleteSubrange(1, 1);
-        recv->setAttr(kShardingAttr,
+        recv->setAttr(xla::kMhloSharding,
                       mlir::StringAttr::get(
                           builder->getContext(),
                           HloSharding::FromProto(sharding_proto)->ToString()));
