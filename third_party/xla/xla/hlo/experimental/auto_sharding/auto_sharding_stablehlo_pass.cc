@@ -130,6 +130,7 @@ class AutoShardingWrapperPass
     option.device_mesh_shape = device_mesh_shape;
     // Keep the mesh shape unchanged.
     option.allow_mixed_mesh_shape = false;
+    option.replace_sharding_with_copy = false;
     // TODO(hanruobing): Add an option to control whether to keep the original
     // sharding or not. The current behavior is to keep the original sharding.
     // TODO(b/424109294): Figure out whether we need to pass backend-specific

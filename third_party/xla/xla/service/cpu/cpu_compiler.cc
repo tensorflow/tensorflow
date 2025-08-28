@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <stack>
@@ -95,6 +96,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk.pb.h"
 #include "xla/backends/cpu/runtime/thunk_proto_serdes.h"
+#include "xla/backends/cpu/transforms/collectives/all_reduce_combiner.h"
 #include "xla/backends/cpu/transforms/dot_library_rewriter.h"
 #include "xla/backends/cpu/transforms/xnn_graph_fusion.h"
 #include "xla/backends/cpu/xnn_support.h"
@@ -926,6 +928,12 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     pipeline.AddPass<FlattenCallGraph>();
     pipeline.AddPass<CallInliner>(/*single_call_site=*/true);
   }
+
+  // Combine collective operations to maximize network bandwidth usage.
+  constexpr int64_t kCombineBytes = std::numeric_limits<int64_t>::max();
+  constexpr int64_t kCombineCount = 256;
+  pipeline.AddPass<CpuAllReduceCombiner>(kCombineBytes, kCombineCount);
+  pipeline.AddPass<TupleSimplifier>();
 
   // The LayoutAssignment pass may leave behind kCopy instructions which are
   // duplicate or NOPs, so remove them with algebraic simplification and CSE.

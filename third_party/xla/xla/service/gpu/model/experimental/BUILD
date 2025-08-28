@@ -210,6 +210,30 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "symbolic_map",
+    srcs = ["symbolic_map.cc"],
+    hdrs = ["symbolic_map.h"],
+    deps = [
+        ":symbolic_expr",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+xla_cc_test(
+    name = "symbolic_map_test",
+    srcs = ["symbolic_map_test.cc"],
+    deps = [
+        ":symbolic_expr",
+        ":symbolic_map",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
     name = "symbolic_expr",
     srcs = ["symbolic_expr.cc"],
     hdrs = ["symbolic_expr.h"],
@@ -232,7 +256,7 @@ xla_cc_test(
     deps = [
         ":symbolic_expr",
         "//xla/hlo/analysis:indexing_test_utils",
-        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
     ],
 )

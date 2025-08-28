@@ -318,7 +318,6 @@ def tf_additional_lib_hdrs():
         clean_dep("//xla/tsl/platform/default:context.h"),
         clean_dep("//xla/tsl/platform/default:criticality.h"),
         clean_dep("//xla/tsl/platform/default:integral_types.h"),
-        clean_dep("//xla/tsl/platform/default:logging.h"),
         clean_dep("//xla/tsl/platform/default:stacktrace.h"),
         clean_dep("//xla/tsl/platform/default:status.h"),
         clean_dep("//xla/tsl/platform/default:statusor.h"),
@@ -548,9 +547,6 @@ def tf_stream_executor_deps(name, platform_dir = "@local_xla//xla/tsl/platform/"
 
 def tf_platform_alias(name, platform_dir = "@local_xla//xla/tsl/platform/"):
     return [platform_dir + "default:" + name]
-
-def tf_logging_deps():
-    return [clean_dep("//xla/tsl/platform/default:logging")]
 
 def tf_error_logging_deps():
     return [clean_dep("//xla/tsl/platform/default:error_logging")]

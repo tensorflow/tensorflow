@@ -147,7 +147,7 @@ static absl::StatusOr<ifrt::ArrayRef> MakeArrayFromLiteral(
       ifrt::Shape(literal.shape().dimensions()),
       /*byte_strides=*/std::nullopt, std::move(sharding),
       ifrt::Client::HostBufferSemantics::kImmutableZeroCopy,
-      /*on_done_with_host_buffer=*/{});
+      /*on_done_with_host_buffer=*/nullptr);
 }
 
 static void BM_IfRtAddScalars(benchmark::State& state) {
@@ -320,7 +320,17 @@ int main(int argc, char** argv) {
       "ArrayImplTest."
       "MakeArraysFromHostBufferShardsAndCopyToHostBufferWithString:"
       // `MakeErrorArrays` is not supported in NanoIfrtClient.
-      "ArrayImplTest.MakeErrorArrays";
+      "ArrayImplTest.MakeErrorArrays:"
+      // Sub-byte types are not supported in NanoIfrtClient.
+      "ArrayImplTest.HostBufferInt4:"
+      // NanoRT does not handle zero-sized buffers correctly.
+      "ArrayImplTest.MakeAndCopyZeroSizedBuffers:"
+      // Executable returns a wrong number of devices.
+      "LoadedExecutableImplTest.Properties:"
+      // Incorrect deleted state of donated inputs.
+      "LoadedExecutableImplTest.Donation:"
+      // Analysis methods are not implemented.
+      "LoadedExecutableImplTest.Analysis";
   xla::ifrt::test_util::SetTestFilterIfNotUserSpecified(kFilter);
 
   for (int i = 1; i < argc; i++) {

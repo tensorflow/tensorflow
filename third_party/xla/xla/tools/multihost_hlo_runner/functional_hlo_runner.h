@@ -249,6 +249,7 @@ struct RunningOptions {
   ModuleOutputMode module_output_mode = ModuleOutputMode::kReturnOutputs;
   // Repeatedly execute the HLO for this many times.
   size_t num_repeats = 1;
+  size_t base_run_id = 0;
   // If true, we recreate the buffers between repeats to reset of effect of
   // buffer donation.
   bool recreate_buffers_between_repeats = false;

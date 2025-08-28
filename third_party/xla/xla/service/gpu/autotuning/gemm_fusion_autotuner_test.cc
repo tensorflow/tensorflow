@@ -69,7 +69,6 @@ limitations under the License.
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -554,10 +553,7 @@ ENTRY e {
   MatchOptimizedHlo(kHloText, R"(
 ; CHECK: reduce
 ; CHECK: ENTRY
-; CHECK-NEXT: parameter
-; CHECK-NEXT: parameter
-; CHECK-NEXT: kCustom
-; CHECK-NEXT: {{kLoop|kInput}}
+; CHECK: ROOT {{.*}} fusion({{.*}}), kind=kLoop
 )");
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-3}));
@@ -580,9 +576,14 @@ ENTRY e {
 })";
 
   MatchOptimizedHlo(kHloText, R"(
-; CHECK: f{{(16|32)}}[3,55,20]
-; CHECK: {"block_m":16,"block_n":64,"block_k":32,"split_k":3,"num_stages":1,"num_warps":2,"num_ctas":1}
-; CHECK: f16[55,20]{1,0} {{(reduce|fusion)}}
+; CHECK: f16[55,3,40]{2,1,0} fusion
+; CHECK-SAME: "kind":"__triton_nested_gemm_fusion"
+; CHECK-SAME: "sizes":["16","1","32"]
+; CHECK: f16[3,40,20]{2,1,0} fusion
+; CHECK-SAME: "kind":"__triton_nested_gemm_fusion"
+; CHECK-SAME: "sizes":["1","32","64"]
+; CHECK: ENTRY
+; CHECK: ROOT {{.*}} f16[55,20]{1,0} fusion({{.*}}), kind=kLoop
 )");
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));

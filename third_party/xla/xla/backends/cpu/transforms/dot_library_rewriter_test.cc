@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/base/no_destructor.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/strings/match.h"
@@ -60,6 +61,12 @@ class CpuLibraryTest : public TargetMachineTestBase {
     int num_instructions_in_fused_computation;
     bool changed;
   };
+
+  static const DotRewriteTestSpec& GetDefaultTestSpec() {
+    static const absl::NoDestructor<DotRewriteTestSpec> kDefaultTestSpec(
+        {"xnn", "f32", "f32", "znver3", "+avx,+avx2", "dot"});
+    return *kDefaultTestSpec;
+  }
 
   virtual void RunTest(absl::string_view hlo_template,
                        FusionProperties expected) {}
@@ -399,21 +406,16 @@ class CpuLibraryFusionTypeTest
       public ::testing::WithParamInterface<std::string> {
  public:
   static std::string Name(const ::testing::TestParamInfo<std::string>& info) {
-    return absl::StrCat(kLib, "_", info.param, "_", kDType, "_", kCpuName);
+    return info.param;
   }
 
  protected:
   void RunTest(absl::string_view hlo_template,
                FusionProperties expected) override {
-    DotRewriteTestSpec spec = {std::string(kLib),      std::string(kDType),
-                               std::string(kDType),    std::string(kCpuName),
-                               std::string(kFeatures), GetParam()};
+    DotRewriteTestSpec spec = GetDefaultTestSpec();
+    spec.fusion_mode = GetParam();
     RunTestInternal(spec, hlo_template, expected);
   }
-  static constexpr absl::string_view kLib = "xnn";
-  static constexpr absl::string_view kDType = "f32";
-  static constexpr absl::string_view kCpuName = "znver3";
-  static constexpr absl::string_view kFeatures = "+avx,+avx2";
 };
 
 TEST_P(CpuLibraryFusionTypeTest, AllEltwiseFusion) {
@@ -520,6 +522,42 @@ INSTANTIATE_TEST_SUITE_P(CpuLibraryFusionTypeTestSuite,
                          ::testing::ValuesIn({std::string("dot"),
                                               std::string("greedy")}),
                          CpuLibraryFusionTypeTest::Name);
+
+TEST_F(CpuLibraryTest, UpdateFusion) {
+  //                      c
+  //                       \
+  //   b ------------------ dot2
+  //    \                       \
+  // a -- sub1 -- add1 -- dot1 -- add2
+  //
+  // In "dot" mode, `dot2` + `add2` get fused first (call this `fusion2`). Then
+  // `dot1` will create a new fusion (`fusion1`), fuse with `add1, and try to
+  // fuse with `fusion2`. Since fusions are merged by updating the consumer
+  // fusion, `fusion1` will get absorbed into `fusion2`. When we continue
+  // growing the fusion around `dot1`, we need to use `fusion2` instead of
+  // `fusion1`. This test will fail if the old `fusion1` is used (`sub1` will
+  // not recognize `fusion1` as its user).
+  const absl::string_view hlo_template = R"(
+    HloModule matmul
+
+    ENTRY %main {
+      %a = $in_dtype[64,64] parameter(0)
+      %b = $in_dtype[64,64] parameter(1)
+      %c = $in_dtype[64,64] parameter(2)
+      %sub1 = $in_dtype[64,64] subtract(%a, %b)
+      %add1 = $in_dtype[64,64] add(%a, %sub1)
+      %dot1 = $in_dtype[64,64] dot(%add1, %b), lhs_contracting_dims={1},
+                                            rhs_contracting_dims={0}
+      %dot2 = $in_dtype[64,64] dot(%b, %c), lhs_contracting_dims={1},
+                                            rhs_contracting_dims={0}
+      ROOT %add2 = $in_dtype[64,64] add(%dot1, %dot2)
+    })";
+
+  DotRewriteTestSpec spec = GetDefaultTestSpec();
+  spec.fusion_mode = "dot";
+  RunTestInternal(spec, hlo_template,
+                  FusionProperties{HloOpcode::kAdd, 3, 8, true});
+}
 
 }  // namespace
 }  // namespace xla::cpu

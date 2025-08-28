@@ -1,0 +1,58 @@
+syntax = "proto2";
+
+package tflite.tools.benchmark;
+
+option java_multiple_files = true;
+option java_package = "tflite.tools.benchmark";
+
+// Next ID: 11
+message LatencyMetrics {
+  // Note all fields defined here refers to wall time by default.
+  optional float avg_ms = 1;
+  optional float min_ms = 2;
+  optional float max_ms = 3;
+  optional float stddev_ms = 4;
+  optional float median_ms = 5;
+  optional float p5_ms = 6;
+  optional float p95_ms = 7;
+  optional float init_ms = 8;
+  optional float first_inference_ms = 9;
+  optional float average_warm_up_ms = 10;
+}
+
+// Next ID: 4
+message MemoryMetrics {
+  // The amount of memory allocated during model initialization. This is the
+  // delta of memory footprint after the model has been loaded and interpreter
+  // has been created, compared to the memory footprint at the beginning of the
+  // benchmark tool.
+  optional int64 init_footprint_kb = 1;
+
+  // The memory allocated during the model initialization and execution.
+  // This is the delta of memory footprint after the model has been intialized
+  // and executed, compared to the memory footprint at the beginning of the
+  // benchmark tool.
+  optional int64 overall_footprint_kb = 2;
+
+  // Peak memory usage (in megabytes).
+  optional float peak_mem_mb = 3;
+}
+
+// Next ID: 5
+message MiscMetrics {
+  optional float model_size_mb = 1;
+  optional int32 num_runs = 2;
+  optional int32 num_warmup_runs = 3;
+  // Model throughput in megabytes per second. This is the average throughput
+  // of the model over all the inferences.
+  optional float model_throughput_in_mb_per_sec = 4;
+}
+
+// Next ID: 5
+message BenchmarkResult {
+  // The name representing the configuration of the benchmark run.
+  optional string name = 1;
+  optional LatencyMetrics latency_metrics = 2;
+  optional MemoryMetrics memory_metrics = 3;
+  optional MiscMetrics misc_metrics = 4;
+}

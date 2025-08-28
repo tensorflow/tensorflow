@@ -774,40 +774,63 @@ absl::StatusOr<Value> MaskDotOperand(EmitterLocOpBuilder& b,
   int64_t tile_size = tile_shape[contraction_dimension_index];
 
   if (contracting_dimension_size % tile_size != 0) {
-    // When the contracting dimension is not divisible by the tile size, we
-    // need to mask out the last tile. We do this with the following logic:
-    //
-    // indices =
-    //   contracting_dimension_tile_index * tile_size + range(0, tile_size)
-    // mask = indices < contracting_dimension_size
-    // operand = select(broadcast(mask, operand.shape), operand, 0)
-    Value range = Range(b, tile_size).UnwrapTensor();
+    // Only mask out tiles that we know to go beyond boundaries of the
+    // contracting dimension---i.e. tiles whose index exceeds the number of
+    // full tiles (tiles without padding).
+    Type result_type = dot_operand_value.getType();
     Value tile_size_value =
         CreateConst(b, b.getI32Type(), tile_size, {}).UnwrapScalar();
-    Value tile_offset = b.create<arith::MulIOp>(
-        contracting_dimension_tile_index, tile_size_value);
-    Value broadcasted_tile_offset =
-        Splat(b, ScalarOrTensor(tile_offset), {tile_size}).UnwrapTensor();
-    Value indices = b.create<arith::AddIOp>(range, broadcasted_tile_offset);
+    Value num_full_tiles = b.create<arith::DivSIOp>(
+        CreateConst(b, b.getI32Type(), contracting_dimension_size, {})
+            .UnwrapScalar(),
+        tile_size_value);
+    // if tile_index >= num_full_tiles...
+    auto cond = b.create<arith::CmpIOp>(arith::CmpIPredicate::sge,
+                                        contracting_dimension_tile_index,
+                                        num_full_tiles);
+    auto if_op = b.create<mlir::scf::IfOp>(mlir::TypeRange(result_type), cond,
+                                           /*withElseRegion=*/true);
+    // then ...
+    {
+      b.setInsertionPointToStart(if_op.thenBlock());
+      // indices =
+      //   contracting_dimension_tile_index * tile_size + range(0, tile_size)
+      // mask = indices < contracting_dimension_size
+      // operand = select(broadcast(mask, operand.shape), operand, 0)
+      Value tile_offset = b.create<arith::MulIOp>(
+          contracting_dimension_tile_index, tile_size_value);
+      Value range = Range(b, tile_size).UnwrapTensor();
+      Value broadcasted_tile_offset =
+          Splat(b, ScalarOrTensor(tile_offset), {tile_size}).UnwrapTensor();
+      Value indices = b.create<arith::AddIOp>(range, broadcasted_tile_offset);
 
-    Value boundary =
-        CreateConst(b, b.getI32Type(), contracting_dimension_size, {tile_size})
-            .UnwrapTensor();
+      Value boundary = CreateConst(b, b.getI32Type(),
+                                   contracting_dimension_size, {tile_size})
+                           .UnwrapTensor();
 
-    Value mask =
-        b.create<arith::CmpIOp>(arith::CmpIPredicate::slt, indices, boundary);
+      Value mask =
+          b.create<arith::CmpIOp>(arith::CmpIPredicate::slt, indices, boundary);
 
-    mask = BroadcastInDims(b, ScalarOrTensor(mask), tile_shape,
-                           {contraction_dimension_index})
-               .UnwrapTensor();
-    TF_ASSIGN_OR_RETURN(
-        auto element_type,
-        TritonType(b, dot_operand.hlo()->shape().element_type()));
+      mask = BroadcastInDims(b, ScalarOrTensor(mask), tile_shape,
+                             {contraction_dimension_index})
+                 .UnwrapTensor();
+      TF_ASSIGN_OR_RETURN(
+          auto element_type,
+          TritonType(b, dot_operand.hlo()->shape().element_type()));
 
-    ScalarOrTensor zero = CreateConst(b, element_type, 0.0f, tile_shape);
+      ScalarOrTensor zero = CreateConst(b, element_type, 0.0f, tile_shape);
 
-    return b.create<arith::SelectOp>(mask, dot_operand_value,
-                                     zero.UnwrapTensor());
+      Value masked_dot_operand = b.create<arith::SelectOp>(
+          mask, dot_operand_value, zero.UnwrapTensor());
+      b.create<mlir::scf::YieldOp>(masked_dot_operand);
+    }
+    // else ...
+    {
+      b.setInsertionPointToStart(if_op.elseBlock());
+      b.create<mlir::scf::YieldOp>(dot_operand_value);
+    }
+    b.setInsertionPointAfter(if_op);
+    return if_op.getResult(0);
   }
 
   return dot_operand_value;

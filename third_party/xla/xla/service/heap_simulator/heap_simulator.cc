@@ -760,6 +760,22 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::GetTransitiveColocations(
 }
 
 template <typename BufferType>
+int64_t GlobalDecreasingSizeBestFitHeap<BufferType>::ComputeAlignedChunkEnd(
+    int64_t chunk_end) const {
+  int64_t chunk_end_aligned = chunk_end;
+  if (alignment_ != 1) {
+    if (absl::has_single_bit(static_cast<uint64_t>(alignment_))) {
+      // Alignment is 2^n, add 2^n-1 and then zero the last n bits.
+      chunk_end_aligned =
+          (chunk_end_aligned + alignment_ - 1) & ~(alignment_ - 1);
+    } else {
+      chunk_end_aligned = RoundUpTo(chunk_end, alignment_);
+    }
+  }
+  return chunk_end_aligned;
+}
+
+template <typename BufferType>
 void GlobalDecreasingSizeBestFitHeap<BufferType>::Free(const BufferType* buffer,
                                                        int64_t size) {
   // Degenerate case: 0-sized buffers are always allocated at offset 0.
@@ -964,6 +980,62 @@ void BufferIntervalTree::ApplyToNodesOverlappingInTime(
     }
     if (const BufferIntervalTreeNode* right = top->right; right != nullptr) {
       visiting_stack.push_back(right);
+    }
+  }
+}
+
+void BufferIntervalTree::ApplyToSortedNodesOverlapping(
+    int64_t start, int64_t end,
+    absl::FunctionRef<bool(const BufferIntervalTreeNode*)> fn) const {
+  if (root_ == nullptr) {
+    return;
+  }
+  // We do an inorder traversal of the binary tree, keeping in the visiting
+  // stack whether we have visited the left subtree of the current node.
+  struct NodeInfo {
+    const BufferIntervalTreeNode* node;
+    bool have_visited_left_subtree;
+
+    NodeInfo(const BufferIntervalTreeNode* node, bool have_visited_left_subtree)
+        : node(node), have_visited_left_subtree(have_visited_left_subtree) {}
+  };
+  std::vector<NodeInfo> visiting_stack;
+  visiting_stack.emplace_back(root_, false);
+  int64_t prev_start = -1;
+  while (!visiting_stack.empty()) {
+    auto top = visiting_stack.back();
+    // Skip the subtree if there is no overlap with the given interval.
+    if (start > top.node->subtree_end) {
+      visiting_stack.pop_back();
+      continue;
+    }
+    // Ensure that we have first visited the left child.
+    const BufferIntervalTreeNode* left = top.node->left;
+    if (!top.have_visited_left_subtree && left != nullptr) {
+      visiting_stack.back().have_visited_left_subtree = true;
+      visiting_stack.emplace_back(left, false);
+      continue;
+    }
+    // Visit current node.
+    const int64_t top_start = top.node->start;
+    if (top_start <= end && top.node->end >= start) {
+      // Ensure that this is indeed an inorder traversal.
+      CHECK_LE(prev_start, top_start);
+      prev_start = top_start;
+      // If the callback signals, then we terminate the traversal early.
+      if (fn(top.node)) {
+        break;
+      }
+    }
+    visiting_stack.pop_back();
+    // Skip the right subtree if there is no overlap.
+    if (end < top_start) {
+      continue;
+    }
+    // Finally, visit the right child.
+    if (const BufferIntervalTreeNode* right = top.node->right;
+        right != nullptr) {
+      visiting_stack.emplace_back(right, false);
     }
   }
 }
@@ -2395,16 +2467,7 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::MakeFreeChunks(
     free_chunks.erase(it_end, it_start);
 
     // Create a new free chunk after the used chunk, if it is large enough.
-    int64_t chunk_end_aligned = used_chunk.chunk_end();
-    if (alignment_ != 1) {
-      if (absl::has_single_bit(static_cast<uint64_t>(alignment_))) {
-        // Alignment is 2^n, add 2^n-1 and then zero the last n bits.
-        chunk_end_aligned =
-            (chunk_end_aligned + alignment_ - 1) & ~(alignment_ - 1);
-      } else {
-        chunk_end_aligned = RoundUpTo(used_chunk.chunk_end(), alignment_);
-      }
-    }
+    int64_t chunk_end_aligned = ComputeAlignedChunkEnd(used_chunk.chunk_end());
     if (free_chunk_end - chunk_end_aligned >= max_colocation_size) {
       CHECK(free_chunks.insert({chunk_end_aligned, free_chunk_end}).second);
     }
@@ -2424,6 +2487,33 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::MakeFreeChunks(
   }
 
   return free_chunks;
+}
+
+template <typename BufferType>
+int64_t GlobalDecreasingSizeBestFitHeap<BufferType>::
+    FindLatestEndWithFreeChunkAtPreferredOffset(
+        const BufferInterval& buffer_interval, int64_t preferred_offset) const {
+  CHECK_GE(preferred_offset, 0);
+  int64_t latest_end_with_free_chunk_at_preferred_offset = buffer_interval.end;
+
+  interval_tree_.ApplyToSortedNodesOverlapping(
+      buffer_interval.start, buffer_interval.end,
+      [&](const BufferIntervalTreeNode* node) {
+        const Chunk& used_chunk = node->chunk;
+        if ((used_chunk.offset < preferred_offset &&
+             preferred_offset <
+                 ComputeAlignedChunkEnd(used_chunk.chunk_end())) ||
+            (preferred_offset <= used_chunk.offset &&
+             used_chunk.offset < preferred_offset + buffer_interval.size)) {
+          // There is a chunk that intersects with the preferred location, then
+          // stop the search.
+          latest_end_with_free_chunk_at_preferred_offset = node->start - 1;
+          return true;
+        }
+        return false;
+      });
+
+  return latest_end_with_free_chunk_at_preferred_offset;
 }
 
 template <typename BufferType>

@@ -81,6 +81,7 @@ absl::StatusOr<std::string> KeyValueStore::IncrementBy(absl::string_view key,
         "Failed to parse value \"%s\" as an integer.", it->second));
   }
   it->second = absl::StrCat(val + increment);
+  NotifyCallbacksForKey(key, it->second);
   return it->second;
 }
 

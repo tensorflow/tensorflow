@@ -87,7 +87,9 @@ absl::StatusOr<CompileOptionsProto> CompileOptions::ToProto() const {
                       executable_build_options.ToProto());
   output.set_compile_portable_executable(compile_portable_executable);
   output.set_profile_version(profile_version);
-  if (multi_slice_config != nullptr) {
+  if (!serialized_multi_slice_config.empty()) {
+    output.set_serialized_multi_slice_config(serialized_multi_slice_config);
+  } else if (multi_slice_config != nullptr) {
     output.set_serialized_multi_slice_config(multi_slice_config->Serialize());
   }
   for (auto& env_option_override : env_option_overrides) {

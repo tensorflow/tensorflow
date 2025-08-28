@@ -643,7 +643,6 @@ cc_library(
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service:matmul_indexing_utils",
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",

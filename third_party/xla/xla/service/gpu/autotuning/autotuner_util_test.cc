@@ -23,12 +23,10 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_set.h"
-#include "absl/hash/hash_testing.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/autotuning.pb.h"
@@ -39,6 +37,7 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/dump.h"
+#include "xla/service/gpu/autotuning/autotune_cache_key.h"
 #include "xla/service/gpu/autotuning/autotuner_status_key.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
@@ -545,70 +544,6 @@ TEST_F(FileBasedCacheTest, RepeatedAddResultDoesNotWriteTheFileAgain) {
 
   // File was not written again:
   EXPECT_EQ(Read(cache_file_path), kPlaceholderContent);
-}
-
-TEST(AutotuneCacheKeyTest, DeviceDescriptionToCacheKey) {
-  auto device_description =
-      [](absl::string_view spec_file_name) -> se::DeviceDescription {
-    se::GpuTargetConfigProto proto;
-    std::string spec_string;
-    CHECK_OK(tsl::ReadFileToString(
-        tsl::Env::Default(),
-        tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "tools", "hlo_opt",
-                          "gpu_specs", spec_file_name),
-        &spec_string));
-    EXPECT_TRUE(
-        tsl::protobuf::TextFormat::ParseFromString(spec_string, &proto));
-    absl::StatusOr<se::DeviceDescription> device_description =
-        se::DeviceDescription::FromProto(proto.gpu_device_info());
-    CHECK_OK(device_description.status());
-    return *device_description;
-  };
-
-  EXPECT_EQ(AutotuneCacheKey::DeviceDescriptionToCacheKey(
-                device_description("a100_sxm_40.txtpb")),
-            "CUDA: 8.0, Cores: 108, GPU clock: 1.41 GHz, Memory bandwidth: "
-            "1555 GB/s, L2 cache: 40 MB");
-
-  EXPECT_EQ(AutotuneCacheKey::DeviceDescriptionToCacheKey(
-                device_description("a100_sxm_80.txtpb")),
-            "CUDA: 8.0, Cores: 108, GPU clock: 1.41 GHz, Memory bandwidth: "
-            "2039 GB/s, L2 cache: 40 MB");
-
-  EXPECT_EQ(AutotuneCacheKey::DeviceDescriptionToCacheKey(
-                device_description("mi200.txtpb")),
-            "ROCM: gfx90a, Cores: 110, GPU clock: 1.7 GHz, Memory bandwidth: "
-            "1638 GB/s, L2 cache: 8 MB");
-}
-
-TEST(AutotuneCacheKeyTest, VersionIsIncludedInCacheKey) {
-  stream_executor::DeviceDescription empty_device_description;
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(kDotFusionHloText));
-  AutotuneCacheKey key =
-      AutotuneCacheKey(empty_device_description,
-                       *module->entry_computation()->root_instruction());
-  EXPECT_THAT(key.ToString(),
-              HasSubstr(absl::StrFormat("version=%d", key.GetVersion())));
-}
-
-TEST(AutotuneCacheKeyTest, VersionChangeInvalidateCacheKey) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(kDotFusionHloText));
-  stream_executor::DeviceDescription empty_device_description;
-
-  AutotuneCacheKey key0 = AutotuneCacheKey(
-      empty_device_description,
-      *module->entry_computation()->root_instruction(), /*version=*/0);
-  AutotuneCacheKey key1 = AutotuneCacheKey(
-      empty_device_description,
-      *module->entry_computation()->root_instruction(), /*version=*/1);
-  EXPECT_FALSE(key0 == key1);
-  EXPECT_NE(key0.ToString(), key1.ToString());
-  EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly({
-      key0,
-      key1,
-  }));
 }
 
 TEST_F(FileBasedCacheTest, AddResultDoesNotWriteTheFileInReadMode) {

@@ -44,7 +44,6 @@ EXPORTS
   ??0CalibrationOptions@quantization@stablehlo@@IEAA@PEAVArena@protobuf@google@@@Z
   ??0CalibrationStatistics@calibrator@tensorflow@@IEAA@PEAVArena@protobuf@google@@@Z
   ??0CancellationManager@tsl@@QEAA@XZ
-  ??0CheckOpMessageBuilder@internal@tsl@@QEAA@PEBD@Z
   ??0CheckpointReader@checkpoint@tensorflow@@QEAA@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAUTSL_Status@@@Z
   ??0ConfigProto@tensorflow@@IEAA@PEAVArena@protobuf@google@@@Z
   ??0ConfigProto@tensorflow@@IEAA@PEAVArena@protobuf@google@@AEBV01@@Z
@@ -73,9 +72,7 @@ EXPORTS
   ??0Impl@MakeErrorStream@status_macros@xla@@QEAA@PEBDHW4Code@error@tensorflow@@PEAV123@_N@Z
   ??0LayoutProto@dtensor@tensorflow@@IEAA@PEAVArena@protobuf@google@@@Z
   ??0LayoutProto@dtensor@tensorflow@@IEAA@PEAVArena@protobuf@google@@AEBV012@@Z
-  ??0LogMessage@internal@tsl@@QEAA@PEBDHW4LogSeverity@lts_20250512@absl@@@Z
   ??0LogMessage@log_internal@lts_20250512@absl@@QEAA@PEBDHUInfoTag@0123@@Z
-  ??0LogMessageFatal@internal@tsl@@QEAA@PEBDH@Z
   ??0LogMessageFatal@log_internal@lts_20250512@absl@@QEAA@PEBDH0@Z
   ??0LogMessageFatal@log_internal@lts_20250512@absl@@QEAA@PEBDH@Z
   ??0MLIRContext@mlir@@QEAA@AEBVDialectRegistry@1@W4Threading@01@@Z
@@ -95,6 +92,7 @@ EXPORTS
   ??0OpKernel@tensorflow@@QEAA@PEAVOpKernelConstruction@1@@Z
   ??0OpLevelCostEstimator@grappler@tensorflow@@QEAA@XZ
   ??0OpPerformanceList@tensorflow@@IEAA@PEAVArena@protobuf@google@@@Z
+  ??0OstreamView@LogMessage@log_internal@lts_20250512@absl@@QEAA@AEAULogMessageData@1234@@Z
   ??0PyInstanceChecker@py_dispatch@tensorflow@@QEAA@AEBV?$vector@PEAU_object@@V?$allocator@PEAU_object@@@std@@@std@@@Z
   ??0PySignatureChecker@py_dispatch@tensorflow@@QEAA@V?$vector@U?$pair@HV?$shared_ptr@VPyTypeChecker@py_dispatch@tensorflow@@@std@@@std@@V?$allocator@U?$pair@HV?$shared_ptr@VPyTypeChecker@py_dispatch@tensorflow@@@std@@@std@@@2@@std@@@Z
   ??0PythonAPIDispatcher@py_dispatch@tensorflow@@QEAA@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$Span@PEBD@lts_20250512@absl@@V?$Span@PEAU_object@@@67@@Z
@@ -133,7 +131,6 @@ EXPORTS
   ??1CalibrationOptions@quantization@stablehlo@@UEAA@XZ
   ??1CalibrationStatistics@calibrator@tensorflow@@UEAA@XZ
   ??1CancellationManager@tsl@@QEAA@XZ
-  ??1CheckOpMessageBuilder@internal@tsl@@QEAA@XZ
   ??1ConfigProto@tensorflow@@UEAA@XZ
   ??1CoordinatedTask@tensorflow@@UEAA@XZ
   ??1DataServiceMetadata@data@tensorflow@@UEAA@XZ
@@ -151,9 +148,7 @@ EXPORTS
   ??1Impl@MakeErrorStream@status_macros@xla@@QEAA@XZ
   ??1KernelDefBuilder@tensorflow@@QEAA@XZ
   ??1LayoutProto@dtensor@tensorflow@@UEAA@XZ
-  ??1LogMessage@internal@tsl@@UEAA@XZ
   ??1LogMessage@log_internal@lts_20250512@absl@@QEAA@XZ
-  ??1LogMessageFatal@internal@tsl@@UEAA@XZ
   ??1LogMessageFatal@log_internal@lts_20250512@absl@@QEAA@XZ
   ??1MLIRContext@mlir@@QEAA@XZ
   ??1MeshProto@dtensor@tensorflow@@UEAA@XZ
@@ -165,6 +160,7 @@ EXPORTS
   ??1OpInfo_TensorProperties@tensorflow@@UEAA@XZ
   ??1OpKernel@tensorflow@@UEAA@XZ
   ??1OpPerformanceList@tensorflow@@UEAA@XZ
+  ??1OstreamView@LogMessage@log_internal@lts_20250512@absl@@UEAA@XZ
   ??1ProfilerServer@profiler@tsl@@QEAA@XZ
   ??1ProfilerSession@tsl@@QEAA@XZ
   ??1PyContextManager@tensorflow@@QEAA@XZ
@@ -270,7 +266,6 @@ EXPORTS
   ?CreateMesh@Mesh@dtensor@tensorflow@@SA?AV123@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBV?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@5@AEBV?$vector@_JV?$allocator@_J@std@@@5@2121_N@Z
   ?CreateRecordReaderOptions@RecordReaderOptions@io@tsl@@SA?AU123@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
   ?CreateRecordWriterOptions@RecordWriterOptions@io@tsl@@SA?AU123@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
-  ?CreateTypeInfoAndReturnTypeIdImpl@AsyncValue@tsl@@CAGAEBUTypeInfo@12@@Z
   ?CtxFailure@OpKernelConstruction@tensorflow@@QEAAXPEBDHAEBVStatus@lts_20250512@absl@@@Z
   ?CtxFailure@OpKernelContext@tensorflow@@QEAAXPEBDHAEBVStatus@lts_20250512@absl@@@Z
   ?CtxFailureWithWarning@OpKernelConstruction@tensorflow@@QEAAXPEBDHAEBVStatus@lts_20250512@absl@@@Z
@@ -352,7 +347,6 @@ EXPORTS
   ?FlushExecutionFiles@DebugEventsWriter@tfdbg@tensorflow@@QEAA?AVStatus@lts_20250512@absl@@XZ
   ?FlushNonExecutionFiles@DebugEventsWriter@tfdbg@tensorflow@@QEAA?AVStatus@lts_20250512@absl@@XZ
   ?ForEachPayload@StatusRep@status_internal@lts_20250512@absl@@QEBAXV?$FunctionRef@$$A6AXV?$basic_string_view@DU?$char_traits@D@std@@@std@@AEBVCord@lts_20250512@absl@@@Z@34@@Z
-  ?ForVar2@CheckOpMessageBuilder@internal@tsl@@QEAAPEAV?$basic_ostream@DU?$char_traits@D@std@@@std@@XZ
   ?FormatConvertImpl@str_format_internal@lts_20250512@absl@@YA?AU?$ArgConvertResult@$0IAAAE@@123@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@VFormatConversionSpecImpl@123@PEAVFormatSinkImpl@123@@Z
   ?FormatPack@str_format_internal@lts_20250512@absl@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@VUntypedFormatSpecImpl@123@V?$Span@$$CBVFormatArgImpl@str_format_internal@lts_20250512@absl@@@23@@Z
   ?FromProto@Layout@dtensor@tensorflow@@SA?AV?$StatusOr@VLayout@dtensor@tensorflow@@@lts_20250512@absl@@AEBVLayoutProto@23@@Z
@@ -535,7 +529,6 @@ EXPORTS
   ?NewDispatchServer@data@tensorflow@@YA?AVStatus@lts_20250512@absl@@AEBVDispatcherConfig@experimental@12@AEAV?$unique_ptr@VDispatchGrpcDataServer@data@tensorflow@@U?$default_delete@VDispatchGrpcDataServer@data@tensorflow@@@std@@@std@@@Z
   ?NewProfiler@tfprof@tensorflow@@YA_NPEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@0@Z
   ?NewRandomAccessFile@Env@tsl@@QEAA?AVStatus@lts_20250512@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAV?$unique_ptr@VRandomAccessFile@tsl@@U?$default_delete@VRandomAccessFile@tsl@@@std@@@7@@Z
-  ?NewString@CheckOpMessageBuilder@internal@tsl@@QEAAPEAV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@XZ
   ?NewWorkerServer@data@tensorflow@@YA?AVStatus@lts_20250512@absl@@AEBVWorkerConfig@experimental@12@AEAV?$unique_ptr@VWorkerGrpcDataServer@data@tensorflow@@U?$default_delete@VWorkerGrpcDataServer@data@tensorflow@@@std@@@std@@@Z
   ?NewWritableFile@Env@tsl@@QEAA?AVStatus@lts_20250512@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAV?$unique_ptr@VWritableFile@tsl@@U?$default_delete@VWritableFile@tsl@@@std@@@7@@Z
   ?NotFoundError@lts_20250512@absl@@YA?AVStatus@12@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
@@ -776,7 +769,6 @@ EXPORTS
   ?UpdateEdge@tensorflow@@YAXPEAUTF_Graph@@UTF_Output@@UTF_Input@@PEAUTSL_Status@@@Z
   ?ValidateType@ResourceHandle@tensorflow@@QEBA?AVStatus@lts_20250512@absl@@AEBVTypeIndex@2@@Z
   ?Vector@InferenceContext@shape_inference@tensorflow@@QEAA?AVShapeHandle@23@UDimensionOrConstant@23@@Z
-  ?VmoduleActivated@LogMessage@internal@tsl@@SA_NPEBDH@Z
   ?WaitCommon@CondVar@lts_20250512@absl@@AEAA_NPEAVMutex@23@VKernelTimeout@synchronization_internal@23@@Z
   ?Watch@Tape@gradients@tensorflow@@QEAAXPEBVAbstractTensorHandle@3@@Z
   ?WithRank@InferenceContext@shape_inference@tensorflow@@QEAA?AVStatus@lts_20250512@absl@@VShapeHandle@23@_JPEAV723@@Z
@@ -846,6 +838,7 @@ EXPORTS
   ?set_requested_device@Node@tensorflow@@QEAAXAEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
   ?set_tf2_execution@tensorflow@@YAX_N@Z
   ?sharding_spec_strs@Layout@dtensor@tensorflow@@QEBA?AV?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@std@@XZ
+  ?stream@OstreamView@LogMessage@log_internal@lts_20250512@absl@@QEAAAEAV?$basic_ostream@DU?$char_traits@D@std@@@std@@XZ
   ?tensor_data@Tensor@tensorflow@@QEBA?AV?$basic_string_view@DU?$char_traits@D@std@@@std@@XZ
   ?tensor_float_32_execution_enabled@tsl@@YA_NXZ
   ?tf2_execution_enabled@tensorflow@@YA_NXZ

@@ -2755,6 +2755,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:cast_op",
+        "@com_google_absl//absl/status",
     ],
 )
 

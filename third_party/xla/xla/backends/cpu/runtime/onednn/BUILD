@@ -90,6 +90,7 @@ onednn_graph_cc_library(
 onednn_graph_cc_test(
     name = "onednn_threadpool_test",
     srcs = ["onednn_threadpool_test.cc"],
+    copts = tsl_copts(),
     deps = [
         ":onednn_interop",
         ":onednn_threadpool",

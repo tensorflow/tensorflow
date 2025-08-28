@@ -18,7 +18,6 @@ limitations under the License.
 #include <optional>
 #include <string>
 
-#include "absl/base/const_init.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -43,28 +42,16 @@ std::string PluginKindString(PluginKind plugin_kind) {
   }
 }
 
-static absl::Mutex& GetPluginRegistryMutex() {
-  static absl::Mutex mu(absl::kConstInit);
-  return mu;
-}
-
-/* static */ PluginRegistry* PluginRegistry::instance_ = nullptr;
-
-PluginRegistry::PluginRegistry() {}
-
 /* static */ PluginRegistry* PluginRegistry::Instance() {
-  absl::MutexLock lock{&GetPluginRegistryMutex()};
-  if (instance_ == nullptr) {
-    instance_ = new PluginRegistry();
-  }
-  return instance_;
+  static PluginRegistry* instance = new PluginRegistry();
+  return instance;
 }
 
 template <typename FACTORY_TYPE>
 absl::Status PluginRegistry::RegisterFactoryInternal(
     const std::string& plugin_name, FACTORY_TYPE factory,
     std::optional<FACTORY_TYPE>* factories) {
-  absl::MutexLock lock{&GetPluginRegistryMutex()};
+  absl::MutexLock lock(&registry_mutex_);
 
   if (factories->has_value()) {
     return absl::AlreadyExistsError(

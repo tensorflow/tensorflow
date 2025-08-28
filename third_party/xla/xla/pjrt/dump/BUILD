@@ -1,6 +1,6 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
-load("//xla/tsl:tsl.default.bzl", "get_compatible_with_libtpu_portable")
+load("//xla/tsl:tsl.default.bzl", "get_compatible_with_libtpu_portable", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -12,7 +12,7 @@ cc_library(
     name = "dump",
     srcs = ["dump.cc"],
     hdrs = ["dump.h"],
-    compatible_with = get_compatible_with_libtpu_portable(),
+    compatible_with = (get_compatible_with_libtpu_portable() + get_compatible_with_portable()),
     deps = [
         ":mlir",
         "//xla/pjrt:pjrt_compiler",
@@ -62,7 +62,7 @@ cc_library(
     name = "mlir",
     srcs = ["mlir.cc"],
     hdrs = ["mlir.h"],
-    compatible_with = get_compatible_with_libtpu_portable(),
+    compatible_with = (get_compatible_with_libtpu_portable() + get_compatible_with_portable()),
     deps = [
         "//xla/tsl/platform:env",
         "@com_google_absl//absl/status",
@@ -74,7 +74,7 @@ cc_library(
 xla_cc_test(
     name = "mlir_test",
     srcs = ["mlir_test.cc"],
-    compatible_with = get_compatible_with_libtpu_portable(),
+    compatible_with = (get_compatible_with_libtpu_portable() + get_compatible_with_portable()),
     deps = [
         ":mlir",
         "//xla/mlir_hlo",

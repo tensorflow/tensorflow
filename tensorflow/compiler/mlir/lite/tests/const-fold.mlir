@@ -1602,8 +1602,23 @@ func.func @select_float() -> tensor<4xf32> {
 
   func.return %2 : tensor<4xf32>
 }
-
 // CHECK: %cst = arith.constant dense<[1.000000e+00, 2.000000e+00, -3.000000e+00, -4.000000e+00]> : tensor<4xf32
+
+// CHECK-LABEL: ceil
+func.func @ceil() -> tensor<3xf32> {
+  %cst = arith.constant dense<[-1.0, 0.0, 0.99]> : tensor<3xf32>
+  %0 = "tfl.ceil"(%cst) : (tensor<3xf32>) -> tensor<3xf32>
+  func.return %0 : tensor<3xf32>
+}
+// CHECK: %cst = arith.constant dense<[-1.000000e+00, 0.000000e+00, 1.000000e+00]> : tensor<3xf32>
+
+// CHECK-LABEL: ceil_f64
+func.func @ceil_f64() -> tensor<3xf64> {
+  %cst = arith.constant dense<[-1.0, 0.0, 0.99]> : tensor<3xf64>
+  %0 = "tfl.ceil"(%cst) : (tensor<3xf64>) -> tensor<3xf64>
+  func.return %0 : tensor<3xf64>
+}
+// CHECK: tfl.ceil
 
 // CHECK-LABEL: floor
 func.func @floor() -> tensor<3xf32> {
@@ -1611,7 +1626,6 @@ func.func @floor() -> tensor<3xf32> {
   %0 = "tfl.floor"(%cst) : (tensor<3xf32>) -> tensor<3xf32>
   func.return %0 : tensor<3xf32>
 }
-
 // CHECK: %cst = arith.constant dense<[-1.000000e+00, 0.000000e+00, 0.000000e+00]> : tensor<3xf32>
 
 // CHECK-LABEL: floor_f64
@@ -1620,7 +1634,6 @@ func.func @floor_f64() -> tensor<3xf64> {
   %0 = "tfl.floor"(%cst) : (tensor<3xf64>) -> tensor<3xf64>
   func.return %0 : tensor<3xf64>
 }
-
 // CHECK: tfl.floor
 
 // CHECK-LABEL: exp

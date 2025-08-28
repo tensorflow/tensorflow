@@ -60,8 +60,10 @@ constexpr absl::string_view kStablehloModuleStr = R"(
   }
   )";
 
+constexpr absl::string_view kStablehloBytecodeFormat = "bytecode";
+
 std::vector<xla::PjRtPartialProgramProto> PrepareInputPartialPrograms(
-    const std::string& next_phase, size_t program_format) {
+    const std::string& next_phase, absl::string_view program_format) {
   std::string program_code{kStablehloModuleStr};
 
   mlir::MLIRContext context;
@@ -136,7 +138,7 @@ TEST_F(SamplePhaseCompilerTest, TestSamplePhaseCompilerRunPhases) {
   // Prepare the input programs.
   auto partial_programs_in = PrepareInputPartialPrograms(
       /*next_phase=*/std::string(phase_compile_sample_plugin::kPhaseName),
-      /*program_format=*/0);
+      /*program_format=*/kStablehloBytecodeFormat);
 
   // Run the partial compile phase.
   std::vector<std::string> phases_to_run = {
@@ -165,7 +167,7 @@ TEST_F(SamplePhaseCompilerTest,
   std::vector<xla::PjRtPartialProgramProto> partial_programs_in =
       PrepareInputPartialPrograms(
           /*next_phase=*/std::string(phase_compile_sample_plugin::kPhaseName),
-          /*program_format=*/0);
+          /*program_format=*/kStablehloBytecodeFormat);
 
   // Run the partial compile phase.
   std::vector<std::string> phases_to_run = {};
@@ -189,7 +191,7 @@ TEST_F(SamplePhaseCompilerTest,
   std::vector<xla::PjRtPartialProgramProto> partial_programs_in =
       PrepareInputPartialPrograms(
           /*next_phase=*/std::string(phase_compile_sample_plugin::kPhaseName),
-          /*program_format=*/0);
+          /*program_format=*/kStablehloBytecodeFormat);
 
   // Run the partial compile phase.
   std::vector<std::string> phases_to_run = {"unregistered_phase_name"};
@@ -226,10 +228,7 @@ TEST_F(SamplePhaseCompilerTest, PluginSpecificValidationWithUnexpectedFormat) {
   std::vector<xla::PjRtPartialProgramProto> partial_programs_in =
       PrepareInputPartialPrograms(
           /*next_phase=*/std::string(phase_compile_sample_plugin::kPhaseName),
-          /*program_format=*/1  // 1 expresses some format which is not expected
-                                // by the sample plugin for the kPhaseName
-                                // phase.
-      );
+          /*program_format=*/"unexpected_format");
 
   // Run the partial compile phase.
   std::vector<std::string> phases_to_run = {

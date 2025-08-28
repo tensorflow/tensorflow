@@ -60,6 +60,7 @@ message SerializedXlaExecutableMetadata {
   message ParameterSpec {
     ifrt.LayoutProto layout = 1;
     xla.OpSharding op_sharding = 2;
+    bool donated_input = 3;
   }
 
   repeated ParameterSpec parameter_specs = 6;

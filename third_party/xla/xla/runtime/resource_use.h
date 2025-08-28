@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 
 namespace xla {
@@ -47,6 +48,16 @@ class Resource {
   static std::shared_ptr<Resource> Create(Kind kind);
 
   Kind kind() const { return kind_; }
+
+  // Returns a short, stable string name for a resource kind.
+  static absl::string_view ToString(Kind kind) {
+    switch (kind) {
+      case Kind::kToken:
+        return "token";
+      case Kind::kCollectiveCommunicator:
+        return "collective_communicator";
+    }
+  }
 
  private:
   explicit Resource(Kind kind);

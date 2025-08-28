@@ -990,6 +990,26 @@ int64_t AddOp::GetArithmeticCount(Operation* op) {
 }
 
 //===----------------------------------------------------------------------===//
+// CeilOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult CeilOp::fold(FoldAdaptor adaptor) {
+  if (!ShouldFoldOperation(this->getOperation())) return {};
+
+  auto operands = adaptor.getOperands();
+  auto result_type = getType();
+  if (!IsF32ShapedType(result_type)) return {};
+
+  auto compute = [](APFloat value) -> APFloat {
+    float f = value.convertToFloat();
+    float result = std::ceil(f);
+    return APFloat(result);
+  };
+
+  return ConstFoldUnaryOp(result_type, operands[0], compute);
+}
+
+//===----------------------------------------------------------------------===//
 // FloorOp
 //===----------------------------------------------------------------------===//
 

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
 #include <numeric>
 #include <optional>
@@ -20,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -36,6 +38,7 @@ limitations under the License.
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
+#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
@@ -46,15 +49,24 @@ limitations under the License.
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/tsl/util/proto/proto_matchers.h"
 
 namespace xla {
 namespace ifrt {
 namespace {
 
+using ::absl_testing::IsOk;
+using ::absl_testing::IsOkAndHolds;
+using ::absl_testing::StatusIs;
+using ::testing::AnyOf;
+using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
+using ::testing::IsEmpty;
+using ::testing::Not;
+using ::testing::Optional;
 using ::testing::SizeIs;
 using ::testing::UnorderedElementsAre;
-using ::tsl::testing::IsOkAndHolds;
+using ::tsl::proto_testing::EquivToProto;
 
 // Serialized `ModuleOp` that does add 1.
 static const char* const module_add_one =
@@ -86,7 +98,9 @@ absl::StatusOr<LoadedExecutableRef> CompileOnDevices(
         device_list,
         client->MakeDeviceList({client->addressable_devices().front()}));
   } else {
-    build_options.set_device_ordinal(devices.front()->Id().value());
+    if (devices.size() == 1) {
+      build_options.set_device_ordinal(devices.front()->Id().value());
+    }
     if (replicated) {
       build_options.set_num_replicas(devices.size());
       build_options.set_num_partitions(1);
@@ -115,6 +129,99 @@ absl::StatusOr<LoadedExecutableRef> CompileOnDevices(
       compile_options, std::move(device_list));
   return compiler->CompileAndLoad(std::make_unique<HloProgram>(*module),
                                   std::move(xla_compile_options));
+}
+
+TEST(LoadedExecutableImplTest, Properties) {
+  static constexpr absl::string_view kModule = R"(
+module @add_sub attributes {
+  mhlo.num_replicas = 1 : i32,
+  mhlo.num_partitions = 2 : i32
+} {
+  func.func @main(
+    %arg0: tensor<2x3xi32> {mhlo.sharding = "{devices=[2,1]<=[2]}"},
+    %arg1: tensor<2x3xi32> {mhlo.sharding = "{replicated}"}
+  ) -> (
+    tensor<2x3xi32> {mhlo.sharding = "{replicated}"},
+    tensor<2x3xi32> {mhlo.sharding = "{devices=[2,1]<=[2]}"}
+  ) {
+    %0 = stablehlo.add %arg0, %arg1 : tensor<2x3xi32>
+    %1 = stablehlo.subtract %arg0, %arg1 : tensor<2x3xi32>
+    return %0, %1 : tensor<2x3xi32>, tensor<2x3xi32>
+  }
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  Compiler* compiler = client->GetDefaultCompiler();
+
+  absl::Span<Device* const> devices =
+      client->addressable_devices().subspan(0, 2);
+  TF_ASSERT_OK_AND_ASSIGN(
+      const LoadedExecutableRef executable,
+      CompileOnDevices(client.get(), compiler, kModule, devices,
+                       /*replicated=*/false));
+
+  EXPECT_EQ(executable->name(), "add_sub");
+  EXPECT_EQ(executable->num_devices(), devices.size());
+
+  EXPECT_THAT(executable->GetParameterShardings(),
+              Optional(ElementsAre(EquivToProto(R"pb(
+                                     type: OTHER
+                                     tile_assignment_dimensions: 2
+                                     tile_assignment_dimensions: 1
+                                     iota_reshape_dims: 2
+                                     iota_transpose_perm: 0
+                                   )pb"),
+                                   EquivToProto(R"pb(type: REPLICATED)pb"))));
+
+  EXPECT_THAT(executable->GetOutputShardings(),
+              Optional(ElementsAre(EquivToProto(R"pb(type: REPLICATED)pb"),
+                                   EquivToProto(R"pb(
+                                     type: OTHER
+                                     tile_assignment_dimensions: 2
+                                     tile_assignment_dimensions: 1
+                                     iota_reshape_dims: 2
+                                     iota_transpose_perm: 0
+                                   )pb"))));
+
+  EXPECT_THAT(executable->GetOutputMemoryKinds(),
+              AnyOf(IsOkAndHolds(ElementsAre(ElementsAre("device", "device"))),
+                    StatusIs(absl::StatusCode::kUnimplemented)));
+}
+
+TEST(LoadedExecutableImplTest, Analysis) {
+  static constexpr absl::string_view kModule = R"(
+module @add attributes {
+  mhlo.num_replicas = 1 : i32,
+  mhlo.num_partitions = 2 : i32
+} {
+  func.func @main(
+    %arg0: tensor<2x3xi32> {mhlo.sharding = "{devices=[2,1]<=[2]}"}
+  ) -> (tensor<2x3xi32> {mhlo.sharding = "{devices=[2,1]<=[2]}"}) {
+    %0 = stablehlo.add %arg0, %arg0 : tensor<2x3xi32>
+    return %0 : tensor<2x3xi32>
+  }
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  Compiler* compiler = client->GetDefaultCompiler();
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      const LoadedExecutableRef executable,
+      CompileOnDevices(client.get(), compiler, kModule,
+                       {client->addressable_devices().front()},
+                       /*replicated=*/false));
+
+  TF_ASSERT_OK_AND_ASSIGN(const xla::CompiledMemoryStats compiled_memory_stats,
+                          executable->GetCompiledMemoryStats());
+  EXPECT_GT(compiled_memory_stats.argument_size_in_bytes, 0);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      const std::vector<std::shared_ptr<xla::HloModule>> hlo_modules,
+      executable->GetHloModules());
+  ASSERT_EQ(hlo_modules.size(), 1);
+  EXPECT_EQ(hlo_modules.front()->name(), "add");
+
+  TF_ASSERT_OK_AND_ASSIGN(const auto cost_analysis,
+                          executable->GetCostAnalysis());
+  EXPECT_THAT(cost_analysis.map(), Not(IsEmpty()));
 }
 
 TEST(LoadedExecutableImplTest, GetDonatableInputIndices) {
@@ -149,7 +256,7 @@ TEST(LoadedExecutableImplTest, GetDonatableInputIndices) {
   }
 
   EXPECT_THAT(donatable_input_indices,
-              absl_testing::IsOkAndHolds(UnorderedElementsAre(0, 2)));
+              IsOkAndHolds(UnorderedElementsAre(0, 2)));
 }
 
 TEST(LoadedExecutableImplTest, CompileAndExecute) {
@@ -306,6 +413,122 @@ TEST(LoadedExecutableImplTest, DoNotFillStatus) {
   std::vector<float> expected_out_data(6);
   std::iota(expected_out_data.begin(), expected_out_data.end(), 1);
   EXPECT_THAT(out_data, ElementsAreArray(expected_out_data));
+}
+
+TEST(LoadedExecutableImplTest, NoInputOutput) {
+  static constexpr absl::string_view kModule = R"(
+module @nop attributes {
+  mhlo.num_replicas = 1 : i32,
+  mhlo.num_partitions = 2 : i32
+} {
+  func.func @main() {
+    return
+  }
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  Compiler* compiler = client->GetDefaultCompiler();
+
+  Device* const device = client->addressable_devices().front();
+  TF_ASSERT_OK_AND_ASSIGN(const LoadedExecutableRef executable,
+                          CompileOnDevices(client.get(), compiler, kModule,
+                                           {device}, /*replicated=*/false));
+
+  ExecuteOptions options;
+  options.fill_status = true;
+  TF_ASSERT_OK_AND_ASSIGN(
+      LoadedExecutable::ExecuteResult result,
+      executable->Execute({}, options, /*devices=*/std::nullopt));
+
+  TF_ASSERT_OK(result.status.Await());
+}
+
+TEST(LoadedExecutableImplTest, Donation) {
+  static constexpr absl::string_view kModule = R"(
+module @add_sub {
+  func.func @main(
+    %arg0: tensor<2x3xi32> {jax.buffer_donor = true},
+    %arg1: tensor<2x3xi32> {jax.buffer_donor = true}
+  ) -> (tensor<2x3xi32>, tensor<2x3xi32>) {
+    %0 = stablehlo.add %arg0, %arg1 : tensor<2x3xi32>
+    %1 = stablehlo.subtract %arg0, %arg1 : tensor<2x3xi32>
+    return %0, %1 : tensor<2x3xi32>, tensor<2x3xi32>
+  }
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  Compiler* compiler = client->GetDefaultCompiler();
+
+  Device* const device = client->addressable_devices().front();
+  TF_ASSERT_OK_AND_ASSIGN(const LoadedExecutableRef executable,
+                          CompileOnDevices(client.get(), compiler, kModule,
+                                           {device}, /*replicated=*/false));
+
+  // Create an input array.
+  std::vector<ArrayRef> arrays;
+  {
+    ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
+    for (int i = 0; i < 2; ++i) {
+      std::vector<int32_t> data(6);
+      std::iota(data.begin(), data.end(), 0);
+      TF_ASSERT_OK_AND_ASSIGN(
+          arrays.emplace_back(),
+          client->MakeArrayFromHostBuffer(
+              data.data(), DType(DType::kS32), Shape({2, 3}),
+              /*byte_strides=*/std::nullopt, sharding,
+              Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+              /*on_done_with_host_buffer=*/{}));
+    }
+  }
+
+  // Enqueue a read operation just before donation. The scheduler must not
+  // reorder read and donation.
+  std::vector<int32_t> data(6);
+  Future<> copy_future =
+      arrays[0]->CopyToHostBuffer(data.data(), /*byte_strides=*/std::nullopt,
+                                  ArrayCopySemantics::kAlwaysCopy);
+
+  LoadedExecutable::ExecuteOptions execute_options;
+  execute_options.non_donatable_input_indices.insert(1);
+  execute_options.fill_status = true;
+  TF_ASSERT_OK_AND_ASSIGN(
+      LoadedExecutable::ExecuteResult result,
+      executable->Execute(absl::MakeSpan(arrays), execute_options,
+                          /*devices=*/std::nullopt));
+
+  // The first input array is donated to the computation, so it should have been
+  // marked as deleted after the execution is dispatched.
+  EXPECT_TRUE(arrays[0]->IsDeleted());
+  EXPECT_THAT(arrays[0]->GetReadyFuture().Await(), Not(IsOk()));
+
+  // The second input array is marked as non-donatable in the execute option,
+  // which should be respected by the execution.
+  EXPECT_FALSE(arrays[1]->IsDeleted());
+  TF_EXPECT_OK(arrays[1]->GetReadyFuture().Await());
+
+  // Copy will succeed as long as the ordering is preserved.
+  TF_ASSERT_OK(copy_future.Await());
+  EXPECT_THAT(data, ElementsAre(0, 1, 2, 3, 4, 5));
+
+  TF_ASSERT_OK(result.status.Await());
+  EXPECT_THAT(result.outputs, SizeIs(2));
+
+  {
+    std::vector<int32_t> output(6);
+    TF_ASSERT_OK(result.outputs[0]
+                     ->CopyToHostBuffer(output.data(),
+                                        /*byte_strides=*/std::nullopt,
+                                        ArrayCopySemantics::kAlwaysCopy)
+                     .Await());
+    EXPECT_THAT(output, ElementsAre(0, 2, 4, 6, 8, 10));
+  }
+  {
+    std::vector<int32_t> output(6);
+    TF_ASSERT_OK(result.outputs[1]
+                     ->CopyToHostBuffer(output.data(),
+                                        /*byte_strides=*/std::nullopt,
+                                        ArrayCopySemantics::kAlwaysCopy)
+                     .Await());
+    EXPECT_THAT(output, ElementsAre(0, 0, 0, 0, 0, 0));
+  }
 }
 
 }  // namespace

@@ -2700,6 +2700,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kIota:
     case HloOpcode::kDot:
     case HloOpcode::kRaggedDot:
+    case HloOpcode::kScaledDot:
     case HloOpcode::kDomain:
     case HloOpcode::kGetDimensionSize:
     case HloOpcode::kSetDimensionSize:
@@ -5902,10 +5903,14 @@ void HloInstruction::set_async_execution_thread(
 }
 
 void HloInstruction::set_called_computations_execution_thread(
-    absl::string_view async_execution_thread,
-    bool skip_async_execution_thread_overwrite) {
+    absl::string_view async_execution_thread) {
+  if (GetInstructionCallContext(this->opcode()) == CallContext::kEmbedded) {
+    // There is no need to set the thread name for embedded computations
+    // recursively, because they cannot be executed asynchronously.
+    return;
+  }
   Cast<HloCallableInstruction>(this)->RecursivelySetComputationsThreadName(
-      async_execution_thread, skip_async_execution_thread_overwrite);
+      async_execution_thread);
 }
 
 std::optional<int> HloInstruction::cross_program_prefetch_index() const {

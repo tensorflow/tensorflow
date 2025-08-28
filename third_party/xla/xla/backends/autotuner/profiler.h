@@ -35,15 +35,15 @@ struct ProfileOptions {
   // Whether to initialize the buffers with random data or leave them
   // uninitialized.
   bool should_init_buffers = false;
-  // Whether to populate the output_buffer in the ProfileResult with the result
-  // of the execution. This is to avoid data copies if the caller doesn't need
-  // the output buffer.
-  bool should_populate_output_buffer = true;
 };
 
 struct ProfileResult {
+  // The duration of the executable run.
   absl::Duration duration = absl::ZeroDuration();
+  // The output buffer of the executable., only captures the first buffer if
+  // the output is a tuple.
   std::optional<ScopedShapedBuffer> output_buffer = std::nullopt;
+  // The scratch bytes used by the executable, if any.
   int scratch_bytes = 0;
 };
 

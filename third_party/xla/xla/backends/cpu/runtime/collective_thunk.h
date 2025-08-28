@@ -133,6 +133,10 @@ class CollectiveThunk : public Thunk {
 
   const Shape& destination_shape(int64_t index) const;
 
+  // Collective operations are typically completed asynchronously on the IO
+  // thread pool, owned by the underlying collective implementation.
+  bool ExecutesOnExternalThreadPool() const final { return true; }
+
  private:
   OpParams op_params_;
   OpBuffers op_buffers_;

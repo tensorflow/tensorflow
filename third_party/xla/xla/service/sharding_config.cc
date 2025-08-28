@@ -16,12 +16,68 @@ limitations under the License.
 #include "xla/service/sharding_config.h"
 
 #include <functional>
+#include <string>
+#include <utility>
 
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/printer.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
+
+void NodeShardingConfig::Print(Printer* printer, int indent) const {
+  std::string i0 = Indent(indent);
+  printer->Append(i0);
+  printer->Append("NodeShardingConfig {\n");
+
+  std::string i1 = Indent(indent + 1);
+  printer->Append(i1);
+  printer->Append("sharding: ");
+  if (sharding.has_value()) {
+    printer->Append(sharding->ToString());
+    printer->Append("\n");
+  } else {
+    printer->Append("nullopt\n");
+  }
+
+  if (!nodes.empty()) {
+    printer->Append(i1);
+    printer->Append("nodes: [\n");
+    for (const auto& node : nodes) {
+      node.Print(printer, indent + 2);
+    }
+    printer->Append(i1);
+    printer->Append("]\n");
+  }
+  printer->Append(i0);
+  printer->Append("}\n");
+}
+
+std::string NodeShardingConfig::ToString() const {
+  StringPrinter printer;
+  Print(&printer);
+  return std::move(printer).ToString();
+}
+
+void ShardingConfig::Print(Printer* printer, int indent) const {
+  std::string i0 = NodeShardingConfig::Indent(indent);
+  printer->Append(i0);
+  printer->Append("ShardingConfig {\n");
+  if (!nodes.empty()) {
+    for (const auto& node : nodes) {
+      node.Print(printer, indent + 1);
+    }
+  }
+  printer->Append(i0);
+  printer->Append("}\n");
+}
+
+std::string ShardingConfig::ToString() const {
+  StringPrinter printer;
+  Print(&printer);
+  return std::move(printer).ToString();
+}
 
 ShardingConfigProto ShardingConfig::ToProto(const ShardingConfig& config) {
   ShardingConfigProto sharding_config_proto;

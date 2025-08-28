@@ -65,6 +65,7 @@ cc_library(
         "//xla:util",
         "//xla:xla_proto_cc",
         "//xla/codegen:intrinsic_lib",
+        "//xla/codegen/intrinsic",
         "//xla/codegen/intrinsic:intrinsic_compiler_lib",
         "//xla/service:hlo_module_config",
         "//xla/service/cpu:backend_config_proto_cc",

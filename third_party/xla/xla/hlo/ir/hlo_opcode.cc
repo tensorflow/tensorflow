@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <ostream>
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
@@ -62,4 +63,47 @@ std::optional<int8_t> HloOpcodeArity(HloOpcode opcode) {
   }
 }
 
+std::string CallContextToString(CallContext context) {
+  switch (context) {
+    case CallContext::kNone:
+      return "kNone";
+    case CallContext::kControlFlow:
+      return "kControlFlow";
+    case CallContext::kEmbedded:
+      return "kEmbedded";
+    case CallContext::kBoth:
+      return "kBoth";
+  }
+}
+
+std::ostream& operator<<(std::ostream& out, const CallContext& context) {
+  out << CallContextToString(context);
+  return out;
+}
+
+CallContext GetInstructionCallContext(HloOpcode opcode) {
+  switch (opcode) {
+    case HloOpcode::kCall:
+    case HloOpcode::kConditional:
+    case HloOpcode::kWhile:
+    case HloOpcode::kAsyncStart:
+    case HloOpcode::kAsyncUpdate:
+    case HloOpcode::kAsyncDone:
+      return CallContext::kControlFlow;
+    case HloOpcode::kAllReduce:
+    case HloOpcode::kReduceScatter:
+    case HloOpcode::kAllReduceStart:
+    case HloOpcode::kMap:
+    case HloOpcode::kReduce:
+    case HloOpcode::kReduceWindow:
+    case HloOpcode::kScatter:
+    case HloOpcode::kSelectAndScatter:
+    case HloOpcode::kSort:
+    case HloOpcode::kFusion:
+    case HloOpcode::kCustomCall:
+      return CallContext::kEmbedded;
+    default:
+      return CallContext::kNone;
+  }
+}
 }  // namespace xla

@@ -144,6 +144,11 @@ HloModule::StackFrame HloModule::get_stack_frame(int id) const {
   return stack_frame;
 }
 
+void HloModule::Finalize() {
+  instruction_name_uniquer_.reset();
+  computation_name_uniquer_.reset();
+}
+
 HloComputation* HloModule::AddComputationInternal(
     std::unique_ptr<HloComputation> computation, bool is_entry,
     bool uniquify_identifiers, bool preserve_entry_layouts) {
@@ -166,9 +171,9 @@ HloComputation* HloModule::AddComputationInternal(
   }
 
   if (uniquify_identifiers) {
-    computation->UniquifyName(&computation_name_uniquer_);
+    computation->UniquifyName(&computation_name_uniquer());
     for (auto* instruction : computation->instructions()) {
-      instruction->UniquifyName(&instruction_name_uniquer_);
+      instruction->UniquifyName(&instruction_name_uniquer());
     }
 
     // Pick unique IDs for each instruction.
@@ -185,9 +190,9 @@ HloComputation* HloModule::AddComputationInternal(
     // for computations and instructions created later. Also, set the
     // next_unique_id_ to the one greater than the max unique id of any
     // instruction (or the computation) to avoid ID collisions.
-    computation_name_uniquer_.GetUniqueName(computation->name());
+    computation_name_uniquer().GetUniqueName(computation->name());
     for (auto* instruction : computation->instructions()) {
-      instruction_name_uniquer_.GetUniqueName(instruction->name());
+      instruction_name_uniquer().GetUniqueName(instruction->name());
       next_unique_id_ =
           std::max(next_unique_id_, instruction->unique_id_64_bits() + 1);
     }
@@ -302,9 +307,9 @@ void HloModule::MoveComputationsFrom(HloModule* module,
         /*uniquify_identifiers=*/false,
         /*preserve_entry_layouts=*/false);
     if (make_names_unique) {
-      computation_raw_ptr->UniquifyName(&computation_name_uniquer_);
+      computation_raw_ptr->UniquifyName(&computation_name_uniquer());
       for (auto* instruction : computation_raw_ptr->instructions()) {
-        instruction->UniquifyName(&instruction_name_uniquer_);
+        instruction->UniquifyName(&instruction_name_uniquer());
       }
     }
     // Pick unique IDs for each instruction.
@@ -1498,8 +1503,10 @@ void AddEntryToOriginalValueRecoveryTable(
     std::shared_ptr<OriginalValue> old_original_value,
     std::shared_ptr<OriginalValue> new_original_value,
     std::unique_ptr<HloModule> recovery_module) {
-  original_value_recovery_table[*old_original_value->leaf_begin()->second] = {
-      *new_original_value->leaf_begin()->second, std::move(recovery_module)};
+  original_value_recovery_table
+      [*old_original_value->original_arrays().begin()->second] = {
+          *new_original_value->original_arrays().begin()->second,
+          std::move(recovery_module)};
 }
 }  // namespace
 

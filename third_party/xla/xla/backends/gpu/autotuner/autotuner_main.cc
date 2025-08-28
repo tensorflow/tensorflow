@@ -107,7 +107,7 @@ absl::Status Autotune(HloModule& module, const std::string& autotune_cache_dir,
       std::make_unique<stream_executor::StreamExecutorMemoryAllocator>(
           stream_executor);
   auto profiler =
-      GpuProfiler::Create(stream_executor, allocator.get(), ProfileOptions());
+      GpuProfiler::Create(stream_executor, ProfileOptions(), allocator.get());
   if (profiler == nullptr) {
     return absl::InternalError("Failed to create profiler");
   }

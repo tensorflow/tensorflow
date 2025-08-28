@@ -293,7 +293,7 @@ class ShapeTree {
   }
 
   bool operator==(const ShapeTree<T>& other) const {
-    return *shape_ == *other.shape_ && tuple_tree_ == other.tuple_tree_;
+    return tuple_tree_ == other.tuple_tree_;
   }
   bool operator!=(const ShapeTree<T>& other) const { return !(*this == other); }
 

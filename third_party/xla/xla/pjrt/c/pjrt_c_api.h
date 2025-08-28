@@ -593,6 +593,7 @@ typedef enum {
 // TODO: mwhittaker - Add the remaining fields from
 // tensorflow::CoordinatedTaskStateInfo.
 struct PJRT_ProcessInfo {
+  size_t struct_size;
   int task_id;
   uint64_t incarnation_id;
   PJRT_ProcessState state;
