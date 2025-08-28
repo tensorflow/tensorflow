@@ -163,6 +163,28 @@ TEST(SymbolicMapTest, Compose) {
               ElementsAre(d0 + reindexed_map1_s0, d1 * 2));
 }
 
+TEST(SymbolicMapTest, Replace) {
+  SymbolicExprContext ctx;
+  SymbolicExpr d0 = ctx.CreateVariable(0);
+  SymbolicExpr d1 = ctx.CreateVariable(1);
+  SymbolicExpr c2 = ctx.CreateConstant(2);
+  SymbolicExpr c5 = ctx.CreateConstant(5);
+
+  SymbolicExpr expr0 = (d0 + c2) * d1;
+  SymbolicExpr expr1 = d1 + c2;
+  SymbolicMap map = SymbolicMap::Get(&ctx, 2, 0, {expr0, expr1});
+
+  SymbolicMap replaced_both_exprs = map.Replace(c2, d0);
+  EXPECT_THAT(replaced_both_exprs.GetResults(),
+              ElementsAre((d0 + d0) * d1, d1 + d0));
+
+  SymbolicMap replaced_just_one = map.Replace(d1 + c2, c5);
+  EXPECT_THAT(replaced_just_one.GetResults(), ElementsAre(expr0, c5));
+
+  SymbolicMap no_replacement_map = map.Replace(ctx.CreateVariable(99), c5);
+  EXPECT_EQ(no_replacement_map, map);
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

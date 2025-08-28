@@ -79,6 +79,8 @@ class SymbolicMap {
   // this.compose(other): (d0, s0, s1, s2) -> (d0 * 2 + 3 * s1 + s0, d0 + s2)
   SymbolicMap Compose(const SymbolicMap& other) const;
 
+  SymbolicMap Replace(SymbolicExpr expr, SymbolicExpr replacement) const;
+
   bool operator==(const SymbolicMap& other) const;
   bool operator!=(const SymbolicMap& other) const { return !(*this == other); }
 

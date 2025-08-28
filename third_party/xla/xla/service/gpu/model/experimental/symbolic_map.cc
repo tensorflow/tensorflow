@@ -135,6 +135,23 @@ SymbolicMap SymbolicMap::Compose(const SymbolicMap& other) const {
                                this_symbol_replacements, new_dims, new_syms);
 }
 
+SymbolicMap SymbolicMap::Replace(SymbolicExpr expr,
+                                 SymbolicExpr replacement) const {
+  std::vector<SymbolicExpr> new_exprs;
+  new_exprs.reserve(exprs_.size());
+  bool changed = false;
+  for (const auto& e : exprs_) {
+    SymbolicExpr new_expr = e.Replace(expr, replacement);
+    changed |= new_expr != e;
+    new_exprs.push_back(std::move(new_expr));
+  }
+
+  if (!changed) {
+    return *this;
+  }
+  return SymbolicMap(ctx_, num_dimensions_, num_symbols_, std::move(new_exprs));
+}
+
 bool SymbolicMap::operator==(const SymbolicMap& other) const {
   return ctx_ == other.ctx_ && num_dimensions_ == other.num_dimensions_ &&
          num_symbols_ == other.num_symbols_ && exprs_ == other.exprs_;
