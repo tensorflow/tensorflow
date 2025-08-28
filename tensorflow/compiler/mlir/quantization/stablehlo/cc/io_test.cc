@@ -66,10 +66,6 @@ class TestEnvBrokenFileSystem : public tsl::Env {
     return nullptr;
   }
 
-  void StartDetachedThread(const tsl::ThreadOptions& thread_options,
-                           const tsl::string& name,
-                           absl::AnyInvocable<void()> fn) override {}
-
   bool GetCurrentThreadName(tsl::string* name) override { return false; }
 
   void SchedClosure(absl::AnyInvocable<void()> closure) override {}
