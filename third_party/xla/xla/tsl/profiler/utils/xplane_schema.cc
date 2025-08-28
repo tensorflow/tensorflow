@@ -37,6 +37,8 @@ const char kSparseCorePlaneRegex[] = {
 // TODO(b/195582092): change it to /device:custom once all literals are
 // migrated.
 const absl::string_view kCustomPlanePrefix = "/device:CUSTOM:";
+const absl::string_view kCustomGpuOnDeviceTracePlanePrefix =
+    "/device:CUSTOM:MOSAIC:";  // /device:CUSTOM:MOSAIC:INSTANCE_ID
 
 const absl::string_view kScopeRangeIdTreePlaneName =
     "/host:__ScopeRangeCallStack__";
