@@ -1084,6 +1084,7 @@ bzl_library(
     visibility = ["//visibility:public"],
     deps = [
         ":tf_version_bzl",
+        "//devtools/build_cleaner/skylark:build_defs_lib",
         "//tensorflow/core/platform:build_config_root_bzl",
         "//tensorflow/core/platform:rules_cc_bzl",
         "@bazel_skylib//lib:new_sets",
@@ -1097,6 +1098,7 @@ bzl_library(
         "@local_xla//xla/tsl:tsl_bzl",
         "@local_xla//xla/tsl:tsl_default_bzl",
         "@local_xla//xla/tsl/mkl:build_defs_bzl",
+        "@rules_cc//cc/common",
         "@rules_java//java:rules",
     ],
 )
