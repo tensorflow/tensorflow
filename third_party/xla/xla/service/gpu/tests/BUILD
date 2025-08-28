@@ -623,6 +623,7 @@ lit_test_suite(
     tags = ["no-oneapi"],
     tags_override = {
         "single_instruction.hlo": ["cuda-only"],
+        "sorting.hlo" : ["cuda-only"], #TODO(rocm): weekly sync 25-08-25
     },
     tools = [
         "//xla/tools:hlo-opt",
