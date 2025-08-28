@@ -17,12 +17,10 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
-#include <cmath>
 #include <cstdint>
 #include <optional>
 #include <string>
 #include <utility>
-#include <variant>
 
 #include "absl/base/const_init.h"
 #include "absl/base/thread_annotations.h"
@@ -42,13 +40,10 @@ limitations under the License.
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/service/dump.h"
+#include "xla/service/gpu/autotuning/autotune_cache_key.h"
 #include "xla/service/gpu/autotuning/autotuner_status_key.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/cuda/cuda_compute_capability.h"
-#include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
@@ -298,68 +293,6 @@ void SerializeAutotuneEntry(AutotuneResults* results, const AutotuneCacheKey& k,
   return autotune_cache.empty();
 }
 
-std::string AutotuneCacheKey::HloInstructionToCanonicalString(
-    const HloInstruction& instr) {
-  auto options = HloPrintOptions::Canonical();
-  if (instr.opcode() != HloOpcode::kFusion) {
-    options.set_print_backend_config(true);
-    options.set_sort_backend_config(true);
-    return instr.ToString(options);
-  }
-  options.set_print_subcomputation_mode(
-      HloPrintOptions::PrintSubcomputationMode::kOff);
-  options.set_print_infeed_outfeed_config(false);
-  options.set_print_only_essential_constants(true);
-  options.set_print_operand_shape(true);
-  options.set_print_ids(false);
-  options.set_canonicalize_computations(true);
-
-  // TODO(b/266210099): This is unsound. We should probably do the fingerprint
-  // of the HLO computation proto instead.
-  return instr.called_computations()[0]->ToString(options);
-}
-
-/*static*/ std::string AutotuneCacheKey::DeviceDescriptionToCacheKey(
-    const se::DeviceDescription& device_description) {
-  std::string compute_capability;
-  if (auto* ccc = std::get_if<se::CudaComputeCapability>(
-          &device_description.gpu_compute_capability())) {
-    compute_capability = absl::StrCat("CUDA: ", ccc->major, ".", ccc->minor);
-  } else {
-    auto* rcc = std::get_if<se::RocmComputeCapability>(
-        &device_description.gpu_compute_capability());
-    CHECK(rcc != nullptr) << "Unknown compute capability type";
-    compute_capability = absl::StrCat("ROCM: ", rcc->gfx_version());
-  }
-
-  // The string below should include only as much information as is needed to
-  // make it a valid key. Information that should not be included is:
-  // - specs that are directly derivable from the compute capability, e.g.
-  //   shared memory size. For NVIDIA GPUs, you can see what is derivable from
-  //   the SM version here:
-  //   https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#features-and-technical-specifications-technical-specifications-per-compute-capability
-  // - specs that are irrelevant for autotuning. E.g. the total available memory
-  //   on a device is not relevant, because by itself, it does not affect the
-  //   performance of single kernels.
-  //
-  // See b/344573710 for some discussion.
-
-  double memory_bandwidth = device_description.memory_bandwidth() / 1e9;
-  // Round the memory bandwidth to make the final string nicer to read.
-  // This will also cause minute differences in bandwidth to yield the same
-  // cache key, but that's fine, since the difference is inconsequential.
-  memory_bandwidth = std::round(memory_bandwidth);
-
-  constexpr double kBytesPerMegabyte = 1 << 20;
-  double l2_cache_size = device_description.l2_cache_size() / kBytesPerMegabyte;
-
-  return absl::StrCat(compute_capability,
-                      ", Cores: ", device_description.core_count(),
-                      ", GPU clock: ", device_description.clock_rate_ghz(),
-                      " GHz, Memory bandwidth: ", memory_bandwidth,
-                      " GB/s, L2 cache: ", l2_cache_size, " MB");
-}
-
 namespace {
 enum class CacheType { kNone, kInMemory, kOnDisk };
 
@@ -600,12 +533,6 @@ void AddVersionToAutotuneResults(AutotuneResults& results) {
     }
   }
 }
-
-AutotuneCacheKey::AutotuneCacheKey(
-    const se::DeviceDescription& device_description,
-    const HloInstruction& instruction, int version)
-    : AutotuneCacheKey(DeviceDescriptionToCacheKey(device_description),
-                       HloInstructionToCanonicalString(instruction), version) {}
 
 }  // namespace gpu
 }  // namespace xla
