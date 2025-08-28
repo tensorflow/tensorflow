@@ -14907,6 +14907,103 @@ ENTRY entry {
             kAlternateMemorySpace);
 }
 
+TEST_F(MemorySpaceAssignmentTest, TestBlockAllocationsWithMultipleUses) {
+  // When allowing multiple uses of block allocated weights, we only prefetch
+  // the weight once, making sure that the prefetches are scheduled before the
+  // first use time. This was a bug in the original implementation of block
+  // allocations. This test case tests the fix. In this test the parameters p0
+  // and p1 have multiple uses, we test that we prefetch them exactly once.
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[2,3]{1,0} parameter(0)
+  p1 = f32[2,3]{1,0} parameter(1)
+  p2 = f32[2,3]{1,0} parameter(2)
+  p3 = f32[2,3]{1,0} parameter(3)
+  p4 = f32[2,3]{1,0} parameter(4)
+  p5 = f32[2,3]{1,0} parameter(5)
+  negate0 = f32[2,3]{1,0} negate(p0)
+  negate1 = f32[2,3]{1,0} negate(negate0)
+  negate2 = f32[2,3]{1,0} negate(negate1)
+  add3 = f32[2,3]{1,0} add(p1, negate2)
+  negate4 = f32[2,3]{1,0} negate(add3)
+  negate5 = f32[2,3]{1,0} negate(negate4)
+  add6 = f32[2,3]{1,0} add(p2, negate5)
+  negate7 = f32[2,3]{1,0} negate(add6)
+  negate8 = f32[2,3]{1,0} negate(negate7)
+  add9 = f32[2,3]{1,0} add(p3, negate8)
+  negate10 = f32[2,3]{1,0} negate(add9)
+  negate11 = f32[2,3]{1,0} negate(negate10)
+  add12 = f32[2,3]{1,0} add(p4, negate11)
+  add13 = f32[2,3]{1,0} add(p1, add12)
+  add14 = f32[2,3]{1,0} add(p0, add13)
+  ROOT add15 = f32[2,3]{1,0} add(p5, add14)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.max_size_in_bytes = 72;
+  memory_space_options.reserved_bytes_for_block_allocated_weights = 72;
+  HloInstruction* p0 = FindInstruction(module.get(), "p0");
+  HloPosition p0_position{p0, {}};
+  HloInstruction* p1 = FindInstruction(module.get(), "p1");
+  HloPosition p1_position{p1, {}};
+  HloInstruction* p2 = FindInstruction(module.get(), "p2");
+  HloPosition p2_position{p2, {}};
+  HloInstruction* p3 = FindInstruction(module.get(), "p3");
+  HloPosition p3_position{p3, {}};
+  HloInstruction* p4 = FindInstruction(module.get(), "p4");
+  HloPosition p4_position{p4, {}};
+  HloInstruction* p5 = FindInstruction(module.get(), "p5");
+  HloPosition p5_position{p5, {}};
+  memory_space_options.block_allocated_weights_positions = {
+      p5_position, p4_position, p3_position,
+      p2_position, p1_position, p0_position};
+  memory_space_options.max_outstanding_prefetches_for_block_allocations = 10;
+  XLA_VLOG_LINES(3, "Before MSA: \n" + module->ToString());
+  AssignMemorySpaceUsingCostAnalysis(module.get(), memory_space_options);
+  XLA_VLOG_LINES(3, "After MSA: \n" + module->ToString());
+  HloInstruction* negate0 = FindInstruction(module.get(), "negate0");
+  const HloInstruction* negate0_operand0 = negate0->operand(0);
+  EXPECT_EQ(negate0_operand0->opcode(), HloOpcode::kCopyDone);
+  EXPECT_EQ(negate0_operand0->shape().layout().memory_space(),
+            kAlternateMemorySpace);
+  HloInstruction* add3 = FindInstruction(module.get(), "add3");
+  const HloInstruction* add3_operand0 = add3->operand(0);
+  EXPECT_EQ(add3_operand0->opcode(), HloOpcode::kCopyDone);
+  EXPECT_EQ(add3_operand0->shape().layout().memory_space(),
+            kAlternateMemorySpace);
+  HloInstruction* add6 = FindInstruction(module.get(), "add6");
+  const HloInstruction* add6_operand0 = add6->operand(0);
+  EXPECT_EQ(add6_operand0->opcode(), HloOpcode::kCopyDone);
+  EXPECT_EQ(add6_operand0->shape().layout().memory_space(),
+            kAlternateMemorySpace);
+  HloInstruction* add9 = FindInstruction(module.get(), "add9");
+  const HloInstruction* add9_operand0 = add9->operand(0);
+  EXPECT_EQ(add9_operand0->opcode(), HloOpcode::kCopyDone);
+  EXPECT_EQ(add9_operand0->shape().layout().memory_space(),
+            kAlternateMemorySpace);
+  HloInstruction* add12 = FindInstruction(module.get(), "add12");
+  const HloInstruction* add12_operand0 = add12->operand(0);
+  EXPECT_EQ(add12_operand0->opcode(), HloOpcode::kCopyDone);
+  EXPECT_EQ(add12_operand0->shape().layout().memory_space(),
+            kAlternateMemorySpace);
+  HloInstruction* add13 = FindInstruction(module.get(), "add13");
+  const HloInstruction* add13_operand0 = add13->operand(0);
+  // Check that the prefetch of p1 is reused for add13.
+  EXPECT_EQ(add13_operand0, add3_operand0);
+  HloInstruction* add14 = FindInstruction(module.get(), "add14");
+  const HloInstruction* add14_operand0 = add14->operand(0);
+  // Check that the prefetch of p0 is reused for add14.
+  EXPECT_EQ(add14_operand0, negate0_operand0);
+  HloInstruction* add15 = FindInstruction(module.get(), "add15");
+  const HloInstruction* add15_operand0 = add15->operand(0);
+  EXPECT_EQ(add15_operand0->opcode(), HloOpcode::kCopyDone);
+  EXPECT_EQ(add15_operand0->shape().layout().memory_space(),
+            kAlternateMemorySpace);
+}
+
 TEST_F(MemorySpaceAssignmentTest,
        TestBlockAllocatedWeightsDoubleBufferedWithColoring) {
   absl::string_view hlo_string = R"(
