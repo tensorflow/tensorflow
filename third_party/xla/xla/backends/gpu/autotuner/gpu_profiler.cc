@@ -112,18 +112,14 @@ std::unique_ptr<GpuProfiler> GpuProfiler::Create(
 
 absl::StatusOr<std::unique_ptr<InputBuffers>> GpuProfiler::CreateInputBuffers(
     const Executable* executable) {
-  if (!executable->has_module()) {
-    return absl::InvalidArgumentError(
-        "Cannot create input buffers, the executable does not have an "
-        "attatched HloModule.");
-  }
   TF_ASSIGN_OR_RETURN(
       RedzoneBuffers buffers,
-      RedzoneBuffers::FromComputation(
-          *executable->module().entry_computation(), allocator_, stream_.get(),
+      RedzoneBuffers::FromProgramShape(
+          executable->compute_computation_layout().ComputeProgramShape(),
           RedzoneBuffers::BuffersToCreate::kAllInputs,
           options_.should_init_buffers,
-          /*should_check_correctness=*/true, options_.redzone_padding_bytes));
+          /*should_check_correctness=*/true, options_.redzone_padding_bytes,
+          allocator_, stream_.get()));
   auto gpu_buffers = std::make_unique<GpuInputBuffers>();
   gpu_buffers->redzone_buffers = std::move(buffers);
   return gpu_buffers;
