@@ -6636,7 +6636,7 @@ class DecodeImageTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       decoded = image_ops.decode_image(image_bytes, channels=3, 
                                        expand_animations=False)
       # This should work without ValueError due to proper shape inference
-      resized = image_ops.resize(decoded, [224, 224])
+      resized = image_ops.resize_images(decoded, [224, 224])
       return resized
 
 
