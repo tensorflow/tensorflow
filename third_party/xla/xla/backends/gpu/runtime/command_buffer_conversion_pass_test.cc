@@ -83,6 +83,10 @@ se::StreamExecutor* GpuExecutor() {
   return platform->ExecutorForDevice(0).value();
 }
 
+se::GpuComputeCapability GetComputeCapability(se::StreamExecutor* stream_executor) {
+    return stream_executor->GetDeviceDescription().gpu_compute_capability();
+}
+
 std::unique_ptr<AllGatherStartThunk> CreateAllGatherStartThunk(
     const BufferAllocation& alloc0, const BufferAllocation& alloc1) {
   auto create_replica_groups =
@@ -594,6 +598,10 @@ TEST(CommandBufferConversionPassTest, DontConvertIfNotMinGraphSize) {
 }
 
 TEST(CommandBufferConversionPassTest, ConvertWhileThunk) {
+  if(std::holds_alternative<se::RocmComputeCapability>(GetComputeCapability(GpuExecutor()))) {
+    GTEST_SKIP() << "CUDA graph conditionals are not supported";
+  }
+
   CommandBufferConversionPass pass;
 
   std::vector<std::unique_ptr<Thunk>> thunks;
@@ -688,6 +696,10 @@ TEST(CommandBufferConversionPassTest,
 }
 
 TEST(CommandBufferConversionPassTest, ConvertWhileThunkWithAsyncPair) {
+  if(std::holds_alternative<se::RocmComputeCapability>(GetComputeCapability(GpuExecutor()))) {
+    GTEST_SKIP() << "CUDA graph conditionals are not supported";
+  }
+  
   CommandBufferConversionPass pass;
 
   std::vector<std::unique_ptr<Thunk>> thunks;
