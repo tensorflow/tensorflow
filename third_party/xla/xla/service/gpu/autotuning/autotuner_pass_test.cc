@@ -114,9 +114,9 @@ TEST_F(AutotunerPassTest, CublasGemmIsAutotuned) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<AutotunerPass> pass,
       AutotunerPass::Create(std::move(backends),
-                            module->config().debug_options(), allocator_.get(),
-                            stream_executor_, &thread_pool,
-                            IsCublasGemmInstruction));
+                            module->config().debug_options(), stream_executor_,
+                            &thread_pool, IsCublasGemmInstruction,
+                            allocator_.get()));
   EXPECT_THAT(pass->Run(module.get(), /*execution_threads=*/{}),
               tsl::testing::IsOkAndHolds(true));
   // Verify that the backend config has been updated in the HLO.
@@ -144,8 +144,8 @@ TEST_F(AutotunerPassTest, CublasGemmIsNotAutotunedWhenFilterReturnsFalse) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<AutotunerPass> pass,
       AutotunerPass::Create(std::move(backends),
-                            module->config().debug_options(), allocator_.get(),
-                            stream_executor_, &thread_pool, should_autotune));
+                            module->config().debug_options(), stream_executor_,
+                            &thread_pool, should_autotune, allocator_.get()));
   EXPECT_THAT(pass->Run(module.get(), /*execution_threads=*/{}),
               tsl::testing::IsOkAndHolds(true));
   // Verify that the backend config has *not* been updated in the HLO.
@@ -180,8 +180,8 @@ TEST_F(AutotunerPassTest, CublasGemmIsAutotunedAndCached) {
         std::unique_ptr<AutotunerPass> pass,
         AutotunerPass::Create(std::move(backends),
                               module->config().debug_options(),
-                              allocator_.get(), stream_executor_, &thread_pool,
-                              IsCublasGemmInstruction));
+                              stream_executor_, &thread_pool,
+                              IsCublasGemmInstruction, allocator_.get()));
     EXPECT_THAT(pass->Run(module.get(), /*execution_threads=*/{}),
                 tsl::testing::IsOkAndHolds(true));
   }
@@ -236,8 +236,8 @@ TEST_F(AutotunerPassTest, CublasGemmIsAutotunedAndCached) {
         std::unique_ptr<AutotunerPass> pass2,
         AutotunerPass::Create(std::move(backends2),
                               module->config().debug_options(),
-                              allocator_.get(), stream_executor_, &thread_pool,
-                              IsCublasGemmInstruction));
+                              stream_executor_, &thread_pool,
+                              IsCublasGemmInstruction, allocator_.get()));
     EXPECT_THAT(pass2->Run(module.get(), /*execution_threads=*/{}),
                 tsl::testing::IsOkAndHolds(true));
   }
