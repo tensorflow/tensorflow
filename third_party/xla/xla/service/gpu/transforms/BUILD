@@ -2776,6 +2776,8 @@ cc_library(
         "//xla/hlo/pass:hlo_pass",
         "//xla/service:hlo_proto_cc",
         "//xla/service:tuple_util",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
@@ -2797,14 +2799,15 @@ xla_test(
         "//xla/hlo/pass:hlo_pass",
         "//xla/service:platform_util",
         "//xla/service:topk_rewriter",
+        "//xla/stream_executor:device_description",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
