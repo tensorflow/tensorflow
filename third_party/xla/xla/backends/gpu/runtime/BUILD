@@ -2060,12 +2060,26 @@ tf_proto_library(
     ],
     protodeps = [
         # keep sorted
+        ":dynamic_slice_thunk_proto",
         "//xla:xla_data_proto",
         "//xla/service:buffer_assignment_proto",
         "//xla/service/gpu:launch_dimensions_proto",
         "//xla/stream_executor:launch_dim_proto",
         "//xla/stream_executor/gpu:gpu_blas_lt_proto",
         "//xla/stream_executor/gpu:tma_metadata_proto",
+    ],
+)
+
+tf_proto_library(
+    name = "dynamic_slice_thunk_proto",
+    srcs = [
+        "dynamic_slice_thunk.proto",
+    ],
+    protodeps = [
+        # keep sorted
+        "//xla:xla_data_proto",
+        "//xla/service:buffer_assignment_proto",
+        "//xla/service:hlo_proto",
     ],
 )
 
