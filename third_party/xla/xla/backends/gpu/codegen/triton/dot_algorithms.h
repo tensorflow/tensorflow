@@ -37,12 +37,12 @@ struct DotOperands {
 // Returns the type to use for accumulation for the given `dot` instruction.
 // This also handles the case where the algorithm is `ALG_UNSET`.
 absl::StatusOr<::mlir::Type> GetDotAccumulatorType(
-    EmitterLocOpBuilder& b, const HloDotInstruction& dot);
+    EmitterLocOpBuilder b, const HloDotInstruction& dot);
 
 // Emits a single-tile dot, considering the given `dot` instruction's algorithm
 // and operand precisions. Raises an `UnimplementedError` if the algorithm is
 // not supported.
-absl::StatusOr<::mlir::Value> EmitSingleTileDot(EmitterLocOpBuilder& b,
+absl::StatusOr<::mlir::Value> EmitSingleTileDot(EmitterLocOpBuilder b,
                                                 const HloDotInstruction& dot,
                                                 DotOperands dot_operands);
 

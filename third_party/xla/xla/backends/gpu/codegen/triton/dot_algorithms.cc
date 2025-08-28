@@ -75,7 +75,7 @@ struct PrecisionSpec {
   ttir::InputPrecision ttir_input_precision;
 };
 
-using AlgorithmEmitter = absl::StatusOr<Value> (*)(EmitterLocOpBuilder&,
+using AlgorithmEmitter = absl::StatusOr<Value> (*)(EmitterLocOpBuilder,
                                                    const DotOperands&,
                                                    const PrecisionSpec&);
 
@@ -86,7 +86,7 @@ using AlgorithmEmitter = absl::StatusOr<Value> (*)(EmitterLocOpBuilder&,
 // We would get the wrong result if we sum these partial products. Instead, we
 // must override any accumulated result if the last partial product is
 // non-finite. See b/115844437.
-Value ZeroNaNs(EmitterLocOpBuilder& b, Value input) {
+Value ZeroNaNs(EmitterLocOpBuilder b, Value input) {
   Value positive_inf =
       CreateConst<float>(b, b.getF32Type(),
                          std::numeric_limits<float>::infinity(),
@@ -136,7 +136,7 @@ Value IEEEDot(EmitterLocOpBuilder b, Value lhs, Value rhs, Value acc) {
 
 // Leverages BF16 datatype for F32 matmul computation. It follows the guidance
 // from https://arxiv.org/pdf/1904.06376.pdf.
-absl::StatusOr<Value> EmitBF16x9Matmul(EmitterLocOpBuilder& b,
+absl::StatusOr<Value> EmitBF16x9Matmul(EmitterLocOpBuilder b,
                                        const DotOperands& dot_operands,
                                        const PrecisionSpec& precision_spec) {
   constexpr int kNumParts = 3;
@@ -174,7 +174,7 @@ absl::StatusOr<Value> EmitBF16x9Matmul(EmitterLocOpBuilder& b,
 
 // Leverages BF16 datatype for F32 matmul computation. It follows the guidance
 // from https://arxiv.org/pdf/1904.06376.pdf.
-absl::StatusOr<Value> EmitBF16x6Matmul(EmitterLocOpBuilder& b,
+absl::StatusOr<Value> EmitBF16x6Matmul(EmitterLocOpBuilder b,
                                        const DotOperands& dot_operands,
                                        const PrecisionSpec& precision_spec) {
   constexpr int kNumParts = 3;
@@ -208,7 +208,7 @@ absl::StatusOr<Value> EmitBF16x6Matmul(EmitterLocOpBuilder& b,
 
 // Compute F32 matmul with 3 BF16 dots. It is less accurate than
 // EmitBF16x6Matmul.
-absl::StatusOr<Value> EmitBF16x3Matmul(EmitterLocOpBuilder& b,
+absl::StatusOr<Value> EmitBF16x3Matmul(EmitterLocOpBuilder b,
                                        const DotOperands& dot_operands,
                                        const PrecisionSpec& precision_spec) {
   constexpr int kNumParts = 2;
@@ -252,7 +252,7 @@ ttir::InputPrecision InferDotPrecision(const HloDotInstruction& dot) {
                             : ttir::InputPrecision::IEEE;
 }
 
-absl::StatusOr<Type> GetAlgUnsetAccumulatorType(EmitterLocOpBuilder& b,
+absl::StatusOr<Type> GetAlgUnsetAccumulatorType(EmitterLocOpBuilder b,
                                                 const HloDotInstruction& dot) {
   TF_ASSIGN_OR_RETURN(Type lhs_type,
                       TritonType(b, dot.operand(0)->shape().element_type()));
@@ -279,7 +279,7 @@ absl::StatusOr<Type> GetAlgUnsetAccumulatorType(EmitterLocOpBuilder& b,
                                                         : b.getF32Type();
 }
 
-absl::StatusOr<Value> EmitDotAlgUnset(EmitterLocOpBuilder& b,
+absl::StatusOr<Value> EmitDotAlgUnset(EmitterLocOpBuilder b,
                                       const DotOperands& dot_operands,
                                       const PrecisionSpec& precision_spec) {
   // Execute matrix multiplication of input tiles and pass the accumulator.
@@ -305,7 +305,7 @@ absl::StatusOr<Value> EmitDotAlgUnset(EmitterLocOpBuilder& b,
       /*maxNumImpreciseAcc=*/max_num_imprecise_acc);
 }
 
-absl::StatusOr<Value> EmitRegularDot(EmitterLocOpBuilder& b,
+absl::StatusOr<Value> EmitRegularDot(EmitterLocOpBuilder b,
                                      const DotOperands& dot_operands,
                                      const PrecisionSpec& precision_spec) {
   Value lhs = dot_operands.lhs;
@@ -380,7 +380,7 @@ absl::StatusOr<AlgorithmEmitter> GetAlgorithmEmitter(
 // the operands do not already conform to any of them. Returns `std::nullopt` if
 // no casting is a priori needed.
 absl::StatusOr<std::optional<Type>> GetForceOperandsType(
-    EmitterLocOpBuilder& b, const HloDotInstruction& dot,
+    EmitterLocOpBuilder b, const HloDotInstruction& dot,
     const DotOperands& dot_operands) {
   PrecisionConfig::Algorithm algorithm = dot.precision_config().algorithm();
   if (algorithm == PrecisionConfig::ALG_UNSET) {
@@ -429,7 +429,7 @@ absl::StatusOr<std::optional<Type>> GetForceOperandsType(
 
 }  // namespace
 
-absl::StatusOr<Type> GetDotAccumulatorType(EmitterLocOpBuilder& b,
+absl::StatusOr<Type> GetDotAccumulatorType(EmitterLocOpBuilder b,
                                            const HloDotInstruction& dot) {
   const PrecisionConfig::Algorithm algorithm =
       dot.precision_config().algorithm();
@@ -443,7 +443,7 @@ absl::StatusOr<Type> GetDotAccumulatorType(EmitterLocOpBuilder& b,
   return TritonType(b, accumulator_type);
 }
 
-absl::StatusOr<Value> EmitSingleTileDot(EmitterLocOpBuilder& b,
+absl::StatusOr<Value> EmitSingleTileDot(EmitterLocOpBuilder b,
                                         const HloDotInstruction& dot,
                                         DotOperands dot_operands) {
   PrecisionConfig::Algorithm algorithm = dot.precision_config().algorithm();
