@@ -1705,3 +1705,46 @@ cc_library(
         "@local_tsl//tsl/platform:status",
     ],
 )
+
+cc_library(
+    name = "unflatten_call_graph",
+    srcs = ["unflatten_call_graph.cc"],
+    hdrs = ["unflatten_call_graph.h"],
+    deps = [
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/hlo/utils/concurrency:concurrency_utils",
+        "//xla/hlo/utils/concurrency:tsl_task_executor",
+        "//xla/service:call_graph",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@highwayhash",
+        "@highwayhash//:arch_specific",
+        "@highwayhash//:hh_types",
+    ],
+)
+
+xla_cc_test(
+    name = "unflatten_call_graph_test",
+    srcs = ["unflatten_call_graph_test.cc"],
+    deps = [
+        ":unflatten_call_graph",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/testlib:test",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
