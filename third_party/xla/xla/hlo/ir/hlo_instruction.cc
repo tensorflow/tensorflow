@@ -5408,6 +5408,9 @@ const PrecisionConfig& HloInstruction::precision_config() const {
   if (auto* dot = DynCast<HloDotInstruction>(this)) {
     return dot->precision_config();
   }
+  if (auto* scaled_dot = DynCast<HloScaledDotInstruction>(this)) {
+    return scaled_dot->precision_config();
+  }
   if (auto* ragged_dot = DynCast<HloRaggedDotInstruction>(this)) {
     return ragged_dot->precision_config();
   }
