@@ -1300,6 +1300,7 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
             output_to_operand_aliasing());
       }
       break;
+      case HloOpcode::kAcosh:
       case HloOpcode::kCos:
       case HloOpcode::kErf:
       case HloOpcode::kExp:
@@ -1490,6 +1491,7 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
     case HloOpcode::kReal:
     case HloOpcode::kSign:
       return CreateNary(shape, opcode, {operand});
+    case HloOpcode::kAcosh:
     case HloOpcode::kCos:
     case HloOpcode::kErf:
     case HloOpcode::kExp:
@@ -2711,6 +2713,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       break;
     // Unary ops.
     case HloOpcode::kAbs:
+    case HloOpcode::kAcosh:
     case HloOpcode::kAllGatherDone:
     case HloOpcode::kAllReduceDone:
     case HloOpcode::kRoundNearestAfz:
@@ -3175,6 +3178,7 @@ bool HloInstruction::IdenticalSlowPath(
     // The result of these instructions only depend upon their opcode and
     // operands.
     case HloOpcode::kAbs:
+    case HloOpcode::kAcosh:
     case HloOpcode::kAllGatherDone:
     case HloOpcode::kAllReduceDone:
     case HloOpcode::kAtan2:
@@ -3802,6 +3806,7 @@ bool HloInstruction::IsOpElementwise(HloOpcode opcode) {
   switch (opcode) {
     // Unary elementwise operations.
     case HloOpcode::kAbs:
+    case HloOpcode::kAcosh:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kRoundNearestEven:
     case HloOpcode::kCeil:
@@ -4497,6 +4502,8 @@ absl::Status HloInstruction::Visit(
   switch (opcode_) {
     case HloOpcode::kAbs:
       return visitor->HandleAbs(this);
+    case HloOpcode::kAcosh:
+      return visitor->HandleAcosh(this);
     case HloOpcode::kAtan2:
       return visitor->HandleAtan2(this);
     case HloOpcode::kRoundNearestAfz:
