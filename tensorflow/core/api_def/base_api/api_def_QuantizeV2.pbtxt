@@ -18,12 +18,6 @@ If the `axis` attribute is specified, this must be a 1-D tensor whose size
 matches the `axis` dimension of the input and output tensors.
 END
   }
-  in_arg {
-    name: "round_mode"
-    description: <<END
-`round_mode='HALF_TO_EVEN'` only supported for mode 'SCALED'.
-END
-  }
   out_arg {
     name: "output"
     description: <<END
@@ -46,6 +40,12 @@ The final quantization range maximum, used to clip input values before scaling
 and rounding them to quantized values.
 If the `axis` attribute is specified, this will be a 1-D tensor whose size
 matches the `axis` dimension of the input and output tensors.
+END
+  }
+  attr {
+    name: "round_mode"
+    description: <<END
+`round_mode='HALF_TO_EVEN'` only supported for mode 'SCALED'.
 END
   }
   summary: "Quantize the \'input\' tensor of type float to \'output\' tensor of type \'T\'."
