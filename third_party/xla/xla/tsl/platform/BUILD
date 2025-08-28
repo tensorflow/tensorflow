@@ -381,6 +381,18 @@ cc_library(
     deps = tf_windows_aware_platform_deps("env_impl"),
 )
 
+tsl_cc_test(
+    name = "env_test",
+    srcs = ["env_test.cc"],
+    deps = [
+        ":env",
+        ":test",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "env_time",
     compatible_with = get_compatible_with_portable(),
