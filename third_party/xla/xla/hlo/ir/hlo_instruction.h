@@ -1208,10 +1208,19 @@ class HloInstruction {
   virtual bool HasSideEffect() const;
 
   // Returns the result shape of this instruction.
-  const Shape& shape() const;
+  const Shape& shape() const {
+    DCHECK(shape_) << "Instruction shape must be set";
+    return *shape_;
+  }
 
   // Returns the (mutable) result shape of this instruction.
-  Shape* mutable_shape() { return &shape_; }
+  Shape* mutable_shape() {
+    DCHECK(shape_) << "Instruction shape must be set";
+    if (shape_.use_count() > 1) {
+      shape_ = std::make_shared<Shape>(*shape_);
+    }
+    return &*shape_;
+  }
 
   // Returns the ith operand to this instruction.
   const HloInstruction* operand(int64_t i) const;
@@ -2673,7 +2682,7 @@ class HloInstruction {
   std::shared_ptr<const HloSharding> sharding_;
 
   // Result shape of this instruction.
-  Shape shape_;
+  std::shared_ptr<Shape> shape_;
 
   // The backend-specific configuration for how a backend should compile this
   // HLO. See the documentation on backend_config().
