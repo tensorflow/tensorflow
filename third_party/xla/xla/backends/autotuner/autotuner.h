@@ -42,7 +42,7 @@ struct AutotuneConfig {
   bool skip_failing_configs = true;
   // Whether to check the correctness of the output buffers and OOM reads on
   // Input Buffers.
-  bool check_buffers = false;
+  bool check_buffers = true;
   // Relative tolerance for correctness check.
   float relative_tolerance = 1e-6;
   // Whether to crash the process on check failure.
