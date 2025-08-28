@@ -62,7 +62,6 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_stream.h"
 #include "xla/stream_executor/cuda/cuda_timer.h"
 #include "xla/stream_executor/cuda/cuda_version_parser.h"
-#include "xla/stream_executor/cuda/cudnn_api_wrappers.h"
 #include "xla/stream_executor/cuda/tma_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
@@ -1308,16 +1307,6 @@ CudaExecutor::CreateDeviceDescription(int device_ordinal) {
       ParseCudaVersion(runtime_version).value_or(SemanticVersion{0, 0, 0}));
   desc.set_compile_time_toolkit_version(
       ParseCudaVersion(CUDA_VERSION).value_or(SemanticVersion{0, 0, 0}));
-
-  absl::StatusOr<SemanticVersion> cudnn_version = cuda::GetLoadedCudnnVersion();
-  if (cudnn_version.ok()) {
-    desc.set_dnn_version(*cudnn_version);
-  } else {
-    LOG(WARNING)
-        << "Failed to determine cuDNN version (Note that this is expected if "
-           "the application doesn't link the cuDNN plugin): "
-        << cudnn_version.status();
-  }
 
   {
     std::string pci_bus_id = GetPCIBusID(device);

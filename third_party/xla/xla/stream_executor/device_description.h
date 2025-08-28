@@ -192,9 +192,6 @@ class DeviceDescription {
     return compile_time_toolkit_version_;
   }
 
-  // Returns the DNN version (cuDNN or hipDNN) - or 0.0.0 if not available.
-  SemanticVersion dnn_version() const { return dnn_version_; }
-
   // Returns the name that the device reports. Vendor dependent.
   const std::string& name() const { return name_; }
 
@@ -411,7 +408,6 @@ class DeviceDescription {
   void set_runtime_version(const SemanticVersion& value) {
     runtime_version_ = value;
   }
-  void set_dnn_version(const SemanticVersion& value) { dnn_version_ = value; }
   void set_compile_time_toolkit_version(const SemanticVersion& value) {
     compile_time_toolkit_version_ = value;
   }
@@ -518,7 +514,6 @@ class DeviceDescription {
   SemanticVersion driver_version_{0, 0, 0};
   SemanticVersion runtime_version_{0, 0, 0};
   SemanticVersion compile_time_toolkit_version_{0, 0, 0};
-  SemanticVersion dnn_version_{0, 0, 0};
 };
 
 // Returns whether the given thread_dim is acceptable given the limits described
