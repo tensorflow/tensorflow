@@ -396,10 +396,6 @@ struct Options {
   // allocate for post-module operations.
   uint64_t post_module_scoped_alternate_memory_size_in_bytes = 0;
 
-  // If true, MSA will allocate buffers for explicitly pinned buffers in
-  // alternate memory first, and then run the rest of the algorithm.
-  bool explicit_pinning_mode = false;
-
   // If set, this is the maximum number of concurrent prefetches allowed for
   // block allocations.
   int64_t max_outstanding_prefetches_for_block_allocations = 0;
