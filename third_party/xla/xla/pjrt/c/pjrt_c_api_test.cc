@@ -938,6 +938,9 @@ FieldOffsetsAndSizesForVersion(int major_version, int minor_version) {
     if (minor_version >= 75) {
       add_field("PJRT_TopologyDescription_Deserialize", kFnPtrSize);
     }
+    if (minor_version >= 77) {
+      add_field("PJRT_LoadedExecutable_GetDeviceAssignment", kFnPtrSize);
+    }
     return version_offsets_and_sizes;
   }
   LOG(FATAL) << "Unsupported API version: " << major_version << "."
@@ -1320,6 +1323,9 @@ TEST_F(PjrtCAbiTestBase, FieldOffsetsAndSizes) {
           {"PJRT_TopologyDescription_Deserialize",
            {offsetof(PJRT_Api, PJRT_TopologyDescription_Deserialize),
             sizeof(PJRT_Api::PJRT_TopologyDescription_Deserialize)}},
+          {"PJRT_LoadedExecutable_GetDeviceAssignment",
+           {offsetof(PJRT_Api, PJRT_LoadedExecutable_GetDeviceAssignment),
+            sizeof(PJRT_Api::PJRT_LoadedExecutable_GetDeviceAssignment)}},
       };
   ASSERT_EQ(api_->pjrt_api_version.major_version, PJRT_API_MAJOR);
   ASSERT_EQ(api_->pjrt_api_version.minor_version, PJRT_API_MINOR);
