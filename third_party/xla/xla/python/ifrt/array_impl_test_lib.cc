@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -1506,6 +1507,156 @@ TEST(ArrayImplTest, MakeAndCopyZeroSizedBuffers) {
           copied[0]->CopyToHostBuffer(nullptr, /*byte_strides=*/std::nullopt,
                                       ArrayCopySemantics::kAlwaysCopy);
       TF_ASSERT_OK(future.Await());
+    }
+  }
+}
+
+TEST(ArrayImplTest, CopyArraysExhaustive) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  Device* const src_device = client->addressable_devices().front();
+
+  DType dtype(DType::kF32);
+  Shape shape({2, 3});
+  std::vector<float> data(6);
+  std::iota(data.begin(), data.end(), 0);
+
+  for (Memory* const src_memory : src_device->Memories()) {
+    for (Device* const dst_device : client->addressable_devices()) {
+      for (Memory* const dst_memory : dst_device->Memories()) {
+        SCOPED_TRACE(absl::StrCat(
+            src_device->DebugString(), " ", src_memory->DebugString(), " -> ",
+            dst_device->DebugString(), " ", dst_memory->DebugString()));
+
+        ShardingRef sharding =
+            SingleDeviceSharding::Create(src_device, src_memory->Kind());
+        TF_ASSERT_OK_AND_ASSIGN(
+            auto array,
+            client->MakeArrayFromHostBuffer(
+                data.data(), dtype, shape,
+                /*byte_strides=*/std::nullopt, sharding,
+                Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+                /*on_done_with_host_buffer=*/{}));
+        EXPECT_EQ(array->sharding(), *sharding);
+
+        ArrayRef new_array;
+        {
+          TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
+                                  client->MakeDeviceList({dst_device}));
+          TF_ASSERT_OK_AND_ASSIGN(
+              auto copied,
+              client->CopyArrays(absl::MakeSpan(&array, 1),
+                                 std::move(device_list), dst_memory->Kind(),
+                                 ArrayCopySemantics::kAlwaysCopy));
+          new_array = std::move(copied[0]);
+        }
+        EXPECT_THAT(new_array->sharding().devices()->devices(),
+                    ElementsAre(dst_device));
+        EXPECT_EQ(new_array->sharding().memory_kind(), dst_memory->Kind());
+
+        std::vector<float> out_data(6);
+        Future<void> future = new_array->CopyToHostBuffer(
+            out_data.data(), /*byte_strides=*/std::nullopt,
+            ArrayCopySemantics::kAlwaysCopy);
+        TF_ASSERT_OK(future.Await());
+        EXPECT_THAT(out_data, ElementsAreArray(data));
+      }
+    }
+  }
+}
+
+TEST(ArrayImplTest, CopyArraysSubByteDType) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  Device* const src_device = client->addressable_devices().front();
+
+  DType dtype(DType::kS4);
+  Shape shape({2, 3});
+  std::vector<int8_t> data(6);
+  std::iota(data.begin(), data.end(), 0);
+
+  for (Memory* const src_memory : src_device->Memories()) {
+    for (Device* const dst_device : client->addressable_devices()) {
+      for (Memory* const dst_memory : dst_device->Memories()) {
+        SCOPED_TRACE(absl::StrCat(
+            src_device->DebugString(), " ", src_memory->DebugString(), " -> ",
+            dst_device->DebugString(), " ", dst_memory->DebugString()));
+
+        ShardingRef sharding =
+            SingleDeviceSharding::Create(src_device, src_memory->Kind());
+        TF_ASSERT_OK_AND_ASSIGN(
+            auto array,
+            client->MakeArrayFromHostBuffer(
+                data.data(), dtype, shape,
+                /*byte_strides=*/std::nullopt, sharding,
+                Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+                /*on_done_with_host_buffer=*/{}));
+        EXPECT_EQ(array->sharding(), *sharding);
+
+        ArrayRef new_array;
+        {
+          TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
+                                  client->MakeDeviceList({dst_device}));
+          TF_ASSERT_OK_AND_ASSIGN(
+              auto copied,
+              client->CopyArrays(absl::MakeSpan(&array, 1),
+                                 std::move(device_list), dst_memory->Kind(),
+                                 ArrayCopySemantics::kAlwaysCopy));
+          new_array = std::move(copied[0]);
+        }
+        EXPECT_THAT(new_array->sharding().devices()->devices(),
+                    ElementsAre(dst_device));
+        EXPECT_EQ(new_array->sharding().memory_kind(), dst_memory->Kind());
+
+        std::vector<int8_t> out_data(6);
+        auto future = new_array->CopyToHostBuffer(
+            out_data.data(), /*byte_strides=*/std::nullopt,
+            ArrayCopySemantics::kAlwaysCopy);
+        TF_ASSERT_OK(future.Await());
+        EXPECT_THAT(out_data, ElementsAreArray(data));
+      }
+    }
+  }
+}
+
+TEST(ArrayImplTest, CopyPoisonedArray) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  Device* const src_device = client->addressable_devices().front();
+
+  for (Memory* const src_memory : src_device->Memories()) {
+    for (Device* const dst_device : client->addressable_devices()) {
+      for (Memory* const dst_memory : dst_device->Memories()) {
+        SCOPED_TRACE(absl::StrCat(
+            src_device->DebugString(), " ", src_memory->DebugString(), " -> ",
+            dst_device->DebugString(), " ", dst_memory->DebugString()));
+
+        ArraySpec array_spec = {
+            /*dtype=*/DType(DType::kF32),
+            /*shape=*/Shape({2, 3}),
+            /*sharding=*/
+            SingleDeviceSharding::Create(src_device, src_memory->Kind()),
+        };
+
+        const absl::Status error = absl::InternalError("injected error");
+        TF_ASSERT_OK_AND_ASSIGN(auto arrays,
+                                client->MakeErrorArrays(error, {array_spec}));
+
+        EXPECT_EQ(arrays.front()->dtype(), array_spec.dtype);
+        EXPECT_EQ(arrays.front()->shape(), array_spec.shape);
+        EXPECT_EQ(arrays.front()->sharding(), *array_spec.sharding);
+        ASSERT_THAT(arrays.front()->GetReadyFuture().Await(),
+                    StatusIs(error.code(), HasSubstr(error.message())));
+
+        TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
+                                client->MakeDeviceList({dst_device}));
+        TF_ASSERT_OK_AND_ASSIGN(
+            auto copied,
+            client->CopyArrays(absl::MakeSpan(arrays), std::move(device_list),
+                               dst_memory->Kind(),
+                               ArrayCopySemantics::kAlwaysCopy));
+        ASSERT_EQ(copied.size(), 1);
+
+        EXPECT_THAT(copied[0]->GetReadyFuture().Await(),
+                    StatusIs(error.code(), HasSubstr(error.message())));
+      }
     }
   }
 }

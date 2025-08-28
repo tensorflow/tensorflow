@@ -321,8 +321,10 @@ int main(int argc, char** argv) {
       "MakeArraysFromHostBufferShardsAndCopyToHostBufferWithString:"
       // `MakeErrorArrays` is not supported in NanoIfrtClient.
       "ArrayImplTest.MakeErrorArrays:"
+      "ArrayImplTest.CopyPoisonedArray:"
       // Sub-byte types are not supported in NanoIfrtClient.
       "ArrayImplTest.HostBufferInt4:"
+      "ArrayImplTest.CopyArraysSubByteDType:"
       // NanoRT does not handle zero-sized buffers correctly.
       "ArrayImplTest.MakeAndCopyZeroSizedBuffers:"
       // Executable returns a wrong number of devices.
