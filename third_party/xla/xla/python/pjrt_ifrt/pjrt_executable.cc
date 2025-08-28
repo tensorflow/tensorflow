@@ -62,6 +62,7 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
 #include "xla/python/pjrt_ifrt/pjrt_memory.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
+#include "xla/service/global_device_id.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -206,7 +207,7 @@ absl::StatusOr<std::string> PjRtExecutable::Serialize() const {
 }
 
 absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::Create(
-    PjRtCompatibleClient* client,
+    PjRtClient* client,
     std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
     std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks,
     DeviceListRef executable_devices) {
@@ -247,7 +248,7 @@ static absl::StatusOr<std::vector<xla::Shape>> ResultShapesOfModule(
 }
 
 absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::Create(
-    PjRtCompatibleClient* client, mlir::ModuleOp module,
+    PjRtClient* client, mlir::ModuleOp module,
     xla::CompileOptions compile_options,
     std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks,
     DeviceListRef executable_devices) {
@@ -319,7 +320,7 @@ absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::Create(
 }
 
 absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::CreateInternal(
-    PjRtCompatibleClient* client,
+    PjRtClient* client,
     std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
     absl::Span<const xla::PrimitiveType> result_element_types,
     absl::Span<const xla::DimensionVector> result_dimensions,
@@ -489,7 +490,7 @@ absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::CreateInternal(
 }
 
 PjRtLoadedExecutable::PjRtLoadedExecutable(
-    PjRtCompatibleClient* client,
+    PjRtClient* client,
     std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
     DeviceListRef devices, std::vector<Device*> addressable_devices,
     std::vector<tsl::RCReference<LoadedHostCallback>> all_loaded_host_callbacks,
@@ -569,6 +570,13 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
   opts.use_major_to_minor_data_layout_for_callbacks = true;
   opts.non_donatable_input_indices = options.non_donatable_input_indices;
   opts.execution_stream_id = options.execution_stream_id;
+  absl::StatusOr<absl::flat_hash_map<int, IncarnationId>> incarnations =
+      client()->Incarnations();
+  if (incarnations.ok()) {
+    opts.incarnations = *std::move(incarnations);
+  } else {
+    LOG(WARNING) << "Unable to get incarnations: " << incarnations.status();
+  }
 
   auto context = std::make_unique<xla::ExecuteContext>();
   auto platform_id = pjrt_loaded_executable_->client()->platform_id();
