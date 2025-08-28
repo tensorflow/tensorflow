@@ -367,9 +367,9 @@ absl::Status NVPTXCompiler::AddConvAndGemmAutotuningPasses(
   if (debug_options.xla_gpu_experimental_use_autotuner_pass()) {
     std::vector<std::unique_ptr<CodegenBackend>> backends;
     backends.push_back(
-        std::make_unique<CublasBackend>(stream_exec, &debug_options, this));
+        std::make_unique<CublasBackend>(stream_exec, debug_options, this));
     backends.push_back(
-        std::make_unique<CublasLtBackend>(stream_exec, &debug_options, this));
+        std::make_unique<CublasLtBackend>(stream_exec, debug_options, this));
     auto should_autotune = [](const HloInstruction& instruction) -> bool {
       return instruction.opcode() == HloOpcode::kCustomCall &&
              IsCublasGemm(instruction);

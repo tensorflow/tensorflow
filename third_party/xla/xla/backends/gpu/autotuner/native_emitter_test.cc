@@ -95,7 +95,7 @@ class NativeEmitterBackendTest : public HloHardwareIndependentTestBase {
                      .value()
                      ->ExecutorForDevice(0)
                      .value(),
-                 &debug_options_, &compiler_) {}
+                 debug_options_, &compiler_) {}
 
   DebugOptions debug_options_;
   NVPTXCompiler compiler_;

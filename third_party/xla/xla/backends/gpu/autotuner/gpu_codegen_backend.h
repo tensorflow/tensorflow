@@ -43,11 +43,11 @@ class GpuCodegenBackend : public CodegenBackend {
   // target_config, debug_options and compiler should outlive the backend.
   GpuCodegenBackend(absl::string_view name,
                     stream_executor::StreamExecutor* stream_executor,
-                    const DebugOptions* debug_options, Compiler* compiler)
+                    const DebugOptions& debug_options, Compiler* compiler)
       : name_(name),
         stream_executor_(stream_executor),
         target_config_(Compiler::TargetConfig(stream_executor)),
-        debug_options_(*debug_options),
+        debug_options_(debug_options),
         compiler_(compiler) {}
 
   absl::string_view name() const override { return name_; }
@@ -95,7 +95,7 @@ class GpuCodegenBackend : public CodegenBackend {
   std::string name_;
   stream_executor::StreamExecutor* stream_executor_;
   Compiler::TargetConfig target_config_;
-  const DebugOptions& debug_options_;
+  DebugOptions debug_options_;
   // TODO(b/407494653): remove compiler when we don't need to run any HLO passes
   // and the codegen backend can directly produce an executable without a
   // compiler instance.

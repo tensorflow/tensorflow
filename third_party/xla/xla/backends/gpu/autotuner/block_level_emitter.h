@@ -41,8 +41,8 @@ class BlockLevelEmitterBackend : public GpuCodegenBackend {
  public:
   explicit BlockLevelEmitterBackend(
       stream_executor::StreamExecutor* absl_nonnull stream_executor,
-      const DebugOptions* absl_nonnull debug_options,
-      Compiler* absl_nonnull compiler, bool use_default_config = false)
+      const DebugOptions& debug_options, Compiler* absl_nonnull compiler,
+      bool use_default_config = false)
       : GpuCodegenBackend("BlockLevelEmitter", stream_executor, debug_options,
                           compiler),
         use_default_config_(use_default_config) {}

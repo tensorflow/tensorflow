@@ -108,7 +108,7 @@ class CustomKernelBackendTest : public HloHardwareIndependentTestBase {
                      .value()
                      ->ExecutorForDevice(0)
                      .value(),
-                 &debug_options_, &compiler_) {}
+                 debug_options_, &compiler_) {}
 
   CustomKernelBackendConfig ExpectedDefaultAlgorithm() {
     auto config = AutotuneResult::CustomKernelFusionKey();

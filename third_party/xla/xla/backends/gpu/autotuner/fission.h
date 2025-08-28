@@ -43,7 +43,7 @@ namespace gpu {
 class FissionBackend : public GpuCodegenBackend {
  public:
   explicit FissionBackend(stream_executor::StreamExecutor* stream_executor,
-                          const DebugOptions* debug_options, Compiler* compiler)
+                          const DebugOptions& debug_options, Compiler* compiler)
       : GpuCodegenBackend("Fission", stream_executor, debug_options, compiler),
         cublas_backend_(stream_executor, debug_options, compiler),
         cublaslt_backend_(stream_executor, debug_options, compiler),
