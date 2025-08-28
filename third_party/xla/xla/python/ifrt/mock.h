@@ -186,6 +186,11 @@ class MockClient : public llvm::RTTIExtends<MockClient, Client> {
               (const, final));
   MOCK_METHOD(tsl::RCReference<xla::ifrt::UserContext>, CreateUserContext, (),
               (final));
+  MOCK_METHOD(absl::StatusOr<std::string>, runtime_executable_version,
+              (std::optional<PlatformId> platform_type), (const, final));
+  MOCK_METHOD(bool, IsSerializedExecutableCompatible,
+              (std::string ifrt_executable_version, PlatformId platform_type),
+              (const, final));
   // LINT.ThenChange(mock.cc:MockClientDelegation)
 
   xla::ifrt::Client* delegated() const { return delegated_.get(); }
