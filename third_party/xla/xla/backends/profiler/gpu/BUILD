@@ -249,10 +249,9 @@ cc_library(
 
 cc_library(
     name = "cupti_pm_sampler_factory",
-    srcs = ["cupti_pm_sampler_factory.cc","cupti_pm_sampler_impl.cc"],
+    srcs = ["cupti_pm_sampler_factory.cc"],
     hdrs = [
         "cupti_pm_sampler.h",
-        "cupti_pm_sampler_impl.h",
         "cupti_pm_sampler_factory.h",
     ],
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
@@ -268,8 +267,6 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/time",
         "@local_config_cuda//cuda:cupti_headers",
-        ":cupti_status",
-        "//xla/stream_executor/cuda:cuda_status",
     ] + if_cuda_newer_than(
         "12_6",
         [":cupti_pm_sampler_impl"],
