@@ -59,11 +59,46 @@ struct InPlaceFusionOptions {
 class FusionDecision {
  public:
   static FusionDecision Allow() { return FusionDecision(); }
-  static FusionDecision Forbid(absl::string_view explanation) {
-    return FusionDecision(explanation);
-  }
   FusionDecision(const FusionDecision& decision) = default;
 
+#if defined(PLATFORM_GOOGLE)
+  static std::string LocToString(absl::SourceLocation source_location) {
+    return absl::StrCat(" at: ", source_location.file_name(), ":",
+                        source_location.line());
+  }
+  static FusionDecision Forbid(
+      absl::string_view explanation,
+      absl::SourceLocation source_location = absl::SourceLocation::current()) {
+    return FusionDecision(
+        absl::StrCat(explanation, LocToString(source_location)));
+  }
+
+  // If condition is `true` means that we CAN fuse. In that case, explanation is
+  // discarded.
+  FusionDecision(
+      bool condition, absl::string_view explanation,
+      absl::SourceLocation source_location = absl::SourceLocation::current()) {
+    if (!condition) {
+      explanation_ = absl::StrCat(explanation, LocToString(source_location));
+    }
+  }
+
+  explicit FusionDecision(
+      absl::Status status,
+      absl::SourceLocation source_location = absl::SourceLocation::current()) {
+    if (!status.ok()) {
+      explanation_ =
+          absl::StrCat(status.message(), LocToString(source_location));
+    }
+  }
+
+  // We can fuse iff. the decision is `true`. The source location indicates
+  // where an instance was created, making debugging easier without a need to
+  // provide explicit explanation.
+  FusionDecision(  // NOLINT
+      bool decision,
+      absl::SourceLocation source_location = absl::SourceLocation::current());
+#else
   // If condition is `true` means that we CAN fuse. In that case, explanation is
   // discarded.
   FusionDecision(bool condition, absl::string_view explanation) {
@@ -71,20 +106,15 @@ class FusionDecision {
       explanation_ = std::string(explanation);
     }
   }
-
+  static FusionDecision Forbid(absl::string_view explanation) {
+    return FusionDecision(explanation);
+  }
   explicit FusionDecision(absl::Status status) {
     if (!status.ok()) {
       explanation_ = status.message();
     }
   }
 
-#if defined(PLATFORM_GOOGLE)
-  // We can fuse iff. the decision is `true`. The source location indicates
-  // where an instance was created, making debugging easier without a need to
-  // provide explicit explanation.
-  FusionDecision(  // NOLINT
-      bool decision,
-      absl::SourceLocation source_location = absl::SourceLocation::current());
 #endif  // PLATFORM_GOOGLE
 
   // Returns whether it can be fused.
