@@ -536,12 +536,15 @@ TEST(PjRtCpuClientTest, AsyncTransferSetBufferError) {
 TEST(PjRtCpuClientTest, CreateErrorBuffer) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
   xla::Shape shape = ShapeUtil::MakeShape(U32, {3, 2});
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto buffer, client->CreateErrorBuffer(Internal("foobar"), shape,
-                                             client->memory_spaces()[0]));
-  EXPECT_THAT(
-      buffer->ToLiteralSync(),
-      absl_testing::StatusIs(tsl::error::INTERNAL, HasSubstr("foobar")));
+  for (PjRtMemorySpace* memory_space : client->memory_spaces()) {
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto buffer,
+        client->CreateErrorBuffer(Internal("foobar"), shape, memory_space));
+    EXPECT_THAT(
+        buffer->ToLiteralSync(),
+        absl_testing::StatusIs(tsl::error::INTERNAL, HasSubstr("foobar")));
+    EXPECT_EQ(buffer->memory_space(), memory_space);
+  }
 }
 
 TEST(PjRtCpuClientTest, AsyncTransferRawDataToSubBuffer) {

@@ -1359,10 +1359,8 @@ PjRtStreamExecutorClient::CreateErrorBuffer(absl::Status error,
       device, tsl::RCReference<RawSEDeviceMemory>(),
       absl::MakeSpan(&definition_event, 1));
 
-  auto py_buffer = std::make_unique<PjRtStreamExecutorBuffer>(
-      shape, std::move(dummy_device_buffer), this, device,
-      device->default_memory_space().value_or(nullptr));
-  return py_buffer;
+  return std::make_unique<PjRtStreamExecutorBuffer>(
+      shape, std::move(dummy_device_buffer), this, device, memory);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>

@@ -264,9 +264,26 @@ ENTRY main.5 {
 }
 #endif  // defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM)
 
+TEST(StreamExecutorGpuClientTest, CreateErrorBuffer) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(DefaultOptions()));
+
+  xla::Shape shape = ShapeUtil::MakeShape(U32, {3, 2});
+  for (PjRtMemorySpace* memory_space : client->memory_spaces()) {
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto buffer,
+        client->CreateErrorBuffer(Internal("foobar"), shape, memory_space));
+    EXPECT_THAT(
+        buffer->ToLiteralSync(),
+        absl_testing::StatusIs(tsl::error::INTERNAL, HasSubstr("foobar")));
+    EXPECT_EQ(buffer->memory_space(), memory_space);
+  }
+}
+
 TEST(StreamExecutorGpuClientTest, PropagateError) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
                           GetStreamExecutorGpuClient(DefaultOptions()));
+
   auto shape = xla::ShapeUtil::MakeScalarShape(xla::F32);
   absl::Status input_error = absl::InvalidArgumentError("input error");
   TF_ASSERT_OK_AND_ASSIGN(
