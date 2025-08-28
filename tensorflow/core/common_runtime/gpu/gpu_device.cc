@@ -1385,7 +1385,10 @@ Status BaseGPUDeviceFactory::GetDeviceDetails(
   auto desc = std::move(desc_status).value();
   (*details)["device_name"] = desc->name();
 #if GOOGLE_CUDA
-  (*details)["compute_capability"] = desc->cuda_compute_capability().ToString();
+  // Some users of this API expect the compute capability to be in the format
+  // X.Y. Therefore we don't expose the feature extension here.
+  (*details)["compute_capability"] =
+      desc->cuda_compute_capability().WithoutAnyFeatureExtension().ToString();
 #endif  // GOOGLE_CUDA
   return OkStatus();
 }
