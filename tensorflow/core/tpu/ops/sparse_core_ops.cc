@@ -61,9 +61,9 @@ absl::Status ValidateSparseDenseMatmulCustomCombinerGradWithCsrInputShape(
       c->Merge(c->input(preserved_vectors_index),
                c->MakeShape({input_size, max_valency, feature_width}), &shape));
   // `updated_tables` refers to both the embedding table and the associated
-  // slot variables. They all have the same embedding table shape.
+  // slot variables. Each output mirrors its corresponding input table shape.
   for (int i = 0; i < num_tables; ++i) {
-    c->set_output(i, c->input(tables_index));
+    c->set_output(i, c->input(tables_index + i));
   }
   // `updated_weights` simply have a 1D shape of `num_weights`.
   c->set_output(num_tables, c->MakeShape({c->MakeDim(num_weights)}));
@@ -659,7 +659,7 @@ REGISTER_OP("XlaSparseDenseMatmulGradWithCsrInput")
       int num_tables;
       TF_RETURN_IF_ERROR(c->GetAttr("N", &num_tables));
       for (int i = 0; i < num_tables; ++i) {
-        c->set_output(i, c->input(5));
+        c->set_output(i, c->input(5 + i));
       }
       return absl::OkStatus();
     });
