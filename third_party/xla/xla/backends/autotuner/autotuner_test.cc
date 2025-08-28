@@ -110,10 +110,10 @@ class MockProfiler : public Profiler {
 
 class MockAutotunerCache : public AutotunerCacheInterface {
  public:
-  MOCK_METHOD(std::optional<AutotunerCacheEntry>, Lookup,
+  MOCK_METHOD(std::optional<AutotunerCacheEntryProto>, Lookup,
               (const HloInstruction* instr), (override));
   MOCK_METHOD(absl::Status, Insert,
-              (const HloInstruction* instr, AutotunerCacheEntry& entry),
+              (const HloInstruction* instr, AutotunerCacheEntryProto& entry),
               (override));
 };
 
@@ -379,7 +379,7 @@ TEST_F(AutotunerTest, AutotuneModuleWithDuplicateInstructions) {
 
 TEST_F(AutotunerTest, CacheHit) {
   auto cache_manager = std::make_unique<MockAutotunerCache>();
-  AutotunerCacheEntry entry;
+  AutotunerCacheEntryProto entry;
   entry.set_codegen_backend("mock_backend");
   TestConfig test_config;
   GetTestConfig("test_config_2")->UnpackTo(&test_config);

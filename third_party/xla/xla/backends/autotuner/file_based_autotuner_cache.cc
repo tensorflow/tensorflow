@@ -118,17 +118,17 @@ absl::StatusOr<std::string> FileBasedAutotunerCache::GetMapKey(
                       version_);
 }
 
-absl::StatusOr<AutotunerCacheKey> FileBasedAutotunerCache::GetProtoKey(
+absl::StatusOr<AutotunerCacheKeyProto> FileBasedAutotunerCache::GetProtoKey(
     const HloInstruction* instr) {
   TF_ASSIGN_OR_RETURN(const std::string hlo_hash, GetHloHash(instr));
-  AutotunerCacheKey key;
+  AutotunerCacheKeyProto key;
   key.set_hlo_fingerprint(hlo_hash);
   key.set_device_str(DeviceDescriptionToString(cache_config_.device_desc));
   key.set_version(version_);
   return key;
 }
 
-std::optional<AutotunerCacheEntry> FileBasedAutotunerCache::Lookup(
+std::optional<AutotunerCacheEntryProto> FileBasedAutotunerCache::Lookup(
     const HloInstruction* instr) {
   absl::StatusOr<std::string> map_key = GetMapKey(instr);
   if (!map_key.ok()) {
@@ -144,13 +144,13 @@ std::optional<AutotunerCacheEntry> FileBasedAutotunerCache::Lookup(
 }
 
 absl::Status FileBasedAutotunerCache::Insert(const HloInstruction* instr,
-                                             AutotunerCacheEntry& entry) {
+                                             AutotunerCacheEntryProto& entry) {
   if (cache_config_.autotune_cache_mode ==
       FileBasedCacheConfig::CacheMode::READ) {
     return absl::OkStatus();
   }
   TF_ASSIGN_OR_RETURN(const std::string map_key, GetMapKey(instr));
-  TF_ASSIGN_OR_RETURN(AutotunerCacheKey proto_key, GetProtoKey(instr));
+  TF_ASSIGN_OR_RETURN(AutotunerCacheKeyProto proto_key, GetProtoKey(instr));
   absl::MutexLock lock(&mutex_);
   *entry.mutable_key() = proto_key;
   in_memory_cache_[map_key] = entry;
@@ -196,13 +196,13 @@ absl::Status FileBasedAutotunerCache::Load() {
       continue;
     }
 
-    AutotunerCacheEntry entry;
+    AutotunerCacheEntryProto entry;
     if (!tsl::protobuf::TextFormat::ParseFromString(proto_string, &entry)) {
       LOG(ERROR) << "Failed to parse autotuner cache file: " << file_path;
       continue;
     }
 
-    const AutotunerCacheKey& key = entry.key();
+    const AutotunerCacheKeyProto& key = entry.key();
     if (key.device_str() ==
             DeviceDescriptionToString(cache_config_.device_desc) &&
         key.version() == version_) {
@@ -216,8 +216,8 @@ absl::Status FileBasedAutotunerCache::Load() {
   return absl::OkStatus();
 }
 
-absl::Status FileBasedAutotunerCache::Save(absl::string_view map_key,
-                                           const AutotunerCacheEntry& entry) {
+absl::Status FileBasedAutotunerCache::Save(
+    absl::string_view map_key, const AutotunerCacheEntryProto& entry) {
   TF_ASSIGN_OR_RETURN(const std::string file_path, GetCacheFilePath(map_key));
   VLOG(1) << "Saving autotuner entry to: " << file_path;
 

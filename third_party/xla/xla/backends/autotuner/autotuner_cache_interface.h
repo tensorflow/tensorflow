@@ -31,11 +31,11 @@ class AutotunerCacheInterface {
  public:
   virtual ~AutotunerCacheInterface() = default;
 
-  virtual std::optional<AutotunerCacheEntry> Lookup(
+  virtual std::optional<AutotunerCacheEntryProto> Lookup(
       const HloInstruction* instr) = 0;
 
   virtual absl::Status Insert(const HloInstruction* instr,
-                              AutotunerCacheEntry& entry) = 0;
+                              AutotunerCacheEntryProto& entry) = 0;
 };
 
 }  // namespace xla

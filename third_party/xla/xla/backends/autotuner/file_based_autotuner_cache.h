@@ -79,11 +79,11 @@ class FileBasedAutotunerCache : public AutotunerCacheInterface {
   static absl::StatusOr<std::unique_ptr<AutotunerCacheInterface>> Create(
       const FileBasedCacheConfig& cache_config);
 
-  std::optional<AutotunerCacheEntry> Lookup(
+  std::optional<AutotunerCacheEntryProto> Lookup(
       const HloInstruction* instr) override ABSL_LOCKS_EXCLUDED(mutex_);
 
   absl::Status Insert(const HloInstruction* instr,
-                      AutotunerCacheEntry& entry) override
+                      AutotunerCacheEntryProto& entry) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
  private:
@@ -94,7 +94,8 @@ class FileBasedAutotunerCache : public AutotunerCacheInterface {
 
   absl::StatusOr<std::string> GetMapKey(const HloInstruction* instr);
 
-  absl::StatusOr<AutotunerCacheKey> GetProtoKey(const HloInstruction* instr);
+  absl::StatusOr<AutotunerCacheKeyProto> GetProtoKey(
+      const HloInstruction* instr);
 
   absl::StatusOr<std::string> GetCacheFilePath(absl::string_view map_key);
 
@@ -102,13 +103,14 @@ class FileBasedAutotunerCache : public AutotunerCacheInterface {
 
   absl::Status Load() ABSL_LOCKS_EXCLUDED(mutex_);
 
-  absl::Status Save(absl::string_view map_key, const AutotunerCacheEntry& entry)
+  absl::Status Save(absl::string_view map_key,
+                    const AutotunerCacheEntryProto& entry)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   const FileBasedCacheConfig cache_config_;
   const std::string version_;
   absl::Mutex mutex_;
-  absl::flat_hash_map<std::string, AutotunerCacheEntry> in_memory_cache_
+  absl::flat_hash_map<std::string, AutotunerCacheEntryProto> in_memory_cache_
       ABSL_GUARDED_BY(mutex_);
 };
 
