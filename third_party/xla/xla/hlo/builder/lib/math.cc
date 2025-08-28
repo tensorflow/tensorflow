@@ -1214,45 +1214,6 @@ XlaOp Asin(XlaOp x) {
 
 XlaOp Atan(XlaOp x) { return Atan2(x, ScalarLike(x, 1.0)); }
 
-// Hyperbolic trigonometric functions.
-
-// acosh(x) = log(x + sqrt(x^2 - 1))      if x >= -1
-//          = log(x + sqrt((x+1)*(x-1)))
-// acosh(x) = nan                         if x < -1
-//
-// If x^2 will overflow, we approximate sqrt(x^2 - 1) == x and compute as
-// log(2*x) = log(2) + log(x).  (Note this works because negative x never
-// overflows; x < -1 simply yields nan.  This is quite different than asinh!)
-XlaOp Acosh(XlaOp x) {
-  XlaBuilder* b = x.builder();
-  return b->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
-    TF_ASSIGN_OR_RETURN(auto shape, b->GetShape(x));
-
-    auto one = ScalarLike(x, 1);
-    auto neg_one = ScalarLike(x, -1);
-    auto nan = FullLike(x, std::numeric_limits<float>::quiet_NaN());
-
-    // return
-    //
-    //   nan                        if x < -1
-    //   log(x) + log(2)            if x >= sqrt_max_value
-    //   log(x + sqrt((x+1)*(x-1))) otherwise
-    //
-    // TODO(jlebar): For now, we ignore the question of overflow if x is a
-    // complex type, because we don't yet have exhaustive tests for complex trig
-    // functions.
-    auto naive_result = Log(x + Sqrt((x + one) * (x - one)));
-    if (primitive_util::IsComplexType(shape.element_type())) {
-      return naive_result;
-    }
-    auto overflow_result = Log(x) + Log(ScalarLike(x, 2));
-
-    auto sqrt_max_value = Sqrt(MaxFiniteValue(b, shape.element_type()));
-    return Select(Lt(x, neg_one), nan,
-                  Select(Ge(x, sqrt_max_value), overflow_result, naive_result));
-  });
-}
-
 // asinh(x) = log(x + sqrt(x^2 + 1))
 //
 // If x^2 will overflow and x is positive, we can approximate x + sqrt(x^2 + 1)

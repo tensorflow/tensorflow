@@ -705,26 +705,9 @@ func.func @erf_bf16(%arg : tensor<bf16>) -> tensor<bf16> {
 // -----
 
 // CHECK-LABEL: @acosh
-// CHECK-SAME:  %[[VAL_0:.*]]: tensor<f16>) -> tensor<f16> {
+// CHECK-SAME:  %[[ARG:.*]]: tensor<f16>) -> tensor<f16> {
 func.func @acosh(%arg: tensor<f16>) -> tensor<f16> {
-  // CHECK-DAG:   %[[VAL_1:.*]] = mhlo.constant dense<6.550400e+04> : tensor<f16>
-  // CHECK-DAG:   %[[VAL_2:.*]] = mhlo.constant dense<2.000000e+00> : tensor<f16>
-  // CHECK:   %[[VAL_3:.*]] = mhlo.divide %[[VAL_1]], %[[VAL_2]] : tensor<f16>
-  // CHECK:   %[[VAL_4:.*]] = mhlo.compare  GE, %[[VAL_0]], %[[VAL_3]] : (tensor<f16>, tensor<f16>) -> tensor<i1>
-  // CHECK:   %[[VAL_5:.*]] = mhlo.log %[[VAL_2]] : tensor<f16>
-  // CHECK:   %[[VAL_6:.*]] = mhlo.log %[[VAL_0]] : tensor<f16>
-  // CHECK:   %[[VAL_7:.*]] = mhlo.add %[[VAL_5]], %[[VAL_6]] : tensor<f16>
-  // CHECK:   %[[VAL_8:.*]] = mhlo.constant dense<1.000000e+00> : tensor<f16>
-  // CHECK:   %[[VAL_9:.*]] = mhlo.subtract %[[VAL_0]], %[[VAL_8]] : tensor<f16>
-  // CHECK:   %[[VAL_10:.*]] = mhlo.sqrt %[[VAL_9]] : tensor<f16>
-  // CHECK:   %[[VAL_11:.*]] = mhlo.add %[[VAL_0]], %[[VAL_8]] : tensor<f16>
-  // CHECK:   %[[VAL_12:.*]] = mhlo.sqrt %[[VAL_11]] : tensor<f16>
-  // CHECK:   %[[VAL_13:.*]] = mhlo.add %[[VAL_12]], %[[VAL_10]] : tensor<f16>
-  // CHECK:   %[[VAL_14:.*]] = mhlo.multiply %[[VAL_10]], %[[VAL_13]] : tensor<f16>
-  // CHECK:   %[[VAL_15:.*]] = mhlo.log_plus_one %[[VAL_14]] : tensor<f16>
-  // CHECK:   %[[VAL_16:.*]] = mhlo.select %[[VAL_4]], %[[VAL_7]], %[[VAL_15]] : tensor<i1>, tensor<f16>
-  // CHECK:   return %[[VAL_16]] : tensor<f16>
-  // CHECK: }
+  // CHECK:  mhlo.acosh %[[ARG]]
   %1 = "chlo.acosh"(%arg) : (tensor<f16>) -> tensor<f16>
   func.return %1 : tensor<f16>
 }
