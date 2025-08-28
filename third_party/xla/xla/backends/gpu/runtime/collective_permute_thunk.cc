@@ -283,7 +283,7 @@ absl::StatusOr<bool> CollectivePermuteStartThunk::RunCollective(
                         comm_handle.comm->NumRanks());
 
     auto rendezvous_name = absl::StrFormat(
-        "rendezvous before calling collective-permute; run_id=%d; op id:%d; "
+        "rendezvous before calling collective-permute; run_id=%ld; op id:%d; "
         "num_local_participants:%d",
         params.collective_params->run_id.ToInt(), config_.config.op_id,
         num_local_participants);
@@ -325,7 +325,7 @@ absl::StatusOr<bool> CollectivePermuteStartThunk::RunCollective(
                         comm_handle.comm->NumRanks());
 
     auto rendezvous_name = absl::StrFormat(
-        "rendezvous after calling collective-permute; run_id=%d; op id:%d; "
+        "rendezvous after calling collective-permute; run_id=%ld; op id:%d; "
         "num_local_participants:%d",
         params.collective_params->run_id.ToInt(), config_.config.op_id,
         num_local_participants);
