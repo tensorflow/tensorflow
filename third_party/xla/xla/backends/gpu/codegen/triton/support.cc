@@ -642,9 +642,10 @@ CodegenDecision IsTritonSupportedInstructionImpl(
       return CodegenDecision::Forbid(
           "dynamic slice is supported but not enabled yet");
     case HloOpcode::kBitcast:
-      if (instr.shape().element_type() !=
-          instr.operand(0)->shape().element_type()) {
-        return CodegenDecision::Forbid("Bitcast-convert is not supported");
+      if (ShapeUtil::ElementsIn(instr.operand(0)->shape()) !=
+          ShapeUtil::ElementsIn(instr.shape())) {
+        return CodegenDecision::Forbid(
+            "only bitcasts with the same number of elements are supported");
       }
       return CodegenDecision(instr.shape().element_type() != S4,
                              "S4 is not supported.");

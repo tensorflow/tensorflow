@@ -114,6 +114,7 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/permutation_util.h"
+#include "xla/primitive_util.h"
 #include "xla/service/dump.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -661,9 +662,31 @@ Value EmitTiledTranspose(EmitterLocOpBuilder& b, ArrayRef<int64_t> tile_sizes,
 absl::StatusOr<ScalarOrTensor> EmitTiledBitcast(
     EmitterLocOpBuilder& b, const TiledHloInstruction& tiled_bitcast,
     Value input) {
+  Shape input_shape = tiled_bitcast.hlo()->operand(0)->shape();
+  const Shape& output_shape = tiled_bitcast.hlo()->shape();
+  // If the bitcast changes the element type to an element type of the same
+  // bitwidth, we need to emit a ttir::BitcastOp.
+  if (input_shape.element_type() != output_shape.element_type()) {
+    if (primitive_util::BitWidth(input_shape.element_type()) !=
+        primitive_util::BitWidth(output_shape.element_type())) {
+      return absl::InvalidArgumentError(
+          "Bitcast with different bitwidth for operand and output shape "
+          "element type is not yet supported.");
+    }
+    TF_ASSIGN_OR_RETURN(Type output_element_type,
+                        TritonType(b, output_shape.element_type()));
+    Type output_type =
+        mlir::isa<TensorValue>(input)
+            ? mlir::RankedTensorType::get(
+                  GetPaddedTileSizes(tiled_bitcast.operand(0)->tile_sizes()),
+                  output_element_type)
+            : output_element_type;
+    input = b.create<ttir::BitcastOp>(output_type, input);
+    input_shape.set_element_type(output_shape.element_type());
+  }
+
   // Any Bitcast is decomposable to a transpose+reshape+transpose.
-  auto trt = ShapeUtil::DecomposeBitcastToTrt(
-      tiled_bitcast.hlo()->operand(0)->shape(), tiled_bitcast.hlo()->shape());
+  auto trt = ShapeUtil::DecomposeBitcastToTrt(input_shape, output_shape);
 
   // When replacing the `bitcast` with `transpose` + `reshape` + `transpose` we
   // need to provide the tile sizes at output of each op. We already have the

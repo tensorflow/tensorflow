@@ -1893,6 +1893,38 @@ backend_config={
   EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_text, kExactMatch));
 }
 
+// Parameterized the test to make sure that non-canonical layouts are handled
+// correctly when TMA is enabled.
+TEST_P(
+    TmaParameterizedTritonEmitterTest,
+    SimpleBitcastNonNormalizedOutputLayoutAndBitcastConvertIsLoweredCorrectly) {
+  constexpr absl::string_view kHloTextTemplate = R"(
+triton_computation {
+p = f32[64,15] parameter(0)
+bitcast = s32[15,64]{0,1} bitcast(p)
+ROOT negate = s32[15,64]{0,1} negate(bitcast)
+}
+
+ENTRY entry_computation {
+p = f32[64,15] parameter(0)
+ROOT fusion = s32[15,64]{0,1} fusion(p), kind=kCustom, calls=triton_computation,
+backend_config={
+"fusion_backend_config":{
+ "kind":"__triton",
+ "block_level_fusion_config":{
+   "output_tiles":[{"sizes":["15","32"]}],
+   "num_warps":"1",
+   "num_ctas":"1",
+   "num_stages":"1",
+   "is_tma_allowed":"$0"}}}
+})";
+
+  const bool is_tma_allowed = GetParam();
+  const std::string hlo_text =
+      absl::Substitute(kHloTextTemplate, is_tma_allowed);
+  EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_text, kExactMatch));
+}
+
 // When TMA is enabled, it is important to test this in an end-to-end fashion.
 // This test covers the logic that adjusts box_dims based on the swizzle mode.
 // See tensorflow/compiler/xla/backends/gpu/codegen/triton/tma_utils.cc.
