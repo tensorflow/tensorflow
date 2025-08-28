@@ -275,7 +275,7 @@ absl::StatusOr<Autotuner::Config> Autotuner::ProfileAndPickBest(
     }
   }
 
-  AutotunerCacheEntry cache_entry;
+  AutotunerCacheEntryProto cache_entry;
   cache_entry.set_codegen_backend(min_duration_config->codegen_backend->name());
   *cache_entry.mutable_backend_config() = *best_config->backend_config;
   if (cache_) {

@@ -118,7 +118,7 @@ TEST_F(FileBasedAutotunerCacheTest, InsertAndLookup) {
                       GetConfig(CreateDummyDeviceDescription(),
                                 FileBasedCacheConfig::CacheMode::READ_WRITE)));
   auto instr = CreateDummyInstr("hlo1");
-  AutotunerCacheEntry entry;
+  AutotunerCacheEntryProto entry;
   entry.set_codegen_backend("TestBackend");
   *entry.mutable_backend_config() = CreateDummyBackendConfig();
 
@@ -128,7 +128,7 @@ TEST_F(FileBasedAutotunerCacheTest, InsertAndLookup) {
 
 TEST_F(FileBasedAutotunerCacheTest, SaveAndLoad) {
   auto instr = CreateDummyInstr("hlo2");
-  AutotunerCacheEntry entry;
+  AutotunerCacheEntryProto entry;
   entry.set_codegen_backend("TestBackend");
   *entry.mutable_backend_config() = CreateDummyBackendConfig();
 
@@ -153,7 +153,7 @@ TEST_F(FileBasedAutotunerCacheTest, SaveAndLoad) {
 
 TEST_F(FileBasedAutotunerCacheTest, LoadWithDifferentDevice) {
   auto instr = CreateDummyInstr("hlo2");
-  AutotunerCacheEntry entry;
+  AutotunerCacheEntryProto entry;
   entry.set_codegen_backend("TestBackend");
   *entry.mutable_backend_config() = CreateDummyBackendConfig();
 
@@ -178,7 +178,7 @@ TEST_F(FileBasedAutotunerCacheTest, LoadWithDifferentDevice) {
 
 TEST_F(FileBasedAutotunerCacheTest, LoadWithDifferentVersion) {
   auto instr = CreateDummyInstr("hlo2");
-  AutotunerCacheEntry entry;
+  AutotunerCacheEntryProto entry;
   entry.set_codegen_backend("TestBackend");
   *entry.mutable_backend_config() = CreateDummyBackendConfig();
 
@@ -204,7 +204,7 @@ TEST_F(FileBasedAutotunerCacheTest, LoadWithDifferentVersion) {
 
 TEST_F(FileBasedAutotunerCacheTest, ReadOnlyMode) {
   auto instr = CreateDummyInstr("hlo3");
-  AutotunerCacheEntry entry;
+  AutotunerCacheEntryProto entry;
   entry.set_codegen_backend("TestBackend");
   *entry.mutable_backend_config() = CreateDummyBackendConfig();
 
@@ -227,7 +227,7 @@ TEST_F(FileBasedAutotunerCacheTest, ReadOnlyMode) {
 
   // Insert a new entry.
   auto instr2 = CreateDummyInstr("hlo4");
-  AutotunerCacheEntry entry2;
+  AutotunerCacheEntryProto entry2;
   entry2.set_codegen_backend("AnotherBackend");
   *entry2.mutable_backend_config() = CreateDummyBackendConfig();
   TF_ASSERT_OK(cache->Insert(instr2.get(), entry2));
@@ -251,13 +251,13 @@ TEST_F(FileBasedAutotunerCacheTest, OverwriteEntry) {
                                 FileBasedCacheConfig::CacheMode::READ_WRITE)));
   auto instr = CreateDummyInstr("hlo5");
 
-  AutotunerCacheEntry entry1;
+  AutotunerCacheEntryProto entry1;
   entry1.set_codegen_backend("BackendV1");
   *entry1.mutable_backend_config() = CreateDummyBackendConfig();
   TF_ASSERT_OK(cache->Insert(instr.get(), entry1));
   EXPECT_THAT(cache->Lookup(instr.get()), Optional(EqualsProto(entry1)));
 
-  AutotunerCacheEntry entry2;
+  AutotunerCacheEntryProto entry2;
   entry2.set_codegen_backend("BackendV2");
   *entry2.mutable_backend_config() = CreateDummyBackendConfig();
   TF_ASSERT_OK(cache->Insert(instr.get(), entry2));
