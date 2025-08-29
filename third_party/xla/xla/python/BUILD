@@ -5,7 +5,7 @@ load(
     "xla_cc_test",
     "xla_py_test_deps",
 )
-load("//xla/python:package_groups.bzl", "XLA_PYTHON_XLA_CLIENT_USERS", "XLA_PYTHON_XLA_EXTENSION_USERS")
+load("//xla/python:package_groups.bzl", "XLA_PYTHON_PROFILER_USERS", "XLA_PYTHON_XLA_CLIENT_USERS", "XLA_PYTHON_XLA_EXTENSION_USERS")
 load("//xla/python:pywrap.bzl", "nanobind_pywrap_extension")
 load(
     "//xla/tsl:tsl.bzl",
@@ -422,6 +422,18 @@ py_strict_test(
             "//pyglib:gfile",
             "@absl_py//absl/testing:absltest",
         ]),
+)
+
+nanobind_pywrap_extension(
+    name = "_gpu_ondevice_tracing",
+    srcs = ["gpu_ondevice_tracing.cc"],
+    pytype_srcs = ["_gpu_ondevice_tracing.pyi"],
+    visibility = internal_visibility([":jax"] + XLA_PYTHON_PROFILER_USERS),
+    deps = [
+        "//xla/tsl/profiler/backends/gpu:ondevice_event_receiver",
+        "//xla/tsl/profiler/backends/gpu:ondevice_trace_event",
+        "@nanobind",
+    ],
 )
 
 cc_library(
