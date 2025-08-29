@@ -48,6 +48,19 @@ absl::StatusOr<int64_t> GetDeviceMemoryInBytes(absl::string_view device_kind) {
   if (device_kind == "TPU v6 lite") {
     return 32LL * kGB;
   }
+  if (device_kind == "GPU RTX A6000") {
+    return 16LL * kGB;
+  }
+  if (device_kind == "GPU H100") {
+    return 32LL * kGB;
+  }
+  if (device_kind == "GPU H200") {
+    return 32LL * kGB;
+  }
+  if (device_kind == "GPU H200") {
+    // TODO(appujee): Update this once we have the H200 memory bandwidth.
+    return 64LL * kGB;
+  }
   return absl::InvalidArgumentError(absl::StrCat(
       "`GetDeviceMemoryInBytes` is not supported for device kind: ",
       device_kind));
