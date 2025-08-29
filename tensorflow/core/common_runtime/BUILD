@@ -3620,6 +3620,7 @@ tf_cc_test(
 tf_cc_fuzz_test(
     name = "graph_constructor_fuzz",
     srcs = ["graph_constructor_fuzz.cc"],
+    shard_count = 10,
     tags = ["no_oss"],
     deps = [
         ":core",
