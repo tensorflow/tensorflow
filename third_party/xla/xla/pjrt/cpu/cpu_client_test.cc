@@ -356,6 +356,69 @@ TEST(PjRtCpuClientTest, UnoptimizedHloSnapshot) {
       LiteralUtil::CreateR2<float>({{10.0, 20.0}, {30.0, 40.0}, {50.0, 60.0}}));
 }
 
+TEST(PjRtCpuClientTest, DumpOnDeserialize) {
+  static constexpr char kProgram[] = R"(
+    HloModule add
+    ENTRY add {
+      x = f32[3,2] parameter(0)
+      y = f32[3,2] parameter(1)
+      ROOT add = f32[3,2] add(x, y)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          ParseAndReturnUnverifiedModule(kProgram, {}));
+  XlaComputation xla_computation(hlo_module->ToProto());
+
+  tsl::Env* env = tsl::Env::Default();
+  EXPECT_TRUE(env);
+  std::string compile_dump_dir;
+  EXPECT_TRUE(env->LocalTempFilename(&compile_dump_dir));
+  CompileOptions compile_options;
+  compile_options.executable_build_options.mutable_debug_options()
+      ->set_xla_dump_to(compile_dump_dir);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executable,
+      client->CompileAndLoad(xla_computation, compile_options));
+  std::string compile_dump_name, compile_dump_contents;
+  {
+    std::vector<std::string> matches;
+    TF_ASSERT_OK(env->GetMatchingPaths(
+        tsl::io::JoinPath(compile_dump_dir, "*after_optimizations.txt"),
+        &matches));
+    EXPECT_THAT(matches, ::testing::SizeIs(1));
+    compile_dump_name = std::move(matches.front());
+    TF_ASSERT_OK(
+        tsl::ReadFileToString(env, compile_dump_name, &compile_dump_contents));
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(std::string serialized,
+                          executable->SerializeExecutable());
+
+  std::string deserialize_dump_dir;
+  EXPECT_TRUE(env->LocalTempFilename(&deserialize_dump_dir));
+  EXPECT_NE(compile_dump_dir, deserialize_dump_dir);
+  CompileOptions deserialize_options;
+  deserialize_options.executable_build_options.mutable_debug_options()
+      ->set_xla_dump_to(deserialize_dump_dir);
+  LoadOptions load_options;
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtLoadedExecutable> reloaded_executable,
+      client->LoadSerializedExecutable(serialized, deserialize_options,
+                                       load_options));
+  std::string deserialize_dump_name, deserialize_dump_contents;
+  {
+    std::vector<std::string> matches;
+    TF_ASSERT_OK(env->GetMatchingPaths(
+        tsl::io::JoinPath(deserialize_dump_dir, "*after_optimizations.txt"),
+        &matches));
+    EXPECT_THAT(matches, ::testing::SizeIs(1));
+    deserialize_dump_name = std::move(matches.front());
+    TF_ASSERT_OK(tsl::ReadFileToString(env, deserialize_dump_name,
+                                       &deserialize_dump_contents));
+  }
+  EXPECT_EQ(compile_dump_contents, deserialize_dump_contents);
+}
+
 TEST(PjRtCpuClientTest, AsyncTransferRawData) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
   xla::Shape shape = ShapeUtil::MakeShape(U32, {3, 2});
