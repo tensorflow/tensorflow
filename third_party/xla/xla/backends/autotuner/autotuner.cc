@@ -223,7 +223,7 @@ absl::StatusOr<Autotuner::Config> Autotuner::ProfileAndPickBest(
     absl::StatusOr<ProfileResult> profile_result =
         profiler_->Profile(candidates[i].executable.get(), *input_buffers);
     if (!profile_result.ok()) {
-      VLOG(2) << "Failed to profile config " << i << ": "
+      VLOG(4) << "Failed to profile config " << i << ": "
               << profile_result.status();
       continue;
     }
@@ -274,6 +274,9 @@ absl::StatusOr<Autotuner::Config> Autotuner::ProfileAndPickBest(
       best_config = best_scratch_bytes_config;
     }
   }
+
+  VLOG(1) << "Picked config: " << best_config->codegen_backend->name() << " "
+          << best_config->backend_config->ShortDebugString();
 
   AutotunerCacheEntry cache_entry;
   cache_entry.set_codegen_backend(min_duration_config->codegen_backend->name());
