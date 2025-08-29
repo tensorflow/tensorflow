@@ -1412,7 +1412,10 @@ ifrt::PlatformId NanoIfrtClient::platform_id() const {
 }
 
 const ifrt::AttributeMap& NanoIfrtClient::Attributes() const {
-  static auto attributes = new ifrt::AttributeMap({});
+  static auto attributes = new ifrt::AttributeMap({
+      {"supports_executable_serialization",
+       ifrt::AttributeMap::BoolValue(false)},
+  });
   return *attributes;
 }
 
