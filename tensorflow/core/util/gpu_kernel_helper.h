@@ -134,9 +134,17 @@ Status GpuLaunchKernel(void (*function)(Ts...), dim3 grid_dim, dim3 block_dim,
       return errors::Internal(cudaGetErrorString(result));
     }
 #elif TENSORFLOW_USE_ROCM
-    hipLaunchKernelGGL(function, grid_dim, block_dim, shared_memory_size_bytes,
-                       stream, std::forward<Args>(arguments)...);
-    TF_RETURN_IF_CUDA_ERROR(hipGetLastError());
+    constexpr size_t count = sizeof...(Args);
+    auto tup_ = std::tuple<Args...>{arguments...};
+    auto tup = validateArgsCountType(function, tup_);
+    void* _Args[count];
+    pArgs<0>(tup, _Args);
+    auto k = reinterpret_cast<void*>(function);
+    auto result =
+        hipLaunchKernel(k, grid_dim, block_dim, _Args, shared_memory_size_bytes, stream);
+    if (result != hipSuccess) {
+      return errors::Internal(hipGetErrorString(result));
+    }
 #endif
   }
   return OkStatus();
