@@ -78,8 +78,8 @@ class PreBufferAssignmentFusionInfo : public FusionInfo {
       : FusionInfo(analysis) {}
 
   bool CanEmitDynamicUpdateSliceInPlace() const override {
-    auto ret = CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
-        analysis().fusion(), /*get_allocation_slice=*/{});
+    auto ret = CanEmitFusedDynamicUpdateSliceInPlace(
+        analysis().fusion(), /*get_allocation_slice=*/nullptr);
     return ret.value_or(false);
   }
 
