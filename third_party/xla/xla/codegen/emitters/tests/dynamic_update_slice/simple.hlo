@@ -1,4 +1,6 @@
 // RUN: gpu_fusion_to_mlir %s | emitters_opt -xla-test-optimize |\
+// RUN:   FileCheck %s --check-prefixes=CHECK,CHECK-GPU
+// RUN: cpu_fusion_to_mlir %s | emitters_opt -xla-test-optimize |\
 // RUN:   FileCheck %s
 // RUN: gpu_test_correctness %s --bijection_inputs=updated:1
 // RUN: cpu_test_correctness %s
@@ -31,7 +33,7 @@ ENTRY main {
 // CHECK-DAG:   %[[C_24:.*]] = arith.constant 24
 // CHECK-DAG:   %[[C_15:.*]] = arith.constant 15
 // CHECK-DAG:   %[[C_0:.*]] = arith.constant 0
-// CHECK:       %[[THREAD_ID:.*]] = gpu.thread_id  x
+// CHECK-GPU:   scf.forall (%[[WORKITEM_ID:.*]]) in (30)
 
 // CHECK:     xla.loop
 // CHECK-SAME:  -> (%[[RA:.*]], %[[RB:.*]]) in
