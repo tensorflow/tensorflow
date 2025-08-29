@@ -6690,9 +6690,12 @@ class DecodeImageTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       
       # Check shape compatibility with automatic channel detection.
       shape_list_unknown = decoded_unknown.get_shape().as_list()
-      self.assertTrue(shape_list_unknown[0] is None or shape_list_unknown[0] == 2)
-      self.assertTrue(shape_list_unknown[1] is None or shape_list_unknown[1] == 2)
-      self.assertTrue(shape_list_unknown[2] is None or shape_list_unknown[2] == 3)
+      self.assertTrue(shape_list_unknown[0] is None or 
+                      shape_list_unknown[0] == 2)
+      self.assertTrue(shape_list_unknown[1] is None or 
+                      shape_list_unknown[1] == 2)
+      self.assertTrue(shape_list_unknown[2] is None or 
+                      shape_list_unknown[2] == 3)
 
 
 if __name__ == "__main__":
