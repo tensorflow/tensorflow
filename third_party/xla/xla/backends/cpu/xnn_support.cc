@@ -32,7 +32,6 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/runtime/dot_lib.h"
 #include "xla/backends/cpu/runtime/xnnpack/xnn_interop.h"
-#include "xla/backends/cpu/xnn_gemm_config.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -114,16 +113,13 @@ absl::StatusOr<bool> IsDotSupportedByXnn(
     return true;
   }
 
-  const XnnGemm gemm{/*dot_canonical_dims=*/dot_canonical_dims,
-                     /*lhs_dtype=*/lhs_shape.element_type(),
-                     /*rhs_dtype=*/rhs_shape.element_type(),
-                     /*out_dtype=*/out_shape.element_type()};
-  switch (GetXnnGemmConfig().Evaluate(gemm, cpu_features)) {
-    case XnnGemmConfig::Opinion::kAccept:
-      return true;
-    default:
-      return false;
+  // TODO(b/385370486): XNNPACK does not tile by `K` and can be a lot slower
+  // than the default Eigen implementation.
+  if (dot_canonical_dims.k / dot_canonical_dims.m > 5 ||
+      dot_canonical_dims.k / dot_canonical_dims.n > 5) {
+    return false;
   }
+  return true;
 }
 
 const absl::flat_hash_map<HloOpcode, xnn_unary_operator>& GetXnnUnaryOpMap() {
