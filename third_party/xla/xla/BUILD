@@ -476,6 +476,35 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "shape_pool",
+    srcs = ["shape_pool.cc"],
+    hdrs = ["shape_pool.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":shape_util",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+xla_cc_test(
+    name = "shape_pool_test",
+    srcs = ["shape_pool_test.cc"],
+    deps = [
+        ":literal_util",
+        ":shape_pool",
+        "//xla:shape_util",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_benchmark",
+        "//xla/tsl/platform:test_main",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 tf_proto_library(
     name = "shape_util_proto",
     srcs = ["shape_util.proto"],
