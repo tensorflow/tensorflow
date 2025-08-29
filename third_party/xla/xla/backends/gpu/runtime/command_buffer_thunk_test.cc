@@ -854,7 +854,7 @@ TEST(CommandBufferThunkTest, ChildGemmCmd) {
       CommandBufferCmdExecutor::Create(std::move(child_commands), serialize));
 
   CommandBufferCmdSequence commands;
-  commands.Emplace<ChildCmd>(std::move(child_executor), ResourceUseVector{});
+  commands.Emplace<ChildCmd>(std::move(child_executor));
 
   TF_ASSERT_OK_AND_ASSIGN(
       CommandBufferCmdExecutor executor,
