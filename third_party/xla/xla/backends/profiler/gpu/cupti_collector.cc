@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/profiler/gpu/cupti_collector.h"
 
 #include <climits>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -688,6 +689,9 @@ void PmSamples::PopulateCounterLine(XPlaneBuilder* plane,
   for (auto& sampler_range : sampler_ranges_) {
     DCHECK_EQ(metrics_.size(), sampler_range.metric_values.size());
     for (int i = 0; i < sampler_range.metric_values.size(); ++i) {
+      if (std::isnan(sampler_range.metric_values[i])) {
+        continue;
+      }
       XEventBuilder event = line.AddEvent(
           tsl::profiler::Timespan(
               tsl::profiler::NanoToPico(sampler_range.start_timestamp_ns -
