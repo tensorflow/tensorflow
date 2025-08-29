@@ -1041,9 +1041,6 @@ absl::StatusOr<ScalarOrTensor> EmitDot(
     int64_t rhs_contracting_dim_idx =
         dot.dot_dimension_numbers().rhs_contracting_dimensions(0);
 
-    // TODO(b/393299275): masking is only necessary during the last iteration of
-    // the loop. We should evaluate whether adding a conditional mask helps or
-    // hinders performance for Triton.
     Value ki_i32 = Cast(b, ki, b.getI32Type());
     TF_ASSIGN_OR_RETURN(
         Value lhs, MaskDotOperand(b, *tiled_hlo_dot.operand(0), dot_args[0],
