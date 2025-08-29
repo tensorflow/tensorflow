@@ -450,7 +450,8 @@ absl::Status CommandBufferCmdExecutor::Initialize(
 absl::Status CommandBufferCmdExecutor::Record(
     const Thunk::ExecuteParams& execute_params,
     const CommandBufferCmd::RecordParams& record_params,
-    se::CommandBuffer* command_buffer) {
+    CommandBufferCmd::RecordAction record_action,
+    se::CommandBuffer* command_buffer, bool finalize) {
   VLOG(3) << "Record " << commands_.size() << " commands into command buffer";
 
   if (command_buffer->state() == se::CommandBuffer::State::kFinalized) {
@@ -461,12 +462,16 @@ absl::Status CommandBufferCmdExecutor::Record(
     TF_RETURN_IF_ERROR(
         RecordUpdate(execute_params, record_params, command_buffer));
   } else {
-    TF_RETURN_IF_ERROR(
-        RecordCreate(execute_params, record_params, command_buffer, {})
-            .status());
+    auto* create = std::get_if<CommandBufferCmd::RecordCreate>(&record_action);
+    CHECK(create);
+    TF_RETURN_IF_ERROR(RecordCreate(execute_params, record_params,
+                                    command_buffer, create->dependencies)
+                           .status());
   }
-
-  return command_buffer->Finalize();
+  if (finalize) {
+    return command_buffer->Finalize();
+  }
+  return absl::OkStatus();
 }
 
 absl::StatusOr<std::vector<const se::CommandBuffer::Command*>>
@@ -656,6 +661,48 @@ bool CommandBufferCmdExecutor::IsSource(CommandId id) const {
 bool CommandBufferCmdExecutor::IsSink(CommandId id) const {
   return execution_graph_ ? execution_graph_->is_sink(id)
                           : id + 1 == commands_.size();
+}
+
+std::vector<const se::CommandBuffer::Command*>
+CommandBufferCmdExecutor::SinkCommands(
+    const RecordParams& record_params,
+    se::CommandBuffer* command_buffer) const {
+  std::vector<CommandId> sink_ids;
+  if (execution_graph_) {
+    auto sink_span = execution_graph_->sink();
+    sink_ids.assign(sink_span.begin(), sink_span.end());
+  } else {
+    sink_ids.push_back(commands_.size() - 1);
+  }
+
+  std::vector<const se::CommandBuffer::Command*> sink_commands;
+  for (CommandId id : sink_ids) {
+    auto* record_state = record_params.state.GetOrNull<RecordState>(
+        commands_[id].get(), command_buffer);
+    sink_commands.push_back(record_state->command);
+  }
+  return sink_commands;
+}
+
+std::vector<const se::CommandBuffer::Command*>
+CommandBufferCmdExecutor::SourceCommands(
+    const RecordParams& record_params,
+    se::CommandBuffer* command_buffer) const {
+  std::vector<CommandId> source_ids;
+  if (execution_graph_) {
+    auto source_span = execution_graph_->source();
+    source_ids.assign(source_span.begin(), source_span.end());
+  } else {
+    source_ids.push_back(0);
+  }
+
+  std::vector<const se::CommandBuffer::Command*> source_commands;
+  for (CommandId id : source_ids) {
+    auto* record_state = record_params.state.GetOrNull<RecordState>(
+        commands_[id].get(), command_buffer);
+    source_commands.push_back(record_state->command);
+  }
+  return source_commands;
 }
 
 std::vector<const se::CommandBuffer::Command*>
@@ -1285,6 +1332,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> ChildCmd::Record(
   VLOG(5) << "Record ChildCmd " << child_commands_.size() << " commands";
   CHECK(child_command_buffer_ != nullptr);
   TF_RETURN_IF_ERROR(child_commands_.Record(execute_params, record_params,
+                                            CommandBufferCmd::RecordCreate{},
                                             child_command_buffer_.get()));
   return Handle(
       std::move(record_action),
@@ -2419,6 +2467,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> DynamicSliceFusionCmd::Record(
           ->CreateCommandBuffer(se::CommandBuffer::Mode::kNested)
           .value();
   TF_RETURN_IF_ERROR(embedded_commands_.Record(new_params, record_params,
+                                               CommandBufferCmd::RecordCreate{},
                                                nested_command_buffer.get()));
 
   return Handle(

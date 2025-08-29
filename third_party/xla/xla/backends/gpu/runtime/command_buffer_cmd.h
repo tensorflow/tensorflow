@@ -412,12 +412,26 @@ class CommandBufferCmdExecutor {
 
   // Records commands into the command buffer. This method automatically
   // switches between `RecordCreate` or `RecordUpdate` depending on the command
-  // buffer state. This method assumes that no other command buffer sequence is
-  // recorded into the same command buffer, and doesn't set up initial
-  // dependencies for recorded commands.
+  // buffer state.
+
+  // This Record function allows multiple CommandbufferCmdEXecutor to be
+  // recorded into a single command buffer. e.g. we can have Executor A, B, C to
+  // be recorded into the same command buffer in the order of A -> B -> C. In
+  // this pattern, B's source commands will depend on A's sink commands, and C's
+  // source commands will also depend on B's sink commands.
+
+  // If record_action is `RecordCreate`, it will set up initial
+  // dependencies for recorded commands by the `dependencies` parameter.
+  // If record_action is `RecordUpdate`, it will only update previously
+  // recorded commands' dependencies, no other actions.
+
+  // If finalize is true, it will finalize the command buffer after recording,
+  // if not, this allows the command_buffer to further record other executors
+  // into the this command buffer.
   absl::Status Record(const Thunk::ExecuteParams& execute_params,
                       const RecordParams& record_params,
-                      se::CommandBuffer* command_buffer);
+                      CommandBufferCmd::RecordAction record_action,
+                      se::CommandBuffer* command_buffer, bool finalize = true);
 
   // Records command creation into the command buffer. Command buffer must be
   // in create state. The next command sequence recorded into the same command
@@ -453,6 +467,16 @@ class CommandBufferCmdExecutor {
     return absl::c_any_of(commands_,
                           [](const auto& cmd) { return cmd->force_update(); });
   }
+
+  // Returns all source commands for current command executor.
+  std::vector<const se::CommandBuffer::Command*> SourceCommands(
+      const RecordParams& record_params,
+      se::CommandBuffer* command_buffer) const;
+
+  // Returns all sink commands for current command executor.
+  std::vector<const se::CommandBuffer::Command*> SinkCommands(
+      const RecordParams& record_params,
+      se::CommandBuffer* command_buffer) const;
 
   // Renders the execution graph using default renderer. Returns url of the
   // rendered graph, or an error if rendering failed.

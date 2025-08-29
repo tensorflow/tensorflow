@@ -201,6 +201,7 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
                                                     std::move(updated_allocs),
                                                     /*is_initialization=*/true};
     TF_RETURN_IF_ERROR(commands_.Record(execute_params, record_params,
+                                        CommandBufferCmd::RecordCreate{},
                                         cmd_buffer->command_buffer.get()));
 
     uint64_t end_micros = tsl::Env::Default()->NowMicros();
@@ -261,6 +262,7 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
     CommandBufferCmd::RecordParams record_params = {cmd_buffer->state,
                                                     std::move(updated_allocs)};
     TF_RETURN_IF_ERROR(commands_.Record(params, record_params,
+                                        CommandBufferCmd::RecordCreate{},
                                         cmd_buffer->command_buffer.get()));
 
     uint64_t end_micros = tsl::Env::Default()->NowMicros();
