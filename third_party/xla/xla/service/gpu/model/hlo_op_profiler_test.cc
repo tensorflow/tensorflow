@@ -52,6 +52,11 @@ TEST_F(HloOpProfilerTest, BasicMeasurementsAreCorrect) {
                 .value()
                 .clock_cycles(),
             1000);
+  // c128 log is slow.
+  EXPECT_GT(profiler.MeasureClockCyclesPerOp(HloOpcode::kLog, C128)
+                .value()
+                .clock_cycles(),
+            1000);
 }
 
 TEST_F(HloOpProfilerTest, UnsupportedCombinationsDoNotCrash) {
