@@ -174,5 +174,16 @@ TEST(GpuExecutableTest, ComputeComputationLayout) {
             ShapeLayout(ShapeUtil::MakeShape(F64, {2})));
 }
 
+TEST(GpuExecutableTest, ExecutableName) {
+  GpuExecutable::Params params;
+  params.module_name = "test_module";
+  params.executable =
+      std::make_unique<SequentialThunk>(Thunk::ThunkInfo{}, ThunkSequence{});
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> executable,
+                          GpuExecutable::Create(std::move(params)));
+  EXPECT_THAT(executable->name(), "test_module");
+}
+
 }  // namespace
 }  // namespace xla::gpu

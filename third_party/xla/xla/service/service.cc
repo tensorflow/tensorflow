@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/service/service.h"
 
-#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -74,11 +73,7 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
 #include "tsl/platform/protobuf.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 
 namespace xla {
@@ -910,7 +905,7 @@ absl::StatusOr<std::unique_ptr<GlobalData>> Service::Execute(
       ExecuteAndRegisterResult(
           executable.get(), replicated_arguments, execute_backend_.get(),
           SingleComputationDeviceHandle(),
-          "result of " + executable->module().name(), execution_profile));
+          absl::StrCat("result of ", executable->name()), execution_profile));
 
   if (executable->dumping_snapshot()) {
     TF_ASSIGN_OR_RETURN(const ShapedBuffer* result_buffer,
