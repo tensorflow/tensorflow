@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/collectives/all_reduce_splitter.h"
 #include "xla/service/gpu/transforms/scatter_expander.h"
 #include "xla/service/gpu/transforms/scatter_slice_simplifier.h"
+#include "xla/service/hlo_graph_dumper.h"
 #include "xla/service/map_inliner.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/reduce_scatter_reassociate.h"
