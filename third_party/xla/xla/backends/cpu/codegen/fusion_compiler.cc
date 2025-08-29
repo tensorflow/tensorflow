@@ -146,6 +146,7 @@ static void AddLoopTransformationPasses(mlir::OpPassManager& pm,
   //     emitters::CreateVectorizeLoadsAndStoresPass(/*target_type=*/"cpu"));
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
+  pm.addNestedPass<mlir::func::FuncOp>(CreateAddLoopUnrollFlagsPass());
 }
 
 static void AddLoweringPasses(mlir::OpPassManager& pm, int32_t vector_width,
