@@ -38,6 +38,8 @@ limitations under the License.
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/layout.h"
+#include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
@@ -157,6 +159,23 @@ TEST(PjRtCApiClientTest, TopologyPlatformIdAndName) {
   ASSERT_NE(topology, nullptr);
   EXPECT_EQ(topology->platform_name(), xla::CpuName());
   EXPECT_EQ(topology->platform_id(), xla::CpuId());
+}
+
+TEST(PjRtCApiClientTest, TopologyGetDefaultLayout) {
+  SetUpCpuPjRtApi();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetCApiClient("cpu"));
+
+  TF_ASSERT_OK_AND_ASSIGN(const PjRtTopologyDescription* topology,
+                          client->GetTopologyDescription());
+  ASSERT_NE(topology, nullptr);
+
+  std::vector<int64_t> dims = {2, 3, 4};
+  TF_ASSERT_OK_AND_ASSIGN(Layout layout,
+                          topology->GetDefaultLayout(PrimitiveType::F32, dims));
+
+  Layout expected_layout = LayoutUtil::MakeDescendingLayout(dims.size());
+  EXPECT_EQ(layout, expected_layout);
 }
 
 TEST(PjRtCApiClientTest, NonEmptyExecutableFingerprint) {
