@@ -1779,7 +1779,7 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       FlattenTupleValue(func_builder, loc, operands[0], flattened_operands);
 
       auto op = func_builder->create<mlir::stablehlo::WhileOp>(
-          loc, flattened_operand_types, flattened_operands);
+          loc, flattened_operand_types, flattened_operands, attributes);
 
       TF_RETURN_IF_ERROR(
           ImportAsRegion(*instruction->while_condition(), &op.getCond()));
