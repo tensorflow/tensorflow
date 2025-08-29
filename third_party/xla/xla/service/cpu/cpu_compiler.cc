@@ -30,6 +30,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+
 // IWYU pragma: no_include "llvm/Config/Disassemblers.def.inc"
 // IWYU pragma: no_include "llvm/Config/Targets.def.inc"
 
@@ -488,9 +490,13 @@ std::unique_ptr<HloPassFix<HloPassPipeline>> CreateSimplificationPipeline(
   }
 
   if (module->config()
-          .debug_options()
-          .xla_cpu_experimental_xnn_graph_fusion_mode() !=
-      DebugOptions::XNN_GRAPH_FUSION_MODE_GREEDY_SLINKY) {
+              .debug_options()
+              .xla_cpu_experimental_xnn_graph_fusion_mode() ==
+          DebugOptions::XNN_GRAPH_FUSION_MODE_DISABLED &&
+      !absl::c_contains(module->config()
+                            .debug_options()
+                            .xla_cpu_experimental_xnn_fusion_type(),
+                        DebugOptions::LIBRARY_FUSION_TYPE_REDUCE)) {
     // Needs to happen after algebraic simplifier.
     pipeline->AddPass<TreeReductionRewriter>();
   }
@@ -583,24 +589,6 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     subbyte_packer_pipeline.AddPass<SubByteNormalization>(
         SubByteNormalization::SET_ELEMENT_SIZE);
     TF_RETURN_IF_ERROR(subbyte_packer_pipeline.Run(module).status());
-  }
-
-  // Guard this experimental pipeline with flags until we make sure that
-  // calling `DotDecomposer` early is okay.
-  DotLibraryRewriterOptions options = {
-      /*use_onednn=*/module->config().debug_options().xla_cpu_use_onednn(),
-      /*use_xnnpack=*/module->config().debug_options().xla_cpu_use_xnnpack(),
-      /*onednn_fusion_types=*/
-      &module->config()
-           .debug_options()
-           .xla_cpu_experimental_onednn_fusion_type(),
-      /*xnn_fusion_types=*/
-      &module->config().debug_options().xla_cpu_experimental_xnn_fusion_type()};
-  if (options.use_onednn || options.use_xnnpack) {
-    HloPassPipeline lib_pipeline("dot-library-passes");
-    lib_pipeline.AddPass<DotDecomposer>();
-    lib_pipeline.AddPass<DotLibraryRewriter>(target_machine_features, options);
-    TF_RETURN_IF_ERROR(lib_pipeline.Run(module).status());
   }
 
   HloPassPipeline pipeline("HLO passes through layout assignment");
@@ -910,6 +898,28 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     }
   }
 #endif  // INTEL_MKL
+
+  // Guard this experimental pipeline with flags until we make sure that
+  // calling `DotDecomposer` early is okay.
+  //
+  // XNNPACK ops availability checks depend on the layout information,
+  // so until another solution is developed the passes creating XNNPACK fusions
+  // have to run after layout assignment.
+  DotLibraryRewriterOptions options = {
+      /*use_onednn=*/module->config().debug_options().xla_cpu_use_onednn(),
+      /*use_xnnpack=*/module->config().debug_options().xla_cpu_use_xnnpack(),
+      /*onednn_fusion_types=*/
+      &module->config()
+           .debug_options()
+           .xla_cpu_experimental_onednn_fusion_type(),
+      /*xnn_fusion_types=*/
+      &module->config().debug_options().xla_cpu_experimental_xnn_fusion_type()};
+  if (options.use_onednn || options.use_xnnpack) {
+    HloPassPipeline lib_pipeline("dot-library-passes");
+    lib_pipeline.AddPass<DotDecomposer>();
+    lib_pipeline.AddPass<DotLibraryRewriter>(target_machine_features, options);
+    TF_RETURN_IF_ERROR(lib_pipeline.Run(module).status());
+  }
 
   if (debug_options.xla_cpu_experimental_xnn_graph_fusion_mode() !=
       DebugOptions::XNN_GRAPH_FUSION_MODE_DISABLED) {

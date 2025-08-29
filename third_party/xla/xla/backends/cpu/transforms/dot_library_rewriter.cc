@@ -288,13 +288,16 @@ absl::Status DotLibraryRewriter::FuseNeighbors(HloFusionInstruction* fusion,
 absl::StatusOr<bool> DotLibraryRewriter::ProcessComputation(
     HloComputation* computation) {
   // Construct a list of instructions that can start a library fusion, starting
-  // from the root up to the top. Prioritize dot ops over element-wise ops.
+  // from the root up to the top. Prioritize dot and reduce ops over
+  // element-wise ops.
   // TODO(penporn): Use priority queue when we have a cost model.
   std::vector<HloInstruction*> fusion_starters;
   std::vector<HloInstruction*> eltwise_ops;
   auto instructions = computation->MakeInstructionPostOrder();
   for (auto it = instructions.rbegin(); it != instructions.rend(); ++it) {
     if (fuse_dot_ && (*it)->opcode() == HloOpcode::kDot) {
+      fusion_starters.push_back(*it);
+    } else if (fuse_reduce_ && (*it)->opcode() == HloOpcode::kReduce) {
       fusion_starters.push_back(*it);
     } else if (fuse_eltwise_ && (*it)->IsElementwise()) {
       eltwise_ops.push_back(*it);

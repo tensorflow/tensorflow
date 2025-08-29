@@ -77,6 +77,8 @@ class DotLibraryRewriter : public HloModulePass {
     // Check if any library supports each of the fusion types.
     fuse_dot_ =
         absl::c_any_of(libs_, [](const auto& lib) { return lib->fuse_dot(); });
+    fuse_reduce_ = absl::c_any_of(
+        libs_, [](const auto& lib) { return lib->fuse_reduce(); });
     fuse_eltwise_ = absl::c_any_of(
         libs_, [](const auto& lib) { return lib->fuse_eltwise(); });
   }
@@ -125,6 +127,7 @@ class DotLibraryRewriter : public HloModulePass {
   absl::flat_hash_set<HloOpcode> supported_ops_;
   absl::flat_hash_set<HloInstruction*> fused_;
   bool fuse_dot_ = false;
+  bool fuse_reduce_ = false;
   bool fuse_eltwise_ = false;
 };
 
