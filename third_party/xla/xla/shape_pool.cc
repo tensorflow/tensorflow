@@ -28,7 +28,7 @@ limitations under the License.
 namespace xla {
 
 ShapePool* ShapePool::Default() {
-  absl::NoDestructor<ShapePool> pool;
+  static absl::NoDestructor<ShapePool> pool;
   return &*pool;
 }
 

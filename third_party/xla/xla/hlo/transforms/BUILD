@@ -443,6 +443,40 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "shape_canonicalizer",
+    srcs = ["shape_canonicalizer.cc"],
+    hdrs = ["shape_canonicalizer.h"],
+    deps = [
+        "//xla:shape_pool",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/tsl/platform:errors",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "shape_canonicalizer_test",
+    srcs = ["shape_canonicalizer_test.cc"],
+    deps = [
+        ":shape_canonicalizer",
+        "//xla:shape_pool",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "operand_upcaster",
     srcs = ["operand_upcaster.cc"],
     hdrs = ["operand_upcaster.h"],

@@ -72,6 +72,7 @@ cc_library(
         "//xla:printer",
         "//xla:protobuf_util",
         "//xla:shape_layout",
+        "//xla:shape_pool",
         "//xla:shape_tree",
         "//xla:shape_util",
         "//xla:side_effect_util",

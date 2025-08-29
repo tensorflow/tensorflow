@@ -131,6 +131,7 @@ limitations under the License.
 #include "xla/hlo/transforms/expanders/stochastic_convert_decomposer.h"
 #include "xla/hlo/transforms/literal_canonicalizer.h"
 #include "xla/hlo/transforms/operand_upcaster.h"
+#include "xla/hlo/transforms/shape_canonicalizer.h"
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
 #include "xla/hlo/transforms/simplifiers/batch_dot_simplification.h"
 #include "xla/hlo/transforms/simplifiers/broadcast_canonicalizer.h"
@@ -223,6 +224,7 @@ limitations under the License.
 #include "xla/service/while_loop_invariant_code_motion.h"
 #include "xla/service/while_loop_simplifier.h"
 #include "xla/shape.h"
+#include "xla/shape_pool.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/host/host_platform_id.h"
@@ -845,6 +847,9 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   // Layout's element_size_in_bits field.
   pipeline.AddPass<SubByteNormalization>(
       SubByteNormalization::SET_ELEMENT_SIZE);
+
+  // Canonicalize all shapes in the module.
+  pipeline.AddPass<ShapeCanonicalizer>(ShapePool::Default());
 
   // Finally canonicalize all literals larger than 1024 bytes in the module to
   // reuse the same literal across multiple HLO modules.
