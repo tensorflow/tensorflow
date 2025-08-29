@@ -87,7 +87,8 @@ absl::Status RunAllReduce(ReductionKind reduction_kind,
                           se::Stream& stream, Communicator* comm,
                           bool use_symmetric_buffer) {
   int device_ordinal = stream.parent()->device_ordinal();
-  VLOG(3) << "Performing all-reduce from device ordinal: " << device_ordinal;
+  VLOG(3) << "[" << device_ordinal
+          << "] Performing all-reduce from device ordinal: " << device_ordinal;
   TF_RETURN_IF_ERROR(MaybeRegisterBuffers(stream.parent(), buffers, comm,
                                           use_symmetric_buffer));
 
@@ -104,7 +105,8 @@ absl::Status RunAllReduce(ReductionKind reduction_kind,
         return absl::OkStatus();
       });
   tsl::BlockUntilReady(event);
-  VLOG(3) << "Done performing all-reduce for ordinal: " << device_ordinal;
+  VLOG(3) << "[" << device_ordinal
+          << "] Done performing all-reduce for ordinal: " << device_ordinal;
   if (event.IsError()) {
     return event.GetError();
   }

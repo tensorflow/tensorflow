@@ -212,7 +212,8 @@ absl::Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
     kernel = it->second.get();
   }
 
-  VLOG(3) << "Launching " << kernel->name();
+  int device_ordinal = executor->device_ordinal();
+  VLOG(3) << "[" << device_ordinal << "] Launching " << kernel->name();
   absl::InlinedVector<std::variant<se::DeviceMemoryBase, se::TensorMap>, 4>
       kernel_args;
   stream_executor::gpu::TmaMetadata tma_metadata =
@@ -220,8 +221,9 @@ absl::Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
   for (int idx = 0; idx < args_.size(); ++idx) {
     const BufferAllocation::Slice& arg = args_[idx];
     se::DeviceMemoryBase buf = params.buffer_allocations->GetDeviceAddress(arg);
-    VLOG(3) << "  Arg: alloc #" << arg.index() << ", offset: " << arg.offset()
-            << ": " << buf.opaque() << " (" << buf.size() << "B)";
+    VLOG(3) << "[" << device_ordinal << "] Arg: alloc #" << arg.index()
+            << ", offset: " << arg.offset() << ": " << buf.opaque() << " ("
+            << buf.size() << "B)";
 
     if (auto it = tma_metadata.arg_index_to_tma_info.find(idx);
         it != tma_metadata.arg_index_to_tma_info.end()) {
@@ -229,8 +231,8 @@ absl::Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
       stream_executor::gpu::TmaDescriptor tma_desc = it->second;
       TF_ASSIGN_OR_RETURN(se::TensorMap tensor_map,
                           executor->CreateTensorMap(tma_desc, buf.opaque()));
-      VLOG(3) << "  Using TensorMap for arg #" << idx << ": "
-              << tma_desc.ToString();
+      VLOG(3) << "[" << device_ordinal << "]  Using TensorMap for arg #" << idx
+              << ": " << tma_desc.ToString();
       kernel_args.push_back(std::move(tensor_map));
     } else {
       // Buffer argument.
@@ -287,14 +289,17 @@ absl::Status CustomKernelThunk::ExecuteOnStream(const ExecuteParams& params) {
     return kernel_cache_[executor].get();
   }();
 
-  VLOG(3) << "Launching " << custom_kernel_.ToString() << " as device kernel "
+  int device_ordinal = executor->device_ordinal();
+  VLOG(3) << "[" << device_ordinal << "] Launching "
+          << custom_kernel_.ToString() << " as device kernel "
           << kernel->name();
 
   absl::InlinedVector<se::DeviceMemoryBase, 4> buffer_args;
   for (const BufferAllocation::Slice& arg : args_) {
     se::DeviceMemoryBase buf = params.buffer_allocations->GetDeviceAddress(arg);
-    VLOG(3) << "  Arg: alloc #" << arg.index() << ", offset: " << arg.offset()
-            << ": " << buf.opaque() << " (" << buf.size() << "B)";
+    VLOG(3) << "[" << device_ordinal << "]  Arg: alloc #" << arg.index()
+            << ", offset: " << arg.offset() << ": " << buf.opaque() << " ("
+            << buf.size() << "B)";
     buffer_args.push_back(buf);
   }
 

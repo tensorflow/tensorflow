@@ -1943,12 +1943,15 @@ absl::StatusOr<const se::CommandBuffer::Command*> AllReduceCmd::Record(
       ConvertToDeviceBuffers(execute_params.buffer_allocations, buffers_,
                              config().operand_element_type));
 
-  VLOG(5) << "AllReduceCmd: reduction=" << ReductionKindString(reduction_kind_);
+  int device_ordinal = execute_params.stream->parent()->device_ordinal();
+  VLOG(5) << "[" << device_ordinal << "] AllReduceCmd: reduction="
+          << ReductionKindString(reduction_kind_);
 
   for (size_t i = 0; i < device_buffers.size(); ++i) {
-    VLOG(5) << "  Src: " << buffers_[i].source_buffer << " ("
-            << device_buffers[i].source_buffer.opaque() << ")";
-    VLOG(5) << "  Dst: " << buffers_[i].destination_buffer << " ("
+    VLOG(5) << "[" << device_ordinal << "]  Src: " << buffers_[i].source_buffer
+            << " (" << device_buffers[i].source_buffer.opaque() << ")";
+    VLOG(5) << "[" << device_ordinal
+            << "]  Dst: " << buffers_[i].destination_buffer << " ("
             << device_buffers[i].destination_buffer.opaque() << ")";
   }
 
@@ -2005,13 +2008,15 @@ absl::StatusOr<const se::CommandBuffer::Command*> ReduceScatterCmd::Record(
       ConvertToDeviceBuffers(execute_params.buffer_allocations, buffers_,
                              config().operand_element_type));
 
-  VLOG(5) << "ReduceScatterCmd: reduction="
+  int device_ordinal = execute_params.stream->parent()->device_ordinal();
+  VLOG(5) << "[" << device_ordinal << "] ReduceScatterCmd: reduction="
           << ReductionKindString(reduction_kind_);
 
   for (size_t i = 0; i < device_buffers.size(); ++i) {
-    VLOG(5) << "  Src: " << buffers_[i].source_buffer << " ("
-            << device_buffers[i].source_buffer.opaque() << ")";
-    VLOG(5) << "  Dst: " << buffers_[i].destination_buffer << " ("
+    VLOG(5) << "[" << device_ordinal << "]  Src: " << buffers_[i].source_buffer
+            << " (" << device_buffers[i].source_buffer.opaque() << ")";
+    VLOG(5) << "[" << device_ordinal
+            << "]  Dst: " << buffers_[i].destination_buffer << " ("
             << device_buffers[i].destination_buffer.opaque() << ")";
   }
 
@@ -2069,12 +2074,15 @@ absl::StatusOr<const se::CommandBuffer::Command*> AllToAllCmd::Record(
       ConvertToDeviceBuffers(execute_params.buffer_allocations, buffers_,
                              config().operand_element_type));
 
-  VLOG(5) << "AllToAllCmd, has_split_dimension=" << has_split_dimension_;
+  int device_ordinal = execute_params.stream->parent()->device_ordinal();
+  VLOG(5) << "[" << device_ordinal
+          << "] AllToAllCmd, has_split_dimension=" << has_split_dimension_;
 
   for (size_t i = 0; i < device_buffers.size(); ++i) {
-    VLOG(5) << "  Src: " << buffers_[i].source_buffer << " ("
-            << device_buffers[i].source_buffer.opaque() << ")";
-    VLOG(5) << "  Dst: " << buffers_[i].destination_buffer << " ("
+    VLOG(5) << "[" << device_ordinal << "]  Src: " << buffers_[i].source_buffer
+            << " (" << device_buffers[i].source_buffer.opaque() << ")";
+    VLOG(5) << "[" << device_ordinal
+            << "]  Dst: " << buffers_[i].destination_buffer << " ("
             << device_buffers[i].destination_buffer.opaque() << ")";
   }
 
@@ -2128,12 +2136,14 @@ absl::StatusOr<const se::CommandBuffer::Command*> AllGatherCmd::Record(
       ConvertToDeviceBuffers(execute_params.buffer_allocations, buffers_,
                              config().operand_element_type));
 
-  VLOG(5) << "AllGatherCmd:";
+  int device_ordinal = execute_params.stream->parent()->device_ordinal();
+  VLOG(5) << "[" << device_ordinal << "] AllGatherCmd:";
 
   for (size_t i = 0; i < device_buffers.size(); ++i) {
-    VLOG(5) << "  Src: " << buffers_[i].source_buffer << " ("
-            << device_buffers[i].source_buffer.opaque() << ")";
-    VLOG(5) << "  Dst: " << buffers_[i].destination_buffer << " ("
+    VLOG(5) << "[" << device_ordinal << "]  Src: " << buffers_[i].source_buffer
+            << " (" << device_buffers[i].source_buffer.opaque() << ")";
+    VLOG(5) << "[" << device_ordinal
+            << "]  Dst: " << buffers_[i].destination_buffer << " ("
             << device_buffers[i].destination_buffer.opaque() << ")";
   }
 
@@ -2189,12 +2199,14 @@ CollectiveBroadcastCmd::Record(const Thunk::ExecuteParams& execute_params,
       ConvertToDeviceBuffers(execute_params.buffer_allocations, buffers_,
                              config().operand_element_type));
 
-  VLOG(5) << "CollectiveBroadcastCmd:";
+  int device_ordinal = execute_params.stream->parent()->device_ordinal();
+  VLOG(5) << "[" << device_ordinal << "] CollectiveBroadcastCmd:";
 
   for (size_t i = 0; i < device_buffers.size(); ++i) {
-    VLOG(5) << "  Src: " << buffers_[i].source_buffer << " ("
-            << device_buffers[i].source_buffer.opaque() << ")";
-    VLOG(5) << "  Dst: " << buffers_[i].destination_buffer << " ("
+    VLOG(5) << "[" << device_ordinal << "]  Src: " << buffers_[i].source_buffer
+            << " (" << device_buffers[i].source_buffer.opaque() << ")";
+    VLOG(5) << "[" << device_ordinal
+            << "]  Dst: " << buffers_[i].destination_buffer << " ("
             << device_buffers[i].destination_buffer.opaque() << ")";
   }
 
@@ -2296,7 +2308,8 @@ absl::Status DynamicSliceFusionCmd::Initialize(
     return absl::OkStatus();
   }
 
-  VLOG(2) << "Allocate " << offsets_allocs_size_
+  VLOG(2) << "[" << params.executor->device_ordinal() << "] Allocate "
+          << offsets_allocs_size_
           << " bytes for transferring offsets on executor: " << params.executor;
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<se::MemoryAllocation> allocation,

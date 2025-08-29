@@ -380,15 +380,16 @@ absl::Status RegisterBufferOnce(se::StreamExecutor* executor,
                                           buffer.opaque()})) {
       need_reg = true;
     } else {
-      VLOG(5) << "Buffer: " << buffer.opaque()
+      VLOG(5) << "[" << executor->device_ordinal()
+              << "] Buffer: " << buffer.opaque()
               << " with size: " << buffer.size()
               << " and base pointer: " << base_buffer.opaque()
               << " is already registered.";
     }
   }
   if (need_reg) {
-    VLOG(5) << "Registering " << buffer.opaque()
-            << " with size: " << buffer.size()
+    VLOG(5) << "[" << executor->device_ordinal() << "] Registering "
+            << buffer.opaque() << " with size: " << buffer.size()
             << " and base pointer: " << base_buffer.opaque()
             << ", is symmetric: " << (use_symmetric_buffer ? "true" : "false");
     // Symmetric buffer registration is a collective operation,
@@ -463,8 +464,9 @@ absl::Status CollectiveThunk::Initialize(const InitializeParams& params) {
 }
 
 absl::Status CollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
-  VLOG(1) << absl::StreamFormat("Starting %s %s.", IsAsync() ? "async" : "sync",
-                                Thunk::KindToString(kind()));
+  VLOG(1) << absl::StreamFormat(
+      "[%d] Starting %s %s.", params.stream->parent()->device_ordinal(),
+      IsAsync() ? "async" : "sync", Thunk::KindToString(kind()));
   AsyncStreamKind stream_kind = GetAsyncStreamKind();
   TF_ASSIGN_OR_RETURN(GpuCollectives * collectives, GetGpuCollectives(params));
   TF_ASSIGN_OR_RETURN(
@@ -508,7 +510,8 @@ absl::Status CollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
 
     auto global_device_id = params.collective_params->global_device_id;
     RankId rank = clique_key.rank(global_device_id).value_or(RankId(-1));
-    VLOG(1) << "Do a rendezvous after a first call to "
+    VLOG(1) << "[" << global_device_id.value()
+            << "] Do a rendezvous after a first call to "
             << Thunk::KindToString(kind())
             << "; run_id=" << params.collective_params->run_id.ToInt()
             << "; op_id=" << config().op_id
