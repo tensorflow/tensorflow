@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <utility>
 
 #include "absl/log/log.h"
@@ -25,7 +26,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/stream_executor/device_memory.h"
@@ -57,21 +57,20 @@ CublasLtMatmulThunk::CublasLtMatmulThunk(const CublasLtMatmulThunk& rhs)
       workspace_(rhs.workspace_) {}
 
 CublasLtMatmulThunk::CublasLtMatmulThunk(
-    const HloInstruction* instr, GemmConfig gemm_config,
-    se::gpu::BlasLt::Epilogue epilogue, int64_t algorithm_idx,
-    BufferAllocation::Slice a, BufferAllocation::Slice b,
+    Thunk::ThunkInfo thunk_info, std::string canonical_hlo,
+    GemmConfig gemm_config, se::gpu::BlasLt::Epilogue epilogue,
+    int64_t algorithm_idx, BufferAllocation::Slice a, BufferAllocation::Slice b,
     BufferAllocation::Slice c, BufferAllocation::Slice d,
     BufferAllocation::Slice bias, BufferAllocation::Slice aux,
     BufferAllocation::Slice a_scale, BufferAllocation::Slice b_scale,
     BufferAllocation::Slice c_scale, BufferAllocation::Slice d_scale,
     BufferAllocation::Slice d_amax,
     std::optional<const BufferAllocation::Slice> workspace)
-    : Thunk(Kind::kCublasLtMatmul,
-            instr ? Thunk::ThunkInfo::WithProfileAnnotation(instr)
-                  : Thunk::ThunkInfo{}),
+    : Thunk(Kind::kCublasLtMatmul, std::move(thunk_info)),
       gemm_config_(std::move(gemm_config)),
       epilogue_(epilogue),
       algorithm_idx_(algorithm_idx),
+      canonical_hlo_(std::move(canonical_hlo)),
       a_(a),
       b_(b),
       c_(c),
@@ -83,14 +82,7 @@ CublasLtMatmulThunk::CublasLtMatmulThunk(
       c_scale_(c_scale),
       d_scale_(d_scale),
       d_amax_(d_amax),
-      workspace_(workspace) {
-  // The tests creating CublasLtMatmulThunk directly might not provide the
-  // pointer to the actual instruction, in this case Matmul plans are not
-  // cached.
-  if (instr != nullptr) {
-    canonical_hlo_ = AutotuneCacheKey::HloInstructionToCanonicalString(*instr);
-  }
-}
+      workspace_(workspace) {}
 
 absl::Status CublasLtMatmulThunk::ExecuteOnStreamInternal(
     se::Stream* stream, const ExecuteParams& params) {
@@ -141,7 +133,7 @@ CublasLtMatmulThunk::GetCachedMatmulPlan(const ExecuteParams& params) {
 
     TF_ASSIGN_OR_RETURN(auto plan,
                         blas_lt->GetMatmulPlan(gemm_config_, epilogue_));
-    // if workspace buffer is not provided, consider onlt the algorithms which
+    // if workspace buffer is not provided, consider only the algorithms which
     // do not require a scratch space
     int64_t max_workspace =
         workspace_.has_value() ? workspace_.value().size() : 0;

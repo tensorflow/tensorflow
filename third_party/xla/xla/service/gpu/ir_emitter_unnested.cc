@@ -126,6 +126,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/layout.h"
@@ -765,9 +766,13 @@ absl::Status IrEmitterUnnested::EmitCublasLtMatmulThunk(
   BufferAllocation::Slice a_scale, b_scale, c_scale, d_scale, d_amax;
   TF_ASSIGN_OR_RETURN(se::gpu::BlasLt::Epilogue blas_lt_epilogue,
                       gpublas_lt::AsBlasLtEpilogue(epilogue));
+  Thunk::ThunkInfo thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(instr);
+  std::string canonical_hlo = instr->ToString(
+      HloPrintOptions::Fingerprint().set_print_backend_config(true));
   auto thunk = std::make_unique<CublasLtMatmulThunk>(
-      instr, std::move(gemm_config), blas_lt_epilogue, algorithm, a, b, c, d,
-      bias, aux, a_scale, b_scale, c_scale, d_scale, d_amax, workspace_buffer);
+      std::move(thunk_info), std::move(canonical_hlo), std::move(gemm_config),
+      blas_lt_epilogue, algorithm, a, b, c, d, bias, aux, a_scale, b_scale,
+      c_scale, d_scale, d_amax, workspace_buffer);
   AddThunkToThunkSequence(std::move(thunk));
   return absl::OkStatus();
 }
@@ -857,9 +862,13 @@ absl::Status IrEmitterUnnested::EmitCublasLtMatmulThunkF8(
 
   TF_ASSIGN_OR_RETURN(se::gpu::BlasLt::Epilogue blas_lt_epilogue,
                       gpublas_lt::AsBlasLtEpilogue(epilogue));
+  Thunk::ThunkInfo thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(instr);
+  std::string canonical_hlo = instr->ToString(
+      HloPrintOptions::Fingerprint().set_print_backend_config(true));
   auto thunk = std::make_unique<CublasLtMatmulThunk>(
-      instr, std::move(gemm_config), blas_lt_epilogue, algorithm, a, b, c, d,
-      bias, aux, a_scale, b_scale, c_scale, d_scale, d_amax, workspace_buffer);
+      std::move(thunk_info), std::move(canonical_hlo), std::move(gemm_config),
+      blas_lt_epilogue, algorithm, a, b, c, d, bias, aux, a_scale, b_scale,
+      c_scale, d_scale, d_amax, workspace_buffer);
   AddThunkToThunkSequence(std::move(thunk));
   return absl::OkStatus();
 }
