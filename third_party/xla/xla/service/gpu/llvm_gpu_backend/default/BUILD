@@ -1,6 +1,8 @@
 # Description:
 #   Default implementations for llvm_gpu_backend
 
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//xla/service/gpu/llvm_gpu_backend:__pkg__"],

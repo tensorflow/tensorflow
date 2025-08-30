@@ -1,6 +1,7 @@
 # Description:
 #    Tests for LLVM-based CPU backend for XLA.
 
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.bzl", "tsl_copts")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
