@@ -49,6 +49,7 @@ enum class GPUTopologyType {
 };
 
 bool IsNVLinkConnected(const HloModuleConfig& config,
+                       const se::DeviceDescription& device_description,
                        int64_t nvlink_slice_size);
 
 }  // namespace gpu

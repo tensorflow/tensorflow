@@ -37,49 +37,84 @@ namespace {
 using ::absl_testing::IsOkAndHolds;
 using ::testing::Test;
 
-bool IsNVLinkConnected(int num_partitions, int replica_count,
+bool IsNVLinkConnected(se::CudaComputeCapability compute_capability,
+                       int num_partitions, int replica_count,
                        int64_t nvlink_slice_size) {
   HloModuleConfig config;
   config.set_num_partitions(num_partitions);
   config.set_replica_count(replica_count);
-  return xla::gpu::IsNVLinkConnected(config, nvlink_slice_size);
+  se::DeviceDescription device_description =
+      TestGpuDeviceInfo::RTXA6000DeviceInfo(compute_capability);
+  return xla::gpu::IsNVLinkConnected(config, device_description,
+                                     nvlink_slice_size);
 }
 
 TEST(IsNVLinkConnectedTest, SingleHostSingleDevice) {
   // H100/B200
-  EXPECT_TRUE(IsNVLinkConnected(
-      /*num_partitions=*/1, /*replica_count=*/1, /*nvlink_slice_size=*/8));
+  EXPECT_TRUE(IsNVLinkConnected(se::CudaComputeCapability::Hopper(),
+                                /*num_partitions=*/1, /*replica_count=*/1,
+                                /*nvlink_slice_size=*/8));
+  EXPECT_TRUE(IsNVLinkConnected(se::CudaComputeCapability::Blackwell(),
+                                /*num_partitions=*/1, /*replica_count=*/1,
+                                /*nvlink_slice_size=*/8));
   // A100
-  EXPECT_TRUE(IsNVLinkConnected(
-      /*num_partitions=*/1, /*replica_count=*/1, /*nvlink_slice_size=*/16));
+  EXPECT_TRUE(IsNVLinkConnected(se::CudaComputeCapability::Ampere(),
+                                /*num_partitions=*/1, /*replica_count=*/1,
+                                /*nvlink_slice_size=*/16));
 }
 
 TEST(IsNVLinkConnectedTest, SingleHostMultiDevices) {
   // H100/B200
-  EXPECT_TRUE(IsNVLinkConnected(
-      /*num_partitions=*/8, /*replica_count=*/1, /*nvlink_slice_size=*/8));
-  EXPECT_TRUE(IsNVLinkConnected(
-      /*num_partitions=*/1, /*replica_count=*/8, /*nvlink_slice_size=*/8));
+  EXPECT_TRUE(IsNVLinkConnected(se::CudaComputeCapability::Hopper(),
+                                /*num_partitions=*/8, /*replica_count=*/1,
+                                /*nvlink_slice_size=*/8));
+  EXPECT_TRUE(IsNVLinkConnected(se::CudaComputeCapability::Hopper(),
+                                /*num_partitions=*/1, /*replica_count=*/8,
+                                /*nvlink_slice_size=*/8));
+  EXPECT_TRUE(IsNVLinkConnected(se::CudaComputeCapability::Blackwell(),
+                                /*num_partitions=*/8, /*replica_count=*/1,
+                                /*nvlink_slice_size=*/8));
+  EXPECT_TRUE(IsNVLinkConnected(se::CudaComputeCapability::Blackwell(),
+                                /*num_partitions=*/1, /*replica_count=*/8,
+                                /*nvlink_slice_size=*/8));
 
   // A100
-  EXPECT_TRUE(IsNVLinkConnected(
-      /*num_partitions=*/1, /*replica_count=*/16, /*nvlink_slice_size=*/16));
-  EXPECT_TRUE(IsNVLinkConnected(
-      /*num_partitions=*/16, /*replica_count=*/1, /*nvlink_slice_size=*/16));
+  EXPECT_TRUE(IsNVLinkConnected(se::CudaComputeCapability::Ampere(),
+                                /*num_partitions=*/1, /*replica_count=*/16,
+                                /*nvlink_slice_size=*/16));
+  EXPECT_TRUE(IsNVLinkConnected(se::CudaComputeCapability::Ampere(),
+                                /*num_partitions=*/16, /*replica_count=*/1,
+                                /*nvlink_slice_size=*/16));
 }
 
 TEST(IsNVLinkConnectedTest, MultiHosts) {
   // H100/B200
-  EXPECT_FALSE(IsNVLinkConnected(
-      /*num_partitions=*/16, /*replica_count=*/1, /*nvlink_slice_size=*/8));
-  EXPECT_FALSE(IsNVLinkConnected(
-      /*num_partitions=*/1, /*replica_count=*/16, /*nvlink_slice_size=*/8));
+  EXPECT_FALSE(IsNVLinkConnected(se::CudaComputeCapability::Hopper(),
+                                 /*num_partitions=*/16, /*replica_count=*/1,
+                                 /*nvlink_slice_size=*/8));
+  EXPECT_FALSE(IsNVLinkConnected(se::CudaComputeCapability::Hopper(),
+                                 /*num_partitions=*/1, /*replica_count=*/16,
+                                 /*nvlink_slice_size=*/8));
+  EXPECT_FALSE(IsNVLinkConnected(se::CudaComputeCapability::Blackwell(),
+                                 /*num_partitions=*/16, /*replica_count=*/1,
+                                 /*nvlink_slice_size=*/8));
+  EXPECT_FALSE(IsNVLinkConnected(se::CudaComputeCapability::Blackwell(),
+                                 /*num_partitions=*/1, /*replica_count=*/16,
+                                 /*nvlink_slice_size=*/8));
 
   // A100
-  EXPECT_FALSE(IsNVLinkConnected(
-      /*num_partitions=*/1, /*replica_count=*/32, /*nvlink_slice_size=*/16));
-  EXPECT_FALSE(IsNVLinkConnected(
-      /*num_partitions=*/32, /*replica_count=*/1, /*nvlink_slice_size=*/16));
+  EXPECT_FALSE(IsNVLinkConnected(se::CudaComputeCapability::Ampere(),
+                                 /*num_partitions=*/1, /*replica_count=*/32,
+                                 /*nvlink_slice_size=*/16));
+  EXPECT_FALSE(IsNVLinkConnected(se::CudaComputeCapability::Ampere(),
+                                 /*num_partitions=*/32, /*replica_count=*/1,
+                                 /*nvlink_slice_size=*/16));
+}
+
+TEST(IsNVLinkConnectedTest, UnsupportedGPU) {
+  EXPECT_FALSE(IsNVLinkConnected(se::CudaComputeCapability::Volta(),
+                                 /*num_partitions=*/1, /*replica_count=*/1,
+                                 /*nvlink_slice_size=*/8));
 }
 
 class CommunicationTypeTest : public Test {

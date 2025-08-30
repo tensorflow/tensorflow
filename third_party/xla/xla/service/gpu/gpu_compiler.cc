@@ -1231,7 +1231,8 @@ void AddCollectiveCombinerPasses(
 
   bool enable_heuristic_collective_combining =
       opts.xla_gpu_experimental_enable_heuristic_collective_combining() &&
-      !IsNVLinkConnected(module.config(), options.slice_size);
+      !IsNVLinkConnected(module.config(), device_description,
+                         options.slice_size);
 
   if (enable_heuristic_collective_combining) {
     pipeline.AddPass<CollectiveCombinerAnnotator>(device_description,

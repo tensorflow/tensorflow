@@ -164,7 +164,13 @@ absl::StatusOr<GPUCommunicationType> CommunicationType(
 }
 
 bool IsNVLinkConnected(const HloModuleConfig& config,
+                       const se::DeviceDescription& device_description,
                        int64_t nvlink_slice_size) {
+  se::CudaComputeCapability cc = device_description.cuda_compute_capability();
+  // NVLink is only available on Ampere/Hopper/Blackwell GPUs.
+  if (!(cc.IsHopper() || cc.IsAmpere() || cc.IsBlackwell())) {
+    return false;
+  }
   int hlo_device_count = config.num_partitions() * config.replica_count();
   if (hlo_device_count <= nvlink_slice_size) {
     VLOG(1) << "NVLink connected: HLO device count " << hlo_device_count
