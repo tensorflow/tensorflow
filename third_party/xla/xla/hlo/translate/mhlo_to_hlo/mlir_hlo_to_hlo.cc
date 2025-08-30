@@ -5941,6 +5941,21 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::func::FuncOp f) {
     }
   }
   if (!parameter_replication.empty()) {
+    if (options_.use_tuple_args) {
+      parameter_replication.clear();
+      auto& replicated_at_leaf_buffers = parameter_replication[0];
+      for (int i = 0; i < f.getNumArguments(); ++i) {
+        if (auto pr = f.getArgAttrOfType<mlir::ArrayAttr>(
+                i, kParameterReplicationAttr)) {
+          for (auto b : pr.getValue()) {
+            replicated_at_leaf_buffers.push_back(
+                cast<mlir::BoolAttr>(b).getValue());
+          }
+        } else {
+          replicated_at_leaf_buffers.push_back(false);
+        }
+      }
+    }
     absl::Status status =
         xla::internal::XlaBuilderFriend::SetParameterReplication(
             &module_builder_, computation, parameter_replication);
