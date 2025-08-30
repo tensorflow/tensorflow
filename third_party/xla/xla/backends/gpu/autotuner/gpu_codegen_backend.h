@@ -17,7 +17,6 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_AUTOTUNER_GPU_CODEGEN_BACKEND_H_
 
 #include <memory>
-#include <optional>
 #include <string>
 #include <utility>
 
@@ -73,6 +72,7 @@ class GpuCodegenBackend : public CodegenBackend {
         false);
 
     Compiler::CompileOptions options;
+    options.is_autotuning_compilation = true;
     TF_ASSIGN_OR_RETURN(auto optimized_module,
                         RunHloPasses(std::move(hlo_module), options));
     return compiler_->RunBackend(std::move(optimized_module), stream_executor_,
