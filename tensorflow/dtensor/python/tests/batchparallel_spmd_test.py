@@ -97,12 +97,19 @@ class DTensorBatchParallelSPMDTest(test_util.DTensorBaseTest):
 
     expected_result = gen_linalg_ops.cholesky(x)
 
+    # Initialize layout_spec to avoid "possibly used before assignment" errors
+    layout_spec = []
+    
     if num_batch_dim == 0:
       layout_spec = []
     elif num_batch_dim == 1:
       layout_spec = [self._mesh_dim_b]
     elif num_batch_dim == 2:
       layout_spec = [self._mesh_dim_b, self._mesh_dim_x]
+    else:
+      # Handle unexpected num_batch_dim values
+      raise ValueError(f"Unsupported num_batch_dim: {num_batch_dim}")
+      
     layout = Layout(layout_spec + ['unsharded'] * 2, self.mesh)
 
     x = numpy_util.pack_numpy(x, layout)
@@ -124,12 +131,19 @@ class DTensorBatchParallelSPMDTest(test_util.DTensorBaseTest):
     )
     expected_result = fft_op(input=x)
 
+    # Initialize layout_spec to avoid "possibly used before assignment" errors
+    layout_spec = []
+    
     if num_batch_dim == 0:
       layout_spec = []
     elif num_batch_dim == 1:
       layout_spec = [self._mesh_dim_b]
     elif num_batch_dim == 2:
       layout_spec = [self._mesh_dim_b, self._mesh_dim_x]
+    else:
+      # Handle unexpected num_batch_dim values
+      raise ValueError(f"Unsupported num_batch_dim: {num_batch_dim}")
+      
     layout = Layout(layout_spec + ['unsharded'] * num_nonbatch_dim, self.mesh)
 
     x = numpy_util.pack_numpy(x, layout)
@@ -151,12 +165,19 @@ class DTensorBatchParallelSPMDTest(test_util.DTensorBaseTest):
     )
     expected_result = rfft_op(input=x, fft_length=[2] * num_nonbatch_dim)
 
+    # Initialize layout_spec to avoid "possibly used before assignment" errors
+    layout_spec = []
+    
     if num_batch_dim == 0:
       layout_spec = []
     elif num_batch_dim == 1:
       layout_spec = [self._mesh_dim_b]
     elif num_batch_dim == 2:
       layout_spec = [self._mesh_dim_b, self._mesh_dim_x]
+    else:
+      # Handle unexpected num_batch_dim values
+      raise ValueError(f"Unsupported num_batch_dim: {num_batch_dim}")
+      
     layout = Layout(layout_spec + ['unsharded'] * num_nonbatch_dim, self.mesh)
 
     x = numpy_util.pack_numpy(x, layout)
