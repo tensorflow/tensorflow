@@ -80,6 +80,12 @@ absl::StatusOr<std::unique_ptr<HloModule>> ReadModuleFromTextProtoFile(
     absl::string_view hlo_file,
     const DebugOptions& debug_options = DebugOptions::default_instance());
 
+// Reads the proto file in xla.HloModuleProto format, creates and returns the
+// HloModule.
+absl::StatusOr<std::unique_ptr<HloModule>> ReadModuleFromModuleTextProtoFile(
+    absl::string_view hlo_file,
+    const DebugOptions& debug_options = DebugOptions::default_instance());
+
 // Creates an HloModuleConfig for a given program shape and arguments.
 // If execution_options does not set num_replicas, default_num_replicas is used.
 // num_threads is optional; if not given, intra_op_parallelism_threads not set.

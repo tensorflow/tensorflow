@@ -128,12 +128,28 @@ absl::StatusOr<std::unique_ptr<HloModule>> LoadHLOModule(
     return BuildHloModule(snapshot.hlo().hlo_module());
   }
   if (!hlo_path.hlo_proto.empty()) {
-    return ReadModuleFromBinaryProtoFile(hlo_path.hlo_proto,
-                                         xla::GetDebugOptionsFromFlags());
+    absl::StatusOr<std::unique_ptr<HloModule>> module =
+        ReadModuleFromBinaryProtoFile(hlo_path.hlo_proto,
+                                      xla::GetDebugOptionsFromFlags());
+    if (module.ok()) {
+      return module;
+    }
+    LOG(INFO) << "Failed to read " << hlo_path.hlo_proto
+              << " as a binary proto, attempting to read as text proto.";
+    return ReadModuleFromTextProtoFile(hlo_path.hlo_proto,
+                                       xla::GetDebugOptionsFromFlags());
   }
   if (!hlo_path.hlo_module_proto.empty()) {
-    return ReadModuleFromModuleBinaryProtofile(hlo_path.hlo_module_proto,
-                                               xla::GetDebugOptionsFromFlags());
+    absl::StatusOr<std::unique_ptr<HloModule>> module =
+        ReadModuleFromModuleBinaryProtofile(hlo_path.hlo_module_proto,
+                                            xla::GetDebugOptionsFromFlags());
+    if (module.ok()) {
+      return module;
+    }
+    LOG(INFO) << "Failed to read " << hlo_path.hlo_module_proto
+              << " as a binary proto, attempting to read as text proto.";
+    return ReadModuleFromModuleTextProtoFile(hlo_path.hlo_module_proto,
+                                             xla::GetDebugOptionsFromFlags());
   }
   if (!hlo_path.hlo_text.empty()) {
     return ReadModuleFromHloTextFile(

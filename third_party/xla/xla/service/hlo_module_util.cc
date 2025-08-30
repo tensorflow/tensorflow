@@ -130,6 +130,19 @@ absl::StatusOr<std::unique_ptr<HloModule>> ReadModuleFromModuleBinaryProtofile(
   return HloModule::CreateFromProto(module_proto, module_config);
 }
 
+absl::StatusOr<std::unique_ptr<HloModule>> ReadModuleFromModuleTextProtoFile(
+    absl::string_view hlo_file, const DebugOptions& debug_options) {
+  HloModuleProto module_proto;
+  TF_RETURN_IF_ERROR(tsl::ReadTextProto(tsl::Env::Default(),
+                                        std::string(hlo_file), &module_proto));
+
+  TF_ASSIGN_OR_RETURN(
+      HloModuleConfig module_config,
+      HloModule::CreateModuleConfigFromProto(module_proto, debug_options));
+
+  return HloModule::CreateFromProto(module_proto, module_config);
+}
+
 absl::StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
     const ProgramShape& program_shape,
     absl::Span<const Shape* const> argument_shapes,
