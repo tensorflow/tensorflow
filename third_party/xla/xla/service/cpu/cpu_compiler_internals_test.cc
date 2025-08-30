@@ -105,7 +105,6 @@ TEST_F(CpuCompilerInternalsTest, DylibWithThunks) {
                           ParseAndReturnVerifiedModule(kAddScatterHlo));
   DebugOptions& debug_options =
       hlo_module->mutable_config().mutable_debug_options();
-  debug_options.set_xla_cpu_use_thunk_runtime(true);
   debug_options.set_xla_cpu_use_fusion_emitters(false);
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
                           GetOptimizedModule(std::move(hlo_module)));
@@ -136,7 +135,6 @@ TEST_F(CpuCompilerInternalsTest, JustOneDylibWithThunks) {
                           ParseAndReturnVerifiedModule(kAddScatterHlo));
   DebugOptions& debug_options =
       hlo_module->mutable_config().mutable_debug_options();
-  debug_options.set_xla_cpu_use_thunk_runtime(true);
   debug_options.set_xla_cpu_use_fusion_emitters(false);
   debug_options.set_xla_cpu_parallel_codegen_split_count(1);
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,

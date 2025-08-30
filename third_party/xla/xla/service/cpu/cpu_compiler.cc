@@ -530,10 +530,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     HloModule* module, bool is_aot_compile,
     TargetMachineFeatures* target_machine_features) {
   const int64_t num_partitions = module->config().num_partitions();
-  const bool is_thunk_runtime =
-      module->config().debug_options().xla_cpu_use_thunk_runtime();
   const bool is_fusion_emitters =
-      is_thunk_runtime &&
       module->config().debug_options().xla_cpu_use_fusion_emitters();
   bool use_shardy_partitioner = module->config().use_shardy_partitioner();
   bool is_onednn_compatible = false;
@@ -660,6 +657,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   // Rewrite to custom calls with target as oneDNN library calls.
 #if defined(INTEL_MKL)
   // AOT compiled code runs in single thread.
+  bool is_thunk_runtime = true;
   is_onednn_compatible = !is_aot_compile && !is_thunk_runtime;
   if (is_onednn_compatible) {
     // Placing OneDnnOpsRewriter here to match the flax patterns
@@ -852,9 +850,7 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     TargetMachineFeatures* target_machine_features,
     const CompileOptions& compile_options) {
   const auto& debug_options = module->config().debug_options();
-  const bool is_thunk_runtime = debug_options.xla_cpu_use_thunk_runtime();
-  const bool is_fusion_emitters =
-      is_thunk_runtime && debug_options.xla_cpu_use_fusion_emitters();
+  const bool is_fusion_emitters = debug_options.xla_cpu_use_fusion_emitters();
   bool is_onednn_compatible = false;
   bool flatten_after_fusion = options::FlattenAfterFusion(module->config());
   HloPassPipeline pipeline("HLO passes after layout assignment");
@@ -881,6 +877,7 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
 
 #if defined(INTEL_MKL)
   // AOT compiled code runs in single thread.
+  bool is_thunk_runtime = true;
   is_onednn_compatible = !is_aot_compile && !is_thunk_runtime;
   if (is_onednn_compatible) {
     // Run SimplifyFPConversions pass to simplify the BF16 pattern and make it
@@ -1009,7 +1006,7 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
 
   // The hoisting of small while loops is only useful in the context of the
   // thunk runtime.
-  if (module->config().debug_options().xla_cpu_use_thunk_runtime()) {
+  {
     TF_ASSIGN_OR_RETURN(
         int64_t byte_threshold,
         xla::cpu::options::SmallWhileLoopByteThreshold(module->config()));
@@ -1958,11 +1955,6 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
     TF_RETURN_IF_ERROR(RunHloPasses(hlo_module.get(), /*is_aot_compile=*/true,
                                     target_machine.get(),
                                     /*dummy*/ CompileOptions{}));
-
-    if (!hlo_module->config().debug_options().xla_cpu_use_thunk_runtime()) {
-      return InvalidArgument(
-          "xla_cpu_use_thunk_runtime must be true for AOT compilation.");
-    }
 
     TF_ASSIGN_OR_RETURN(
         results.emplace_back(),

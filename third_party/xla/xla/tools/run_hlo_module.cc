@@ -167,12 +167,6 @@ absl::StatusOr<Literal> ExecuteWithRunner(
   return std::move(result_status).value();
 }
 
-void UseCpuThunkRuntime(HloModule& module) {
-  auto debug_options = module.config().debug_options();
-  debug_options.set_xla_cpu_use_thunk_runtime(true);
-  module.mutable_config().set_debug_options(debug_options);
-}
-
 absl::Status RunAndCompareInternal(
     std::unique_ptr<HloModule> test_module,
     const BufferAssignmentProto* buffer_assignment_proto,
@@ -276,12 +270,6 @@ absl::Status RunAndCompareInternal(
                 *test_module, test_runner, config_modifier_hook,
                 reference_module_modifier_hook, skip_deoptimization),
             ModuleResult::kCompilationError, reference_run_result));
-  }
-
-  // Now when reference_module is ready, we can modify test_module without
-  // impacting the reference run.
-  if (options.force_use_cpu_thunk_runtime_for_test) {
-    UseCpuThunkRuntime(*test_module);
   }
 
   TF_ASSIGN_OR_RETURN(
