@@ -38,6 +38,7 @@ cc_library(
         "triton_xla_extract_insert_to_triton_pass.cc",
         "triton_xla_fold_transpose_pass.cc",
         "triton_xla_squeeze_dims_pass.cc",
+        "triton_xla_unswitch_loops_pass.cc",
     ],
     hdrs = ["passes.h"],
     deps = [
