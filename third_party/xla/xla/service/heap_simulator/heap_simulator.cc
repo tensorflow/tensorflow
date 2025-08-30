@@ -2729,13 +2729,17 @@ void BreadthFirstMidpointIterator::Next() {
   WorkItem work_item = work_items_.front();
   work_items_.pop_front();
   if (work_item.start > work_item.end) {
-    Next();
+    value_ = std::nullopt;
     return;
   }
   int midpoint = CeilOfRatio(work_item.start + work_item.end, 2);
   value_ = midpoint;
-  work_items_.push_back({work_item.start, midpoint - 1});
-  work_items_.push_back({midpoint + 1, work_item.end});
+  if (work_item.start < midpoint) {
+    work_items_.push_back({work_item.start, midpoint - 1});
+  }
+  if (work_item.end > midpoint) {
+    work_items_.push_back({midpoint + 1, work_item.end});
+  }
 }
 
 template class GlobalDecreasingSizeBestFitHeap<HloValue>;
