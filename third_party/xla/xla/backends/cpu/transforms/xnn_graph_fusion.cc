@@ -91,7 +91,7 @@ HloInstruction* XnnGraphFusion::Fuse(HloInstruction* producer,
   FusionBackendConfig* fusion_config = backend_config.mutable_fusion_config();
   fusion_config->set_kind(std::string{kXnnFusionKind});
   CHECK(backend_config.has_fusion_config());
-  TF_CHECK_OK(fusion->set_backend_config(backend_config));
+  fusion->set_backend_config(backend_config);
   return fusion;
 }
 

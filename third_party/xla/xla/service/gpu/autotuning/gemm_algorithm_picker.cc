@@ -478,7 +478,7 @@ absl::StatusOr<bool> RunOnInstruction(HloInstruction* gemm,
     }
 
     backend_config.set_selected_algorithm(new_algorithm);
-    TF_RETURN_IF_ERROR(gemm->set_backend_config(gpu_config));
+    gemm->set_backend_config(gpu_config);
     return true;  // We changed `gemm`
   }
 

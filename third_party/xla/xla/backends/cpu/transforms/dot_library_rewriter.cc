@@ -76,7 +76,7 @@ absl::StatusOr<HloFusionInstruction*> CreateLibraryFusion(
   BackendConfig backend_config;
   FusionBackendConfig* fusion_config = backend_config.mutable_fusion_config();
   fusion_config->set_kind(fusion_kind);
-  TF_RETURN_IF_ERROR(fusion->set_backend_config(backend_config));
+  fusion->set_backend_config(backend_config);
 
   // Replace the instruction.
   TF_RETURN_IF_ERROR(

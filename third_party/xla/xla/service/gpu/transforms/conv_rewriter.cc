@@ -826,7 +826,7 @@ absl::StatusOr<bool> RunOnInstruction(HloInstruction* conv,
   GpuBackendConfig gpu_backend_config;
   *gpu_backend_config.mutable_cudnn_conv_backend_config() =
       GetDefaultBackendConfig();
-  TF_RETURN_IF_ERROR(custom_call->set_backend_config(gpu_backend_config));
+  custom_call->set_backend_config(gpu_backend_config);
 
   VLOG(1) << "Replacing convolution " << conv->ToString() << " with "
           << custom_call->ToString();
