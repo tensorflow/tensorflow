@@ -22,6 +22,7 @@ limitations under the License.
 #include <list>
 #include <memory>
 
+#include "absl/strings/str_cat.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/run_handler_util.h"
 #include "tensorflow/core/lib/core/threadpool_interface.h"
@@ -303,11 +304,11 @@ unsigned ThreadWorkSource::NonBlockingWorkShardingFactor() {
 }
 
 std::string ThreadWorkSource::ToString() {
-  return strings::StrCat("traceme_id = ", GetTracemeId(),
-                         ", inter queue size = ", TaskQueueSize(true),
-                         ", inter inflight = ", GetInflightTaskCount(true),
-                         ", intra queue size = ", TaskQueueSize(false),
-                         ", intra inflight = ", GetInflightTaskCount(false));
+  return absl::StrCat("traceme_id = ", GetTracemeId(),
+                      ", inter queue size = ", TaskQueueSize(true),
+                      ", inter inflight = ", GetInflightTaskCount(true),
+                      ", intra queue size = ", TaskQueueSize(false),
+                      ", intra inflight = ", GetInflightTaskCount(false));
 }
 
 RunHandlerThreadPool::RunHandlerThreadPool(
@@ -376,8 +377,8 @@ void RunHandlerThreadPool::Start() {
           WorkerLoop(i, is_blocking_thread);
         },
         is_blocking_thread
-            ? strings::StrCat(name_, "_blocking_thread_", sub_thread_pool_id)
-            : strings::StrCat(name_, "_non_blocking_thread")));
+            ? absl::StrCat(name_, "_blocking_thread_", sub_thread_pool_id)
+            : absl::StrCat(name_, "_non_blocking_thread")));
   }
 }
 
@@ -625,9 +626,9 @@ void RunHandlerThreadPool::WorkerLoop(int thread_id,
     if (t.f) {
       tsl::profiler::TraceMe activity(
           [=] {
-            return strings::StrCat(task_from_blocking_queue ? "inter" : "intra",
-                                   " #id = ", tws->GetTracemeId(), " ",
-                                   thread_id, "#");
+            return absl::StrCat(task_from_blocking_queue ? "inter" : "intra",
+                                " #id = ", tws->GetTracemeId(), " ", thread_id,
+                                "#");
           },
           tsl::profiler::TraceMeLevel::kInfo);
       VLOG(2) << "Running " << (task_from_blocking_queue ? "inter" : "intra")
@@ -637,9 +638,7 @@ void RunHandlerThreadPool::WorkerLoop(int thread_id,
       tws->DecrementInflightTaskCount(task_from_blocking_queue);
     } else {
       tsl::profiler::TraceMe activity(
-          [=] {
-            return strings::StrCat("Sleeping#thread_id=", thread_id, "#");
-          },
+          [=] { return absl::StrCat("Sleeping#thread_id=", thread_id, "#"); },
           tsl::profiler::TraceMeLevel::kInfo);
       if (VLOG_IS_ON(4)) {
         for (int i = 0; i < thread_work_sources->size(); ++i) {
@@ -850,14 +849,13 @@ class RunHandlerPool::Impl {
       if (!has_free_handler()) {
         tsl::profiler::TraceMe activity(
             [&] {
-              return strings::StrCat("WaitingForHandler#step_id=", step_id,
-                                     "#");
+              return absl::StrCat("WaitingForHandler#step_id=", step_id, "#");
             },
             tsl::profiler::TraceMeLevel::kInfo);
         TRACESTRING(
-            strings::StrCat("RunHandlerPool::Impl::Get waiting for a handler "
-                            "with timeout in millisecond",
-                            timeout_in_ms));
+            absl::StrCat("RunHandlerPool::Impl::Get waiting for a handler "
+                         "with timeout in millisecond",
+                         timeout_in_ms));
         if (timeout_in_ms == 0) {
           mu_.Await(Condition(this, &Impl::has_free_handler));
         } else if (!mu_.AwaitWithDeadline(
@@ -1031,9 +1029,9 @@ void RunHandlerPool::Impl::LogInfo() {
         ids_str += " ";
       }
 
-      times_str +=
-          strings::StrCat((now - (*it)->start_time_us()) / 1000.0, " ms.");
-      ids_str += strings::StrCat((*it)->tws()->GetTracemeId());
+      absl::StrAppend(&times_str, (now - (*it)->start_time_us()) / 1000.0,
+                      " ms.");
+      absl::StrAppend(&ids_str, (*it)->tws()->GetTracemeId());
       ++it;
     }
     VLOG(1) << "Elapsed times are: " << times_str;
