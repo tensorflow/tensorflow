@@ -1751,7 +1751,7 @@ def pool_v2(
       N=3, the valid values are "NDHWC" (default) and "NCDHW".
     dilations: Optional.  Dilation rate.  List of N ints >= 1. Defaults to
       `[1]*N`.  If any value of dilation_rate is > 1, then all values of strides
-      must be 1.
+      must be 1, and padding should not be set to "SAME".
     name: Optional. Name of the op.
 
   Returns:
