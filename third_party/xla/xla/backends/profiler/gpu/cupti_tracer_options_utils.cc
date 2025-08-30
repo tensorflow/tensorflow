@@ -18,11 +18,14 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
 #include "xla/backends/profiler/gpu/cupti_collector.h"
@@ -78,6 +81,24 @@ absl::Status UpdateCuptiTracerOptionsFromProfilerOptions(
                              CUPTI_ACTIVITY_KIND_GRAPH_TRACE);
                        }
                      }));
+
+  TF_RETURN_IF_ERROR(SetValue<std::string>(
+      profile_options, "gpu_pm_sample_counters", input_keys,
+      [&](const std::string& value) {
+        std::vector<std::string> metrics;
+        for (absl::string_view metric :
+             absl::StrSplit(value, ',', absl::SkipEmpty())) {
+          metrics.push_back(std::string(absl::StripAsciiWhitespace(metric)));
+        }
+        tracer_options.pm_sampler_options.metrics = metrics;
+        tracer_options.pm_sampler_options.enable = !metrics.empty();
+      }));
+
+  TF_RETURN_IF_ERROR(SetValue<int64_t>(
+      profile_options, "gpu_pm_sample_interval_us", input_keys,
+      [&](int64_t value) {
+        tracer_options.pm_sampler_options.sample_interval_ns = value * 1000;
+      }));
 
   if (!input_keys.empty()) {
     return absl::InvalidArgumentError(absl::StrCat(
