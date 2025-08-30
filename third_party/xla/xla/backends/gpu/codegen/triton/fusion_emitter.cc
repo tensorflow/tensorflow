@@ -1739,7 +1739,7 @@ mlir::FunctionOpInterface CreateFuncOp(EmitterLocOpBuilder b,
                                         b.getFunctionType(fn_arg_types, {}));
   }
   auto func = b.create<ttir::FuncOp>(
-      fn_name, b.getFunctionType(fn_arg_types, std::nullopt));
+      fn_name, b.getFunctionType(fn_arg_types, mlir::TypeRange()));
   auto divisibility_attr = b.getI32IntegerAttr(16);
   for (int i = 0; i < func.getNumArguments(); ++i) {
     func.setArgAttr(i, "tt.divisibility", divisibility_attr);
