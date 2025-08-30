@@ -46,6 +46,9 @@ absl::StatusOr<ExecuteOptionsProto> ExecuteOptions::ToProto(
       non_donatable_input_indices.begin(), non_donatable_input_indices.end());
   proto.set_fill_status(fill_status);
   proto.set_execution_stream_id(execution_stream_id);
+  if (call_location.has_value()) {
+    proto.set_call_location(*call_location);
+  }
   if (custom_options.has_value()) {
     *proto.mutable_custom_options() = custom_options->ToProto(version);
   }
@@ -68,6 +71,9 @@ absl::StatusOr<ExecuteOptions> ExecuteOptions::FromProto(
       proto.non_donatable_input_indices().end());
   options.fill_status = proto.fill_status();
   options.execution_stream_id = proto.execution_stream_id();
+  if (!proto.call_location().empty()) {
+    options.call_location = proto.call_location();
+  }
   if (proto.has_custom_options()) {
     TF_ASSIGN_OR_RETURN(options.custom_options,
                         AttributeMap::FromProto(proto.custom_options()));

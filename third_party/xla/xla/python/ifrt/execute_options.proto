@@ -28,6 +28,7 @@ message ExecuteOptionsProto {
   bool fill_status = 9;
   int64 execution_stream_id = 11;
   AttributeMapProto custom_options = 10;
+  string call_location = 13;
 
   reserved 1, 4 to 6, 8;
 }

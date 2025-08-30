@@ -101,7 +101,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 75
+#define PJRT_API_MINOR 76
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -1639,6 +1639,9 @@ struct PJRT_ExecuteOptions {
   // multi-host programs are launched in different orders on different hosts,
   // the launch IDs may be used by the runtime to detect the mismatch.
   int launch_id;
+  // The call location of the program
+  const char* call_location;
+  size_t call_location_size;
   // A list of indices denoting the input buffers that should not be donated.
   // An input buffer may be non-donable, for example, if it is referenced more
   // than once. Since such runtime information is not available at compile time,
