@@ -76,6 +76,8 @@ bool isInlineableCallOp(CallOp callOp) {
 
 // Returns the first non-maximal mesh on the argument shardings, if there is
 // one. Otherwise returns `std::nullopt`.
+// TODO(enver): Move to utils and potentially with a common helper that takes an
+// std::function to get the sharding given an index.
 std::optional<mlir::Attribute> getMeshOrRefOnArguments(
     FuncOp funcOp, const SymbolTable& symbolTable) {
   for (int64_t argNum = 0; argNum < funcOp.getNumArguments(); ++argNum) {
@@ -110,6 +112,44 @@ TensorShardingPerValueAttr getFuncArgShardings(CallOp callOp, FuncOp funcOp,
   return TensorShardingPerValueAttr::get(funcOp.getContext(), argShardings);
 }
 
+// Returns the first non-maximal mesh on the result shardings, if there is
+// one. Otherwise returns `std::nullopt`.
+// TODO(enver): Move to utils and potentially with a common helper that takes an
+// std::function to get the sharding given an index.
+std::optional<mlir::Attribute> getMeshOrRefOnResults(
+    FuncOp funcOp, const SymbolTable& symbolTable) {
+  for (int64_t resultNum = 0; resultNum < funcOp.getNumResults(); ++resultNum) {
+    if (TensorShardingAttr sdySharding =
+            mlir::sdy::getFuncResultSharding(funcOp, resultNum);
+        sdySharding && !sdySharding.getMesh(symbolTable).isMaximal()) {
+      return std::make_optional(sdySharding.getMeshOrRef());
+    }
+  }
+  return std::nullopt;
+}
+
+TensorShardingPerValueAttr getFuncResultShardings(
+    CallOp callOp, FuncOp funcOp, const SymbolTable& symbolTable) {
+  std::optional<mlir::Attribute> meshOrRef =
+      getMeshOrRefOnResults(funcOp, symbolTable);
+  if (!meshOrRef) {
+    return nullptr;
+  }
+  mlir::SmallVector<TensorShardingAttr> resultShardings;
+  resultShardings.reserve(funcOp.getNumResults());
+  for (int64_t resultNum = 0; resultNum < funcOp.getNumResults(); ++resultNum) {
+    TensorShardingAttr sdySharding =
+        mlir::sdy::getFuncResultSharding(funcOp, resultNum);
+    resultShardings.push_back(
+        sdySharding
+            ? sdySharding
+            : TensorShardingAttr::getFullyOpen(
+                  funcOp.getContext(),
+                  getTensorRank(callOp.getResult(resultNum)), *meshOrRef));
+  }
+  return TensorShardingPerValueAttr::get(funcOp.getContext(), resultShardings);
+}
+
 void importCallOp(
     CallOp callOp,
     llvm::SmallDenseMap<StringRef, mlir::Region*>& calleeNameToMovedRegion,
@@ -126,6 +166,8 @@ void importCallOp(
   CHECK(funcOp) << "Failed to lookup function: " << calleeName.str();
 
   rewriter.setInsertionPoint(callOp);
+  TensorShardingPerValueAttr callOpResultShardings =
+      mlir::sdy::getShardingPerValue(callOp);
   auto namedCompOp = rewriter.create<NamedComputationOp>(
       callOp->getLoc(), callOp->getResultTypes(), calleeName,
       callOp.getOperands(),
@@ -133,7 +175,10 @@ void importCallOp(
       getFuncArgShardings(callOp, funcOp, symbolTable),
       // TODO(b/439018088): Take func result shardings if call op result
       // shardings are empty.
-      /*outShardings=*/mlir::sdy::getShardingPerValue(callOp));
+      /*outShardings=*/
+      callOpResultShardings
+          ? callOpResultShardings
+          : getFuncResultShardings(callOp, funcOp, symbolTable));
   namedCompOp->setAttrs(namedCompAttrs);
 
   mlir::Region& namedCompRegion = namedCompOp.getRegion();
