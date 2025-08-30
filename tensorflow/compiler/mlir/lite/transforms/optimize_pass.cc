@@ -1376,17 +1376,23 @@ struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
     }
     const auto& [num_channels, filter_element_type] = *fc_info;
 
-    auto bias_1d =
-        GetBiasIn1D(rewriter, bias, num_channels, filter_element_type);
+    auto fc_output_type =
+        mlir::dyn_cast<RankedTensorType>(fc_op.getOutput()[0].getType());
+    auto bias_1d = GetBiasIn1D(rewriter, bias, num_channels,
+                               fc_output_type.getElementType());
     // Get the added value as a 1D tensor.
     auto add_rhs_1d = GetAs1DValue(rewriter, add_rhs, num_channels);
 
     if (!bias_1d.has_value() || !add_rhs_1d.has_value()) {
       return failure();
     }
+    // Sanity check that bias and add_rhs can be broadcasted together (shapes
+    // should be broadcastable and element types must match).
+    if (!IsBroadcastableElementsAttrAndType(bias_1d->getType(),
+                                            add_rhs_1d->getType())) {
+      return failure();
+    }
 
-    auto fc_output_type =
-        mlir::dyn_cast<RankedTensorType>(fc_op.getOutput()[0].getType());
     auto add_output_type =
         mlir::dyn_cast<RankedTensorType>(add_op.getOutput().getType());
     if (!fc_output_type || !add_output_type ||
