@@ -21,7 +21,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
-#include "xla/backends/cpu/xnn_gemm_config.h"
 #include "xla/error_spec.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/test.h"
@@ -47,10 +46,7 @@ class XnnFusionTest
   }
 
  protected:
-  XnnFusionTest() {
-    // Override XnnGemmConfig.
-    GetXnnGemmConfig().SetTestFilter([](const XnnGemm&) { return true; });
-  }
+  XnnFusionTest() = default;
 
   ~XnnFusionTest() override { GetXnnGemmConfig().SetTestFilter(nullptr); }
 

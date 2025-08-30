@@ -49,7 +49,6 @@ xla_cc_test(
         ":dot_library_rewriter",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
-        "//xla/backends/cpu:xnn_gemm_config",
         "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/backends/cpu/codegen:target_machine_test_base",
         "//xla/hlo/ir:hlo",
