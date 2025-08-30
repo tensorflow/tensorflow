@@ -257,3 +257,23 @@ It recursively traverses `deps` attribute of the target and collects paths to
 files that are in `data` attribute. Then it filters all files that do not match
 the provided extensions.
 """  # buildifier: disable=no-effect
+
+def _nvidia_wheel_versions_repository_impl(repository_ctx):
+    """Repository rule for storing NVIDIA wheel versions."""
+    versions_source = repository_ctx.attr.versions_source
+
+    versions_file_content = repository_ctx.read(
+        repository_ctx.path(versions_source),
+    )
+    repository_ctx.file(
+        "versions.bzl",
+        "NVIDIA_WHEEL_VERSIONS = '''%s'''" % versions_file_content,
+    )
+    repository_ctx.file("BUILD", "")
+
+nvidia_wheel_versions_repository = repository_rule(
+    implementation = _nvidia_wheel_versions_repository_impl,
+    attrs = {
+        "versions_source": attr.label(mandatory = True, allow_single_file = True),
+    },
+)
