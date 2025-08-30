@@ -98,6 +98,7 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
+#include "tsl/platform/unbounded_work_queue.h"
 
 namespace xla {
 namespace ifrt {
@@ -871,6 +872,9 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> PjRtClient::Create(
     }
   }
 
+  client->work_queue_ = std::make_unique<tsl::UnboundedWorkQueue>(
+      tsl::Env::Default(), "ifrt_pjrt_client_work_queue");
+
   LogDeviceSummary(client.get());
   return client;
 }
@@ -1499,13 +1503,21 @@ absl::Status PjRtClient::CrossHostSendBuffers(
     return absl::InternalError(
         "CrossHostSendBuffers: keys must be the same size as buffers.");
   }
+  // TODO(emilyaf): Use an async version of KeyValueStore::Get or query batched
+  // keys together to reduce the number of threads used.
   for (int i = 0; i < keys.size(); ++i) {
     auto promise = PjRtFuture<std::string>::CreatePromise();
     PjRtFuture<std::string> descriptor_future(promise);
-    std::string key = absl::StrCat(kKeyPrefix, keys[i]);
-    TF_ASSIGN_OR_RETURN(std::string descriptor,
-                        kv_store_->Get(key, cross_host_transfer_timeout_));
-    promise.Set(std::move(descriptor));
+    work_queue_->Schedule([this, &promise, k = keys[i]] {
+      std::string key = absl::StrCat(kKeyPrefix, k);
+      absl::StatusOr<std::string> descriptor =
+          kv_store_->Get(key, cross_host_transfer_timeout_);
+      if (!descriptor.ok()) {
+        LOG(FATAL) << "Failed to get descriptor for key " << key << ": "
+                   << descriptor.status();
+      }
+      promise.Set(std::move(*descriptor));
+    });
     auto on_done = [](absl::Status status, bool sends_were_enqueued) {
       CHECK_OK(status);
     };
