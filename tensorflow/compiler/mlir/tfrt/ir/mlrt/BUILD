@@ -62,6 +62,7 @@ td_library(
     deps = [
         ":mlrt_td_files",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
+        "//tensorflow/compiler/mlir/tensorflow/ir/host_runtime:tensorflow_tfrt_ops_td_files",
         "@llvm-project//mlir:OpBaseTdFiles",
         "@llvm-project//mlir:SideEffectInterfacesTdFiles",
         "@tf_runtime//:compiler_td_files",
