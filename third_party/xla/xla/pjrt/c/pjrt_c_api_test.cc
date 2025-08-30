@@ -935,7 +935,7 @@ FieldOffsetsAndSizesForVersion(int major_version, int minor_version) {
     if (minor_version >= 73) {
       add_field("PJRT_Client_UpdateGlobalProcessInfo", kFnPtrSize);
     }
-    if (minor_version >= 74) {
+    if (minor_version >= 75) {
       add_field("PJRT_TopologyDescription_Deserialize", kFnPtrSize);
     }
     return version_offsets_and_sizes;
