@@ -97,16 +97,13 @@ std::vector<TritonGemmConfig> GemmFusionAutotunerImpl::GetDefaultTritonConfigs()
     return configs;
   }
 
-  // Hopper+ devices support TMA. Add TMA parameterized configs.
-  std::vector<TritonGemmConfig> tma_parameterized_configs;
+  // Hopper+ devices support TMA. Allow TMA for all configs.
+  // NOTE: These might be pruned later in the autotuner. The reason being that
+  // some shapes might not be supported by TMA.
   for (auto& config : configs) {
-    config.is_tma_allowed = false;
-    tma_parameterized_configs.push_back(config);
-
     config.is_tma_allowed = true;
-    tma_parameterized_configs.push_back(config);
   }
-  return tma_parameterized_configs;
+  return configs;
 }
 
 }  // namespace gpu

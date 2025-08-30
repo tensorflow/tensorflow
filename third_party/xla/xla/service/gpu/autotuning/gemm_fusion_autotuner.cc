@@ -633,12 +633,11 @@ bool HasBroadcastProducer(const HloInstruction& instr) {
 // pipelining stages are > 2. The pattern observed is that these happen in the
 // presence of a broadcast.
 void RestrictTmaConfigs(std::vector<TritonGemmConfig>& configs) {
-  configs.erase(std::remove_if(configs.begin(), configs.end(),
-                               [&](const TritonGemmConfig& config) {
-                                 return config.is_tma_allowed &&
-                                        config.num_stages > 2;
-                               }),
-                configs.end());
+  for (TritonGemmConfig& config : configs) {
+    if (config.is_tma_allowed && config.num_stages > 2) {
+      config.is_tma_allowed = false;
+    }
+  }
 }
 
 }  // anonymous namespace
@@ -884,10 +883,10 @@ GemmFusionAutotunerImpl::GenerateTritonConfigs(const HloDotInstruction& dot) {
       supports_contracting_split &&
       debug_options_.xla_gpu_enable_split_k_autotuning();
 
-  // Allow TMA tuning for Hopper+ devices when TMA flag is passed.
-  bool autotune_tma = debug_options_.xla_gpu_experimental_enable_triton_tma() &&
-                      stream_executor::gpu::IsTmaAvailableForDevice(
-                          config_.GetDeviceDescription());
+  // Use TMA for Hopper+ devices when TMA flag is passed.
+  bool use_tma = debug_options_.xla_gpu_experimental_enable_triton_tma() &&
+                 stream_executor::gpu::IsTmaAvailableForDevice(
+                     config_.GetDeviceDescription());
   TritonDotFusionSearchSpace search_space(config_.GetDeviceDescription(), &dot);
   VLOG(1) << "Generating configs from search space: "
           << search_space.ToString();
@@ -897,7 +896,7 @@ GemmFusionAutotunerImpl::GenerateTritonConfigs(const HloDotInstruction& dot) {
       /*force_contracting_split=*/autotune_contracting_split
           ? std::nullopt
           : std::make_optional(1),
-      /*autotune_tma=*/autotune_tma);
+      /*use_tma=*/use_tma);
 
   // TODO(b/421858850): Restricting configs for dots from broadcasts is a
   // temporary solution. We should remove this once we have a fix for the error.
