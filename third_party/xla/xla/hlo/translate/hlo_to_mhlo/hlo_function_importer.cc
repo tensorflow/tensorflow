@@ -568,7 +568,7 @@ absl::StatusOr<Value> HloFunctionImporter::ImportInstructionsImpl(
   const int num_parameters = computation.num_parameters();
 
   for (int i = 0; i < num_parameters; i++) {
-    auto hlo_parameter = computation.parameter_instruction(i);
+    auto* hlo_parameter = computation.parameter_instruction(i);
     instruction_value_map_[hlo_parameter] = arguments[i];
   }
 
@@ -714,13 +714,6 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
   if (instruction->has_sharding()) {
     attributes.push_back(builder_->getNamedAttr(
         kShardingAttr, ConvertSharding(instruction->sharding(), builder_)));
-  }
-
-  if (instruction->original_value()) {
-    attributes.push_back(builder_->getNamedAttr(
-        kOriginalValueAttr,
-        builder_->getStringAttr(
-            "{" + instruction->original_value()->ToString() + "}")));
   }
 
   llvm::SmallVector<NamedAttribute, 4> frontend_attributes;
