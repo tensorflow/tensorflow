@@ -609,7 +609,7 @@ void TritonDotFusionSearchSpace::AddTmaParameter(
            << new_config.ToString();
   updated_configs.push_back(new_config);
   new_config.config.is_tma_allowed = true;
-  VLOG(10) << "Adding TMA (enabled) parameter: config = "
+  VLOG(10) << "Adding TMA for config (might be pruned later in autotuner) = "
            << new_config.ToString();
   updated_configs.push_back(new_config);
 }
