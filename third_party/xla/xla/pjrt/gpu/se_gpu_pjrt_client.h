@@ -154,9 +154,7 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
                               PjRtCrossHostRecvNotifier notifier) override;
 
   absl::StatusOr<const xla::PjRtTopologyDescription*> GetTopologyDescription()
-      const override {
-    return &topology_;
-  }
+      const override;
 
   absl::StatusOr<Layout> GetDefaultLayout(
       PrimitiveType element_type, absl::Span<const int64_t> dims) override;
@@ -186,7 +184,7 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
 
   std::optional<int> num_nodes_;
   const bool abort_collectives_on_failure_ = false;
-  xla::StreamExecutorGpuTopologyDescription topology_;
+  std::optional<xla::StreamExecutorGpuTopologyDescription> topology_;
   std::shared_ptr<KeyValueStoreInterface> kv_store_;
   std::shared_ptr<DistributedRuntimeClient> distributed_client_;
 

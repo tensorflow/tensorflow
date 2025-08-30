@@ -37,8 +37,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
-#include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology_description.h"
 #include "xla/python/ifrt/client.h"
@@ -47,6 +45,7 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_topology.h"
 #include "xla/service/computation_placer.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/platform/test.h"
 #include "tsl/platform/protobuf.h"
@@ -57,7 +56,6 @@ namespace {
 using ::testing::Eq;
 using ::testing::HasSubstr;
 using ::testing::Ne;
-using tsl::testing::StatusIs;
 
 // TODO(b/229726259): Make EqualsProto available in OSS
 class ProtoStringMatcher {
@@ -533,9 +531,7 @@ TEST_F(Tf2HloTest, GpuCompile) {
       .entry_function_name = "main",
       .compile_metadata = compile_metadata,
       .shape_representation_fn = tensorflow::IdentityShapeRepresentationFn(),
-      .topology = std::make_shared<xla::ifrt::PjRtTopology>(
-          std::make_shared<xla::StreamExecutorGpuTopologyDescription>(
-              xla::CudaId(), xla::CudaName(), /*gpu_topology=*/nullptr)),
+      .topology = nullptr,
       .platform_name = xla::CudaName(),
   };
 
