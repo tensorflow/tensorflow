@@ -2107,7 +2107,7 @@ struct ParallelState {
     while (n < s.rank) {
       absl::StatusOr<bool> result = visitor_function(s.indexes, thread_id);
       if (!result.ok()) {
-        absl::MutexLock lock(&pstate.mu);
+        absl::MutexLock lock(pstate.mu);
         if (pstate.status.ok()) {
           pstate.status = result.status();
         }
