@@ -53,7 +53,6 @@ namespace {
 
 namespace m = ::xla::match;
 using ::testing::NotNull;
-using ::tsl::testing::IsOkAndHolds;
 
 class LayoutAssignmentTest : public HloTestBase {
  public:
@@ -456,6 +455,51 @@ TEST_F(LayoutAssignmentTest, TopKLayout) {
               GmockMatch(m::CustomCall(
                   m::Transpose(m::Copy().WithShape(F32, {2048, 6}, {0, 1}))
                       .WithShape(F32, {6, 2048}, {1, 0}))));
+}
+
+TEST_F(LayoutAssignmentTest,
+       BitcastConvertFromNarrowerTypeGetsOptimalInputLayout) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+e {
+  a = s4[3,5,2]{0,1,2:E(4)} parameter(0)
+  b = s8[3,5]{0,1} bitcast-convert(a)
+})"));
+
+  ComputationLayout computation_layout(
+      module->entry_computation()->ComputeProgramShape(),
+      /*ignore_layouts=*/false);
+  GpuLayoutAssignment layout_assignment(
+      &computation_layout, GetGpuComputeCapability(), GetDnnVersion(),
+      GetDeviceDescription());
+  EXPECT_THAT(layout_assignment.Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::BitcastConvert(
+          m::Copy(m::Parameter()).WithShape(S4, {3, 5, 2}, {2, 0, 1}))));
+}
+
+TEST_F(LayoutAssignmentTest,
+       BitcastConvertToNarrowerTypeGetsOptimalOutputLayout) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+e {
+  a = s8[3,5] parameter(0)
+  b = s4[3,5,2]{0,1,2} bitcast-convert(a)
+})"));
+
+  ComputationLayout computation_layout(
+      module->entry_computation()->ComputeProgramShape(),
+      /*ignore_layouts=*/false);
+  GpuLayoutAssignment layout_assignment(
+      &computation_layout, GetGpuComputeCapability(), GetDnnVersion(),
+      GetDeviceDescription());
+  EXPECT_THAT(layout_assignment.Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Copy(m::BitcastConvert(m::Parameter())
+                                     .WithShape(S4, {3, 5, 2}, {2, 0, 1}))));
 }
 
 TEST_F(LayoutAssignmentTest, FftLayout) {

@@ -563,6 +563,22 @@ absl::Status GpuLayoutAssignment::AddBackendConstraints(
           auto indices_buffer,
           points_to_analysis_->GetBufferDefinedAt(instruction, {1}));
       TF_RETURN_IF_ERROR(SetBufferLayout(default_layout, *indices_buffer));
+    } else if (HloPredicateIsOp<HloOpcode::kBitcastConvert>(instruction)) {
+      Shape operand_shape = instruction->operand(0)->shape();
+      Shape output_shape = instruction->shape();
+      // Make the added or removed dimension the minor most to give the
+      // operation a chance to become a no-op (bitcast).
+      if (operand_shape.dimensions().size() >
+          output_shape.dimensions().size()) {
+        *operand_shape.mutable_layout() = LayoutUtil::MoveDimToMinor(
+            operand_shape.layout(), operand_shape.dimensions().size() - 1);
+        TF_RETURN_IF_ERROR(SetOperandLayout(operand_shape, instruction, 0));
+      } else if (operand_shape.dimensions().size() <
+                 output_shape.dimensions().size()) {
+        *output_shape.mutable_layout() = LayoutUtil::MoveDimToMinor(
+            output_shape.layout(), output_shape.dimensions().size() - 1);
+        TF_RETURN_IF_ERROR(SetInstructionLayout(output_shape, instruction));
+      }
     } else if (HloPredicateIsOp<HloOpcode::kTriangularSolve>(instruction)) {
       // TODO(phawkins): Ideally we would relax this constraint. What we
       // actually want is that:
