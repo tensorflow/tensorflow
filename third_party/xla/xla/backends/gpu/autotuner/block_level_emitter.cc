@@ -220,24 +220,6 @@ std::vector<absl::Span<const int64_t>> FlatListOfShapes(
   DfsShapes(instr.shape(), result);
   return result;
 }
-
-void ExtendConfigsWithTma(
-    std::vector<std::unique_ptr<BackendConfig>>& configs) {
-  int64_t original_size = configs.size();
-  for (int64_t i = 0; i < original_size; ++i) {
-    BlockLevelFusionConfig original_config;
-    if (!configs[i]->UnpackTo(&original_config)) {
-      // This should not happen based on how configs are created.
-      LOG(ERROR) << "Failed to unpack BlockLevelFusionConfig";
-      continue;
-    }
-    BlockLevelFusionConfig new_config = original_config;
-    new_config.set_is_tma_allowed(true);
-    auto any = std::make_unique<google::protobuf::Any>();
-    any->PackFrom(new_config);
-    configs.push_back(std::move(any));
-  }
-}
 }  // namespace
 
 absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
@@ -316,13 +298,20 @@ BlockLevelEmitterBackend::GetSupportedConfigs(const HloInstruction& instr) {
     configs.push_back(std::move(any));
   }
 
-  // Allow TMA tuning for Hopper+ devices when TMA flag is passed.
-  bool autotune_tma =
-      debug_options().xla_gpu_experimental_enable_triton_tma() &&
-      stream_executor::gpu::IsTmaAvailableForDevice(
-          target_config().device_description);
-  if (autotune_tma) {
-    ExtendConfigsWithTma(configs);
+  // Use TMA for Hopper+ devices when TMA flag is passed.
+  bool use_tma = debug_options().xla_gpu_experimental_enable_triton_tma() &&
+                 stream_executor::gpu::IsTmaAvailableForDevice(
+                     target_config().device_description);
+  if (use_tma) {
+    for (auto& config : configs) {
+      BlockLevelFusionConfig block_level_fusion_config;
+      if (!config->UnpackTo(&block_level_fusion_config)) {
+        return absl::InvalidArgumentError(
+            "Invalid backend config type for BlockLevelFusionConfig.");
+      }
+      block_level_fusion_config.set_is_tma_allowed(true);
+      config->PackFrom(block_level_fusion_config);
+    }
   }
 
   return configs;

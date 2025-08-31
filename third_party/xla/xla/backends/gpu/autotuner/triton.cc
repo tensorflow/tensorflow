@@ -115,11 +115,10 @@ TritonBackend::GetSupportedConfigs(const HloInstruction& instr) {
       supports_contracting_split &&
       debug_options().xla_gpu_enable_split_k_autotuning();
 
-  // Allow TMA tuning for Hopper+ devices when TMA flag is passed.
-  bool autotune_tma =
-      debug_options().xla_gpu_experimental_enable_triton_tma() &&
-      stream_executor::gpu::IsTmaAvailableForDevice(
-          target_config().device_description);
+  // Use TMA for Hopper+ devices when TMA flag is passed.
+  bool use_tma = debug_options().xla_gpu_experimental_enable_triton_tma() &&
+                 stream_executor::gpu::IsTmaAvailableForDevice(
+                     target_config().device_description);
   std::vector<std::unique_ptr<BackendConfig>> configs;
   VLOG(1) << "Generating configs from search space: "
           << search_space.ToString();
@@ -129,14 +128,14 @@ TritonBackend::GetSupportedConfigs(const HloInstruction& instr) {
       /*force_contracting_split=*/autotune_contracting_split
           ? std::nullopt
           : std::make_optional(1),
-      /*autotune_tma=*/autotune_tma);
+      /*use_tma=*/use_tma);
 
   if (!debug_options().xla_gpu_exhaustive_tiling_search()) {
     VLOG(1) << "Restricting configs to the default set.";
     gemm_configs = search_space.OptimizeConfigSet(
         gemm_configs, /*hints=*/GetDefaultTritonConfigs(
             target_config().device_description.gpu_compute_capability(),
-            autotune_tma));
+            use_tma));
   }
   configs.reserve(gemm_configs.size());
   for (const auto& config : gemm_configs) {
