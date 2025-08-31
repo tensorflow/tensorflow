@@ -150,7 +150,7 @@ absl::Status InitializeTPUSystemGlobally(absl::string_view job_name,
                                          tpu::TopologyProto* tpu_topology) {
   VLOG(1) << "InitializeTpuSystemGlobally";
 
-  absl::MutexLock lock(&global_init_tpu_mutex);
+  absl::MutexLock lock(global_init_tpu_mutex);
   if (global_tpu_topology != nullptr) {
     *tpu_topology = *global_tpu_topology;
     return absl::OkStatus();
