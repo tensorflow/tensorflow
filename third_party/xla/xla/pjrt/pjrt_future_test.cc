@@ -163,6 +163,27 @@ TEST(PjRtFutureTest, OnReadyMoveOnlyFuture) {
   });
 }
 
+TEST(PjRtFutureTest, PromiseIsUnique) {
+  auto promise = PjRtFuture<>::CreatePromise();
+  EXPECT_TRUE(promise.IsUniqueReference());
+
+  {
+    auto copy = promise;
+    EXPECT_FALSE(promise.IsUniqueReference());
+    EXPECT_FALSE(copy.IsUniqueReference());
+  }
+  EXPECT_TRUE(promise.IsUniqueReference());
+
+  PjRtFuture<> future(promise);
+  EXPECT_FALSE(promise.IsUniqueReference());
+  future.OnReady([](const absl::Status&) {});
+  future = {};
+  EXPECT_FALSE(promise.IsUniqueReference());
+
+  promise.Set();
+  EXPECT_TRUE(promise.IsUniqueReference());
+}
+
 TEST(PjRtFutureTest, MapCopyableFuture) {
   auto promise = PjRtFuture<int32_t>::CreatePromise();
   PjRtFuture<int32_t> future(promise);
