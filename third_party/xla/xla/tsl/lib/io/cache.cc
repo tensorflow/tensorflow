@@ -177,7 +177,7 @@ class LRUCache {
   void Erase(Slice key, uint32_t hash);
   void Prune();
   size_t TotalCharge() const {
-    absl::MutexLock l(&mutex_);
+    absl::MutexLock l(mutex_);
     return usage_;
   }
 
@@ -263,7 +263,7 @@ void LRUCache::LRU_Append(LRUHandle* list, LRUHandle* e) {
 }
 
 Cache::Handle* LRUCache::Lookup(Slice key, uint32_t hash) {
-  absl::MutexLock l(&mutex_);
+  absl::MutexLock l(mutex_);
   LRUHandle* e = table_.Lookup(key, hash);
   if (e != nullptr) {
     Ref(e);
@@ -272,14 +272,14 @@ Cache::Handle* LRUCache::Lookup(Slice key, uint32_t hash) {
 }
 
 void LRUCache::Release(Cache::Handle* handle) {
-  absl::MutexLock l(&mutex_);
+  absl::MutexLock l(mutex_);
   Unref(reinterpret_cast<LRUHandle*>(handle));
 }
 
 Cache::Handle* LRUCache::Insert(Slice key, uint32_t hash, void* value,
                                 size_t charge,
                                 void (*deleter)(Slice key, void* value)) {
-  absl::MutexLock l(&mutex_);
+  absl::MutexLock l(mutex_);
 
   LRUHandle* e =
       reinterpret_cast<LRUHandle*>(malloc(sizeof(LRUHandle) - 1 + key.size()));
@@ -328,12 +328,12 @@ bool LRUCache::FinishErase(LRUHandle* e) {
 }
 
 void LRUCache::Erase(Slice key, uint32_t hash) {
-  absl::MutexLock l(&mutex_);
+  absl::MutexLock l(mutex_);
   FinishErase(table_.Remove(key, hash));
 }
 
 void LRUCache::Prune() {
-  absl::MutexLock l(&mutex_);
+  absl::MutexLock l(mutex_);
   while (lru_.next != &lru_) {
     LRUHandle* e = lru_.next;
     assert(e->refs == 1);
@@ -388,7 +388,7 @@ class ShardedLRUCache : public Cache {
     return reinterpret_cast<LRUHandle*>(handle)->value;
   }
   uint64_t NewId() override {
-    absl::MutexLock l(&id_mutex_);
+    absl::MutexLock l(id_mutex_);
     return ++(last_id_);
   }
   void Prune() override {
