@@ -23,6 +23,7 @@ lit_test_suite(
             "export_bounded_dynamism.mlir",
             "export_entry_computation_layout.mlir",
             "export_large_constants.mlir",
+            "export_tuple_args_parameter_replication.mlir",
             "export_replicas.mlir",
             "frontend_attributes.mlir",
             "function.mlir",

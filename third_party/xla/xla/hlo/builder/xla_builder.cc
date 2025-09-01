@@ -447,6 +447,9 @@ absl::Status XlaBuilderFriend::SetParameterReplication(
   TF_ASSIGN_OR_RETURN(HloComputationProto * computation_proto,
                       builder->GetSubcomputation(computation));
   for (auto& instr : *computation_proto->mutable_instructions()) {
+    if (instr.opcode() != HloOpcodeString(HloOpcode::kParameter)) {
+      continue;
+    }
     auto it = replication.find(instr.parameter_number());
     if (it != replication.end()) {
       instr.mutable_parameter_replication()
