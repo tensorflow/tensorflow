@@ -172,6 +172,7 @@ xla_test(
     srcs = ["custom_call_test.cc"],
     backends = ["gpu"],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
+    tags = ["no-oneapi"],  # TODO(intel-tf): Remove it when macro substitutions for SYCL are available in xla/stream_executor/sycl/*.
     deps = [
         "//xla:debug_options_flags",
         "//xla:shape_util",
@@ -3139,5 +3140,54 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/profiler/lib:traceme",
         "@local_tsl//tsl/profiler/lib:traceme_encode",
+    ],
+)
+
+cc_library(
+    name = "intel_gpu_compiler",
+    srcs = [
+        "intel_gpu_compiler_registration.cc",
+    ],
+    tags = [
+        "gpu",
+        "oneapi-only",
+    ],
+    deps = [
+        ":intel_gpu_compiler_impl",
+        "//xla/service:compiler",
+        "//xla/stream_executor/sycl:sycl_platform_id",
+    ],
+    alwayslink = True,  # Contains compiler registration
+)
+
+cc_library(
+    name = "intel_gpu_compiler_impl",
+    srcs = [
+        "intel_gpu_compiler.cc",
+    ],
+    hdrs = [
+        "intel_gpu_compiler.h",
+    ],
+    tags = [
+        "gpu",
+        "oneapi-only",
+    ],
+    deps = [
+        ":gpu_compiler",
+    ],
+)
+
+xla_test(
+    name = "intel_gpu_compiler_test",
+    srcs = ["intel_gpu_compiler_test.cc"],
+    backends = ["gpu"],
+    tags = [
+        "gpu",
+        "oneapi-only",
+    ],
+    deps = [
+        ":intel_gpu_compiler",
+        "//xla/tests:hlo_test_base",
+        "@com_google_googletest//:gtest_main",
     ],
 )
