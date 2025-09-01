@@ -73,17 +73,23 @@ SymbolicMap::SymbolicMap(SymbolicExprContext* ctx, int64_t num_dimensions,
 }
 
 std::string SymbolicMap::ToString() const {
-  std::string str = absl::StrCat("SymbolicMap(dims=", num_dimensions_,
-                                 ", symbols=", num_symbols_, ", results=[");
-  absl::StrAppend(&str, absl::StrJoin(exprs_, ",\\n",
-                                      [](std::string* out, const auto& expr) {
-                                        absl::StrAppend(out, "  ", expr);
-                                      }));
-  if (!IsEmpty()) {
-    absl::StrAppend(&str, "\\n");
+  std::string out = "(";
+  for (int i = 0; i < GetNumDims(); ++i) {
+    absl::StrAppend(&out, (i > 0 ? ", " : ""), "d", i);
   }
-  absl::StrAppend(&str, "])");
-  return str;
+  out += ")[";
+  for (int i = 0; i < GetNumSymbols(); ++i) {
+    absl::StrAppend(&out, (i > 0 ? ", " : ""), "s", i);
+  }
+  out += "] -> (";
+
+  absl::StrAppend(
+      &out,
+      absl::StrJoin(GetResults(), ", ", [&](std::string* s, const auto& expr) {
+        absl::StrAppend(s, expr.ToString(GetNumDims()));
+      }));
+  out += ")";
+  return out;
 }
 
 bool SymbolicMap::IsIdentity() const {

@@ -66,7 +66,9 @@ class SymbolicExpr {
   SymbolicExpr GetLHS() const;
   SymbolicExpr GetRHS() const;
   int64_t GetValue() const;
-  std::string ToString() const;
+  // If num_dims is provided, then the first num_dims variables are dimensions,
+  // and the rest are symbols.
+  std::string ToString(int64_t num_dims = -1) const;
   int64_t Evaluate(absl::Span<const int64_t> variable_values) const;
   SymbolicExpr ReplaceVariables(
       absl::Span<const SymbolicExpr> substitutions) const;

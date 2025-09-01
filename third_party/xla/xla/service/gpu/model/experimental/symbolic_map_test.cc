@@ -26,17 +26,27 @@ namespace {
 
 using ::testing::ElementsAre;
 
-// TODO(karupayun): Make ToString print similarly to AffineMap. It should be
-// aware of the dimension and symbol names.
 TEST(SymbolicMapTest, ToString) {
   SymbolicExprContext ctx;
-  SymbolicMap map =
-      SymbolicMap::Get(&ctx, 2, 1,
-                       {ctx.CreateVariable(0) + ctx.CreateVariable(2),
-                        ctx.CreateVariable(1) * ctx.CreateVariable(3)});
-  EXPECT_EQ(map.ToString(),
-            "SymbolicMap(dims=2, symbols=1, results=[  (v0 + v2),\\n  (v1 * "
-            "v3)\\n])");
+  SymbolicExpr d0 = ctx.CreateVariable(0);
+  SymbolicExpr d1 = ctx.CreateVariable(1);
+  SymbolicExpr s0 = ctx.CreateVariable(2);
+  SymbolicExpr s1 = ctx.CreateVariable(3);
+
+  SymbolicMap map = SymbolicMap::Get(&ctx, 2, 2, {d0 + s0, d1 * s1});
+  EXPECT_EQ(map.ToString(), "(d0, d1)[s0, s1] -> ((d0 + s0), (d1 * s1))");
+
+  SymbolicMap empty_map = SymbolicMap::Get(&ctx, 0, 0, {});
+  EXPECT_EQ(empty_map.ToString(), "()[] -> ()");
+
+  SymbolicMap dims_only = SymbolicMap::Get(&ctx, 2, 0, {d0, d1});
+  EXPECT_EQ(dims_only.ToString(), "(d0, d1)[] -> (d0, d1)");
+
+  SymbolicExpr s0_no_dims = ctx.CreateVariable(0);
+  SymbolicExpr s1_no_dims = ctx.CreateVariable(1);
+  SymbolicMap symbols_only =
+      SymbolicMap::Get(&ctx, 0, 2, {s0_no_dims, s1_no_dims});
+  EXPECT_EQ(symbols_only.ToString(), "()[s0, s1] -> (s0, s1)");
 }
 
 TEST(SymbolicMapTest, IsEmpty) {

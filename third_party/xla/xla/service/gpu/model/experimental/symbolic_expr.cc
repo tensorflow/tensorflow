@@ -590,26 +590,36 @@ bool SymbolicExpr::operator<(const SymbolicExpr& other) const {
   }
 }
 
-std::string SymbolicExpr::ToString() const {
+std::string SymbolicExpr::ToString(int64_t num_dims) const {
   switch (GetType()) {
     case SymbolicExprType::kConstant:
       return std::to_string(GetValue());
-    case SymbolicExprType::kVariable:
-      return absl::StrCat("v", GetValue());
+    case SymbolicExprType::kVariable: {
+      int64_t var_id = GetValue();
+      if (num_dims == -1) {
+        return absl::StrCat("v", var_id);
+      }
+      // If num_dims is provided, then the first num_dims variables are
+      // dimensions, and the rest are symbols.
+      if (var_id < num_dims) {
+        return absl::StrCat("d", var_id);
+      }
+      return absl::StrCat("s", var_id - num_dims);
+    }
     case SymbolicExprType::kAdd:
     case SymbolicExprType::kMul:
     case SymbolicExprType::kFloorDiv:
     case SymbolicExprType::kCeilDiv:
     case SymbolicExprType::kMod: {
       auto bin_op_str = GetBinaryOpString(GetType());
-      return absl::StrCat("(", GetLHS().ToString(), " ", bin_op_str, " ",
-                          GetRHS().ToString(), ")");
+      return absl::StrCat("(", GetLHS().ToString(num_dims), " ", bin_op_str,
+                          " ", GetRHS().ToString(num_dims), ")");
     }
     case SymbolicExprType::kMax:
     case SymbolicExprType::kMin: {
       auto bin_op_str = GetBinaryOpString(GetType());
-      return absl::StrCat(bin_op_str, "(", GetLHS().ToString(), ", ",
-                          GetRHS().ToString(), ")");
+      return absl::StrCat(bin_op_str, "(", GetLHS().ToString(num_dims), ", ",
+                          GetRHS().ToString(num_dims), ")");
     }
     default:
       LOG(FATAL) << "unknown type on symbolic expressions";
