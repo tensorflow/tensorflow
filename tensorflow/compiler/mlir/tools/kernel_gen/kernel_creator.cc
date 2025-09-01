@@ -62,6 +62,7 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
+#include "stablehlo/transforms/Passes.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/rewriters.h"
@@ -165,7 +166,9 @@ absl::Status LowerHlotoLoops(mlir::ModuleOp module,
             /*jit_i64_indexed_for_large_tensors=*/true));
   }
 
-  pm.addNestedPass<FuncOp>(mlir::mhlo::createChloLegalizeToHloPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::stablehlo::createChloLegalizeToStablehloPass());
+  pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
 
   pm.addNestedPass<FuncOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<FuncOp>(mlir::createCSEPass());
