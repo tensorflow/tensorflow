@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/Analysis/SliceAnalysis.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -486,6 +487,58 @@ LogicalResult PushSqueezeDimsUpThroughExpandDims(SqueezeDimsOp op,
   return success();
 }
 
+// Pushes squeeze_dims up through tt.expand_dims, or folds them.
+// Example:
+//   %1 = scf.if %cond -> type1 {
+//     scf.yield %then : type1
+//   } else {
+//     scf.yield %else : type1
+//   }
+//   %2 = squeeze_dims %1, axis=0
+// is rewritten to:
+//   %1 = scf.if %cond -> type2 {
+//     %then_ = squeeze_dims %then, axis=0
+//     scf.yield %2 : type2
+//   } else {
+//     %else_ = squeeze_dims %else, axis=0
+//     scf.yield %else_ : type2
+//   }
+LogicalResult PushSqueezeDimsUpThroughIf(SqueezeDimsOp op,
+                                         PatternRewriter& rewriter) {
+  Value src = op.getSrc();
+  auto if_op = src.getDefiningOp<scf::IfOp>();
+  if (!if_op || !src.hasOneUse()) {
+    return rewriter.notifyMatchFailure(op, "Expected scf.if producer.");
+  }
+
+  // Compute the new types for the if op.
+  unsigned result_number = cast<OpResult>(op.getSrc()).getResultNumber();
+  auto new_types = llvm::to_vector(if_op.getResultTypes());
+  new_types[result_number] = op.getType();
+
+  auto new_if_op = rewriter.create<scf::IfOp>(
+      op.getLoc(), new_types, if_op.getCondition(), /*addThenBlock=*/false,
+      /*addElseBlock=*/false);
+
+  // Update then and else regions.
+  for (auto [old_region, new_region] :
+       llvm::zip(if_op.getRegions(), new_if_op.getRegions())) {
+    rewriter.inlineRegionBefore(*old_region, *new_region, new_region->end());
+    if (new_region->empty()) {
+      continue;
+    }
+    auto yield_op = new_region->front().getTerminator();
+    OpBuilder::InsertionGuard guard = SetInsertionPoint(rewriter, yield_op);
+    auto squeeze_op = rewriter.create<SqueezeDimsOp>(
+        op.getLoc(), op.getType(), yield_op->getOperand(result_number),
+        op.getAxis());
+    yield_op->setOperand(result_number, squeeze_op);
+  }
+  rewriter.replaceOp(op, new_if_op.getResult(result_number));
+  rewriter.replaceOp(if_op, new_if_op);
+  return success();
+}
+
 // Reorders squeeze_dims ops to enforce the invariant that lower-axis ops
 // come first.
 // Example:
@@ -542,10 +595,11 @@ class TritonXLASqueezeDimsPass
     patterns.add(ExpandReshapeResult);
     patterns.add<PushSqueezeDimsUpThroughElementwise>(&getContext());
     patterns.add(PushSqueezeDimsUpThroughBroadcast);
-    patterns.add(PushSqueezeDimsUpThroughTrans);
+    patterns.add(PushSqueezeDimsUpThroughExpandDims);
+    patterns.add(PushSqueezeDimsUpThroughIf);
     patterns.add(PushSqueezeDimsUpThroughJoin);
     patterns.add(PushSqueezeDimsUpThroughReduce);
-    patterns.add(PushSqueezeDimsUpThroughExpandDims);
+    patterns.add(PushSqueezeDimsUpThroughTrans);
     patterns.add(ReorderSqueezeDims);
     if (failed(applyPatternsGreedily(getOperation(), std::move(patterns)))) {
       return signalPassFailure();
