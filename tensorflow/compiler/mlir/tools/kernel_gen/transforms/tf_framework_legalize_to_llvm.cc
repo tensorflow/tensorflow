@@ -237,7 +237,7 @@ class TFDeallocOpConverter : public ConvertToLLVMCallOpPattern<TFDeallocOp> {
     FlatSymbolRefAttr tf_func_ref =
         GetOrInsertLLVMFunction(GetFuncName(), GetFuncType(), op, &rewriter);
     rewriter.replaceOpWithNewOp<LLVM::CallOp>(
-        op, std::nullopt, tf_func_ref,
+        op, mlir::TypeRange(), tf_func_ref,
         llvm::ArrayRef({adaptor.getCtx(), allocated_bytes_ptr}));
     return success();
   }
@@ -353,7 +353,7 @@ class JITExecuteOpConverter : public ConvertToLLVMCallOpPattern<JITExecuteOp> {
     FlatSymbolRefAttr tf_func_ref =
         GetOrInsertLLVMFunction(GetFuncName(), GetFuncType(), op, &rewriter);
     rewriter.create<LLVM::CallOp>(
-        loc, std::nullopt, tf_func_ref,
+        loc, mlir::TypeRange(), tf_func_ref,
         ValueRange{adaptor.getCtx(), adaptor.getCallable(), result_ptr,
                    num_args, args_ptr});
 
@@ -406,7 +406,7 @@ class ReportErrorOpConverter
         loc, typeConverter->convertType(rewriter.getI32Type()),
         adaptor.getErrorCodeAttr());
     rewriter.replaceOpWithNewOp<LLVM::CallOp>(
-        op, std::nullopt, tf_func_ref,
+        op, mlir::TypeRange(), tf_func_ref,
         llvm::ArrayRef({adaptor.getCtx(), error_code, message_constant}));
     return success();
   }
