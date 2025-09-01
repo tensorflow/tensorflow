@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/substitute.h"
 #include "xla/autotuning.pb.h"
@@ -64,15 +65,18 @@ class TritonBlockLevelFusionEmitterBackendTest
     : public HloHardwareIndependentTestBase {
  protected:
   TritonBlockLevelFusionEmitterBackendTest()
-      : backend_(PlatformUtil::GetDefaultPlatform()
+      : debug_options_([]() {
+          DebugOptions debug_options;
+          // TODO(b/315957220): Remove the experimental flags once TMA is
+          // enabled by default.
+          debug_options.set_xla_gpu_experimental_enable_triton_tma(true);
+          return debug_options;
+        }()),
+        backend_(PlatformUtil::GetDefaultPlatform()
                      .value()
                      ->ExecutorForDevice(0)
                      .value(),
-                 &debug_options_, &compiler_) {
-    // TODO(b/315957220): Remove the experimental flags once TMA is enabled by
-    // default.
-    debug_options_.set_xla_gpu_experimental_enable_triton_tma(true);
-  }
+                 debug_options_, &compiler_) {}
 
   DebugOptions debug_options_;
   NVPTXCompiler compiler_;
@@ -534,7 +538,7 @@ ENTRY %main {
 TEST_F(TritonBlockLevelFusionEmitterBackendTest, UseDefaultConfigFlag) {
   auto backend = BlockLevelEmitterBackend(
       PlatformUtil::GetDefaultPlatform().value()->ExecutorForDevice(0).value(),
-      &debug_options_, &compiler_, /*use_default_config=*/true);
+      debug_options_, &compiler_, /*use_default_config=*/true);
   // Parse an HLO module containing a kCustom Triton fusion with a backend
   // config that includes block-level tiling parameters.
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,

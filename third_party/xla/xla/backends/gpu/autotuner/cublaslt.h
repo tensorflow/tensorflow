@@ -45,7 +45,7 @@ namespace gpu {
 class CublasLtBackend : public GpuCodegenBackend {
  public:
   explicit CublasLtBackend(stream_executor::StreamExecutor* stream_executor,
-                           const DebugOptions* debug_options,
+                           const DebugOptions& debug_options,
                            Compiler* compiler)
       : GpuCodegenBackend("CublasLt", stream_executor, debug_options,
                           compiler) {}
