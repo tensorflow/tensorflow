@@ -708,7 +708,11 @@ class BaseResourceVariable(variables.Variable, core.Tensor):
                          "when eager execution is enabled.")
     return self._graph_element.eval(session=session)
 
-  def numpy(self):
+  def numpy(self) -> "np.ndarray":
+    """
+    Returns the value of this variable as a NumPy ndarray.
+    Only available when eager execution is enabled.
+    """
     if context.executing_eagerly():
       return self.read_value().numpy()
     raise NotImplementedError(
