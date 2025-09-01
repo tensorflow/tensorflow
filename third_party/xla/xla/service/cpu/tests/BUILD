@@ -153,6 +153,7 @@ xla_cc_test(
         "//xla/tests:pjrt_cpu_client_registry",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:test",
         "@com_google_absl//absl/status",
     ],
 )

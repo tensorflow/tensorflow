@@ -74,7 +74,6 @@ static void BM_oneDNN_MM(benchmark::State& state) {
 
   std::vector<const Literal*> args = {&p0, &p1};
   HloBenchmarkOptions benchmark_options;
-  benchmark_options.use_thunk_runtime = false;
   CHECK_OK(RunHloBenchmark(
       state, hlo, args,
       {{"$dtype", primitive_util::LowercasePrimitiveTypeName(dtype)},

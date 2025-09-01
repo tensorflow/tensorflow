@@ -208,7 +208,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_use_acl(true);
 #endif
   opts.set_xla_cpu_use_fusion_emitters(true);
-  opts.set_xla_cpu_use_thunk_runtime(true);
   opts.set_xla_cpu_use_xnnpack(true);
   opts.set_xla_cpu_experimental_xnn_graph_fusion_mode(
       DebugOptions::XNN_GRAPH_FUSION_MODE_DISABLED);
@@ -1086,13 +1085,15 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       tsl::Flag("xla_cpu_use_fusion_emitters",
                 bool_setter_for(&DebugOptions::set_xla_cpu_use_fusion_emitters),
                 debug_options->xla_cpu_use_fusion_emitters(),
-                "Use fusion emitters for code generation in the CPU backend. "
-                "Note: only works with --xla_cpu_use_thunk_runtime=true."));
-  flag_list->push_back(
-      tsl::Flag("xla_cpu_use_thunk_runtime",
-                bool_setter_for(&DebugOptions::set_xla_cpu_use_thunk_runtime),
-                debug_options->xla_cpu_use_thunk_runtime(),
-                "Use Thunk-based runtime for the CPU backend."));
+                "Use fusion emitters for code generation in the CPU backend."));
+  flag_list->push_back(tsl::Flag(
+      "xla_cpu_use_thunk_runtime",
+      [](bool) {
+        LOG(WARNING) << "\"xla_cpu_use_thunk_runtime\" is no longer supported "
+                        "and will be removed in a future release.";
+        return true;
+      },
+      true, "Deprecated."));
   flag_list->push_back(
       tsl::Flag("xla_cpu_use_xnnpack",
                 bool_setter_for(&DebugOptions::set_xla_cpu_use_xnnpack),

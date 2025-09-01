@@ -244,9 +244,6 @@ message DebugOptions {
   // If set, XLA:CPU uses "fusion emitters" for codegen.
   optional bool xla_cpu_use_fusion_emitters = 376;
 
-  // When true, XLA:CPU uses the thunk runtime to execute compiled program.
-  optional bool xla_cpu_use_thunk_runtime = 298;
-
   // When true, XLA:CPU uses XNNPACK to execute supported operations.
   optional bool xla_cpu_use_xnnpack = 359;
 
@@ -254,6 +251,8 @@ message DebugOptions {
   optional bool xla_enable_fast_math = 335;
 
   // go/keep-sorted end
+
+  reserved 298;  // Was xla_cpu_use_thunk_runtime
 
   //--------------------------------------------------------------------------//
   // XLA:GPU options.
