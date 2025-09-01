@@ -25,6 +25,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/SmallBitVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "xla/service/gpu/model/experimental/symbolic_expr.h"
 
@@ -42,6 +44,15 @@ llvm::SmallVector<SymbolicExpr> CreateVariableRange(SymbolicExprContext* ctx,
     replacements.push_back(ctx->CreateVariable(offset + i));
   }
   return replacements;
+}
+
+llvm::DenseSet<VariableID> GetUsedVariablesFromExpressions(
+    const SymbolicMap& map) {
+  llvm::DenseSet<VariableID> used_vars;
+  for (const auto& expr : map.GetResults()) {
+    expr.GetUsedVariables(used_vars);
+  }
+  return used_vars;
 }
 
 }  // namespace
@@ -173,6 +184,37 @@ SymbolicMap SymbolicMap::Replace(SymbolicExpr expr,
 bool SymbolicMap::operator==(const SymbolicMap& other) const {
   return ctx_ == other.ctx_ && num_dimensions_ == other.num_dimensions_ &&
          num_symbols_ == other.num_symbols_ && exprs_ == other.exprs_;
+}
+
+llvm::SmallBitVector GetUnusedDimensionsBitVector(const SymbolicMap& map) {
+  llvm::SmallBitVector unused_dims(map.GetNumDims(), true);
+  if (map.IsEmpty() || map.GetNumDims() == 0) {
+    return unused_dims;
+  }
+
+  llvm::DenseSet<VariableID> used_vars = GetUsedVariablesFromExpressions(map);
+  for (int i = 0; i < map.GetNumDims(); ++i) {
+    if (used_vars.contains(i)) {
+      unused_dims[i] = false;
+    }
+  }
+  return unused_dims;
+}
+
+llvm::SmallBitVector GetUnusedSymbolsBitVector(const SymbolicMap& map) {
+  llvm::SmallBitVector unused_symbols(map.GetNumSymbols(), true);
+  if (map.IsEmpty() || map.GetNumSymbols() == 0) {
+    return unused_symbols;
+  }
+
+  llvm::DenseSet<VariableID> used_vars = GetUsedVariablesFromExpressions(map);
+  int64_t num_dims = map.GetNumDims();
+  for (int i = 0; i < map.GetNumSymbols(); ++i) {
+    if (used_vars.contains(num_dims + i)) {
+      unused_symbols[i] = false;
+    }
+  }
+  return unused_symbols;
 }
 
 }  // namespace gpu

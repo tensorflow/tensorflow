@@ -15,10 +15,9 @@ limitations under the License.
 
 #include "xla/service/gpu/model/experimental/symbolic_map.h"
 
-#include <vector>
-
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "llvm/ADT/SmallBitVector.h"
 #include "xla/service/gpu/model/experimental/symbolic_expr.h"
 
 namespace xla {
@@ -196,6 +195,61 @@ TEST(SymbolicMapTest, Replace) {
 
   SymbolicMap no_replacement_map = map.Replace(ctx.CreateVariable(99), c5);
   EXPECT_EQ(no_replacement_map, map);
+}
+
+TEST(SymbolicMapTest, GetUnusedVariables) {
+  SymbolicExprContext ctx;
+  SymbolicExpr d0 = ctx.CreateVariable(0);
+  SymbolicExpr d1 = ctx.CreateVariable(1);
+  // d2 is unused.
+  SymbolicExpr s0 = ctx.CreateVariable(3);
+  SymbolicExpr s1 = ctx.CreateVariable(4);
+  SymbolicExpr c2 = ctx.CreateConstant(2);
+
+  // Map with used and unused dims and symbols.
+  SymbolicMap map = SymbolicMap::Get(&ctx, 3, 2, {d0 + s1, d1 * c2});
+
+  llvm::SmallBitVector unused_dims = GetUnusedDimensionsBitVector(map);
+  EXPECT_EQ(unused_dims.size(), 3);
+  EXPECT_FALSE(unused_dims[0]);  // d0 is used
+  EXPECT_FALSE(unused_dims[1]);  // d1 is used
+  EXPECT_TRUE(unused_dims[2]);   // d2 is unused
+
+  llvm::SmallBitVector unused_symbols = GetUnusedSymbolsBitVector(map);
+  EXPECT_EQ(unused_symbols.size(), 2);
+  EXPECT_TRUE(unused_symbols[0]);   // s0 is unused
+  EXPECT_FALSE(unused_symbols[1]);  // s1 is used
+
+  // Empty map
+  SymbolicMap empty_map = SymbolicMap::Get(&ctx, 2, 1, {});
+  llvm::SmallBitVector empty_dims = GetUnusedDimensionsBitVector(empty_map);
+  EXPECT_EQ(empty_dims.size(), 2);
+  EXPECT_TRUE(empty_dims.all());
+  llvm::SmallBitVector empty_symbols = GetUnusedSymbolsBitVector(empty_map);
+  EXPECT_EQ(empty_symbols.size(), 1);
+  EXPECT_TRUE(empty_symbols.all());
+
+  // Map with only dims
+  SymbolicMap no_symbols_map = SymbolicMap::Get(&ctx, 2, 0, {d0 - d1});
+  llvm::SmallBitVector no_sym_dims =
+      GetUnusedDimensionsBitVector(no_symbols_map);
+  EXPECT_EQ(no_sym_dims.size(), 2);
+  EXPECT_FALSE(no_sym_dims[0]);
+  EXPECT_FALSE(no_sym_dims[1]);
+  llvm::SmallBitVector no_sym_symbols =
+      GetUnusedSymbolsBitVector(no_symbols_map);
+  EXPECT_EQ(no_sym_symbols.size(), 0);
+
+  // Map with only symbols
+  s0 = ctx.CreateVariable(0);
+  s1 = ctx.CreateVariable(1);
+  SymbolicMap no_dims_map = SymbolicMap::Get(&ctx, 0, 2, {s0 * s1});
+  llvm::SmallBitVector no_dim_dims = GetUnusedDimensionsBitVector(no_dims_map);
+  EXPECT_EQ(no_dim_dims.size(), 0);
+  llvm::SmallBitVector no_dim_symbols = GetUnusedSymbolsBitVector(no_dims_map);
+  EXPECT_EQ(no_dim_symbols.size(), 2);
+  EXPECT_FALSE(no_dim_symbols[0]);
+  EXPECT_FALSE(no_dim_symbols[1]);
 }
 
 }  // namespace

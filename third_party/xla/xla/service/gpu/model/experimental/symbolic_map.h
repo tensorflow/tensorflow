@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/types/span.h"
+#include "llvm/ADT/SmallBitVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "xla/service/gpu/model/experimental/symbolic_expr.h"
 
@@ -100,6 +101,14 @@ class SymbolicMap {
   int64_t num_symbols_;
   llvm::SmallVector<SymbolicExpr> exprs_;
 };
+
+// Returns a bitvector marking dimensions that are not used in any expression in
+// the map.
+llvm::SmallBitVector GetUnusedDimensionsBitVector(const SymbolicMap& map);
+
+// Returns a bitvector marking symbols that are not used in any expression in
+// the map.
+llvm::SmallBitVector GetUnusedSymbolsBitVector(const SymbolicMap& map);
 
 }  // namespace gpu
 }  // namespace xla
