@@ -17,7 +17,6 @@ limitations under the License.
 #define XLA_SERVICE_GPU_MODEL_EXPERIMENTAL_SYMBOLIC_MAP_H_
 
 #include <cstdint>
-#include <vector>
 
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
@@ -32,13 +31,14 @@ class SymbolicExprContext;
 class SymbolicMap {
  public:
   static SymbolicMap Get(SymbolicExprContext* ctx, int64_t num_dimensions,
-                         int64_t num_symbols, std::vector<SymbolicExpr> exprs);
+                         int64_t num_symbols,
+                         llvm::SmallVector<SymbolicExpr> exprs);
 
   SymbolicExprContext* GetContext() const { return ctx_; }
   int64_t GetNumDims() const { return num_dimensions_; }
   int64_t GetNumSymbols() const { return num_symbols_; }
   int64_t GetNumResults() const { return exprs_.size(); }
-  const std::vector<SymbolicExpr>& GetResults() const { return exprs_; }
+  const llvm::SmallVector<SymbolicExpr>& GetResults() const { return exprs_; }
   SymbolicExpr GetResult(unsigned idx) const { return exprs_[idx]; }
 
   bool IsEmpty() const { return exprs_.empty(); }
@@ -86,12 +86,12 @@ class SymbolicMap {
 
  private:
   SymbolicMap(SymbolicExprContext* ctx, int64_t num_dimensions,
-              int64_t num_symbols, std::vector<SymbolicExpr> exprs);
+              int64_t num_symbols, llvm::SmallVector<SymbolicExpr> exprs);
 
   SymbolicExprContext* ctx_;
   int64_t num_dimensions_;
   int64_t num_symbols_;
-  std::vector<SymbolicExpr> exprs_;
+  llvm::SmallVector<SymbolicExpr> exprs_;
 };
 
 }  // namespace gpu
