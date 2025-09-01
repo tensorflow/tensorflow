@@ -799,6 +799,7 @@ xla_cc_test(
         "//xla/stream_executor:device_description_proto_cc",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:semantic_version",
         "//xla/stream_executor/host:host_platform",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
