@@ -251,6 +251,25 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "symbolic_expr_simplifier",
+    srcs = ["symbolic_expr_simplifier.cc"],
+    hdrs = ["symbolic_expr_simplifier.h"],
+    deps = [
+        ":symbolic_expr",
+        ":symbolic_map",
+        ":symbolic_range_evaluator",
+    ],
+)
+
+cc_library(
+    name = "symbolic_range_evaluator",
+    hdrs = ["symbolic_range_evaluator.h"],
+    deps = [
+        ":symbolic_expr",
+    ],
+)
+
 xla_cc_test(
     name = "symbolic_expr_test",
     srcs = ["symbolic_expr_test.cc"],
