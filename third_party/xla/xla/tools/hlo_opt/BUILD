@@ -46,6 +46,7 @@ cc_library(
         "//xla/service:conditional_to_select",
         "//xla/service:executable",
         "//xla/service:gather_expander",
+        "//xla/service:hlo_graph_dumper",
         "//xla/service:map_inliner",
         "//xla/service:platform_util",
         "//xla/service:reduce_scatter_reassociate",

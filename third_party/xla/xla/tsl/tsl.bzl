@@ -500,9 +500,6 @@ def get_compatible_with_libtpu_portable():
 def filegroup(**kwargs):
     native.filegroup(**kwargs)
 
-def internal_hlo_deps():
-    return []
-
 # Config setting selector used when building for products
 # which requires restricted licenses to be avoided.
 def if_not_mobile_or_arm_or_macos_or_lgpl_restricted(a):
