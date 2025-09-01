@@ -48,6 +48,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/gpus/cuda/include/driver_types.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/core/collectives/collectives.h"
 #include "xla/core/collectives/collectives_registry.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/blas.h"
@@ -62,6 +63,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_stream.h"
 #include "xla/stream_executor/cuda/cuda_timer.h"
 #include "xla/stream_executor/cuda/cuda_version_parser.h"
+#include "xla/stream_executor/cuda/cudnn_api_wrappers.h"
 #include "xla/stream_executor/cuda/tma_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
@@ -94,6 +96,7 @@ limitations under the License.
 #include "xla/tsl/platform/threadpool.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/fingerprint.h"
+#include "tsl/platform/numa.h"
 #include "tsl/platform/numbers.h"
 
 namespace stream_executor {
@@ -1307,6 +1310,25 @@ CudaExecutor::CreateDeviceDescription(int device_ordinal) {
       ParseCudaVersion(runtime_version).value_or(SemanticVersion{0, 0, 0}));
   desc.set_compile_time_toolkit_version(
       ParseCudaVersion(CUDA_VERSION).value_or(SemanticVersion{0, 0, 0}));
+
+  // cudnnGetProperty (the function that backs GetLoadedCudnnVersion()) needs
+  // 64KiB of stack, so we call it from a separate thread to avoid stack
+  // overflows.
+  absl::Notification cudnn_version_ready;
+  GetDriverExecutor()->Schedule([&]() {
+    absl::StatusOr<SemanticVersion> cudnn_version =
+        cuda::GetLoadedCudnnVersion();
+    if (cudnn_version.ok()) {
+      desc.set_dnn_version(*cudnn_version);
+    } else {
+      LOG(WARNING)
+          << "Failed to determine cuDNN version (Note that this is expected if "
+             "the application doesn't link the cuDNN plugin): "
+          << cudnn_version.status();
+    }
+    cudnn_version_ready.Notify();
+  });
+  cudnn_version_ready.WaitForNotification();
 
   {
     std::string pci_bus_id = GetPCIBusID(device);
