@@ -204,6 +204,12 @@ struct CudaComputeCapability {
     return other.SupportsAllFeaturesOf(*this);
   }
 
+  // Returns a copy of this compute capability without any feature extension
+  // set.
+  CudaComputeCapability WithoutAnyFeatureExtension() const {
+    return CudaComputeCapability{major, minor, FeatureExtension::kNone};
+  }
+
   // Returns a string representation of the compute capability. The format is
   // not guaranteed to follow any standard and should only be used for logging.
   std::string ToString() const;
