@@ -426,3 +426,126 @@ func.func private @foo(%arg0: tensor<8x2xi32>, %arg1: tensor<8x2xi32> {sdy.shard
   %0 = stablehlo.multiply %arg0, %arg1 : tensor<8x2xi32>
   return %0 : tensor<8x2xi32>
 }
+
+// -----
+
+sdy.mesh @mesh = #sdy.mesh<["x"=2, "y"=2]>
+
+// CHECK-LABEL: func @func_has_out_sharding_call_no_out_sharding
+func.func @func_has_out_sharding_call_no_out_sharding(%arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>}) -> tensor<8x2xi32> {
+  // CHECK-NEXT: %[[NC:.*]] = sdy.named_computation<"foo">(%arg0, %arg0) out_shardings=[<@mesh, [{"x", "y"}, {}]>] (%arg1: tensor<8x2xi32>, %arg2: tensor<8x2xi32>) {
+  // CHECK-NEXT:   %[[MULTIPLY:.*]] = stablehlo.multiply %arg1, %arg2 : tensor<8x2xi32>
+  // CHECK-NEXT:   sdy.return %[[MULTIPLY]] : tensor<8x2xi32>
+  // CHECK-NEXT: } {mhlo.frontend_attributes = {inlineable = "false"}} : (tensor<8x2xi32>, tensor<8x2xi32>) -> tensor<8x2xi32>
+  // CHECK-NEXT: %[[NEGATE:.*]] = stablehlo.negate %[[NC]] : tensor<8x2xi32>
+  // CHECK-NEXT: return %[[NEGATE]] : tensor<8x2xi32>
+  %0 = call @foo(%arg0, %arg0) {mhlo.frontend_attributes = {inlineable = "false"}} : (tensor<8x2xi32>, tensor<8x2xi32>) -> tensor<8x2xi32>
+  %1 = stablehlo.negate %0 : tensor<8x2xi32>
+  return %1 : tensor<8x2xi32>
+}
+
+// CHECK-NOT: func private @foo
+func.func private @foo(%arg0: tensor<8x2xi32>, %arg1: tensor<8x2xi32>) -> (tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"x", "y"}, {}]>}) {
+  %0 = stablehlo.multiply %arg0, %arg1 : tensor<8x2xi32>
+  return %0 : tensor<8x2xi32>
+}
+
+// -----
+
+sdy.mesh @mesh = #sdy.mesh<["x"=2, "y"=2]>
+
+// CHECK-LABEL: func @func_has_out_sharding_call_has_different_out_sharding
+func.func @func_has_out_sharding_call_has_different_out_sharding(%arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>}) -> tensor<8x2xi32> {
+  // CHECK-NEXT: %[[NC:.*]] = sdy.named_computation<"foo">(%arg0, %arg0) out_shardings=[<@mesh, [{"y"}, {"x"}]>] (%arg1: tensor<8x2xi32>, %arg2: tensor<8x2xi32>) {
+  // CHECK-NEXT:   %[[MULTIPLY:.*]] = stablehlo.multiply %arg1, %arg2 : tensor<8x2xi32>
+  // CHECK-NEXT:   sdy.return %[[MULTIPLY]] : tensor<8x2xi32>
+  // CHECK-NEXT: } {mhlo.frontend_attributes = {inlineable = "false"}} : (tensor<8x2xi32>, tensor<8x2xi32>) -> tensor<8x2xi32>
+  // CHECK-NEXT: %[[NEGATE:.*]] = stablehlo.negate %[[NC]] : tensor<8x2xi32>
+  // CHECK-NEXT: return %[[NEGATE]] : tensor<8x2xi32>
+  %0 = call @foo(%arg0, %arg0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"y"}, {"x"}]>]>, mhlo.frontend_attributes = {inlineable = "false"}} : (tensor<8x2xi32>, tensor<8x2xi32>) -> tensor<8x2xi32>
+  %1 = stablehlo.negate %0 : tensor<8x2xi32>
+  return %1 : tensor<8x2xi32>
+}
+
+// CHECK-NOT: func private @foo
+func.func private @foo(%arg0: tensor<8x2xi32>, %arg1: tensor<8x2xi32>) -> (tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"x", "y"}, {}]>}) {
+  %0 = stablehlo.multiply %arg0, %arg1 : tensor<8x2xi32>
+  return %0 : tensor<8x2xi32>
+}
+
+// -----
+
+sdy.mesh @mesh = #sdy.mesh<["x"=2, "y"=2]>
+
+// CHECK-LABEL: func @func_no_out_sharding_call_has_out_sharding
+func.func @func_no_out_sharding_call_has_out_sharding(%arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>}) -> tensor<8x2xi32> {
+  // CHECK-NEXT: %[[NC:.*]] = sdy.named_computation<"foo">(%arg0, %arg0) out_shardings=[<@mesh, [{"y"}, {"x"}]>] (%arg1: tensor<8x2xi32>, %arg2: tensor<8x2xi32>) {
+  // CHECK-NEXT:   %[[MULTIPLY:.*]] = stablehlo.multiply %arg1, %arg2 : tensor<8x2xi32>
+  // CHECK-NEXT:   sdy.return %[[MULTIPLY]] : tensor<8x2xi32>
+  // CHECK-NEXT: } {mhlo.frontend_attributes = {inlineable = "false"}} : (tensor<8x2xi32>, tensor<8x2xi32>) -> tensor<8x2xi32>
+  // CHECK-NEXT: %[[NEGATE:.*]] = stablehlo.negate %[[NC]] : tensor<8x2xi32>
+  // CHECK-NEXT: return %[[NEGATE]] : tensor<8x2xi32>
+  %0 = call @foo(%arg0, %arg0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"y"}, {"x"}]>]>, mhlo.frontend_attributes = {inlineable = "false"}} : (tensor<8x2xi32>, tensor<8x2xi32>) -> tensor<8x2xi32>
+  %1 = stablehlo.negate %0 : tensor<8x2xi32>
+  return %1 : tensor<8x2xi32>
+}
+
+// CHECK-NOT: func private @foo
+func.func private @foo(%arg0: tensor<8x2xi32>, %arg1: tensor<8x2xi32>) -> tensor<8x2xi32> {
+  %0 = stablehlo.multiply %arg0, %arg1 : tensor<8x2xi32>
+  return %0 : tensor<8x2xi32>
+}
+
+// -----
+
+sdy.mesh @mesh = #sdy.mesh<["x"=2, "y"=2]>
+
+// CHECK-LABEL: func @func_has_out_sharding_on_one_result_call_has_out_sharding_on_both_results
+func.func @func_has_out_sharding_on_one_result_call_has_out_sharding_on_both_results(%arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>}) -> tensor<8x2xi32> {
+  // CHECK-NEXT: %[[NC:.*]]:2 = sdy.named_computation<"foo">(%arg0, %arg0) out_shardings=[<@mesh, [{"y"}, {"x"}]>, <@mesh, [{"x"}, {}]>] (%arg1: tensor<8x2xi32>, %arg2: tensor<8x2xi32>) {
+  // CHECK-NEXT:   %[[MULTIPLY:.*]] = stablehlo.multiply %arg1, %arg2 : tensor<8x2xi32>
+  // CHECK-NEXT:   %[[TRANSPOSE:.*]] = stablehlo.transpose %arg1, dims = [1, 0] : (tensor<8x2xi32>) -> tensor<2x8xi32>
+  // CHECK-NEXT:   %[[DOT_1:.*]] = stablehlo.dot %[[TRANSPOSE]], %arg1 : (tensor<2x8xi32>, tensor<8x2xi32>) -> tensor<2x2xi32>
+  // CHECK-NEXT:   sdy.return %[[MULTIPLY]], %[[DOT_1]] : tensor<8x2xi32>, tensor<2x2xi32>
+  // CHECK-NEXT: } {mhlo.frontend_attributes = {inlineable = "false"}} : (tensor<8x2xi32>, tensor<8x2xi32>) -> (tensor<8x2xi32>, tensor<2x2xi32>)
+  // CHECK-NEXT: %[[DOT_2:.*]] = stablehlo.dot %[[NC]]#0, %[[NC]]#1 : (tensor<8x2xi32>, tensor<2x2xi32>) -> tensor<8x2xi32>
+  // CHECK-NEXT: return %[[DOT_2]] : tensor<8x2xi32>
+  %0:2 = call @foo(%arg0, %arg0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"y"}, {"x"}]>, <@mesh, [{"x"}, {}]>]>, mhlo.frontend_attributes = {inlineable = "false"}} : (tensor<8x2xi32>, tensor<8x2xi32>) -> (tensor<8x2xi32>, tensor<2x2xi32>)
+  %1 = stablehlo.dot %0#0, %0#1 : (tensor<8x2xi32>, tensor<2x2xi32>) -> (tensor<8x2xi32>)
+  return %1 : tensor<8x2xi32>
+}
+
+// CHECK-NOT: func private @foo
+func.func private @foo(%arg0: tensor<8x2xi32>, %arg1: tensor<8x2xi32>) -> (tensor<8x2xi32>, tensor<2x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {}]>}) {
+  %0 = stablehlo.multiply %arg0, %arg1 : tensor<8x2xi32>
+  %1 = stablehlo.transpose %arg0, dims=[1, 0] : (tensor<8x2xi32>) -> tensor<2x8xi32>
+  %2 = stablehlo.dot %1, %arg0 : (tensor<2x8xi32>, tensor<8x2xi32>) -> tensor<2x2xi32>
+  return %0, %2 : tensor<8x2xi32>, tensor<2x2xi32>
+}
+
+// -----
+
+sdy.mesh @mesh = #sdy.mesh<["x"=2, "y"=2]>
+
+// CHECK-LABEL: func @func_has_out_sharding_on_one_result_call_has_no_out_sharding
+func.func @func_has_out_sharding_on_one_result_call_has_no_out_sharding(%arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>}) -> tensor<8x2xi32> {
+  // CHECK-NEXT: %[[NC:.*]]:2 = sdy.named_computation<"foo">(%arg0, %arg0) out_shardings=[<@mesh, [{?}, {?}]>, <@mesh, [{"y"}, {}]>] (%arg1: tensor<8x2xi32>, %arg2: tensor<8x2xi32>) {
+  // CHECK-NEXT:   %[[MULTIPLY:.*]] = stablehlo.multiply %arg1, %arg2 : tensor<8x2xi32>
+  // CHECK-NEXT:   %[[TRANSPOSE:.*]] = stablehlo.transpose %arg1, dims = [1, 0] : (tensor<8x2xi32>) -> tensor<2x8xi32>
+  // CHECK-NEXT:   %[[DOT_1:.*]] = stablehlo.dot %[[TRANSPOSE]], %arg1 : (tensor<2x8xi32>, tensor<8x2xi32>) -> tensor<2x2xi32>
+  // CHECK-NEXT:   sdy.return %[[MULTIPLY]], %[[DOT_1]] : tensor<8x2xi32>, tensor<2x2xi32>
+  // CHECK-NEXT: } {mhlo.frontend_attributes = {inlineable = "false"}} : (tensor<8x2xi32>, tensor<8x2xi32>) -> (tensor<8x2xi32>, tensor<2x2xi32>)
+  // CHECK-NEXT: %[[DOT_2:.*]] = stablehlo.dot %[[NC]]#0, %[[NC]]#1 : (tensor<8x2xi32>, tensor<2x2xi32>) -> tensor<8x2xi32>
+  // CHECK-NEXT: return %[[DOT_2]] : tensor<8x2xi32>
+  %0:2 = call @foo(%arg0, %arg0) {mhlo.frontend_attributes = {inlineable = "false"}} : (tensor<8x2xi32>, tensor<8x2xi32>) -> (tensor<8x2xi32>, tensor<2x2xi32>)
+  %1 = stablehlo.dot %0#0, %0#1 : (tensor<8x2xi32>, tensor<2x2xi32>) -> (tensor<8x2xi32>)
+  return %1 : tensor<8x2xi32>
+}
+
+// CHECK-NOT: func private @foo
+func.func private @foo(%arg0: tensor<8x2xi32>, %arg1: tensor<8x2xi32>) -> (tensor<8x2xi32>, tensor<2x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {}]>}) {
+  %0 = stablehlo.multiply %arg0, %arg1 : tensor<8x2xi32>
+  %1 = stablehlo.transpose %arg0, dims=[1, 0] : (tensor<8x2xi32>) -> tensor<2x8xi32>
+  %2 = stablehlo.dot %1, %arg0 : (tensor<2x8xi32>, tensor<8x2xi32>) -> tensor<2x2xi32>
+  return %0, %2 : tensor<8x2xi32>, tensor<2x2xi32>
+}
