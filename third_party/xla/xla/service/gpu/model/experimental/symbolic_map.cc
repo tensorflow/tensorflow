@@ -17,10 +17,13 @@ limitations under the License.
 
 #include <cstdint>
 #include <iterator>
+#include <string>
 #include <utility>
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "xla/service/gpu/model/experimental/symbolic_expr.h"
@@ -56,6 +59,20 @@ SymbolicMap::SymbolicMap(SymbolicExprContext* ctx, int64_t num_dimensions,
                                         int64_t num_symbols,
                                         llvm::SmallVector<SymbolicExpr> exprs) {
   return SymbolicMap(ctx, num_dimensions, num_symbols, std::move(exprs));
+}
+
+std::string SymbolicMap::ToString() const {
+  std::string str = absl::StrCat("SymbolicMap(dims=", num_dimensions_,
+                                 ", symbols=", num_symbols_, ", results=[");
+  absl::StrAppend(&str, absl::StrJoin(exprs_, ",\\n",
+                                      [](std::string* out, const auto& expr) {
+                                        absl::StrAppend(out, "  ", expr);
+                                      }));
+  if (!IsEmpty()) {
+    absl::StrAppend(&str, "\\n");
+  }
+  absl::StrAppend(&str, "])");
+  return str;
 }
 
 bool SymbolicMap::IsIdentity() const {

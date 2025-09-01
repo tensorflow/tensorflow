@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
-#include <vector>
 
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -105,6 +104,11 @@ class SymbolicExpr {
   SymbolicExpr max(SymbolicExpr other) const;
 
   const ImplType* GetImpl() const { return impl_; }
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const SymbolicExpr expr) {
+    sink.Append(expr.ToString());
+  }
 
  private:
   const ImplType* impl_ = nullptr;

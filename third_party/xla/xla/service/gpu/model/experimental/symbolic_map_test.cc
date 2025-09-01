@@ -27,6 +27,19 @@ namespace {
 
 using ::testing::ElementsAre;
 
+// TODO(karupayun): Make ToString print similarly to AffineMap. It should be
+// aware of the dimension and symbol names.
+TEST(SymbolicMapTest, ToString) {
+  SymbolicExprContext ctx;
+  SymbolicMap map =
+      SymbolicMap::Get(&ctx, 2, 1,
+                       {ctx.CreateVariable(0) + ctx.CreateVariable(2),
+                        ctx.CreateVariable(1) * ctx.CreateVariable(3)});
+  EXPECT_EQ(map.ToString(),
+            "SymbolicMap(dims=2, symbols=1, results=[  (v0 + v2),\\n  (v1 * "
+            "v3)\\n])");
+}
+
 TEST(SymbolicMapTest, IsEmpty) {
   SymbolicExprContext ctx;
   EXPECT_TRUE(SymbolicMap::Get(&ctx, 0, 0, {}).IsEmpty());

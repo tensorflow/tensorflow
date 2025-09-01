@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_GPU_MODEL_EXPERIMENTAL_SYMBOLIC_MAP_H_
 
 #include <cstdint>
+#include <string>
 
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
@@ -40,6 +41,7 @@ class SymbolicMap {
   int64_t GetNumResults() const { return exprs_.size(); }
   const llvm::SmallVector<SymbolicExpr>& GetResults() const { return exprs_; }
   SymbolicExpr GetResult(unsigned idx) const { return exprs_[idx]; }
+  std::string ToString() const;
 
   bool IsEmpty() const { return exprs_.empty(); }
 
@@ -83,6 +85,11 @@ class SymbolicMap {
 
   bool operator==(const SymbolicMap& other) const;
   bool operator!=(const SymbolicMap& other) const { return !(*this == other); }
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const SymbolicMap& map) {
+    sink.Append(map.ToString());
+  }
 
  private:
   SymbolicMap(SymbolicExprContext* ctx, int64_t num_dimensions,
