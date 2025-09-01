@@ -93,13 +93,22 @@ absl::Status RunRaggedAllToAllKernel(
   // blockIdx.x is the index of the update.
   int64_t num_blocks_x = num_updates_per_output * num_outputs;
 
+  int64_t num_vectorized_row_elements = num_row_elements;
+  int64_t vectorized_bitwidth = xla::primitive_util::BitWidth(element_type);
+
+  while (num_vectorized_row_elements % 2 == 0 && vectorized_bitwidth < 64) {
+    num_vectorized_row_elements /= 2;
+    vectorized_bitwidth *= 2;
+  }
+
   // blockIdx.y and threadIdx.x are used to iterate over the elements of the
   // update. Since the size of each update is not known at compile time, the
   // kernel assumes the worst case of `num_input_rows * num_row_elements`
   // elements per update and uses a loop up to `send_size * num_row_elements` to
   // terminate early.
   size_t num_blocks_y =
-      std::min(CeilOfRatio<size_t>(num_input_rows * num_row_elements, kThreads),
+      std::min(CeilOfRatio<size_t>(num_input_rows * num_vectorized_row_elements,
+                                   kThreads),
                kMaxBlocksPerUpdate);
 
   se::ThreadDim thread_dims(kThreads, 1, 1);
@@ -113,13 +122,13 @@ absl::Status RunRaggedAllToAllKernel(
 
   auto launch_kernel = [&](auto type) -> absl::Status {
     using T = decltype(type);
-    return LaunchTypedKernel<T>(stream, executor, thread_dims, block_dims,
-                                input_buffer, output_ptrs, input_offsets_buffer,
-                                send_sizes_buffer, output_offsets_buffer,
-                                num_updates_per_output, num_row_elements);
+    return LaunchTypedKernel<T>(
+        stream, executor, thread_dims, block_dims, input_buffer, output_ptrs,
+        input_offsets_buffer, send_sizes_buffer, output_offsets_buffer,
+        num_updates_per_output, num_vectorized_row_elements);
   };
 
-  switch (xla::primitive_util::BitWidth(element_type)) {
+  switch (vectorized_bitwidth) {
     case 8:
       return launch_kernel(uint8_t{});
     case 16:
