@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -45,7 +46,9 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
         platform_name_(platform_name),
         gpu_topology_(std::move(gpu_topology)),
         attributes_(attributes),
-        target_config_(std::move(target_config)) {}
+        target_config_(std::move(target_config)) {
+    CHECK(gpu_topology_ != nullptr);
+  }
 
   bool operator==(const StreamExecutorGpuTopologyDescription& other) const {
     return this->platform_id() == other.platform_id() &&
