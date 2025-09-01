@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
@@ -985,6 +986,53 @@ ENTRY main {
       EXPECT_EQ(send_recv->channel_id(), 1);
     }
   }
+}
+
+TEST_F(CallInlinerTest, ChannelIdsAreGlovallyUniquified) {
+  const char* hlo = R"(
+ag {
+  input = f32[128,32] parameter(0)
+  ROOT ag = f32[128,128] all-gather(input), replica_groups={}, dimensions={1}, channel_id=27
+}
+
+branch_0 {
+  input = f32[128,32] parameter(0)
+  ROOT ag = f32[128,128] call(input), to_apply=ag
+}
+
+branch_1 {
+  input = f32[128,32] parameter(0)
+  ROOT ag = f32[128,128] call(input), to_apply=ag
+}
+
+ENTRY main {
+  input.0 = f32[128,32] parameter(0)
+  input.1 = f32[128,32] parameter(1)
+  input.2 = f32[128,32] parameter(2)
+  p = s32[] parameter(3)
+  conditional = f32[128,128] conditional(p, input.0, input.1), branch_computations={branch_0, branch_1}
+  ag = f32[128,128] all-gather(input.2), replica_groups={}, dimensions={1}, channel_id=42
+  ROOT add = f32[128,128] add(conditional, ag)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(hlo));
+  CallInliner call_inliner(
+      /*single_call_site=*/false, /*update_domain=*/false,
+      /*composites_to_preserve=*/{}, /*uniquify_channel_ids=*/true);
+  ASSERT_THAT(call_inliner.Run(m.get()), absl_testing::IsOkAndHolds(true));
+
+  absl::flat_hash_set<int64_t> channel_ids;
+  for (HloComputation* comp : m->computations()) {
+    for (HloInstruction* inst : comp->instructions()) {
+      HloChannelInstruction* channel =
+          dynamic_cast<HloChannelInstruction*>(inst);
+      if (channel && channel->channel_id().has_value()) {
+        channel_ids.insert(channel->channel_id().value());
+      }
+    }
+  }
+  EXPECT_THAT(channel_ids, ::testing::UnorderedElementsAre(42, 43, 44));
 }
 
 }  // namespace

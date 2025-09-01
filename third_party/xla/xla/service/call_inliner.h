@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_CALL_INLINER_H_
 #define XLA_SERVICE_CALL_INLINER_H_
 
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <string>
@@ -99,6 +100,7 @@ class CallInliner : public HloModulePass {
   std::optional<
       std::function<bool(const CallGraph& call_graph, HloInstruction*)>>
       should_inline_;
+  int64_t next_unique_channel_id_ = 1;
 };
 
 // Returns true if the computation has instructions that are inlinable.
