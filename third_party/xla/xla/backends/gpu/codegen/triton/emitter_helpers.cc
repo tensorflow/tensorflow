@@ -159,7 +159,7 @@ Value Cast(EmitterLocOpBuilder& b, Value value, Type dst_element_ty) {
   }
 
   if (src_ty.isIndex() || dst_ty.isIndex()) {
-    return b.create<ma::IndexCastUIOp>(dst_ty, value);
+    return b.create<ma::IndexCastOp>(dst_ty, value);
   }
 
   // All operations on bf16 are done through f32.

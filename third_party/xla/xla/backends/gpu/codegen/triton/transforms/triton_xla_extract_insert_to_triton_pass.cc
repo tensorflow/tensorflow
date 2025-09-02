@@ -31,6 +31,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/CommandLine.h"
 #include "mlir/Analysis/SliceAnalysis.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
 #include "mlir/IR/AffineExpr.h"
@@ -80,12 +81,12 @@ bool AreRankedTensors(ArrayRef<Type> types) {
   });
 }
 
-SmallVector<Value> IndexCastUI(::xla::EmitterLocOpBuilder& builder, Type type,
-                               ValueRange values) {
+SmallVector<Value> IndexCast(::xla::EmitterLocOpBuilder& builder, Type type,
+                             ValueRange values) {
   SmallVector<Value> result;
   result.reserve(values.size());
   for (auto value : values) {
-    result.push_back(builder.create<arith::IndexCastUIOp>(type, value));
+    result.push_back(builder.create<arith::IndexCastOp>(type, value));
   }
   return result;
 }
@@ -253,10 +254,10 @@ SmallVector<Value> ComputeResidualShape(::xla::EmitterLocOpBuilder& builder,
             .UnwrapScalar();
     // Offsets are necessarily positive since they represent a distance
     // between 0 and the size of the tensor on the given axis. Therefore, it
-    // is safe to use 'IndexCastUI' here. This allows index canonicalizations
+    // is safe to use 'IndexCast' here. This allows index canonicalizations
     // later on.
     Value offset =
-        builder.create<arith::IndexCastUIOp>(builder.getI64Type(), tile_offset);
+        builder.create<arith::IndexCastOp>(builder.getI64Type(), tile_offset);
     residual_shape.push_back(builder.create<arith::SubIOp>(size, offset));
   }
 
@@ -275,8 +276,8 @@ SmallVector<Value> ComputeStrides(::xla::EmitterLocOpBuilder& builder,
   int64_t current_stride = 1;
   for (int64_t cur_dim : minor_to_major_layout) {
     strides[cur_dim] = builder.create<arith::MulIOp>(
-        builder.create<arith::IndexCastUIOp>(builder.getI64Type(),
-                                             tile_strides[cur_dim]),
+        builder.create<arith::IndexCastOp>(builder.getI64Type(),
+                                           tile_strides[cur_dim]),
         ::xla::gpu::triton::CreateConst(builder, builder.getI64Type(),
                                         current_stride)
             .UnwrapScalar());
@@ -300,7 +301,7 @@ Value ComputeLinearOffset(::xla::EmitterLocOpBuilder& builder,
   auto bitcast_map =
       ::xla::GetBitcastMap(xla_shape, linear_shape, builder.getContext());
 
-  return builder.create<arith::IndexCastUIOp>(
+  return builder.create<arith::IndexCastOp>(
       builder.getI64Type(),
       builder.create<::xla::ApplyIndexingOp>(offsets, bitcast_map)
           .getResult(0));
@@ -559,7 +560,7 @@ class RewriteExtract : public mlir::OpRewritePattern<ExtractOp> {
 
       auto descriptor_load = builder.create<DescriptorLoadOp>(
           normalized_tile_type, cast_to_tensor_desc,
-          IndexCastUI(builder, builder.getI32Type(), normalized_offsets));
+          IndexCast(builder, builder.getI32Type(), normalized_offsets));
 
       // Insert a transpose if the layout is not normalized.
       if (!IsNormalizedLayout(src_layout)) {
@@ -665,7 +666,7 @@ class RewriteInsert : public mlir::OpRewritePattern<InsertOp> {
       }
       builder.create<DescriptorStoreOp>(
           cast_to_tensor_desc, src,
-          IndexCastUI(builder, builder.getI32Type(), normalized_offsets));
+          IndexCast(builder, builder.getI32Type(), normalized_offsets));
     } else {
       auto ptr =
           CreateAddPtrOp(builder, op.getDst(), offsets, dst_shape, dst_layout);
