@@ -110,6 +110,16 @@ llvm::SmallBitVector GetUnusedDimensionsBitVector(const SymbolicMap& map);
 // the map.
 llvm::SmallBitVector GetUnusedSymbolsBitVector(const SymbolicMap& map);
 
+// Creates a new SymbolicMap with unused dimensions removed.
+// Expressions are updated to use the new dimension indices.
+SymbolicMap CompressDims(const SymbolicMap& map,
+                         const llvm::SmallBitVector& unused_dims);
+
+// Creates a new SymbolicMap with unused symbols removed.
+// Expressions are updated to use the new symbol indices.
+SymbolicMap CompressSymbols(const SymbolicMap& map,
+                            const llvm::SmallBitVector& unused_symbols);
+
 }  // namespace gpu
 }  // namespace xla
 

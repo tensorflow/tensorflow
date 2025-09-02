@@ -223,5 +223,75 @@ llvm::SmallBitVector GetUnusedSymbolsBitVector(const SymbolicMap& map) {
   return unused_symbols;
 }
 
+SymbolicMap CompressDims(const SymbolicMap& map,
+                         const llvm::SmallBitVector& unused_dims) {
+  CHECK_EQ(map.GetNumDims(), unused_dims.size());
+
+  if (unused_dims.none()) {
+    return map;
+  }
+
+  // Assert that all dimensions marked as unused are actually unused.
+  llvm::SmallBitVector actual_unused_dims = GetUnusedDimensionsBitVector(map);
+  for (int i = 0; i < map.GetNumDims(); ++i) {
+    if (unused_dims[i]) {
+      CHECK(actual_unused_dims[i])
+          << "Attempting to compress a used dimension: " << i;
+    }
+  }
+
+  int64_t new_num_dims = map.GetNumDims() - unused_dims.count();
+  llvm::SmallVector<SymbolicExpr> dim_replacements(map.GetNumDims());
+
+  int64_t current_new_dim_idx = 0;
+  for (int i = 0; i < map.GetNumDims(); ++i) {
+    if (!unused_dims[i]) {
+      dim_replacements[i] =
+          map.GetContext()->CreateVariable(current_new_dim_idx++);
+    }
+  }
+  auto sym_replacements =
+      CreateVariableRange(map.GetContext(), map.GetNumSymbols(), new_num_dims);
+
+  return map.ReplaceDimsAndSymbols(dim_replacements, sym_replacements,
+                                   new_num_dims, map.GetNumSymbols());
+}
+
+SymbolicMap CompressSymbols(const SymbolicMap& map,
+                            const llvm::SmallBitVector& unused_symbols) {
+  CHECK_EQ(map.GetNumSymbols(), unused_symbols.size());
+
+  if (unused_symbols.none()) {
+    return map;
+  }
+
+  // Assert that all symbols marked as unused are actually unused.
+  llvm::SmallBitVector actual_unused_symbols = GetUnusedSymbolsBitVector(map);
+  for (int i = 0; i < map.GetNumSymbols(); ++i) {
+    if (unused_symbols[i]) {
+      CHECK(actual_unused_symbols[i])
+          << "Attempting to compress a used symbol: " << i;
+    }
+  }
+
+  int64_t num_dims = map.GetNumDims();
+  int64_t new_num_symbols = map.GetNumSymbols() - unused_symbols.count();
+
+  auto dim_replacements = CreateVariableRange(map.GetContext(), num_dims);
+
+  llvm::SmallVector<SymbolicExpr> sym_replacements(map.GetNumSymbols());
+  int64_t current_new_sym_idx = 0;
+  for (int i = 0; i < map.GetNumSymbols(); ++i) {
+    if (!unused_symbols[i]) {
+      sym_replacements[i] =
+          map.GetContext()->CreateVariable(num_dims + current_new_sym_idx++);
+    }
+  }
+  CHECK_EQ(current_new_sym_idx, new_num_symbols);
+
+  return map.ReplaceDimsAndSymbols(dim_replacements, sym_replacements, num_dims,
+                                   new_num_symbols);
+}
+
 }  // namespace gpu
 }  // namespace xla

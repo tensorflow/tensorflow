@@ -21,6 +21,7 @@ limitations under the License.
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <numeric>
 #include <optional>
 #include <string>
@@ -900,6 +901,30 @@ SymbolicExpr SymbolicExprContext::CreateBinaryOp(SymbolicExprType type,
 
 SymbolicExpr SymbolicExprContext::Parse(absl::string_view expr_str) {
   return Parser(expr_str, this).Parse();
+}
+
+void SymbolicExpr::Walk(
+    const std::function<void(SymbolicExpr)>& callback) const {
+  if (!*this) {
+    return;
+  }
+
+  switch (GetType()) {
+    case SymbolicExprType::kConstant:
+    case SymbolicExprType::kVariable:
+      break;
+    case SymbolicExprType::kAdd:
+    case SymbolicExprType::kMul:
+    case SymbolicExprType::kFloorDiv:
+    case SymbolicExprType::kCeilDiv:
+    case SymbolicExprType::kMod:
+    case SymbolicExprType::kMin:
+    case SymbolicExprType::kMax:
+      GetLHS().Walk(callback);
+      GetRHS().Walk(callback);
+      break;
+  }
+  callback(*this);
 }
 
 }  // namespace gpu
