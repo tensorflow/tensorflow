@@ -95,6 +95,9 @@ class CpuLibraryTest : public TargetMachineTestBase {
     if (spec.fusion_mode == "greedy") {
       fusion_types.Add(DebugOptions::LIBRARY_FUSION_TYPE_ELTWISE);
     }
+    if (spec.fusion_mode == "reduce") {
+      fusion_types.Add(DebugOptions::LIBRARY_FUSION_TYPE_REDUCE);
+    }
     tsl::protobuf::RepeatedField<int> empty_fusion_types;
     bool use_onednn = spec.lib == "onednn";
     bool use_xnnpack = spec.lib == "xnn";
@@ -512,15 +515,40 @@ TEST_P(CpuLibraryFusionTypeTest, JoiningFusions) {
       ROOT %mul = $in_dtype[64,64] multiply(%exp, %add2)
     })";
 
-  RunTest(hlo_template, GetParam() == "greedy"
-                            ? FusionProperties{HloOpcode::kMultiply, 3, 8, true}
-                            : FusionProperties{HloOpcode::kDot, 3, 5, true});
+  if (GetParam() == "greedy") {
+    RunTest(hlo_template, FusionProperties{HloOpcode::kMultiply, 3, 8, true});
+  }
+  if (GetParam() == "dot") {
+    RunTest(hlo_template, FusionProperties{HloOpcode::kDot, 3, 5, true});
+  }
+}
+
+TEST_P(CpuLibraryFusionTypeTest, Reduce) {
+  const absl::string_view hlo_template = R"(
+    HloModule reduce
+
+    reducer_add {
+      lhs = $in_dtype[] parameter(0)
+      rhs = $in_dtype[] parameter(1)
+      ROOT sum = $in_dtype[] add(lhs, rhs)
+    }
+
+    ENTRY main {
+      input = $in_dtype[64,64]{1,0} parameter(0)
+      c = $in_dtype[] constant(0)
+      ROOT output = $in_dtype[64]{0} reduce(input, c), dimensions={1}, to_apply=reducer_add
+    }
+    )";
+  if (GetParam() == "reduce") {
+    RunTest(hlo_template, {HloOpcode::kReduce, 1, 3, true});
+  }
 }
 
 INSTANTIATE_TEST_SUITE_P(CpuLibraryFusionTypeTestSuite,
                          CpuLibraryFusionTypeTest,
                          ::testing::ValuesIn({std::string("dot"),
-                                              std::string("greedy")}),
+                                              std::string("greedy"),
+                                              std::string("reduce")}),
                          CpuLibraryFusionTypeTest::Name);
 
 TEST_F(CpuLibraryTest, UpdateFusion) {
