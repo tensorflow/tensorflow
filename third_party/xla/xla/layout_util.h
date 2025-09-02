@@ -235,6 +235,10 @@ class LayoutUtil {
   // layout `layout` as the most major dimension.
   static Layout MoveDimToMajor(const Layout& layout, int64_t dim);
 
+  // Constructs a new layout by making the given dimension in the given
+  // layout the minor most.
+  static Layout MoveDimToMinor(const Layout& layout, int64_t dim);
+
   // Returns the linearized index of the cell at the given indices. The unit
   // of the offset is in elements of the shape.
   //

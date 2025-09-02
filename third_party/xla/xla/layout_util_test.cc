@@ -438,6 +438,13 @@ TEST_F(LayoutUtilTest, MoveDimToMajor) {
   EXPECT_EQ(new_layout, LayoutUtil::MakeLayout({2, 0, 1}));
 }
 
+TEST_F(LayoutUtilTest, MoveDimToMinor) {
+  const Layout layout = LayoutUtil::MakeLayout({2, 0, 3, 1});
+  EXPECT_EQ(LayoutUtil::MoveDimToMinor(layout, 2), layout);
+  EXPECT_EQ(LayoutUtil::MoveDimToMinor(layout, 3),
+            LayoutUtil::MakeLayout({3, 2, 0, 1}));
+}
+
 TEST_F(LayoutUtilTest, StridesIsMajorToMinor) {
   std::vector<int64_t> byte_strides = {3960, 440, 44, 4};
   EXPECT_TRUE(LayoutUtil::ByteStridesIsMajorToMinor(
