@@ -1890,7 +1890,8 @@ class ResourceVariable(BaseResourceVariable, composite_tensor.CompositeTensor):
           shape=shape,
           distribute_strategy=distribute_strategy,
           validate_shape=validate_shape,
-          experimental_enable_variable_lifting=experimental_enable_variable_lifting,
+          experimental_enable_variable_lifting=
+          experimental_enable_variable_lifting,
           )
 
   # CompositeTensor method
