@@ -1864,7 +1864,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
   EmitReturnOp(b, fusion_kind);
 
   if (DumpingEnabledForHloModule(*hlo_computation->parent())) {
-    auto suffix = absl::StrCat(fusion->name(), ".before_validation.ttir");
+    auto suffix = absl::StrCat(fusion->name(), ".before_validation.ttir.txt");
     DumpToFileInDirOrStdout(
         *hlo_computation->parent(), "", suffix,
         DumpTritonIR(triton_module.get(),
@@ -1897,10 +1897,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
                               ->config()
                               .debug_options()
                               .xla_gpu_unsupported_annotate_with_emitter_loc());
-  // TODO(loislo): Remove this dump once we have the Triton IR dump in
-  // CompileTritonToLLVM after the Triton optimization passes.
   if (DumpingEnabledForHloModule(*hlo_computation->parent())) {
-    std::string suffix = absl::StrCat(fusion->name(), ".ttir");
+    std::string suffix = absl::StrCat(fusion->name(), ".ttir.txt");
     DumpToFileInDirOrStdout(
         *hlo_computation->parent(), "", suffix,
         DumpTritonIR(triton_module.get(),
@@ -1983,9 +1981,13 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
 
   std::optional<llvm::raw_fd_ostream> log_stream;
   if (should_dump_mlir_passes) {
-    std::string outputs_dir;
-    if (!tsl::io::GetTestUndeclaredOutputsDir(&outputs_dir)) {
-      outputs_dir = hlo_config.debug_options().xla_dump_to();
+    std::string outputs_dir = hlo_config.debug_options().xla_dump_to();
+    if (outputs_dir == "sponge") {
+      if (!tsl::io::GetTestUndeclaredOutputsDir(&outputs_dir)) {
+        LOG(ERROR) << "Failed to get test undeclared outputs dir. Lets skip "
+                      "dumping triton passes.";
+        outputs_dir = "";
+      }
     }
     if (!outputs_dir.empty()) {
       const std::string basename =
