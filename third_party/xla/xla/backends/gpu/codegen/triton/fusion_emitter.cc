@@ -179,7 +179,7 @@ Value EmitClampedIndex(EmitterLocOpBuilder b, Value value, int64_t lower,
       value, CreateConst(b, value.getType(), lower).UnwrapUnsafe());
   clamped_index = b.create<arith::MinSIOp>(
       clamped_index, CreateConst(b, value.getType(), upper).UnwrapUnsafe());
-  return b.create<arith::IndexCastUIOp>(b.getIndexType(), clamped_index);
+  return b.create<arith::IndexCastOp>(b.getIndexType(), clamped_index);
 }
 
 absl::StatusOr<SmallVector<Value>> ComputeOffsetsForTile(

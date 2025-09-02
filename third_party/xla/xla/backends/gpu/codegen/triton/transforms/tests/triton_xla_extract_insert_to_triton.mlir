@@ -78,7 +78,7 @@ module {
     %cst = arith.constant dense<0.000000e+00> : tensor<32xf32>
     %0 = tt.get_program_id x : i32
     %1 = arith.extsi %0 : i32 to i64
-    %2 = arith.index_castui %1 : i64 to index
+    %2 = arith.index_cast %1 : i64 to index
     %3 = xla.apply_indexing #indexing_map(%2)
     %extracted_tile = triton_xla.extract from %arg0
         as memref<64xf32, #triton_xla.layout<[0]>>
@@ -109,7 +109,7 @@ module {
     %cst = arith.constant dense<0.000000e+00> : tensor<32xf32>
     %0 = tt.get_program_id x : i32
     %1 = arith.extsi %0 : i32 to i64
-    %2 = arith.index_castui %1 : i64 to index
+    %2 = arith.index_cast %1 : i64 to index
     %3 = xla.apply_indexing #indexing_map(%2)
     %extracted_tile = triton_xla.extract from %arg0
         as memref<64xf32, #triton_xla.layout<[0]>>
@@ -154,7 +154,7 @@ func.func @extract_with_non_unit_minor_dim_stride(%arg0: !tt.ptr<bf16>,
 func.func @extract_with_non_static_strides(%arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>) {
   %0 = tt.get_program_id x : i32
   %1 = arith.extsi %0 : i32 to i64
-  %2 = arith.index_castui %1 : i64 to index
+  %2 = arith.index_cast %1 : i64 to index
   %extracted_tensor = triton_xla.extract from %arg0
       as memref<1024x1024xbf16, #triton_xla.layout<[1, 0]>>
       [0, 0] [16, 64] [%2, 1] : tensor<16x64xbf16>
@@ -268,7 +268,7 @@ module {
             %arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>) {
     %0 = tt.get_program_id x : i32
     %1 = arith.extsi %0 : i32 to i64
-    %2 = arith.index_castui %1 : i64 to index
+    %2 = arith.index_cast %1 : i64 to index
     %3 = xla.apply_indexing #indexing_map(%2)
     %extracted_tile = triton_xla.extract from %arg0
         as memref<16x16xbf16, #triton_xla.layout<[1, 0]>>
