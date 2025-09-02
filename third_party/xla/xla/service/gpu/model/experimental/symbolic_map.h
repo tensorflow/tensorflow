@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_MODEL_EXPERIMENTAL_SYMBOLIC_MAP_H_
 #define XLA_SERVICE_GPU_MODEL_EXPERIMENTAL_SYMBOLIC_MAP_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 
@@ -81,6 +82,9 @@ class SymbolicMap {
   // other: (d0, s0, s1) -> (d0 * 2 + 3 * s0, d0 + s1)
   // this.compose(other): (d0, s0, s1, s2) -> (d0 * 2 + 3 * s1 + s0, d0 + s2)
   SymbolicMap Compose(const SymbolicMap& other) const;
+
+  // Creates a new SymbolicMap with a subset of the results of this map.
+  SymbolicMap GetSubMap(absl::Span<const size_t> result_indices) const;
 
   SymbolicMap Replace(SymbolicExpr expr, SymbolicExpr replacement) const;
 
