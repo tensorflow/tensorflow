@@ -155,8 +155,11 @@ class HloRematerialization : public HloModulePass {
     const ShapeSizeFunction size_function;
 
     // The threshold number of bytes to reduce memory use to via
-    // rematerialization. Size of aliased outputs should be subtracted
-    // from this.
+    // rematerialization. This limit is adjusted in the pass by subtracting the
+    // size of all module outputs. Callers should consider reducing the amount
+    // of available memory by also subtracting the size of module parameters,
+    // and to add the size of aliased outputs to avoid subtracting twice for
+    // parameter and output.
     int64_t memory_limit_bytes;
 
     // Maximum number of consecutive instructions to consider for

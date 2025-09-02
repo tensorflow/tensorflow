@@ -2927,8 +2927,18 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
       CreateHloAnalysisOpts(*module, gpu_device_info, ShapeSizeBytesFunction());
   HloCostAnalysis hlo_cost_analysis(hlo_cost_analysis_opts);
   // `HloRematerialization` options initialization.
+  // `scheduler_mem_limit` cannot directly be reused for HloRematerialization.
+  // It reduces the memory limit by the size of the output, which is done again
+  // in HloRematerialization. So to account for that, add back the size of the
+  // output.
+  int64_t remat_mem_limit = scheduler_mem_limit;
+  ShapeUtil::ForEachSubshape(
+      module->result_shape(),
+      [&](const Shape& subshape, const ShapeIndex& /*index*/) {
+        remat_mem_limit += ShapeSizeBytesFunction()(subshape);
+      });
   HloRematerialization::Options remat_opts = CreateRematOpts(
-      *module, gpu_device_info, hlo_cost_analysis, scheduler_mem_limit);
+      *module, gpu_device_info, hlo_cost_analysis, remat_mem_limit);
   {
     HloPassPipeline& pipeline =
         main_pipeline.AddPass<HloPassPipeline>("remat-pipeline");
