@@ -118,7 +118,6 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     TF_ASSIGN_OR_RETURN(HloInstruction * normalized_input,
                         GetNormalizedInput(operand));
 
-    Shape normalized = Normalize(operand_shape);
     std::vector<int64_t> layout_as_permutation =
         ToTransposeDimensions(hlo->shape().layout());
 
@@ -287,10 +286,36 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
 
   // BitcastConvert is only layout-preserving if it doesn't change the rank.
   absl::Status HandleBitcastConvert(HloInstruction* hlo) override {
+    HloInstruction* operand = hlo->mutable_operand(0);
     // If the rank isn't changing this is just an unary op.
     if (hlo->shape().dimensions().size() ==
-        hlo->operand(0)->shape().dimensions().size()) {
+        operand->shape().dimensions().size()) {
       return HandleElementwiseUnary(hlo);
+    }
+
+    // When bitcast-convert adds or removes a dimension, it's the last one
+    // either in the input or the output. If this dimension is already
+    // minor-most, normalizing input and output layouts together will keep it
+    // that way. Handling of the other situations might be possible too but
+    // wasn't the goal so far.
+
+    const Shape& shape_with_extra_dimension =
+        operand->shape().dimensions().size() > hlo->shape().dimensions().size()
+            ? operand->shape()
+            : hlo->shape();
+
+    if (ShapeUtil::LastDimIsMinorMost(shape_with_extra_dimension)) {
+      const Shape original_shape = hlo->shape();
+      TF_ASSIGN_OR_RETURN(HloInstruction * normalized_input,
+                          GetNormalizedInput(operand));
+      HloInstruction* normalized = hlo->parent()->AddInstruction(
+          HloInstruction::CreateBitcastConvert(Normalize(hlo->shape()),
+                                               normalized_input),
+          &hlo->metadata());
+      SetVisited(*normalized);
+      HloInstruction* bitcast_back = MaybeBitcast(normalized, original_shape);
+      TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bitcast_back));
+      return absl::OkStatus();
     }
 
     return DefaultAction(hlo);

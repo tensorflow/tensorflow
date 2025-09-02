@@ -1628,6 +1628,14 @@ TEST(ShapeUtilTest, FlattenTupleShape) {
   EXPECT_EQ(flattened_shapes[3]->ToString(), "f32[8,9]");
 }
 
+TEST(ShapeUtilTest, LastDimIsMinorMost) {
+  EXPECT_TRUE(ShapeUtil::LastDimIsMinorMost(ShapeUtil::MakeShape(S8, {1, 2})));
+  EXPECT_TRUE(ShapeUtil::LastDimIsMinorMost(
+      ShapeUtil::MakeShapeWithDescendingLayout(S8, {3, 4})));
+  EXPECT_FALSE(ShapeUtil::LastDimIsMinorMost(
+      ShapeUtil::MakeShapeWithDenseLayout(S8, {5, 6}, {0, 1})));
+}
+
 TEST(ShapeUtilTest, ShapeIndexProtoSerialization) {
   ShapeIndex empty{};
   EXPECT_EQ(empty, ShapeIndex::FromProto(empty.ToProto()));

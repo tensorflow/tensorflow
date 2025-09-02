@@ -1159,6 +1159,14 @@ class ShapeUtil {
                                 std::vector<const Shape*>& flattened);
   static std::vector<const Shape*> FlattenTupleShape(const Shape& shape);
 
+  static inline bool LastDimIsMinorMost(const Shape& shape) {
+    if (!shape.has_layout()) {
+      return true;
+    }
+    return LayoutUtil::Minor(shape.layout(), 0) ==
+           shape.dimensions().size() - 1;
+  };
+
  private:
   // Helper for ForEachSubshape which visits the subshapes of the given shape in
   // DFS pre-order starting with the index.
