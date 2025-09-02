@@ -84,6 +84,7 @@ class PThread : public Thread {
     CHECK_EQ(ret, 0) << "Thread " << name
                      << " creation via pthread_create() failed.";
     pthread_attr_destroy(&attributes);
+    pthread_setname_np(thread_, name.c_str());
   }
 
   ~PThread() override {
