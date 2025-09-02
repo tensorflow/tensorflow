@@ -35,12 +35,20 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "cpu_memory",
+    srcs = [],
+    hdrs = ["cpu_memory.h"],
+)
+
+cc_library(
     name = "cpu_client_options",
     srcs = [],
     hdrs = ["cpu_client_options.h"],
     deps = [
+        ":cpu_memory",
         "//xla/backends/cpu/collectives:cpu_collectives",
         "//xla/service:hlo_module_config",
+        "@com_google_absl//absl/status:statusor",
     ],
 )
 
