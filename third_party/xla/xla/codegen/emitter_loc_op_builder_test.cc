@@ -47,8 +47,8 @@ class EmitterLocOpBuilderTest : public HloHardwareIndependentTestBase {
  protected:
   void SetUp() override { gpu::LoadMlirDialectsForTriton(mlir_context_); }
 
-  gpu::SymbolicExprContext symbolic_expr_context_{&mlir_context_};
   mlir::MLIRContext mlir_context_;
+  gpu::SymbolicExprContext symbolic_expr_context_{&mlir_context_};
 };
 
 NameLoc NameLoc(mlir::MLIRContext& context, absl::string_view name) {

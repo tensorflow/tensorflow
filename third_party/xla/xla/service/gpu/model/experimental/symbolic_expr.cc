@@ -29,6 +29,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/const_init.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/ascii.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
@@ -43,6 +45,7 @@ limitations under the License.
 #include "llvm/Support/MathExtras.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/StorageUniquer.h"
+#include "mlir/Support/TypeID.h"
 
 namespace xla {
 namespace gpu {
@@ -886,9 +889,20 @@ SymbolicExpr SymbolicExpr::max(SymbolicExpr other) const {
   return GetContext()->CreateBinaryOp(SymbolicExprType::kMax, *this, other);
 }
 
+static absl::Mutex& getSymbolicExprStorageMutex() {
+  static absl::Mutex m(absl::kConstInit);
+  return m;
+}
+
 SymbolicExprContext::SymbolicExprContext(mlir::MLIRContext* mlir_context)
     : mlir_context_(mlir_context) {
-  uniquer_.registerParametricStorageType<SymbolicExprStorage>();
+  CHECK(mlir_context != nullptr);
+  absl::MutexLock lock(getSymbolicExprStorageMutex());
+  auto* uniquer = &mlir_context_->getAffineUniquer();
+  if (!uniquer->isParametricStorageInitialized(
+          mlir::TypeID::get<SymbolicExprStorage>())) {
+    uniquer->registerParametricStorageType<SymbolicExprStorage>();
+  }
 }
 
 SymbolicExpr SymbolicExprContext::GetOrCreate(SymbolicExprType type,
@@ -897,7 +911,8 @@ SymbolicExpr SymbolicExprContext::GetOrCreate(SymbolicExprType type,
   auto initContext = [&](SymbolicExprStorage* storage) {
     storage->ctx_ = this;
   };
-  return uniquer_.get<SymbolicExprStorage>(initContext, type, value, lhs, rhs);
+  return mlir_context_->getAffineUniquer().get<SymbolicExprStorage>(
+      initContext, type, value, lhs, rhs);
 }
 
 SymbolicExpr SymbolicExprContext::CreateConstant(int64_t value) {

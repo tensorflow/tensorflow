@@ -19,6 +19,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <ostream>
 #include <string>
@@ -37,6 +38,9 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
+#include "xla/service/gpu/model/experimental/symbolic_map.h"
+#include "xla/service/gpu/model/experimental/symbolic_map_converter.h"
 
 namespace xla {
 
@@ -60,34 +64,9 @@ absl::string_view ToVariableName(VariableKind var_kind);
 VariableKind ToVariableType(absl::string_view var_name);
 std::ostream& operator<<(std::ostream& out, VariableKind var_type);
 
-class IndexingMap;
+class RangeEvaluator;
 
-// Evaluates lower and upper bounds for expressions given the domain.
-// Not thread safe. Lifetime is tied to the owning IndexingMap's lifetime.
-class RangeEvaluator {
- public:
-  RangeEvaluator(const IndexingMap& indexing_map,
-                 mlir::MLIRContext* mlir_context, bool use_constraints = true);
-
-  // Checks whether an `AffineExpr` always describes a non-negative value.
-  bool IsAlwaysPositiveOrZero(mlir::AffineExpr expr);
-
-  // Checks whether an `AffineExpr` always describes a non-positive value.
-  bool IsAlwaysNegativeOrZero(mlir::AffineExpr expr);
-
-  // Computes the range of expression using its subexpression ranges.
-  Interval ComputeExpressionRange(mlir::AffineExpr expr);
-
-  // Return MLIR context.
-  mlir::MLIRContext* GetMLIRContext() const { return mlir_context_; }
-
- private:
-  mlir::MLIRContext* mlir_context_;
-  const IndexingMap& indexing_map_;
-  bool use_constraints_;
-};
-
-// Contains an affine map with N dimension expressions and M + K symbols:
+// Contains an symbolic map with N dimension expressions and M + K symbols:
 // (d0, ..., d_{N - 1})[s_0, ..., s_{M - 1}]{r_0, ..., r_{K - 1}} -> f(d_i, s_j)
 // Dimensions d_i correspond to the iteration space of the output tensor.
 // Symbols s_j correspond to ranges of the input dimensions.
@@ -128,6 +107,8 @@ class IndexingMap {
     std::string name = "";
   };
 
+  friend class SymbolicExprSimplifier;
+
   IndexingMap(
       mlir::AffineMap affine_map, std::vector<Variable> dimensions,
       std::vector<Variable> range_vars, std::vector<Variable> rt_vars,
@@ -136,6 +117,15 @@ class IndexingMap {
   IndexingMap(mlir::AffineMap affine_map, std::vector<Variable> dimensions,
               std::vector<Variable> range_vars, std::vector<Variable> rt_vars,
               const llvm::MapVector<mlir::AffineExpr, Interval>& constraints);
+
+  IndexingMap(gpu::SymbolicMap symbolic_map, std::vector<Variable> dimensions,
+              std::vector<Variable> range_vars, std::vector<Variable> rt_vars,
+              absl::Span<std::pair<gpu::SymbolicExpr, Interval> const>
+                  constraints = {});
+
+  IndexingMap(gpu::SymbolicMap symbolic_map, std::vector<Variable> dimensions,
+              std::vector<Variable> range_vars, std::vector<Variable> rt_vars,
+              const llvm::MapVector<gpu::SymbolicExpr, Interval>& constraints);
 
   IndexingMap(const IndexingMap&) = default;
   IndexingMap(IndexingMap&&) noexcept = default;
@@ -147,6 +137,10 @@ class IndexingMap {
 
   static IndexingMap FromTensorSizes(
       mlir::AffineMap affine_map, absl::Span<const int64_t> dim_upper_bounds,
+      absl::Span<const int64_t> symbol_upper_bounds);
+
+  static IndexingMap FromTensorSizes(
+      gpu::SymbolicMap symbolic_map, absl::Span<const int64_t> dim_upper_bounds,
       absl::Span<const int64_t> symbol_upper_bounds);
 
   // Returns true if the indexing map is valid.
@@ -161,13 +155,22 @@ class IndexingMap {
 
   // Return MLIRContext.
   mlir::MLIRContext* GetMLIRContext() const;
+  gpu::SymbolicExprContext* GetSymbolicExprContext() const;
 
   // Returns the affine map.
-  mlir::AffineMap GetAffineMap() const { return affine_map_; }
-  mlir::AffineMap& GetMutableAffineMap() { return affine_map_; }
+  mlir::AffineMap GetAffineMap() const {
+    return gpu::SymbolicMapToAffineMap(GetSymbolicMap(), mlir_context_);
+  }
+  // mlir::AffineMap GetMutableAffineMap() {
+  //   return gpu::SymbolicMapToAffineMap(GetSymbolicMap(), mlir_context_);
+  // }
+
+  // Returns the symbolic map.
+  gpu::SymbolicMap GetSymbolicMap() const { return symbolic_map_; }
+  gpu::SymbolicMap& GetMutableSymbolicMap() { return symbolic_map_; }
 
   // Returns the number of indexing map results.
-  int64_t GetNumResults() const { return affine_map_.getNumResults(); }
+  int64_t GetNumResults() const { return symbolic_map_.GetNumResults(); }
 
   // Returns the range evaluator for the indexing map's domain.
   RangeEvaluator GetRangeEvaluator() const;
@@ -190,41 +193,51 @@ class IndexingMap {
   const std::vector<Variable>& GetRTVars() const { return rt_vars_; }
   int64_t GetRTVarsCount() const { return rt_vars_.size(); }
 
-  // Gets bounds of `affine_map_` dimensions.
+  // Gets bounds of `symbolic_map_` dimensions.
   const Interval& GetDimensionBound(int64_t dim_id) const;
   Interval& GetMutableDimensionBound(int64_t dim_id);
   std::vector<Interval> GetDimensionBounds() const;
-  int64_t GetDimensionCount() const { return affine_map_.getNumDims(); }
+  int64_t GetDimensionCount() const { return symbolic_map_.GetNumDims(); }
 
-  // Gets bounds of `affine_map_` symbols.
+  // Gets bounds of `symbolic_map_` symbols.
   const Interval& GetSymbolBound(int64_t symbol_id) const;
   Interval& GetMutableSymbolBound(int64_t symbol_id);
   std::vector<Interval> GetSymbolBounds() const;
-  int64_t GetSymbolCount() const { return affine_map_.getNumSymbols(); }
+  int64_t GetSymbolCount() const { return symbolic_map_.GetNumSymbols(); }
 
+  // TODO: b/446856820 - Remove this method once we fully migrate to
+  // SymbolicMap.
   // Getters for affine expression constraints.
-  const llvm::MapVector<mlir::AffineExpr, Interval>& GetConstraints() const {
-    return constraints_;
-  }
+  llvm::MapVector<mlir::AffineExpr, Interval> GetConstraints() const;
+
+  // Getters for symbolic expression constraints.
+  llvm::MapVector<gpu::SymbolicExpr, Interval> GetSymbolicConstraints() const;
   int64_t GetConstraintsCount() const { return constraints_.size(); }
 
-  // Allows to add bounds for the affine expression `expr`. If there are
+  // Allows to add bounds for the symbolic expression `expr`. If there are
   // bounds for the `expr`, then computes intersection of the current and new
   // ranges.
+  // TODO: b/446858351 - Remove once fully migrated to SymbolicMap.
   void AddConstraint(mlir::AffineExpr expr, Interval range);
+  void AddConstraint(gpu::SymbolicExpr expr, Interval range);
   void ClearConstraints() { constraints_.clear(); }
-  void EraseConstraint(mlir::AffineExpr expr);
+  void EraseConstraint(gpu::SymbolicExpr expr);
 
-  // Evaluates the constraints at a given point and returns `true` if all
-  // constraints are satisfied.
+  // Deprecated. TODO: b/446856820 - Remove once fully migrated to SymbolicMap.
   bool ConstraintsSatisfied(
       llvm::ArrayRef<mlir::AffineExpr> dim_const_exprs,
       llvm::ArrayRef<mlir::AffineExpr> symbol_const_exprs) const;
 
+  // Evaluates the constraints at a given point and returns `true` if all
+  // constraints are satisfied.
+  bool ConstraintsSatisfied(
+      llvm::ArrayRef<gpu::SymbolicExpr> dim_const_exprs,
+      llvm::ArrayRef<gpu::SymbolicExpr> symbol_const_exprs) const;
+
   // Evaluates indexing map results at a given point.
   llvm::SmallVector<int64_t, 4> Evaluate(
-      llvm::ArrayRef<mlir::AffineExpr> dim_const_exprs,
-      llvm::ArrayRef<mlir::AffineExpr> symbol_const_exprs) const;
+      llvm::ArrayRef<gpu::SymbolicExpr> dim_const_exprs,
+      llvm::ArrayRef<gpu::SymbolicExpr> symbol_const_exprs) const;
 
   // Returns true if there is a constraint on the given symbol.
   bool IsSymbolConstrained(int64_t symbol_id) const;
@@ -236,14 +249,14 @@ class IndexingMap {
   // satisfies both constraints.
   bool IsKnownEmpty() const { return is_known_empty_; }
 
-  bool IsUndefined() const { return affine_map_ == mlir::AffineMap(); }
+  bool IsUndefined() const { return symbolic_map_ == gpu::SymbolicMap(); }
 
-  // Removes unused symbols from the `affine_map_` and constraints.
+  // Removes unused symbols from the `symbolic_map_` and constraints.
   // Returns a bit vector of symbols that were removed. If none of the symbols
   // were removed, returns an empty bit vector.
   llvm::SmallBitVector RemoveUnusedSymbols();
 
-  // Removes unused dimensions and symbols from the `affine_map_` and
+  // Removes unused dimensions and symbols from the `symbolic_map_` and
   // constraints. Returns a bit vector of all variables [dimensions, symbols]
   // that were removed. If none of the symbols were removed, returns {}.
   llvm::SmallBitVector RemoveUnusedVars();
@@ -253,14 +266,14 @@ class IndexingMap {
   bool RescaleSymbols();
 
   // Does `symbol` correspond to a range var?
-  bool IsRangeVarSymbol(mlir::AffineSymbolExpr symbol) const;
+  bool IsRangeVarSymbol(gpu::SymbolicExpr symbol) const;
 
   // Does `symbol` correspond to an RTVar?
-  bool IsRTVarSymbol(mlir::AffineSymbolExpr symbol) const;
+  bool IsRTVarSymbol(gpu::SymbolicExpr symbol) const;
 
   IndexingMap GetSubMap(unsigned int result_index) const {
-    return {affine_map_.getSubMap({result_index}), dim_vars_, range_vars_,
-            rt_vars_, constraints_};
+    return IndexingMap(symbolic_map_.GetSubMap({result_index}), dim_vars_,
+                       range_vars_, rt_vars_, constraints_);
   }
 
   // Returns a new indexing map with all RangeVars and RTVars converted to
@@ -274,7 +287,7 @@ class IndexingMap {
  private:
   IndexingMap() = default;
 
-  // Merges "mod" constraints for the same AffineExpr.
+  // Merges "mod" constraints for the same SymbolicExpr.
   // Returns true if simplification was performed.
   bool MergeModConstraints();
 
@@ -285,7 +298,7 @@ class IndexingMap {
                     const llvm::SmallBitVector& unused_symbols);
 
   // Resets the indexing map to the canonical "known" empty indexing map, i.e.
-  // (d0...)[s0...]{r0...} -> (0...) affine map.
+  // (d0...)[s0...]{r0...} -> (0...) symbolic map.
   // Does not change the number of symbols, dimensions or results.
   void ResetToKnownEmpty();
 
@@ -295,30 +308,87 @@ class IndexingMap {
   // Verify if all intervals for constraints.
   bool VerifyConstraintIntervals();
 
-  mlir::AffineMap affine_map_;
+  gpu::SymbolicMap symbolic_map_;
+
+  // TODO: b/446856305 - Needed for legacy mlir::AffineMap. Will be removed once
+  // we fully migrate to gpu::SymbolicMap.
+  mlir::MLIRContext* mlir_context_;
+  gpu::SymbolicExprContext symbolic_expr_context_;
 
   // A dimension variable represents a dimension of a tensor or a GPU grid.
-  // Dimension variables correspond to the dimensions of the `affine_map_`.
+  // Dimension variables correspond to the dimensions of the `symbolic_map_`.
   std::vector<Variable> dim_vars_;
 
   // A range variable represents a range of values, e.g. to compute a single
   // element of the reduction's result we need a range of values from the input
   // tensor. Range variables correspond to the front portion of the
-  // symbols in `affine_map_`.
+  // symbols in `symbolic_map_`.
   std::vector<Variable> range_vars_;
 
   // A runtime variable represents a runtime symbol, e.g. a dynamic offset in of
   // a HLO dynamic-update-slice op. Runtime variables correspond to the back
-  // portion of the symbols in `affine_map_`.
+  // portion of the symbols in `symbolic_map_`.
   std::vector<Variable> rt_vars_;
 
-  // Inequality constraints for affine expressions. They restrict the feasible
-  // set for the domain of the indexing map. It contains affine expressions
-  // other than AffineDimExpr and AffineSymbolExpr.
-  llvm::MapVector<mlir::AffineExpr, Interval> constraints_;
+  // Inequality constraints for symbolic expressions. They restrict the feasible
+  // set for the domain of the indexing map. It contains symbolic expressions
+  // other than SymbolicDimExpr and SymbolicSymbolExpr.
+  llvm::MapVector<gpu::SymbolicExpr, Interval> constraints_;
   // Flag to indicate that the domain is empty.
   bool is_known_empty_ = false;
 };
+
+// Evaluates lower and upper bounds for expressions given the domain.
+// Not thread safe. Lifetime is tied to the owning IndexingMap's lifetime.
+class RangeEvaluator {
+ public:
+  RangeEvaluator(const IndexingMap& indexing_map,
+                 gpu::SymbolicExprContext* context,
+                 bool use_constraints = true);
+
+  // Checks whether an `SymbolicExpr` always describes a non-negative value.
+  bool IsAlwaysPositiveOrZero(gpu::SymbolicExpr expr);
+  // TODO: karupayun - Remove once fully migrated to SymbolicMap.
+  bool IsAlwaysPositiveOrZero(mlir::AffineExpr expr) {
+    return IsAlwaysPositiveOrZero(gpu::AffineExprToSymbolicExpr(
+        expr, symbolic_expr_context_,
+        indexing_map_.GetSymbolicMap().GetNumDims()));
+  }
+
+  // Checks whether an `SymbolicExpr` always describes a non-positive value.
+  bool IsAlwaysNegativeOrZero(gpu::SymbolicExpr expr);
+  // TODO: karupayun - Remove once fully migrated to SymbolicMap.
+  bool IsAlwaysNegativeOrZero(mlir::AffineExpr expr) {
+    return IsAlwaysNegativeOrZero(gpu::AffineExprToSymbolicExpr(
+        expr, symbolic_expr_context_,
+        indexing_map_.GetSymbolicMap().GetNumDims()));
+  }
+
+  // Computes the range of expression using its subexpression ranges.
+  Interval ComputeExpressionRange(gpu::SymbolicExpr expr);
+  // TODO: karupayun - Remove once fully migrated to SymbolicMap.
+  Interval ComputeExpressionRange(mlir::AffineExpr expr) {
+    return ComputeExpressionRange(gpu::AffineExprToSymbolicExpr(
+        expr, symbolic_expr_context_,
+        indexing_map_.GetSymbolicMap().GetNumDims()));
+  }
+
+  // Return MLIR context.
+  mlir::MLIRContext* GetMLIRContext() const {
+    return symbolic_expr_context_->GetMLIRContext();
+  }
+
+  // Return SymbolicExpr Context.
+  gpu::SymbolicExprContext* GetSymbolicExprContext() const {
+    return symbolic_expr_context_;
+  }
+
+ private:
+  gpu::SymbolicExprContext* symbolic_expr_context_;
+  const IndexingMap& indexing_map_;
+  bool use_constraints_;
+};
+
 std::ostream& operator<<(std::ostream& out, const IndexingMap& indexing_map);
 bool operator==(const IndexingMap& lhs, const IndexingMap& rhs);
 inline bool operator!=(const IndexingMap& lhs, const IndexingMap& rhs) {
@@ -342,20 +412,20 @@ inline size_t hash_value(const IndexingMap::Variable& dim_var) {
   return llvm::hash_combine(dim_var.bounds);
 }
 
-// Composes affine maps, i.e. second ∘ first.
+// Composes symbolic maps, i.e. second ∘ first.
 IndexingMap ComposeIndexingMaps(const IndexingMap& first,
                                 const IndexingMap& second);
 
 template <typename H>
 H AbslHashValue(H h, const IndexingMap& indexing_map) {
-  llvm::hash_code affine_map_hash =
-      llvm::hash_combine(indexing_map.GetAffineMap());
+  llvm::hash_code symbolic_map_hash =
+      llvm::hash_combine(indexing_map.GetSymbolicMap());
   llvm::SmallVector<size_t> constraint_hashes;
   constraint_hashes.reserve(indexing_map.GetConstraintsCount());
   for (const auto& [expr, interval] : indexing_map.GetConstraints()) {
     constraint_hashes.push_back(llvm::hash_combine(expr, interval));
   }
-  h = H::combine(std::move(h), static_cast<size_t>(affine_map_hash),
+  h = H::combine(std::move(h), static_cast<size_t>(symbolic_map_hash),
                  indexing_map.GetDimVars(), indexing_map.GetRangeVars(),
                  indexing_map.GetRTVars());
   h = H::combine_unordered(std::move(h), constraint_hashes.begin(),

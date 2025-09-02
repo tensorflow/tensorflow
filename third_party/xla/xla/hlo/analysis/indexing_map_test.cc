@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/hlo/analysis/indexing_map.h"
 
-#include <limits>
 #include <memory>
 #include <optional>
 #include <sstream>
@@ -37,8 +36,9 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/gpu/model/experimental/symbolic_expr.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/service/gpu/model/experimental/symbolic_map.h"
+#include "xla/service/gpu/model/experimental/symbolic_map_converter.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -91,6 +91,33 @@ TEST_F(IndexingMapTest, VariableKind) {
   EXPECT_EQ(ToVariableName(VariableKind::kBlockZ), "bl_z");
   EXPECT_EQ(ToVariableName(VariableKind::kWarp), "warp");
   EXPECT_EQ(ToVariableName(VariableKind::kWarpThread), "th_w");
+}
+
+TEST_F(IndexingMapTest, SymbolicMap) {
+  std::shared_ptr<gpu::SymbolicExprContext> context_ =
+      std::make_shared<gpu::SymbolicExprContext>();
+  gpu::SymbolicExpr const_expr =
+      gpu::GetSymbolicConstantExpr(1, context_.get());
+  gpu::SymbolicMap symbolic_map =
+      gpu::SymbolicMap::Get(context_.get(), 1, 1, {const_expr});
+  IndexingMap indexing_map(symbolic_map, {}, {}, {});
+}
+
+TEST_F(IndexingMapTest, SymbolicMapConverted) {
+  std::shared_ptr<gpu::SymbolicExprContext> context_ =
+      std::make_shared<gpu::SymbolicExprContext>();
+  mlir::AffineMap affine_map = mlir::AffineMap::get(
+      1, 1, {mlir::getAffineConstantExpr(1, &mlir_context_)}, &mlir_context_);
+  gpu::SymbolicMap symbolic_map =
+      gpu::AffineMapToSymbolicMap(affine_map, context_.get());
+  IndexingMap indexing_map(symbolic_map, {}, {}, {});
+}
+
+TEST_F(IndexingMapTest, AffineMap) {
+  mlir::AffineExpr const_expr = mlir::getAffineConstantExpr(1, &mlir_context_);
+  mlir::AffineMap affine_map =
+      AffineMap::get(1, 1, {const_expr}, &mlir_context_);
+  IndexingMap indexing_map(affine_map, {}, {}, {});
 }
 
 TEST_F(IndexingMapTest, VerifyDimensions) {
@@ -147,10 +174,8 @@ TEST_F(IndexingMapTest, EvaluateIgnoresDomainRanges) {
   )");
 
   auto results = indexing_map.Evaluate(
-      mlir::getAffineConstantExprs({1, 2},
-                                   symbolic_expr_context_.GetMLIRContext()),
-      mlir::getAffineConstantExprs({3, 4},
-                                   symbolic_expr_context_.GetMLIRContext()));
+      mlir::getAffineConstantExprs({1, 2}, &mlir_context_),
+      mlir::getAffineConstantExprs({3, 4}, &mlir_context_));
 
   EXPECT_THAT(results, ElementsAre(2, 1, 4, 3));
 }
@@ -166,20 +191,16 @@ TEST_F(IndexingMapTest, ConstraintsSatisfied) {
   )");
 
   auto feasible = indexing_map.ConstraintsSatisfied(
-      mlir::getAffineConstantExprs({1, 2},
-                                   symbolic_expr_context_.GetMLIRContext()),
-      mlir::getAffineConstantExprs({3, 4},
-                                   symbolic_expr_context_.GetMLIRContext()));
+      mlir::getAffineConstantExprs({1, 2}, &mlir_context_),
+      mlir::getAffineConstantExprs({3, 4}, &mlir_context_));
   EXPECT_TRUE(feasible);
 
   indexing_map.AddConstraint(
       ParseAffineExpr("s0 mod 4", &symbolic_expr_context_), Interval{0, 0});
 
   auto infeasible = indexing_map.ConstraintsSatisfied(
-      mlir::getAffineConstantExprs({1, 2},
-                                   symbolic_expr_context_.GetMLIRContext()),
-      mlir::getAffineConstantExprs({5, 4},
-                                   symbolic_expr_context_.GetMLIRContext()));
+      mlir::getAffineConstantExprs({1, 2}, &mlir_context_),
+      mlir::getAffineConstantExprs({5, 4}, &mlir_context_));
   EXPECT_FALSE(infeasible);
 }
 
@@ -1374,10 +1395,9 @@ TEST_F(IndexingMapTest, RangeEvaluatorTest) {
     d2 in [-1, 2],
     d3 in [0, 0]
   )");
-  RangeEvaluator range_evaluator(indexing_map,
-                                 symbolic_expr_context_.GetMLIRContext());
+  RangeEvaluator range_evaluator(indexing_map, &symbolic_expr_context_);
   mlir::AffineExpr d0, d1, d2, d3;
-  bindDims(symbolic_expr_context_.GetMLIRContext(), d0, d1, d2, d3);
+  bindDims(&mlir_context_, d0, d1, d2, d3);
 
   // d0 is always positive.
   EXPECT_TRUE(range_evaluator.IsAlwaysPositiveOrZero(d0));

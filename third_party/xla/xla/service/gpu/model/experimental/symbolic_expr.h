@@ -150,7 +150,7 @@ inline ::llvm::hash_code hash_value(SymbolicExpr expr) {
 
 class SymbolicExprContext {
  public:
-  explicit SymbolicExprContext(mlir::MLIRContext* mlir_context);
+  explicit SymbolicExprContext(mlir::MLIRContext* mlir_context = nullptr);
   SymbolicExpr Parse(absl::string_view expr_str);
   SymbolicExpr CreateConstant(int64_t value);
   SymbolicExpr CreateVariable(int64_t var_id);
@@ -162,11 +162,28 @@ class SymbolicExprContext {
  private:
   SymbolicExpr GetOrCreate(SymbolicExprType type, int64_t value,
                            SymbolicExpr lhs, SymbolicExpr rhs);
-  mlir::StorageUniquer uniquer_;
   // TODO(b/446856305): MLIRContext is only used here temporarily while we have
-  // AffineMap <-> SymbolicMap convertors.
+  // AffineMap <-> SymbolicMap convertors. In the future, we only will need a
+  // StorageUniquer pointer.
   mlir::MLIRContext* mlir_context_;
 };
+
+// Free function to create a constant SymbolicExpr.
+inline SymbolicExpr GetSymbolicConstantExpr(int64_t constant,
+                                            SymbolicExprContext* context) {
+  return context->CreateConstant(constant);
+}
+
+// Free function to create a vector of constant SymbolicExprs.
+inline std::vector<SymbolicExpr> GetSymbolicConstantExprs(
+    llvm::ArrayRef<int64_t> constants, SymbolicExprContext* context) {
+  std::vector<SymbolicExpr> exprs;
+  exprs.reserve(constants.size());
+  for (int64_t constant : constants) {
+    exprs.push_back(context->CreateConstant(constant));
+  }
+  return exprs;
+}
 
 }  // namespace gpu
 }  // namespace xla
