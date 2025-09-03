@@ -100,6 +100,18 @@ cc_library(
     defines = ["XNNPACK_DELEGATE_ENABLE_QU8=1"],
 )
 
+# Enable per kernel cache fingerprinting
+config_setting(
+    name = "tflite_with_xnnpack_per_kernel_fingerprinting_explicit_true",
+    define_values = {"tflite_with_xnnpack_per_kernel_fingerprinting": "true"},
+)
+
+# Disable per kernel cache fingerprinting
+config_setting(
+    name = "tflite_with_xnnpack_per_kernel_fingerprinting_explicit_false",
+    define_values = {"tflite_with_xnnpack_per_kernel_fingerprinting": "false"},
+)
+
 cc_library(
     name = "tflite_with_xnnpack_qu8",
     compatible_with = get_compatible_with_portable(),
@@ -348,6 +360,11 @@ cc_library(
     srcs = ["weight_cache.cc"],
     hdrs = ["weight_cache.h"],
     compatible_with = get_compatible_with_portable(),
+    defines = select({
+        ":tflite_with_xnnpack_per_kernel_fingerprinting_explicit_true": ["TFLITE_XNNPACK_EXPERIMENTAL_PER_KERNEL_FINGERPRINTING=1"],
+        ":tflite_with_xnnpack_qs8_explicit_false": [],
+        "//conditions:default": [],
+    }),
     deps = [
         ":file_util",
         ":mmap_handle",

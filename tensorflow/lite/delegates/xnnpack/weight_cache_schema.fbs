@@ -22,21 +22,23 @@ table Buffer {
   weights_id: uint64;
   bias_id: uint64;
 
-  /// The buffer data is appended after the flatbuffer to bypass 2GB file size
-  /// limitation. The offset is calculated relative to the base offset.
-  /// (i.e. beginning of the file + base_offset).
+  // The buffer data is appended after the flatbuffer to bypass 2GB file size
+  // limitation. The offset is calculated relative to the base offset.
+  // (i.e. beginning of the file + base_offset).
   offset: uint64;
 
-  /// Size of the buffer in bytes.
+  // Size of the buffer in bytes.
   size: uint64;
 }
 
 table BufferList {
-  /// A list of buffers.
+  // A list of buffers.
   buffers: [Buffer];
-  /// Defines the base offset for the data in the file. That offset
-  /// may be needed to guarantee data alignment.
-  base_offset:uint64;
+  // Defines the base offset for the data in the file. That offset
+  // may be needed to guarantee data alignment.
+  base_offset: uint64;
+  // The packing schema versions used to create the cache file.
+  packing_schema_versions: [uint64];
 }
 
 root_type BufferList;
