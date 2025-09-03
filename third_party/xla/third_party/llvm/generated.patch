@@ -1,254 +1,1853 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/llvm/include/llvm/Analysis/LoopInfo.h b/llvm/include/llvm/Analysis/LoopInfo.h
---- a/llvm/include/llvm/Analysis/LoopInfo.h
-+++ b/llvm/include/llvm/Analysis/LoopInfo.h
-@@ -59,11 +59,12 @@
+diff -ruN --strip-trailing-cr a/clang/include/clang/AST/TemplateName.h b/clang/include/clang/AST/TemplateName.h
+--- a/clang/include/clang/AST/TemplateName.h
++++ b/clang/include/clang/AST/TemplateName.h
+@@ -335,17 +335,17 @@
+   /// structure, if any.
+   QualifiedTemplateName *getAsQualifiedTemplateName() const;
+ 
+-  /// Retrieve the underlying qualified template name,
+-  /// looking through underlying nodes.
+-  QualifiedTemplateName *getAsAdjustedQualifiedTemplateName() const;
+-
+   /// Retrieve the underlying dependent template name
+   /// structure, if any.
+   DependentTemplateName *getAsDependentTemplateName() const;
+ 
+-  // Retrieve the qualifier stored in either a underlying DependentTemplateName
+-  // or QualifiedTemplateName.
+-  NestedNameSpecifier getQualifier() const;
++  // Retrieve the qualifier and template keyword stored in either a underlying
++  // DependentTemplateName or QualifiedTemplateName.
++  std::tuple<NestedNameSpecifier, bool> getQualifierAndTemplateKeyword() const;
++
++  NestedNameSpecifier getQualifier() const {
++    return std::get<0>(getQualifierAndTemplateKeyword());
++  }
+ 
+   /// Retrieve the using shadow declaration through which the underlying
+   /// template declaration is introduced, if any.
+diff -ruN --strip-trailing-cr a/clang/include/clang/AST/TypeLoc.h b/clang/include/clang/AST/TypeLoc.h
+--- a/clang/include/clang/AST/TypeLoc.h
++++ b/clang/include/clang/AST/TypeLoc.h
+@@ -1862,11 +1862,10 @@
+     if (!getLocalData()->QualifierData)
+       return NestedNameSpecifierLoc();
+ 
+-    auto *QTN =
+-        getTypePtr()->getTemplateName().getAsAdjustedQualifiedTemplateName();
+-    assert(QTN && "missing qualification");
+-    return NestedNameSpecifierLoc(QTN->getQualifier(),
+-                                  getLocalData()->QualifierData);
++    NestedNameSpecifier Qualifier =
++        getTypePtr()->getTemplateName().getQualifier();
++    assert(Qualifier && "missing qualification");
++    return NestedNameSpecifierLoc(Qualifier, getLocalData()->QualifierData);
+   }
+ 
+   SourceLocation getTemplateKeywordLoc() const {
+@@ -2493,10 +2492,9 @@
+     void *Data = getLocalData()->QualifierData;
+     if (!Data)
+       return NestedNameSpecifierLoc();
+-    NestedNameSpecifier Qualifier = getTypePtr()
+-                                        ->getTemplateName()
+-                                        .getAsAdjustedQualifiedTemplateName()
+-                                        ->getQualifier();
++    NestedNameSpecifier Qualifier =
++        getTypePtr()->getTemplateName().getQualifier();
++    assert(Qualifier && "missing qualification");
+     return NestedNameSpecifierLoc(Qualifier, Data);
+   }
+ 
+@@ -2511,10 +2509,7 @@
+     }
+ 
+     assert(QualifierLoc.getNestedNameSpecifier() ==
+-               getTypePtr()
+-                   ->getTemplateName()
+-                   .getAsAdjustedQualifiedTemplateName()
+-                   ->getQualifier() &&
++               getTypePtr()->getTemplateName().getQualifier() &&
+            "Inconsistent nested-name-specifier pointer");
+     getLocalData()->QualifierData = QualifierLoc.getOpaqueData();
+   }
+diff -ruN --strip-trailing-cr a/clang/include/clang/ASTMatchers/ASTMatchers.h b/clang/include/clang/ASTMatchers/ASTMatchers.h
+--- a/clang/include/clang/ASTMatchers/ASTMatchers.h
++++ b/clang/include/clang/ASTMatchers/ASTMatchers.h
+@@ -5739,6 +5739,14 @@
+   return Builder->removeBindings(Predicate);
+ }
+ 
++/// Matches a declaration if it declares the same entity as the node previously
++/// bound to \p ID.
++AST_MATCHER_P(Decl, declaresSameEntityAsBoundNode, std::string, ID) {
++  return Builder->removeBindings([&](const internal::BoundNodesMap &Nodes) {
++    return !clang::declaresSameEntity(&Node, Nodes.getNodeAs<Decl>(ID));
++  });
++}
++
+ /// Matches the condition variable statement in an if statement.
+ ///
+ /// Given
+diff -ruN --strip-trailing-cr a/clang/include/clang/Serialization/ASTReader.h b/clang/include/clang/Serialization/ASTReader.h
+--- a/clang/include/clang/Serialization/ASTReader.h
++++ b/clang/include/clang/Serialization/ASTReader.h
+@@ -526,6 +526,9 @@
+   /// A timer used to track the time spent deserializing.
+   std::unique_ptr<llvm::Timer> ReadTimer;
+ 
++  // A TimeRegion used to start and stop ReadTimer via RAII.
++  std::optional<llvm::TimeRegion> ReadTimeRegion;
++
+   /// The location where the module file will be considered as
+   /// imported from. For non-module AST types it should be invalid.
+   SourceLocation CurrentImportLoc;
+diff -ruN --strip-trailing-cr a/clang/lib/AST/ASTContext.cpp b/clang/lib/AST/ASTContext.cpp
+--- a/clang/lib/AST/ASTContext.cpp
++++ b/clang/lib/AST/ASTContext.cpp
+@@ -5483,18 +5483,15 @@
+   return T;
+ }
+ 
+-static bool getNonInjectedClassName(const TagDecl *&TD) {
++static const TagDecl *getNonInjectedClassName(const TagDecl *TD) {
+   if (const auto *RD = dyn_cast<CXXRecordDecl>(TD);
+-      RD && RD->isInjectedClassName()) {
+-    TD = cast<TagDecl>(RD->getDeclContext());
+-    return true;
+-  }
+-  return false;
++      RD && RD->isInjectedClassName())
++    return cast<TagDecl>(RD->getDeclContext());
++  return TD;
+ }
+ 
+ CanQualType ASTContext::getCanonicalTagType(const TagDecl *TD) const {
+-  ::getNonInjectedClassName(TD);
+-  TD = TD->getCanonicalDecl();
++  TD = ::getNonInjectedClassName(TD)->getCanonicalDecl();
+   if (TD->TypeForDecl)
+     return TD->TypeForDecl->getCanonicalTypeUnqualified();
+ 
+@@ -5510,40 +5507,42 @@
+ QualType ASTContext::getTagType(ElaboratedTypeKeyword Keyword,
+                                 NestedNameSpecifier Qualifier,
+                                 const TagDecl *TD, bool OwnsTag) const {
++
++  const TagDecl *NonInjectedTD = ::getNonInjectedClassName(TD);
++  bool IsInjected = TD != NonInjectedTD;
++
+   ElaboratedTypeKeyword PreferredKeyword =
+-      getLangOpts().CPlusPlus
+-          ? ElaboratedTypeKeyword::None
+-          : KeywordHelpers::getKeywordForTagTypeKind(TD->getTagKind());
++      getLangOpts().CPlusPlus ? ElaboratedTypeKeyword::None
++                              : KeywordHelpers::getKeywordForTagTypeKind(
++                                    NonInjectedTD->getTagKind());
+ 
+   if (Keyword == PreferredKeyword && !Qualifier && !OwnsTag) {
+     if (const Type *T = TD->TypeForDecl; T && !T->isCanonicalUnqualified())
+       return QualType(T, 0);
+ 
+-    bool IsInjected = ::getNonInjectedClassName(TD);
+-    const Type *CanonicalType = getCanonicalTagType(TD).getTypePtr();
++    const Type *CanonicalType = getCanonicalTagType(NonInjectedTD).getTypePtr();
+     const Type *T =
+         getTagTypeInternal(Keyword,
+-                           /*Qualifier=*/std::nullopt, TD,
++                           /*Qualifier=*/std::nullopt, NonInjectedTD,
+                            /*OwnsTag=*/false, IsInjected, CanonicalType,
+                            /*WithFoldingSetNode=*/false);
+     TD->TypeForDecl = T;
+     return QualType(T, 0);
+   }
+ 
+-  bool IsInjected = ::getNonInjectedClassName(TD);
+-
+   llvm::FoldingSetNodeID ID;
+-  TagTypeFoldingSetPlaceholder::Profile(ID, Keyword, Qualifier, TD, OwnsTag,
+-                                        IsInjected);
++  TagTypeFoldingSetPlaceholder::Profile(ID, Keyword, Qualifier, NonInjectedTD,
++                                        OwnsTag, IsInjected);
+ 
+   void *InsertPos = nullptr;
+   if (TagTypeFoldingSetPlaceholder *T =
+           TagTypes.FindNodeOrInsertPos(ID, InsertPos))
+     return QualType(T->getTagType(), 0);
+ 
+-  const Type *CanonicalType = getCanonicalTagType(TD).getTypePtr();
+-  TagType *T = getTagTypeInternal(Keyword, Qualifier, TD, OwnsTag, IsInjected,
+-                                  CanonicalType, /*WithFoldingSetNode=*/true);
++  const Type *CanonicalType = getCanonicalTagType(NonInjectedTD).getTypePtr();
++  TagType *T =
++      getTagTypeInternal(Keyword, Qualifier, NonInjectedTD, OwnsTag, IsInjected,
++                         CanonicalType, /*WithFoldingSetNode=*/true);
+   TagTypes.InsertNode(TagTypeFoldingSetPlaceholder::fromTagType(T), InsertPos);
+   return QualType(T, 0);
+ }
+@@ -10429,6 +10428,12 @@
+   assert(Template.getKind() == TemplateName::Template ||
+          Template.getKind() == TemplateName::UsingTemplate);
+ 
++  if (Template.getAsTemplateDecl()->getKind() == Decl::TemplateTemplateParm) {
++    assert(!Qualifier && "unexpected qualified template template parameter");
++    assert(TemplateKeyword == false);
++    return Template;
++  }
++
+   // FIXME: Canonicalization?
+   llvm::FoldingSetNodeID ID;
+   QualifiedTemplateName::Profile(ID, Qualifier, TemplateKeyword, Template);
+diff -ruN --strip-trailing-cr a/clang/lib/AST/ASTImporter.cpp b/clang/lib/AST/ASTImporter.cpp
+--- a/clang/lib/AST/ASTImporter.cpp
++++ b/clang/lib/AST/ASTImporter.cpp
+@@ -1740,10 +1740,21 @@
+ }
+ 
+ ExpectedType ASTNodeImporter::VisitTagType(const TagType *T) {
+-  Expected<TagDecl *> ToDeclOrErr = import(T->getOriginalDecl());
++  TagDecl *DeclForType = T->getOriginalDecl();
++  Expected<TagDecl *> ToDeclOrErr = import(DeclForType);
+   if (!ToDeclOrErr)
+     return ToDeclOrErr.takeError();
+ 
++  if (DeclForType->isUsed()) {
++    // If there is a definition of the 'OriginalDecl', it should be imported to
++    // have all information for the type in the "To" AST. (In some cases no
++    // other reference may exist to the definition decl and it would not be
++    // imported otherwise.)
++    Expected<TagDecl *> ToDefDeclOrErr = import(DeclForType->getDefinition());
++    if (!ToDefDeclOrErr)
++      return ToDefDeclOrErr.takeError();
++  }
++
+   if (T->isCanonicalUnqualified())
+     return Importer.getToContext().getCanonicalTagType(*ToDeclOrErr);
+ 
+diff -ruN --strip-trailing-cr a/clang/lib/AST/DeclarationName.cpp b/clang/lib/AST/DeclarationName.cpp
+--- a/clang/lib/AST/DeclarationName.cpp
++++ b/clang/lib/AST/DeclarationName.cpp
+@@ -113,6 +113,7 @@
+                                               PrintingPolicy Policy) {
+   // We know we're printing C++ here. Ensure we print types properly.
+   Policy.adjustForCPlusPlus();
++  Policy.SuppressScope = true;
+ 
+   if (const RecordType *ClassRec = ClassType->getAs<RecordType>()) {
+     ClassRec->getOriginalDecl()->printName(OS, Policy);
+diff -ruN --strip-trailing-cr a/clang/lib/AST/Decl.cpp b/clang/lib/AST/Decl.cpp
+--- a/clang/lib/AST/Decl.cpp
++++ b/clang/lib/AST/Decl.cpp
+@@ -1604,17 +1604,20 @@
+   // We have just computed the linkage for this decl. By induction we know
+   // that all other computed linkages match, check that the one we just
+   // computed also does.
+-  NamedDecl *Old = nullptr;
+-  for (auto *I : D->redecls()) {
+-    auto *T = cast<NamedDecl>(I);
+-    if (T == D)
++  // We can't assume the redecl chain is well formed at this point,
++  // so keep track of already visited declarations.
++  for (llvm::SmallPtrSet<const Decl *, 4> AlreadyVisited{D}; /**/; /**/) {
++    D = cast<NamedDecl>(const_cast<NamedDecl *>(D)->getNextRedeclarationImpl());
++    if (!AlreadyVisited.insert(D).second)
++      break;
++    if (D->isInvalidDecl())
+       continue;
+-    if (!T->isInvalidDecl() && T->hasCachedLinkage()) {
+-      Old = T;
++    if (auto OldLinkage = D->getCachedLinkage();
++        OldLinkage != Linkage::Invalid) {
++      assert(LV.getLinkage() == OldLinkage);
+       break;
+     }
+   }
+-  assert(!Old || Old->getCachedLinkage() == D->getCachedLinkage());
+ #endif
+ 
+   return LV;
+diff -ruN --strip-trailing-cr a/clang/lib/AST/MicrosoftMangle.cpp b/clang/lib/AST/MicrosoftMangle.cpp
+--- a/clang/lib/AST/MicrosoftMangle.cpp
++++ b/clang/lib/AST/MicrosoftMangle.cpp
+@@ -3246,13 +3246,17 @@
+ }
+ void MicrosoftCXXNameMangler::mangleType(const EnumType *T, Qualifiers,
+                                          SourceRange) {
+-  mangleType(cast<TagType>(T)->getOriginalDecl()->getDefinitionOrSelf());
++  mangleType(cast<TagType>(T)->getOriginalDecl());
+ }
+ void MicrosoftCXXNameMangler::mangleType(const RecordType *T, Qualifiers,
+                                          SourceRange) {
+-  mangleType(cast<TagType>(T)->getOriginalDecl()->getDefinitionOrSelf());
++  mangleType(cast<TagType>(T)->getOriginalDecl());
+ }
+ void MicrosoftCXXNameMangler::mangleType(const TagDecl *TD) {
++  // MSVC chooses the tag kind of the definition if it exists, otherwise it
++  // always picks the first declaration.
++  const auto *Def = TD->getDefinition();
++  TD = Def ? Def : TD->getFirstDecl();
+   mangleTagTypeKind(TD->getTagKind());
+   mangleName(TD);
+ }
+diff -ruN --strip-trailing-cr a/clang/lib/AST/TemplateName.cpp b/clang/lib/AST/TemplateName.cpp
+--- a/clang/lib/AST/TemplateName.cpp
++++ b/clang/lib/AST/TemplateName.cpp
+@@ -289,28 +289,23 @@
+   return dyn_cast_if_present<QualifiedTemplateName *>(Storage);
+ }
+ 
+-QualifiedTemplateName *
+-TemplateName::getAsAdjustedQualifiedTemplateName() const {
+-  for (std::optional<TemplateName> Cur = *this; Cur;
+-       Cur = Cur->desugar(/*IgnoreDeduced=*/true))
+-    if (QualifiedTemplateName *N = Cur->getAsQualifiedTemplateName())
+-      return N;
+-  return nullptr;
+-}
+-
+ DependentTemplateName *TemplateName::getAsDependentTemplateName() const {
+   return Storage.dyn_cast<DependentTemplateName *>();
+ }
+ 
+-NestedNameSpecifier TemplateName::getQualifier() const {
++std::tuple<NestedNameSpecifier, bool>
++TemplateName::getQualifierAndTemplateKeyword() const {
+   for (std::optional<TemplateName> Cur = *this; Cur;
+        Cur = Cur->desugar(/*IgnoreDeduced=*/true)) {
+     if (DependentTemplateName *N = Cur->getAsDependentTemplateName())
+-      return N->getQualifier();
++      return {N->getQualifier(), N->hasTemplateKeyword()};
+     if (QualifiedTemplateName *N = Cur->getAsQualifiedTemplateName())
+-      return N->getQualifier();
++      return {N->getQualifier(), N->hasTemplateKeyword()};
++    if (Cur->getAsSubstTemplateTemplateParm() ||
++        Cur->getAsSubstTemplateTemplateParmPack())
++      break;
+   }
+-  return std::nullopt;
++  return {std::nullopt, false};
+ }
+ 
+ UsingShadowDecl *TemplateName::getAsUsingShadowDecl() const {
+@@ -448,8 +443,14 @@
+       Template = cast<TemplateDecl>(Template->getCanonicalDecl());
+     if (handleAnonymousTTP(Template, OS))
+       return;
+-    if (Qual == Qualified::None || Policy.SuppressScope) {
+-      OS << *Template;
++    if (Qual == Qualified::None || isa<TemplateTemplateParmDecl>(Template) ||
++        Policy.SuppressScope) {
++      if (IdentifierInfo *II = Template->getIdentifier();
++          Policy.CleanUglifiedParameters && II &&
++          isa<TemplateTemplateParmDecl>(Template))
++        OS << II->deuglifiedName();
++      else
++        OS << *Template;
+     } else {
+       PrintingPolicy NestedNamePolicy = Policy;
+       NestedNamePolicy.SuppressUnwrittenScope = true;
+@@ -474,12 +475,7 @@
+     if (handleAnonymousTTP(UTD, OS))
+       return;
+ 
+-    if (IdentifierInfo *II = UTD->getIdentifier();
+-        Policy.CleanUglifiedParameters && II &&
+-        isa<TemplateTemplateParmDecl>(UTD))
+-      OS << II->deuglifiedName();
+-    else
+-      OS << *UTD;
++    OS << *UTD;
+   } else if (DependentTemplateName *DTN = getAsDependentTemplateName()) {
+     DTN->print(OS, Policy);
+   } else if (SubstTemplateTemplateParmStorage *subst =
+diff -ruN --strip-trailing-cr a/clang/lib/AST/Type.cpp b/clang/lib/AST/Type.cpp
+--- a/clang/lib/AST/Type.cpp
++++ b/clang/lib/AST/Type.cpp
+@@ -1963,12 +1963,10 @@
+   switch (getTypeClass()) {
+   case Type::DependentName:
+     return cast<DependentNameType>(this)->getQualifier();
+-  case Type::TemplateSpecialization: {
+-    QualifiedTemplateName *S = cast<TemplateSpecializationType>(this)
+-                                   ->getTemplateName()
+-                                   .getAsAdjustedQualifiedTemplateName();
+-    return S ? S->getQualifier() : std::nullopt;
+-  }
++  case Type::TemplateSpecialization:
++    return cast<TemplateSpecializationType>(this)
++        ->getTemplateName()
++        .getQualifier();
+   case Type::DependentTemplateSpecialization:
+     return cast<DependentTemplateSpecializationType>(this)
+         ->getDependentTemplateName()
+diff -ruN --strip-trailing-cr a/clang/lib/AST/TypeLoc.cpp b/clang/lib/AST/TypeLoc.cpp
+--- a/clang/lib/AST/TypeLoc.cpp
++++ b/clang/lib/AST/TypeLoc.cpp
+@@ -750,8 +750,9 @@
+ 
+ void TemplateSpecializationTypeLoc::initializeLocal(ASTContext &Context,
+                                                     SourceLocation Loc) {
+-  QualifiedTemplateName *Name =
+-      getTypePtr()->getTemplateName().getAsAdjustedQualifiedTemplateName();
++
++  auto [Qualifier, HasTemplateKeyword] =
++      getTypePtr()->getTemplateName().getQualifierAndTemplateKeyword();
+ 
+   SourceLocation ElaboratedKeywordLoc =
+       getTypePtr()->getKeyword() != ElaboratedTypeKeyword::None
+@@ -759,8 +760,7 @@
+           : SourceLocation();
+ 
+   NestedNameSpecifierLoc QualifierLoc;
+-  if (NestedNameSpecifier Qualifier =
+-          Name ? Name->getQualifier() : std::nullopt) {
++  if (Qualifier) {
+     NestedNameSpecifierLocBuilder Builder;
+     Builder.MakeTrivial(Context, Qualifier, Loc);
+     QualifierLoc = Builder.getWithLocInContext(Context);
+@@ -768,9 +768,7 @@
+ 
+   TemplateArgumentListInfo TAL(Loc, Loc);
+   set(ElaboratedKeywordLoc, QualifierLoc,
+-      /*TemplateKeywordLoc=*/Name && Name->hasTemplateKeyword()
+-          ? Loc
+-          : SourceLocation(),
++      /*TemplateKeywordLoc=*/HasTemplateKeyword ? Loc : SourceLocation(),
+       /*NameLoc=*/Loc, /*LAngleLoc=*/Loc, /*RAngleLoc=*/Loc);
+   initializeArgLocs(Context, getTypePtr()->template_arguments(), getArgInfos(),
+                     Loc);
+diff -ruN --strip-trailing-cr a/clang/lib/ASTMatchers/Dynamic/Registry.cpp b/clang/lib/ASTMatchers/Dynamic/Registry.cpp
+--- a/clang/lib/ASTMatchers/Dynamic/Registry.cpp
++++ b/clang/lib/ASTMatchers/Dynamic/Registry.cpp
+@@ -240,6 +240,7 @@
+   REGISTER_MATCHER(enumDecl);
+   REGISTER_MATCHER(enumType);
+   REGISTER_MATCHER(equalsBoundNode);
++  REGISTER_MATCHER(declaresSameEntityAsBoundNode);
+   REGISTER_MATCHER(equalsIntegralValue);
+   REGISTER_MATCHER(explicitCastExpr);
+   REGISTER_MATCHER(exportDecl);
+diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaDecl.cpp b/clang/lib/Sema/SemaDecl.cpp
+--- a/clang/lib/Sema/SemaDecl.cpp
++++ b/clang/lib/Sema/SemaDecl.cpp
+@@ -18028,7 +18028,8 @@
+           }
+         }
+       } else if (auto *RD = dyn_cast<CXXRecordDecl>(PrevDecl);
+-                 RD && RD->isInjectedClassName()) {
++                 TUK == TagUseKind::Reference && RD &&
++                 RD->isInjectedClassName()) {
+         // If lookup found the injected class name, the previous declaration is
+         // the class being injected into.
+         PrevDecl = cast<TagDecl>(RD->getDeclContext());
+diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaDeclCXX.cpp b/clang/lib/Sema/SemaDeclCXX.cpp
+--- a/clang/lib/Sema/SemaDeclCXX.cpp
++++ b/clang/lib/Sema/SemaDeclCXX.cpp
+@@ -1373,10 +1373,13 @@
+         S.BuildReferenceType(T, E.get()->isLValue(), Loc, B->getDeclName());
+     if (RefType.isNull())
+       return true;
+-    auto *RefVD = VarDecl::Create(
+-        S.Context, Src->getDeclContext(), Loc, Loc,
+-        B->getDeclName().getAsIdentifierInfo(), RefType,
+-        S.Context.getTrivialTypeSourceInfo(T, Loc), Src->getStorageClass());
++
++    // Don't give this VarDecl a TypeSourceInfo, since this is a synthesized
++    // entity and this type was never written in source code.
++    auto *RefVD =
++        VarDecl::Create(S.Context, Src->getDeclContext(), Loc, Loc,
++                        B->getDeclName().getAsIdentifierInfo(), RefType,
++                        /*TInfo=*/nullptr, Src->getStorageClass());
+     RefVD->setLexicalDeclContext(Src->getLexicalDeclContext());
+     RefVD->setTSCSpec(Src->getTSCSpec());
+     RefVD->setImplicit();
+@@ -4565,6 +4568,7 @@
+       MarkAnyDeclReferenced(TyD->getLocation(), TyD, /*OdrUse=*/false);
+ 
+       TypeLocBuilder TLB;
++      // FIXME: This is missing building the UsingType for TyD, if any.
+       if (const auto *TD = dyn_cast<TagDecl>(TyD)) {
+         BaseType = Context.getTagType(ElaboratedTypeKeyword::None,
+                                       SS.getScopeRep(), TD, /*OwnsTag=*/false);
+@@ -4578,6 +4582,12 @@
+         TLB.push<TypedefTypeLoc>(BaseType).set(
+             /*ElaboratedKeywordLoc=*/SourceLocation(),
+             SS.getWithLocInContext(Context), IdLoc);
++      } else if (auto *UD = dyn_cast<UnresolvedUsingTypenameDecl>(TyD)) {
++        BaseType = Context.getUnresolvedUsingType(ElaboratedTypeKeyword::None,
++                                                  SS.getScopeRep(), UD);
++        TLB.push<UnresolvedUsingTypeLoc>(BaseType).set(
++            /*ElaboratedKeywordLoc=*/SourceLocation(),
++            SS.getWithLocInContext(Context), IdLoc);
+       } else {
+         // FIXME: What else can appear here?
+         assert(SS.isEmpty());
+diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaLookup.cpp b/clang/lib/Sema/SemaLookup.cpp
+--- a/clang/lib/Sema/SemaLookup.cpp
++++ b/clang/lib/Sema/SemaLookup.cpp
+@@ -4581,7 +4581,7 @@
+         TemplateName Name =
+             cast<TemplateSpecializationType>(T)->getTemplateName();
+         if (const QualifiedTemplateName *QTN =
+-                Name.getAsAdjustedQualifiedTemplateName()) {
++                Name.getAsQualifiedTemplateName()) {
+           getNestedNameSpecifierIdentifiers(QTN->getQualifier(), Identifiers);
+           Name = QTN->getUnderlyingTemplate();
+         }
+diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaTemplateInstantiate.cpp b/clang/lib/Sema/SemaTemplateInstantiate.cpp
+--- a/clang/lib/Sema/SemaTemplateInstantiate.cpp
++++ b/clang/lib/Sema/SemaTemplateInstantiate.cpp
+@@ -2083,9 +2083,11 @@
+     NestedNameSpecifierLoc &QualifierLoc, SourceLocation TemplateKWLoc,
+     TemplateName Name, SourceLocation NameLoc, QualType ObjectType,
+     NamedDecl *FirstQualifierInScope, bool AllowInjectedClassName) {
+-  if (TemplateTemplateParmDecl *TTP
+-       = dyn_cast_or_null<TemplateTemplateParmDecl>(Name.getAsTemplateDecl())) {
+-    if (TTP->getDepth() < TemplateArgs.getNumLevels()) {
++  if (Name.getKind() == TemplateName::Template) {
++    assert(!QualifierLoc && "Unexpected qualifier");
++    if (auto *TTP =
++            dyn_cast<TemplateTemplateParmDecl>(Name.getAsTemplateDecl());
++        TTP && TTP->getDepth() < TemplateArgs.getNumLevels()) {
+       // If the corresponding template argument is NULL or non-existent, it's
+       // because we are performing instantiation from explicitly-specified
+       // template arguments in a function template, but there were some
+@@ -2128,13 +2130,6 @@
+ 
+       TemplateName Template = Arg.getAsTemplate();
+       assert(!Template.isNull() && "Null template template argument");
+-
+-      if (NestedNameSpecifier Qualifier = Template.getQualifier()) {
+-        NestedNameSpecifierLocBuilder Builder;
+-        Builder.MakeTrivial(SemaRef.Context, Qualifier, NameLoc);
+-        QualifierLoc = Builder.getWithLocInContext(SemaRef.Context);
+-      }
+-
+       return getSema().Context.getSubstTemplateTemplateParm(
+           Template, AssociatedDecl, TTP->getIndex(), PackIndex, Final);
+     }
+diff -ruN --strip-trailing-cr a/clang/lib/Sema/TreeTransform.h b/clang/lib/Sema/TreeTransform.h
+--- a/clang/lib/Sema/TreeTransform.h
++++ b/clang/lib/Sema/TreeTransform.h
+@@ -697,11 +697,6 @@
+ 
+   StmtResult TransformSEHHandler(Stmt *Handler);
+ 
+-  QualType TransformTemplateSpecializationType(TypeLocBuilder &TLB,
+-                                               TemplateSpecializationTypeLoc TL,
+-                                               TemplateName Template,
+-                                               CXXScopeSpec &SS);
+-
+   QualType TransformDependentTemplateSpecializationType(
+       TypeLocBuilder &TLB, DependentTemplateSpecializationTypeLoc TL,
+       QualType ObjectType, NamedDecl *UnqualLookup,
+@@ -1268,9 +1263,8 @@
+   ///
+   /// By default, builds the new template name directly. Subclasses may override
+   /// this routine to provide different behavior.
+-  TemplateName RebuildTemplateName(CXXScopeSpec &SS,
+-                                   bool TemplateKW,
+-                                   TemplateDecl *Template);
++  TemplateName RebuildTemplateName(CXXScopeSpec &SS, bool TemplateKW,
++                                   TemplateName Name);
+ 
+   /// Build a new template name given a nested name specifier and the
+   /// name that is referred to as a template.
+@@ -4776,9 +4770,7 @@
+     TemplateName Name, SourceLocation NameLoc, QualType ObjectType,
+     NamedDecl *FirstQualifierInScope, bool AllowInjectedClassName) {
+   if (QualifiedTemplateName *QTN = Name.getAsQualifiedTemplateName()) {
+-    // FIXME: Preserve UsingTemplateName.
+-    TemplateDecl *Template = QTN->getUnderlyingTemplate().getAsTemplateDecl();
+-    assert(Template && "qualified template name must refer to a template");
++    TemplateName UnderlyingName = QTN->getUnderlyingTemplate();
+ 
+     if (QualifierLoc) {
+       QualifierLoc = getDerived().TransformNestedNameSpecifierLoc(
+@@ -4787,20 +4779,22 @@
+         return TemplateName();
+     }
+ 
+-    TemplateDecl *TransTemplate
+-      = cast_or_null<TemplateDecl>(getDerived().TransformDecl(NameLoc,
+-                                                              Template));
+-    if (!TransTemplate)
++    NestedNameSpecifierLoc UnderlyingQualifier;
++    TemplateName NewUnderlyingName = getDerived().TransformTemplateName(
++        UnderlyingQualifier, TemplateKWLoc, UnderlyingName, NameLoc, ObjectType,
++        FirstQualifierInScope, AllowInjectedClassName);
++    if (NewUnderlyingName.isNull())
+       return TemplateName();
++    assert(!UnderlyingQualifier && "unexpected qualifier");
+ 
+     if (!getDerived().AlwaysRebuild() &&
+         QualifierLoc.getNestedNameSpecifier() == QTN->getQualifier() &&
+-        TransTemplate == Template)
++        NewUnderlyingName == UnderlyingName)
+       return Name;
+     CXXScopeSpec SS;
+     SS.Adopt(QualifierLoc);
+     return getDerived().RebuildTemplateName(SS, QTN->hasTemplateKeyword(),
+-                                            TransTemplate);
++                                            NewUnderlyingName);
+   }
+ 
+   if (DependentTemplateName *DTN = Name.getAsDependentTemplateName()) {
+@@ -4828,9 +4822,19 @@
+ 
+   if (SubstTemplateTemplateParmStorage *S =
+           Name.getAsSubstTemplateTemplateParm()) {
++    assert(!QualifierLoc && "Unexpected qualified SubstTemplateTemplateParm");
++
++    NestedNameSpecifierLoc ReplacementQualifierLoc;
++    TemplateName ReplacementName = S->getReplacement();
++    if (NestedNameSpecifier Qualifier = ReplacementName.getQualifier()) {
++      NestedNameSpecifierLocBuilder Builder;
++      Builder.MakeTrivial(SemaRef.Context, Qualifier, NameLoc);
++      ReplacementQualifierLoc = Builder.getWithLocInContext(SemaRef.Context);
++    }
++
+     TemplateName NewName = getDerived().TransformTemplateName(
+-        QualifierLoc, TemplateKWLoc, S->getReplacement(), NameLoc, ObjectType,
+-        FirstQualifierInScope, AllowInjectedClassName);
++        ReplacementQualifierLoc, TemplateKWLoc, ReplacementName, NameLoc,
++        ObjectType, FirstQualifierInScope, AllowInjectedClassName);
+     if (NewName.isNull())
+       return TemplateName();
+     Decl *AssociatedDecl =
+@@ -4846,21 +4850,17 @@
+   assert(!Name.getAsDeducedTemplateName() &&
+          "DeducedTemplateName should not escape partial ordering");
+ 
+-  if (TemplateDecl *Template = Name.getAsTemplateDecl()) {
+-    assert(!QualifierLoc && "missed a Qualified Template");
+-    TemplateDecl *TransTemplate
+-      = cast_or_null<TemplateDecl>(getDerived().TransformDecl(NameLoc,
+-                                                              Template));
+-    if (!TransTemplate)
+-      return TemplateName();
+-
+-    CXXScopeSpec SS;
+-    return getDerived().RebuildTemplateName(SS, /*TemplateKeyword=*/false,
+-                                            TransTemplate);
++  // FIXME: Preserve UsingTemplateName.
++  if (auto *Template = Name.getAsTemplateDecl()) {
++    assert(!QualifierLoc && "Unexpected qualifier");
++    return TemplateName(cast_or_null<TemplateDecl>(
++        getDerived().TransformDecl(NameLoc, Template)));
+   }
+ 
+   if (SubstTemplateTemplateParmPackStorage *SubstPack
+       = Name.getAsSubstTemplateTemplateParmPack()) {
++    assert(!QualifierLoc &&
++           "Unexpected qualified SubstTemplateTemplateParmPack");
+     return getDerived().RebuildTemplateName(
+         SubstPack->getArgumentPack(), SubstPack->getAssociatedDecl(),
+         SubstPack->getIndex(), SubstPack->getFinal());
+@@ -5414,20 +5414,10 @@
+         TLB, TL.castAs<DependentNameTypeLoc>(), /*DeducedTSTContext=*/false,
+         ObjectType, UnqualLookup);
+   }
+-  case TypeLoc::Typedef:
+-  case TypeLoc::TemplateSpecialization:
+-  case TypeLoc::SubstTemplateTypeParm:
+-  case TypeLoc::PackIndexing:
+-  case TypeLoc::Enum:
+-  case TypeLoc::Record:
+-  case TypeLoc::InjectedClassName:
+-  case TypeLoc::TemplateTypeParm:
+-  case TypeLoc::Decltype:
+-  case TypeLoc::UnresolvedUsing:
+-  case TypeLoc::Using:
+-    return getDerived().TransformType(TLB, TL);
+   default:
+-    llvm_unreachable("unexpected type class");
++    // Any dependent canonical type can appear here, through type alias
++    // templates.
++    return getDerived().TransformType(TLB, TL);
+   }
+ }
+ 
+@@ -7668,8 +7658,11 @@
+   } else if (isa<TypedefType>(Result)) {
+     TLB.push<TypedefTypeLoc>(Result).set(TL.getElaboratedKeywordLoc(),
+                                          QualifierLoc, TL.getNameLoc());
++  } else if (isa<UnresolvedUsingType>(Result)) {
++    auto NewTL = TLB.push<UnresolvedUsingTypeLoc>(Result);
++    NewTL.set(TL.getElaboratedKeywordLoc(), QualifierLoc, TL.getNameLoc());
+   } else {
+-    DependentNameTypeLoc NewTL = TLB.push<DependentNameTypeLoc>(Result);
++    auto NewTL = TLB.push<DependentNameTypeLoc>(Result);
+     NewTL.setElaboratedKeywordLoc(TL.getElaboratedKeywordLoc());
+     NewTL.setQualifierLoc(QualifierLoc);
+     NewTL.setNameLoc(TL.getNameLoc());
+@@ -17364,13 +17357,12 @@
+   return SemaRef.BuildBitIntType(IsUnsigned, NumBitsExpr, Loc);
+ }
+ 
+-template<typename Derived>
+-TemplateName
+-TreeTransform<Derived>::RebuildTemplateName(CXXScopeSpec &SS,
+-                                            bool TemplateKW,
+-                                            TemplateDecl *Template) {
++template <typename Derived>
++TemplateName TreeTransform<Derived>::RebuildTemplateName(CXXScopeSpec &SS,
++                                                         bool TemplateKW,
++                                                         TemplateName Name) {
+   return SemaRef.Context.getQualifiedTemplateName(SS.getScopeRep(), TemplateKW,
+-                                                  TemplateName(Template));
++                                                  Name);
+ }
+ 
+ template <typename Derived>
+diff -ruN --strip-trailing-cr a/clang/lib/Serialization/ASTReader.cpp b/clang/lib/Serialization/ASTReader.cpp
+--- a/clang/lib/Serialization/ASTReader.cpp
++++ b/clang/lib/Serialization/ASTReader.cpp
+@@ -11003,8 +11003,9 @@
+ }
+ 
+ void ASTReader::StartedDeserializing() {
+-  if (++NumCurrentElementsDeserializing == 1 && ReadTimer.get())
+-    ReadTimer->startTimer();
++  if (llvm::Timer *T = ReadTimer.get();
++      ++NumCurrentElementsDeserializing == 1 && T)
++    ReadTimeRegion.emplace(T);
+ }
+ 
+ void ASTReader::FinishedDeserializing() {
+@@ -11062,8 +11063,7 @@
+           (void)UndeducedFD->getMostRecentDecl();
+       }
+ 
+-      if (ReadTimer)
+-        ReadTimer->stopTimer();
++      ReadTimeRegion.reset();
+ 
+       diagnoseOdrViolations();
+     }
+diff -ruN --strip-trailing-cr a/clang/test/Analysis/anonymous-decls.cpp b/clang/test/Analysis/anonymous-decls.cpp
+--- a/clang/test/Analysis/anonymous-decls.cpp
++++ b/clang/test/Analysis/anonymous-decls.cpp
+@@ -78,12 +78,12 @@
+ // CHECK-NEXT:   8: decomposition-a-b
+ // CHECK-NEXT:   9: [B3.7]([B3.8])
+ // CHECK-NEXT:  10: [B3.9]
+-// CHECK-NEXT:  11: std::tuple_element<0UL, std::pair<int, int>>::type a = get<0UL>(decomposition-a-b);
++// CHECK-NEXT:  11: std::tuple_element<0UL, std::pair<int, int>>::type &&a = get<0UL>(decomposition-a-b);
+ // CHECK-NEXT:  12: get<1UL>
+ // CHECK-NEXT:  13: [B3.12] (ImplicitCastExpr, FunctionToPointerDecay, tuple_element<1L, pair<int, int> >::type (*)(pair<int, int> &))
+ // CHECK-NEXT:  14: decomposition-a-b
+ // CHECK-NEXT:  15: [B3.13]([B3.14])
+ // CHECK-NEXT:  16: [B3.15]
+-// CHECK-NEXT:  17: std::tuple_element<1UL, std::pair<int, int>>::type b = get<1UL>(decomposition-a-b);
++// CHECK-NEXT:  17: std::tuple_element<1UL, std::pair<int, int>>::type &&b = get<1UL>(decomposition-a-b);
+ // CHECK-NEXT:   Preds (1): B1
+ // CHECK-NEXT:   Succs (1): B2
+diff -ruN --strip-trailing-cr a/clang/test/Analysis/ctu-import-type-decl-definition.c b/clang/test/Analysis/ctu-import-type-decl-definition.c
+--- a/clang/test/Analysis/ctu-import-type-decl-definition.c
++++ b/clang/test/Analysis/ctu-import-type-decl-definition.c
+@@ -0,0 +1,43 @@
++// RUN: rm -rf %t
++// RUN: mkdir -p %t
++// RUN: split-file %s %t
++
++// RUN: %clang_cc1 -emit-pch -o %t/import.c.ast %t/import.c
++
++// RUN: %clang_extdef_map -- -x c %t/import.c >> %t/externalDefMap.txt
++// RUN: sed -i 's/$/.ast/' %t/externalDefMap.txt
++
++// RUN: %clang_cc1 -analyze \
++// RUN:   -analyzer-checker=core \
++// RUN:   -analyzer-config experimental-enable-naive-ctu-analysis=true \
++// RUN:   -analyzer-config display-ctu-progress=true \
++// RUN:   -analyzer-config ctu-dir=%t \
++// RUN:   -verify %t/main.c
++
++//--- main.c
++
++// expected-no-diagnostics
++
++typedef struct X_s X_t;
++unsigned long f_import(struct X_s *xPtr);
++
++static void freeWriteFileResources(struct X_s *xPtr) {
++  f_import(xPtr);
++}
++
++//--- import.c
++
++typedef struct Y_s Y_t;
++
++struct Y_s {
++};
++
++struct X_s {
++  Y_t y;
++};
++
++unsigned long f_import(struct X_s *xPtr) {
++  if (xPtr != 0) {
++  }
++  return 0;
++}
+diff -ruN --strip-trailing-cr a/clang/test/AST/ast-dump-decl.cpp b/clang/test/AST/ast-dump-decl.cpp
+--- a/clang/test/AST/ast-dump-decl.cpp
++++ b/clang/test/AST/ast-dump-decl.cpp
+@@ -330,8 +330,8 @@
+ // CHECK-NEXT:  | | `-Destructor irrelevant non_trivial user_declared{{$}}
+ // CHECK-NEXT:  | |-CXXRecordDecl 0x{{.+}} <col:24, col:30> col:30 implicit referenced class TestClassTemplate{{$}}
+ // CHECK-NEXT:  | |-AccessSpecDecl 0x{{.+}} <line:[[@LINE-50]]:3, col:9> col:3 public{{$}}
+-// CHECK-NEXT:  | |-CXXConstructorDecl 0x[[#%x,TEMPLATE_CONSTRUCTOR_DECL:]] <line:[[@LINE-50]]:5, col:23> col:5 testClassTemplateDecl::TestClassTemplate<T> 'void ()'{{$}}
+-// CHECK-NEXT:  | |-CXXDestructorDecl 0x[[#%x,TEMPLATE_DESTRUCTOR_DECL:]] <line:[[@LINE-50]]:5, col:24> col:5 ~testClassTemplateDecl::TestClassTemplate<T> 'void ()' not_selected{{$}}
++// CHECK-NEXT:  | |-CXXConstructorDecl 0x[[#%x,TEMPLATE_CONSTRUCTOR_DECL:]] <line:[[@LINE-50]]:5, col:23> col:5 TestClassTemplate<T> 'void ()'{{$}}
++// CHECK-NEXT:  | |-CXXDestructorDecl 0x[[#%x,TEMPLATE_DESTRUCTOR_DECL:]] <line:[[@LINE-50]]:5, col:24> col:5 ~TestClassTemplate<T> 'void ()' not_selected{{$}}
+ // CHECK-NEXT:  | |-CXXMethodDecl 0x[[#%x,TEMPLATE_METHOD_DECL:]] <line:[[@LINE-50]]:5, col:11> col:9 j 'int ()'{{$}}
+ // CHECK-NEXT:  | `-FieldDecl 0x{{.+}} <line:[[@LINE-50]]:5, col:9> col:9 i 'int'{{$}}
+ // CHECK-NEXT:  |-ClassTemplateSpecializationDecl 0x{{.+}} <line:[[@LINE-56]]:3, line:[[@LINE-50]]:3> line:[[@LINE-56]]:30 class TestClassTemplate definition implicit_instantiation{{$}}
+@@ -973,5 +973,35 @@
+   // CHECK-NEXT: `-VarDecl 0x{{.+}} <col:25, col:48> col:37 call_init 'const T' constexpr callinit{{$}}
+   // CHECK-NEXT:  `-ParenListExpr 0x{{.+}} <col:46, col:48> 'NULL TYPE'{{$}}
+   // CHECK-NEXT:   `-IntegerLiteral 0x{{.+}} <col:47> 'int' 0{{$}}
+-
+ }
++
++namespace TestInjectedClassName {
++  struct A {
++    using T1 = A;
++    using T2 = A;
++  };
++  // CHECK-LABEL: Dumping TestInjectedClassName:
++  // CHECK:       CXXRecordDecl [[TestInjectedClassName_RD:0x[^ ]+]] {{.*}} struct A definition
++  // CHECK:       CXXRecordDecl {{.*}} implicit referenced struct A
++  // CHECK-NEXT:  |-TypeAliasDecl {{.*}} T1 'A'
++  // CHECK-NEXT:  | `-RecordType [[TestInjectedClassName_RT:0x[^ ]+]] 'A' injected
++  // CHECK-NEXT:  |   `-CXXRecord [[TestInjectedClassName_RD]] 'A'
++  // CHECK-NEXT:  `-TypeAliasDecl {{.*}} T2 'A'
++  // CHECK-NEXT:    `-RecordType [[TestInjectedClassName_RT]] 'A' injected
++  // CHECK-NEXT:      `-CXXRecord [[TestInjectedClassName_RD]] 'A'
++} // namespace InjectedClassName
++
++namespace TestGH155936 {
++  struct Foo {
++    struct A {
++      struct Foo {};
++    };
++  };
++  // CHECK-LABEL: Dumping TestGH155936:
++  // CHECK: CXXRecordDecl 0x{{.+}} <{{.+}}> line:[[@LINE-6]]:10 struct Foo definition
++  // CHECK: CXXRecordDecl 0x{{.+}} <col:3, col:10> col:10 implicit struct Foo
++  // CHECK: CXXRecordDecl 0x{{.+}} <{{.+}}> line:[[@LINE-7]]:12 struct A definition
++  // CHECK: CXXRecordDecl 0x{{.+}} <col:5, col:12> col:12 implicit struct A
++  // CHECK: CXXRecordDecl 0x{{.+}} <line:[[@LINE-8]]:7, col:19> col:14 struct Foo definition
++  // CHECH: CXXRecordDecl 0x{{.+}} <col:9, col:16> col:16 implicit struct Foo
++} // namspace GH155936
+diff -ruN --strip-trailing-cr a/clang/test/AST/ast-dump-templates.cpp b/clang/test/AST/ast-dump-templates.cpp
+--- a/clang/test/AST/ast-dump-templates.cpp
++++ b/clang/test/AST/ast-dump-templates.cpp
+@@ -8170,7 +8170,7 @@
+ // JSON-NEXT:              "tokLen": 1
+ // JSON-NEXT:             }
+ // JSON-NEXT:            },
+-// JSON-NEXT:            "name": "GH153540::N::S<T>",
++// JSON-NEXT:            "name": "S<T>",
+ // JSON-NEXT:            "type": {
+ // JSON-NEXT:             "qualType": "void (T)"
+ // JSON-NEXT:            },
+diff -ruN --strip-trailing-cr a/clang/test/AST/HLSL/StructuredBuffers-AST.hlsl b/clang/test/AST/HLSL/StructuredBuffers-AST.hlsl
+--- a/clang/test/AST/HLSL/StructuredBuffers-AST.hlsl
++++ b/clang/test/AST/HLSL/StructuredBuffers-AST.hlsl
+@@ -91,7 +91,7 @@
+ 
+ // Default constructor
+ 
+-// CHECK: CXXConstructorDecl {{.*}} hlsl::[[RESOURCE]]<element_type> 'void ()' inline
++// CHECK: CXXConstructorDecl {{.*}} [[RESOURCE]]<element_type> 'void ()' inline
+ // CHECK-NEXT: CompoundStmt
+ // CHECK-NEXT: BinaryOperator {{.*}} '='
+ // CHECK-NEXT: MemberExpr {{.*}} lvalue .__handle
+@@ -105,7 +105,7 @@
+ 
+ // Constructor from binding
+ 
+-// CHECK: CXXConstructorDecl {{.*}} hlsl::[[RESOURCE]]<element_type> 'void (unsigned int, unsigned int, int, unsigned int, const char *)' inline
++// CHECK: CXXConstructorDecl {{.*}} [[RESOURCE]]<element_type> 'void (unsigned int, unsigned int, int, unsigned int, const char *)' inline
+ // CHECK-NEXT: ParmVarDecl {{.*}} registerNo 'unsigned int'
+ // CHECK-NEXT: ParmVarDecl {{.*}} spaceNo 'unsigned int'
+ // CHECK-NEXT: ParmVarDecl {{.*}} range 'int'
+@@ -129,7 +129,7 @@
+ 
+ // Constructor from implicit binding
+ 
+-// CHECK: CXXConstructorDecl {{.*}} hlsl::[[RESOURCE]]<element_type> 'void (unsigned int, int, unsigned int, unsigned int, const char *)' inline
++// CHECK: CXXConstructorDecl {{.*}} [[RESOURCE]]<element_type> 'void (unsigned int, int, unsigned int, unsigned int, const char *)' inline
+ // CHECK-NEXT: ParmVarDecl {{.*}} spaceNo 'unsigned int'
+ // CHECK-NEXT: ParmVarDecl {{.*}} range 'int'
+ // CHECK-NEXT: ParmVarDecl {{.*}} index 'unsigned int'
+diff -ruN --strip-trailing-cr a/clang/test/AST/HLSL/TypedBuffers-AST.hlsl b/clang/test/AST/HLSL/TypedBuffers-AST.hlsl
+--- a/clang/test/AST/HLSL/TypedBuffers-AST.hlsl
++++ b/clang/test/AST/HLSL/TypedBuffers-AST.hlsl
+@@ -66,7 +66,7 @@
+ 
+ // Default constructor
+ 
+-// CHECK: CXXConstructorDecl {{.*}} hlsl::[[RESOURCE]]<element_type> 'void ()' inline
++// CHECK: CXXConstructorDecl {{.*}} [[RESOURCE]]<element_type> 'void ()' inline
+ // CHECK-NEXT: CompoundStmt
+ // CHECK-NEXT: BinaryOperator {{.*}} '='
+ // CHECK-NEXT: MemberExpr {{.*}} lvalue .__handle
+@@ -80,7 +80,7 @@
+ 
+ // Constructor from binding
+ 
+-// CHECK: CXXConstructorDecl {{.*}} hlsl::[[RESOURCE]]<element_type> 'void (unsigned int, unsigned int, int, unsigned int, const char *)' inline
++// CHECK: CXXConstructorDecl {{.*}} [[RESOURCE]]<element_type> 'void (unsigned int, unsigned int, int, unsigned int, const char *)' inline
+ // CHECK-NEXT: ParmVarDecl {{.*}} registerNo 'unsigned int'
+ // CHECK-NEXT: ParmVarDecl {{.*}} spaceNo 'unsigned int'
+ // CHECK-NEXT: ParmVarDecl {{.*}} range 'int'
+@@ -104,7 +104,7 @@
+ 
+ // Constructor from implicit binding
+ 
+-// CHECK: CXXConstructorDecl {{.*}} hlsl::[[RESOURCE]]<element_type> 'void (unsigned int, int, unsigned int, unsigned int, const char *)' inline
++// CHECK: CXXConstructorDecl {{.*}} [[RESOURCE]]<element_type> 'void (unsigned int, int, unsigned int, unsigned int, const char *)' inline
+ // CHECK-NEXT: ParmVarDecl {{.*}} spaceNo 'unsigned int'
+ // CHECK-NEXT: ParmVarDecl {{.*}} range 'int'
+ // CHECK-NEXT: ParmVarDecl {{.*}} index 'unsigned int'
+diff -ruN --strip-trailing-cr a/clang/test/CodeGenCXX/mangle-ms-cxx11.cpp b/clang/test/CodeGenCXX/mangle-ms-cxx11.cpp
+--- a/clang/test/CodeGenCXX/mangle-ms-cxx11.cpp
++++ b/clang/test/CodeGenCXX/mangle-ms-cxx11.cpp
+@@ -358,3 +358,42 @@
+ // DBG-DAG: DW_TAG_enumeration_type{{.*}}identifier: ".?AW4<unnamed-type-$S3>@s@pr37723@@"
+ s x;
+ }
++
++namespace InconsistentTagKinds {
++  namespace t1 {
++    class A;
++    struct A;
++    void f(A*) {}
++    // CHECK-DAG: @"?f@t1@InconsistentTagKinds@@YAXPAVA@12@@Z"
++  } // namespace t1
++  namespace t2 {
++    struct A;
++    class A;
++    void f(A*) {}
++    // CHECK-DAG: @"?f@t2@InconsistentTagKinds@@YAXPAUA@12@@Z"
++  } // namespace t2
++  namespace t3 {
++    class A {};
++    struct A;
++    void f(A*) {}
++    // CHECK-DAG: @"?f@t3@InconsistentTagKinds@@YAXPAVA@12@@Z"
++  } // namespace t3
++  namespace t4 {
++    struct A {};
++    class A;
++    void f(A*) {}
++    // CHECK-DAG: @"?f@t4@InconsistentTagKinds@@YAXPAUA@12@@Z"
++  } // namespace t4
++  namespace t5 {
++    class A;
++    struct A {};
++    void f(A*) {}
++    // CHECK-DAG: @"?f@t5@InconsistentTagKinds@@YAXPAUA@12@@Z"
++  } // namespace t5
++  namespace t6 {
++    struct A;
++    class A {};
++    void f(A*) {}
++    // CHECK-DAG: @"?f@t6@InconsistentTagKinds@@YAXPAVA@12@@Z"
++  } // namespace t6
++} // namespace InconsistentTagKinds
+diff -ruN --strip-trailing-cr a/clang/test/CXX/drs/cwg6xx.cpp b/clang/test/CXX/drs/cwg6xx.cpp
+--- a/clang/test/CXX/drs/cwg6xx.cpp
++++ b/clang/test/CXX/drs/cwg6xx.cpp
+@@ -383,7 +383,7 @@
+   template<typename T> template<typename U> D<T>::D() {}
+   template<typename T> D<T>::D<T>() {} // #cwg635-D-T
+   // expected-error@#cwg635-D-T {{out-of-line constructor for 'D' cannot have template arguments}}
+-  // expected-error@#cwg635-D-T {{redefinition of 'cwg635::D<T>'}}
++  // expected-error@#cwg635-D-T {{redefinition of 'D<T>'}}
+   //   expected-note@#cwg635-D {{previous definition is here}}
+ } // namespace cwg635
+ 
+diff -ruN --strip-trailing-cr a/clang/test/Index/recursive-cxx-member-calls.cpp b/clang/test/Index/recursive-cxx-member-calls.cpp
+--- a/clang/test/Index/recursive-cxx-member-calls.cpp
++++ b/clang/test/Index/recursive-cxx-member-calls.cpp
+@@ -823,18 +823,18 @@
+ // CHECK-tokens: Punctuation: ";" [85:18 - 85:19] ClassTemplate=StringSwitch:83:47 (Definition)
+ // CHECK-tokens: Keyword: "public" [86:1 - 86:7] CXXAccessSpecifier=:86:1 (Definition)
+ // CHECK-tokens: Punctuation: ":" [86:7 - 86:8] CXXAccessSpecifier=:86:1 (Definition)
+-// CHECK-tokens: Keyword: "explicit" [87:3 - 87:11] CXXConstructor=llvm::StringSwitch<T, R>:87:12 (Definition)
+-// CHECK-tokens: Identifier: "StringSwitch" [87:12 - 87:24] CXXConstructor=llvm::StringSwitch<T, R>:87:12 (Definition) (explicit)
+-// CHECK-tokens: Punctuation: "(" [87:24 - 87:25] CXXConstructor=llvm::StringSwitch<T, R>:87:12 (Definition)
++// CHECK-tokens: Keyword: "explicit" [87:3 - 87:11] CXXConstructor=StringSwitch<T, R>:87:12 (Definition)
++// CHECK-tokens: Identifier: "StringSwitch" [87:12 - 87:24] CXXConstructor=StringSwitch<T, R>:87:12 (Definition) (explicit)
++// CHECK-tokens: Punctuation: "(" [87:24 - 87:25] CXXConstructor=StringSwitch<T, R>:87:12 (Definition)
+ // CHECK-tokens: Identifier: "StringRef" [87:25 - 87:34] TypeRef=class llvm::StringRef:38:7
+ // CHECK-tokens: Identifier: "Str" [87:35 - 87:38] ParmDecl=Str:87:35 (Definition)
+-// CHECK-tokens: Punctuation: ")" [87:38 - 87:39] CXXConstructor=llvm::StringSwitch<T, R>:87:12 (Definition)
+-// CHECK-tokens: Punctuation: ":" [87:40 - 87:41] CXXConstructor=llvm::StringSwitch<T, R>:87:12 (Definition)
++// CHECK-tokens: Punctuation: ")" [87:38 - 87:39] CXXConstructor=StringSwitch<T, R>:87:12 (Definition)
++// CHECK-tokens: Punctuation: ":" [87:40 - 87:41] CXXConstructor=StringSwitch<T, R>:87:12 (Definition)
+ // CHECK-tokens: Identifier: "Str" [87:42 - 87:45] MemberRef=Str:84:13
+ // CHECK-tokens: Punctuation: "(" [87:45 - 87:46] CallExpr=StringRef:38:7
+ // CHECK-tokens: Identifier: "Str" [87:46 - 87:49] DeclRefExpr=Str:87:35
+ // CHECK-tokens: Punctuation: ")" [87:49 - 87:50] CallExpr=StringRef:38:7
+-// CHECK-tokens: Punctuation: "," [87:50 - 87:51] CXXConstructor=llvm::StringSwitch<T, R>:87:12 (Definition)
++// CHECK-tokens: Punctuation: "," [87:50 - 87:51] CXXConstructor=StringSwitch<T, R>:87:12 (Definition)
+ // CHECK-tokens: Identifier: "Result" [87:52 - 87:58] MemberRef=Result:85:12
+ // CHECK-tokens: Punctuation: "(" [87:58 - 87:59] UnexposedExpr=
+ // CHECK-tokens: Literal: "0" [87:59 - 87:60] IntegerLiteral=
+@@ -1839,7 +1839,7 @@
+ // CHECK: 84:3: TypeRef=class llvm::StringRef:38:7 Extent=[84:3 - 84:12]
+ // CHECK: 85:12: FieldDecl=Result:85:12 (Definition) Extent=[85:3 - 85:18]
+ // CHECK: 86:1: CXXAccessSpecifier=:86:1 (Definition) Extent=[86:1 - 86:8]
+-// CHECK: 87:12: CXXConstructor=llvm::StringSwitch<T, R>:87:12 (Definition) (explicit) Extent=[87:3 - 87:64]
++// CHECK: 87:12: CXXConstructor=StringSwitch<T, R>:87:12 (Definition) (explicit) Extent=[87:3 - 87:64]
+ // CHECK: 87:35: ParmDecl=Str:87:35 (Definition) Extent=[87:25 - 87:38]
+ // CHECK: 87:25: TypeRef=class llvm::StringRef:38:7 Extent=[87:25 - 87:34]
+ // CHECK: 87:42: MemberRef=Str:84:13 Extent=[87:42 - 87:45]
+diff -ruN --strip-trailing-cr a/clang/test/Modules/GH153933.cpp b/clang/test/Modules/GH153933.cpp
+--- a/clang/test/Modules/GH153933.cpp
++++ b/clang/test/Modules/GH153933.cpp
+@@ -0,0 +1,23 @@
++// RUN: rm -rf %t
++// RUN: mkdir -p %t
++// RUN: split-file %s %t
++//
++// RUN: %clang_cc1 -std=c++20 %t/B.cppm -emit-module-interface -o %t/B.pcm
++// RUN: %clang_cc1 -std=c++20 -fsyntax-only -fprebuilt-module-path=%t %t/C.cpp
++
++//--- A.hpp
++template<class> struct A {};
++template<class T> struct B {
++  virtual A<T> v() { return {}; }
++};
++B<void> x;
++
++//--- B.cppm
++module;
++#include "A.hpp"
++export module B;
++using ::x;
++
++//--- C.cpp
++#include "A.hpp"
++import B;
+diff -ruN --strip-trailing-cr a/clang/test/PCH/cxx-explicit-specifier.cpp b/clang/test/PCH/cxx-explicit-specifier.cpp
+--- a/clang/test/PCH/cxx-explicit-specifier.cpp
++++ b/clang/test/PCH/cxx-explicit-specifier.cpp
+@@ -85,7 +85,7 @@
+ //expected-note@-8+ {{explicit conversion function is not a candidate (explicit specifier}}
+ //expected-note@-11 {{explicit constructor is not a candidate (explicit specifier}}
+ 
+-//CHECK: explicit(b){{ +}}templ::A<b>(B<b>)
++//CHECK: explicit(b){{ +}}A
+ //CHECK: explicit(b{{ +}}^{{ +}}T::value){{ +}}operator
+ 
+ A a = { b_true }; //expected-error {{class template argument deduction}}
+diff -ruN --strip-trailing-cr a/clang/test/SemaCXX/cxx20-ctad-type-alias.cpp b/clang/test/SemaCXX/cxx20-ctad-type-alias.cpp
+--- a/clang/test/SemaCXX/cxx20-ctad-type-alias.cpp
++++ b/clang/test/SemaCXX/cxx20-ctad-type-alias.cpp
+@@ -110,10 +110,10 @@
+ 
+ template <typename X, int Y>
+ using Bar = Foo<X, sizeof(X)>; // expected-note {{candidate template ignored: couldn't infer template argument 'X'}} \
+-                               // expected-note {{implicit deduction guide declared as 'template <typename X> requires __is_deducible(test9::Bar, Foo<X, sizeof(X)>) Bar(Foo<X, sizeof(X)>) -> Foo<X, sizeof(X)>'}} \
+-                               // expected-note {{implicit deduction guide declared as 'template <typename X> requires __is_deducible(test9::Bar, Foo<X, sizeof(X)>) Bar(const X (&)[sizeof(X)]) -> Foo<X, sizeof(X)>'}} \
++                               // expected-note {{implicit deduction guide declared as 'template <typename X> requires __is_deducible(test9::Bar, test9::Foo<X, sizeof(X)>) Bar(test9::Foo<X, sizeof(X)>) -> test9::Foo<X, sizeof(X)>'}} \
++                               // expected-note {{implicit deduction guide declared as 'template <typename X> requires __is_deducible(test9::Bar, test9::Foo<X, sizeof(X)>) Bar(const X (&)[sizeof(X)]) -> test9::Foo<X, sizeof(X)>'}} \
+                                // expected-note {{candidate template ignored: constraints not satisfied [with X = int]}} \
+-                               // expected-note {{cannot deduce template arguments for 'Bar' from 'Foo<int, 4UL>'}}
++                               // expected-note {{cannot deduce template arguments for 'test9::Bar' from 'test9::Foo<int, 4UL>'}}
+ 
+ 
+ Bar s = {{1}}; // expected-error {{no viable constructor or deduction guide }}
+@@ -138,13 +138,13 @@
+ struct A {};
+ template<class T> struct Foo { T c; };
+ template<class X, class Y=A>
+-using AFoo = Foo<Y>; // expected-note {{candidate template ignored: could not match 'Foo<Y>' against 'int'}} \
+-                    // expected-note {{implicit deduction guide declared as 'template <class Y = A> requires __is_deducible(test11::AFoo, Foo<Y>) AFoo(Foo<Y>) -> Foo<Y>'}} \
++using AFoo = Foo<Y>; // expected-note {{candidate template ignored: could not match 'test11::Foo<Y>' against 'int'}} \
++                    // expected-note {{implicit deduction guide declared as 'template <class Y = A> requires __is_deducible(test11::AFoo, test11::Foo<Y>) AFoo(test11::Foo<Y>) -> test11::Foo<Y>'}} \
+                     // expected-note {{candidate template ignored: constraints not satisfied [with Y = int]}} \
+-                    // expected-note {{cannot deduce template arguments for 'AFoo' from 'Foo<int>'}} \
+-                    // expected-note {{implicit deduction guide declared as 'template <class Y = A> requires __is_deducible(test11::AFoo, Foo<Y>) AFoo(Y) -> Foo<Y>'}} \
++                    // expected-note {{cannot deduce template arguments for 'test11::AFoo' from 'test11::Foo<int>'}} \
++                    // expected-note {{implicit deduction guide declared as 'template <class Y = A> requires __is_deducible(test11::AFoo, test11::Foo<Y>) AFoo(Y) -> test11::Foo<Y>'}} \
+                     // expected-note {{candidate function template not viable: requires 0 arguments, but 1 was provided}} \
+-                    // expected-note {{implicit deduction guide declared as 'template <class Y = A> requires __is_deducible(test11::AFoo, Foo<Y>) AFoo() -> Foo<Y>'}}
++                    // expected-note {{implicit deduction guide declared as 'template <class Y = A> requires __is_deducible(test11::AFoo, test11::Foo<Y>) AFoo() -> test11::Foo<Y>'}}
+ 
+ AFoo s = {1}; // expected-error {{no viable constructor or deduction guide for deduction of template arguments of 'AFoo'}}
+ } // namespace test11
+@@ -197,8 +197,8 @@
+ template <int K>
+ using Bar = Foo<double, K>; // expected-note {{constraints not satisfied for class template 'Foo'}}
+ // expected-note@-1 {{candidate template ignored: could not match}} expected-note@-1 {{candidate template ignored: constraints not satisfied}}
+-// expected-note@-2 {{implicit deduction guide declared as 'template <int K> requires __is_deducible(test14::Bar, Foo<double, K>) Bar(Foo<double, K>) -> Foo<double, K>'}}
+-// expected-note@-3 {{implicit deduction guide declared as 'template <int K> requires __is_deducible(test14::Bar, Foo<double, K>) Bar(const double (&)[K]) -> Foo<double, K>'}}
++// expected-note@-2 {{implicit deduction guide declared as 'template <int K> requires __is_deducible(test14::Bar, test14::Foo<double, K>) Bar(test14::Foo<double, K>) -> test14::Foo<double, K>'}}
++// expected-note@-3 {{implicit deduction guide declared as 'template <int K> requires __is_deducible(test14::Bar, test14::Foo<double, K>) Bar(const double (&)[K]) -> test14::Foo<double, K>'}}
+ double abc[3];
+ Bar s2 = {abc}; // expected-error {{no viable constructor or deduction guide for deduction }}
+ } // namespace test14
+@@ -212,9 +212,9 @@
+ using BFoo = AFoo<W>; // expected-note {{candidate template ignored: constraints not satisfied [with W = int]}} \
+                       // expected-note@-1 {{because 'int' does not satisfy 'False'}} \
+                       // expected-note@#test15_False {{because 'false' evaluated to false}} \
+-                      // expected-note {{implicit deduction guide declared as 'template <False<> W> requires __is_deducible(AFoo, Foo<W *>) && __is_deducible(test15::BFoo, Foo<W *>) BFoo(W *) -> Foo<W *>}} \
+-                      // expected-note {{candidate template ignored: could not match 'Foo<W *>' against 'int *'}} \
+-                      // expected-note {{template <False<> W> requires __is_deducible(AFoo, Foo<W *>) && __is_deducible(test15::BFoo, Foo<W *>) BFoo(Foo<W *>) -> Foo<W *>}}
++                      // expected-note {{implicit deduction guide declared as 'template <False<> W> requires __is_deducible(test15::AFoo, test15::Foo<W *>) && __is_deducible(test15::BFoo, test15::Foo<W *>) BFoo(W *) -> test15::Foo<W *>}} \
++                      // expected-note {{candidate template ignored: could not match 'test15::Foo<W *>' against 'int *'}} \
++                      // expected-note {{template <False<> W> requires __is_deducible(test15::AFoo, test15::Foo<W *>) && __is_deducible(test15::BFoo, test15::Foo<W *>) BFoo(test15::Foo<W *>) -> test15::Foo<W *>}}
+ int i = 0;
+ AFoo a1(&i); // OK, deduce Foo<int *>
+ 
+@@ -276,12 +276,12 @@
+ Foo(T) -> Foo<int>;
+ 
+ template <typename U>
+-using Bar = Foo<U>; // expected-note {{could not match 'Foo<U>' against 'int'}} \
+-                    // expected-note {{implicit deduction guide declared as 'template <typename U> requires __is_deducible(test18::Bar, Foo<U>) Bar(Foo<U>) -> Foo<U>'}} \
++using Bar = Foo<U>; // expected-note {{could not match 'test18::Foo<U>' against 'int'}} \
++                    // expected-note {{implicit deduction guide declared as 'template <typename U> requires __is_deducible(test18::Bar, test18::Foo<U>) Bar(test18::Foo<U>) -> test18::Foo<U>'}} \
+                     // expected-note {{candidate template ignored: constraints not satisfied}} \
+                     // expected-note {{implicit deduction guide declared as 'template <typename T> requires False<T> && __is_deducible(test18::Bar, Foo<int>) Bar(T) -> Foo<int>'}} \
+                     // expected-note {{candidate function template not viable}} \
+-                    // expected-note {{implicit deduction guide declared as 'template <typename U> requires __is_deducible(test18::Bar, Foo<U>) Bar() -> Foo<U>'}}
++                    // expected-note {{implicit deduction guide declared as 'template <typename U> requires __is_deducible(test18::Bar, test18::Foo<U>) Bar() -> test18::Foo<U>'}}
+ 
+ Bar s = {1}; // expected-error {{no viable constructor or deduction guide for deduction of template arguments}}
+ } // namespace test18
+@@ -309,8 +309,8 @@
+ // Verify that template template type parameter TTP is referenced/used in the
+ // template arguments of the RHS.
+ template <template<typename> typename TTP>
+-using Bar = Foo<K<TTP>>; // expected-note {{candidate template ignored: could not match 'Foo<K<TTP>>' against 'int'}} \
+-                        // expected-note {{implicit deduction guide declared as 'template <template <typename> typename TTP> requires __is_deducible(test20::Bar, Foo<K<TTP>>) Bar(Foo<K<TTP>>) -> Foo<K<TTP>>'}}
++using Bar = Foo<K<TTP>>; // expected-note {{candidate template ignored: could not match 'test20::Foo<K<TTP>>' against 'int'}} \
++                        // expected-note {{implicit deduction guide declared as 'template <template <typename> typename TTP> requires __is_deducible(test20::Bar, test20::Foo<K<TTP>>) Bar(test20::Foo<K<TTP>>) -> test20::Foo<K<TTP>>'}}
+ 
+ template <class T>
+ class Container {};
+@@ -463,7 +463,7 @@
+ BB b{0, 1};
+ // expected-error@-1 {{no viable}}
+ // expected-note@#test25_BB 2{{not viable}}
+-// expected-note@#test25_BB {{template <typename ...US, typename V> requires __is_same(V, int) && __is_deducible(AA, A<int, US...>) && __is_deducible(test25::BB, A<int, US...>) BB(V) -> A<int, US...>}}
++// expected-note@#test25_BB {{template <typename ...US, typename V> requires __is_same(V, int) && __is_deducible(test25::AA, test25::A<int, US...>) && __is_deducible(test25::BB, test25::A<int, US...>) BB(V) -> test25::A<int, US...>}}
+ // expected-note@#test25_BB {{implicit deduction guide}}
+ 
+ }
+diff -ruN --strip-trailing-cr a/clang/test/SemaCXX/return.cpp b/clang/test/SemaCXX/return.cpp
+--- a/clang/test/SemaCXX/return.cpp
++++ b/clang/test/SemaCXX/return.cpp
+@@ -115,9 +115,9 @@
    };
  
-   /// Return true if the specified value is loop invariant.
--  bool isLoopInvariant(const Value *V) const;
-+  bool isLoopInvariant(const Value *V, bool HasCoroSuspendInst = false) const;
+   template <typename T> struct ST {
+-    ST() { return f(); } // expected-error {{constructor 'ctor_returns_void::ST<T>' must not return void expression}}
++    ST() { return f(); } // expected-error {{constructor 'ST<T>' must not return void expression}}
+                          // expected-error@-1 {{constructor 'ST' must not return void expression}}
+-    ~ST() { return f(); } // expected-error {{destructor '~ctor_returns_void::ST<T>' must not return void expression}}
++    ~ST() { return f(); } // expected-error {{destructor '~ST<T>' must not return void expression}}
+                           // expected-error@-1 {{destructor '~ST' must not return void expression}}
+   };
  
-   /// Return true if all the operands of the specified instruction are loop
-   /// invariant.
--  bool hasLoopInvariantOperands(const Instruction *I) const;
-+  bool hasLoopInvariantOperands(const Instruction *I,
-+                                bool HasCoroSuspendInst = false) const;
+diff -ruN --strip-trailing-cr a/clang/test/SemaCXX/using-decl-templates.cpp b/clang/test/SemaCXX/using-decl-templates.cpp
+--- a/clang/test/SemaCXX/using-decl-templates.cpp
++++ b/clang/test/SemaCXX/using-decl-templates.cpp
+@@ -153,3 +153,11 @@
+ }
+ } // namespace sss
+ } // namespace func_templ
++
++namespace DependentName {
++  template <typename T> struct S {
++    using typename T::Ty;
++    static Ty Val;
++  };
++  template <typename T> typename S<T>::Ty S<T>::Val;
++} // DependentName
+diff -ruN --strip-trailing-cr a/clang/test/SemaTemplate/class-template-ctor-initializer.cpp b/clang/test/SemaTemplate/class-template-ctor-initializer.cpp
+--- a/clang/test/SemaTemplate/class-template-ctor-initializer.cpp
++++ b/clang/test/SemaTemplate/class-template-ctor-initializer.cpp
+@@ -4,8 +4,8 @@
  
-   /// If the given value is an instruction inside of the loop and it can be
-   /// hoisted, do so to make it trivially loop-invariant.
-diff -ruN --strip-trailing-cr a/llvm/include/llvm/Transforms/Utils/LoopUtils.h b/llvm/include/llvm/Transforms/Utils/LoopUtils.h
---- a/llvm/include/llvm/Transforms/Utils/LoopUtils.h
-+++ b/llvm/include/llvm/Transforms/Utils/LoopUtils.h
-@@ -185,7 +185,8 @@
-                           TargetLibraryInfo *, Loop *, MemorySSAUpdater &,
-                           ScalarEvolution *, ICFLoopSafetyInfo *,
-                           SinkAndHoistLICMFlags &, OptimizationRemarkEmitter *,
--                          bool, bool AllowSpeculation);
-+                          bool, bool AllowSpeculation,
-+                          bool HasCoroSuspendInst = false);
+ template<class X> struct A {};
  
- /// Return true if the induction variable \p IV in a Loop whose latch is
- /// \p LatchBlock would become dead if the exit test \p Cond were removed.
-diff -ruN --strip-trailing-cr a/llvm/lib/Analysis/LoopInfo.cpp b/llvm/lib/Analysis/LoopInfo.cpp
---- a/llvm/lib/Analysis/LoopInfo.cpp
-+++ b/llvm/lib/Analysis/LoopInfo.cpp
-@@ -58,14 +58,26 @@
- // Loop implementation
- //
+-template<class X> struct B : A<X> { 
+-  B() : A<X>() {} 
++template<class X> struct B : A<X> {
++  B() : A<X>() {}
+ };
+ B<int> x;
  
--bool Loop::isLoopInvariant(const Value *V) const {
--  if (const Instruction *I = dyn_cast<Instruction>(V))
--    return !contains(I);
-+bool Loop::isLoopInvariant(const Value *V, bool HasCoroSuspendInst) const {
-+  if (const Instruction *I = dyn_cast<Instruction>(V)) {
-+    // FIXME: this is semantically inconsistent. We're tracking a proper fix in
-+    // issue #149604.
-+    // If V is a pointer to stack object and L contains a coro.suspend function
-+    // call, then V may not be loop invariant because the ramp function and
-+    // resume function have different stack frames.
-+    if (HasCoroSuspendInst && isa<AllocaInst>(I))
-+      return false;
-+    else
-+      return !contains(I);
+@@ -76,3 +76,12 @@
+   Derived1<void> d1;
+   Derived2<void> d2;
+ }
++
++namespace UnresolvedUsing {
++  template <class T> class A {
++    using typename T::B;
++    struct C : B {
++      C() : B() {}
++    };
++  };
++} // namespace UnresolvedUsing
+diff -ruN --strip-trailing-cr a/clang/test/SemaTemplate/deduction-guide.cpp b/clang/test/SemaTemplate/deduction-guide.cpp
+--- a/clang/test/SemaTemplate/deduction-guide.cpp
++++ b/clang/test/SemaTemplate/deduction-guide.cpp
+@@ -331,7 +331,7 @@
+ // CHECK-NEXT:  |-InjectedClassNameType {{.+}} 'TTP::B<T>' dependent{{$}}
+ // CHECK-NEXT:  | `-CXXRecord {{.+}} 'B'{{$}}
+ // CHECK-NEXT:  `-TemplateSpecializationType {{.+}} 'TT<T>' dependent{{$}}
+-// CHECK-NEXT:    |-name: 'TT':'template-parameter-0-1' qualified
++// CHECK-NEXT:    |-name: 'TT':'template-parameter-0-1'
+ // CHECK-NEXT:    | `-TemplateTemplateParmDecl {{.+}} depth 0 index 1
+ // CHECK-NEXT:    `-TemplateArgument type 'T':'type-parameter-0-0'{{$}}
+ // CHECK-NEXT:      `-TemplateTypeParmType {{.+}} 'T' dependent depth 0 index 0{{$}}
+@@ -673,8 +673,8 @@
+ // CHECK-NEXT: | |-DeducedTemplateSpecializationType {{.*}} 'GH122134::Test' dependent
+ // CHECK-NEXT: | | `-name: 'GH122134::Test'
+ // CHECK-NEXT: | |   `-TypeAliasTemplateDecl {{.*}} Test
+-// CHECK-NEXT: | `-TemplateSpecializationType {{.*}} 'Struct<int, N>' dependent
+-// CHECK-NEXT: |   |-name: 'Struct':'GH122134::Struct' qualified
++// CHECK-NEXT: | `-TemplateSpecializationType {{.*}} 'GH122134::Struct<int, N>' dependent
++// CHECK-NEXT: |   |-name: 'GH122134::Struct'
+ // CHECK-NEXT: |   | `-ClassTemplateDecl {{.*}} Struct
+ // CHECK-NEXT: |   |-TemplateArgument type 'int'
+ // CHECK-NEXT: |   | `-SubstTemplateTypeParmType {{.*}} 'int' sugar class depth 0 index 0 T
+@@ -684,7 +684,7 @@
+ // CHECK-NEXT: |     `-SubstNonTypeTemplateParmExpr {{.*}} 'int'
+ // CHECK-NEXT: |       |-NonTypeTemplateParmDecl {{.*}} 'int' depth 0 index 1
+ // CHECK-NEXT: |       `-DeclRefExpr {{.*}} 'int' NonTypeTemplateParm {{.*}} 'N' 'int'
+-// CHECK-NEXT: |-CXXDeductionGuideDecl {{.*}} implicit <deduction guide for Test> 'auto (auto:1) -> Struct<int, N>'
++// CHECK-NEXT: |-CXXDeductionGuideDecl {{.*}} implicit <deduction guide for Test> 'auto (auto:1) -> GH122134::Struct<int, N>'
+ // CHECK-NEXT: | `-ParmVarDecl {{.*}} 'auto:1'
+ 
+ } // namespace GH122134
+@@ -792,16 +792,16 @@
+ // CHECK-NEXT:  | |-DeducedTemplateSpecializationType {{.+}} 'GH133132::AA' dependent
+ // CHECK-NEXT:  | | `-name: 'GH133132::AA'
+ // CHECK-NEXT:  | |   `-TypeAliasTemplateDecl {{.+}} AA
+-// CHECK-NEXT:  | `-TemplateSpecializationType {{.+}} 'A<U>' dependent
+-// CHECK-NEXT:  |   |-name: 'A':'GH133132::A' qualified
++// CHECK-NEXT:  | `-TemplateSpecializationType {{.+}} 'GH133132::A<U>' dependent
++// CHECK-NEXT:  |   |-name: 'GH133132::A'
+ // CHECK-NEXT:  |   | `-ClassTemplateDecl {{.+}} A
+ // CHECK-NEXT:  |   `-TemplateArgument type 'U':'type-parameter-0-1'
+ // CHECK-NEXT:  |     `-SubstTemplateTypeParmType {{.+}} 'U' sugar dependent class depth 0 index 0 _Ty
+ // CHECK-NEXT:  |       |-FunctionTemplate {{.+}} '<deduction guide for A>'
+ // CHECK-NEXT:  |       `-TemplateTypeParmType {{.+}} 'U' dependent depth 0 index 1
+ // CHECK-NEXT:  |         `-TemplateTypeParm {{.+}} 'U'
+-// CHECK-NEXT:  |-CXXDeductionGuideDecl {{.+}} implicit <deduction guide for AA> 'auto () -> A<U>'
+-// CHECK-NEXT:  `-CXXDeductionGuideDecl {{.+}} implicit used <deduction guide for AA> 'auto () -> A<int>' implicit_instantiation
++// CHECK-NEXT:  |-CXXDeductionGuideDecl {{.+}} implicit <deduction guide for AA> 'auto () -> GH133132::A<U>'
++// CHECK-NEXT:  `-CXXDeductionGuideDecl {{.+}} implicit used <deduction guide for AA> 'auto () -> GH133132::A<int>' implicit_instantiation
+ // CHECK-NEXT:    |-TemplateArgument type 'int'
+ // CHECK-NEXT:    | `-BuiltinType {{.+}} 'int'
+ // CHECK-NEXT:    `-TemplateArgument type 'int'
+@@ -823,22 +823,22 @@
+ // CHECK-NEXT:  |   `-ClassTemplateDecl {{.+}} A
+ // CHECK-NEXT:  |-TemplateTemplateParmDecl {{.+}} depth 0 index 1 _Y
+ // CHECK-NEXT:  | |-TemplateTypeParmDecl {{.+}} class depth 0 index 0
+-// CHECK-NEXT:  | `-TemplateArgument {{.+}} template '_X':'template-parameter-0-0' qualified
++// CHECK-NEXT:  | `-TemplateArgument {{.+}} template '_X':'template-parameter-0-0'
+ // CHECK-NEXT:  |   `-TemplateTemplateParmDecl {{.+}} depth 0 index 0 _X
+ // CHECK-NEXT:  |-TypeTraitExpr {{.+}} 'bool' __is_deducible
+ // CHECK-NEXT:  | |-DeducedTemplateSpecializationType {{.+}} 'GH133132::BB' dependent
+ // CHECK-NEXT:  | | `-name: 'GH133132::BB'
+ // CHECK-NEXT:  | |   `-TypeAliasTemplateDecl {{.+}} BB
+-// CHECK-NEXT:  | `-TemplateSpecializationType {{.+}} 'B<_Y>' dependent
+-// CHECK-NEXT:  |   |-name: 'B':'GH133132::B' qualified
++// CHECK-NEXT:  | `-TemplateSpecializationType {{.+}} 'GH133132::B<_Y>' dependent
++// CHECK-NEXT:  |   |-name: 'GH133132::B'
+ // CHECK-NEXT:  |   | `-ClassTemplateDecl {{.+}} B
+ // CHECK-NEXT:  |   `-TemplateArgument template '_Y':'template-parameter-0-1' subst index 0
+ // CHECK-NEXT:  |     |-parameter: TemplateTemplateParmDecl {{.+}} depth 0 index 0 _X
+ // CHECK-NEXT:  |     |-associated FunctionTemplate {{.+}} '<deduction guide for B>'
+-// CHECK-NEXT:  |     `-replacement: '_Y':'template-parameter-0-1' qualified
++// CHECK-NEXT:  |     `-replacement: '_Y':'template-parameter-0-1'
+ // CHECK-NEXT:  |       `-TemplateTemplateParmDecl {{.+}} depth 0 index 1 _Y
+-// CHECK-NEXT:  |-CXXDeductionGuideDecl {{.+}} implicit <deduction guide for BB> 'auto () -> B<_Y>'
+-// CHECK-NEXT:  `-CXXDeductionGuideDecl {{.+}} implicit used <deduction guide for BB> 'auto () -> B<GH133132::A>' implicit_instantiation
++// CHECK-NEXT:  |-CXXDeductionGuideDecl {{.+}} implicit <deduction guide for BB> 'auto () -> GH133132::B<_Y>'
++// CHECK-NEXT:  `-CXXDeductionGuideDecl {{.+}} implicit used <deduction guide for BB> 'auto () -> GH133132::B<GH133132::A>' implicit_instantiation
+ // CHECK-NEXT:    |-TemplateArgument template 'GH133132::A'
+ // CHECK-NEXT:    | `-ClassTemplateDecl {{.+}} A
+ // CHECK-NEXT:    `-TemplateArgument template 'GH133132::A'
+@@ -866,16 +866,16 @@
+ // CHECK-NEXT:  | |-DeducedTemplateSpecializationType {{.+}} 'GH133132::CC' dependent
+ // CHECK-NEXT:  | | `-name: 'GH133132::CC'
+ // CHECK-NEXT:  | |   `-TypeAliasTemplateDecl {{.+}} CC
+-// CHECK-NEXT:  | `-TemplateSpecializationType {{.+}} 'A<U>' dependent
+-// CHECK-NEXT:  |   |-name: 'A':'GH133132::A' qualified
++// CHECK-NEXT:  | `-TemplateSpecializationType {{.+}} 'GH133132::A<U>' dependent
++// CHECK-NEXT:  |   |-name: 'GH133132::A'
+ // CHECK-NEXT:  |   | `-ClassTemplateDecl {{.+}} A
+ // CHECK-NEXT:  |   `-TemplateArgument type 'U':'type-parameter-0-1'
+ // CHECK-NEXT:  |     `-SubstTemplateTypeParmType {{.+}} 'U' sugar dependent class depth 0 index 0 _Ty
+ // CHECK-NEXT:  |       |-FunctionTemplate {{.+}} '<deduction guide for A>'
+ // CHECK-NEXT:  |       `-TemplateTypeParmType {{.+}} 'U' dependent depth 0 index 1
+ // CHECK-NEXT:  |         `-TemplateTypeParm {{.+}} 'U'
+-// CHECK-NEXT:  |-CXXDeductionGuideDecl {{.+}} implicit <deduction guide for CC> 'auto () -> A<U>'
+-// CHECK-NEXT:  `-CXXDeductionGuideDecl {{.+}} implicit used <deduction guide for CC> 'auto () -> A<GH133132::A<int>>' implicit_instantiation
++// CHECK-NEXT:  |-CXXDeductionGuideDecl {{.+}} implicit <deduction guide for CC> 'auto () -> GH133132::A<U>'
++// CHECK-NEXT:  `-CXXDeductionGuideDecl {{.+}} implicit used <deduction guide for CC> 'auto () -> GH133132::A<GH133132::A<int>>' implicit_instantiation
+ // CHECK-NEXT:    |-TemplateArgument integral '42'
+ // CHECK-NEXT:    `-TemplateArgument type 'GH133132::A<int>'
+ // CHECK-NEXT:      `-RecordType {{.+}} 'GH133132::A<int>'
+@@ -949,8 +949,8 @@
+ // CHECK-NEXT:   | |-DeducedTemplateSpecializationType {{.+}} 'GH141425::Alias' dependent
+ // CHECK-NEXT:   | | `-name: 'GH141425::Alias'
+ // CHECK-NEXT:   | |   `-TypeAliasTemplateDecl {{.+}} Alias
+-// CHECK-NEXT:   | `-TemplateSpecializationType {{.+}} 'Container<T...>' dependent
+-// CHECK-NEXT:   |   |-name: 'Container':'GH141425::Container' qualified
++// CHECK-NEXT:   | `-TemplateSpecializationType {{.+}} 'GH141425::Container<T...>' dependent
++// CHECK-NEXT:   |   |-name: 'GH141425::Container'
+ // CHECK-NEXT:   |   | `-ClassTemplateDecl {{.+}} Container
+ // CHECK-NEXT:   |   `-TemplateArgument type 'T...':'type-parameter-0-0...'
+ // CHECK-NEXT:   |     `-PackExpansionType {{.+}} 'T...' dependent
+@@ -958,7 +958,7 @@
+ // CHECK-NEXT:   |         |-FunctionTemplate {{.+}} '<deduction guide for Container>'
+ // CHECK-NEXT:   |         `-TemplateTypeParmType {{.+}} 'T' dependent contains_unexpanded_pack depth 0 index 0 pack
+ // CHECK-NEXT:   |           `-TemplateTypeParm {{.+}} 'T'
+-// CHECK-NEXT:   |-CXXDeductionGuideDecl {{.+}} implicit <deduction guide for Alias> 'auto (T...) -> Container<T...>'
++// CHECK-NEXT:   |-CXXDeductionGuideDecl {{.+}} implicit <deduction guide for Alias> 'auto (T...) -> GH141425::Container<T...>'
+ // CHECK-NEXT:   | `-ParmVarDecl {{.+}} 'T...' pack
+ 
+ }
+diff -ruN --strip-trailing-cr a/clang/test/SemaTemplate/nested-name-spec-template.cpp b/clang/test/SemaTemplate/nested-name-spec-template.cpp
+--- a/clang/test/SemaTemplate/nested-name-spec-template.cpp
++++ b/clang/test/SemaTemplate/nested-name-spec-template.cpp
+@@ -1,5 +1,5 @@
+-// RUN: %clang_cc1 -fsyntax-only -verify %s
+-// RUN: %clang_cc1 -fsyntax-only -verify -std=c++98 %s
++// RUN: %clang_cc1 -fsyntax-only -verify %s -Wno-c++20-extensions
++// RUN: %clang_cc1 -fsyntax-only -verify -Wno-c++11-extensions -std=c++98 %s
+ // RUN: %clang_cc1 -fsyntax-only -verify -std=c++11 %s
+ 
+ namespace N {
+@@ -24,14 +24,7 @@
+ 
+   M::Promote<int>::type *ret_intptr3(int* ip) { return ip; }
+   M::template Promote<int>::type *ret_intptr4(int* ip) { return ip; }
+-#if __cplusplus <= 199711L
+-  // expected-warning@-2 {{'template' keyword outside of a template}}
+-#endif
+-
+   M::template Promote<int> pi;
+-#if __cplusplus <= 199711L
+-  // expected-warning@-2 {{'template' keyword outside of a template}}
+-#endif
+ }
+ 
+ N::M::Promote<int>::type *ret_intptr5(int* ip) { return ip; }
+@@ -167,3 +160,53 @@
+   };
+   template struct C<int>;
+ } // namespace unresolved_using
++
++#if __cplusplus >= 201703L
++namespace SubstTemplateTypeParmPackType {
++  template <int...> struct A {};
++
++  template <class... Ts> void f() {
++    []<int ... Is>(A<Is...>) { (Ts::g(Is) && ...); }(A<0>{});
++  };
++
++  struct B { static void g(int); };
++
++  template void f<B>();
++} // namespace SubstTemplateTypeParmPackType
++#endif
++
++namespace DependentUnaryTransform {
++  template <class T> using decay_t = __decay(T);
++  template <class, class> struct A;
++  template <class T> struct A<T, typename decay_t<T>::X>;
++} // namespace DependentUnaryTransform
++
++namespace DependentSizedArray {
++  template <int V> using Z = int[V];
++  template <class, class> struct A;
++  template <class T> struct A<T, typename Z<T(0)>::X>;
++} // namespace DependentUnaryTransform
++
++namespace GH155281 {
++  template <bool> struct enable_if;
++  template <class _Tp, _Tp> struct integral_constant;
++  template <typename> struct conjunction;
++  template <typename T> using value_type_t = T;
++  template <class Check> using require_t = typename enable_if<Check::value>::type;
++  template <template <class> class, template <class> class,
++            template <class> class, class... Check>
++  using container_type_check_base =
++      integral_constant<bool, conjunction<Check...>::value>;
++  template <typename> struct is_std_vector;
++  template <template <class> class TypeCheck, class... Check>
++  using require_std_vector_vt =
++      require_t<container_type_check_base<is_std_vector, value_type_t, TypeCheck,
++                                          Check...> >;
++  template <typename, typename> class vector_seq_view;
++  namespace internal {
++  template <typename> using is_matrix_or_std_vector = int;
 +  }
-   return true; // All non-instructions are loop invariant
++  template <typename T>
++  class vector_seq_view<
++      T, require_std_vector_vt<internal::is_matrix_or_std_vector, T> >;
++} // namespace GH155281
+diff -ruN --strip-trailing-cr a/clang/unittests/AST/DeclTest.cpp b/clang/unittests/AST/DeclTest.cpp
+--- a/clang/unittests/AST/DeclTest.cpp
++++ b/clang/unittests/AST/DeclTest.cpp
+@@ -570,3 +570,19 @@
+   EXPECT_EQ(GetNameInfoRange(Matches[1]), "<input.cc:6:14, col:15>");
+   EXPECT_EQ(GetNameInfoRange(Matches[2]), "<input.cc:6:14, col:15>");
  }
- 
--bool Loop::hasLoopInvariantOperands(const Instruction *I) const {
--  return all_of(I->operands(), [this](Value *V) { return isLoopInvariant(V); });
-+bool Loop::hasLoopInvariantOperands(const Instruction *I,
-+                                    bool HasCoroSuspendInst) const {
-+  return all_of(I->operands(), [&](Value *V) {
-+    return isLoopInvariant(V, HasCoroSuspendInst);
-+  });
- }
- 
- bool Loop::makeLoopInvariant(Value *V, bool &Changed, Instruction *InsertPt,
-diff -ruN --strip-trailing-cr a/llvm/lib/Target/NVPTX/NVPTXISelLowering.cpp b/llvm/lib/Target/NVPTX/NVPTXISelLowering.cpp
---- a/llvm/lib/Target/NVPTX/NVPTXISelLowering.cpp
-+++ b/llvm/lib/Target/NVPTX/NVPTXISelLowering.cpp
-@@ -680,6 +680,8 @@
-   // No support for these operations with v2f32.
-   setOperationAction(ISD::INSERT_VECTOR_ELT, MVT::v2f32, Expand);
-   setOperationAction(ISD::VECTOR_SHUFFLE, MVT::v2f32, Expand);
-+  // Need custom lowering in case the index is dynamic.
-+  setOperationAction(ISD::EXTRACT_VECTOR_ELT, MVT::v2f32, Custom);
- 
-   // Custom conversions to/from v2i8.
-   setOperationAction(ISD::BITCAST, MVT::v2i8, Custom);
-diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Scalar/LICM.cpp b/llvm/lib/Transforms/Scalar/LICM.cpp
---- a/llvm/lib/Transforms/Scalar/LICM.cpp
-+++ b/llvm/lib/Transforms/Scalar/LICM.cpp
-@@ -472,7 +472,7 @@
-   if (Preheader)
-     Changed |= hoistRegion(DT->getNode(L->getHeader()), AA, LI, DT, AC, TLI, L,
-                            MSSAU, SE, &SafetyInfo, Flags, ORE, LoopNestMode,
--                           LicmAllowSpeculation);
-+                           LicmAllowSpeculation, HasCoroSuspendInst);
- 
-   // Now that all loop invariants have been removed from the loop, promote any
-   // memory references to scalars that we can.
-@@ -881,7 +881,7 @@
-                        ICFLoopSafetyInfo *SafetyInfo,
-                        SinkAndHoistLICMFlags &Flags,
-                        OptimizationRemarkEmitter *ORE, bool LoopNestMode,
--                       bool AllowSpeculation) {
-+                       bool AllowSpeculation, bool HasCoroSuspendInst) {
-   // Verify inputs.
-   assert(N != nullptr && AA != nullptr && LI != nullptr && DT != nullptr &&
-          CurLoop != nullptr && SafetyInfo != nullptr &&
-@@ -914,11 +914,11 @@
-       // TODO: It may be safe to hoist if we are hoisting to a conditional block
-       // and we have accurately duplicated the control flow from the loop header
-       // to that block.
--      if (CurLoop->hasLoopInvariantOperands(&I) &&
-+      if (CurLoop->hasLoopInvariantOperands(&I, HasCoroSuspendInst) &&
-           canSinkOrHoistInst(I, AA, DT, CurLoop, MSSAU, true, Flags, ORE) &&
--          isSafeToExecuteUnconditionally(
--              I, DT, TLI, CurLoop, SafetyInfo, ORE,
--              Preheader->getTerminator(), AC, AllowSpeculation)) {
-+          isSafeToExecuteUnconditionally(I, DT, TLI, CurLoop, SafetyInfo, ORE,
-+                                         Preheader->getTerminator(), AC,
-+                                         AllowSpeculation)) {
-         hoist(I, DT, CurLoop, CFH.getOrCreateHoistedBlock(BB), SafetyInfo,
-               MSSAU, SE, ORE);
-         HoistedInstructions.push_back(&I);
-@@ -964,7 +964,7 @@
-                SafetyInfo->doesNotWriteMemoryBefore(I, CurLoop);
-       };
-       if ((IsInvariantStart(I) || isGuard(&I)) &&
--          CurLoop->hasLoopInvariantOperands(&I) &&
-+          CurLoop->hasLoopInvariantOperands(&I, HasCoroSuspendInst) &&
-           MustExecuteWithoutWritesBefore(I)) {
-         hoist(I, DT, CurLoop, CFH.getOrCreateHoistedBlock(BB), SafetyInfo,
-               MSSAU, SE, ORE);
-diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/NVPTX/f32x2-instructions.ll b/llvm/test/CodeGen/NVPTX/f32x2-instructions.ll
---- a/llvm/test/CodeGen/NVPTX/f32x2-instructions.ll
-+++ b/llvm/test/CodeGen/NVPTX/f32x2-instructions.ll
-@@ -79,13 +79,24 @@
-   ret float %e
- }
- 
--; NOTE: disabled as -O3 miscompiles this into pointer arithmetic on
--; test_extract_i_param_0 where the symbol's address is not taken first (that
--; is, moved to a temporary)
--; define float @test_extract_i(<2 x float> %a, i64 %idx) #0 {
--;   %e = extractelement <2 x float> %a, i64 %idx
--;   ret float %e
--; }
-+define float @test_extract_i(<2 x float> %a, i64 %idx) #0 {
-+; CHECK-LABEL: test_extract_i(
-+; CHECK:       {
-+; CHECK-NEXT:    .reg .pred %p<2>;
-+; CHECK-NEXT:    .reg .b32 %r<4>;
-+; CHECK-NEXT:    .reg .b64 %rd<3>;
-+; CHECK-EMPTY:
-+; CHECK-NEXT:  // %bb.0:
-+; CHECK-NEXT:    ld.param.b64 %rd2, [test_extract_i_param_1];
-+; CHECK-NEXT:    ld.param.b64 %rd1, [test_extract_i_param_0];
-+; CHECK-NEXT:    setp.eq.b64 %p1, %rd2, 0;
-+; CHECK-NEXT:    mov.b64 {%r1, %r2}, %rd1;
-+; CHECK-NEXT:    selp.f32 %r3, %r1, %r2, %p1;
-+; CHECK-NEXT:    st.param.b32 [func_retval0], %r3;
-+; CHECK-NEXT:    ret;
-+  %e = extractelement <2 x float> %a, i64 %idx
-+  ret float %e
++
++TEST(Decl, getQualifiedNameAsString) {
++  llvm::Annotations Code(R"cpp(
++namespace x::y {
++  template <class T> class Foo { Foo() {} };
 +}
++)cpp");
++
++  auto AST = tooling::buildASTFromCode(Code.code());
++  ASTContext &Ctx = AST->getASTContext();
++
++  auto const *FD = selectFirst<CXXConstructorDecl>(
++      "ctor", match(cxxConstructorDecl().bind("ctor"), Ctx));
++  ASSERT_NE(FD, nullptr);
++  ASSERT_EQ(FD->getQualifiedNameAsString(), "x::y::Foo::Foo<T>");
++}
+diff -ruN --strip-trailing-cr a/clang-tools-extra/clang-tidy/misc/UnconventionalAssignOperatorCheck.cpp b/clang-tools-extra/clang-tidy/misc/UnconventionalAssignOperatorCheck.cpp
+--- a/clang-tools-extra/clang-tidy/misc/UnconventionalAssignOperatorCheck.cpp
++++ b/clang-tools-extra/clang-tidy/misc/UnconventionalAssignOperatorCheck.cpp
+@@ -29,11 +29,13 @@
+   const auto HasGoodReturnType =
+       cxxMethodDecl(returns(hasCanonicalType(lValueReferenceType(pointee(
+           unless(isConstQualified()),
+-          anyOf(autoType(), hasDeclaration(equalsBoundNode("class"))))))));
++          anyOf(autoType(),
++                hasDeclaration(declaresSameEntityAsBoundNode("class"))))))));
  
- define <2 x float> @test_fadd(<2 x float> %a, <2 x float> %b) #0 {
- ; CHECK-NOF32X2-LABEL: test_fadd(
-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LICM/licm-coroutine.ll b/llvm/test/Transforms/LICM/licm-coroutine.ll
---- a/llvm/test/Transforms/LICM/licm-coroutine.ll
-+++ b/llvm/test/Transforms/LICM/licm-coroutine.ll
-@@ -0,0 +1,78 @@
-+; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --version 5
-+; RUN: opt < %s -passes=licm -S | FileCheck %s
+   const auto IsSelf = qualType(hasCanonicalType(
+-      anyOf(hasDeclaration(equalsBoundNode("class")),
+-            referenceType(pointee(hasDeclaration(equalsBoundNode("class")))))));
++      anyOf(hasDeclaration(declaresSameEntityAsBoundNode("class")),
++            referenceType(pointee(
++                hasDeclaration(declaresSameEntityAsBoundNode("class")))))));
+   const auto IsAssign =
+       cxxMethodDecl(unless(anyOf(isDeleted(), isPrivate(), isImplicit())),
+                     hasName("operator="), ofClass(recordDecl().bind("class")))
+diff -ruN --strip-trailing-cr a/clang-tools-extra/test/clang-tidy/checkers/misc/unconventional-assign-operator.cpp b/clang-tools-extra/test/clang-tidy/checkers/misc/unconventional-assign-operator.cpp
+--- a/clang-tools-extra/test/clang-tidy/checkers/misc/unconventional-assign-operator.cpp
++++ b/clang-tools-extra/test/clang-tidy/checkers/misc/unconventional-assign-operator.cpp
+@@ -176,3 +176,11 @@
+   }
+ };
+ }
 +
-+; %fca.0 and %fca.1 should not be hoisted out of the loop because the ramp
-+; function and resume function have different stack frames, so %pointer1 and
-+; %pointer2 have different values before and after @llvm.coro.suspend.
++namespace GH153770 {
++  struct A;
++  struct A {
++    A() = default;
++    A& operator=(const A&) = default;
++  };
++} // namespace GH153770
+diff -ruN --strip-trailing-cr a/clang-tools-extra/test/clang-tidy/checkers/modernize/type-traits-GH153649.cpp b/clang-tools-extra/test/clang-tidy/checkers/modernize/type-traits-GH153649.cpp
+--- a/clang-tools-extra/test/clang-tidy/checkers/modernize/type-traits-GH153649.cpp
++++ b/clang-tools-extra/test/clang-tidy/checkers/modernize/type-traits-GH153649.cpp
+@@ -0,0 +1,15 @@
++// RUN: %check_clang_tidy -std=c++20 %s modernize-type-traits %t
 +
-+define ptr @f(i32 %n) presplitcoroutine {
-+; CHECK-LABEL: define ptr @f(
-+; CHECK-SAME: i32 [[N:%.*]]) #[[ATTR0:[0-9]+]] {
-+; CHECK-NEXT:  [[ENTRY:.*]]:
-+; CHECK-NEXT:    [[POINTER1:%.*]] = alloca ptr, align 8
-+; CHECK-NEXT:    [[POINTER2:%.*]] = alloca ptr, align 8
-+; CHECK-NEXT:    [[ID:%.*]] = call token @llvm.coro.id(i32 0, ptr null, ptr null, ptr null)
-+; CHECK-NEXT:    [[SIZE:%.*]] = call i32 @llvm.coro.size.i32()
-+; CHECK-NEXT:    [[ALLOC:%.*]] = call ptr @malloc(i32 [[SIZE]])
-+; CHECK-NEXT:    [[HDL:%.*]] = call noalias ptr @llvm.coro.begin(token [[ID]], ptr [[ALLOC]])
-+; CHECK-NEXT:    br label %[[LOOP:.*]]
-+; CHECK:       [[LOOP]]:
-+; CHECK-NEXT:    [[N_VAL:%.*]] = phi i32 [ [[N]], %[[ENTRY]] ], [ [[INC:%.*]], %[[RESUME:.*]] ]
-+; CHECK-NEXT:    [[INC]] = add nsw i32 [[N_VAL]], 1
-+; CHECK-NEXT:    call void @print(i32 [[N_VAL]])
-+; CHECK-NEXT:    [[TMP0:%.*]] = call i8 @llvm.coro.suspend(token none, i1 false)
-+; CHECK-NEXT:    switch i8 [[TMP0]], label %[[SUSPEND_LOOPEXIT:.*]] [
-+; CHECK-NEXT:      i8 0, label %[[RESUME]]
-+; CHECK-NEXT:      i8 1, label %[[CLEANUP:.*]]
-+; CHECK-NEXT:    ]
-+; CHECK:       [[RESUME]]:
-+; CHECK-NEXT:    [[FCA_0:%.*]] = insertvalue [2 x ptr] poison, ptr [[POINTER1]], 0
-+; CHECK-NEXT:    [[FCA_1:%.*]] = insertvalue [2 x ptr] [[FCA_0]], ptr [[POINTER2]], 1
-+; CHECK-NEXT:    call void @foo([2 x ptr] [[FCA_1]])
-+; CHECK-NEXT:    br label %[[LOOP]]
-+; CHECK:       [[CLEANUP]]:
-+; CHECK-NEXT:    [[MEM:%.*]] = call ptr @llvm.coro.free(token [[ID]], ptr [[HDL]])
-+; CHECK-NEXT:    call void @free(ptr [[MEM]])
-+; CHECK-NEXT:    br label %[[SUSPEND:.*]]
-+; CHECK:       [[SUSPEND_LOOPEXIT]]:
-+; CHECK-NEXT:    br label %[[SUSPEND]]
-+; CHECK:       [[SUSPEND]]:
-+; CHECK-NEXT:    [[UNUSED:%.*]] = call i1 @llvm.coro.end(ptr [[HDL]], i1 false, token none)
-+; CHECK-NEXT:    ret ptr [[HDL]]
++namespace std {
++template <class> struct tuple_size {
++  static const int value = 1;
++};
++template <int, class> struct tuple_element {
++  using type = int;
++};
++}
++
++struct A {};
++template <int> int get(const A&);
++
++auto [a] = A();
+diff -ruN --strip-trailing-cr a/libcxx/include/tuple b/libcxx/include/tuple
+--- a/libcxx/include/tuple
++++ b/libcxx/include/tuple
+@@ -516,6 +516,7 @@
+ 
+ struct __forward_args {};
+ struct __value_init {};
++struct __from_tuple {};
+ 
+ template <size_t... _Indx, class... _Tp>
+ struct _LIBCPP_DECLSPEC_EMPTY_BASES
+@@ -538,7 +539,7 @@
+       : __tuple_leaf<_Indx, _Tp>(__uses_alloc_ctor<_Tp, _Alloc, _Args>(), __alloc, std::forward<_Args>(__args))... {}
+ 
+   template <class _Tuple>
+-  _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX14 __tuple_impl(_Tuple&& __t) noexcept(
++  _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX14 __tuple_impl(__from_tuple, _Tuple&& __t) noexcept(
+       (__all<is_nothrow_constructible<
+            _Tp,
+            typename tuple_element<_Indx, typename __make_tuple_types<_Tuple>::type>::type>::value...>::value))
+@@ -547,7 +548,8 @@
+                 std::get<_Indx>(__t)))... {}
+ 
+   template <class _Alloc, class _Tuple>
+-  _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX14 __tuple_impl(allocator_arg_t, const _Alloc& __a, _Tuple&& __t)
++  _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX14
++  __tuple_impl(allocator_arg_t, const _Alloc& __a, __from_tuple, _Tuple&& __t)
+       : __tuple_leaf<_Indx, _Tp>(
+             __uses_alloc_ctor<_Tp,
+                               _Alloc,
+@@ -673,13 +675,13 @@
+             template <class...> class _And                                  = _And,
+             __enable_if_t< _And<is_copy_constructible<_Tp>...>::value, int> = 0>
+   _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX20 tuple(allocator_arg_t, const _Alloc& __alloc, const tuple& __t)
+-      : __base_(allocator_arg_t(), __alloc, __t) {}
++      : __base_(allocator_arg_t(), __alloc, __from_tuple(), __t) {}
+ 
+   template <class _Alloc,
+             template <class...> class _And                                  = _And,
+             __enable_if_t< _And<is_move_constructible<_Tp>...>::value, int> = 0>
+   _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX20 tuple(allocator_arg_t, const _Alloc& __alloc, tuple&& __t)
+-      : __base_(allocator_arg_t(), __alloc, std::move(__t)) {}
++      : __base_(allocator_arg_t(), __alloc, __from_tuple(), std::move(__t)) {}
+ 
+   // tuple(const tuple<U...>&) constructors (including allocator_arg_t variants)
+ 
+@@ -712,7 +714,7 @@
+   _LIBCPP_HIDE_FROM_ABI
+   _LIBCPP_CONSTEXPR_SINCE_CXX14 explicit(_Not<_Lazy<_And, is_convertible<const _Up&, _Tp>...> >::value)
+       tuple(const tuple<_Up...>& __t) noexcept(_And<is_nothrow_constructible<_Tp, const _Up&>...>::value)
+-      : __base_(__t) {}
++      : __base_(__from_tuple(), __t) {}
+ 
+   template <class... _Up,
+             class _Alloc,
+@@ -720,33 +722,33 @@
+   _LIBCPP_HIDE_FROM_ABI
+   _LIBCPP_CONSTEXPR_SINCE_CXX20 explicit(_Not<_Lazy<_And, is_convertible<const _Up&, _Tp>...> >::value)
+       tuple(allocator_arg_t, const _Alloc& __a, const tuple<_Up...>& __t)
+-      : __base_(allocator_arg_t(), __a, __t) {}
++      : __base_(allocator_arg_t(), __a, __from_tuple(), __t) {}
+ 
+ #    if _LIBCPP_STD_VER >= 23
+   // tuple(tuple<U...>&) constructors (including allocator_arg_t variants)
+ 
+   template <class... _Up, enable_if_t< _EnableCtorFromUTypesTuple<tuple<_Up...>&>::value>* = nullptr>
+   _LIBCPP_HIDE_FROM_ABI constexpr explicit(!_Lazy<_And, is_convertible<_Up&, _Tp>...>::value) tuple(tuple<_Up...>& __t)
+-      : __base_(__t) {}
++      : __base_(__from_tuple(), __t) {}
+ 
+   template <class _Alloc, class... _Up, enable_if_t< _EnableCtorFromUTypesTuple<tuple<_Up...>&>::value>* = nullptr>
+   _LIBCPP_HIDE_FROM_ABI constexpr explicit(!_Lazy<_And, is_convertible<_Up&, _Tp>...>::value)
+       tuple(allocator_arg_t, const _Alloc& __alloc, tuple<_Up...>& __t)
+-      : __base_(allocator_arg_t(), __alloc, __t) {}
++      : __base_(allocator_arg_t(), __alloc, __from_tuple(), __t) {}
+ #    endif // _LIBCPP_STD_VER >= 23
+ 
+   // tuple(tuple<U...>&&) constructors (including allocator_arg_t variants)
+   template <class... _Up, __enable_if_t< _And< _EnableCtorFromUTypesTuple<tuple<_Up...>&&> >::value, int> = 0>
+   _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX14 explicit(_Not<_Lazy<_And, is_convertible<_Up, _Tp>...> >::value)
+       tuple(tuple<_Up...>&& __t) noexcept(_And<is_nothrow_constructible<_Tp, _Up>...>::value)
+-      : __base_(std::move(__t)) {}
++      : __base_(__from_tuple(), std::move(__t)) {}
+ 
+   template <class _Alloc,
+             class... _Up,
+             __enable_if_t< _And< _EnableCtorFromUTypesTuple<tuple<_Up...>&&> >::value, int> = 0>
+   _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX20 explicit(_Not<_Lazy<_And, is_convertible<_Up, _Tp>...> >::value)
+       tuple(allocator_arg_t, const _Alloc& __a, tuple<_Up...>&& __t)
+-      : __base_(allocator_arg_t(), __a, std::move(__t)) {}
++      : __base_(allocator_arg_t(), __a, __from_tuple(), std::move(__t)) {}
+ 
+ #    if _LIBCPP_STD_VER >= 23
+   // tuple(const tuple<U...>&&) constructors (including allocator_arg_t variants)
+@@ -754,14 +756,14 @@
+   template <class... _Up, enable_if_t< _EnableCtorFromUTypesTuple<const tuple<_Up...>&&>::value>* = nullptr>
+   _LIBCPP_HIDE_FROM_ABI constexpr explicit(!_Lazy<_And, is_convertible<const _Up&&, _Tp>...>::value)
+       tuple(const tuple<_Up...>&& __t)
+-      : __base_(std::move(__t)) {}
++      : __base_(__from_tuple(), std::move(__t)) {}
+ 
+   template <class _Alloc,
+             class... _Up,
+             enable_if_t< _EnableCtorFromUTypesTuple<const tuple<_Up...>&&>::value>* = nullptr>
+   _LIBCPP_HIDE_FROM_ABI constexpr explicit(!_Lazy<_And, is_convertible<const _Up&&, _Tp>...>::value)
+       tuple(allocator_arg_t, const _Alloc& __alloc, const tuple<_Up...>&& __t)
+-      : __base_(allocator_arg_t(), __alloc, std::move(__t)) {}
++      : __base_(allocator_arg_t(), __alloc, __from_tuple(), std::move(__t)) {}
+ #    endif // _LIBCPP_STD_VER >= 23
+ 
+   // tuple(const pair<U1, U2>&) constructors (including allocator_arg_t variants)
+@@ -796,7 +798,7 @@
+   _LIBCPP_HIDE_FROM_ABI
+   _LIBCPP_CONSTEXPR_SINCE_CXX14 explicit(_Not<_BothImplicitlyConvertible<const pair<_Up1, _Up2>&> >::value)
+       tuple(const pair<_Up1, _Up2>& __p) noexcept(_NothrowConstructibleFromPair<const pair<_Up1, _Up2>&>::value)
+-      : __base_(__p) {}
++      : __base_(__from_tuple(), __p) {}
+ 
+   template <class _Alloc,
+             class _Up1,
+@@ -806,7 +808,7 @@
+   _LIBCPP_HIDE_FROM_ABI
+   _LIBCPP_CONSTEXPR_SINCE_CXX20 explicit(_Not<_BothImplicitlyConvertible<const pair<_Up1, _Up2>&> >::value)
+       tuple(allocator_arg_t, const _Alloc& __a, const pair<_Up1, _Up2>& __p)
+-      : __base_(allocator_arg_t(), __a, __p) {}
++      : __base_(allocator_arg_t(), __a, __from_tuple(), __p) {}
+ 
+ #    if _LIBCPP_STD_VER >= 23
+   // tuple(pair<U1, U2>&) constructors (including allocator_arg_t variants)
+@@ -814,7 +816,7 @@
+   template <class _U1, class _U2, enable_if_t< _EnableCtorFromPair<pair<_U1, _U2>&>::value>* = nullptr>
+   _LIBCPP_HIDE_FROM_ABI constexpr explicit(!_BothImplicitlyConvertible<pair<_U1, _U2>&>::value)
+       tuple(pair<_U1, _U2>& __p)
+-      : __base_(__p) {}
++      : __base_(__from_tuple(), __p) {}
+ 
+   template <class _Alloc,
+             class _U1,
+@@ -822,7 +824,7 @@
+             enable_if_t< _EnableCtorFromPair<std::pair<_U1, _U2>&>::value>* = nullptr>
+   _LIBCPP_HIDE_FROM_ABI constexpr explicit(!_BothImplicitlyConvertible<pair<_U1, _U2>&>::value)
+       tuple(allocator_arg_t, const _Alloc& __alloc, pair<_U1, _U2>& __p)
+-      : __base_(allocator_arg_t(), __alloc, __p) {}
++      : __base_(allocator_arg_t(), __alloc, __from_tuple(), __p) {}
+ #    endif
+ 
+   // tuple(pair<U1, U2>&&) constructors (including allocator_arg_t variants)
+@@ -834,7 +836,7 @@
+   _LIBCPP_HIDE_FROM_ABI
+   _LIBCPP_CONSTEXPR_SINCE_CXX14 explicit(_Not<_BothImplicitlyConvertible<pair<_Up1, _Up2>&&> >::value)
+       tuple(pair<_Up1, _Up2>&& __p) noexcept(_NothrowConstructibleFromPair<pair<_Up1, _Up2>&&>::value)
+-      : __base_(std::move(__p)) {}
++      : __base_(__from_tuple(), std::move(__p)) {}
+ 
+   template <class _Alloc,
+             class _Up1,
+@@ -844,7 +846,7 @@
+   _LIBCPP_HIDE_FROM_ABI
+   _LIBCPP_CONSTEXPR_SINCE_CXX20 explicit(_Not<_BothImplicitlyConvertible<pair<_Up1, _Up2>&&> >::value)
+       tuple(allocator_arg_t, const _Alloc& __a, pair<_Up1, _Up2>&& __p)
+-      : __base_(allocator_arg_t(), __a, std::move(__p)) {}
++      : __base_(allocator_arg_t(), __a, __from_tuple(), std::move(__p)) {}
+ 
+ #    if _LIBCPP_STD_VER >= 23
+   // tuple(const pair<U1, U2>&&) constructors (including allocator_arg_t variants)
+@@ -852,7 +854,7 @@
+   template <class _U1, class _U2, enable_if_t< _EnableCtorFromPair<const pair<_U1, _U2>&&>::value>* = nullptr>
+   _LIBCPP_HIDE_FROM_ABI constexpr explicit(!_BothImplicitlyConvertible<const pair<_U1, _U2>&&>::value)
+       tuple(const pair<_U1, _U2>&& __p)
+-      : __base_(std::move(__p)) {}
++      : __base_(__from_tuple(), std::move(__p)) {}
+ 
+   template <class _Alloc,
+             class _U1,
+@@ -860,7 +862,7 @@
+             enable_if_t< _EnableCtorFromPair<const pair<_U1, _U2>&&>::value>* = nullptr>
+   _LIBCPP_HIDE_FROM_ABI constexpr explicit(!_BothImplicitlyConvertible<const pair<_U1, _U2>&&>::value)
+       tuple(allocator_arg_t, const _Alloc& __alloc, const pair<_U1, _U2>&& __p)
+-      : __base_(allocator_arg_t(), __alloc, std::move(__p)) {}
++      : __base_(allocator_arg_t(), __alloc, __from_tuple(), std::move(__p)) {}
+ #    endif // _LIBCPP_STD_VER >= 23
+ 
+   // [tuple.assign]
+diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/tuple/tuple.tuple/move_ctor_sfinae.compile.pass.cpp b/libcxx/test/std/utilities/tuple/tuple.tuple/move_ctor_sfinae.compile.pass.cpp
+--- a/libcxx/test/std/utilities/tuple/tuple.tuple/move_ctor_sfinae.compile.pass.cpp
++++ b/libcxx/test/std/utilities/tuple/tuple.tuple/move_ctor_sfinae.compile.pass.cpp
+@@ -0,0 +1,27 @@
++//===----------------------------------------------------------------------===//
++//
++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++// See https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++
++// Ensure that tuple's move constructor properly SFINAES.
++// This is a regression test for https://github.com/llvm/llvm-project/pull/151654#issuecomment-3205410955
++
++// UNSUPPORTED: c++03, c++11, c++14
++
++#include <tuple>
++#include <variant>
++#include <type_traits>
++
++struct S {
++  S(const S&)            = delete;
++  S& operator=(const S&) = delete;
++  S(S&&)                 = default;
++  S& operator=(S&&)      = default;
++};
++
++using T = std::tuple<const std::variant<S>>;
++
++void func() { (void)std::is_trivially_move_constructible<T>::value; }
+diff -ruN --strip-trailing-cr a/lldb/source/Plugins/SymbolFile/NativePDB/SymbolFileNativePDB.cpp b/lldb/source/Plugins/SymbolFile/NativePDB/SymbolFileNativePDB.cpp
+--- a/lldb/source/Plugins/SymbolFile/NativePDB/SymbolFileNativePDB.cpp
++++ b/lldb/source/Plugins/SymbolFile/NativePDB/SymbolFileNativePDB.cpp
+@@ -1735,11 +1735,11 @@
+   }
+ 
+   // Sort them before value searching is working properly.
+-  m_func_full_names.Sort();
++  m_func_full_names.Sort(std::less<uint32_t>());
+   m_func_full_names.SizeToFit();
+-  m_func_method_names.Sort();
++  m_func_method_names.Sort(std::less<uint32_t>());
+   m_func_method_names.SizeToFit();
+-  m_func_base_names.Sort();
++  m_func_base_names.Sort(std::less<uint32_t>());
+   m_func_base_names.SizeToFit();
+ }
+ 
+@@ -2426,7 +2426,7 @@
+ 
+   // After calling Append(), the type-name map needs to be sorted again to be
+   // able to look up a type by its name.
+-  m_type_base_names.Sort();
++  m_type_base_names.Sort(std::less<uint32_t>());
+ 
+   // Now that we know the forward -> full mapping of all type indices, we can
+   // re-write all the indices.  At the end of this process, we want a mapping
+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/LoopVectorize.cpp b/llvm/lib/Transforms/Vectorize/LoopVectorize.cpp
+--- a/llvm/lib/Transforms/Vectorize/LoopVectorize.cpp
++++ b/llvm/lib/Transforms/Vectorize/LoopVectorize.cpp
+@@ -9786,6 +9786,19 @@
+                "Must only have a single non-zero incoming value");
+         EPI.VectorTripCount = Inc;
+       }
++      // If we didn't find a non-zero vector trip count, all incoming values
++      // must be zero, which also means the vector trip count is zero. Pick the
++      // first zero as vector trip count.
++      // TODO: We should not choose VF * UF so the main vector loop is known to
++      // be dead.
++      if (!EPI.VectorTripCount) {
++        assert(
++            EPResumeVal->getNumIncomingValues() > 0 &&
++            all_of(EPResumeVal->incoming_values(),
++                   [](Value *Inc) { return match(Inc, m_SpecificInt(0)); }) &&
++            "all incoming values must be 0");
++        EPI.VectorTripCount = EPResumeVal->getOperand(0);
++      }
+       VPValue *VPV = Plan.getOrAddLiveIn(EPResumeVal);
+       assert(all_of(IV->users(),
+                     [](const VPUser *U) {
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/AArch64/epilog-vectorization-factors.ll b/llvm/test/Transforms/LoopVectorize/AArch64/epilog-vectorization-factors.ll
+--- a/llvm/test/Transforms/LoopVectorize/AArch64/epilog-vectorization-factors.ll
++++ b/llvm/test/Transforms/LoopVectorize/AArch64/epilog-vectorization-factors.ll
+@@ -333,3 +333,91 @@
+ exit:
+   ret void
+ }
++
++; TODO: Choose smaller VF * UF for main loop, so we do not create a dead vector loop.
++define void @small_trip_count_loop(ptr %arg, ptr %arg2) {
++; CHECK-LABEL: @small_trip_count_loop(
++; CHECK-NEXT:  iter.check:
++; CHECK-NEXT:    [[ARG3:%.*]] = ptrtoint ptr [[ARG:%.*]] to i64
++; CHECK-NEXT:    [[ARG21:%.*]] = ptrtoint ptr [[ARG2:%.*]] to i64
++; CHECK-NEXT:    br i1 false, label [[VEC_EPILOG_SCALAR_PH:%.*]], label [[VECTOR_MEMCHECK:%.*]]
++; CHECK:       vector.memcheck:
++; CHECK-NEXT:    [[TMP0:%.*]] = sub i64 [[ARG21]], [[ARG3]]
++; CHECK-NEXT:    [[DIFF_CHECK:%.*]] = icmp ult i64 [[TMP0]], 64
++; CHECK-NEXT:    br i1 [[DIFF_CHECK]], label [[VEC_EPILOG_SCALAR_PH]], label [[VECTOR_MAIN_LOOP_ITER_CHECK:%.*]]
++; CHECK:       vector.main.loop.iter.check:
++; CHECK-NEXT:    br i1 true, label [[VEC_EPILOG_PH:%.*]], label [[VECTOR_PH:%.*]]
++; CHECK:       vector.ph:
++; CHECK-NEXT:    br label [[VECTOR_BODY:%.*]]
++; CHECK:       vector.body:
++; CHECK-NEXT:    [[TMP1:%.*]] = getelementptr inbounds i8, ptr [[ARG]], i32 16
++; CHECK-NEXT:    [[TMP2:%.*]] = getelementptr inbounds i8, ptr [[ARG]], i32 32
++; CHECK-NEXT:    [[TMP3:%.*]] = getelementptr inbounds i8, ptr [[ARG]], i32 48
++; CHECK-NEXT:    [[WIDE_LOAD:%.*]] = load <16 x i8>, ptr [[ARG]], align 1
++; CHECK-NEXT:    [[WIDE_LOAD4:%.*]] = load <16 x i8>, ptr [[TMP1]], align 1
++; CHECK-NEXT:    [[WIDE_LOAD5:%.*]] = load <16 x i8>, ptr [[TMP2]], align 1
++; CHECK-NEXT:    [[WIDE_LOAD6:%.*]] = load <16 x i8>, ptr [[TMP3]], align 1
++; CHECK-NEXT:    [[TMP4:%.*]] = add <16 x i8> [[WIDE_LOAD]], splat (i8 10)
++; CHECK-NEXT:    [[TMP5:%.*]] = add <16 x i8> [[WIDE_LOAD4]], splat (i8 10)
++; CHECK-NEXT:    [[TMP6:%.*]] = add <16 x i8> [[WIDE_LOAD5]], splat (i8 10)
++; CHECK-NEXT:    [[TMP7:%.*]] = add <16 x i8> [[WIDE_LOAD6]], splat (i8 10)
++; CHECK-NEXT:    [[TMP8:%.*]] = getelementptr inbounds i8, ptr [[ARG2]], i32 16
++; CHECK-NEXT:    [[TMP9:%.*]] = getelementptr inbounds i8, ptr [[ARG2]], i32 32
++; CHECK-NEXT:    [[TMP10:%.*]] = getelementptr inbounds i8, ptr [[ARG2]], i32 48
++; CHECK-NEXT:    store <16 x i8> [[TMP4]], ptr [[ARG2]], align 1
++; CHECK-NEXT:    store <16 x i8> [[TMP5]], ptr [[TMP8]], align 1
++; CHECK-NEXT:    store <16 x i8> [[TMP6]], ptr [[TMP9]], align 1
++; CHECK-NEXT:    store <16 x i8> [[TMP7]], ptr [[TMP10]], align 1
++; CHECK-NEXT:    br label [[MIDDLE_BLOCK:%.*]]
++; CHECK:       middle.block:
++; CHECK-NEXT:    br i1 false, label [[EXIT:%.*]], label [[VEC_EPILOG_ITER_CHECK:%.*]]
++; CHECK:       vec.epilog.iter.check:
++; CHECK-NEXT:    br i1 false, label [[VEC_EPILOG_SCALAR_PH]], label [[VEC_EPILOG_PH]]
++; CHECK:       vec.epilog.ph:
++; CHECK-NEXT:    [[VEC_EPILOG_RESUME_VAL:%.*]] = phi i32 [ 0, [[VEC_EPILOG_ITER_CHECK]] ], [ 0, [[VECTOR_MAIN_LOOP_ITER_CHECK]] ]
++; CHECK-NEXT:    br label [[VEC_EPILOG_VECTOR_BODY:%.*]]
++; CHECK:       vec.epilog.vector.body:
++; CHECK-NEXT:    [[INDEX:%.*]] = phi i32 [ [[VEC_EPILOG_RESUME_VAL]], [[VEC_EPILOG_PH]] ], [ [[INDEX_NEXT:%.*]], [[VEC_EPILOG_VECTOR_BODY]] ]
++; CHECK-NEXT:    [[TMP11:%.*]] = getelementptr inbounds i8, ptr [[ARG]], i32 [[INDEX]]
++; CHECK-NEXT:    [[WIDE_LOAD7:%.*]] = load <16 x i8>, ptr [[TMP11]], align 1
++; CHECK-NEXT:    [[TMP12:%.*]] = add <16 x i8> [[WIDE_LOAD7]], splat (i8 10)
++; CHECK-NEXT:    [[TMP13:%.*]] = getelementptr inbounds i8, ptr [[ARG2]], i32 [[INDEX]]
++; CHECK-NEXT:    store <16 x i8> [[TMP12]], ptr [[TMP13]], align 1
++; CHECK-NEXT:    [[INDEX_NEXT]] = add nuw i32 [[INDEX]], 16
++; CHECK-NEXT:    [[TMP14:%.*]] = icmp eq i32 [[INDEX_NEXT]], 16
++; CHECK-NEXT:    br i1 [[TMP14]], label [[VEC_EPILOG_MIDDLE_BLOCK:%.*]], label [[VEC_EPILOG_VECTOR_BODY]], !llvm.loop [[LOOP11:![0-9]+]]
++; CHECK:       vec.epilog.middle.block:
++; CHECK-NEXT:    br i1 false, label [[EXIT]], label [[VEC_EPILOG_SCALAR_PH]]
++; CHECK:       vec.epilog.scalar.ph:
++; CHECK-NEXT:    [[BC_RESUME_VAL:%.*]] = phi i32 [ 16, [[VEC_EPILOG_MIDDLE_BLOCK]] ], [ 0, [[VEC_EPILOG_ITER_CHECK]] ], [ 0, [[VECTOR_MEMCHECK]] ], [ 0, [[ITER_CHECK:%.*]] ]
++; CHECK-NEXT:    br label [[LOOP:%.*]]
++; CHECK:       loop:
++; CHECK-NEXT:    [[IV:%.*]] = phi i32 [ [[BC_RESUME_VAL]], [[VEC_EPILOG_SCALAR_PH]] ], [ [[IV_NEXT:%.*]], [[LOOP]] ]
++; CHECK-NEXT:    [[GEP_A:%.*]] = getelementptr inbounds i8, ptr [[ARG]], i32 [[IV]]
++; CHECK-NEXT:    [[LOAD:%.*]] = load i8, ptr [[GEP_A]], align 1
++; CHECK-NEXT:    [[SELECT:%.*]] = add i8 [[LOAD]], 10
++; CHECK-NEXT:    [[GEP_B:%.*]] = getelementptr inbounds i8, ptr [[ARG2]], i32 [[IV]]
++; CHECK-NEXT:    store i8 [[SELECT]], ptr [[GEP_B]], align 1
++; CHECK-NEXT:    [[IV_NEXT]] = add i32 [[IV]], 1
++; CHECK-NEXT:    [[EC:%.*]] = icmp eq i32 [[IV]], 20
++; CHECK-NEXT:    br i1 [[EC]], label [[EXIT]], label [[LOOP]], !llvm.loop [[LOOP12:![0-9]+]]
++; CHECK:       exit:
++; CHECK-NEXT:    ret void
 +;
 +entry:
-+  %pointer1 = alloca ptr
-+  %pointer2 = alloca ptr
-+  %id = call token @llvm.coro.id(i32 0, ptr null, ptr null, ptr null)
-+  %size = call i32 @llvm.coro.size.i32()
-+  %alloc = call ptr @malloc(i32 %size)
-+  %hdl = call noalias ptr @llvm.coro.begin(token %id, ptr %alloc)
 +  br label %loop
 +
 +loop:
-+  %n.val = phi i32 [ %n, %entry ], [ %inc, %resume ]
-+  %inc = add nsw i32 %n.val, 1
-+  call void @print(i32 %n.val)
-+  %0 = call i8 @llvm.coro.suspend(token none, i1 false)
-+  switch i8 %0, label %suspend [i8 0, label %resume
-+  i8 1, label %cleanup]
++  %iv = phi i32 [ 0, %entry ], [ %iv.next, %loop ]
++  %gep.A = getelementptr inbounds i8, ptr %arg, i32 %iv
++  %load = load i8, ptr %gep.A, align 1
++  %select = add i8 %load, 10
++  %gep.B = getelementptr inbounds i8, ptr %arg2, i32 %iv
++  store i8 %select, ptr %gep.B, align 1
++  %iv.next = add i32 %iv, 1
++  %ec = icmp eq i32 %iv, 20
++  br i1 %ec, label %exit, label %loop
 +
-+resume:
-+  %fca.0 = insertvalue [2 x ptr] poison, ptr %pointer1, 0
-+  %fca.1 = insertvalue [2 x ptr] %fca.0, ptr %pointer2, 1
-+  call void @foo([2 x ptr] %fca.1)
-+  br label %loop
-+
-+cleanup:
-+  %mem = call ptr @llvm.coro.free(token %id, ptr %hdl)
-+  call void @free(ptr %mem)
-+  br label %suspend
-+suspend:
-+  %unused = call i1 @llvm.coro.end(ptr %hdl, i1 false, token none)
-+  ret ptr %hdl
++exit:
++  ret void
 +}
-+
-+declare void @free(ptr)
-+declare ptr @malloc(i32)
-+declare void @print(i32)
-+declare void @foo([2 x ptr])
-diff -ruN --strip-trailing-cr a/mlir/test/Dialect/Linalg/linalg-morph-category-ops.mlir b/mlir/test/Dialect/Linalg/linalg-morph-category-ops.mlir
---- a/mlir/test/Dialect/Linalg/linalg-morph-category-ops.mlir
-+++ b/mlir/test/Dialect/Linalg/linalg-morph-category-ops.mlir
-@@ -2,7 +2,7 @@
- // RUN: mlir-opt %s -linalg-morph-ops=named-to-category | FileCheck %s  --check-prefix=NAMED_TO_CATEGORY
+diff -ruN --strip-trailing-cr a/llvm/tools/llvm-c-test/debuginfo.c b/llvm/tools/llvm-c-test/debuginfo.c
+--- a/llvm/tools/llvm-c-test/debuginfo.c
++++ b/llvm/tools/llvm-c-test/debuginfo.c
+@@ -448,6 +448,7 @@
+   assert(ME != NULL);
+   assert(numEntries == 2);
  
- // RUN: mlir-opt %s -linalg-morph-ops=named-to-category |  \
--// RUN:   mlir-opt %s -linalg-morph-ops=category-to-generic | FileCheck %s  --check-prefix=CATEGORY_TO_GENERIC
-+// RUN:   mlir-opt -linalg-morph-ops=category-to-generic | FileCheck %s  --check-prefix=CATEGORY_TO_GENERIC
++  LLVMDisposeValueMetadataEntries(ME);
+   LLVMDisposeDIBuilder(Builder);
+   LLVMDisposeModule(M);
  
- func.func @exp(%A : tensor<16x8xf32>, %B : tensor<16x8xf32>) ->  tensor<16x8xf32> {
-   %exp = linalg.exp ins(%A : tensor<16x8xf32>) outs(%B :  tensor<16x8xf32>) -> tensor<16x8xf32>
