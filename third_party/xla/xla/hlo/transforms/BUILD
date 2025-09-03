@@ -182,6 +182,8 @@ xla_cc_test(
     srcs = ["memory_space_propagation_test.cc"],
     deps = [
         ":memory_space_propagation",
+        "//xla/hlo/analysis:hlo_dataflow_analysis",
+        "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/tsl/lib/core:status_test_util",

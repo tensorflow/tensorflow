@@ -32,6 +32,30 @@ limitations under the License.
 
 namespace xla {
 
+bool MemorySpacePropagation::RunOnComputation(HloComputation* computation) {
+  CHECK(dataflow_analysis_ != nullptr);
+  bool modified = false;
+  // Propagate the parameter subshapes.
+  for (int parameter_idx = 0; parameter_idx < computation->num_parameters();
+       ++parameter_idx) {
+    ShapeUtil::ForEachLeafShape(
+        computation->parameter_instruction(parameter_idx)->shape(),
+        [&](const Shape& sub_shape, const ShapeIndex& index) {
+          modified |= Propagate(
+              index, computation->parameter_instruction(parameter_idx),
+              sub_shape);
+        });
+  }
+  // Propagate output subshapes.
+  ShapeUtil::ForEachLeafShape(
+      computation->root_instruction()->shape(),
+      [&](const Shape& sub_shape, const ShapeIndex& index) {
+        modified |=
+            Propagate(index, computation->root_instruction(), sub_shape);
+      });
+  return modified;
+}
+
 absl::StatusOr<bool> MemorySpacePropagation::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
