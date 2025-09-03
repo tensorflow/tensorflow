@@ -154,8 +154,12 @@ xla_test(
     backends = ["gpu"],
     tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
+        "//xla:debug_options_flags",
         "//xla:literal",
         "//xla:literal_util",
+        "//xla:xla_proto_cc",
+        "//xla/service:hlo_module_config",
+        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
         "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:literal_test_util",
         "//xla/tsl/platform:statusor",
