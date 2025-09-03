@@ -84,13 +84,13 @@ def TTXLA_ExtractOp : TTXLA_OpWithOffsetSizesAndStrides<"extract", [
   }];
   let builders = [
     OpBuilder<(ins "RankedTensorType":$result_type, "Value":$src,
-      "ValueRange":$offsets,  "ValueRange":$strides,
-      CArg<"ArrayRef<int64_t>">:$src_shape,
-      CArg<"ArrayRef<int64_t>">:$src_layout)>,
+      "ValueRange":$offsets, "ArrayRef<int64_t>":$sizes,
+      "ArrayRef<int64_t>":$strides, "ArrayRef<int64_t>":$src_shape,
+      "ArrayRef<int64_t>":$src_layout)>,
     OpBuilder<(ins "RankedTensorType":$result_type, "Value":$src,
-      "ArrayRef<OpFoldResult>":$offsets,  "ArrayRef<OpFoldResult>":$strides,
-      CArg<"ArrayRef<int64_t>">:$src_shape,
-      CArg<"ArrayRef<int64_t>">:$src_layout)>
+      "ArrayRef<OpFoldResult>":$offsets, "ArrayRef<int64_t>":$sizes,
+      "ArrayRef<int64_t>":$strides, "ArrayRef<int64_t>":$src_shape,
+      "ArrayRef<int64_t>":$src_layout)>
   ];
 
   let arguments = (ins
@@ -117,7 +117,7 @@ def TTXLA_ExtractOp : TTXLA_OpWithOffsetSizesAndStrides<"extract", [
     /// Return the expected rank of each of the `static_offsets`, `static_sizes`
     /// and `static_strides` attributes.
     std::array<unsigned, 3> getArrayAttrMaxRanks() {
-      unsigned rank = getType().getRank();
+      unsigned rank = getSrcShape().size();
       return {rank, rank, rank};
     }
     /// Return the number of leading operands before the `offsets`, `sizes` and
@@ -145,13 +145,13 @@ def TTXLA_InsertOp : TTXLA_OpWithOffsetSizesAndStrides<"insert"> {
   }];
   let builders = [
     OpBuilder<(ins "Value":$src, "Value":$dst,
-      "ValueRange":$offsets,  "ValueRange":$strides,
-      CArg<"ArrayRef<int64_t>">:$dst_shape,
-      CArg<"ArrayRef<int64_t>">:$dst_layout)>,
+      "ValueRange":$offsets, "ArrayRef<int64_t>":$sizes,
+      "ArrayRef<int64_t>":$strides, "ArrayRef<int64_t>":$dst_shape,
+      "ArrayRef<int64_t>":$dst_layout)>,
     OpBuilder<(ins "Value":$src, "Value":$dst,
-      "ArrayRef<OpFoldResult>":$offsets,  "ArrayRef<OpFoldResult>":$strides,
-      CArg<"ArrayRef<int64_t>">:$dst_shape,
-      CArg<"ArrayRef<int64_t>">:$dst_layout)>
+      "ArrayRef<OpFoldResult>":$offsets, "ArrayRef<int64_t>":$sizes,
+      "ArrayRef<int64_t>":$strides, "ArrayRef<int64_t>":$dst_shape,
+      "ArrayRef<int64_t>":$dst_layout)>
   ];
 
   let arguments = (ins
@@ -180,7 +180,7 @@ def TTXLA_InsertOp : TTXLA_OpWithOffsetSizesAndStrides<"insert"> {
     /// Return the expected rank of each of the `static_offsets`, `static_sizes`
     /// and `static_strides` attributes.
     std::array<unsigned, 3> getArrayAttrMaxRanks() {
-      unsigned rank = getSrc().getType().getRank();
+      unsigned rank = getDstShape().size();
       return {rank, rank, rank};
     }
     /// Return the number of leading operands before the `offsets`, `sizes` and

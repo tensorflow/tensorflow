@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <numeric>
@@ -21,6 +22,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "triton/Dialect/Triton/IR/Dialect.h"
+// Above header needs to be included first to avoid 'major' macro collision.
+
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -53,10 +58,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h"
 #include "xla/codegen/emitter_loc_op_builder.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
-#include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/permutation_util.h"
-#include "xla/shape.h"
-#include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 
@@ -73,12 +75,6 @@ namespace {
 PointerType GetTensorPtrType(Type type) {
   return PointerType::get(xgt::StorageType(type),
                           mlir::NVVM::kGlobalMemorySpace);
-}
-
-bool AreRankedTensors(ArrayRef<Type> types) {
-  return llvm::all_of(types, [](mlir::Type type) {
-    return mlir::isa<mlir::RankedTensorType>(type);
-  });
 }
 
 SmallVector<Value> IndexCast(::xla::EmitterLocOpBuilder& builder, Type type,
@@ -186,6 +182,7 @@ bool CanUseTma(bool tma_enabled,
   // used or not.
   SmallVector<int64_t> canonical_tile_strides(tile_strides.begin(),
                                               tile_strides.end());
+  // TODO(csigg): canonicalize_status is ignored.
   auto canonicalize_status = CanonicalizeTileStrides(canonical_tile_strides,
                                                      tile_shape, original_shape,
                                                      /*validate=*/false);
@@ -215,98 +212,6 @@ bool CanUseTma(bool tma_enabled,
   return true;
 }
 
-SmallVector<int32_t> ComputeBoundaryChecks(
-    const ArrayRef<int64_t>& original_shape,
-    const ArrayRef<int64_t>& tile_shape) {
-  SmallVector<int32_t> boundary_checks;
-  for (auto [dim_idx, sizes] :
-       llvm::enumerate(llvm::zip(original_shape, tile_shape))) {
-    auto [dim_size, tile_size] = sizes;
-    if (dim_size % tile_size) {
-      boundary_checks.push_back(dim_idx);
-    }
-  }
-  return boundary_checks;
-}
-
-// TensorPtr is intended to wrap the base pointer of the TiledHloInstruction and
-// the necessary offsets so that Triton can compute the pointer to the
-// block specific to the given pid. This option would yield simpler code,
-// but cannot handle all combinations of strides and offsets, because Triton
-// always multiplies the offset by the stride. E.g., it's not possible to
-// slice [10] with [1:5:2] because the offset is misaligned with regards to the
-// stride.
-//
-// Instead, we output a TensorPtr that points directly to the tile specific
-// to the pid. All offset computation is done in advance. MakeTensorPtrOp
-// sees 0 offsets. This allows Triton to read any block regardless of
-// strides size or offsets. To make sure that masking is correct, we compute
-// a "residual shape" which is the original parent shape minus the offsets.
-SmallVector<Value> ComputeResidualShape(::xla::EmitterLocOpBuilder& builder,
-                                        ArrayRef<int64_t> original_shape,
-                                        ValueRange tile_offsets) {
-  SmallVector<Value> residual_shape;
-  for (auto [dim_idx, shape_and_tile_offset] :
-       llvm::enumerate(llvm::zip(original_shape, tile_offsets))) {
-    auto [shape, tile_offset] = shape_and_tile_offset;
-    Value size =
-        ::xla::gpu::triton::CreateConst(builder, builder.getI64Type(), shape)
-            .UnwrapScalar();
-    // Offsets are necessarily positive since they represent a distance
-    // between 0 and the size of the tensor on the given axis. Therefore, it
-    // is safe to use 'IndexCast' here. This allows index canonicalizations
-    // later on.
-    Value offset =
-        builder.create<arith::IndexCastOp>(builder.getI64Type(), tile_offset);
-    residual_shape.push_back(builder.create<arith::SubIOp>(size, offset));
-  }
-
-  return residual_shape;
-}
-
-// Compute physical strides of the tile. `tile_strides` contains strides for
-// individual dimensions. We need to convert them to strides in the buffer
-// taking into account physical layout. Note that we should pass in the
-// minor-to-major layout for this to work correctly.
-SmallVector<Value> ComputeStrides(::xla::EmitterLocOpBuilder& builder,
-                                  ArrayRef<int64_t> original_shape,
-                                  ValueRange tile_strides,
-                                  ArrayRef<int64_t> minor_to_major_layout) {
-  SmallVector<Value> strides(tile_strides.size());
-  int64_t current_stride = 1;
-  for (int64_t cur_dim : minor_to_major_layout) {
-    strides[cur_dim] = builder.create<arith::MulIOp>(
-        builder.create<arith::IndexCastOp>(builder.getI64Type(),
-                                           tile_strides[cur_dim]),
-        ::xla::gpu::triton::CreateConst(builder, builder.getI64Type(),
-                                        current_stride)
-            .UnwrapScalar());
-    current_stride *= original_shape[cur_dim];
-  }
-  return strides;
-}
-
-// Based on the multi-dimensional offsets and layout of the shape, we compute
-// a linear offset. We do this because we move the pointer to the correct
-// position via tt.addptr prior to calling tt.make_tensor_ptr.
-Value ComputeLinearOffset(::xla::EmitterLocOpBuilder& builder,
-                          Type element_type, ValueRange offsets,
-                          llvm::ArrayRef<int64_t> shape,
-                          llvm::ArrayRef<int64_t> layout) {
-  ::xla::Shape xla_shape = ::xla::ShapeUtil::MakeShapeWithDenseLayout(
-      xgt::GetPrimitiveType(element_type).value(), shape, layout);
-
-  ::xla::Shape linear_shape = ::xla::ShapeUtil::MakeShape(
-      xla_shape.element_type(), {::xla::ShapeUtil::ElementsIn(xla_shape)});
-  auto bitcast_map =
-      ::xla::GetBitcastMap(xla_shape, linear_shape, builder.getContext());
-
-  return builder.create<arith::IndexCastOp>(
-      builder.getI64Type(),
-      builder.create<::xla::ApplyIndexingOp>(offsets, bitcast_map)
-          .getResult(0));
-}
-
 // Add TMA attributes to the corresponding argument in the function.
 void AddTmaAttributes(::xla::EmitterLocOpBuilder& builder,
                       const TypedValue<PointerType>& pointer,
@@ -329,87 +234,45 @@ void AddTmaAttributes(::xla::EmitterLocOpBuilder& builder,
           pointer.getType().getPointeeType().getIntOrFloatBitWidth() / 8));
 }
 
-// Normalized layout is in the form of [N-1, N-2, ... 1, 0]. It is identical
-// to HLO's layout.
-bool IsNormalizedLayout(ArrayRef<int64_t> layout) {
-  for (auto&& [idx, layout_entry] : llvm::enumerate(layout)) {
-    if (layout_entry != layout.size() - 1 - idx) {
+// Checks whether 'layout' is the default HLO layout in major-to-minor order,
+// i.e. iff it's [N-1, N-2, ... 1, 0].
+bool IsMajorToMinorLayout(ArrayRef<int64_t> layout) {
+  for (auto [i, value] : llvm::enumerate(layout)) {
+    if (value != layout.size() - 1 - i) {
       return false;
     }
   }
   return true;
 }
 
-// Permutes the given array based on the given layout.
+// Returns 'values' in major-to-minor order given minor-to-major 'layout'.
 template <typename T>
-SmallVector<T> NormalizeImpl(ArrayRef<T> values, ArrayRef<int64_t> layout) {
-  if (IsNormalizedLayout(layout)) {
+SmallVector<T> GetMajorToMinorOrder(ArrayRef<T> values,
+                                    ArrayRef<int64_t> layout) {
+  if (IsMajorToMinorLayout(layout)) {
     return llvm::to_vector(values);
   }
 
   auto reversed_layout = llvm::to_vector(layout);
   std::reverse(reversed_layout.begin(), reversed_layout.end());
-  std::vector<T> normalized_values = ::xla::Permute(values, reversed_layout);
-  return SmallVector<T>(normalized_values.begin(), normalized_values.end());
+  std::vector<T> vector = ::xla::Permute(values, reversed_layout);
+  return SmallVector<T>(vector.begin(), vector.end());
 }
 
-SmallVector<Value> Normalize(ValueRange values, ArrayRef<int64_t> layout) {
-  SmallVector<Value> values_vec = llvm::to_vector(values);
-  return NormalizeImpl<Value>(values_vec, layout);
-}
-
-SmallVector<int64_t> Normalize(ArrayRef<int64_t> values,
-                               ArrayRef<int64_t> layout) {
-  return NormalizeImpl<int64_t>(values, layout);
+// Returns 'values' in major-to-minor order given minor-to-major 'layout'.
+SmallVector<Value> GetMajorToMinorOrder(ValueRange values,
+                                        ArrayRef<int64_t> layout) {
+  return GetMajorToMinorOrder(ArrayRef<Value>(llvm::to_vector(values)), layout);
 }
 
 // Given the layout of a tensor, return the inverse permutation required to
-// transpose an already normalized tensor to the original tensor.
+// transpose an already major-to-minor tensor to the original tensor.
 SmallVector<int32_t> GetInverseLayoutPermutation(ArrayRef<int64_t> layout) {
   auto reversed_layout = llvm::to_vector(layout);
   std::reverse(reversed_layout.begin(), reversed_layout.end());
   auto permutation =
       llvm::to_vector_of<int32_t>(::xla::InversePermutation(reversed_layout));
   return SmallVector<int32_t>(permutation.begin(), permutation.end());
-}
-
-Value CreateAddPtrOp(::xla::EmitterLocOpBuilder& builder,
-                     const TypedValue<PointerType>& pointer, ValueRange offsets,
-                     llvm::ArrayRef<int64_t> shape,
-                     llvm::ArrayRef<int64_t> layout) {
-  auto linear_offset = ComputeLinearOffset(
-      builder, pointer.getType().getPointeeType(), offsets, shape, layout);
-  return builder.create<AddPtrOp>(pointer.getType(), pointer, linear_offset);
-}
-
-Value CreateMakeTensorPtrOp(::xla::EmitterLocOpBuilder& builder, Value ptr,
-                            ArrayRef<int64_t> original_shape,
-                            ArrayRef<int64_t> tile_shape,
-                            SmallVector<Value> offsets,
-                            SmallVector<Value> tile_strides,
-                            ArrayRef<int64_t> layout) {
-  SmallVector<Value> residual_shape =
-      ComputeResidualShape(builder, original_shape, offsets);
-
-  // Offsets are always passed as 0 since we are using "residual shape".
-  SmallVector<Value> zero_offsets(
-      tile_shape.size(),
-      ::xla::gpu::triton::CreateConst(builder, builder.getI32Type(), 0)
-          .UnwrapScalar());
-
-  SmallVector<Value> strides =
-      ComputeStrides(builder, original_shape, tile_strides, layout);
-
-  // Strides already encode the layout, so we can use the default order.
-  // Note that the order attribute is ignored in the Triton lowering.
-  SmallVector<int32_t> dim_order(layout.size());
-  std::iota(dim_order.rbegin(), dim_order.rend(), 0);
-
-  return builder
-      .create<MakeTensorPtrOp>(ptr, residual_shape, strides, zero_offsets,
-                               llvm::to_vector_of<int32_t>(tile_shape),
-                               dim_order)
-      .getResult();
 }
 
 // Rewrite func.func to tt.func.
@@ -435,12 +298,12 @@ class RewriteFuncOp : public mlir::OpRewritePattern<func::FuncOp> {
         auto tma_descriptor = mlir::cast<TmaDescriptorAttr>(attr);
         auto layout = tma_descriptor.getLayout();
         auto block_shape = tma_descriptor.getTileShape();
-        SmallVector<int64_t> normalized_block_shape =
-            Normalize(block_shape, layout);
+        SmallVector<int64_t> ordered_block_shape =
+            GetMajorToMinorOrder(block_shape, layout);
 
         operand_type = TensorDescType::get(
             builder.getContext(),
-            RankedTensorType::get(normalized_block_shape, element_type));
+            RankedTensorType::get(ordered_block_shape, element_type));
         // !tt.tensordesc<tensor<block_shape x element_type>> -> !tt.ptr<>
         cast_to_orig_type = builder.create<mlir::UnrealizedConversionCastOp>(
             operand_type, func_arg);
@@ -501,6 +364,140 @@ class RewriteFuncOp : public mlir::OpRewritePattern<func::FuncOp> {
   }
 };
 
+// Compute the strides of a dense tensor given its shape and layout.
+SmallVector<int64_t> ComputeStrides(ArrayRef<int64_t> shape,
+                                    ArrayRef<int64_t> layout) {
+  CHECK_EQ(shape.size(), layout.size());
+  SmallVector<int64_t> result(shape.size());
+  int64_t stride = 1;
+  for (int64_t dim : layout) {
+    result[dim] = stride;
+    stride *= shape[dim];
+  }
+  return result;
+}
+
+// Returns the set of not-reduced dimensions.
+SmallVector<unsigned> GetRetainedDims(ArrayRef<unsigned> reduced_dims,
+                                      size_t rank) {
+  SmallVector<unsigned> result;
+  result.reserve(rank);
+  for (auto [i, dim] : llvm::enumerate(reduced_dims)) {
+    for (unsigned j = result.size() + i; j < dim; ++j) {
+      result.push_back(j);
+    }
+  }
+  while (result.size() < rank) {
+    result.push_back(result.size() + reduced_dims.size());
+  }
+  return result;
+}
+
+// Expands the value in all dimensions except `dim` and broadcasts the result
+// to the provided tile shape.
+Value ExpandAndBroadcastValue(::xla::EmitterLocOpBuilder& builder, Value value,
+                              int dim, RankedTensorType tile_type) {
+  for (int i = 0; i < tile_type.getRank(); ++i) {
+    if (i != dim) {
+      value = builder.create<ExpandDimsOp>(value, i);
+    }
+  }
+  return BroadcastOp::create(builder, tile_type, value);
+}
+
+// Returns a pair of tensors:
+// - The first tensor is a tensor of pointers to load/store.
+// - The second tensor is a tensor of in-bounds predicates.
+static std::pair<Value, Value> CreateTensorOfPointersAndMask(
+    ::xla::EmitterLocOpBuilder& builder, Value base_ptr,
+    ArrayRef<int64_t> original_shape, ArrayRef<int64_t> layout,
+    ValueRange offsets, ArrayRef<int64_t> sizes, ArrayRef<int64_t> strides,
+    ArrayRef<unsigned> reduced_dims, ArrayRef<int64_t> tile_shape) {
+  CHECK_EQ(original_shape.size(), layout.size());
+  CHECK_EQ(original_shape.size(), offsets.size());
+  CHECK_EQ(original_shape.size(), sizes.size());
+  CHECK_EQ(original_shape.size(), strides.size());
+  CHECK_EQ(original_shape.size(), reduced_dims.size() + tile_shape.size());
+
+  SmallVector<int64_t> shape_strides = ComputeStrides(original_shape, layout);
+  SmallVector<unsigned> retained_dims =
+      GetRetainedDims(reduced_dims, tile_shape.size());
+
+  Type i64_type = builder.getI64Type();
+  auto i64_tile_type = RankedTensorType::get(tile_shape, i64_type);
+
+  // Combines the values using op, if rhs is present. Otherwise returns lhs.
+  auto add_if = [&](auto op, Value lhs, Value rhs) -> Value {
+    if (rhs) {
+      return decltype(op)::create(builder, lhs.getType(), lhs, rhs);
+    }
+    return lhs;
+  };
+
+  SmallVector<Value> cast_offsets = IndexCast(builder, i64_type, offsets);
+
+  Value range_tile, mask_tile;
+  for (auto [i, dim] : llvm::enumerate(retained_dims)) {
+    auto i64_row_type = RankedTensorType::get({sizes[dim]}, i64_type);
+
+    // Create iota range row tensor.
+    Value range = MakeRangeOp::create(
+        builder, i64_row_type.clone(builder.getI32Type()), 0, sizes[dim]);
+    range = arith::ExtSIOp::create(builder, i64_row_type, range);
+
+    // Multiply range by tile stride.
+    Value stride = arith::ConstantOp::create(
+        builder, DenseIntElementsAttr::get(i64_row_type, strides[dim]));
+    range = arith::MulIOp::create(builder, range, stride);
+
+    // Expand and broadcast range to tile shape.
+    range = ExpandAndBroadcastValue(builder, range, i, i64_tile_type);
+
+    Value mask;
+    if (original_shape[dim] % sizes[dim] != 0) {
+      // Imperfect tiling, create a mask for values that are inside bounds.
+      Value upper_bound =
+          arith::ConstantIntOp::create(builder, i64_type, original_shape[dim]);
+      upper_bound =
+          arith::SubIOp::create(builder, upper_bound, cast_offsets[dim]);
+      upper_bound = SplatOp::create(builder, i64_tile_type, upper_bound);
+      mask = arith::CmpIOp::create(builder, arith::CmpIPredicate::slt, range,
+                                   upper_bound);
+
+      // Combine mask with previous iteration.
+      mask_tile = add_if(arith::AndIOp(), mask, mask_tile);
+    }
+
+    // Multiply range by shape strides.
+    Value shape_stride = arith::ConstantOp::create(
+        builder, DenseIntElementsAttr::get(i64_tile_type, shape_strides[dim]));
+    range = arith::MulIOp::create(builder, range, shape_stride);
+
+    // Combine range with previous iteration.
+    range_tile = add_if(arith::AddIOp(), range, range_tile);
+  }
+
+  // Sum up block-uniform offsets multiplied by strides.
+  Value block_offset;
+  for (auto [cast_offset, shape_stride] :
+       llvm::zip_equal(cast_offsets, shape_strides)) {
+    Value offset = arith::MulIOp::create(
+        builder, cast_offset,
+        arith::ConstantIntOp::create(builder, i64_type, shape_stride));
+    // Combine offset with previous iteration.
+    block_offset = add_if(arith::AddIOp(), offset, block_offset);
+  }
+  // Add the accumulated offsets to the base pointer.
+  Value block_ptr = add_if(AddPtrOp(), base_ptr, block_offset);
+
+  // Splat block-uniform pointer and add range offsets.
+  auto ptr_tile_type = RankedTensorType::get(tile_shape, base_ptr.getType());
+  Value ptr_tile = SplatOp::create(builder, ptr_tile_type, block_ptr);
+  ptr_tile = add_if(AddPtrOp(), ptr_tile, range_tile);
+
+  return std::make_pair(ptr_tile, mask_tile);
+}
+
 class RewriteExtract : public mlir::OpRewritePattern<ExtractOp> {
  public:
   RewriteExtract(mlir::MLIRContext* context,
@@ -520,7 +517,7 @@ class RewriteExtract : public mlir::OpRewritePattern<ExtractOp> {
   // With TMA:
   // tt.descriptor_load.
   // Offsets are resolved in tt.descriptor_load.
-  // If the layout is not normalized, we insert a transpose to ensure that
+  // If the layout is not major-to-minor, we insert a transpose to ensure that
   // the tile loaded in both TMA and non-TMA cases is the same:
   // tt.descriptor_load + tt.transpose.
   mlir::LogicalResult matchAndRewrite(
@@ -532,64 +529,67 @@ class RewriteExtract : public mlir::OpRewritePattern<ExtractOp> {
     ArrayRef<int64_t> src_layout = op.getSrcLayout();
 
     auto offsets = op.getOffsetsAsValues(builder);
-    if (CanUseTma(tma_enabled_, *device_description_, src_shape, tile_shape,
-                  op.getStaticStrides(), offsets, op.getSrc(), src_layout)) {
-      SmallVector<int64_t> strides = llvm::to_vector(op.getStaticStrides());
-      if (auto result = CanonicalizeTileStrides(strides, tile_shape, src_shape);
+    auto sizes = op.getStaticSizes();
+    auto strides = to_vector(op.getStaticStrides());
+
+    if (CanUseTma(tma_enabled_, *device_description_, src_shape, sizes, strides,
+                  offsets, op.getSrc(), src_layout)) {
+      if (auto result = CanonicalizeTileStrides(strides, sizes, src_shape);
           !result.ok()) {
         return rewriter.notifyMatchFailure(op, result.message());
       }
 
-      AddTmaAttributes(builder, op.getSrc(), src_shape, src_layout, tile_shape,
+      AddTmaAttributes(builder, op.getSrc(), src_shape, src_layout, sizes,
                        strides);
 
-      SmallVector<int64_t> normalized_tile_shape =
-          Normalize(tile_shape, src_layout);
-      auto normalized_tile_type = RankedTensorType::get(
-          normalized_tile_shape, tile_type.getElementType());
-      auto normalized_offsets = Normalize(offsets, src_layout);
+      auto ordered_offsets = GetMajorToMinorOrder(offsets, src_layout);
+      auto ordered_sizes = GetMajorToMinorOrder(sizes, src_layout);
+      auto ordered_type =
+          tile_type.clone(GetMajorToMinorOrder(sizes, src_layout));
 
-      // tensor -> !tt.tensordesc<tile_type>
-      auto cast_to_tensor_desc =
-          builder
-              .create<mlir::UnrealizedConversionCastOp>(
-                  TensorDescType::get(builder.getContext(),
-                                      normalized_tile_type),
-                  op.getSrc())
-              .getResult(0);
+      // ptr -> !tt.tensordesc<tile_type>
+      auto desc_type = TensorDescType::get(builder.getContext(), ordered_type);
+      auto cast_to_tensor_desc = mlir::UnrealizedConversionCastOp::create(
+          builder, desc_type, op.getSrc());
 
-      auto descriptor_load = builder.create<DescriptorLoadOp>(
-          normalized_tile_type, cast_to_tensor_desc,
-          IndexCast(builder, builder.getI32Type(), normalized_offsets));
+      Value result = DescriptorLoadOp::create(
+          builder, ordered_type, cast_to_tensor_desc.getResult(0),
+          IndexCast(builder, builder.getI32Type(), ordered_offsets));
 
-      // Insert a transpose if the layout is not normalized.
-      if (!IsNormalizedLayout(src_layout)) {
-        // Transpose an already normalized tensor back to the original layout.
-        auto transpose =
-            builder.create<TransOp>(op.getType(), descriptor_load,
-                                    GetInverseLayoutPermutation(src_layout));
-        rewriter.replaceOp(op, transpose);
-        return mlir::success();
+      // Insert a transpose if the layout is not major-to-minor.
+      if (!IsMajorToMinorLayout(src_layout)) {
+        result = TransOp::create(builder, result,
+                                 GetInverseLayoutPermutation(src_layout));
+      }
+      // Insert a reshape if the result is rank-reduced.
+      if (sizes.size() != tile_shape.size()) {
+        result = ReshapeOp::create(builder, tile_shape, result,
+                                   /*allowReorder=*/false);
       }
 
-      rewriter.replaceOp(op, descriptor_load);
+      rewriter.replaceOp(op, result);
       return mlir::success();
     }
 
-    auto ptr =
-        CreateAddPtrOp(builder, op.getSrc(), offsets, src_shape, src_layout);
-    auto strides = op.getStridesAsValues(builder);
-    ptr = CreateMakeTensorPtrOp(builder, ptr, src_shape, tile_shape, offsets,
-                                strides, src_layout);
-    auto boundary_checks = ComputeBoundaryChecks(src_shape, tile_shape);
-    std::optional<PaddingOption> padding;
-    if (!boundary_checks.empty()) {
-      padding = PaddingOption::PAD_ZERO;
+    // Compute the set of reduced dimensions.
+    auto reduction_mask = mlir::computeRankReductionMask(sizes, tile_shape);
+    if (!reduction_mask) {
+      return rewriter.notifyMatchFailure(op, "Unsupported rank reduction.");
     }
-    auto load =
-        builder.create<LoadOp>(ptr, boundary_checks, padding,
-                               CacheModifier::NONE, EvictionPolicy::NORMAL,
-                               /*isVolatile=*/false);
+    SmallVector<unsigned> reduced_dims = to_vector(*reduction_mask);
+    absl::c_sort(reduced_dims);
+
+    auto [ptr, mask] = CreateTensorOfPointersAndMask(
+        builder, op.getSrc(), src_shape, src_layout, offsets, sizes, strides,
+        reduced_dims, tile_shape);
+    Value other;
+    if (mask) {
+      other = builder.create<arith::ConstantOp>(builder.getZeroAttr(
+          RankedTensorType::get(tile_shape, tile_type.getElementType())));
+    }
+    auto load = builder.create<LoadOp>(ptr, mask, other, CacheModifier::NONE,
+                                       EvictionPolicy::NORMAL,
+                                       /*isVolatile=*/false);
     rewriter.replaceOp(op, load);
     return mlir::success();
   }
@@ -617,9 +617,9 @@ class RewriteInsert : public mlir::OpRewritePattern<InsertOp> {
   // With TMA:
   // tt.descriptor_store.
   // Offsets are resolved in tt.descriptor_store.
-  // If the layout is not normalized, we insert a transpose to to be compatible
-  // with TMA's physical restrictions.
-  // tt.transpose + tt.descriptor_store.
+  // If the layout is not major-to-minor, we insert a transpose to to be
+  // compatible with TMA's physical restrictions. tt.transpose +
+  // tt.descriptor_store.
   mlir::LogicalResult matchAndRewrite(
       InsertOp op, mlir::PatternRewriter& rewriter) const override {
     ::xla::EmitterLocOpBuilder builder(op.getLoc(), rewriter);
@@ -629,53 +629,57 @@ class RewriteInsert : public mlir::OpRewritePattern<InsertOp> {
     ArrayRef<int64_t> dst_layout = op.getDstLayout();
 
     auto offsets = op.getOffsetsAsValues(builder);
-    if (CanUseTma(tma_enabled_, *device_description_, dst_shape, tile_shape,
-                  op.getStaticStrides(), offsets, op.getDst(), dst_layout)) {
-      SmallVector<int64_t> strides = llvm::to_vector(op.getStaticStrides());
-      if (auto result = CanonicalizeTileStrides(strides, tile_shape, dst_shape);
+    auto sizes = op.getStaticSizes();
+    auto strides = to_vector(op.getStaticStrides());
+
+    // Compute the set of reduced dimensions.
+    auto reduction_mask = mlir::computeRankReductionMask(sizes, tile_shape);
+    if (!reduction_mask) {
+      return rewriter.notifyMatchFailure(op, "Unsupported rank reduction.");
+    }
+    SmallVector<unsigned> reduced_dims = to_vector(*reduction_mask);
+    absl::c_sort(reduced_dims);
+
+    if (CanUseTma(tma_enabled_, *device_description_, dst_shape, sizes, strides,
+                  offsets, op.getDst(), dst_layout)) {
+      if (auto result = CanonicalizeTileStrides(strides, sizes, dst_shape);
           !result.ok()) {
         return rewriter.notifyMatchFailure(op, result.message());
       }
 
-      AddTmaAttributes(builder, op.getDst(), dst_shape, dst_layout, tile_shape,
+      AddTmaAttributes(builder, op.getDst(), dst_shape, dst_layout, sizes,
                        strides);
 
-      SmallVector<int64_t> normalized_tile_shape =
-          Normalize(tile_shape, dst_layout);
-      auto normalized_tile_type = RankedTensorType::get(
-          normalized_tile_shape, tile_type.getElementType());
-      auto normalized_offsets = Normalize(offsets, dst_layout);
+      // ptr -> !tt.tensordesc<tile_type>
+      auto desc_type = TensorDescType::get(
+          builder.getContext(),
+          tile_type.clone(GetMajorToMinorOrder(sizes, dst_layout)));
+      auto cast_to_tensor_desc = mlir::UnrealizedConversionCastOp::create(
+          builder, desc_type, op.getDst());
 
-      // tensor -> !tt.tensordesc<tile_type>
-      auto cast_to_tensor_desc =
-          builder
-              .create<mlir::UnrealizedConversionCastOp>(
-                  TensorDescType::get(builder.getContext(),
-                                      normalized_tile_type),
-                  op.getDst())
-              .getResult(0);
-
-      // Insert a transpose if the layout is not normalized.
-      auto src = op.getSrc();
-      if (!IsNormalizedLayout(dst_layout)) {
-        // Transpose to a normalized tensor by simply reversing the layout.
+      Value src = op.getSrc();
+      // Insert a expand_dims if the source is rank-reduced.
+      for (auto dim : reduced_dims) {
+        src = ExpandDimsOp::create(builder, src, dim);
+      }
+      // Insert a transpose if the layout is not major-to-minor.
+      if (!IsMajorToMinorLayout(dst_layout)) {
+        // Transpose to a major-to-minor tensor by simply reversing the layout.
         auto transpose_order = llvm::to_vector_of<int32_t>(dst_layout);
         std::reverse(transpose_order.begin(), transpose_order.end());
-        src = builder.create<TransOp>(normalized_tile_type, op.getSrc(),
-                                      transpose_order);
+        src = builder.create<TransOp>(src, transpose_order);
       }
-      builder.create<DescriptorStoreOp>(
-          cast_to_tensor_desc, src,
-          IndexCast(builder, builder.getI32Type(), normalized_offsets));
+
+      auto ordered_offsets = GetMajorToMinorOrder(offsets, dst_layout);
+      DescriptorStoreOp::create(
+          builder, cast_to_tensor_desc.getResult(0), src,
+          IndexCast(builder, builder.getI32Type(), ordered_offsets));
     } else {
-      auto ptr =
-          CreateAddPtrOp(builder, op.getDst(), offsets, dst_shape, dst_layout);
-      auto strides = op.getStridesAsValues(builder);
-      ptr = CreateMakeTensorPtrOp(builder, ptr, dst_shape, tile_shape, offsets,
-                                  strides, dst_layout);
-      builder.create<StoreOp>(ptr, op.getSrc(),
-                              ComputeBoundaryChecks(dst_shape, tile_shape),
-                              CacheModifier::NONE, EvictionPolicy::NORMAL);
+      auto [ptr, mask] = CreateTensorOfPointersAndMask(
+          builder, op.getDst(), dst_shape, dst_layout, offsets, sizes, strides,
+          reduced_dims, tile_shape);
+      StoreOp::create(builder, ptr, op.getSrc(), mask, CacheModifier::NONE,
+                      EvictionPolicy::NORMAL);
     }
     rewriter.eraseOp(op);
     return mlir::success();
@@ -701,9 +705,9 @@ class RewriteScalarInsert : public mlir::OpRewritePattern<tensor::InsertOp> {
     auto cast_dst_to_tensor_ptr_type =
         builder.create<mlir::UnrealizedConversionCastOp>(ptr_type, op.getDest())
             .getResult(0);
-    builder.create<StoreOp>(cast_dst_to_tensor_ptr_type, op.getScalar(),
-                            /*boundary_checks=*/std::vector<int32_t>{},
-                            CacheModifier::NONE, EvictionPolicy::NORMAL);
+    StoreOp::create(builder, cast_dst_to_tensor_ptr_type, op.getScalar(),
+                    /*boundary_checks=*/std::vector<int32_t>{},
+                    CacheModifier::NONE, EvictionPolicy::NORMAL);
     rewriter.replaceOp(op, op.getDest());
     return mlir::success();
   }
@@ -722,13 +726,12 @@ class RewriteScalarExtract : public mlir::OpRewritePattern<tensor::ExtractOp> {
     }
     ::xla::EmitterLocOpBuilder builder(op.getLoc(), rewriter);
     auto ptr_type = GetTensorPtrType(op.getType());
-    auto cast_src_to_tensor_ptr_type =
-        builder
-            .create<mlir::UnrealizedConversionCastOp>(ptr_type, op.getTensor())
-            .getResult(0);
-    auto scalar =
-        builder.create<LoadOp>(cast_src_to_tensor_ptr_type, CacheModifier::NONE,
-                               EvictionPolicy::NORMAL, /*isVolatile=*/false);
+    auto cast_src_to_tensor_ptr_type = mlir::UnrealizedConversionCastOp::create(
+                                           builder, ptr_type, op.getTensor())
+                                           .getResult(0);
+    auto scalar = LoadOp::create(builder, cast_src_to_tensor_ptr_type,
+                                 CacheModifier::NONE, EvictionPolicy::NORMAL,
+                                 /*isVolatile=*/false);
     rewriter.replaceOp(op, scalar.getResult());
     return mlir::success();
   }

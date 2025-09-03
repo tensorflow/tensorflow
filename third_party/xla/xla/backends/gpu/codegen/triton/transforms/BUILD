@@ -64,6 +64,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:DialectUtils",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FunctionInterfaces",
         "@llvm-project//mlir:IR",

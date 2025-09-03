@@ -236,7 +236,7 @@ class TileInfo {
   ValueRange offsets() const { return offsets_; }
 
   // Tile strides. Its size is equal to the rank of the output shape.
-  ValueRange tile_strides() const { return tile_strides_; }
+  ArrayRef<int64_t> tile_strides() const { return tile_strides_; }
 
   // The original shape of the tensor.
   ArrayRef<int64_t> original_shape() const { return original_shape_; }
@@ -255,13 +255,14 @@ class TileInfo {
 
  private:
   SmallVector<Value> offsets_;
-  SmallVector<Value> tile_strides_;
+  SmallVector<int64_t> tile_strides_;
   SmallVector<int64_t> original_shape_;
   SmallVector<int64_t> padded_tile_sizes_;
   SmallVector<int64_t> minor_to_major_layout_;
   Type storage_type_;
 
-  explicit TileInfo(SmallVector<Value> offsets, SmallVector<Value> tile_strides,
+  explicit TileInfo(SmallVector<Value> offsets,
+                    SmallVector<int64_t> tile_strides,
                     SmallVector<int64_t> original_shape,
                     SmallVector<int64_t> padded_tile_sizes,
                     SmallVector<int64_t> minor_to_major_layout,
@@ -291,7 +292,7 @@ absl::StatusOr<TileInfo> TileInfo::Construct(
                       TritonType(b, shape.element_type()));
   auto storage_type = StorageType(expected_element_type);
 
-  auto tile_strides = CreateIndexValues(b, tiled_hlo.tile_strides());
+  auto tile_strides = tiled_hlo.tile_strides();
   auto minor_to_major_layout = llvm::to_vector(LayoutUtil::MinorToMajor(shape));
 
   return TileInfo(offsets, tile_strides, original_shape, padded_tile_sizes,
@@ -352,11 +353,13 @@ ScalarOrTensor EmitParameterExtract(EmitterLocOpBuilder b,
         ttir::EvictionPolicy::NORMAL, /*isVolatile=*/false));
   }
 
-  return ScalarOrTensor(b.create<mtx::ExtractOp>(
+  return ScalarOrTensor(mtx::ExtractOp::create(
+      b,
       mlir::RankedTensorType::get(tile_info.padded_tile_sizes(),
                                   tile_info.storage_type()),
-      parent_base_ptr, tile_info.offsets(), tile_info.tile_strides(),
-      tile_info.original_shape(), tile_info.minor_to_major_layout()));
+      parent_base_ptr, tile_info.offsets(), tile_info.padded_tile_sizes(),
+      tile_info.tile_strides(), tile_info.original_shape(),
+      tile_info.minor_to_major_layout()));
 }
 
 absl::StatusOr<ScalarOrTensor> EmitScope(
@@ -1659,8 +1662,8 @@ absl::Status EmitGeneric(mlir::OpBuilder builder,
            "non-empty.";
 
     mtx::InsertOp::create(b, result.UnwrapTensor(), parent_base_ptr,
-                          tile_info.offsets(), tile_info.tile_strides(),
-                          tile_info.original_shape(),
+                          tile_info.offsets(), tile_info.padded_tile_sizes(),
+                          tile_info.tile_strides(), tile_info.original_shape(),
                           tile_info.minor_to_major_layout());
   }
 
@@ -2017,6 +2020,9 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
     }
   }
 
+  pm.addPass(mlir::triton::xla::CreateTritonXLASqueezeDimsPass());
+  pm.addPass(mlir::triton::xla::CreateTritonXLAFoldTransposePass());
+
   if (is_xla_fusion) {
     pm.addPass(
         mlir::triton::xla::CreateInt4ToPackedInt4RewritePass(device_info));
@@ -2024,9 +2030,6 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
 
   pm.addPass(mlir::triton::xla::CreateTritonXLAExtractInsertToTritonPass(
       device_info, block_level_parameters.is_tma_allowed));
-
-  pm.addPass(mlir::triton::xla::CreateTritonXLASqueezeDimsPass());
-  pm.addPass(mlir::triton::xla::CreateTritonXLAFoldTransposePass());
 
   // Lower affine expressions into arithmetic ops.
   pm.addPass(mlir::createLowerAffinePass());

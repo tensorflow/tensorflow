@@ -38,7 +38,8 @@ def TritonXLASqueezeDimsPass : Pass<"triton-xla-squeeze-dims", "mlir::ModuleOp">
     This pass tries to remove size-1 dimensions from tensors.
   }];
   let dependentDialects = [
-    "::mlir::triton::xla::XlaTritonDialect"
+    "::mlir::triton::xla::XlaTritonDialect",
+    "triton::TritonDialect"
   ];
   let options = [
     Option<"finalize_", "finalize", "bool", "true",
