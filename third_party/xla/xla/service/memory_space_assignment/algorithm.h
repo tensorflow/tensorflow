@@ -692,6 +692,9 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   //
   // * processed_allocation_values: The AllocationValues that have already been
   //   processed for the same parent HloValue as is used in the request.
+  // * shape_override: This shape if provided will be used to determine the
+  //   space needed for the allocation. It overrides the shape used in
+  //   PrefetchContext.
   AllocationRequest CreateAllocationRequest(
       AllocationValue& allocation_value,
       AllocationValue& allocation_value_to_update,
@@ -700,7 +703,8 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
       bool require_no_copy_alternate_mem_allocation,
       const std::vector<int64_t>& all_use_times,
       bool only_extend_existing_allocation,
-      absl::Span<AllocationValue> processed_allocation_values);
+      absl::Span<AllocationValue> processed_allocation_values,
+      std::optional<Shape> shape_override);
 
   // Returns true, if the allocation value requires a pinned allocation in the
   // alternate memory space.
@@ -782,13 +786,12 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // will prefetch even if the resource constraints for a prefetch are not met.
   AllocationResult Prefetch(const AllocationRequest& request,
                             Allocation& prev_allocation_in_default_mem,
-                            const Shape* shape = nullptr,
                             bool force_prefetch = false);
 
   // Prefetch to alternate memory iff the resource constraints are met.
   AllocationResult PrefetchWithResourceConstraints(
       const AllocationRequest& request,
-      Allocation& prev_allocation_in_default_mem, const Shape* shape = nullptr);
+      Allocation& prev_allocation_in_default_mem);
 
   // Helper methods used to implement Prefetch().
   //
@@ -818,13 +821,15 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   std::string AlternateMemoryAllocationAttemptToString(
       bool for_sliced_solution, const PrefetchContext& context) const;
 
-  // Try to prefetch a window worth of data into the alternate memory.
-  AllocationResult WindowPrefetch(const AllocationRequest& request,
-                                  Allocation& prev_allocation_in_default_mem);
+  // Performs window prefetching.
+  absl::Status WindowPrefetch();
 
-  // Find the best possible chunk candidate, where it has the longest possible
-  // availability if no preferred offset is given, or at the preferred_offset if
-  // it is given.
+  // Window prefetches the specified operand of the given instruction.
+  void WindowPrefetchOperand(const HloUse& use, int64_t bytes);
+
+  // Find the best possible chunk candidate, where it has the longest
+  // possible availability if no preferred offset is given, or at the
+  // preferred_offset if it is given.
   std::optional<Chunk> FindBestChunkCandidate(
       const AllocationRequest& request, const AliasedOffset* preferred_offset,
       MsaBufferInterval* alternate_mem_interval) const;
@@ -1255,6 +1260,9 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // default memory, to meet buffer coloring requirements.
   absl::flat_hash_map<HloPosition, std::vector<int64_t>>
       default_memory_coloring_requirements_;
+
+  // Set of HloUses that are in the default memory.
+  absl::flat_hash_set<HloUse> uses_in_default_memory_;
 };
 
 }  // namespace memory_space_assignment

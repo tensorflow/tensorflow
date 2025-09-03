@@ -126,6 +126,9 @@ class HloDataflowAnalysis {
   // Returns a vector of all HloValues stabily sorted by HloValue::Id.
   const std::vector<HloValue*>& values() const { return values_vector_; }
 
+  // Returns a new value Id to use.
+  HloValue::Id NewValueId() { return next_value_id_++; }
+
   // Returns the call graph used for computing the dataflow.
   const CallGraph& call_graph() const { return *call_graph_; }
 

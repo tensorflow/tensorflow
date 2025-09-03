@@ -531,7 +531,7 @@ class WindowPrefetchedAllocation final : public Allocation {
 
   Options options_;
   HloInstruction* prefetch_instruction_ = nullptr;
-  Allocation& prev_allocation_;
+  HloPosition defining_position_;
   HloUse use_;
   int64_t prefetch_start_schedule_after_;
   int64_t prefetch_done_schedule_before_;
