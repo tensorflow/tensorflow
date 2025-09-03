@@ -229,12 +229,6 @@ build:cuda_nvcc --@local_config_cuda//:cuda_compiler=nvcc
 # Old config for backward compatibility
 build:nvcc_clang --config=cuda_nvcc
 
-# TODO(yuriit): Remove this once Linux aarch64 hermetic build is supported.
-# This is a temporary solution to build for Linux aarch64 by using NVCC.
-build:cuda_nvcc_linux_aarch64 --config=cuda_nvcc
-build:cuda_nvcc_linux_aarch64 --config=clang_local
-build:cuda_nvcc_linux_aarch64 --crosstool_top=@local_config_cuda//crosstool:toolchain
-
 # Debug config. Enables Bazel's 'dbg' compilation mode, build with debugging enabled
 build:dbg -c dbg
 # Compiling all dependencies with debug info can cause linker failures
