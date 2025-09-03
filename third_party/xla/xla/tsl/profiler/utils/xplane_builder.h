@@ -285,6 +285,9 @@ class XLineBuilder {
   int64_t Id() const { return line_->id(); }
   void SetId(int64_t id) { line_->set_id(id); }
 
+  int64_t DisplayId() const { return line_->display_id(); }
+  void SetDisplayId(int64_t display_id) { line_->set_display_id(display_id); }
+
   int64_t NumEvents() const { return line_->events_size(); }
 
   absl::string_view Name() const { return line_->name(); }
