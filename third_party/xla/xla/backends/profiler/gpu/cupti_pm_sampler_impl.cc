@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <thread>  // NOLINT(build/c++11)
 #include <utility>
@@ -29,7 +30,10 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
@@ -42,10 +46,57 @@ limitations under the License.
 #include "xla/backends/profiler/gpu/cupti_status.h"
 #include "xla/backends/profiler/gpu/cupti_utils.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
+#include "tsl/platform/protobuf.h"
+#include "tsl/profiler/protobuf/profiler_options.pb.h"
 
 namespace xla {
 namespace profiler {
+
+namespace {
+constexpr absl::string_view kGpuPmSampleCounters = "gpu_pm_sample_counters";
+constexpr absl::string_view kGpuPmSampleIntervalUs =
+    "gpu_pm_sample_interval_us";
+
+void GetPmSamplingSettings(const tensorflow::ProfileOptions& profile_options,
+                           std::optional<std::string>& metrics_str,
+                           std::optional<int64_t>& interval_us) {
+  if (profile_options.advanced_configuration().contains(kGpuPmSampleCounters)) {
+    metrics_str = profile_options.advanced_configuration()
+                      .at(kGpuPmSampleCounters)
+                      .string_value();
+  }
+  if (profile_options.advanced_configuration().contains(
+          kGpuPmSampleIntervalUs)) {
+    interval_us = profile_options.advanced_configuration()
+                      .at(kGpuPmSampleIntervalUs)
+                      .int64_value();
+  }
+}
+
+absl::Status SetDefaultPmSamplingOptionsFromConfigFile(
+    absl::string_view config_path, std::vector<std::string>* metrics,
+    size_t* sample_interval_ns) {
+  tensorflow::ProfileOptions profile_options;
+  TF_RETURN_IF_ERROR(tsl::ReadTextProto(
+      tsl::Env::Default(), std::string(config_path), &profile_options));
+  std::optional<std::string> metrics_str;
+  std::optional<int64_t> interval_us;
+  GetPmSamplingSettings(profile_options, metrics_str, interval_us);
+  if (metrics != nullptr && metrics_str) {
+    for (absl::string_view metric :
+         absl::StrSplit(*metrics_str, ',', absl::SkipEmpty())) {
+      metrics->push_back(std::string(absl::StripAsciiWhitespace(metric)));
+    }
+  }
+  if (sample_interval_ns != nullptr && interval_us) {
+    *sample_interval_ns =
+        absl::ToInt64Nanoseconds(absl::Microseconds(*interval_us));
+  }
+  return absl::OkStatus();
+}
+}  // namespace
 
 // Full implementation of CuptiPmSampler
 // This class is responsible for managing the PM sampling process, and
@@ -60,7 +111,17 @@ CuptiPmSamplerDevice::CuptiPmSamplerDevice(int device_id,
   // Save local copy of configured metrics strings
   config_metrics_ = options.metrics;
   enabled_metrics_ = options.metrics;
+  sample_interval_ns_ = options.sample_interval_ns;
 
+  if (!options.default_config_path.empty()) {
+    absl::Status status = SetDefaultPmSamplingOptionsFromConfigFile(
+        options.default_config_path, &config_metrics_, &sample_interval_ns_);
+    if (!status.ok()) {
+      LOG(ERROR)
+          << "Failed to set default PM sampling options from config file: "
+          << options.default_config_path << " with status: " << status;
+    }
+  }
   // Build list of local c string pointers (required by CUPTI calls)
   for (const auto& metric : config_metrics_) {
     c_metrics_.push_back(metric.c_str());
@@ -69,7 +130,6 @@ CuptiPmSamplerDevice::CuptiPmSamplerDevice(int device_id,
   // Save other values provided by the options struct
   max_samples_ = options.max_samples;
   hw_buf_size_ = options.hw_buf_size;
-  sample_interval_ns_ = options.sample_interval_ns;
 }
 
 // Destructor cleans up all images and objects
@@ -186,8 +246,8 @@ absl::Status CuptiPmSamplerDevice::CreateConfigImage() {
   // list of metrics.  Attempt to recover from invalid metric configuration
   if (status == CUPTI_ERROR_INVALID_PARAMETER ||
       status == CUPTI_ERROR_INVALID_METRIC_NAME) {
-    // INVALID_PARAMETER may mean invalid metric, INVALID_METRIC_NAME definitely
-    // does mean this
+    // INVALID_PARAMETER may mean invalid metric, INVALID_METRIC_NAME
+    // definitely does mean this
     if (status == CUPTI_ERROR_INVALID_PARAMETER) {
       LOG(WARNING) << "(Profiling::PM Sampling) Possible invalid metric name";
     } else {
@@ -529,7 +589,8 @@ absl::Status CuptiPmSamplerDevice::CreateConfig() {
   // Attempt to handle invalid metrics and multiple passes
   size_t passes;
   do {
-    // Create a host object and add current set of metrics; create config image
+    // Create a host object and add current set of metrics; create config
+    // image
     TF_RETURN_IF_ERROR(CreateConfigImage());
 
     // Test config image for number of passes
@@ -796,8 +857,8 @@ void CuptiPmSamplerDecodeThread::MainFunc() {
       case ThreadState::kEnabled:
         StateIs(ThreadState::kEnabled);
         {
-          // Release lock for expensive decode call, but regain before returning
-          // to control loop
+          // Release lock for expensive decode call, but regain before
+          // returning to control loop
           state_mutex_.Unlock();
           DecodeUntilDisabled();
           state_mutex_.Lock();
@@ -850,8 +911,8 @@ absl::Status CuptiPmSamplerImpl::Initialize(
     // Set configuration or error out
     TF_RETURN_IF_ERROR(dev->SetConfig());
 
-    // Device is fully configured but PM sampling not yet started - push to list
-    // of PM sampling devices
+    // Device is fully configured but PM sampling not yet started - push to
+    // list of PM sampling devices
     devices_.push_back(std::move(dev));
   }
 
@@ -956,7 +1017,8 @@ absl::Status CuptiPmSamplerImpl::Deinitialize() {
   }
   if (!initialized_) {
     return absl::FailedPreconditionError(
-        "Deinitialize called before Initialize, or failure during Initialize");
+        "Deinitialize called before Initialize, or failure during "
+        "Initialize");
   }
 
   // Tell threads to exit

@@ -40,6 +40,9 @@ struct CuptiPmSamplerOptions {
   bool enable = false;
   // List of metrics to enable
   std::vector<std::string> metrics{};
+  // Path to a configuration file loading default PM Sampling metrics
+  // Example: please see h100_default_pm_sample_config.txtpb
+  std::string default_config_path = "";
   // 64MB hardware buffer (on device)
   size_t hw_buf_size = 64 * 1024 * 1024;
   // Sample interval of 500,000ns = 2khz
