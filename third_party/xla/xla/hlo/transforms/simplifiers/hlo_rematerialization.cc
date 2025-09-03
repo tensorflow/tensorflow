@@ -1591,6 +1591,11 @@ MemoryUsageTracker::PickRematerializationCandidates(
   for (auto* start_item = instruction_list.first_skip_node();
        start_item != nullptr;
        start_item = instruction_list.next_skip_node(start_item)) {
+    if (start_item->instruction->IsDead()) {
+      // This should only happen in peak priority mode because it does not run a
+      // DCE pass to remove dead instructions in between certain remat calls.
+      continue;
+    }
     std::vector<HloRematItem*> block =
         GetInitialBlock(instruction_list, *this, start_item, min_block_size);
     if (block.size() < min_block_size) {
@@ -2505,8 +2510,7 @@ RematPeakAggressively(
               << max_block_size;
     }
     if (instructions_added.remat_count > 0) {
-      VLOG(2) << "Instructions were rematerialized, readjusting schedule";
-
+      VLOG(2) << "Instructions were rematerialized";
       // Found a valid block. Reset to start looking for single
       // instructions again.
       remat->UpdateMaxRematerializedBlockSize(max_block_size);
@@ -2673,20 +2677,28 @@ HloRematerialization::PeakPrioritySubPass(
 
   // Update peak memory used by computation.
   computation_peak_memory_.at(computation) = peak_memory_during_remat;
+  RematSubpassResult remat_subpass_result{
+      // NOLINTNEXTLINE (-Wpre-c++20-compat-pedantic)
+      .status = RematSubpassStatus::kUnchanged,
+      .peak_memory_during_remat = peak_memory_during_remat,
+      .peak_memory_instruction = peak_memory_instruction,
+  };
   if (module_changed_in_this_subpass && over_memory_limit) {
-    return RematSubpassResult::kChangedButOverMemoryLimit;
+    remat_subpass_result.status =
+        RematSubpassStatus::kChangedButOverMemoryLimit;
   }
   if (module_changed_in_this_subpass && !over_memory_limit) {
-    return RematSubpassResult::kChangedAndUnderMemoryLimit;
+    remat_subpass_result.status =
+        RematSubpassStatus::kChangedAndUnderMemoryLimit;
   }
-  return RematSubpassResult::kUnchanged;
+  return remat_subpass_result;
 }
 
 absl::StatusOr<bool> HloRematerialization::RematerializeComputationPeakPriority(
     HloComputation* computation, HloSchedule* schedule,
     int64_t memory_limit_bytes, int64_t min_remat_size,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  VLOG(2) << "Rematerializing Using Peak Priority";
+  VLOG(1) << "Rematerializing Using Peak Priority";
   // If memory limit is zero, cost savings estimates don't work because the cost
   // is defined as memory_limit_bytes / memory_reduced. Bounds it to a large
   // enough value for cost differences to be comparable.
@@ -2736,19 +2748,22 @@ absl::StatusOr<bool> HloRematerialization::RematerializeComputationPeakPriority(
       &remat_move_instructions,
       &execution_threads};
 
-  RematSubpassResult remat_subpass_result =
-      RematSubpassResult::kChangedButOverMemoryLimit;
+  RematSubpassStatus remat_subpass_status;
   bool changed = false;
-  while (remat_subpass_result ==
-         RematSubpassResult::kChangedButOverMemoryLimit) {
+  do {
     TF_ASSIGN_OR_RETURN(
-        remat_subpass_result,
+        RematSubpassResult remat_subpass_result,
         PeakPrioritySubPass(peak_memory_instruction, rematerialization_state,
                             computation, call_graph_node, min_remat_size,
                             peak_memory_during_remat, memory_limit_bytes,
                             execution_threads));
-    changed |= (remat_subpass_result != RematSubpassResult::kUnchanged);
-  }
+    changed |= (remat_subpass_result.status != RematSubpassStatus::kUnchanged);
+    remat_subpass_status = remat_subpass_result.status;
+    peak_memory_during_remat = remat_subpass_result.peak_memory_during_remat;
+    peak_memory_instruction = remat_subpass_result.peak_memory_instruction;
+  } while (remat_subpass_status ==
+           RematSubpassStatus::kChangedButOverMemoryLimit);
+
   rematerialized_computations_.insert(computation);
   return changed;
 }

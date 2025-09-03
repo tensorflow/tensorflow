@@ -949,7 +949,6 @@ xla_cc_test(
         "//xla/service:buffer_value",
         "//xla/service:hlo_cost_analysis",
         "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",

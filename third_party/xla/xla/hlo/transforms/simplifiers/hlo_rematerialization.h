@@ -257,10 +257,16 @@ class HloRematerialization : public HloModulePass {
     int64_t remat_instructions_count;
   };
 
-  enum class RematSubpassResult : char {
+  enum class RematSubpassStatus : char {
     kUnchanged,
     kChangedButOverMemoryLimit,
     kChangedAndUnderMemoryLimit,
+  };
+
+  struct RematSubpassResult {
+    RematSubpassStatus status = RematSubpassStatus::kUnchanged;
+    int64_t peak_memory_during_remat = 0;
+    const HloInstruction* peak_memory_instruction = nullptr;
   };
 
   // Holds the memory usage and instruction at a given program point (usually
