@@ -132,7 +132,13 @@ class HloReachabilityMap {
 
   // Checks if an instruction is in the Reachability map.
   bool IsPresent(const HloInstruction* instruction) const {
-    return indices_.contains(GetKey(instruction));
+    // If we cannot construct the key, then the instruction is not in the
+    // reachability map.
+    return (instruction == nullptr
+                ? false
+                : (instruction->GetModule() != nullptr
+                       ? indices_.contains(GetKey(instruction))
+                       : false));
   }
 
   // Replace the instruction "original" with "replacement" in the reachability
