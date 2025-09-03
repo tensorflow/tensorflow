@@ -77,10 +77,17 @@ absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
     TF_ASSIGN_OR_RETURN(cache, FileBasedAutotunerCache::Create(cache_config));
   }
 
+  AutotuneConfig autotune_config;
+  autotune_config.check_buffers = debug_options.xla_gpu_autotune_level() >= 4;
+  autotune_config.relative_tolerance =
+      debug_options.xla_gpu_autotune_gemm_rtol();
+  autotune_config.crash_on_check_failure =
+      debug_options.xla_gpu_crash_on_verification_failures();
+
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Autotuner> autotuner,
       Autotuner::Create(std::move(backends), std::move(profiler),
-                        AutotuneConfig(), std::move(cache), thread_pool));
+                        autotune_config, std::move(cache), thread_pool));
   return absl::WrapUnique(
       new AutotunerPass(std::move(autotuner), should_autotune));
 }

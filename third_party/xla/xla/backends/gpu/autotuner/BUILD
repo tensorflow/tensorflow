@@ -759,5 +759,11 @@ xla_cc_binary(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@local_tsl//tsl/platform:platform_port",
-    ] + if_cuda_is_configured([":factory_cuda"]) + if_rocm_is_configured([":factory_rocm"]),
+    ] + if_cuda_is_configured([
+        ":factory_cuda",
+        "//xla/stream_executor/cuda:all_runtime",
+    ]) + if_rocm_is_configured([
+        ":factory_rocm",
+        "//xla/stream_executor/rocm:all_runtime",
+    ]),
 )
