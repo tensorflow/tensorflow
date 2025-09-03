@@ -1464,6 +1464,60 @@ The function is applied to each element in the `operand` array, resulting in an
 array with the same shape. It is allowed for `operand` to be a scalar
 (0-dimensional).
 
+### Optional Result Accuracy
+
+XlaBuilder supports these element-wise unary functions with the optional
+`result_accuracy` argument:
+
+<b>`Cbrt(operand, result_accuracy)`</b> Element-wise cubic root operation `x ->
+cbrt(x)`.
+
+<b>`Cos(operand, result_accuracy)`</b> Element-wise cosine `x -> cos(x)`.
+
+<b>`Erf(operand, result_accuracy)`</b> Element-wise error function `x -> erf(x)`
+where
+
+$$\text{erf}(x) = \frac{2}{\sqrt{\pi}}\int_0^x e^{-t^2} \, dt$$.
+
+<b>`Exp(operand, result_accuracy)`</b> Element-wise natural exponential `x ->
+e^x`.
+
+<b>`Expm1(operand, result_accuracy)`</b> Element-wise natural exponential minus
+one `x -> e^x - 1`.
+
+<b>`Log(operand, result_accuracy)`</b> Element-wise natural logarithm `x ->
+ln(x)`.
+
+<b>`Log1p(operand, result_accuracy)`</b> Element-wise shifted natural logarithm
+`x -> ln(1+x)`.
+
+<b>`Logistic(operand, result_accuracy)`</b> Element-wise logistic function
+computation `x -> logistic(x)`.
+
+<b>`Rsqrt(operand, result_accuracy)`</b> Element-wise reciprocal of square root
+operation `x -> 1.0 / sqrt(x)`.
+
+<b>`Sin(operand, result_accuracy)`</b> Element-wise sine `x -> sin(x)`.
+
+<b>`Sqrt(operand, result_accuracy)`</b> Element-wise square root operation `x ->
+sqrt(x)`.
+
+<b>`Tan(operand, result_accuracy)`</b> Element-wise tangent `x -> tan(x)`.
+
+<b>`Tanh(operand, result_accuracy)`</b> Element-wise hyperbolic tangent `x ->
+tanh(x)`.
+
+| Arguments         | Type                      | Semantics                   |
+| ----------------- | ------------------------- | --------------------------- |
+| `operand`         | `XlaOp`                   | The operand to the function |
+| `result_accuracy` | optional `ResultAccuracy` | The types of accuracy the   |
+:                   :                           : user can request for unary  :
+:                   :                           : ops with multiple           :
+:                   :                           : implementations             :
+
+For more information on `result_accuracy` see
+[Result Accuracy](https://github.com/openxla/stablehlo/blob/main/rfcs/20241015-result-accuracy.md)
+
 ## Fft
 
 The XLA FFT operation implements the forward and inverse Fourier Transforms for
