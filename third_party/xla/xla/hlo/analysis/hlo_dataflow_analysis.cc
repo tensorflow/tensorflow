@@ -329,7 +329,7 @@ HloValue& HloDataflowAnalysis::GetValueDefinedAt(
 HloValue* HloDataflowAnalysis::NewHloValue(HloInstruction* instruction,
                                            const ShapeIndex& index,
                                            bool is_phi) {
-  const int64_t value_id = next_value_id_++;
+  const int64_t value_id = NewValueId();
   auto result =
       values_.insert({value_id, std::make_unique<HloValue>(
                                     value_id, instruction, index, is_phi)});
