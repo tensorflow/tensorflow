@@ -1021,20 +1021,26 @@ idempotent.
 See also
 [`XlaBuilder::Dot`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
-**`Dot(lhs, rhs)`**
+**`Dot(lhs, rhs, precision_config, preferred_element_type)`**
 
-Arguments | Type    | Semantics
---------- | ------- | ---------------
-`lhs`     | `XlaOp` | array of type T
-`rhs`     | `XlaOp` | array of type T
+| Arguments                | Type              | Semantics                   |
+| ------------------------ | ----------------- | --------------------------- |
+| `lhs`                    | `XlaOp`           | array of type T             |
+| `rhs`                    | `XlaOp`           | array of type T             |
+| `precision_config`       | optional          | enum for level of precision |
+:                          : `PrecisionConfig` :                             :
+| `preferred_element_type` | optional          | enum of scalar element type |
+:                          : `PrimitiveType`   :                             :
 
 The exact semantics of this operation depend on the ranks of the operands:
 
-| Input                               | Output          | Semantics               |
-| ----------------------------------- | --------------- | ----------------------- |
-| vector [n] `dot` vector [n]         | scalar          | vector dot product      |
-| matrix [m x k] `dot` vector [k]     | vector [m]      | matrix-vector multiplication |
-| matrix [m x k] `dot` matrix [k x n] | matrix [m x n]  | matrix-matrix multiplication |
+| Input                       | Output         | Semantics                    |
+| --------------------------- | -------------- | ---------------------------- |
+| vector [n] `dot` vector [n] | scalar         | vector dot product           |
+| matrix [m x k] `dot` vector | vector [m]     | matrix-vector multiplication |
+: [k]                         :                :                              :
+| matrix [m x k] `dot` matrix | matrix [m x n] | matrix-matrix multiplication |
+: [k x n]                     :                :                              :
 
 The operation performs sum of products over the second dimension of `lhs` (or
 the first if it has 1 dimension) and the first dimension of `rhs`. These are the
@@ -1042,18 +1048,37 @@ the first if it has 1 dimension) and the first dimension of `rhs`. These are the
 the same size. In practice, it can be used to perform dot products between
 vectors, vector/matrix multiplications or matrix/matrix multiplications.
 
+`precision_config` is used to indicate the precision configuration. The level
+dictates whether hardware should attempt to generate more machine code
+instructions to provide more accurate dtype emulation when needed (i.e.
+emulating f32 on a TPU that only supports bf16 matmuls). Values may be
+`DEFAULT`, `HIGH`, `HIGHEST`. Additional details
+[in the MXU sections](https://cloud.google.com/blog/products/ai-machine-learning/bfloat16-the-secret-to-high-performance-on-cloud-tpus).
+
+`preferred_element_type` is a scalar element of higher/lower precision output
+types used for accumulation. `preferred_element_type` recommends the
+accumulation type for the given operaiton, however it is not guaranteed. This
+allows for some hardware backends to instead accumulate in a different type and
+convert to the preferred output type.
+
 ## DotGeneral
 
 See also
 [`XlaBuilder::DotGeneral`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
-**`DotGeneral(lhs, rhs, dimension_numbers)`**
+**`DotGeneral(lhs, rhs, dimension_numbers, precision_config,
+preferred_element_type)`**
 
-Arguments           | Type                  | Semantics
-------------------- | --------------------- | ---------------
-`lhs`               | `XlaOp`               | array of type T
-`rhs`               | `XlaOp`               | array of type T
-`dimension_numbers` | `DotDimensionNumbers` | contracting and batch dimension numbers
+| Arguments                | Type                  | Semantics              |
+| ------------------------ | --------------------- | ---------------------- |
+| `lhs`                    | `XlaOp`               | array of type T        |
+| `rhs`                    | `XlaOp`               | array of type T        |
+| `dimension_numbers`      | `DotDimensionNumbers` | contracting and batch  |
+:                          :                       : dimension numbers      :
+| `precision_config`       | optional              | enum for level of      |
+:                          : `PrecisionConfig`     : precision              :
+| `preferred_element_type` | optional              | enum of scalar element |
+:                          : `PrimitiveType`       : type                   :
 
 Similar to Dot, but allows contracting and batch dimension numbers to be
 specified for both the `lhs` and `rhs`.
@@ -1128,6 +1153,19 @@ DotGeneral(lhs, rhs, dnums) -> { { {1.0, 2.0},
 It follows that the resulting dimension number starts with the batch dimension,
 then the `lhs` non-contracting/non-batch dimension, and finally the `rhs`
 non-contracting/non-batch dimension.
+
+`precision_config` is used to indicate the precision configuration. The level
+dictates whether hardware should attempt to generate more machine code
+instructions to provide more accurate dtype emulation when needed (i.e.
+emulating f32 on a TPU that only supports bf16 matmuls). Values may be
+`DEFAULT`, `HIGH`, `HIGHEST`. Additional details
+[can be found in the MXU sections](https://cloud.google.com/blog/products/ai-machine-learning/bfloat16-the-secret-to-high-performance-on-cloud-tpus).
+
+`preferred_element_type` is a scalar element of higher/lower precision output
+types used for accumulation. `preferred_element_type` recommends the
+accumulation type for the given operaiton, however it is not guaranteed. This
+allows for some hardware backends to instead accumulate in a different type and
+convert to the preferred output type.
 
 ## DynamicSlice
 
