@@ -266,6 +266,15 @@ TEST_F(SymbolicExprTest, Canonicalization_DivMod) {
   EXPECT_EQ(((v0 * 6).ceilDiv(-3)).Canonicalize().ToString(), "(v0 * -2)");
 }
 
+TEST_F(SymbolicExprTest, Walk) {
+  SymbolicExpr expr = (v0 + 42) * v1;
+  std::vector<std::string> visited_exprs;
+  expr.Walk([&](SymbolicExpr e) { visited_exprs.push_back(e.ToString()); });
+
+  EXPECT_THAT(visited_exprs, ::testing::ElementsAre("v0", "42", "(v0 + 42)",
+                                                    "v1", "((v0 + 42) * v1)"));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
