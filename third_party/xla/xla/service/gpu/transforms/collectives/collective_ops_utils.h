@@ -48,9 +48,12 @@ enum class GPUTopologyType {
   MULTI_HOST = 2,
 };
 
-bool IsNVLinkConnected(const HloModuleConfig& config,
-                       const se::DeviceDescription& device_description,
-                       int64_t nvlink_slice_size);
+// Returns true if heuristic collective combining is enabled.
+// Heuristic collective combining enables more aggressive optimizations based
+// on the platform and HLO's topology.
+bool EnableHeuristicCollectiveCombining(
+    const HloModuleConfig& config,
+    const se::DeviceDescription& device_description, int64_t nvlink_slice_size);
 
 }  // namespace gpu
 }  // namespace xla
