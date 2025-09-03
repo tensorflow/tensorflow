@@ -38,15 +38,15 @@ class SymbolicExprStorage;
 typedef int64_t VariableID;
 
 enum class SymbolicExprType {
-  kConstant,
-  kVariable,
   kAdd,
   kMul,
+  kMod,
   kFloorDiv,
   kCeilDiv,
-  kMod,
   kMax,
   kMin,
+  kVariable,
+  kConstant,  // Constant should be the last type for the comparator.
   // TODO(karupayun): Add kIn operator.
   // kIn,  // 'var in [a, b]' .
 };
