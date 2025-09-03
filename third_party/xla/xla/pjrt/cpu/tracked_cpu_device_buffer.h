@@ -18,6 +18,8 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdlib>
+#include <memory>
+#include <vector>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
@@ -26,21 +28,49 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/pjrt/abstract_tracked_device_buffer.h"
 #include "xla/pjrt/cpu/cpu_event.h"
+#include "xla/pjrt/device_event.h"
+#include "xla/pjrt/pjrt_future.h"
+#include "xla/pjrt/raw_buffer.h"
+#include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
 
 // A region of device memory that can be used to construct PjRt buffers. Device
 // memory can be either owned or non-owned.
+//
+// CpuDeviceMemory has an asynchronous memory allocation semantics, as the size
+// of the allocation might depend on a result of another computation (pending
+// async value), and must be delayed until the async value becomes available.
+//
+// Synchronous allocations of the raw memory (same semantics as `aligned_malloc`
+// and `free`) is handled via the `CpuDeviceMemory::Allocator` interface.
+//
+// Types of CpuDeviceMemory:
+//
+//   OWNED:    raw memory was allocated for the CpuDeviceMemory and will be
+//             freed when when CpuDeviceMemory is destroyed.
+//
+//   FOREIGN:  raw memory was allocated by another entity (i.e. it can be a view
+//             into a buffer owned by a different runtime) and the owner will be
+//             notified via the on_delete_callback when CpuDeviceMemory is
+//             destroyed.
+//
+//   CONSTANT: raw memory has a lifetime that is not bound to the
+//             CpuDeviceMemory (i.e. a global static).
+//
 class CpuDeviceMemory {
  public:
+  class Allocator;
+
   virtual ~CpuDeviceMemory() = default;
 
   CpuDeviceMemory(const CpuDeviceMemory&) = delete;
   CpuDeviceMemory& operator=(const CpuDeviceMemory&) = delete;
 
-  void* untyped_data() const { return base_; }
-  size_t size_bytes() const { return size_bytes_; }
+  virtual void* untyped_data() const = 0;
+  virtual size_t size_bytes() const = 0;
 
   // Creates an unavailable AsyncValueRef placeholder for a delayed
   // memory allocation (see `AllocateInto` below).
@@ -59,18 +89,46 @@ class CpuDeviceMemory {
 
   // Allocates owning memory wrapped in an available `AsyncValueRef`.
   static absl::StatusOr<tsl::AsyncValueRef<CpuDeviceMemory>> Allocate(
-      size_t size_bytes);
+      size_t size_bytes, const Allocator& allocator = DefaultAllocator());
 
   // Allocates owning memory into the previously created delayed memory
   // placeholder (see `CreateDelayedMemory` above).
   static absl::Status AllocateInto(
-      size_t size_bytes, tsl::AsyncValuePtr<CpuDeviceMemory> delayed_memory);
+      size_t size_bytes, tsl::AsyncValuePtr<CpuDeviceMemory> delayed_memory,
+      const Allocator& allocator = DefaultAllocator());
+
+  //===--------------------------------------------------------------------===//
+  // Custom raw memory allocation APIs.
+  //===--------------------------------------------------------------------===//
+
+  // Default allocator uses aligned allocation and free APIs from tsl.
+  static Allocator& DefaultAllocator();
+
+  // A raw memory allocation that can be used to construct a CpuDeviceMemory.
+  class RawMemory {
+   public:
+    virtual ~RawMemory() = default;
+    virtual void* base() const = 0;
+    virtual size_t size_bytes() const = 0;
+  };
+
+  // A raw memory allocator that allocates memory buffers for constructing
+  // CpuDeviceMemory.
+  //
+  // This is a virtual interface to allow for different memory allocation
+  // strategies, e.g. aligned_alloc, pre-mapped DMA buffers, etc. For example,
+  // when XLA:CPU is running as a part of host-offloading computation, we want
+  // all buffers used by XLA:CPU to be pre-mapped with the accelerator device,
+  // so that we can issue zero-copy DMA transfers operations if needed.
+  class Allocator {
+   public:
+    virtual ~Allocator() = default;
+    virtual absl::StatusOr<std::unique_ptr<RawMemory>> Allocate(
+        size_t size_bytes, size_t alignment) const = 0;
+  };
 
  protected:
-  CpuDeviceMemory(void* base, size_t size) : base_(base), size_bytes_(size) {}
-
-  void* base_;
-  size_t size_bytes_;
+  CpuDeviceMemory() = default;
 };
 
 // A class that represents a CPU device buffer: it can be a single memory region

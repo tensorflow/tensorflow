@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/no_destructor.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
@@ -39,6 +40,7 @@ limitations under the License.
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/mem.h"
@@ -67,23 +69,68 @@ tsl::AsyncValueRef<CpuEvent> AfterAll(
 
   return std::move(after_all).AsRef();
 }
+
+//===----------------------------------------------------------------------===//
+// Default CpuDeviceMemory::RawMemory allocator.
+//===----------------------------------------------------------------------===//
+
+class AlignedMemory final : public CpuDeviceMemory::RawMemory {
+ public:
+  AlignedMemory(void* base, size_t size_bytes)
+      : base_(base), size_bytes_(size_bytes) {}
+
+  ~AlignedMemory() final {
+    tsl::port::AlignedSizedFree(base_, cpu::MinAlign(), size_bytes_);
+  }
+
+  void* base() const final { return base_; }
+  size_t size_bytes() const final { return size_bytes_; }
+
+ private:
+  void* base_;
+  size_t size_bytes_;
+};
+
+class AlignedAllocator final : public CpuDeviceMemory::Allocator {
+ public:
+  absl::StatusOr<std::unique_ptr<CpuDeviceMemory::RawMemory>> Allocate(
+      size_t size_bytes, size_t alignment) const final {
+    if (void* base = tsl::port::AlignedMalloc(size_bytes, alignment)) {
+      return std::make_unique<AlignedMemory>(base, size_bytes);
+    }
+    return ResourceExhausted("Out of memory allocating %d bytes.", size_bytes);
+  }
+};
+
 }  // namespace
+
+CpuDeviceMemory::Allocator& CpuDeviceMemory::DefaultAllocator() {
+  static absl::NoDestructor<AlignedAllocator> allocator;
+  return *allocator;
+}
+
+//===----------------------------------------------------------------------===//
+// CpuDeviceMemory implementations.
+//===----------------------------------------------------------------------===//
 
 class CpuDeviceMemoryOwned final : public CpuDeviceMemory {
  public:
-  CpuDeviceMemoryOwned(void* base, size_t size) : CpuDeviceMemory(base, size) {}
+  explicit CpuDeviceMemoryOwned(std::unique_ptr<RawMemory> mem)
+      : mem_(std::move(mem)) {}
 
-  ~CpuDeviceMemoryOwned() final {
-    CHECK_NE(untyped_data(), nullptr);
-    tsl::port::AlignedSizedFree(untyped_data(), cpu::MinAlign(), size_bytes());
-  }
+  void* untyped_data() const final { return mem_->base(); }
+  size_t size_bytes() const final { return mem_->size_bytes(); }
+
+ private:
+  std::unique_ptr<RawMemory> mem_;
 };
 
 class CpuDeviceMemoryForeign final : public CpuDeviceMemory {
  public:
   CpuDeviceMemoryForeign(void* base, size_t size,
                          absl::AnyInvocable<void() &&> on_delete_callback)
-      : CpuDeviceMemory(base, size),
+      : base_(base),
+        size_bytes_(size),
         on_delete_callback_(std::move(on_delete_callback)) {}
 
   ~CpuDeviceMemoryForeign() final {
@@ -92,14 +139,26 @@ class CpuDeviceMemoryForeign final : public CpuDeviceMemory {
     }
   }
 
+  void* untyped_data() const final { return base_; }
+  size_t size_bytes() const final { return size_bytes_; }
+
  private:
+  void* base_;
+  size_t size_bytes_;
   absl::AnyInvocable<void() &&> on_delete_callback_;
 };
 
 class CpuDeviceMemoryConstant final : public CpuDeviceMemory {
  public:
   CpuDeviceMemoryConstant(void* base, size_t size)
-      : CpuDeviceMemory(base, size) {}
+      : base_(base), size_bytes_(size) {}
+
+  void* untyped_data() const final { return base_; }
+  size_t size_bytes() const final { return size_bytes_; }
+
+ private:
+  void* base_;
+  size_t size_bytes_;
 };
 
 tsl::AsyncValueRef<CpuDeviceMemory> CpuDeviceMemory::CreateDelayedMemory() {
@@ -119,26 +178,29 @@ tsl::AsyncValueRef<CpuDeviceMemory> CpuDeviceMemory::CreateConstantMemory(
 
 // Allocates owning memory wrapped in an available `AsyncValueRef`.
 absl::StatusOr<tsl::AsyncValueRef<CpuDeviceMemory>> CpuDeviceMemory::Allocate(
-    size_t size_bytes) {
-  if (void* data = tsl::port::AlignedMalloc(size_bytes, cpu::MinAlign())) {
-    return tsl::MakeAvailableAsyncValueRef<CpuDeviceMemoryOwned>(data,
-                                                                 size_bytes);
-  }
-  return ResourceExhausted("Out of memory allocating %d bytes.", size_bytes);
+    size_t size_bytes, const Allocator& allocator) {
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<RawMemory> mem,
+                      allocator.Allocate(size_bytes, cpu::MinAlign()));
+  return tsl::MakeAvailableAsyncValueRef<CpuDeviceMemoryOwned>(std::move(mem));
 }
 
 absl::Status CpuDeviceMemory::AllocateInto(
-    size_t size_bytes, tsl::AsyncValuePtr<CpuDeviceMemory> delayed_memory) {
+    size_t size_bytes, tsl::AsyncValuePtr<CpuDeviceMemory> delayed_memory,
+    const Allocator& allocator) {
   auto owned_memory = delayed_memory.DynCast<CpuDeviceMemoryOwned>();
   if (!owned_memory) {
     return Internal("Delayed memory is not a CpuDeviceMemoryOwned");
   }
-  if (void* data = tsl::port::AlignedMalloc(size_bytes, cpu::MinAlign())) {
-    owned_memory.emplace(data, size_bytes);
-    return absl::OkStatus();
-  }
-  return ResourceExhausted("Out of memory allocating %d bytes.", size_bytes);
+
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<RawMemory> mem,
+                      allocator.Allocate(size_bytes, cpu::MinAlign()));
+  owned_memory.emplace(std::move(mem));
+  return absl::OkStatus();
 }
+
+//===----------------------------------------------------------------------===//
+// TrackedCpuDeviceBuffer.
+//===----------------------------------------------------------------------===//
 
 TrackedCpuDeviceBuffer::TrackedCpuDeviceBuffer(
     bool owns_buffers, tsl::AsyncValueRef<CpuDeviceMemory> buffer,
