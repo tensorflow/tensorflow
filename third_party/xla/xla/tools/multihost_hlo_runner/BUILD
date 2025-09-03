@@ -259,6 +259,7 @@ xla_test(
         "//xla/service:computation_layout",
         "//xla/service:hlo_proto_cc",
         "//xla/tests:xla_test_backend_predicates",
+        "//xla/tools/multihost_hlo_runner:profiler_interface",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
