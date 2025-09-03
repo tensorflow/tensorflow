@@ -1847,9 +1847,8 @@ StreamExecutorGpuClient::RunAsync(
                                  ? run_options->device_ordinal()
                                  : executor->device_ordinal();
 
-  XLA_SCOPED_LOGGING_TIMER(
-      absl::StrCat("GpuExecutable::ExecuteAsyncOnStreamImpl(",
-                   gpu_exec->module_name(), ")"));
+  XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
+      "GpuExecutable::ExecuteAsyncOnStreamImpl(", gpu_exec->name(), ")"));
 
   // GpuExecutable always bound to a single GpuContext during its execution, so
   // we activate it once to skip expensive context activations later.

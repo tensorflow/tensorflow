@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/annotation.h"
@@ -120,7 +121,7 @@ class GpuExecutable : public Executable {
   // This should be called after set_ir_module_string.
   const std::string& ir_module_string() const { return ir_module_string_; }
 
-  const std::string& module_name() const { return module_name_; }
+  absl::string_view name() const override { return module_name_; }
 
   xla::Shape result_shape() const override { return program_shape_.result(); }
 

@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -376,6 +377,13 @@ class Executable {
   virtual ComputationLayout compute_computation_layout() const {
     CHECK(hlo_module_ != nullptr);
     return hlo_module_->compute_computation_layout();
+  }
+
+  virtual absl::string_view name() const {
+    if (has_module()) {
+      return module().name();
+    }
+    return "<unknown executable>";
   }
 
   // Returns the size of the executable in bytes. Returns -1 if this query is
