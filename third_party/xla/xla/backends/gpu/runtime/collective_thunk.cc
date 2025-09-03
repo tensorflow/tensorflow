@@ -351,71 +351,24 @@ absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
   return device_buffers;
 }
 
-absl::Status RegisterBufferOnce(se::StreamExecutor* executor,
-                                Communicator* comm, se::DeviceMemoryBase buffer,
-                                bool use_symmetric_buffer) {
-  // Keep track of which communicators we have registered for already.
-  // Each ncclMemAlloc'd buffer needs to be registered once per comm.
-  struct RegisteredBuffers {
-    absl::Mutex mu;
-    // Device ordinal, communicator, and base pointer address.
-    absl::flat_hash_set<std::tuple<int, uint64_t, Communicator*, void*>> records
-        ABSL_GUARDED_BY(mu);
-    // Buffers could be deregistered with ncclCommDeregister.
-    std::vector<std::unique_ptr<Communicator::RegisteredBufferHandle>> handles
-        ABSL_GUARDED_BY(mu);
-  };
-  static auto& all_registered = *new RegisteredBuffers;
-
-  // Since each XLA buffer is a slice into a larger BFCAllocator chunk, first
-  // get the base address of buffer. We will use the base address to keep track
-  // of which chunks we have registered.
-  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase base_buffer,
-                      executor->GetMemoryRange(buffer));
-  bool need_reg = false;
-  {
-    absl::MutexLock lock(&all_registered.mu);
-    if (!all_registered.records.contains({executor->device_ordinal(),
-                                          buffer.size(), comm,
-                                          buffer.opaque()})) {
-      need_reg = true;
-    } else {
-      VLOG(5) << "[" << executor->device_ordinal()
-              << "] Buffer: " << buffer.opaque()
-              << " with size: " << buffer.size()
-              << " and base pointer: " << base_buffer.opaque()
-              << " is already registered.";
-    }
-  }
-  if (need_reg) {
-    VLOG(5) << "[" << executor->device_ordinal() << "] Registering "
-            << buffer.opaque() << " with size: " << buffer.size()
-            << " and base pointer: " << base_buffer.opaque()
-            << ", is symmetric: " << (use_symmetric_buffer ? "true" : "false");
-    // Symmetric buffer registration is a collective operation,
-    // we need to do that before locking on a global.
-    TF_ASSIGN_OR_RETURN(auto handle,
-                        comm->RegisterBuffer(buffer, use_symmetric_buffer));
-    absl::MutexLock lock(&all_registered.mu);
-    all_registered.handles.push_back(std::move(handle));
-    all_registered.records.insert(
-        {executor->device_ordinal(), buffer.size(), comm, buffer.opaque()});
-  }
-  return absl::OkStatus();
-}
-
 absl::Status MaybeRegisterBuffers(se::StreamExecutor* executor,
                                   const std::vector<DeviceBufferPair>& buffers,
                                   Communicator* comm,
                                   bool use_symmetric_buffer) {
   for (int i = 0; i < buffers.size(); ++i) {
     if (buffers[i].source_memory_space == kCollectiveMemorySpaceColor) {
-      TF_RETURN_IF_ERROR(RegisterBufferOnce(
-          executor, comm, buffers[i].source_buffer, use_symmetric_buffer));
+      TF_ASSIGN_OR_RETURN(auto range,
+                          executor->GetMemoryRange(buffers[i].source_buffer));
+      TF_RETURN_IF_ERROR(comm->RegisterBufferOnce(
+          buffers[i].source_buffer, range, executor->device_ordinal(),
+          use_symmetric_buffer));
     }
     if (buffers[i].destination_memory_space == kCollectiveMemorySpaceColor) {
-      TF_RETURN_IF_ERROR(RegisterBufferOnce(
-          executor, comm, buffers[i].destination_buffer, use_symmetric_buffer));
+      TF_ASSIGN_OR_RETURN(
+          auto range, executor->GetMemoryRange(buffers[i].destination_buffer));
+      TF_RETURN_IF_ERROR(comm->RegisterBufferOnce(
+          buffers[i].destination_buffer, range, executor->device_ordinal(),
+          use_symmetric_buffer));
     }
   }
   return absl::OkStatus();

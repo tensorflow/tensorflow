@@ -152,7 +152,7 @@ TEST(NcclCommunicator, OperationsFailAfterAbort) {
     ASSERT_THAT((*comm)->Abort(), absl_testing::IsOk());
     AssertAborted((*comm)->HealthCheck());
     AssertAborted((*comm)->NumRanks().status());
-    AssertAborted((*comm)->RegisterBuffer(buf).status());
+    AssertAborted((*comm)->RegisterBufferOnce(buf, buf, 0, false));
     AssertEventAborted(
         (*comm)->AllReduce(buf, buf, dtype, count, rk, executor));
     AssertEventAborted(

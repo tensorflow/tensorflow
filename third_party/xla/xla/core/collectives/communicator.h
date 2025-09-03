@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/core/collectives/rank_id.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
 #include "xla/util.h"
@@ -66,28 +67,15 @@ class Communicator {
     virtual absl::Status Unregister() = 0;
   };
 
-  // Register `buffer` for efficient collective operations (i.e. on NCCL backend
-  // it registers the buffer for zero-copy collective operations).
-  virtual absl::StatusOr<std::unique_ptr<RegisteredBufferHandle>>
-  RegisterBuffer(stream_executor::DeviceMemoryBase buffer) {
+  // Register `buffer` which can be a slice within a bigger `buffer_range` once
+  // for efficient collective operations (i.e. on NCCL backend it registers the
+  // buffer for zero-copy collective operations).
+  //
+  virtual absl::Status RegisterBufferOnce(se::DeviceMemoryBase buffer,
+                                          se::DeviceMemoryBase buffer_range,
+                                          int device_ordinal,
+                                          bool use_symmetric_buffer) {
     return Unimplemented("User-managed buffer registration is not supported");
-  }
-
-  // Register `buffer` for efficient collective operations (i.e. on NCCL backend
-  // it registers the buffer for zero-copy collective operations).
-  // If `use_symmetric_buffer` is true, the buffer is registered as a symmetric
-  // buffer.
-  virtual absl::StatusOr<std::unique_ptr<RegisteredBufferHandle>>
-  RegisterBuffer(stream_executor::DeviceMemoryBase buffer,
-                 bool use_symmetric_buffer) {
-    return Unimplemented("User-managed buffer registration is not supported");
-  }
-
-  // Register `buffer` for efficient collective operations (i.e. on NVSHMEM
-  // backend it registers the buffer for unregistered nvshmem buffers).
-  virtual absl::Status RegisterBuffer(void* addr, size_t length) {
-    return absl::UnimplementedError(
-        "User-managed buffer registration is not supported");
   }
 
   // Abort any uncompleted operations and destroys the underlying communicator

@@ -99,9 +99,6 @@ absl::StatusOr<bool> SendThunk::RunCollective(const ExecuteParams& params,
           << CollectiveOpGroupModeToString(config_.config.group_mode) << " ("
           << hlo_name_ << ")";
 
-  TF_RETURN_IF_ERROR(
-      MaybeRegisterBuffers(stream.parent(), {buffer}, comm_handle.comm));
-
   const std::optional<int64_t> target_id = source_target.target;
   se::DeviceMemoryBase src_addr = buffer.source_buffer;
 
@@ -133,6 +130,8 @@ absl::StatusOr<bool> SendThunk::RunCollective(const ExecuteParams& params,
     }
 
     if (should_run) {
+      TF_RETURN_IF_ERROR(
+          MaybeRegisterBuffers(stream.parent(), {buffer}, comm_handle.comm));
       auto event = comm_handle.comm->Send(
           src_addr, buffer.element_type, buffer.element_count,
           RankId(*target_id), GpuCollectives::On(stream));

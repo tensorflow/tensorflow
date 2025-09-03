@@ -21,13 +21,17 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/core/collectives/communicator.h"
@@ -79,11 +83,13 @@ class NcclCommunicator : public GpuCommunicator {
   absl::Status HealthCheck() const final;
   absl::StatusOr<size_t> NumRanks() const final;
 
-  absl::StatusOr<std::unique_ptr<RegisteredBufferHandle>> RegisterBuffer(
-      se::DeviceMemoryBase buffer) final;
-
-  absl::StatusOr<std::unique_ptr<RegisteredBufferHandle>> RegisterBuffer(
-      se::DeviceMemoryBase buffer, bool use_symmetric_buffer) final;
+  // Since each XLA buffer is a slice into a larger BFCAllocator chunk, first
+  // get the base address of buffer. We will use the base address to keep track
+  // of which chunks we have registered.
+  absl::Status RegisterBufferOnce(se::DeviceMemoryBase buffer,
+                                  se::DeviceMemoryBase buffer_range,
+                                  int device_ordinal,
+                                  bool use_symmetric_buffer) final;
 
   tsl::AsyncValueRef<Communicator::Event> GroupExecute(
       absl::AnyInvocable<absl::Status(GpuCommunicator*)> f) final;
@@ -134,6 +140,10 @@ class NcclCommunicator : public GpuCommunicator {
   ncclComm_t comm() const { return comm_; }
 
  private:
+  absl::StatusOr<std::unique_ptr<RegisteredBufferHandle>> RegisterBuffer(
+      se::DeviceMemoryBase buffer, int device_ordinal,
+      bool use_symmetric_buffer);
+
   class NcclRegisteredBufferHandle;
 
   explicit NcclCommunicator(ncclComm_t comm,
@@ -227,6 +237,17 @@ class NcclCommunicator : public GpuCommunicator {
 
   // Nesting level of current NCCL group
   int group_nesting_level_ = 0;
+
+  // Keep track of which communicators we have registered for already.
+  // Each ncclMemAlloc'd buffer needs to be registered once per comm.
+  struct RegisteredBuffers {
+    absl::Mutex mu;
+    // Pointer to the registered buffer handle.
+    absl::flat_hash_map<std::tuple<size_t, void*>,
+                        std::unique_ptr<Communicator::RegisteredBufferHandle>>
+        records_to_handles ABSL_GUARDED_BY(mu);
+  };
+  RegisteredBuffers registered_buffers_;
 };
 
 }  // namespace xla::gpu

@@ -21,6 +21,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -31,6 +32,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
@@ -181,11 +183,12 @@ class NcclCommunicator::NcclRegisteredBufferHandle
  public:
   NcclRegisteredBufferHandle(NcclCommunicator& comm, void* handle,
                              tsl::AsyncValue::Executor* executor,
-                             bool symmetric_handle)
+                             bool symmetric_handle, int device_ordinal)
       : comm_(comm),
         handle_(handle),
         executor_(),
-        symmetric_handle_(symmetric_handle) {}
+        symmetric_handle_(symmetric_handle),
+        device_ordinal_(device_ordinal) {}
 
   ~NcclRegisteredBufferHandle() override {
     if (auto status = Unregister(); !status.ok()) {
@@ -195,13 +198,14 @@ class NcclCommunicator::NcclRegisteredBufferHandle
 
   absl::Status Unregister() final {
     VLOG(3) << absl::StreamFormat(
-        "Deregister buffer for NCCL communicator; handle=%p; comm=%p", handle_,
-        comm_.comm_);
+        "[%d] Deregister buffer for NCCL communicator; handle=%p; comm=%p",
+        device_ordinal_, handle_, comm_.comm_);
     if (!symmetric_handle_) {
 #if (NCCL_VERSION_CODE >= 21901)
       auto f = [this]() -> absl::Status {
         if (comm_.canceling_.load()) {
-          return FailedPrecondition("NcclCommunicator aborted");
+          return FailedPrecondition("[%d] NcclCommunicator aborted",
+                                    device_ordinal_);
         }
         XLA_NCCL_RETURN_IF_ERROR(ncclCommDeregister(comm_.comm(), handle_));
         return comm_.PollUntilDone();
@@ -211,17 +215,20 @@ class NcclCommunicator::NcclRegisteredBufferHandle
       }
       return BlockAndGet(tsl::MakeAsyncValueRef(*executor_, f));
 #else
-      return Unimplemented("NCCL version does not support ncclCommDeregister");
+      return Unimplemented(
+          "[%d] NCCL version does not support ncclCommDeregister",
+          device_ordinal_);
 #endif  // NCCL_VERSION_CODE >= 21901
     } else {
       VLOG(3) << absl::StreamFormat(
-          "Deregister symmetric buffer for NCCL communicator; handle=%p; "
+          "[%d] Deregister symmetric buffer for NCCL communicator; handle=%p; "
           "comm=%p",
-          handle_, comm_.comm_);
+          device_ordinal_, handle_, comm_.comm_);
 #if (NCCL_VERSION_CODE >= 22700)
       auto f = [this]() -> absl::Status {
         if (comm_.canceling_.load()) {
-          return FailedPrecondition("NcclCommunicator aborted");
+          return FailedPrecondition("[%d] NcclCommunicator aborted",
+                                    device_ordinal_);
         }
         XLA_NCCL_RETURN_IF_ERROR(
             ncclCommWindowDeregister(comm_.comm(), *(ncclWindow_t*)(handle_)));
@@ -233,7 +240,8 @@ class NcclCommunicator::NcclRegisteredBufferHandle
       return BlockAndGet(tsl::MakeAsyncValueRef(*executor_, f));
 #else
       return Unimplemented(
-          "NCCL version does not support ncclCommWindowDeregister");
+          "[%d] NCCL version does not support ncclCommWindowDeregister",
+          device_ordinal_);
 #endif  // NCCL_VERSION_CODE >= 22700
     }
   }
@@ -243,6 +251,7 @@ class NcclCommunicator::NcclRegisteredBufferHandle
   void* handle_;
   tsl::AsyncValue::Executor* executor_;
   bool symmetric_handle_;
+  int device_ordinal_;
 };
 
 //==-----------------------------------------------------------------------===//
@@ -347,24 +356,53 @@ absl::StatusOr<size_t> NcclCommunicator::NumRanks() const {
   }));
 }
 
-absl::StatusOr<std::unique_ptr<Communicator::RegisteredBufferHandle>>
-NcclCommunicator::RegisterBuffer(stream_executor::DeviceMemoryBase buffer) {
-  return RegisterBuffer(buffer, /*use_symmetric_buffer=*/false);
+absl::Status NcclCommunicator::RegisterBufferOnce(
+    se::DeviceMemoryBase buffer, se::DeviceMemoryBase buffer_range,
+    int device_ordinal, bool use_symmetric_buffer) {
+  bool need_reg = false;
+  {
+    absl::MutexLock lock(&registered_buffers_.mu);
+    if (!registered_buffers_.records_to_handles.contains(
+            {buffer.size(), buffer.opaque()})) {
+      need_reg = true;
+    } else {
+      VLOG(5) << "[" << device_ordinal << "] Buffer: " << buffer.opaque()
+              << " with size: " << buffer.size()
+              << " with range: " << buffer_range.opaque()
+              << " is already registered.";
+    }
+  }
+  if (need_reg) {
+    VLOG(5) << "[" << device_ordinal << "] Registering " << buffer.opaque()
+            << " with size: " << buffer.size()
+            << " and with range: " << buffer_range.opaque()
+            << ", is symmetric: " << (use_symmetric_buffer ? "true" : "false");
+    // Symmetric buffer registration is a collective operation,
+    // we need to do that before locking on a global.
+    TF_ASSIGN_OR_RETURN(auto handle, RegisterBuffer(buffer, device_ordinal,
+                                                    use_symmetric_buffer));
+    absl::MutexLock lock(&registered_buffers_.mu);
+    registered_buffers_
+        .records_to_handles[std::make_tuple(buffer.size(), buffer.opaque())] =
+        std::move(handle);
+  }
+  return absl::OkStatus();
 }
 
 absl::StatusOr<std::unique_ptr<Communicator::RegisteredBufferHandle>>
 NcclCommunicator::RegisterBuffer(stream_executor::DeviceMemoryBase buffer,
+                                 int device_ordinal,
                                  bool use_symmetric_buffer) {
 #if (NCCL_VERSION_CODE >= 21901)
   using Handle = std::unique_ptr<Communicator::RegisteredBufferHandle>;
 
   if (!use_symmetric_buffer) {
-    return BlockAndGet(
-        Execute<Handle>([&buffer, this]() -> absl::StatusOr<Handle> {
+    return BlockAndGet(Execute<Handle>(
+        [&buffer, device_ordinal, this]() -> absl::StatusOr<Handle> {
           VLOG(3) << absl::StreamFormat(
-              "Register buffer for NCCL communicator; buffer=%p; size=%d; "
+              "[%d] Register buffer for NCCL communicator; buffer=%p; size=%d; "
               "comm=%p",
-              buffer.opaque(), buffer.size(), comm_);
+              device_ordinal, buffer.opaque(), buffer.size(), comm_);
           if (canceling_.load()) {
             return absl::FailedPreconditionError("NcclCommunicator aborted");
           }
@@ -375,34 +413,39 @@ NcclCommunicator::RegisterBuffer(stream_executor::DeviceMemoryBase buffer,
             TF_RETURN_IF_ERROR(PollUntilDone());
           }
           return std::make_unique<NcclRegisteredBufferHandle>(
-              *this, handle, executor_.get(), /*symmetric_buffer= */ false);
+              *this, handle, executor_.get(), /*symmetric_buffer= */ false,
+              device_ordinal);
         }));
 #else
-  return Unimplemented("NCCL version does not support ncclCommRegister");
+  return Unimplemented("[%d] NCCL version does not support ncclCommRegister",
+                       device_ordinal);
 #endif  // NCCL_VERSION_CODE >= 21901
   } else {
 #if (NCCL_VERSION_CODE >= 22700)
-    return BlockAndGet(
-        Execute<Handle>([&buffer, this]() -> absl::StatusOr<Handle> {
-          VLOG(3) << absl::StreamFormat(
-              "Register symmetric buffer for NCCL communicator; buffer=%p; "
-              "size=%d; "
-              "comm=%p",
-              buffer.opaque(), buffer.size(), comm_);
-          void* handle = nullptr;
-          XLA_NCCL_RETURN_IF_ERROR(ncclGroupStart());
-          XLA_NCCL_RETURN_IF_ERROR(ncclCommWindowRegister(
-              comm_, buffer.opaque(), buffer.size(), (ncclWindow_t*)&handle,
-              NCCL_WIN_COLL_SYMMETRIC));
-          XLA_NCCL_RETURN_IF_ERROR(ncclGroupEnd());
-          if (group_nesting_level_ == 0) {
-            TF_RETURN_IF_ERROR(PollUntilDone());
-          }
-          return std::make_unique<NcclRegisteredBufferHandle>(
-              *this, handle, executor_.get(), /*symmetric_buffer= */ true);
-        }));
+    return BlockAndGet(Execute<Handle>([&buffer, device_ordinal,
+                                        this]() -> absl::StatusOr<Handle> {
+      VLOG(3) << absl::StreamFormat(
+          "[%d] Register symmetric buffer for NCCL communicator; buffer=%p; "
+          "size=%d; "
+          "comm=%p",
+          device_ordinal, buffer.opaque(), buffer.size(), comm_);
+      void* handle = nullptr;
+      XLA_NCCL_RETURN_IF_ERROR(ncclGroupStart());
+      XLA_NCCL_RETURN_IF_ERROR(ncclCommWindowRegister(
+          comm_, buffer.opaque(), buffer.size(), (ncclWindow_t*)&handle,
+          NCCL_WIN_COLL_SYMMETRIC));
+      XLA_NCCL_RETURN_IF_ERROR(ncclGroupEnd());
+      if (group_nesting_level_ == 0) {
+        TF_RETURN_IF_ERROR(PollUntilDone());
+      }
+      return std::make_unique<NcclRegisteredBufferHandle>(
+          *this, handle, executor_.get(), /*symmetric_buffer= */ true,
+          device_ordinal);
+    }));
 #else
-  return Unimplemented("NCCL version does not support ncclCommWindowRegister");
+  return Unimplemented(
+      "[%d] NCCL version does not support ncclCommWindowRegister",
+      device_ordinal);
 #endif  // NCCL_VERSION_CODE >= 22700
   }
 }
@@ -529,7 +572,7 @@ absl::Status NcclCommunicator::LaunchAllReduce(
   se::Stream* stream = ToStream(executor);
 
   VLOG(3) << absl::StreamFormat(
-      "Launch NCCL AllReduce operation on device #%d; send_buffer=%p; "
+      "[%d] Launch NCCL AllReduce operation; send_buffer=%p; "
       "recv_buffer=%p; dtype=%s; count=%d; reduction_kind=%s; comm=%p; "
       "stream=%p",
       stream->parent()->device_ordinal(), send_buffer.opaque(),
@@ -559,7 +602,7 @@ absl::Status NcclCommunicator::LaunchBroadcast(se::DeviceMemoryBase send_buffer,
   se::Stream* stream = ToStream(executor);
 
   VLOG(3) << absl::StreamFormat(
-      "Launch NCCL Broadcast operation on device #%d; send_buffer=%p; "
+      "[%d] Launch NCCL Broadcast operation; send_buffer=%p; "
       "recv_buffer=%p; dtype=%s; count=%d; root=%d; comm=%p; "
       "stream=%p",
       stream->parent()->device_ordinal(), send_buffer.opaque(),
@@ -587,7 +630,7 @@ absl::Status NcclCommunicator::LaunchReduceScatter(
   se::Stream* stream = ToStream(executor);
 
   VLOG(3) << absl::StreamFormat(
-      "Launch NCCL ReduceScatter operation on device #%d; send_buffer=%p; "
+      "[%d] Launch NCCL ReduceScatter operation; send_buffer=%p; "
       "recv_buffer=%p; dtype=%s; count=%d; reduction_kind=%s; comm=%p; "
       "stream=%p",
       stream->parent()->device_ordinal(), send_buffer.opaque(),
@@ -617,7 +660,7 @@ absl::Status NcclCommunicator::LaunchAllGather(se::DeviceMemoryBase send_buffer,
   se::Stream* stream = ToStream(executor);
 
   VLOG(3) << absl::StreamFormat(
-      "Launch NCCL AllGather operation on device #%d; send_buffer=%p; "
+      "[%d] Launch NCCL AllGather operation; send_buffer=%p; "
       "recv_buffer=%p; dtype=%s; count=%d; comm=%p; stream=%p",
       stream->parent()->device_ordinal(), send_buffer.opaque(),
       recv_buffer.opaque(), primitive_util::LowercasePrimitiveTypeName(dtype),
@@ -648,7 +691,7 @@ absl::Status NcclCommunicator::LaunchAllToAll(
   };
 
   VLOG(3) << absl::StreamFormat(
-      "Launch NCCL AllToAll operation on device #%d; send_buffers=[%s]; "
+      "[%d] Launch NCCL AllToAll operation; send_buffers=[%s]; "
       "recv_buffers=[%s]; dtype=%s; count=%d; comm=%p; stream=%p",
       stream->parent()->device_ordinal(),
       absl::StrJoin(send_buffers, ", ", buffer_formatter),
@@ -703,7 +746,7 @@ absl::Status NcclCommunicator::LaunchCollectivePermute(
   };
 
   VLOG(3) << absl::StreamFormat(
-      "Launch NCCL CollectivePermute operation on device #%d; send_buffer=%p; "
+      "[%d] Launch NCCL CollectivePermute operation; send_buffer=%p; "
       "recv_buffer=%p; dtype=%s; source_rank=%s; target_ranks=[%s]; count=%d; "
       "comm=%p; stream=%p",
       stream->parent()->device_ordinal(), send_buffer.opaque(),
@@ -747,7 +790,7 @@ absl::Status NcclCommunicator::LaunchSend(se::DeviceMemoryBase send_buffer,
   se::Stream* stream = ToStream(executor);
 
   VLOG(3) << absl::StreamFormat(
-      "Launch NCCL Send operation on device #%d; send_buffer=%p; dtype=%s; "
+      "[%d] Launch NCCL Send operation; send_buffer=%p; dtype=%s; "
       "count=%d; peer=%d; comm=%p; stream=%p",
       stream->parent()->device_ordinal(), send_buffer.opaque(),
       primitive_util::LowercasePrimitiveTypeName(dtype), count, peer.value(),
@@ -774,7 +817,7 @@ absl::Status NcclCommunicator::LaunchRecv(se::DeviceMemoryBase recv_buffer,
   se::Stream* stream = ToStream(executor);
 
   VLOG(3) << absl::StreamFormat(
-      "Launch NCCL Recv operation on device #%d; recv_buffer=%p; dtype=%s; "
+      "[%d] Launch NCCL Recv operation; recv_buffer=%p; dtype=%s; "
       "count=%d; peer=%d; comm=%p; stream=%p",
       stream->parent()->device_ordinal(), recv_buffer.opaque(),
       primitive_util::LowercasePrimitiveTypeName(dtype), count, peer.value(),
