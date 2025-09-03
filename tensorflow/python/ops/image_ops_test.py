@@ -6660,22 +6660,44 @@ class DecodeImageTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertTrue(shape_list[1] is None or shape_list[1] == 2)
 
       # Test different channel configurations.
-      for channels in [1, 3, 4]:
-        if channels == 1:
+      for channels in [0, 1, 2, 3, 4]:
+        if channels == 0:
+          # Use auto-detection with RGB JPEG.
+          test_bytes = jpeg_bytes
+        elif channels == 1:
           # Create grayscale test image.
           gray_image = constant_op.constant([[128, 64], [192, 32]], 
                                            dtype=dtypes.uint8)
           gray_image = array_ops.expand_dims(gray_image, -1)
           test_bytes = gen_image_ops.encode_png(gray_image)
+        elif channels == 2:
+          # Create grayscale + alpha test image using PNG.
+          gray_alpha_image = constant_op.constant([[[128, 255],
+                                                    [64, 128]], 
+                                                   [[192, 64],
+                                                    [32, 192]]], 
+                                                  dtype=dtypes.uint8)
+          test_bytes = gen_image_ops.encode_png(gray_alpha_image)
+        elif channels == 4:
+          # Create RGBA test image using PNG (JPEG doesn't support 4 channels).
+          rgba_image = constant_op.constant([[[255, 0, 0, 255],
+                                              [0, 255, 0, 128]], 
+                                             [[0, 0, 255, 64],
+                                              [255, 255, 0, 192]]], 
+                                           dtype=dtypes.uint8)
+          test_bytes = gen_image_ops.encode_png(rgba_image)
         else:
-          # Use RGB JPEG for multi-channel tests.
+          # Use RGB JPEG for 3-channel tests.
           test_bytes = jpeg_bytes
 
         decoded = image_ops.decode_image(test_bytes, channels=channels,
                                          expand_animations=False)
         self.assertEqual(decoded.shape.rank, 3)
         
-        if channels <= 3:
+        if channels == 0:
+          # Auto-detection case - shape depends on the image format used.
+          expected_shape = [None, None, None]
+        elif channels <= 4:
           expected_shape = [None, None, channels]
         else:
           expected_shape = [None, None, None]
