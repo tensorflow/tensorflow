@@ -53,6 +53,50 @@ TEST(PjRtFutureTest, StatelessFuture) {
       [](absl::Status status) { EXPECT_EQ(status, absl::OkStatus()); });
 }
 
+TEST(PjRtFutureTest, StatefulFutureToStateless) {
+  auto promise = PjRtFuture<int32_t>::CreatePromise();
+  PjRtFuture<int32_t> future(promise);
+  PjRtFuture<> on_ready_future = future.GetReadyFuture();
+
+  EXPECT_FALSE(on_ready_future.IsReady());
+  promise.Set(42);
+  EXPECT_EQ(on_ready_future.Await(), absl::OkStatus());
+}
+
+TEST(PjRtFutureTest, StatefulFutureToStatelessError) {
+  auto promise = PjRtFuture<int32_t>::CreatePromise();
+  PjRtFuture<int32_t> future(promise);
+  PjRtFuture<> on_ready_future = future.GetReadyFuture();
+
+  EXPECT_FALSE(on_ready_future.IsReady());
+  promise.Set(absl::InternalError("test"));
+  EXPECT_EQ(on_ready_future.Await(), absl::InternalError("test"));
+}
+
+TEST(PjRtFutureTest, MoveOnlyFutureToStateless) {
+  auto promise = PjRtFuture<std::unique_ptr<int32_t>>::CreatePromise();
+  PjRtFuture<std::unique_ptr<int32_t>> future(promise);
+  PjRtFuture<> on_ready_future = future.GetReadyFuture();
+
+  EXPECT_FALSE(future.IsReady());
+  EXPECT_FALSE(on_ready_future.IsReady());
+
+  promise.Set(std::make_unique<int32_t>(42));
+  EXPECT_EQ(on_ready_future.Await(), absl::OkStatus());
+}
+
+TEST(PjRtFutureTest, MoveOnlyFutureToStatelessError) {
+  auto promise = PjRtFuture<std::unique_ptr<int32_t>>::CreatePromise();
+  PjRtFuture<std::unique_ptr<int32_t>> future(promise);
+  PjRtFuture<> on_ready_future = future.GetReadyFuture();
+
+  EXPECT_FALSE(future.IsReady());
+  EXPECT_FALSE(on_ready_future.IsReady());
+
+  promise.Set(absl::InternalError("test"));
+  EXPECT_EQ(on_ready_future.Await(), absl::InternalError("test"));
+}
+
 TEST(PjRtFutureTest, CopyableFuture) {
   auto promise = PjRtFuture<int32_t>::CreatePromise();
   PjRtFuture<int32_t> future(promise);

@@ -320,6 +320,13 @@ class PjRtFutureBase : public PjRtFutureMoveControl<is_move_only> {
     }
   }
 
+  // Returns a PjRtFuture<> that becomes ready when *this is ready. If *this
+  // completes with an error, the returned future will also be an error.
+  //
+  // These APIs defined out of line as they require PjRtFuture<> definition.
+  PjRtFuture<> GetReadyFuture() const&;
+  PjRtFuture<> GetReadyFuture() &&;
+
   // Registers callback to be called once the promise is ready, with the final
   // value.
   //
@@ -465,6 +472,7 @@ class PjRtFuture : public internal::PjRtFutureBase<absl::StatusOr<T>> {
   }
 
   using Base::Await;
+  using Base::GetReadyFuture;
   using Base::OnReady;
 
   // Returns an PjRtFuture<R> that is constructed from the result of invoking
@@ -806,6 +814,31 @@ class PjRtFuture<void> : public internal::PjRtFutureBase<absl::Status> {
       ready_promise_;
 };
 
+//===----------------------------------------------------------------------===//
+// internal::PjRtFutureBase<T> implementation.
+//===----------------------------------------------------------------------===//
+
+namespace internal {
+
+template <typename T, bool is_move_only>
+PjRtFuture<> PjRtFutureBase<T, is_move_only>::GetReadyFuture() const& {
+  PjRtFuture<>::Promise promise = PjRtFuture<>::CreatePromise();
+  promise_.AndThen([p = promise_.AsPtr(), promise]() mutable {
+    if constexpr (std::is_same_v<T, absl::Status>) {
+      promise.Set(*p);
+    } else {
+      promise.Set(p->status());
+    }
+  });
+  return PjRtFuture<>(promise);
+}
+
+template <typename T, bool is_move_only>
+PjRtFuture<> PjRtFutureBase<T, is_move_only>::GetReadyFuture() && {
+  return this->OnReady();
+}
+
+}  // namespace internal
 }  // namespace xla
 
 #endif  // XLA_PJRT_PJRT_FUTURE_H_
