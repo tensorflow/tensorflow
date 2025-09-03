@@ -1575,7 +1575,10 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
           &task_runner,
           &collective_params,
           &custom_call_execute_params,
-          xnn_params ? &*xnn_params : nullptr};
+          xnn_params ? &*xnn_params : nullptr,
+          run_options.run_id().ToInt(),
+          run_options.device_ordinal(),
+      };
 
       thunks_execute_event = cpu_executable->thunks().Execute(execute_params);
 
@@ -1710,7 +1713,10 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
                   &task_runner,
                   &*collective_params,
                   &*custom_call_params,
-                  *xnn_params ? &**xnn_params : nullptr};
+                  *xnn_params ? &**xnn_params : nullptr,
+                  run_options.run_id().ToInt(),
+                  run_options.device_ordinal(),
+              };
 
               auto thunks_execute_event =
                   cpu_executable->thunks().Execute(execute_params);

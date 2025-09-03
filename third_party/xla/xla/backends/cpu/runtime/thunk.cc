@@ -175,11 +175,13 @@ Thunk::ExecuteSession::ExecuteSession(int64_t max_workers,
       split_threshold_(split_threshold) {}
 
 // Encodes thunk info into the TraceMe compatible format.
-std::string Thunk::TraceMeEncode() const {
+std::string Thunk::TraceMeEncode(int64_t run_id, int64_t device_ordinal) const {
   return tsl::profiler::TraceMeEncode(info_.op_name,
                                       {{"hlo_op", info_.op_name},
                                        {"hlo_module", info_.module_name},
-                                       {"program_id", info_.module_id}});
+                                       {"program_id", info_.module_id},
+                                       {"run_id", run_id},
+                                       {"device_ordinal", device_ordinal}});
 }
 
 std::ostream& operator<<(std::ostream& os, Thunk::Kind kind) {
