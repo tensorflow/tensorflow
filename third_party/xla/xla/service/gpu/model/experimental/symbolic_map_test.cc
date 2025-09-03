@@ -26,6 +26,19 @@ namespace {
 
 using ::testing::ElementsAre;
 
+TEST(SymbolicMapTest, GetSymbolAndDimExpressions) {
+  SymbolicExprContext ctx;
+  SymbolicExpr d0 = ctx.CreateVariable(0);
+  SymbolicExpr d1 = ctx.CreateVariable(1);
+  SymbolicExpr s0 = ctx.CreateVariable(2);
+  SymbolicExpr s1 = ctx.CreateVariable(3);
+  SymbolicMap map = SymbolicMap::Get(&ctx, 2, 2, {d0 + s0, d1 * s1});
+  EXPECT_EQ(map.GetSymbolExpression(0), s0);
+  EXPECT_EQ(map.GetSymbolExpression(1), s1);
+  EXPECT_EQ(map.GetDimExpression(0), d0);
+  EXPECT_EQ(map.GetDimExpression(1), d1);
+}
+
 TEST(SymbolicMapTest, ToString) {
   SymbolicExprContext ctx;
   SymbolicExpr d0 = ctx.CreateVariable(0);

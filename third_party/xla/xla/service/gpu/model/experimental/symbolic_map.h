@@ -40,6 +40,12 @@ class SymbolicMap {
   SymbolicExprContext* GetContext() const { return ctx_; }
   int64_t GetNumDims() const { return num_dimensions_; }
   int64_t GetNumSymbols() const { return num_symbols_; }
+  SymbolicExpr GetDimExpression(unsigned idx) const {
+    return ctx_->CreateVariable(idx);
+  }
+  SymbolicExpr GetSymbolExpression(unsigned idx) const {
+    return ctx_->CreateVariable(num_dimensions_ + idx);
+  }
   int64_t GetNumResults() const { return exprs_.size(); }
   const llvm::SmallVector<SymbolicExpr>& GetResults() const { return exprs_; }
   SymbolicExpr GetResult(unsigned idx) const { return exprs_[idx]; }
