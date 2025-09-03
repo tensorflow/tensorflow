@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_AUTOTUNER_BLOCK_LEVEL_EMITTER_H_
 
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "absl/base/nullability.h"
@@ -26,6 +27,8 @@ limitations under the License.
 #include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/compiler.h"
+#include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/hlo_cost_analysis.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/xla.pb.h"
 
@@ -42,10 +45,13 @@ class BlockLevelEmitterBackend : public GpuCodegenBackend {
   explicit BlockLevelEmitterBackend(
       stream_executor::StreamExecutor* absl_nonnull stream_executor,
       const DebugOptions* absl_nonnull debug_options,
-      Compiler* absl_nonnull compiler, bool use_default_config = false)
+      Compiler* absl_nonnull compiler,
+      HloCostAnalysis::ShapeSizeFunction shape_size_fn,
+      bool use_default_config = false)
       : GpuCodegenBackend("BlockLevelEmitter", stream_executor, debug_options,
                           compiler),
-        use_default_config_(use_default_config) {}
+        use_default_config_(use_default_config),
+        shape_size_fn_(std::move(shape_size_fn)) {}
 
   // Returns all supported block-level tiling configurations for the given
   // instruction.
@@ -64,12 +70,17 @@ class BlockLevelEmitterBackend : public GpuCodegenBackend {
   bool IsSupported(const HloInstruction& instr);
 
  private:
+  absl::StatusOr<BlockLevelFusionConfig> GetCostModelConfig(
+      const HloInstruction& instr) const;
   // If true, the backend will return a single default configuration in
   // GetSupportedConfigs instead of generating all supported configurations.
   // This is useful to autotune between different backends without increasing
   // compile time by too much. It will use the default config, likely already
   // assigned by the cost model.
   bool use_default_config_;
+  // A function which returns the size in bytes of the top-level buffer of a
+  // shape.
+  HloCostAnalysis::ShapeSizeFunction shape_size_fn_;
 };
 
 }  // namespace gpu
