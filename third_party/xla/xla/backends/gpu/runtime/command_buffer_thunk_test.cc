@@ -871,15 +871,12 @@ TEST(CommandBufferThunkTest, ChildGemmCmd) {
       run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
 
   Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
-  VLOG(0) << "Initialize thunk";
   TF_ASSERT_OK(thunk.Initialize(
       {stream_executor, source, &allocations, stream.get(), stream.get()}));
 
-  VLOG(0) << "Initialize done";
   // Execute command buffer thunk and verify that it executed a GEMM.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
 
-  VLOG(0) << "Execute thunk done";
   TF_ASSERT_OK(stream->BlockHostUntilDone());
 
   // Copy `out` data back to host.
