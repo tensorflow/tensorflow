@@ -670,7 +670,7 @@ absl::StatusOr<int> GetPackedDimension(MLIRContext *ctx,
   }
   std::string not_found_message =
       "No MakeTensorPtrOp or mlir::triton::xla::ExtractOp found";
-  LOG(FATAL) << not_found_message;
+  LOG(ERROR) << not_found_message;
   return absl::InvalidArgumentError(not_found_message);
 }
 
@@ -779,7 +779,7 @@ class PlainInt4ToPackedInt4RewritePass
     normalize_patterns.add(SitofpToExtFpSitofpRewrite);
     if (failed(applyPatternsGreedily(module, std::move(normalize_patterns)))) {
       VLOG(5) << "failed to apply patterns";
-      signalPassFailure();
+      return signalPassFailure();
     }
 
     auto ext_ops = FindInt4ExtSIOp(module);
@@ -793,7 +793,7 @@ class PlainInt4ToPackedInt4RewritePass
       if (!packed_dimension_result.ok()) {
         VLOG(5) << "failed to get packed dimension: "
                 << packed_dimension_result.status();
-        signalPassFailure();
+        return signalPassFailure();
       };
       packed_dimension = packed_dimension_result.value();
     }
@@ -836,7 +836,7 @@ class PlainInt4ToPackedInt4RewritePass
         patterns, converter);
     if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
       VLOG(5) << "failed to apply partial conversion";
-      signalPassFailure();
+      return signalPassFailure();
     }
   }
   // The default value is true, which means that bf16x2 instructions are used
