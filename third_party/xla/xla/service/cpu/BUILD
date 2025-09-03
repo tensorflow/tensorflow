@@ -63,6 +63,7 @@ filegroup(
         "runtime_pow.cc",
         "runtime_single_threaded_conv2d.cc",
         "runtime_single_threaded_conv3d.cc",
+        "runtime_single_threaded_fft.cc",
         "runtime_single_threaded_matmul_c128.cc",
         "runtime_single_threaded_matmul_c64.cc",
         "runtime_single_threaded_matmul_common.h",
@@ -76,6 +77,7 @@ filegroup(
         # Multi-threaded support.
         "runtime_conv2d.cc",
         "runtime_conv3d.cc",
+        "runtime_fft.cc",
         "runtime_matmul_c128.cc",
         "runtime_matmul_c64.cc",
         "runtime_matmul_common.h",
@@ -98,11 +100,13 @@ filegroup(
         "runtime_pow.h",
         "runtime_single_threaded_conv2d.h",
         "runtime_single_threaded_conv3d.h",
+        "runtime_single_threaded_fft.h",
         "runtime_single_threaded_matmul.h",
         "runtime_topk.h",
         # Multi-threaded support.
         "runtime_conv2d.h",
         "runtime_conv3d.h",
+        "runtime_fft.h",
         "runtime_lightweight_check.h",
         "runtime_matmul.h",
         "//xla/backends/cpu/runtime:runtime_hdrs",
@@ -590,6 +594,7 @@ cc_library(
         ":runtime_conv2d_acl",
         ":runtime_conv3d",
         ":runtime_custom_call_status",
+        ":runtime_fft",
         ":runtime_fp16",
         ":runtime_key_value_sort",
         ":runtime_matmul",
@@ -597,6 +602,7 @@ cc_library(
         ":runtime_pow",
         ":runtime_single_threaded_conv2d",
         ":runtime_single_threaded_conv3d",
+        ":runtime_single_threaded_fft",
         ":runtime_single_threaded_matmul",
         ":runtime_topk",
         "//xla/service:custom_call_target_registry",
@@ -1164,6 +1170,22 @@ cc_library(
 )
 
 cc_library(
+    name = "runtime_fft",
+    srcs = [
+        "runtime_fft.cc",
+    ],
+    hdrs = ["runtime_fft.h"],
+    copts = runtime_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla:executable_run_options",
+        "@com_google_absl//absl/base:core_headers",
+        "@ducc//:fft_wrapper",
+        "@eigen_archive//:eigen3",
+    ],
+)
+
+cc_library(
     name = "runtime_matmul",
     srcs = [
         "runtime_matmul_c128.cc",
@@ -1253,6 +1275,20 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/synchronization",  # build_cleaner: keep
         "@eigen_archive//:eigen3",
+    ],
+)
+
+cc_library(
+    name = "runtime_single_threaded_fft",
+    srcs = [
+        "runtime_single_threaded_fft.cc",
+    ],
+    hdrs = ["runtime_single_threaded_fft.h"],
+    copts = runtime_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":runtime_fft",
+        "@com_google_absl//absl/base:core_headers",
     ],
 )
 
