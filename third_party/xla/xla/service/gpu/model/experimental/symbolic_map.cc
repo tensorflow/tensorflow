@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/model/experimental/symbolic_map.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <iterator>
 #include <string>
@@ -168,6 +169,17 @@ SymbolicMap SymbolicMap::Compose(const SymbolicMap& other) const {
   // Then we compose the maps.
   return ReplaceDimsAndSymbols(updated_other.GetResults(),
                                this_symbol_replacements, new_dims, new_syms);
+}
+
+SymbolicMap SymbolicMap::GetSubMap(
+    absl::Span<const size_t> result_indices) const {
+  llvm::SmallVector<SymbolicExpr> sub_exprs;
+  sub_exprs.reserve(result_indices.size());
+  for (unsigned int index : result_indices) {
+    CHECK_LT(index, exprs_.size()) << "Result index out of bounds";
+    sub_exprs.push_back(exprs_[index]);
+  }
+  return SymbolicMap(ctx_, num_dimensions_, num_symbols_, std::move(sub_exprs));
 }
 
 SymbolicMap SymbolicMap::Replace(SymbolicExpr expr,
