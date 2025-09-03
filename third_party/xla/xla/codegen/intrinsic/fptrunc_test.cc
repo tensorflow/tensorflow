@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <array>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <utility>
 
@@ -189,4 +190,56 @@ TEST(FpTruncExecutionTest, F8e4m3fnToF16_Vector4) {
   EXPECT_EQ(actuals[3], static_cast<int16_t>(0b0011100000000000));
 }
 
+TEST(FpTruncExecutionTest, F32ToF8e4m3fn) {
+  JitRunner jit = CreateJitRunner(Type::S(F32), Type::S(F8E4M3FN));
+  auto fptrunc = jit.GetScalarFn<int8_t(float)>(
+      FpTrunc::Name(Type::S(F32), Type::S(F8E4M3FN)));
+  EXPECT_EQ(fptrunc(0x7FFFFFFF), 0x7F);  // overflows
+  EXPECT_EQ(fptrunc(0x0), 0x0);
+
+  EXPECT_EQ(fptrunc(-2.0f), static_cast<int8_t>(0b11000000));
+  EXPECT_EQ(fptrunc(0.5f), static_cast<int8_t>(0b00110000));
+  EXPECT_EQ(fptrunc(-0.5f), static_cast<int8_t>(0b10110000));
+  EXPECT_EQ(fptrunc(0.125f), static_cast<int8_t>(0b00100000));
+
+  // Test denormals (exponent all 0s) round to 0 in fp8e4m3fn.
+  EXPECT_EQ(fptrunc(std::numeric_limits<float>::denorm_min()), 0);
+  EXPECT_EQ(fptrunc(std::numeric_limits<float>::min()), 0);
+  // largest f32 denormal:
+  EXPECT_EQ(fptrunc(1.17549e-38f), 0);
+}
+
+TEST(FpTruncExecutionTest, F32ToF8e3m4) {
+  JitRunner jit = CreateJitRunner(Type::S(F32), Type::S(F8E3M4));
+  auto fptrunc = jit.GetScalarFn<int8_t(float)>(
+      FpTrunc::Name(Type::S(F32), Type::S(F8E3M4)));
+  EXPECT_EQ(fptrunc(0x0), 0x0);
+  EXPECT_EQ(fptrunc(-2.0f), static_cast<int8_t>(0b11000000));
+  EXPECT_EQ(fptrunc(0.5f), static_cast<int8_t>(0b00100000));
+  EXPECT_EQ(fptrunc(-0.5f), static_cast<int8_t>(0b10100000));
+  EXPECT_EQ(fptrunc(0.0156f), static_cast<int8_t>(0b00000001));
+
+  // test underflow, denormals
+  const float smallest_pos_subnormal_f8e3m4 = 0.015625;
+  EXPECT_EQ(fptrunc(smallest_pos_subnormal_f8e3m4),
+            static_cast<int8_t>(0b00000001));
+  EXPECT_EQ(fptrunc(smallest_pos_subnormal_f8e3m4),
+            static_cast<int8_t>(0b00000001));
+  const float eps = std::numeric_limits<float>::epsilon();
+  EXPECT_EQ(fptrunc(smallest_pos_subnormal_f8e3m4 / 2.0f - eps),
+            static_cast<int8_t>(0b00000000));
+
+  // test overflows and infinities
+  const int8_t inf = static_cast<int8_t>(0b01110000);
+  const int8_t neg_inf = static_cast<int8_t>(0b11110000);
+  const float max_f8e3m4 = 15.5;
+  EXPECT_EQ(fptrunc(max_f8e3m4 + 1.0f), inf);
+  EXPECT_EQ(fptrunc(std::numeric_limits<float>::infinity()), inf);
+  EXPECT_EQ(fptrunc(-std::numeric_limits<float>::infinity()), neg_inf);
+
+  // test nan prop
+  const int8_t nan = static_cast<int8_t>(0b01111000);
+  EXPECT_EQ(fptrunc(std::numeric_limits<float>::quiet_NaN()), nan);
+  EXPECT_EQ(fptrunc(std::numeric_limits<float>::signaling_NaN()), nan);
+}
 }  // namespace xla::codegen::intrinsics
