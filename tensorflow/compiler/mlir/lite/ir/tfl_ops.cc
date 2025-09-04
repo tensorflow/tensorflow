@@ -2456,27 +2456,33 @@ OpFoldResult ReshapeOp::fold(FoldAdaptor adaptor) {
   auto input_type = mlir::cast<ShapedType>(getOperand(0).getType());
   if (InputOutputHasSameShape(input_type, result_type)) return getInput();
 
-  // Constant folding
-  if (auto dense_elements =
-          mlir::dyn_cast_or_null<DenseElementsAttr>(operands[0])) {
-    // If the result type isn't static, tries to derive the result type from
-    // the #2 operand.
-    if (!result_type.hasStaticShape()) {
-      auto shape_elements =
-          mlir::dyn_cast_or_null<DenseElementsAttr>(operands[1]);
-      if (!shape_elements) return nullptr;
-
-      SmallVector<int64_t, 4> shape_data;
-      for (const auto& it : shape_elements.getValues<APInt>()) {
-        shape_data.push_back(it.getSExtValue());
-      }
-      result_type = tensorflow::GetTypeFromTFTensorShape(
-          shape_data, input_type.getElementType());
-    }
-    return dense_elements.reshape(result_type);
+  auto dense_elements = mlir::dyn_cast_or_null<DenseElementsAttr>(operands[0]);
+  if (!dense_elements) {
+    return nullptr;
   }
 
-  return nullptr;
+  // If the result type isn't static, tries to derive the result type from
+  // the #2 operand.
+  if (!result_type.hasStaticShape()) {
+    auto shape_elements =
+        mlir::dyn_cast_or_null<DenseElementsAttr>(operands[1]);
+    if (!shape_elements) return nullptr;
+
+    SmallVector<int64_t, 4> shape_data;
+    for (const auto& it : shape_elements.getValues<APInt>()) {
+      shape_data.push_back(it.getSExtValue());
+    }
+    result_type = tensorflow::GetTypeFromTFTensorShape(
+        shape_data, input_type.getElementType());
+  }
+  auto values_type = result_type;
+  if (mlir::isa<quant::QuantizedType>(getElementTypeOrSelf(result_type))) {
+    values_type = RankedTensorType::get(
+        result_type.getShape(),
+        mlir::cast<quant::QuantizedType>(result_type.getElementType())
+            .getStorageType());
+  }
+  return dense_elements.reshape(values_type);
 }
 
 void ReshapeOp::getCanonicalizationPatterns(RewritePatternSet& results,
@@ -4270,6 +4276,18 @@ void ConstOp::getCanonicalizationPatterns(RewritePatternSet& results,
 }
 
 //===----------------------------------------------------------------------===//
+// QConstOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult QConstOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
+  (void)operands;
+  assert(operands.empty() && "constant has no operands");
+  // Return the held attribute value.
+  return getValue();
+}
+
+//===----------------------------------------------------------------------===//
 // CastOp
 //===----------------------------------------------------------------------===//
 
@@ -5715,16 +5733,26 @@ namespace TFL {
 
 Operation* TFLDialect::materializeConstant(OpBuilder& builder, Attribute value,
                                            Type type, Location loc) {
+  Type output_element_type = mlir::getElementTypeOrSelf(type);
+  if (mlir::isa<quant::QuantizedType>(output_element_type) &&
+      mlir::isa<ElementsAttr>(value)) {
+    return builder.create<TFL::QConstOp>(loc, type, TypeAttr::get(type),
+                                         mlir::dyn_cast<ElementsAttr>(value));
+  }
+
   // If this is a constant bytes attribute or the result type doesn't match the
   // attribute type, then generate a tfl.pseudo_const.
   if (mlir::isa<ConstBytesAttr>(value) ||
       (mlir::isa<ElementsAttr>(value) &&
-       mlir::cast<ElementsAttr>(value).getType() != type))
+       mlir::cast<ElementsAttr>(value).getType() != type)) {
     return builder.create<ConstOp>(loc, type, mlir::cast<ElementsAttr>(value));
-  if (arith::ConstantOp::isBuildableWith(value, type))
+  }
+  if (arith::ConstantOp::isBuildableWith(value, type)) {
     return builder.create<arith::ConstantOp>(loc, type, cast<TypedAttr>(value));
-  if (NoValueOp::isBuildableWith(value, type))
+  }
+  if (NoValueOp::isBuildableWith(value, type)) {
     return builder.create<NoValueOp>(loc, type, mlir::cast<UnitAttr>(value));
+  }
   return nullptr;
 }
 

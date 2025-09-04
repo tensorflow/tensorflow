@@ -4329,6 +4329,7 @@ def TFL_FakeQuantOp : TFL_Op<"fake_quant", [
 
 // TODO(b/200841823): consider adding TFL_RuntimeVerification trait.
 def TFL_QConstOp : Op<TFL_Dialect, "pseudo_qconst", [
+    ConstantLike,
     Pure,
     FirstAttrDerivedResultType]> {
   let summary = "Quantized constant pseudo op";
@@ -4354,6 +4355,8 @@ def TFL_QConstOp : Op<TFL_Dialect, "pseudo_qconst", [
       $_state.addTypes(qtype.getValue());
     }]>
   ];
+
+  let hasFolder = 1;
 }
 
 def TFL_SparseQConstOp : Op<TFL_Dialect, "pseudo_sparse_qconst", [
