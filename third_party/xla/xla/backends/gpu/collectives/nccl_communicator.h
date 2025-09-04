@@ -86,8 +86,7 @@ class NcclCommunicator : public GpuCommunicator {
   // Since each XLA buffer is a slice into a larger BFCAllocator chunk, first
   // get the base address of buffer. We will use the base address to keep track
   // of which chunks we have registered.
-  absl::Status RegisterBufferOnce(se::DeviceMemoryBase buffer,
-                                  se::DeviceMemoryBase buffer_range,
+  absl::Status RegisterBufferOnce(se::DeviceMemoryBase buffer_range,
                                   int device_ordinal,
                                   bool use_symmetric_buffer) final;
 
@@ -242,10 +241,10 @@ class NcclCommunicator : public GpuCommunicator {
   // Each ncclMemAlloc'd buffer needs to be registered once per comm.
   struct RegisteredBuffers {
     absl::Mutex mu;
-    // Pointer to the registered buffer handle.
-    absl::flat_hash_map<std::tuple<size_t, void*>,
+    // Buffer range to the registered buffer handle.
+    absl::flat_hash_map<void*,
                         std::unique_ptr<Communicator::RegisteredBufferHandle>>
-        records_to_handles ABSL_GUARDED_BY(mu);
+        range_to_handle ABSL_GUARDED_BY(mu);
   };
   RegisteredBuffers registered_buffers_;
 };

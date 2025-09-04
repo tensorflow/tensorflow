@@ -67,12 +67,10 @@ class Communicator {
     virtual absl::Status Unregister() = 0;
   };
 
-  // Register `buffer` which can be a slice within a bigger `buffer_range` once
-  // for efficient collective operations (i.e. on NCCL backend it registers the
-  // buffer for zero-copy collective operations).
+  // Register `buffer_range` once for efficient collective operations (i.e. on
+  // NCCL backend it registers the buffer for zero-copy collective operations).
   //
-  virtual absl::Status RegisterBufferOnce(se::DeviceMemoryBase buffer,
-                                          se::DeviceMemoryBase buffer_range,
+  virtual absl::Status RegisterBufferOnce(se::DeviceMemoryBase buffer_range,
                                           int device_ordinal,
                                           bool use_symmetric_buffer) {
     return Unimplemented("User-managed buffer registration is not supported");

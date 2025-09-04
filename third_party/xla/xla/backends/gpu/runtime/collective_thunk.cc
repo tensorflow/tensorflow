@@ -351,24 +351,35 @@ absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
   return device_buffers;
 }
 
+absl::Status MaybeRegisterBuffer(se::StreamExecutor* executor,
+                                 const se::DeviceMemoryBase& buffer,
+                                 Communicator* comm,
+                                 bool use_symmetric_buffer) {
+  TF_ASSIGN_OR_RETURN(auto range, executor->GetMemoryRange(buffer));
+  VLOG(1) << "[" << executor->device_ordinal()
+          << "] Registering range: " << range.opaque()
+          << " with size: " << range.size()
+          << " for buffer: " << buffer.opaque()
+          << " with size: " << buffer.size()
+          << " is symmetric: " << (use_symmetric_buffer ? "true" : "false");
+  // If the collective memory buffer is a slice of a larger preallocated buffer,
+  // we need to register the entire preallocated buffer once.
+  return comm->RegisterBufferOnce(range, executor->device_ordinal(),
+                                  use_symmetric_buffer);
+}
+
 absl::Status MaybeRegisterBuffers(se::StreamExecutor* executor,
                                   const std::vector<DeviceBufferPair>& buffers,
                                   Communicator* comm,
                                   bool use_symmetric_buffer) {
   for (int i = 0; i < buffers.size(); ++i) {
     if (buffers[i].source_memory_space == kCollectiveMemorySpaceColor) {
-      TF_ASSIGN_OR_RETURN(auto range,
-                          executor->GetMemoryRange(buffers[i].source_buffer));
-      TF_RETURN_IF_ERROR(comm->RegisterBufferOnce(
-          buffers[i].source_buffer, range, executor->device_ordinal(),
-          use_symmetric_buffer));
+      TF_RETURN_IF_ERROR(MaybeRegisterBuffer(executor, buffers[i].source_buffer,
+                                             comm, use_symmetric_buffer));
     }
     if (buffers[i].destination_memory_space == kCollectiveMemorySpaceColor) {
-      TF_ASSIGN_OR_RETURN(
-          auto range, executor->GetMemoryRange(buffers[i].destination_buffer));
-      TF_RETURN_IF_ERROR(comm->RegisterBufferOnce(
-          buffers[i].destination_buffer, range, executor->device_ordinal(),
-          use_symmetric_buffer));
+      TF_RETURN_IF_ERROR(MaybeRegisterBuffer(
+          executor, buffers[i].destination_buffer, comm, use_symmetric_buffer));
     }
   }
   return absl::OkStatus();
