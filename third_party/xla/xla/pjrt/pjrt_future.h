@@ -341,9 +341,8 @@ class PjRtFutureBase : public PjRtFutureMoveControl<is_move_only> {
   // Returns a PjRtFuture<> that becomes ready when *this is ready. If *this
   // completes with an error, the returned future will also be an error.
   //
-  // These APIs defined out of line as they require PjRtFuture<> definition.
-  PjRtFuture<> GetReadyFuture() const&;
-  PjRtFuture<> GetReadyFuture() &&;
+  // This function defined out of line as it requires PjRtFuture<> definition.
+  PjRtFuture<> GetReadyFuture() const;
 
   // Registers callback to be called once the promise is ready, with the final
   // value.
@@ -847,7 +846,7 @@ class PjRtFuture<void> : public internal::PjRtFutureBase<absl::Status> {
 namespace internal {
 
 template <typename T, bool is_move_only>
-PjRtFuture<> PjRtFutureBase<T, is_move_only>::GetReadyFuture() const& {
+PjRtFuture<> PjRtFutureBase<T, is_move_only>::GetReadyFuture() const {
   auto [promise, future] = PjRtFuture<>::MakePromise();
   promise_.AndThen(
       [self = promise_.AsPtr(), promise = std::move(promise)]() mutable {
@@ -858,11 +857,6 @@ PjRtFuture<> PjRtFutureBase<T, is_move_only>::GetReadyFuture() const& {
         }
       });
   return future;
-}
-
-template <typename T, bool is_move_only>
-PjRtFuture<> PjRtFutureBase<T, is_move_only>::GetReadyFuture() && {
-  return this->OnReady();
 }
 
 }  // namespace internal
