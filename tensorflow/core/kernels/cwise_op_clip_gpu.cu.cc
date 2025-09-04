@@ -32,6 +32,8 @@ __global__ void UnaryClipCustomKernel(const int32 size_in,
   GPU_1D_KERNEL_LOOP(i, size_in) {
     T value = in2[0] < in0[i] ? in2[0] : in0[i];
     out[i] = value < in1[0] ? in1[0] : value;
+    // Ensure clipped zero is always positive zero
+    if (out[i] == static_cast<T>(0.0)) out[i] = static_cast<T>(0.0);
   }
 }
 
@@ -44,6 +46,8 @@ __global__ void BinaryRightClipCustomKernel(const int32 size_in,
   GPU_1D_KERNEL_LOOP(i, size_in) {
     T value = in2[i] < in0[i] ? in2[i] : in0[i];
     out[i] = value < in1[0] ? in1[0] : value;
+    // Ensure clipped zero is always positive zero
+    if (out[i] == static_cast<T>(0.0)) out[i] = static_cast<T>(0.0);
   }
 }
 
@@ -56,6 +60,8 @@ __global__ void BinaryLeftClipCustomKernel(const int32 size_in,
   GPU_1D_KERNEL_LOOP(i, size_in) {
     T value = in2[0] < in0[i] ? in2[0] : in0[i];
     out[i] = value < in1[i] ? in1[i] : value;
+    // Ensure clipped zero is always positive zero
+    if (out[i] == static_cast<T>(0.0)) out[i] = static_cast<T>(0.0);
   }
 }
 
