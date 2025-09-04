@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_original_value.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -22,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/no_destructor.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -62,6 +64,15 @@ OriginalArray OriginalArray::FromProto(
           ShapeIndex(original_array_proto.shape_index())};
 }
 
+bool operator==(const OriginalArray& lhs, const OriginalArray& rhs) {
+  return lhs.instruction_name == rhs.instruction_name &&
+         lhs.shape_index == rhs.shape_index;
+}
+
+bool operator!=(const OriginalArray& lhs, const OriginalArray& rhs) {
+  return !(lhs == rhs);
+}
+
 namespace {
 using Node = TupleTree<std::optional<OriginalArray>>::Node;
 
@@ -87,31 +98,88 @@ std::string NodeToString(const Node& node) {
 }
 }  // namespace
 
+void OriginalValue::ClearInternalNodeValues() {
+  if (is_synthetic_call()) {
+    return;
+  }
+  mutable_tree()->ForEachMutableElement(
+      [&](const ShapeIndex& index, std::optional<OriginalArray>* value) {
+        if (!mutable_tree()->IsLeaf(index)) {
+          *value = std::nullopt;
+        }
+      });
+}
+
+OriginalValue::OriginalValue(
+    TupleTree<std::optional<OriginalArray>>::Node&& root_node)
+    : data_(TupleTree<std::optional<OriginalArray>>(std::move(root_node))) {
+  ClearInternalNodeValues();
+}
+OriginalValue::OriginalValue(TupleTree<std::optional<OriginalArray>>&& tree)
+    : data_(std::move(tree)) {
+  ClearInternalNodeValues();
+}
+OriginalValue::OriginalValue(
+    const TupleTree<std::optional<OriginalArray>>& tree)
+    : data_(tree) {
+  ClearInternalNodeValues();
+}
+
+OriginalValue::OriginalValue(SyntheticCallType synthetic) : data_(synthetic) {}
+
+OriginalValue OriginalValue::SyntheticCall() {
+  OriginalValue result(SyntheticCallType{});
+  return result;
+}
+
 std::string OriginalValue::ToString() const {
-  auto node_or = tree_.ToNode();
+  if (is_synthetic_call()) {
+    return "[synthetic_call]";
+  }
+  auto node_or = tree().ToNode();
   CHECK_OK(node_or.status());
   return NodeToString(*node_or);
 }
 
+bool OriginalValue::operator==(const OriginalValue& other) const {
+  if (is_synthetic_call() != other.is_synthetic_call()) {
+    return false;
+  }
+  if (is_synthetic_call()) {
+    return true;  // Synthetic == Synthetic
+  }
+  auto this_original_arrays = original_arrays();
+  auto other_original_arrays = other.original_arrays();
+  return std::equal(this_original_arrays.begin(), this_original_arrays.end(),
+                    other_original_arrays.begin(), other_original_arrays.end());
+}
+
 OriginalValueProto OriginalValue::ToProto() const {
   OriginalValueProto original_value_proto;
-  tree_.ForEachElement([&original_value_proto](
-                           const ShapeIndex& index,
-                           const std::optional<OriginalArray>& value) {
-    OriginalValueElementProto* original_value_node_proto =
-        original_value_proto.add_elements();
-    for (const auto& i : index) {
-      original_value_node_proto->add_shape_index(i);
-    }
-    if (value.has_value()) {
-      *original_value_node_proto->mutable_original_array() = value->ToProto();
-    }
-  });
+  if (is_synthetic_call()) {
+    original_value_proto.set_is_synthetic_call(true);
+  } else {
+    tree().ForEachElement([&original_value_proto](
+                              const ShapeIndex& index,
+                              const std::optional<OriginalArray>& value) {
+      OriginalValueElementProto* original_value_node_proto =
+          original_value_proto.add_elements();
+      for (const auto& i : index) {
+        original_value_node_proto->add_shape_index(i);
+      }
+      if (value.has_value()) {
+        *original_value_node_proto->mutable_original_array() = value->ToProto();
+      }
+    });
+  }
   return original_value_proto;
 }
 
 std::shared_ptr<OriginalValue> OriginalValue::FromProto(
     const xla::OriginalValueProto& original_value_proto) {
+  if (original_value_proto.is_synthetic_call()) {
+    return std::make_shared<OriginalValue>(OriginalValue::SyntheticCall());
+  }
   std::vector<std::pair<ShapeIndex, std::optional<OriginalArray>>> nodes;
   for (const auto& leaf : original_value_proto.elements()) {
     ShapeIndex index(leaf.shape_index());
@@ -129,34 +197,50 @@ std::shared_ptr<OriginalValue> OriginalValue::FromProto(
 
 std::shared_ptr<OriginalValue> OriginalValue::CreateFromInstruction(
     const HloInstruction* instruction, absl::string_view prefix) {
-  std::shared_ptr<OriginalValue> original_value =
-      std::make_shared<OriginalValue>(
-          TupleTree<std::optional<OriginalArray>>(instruction->shape()));
-
   if (instruction->opcode() == HloOpcode::kGetTupleElement) {
     const auto* tuple = instruction->operand(0);
     std::shared_ptr<OriginalValue> tuple_original_value =
         tuple->original_value();
-    if (!tuple_original_value) {
+    if (!tuple_original_value || tuple_original_value->is_synthetic_call()) {
       return nullptr;
     }
-    original_value->CopySubtreeFrom(*tuple_original_value,
-                                    {instruction->tuple_index()}, {});
-  } else if (instruction->opcode() == HloOpcode::kTuple) {
-    for (int64_t operand_number = 0;
-         operand_number < instruction->operand_count(); ++operand_number) {
-      auto element_original_value =
-          instruction->operand(operand_number)->original_value();
-      if (!element_original_value) {
+    auto original_value = std::make_shared<OriginalValue>(
+        TupleTree<std::optional<OriginalArray>>(instruction->shape()));
+    const auto& tuple_tree = tuple_original_value->tree();
+    original_value->mutable_tree()->ForEachMutableElement(
+        [&](const ShapeIndex& index, std::optional<OriginalArray>* value) {
+          ShapeIndex src_index({instruction->tuple_index()});
+          src_index.insert(src_index.end(), index.begin(), index.end());
+          *value = tuple_tree.element(src_index);
+        });
+    return original_value;
+  }
+
+  if (instruction->opcode() == HloOpcode::kTuple) {
+    auto original_value = std::make_shared<OriginalValue>(
+        TupleTree<std::optional<OriginalArray>>(instruction->shape()));
+    for (int64_t i = 0; i < instruction->operand_count(); ++i) {
+      const HloInstruction* operand = instruction->operand(i);
+      auto op_original_value = operand->original_value();
+      if (!op_original_value || op_original_value->is_synthetic_call()) {
         return nullptr;
       }
-      original_value->CopySubtreeFrom(*element_original_value, {},
-                                      {operand_number});
+      const auto& op_tree = op_original_value->tree();
+      op_tree.ForEachElement([&](const ShapeIndex& index,
+                                 const std::optional<OriginalArray>& value) {
+        ShapeIndex dest_index({i});
+        dest_index.insert(dest_index.end(), index.begin(), index.end());
+        *original_value->mutable_tree()->mutable_element(dest_index) = value;
+      });
     }
-  } else {
-    for (auto& leaf : original_value->mutable_original_arrays()) {
-      leaf.second = {absl::StrCat(prefix, instruction->name()), leaf.first};
-    }
+    return original_value;
+  }
+
+  // Default case: create a new tree with leaves pointing to this instruction.
+  auto original_value = std::make_shared<OriginalValue>(
+      TupleTree<std::optional<OriginalArray>>(instruction->shape()));
+  for (auto& leaf : original_value->mutable_original_arrays()) {
+    leaf.second = {absl::StrCat(prefix, instruction->name()), leaf.first};
   }
   return original_value;
 }
@@ -178,15 +262,14 @@ void CopyOriginalValue(const HloInstruction* src_instruction,
     return;
   }
 
-  if (!clone) {
+  if (!clone || original_value->is_synthetic_call()) {
     dest_instruction->set_original_value(original_value);
     return;
   }
 
-  std::shared_ptr<OriginalValue> original_value_clone =
-      std::make_shared<OriginalValue>();
-  original_value_clone->CopySubtreeFrom(*original_value, {}, {});
-  dest_instruction->set_original_value(original_value_clone);
+  // Deep clone the tree.
+  auto cloned_tree = std::make_shared<OriginalValue>(original_value->tree());
+  dest_instruction->set_original_value(cloned_tree);
 }
 
 void DeduplicateOriginalValues(HloModule* module) {
@@ -206,6 +289,14 @@ void DeduplicateOriginalValues(HloModule* module) {
       }
     }
   }
+}
+
+/* static */
+TupleTree<std::optional<OriginalArray>>&
+OriginalValue::EmptyOriginalValueTupleTree() {
+  static absl::NoDestructor<TupleTree<std::optional<OriginalArray>>>
+      kEmptyTupleTree;
+  return *kEmptyTupleTree;
 }
 
 }  // namespace xla
