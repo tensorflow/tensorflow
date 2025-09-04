@@ -522,16 +522,16 @@ TEST_F(HloDiffTest, DiffSummaryFromDiffResultProtoWorks) {
     add.0 = f32[] add(parameter.1, parameter.0)
   }
   )"));
-  diff_result.unchanged_instructions.insert(
-      {module_l->entry_computation()->root_instruction(),
-       module_r->entry_computation()->root_instruction()});
-  diff_result.changed_instructions.insert(
-      {module_l->entry_computation()->parameter_instruction(0),
-       module_r->entry_computation()->parameter_instruction(1)});
-  diff_result.left_module_unmatched_instructions.insert(
-      module_l->entry_computation()->parameter_instruction(1));
-  diff_result.right_module_unmatched_instructions.insert(
-      module_r->entry_computation()->parameter_instruction(0));
+  diff_result.AddUnchangedInstruction(
+      module_l->entry_computation()->root_instruction(),
+      module_r->entry_computation()->root_instruction());
+  diff_result.AddChangedInstruction(
+      module_l->entry_computation()->parameter_instruction(0),
+      module_r->entry_computation()->parameter_instruction(1));
+  diff_result.AddUnmatchedInstruction(
+      module_l->entry_computation()->parameter_instruction(1), nullptr);
+  diff_result.AddUnmatchedInstruction(
+      nullptr, module_r->entry_computation()->parameter_instruction(0));
 
   DiffResultProto proto = diff_result.ToProto();
   DiffResult diff_result_from_proto =

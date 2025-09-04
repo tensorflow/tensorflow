@@ -102,6 +102,23 @@ ENTRY entry {
               UnorderedElementsAre(Pair(
                   Pointee(Property(&HloInstruction::name, "parameter.1")),
                   Pointee(Property(&HloInstruction::name, "parameter.1")))));
+
+  EXPECT_THAT(diff_result->left_diff_codes,
+              UnorderedElementsAre(
+                  Pair(Pointee(Property(&HloInstruction::name, "parameter.0")),
+                       DiffCode::kChanged),
+                  Pair(Pointee(Property(&HloInstruction::name, "parameter.1")),
+                       DiffCode::kUnchanged),
+                  Pair(Pointee(Property(&HloInstruction::name, "add.0")),
+                       DiffCode::kChanged)));
+  EXPECT_THAT(diff_result->right_diff_codes,
+              UnorderedElementsAre(
+                  Pair(Pointee(Property(&HloInstruction::name, "parameter.0")),
+                       DiffCode::kChanged),
+                  Pair(Pointee(Property(&HloInstruction::name, "parameter.1")),
+                       DiffCode::kUnchanged),
+                  Pair(Pointee(Property(&HloInstruction::name, "add.0")),
+                       DiffCode::kChanged)));
 }
 
 TEST_F(HloDiffTest, MatchedDifferentFingerprintMarkAsChanged) {
@@ -169,6 +186,23 @@ ENTRY entry {
   //             UnorderedElementsAre(
   //                 Pair(Pointee(Property(&HloInstruction::name, "add.0")),
   //                      Pointee(Property(&HloInstruction::name, "add.0")))));
+
+  EXPECT_THAT(diff_result->left_diff_codes,
+              UnorderedElementsAre(
+                  Pair(Pointee(Property(&HloInstruction::name, "parameter.0")),
+                       DiffCode::kChanged),
+                  Pair(Pointee(Property(&HloInstruction::name, "parameter.1")),
+                       DiffCode::kChanged),
+                  Pair(Pointee(Property(&HloInstruction::name, "add.0")),
+                       DiffCode::kChanged)));
+  EXPECT_THAT(diff_result->right_diff_codes,
+              UnorderedElementsAre(
+                  Pair(Pointee(Property(&HloInstruction::name, "parameter.0")),
+                       DiffCode::kChanged),
+                  Pair(Pointee(Property(&HloInstruction::name, "parameter.1")),
+                       DiffCode::kChanged),
+                  Pair(Pointee(Property(&HloInstruction::name, "add.0")),
+                       DiffCode::kChanged)));
 }
 
 TEST_F(HloDiffTest, UnmatchedInstructionsMarkAsUnmatched) {
@@ -226,6 +260,23 @@ ENTRY entry {
               UnorderedElementsAre(
                   Pointee(Property(&HloInstruction::name, "parameter.0")),
                   Pointee(Property(&HloInstruction::name, "parameter.1"))));
+
+  EXPECT_THAT(diff_result->left_diff_codes,
+              UnorderedElementsAre(
+                  Pair(Pointee(Property(&HloInstruction::name, "parameter.0")),
+                       DiffCode::kUnmatched),
+                  Pair(Pointee(Property(&HloInstruction::name, "parameter.1")),
+                       DiffCode::kUnmatched),
+                  Pair(Pointee(Property(&HloInstruction::name, "add.0")),
+                       DiffCode::kUnchanged)));
+  EXPECT_THAT(diff_result->right_diff_codes,
+              UnorderedElementsAre(
+                  Pair(Pointee(Property(&HloInstruction::name, "parameter.0")),
+                       DiffCode::kUnmatched),
+                  Pair(Pointee(Property(&HloInstruction::name, "parameter.1")),
+                       DiffCode::kUnmatched),
+                  Pair(Pointee(Property(&HloInstruction::name, "add.0")),
+                       DiffCode::kUnchanged)));
 }
 
 TEST_F(HloDiffTest, ShortFormConstantsMatched) {
@@ -298,6 +349,25 @@ ENTRY entry {
                Pointee(Property(&HloInstruction::name, "parameter.0"))),
           Pair(Pointee(Property(&HloInstruction::name, "add.0")),
                Pointee(Property(&HloInstruction::name, "add.0")))));
+
+  EXPECT_THAT(
+      diff_result->left_diff_codes,
+      UnorderedElementsAre(
+          Pair(Pointee(Property(&HloInstruction::name, "constant.2958")),
+               DiffCode::kUnchanged),
+          Pair(Pointee(Property(&HloInstruction::name, "parameter.0")),
+               DiffCode::kUnchanged),
+          Pair(Pointee(Property(&HloInstruction::name, "add.0")),
+               DiffCode::kUnchanged)));
+  EXPECT_THAT(
+      diff_result->right_diff_codes,
+      UnorderedElementsAre(
+          Pair(Pointee(Property(&HloInstruction::name, "constant.2958")),
+               DiffCode::kUnchanged),
+          Pair(Pointee(Property(&HloInstruction::name, "parameter.0")),
+               DiffCode::kUnchanged),
+          Pair(Pointee(Property(&HloInstruction::name, "add.0")),
+               DiffCode::kUnchanged)));
 }
 
 TEST_F(HloDiffTest, DiffResultToAndFromProtoWorks) {
