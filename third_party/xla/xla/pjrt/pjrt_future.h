@@ -233,8 +233,8 @@ class PjRtFutureBase : public PjRtFutureMoveControl<is_move_only> {
       promise_.template emplace<Args...>(std::forward<Args>(args)...);
     }
 
-    // Releases the underlying AsyncValueRef container to the caller.
-    tsl::AsyncValueRef<T> release() { return std::move(promise_); }
+    // Takes a reference to the underlying AsyncValueRef container.
+    tsl::AsyncValueRef<T> ref() const { return promise_; }
 
     // Returns a pointer to the underlying AsyncValue that can be used to
     // track completion of a promise. It is undefined behavior to access the
@@ -242,7 +242,7 @@ class PjRtFutureBase : public PjRtFutureMoveControl<is_move_only> {
     tsl::AsyncValue* async_value() const { return promise_.GetAsyncValue(); }
 
 #ifndef NDEBUG
-    int64_t AddFuture() { return num_futures_->fetch_add(1); }
+    int64_t AddFuture() const { return num_futures_->fetch_add(1); }
 #endif
 
    private:
@@ -458,10 +458,10 @@ class PjRtFuture : public internal::PjRtFutureBase<absl::StatusOr<T>> {
   // - on_block_start is called before Await starts to block.
   //  - on_block_end is called after Await finishes blocking.
   explicit PjRtFuture(
-      Promise promise,
+      const Promise& promise,
       PjRtFutureHelpers::OnBlockStartFn on_block_start = nullptr,
       PjRtFutureHelpers::OnBlockEndFn on_block_end = nullptr)
-      : Base(promise.release(), std::move(on_block_start),
+      : Base(promise.ref(), std::move(on_block_start),
              std::move(on_block_end)) {
 #ifndef NDEBUG
     if constexpr (is_move_only) {
@@ -689,6 +689,14 @@ class PjRtFuture<void> : public internal::PjRtFutureBase<absl::Status> {
     return Promise(tsl::MakeUnconstructedAsyncValueRef<absl::Status>());
   }
 
+  // Returns a pair of connected Promise and PjRtFuture<>. Setting the returned
+  // promise will fulfill the connected future.
+  static std::pair<Promise, PjRtFuture<>> MakePromise() {
+    auto promise = CreatePromise();
+    auto future = PjRtFuture<void>(promise);
+    return std::make_pair(std::move(promise), std::move(future));
+  }
+
   // Bring PjRtFutureBase constructors in scope.
   using Base::Base;
 
@@ -698,10 +706,10 @@ class PjRtFuture<void> : public internal::PjRtFutureBase<absl::Status> {
   // - on_block_start is called before Await starts to block.
   // - on_block_end is called after Await finishes blocking.
   explicit PjRtFuture(
-      Promise promise,
+      const Promise& promise,
       PjRtFutureHelpers::OnBlockStartFn on_block_start = nullptr,
       PjRtFutureHelpers::OnBlockEndFn on_block_end = nullptr)
-      : Base(promise.release(), std::move(on_block_start),
+      : Base(promise.ref(), std::move(on_block_start),
              std::move(on_block_end)) {}
 
   // Constructor for a future that is immediately ready with a given status.
@@ -822,15 +830,16 @@ namespace internal {
 
 template <typename T, bool is_move_only>
 PjRtFuture<> PjRtFutureBase<T, is_move_only>::GetReadyFuture() const& {
-  PjRtFuture<>::Promise promise = PjRtFuture<>::CreatePromise();
-  promise_.AndThen([p = promise_.AsPtr(), promise]() mutable {
-    if constexpr (std::is_same_v<T, absl::Status>) {
-      promise.Set(*p);
-    } else {
-      promise.Set(p->status());
-    }
-  });
-  return PjRtFuture<>(promise);
+  auto [promise, future] = PjRtFuture<>::MakePromise();
+  promise_.AndThen(
+      [self = promise_.AsPtr(), promise = std::move(promise)]() mutable {
+        if constexpr (std::is_same_v<T, absl::Status>) {
+          promise.Set(*self);
+        } else {
+          promise.Set(self->status());
+        }
+      });
+  return future;
 }
 
 template <typename T, bool is_move_only>
