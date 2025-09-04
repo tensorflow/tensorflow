@@ -280,8 +280,7 @@ absl::Status ConvertTfMlirToBef(
       [bef_buffer](mlir::PassManager& pm, mlir::ModuleOp module,
                    const tensorflow::TfrtPipelineOptions& options) {
         mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
-        tensorflow::CreateTFExecutorToTFInvariantOptimizationPipelineHelper(
-            pm, options);
+        tensorflow::CreateTFInvariantOptimizationPipelineHelper(pm, options);
         tensorflow::CreateTfToTfrtPipeline(pm, options);
 
         if (mlir::failed(pm.run(module))) {

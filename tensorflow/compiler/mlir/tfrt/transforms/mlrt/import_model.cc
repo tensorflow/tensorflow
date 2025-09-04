@@ -124,8 +124,7 @@ absl::StatusOr<mlrt::bc::Buffer> ConvertTfMlirToBytecode(
         // Remove unreachable private functions after map_fn conversion.
         pm.addPass(mlir::createSymbolDCEPass());
 
-        tensorflow::CreateTFExecutorToTFInvariantOptimizationPipelineHelper(
-            pm, options);
+        tensorflow::CreateTFInvariantOptimizationPipelineHelper(pm, options);
         // TODO(b/283481729): Add test to cover unused constants that do not
         // cause op_key discontinuity
         pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());

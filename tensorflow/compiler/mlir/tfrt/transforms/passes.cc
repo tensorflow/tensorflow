@@ -219,8 +219,8 @@ void CreateTFExecutorToTFPreInvariantOptimizationPipelineHelper(
   AddTfDeviceAssignmentPasses(pm, options);
 }
 
-void CreateTFExecutorToTFInvariantOptimizationPipelineHelper(
-    mlir::OpPassManager &pm, const TfrtPipelineOptions &options) {
+void CreateTFInvariantOptimizationPipelineHelper(
+    mlir::OpPassManager& pm, const TfrtPipelineOptions& options) {
   if (options.sink_in_invariant_ops) {
     pm.addPass(CreateSinkInInvariantOpsPass());
   }
