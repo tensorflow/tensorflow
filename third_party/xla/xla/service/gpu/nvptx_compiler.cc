@@ -403,15 +403,25 @@ bool ShouldAutotuneBetweenFusionEmitters(const HloInstruction& instruction) {
   if (fusion->fusion_kind() == HloInstruction::FusionKind::kCustom) {
     return false;
   }
+  // Buffer comparator is not implemented for multi-output fusions. This is
+  // necessary for the autotuner to be able to run.
+  if (fusion->IsMultiOutputFusion()) {
+    return false;
+  }
   // Scatter can't go through the block-level emitter and runs into comparator
   // issues in the autotuner as different runs can produce different results.
   if (absl::c_any_of(fusion->fused_instructions_computation()->instructions(),
                      HloPredicateIsOp<HloOpcode::kScatter>)) {
     return false;
   }
-  return absl::c_any_of(
+  auto ret = absl::c_any_of(
       fusion->fused_instructions_computation()->instructions(),
       HloPredicateIsOp<HloOpcode::kReduce, HloOpcode::kTranspose>);
+  if (ret) {
+    LOG(INFO) << "WillAutotuneBetweenFusionEmitters: "
+              << instruction.GetModule()->ToString();
+  }
+  return ret;
 }
 
 }  // namespace
@@ -427,17 +437,20 @@ absl::Status NVPTXCompiler::AddFusionAutotuningPass(
   }
   const DebugOptions& debug_options = hlo_module->config().debug_options();
   if (debug_options.xla_gpu_autotune_level() == 0 ||
-      debug_options.xla_gpu_exclude_nondeterministic_ops() ||
-      !debug_options.xla_gpu_experimental_enable_fusion_autotuner()) {
+      debug_options.xla_gpu_exclude_nondeterministic_ops()) {
     return absl::OkStatus();
   }
 
   std::vector<std::unique_ptr<CodegenBackend>> backends;
-  backends.push_back(std::make_unique<BlockLevelEmitterBackend>(
+  auto ble_backend = std::make_unique<BlockLevelEmitterBackend>(
       &debug_options, this, shape_size_fn, target_config,
-      /*use_default_config=*/true));
-  backends.push_back(std::make_unique<NativeEmitterBackend>(
-      &debug_options, this, target_config));
+      /*use_default_config=*/true);
+  ble_backend->AllowRegisterSpills();
+  backends.push_back(std::move(ble_backend));
+  auto native_backend = std::make_unique<NativeEmitterBackend>(
+      &debug_options, this, target_config);
+  native_backend->AllowRegisterSpills();
+  backends.push_back(std::move(native_backend));
 
   bool cache_only = stream_executor == nullptr;
   TF_ASSIGN_OR_RETURN(std::unique_ptr<AutotunerPass> autotuner_pass,

@@ -44,6 +44,7 @@ class CudnnNormRewriterTest : public GpuCodegenTest {
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_cudnn_layer_norm(true);
+    debug_options.set_xla_gpu_autotune_level(0);
     return debug_options;
   }
 

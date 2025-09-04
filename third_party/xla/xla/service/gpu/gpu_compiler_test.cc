@@ -1136,10 +1136,13 @@ ENTRY main {
   ROOT fusion = f32[1024,1024,1024] fusion(p0), kind=kLoop, calls=transpose
 })";
 
+  // Disable autotuning as this test is attempting to test a heuristic, but
+  // autotuning tests both cases, and is not guaranteed to be deterministic.
+  auto config = GetModuleConfigForTest();
+  config.mutable_debug_options().set_xla_gpu_autotune_level(0);
   TF_ASSERT_OK_AND_ASSIGN(
       auto module_and_executable,
-      GetOptimizedModuleForExecutable(transpose_fusion_module,
-                                      GetModuleConfigForTest()));
+      GetOptimizedModuleForExecutable(transpose_fusion_module, config));
   const HloModule* optimized_module = module_and_executable.first;
 
   if (cc.IsAtLeastAmpere()) {
@@ -1174,11 +1177,13 @@ ENTRY main {
   reshape = f32[1024,1024,4]{2,1,0} reshape(p0)
   ROOT transpose = f32[4,1024,1024]{2,1,0} transpose(reshape), dimensions={2,1,0}
 })";
-
+  // Disable autotuning as this test is attempting to test a heuristic, but
+  // autotuning tests both cases, and is not guaranteed to be deterministic.
+  auto config = GetModuleConfigForTest();
+  config.mutable_debug_options().set_xla_gpu_autotune_level(0);
   TF_ASSERT_OK_AND_ASSIGN(
       auto rewritable_transpose_module_and_executable,
-      GetOptimizedModuleForExecutable(rewritable_transpose_string,
-                                      GetModuleConfigForTest()));
+      GetOptimizedModuleForExecutable(rewritable_transpose_string, config));
   const HloModule* rewritable_transpose_optimized_module =
       rewritable_transpose_module_and_executable.first;
   EXPECT_TRUE(HasBlockLevelFusionConfig(
@@ -1200,8 +1205,7 @@ ENTRY main {
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto unrewritable_transpose_module_and_executable,
-      GetOptimizedModuleForExecutable(unrewritable_transpose_string,
-                                      GetModuleConfigForTest()));
+      GetOptimizedModuleForExecutable(unrewritable_transpose_string, config));
   const HloModule* unrewritable_transpose_optimized_module =
       unrewritable_transpose_module_and_executable.first;
   EXPECT_FALSE(HasBlockLevelFusionConfig(
