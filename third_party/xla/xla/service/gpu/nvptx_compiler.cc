@@ -62,7 +62,6 @@ limitations under the License.
 #include "xla/service/gpu/autotuning/autotuner_pass.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/autotuning/conv_algorithm_picker.h"
-#include "xla/service/gpu/autotuning/gemm_algorithm_picker.h"
 #include "xla/service/gpu/autotuning/gemm_fusion_autotuner.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/cublas_padding_requirements.h"
@@ -356,7 +355,8 @@ absl::Status NVPTXCompiler::AddConvAndGemmAutotuningPasses(
           .debug_options()
           .xla_gpu_experimental_disable_binary_libraries() ||
       debug_options.xla_gpu_autotune_level() == 0 ||
-      debug_options.xla_gpu_exclude_nondeterministic_ops()) {
+      debug_options.xla_gpu_exclude_nondeterministic_ops() ||
+      stream_exec == nullptr) {
     return absl::OkStatus();
   }
 
@@ -364,33 +364,21 @@ absl::Status NVPTXCompiler::AddConvAndGemmAutotuningPasses(
   // loaded in the GpuConvAlgorithmPicker but should be loaded in the autotuner.
   pipeline->AddPass<GpuConvAlgorithmPicker>(autotune_config);
 
-  if (debug_options.xla_gpu_experimental_use_autotuner_pass()) {
-    std::vector<std::unique_ptr<CodegenBackend>> backends;
-    backends.push_back(
-        std::make_unique<CublasBackend>(stream_exec, &debug_options, this));
-    backends.push_back(
-        std::make_unique<CublasLtBackend>(stream_exec, &debug_options, this));
-    auto should_autotune = [](const HloInstruction& instruction) -> bool {
-      return instruction.opcode() == HloOpcode::kCustomCall &&
-             IsCublasGemm(instruction);
-    };
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<AutotunerPass> autotuner_pass,
-        AutotunerPass::Create(std::move(backends), debug_options,
-                              options.device_allocator, stream_exec,
-                              thread_pool, should_autotune));
-    pipeline->AddPass(std::move(autotuner_pass));
-  } else {
-    // On Ampere or later, GemmAlgorithmPicker just provides a way to "warmup"
-    // the
-    // execution. But we already do that during GemmFusionAutotuner pass. In
-    // that case, we do a recursive compilation call that has
-    // 'is_autotuning_compilation' set to true.
-    if (!std::get<se::CudaComputeCapability>(gpu_version).IsAtLeastAmpere() ||
-        options.is_autotuning_compilation) {
-      pipeline->AddPass<GemmAlgorithmPicker>(autotune_config);
-    }
-  }
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  backends.push_back(
+      std::make_unique<CublasBackend>(stream_exec, &debug_options, this));
+  backends.push_back(
+      std::make_unique<CublasLtBackend>(stream_exec, &debug_options, this));
+  auto should_autotune = [](const HloInstruction& instruction) -> bool {
+    return instruction.opcode() == HloOpcode::kCustomCall &&
+           IsCublasGemm(instruction);
+  };
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<AutotunerPass> autotuner_pass,
+      AutotunerPass::Create(std::move(backends), debug_options, stream_exec,
+                            thread_pool, should_autotune,
+                            options.device_allocator));
+  pipeline->AddPass(std::move(autotuner_pass));
   return absl::OkStatus();
 }
 
@@ -693,7 +681,9 @@ absl::StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
     const stream_executor::DeviceDescription& device_description,
     se::StreamExecutor* stream_exec, std::vector<std::vector<uint8_t>> modules,
     const DebugOptions& debug_options) {
-  if (modules.empty()) return std::vector<uint8_t>{};
+  if (modules.empty()) {
+    return std::vector<uint8_t>{};
+  }
 
   auto cc = std::get<stream_executor::CudaComputeCapability>(
       device_description.gpu_compute_capability());

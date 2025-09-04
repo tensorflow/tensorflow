@@ -39,9 +39,9 @@ class AutotunerPass : public HloModulePass {
  public:
   static absl::StatusOr<std::unique_ptr<AutotunerPass>> Create(
       std::vector<std::unique_ptr<CodegenBackend>> backends,
-      const DebugOptions& debug_options, se::DeviceMemoryAllocator* allocator,
-      se::StreamExecutor* stream_executor, tsl::thread::ThreadPool* thread_pool,
-      InstructionFilterFn should_autotune);
+      const DebugOptions& debug_options, se::StreamExecutor* stream_executor,
+      tsl::thread::ThreadPool* thread_pool, InstructionFilterFn should_autotune,
+      se::DeviceMemoryAllocator* allocator = nullptr);
 
   absl::string_view name() const override { return "autotuner"; }
 
