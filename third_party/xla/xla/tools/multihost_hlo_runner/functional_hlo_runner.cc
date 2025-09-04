@@ -579,6 +579,9 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> device_buffers;
   std::vector<std::vector<PjRtBuffer*>> argument_ptrs;
   for (int repeat = 0; repeat < running_options.num_repeats; ++repeat) {
+    const bool is_last_repeat = (repeat == running_options.num_repeats - 1);
+    const bool profile_current_repeat =
+        (running_options.profiler != nullptr) && is_last_repeat;
     VLOG(1) << "FunctionalHloRunner: ExecuteOnDevices started (repeat = "
             << repeat << ").";
     {
@@ -592,17 +595,18 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
                                                 flatten_arguments));
         argument_ptrs = CreateArgumentPointersFromDeviceBuffers(device_buffers);
       }
-      if (repeat == running_options.num_repeats - 1) {
+      if (is_last_repeat) {
         execute_options.untuple_result = default_untuple_result;
-        if (running_options.profiler != nullptr) {
-          running_options.profiler->CreateSession();
-        }
       }
       execute_options.launch_id = repeat + 1 + running_options.base_run_id;
       if (running_options.execution_profiles != nullptr) {
         execute_options.execution_profile =
             &running_options.execution_profiles->emplace_back();
         execute_options.execution_profile->set_warmup_run_executed(repeat > 0);
+      }
+
+      if (profile_current_repeat) {
+        running_options.profiler->CreateSession();
       }
       futures->clear();
       TF_ASSIGN_OR_RETURN(
@@ -611,10 +615,13 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
       for (auto& future : *futures) {
         TF_RETURN_IF_ERROR(future.Await());
       }
+      if (profile_current_repeat) {
+        running_options.profiler->UploadSession();
+      }
     }
     VLOG(1) << "FunctionalHloRunner: ExecuteOnDevices succeeded (repeat = "
             << repeat << ")";
-    if (repeat < running_options.num_repeats - 1) {
+    if (!is_last_repeat) {
       switch (parameter_type) {
         case ParameterType::kOneTupleOfArrays:
           argument_ptrs = CreateArgumentPointersBasedOnAliasing(
@@ -638,9 +645,6 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
                       FetchAndLogOutput(client, output_buffers,
                                         running_options.module_output_mode,
                                         running_options.log_input_output()));
-  if (running_options.profiler != nullptr) {
-    running_options.profiler->UploadSession();
-  }
   return results;
 }
 
