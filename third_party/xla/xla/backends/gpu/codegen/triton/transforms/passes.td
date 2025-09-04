@@ -105,4 +105,14 @@ def RoundF32ToTF32ForTf32DotRewritePass
   let constructor = "CreateRoundF32ToTF32ForTf32DotRewritePass()";
 }
 
+def TritonXLALowerGetTidPass
+    : Pass<"triton-xla-get-tid", "mlir::ModuleOp"> {
+  let summary = "Lower get_tid to the PTX intrinsic.";
+  let description = [{
+    This pass lowers get_tid to the PTX intrinsic by loading the thread ID from
+    the register and returning it.
+  }];
+  let constructor = "CreateTritonXLALowerGetTidPass()";
+}
+
 #endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_PASSES_TD_

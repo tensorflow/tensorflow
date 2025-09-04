@@ -40,6 +40,7 @@ std::unique_ptr<mlir::Pass> CreateInt4ToPackedInt4RewritePass(
     const stream_executor::DeviceDescription& device_description);
 std::unique_ptr<mlir::Pass> CreateRoundF32ToTF32ForTf32DotRewritePass();
 std::unique_ptr<mlir::Pass> CreateExtractTmaInfoPass();
+std::unique_ptr<mlir::Pass> CreateTritonXLALowerGetTidPass();
 
 // Returns true if the `op` contains an operation in it's regions that satisfies
 // the `fn`.

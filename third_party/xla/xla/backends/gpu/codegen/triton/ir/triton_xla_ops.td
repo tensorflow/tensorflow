@@ -198,4 +198,16 @@ def TTXLA_SqueezeDimsOp : TTXLA_Op<"squeeze_dims", [
     let assemblyFormat = "$src attr-dict `:` type($src) `->` type($result)";
 }
 
+def TTXLA_GetTidOp : TTXLA_Op<"get_tid", [Pure]> {
+  let summary = "Get the thread ID within a triton kernel.";
+  let description = [{
+    This operation returns the thread ID within a kernel.
+    Only the X dimension is supported. The result is a 32-bit
+    integer which in CUDA terms is threadIdx.x.
+  }];
+  let arguments = (ins);
+  let results = (outs I32:$result);
+  let assemblyFormat = "attr-dict `:` functional-type(operands, $result)";
+}
+
 #endif // XLA_BACKENDS_GPU_CODEGEN_TRITON_IR_TRITON_XLA_OPS_TD_
