@@ -8,7 +8,7 @@ clone_benchmark() {
     local benchmarks_repo='https://github.com/tensorflow/benchmarks'
     local tf_ver
     tf_ver=$(grep -oP "_VERSION = '\K[0-9]+\.[0-9]+" \
-        "${_DL_FLD}/tensorflow/tensorflow/tools/pip_package/setup.py")
+        "${_DL_FLD}/tensorflow/tensorflow/tools/pip_package/setup.py.tpl")
     if [ -z "${tf_ver}" ]; then
         echo "TF version cannot be found..."
         exit 1
