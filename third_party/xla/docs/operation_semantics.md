@@ -508,6 +508,13 @@ frontend_attributes = {
 | `decomposition`             | `XlaComputation`       | computation of type `T_0, T_1, ..., T_{N-1} -> S` with N parameters of arbitrary type |
 | `version`                   | `int64`.               | number to version updates to semantics of the composite op                            |
 
+An op’s `decomposition` isn’t a field called, but instead appears as a to_apply
+attribute that points to the function which contains the lower-level
+implementation, i.e. `to_apply=%funcname`
+
+More information on composite and decomposition can be found on
+[StableHLO Specification](https://openxla.org/stablehlo/spec#composite)
+
 ## Cholesky
 
 See also
@@ -657,7 +664,7 @@ Note that there are the following restrictions on the `source_target_pair`:
 -   If a replica id is not a target in any pair, then the output on that replica
     is a tensor consisting of 0(s) with the same shape as the input.
 
-## Concatenate
+## ConcatInDim (Concatenate)
 
 See also
 [`XlaBuilder::ConcatInDim`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
@@ -765,35 +772,46 @@ type of the returned value of each `branch_computations[b]` must be the same.
 Note that only one of the `branch_computations` will be executed depending on
 the value of `branch_index`.
 
-## Conv (convolution)
+## Conv (Convolution)
 
 See also
 [`XlaBuilder::Conv`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
-
-As ConvWithGeneralPadding, but the padding is specified in a short-hand way as
-either SAME or VALID. SAME padding pads the input (`lhs`) with zeroes so that
-the output has the same shape as the input when not taking striding into
-account. VALID padding simply means no padding.
-
-## ConvWithGeneralPadding (convolution)
-
-See also
-[`XlaBuilder::ConvWithGeneralPadding`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
 
 Computes a convolution of the kind used in neural networks. Here, a convolution
 can be thought of as a n-dimensional window moving across a n-dimensional base
 area and a computation is performed for each possible position of the window.
 
-| Arguments             | Type                     | Semantics                |
-| --------------------- | ------------------------ | ------------------------ |
-| `lhs`                 | `XlaOp`                  | (n+2)-dimensional array of inputs |
-| `rhs`                 | `XlaOp`                  | (n+2)-dimensional array of kernel weights |
-| `window_strides`      | `ArraySlice<int64>`      | n-d array of kernel strides |
-| `padding`             | `ArraySlice< pair<int64,int64>>` | n-d array of (low, high) padding |
-| `lhs_dilation`        | `ArraySlice<int64>`      | n-d lhs dilation factor array |
-| `rhs_dilation`        | `ArraySlice<int64>`      | n-d rhs dilation factor array |
-| `feature_group_count` | int64                    | the number of feature groups |
-| `batch_group_count`   | int64                    | the number of batch groups |
+`Conv` Enqueues a convolution instruction onto the computation, which uses the
+default convolution dimension numbers with no dilation.
+
+The padding is specified in a short-hand way as either SAME or VALID. SAME
+padding pads the input (`lhs`) with zeroes so that the output has the same shape
+as the input when not taking striding into account. VALID padding simply means
+no padding.
+
+**`Conv(lhs, rhs, window_strides, padding, feature_group_count,
+batch_group_count, precision_config, preferred_element_type)`**
+
+| Arguments                | Type                | Semantics                   |
+| ------------------------ | ------------------- | --------------------------- |
+| `lhs`                    | `XlaOp`             | (n+2)-dimensional array of  |
+:                          :                     : inputs                      :
+| `rhs`                    | `XlaOp`             | (n+2)-dimensional array of  |
+:                          :                     : kernel weights              :
+| `window_strides`         | `ArraySlice<int64>` | n-d array of kernel strides |
+| `padding`                | `Padding`           | enum of padding             |
+| `feature_group_count`    | int64               | the number of feature       |
+:                          :                     : groups                      :
+| `batch_group_count`      | int64               | the number of batch groups  |
+| `precision_config`       | optional            | enum for level of precision |
+:                          : `PrecisionConfig`   :                             :
+| `preferred_element_type` | optional            | enum of scalar element type |
+:                          : `PrimitiveType`     :                             :
+
+Increasing levels of controls are available for `Conv`: -
+[ConvWithGeneralPadding](#ConvWithGeneralPadding) -
+[ConvWithGeneralDimensions](#ConvWithGeneralDimensions) -
+[ConvGeneral](#ConvGeneral) - [ConvGeneralDilated](#convgeneraldilated)
 
 Let n be the number of spatial dimensions. The `lhs` argument is an
 (n+2)-dimensional array describing the base area. This is called the input,
@@ -920,6 +938,158 @@ for (b, oz, oy, ox) {  // output coordinates
   output(b, oz, oy, ox) = value;
 }
 ```
+
+`precision_config` is used to indicate the precision configuration. The level
+dictates whether hardware should attempt to generate more machine code
+instructions to provide more accurate dtype emulation when needed (i.e.
+emulating f32 on a TPU that only supports bf16 matmuls). Values may be
+`DEFAULT`, `HIGH`, `HIGHEST`. Additional details
+[in the MXU sections](https://cloud.google.com/blog/products/ai-machine-learning/bfloat16-the-secret-to-high-performance-on-cloud-tpus).
+
+`preferred_element_type` is a scalar element of higher/lower precision output
+types used for accumulation. `preferred_element_type` recommends the
+accumulation type for the given operaiton, however it is not guaranteed. This
+allows for some hardware backends to instead accumulate in a different type and
+convert to the preferred output type.
+
+### ConvWithGeneralPadding
+
+**`ConvWithGeneralPadding(lhs, rhs, window_strides, padding,
+feature_group_count, batch_group_count, precision_config,
+preferred_element_type)`**
+
+See also
+[`XlaBuilder::ConvWithGeneralPadding`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Same as [`Conv`](#conv-convolution) where padding configuration is explicit.
+
+| Arguments                | Type                | Semantics                   |
+| ------------------------ | ------------------- | --------------------------- |
+| `lhs`                    | `XlaOp`             | (n+2)-dimensional array of  |
+:                          :                     : inputs                      :
+| `rhs`                    | `XlaOp`             | (n+2)-dimensional array of  |
+:                          :                     : kernel weights              :
+| `window_strides`         | `ArraySlice<int64>` | n-d array of kernel strides |
+| `padding`                | `ArraySlice<        | n-d array of (low, high)    |
+:                          : pair<int64,int64>>` : padding                     :
+| `feature_group_count`    | int64               | the number of feature       |
+:                          :                     : groups                      :
+| `batch_group_count`      | int64               | the number of batch groups  |
+| `precision_config`       | optional            | enum for level of precision |
+:                          : `PrecisionConfig`   :                             :
+| `preferred_element_type` | optional            | enum of scalar element type |
+:                          : `PrimitiveType`     :                             :
+
+### ConvWithGeneralDimensions
+
+**`ConvWithGeneralDimensions(lhs, rhs, window_strides, padding,
+dimension_numbers, feature_group_count, batch_group_count, precision_config,
+preferred_element_type)`**
+
+See also
+[`XlaBuilder::ConvWithGeneralDimensions`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Same as [`Conv`](#conv-convolution) where dimension numbers are explicit.
+
+| Arguments                | Type                          | Semantics         |
+| ------------------------ | ----------------------------- | ----------------- |
+| `lhs`                    | `XlaOp`                       | (n+2)-dimensional |
+:                          :                               : array of inputs   :
+| `rhs`                    | `XlaOp`                       | (n+2)-dimensional |
+:                          :                               : array of kernel   :
+:                          :                               : weights           :
+| `window_strides`         | `ArraySlice<int64>`           | n-d array of      |
+:                          :                               : kernel strides    :
+| `padding`                | `Padding`                     | enum of padding   |
+| `dimension_numbers`      | `ConvolutionDimensionNumbers` | the number of     |
+:                          :                               : dimensions        :
+| `feature_group_count`    | int64                         | the number of     |
+:                          :                               : feature groups    :
+| `batch_group_count`      | int64                         | the number of     |
+:                          :                               : batch groups      :
+| `precision_config`       | optional `PrecisionConfig`    | enum for level of |
+:                          :                               : precision         :
+| `preferred_element_type` | optional `PrimitiveType`      | enum of scalar    |
+:                          :                               : element type      :
+
+### ConvGeneral
+
+**`ConvGeneral(lhs, rhs, window_strides, padding, dimension_numbers,
+feature_group_count, batch_group_count, precision_config,
+preferred_element_type)`**
+
+See also
+[`XlaBuilder::ConvGeneral`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Same as [`Conv`](#conv-convolution) where dimension numbers and padding
+configuration is explicit
+
+| Arguments                | Type                          | Semantics         |
+| ------------------------ | ----------------------------- | ----------------- |
+| `lhs`                    | `XlaOp`                       | (n+2)-dimensional |
+:                          :                               : array of inputs   :
+| `rhs`                    | `XlaOp`                       | (n+2)-dimensional |
+:                          :                               : array of kernel   :
+:                          :                               : weights           :
+| `window_strides`         | `ArraySlice<int64>`           | n-d array of      |
+:                          :                               : kernel strides    :
+| `padding`                | `ArraySlice<                  | n-d array of      |
+:                          : pair<int64,int64>>`           : (low, high)       :
+:                          :                               : padding           :
+| `dimension_numbers`      | `ConvolutionDimensionNumbers` | the number of     |
+:                          :                               : dimensions        :
+| `feature_group_count`    | int64                         | the number of     |
+:                          :                               : feature groups    :
+| `batch_group_count`      | int64                         | the number of     |
+:                          :                               : batch groups      :
+| `precision_config`       | optional `PrecisionConfig`    | enum for level of |
+:                          :                               : precision         :
+| `preferred_element_type` | optional `PrimitiveType`      | enum of scalar    |
+:                          :                               : element type      :
+
+### ConvGeneralDilated
+
+**`ConvGeneralDilated(lhs, rhs, window_strides, padding, lhs_dilation,
+rhs_dilation, dimension_numbers, feature_group_count, batch_group_count,
+precision_config, preferred_element_type, window_reversal)`**
+
+See also
+[`XlaBuilder::ConvGeneralDilated`](https://github.com/openxla/xla/tree/main/xla/hlo/builder/xla_builder.h).
+
+Same as [`Conv`](#conv-convolution) where padding configuration, dilation
+factors, and dimension numbers are explicit.
+
+| Arguments                | Type                          | Semantics         |
+| ------------------------ | ----------------------------- | ----------------- |
+| `lhs`                    | `XlaOp`                       | (n+2)-dimensional |
+:                          :                               : array of inputs   :
+| `rhs`                    | `XlaOp`                       | (n+2)-dimensional |
+:                          :                               : array of kernel   :
+:                          :                               : weights           :
+| `window_strides`         | `ArraySlice<int64>`           | n-d array of      |
+:                          :                               : kernel strides    :
+| `padding`                | `ArraySlice<                  | n-d array of      |
+:                          : pair<int64,int64>>`           : (low, high)       :
+:                          :                               : padding           :
+| `lhs_dilation`           | `ArraySlice<int64>`           | n-d lhs dilation  |
+:                          :                               : factor array      :
+| `rhs_dilation`           | `ArraySlice<int64>`           | n-d rhs dilation  |
+:                          :                               : factor array      :
+| `dimension_numbers`      | `ConvolutionDimensionNumbers` | the number of     |
+:                          :                               : dimensions        :
+| `feature_group_count`    | int64                         | the number of     |
+:                          :                               : feature groups    :
+| `batch_group_count`      | int64                         | the number of     |
+:                          :                               : batch groups      :
+| `precision_config`       | optional `PrecisionConfig`    | enum for level of |
+:                          :                               : precision         :
+| `preferred_element_type` | optional `PrimitiveType`      | enum of scalar    |
+:                          :                               : element type      :
+| `window_reversal`        | optional `vector<bool>`       | flag used to      |
+:                          :                               : logically reverse :
+:                          :                               : dimension before  :
+:                          :                               : applying the      :
+:                          :                               : convolution       :
 
 ## ConvertElementType
 
@@ -1927,6 +2097,9 @@ Blocks any optimization pass from moving computations across the barrier.
 Ensures that all inputs are evaluated before any operators that depend on the
 barrier's outputs.
 
+See also
+[StableHLO optimization_barrier](https://openxla.org/stablehlo/spec#optimization_barrier)
+
 ## Pad
 
 See also
@@ -2007,14 +2180,20 @@ See also
 
 Applies a reduction function to one or more arrays in parallel.
 
-**`Reduce(operands..., init_values..., computation, dimensions)`**
+**`Reduce(operands..., init_values..., computation, dimensions_to_reduce)`**
 
-| Arguments     | Type                  | Semantics                        |
-| ------------- | --------------------- | -------------------------------- |
-| `operands`    | Sequence of N `XlaOp` | N arrays of types `T_0, ..., T_{N-1}`. |
-| `init_values` | Sequence of N `XlaOp` | N scalars of types `T_0, ..., T_{N-1}`. |
-| `computation` | `XlaComputation`      | computation of type `T_0, ..., T_{N-1}, T_0, ..., T_{N-1} ->` `Collate(T_0, ..., T_{N-1})`. |
-| `dimensions`  | `int64` array         | unordered array of dimensions to reduce. |
+| Arguments              | Type                  | Semantics                 |
+| ---------------------- | --------------------- | ------------------------- |
+| `operands`             | Sequence of N `XlaOp` | N arrays of types `T_0,   |
+:                        :                       : ..., T_{N-1}`.            :
+| `init_values`          | Sequence of N `XlaOp` | N scalars of types `T_0,  |
+:                        :                       : ..., T_{N-1}`.            :
+| `computation`          | `XlaComputation`      | computation of type `T_0, |
+:                        :                       : ..., T_{N-1}, T_0, ...,   :
+:                        :                       : T_{N-1} ->` `Collate(T_0, :
+:                        :                       : ..., T_{N-1})`.           :
+| `dimensions_to_reduce` | `int64` array         | unordered array of        |
+:                        :                       : dimensions to reduce.     :
 
 Where:
 
@@ -2992,6 +3171,13 @@ let t: (f32[10], s32) = tuple(v, s);
 
 Tuples can be deconstructed (accessed) via the [`GetTupleElement`]
 (#gettupleelement) operation.
+
+For more information see
+[StableHLO Tuple](https://openxla.org/stablehlo/spec#tuple)
+
+> **Note:** In HLO, tuples are needed for most ops that return >1 result. While
+> in StableHLO/MLIR, variadic results can be expressed and tuples are not used,
+> except in custom_calls/get_tuple_element.
 
 ## While
 
