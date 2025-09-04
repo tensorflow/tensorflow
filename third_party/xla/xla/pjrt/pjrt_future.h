@@ -710,7 +710,7 @@ class PjRtFuture<void> : public internal::PjRtFutureBase<absl::Status> {
   // Returns a pair of connected Promise and PjRtFuture<>. Setting the returned
   // promise will fulfill the connected future.
   static std::pair<Promise, PjRtFuture<>> MakePromise() {
-    auto promise = CreatePromise();
+    auto promise = Promise(tsl::MakeUnconstructedAsyncValueRef<absl::Status>());
     auto future = PjRtFuture<void>(promise);
     return std::make_pair(std::move(promise), std::move(future));
   }
