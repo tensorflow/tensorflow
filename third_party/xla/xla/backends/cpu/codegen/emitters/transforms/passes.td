@@ -102,7 +102,7 @@ def AddLoopUnrollFlagsPass : Pass<"xla-cpu-add-loop-unroll-flags", "mlir::func::
   ];
 
   let options = [
-    Option<"max_nested_iterations_", "max_nested_iterations", "int32_t", "1",
+    Option<"max_nested_iterations_", "max_nested_iterations", "int32_t", "4",
            "The maximum number of iterations accessed in a nested loop before disabling unrolling">,
   ];
 
