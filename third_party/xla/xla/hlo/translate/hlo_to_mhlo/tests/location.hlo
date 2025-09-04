@@ -2,24 +2,26 @@
 // TODO: hlo-translate does not set the metadata for arguments properly.
 
 HloModule Test
-
+// CHECK: #[[LOC1:.*]] = loc("x")
+// CHECK: #[[LOC2:.*]] = loc("mhlo.original_value={{[{][{]}}\22x\22{{[}][}]}}")
+// CHECK: #[[LOC3:.*]] = loc("y")
+// CHECK: #[[LOC4:.*]] = loc("mhlo.original_value={{[{][{]}}\22y\22{{[}][}]}}")
 // CHECK-LABEL: func @main
-ENTRY A {
-  // CHECK: loc("x")
-  %arg0 = f32[4] parameter(0), metadata={op_name="x"}
-  // CHECK: loc("y")
-  %arg1 = f32[4] parameter(1), metadata={op_name="y"}
-
-  // CHECK: loc(#[[LOC0:.*]])
+ENTRY main {
+  %arg0 = f32[4] parameter(0), metadata={op_name="x"}, origin={{"x"}}
+  %arg1 = f32[4] parameter(1), metadata={op_name="y"}, origin={{"y"}}
+  // CHECK-NEXT: loc(#[[LOC5:.*]])
   %add0 = f32[4] add(f32[4] %arg0, f32[4] %arg1)
-  // CHECK: loc(#[[LOC1:.*]])
-  %add1 = f32[4] add(f32[4] %add0, f32[4] %arg1), metadata={op_type="Add" op_name="embedded_inference/Add_0"}
-  // CHECK: loc(#[[LOC4:.*]])
-  ROOT %add2 = f32[4] add(f32[4] %add1, f32[4] %arg1), metadata={op_type="Add" op_name="embedded_inference/Add_1", source_file="source.txt", source_line=17}
-
-  // CHECK: #[[LOC0]] = loc("add0")
-  // CHECK: #[[LOC1]] = loc("embedded_inference/Add_0")
-  // CHECK: #[[LOC2:.*]] = loc("embedded_inference/Add_1")
-  // CHECK: #[[LOC3:.*]] = loc("source.txt":17:0)
-  // CHECK: #[[LOC4]] = loc(fused[#[[LOC2]], #[[LOC3]]])
+  // CHECK-NEXT: loc(#[[LOC13:.*]])
+  %add1 = f32[4] add(f32[4] %add0, f32[4] %arg1), metadata={op_type="Add" op_name="embedded_inference/Add_0"}, origin={{"add1"}}
+  // CHECK-NEXT: loc(#[[LOC14:.*]])
+  ROOT %add2 = f32[4] add(f32[4] %add1, f32[4] %arg1), metadata={op_type="Add" op_name="embedded_inference/Add_1", source_file="source.txt", source_line=17}, origin={{"add2"}}
 }
+// CHECK: #[[LOC5]] = loc("add0")
+// CHECK: #[[LOC6:.*]] = loc("embedded_inference/Add_0")
+// CHECK: #[[LOC7:.*]] = loc("mhlo.original_value={{[{][{]}}\22add1\22{{[}][}]}}")
+// CHECK: #[[LOC8:.*]] = loc("embedded_inference/Add_1")
+// CHECK: #[[LOC9:.*]] = loc("source.txt":17:0)
+// CHECK: #[[LOC10:.*]] = loc("mhlo.original_value={{[{][{]}}\22add2\22{{[}][}]}}")
+// CHECK: #[[LOC13]] = loc(fused[#[[LOC6]], #[[LOC7]]])
+// CHECK: #[[LOC14]] = loc(fused[#[[LOC8]], #[[LOC9]], #[[LOC10]]])
