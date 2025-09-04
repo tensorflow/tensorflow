@@ -55,6 +55,7 @@ limitations under the License.
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/analysis/hlo_operand_index.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
@@ -2064,10 +2065,34 @@ std::optional<int64_t> MsaAlgorithm::EarliestBlockPrefetchStartTime(
   return std::nullopt;
 }
 
+namespace {
+
+absl::flat_hash_set<HloPosition> GetParameterInstructionsAliasedToOutput(
+    const HloInputOutputAliasConfig& alias_config,
+    const HloInstruction* root_instruction) {
+  absl::flat_hash_set<HloPosition> aliased_parameter_positions;
+  alias_config.ForEachAlias([&](const ShapeIndex& output_index,
+                                const HloInputOutputAliasConfig::Alias& alias) {
+    HloInstruction* parameter_instruction =
+        root_instruction->parent()->parameter_instruction(
+            alias.parameter_number);
+    aliased_parameter_positions.insert(
+        {parameter_instruction, alias.parameter_index});
+  });
+  return aliased_parameter_positions;
+}
+
+}  // namespace
+
 void MsaAlgorithm::ProcessBlockPrefetches() {
   if (options_.reserved_bytes_for_block_prefetches == 0) {
     return;
   }
+  absl::flat_hash_set<HloPosition> aliased_parameter_positions =
+      GetParameterInstructionsAliasedToOutput(
+          module_->input_output_alias_config(),
+          module_->entry_computation()->root_instruction());
+
   // List of all block prefetched values. If a block prefetched value is sliced,
   // we also add the sliced value to block_prefetched_values. We will try
   // to perform an async slice to prefetch for the slice's uses.
@@ -2075,6 +2100,11 @@ void MsaAlgorithm::ProcessBlockPrefetches() {
   absl::flat_hash_map<const HloValue*, const HloValue*>
       sliced_value_to_original_value;
   for (const HloPosition& position : options_.block_prefetched_positions) {
+    if (aliased_parameter_positions.contains(position)) {
+      // TODO(b/441344194): Add support for block allocations for parameters
+      // that are aliased to outputs.
+      continue;
+    }
     const HloValue* value =
         &alias_analysis_.dataflow_analysis().GetUniqueValueAt(
             position.instruction, position.index);

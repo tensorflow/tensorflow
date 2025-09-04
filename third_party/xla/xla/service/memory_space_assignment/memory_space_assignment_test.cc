@@ -14749,6 +14749,83 @@ ENTRY entry {
             kAlternateMemorySpace);
 }
 
+TEST_F(MemorySpaceAssignmentTest,
+       TestBlockPrefetchingWithInputOutputAliasConfig) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[2,3]{1,0} parameter(0)
+  p1 = f32[2,3]{1,0} parameter(1)
+  p2 = f32[2,3]{1,0} parameter(2)
+  p3 = f32[2,3]{1,0} parameter(3)
+  p4 = f32[2,3]{1,0} parameter(4)
+  p5 = f32[2,3]{1,0} parameter(5)
+  negate0 = f32[2,3]{1,0} negate(p0)
+  negate1 = f32[2,3]{1,0} negate(negate0)
+  negate2 = f32[2,3]{1,0} negate(negate1)
+  add3 = f32[2,3]{1,0} add(p1, negate2)
+  negate4 = f32[2,3]{1,0} negate(add3)
+  negate5 = f32[2,3]{1,0} negate(negate4)
+  add6 = f32[2,3]{1,0} add(p2, negate5)
+  negate7 = f32[2,3]{1,0} negate(add6)
+  negate8 = f32[2,3]{1,0} negate(negate7)
+  add9 = f32[2,3]{1,0} add(p3, negate8)
+  negate10 = f32[2,3]{1,0} negate(add9)
+  negate11 = f32[2,3]{1,0} negate(negate10)
+  add12 = f32[2,3]{1,0} add(p4, negate11)
+  negate13 = f32[2,3]{1,0} negate(add12)
+  negate14 = f32[2,3]{1,0} negate(negate13)
+  add15 = f32[2,3]{1,0} add(p5, negate14)
+  ROOT tuple = (f32[2,3]{1,0}, f32[2,3]{1,0}) tuple(add15, p3)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK(module->input_output_alias_config().SetUpAlias({1}, 3, {}));
+  Options memory_space_options = DefaultMemorySpaceOptions();
+  memory_space_options.max_size_in_bytes = 24;
+  memory_space_options.reserved_bytes_for_block_prefetches = 24;
+
+  HloInstruction* p0 = FindInstruction(module.get(), "p0");
+  HloPosition p0_position{p0, {}};
+  HloInstruction* p1 = FindInstruction(module.get(), "p1");
+  HloPosition p1_position{p1, {}};
+  HloInstruction* p2 = FindInstruction(module.get(), "p2");
+  HloPosition p2_position{p2, {}};
+  HloInstruction* p3 = FindInstruction(module.get(), "p3");
+  HloPosition p3_position{p3, {}};
+  HloInstruction* p4 = FindInstruction(module.get(), "p4");
+  HloPosition p4_position{p4, {}};
+  HloInstruction* p5 = FindInstruction(module.get(), "p5");
+  HloPosition p5_position{p5, {}};
+  memory_space_options.block_prefetched_positions = {p5_position, p4_position,
+                                                     p3_position, p2_position,
+                                                     p1_position, p0_position};
+  memory_space_options.max_outstanding_block_prefetches = 10;
+  XLA_LOG_LINES(INFO, "Before MSA: \n" + module->ToString());
+  AssignMemorySpaceUsingCostAnalysis(module.get(), memory_space_options);
+  XLA_LOG_LINES(INFO, "After MSA: \n" + module->ToString());
+
+  HloInstruction* negate0 = FindInstruction(module.get(), "negate0");
+  EXPECT_EQ(negate0->operand(0)->shape().layout().memory_space(),
+            kAlternateMemorySpace);
+  HloInstruction* add3 = FindInstruction(module.get(), "add3");
+  EXPECT_EQ(add3->operand(0)->shape().layout().memory_space(),
+            kAlternateMemorySpace);
+  HloInstruction* add6 = FindInstruction(module.get(), "add6");
+  EXPECT_EQ(add6->operand(0)->shape().layout().memory_space(),
+            kAlternateMemorySpace);
+  HloInstruction* add9 = FindInstruction(module.get(), "add9");
+  EXPECT_EQ(add9->operand(0)->shape().layout().memory_space(),
+            kDefaultMemorySpace);
+  HloInstruction* add12 = FindInstruction(module.get(), "add12");
+  EXPECT_EQ(add12->operand(0)->shape().layout().memory_space(),
+            kAlternateMemorySpace);
+  HloInstruction* add15 = FindInstruction(module.get(), "add15");
+  EXPECT_EQ(add15->operand(0)->shape().layout().memory_space(),
+            kAlternateMemorySpace);
+}
+
 TEST_F(MemorySpaceAssignmentTest, TestBlockPrefetchingDoubleBuffered) {
   absl::string_view hlo_string = R"(
 HloModule module, is_scheduled=true
