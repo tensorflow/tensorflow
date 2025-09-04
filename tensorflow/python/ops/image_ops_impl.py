@@ -5204,21 +5204,15 @@ def combined_non_max_suppression(boxes,
   """
   boxes = ops.convert_to_tensor(boxes, name='boxes')
   scores = ops.convert_to_tensor(scores, name='scores')
-
-  if boxes.shape.ndims != 4:
-      raise ValueError(
-          f"`boxes` must be 4-D <batch, num_boxes, q, 4>; got shape {boxes.shape}"
-      )
-  if scores.shape.ndims != 3:
-      raise ValueError(
-          f"`scores` must be 3-D <batch, num_boxes, num_classes>; "
-          f"got shape {scores.shape}")
-          
   with ops.name_scope(name, 'combined_non_max_suppression'):
     iou_threshold = ops.convert_to_tensor(
-        iou_threshold, dtype=dtypes.float32, name='iou_threshold')
+        iou_threshold,
+        dtype=dtypes.float32,
+        name='iou_threshold')
     score_threshold = ops.convert_to_tensor(
-        score_threshold, dtype=dtypes.float32, name='score_threshold')
+        score_threshold,
+        dtype=dtypes.float32,
+        name='score_threshold')
 
     # Convert `max_total_size` to tensor *without* setting the `dtype` param.
     # This allows us to catch `int32` overflow case with `max_total_size`
