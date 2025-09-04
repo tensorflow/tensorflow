@@ -249,6 +249,12 @@ struct RunningOptions {
   ModuleOutputMode module_output_mode = ModuleOutputMode::kReturnOutputs;
   // Repeatedly execute the HLO for this many times.
   size_t num_repeats = 1;
+  // The last `num_repeats_with_profiler` repeats out of `num_repeats` will be
+  // profiled. Default is 1, i.e., the last repeat will be profiled.
+  size_t num_repeats_with_profiler = 1;
+  // If true, we recreate the profiler session between repeats when profiling
+  // more than one repeat.
+  bool recreate_profiler_session_between_repeats = false;
   size_t base_run_id = 0;
   // If true, we recreate the buffers between repeats to reset of effect of
   // buffer donation.

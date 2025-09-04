@@ -578,10 +578,15 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
   futures.emplace();
   std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> device_buffers;
   std::vector<std::vector<PjRtBuffer*>> argument_ptrs;
+
+  bool has_active_profiler_session = false;
   for (int repeat = 0; repeat < running_options.num_repeats; ++repeat) {
     const bool is_last_repeat = (repeat == running_options.num_repeats - 1);
     const bool profile_current_repeat =
-        (running_options.profiler != nullptr) && is_last_repeat;
+        (running_options.profiler != nullptr) &&
+        (repeat >= running_options.num_repeats -
+                       running_options.num_repeats_with_profiler);
+
     VLOG(1) << "FunctionalHloRunner: ExecuteOnDevices started (repeat = "
             << repeat << ").";
     {
@@ -605,8 +610,9 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
         execute_options.execution_profile->set_warmup_run_executed(repeat > 0);
       }
 
-      if (profile_current_repeat) {
+      if (profile_current_repeat && !has_active_profiler_session) {
         running_options.profiler->CreateSession();
+        has_active_profiler_session = true;
       }
       futures->clear();
       TF_ASSIGN_OR_RETURN(
@@ -615,8 +621,13 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
       for (auto& future : *futures) {
         TF_RETURN_IF_ERROR(future.Await());
       }
-      if (profile_current_repeat) {
+
+      const bool upload_active_profiler_session =
+          running_options.recreate_profiler_session_between_repeats ||
+          is_last_repeat;
+      if (has_active_profiler_session && upload_active_profiler_session) {
         running_options.profiler->UploadSession();
+        has_active_profiler_session = false;
       }
     }
     VLOG(1) << "FunctionalHloRunner: ExecuteOnDevices succeeded (repeat = "

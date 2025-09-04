@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/tools/multihost_hlo_runner/create_client.h"
 #include "xla/tools/multihost_hlo_runner/hlo_input_output_format.h"
+#include "xla/tools/multihost_hlo_runner/profiler_interface.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -866,6 +867,56 @@ TEST_F(FunctionalHloRunnerTest, DumpsUnoptimizedHLOInUnoptimizedSnapshot) {
   // The HLO module should be unoptimized, therefore it should not have a
   // schedule.
   EXPECT_FALSE(snapshot.hlo_module().has_schedule());
+}
+
+class MockProfiler : public ProfilerInterface {
+ public:
+  MOCK_METHOD(void, CreateSession, (), (override));
+  MOCK_METHOD(void, UploadSession, (), (override));
+};
+
+TEST_F(FunctionalHloRunnerTest, ProfileMultipleRepeatsSingleSession) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                          GetPjRtClient());
+  xla::DebugOptions debug_options;
+  FunctionalHloRunner::PreprocessingOptions preproc_options;
+  CompileOptions compile_options;
+
+  FunctionalHloRunner::RunningOptions running_options;
+  MockProfiler mock_profiler;
+  running_options.profiler = &mock_profiler;
+  running_options.num_repeats = 5;
+  running_options.num_repeats_with_profiler = 3;
+  running_options.recreate_profiler_session_between_repeats = false;
+
+  EXPECT_CALL(mock_profiler, CreateSession()).Times(1);
+  EXPECT_CALL(mock_profiler, UploadSession()).Times(1);
+
+  TF_EXPECT_OK(FunctionalHloRunner::LoadAndRun(
+      *client, debug_options, preproc_options, compile_options, running_options,
+      {GetHloPath("single_device.hlo")}, InputFormat::kText));
+}
+
+TEST_F(FunctionalHloRunnerTest, ProfileMultipleRepeatsSessionPerRepeat) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                          GetPjRtClient());
+  xla::DebugOptions debug_options;
+  FunctionalHloRunner::PreprocessingOptions preproc_options;
+  CompileOptions compile_options;
+
+  FunctionalHloRunner::RunningOptions running_options;
+  MockProfiler mock_profiler;
+  running_options.profiler = &mock_profiler;
+  running_options.num_repeats = 5;
+  running_options.num_repeats_with_profiler = 3;
+  running_options.recreate_profiler_session_between_repeats = true;
+
+  EXPECT_CALL(mock_profiler, CreateSession()).Times(3);
+  EXPECT_CALL(mock_profiler, UploadSession()).Times(3);
+
+  TF_EXPECT_OK(FunctionalHloRunner::LoadAndRun(
+      *client, debug_options, preproc_options, compile_options, running_options,
+      {GetHloPath("single_device.hlo")}, InputFormat::kText));
 }
 
 }  // namespace
