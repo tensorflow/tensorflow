@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/tsl/profiler/utils/xplane_test_utils.h"
 
+#include <cstdint>
+#include <initializer_list>
 #include <string>
 #include <utility>
 #include <variant>
@@ -25,23 +27,26 @@ limitations under the License.
 #include "xla/tsl/profiler/utils/xplane_schema.h"
 #include "xla/tsl/profiler/utils/xplane_utils.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
+#include "third_party/xprof/plugin/tensorboard_plugin_profile/protobuf/op_stats.pb.h"
 
 namespace tsl {
 namespace profiler {
 namespace {
 
+template <typename T>
 class XStatValueVisitor {
  public:
-  XStatValueVisitor(XEventBuilder* event, const XStatMetadata* stat_metadata)
-      : event_(event), stat_metadata_(stat_metadata) {}
+  XStatValueVisitor(XStatsBuilder<T>& stats_owner,
+                    const XStatMetadata* stat_metadata)
+      : stats_owner_(stats_owner), stat_metadata_(stat_metadata) {}
 
-  template <typename T>
-  void operator()(const T& value) {
-    event_->AddStatValue(*stat_metadata_, value);
+  template <typename V>
+  void operator()(const V& value) {
+    stats_owner_.SetOrAddStatValue(*stat_metadata_, value);
   }
 
  private:
-  XEventBuilder* event_;
+  XStatsBuilder<T>& stats_owner_;
   const XStatMetadata* stat_metadata_;
 };
 
@@ -67,6 +72,13 @@ XPlane* GetOrCreateTpuXPlane(XSpace* space, int32_t device_ordinal,
   builder.AddStatValue(
       *builder.GetOrCreateStatMetadata("peak_hbm_bw_gigabytes_per_second"),
       peak_hbm_bw_gigabytes_per_second);
+  tensorflow::profiler::CoreDetails core_details;
+  core_details.set_device_ordinal(device_ordinal);
+  core_details.set_is_sparse_core(false);
+  core_details.set_core_num(0);
+  builder.AddStatValue(
+      *builder.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kCoreDetails)),
+      core_details);
   return xplane;
 }
 
@@ -86,10 +98,10 @@ void CreateXEvent(
   for (const auto& stat_type_and_value : stats) {
     StatType stat_type = stat_type_and_value.first;
     const XStatValue& stat_value = stat_type_and_value.second;
-    XStatValueVisitor stat_value_visitor(
-        &event_builder,
+    XStatValueVisitor<XEvent> event_stat_visitor(
+        event_builder,
         plane_builder->GetOrCreateStatMetadata(GetStatTypeStr(stat_type)));
-    std::visit(stat_value_visitor, stat_value);
+    std::visit(event_stat_visitor, stat_value);
   }
 }
 
@@ -99,6 +111,21 @@ void CreateXEvent(
     std::initializer_list<std::pair<StatType, XStatValue>> stats) {
   CreateXEvent(plane_builder, line_builder, GetHostEventTypeStr(event_type),
                offset_ps, duration_ps, stats);
+}
+
+void CreateXEventMetadata(
+    XPlaneBuilder* plane_builder, absl::string_view event_name,
+    std::initializer_list<std::pair<StatType, XStatValue>> stats) {
+  XEventMetadata* event_metadata =
+      plane_builder->GetOrCreateEventMetadata(event_name);
+  XStatsBuilder<XEventMetadata> event_metadata_stats(event_metadata,
+                                                     plane_builder);
+  for (const auto& [stat_type, stat_value] : stats) {
+    XStatValueVisitor<XEventMetadata> event_metadata_stat_visitor(
+        event_metadata_stats,
+        plane_builder->GetOrCreateStatMetadata(GetStatTypeStr(stat_type)));
+    std::visit(event_metadata_stat_visitor, stat_value);
+  }
 }
 
 void CreateTfFunctionCallEvent(XPlaneBuilder* plane_builder,

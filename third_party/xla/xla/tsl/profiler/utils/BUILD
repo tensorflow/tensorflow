@@ -328,6 +328,7 @@ cc_library(
         ":xplane_builder",
         ":xplane_schema",
         ":xplane_utils",
+        "//third_party/xprof/plugin/tensorboard_plugin_profile/protobuf:op_stats_proto_cc",
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
