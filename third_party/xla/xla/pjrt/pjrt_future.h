@@ -223,6 +223,24 @@ class PjRtFutureBase : public PjRtFutureMoveControl<is_move_only> {
 
     explicit operator bool() const { return static_cast<bool>(promise_); }
 
+    // Returns if this promise is the unique reference to the underlying value.
+    // That is, this method returns true only if all of the following conditions
+    // are satisfied:
+    //
+    // - The promise is the only reference to the underlying value, i.e., there
+    //   are no other promises or futures associated with this value.
+    // - There are no OnReady callbacks registered to this promise.
+    //
+    // This may be used by the caller of `Set()` to short-circuit the work to
+    // fulfill the promise if no one will ever consume the value. Even in that
+    // case, consider fulfilling the promise with an error (e.g., `CANCELLED`)
+    // instead of dropping the promise without fulfilling it in order to make
+    // debugging easier. Also, be aware that the current promise may still be
+    // used to mint a future.
+    bool IsUniqueReference() const {
+      return async_value()->IsUnique() && !async_value()->HasWaiter();
+    }
+
    protected:
     explicit Promise(tsl::AsyncValueRef<T> promise)
         : promise_(std::move(promise)) {}
