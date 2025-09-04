@@ -221,7 +221,7 @@ class PjRtFutureBase : public PjRtFutureMoveControl<is_move_only> {
     Promise(const Promise& other) = default;
     Promise& operator=(const Promise& other) = default;
 
-    operator bool() const { return static_cast<bool>(promise_); }  // NOLINT
+    explicit operator bool() const { return static_cast<bool>(promise_); }
 
    protected:
     explicit Promise(tsl::AsyncValueRef<T> promise)
