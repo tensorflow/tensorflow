@@ -33,11 +33,7 @@
 namespace xla {
 namespace hlo_diff {
 
-enum DiffCode : uint8_t {
-  kUnchanged,
-  kChanged,
-  kUnmatched,
-};
+enum DiffType : uint8_t { kUnchanged, kChanged, kUnmatched, kMoved };
 
 // Result of diff'ng the left and right HLO modules. Contains the matched and
 // unmatched instructions in the two modules.
@@ -56,8 +52,8 @@ struct DiffResult {
       right_module_unmatched_instructions;
 
   // Diff codes.
-  absl::flat_hash_map<const HloInstruction*, DiffCode> left_diff_codes;
-  absl::flat_hash_map<const HloInstruction*, DiffCode> right_diff_codes;
+  absl::flat_hash_map<const HloInstruction*, DiffType> left_diff_codes;
+  absl::flat_hash_map<const HloInstruction*, DiffType> right_diff_codes;
 
   // Debug info.
   absl::flat_hash_map<std::pair<const HloInstruction*, const HloInstruction*>,

@@ -123,16 +123,16 @@ struct DiffFingerprint {
 
 DiffFingerprint ComputationDiffFingerprint(
     const xla::HloComputation* computation,
-    const absl::flat_hash_map<const HloInstruction*, DiffCode>& diff_codes) {
+    const absl::flat_hash_map<const HloInstruction*, DiffType>& diff_codes) {
   absl::flat_hash_map<const HloInstruction*, uint64_t> subgraph_fingerprint;
   bool all_unchanged = true;
   for (auto* instruction : computation->MakeInstructionPostOrder()) {
     uint64_t fp = static_cast<uint64_t>(instruction->opcode());
-    uint64_t diff_type_fp = DiffCode::kUnchanged;
+    uint64_t diff_type_fp = DiffType::kUnchanged;
     if (auto it = diff_codes.find(instruction); it != diff_codes.end()) {
       diff_type_fp = it->second;
     }
-    all_unchanged = all_unchanged && (diff_type_fp == DiffCode::kUnchanged);
+    all_unchanged = all_unchanged && (diff_type_fp == DiffType::kUnchanged);
     fp = tsl::FingerprintCat64(fp, diff_type_fp);
     for (const HloInstruction* operand : instruction->operands()) {
       fp = tsl::FingerprintCat64(fp, subgraph_fingerprint.at(operand));
@@ -262,7 +262,7 @@ std::vector<ComputationDiffPattern> FindComputationDiffPatterns(
 // Summarizes all computations in the given graph.
 ComputationSummaryMap SummarizeAllComputationsInGraph(
     const HloModule& module, const InstructionBimap& mapping,
-    const absl::flat_hash_map<const HloInstruction*, DiffCode>& diff_codes,
+    const absl::flat_hash_map<const HloInstruction*, DiffType>& diff_codes,
     DiffSide side) {
   ComputationSummaryMap result;
   for (const HloComputation* computation : module.computations()) {

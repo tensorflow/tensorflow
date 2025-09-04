@@ -45,33 +45,33 @@ bool IsChangedInstruction(const HloInstructionNode* left_node,
 void DiffResult::AddUnchangedInstruction(const HloInstruction* left,
                                          const HloInstruction* right) {
   unchanged_instructions[left] = right;
-  left_diff_codes[left] = DiffCode::kUnchanged;
-  right_diff_codes[right] = DiffCode::kUnchanged;
+  left_diff_codes[left] = DiffType::kUnchanged;
+  right_diff_codes[right] = DiffType::kUnchanged;
 }
 
 void DiffResult::AddChangedInstruction(const HloInstruction* left,
                                        const HloInstruction* right) {
   changed_instructions[left] = right;
-  left_diff_codes[left] = DiffCode::kChanged;
-  right_diff_codes[right] = DiffCode::kChanged;
+  left_diff_codes[left] = DiffType::kChanged;
+  right_diff_codes[right] = DiffType::kChanged;
 }
 
 void DiffResult::AddMovedInstruction(const HloInstruction* left,
                                      const HloInstruction* right) {
   moved_instructions[left] = right;
-  left_diff_codes[left] = DiffCode::kUnchanged;
-  right_diff_codes[right] = DiffCode::kUnchanged;
+  left_diff_codes[left] = DiffType::kUnchanged;
+  right_diff_codes[right] = DiffType::kUnchanged;
 }
 
 void DiffResult::AddUnmatchedInstruction(const HloInstruction* left,
                                          const HloInstruction* right) {
   if (left != nullptr) {
     left_module_unmatched_instructions.insert(left);
-    left_diff_codes[left] = DiffCode::kUnmatched;
+    left_diff_codes[left] = DiffType::kUnmatched;
   }
   if (right != nullptr) {
     right_module_unmatched_instructions.insert(right);
-    right_diff_codes[right] = DiffCode::kUnmatched;
+    right_diff_codes[right] = DiffType::kUnmatched;
   }
 }
 
