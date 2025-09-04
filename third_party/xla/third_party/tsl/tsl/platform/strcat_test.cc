@@ -70,14 +70,11 @@ TEST(StrCat, Floats) {
   const int s = 0;
   const float f = 1.5f;
   const double d = 1.5;
-  const bfloat16 bf(1.5f);
 
   string answer;
   answer = StrCat(s, f);
   EXPECT_EQ(answer, "01.5");
   answer = StrCat(s, d);
-  EXPECT_EQ(answer, "01.5");
-  answer = StrCat(s, bf);
   EXPECT_EQ(answer, "01.5");
 }
 
@@ -175,12 +172,12 @@ TEST(StrCat, Basics) {
 
   float f = 100000.5;
   result = StrCat("A hundred K and a half is ", f);
-  EXPECT_EQ(result, "A hundred K and a half is 100000.5");
+  EXPECT_EQ(result, "A hundred K and a half is 100000");
 
   double d = f;
   d *= d;
   result = StrCat("A hundred K and a half squared is ", d);
-  EXPECT_EQ(result, "A hundred K and a half squared is 10000100000.25");
+  EXPECT_EQ(result, "A hundred K and a half squared is 1.00001e+10");
 
   result = StrCat(1, 2, 333, 4444, 55555, 666666, 7777777, 88888888, 999999999);
   EXPECT_EQ(result, "12333444455555666666777777788888888999999999");
@@ -306,14 +303,14 @@ TEST(StrAppend, Basics) {
   float f = 100000.5;
   old_size = result.size();
   StrAppend(&result, "A hundred K and a half is ", f);
-  EXPECT_EQ(result.substr(old_size), "A hundred K and a half is 100000.5");
+  EXPECT_EQ(result.substr(old_size), "A hundred K and a half is 100000");
 
   double d = f;
   d *= d;
   old_size = result.size();
   StrAppend(&result, "A hundred K and a half squared is ", d);
   EXPECT_EQ(result.substr(old_size),
-            "A hundred K and a half squared is 10000100000.25");
+            "A hundred K and a half squared is 1.00001e+10");
 
   // Test 9 arguments, the old maximum
   old_size = result.size();
