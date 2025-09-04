@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/xnnpack/weight_cache.h"
 
 #include <fcntl.h>
+
 #if defined(_MSC_VER)
 #include <io.h>
 #define F_OK 0
@@ -22,6 +23,7 @@ limitations under the License.
 #include <unistd.h>
 #endif
 
+#include <algorithm>
 #include <cerrno>  // IWYU pragma: keep
 #include <cstddef>
 #include <cstdint>
@@ -133,7 +135,6 @@ bool WeightCacheBuilder::Start(const char* path, const FileDescriptor& fd) {
   // the build, reloading the cache file will fail.
   XNNPackCacheHeader header{XNNPackCacheHeader::kInvalidHeader};
   header.buffer_list_offset = sizeof(header);
-
   XNNPACK_RETURN_CHECK(fd_.Write(&header, sizeof(header)),
                        "could not write initial cache header in %s: %s.",
                        file_path_.c_str(), strerror(errno));
@@ -209,6 +210,15 @@ BufferLocation WeightCacheBuilder::Append(PackIdentifier pack_id,
   return loc;
 }
 
+void WeightCacheBuilder::AddMicrokernelConfig(
+    const xnn_config_common_initial_sequence& config) {
+  if (std::find(schema_.packing_schema_versions.begin(),
+                schema_.packing_schema_versions.end(),
+                config.identifier) == schema_.packing_schema_versions.end()) {
+    schema_.packing_schema_versions.push_back(config.identifier);
+  }
+}
+
 bool WeightCacheBuilder::StopBuildStep() {
   if (!is_build_step_) {
     return true;
@@ -224,8 +234,6 @@ bool WeightCacheBuilder::StopBuildStep() {
   }
 
   flatbuffers::FlatBufferBuilder builder;
-  // Add a fake size and the base offset to mutate them afterwards. Otherwise
-  // space for it won't be added to the flatbuffer.
   cache::schema::FinishBufferListBuffer(
       builder, cache::schema::BufferList::Pack(builder, &schema_));
 
@@ -407,11 +415,14 @@ bool MMapWeightCacheProvider::Load() {
                        "Cache needs to be built again.",
                        header.version, XNNPackCacheHeader::kVersion);
 
+#if !defined(TFLITE_XNNPACK_EXPERIMENTAL_PER_KERNEL_FINGERPRINTING) || \
+    !TFLITE_XNNPACK_EXPERIMENTAL_PER_KERNEL_FINGERPRINTING
   XNNPACK_RETURN_CHECK(xnn_experimental_check_build_identifier(
                            header.xnnpack_build_identifier,
                            sizeof(header.xnnpack_build_identifier)),
                        "XNNPack weight cache: incompatible XNNPack version. "
                        "Cache needs to be built again.");
+#endif
 
   XNNPACK_RETURN_CHECK(header.buffer_list_offset < mmap_handle.size(),
                        "invalid offset for buffer list descriptor.");
@@ -431,6 +442,18 @@ bool MMapWeightCacheProvider::Load() {
       mmap_handle.data() + header.buffer_list_offset);
   XNNPACK_RETURN_CHECK(buffer_list,
                        "could not get packed weights from flatbuffer.");
+
+#if defined(TFLITE_XNNPACK_EXPERIMENTAL_PER_KERNEL_FINGERPRINTING) && \
+    TFLITE_XNNPACK_EXPERIMENTAL_PER_KERNEL_FINGERPRINTING
+  auto packing_schema_versions = buffer_list->packing_schema_versions();
+  for (auto config_identifier : *packing_schema_versions) {
+    xnn_config_common_initial_sequence config;
+    config.identifier = config_identifier;
+    XNNPACK_RETURN_CHECK(
+        xnn_experimental_check_config_version(&config),
+        "XNNPack packing scheme has changed for one of the operations.");
+  }
+#endif
 
   mmap_buffer_base_offset_ = buffer_list->base_offset();
   if (const auto buffers = buffer_list->buffers(); buffers) {
@@ -595,6 +618,10 @@ size_t MMapWeightCacheProvider::LookUpOrInsert(
   XNNPACK_ABORT_CHECK(!location.IsInvalid(),
                       "Inserting data in the cache failed.");
   cache_key_to_offset_.emplace(pack_id, location);
+
+  if (cache_key->config) {
+    builder_.AddMicrokernelConfig(*(cache_key->config));
+  }
   return location.offset;
 }
 

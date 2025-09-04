@@ -55,7 +55,7 @@ inline constexpr char kInMemoryCachePath[] = ":memory";
 // When reading a cache file, the cache should be rejected if `version`
 // doesn't match `kVersion`.
 struct XNNPackCacheHeader {
-  enum : uint64_t { kInvalidHeader = 0, kVersion = 1 };
+  enum : uint64_t { kInvalidHeader = 0, kVersion = 2 };
   uint64_t version;
   uint8_t xnnpack_build_identifier[32];
   uint64_t buffer_list_offset;
@@ -146,6 +146,12 @@ class WeightCacheBuilder {
   [[nodiscard /*The location to the appended data should be saved.*/]]
   BufferLocation Append(PackIdentifier pack_id, const void* data,
                         uint64_t size);
+
+  // Adds a configuration identifier to the cache.
+  //
+  // Configuration identifiers are used to check whether a cache file is
+  // compatible with the current XNNPack microkernels that are used.
+  void AddMicrokernelConfig(const xnn_config_common_initial_sequence& config);
 
   // Writes the flatbuffer to disk.
   [[nodiscard /*Writing the weight cache can fail.*/]]
