@@ -360,6 +360,8 @@ def compute_capabilities(repository_ctx):
                 continue
             if len(capability) == len(prefix) + 3 and capability.endswith("90a"):
                 continue
+            if len(capability) == len(prefix) + 3 and capability[-3:].isdigit():
+                continue
             auto_configure_fail("Invalid compute capability: %s" % capability)
 
     return capabilities
