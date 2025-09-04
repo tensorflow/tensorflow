@@ -228,7 +228,6 @@ tf_staging/third_party/py/non_hermetic/ml_dtypes/LICENSE:
 tf_staging/third_party/py/python_configure.bzl:
 tf_staging/third_party/py/python_init_pip.bzl:
 tf_staging/third_party/py/python_init_repositories.bzl:
-tf_staging/third_party/py/python_init_rules.bzl:
 tf_staging/third_party/py/python_init_toolchains.bzl:
 tf_staging/third_party/py/python_repo.bzl:
 tf_staging/third_party/sqlite.BUILD:
