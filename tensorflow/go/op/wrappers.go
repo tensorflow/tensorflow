@@ -16627,6 +16627,7 @@ func ExtractGlimpseNormalized(value bool) ExtractGlimpseAttr {
 //
 // value: indicates if the noise should be generated using a
 // uniform distribution or a Gaussian distribution.
+// It should not be `True` when `noise` is not `uniform`.
 // If not specified, defaults to true
 func ExtractGlimpseUniformNoise(value bool) ExtractGlimpseAttr {
 	return func(m optionalAttr) {
@@ -16733,6 +16734,7 @@ func ExtractGlimpseV2Normalized(value bool) ExtractGlimpseV2Attr {
 //
 // value: indicates if the noise should be generated using a
 // uniform distribution or a Gaussian distribution.
+// It should not be `True` when `noise` is not `uniform`.
 // If not specified, defaults to true
 func ExtractGlimpseV2UniformNoise(value bool) ExtractGlimpseV2Attr {
 	return func(m optionalAttr) {
