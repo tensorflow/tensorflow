@@ -123,6 +123,26 @@ TEST_F(SymbolicExprTest, ReplaceVariables) {
   EXPECT_EQ(result.ToString(), "(v0 + (v2 * 10))");
 }
 
+TEST_F(SymbolicExprTest, ReplaceSymbols) {
+  SymbolicExpr d0 = ctx.CreateVariable(0);
+  SymbolicExpr s0 = ctx.CreateVariable(1);
+  SymbolicExpr s1 = ctx.CreateVariable(2);
+  SymbolicExpr c7 = ctx.CreateConstant(7);
+  SymbolicExpr expr_to_sub = (d0 + s0 * 2) * s1;
+  SymbolicExpr result = expr_to_sub.ReplaceSymbols({d0, c7}, 1);
+  EXPECT_EQ(result, ((d0 + (d0 * 2)) * c7));
+}
+
+TEST_F(SymbolicExprTest, ReplaceDimsAndSymbols) {
+  SymbolicExpr d0 = ctx.CreateVariable(0);
+  SymbolicExpr s0 = ctx.CreateVariable(1);
+  SymbolicExpr s1 = ctx.CreateVariable(2);
+  SymbolicExpr c7 = ctx.CreateConstant(7);
+  SymbolicExpr expr_to_sub = (d0 + s0 * 2) * s1;
+  SymbolicExpr result = expr_to_sub.ReplaceDimsAndSymbols({s0}, {d0, c7});
+  EXPECT_EQ(result, ((s0 + (d0 * 2)) * c7));
+}
+
 TEST_F(SymbolicExprTest, UniquingWorks) {
   SymbolicExpr c1 = ctx.CreateConstant(42);
   SymbolicExpr c2 = ctx.CreateConstant(42);

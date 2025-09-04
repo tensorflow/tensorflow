@@ -68,6 +68,17 @@ std::string GetBinaryOpString(SymbolicExprType type) {
   }
 }
 
+llvm::SmallVector<SymbolicExpr> CreateVariableRange(SymbolicExprContext* ctx,
+                                                    int64_t n,
+                                                    int64_t offset = 0) {
+  llvm::SmallVector<SymbolicExpr> replacements;
+  replacements.reserve(n);
+  for (int64_t i = 0; i < n; ++i) {
+    replacements.push_back(ctx->CreateVariable(offset + i));
+  }
+  return replacements;
+}
+
 // Helper class to manage the state of the parser.
 class Parser {
  public:
@@ -695,6 +706,21 @@ SymbolicExpr SymbolicExpr::ReplaceVariables(
     default:
       LOG(FATAL) << "Substitute not implemented for this type.";
   }
+}
+
+SymbolicExpr SymbolicExpr::ReplaceSymbols(
+    absl::Span<const SymbolicExpr> sym_replacements, int64_t num_dims) const {
+  auto dim_replacements = CreateVariableRange(GetContext(), num_dims);
+  return ReplaceDimsAndSymbols(dim_replacements, sym_replacements);
+}
+
+SymbolicExpr SymbolicExpr::ReplaceDimsAndSymbols(
+    absl::Span<const SymbolicExpr> dim_replacements,
+    absl::Span<const SymbolicExpr> symbol_replacements) const {
+  llvm::SmallVector<SymbolicExpr> replacements;
+  replacements.append(dim_replacements.begin(), dim_replacements.end());
+  replacements.append(symbol_replacements.begin(), symbol_replacements.end());
+  return ReplaceVariables(replacements);
 }
 
 SymbolicExpr SymbolicExpr::Replace(SymbolicExpr expr,
