@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/statusor.h"
+#include "llvm/IR/FMF.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -46,6 +47,7 @@ class FusionCompiler {
     int32_t vector_width;
     int32_t verification_level;
     bool fast_min_max;
+    llvm::FastMathFlags fast_math_flags;
   };
 
   FusionCompiler(mlir::MLIRContext* context, Options options,
