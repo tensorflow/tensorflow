@@ -27,8 +27,6 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -412,16 +410,15 @@ struct Options {
   // alternate memory first, and then run the rest of the algorithm.
   bool explicit_pinning_mode = false;
 
-  // If set, this is the maximum number of concurrent prefetches allowed for
-  // block allocations.
-  int64_t max_outstanding_prefetches_for_block_allocations = 0;
+  // If set, this is the maximum number of concurrent block prefetches allowed.
+  int64_t max_outstanding_block_prefetches = 0;
 
   // If set, this is the size of scoped alternate memory that we require MSA to
-  // allocate for block allocated weights.
-  uint64_t reserved_bytes_for_block_allocated_weights = 0;
+  // allocate for block prefetches.
+  uint64_t reserved_bytes_for_block_prefetches = 0;
 
-  // The list of defining positions of block allocated weights.
-  absl::flat_hash_set<HloPosition> block_allocated_weights_positions;
+  // List of hlo positions for block prefetches.
+  absl::flat_hash_set<HloPosition> block_prefetched_positions;
 
   // Determines the bandwidth adjustment factor for an async start instruction.
   // The available bandwidth for instructions between this and the async done

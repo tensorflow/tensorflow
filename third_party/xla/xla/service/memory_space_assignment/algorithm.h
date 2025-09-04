@@ -334,20 +334,21 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
 
   absl::StatusOr<HeapSimulator::Result<HloValue>> Finish() override;
 
-  // Finalizes allocations for block-allocated weights.
-  void AllocateBlockAllocatedWeights();
+  // Processes all block prefetches.
+  void ProcessBlockPrefetches();
 
   // Returns the maximum amount of scoped memory that is reserved at any time in
   // the program.
   int64_t MaxReservedScopedMemory();
 
-  // Returns the earliest time that chunk can be reserved for a block-allocated
-  // weight where the start time is between [definition_time, use_time] and
-  // use_time and the end time is the use_time. The chunk.end() should be less
-  // than the block_allocated_weights_bytes_limit.
-  std::optional<int64_t> EarliestBlockAllocatedWeightStartTime(
-      int64_t definition_time, int64_t first_use_time, int64_t last_use_time,
-      int64_t buffer_size, int64_t block_allocated_weights_bytes_limit,
+  // Returns the earliest time that chunk can be reserved for a block prefetch
+  // where the start time is between [definition_time, use_time] and use_time
+  // and the end time is the use_time. The chunk.end() should be within the
+  // block_prefetching_limit_bytes.
+  std::optional<int64_t> EarliestBlockPrefetchStartTime(
+      int64_t earliest_start_time_candidate, int64_t first_use_time,
+      int64_t last_use_time, int64_t buffer_size,
+      int64_t block_prefetching_limit_bytes,
       std::vector<int64_t>& prefetch_end_times);
 
  protected:
