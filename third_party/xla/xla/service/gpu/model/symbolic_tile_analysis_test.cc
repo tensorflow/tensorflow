@@ -855,6 +855,68 @@ ENTRY main {
   )"));
 }
 
+TEST_F(SymbolicTileAnalysisTest, ScaledDotOffsetIndexingIsCorrect) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+fusion {
+  lhs = f8e4m3fn[128,64] parameter(0)
+  lhs_scale = f8e8m0fnu[128,2] parameter(1)
+  rhs = f8e4m3fn[64,128] parameter(2)
+  rhs_scale = f8e8m0fnu[2,128] parameter(3)
+  ROOT dot = f32[128,128] scaled-dot(lhs, lhs_scale, rhs, rhs_scale),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY main {
+  p0 = f8e4m3fn[128,64] parameter(0)
+  p1 = f8e8m0fnu[128,2] parameter(1)
+  p2 = f8e4m3fn[64,128] parameter(2)
+  p3 = f8e8m0fnu[2,128] parameter(3)
+  ROOT fusion = f32[128,128] fusion(p0, p1, p2, p3), kind=kLoop, calls=fusion
+})"));
+  std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
+  ASSERT_TRUE(analysis.has_value());
+  const HloInstruction* dot_hlo =
+      module->entry_computation()->root_instruction()->fused_expression_root();
+  constexpr int64_t kContractingTileSize = 32;
+  constexpr int64_t kLhsTileSize = 16;
+  constexpr int64_t kRhsTileSize = 16;
+  Tiling tiling(Tiling::TileMapping{
+      {dot_hlo, {kContractingTileSize, kLhsTileSize, kRhsTileSize}}});
+  TF_ASSERT_OK_AND_ASSIGN(TiledHloComputation tiled_hlo_computation,
+                          analysis->ComputeTiledHloInstructions(
+                              tiling,
+                              /*constraints_are_known_satisfied=*/false,
+                              /*compute_all_tile_offset_indexing_maps=*/true));
+
+  const TiledHloInstruction* dot = tiled_hlo_computation.GetRoots()[0];
+  EXPECT_THAT(*dot, MatchTiledHloInstruction(
+                        /*tile_sizes=*/{16, 16}, /*tile_strides=*/{1, 1},
+                        /*tile_offsets_indexing=*/R"(
+    (pid_0) -> ((pid_0 floordiv 8) * 16, (pid_0 mod 8) * 16),
+    domain:
+    pid_0 in [0, 63]
+  )"));
+
+  const TiledHloInstruction* lhs = dot->operand(0);
+  EXPECT_THAT(*lhs, MatchTiledHloInstruction(
+                        /*tile_sizes=*/{16, 32}, /*tile_strides=*/{1, 1},
+                        /*tile_offsets_indexing=*/R"(
+    (pid_0) -> ((pid_0 floordiv 8) * 16, 0),
+    domain:
+    pid_0 in [0, 63]
+  )"));
+
+  const TiledHloInstruction* rhs = dot->operand(2);
+  EXPECT_THAT(*rhs, MatchTiledHloInstruction(
+                        /*tile_sizes=*/{32, 16}, /*tile_strides=*/{1, 1},
+                        /*tile_offsets_indexing=*/R"(
+    (pid_0) -> (0, (pid_0 mod 8) * 16),
+    domain:
+    pid_0 in [0, 63]
+  )"));
+}
+
 TEST_F(SymbolicTileAnalysisTest, DoesNotBailOutOnConstrainedReshape) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(

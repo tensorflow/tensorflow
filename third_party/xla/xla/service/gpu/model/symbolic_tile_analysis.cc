@@ -129,6 +129,11 @@ struct OutputTilingInfo {
   }
 };
 
+bool IsSomeDot(const HloInstruction* hlo) {
+  return hlo->opcode() == HloOpcode::kDot ||
+         hlo->opcode() == HloOpcode::kScaledDot;
+}
+
 llvm::SmallVector<int64_t> GetNumberOfTilesPerDimension(
     const TiledHloInstruction& tiled_hlo_instr) {
   llvm::SmallVector<int64_t> result;
@@ -605,7 +610,7 @@ bool ShouldDerivationSimplifyPointDimensions(const HloFusionAdaptor& fusion) {
       continue;
     }
 
-    if (instruction_adaptor.opcode() == HloOpcode::kDot) {
+    if (IsSomeDot(&instruction_adaptor.instruction())) {
       return false;
     }
 
@@ -671,7 +676,7 @@ absl::Status PopulateNestedParameters(
       continue;
     }
 
-    if (instruction_adaptor.opcode() == HloOpcode::kDot) {
+    if (IsSomeDot(&instruction_adaptor.instruction())) {
       int64_t num_parameters = instruction_adaptor.instruction()
                                    .dot_dimension_numbers()
                                    .lhs_contracting_dimensions()
@@ -894,7 +899,7 @@ std::vector<int64_t> InputSpaceForParameterMapping(
 
   for (const auto& [hlo, num_parameters] : parameter_mapping) {
     // TODO(b/419026602): handle reductions.
-    if (hlo->opcode() == HloOpcode::kDot) {
+    if (IsSomeDot(hlo)) {
       auto contracting_dimensions =
           hlo->dot_dimension_numbers().lhs_contracting_dimensions();
       // First, we need to add the contracting dimensions of the `dot`
@@ -1044,12 +1049,22 @@ IndexingMap InsertTilingParameterForContractingDimensions(
   // TODO(b/419026602): handle reductions here as well once priority fusion can
   // handle it. By adding a special path for reductions, we can handle them
   // here as well, even without nests.
-  if (consumer->opcode() == HloOpcode::kDot) {
-    CHECK(operand_index == 0 || operand_index == 1);
-    absl::Span<const int64_t> contracting_dimensions =
-        operand_index == 0
-            ? consumer->dot_dimension_numbers().lhs_contracting_dimensions()
-            : consumer->dot_dimension_numbers().rhs_contracting_dimensions();
+  if (IsSomeDot(consumer)) {
+    absl::Span<const int64_t> contracting_dimensions;
+    if (consumer->opcode() == HloOpcode::kScaledDot) {
+      CHECK(operand_index >= 0 && operand_index <= 3);
+      contracting_dimensions =
+          operand_index <= 1
+              ? consumer->dot_dimension_numbers().lhs_contracting_dimensions()
+              : consumer->dot_dimension_numbers().rhs_contracting_dimensions();
+    }
+    if (consumer->opcode() == HloOpcode::kDot) {
+      CHECK(operand_index == 0 || operand_index == 1);
+      contracting_dimensions =
+          operand_index == 0
+              ? consumer->dot_dimension_numbers().lhs_contracting_dimensions()
+              : consumer->dot_dimension_numbers().rhs_contracting_dimensions();
+    }
 
     absl::flat_hash_map<int64_t, int64_t> parameter_index_by_symbol_position;
     std::vector<int64_t> symbols_to_remove;
@@ -1057,9 +1072,13 @@ IndexingMap InsertTilingParameterForContractingDimensions(
     symbols_to_remove.reserve(contracting_dimensions.size());
     for (auto [parameter_index, contracting_dimension] :
          llvm::enumerate(contracting_dimensions)) {
-      auto symbol = mlir::dyn_cast<mlir::AffineSymbolExpr>(
-          outermost_fusion_root_to_operand.GetAffineMap().getResult(
-              contracting_dimension));
+      auto affine_map = outermost_fusion_root_to_operand.GetAffineMap();
+      auto result = affine_map.getResults()[contracting_dimension];
+      auto symbol = mlir::dyn_cast<mlir::AffineSymbolExpr>(result);
+      if (!symbol) {
+        auto binary_expr = mlir::cast<mlir::AffineBinaryOpExpr>(result);
+        symbol = mlir::dyn_cast<mlir::AffineSymbolExpr>(binary_expr.getLHS());
+      }
       // This can only occur if the wrong arguments were passed to this
       // function, and our traversal logic is broken.
       CHECK(symbol);  // Crash OK
