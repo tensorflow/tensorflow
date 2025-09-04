@@ -275,6 +275,32 @@ TEST(PjRtFutureTest, MapMoveOnlyWithInplaceConstructor) {
   EXPECT_EQ(mapped.Await()->v, 42);
 }
 
+TEST(PjRtFutureTest, MapUnusedResult) {
+  auto promise = PjRtFuture<int>::CreatePromise();
+  PjRtFuture<int> future(promise);
+
+  bool called = false;
+  future.Map([&](int) {
+    called = true;
+    return 2;
+  });
+  promise.Set(1);
+  EXPECT_FALSE(called);
+}
+
+TEST(PjRtFutureTest, MapStatusUnusedResult) {
+  auto promise = PjRtFuture<>::CreatePromise();
+  PjRtFuture<> future(promise);
+
+  bool called = false;
+  future.Map([&]() {
+    called = true;
+    return 2;
+  });
+  promise.Set();
+  EXPECT_FALSE(called);
+}
+
 TEST(PjRtFutureTest, TryMapCopyableFuture) {
   auto promise = PjRtFuture<int32_t>::CreatePromise();
   PjRtFuture<int32_t> future(promise);
@@ -369,6 +395,32 @@ TEST(PjRtFutureTest, TryMapMoveOnlyFutureCreateError) {
 
   EXPECT_TRUE(mapped.IsReady());
   EXPECT_EQ(mapped.Await().status(), absl::InternalError("test"));
+}
+
+TEST(PjRtFutureTest, TryMapUnusedResult) {
+  auto promise = PjRtFuture<int>::CreatePromise();
+  PjRtFuture<int> future(promise);
+
+  bool called = false;
+  future.TryMap([&](int) -> absl::StatusOr<int> {
+    called = true;
+    return 2;
+  });
+  promise.Set(1);
+  EXPECT_FALSE(called);
+}
+
+TEST(PjRtFutureTest, TryMapStatusUnusedResult) {
+  auto promise = PjRtFuture<>::CreatePromise();
+  PjRtFuture<> future(promise);
+
+  bool called = false;
+  future.TryMap([&]() -> absl::StatusOr<int> {
+    called = true;
+    return 2;
+  });
+  promise.Set();
+  EXPECT_FALSE(called);
 }
 
 TEST(PjRtFutureTest, StatelessError) {

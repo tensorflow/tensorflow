@@ -390,6 +390,16 @@ class PjRtFutureBase : public PjRtFutureMoveControl<is_move_only> {
         });
   }
 
+ protected:
+  // Returns a placeholder error that can be used when short-circuiting promises
+  // with no other references.
+  static absl::Status AbortedError() {
+    return absl::AbortedError(
+        "Fulfilling the promise with an aborted error since the value is no "
+        "longer referenced by any futures or OnReady callbacks; if this error "
+        "is exposed to any future, that indicates a bug");
+  }
+
  private:
   tsl::AsyncValueRef<T> promise_;
 
@@ -511,6 +521,10 @@ class PjRtFuture : public internal::PjRtFutureBase<absl::StatusOr<T>> {
 
     using Value = const absl::StatusOr<T>&;
     OnReady([promise, f = std::forward<F>(f)](Value value) mutable {
+      if (ABSL_PREDICT_FALSE(promise.IsUniqueReference())) {
+        promise.Set(Base::AbortedError());
+        return;
+      }
       if (ABSL_PREDICT_TRUE(value.ok())) {
         promise.emplace(absl::in_place_t{}, f(*value));
       } else {
@@ -542,6 +556,10 @@ class PjRtFuture : public internal::PjRtFutureBase<absl::StatusOr<T>> {
                                      const absl::StatusOr<T>&>;
     std::move(*this).OnReady(
         [promise, f = std::forward<F>(f)](Value value) mutable {
+          if (ABSL_PREDICT_FALSE(promise.IsUniqueReference())) {
+            promise.Set(Base::AbortedError());
+            return;
+          }
           if (ABSL_PREDICT_TRUE(value.ok())) {
             if constexpr (is_move_only) {
               promise.emplace(absl::in_place_t{}, f(std::move(*value)));
@@ -578,6 +596,10 @@ class PjRtFuture : public internal::PjRtFutureBase<absl::StatusOr<T>> {
 
     using Value = const absl::StatusOr<T>&;
     OnReady([promise, f = std::forward<F>(f)](Value value) mutable {
+      if (ABSL_PREDICT_FALSE(promise.IsUniqueReference())) {
+        promise.Set(Base::AbortedError());
+        return;
+      }
       if (ABSL_PREDICT_TRUE(value.ok())) {
         auto result = f(*value);
         if (ABSL_PREDICT_TRUE(result.ok())) {
@@ -618,6 +640,10 @@ class PjRtFuture : public internal::PjRtFutureBase<absl::StatusOr<T>> {
                                      const absl::StatusOr<T>&>;
     std::move(*this).OnReady(
         [promise, f = std::forward<F>(f)](Value value) mutable {
+          if (ABSL_PREDICT_FALSE(promise.IsUniqueReference())) {
+            promise.Set(Base::AbortedError());
+            return;
+          }
           if (ABSL_PREDICT_TRUE(value.ok())) {
             auto result = [&] {
               if constexpr (is_move_only) {
@@ -759,6 +785,10 @@ class PjRtFuture<void> : public internal::PjRtFutureBase<absl::Status> {
     auto promise = PjRtFuture<R>::CreatePromise();
 
     OnReady([promise, f = std::forward<F>(f)](absl::Status status) mutable {
+      if (ABSL_PREDICT_FALSE(promise.IsUniqueReference())) {
+        promise.Set(Base::AbortedError());
+        return;
+      }
       if (ABSL_PREDICT_TRUE(status.ok())) {
         promise.emplace(absl::in_place_t{}, f());
       } else {
@@ -789,6 +819,10 @@ class PjRtFuture<void> : public internal::PjRtFutureBase<absl::Status> {
     auto promise = PjRtFuture<R>::CreatePromise();
 
     OnReady([promise, f = std::forward<F>(f)](absl::Status status) mutable {
+      if (ABSL_PREDICT_FALSE(promise.IsUniqueReference())) {
+        promise.Set(Base::AbortedError());
+        return;
+      }
       if (ABSL_PREDICT_TRUE(status.ok())) {
         auto result = f();
         if (ABSL_PREDICT_TRUE(result.ok())) {
