@@ -157,6 +157,10 @@ inline std::optional<fe::DataType_t> ToCudnnDataType(const PrimitiveType type) {
       return t::FP8_E5M2;
     case PrimitiveType::F8E4M3FN:
       return t::FP8_E4M3;
+    case PrimitiveType::F8E8M0FNU:
+      return t::FP8_E8M0;
+    case PrimitiveType::F4E2M1FN:
+      return t::FP4_E2M1;
     default:
       return std::nullopt;
   }
@@ -179,23 +183,26 @@ inline std::optional<fe::DataType_t> GetComputeDataType(
 // Extracts dimensions and strides from HLO tensors in the format expected by
 // cuDNN.
 class GemmDimensionAdapter {
-  explicit GemmDimensionAdapter(const HloDotInstruction& dot,
+  explicit GemmDimensionAdapter(const HloInstruction& dot,
                                 TritonFusionAnalysis analysis)
-      : analysis_(std::move(analysis)), dot_(dot) {};
+      : analysis_(std::move(analysis)), dot_(dot) {}
 
  public:
   const TritonFusionAnalysis analysis_;
 
   static absl::StatusOr<std::optional<GemmDimensionAdapter>> Create(
       const HloComputation& computation) {
+    const HloInstruction* maybe_scaled_dot =
+        hlo_query::GetFirstInstructionWithOpcode(computation,
+                                                 HloOpcode::kScaledDot);
     const HloInstruction* maybe_dot =
         hlo_query::GetFirstInstructionWithOpcode(computation, HloOpcode::kDot);
-    if (maybe_dot == nullptr) {
+    if (maybe_scaled_dot == nullptr && maybe_dot == nullptr) {
       VLOG(3) << "Not a GEMM fusion.";
       return std::nullopt;
     }
-    const HloDotInstruction* dot = DynCast<HloDotInstruction>(
-        hlo_query::GetFirstInstructionWithOpcode(computation, HloOpcode::kDot));
+    const HloInstruction* dot =
+        maybe_dot != nullptr ? maybe_dot : maybe_scaled_dot;
     if (absl::c_any_of(dot->precision_config().operand_precision(),
                        [](int x) { return x != PrecisionConfig::DEFAULT; })) {
       VLOG(3) << "Non-default precision is not supported.";
@@ -222,6 +229,7 @@ class GemmDimensionAdapter {
     int lhs_noncontracting_index = -1;
     switch (scope) {
       case TritonFusionAnalysis::Scope::LHS:
+      case TritonFusionAnalysis::Scope::LHS_SCALE:
         lhs_noncontracting_index =
             GetNonContractingDims(dot_.operand(0)->shape(),
                                   dims.lhs_batch_dimensions(),
@@ -233,6 +241,7 @@ class GemmDimensionAdapter {
             lhs_noncontracting_index, dims.lhs_contracting_dimensions(0)};
         break;
       case TritonFusionAnalysis::Scope::RHS:
+      case TritonFusionAnalysis::Scope::RHS_SCALE:
         dim_indices = {dims.rhs_batch_dimensions().empty()
                            ? -1
                            : dims.rhs_batch_dimensions(0),
@@ -248,9 +257,6 @@ class GemmDimensionAdapter {
                        lhs_noncontracting_index,
                        dot_.shape().dimensions_size() - 1};
         break;
-      case TritonFusionAnalysis::Scope::LHS_SCALE:
-      case TritonFusionAnalysis::Scope::RHS_SCALE:
-        LOG(FATAL) << "Unsupported scope.";
     }
 
     Result result;
@@ -350,7 +356,7 @@ class GemmDimensionAdapter {
 
  private:
   int64_t lhs_noncontracting_split_ = 1;
-  const HloDotInstruction& dot_;
+  const HloInstruction& dot_;
 };
 
 template <PrimitiveType XlaT, typename T>
@@ -453,8 +459,16 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
     return true;
   };
   for (const TritonFusionAnalysis::Scope scope :
-       {TritonFusionAnalysis::Scope::LHS, TritonFusionAnalysis::Scope::RHS,
+       {TritonFusionAnalysis::Scope::LHS,
+        TritonFusionAnalysis::Scope::LHS_SCALE,
+        TritonFusionAnalysis::Scope::RHS,
+        TritonFusionAnalysis::Scope::RHS_SCALE,
         TritonFusionAnalysis::Scope::OUTPUT}) {
+    if (!adapter->analysis_.is_scaled_dot() &&
+        (scope == TritonFusionAnalysis::Scope::LHS_SCALE ||
+         scope == TritonFusionAnalysis::Scope::RHS_SCALE)) {
+      continue;
+    }
     for (const HloInstruction* parameter :
          adapter->analysis_.ScopeParameters(scope)) {
       const std::optional<GemmDimensionAdapter::Result> dims =
@@ -573,6 +587,36 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
       }
       hlo_to_cudnn[hlo] =
           graph.matmul(operand(0), operand(1),
+                       graph::Matmul_attributes().set_compute_data_type(
+                           compute_dtype.value()));
+    } else if (HloPredicateIsOp<HloOpcode::kScaledDot>(hlo)) {
+      const auto compute_dtype =
+          GetComputeDataType(hlo->shape().element_type());
+      if (!compute_dtype.has_value()) {
+        return std::nullopt;
+      }
+      const auto& dimension_numbers = hlo->dot_dimension_numbers();
+      std::array<std::shared_ptr<graph::Tensor_attributes>, 2> dot_operands;
+      for (int i = 0; i < 2; ++i) {
+        const Shape& input_shape = hlo->operand(i * 2)->shape();
+        const Shape& scale_shape = hlo->operand(i * 2 + 1)->shape();
+        int dim = i == 0 ? dimension_numbers.lhs_contracting_dimensions(0)
+                         : dimension_numbers.rhs_contracting_dimensions(0);
+        int block_size =
+            input_shape.dimensions(dim) / scale_shape.dimensions(dim);
+
+        auto scale = operand(i * 2 + 1);
+        scale->set_reordering_type(fe::TensorReordering_t::F8_128x4);
+        auto dq_attrs = graph::Block_scale_dequantize_attributes()
+                            .set_block_size(block_size)
+                            .set_compute_data_type(fe::DataType_t::FLOAT);
+        dot_operands[i] =
+            graph.block_scale_dequantize(operand(i * 2), scale, dq_attrs);
+        dot_operands[i]->set_name(
+            absl::StrCat(hlo->name(), i == 0 ? "_lhs" : "_rhs", "_dq"));
+      }
+      hlo_to_cudnn[hlo] =
+          graph.matmul(dot_operands[0], dot_operands[1],
                        graph::Matmul_attributes().set_compute_data_type(
                            compute_dtype.value()));
     } else {
