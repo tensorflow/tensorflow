@@ -2111,6 +2111,7 @@ cc_library(
         "//xla/backends/gpu/codegen/triton:support",
         "//xla/hlo/analysis:hlo_dfs_reachability",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:hlo_instruction_utils",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service:dump",

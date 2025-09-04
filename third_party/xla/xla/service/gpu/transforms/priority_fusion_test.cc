@@ -213,6 +213,20 @@ CHECK-NEXT: ROOT %{{.*}} = (f32[512]{0}, s32[512]{0}) tuple(%[[FUSION_F32]], %[[
   )");
 }
 
+TEST_F(PriorityFusionTest, DoNotFuseBitWidthChangingBitcast) {
+  EXPECT_TRUE(RunAndCheckHloRewrite(R"(
+e {
+  a = s8[3,5,2]{2,1,0} parameter(0)
+  n = s8[3,5,2]{2,1,0} negate(a)
+  b = s16[3,5]{1,0} bitcast(n)
+  m = s16[3,5]{1,0} multiply(b, b)
+})",
+                                    std::move(priority_fusion_),
+                                    /*expect_change=*/false)
+                  .status()
+                  .ok());
+}
+
 TEST_F(PriorityFusionTest, FuseConvertIntoReduce) {
   absl::string_view kHlo = R"(
     HloModule test_module

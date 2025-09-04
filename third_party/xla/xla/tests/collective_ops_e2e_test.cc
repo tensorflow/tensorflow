@@ -1672,6 +1672,110 @@ ENTRY entry {
   CollectiveOpsCompareShardedUnsharded(hlo_text, /*num_partitions=*/4);
 }
 
+TEST_F(CollectiveOpsTestE2EShardedUnsharded, BlockScaledDotBatchAndBatch) {
+  const std::string hlo_text = R"(
+HloModule module, entry_computation_layout={(f8e4m3fn[4,16,64]{2,1,0}, f8e8m0fnu[4,16,2]{2,1,0}, f8e4m3fn[4,4,64]{2,1,0}, f8e8m0fnu[4,4,2]{2,1,0})->f32[4,16,4]{2,1,0}}, num_partitions=2
+
+ENTRY entry {
+  lhs = f8e4m3fn[4,16,64]{2,1,0} parameter(0), sharding={devices=[2,1,1]<=[2]}
+  lhs_scale = f8e8m0fnu[4,16,2]{2,1,0} parameter(1), sharding={devices=[2,1,1]<=[2]}
+  rhs = f8e4m3fn[4,4,64]{2,1,0} parameter(2), sharding={devices=[2,1,1]<=[2]}
+  rhs_scale = f8e8m0fnu[4,4,2]{2,1,0} parameter(3), sharding={devices=[2,1,1]<=[2]}
+  ROOT block_scaled_dot = f32[4,16,4]{2,1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={devices=[1,2,1]<=[2]}
+})";
+  CollectiveOpsCompareShardedUnsharded(hlo_text);
+}
+
+TEST_F(CollectiveOpsTestE2EShardedUnsharded,
+       BlockScaledDotBatchAndNonContracting) {
+  const std::string hlo_text = R"(
+HloModule module, entry_computation_layout={(f8e4m3fn[4,16,64]{2,1,0}, f8e8m0fnu[4,16,2]{2,1,0}, f8e4m3fn[4,4,64]{2,1,0}, f8e8m0fnu[4,4,2]{2,1,0})->f32[4,16,4]{2,1,0}}, num_partitions=2
+
+ENTRY entry {
+  lhs = f8e4m3fn[4,16,64]{2,1,0} parameter(0), sharding={devices=[2,1,1]<=[2]}
+  lhs_scale = f8e8m0fnu[4,16,2]{2,1,0} parameter(1), sharding={devices=[2,1,1]<=[2]}
+  rhs = f8e4m3fn[4,4,64]{2,1,0} parameter(2), sharding={devices=[1,2,1]<=[2]}
+  rhs_scale = f8e8m0fnu[4,4,2]{2,1,0} parameter(3), sharding={devices=[1,2,1]<=[2]}
+  ROOT block_scaled_dot = f32[4,16,4]{2,1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={devices=[2,1,1]<=[2]}
+})";
+  CollectiveOpsCompareShardedUnsharded(hlo_text);
+}
+
+TEST_F(CollectiveOpsTestE2EShardedUnsharded,
+       BlockScaledDotContractingAndContracting) {
+  const std::string hlo_text = R"(
+HloModule module, entry_computation_layout={(f8e4m3fn[16,64]{1,0}, f8e8m0fnu[16,2]{1,0}, f8e4m3fn[4,64]{1,0}, f8e8m0fnu[4,2]{1,0})->f32[16,4]{1,0}}, num_partitions=2
+
+ENTRY entry {
+  lhs = f8e4m3fn[16,64]{1,0} parameter(0), sharding={devices=[1,2]<=[2]}
+  lhs_scale = f8e8m0fnu[16,2]{1,0} parameter(1), sharding={devices=[1,2]<=[2]}
+  rhs = f8e4m3fn[4,64]{1,0} parameter(2), sharding={devices=[1,2]<=[2]}
+  rhs_scale = f8e8m0fnu[4,2]{1,0} parameter(3), sharding={devices=[1,2]<=[2]}
+  ROOT block_scaled_dot = f32[16,4]{1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={devices=[2,1]<=[2]}
+})";
+  CollectiveOpsCompareShardedUnsharded(hlo_text);
+}
+
+TEST_F(CollectiveOpsTestE2EShardedUnsharded,
+       BlockScaledDotNonContractingAndContracting) {
+  const std::string hlo_text = R"(
+HloModule module, entry_computation_layout={(f8e4m3fn[16,128]{1,0}, f8e8m0fnu[16,4]{1,0}, f8e4m3fn[4,128]{1,0}, f8e8m0fnu[4,4]{1,0})->f32[16,4]{1,0}}, num_partitions=2
+
+ENTRY entry {
+  lhs = f8e4m3fn[16,128]{1,0} parameter(0), sharding={devices=[2,1]<=[2]}
+  lhs_scale = f8e8m0fnu[16,4]{1,0} parameter(1), sharding={devices=[2,1]<=[2]}
+  rhs = f8e4m3fn[4,128]{1,0} parameter(2), sharding={devices=[1,2]<=[2]}
+  rhs_scale = f8e8m0fnu[4,4]{1,0} parameter(3), sharding={devices=[1,2]<=[2]}
+  ROOT block_scaled_dot = f32[16,4]{1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={devices=[2,1]<=[2]}
+})";
+  CollectiveOpsCompareShardedUnsharded(hlo_text);
+}
+
+TEST_F(CollectiveOpsTestE2EShardedUnsharded,
+       BlockScaledDotContractingAndReplicated) {
+  const std::string hlo_text = R"(
+HloModule module, entry_computation_layout={(f8e4m3fn[16,128]{1,0}, f8e8m0fnu[16,4]{1,0}, f8e4m3fn[4,128]{1,0}, f8e8m0fnu[4,4]{1,0})->f32[16,4]{1,0}}, num_partitions=2
+
+ENTRY entry {
+  lhs = f8e4m3fn[16,128]{1,0} parameter(0), sharding={devices=[1,2]<=[2]}
+  lhs_scale = f8e8m0fnu[16,4]{1,0} parameter(1), sharding={devices=[1,2]<=[2]}
+  rhs = f8e4m3fn[4,128]{1,0} parameter(2), sharding={replicated}
+  rhs_scale = f8e8m0fnu[4,4]{1,0} parameter(3), sharding={replicated}
+  ROOT block_scaled_dot = f32[16,4]{1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={devices=[2,1]<=[2]}
+})";
+  CollectiveOpsCompareShardedUnsharded(hlo_text);
+}
+
+TEST_F(CollectiveOpsTestE2EShardedUnsharded,
+       BlockScaledDotReplicatedAndReplicated) {
+  const std::string hlo_text = R"(
+HloModule module, entry_computation_layout={(f8e4m3fn[4,128]{1,0}, f8e8m0fnu[4,4], f8e4m3fn[1,128]{1,0}, f8e8m0fnu[1,4]{1,0})->f32[4,1]{1,0}}, num_partitions=2
+
+ENTRY entry {
+  lhs = f8e4m3fn[4,128]{1,0} parameter(0), sharding={replicated}
+  lhs_scale = f8e8m0fnu[4,4]{1,0} parameter(1), sharding={replicated}
+  rhs = f8e4m3fn[1,128]{1,0} parameter(2), sharding={replicated}
+  rhs_scale = f8e8m0fnu[1,4]{1,0} parameter(3), sharding={replicated}
+  ROOT block_scaled_dot = f32[4,1]{1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={devices=[2,1]<=[2]}
+})";
+  CollectiveOpsCompareShardedUnsharded(hlo_text);
+}
+
+TEST_F(CollectiveOpsTestE2EShardedUnsharded,
+       BlockScaledDotContractingNonContractingAndContractingNonContracting) {
+  const std::string hlo_text = R"(
+HloModule module, entry_computation_layout={(f8e4m3fn[8,128]{1,0}, f8e8m0fnu[8,4]{1,0}, f8e4m3fn[4,128]{1,0}, f8e8m0fnu[4,4]{1,0})->f32[8,4]{1,0}}, num_partitions=4
+
+ENTRY entry {
+  lhs = f8e4m3fn[8,128]{1,0} parameter(0), sharding={devices=[2,2]<=[4]}
+  lhs_scale = f8e8m0fnu[8,4]{1,0} parameter(1), sharding={devices=[2,2]<=[4]}
+  rhs = f8e4m3fn[4,128]{1,0} parameter(2), sharding={devices=[2,2]<=[4]}
+  rhs_scale = f8e8m0fnu[4,4]{1,0} parameter(3), sharding={devices=[2,2]<=[4]}
+  ROOT dot = f32[8,4]{1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={devices=[2,2]<=[4]}
+})";
+  CollectiveOpsCompareShardedUnsharded(hlo_text, /*num_partitions=*/4);
+}
+
 // E2E tests comparing the results of windowed einsum and non-windowed cases.
 class CollectiveOpsTestE2EWindowedNonWindowed : public CollectiveOpsTestE2E {
  public:

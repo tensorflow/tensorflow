@@ -26,6 +26,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/utils/hlo_matchers.h"
+#include "xla/literal_util.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/sharding_propagation.h"
@@ -37,6 +39,8 @@ limitations under the License.
 namespace xla {
 namespace spmd {
 namespace {
+
+namespace op = xla::testing::opcode_matchers;
 
 class DotHandlerTest : public HloHardwareIndependentTestBase {
  public:
@@ -336,6 +340,216 @@ ENTRY main {
         << "max_windowed_einsum_iteration=INT64_MAX should enable windowed "
            "einsum";
   }
+}
+
+TEST_F(DotHandlerTest, MXCustomCall_BatchAndBatch) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  lhs = f8e4m3fn[8,128,512]{2,1,0} parameter(0), sharding={devices=[8,1,1]<=[8]}
+  lhs_scale = f8e8m0fnu[8,128,16] parameter(1), sharding={devices=[8,1,1]<=[8]}
+  rhs = f8e4m3fn[8,1024,512]{2,1,0} parameter(2), sharding={devices=[8,1,1]<=[8]}
+  rhs_scale = f8e8m0fnu[8,1024,16] parameter(3), sharding={devices=[8,1,1]<=[8]}
+  ROOT block_scaled_dot = f32[8,128,1024]{2,1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={devices=[1,8,1]<=[8]}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Reshape(op::Transpose(op::AllToAll(
+                  op::Reshape(op::CustomCall({"__op$block_scaled_dot"}))))));
+}
+
+TEST_F(DotHandlerTest, MXCustomCall_BatchAndNonContracting) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  lhs = f8e4m3fn[8,128,512]{2,1,0} parameter(0), sharding={devices=[8,1,1]<=[8]}
+  lhs_scale = f8e8m0fnu[8,128,16]{2,1,0} parameter(1), sharding={devices=[8,1,1]<=[8]}
+  rhs = f8e4m3fn[8,1024,512]{2,1,0} parameter(2), sharding={devices=[1,8,1]<=[8]}
+  rhs_scale = f8e8m0fnu[8,32,512]{2,1,0} parameter(3), sharding={devices=[1,8,1]<=[8]}
+  ROOT block_scaled_dot = f32[8,128,1024]{2,1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={devices=[8,1,1]<=[8]}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::CustomCall({"__op$block_scaled_dot"}, op::Parameter(0),
+                             op::Reshape(op::Transpose(op::AllToAll())),
+                             op::Parameter(1),
+                             op::Reshape(op::Transpose(op::AllToAll()))));
+}
+
+TEST_F(DotHandlerTest, MXCustomCall_ContractingAndContracting) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  lhs = f8e4m3fn[128,512]{1,0} parameter(0), sharding={devices=[1,8]<=[8]}
+  lhs_scale = f8e8m0fnu[128,16]{1,0} parameter(1), sharding={devices=[1,8]<=[8]}
+  rhs = f8e4m3fn[1024,512]{1,0} parameter(2), sharding={devices=[1,8]<=[8]}
+  rhs_scale = f8e8m0fnu[1024,16]{1,0} parameter(3), sharding={devices=[1,8]<=[8]}
+  ROOT block_scaled_dot = f32[128,1024]{1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={devices=[8,1]<=[8]}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      op::DynamicSlice(
+          op::AllReduce(op::CustomCall({"__op$block_scaled_dot"})),
+          op::Reshape(op::DynamicSlice(op::Constant(LiteralUtil::CreateR1<int>(
+                                           {0, 16, 32, 48, 64, 80, 96, 112})),
+                                       op::PartitionId())),
+          op::Constant(LiteralUtil::CreateR0<int>(0))));
+}
+
+TEST_F(DotHandlerTest, MXCustomCall_NonContractingAndContracting) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  lhs = f8e4m3fn[128,512]{1,0} parameter(0), sharding={devices=[8,1]<=[8]}
+  lhs_scale = f8e8m0fnu[128,16]{1,0} parameter(1), sharding={devices=[8,1]<=[8]}
+  rhs = f8e4m3fn[1024,512]{1,0} parameter(2), sharding={devices=[1,8]<=[8]}
+  rhs_scale = f8e8m0fnu[1024,16]{1,0} parameter(3), sharding={devices=[1,8]<=[8]}
+  ROOT block_scaled_dot = f32[128,1024]{1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={devices=[8,1]<=[8]}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      op::CustomCall({"__op$block_scaled_dot"}, op::Parameter(0),
+                     op::AllGather(), op::Parameter(1), op::AllGather()));
+}
+
+TEST_F(DotHandlerTest, MXCustomCall_ContractingAndReplicated) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  lhs = f8e4m3fn[1024,512]{1,0} parameter(0), sharding={devices=[1,8]<=[8]}
+  lhs_scale = f8e4m3fn[1024,16]{1,0} parameter(1), sharding={devices=[1,8]<=[8]}
+  rhs = f8e4m3fn[128,512]{1,0} parameter(2), sharding={replicated}
+  rhs_scale = f8e8m0fnu[128,16]{1,0} parameter(3), sharding={replicated}
+  ROOT block_scaled_dot = f32[1024,128]{1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={replicated}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::AllReduce(op::CustomCall({"__op$block_scaled_dot"})));
+}
+
+TEST_F(DotHandlerTest, MXCustomCall_BatchNonContractingAndBatchNonContracting) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  lhs = f8e4m3fn[8,1024,512]{2,1,0} parameter(0), sharding={devices=[4,2,1]7,6,5,4,3,2,1,0}
+  lhs_scale = f8e8m0fnu[8,1024,16]{2,1,0} parameter(1), sharding={devices=[4,2,1]7,6,5,4,3,2,1,0}
+  rhs = f8e4m3fn[8,128,512]{2,1,0} parameter(2), sharding={devices=[4,2,1]0,1,2,3,4,5,6,7}
+  rhs_scale = f8e8m0fnu[8,128,16]{2,1,0} parameter(3), sharding={devices=[4,2,1]0,1,2,3,4,5,6,7}
+  ROOT block_scaled_dot = f32[8,1024,128]{2,1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={devices=[4,2,1]0,1,2,3,4,5,6,7}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::CollectivePermute(op::CustomCall({"__op$block_scaled_dot"})));
+}
+
+TEST_F(DotHandlerTest,
+       MXCustomCall_ContractingNonContractingAndContractingNonContracting0) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  lhs = f8e4m3fn[1024,512]{1,0} parameter(0), sharding={devices=[4,2]0,1,2,3,4,5,6,7}
+  lhs_scale = f8e8m0fnu[1024,16]{1,0} parameter(1), sharding={devices=[4,2]0,1,2,3,4,5,6,7}
+  rhs = f8e4m3fn[128,512]{1,0} parameter(2), sharding={devices=[2,4]0,1,2,3,4,5,6,7}
+  rhs_scale = f8e8m0fnu[128,16] parameter(3), sharding={devices=[2,4]0,1,2,3,4,5,6,7}
+  ROOT block_scaled_dot = f32[1024,128]{1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={devices=[4,2]0,1,2,3,4,5,6,7}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      op::CustomCall({"__op$block_scaled_dot"}, op::AllGather(),
+                     op::AllGather(), op::AllGather(), op::AllGather()));
+}
+
+TEST_F(DotHandlerTest,
+       MXCustomCall_ContractingNonContractingAndContractingNonContracting1) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  lhs = f8e4m3fn[1024,512]{1,0} parameter(0), sharding={devices=[4,2]0,1,2,3,4,5,6,7}
+  lhs_scale = f8e8m0fnu[1024,16]{1,0} parameter(1), sharding={devices=[4,2]0,1,2,3,4,5,6,7}
+  rhs = f8e4m3fn[128,512]{1,0} parameter(2), sharding={devices=[4,2]0,1,2,3,4,5,6,7}
+  rhs_scale = f8e8m0fnu[128,16]{1,0} parameter(3), sharding={devices=[4,2]0,1,2,3,4,5,6,7}
+  ROOT block_scaled_dot = f32[1024,128]{1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={replicated}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::AllReduce(op::CustomCall({"__op$block_scaled_dot"})));
+}
+
+TEST_F(DotHandlerTest, MXCustomCall_ReplicatedAndReplicated0) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  lhs = f8e4m3fn[1024,512]{1,0} parameter(0), sharding={replicated}
+  lhs_scale = f8e8m0fnu[1024,16]{1,0} parameter(1), sharding={replicated}
+  rhs = f8e4m3fn[128,512]{1,0} parameter(2), sharding={replicated}
+  rhs_scale = f8e8m0fnu[128,16]{1,0} parameter(3), sharding={replicated}
+  ROOT block_scaled_dot = f32[1024,128]{1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={devices=[2,1,4]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      op::CustomCall({"__op$block_scaled_dot"}, op::DynamicSlice(),
+                     op::Parameter(2), op::DynamicSlice(), op::Parameter(3)));
+}
+
+TEST_F(DotHandlerTest, MXCustomCall_ReplicatedAndReplicated1) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  lhs = f8e4m3fn[1024,512]{1,0} parameter(0), sharding={replicated}
+  lhs_scale = f8e8m0fnu[1024,16]{1,0} parameter(1), sharding={replicated}
+  rhs = f8e4m3fn[128,512]{1,0} parameter(2), sharding={replicated}
+  rhs_scale = f8e8m0fnu[128,16]{1,0} parameter(3), sharding={replicated}
+  ROOT block_scaled_dot = f32[1024,128]{1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={devices=[8,1]0,1,2,3,4,5,6,7}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      op::CustomCall({"__op$block_scaled_dot"}, op::DynamicSlice(),
+                     op::Parameter(2), op::DynamicSlice(), op::Parameter(3)));
 }
 
 }  // namespace
