@@ -54,7 +54,6 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk_executor.h"
 #include "xla/backends/cpu/runtime/xfeed_manager.h"
 #include "xla/client/executable_build_options.h"
-#include "xla/cpu_function_runtime.h"
 #include "xla/debug_options_flags.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/builder/xla_computation.h"
@@ -66,6 +65,7 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/pjrt/abstract_tracked_device_buffer.h"
 #include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/cpu/abstract_cpu_buffer.h"
 #include "xla/pjrt/cpu/cpu_async_execution_tracker.h"
@@ -81,13 +81,13 @@ limitations under the License.
 #include "xla/pjrt/layout_mode.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/pjrt/pjrt_client_utils.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_execute_options.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_memory.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology_description.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
@@ -96,15 +96,12 @@ limitations under the License.
 #include "xla/pjrt/thread_pool_async_work_runner.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/pjrt/utils.h"
-#include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/compiler.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/cpu/cpu_executable.h"
 #include "xla/service/cpu/cpu_executable_run_options.h"
-#include "xla/service/custom_call_status.h"
-#include "xla/service/custom_call_status_internal.h"
 #include "xla/service/dump.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo.pb.h"
@@ -131,8 +128,6 @@ limitations under the License.
 #include "tsl/platform/denormal.h"
 #include "tsl/platform/fingerprint.h"
 #include "tsl/platform/setround.h"
-#include "tsl/profiler/lib/connected_traceme.h"
-#include "tsl/profiler/lib/context_types.h"
 #include "tsl/profiler/lib/traceme.h"
 
 #define EIGEN_USE_THREADS
@@ -146,6 +141,46 @@ static int CpuDeviceCount() {
   // parallel across multiple devices, e.g. pmap.
   return GetDebugOptionsFromFlags().xla_force_host_platform_device_count();
 }
+
+namespace {
+
+// A custom memory allocator function passed via the CPU client options.
+using CustomAllocatorFn =
+    std::function<absl::StatusOr<std::unique_ptr<CpuMemory>>(size_t size_bytes,
+                                                             size_t alignment)>;
+
+// A custom raw memory that wraps a CpuMemory allocated by the user.
+class CustomMemory final : public CpuDeviceMemory::RawMemory {
+ public:
+  explicit CustomMemory(std::unique_ptr<CpuMemory> mem)
+      : mem_(std::move(mem)) {}
+
+  void* base() const final { return mem_->base(); }
+  size_t size_bytes() const final { return mem_->size_bytes(); }
+
+ private:
+  std::unique_ptr<CpuMemory> mem_;
+};
+
+// A custom raw memory allocator that wraps an allocation function passed via
+// the client options.
+class CustomAllocator final : public CpuDeviceMemory::Allocator {
+ public:
+  explicit CustomAllocator(CustomAllocatorFn allocator_fn)
+      : allocator_fn_(std::move(allocator_fn)) {}
+
+  absl::StatusOr<std::unique_ptr<CpuDeviceMemory::RawMemory>> Allocate(
+      size_t size_bytes, size_t alignment) const final {
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<CpuMemory> mem,
+                        allocator_fn_(size_bytes, alignment));
+    return std::make_unique<CustomMemory>(std::move(mem));
+  }
+
+ private:
+  CustomAllocatorFn allocator_fn_;
+};
+
+}  // namespace
 
 absl::StatusOr<std::unique_ptr<PjRtClient>> GetPjRtCpuClient(
     CpuClientOptions options) {
@@ -161,9 +196,13 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetPjRtCpuClient(
     devices.push_back(std::move(device));
   }
 
+  std::unique_ptr<CpuDeviceMemory::Allocator> allocator =
+      options.allocator ? std::make_unique<CustomAllocator>(options.allocator)
+                        : CpuDeviceMemory::MakeDefaultAllocator();
+
   return std::unique_ptr<PjRtClient>(new PjRtCpuClient(
-      options.process_id, std::move(devices), std::move(options.collectives),
-      num_threads, options.asynchronous,
+      options.process_id, std::move(devices), std::move(allocator),
+      std::move(options.collectives), num_threads, options.asynchronous,
       std::move(options.customize_hlo_module_config)));
 }
 
@@ -197,12 +236,14 @@ static std::vector<CpuTopology::CpuDevice> GetCpuDevices(
 
 PjRtCpuClient::PjRtCpuClient(
     int process_index, std::vector<std::unique_ptr<PjRtCpuDevice>> devices,
+    std::shared_ptr<CpuDeviceMemory::Allocator> allocator,
     std::shared_ptr<cpu::CpuCollectives> collectives, size_t num_threads,
     bool asynchronous,
     std::function<void(HloModuleConfig&)> customize_hlo_module_config)
     : process_index_(process_index),
       owned_devices_(std::move(devices)),
       computation_placer_(std::make_unique<ComputationPlacer>()),
+      allocator_(std::move(allocator)),
       eigen_intraop_pool_(new tsl::thread::ThreadPool(
           tsl::Env::Default(), GetThreadOptions(), "XLAEigen",
           std::min(num_threads, kMaxIntraOpThreads))),
@@ -857,8 +898,9 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCpuClient::CreateErrorBuffer(
   }
   // Create a dummy buffer because the rest of the code expects a buffer
   // regardless of whether the definition event is an error.
-  TF_ASSIGN_OR_RETURN(auto buffer,
-                      CpuDeviceMemory::Allocate(ShapeUtil::ByteSizeOf(shape)));
+  TF_ASSIGN_OR_RETURN(
+      auto buffer,
+      CpuDeviceMemory::Allocate(ShapeUtil::ByteSizeOf(shape), *allocator_));
   return std::make_unique<CommonPjRtBufferImpl>(
       shape,
       std::make_unique<TrackedCpuDeviceBuffer>(
@@ -964,7 +1006,8 @@ PjRtCpuClient::AllocateRawBuffer(PjRtMemorySpace* memory_space,
                                  tsl::AsyncValueRef<bool> allocate_after) {
   CHECK(allocate_after == nullptr) << "allocate_after is not supported for "
                                       "PjRtCpuClient.";
-  return xla::CpuRawBuffer::Allocate(memory_space, on_device_bytes_count);
+  return xla::CpuRawBuffer::Allocate(memory_space, on_device_bytes_count,
+                                     *allocator_);
 }
 
 absl::StatusOr<int64_t> PjRtCpuClient::GetOnDeviceBytesCount(
@@ -1077,10 +1120,10 @@ struct BufferAlloc {
   absl::InlinedVector<tsl::AsyncValueRef<CpuDeviceMemory>, 4> buffers;
   absl::InlinedVector<size_t, 4> allocation_sizes;
 
-  void Allocate() {
+  void Allocate(const CpuDeviceMemory::Allocator& allocator) {
     for (int i = 0; i < buffers.size(); ++i) {
-      auto status = CpuDeviceMemory::AllocateInto(allocation_sizes[i],
-                                                  buffers[i].AsPtr());
+      auto status = CpuDeviceMemory::AllocateInto(
+          allocation_sizes[i], buffers[i].AsPtr(), allocator);
       if (!status.ok()) {
         buffers[i].SetError(status);
         return;
@@ -1097,10 +1140,10 @@ struct BufferAllocAndCopy {
   absl::InlinedVector<tsl::AsyncValueRef<CpuDeviceMemory>, 4> dst_buffers;
   absl::InlinedVector<size_t, 4> allocation_sizes;
 
-  void AllocateAndCopy() {
+  void AllocateAndCopy(const CpuDeviceMemory::Allocator& allocator) {
     for (int i = 0; i < src_buffers.size(); ++i) {
-      auto status = CpuDeviceMemory::AllocateInto(allocation_sizes[i],
-                                                  dst_buffers[i].AsPtr());
+      auto status = CpuDeviceMemory::AllocateInto(
+          allocation_sizes[i], dst_buffers[i].AsPtr(), allocator);
       if (!status.ok()) {
         dst_buffers[i].SetError(status);
         return;
@@ -1413,12 +1456,12 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
     tuple_index_table = CpuDeviceMemory::CreateDelayedMemory();
     tsl::RunWhenReady(
         absl::MakeConstSpan(leaf_buffers),
-        [buffers = leaf_buffers,
-         tuple_index_table = tuple_index_table]() mutable {
+        [buffers = leaf_buffers, tuple_index_table,
+         allocator = client()->allocator()]() mutable {
           size_t index_table_byte_size = buffers.size() * sizeof(void*);
           // We assume tuple table allocations will not fail.
-          CHECK_OK(CpuDeviceMemory::AllocateInto(index_table_byte_size,
-                                                 tuple_index_table.AsPtr()));
+          CHECK_OK(CpuDeviceMemory::AllocateInto(
+              index_table_byte_size, tuple_index_table.AsPtr(), *allocator));
           uintptr_t* index_table =
               reinterpret_cast<uintptr_t*>(tuple_index_table->untyped_data());
           for (int i = 0; i < buffers.size(); ++i) {
@@ -1529,8 +1572,8 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
     tsl::AsyncValueRef<cpu::Thunk::ExecuteEvent> thunks_execute_event;
 
     // Immediately allocate memory and prepare for computation.
-    buffer_alloc.Allocate();
-    buffer_alloc_and_copy.AllocateAndCopy();
+    buffer_alloc.Allocate(*client()->allocator());
+    buffer_alloc_and_copy.AllocateAndCopy(*client()->allocator());
     for (const auto& buffer_info : buffer_table) {
       CHECK(buffer_info.buffer.IsAvailable());
       if (buffer_info.buffer.IsError()) {
@@ -1644,13 +1687,14 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
          donation_transactions = std::move(donation_transactions),
          scoped_async_execution = std::move(scoped_async_execution),
          input_deps_avs = std::move(input_deps_avs_copy),
+         allocator = client()->allocator(),
          eigen_device = client()->eigen_intraop_device()]() mutable {
           // Because `input_deps` contains the definition events of all inputs,
           // when it is ready, all input buffers must have been allocated. So,
           // we are safe to allocate and copy memory here. Since `execute_event`
           // may error out, we need to do it early.
-          buffer_alloc.Allocate();
-          buffer_alloc_and_copy.AllocateAndCopy();
+          buffer_alloc.Allocate(*allocator);
+          buffer_alloc_and_copy.AllocateAndCopy(*allocator);
 
           for (const auto& av : input_deps_avs) {
             if (auto* error = av->GetErrorIfPresent()) {

@@ -10,11 +10,10 @@ package(
 
 cc_library(
     name = "xla_cpu_pjrt_client",
-    srcs = [
-        "xla_cpu_pjrt_client.cc",
-    ],
+    srcs = ["xla_cpu_pjrt_client.cc"],
     hdrs = ["xla_cpu_pjrt_client.h"],
     deps = [
+        ":cpu_client_options",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt/cpu:cpu_client",
         "@com_google_absl//absl/status:statusor",
@@ -36,13 +35,11 @@ xla_cc_test(
 
 cc_library(
     name = "cpu_memory",
-    srcs = [],
     hdrs = ["cpu_memory.h"],
 )
 
 cc_library(
     name = "cpu_client_options",
-    srcs = [],
     hdrs = ["cpu_client_options.h"],
     deps = [
         ":cpu_memory",
@@ -68,7 +65,6 @@ cc_library(
 
 cc_library(
     name = "cpu_execute_options",
-    srcs = [],
     hdrs = ["cpu_execute_options.h"],
     deps = [
         "//xla/backends/cpu/collectives:cpu_collectives",

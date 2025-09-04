@@ -104,6 +104,9 @@ class CpuDeviceMemory {
   // Default allocator uses aligned allocation and free APIs from tsl.
   static Allocator& DefaultAllocator();
 
+  // Returns a new instance of the default allocator.
+  static std::unique_ptr<Allocator> MakeDefaultAllocator();
+
   // A raw memory allocation that can be used to construct a CpuDeviceMemory.
   class RawMemory {
    public:

@@ -109,6 +109,11 @@ CpuDeviceMemory::Allocator& CpuDeviceMemory::DefaultAllocator() {
   return *allocator;
 }
 
+std::unique_ptr<CpuDeviceMemory::Allocator>
+CpuDeviceMemory::MakeDefaultAllocator() {
+  return std::make_unique<AlignedAllocator>();
+}
+
 //===----------------------------------------------------------------------===//
 // CpuDeviceMemory implementations.
 //===----------------------------------------------------------------------===//

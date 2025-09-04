@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/backends/cpu/alignment.h"
 #include "xla/cpu_function_runtime.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
@@ -104,8 +105,10 @@ PjRtFuture<> CpuTrackedDeviceEvent::GetReadyFuture() {
 }
 
 /*static*/ absl::StatusOr<tsl::RCReference<CpuRawBuffer>>
-CpuRawBuffer::Allocate(PjRtMemorySpace* memory_space, size_t size_bytes) {
-  TF_ASSIGN_OR_RETURN(auto memory, CpuDeviceMemory::Allocate(size_bytes));
+CpuRawBuffer::Allocate(PjRtMemorySpace* memory_space, size_t size_bytes,
+                       const CpuDeviceMemory::Allocator& allocator) {
+  TF_ASSIGN_OR_RETURN(auto memory,
+                      CpuDeviceMemory::Allocate(size_bytes, allocator));
   return tsl::MakeRef<CpuRawBuffer>(memory_space, std::move(memory));
 }
 
