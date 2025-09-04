@@ -1,5 +1,7 @@
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
+load("//xla/tsl/mkl:build_defs.bzl", "if_graph_api")
+load("//xla/tsl/mkl:graph.bzl", "onednn_graph_cc_library")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -19,6 +21,7 @@ cc_library(
     name = "dot_library_rewriter",
     srcs = ["dot_library_rewriter.cc"],
     hdrs = ["dot_library_rewriter.h"],
+    local_defines = if_graph_api(["XLA_ONEDNN_USE_GRAPH_API=1"]),
     deps = [
         ":library_matcher",
         ":onednn_matcher",
@@ -79,9 +82,10 @@ cc_library(
     ],
 )
 
-cc_library(
+onednn_graph_cc_library(
     name = "onednn_matcher",
     hdrs = ["onednn_matcher.h"],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
     deps = [
         ":library_matcher",
         "//xla/backends/cpu:onednn_support",

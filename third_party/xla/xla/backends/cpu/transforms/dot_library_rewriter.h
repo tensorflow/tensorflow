@@ -28,13 +28,16 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/transforms/library_matcher.h"
-#include "xla/backends/cpu/transforms/onednn_matcher.h"
 #include "xla/backends/cpu/transforms/xnn_matcher.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "tsl/platform/protobuf.h"
+
+#if XLA_ONEDNN_USE_GRAPH_API
+#include "xla/backends/cpu/transforms/onednn_matcher.h"
+#endif  // XLA_ONEDNN_USE_GRAPH_API
 
 namespace xla::cpu {
 
@@ -60,11 +63,13 @@ class DotLibraryRewriter : public HloModulePass {
       : target_machine_features_(target_machine_features),
         options_(std::move(options)) {
     // Initialize library matchers.
+#if XLA_ONEDNN_USE_GRAPH_API
     if (options_.use_onednn && options_.onednn_fusion_types != nullptr &&
         !options_.onednn_fusion_types->empty()) {
       libs_.push_back(std::make_unique<OneDnnMatcher>(
           target_machine_features_, options_.onednn_fusion_types));
     }
+#endif  // XLA_ONEDNN_USE_GRAPH_API
     if (options_.use_xnnpack && options_.xnn_fusion_types != nullptr &&
         !options_.xnn_fusion_types->empty()) {
       libs_.push_back(std::make_unique<XnnMatcher>(target_machine_features_,

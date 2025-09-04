@@ -45,6 +45,7 @@ onednn_graph_cc_library(
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
+        "//xla/backends/cpu/runtime:dot_lib",
         "//xla/backends/cpu/runtime/onednn:onednn_interop",
         "//xla/hlo/ir:hlo",
         "//xla/tsl/mkl:onednn",
@@ -65,7 +66,7 @@ onednn_graph_cc_library(
     deps = ["//xla/tsl/mkl:onednn"],
 )
 
-cc_library(
+onednn_graph_cc_library(
     name = "onednn_support",
     srcs = ["onednn_support.cc"],
     hdrs = ["onednn_support.h"],
@@ -73,9 +74,13 @@ cc_library(
     deps = [
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
+        "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/backends/cpu/runtime:dot_lib",
+        "//xla/tsl/mkl:onednn",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:platform_port",
     ],
 )
 
