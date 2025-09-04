@@ -47,6 +47,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/gpus/cuda/include/driver_types.h"
+#include "third_party/gpus/cudnn/cudnn_version.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/core/collectives/collectives.h"
 #include "xla/core/collectives/collectives_registry.h"
@@ -63,7 +64,9 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_stream.h"
 #include "xla/stream_executor/cuda/cuda_timer.h"
 #include "xla/stream_executor/cuda/cuda_version_parser.h"
+#if CUDNN_VERSION >= 90000
 #include "xla/stream_executor/cuda/cudnn_api_wrappers.h"
+#endif
 #include "xla/stream_executor/cuda/tma_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
@@ -1354,6 +1357,7 @@ CudaExecutor::CreateDeviceDescription(int device_ordinal) {
   desc.set_compile_time_toolkit_version(
       ParseCudaVersion(CUDA_VERSION).value_or(SemanticVersion{0, 0, 0}));
 
+#if CUDNN_VERSION >= 90000
   // cudnnGetProperty (the function that backs GetLoadedCudnnVersion()) needs
   // 64KiB of stack, so we call it from a separate thread to avoid stack
   // overflows.
@@ -1372,6 +1376,7 @@ CudaExecutor::CreateDeviceDescription(int device_ordinal) {
     cudnn_version_ready.Notify();
   });
   cudnn_version_ready.WaitForNotification();
+#endif  // CUDNN_VERSION >= 90000
 
   {
     std::string pci_bus_id = GetPCIBusID(device);
