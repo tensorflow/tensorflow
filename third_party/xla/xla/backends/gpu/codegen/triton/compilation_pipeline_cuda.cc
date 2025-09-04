@@ -134,6 +134,7 @@ absl::Status CreateTritonPipeline(
   pm->addPass(ttng::createTritonGPUFenceInsertion({ccAsInt}));
   pm->addPass(ttng::createTritonNvidiaGPUMMALoweringPass());
   pm->addPass(mlir::createSCCPPass());
+  pm->addPass(mlir::createCSEPass());
   pm->addPass(mlir::createCanonicalizerPass());
 
   // Corresponds to "mod.get_tensordesc_metadata()"

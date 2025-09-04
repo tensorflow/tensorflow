@@ -1537,15 +1537,20 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
            llvm::zip(impl_fn->args(), kernel->args())) {
         impl_fn_arg.replaceAllUsesWith(&kernel_arg);
       }
-      // Triton's kernel ABI expects an additional scratchpad global
-      // memory. For now it is only used for on-device creation of
-      // TMA descriptors, which we do not use yet, so we are just
+      // Triton's kernel ABI expects additional scratchpad global memory for TMA
+      // and profiling information. For now it is only used for on-device
+      // creation of TMA descriptors, which we do not use yet, so we are just
       // replacing this argument with a null pointer.
-      // TODO: b/381242007 - Allocate a proper buffer if we want to
-      // use device-side TMA APIs.
-      auto scratchpad_arg = impl_fn->getArg(impl_fn->arg_size() - 1);
-      scratchpad_arg->replaceAllUsesWith(llvm::ConstantPointerNull::get(
-          llvm::cast<llvm::PointerType>(scratchpad_arg->getType())));
+      // TODO: b/381242007 - Allocate a proper buffer if we want to use
+      // device-side TMA APIs.
+      CHECK_EQ(impl_fn->arg_size(), kernel->arg_size() + 2);
+      auto tma_scratchpad_arg = impl_fn->getArg(impl_fn->arg_size() - 2);
+      tma_scratchpad_arg->replaceAllUsesWith(llvm::ConstantPointerNull::get(
+          llvm::cast<llvm::PointerType>(tma_scratchpad_arg->getType())));
+      auto profiling_scratchpad_arg = impl_fn->getArg(impl_fn->arg_size() - 1);
+      profiling_scratchpad_arg->replaceAllUsesWith(
+          llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(
+              profiling_scratchpad_arg->getType())));
 
       impl_fn->eraseFromParent();
 
