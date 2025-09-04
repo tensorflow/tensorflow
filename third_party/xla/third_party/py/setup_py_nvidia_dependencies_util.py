@@ -22,14 +22,14 @@ The setup.py file is expected to have the following lines:
 ```
 # Mandatory placeholders
 cuda_version = 0  # placeholder
-cuda_whl_sfx = ''  # placeholder
+cuda_wheel_suffix = ''  # placeholder
 
 # Optional placeholders (add only those that are needed)
 nvidia_cublas_version = ''  # placeholder
 
 EXTRA_PACKAGES = {
     'and-cuda': [
-        f'nvidia-cublas{cuda_whl_sfx}{nvidia_cublas_version}',
+        f'nvidia-cublas{cuda_wheel_suffix}{nvidia_cublas_version}',
         # add more wheels here
     ],
 }
@@ -62,8 +62,8 @@ def get_setup_py_content_with_nvidia_wheel_versions(
       "cuda_version = 0  # placeholder", f"cuda_version = {cuda_version}"
   )
   setup_py_content = setup_py_content.replace(
-      "cuda_whl_sfx = ''  # placeholder",
-      "cuda_whl_sfx = '-cu12'" if cuda_version == "12" else "cuda_whl_sfx = ''",
+      "cuda_wheel_suffix = ''  # placeholder",
+      "cuda_wheel_suffix = '-cu12'" if cuda_version == "12" else "cuda_wheel_suffix = ''",
   )
   for version_name, version_value in nvidia_wheel_versions[
       str(cuda_version)

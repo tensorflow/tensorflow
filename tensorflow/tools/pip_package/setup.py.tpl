@@ -55,7 +55,7 @@ from setuptools.dist import Distribution
 _VERSION = '0.0.0'
 
 cuda_version = 0  # placeholder
-cuda_whl_sfx = ''  # placeholder
+cuda_wheel_suffix = ''  # placeholder
 
 nvidia_cublas_version = ''  # placeholder
 nvidia_cuda_cupti_version = ''  # placeholder
@@ -161,18 +161,18 @@ if collaborator_build:
 EXTRA_PACKAGES = {
     'and-cuda': [
         # TODO(nluehr): set nvidia-* versions based on build components.
-        f'nvidia-cublas{cuda_whl_sfx}{nvidia_cublas_version}',
-        f'nvidia-cuda-cupti{cuda_whl_sfx}{nvidia_cuda_cupti_version}',
-        f'nvidia-cuda-nvcc{cuda_whl_sfx}{nvidia_cuda_nvcc_version}',
-        f'nvidia-cuda-nvrtc{cuda_whl_sfx}{nvidia_cuda_nvrtc_version}',
-        f'nvidia-cuda-runtime{cuda_whl_sfx}{nvidia_cuda_runtime_version}',
+        f'nvidia-cublas{cuda_wheel_suffix}{nvidia_cublas_version}',
+        f'nvidia-cuda-cupti{cuda_wheel_suffix}{nvidia_cuda_cupti_version}',
+        f'nvidia-cuda-nvcc{cuda_wheel_suffix}{nvidia_cuda_nvcc_version}',
+        f'nvidia-cuda-nvrtc{cuda_wheel_suffix}{nvidia_cuda_nvrtc_version}',
+        f'nvidia-cuda-runtime{cuda_wheel_suffix}{nvidia_cuda_runtime_version}',
         f'nvidia-cudnn-cu{cuda_version}{nvidia_cudnn_version}',
-        f'nvidia-cufft{cuda_whl_sfx}{nvidia_cufft_version}',
-        f'nvidia-curand{cuda_whl_sfx}{nvidia_curand_version}',
-        f'nvidia-cusolver{cuda_whl_sfx}{nvidia_cusolver_version}',
-        f'nvidia-cusparse{cuda_whl_sfx}{nvidia_cusparse_version}',
+        f'nvidia-cufft{cuda_wheel_suffix}{nvidia_cufft_version}',
+        f'nvidia-curand{cuda_wheel_suffix}{nvidia_curand_version}',
+        f'nvidia-cusolver{cuda_wheel_suffix}{nvidia_cusolver_version}',
+        f'nvidia-cusparse{cuda_wheel_suffix}{nvidia_cusparse_version}',
         f'nvidia-nccl-cu{cuda_version}{nvidia_nccl_version}',
-        f'nvidia-nvjitlink{cuda_whl_sfx}{nvidia_nvjitlink_version}',
+        f'nvidia-nvjitlink{cuda_wheel_suffix}{nvidia_nvjitlink_version}',
     ],
     'gcs-filesystem': [
         ('tensorflow-io-gcs-filesystem>=0.23.1; '
