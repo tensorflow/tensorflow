@@ -1104,8 +1104,8 @@ class LiteralBase {
      public:
       Storage() = default;
 
-      Storage(Storage&& other) { *this = std::move(other); }
-      Storage& operator=(Storage&& other) {
+      Storage(Storage&& other) noexcept { *this = std::move(other); }
+      Storage& operator=(Storage&& other) noexcept {
         rep_ = std::move(other.rep_);
         data_ = other.data_;
 
@@ -1533,7 +1533,7 @@ class Literal : public MutableLiteralBase {
   // of literals which can be expensive.
   Literal(const Literal& other) = delete;
   Literal& operator=(const Literal& other) = delete;
-  Literal(Literal&& other);
+  Literal(Literal&& other) noexcept;
   // Create a literal of the given shape.
   // 'allocate_arrays' indicates whether to allocate memory for the arrays in
   // the shape. If false, buffer pointers inside of the Literal::Pieces are set
@@ -1543,7 +1543,7 @@ class Literal : public MutableLiteralBase {
   explicit Literal(
       const Shape& shape, bool allocate_arrays = true,
       ArrayValueState leaf_array_value_state = ArrayValueState::kKnown);
-  Literal& operator=(Literal&& other);
+  Literal& operator=(Literal&& other) noexcept;
 
   // Creates a literal of the given shape.
   // 'allocate_arrays' indicates whether to allocate memory for the arrays in
