@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/codegen/triton/support.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <iterator>
@@ -124,6 +125,10 @@ bool DoesOpSupportType(HloOpcode opcode, PrimitiveType type) {
       return type == F32 || type == F64;
     case HloOpcode::kDot:
       return type != PRED;
+    case HloOpcode::kScaledDot:
+      static constexpr std::array types = {F4E2M1FN, F8E4M3FN, F8E5M2, BF16};
+      return std::any_of(types.begin(), types.end(),
+                         [&](auto t) { return t == type; });
     case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormTraining:
     case HloOpcode::kBatchNormGrad:
@@ -2315,6 +2320,39 @@ INSTANTIATE_TEST_SUITE_P(
         ::testing::ValuesIn(AllPrecisionAlgorithms()),
         ::testing::ValuesIn(AllDevicesToTest())),
     DotPrecisionAlgorithmTestName);
+
+class ScaledDotTest : public TritonSupportTest,
+                      public ::testing::WithParamInterface<PrimitiveType> {};
+
+TEST_P(ScaledDotTest, ScaledDotOperandTypes) {
+  const std::string kHloTestTemplate = R"(
+HloModule ScaledDotOperandTypes
+
+ENTRY triton_computation {
+  lhs = $0[16, 32] parameter(0)
+  lhs_scale = f8e8m0fnu[16, 1] parameter(1)
+  rhs = $0[32, 16] parameter(2)
+  rhs_scale = f8e8m0fnu[1, 16] parameter(3)
+  ROOT dot = f32[16, 16] scaled-dot(lhs, lhs_scale, rhs, rhs_scale),
+      lhs_contracting_dims={1},
+      rhs_contracting_dims={0}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, GetParam(),
+                                     HloOpcode::kScaledDot,
+                                     /*use_nested_gemm_fusions=*/true));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{16, 16},
+                 se::CudaComputeCapability::Hopper());
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    ScaledDotTest, ScaledDotTest,
+    ::testing::ValuesIn(AllOpSupportedTypes(HloOpcode::kScaledDot)),
+    [](const ::testing::TestParamInfo<PrimitiveType>& info) {
+      return primitive_util::LowercasePrimitiveTypeName(info.param);
+    });
 
 class FusionKindsTest
     : public TritonSupportTest,
