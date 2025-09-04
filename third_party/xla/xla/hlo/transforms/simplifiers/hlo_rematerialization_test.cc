@@ -1653,8 +1653,8 @@ e {
           /*min_remat_size=*/0, /*compact_shape_function=*/nullptr),
       sizes);
   EXPECT_THAT(remat.Run(module.get(), {HloInstruction::kMainExecutionThread}),
-              IsOkAndHolds(true));
-  EXPECT_THAT(HloDCE().Run(module.get()), IsOkAndHolds(false));
+              absl_testing::IsOkAndHolds(true));
+  EXPECT_THAT(HloDCE().Run(module.get()), absl_testing::IsOkAndHolds(false));
 }
 
 TEST_F(RecomputeAndCompressHloRematerializationTest,
