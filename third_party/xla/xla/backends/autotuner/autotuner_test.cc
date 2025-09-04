@@ -97,10 +97,6 @@ class MockCodegenBackendWithWrongResults : public MockCodegenBackend {
 
 class MockProfiler : public Profiler {
  public:
-  MOCK_METHOD(absl::StatusOr<std::vector<absl::StatusOr<ProfileResult>>>,
-              ProfileWithSharedBuffers,
-              (std::vector<std::unique_ptr<Executable>> executables),
-              (override));
   MOCK_METHOD(absl::StatusOr<ProfileResult>, Profile,
               (Executable * executable, const InputBuffers& buffers),
               (override));
@@ -404,7 +400,6 @@ TEST_F(AutotunerTest, CacheHit) {
   EXPECT_CALL(*backend, name()).WillRepeatedly(Return("mock_backend"));
 
   auto profiler = std::make_unique<MockProfiler>();
-  EXPECT_CALL(*profiler, ProfileWithSharedBuffers).Times(0);
 
   std::vector<std::unique_ptr<CodegenBackend>> backends;
   backends.push_back(std::move(backend));
