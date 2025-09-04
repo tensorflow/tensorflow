@@ -50,7 +50,6 @@ limitations under the License.
 #include "xla/service/instruction_fusion.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
@@ -58,6 +57,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
+using absl_testing::IsOkAndHolds;
 using detail::GetFlatTilingsForInputSpace;
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
@@ -65,8 +65,6 @@ using ::testing::ExplainMatchResult;
 using ::testing::IsEmpty;
 using ::testing::Matcher;
 using ::testing::Not;
-using ::tsl::testing::IsOkAndHolds;
-using ::tsl::testing::StatusIs;
 using TilingVector = std::vector<FlatTiling>;
 
 MATCHER_P3(MatchTiledHloInstructionImpl, tile_sizes, tile_strides,
@@ -1142,51 +1140,58 @@ ENTRY main {
 }
 
 TEST(GetValidTilingsTest, ReturnsOneTilingWhenRankIsZero) {
-  EXPECT_EQ(GetFlatTilingsForInputSpace({}), TilingVector{FlatTiling{}});
+  EXPECT_THAT(GetFlatTilingsForInputSpace({}),
+              IsOkAndHolds(TilingVector{FlatTiling{}}));
 }
 
 TEST(GetValidTilingsTest, ReturnsPowersOfTwoAndTheDimSizeForRankOne) {
-  EXPECT_EQ(GetFlatTilingsForInputSpace({1}), TilingVector{{1}});
-  EXPECT_EQ(GetFlatTilingsForInputSpace({2}), TilingVector({{1}, {2}}));
-  EXPECT_EQ(GetFlatTilingsForInputSpace({3}), TilingVector({{1}, {2}, {3}}));
-  EXPECT_EQ(GetFlatTilingsForInputSpace({4}), TilingVector({{1}, {2}, {4}}));
-  EXPECT_EQ(GetFlatTilingsForInputSpace({5}),
-            TilingVector({{1}, {2}, {4}, {5}}));
-  EXPECT_EQ(GetFlatTilingsForInputSpace({11}),
-            TilingVector({{1}, {2}, {4}, {8}, {11}}));
+  EXPECT_THAT(GetFlatTilingsForInputSpace({1}),
+              IsOkAndHolds(TilingVector{{1}}));
+  EXPECT_THAT(GetFlatTilingsForInputSpace({2}),
+              IsOkAndHolds(TilingVector({{1}, {2}})));
+  EXPECT_THAT(GetFlatTilingsForInputSpace({3}),
+              IsOkAndHolds(TilingVector({{1}, {2}, {3}})));
+  EXPECT_THAT(GetFlatTilingsForInputSpace({4}),
+              IsOkAndHolds(TilingVector({{1}, {2}, {4}})));
+  EXPECT_THAT(GetFlatTilingsForInputSpace({5}),
+              IsOkAndHolds(TilingVector({{1}, {2}, {4}, {5}})));
+  EXPECT_THAT(GetFlatTilingsForInputSpace({11}),
+              IsOkAndHolds(TilingVector({{1}, {2}, {4}, {8}, {11}})));
 }
 
 TEST(GetValidTilingsTest, CreatesCartesianProductForRankTwo) {
-  EXPECT_EQ(GetFlatTilingsForInputSpace({3, 4}), TilingVector({{1, 1},
-                                                               {1, 2},
-                                                               {1, 4},
-                                                               {2, 1},
-                                                               {2, 2},
-                                                               {2, 4},
-                                                               {3, 1},
-                                                               {3, 2},
-                                                               {3, 4}}));
+  EXPECT_THAT(GetFlatTilingsForInputSpace({3, 4}),
+              IsOkAndHolds(TilingVector({{1, 1},
+                                         {1, 2},
+                                         {1, 4},
+                                         {2, 1},
+                                         {2, 2},
+                                         {2, 4},
+                                         {3, 1},
+                                         {3, 2},
+                                         {3, 4}})));
 }
 
 TEST(GetValidTilingsTest, CreatesCartesianProductForRankThree) {
-  EXPECT_EQ(GetFlatTilingsForInputSpace({3, 4, 2}), TilingVector({{1, 1, 1},
-                                                                  {1, 1, 2},
-                                                                  {1, 2, 1},
-                                                                  {1, 2, 2},
-                                                                  {1, 4, 1},
-                                                                  {1, 4, 2},
-                                                                  {2, 1, 1},
-                                                                  {2, 1, 2},
-                                                                  {2, 2, 1},
-                                                                  {2, 2, 2},
-                                                                  {2, 4, 1},
-                                                                  {2, 4, 2},
-                                                                  {3, 1, 1},
-                                                                  {3, 1, 2},
-                                                                  {3, 2, 1},
-                                                                  {3, 2, 2},
-                                                                  {3, 4, 1},
-                                                                  {3, 4, 2}}));
+  EXPECT_THAT(GetFlatTilingsForInputSpace({3, 4, 2}),
+              IsOkAndHolds(TilingVector({{1, 1, 1},
+                                         {1, 1, 2},
+                                         {1, 2, 1},
+                                         {1, 2, 2},
+                                         {1, 4, 1},
+                                         {1, 4, 2},
+                                         {2, 1, 1},
+                                         {2, 1, 2},
+                                         {2, 2, 1},
+                                         {2, 2, 2},
+                                         {2, 4, 1},
+                                         {2, 4, 2},
+                                         {3, 1, 1},
+                                         {3, 1, 2},
+                                         {3, 2, 1},
+                                         {3, 2, 2},
+                                         {3, 4, 1},
+                                         {3, 4, 2}})));
 }
 
 // Helper to transform a sequence of `Tiling`s into a sequence of equivalent
