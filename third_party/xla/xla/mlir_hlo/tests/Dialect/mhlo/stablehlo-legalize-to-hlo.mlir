@@ -2468,6 +2468,23 @@ func.func @type_tuple(%arg0: tuple<tensor<f32>>) -> tuple<!stablehlo.token> {
 
 // -----
 
+// ============ TYPES ============
+// Tests how StableHLO types are legalized to MHLO types.
+
+
+// Make sure discardable attributes on CallOps with token types are preserved
+// CHECK-LABEL: preserve_discardable_attrs_on_call
+func.func @preserve_discardable_attrs_on_call(%arg0: !stablehlo.token {mhlo.sharding = "{replicated}"}) -> !stablehlo.token {
+  // CHECK: "func.call"(%arg1) <{callee = @calling_func}> {mhlo.sharding = "{manual}"} : (!mhlo.token) -> !mhlo.token
+  %0 = call @calling_func(%arg0) {mhlo.sharding = "{manual}"} : (!stablehlo.token) -> !stablehlo.token
+  return %0 : !stablehlo.token
+}
+func.func @calling_func(%arg0: !stablehlo.token {mhlo.sharding = "{manual}"}) -> (!stablehlo.token {mhlo.sharding = "{manual}"}) {
+  return %arg0 : !stablehlo.token
+}
+
+// -----
+
 // ============ NEGATIVE TESTS ============
 // Some ops, attributes and types used in StableHLO programs are not supported in MHLO.
 // For those cases, we have negative tests below.

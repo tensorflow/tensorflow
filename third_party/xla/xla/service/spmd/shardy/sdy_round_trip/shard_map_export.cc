@@ -82,7 +82,7 @@ class SdyRoundTripShardMapExportPass
       mlir::TypeRange localResultTypes =
           sdy::getBodyTerminatorOpOperandTypes(manualComputation);
       auto funcOp = FuncOp::create(
-          rewriter, loc, kManualComputationBodyFuncName,
+          rewriter, loc, kManualComputationFuncName,
           rewriter.getFunctionType(manualCompBodyArgTypes, localResultTypes));
       mlir::StringAttr funcName = symbolTable.insert(funcOp);
 

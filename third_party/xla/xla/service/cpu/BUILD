@@ -338,6 +338,7 @@ cc_library(
         "//xla/service/llvm_ir:llvm_command_line_options",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/service/spmd:stateful_rng_spmd_partitioner",
+        "//xla/service/spmd/shardy:constants",
         "//xla/service/spmd/shardy:shardy_xla_pass",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:stream_executor_h",

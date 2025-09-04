@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/spmd/shardy/stablehlo_round_trip/shard_map_export.h"
 
 #include <cassert>
+#include <cstdint>
 #include <memory>
 #include <tuple>
 #include <utility>
@@ -49,6 +50,7 @@ limitations under the License.
 #include "mlir/Pass/PassRegistry.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/TypeID.h"
+#include "mlir/Support/WalkResult.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/InliningUtils.h"
 #include "shardy/dialect/sdy/ir/constants.h"
@@ -194,7 +196,7 @@ void setManualAxesForOpsInBody(
         // meshes.
         bool hasOtherMesh = false;
         for (TensorShardingAttr opInBodySharding :
-             mlir::sdy::getShardings(opInBody)) {
+             sdy::getShardings(opInBody)) {
           if (opInBodySharding.getMeshName() != meshName) {
             hasOtherMesh = true;
             MeshAttr otherMesh = opInBodySharding.getMesh(opInBody);
@@ -220,6 +222,20 @@ void setNonEmptyManualAxes(Operation* op, ManualAxesAttr manualAxesAttr) {
   }
 }
 
+void setBlockArgManualAxes(FuncOp funcOp, mlir::BlockArgument blockArg,
+                           ManualAxesAttr manualAxesAttr) {
+  if (!manualAxesAttr.empty()) {
+    funcOp.setArgAttr(blockArg.getArgNumber(), kManualAxes, manualAxesAttr);
+  }
+}
+
+void setFuncResultManualAxes(FuncOp funcOp, int64_t resultIndex,
+                             ManualAxesAttr manualAxesAttr) {
+  if (!manualAxesAttr.empty()) {
+    funcOp.setResultAttr(resultIndex, kManualAxes, manualAxesAttr);
+  }
+}
+
 // Converts `op` to the pattern that XLA recognizes.
 //
 // The pattern is:
@@ -237,8 +253,7 @@ void setNonEmptyManualAxes(Operation* op, ManualAxesAttr manualAxesAttr) {
 void convertManualComputationOp(
     ManualComputationOp op,
     const ManualComputationToParentManualAxes& parentManualCompAxes,
-    mlir::SymbolTable& symbolTable, bool keepShardMapBodyAsFunc,
-    bool createHloShardingConstraints) {
+    mlir::SymbolTable& symbolTable, bool createHloShardingConstraints) {
   MLIRContext* context = op.getContext();
   mlir::IRRewriter rewriter(op);
   TensorShardingAttr sharding = getFirstSharding(op);
@@ -297,33 +312,46 @@ void convertManualComputationOp(
     fullToShardResults.push_back(fullToShard.getResult(0));
   }
 
+  rewriter.setInsertionPointToEnd(
+      &op->getParentOfType<ModuleOp>().getRegion().front());
   Operation* terminator = sdy::getBodyTerminator(op);
+  auto funcOp =
+      FuncOp::create(rewriter, loc, kInlineableManualComputationFuncName,
+                     rewriter.getFunctionType(op.getBody().getArgumentTypes(),
+                                              terminator->getOperandTypes()));
+  mlir::StringAttr funcName = symbolTable.insert(funcOp);
 
-  mlir::ValueRange localResults = terminator->getOperands();
-  if (keepShardMapBodyAsFunc) {
-    rewriter.setInsertionPointToEnd(
-        &op->getParentOfType<ModuleOp>().getRegion().front());
-    auto funcOp =
-        FuncOp::create(rewriter, loc, "shmap_body",
-                       rewriter.getFunctionType(op.getBody().getArgumentTypes(),
-                                                terminator->getOperandTypes()));
-    mlir::StringAttr funcName = symbolTable.insert(funcOp);
-
-    rewriter.setInsertionPointAfter(op);
-    auto callOp = CallOp::create(rewriter, loc, terminator->getOperandTypes(),
-                                 funcName, fullToShardResults);
-    sdy::inlineRegionAndConvertTerminatorOp<mlir::func::ReturnOp>(
-        op.getBody(), funcOp.getBody());
-    localResults = callOp->getResults();
-  } else {
-    rewriter.setInsertionPointAfter(op);
+  rewriter.setInsertionPointAfter(op);
+  auto callOp = CallOp::create(rewriter, loc, terminator->getOperandTypes(),
+                               funcName, fullToShardResults);
+  setNonEmptyManualAxes(callOp, regionManualAxesAttr);
+  sdy::inlineRegionAndConvertTerminatorOp<mlir::func::ReturnOp>(
+      op.getBody(), funcOp.getBody());
+  for (auto [blockArg, sharding] : llvm::zip_equal(
+           funcOp.getArguments(), op.getInShardings().getShardings())) {
+    if (sharding) {
+      setSharding(blockArg, eraseManualAxes(sharding, manualAxes.region));
+      setBlockArgManualAxes(funcOp, blockArg, regionManualAxesAttr);
+    }
+  }
+  for (auto [i, sharding] :
+       llvm::enumerate(op.getOutShardings().getShardings())) {
+    if (sharding) {
+      sdy::setFuncResultSharding(funcOp, i,
+                                 eraseManualAxes(sharding, manualAxes.region));
+      setFuncResultManualAxes(funcOp, i, regionManualAxesAttr);
+    }
   }
 
+  SmallVector<TensorShardingAttr> erasedManualAxisOutShardings;
+  erasedManualAxisOutShardings.reserve(op.getNumResults());
   // Add custom_call @SPMDShardToFullShape and sharding-constraint for each
   // operand of terminator.
   for (auto [localResult, oldResult, outSharding] :
-       llvm::zip_equal(localResults, op.getResults(),
+       llvm::zip_equal(callOp->getResults(), op.getResults(),
                        op.getOutShardings().getShardings())) {
+    erasedManualAxisOutShardings.push_back(
+        eraseManualAxes(outSharding, manualAxes.region));
     if (!mlir::isa<mlir::ShapedType>(oldResult.getType())) {
       oldResult.replaceAllUsesWith(localResult);
       continue;
@@ -337,8 +365,7 @@ void convertManualComputationOp(
     } else {
       shardingConstraint = CopyOp::create(rewriter, loc, localResult);
     }
-    sdy::setShardings(shardingConstraint,
-                      eraseManualAxes(outSharding, manualAxes.region));
+    sdy::setShardings(shardingConstraint, erasedManualAxisOutShardings.back());
     setNonEmptyManualAxes(shardingConstraint, regionManualAxesAttr);
 
     auto shardToFull = CustomCallOp::create(rewriter, loc, oldResult.getType(),
@@ -349,10 +376,8 @@ void convertManualComputationOp(
 
     oldResult.replaceAllUsesWith(shardToFull.getResult(0));
   }
-  if (!keepShardMapBodyAsFunc) {
-    rewriter.inlineBlockBefore(&op.getBody().front(), op, fullToShardResults);
-    rewriter.eraseOp(terminator);
-  }
+
+  setShardings(callOp, erasedManualAxisOutShardings);
   rewriter.eraseOp(op);
 }
 
@@ -361,16 +386,13 @@ class ShardMapExportPass
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ShardMapExportPass)
 
-  explicit ShardMapExportPass(bool keepShardMapBodyAsFunc,
-                              bool createHloShardingConstraints) {
-    this->keepShardMapBodyAsFunc = keepShardMapBodyAsFunc;
+  explicit ShardMapExportPass(bool createHloShardingConstraints) {
     this->createHloShardingConstraints = createHloShardingConstraints;
   }
 
   ShardMapExportPass() = default;
 
   explicit ShardMapExportPass(const ShardMapExportPass& other) {
-    this->keepShardMapBodyAsFunc = other.keepShardMapBodyAsFunc;
     this->createHloShardingConstraints = other.createHloShardingConstraints;
   }
 
@@ -398,7 +420,6 @@ class ShardMapExportPass
     // above.
     module->walk([&](ManualComputationOp op) {
       convertManualComputationOp(op, parentManualCompAxes, symbolTable,
-                                 keepShardMapBodyAsFunc,
                                  createHloShardingConstraints);
     });
   }
@@ -422,19 +443,13 @@ class ShardMapExportPass
       llvm::cl::desc(
           "Whether to create @Sharding custom calls or MHLO copy ops."),
       llvm::cl::init(false)};
-  Option<bool> keepShardMapBodyAsFunc{
-      *this, "keep-shard-map-body-as-func",
-      llvm::cl::desc(
-          "Whether to keep the body of the shard map as a function or inline."),
-      llvm::cl::init(false)};
 };
 
 }  // namespace
 
 std::unique_ptr<mlir::Pass> createStablehloRoundTripShardMapExportPass(
-    bool keepShardMapBodyAsFunc, bool createHloShardingConstraints) {
-  return std::make_unique<ShardMapExportPass>(keepShardMapBodyAsFunc,
-                                              createHloShardingConstraints);
+    bool createHloShardingConstraints) {
+  return std::make_unique<ShardMapExportPass>(createHloShardingConstraints);
 }
 
 void registerStablehloRoundTripShardMapExportPass() {

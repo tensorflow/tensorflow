@@ -43,6 +43,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -217,6 +218,7 @@ limitations under the License.
 #include "xla/service/sharding_propagation.h"
 #include "xla/service/sharding_remover.h"
 #include "xla/service/slow_operation_alarm.h"
+#include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/shardy/shardy_xla_pass.h"
 #include "xla/service/spmd/stateful_rng_spmd_partitioner.h"
 #include "xla/service/topk_rewriter.h"
@@ -560,6 +562,16 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     }
     spmd_pipeline.AddPass<spmd::StatefulRngSpmdPartitioner>(
         num_partitions, module->config().replica_count());
+    spmd_pipeline.AddPass<xla::CallInliner>(
+        /*single_call_site=*/false,
+        /*update_domain=*/false,
+        /*composites_to_preserve=*/absl::flat_hash_set<std::string>{},
+        /*uniquify_channel_ids=*/false,
+        /*should_inline=*/
+        [](const xla::CallGraph& call_graph, xla::HloInstruction* instruction) {
+          return absl::StrContains(instruction->to_apply()->name(),
+                                   sdy::kInlineableManualComputationFuncName);
+        });
     TF_RETURN_IF_ERROR(spmd_pipeline.Run(module).status());
   } else {
     HloPassPipeline sharding_removal_pipeline("sharding-removal");

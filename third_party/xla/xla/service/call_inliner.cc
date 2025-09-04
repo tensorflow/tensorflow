@@ -308,7 +308,7 @@ bool CallInliner::IsInlineableCallOp(HloInstruction* instruction) const {
   if (instruction->GetModule()->config().use_shardy_partitioner() &&
       (absl::StrContains(instruction->to_apply()->name(), "shmap_body") ||
        absl::StrContains(instruction->to_apply()->name(),
-                         sdy::kManualComputationBodyFuncName.str()))) {
+                         sdy::kManualComputationFuncName.str()))) {
     // TODO(b/436603025). Remove this special handling by marking the
     // instruction as uninlineable with the frontend attribute.
     //
@@ -318,7 +318,7 @@ bool CallInliner::IsInlineableCallOp(HloInstruction* instruction) const {
     // - shmap_body: We do not want to inline the bodies of JAX shard maps to
     //   import them into an `sdy.ManualComputationOp`. This is for the MHLO
     //   round-trip pipeline
-    // - kManualComputationBodyFuncName: Same as shmap_body except for the SDY
+    // - kManualComputationFuncName: Same as shmap_body except for the SDY
     //   round-trip pipeline.
     return false;
   }

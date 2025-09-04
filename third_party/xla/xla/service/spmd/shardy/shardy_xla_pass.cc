@@ -405,7 +405,7 @@ bool eraseInlineableAttrForShardyManualComputations(HloModule* module) {
         continue;
       }
       if (absl::StrContains(instruction->to_apply()->name(),
-                            sdy::kManualComputationBodyFuncName.str())) {
+                            sdy::kManualComputationFuncName.str())) {
         instruction->erase_frontend_attribute(kXlaInlineableAttr);
         // TODO(b/436603025). CallInliner do not inline the Shardy related
         // manual computations based on the callee name. We have to rename the
