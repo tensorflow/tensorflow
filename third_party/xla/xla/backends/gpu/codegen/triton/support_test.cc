@@ -3407,14 +3407,22 @@ INSTANTIATE_TEST_SUITE_P(ConvolutionTestSuiteCcOnly, ConvolutionTestCcOnly,
                          ::testing::ValuesIn(AllDevicesToTest()),
                          TritonSupportTestDeviceToString);
 
+// This denotes opcodes that are explicitly not supported by the generic Triton
+// emitter, and have also not been tested at all in the support test. If you
+// are adding a new opcode that can't be easily added to other parametrized
+// tests (e.g. adding tests to unary elementwise ops should be simple enough
+// that adding them here is probably not necessary), add it here to ensure that
+// the support test invariants are preserved.
 constexpr std::array kUnsupportedOps = {
     // clang-format off
     // go/keep-sorted start
     HloOpcode::kDynamicReshape,
+    HloOpcode::kDynamicSlice,
     HloOpcode::kDynamicUpdateSlice,
     HloOpcode::kGather,
     HloOpcode::kRaggedDot,
     HloOpcode::kReduceWindow,
+    HloOpcode::kScaledDot,
     HloOpcode::kScatter,
     HloOpcode::kSelectAndScatter,
     HloOpcode::kSetDimensionSize,
@@ -3422,6 +3430,13 @@ constexpr std::array kUnsupportedOps = {
     // clang-format on
 };
 
+// This function returns the set of opcodes that have explicit corresponding
+// tests in this file. *DO NOT* add opcodes here unless you're also adding
+// sufficiently exhaustive tests for them.
+//
+// Also prefer to create `kTestedOps*` constants capturing each opcode group,
+// in order to help ascertain that opcodes are not mistakenly added here and
+// left untested.
 absl::flat_hash_set<HloOpcode> AllTestedOpcodes() {
   absl::flat_hash_set<HloOpcode> ret;
   ret.insert(kTestedOpsBitcastReshape.begin(), kTestedOpsBitcastReshape.end());
@@ -3462,7 +3477,6 @@ absl::flat_hash_set<HloOpcode> AllTestedOpcodes() {
   ret.emplace(HloOpcode::kCustomCall);
   ret.emplace(HloOpcode::kDomain);
   ret.emplace(HloOpcode::kDot);
-  ret.emplace(HloOpcode::kDynamicSlice);  // TODO(b/417172838): add tests.
   ret.emplace(HloOpcode::kFft);
   ret.emplace(HloOpcode::kFusion);
   ret.emplace(HloOpcode::kGetDimensionSize);
@@ -3473,7 +3487,6 @@ absl::flat_hash_set<HloOpcode> AllTestedOpcodes() {
   ret.emplace(HloOpcode::kReverse);
   ret.emplace(HloOpcode::kRngBitGenerator);
   ret.emplace(HloOpcode::kRngGetAndUpdateState);
-  ret.emplace(HloOpcode::kScaledDot);
   ret.emplace(HloOpcode::kSort);
   ret.emplace(HloOpcode::kStochasticConvert);
   ret.emplace(HloOpcode::kTopK);
