@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/threadpool.h"
@@ -177,6 +178,14 @@ class GpuCompiler : public LLVMCompiler {
       const MultiProcessKeyValueStore& key_value_store,
       const se::SemanticVersion& toolkit_version,
       stream_executor::StreamExecutor* stream_executor) {
+    return absl::OkStatus();
+  }
+
+  virtual absl::Status AddFusionAutotuningPass(
+      HloPassPipeline* pipeline, HloModule* hlo_module,
+      const CompileOptions& options, tsl::thread::ThreadPool* thread_pool,
+      stream_executor::StreamExecutor* stream_executor,
+      HloCostAnalysis::ShapeSizeFunction shape_size_fn) {
     return absl::OkStatus();
   }
 
