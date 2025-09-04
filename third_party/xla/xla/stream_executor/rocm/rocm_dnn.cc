@@ -1042,10 +1042,6 @@ absl::StatusOr<ScopedConvolutionDescriptor> scope(
   }
   const auto& strides64 = convolution_descriptor.strides();
   const auto& padding64 = convolution_descriptor.padding();
-  if (convolution_descriptor.pad_alignment() ==
-      dnn::PadAlignment::kTensorFlowPadding) {
-    LOG(ERROR) << "TensorFlow padding alignment is not supported.";
-  }
 
   // MIOpen requires arrays of ints.
   std::vector<int> strides(convolution_descriptor.ndims());
