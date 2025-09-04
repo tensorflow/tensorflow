@@ -252,6 +252,8 @@ class AsyncValueRef {
 
   T& operator*() const { return get(); }
 
+  bool HasWaiter() const { return AsPtr().HasWaiter(); }
+
   template <typename Waiter>
   void AndThen(Waiter&& waiter) const {
     AsPtr().AndThen(std::forward<Waiter>(waiter));
@@ -510,6 +512,10 @@ class AsyncValuePtr {
     DCHECK(!status.ok()) << "expected non-ok status";
     return value_->SetError(std::move(status));
   }
+
+  // Returns true if and only if there are any waiters waiting for this value to
+  // become available.
+  bool HasWaiter() const { return value_->HasWaiter(); }
 
   // If the AsyncValueRef is available, invokes the `waiter` immediately.
   // Otherwise, invokes the `waiter` when the AsyncValueRef becomes available.
