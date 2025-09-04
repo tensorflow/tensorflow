@@ -51,7 +51,7 @@ template <typename FACTORY_TYPE>
 absl::Status PluginRegistry::RegisterFactoryInternal(
     const std::string& plugin_name, FACTORY_TYPE factory,
     std::optional<FACTORY_TYPE>* factories) {
-  absl::MutexLock lock(&registry_mutex_);
+  absl::MutexLock lock(registry_mutex_);
 
   if (factories->has_value()) {
     return absl::AlreadyExistsError(
