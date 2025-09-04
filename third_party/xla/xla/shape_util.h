@@ -925,6 +925,9 @@ class ShapeUtil {
   DeduceTransposeDimensionsForBitcast(const Shape& input_shape,
                                       const Shape& output_shape);
 
+  static bool IsDecomposableBitcast(const Shape& input_shape,
+                                    const Shape& output_shape);
+
   // This means that the bitcast can be decomposed to a single reshape.
   struct BitcastDecompositionReshape {};
 
@@ -933,7 +936,8 @@ class ShapeUtil {
     std::vector<int64_t> transpose_dims;
   };
 
-  // Every bitcast from A to B can be represented as a sequence of:
+  // Every bitcast from A to B of same bitwidth can be represented as a sequence
+  // of:
   // 1) Transpose to a normalized layout of A
   // 2) Reshape to a normalized layout of B
   // 3) Transpose from (2) to B
@@ -956,14 +960,14 @@ class ShapeUtil {
   };
 
   // A variant type holding one of the possible bitcast decompositions.
-  using BitcastDecomposition =
+  using BitcastDecomposition = std::optional<
       std::variant<BitcastDecompositionReshape, BitcastDecompositionTranspose,
-                   BitcastDecompositionTrt>;
+                   BitcastDecompositionTrt>>;
 
   // Decomposes a bitcast to a sequence of transpose, reshape, transpose.
   //
   // See the comment on BitcastDecompositionTrt.
-  static BitcastDecompositionTrt DecomposeBitcastToTrt(
+  static std::optional<BitcastDecompositionTrt> DecomposeBitcastToTrt(
       const Shape& input_shape, const Shape& output_shape);
 
   // Decomposes a bitcast to one of the possible decompositions.

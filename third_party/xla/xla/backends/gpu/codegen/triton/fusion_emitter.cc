@@ -690,6 +690,7 @@ absl::StatusOr<ScalarOrTensor> EmitTiledBitcast(
 
   // Any Bitcast is decomposable to a transpose+reshape+transpose.
   auto trt = ShapeUtil::DecomposeBitcastToTrt(input_shape, output_shape);
+  TF_RET_CHECK(trt.has_value());
 
   // When replacing the `bitcast` with `transpose` + `reshape` + `transpose` we
   // need to provide the tile sizes at output of each op. We already have the
@@ -705,12 +706,12 @@ absl::StatusOr<ScalarOrTensor> EmitTiledBitcast(
   // different, even in rank, compared to the tile sizes of the final shape of
   // the bitcast, so it's not possible to easily propagate them from the output.
   std::vector<int64_t> transpose1_tile_sizes =
-      Permute(tiled_bitcast.operand(0)->tile_sizes(), trt.transpose1_dims);
+      Permute(tiled_bitcast.operand(0)->tile_sizes(), trt->transpose1_dims);
   Value normalized_input =
-      trt.IsTranspose1Identity()
+      trt->IsTranspose1Identity()
           ? input
           : EmitTiledTranspose(b, transpose1_tile_sizes,
-                               llvm::to_vector(trt.transpose1_dims), input);
+                               llvm::to_vector(trt->transpose1_dims), input);
 
   // Like the first transpose above, the tile sizes after the second transpose
   // are a permutation (according to transpose2_dims) of the tile sizes of
@@ -718,9 +719,9 @@ absl::StatusOr<ScalarOrTensor> EmitTiledBitcast(
   // the tile sizes of the reshape, we compute the tile sizes backwards, taking
   // the inverse permutation.
   std::vector<int64_t> reshape_tile_sizes =
-      PermuteInverse(tiled_bitcast.tile_sizes(), trt.transpose2_dims);
+      PermuteInverse(tiled_bitcast.tile_sizes(), trt->transpose2_dims);
   Value normalized_reshape;
-  if (ShapeUtil::Equal(trt.transpose1_shape, trt.reshape_shape)) {
+  if (ShapeUtil::Equal(trt->transpose1_shape, trt->reshape_shape)) {
     normalized_reshape = normalized_input;
   } else {
     TF_ASSIGN_OR_RETURN(auto reshape,
@@ -732,10 +733,10 @@ absl::StatusOr<ScalarOrTensor> EmitTiledBitcast(
   // The final transpose simply uses the tile sizes computed for the original
   // bitcast by the tiling analysis.
   return ScalarOrTensor{
-      trt.IsTranspose2Identity()
+      trt->IsTranspose2Identity()
           ? normalized_reshape
           : EmitTiledTranspose(b, tiled_bitcast.tile_sizes(),
-                               llvm::to_vector(trt.transpose2_dims),
+                               llvm::to_vector(trt->transpose2_dims),
                                normalized_reshape)};
 }
 

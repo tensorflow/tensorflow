@@ -1691,11 +1691,18 @@ bool ShapeUtil::BitcastDecompositionTrt::IsTranspose2Identity() const {
   return absl::c_is_sorted(transpose2_dims);
 }
 
-/* static */ ShapeUtil::BitcastDecompositionTrt
+bool ShapeUtil::IsDecomposableBitcast(const Shape& input_shape,
+                                      const Shape& output_shape) {
+  return input_shape.has_layout() && output_shape.has_layout() &&
+         ElementsIn(input_shape) == ElementsIn(output_shape);
+}
+
+/* static */ std::optional<ShapeUtil::BitcastDecompositionTrt>
 ShapeUtil::DecomposeBitcastToTrt(const Shape& input_shape,
                                  const Shape& output_shape) {
-  CHECK(input_shape.has_layout()) << input_shape.ToString();
-  CHECK(output_shape.has_layout()) << output_shape.ToString();
+  if (!IsDecomposableBitcast(input_shape, output_shape)) {
+    return std::nullopt;
+  }
 
   BitcastDecompositionTrt decomposition;
   decomposition.transpose1_shape =
@@ -1732,8 +1739,9 @@ ShapeUtil::DecomposeBitcastToTrt(const Shape& input_shape,
 
 /* static */ ShapeUtil::BitcastDecomposition ShapeUtil::DecomposeBitcast(
     const Shape& input_shape, const Shape& output_shape) {
-  CHECK(input_shape.has_layout()) << input_shape.ToString();
-  CHECK(output_shape.has_layout()) << output_shape.ToString();
+  if (!IsDecomposableBitcast(input_shape, output_shape)) {
+    return std::nullopt;
+  }
 
   if (ShapeUtil::ReshapeIsBitcast(input_shape, output_shape,
                                   /*ignore_element_type=*/true)) {
