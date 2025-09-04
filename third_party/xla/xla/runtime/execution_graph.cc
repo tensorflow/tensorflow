@@ -285,8 +285,11 @@ std::string ExecutionGraph::ToString() const {
   };
 
   std::string out;
-  absl::StrAppendFormat(&out, "ExecutionGraph: %d nodes, is_sequential=%v\n",
-                        nodes_defs_.size(), is_sequential_);
+  absl::StrAppendFormat(&out,
+                        "ExecutionGraph: %d nodes, #source_nodes=%d "
+                        "#sink_nodes=%d, is_sequential=%v\n",
+                        nodes_defs_.size(), source_.size(), sink_.size(),
+                        is_sequential_);
 
   for (NodeId i = 0; i < nodes_defs_.size(); ++i) {
     const NodeDef& def = nodes_defs_[i];
