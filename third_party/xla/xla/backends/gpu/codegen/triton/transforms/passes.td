@@ -25,6 +25,10 @@ def TritonXLAExtractInsertToTritonPass : Pass<"triton-xla-extract-insert-to-trit
     Triton ops. It also rewrites `func` args to `tt.ptr` types and removes
     function return args.
   }];
+  let options = [
+    Option<"allow_tma_", "allow_tma", "bool", "false",
+           "Whether to permit lowering to TMA.">,
+  ];
   let dependentDialects = [
     "triton::TritonDialect",
     "::xla::XlaDialect"
