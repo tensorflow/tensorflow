@@ -106,6 +106,10 @@ absl::StatusOr<Type> TritonType(EmitterLocOpBuilder& b, PrimitiveType t) {
       return b.getType<mlir::Float8E5M2Type>();
     case F8E4M3FN:
       return b.getType<mlir::Float8E4M3FNType>();
+    case F8E8M0FNU:
+      return b.getType<mlir::Float8E8M0FNUType>();
+    case F4E2M1FN:
+      return b.getType<mlir::Float4E2M1FNType>();
     default:
       return absl::UnimplementedError(
           absl::StrCat("This type is not supported yet: ",
@@ -114,6 +118,7 @@ absl::StatusOr<Type> TritonType(EmitterLocOpBuilder& b, PrimitiveType t) {
 }
 
 absl::StatusOr<PrimitiveType> GetPrimitiveType(Type t) {
+  // NOLINTBEGIN(google-readability-braces-around-statements)
   if (t.isF64()) return F64;
   if (t.isF32()) return F32;
   if (t.isF16()) return F16;
@@ -126,6 +131,8 @@ absl::StatusOr<PrimitiveType> GetPrimitiveType(Type t) {
   if (t.isInteger(1)) return PRED;
   if (mlir::isa<mlir::Float8E5M2Type>(t)) return F8E5M2;
   if (mlir::isa<mlir::Float8E4M3FNType>(t)) return F8E4M3FN;
+  if (mlir::isa<mlir::Float8E8M0FNUType>(t)) return F8E8M0FNU;
+  // NOLINTEND(google-readability-braces-around-statements)
   return absl::UnimplementedError("Unsupported type in getPrimitiveType.\n");
 }
 
@@ -500,6 +507,12 @@ absl::StatusOr<ScalarOrTensor> EmitConstant(EmitterLocOpBuilder& b,
     }
   }
   return CreateConst(b, ty, ScalarConstantValue<double>(constant, F64), shape);
+}
+
+Value Bitcast(EmitterLocOpBuilder& b, Value value, Type type) {
+  auto value_type = value.getType();
+  value_type = mlir::dyn_cast<ShapedType>(value_type).clone(type);
+  return b.create<mlir::arith::BitcastOp>(value_type, value);
 }
 
 }  // namespace xla::gpu::triton

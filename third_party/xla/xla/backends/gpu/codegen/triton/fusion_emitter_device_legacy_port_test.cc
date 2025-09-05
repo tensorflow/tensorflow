@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <cstdlib>
 #include <memory>
+#include <ostream>
 #include <string>
 #include <utility>
 #include <variant>
@@ -23,8 +24,10 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "llvm/IR/LLVMContext.h"
@@ -3229,7 +3232,192 @@ ENTRY e {
 ; CHECK-SAME: __triton_nested_gemm_fusion
   )");
 }
-
 }  // namespace
+
+struct ScaleDotTestParams {
+  std::string lhs_type;
+  std::string lhs_scale_type;
+  std::string rhs_type;
+  std::string rhs_scale_type;
+  std::string output_type;
+  std::string expected_triton_type;
+
+  std::string PrepareHloText(absl::string_view hlo_template) const {
+    return absl::StrReplaceAll(hlo_template,
+                               {{"$lhs_type", lhs_type},
+                                {"$lhs_scale_type", lhs_scale_type},
+                                {"$rhs_type", rhs_type},
+                                {"$rhs_scale_type", rhs_scale_type},
+                                {"$output_type", output_type}});
+  }
+  static std::string ToString(
+      const ::testing::TestParamInfo<ScaleDotTestParams>& info) {
+    const ScaleDotTestParams& params = info.param;
+    auto name = absl::StrCat(params.lhs_type, "_", params.lhs_scale_type, "_",
+                             params.rhs_type, "_", params.rhs_scale_type, "_",
+                             params.output_type);
+    absl::StrReplaceAll({{"[", "_"}, {"]", "_"}, {",", "x"}}, &name);
+    return name;
+  }
+};
+
+std::ostream& operator<<(std::ostream& stream, const ScaleDotTestParams& tc) {
+  return stream << "{\n\tlhs_type:" << tc.lhs_type
+                << ",\n\tlhs_scale_type:" << tc.lhs_scale_type
+                << ",\n\trhs_type:" << tc.rhs_type
+                << ",\n\trhs_scale_type:" << tc.rhs_scale_type
+                << ",\n\toutput_type:" << tc.output_type << "\n}";
+}
+
+class TritonScaledDotGemmTest
+    : public TritonGemmTest,
+      public ::testing::WithParamInterface<ScaleDotTestParams> {};
+
+TEST_P(TritonScaledDotGemmTest, Fp8ScaledDotDoesNotCrash) {
+  const ScaleDotTestParams& params = GetParam();
+  constexpr absl::string_view kHloTextTemplate = R"hlo(
+HloModule m
+flhs (p0: $lhs_type) -> $lhs_type {
+  ROOT p0 = $lhs_type{1,0} parameter(0)
+}
+flhs_scale (p0: $lhs_scale_type) -> $lhs_scale_type {
+  ROOT p0 = $lhs_scale_type{1,0} parameter(0)
+}
+frhs (p0: $rhs_type) -> $rhs_type {
+  ROOT p0 = $rhs_type{1,0} parameter(0)
+}
+frhs_scale (p0: $rhs_scale_type) -> $rhs_scale_type {
+  ROOT p0 = $rhs_scale_type{1,0} parameter(0)
+}
+
+triton_dot {
+  lhs = $lhs_type parameter(0)
+  lhs1 = $lhs_type{1,0} fusion(lhs),
+    kind=kCustom,
+    calls=flhs,
+    backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton_nested_gemm_fusion",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["16","32"]}],
+          "num_warps":"1",
+          "num_stages":"1",
+          "num_ctas":"1",
+        }
+      }
+    }
+  lhs_scale = $lhs_scale_type parameter(1)
+  lhs_scale1 = $lhs_scale_type{1,0} fusion(lhs_scale),
+    kind=kCustom,
+    calls=flhs_scale,
+    backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton_nested_gemm_fusion",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["16","1"]}],
+          "num_warps":"1",
+          "num_stages":"1",
+          "num_ctas":"1",
+        }
+      }
+    }
+  rhs = $rhs_type parameter(2)
+  rhs1 = $rhs_type{1,0} fusion(rhs),
+    kind=kCustom,
+    calls=frhs,
+    backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton_nested_gemm_fusion",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["16","32"]}],
+          "num_warps":"1",
+          "num_stages":"1",
+          "num_ctas":"1",
+        }
+      }
+    }
+  rhs_scale = $rhs_scale_type parameter(3)
+  rhs_scale1 = $rhs_scale_type{1,0} fusion(rhs_scale),
+    kind=kCustom,
+    calls=frhs_scale,
+    backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton_nested_gemm_fusion",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["16","1"]}],
+          "num_warps":"1",
+          "num_stages":"1",
+          "num_ctas":"1",
+        }
+      }
+    }
+  ROOT _ = $output_type{1,0} scaled-dot(lhs1, lhs_scale1, rhs1, rhs_scale1),
+    lhs_contracting_dims={1},
+    rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = $lhs_type{1,0} parameter(0)
+  p1 = $lhs_scale_type{1,0} parameter(1)
+  p2 = $rhs_type{1,0} parameter(2)
+  p3 = $rhs_scale_type{1,0} parameter(3)
+  ROOT _ = $output_type{1,0} fusion(p0, p1, p2, p3),
+    kind=kCustom,
+    calls=triton_dot,
+    backend_config={
+      "fusion_backend_config": {
+        kind: "__triton_scaled_dot_fusion",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["16", "16"]}],
+          "num_warps":"1",
+          "num_stages":"1",
+          "num_ctas":"1"
+        }
+      }
+    }
+}
+)hlo";
+
+  auto hlo_text = params.PrepareHloText(kHloTextTemplate);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+
+  auto debug_options = module->config().debug_options();
+  debug_options.set_xla_gpu_experimental_scaled_dot_with_triton(true);
+  module->mutable_config().set_debug_options(debug_options);
+
+  constexpr absl::string_view kExpectedTritonIrTmpl = R"(
+      CHECK: tt.dot_scaled
+      CHECK: tensor<16x32x$triton_type>, tensor<16x1xi8>
+      CHECK: tensor<32x16x$triton_type>, tensor<1x16xi8>
+      CHECK: -> tensor<16x16xf32>
+  )";
+  auto expected_triton_ir = absl::StrReplaceAll(
+      kExpectedTritonIrTmpl, {{"$triton_type", params.expected_triton_type}});
+  EXPECT_THAT(
+      CreateTritonIrAndFileCheck(*module->GetComputationWithName("triton_dot"),
+                                 /*block_level_parameters=*/
+                                 {
+                                     {{16, 16}},
+                                     1,
+                                     1,
+                                     1,
+                                     true,
+                                 },
+                                 expected_triton_ir),
+      absl_testing::IsOk());
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    TritonScaledDotGemmTest, TritonScaledDotGemmTest,
+    ::testing::Values(ScaleDotTestParams{"f8e4m3fn[64,512]", "f8e8m0fnu[64,16]",
+                                         "f8e4m3fn[512,64]", "f8e8m0fnu[16,64]",
+                                         "f32[64,64]", "f8E4M3FN"},
+                      ScaleDotTestParams{"f8e5m2[64,512]", "f8e8m0fnu[64,16]",
+                                         "f8e5m2[512,64]", "f8e8m0fnu[16,64]",
+                                         "f32[64,64]", "f8E5M2"}),
+    ScaleDotTestParams::ToString);
+
 }  // namespace gpu
 }  // namespace xla

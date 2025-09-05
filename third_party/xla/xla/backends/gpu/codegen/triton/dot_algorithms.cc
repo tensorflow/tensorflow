@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Support/LLVM.h"
@@ -42,6 +43,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/primitive_util.h"
 #include "xla/service/algorithm_util.h"
+#include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
@@ -126,6 +128,38 @@ std::vector<Value> SplitF32(EmitterLocOpBuilder b, Value input,
     split_inputs.push_back(input_as_bf16);
   }
   return split_inputs;
+}
+
+absl::StatusOr<ttir::ScaleDotElemType> GetScaleDotElemType(Type value) {
+  auto type = getElementTypeOrSelf(value);
+  if (type == mlir::Float8E4M3FNType::get(value.getContext())) {
+    return ttir::ScaleDotElemType::E4M3;
+  }
+  if (type == mlir::Float8E5M2Type::get(value.getContext())) {
+    return ttir::ScaleDotElemType::E5M2;
+  }
+  if (type == mlir::Float4E2M1FNType::get(value.getContext())) {
+    return ttir::ScaleDotElemType::E2M1;
+  }
+  return absl::InvalidArgumentError(
+      absl::StrCat("Unsupported type: ", llvm_ir::DumpToString(type)));
+}
+
+absl::StatusOr<Value> ScaledDot(EmitterLocOpBuilder b,
+                                ScaledDotOperands& operands) {
+  TF_ASSIGN_OR_RETURN(auto lhs_dot_elem_type,
+                      GetScaleDotElemType(operands.lhs.getType()));
+  TF_ASSIGN_OR_RETURN(auto rhs_dot_elem_type,
+                      GetScaleDotElemType(operands.rhs.getType()));
+
+  auto lhs_scale = Bitcast(b, operands.lhs_scale, b.getI8Type());
+  auto rhs_scale = Bitcast(b, operands.rhs_scale, b.getI8Type());
+
+  // make type with the same shape as the scale but with i8 type
+  return b.create<ttir::DotScaledOp>(
+      operands.accumulator.getType(), operands.lhs, operands.rhs,
+      operands.accumulator, lhs_scale, rhs_scale, lhs_dot_elem_type,
+      rhs_dot_elem_type, true);
 }
 
 Value IEEEDot(EmitterLocOpBuilder b, Value lhs, Value rhs, Value acc) {
@@ -486,6 +520,12 @@ absl::StatusOr<Value> EmitSingleTileDot(EmitterLocOpBuilder b,
   }
 
   return result;
+}
+
+absl::StatusOr<Value> EmitSingleTileScaledDot(
+    EmitterLocOpBuilder b, const HloScaledDotInstruction& scaled_dot,
+    ScaledDotOperands dot_operands) {
+  return ScaledDot(b, dot_operands);
 }
 
 }  // namespace triton
