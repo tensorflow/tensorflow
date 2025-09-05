@@ -638,11 +638,11 @@ REGISTER_OP("Betainc")
 
 // Declares cwise binary comparison operations signature: 't, 't -> bool,
 // where 't has a natural total order.
-#define COMPARISON()             \
-  Input("x: T")                  \
-      .Input("y: T")             \
-      .Output("z: bool")         \
-      .Attr("T: realnumbertype") \
+#define COMPARISON()                     \
+  Input("x: T")                          \
+      .Input("y: T")                     \
+      .Output("z: bool")                 \
+      .Attr("T: {realnumbertype, bool}") \
       .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
 
 REGISTER_OP("Less").COMPARISON();
