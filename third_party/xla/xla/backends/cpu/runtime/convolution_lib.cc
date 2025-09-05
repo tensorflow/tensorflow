@@ -93,7 +93,7 @@ static absl::Status ValidateConvolutionShapes(
   return absl::OkStatus();
 }
 
-bool IsSupportedType(PrimitiveType primitive_type) {
+static bool IsSupportedType(PrimitiveType primitive_type) {
   return primitive_type == PrimitiveType::F16 ||
          primitive_type == PrimitiveType::F32;
 }
