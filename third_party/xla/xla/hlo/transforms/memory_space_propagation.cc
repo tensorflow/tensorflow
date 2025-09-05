@@ -126,7 +126,8 @@ bool MemorySpacePropagation::Propagate(ShapeIndexView index,
       shape->mutable_layout()->add_split_configs(*src_split_config);
     }
 
-    if (instruction->opcode() == HloOpcode::kDynamicUpdateSlice) {
+    if (instruction->opcode() == HloOpcode::kDynamicUpdateSlice ||
+        instruction->opcode() == HloOpcode::kScatter) {
       auto op_0 = instruction->mutable_operand(0);
       op_0->mutable_shape()->mutable_layout()->set_memory_space(
           src_shape.layout().memory_space());
