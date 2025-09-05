@@ -1,9 +1,9 @@
 // RUN: xla-opt %s -split-input-file \
-// RUN: -triton-xla-extract-insert-to-triton="gpu_device_info='cuda_compute_capability {major: 6}' tma_enabled=0" \
+// RUN: -triton-xla-extract-insert-to-triton \
 // RUN: | FileCheck %s
 
 // RUN: xla-opt %s -split-input-file \
-// RUN: -triton-xla-extract-insert-to-triton="gpu_device_info='cuda_compute_capability {major: 9}' tma_enabled=1" \
+// RUN: -triton-xla-extract-insert-to-triton=allow_tma=1 \
 // RUN: | FileCheck %s --check-prefix=CHECK-TMA
 
 func.func @lower_extract_insert(%arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>) {
