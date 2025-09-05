@@ -128,7 +128,7 @@ absl::StatusOr<AutotunerCacheKey> FileBasedAutotunerCache::GetProtoKey(
   return key;
 }
 
-std::optional<AutotunerCacheEntry> FileBasedAutotunerCache::Lookup(
+std::optional<AutotunerCacheInterface::Config> FileBasedAutotunerCache::Lookup(
     const HloInstruction* instr) {
   absl::StatusOr<std::string> map_key = GetMapKey(instr);
   if (!map_key.ok()) {
@@ -140,11 +140,14 @@ std::optional<AutotunerCacheEntry> FileBasedAutotunerCache::Lookup(
   if (it == in_memory_cache_.end()) {
     return std::nullopt;
   }
-  return it->second;
+  AutotunerCacheInterface::Config config;
+  config.codegen_backend_name = it->second.codegen_backend();
+  config.backend_config = it->second.backend_config();
+  return config;
 }
 
-absl::Status FileBasedAutotunerCache::Insert(const HloInstruction* instr,
-                                             AutotunerCacheEntry& entry) {
+absl::Status FileBasedAutotunerCache::Insert(
+    const HloInstruction* instr, AutotunerCacheInterface::Config& best_config) {
   if (cache_config_.autotune_cache_mode ==
       FileBasedCacheConfig::CacheMode::READ) {
     return absl::OkStatus();
@@ -152,7 +155,10 @@ absl::Status FileBasedAutotunerCache::Insert(const HloInstruction* instr,
   TF_ASSIGN_OR_RETURN(const std::string map_key, GetMapKey(instr));
   TF_ASSIGN_OR_RETURN(AutotunerCacheKey proto_key, GetProtoKey(instr));
   absl::MutexLock lock(&mutex_);
+  AutotunerCacheEntry entry;
   *entry.mutable_key() = proto_key;
+  entry.set_codegen_backend(best_config.codegen_backend_name);
+  *entry.mutable_backend_config() = best_config.backend_config;
   in_memory_cache_[map_key] = entry;
   if (!cache_config_.autotune_cache_dir.empty()) {
     return Save(map_key, entry);

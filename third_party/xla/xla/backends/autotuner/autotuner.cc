@@ -77,13 +77,13 @@ absl::Status Autotuner::Autotune(HloInstruction* instr) {
 absl::StatusOr<Autotuner::Config> Autotuner::GetBestConfig(
     HloInstruction* instr) {
   if (cache_) {
-    auto cached_entry = cache_->Lookup(instr);
-    if (cached_entry.has_value()) {
-      VLOG(1) << "Found cached entry for HLO: " << instr->ToString();
+    auto cached_config = cache_->Lookup(instr);
+    if (cached_config.has_value()) {
+      VLOG(1) << "Found cached config for HLO: " << instr->ToString();
       for (auto& codegen_backend : codegen_backends_) {
-        if (codegen_backend->name() == cached_entry->codegen_backend()) {
+        if (codegen_backend->name() == cached_config->codegen_backend_name) {
           auto backend_config = std::make_unique<google::protobuf::Any>(
-              cached_entry->backend_config());
+              cached_config->backend_config);
           return Config{codegen_backend.get(), std::move(backend_config)};
         }
       }
@@ -278,11 +278,11 @@ absl::StatusOr<Autotuner::Config> Autotuner::ProfileAndPickBest(
   VLOG(1) << "Picked config: " << best_config->codegen_backend->name() << " "
           << best_config->backend_config->ShortDebugString();
 
-  AutotunerCacheEntry cache_entry;
-  cache_entry.set_codegen_backend(min_duration_config->codegen_backend->name());
-  *cache_entry.mutable_backend_config() = *best_config->backend_config;
+  AutotunerCacheInterface::Config config;
+  config.codegen_backend_name = (best_config->codegen_backend->name());
+  config.backend_config = *best_config->backend_config;
   if (cache_) {
-    TF_RETURN_IF_ERROR(cache_->Insert(instr, cache_entry));
+    TF_RETURN_IF_ERROR(cache_->Insert(instr, config));
   }
   return std::move(*best_config);
 }

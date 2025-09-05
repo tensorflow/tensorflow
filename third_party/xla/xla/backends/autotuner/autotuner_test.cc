@@ -112,10 +112,11 @@ class MockProfiler : public Profiler {
 
 class MockAutotunerCache : public AutotunerCacheInterface {
  public:
-  MOCK_METHOD(std::optional<AutotunerCacheEntry>, Lookup,
+  MOCK_METHOD(std::optional<AutotunerCacheInterface::Config>, Lookup,
               (const HloInstruction* instr), (override));
   MOCK_METHOD(absl::Status, Insert,
-              (const HloInstruction* instr, AutotunerCacheEntry& entry),
+              (const HloInstruction* instr,
+               AutotunerCacheInterface::Config& best_config),
               (override));
 };
 
@@ -384,13 +385,13 @@ TEST_F(AutotunerTest, AutotuneModuleWithDuplicateInstructions) {
 
 TEST_F(AutotunerTest, CacheHit) {
   auto cache_manager = std::make_unique<MockAutotunerCache>();
-  AutotunerCacheEntry entry;
-  entry.set_codegen_backend("mock_backend");
+  AutotunerCacheInterface::Config config;
+  config.codegen_backend_name = "mock_backend";
   TestConfig test_config;
   GetTestConfig("test_config_2")->UnpackTo(&test_config);
-  entry.mutable_backend_config()->PackFrom(test_config);
+  config.backend_config.PackFrom(test_config);
 
-  EXPECT_CALL(*cache_manager, Lookup(_)).WillOnce(Return(entry));
+  EXPECT_CALL(*cache_manager, Lookup(_)).WillOnce(Return(config));
 
   auto backend = std::make_unique<MockCodegenBackend>();
   EXPECT_CALL(*backend, name()).WillRepeatedly(Return("mock_backend"));
