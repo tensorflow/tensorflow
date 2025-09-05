@@ -148,6 +148,21 @@ void RecordInputBatchSizeV2(int32_t batch_size, const string& model_name,
       // Largest bucket has range: [(2/3) *  2^14, DBL_MAX]
       monitoring::Buckets::Exponential(2.0 / 3.0, 2, 15));
   cell->GetCell(model_name, op_name)->Add(static_cast<double>(batch_size));
+  const std::string criticality =
+      absl::StrCat(tsl::criticality::GetCriticality());
+
+  static auto* num_tasks_counter = tensorflow::monitoring::Counter<3>::New(
+      "/tensorflow/serving/batching/input_num_tasks",
+      "Tracks the number of batches submitted to the batching scheduler.",
+      "model_name", "op_name", "criticality");
+  num_tasks_counter->GetCell(model_name, op_name, criticality)->IncrementBy(1);
+
+  static auto* num_items_counter = tensorflow::monitoring::Counter<3>::New(
+      "/tensorflow/serving/batching/input_num_items",
+      "Tracks the number of items submitted to the batching scheduler.",
+      "model_name", "op_name", "criticality");
+  num_items_counter->GetCell(model_name, op_name, criticality)
+      ->IncrementBy(batch_size);
 }
 
 // Record the actual batch size without padding.
