@@ -206,6 +206,27 @@ class AutotunerUtil {
                                         AutotuneResult result,
                                         const AutotuneConfig& config);
 
+  // Used in the new autotuner to provide current cache compatibility.
+  static absl::StatusOr<std::optional<AutotuneResult>> TryFindInCache(
+      const AutotuneCacheKey& key, absl::string_view cache_dir);
+
+  // Used in the new autotuner to provide current cache compatibility.
+  struct ResultAndInserted {
+    // The result that ended up in the cache. This is the existing result if
+    // inserted is false, and the new result if inserted is true.
+    //
+    // We return a value, not a pointer, for thread safety reasons.
+    AutotuneResult result;
+    // Did we insert the given result into the cache?
+    bool inserted;
+  };
+
+  // Used in the new autotuner to provide current cache compatibility.
+  static absl::StatusOr<ResultAndInserted> AddResultToCaches(
+      const AutotuneCacheKey& key, AutotuneResult result,
+      absl::string_view cache_dir,
+      DebugOptions::AutotuneCacheMode autotune_cache_mode);
+
   // Functions to save/load XLA's autotuning results.
   //
   // This is used for ahead-of-time autotuning.  Specifically:

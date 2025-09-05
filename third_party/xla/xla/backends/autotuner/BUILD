@@ -149,6 +149,7 @@ xla_cc_test(
     name = "file_based_autotuner_cache_test",
     srcs = ["file_based_autotuner_cache_test.cc"],
     deps = [
+        ":autotuner_cache_interface",
         ":autotuner_cache_proto_cc",
         ":file_based_autotuner_cache",
         "//xla:literal_util",

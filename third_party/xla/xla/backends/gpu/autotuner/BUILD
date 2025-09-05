@@ -1,6 +1,6 @@
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
-load("//xla:xla.default.bzl", "xla_cc_binary")
+load("//xla:xla.default.bzl", "xla_cc_binary", "xla_cc_test")
 load("//xla/tests:build_defs.bzl", "xla_test")
 load(
     "//xla/tsl/platform/default:cuda_build_defs.bzl",
@@ -726,6 +726,45 @@ xla_test(
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "legacy_cache",
+    srcs = ["legacy_cache.cc"],
+    hdrs = ["legacy_cache.h"],
+    deps = [
+        "//xla:autotuning_proto_cc",
+        "//xla:xla_proto_cc",
+        "//xla/backends/autotuner:autotuner_cache_interface",
+        "//xla/hlo/ir:hlo",
+        "//xla/service/gpu/autotuning:autotune_cache_key",
+        "//xla/service/gpu/autotuning:autotuner_util",
+        "//xla/stream_executor:device_description",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_protobuf//:duration_cc_proto",
+    ],
+)
+
+xla_cc_test(
+    name = "legacy_cache_test",
+    srcs = ["legacy_cache_test.cc"],
+    deps = [
+        ":legacy_cache",
+        "//xla:literal_util",
+        "//xla/backends/autotuner:autotuner_cache_interface",
+        "//xla/backends/autotuner:autotuner_cache_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:env",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+        "@com_google_protobuf//:any_cc_proto",
+        "@local_tsl//tsl/platform:path",
     ],
 )
 
