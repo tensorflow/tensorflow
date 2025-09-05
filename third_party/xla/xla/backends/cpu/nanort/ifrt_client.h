@@ -197,6 +197,17 @@ class NanoIfrtClient : public llvm::RTTIExtends<NanoIfrtClient, ifrt::Client> {
     return tsl::RCReference<ifrt::UserContext>();
   }
 
+  // TODO(b/439679949) - Determine proper implementations if appropriate.
+  absl::StatusOr<std::string> runtime_executable_version(
+      std::optional<xla::ifrt::PlatformId> platform_id) const override {
+    return absl::UnimplementedError("Not implemented yet.");
+  }
+  bool IsSerializedExecutableCompatible(
+      std::string ifrt_executable_version,
+      xla::ifrt::PlatformId platform_id) const override {
+    return false;
+  }
+
   static char ID;  // NOLINT
 
  private:

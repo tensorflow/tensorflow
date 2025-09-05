@@ -296,6 +296,18 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   virtual absl::string_view platform_version() const = 0;
   virtual PlatformId platform_id() const = 0;
 
+  // Returns the version for the underlying runtime.
+  //
+  // In backends that support multiple platforms, if `platform_type` is
+  // provided, return ABI version for the specific platform. Example `tpu`.
+  virtual absl::StatusOr<std::string> runtime_executable_version(
+      std::optional<PlatformId> platform_id) const = 0;
+
+  // Check if an executable serialized at the given runtime version is
+  // compatible with this client.
+  virtual bool IsSerializedExecutableCompatible(
+      std::string ifrt_executable_version, PlatformId platform_id) const = 0;
+
   // Returns the attributes of the client. In principle, these try to describe
   // capabilities of a client rather than being a "feature flag".
   //
