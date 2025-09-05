@@ -176,13 +176,6 @@ TEST(PjRtFutureTest, PromiseIsUnique) {
   // else, and the promise becomes unique.
   promise.Set();
   EXPECT_TRUE(promise.IsUniqueReference());
-
-  {  // Making a copy of the promise makes it not unique.
-    auto copy = promise;
-    EXPECT_FALSE(promise.IsUniqueReference());
-    EXPECT_FALSE(copy.IsUniqueReference());
-  }
-  EXPECT_TRUE(promise.IsUniqueReference());
 }
 
 TEST(PjRtFutureTest, MapCopyableFuture) {
