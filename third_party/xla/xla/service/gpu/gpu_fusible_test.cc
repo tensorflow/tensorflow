@@ -1281,6 +1281,17 @@ TEST_F(GpuFusibleTest, ProducerConsumerFusionInPlaceOperation) {
   EXPECT_TRUE(ShapesCompatibleForMultiOutputFusion(*dus, *transpose));
 }
 
+TEST_F(GpuFusibleTest, BitwidthChangingBitcastIsNotFusible) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+e {
+  a = s32[7,2]{1,0} parameter(0)
+  b = s16[7]{0} bitcast(a)
+})")
+                    .value();
+  EXPECT_FALSE(IsProducerMultiOutputFusible(
+      *module->entry_computation()->root_instruction()));
+}
+
 TEST_F(GpuFusibleTest, ChooseFusionKind) {
   auto module = ParseAndReturnVerifiedModule(R"(
 HloModule module
