@@ -23,7 +23,10 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph.h"
 #include "xla/hlo/tools/hlo_diff/hlo_diff_result.h"
 
 namespace xla {
@@ -77,8 +80,16 @@ struct ComputationDiffPattern {
 // Teach the gunit to print the diff pattern.
 void PrintTo(const ComputationDiffPattern& diff_pattern, std::ostream* os);
 
+// Summary of an instruction.
+struct InstructionSummary {
+  DiffSide side;
+  bool subgraph_unchanged = true;
+};
+
 using ComputationSummaryMap =
     absl::flat_hash_map<const HloComputation*, const ComputationSummary>;
+using InstructionSummaryMap =
+    absl::flat_hash_map<const HloInstruction*, const InstructionSummary>;
 
 //  Summary of the diff result of the left and right HLO modules.
 struct DiffSummary {
@@ -87,6 +98,9 @@ struct DiffSummary {
 
   // Summary of each computation.
   ComputationSummaryMap computation_summary;
+
+  // Summary of each instruction.
+  InstructionSummaryMap instruction_summary;
 };
 
 // Constructs the diff summary from the diff result.
@@ -94,6 +108,12 @@ struct DiffSummary {
 // `diff_result` contains the edit script(insert/delete/change/move) created
 // from the node mappings.
 std::unique_ptr<const DiffSummary> ConstructDiffSummary(
+    const HloGumgraph& left_graph, const HloGumgraph& right_graph,
+    const DiffResult& diff_result);
+
+// Constructs the diff summary from the diff result when the HloGumgraph is not
+// available.
+absl::StatusOr<std::unique_ptr<const DiffSummary>> ConstructDiffSummary(
     const HloModule& left_module, const HloModule& right_module,
     const DiffResult& diff_result);
 
