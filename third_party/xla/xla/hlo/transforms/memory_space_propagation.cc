@@ -125,6 +125,13 @@ bool MemorySpacePropagation::Propagate(ShapeIndexView index,
     if (src_split_config.has_value()) {
       shape->mutable_layout()->add_split_configs(*src_split_config);
     }
+
+    if (instruction->opcode() == HloOpcode::kDynamicUpdateSlice) {
+      auto op_0 = instruction->mutable_operand(0);
+      op_0->mutable_shape()->mutable_layout()->set_memory_space(
+          src_shape.layout().memory_space());
+      op_0->mutable_shape()->mutable_layout()->clear_split_configs();
+    }
     modified = true;
 
     // For fusion outputs, propagate the memory space to the fusion root.
