@@ -16,11 +16,10 @@ limitations under the License.
 
 #include "xla/hlo/experimental/auto_sharding/iopddl.h"
 
-#include <string>
-
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/time/time.h"
 #include "xla/hlo/experimental/auto_sharding/solver.h"
 #include "xla/tsl/platform/status_matchers.h"
