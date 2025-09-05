@@ -173,6 +173,25 @@ cuda_library(
     ],
 )
 
+cc_library(
+    name = "cupti_api_version_backward",
+    hdrs = ["cupti_api_version_backward.h"],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    deps = [
+        "@local_config_cuda//cuda:cupti_headers",
+    ],
+)
+
+cc_library(
+    name = "cupti_api_before_12_8",
+    srcs = ["cupti_api_before_12_8.cc"],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    deps = [
+        ":cupti_api_version_backward",
+        "@local_config_cuda//cuda:cupti_headers",
+    ],
+)
+
 # Rationale for linkstatic: The symbols in libcupti_static.a have hidden
 # visibility. The wrapper will fail to find them if it's ever built as a
 # shared library. This is the same issue as b/11094727. Always linking
@@ -193,10 +212,15 @@ cc_library(
         "gpu",
     ],
     deps = [
+        ":cupti_api_version_backward",
         ":cupti_interface",
         "//xla/tsl/cuda:cupti",
         "@local_config_cuda//cuda:cuda_headers",
-    ],
+    ] + if_cuda_newer_than(
+        "12_8",
+        [],
+        [":cupti_api_before_12_8"],
+    ),
 )
 
 cc_library(
@@ -698,7 +722,11 @@ xla_test(
     size = "small",
     srcs = ["profile_with_cuda_kernels_test.cc"],
     args = if_google(["--heap_check="]),  # There is a memory leak in CUPTI
-    backends = ["gpu"],
+    backends = [
+        "a100",
+        "h100",
+        "b200",
+    ],
     tags = [
         "cuda-only",
         "no_mac",
