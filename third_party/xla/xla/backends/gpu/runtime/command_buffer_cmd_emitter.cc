@@ -79,7 +79,7 @@ static auto ArgsAccess(const std::vector<bool>& written) {
 static absl::StatusOr<Command> Convert(const KernelThunk& thunk) {
   return std::make_unique<LaunchCmd>(
       thunk.kernel_name(), thunk.arguments(), ArgsAccess(thunk.written()),
-      thunk.launch_dimensions(), thunk.shmem_bytes());
+      thunk.launch_dimensions(), thunk.shmem_bytes(), thunk.tma_metadata());
 }
 
 static absl::StatusOr<Command> Convert(const CustomKernelThunk& thunk) {
