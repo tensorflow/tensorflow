@@ -14634,6 +14634,7 @@ ENTRY entry {
   memory_space_options.max_size_in_bytes = 24;
   memory_space_options.reserved_bytes_for_block_prefetches = 23;
   memory_space_options.max_outstanding_block_prefetches = 10;
+  memory_space_options.max_outstanding_prefetches = 0;
 
   HloInstruction* p0 = FindInstruction(module.get(), "p0");
   HloPosition p0_position{p0, {}};

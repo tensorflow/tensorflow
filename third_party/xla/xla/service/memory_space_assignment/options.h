@@ -406,15 +406,10 @@ struct Options {
   // allocate for post-module operations.
   uint64_t post_module_scoped_alternate_memory_size_in_bytes = 0;
 
-  // If true, MSA will allocate buffers for explicitly pinned buffers in
-  // alternate memory first, and then run the rest of the algorithm.
-  bool explicit_pinning_mode = false;
-
-  // If set, this is the maximum number of concurrent block prefetches allowed.
+  // This is the maximum number of concurrent block prefetches allowed.
   int64_t max_outstanding_block_prefetches = 0;
 
-  // If set, this is the size of scoped alternate memory that we require MSA to
-  // allocate for block prefetches.
+  // This is the size of alternate memory that available for block prefetches.
   uint64_t reserved_bytes_for_block_prefetches = 0;
 
   // List of hlo positions for block prefetches.

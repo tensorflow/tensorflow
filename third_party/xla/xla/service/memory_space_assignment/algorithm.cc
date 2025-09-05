@@ -2085,7 +2085,7 @@ absl::flat_hash_set<HloPosition> GetParameterInstructionsAliasedToOutput(
 }  // namespace
 
 void MsaAlgorithm::ProcessBlockPrefetches() {
-  if (options_.reserved_bytes_for_block_prefetches == 0) {
+  if (options_.reserved_bytes_for_block_prefetches <= 0) {
     return;
   }
   absl::flat_hash_set<HloPosition> aliased_parameter_positions =
@@ -2126,7 +2126,7 @@ void MsaAlgorithm::ProcessBlockPrefetches() {
     int64_t first_use_time;
     int64_t last_use_time;
   };
-  // Compute the live ranges for each block prefetched value
+  // Compute the live ranges for each block prefetched value.
   absl::flat_hash_map<const HloValue*, LiveRange> value_to_live_ranges;
   for (const HloValue* value : block_prefetched_values) {
     LiveRange& live_range = value_to_live_ranges[value];
@@ -2347,7 +2347,16 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
   std::vector<MsaBufferInterval> sorted_buffer_intervals =
       GetSortedBufferIntervals();
 
-  if (options_.explicit_pinning_mode) {
+  if (options_.reserved_bytes_for_block_prefetches > 0) {
+    // All prefetches will happen as a part of block prefetching, regular MSA
+    // will not do any prefetching and run in a pin-only mode. We need to sort
+    // the buffers in the following order:
+    // 1. Pre-colored buffers first.
+    //    - Within pre-colored buffers, sort by definition time and last use
+    //      time in that order.
+    // 2. Rest of the buffers.
+    //    - Within these buffers, sort by size, definition time and last use
+    //      time in that order.
     const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
     auto get_instruction_time = [&](const HloInstruction* inst,
                                     int64_t default_time) {
@@ -2357,6 +2366,8 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
       }
       return it->second;
     };
+    // TODO(b/442852498): Move this custom sorting logic to a new
+    // BufferIntervalComparator class.
     absl::c_stable_sort(
         sorted_buffer_intervals,
         [&](const MsaBufferInterval& a, const MsaBufferInterval& b) {
@@ -2368,11 +2379,11 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
           bool b_is_colored = b_value->shape().has_layout() &&
                               b_value->shape().layout().memory_space() ==
                                   options_.alternate_memory_space;
-          if (!(a_is_colored && b_is_colored)) {
+          if (a_is_colored != b_is_colored) {
+            // If one buffer is colored and the other is not, we want to place
+            // the colored buffer first.
             return a_is_colored;
           }
-          // Both buffers are colored, so we want to sort them by definition
-          // time and last use time in that order.
           int64_t a_definition_time =
               get_instruction_time(a_value->defining_instruction(),
                                    std::numeric_limits<int64_t>::max());
@@ -2393,8 +2404,20 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
                 get_instruction_time(use.instruction,
                                      std::numeric_limits<int64_t>::min()));
           }
-          return std::forward_as_tuple(a_definition_time, a_last_use_time) <
-                 std::forward_as_tuple(b_definition_time, b_last_use_time);
+          // Both buffers are colored, so sort by definition time and last use
+          // time in that order.
+          if (a_is_colored && b_is_colored) {
+            return std::forward_as_tuple(a_definition_time, a_last_use_time) <
+                   std::forward_as_tuple(b_definition_time, b_last_use_time);
+          }
+          // Both buffers are not colored, so sort by size, definition time,
+          // and last use time in that order.
+          int64_t a_size = a.size;
+          int64_t b_size = b.size;
+          return std::forward_as_tuple(a_size, a_definition_time,
+                                       a_last_use_time) <
+                 std::forward_as_tuple(b_size, b_definition_time,
+                                       b_last_use_time);
         });
   }
 
