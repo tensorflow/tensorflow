@@ -51,10 +51,9 @@ struct MatrixDiagPart {
   EIGEN_ALWAYS_INLINE static void Compute(
       OpKernelContext* context, const Device& device,
       typename TTypes<T, 3>::ConstTensor& input,
-      typename TTypes<T>::Tensor& output, const Eigen::Index lower_diag_index,
-      const Eigen::Index upper_diag_index, const Eigen::Index max_diag_len,
-      const T padding_value, const bool left_align_superdiagonal,
-      const bool left_align_subdiagonal);
+      typename TTypes<T>::Tensor& output, Eigen::Index lower_diag_index,
+      Eigen::Index upper_diag_index, Eigen::Index max_diag_len, T padding_value,
+      bool left_align_superdiagonal, bool left_align_subdiagonal);
 };
 
 template <typename Device, typename T>
@@ -62,10 +61,9 @@ struct MatrixDiag {
   EIGEN_ALWAYS_INLINE static void Compute(
       OpKernelContext* context, const Device& device,
       typename TTypes<T>::ConstTensor& diag,
-      typename TTypes<T, 3>::Tensor& output,
-      const Eigen::Index lower_diag_index, const Eigen::Index upper_diag_index,
-      const Eigen::Index max_diag_len, const T padding_value,
-      const bool left_align_superdiagonal, const bool left_align_subdiagonal);
+      typename TTypes<T, 3>::Tensor& output, Eigen::Index lower_diag_index,
+      Eigen::Index upper_diag_index, Eigen::Index max_diag_len, T padding_value,
+      bool left_align_superdiagonal, bool left_align_subdiagonal);
 };
 
 }  // namespace functor
