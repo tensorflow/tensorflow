@@ -2754,37 +2754,6 @@ bool IsOtherCollective(const HloInstruction* instruction) {
   }
 }
 
-absl::Status VerifyNoCollectiveDeadlocksRecursive(
-    const HloComputation* computation, DfaState& current_state,
-    absl::flat_hash_set<const HloSendInstruction*>& send_instructions,
-    absl::flat_hash_set<const HloRecvInstruction*>& recv_instructions) {
-  for (const HloInstruction* instruction : computation->instructions()) {
-    if (instruction->called_computations().empty()) {
-      if (instruction->opcode() == HloOpcode::kSend) {
-        TF_RETURN_IF_ERROR(CheckDeadlocksForSend(
-            DynCast<HloSendInstruction>(instruction), current_state,
-            send_instructions, recv_instructions));
-      } else if (instruction->opcode() == HloOpcode::kRecv) {
-        TF_RETURN_IF_ERROR(CheckDeadlocksForRecv(
-            DynCast<HloRecvInstruction>(instruction), current_state,
-            send_instructions, recv_instructions));
-      } else if (IsOtherCollective(instruction)) {
-        TF_RETURN_IF_ERROR(CheckDeadlocksForOtherCollectives(
-            instruction, current_state, send_instructions, recv_instructions));
-      } else {
-        continue;
-      }
-    } else {
-      for (const HloComputation* computation :
-           instruction->called_computations()) {
-        TF_RETURN_IF_ERROR(VerifyNoCollectiveDeadlocksRecursive(
-            computation, current_state, send_instructions, recv_instructions));
-      }
-    }
-  }
-  return absl::OkStatus();
-}
-
 absl::Status CheckPendingSendRecvDeadlocks(
     absl::flat_hash_set<const HloSendInstruction*>& send_instructions,
     absl::flat_hash_set<const HloRecvInstruction*>& recv_instructions) {
@@ -2818,6 +2787,61 @@ absl::Status CheckPendingSendRecvDeadlocks(
   if (!last_checked_instructions.empty()) {
     return Internal("Deadlock detected. Last checked instructions: %s",
                     last_checked_instructions);
+  }
+  return absl::OkStatus();
+}
+
+absl::Status VerifyNoCollectiveDeadlocksRecursive(
+    const HloComputation* computation, DfaState& current_state,
+    absl::flat_hash_set<const HloSendInstruction*>& send_instructions,
+    absl::flat_hash_set<const HloRecvInstruction*>& recv_instructions) {
+  for (const HloInstruction* instruction : computation->instructions()) {
+    if (instruction->called_computations().empty()) {
+      if (instruction->opcode() == HloOpcode::kSend) {
+        TF_RETURN_IF_ERROR(CheckDeadlocksForSend(
+            DynCast<HloSendInstruction>(instruction), current_state,
+            send_instructions, recv_instructions));
+      } else if (instruction->opcode() == HloOpcode::kRecv) {
+        TF_RETURN_IF_ERROR(CheckDeadlocksForRecv(
+            DynCast<HloRecvInstruction>(instruction), current_state,
+            send_instructions, recv_instructions));
+      } else if (IsOtherCollective(instruction)) {
+        TF_RETURN_IF_ERROR(CheckDeadlocksForOtherCollectives(
+            instruction, current_state, send_instructions, recv_instructions));
+      } else {
+        continue;
+      }
+    } else {
+      for (const HloComputation* computation :
+           instruction->called_computations()) {
+        // special handling for grouped multi-op async collectives
+        if (computation->IsAsyncComputation() &&
+            !computation->CanExpandIntoSingleInstruction()) {
+          // Reset the state machine for async-grouped send and recv. This block
+          // essentially calls the main VerifyNoCollectiveDeadlocks function
+          // on the async computation without recursion. This is necessary for
+          // async-wrapped send and recv instructions that are sandwiched in
+          // between partially pipelined collectives.
+          DfaState async_comp_current_state = DfaState::kNoExpectation;
+          absl::flat_hash_set<const HloSendInstruction*>
+              async_comp_send_instructions;
+          absl::flat_hash_set<const HloRecvInstruction*>
+              async_comp_recv_instructions;
+          TF_RETURN_IF_ERROR(VerifyNoCollectiveDeadlocksRecursive(
+              computation, async_comp_current_state,
+              async_comp_send_instructions, async_comp_recv_instructions));
+          if (current_state != DfaState::kNoExpectation) {
+            TF_RETURN_IF_ERROR(CheckPendingSendRecvDeadlocks(
+                async_comp_send_instructions, async_comp_recv_instructions));
+          }
+        } else {
+          // normal case
+          TF_RETURN_IF_ERROR(VerifyNoCollectiveDeadlocksRecursive(
+              computation, current_state, send_instructions,
+              recv_instructions));
+        }
+      }
+    }
   }
   return absl::OkStatus();
 }
