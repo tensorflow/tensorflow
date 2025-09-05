@@ -49,6 +49,7 @@ message SerializedXlaExecutableMetadata {
 
   message OutputSpec {
     ifrt.ShapeProto shard_shape = 1;
+    ifrt.ShapeProto shape = 6;
     ifrt.DTypeProto dtype = 2;
     ifrt.LayoutProto layout = 3;
     string memory_kind = 4;
