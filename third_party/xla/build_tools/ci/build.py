@@ -52,7 +52,10 @@ _XLA_DEFAULT_TARGET_PATTERNS = (
     "//build_tools/...",
     "@local_tsl//tsl/...",
 )
-_XLA_ONEAPI_TARGET_PATTERNS = ("//xla/stream_executor/sycl/...",)
+_XLA_ONEAPI_TARGET_PATTERNS = (
+    "//xla/stream_executor/sycl/...",
+    "//xla/service/gpu/...",
+)
 _XLA_CPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS = (
     "//xla/tools/multihost_hlo_runner:hlo_runner_main",
     "//xla/tools:compute_xspace_stats_main",

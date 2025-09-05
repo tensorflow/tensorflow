@@ -458,7 +458,6 @@ filegroup(
         "statusor.h",
         "str_util.cc",
         "str_util.h",
-        "strcat.cc",
         "strcat.h",
         "stringpiece.h",
         "stringprintf.cc",
@@ -774,7 +773,6 @@ cc_library(
 
 cc_library(
     name = "strcat",
-    srcs = ["strcat.cc"],
     hdrs = ["strcat.h"],
     deps = [
         ":numbers",
@@ -1365,23 +1363,6 @@ tsl_cc_test(
         ":str_util",
         "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/platform:test",
-    ],
-)
-
-tsl_cc_test(
-    name = "strcat_test",
-    size = "small",
-    srcs = [
-        "strcat_test.cc",
-    ],
-    deps = [
-        ":bfloat16",
-        ":strcat",
-        ":stringprintf",
-        "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest_main",
-        "@local_xla//xla/tsl/platform:test",
-        "@local_xla//xla/tsl/platform:types",
     ],
 )
 

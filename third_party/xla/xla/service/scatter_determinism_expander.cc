@@ -904,6 +904,10 @@ bool CheckOutputDependency(HloComputation* to_apply, int operand_size) {
   return true;
 }
 
+bool IsSupportedIndicesType(PrimitiveType primitive_type) {
+  return primitive_type == S32 || primitive_type == S64;
+}
+
 }  // namespace
 
 bool ScatterDeterminismExpander::InstructionMatchesPattern(
@@ -911,6 +915,9 @@ bool ScatterDeterminismExpander::InstructionMatchesPattern(
   auto* scatter = DynCast<HloScatterInstruction>(inst);
 
   return (scatter != nullptr) && !IsScatterDeterministic(scatter) &&
+         scatter->scatter_operand_count() == 1 &&
+         IsSupportedIndicesType(
+             scatter->scatter_indices()->shape().element_type()) &&
          CheckOutputDependency(scatter->to_apply(),
                                scatter->scatter_operands().size());
 }

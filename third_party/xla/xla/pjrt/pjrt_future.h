@@ -470,6 +470,17 @@ class PjRtFuture : public internal::PjRtFutureBase<absl::StatusOr<T>> {
     friend class PjRtFuture;
   };
 
+  // This is a temporary class to support migration from CreatePromise() to
+  // MakePromise() and an end goal of making Promise move-only type.
+  class MoveOnlyPromise : public Promise {
+   public:
+    using Promise::Promise;
+    using Promise::Set;
+
+    MoveOnlyPromise(MoveOnlyPromise&&) = default;
+    MoveOnlyPromise& operator=(MoveOnlyPromise&&) = default;
+  };
+
   // Returns a Promise that can be used to construct a PjRtFuture, and then Set
   // later.
   static Promise CreatePromise() {
@@ -478,8 +489,9 @@ class PjRtFuture : public internal::PjRtFutureBase<absl::StatusOr<T>> {
 
   // Returns a pair of connected Promise and PjRtFuture<T>. Setting the returned
   // promise will fulfill the connected future.
-  static std::pair<Promise, PjRtFuture<T>> MakePromise() {
-    Promise promise(tsl::MakeUnconstructedAsyncValueRef<absl::StatusOr<T>>());
+  static std::pair<MoveOnlyPromise, PjRtFuture<T>> MakePromise() {
+    MoveOnlyPromise promise(
+        tsl::MakeUnconstructedAsyncValueRef<absl::StatusOr<T>>());
     PjRtFuture<T> future(promise);
     return std::make_pair(std::move(promise), std::move(future));
   }
@@ -728,6 +740,17 @@ class PjRtFuture<void> : public internal::PjRtFutureBase<absl::Status> {
     friend class PjRtFuture<void>;
   };
 
+  // This is a temporary class to support migration from CreatePromise() to
+  // MakePromise() and an end goal of making Promise move-only type.
+  class MoveOnlyPromise : public Promise {
+   public:
+    using Promise::Promise;
+    using Promise::Set;
+
+    MoveOnlyPromise(MoveOnlyPromise&&) = default;
+    MoveOnlyPromise& operator=(MoveOnlyPromise&&) = default;
+  };
+
   // Returns a Promise that can be used to construct a PjRtFuture, and then Set
   // later.
   static Promise CreatePromise() {
@@ -736,8 +759,9 @@ class PjRtFuture<void> : public internal::PjRtFutureBase<absl::Status> {
 
   // Returns a pair of connected Promise and PjRtFuture<>. Setting the returned
   // promise will fulfill the connected future.
-  static std::pair<Promise, PjRtFuture<>> MakePromise() {
-    Promise promise(tsl::MakeUnconstructedAsyncValueRef<absl::Status>());
+  static std::pair<MoveOnlyPromise, PjRtFuture<>> MakePromise() {
+    MoveOnlyPromise promise(
+        tsl::MakeUnconstructedAsyncValueRef<absl::Status>());
     PjRtFuture<> future(promise);
     return std::make_pair(std::move(promise), std::move(future));
   }

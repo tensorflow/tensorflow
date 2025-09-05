@@ -4,6 +4,7 @@ load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("//xla:xla.default.bzl", "xla_cc_binary")
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "if_cuda_or_rocm", "if_google")
+load("//xla/tsl:tsl.default.bzl", "tsl_pybind_extension")
 load("//xla/tsl/platform:build_config_root.bzl", "tf_gpu_tests_tags")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
@@ -37,9 +38,7 @@ cc_library(
     testonly = True,
     srcs = ["hlo_runner_main.cc"],
     compatible_with = None,
-    tags = [
-        "no_mac",
-    ],
+    tags = ["no_mac"],
     deps = [
         ":create_client",
         ":functional_hlo_runner",
@@ -279,4 +278,59 @@ xla_test(
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:protobuf",
     ],
+)
+
+tsl_pybind_extension(
+    name = "py_hlo_multihost_runner",
+    srcs = ["python_hlo_runner.cc"],
+    deps = [
+        ":create_client",
+        ":functional_hlo_runner",
+        ":hlo_input_output_format",
+        ":profiler_interface",
+        "//xla:debug_options_flags",
+        "//xla:status_macros",
+        "//xla:xla_data_proto_cc",
+        "//xla/ffi",
+        "//xla/ffi:ffi_api",
+        "//xla/ffi/api:c_api",
+        "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:status_casters",
+        "//xla/pjrt/distributed",
+        "//xla/pjrt/distributed:client",
+        "//xla/pjrt/distributed:key_value_store_interface",
+        "//xla/pjrt/distributed:service",
+        "//xla/pjrt/plugin/xla_gpu:xla_gpu_allocator_config",
+        "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
+        "//xla/python:logging",
+        "//xla/service:cpu_plugin",
+        "//xla/service:custom_call_target_registry",
+        "//xla/service:hlo_module_util",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/util:command_line_flags",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:platform_port",
+        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:statusor",
+        "@nanobind",
+    ] + if_cuda_or_rocm([
+        "//xla/service:gpu_plugin",
+        "//xla/backends/profiler/gpu:cupti_tracer",
+        "//xla/backends/profiler/gpu:device_tracer",
+    ]) + if_cuda([
+        "//xla/stream_executor:cuda_platform",
+    ] + if_google(
+        [
+            "//third_party/py/jax/jaxlib/cuda:cuda_gpu_kernels",  # fixdeps: keep
+        ],
+    )) + if_rocm([
+        "//xla/stream_executor:rocm_platform",
+    ]),
 )

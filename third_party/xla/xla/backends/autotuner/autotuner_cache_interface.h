@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "xla/backends/autotuner/autotuner_cache.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 
@@ -29,13 +30,18 @@ namespace xla {
 // AutotunerCacheInterface implementations may have different cache keys.
 class AutotunerCacheInterface {
  public:
+  // Serializable config. Will be changed to a proto in the future.
+  struct Config {
+    absl::string_view codegen_backend_name;
+    google::protobuf::Any backend_config;
+  };
+
   virtual ~AutotunerCacheInterface() = default;
 
-  virtual std::optional<AutotunerCacheEntry> Lookup(
-      const HloInstruction* instr) = 0;
+  virtual std::optional<Config> Lookup(const HloInstruction* instr) = 0;
 
   virtual absl::Status Insert(const HloInstruction* instr,
-                              AutotunerCacheEntry& entry) = 0;
+                              Config& best_config) = 0;
 };
 
 }  // namespace xla

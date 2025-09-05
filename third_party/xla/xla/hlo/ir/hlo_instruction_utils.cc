@@ -21,10 +21,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/primitive_util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -35,6 +37,17 @@ bool IsUnstridedSlice(const HloInstruction* hlo) {
   }
   return absl::c_all_of(hlo->slice_strides(),
                         [](int64_t stride) { return stride == 1; });
+}
+
+bool KeepsBitwidth(const HloInstruction& hlo) {
+  CHECK(hlo.shape().IsArray());
+  if (absl::c_any_of(hlo.operands(), [&](const HloInstruction* operand) {
+        return primitive_util::BitWidth(operand->shape().element_type()) !=
+               primitive_util::BitWidth(hlo.shape().element_type());
+      })) {
+    return false;
+  }
+  return true;
 }
 
 using Interval = std::pair<int64_t, int64_t>;

@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "xla/backends/gpu/runtime/ragged_all_to_all.h"
+
 #include <algorithm>
 #include <array>
 #include <cstddef>
@@ -89,10 +91,6 @@ absl::Status RunRaggedAllToAllKernel(
 
   se::StreamExecutor* executor = stream->parent();
   static constexpr size_t kThreads = 128;
-  static constexpr size_t kMaxBlocksPerUpdate = 1024;
-
-  // blockIdx.x is the index of the update.
-  int64_t num_blocks_x = num_updates_per_output * num_outputs;
 
   int64_t num_vectorized_row_elements = num_row_elements;
   int64_t vector_size_bytes = xla::primitive_util::BitWidth(element_type) / 8;
@@ -102,18 +100,25 @@ absl::Status RunRaggedAllToAllKernel(
     vector_size_bytes *= 2;
   }
 
-  // blockIdx.y and threadIdx.x are used to iterate over the elements of the
-  // update. Since the size of each update is not known at compile time, the
-  // kernel assumes the worst case of `num_input_rows * num_row_elements`
-  // elements per update and uses a loop up to `send_size * num_row_elements` to
-  // terminate early.
-  size_t num_blocks_y =
-      std::min(CeilOfRatio<size_t>(num_input_rows * num_vectorized_row_elements,
-                                   kThreads),
-               kMaxBlocksPerUpdate);
+  int64_t num_updates_per_block = 1;
+  int64_t num_block_clusters = num_updates_per_output;
+
+  // Decide how many updates should each block process. In the kernel, N blocks
+  // process N updates. This is done to reduce imbalance in data transfer per
+  // block if updates happen to be unevenly distributed. The numbers were
+  // chosen empirically in Sep 2025 and can change in the future.
+  const int64_t max_num_updates_per_block =
+      std::min<int64_t>(CeilOfRatio<int64_t>(num_input_rows, 16), 64);
+
+  while (num_updates_per_block < max_num_updates_per_block &&
+         num_block_clusters % 2 == 0) {
+    num_block_clusters /= 2;
+    num_updates_per_block *= 2;
+  }
 
   se::ThreadDim thread_dims(kThreads, 1, 1);
-  se::BlockDim block_dims(num_blocks_x, num_blocks_y, 1);
+  se::BlockDim block_dims(num_outputs, num_block_clusters,
+                          num_updates_per_block);
 
   std::array<void*, stream_executor::gpu::kMaxNumRaggedAllToAllOutputPtrs>
       output_ptrs;

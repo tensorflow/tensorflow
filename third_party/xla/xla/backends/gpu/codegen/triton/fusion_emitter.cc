@@ -172,6 +172,10 @@ using ::xla::gpu::triton::TritonType;
 
 namespace {
 
+Value MakeIndex(EmitterLocOpBuilder& b, int64_t value) {
+  return b.create<arith::ConstantIndexOp>(value);
+}
+
 // Emit a value as Index clamped to [lower, upper].
 Value EmitClampedIndex(EmitterLocOpBuilder b, Value value, int64_t lower,
                        int64_t upper) {
@@ -757,8 +761,7 @@ absl::StatusOr<int64_t> GetDotLoopIterationCount(
   // - size from the shape of the operand
   // - tile size from the tiling of the nested fusion root
   // using the contracting dimension from the dot instruction.
-  const HloDotInstruction& dot =
-      *::xla::Cast<HloDotInstruction>(tiled_dot.hlo());
+  const HloInstruction& dot = *tiled_dot.hlo();
   const auto& dims = dot.dot_dimension_numbers();
   if (dims.lhs_contracting_dimensions_size() != 1) {
     return absl::UnimplementedError(
@@ -866,11 +869,11 @@ absl::StatusOr<Value> MaskDotOperand(EmitterLocOpBuilder b,
 // Returns `shape` without all its unit dimensions, as well as the index of the
 // remaining dimensions in the original `shape`.
 std::pair<SmallVector<int64_t>, SmallVector<int64_t>> CollapseUnitDims(
-    llvm::ArrayRef<int64_t> shape) {
+    llvm::ArrayRef<int64_t> shape, bool scaled_dot = false) {
   SmallVector<int64_t> shape_without_unit_dims;
   SmallVector<int64_t> non_unit_dims_indices;
   for (auto [i, size] : llvm::enumerate(shape)) {
-    if (size != 1) {
+    if (size != 1 || scaled_dot) {
       shape_without_unit_dims.push_back(size);
       non_unit_dims_indices.push_back(i);
     }
@@ -889,11 +892,12 @@ enum class DotOperandSide { kLhs, kRhs };
 absl::StatusOr<Value> CanonicalizeDotOperand(EmitterLocOpBuilder b,
                                              Value operand,
                                              int64_t contracting_dim_idx,
-                                             DotOperandSide side) {
+                                             DotOperandSide side,
+                                             bool scaled_dot = false) {
   llvm::ArrayRef<int64_t> shape =
       mlir::cast<ShapedType>(operand.getType()).getShape();
   auto [shape_without_unit_dims, non_unit_dims_indices] =
-      CollapseUnitDims(shape);
+      CollapseUnitDims(shape, scaled_dot);
 
   if (shape_without_unit_dims.size() != 2) {
     return absl::FailedPreconditionError(
@@ -992,14 +996,12 @@ absl::StatusOr<ScalarOrTensor> EmitDot(
       CreateConst(b, accumulator_type, 0.0f, padded_tile_sizes_no_unit_dims)
           .UnwrapTensor();
 
-  auto cindex = [&](int64_t value) -> Value {
-    return b.create<arith::ConstantIndexOp>(value);
-  };
   TF_ASSIGN_OR_RETURN(int64_t loop_iteration_count,
                       GetDotLoopIterationCount(tiled_hlo_dot));
   auto for_op = b.create<mlir::scf::ForOp>(
-      /*lowerBound=*/cindex(0), /*upperBound=*/cindex(loop_iteration_count),
-      /*step=*/cindex(1), SmallVector<Value>{accumulator});
+      /*lowerBound=*/MakeIndex(b, 0),
+      /*upperBound=*/MakeIndex(b, loop_iteration_count),
+      /*step=*/MakeIndex(b, 1), ValueRange{accumulator});
   {  // Loop body.
     mlir::OpBuilder::InsertionGuard g(b);
     b.setInsertionPointToStart(for_op.getBody());
@@ -1084,6 +1086,150 @@ absl::StatusOr<ScalarOrTensor> EmitDot(
         ScalarOrTensor wrapped_result,
         EmitTiledReshape(b, padded_tile_sizes, ScalarOrTensor(result)));
     result = wrapped_result.UnwrapTensor();
+  }
+
+  return ScalarOrTensor(result);
+}
+
+absl::StatusOr<ScalarOrTensor> EmitScaledDot(
+    EmitterLocOpBuilder b, absl::string_view libdevice_path,
+    const se::DeviceDescription& device_info,
+    const HloFusionInstruction* fusion,
+    const TiledHloInstruction& tiled_hlo_dot, mlir::FunctionOpInterface fn,
+    Value pid,
+    absl::flat_hash_map<const TiledHloInstruction*, ScalarOrTensor>& values) {
+  VLOG(2) << "EmitScaledDot: " << tiled_hlo_dot.ToString();
+  const HloScaledDotInstruction& scaled_dot =
+      *::xla::Cast<HloScaledDotInstruction>(tiled_hlo_dot.hlo());
+  if (!absl::c_all_of(tiled_hlo_dot.operands(),
+                      [](const TiledHloInstruction* operand) {
+                        return operand->hlo()->opcode() == HloOpcode::kFusion;
+                      })) {
+    return absl::FailedPreconditionError("Expected dot operands to be fusions");
+  }
+
+  SmallVector<int64_t> padded_tile_sizes =
+      GetPaddedTileSizes(tiled_hlo_dot.tile_sizes());
+
+  // Sanity check: Triton historically did not support non-2D dots (and still
+  // doesn't support arbitrary nD dots), so we require that the dot is tiled
+  // with exactly two non-unit tile sizes. This anyway matches the hardware's
+  // expectations, so seems like a reasonable requirement.
+  // TODO(b/393299275): this needs to be enforced in tiling.
+  if (padded_tile_sizes.size() != 2) {
+    return absl::FailedPreconditionError(
+        "Expected dot to be tiled with exactly two non-unit tile sizes");
+  }
+
+  Type accumulator_type = b.getF32Type();
+  Value accumulator =
+      CreateConst(b, accumulator_type, 0.0f, padded_tile_sizes).UnwrapTensor();
+
+  TF_ASSIGN_OR_RETURN(int64_t loop_iteration_count,
+                      GetDotLoopIterationCount(tiled_hlo_dot));
+  auto for_op = b.create<mlir::scf::ForOp>(
+      /*lowerBound=*/MakeIndex(b, 0),
+      /*upperBound=*/MakeIndex(b, loop_iteration_count),
+      /*step=*/MakeIndex(b, 1), SmallVector<Value>{accumulator});
+  {  // Loop body.
+    mlir::OpBuilder::InsertionGuard g(b);
+    b.setInsertionPointToStart(for_op.getBody());
+    SmallVector<TensorValue> dot_args;
+    Value ki = for_op.getInductionVar();
+    // Nested fusions are tiled with indexing map
+    // (pid * loop_iteration_count_value + loop index) -> ....
+    auto pid_dim = b.getAffineDimExpr(0);
+    auto ki_symbol = b.getAffineSymbolExpr(0);
+    IndexingMap computation_index_map{
+        AffineMap::get(1, 1, {pid_dim * loop_iteration_count + ki_symbol}),
+        {IndexingMap::Variable{
+            tiled_hlo_dot.tile_offsets_indexing()->GetDimensionBound(0),
+            "pid"}},
+        {IndexingMap::Variable{{0, loop_iteration_count - 1}, "k"}},
+        /*rt_vars=*/{}};
+
+    Value computation_index = b.create<xla::ApplyIndexingOp>(
+                                   ValueRange{pid, ki}, computation_index_map)
+                                  .getResult(0);
+    for (const TiledHloInstruction* operand : tiled_hlo_dot.operands()) {
+      VLOG(3) << "Emitting scaled dot operand: " << operand->ToString();
+      const TiledHloFusionInstruction* tiled_fusion_operand =
+          static_cast<const TiledHloFusionInstruction*>(operand);
+      TF_ASSIGN_OR_RETURN(
+          std::vector<ScalarOrTensor> result,
+          EmitTiledComputation(
+              b, libdevice_path, device_info,
+              ::xla::Cast<HloFusionInstruction>(tiled_fusion_operand->hlo()),
+              *tiled_fusion_operand->called_computation(), fn,
+              computation_index, values));
+      if (result.size() != 1) {
+        return absl::InternalError(absl::StrCat(
+            "Expected nested fusion computation to emit a single value, got ",
+            result.size()));
+      }
+      dot_args.push_back(result.front().UnwrapTensor());
+    }
+    Value acc = for_op.getRegionIterArgs().front();
+    int64_t lhs_contracting_dim_idx =
+        scaled_dot.dot_dimension_numbers().lhs_contracting_dimensions(0);
+
+    int64_t rhs_contracting_dim_idx =
+        scaled_dot.dot_dimension_numbers().rhs_contracting_dimensions(0);
+
+    // TODO(b/393299275): masking is only necessary during the last iteration of
+    // the loop. We should evaluate whether adding a conditional mask helps or
+    // hinders performance for Triton.
+    Value ki_i32 = Cast(b, ki, b.getI32Type());
+    TF_ASSIGN_OR_RETURN(
+        Value lhs, MaskDotOperand(b, *tiled_hlo_dot.operand(0), dot_args[0],
+                                  ki_i32, lhs_contracting_dim_idx));
+    TF_ASSIGN_OR_RETURN(
+        Value lhs_scale,
+        MaskDotOperand(b, *tiled_hlo_dot.operand(1), dot_args[1], ki_i32,
+                       lhs_contracting_dim_idx));
+
+    TF_ASSIGN_OR_RETURN(
+        Value rhs, MaskDotOperand(b, *tiled_hlo_dot.operand(2), dot_args[2],
+                                  ki_i32, rhs_contracting_dim_idx));
+
+    TF_ASSIGN_OR_RETURN(
+        Value rhs_scale,
+        MaskDotOperand(b, *tiled_hlo_dot.operand(3), dot_args[3], ki_i32,
+                       rhs_contracting_dim_idx));
+
+    // Canonicalize the dot operands to match Triton's/the hardware's
+    // expectations.
+    TF_ASSIGN_OR_RETURN(
+        lhs, CanonicalizeDotOperand(b, lhs, lhs_contracting_dim_idx,
+                                    DotOperandSide::kLhs, /*scaled_dot=*/true));
+    TF_ASSIGN_OR_RETURN(
+        lhs_scale,
+        CanonicalizeDotOperand(b, lhs_scale, lhs_contracting_dim_idx,
+                               DotOperandSide::kLhs, /*scaled_dot=*/true));
+    TF_ASSIGN_OR_RETURN(
+        rhs, CanonicalizeDotOperand(b, rhs, rhs_contracting_dim_idx,
+                                    DotOperandSide::kRhs, /*scaled_dot=*/true));
+    TF_ASSIGN_OR_RETURN(
+        rhs_scale,
+        CanonicalizeDotOperand(b, rhs_scale, rhs_contracting_dim_idx,
+                               DotOperandSide::kRhs, /*scaled_dot=*/true));
+
+    TF_ASSIGN_OR_RETURN(
+        Value acc_next,
+        triton::EmitSingleTileScaledDot(
+            b, scaled_dot,
+            triton::ScaledDotOperands{lhs, lhs_scale, rhs, rhs_scale, acc}));
+    b.create<mlir::scf::YieldOp>(acc_next);
+  }
+
+  // The output of the loop may not match the expected output type of the dot.
+  // We make sure to issue a conversion if necessary.
+  TF_ASSIGN_OR_RETURN(Type dot_output_type,
+                      TritonType(b, scaled_dot.shape().element_type()));
+
+  Value result = for_op.getResult(0);
+  if (dot_output_type != accumulator_type) {
+    result = Cast(b, result, dot_output_type);
   }
 
   return ScalarOrTensor(result);
@@ -1328,6 +1474,11 @@ absl::StatusOr<ScalarOrTensor> EmitTiledHloInstruction(
                    values);
   }
 
+  if (hlo->opcode() == HloOpcode::kScaledDot) {
+    return EmitScaledDot(b, libdevice_path, device_info, fusion, tiled_hlo, fn,
+                         pid, values);
+  }
+
   if (hlo->opcode() == HloOpcode::kConstant) {
     if (ShapeUtil::IsEffectiveScalar(hlo->shape())) {
       return EmitConstant(b, *hlo);
@@ -1412,6 +1563,12 @@ absl::StatusOr<std::vector<ScalarOrTensor>> EmitTiledComputation(
     // Skip generating nested fusions, they are emitted by their consumer.
     if (hlo->parent()->IsFusionComputation() &&
         hlo->opcode() == HloOpcode::kFusion) {
+      if (hlo->GetModule()
+              ->config()
+              .debug_options()
+              .xla_gpu_experimental_scaled_dot_with_triton()) {
+        continue;
+      }
       CodegenDecision decision = IsTritonSupportedInstruction(
           *hlo, device_info.gpu_compute_capability());
       if (!decision.CanFuse()) {
@@ -1515,7 +1672,8 @@ absl::StatusOr<Tiling> TilingFromAnnotatedFusion(
   for (const auto& [hlo, num_tiling_parameters] :
        symbolic_tile_analysis.GetTilingSpecification().parameter_mapping()) {
     // TODO(b/419026602): handle reductions.
-    if (hlo->opcode() == HloOpcode::kDot) {
+    if (hlo->opcode() == HloOpcode::kDot ||
+        hlo->opcode() == HloOpcode::kScaledDot) {
       const HloInstruction* lhs = hlo->operand(0);
       // When encountering a `dot`, we always expect its operands to be nests.
       auto backend_config = lhs->backend_config<GpuBackendConfig>();
@@ -1858,7 +2016,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
     TF_RETURN_IF_ERROR(EmitMatMul(b, libdevice_path, device_info, fusion, fn,
                                   block_level_parameters));
   } else if (fusion_kind == kTritonFusionKind ||
-             fusion_kind == kTritonNestedGemmFusionKind) {
+             fusion_kind == kTritonNestedGemmFusionKind ||
+             fusion_kind == kTritonScaledDotFusionKind) {
     TF_RETURN_IF_ERROR(EmitGeneric(b, libdevice_path, device_info, fusion, fn,
                                    block_level_parameters));
   } else {
@@ -2030,7 +2189,8 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
   }
 
   pm.addPass(mlir::triton::xla::CreateTritonXLAExtractInsertToTritonPass(
-      device_info, block_level_parameters.is_tma_allowed));
+      block_level_parameters.is_tma_allowed &&
+      stream_executor::gpu::IsTmaAvailableForDevice(device_info)));
 
   // Lower affine expressions into arithmetic ops.
   pm.addPass(mlir::createLowerAffinePass());

@@ -20,7 +20,6 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_STRCAT_H_
 #define TENSORFLOW_TSL_PLATFORM_STRCAT_H_
 
-#include <initializer_list>
 #include <string>
 
 #include "absl/base/attributes.h"
@@ -106,44 +105,30 @@ using AlphaNum ABSL_DEPRECATE_AND_INLINE() = absl::AlphaNum;
 // ----------------------------------------------------------------------
 
 // For performance reasons, we have specializations for <= 4 args.
-ABSL_DEPRECATED("Use absl::StrCat() instead.")
-std::string StrCat(const absl::AlphaNum& a) TF_MUST_USE_RESULT;
-ABSL_DEPRECATED("Use absl::StrCat() instead.")
-std::string StrCat(const absl::AlphaNum& a,
-                   const absl::AlphaNum& b) TF_MUST_USE_RESULT;
-ABSL_DEPRECATED("Use absl::StrCat() instead.")
-std::string StrCat(const absl::AlphaNum& a, const absl::AlphaNum& b,
-                   const absl::AlphaNum& c) TF_MUST_USE_RESULT;
-ABSL_DEPRECATED("Use absl::StrCat() instead.")
-std::string StrCat(const absl::AlphaNum& a, const absl::AlphaNum& b,
-                   const absl::AlphaNum& c,
-                   const absl::AlphaNum& d) TF_MUST_USE_RESULT;
-
-namespace internal {
-
-// Do not call directly - this is not part of the public API.
-std::string CatPieces(std::initializer_list<absl::string_view> pieces);
-void AppendPieces(std::string *dest,
-                  std::initializer_list<absl::string_view> pieces);
-
-}  // namespace internal
+ABSL_DEPRECATE_AND_INLINE()
+inline std::string StrCat(const absl::AlphaNum& a) { return absl::StrCat(a); }
+ABSL_DEPRECATE_AND_INLINE()
+inline std::string StrCat(const absl::AlphaNum& a, const absl::AlphaNum& b) {
+  return absl::StrCat(a, b);
+}
+ABSL_DEPRECATE_AND_INLINE()
+inline std::string StrCat(const absl::AlphaNum& a, const absl::AlphaNum& b,
+                          const absl::AlphaNum& c) {
+  return absl::StrCat(a, b, c);
+}
+ABSL_DEPRECATE_AND_INLINE()
+inline std::string StrCat(const absl::AlphaNum& a, const absl::AlphaNum& b,
+                          const absl::AlphaNum& c, const absl::AlphaNum& d) {
+  return absl::StrCat(a, b, c, d);
+}
 
 // Support 5 or more arguments
-template <typename... AV>
-ABSL_DEPRECATED("Use absl::StrCat() instead.")
-std::string
-    StrCat(const absl::AlphaNum& a, const absl::AlphaNum& b,
-           const absl::AlphaNum& c, const absl::AlphaNum& d,
-           const absl::AlphaNum& e, const AV&... args) TF_MUST_USE_RESULT;
-
 template <typename... AV>
 ABSL_DEPRECATED("Use absl::StrCat() instead.")
 std::string StrCat(const absl::AlphaNum& a, const absl::AlphaNum& b,
                    const absl::AlphaNum& c, const absl::AlphaNum& d,
                    const absl::AlphaNum& e, const AV&... args) {
-  return internal::CatPieces(
-      {a.Piece(), b.Piece(), c.Piece(), d.Piece(), e.Piece(),
-       static_cast<const absl::AlphaNum&>(args).Piece()...});
+  return absl::StrCat(a, b, c, d, e, args...);
 }
 
 // ----------------------------------------------------------------------
@@ -167,18 +152,26 @@ std::string StrCat(const absl::AlphaNum& a, const absl::AlphaNum& b,
 //    worked around as consecutive calls to StrAppend are quite efficient.
 // ----------------------------------------------------------------------
 
-ABSL_DEPRECATED("Use absl::StrAppend() instead.")
-void StrAppend(std::string* dest, const absl::AlphaNum& a);
-ABSL_DEPRECATED("Use absl::StrAppend() instead.")
-void StrAppend(std::string* dest, const absl::AlphaNum& a,
-               const absl::AlphaNum& b);
-ABSL_DEPRECATED("Use absl::StrAppend() instead.")
-void StrAppend(std::string* dest, const absl::AlphaNum& a,
-               const absl::AlphaNum& b, const absl::AlphaNum& c);
-ABSL_DEPRECATED("Use absl::StrAppend() instead.")
-void StrAppend(std::string* dest, const absl::AlphaNum& a,
-               const absl::AlphaNum& b, const absl::AlphaNum& c,
-               const absl::AlphaNum& d);
+ABSL_DEPRECATE_AND_INLINE()
+inline void StrAppend(std::string* dest, const absl::AlphaNum& a) {
+  absl::StrAppend(dest, a);
+}
+ABSL_DEPRECATE_AND_INLINE()
+inline void StrAppend(std::string* dest, const absl::AlphaNum& a,
+                      const absl::AlphaNum& b) {
+  absl::StrAppend(dest, a, b);
+}
+ABSL_DEPRECATE_AND_INLINE()
+inline void StrAppend(std::string* dest, const absl::AlphaNum& a,
+                      const absl::AlphaNum& b, const absl::AlphaNum& c) {
+  absl::StrAppend(dest, a, b, c);
+}
+ABSL_DEPRECATE_AND_INLINE()
+inline void StrAppend(std::string* dest, const absl::AlphaNum& a,
+                      const absl::AlphaNum& b, const absl::AlphaNum& c,
+                      const absl::AlphaNum& d) {
+  absl::StrAppend(dest, a, b, c, d);
+}
 
 // Support 5 or more arguments
 template <typename... AV>
@@ -187,9 +180,7 @@ inline void StrAppend(std::string* dest, const absl::AlphaNum& a,
                       const absl::AlphaNum& b, const absl::AlphaNum& c,
                       const absl::AlphaNum& d, const absl::AlphaNum& e,
                       const AV&... args) {
-  internal::AppendPieces(dest,
-                         {a.Piece(), b.Piece(), c.Piece(), d.Piece(), e.Piece(),
-                          static_cast<const absl::AlphaNum&>(args).Piece()...});
+  absl::StrAppend(dest, a, b, c, d, e, args...);
 }
 
 }  // namespace strings

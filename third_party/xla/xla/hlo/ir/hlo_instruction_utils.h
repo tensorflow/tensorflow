@@ -29,6 +29,9 @@ namespace hlo_instruction_utils {
 // all dimensions.
 bool IsUnstridedSlice(const HloInstruction* hlo);
 
+// Checks that all instruction operands have the same bitwidth as its output.
+bool KeepsBitwidth(const HloInstruction&);
+
 // Adds or updates the attributes for an instruction. If the attribute is
 // already present, then it is overwritten. Otherwise, this is added as another
 // attribute.
