@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/cleanup/cleanup.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/runtime/xfeed_manager.h"
 #include "xla/literal.h"
