@@ -697,6 +697,24 @@ SymbolicExpr SymbolicExpr::ReplaceVariables(
   }
 }
 
+SymbolicExpr SymbolicExpr::ReplaceSymbols(
+    absl::Span<const SymbolicExpr> sym_replacements, int64_t num_dims) const {
+  return ReplaceDimsAndSymbols({}, sym_replacements, num_dims);
+}
+
+SymbolicExpr SymbolicExpr::ReplaceDimsAndSymbols(
+    absl::Span<const SymbolicExpr> dim_replacements,
+    absl::Span<const SymbolicExpr> symbol_replacements,
+    int64_t num_dims) const {
+  llvm::SmallVector<SymbolicExpr> replacements;
+  replacements.append(dim_replacements.begin(), dim_replacements.end());
+  for (int64_t i = dim_replacements.size(); i < num_dims; ++i) {
+    replacements.push_back(GetContext()->CreateVariable(i));
+  }
+  replacements.append(symbol_replacements.begin(), symbol_replacements.end());
+  return ReplaceVariables(replacements);
+}
+
 SymbolicExpr SymbolicExpr::Replace(SymbolicExpr expr,
                                    SymbolicExpr replacement) const {
   llvm::DenseMap<SymbolicExpr, SymbolicExpr> replacements;
