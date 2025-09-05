@@ -29,7 +29,7 @@ message ToolRequestOptions {
   bool save_to_repo = 3;
 }
 
-// Next-ID: 9
+// Next-ID: 10
 message ProfileRequest {
   // In future, the caller will be able to customize when profiling starts and
   // stops. For now, it collects `duration_ms` milliseconds worth of data.
@@ -59,6 +59,9 @@ message ProfileRequest {
   // We use it as identifier in part of our output filename.
   string host_name = 7;
 
+  // If true, the response will contain the serialized XSpace proto instead of
+  // the tool data.
+  bool emit_xspace = 9;
   // In future, the caller will indicate which TF session is being profiled, and
   // only data relating to that program will be returned. For now, we assume
   // all activity during the profiling period is relevant.
@@ -73,7 +76,7 @@ message ProfileToolData {
   bytes data = 2;
 }
 
-// Next-ID: 8
+// Next-ID: 9
 message ProfileResponse {
   // Data payload for each required tools.
   repeated ProfileToolData tool_data = 6;
@@ -81,6 +84,10 @@ message ProfileResponse {
   // When we write profiling data directly to repository directory, we need a
   // way to figure out whether the captured trace is empty.
   bool empty_trace = 7;
+
+  // The raw serialized XSpace proto. Only populated if emit_xspace is true in
+  // the request.
+  bytes raw_xspace = 8 [ctype = CORD];
 
   reserved 1, 2, 3, 4, 5;
 }
