@@ -364,6 +364,7 @@ const StatTypeMap& GetStatTypeMap() {
        {"dcn_chunk", kDcnChunk},
        {"dcn_loop_index", kDcnLoopIndex},
        {"dropped_traces", kDroppedTraces},
+       {"nan_counter_events", kNanCounterEvents},
        {"cuda_graph_id", kCudaGraphId},
        {"cuda_graph_exec_id", kCudaGraphExecId},
        {"cuda_graph_orig_id", kCudaGraphOrigId},

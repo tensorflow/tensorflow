@@ -346,6 +346,7 @@ enum StatType {
   kEdgeTpuModelProfileInfo,
   kEdgeTpuMlir,
   kDroppedTraces,
+  kNanCounterEvents,
   kCudaGraphId,
   // Many events have kCudaGraphId, such as graph sub events when tracing is in
   // node level. Yet kCudaGraphExecId is used only for CudaGraphExecution events
