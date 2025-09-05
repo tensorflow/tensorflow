@@ -53,8 +53,11 @@ struct alignas(kSize) Vec {
 //  update_slice = input[input_offset: input_offset + send_size]
 //  output_ptrs[j][output_offset : output_offset + send_size] = update_slice
 //
+// `num_updates_per_block` blocks cooperate to process `num_updates_per_block`
+// updates. This is done to reduce imbalance in data transfer per block.
+//
 // Launch parameters:
-//  - Block grid: (N*num_updates_per_rank, num_blocks_per_update, 1)
+//  - Block grid: (num_ranks, num_block_clusters, num_updates_per_block)
 //  - Thread grid: (num_threads_per_update, 1, 1)
 template <int64_t kVectorSize>
 __global__ void __launch_bounds__(128) RaggedAllToAllKernelImpl(
@@ -66,25 +69,34 @@ __global__ void __launch_bounds__(128) RaggedAllToAllKernelImpl(
     int64_t num_updates_per_replica, int64_t num_row_elements) {
   using T = Vec<kVectorSize>;
 
-  int64_t update_idx = blockIdx.x;
-  int64_t output_idx = update_idx / num_updates_per_replica;
-
   const T* typed_input_ptr = static_cast<const T* __restrict__>(input_ptr);
-  T* output_ptr = static_cast<T* __restrict__>(output_ptrs[output_idx]);
+  T* output_ptr = static_cast<T* __restrict__>(output_ptrs[blockIdx.x]);
 
-  int64_t input_offset = input_offsets_ptr[update_idx];
-  int64_t send_size = send_sizes_ptr[update_idx];
-  int64_t output_offset = output_offsets_ptr[update_idx];
+  int64_t num_updates_to_process = gridDim.z;
 
-  int64_t input_offset_start = input_offset * num_row_elements;
-  int64_t output_offset_start = output_offset * num_row_elements;
+  for (int64_t i = 0; i < num_updates_to_process; ++i) {
+    const int64_t update_idx =
+        blockIdx.x * num_updates_per_replica + blockIdx.y * gridDim.z + i;
 
-  int64_t update_size = send_size * num_row_elements;
+    const int64_t input_offset = input_offsets_ptr[update_idx];
+    const int64_t send_size = send_sizes_ptr[update_idx];
+    const int64_t output_offset = output_offsets_ptr[update_idx];
 
-  for (int64_t i = threadIdx.x + blockIdx.y * blockDim.x; i < update_size;
-       i += blockDim.x * gridDim.y) {
-    output_ptr[output_offset_start + i] =
-        typed_input_ptr[input_offset_start + i];
+    const int64_t input_offset_start = input_offset * num_row_elements;
+    const int64_t output_offset_start = output_offset * num_row_elements;
+
+    const int64_t update_size = send_size * num_row_elements;
+
+    int64_t offset_update_batch_idx = blockIdx.z + i;
+    if (offset_update_batch_idx >= num_updates_to_process) {
+      offset_update_batch_idx -= num_updates_to_process;
+    }
+
+    for (int64_t j = threadIdx.x + offset_update_batch_idx * blockDim.x;
+         j < update_size; j += num_updates_to_process * blockDim.x) {
+      output_ptr[output_offset_start + j] =
+          typed_input_ptr[input_offset_start + j];
+    }
   }
 }
 }  // namespace stream_executor::gpu
