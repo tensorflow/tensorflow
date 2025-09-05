@@ -1277,6 +1277,32 @@ ENTRY e {
   EXPECT_FALSE(GemmFusion(gpu_version_).Run(module.get()).value());
 }
 
+TEST_F(GemmFusionTest, FusionShouldNotDuplicatePowerOp) {
+  // Elementwise operations with broadcast operands are usually fused, however
+  // with multiple users it can result in executing the op twice.
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY e {
+  p0 = f16[124,1024] parameter(0)
+  constant1 = f16[] constant(2)
+  broadcast1 = f16[124,1024] broadcast(constant1)
+  pow = f16[124,1024] power(p0, broadcast1)
+
+  p1 = f16[1024,124] parameter(1)
+  dot1 = f16[124,124] dot(pow, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+
+  ROOT d = (f16[124,1024],f16[124,124]) tuple(pow, dot1)
+})")
+                    .value();
+  ASSERT_TRUE(GemmFusion(gpu_version_).Run(module.get()).value());
+  MatchHloModule(*module, R"(
+; CHECK: power(
+; CHECK-NOT: power(
+)");
+}
+
 TEST_F(GemmFusionTest, RaggedDotBecomesFusion) {
   auto module = ParseAndReturnVerifiedModule(R"(
 HloModule m
