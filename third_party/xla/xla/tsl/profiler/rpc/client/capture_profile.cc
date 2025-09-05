@@ -88,7 +88,7 @@ ProfileRequest PopulateProfileRequest(
   request.add_tools("memory_profile");
   request.add_tools("overview_page");
   request.add_tools("pod_viewer");
-  request.add_tools("tensorflow_stats");
+  request.add_tools("framework_op_stats");
   // XPlane tool is only used by OSS profiler and safely ignored by TPU
   // profiler.
   request.add_tools(kXPlanePb.data(), kXPlanePb.size());
