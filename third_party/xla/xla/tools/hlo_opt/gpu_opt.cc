@@ -174,7 +174,7 @@ class GpuOptProvider : public CompiledOptProvider {
     RegisterPass<gpu::ReductionLayoutNormalizer>();
     RegisterPass<gpu::SanitizeConstantNames>();
     RegisterPass<gpu::TopKSplitter>();
-    RegisterPass<gpu::TopkSpecializer>();
+    RegisterPass<gpu::TopkSpecializer>(gpu_compute_capability);
     RegisterPass<gpu::TransposeDimensionGrouper>();
     RegisterPass<gpu::WindowedEinsumHandler>();
     // go/keep-sorted end
