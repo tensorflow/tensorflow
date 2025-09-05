@@ -2030,7 +2030,8 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
   }
 
   pm.addPass(mlir::triton::xla::CreateTritonXLAExtractInsertToTritonPass(
-      device_info, block_level_parameters.is_tma_allowed));
+      block_level_parameters.is_tma_allowed &&
+      stream_executor::gpu::IsTmaAvailableForDevice(device_info)));
 
   // Lower affine expressions into arithmetic ops.
   pm.addPass(mlir::createLowerAffinePass());
