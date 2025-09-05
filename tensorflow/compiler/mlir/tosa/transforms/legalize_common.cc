@@ -46,7 +46,6 @@ limitations under the License.
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/Utils/ConversionUtils.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/Utils/QuantUtils.h"  // from @llvm-project
-#include "mlir/Dialect/Tosa/Utils/ConversionUtils.h"  // from @llvm-project
 #include "mlir/Dialect/Utils/StaticValueUtils.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -243,7 +242,6 @@ std::optional<Value> convertPackOp(PatternRewriter& rewriter, Operation* op,
   if (output_type) {
     ArrayRef<int64_t> out_tensor_shape = output_type.getShape();
     const int32_t output_tensor_rank = out_tensor_shape.size();
-
 
     // Deal with the negative axis value
     normalized_axis = getNormalizedAxis(output_tensor_rank);
@@ -3432,7 +3430,7 @@ std::optional<Value> convertReduceMeanOp(PatternRewriter& rewriter,
 // Lowers ResizeBilinear and ResizeNearestNeighbor to TOSA resize.
 std::optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
                                      RankedTensorType output_type,
-                                     Value input_value, StringRef mode,
+                                     Value input_value, Value size_value, StringRef mode,
                                      bool align_corners,
                                      bool half_pixel_centers) {
   const bool is_bilinear = mode == "BILINEAR";
@@ -3443,6 +3441,23 @@ std::optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
 
   if (input_type.getRank() != 4 || output_type.getRank() != 4) {
     (void)rewriter.notifyMatchFailure(op, "input/output must be rank 4");
+    return std::nullopt;
+  }
+
+  RankedTensorType size_type = dyn_cast<RankedTensorType>(size_value.getType());
+  if (!size_type) return std::nullopt;
+
+  ElementsAttr size_elems;
+  if (!matchPattern(size_value, m_Constant(&size_elems))) {
+    (void)rewriter.notifyMatchFailure(op, "resize: size input must be a constant tensor");
+    return std::nullopt;
+  }
+  if (size_type.getRank() != 1) {
+    (void)rewriter.notifyMatchFailure(op, "resize: size input must be rank 1");
+    return std::nullopt;
+  }
+  if (size_type.getShape()[0] != 2) {
+    (void)rewriter.notifyMatchFailure(op, "resize: size input must consist of two values (height, width)");
     return std::nullopt;
   }
 
@@ -4450,16 +4465,16 @@ std::optional<Value> convertGatherNdOp(PatternRewriter& rewriter, Operation* op,
              result_shape_value)
       .getResult();
 }
-
 std::optional<Value> convertScatterNdOp(PatternRewriter& rewriter,
                                         Operation* op, Value result_value,
                                         Value indices_value,
                                         Value updates_value,
                                         Value shape_value) {
-  auto const result_type = dyn_cast<RankedTensorType>(result_value.getType());
-  auto const indices_type = dyn_cast<RankedTensorType>(indices_value.getType());
-  auto const updates_type = dyn_cast<RankedTensorType>(updates_value.getType());
-  auto const shape_type = dyn_cast<RankedTensorType>(shape_value.getType());
+  // 1.  Shape / type sanity checks
+  auto result_type = dyn_cast<RankedTensorType>(result_value.getType());
+  auto indices_type = dyn_cast<RankedTensorType>(indices_value.getType());
+  auto updates_type = dyn_cast<RankedTensorType>(updates_value.getType());
+  auto shape_type = dyn_cast<RankedTensorType>(shape_value.getType());
 
   if (!result_type || !indices_type || !updates_type || !shape_type) {
     (void)rewriter.notifyMatchFailure(
@@ -4467,85 +4482,21 @@ std::optional<Value> convertScatterNdOp(PatternRewriter& rewriter,
     return std::nullopt;
   }
 
-  // Don't support variable indices yet since we cannot check uniqueness
-  // of indices in this case
+  // indices must be a constant so we can inspect / de‑duplicate them.
   Operation* indices_op = indices_value.getDefiningOp();
   if (!indices_op || !llvm::isa<tosa::ConstOp>(indices_op)) {
     (void)rewriter.notifyMatchFailure(op, "indices must be a constant tensor");
     return std::nullopt;
   }
 
-  Type indices_elmt_type = indices_type.getElementType();
-  if (!indices_elmt_type.isInteger(32)) {
+  if (!indices_type.getElementType().isInteger(32)) {
     (void)rewriter.notifyMatchFailure(op, "indices expected to be int32");
     return std::nullopt;
   }
 
-  // The tosa scatter operation only supports unique indices, so if there
-  // are duplicates, we cannot legalize
-  tosa::ConstOp const_indices = cast<tosa::ConstOp>(indices_op);
-  ElementsAttr const_data = const_indices.getValues();
-  if (!checkUniqueConstantScatterIndices(indices_type, result_type,
-                                         const_data)) {
-    (void)rewriter.notifyMatchFailure(op, "index values must be unique");
-    return std::nullopt;
-  }
-
-  // N: number of batches
-  // Always 1 for ScatterND
-  //
-  // Because TOSA's SCATTER operator already uses the symbol 'N' for
-  // the number of batches, we will use the symbol 'ND' to specify the
-  // number of dimensions that are sliced from input instead of'N' in
-  // the TF MLIR documentation.
-  //
-  // ND: indices.shape[-1]
-  //
-  // W: number of indices in each batch
-  // Computed as:
-  // product(indices.shape[0:-1]) (all but the last dimension)
-  //
-  // K: range of each index
-  // Computed as:
-  // product(result.shape[0:ND-1])
-  //
-  // C: number of channels for each index
-  // Computed as:
-  // product(result.shape[ND:])
-  //
-  // The updates tensor needs to be reshaped, but not transposed, to move
-  // the dimensions into [N, W, C] order.
-  //
-  // Indices needs to be put in the form of [N, W], but a simple flattening
-  // will not suffice, because the indices need to index into the [W]-shape
-  // updates vector instead.
-  //
-  // To flatten the coordinates, first reshape indices to a [W, ND] matrix,
-  // where the matrix now represents W ND-dimensional coordinates into the
-  // updates tensor.
-  //
-  // From here, we take each of the ND dimensions and multiply it with
-  // the size of the next updates dimension (or 1 for the last
-  // dimension), then sum all these together with a reduce_sum
-  // operator. This is exactly the same mathematics as one would use
-  // flatten the indices of an N-dimensional row-major array into a
-  // 1-D array in C.
-  //
-  // More precisely, do an element-wise multiply with [updates.shape[1
-  // .. ND], 1] in axis 1, then reduce_sum in axis 1 to flatten to a
-  // [W]-shaped tensor, then trivially reshape to [N=1, W] to be
-  // compatible with the SCATTER operator's shape.
-  //
-  // Then perform the tosa.SCATTER() operation.
-  //
-  // Now we have result = [N, K, C].
-  //
-  // Reshape with a single, simple reshape to the final output shape
-  // provided by shape_value.
-
-  const unsigned int input_output_rank = result_type.getShape().size();
-  const unsigned int indices_rank = indices_type.getShape().size();
-
+  // Compute Scatter parameters
+  const unsigned int input_output_rank = result_type.getRank();
+  const unsigned int indices_rank = indices_type.getRank();
   const unsigned int ND = indices_type.getShape()[indices_rank - 1];
 
   if (ND > input_output_rank) {
@@ -4554,22 +4505,16 @@ std::optional<Value> convertScatterNdOp(PatternRewriter& rewriter,
     return std::nullopt;
   }
 
-  // Calculate N, K, W, C.  (N is always 1)
-  auto const indices_shape_begin{indices_type.getShape().begin()};
-  auto const result_shape_begin{result_type.getShape().begin()};
-  auto const accumulate_func = [](auto const& a_, auto const& b_) {
-    return a_ * b_;
-  };
+  auto const shape_begin = result_type.getShape().begin();
+  auto const idx_begin = indices_type.getShape().begin();
+  auto const mul_func = [](int64_t a, int64_t b) { return a * b; };
 
   const unsigned int N = 1;
-  const unsigned int W = std::accumulate(indices_shape_begin,
-                                         indices_shape_begin + indices_rank - 1,
-                                         1, accumulate_func);
-  const unsigned int K = std::accumulate(
-      result_shape_begin, result_shape_begin + ND, 1, accumulate_func);
-  const unsigned int C = std::accumulate(result_shape_begin + ND,
-                                         result_shape_begin + input_output_rank,
-                                         1, accumulate_func);
+  const unsigned int W =
+      std::accumulate(idx_begin, idx_begin + indices_rank - 1, 1, mul_func);
+  const unsigned int K = std::accumulate(shape_begin, shape_begin + ND, 1, mul_func);
+  const unsigned int C = std::accumulate(
+      shape_begin + ND, shape_begin + input_output_rank, 1, mul_func);
 
   SmallVector<int64_t, 2> tosa_indices_shape({N, W});
   SmallVector<int64_t, 2> indices_matrix_shape({W, ND});
@@ -4579,98 +4524,258 @@ std::optional<Value> convertScatterNdOp(PatternRewriter& rewriter,
   // Flatten the updates tensor to an [N, W] matrix.
   auto input_shape_value =
       getTosaConstShape(rewriter, op->getLoc(),
-                    tensorflow::ConvertMlirShapeToTF(tosa_input_shape));
+                        tensorflow::ConvertMlirShapeToTF(tosa_input_shape));
   auto tosa_input_reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
       rewriter, op->getLoc(),
       tensorflow::GetTypeFromTFTensorShape(tosa_input_shape,
                                            result_type.getElementType()),
       updates_value, input_shape_value);
 
-  // Flatten the indices tensor to an [W, ND] matrix.
-  auto indices_matrix_shape_value =
+  // --- flatten indices to [W, ND] then to [N, W] (original logic) ---- //
+  auto indices_matrix_shape_val =
       getTosaConstShape(rewriter, op->getLoc(),
-      tensorflow::ConvertMlirShapeToTF(indices_matrix_shape));
+                        tensorflow::ConvertMlirShapeToTF(indices_matrix_shape));
+
   auto indices_matrix_reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
       rewriter, op->getLoc(),
       tensorflow::GetTypeFromTFTensorShape(indices_matrix_shape,
-                                           indices_elmt_type),
-      indices_value, indices_matrix_shape_value);
+                                           indices_type.getElementType()),
+      indices_value, indices_matrix_shape_val);
 
-  SmallVector<int32_t> flattened_coeff_vec;
-  for (int i = 1; i < ND; i++) {
-    flattened_coeff_vec.push_back(result_type.getShape()[i]);
-  }
-  flattened_coeff_vec.push_back(1);
-  for (int i = ND - 1; i > 0; i--) {
-    flattened_coeff_vec[i - 1] *= flattened_coeff_vec[i];
-  }
-  std::optional<Value> flattened_coeff_value = getConstTensor<int32_t>(
-      rewriter, op, flattened_coeff_vec,
-      {static_cast<int64_t>(flattened_coeff_vec.size())});
+  // build coefficient vector to flatten ND‑D coords to 1‑D indices
+  SmallVector<int32_t> coeff_vec;
+  for (unsigned i = 1; i < ND; ++i)
+    coeff_vec.push_back(result_type.getShape()[i]);
+  coeff_vec.push_back(1);
+  for (int i = ND - 1; i > 0; --i) coeff_vec[i - 1] *= coeff_vec[i];
 
-  if (!flattened_coeff_value) {
-    (void)rewriter.notifyMatchFailure(
-        op, "failed to calculate flattened coeff value");
+  auto coeff_const = getConstTensor<int32_t>(
+      rewriter, op, coeff_vec,
+      {1, static_cast<int64_t>(coeff_vec.size())});      //  <1x3xi32>
+  if (!coeff_const) {
+    (void)rewriter.notifyMatchFailure(op, "failed to build coefficient const");
     return std::nullopt;
   }
 
-  // Multiply the coefficients by the coordinates
-  Value mul_x = indices_matrix_reshape_op.getResult();
-  Value mul_y = flattened_coeff_value.value();
-  RankedTensorType mul_type = tensorflow::GetTypeFromTFTensorShape(
-      indices_matrix_shape, indices_type.getElementType());
-  if (EqualizeRanks(rewriter, op->getLoc(), mul_x, mul_y).failed()) {
+  // multiply + reduce‑sum to obtain flattened indices  [N, W]
+  Value mul_lhs = indices_matrix_reshape_op.getResult();
+  Value mul_rhs = coeff_const.value();
+  if (EqualizeRanks(rewriter, op->getLoc(), mul_lhs, mul_rhs).failed()) {
     (void)rewriter.notifyMatchFailure(
-        op, "failed to broadcast coefficients over the coordinates");
+        op, "failed to broadcast coefficients for index flattening");
     return std::nullopt;
   }
-  auto flattened_indices_mul_op = CreateMulOpAndInfer(
-      rewriter, op, mul_type, mul_x, mul_y);
-
-  // Sum up the products of the coefficients and coordinates
-  auto flattened_indices_reduce_op = CreateOpAndInfer<tosa::ReduceSumOp>(
+  auto flattened_mul =
+      CreateMulOpAndInfer(rewriter, op, mul_lhs.getType(), mul_lhs, mul_rhs);
+  auto flattened_red = CreateOpAndInfer<tosa::ReduceSumOp>(
       rewriter, op->getLoc(),
       tensorflow::GetTypeFromTFTensorShape(tosa_indices_shape,
                                            indices_type.getElementType()),
-      flattened_indices_mul_op.getResult(), rewriter.getI32IntegerAttr(1));
+      flattened_mul.getResult(), rewriter.getI32IntegerAttr(1));
 
-  // And reshape to [N, W]
   auto tosa_indices_shape_value =
       getTosaConstShape(rewriter, op->getLoc(),
-                    tensorflow::ConvertMlirShapeToTF(tosa_indices_shape));
+                        tensorflow::ConvertMlirShapeToTF(tosa_indices_shape));
   auto tosa_indices_reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
       rewriter, op->getLoc(),
       tensorflow::GetTypeFromTFTensorShape(tosa_indices_shape,
                                            indices_type.getElementType()),
-      flattened_indices_reduce_op.getResult(), tosa_indices_shape_value);
+      flattened_red.getResult(), tosa_indices_shape_value);
+   
+  Value flattened_indices = tosa_indices_reshape_op.getResult();  // [1, W]
+  Value flattened_updates = tosa_input_reshape_op.getResult();    // [1, W, C]
 
-  // Scatter_nd has no input tensor, use a zero tensor
-  Type const_element_type = updates_type.getElementType();
-  auto const_type =
-      RankedTensorType::get(tosa_values_in_out_shape, const_element_type);
-  if (mlir::isa<mlir::quant::QuantizedType>(const_element_type)) {
-    auto quant_type = dyn_cast<mlir::quant::QuantizedType>(const_element_type);
-    const_element_type = quant_type.getStorageType();
+  // Detect duplicates in the constant index tensor.
+  auto const_indices = cast<tosa::ConstOp>(indices_op);
+  ElementsAttr const_data_attr = const_indices.getValues();
+  auto raw_it = const_data_attr.getValues<IntegerAttr>().begin();
+
+  // Re‑create the flattened index for each row so we test duplicates
+  llvm::MapVector<int32_t, SmallVector<int32_t>> idx_to_positions;
+  SmallVector<int32_t> coeff_host(coeff_vec.begin(), coeff_vec.end());
+
+  for (int32_t row = 0; row < static_cast<int32_t>(W); ++row) {
+    int32_t flat_index = 0;
+    for (unsigned d = 0; d < ND; ++d, ++raw_it)
+      flat_index += (*raw_it).getInt() * coeff_host[d];
+    idx_to_positions[flat_index].push_back(row);
   }
-  auto const_storage_type =
-      RankedTensorType::get(tosa_values_in_out_shape, const_element_type);
-  auto const_attr = DenseElementsAttr::get(
-      const_storage_type, rewriter.getZeroAttr(const_element_type));
-  Value tosa_values_in =
-      rewriter.create<tosa::ConstOp>(op->getLoc(), const_type, const_attr);
+  const bool has_dupes = llvm::any_of(
+      idx_to_positions, [](const auto& kv) { return kv.second.size() > 1; });
 
-  // Now the scatter op itself
-  auto tosa_scatter_op = CreateOpAndInfer<tosa::ScatterOp>(
-      rewriter, op->getLoc(), result_type, tosa_values_in,
-      tosa_indices_reshape_op.getResult(), tosa_input_reshape_op.getResult());
+  unsigned max_dupes = 0;
+  for (const auto &kv : idx_to_positions)
+    max_dupes = std::max<unsigned>(max_dupes, kv.second.size());
+  // Fast‑path: no duplicates – keep the original, single scatter.
+  if (!has_dupes) {
+    Type elt_ty = updates_type.getElementType();
+    Type storage_ty = elt_ty;
+    if (auto q = llvm::dyn_cast<mlir::quant::QuantizedType>(elt_ty))
+      storage_ty = q.getStorageType();
+    auto zeros_attr = DenseElementsAttr::get(
+        RankedTensorType::get(tosa_values_in_out_shape, storage_ty),
+        rewriter.getZeroAttr(storage_ty));
+    Value zeros = rewriter.create<tosa::ConstOp>(
+        op->getLoc(), RankedTensorType::get(tosa_values_in_out_shape, elt_ty),
+        zeros_attr);
 
-  // Finally, reshape back to the expected output shape.
-  auto reshape_shape_value =
-      getTosaConstShape(rewriter, op->getLoc(),
-                    tensorflow::ConvertMlirShapeToTF(result_type.getShape()));
+    auto scatter = CreateOpAndInfer<tosa::ScatterOp>(
+        rewriter, op->getLoc(), zeros.getType(), zeros, flattened_indices,
+        flattened_updates);
+
+    // final reshape to the *public* result shape
+    auto out_shape_val = getTosaConstShape(
+        rewriter, op->getLoc(),
+        tensorflow::ConvertMlirShapeToTF(result_type.getShape()));
+    return CreateOpAndInfer<tosa::ReshapeOp>(rewriter, op->getLoc(),
+                                             result_type, scatter.getResult(),
+                                             out_shape_val)
+        .getResult();
+  }
+
+  // Duplicate‑aware path:
+  //     emit   accum = Σ_i  Scatter_i
+
+  // (i) Build a constant 0‑tensor to be reused as SCATTER "input".
+  Type elt_ty = updates_type.getElementType();
+  Type storage_ty = elt_ty;
+  if (auto q = llvm::dyn_cast<mlir::quant::QuantizedType>(elt_ty))
+    storage_ty = q.getStorageType();
+  auto zeros_attr = DenseElementsAttr::get(
+      RankedTensorType::get(tosa_values_in_out_shape, storage_ty),
+      rewriter.getZeroAttr(storage_ty));
+  Value zero_tensor = rewriter.create<tosa::ConstOp>(
+      op->getLoc(), RankedTensorType::get(tosa_values_in_out_shape, elt_ty),
+      zeros_attr);
+
+  // (ii) Helper lambdas -------------------------------------------------- //
+  // Slice the flattened updates tensor to grab row `pos`  →  [1, 1, C]
+  auto makeUpdateSlice =
+      [&rewriter, op, flattened_updates, C, elt_ty](int32_t pos) -> Value {
+        SmallVector<int64_t, 3> begin_vec = {0, pos, 0};
+        SmallVector<int64_t, 3> size_vec  = {1, 1, static_cast<int64_t>(C)};
+
+        Value begin_val = getTosaConstShape(rewriter, op->getLoc(), begin_vec);
+        Value size_val  = getTosaConstShape(rewriter, op->getLoc(), size_vec);
+
+        return CreateOpAndInfer<tosa::SliceOp>(
+                   rewriter, op->getLoc(),
+                   tensorflow::GetTypeFromTFTensorShape({1, 1, C}, elt_ty),
+                   flattened_updates, begin_val, size_val)
+            .getResult();
+      };
+
+
+  // Build 1-row index tensor   [1, W_s]
+  auto buildIndexConst1D = [&](ArrayRef<int32_t> vals) -> Value {
+    RankedTensorType ty =
+        RankedTensorType::get({1, static_cast<int64_t>(vals.size())},
+                              rewriter.getI32Type());
+    DenseElementsAttr attr = DenseElementsAttr::get(ty, vals);
+    return rewriter.create<tosa::ConstOp>(op->getLoc(), ty, attr);
+  };
+
+  // Concatenate N slices along dim-1 to form [1, W_s, C]
+  auto concatAlongDim1 = [&](ArrayRef<Value> slices) -> Value {
+    if (slices.size() == 1) return slices.front();
+    auto concatTy =
+        tensorflow::GetTypeFromTFTensorShape(
+            {1, static_cast<int64_t>(slices.size()), static_cast<int64_t>(C)},
+            elt_ty);
+    return CreateOpAndInfer<tosa::ConcatOp>(
+               rewriter, op->getLoc(), concatTy, slices,
+               /*axis=*/1)
+        .getResult();
+  };
+
+  // (iii) Accumulate stripe scatters ------------------------------------ //
+
+  mlir::Type originalType = updates_type.getElementType();
+
+  auto deduceWorkType = [&](Type orig) -> Type {
+    if (orig.isF32() || orig.isF16() || orig.isBF16()) return orig;
+
+    if (auto intTy = llvm::dyn_cast<mlir::IntegerType>(orig))
+      return intTy.getWidth() < 32 ? rewriter.getIntegerType(32) : intTy;
+
+    if (auto qTy = llvm::dyn_cast<mlir::quant::QuantizedType>(orig)) {
+      if (auto sInt =
+              llvm::dyn_cast<mlir::IntegerType>(qTy.getStorageType()))
+        return sInt.getWidth() < 32 ? rewriter.getIntegerType(32) : sInt;
+      return rewriter.getF32Type();                     // exotic quant → f32
+    }
+
+    if (llvm::isa<mlir::FloatType>(orig)) return rewriter.getF32Type();
+    return rewriter.getIntegerType(32);                 // last-resort
+  };
+
+  mlir::Type workTy = deduceWorkType(originalType);
+
+  // Hold the accumulator in workTy from the outset.
+  Value accum = zero_tensor;
+  if (workTy != originalType) {
+    auto zRT = llvm::cast<mlir::RankedTensorType>(zero_tensor.getType());
+    accum = CreateOpAndInfer<tosa::CastOp>(
+                rewriter, op->getLoc(),
+                mlir::RankedTensorType::get(zRT.getShape(), workTy),
+                zero_tensor)
+              .getResult();
+  }
+  
+  for (unsigned stripe = 0; stripe < max_dupes; ++stripe) {
+    SmallVector<int32_t> stripeIdxVals;
+    SmallVector<Value>   stripeUpdSlices;
+
+    // Pull *one* row per distinct index into this stripe
+    for (auto &kv : idx_to_positions) {
+      if (stripe < kv.second.size()) {
+        int32_t pos = kv.second[stripe];
+        stripeIdxVals.push_back(kv.first);
+        stripeUpdSlices.push_back(makeUpdateSlice(pos));
+      }
+    }
+    if (stripeIdxVals.empty()) continue;
+
+    Value idxTensor = buildIndexConst1D(stripeIdxVals);   // [1, W_s]
+    Value updTensor = concatAlongDim1(stripeUpdSlices);   // [1, W_s, C]
+
+    auto scatter_s = CreateOpAndInfer<tosa::ScatterOp>(
+        rewriter, op->getLoc(), zero_tensor.getType(),
+        zero_tensor, idxTensor, updTensor);
+
+    // Cast scatter_s to workTy only if different.
+    Value rhs = scatter_s.getResult();
+    if (workTy != originalType) {
+      auto rhsRT = llvm::cast<mlir::RankedTensorType>(rhs.getType());
+      rhs = CreateOpAndInfer<tosa::CastOp>(
+                rewriter, op->getLoc(),
+                mlir::RankedTensorType::get(rhsRT.getShape(), workTy),
+                rhs)
+              .getResult();
+    }
+
+    // accum is already workTy.
+    accum = CreateOpAndInfer<tosa::AddOp>(
+                rewriter, op->getLoc(), accum.getType(), accum, rhs)
+              .getResult();
+  }
+
+  // (iv) Cast accumulated tensor back to original element type ---------- //
+  if (workTy != originalType) {
+    auto accumRT = llvm::cast<RankedTensorType>(accum.getType());
+    accum = CreateOpAndInfer<tosa::CastOp>(
+                rewriter, op->getLoc(),
+                RankedTensorType::get(accumRT.getShape(), originalType),
+                accum)
+              .getResult();
+  }
+
+  // (iv) Final reshape back to public result shape.
+  auto out_shape_val = getTosaConstShape(
+      rewriter, op->getLoc(),
+      tensorflow::ConvertMlirShapeToTF(result_type.getShape()));
   return CreateOpAndInfer<tosa::ReshapeOp>(rewriter, op->getLoc(), result_type,
-                                           tosa_scatter_op.getResult(),
-                                           reshape_shape_value)
+                                           accum, out_shape_val)
       .getResult();
 }
 
