@@ -1127,6 +1127,70 @@ e {
 )");
 }
 
+TEST_F(CuDnnFusionFileCheckTest, BlockScaledDotLowering) {
+  const std::string kHloText = R"(
+block_scaled_dot {
+  %lhs = f8e4m3fn[256,128] parameter(0)
+  %lhs_scale = f8e8m0fnu[256,4] parameter(1)
+  %rhs = f8e4m3fn[384,128] parameter(2)
+  %rhs_scale = f8e8m0fnu[384,4] parameter(3)
+  ROOT %result = f32[256,384] scaled-dot(%lhs, %lhs_scale, %rhs, %rhs_scale),
+      lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY main {
+  %lhs = f8e4m3fn[256,128] parameter(0)
+  %lhs_scale = f8e8m0fnu[256,4] parameter(1)
+  %rhs = f8e4m3fn[384,128] parameter(2)
+  %rhs_scale = f8e8m0fnu[384,4] parameter(3)
+  ROOT %result = f32[256,384] fusion(%lhs,%lhs_scale, %rhs, %rhs_scale),
+      kind=kCustom, calls=block_scaled_dot,
+      backend_config={"fusion_backend_config":{kind:"__cudnn$fusion"}}
+})";
+  EXPECT_TRUE(*RunCuDnnFileCheck(kHloText, R"(
+CHECK: "nodes"
+CHECK: {
+CHECK: "block_size": [32]
+CHECK: "X": "lhs"
+CHECK: "scale": "lhs_scale"
+CHECK: "Y": "result_lhs_dq"
+CHECK: "tag": "BLOCK_SCALE_DEQUANTIZE"
+CHECK: {
+CHECK: "block_size": [32]
+CHECK: "X": "rhs"
+CHECK: "scale": "rhs_scale"
+CHECK: "Y": "result_rhs_dq"
+CHECK: "tag": "BLOCK_SCALE_DEQUANTIZE"
+CHECK: {
+CHECK: "A": "result_lhs_dq"
+CHECK: "B": "result_rhs_dq"
+CHECK: "C": "result"
+CHECK: "tag": "MATMUL"
+CHECK: "tensors"
+CHECK: "lhs":
+CHECK: "dim": [1,256,128]
+CHECK: "stride": [1,128,1]
+CHECK: "lhs_scale":
+CHECK: "dim": [1,256,4]
+CHECK: "reordering_type": "F8_128x4"
+CHECK: "stride": [1,4,1]
+CHECK: "result":
+CHECK: "dim": [1,256,384]
+CHECK: "stride": [1,384,1]
+CHECK: "result_lhs_dq":
+CHECK: "is_virtual": true
+CHECK: "result_rhs_dq":
+CHECK: "is_virtual": true
+CHECK: "rhs":
+CHECK: "dim": [1,128,384]
+CHECK: "stride": [1,1,128]
+CHECK: "rhs_scale":
+CHECK: "dim": [1,4,384]
+CHECK: "reordering_type": "F8_128x4"
+CHECK: "stride": [1,1,4]
+)"));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
