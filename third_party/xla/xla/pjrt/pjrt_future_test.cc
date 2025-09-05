@@ -53,52 +53,47 @@ TEST(PjRtFutureTest, StatelessFuture) {
 }
 
 TEST(PjRtFutureTest, StatefulFutureToStateless) {
-  auto promise = PjRtFuture<int32_t>::CreatePromise();
-  PjRtFuture<int32_t> future(promise);
-  PjRtFuture<> on_ready_future = future.GetReadyFuture();
+  auto [promise, future] = PjRtFuture<int32_t>::MakePromise();
+  PjRtFuture<> ready_future = future.GetReadyFuture();
 
-  EXPECT_FALSE(on_ready_future.IsReady());
+  EXPECT_FALSE(ready_future.IsReady());
   promise.Set(42);
-  EXPECT_EQ(on_ready_future.Await(), absl::OkStatus());
+  EXPECT_EQ(ready_future.Await(), absl::OkStatus());
 }
 
 TEST(PjRtFutureTest, StatefulFutureToStatelessError) {
-  auto promise = PjRtFuture<int32_t>::CreatePromise();
-  PjRtFuture<int32_t> future(promise);
-  PjRtFuture<> on_ready_future = future.GetReadyFuture();
+  auto [promise, future] = PjRtFuture<int32_t>::MakePromise();
+  PjRtFuture<> ready_future = future.GetReadyFuture();
 
-  EXPECT_FALSE(on_ready_future.IsReady());
+  EXPECT_FALSE(ready_future.IsReady());
   promise.Set(absl::InternalError("test"));
-  EXPECT_EQ(on_ready_future.Await(), absl::InternalError("test"));
+  EXPECT_EQ(ready_future.Await(), absl::InternalError("test"));
 }
 
 TEST(PjRtFutureTest, MoveOnlyFutureToStateless) {
-  auto promise = PjRtFuture<std::unique_ptr<int32_t>>::CreatePromise();
-  PjRtFuture<std::unique_ptr<int32_t>> future(promise);
-  PjRtFuture<> on_ready_future = future.GetReadyFuture();
+  auto [promise, future] = PjRtFuture<std::unique_ptr<int32_t>>::MakePromise();
+  PjRtFuture<> ready_future = future.GetReadyFuture();
 
   EXPECT_FALSE(future.IsReady());
-  EXPECT_FALSE(on_ready_future.IsReady());
+  EXPECT_FALSE(ready_future.IsReady());
 
   promise.Set(std::make_unique<int32_t>(42));
-  EXPECT_EQ(on_ready_future.Await(), absl::OkStatus());
+  EXPECT_EQ(ready_future.Await(), absl::OkStatus());
 }
 
 TEST(PjRtFutureTest, MoveOnlyFutureToStatelessError) {
-  auto promise = PjRtFuture<std::unique_ptr<int32_t>>::CreatePromise();
-  PjRtFuture<std::unique_ptr<int32_t>> future(promise);
-  PjRtFuture<> on_ready_future = future.GetReadyFuture();
+  auto [promise, future] = PjRtFuture<std::unique_ptr<int32_t>>::MakePromise();
+  PjRtFuture<> ready_future = future.GetReadyFuture();
 
   EXPECT_FALSE(future.IsReady());
-  EXPECT_FALSE(on_ready_future.IsReady());
+  EXPECT_FALSE(ready_future.IsReady());
 
   promise.Set(absl::InternalError("test"));
-  EXPECT_EQ(on_ready_future.Await(), absl::InternalError("test"));
+  EXPECT_EQ(ready_future.Await(), absl::InternalError("test"));
 }
 
 TEST(PjRtFutureTest, CopyableFuture) {
-  auto promise = PjRtFuture<int32_t>::CreatePromise();
-  PjRtFuture<int32_t> future(promise);
+  auto [promise, future] = PjRtFuture<int32_t>::MakePromise();
 
   PjRtFuture<int32_t> copy_constructed(future);
   PjRtFuture<int32_t> copy_assigned = future;
@@ -111,8 +106,7 @@ TEST(PjRtFutureTest, CopyableFuture) {
 }
 
 TEST(PjRtFutureTest, MoveConstructedFuture) {
-  auto promise = PjRtFuture<std::unique_ptr<int32_t>>::CreatePromise();
-  PjRtFuture<std::unique_ptr<int32_t>> future(promise);
+  auto [promise, future] = PjRtFuture<std::unique_ptr<int32_t>>::MakePromise();
 
   PjRtFuture<std::unique_ptr<int32_t>> move_constructed(std::move(future));
 
@@ -122,8 +116,7 @@ TEST(PjRtFutureTest, MoveConstructedFuture) {
 }
 
 TEST(PjRtFutureTest, MoveAssignedFuture) {
-  auto promise = PjRtFuture<std::unique_ptr<int32_t>>::CreatePromise();
-  PjRtFuture<std::unique_ptr<int32_t>> future(promise);
+  auto [promise, future] = PjRtFuture<std::unique_ptr<int32_t>>::MakePromise();
 
   PjRtFuture<std::unique_ptr<int32_t>> move_assigned = std::move(future);
 
@@ -133,8 +126,7 @@ TEST(PjRtFutureTest, MoveAssignedFuture) {
 }
 
 TEST(PjRtFutureTest, AwaitMoveOnlyFuture) {
-  auto promise = PjRtFuture<std::unique_ptr<int32_t>>::CreatePromise();
-  PjRtFuture<std::unique_ptr<int32_t>> future(promise);
+  auto [promise, future] = PjRtFuture<std::unique_ptr<int32_t>>::MakePromise();
 
   promise.Set(std::make_unique<int32_t>(42));
 
@@ -143,8 +135,7 @@ TEST(PjRtFutureTest, AwaitMoveOnlyFuture) {
 }
 
 TEST(PjRtFutureTest, OnReadyRvalueFuture) {
-  auto promise = PjRtFuture<int32_t>::CreatePromise();
-  PjRtFuture<int32_t> future(promise);
+  auto [promise, future] = PjRtFuture<int32_t>::MakePromise();
 
   promise.Set(42);
 
@@ -153,8 +144,7 @@ TEST(PjRtFutureTest, OnReadyRvalueFuture) {
 }
 
 TEST(PjRtFutureTest, OnReadyMoveOnlyFuture) {
-  auto promise = PjRtFuture<std::unique_ptr<int32_t>>::CreatePromise();
-  PjRtFuture<std::unique_ptr<int32_t>> future(promise);
+  auto [promise, future] = PjRtFuture<std::unique_ptr<int32_t>>::MakePromise();
 
   promise.Set(std::make_unique<int32_t>(42));
 
@@ -163,30 +153,40 @@ TEST(PjRtFutureTest, OnReadyMoveOnlyFuture) {
   });
 }
 
+TEST(PjRtFutureTest, UnlinkedPromiseIsUnique) {
+  auto [promise, future] = PjRtFuture<>::MakePromise();
+  EXPECT_FALSE(promise.IsUniqueReference());
+  future = {};
+  EXPECT_TRUE(promise.IsUniqueReference());
+}
+
 TEST(PjRtFutureTest, PromiseIsUnique) {
-  auto promise = PjRtFuture<>::CreatePromise();
+  auto [promise, future] = PjRtFuture<>::MakePromise();
+
+  // Future is linked to the promise object.
+  EXPECT_FALSE(promise.IsUniqueReference());
+
+  // Future is destroyed, but we added a callback to underlying value.
+  future.OnReady([](const absl::Status&) {});
+  future = {};
+  EXPECT_FALSE(promise.IsUniqueReference());
+
+  // Once promise is fulfilled, the callback is executed, and because we
+  // destroyed the future, the underlying value is not referenced by anyone
+  // else, and the promise becomes unique.
+  promise.Set();
   EXPECT_TRUE(promise.IsUniqueReference());
 
-  {
+  {  // Making a copy of the promise makes it not unique.
     auto copy = promise;
     EXPECT_FALSE(promise.IsUniqueReference());
     EXPECT_FALSE(copy.IsUniqueReference());
   }
   EXPECT_TRUE(promise.IsUniqueReference());
-
-  PjRtFuture<> future(promise);
-  EXPECT_FALSE(promise.IsUniqueReference());
-  future.OnReady([](const absl::Status&) {});
-  future = {};
-  EXPECT_FALSE(promise.IsUniqueReference());
-
-  promise.Set();
-  EXPECT_TRUE(promise.IsUniqueReference());
 }
 
 TEST(PjRtFutureTest, MapCopyableFuture) {
-  auto promise = PjRtFuture<int32_t>::CreatePromise();
-  PjRtFuture<int32_t> future(promise);
+  auto [promise, future] = PjRtFuture<int32_t>::MakePromise();
   PjRtFuture<float> mapped = future.Map([](int32_t v) { return v * 2.0f; });
 
   EXPECT_FALSE(future.IsReady());
@@ -205,8 +205,7 @@ TEST(PjRtFutureTest, MapCopyableFuture) {
 }
 
 TEST(PjRtFutureTest, MapCopyableFutureError) {
-  auto promise = PjRtFuture<int32_t>::CreatePromise();
-  PjRtFuture<int32_t> future(promise);
+  auto [promise, future] = PjRtFuture<int32_t>::MakePromise();
   PjRtFuture<float> mapped = future.Map([](int32_t v) { return v * 2.0f; });
 
   promise.Set(absl::InternalError("test"));
@@ -215,9 +214,8 @@ TEST(PjRtFutureTest, MapCopyableFutureError) {
 }
 
 TEST(PjRtFutureTest, MapMoveOnlyFuture) {
-  auto promise = PjRtFuture<std::unique_ptr<int32_t>>::CreatePromise();
+  auto [promise, future] = PjRtFuture<std::unique_ptr<int32_t>>::MakePromise();
 
-  PjRtFuture<std::unique_ptr<int32_t>> future(promise);
   PjRtFuture<std::unique_ptr<float>> mapped =
       std::move(future).Map([](std::unique_ptr<int32_t> v) {
         return std::make_unique<float>(*v * 2.0f);
@@ -232,8 +230,7 @@ TEST(PjRtFutureTest, MapMoveOnlyFuture) {
 }
 
 TEST(PjRtFutureTest, MapMoveOnlyFutureError) {
-  auto promise = PjRtFuture<std::unique_ptr<int32_t>>::CreatePromise();
-  PjRtFuture<std::unique_ptr<int32_t>> future(promise);
+  auto [promise, future] = PjRtFuture<std::unique_ptr<int32_t>>::MakePromise();
   PjRtFuture<std::unique_ptr<float>> mapped =
       std::move(future).Map([](std::unique_ptr<int32_t> v) {
         return std::make_unique<float>(*v * 2.0f);
@@ -250,8 +247,7 @@ TEST(PjRtFutureTest, MapCopyableWithInplaceConstructor) {
     int32_t v;
   };
 
-  auto promise = PjRtFuture<int32_t>::CreatePromise();
-  PjRtFuture<int32_t> future(promise);
+  auto [promise, future] = PjRtFuture<int32_t>::MakePromise();
   PjRtFuture<Struct> mapped = future.Map<Struct>([](int32_t v) { return v; });
 
   promise.Set(42);
@@ -265,8 +261,7 @@ TEST(PjRtFutureTest, MapMoveOnlyWithInplaceConstructor) {
     int32_t v;
   };
 
-  auto promise = PjRtFuture<std::unique_ptr<int32_t>>::CreatePromise();
-  PjRtFuture<std::unique_ptr<int32_t>> future(promise);
+  auto [promise, future] = PjRtFuture<std::unique_ptr<int32_t>>::MakePromise();
   PjRtFuture<Struct> mapped = std::move(future).Map<Struct>(
       [](std::unique_ptr<int32_t> v) { return *v; });
 
@@ -302,8 +297,7 @@ TEST(PjRtFutureTest, MapStatusUnusedResult) {
 }
 
 TEST(PjRtFutureTest, TryMapCopyableFuture) {
-  auto promise = PjRtFuture<int32_t>::CreatePromise();
-  PjRtFuture<int32_t> future(promise);
+  auto [promise, future] = PjRtFuture<int32_t>::MakePromise();
   PjRtFuture<float> mapped = future.TryMap(
       [](int32_t v) -> absl::StatusOr<float> { return v * 2.0f; });
 
@@ -323,8 +317,7 @@ TEST(PjRtFutureTest, TryMapCopyableFuture) {
 }
 
 TEST(PjRtFutureTest, TryMapCopyableFutureForwardError) {
-  auto promise = PjRtFuture<int32_t>::CreatePromise();
-  PjRtFuture<int32_t> future(promise);
+  auto [promise, future] = PjRtFuture<int32_t>::MakePromise();
   PjRtFuture<float> mapped = future.TryMap(
       [](int32_t v) -> absl::StatusOr<float> { return v * 2.0f; });
 
@@ -334,8 +327,7 @@ TEST(PjRtFutureTest, TryMapCopyableFutureForwardError) {
 }
 
 TEST(PjRtFutureTest, TryMapCopyableFutureCreateError) {
-  auto promise = PjRtFuture<int32_t>::CreatePromise();
-  PjRtFuture<int32_t> future(promise);
+  auto [promise, future] = PjRtFuture<int32_t>::MakePromise();
   PjRtFuture<float> mapped =
       future.TryMap([](int32_t v) -> absl::StatusOr<float> {
         return absl::InternalError("test");
@@ -347,9 +339,8 @@ TEST(PjRtFutureTest, TryMapCopyableFutureCreateError) {
 }
 
 TEST(PjRtFutureTest, TryMapMoveOnlyFuture) {
-  auto promise = PjRtFuture<std::unique_ptr<int32_t>>::CreatePromise();
+  auto [promise, future] = PjRtFuture<std::unique_ptr<int32_t>>::MakePromise();
 
-  PjRtFuture<std::unique_ptr<int32_t>> future(promise);
   PjRtFuture<std::unique_ptr<float>> mapped = std::move(future).TryMap(
       [](std::unique_ptr<int32_t> v) -> absl::StatusOr<std::unique_ptr<float>> {
         return std::make_unique<float>(*v * 2.0f);
@@ -364,9 +355,8 @@ TEST(PjRtFutureTest, TryMapMoveOnlyFuture) {
 }
 
 TEST(PjRtFutureTest, TryMapMoveOnlyFutureForwardError) {
-  auto promise = PjRtFuture<std::unique_ptr<int32_t>>::CreatePromise();
+  auto [promise, future] = PjRtFuture<std::unique_ptr<int32_t>>::MakePromise();
 
-  PjRtFuture<std::unique_ptr<int32_t>> future(promise);
   PjRtFuture<std::unique_ptr<float>> mapped = std::move(future).TryMap(
       [](std::unique_ptr<int32_t> v) -> absl::StatusOr<std::unique_ptr<float>> {
         return std::make_unique<float>(*v * 2.0f);
@@ -381,9 +371,8 @@ TEST(PjRtFutureTest, TryMapMoveOnlyFutureForwardError) {
 }
 
 TEST(PjRtFutureTest, TryMapMoveOnlyFutureCreateError) {
-  auto promise = PjRtFuture<std::unique_ptr<int32_t>>::CreatePromise();
+  auto [promise, future] = PjRtFuture<std::unique_ptr<int32_t>>::MakePromise();
 
-  PjRtFuture<std::unique_ptr<int32_t>> future(promise);
   PjRtFuture<std::unique_ptr<float>> mapped = std::move(future).TryMap(
       [](std::unique_ptr<int32_t> v) -> absl::StatusOr<std::unique_ptr<float>> {
         return absl::InternalError("test");
@@ -538,8 +527,7 @@ TEST(PjRtFutureTest, MapToStatelessFuture) {
 }
 
 TEST(PjRtFutureTest, StatefulFuture) {
-  auto promise = PjRtFuture<int32_t>::CreatePromise();
-  PjRtFuture<int32_t> future(promise);
+  auto [promise, future] = PjRtFuture<int32_t>::MakePromise();
 
   EXPECT_FALSE(future.IsReady());
   promise.Set(42);
@@ -560,8 +548,7 @@ TEST(PjRtFutureTest, StatusFuture) {
 }
 
 TEST(PjRtFutureTest, StatusOrFuture) {
-  auto promise = PjRtFuture<int32_t>::CreatePromise();
-  PjRtFuture<int32_t> future(promise);
+  auto [promise, future] = PjRtFuture<int32_t>::MakePromise();
 
   EXPECT_FALSE(future.IsReady());
   promise.Set(42);
