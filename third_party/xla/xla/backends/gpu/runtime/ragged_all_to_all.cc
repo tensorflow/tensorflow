@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "xla/backends/gpu/runtime/ragged_all_to_all.h"
+
 #include <algorithm>
 #include <array>
 #include <cstddef>
