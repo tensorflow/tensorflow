@@ -20,13 +20,14 @@ limitations under the License.
 #include <utility>
 #include <variant>
 
+#include "absl/log/check.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/service/gpu/model/hlo_op_profiles_data.h"
 #include "xla/stream_executor/device_description.h"
-#include "tsl/platform/logging.h"
 #include "tsl/platform/protobuf.h"
 
 namespace xla {
@@ -54,8 +55,8 @@ namespace gpu {
     absl::string_view default_profile_name) {
   ProfilesNestedMap profiles_map;
   DeviceHloInstructionProfiles all_device_profiles;
-  CHECK(tsl::protobuf::TextFormat::ParseFromString(
-      std::string(profiles_text_proto), &all_device_profiles));
+  CHECK(tsl::protobuf::TextFormat::ParseFromString(profiles_text_proto,
+                                                   &all_device_profiles));
   for (const auto& device_profile : all_device_profiles.entries()) {
     for (const auto& entry : device_profile.second.entries()) {
       auto op_code = StringToHloOpcode(entry.instruction().opcode()).value();

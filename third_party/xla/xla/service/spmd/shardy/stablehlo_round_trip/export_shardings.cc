@@ -113,9 +113,8 @@ bool allShardingsUnreduced(ArrayRef<TensorShardingAttr> shardings) {
 }
 
 // Convert the shardings from kShardingAttr into kXlaShardingAttr.
-LogicalResult exportFunc(FuncOp funcOp, const SymbolTable& symbolTable,
-                         OpBuilder& builder,
-                         bool addMissingShardingToControlFlow) {
+void exportFunc(FuncOp funcOp, const SymbolTable& symbolTable,
+                OpBuilder& builder, bool addMissingShardingToControlFlow) {
   std::function<StringAttr(const HloSharding&)> getStringAttr =
       [&](const HloSharding& hloSharding) {
         return builder.getStringAttr(hloSharding.ToString());
@@ -181,8 +180,6 @@ LogicalResult exportFunc(FuncOp funcOp, const SymbolTable& symbolTable,
       op->setAttr(kXlaShardingAttr, getStringAttr(HloSharding::Replicate()));
     }
   });
-
-  return success();
 }
 
 class ExportStablehloShardingsPass
@@ -203,10 +200,7 @@ class ExportStablehloShardingsPass
     auto builder = OpBuilder::atBlockBegin(&moduleOp.getBodyRegion().front());
 
     for (auto funcOp : moduleOp.getOps<FuncOp>()) {
-      if (mlir::failed(exportFunc(funcOp, symbolTable, builder,
-                                  addMissingShardingToControlFlow))) {
-        signalPassFailure();
-      }
+      exportFunc(funcOp, symbolTable, builder, addMissingShardingToControlFlow);
     }
 
     moduleOp.walk([&](stablehlo::CustomCallOp customCall) {

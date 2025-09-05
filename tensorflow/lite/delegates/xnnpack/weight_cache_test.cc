@@ -186,6 +186,38 @@ TEST(WeightCacheBuilderTest, AppendWithoutReserveWriteWorks) {
   EXPECT_THAT(cache_data, ElementsAreArray(payload));
 }
 
+TEST(WeightCacheBuilderTest, CorruptBufferListFailsGracefully) {
+  const std::string cache_path = testing::TempDir() + "/cache";
+  const std::string payload = "This is some data in the file.";
+  const PackIdentifier dummy_id{1, 2, 3};
+
+  FileDescriptor file_descriptor = FileDescriptor::Open(
+      cache_path.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
+  WeightCacheBuilder builder;
+  ASSERT_TRUE(builder.Start(cache_path.c_str(), file_descriptor));
+  ASSERT_TRUE(builder.StartBuildStep());
+
+  const size_t payload_size = size(payload);
+  auto loc = builder.Append(dummy_id, payload.c_str(), payload_size);
+  EXPECT_EQ(loc.size, payload_size);
+  ASSERT_TRUE(builder.StopBuildStep());
+
+  // corrupt the buffer list data.
+  {
+    FileDescriptor file_descriptor =
+        FileDescriptor::Open(cache_path.c_str(), O_RDWR, 0644);
+    ASSERT_TRUE(file_descriptor.IsValid());
+    XNNPackCacheHeader header;
+    file_descriptor.SetPos(0);
+    ASSERT_TRUE(file_descriptor.Read(&header, sizeof(header)));
+    file_descriptor.SetPos(header.buffer_list_offset + 1);
+    std::string data(8, 'a');
+    ASSERT_TRUE(file_descriptor.Write(data.data(), data.size()));
+  }
+
+  EXPECT_FALSE(builder.StartBuildStep());
+}
+
 TEST(WeightCacheBuilderTest, InvalidFileDescriptorFails) {
   WeightCacheBuilder builder;
   EXPECT_FALSE(builder.Start("", FileDescriptor()));

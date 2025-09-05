@@ -600,8 +600,6 @@ xla_test(
     name = "gpu_command_buffer_test",
     srcs = ["gpu_command_buffer_test.cc"],
     backends = ["gpu"],
-    # TODO(ybaturina): Re-enable once the CUDA driver version is updated in RBE.
-    tags = ["manual"],
     deps = [
         ":gpu_command_buffer",
         ":gpu_test_kernels",

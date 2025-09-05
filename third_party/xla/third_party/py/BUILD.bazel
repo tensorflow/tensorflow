@@ -65,3 +65,9 @@ py_binary(
     main = "unpack_wheel_and_unzip_archive_files.py",
     visibility = ["//visibility:public"],
 )
+
+py_library(
+    name = "setup_py_nvidia_dependencies_util",
+    srcs = ["setup_py_nvidia_dependencies_util.py"],
+    visibility = ["//visibility:public"],
+)

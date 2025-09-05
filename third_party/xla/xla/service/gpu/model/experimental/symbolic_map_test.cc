@@ -26,6 +26,19 @@ namespace {
 
 using ::testing::ElementsAre;
 
+TEST(SymbolicMapTest, GetSymbolAndDimExpressions) {
+  SymbolicExprContext ctx;
+  SymbolicExpr d0 = ctx.CreateVariable(0);
+  SymbolicExpr d1 = ctx.CreateVariable(1);
+  SymbolicExpr s0 = ctx.CreateVariable(2);
+  SymbolicExpr s1 = ctx.CreateVariable(3);
+  SymbolicMap map = SymbolicMap::Get(&ctx, 2, 2, {d0 + s0, d1 * s1});
+  EXPECT_EQ(map.GetSymbolExpression(0), s0);
+  EXPECT_EQ(map.GetSymbolExpression(1), s1);
+  EXPECT_EQ(map.GetDimExpression(0), d0);
+  EXPECT_EQ(map.GetDimExpression(1), d1);
+}
+
 TEST(SymbolicMapTest, ToString) {
   SymbolicExprContext ctx;
   SymbolicExpr d0 = ctx.CreateVariable(0);
@@ -260,6 +273,66 @@ TEST(SymbolicMapTest, GetUnusedVariables) {
   EXPECT_EQ(no_dim_symbols.size(), 2);
   EXPECT_FALSE(no_dim_symbols[0]);
   EXPECT_FALSE(no_dim_symbols[1]);
+}
+
+TEST(SymbolicMapTest, CompressDims) {
+  SymbolicExprContext ctx;
+  SymbolicExpr d0 = ctx.CreateVariable(0);
+  [[maybe_unused]] SymbolicExpr d1 = ctx.CreateVariable(1);  // Unused
+  SymbolicExpr d2 = ctx.CreateVariable(2);
+  SymbolicExpr s0 = ctx.CreateVariable(3);
+
+  // Map: (d0, d1, d2)[s0] -> {d0 + d2, s0 * 5}
+  SymbolicMap map = SymbolicMap::Get(&ctx, 3, 1, {d0 + d2, s0 * 5});
+
+  // Remove d1
+  llvm::SmallBitVector unused_dims = GetUnusedDimensionsBitVector(map);
+  SymbolicMap compressed = CompressDims(map, unused_dims);
+
+  EXPECT_EQ(compressed.GetNumDims(), 2);
+  EXPECT_EQ(compressed.GetNumSymbols(), 1);
+
+  SymbolicExpr new_d0 = ctx.CreateVariable(0);
+  SymbolicExpr new_d1 = ctx.CreateVariable(1);
+  SymbolicExpr new_s0 = ctx.CreateVariable(2);
+  EXPECT_THAT(compressed.GetResults(),
+              ElementsAre(new_d0 + new_d1, new_s0 * 5));
+
+  // Check that we can't remove used dimensions.
+  unused_dims.reset();
+  unused_dims[0] = true;
+  EXPECT_DEATH(CompressDims(map, unused_dims),
+               "Attempting to compress a used dimension: 0");
+}
+
+TEST(SymbolicMapTest, CompressSymbols) {
+  SymbolicExprContext ctx;
+  SymbolicExpr d0 = ctx.CreateVariable(0);
+  SymbolicExpr s0 = ctx.CreateVariable(1);
+  [[maybe_unused]] SymbolicExpr s1 = ctx.CreateVariable(2);  // Unused
+  SymbolicExpr s2 = ctx.CreateVariable(3);
+
+  // Map: (d0)[s0, s1, s2] -> {d0 + s2, s0 * 5}
+  SymbolicMap map = SymbolicMap::Get(&ctx, 1, 3, {d0 + s2, s0 * 5});
+
+  // Remove s1 (the only unused symbol)
+  llvm::SmallBitVector unused_symbols = GetUnusedSymbolsBitVector(map);
+  SymbolicMap compressed = CompressSymbols(map, unused_symbols);
+
+  EXPECT_EQ(compressed.GetNumDims(), 1);
+  EXPECT_EQ(compressed.GetNumSymbols(), 2);
+
+  SymbolicExpr new_d0 = ctx.CreateVariable(0);
+  SymbolicExpr new_s0 = ctx.CreateVariable(1);
+  SymbolicExpr new_s1 = ctx.CreateVariable(2);  // Original s2
+  EXPECT_THAT(compressed.GetResults(),
+              ElementsAre(new_d0 + new_s1, new_s0 * 5));
+
+  // Check that we can't remove used symbols.
+  unused_symbols.reset();
+  unused_symbols[2] = true;
+  EXPECT_DEATH(CompressSymbols(map, unused_symbols),
+               "Attempting to compress a used symbol: 2");
 }
 
 }  // namespace

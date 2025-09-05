@@ -225,8 +225,9 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> ThunkExecutor::TracedExecute(
   }
 
   // Create a producer traceme to capture the start event.
-  tsl::profiler::TraceMeProducer producer([&] { return thunk.TraceMeEncode(); },
-                                          tsl::profiler::ContextType::kGeneric);
+  tsl::profiler::TraceMeProducer producer(
+      [&] { return thunk.TraceMeEncode(params.run_id, params.device_ordinal); },
+      tsl::profiler::ContextType::kGeneric);
 
   auto execute_event = thunk.Execute(params);
 

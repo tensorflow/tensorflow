@@ -170,7 +170,8 @@ class IndexTable {
 // - Constructor from Span of Pairs: When constructing from a span of
 //   {ShapeIndex, T} pairs, only the nodes at the specified indices are
 //   initialized with the given values. Any necessary ancestor tuple nodes are
-//   implicitly created and their values are default-initialized (e.g., T()).
+//   implicitly created and their values are constructed from the provided
+//   arguments.
 // - `element()` and `mutable_element()`: These methods can access the value
 //   of *any* node in the tree, not just leaves, using its ShapeIndex.
 // - `Map` and `MapWithStatus`: These functions apply the given function to the
@@ -210,30 +211,6 @@ class TupleTree {
     static Node Tuple(T&& value, absl::Span<const Node> children) {
       return Node(std::move(value),
                   std::vector<Node>(children.begin(), children.end()));
-    }
-
-    static Node FromShape(const Shape& shape, const T& init_value) {
-      if (!shape.IsTuple()) {
-        return Node::Leaf(init_value);
-      }
-      std::vector<Node> children;
-      children.reserve(shape.tuple_shapes().size());
-      for (const auto& subshape : shape.tuple_shapes()) {
-        children.push_back(FromShape(subshape, init_value));
-      }
-      return Node(init_value, std::move(children));
-    }
-
-    static Node FromShape(const Shape& shape) {
-      if (!shape.IsTuple()) {
-        return Node::Leaf(T());
-      }
-      std::vector<Node> children;
-      children.reserve(shape.tuple_shapes().size());
-      for (const auto& subshape : shape.tuple_shapes()) {
-        children.push_back(FromShape(subshape));
-      }
-      return Node(T(), std::move(children));
     }
 
     // Default constructor creates an empty tuple.
@@ -279,22 +256,19 @@ class TupleTree {
   using NodePairs = absl::InlinedVector<NodePair, 1>;
   using IndexTable = internal::IndexTable;
 
-  // Constructor for a single leaf node.
-  explicit TupleTree(const T& leaf_value, T default_value = T())
-      : default_value_(std::move(default_value)) {
-    Initialize(Node::Leaf(leaf_value));
-  }
-  explicit TupleTree(T&& leaf_value, T default_value = T())
-      : default_value_(std::move(default_value)) {
-    Initialize(Node::Leaf(std::move(leaf_value)));
-  }
-
   // Constructor for an empty tuple.
   TupleTree() { Initialize(Node::Tuple()); }
 
+  // Constructor for a single leaf node.
+  explicit TupleTree(const T& leaf_value) {
+    Initialize(Node::Leaf(leaf_value));
+  }
+  explicit TupleTree(T&& leaf_value) {
+    Initialize(Node::Leaf(std::move(leaf_value)));
+  }
+
   // Constructor from an initializer list, creating a flat tuple of leaves.
-  TupleTree(std::initializer_list<T> items, T default_value = T())
-      : default_value_(std::move(default_value)) {
+  TupleTree(std::initializer_list<T> items) {
     std::vector<Node> children;
     children.reserve(items.size());
     for (const auto& item : items) {
@@ -304,53 +278,47 @@ class TupleTree {
   }
 
   // Constructor from an initializer list of Nodes for nested structures.
-  TupleTree(std::initializer_list<Node> items, T default_value = T())
-      : default_value_(std::move(default_value)) {
+  TupleTree(std::initializer_list<Node> items) {
     Initialize(Node::Tuple(items));
   }
 
   // Basic constructor taking the root node.
-  explicit TupleTree(Node&& root, T default_value = T())
-      : default_value_(std::move(default_value)) {
-    Initialize(std::move(root));
-  }
+  explicit TupleTree(Node&& root) { Initialize(std::move(root)); }
 
   // Constructor from a list of shape indices and values.
   // U must be std::pair<ShapeIndex, T> or const std::pair<ShapeIndex, T>.
   // The tree structure is created based on the provided indices. Nodes at these
   // indices are initialized with the given values. Any implicitly created
-  // parent nodes are value-initialized (e.g., T()).
-  template <typename U>
-  explicit TupleTree(absl::Span<U> node_pairs, T default_value = T())
-      : default_value_(default_value) {
+  // parent nodes are constructed from the provided arguments.
+  template <typename U, typename... Args>
+  explicit TupleTree(absl::Span<U> node_pairs, Args&&... args) {
     static_assert(
-        std::is_same_v<U, std::pair<ShapeIndex, T>> ||
-            std::is_same_v<U, const std::pair<ShapeIndex, T>>,
+        std::is_same_v<std::remove_const_t<U>, std::pair<ShapeIndex, T>>,
         "TupleTree constructor requires absl::Span of std::pair<ShapeIndex, T> "
         "or const std::pair<ShapeIndex, T>");
 
-    Node root_node(Node::Tuple(default_value));
-    for (U& pair : node_pairs) {
-      const ShapeIndex& index = pair.first;
+    Node root_node(Node::Tuple(T(args...)));
+    for (auto& [index, value] : node_pairs) {
       Node* node = GetOrCreateNode(root_node, index,
-                                   /*preserve_leaf_value=*/false);
+                                   /*preserve_leaf_value=*/false, args...);
       // Forward the second element to enable move semantics if U is non-const.
-      *node = Node::Leaf(std::forward<decltype(pair.second)>(pair.second));
+      *node = Node::Leaf(std::forward<decltype(value)>(value));
     }
     Initialize(std::move(root_node));
   }
 
-  // Constructor from a Shape and an initial value for all nodes.
-  explicit TupleTree(const Shape& shape, const T& init_value = T())
-      : default_value_(init_value) {
+  // Constructor from a Shape and an initial value for all nodes constructed
+  // from the given arguments.
+  template <typename... Args>
+  explicit TupleTree(const Shape& shape, Args&&... args) {
     index_table_ = IndexTable(shape);
     if (!shape.IsTuple()) {
-      nodes_.emplace_back(ShapeIndex(), init_value);
+      nodes_.emplace_back(ShapeIndex(), T(args...));
     } else {
       nodes_.reserve(ShapeUtil::SubshapeCount(shape));
       ShapeUtil::ForEachSubshape(shape,
                                  [&](const Shape&, const ShapeIndex& index) {
-                                   nodes_.emplace_back(index, init_value);
+                                   nodes_.emplace_back(index, T(args...));
                                  });
     }
   }
@@ -459,7 +427,7 @@ class TupleTree {
     }
 
     return TupleTree<T>(std::move(subtree_index_table),
-                        std::move(subtree_nodes), default_value_);
+                        std::move(subtree_nodes));
   }
 
   using iterator = typename NodePairs::iterator;
@@ -616,7 +584,7 @@ class TupleTree {
 
   absl::StatusOr<Node> ToNode(ShapeIndexView index_view = {}) const {
     if (!index_table_.entries().has_value()) {
-      return Node::Tuple(default_value_);
+      return Node::Tuple(T());
     }
     ShapeIndex index(index_view.begin(), index_view.end());
     return ToNodeImpl(index);
@@ -631,11 +599,8 @@ class TupleTree {
       : nodes_(std::move(nodes)), index_table_(index_table) {}
 
   // Private constructor for SubTree.
-  TupleTree(internal::IndexTable&& index_table, NodePairs&& nodes,
-            T default_value)
-      : default_value_(std::move(default_value)),
-        nodes_(std::move(nodes)),
-        index_table_(std::move(index_table)) {}
+  TupleTree(internal::IndexTable&& index_table, NodePairs&& nodes)
+      : nodes_(std::move(nodes)), index_table_(std::move(index_table)) {}
 
   void Initialize(Node root) {
     // First, build the IndexTable from the structure.
@@ -662,24 +627,9 @@ class TupleTree {
     }
   }
 
-  size_t BuildNodesVectorFromShape(const Shape& shape, const T& init_value,
-                                   ShapeIndex& current_index, size_t node_idx) {
-    nodes_[node_idx] = {current_index, init_value};
-    if (!shape.IsTuple()) {
-      return node_idx + 1;
-    }
-    size_t current_node_idx = node_idx + 1;
-    for (size_t i = 0; i < shape.tuple_shapes().size(); ++i) {
-      current_index.push_back(i);
-      current_node_idx = BuildNodesVectorFromShape(
-          shape.tuple_shapes(i), init_value, current_index, current_node_idx);
-      current_index.pop_back();
-    }
-    return current_node_idx;
-  }
-
+  template <typename... Args>
   Node* GetOrCreateNode(Node& root, const ShapeIndex& index,
-                        bool preserve_leaf_value) {
+                        bool preserve_leaf_value, Args&&... args) {
     Node* node = &root;
     if (index.empty()) {
       return node;
@@ -692,18 +642,18 @@ class TupleTree {
         // Transition from leaf to tuple.
         if (preserve_leaf_value) {
           T original_value = std::move(*node->mutable_value());
-          *node = Node::Tuple(default_value_);
+          *node = Node::Tuple(T(args...));
           // The original leaf value is placed at index 0.
           node->mutable_children()->push_back(
               Node::Leaf(std::move(original_value)));
         } else {
-          *node = Node::Tuple(default_value_);
+          *node = Node::Tuple(T(args...));
         }
       }
 
       std::vector<Node>* children = node->mutable_children();
       while (idx >= children->size()) {
-        children->push_back(Node::Tuple(default_value_));
+        children->push_back(Node::Tuple(T(args...)));
       }
       node = &children->at(idx);
     }
@@ -733,7 +683,6 @@ class TupleTree {
     return Node::Tuple(value, std::move(children));
   }
 
-  T default_value_;
   // Leaves sorted in pre-order.
   NodePairs nodes_;
   IndexTable index_table_;

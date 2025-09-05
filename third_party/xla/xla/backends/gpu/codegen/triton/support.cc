@@ -496,8 +496,9 @@ CodegenDecision IsTritonSupportedDot(
 // - of kind `__triton_nested_gemm_fusion`;
 // - to have a single user that is either a `dot` or a `concatenate`;
 // - calls a supported computation.
-CodegenDecision IsSupportedFusion(const HloFusionInstruction& hlo,
-                                  const se::GpuComputeCapability& capability) {
+CodegenDecision IsTritonSupportedFusion(
+    const HloFusionInstruction& hlo,
+    const se::GpuComputeCapability& capability) {
   // TODO(b/393299275): test cases when there are multiple dot users of the
   // same fusion.
   if (hlo.user_count() != 1) {
@@ -659,8 +660,8 @@ CodegenDecision IsTritonSupportedInstructionImpl(
       return IsTritonSupportedDot(*Cast<HloDotInstruction>(&instr),
                                   gpu_version);
     case HloOpcode::kFusion:
-      return IsSupportedFusion(*Cast<HloFusionInstruction>(&instr),
-                               gpu_version);
+      return IsTritonSupportedFusion(*Cast<HloFusionInstruction>(&instr),
+                                     gpu_version);
     default:
       // Not all instructions have a special handling.
       break;
@@ -688,10 +689,12 @@ namespace internal {
 bool IsTritonUnsupportedOpcode(HloOpcode opcode) {
   switch (opcode) {
     case HloOpcode::kDynamicReshape:
+    case HloOpcode::kDynamicSlice:
     case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kGather:
     case HloOpcode::kRaggedDot:
     case HloOpcode::kReduceWindow:
+    case HloOpcode::kScaledDot:
     case HloOpcode::kScatter:
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kSetDimensionSize:

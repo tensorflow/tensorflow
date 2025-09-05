@@ -41,9 +41,14 @@ limitations under the License.
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/backends/gpu/autotuner/block_level_emitter.h"
 #include "xla/backends/gpu/autotuner/cublas.h"
 #include "xla/backends/gpu/autotuner/cublaslt.h"
+#include "xla/backends/gpu/autotuner/native_emitter.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_fix.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
@@ -62,7 +67,6 @@ limitations under the License.
 #include "xla/service/gpu/autotuning/autotuner_pass.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/autotuning/conv_algorithm_picker.h"
-#include "xla/service/gpu/autotuning/gemm_algorithm_picker.h"
 #include "xla/service/gpu/autotuning/gemm_fusion_autotuner.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/cublas_padding_requirements.h"
@@ -88,6 +92,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/cudnn_vectorize_convolutions.h"
 #include "xla/service/gpu/transforms/gpusolver_rewriter.h"
 #include "xla/service/gpu/transforms/triangular_solve_rewriter.h"
+#include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -356,7 +361,8 @@ absl::Status NVPTXCompiler::AddConvAndGemmAutotuningPasses(
           .debug_options()
           .xla_gpu_experimental_disable_binary_libraries() ||
       debug_options.xla_gpu_autotune_level() == 0 ||
-      debug_options.xla_gpu_exclude_nondeterministic_ops()) {
+      debug_options.xla_gpu_exclude_nondeterministic_ops() ||
+      stream_exec == nullptr) {
     return absl::OkStatus();
   }
 
@@ -364,33 +370,21 @@ absl::Status NVPTXCompiler::AddConvAndGemmAutotuningPasses(
   // loaded in the GpuConvAlgorithmPicker but should be loaded in the autotuner.
   pipeline->AddPass<GpuConvAlgorithmPicker>(autotune_config);
 
-  if (debug_options.xla_gpu_experimental_use_autotuner_pass()) {
-    std::vector<std::unique_ptr<CodegenBackend>> backends;
-    backends.push_back(
-        std::make_unique<CublasBackend>(stream_exec, &debug_options, this));
-    backends.push_back(
-        std::make_unique<CublasLtBackend>(stream_exec, &debug_options, this));
-    auto should_autotune = [](const HloInstruction& instruction) -> bool {
-      return instruction.opcode() == HloOpcode::kCustomCall &&
-             IsCublasGemm(instruction);
-    };
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<AutotunerPass> autotuner_pass,
-        AutotunerPass::Create(std::move(backends), debug_options,
-                              options.device_allocator, stream_exec,
-                              thread_pool, should_autotune));
-    pipeline->AddPass(std::move(autotuner_pass));
-  } else {
-    // On Ampere or later, GemmAlgorithmPicker just provides a way to "warmup"
-    // the
-    // execution. But we already do that during GemmFusionAutotuner pass. In
-    // that case, we do a recursive compilation call that has
-    // 'is_autotuning_compilation' set to true.
-    if (!std::get<se::CudaComputeCapability>(gpu_version).IsAtLeastAmpere() ||
-        options.is_autotuning_compilation) {
-      pipeline->AddPass<GemmAlgorithmPicker>(autotune_config);
-    }
-  }
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  backends.push_back(
+      std::make_unique<CublasBackend>(stream_exec, &debug_options, this));
+  backends.push_back(
+      std::make_unique<CublasLtBackend>(stream_exec, &debug_options, this));
+  auto should_autotune = [](const HloInstruction& instruction) -> bool {
+    return instruction.opcode() == HloOpcode::kCustomCall &&
+           IsCublasGemm(instruction);
+  };
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<AutotunerPass> autotuner_pass,
+      AutotunerPass::Create(std::move(backends), debug_options, stream_exec,
+                            thread_pool, should_autotune,
+                            options.device_allocator));
+  pipeline->AddPass(std::move(autotuner_pass));
   return absl::OkStatus();
 }
 
@@ -402,6 +396,59 @@ absl::Status NVPTXCompiler::AddGemmFusionAutotuningPasses(
     se::StreamExecutor* stream_executor) {
   pipeline->AddPass<GemmFusionAutotuner>(autotune_config, toolkit_version,
                                          thread_pool, key_value_store);
+  return absl::OkStatus();
+}
+
+namespace {
+
+// Returns true if the instruction is a fusion that would go through the native
+// emitter, but may benefit from going through the block-level emitter.
+// Currently, we only do this for reductions and transposes.
+bool ShouldAutotuneBetweenFusionEmitters(const HloInstruction& instruction) {
+  if (instruction.opcode() != HloOpcode::kFusion) {
+    return false;
+  }
+  auto fusion = Cast<const HloFusionInstruction>(&instruction);
+  // kCustom fusions have already been assigned to a backend and we don't want
+  // to override it.
+  if (fusion->fusion_kind() == HloInstruction::FusionKind::kCustom) {
+    return false;
+  }
+  return absl::c_any_of(
+      fusion->fused_instructions_computation()->instructions(),
+      HloPredicateIsOp<HloOpcode::kReduce, HloOpcode::kTranspose>);
+}
+
+}  // namespace
+
+absl::Status NVPTXCompiler::AddFusionAutotuningPass(
+    HloPassPipeline* pipeline, HloModule* hlo_module,
+    const CompileOptions& options, tsl::thread::ThreadPool* thread_pool,
+    stream_executor::StreamExecutor* stream_executor,
+    HloCostAnalysis::ShapeSizeFunction shape_size_fn) {
+  if (stream_executor == nullptr) {
+    return absl::OkStatus();
+  }
+  const DebugOptions& debug_options = hlo_module->config().debug_options();
+  if (debug_options.xla_gpu_autotune_level() == 0 ||
+      debug_options.xla_gpu_exclude_nondeterministic_ops() ||
+      !debug_options.xla_gpu_experimental_enable_fusion_autotuner()) {
+    return absl::OkStatus();
+  }
+
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  backends.push_back(std::make_unique<BlockLevelEmitterBackend>(
+      stream_executor, &debug_options, this, shape_size_fn,
+      /*use_default_config=*/true));
+  backends.push_back(std::make_unique<NativeEmitterBackend>(
+      stream_executor, &debug_options, this));
+
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<AutotunerPass> autotuner_pass,
+      AutotunerPass::Create(std::move(backends), debug_options, stream_executor,
+                            thread_pool, ShouldAutotuneBetweenFusionEmitters,
+                            options.device_allocator));
+  pipeline->AddPass(std::move(autotuner_pass));
   return absl::OkStatus();
 }
 
@@ -693,7 +740,9 @@ absl::StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
     const stream_executor::DeviceDescription& device_description,
     se::StreamExecutor* stream_exec, std::vector<std::vector<uint8_t>> modules,
     const DebugOptions& debug_options) {
-  if (modules.empty()) return std::vector<uint8_t>{};
+  if (modules.empty()) {
+    return std::vector<uint8_t>{};
+  }
 
   auto cc = std::get<stream_executor::CudaComputeCapability>(
       device_description.gpu_compute_capability());

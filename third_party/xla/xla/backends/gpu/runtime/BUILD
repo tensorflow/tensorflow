@@ -870,7 +870,6 @@ cuda_library(
         "-DLIBCUDACXX_ENABLE_EXPERIMENTAL_MEMORY_RESOURCE",
     ],
     tags = ["cuda-only"],
-    textual_hdrs = ["raft_vectorized_bf16.h"],
     deps = [
         "//xla:status_macros",
         "//xla:types",
@@ -878,6 +877,7 @@ cuda_library(
         "//xla/stream_executor:device_memory_allocator",
         "//xla/stream_executor:scratch_allocator",
         "//xla/stream_executor:stream",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",

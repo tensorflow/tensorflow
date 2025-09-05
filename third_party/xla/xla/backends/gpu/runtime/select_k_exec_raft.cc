@@ -36,9 +36,6 @@ limitations under the License.
 #include "raft/matrix/select_k.cuh"
 #include "raft/matrix/select_k_types.hpp"
 #include "xla/backends/gpu/runtime/select_k_exec.h"
-// NOTE: This include is required for vectorized BF16 GPU runtime support.
-// It will no longer be needed after upgrading to raft v25.10.00.
-#include "xla/backends/gpu/runtime/raft_vectorized_bf16.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"

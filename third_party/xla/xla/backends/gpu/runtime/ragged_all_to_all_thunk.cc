@@ -153,9 +153,6 @@ absl::Status RunRaggedAllToAll(
   VLOG(3) << "[" << device_ordinal
           << "] Performing ragged-all-to-all from device ordinal: "
           << device_ordinal;
-  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(stream.parent(), original_buffers,
-                                          comm, use_symmetric_buffer));
-
   TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm->NumRanks());
 
   std::vector<DeviceBufferPair> buffers = original_buffers;
@@ -325,8 +322,6 @@ absl::Status RunMemCpyRaggedAllToAll(
     se::Event* start_event, se::Event* end_event) {
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "[" << device_ordinal << "] Performing mem-copy-ragged-all-to-all";
-  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(stream.parent(), buffers, comm));
-
   TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm->NumRanks());
 
   PrimitiveType element_type = buffers[0].element_type;

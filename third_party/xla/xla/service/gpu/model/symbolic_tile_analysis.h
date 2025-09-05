@@ -430,7 +430,7 @@ class SymbolicTileAnalysis {
 namespace detail {
 
 // Only exposed for testing.
-std::vector<FlatTiling> GetFlatTilingsForInputSpace(
+absl::StatusOr<std::vector<FlatTiling>> GetFlatTilingsForInputSpace(
     absl::Span<const int64_t> input_space);
 
 }  // namespace detail

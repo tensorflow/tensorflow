@@ -276,6 +276,9 @@ struct AllocationRequest {
   // done some of the heap allocation for us. So this request picks up where it
   // left off.
   std::optional<int64_t> no_copy_chunk_inclusive_start_time;
+  // An optional override for the shape for PrefetchContext::full_shape, which
+  // is used to calculate space needed for the prefetch.
+  std::optional<Shape> shape_override;
   // Indicates if the AllocationRequest start time (definition time) has an
   // alternate memory color requirement.
   bool require_start_colored_in_alternate_memory = false;

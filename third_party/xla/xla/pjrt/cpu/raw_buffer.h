@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <utility>
 
 #include "absl/functional/any_invocable.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "xla/pjrt/cpu/cpu_event.h"
 #include "xla/pjrt/cpu/tracked_cpu_device_buffer.h"
 #include "xla/pjrt/device_event.h"
+#include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/pjrt/transpose.h"
@@ -96,7 +98,9 @@ class CpuRawBuffer : public CommonPjRtRawBuffer {
 
   // Allocates owning memory.
   static absl::StatusOr<tsl::RCReference<CpuRawBuffer>> Allocate(
-      PjRtMemorySpace* memory_space, size_t size_bytes);
+      PjRtMemorySpace* memory_space, size_t size_bytes,
+      const CpuDeviceMemory::Allocator& allocator =
+          CpuDeviceMemory::DefaultAllocator());
 
   // Imports foreign memory.
   static absl::StatusOr<tsl::RCReference<CpuRawBuffer>> ImportForeignMemory(

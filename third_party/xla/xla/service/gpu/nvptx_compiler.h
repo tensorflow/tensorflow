@@ -82,6 +82,12 @@ class NVPTXCompiler : public GpuCompiler {
       const se::SemanticVersion& toolkit_version,
       se::StreamExecutor* stream_executor) override;
 
+  absl::Status AddFusionAutotuningPass(
+      HloPassPipeline* pipeline, HloModule* hlo_module,
+      const CompileOptions& options, tsl::thread::ThreadPool* thread_pool,
+      stream_executor::StreamExecutor* stream_executor,
+      HloCostAnalysis::ShapeSizeFunction shape_size_fn) override;
+
   absl::Status RunCudnnCompilerPasses(HloModule* module,
                                       se::StreamExecutor* stream_exec,
                                       BinaryMap* dnn_compiled_graphs) override;

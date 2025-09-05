@@ -84,13 +84,13 @@ def TTXLA_ExtractOp : TTXLA_OpWithOffsetSizesAndStrides<"extract", [
   }];
   let builders = [
     OpBuilder<(ins "RankedTensorType":$result_type, "Value":$src,
-      "ValueRange":$offsets,  "ValueRange":$strides,
-      CArg<"ArrayRef<int64_t>">:$src_shape,
-      CArg<"ArrayRef<int64_t>">:$src_layout)>,
+      "ValueRange":$offsets, "ArrayRef<int64_t>":$sizes,
+      "ArrayRef<int64_t>":$strides, "ArrayRef<int64_t>":$src_shape,
+      "ArrayRef<int64_t>":$src_layout)>,
     OpBuilder<(ins "RankedTensorType":$result_type, "Value":$src,
-      "ArrayRef<OpFoldResult>":$offsets,  "ArrayRef<OpFoldResult>":$strides,
-      CArg<"ArrayRef<int64_t>">:$src_shape,
-      CArg<"ArrayRef<int64_t>">:$src_layout)>
+      "ArrayRef<OpFoldResult>":$offsets, "ArrayRef<int64_t>":$sizes,
+      "ArrayRef<int64_t>":$strides, "ArrayRef<int64_t>":$src_shape,
+      "ArrayRef<int64_t>":$src_layout)>
   ];
 
   let arguments = (ins
@@ -117,7 +117,7 @@ def TTXLA_ExtractOp : TTXLA_OpWithOffsetSizesAndStrides<"extract", [
     /// Return the expected rank of each of the `static_offsets`, `static_sizes`
     /// and `static_strides` attributes.
     std::array<unsigned, 3> getArrayAttrMaxRanks() {
-      unsigned rank = getType().getRank();
+      unsigned rank = getSrcShape().size();
       return {rank, rank, rank};
     }
     /// Return the number of leading operands before the `offsets`, `sizes` and
@@ -145,13 +145,13 @@ def TTXLA_InsertOp : TTXLA_OpWithOffsetSizesAndStrides<"insert"> {
   }];
   let builders = [
     OpBuilder<(ins "Value":$src, "Value":$dst,
-      "ValueRange":$offsets,  "ValueRange":$strides,
-      CArg<"ArrayRef<int64_t>">:$dst_shape,
-      CArg<"ArrayRef<int64_t>">:$dst_layout)>,
+      "ValueRange":$offsets, "ArrayRef<int64_t>":$sizes,
+      "ArrayRef<int64_t>":$strides, "ArrayRef<int64_t>":$dst_shape,
+      "ArrayRef<int64_t>":$dst_layout)>,
     OpBuilder<(ins "Value":$src, "Value":$dst,
-      "ArrayRef<OpFoldResult>":$offsets,  "ArrayRef<OpFoldResult>":$strides,
-      CArg<"ArrayRef<int64_t>">:$dst_shape,
-      CArg<"ArrayRef<int64_t>">:$dst_layout)>
+      "ArrayRef<OpFoldResult>":$offsets, "ArrayRef<int64_t>":$sizes,
+      "ArrayRef<int64_t>":$strides, "ArrayRef<int64_t>":$dst_shape,
+      "ArrayRef<int64_t>":$dst_layout)>
   ];
 
   let arguments = (ins
@@ -180,7 +180,7 @@ def TTXLA_InsertOp : TTXLA_OpWithOffsetSizesAndStrides<"insert"> {
     /// Return the expected rank of each of the `static_offsets`, `static_sizes`
     /// and `static_strides` attributes.
     std::array<unsigned, 3> getArrayAttrMaxRanks() {
-      unsigned rank = getSrc().getType().getRank();
+      unsigned rank = getDstShape().size();
       return {rank, rank, rank};
     }
     /// Return the number of leading operands before the `offsets`, `sizes` and
@@ -196,6 +196,18 @@ def TTXLA_SqueezeDimsOp : TTXLA_Op<"squeeze_dims", [
     let arguments = (ins TT_Tensor:$src, I32Attr:$axis);
     let results = (outs TT_Tensor:$result);
     let assemblyFormat = "$src attr-dict `:` type($src) `->` type($result)";
+}
+
+def TTXLA_GetTidOp : TTXLA_Op<"get_tid", [Pure]> {
+  let summary = "Get the thread ID within a triton kernel.";
+  let description = [{
+    This operation returns the thread ID within a kernel.
+    Only the X dimension is supported. The result is a 32-bit
+    integer which in CUDA terms is threadIdx.x.
+  }];
+  let arguments = (ins);
+  let results = (outs I32:$result);
+  let assemblyFormat = "attr-dict `:` functional-type(operands, $result)";
 }
 
 #endif // XLA_BACKENDS_GPU_CODEGEN_TRITON_IR_TRITON_XLA_OPS_TD_

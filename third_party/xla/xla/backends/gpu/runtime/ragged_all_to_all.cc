@@ -17,6 +17,7 @@ limitations under the License.
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <type_traits>
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -37,7 +38,7 @@ namespace xla::gpu {
 
 namespace {
 
-template <typename T>
+template <int64_t kVectorSize>
 absl::Status LaunchTypedKernel(
     se::Stream* stream, se::StreamExecutor* executor,
     const se::ThreadDim& thread_dims, const se::BlockDim& block_dims,
@@ -50,8 +51,9 @@ absl::Status LaunchTypedKernel(
     se::DeviceMemoryBase output_offsets_buffer, int64_t num_updates_per_output,
     int64_t num_row_elements) {
   TF_ASSIGN_OR_RETURN(
-      auto kernel, se::gpu::GpuKernelRegistry::GetGlobalRegistry()
-                       .LoadKernel<se::gpu::RaggedAllToAllKernel<T>>(executor));
+      auto kernel,
+      se::gpu::GpuKernelRegistry::GetGlobalRegistry()
+          .LoadKernel<se::gpu::RaggedAllToAllKernel<kVectorSize>>(executor));
 
   return kernel.Launch(thread_dims, block_dims, stream, input_buffer,
                        output_ptrs, input_offsets_buffer, send_sizes_buffer,
@@ -63,11 +65,10 @@ absl::Status LaunchTypedKernel(
 
 bool IsRaggedAllToAllKernelSupported(int64_t num_outputs,
                                      PrimitiveType element_type) {
-  int bit_width = primitive_util::BitWidth(element_type);
-
   return num_outputs <= stream_executor::gpu::kMaxNumRaggedAllToAllOutputPtrs &&
-         (bit_width == 8 || bit_width == 16 || bit_width == 32 ||
-          bit_width == 64);
+         // Currently, the kernel doesn't support data types that are smaller
+         // than 1 byte.
+         primitive_util::BitWidth(element_type) % 8 == 0;
 }
 
 absl::Status RunRaggedAllToAllKernel(
@@ -94,11 +95,11 @@ absl::Status RunRaggedAllToAllKernel(
   int64_t num_blocks_x = num_updates_per_output * num_outputs;
 
   int64_t num_vectorized_row_elements = num_row_elements;
-  int64_t vectorized_bitwidth = xla::primitive_util::BitWidth(element_type);
+  int64_t vector_size_bytes = xla::primitive_util::BitWidth(element_type) / 8;
 
-  while (num_vectorized_row_elements % 2 == 0 && vectorized_bitwidth < 64) {
+  while (num_vectorized_row_elements % 2 == 0 && vector_size_bytes < 8) {
     num_vectorized_row_elements /= 2;
-    vectorized_bitwidth *= 2;
+    vector_size_bytes *= 2;
   }
 
   // blockIdx.y and threadIdx.x are used to iterate over the elements of the
@@ -122,21 +123,21 @@ absl::Status RunRaggedAllToAllKernel(
 
   auto launch_kernel = [&](auto type) -> absl::Status {
     using T = decltype(type);
-    return LaunchTypedKernel<T>(
+    return LaunchTypedKernel<T::value>(
         stream, executor, thread_dims, block_dims, input_buffer, output_ptrs,
         input_offsets_buffer, send_sizes_buffer, output_offsets_buffer,
         num_updates_per_output, num_vectorized_row_elements);
   };
 
-  switch (vectorized_bitwidth) {
+  switch (vector_size_bytes) {
+    case 1:
+      return launch_kernel(std::integral_constant<int64_t, 1>{});
+    case 2:
+      return launch_kernel(std::integral_constant<int64_t, 2>{});
+    case 4:
+      return launch_kernel(std::integral_constant<int64_t, 4>{});
     case 8:
-      return launch_kernel(uint8_t{});
-    case 16:
-      return launch_kernel(uint16_t{});
-    case 32:
-      return launch_kernel(uint32_t{});
-    case 64:
-      return launch_kernel(uint64_t{});
+      return launch_kernel(std::integral_constant<int64_t, 8>{});
     default:
       return absl::InvalidArgumentError(absl::StrCat(
           "Unsupported element type: ",

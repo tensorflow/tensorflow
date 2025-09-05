@@ -194,13 +194,17 @@ absl::StatusOr<TritonFusionAnalysis> TritonFusionAnalysis::Execute(
   TritonFusionAnalysis analysis;
   const HloInstruction* dot =
       hlo_query::GetFirstInstructionWithOpcode(computation, HloOpcode::kDot);
+  if (dot == nullptr) {
+    dot = hlo_query::GetFirstInstructionWithOpcode(computation,
+                                                   HloOpcode::kScaledDot);
+  }
   TF_RET_CHECK(dot != nullptr);
   TF_RETURN_IF_ERROR(analysis.ExecuteForDotFusion(*dot, split_k));
   return analysis;
 }
 
 absl::StatusOr<TritonFusionAnalysis> TritonFusionAnalysis::Execute(
-    const HloDotInstruction& dot, int split_k) {
+    const HloInstruction& dot, int split_k) {
   TritonFusionAnalysis analysis;
   TF_RETURN_IF_ERROR(analysis.ExecuteForDotFusion(dot, split_k));
   return analysis;
@@ -233,9 +237,19 @@ bool TritonFusionAnalysis::IsBatchDimMinorForInt4Parameter(
 
 absl::Status TritonFusionAnalysis::ExecuteForDotFusion(
     const HloInstruction& dot, const int split_k) {
+  is_scaled_dot_ = dot.opcode() == HloOpcode::kScaledDot;
+
   DotRequirements lhs_requirements(kNoSplitRequirement);
-  for (const Scope scope : {Scope::LHS, Scope::RHS}) {
-    const int operand_number = static_cast<int>(scope);
+  for (const Scope scope :
+       {Scope::LHS, Scope::RHS, Scope::LHS_SCALE, Scope::RHS_SCALE}) {
+    int operand_number = static_cast<int>(scope);
+    if (operand_number >= dot.operand_count()) {
+      continue;  // Scale operands are optional.
+    }
+    if (is_scaled_dot_ && (operand_number == 1 || operand_number == 2)) {
+      // Operands for scaled dot: (lhs, lhs_scale, rhs, rhs_scale)
+      operand_number = 3 - operand_number;
+    }
     TF_ASSIGN_OR_RETURN(auto context, FusionContext::FromDotOperand(
                                           dot, operand_number, split_k));
     TF_RETURN_IF_ERROR(context.PropagateDimensionOrdersToParameters(
@@ -297,8 +311,10 @@ absl::Status TritonFusionAnalysis::ExecuteForDotFusion(
 
 std::optional<TritonFusionAnalysis::Scope>
 TritonFusionAnalysis::QueryInstructionScope(const HloInstruction& hlo) const {
-  for (const Scope& scope : {Scope::LHS, Scope::RHS, Scope::OUTPUT}) {
-    if (iter_specs_.at(scope).count(&hlo) > 0) {
+  for (const Scope& scope : {Scope::LHS, Scope::RHS, Scope::OUTPUT,
+                             Scope::LHS_SCALE, Scope::RHS_SCALE}) {
+    auto it = iter_specs_.find(scope);
+    if (it != iter_specs_.end() && it->second.count(&hlo) > 0) {
       return scope;
     }
   }
@@ -336,6 +352,10 @@ std::string ScopeToString(TritonFusionAnalysis::Scope s) {
       return "LHS";
     case TritonFusionAnalysis::Scope::RHS:
       return "RHS";
+    case TritonFusionAnalysis::Scope::LHS_SCALE:
+      return "LHS_SCALE";
+    case TritonFusionAnalysis::Scope::RHS_SCALE:
+      return "RHS_SCALE";
     case TritonFusionAnalysis::Scope::OUTPUT:
       return "OUTPUT";
   }

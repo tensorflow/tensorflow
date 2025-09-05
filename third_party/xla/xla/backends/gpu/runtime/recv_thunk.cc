@@ -99,9 +99,6 @@ absl::StatusOr<bool> RecvThunk::RunCollective(const ExecuteParams& params,
           << CollectiveOpGroupModeToString(config_.config.group_mode) << " ("
           << hlo_name_ << ")";
 
-  TF_RETURN_IF_ERROR(
-      MaybeRegisterBuffers(stream.parent(), {buffer}, comm_handle.comm));
-
   const std::optional<int64_t> source_id = source_target.source;
   se::DeviceMemoryBase dest_addr = buffer.destination_buffer;
 
@@ -132,6 +129,8 @@ absl::StatusOr<bool> RecvThunk::RunCollective(const ExecuteParams& params,
       ++(*counter);
     }
     if (should_run) {
+      TF_RETURN_IF_ERROR(
+          MaybeRegisterBuffers(stream.parent(), {buffer}, comm_handle.comm));
       auto event = comm_handle.comm->Recv(
           dest_addr, buffer.element_type, buffer.element_count,
           RankId(*source_id), GpuCollectives::On(stream));

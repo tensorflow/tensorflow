@@ -21,6 +21,7 @@ limitations under the License.
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <numeric>
 #include <optional>
 #include <string>
@@ -561,15 +562,11 @@ int64_t SymbolicExpr::GetValue() const { return impl_->value_; }
 
 bool SymbolicExpr::operator<(const SymbolicExpr& other) const {
   CHECK(*this && other);
+  if (this == &other) {
+    return false;
+  }
   SymbolicExprType lhs_type = GetType();
   SymbolicExprType rhs_type = other.GetType();
-
-  const bool lhs_is_const = (lhs_type == SymbolicExprType::kConstant);
-  const bool rhs_is_const = (rhs_type == SymbolicExprType::kConstant);
-  if (lhs_is_const != rhs_is_const) {
-    // Non-constants come before constants.
-    return rhs_is_const;
-  }
 
   if (lhs_type != rhs_type) {
     return lhs_type < rhs_type;
@@ -581,6 +578,11 @@ bool SymbolicExpr::operator<(const SymbolicExpr& other) const {
       return GetValue() < other.GetValue();
     case SymbolicExprType::kAdd:
     case SymbolicExprType::kMul:
+    case SymbolicExprType::kFloorDiv:
+    case SymbolicExprType::kCeilDiv:
+    case SymbolicExprType::kMod:
+    case SymbolicExprType::kMax:
+    case SymbolicExprType::kMin:
       if (GetLHS() != other.GetLHS()) {
         return GetLHS() < other.GetLHS();
       }
@@ -900,6 +902,30 @@ SymbolicExpr SymbolicExprContext::CreateBinaryOp(SymbolicExprType type,
 
 SymbolicExpr SymbolicExprContext::Parse(absl::string_view expr_str) {
   return Parser(expr_str, this).Parse();
+}
+
+void SymbolicExpr::Walk(
+    const std::function<void(SymbolicExpr)>& callback) const {
+  if (!*this) {
+    return;
+  }
+
+  switch (GetType()) {
+    case SymbolicExprType::kConstant:
+    case SymbolicExprType::kVariable:
+      break;
+    case SymbolicExprType::kAdd:
+    case SymbolicExprType::kMul:
+    case SymbolicExprType::kFloorDiv:
+    case SymbolicExprType::kCeilDiv:
+    case SymbolicExprType::kMod:
+    case SymbolicExprType::kMin:
+    case SymbolicExprType::kMax:
+      GetLHS().Walk(callback);
+      GetRHS().Walk(callback);
+      break;
+  }
+  callback(*this);
 }
 
 }  // namespace gpu

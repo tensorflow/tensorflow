@@ -44,6 +44,11 @@ bool IsCollectiveOp(const HloInstruction* instr) {
                           HloOpcode::kCollectivePermuteStart>(instr);
 }
 
+bool IsAllReduceOp(const HloInstruction* instr) {
+  return HloPredicateIsOp<HloOpcode::kAllReduce, HloOpcode::kAllReduceStart>(
+      instr);
+}
+
 int64_t GetShapeSize(const Shape& shape) {
   if (shape.IsTuple()) {
     int64_t size_in_bytes = 0;
@@ -93,7 +98,8 @@ absl::StatusOr<bool> CollectiveBackendAssigner::Run(
               << " threshold_in_bytes_=" << threshold_in_bytes_;
       bool use_nvshmem = (num_visible_devices_per_process_ == 1 ||
                           comm_type == GPUCommunicationType::SINGLE_HOST) &&
-                         GetShapeSize(instr->shape()) < threshold_in_bytes_;
+                         (!IsAllReduceOp(instr) ||
+                          GetShapeSize(instr->shape()) < threshold_in_bytes_);
       if (!use_nvshmem) {
         continue;
       }

@@ -1695,10 +1695,16 @@ absl::string_view GetModuleFlashAttentionBMMScaleSoftmaxBMMCommonF8() {
 // BMM1 - Scale - Softmax - BMM2 fp8
 TEST_F(FlashAttentionBMMScaleSoftmaxBMMF8,
        Flash_Attention_Inference_BMM1_NoMask_Softmax_BMM2_BNTH_F8) {
-  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
+  if (skip_reason_) {
+    GTEST_SKIP() << *skip_reason_;
+  }
   if (GetDnnVersionInfoOrDefault(backend().default_stream_executor()) <
       se::dnn::VersionInfo(9, 1, 0)) {
     GTEST_SKIP() << "Flash Attention requires cuDNN >= 9.1.0.";
+  }
+  if (GetDnnVersionInfoOrDefault(backend().default_stream_executor()) ==
+      se::dnn::VersionInfo(9, 10, 0)) {
+    GTEST_SKIP() << "Flash Attention is not supported in cuDNN 9.10.0.";
   }
   auto cc = GetCudaComputeCapability();
   if (!cc.IsAtLeastHopper()) {
@@ -1872,10 +1878,16 @@ TEST_F(FlashAttentionBMMScaleSoftmaxBMMF8,
 
 TEST_F(FlashAttentionBMMScaleSoftmaxBMMF8,
        Flash_Attention_Inference_BMM1_NoMask_Softmax_BMM2_BTNH_F8) {
-  if (skip_reason_) GTEST_SKIP() << *skip_reason_;
+  if (skip_reason_) {
+    GTEST_SKIP() << *skip_reason_;
+  }
   if (GetDnnVersionInfoOrDefault(backend().default_stream_executor()) <
       se::dnn::VersionInfo(9, 1, 0)) {
     GTEST_SKIP() << "Flash Attention requires cuDNN >= 9.1.0.";
+  }
+  if (GetDnnVersionInfoOrDefault(backend().default_stream_executor()) ==
+      se::dnn::VersionInfo(9, 10, 0)) {
+    GTEST_SKIP() << "Flash Attention is not supported in cuDNN 9.10.0.";
   }
   auto cc = GetCudaComputeCapability();
   if (!cc.IsAtLeastHopper()) {

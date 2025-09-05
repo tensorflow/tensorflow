@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_MODEL_EXPERIMENTAL_SYMBOLIC_MAP_H_
 #define XLA_SERVICE_GPU_MODEL_EXPERIMENTAL_SYMBOLIC_MAP_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 
@@ -39,6 +40,12 @@ class SymbolicMap {
   SymbolicExprContext* GetContext() const { return ctx_; }
   int64_t GetNumDims() const { return num_dimensions_; }
   int64_t GetNumSymbols() const { return num_symbols_; }
+  SymbolicExpr GetDimExpression(unsigned idx) const {
+    return ctx_->CreateVariable(idx);
+  }
+  SymbolicExpr GetSymbolExpression(unsigned idx) const {
+    return ctx_->CreateVariable(num_dimensions_ + idx);
+  }
   int64_t GetNumResults() const { return exprs_.size(); }
   const llvm::SmallVector<SymbolicExpr>& GetResults() const { return exprs_; }
   SymbolicExpr GetResult(unsigned idx) const { return exprs_[idx]; }
@@ -82,6 +89,9 @@ class SymbolicMap {
   // this.compose(other): (d0, s0, s1, s2) -> (d0 * 2 + 3 * s1 + s0, d0 + s2)
   SymbolicMap Compose(const SymbolicMap& other) const;
 
+  // Creates a new SymbolicMap with a subset of the results of this map.
+  SymbolicMap GetSubMap(absl::Span<const size_t> result_indices) const;
+
   SymbolicMap Replace(SymbolicExpr expr, SymbolicExpr replacement) const;
 
   bool operator==(const SymbolicMap& other) const;
@@ -109,6 +119,16 @@ llvm::SmallBitVector GetUnusedDimensionsBitVector(const SymbolicMap& map);
 // Returns a bitvector marking symbols that are not used in any expression in
 // the map.
 llvm::SmallBitVector GetUnusedSymbolsBitVector(const SymbolicMap& map);
+
+// Creates a new SymbolicMap with unused dimensions removed.
+// Expressions are updated to use the new dimension indices.
+SymbolicMap CompressDims(const SymbolicMap& map,
+                         const llvm::SmallBitVector& unused_dims);
+
+// Creates a new SymbolicMap with unused symbols removed.
+// Expressions are updated to use the new symbol indices.
+SymbolicMap CompressSymbols(const SymbolicMap& map,
+                            const llvm::SmallBitVector& unused_symbols);
 
 }  // namespace gpu
 }  // namespace xla

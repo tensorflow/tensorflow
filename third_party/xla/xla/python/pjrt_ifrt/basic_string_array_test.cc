@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -58,7 +59,6 @@ namespace {
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 using ::testing::HasSubstr;
-using ::tsl::testing::StatusIs;
 
 // ////////////////////////////////////////////////////////////////////////////
 //
@@ -109,8 +109,8 @@ absl::StatusOr<std::pair<tsl::RCReference<BasicStringArray>,
 CreateNonReadyTestArray(
     Client* client, Device* const device,
     BasicStringArray::OnDoneWithBuffer on_done_with_buffer) {
-  auto buffers_promise = Future<BasicStringArray::Buffers>::CreatePromise();
-  auto buffers_future = Future<BasicStringArray::Buffers>(buffers_promise);
+  auto [buffers_promise, buffers_future] =
+      Future<BasicStringArray::Buffers>::MakePromise();
   Shape shape({1});
   ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
 
@@ -158,19 +158,20 @@ TEST(BasicStringArrayTest, Destruction) {
   BasicStringArray::OnDoneWithBuffer on_done_with_buffer =
       [&on_done_with_buffer_called]() { on_done_with_buffer_called.Notify(); };
 
-  auto array_creation_status_promise = PjRtFuture<>::CreatePromise();
+  auto [array_creation_promise, array_creation_future] =
+      PjRtFuture<>::MakePromise();
 
-  tsl::Env::Default()->SchedClosure(([&]() {
-    auto array = CreateTestArray(client.get(),
-                                 Future<BasicStringArray::Buffers>(buffers),
-                                 std::move(on_done_with_buffer));
-
-    array_creation_status_promise.Set(array.status());
-    // `array` goes out of scope and gets destroyed.
-  }));
+  tsl::Env::Default()->SchedClosure(
+      ([&, promise = std::move(array_creation_promise)]() mutable {
+        auto array = CreateTestArray(client.get(),
+                                     Future<BasicStringArray::Buffers>(buffers),
+                                     std::move(on_done_with_buffer));
+        promise.Set(array.status());
+        // `array` goes out of scope and gets destroyed.
+      }));
 
   // Make sure that the array has been created successfully.
-  TF_ASSERT_OK(Future<>(array_creation_status_promise).Await());
+  TF_ASSERT_OK(array_creation_future.Await());
 
   // Destruction must release the buffer. That is, the `on_done_with_buffer`
   // callback must be called.
@@ -237,8 +238,8 @@ TEST(BasicStringArrayTest, Delete) {
 TEST(GetReadyFutureTest, SuccessCase) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
   // Make a BasicStringArray with a future that is not ready.
-  auto promise = Future<BasicStringArray::Buffers>::CreatePromise();
-  auto buffers_future = Future<BasicStringArray::Buffers>(promise);
+  auto [promise, buffers_future] =
+      Future<BasicStringArray::Buffers>::MakePromise();
   TF_ASSERT_OK_AND_ASSIGN(auto array,
                           CreateTestArray(client.get(), buffers_future,
                                           /*on_done_with_buffer=*/nullptr));
@@ -250,15 +251,16 @@ TEST(GetReadyFutureTest, SuccessCase) {
   // Make the buffers future ready asynchronously.
   BasicStringArray::Buffers buffers;
   buffers.push_back({absl::Cord("abc"), absl::Cord("def")});
-  tsl::Env::Default()->SchedClosure([&]() { promise.Set(buffers); });
+  tsl::Env::Default()->SchedClosure(
+      [&, promise = std::move(promise)]() mutable { promise.Set(buffers); });
   TF_EXPECT_OK(ready_future.Await());
 }
 
 TEST(GetReadyFutureTest, FailureCases) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
   // Make a BasicStringArray with a future that is not ready.
-  auto promise = Future<BasicStringArray::Buffers>::CreatePromise();
-  auto buffers_future = Future<BasicStringArray::Buffers>(promise);
+  auto [promise, buffers_future] =
+      Future<BasicStringArray::Buffers>::MakePromise();
   TF_ASSERT_OK_AND_ASSIGN(auto array,
                           CreateTestArray(client.get(), buffers_future,
                                           /*on_done_with_buffer=*/nullptr));
@@ -269,7 +271,9 @@ TEST(GetReadyFutureTest, FailureCases) {
 
   // Make the buffers future ready with an error asynchronously
   tsl::Env::Default()->SchedClosure(
-      [&]() { promise.Set(absl::InternalError("injected error")); });
+      [&, promise = std::move(promise)]() mutable {
+        promise.Set(absl::InternalError("injected error"));
+      });
 
   EXPECT_THAT(ready_future.Await(),
               absl_testing::StatusIs(absl::StatusCode::kInternal));

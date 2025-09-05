@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/substitute.h"
 #include "xla/autotuning.pb.h"
@@ -29,6 +30,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/nvptx_compiler.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.pb.h"
@@ -41,7 +43,6 @@ namespace xla {
 namespace gpu {
 
 using ::tsl::proto_testing::EqualsProto;
-using ::tsl::testing::IsOk;
 
 // Counts the number of configs with is_tma_allowed set to true.
 int CountTmaAllowed(
@@ -68,7 +69,8 @@ class TritonBlockLevelFusionEmitterBackendTest
                      .value()
                      ->ExecutorForDevice(0)
                      .value(),
-                 &debug_options_, &compiler_) {
+                 &debug_options_, &compiler_,
+                 compiler_.ShapeSizeBytesFunction()) {
     // TODO(b/315957220): Remove the experimental flags once TMA is enabled by
     // default.
     debug_options_.set_xla_gpu_experimental_enable_triton_tma(true);
@@ -134,12 +136,10 @@ ENTRY %main {
 // BlockLevelFusionConfig when the backend config does not specify
 // a block_level_fusion_config.
 //
-// The HLO module contains a fusion instruction with a Triton backend config,
-// but without the detailed block_level_fusion_config settings. This test
-// verifies that the backend creates a reasonable default config.
+// We do not test the exact contents of the config here as this is a call to the
+// cost model, which has its own tests.
 TEST_F(TritonBlockLevelFusionEmitterBackendTest, GetDefaultConfig_Fallback) {
-  // Parse an HLO module with a fusion instruction having a Triton backend
-  // config that lacks an explicit block_level_fusion_config.
+  // Parse an HLO module with a fusion instruction lacking any backend config.
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 HloModule m
@@ -150,10 +150,8 @@ HloModule m
 
 ENTRY %main {
   %p0 = f32[16,1,64]{2,1,0} parameter(0), metadata={op_name="a"}
-  ROOT %wrapped_transpose = f32[64,1,16]{2,1,0} fusion(%p0), kind=kCustom,
-  calls=%wrapped_transpose_computation,
-  metadata={op_name="a"},
-  backend_config={"fusion_backend_config":{"kind":"__triton"}}
+  ROOT %wrapped_transpose = f32[64,1,16]{2,1,0} fusion(%p0), kind=kInput,
+  calls=%wrapped_transpose_computation
 }
 )"));
 
@@ -165,111 +163,11 @@ ENTRY %main {
   // Verify that the returned config is indeed a BlockLevelFusionConfig.
   BlockLevelFusionConfig block_level_fusion_config;
   ASSERT_TRUE(config->UnpackTo(&block_level_fusion_config));
-  // Verify that the default config contains default tiles sizes for the
-  // dimensions of the input.
-  EXPECT_THAT(block_level_fusion_config, EqualsProto(R"pb(
-                output_tiles { sizes: 16 sizes: 1 sizes: 16 }
-                num_warps: 1
-                num_ctas: 1
-                num_stages: 1
-              )pb"));
-}
-
-// Tests that GetDefaultConfig correctly handles shapes containing zero-sized
-// dimensions.
-//
-// The HLO module defines a fusion instruction with an input tensor that has a
-// zero-sized dimension (dimension size 0). The backend config specifies a
-// Triton fusion kind but does not include a block-level fusion config. This
-// test verifies that the default config is generated correctly and handles
-// zero-sized dimensions by preserving them in the output tile sizes.
-TEST_F(TritonBlockLevelFusionEmitterBackendTest,
-       GetDefaultConfig_Fallback_ZeroDim) {
-  // Parse an HLO module with a fusion instruction that has a zero-sized
-  // dimension in the input shape.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
-HloModule m
-%wrapped_transpose_computation {
-  %param_0 = f32[5,0,10]{2,1,0} parameter(0)
-  ROOT %transpose.3.1 = f32[10,0,5]{2,1,0} transpose(%param_0), dimensions={2,1,0}
-}
-
-ENTRY %main {
-  %p0 = f32[5,0,10]{2,1,0} parameter(0), metadata={op_name="a"}
-  ROOT %wrapped_transpose = f32[10,0,5]{2,1,0} fusion(%p0), kind=kCustom,
-  calls=%wrapped_transpose_computation,
-  metadata={op_name="a"},
-  backend_config={"fusion_backend_config":{"kind":"__triton"}}
-}
-)"));
-
-  // Call GetDefaultConfig on the root instruction (the fusion op).
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<BackendConfig> config,
-      backend_.GetDefaultConfig(
-          *(module->entry_computation()->root_instruction())));
-  // Verify that the returned config is indeed a BlockLevelFusionConfig.
-  BlockLevelFusionConfig block_level_fusion_config;
-  ASSERT_TRUE(config->UnpackTo(&block_level_fusion_config));
-  // Verify the default output tile sizes:
-  // - The tile size for the dimension with size 10 is 16
-  // - The zero-sized dimension remains zero
-  // - The tile size for the dimension with size 5 is 8.
-  // Also verify default tuning parameters: 1 warp, 1 CTA, 1 stage.
-  EXPECT_THAT(block_level_fusion_config, EqualsProto(R"pb(
-                output_tiles { sizes: 16 sizes: 0 sizes: 8 }
-                num_warps: 1
-                num_ctas: 1
-                num_stages: 1
-              )pb"));
-}
-
-// Tests that GetDefaultConfig correctly generates default block-level fusion
-// configurations for a fusion instruction that returns a tuple of two array
-// shapes.
-TEST_F(TritonBlockLevelFusionEmitterBackendTest,
-       GetDefaultConfig_Fallback_tuple2) {
-  // Parse and verify an HLO module with a fusion instruction that returns a
-  // tuple of two array shapes.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
-HloModule m
-%wrapped_transpose_computation {
-  %param_0 = f32[16,64]{1,0} parameter(0)
-  %param_1 = f32[32,12]{1,0} parameter(1)
-  %transpose.3.1 = f32[64,16]{1,0} transpose(%param_0), dimensions={1,0}
-  %transpose.4.1 = f32[12,32]{1,0} transpose(%param_1), dimensions={1,0}
-  ROOT %tu = (f32[64,16]{1,0}, f32[12,32]{1,0}) tuple(%transpose.3.1, %transpose.4.1)
-}
-
-ENTRY %main {
-  %p0 = f32[16,64]{1,0} parameter(0), metadata={op_name="a"}
-  %p1 = f32[32,12]{1,0} parameter(1), metadata={op_name="b"}
-  ROOT %wrapped_transpose = (f32[64,16]{1,0}, f32[12,32]{1,0}) fusion(%p0, %p1), kind=kCustom,
-  calls=%wrapped_transpose_computation,
-  metadata={op_name="ab"},
-  backend_config={"fusion_backend_config":{"kind":"__triton"}}
-}
-)"));
-
-  // Call GetDefaultConfig on the root instruction (the fusion op).
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<BackendConfig> config,
-      backend_.GetDefaultConfig(
-          *(module->entry_computation()->root_instruction())));
-  // Verify that the returned config is indeed a BlockLevelFusionConfig.
-  BlockLevelFusionConfig block_level_fusion_config;
-  ASSERT_TRUE(config->UnpackTo(&block_level_fusion_config));
-  // Check that the config correctly includes tiling info for both tuple
-  // elements
-  EXPECT_THAT(block_level_fusion_config, EqualsProto(R"pb(
-                output_tiles { sizes: 16 sizes: 16 }
-                output_tiles { sizes: 16 sizes: 16 }
-                num_warps: 1
-                num_ctas: 1
-                num_stages: 1
-              )pb"));
+  // Verify the config is reasonable.
+  EXPECT_GE(block_level_fusion_config.output_tiles_size(), 1);
+  EXPECT_GE(block_level_fusion_config.num_warps(), 1);
+  EXPECT_GE(block_level_fusion_config.num_ctas(), 1);
+  EXPECT_GE(block_level_fusion_config.num_stages(), 1);
 }
 
 // Tests that `GetSupportedConfigs` returns a correct list of valid backend
@@ -291,10 +189,8 @@ HloModule m
 
 ENTRY %main {
   %p0 = f32[16,1,64]{2,1,0} parameter(0), metadata={op_name="a"}
-  ROOT %wrapped_transpose = f32[64,1,16]{2,1,0} fusion(%p0), kind=kCustom,
-  calls=%wrapped_transpose_computation,
-  metadata={op_name="a"},
-  backend_config={"fusion_backend_config":{"kind":"__triton"}}
+  ROOT %wrapped_transpose = f32[64,1,16]{2,1,0} fusion(%p0), kind=kInput,
+  calls=%wrapped_transpose_computation
 }
 )"));
 
@@ -451,10 +347,8 @@ HloModule m
 
 ENTRY %main {
   %p0 = f32[16,64]{1,0} parameter(0), metadata={op_name="a"}
-  ROOT %wrapped_transpose = f32[64,16]{1,0} fusion(%p0), kind=kCustom,
-  calls=%wrapped_transpose_computation,
-  metadata={op_name="a"},
-  backend_config={"fusion_backend_config":{"kind":"__triton"}}
+  ROOT %wrapped_transpose = f32[64,16]{1,0} fusion(%p0), kind=kInput,
+  calls=%wrapped_transpose_computation
 }
 )"));
 
@@ -469,15 +363,6 @@ ENTRY %main {
   // Verify that the returned config is indeed a BlockLevelFusionConfig.
   BlockLevelFusionConfig block_level_fusion_config;
   ASSERT_TRUE(config->UnpackTo(&block_level_fusion_config));
-  // Verify the contents of the default config:
-  // - output_tiles: shape is tiled into [16,16] blocks
-  // - num_warps, num_ctas, num_stages are all 1 (basic launch setup)
-  EXPECT_THAT(block_level_fusion_config, EqualsProto(R"pb(
-                output_tiles { sizes: 16 sizes: 16 }
-                num_warps: 1
-                num_ctas: 1
-                num_stages: 1
-              )pb"));
 
   // Apply the generated config to the fusion instruction.
   EXPECT_THAT(backend_.ApplyConfig(*instr, *config), absl_testing::IsOk());
@@ -487,6 +372,9 @@ ENTRY %main {
   EXPECT_THAT(
       gpu_backend_config.fusion_backend_config().block_level_fusion_config(),
       EqualsProto(block_level_fusion_config));
+  EXPECT_EQ(gpu_backend_config.fusion_backend_config().kind(),
+            kTritonFusionKind);
+  EXPECT_EQ(instr->fusion_kind(), HloInstruction::FusionKind::kCustom);
 }
 
 TEST_F(TritonBlockLevelFusionEmitterBackendTest, Compile) {
@@ -531,10 +419,40 @@ ENTRY %main {
   EXPECT_THAT(executable, absl_testing::IsOk());
 }
 
+TEST_F(TritonBlockLevelFusionEmitterBackendTest,
+       CompileThroughCostModelConfig) {
+  // Parse an HLO module without any assigned backend config.
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule m
+%wrapped_transpose_computation {
+  %param_0 = f32[16,64]{1,0} parameter(0)
+  ROOT %transpose.3.1 = f32[64,16]{1,0} transpose(%param_0), dimensions={1,0}
+}
+
+ENTRY %main {
+  %p0 = f32[16,64]{1,0} parameter(0)
+  ROOT %wrapped_transpose = f32[64,16]{1,0} fusion(%p0), kind=kCustom,
+  calls=%wrapped_transpose_computation
+}
+)"));
+  // Call GetDefaultConfig on the root instruction (the fusion op).
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<BackendConfig> config,
+      backend_.GetDefaultConfig(
+          *(module->entry_computation()->root_instruction())));
+  // Attempt to compile the root instruction using the retrieved backend config.
+  absl::StatusOr<std::unique_ptr<Executable>> executable = backend_.Compile(
+      *(module->entry_computation()->root_instruction()), *config);
+  // Verify that compilation succeeded and returned a valid executable.
+  EXPECT_THAT(executable, absl_testing::IsOk());
+}
+
 TEST_F(TritonBlockLevelFusionEmitterBackendTest, UseDefaultConfigFlag) {
   auto backend = BlockLevelEmitterBackend(
       PlatformUtil::GetDefaultPlatform().value()->ExecutorForDevice(0).value(),
-      &debug_options_, &compiler_, /*use_default_config=*/true);
+      &debug_options_, &compiler_, compiler_.ShapeSizeBytesFunction(),
+      /*use_default_config=*/true);
   // Parse an HLO module containing a kCustom Triton fusion with a backend
   // config that includes block-level tiling parameters.
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,

@@ -103,7 +103,7 @@ class CopyInsertionTest : public HloHardwareIndependentTestBase {
   }
 
   const Shape scalar_shape_ = ShapeUtil::MakeShape(F32, {});
-  const AliasInfo alias_info_;
+  AliasInfo alias_info_;
 };
 
 TEST_F(CopyInsertionTest, SingleParameter) {

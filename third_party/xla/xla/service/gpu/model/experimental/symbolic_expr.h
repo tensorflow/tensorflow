@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_GPU_MODEL_EXPERIMENTAL_SYMBOLIC_EXPR_H_
 
 #include <cstdint>
+#include <functional>
 #include <string>
 
 #include "absl/strings/string_view.h"
@@ -37,15 +38,15 @@ class SymbolicExprStorage;
 typedef int64_t VariableID;
 
 enum class SymbolicExprType {
-  kConstant,
-  kVariable,
   kAdd,
   kMul,
+  kMod,
   kFloorDiv,
   kCeilDiv,
-  kMod,
   kMax,
   kMin,
+  kVariable,
+  kConstant,  // Constant should be the last type for the comparator.
   // TODO(karupayun): Add kIn operator.
   // kIn,  // 'var in [a, b]' .
 };
@@ -85,6 +86,10 @@ class SymbolicExpr {
       const llvm::DenseMap<SymbolicExpr, SymbolicExpr>& replacements) const;
 
   void GetUsedVariables(llvm::DenseSet<VariableID>& used_vars) const;
+
+  // Traverses the expression tree and calls the callback for each
+  // subexpression in postorder.
+  void Walk(const std::function<void(SymbolicExpr)>& callback) const;
 
   SymbolicExpr operator+(int64_t v) const;
   SymbolicExpr operator+(SymbolicExpr other) const;

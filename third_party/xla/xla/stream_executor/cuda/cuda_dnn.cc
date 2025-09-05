@@ -875,9 +875,6 @@ class CudnnConvolutionDescriptor {
     absl::Span<const int64_t> strides64 = convolution_descriptor.strides();
     absl::Span<const int64_t> padding64 = convolution_descriptor.padding();
     absl::Span<const int64_t> dilations64 = convolution_descriptor.dilations();
-    CHECK_NE(convolution_descriptor.pad_alignment(),
-             dnn::PadAlignment::kTensorFlowPadding)
-        << "TensorFlow padding alignment is not supported.";
 
     // cuDNN requires arrays of ints.
     std::vector<int> strides(convolution_descriptor.ndims());
@@ -2942,9 +2939,6 @@ GetCudnnOperationGraph(dnn::ConvolutionKind kind, dnn::DataType input_type,
   int conv_dim = convolution_descriptor.ndims();
 
   auto accumulator_type = ToCudnnDataType(GetConvAccumulatorType(input_type));
-  CHECK_NE(convolution_descriptor.pad_alignment(),
-           dnn::PadAlignment::kTensorFlowPadding)
-      << "TensorFlow padding alignment is not supported.";
 
   auto conv_desc =
       cudnn_frontend::ConvDescBuilder()
@@ -3291,9 +3285,6 @@ GetGenericCudnnOperationGraph(
                         /*is_virtual=*/op_descriptor.is_virtual));
 
   auto accumulator_type = ToCudnnDataType(GetConvAccumulatorType(input_type));
-  CHECK_NE(convolution_descriptor.pad_alignment(),
-           dnn::PadAlignment::kTensorFlowPadding)
-      << "TensorFlow padding alignment is not supported.";
 
   int conv_dim = convolution_descriptor.ndims();
   auto conv_desc =
@@ -3615,10 +3606,6 @@ GetCudnnFusedOperationGraph(
                   : CUDNN_CROSS_CORRELATION;
 
   int conv_dim = convolution_descriptor.ndims();
-
-  CHECK_NE(convolution_descriptor.pad_alignment(),
-           dnn::PadAlignment::kTensorFlowPadding)
-      << "TensorFlow padding alignment is not supported.";
 
   cudnnDataType_t cudnn_convolution_type = ToCudnnDataType(accumulator_type);
   cudnnDataType_t cudnn_activation_type = ToCudnnDataType(activation_type);

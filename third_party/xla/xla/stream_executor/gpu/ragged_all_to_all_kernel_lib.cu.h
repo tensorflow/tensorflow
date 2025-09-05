@@ -23,6 +23,12 @@ limitations under the License.
 
 namespace stream_executor::gpu {
 
+// A helper structure to load and store data of fixed number of bytes.
+template <int64_t kSize>
+struct alignas(kSize) Vec {
+  uint8_t data[kSize];
+};
+
 // RaggedAllToAll instruction performs a collective AllToAll operation on ragged
 // tensors. For the semantics of each operand see the documentation of
 // `RaggedAllToAll` HLO instruction.
@@ -50,17 +56,20 @@ namespace stream_executor::gpu {
 // Launch parameters:
 //  - Block grid: (N*num_updates_per_rank, num_blocks_per_update, 1)
 //  - Thread grid: (num_threads_per_update, 1, 1)
-template <typename T>
+template <int64_t kVectorSize>
 __global__ void __launch_bounds__(128) RaggedAllToAllKernelImpl(
-    const T* __restrict__ input_ptr,
+    const void* __restrict__ input_ptr,
     std::array<void* __restrict__, kMaxNumRaggedAllToAllOutputPtrs> output_ptrs,
     const int64_t* __restrict__ input_offsets_ptr,
     const int64_t* __restrict__ send_sizes_ptr,
     const int64_t* __restrict__ output_offsets_ptr,
     int64_t num_updates_per_replica, int64_t num_row_elements) {
+  using T = Vec<kVectorSize>;
+
   int64_t update_idx = blockIdx.x;
   int64_t output_idx = update_idx / num_updates_per_replica;
 
+  const T* typed_input_ptr = static_cast<const T* __restrict__>(input_ptr);
   T* output_ptr = static_cast<T* __restrict__>(output_ptrs[output_idx]);
 
   int64_t input_offset = input_offsets_ptr[update_idx];
@@ -74,7 +83,8 @@ __global__ void __launch_bounds__(128) RaggedAllToAllKernelImpl(
 
   for (int64_t i = threadIdx.x + blockIdx.y * blockDim.x; i < update_size;
        i += blockDim.x * gridDim.y) {
-    output_ptr[output_offset_start + i] = input_ptr[input_offset_start + i];
+    output_ptr[output_offset_start + i] =
+        typed_input_ptr[input_offset_start + i];
   }
 }
 }  // namespace stream_executor::gpu

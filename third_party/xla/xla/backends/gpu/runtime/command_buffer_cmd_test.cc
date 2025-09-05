@@ -60,6 +60,24 @@ static se::StreamExecutor* GpuExecutor() {
   return platform->ExecutorForDevice(0).value();
 }
 
+// Some of the tests rely on CUDA 12.9+ features.
+bool IsAtLeastCuda12900(const se::StreamExecutor* stream_executor) {
+  const auto& device_description = stream_executor->GetDeviceDescription();
+  const auto* cuda_cc = std::get_if<se::CudaComputeCapability>(
+      &device_description.gpu_compute_capability());
+  if (cuda_cc != nullptr) {
+    // We need a recent driver to support the feature at runtime and we need a
+    // recent version of the toolkit at compile time, so that we have access to
+    // the driver's headers.
+    if (std::min(device_description.driver_version(),
+                 device_description.compile_time_toolkit_version()) >=
+        stream_executor::SemanticVersion(12, 9, 0)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // Give a short alias to synchronization mode.
 static constexpr auto serialize =
     CommandBufferCmdExecutor::SynchronizationMode::kSerialize;
@@ -683,6 +701,141 @@ TEST(CommandBufferCmdTest, RecordExecutorsWithDependencies) {
   std::vector<int32_t> dst(length, 0);
   TF_ASSERT_OK(stream->Memcpy(dst.data(), c, byte_length));
   ASSERT_EQ(dst, std::vector<int32_t>(length, 2));
+}
+
+TEST(CommandBufferCmdTest, NestedChildCmdCreateAndUpdate) {
+  se::StreamExecutor* stream_executor = GpuExecutor();
+  if (!IsAtLeastCuda12900(stream_executor)) {
+    GTEST_SKIP() << "Child command is not supported for CUDA < 12.9";
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, stream_executor->CreateStream());
+
+  // Prepare device memory for three buffers.
+  int64_t length = 4;
+  int64_t byte_length = sizeof(int32_t) * length;
+  se::DeviceMemory<int32_t> a = stream_executor->AllocateArray<int32_t>(length);
+  se::DeviceMemory<int32_t> b = stream_executor->AllocateArray<int32_t>(length);
+  se::DeviceMemory<int32_t> c = stream_executor->AllocateArray<int32_t>(length);
+
+  // Initialize a = 1s, b = 0s, c = 0s.
+  TF_ASSERT_OK(stream->Memset32(&a, /*pattern=*/1, byte_length));
+  TF_ASSERT_OK(stream->MemZero(&b, byte_length));
+  TF_ASSERT_OK(stream->MemZero(&c, byte_length));
+
+  // Buffer allocations.
+  BufferAllocation alloc_a(/*index=*/0, byte_length, /*color=*/0);
+  BufferAllocation alloc_b(/*index=*/1, byte_length, /*color=*/0);
+  BufferAllocation alloc_c(/*index=*/2, byte_length, /*color=*/0);
+
+  BufferAllocation::Slice slice_a(&alloc_a, 0, byte_length);
+  BufferAllocation::Slice slice_b(&alloc_b, 0, byte_length);
+  BufferAllocation::Slice slice_c(&alloc_c, 0, byte_length);
+
+  // Inner child: c = a (device-to-device memcpy)
+  CommandBufferCmdSequence inner_seq;
+  inner_seq.Emplace<MemcpyDeviceToDeviceCmd>(slice_c, slice_a, byte_length);
+  TF_ASSERT_OK_AND_ASSIGN(
+      CommandBufferCmdExecutor inner_executor,
+      CommandBufferCmdExecutor::Create(std::move(inner_seq), serialize));
+
+  // Middle child wraps inner.
+  CommandBufferCmdSequence middle_seq;
+  middle_seq.Emplace<ChildCmd>(std::move(inner_executor));
+  // Add a couple of extra commands that don't affect `c`.
+  middle_seq.Emplace<Memset32Cmd>(slice_b, /*bit_pattern=*/3);
+  middle_seq.Emplace<MemcpyDeviceToDeviceCmd>(slice_b, slice_b, byte_length);
+  TF_ASSERT_OK_AND_ASSIGN(
+      CommandBufferCmdExecutor middle_executor,
+      CommandBufferCmdExecutor::Create(std::move(middle_seq), serialize));
+
+  // Outer child wraps middle.
+  CommandBufferCmdSequence outer_seq;
+  outer_seq.Emplace<ChildCmd>(std::move(middle_executor));
+  // Add a couple more commands at the outer level that still don't affect `c`.
+  outer_seq.Emplace<MemzeroCmd>(slice_b);
+  outer_seq.Emplace<EmptyCmd>();
+  TF_ASSERT_OK_AND_ASSIGN(
+      CommandBufferCmdExecutor outer_executor,
+      CommandBufferCmdExecutor::Create(std::move(outer_seq), serialize));
+
+  // Prepare state and params; ChildCmd requires initialization to create a
+  // nested buffer.
+  CommandBufferCmd::StateManager state;
+  Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
+  se::StreamExecutorMemoryAllocator allocator(stream_executor);
+  BufferAllocations allocations({a, b, c}, 0, &allocator);
+  TF_ASSERT_OK(outer_executor.Initialize(
+      {stream_executor, source, &allocations, stream.get(), stream.get()},
+      state));
+
+  // allocations already created above
+  ServiceExecutableRunOptions run_options;
+  Thunk::ExecuteParams exec_params = Thunk::ExecuteParams::Create(
+      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+  CommandBufferCmd::RecordParams record_params = {state};
+
+  // Create a command buffer and record the nested ChildCmd (Create).
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto command_buffer,
+      stream_executor->CreateCommandBuffer(se::CommandBuffer::Mode::kPrimary));
+  TF_ASSERT_OK(outer_executor.Record(exec_params, record_params,
+                                     CommandBufferCmd::RecordCreate{},
+                                     command_buffer.get(), /*finalize=*/true));
+  TF_ASSERT_OK(command_buffer->Submit(stream.get()));
+
+  // Verify c == a (all ones).
+  std::vector<int32_t> dst(length, 0);
+  TF_ASSERT_OK(stream->Memcpy(dst.data(), c, byte_length));
+  ASSERT_EQ(dst, std::vector<int32_t>(length, 1));
+
+  // Also verify a == 1s and b == 0s.
+  {
+    std::vector<int32_t> a_host(length, 0);
+    std::vector<int32_t> b_host(length, 0);
+    TF_ASSERT_OK(stream->Memcpy(a_host.data(), a, byte_length));
+    TF_ASSERT_OK(stream->Memcpy(b_host.data(), b, byte_length));
+    ASSERT_EQ(a_host, std::vector<int32_t>(length, 1));
+    ASSERT_EQ(b_host, std::vector<int32_t>(length, 0));
+  }
+
+  // Now update: change a and c buffers and record an update on the same command
+  // buffer.
+  se::DeviceMemory<int32_t> a2 =
+      stream_executor->AllocateArray<int32_t>(length);
+  se::DeviceMemory<int32_t> c2 =
+      stream_executor->AllocateArray<int32_t>(length);
+  TF_ASSERT_OK(stream->Memset32(&a2, /*pattern=*/7, byte_length));
+  TF_ASSERT_OK(stream->MemZero(&c2, byte_length));
+
+  BufferAllocations allocations2({a2, b, c2}, 0, &allocator);
+  Thunk::ExecuteParams exec_params2 = Thunk::ExecuteParams::Create(
+      run_options, allocations2, stream.get(), stream.get(), nullptr, nullptr);
+
+  // Indicate which allocations changed to ensure update is not skipped.
+  std::vector<BufferAllocation::Index> updated_allocs = {0, 2};
+  CommandBufferCmd::RecordParams record_params2 = {state,
+                                                   std::move(updated_allocs)};
+
+  TF_ASSERT_OK(outer_executor.Record(exec_params2, record_params2,
+                                     CommandBufferCmd::RecordCreate{},
+                                     command_buffer.get(), /*finalize=*/true));
+  TF_ASSERT_OK(command_buffer->Submit(stream.get()));
+
+  // Verify c2 == a2 (all sevens).
+  std::vector<int32_t> dst2(length, 0);
+  TF_ASSERT_OK(stream->Memcpy(dst2.data(), c2, byte_length));
+  ASSERT_EQ(dst2, std::vector<int32_t>(length, 7));
+
+  // Also verify a2 == 7s and b == 0s.
+  {
+    std::vector<int32_t> a2_host(length, 0);
+    std::vector<int32_t> b_host(length, 0);
+    TF_ASSERT_OK(stream->Memcpy(a2_host.data(), a2, byte_length));
+    TF_ASSERT_OK(stream->Memcpy(b_host.data(), b, byte_length));
+    ASSERT_EQ(a2_host, std::vector<int32_t>(length, 7));
+    ASSERT_EQ(b_host, std::vector<int32_t>(length, 0));
+  }
 }
 
 //===----------------------------------------------------------------------===//

@@ -30,6 +30,7 @@ namespace profiler {
 const absl::string_view kHostThreadsPlaneName = "/host:CPU";
 const absl::string_view kGpuPlanePrefix = "/device:GPU:";
 const absl::string_view kTpuPlanePrefix = "/device:TPU:";
+const absl::string_view kVirtualDevicePlanePrefix = "/virtualdevice:";
 const absl::string_view kTpuNonCorePlaneNamePrefix = "#Chip";
 const char kTpuPlaneRegex[] = {"/device:TPU:([0-9]*)$"};
 const char kSparseCorePlaneRegex[] = {
@@ -363,6 +364,7 @@ const StatTypeMap& GetStatTypeMap() {
        {"dcn_chunk", kDcnChunk},
        {"dcn_loop_index", kDcnLoopIndex},
        {"dropped_traces", kDroppedTraces},
+       {"nan_counter_events", kNanCounterEvents},
        {"cuda_graph_id", kCudaGraphId},
        {"cuda_graph_exec_id", kCudaGraphExecId},
        {"cuda_graph_orig_id", kCudaGraphOrigId},

@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -39,7 +40,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/OperationSupport.h"
@@ -217,30 +217,45 @@ class TritonXlaExtractOpConversionPattern
         getTypeConverter()->convertType(op.getType()));
 
     ImplicitLocOpBuilder builder(op.getLoc(), r);
-    // We can safely assume these are static because they were checked in
-    // GetPackedDimension.
-    SmallVector<int64_t, 2> tile_strides(adaptor.getStaticStrides());
 
-    // The stride of the i8 tensor is half of the i4 tensor but at least 1.
-    SmallVector<Value, 2> tile_strides_values;
-    for (auto stride : tile_strides) {
-      tile_strides_values.push_back(builder.create<ma::ConstantOp>(
-          builder.getIndexAttr(ceil(stride / 2.0))));
+    std::optional<llvm::SmallDenseSet<unsigned>> optional_mask =
+        computeRankReductionMask(op.getStaticSizes(), op.getType().getShape());
+    if (!optional_mask) {
+      return r.notifyMatchFailure(op, "Unsupported rank reduction.");
+    }
+    // Convert the packed dimension to the rank-expanded src type.
+    int packed_dimension = converter_.packed_dimension();
+    for (auto dim : *optional_mask) {
+      if (dim > packed_dimension) {
+        break;
+      }
+      ++packed_dimension;
     }
 
-    // We update the offset of the packed dimension to be half of the original
-    // offset.
-    SmallVector<Value, 2> tile_offsets_values = op.getOffsetsAsValues(builder);
-    tile_offsets_values[converter_.packed_dimension()] =
-        div(r, tile_offsets_values[converter_.packed_dimension()], 2);
+    // We update values of the packed dimension to be half of the original.
+    SmallVector<Value> offsets = op.getOffsetsAsValues(builder);
+    offsets[packed_dimension] = div(r, offsets[packed_dimension], 2);
 
-    SmallVector<int64_t> shape = llvm::to_vector(adaptor.getSrcShape());
-    shape[converter_.packed_dimension()] =
-        (shape[converter_.packed_dimension()] + 1) / 2;
+    // We checked in GetPackedDimension that the sizes are static and
+    // the packed dimension is even.
+    SmallVector<int64_t> sizes(op.getStaticSizes());
+    sizes[packed_dimension] = sizes[packed_dimension] / 2;
 
-    r.replaceOpWithNewOp<mtx::ExtractOp>(
-        op, new_result_type, adaptor.getSrc(), tile_offsets_values,
-        tile_strides_values, shape, adaptor.getSrcLayout());
+    // We checked in GetPackedDimension that the strides are static and
+    // the packed dimension is one.
+    SmallVector<int64_t> strides(op.getStaticStrides());
+
+    SmallVector<int64_t> src_shape(adaptor.getSrcShape());
+    src_shape[packed_dimension] = (src_shape[packed_dimension] + 1) / 2;
+
+    // Note: above, we assume that offsets are even, which we check only if it's
+    // static. We also assume that the residual size is even, which we don't
+    // check at all. TODO(csigg): see IsOffsetDivisibilityGuaranteed() for how
+    // we could cover more cases. For the others, maybe emit a cf.assert.
+
+    r.replaceOpWithNewOp<mtx::ExtractOp>(op, new_result_type, adaptor.getSrc(),
+                                         offsets, sizes, op.getStaticStrides(),
+                                         src_shape, adaptor.getSrcLayout());
     return success();
   }
 
@@ -614,22 +629,40 @@ absl::StatusOr<int> GetPackedDimension(MLIRContext *ctx,
 
     if (extract_op) {
       // Make sure the packed dimension is not dynamic and has a stride of 1.
-      auto tile_strides = extract_op.getStaticStrides();
-      auto tile_sizes = extract_op.getStaticSizes();
-      auto original_shape = extract_op.getSrcShape();
+      auto offsets = extract_op.getStaticOffsets();
+      auto sizes = extract_op.getStaticSizes();
+      auto strides = extract_op.getStaticStrides();
 
-      if (mlir::ShapedType::isDynamicShape(tile_strides) ||
-          mlir::ShapedType::isDynamicShape(tile_sizes) ||
-          mlir::ShapedType::isDynamicShape(original_shape)) {
+      if (ShapedType::isDynamicShape(strides) ||
+          ShapedType::isDynamicShape(sizes)) {
         return absl::InvalidArgumentError(
             "dynamic shapes, tile strides, and tile sizes not supported");
       }
 
       for (auto dim : extract_op.getSrcLayout()) {
-        if (tile_strides[dim] == 1 && tile_sizes[dim] > 1 &&
-            original_shape[dim] > 1) {
-          return dim;
+        if (extract_op.getSrcShape()[dim] == 1) {
+          continue;
         }
+        if (strides[dim] != 1) {
+          return absl::InvalidArgumentError(
+              "Minor-most non-unit dimension has non-unit stride.");
+        }
+        if (sizes[dim] % 2 != 0) {
+          return absl::InvalidArgumentError(
+              "Minor-most non-unit dimension has odd size.");
+        }
+        if (!ShapedType::isDynamic(offsets[dim]) && offsets[dim] % 2 != 0) {
+          return absl::InvalidArgumentError(
+              "Minor-most non-unit dimension has odd offset.");
+        }
+        std::optional<llvm::SmallDenseSet<unsigned>> optional_mask =
+            computeRankReductionMask(sizes, extract_op.getType().getShape());
+        if (!optional_mask) {
+          return absl::InvalidArgumentError("Unsupported rank reduction.");
+        }
+        auto mask = llvm::to_vector(*optional_mask);
+        // Convert the packed dimension to the rank-reduced dst type.
+        return dim - (absl::c_upper_bound(mask, dim) - mask.begin());
       }
 
       return absl::InvalidArgumentError("Failed to find a packed dimension.");
@@ -637,7 +670,7 @@ absl::StatusOr<int> GetPackedDimension(MLIRContext *ctx,
   }
   std::string not_found_message =
       "No MakeTensorPtrOp or mlir::triton::xla::ExtractOp found";
-  LOG(FATAL) << not_found_message;
+  LOG(ERROR) << not_found_message;
   return absl::InvalidArgumentError(not_found_message);
 }
 
@@ -746,7 +779,7 @@ class PlainInt4ToPackedInt4RewritePass
     normalize_patterns.add(SitofpToExtFpSitofpRewrite);
     if (failed(applyPatternsGreedily(module, std::move(normalize_patterns)))) {
       VLOG(5) << "failed to apply patterns";
-      signalPassFailure();
+      return signalPassFailure();
     }
 
     auto ext_ops = FindInt4ExtSIOp(module);
@@ -760,7 +793,7 @@ class PlainInt4ToPackedInt4RewritePass
       if (!packed_dimension_result.ok()) {
         VLOG(5) << "failed to get packed dimension: "
                 << packed_dimension_result.status();
-        signalPassFailure();
+        return signalPassFailure();
       };
       packed_dimension = packed_dimension_result.value();
     }
@@ -803,7 +836,7 @@ class PlainInt4ToPackedInt4RewritePass
         patterns, converter);
     if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
       VLOG(5) << "failed to apply partial conversion";
-      signalPassFailure();
+      return signalPassFailure();
     }
   }
   // The default value is true, which means that bf16x2 instructions are used

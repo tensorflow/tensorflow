@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/call_once.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ExecutionEngine/JITEventListener.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
 #include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
@@ -45,6 +47,7 @@ limitations under the License.
 #include "llvm/IR/Verifier.h"
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Support/Alignment.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/Errc.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -254,5 +257,75 @@ std::unique_ptr<llvm::TargetMachine> CreateHostTargetMachine() {
                                   target_options, std::nullopt, std::nullopt));
   LOG_IF(FATAL, !target_machine) << "Failed to create target machine";
   return target_machine;
+}
+// Creates a new LLVM function that wraps an existing function by unrolling
+// calls in a sequence.
+//
+// This function takes an `original_func` and generates a new function with an
+// identical signature. Instead of a loop, the new function's body consists of
+// an explicitly unrolled sequence of `unroll_factor` calls to the original
+// function. This avoids loop overhead and is suitable for small K.
+//
+// `vector_size`: The size of the vectors being processed.
+// Returns a pointer to the newly created unrolled wrapper function.
+llvm::Function* CreateKTimesWrapper(llvm::Module* module,
+                                    llvm::Function* original_func,
+                                    int unroll_factor, size_t vector_size) {
+  CHECK_GE(unroll_factor, 1);
+
+  llvm::LLVMContext& ctx = module->getContext();
+  llvm::IRBuilder<> builder(ctx);
+
+  llvm::FunctionType* func_type = original_func->getFunctionType();
+  std::string wrapper_name =
+      std::string(original_func->getName()) + "_unrolled_k_times";
+  llvm::Function* wrapper_func = llvm::Function::Create(
+      func_type, llvm::Function::InternalLinkage, wrapper_name, module);
+
+  llvm::BasicBlock* entry =
+      llvm::BasicBlock::Create(ctx, "entry", wrapper_func);
+  builder.SetInsertPoint(entry);
+
+  // Collect the wrapper's arguments to be used as the base for each call.
+  std::vector<llvm::Value*> wrapper_args;
+  for (auto& arg : wrapper_func->args()) {
+    wrapper_args.push_back(&arg);
+  }
+
+  llvm::Value* last_result = nullptr;
+  CHECK(!wrapper_args.empty()) << "Function has no arguments.";
+  llvm::Type* scalar_type =
+      llvm::cast<llvm::VectorType>(wrapper_args[0]->getType())
+          ->getElementType();
+  CHECK(scalar_type->isFloatingPointTy())
+      << "Only floating point types are supported.";
+  // Perturb the first argument by adding a small constant to
+  // prevent the compiler from optimizing. The delta value is not important.
+  llvm::Value* delta = llvm::ConstantFP::get(scalar_type, 0.000001);
+
+  // Use a C++ loop to generate an unrolled sequence of LLVM instructions.
+  for (int k = 0; k < unroll_factor; ++k) {
+    std::vector<llvm::Value*> call_args = wrapper_args;  // Reset to base args
+
+    // Perturb the first argument: arg0 + (k * 0.000001f)
+    llvm::Value* k_fp =
+        llvm::ConstantFP::get(scalar_type, static_cast<double>(k));
+
+    llvm::Value* offset_scalar = builder.CreateFMul(k_fp, delta);
+    llvm::Value* offset_vec = builder.CreateVectorSplat(
+        llvm::ElementCount::getFixed(vector_size), offset_scalar);
+
+    // Create the new argument for this specific call
+    call_args[0] = builder.CreateFAdd(wrapper_args[0], offset_vec,
+                                      "perturbed.arg." + std::to_string(k));
+
+    last_result = builder.CreateCall(original_func, call_args,
+                                     "call." + std::to_string(k));
+  }
+
+  // After the loop, `last_result` holds the result of the final call.
+  builder.CreateRet(last_result);
+
+  return wrapper_func;
 }
 }  // namespace xla::codegen::intrinsic

@@ -157,5 +157,42 @@ TEST_F(SmallWhileLoopHoistingPassTest, NoInOutFeedWhileLoopHoisting) {
   EXPECT_FALSE(changed);
 }
 
+TEST_F(SmallWhileLoopHoistingPassTest, NoFftWhileLoopHoisting) {
+  constexpr absl::string_view hlo_string = R"(
+    HloModule fft_module
+
+    %body_comp (arg_tuple.3: (s32[], c64[30])) -> (s32[], c64[30]) {
+      %arg_tuple.3 = (s32[], c64[30]{0}) parameter(0)
+      %get-tuple-element.4 = s32[] get-tuple-element(%arg_tuple.3), index=0
+      %constant.6 = s32[] constant(1)
+      %add.14 = s32[] add(%get-tuple-element.4, %constant.6)
+      %get-tuple-element.5 = c64[30]{0} get-tuple-element(%arg_tuple.3), index=1
+      %fft.10 = c64[30]{0} fft(%get-tuple-element.5), fft_type=FFT, fft_length={30}
+      ROOT %tuple.15 = (s32[], c64[30]{0}) tuple(%add.14, %get-tuple-element.5)
+    }
+
+    %condition_comp (arg_tuple.17: (s32[], c64[30])) -> pred[] {
+      %arg_tuple.17 = (s32[], c64[30]{0}) parameter(0)
+      %get-tuple-element.18 = s32[] get-tuple-element(%arg_tuple.17), index=0
+      %constant.20 = s32[] constant(10)
+      ROOT %lt.21 = pred[] compare(%get-tuple-element.18, %constant.20), direction=LT
+    }
+
+    ENTRY %main.27 (args_0_.1: c64[30]) -> c64[30] {
+      %constant.2 = s32[] constant(0)
+      %args_0_.1 = c64[30]{0} parameter(0)
+      %while.23 = (s32[], c64[30]{0}) tuple(%constant.2, %args_0_.1)
+      %while.24 = (s32[], c64[30]{0}) while(%while.23), condition=%condition_comp, body=%body_comp
+      %while.25 = s32[] get-tuple-element(%while.24), index=0
+      ROOT %while.26 = c64[30]{0} get-tuple-element(%while.24), index=1
+    }
+    )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunSmallWhileLoopHoistingPass(m.get()));
+  EXPECT_FALSE(changed);
+}
+
 }  // namespace
 }  // namespace xla

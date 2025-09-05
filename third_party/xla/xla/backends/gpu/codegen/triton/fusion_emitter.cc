@@ -179,7 +179,7 @@ Value EmitClampedIndex(EmitterLocOpBuilder b, Value value, int64_t lower,
       value, CreateConst(b, value.getType(), lower).UnwrapUnsafe());
   clamped_index = b.create<arith::MinSIOp>(
       clamped_index, CreateConst(b, value.getType(), upper).UnwrapUnsafe());
-  return b.create<arith::IndexCastUIOp>(b.getIndexType(), clamped_index);
+  return b.create<arith::IndexCastOp>(b.getIndexType(), clamped_index);
 }
 
 absl::StatusOr<SmallVector<Value>> ComputeOffsetsForTile(
@@ -236,7 +236,7 @@ class TileInfo {
   ValueRange offsets() const { return offsets_; }
 
   // Tile strides. Its size is equal to the rank of the output shape.
-  ValueRange tile_strides() const { return tile_strides_; }
+  ArrayRef<int64_t> tile_strides() const { return tile_strides_; }
 
   // The original shape of the tensor.
   ArrayRef<int64_t> original_shape() const { return original_shape_; }
@@ -255,13 +255,14 @@ class TileInfo {
 
  private:
   SmallVector<Value> offsets_;
-  SmallVector<Value> tile_strides_;
+  SmallVector<int64_t> tile_strides_;
   SmallVector<int64_t> original_shape_;
   SmallVector<int64_t> padded_tile_sizes_;
   SmallVector<int64_t> minor_to_major_layout_;
   Type storage_type_;
 
-  explicit TileInfo(SmallVector<Value> offsets, SmallVector<Value> tile_strides,
+  explicit TileInfo(SmallVector<Value> offsets,
+                    SmallVector<int64_t> tile_strides,
                     SmallVector<int64_t> original_shape,
                     SmallVector<int64_t> padded_tile_sizes,
                     SmallVector<int64_t> minor_to_major_layout,
@@ -291,7 +292,7 @@ absl::StatusOr<TileInfo> TileInfo::Construct(
                       TritonType(b, shape.element_type()));
   auto storage_type = StorageType(expected_element_type);
 
-  auto tile_strides = CreateIndexValues(b, tiled_hlo.tile_strides());
+  auto tile_strides = tiled_hlo.tile_strides();
   auto minor_to_major_layout = llvm::to_vector(LayoutUtil::MinorToMajor(shape));
 
   return TileInfo(offsets, tile_strides, original_shape, padded_tile_sizes,
@@ -352,11 +353,13 @@ ScalarOrTensor EmitParameterExtract(EmitterLocOpBuilder b,
         ttir::EvictionPolicy::NORMAL, /*isVolatile=*/false));
   }
 
-  return ScalarOrTensor(b.create<mtx::ExtractOp>(
+  return ScalarOrTensor(mtx::ExtractOp::create(
+      b,
       mlir::RankedTensorType::get(tile_info.padded_tile_sizes(),
                                   tile_info.storage_type()),
-      parent_base_ptr, tile_info.offsets(), tile_info.tile_strides(),
-      tile_info.original_shape(), tile_info.minor_to_major_layout()));
+      parent_base_ptr, tile_info.offsets(), tile_info.padded_tile_sizes(),
+      tile_info.tile_strides(), tile_info.original_shape(),
+      tile_info.minor_to_major_layout()));
 }
 
 absl::StatusOr<ScalarOrTensor> EmitScope(
@@ -687,6 +690,7 @@ absl::StatusOr<ScalarOrTensor> EmitTiledBitcast(
 
   // Any Bitcast is decomposable to a transpose+reshape+transpose.
   auto trt = ShapeUtil::DecomposeBitcastToTrt(input_shape, output_shape);
+  TF_RET_CHECK(trt.has_value());
 
   // When replacing the `bitcast` with `transpose` + `reshape` + `transpose` we
   // need to provide the tile sizes at output of each op. We already have the
@@ -702,12 +706,12 @@ absl::StatusOr<ScalarOrTensor> EmitTiledBitcast(
   // different, even in rank, compared to the tile sizes of the final shape of
   // the bitcast, so it's not possible to easily propagate them from the output.
   std::vector<int64_t> transpose1_tile_sizes =
-      Permute(tiled_bitcast.operand(0)->tile_sizes(), trt.transpose1_dims);
+      Permute(tiled_bitcast.operand(0)->tile_sizes(), trt->transpose1_dims);
   Value normalized_input =
-      trt.IsTranspose1Identity()
+      trt->IsTranspose1Identity()
           ? input
           : EmitTiledTranspose(b, transpose1_tile_sizes,
-                               llvm::to_vector(trt.transpose1_dims), input);
+                               llvm::to_vector(trt->transpose1_dims), input);
 
   // Like the first transpose above, the tile sizes after the second transpose
   // are a permutation (according to transpose2_dims) of the tile sizes of
@@ -715,9 +719,9 @@ absl::StatusOr<ScalarOrTensor> EmitTiledBitcast(
   // the tile sizes of the reshape, we compute the tile sizes backwards, taking
   // the inverse permutation.
   std::vector<int64_t> reshape_tile_sizes =
-      PermuteInverse(tiled_bitcast.tile_sizes(), trt.transpose2_dims);
+      PermuteInverse(tiled_bitcast.tile_sizes(), trt->transpose2_dims);
   Value normalized_reshape;
-  if (ShapeUtil::Equal(trt.transpose1_shape, trt.reshape_shape)) {
+  if (ShapeUtil::Equal(trt->transpose1_shape, trt->reshape_shape)) {
     normalized_reshape = normalized_input;
   } else {
     TF_ASSIGN_OR_RETURN(auto reshape,
@@ -729,10 +733,10 @@ absl::StatusOr<ScalarOrTensor> EmitTiledBitcast(
   // The final transpose simply uses the tile sizes computed for the original
   // bitcast by the tiling analysis.
   return ScalarOrTensor{
-      trt.IsTranspose2Identity()
+      trt->IsTranspose2Identity()
           ? normalized_reshape
           : EmitTiledTranspose(b, tiled_bitcast.tile_sizes(),
-                               llvm::to_vector(trt.transpose2_dims),
+                               llvm::to_vector(trt->transpose2_dims),
                                normalized_reshape)};
 }
 
@@ -1659,8 +1663,8 @@ absl::Status EmitGeneric(mlir::OpBuilder builder,
            "non-empty.";
 
     mtx::InsertOp::create(b, result.UnwrapTensor(), parent_base_ptr,
-                          tile_info.offsets(), tile_info.tile_strides(),
-                          tile_info.original_shape(),
+                          tile_info.offsets(), tile_info.padded_tile_sizes(),
+                          tile_info.tile_strides(), tile_info.original_shape(),
                           tile_info.minor_to_major_layout());
   }
 
@@ -1864,7 +1868,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
   EmitReturnOp(b, fusion_kind);
 
   if (DumpingEnabledForHloModule(*hlo_computation->parent())) {
-    auto suffix = absl::StrCat(fusion->name(), ".before_validation.ttir");
+    auto suffix = absl::StrCat(fusion->name(), ".before_validation.ttir.txt");
     DumpToFileInDirOrStdout(
         *hlo_computation->parent(), "", suffix,
         DumpTritonIR(triton_module.get(),
@@ -1897,10 +1901,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
                               ->config()
                               .debug_options()
                               .xla_gpu_unsupported_annotate_with_emitter_loc());
-  // TODO(loislo): Remove this dump once we have the Triton IR dump in
-  // CompileTritonToLLVM after the Triton optimization passes.
   if (DumpingEnabledForHloModule(*hlo_computation->parent())) {
-    std::string suffix = absl::StrCat(fusion->name(), ".ttir");
+    std::string suffix = absl::StrCat(fusion->name(), ".ttir.txt");
     DumpToFileInDirOrStdout(
         *hlo_computation->parent(), "", suffix,
         DumpTritonIR(triton_module.get(),
@@ -1983,9 +1985,13 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
 
   std::optional<llvm::raw_fd_ostream> log_stream;
   if (should_dump_mlir_passes) {
-    std::string outputs_dir;
-    if (!tsl::io::GetTestUndeclaredOutputsDir(&outputs_dir)) {
-      outputs_dir = hlo_config.debug_options().xla_dump_to();
+    std::string outputs_dir = hlo_config.debug_options().xla_dump_to();
+    if (outputs_dir == "sponge") {
+      if (!tsl::io::GetTestUndeclaredOutputsDir(&outputs_dir)) {
+        LOG(ERROR) << "Failed to get test undeclared outputs dir. Lets skip "
+                      "dumping triton passes.";
+        outputs_dir = "";
+      }
     }
     if (!outputs_dir.empty()) {
       const std::string basename =
@@ -2015,6 +2021,9 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
     }
   }
 
+  pm.addPass(mlir::triton::xla::CreateTritonXLASqueezeDimsPass());
+  pm.addPass(mlir::triton::xla::CreateTritonXLAFoldTransposePass());
+
   if (is_xla_fusion) {
     pm.addPass(
         mlir::triton::xla::CreateInt4ToPackedInt4RewritePass(device_info));
@@ -2022,9 +2031,6 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
 
   pm.addPass(mlir::triton::xla::CreateTritonXLAExtractInsertToTritonPass(
       device_info, block_level_parameters.is_tma_allowed));
-
-  pm.addPass(mlir::triton::xla::CreateTritonXLASqueezeDimsPass());
-  pm.addPass(mlir::triton::xla::CreateTritonXLAFoldTransposePass());
 
   // Lower affine expressions into arithmetic ops.
   pm.addPass(mlir::createLowerAffinePass());

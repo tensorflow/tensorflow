@@ -13,6 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <array>
+
+#include "absl/status/status_matchers.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_memory.h"
 #ifndef _WIN32
 #include <unistd.h>
 #endif
@@ -70,7 +74,6 @@ using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 using ::testing::HasSubstr;
 using ::testing::IsFalse;
-using ::tsl::testing::IsOkAndHolds;
 
 static absl::Status TestError(ffi::AnyBuffer, ffi::Result<ffi::AnyBuffer>,
                               ffi::Result<ffi::AnyBuffer>) {
@@ -985,6 +988,41 @@ TEST(PjRtCpuClientTest, SubByteLiteralToBufferRoundtrip) {
   TF_ASSERT_OK(buffer->ToLiteralSync(&literal_result));
 
   EXPECT_TRUE(LiteralTestUtil::Equal(literal, literal_result));
+}
+
+TEST(PjRtCpuClientTest, CustomAllocator) {
+  alignas(64) std::array<float, 4> data;
+
+  class CustomMemory : public CpuMemory {
+   public:
+    CustomMemory(void* base, size_t size_bytes)
+        : base_(base), size_bytes_(size_bytes) {}
+
+    void* base() const final { return base_; }
+    size_t size_bytes() const final { return size_bytes_; }
+
+   private:
+    void* base_;
+    size_t size_bytes_;
+  };
+
+  CpuClientOptions options;
+  options.allocator = [&](size_t size_bytes, size_t alignment) {
+    return std::make_unique<CustomMemory>(&data, sizeof(data));
+  };
+
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(options));
+  xla::Shape shape = xla::ShapeUtil::MakeShape(F32, {4});
+  TF_ASSERT_OK_AND_ASSIGN(auto literal, xla::MakeFakeLiteral(shape));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto buffer,
+      client->BufferFromHostLiteral(literal, client->memory_spaces()[0]));
+  TF_ASSERT_OK_AND_ASSIGN(auto received_literal, buffer->ToLiteralSync());
+
+  // Check that buffer was constructed in the data array provided by the custom
+  // allocator.
+  EXPECT_THAT(data, ElementsAreArray(literal.data<float>()));
 }
 
 }  // namespace

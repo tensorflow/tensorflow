@@ -45,9 +45,13 @@ namespace gpu {
 
 absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
     std::vector<std::unique_ptr<CodegenBackend>> backends,
-    const DebugOptions& debug_options, se::DeviceMemoryAllocator* allocator,
+    const DebugOptions& debug_options,
     stream_executor::StreamExecutor* stream_executor,
-    tsl::thread::ThreadPool* thread_pool, InstructionFilterFn should_autotune) {
+    tsl::thread::ThreadPool* thread_pool, InstructionFilterFn should_autotune,
+    se::DeviceMemoryAllocator* allocator) {
+  // At least one of stream_executor or allocator must be provided.
+  CHECK(stream_executor != nullptr || allocator != nullptr);
+
   std::unique_ptr<GpuProfiler> profiler =
       GpuProfiler::Create(stream_executor, ProfileOptions(), allocator);
 
@@ -77,10 +81,17 @@ absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
     TF_ASSIGN_OR_RETURN(cache, FileBasedAutotunerCache::Create(cache_config));
   }
 
+  AutotuneConfig autotune_config;
+  autotune_config.check_buffers = debug_options.xla_gpu_autotune_level() >= 4;
+  autotune_config.relative_tolerance =
+      debug_options.xla_gpu_autotune_gemm_rtol();
+  autotune_config.crash_on_check_failure =
+      debug_options.xla_gpu_crash_on_verification_failures();
+
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Autotuner> autotuner,
       Autotuner::Create(std::move(backends), std::move(profiler),
-                        AutotuneConfig(), std::move(cache), thread_pool));
+                        autotune_config, std::move(cache), thread_pool));
   return absl::WrapUnique(
       new AutotunerPass(std::move(autotuner), should_autotune));
 }
