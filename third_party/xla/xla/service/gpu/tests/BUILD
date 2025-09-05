@@ -655,15 +655,18 @@ lit_test_suite(
 #     srcs = ["xla-opt.cc"],
 #     deps = [
 #         "@llvm-project//mlir:AllExtensions",
+#         "@llvm-project//mlir:BuiltinToLLVMIRTranslation",
 #         "@llvm-project//mlir:FuncDialect",
+#         "@llvm-project//mlir:FuncExtensions",
+#         "@llvm-project//mlir:LLVMIRTransforms",
+#         "@llvm-project//mlir:LLVMToLLVMIRTranslation",
 #         "@llvm-project//mlir:MlirOptLib",
 #         "@llvm-project//mlir:RegisterAllExtensions",
 #         "@llvm-project//mlir:TensorDialect",
 #         "//xla/backends/gpu/codegen/emitters/transforms:passes",
 #         "//xla/backends/gpu/codegen/triton/ir:triton_xla",
 #         "//xla/backends/gpu/codegen/triton/transforms:passes",
-#         # Needed for xla_ops.h
-#         "//xla/codegen/emitters/ir:xla",  # buildcleaner: keep
+#         "//xla/codegen/emitters/ir:xla",
 #         "//xla/codegen/emitters/transforms:passes",
 #         "@triton//:AllPassesAndDialects",
 #         "@triton//third_party/amd:TestAMDAnalysis",
