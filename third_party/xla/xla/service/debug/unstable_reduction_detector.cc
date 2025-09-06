@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/debug/unstable_reduction_finder.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 
