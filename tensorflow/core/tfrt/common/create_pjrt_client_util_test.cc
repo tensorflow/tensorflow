@@ -26,7 +26,6 @@ namespace tensorflow {
 namespace {
 
 using ::testing::HasSubstr;
-using ::tsl::testing::StatusIs;
 
 TEST(CreatePjRtClientTest, GetNotExistPjRtClientNotImplemented) {
   EXPECT_THAT(GetOrCreatePjRtClient(DEVICE_CPU),
