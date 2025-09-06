@@ -168,7 +168,7 @@ IntrinsicTestSpec CpuUnaryIntrinsicTestCases[] = {
     )"},
 
     IntrinsicTestSpec{HloOpcode::kExp, F64, false, kTriple_x86_64, "",
-                      R"(CHECK: call fast double @local_xla.exp.f64(double %4)"},
+                      R"(CHECK: call fast double @local_xla.exp.f64(double)"},
 
     IntrinsicTestSpec{
         HloOpcode::kExp, F32, true, kTriple_x86_64, "+avx",
