@@ -604,6 +604,23 @@ TEST(PjRtFutureTest, JoinErrors) {
   EXPECT_EQ(join_two.Await(), absl::InternalError("error #0"));
 }
 
+TEST(PjRtFutureTest, WithProfiling) {
+  auto [promise, future] = PjRtFuture<int32_t>::MakePromise(
+      [&] { return PjRtFutureHelpers::ProfilingKeys{}; },
+      [&](PjRtFutureHelpers::ProfilingKeys) {});
+
+  auto update_profiling = PjRtFutureHelpers::WithProfiling(
+      std::move(future), [&] { return PjRtFutureHelpers::ProfilingKeys{}; },
+      [&](PjRtFutureHelpers::ProfilingKeys) {});
+
+  EXPECT_FALSE(update_profiling.IsReady());
+
+  promise.Set(42);
+
+  EXPECT_TRUE(update_profiling.IsReady());
+  EXPECT_EQ(*update_profiling.Await(), 42);
+}
+
 //===----------------------------------------------------------------------===//
 // Performance benchmarks.
 //===----------------------------------------------------------------------===//
