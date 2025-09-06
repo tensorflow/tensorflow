@@ -11,14 +11,10 @@ load(
 def _create_local_python_repository(repository_ctx):
     """Creates the repository containing files set up to build with Python."""
 
-    # Resolve all labels before doing any real work. Resolving causes the
-    # function to be restarted with all previous state being lost. This
-    # can easily lead to a O(n^2) runtime in the number of labels.
-    build_tpl = repository_ctx.path(Label("//third_party/py:BUILD.tpl"))
     platform_constraint = ""
     if repository_ctx.attr.platform_constraint:
         platform_constraint = "\"%s\"" % repository_ctx.attr.platform_constraint
-    repository_ctx.template("BUILD", build_tpl, {"%{PLATFORM_CONSTRAINT}": platform_constraint})
+    repository_ctx.template("BUILD", repository_ctx.attr.build_tpl, {"%{PLATFORM_CONSTRAINT}": platform_constraint})
 
 def _python_autoconf_impl(repository_ctx):
     """Implementation of the python_autoconf repository rule."""
@@ -35,6 +31,7 @@ local_python_configure = repository_rule(
     attrs = {
         "environ": attr.string_dict(),
         "platform_constraint": attr.string(),
+        "build_tpl": attr.label(default = Label("//third_party/py:BUILD.tpl")),
     },
 )
 
@@ -45,6 +42,7 @@ remote_python_configure = repository_rule(
     attrs = {
         "environ": attr.string_dict(),
         "platform_constraint": attr.string(),
+        "build_tpl": attr.label(default = Label("//third_party/py:BUILD.tpl")),
     },
 )
 
@@ -52,6 +50,7 @@ python_configure = repository_rule(
     implementation = _python_autoconf_impl,
     attrs = {
         "platform_constraint": attr.string(),
+        "build_tpl": attr.label(default = Label("//third_party/py:BUILD.tpl")),
     },
 )
 """Detects and configures the local Python.

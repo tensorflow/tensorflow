@@ -96,7 +96,6 @@ build --host_copt=-DGRPC_BAZEL_BUILD
 build --action_env=GRPC_BAZEL_RUNTIME=1
 build --repo_env=PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=upb
 build --action_env=PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=upb
-build --repo_env=RULES_PYTHON_ENABLE_PYSTAR=0
 
 # Do not do this. If enabled protobuf's core internal target 
 # @com_google_protobuf//python:protobuf_python will start depending on a bunch
