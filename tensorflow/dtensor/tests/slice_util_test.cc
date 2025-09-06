@@ -31,7 +31,6 @@ namespace slice_util {
 namespace {
 
 using ::testing::SizeIs;
-using ::tsl::testing::IsOk;
 
 TEST(TokenTest, NormalizeDynamic) {
   auto spec = Token(Token::REGULAR, /*begin=*/0, /*end=*/0, /*stride=*/1,
