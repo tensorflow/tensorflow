@@ -28,6 +28,4 @@ app.flags = flags
 # must come from this module. So python adds these symbols for the
 # resolution to succeed.
 # pylint: disable=undefined-variable
-del python
-del core
 # pylint: enable=undefined-variable
