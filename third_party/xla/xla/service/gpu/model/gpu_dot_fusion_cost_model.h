@@ -59,6 +59,11 @@ absl::StatusOr<BlockLevelParameters> FindBestBlockLevelParameters(
 
 namespace detail {
 
+// Returns the effective HBM bandwidth in bytes per second for a given dma_size.
+// dma_size is the total amount of data transferred to/from HBM in bytes.
+float GetEffectiveHbmBandwidth(int64_t dma_size,
+                               const se::DeviceDescription& device_info);
+
 // Calculates the HBM time for a GPU DOT operation. Current implementation
 // uses a flat derate on top of the spec bandwidth. A HBM bandwidth model based
 // derate lookup from profiled data will be added in the future.
