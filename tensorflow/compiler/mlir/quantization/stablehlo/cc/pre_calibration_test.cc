@@ -42,7 +42,6 @@ using ::testing::Contains;
 using ::testing::SizeIs;
 using ::testing::StartsWith;
 using ::testing::StrEq;
-using ::tsl::testing::IsOk;
 
 // Matches an operation whose `getSymName` equals `name`.
 MATCHER_P(HasSymName, name, "") {

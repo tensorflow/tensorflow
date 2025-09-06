@@ -51,8 +51,6 @@ using ::testing::IsEmpty;
 using ::testing::SizeIs;
 using ::testing::StrEq;
 using ::tsl::protobuf::TextFormat;
-using ::tsl::testing::IsOk;
-using ::tsl::testing::StatusIs;
 
 TEST(CreateExportedModelTest, CreateExportedModelBasicFieldsSet) {
   GraphDef graph_def{};
