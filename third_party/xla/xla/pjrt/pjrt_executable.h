@@ -279,6 +279,19 @@ struct ExecuteOptions {
   // may be executed in any order and concurrently.
   int64_t execution_stream_id = 0;
 
+  // The `call_location` field is used to pass down call site location
+  // information from higher-level frameworks like JAX and PyTorch to the PJRT
+  // plugin. This field stores the source location (e.g., file:line) of the
+  // Python code that triggered the execution of this compiled program. This
+  // differs from the source location metadata stored in `OpMetadata`, which
+  // refers to the origin of individual operations within the HLO module.
+  // The plugin can use `call_location` for debugging and error reporting,
+  // allowing users to pinpoint which program execution led to an issue.
+  // The `call_location` pointer is owned by the caller and must point to a
+  // null-terminated string. It is only valid for the duration of the C API
+  // call. The plugin must copy the string if it needs to be stored.
+  std::string call_location = "";
+
   absl::StatusOr<ExecuteOptionsProto> ToProto() const;
   static absl::StatusOr<ExecuteOptions> FromProto(
       const ExecuteOptionsProto& proto);

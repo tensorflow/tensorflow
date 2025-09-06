@@ -101,7 +101,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 75
+#define PJRT_API_MINOR 76
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -1649,8 +1649,20 @@ struct PJRT_ExecuteOptions {
   const int64_t* non_donatable_input_indices;
   size_t num_non_donatable_input_indices;
   PJRT_ExecuteContext* context;
+  // The `call_location` field is used to pass down call site location
+  // information from higher-level frameworks like JAX and PyTorch to the PJRT
+  // plugin. This field stores the source location (e.g., file:line) of the
+  // Python code that triggered the execution of this compiled program. This
+  // differs from the source location metadata stored in `OpMetadata`, which
+  // refers to the origin of individual operations within the HLO module.
+  // The plugin can use `call_location` for debugging and error reporting,
+  // allowing users to pinpoint which program execution led to an issue.
+  // The `call_location` pointer is owned by the caller and must point to a
+  // null-terminated string. It is only valid for the duration of the C API
+  // call. The plugin must copy the string if it needs to be stored.
+  const char* call_location;
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_ExecuteOptions, context);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_ExecuteOptions, call_location);
 
 struct PJRT_LoadedExecutable_Execute_Args {
   size_t struct_size;

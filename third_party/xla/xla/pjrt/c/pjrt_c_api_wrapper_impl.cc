@@ -1734,6 +1734,9 @@ PJRT_Error* PJRT_LoadedExecutable_Execute(
 
   xla::ExecuteOptions options;
   options.launch_id = args->options->launch_id;
+  if (args->options->call_location) {
+    options.call_location = std::string(args->options->call_location);
+  }
   options.strict_shape_checking = true;
   options.arguments_are_tupled = false;
   options.untuple_result = true;

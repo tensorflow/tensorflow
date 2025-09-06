@@ -73,6 +73,7 @@ TEST(ExecuteOptionsTest, Serialization) {
   src.strict_shape_checking = true;
   src.execution_mode = ExecuteOptions::ExecutionMode::kAsynchronous;
   src.non_donatable_input_indices = {2, 3};
+  src.call_location = "foo:1";
 
   TF_ASSERT_OK_AND_ASSIGN(ExecuteOptionsProto proto, src.ToProto());
   TF_ASSERT_OK_AND_ASSIGN(ExecuteOptions output,

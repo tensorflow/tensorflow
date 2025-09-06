@@ -1992,6 +1992,9 @@ PjRtCApiLoadedExecutable::GetCommonExecuteArgs(
   args.options->non_donatable_input_indices =
       non_donatable_input_indices_storage.data();
   args.num_devices = argument_handles.size();
+  if (pjrt_c_api()->pjrt_api_version.minor_version >= 76) {
+    args.options->call_location = options.call_location.c_str();
+  }
 
   // If the executable has no addressable devices, `num_args` cannot be
   // determined but it is unused. 0 serves as a placeholder.
