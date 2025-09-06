@@ -236,6 +236,21 @@ void setFuncResultManualAxes(FuncOp funcOp, int64_t resultIndex,
   }
 }
 
+// Creates a sharding constraint op. If `createHloShardingConstraints` is true,
+// creates a `stablehlo.custom_call` op with `call_target_name` equal to
+// "Sharding", otherwise creates a `mhlo.copy` op.
+Operation* createShardingConstraint(mlir::IRRewriter& rewriter,
+                                    mlir::Location loc, Value value,
+                                    bool createHloShardingConstraints) {
+  if (createHloShardingConstraints) {
+    auto customCallOp =
+        CustomCallOp::create(rewriter, loc, value.getType(), value);
+    customCallOp.setCallTargetName(kShardingCustomCallTargetName);
+    return customCallOp;
+  }
+  return CopyOp::create(rewriter, loc, value);
+}
+
 // Converts `op` to the pattern that XLA recognizes.
 //
 // The pattern is:
@@ -290,15 +305,8 @@ void convertManualComputationOp(
       fullToShardResults.push_back(globalOperand);
       continue;
     }
-    Operation* shardingConstraint;
-    if (createHloShardingConstraints) {
-      auto customCallOp = CustomCallOp::create(
-          rewriter, loc, globalOperand.getType(), globalOperand);
-      customCallOp.setCallTargetName(kShardingCustomCallTargetName);
-      shardingConstraint = customCallOp;
-    } else {
-      shardingConstraint = CopyOp::create(rewriter, loc, globalOperand);
-    }
+    Operation* shardingConstraint = createShardingConstraint(
+        rewriter, loc, globalOperand, createHloShardingConstraints);
     sdy::setShardings(shardingConstraint, inSharding);
     setNonEmptyManualAxes(shardingConstraint, parentManualAxesAttr);
 
@@ -356,15 +364,8 @@ void convertManualComputationOp(
       oldResult.replaceAllUsesWith(localResult);
       continue;
     }
-    Operation* shardingConstraint;
-    if (createHloShardingConstraints) {
-      auto customCallOp = CustomCallOp::create(
-          rewriter, loc, localResult.getType(), localResult);
-      customCallOp.setCallTargetName(kShardingCustomCallTargetName);
-      shardingConstraint = customCallOp;
-    } else {
-      shardingConstraint = CopyOp::create(rewriter, loc, localResult);
-    }
+    Operation* shardingConstraint = createShardingConstraint(
+        rewriter, loc, localResult, createHloShardingConstraints);
     sdy::setShardings(shardingConstraint, erasedManualAxisOutShardings.back());
     setNonEmptyManualAxes(shardingConstraint, regionManualAxesAttr);
 
