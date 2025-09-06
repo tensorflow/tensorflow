@@ -17,21 +17,31 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <memory>
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_original_value.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/map_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -76,10 +86,45 @@ absl::StatusOr<bool> MultiOutputFusion::Run(
   return changed;
 }
 
+namespace {
+void SetOriginalValue(HloInstruction* remaining, HloInstruction* fused,
+                      const Shape& remaining_shape, const Shape& fused_shape) {
+  auto remaining_ov = remaining->original_value();
+  auto fused_ov = fused->original_value();
+  if (remaining_ov == nullptr && fused_ov == nullptr) {
+    return;
+  }
+
+  if (!remaining_ov) {
+    remaining_ov = std::make_shared<OriginalValue>(remaining_shape);
+  }
+  if (!fused_ov) {
+    fused_ov = std::make_shared<OriginalValue>(fused_shape);
+  }
+  std::vector<std::optional<OriginalArray>> new_leaves;
+  for (const auto& [index, value] : remaining_ov->original_arrays()) {
+    new_leaves.push_back(value);
+  }
+  for (const auto& [index, value] : fused_ov->original_arrays()) {
+    new_leaves.push_back(value);
+  }
+
+  auto new_ov = std::make_shared<OriginalValue>(remaining->shape());
+  int64_t leaf_index = 0;
+  for (auto& [index, value] : new_ov->mutable_original_arrays()) {
+    value = new_leaves[leaf_index++];
+  }
+  remaining->set_original_value(new_ov);
+}
+}  // namespace
+
 HloInstruction* MultiOutputFusion::Fuse(HloInstruction* instr1,
                                         HloInstruction* instr2) {
   HloInstruction* remaining = instr1;
   HloInstruction* fused = instr2;
+  const Shape& remaining_shape = remaining->shape();
+  const Shape& fused_shape = fused->shape();
+
   // Make sure that if only one of the instructions is a fusion, or if only one
   // of the instructions is a multi-output fusion, it's what will be fused into.
   if (!remaining->IsMultiOutputFusion() && fused->IsMultiOutputFusion()) {
@@ -93,6 +138,8 @@ HloInstruction* MultiOutputFusion::Fuse(HloInstruction* instr1,
   } else {
     remaining->FuseInstructionIntoMultiOutput(fused);
   }
+
+  SetOriginalValue(remaining, fused, remaining_shape, fused_shape);
   return remaining;
 }
 
