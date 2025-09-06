@@ -119,18 +119,17 @@ TEST_F(SerializationTest, DelegateEntryFingerprint) {
   Serialization serialization(serialization_params);
 
   // Different contexts yield different keys.
-  auto entry1 = serialization.GetEntryForDelegate(delegate1.c_str(), &context1);
-  auto entry2 = serialization.GetEntryForDelegate(delegate1.c_str(), &context2);
+  auto entry1 = serialization.GetEntryForDelegate(delegate1, &context1);
+  auto entry2 = serialization.GetEntryForDelegate(delegate1, &context2);
   ASSERT_NE(entry1.GetFingerprint(), entry2.GetFingerprint());
 
   // Different custom_keys yield different keys.
-  auto entry3 = serialization.GetEntryForDelegate(delegate2.c_str(), &context1);
+  auto entry3 = serialization.GetEntryForDelegate(delegate2, &context1);
   ASSERT_NE(entry1.GetFingerprint(), entry3.GetFingerprint());
 
   // Same fingerprint across serialization runs.
   Serialization serialization2(serialization_params);
-  auto entry2_retry =
-      serialization2.GetEntryForDelegate(delegate1.c_str(), &context2);
+  auto entry2_retry = serialization2.GetEntryForDelegate(delegate1, &context2);
   ASSERT_EQ(entry2.GetFingerprint(), entry2_retry.GetFingerprint());
 }
 
@@ -144,57 +143,54 @@ TEST_F(SerializationTest, KernelEntryFingerprint) {
   TfLiteContext ref_context = GenerateTfLiteContext(/*num_tensors*/ 30);
   TfLiteDelegateParams ref_partition = GenerateTfLiteDelegateParams(
       /*num_nodes=*/3, /*num_input_tensors=*/4, /*num_output_tensors=*/2);
-  auto ref_entry = serialization.GetEntryForKernel(
-      delegate.c_str(), &ref_context, &ref_partition);
+  auto ref_entry =
+      serialization.GetEntryForKernel(delegate, &ref_context, &ref_partition);
 
   // Different inputs to delegated partition => different fingerprint.
   TfLiteDelegateParams diff_input_partition = GenerateTfLiteDelegateParams(
       /*num_nodes=*/3, /*num_input_tensors=*/3, /*num_output_tensors=*/2);
-  ASSERT_NE(ref_entry.GetFingerprint(),
-            serialization
-                .GetEntryForKernel(delegate.c_str(), &ref_context,
-                                   &diff_input_partition)
-                .GetFingerprint());
+  ASSERT_NE(
+      ref_entry.GetFingerprint(),
+      serialization
+          .GetEntryForKernel(delegate, &ref_context, &diff_input_partition)
+          .GetFingerprint());
 
   // Different outputs from delegated partition => different fingerprint.
   TfLiteDelegateParams diff_output_partition = GenerateTfLiteDelegateParams(
       /*num_nodes=*/3, /*num_input_tensors=*/4, /*num_output_tensors=*/3);
-  ASSERT_NE(ref_entry.GetFingerprint(),
-            serialization
-                .GetEntryForKernel(delegate.c_str(), &ref_context,
-                                   &diff_output_partition)
-                .GetFingerprint());
+  ASSERT_NE(
+      ref_entry.GetFingerprint(),
+      serialization
+          .GetEntryForKernel(delegate, &ref_context, &diff_output_partition)
+          .GetFingerprint());
 
   // Different nodes from delegated partition => different fingerprint.
   TfLiteDelegateParams diff_nodes_partition = GenerateTfLiteDelegateParams(
       /*num_nodes=*/4, /*num_input_tensors=*/4, /*num_output_tensors=*/2);
-  ASSERT_NE(ref_entry.GetFingerprint(),
-            serialization
-                .GetEntryForKernel(delegate.c_str(), &ref_context,
-                                   &diff_nodes_partition)
-                .GetFingerprint());
+  ASSERT_NE(
+      ref_entry.GetFingerprint(),
+      serialization
+          .GetEntryForKernel(delegate, &ref_context, &diff_nodes_partition)
+          .GetFingerprint());
 
   // Different contexts, same partition.
   TfLiteContext other_context = GenerateTfLiteContext(/*num_tensors*/ 60);
   ASSERT_NE(
       ref_entry.GetFingerprint(),
-      serialization
-          .GetEntryForKernel(delegate.c_str(), &other_context, &ref_partition)
+      serialization.GetEntryForKernel(delegate, &other_context, &ref_partition)
           .GetFingerprint());
 
   // Same values across runs.
   ASSERT_EQ(
       ref_entry.GetFingerprint(),
-      serialization
-          .GetEntryForKernel(delegate.c_str(), &ref_context, &ref_partition)
+      serialization.GetEntryForKernel(delegate, &ref_context, &ref_partition)
           .GetFingerprint());
 
   // Same value from a new Serialization instance.
   Serialization serialization2(serialization_params);
   ASSERT_EQ(
       ref_entry.GetFingerprint(),
-      serialization
-          .GetEntryForKernel(delegate.c_str(), &ref_context, &ref_partition)
+      serialization.GetEntryForKernel(delegate, &ref_context, &ref_partition)
           .GetFingerprint());
 }
 
@@ -211,12 +207,12 @@ TEST_F(SerializationTest, ModelTokenFingerprint) {
                                                dir.c_str()};
   Serialization serialization1(serialization_params1);
   auto entry1 =
-      serialization1.GetEntryForKernel(delegate.c_str(), &context, &partition);
+      serialization1.GetEntryForKernel(delegate, &context, &partition);
   SerializationParams serialization_params2 = {model_token2.c_str(),
                                                dir.c_str()};
   Serialization serialization2(serialization_params2);
   auto entry2 =
-      serialization2.GetEntryForKernel(delegate.c_str(), &context, &partition);
+      serialization2.GetEntryForKernel(delegate, &context, &partition);
 
   // Same params, but different model tokens.
   ASSERT_NE(entry1.GetFingerprint(), entry2.GetFingerprint());
@@ -227,7 +223,7 @@ TEST_F(SerializationTest, ModelTokenFingerprint) {
                                                serialization_dir2.c_str()};
   Serialization serialization3(serialization_params3);
   auto entry3 =
-      serialization3.GetEntryForKernel(delegate.c_str(), &context, &partition);
+      serialization3.GetEntryForKernel(delegate, &context, &partition);
   ASSERT_EQ(entry1.GetFingerprint(), entry3.GetFingerprint());
 }
 
