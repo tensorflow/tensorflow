@@ -656,10 +656,11 @@ REGISTER_OP("XlaSparseDenseMatmulGradWithCsrInput")
     .Attr("num_sparsecores_per_device: int = -1")
     .Attr("T : {int32, float32} = DT_FLOAT")
     .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
+      // Each table/slot variable may be 1D or 2D.
       int num_tables;
       TF_RETURN_IF_ERROR(c->GetAttr("N", &num_tables));
       for (int i = 0; i < num_tables; ++i) {
-        c->set_output(i, c->input(5));
+        c->set_output(i, c->input(5 + i));
       }
       return absl::OkStatus();
     });
