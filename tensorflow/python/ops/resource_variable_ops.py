@@ -708,7 +708,11 @@ class BaseResourceVariable(variables.Variable, core.Tensor):
                          "when eager execution is enabled.")
     return self._graph_element.eval(session=session)
 
-  def numpy(self):
+  def numpy(self) -> "np.ndarray":
+    """
+    Returns the value of this variable as a NumPy ndarray.
+    Only available when eager execution is enabled.
+    """
     if context.executing_eagerly():
       return self.read_value().numpy()
     raise NotImplementedError(
@@ -1886,7 +1890,8 @@ class ResourceVariable(BaseResourceVariable, composite_tensor.CompositeTensor):
           shape=shape,
           distribute_strategy=distribute_strategy,
           validate_shape=validate_shape,
-          experimental_enable_variable_lifting=experimental_enable_variable_lifting,
+          experimental_enable_variable_lifting=
+          experimental_enable_variable_lifting,
           )
 
   # CompositeTensor method
