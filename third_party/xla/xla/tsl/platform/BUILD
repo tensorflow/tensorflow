@@ -2,6 +2,7 @@ load(
     "@bazel_skylib//:bzl_library.bzl",
     "bzl_library",
 )
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load(
     "//xla/tsl:tsl.bzl",
     "if_not_fuchsia",
@@ -867,4 +868,10 @@ cc_library(
     name = "recordphase",
     textual_hdrs = ["recordphase.h"],
     deps = tf_platform_deps("recordphase") + ["@com_google_absl//absl/strings:string_view"],
+)
+
+cc_library(
+    name = "debug_me_context",
+    hdrs = ["debug_me_context.h"],
+    deps = ["@com_google_absl//absl/container:flat_hash_map"],
 )

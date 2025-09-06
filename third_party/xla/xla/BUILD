@@ -1,4 +1,5 @@
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//third_party/compute_library:build_defs.bzl", "if_enable_acl")
 
 # copybara:uncomment load("@rules_python//python:proto.bzl", "py_proto_library")
@@ -98,7 +99,6 @@ xla_cc_test(
         ":bit_cast",
         "//xla/hlo/testlib:test",
         "//xla/tsl/platform:test_main",
-        "@com_google_googletest//:gtest",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:bfloat16",
     ],
@@ -373,7 +373,6 @@ cc_library(
     srcs = ["permutation_util.cc"],
     hdrs = ["permutation_util.h"],
     deps = [
-        ":types",
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log:check",
@@ -417,7 +416,6 @@ xla_cc_test(
         ":util",
         "//xla/hlo/testlib:test",
         "//xla/tsl/platform:test_main",
-        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -495,13 +493,11 @@ xla_cc_test(
     name = "shape_pool_test",
     srcs = ["shape_pool_test.cc"],
     deps = [
-        ":literal_util",
         ":shape_pool",
-        "//xla:shape_util",
+        ":shape_util",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_benchmark",
         "//xla/tsl/platform:test_main",
-        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -632,7 +628,6 @@ xla_cc_test(
         "//xla/hlo/testlib:test",
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/types:span",
-        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -737,7 +732,6 @@ xla_cc_test(
         ":literal_util",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
-        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -869,10 +863,8 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":array",
-        ":types",
         ":util",
         "@com_google_absl//absl/functional:function_ref",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -883,7 +875,6 @@ xla_cc_test(
         ":array2d",
         "//xla/hlo/testlib:test",
         "//xla/tsl/platform:test_main",
-        "@com_google_googletest//:gtest",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:ml_dtypes",
     ],
@@ -907,7 +898,6 @@ xla_cc_test(
         ":types",
         "//xla/hlo/testlib:test",
         "//xla/tsl/platform:test_main",
-        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -935,7 +925,6 @@ xla_cc_test(
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/types:span",
-        "@com_google_googletest//:gtest",
         "@eigen_archive//:eigen3",
     ],
 )
@@ -1266,7 +1255,6 @@ cc_library(
     visibility = internal_visibility([":friends"]),
     deps = [
         "//xla/backends/cpu:alignment",
-        "//xla/tsl/util:safe_reinterpret_cast",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:dynamic_annotations",
     ],
@@ -1377,7 +1365,6 @@ xla_cc_test(
         "//xla/hlo/testlib:test_helpers",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test_main",
-        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -1481,6 +1468,33 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "debug_me_context_util",
+    srcs = ["debug_me_context_util.cc"],
+    hdrs = ["debug_me_context_util.h"],
+    deps = [
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/tsl/platform:debug_me_context",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_cc_test(
+    name = "debug_me_context_util_test",
+    srcs = ["debug_me_context_util_test.cc"],
+    deps = [
+        ":debug_me_context_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:hlo_module_group",
+        "//xla/hlo/pass:hlo_pass",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
