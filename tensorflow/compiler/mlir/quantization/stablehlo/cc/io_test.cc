@@ -39,8 +39,6 @@ using ::testing::IsEmpty;
 using ::testing::Not;
 using ::testing::SizeIs;
 using ::testing::UnorderedElementsAre;
-using ::tsl::testing::IsOk;
-using ::tsl::testing::StatusIs;
 
 // A test-only derived class of `tsl::Env` which is broken. Used to cause
 // failure for the `CreateTmpDir` function. Each of the overridden member
