@@ -119,4 +119,24 @@ def TritonXLALowerGetTidPass
   let constructor = "CreateTritonXLALowerGetTidPass()";
 }
 
+def TritonXLALowerAtomicsPass
+    : Pass<"triton-xla-atomics", "mlir::ModuleOp"> {
+  let summary = "Lower triton_xla.atomic operations.";
+  let description = [{
+    This pass lowers atomic operations to the PTX intrinsic with the given
+    memory semantics.
+  }];
+  let constructor = "CreateTritonXLALowerAtomicsPass()";
+}
+
+def TritonXLALowerBlockBarrierPass
+    : Pass<"triton-xla-block-barrier", "mlir::ModuleOp"> {
+  let summary = "Lower a block barrier to triton_xla/triton operations.";
+  let description = [{
+    This pass lowers a block barrier to Triton IR using atomic write and
+    spin-wait operations.
+  }];
+  let constructor = "CreateTritonXLALowerBlockBarrierPass()";
+}
+
 #endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_PASSES_TD_
