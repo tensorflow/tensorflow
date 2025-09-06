@@ -31,6 +31,11 @@ RUN /setup.python.sh python3.13-nogil /builder.requirements.txt
 RUN /setup.python.sh python3.14 /builder.requirements.txt
 RUN /setup.python.sh python3.14-nogil /builder.requirements.txt
 
+ARG CUDA_PACKAGES_FILE=cuda12.1_cudnn9.1.packages.txt
+COPY ${CUDA_PACKAGES_FILE} /cudnn.packages.txt
+COPY setup.sources.cudnn.sh /setup.sources.cudnn.sh
+RUN /setup.sources.cudnn.sh && /setup.packages.sh /cudnn.packages.txt
+
 # Since we are using python3.12 as the default python version, we need to
 # install python3.12 last for now.
 # TODO(b/376338367): switch to pyenv.
@@ -38,8 +43,6 @@ RUN /setup.python.sh python3.12 /builder.requirements.txt
 
 COPY setup.sources.cudnn.sh /setup.sources.cudnn.sh
 ARG INSTALL_CUDNN=false
-ARG CUDA_PACKAGES_FILE=cuda12.1_cudnn9.1.packages.txt
-COPY ${CUDA_PACKAGES_FILE} /cudnn.packages.txt
 
 RUN if [ "${INSTALL_CUDNN}" = "true" ]; then \
       echo "Installing cudnn"; \
@@ -56,11 +59,11 @@ RUN ln -sf /usr/bin/python3.12 /usr/bin/python3
 RUN ln -sf /usr/bin/python3.12 /usr/bin/python
 RUN ln -sf /usr/lib/python3.12 /usr/lib/tf_python
 
-# Make sure clang is on the path
-RUN ln -s /usr/lib/llvm-18/bin/clang /usr/bin/clang
-
 # Link the compat driver to the location if available.
 RUN if [ -e "/usr/local/cuda/compat/libcuda.so.1" ]; then ln -s /usr/local/cuda/compat/libcuda.so.1 /usr/lib/x86_64-linux-gnu/libcuda.so.1; fi
+
+# Make sure clang is on the path
+RUN ln -s /usr/lib/llvm-18/bin/clang /usr/bin/clang
 
 # Install various tools.
 # - bats: bash unit testing framework
