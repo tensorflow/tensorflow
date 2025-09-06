@@ -48,7 +48,7 @@ static absl::StatusOr<bool> AsynchronizeInstruction(HloInstruction* instr) {
   // Set the false delay of done op to be false so it can be scheduled
   // far apart from start.
   gpu_config.set_force_earliest_schedule(false);
-  TF_RETURN_IF_ERROR(done->set_backend_config(gpu_config));
+  done->set_backend_config(gpu_config);
   VLOG(5) << "Created async instruction: " << done->ToString();
   return true;
 }

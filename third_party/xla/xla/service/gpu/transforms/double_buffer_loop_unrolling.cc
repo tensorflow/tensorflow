@@ -376,7 +376,7 @@ absl::StatusOr<bool> FullyUnroll(HloInstruction* while_instr,
 
   WhileLoopBackendConfig new_config;
   new_config.mutable_known_trip_count()->set_n(1);
-  TF_RETURN_IF_ERROR(while_instr->set_backend_config(new_config));
+  while_instr->set_backend_config(new_config);
 
   return changed;
 }
@@ -532,7 +532,7 @@ absl::StatusOr<bool> DoubleBufferingUnroll(HloInstruction* while_instr,
         config.known_init_step().init() + (peel_one_iteration ? step : 0));
   }
 
-  TF_RETURN_IF_ERROR(while_instr->set_backend_config(new_config));
+  while_instr->set_backend_config(new_config);
   return true;  // changed
 }
 

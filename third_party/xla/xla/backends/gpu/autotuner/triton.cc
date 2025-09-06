@@ -176,7 +176,7 @@ absl::Status TritonBackend::ApplyConfig(HloInstruction& instr,
       *gpu_config.mutable_fusion_backend_config();
 
   *backend_config.mutable_triton_gemm_config() = triton_config_proto;
-  TF_RETURN_IF_ERROR(instr.set_backend_config(gpu_config));
+  instr.set_backend_config(gpu_config);
 
   TF_ASSIGN_OR_RETURN(TritonGemmConfig triton_config,
                       TritonGemmConfig::FromProto(triton_config_proto));

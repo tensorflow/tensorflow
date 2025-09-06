@@ -262,7 +262,7 @@ absl::Status ConvertEntryToTritonFusion(HloModule* module,
     gpu_config.mutable_fusion_backend_config()->set_kind(
         std::string(kTritonFusionKind));
   }
-  TF_RETURN_IF_ERROR(fusion->set_backend_config(gpu_config));
+  fusion->set_backend_config(gpu_config);
 
   auto new_entry =
       module->AddComputationAndUnifyNamesAndIds(builder.Build(),

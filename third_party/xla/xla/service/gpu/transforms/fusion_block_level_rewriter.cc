@@ -229,7 +229,7 @@ absl::StatusOr<bool> ProcessFusionInstruction(
        ->mutable_block_level_fusion_config() =
       tiled_runtime_data.block_level_parameters.ToBlockLevelFusionConfig();
   backend_config.mutable_fusion_backend_config()->set_kind(kTritonFusionKind);
-  TF_RETURN_IF_ERROR(fusion_instruction->set_backend_config(backend_config));
+  fusion_instruction->set_backend_config(backend_config);
   fusion_instruction->set_fusion_kind(HloInstruction::FusionKind::kCustom);
   return true;
 }

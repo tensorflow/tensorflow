@@ -709,7 +709,7 @@ class CuDnnFusionVisitor : public DfsHloRewriteVisitor {
             gpu_config.mutable_fusion_backend_config()
                 ->mutable_cudnn_fusion_config();
         cudnn_config->set_plan_id(plan_id);
-        TF_RETURN_IF_ERROR(hlo->set_backend_config(gpu_config));
+        hlo->set_backend_config(gpu_config);
       }
       return graph;
     };

@@ -579,7 +579,7 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
     bool transpose_b = (rhs_dim_k != rhs_shape.dimensions_size() - 2);
     matmul_config->set_transpose_a(transpose_a);
     matmul_config->set_transpose_b(transpose_b);
-    TF_RETURN_IF_ERROR(matmul_call->set_backend_config(backend_config));
+    matmul_call->set_backend_config(backend_config);
     TF_RETURN_IF_ERROR(ReplaceInstruction(dot_instr, matmul_call));
     return absl::OkStatus();
   }
@@ -645,7 +645,7 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
             output_shape, {conv->mutable_operand(0), conv->mutable_operand(1)},
             "__onednn$convolution"));
 
-    TF_RETURN_IF_ERROR(custom_call->set_backend_config(backend_config));
+    custom_call->set_backend_config(backend_config);
     TF_RETURN_IF_ERROR(ReplaceInstruction(conv, custom_call));
     return absl::OkStatus();
   }
@@ -815,7 +815,7 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
       if (optional_addend_broadcast) {
         optimization_config->set_bias_broadcast(true);
       }
-      TF_RETURN_IF_ERROR(custom_call->set_backend_config(*backend_config));
+      custom_call->set_backend_config(*backend_config);
 
       HloInstruction* new_instr;
       // If matched pattern has custom-call -> bitcast -> add, then we need to
@@ -1010,7 +1010,7 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
       // handling.
       fusions_config->add_alpha_typecast(
           *(reinterpret_cast<int32_t*>(&constant_value.value())));
-      TF_RETURN_IF_ERROR(custom_call->set_backend_config(*backend_config));
+      custom_call->set_backend_config(*backend_config);
       HloInstruction* new_instr;
       if (optional_convert != nullptr &&
           optional_convert->opcode() == HloOpcode::kConvert) {
@@ -1070,7 +1070,7 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
       auto matmul_call = Cast<HloCustomCallInstruction>(
           custom_call->AddInstruction(custom_call->CloneWithNewOperands(
               copy->shape(), custom_call->mutable_operands())));
-      TF_RETURN_IF_ERROR(matmul_call->set_backend_config(*backend_config));
+      matmul_call->set_backend_config(*backend_config);
       TF_RETURN_IF_ERROR(ReplaceInstruction(copy, matmul_call));
     }
     return absl::OkStatus();
@@ -1084,7 +1084,7 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
     auto backend_config = contraction->backend_config<BackendConfig>();
     auto fusions_config = GetFusionsConfig(&backend_config);
     fusions_config->add_ops(kind);
-    TF_RETURN_IF_ERROR(contraction->set_backend_config(*backend_config));
+    contraction->set_backend_config(*backend_config);
     std::unique_ptr<HloInstruction> output = contraction->Clone();
     if (optional_bitcast != nullptr &&
         optional_bitcast->opcode() == HloOpcode::kBitcast) {
@@ -1274,7 +1274,7 @@ class OneDnnPostRewriteVisitor : public DfsHloRewriteVisitor {
       auto matmul_call = Cast<HloCustomCallInstruction>(
           contraction->AddInstruction(contraction->CloneWithNewOperands(
               contraction->shape(), new_ops)));
-      TF_RETURN_IF_ERROR(matmul_call->set_backend_config(*backend_config));
+      matmul_call->set_backend_config(*backend_config);
       TF_RETURN_IF_ERROR(ReplaceInstruction(contraction, matmul_call));
       return HandleCustomCallInternal<dnnl::matmul::primitive_desc>(
           matmul_call);
@@ -1449,7 +1449,8 @@ EMIT_GET_BACKEND_CONFIG_SPECIALIZATION(
                         custom_call->backend_config<BackendConfig>());         \
     CONFIG_TYPE* config = backend_config.mutable_##CONFIG();                   \
     config->mutable_##SUB_CONFIG()->set_##FIELD(value);                        \
-    return custom_call->set_backend_config(backend_config);                    \
+    custom_call->set_backend_config(backend_config);                           \
+    return absl::OkStatus();                                                   \
   }
 
 EMIT_SET_BACKEND_CONFIG_SPECIALIZATION(SetWeightsPrepack,
