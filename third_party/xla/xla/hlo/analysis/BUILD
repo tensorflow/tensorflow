@@ -155,6 +155,7 @@ cc_library(
         "//xla/hlo/evaluator:hlo_evaluator",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_query",
+        "//xla/service:call_inliner",
         "//xla/service:collective_ops_utils",
         "//xla/service:constant_value",
         "//xla/service:hlo_module_config",

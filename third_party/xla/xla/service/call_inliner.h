@@ -116,7 +116,7 @@ struct InlinedModule {
 // Given a module, this function first clones the module, then inlines the
 // module, and returns the inlined module, clone context and inlined map in
 // InlinedModule struct.
-absl::StatusOr<InlinedModule> GetInlinedModule(HloModule* module);
+absl::StatusOr<InlinedModule> GetInlinedModule(const HloModule* module);
 
 }  // namespace xla
 

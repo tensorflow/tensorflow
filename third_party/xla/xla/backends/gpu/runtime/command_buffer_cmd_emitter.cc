@@ -199,7 +199,8 @@ static absl::StatusOr<Command> Convert(
   return std::make_unique<DynamicSliceFusionCmd>(
       std::move(embedded_cmds), thunk.get_arguments(),
       std::move(fake_allocations), thunk.get_offsets(), thunk.get_orig_shapes(),
-      thunk.get_sliced_shapes(), thunk.get_offset_byte_sizes());
+      thunk.get_sliced_shapes(), thunk.get_offset_byte_sizes(),
+      thunk.get_offset_function());
 }
 
 static absl::StatusOr<Command> Convert(const PartitionIdThunk& thunk) {
