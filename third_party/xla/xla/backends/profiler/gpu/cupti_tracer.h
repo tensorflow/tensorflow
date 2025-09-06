@@ -197,7 +197,7 @@ class CuptiTracer {
   CuptiTraceCollector* collector_ = nullptr;
 
   // CUPTI 10.1 and higher need root access to profile.
-  bool need_root_access_ = false;
+  bool need_root_access_ = true;
 
   bool api_tracing_enabled_ = false;
   bool pm_sampling_enabled_ = false;
