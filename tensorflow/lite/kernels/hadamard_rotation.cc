@@ -39,57 +39,79 @@ struct OpData {
   std::vector<int> random_binary_vector;
 };
 
-// Fast Walsh Hadamard Transform. Updates `data` in place.
-void FWHTGeneral(float* data, int n, bool normalize) {
-  if ((n & (n - 1)) != 0) {
-    std::cerr << "Error: Input size must be a power of 2." << std::endl;
-    return;
-  }
-
-  int h = 1;
-  while (h < n) {
-    for (int i = 0; i < n; i += h * 2) {
-      for (int j = i; j < i + h; ++j) {
-        float x = data[j];
-        float y = data[j + h];
+template <size_t N, size_t H>
+void FwhtStaticSize(float* data) {
+  for (size_t h = H; h < N; h *= 2) {
+    for (size_t i = 0; i < N; i += 2 * h) {
+      for (size_t j = i; j < i + h; ++j) {
+        const float x = data[j];
+        const float y = data[j + h];
         data[j] = x + y;
         data[j + h] = x - y;
       }
     }
-    h *= 2;
-  }
-  if (normalize) {
-    // Calculate the inverse square root once.
-    const float norm_factor = 1.0f / std::sqrt(static_cast<float>(n));
-    for (int k = 0; k < n; ++k) {
-      data[k] *= norm_factor;
-    }
   }
 }
 
-// Same FWHT algorithm, with loops explicitly unrolled for sizes >= 16.
-void FWHTFast(float* data, int hadamard_size) {
-  std::vector<float> output(hadamard_size);
-  int num_chunks = hadamard_size / 16;
-
-  float* in = data;
-  // Use general, iterative loops algorithm for sizes up to 16.
-  for (int chunk = 0; chunk < num_chunks; ++chunk, in += 16) {
-    FWHTGeneral(in, 16, false);
+// Fast Walsh Hadamard Transform. Updates `data` in place.
+template <size_t FixedSize = 128>
+void FwhtFast(float* data, int hadamard_size) {
+  if ((hadamard_size & (hadamard_size - 1)) != 0) {
+    std::cerr << "hadamard_size needs to be a power of 2\n";
+    return;
   }
-  // Finish the bigger butterflies with explicit unrolling.
-  for (int chunk_size = 16; chunk_size < hadamard_size; chunk_size *= 2) {
-    float* in1 = &data[0];
-    float* in2 = &data[chunk_size];
-    for (int i = 0; i < hadamard_size;
-         i += chunk_size * 2, in1 += chunk_size, in2 += chunk_size) {
-      for (int j = i; j < i + chunk_size; j += 16) {
-        // Compiler will unroll this fixed size loop easily.
-        for (int k = 0; k < 16; k++) {
-          float x = *in1;
-          float y = *in2;
-          *in1++ = x + y;
-          *in2++ = x - y;
+
+  if (hadamard_size < FixedSize) {
+    // Note: Manually unrolling like this may cause binary size inflation. This
+    // can be traded against performance by implementing the algorithm for a
+    // variable size.
+    switch (hadamard_size) {
+      case 2:
+        FwhtStaticSize<2, 1>(data);
+        break;
+      case 4:
+        FwhtStaticSize<4, 1>(data);
+        break;
+      case 8:
+        FwhtStaticSize<8, 1>(data);
+        break;
+      case 16:
+        FwhtStaticSize<16, 1>(data);
+        break;
+      case 32:
+        FwhtStaticSize<32, 1>(data);
+        break;
+      case 64:
+        FwhtStaticSize<64, 1>(data);
+        break;
+      case 128:
+        FwhtStaticSize<128, 1>(data);
+        break;
+    }
+    static_assert(FixedSize <= 128,
+                  "Missing cases for unrolling array sizes bigger than 128.");
+  } else {
+    const int num_chunks = hadamard_size / FixedSize;
+    float* in = data;
+    // Use general, iterative loops algorithm for sizes up to FixedSize.
+    for (int chunk = 0; chunk < num_chunks; ++chunk, in += FixedSize) {
+      FwhtStaticSize<FixedSize, 1>(in);
+    }
+    // Finish the bigger butterflies with explicit unrolling.
+    for (int chunk_size = FixedSize; chunk_size < hadamard_size;
+         chunk_size *= 2) {
+      float* in1 = &data[0];
+      float* in2 = &data[chunk_size];
+      for (int i = 0; i < hadamard_size;
+           i += chunk_size * 2, in1 += chunk_size, in2 += chunk_size) {
+        for (int j = i; j < i + chunk_size; j += FixedSize) {
+          // Compiler will unroll this fixed size loop easily.
+          for (int k = 0; k < FixedSize; k++) {
+            float x = *in1;
+            float y = *in2;
+            *in1++ = x + y;
+            *in2++ = x - y;
+          }
         }
       }
     }
@@ -173,11 +195,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   for (int i = 0; i < total_transforms; ++i) {
     int chunk_start = i * hadamard_size;
     // Update output->data.f in place.
-    if (hadamard_size < 16) {
-      FWHTGeneral(&output->data.f[chunk_start], hadamard_size, true);
-    } else {
-      FWHTFast(&output->data.f[chunk_start], hadamard_size);
-    }
+    FwhtFast(&output->data.f[chunk_start], hadamard_size);
   }
 
   return kTfLiteOk;
