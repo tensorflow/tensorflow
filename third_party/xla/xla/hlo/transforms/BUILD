@@ -249,6 +249,7 @@ cc_library(
         "//xla/service:hlo_value",
         "//xla/service:host_offload_utils",
         "//xla/service:memory_annotations_hdr",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
