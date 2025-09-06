@@ -350,6 +350,7 @@ cc_library(
     hdrs = ["algebraic_simplifier.h"],
     copts = tsl_copts(),
     deps = [
+        "//third_party/cppitertools",
         "//xla:comparison_util",
         "//xla:literal",
         "//xla:literal_util",
@@ -423,6 +424,7 @@ xla_cc_test(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",

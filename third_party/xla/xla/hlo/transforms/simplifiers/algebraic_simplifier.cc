@@ -42,6 +42,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "third_party/cppitertools/reversed.hpp"
+#include "third_party/cppitertools/zip.hpp"
 #include "xla/comparison_util.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -1962,6 +1964,271 @@ absl::Status AlgebraicSimplifierVisitor::HandleConcatenate(
         MakeBroadcastHlo(MakeReshapeHlo(new_shape, operands[0]).value(),
                          broadcast_dims, concatenate->shape()));
   }
+
+  auto extract_clamp_min_max_constant = [](HloInstruction* clamp) {
+    HloInstruction* min = nullptr;
+    HloInstruction* max = nullptr;
+    Match(clamp,
+          m::Clamp(m::Constant(&min), m::NonConstant(), m::Constant(&max))) ||
+        Match(clamp, m::Clamp(m::Broadcast(m::Constant(&min)), m::NonConstant(),
+                              m::Constant(&max))) ||
+        Match(clamp, m::Clamp(m::Constant(&min), m::NonConstant(),
+                              m::Broadcast(m::Constant(&max)))) ||
+        Match(clamp, m::Clamp(m::Broadcast(m::Constant(&min)), m::NonConstant(),
+                              m::Broadcast(m::Constant(&max))));
+    return std::make_tuple(min, max);
+  };
+
+  auto extract_clamp_min_max_nonconstant = [](HloInstruction* clamp) {
+    HloInstruction* nonconstant = nullptr;
+    Match(clamp, m::Clamp(m::Constant(), m::NonConstant(&nonconstant),
+                          m::Constant())) ||
+        Match(clamp, m::Clamp(m::Broadcast(m::Constant()),
+                              m::NonConstant(&nonconstant), m::Constant())) ||
+        Match(clamp, m::Clamp(m::Constant(), m::NonConstant(&nonconstant),
+                              m::Broadcast(m::Constant()))) ||
+        Match(clamp, m::Clamp(m::Broadcast(m::Constant()),
+                              m::NonConstant(&nonconstant),
+                              m::Broadcast(m::Constant())));
+    return nonconstant;
+  };
+
+  auto extract_element_wise_binary_nonconstant =
+      [](HloInstruction* instruction) {
+        HloInstruction* nonconstant = nullptr;
+        Match(instruction,
+              m::Op()
+                  .WithOpcode(instruction->opcode())
+                  .WithBinaryOperandsAnyOrder(m::Constant(),
+                                              m::NonConstant(&nonconstant))) ||
+            Match(instruction, m::Op()
+                                   .WithOpcode(instruction->opcode())
+                                   .WithBinaryOperandsAnyOrder(
+                                       m::Broadcast(m::Constant()),
+                                       m::NonConstant(&nonconstant)));
+        return nonconstant;
+      };
+
+  auto extract_element_wise_binary_constant = [](HloInstruction* instruction) {
+    HloInstruction* constant = nullptr;
+    Match(instruction, m::Op()
+                           .WithOpcode(instruction->opcode())
+                           .WithBinaryOperandsAnyOrder(m::Constant(&constant),
+                                                       m::NonConstant())) ||
+        Match(instruction,
+              m::Op()
+                  .WithOpcode(instruction->opcode())
+                  .WithBinaryOperandsAnyOrder(
+                      m::Broadcast(m::Constant(&constant)), m::NonConstant()));
+    return constant;
+  };
+
+  auto extract_element_wise_binary_lhs_constant =
+      [](HloInstruction* instruction) {
+        HloInstruction* constant = nullptr;
+        Match(instruction, m::Op()
+                               .WithOpcode(instruction->opcode())
+                               .WithOperand(0, m::Constant(&constant))
+                               .WithOperand(1, m::NonConstant())) ||
+            Match(instruction,
+                  m::Op()
+                      .WithOpcode(instruction->opcode())
+                      .WithOperand(0, m::Broadcast(m::Constant(&constant)))
+                      .WithOperand(1, m::NonConstant()));
+        return constant;
+      };
+
+  auto extract_element_wise_binary_rhs_constant =
+      [](HloInstruction* instruction) {
+        HloInstruction* constant = nullptr;
+        Match(instruction, m::Op()
+                               .WithOpcode(instruction->opcode())
+                               .WithOperand(0, m::NonConstant())
+                               .WithOperand(1, m::Constant(&constant))) ||
+            Match(instruction,
+                  m::Op()
+                      .WithOpcode(instruction->opcode())
+                      .WithOperand(0, m::NonConstant())
+                      .WithOperand(1, m::Broadcast(m::Constant(&constant))));
+        return constant;
+      };
+
+  auto extract_element_wise_nonconsant =
+      [&](HloInstruction* instruction) -> HloInstruction* {
+    if (HloInstruction::IsOpElementwiseUnary(instruction->opcode())) {
+      return instruction->mutable_operand(0);
+    }
+    if (HloInstruction::IsOpElementwiseBinary(instruction->opcode())) {
+      return extract_element_wise_binary_nonconstant(instruction);
+    }
+    if (HloInstruction::IsOpElementwiseTernary(instruction->opcode())) {
+      if (instruction->opcode() == HloOpcode::kClamp) {
+        return extract_clamp_min_max_nonconstant(instruction);
+      }
+    }
+    return nullptr;
+  };
+
+  auto is_element_wise_equivalent = [&](HloInstruction* lhs,
+                                        HloInstruction* rhs) {
+    if (lhs->opcode() != rhs->opcode()) {
+      return false;
+    }
+    if (HloInstruction::IsOpElementwiseUnary(lhs->opcode()) &&
+        HloInstruction::IsOpElementwiseUnary(rhs->opcode())) {
+      return true;
+    }
+    if (HloInstruction::IsOpElementwiseBinary(lhs->opcode()) &&
+        HloInstruction::IsOpElementwiseBinary(rhs->opcode())) {
+      // Binary elementwise ops are equivalent,
+      const HloInstruction* lhs_lhs_constant =
+          extract_element_wise_binary_lhs_constant(lhs);
+      const HloInstruction* lhs_rhs_constant =
+          extract_element_wise_binary_rhs_constant(lhs);
+      const HloInstruction* rhs_lhs_constant =
+          extract_element_wise_binary_lhs_constant(rhs);
+      const HloInstruction* rhs_rhs_constant =
+          extract_element_wise_binary_rhs_constant(rhs);
+
+      if (lhs_lhs_constant && rhs_lhs_constant) {
+        return lhs_lhs_constant->literal() == rhs_lhs_constant->literal();
+      }
+      if (lhs_rhs_constant && rhs_rhs_constant) {
+        return lhs_rhs_constant->literal() == rhs_rhs_constant->literal();
+      }
+      if (HloOpcodeIsBinaryCommutative(lhs->opcode())) {
+        if (lhs_lhs_constant && rhs_rhs_constant) {
+          return lhs_lhs_constant->literal() == rhs_rhs_constant->literal();
+        }
+        if (lhs_rhs_constant && rhs_lhs_constant) {
+          return lhs_rhs_constant->literal() == rhs_lhs_constant->literal();
+        }
+      }
+    }
+    if (HloInstruction::IsOpElementwiseTernary(lhs->opcode()) &&
+        HloInstruction::IsOpElementwiseTernary(rhs->opcode())) {
+      // Ternary elementwise ops need to be handled individually.
+      if (lhs->opcode() == HloOpcode::kClamp &&
+          rhs->opcode() == HloOpcode::kClamp) {
+        auto [lhs_min, lhs_max] = extract_clamp_min_max_constant(lhs);
+        auto [rhs_min, rhs_max] = extract_clamp_min_max_constant(rhs);
+        return lhs_min->literal() == rhs_min->literal() &&
+               lhs_max->literal() == rhs_max->literal();
+      }
+    }
+    return false;
+  };
+
+  auto elementwise_chain =
+      [&](HloInstruction* instruction) -> std::vector<HloInstruction*> {
+    std::vector<HloInstruction*> chain;
+    chain.push_back(instruction);
+
+    HloInstruction* next = extract_element_wise_nonconsant(instruction);
+    while (next != nullptr) {
+      chain.push_back(next);
+      next = extract_element_wise_nonconsant(next);
+    }
+
+    return chain;
+  };
+
+  new_operands = {};
+
+  // concat(elementwise(concat(xs...)), elementwise(concat(ys...)), zs...) ->
+  // concat(elementwise(concat(xs..., ys...), zs...))
+  for (int32_t chain_start = 0; chain_start < operands.size(); ++chain_start) {
+    std::vector<std::vector<HloInstruction*>> chains;
+    chains.push_back(elementwise_chain(operands[chain_start]));
+    if (HloInstruction::IsOpElementwise(chains[0].front()->opcode()) &&
+        chains[0].back()->opcode() == HloOpcode::kConcatenate) {
+      while ((chain_start + chains.size()) < operands.size()) {
+        std::vector<HloInstruction*> next_chain =
+            elementwise_chain(operands[chain_start + chains.size()]);
+        if (next_chain.back()->opcode() == HloOpcode::kConcatenate &&
+            chains[0].size() == next_chain.size() &&
+            absl::c_all_of(iter::zip(chains[0], next_chain), [&](auto&& it) {
+              auto&& [lhs, rhs] = it;
+              if (lhs->opcode() == HloOpcode::kConcatenate) {
+                return true;
+              }
+              return is_element_wise_equivalent(lhs, rhs);
+            })) {
+          chains.push_back(std::move(next_chain));
+        } else {
+          break;
+        }
+      }
+      // If there is more than one consecutive element wise element, then
+      // perform the rewrite.
+      if (chains.size() > 1) {
+        // VLOG(0) << "Elementwise chain:";
+        // for (int32_t i = chain_start; i < chain_start + chains.size(); ++i) {
+        //   VLOG(0) << operands[i]->ToString();
+        // }
+        int64_t concatenate_dimension_size = 0;
+        for (int64_t i = 0; i < chains.size(); ++i) {
+          concatenate_dimension_size +=
+              operands[chain_start + i]->shape().dimensions(
+                  concatenate_dimension);
+        }
+        Shape shape = concatenate->shape();
+        shape.set_dimensions(concatenate_dimension, concatenate_dimension_size);
+        std::vector<HloInstruction*> elementwise_operands;
+        for (const std::vector<HloInstruction*>& chain : chains) {
+          for (HloInstruction* operand : chain.back()->mutable_operands()) {
+            elementwise_operands.push_back(operand);
+          }
+        }
+        HloInstruction* intermediate_concatenate =
+            concatenate->AddInstruction(HloInstruction::CreateConcatenate(
+                shape, elementwise_operands, concatenate_dimension));
+
+        HloInstruction* elementwise = intermediate_concatenate;
+        for (HloInstruction* op : iter::reversed(chains[0])) {
+          if (op->opcode() == HloOpcode::kConcatenate) {
+            continue;
+          }
+          if (HloInstruction::IsOpElementwiseUnary(op->opcode())) {
+            elementwise = op->AddInstruction(
+                HloInstruction::CreateUnary(shape, op->opcode(), elementwise));
+          } else if (HloInstruction::IsOpElementwiseBinary(op->opcode())) {
+            HloInstruction* constant = extract_element_wise_binary_constant(op);
+            HloInstruction* broadcast = op->AddInstruction(
+                HloInstruction::CreateBroadcast(shape, constant, {}));
+            elementwise = op->AddInstruction(HloInstruction::CreateBinary(
+                shape, op->opcode(), elementwise, broadcast));
+          } else if (HloInstruction::IsOpElementwiseTernary(op->opcode())) {
+            if (op->opcode() == HloOpcode::kClamp) {
+              auto [min, max] = extract_clamp_min_max_constant(op);
+              HloInstruction* broadcast_min = op->AddInstruction(
+                  HloInstruction::CreateBroadcast(shape, min, {}));
+              HloInstruction* broadcast_max = op->AddInstruction(
+                  HloInstruction::CreateBroadcast(shape, max, {}));
+              elementwise = op->AddInstruction(HloInstruction::CreateTernary(
+                  shape, HloOpcode::kClamp, broadcast_min, elementwise,
+                  broadcast_max));
+            }
+          }
+        }
+        new_operands.push_back(elementwise);
+        chain_start += chains.size() - 1;
+      } else {
+        // Chain has a length of 1, nothing to rewrite.
+        new_operands.push_back(operands[chain_start]);
+      }
+    } else {
+      // No elementwise op, nothing to rewrite.
+      new_operands.push_back(operands[chain_start]);
+    }
+  }
+  if (new_operands.size() < operands.size()) {
+    return ReplaceWithNewInstruction(concatenate,
+                                     HloInstruction::CreateConcatenate(
+                                         concatenate->shape(), new_operands,
+                                         concatenate->concatenate_dimension()));
+  }
+
   return absl::OkStatus();
 }
 
