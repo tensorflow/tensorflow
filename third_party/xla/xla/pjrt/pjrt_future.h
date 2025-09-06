@@ -80,7 +80,7 @@ class ScopedAsyncTrackingEvent {
 };
 
 // Helpers for using PjRtFutures.
-struct PjRtFutureHelpers {
+class PjRtFutureHelpers {
  public:
   // Keys that are returned by an implementation-specific handler when a client
   // starts to block on a promise.
@@ -98,6 +98,19 @@ struct PjRtFutureHelpers {
   // Signature of handler called by the PjRtFuture class after it finishes
   // blocking a thread.
   using OnBlockEndFn = std::function<void(ProfilingKeys)>;
+
+  // Returns a PjRtFuture<T> with optionally updated profiling handlers. If
+  // profiling handlers are not provided, the original ones will be used.
+  template <typename T>
+  static PjRtFuture<T> WithProfiling(PjRtFuture<T> future,
+                                     OnBlockStartFn on_block_start = nullptr,
+                                     OnBlockEndFn on_block_end = nullptr) {
+    return PjRtFuture<T>(std::move(future.promise_),
+                         on_block_start ? std::move(on_block_start)
+                                        : std::move(future.on_block_start_),
+                         on_block_end ? std::move(on_block_end)
+                                      : std::move(future.on_block_end_));
+  }
 };
 
 namespace internal {
@@ -401,6 +414,8 @@ class PjRtFutureBase : public PjRtFutureMoveControl<is_move_only> {
   }
 
  private:
+  friend class xla::PjRtFutureHelpers;
+
   tsl::AsyncValueRef<T> promise_;
 
   // Function that is called before a thread starts blocking on the promise.
@@ -489,10 +504,13 @@ class PjRtFuture : public internal::PjRtFutureBase<absl::StatusOr<T>> {
 
   // Returns a pair of connected Promise and PjRtFuture<T>. Setting the returned
   // promise will fulfill the connected future.
-  static std::pair<MoveOnlyPromise, PjRtFuture<T>> MakePromise() {
+  static std::pair<MoveOnlyPromise, PjRtFuture<T>> MakePromise(
+      PjRtFutureHelpers::OnBlockStartFn on_block_start = nullptr,
+      PjRtFutureHelpers::OnBlockEndFn on_block_end = nullptr) {
     MoveOnlyPromise promise(
         tsl::MakeUnconstructedAsyncValueRef<absl::StatusOr<T>>());
-    PjRtFuture<T> future(promise);
+    PjRtFuture<T> future(promise, std::move(on_block_start),
+                         std::move(on_block_end));
     return std::make_pair(std::move(promise), std::move(future));
   }
 
