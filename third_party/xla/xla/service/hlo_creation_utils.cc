@@ -919,4 +919,16 @@ absl::StatusOr<HloInstruction*> MakeWithinBounds(HloInstruction* inst,
   return MakeBinaryHlo(HloOpcode::kAnd, le, gt);
 }
 
+HloInstruction* MakeScalarLikeFromLiteral(HloInstruction* base,
+                                          Literal literal) {
+  auto scalar =
+      base->AddInstruction(HloInstruction::CreateConstant(std::move(literal)));
+  if (base->shape().dimensions().empty()) {
+    *scalar->mutable_shape() = base->shape();
+    return scalar;
+  }
+  return base->AddInstruction(HloInstruction::CreateBroadcast(
+      ShapeUtil::MakeStaticShape(base->shape()), scalar, {}));
+}
+
 }  // namespace xla

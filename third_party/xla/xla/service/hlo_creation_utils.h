@@ -305,18 +305,15 @@ HloInstruction* MakeR0ConstantHlo(HloComputation* computation, NativeT value) {
 
 // Makes a scalar that is elementwise compatible with the shape of the base
 // instruction.
+HloInstruction* MakeScalarLikeFromLiteral(HloInstruction* base,
+                                          Literal literal);
+
 template <class NativeT>
 HloInstruction* MakeScalarLike(HloInstruction* base, NativeT value) {
-  auto scalar = base->AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<NativeT>(value)
-                                         .Convert(base->shape().element_type())
-                                         .value()));
-  if (base->shape().dimensions().empty()) {
-    *scalar->mutable_shape() = base->shape();
-    return scalar;
-  }
-  return base->AddInstruction(HloInstruction::CreateBroadcast(
-      ShapeUtil::MakeStaticShape(base->shape()), scalar, {}));
+  return MakeScalarLikeFromLiteral(base,
+                                   LiteralUtil::CreateR0<NativeT>(value)
+                                       .Convert(base->shape().element_type())
+                                       .value());
 }
 
 // Creates a fusion instruction and fuses `fused` into the created fusion

@@ -251,6 +251,7 @@ cc_library(
         "//xla/hlo/transforms:operand_upcaster",
         "//xla/hlo/transforms:shape_canonicalizer",
         "//xla/hlo/transforms:while_loop_trip_count_annotator",
+        "//xla/hlo/transforms/expanders:acosh_expander",
         "//xla/hlo/transforms/expanders:bitcast_dtypes_expander",
         "//xla/hlo/transforms/expanders:cholesky_expander",
         "//xla/hlo/transforms/expanders:comparison_expander",
@@ -2000,6 +2001,7 @@ cc_library(
     hdrs = ["elemental_ir_emitter.h"],
     deps = [
         ":elemental_math_emitter",
+        "//xla:util",
         "//xla/codegen/intrinsic",
         "//xla/codegen/intrinsic:exp",
         "//xla/codegen/intrinsic:rsqrt",

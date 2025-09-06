@@ -92,9 +92,6 @@ XlaOp Atan(XlaOp x);
 
 // Hyperbolic trigonometric functions
 
-// Computes the inverse hyperbolic cosine of 'x'.
-XlaOp Acosh(XlaOp x);
-
 // Computes the inverse hyperbolic sine of 'x'.
 XlaOp Asinh(XlaOp x);
 

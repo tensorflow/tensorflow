@@ -218,6 +218,22 @@ def MHLO_AbsOp: MHLO_UnaryElementwiseOp<"abs",
   let hasFolder = 1;
 }
 
+def MHLO_AcoshOp : MHLO_UnaryElementwiseOp<"acosh",
+    [HLO_CompatibleOperandsAndResultType], HLO_AnyFpOrComplexTensor> {
+  let summary = "Acosh operation";
+
+  let description = [{
+     Performs element-wise acosh operation on `operand` tensor and produces a
+    `result` tensor.
+
+    Example:
+    ```mlir
+    %result = mhlo.acosh %operand : tensor<2x2xf32>
+    ```
+  }];
+  let hasFolder = 1;
+}
+
 def MHLO_CbrtOp: MHLO_UnaryElementwiseOp<"cbrt",
     [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpComplexOrQuantizedIntTensor> {
   let summary = "Cbrt operation";
@@ -326,9 +342,6 @@ def MHLO_ErfOp: MHLO_UnaryElementwiseOp<"erf",
   let description = [{
     Performs element-wise erf operation on `operand` tensor and produces a
     `result` tensor.
-
-    See:
-    https://github.com/openxla/stablehlo/blob/main/docs/spec.md#erf
 
     Example:
     ```mlir
