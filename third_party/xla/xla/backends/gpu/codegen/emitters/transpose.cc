@@ -527,7 +527,6 @@ std::vector<int64_t> GetBlockCounts(absl::Span<const int64_t> shape,
   return block_counts;
 }
 
-// TODO(b/370690811): Create the base class for both transpose emitters.
 PackedTranspose::PackedTranspose(const HloFusionAnalysis& analysis,
                                  const TransposeSpec& spec,
                                  absl::Span<const int64_t> output_block_tile,
