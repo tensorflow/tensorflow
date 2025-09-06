@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
@@ -42,6 +43,10 @@ class HloOpProfiler {
   explicit HloOpProfiler(HloRunner& runner);
 
   static std::unique_ptr<KernelTracer> GetKernelTracer();
+
+  static absl::Span<const HloOpcode> AllSupportedOps();
+
+  static absl::Span<const PrimitiveType> AllSupportedDtypes();
 
   absl::StatusOr<HloInstructionProfile> MeasureClockCyclesPerOp(
       HloOpcode op, PrimitiveType data_type);

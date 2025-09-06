@@ -83,37 +83,10 @@ int RunProfiler(int argc, char** argv) {
   const se::DeviceDescription& dev_info =
       runner.backend().stream_executors()[0]->GetDeviceDescription();
   VLOG(0) << dev_info.name() << " @ " << dev_info.clock_rate_ghz() << " GHz";
-
-  const std::vector<PrimitiveType> dtypes = {
-      S8, S16, S32, S64, U8, U16, U32, U64, F16, F32, F64, C64, C128,
-  };
-  const std::vector<HloOpcode> ops = {
-      // Unary
-      HloOpcode::kCbrt,
-      HloOpcode::kCos,
-      HloOpcode::kErf,
-      HloOpcode::kExp,
-      HloOpcode::kExpm1,
-      HloOpcode::kLog,
-      HloOpcode::kLog1p,
-      HloOpcode::kLogistic,
-      HloOpcode::kRsqrt,
-      HloOpcode::kSin,
-      HloOpcode::kSqrt,
-      HloOpcode::kTanh,
-      // Binary
-      HloOpcode::kAdd,
-      HloOpcode::kAtan2,
-      HloOpcode::kDivide,
-      HloOpcode::kMultiply,
-      HloOpcode::kPower,
-      HloOpcode::kSubtract,
-  };
-
   HloInstructionProfileList instr_profiles;
 
-  for (const PrimitiveType data_type : dtypes) {
-    for (const HloOpcode op : ops) {
+  for (const PrimitiveType data_type : HloOpProfiler::AllSupportedDtypes()) {
+    for (const HloOpcode op : HloOpProfiler::AllSupportedOps()) {
       auto result = profiler.MeasureClockCyclesPerOp(op, data_type);
       if (result.ok()) {
         instr_profiles.add_entries()->Swap(&*result);

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/model/hlo_op_profiler.h"
 
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <random>
@@ -27,6 +28,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -54,6 +56,47 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+
+static constexpr std::array<PrimitiveType, 13> dtypes = {
+    S8, S16, S32, S64, U8, U16, U32, U64, F16, F32, F64, C64, C128,
+};
+
+static constexpr std::array<HloOpcode, 74> ops = {
+    // Unary
+    HloOpcode::kAbs, HloOpcode::kAllReduceDone, HloOpcode::kAsyncDone,
+    HloOpcode::kAsyncUpdate, HloOpcode::kBitcast, HloOpcode::kBitcastConvert,
+    HloOpcode::kBroadcast, HloOpcode::kCbrt, HloOpcode::kCeil,
+    HloOpcode::kCholesky, HloOpcode::kClz, HloOpcode::kCollectivePermuteDone,
+    HloOpcode::kConvert, HloOpcode::kCopy, HloOpcode::kCos, HloOpcode::kDomain,
+    HloOpcode::kErf, HloOpcode::kExp, HloOpcode::kExpm1, HloOpcode::kFft,
+    HloOpcode::kFloor, HloOpcode::kGetDimensionSize,
+    HloOpcode::kGetTupleElement, HloOpcode::kImag, HloOpcode::kIsFinite,
+    HloOpcode::kLog, HloOpcode::kLog1p, HloOpcode::kLogistic,
+    HloOpcode::kNegate, HloOpcode::kNot, HloOpcode::kPopulationCount,
+    HloOpcode::kReal, HloOpcode::kReducePrecision, HloOpcode::kReshape,
+    HloOpcode::kReverse, HloOpcode::kRngBitGenerator,
+    HloOpcode::kRoundNearestAfz, HloOpcode::kRoundNearestEven,
+    HloOpcode::kRsqrt, HloOpcode::kSign, HloOpcode::kSin, HloOpcode::kSlice,
+    HloOpcode::kSqrt, HloOpcode::kTan, HloOpcode::kTanh, HloOpcode::kTopK,
+    HloOpcode::kTranspose,
+    // Binary
+    HloOpcode::kAdd, HloOpcode::kAddDependency, HloOpcode::kAnd,
+    HloOpcode::kAtan2, HloOpcode::kCompare, HloOpcode::kComplex,
+    HloOpcode::kConvolution, HloOpcode::kDivide, HloOpcode::kDot,
+    HloOpcode::kGather, HloOpcode::kMaximum, HloOpcode::kMinimum,
+    HloOpcode::kMultiply, HloOpcode::kOr, HloOpcode::kOutfeed, HloOpcode::kPad,
+    HloOpcode::kPower, HloOpcode::kRemainder, HloOpcode::kSetDimensionSize,
+    HloOpcode::kShiftLeft, HloOpcode::kShiftRightArithmetic,
+    HloOpcode::kShiftRightLogical, HloOpcode::kStochasticConvert,
+    HloOpcode::kSubtract, HloOpcode::kTriangularSolve, HloOpcode::kXor};
+
+absl::Span<const PrimitiveType> HloOpProfiler::AllSupportedDtypes() {
+  return absl::MakeConstSpan(dtypes);
+}
+
+absl::Span<const HloOpcode> HloOpProfiler::AllSupportedOps() {
+  return absl::MakeConstSpan(ops);
+}
 
 #ifdef GOOGLE_CUDA
 class CuptiKernelTracer : public HloOpProfiler::KernelTracer,
