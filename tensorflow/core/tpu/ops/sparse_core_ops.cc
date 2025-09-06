@@ -659,7 +659,7 @@ REGISTER_OP("XlaSparseDenseMatmulGradWithCsrInput")
       int num_tables;
       TF_RETURN_IF_ERROR(c->GetAttr("N", &num_tables));
       for (int i = 0; i < num_tables; ++i) {
-        c->set_output(i, c->input(5));
+        c->set_output(i, c->input(5 + i));
       }
       return absl::OkStatus();
     });
@@ -934,6 +934,9 @@ REGISTER_OP("XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInput")
               c, kWeightsIndex, kPreservedValenciesIndex,
               kPreservedVectorsIndex, kPreservedWeightsIndex,
               kActivationGradientsIndex, kTablesIndex, num_tables));
+      for (int i = 0; i < num_tables; ++i) {
+        c->set_output(i, c->input(kTablesIndex + i));
+      }
       return absl::OkStatus();
     });
 

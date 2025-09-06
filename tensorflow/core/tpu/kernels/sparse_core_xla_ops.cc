@@ -843,19 +843,44 @@ class XlaSparseDenseMatmulGradWithCsrInputOp : public XlaOpKernel {
 
     std::vector<XlaCompiler::Argument> arguments(num_arguments);
 
-    // For tables and slot variables, we use the derived type and the shape is
-    // {1, feature_width}.
+    // Compute per-table/slot widths from TF input shapes to preserve 1D/2D.
+    std::vector<int64_t> per_table_widths;
+    per_table_widths.reserve(tables_shapes.size());
+    for (const auto& s : tables_shapes) {
+      if (s.dims() == 2) {
+        per_table_widths.push_back(s.dim_size(1));
+      } else if (s.dims() == 1) {
+        per_table_widths.push_back(s.dim_size(0));
+      } else {
+        OP_REQUIRES(ctx, false,
+                    absl::InvalidArgumentError(absl::StrCat(
+                        "Each table/slot must be rank 1 or 2; got shape: ",
+                        s.DebugString())));
+      }
+    }
+
+    // For the embedding table & slots we pass row-shaped values of width that
+    // matches each input; gradient and hyperparameters remain {1,
+    // feature_width}.
     xla::PrimitiveType table_primitive_type;
     OP_REQUIRES_OK(
         ctx, DataTypeToPrimitiveType(table_dtype_, &table_primitive_type));
 
     for (int32_t i = 0; i < num_arguments; ++i) {
       arguments[i].kind = XlaCompiler::Argument::kParameter;
-      if (i > 0 && i < tables_inputs.size() + 1) {
+      if (i == 0) {
+        // Activation gradients.
+        arguments[i].type = DT_FLOAT;
+        arguments[i].shape =
+            xla::ShapeUtil::MakeShape(xla::F32, {1, feature_width});
+      } else if (i < 1 + static_cast<int32_t>(tables_inputs.size())) {
+        // Table/slots: match each input width.
+        const int64_t width = per_table_widths[i - 1];
         arguments[i].type = table_dtype_;
         arguments[i].shape =
-            xla::ShapeUtil::MakeShape(table_primitive_type, {1, feature_width});
+            xla::ShapeUtil::MakeShape(table_primitive_type, {1, width});
       } else {
+        // Hyperparameters kept at {1, feature_width}.
         arguments[i].type = DT_FLOAT;
         arguments[i].shape =
             xla::ShapeUtil::MakeShape(xla::F32, {1, feature_width});
@@ -884,9 +909,19 @@ class XlaSparseDenseMatmulGradWithCsrInputOp : public XlaOpKernel {
 
     xla_tables_shapes.reserve(tables_shapes.size());
     for (const auto& table_shape : tables_shapes) {
-      xla_tables_shapes.push_back(xla::ShapeUtil::MakeShape(
-          table_primitive_type,
-          {table_shape.dim_size(0), table_shape.dim_size(1)}));
+      if (table_shape.dims() == 2) {
+        xla_tables_shapes.push_back(xla::ShapeUtil::MakeShape(
+            table_primitive_type,
+            {table_shape.dim_size(0), table_shape.dim_size(1)}));
+      } else if (table_shape.dims() == 1) {
+        xla_tables_shapes.push_back(xla::ShapeUtil::MakeShape(
+            table_primitive_type, {table_shape.dim_size(0)}));
+      } else {
+        OP_REQUIRES(ctx, false,
+                    absl::InvalidArgumentError(absl::StrCat(
+                        "Each table/slot must be rank 1 or 2; got shape: ",
+                        table_shape.DebugString())));
+      }
     }
 
     xla::Shape tables_shape = xla::ShapeUtil::MakeTupleShape(xla_tables_shapes);
@@ -1392,15 +1427,38 @@ class XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputOp
                         GetNumHyperparametersInput(ctx));
     int32_t num_arguments = 1 + num_tables_inputs + num_hyperparameters_inputs;
 
+    // Inspect the 'tables' inputs to derive per-slot widths (1D/2D allowed).
+    std::vector<xla::XlaOp> tables_inputs;
+    std::vector<TensorShape> tables_shapes;
+    TF_RETURN_IF_ERROR(
+        ctx->InputList("tables", &tables_inputs, &tables_shapes));
+    std::vector<int64_t> per_table_widths(num_tables_inputs);
+    for (int i = 0; i < num_tables_inputs; ++i) {
+      const auto& s = tables_shapes[i];
+      if (s.dims() == 2) {
+        per_table_widths[i] = s.dim_size(1);
+      } else if (s.dims() == 1) {
+        per_table_widths[i] = s.dim_size(0);
+      } else {
+        return absl::InvalidArgumentError(
+            absl::StrCat("Each table/slot must be rank 1 or 2; got shape: ",
+                         s.DebugString()));
+      }
+    }
+
     std::vector<XlaCompiler::Argument> arguments(num_arguments);
 
-    // For all the arguments, we use the float type and the shape is
-    // {1, feature_width}.
+    // Argument 0 (activation gradient) stays {1, feature_width}.
+    // For tables/slots we use per-slot widths; hyperparameters remain {1,
+    // feature_width}.
     for (int32_t i = 0; i < num_arguments; ++i) {
       arguments[i].kind = XlaCompiler::Argument::kParameter;
       arguments[i].type = DT_FLOAT;
-      arguments[i].shape =
-          xla::ShapeUtil::MakeShape(xla::F32, {1, feature_width});
+      int64_t width = feature_width;
+      if (i > 0 && i <= num_tables_inputs) {
+        width = per_table_widths[i - 1];
+      }
+      arguments[i].shape = xla::ShapeUtil::MakeShape(xla::F32, {1, width});
     }
 
     TF_RETURN_IF_ERROR(
