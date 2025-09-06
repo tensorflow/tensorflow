@@ -2652,11 +2652,13 @@ void PjRtCApiBuffer::MakePromiseTrackEvent() {
 
 PjRtFuture<> PjRtCApiBuffer::GetReadyFuture() {
   if (readiness_promise_ == nullptr) {
+    auto [promise, future] = PjRtFuture<>::MakePromise();
     readiness_promise_ =
-        std::make_shared<PjRtFuture<>::Promise>(PjRtFuture<>::CreatePromise());
+        std::make_shared<PjRtFuture<>::Promise>(std::move(promise));
+    readiness_future_ = std::move(future);
     MakePromiseTrackEvent();
   }
-  return PjRtFuture<>{*readiness_promise_};
+  return readiness_future_;
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer::ExternalReference>>
