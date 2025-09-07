@@ -1119,7 +1119,7 @@ absl::StatusOr<bool> GpuConvAlgorithmPicker::RunOnInstruction(
   VLOG(3) << "Replacing convolution " << instr->ToString() << " with "
           << new_call->ToString();
 
-  TF_RETURN_IF_ERROR(new_call->set_backend_config(gpu_backend_config));
+  new_call->set_backend_config(gpu_backend_config);
 
   std::vector<HloInstruction*> new_tuple_elements;
   new_tuple_elements.reserve(new_call->shape().tuple_shapes().size() - 1);

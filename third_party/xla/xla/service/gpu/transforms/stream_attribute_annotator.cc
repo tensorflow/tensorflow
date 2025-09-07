@@ -87,7 +87,7 @@ absl::StatusOr<bool> AnnotateStreamAttributesForInstruction(
       comp_root_gpu_config->operation_queue_id());
   *instr_gpu_config.mutable_wait_on_operation_queues() =
       comp_root_gpu_config->wait_on_operation_queues();
-  TF_RETURN_IF_ERROR(instr->set_backend_config(instr_gpu_config));
+  instr->set_backend_config(instr_gpu_config);
   return true;
 }
 
@@ -100,7 +100,7 @@ absl::StatusOr<bool> AnnotateStreamAttributesForCopyStart(
     return false;
   }
   instr_gpu_config.set_operation_queue_id(channel_id);
-  TF_RETURN_IF_ERROR(instr->set_backend_config(instr_gpu_config));
+  instr->set_backend_config(instr_gpu_config);
   VLOG(3) << "Add copy-start's backend config: " << channel_id;
   return true;
 }
@@ -139,7 +139,7 @@ absl::StatusOr<bool> WrapIntoFusionAndAnnotateStreamAttributes(
   TF_RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
 
   instr_gpu_config.set_operation_queue_id(channel_id);
-  TF_RETURN_IF_ERROR(fusion_instruction->set_backend_config(instr_gpu_config));
+  fusion_instruction->set_backend_config(instr_gpu_config);
   VLOG(3) << "Add async stream " << channel_id << " and wrapped instruction "
           << instruction->ToString();
   VLOG(3) << "  Fusion wrapper: " << fusion_instruction->ToString();
@@ -168,7 +168,7 @@ absl::StatusOr<bool> AnnotateStreamAttributesForUsers(
     if (it == gpu_config.wait_on_operation_queues().end() &&
         gpu_config.operation_queue_id() != stream_id) {
       gpu_config.mutable_wait_on_operation_queues()->Add(stream_id);
-      TF_RETURN_IF_ERROR(user->set_backend_config(gpu_config));
+      user->set_backend_config(gpu_config);
       changed = true;
     }
   }

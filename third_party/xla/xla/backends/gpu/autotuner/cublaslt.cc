@@ -157,7 +157,7 @@ absl::Status CublasLtBackend::ApplyConfig(HloInstruction& instr,
                       instr.backend_config<GpuBackendConfig>());
   GemmBackendConfig& backend_config = *gpu_config.mutable_gemm_backend_config();
   backend_config.set_selected_algorithm(gemm_key.algorithm());
-  TF_RETURN_IF_ERROR(instr.set_backend_config(std::move(gpu_config)));
+  instr.set_backend_config(std::move(gpu_config));
   return absl::OkStatus();
 }
 

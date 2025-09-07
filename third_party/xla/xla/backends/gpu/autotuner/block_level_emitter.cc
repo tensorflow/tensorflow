@@ -386,7 +386,7 @@ absl::Status BlockLevelEmitterBackend::ApplyConfig(
   *backend_config.mutable_block_level_fusion_config() =
       block_level_fusion_config;
   // Re-attach the modified GPU config back to the instruction.
-  TF_RETURN_IF_ERROR(instr.set_backend_config(std::move(gpu_backend_config)));
+  instr.set_backend_config(std::move(gpu_backend_config));
   instr.set_fusion_kind(HloInstruction::FusionKind::kCustom);
   return absl::OkStatus();
 }
