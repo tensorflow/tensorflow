@@ -2035,8 +2035,9 @@ class HloInstruction {
     return proto;
   }
 
-  void set_backend_config(const tsl::protobuf::Message& proto) {
+  absl::Status set_backend_config(const tsl::protobuf::Message& proto) {
     backend_config_ = BackendConfigWrapper(proto);
+    return absl::OkStatus();
   }
 
   // Getter/setter for raw JSON-encoded backend config.  Prefer the

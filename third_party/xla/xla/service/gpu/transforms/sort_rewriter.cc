@@ -530,7 +530,7 @@ absl::StatusOr<bool> SortRewriter::RunOnInstruction(
 
   xla::SortOptions backend_config;
   backend_config.set_descending(sort_analysis.descending);
-  custom_call->set_backend_config(backend_config);
+  TF_RETURN_IF_ERROR(custom_call->set_backend_config(backend_config));
 
   // Build the replacement instruction.
   HloInstruction* replacement;

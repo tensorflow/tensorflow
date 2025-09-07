@@ -695,7 +695,7 @@ absl::Status SetHostDeviceType(HloInstruction* instr) {
   TF_ASSIGN_OR_RETURN(auto backend_config,
                       instr->backend_config<GpuBackendConfig>());
   backend_config.set_device_type(DEVICE_TYPE_HOST);
-  instr->set_backend_config(backend_config);
+  TF_RETURN_IF_ERROR(instr->set_backend_config(backend_config));
   return absl::OkStatus();
 }
 
@@ -703,8 +703,7 @@ absl::Status ClearBackendConfigDeviceType(HloInstruction* instr) {
   TF_ASSIGN_OR_RETURN(auto backend_config,
                       instr->backend_config<GpuBackendConfig>());
   backend_config.clear_device_type();
-  instr->set_backend_config(backend_config);
-  return absl::OkStatus();
+  return instr->set_backend_config(backend_config);
 }
 
 bool BackendConfigDeviceTypeIsHost(HloInstruction* instr) {

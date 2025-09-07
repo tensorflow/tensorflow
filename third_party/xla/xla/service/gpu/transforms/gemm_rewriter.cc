@@ -688,7 +688,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                   output_shape,
                   {instr->mutable_operand(0), instr->mutable_operand(1)},
                   gemm_custom_call_target));
-          gemm_call->set_backend_config(gpu_backend_config);
+          TF_RETURN_IF_ERROR(gemm_call->set_backend_config(gpu_backend_config));
           TF_RETURN_IF_ERROR(ReplaceInstruction(instr, gemm_call));
         }
       } break;
@@ -715,7 +715,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     HloInstruction *gemm_call =
         instr->AddInstruction(HloInstruction::CreateCustomCall(
             output_shape, {lhs_convert, rhs_convert}, gemm_custom_call_target));
-    gemm_call->set_backend_config(gpu_backend_config);
+    TF_RETURN_IF_ERROR(gemm_call->set_backend_config(gpu_backend_config));
     TF_RETURN_IF_ERROR(ReplaceInstruction(instr, gemm_call));
     return absl::OkStatus();
   }
@@ -741,7 +741,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
             *alpha->literal().GetAsComplex128({}) * prev_alpha;
         config.set_alpha_real(new_alpha.real());
         config.set_alpha_imag(new_alpha.imag());
-        existing_gemm->set_backend_config(gpu_config);
+        TF_RETURN_IF_ERROR(existing_gemm->set_backend_config(gpu_config));
         return ReplaceInstruction(instr, existing_gemm);
       }
     }
@@ -1408,7 +1408,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                 instr->shape().element_type(), new_output_shape.dimensions(),
                 instr->shape().layout().minor_to_major()),
             operands_list, kCublasLtMatmulF8CallTarget));
-    new_custom_call->set_backend_config(gpu_backend_config);
+    TF_RETURN_IF_ERROR(new_custom_call->set_backend_config(gpu_backend_config));
     TF_RETURN_IF_ERROR(SetName(instr->GetModule(), new_custom_call));
 
     // Slice the result of the GEMM if the operands were padded.
@@ -1611,7 +1611,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                         gemm_and_damax->backend_config<GpuBackendConfig>());
     GemmBackendConfig &config = *gpu_config.mutable_gemm_backend_config();
     config.set_damax_output(true);
-    gemm_and_damax->set_backend_config(gpu_config);
+    TF_RETURN_IF_ERROR(gemm_and_damax->set_backend_config(gpu_config));
 
     // Obtain D and DAmax separately from the output tuple.
     HloInstruction *d =
@@ -1724,7 +1724,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         gemm->CloneWithNewOperands(gemm->shape(), operands);
     // set output shape to bias shape if mix type
     fused_op->mutable_shape()->set_element_type(bias->shape().element_type());
-    fused_op->set_backend_config(gpu_config);
+    TF_RETURN_IF_ERROR(fused_op->set_backend_config(gpu_config));
 
     // Choose whether the bias must alias the output. Legacy cublas GEMMs must
     // operate in place and alias the bias with the output, whereas with
@@ -1878,7 +1878,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     HloInstruction *result = computation->AddInstruction(
         gemm->CloneWithNewOperands(gemm->shape(), operands));
 
-    result->set_backend_config(gpu_config);
+    TF_RETURN_IF_ERROR(result->set_backend_config(gpu_config));
     TF_RETURN_IF_ERROR(SetName(gemm->GetModule(), result));
     if (slice) {
       result = computation->AddInstruction(
@@ -1922,7 +1922,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     HloComputation *computation = gemm->parent();
     HloInstruction *result = computation->AddInstruction(gemm->Clone());
-    result->set_backend_config(gpu_config);
+    TF_RETURN_IF_ERROR(result->set_backend_config(gpu_config));
     TF_RETURN_IF_ERROR(SetName(gemm->GetModule(), result));
 
     if (slice_or_bitcast) {
@@ -1970,7 +1970,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     std::unique_ptr<HloInstruction> output = gemm->CloneWithNewShape(
         has_aux ? ShapeUtil::MakeTupleShape({gemm->shape(), gemm->shape()})
                 : gemm->shape());
-    output->set_backend_config(gpu_config);
+    TF_RETURN_IF_ERROR(output->set_backend_config(gpu_config));
     TF_RETURN_IF_ERROR(SetName(multiply->GetModule(), output.get()));
 
     if (slice_or_bitcast) {
@@ -2024,7 +2024,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     std::unique_ptr<HloInstruction> output = gemm->CloneWithNewShape(
         has_aux ? ShapeUtil::MakeTupleShape({gemm->shape(), gemm->shape()})
                 : gemm->shape());
-    output->set_backend_config(gpu_config);
+    TF_RETURN_IF_ERROR(output->set_backend_config(gpu_config));
     TF_RETURN_IF_ERROR(SetName(multiply->GetModule(), output.get()));
 
     if (slice_or_bitcast) {

@@ -307,7 +307,7 @@ absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToBackwardFMHA(
   const bool force_deterministic =
       RequireDeterminism(custom_call->GetModule()->config());
   config.set_force_deterministic(force_deterministic);
-  custom_call->set_backend_config(gpu_config);
+  TF_RETURN_IF_ERROR(custom_call->set_backend_config(gpu_config));
 
   TF_ASSIGN_OR_RETURN(
       MatmulTensorDescriptor q,
@@ -432,7 +432,7 @@ absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToBackwardFMHAF8(
   // 3 gradients, 4 amaxs and one workspace
   TF_RET_CHECK(8 == custom_call->shape().tuple_shapes().size());
 
-  custom_call->set_backend_config(gpu_config);
+  TF_RETURN_IF_ERROR(custom_call->set_backend_config(gpu_config));
 
   TF_ASSIGN_OR_RETURN(CudnnfMHAMaskKind cudnn_mask_type,
                       AsCudnnFmhaMaskKind(config.mask_type()));

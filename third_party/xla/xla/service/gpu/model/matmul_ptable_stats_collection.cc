@@ -103,8 +103,7 @@ absl::Status SetReificationCost(HloInstruction& instr, absl::Duration exec_time,
   ReificationCost& reification_cost = *gpu_config.add_reification_cost();
   reification_cost.set_exec_time_us(absl::ToDoubleMicroseconds(exec_time));
   *reification_cost.mutable_name() = reification_name;
-  instr.set_backend_config(gpu_config);
-  return absl::OkStatus();
+  return instr.set_backend_config(gpu_config);
 }
 
 // Computes the runtime estimation via analytical GEMM cost model and adds a

@@ -286,7 +286,7 @@ bool ParallelTaskAssigner::AssignParallelTasksHelper(
     absl::c_copy(dim_partition_counts,
                  tsl::protobuf::RepeatedFieldBackInserter(
                      backend_config.mutable_outer_dimension_partitions()));
-    instruction->set_backend_config(backend_config);
+    TF_CHECK_OK(instruction->set_backend_config(backend_config));
 
     VLOG(2) << "Assigned parallel task count: " << total_partition_count
             << " to instruction: " << instruction->name();

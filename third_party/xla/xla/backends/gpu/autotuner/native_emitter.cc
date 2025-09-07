@@ -85,7 +85,7 @@ absl::Status NativeEmitterBackend::ApplyConfig(HloInstruction& instr,
                       instr.backend_config<GpuBackendConfig>());
   *gpu_backend_config.mutable_native_emitter_backend_config() =
       native_emitter_fusion_config;
-  fusion_instr->set_backend_config(gpu_backend_config);
+  TF_RETURN_IF_ERROR(fusion_instr->set_backend_config(gpu_backend_config));
   return absl::OkStatus();
 }
 

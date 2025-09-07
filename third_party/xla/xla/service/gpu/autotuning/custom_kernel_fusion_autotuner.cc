@@ -64,7 +64,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> ExtractFusionModule(
   gpu_config.mutable_fusion_backend_config()
       ->mutable_custom_fusion_config()
       ->set_kernel_index(kernel_index);
-  instruction->set_backend_config(gpu_config);
+  TF_RETURN_IF_ERROR(instruction->set_backend_config(gpu_config));
 
   return hlo_module;
 }
@@ -129,7 +129,7 @@ absl::Status UpdateFusionInstructionKernelIndex(
   gpu_config.mutable_fusion_backend_config()
       ->mutable_custom_fusion_config()
       ->set_kernel_index(kernel_index);
-  fusion_instruction->set_backend_config(gpu_config);
+  TF_RETURN_IF_ERROR(fusion_instruction->set_backend_config(gpu_config));
 
   return absl::OkStatus();
 }

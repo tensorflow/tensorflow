@@ -331,8 +331,8 @@ absl::Status UpdateDotAndConsumerConfig(HloInstruction* dot,
     updater_gpu_config->mutable_wait_on_operation_queues()->Add(stream_id);
   }
 
-  dot->set_backend_config(dot_gpu_config.value());
-  updater->set_backend_config(updater_gpu_config.value());
+  TF_RETURN_IF_ERROR(dot->set_backend_config(dot_gpu_config.value()));
+  TF_RETURN_IF_ERROR(updater->set_backend_config(updater_gpu_config.value()));
   return absl::OkStatus();
 }
 
@@ -342,7 +342,7 @@ absl::Status SetForceDelayForInstruction(HloInstruction* instr,
 
   gpu_config->set_force_earliest_schedule(force_delay);
 
-  instr->set_backend_config(gpu_config.value());
+  TF_RETURN_IF_ERROR(instr->set_backend_config(gpu_config.value()));
   return absl::OkStatus();
 }
 

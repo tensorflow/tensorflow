@@ -146,7 +146,7 @@ absl::Status CustomKernelBackend::ApplyConfig(HloInstruction& instr,
       gpu_config.mutable_fusion_backend_config();
   backend_config->mutable_custom_fusion_config()->set_kernel_index(
       custom_kernel_config.kernel_index());
-  instr.set_backend_config(std::move(gpu_config));
+  TF_RETURN_IF_ERROR(instr.set_backend_config(std::move(gpu_config)));
 
   return absl::OkStatus();
 }

@@ -1058,7 +1058,7 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
           instr->AddInstruction(HloInstruction::CreateCustomCall(
               custom_call_shape, {x_reshape, scale_reshape, bias_reshape},
               kCudnnNormCallTarget));
-      custom_call->set_backend_config(gpu_backend_config);
+      TF_RETURN_IF_ERROR(custom_call->set_backend_config(gpu_backend_config));
 
       TF_ASSIGN_OR_RETURN(HloInstruction * gte,
                           MakeGetTupleElementHlo(custom_call, 0));
@@ -1174,7 +1174,8 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
       const int64_t workspace_size = (2 * c_constant * (4 + 256)) + 32;
       backend_config.mutable_algorithm()->mutable_workspace_size()->set_value(
           workspace_size);
-      new_custom_call->set_backend_config(gpu_backend_config);
+      TF_RETURN_IF_ERROR(
+          new_custom_call->set_backend_config(gpu_backend_config));
 
       auto replace_with_new_cc = [new_custom_call, this](
                                      HloInstruction* old_instr,
@@ -1455,7 +1456,7 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
               {x.instr(), scale.instr(), reshaped_dy, fused_expectation.instr(),
                fused_norm_factor.instr()},
               kCudnnNormCallTarget));
-      custom_call->set_backend_config(gpu_backend_config);
+      TF_RETURN_IF_ERROR(custom_call->set_backend_config(gpu_backend_config));
 
       auto replace_with_cc = [custom_call, norm_metadata, transposed_dy, this](
                                  HloInstruction* old_instr,

@@ -291,7 +291,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonGemmAutotuneExtractor(
       *gpu_config.mutable_fusion_backend_config();
 
   *backend_config.mutable_triton_gemm_config() = config.ToProto();
-  cloned_dot_fusion->set_backend_config(gpu_config);
+  TF_RETURN_IF_ERROR(cloned_dot_fusion->set_backend_config(gpu_config));
 
   if (config.split_k > 1) {
     TF_RETURN_IF_ERROR(MakeDotSplitKBatch(cloned_dot_fusion, config));
@@ -361,7 +361,7 @@ absl::Status UpdateFusionInstructionKernelIndex(
   gpu_config.mutable_fusion_backend_config()
       ->mutable_custom_fusion_config()
       ->set_kernel_index(kernel_index);
-  fusion_instruction->set_backend_config(gpu_config);
+  TF_RETURN_IF_ERROR(fusion_instruction->set_backend_config(gpu_config));
 
   return absl::OkStatus();
 }
@@ -415,8 +415,9 @@ absl::StatusOr<std::unique_ptr<HloModule>> CuDnnFusionExtractor(
   backend_config.set_kind(std::string(kCuDnnFusionKind));
   // Provided a plan ID the autotuner just compiles one plan.
   backend_config.mutable_cudnn_fusion_config()->set_plan_id(plan_id);
-  module->entry_computation()->root_instruction()->set_backend_config(
-      gpu_config);
+  TF_RETURN_IF_ERROR(
+      module->entry_computation()->root_instruction()->set_backend_config(
+          gpu_config));
   return module;
 }
 
@@ -694,7 +695,7 @@ absl::Status GemmFusionAutotunerRewriterVisitor::HandleFusion(
   if (autotune_result.has_triton()) {
     *fusion_backend_config.mutable_triton_gemm_config() =
         autotune_result.triton();
-    fusion_instr->set_backend_config(gpu_config);
+    TF_RETURN_IF_ERROR(fusion_instr->set_backend_config(gpu_config));
     TF_RETURN_IF_ERROR(HandleTritonGemm(fusion_instr, fusion_backend_config));
     MarkAsChanged();
     return absl::OkStatus();
@@ -719,7 +720,7 @@ absl::Status GemmFusionAutotunerRewriterVisitor::HandleFusion(
   fusion_backend_config.set_kind(std::string(kCuDnnFusionKind));
   fusion_backend_config.mutable_cudnn_fusion_config()->set_plan_id(
       autotune_result.algorithm().algo_id());
-  fusion_instr->set_backend_config(gpu_config);
+  TF_RETURN_IF_ERROR(fusion_instr->set_backend_config(gpu_config));
   MarkAsChanged();
   return absl::OkStatus();
 }

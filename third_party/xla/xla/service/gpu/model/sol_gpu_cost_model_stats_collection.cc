@@ -62,8 +62,7 @@ bool SetReificationCost(HloInstruction* instr, double cost_us) {
   auto reification_cost = gpu_config->add_reification_cost();
   reification_cost->set_exec_time_us(cost_us);
   reification_cost->set_name("sol");
-  instr->set_backend_config(*gpu_config);
-  return true;
+  return instr->set_backend_config(*gpu_config).ok();
 }
 
 // Returns true if reification cost has been successfully recorded.

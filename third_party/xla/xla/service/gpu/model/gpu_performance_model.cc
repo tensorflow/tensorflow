@@ -303,7 +303,7 @@ void GpuPerformanceModel::RecordEstimatedRunTime(
       absl::ToDoubleMicroseconds(data.read_time + data.write_time));
   reification_cost->set_exec_time_us(
       absl::ToDoubleMicroseconds(data.exec_time));
-  instruction->set_backend_config(*gpu_config);
+  TF_CHECK_OK(instruction->set_backend_config(*gpu_config));
 
   VLOG(8) << "RecordEstimatedRunTime: " << instruction->ToString();
 }

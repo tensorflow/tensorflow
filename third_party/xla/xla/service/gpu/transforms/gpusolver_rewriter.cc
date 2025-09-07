@@ -105,7 +105,7 @@ absl::StatusOr<HloInstruction*> CreateCholesky(
       computation->AddInstruction(HloInstruction::CreateCustomCall(
           call_shape, {operand}, kCusolverCholeskyCallTarget, {a_shape}));
   custom_call->set_metadata(metadata);
-  custom_call->set_backend_config(options);
+  TF_RETURN_IF_ERROR(custom_call->set_backend_config(options));
   HloInstruction* out = computation->AddInstruction(
       HloInstruction::CreateGetTupleElement(a_shape, custom_call, 0));
   HloInstruction* info = computation->AddInstruction(

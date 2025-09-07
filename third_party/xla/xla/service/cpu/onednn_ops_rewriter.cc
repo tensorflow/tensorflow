@@ -506,7 +506,7 @@ class OneDnnOpsRewriterVisitor : public DfsHloRewriteVisitor {
         backend_config.mutable_onednn_layer_norm_config();
     ln_config->set_rescale(OneDnnNormConfig::SCALE_AND_SHIFT);
     ln_config->set_epsilon_typecast(*(reinterpret_cast<int32_t*>(&eps)));
-    ln_call->set_backend_config(backend_config);
+    TF_RETURN_IF_ERROR(ln_call->set_backend_config(backend_config));
 
     if (convert_instr != nullptr && is_bf16orfp16_convert &&
         is_producer_bf16orfp16) {
@@ -568,7 +568,7 @@ class OneDnnOpsRewriterVisitor : public DfsHloRewriteVisitor {
     OneDnnSoftmaxConfig* softmax_config =
         backend_config.mutable_onednn_softmax_config();
     softmax_config->set_softmax_axis(axis);
-    softmax_call->set_backend_config(backend_config);
+    TF_RETURN_IF_ERROR(softmax_call->set_backend_config(backend_config));
     TF_RETURN_IF_ERROR(ReplaceInstruction(divide_instr, softmax_call));
 
     return absl::OkStatus();

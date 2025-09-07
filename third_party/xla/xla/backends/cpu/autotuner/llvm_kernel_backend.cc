@@ -100,7 +100,7 @@ absl::Status LlvmKernelBackend::ApplyConfig(HloInstruction& instr,
 
   *backend_config.mutable_llvm_kernel_options() = llvm_kernel_config;
 
-  instr.set_backend_config(backend_config);
+  TF_RETURN_IF_ERROR(instr.set_backend_config(backend_config));
 
   return absl::OkStatus();
 }

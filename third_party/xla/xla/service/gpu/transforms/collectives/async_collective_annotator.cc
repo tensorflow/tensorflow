@@ -43,7 +43,7 @@ absl::StatusOr<bool> AsyncCollectiveAnnotator::Run(
                           instruction->backend_config<GpuBackendConfig>());
       gpu_config.mutable_collective_backend_config()->set_is_sync(
           !is_collective_async_(instruction));
-      instruction->set_backend_config(gpu_config);
+      TF_RETURN_IF_ERROR(instruction->set_backend_config(gpu_config));
       changed = true;
     }
   }

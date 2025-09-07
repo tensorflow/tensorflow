@@ -116,7 +116,7 @@ absl::Status XnnpackBackend::ApplyConfig(HloInstruction& instr,
   *backend_config.mutable_fusion_config()->mutable_xnn_fusion_config() =
       xnn_config;
 
-  instr.set_backend_config(backend_config);
+  TF_RETURN_IF_ERROR(instr.set_backend_config(backend_config));
 
   return absl::OkStatus();
 }

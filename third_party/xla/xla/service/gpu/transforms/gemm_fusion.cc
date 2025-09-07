@@ -806,7 +806,7 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
     FusionBackendConfig& backend_config =
         *gpu_config.mutable_fusion_backend_config();
     backend_config.set_kind(std::string(kTritonGemmFusionKind));
-    dot_fusion->set_backend_config(gpu_config);
+    TF_RETURN_IF_ERROR(dot_fusion->set_backend_config(gpu_config));
 
     if (fusion_output->IsRoot()) {
       fusion_output->parent()->set_root_instruction(dot_fusion);
@@ -849,7 +849,7 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
     FusionBackendConfig& backend_config =
         *gpu_config.mutable_fusion_backend_config();
     backend_config.set_kind("__triton_ragged_dot");
-    dot_fusion->set_backend_config(gpu_config);
+    TF_RETURN_IF_ERROR(dot_fusion->set_backend_config(gpu_config));
 
     TF_RETURN_IF_ERROR(ReplaceInstruction(ragged_dot, dot_fusion));
     MarkAsChanged();
@@ -890,7 +890,7 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
     FusionBackendConfig& backend_config =
         *gpu_config.mutable_fusion_backend_config();
     backend_config.set_kind(kTritonScaledDotFusionKind);
-    fusion->set_backend_config(gpu_config);
+    TF_RETURN_IF_ERROR(fusion->set_backend_config(gpu_config));
     TF_RETURN_IF_ERROR(ReplaceInstruction(scaled_dot, fusion));
     MarkAsChanged();
     return absl::OkStatus();

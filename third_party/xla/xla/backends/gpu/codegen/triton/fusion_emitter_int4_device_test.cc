@@ -144,8 +144,7 @@ class TritonTest : public GpuCodegenTest {
     triton_gemm_key->set_num_stages(1);
     triton_gemm_key->set_num_warps(2);
     triton_gemm_key->set_num_ctas(1);
-    fusion->set_backend_config(gpu_config);
-    return absl::OkStatus();
+    return fusion->set_backend_config(gpu_config);
   }
 
  protected:

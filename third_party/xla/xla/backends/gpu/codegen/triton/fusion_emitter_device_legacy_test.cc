@@ -715,7 +715,7 @@ ENTRY entry {
   config.set_num_warps(8);
   config.set_num_stages(4);
 
-  triton_dot_fusion->set_backend_config(backend_config);
+  TF_ASSERT_OK(triton_dot_fusion->set_backend_config(backend_config));
 
   BlockLevelParameters block_level_parameters;
   block_level_parameters.num_ctas = 1;
@@ -733,7 +733,7 @@ ENTRY entry {
   config.set_block_n(128);
   config.set_block_k(128);
   block_level_parameters.num_stages = 1;
-  triton_dot_fusion->set_backend_config(backend_config);
+  TF_ASSERT_OK(triton_dot_fusion->set_backend_config(backend_config));
 
   TF_ASSERT_OK_AND_ASSIGN(
       const auto result,
@@ -1310,7 +1310,7 @@ ENTRY entry {
   config.set_num_ctas(1);
   config.set_num_stages(1);
   config.set_num_warps(2);
-  triton_dot_fusion->set_backend_config(backend_config);
+  TF_ASSERT_OK(triton_dot_fusion->set_backend_config(backend_config));
 
   BlockLevelParameters block_level_parameters;
   block_level_parameters.num_ctas = 1;
@@ -1327,7 +1327,7 @@ ENTRY entry {
   config.set_block_m(32);
   config.set_block_n(32);
   config.set_block_k(32);
-  triton_dot_fusion->set_backend_config(backend_config);
+  TF_ASSERT_OK(triton_dot_fusion->set_backend_config(backend_config));
 
   TF_ASSERT_OK(TritonWrapper("test_fn", triton_dot_fusion, CudaAmpereOrRocm(),
                              dev_info, block_level_parameters, &llvm_module,

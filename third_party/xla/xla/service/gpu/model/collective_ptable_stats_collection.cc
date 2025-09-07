@@ -99,7 +99,7 @@ absl::StatusOr<bool> CollectivePerfTableStatsCollection::Run(
         reification_cost->set_exec_time_us(
             absl::ToDoubleMicroseconds(exec_time));
         *reification_cost->mutable_name() = name();
-        instr->set_backend_config(*gpu_config);
+        TF_CHECK_OK(instr->set_backend_config(*gpu_config));
       });
 
   return false;

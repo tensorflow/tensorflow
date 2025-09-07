@@ -235,7 +235,7 @@ absl::StatusOr<HloInstruction*> CreateFusionInstruction(
       dynamic ? kDynamicSliceFusionWithDynamicAddressComputationConfigName
               : kDynamicSliceFusionWithStaticAddressComputationConfigName));
   *backend_config.mutable_custom_fusion_config() = config;
-  fusion->set_backend_config(std::move(gpu_config));
+  TF_RETURN_IF_ERROR(fusion->set_backend_config(std::move(gpu_config)));
 
   return fusion;
 }
