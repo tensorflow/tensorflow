@@ -1197,8 +1197,8 @@ absl::StatusOr<bool> PriorityFusion::Run(
             Fuse(producer, consumer, use_multi_output_fusion);
         auto backend_config_it = block_level_parameters_map.find(consumer);
         if (backend_config_it != block_level_parameters_map.end()) {
-          TF_RETURN_IF_ERROR(fusion_instruction->set_backend_config(
-              GetTritonGpuBackendConfig(backend_config_it->second)));
+          fusion_instruction->set_backend_config(
+              GetTritonGpuBackendConfig(backend_config_it->second));
           fusion_instruction->set_fusion_kind(
               HloInstruction::FusionKind::kCustom);
         }

@@ -224,8 +224,7 @@ TEST_F(AutotunerPassTest, CublasGemmIsAutotunedAndCached) {
   gemm_config.clear_selected_algorithm();
   *gpu_backend_config_before_second_run.mutable_gemm_backend_config() =
       gemm_config;
-  TF_ASSERT_OK(
-      custom_call->set_backend_config(gpu_backend_config_before_second_run));
+  custom_call->set_backend_config(gpu_backend_config_before_second_run);
 
   // Run the pass for the second time, this should hit the cache.
   {

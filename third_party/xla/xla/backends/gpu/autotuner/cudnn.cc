@@ -91,7 +91,7 @@ absl::Status ApplyConfigAndUpdateWorkspaceInOutputTuple(
   CudnnConvBackendConfig* cudnn_conv_config =
       gpu_backend_config.mutable_cudnn_conv_backend_config();
   *cudnn_conv_config->mutable_algorithm() = config;
-  TF_RETURN_IF_ERROR(new_call->set_backend_config(gpu_backend_config));
+  new_call->set_backend_config(gpu_backend_config);
 
   std::vector<HloInstruction*> new_tuple_elements;
   new_tuple_elements.reserve(new_call->shape().tuple_shapes().size() - 1);
@@ -290,7 +290,7 @@ absl::Status ApplyConfigToCudnnFusion(HloInstruction& instr,
   FusionBackendConfig* backend_config =
       gpu_config.mutable_fusion_backend_config();
   backend_config->mutable_cudnn_fusion_config()->set_plan_id(config.algo_id());
-  TF_RETURN_IF_ERROR(instr.set_backend_config(std::move(gpu_config)));
+  instr.set_backend_config(std::move(gpu_config));
   return absl::OkStatus();
 }
 
@@ -304,7 +304,7 @@ absl::Status ApplyConfigToCudnnCustomCall(HloInstruction& instr,
   CudnnConvBackendConfig* cudnn_conv_config =
       gpu_config.mutable_cudnn_conv_backend_config();
   *cudnn_conv_config->mutable_algorithm() = config;
-  TF_RETURN_IF_ERROR(instr.set_backend_config(std::move(gpu_config)));
+  instr.set_backend_config(std::move(gpu_config));
   return absl::OkStatus();
 }
 

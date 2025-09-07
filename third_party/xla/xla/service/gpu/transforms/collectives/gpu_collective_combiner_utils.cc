@@ -34,7 +34,8 @@ absl::Status AppendPipelinedInstruction(HloInstruction* instr,
   TF_ASSIGN_OR_RETURN(auto config,
                       instr->backend_config<gpu::GpuBackendConfig>());
   config.mutable_collective_backend_config()->set_is_pipelined(true);
-  return instr->set_backend_config(config);
+  instr->set_backend_config(config);
+  return absl::OkStatus();
 }
 
 bool IsPipelinedCollective(const HloInstruction& instr) {

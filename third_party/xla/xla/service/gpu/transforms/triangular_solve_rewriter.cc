@@ -68,8 +68,7 @@ absl::StatusOr<bool> TriangularSolveRewriter::Run(
           comp->AddInstruction(HloInstruction::CreateCustomCall(
               new_shape, instr->operands(), kTriangularSolveCallTarget));
       module->SetAndUniquifyInstrName(custom_call, "triangular-solve");
-      TF_RETURN_IF_ERROR(
-          custom_call->set_backend_config(instr->triangular_solve_options()));
+      custom_call->set_backend_config(instr->triangular_solve_options());
 
       // Preserve metadata from `instr`.
       custom_call->set_metadata(instr->metadata());

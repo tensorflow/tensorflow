@@ -112,7 +112,7 @@ absl::StatusOr<bool> CollectiveBackendAssigner::Run(
       VLOG(1) << "CollectiveBackendAssigner: setting backend to NVSHMEM for "
               << instr->name();
 
-      TF_RETURN_IF_ERROR(instr->set_backend_config(gpu_config));
+      instr->set_backend_config(gpu_config);
       changed = true;
     }
   }

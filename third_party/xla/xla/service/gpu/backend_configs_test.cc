@@ -131,8 +131,7 @@ TEST_F(BackendConfigsTest, DefaultGpuBackendConfigSetOpQueue) {
   EXPECT_FALSE(add->has_backend_config());
   GpuBackendConfig gpu_backend_config;
   gpu_backend_config.set_operation_queue_id(2);
-  EXPECT_THAT(add->set_backend_config(gpu_backend_config),
-              absl_testing::IsOk());
+  add->set_backend_config(gpu_backend_config);
   EXPECT_THAT(
       add->raw_backend_config_string(),
       HasSubstr("{\"operation_queue_id\":\"2\",\"wait_on_operation_queues\":[],"
@@ -160,8 +159,7 @@ TEST_F(BackendConfigsTest, DefaultGpuBackendConfigSetWaitOnQueue) {
   // Wait on queues {0, 1}
   gpu_backend_config.mutable_wait_on_operation_queues()->Add(0);
   gpu_backend_config.mutable_wait_on_operation_queues()->Add(1);
-  EXPECT_THAT(add->set_backend_config(gpu_backend_config),
-              absl_testing::IsOk());
+  add->set_backend_config(gpu_backend_config);
   EXPECT_THAT(
       add->raw_backend_config_string(),
       HasSubstr(
