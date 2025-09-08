@@ -478,9 +478,9 @@ class ArithmeticNodesGroupOptimizerStage : public ArithmeticOptimizerStage {
   }
 
   string ShapeSignature(const TensorShapeProto& shape) const {
-    string signature = strings::StrCat("rank:", shape.dim_size(), ":dim");
+    string signature = absl::StrCat("rank:", shape.dim_size(), ":dim");
     for (int i = 0; i < shape.dim_size(); ++i)
-      strings::StrAppend(&signature, ":", shape.dim(i).size());
+      absl::StrAppend(&signature, ":", shape.dim(i).size());
     return signature;
   }
 
@@ -622,10 +622,9 @@ class AddOpsRewriteStage : public ArithmeticNodesGroupOptimizerStage {
     using SigKV = decltype(shape_sig_to_inputs)::value_type;
     VLOG(3) << "Add/AddN group has " << shape_sig_to_inputs.size()
             << " unique shapes: "
-            << absl::StrJoin(shape_sig_to_inputs, ", ",
-                             [](string* out, SigKV p) {
-                               strings::StrAppend(out, p.first);
-                             });
+            << absl::StrJoin(
+                   shape_sig_to_inputs, ", ",
+                   [](string* out, SigKV p) { absl::StrAppend(out, p.first); });
 
     // Collect all the shapes from representative elements.
     std::vector<TensorShapeProto> shapes;
@@ -652,12 +651,12 @@ class AddOpsRewriteStage : public ArithmeticNodesGroupOptimizerStage {
     // optimized name for leaf AddN nodes
     auto leaf_node_name = [&root_scope_and_name, this](int i) {
       return UniqueOptimizedNodeName(root_scope_and_name,
-                                     strings::StrCat("Leaf_", i));
+                                     absl::StrCat("Leaf_", i));
     };
     // optimized name for internal nodes of a tree built up from AddN leaves
     auto internal_node_name = [&root_scope_and_name, this](int i) {
       return UniqueOptimizedNodeName(root_scope_and_name,
-                                     strings::StrCat("Internal_", i));
+                                     absl::StrCat("Internal_", i));
     };
 
     // Add/AddN nodes that must be added to the tree
@@ -1856,7 +1855,7 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
       TF_RETURN_IF_ERROR(UpdateConsumers(
           link.node, link.port_origin == 0
                          ? split_name
-                         : strings::StrCat(split_name, ":", link.port_origin)));
+                         : absl::StrCat(split_name, ":", link.port_origin)));
     }
     return absl::OkStatus();
   }
@@ -2313,7 +2312,7 @@ class FoldMultiplyIntoConv : public ArithmeticOptimizerStage {
     // Verify that this node was not already optimized.
     const string scaled_weights_node_name =
         OptimizedNodeName(ParseNodeScopeAndName(weights->name()),
-                          strings::StrCat("scaled", "_", conv->name()));
+                          absl::StrCat("scaled", "_", conv->name()));
 
     TF_RETURN_IF_TRUE(ctx().node_map->NodeExists(scaled_weights_node_name));
 
@@ -3735,7 +3734,7 @@ class UnaryOpsComposition : public ArithmeticOptimizerStage {
   }
 
   string OptimizedNodeName(const NodeDef& node) const {
-    return strings::StrCat(node.name(), "/unary_ops_composition");
+    return absl::StrCat(node.name(), "/unary_ops_composition");
   }
 
   void AddToFusedNodes(const string& name) { fused_nodes_.insert(name); }
@@ -4085,8 +4084,8 @@ class RemoveStackSliceSameAxis : public ArithmeticOptimizerStage {
     PartialTensorShape input_slice_shape(input_slice_properties->shape());
 
     const OpInfo::TensorProperties* output_properties;
-    TF_RETURN_IF_ERROR(GetTensorProperties(
-        strings::StrCat(node->name(), ":", 0), &output_properties));
+    TF_RETURN_IF_ERROR(GetTensorProperties(absl::StrCat(node->name(), ":", 0),
+                                           &output_properties));
     PartialTensorShape output_shape(output_properties->shape());
     NodeDef* output =
         AddEmptyNode(OptimizedNodeName(ParseNodeScopeAndName(node->name())));
