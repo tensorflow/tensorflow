@@ -1440,7 +1440,6 @@ class ArgMaxMinTest(test_util.TensorFlowTestCase):
           ),
         output_type=dtypes.int32
       )
-      print("Tf Max is :", tf_max , "and np_max is :", np_max)
       self.assertAllEqual(tf_max, np_max)
 
   def testArgMin(self):
