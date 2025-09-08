@@ -252,8 +252,9 @@ absl::StatusOr<std::unique_ptr<RequestInfo>> CreateRequestInfo(
   } else {
     request_id = GetNextStepId().id;
     // Otherwise we use the global queue in `runtime`.
-    TF_ASSIGN_OR_RETURN(request_info->request_queue_owner,
-                        runtime.CreateRequestQueue(request_id));
+    TF_ASSIGN_OR_RETURN(
+        request_info->request_queue_owner,
+        runtime.CreateRequestQueue(request_id, run_options.priority));
     request_info->request_queue = request_info->request_queue_owner.get();
   }
   auto* request_queue = request_info->request_queue;
