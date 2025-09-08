@@ -284,6 +284,11 @@ constexpr absl::string_view kHloDotFusionWithAlgorithm = R"(
 )";
 
 TEST_F(StatelessAutotunerTest, CublasFallbackForTf32Tf32F32X3Algorithm) {
+  if (GetDebugOptionsForTest()
+          .xla_gpu_experimental_disable_binary_libraries()) {
+    GTEST_SKIP() << "Not supported with cuda binary libraries disabled.";
+  }
+
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(absl::Substitute(
                        kHloDotFusionWithAlgorithm, "dot_tf32_tf32_f32_x3")));
@@ -296,6 +301,11 @@ TEST_F(StatelessAutotunerTest, CublasFallbackForTf32Tf32F32X3Algorithm) {
 }
 
 TEST_F(StatelessAutotunerTest, CublasFallbackForBf16Bf16F32Algorithm) {
+  if (GetDebugOptionsForTest()
+          .xla_gpu_experimental_disable_binary_libraries()) {
+    GTEST_SKIP() << "Not supported with cuda binary libraries disabled.";
+  }
+
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(absl::Substitute(
                        kHloDotFusionWithAlgorithm, "dot_bf16_bf16_f32")));
@@ -788,8 +798,9 @@ ENTRY main {
 }
 
 TEST_F(GemmFusionAutotunerDumpTest, DumpingWorks) {
-  if (isRocm()) {
-    GTEST_SKIP() << "cuBLAS not selected on ROCM.";
+  if (isRocm() || GetDebugOptionsForTest()
+                      .xla_gpu_experimental_disable_binary_libraries()) {
+    GTEST_SKIP() << "Not supported on ROCm or with binary libraries disabled.";
   }
   HloModuleConfig config;
   DebugOptions options = GetDebugOptionsForTest();
@@ -856,8 +867,9 @@ CHECK: cublas
 }
 
 TEST_F(GemmFusionAutotunerTest, AutotuneCuDnnFusion) {
-  if (isRocm()) {
-    GTEST_SKIP() << "No CuDnnFusion on ROCM.";
+  if (isRocm() || GetDebugOptionsForTest()
+                      .xla_gpu_experimental_disable_binary_libraries()) {
+    GTEST_SKIP() << "Not supported on ROCm or with binary libraries disabled.";
   }
   const std::string kHlo = R"(
 fusion1 {
