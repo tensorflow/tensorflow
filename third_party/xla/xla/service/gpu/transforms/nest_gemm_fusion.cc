@@ -253,10 +253,9 @@ absl::Status FuseAndAnnotateConcatOperands(HloComputation* computation) {
 // Transforms a fusion into an equivalent nested fusion if it has a single dot.
 // Returns ok if the transformation was successful.
 absl::Status MakeNestedFusionFromGemmFusion(HloFusionInstruction* fusion,
-                                            const TritonGemmConfig& config,
                                             HloDotInstruction* dot,
                                             mlir::MLIRContext* ctx) {
-  DCHECK(GetTritonGemmConfig(*fusion).value() == config);
+  TF_ASSIGN_OR_RETURN(TritonGemmConfig config, GetTritonGemmConfig(*fusion));
 
   HloComputation* computation = fusion->called_computation();
 
@@ -1189,7 +1188,6 @@ class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
   absl::Status RewriteFusion(HloFusionInstruction* fusion,
                              CallGraph* call_graph) {
     HloComputation* computation = fusion->called_computation();
-    TF_ASSIGN_OR_RETURN(TritonGemmConfig config, GetTritonGemmConfig(*fusion));
     HloInstruction* instr =
         hlo_query::GetFirstInstructionWithOpcode(*computation, HloOpcode::kDot);
     if (instr == nullptr) {
@@ -1200,8 +1198,7 @@ class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
     TF_RETURN_IF_ERROR(
         TryHoistBitcastsInComputationToCallers(instr, call_graph));
     HloDotInstruction* dot = Cast<HloDotInstruction>(instr);
-    TF_RETURN_IF_ERROR(
-        MakeNestedFusionFromGemmFusion(fusion, config, dot, ctx_));
+    TF_RETURN_IF_ERROR(MakeNestedFusionFromGemmFusion(fusion, dot, ctx_));
 
     MarkAsChanged();
 
