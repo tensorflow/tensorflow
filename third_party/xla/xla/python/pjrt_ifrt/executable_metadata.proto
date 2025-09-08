@@ -43,6 +43,9 @@ message SerializedXlaExecutableMetadata {
   // logging purposes.
   string computation_name = 7;
 
+  // Whether the executable is compiled to be portable.
+  bool portable = 8;
+
   // Below fields are artifacts gathered from the compiled executable required
   // for the IFRT runtimes to be able to construct an IFRT executable without a
   // local PjRtClient such that executions can be dispatched asynchronously.
