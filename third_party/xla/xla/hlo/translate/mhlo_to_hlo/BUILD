@@ -168,6 +168,7 @@ cc_library(
         ":module_attributes_exporter",
         ":stack_frame_index_builder",
         ":type_to_shape",
+        "//third_party/protobuf/util:differencer",
         "//xla:array",
         "//xla:comparison_util",
         "//xla:debug_options_flags",
