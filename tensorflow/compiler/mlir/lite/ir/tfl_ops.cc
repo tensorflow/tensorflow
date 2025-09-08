@@ -1723,11 +1723,20 @@ LogicalResult FullyConnectedOp::fold(FoldAdaptor adaptor,
       !(!getBias() || mlir::isa<NoneType>(getBias().getType()));
 
   // Get the tensors.
-  DenseElementsAttr input_tensor, weights_tensor, bias_tensor;
-  if (!matchPattern(getInput(), m_Constant(&input_tensor)) ||
-      !matchPattern(getFilter(), m_Constant(&weights_tensor)) ||
-      (has_bias && !matchPattern(getBias(), m_Constant(&bias_tensor)))) {
+  auto operands = adaptor.getOperands();
+  DenseElementsAttr input_tensor =
+      dyn_cast_or_null<DenseElementsAttr>(operands[0]);
+  DenseElementsAttr weights_tensor =
+      dyn_cast_or_null<DenseElementsAttr>(operands[1]);
+  DenseElementsAttr bias_tensor;
+
+  if (!input_tensor || !weights_tensor) {
     return failure();
+  }
+
+  if (has_bias) {
+    bias_tensor = dyn_cast_or_null<DenseElementsAttr>(operands[2]);
+    if (!bias_tensor) return failure();
   }
 
   // Get the tensor types.
@@ -1752,58 +1761,60 @@ LogicalResult FullyConnectedOp::fold(FoldAdaptor adaptor,
     return failure();
   }
 
-  auto is_foldable = [](llvm::ArrayRef<int64_t> shape) {
-    return shape.size() == 1 || (shape.size() == 2 && shape.front() == 1);
-  };
-
-  const bool weights_foldable = weights_type.getShape().size() == 2;
-  const bool bias_foldable = !has_bias || is_foldable(bias_type.getShape());
-
-  // Folding only implemented for 1D input, 2D weights and 1D bias
-  if (!is_foldable(input_type.getShape()) || !bias_foldable ||
-      !weights_foldable) {
+  if (weights_type.getRank() != 2) {
     return failure();
   }
 
-  // Get the sizes
-  const auto input_size = input_type.getNumElements();
-  const auto output_size = output_type.getNumElements();
+  const int64_t in_dim = weights_type.getDimSize(1);
+  const int64_t out_dim = weights_type.getDimSize(0);
 
-  // Get iterators to the tensors.
-  const auto input_values_it = input_tensor.getValues<float>().begin();
-  const auto weights_values_ptr = weights_tensor.getValues<float>().begin();
-  auto weights_row_it = weights_values_ptr;
-  // The 'else' case could be nullptr, but the types don't match.
-  auto bias_values_it =
-      has_bias ? bias_tensor.getValues<float>().begin() : input_values_it;
+  if (has_bias) {
+    if (bias_type.getRank() > 2 ||
+        (bias_type.getRank() == 2 && bias_type.getDimSize(0) != 1) ||
+        bias_type.getNumElements() != out_dim) {
+      return failure();
+    }
+  }
+
+  const int64_t batch_size = input_type.getNumElements() / in_dim;
+
+  if (output_type.getNumElements() != batch_size * out_dim) {
+    return failure();
+  }
+
+  auto input_values_range = input_tensor.getValues<float>();
+  auto weights_values_range = weights_tensor.getValues<float>();
+  std::optional<decltype(input_values_range)> bias_values_range;
+  if (has_bias) bias_values_range = bias_tensor.getValues<float>();
 
   // Do the actual folding, one output at a time.
   std::vector<float> result_values;
-  result_values.reserve(output_size);
+  result_values.reserve(batch_size * out_dim);
 
-  for (int i = 0; i < output_size; ++i) {
-    // Dot product with Kahan/Neumaier summation to minimize numeric errors.
-    float sum = has_bias ? *bias_values_it : 0.0f;
-    float compensation = 0.0f;
-    for (int j = 0; j < input_size; ++j) {
-      const float addend = input_values_it[j] * weights_row_it[j];
-      const float new_sum = sum + addend;
-      // DO NOT enable -funsafe-math-optimizations here.
-      // There is a test detecting unsafe optimizations.
-      // Unsafe math optimizations can reorder float formulas, and set the
-      // compensation to constant 0. The formula must be evaluated as written
-      // for the algorithm to work.
-      // (Note: -ffast-math is a superset of -funsafe-math-optimizations.)
-      if (std::abs(sum) >= std::abs(addend)) {
-        compensation += (sum - new_sum) + addend;
-      } else {
-        compensation += (addend - new_sum) + sum;
+  for (int b = 0; b < batch_size; ++b) {
+    for (int o = 0; o < out_dim; ++o) {
+      // Dot product with Kahan/Neumaier summation to minimize numeric errors.
+      float sum = has_bias ? (*bias_values_range)[o] : 0.0f;
+      float compensation = 0.0f;
+      for (int i = 0; i < in_dim; ++i) {
+        const float addend = input_values_range[b * in_dim + i] *
+                             weights_values_range[o * in_dim + i];
+        const float new_sum = sum + addend;
+        // DO NOT enable -funsafe-math-optimizations here.
+        // There is a test detecting unsafe optimizations.
+        // Unsafe math optimizations can reorder float formulas, and set the
+        // compensation to constant 0. The formula must be evaluated as written
+        // for the algorithm to work.
+        // (Note: -ffast-math is a superset of -funsafe-math-optimizations.)
+        if (std::abs(sum) >= std::abs(addend)) {
+          compensation += (sum - new_sum) + addend;
+        } else {
+          compensation += (addend - new_sum) + sum;
+        }
+        sum = new_sum;
       }
-      sum = new_sum;
+      result_values.push_back(sum + compensation);
     }
-    result_values.push_back(sum + compensation);
-    weights_row_it += input_size;
-    bias_values_it++;
   }
 
   // Set result tensor
