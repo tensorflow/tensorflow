@@ -537,7 +537,7 @@ static void BM_executor(::testing::benchmark::State& state) {
   FixupSourceAndSinkEdges(g);
   test::Benchmark("cpu", g, /*old_benchmark_api=*/false).Run(state);
 
-  state.SetLabel(strings::StrCat("Nodes = ", cur));
+  state.SetLabel(absl::StrCat("Nodes = ", cur));
   state.SetItemsProcessed(cur * static_cast<int64_t>(state.iterations()));
 }
 
@@ -566,7 +566,7 @@ static void BM_const_identity(::testing::benchmark::State& state) {
   }
   FixupSourceAndSinkEdges(g);
   test::Benchmark("cpu", g, /*old_benchmark_api=*/false).Run(state);
-  state.SetLabel(strings::StrCat("Nodes = ", (1 + outputs_per_const) * width));
+  state.SetLabel(absl::StrCat("Nodes = ", (1 + outputs_per_const) * width));
   state.SetItemsProcessed((1 + outputs_per_const) * width *
                           static_cast<int64_t>(state.iterations()));
 }
@@ -668,14 +668,14 @@ static void BM_WhileLoopHelper(::testing::benchmark::State& state,
   args.reserve(loop_vars);
   args.push_back("x: int32");
   for (int i = 1; i < loop_vars; ++i) {
-    args.push_back(strings::StrCat("x", i, ": int32"));
+    args.push_back(absl::StrCat("x", i, ": int32"));
   }
 
   std::vector<string> body_rets;
   body_rets.reserve(loop_vars);
   body_rets.push_back("y: int32");
   for (int i = 1; i < loop_vars; ++i) {
-    body_rets.push_back(strings::StrCat("y", i, ": int32"));
+    body_rets.push_back(absl::StrCat("y", i, ": int32"));
   }
 
   std::vector<FunctionDefHelper::Node> body_nodes;
@@ -684,9 +684,9 @@ static void BM_WhileLoopHelper(::testing::benchmark::State& state,
       {{"one"}, "Const", {}, {{"value", one_t}, {"dtype", DT_INT32}}});
   body_nodes.push_back({{"y"}, "Add", {"x", "one"}, {{"T", DT_INT32}}});
   for (int i = 1; i < loop_vars; ++i) {
-    body_nodes.push_back({{strings::StrCat("y", i)},
+    body_nodes.push_back({{absl::StrCat("y", i)},
                           "Relu",
-                          {strings::StrCat("x", i)},
+                          {absl::StrCat("x", i)},
                           {{"T", DT_INT32}}});
   }
 
@@ -775,7 +775,7 @@ static void BM_WhileLoopHelper(::testing::benchmark::State& state,
           if (edge->dst()->type_string() != "Switch") {
             continue;
           }
-          string tensor_name = strings::StrCat("c", edge->id());
+          string tensor_name = absl::StrCat("c", edge->id());
           TF_ASSERT_OK(ReplaceEdgeWithSendRecv(graph.get(), edge, tensor_name,
                                                BOB, 1, ALICE));
         }
