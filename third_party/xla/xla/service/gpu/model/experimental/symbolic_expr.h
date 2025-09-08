@@ -73,6 +73,20 @@ class SymbolicExpr {
   int64_t Evaluate(absl::Span<const int64_t> variable_values) const;
   SymbolicExpr ReplaceVariables(
       absl::Span<const SymbolicExpr> substitutions) const;
+  // TODO(karupayun): These methods are needed for IndexingMap, but dimensions
+  // and symbols are SymbolicMap specific. We should remove them once we have a
+  // better way to integrate SymbolicExpr with IndexingMap. It is assuming that
+  // dimensions are the first (0...num_dims-1) variables and symbols are the
+  // rest.
+  SymbolicExpr ReplaceSymbols(absl::Span<const SymbolicExpr> replacements,
+                              int64_t num_dims) const;
+  // ReplaceDimsAndSymbols assumes the total number of dimensions and symbols in
+  // the expression is the same the size of dim_replacements and
+  // symbol_replacements.
+  SymbolicExpr ReplaceDimsAndSymbols(
+      absl::Span<const SymbolicExpr> dim_replacements,
+      absl::Span<const SymbolicExpr> symbol_replacements) const;
+
   SymbolicExpr Canonicalize() const;
 
   /// Sparse replace method. Replace `expr` by `replacement` and return the
