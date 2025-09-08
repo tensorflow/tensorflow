@@ -775,9 +775,9 @@ TEST(MaybeAddPrefixToColocationConstraints, Basic) {
   node_def.set_name("Identity");
   node_def.set_op("Identity");
   AddNodeAttr(kColocationAttrName,
-              {strings::StrCat(kColocationGroupPrefix, "Node1"),
-               strings::StrCat(kColocationGroupPrefix, "Node2"),
-               strings::StrCat(kColocationGroupPrefix, "Node3")},
+              {absl::StrCat(kColocationGroupPrefix, "Node1"),
+               absl::StrCat(kColocationGroupPrefix, "Node2"),
+               absl::StrCat(kColocationGroupPrefix, "Node3")},
               &node_def);
 
   std::unordered_set<string> match;
@@ -808,9 +808,9 @@ TEST(MaybeUpdateColocationConstraintsWithMap, Basic) {
   node_def.set_name("Identity");
   node_def.set_op("Identity");
   AddNodeAttr(kColocationAttrName,
-              {strings::StrCat(kColocationGroupPrefix, "Node1"),
-               strings::StrCat(kColocationGroupPrefix, "Node2"),
-               strings::StrCat(kColocationGroupPrefix, "Node3")},
+              {absl::StrCat(kColocationGroupPrefix, "Node1"),
+               absl::StrCat(kColocationGroupPrefix, "Node2"),
+               absl::StrCat(kColocationGroupPrefix, "Node3")},
               &node_def);
 
   std::map<absl::string_view, absl::string_view> node_map;

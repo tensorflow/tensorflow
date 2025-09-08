@@ -136,7 +136,7 @@ TEST(GraphToFunctionDefTest, DuplicatedOutputNames) {
   // Duplicated output names.
   auto status = GraphToFunctionDef(*root.graph(), "test_fn", {"d", "d"}, &fdef);
 
-  EXPECT_THAT(status, tensorflow::testing::StatusIs(
+  EXPECT_THAT(status, absl_testing::StatusIs(
                           error::INVALID_ARGUMENT,
                           "Cannot have duplicate output names. Name 'd' "
                           "appears more than once in 'output_names' array."));

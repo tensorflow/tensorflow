@@ -1265,7 +1265,7 @@ TEST(Tensor_String, SimpleWithHelper) {
   Tensor t2(DT_STRING, {2, 3});
   for (int i = 0; i < 2; ++i) {
     for (int j = 0; j < 3; ++j) {
-      t2.matrix<tstring>()(i, j) = strings::StrCat(i * 3 + j);
+      t2.matrix<tstring>()(i, j) = absl::StrCat(i * 3 + j);
     }
   }
 
@@ -1662,7 +1662,7 @@ TEST(SummarizeValue, Uninitialized) {
   Tensor x(DT_INT32);
   TensorTestHelper::set_shape(&x, TensorShape({4, 4}));
   EXPECT_EQ(
-      strings::StrCat("uninitialized Tensor of 16 elements of type ", DT_INT32),
+      absl::StrCat("uninitialized Tensor of 16 elements of type ", DT_INT32),
       x.SummarizeValue(16));
 }
 

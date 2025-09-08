@@ -234,7 +234,7 @@ void ReaderBase::SaveBaseState(ReaderBaseState* state) const {
 }
 
 tstring ReaderBase::KeyName(const tstring& key) const {
-  return strings::StrCat(current_work(), ":", key);
+  return absl::StrCat(current_work(), ":", key);
 }
 
 absl::Status ReaderBase::RestoreBaseState(const ReaderBaseState& state) {

@@ -77,7 +77,7 @@ TEST(OpRequires, RequiresOkWithFailedStatus) {
 
   TestFunction(ctx, /*success=*/false, reached);
   EXPECT_THAT(ctx.stored_status,
-              Optional(StatusIs(absl::StatusCode::kInternal)));
+              Optional(absl_testing::StatusIs(absl::StatusCode::kInternal)));
   EXPECT_FALSE(reached);
 }
 
@@ -110,7 +110,7 @@ TEST(OpRequires, RequiresOkAsyncWithFailedStatus) {
 
   TestFunctionAsync(ctx, /*success=*/false, reached, handled);
   EXPECT_THAT(ctx.stored_status,
-              Optional(StatusIs(absl::StatusCode::kInternal)));
+              Optional(absl_testing::StatusIs(absl::StatusCode::kInternal)));
   EXPECT_FALSE(reached);
   EXPECT_TRUE(handled);
 }

@@ -76,17 +76,17 @@ string SummarizeAttrsHelper(AttrSlice attrs, absl::string_view device) {
   std::sort(attr_names.begin(), attr_names.end());
   bool first = true;
   for (const string& attr_name : attr_names) {
-    if (!first) strings::StrAppend(&ret, ", ");
+    if (!first) absl::StrAppend(&ret, ", ");
     first = false;
-    strings::StrAppend(&ret, attr_name, "=",
-                       SummarizeAttrValue(*attrs.Find(attr_name)));
+    absl::StrAppend(&ret, attr_name, "=",
+                    SummarizeAttrValue(*attrs.Find(attr_name)));
   }
 
   // Consider the device to be a final attr with name "_device".
   if (!device.empty()) {
-    if (!first) strings::StrAppend(&ret, ", ");
+    if (!first) absl::StrAppend(&ret, ", ");
     first = false;
-    strings::StrAppend(&ret, "_device=\"", device, "\"");
+    absl::StrAppend(&ret, "_device=\"", device, "\"");
   }
   return ret;
 }
@@ -94,7 +94,7 @@ string SummarizeAttrsHelper(AttrSlice attrs, absl::string_view device) {
 string AttrSlice::SummarizeNode() const {
   return ndef_
              ? SummarizeNodeDef(*ndef_)
-             : strings::StrCat(
+             : absl::StrCat(
                    "[", SummarizeAttrsHelper(*this, absl::string_view()), "]");
 }
 
@@ -111,23 +111,23 @@ string AttrSlice::DebugString() const {
 }
 
 string SummarizeNodeDef(const NodeDef& node_def, int max_inputs_in_summary) {
-  string ret = strings::StrCat(errors::FormatNodeNameForError(node_def.name()),
-                               " = ", node_def.op(), "[");
-  strings::StrAppend(&ret, SummarizeAttrsHelper(node_def, node_def.device()));
-  strings::StrAppend(&ret, "](");
+  string ret = absl::StrCat(errors::FormatNodeNameForError(node_def.name()),
+                            " = ", node_def.op(), "[");
+  absl::StrAppend(&ret, SummarizeAttrsHelper(node_def, node_def.device()));
+  absl::StrAppend(&ret, "](");
 
   // Output inputs, including control inputs, verbatim.
   bool first = true;
   for (const string& input : node_def.input()) {
-    if (!first) strings::StrAppend(&ret, ", ");
+    if (!first) absl::StrAppend(&ret, ", ");
     first = false;
     if (max_inputs_in_summary-- == 0) {
-      strings::StrAppend(&ret, "...");
+      absl::StrAppend(&ret, "...");
       break;
     }
-    strings::StrAppend(&ret, input);
+    absl::StrAppend(&ret, input);
   }
-  strings::StrAppend(&ret, ")");
+  absl::StrAppend(&ret, ")");
   return ret;
 }
 
@@ -702,8 +702,8 @@ absl::Status ValidateNodeDef(const NodeDef& node_def, const OpDef& op_def) {
   if (!op_attrs.empty()) {
     string attrs;
     for (const auto& attr_pair : op_attrs) {
-      if (!attrs.empty()) strings::StrAppend(&attrs, "', '");
-      strings::StrAppend(&attrs, attr_pair.first);
+      if (!attrs.empty()) absl::StrAppend(&attrs, "', '");
+      absl::StrAppend(&attrs, attr_pair.first);
     }
     return errors::InvalidArgument(
         "NodeDef missing attr", op_attrs.size() == 1 ? " '" : "s '", attrs,
@@ -989,7 +989,7 @@ absl::Status AddPrefixAndSuffixToNode(absl::string_view prefix,
                                       absl::string_view suffix,
                                       NodeDef* node_def,
                                       bool uniquify_frame_name) {
-  node_def->set_name(strings::StrCat(prefix, node_def->name(), suffix));
+  node_def->set_name(absl::StrCat(prefix, node_def->name(), suffix));
 
   // Update frame name to avoid multiple LoopCond nodes in one frame.
   if (uniquify_frame_name &&
@@ -997,7 +997,7 @@ absl::Status AddPrefixAndSuffixToNode(absl::string_view prefix,
     string frame_name;
     TF_RETURN_IF_ERROR(GetNodeAttr(*node_def, "frame_name", &frame_name));
     AttrValue& attr = (*node_def->mutable_attr())["frame_name"];
-    frame_name = strings::StrCat(prefix, frame_name, suffix);
+    frame_name = absl::StrCat(prefix, frame_name, suffix);
     attr.set_s(frame_name);
   }
 
@@ -1018,7 +1018,7 @@ absl::Status MaybeAddPrefixToColocationConstraints(
     if (absl::ConsumePrefix(&original, kColocationGroupPrefixStringPiece)) {
       if (match.find(string(original)) != match.end()) {
         (*constraints_list->mutable_s(i)) =
-            strings::StrCat(kColocationGroupPrefix, prefix, original);
+            absl::StrCat(kColocationGroupPrefix, prefix, original);
       }
     }
   }
@@ -1039,7 +1039,7 @@ absl::Status MaybeUpdateColocationConstraintsWithMap(
     if (absl::ConsumePrefix(&original, kColocationGroupPrefixStringPiece)) {
       if (node_name_map.find(original) != node_name_map.end()) {
         (*constraints_list->mutable_s(i)) =
-            strings::StrCat(kColocationGroupPrefix, node_name_map.at(original));
+            absl::StrCat(kColocationGroupPrefix, node_name_map.at(original));
       }
     }
   }
