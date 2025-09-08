@@ -140,20 +140,12 @@ absl::StatusOr<LoadedExecutableRef> CompileOnDevices(
   if (!serialize) {
     return loaded_executable;
   }
-  auto serialized_executable = loaded_executable->Serialize();
-  // If serialization is not supported, fall back to using the original
-  // executable.
-  if (absl::IsUnimplemented(serialized_executable.status())) {
-    LOG(INFO) << "Serialize() returned error: "
-              << serialized_executable.status()
-              << ". Falling back to using the original executable.";
-    return loaded_executable;
-  }
-  TF_RETURN_IF_ERROR(serialized_executable.status());
+  TF_ASSIGN_OR_RETURN(auto serialized_executable,
+                      loaded_executable->Serialize());
   auto options = std::make_unique<XlaDeserializeExecutableOptions>();
   options->devices = std::move(device_list);
-  return compiler->DeserializeLoadedExecutable(
-      *std::move(serialized_executable), std::move(options));
+  return compiler->DeserializeLoadedExecutable(std::move(serialized_executable),
+                                               std::move(options));
 }
 
 class LoadedExecutableImplTest

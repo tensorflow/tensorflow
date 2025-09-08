@@ -116,10 +116,8 @@ class WhileTransformerTest : public HloHardwareIndependentTestBase {
     if (ind_var_tuple_index == 0) {
       return ShapeUtil::MakeTupleShape(
           {induction_variable_shape_, data_shape_});
-    } else {
-      return ShapeUtil::MakeTupleShape(
-          {data_shape_, induction_variable_shape_});
     }
+    return ShapeUtil::MakeTupleShape({data_shape_, induction_variable_shape_});
   }
 
   std::unique_ptr<HloModule> module_;

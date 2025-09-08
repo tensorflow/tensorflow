@@ -260,7 +260,9 @@ TensorIterationSpec DimensionOrder::ToTensorIterationSpec() const {
 
     // We should not remove the only fragment in a dimension, because if it is
     // removed, the dimension will be removed from the TensorIterationSpec.
-    if (dim_spec.size() <= 1) continue;
+    if (dim_spec.size() <= 1) {
+      continue;
+    }
 
     TensorIterationSpec::DimIterationSpec filtered_dim_spec;
     absl::c_copy_if(dim_spec, std::back_inserter(filtered_dim_spec),
@@ -675,8 +677,9 @@ DimOrderMapOrError GetPropagatedDimOrdersForDimAlteringOp(
 
       if (reduce->dimensions().size() != 1) {
         return FusionDecision::Forbid("Unsupported reduction.");
-      } else if (reduce->dimensions().front() !=
-                 reduce->operand(0)->shape().dimensions().size() - 1) {
+      }
+      if (reduce->dimensions().front() !=
+          reduce->operand(0)->shape().dimensions().size() - 1) {
         return FusionDecision::Forbid("Only row reductions are supported.");
       }
     } else if (hlo.opcode() == HloOpcode::kConcatenate) {
@@ -879,8 +882,9 @@ DimOrderMapOrError GetPropagatedDimOrders(const HloInstruction& hlo,
       hlo_query::IsScalarConstant(&hlo)) {
     CHECK(direction == TransformDirection::kOutputToInput);
     return DimOrderMap{};
-  } else if (hlo.opcode() == HloOpcode::kTranspose ||
-             hlo.opcode() == HloOpcode::kCopy) {
+  }
+  if (hlo.opcode() == HloOpcode::kTranspose ||
+      hlo.opcode() == HloOpcode::kCopy) {
     return GetPropagatedDimOrdersForDimAlteringOp(hlo, direction, src_dim_order,
                                                   properties);
   } else if (hlo.opcode() == HloOpcode::kBroadcast) {
