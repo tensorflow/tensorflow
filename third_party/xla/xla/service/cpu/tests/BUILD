@@ -365,6 +365,22 @@ xla_cc_test(
 )
 
 xla_cc_test(
+    name = "onednn_op_thunk_test",
+    srcs = ["onednn_op_thunk_test.cc"],
+    copts = tsl_copts(),
+    deps = [
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla/backends/cpu/runtime:thunk_testlib",
+        "//xla/backends/cpu/runtime/onednn:onednn_op_thunk",
+        "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/platform:env",
+        "@com_google_googletest//:gtest_main",
+        "@eigen_archive//:eigen3",
+    ],
+)
+
+xla_cc_test(
     name = "onednn_layer_norm_test",
     srcs = ["onednn_layer_norm_test.cc"],
     copts = tsl_copts(),
