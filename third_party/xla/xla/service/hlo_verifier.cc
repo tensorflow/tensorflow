@@ -44,7 +44,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
-#include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
@@ -2896,20 +2895,61 @@ absl::Status VerifyLayoutConstrainedAllReduce(const HloModule& module) {
   return absl::OkStatus();
 }
 
-// Verifies that leaf nodes in an original value contain values.
+namespace {
+std::string FormatShapeIndexValidationError(
+    absl::string_view instruction_name,
+    const absl::flat_hash_set<ShapeIndex>& shape_leaf_indices,
+    const absl::flat_hash_set<ShapeIndex>& ov_leaf_indices) {
+  std::vector<ShapeIndex> shape_only;
+  std::vector<ShapeIndex> ov_only;
+  for (const auto& idx : shape_leaf_indices) {
+    if (!ov_leaf_indices.contains(idx)) {
+      shape_only.push_back(idx);
+    }
+  }
+  for (const auto& idx : ov_leaf_indices) {
+    if (!shape_leaf_indices.contains(idx)) {
+      ov_only.push_back(idx);
+    }
+  }
+  std::sort(shape_only.begin(), shape_only.end());
+  std::sort(ov_only.begin(), ov_only.end());
+  auto shape_index_formatter = [](std::string* out, const ShapeIndex& i) {
+    absl::StrAppend(out, i.ToString());
+  };
+  return absl::StrFormat(
+      "Mismatched tuple structure in original_value for "
+      "instruction %s. Leaf indices in shape and original_value "
+      "do not match.\nIn shape only: {%s}\nIn original_value only: {%s}",
+      instruction_name, absl::StrJoin(shape_only, ", ", shape_index_formatter),
+      absl::StrJoin(ov_only, ", ", shape_index_formatter));
+}
+
+}  // namespace
+
+// Verifies that the original value has the same tuple structure as the
+// instruction shape.
 absl::Status VerifyOriginalValue(const HloModule& module) {
   for (const HloComputation* computation : module.computations()) {
     for (const HloInstruction* instruction : computation->instructions()) {
-      if (auto original_value = instruction->original_value()) {
-        // An original value is expected to have intermediate nodes that are
-        // always nullopt and leaves with actual values.
-        for (const auto& pair : original_value->original_arrays()) {
-          if (!pair.second.has_value()) {
-            return Internal(
-                "Leaf nodes in an original value is expected to contain values."
-                " Instruction: %s.",
-                instruction->ToString());
-          }
+      if (instruction->original_value()) {
+        const auto& shape = instruction->shape();
+        const auto& original_value = instruction->original_value();
+        absl::flat_hash_set<ShapeIndex> shape_leaf_indices;
+        ShapeUtil::ForEachLeafShape(
+            shape, [&](const Shape& /*subshape*/, const ShapeIndex& index) {
+              shape_leaf_indices.insert(index);
+            });
+
+        absl::flat_hash_set<ShapeIndex> ov_leaf_indices;
+        for (const auto& [index, value] : original_value->original_arrays()) {
+          ov_leaf_indices.insert(index);
+        }
+
+        if (shape_leaf_indices != ov_leaf_indices) {
+          return Internal("%s", FormatShapeIndexValidationError(
+                                    instruction->name(), shape_leaf_indices,
+                                    ov_leaf_indices));
         }
       }
     }

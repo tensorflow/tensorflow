@@ -1213,7 +1213,8 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
     module->buffer_donor_config() = buffer_donor_config;
   }
   if (original_value_recovery_table) {
-    module->set_original_value_recovery_table(*original_value_recovery_table);
+    module->set_original_value_recovery_table(
+        std::move(*original_value_recovery_table));
   }
   DeduplicateOriginalValues(module);
 
@@ -6709,8 +6710,9 @@ bool HloParserImpl::ParseOriginalValueRecoveryTable(
       }
       recovery_module = std::move(status_or_recovery_module.value());
     }
-    original_value_recovery_table[replaced_original_array] =
-        std::make_pair(replacing_original_array, std::move(recovery_module));
+    original_value_recovery_table.emplace(
+        replaced_original_array,
+        std::make_pair(replacing_original_array, std::move(recovery_module)));
   }
 
   lexer_.Lex();

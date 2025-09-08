@@ -150,8 +150,24 @@ ENTRY %ReshapeAndBroadcastMerged (param0: f32[5]) -> f32[1,2,3,5,1] {
   RunAndFilecheckHloRewrite(hlo_string, AlgebraicSimplifier(options));
 }
 
-TEST_F(OriginalValueRecoveryTableTest, FailedToGetPlaceholderOriginalValue) {
+TEST_F(OriginalValueRecoveryTableTest,
+       NullOriginalValueOnTupleGetTupleElementIsNotContagious) {
   constexpr absl::string_view hlo_string = R"(
+// CHECK:      HloModule test, entry_computation_layout={((f32[5]{0}, f32[5]{0}))->f32[1,2,3,5,1]{4,3,2,1,0}}, origin_recovery_table={
+// CHECK-NEXT:   {"reshape"} : {"reshape__ovp0"},
+// CHECK-NEXT:   "
+// CHECK-NEXT:     ENTRY %recovery_computation (p: f32[5]) -> f32[1,5,1] {
+// CHECK-NEXT:       %p = f32[5]{0} parameter(0)
+// CHECK-NEXT:       ROOT %reshape = f32[1,5,1]{2,1,0} reshape(%p)
+// CHECK-NEXT:     }
+// CHECK-NEXT:   "
+// CHECK-NEXT: }
+// CHECK:      ENTRY %main (param: (f32[5], f32[5])) -> f32[1,2,3,5,1] {
+// CHECK-NEXT:   %param = (f32[5]{0}, f32[5]{0}) parameter(0)
+// CHECK-NEXT:   %get-tuple-element = f32[5]{0} get-tuple-element(%param), index=1, origin={{[{]}}{"reshape__ovp0"}}
+// CHECK-NEXT:   ROOT %broadcast = f32[1,2,3,5,1]{4,3,2,1,0} broadcast(%get-tuple-element), dimensions={3}
+// CHECK-NEXT: }
+  
 HloModule test
 
 ENTRY %main (param0: (f32[5]{0}, f32[5]{0})) -> f32[1,2,3,5,1] {
@@ -164,12 +180,7 @@ ENTRY %main (param0: (f32[5]{0}, f32[5]{0})) -> f32[1,2,3,5,1] {
   )";
 
   AlgebraicSimplifierOptions options;
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          AlgebraicSimplifier(options).Run(module.get()));
-  EXPECT_TRUE(changed);
-  EXPECT_TRUE(module->original_value_recovery_table().empty());
+  RunAndFilecheckHloRewrite(hlo_string, AlgebraicSimplifier(options));
 }
 
 }  // namespace

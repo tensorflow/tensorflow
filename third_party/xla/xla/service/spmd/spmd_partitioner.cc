@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/tile_assignment.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
@@ -6163,37 +6164,48 @@ absl::StatusOr<bool> SpmdPartitioner::PreprocessCallSites(
 void SpmdPartitioningVisitor::SetPartitionedHlo(
     const HloInstruction* hlo, PartitionedHlo&& partitioned_hlo) {
   CHECK_EQ(partitioned_instructions_.count(hlo), 0);
-  if (hlo->original_value() && !partitioned_hlo.sharding().IsReplicated()) {
-    SpmdBuilder builder("recovery_computation", nullptr);
-    auto* param = builder.AddInstruction(xla::HloInstruction::CreateParameter(
-        0, partitioned_hlo.hlo()->shape(), "param"));
-    param->set_sharding(partitioned_hlo.sharding());
-    xla::HloModuleConfig config;
-    auto recovery_module =
-        std::make_unique<HloModule>("recovery_module", config);
-    PartitionedHlo::ReshardCache reshard_cache;
-    int64_t next_channel_id = hlo_query::NextChannelId(*recovery_module);
-
-    xla::spmd::PartitionedHlo::PartitioningState partitioning_state =
-        partitioned_hlo.state();
-    partitioning_state.b = &builder;
-    partitioning_state.module = recovery_module.get();
-    partitioning_state.partition_id =
-        partitioning_state.collective_ops_creator.create_partition_id(&builder);
-    partitioning_state.next_channel_id = &next_channel_id;
-    partitioning_state.reshard_cache = &reshard_cache;
-
-    PartitionedHlo param_partitioned_hlo(param, partitioned_hlo.base_shape(),
-                                         partitioning_state);
-    // Creates computation to recover the partitioned value.
-    param_partitioned_hlo.Replicate();
-    recovery_module->AddEntryComputation(builder.Build());
-
+  if (!partitioned_hlo.sharding().IsReplicated()) {
     // Adds recovery computation to the original value recovery table.
     auto* module = const_cast<HloModule*>(hlo->parent()->parent());
-    module->mutable_original_value_recovery_table().AddRecoveryModule(
-        /*replaced_inst=*/hlo, /*replacing_inst=*/partitioned_hlo.hlo(),
-        std::move(recovery_module));
+    module->mutable_original_value_recovery_table().AddRecoveryComputation(
+        hlo, partitioned_hlo.hlo(),
+        [&](const ShapeIndex& index,
+            const OriginalArray& replaced_original_array,
+            const xla::Shape& replaced_array_shape,
+            const xla::Shape& replacing_array_shape) {
+          SpmdBuilder builder("recovery_computation", nullptr);
+          auto* param =
+              builder.AddInstruction(xla::HloInstruction::CreateParameter(
+                  0, replacing_array_shape, "param"));
+          if (partitioned_hlo.sharding().IsTuple()) {
+            param->set_sharding(
+                partitioned_hlo.sharding().GetSubSharding(hlo->shape(), index));
+          } else {
+            param->set_sharding(partitioned_hlo.sharding());
+          }
+          xla::HloModuleConfig config;
+          auto recovery_module =
+              std::make_unique<HloModule>("recovery_module", config);
+          PartitionedHlo::ReshardCache reshard_cache;
+          int64_t next_channel_id = hlo_query::NextChannelId(*recovery_module);
+
+          xla::spmd::PartitionedHlo::PartitioningState partitioning_state =
+              partitioned_hlo.state();
+          partitioning_state.b = &builder;
+          partitioning_state.module = recovery_module.get();
+          partitioning_state.partition_id =
+              partitioning_state.collective_ops_creator.create_partition_id(
+                  &builder);
+          partitioning_state.next_channel_id = &next_channel_id;
+          partitioning_state.reshard_cache = &reshard_cache;
+
+          PartitionedHlo param_partitioned_hlo(param, replaced_array_shape,
+                                               partitioning_state);
+          // Creates computation to recover the partitioned value.
+          param_partitioned_hlo.Replicate();
+          recovery_module->AddEntryComputation(builder.Build());
+          return recovery_module;
+        });
   }
 
   partitioned_instructions_.emplace(hlo, partitioned_hlo);

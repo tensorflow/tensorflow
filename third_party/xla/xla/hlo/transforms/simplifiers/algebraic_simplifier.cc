@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
@@ -5240,23 +5241,20 @@ absl::Status AlgebraicSimplifierVisitor::HandleBroadcast(
         dims.erase(dims.begin() + inserted_index);
       }
 
-      HloInstruction* replaced_inst = operand;
-      if (replaced_inst->original_value()) {
-        HloInstruction* replacing_inst = operand->mutable_operand(0);
-        auto build_entry_computation = [](xla::HloComputation::Builder& builder,
-                                          const xla::Shape& input_shape,
-                                          const xla::Shape& output_shape) {
-          xla::HloInstruction* param = builder.AddInstruction(
-              xla::HloInstruction::CreateParameter(0, input_shape, "p"));
-          return builder.AddInstruction(
-              xla::HloInstruction::CreateReshape(output_shape, param));
-        };
-        HloModule* module = broadcast->parent()->parent();
-        module->mutable_original_value_recovery_table()
-            .BuildAndAddRecoveryModule(replaced_inst, replacing_inst,
-                                       build_entry_computation);
-      }
-
+      HloModule* module = broadcast->parent()->parent();
+      module->mutable_original_value_recovery_table()
+          .BuildAndAddRecoveryComputation(
+              operand, operand->mutable_operand(0),
+              [](xla::HloComputation::Builder& builder, const ShapeIndex& index,
+                 const OriginalArray& replaced_original_array,
+                 const xla::Shape& replaced_shape,
+                 const xla::Shape& replacing_shape) {
+                xla::HloInstruction* param =
+                    builder.AddInstruction(xla::HloInstruction::CreateParameter(
+                        0, replacing_shape, "p"));
+                return builder.AddInstruction(
+                    xla::HloInstruction::CreateReshape(replaced_shape, param));
+              });
       return ReplaceWithNewInstruction(
           broadcast,
           HloInstruction::CreateBroadcast(broadcast->shape(),
