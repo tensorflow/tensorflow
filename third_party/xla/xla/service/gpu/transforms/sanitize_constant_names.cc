@@ -18,12 +18,12 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/llvm_ir/buffer_assignment_util.h"
 #include "xla/service/name_uniquer.h"
-#include "tsl/platform/logging.h"
 
 namespace xla {
 
