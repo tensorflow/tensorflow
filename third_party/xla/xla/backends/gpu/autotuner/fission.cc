@@ -27,10 +27,10 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/autotuning.pb.h"
+#include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/autotuner/cublas.h"
 #include "xla/backends/gpu/autotuner/cublaslt.h"
 #include "xla/backends/gpu/autotuner/custom_kernel.h"
-#include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -58,8 +58,7 @@ namespace xla {
 namespace gpu {
 
 namespace se = ::stream_executor;
-using CublasBackendConfig = AutotuneResult::GemmKey;
-using CublasLtBackendConfig = AutotuneResult::GemmKey;
+using CublasOrCublasLtBackendConfig = AutotuneResult::GemmKey;
 using CustomKernelBackendConfig = AutotuneResult::CustomKernelFusionKey;
 
 namespace {
@@ -79,11 +78,10 @@ HloCostAnalysis::Options PriorityFusionOptions() {
 absl::Status FissionToCublas(HloModule* hlo_module,
                              const se::DeviceDescription& device_description,
                              bool rewrite_to_cublaslt) {
-  if (rewrite_to_cublaslt) {
-    hlo_module->mutable_config()
-        .mutable_debug_options()
-        .set_xla_gpu_enable_cublaslt(true);
-  }
+  hlo_module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_enable_cublaslt(rewrite_to_cublaslt);
+
   HloInstruction* dot = hlo_query::GetFirstInstructionWithOpcode(
       *hlo_module->entry_computation(), HloOpcode::kDot);
 
@@ -306,7 +304,10 @@ absl::Status FissionBackend::ApplyConfig(HloInstruction& instr,
       /*uniquify_channel_ids=*/true);
   TF_RETURN_IF_ERROR(call_inliner.Run(hlo_module).status());
 
-  if (config.Is<CublasBackendConfig>()) {
+  bool use_cublaslt =
+      computation->parent()->config().debug_options().xla_gpu_enable_cublaslt();
+
+  if (!use_cublaslt && config.Is<CublasOrCublasLtBackendConfig>()) {
     TF_RETURN_IF_ERROR(FissionToCublas(hlo_module,
                                        target_config().device_description,
                                        /*rewrite_to_cublaslt=*/false));
@@ -322,7 +323,7 @@ absl::Status FissionBackend::ApplyConfig(HloInstruction& instr,
     return absl::OkStatus();
   }
 
-  if (config.Is<CublasLtBackendConfig>()) {
+  if (use_cublaslt && config.Is<CublasOrCublasLtBackendConfig>()) {
     TF_RETURN_IF_ERROR(FissionToCublas(hlo_module,
                                        target_config().device_description,
                                        /*rewrite_to_cublaslt=*/true));
