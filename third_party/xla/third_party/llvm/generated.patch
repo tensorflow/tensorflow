@@ -1,186 +1,170 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/clang/include/clang/AST/TemplateName.h b/clang/include/clang/AST/TemplateName.h
---- a/clang/include/clang/AST/TemplateName.h
-+++ b/clang/include/clang/AST/TemplateName.h
-@@ -335,17 +335,17 @@
-   /// structure, if any.
-   QualifiedTemplateName *getAsQualifiedTemplateName() const;
+diff -ruN --strip-trailing-cr a/clang/include/clang/Analysis/FlowSensitive/StorageLocation.h b/clang/include/clang/Analysis/FlowSensitive/StorageLocation.h
+--- a/clang/include/clang/Analysis/FlowSensitive/StorageLocation.h
++++ b/clang/include/clang/Analysis/FlowSensitive/StorageLocation.h
+@@ -17,7 +17,6 @@
+ #include "clang/AST/Decl.h"
+ #include "clang/AST/Type.h"
+ #include "llvm/ADT/DenseMap.h"
+-#include "llvm/ADT/StringRef.h"
+ #include "llvm/Support/Debug.h"
+ #include <cassert>
  
--  /// Retrieve the underlying qualified template name,
--  /// looking through underlying nodes.
--  QualifiedTemplateName *getAsAdjustedQualifiedTemplateName() const;
+@@ -153,11 +152,6 @@
+     return {SyntheticFields.begin(), SyntheticFields.end()};
+   }
+ 
+-  /// Add a synthetic field, if none by that name is already present.
+-  void addSyntheticField(llvm::StringRef Name, StorageLocation &Loc) {
+-    SyntheticFields.insert({Name, &Loc});
+-  }
 -
-   /// Retrieve the underlying dependent template name
-   /// structure, if any.
-   DependentTemplateName *getAsDependentTemplateName() const;
- 
--  // Retrieve the qualifier stored in either a underlying DependentTemplateName
--  // or QualifiedTemplateName.
--  NestedNameSpecifier getQualifier() const;
-+  // Retrieve the qualifier and template keyword stored in either a underlying
-+  // DependentTemplateName or QualifiedTemplateName.
-+  std::tuple<NestedNameSpecifier, bool> getQualifierAndTemplateKeyword() const;
-+
-+  NestedNameSpecifier getQualifier() const {
-+    return std::get<0>(getQualifierAndTemplateKeyword());
-+  }
- 
-   /// Retrieve the using shadow declaration through which the underlying
-   /// template declaration is introduced, if any.
-diff -ruN --strip-trailing-cr a/clang/include/clang/AST/TypeLoc.h b/clang/include/clang/AST/TypeLoc.h
---- a/clang/include/clang/AST/TypeLoc.h
-+++ b/clang/include/clang/AST/TypeLoc.h
-@@ -1862,11 +1862,10 @@
-     if (!getLocalData()->QualifierData)
-       return NestedNameSpecifierLoc();
- 
--    auto *QTN =
--        getTypePtr()->getTemplateName().getAsAdjustedQualifiedTemplateName();
--    assert(QTN && "missing qualification");
--    return NestedNameSpecifierLoc(QTN->getQualifier(),
--                                  getLocalData()->QualifierData);
-+    NestedNameSpecifier Qualifier =
-+        getTypePtr()->getTemplateName().getQualifier();
-+    assert(Qualifier && "missing qualification");
-+    return NestedNameSpecifierLoc(Qualifier, getLocalData()->QualifierData);
+   /// Changes the child storage location for a field `D` of reference type.
+   /// All other fields cannot change their storage location and always retain
+   /// the storage location passed to the `RecordStorageLocation` constructor.
+@@ -170,11 +164,6 @@
+     Children[&D] = Loc;
    }
  
-   SourceLocation getTemplateKeywordLoc() const {
-@@ -2493,10 +2492,9 @@
-     void *Data = getLocalData()->QualifierData;
-     if (!Data)
-       return NestedNameSpecifierLoc();
--    NestedNameSpecifier Qualifier = getTypePtr()
--                                        ->getTemplateName()
--                                        .getAsAdjustedQualifiedTemplateName()
--                                        ->getQualifier();
-+    NestedNameSpecifier Qualifier =
-+        getTypePtr()->getTemplateName().getQualifier();
-+    assert(Qualifier && "missing qualification");
-     return NestedNameSpecifierLoc(Qualifier, Data);
+-  /// Add a child storage location for a field `D`, if not already present.
+-  void addChild(const ValueDecl &D, StorageLocation *Loc) {
+-    Children.insert({&D, Loc});
+-  }
+-
+   llvm::iterator_range<FieldToLoc::const_iterator> children() const {
+     return {Children.begin(), Children.end()};
+   }
+diff -ruN --strip-trailing-cr a/clang/include/clang/AST/DeclCXX.h b/clang/include/clang/AST/DeclCXX.h
+--- a/clang/include/clang/AST/DeclCXX.h
++++ b/clang/include/clang/AST/DeclCXX.h
+@@ -3826,7 +3826,7 @@
+ 
+ public:
+   EnumDecl *getEnumDecl() const {
+-    return cast<clang::EnumType>(EnumType->getType())->getOriginalDecl();
++    return EnumType->getType()->castAs<clang::EnumType>()->getOriginalDecl();
    }
  
-@@ -2511,10 +2509,7 @@
+   static UsingEnumDecl *Create(ASTContext &C, DeclContext *DC,
+diff -ruN --strip-trailing-cr a/clang/lib/Analysis/FlowSensitive/Transfer.cpp b/clang/lib/Analysis/FlowSensitive/Transfer.cpp
+--- a/clang/lib/Analysis/FlowSensitive/Transfer.cpp
++++ b/clang/lib/Analysis/FlowSensitive/Transfer.cpp
+@@ -20,17 +20,14 @@
+ #include "clang/AST/OperationKinds.h"
+ #include "clang/AST/Stmt.h"
+ #include "clang/AST/StmtVisitor.h"
+-#include "clang/AST/Type.h"
+ #include "clang/Analysis/FlowSensitive/ASTOps.h"
+ #include "clang/Analysis/FlowSensitive/AdornedCFG.h"
+ #include "clang/Analysis/FlowSensitive/DataflowAnalysisContext.h"
+ #include "clang/Analysis/FlowSensitive/DataflowEnvironment.h"
+ #include "clang/Analysis/FlowSensitive/NoopAnalysis.h"
+ #include "clang/Analysis/FlowSensitive/RecordOps.h"
+-#include "clang/Analysis/FlowSensitive/StorageLocation.h"
+ #include "clang/Analysis/FlowSensitive/Value.h"
+ #include "clang/Basic/Builtins.h"
+-#include "clang/Basic/LLVM.h"
+ #include "clang/Basic/OperatorKinds.h"
+ #include "llvm/Support/Casting.h"
+ #include <assert.h>
+@@ -290,7 +287,7 @@
+     }
+   }
+ 
+-  void VisitCastExpr(const CastExpr *S) {
++  void VisitImplicitCastExpr(const ImplicitCastExpr *S) {
+     const Expr *SubExpr = S->getSubExpr();
+     assert(SubExpr != nullptr);
+ 
+@@ -320,60 +317,6 @@
+       break;
      }
  
-     assert(QualifierLoc.getNestedNameSpecifier() ==
--               getTypePtr()
--                   ->getTemplateName()
--                   .getAsAdjustedQualifiedTemplateName()
--                   ->getQualifier() &&
-+               getTypePtr()->getTemplateName().getQualifier() &&
-            "Inconsistent nested-name-specifier pointer");
-     getLocalData()->QualifierData = QualifierLoc.getOpaqueData();
-   }
-diff -ruN --strip-trailing-cr a/clang/include/clang/Serialization/ASTReader.h b/clang/include/clang/Serialization/ASTReader.h
---- a/clang/include/clang/Serialization/ASTReader.h
-+++ b/clang/include/clang/Serialization/ASTReader.h
-@@ -526,6 +526,9 @@
-   /// A timer used to track the time spent deserializing.
-   std::unique_ptr<llvm::Timer> ReadTimer;
- 
-+  // A TimeRegion used to start and stop ReadTimer via RAII.
-+  std::optional<llvm::TimeRegion> ReadTimeRegion;
-+
-   /// The location where the module file will be considered as
-   /// imported from. For non-module AST types it should be invalid.
-   SourceLocation CurrentImportLoc;
-diff -ruN --strip-trailing-cr a/clang/lib/AST/ASTContext.cpp b/clang/lib/AST/ASTContext.cpp
---- a/clang/lib/AST/ASTContext.cpp
-+++ b/clang/lib/AST/ASTContext.cpp
-@@ -5483,18 +5483,15 @@
-   return T;
- }
- 
--static bool getNonInjectedClassName(const TagDecl *&TD) {
-+static const TagDecl *getNonInjectedClassName(const TagDecl *TD) {
-   if (const auto *RD = dyn_cast<CXXRecordDecl>(TD);
--      RD && RD->isInjectedClassName()) {
--    TD = cast<TagDecl>(RD->getDeclContext());
--    return true;
--  }
--  return false;
-+      RD && RD->isInjectedClassName())
-+    return cast<TagDecl>(RD->getDeclContext());
-+  return TD;
- }
- 
- CanQualType ASTContext::getCanonicalTagType(const TagDecl *TD) const {
--  ::getNonInjectedClassName(TD);
--  TD = TD->getCanonicalDecl();
-+  TD = ::getNonInjectedClassName(TD)->getCanonicalDecl();
-   if (TD->TypeForDecl)
-     return TD->TypeForDecl->getCanonicalTypeUnqualified();
- 
-@@ -5510,40 +5507,42 @@
- QualType ASTContext::getTagType(ElaboratedTypeKeyword Keyword,
-                                 NestedNameSpecifier Qualifier,
-                                 const TagDecl *TD, bool OwnsTag) const {
-+
-+  const TagDecl *NonInjectedTD = ::getNonInjectedClassName(TD);
-+  bool IsInjected = TD != NonInjectedTD;
-+
-   ElaboratedTypeKeyword PreferredKeyword =
--      getLangOpts().CPlusPlus
--          ? ElaboratedTypeKeyword::None
--          : KeywordHelpers::getKeywordForTagTypeKind(TD->getTagKind());
-+      getLangOpts().CPlusPlus ? ElaboratedTypeKeyword::None
-+                              : KeywordHelpers::getKeywordForTagTypeKind(
-+                                    NonInjectedTD->getTagKind());
- 
-   if (Keyword == PreferredKeyword && !Qualifier && !OwnsTag) {
-     if (const Type *T = TD->TypeForDecl; T && !T->isCanonicalUnqualified())
-       return QualType(T, 0);
- 
--    bool IsInjected = ::getNonInjectedClassName(TD);
--    const Type *CanonicalType = getCanonicalTagType(TD).getTypePtr();
-+    const Type *CanonicalType = getCanonicalTagType(NonInjectedTD).getTypePtr();
-     const Type *T =
-         getTagTypeInternal(Keyword,
--                           /*Qualifier=*/std::nullopt, TD,
-+                           /*Qualifier=*/std::nullopt, NonInjectedTD,
-                            /*OwnsTag=*/false, IsInjected, CanonicalType,
-                            /*WithFoldingSetNode=*/false);
-     TD->TypeForDecl = T;
-     return QualType(T, 0);
-   }
- 
--  bool IsInjected = ::getNonInjectedClassName(TD);
+-    case CK_BaseToDerived: {
+-      // This is a cast of (single-layer) pointer or reference to a record type.
+-      // We should now model the fields for the derived type.
 -
-   llvm::FoldingSetNodeID ID;
--  TagTypeFoldingSetPlaceholder::Profile(ID, Keyword, Qualifier, TD, OwnsTag,
--                                        IsInjected);
-+  TagTypeFoldingSetPlaceholder::Profile(ID, Keyword, Qualifier, NonInjectedTD,
-+                                        OwnsTag, IsInjected);
+-      // Get the RecordStorageLocation for the record object underneath.
+-      RecordStorageLocation *Loc = nullptr;
+-      if (S->getType()->isPointerType()) {
+-        auto *PV = Env.get<PointerValue>(*SubExpr);
+-        assert(PV != nullptr);
+-        if (PV == nullptr)
+-          break;
+-        Loc = cast<RecordStorageLocation>(&PV->getPointeeLoc());
+-      } else {
+-        assert(S->getType()->isRecordType());
+-        if (SubExpr->isGLValue()) {
+-          Loc = Env.get<RecordStorageLocation>(*SubExpr);
+-        } else {
+-          Loc = &Env.getResultObjectLocation(*SubExpr);
+-        }
+-      }
+-      if (!Loc) {
+-        // Nowhere to add children or propagate from, so we're done.
+-        break;
+-      }
+-
+-      // Get the derived record type underneath the reference or pointer.
+-      QualType Derived = S->getType().getNonReferenceType();
+-      if (Derived->isPointerType()) {
+-        Derived = Derived->getPointeeType();
+-      }
+-
+-      // Add children to the storage location for fields (including synthetic
+-      // fields) of the derived type and initialize their values.
+-      for (const FieldDecl *Field :
+-           Env.getDataflowAnalysisContext().getModeledFields(Derived)) {
+-        assert(Field != nullptr);
+-        QualType FieldType = Field->getType();
+-        if (FieldType->isReferenceType()) {
+-          Loc->addChild(*Field, nullptr);
+-        } else {
+-          Loc->addChild(*Field, &Env.createStorageLocation(FieldType));
+-        }
+-
+-        for (const auto &Entry :
+-             Env.getDataflowAnalysisContext().getSyntheticFields(Derived)) {
+-          Loc->addSyntheticField(Entry.getKey(),
+-                                 Env.createStorageLocation(Entry.getValue()));
+-        }
+-      }
+-      Env.initializeFieldsWithValues(*Loc, Derived);
+-
+-      // Fall through to propagate SubExpr's StorageLocation to the CastExpr.
+-      [[fallthrough]];
+-    }
+     case CK_IntegralCast:
+       // FIXME: This cast creates a new integral value from the
+       // subexpression. But, because we don't model integers, we don't
+@@ -381,9 +324,10 @@
+       // modeling is added, then update this code to create a fresh location and
+       // value.
+     case CK_UncheckedDerivedToBase:
+-    case CK_DerivedToBase:
+     case CK_ConstructorConversion:
+     case CK_UserDefinedConversion:
++      // FIXME: Add tests that excercise CK_UncheckedDerivedToBase,
++      // CK_ConstructorConversion, and CK_UserDefinedConversion.
+     case CK_NoOp: {
+       // FIXME: Consider making `Environment::getStorageLocation` skip noop
+       // expressions (this and other similar expressions in the file) instead
+@@ -740,6 +684,15 @@
+     propagateValue(*SubExpr, *S, Env);
+   }
  
-   void *InsertPos = nullptr;
-   if (TagTypeFoldingSetPlaceholder *T =
-           TagTypes.FindNodeOrInsertPos(ID, InsertPos))
-     return QualType(T->getTagType(), 0);
- 
--  const Type *CanonicalType = getCanonicalTagType(TD).getTypePtr();
--  TagType *T = getTagTypeInternal(Keyword, Qualifier, TD, OwnsTag, IsInjected,
--                                  CanonicalType, /*WithFoldingSetNode=*/true);
-+  const Type *CanonicalType = getCanonicalTagType(NonInjectedTD).getTypePtr();
-+  TagType *T =
-+      getTagTypeInternal(Keyword, Qualifier, NonInjectedTD, OwnsTag, IsInjected,
-+                         CanonicalType, /*WithFoldingSetNode=*/true);
-   TagTypes.InsertNode(TagTypeFoldingSetPlaceholder::fromTagType(T), InsertPos);
-   return QualType(T, 0);
- }
-@@ -10429,6 +10428,12 @@
-   assert(Template.getKind() == TemplateName::Template ||
-          Template.getKind() == TemplateName::UsingTemplate);
- 
-+  if (Template.getAsTemplateDecl()->getKind() == Decl::TemplateTemplateParm) {
-+    assert(!Qualifier && "unexpected qualified template template parameter");
-+    assert(TemplateKeyword == false);
-+    return Template;
++  void VisitCXXStaticCastExpr(const CXXStaticCastExpr *S) {
++    if (S->getCastKind() == CK_NoOp) {
++      const Expr *SubExpr = S->getSubExpr();
++      assert(SubExpr != nullptr);
++
++      propagateValueOrStorageLocation(*SubExpr, *S, Env);
++    }
 +  }
 +
-   // FIXME: Canonicalization?
-   llvm::FoldingSetNodeID ID;
-   QualifiedTemplateName::Profile(ID, Qualifier, TemplateKeyword, Template);
+   void VisitConditionalOperator(const ConditionalOperator *S) {
+     const Environment *TrueEnv = StmtToEnv.getEnvironment(*S->getTrueExpr());
+     const Environment *FalseEnv = StmtToEnv.getEnvironment(*S->getFalseExpr());
 diff -ruN --strip-trailing-cr a/clang/lib/AST/ASTImporter.cpp b/clang/lib/AST/ASTImporter.cpp
 --- a/clang/lib/AST/ASTImporter.cpp
 +++ b/clang/lib/AST/ASTImporter.cpp
@@ -207,199 +191,23 @@ diff -ruN --strip-trailing-cr a/clang/lib/AST/ASTImporter.cpp b/clang/lib/AST/AS
    if (T->isCanonicalUnqualified())
      return Importer.getToContext().getCanonicalTagType(*ToDeclOrErr);
  
-diff -ruN --strip-trailing-cr a/clang/lib/AST/ByteCode/InterpBuiltin.cpp b/clang/lib/AST/ByteCode/InterpBuiltin.cpp
---- a/clang/lib/AST/ByteCode/InterpBuiltin.cpp
-+++ b/clang/lib/AST/ByteCode/InterpBuiltin.cpp
-@@ -1830,6 +1830,7 @@
-     assert(Call->getArg(1)->getType()->isVectorType() &&
-            ASTCtx.hasSameUnqualifiedType(Call->getArg(0)->getType(),
-                                          Call->getArg(1)->getType()));
-+    (void)ASTCtx;
-     ZeroArg = S.Stk.pop<Pointer>();
-     assert(ZeroArg.getFieldDesc()->isPrimitiveArray());
-   }
-@@ -2728,6 +2729,8 @@
-   if (!Arg1Type->isVectorType()) {
-     assert(!Arg2Type->isVectorType());
-     assert(!Arg3Type->isVectorType());
-+    (void)Arg2Type;
-+    (void)Arg3Type;
- 
-     const Floating &Z = S.Stk.pop<Floating>();
-     const Floating &Y = S.Stk.pop<Floating>();
-@@ -2753,6 +2756,7 @@
-   assert(NumElems == Arg2Type->castAs<VectorType>()->getNumElements() &&
-          NumElems == Arg3Type->castAs<VectorType>()->getNumElements());
-   assert(ElemT->isRealFloatingType());
-+  (void)ElemT;
- 
-   const Pointer &VZ = S.Stk.pop<Pointer>();
-   const Pointer &VY = S.Stk.pop<Pointer>();
-diff -ruN --strip-trailing-cr a/clang/lib/AST/DeclarationName.cpp b/clang/lib/AST/DeclarationName.cpp
---- a/clang/lib/AST/DeclarationName.cpp
-+++ b/clang/lib/AST/DeclarationName.cpp
-@@ -113,6 +113,7 @@
-                                               PrintingPolicy Policy) {
-   // We know we're printing C++ here. Ensure we print types properly.
-   Policy.adjustForCPlusPlus();
-+  Policy.SuppressScope = true;
- 
-   if (const RecordType *ClassRec = ClassType->getAs<RecordType>()) {
-     ClassRec->getOriginalDecl()->printName(OS, Policy);
-diff -ruN --strip-trailing-cr a/clang/lib/AST/MicrosoftMangle.cpp b/clang/lib/AST/MicrosoftMangle.cpp
---- a/clang/lib/AST/MicrosoftMangle.cpp
-+++ b/clang/lib/AST/MicrosoftMangle.cpp
-@@ -3246,13 +3246,17 @@
- }
- void MicrosoftCXXNameMangler::mangleType(const EnumType *T, Qualifiers,
-                                          SourceRange) {
--  mangleType(cast<TagType>(T)->getOriginalDecl()->getDefinitionOrSelf());
-+  mangleType(cast<TagType>(T)->getOriginalDecl());
- }
- void MicrosoftCXXNameMangler::mangleType(const RecordType *T, Qualifiers,
-                                          SourceRange) {
--  mangleType(cast<TagType>(T)->getOriginalDecl()->getDefinitionOrSelf());
-+  mangleType(cast<TagType>(T)->getOriginalDecl());
- }
- void MicrosoftCXXNameMangler::mangleType(const TagDecl *TD) {
-+  // MSVC chooses the tag kind of the definition if it exists, otherwise it
-+  // always picks the first declaration.
-+  const auto *Def = TD->getDefinition();
-+  TD = Def ? Def : TD->getFirstDecl();
-   mangleTagTypeKind(TD->getTagKind());
-   mangleName(TD);
- }
-diff -ruN --strip-trailing-cr a/clang/lib/AST/TemplateName.cpp b/clang/lib/AST/TemplateName.cpp
---- a/clang/lib/AST/TemplateName.cpp
-+++ b/clang/lib/AST/TemplateName.cpp
-@@ -289,28 +289,23 @@
-   return dyn_cast_if_present<QualifiedTemplateName *>(Storage);
- }
- 
--QualifiedTemplateName *
--TemplateName::getAsAdjustedQualifiedTemplateName() const {
--  for (std::optional<TemplateName> Cur = *this; Cur;
--       Cur = Cur->desugar(/*IgnoreDeduced=*/true))
--    if (QualifiedTemplateName *N = Cur->getAsQualifiedTemplateName())
--      return N;
--  return nullptr;
--}
--
- DependentTemplateName *TemplateName::getAsDependentTemplateName() const {
-   return Storage.dyn_cast<DependentTemplateName *>();
- }
- 
--NestedNameSpecifier TemplateName::getQualifier() const {
-+std::tuple<NestedNameSpecifier, bool>
-+TemplateName::getQualifierAndTemplateKeyword() const {
-   for (std::optional<TemplateName> Cur = *this; Cur;
-        Cur = Cur->desugar(/*IgnoreDeduced=*/true)) {
-     if (DependentTemplateName *N = Cur->getAsDependentTemplateName())
--      return N->getQualifier();
-+      return {N->getQualifier(), N->hasTemplateKeyword()};
-     if (QualifiedTemplateName *N = Cur->getAsQualifiedTemplateName())
--      return N->getQualifier();
-+      return {N->getQualifier(), N->hasTemplateKeyword()};
-+    if (Cur->getAsSubstTemplateTemplateParm() ||
-+        Cur->getAsSubstTemplateTemplateParmPack())
-+      break;
-   }
--  return std::nullopt;
-+  return {std::nullopt, false};
- }
- 
- UsingShadowDecl *TemplateName::getAsUsingShadowDecl() const {
-@@ -448,8 +443,14 @@
-       Template = cast<TemplateDecl>(Template->getCanonicalDecl());
-     if (handleAnonymousTTP(Template, OS))
-       return;
--    if (Qual == Qualified::None || Policy.SuppressScope) {
--      OS << *Template;
-+    if (Qual == Qualified::None || isa<TemplateTemplateParmDecl>(Template) ||
-+        Policy.SuppressScope) {
-+      if (IdentifierInfo *II = Template->getIdentifier();
-+          Policy.CleanUglifiedParameters && II &&
-+          isa<TemplateTemplateParmDecl>(Template))
-+        OS << II->deuglifiedName();
-+      else
-+        OS << *Template;
-     } else {
-       PrintingPolicy NestedNamePolicy = Policy;
-       NestedNamePolicy.SuppressUnwrittenScope = true;
-@@ -474,12 +475,7 @@
-     if (handleAnonymousTTP(UTD, OS))
-       return;
- 
--    if (IdentifierInfo *II = UTD->getIdentifier();
--        Policy.CleanUglifiedParameters && II &&
--        isa<TemplateTemplateParmDecl>(UTD))
--      OS << II->deuglifiedName();
--    else
--      OS << *UTD;
-+    OS << *UTD;
-   } else if (DependentTemplateName *DTN = getAsDependentTemplateName()) {
-     DTN->print(OS, Policy);
-   } else if (SubstTemplateTemplateParmStorage *subst =
-diff -ruN --strip-trailing-cr a/clang/lib/AST/Type.cpp b/clang/lib/AST/Type.cpp
---- a/clang/lib/AST/Type.cpp
-+++ b/clang/lib/AST/Type.cpp
-@@ -1963,12 +1963,10 @@
-   switch (getTypeClass()) {
-   case Type::DependentName:
-     return cast<DependentNameType>(this)->getQualifier();
--  case Type::TemplateSpecialization: {
--    QualifiedTemplateName *S = cast<TemplateSpecializationType>(this)
--                                   ->getTemplateName()
--                                   .getAsAdjustedQualifiedTemplateName();
--    return S ? S->getQualifier() : std::nullopt;
--  }
-+  case Type::TemplateSpecialization:
-+    return cast<TemplateSpecializationType>(this)
-+        ->getTemplateName()
-+        .getQualifier();
-   case Type::DependentTemplateSpecialization:
-     return cast<DependentTemplateSpecializationType>(this)
-         ->getDependentTemplateName()
-diff -ruN --strip-trailing-cr a/clang/lib/AST/TypeLoc.cpp b/clang/lib/AST/TypeLoc.cpp
---- a/clang/lib/AST/TypeLoc.cpp
-+++ b/clang/lib/AST/TypeLoc.cpp
-@@ -750,8 +750,9 @@
- 
- void TemplateSpecializationTypeLoc::initializeLocal(ASTContext &Context,
-                                                     SourceLocation Loc) {
--  QualifiedTemplateName *Name =
--      getTypePtr()->getTemplateName().getAsAdjustedQualifiedTemplateName();
-+
-+  auto [Qualifier, HasTemplateKeyword] =
-+      getTypePtr()->getTemplateName().getQualifierAndTemplateKeyword();
- 
-   SourceLocation ElaboratedKeywordLoc =
-       getTypePtr()->getKeyword() != ElaboratedTypeKeyword::None
-@@ -759,8 +760,7 @@
-           : SourceLocation();
- 
-   NestedNameSpecifierLoc QualifierLoc;
--  if (NestedNameSpecifier Qualifier =
--          Name ? Name->getQualifier() : std::nullopt) {
-+  if (Qualifier) {
-     NestedNameSpecifierLocBuilder Builder;
-     Builder.MakeTrivial(Context, Qualifier, Loc);
-     QualifierLoc = Builder.getWithLocInContext(Context);
-@@ -768,9 +768,7 @@
- 
-   TemplateArgumentListInfo TAL(Loc, Loc);
-   set(ElaboratedKeywordLoc, QualifierLoc,
--      /*TemplateKeywordLoc=*/Name && Name->hasTemplateKeyword()
--          ? Loc
--          : SourceLocation(),
-+      /*TemplateKeywordLoc=*/HasTemplateKeyword ? Loc : SourceLocation(),
-       /*NameLoc=*/Loc, /*LAngleLoc=*/Loc, /*RAngleLoc=*/Loc);
-   initializeArgLocs(Context, getTypePtr()->template_arguments(), getArgInfos(),
-                     Loc);
 diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaDecl.cpp b/clang/lib/Sema/SemaDecl.cpp
 --- a/clang/lib/Sema/SemaDecl.cpp
 +++ b/clang/lib/Sema/SemaDecl.cpp
-@@ -18032,7 +18032,8 @@
+@@ -5291,10 +5291,8 @@
+     //   UNION_TYPE;   <- where UNION_TYPE is a typedef union.
+     if ((Tag && Tag->getDeclName()) ||
+         DS.getTypeSpecType() == DeclSpec::TST_typename) {
+-      RecordDecl *Record = dyn_cast_or_null<RecordDecl>(Tag);
+-      if (!Record)
+-        Record = DS.getRepAsType().get()->getAsRecordDecl();
+-
++      RecordDecl *Record = Tag ? dyn_cast<RecordDecl>(Tag)
++                               : DS.getRepAsType().get()->getAsRecordDecl();
+       if (Record && getLangOpts().MicrosoftExt) {
+         Diag(DS.getBeginLoc(), diag::ext_ms_anonymous_record)
+             << Record->isUnion() << DS.getSourceRange();
+@@ -18052,7 +18050,8 @@
            }
          }
        } else if (auto *RD = dyn_cast<CXXRecordDecl>(PrevDecl);
@@ -409,261 +217,54 @@ diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaDecl.cpp b/clang/lib/Sema/Sem
          // If lookup found the injected class name, the previous declaration is
          // the class being injected into.
          PrevDecl = cast<TagDecl>(RD->getDeclContext());
-diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaDeclCXX.cpp b/clang/lib/Sema/SemaDeclCXX.cpp
---- a/clang/lib/Sema/SemaDeclCXX.cpp
-+++ b/clang/lib/Sema/SemaDeclCXX.cpp
-@@ -4568,6 +4568,7 @@
-       MarkAnyDeclReferenced(TyD->getLocation(), TyD, /*OdrUse=*/false);
+@@ -18544,8 +18543,14 @@
+   if (PrevDecl)
+     CheckRedeclarationInModule(New, PrevDecl);
  
-       TypeLocBuilder TLB;
-+      // FIXME: This is missing building the UsingType for TyD, if any.
-       if (const auto *TD = dyn_cast<TagDecl>(TyD)) {
-         BaseType = Context.getTagType(ElaboratedTypeKeyword::None,
-                                       SS.getScopeRep(), TD, /*OwnsTag=*/false);
-@@ -4581,6 +4582,12 @@
-         TLB.push<TypedefTypeLoc>(BaseType).set(
-             /*ElaboratedKeywordLoc=*/SourceLocation(),
-             SS.getWithLocInContext(Context), IdLoc);
-+      } else if (auto *UD = dyn_cast<UnresolvedUsingTypenameDecl>(TyD)) {
-+        BaseType = Context.getUnresolvedUsingType(ElaboratedTypeKeyword::None,
-+                                                  SS.getScopeRep(), UD);
-+        TLB.push<UnresolvedUsingTypeLoc>(BaseType).set(
-+            /*ElaboratedKeywordLoc=*/SourceLocation(),
-+            SS.getWithLocInContext(Context), IdLoc);
-       } else {
-         // FIXME: What else can appear here?
-         assert(SS.isEmpty());
-diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaLookup.cpp b/clang/lib/Sema/SemaLookup.cpp
---- a/clang/lib/Sema/SemaLookup.cpp
-+++ b/clang/lib/Sema/SemaLookup.cpp
-@@ -4581,7 +4581,7 @@
-         TemplateName Name =
-             cast<TemplateSpecializationType>(T)->getTemplateName();
-         if (const QualifiedTemplateName *QTN =
--                Name.getAsAdjustedQualifiedTemplateName()) {
-+                Name.getAsQualifiedTemplateName()) {
-           getNestedNameSpecifierIdentifiers(QTN->getQualifier(), Identifiers);
-           Name = QTN->getUnderlyingTemplate();
-         }
-diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaTemplateInstantiate.cpp b/clang/lib/Sema/SemaTemplateInstantiate.cpp
---- a/clang/lib/Sema/SemaTemplateInstantiate.cpp
-+++ b/clang/lib/Sema/SemaTemplateInstantiate.cpp
-@@ -2083,9 +2083,11 @@
-     NestedNameSpecifierLoc &QualifierLoc, SourceLocation TemplateKWLoc,
-     TemplateName Name, SourceLocation NameLoc, QualType ObjectType,
-     NamedDecl *FirstQualifierInScope, bool AllowInjectedClassName) {
--  if (TemplateTemplateParmDecl *TTP
--       = dyn_cast_or_null<TemplateTemplateParmDecl>(Name.getAsTemplateDecl())) {
--    if (TTP->getDepth() < TemplateArgs.getNumLevels()) {
-+  if (Name.getKind() == TemplateName::Template) {
-+    assert(!QualifierLoc && "Unexpected qualifier");
-+    if (auto *TTP =
-+            dyn_cast<TemplateTemplateParmDecl>(Name.getAsTemplateDecl());
-+        TTP && TTP->getDepth() < TemplateArgs.getNumLevels()) {
-       // If the corresponding template argument is NULL or non-existent, it's
-       // because we are performing instantiation from explicitly-specified
-       // template arguments in a function template, but there were some
-@@ -2128,13 +2130,6 @@
- 
-       TemplateName Template = Arg.getAsTemplate();
-       assert(!Template.isNull() && "Null template template argument");
--
--      if (NestedNameSpecifier Qualifier = Template.getQualifier()) {
--        NestedNameSpecifierLocBuilder Builder;
--        Builder.MakeTrivial(SemaRef.Context, Qualifier, NameLoc);
--        QualifierLoc = Builder.getWithLocInContext(SemaRef.Context);
--      }
--
-       return getSema().Context.getSubstTemplateTemplateParm(
-           Template, AssociatedDecl, TTP->getIndex(), PackIndex, Final);
-     }
-diff -ruN --strip-trailing-cr a/clang/lib/Sema/TreeTransform.h b/clang/lib/Sema/TreeTransform.h
---- a/clang/lib/Sema/TreeTransform.h
-+++ b/clang/lib/Sema/TreeTransform.h
-@@ -697,11 +697,6 @@
- 
-   StmtResult TransformSEHHandler(Stmt *Handler);
- 
--  QualType TransformTemplateSpecializationType(TypeLocBuilder &TLB,
--                                               TemplateSpecializationTypeLoc TL,
--                                               TemplateName Template,
--                                               CXXScopeSpec &SS);
--
-   QualType TransformDependentTemplateSpecializationType(
-       TypeLocBuilder &TLB, DependentTemplateSpecializationTypeLoc TL,
-       QualType ObjectType, NamedDecl *UnqualLookup,
-@@ -1268,9 +1263,8 @@
-   ///
-   /// By default, builds the new template name directly. Subclasses may override
-   /// this routine to provide different behavior.
--  TemplateName RebuildTemplateName(CXXScopeSpec &SS,
--                                   bool TemplateKW,
--                                   TemplateDecl *Template);
-+  TemplateName RebuildTemplateName(CXXScopeSpec &SS, bool TemplateKW,
-+                                   TemplateName Name);
- 
-   /// Build a new template name given a nested name specifier and the
-   /// name that is referred to as a template.
-@@ -4776,9 +4770,7 @@
-     TemplateName Name, SourceLocation NameLoc, QualType ObjectType,
-     NamedDecl *FirstQualifierInScope, bool AllowInjectedClassName) {
-   if (QualifiedTemplateName *QTN = Name.getAsQualifiedTemplateName()) {
--    // FIXME: Preserve UsingTemplateName.
--    TemplateDecl *Template = QTN->getUnderlyingTemplate().getAsTemplateDecl();
--    assert(Template && "qualified template name must refer to a template");
-+    TemplateName UnderlyingName = QTN->getUnderlyingTemplate();
- 
-     if (QualifierLoc) {
-       QualifierLoc = getDerived().TransformNestedNameSpecifierLoc(
-@@ -4787,20 +4779,22 @@
-         return TemplateName();
-     }
- 
--    TemplateDecl *TransTemplate
--      = cast_or_null<TemplateDecl>(getDerived().TransformDecl(NameLoc,
--                                                              Template));
--    if (!TransTemplate)
-+    NestedNameSpecifierLoc UnderlyingQualifier;
-+    TemplateName NewUnderlyingName = getDerived().TransformTemplateName(
-+        UnderlyingQualifier, TemplateKWLoc, UnderlyingName, NameLoc, ObjectType,
-+        FirstQualifierInScope, AllowInjectedClassName);
-+    if (NewUnderlyingName.isNull())
-       return TemplateName();
-+    assert(!UnderlyingQualifier && "unexpected qualifier");
- 
-     if (!getDerived().AlwaysRebuild() &&
-         QualifierLoc.getNestedNameSpecifier() == QTN->getQualifier() &&
--        TransTemplate == Template)
-+        NewUnderlyingName == UnderlyingName)
-       return Name;
-     CXXScopeSpec SS;
-     SS.Adopt(QualifierLoc);
-     return getDerived().RebuildTemplateName(SS, QTN->hasTemplateKeyword(),
--                                            TransTemplate);
-+                                            NewUnderlyingName);
-   }
- 
-   if (DependentTemplateName *DTN = Name.getAsDependentTemplateName()) {
-@@ -4828,9 +4822,19 @@
- 
-   if (SubstTemplateTemplateParmStorage *S =
-           Name.getAsSubstTemplateTemplateParm()) {
-+    assert(!QualifierLoc && "Unexpected qualified SubstTemplateTemplateParm");
-+
-+    NestedNameSpecifierLoc ReplacementQualifierLoc;
-+    TemplateName ReplacementName = S->getReplacement();
-+    if (NestedNameSpecifier Qualifier = ReplacementName.getQualifier()) {
-+      NestedNameSpecifierLocBuilder Builder;
-+      Builder.MakeTrivial(SemaRef.Context, Qualifier, NameLoc);
-+      ReplacementQualifierLoc = Builder.getWithLocInContext(SemaRef.Context);
+-  if (TUK == TagUseKind::Definition && (!SkipBody || !SkipBody->ShouldSkip))
+-    New->startDefinition();
++  if (TUK == TagUseKind::Definition) {
++    if (!SkipBody || !SkipBody->ShouldSkip) {
++      New->startDefinition();
++    } else {
++      New->setCompleteDefinition();
++      New->demoteThisDefinitionToDeclaration();
 +    }
-+
-     TemplateName NewName = getDerived().TransformTemplateName(
--        QualifierLoc, TemplateKWLoc, S->getReplacement(), NameLoc, ObjectType,
--        FirstQualifierInScope, AllowInjectedClassName);
-+        ReplacementQualifierLoc, TemplateKWLoc, ReplacementName, NameLoc,
-+        ObjectType, FirstQualifierInScope, AllowInjectedClassName);
-     if (NewName.isNull())
-       return TemplateName();
-     Decl *AssociatedDecl =
-@@ -4846,21 +4850,17 @@
-   assert(!Name.getAsDeducedTemplateName() &&
-          "DeducedTemplateName should not escape partial ordering");
++  }
  
--  if (TemplateDecl *Template = Name.getAsTemplateDecl()) {
--    assert(!QualifierLoc && "missed a Qualified Template");
--    TemplateDecl *TransTemplate
--      = cast_or_null<TemplateDecl>(getDerived().TransformDecl(NameLoc,
--                                                              Template));
--    if (!TransTemplate)
--      return TemplateName();
--
--    CXXScopeSpec SS;
--    return getDerived().RebuildTemplateName(SS, /*TemplateKeyword=*/false,
--                                            TransTemplate);
-+  // FIXME: Preserve UsingTemplateName.
-+  if (auto *Template = Name.getAsTemplateDecl()) {
-+    assert(!QualifierLoc && "Unexpected qualifier");
-+    return TemplateName(cast_or_null<TemplateDecl>(
-+        getDerived().TransformDecl(NameLoc, Template)));
+   ProcessDeclAttributeList(S, New, Attrs);
+   AddPragmaAttributes(S, New);
+diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaType.cpp b/clang/lib/Sema/SemaType.cpp
+--- a/clang/lib/Sema/SemaType.cpp
++++ b/clang/lib/Sema/SemaType.cpp
+@@ -9878,7 +9878,14 @@
+   S.DiagnoseUseOfDecl(ED, Loc);
+ 
+   QualType Underlying = ED->getIntegerType();
+-  assert(!Underlying.isNull());
++  if (Underlying.isNull()) {
++    // This is an enum without a fixed underlying type which we skipped parsing
++    // the body because we saw its definition previously in another module.
++    // Use the definition's integer type in that case.
++    assert(ED->isThisDeclarationADemotedDefinition());
++    Underlying = ED->getDefinition()->getIntegerType();
++    assert(!Underlying.isNull());
++  }
+ 
+   return Underlying;
+ }
+diff -ruN --strip-trailing-cr a/clang/lib/Serialization/ASTReaderDecl.cpp b/clang/lib/Serialization/ASTReaderDecl.cpp
+--- a/clang/lib/Serialization/ASTReaderDecl.cpp
++++ b/clang/lib/Serialization/ASTReaderDecl.cpp
+@@ -2107,6 +2107,8 @@
+     auto *Def = DD.Definition;
+     DD = std::move(MergeDD);
+     DD.Definition = Def;
++    while ((Def = Def->getPreviousDecl()))
++      cast<CXXRecordDecl>(Def)->DefinitionData = &DD;
+     return;
    }
  
-   if (SubstTemplateTemplateParmPackStorage *SubstPack
-       = Name.getAsSubstTemplateTemplateParmPack()) {
-+    assert(!QualifierLoc &&
-+           "Unexpected qualified SubstTemplateTemplateParmPack");
-     return getDerived().RebuildTemplateName(
-         SubstPack->getArgumentPack(), SubstPack->getAssociatedDecl(),
-         SubstPack->getIndex(), SubstPack->getFinal());
-@@ -5414,21 +5414,10 @@
-         TLB, TL.castAs<DependentNameTypeLoc>(), /*DeducedTSTContext=*/false,
-         ObjectType, UnqualLookup);
-   }
--  case TypeLoc::Typedef:
--  case TypeLoc::TemplateSpecialization:
--  case TypeLoc::SubstTemplateTypeParm:
--  case TypeLoc::SubstTemplateTypeParmPack:
--  case TypeLoc::PackIndexing:
--  case TypeLoc::Enum:
--  case TypeLoc::Record:
--  case TypeLoc::InjectedClassName:
--  case TypeLoc::TemplateTypeParm:
--  case TypeLoc::Decltype:
--  case TypeLoc::UnresolvedUsing:
--  case TypeLoc::Using:
--    return getDerived().TransformType(TLB, TL);
-   default:
--    llvm_unreachable("unexpected type class");
-+    // Any dependent canonical type can appear here, through type alias
-+    // templates.
-+    return getDerived().TransformType(TLB, TL);
-   }
- }
- 
-@@ -17386,13 +17375,12 @@
-   return SemaRef.BuildBitIntType(IsUnsigned, NumBitsExpr, Loc);
- }
- 
--template<typename Derived>
--TemplateName
--TreeTransform<Derived>::RebuildTemplateName(CXXScopeSpec &SS,
--                                            bool TemplateKW,
--                                            TemplateDecl *Template) {
-+template <typename Derived>
-+TemplateName TreeTransform<Derived>::RebuildTemplateName(CXXScopeSpec &SS,
-+                                                         bool TemplateKW,
-+                                                         TemplateName Name) {
-   return SemaRef.Context.getQualifiedTemplateName(SS.getScopeRep(), TemplateKW,
--                                                  TemplateName(Template));
-+                                                  Name);
- }
- 
- template <typename Derived>
-diff -ruN --strip-trailing-cr a/clang/lib/Serialization/ASTReader.cpp b/clang/lib/Serialization/ASTReader.cpp
---- a/clang/lib/Serialization/ASTReader.cpp
-+++ b/clang/lib/Serialization/ASTReader.cpp
-@@ -11003,8 +11003,9 @@
- }
- 
- void ASTReader::StartedDeserializing() {
--  if (++NumCurrentElementsDeserializing == 1 && ReadTimer.get())
--    ReadTimer->startTimer();
-+  if (llvm::Timer *T = ReadTimer.get();
-+      ++NumCurrentElementsDeserializing == 1 && T)
-+    ReadTimeRegion.emplace(T);
- }
- 
- void ASTReader::FinishedDeserializing() {
-@@ -11062,8 +11063,7 @@
-           (void)UndeducedFD->getMostRecentDecl();
-       }
- 
--      if (ReadTimer)
--        ReadTimer->stopTimer();
-+      ReadTimeRegion.reset();
- 
-       diagnoseOdrViolations();
-     }
 diff -ruN --strip-trailing-cr a/clang/test/Analysis/ctu-import-type-decl-definition.c b/clang/test/Analysis/ctu-import-type-decl-definition.c
 --- a/clang/test/Analysis/ctu-import-type-decl-definition.c
 +++ b/clang/test/Analysis/ctu-import-type-decl-definition.c
@@ -714,39 +315,10 @@ diff -ruN --strip-trailing-cr a/clang/test/Analysis/ctu-import-type-decl-definit
 diff -ruN --strip-trailing-cr a/clang/test/AST/ast-dump-decl.cpp b/clang/test/AST/ast-dump-decl.cpp
 --- a/clang/test/AST/ast-dump-decl.cpp
 +++ b/clang/test/AST/ast-dump-decl.cpp
-@@ -330,8 +330,8 @@
- // CHECK-NEXT:  | | `-Destructor irrelevant non_trivial user_declared{{$}}
- // CHECK-NEXT:  | |-CXXRecordDecl 0x{{.+}} <col:24, col:30> col:30 implicit referenced class TestClassTemplate{{$}}
- // CHECK-NEXT:  | |-AccessSpecDecl 0x{{.+}} <line:[[@LINE-50]]:3, col:9> col:3 public{{$}}
--// CHECK-NEXT:  | |-CXXConstructorDecl 0x[[#%x,TEMPLATE_CONSTRUCTOR_DECL:]] <line:[[@LINE-50]]:5, col:23> col:5 testClassTemplateDecl::TestClassTemplate<T> 'void ()'{{$}}
--// CHECK-NEXT:  | |-CXXDestructorDecl 0x[[#%x,TEMPLATE_DESTRUCTOR_DECL:]] <line:[[@LINE-50]]:5, col:24> col:5 ~testClassTemplateDecl::TestClassTemplate<T> 'void ()' not_selected{{$}}
-+// CHECK-NEXT:  | |-CXXConstructorDecl 0x[[#%x,TEMPLATE_CONSTRUCTOR_DECL:]] <line:[[@LINE-50]]:5, col:23> col:5 TestClassTemplate<T> 'void ()'{{$}}
-+// CHECK-NEXT:  | |-CXXDestructorDecl 0x[[#%x,TEMPLATE_DESTRUCTOR_DECL:]] <line:[[@LINE-50]]:5, col:24> col:5 ~TestClassTemplate<T> 'void ()' not_selected{{$}}
- // CHECK-NEXT:  | |-CXXMethodDecl 0x[[#%x,TEMPLATE_METHOD_DECL:]] <line:[[@LINE-50]]:5, col:11> col:9 j 'int ()'{{$}}
- // CHECK-NEXT:  | `-FieldDecl 0x{{.+}} <line:[[@LINE-50]]:5, col:9> col:9 i 'int'{{$}}
- // CHECK-NEXT:  |-ClassTemplateSpecializationDecl 0x{{.+}} <line:[[@LINE-56]]:3, line:[[@LINE-50]]:3> line:[[@LINE-56]]:30 class TestClassTemplate definition implicit_instantiation{{$}}
-@@ -973,5 +973,35 @@
-   // CHECK-NEXT: `-VarDecl 0x{{.+}} <col:25, col:48> col:37 call_init 'const T' constexpr callinit{{$}}
-   // CHECK-NEXT:  `-ParenListExpr 0x{{.+}} <col:46, col:48> 'NULL TYPE'{{$}}
-   // CHECK-NEXT:   `-IntegerLiteral 0x{{.+}} <col:47> 'int' 0{{$}}
--
- }
-+
-+namespace TestInjectedClassName {
-+  struct A {
-+    using T1 = A;
-+    using T2 = A;
-+  };
-+  // CHECK-LABEL: Dumping TestInjectedClassName:
-+  // CHECK:       CXXRecordDecl [[TestInjectedClassName_RD:0x[^ ]+]] {{.*}} struct A definition
-+  // CHECK:       CXXRecordDecl {{.*}} implicit referenced struct A
-+  // CHECK-NEXT:  |-TypeAliasDecl {{.*}} T1 'A'
-+  // CHECK-NEXT:  | `-RecordType [[TestInjectedClassName_RT:0x[^ ]+]] 'A' injected
-+  // CHECK-NEXT:  |   `-CXXRecord [[TestInjectedClassName_RD]] 'A'
-+  // CHECK-NEXT:  `-TypeAliasDecl {{.*}} T2 'A'
-+  // CHECK-NEXT:    `-RecordType [[TestInjectedClassName_RT]] 'A' injected
-+  // CHECK-NEXT:      `-CXXRecord [[TestInjectedClassName_RD]] 'A'
-+} // namespace InjectedClassName
+@@ -990,3 +990,18 @@
+   // CHECK-NEXT:    `-RecordType [[TestInjectedClassName_RT]] 'A' injected
+   // CHECK-NEXT:      `-CXXRecord [[TestInjectedClassName_RD]] 'A'
+ } // namespace InjectedClassName
 +
 +namespace TestGH155936 {
 +  struct Foo {
@@ -762,748 +334,500 @@ diff -ruN --strip-trailing-cr a/clang/test/AST/ast-dump-decl.cpp b/clang/test/AS
 +  // CHECK: CXXRecordDecl 0x{{.+}} <line:[[@LINE-8]]:7, col:19> col:14 struct Foo definition
 +  // CHECH: CXXRecordDecl 0x{{.+}} <col:9, col:16> col:16 implicit struct Foo
 +} // namspace GH155936
-diff -ruN --strip-trailing-cr a/clang/test/AST/ast-dump-templates.cpp b/clang/test/AST/ast-dump-templates.cpp
---- a/clang/test/AST/ast-dump-templates.cpp
-+++ b/clang/test/AST/ast-dump-templates.cpp
-@@ -8170,7 +8170,7 @@
- // JSON-NEXT:              "tokLen": 1
- // JSON-NEXT:             }
- // JSON-NEXT:            },
--// JSON-NEXT:            "name": "GH153540::N::S<T>",
-+// JSON-NEXT:            "name": "S<T>",
- // JSON-NEXT:            "type": {
- // JSON-NEXT:             "qualType": "void (T)"
- // JSON-NEXT:            },
-diff -ruN --strip-trailing-cr a/clang/test/AST/HLSL/StructuredBuffers-AST.hlsl b/clang/test/AST/HLSL/StructuredBuffers-AST.hlsl
---- a/clang/test/AST/HLSL/StructuredBuffers-AST.hlsl
-+++ b/clang/test/AST/HLSL/StructuredBuffers-AST.hlsl
-@@ -91,7 +91,7 @@
- 
- // Default constructor
- 
--// CHECK: CXXConstructorDecl {{.*}} hlsl::[[RESOURCE]]<element_type> 'void ()' inline
-+// CHECK: CXXConstructorDecl {{.*}} [[RESOURCE]]<element_type> 'void ()' inline
- // CHECK-NEXT: CompoundStmt
- // CHECK-NEXT: BinaryOperator {{.*}} '='
- // CHECK-NEXT: MemberExpr {{.*}} lvalue .__handle
-@@ -105,7 +105,7 @@
- 
- // Constructor from binding
- 
--// CHECK: CXXConstructorDecl {{.*}} hlsl::[[RESOURCE]]<element_type> 'void (unsigned int, unsigned int, int, unsigned int, const char *)' inline
-+// CHECK: CXXConstructorDecl {{.*}} [[RESOURCE]]<element_type> 'void (unsigned int, unsigned int, int, unsigned int, const char *)' inline
- // CHECK-NEXT: ParmVarDecl {{.*}} registerNo 'unsigned int'
- // CHECK-NEXT: ParmVarDecl {{.*}} spaceNo 'unsigned int'
- // CHECK-NEXT: ParmVarDecl {{.*}} range 'int'
-@@ -129,7 +129,7 @@
- 
- // Constructor from implicit binding
- 
--// CHECK: CXXConstructorDecl {{.*}} hlsl::[[RESOURCE]]<element_type> 'void (unsigned int, int, unsigned int, unsigned int, const char *)' inline
-+// CHECK: CXXConstructorDecl {{.*}} [[RESOURCE]]<element_type> 'void (unsigned int, int, unsigned int, unsigned int, const char *)' inline
- // CHECK-NEXT: ParmVarDecl {{.*}} spaceNo 'unsigned int'
- // CHECK-NEXT: ParmVarDecl {{.*}} range 'int'
- // CHECK-NEXT: ParmVarDecl {{.*}} index 'unsigned int'
-diff -ruN --strip-trailing-cr a/clang/test/AST/HLSL/TypedBuffers-AST.hlsl b/clang/test/AST/HLSL/TypedBuffers-AST.hlsl
---- a/clang/test/AST/HLSL/TypedBuffers-AST.hlsl
-+++ b/clang/test/AST/HLSL/TypedBuffers-AST.hlsl
-@@ -66,7 +66,7 @@
- 
- // Default constructor
- 
--// CHECK: CXXConstructorDecl {{.*}} hlsl::[[RESOURCE]]<element_type> 'void ()' inline
-+// CHECK: CXXConstructorDecl {{.*}} [[RESOURCE]]<element_type> 'void ()' inline
- // CHECK-NEXT: CompoundStmt
- // CHECK-NEXT: BinaryOperator {{.*}} '='
- // CHECK-NEXT: MemberExpr {{.*}} lvalue .__handle
-@@ -80,7 +80,7 @@
- 
- // Constructor from binding
- 
--// CHECK: CXXConstructorDecl {{.*}} hlsl::[[RESOURCE]]<element_type> 'void (unsigned int, unsigned int, int, unsigned int, const char *)' inline
-+// CHECK: CXXConstructorDecl {{.*}} [[RESOURCE]]<element_type> 'void (unsigned int, unsigned int, int, unsigned int, const char *)' inline
- // CHECK-NEXT: ParmVarDecl {{.*}} registerNo 'unsigned int'
- // CHECK-NEXT: ParmVarDecl {{.*}} spaceNo 'unsigned int'
- // CHECK-NEXT: ParmVarDecl {{.*}} range 'int'
-@@ -104,7 +104,7 @@
- 
- // Constructor from implicit binding
- 
--// CHECK: CXXConstructorDecl {{.*}} hlsl::[[RESOURCE]]<element_type> 'void (unsigned int, int, unsigned int, unsigned int, const char *)' inline
-+// CHECK: CXXConstructorDecl {{.*}} [[RESOURCE]]<element_type> 'void (unsigned int, int, unsigned int, unsigned int, const char *)' inline
- // CHECK-NEXT: ParmVarDecl {{.*}} spaceNo 'unsigned int'
- // CHECK-NEXT: ParmVarDecl {{.*}} range 'int'
- // CHECK-NEXT: ParmVarDecl {{.*}} index 'unsigned int'
-diff -ruN --strip-trailing-cr a/clang/test/CodeGenCXX/mangle-ms-cxx11.cpp b/clang/test/CodeGenCXX/mangle-ms-cxx11.cpp
---- a/clang/test/CodeGenCXX/mangle-ms-cxx11.cpp
-+++ b/clang/test/CodeGenCXX/mangle-ms-cxx11.cpp
-@@ -358,3 +358,42 @@
- // DBG-DAG: DW_TAG_enumeration_type{{.*}}identifier: ".?AW4<unnamed-type-$S3>@s@pr37723@@"
- s x;
- }
-+
-+namespace InconsistentTagKinds {
-+  namespace t1 {
-+    class A;
-+    struct A;
-+    void f(A*) {}
-+    // CHECK-DAG: @"?f@t1@InconsistentTagKinds@@YAXPAVA@12@@Z"
-+  } // namespace t1
-+  namespace t2 {
-+    struct A;
-+    class A;
-+    void f(A*) {}
-+    // CHECK-DAG: @"?f@t2@InconsistentTagKinds@@YAXPAUA@12@@Z"
-+  } // namespace t2
-+  namespace t3 {
-+    class A {};
-+    struct A;
-+    void f(A*) {}
-+    // CHECK-DAG: @"?f@t3@InconsistentTagKinds@@YAXPAVA@12@@Z"
-+  } // namespace t3
-+  namespace t4 {
-+    struct A {};
-+    class A;
-+    void f(A*) {}
-+    // CHECK-DAG: @"?f@t4@InconsistentTagKinds@@YAXPAUA@12@@Z"
-+  } // namespace t4
-+  namespace t5 {
-+    class A;
-+    struct A {};
-+    void f(A*) {}
-+    // CHECK-DAG: @"?f@t5@InconsistentTagKinds@@YAXPAUA@12@@Z"
-+  } // namespace t5
-+  namespace t6 {
-+    struct A;
-+    class A {};
-+    void f(A*) {}
-+    // CHECK-DAG: @"?f@t6@InconsistentTagKinds@@YAXPAVA@12@@Z"
-+  } // namespace t6
-+} // namespace InconsistentTagKinds
-diff -ruN --strip-trailing-cr a/clang/test/CXX/drs/cwg6xx.cpp b/clang/test/CXX/drs/cwg6xx.cpp
---- a/clang/test/CXX/drs/cwg6xx.cpp
-+++ b/clang/test/CXX/drs/cwg6xx.cpp
-@@ -383,7 +383,7 @@
-   template<typename T> template<typename U> D<T>::D() {}
-   template<typename T> D<T>::D<T>() {} // #cwg635-D-T
-   // expected-error@#cwg635-D-T {{out-of-line constructor for 'D' cannot have template arguments}}
--  // expected-error@#cwg635-D-T {{redefinition of 'cwg635::D<T>'}}
-+  // expected-error@#cwg635-D-T {{redefinition of 'D<T>'}}
-   //   expected-note@#cwg635-D {{previous definition is here}}
- } // namespace cwg635
- 
-diff -ruN --strip-trailing-cr a/clang/test/Index/recursive-cxx-member-calls.cpp b/clang/test/Index/recursive-cxx-member-calls.cpp
---- a/clang/test/Index/recursive-cxx-member-calls.cpp
-+++ b/clang/test/Index/recursive-cxx-member-calls.cpp
-@@ -823,18 +823,18 @@
- // CHECK-tokens: Punctuation: ";" [85:18 - 85:19] ClassTemplate=StringSwitch:83:47 (Definition)
- // CHECK-tokens: Keyword: "public" [86:1 - 86:7] CXXAccessSpecifier=:86:1 (Definition)
- // CHECK-tokens: Punctuation: ":" [86:7 - 86:8] CXXAccessSpecifier=:86:1 (Definition)
--// CHECK-tokens: Keyword: "explicit" [87:3 - 87:11] CXXConstructor=llvm::StringSwitch<T, R>:87:12 (Definition)
--// CHECK-tokens: Identifier: "StringSwitch" [87:12 - 87:24] CXXConstructor=llvm::StringSwitch<T, R>:87:12 (Definition) (explicit)
--// CHECK-tokens: Punctuation: "(" [87:24 - 87:25] CXXConstructor=llvm::StringSwitch<T, R>:87:12 (Definition)
-+// CHECK-tokens: Keyword: "explicit" [87:3 - 87:11] CXXConstructor=StringSwitch<T, R>:87:12 (Definition)
-+// CHECK-tokens: Identifier: "StringSwitch" [87:12 - 87:24] CXXConstructor=StringSwitch<T, R>:87:12 (Definition) (explicit)
-+// CHECK-tokens: Punctuation: "(" [87:24 - 87:25] CXXConstructor=StringSwitch<T, R>:87:12 (Definition)
- // CHECK-tokens: Identifier: "StringRef" [87:25 - 87:34] TypeRef=class llvm::StringRef:38:7
- // CHECK-tokens: Identifier: "Str" [87:35 - 87:38] ParmDecl=Str:87:35 (Definition)
--// CHECK-tokens: Punctuation: ")" [87:38 - 87:39] CXXConstructor=llvm::StringSwitch<T, R>:87:12 (Definition)
--// CHECK-tokens: Punctuation: ":" [87:40 - 87:41] CXXConstructor=llvm::StringSwitch<T, R>:87:12 (Definition)
-+// CHECK-tokens: Punctuation: ")" [87:38 - 87:39] CXXConstructor=StringSwitch<T, R>:87:12 (Definition)
-+// CHECK-tokens: Punctuation: ":" [87:40 - 87:41] CXXConstructor=StringSwitch<T, R>:87:12 (Definition)
- // CHECK-tokens: Identifier: "Str" [87:42 - 87:45] MemberRef=Str:84:13
- // CHECK-tokens: Punctuation: "(" [87:45 - 87:46] CallExpr=StringRef:38:7
- // CHECK-tokens: Identifier: "Str" [87:46 - 87:49] DeclRefExpr=Str:87:35
- // CHECK-tokens: Punctuation: ")" [87:49 - 87:50] CallExpr=StringRef:38:7
--// CHECK-tokens: Punctuation: "," [87:50 - 87:51] CXXConstructor=llvm::StringSwitch<T, R>:87:12 (Definition)
-+// CHECK-tokens: Punctuation: "," [87:50 - 87:51] CXXConstructor=StringSwitch<T, R>:87:12 (Definition)
- // CHECK-tokens: Identifier: "Result" [87:52 - 87:58] MemberRef=Result:85:12
- // CHECK-tokens: Punctuation: "(" [87:58 - 87:59] UnexposedExpr=
- // CHECK-tokens: Literal: "0" [87:59 - 87:60] IntegerLiteral=
-@@ -1839,7 +1839,7 @@
- // CHECK: 84:3: TypeRef=class llvm::StringRef:38:7 Extent=[84:3 - 84:12]
- // CHECK: 85:12: FieldDecl=Result:85:12 (Definition) Extent=[85:3 - 85:18]
- // CHECK: 86:1: CXXAccessSpecifier=:86:1 (Definition) Extent=[86:1 - 86:8]
--// CHECK: 87:12: CXXConstructor=llvm::StringSwitch<T, R>:87:12 (Definition) (explicit) Extent=[87:3 - 87:64]
-+// CHECK: 87:12: CXXConstructor=StringSwitch<T, R>:87:12 (Definition) (explicit) Extent=[87:3 - 87:64]
- // CHECK: 87:35: ParmDecl=Str:87:35 (Definition) Extent=[87:25 - 87:38]
- // CHECK: 87:25: TypeRef=class llvm::StringRef:38:7 Extent=[87:25 - 87:34]
- // CHECK: 87:42: MemberRef=Str:84:13 Extent=[87:42 - 87:45]
-diff -ruN --strip-trailing-cr a/clang/test/PCH/cxx-explicit-specifier.cpp b/clang/test/PCH/cxx-explicit-specifier.cpp
---- a/clang/test/PCH/cxx-explicit-specifier.cpp
-+++ b/clang/test/PCH/cxx-explicit-specifier.cpp
-@@ -85,7 +85,7 @@
- //expected-note@-8+ {{explicit conversion function is not a candidate (explicit specifier}}
- //expected-note@-11 {{explicit constructor is not a candidate (explicit specifier}}
- 
--//CHECK: explicit(b){{ +}}templ::A<b>(B<b>)
-+//CHECK: explicit(b){{ +}}A
- //CHECK: explicit(b{{ +}}^{{ +}}T::value){{ +}}operator
- 
- A a = { b_true }; //expected-error {{class template argument deduction}}
-diff -ruN --strip-trailing-cr a/clang/test/SemaCXX/cxx20-ctad-type-alias.cpp b/clang/test/SemaCXX/cxx20-ctad-type-alias.cpp
---- a/clang/test/SemaCXX/cxx20-ctad-type-alias.cpp
-+++ b/clang/test/SemaCXX/cxx20-ctad-type-alias.cpp
-@@ -110,10 +110,10 @@
- 
- template <typename X, int Y>
- using Bar = Foo<X, sizeof(X)>; // expected-note {{candidate template ignored: couldn't infer template argument 'X'}} \
--                               // expected-note {{implicit deduction guide declared as 'template <typename X> requires __is_deducible(test9::Bar, Foo<X, sizeof(X)>) Bar(Foo<X, sizeof(X)>) -> Foo<X, sizeof(X)>'}} \
--                               // expected-note {{implicit deduction guide declared as 'template <typename X> requires __is_deducible(test9::Bar, Foo<X, sizeof(X)>) Bar(const X (&)[sizeof(X)]) -> Foo<X, sizeof(X)>'}} \
-+                               // expected-note {{implicit deduction guide declared as 'template <typename X> requires __is_deducible(test9::Bar, test9::Foo<X, sizeof(X)>) Bar(test9::Foo<X, sizeof(X)>) -> test9::Foo<X, sizeof(X)>'}} \
-+                               // expected-note {{implicit deduction guide declared as 'template <typename X> requires __is_deducible(test9::Bar, test9::Foo<X, sizeof(X)>) Bar(const X (&)[sizeof(X)]) -> test9::Foo<X, sizeof(X)>'}} \
-                                // expected-note {{candidate template ignored: constraints not satisfied [with X = int]}} \
--                               // expected-note {{cannot deduce template arguments for 'Bar' from 'Foo<int, 4UL>'}}
-+                               // expected-note {{cannot deduce template arguments for 'test9::Bar' from 'test9::Foo<int, 4UL>'}}
- 
- 
- Bar s = {{1}}; // expected-error {{no viable constructor or deduction guide }}
-@@ -138,13 +138,13 @@
- struct A {};
- template<class T> struct Foo { T c; };
- template<class X, class Y=A>
--using AFoo = Foo<Y>; // expected-note {{candidate template ignored: could not match 'Foo<Y>' against 'int'}} \
--                    // expected-note {{implicit deduction guide declared as 'template <class Y = A> requires __is_deducible(test11::AFoo, Foo<Y>) AFoo(Foo<Y>) -> Foo<Y>'}} \
-+using AFoo = Foo<Y>; // expected-note {{candidate template ignored: could not match 'test11::Foo<Y>' against 'int'}} \
-+                    // expected-note {{implicit deduction guide declared as 'template <class Y = A> requires __is_deducible(test11::AFoo, test11::Foo<Y>) AFoo(test11::Foo<Y>) -> test11::Foo<Y>'}} \
-                     // expected-note {{candidate template ignored: constraints not satisfied [with Y = int]}} \
--                    // expected-note {{cannot deduce template arguments for 'AFoo' from 'Foo<int>'}} \
--                    // expected-note {{implicit deduction guide declared as 'template <class Y = A> requires __is_deducible(test11::AFoo, Foo<Y>) AFoo(Y) -> Foo<Y>'}} \
-+                    // expected-note {{cannot deduce template arguments for 'test11::AFoo' from 'test11::Foo<int>'}} \
-+                    // expected-note {{implicit deduction guide declared as 'template <class Y = A> requires __is_deducible(test11::AFoo, test11::Foo<Y>) AFoo(Y) -> test11::Foo<Y>'}} \
-                     // expected-note {{candidate function template not viable: requires 0 arguments, but 1 was provided}} \
--                    // expected-note {{implicit deduction guide declared as 'template <class Y = A> requires __is_deducible(test11::AFoo, Foo<Y>) AFoo() -> Foo<Y>'}}
-+                    // expected-note {{implicit deduction guide declared as 'template <class Y = A> requires __is_deducible(test11::AFoo, test11::Foo<Y>) AFoo() -> test11::Foo<Y>'}}
- 
- AFoo s = {1}; // expected-error {{no viable constructor or deduction guide for deduction of template arguments of 'AFoo'}}
- } // namespace test11
-@@ -197,8 +197,8 @@
- template <int K>
- using Bar = Foo<double, K>; // expected-note {{constraints not satisfied for class template 'Foo'}}
- // expected-note@-1 {{candidate template ignored: could not match}} expected-note@-1 {{candidate template ignored: constraints not satisfied}}
--// expected-note@-2 {{implicit deduction guide declared as 'template <int K> requires __is_deducible(test14::Bar, Foo<double, K>) Bar(Foo<double, K>) -> Foo<double, K>'}}
--// expected-note@-3 {{implicit deduction guide declared as 'template <int K> requires __is_deducible(test14::Bar, Foo<double, K>) Bar(const double (&)[K]) -> Foo<double, K>'}}
-+// expected-note@-2 {{implicit deduction guide declared as 'template <int K> requires __is_deducible(test14::Bar, test14::Foo<double, K>) Bar(test14::Foo<double, K>) -> test14::Foo<double, K>'}}
-+// expected-note@-3 {{implicit deduction guide declared as 'template <int K> requires __is_deducible(test14::Bar, test14::Foo<double, K>) Bar(const double (&)[K]) -> test14::Foo<double, K>'}}
- double abc[3];
- Bar s2 = {abc}; // expected-error {{no viable constructor or deduction guide for deduction }}
- } // namespace test14
-@@ -212,9 +212,9 @@
- using BFoo = AFoo<W>; // expected-note {{candidate template ignored: constraints not satisfied [with W = int]}} \
-                       // expected-note@-1 {{because 'int' does not satisfy 'False'}} \
-                       // expected-note@#test15_False {{because 'false' evaluated to false}} \
--                      // expected-note {{implicit deduction guide declared as 'template <False<> W> requires __is_deducible(AFoo, Foo<W *>) && __is_deducible(test15::BFoo, Foo<W *>) BFoo(W *) -> Foo<W *>}} \
--                      // expected-note {{candidate template ignored: could not match 'Foo<W *>' against 'int *'}} \
--                      // expected-note {{template <False<> W> requires __is_deducible(AFoo, Foo<W *>) && __is_deducible(test15::BFoo, Foo<W *>) BFoo(Foo<W *>) -> Foo<W *>}}
-+                      // expected-note {{implicit deduction guide declared as 'template <False<> W> requires __is_deducible(test15::AFoo, test15::Foo<W *>) && __is_deducible(test15::BFoo, test15::Foo<W *>) BFoo(W *) -> test15::Foo<W *>}} \
-+                      // expected-note {{candidate template ignored: could not match 'test15::Foo<W *>' against 'int *'}} \
-+                      // expected-note {{template <False<> W> requires __is_deducible(test15::AFoo, test15::Foo<W *>) && __is_deducible(test15::BFoo, test15::Foo<W *>) BFoo(test15::Foo<W *>) -> test15::Foo<W *>}}
- int i = 0;
- AFoo a1(&i); // OK, deduce Foo<int *>
- 
-@@ -276,12 +276,12 @@
- Foo(T) -> Foo<int>;
- 
- template <typename U>
--using Bar = Foo<U>; // expected-note {{could not match 'Foo<U>' against 'int'}} \
--                    // expected-note {{implicit deduction guide declared as 'template <typename U> requires __is_deducible(test18::Bar, Foo<U>) Bar(Foo<U>) -> Foo<U>'}} \
-+using Bar = Foo<U>; // expected-note {{could not match 'test18::Foo<U>' against 'int'}} \
-+                    // expected-note {{implicit deduction guide declared as 'template <typename U> requires __is_deducible(test18::Bar, test18::Foo<U>) Bar(test18::Foo<U>) -> test18::Foo<U>'}} \
-                     // expected-note {{candidate template ignored: constraints not satisfied}} \
-                     // expected-note {{implicit deduction guide declared as 'template <typename T> requires False<T> && __is_deducible(test18::Bar, Foo<int>) Bar(T) -> Foo<int>'}} \
-                     // expected-note {{candidate function template not viable}} \
--                    // expected-note {{implicit deduction guide declared as 'template <typename U> requires __is_deducible(test18::Bar, Foo<U>) Bar() -> Foo<U>'}}
-+                    // expected-note {{implicit deduction guide declared as 'template <typename U> requires __is_deducible(test18::Bar, test18::Foo<U>) Bar() -> test18::Foo<U>'}}
- 
- Bar s = {1}; // expected-error {{no viable constructor or deduction guide for deduction of template arguments}}
- } // namespace test18
-@@ -309,8 +309,8 @@
- // Verify that template template type parameter TTP is referenced/used in the
- // template arguments of the RHS.
- template <template<typename> typename TTP>
--using Bar = Foo<K<TTP>>; // expected-note {{candidate template ignored: could not match 'Foo<K<TTP>>' against 'int'}} \
--                        // expected-note {{implicit deduction guide declared as 'template <template <typename> typename TTP> requires __is_deducible(test20::Bar, Foo<K<TTP>>) Bar(Foo<K<TTP>>) -> Foo<K<TTP>>'}}
-+using Bar = Foo<K<TTP>>; // expected-note {{candidate template ignored: could not match 'test20::Foo<K<TTP>>' against 'int'}} \
-+                        // expected-note {{implicit deduction guide declared as 'template <template <typename> typename TTP> requires __is_deducible(test20::Bar, test20::Foo<K<TTP>>) Bar(test20::Foo<K<TTP>>) -> test20::Foo<K<TTP>>'}}
- 
- template <class T>
- class Container {};
-@@ -463,7 +463,7 @@
- BB b{0, 1};
- // expected-error@-1 {{no viable}}
- // expected-note@#test25_BB 2{{not viable}}
--// expected-note@#test25_BB {{template <typename ...US, typename V> requires __is_same(V, int) && __is_deducible(AA, A<int, US...>) && __is_deducible(test25::BB, A<int, US...>) BB(V) -> A<int, US...>}}
-+// expected-note@#test25_BB {{template <typename ...US, typename V> requires __is_same(V, int) && __is_deducible(test25::AA, test25::A<int, US...>) && __is_deducible(test25::BB, test25::A<int, US...>) BB(V) -> test25::A<int, US...>}}
- // expected-note@#test25_BB {{implicit deduction guide}}
- 
- }
-diff -ruN --strip-trailing-cr a/clang/test/SemaCXX/return.cpp b/clang/test/SemaCXX/return.cpp
---- a/clang/test/SemaCXX/return.cpp
-+++ b/clang/test/SemaCXX/return.cpp
-@@ -115,9 +115,9 @@
-   };
- 
-   template <typename T> struct ST {
--    ST() { return f(); } // expected-error {{constructor 'ctor_returns_void::ST<T>' must not return void expression}}
-+    ST() { return f(); } // expected-error {{constructor 'ST<T>' must not return void expression}}
-                          // expected-error@-1 {{constructor 'ST' must not return void expression}}
--    ~ST() { return f(); } // expected-error {{destructor '~ctor_returns_void::ST<T>' must not return void expression}}
-+    ~ST() { return f(); } // expected-error {{destructor '~ST<T>' must not return void expression}}
-                           // expected-error@-1 {{destructor '~ST' must not return void expression}}
-   };
- 
-diff -ruN --strip-trailing-cr a/clang/test/SemaTemplate/class-template-ctor-initializer.cpp b/clang/test/SemaTemplate/class-template-ctor-initializer.cpp
---- a/clang/test/SemaTemplate/class-template-ctor-initializer.cpp
-+++ b/clang/test/SemaTemplate/class-template-ctor-initializer.cpp
-@@ -4,8 +4,8 @@
- 
- template<class X> struct A {};
- 
--template<class X> struct B : A<X> { 
--  B() : A<X>() {} 
-+template<class X> struct B : A<X> {
-+  B() : A<X>() {}
- };
- B<int> x;
- 
-@@ -76,3 +76,12 @@
-   Derived1<void> d1;
-   Derived2<void> d2;
- }
-+
-+namespace UnresolvedUsing {
-+  template <class T> class A {
-+    using typename T::B;
-+    struct C : B {
-+      C() : B() {}
-+    };
-+  };
-+} // namespace UnresolvedUsing
-diff -ruN --strip-trailing-cr a/clang/test/SemaTemplate/deduction-guide.cpp b/clang/test/SemaTemplate/deduction-guide.cpp
---- a/clang/test/SemaTemplate/deduction-guide.cpp
-+++ b/clang/test/SemaTemplate/deduction-guide.cpp
-@@ -331,7 +331,7 @@
- // CHECK-NEXT:  |-InjectedClassNameType {{.+}} 'TTP::B<T>' dependent{{$}}
- // CHECK-NEXT:  | `-CXXRecord {{.+}} 'B'{{$}}
- // CHECK-NEXT:  `-TemplateSpecializationType {{.+}} 'TT<T>' dependent{{$}}
--// CHECK-NEXT:    |-name: 'TT':'template-parameter-0-1' qualified
-+// CHECK-NEXT:    |-name: 'TT':'template-parameter-0-1'
- // CHECK-NEXT:    | `-TemplateTemplateParmDecl {{.+}} depth 0 index 1
- // CHECK-NEXT:    `-TemplateArgument type 'T':'type-parameter-0-0'{{$}}
- // CHECK-NEXT:      `-TemplateTypeParmType {{.+}} 'T' dependent depth 0 index 0{{$}}
-@@ -673,8 +673,8 @@
- // CHECK-NEXT: | |-DeducedTemplateSpecializationType {{.*}} 'GH122134::Test' dependent
- // CHECK-NEXT: | | `-name: 'GH122134::Test'
- // CHECK-NEXT: | |   `-TypeAliasTemplateDecl {{.*}} Test
--// CHECK-NEXT: | `-TemplateSpecializationType {{.*}} 'Struct<int, N>' dependent
--// CHECK-NEXT: |   |-name: 'Struct':'GH122134::Struct' qualified
-+// CHECK-NEXT: | `-TemplateSpecializationType {{.*}} 'GH122134::Struct<int, N>' dependent
-+// CHECK-NEXT: |   |-name: 'GH122134::Struct'
- // CHECK-NEXT: |   | `-ClassTemplateDecl {{.*}} Struct
- // CHECK-NEXT: |   |-TemplateArgument type 'int'
- // CHECK-NEXT: |   | `-SubstTemplateTypeParmType {{.*}} 'int' sugar class depth 0 index 0 T
-@@ -684,7 +684,7 @@
- // CHECK-NEXT: |     `-SubstNonTypeTemplateParmExpr {{.*}} 'int'
- // CHECK-NEXT: |       |-NonTypeTemplateParmDecl {{.*}} 'int' depth 0 index 1
- // CHECK-NEXT: |       `-DeclRefExpr {{.*}} 'int' NonTypeTemplateParm {{.*}} 'N' 'int'
--// CHECK-NEXT: |-CXXDeductionGuideDecl {{.*}} implicit <deduction guide for Test> 'auto (auto:1) -> Struct<int, N>'
-+// CHECK-NEXT: |-CXXDeductionGuideDecl {{.*}} implicit <deduction guide for Test> 'auto (auto:1) -> GH122134::Struct<int, N>'
- // CHECK-NEXT: | `-ParmVarDecl {{.*}} 'auto:1'
- 
- } // namespace GH122134
-@@ -792,16 +792,16 @@
- // CHECK-NEXT:  | |-DeducedTemplateSpecializationType {{.+}} 'GH133132::AA' dependent
- // CHECK-NEXT:  | | `-name: 'GH133132::AA'
- // CHECK-NEXT:  | |   `-TypeAliasTemplateDecl {{.+}} AA
--// CHECK-NEXT:  | `-TemplateSpecializationType {{.+}} 'A<U>' dependent
--// CHECK-NEXT:  |   |-name: 'A':'GH133132::A' qualified
-+// CHECK-NEXT:  | `-TemplateSpecializationType {{.+}} 'GH133132::A<U>' dependent
-+// CHECK-NEXT:  |   |-name: 'GH133132::A'
- // CHECK-NEXT:  |   | `-ClassTemplateDecl {{.+}} A
- // CHECK-NEXT:  |   `-TemplateArgument type 'U':'type-parameter-0-1'
- // CHECK-NEXT:  |     `-SubstTemplateTypeParmType {{.+}} 'U' sugar dependent class depth 0 index 0 _Ty
- // CHECK-NEXT:  |       |-FunctionTemplate {{.+}} '<deduction guide for A>'
- // CHECK-NEXT:  |       `-TemplateTypeParmType {{.+}} 'U' dependent depth 0 index 1
- // CHECK-NEXT:  |         `-TemplateTypeParm {{.+}} 'U'
--// CHECK-NEXT:  |-CXXDeductionGuideDecl {{.+}} implicit <deduction guide for AA> 'auto () -> A<U>'
--// CHECK-NEXT:  `-CXXDeductionGuideDecl {{.+}} implicit used <deduction guide for AA> 'auto () -> A<int>' implicit_instantiation
-+// CHECK-NEXT:  |-CXXDeductionGuideDecl {{.+}} implicit <deduction guide for AA> 'auto () -> GH133132::A<U>'
-+// CHECK-NEXT:  `-CXXDeductionGuideDecl {{.+}} implicit used <deduction guide for AA> 'auto () -> GH133132::A<int>' implicit_instantiation
- // CHECK-NEXT:    |-TemplateArgument type 'int'
- // CHECK-NEXT:    | `-BuiltinType {{.+}} 'int'
- // CHECK-NEXT:    `-TemplateArgument type 'int'
-@@ -823,22 +823,22 @@
- // CHECK-NEXT:  |   `-ClassTemplateDecl {{.+}} A
- // CHECK-NEXT:  |-TemplateTemplateParmDecl {{.+}} depth 0 index 1 _Y
- // CHECK-NEXT:  | |-TemplateTypeParmDecl {{.+}} class depth 0 index 0
--// CHECK-NEXT:  | `-TemplateArgument {{.+}} template '_X':'template-parameter-0-0' qualified
-+// CHECK-NEXT:  | `-TemplateArgument {{.+}} template '_X':'template-parameter-0-0'
- // CHECK-NEXT:  |   `-TemplateTemplateParmDecl {{.+}} depth 0 index 0 _X
- // CHECK-NEXT:  |-TypeTraitExpr {{.+}} 'bool' __is_deducible
- // CHECK-NEXT:  | |-DeducedTemplateSpecializationType {{.+}} 'GH133132::BB' dependent
- // CHECK-NEXT:  | | `-name: 'GH133132::BB'
- // CHECK-NEXT:  | |   `-TypeAliasTemplateDecl {{.+}} BB
--// CHECK-NEXT:  | `-TemplateSpecializationType {{.+}} 'B<_Y>' dependent
--// CHECK-NEXT:  |   |-name: 'B':'GH133132::B' qualified
-+// CHECK-NEXT:  | `-TemplateSpecializationType {{.+}} 'GH133132::B<_Y>' dependent
-+// CHECK-NEXT:  |   |-name: 'GH133132::B'
- // CHECK-NEXT:  |   | `-ClassTemplateDecl {{.+}} B
- // CHECK-NEXT:  |   `-TemplateArgument template '_Y':'template-parameter-0-1' subst index 0
- // CHECK-NEXT:  |     |-parameter: TemplateTemplateParmDecl {{.+}} depth 0 index 0 _X
- // CHECK-NEXT:  |     |-associated FunctionTemplate {{.+}} '<deduction guide for B>'
--// CHECK-NEXT:  |     `-replacement: '_Y':'template-parameter-0-1' qualified
-+// CHECK-NEXT:  |     `-replacement: '_Y':'template-parameter-0-1'
- // CHECK-NEXT:  |       `-TemplateTemplateParmDecl {{.+}} depth 0 index 1 _Y
--// CHECK-NEXT:  |-CXXDeductionGuideDecl {{.+}} implicit <deduction guide for BB> 'auto () -> B<_Y>'
--// CHECK-NEXT:  `-CXXDeductionGuideDecl {{.+}} implicit used <deduction guide for BB> 'auto () -> B<GH133132::A>' implicit_instantiation
-+// CHECK-NEXT:  |-CXXDeductionGuideDecl {{.+}} implicit <deduction guide for BB> 'auto () -> GH133132::B<_Y>'
-+// CHECK-NEXT:  `-CXXDeductionGuideDecl {{.+}} implicit used <deduction guide for BB> 'auto () -> GH133132::B<GH133132::A>' implicit_instantiation
- // CHECK-NEXT:    |-TemplateArgument template 'GH133132::A'
- // CHECK-NEXT:    | `-ClassTemplateDecl {{.+}} A
- // CHECK-NEXT:    `-TemplateArgument template 'GH133132::A'
-@@ -866,16 +866,16 @@
- // CHECK-NEXT:  | |-DeducedTemplateSpecializationType {{.+}} 'GH133132::CC' dependent
- // CHECK-NEXT:  | | `-name: 'GH133132::CC'
- // CHECK-NEXT:  | |   `-TypeAliasTemplateDecl {{.+}} CC
--// CHECK-NEXT:  | `-TemplateSpecializationType {{.+}} 'A<U>' dependent
--// CHECK-NEXT:  |   |-name: 'A':'GH133132::A' qualified
-+// CHECK-NEXT:  | `-TemplateSpecializationType {{.+}} 'GH133132::A<U>' dependent
-+// CHECK-NEXT:  |   |-name: 'GH133132::A'
- // CHECK-NEXT:  |   | `-ClassTemplateDecl {{.+}} A
- // CHECK-NEXT:  |   `-TemplateArgument type 'U':'type-parameter-0-1'
- // CHECK-NEXT:  |     `-SubstTemplateTypeParmType {{.+}} 'U' sugar dependent class depth 0 index 0 _Ty
- // CHECK-NEXT:  |       |-FunctionTemplate {{.+}} '<deduction guide for A>'
- // CHECK-NEXT:  |       `-TemplateTypeParmType {{.+}} 'U' dependent depth 0 index 1
- // CHECK-NEXT:  |         `-TemplateTypeParm {{.+}} 'U'
--// CHECK-NEXT:  |-CXXDeductionGuideDecl {{.+}} implicit <deduction guide for CC> 'auto () -> A<U>'
--// CHECK-NEXT:  `-CXXDeductionGuideDecl {{.+}} implicit used <deduction guide for CC> 'auto () -> A<GH133132::A<int>>' implicit_instantiation
-+// CHECK-NEXT:  |-CXXDeductionGuideDecl {{.+}} implicit <deduction guide for CC> 'auto () -> GH133132::A<U>'
-+// CHECK-NEXT:  `-CXXDeductionGuideDecl {{.+}} implicit used <deduction guide for CC> 'auto () -> GH133132::A<GH133132::A<int>>' implicit_instantiation
- // CHECK-NEXT:    |-TemplateArgument integral '42'
- // CHECK-NEXT:    `-TemplateArgument type 'GH133132::A<int>'
- // CHECK-NEXT:      `-RecordType {{.+}} 'GH133132::A<int>'
-@@ -949,8 +949,8 @@
- // CHECK-NEXT:   | |-DeducedTemplateSpecializationType {{.+}} 'GH141425::Alias' dependent
- // CHECK-NEXT:   | | `-name: 'GH141425::Alias'
- // CHECK-NEXT:   | |   `-TypeAliasTemplateDecl {{.+}} Alias
--// CHECK-NEXT:   | `-TemplateSpecializationType {{.+}} 'Container<T...>' dependent
--// CHECK-NEXT:   |   |-name: 'Container':'GH141425::Container' qualified
-+// CHECK-NEXT:   | `-TemplateSpecializationType {{.+}} 'GH141425::Container<T...>' dependent
-+// CHECK-NEXT:   |   |-name: 'GH141425::Container'
- // CHECK-NEXT:   |   | `-ClassTemplateDecl {{.+}} Container
- // CHECK-NEXT:   |   `-TemplateArgument type 'T...':'type-parameter-0-0...'
- // CHECK-NEXT:   |     `-PackExpansionType {{.+}} 'T...' dependent
-@@ -958,7 +958,7 @@
- // CHECK-NEXT:   |         |-FunctionTemplate {{.+}} '<deduction guide for Container>'
- // CHECK-NEXT:   |         `-TemplateTypeParmType {{.+}} 'T' dependent contains_unexpanded_pack depth 0 index 0 pack
- // CHECK-NEXT:   |           `-TemplateTypeParm {{.+}} 'T'
--// CHECK-NEXT:   |-CXXDeductionGuideDecl {{.+}} implicit <deduction guide for Alias> 'auto (T...) -> Container<T...>'
-+// CHECK-NEXT:   |-CXXDeductionGuideDecl {{.+}} implicit <deduction guide for Alias> 'auto (T...) -> GH141425::Container<T...>'
- // CHECK-NEXT:   | `-ParmVarDecl {{.+}} 'T...' pack
- 
- }
-diff -ruN --strip-trailing-cr a/clang/test/SemaTemplate/nested-name-spec-template.cpp b/clang/test/SemaTemplate/nested-name-spec-template.cpp
---- a/clang/test/SemaTemplate/nested-name-spec-template.cpp
-+++ b/clang/test/SemaTemplate/nested-name-spec-template.cpp
-@@ -1,5 +1,5 @@
- // RUN: %clang_cc1 -fsyntax-only -verify %s -Wno-c++20-extensions
--// RUN: %clang_cc1 -fsyntax-only -verify -std=c++98 %s
-+// RUN: %clang_cc1 -fsyntax-only -verify -Wno-c++11-extensions -std=c++98 %s
- // RUN: %clang_cc1 -fsyntax-only -verify -std=c++11 %s
- 
- namespace N {
-@@ -24,14 +24,7 @@
- 
-   M::Promote<int>::type *ret_intptr3(int* ip) { return ip; }
-   M::template Promote<int>::type *ret_intptr4(int* ip) { return ip; }
--#if __cplusplus <= 199711L
--  // expected-warning@-2 {{'template' keyword outside of a template}}
--#endif
--
-   M::template Promote<int> pi;
--#if __cplusplus <= 199711L
--  // expected-warning@-2 {{'template' keyword outside of a template}}
--#endif
- }
- 
- N::M::Promote<int>::type *ret_intptr5(int* ip) { return ip; }
-@@ -181,3 +174,39 @@
-   template void f<B>();
- } // namespace SubstTemplateTypeParmPackType
- #endif
-+
-+namespace DependentUnaryTransform {
-+  template <class T> using decay_t = __decay(T);
-+  template <class, class> struct A;
-+  template <class T> struct A<T, typename decay_t<T>::X>;
-+} // namespace DependentUnaryTransform
-+
-+namespace DependentSizedArray {
-+  template <int V> using Z = int[V];
-+  template <class, class> struct A;
-+  template <class T> struct A<T, typename Z<T(0)>::X>;
-+} // namespace DependentUnaryTransform
-+
-+namespace GH155281 {
-+  template <bool> struct enable_if;
-+  template <class _Tp, _Tp> struct integral_constant;
-+  template <typename> struct conjunction;
-+  template <typename T> using value_type_t = T;
-+  template <class Check> using require_t = typename enable_if<Check::value>::type;
-+  template <template <class> class, template <class> class,
-+            template <class> class, class... Check>
-+  using container_type_check_base =
-+      integral_constant<bool, conjunction<Check...>::value>;
-+  template <typename> struct is_std_vector;
-+  template <template <class> class TypeCheck, class... Check>
-+  using require_std_vector_vt =
-+      require_t<container_type_check_base<is_std_vector, value_type_t, TypeCheck,
-+                                          Check...> >;
-+  template <typename, typename> class vector_seq_view;
-+  namespace internal {
-+  template <typename> using is_matrix_or_std_vector = int;
-+  }
-+  template <typename T>
-+  class vector_seq_view<
-+      T, require_std_vector_vt<internal::is_matrix_or_std_vector, T> >;
-+} // namespace GH155281
-diff -ruN --strip-trailing-cr a/clang/unittests/AST/DeclTest.cpp b/clang/unittests/AST/DeclTest.cpp
---- a/clang/unittests/AST/DeclTest.cpp
-+++ b/clang/unittests/AST/DeclTest.cpp
-@@ -570,3 +570,19 @@
-   EXPECT_EQ(GetNameInfoRange(Matches[1]), "<input.cc:6:14, col:15>");
-   EXPECT_EQ(GetNameInfoRange(Matches[2]), "<input.cc:6:14, col:15>");
- }
-+
-+TEST(Decl, getQualifiedNameAsString) {
-+  llvm::Annotations Code(R"cpp(
-+namespace x::y {
-+  template <class T> class Foo { Foo() {} };
-+}
-+)cpp");
-+
-+  auto AST = tooling::buildASTFromCode(Code.code());
-+  ASTContext &Ctx = AST->getASTContext();
-+
-+  auto const *FD = selectFirst<CXXConstructorDecl>(
-+      "ctor", match(cxxConstructorDecl().bind("ctor"), Ctx));
-+  ASSERT_NE(FD, nullptr);
-+  ASSERT_EQ(FD->getQualifiedNameAsString(), "x::y::Foo::Foo<T>");
-+}
-diff -ruN --strip-trailing-cr a/libcxx/include/tuple b/libcxx/include/tuple
---- a/libcxx/include/tuple
-+++ b/libcxx/include/tuple
-@@ -516,6 +516,7 @@
- 
- struct __forward_args {};
- struct __value_init {};
-+struct __from_tuple {};
- 
- template <size_t... _Indx, class... _Tp>
- struct _LIBCPP_DECLSPEC_EMPTY_BASES
-@@ -538,7 +539,7 @@
-       : __tuple_leaf<_Indx, _Tp>(__uses_alloc_ctor<_Tp, _Alloc, _Args>(), __alloc, std::forward<_Args>(__args))... {}
- 
-   template <class _Tuple>
--  _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX14 __tuple_impl(_Tuple&& __t) noexcept(
-+  _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX14 __tuple_impl(__from_tuple, _Tuple&& __t) noexcept(
-       (__all<is_nothrow_constructible<
-            _Tp,
-            typename tuple_element<_Indx, typename __make_tuple_types<_Tuple>::type>::type>::value...>::value))
-@@ -547,7 +548,8 @@
-                 std::get<_Indx>(__t)))... {}
- 
-   template <class _Alloc, class _Tuple>
--  _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX14 __tuple_impl(allocator_arg_t, const _Alloc& __a, _Tuple&& __t)
-+  _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX14
-+  __tuple_impl(allocator_arg_t, const _Alloc& __a, __from_tuple, _Tuple&& __t)
-       : __tuple_leaf<_Indx, _Tp>(
-             __uses_alloc_ctor<_Tp,
-                               _Alloc,
-@@ -673,13 +675,13 @@
-             template <class...> class _And                                  = _And,
-             __enable_if_t< _And<is_copy_constructible<_Tp>...>::value, int> = 0>
-   _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX20 tuple(allocator_arg_t, const _Alloc& __alloc, const tuple& __t)
--      : __base_(allocator_arg_t(), __alloc, __t) {}
-+      : __base_(allocator_arg_t(), __alloc, __from_tuple(), __t) {}
- 
-   template <class _Alloc,
-             template <class...> class _And                                  = _And,
-             __enable_if_t< _And<is_move_constructible<_Tp>...>::value, int> = 0>
-   _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX20 tuple(allocator_arg_t, const _Alloc& __alloc, tuple&& __t)
--      : __base_(allocator_arg_t(), __alloc, std::move(__t)) {}
-+      : __base_(allocator_arg_t(), __alloc, __from_tuple(), std::move(__t)) {}
- 
-   // tuple(const tuple<U...>&) constructors (including allocator_arg_t variants)
- 
-@@ -712,7 +714,7 @@
-   _LIBCPP_HIDE_FROM_ABI
-   _LIBCPP_CONSTEXPR_SINCE_CXX14 explicit(_Not<_Lazy<_And, is_convertible<const _Up&, _Tp>...> >::value)
-       tuple(const tuple<_Up...>& __t) noexcept(_And<is_nothrow_constructible<_Tp, const _Up&>...>::value)
--      : __base_(__t) {}
-+      : __base_(__from_tuple(), __t) {}
- 
-   template <class... _Up,
-             class _Alloc,
-@@ -720,33 +722,33 @@
-   _LIBCPP_HIDE_FROM_ABI
-   _LIBCPP_CONSTEXPR_SINCE_CXX20 explicit(_Not<_Lazy<_And, is_convertible<const _Up&, _Tp>...> >::value)
-       tuple(allocator_arg_t, const _Alloc& __a, const tuple<_Up...>& __t)
--      : __base_(allocator_arg_t(), __a, __t) {}
-+      : __base_(allocator_arg_t(), __a, __from_tuple(), __t) {}
- 
- #    if _LIBCPP_STD_VER >= 23
-   // tuple(tuple<U...>&) constructors (including allocator_arg_t variants)
- 
-   template <class... _Up, enable_if_t< _EnableCtorFromUTypesTuple<tuple<_Up...>&>::value>* = nullptr>
-   _LIBCPP_HIDE_FROM_ABI constexpr explicit(!_Lazy<_And, is_convertible<_Up&, _Tp>...>::value) tuple(tuple<_Up...>& __t)
--      : __base_(__t) {}
-+      : __base_(__from_tuple(), __t) {}
- 
-   template <class _Alloc, class... _Up, enable_if_t< _EnableCtorFromUTypesTuple<tuple<_Up...>&>::value>* = nullptr>
-   _LIBCPP_HIDE_FROM_ABI constexpr explicit(!_Lazy<_And, is_convertible<_Up&, _Tp>...>::value)
-       tuple(allocator_arg_t, const _Alloc& __alloc, tuple<_Up...>& __t)
--      : __base_(allocator_arg_t(), __alloc, __t) {}
-+      : __base_(allocator_arg_t(), __alloc, __from_tuple(), __t) {}
- #    endif // _LIBCPP_STD_VER >= 23
- 
-   // tuple(tuple<U...>&&) constructors (including allocator_arg_t variants)
-   template <class... _Up, __enable_if_t< _And< _EnableCtorFromUTypesTuple<tuple<_Up...>&&> >::value, int> = 0>
-   _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX14 explicit(_Not<_Lazy<_And, is_convertible<_Up, _Tp>...> >::value)
-       tuple(tuple<_Up...>&& __t) noexcept(_And<is_nothrow_constructible<_Tp, _Up>...>::value)
--      : __base_(std::move(__t)) {}
-+      : __base_(__from_tuple(), std::move(__t)) {}
- 
-   template <class _Alloc,
-             class... _Up,
-             __enable_if_t< _And< _EnableCtorFromUTypesTuple<tuple<_Up...>&&> >::value, int> = 0>
-   _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX20 explicit(_Not<_Lazy<_And, is_convertible<_Up, _Tp>...> >::value)
-       tuple(allocator_arg_t, const _Alloc& __a, tuple<_Up...>&& __t)
--      : __base_(allocator_arg_t(), __a, std::move(__t)) {}
-+      : __base_(allocator_arg_t(), __a, __from_tuple(), std::move(__t)) {}
- 
- #    if _LIBCPP_STD_VER >= 23
-   // tuple(const tuple<U...>&&) constructors (including allocator_arg_t variants)
-@@ -754,14 +756,14 @@
-   template <class... _Up, enable_if_t< _EnableCtorFromUTypesTuple<const tuple<_Up...>&&>::value>* = nullptr>
-   _LIBCPP_HIDE_FROM_ABI constexpr explicit(!_Lazy<_And, is_convertible<const _Up&&, _Tp>...>::value)
-       tuple(const tuple<_Up...>&& __t)
--      : __base_(std::move(__t)) {}
-+      : __base_(__from_tuple(), std::move(__t)) {}
- 
-   template <class _Alloc,
-             class... _Up,
-             enable_if_t< _EnableCtorFromUTypesTuple<const tuple<_Up...>&&>::value>* = nullptr>
-   _LIBCPP_HIDE_FROM_ABI constexpr explicit(!_Lazy<_And, is_convertible<const _Up&&, _Tp>...>::value)
-       tuple(allocator_arg_t, const _Alloc& __alloc, const tuple<_Up...>&& __t)
--      : __base_(allocator_arg_t(), __alloc, std::move(__t)) {}
-+      : __base_(allocator_arg_t(), __alloc, __from_tuple(), std::move(__t)) {}
- #    endif // _LIBCPP_STD_VER >= 23
- 
-   // tuple(const pair<U1, U2>&) constructors (including allocator_arg_t variants)
-@@ -796,7 +798,7 @@
-   _LIBCPP_HIDE_FROM_ABI
-   _LIBCPP_CONSTEXPR_SINCE_CXX14 explicit(_Not<_BothImplicitlyConvertible<const pair<_Up1, _Up2>&> >::value)
-       tuple(const pair<_Up1, _Up2>& __p) noexcept(_NothrowConstructibleFromPair<const pair<_Up1, _Up2>&>::value)
--      : __base_(__p) {}
-+      : __base_(__from_tuple(), __p) {}
- 
-   template <class _Alloc,
-             class _Up1,
-@@ -806,7 +808,7 @@
-   _LIBCPP_HIDE_FROM_ABI
-   _LIBCPP_CONSTEXPR_SINCE_CXX20 explicit(_Not<_BothImplicitlyConvertible<const pair<_Up1, _Up2>&> >::value)
-       tuple(allocator_arg_t, const _Alloc& __a, const pair<_Up1, _Up2>& __p)
--      : __base_(allocator_arg_t(), __a, __p) {}
-+      : __base_(allocator_arg_t(), __a, __from_tuple(), __p) {}
- 
- #    if _LIBCPP_STD_VER >= 23
-   // tuple(pair<U1, U2>&) constructors (including allocator_arg_t variants)
-@@ -814,7 +816,7 @@
-   template <class _U1, class _U2, enable_if_t< _EnableCtorFromPair<pair<_U1, _U2>&>::value>* = nullptr>
-   _LIBCPP_HIDE_FROM_ABI constexpr explicit(!_BothImplicitlyConvertible<pair<_U1, _U2>&>::value)
-       tuple(pair<_U1, _U2>& __p)
--      : __base_(__p) {}
-+      : __base_(__from_tuple(), __p) {}
- 
-   template <class _Alloc,
-             class _U1,
-@@ -822,7 +824,7 @@
-             enable_if_t< _EnableCtorFromPair<std::pair<_U1, _U2>&>::value>* = nullptr>
-   _LIBCPP_HIDE_FROM_ABI constexpr explicit(!_BothImplicitlyConvertible<pair<_U1, _U2>&>::value)
-       tuple(allocator_arg_t, const _Alloc& __alloc, pair<_U1, _U2>& __p)
--      : __base_(allocator_arg_t(), __alloc, __p) {}
-+      : __base_(allocator_arg_t(), __alloc, __from_tuple(), __p) {}
- #    endif
- 
-   // tuple(pair<U1, U2>&&) constructors (including allocator_arg_t variants)
-@@ -834,7 +836,7 @@
-   _LIBCPP_HIDE_FROM_ABI
-   _LIBCPP_CONSTEXPR_SINCE_CXX14 explicit(_Not<_BothImplicitlyConvertible<pair<_Up1, _Up2>&&> >::value)
-       tuple(pair<_Up1, _Up2>&& __p) noexcept(_NothrowConstructibleFromPair<pair<_Up1, _Up2>&&>::value)
--      : __base_(std::move(__p)) {}
-+      : __base_(__from_tuple(), std::move(__p)) {}
- 
-   template <class _Alloc,
-             class _Up1,
-@@ -844,7 +846,7 @@
-   _LIBCPP_HIDE_FROM_ABI
-   _LIBCPP_CONSTEXPR_SINCE_CXX20 explicit(_Not<_BothImplicitlyConvertible<pair<_Up1, _Up2>&&> >::value)
-       tuple(allocator_arg_t, const _Alloc& __a, pair<_Up1, _Up2>&& __p)
--      : __base_(allocator_arg_t(), __a, std::move(__p)) {}
-+      : __base_(allocator_arg_t(), __a, __from_tuple(), std::move(__p)) {}
- 
- #    if _LIBCPP_STD_VER >= 23
-   // tuple(const pair<U1, U2>&&) constructors (including allocator_arg_t variants)
-@@ -852,7 +854,7 @@
-   template <class _U1, class _U2, enable_if_t< _EnableCtorFromPair<const pair<_U1, _U2>&&>::value>* = nullptr>
-   _LIBCPP_HIDE_FROM_ABI constexpr explicit(!_BothImplicitlyConvertible<const pair<_U1, _U2>&&>::value)
-       tuple(const pair<_U1, _U2>&& __p)
--      : __base_(std::move(__p)) {}
-+      : __base_(__from_tuple(), std::move(__p)) {}
- 
-   template <class _Alloc,
-             class _U1,
-@@ -860,7 +862,7 @@
-             enable_if_t< _EnableCtorFromPair<const pair<_U1, _U2>&&>::value>* = nullptr>
-   _LIBCPP_HIDE_FROM_ABI constexpr explicit(!_BothImplicitlyConvertible<const pair<_U1, _U2>&&>::value)
-       tuple(allocator_arg_t, const _Alloc& __alloc, const pair<_U1, _U2>&& __p)
--      : __base_(allocator_arg_t(), __alloc, std::move(__p)) {}
-+      : __base_(allocator_arg_t(), __alloc, __from_tuple(), std::move(__p)) {}
- #    endif // _LIBCPP_STD_VER >= 23
- 
-   // [tuple.assign]
-diff -ruN --strip-trailing-cr a/libcxx/test/std/utilities/tuple/tuple.tuple/move_ctor_sfinae.compile.pass.cpp b/libcxx/test/std/utilities/tuple/tuple.tuple/move_ctor_sfinae.compile.pass.cpp
---- a/libcxx/test/std/utilities/tuple/tuple.tuple/move_ctor_sfinae.compile.pass.cpp
-+++ b/libcxx/test/std/utilities/tuple/tuple.tuple/move_ctor_sfinae.compile.pass.cpp
-@@ -0,0 +1,27 @@
-+//===----------------------------------------------------------------------===//
+diff -ruN --strip-trailing-cr a/clang/test/Modules/GH154840.cpp b/clang/test/Modules/GH154840.cpp
+--- a/clang/test/Modules/GH154840.cpp
++++ b/clang/test/Modules/GH154840.cpp
+@@ -0,0 +1,97 @@
++// RUN: rm -rf %t
++// RUN: mkdir -p %t
++// RUN: split-file %s %t
++// RUN: cd %t
 +//
-+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-+// See https://llvm.org/LICENSE.txt for license information.
-+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-+//
-+//===----------------------------------------------------------------------===//
++// RUN: %clang_cc1 -fmodule-name=A -fno-cxx-modules -emit-module -fmodules -xc++ A.cppmap -o A.pcm
++// RUN: %clang_cc1 -fmodule-name=B -fno-cxx-modules -emit-module -fmodules -xc++ B.cppmap -o B.pcm -fmodule-file=A.pcm
++// RUN: %clang_cc1 -fmodule-name=C -fno-cxx-modules -emit-module -fmodules -xc++ C.cppmap -o C.pcm -fmodule-file=A.pcm
++// RUN: %clang_cc1 -fmodule-name=D -fno-cxx-modules -emit-module -fmodules -xc++ D.cppmap -o D.pcm -fmodule-file=A.pcm
++// RUN: %clang_cc1 -fmodule-name=E -fno-cxx-modules -emit-module -fmodules -xc++ E.cppmap -o E.pcm -fmodule-file=D.pcm -fmodule-file=B.pcm -fmodule-file=C.pcm
++// RUN: %clang_cc1 -fno-cxx-modules -fmodules -fmodule-file=B.pcm -fmodule-file=E.pcm -emit-llvm -o /dev/null S.cpp
 +
-+// Ensure that tuple's move constructor properly SFINAES.
-+// This is a regression test for https://github.com/llvm/llvm-project/pull/151654#issuecomment-3205410955
++//--- A.h
++namespace std {
 +
-+// UNSUPPORTED: c++03, c++11, c++14
++template <class T> void zz(T);
 +
-+#include <tuple>
-+#include <variant>
-+#include <type_traits>
++template <class> struct vec {
++  struct w {};
++  struct xx {};
 +
-+struct S {
-+  S(const S&)            = delete;
-+  S& operator=(const S&) = delete;
-+  S(S&&)                 = default;
-+  S& operator=(S&&)      = default;
++  vec(vec &) { init(); }
++  constexpr vec &operator=(const vec &);
++  template <class U> constexpr void pb(U);
++  constexpr void init();
++
++  w s;
 +};
 +
-+using T = std::tuple<const std::variant<S>>;
++template <class T> constexpr void vec<T>::init() {
++  xx yy;
++  zz(yy);
++}
 +
-+void func() { (void)std::is_trivially_move_constructible<T>::value; }
++template <class T> constexpr vec<T> &vec<T>::operator=(const vec &) {
++  pb(s);
++  return *this;
++}
++
++template <class T> template <class U> constexpr void vec<T>::pb(U) { init(); }
++} // namespace std
++
++//--- A.cppmap
++module "A" {
++  header "A.h"
++}
++
++//--- X.h
++#pragma clang module import A
++
++namespace project {
++  class thing : std::vec<thing> {};
++} // namespace project
++
++//--- B.h
++#include "X.h"
++
++//--- B.cppmap
++module "B" {
++  header "B.h"
++}
++
++//--- C.h
++#include "X.h"
++
++//--- C.cppmap
++module "C" {
++  header "C.h"
++}
++
++//--- D.h
++#include "X.h"
++
++//--- D.cppmap
++module "D" {
++  header "D.h"
++}
++
++//--- Y.h
++#include "X.h"
++struct other {
++  other() : data(data) {}
++  std::vec<project::thing> data;
++};
++
++//--- E.h
++#include "Y.h"
++
++//--- E.cppmap
++module "E" {
++  header "E.h"
++}
++
++//--- S.cpp
++#pragma clang module import A
++#pragma clang module import E
++void func(std::vec<project::thing> *a, std::vec<project::thing> *b) { *a = *b; }
+diff -ruN --strip-trailing-cr a/clang/test/Modules/GH155028-1.cpp b/clang/test/Modules/GH155028-1.cpp
+--- a/clang/test/Modules/GH155028-1.cpp
++++ b/clang/test/Modules/GH155028-1.cpp
+@@ -0,0 +1,17 @@
++// RUN: %clang_cc1 -std=c++20 -verify %s
++// expected-no-diagnostics
++
++#pragma clang module build M
++module "M" {
++  module "A" {}
++  module "B" {}
++}
++#pragma clang module contents
++#pragma clang module begin M.A
++enum E1 {};
++#pragma clang module end
++#pragma clang module begin M.B
++enum E1 {};
++using T = __underlying_type(E1);
++#pragma clang module end
++#pragma clang module endbuild
+diff -ruN --strip-trailing-cr a/clang/test/Sema/GH155794.c b/clang/test/Sema/GH155794.c
+--- a/clang/test/Sema/GH155794.c
++++ b/clang/test/Sema/GH155794.c
+@@ -0,0 +1,6 @@
++// RUN: %clang_cc1 -fsyntax-only -verify -Wno-everything %s
++
++struct S {
++  enum e1 {} // expected-error {{use of empty enum}} expected-error {{expected ';' after enum}}
++  enum e2 {} // expected-error {{use of empty enum}}
++}; // expected-error {{expected member name or ';' after declaration specifiers}}
+diff -ruN --strip-trailing-cr a/clang/test/SemaTemplate/using-decl.cpp b/clang/test/SemaTemplate/using-decl.cpp
+--- a/clang/test/SemaTemplate/using-decl.cpp
++++ b/clang/test/SemaTemplate/using-decl.cpp
+@@ -14,3 +14,15 @@
+   }
+   void e() { c<int>(); }
+ }
++
++namespace UsingUsingEnum {
++  namespace foo {
++    enum class EnumOne {};
++  }
++  using foo::EnumOne;
++
++  template <class> void t() {
++    using enum EnumOne;
++  }
++  template void t<void>();
++} // namespace UsingUsingEnum
+diff -ruN --strip-trailing-cr a/clang/unittests/Analysis/FlowSensitive/TransferTest.cpp b/clang/unittests/Analysis/FlowSensitive/TransferTest.cpp
+--- a/clang/unittests/Analysis/FlowSensitive/TransferTest.cpp
++++ b/clang/unittests/Analysis/FlowSensitive/TransferTest.cpp
+@@ -9,25 +9,17 @@
+ #include "TestingSupport.h"
+ #include "clang/AST/ASTContext.h"
+ #include "clang/AST/Decl.h"
+-#include "clang/AST/Expr.h"
+-#include "clang/AST/ExprCXX.h"
+-#include "clang/AST/OperationKinds.h"
+-#include "clang/ASTMatchers/ASTMatchFinder.h"
+ #include "clang/ASTMatchers/ASTMatchers.h"
+-#include "clang/Analysis/FlowSensitive/DataflowAnalysis.h"
+ #include "clang/Analysis/FlowSensitive/DataflowAnalysisContext.h"
+ #include "clang/Analysis/FlowSensitive/DataflowEnvironment.h"
+ #include "clang/Analysis/FlowSensitive/NoopAnalysis.h"
+-#include "clang/Analysis/FlowSensitive/NoopLattice.h"
+ #include "clang/Analysis/FlowSensitive/RecordOps.h"
+ #include "clang/Analysis/FlowSensitive/StorageLocation.h"
+ #include "clang/Analysis/FlowSensitive/Value.h"
+ #include "clang/Basic/LangStandard.h"
+ #include "clang/Testing/TestAST.h"
+ #include "llvm/ADT/SmallVector.h"
+-#include "llvm/ADT/StringMap.h"
+ #include "llvm/ADT/StringRef.h"
+-#include "llvm/Support/Casting.h"
+ #include "llvm/Testing/Support/Error.h"
+ #include "gmock/gmock.h"
+ #include "gtest/gtest.h"
+@@ -35,7 +27,6 @@
+ #include <string>
+ #include <string_view>
+ #include <utility>
+-#include <vector>
+ 
+ namespace clang {
+ namespace dataflow {
+@@ -3550,7 +3541,7 @@
+   testFunction(Code, "noexceptTarget");
+ }
+ 
+-TEST(TransferTest, StaticCastNoOp) {
++TEST(TransferTest, StaticCast) {
+   std::string Code = R"(
+     void target(int Foo) {
+       int Bar = static_cast<int>(Foo);
+@@ -3570,13 +3561,6 @@
+         const ValueDecl *BarDecl = findValueDecl(ASTCtx, "Bar");
+         ASSERT_THAT(BarDecl, NotNull());
+ 
+-        const auto *Cast = ast_matchers::selectFirst<CXXStaticCastExpr>(
+-            "cast",
+-            ast_matchers::match(ast_matchers::cxxStaticCastExpr().bind("cast"),
+-                                ASTCtx));
+-        ASSERT_THAT(Cast, NotNull());
+-        ASSERT_EQ(Cast->getCastKind(), CK_NoOp);
+-
+         const auto *FooVal = Env.getValue(*FooDecl);
+         const auto *BarVal = Env.getValue(*BarDecl);
+         EXPECT_TRUE(isa<IntegerValue>(FooVal));
+@@ -3585,268 +3569,6 @@
+       });
+ }
+ 
+-TEST(TransferTest, StaticCastBaseToDerived) {
+-  std::string Code = R"cc(
+-    struct Base {
+-      char C;
+-    };
+-    struct Intermediate : public Base {
+-      bool B;
+-    };
+-    struct Derived : public Intermediate {
+-      int I;
+-    };
+-    Base& getBaseRef();
+-    void target(Base* BPtr) {
+-      Derived* DPtr = static_cast<Derived*>(BPtr);
+-      DPtr->C;
+-      DPtr->B;
+-      DPtr->I;
+-      Derived& DRef = static_cast<Derived&>(*BPtr);
+-      DRef.C;
+-      DRef.B;
+-      DRef.I;
+-      Derived& DRefFromFunc = static_cast<Derived&>(getBaseRef());
+-      DRefFromFunc.C;
+-      DRefFromFunc.B;
+-      DRefFromFunc.I;
+-      // [[p]]
+-    }
+-  )cc";
+-  runDataflow(
+-      Code,
+-      [](const llvm::StringMap<DataflowAnalysisState<NoopLattice>> &Results,
+-         ASTContext &ASTCtx) {
+-        ASSERT_THAT(Results.keys(), UnorderedElementsAre("p"));
+-        const Environment &Env = getEnvironmentAtAnnotation(Results, "p");
+-
+-        const ValueDecl *BPtrDecl = findValueDecl(ASTCtx, "BPtr");
+-        ASSERT_THAT(BPtrDecl, NotNull());
+-
+-        const ValueDecl *DPtrDecl = findValueDecl(ASTCtx, "DPtr");
+-        ASSERT_THAT(DPtrDecl, NotNull());
+-
+-        const ValueDecl *DRefDecl = findValueDecl(ASTCtx, "DRef");
+-        ASSERT_THAT(DRefDecl, NotNull());
+-
+-        const ValueDecl *DRefFromFuncDecl =
+-            findValueDecl(ASTCtx, "DRefFromFunc");
+-        ASSERT_THAT(DRefFromFuncDecl, NotNull());
+-
+-        const auto *Cast = ast_matchers::selectFirst<CXXStaticCastExpr>(
+-            "cast",
+-            ast_matchers::match(ast_matchers::cxxStaticCastExpr().bind("cast"),
+-                                ASTCtx));
+-        ASSERT_THAT(Cast, NotNull());
+-        ASSERT_EQ(Cast->getCastKind(), CK_BaseToDerived);
+-
+-        EXPECT_EQ(Env.getValue(*BPtrDecl), Env.getValue(*DPtrDecl));
+-        EXPECT_EQ(&Env.get<PointerValue>(*BPtrDecl)->getPointeeLoc(),
+-                  Env.getStorageLocation(*DRefDecl));
+-        // For DRefFromFunc, not crashing when analyzing the field accesses is
+-        // enough.
+-      });
+-}
+-
+-TEST(TransferTest, ExplicitDerivedToBaseCast) {
+-  std::string Code = R"cc(
+-    struct Base {};
+-    struct Derived : public Base {};
+-    void target(Derived D) {
+-      (Base*)&D;
+-      // [[p]]
+-    }
+-)cc";
+-  runDataflow(
+-      Code,
+-      [](const llvm::StringMap<DataflowAnalysisState<NoopLattice>> &Results,
+-         ASTContext &ASTCtx) {
+-        ASSERT_THAT(Results.keys(), UnorderedElementsAre("p"));
+-        const Environment &Env = getEnvironmentAtAnnotation(Results, "p");
+-
+-        auto *Cast = ast_matchers::selectFirst<ImplicitCastExpr>(
+-            "cast", ast_matchers::match(
+-                        ast_matchers::implicitCastExpr().bind("cast"), ASTCtx));
+-        ASSERT_THAT(Cast, NotNull());
+-        ASSERT_EQ(Cast->getCastKind(), CK_DerivedToBase);
+-
+-        auto *AddressOf = ast_matchers::selectFirst<UnaryOperator>(
+-            "addressof",
+-            ast_matchers::match(ast_matchers::unaryOperator().bind("addressof"),
+-                                ASTCtx));
+-        ASSERT_THAT(AddressOf, NotNull());
+-        ASSERT_EQ(AddressOf->getOpcode(), UO_AddrOf);
+-
+-        EXPECT_EQ(Env.getValue(*Cast), Env.getValue(*AddressOf));
+-      });
+-}
+-
+-TEST(TransferTest, ConstructorConversion) {
+-  std::string Code = R"cc(
+-    struct Base {};
+-    struct Derived : public Base {};
+-    void target(Derived D) {
+-      Base B = (Base)D;
+-      // [[p]]
+-    }
+-)cc";
+-  runDataflow(
+-      Code,
+-      [](const llvm::StringMap<DataflowAnalysisState<NoopLattice>> &Results,
+-         ASTContext &ASTCtx) {
+-        ASSERT_THAT(Results.keys(), UnorderedElementsAre("p"));
+-        const Environment &Env = getEnvironmentAtAnnotation(Results, "p");
+-
+-        auto *Cast = ast_matchers::selectFirst<CStyleCastExpr>(
+-            "cast", ast_matchers::match(
+-                        ast_matchers::cStyleCastExpr().bind("cast"), ASTCtx));
+-        ASSERT_THAT(Cast, NotNull());
+-        ASSERT_EQ(Cast->getCastKind(), CK_ConstructorConversion);
+-
+-        auto &DLoc = getLocForDecl<StorageLocation>(ASTCtx, Env, "D");
+-        auto &BLoc = getLocForDecl<StorageLocation>(ASTCtx, Env, "B");
+-        EXPECT_NE(&BLoc, &DLoc);
+-      });
+-}
+-
+-TEST(TransferTest, UserDefinedConversion) {
+-  std::string Code = R"cc(
+-    struct To {};
+-    struct From {
+-        operator To();
+-    };
+-    void target(From F) {
+-        To T = (To)F;
+-        // [[p]]
+-    }
+-)cc";
+-  runDataflow(
+-      Code,
+-      [](const llvm::StringMap<DataflowAnalysisState<NoopLattice>> &Results,
+-         ASTContext &ASTCtx) {
+-        ASSERT_THAT(Results.keys(), UnorderedElementsAre("p"));
+-        const Environment &Env = getEnvironmentAtAnnotation(Results, "p");
+-
+-        auto *Cast = ast_matchers::selectFirst<ImplicitCastExpr>(
+-            "cast", ast_matchers::match(
+-                        ast_matchers::implicitCastExpr().bind("cast"), ASTCtx));
+-        ASSERT_THAT(Cast, NotNull());
+-        ASSERT_EQ(Cast->getCastKind(), CK_UserDefinedConversion);
+-
+-        auto &FLoc = getLocForDecl<StorageLocation>(ASTCtx, Env, "F");
+-        auto &TLoc = getLocForDecl<StorageLocation>(ASTCtx, Env, "T");
+-        EXPECT_NE(&TLoc, &FLoc);
+-      });
+-}
+-
+-TEST(TransferTest, ImplicitUncheckedDerivedToBaseCast) {
+-  std::string Code = R"cc(
+-    struct Base {
+-      void method();
+-    };
+-    struct Derived : public Base {};
+-    void target(Derived D) {
+-      D.method();
+-      // [[p]]
+-    }
+-)cc";
+-  runDataflow(
+-      Code,
+-      [](const llvm::StringMap<DataflowAnalysisState<NoopLattice>> &Results,
+-         ASTContext &ASTCtx) {
+-        ASSERT_THAT(Results.keys(), UnorderedElementsAre("p"));
+-        const Environment &Env = getEnvironmentAtAnnotation(Results, "p");
+-
+-        auto *Cast = ast_matchers::selectFirst<ImplicitCastExpr>(
+-            "cast", ast_matchers::match(
+-                        ast_matchers::implicitCastExpr().bind("cast"), ASTCtx));
+-        ASSERT_THAT(Cast, NotNull());
+-        ASSERT_EQ(Cast->getCastKind(), CK_UncheckedDerivedToBase);
+-
+-        auto &DLoc = getLocForDecl<StorageLocation>(ASTCtx, Env, "D");
+-        EXPECT_EQ(Env.getStorageLocation(*Cast), &DLoc);
+-      });
+-}
+-
+-TEST(TransferTest, ImplicitDerivedToBaseCast) {
+-  std::string Code = R"cc(
+-    struct Base {};
+-    struct Derived : public Base {};
+-    void target() {
+-      Base* B = new Derived();
+-      // [[p]]
+-    }
+-)cc";
+-  runDataflow(
+-      Code,
+-      [](const llvm::StringMap<DataflowAnalysisState<NoopLattice>> &Results,
+-         ASTContext &ASTCtx) {
+-        ASSERT_THAT(Results.keys(), UnorderedElementsAre("p"));
+-        const Environment &Env = getEnvironmentAtAnnotation(Results, "p");
+-
+-        auto *Cast = ast_matchers::selectFirst<ImplicitCastExpr>(
+-            "cast", ast_matchers::match(
+-                        ast_matchers::implicitCastExpr().bind("cast"), ASTCtx));
+-        ASSERT_THAT(Cast, NotNull());
+-        ASSERT_EQ(Cast->getCastKind(), CK_DerivedToBase);
+-
+-        auto *New = ast_matchers::selectFirst<CXXNewExpr>(
+-            "new", ast_matchers::match(ast_matchers::cxxNewExpr().bind("new"),
+-                                       ASTCtx));
+-        ASSERT_THAT(New, NotNull());
+-
+-        EXPECT_EQ(Env.getValue(*Cast), Env.getValue(*New));
+-      });
+-}
+-
+-TEST(TransferTest, ReinterpretCast) {
+-  std::string Code = R"cc(
+-    struct S {
+-        int I;
+-    };
+-
+-    void target(unsigned char* Bytes) {
+-        S& SRef = reinterpret_cast<S&>(Bytes);
+-        SRef.I;
+-        S* SPtr = reinterpret_cast<S*>(Bytes);
+-        SPtr->I;
+-        // [[p]]
+-    }
+-  )cc";
+-  runDataflow(Code, [](const llvm::StringMap<DataflowAnalysisState<NoopLattice>>
+-                           &Results,
+-                       ASTContext &ASTCtx) {
+-    ASSERT_THAT(Results.keys(), UnorderedElementsAre("p"));
+-    const Environment &Env = getEnvironmentAtAnnotation(Results, "p");
+-    const ValueDecl *I = findValueDecl(ASTCtx, "I");
+-    ASSERT_THAT(I, NotNull());
+-
+-    // No particular knowledge of I's value is modeled, but for both casts,
+-    // the fields of S are modeled.
+-
+-    {
+-      auto &Loc = getLocForDecl<RecordStorageLocation>(ASTCtx, Env, "SRef");
+-      std::vector<const ValueDecl *> Children;
+-      for (const auto &Entry : Loc.children()) {
+-        Children.push_back(Entry.getFirst());
+-      }
+-
+-      EXPECT_THAT(Children, UnorderedElementsAre(I));
+-    }
+-
+-    {
+-      auto &Loc = cast<RecordStorageLocation>(
+-          getValueForDecl<PointerValue>(ASTCtx, Env, "SPtr").getPointeeLoc());
+-      std::vector<const ValueDecl *> Children;
+-      for (const auto &Entry : Loc.children()) {
+-        Children.push_back(Entry.getFirst());
+-      }
+-
+-      EXPECT_THAT(Children, UnorderedElementsAre(I));
+-    }
+-  });
+-}
+-
+ TEST(TransferTest, IntegralCast) {
+   std::string Code = R"(
+     void target(int Foo) {
+diff -ruN --strip-trailing-cr a/clang-tools-extra/test/clang-tidy/check_clang_tidy.py b/clang-tools-extra/test/clang-tidy/check_clang_tidy.py
+--- a/clang-tools-extra/test/clang-tidy/check_clang_tidy.py
++++ b/clang-tools-extra/test/clang-tidy/check_clang_tidy.py
+@@ -391,9 +391,7 @@
+     args, extra_args = parser.parse_known_args()
+     if args.std is None:
+         _, extension = os.path.splitext(args.assume_filename or args.input_file_name)
+-        args.std = [
+-            "c++11-or-later" if extension in [".cpp", ".hpp", ".mm"] else "c99-or-later"
+-        ]
++        args.std = ["c99-or-later" if extension in [".c", ".m"] else "c++11-or-later"]
+ 
+     return (args, extra_args)
+ 
 diff -ruN --strip-trailing-cr a/lldb/source/Plugins/SymbolFile/NativePDB/SymbolFileNativePDB.cpp b/lldb/source/Plugins/SymbolFile/NativePDB/SymbolFileNativePDB.cpp
 --- a/lldb/source/Plugins/SymbolFile/NativePDB/SymbolFileNativePDB.cpp
 +++ b/lldb/source/Plugins/SymbolFile/NativePDB/SymbolFileNativePDB.cpp
@@ -1531,181 +855,110 @@ diff -ruN --strip-trailing-cr a/lldb/source/Plugins/SymbolFile/NativePDB/SymbolF
  
    // Now that we know the forward -> full mapping of all type indices, we can
    // re-write all the indices.  At the end of this process, we want a mapping
-diff -ruN --strip-trailing-cr a/mlir/include/mlir/AsmParser/AsmParser.h b/mlir/include/mlir/AsmParser/AsmParser.h
---- a/mlir/include/mlir/AsmParser/AsmParser.h
-+++ b/mlir/include/mlir/AsmParser/AsmParser.h
-@@ -53,8 +53,7 @@
- /// null terminated.
- Attribute parseAttribute(llvm::StringRef attrStr, MLIRContext *context,
-                          Type type = {}, size_t *numRead = nullptr,
--                         bool isKnownNullTerminated = false,
--                         llvm::StringMap<Attribute> *attributesCache = nullptr);
-+                         bool isKnownNullTerminated = false);
+diff -ruN --strip-trailing-cr a/lldb/tools/lldb-dap/Handler/ModuleSymbolsRequestHandler.cpp b/lldb/tools/lldb-dap/Handler/ModuleSymbolsRequestHandler.cpp
+--- a/lldb/tools/lldb-dap/Handler/ModuleSymbolsRequestHandler.cpp
++++ b/lldb/tools/lldb-dap/Handler/ModuleSymbolsRequestHandler.cpp
+@@ -60,7 +60,7 @@
+     if (!symbol.IsValid())
+       continue;
  
- /// This parses a single MLIR type to an MLIR context if it was valid. If not,
- /// an error diagnostic is emitted to the context.
-diff -ruN --strip-trailing-cr a/mlir/lib/AsmParser/DialectSymbolParser.cpp b/mlir/lib/AsmParser/DialectSymbolParser.cpp
---- a/mlir/lib/AsmParser/DialectSymbolParser.cpp
-+++ b/mlir/lib/AsmParser/DialectSymbolParser.cpp
-@@ -245,15 +245,6 @@
-       return nullptr;
-   }
- 
--  if constexpr (std::is_same_v<Symbol, Attribute>) {
--    auto &cache = p.getState().symbols.attributesCache;
--    auto cacheIt = cache.find(symbolData);
--    // Skip cached attribute if it has type.
--    if (cacheIt != cache.end() && !p.getToken().is(Token::colon))
--      return cacheIt->second;
--
--    return cache[symbolData] = createSymbol(dialectName, symbolData, loc);
--  }
-   return createSymbol(dialectName, symbolData, loc);
- }
- 
-@@ -346,7 +337,6 @@
- template <typename T, typename ParserFn>
- static T parseSymbol(StringRef inputStr, MLIRContext *context,
-                      size_t *numReadOut, bool isKnownNullTerminated,
--                     llvm::StringMap<Attribute> *attributesCache,
-                      ParserFn &&parserFn) {
-   // Set the buffer name to the string being parsed, so that it appears in error
-   // diagnostics.
-@@ -358,9 +348,6 @@
-   SourceMgr sourceMgr;
-   sourceMgr.AddNewSourceBuffer(std::move(memBuffer), SMLoc());
-   SymbolState aliasState;
--  if (attributesCache)
--    aliasState.attributesCache = *attributesCache;
--
-   ParserConfig config(context);
-   ParserState state(sourceMgr, config, aliasState, /*asmState=*/nullptr,
-                     /*codeCompleteContext=*/nullptr);
-@@ -371,11 +358,6 @@
-   if (!symbol)
-     return T();
- 
--  if constexpr (std::is_same_v<T, Attribute>) {
--    if (attributesCache)
--      *attributesCache = state.symbols.attributesCache;
--  }
--
-   // Provide the number of bytes that were read.
-   Token endTok = parser.getToken();
-   size_t numRead =
-@@ -392,15 +374,13 @@
- 
- Attribute mlir::parseAttribute(StringRef attrStr, MLIRContext *context,
-                                Type type, size_t *numRead,
--                               bool isKnownNullTerminated,
--                               llvm::StringMap<Attribute> *attributesCache) {
-+                               bool isKnownNullTerminated) {
-   return parseSymbol<Attribute>(
--      attrStr, context, numRead, isKnownNullTerminated, attributesCache,
-+      attrStr, context, numRead, isKnownNullTerminated,
-       [type](Parser &parser) { return parser.parseAttribute(type); });
- }
- Type mlir::parseType(StringRef typeStr, MLIRContext *context, size_t *numRead,
-                      bool isKnownNullTerminated) {
-   return parseSymbol<Type>(typeStr, context, numRead, isKnownNullTerminated,
--                           /*attributesCache=*/nullptr,
-                            [](Parser &parser) { return parser.parseType(); });
- }
-diff -ruN --strip-trailing-cr a/mlir/lib/AsmParser/ParserState.h b/mlir/lib/AsmParser/ParserState.h
---- a/mlir/lib/AsmParser/ParserState.h
-+++ b/mlir/lib/AsmParser/ParserState.h
-@@ -40,9 +40,6 @@
- 
-   /// A map from unique integer identifier to DistinctAttr.
-   DenseMap<uint64_t, DistinctAttr> distinctAttributes;
--
--  /// A map from unique string identifier to Attribute.
--  llvm::StringMap<Attribute> attributesCache;
- };
- 
- //===----------------------------------------------------------------------===//
-diff -ruN --strip-trailing-cr a/mlir/lib/Bytecode/Reader/BytecodeReader.cpp b/mlir/lib/Bytecode/Reader/BytecodeReader.cpp
---- a/mlir/lib/Bytecode/Reader/BytecodeReader.cpp
-+++ b/mlir/lib/Bytecode/Reader/BytecodeReader.cpp
-@@ -895,10 +895,6 @@
-   SmallVector<AttrEntry> attributes;
-   SmallVector<TypeEntry> types;
- 
--  /// The map of cached attributes, used to avoid re-parsing the same
--  /// attribute multiple times.
--  llvm::StringMap<Attribute> attributesCache;
--
-   /// A location used for error emission.
-   Location fileLoc;
- 
-@@ -1239,7 +1235,7 @@
-         ::parseType(asmStr, context, &numRead, /*isKnownNullTerminated=*/true);
-   else
-     result = ::parseAttribute(asmStr, context, Type(), &numRead,
--                              /*isKnownNullTerminated=*/true, &attributesCache);
-+                              /*isKnownNullTerminated=*/true);
-   if (!result)
-     return failure();
- 
-diff -ruN --strip-trailing-cr a/mlir/lib/Conversion/GPUCommon/GPUToLLVMConversion.cpp b/mlir/lib/Conversion/GPUCommon/GPUToLLVMConversion.cpp
---- a/mlir/lib/Conversion/GPUCommon/GPUToLLVMConversion.cpp
-+++ b/mlir/lib/Conversion/GPUCommon/GPUToLLVMConversion.cpp
-@@ -532,6 +532,9 @@
-     // Vector transfer ops with rank > 1 should be lowered with VectorToSCF.
-     vector::populateVectorTransferLoweringPatterns(patterns,
-                                                    /*maxTransferRank=*/1);
-+    // Transform N-D vector.from_elements to 1-D vector.from_elements before
-+    // conversion.
-+    vector::populateVectorFromElementsLoweringPatterns(patterns);
-     if (failed(applyPatternsGreedily(getOperation(), std::move(patterns))))
-       return signalPassFailure();
-   }
-diff -ruN --strip-trailing-cr a/mlir/lib/Conversion/GPUToNVVM/LowerGpuOpsToNVVMOps.cpp b/mlir/lib/Conversion/GPUToNVVM/LowerGpuOpsToNVVMOps.cpp
---- a/mlir/lib/Conversion/GPUToNVVM/LowerGpuOpsToNVVMOps.cpp
-+++ b/mlir/lib/Conversion/GPUToNVVM/LowerGpuOpsToNVVMOps.cpp
-@@ -27,6 +27,7 @@
- #include "mlir/Dialect/Math/IR/Math.h"
- #include "mlir/Dialect/MemRef/IR/MemRef.h"
- #include "mlir/Dialect/NVGPU/IR/NVGPUDialect.h"
-+#include "mlir/Dialect/Vector/Transforms/LoweringPatterns.h"
- #include "mlir/Transforms/DialectConversion.h"
- #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
- 
-@@ -369,6 +370,9 @@
-     {
-       RewritePatternSet patterns(m.getContext());
-       populateGpuRewritePatterns(patterns);
-+      // Transform N-D vector.from_elements to 1-D vector.from_elements before
-+      // conversion.
-+      vector::populateVectorFromElementsLoweringPatterns(patterns);
-       if (failed(applyPatternsGreedily(m, std::move(patterns))))
-         return signalPassFailure();
+-    Symbol dap_symbol;
++    Symbol dap_symbol = {};
+     dap_symbol.id = symbol.GetID();
+     dap_symbol.type = symbol.GetType();
+     dap_symbol.isDebug = symbol.IsDebug();
+diff -ruN --strip-trailing-cr a/lldb/tools/lldb-dap/src-ts/ui/symbols-provider.ts b/lldb/tools/lldb-dap/src-ts/ui/symbols-provider.ts
+--- a/lldb/tools/lldb-dap/src-ts/ui/symbols-provider.ts
++++ b/lldb/tools/lldb-dap/src-ts/ui/symbols-provider.ts
+@@ -61,18 +61,18 @@
+       return;
      }
-diff -ruN --strip-trailing-cr a/mlir/test/IR/recursive-distinct-attr.mlir b/mlir/test/IR/recursive-distinct-attr.mlir
---- a/mlir/test/IR/recursive-distinct-attr.mlir
-+++ b/mlir/test/IR/recursive-distinct-attr.mlir
-@@ -1,13 +0,0 @@
--// RUN: mlir-opt -emit-bytecode %s | mlir-opt --mlir-print-debuginfo | FileCheck %s
--
--// Verify that the distinct attribute which is used transitively
--// through two aliases does not end up duplicated when round-tripped
--// through bytecode.
--
--// CHECK: distinct[0]
--// CHECK-NOT: distinct[1]
--#attr_ugly = #test<attr_ugly begin distinct[0]<> end>
--#attr_ugly1 = #test<attr_ugly begin #attr_ugly end>
--
--module attributes {test.alias = #attr_ugly, test.alias1 = #attr_ugly1} {
--}
+ 
+-    this.showSymbolsForModule(session, selectedModule.module);
++    await this.showSymbolsForModule(session, selectedModule.module);
+   }
+ 
+   private async showSymbolsForModule(session: vscode.DebugSession, module: DebugProtocol.Module) {
+     try {
+       const symbols = await this.getSymbolsForModule(session, module.id.toString());
+-      this.showSymbolsInNewTab(module.name.toString(), symbols);
++      await this.showSymbolsInNewTab(module.name.toString(), symbols);
+     } catch (error) {
+       if (error instanceof Error) {
+-        vscode.window.showErrorMessage("Failed to retrieve symbols: " + error.message);
++        await vscode.window.showErrorMessage("Failed to retrieve symbols: " + error.message);
+       } else {
+-        vscode.window.showErrorMessage("Failed to retrieve symbols due to an unknown error.");
++        await vscode.window.showErrorMessage("Failed to retrieve symbols due to an unknown error.");
+       }
+       
+       return;
+@@ -106,7 +106,7 @@
+     const symbolsTableScriptPath = panel.webview.asWebviewUri(vscode.Uri.joinPath(this.getExtensionResourcePath(), "symbols-table-view.js"));
+ 
+     panel.webview.html = getSymbolsTableHTMLContent(tabulatorJsPath, tabulatorCssPath, symbolsTableScriptPath);
+-    panel.webview.postMessage({ command: "updateSymbols", symbols: symbols });
++    await panel.webview.postMessage({ command: "updateSymbols", symbols: symbols });
+   }
+ 
+   private getExtensionResourcePath(): vscode.Uri {
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/clang/BUILD.bazel b/utils/bazel/llvm-project-overlay/clang/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/clang/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/clang/BUILD.bazel
+@@ -58,6 +58,7 @@
+         "Refactoring",
+         "Sema",
+         "Serialization",
++        "Trap",
+     ] for out in [
+         (
+             "include/clang/Basic/Diagnostic%sKinds.inc" % c,
 diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
 --- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
 +++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
-@@ -5718,6 +5718,7 @@
-         ":NVGPUDialect",
-         ":NVVMDialect",
-         ":TransformUtils",
-+        ":VectorTransforms",
+@@ -4167,6 +4167,7 @@
+         ":VectorToSCF",
+         ":VectorToSPIRV",
+         ":VectorToXeGPU",
++        ":XeGPUToXeVM",
+         ":XeVMToLLVM",
      ],
  )
+@@ -13945,6 +13946,37 @@
+ )
  
+ cc_library(
++    name = "XeGPUToXeVM",
++    srcs = glob([
++        "lib/Conversion/XeGPUToXeVM/*.cpp",
++    ]),
++    hdrs = glob([
++        "include/mlir/Conversion/XeGPUToXeVM/*.h",
++    ]),
++    includes = ["include"],
++    deps = [
++        ":ArithDialect",
++        ":ConversionPassIncGen",
++        ":ConvertToLLVMInterface",
++        ":GPUDialect",
++        ":IR",
++        ":IndexDialect",
++        ":LLVMCommonConversion",
++        ":LLVMDialect",
++        ":MemRefDialect",
++        ":Pass",
++        ":SCFDialect",
++        ":SCFTransforms",
++        ":Support",
++        ":TransformUtils",
++        ":VectorDialect",
++        ":XeGPUDialect",
++        ":XeVMDialect",
++        "//llvm:Support",
++    ],
++)
++
++cc_library(
+     name = "XeVMToLLVM",
+     srcs = glob([
+         "lib/Conversion/XeVMToLLVM/*.cpp",
