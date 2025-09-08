@@ -2237,6 +2237,7 @@ cc_library(
         "//xla/service/gpu/model:sol_latency_estimator",
         "//xla/service/gpu/transforms:pgle_accuracy_checker",
         "//xla/service/gpu/transforms:scheduling_instruction_annotator",
+        "//xla/service/gpu/transforms:stream_attribute_async_wrapper",
         "//xla/service/gpu/transforms/collectives:async_collective_annotator",
         "//xla/service/gpu/transforms/collectives:collective_ops_utils",
         "//xla/stream_executor:device_description",

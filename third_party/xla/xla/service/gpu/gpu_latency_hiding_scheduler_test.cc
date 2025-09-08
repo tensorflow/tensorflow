@@ -1010,5 +1010,32 @@ ENTRY main {
   EXPECT_FALSE(async_tracker.IsSupportedAsyncStart(*dynamic_slice_done));
 }
 
+TEST_F(GpuLatencyHidingSchedulerBaseTest, ParallelThreadsShouldBeScheduled) {
+  absl::string_view kHloModule = R"(
+    HloModule Test1
+
+    custom_call_F32 {
+      lhs = f32[2,2]{1,0} parameter(0)
+      rhs = f32[2,2]{1,0} parameter(1)
+      ROOT custom_call = f32[2,2]{1,0} custom-call(lhs, rhs), custom_call_target="random"
+    }
+
+    ENTRY Test1 {
+      a = f32[2,2]{1,0} parameter(0)
+      b = f32[2,2]{1,0} parameter(1)
+      start = ((f32[2,2]{1,0}, f32[2,2]{1,0}), f32[2,2]{1,0}) async-start(a, b), calls=custom_call_F32, async_execution_thread="parallel"
+      ROOT done = f32[2,2]{1,0} async-done(start)
+    }
+  )";
+
+  absl::string_view kFdoProfile = "";
+  auto config = GetModuleConfig(kFdoProfile);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloModule, config));
+
+  // It should compile without any issues.
+  TF_EXPECT_OK(ScheduleModule(module.get()));
+}
+
 }  // namespace
 }  // namespace xla::gpu
