@@ -126,7 +126,7 @@ std::string SingleTag(TF_Tensor* tags) {
   if (TF_TensorElementCount(tags) == 1) {
     const char* single_tag =
         static_cast<tensorflow::tstring*>(TF_TensorData(tags))->c_str();
-    return tensorflow::strings::StrCat(" (tag '", single_tag, "')");
+    return absl::StrCat(" (tag '", single_tag, "')");
   } else {
     return "";
   }

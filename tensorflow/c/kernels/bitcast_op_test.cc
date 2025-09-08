@@ -60,7 +60,7 @@ void TestBitcastOp(Tensor* input_tensor, DataType out_type,
   (*def.mutable_attr())["type"] = outTypeAttr;
 
   def.add_input(
-      strings::StrCat("input1: ", DataTypeString(input_tensor->dtype())));
+      absl::StrCat("input1: ", DataTypeString(input_tensor->dtype())));
 
   std::unique_ptr<OpKernel> kernel =
       CreateOpKernel(DeviceType(DEVICE_CPU), nullptr, nullptr, def, 1, &status);
