@@ -164,6 +164,8 @@ TfLiteRegistration* Register_IMAG();
 TfLiteRegistration* Register_REAL();
 TfLiteRegistration* Register_COMPLEX_ABS();
 TfLiteRegistration* Register_CONV_3D_TRANSPOSE_REF();
+TfLiteRegistration* Register_RFFT2D();
+TfLiteRegistration* Register_CUMSUM();
 TfLiteRegistration* Register_BROADCAST_ARGS();
 TfLiteRegistration* Register_RANDOM_STANDARD_NORMAL();
 TfLiteRegistration* Register_BUCKETIZE();
@@ -406,6 +408,7 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
              /* max_version = */ 2);
   AddBuiltin(BuiltinOperator_FLOOR, Register_FLOOR_REF());
   AddBuiltin(BuiltinOperator_NEG, Register_NEG());
+  AddBuiltin(BuiltinOperator_CUMSUM, Register_CUMSUM());
   AddBuiltin(BuiltinOperator_SELECT, Register_SELECT(),
              /* min_version = */ 1,
              /* max_version = */ 2);
@@ -471,6 +474,7 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
              /* min_version = */ 1,
              /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_SQUARE, Register_SQUARE());
+  AddBuiltin(BuiltinOperator_RFFT2D, Register_RFFT2D());
   AddBuiltin(BuiltinOperator_ZEROS_LIKE, Register_ZEROS_LIKE());
   AddBuiltin(BuiltinOperator_FLOOR_MOD, Register_FLOOR_MOD(),
              /* min_version = */ 1,
