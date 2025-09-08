@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/autotuning/dot_search_space.h"
 
 #include <memory>
+#include <ostream>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -35,6 +36,12 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
+
+// Prints a TritonGemmConfig for test messages.
+void PrintTo(const TritonGemmConfig& config, std::ostream* os) {
+  *os << config.ToString();
+}
+
 namespace {
 
 using ::testing::AllOf;
@@ -580,6 +587,50 @@ TEST_F(DotSearchSpaceTest, ReturnsNonEmptySetForUnusualHints) {
   EXPECT_THAT(
       search_space.OptimizeConfigSet(search_space.GenerateConfigs(), {hint}),
       Not(IsEmpty()));
+}
+
+TEST_F(DotSearchSpaceTest, RestrictsSplitKPerNMTile) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          GetDefaultDotModule());
+  TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
+
+  auto make_config = [](int block_m, int block_n, int block_k, int split_k) {
+    return TritonGemmConfig{
+        /*block_m=*/block_m, /*block_n=*/block_n,
+        /*block_k=*/block_k, /*split_k=*/split_k,
+        /*num_stages=*/1,    /*num_warps=*/4,
+        /*num_ctas=*/1};
+  };
+
+  std::vector<TritonGemmConfig> configs = {
+      make_config(32, 32, 32, 4),
+      make_config(32, 32, 32, 8),
+      make_config(16, 16, 16, 2),
+      make_config(16, 16, 16, 4),
+  };
+
+  std::vector<TritonGemmConfig> hints = {
+      // Less than min split k for this tile size.
+      make_config(32, 32, 32, 1),
+      // Greater than max split K for this tile size.
+      make_config(32, 32, 32, 32),
+      // Less than min split k for this tile size.
+      make_config(16, 16, 16, 1),
+      // Greater than max split K for this tile size.
+      make_config(16, 16, 16, 8),
+      // Does not have a per-tile split K limit.
+      make_config(16, 32, 16, 32),
+  };
+
+  std::vector<TritonGemmConfig> expected = {
+      make_config(32, 32, 32, 4),
+      make_config(32, 32, 32, 8),
+      make_config(16, 16, 16, 2),
+      make_config(16, 16, 16, 4),
+  };
+
+  EXPECT_THAT(search_space.OptimizeConfigSet(configs, hints),
+              ElementsAreArray(expected));
 }
 
 }  // namespace
