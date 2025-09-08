@@ -1092,6 +1092,13 @@ GetPropagatedDimOrdersAndRequirementsIfProfitablyFusible(
   if (hlo.opcode() == HloOpcode::kPad) {
     return FusionDecision::Forbid("Pads are not fused yet.");
   }
+  if (hlo.opcode() == HloOpcode::kPower && hlo.user_count() > 1) {
+    // The check is placed specifically above the binary elementwise ops with
+    // broadcast operands to prohibit fusing even with broadcast inputs.
+    return FusionDecision::Forbid(
+        "Not fusing power with multiple users because it may result in "
+        "expensive op duplication.");
+  }
   if (auto decision =
           legacy_triton::IsTritonSupportedInstruction(hlo, gpu_version);
       !decision.CanFuse()) {
