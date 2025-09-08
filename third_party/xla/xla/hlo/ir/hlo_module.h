@@ -457,6 +457,19 @@ class HloModule {
   // Returns a stable fingerprint of the module using the given print options.
   uint64_t ToFingerprint(const HloPrintOptions& options) const;
 
+  // Returns a stable fingerprint of the computation using the given print
+  // options.
+  static uint64_t ComputationToFingerprint(const HloComputation* computation,
+                                           const HloPrintOptions& options);
+
+  // Returns a stable fingerprint of the instruction using the given print
+  // options.
+  static uint64_t InstructionToFingerprint(const HloInstruction* instruction,
+                                           const HloPrintOptions& options);
+
+  // Returns a stable fingerprint of the empty string.
+  static uint64_t EmptyFingerprint();
+
   // Convert an HloModule to or from a proto.
   HloModuleProto ToProto() const;
   static absl::StatusOr<std::unique_ptr<HloModule>> CreateFromProto(
