@@ -368,6 +368,18 @@ static absl::StatusOr<HloInstruction*> CreateScanWithIndices(
     auto* indices_mask = parent->AddInstruction(HloInstruction::CreateCompare(
         ShapeUtil::MakeShape(PRED, {num_updates}), indices,
         concatenated_indices, ComparisonDirection::kEq));
+    auto* false_constant = parent->AddInstruction(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
+    auto* first_element_false =
+        parent->AddInstruction(HloInstruction::CreateBroadcast(
+            ShapeUtil::MakeShape(PRED, {1}), false_constant, {}));
+    auto* remaining_mask = parent->AddInstruction(HloInstruction::CreateSlice(
+        ShapeUtil::MakeShape(PRED, {num_updates - 1}), indices_mask, {1},
+        {num_updates}, {1}));
+    indices_mask = parent->AddInstruction(HloInstruction::CreateConcatenate(
+        ShapeUtil::MakeShape(PRED, {num_updates}),
+        {first_element_false, remaining_mask}, 0));
+
     std::vector<HloInstruction*> map_operands = {current_updates,
                                                  concatenated_updates};
     TF_ASSIGN_OR_RETURN(HloInstruction * reduced_updates,
