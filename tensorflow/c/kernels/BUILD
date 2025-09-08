@@ -21,6 +21,22 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "@com_google_absl//absl/log:check",
     ],
+    copts = select({
+        "//conditions:default": [],
+        "//tensorflow:asan": [
+            "-fsanitize=address",
+            "-g",
+            "-Wno-error",
+            "-Wno-unknown-warning-option",
+            "-Wno-gnu-offsetof-extensions",
+        ],
+    }),
+    linkopts = select({
+        "//conditions:default": [],
+        "//tensorflow:asan": [
+            "-fsanitize=address",
+        ],
+    }),
 )
 
 tf_kernel_library(

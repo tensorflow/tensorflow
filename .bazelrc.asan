@@ -1,0 +1,12 @@
+# AddressSanitizer (ASan) Bazel config for TensorFlow
+build:asan --repo_env=CC="clang"
+build:asan --repo_env=CXX="clang++"
+build:asan --copt=-fsanitize=address
+build:asan --linkopt=-fsanitize=address
+build:asan --copt=-g
+build:asan --copt=-Wno-error
+build:asan --copt=-Wno-unknown-warning-option
+build:asan --copt=-Wno-gnu-offsetof-extensions
+build:asan --config=opt
+# Optionally, add static ASan runtime if needed
+# build:asan --linkopt=/usr/lib/llvm-18/lib/clang/18/lib/linux/libclang_rt.asan-x86_64.a

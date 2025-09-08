@@ -62,6 +62,14 @@ tf_native_cc_binary(
     srcs = [
         "tools/op_quant_spec_getters_gen.cc",
     ],
+    copts = select({
+        "//tensorflow:asan": ["-fsanitize=address"],
+        "//conditions:default": [],
+    }),
+    linkopts = select({
+        "//tensorflow:asan": ["-fsanitize=address"],
+        "//conditions:default": [],
+    }),
     deps = [
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:TableGen",
