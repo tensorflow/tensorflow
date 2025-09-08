@@ -18,11 +18,11 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <utility>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
@@ -81,6 +81,13 @@ class RaggedAllToAllStartThunk : public CollectiveThunk {
     int device_ordinal;
     RankId rank;
 
+    // Host memory allocations for ragged metadata.
+    absl::InlinedVector<std::unique_ptr<se::MemoryAllocation>, 8>
+        host_buffer_allocs;
+
+    // Device memory buffer for output offsets.
+    se::DeviceMemoryHandle output_offsets_device_buffer;
+
     // Event to synchronize streams on different devices at the start of the
     // kernel.
     std::unique_ptr<se::Event> start_event;
@@ -89,13 +96,8 @@ class RaggedAllToAllStartThunk : public CollectiveThunk {
     // kernel.
     std::unique_ptr<se::Event> end_event;
 
-    StreamState(int device_ordinal, RankId rank,
-                std::unique_ptr<se::Event> start_event,
-                std::unique_ptr<se::Event> end_event)
-        : device_ordinal(device_ordinal),
-          rank(rank),
-          start_event(std::move(start_event)),
-          end_event(std::move(end_event)) {}
+    StreamState(int device_ordinal, RankId rank)
+        : device_ordinal(device_ordinal), rank(rank) {}
   };
 
   bool is_local() const;
@@ -108,13 +110,6 @@ class RaggedAllToAllStartThunk : public CollectiveThunk {
   const bool one_shot_kernel_enabled_;
 
   absl::Mutex mutex_;
-  absl::flat_hash_map<se::StreamExecutor*,
-                      std::vector<std::unique_ptr<se::MemoryAllocation>>>
-      host_buffer_allocs_ ABSL_GUARDED_BY(mutex_);
-
-  absl::flat_hash_map<se::StreamExecutor*, se::DeviceMemoryHandle>
-      device_buffer_allocs_ ABSL_GUARDED_BY(mutex_);
-
   absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<StreamState>>
       per_stream_states_ ABSL_GUARDED_BY(mutex_);
 };
