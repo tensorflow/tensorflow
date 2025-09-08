@@ -125,11 +125,11 @@ static absl::StatusOr<dnnl::graph::logical_tensor> CreateLogicalTensor(
 }
 
 static absl::StatusOr<dnnl::graph::logical_tensor> DefineParameter(
-    const HloInstruction* param) {
+    LogicalTensorMap& logical_tensors, const HloInstruction* param) {
   VLOG(3) << absl::StreamFormat("Define logical tensor for parameter: %s",
                                 param->ToString());
-
-  return CreateLogicalTensor(param->parameter_number(), param->shape());
+  size_t id = logical_tensors.size();
+  return CreateLogicalTensor(id, param->shape());
 }
 
 static absl::StatusOr<dnnl::graph::logical_tensor> DefineUnaryOp(
@@ -240,7 +240,8 @@ static absl::StatusOr<OneDnnFusion> EmitOneDnnFusion(
   for (const HloInstruction* instr : instructions) {
     switch (instr->opcode()) {
       case HloOpcode::kParameter: {
-        TF_ASSIGN_OR_RETURN(logical_tensors[instr], DefineParameter(instr));
+        TF_ASSIGN_OR_RETURN(logical_tensors[instr],
+                            DefineParameter(logical_tensors, instr));
       } break;
 
       // Unary elementwise ops.
