@@ -61,7 +61,7 @@ absl::Status ReplaceSendRecvs(const GraphDef& original_graph_def,
     TensorId id = ParseTensorName(inputs[i]);
     input_nodes.insert(id.first);
     string& recv_node_name = recv_node_names[i];
-    recv_node_name = strings::StrCat("_recv_", id.first, "_", id.second);
+    recv_node_name = absl::StrCat("_recv_", id.first, "_", id.second);
     recv_node_map.emplace(recv_node_name, id);
   }
 
@@ -280,7 +280,7 @@ absl::Status FoldConstants(const GraphDef& input_graph_def,
                                        TensorId{node->name(), 0}, compare);
     for (auto it = pair.first; it != pair.second; ++it) {
       const string recv_name =
-          strings::StrCat("_recv_", it->first, "_", it->second);
+          absl::StrCat("_recv_", it->first, "_", it->second);
       auto& recv_partial_shapes = shape_map[recv_name];
       // For whatever reason (for example, name collision) if the map entry was
       // already there, then do nothing.
