@@ -192,7 +192,8 @@ TEST_F(AutotunerTest, NoCodegenBackend) {
   auto device_description = CreateDummyDeviceDescription();
   auto autotuner = Autotuner::Create({}, nullptr, config_,
                                      std::make_unique<MockAutotunerCache>());
-  EXPECT_THAT(autotuner, StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(autotuner,
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_F(AutotunerTest, NoCacheManager) {
@@ -201,7 +202,7 @@ TEST_F(AutotunerTest, NoCacheManager) {
   backends.push_back(std::make_unique<MockCodegenBackend>());
   auto autotuner =
       Autotuner::Create(std::move(backends), nullptr, config_, nullptr);
-  EXPECT_THAT(autotuner, IsOk());
+  EXPECT_THAT(autotuner, absl_testing::IsOk());
 }
 
 TEST_F(AutotunerTest, AutotuneButNoSupportedConfigs) {
@@ -380,7 +381,8 @@ TEST_F(AutotunerTest, AutotuneModuleWithDuplicateInstructions) {
           /*instr_to_autotune=*/HloOpcode::kAdd,
           /*instr_to_apply_config_and_count=*/{HloOpcode::kAdd, 2}));
 
-  EXPECT_THAT(autotuner->Autotune(module.get(), should_autotune), IsOk());
+  EXPECT_THAT(autotuner->Autotune(module.get(), should_autotune),
+              absl_testing::IsOk());
 }
 
 TEST_F(AutotunerTest, CacheHit) {
@@ -409,7 +411,7 @@ TEST_F(AutotunerTest, CacheHit) {
       Autotuner::Create(std::move(backends), std::move(profiler), config_,
                         std::move(cache_manager)));
   auto dummy_instr = HloInstruction::CreateConstant(LiteralUtil::CreateR0(1));
-  EXPECT_THAT(autotuner->Autotune(dummy_instr.get()), IsOk());
+  EXPECT_THAT(autotuner->Autotune(dummy_instr.get()), absl_testing::IsOk());
 }
 
 TEST_F(AutotunerTest, AutotuneWithBufferCheck) {
@@ -456,7 +458,7 @@ TEST_F(AutotunerTest, AutotuneWithBufferCheck) {
       Autotuner::Create(std::move(backends), std::move(profiler), config_,
                         std::make_unique<MockAutotunerCache>()));
   auto dummy_instr = HloInstruction::CreateConstant(LiteralUtil::CreateR0(1));
-  EXPECT_THAT(autotuner->Autotune(dummy_instr.get()), IsOk());
+  EXPECT_THAT(autotuner->Autotune(dummy_instr.get()), absl_testing::IsOk());
 }
 
 TEST_F(AutotunerTest, AutotuneWithScratchBytesOptimization) {
@@ -499,7 +501,7 @@ TEST_F(AutotunerTest, AutotuneWithScratchBytesOptimization) {
       Autotuner::Create(std::move(backends), std::move(profiler), config_,
                         std::make_unique<MockAutotunerCache>()));
   auto dummy_instr = HloInstruction::CreateConstant(LiteralUtil::CreateR0(1));
-  EXPECT_THAT(autotuner->Autotune(dummy_instr.get()), IsOk());
+  EXPECT_THAT(autotuner->Autotune(dummy_instr.get()), absl_testing::IsOk());
 }
 
 }  // namespace
