@@ -45,7 +45,7 @@ class ThreadPoolDeviceFactory : public DeviceFactory {
       n = iter->second;
     }
     for (int i = 0; i < n; i++) {
-      string name = strings::StrCat(name_prefix, "/device:CPU:", i);
+      string name = absl::StrCat(name_prefix, "/device:CPU:", i);
       std::unique_ptr<ThreadPoolDevice> tpd;
       if (options.config.experimental().use_numa_affinity()) {
         int numa_node = i % num_numa_nodes;
