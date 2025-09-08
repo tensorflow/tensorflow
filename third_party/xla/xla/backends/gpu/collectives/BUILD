@@ -26,6 +26,27 @@ bool_flag(
     build_setting_default = True,
 )
 
+# NVSHMEM requires builtin functions since it uses printf's for debugging.
+config_setting(
+    name = "no_builtin_used",
+    values = {
+        "copt": "-fno-builtin",
+    },
+)
+
+cc_library(
+    name = "nvshmem_collectives_if_builtin_used",
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps =
+        select({
+            ":no_builtin_used": [],
+            "//conditions:default": [":nvshmem_collectives"],
+        }),
+)
+
 config_setting(
     name = "nvshmem_supported",
     constraint_values = [
@@ -45,7 +66,7 @@ cc_library(
     ],
     deps =
         select({
-            ":nvshmem_supported": [":nvshmem_collectives"],
+            ":nvshmem_supported": [":nvshmem_collectives_if_builtin_used"],
             "//conditions:default": [],
         }),
 )
