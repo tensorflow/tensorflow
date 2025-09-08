@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
@@ -27,8 +28,9 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
+#include "xla/core/collectives/rank_id.h"
+#include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/collective_ops_utils.h"
 #include "xla/stream_executor/device_memory_handle.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/memory_allocation.h"
@@ -75,6 +77,27 @@ class RaggedAllToAllStartThunk : public CollectiveThunk {
                                      CommunicatorHandle comm) override;
 
  private:
+  struct StreamState {
+    int device_ordinal;
+    RankId rank;
+
+    // Event to synchronize streams on different devices at the start of the
+    // kernel.
+    std::unique_ptr<se::Event> start_event;
+
+    // Event to synchronize streams on different devices at the end of the
+    // kernel.
+    std::unique_ptr<se::Event> end_event;
+
+    StreamState(int device_ordinal, RankId rank,
+                std::unique_ptr<se::Event> start_event,
+                std::unique_ptr<se::Event> end_event)
+        : device_ordinal(device_ordinal),
+          rank(rank),
+          start_event(std::move(start_event)),
+          end_event(std::move(end_event)) {}
+  };
+
   bool is_local() const;
   bool should_use_memcpy() const { return p2p_memcpy_enabled_ && is_local(); }
 
@@ -92,14 +115,8 @@ class RaggedAllToAllStartThunk : public CollectiveThunk {
   absl::flat_hash_map<se::StreamExecutor*, se::DeviceMemoryHandle>
       device_buffer_allocs_ ABSL_GUARDED_BY(mutex_);
 
-  absl::Mutex events_mutex_;
-  // Events to synchronize steams on different devices at the start of the
-  // kernel.
-  absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<se::Event>>
-      start_events_ ABSL_GUARDED_BY(events_mutex_);
-  // Events to synchronize steams on different devices at the end of the kernel.
-  absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<se::Event>>
-      end_events_ ABSL_GUARDED_BY(events_mutex_);
+  absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<StreamState>>
+      per_stream_states_ ABSL_GUARDED_BY(mutex_);
 };
 
 }  // namespace gpu

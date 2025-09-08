@@ -42,9 +42,9 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/service/rendezvous.h"
 #include "xla/shape.h"
@@ -466,48 +466,58 @@ absl::Status RaggedAllToAllStartThunk::Initialize(
   TF_RETURN_IF_ERROR(CollectiveThunk::Initialize(params));
   device_count_ = params.local_device_count;
 
-  // Allocate temp buffers in the host memory to load the sizes and offsets of
-  // ragged tensors from device memory.
-  absl::MutexLock lock(&mutex_);
-  if (!host_buffer_allocs_.contains(params.executor)) {
-    std::vector<std::unique_ptr<se::MemoryAllocation>> allocs;
-    for (int64_t i = 0; i < kNumRaggedMetadataOperands; ++i) {
-      TF_ASSIGN_OR_RETURN(std::unique_ptr<se::MemoryAllocation> alloc,
-                          params.executor->HostMemoryAllocate(
-                              config_.num_total_updates * sizeof(int64_t)));
-      allocs.push_back(std::move(alloc));
-    }
-    host_buffer_allocs_.emplace(params.executor, std::move(allocs));
-  }
-
-  if (!device_buffer_allocs_.contains(params.executor)) {
-    se::DeviceMemoryHandle output_offsets_device_buffer{
-        params.executor,
-        params.executor->Allocate(config_.num_total_updates * sizeof(int64_t))};
-
-    if (output_offsets_device_buffer.memory().is_null()) {
-      return absl::InternalError("Failed to allocate output offsets buffer.");
+  {
+    // Allocate temp buffers in the host memory to load the sizes and offsets of
+    // ragged tensors from device memory.
+    absl::MutexLock lock(&mutex_);
+    if (!host_buffer_allocs_.contains(params.executor)) {
+      std::vector<std::unique_ptr<se::MemoryAllocation>> allocs;
+      for (int64_t i = 0; i < kNumRaggedMetadataOperands; ++i) {
+        TF_ASSIGN_OR_RETURN(std::unique_ptr<se::MemoryAllocation> alloc,
+                            params.executor->HostMemoryAllocate(
+                                config_.num_total_updates * sizeof(int64_t)));
+        allocs.push_back(std::move(alloc));
+      }
+      host_buffer_allocs_.emplace(params.executor, std::move(allocs));
     }
 
-    device_buffer_allocs_.emplace(params.executor,
-                                  std::move(output_offsets_device_buffer));
+    if (!device_buffer_allocs_.contains(params.executor)) {
+      se::DeviceMemoryHandle output_offsets_device_buffer{
+          params.executor, params.executor->Allocate(config_.num_total_updates *
+                                                     sizeof(int64_t))};
+
+      if (output_offsets_device_buffer.memory().is_null()) {
+        return absl::InternalError("Failed to allocate output offsets buffer.");
+      }
+
+      device_buffer_allocs_.emplace(params.executor,
+                                    std::move(output_offsets_device_buffer));
+    }
   }
 
   if (is_local()) {
-    se::StreamExecutor* executor = params.executor;
-    {
-      absl::MutexLock lock(&events_mutex_);
-      if (!start_events_.count(executor)) {
-        TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Event> event,
-                            executor->CreateEvent());
-        start_events_.insert({executor, std::move(event)});
-      }
+    absl::MutexLock lock(&mutex_);
 
-      if (!end_events_.count(executor)) {
-        TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Event> event,
-                            executor->CreateEvent());
-        end_events_.insert({executor, std::move(event)});
-      }
+    se::StreamExecutor* executor = params.executor;
+
+    if (!per_stream_states_.contains(executor)) {
+      TF_ASSIGN_OR_RETURN(
+          const GpuCliqueKey clique_key,
+          GetCollectiveGpuCliqueKey(*params.collective_params, config_.config));
+
+      const std::optional<RankId> rank =
+          clique_key.rank(params.collective_params->global_device_id);
+
+      TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Event> start_event,
+                          executor->CreateEvent());
+      TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Event> end_event,
+                          executor->CreateEvent());
+
+      auto state = std::make_unique<StreamState>(
+          executor->device_ordinal(), rank.value(), std::move(start_event),
+          std::move(end_event));
+
+      per_stream_states_.emplace(executor, std::move(state));
     }
   }
   return absl::OkStatus();
@@ -562,12 +572,10 @@ absl::StatusOr<bool> RaggedAllToAllStartThunk::RunCollective(
       bool peer_access_enabled,
       params.collective_cliques->peer_access_enabled(comm_handle.clique_key));
 
-  se::Event* start_event = nullptr;
-  se::Event* end_event = nullptr;
+  StreamState* state = nullptr;
   {
-    absl::MutexLock lock(&events_mutex_);
-    start_event = start_events_[stream.parent()].get();
-    end_event = end_events_[stream.parent()].get();
+    absl::MutexLock lock(&mutex_);
+    state = per_stream_states_[stream.parent()].get();
   }
 
   bool should_use_one_shot_kernel =
@@ -579,7 +587,8 @@ absl::StatusOr<bool> RaggedAllToAllStartThunk::RunCollective(
     TF_RETURN_IF_ERROR(RunOneShotRaggedAllToAll(
         comm_handle.clique_key, config_.num_input_rows,
         config_.num_row_elements, config_.num_total_updates, device_buffers,
-        stream, *rank, comm_handle.comm, start_event, end_event));
+        stream, *rank, comm_handle.comm, state->start_event.get(),
+        state->end_event.get()));
     return false;
   }
 
@@ -587,7 +596,8 @@ absl::StatusOr<bool> RaggedAllToAllStartThunk::RunCollective(
     TF_RETURN_IF_ERROR(RunMemCpyRaggedAllToAll(
         comm_handle.clique_key, *rank, config_.num_row_elements,
         config_.num_total_updates, device_buffers, stream, comm_handle.comm,
-        ragged_metadata_allocs, start_event, end_event));
+        ragged_metadata_allocs, state->start_event.get(),
+        state->end_event.get()));
     return false;
   }
 
