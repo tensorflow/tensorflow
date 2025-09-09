@@ -409,24 +409,25 @@ LogicalResult PushSqueezeDimsUpThroughExpandDims(SqueezeDimsOp op,
   return success();
 }
 
-// Pushes squeeze_dims up through tt.expand_dims, or folds them.
+// Pushes squeeze_dims up into tt.expand_dims.
+//
 // Example:
-//   %1 = scf.if %cond -> type1 {
+//   %0 = scf.if %cond -> type1 {
 //     scf.yield %then : type1
 //   } else {
 //     scf.yield %else : type1
 //   }
-//   %2 = squeeze_dims %1, axis=0
+//   %1 = squeeze_dims %0, axis=0
 // is rewritten to:
-//   %1 = scf.if %cond -> type2 {
-//     %then_ = squeeze_dims %then, axis=0
-//     scf.yield %2 : type2
+//   %0 = scf.if %cond -> type2 {
+//     %1 = squeeze_dims %then, axis=0
+//     scf.yield %1 : type2
 //   } else {
-//     %else_ = squeeze_dims %else, axis=0
-//     scf.yield %else_ : type2
+//     %2 = squeeze_dims %else, axis=0
+//     scf.yield %2 : type2
 //   }
-LogicalResult PushSqueezeDimsUpThroughIf(SqueezeDimsOp op,
-                                         PatternRewriter& rewriter) {
+LogicalResult PushSqueezeDimsUpIntoIf(SqueezeDimsOp op,
+                                      PatternRewriter& rewriter) {
   Value src = op.getSrc();
   auto if_op = src.getDefiningOp<scf::IfOp>();
   if (!if_op || !src.hasOneUse()) {
@@ -518,7 +519,7 @@ class TritonXLASqueezeDimsPass
     patterns.add<PushSqueezeDimsUpThroughElementwise>(&getContext());
     patterns.add(PushSqueezeDimsUpThroughBroadcast);
     patterns.add(PushSqueezeDimsUpThroughExpandDims);
-    patterns.add(PushSqueezeDimsUpThroughIf);
+    patterns.add(PushSqueezeDimsUpIntoIf);
     patterns.add(PushSqueezeDimsUpThroughJoin);
     patterns.add(PushSqueezeDimsUpThroughReduce);
     patterns.add(PushSqueezeDimsUpThroughTrans);
