@@ -49,6 +49,7 @@ default_visibility = [
     "@org_xprof//xprof:__subpackages__",
     "//tensorflow/cc/experimental/tfa:__subpackages__",
     "//tensorflow/compiler/mlir/utils:__subpackages__",
+    # copybara:uncomment "//tensorflow/lite/kernels/parse_example:__pkg__",
 ]
 
 package(
@@ -1707,6 +1708,7 @@ tf_proto_library(
     visibility = [
         #internal library,
         "//tensorflow/core:__subpackages__",
+        "//tensorflow/lite/kernels/parse_example:__pkg__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/profiler/internal:__pkg__",
         "//tensorflow/security/fuzzing:__subpackages__",

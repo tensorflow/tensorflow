@@ -10,6 +10,7 @@ package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/core:__subpackages__",
+        "//tensorflow/lite/kernels/parse_example:__pkg__",
         "//tensorflow/python/profiler/internal:__pkg__",
     ],
     licenses = ["notice"],
