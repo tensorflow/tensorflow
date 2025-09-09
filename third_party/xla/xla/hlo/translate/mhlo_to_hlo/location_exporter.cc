@@ -131,7 +131,8 @@ static std::shared_ptr<xla::OriginalValue> GetOriginalValueFromLoc(
     }
   }
 
-  auto original_value = xla::ParseOriginalValue(loc_original_value);
+  auto original_value =
+      xla::ParseOriginalValue(std::string(loc_original_value));
   if (!original_value.ok()) {
     return nullptr;
   }
