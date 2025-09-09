@@ -63,7 +63,7 @@ void SetCoordinationServiceLeader(const ServerDef& server_def,
               << collective_leader;
   } else {
     const std::string& default_leader =
-        strings::StrCat("/job:", server_def.job_name(), "/replica:0/task:0");
+        absl::StrCat("/job:", server_def.job_name(), "/replica:0/task:0");
     config->set_service_leader(default_leader);
     LOG(INFO) << "No coordination leader is set, using the default leader "
               << default_leader;
