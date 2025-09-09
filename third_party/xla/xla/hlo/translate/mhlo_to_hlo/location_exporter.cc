@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/translate/attributes.h"
+#include "xla/hlo/translate/hlo_to_mhlo/hlo_utils.h"
 #include "xla/hlo/translate/mhlo_to_hlo/stack_frame_index_builder.h"
 #include "xla/xla_data.pb.h"
 
@@ -131,7 +132,8 @@ static std::shared_ptr<xla::OriginalValue> GetOriginalValueFromLoc(
     }
   }
 
-  auto original_value = xla::ParseOriginalValue(loc_original_value);
+  auto original_value =
+      xla::ParseOriginalValue(xla::ToStringView(loc_original_value));
   if (!original_value.ok()) {
     return nullptr;
   }
