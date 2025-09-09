@@ -532,13 +532,6 @@ CoordinationService::ConnectAfterBarrierPasses(absl::string_view task_name,
     if (s.ok() && incarnation == task_state->GetTaskIncarnation()) {
       // Connect task to service.
       task_state->Connect();
-      if (task_state->IsRecoverable() &&
-          absl::GetFlag(FLAGS_leave_barriers_on_recoverable_agent_restart)) {
-        // We want to mark the task unsynced when it connects again. When the
-        // task passes a barrier with other tasks, it will be removed from the
-        // unsynced set.
-        unsynced_recoverable_jobs_.insert(task);
-      }
       done(absl::OkStatus());
       ClusterStateUpdated();
     } else if (s.ok() || absl::IsCancelled(s)) {
@@ -621,6 +614,20 @@ void CoordinationService::RegisterTaskAsync(const CoordinatedTask& task,
       // and the barrier has not succeeded yet.
       // There is no state that needs to be cleaned up.
       task_cluster_state->SetTaskIncarnation(incarnation);
+      // If the task is recoverable and rejoins after the cluster register
+      // barrier has passed, we want to mark the task unsynced when it connects
+      // again. When the task passes a barrier with other tasks, it will be
+      // removed from the unsynced set.
+      if (task_cluster_state->IsRecoverable() &&
+          absl::GetFlag(FLAGS_leave_barriers_on_recoverable_agent_restart)) {
+        if (barriers_.contains(kClusterRegisterBarrierId) &&
+            barriers_[kClusterRegisterBarrierId].passed) {
+          // We want to mark the task unsynced when it connects again. When the
+          // task passes a barrier with other tasks, it will be removed from the
+          // unsynced set.
+          unsynced_recoverable_jobs_.insert(GetTaskName(task));
+        }
+      }
       BarrierAsyncLocked(
           kClusterRegisterBarrierId, kUniqueBarrierCounter,
           cluster_register_timeout_, task, {},
