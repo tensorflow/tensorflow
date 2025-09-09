@@ -32,7 +32,7 @@ namespace xla::cpu {
 static absl::Mutex xfeed_manager_mutex(absl::kConstInit);
 
 XfeedManager* GetXfeedManager(int device_ordinal) {
-  absl::MutexLock lock(&xfeed_manager_mutex);
+  absl::MutexLock lock(xfeed_manager_mutex);
   static auto* const managers = new absl::flat_hash_map<int, XfeedManager*>();
 
   auto it = managers->find(device_ordinal);
@@ -44,7 +44,7 @@ XfeedManager* GetXfeedManager(int device_ordinal) {
 
 void XfeedQueueManager::EnqueueBuffersAtomically(
     absl::Span<XfeedBuffer* const> buffers) {
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   for (XfeedBuffer* b : buffers) {
     VLOG(3) << "Enqueueing " << queue_name_ << " buffer (of " << buffers.size()
             << " buffers) with length: " << b->length();
@@ -57,7 +57,7 @@ XfeedBuffer* XfeedQueueManager::BlockingDequeueBuffer() {
   auto available_buffer = [this]() ABSL_SHARED_LOCKS_REQUIRED(mu_) {
     return !enqueued_buffers_.empty();
   };
-  absl::MutexLock l(&mu_, absl::Condition(&available_buffer));
+  absl::MutexLock l(mu_, absl::Condition(&available_buffer));
   VLOG(3) << "A buffer is available!";
   CHECK(current_buffer_ == nullptr);
   current_buffer_ = enqueued_buffers_.front();
@@ -70,7 +70,7 @@ void XfeedQueueManager::ReleaseCurrentBuffer(int32_t length, void* data,
   VLOG(3) << "Releasing buffer with shape: "
           << (shape.ok() ? ShapeUtil::HumanString(shape.value())
                          : "<error status>");
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   CHECK(current_buffer_ != nullptr);
   CHECK_EQ(length, current_buffer_->length());
   CHECK_EQ(data, current_buffer_->data());
