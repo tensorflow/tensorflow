@@ -62,7 +62,7 @@ class SleepDatasetOp : public UnaryDatasetOpKernel {
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::make_unique<Iterator>(
-          Iterator::Params{this, strings::StrCat(prefix, "::Sleep")});
+          Iterator::Params{this, absl::StrCat(prefix, "::Sleep")});
     }
 
     const DataTypeVector& output_dtypes() const override {
