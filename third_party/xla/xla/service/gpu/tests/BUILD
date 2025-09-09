@@ -153,6 +153,8 @@ xla_test(
     name = "command_buffer_test",
     srcs = ["command_buffer_test.cc"],
     backends = ["gpu"],
+    # TSAN reports a false positive for the test due to noninstrumented CUDA library code.
+    env = {"TSAN_OPTIONS": "ignore_noninstrumented_modules=1"},
     tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
         "//xla:literal",
