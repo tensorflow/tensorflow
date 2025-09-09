@@ -336,6 +336,13 @@ ModuleComputationsTransitivelyContainCustomCall(const HloModule& module) {
 
 namespace cpu {
 
+inline bool IsOneDnnCompatible(bool is_aot_compile) {
+#ifdef ENABLE_ONEDNN_ASYNC
+  return !is_aot_compile;
+#endif
+  return false;
+}
+
 CpuCompiler::CpuCompiler() {
   // Initialize LLVM the first time the CpuCompiler is initialized.
   static bool llvm_initialized = []() {
@@ -535,7 +542,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   const bool is_fusion_emitters =
       module->config().debug_options().xla_cpu_use_fusion_emitters();
   bool use_shardy_partitioner = module->config().use_shardy_partitioner();
-  bool is_onednn_compatible = false;
+  bool is_onednn_compatible = IsOneDnnCompatible(is_aot_compile);
   bool flatten_before_fusion = !options::FlattenAfterFusion(module->config());
 
   if (num_partitions > 1) {
@@ -674,8 +681,10 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
 #if defined(INTEL_MKL)
   // AOT compiled code runs in single thread.
   bool is_thunk_runtime = true;
-  is_onednn_compatible = !is_aot_compile && !is_thunk_runtime;
-  if (is_onednn_compatible) {
+  // TODO(intel-tf): Use IsOneDnnCompatible function to determine whether to
+  // enable OneDnnOpsRewriter after enabling the OneDnnOpsRewriter with thunk
+  // runtime.
+  if (!is_thunk_runtime) {
     // Placing OneDnnOpsRewriter here to match the flax patterns
     // TODO: Decide where would be the appropriate place for this pass to make
     // it more generic
@@ -867,7 +876,7 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     const CompileOptions& compile_options) {
   const auto& debug_options = module->config().debug_options();
   const bool is_fusion_emitters = debug_options.xla_cpu_use_fusion_emitters();
-  bool is_onednn_compatible = false;
+  bool is_onednn_compatible = IsOneDnnCompatible(is_aot_compile);
   bool flatten_after_fusion = options::FlattenAfterFusion(module->config());
   HloPassPipeline pipeline("HLO passes after layout assignment");
 
@@ -893,8 +902,6 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
 
 #if defined(INTEL_MKL)
   // AOT compiled code runs in single thread.
-  bool is_thunk_runtime = true;
-  is_onednn_compatible = !is_aot_compile && !is_thunk_runtime;
   if (is_onednn_compatible) {
     // Run SimplifyFPConversions pass to simplify the BF16 pattern and make it
     // easier to match.

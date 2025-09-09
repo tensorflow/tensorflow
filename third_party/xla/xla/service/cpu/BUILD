@@ -928,6 +928,7 @@ cc_library(
     name = "thunk_emitter",
     srcs = ["thunk_emitter.cc"],
     hdrs = ["thunk_emitter.h"],
+    copts = tsl_copts(),
     local_defines = if_graph_api(["XLA_ONEDNN_USE_GRAPH_API=1"]),
     deps = [
         ":backend_config_proto_cc",
@@ -979,6 +980,7 @@ cc_library(
         "//xla/backends/cpu/runtime:topk_thunk",
         "//xla/backends/cpu/runtime:while_thunk",
         "//xla/backends/cpu/runtime/onednn:onednn_fusion_thunk",
+        "//xla/backends/cpu/runtime/onednn:onednn_op_thunk",
         "//xla/backends/cpu/runtime/xnnpack:xnn_dot_thunk",
         "//xla/backends/cpu/runtime/xnnpack:xnn_fusion_thunk",
         "//xla/codegen:kernel_definition",
