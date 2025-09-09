@@ -80,12 +80,10 @@ class SymbolicExpr {
   // rest.
   SymbolicExpr ReplaceSymbols(absl::Span<const SymbolicExpr> replacements,
                               int64_t num_dims) const;
-  // ReplaceDimsAndSymbols assumes the total number of dimensions and symbols in
-  // the expression is the same the size of dim_replacements and
-  // symbol_replacements.
   SymbolicExpr ReplaceDimsAndSymbols(
       absl::Span<const SymbolicExpr> dim_replacements,
-      absl::Span<const SymbolicExpr> symbol_replacements) const;
+      absl::Span<const SymbolicExpr> symbol_replacements,
+      int64_t num_dims) const;
 
   SymbolicExpr Canonicalize() const;
 
