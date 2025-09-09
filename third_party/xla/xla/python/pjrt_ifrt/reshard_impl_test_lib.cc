@@ -229,11 +229,11 @@ TEST_F(ReshardTest, BatchedWithDifferentSharding) {
 
   EXPECT_EQ(dst_arrays[0]->sharding(), *array_specs[0].sharding);
   EXPECT_THAT(CopyArrayToLiteral(dst_arrays[0]),
-              IsOkAndHolds(Eq(std::cref(literal))));
+              absl_testing::IsOkAndHolds(Eq(std::cref(literal))));
 
   EXPECT_EQ(dst_arrays[1]->sharding(), *array_specs[1].sharding);
   EXPECT_THAT(CopyArrayToLiteral(dst_arrays[1]),
-              IsOkAndHolds(Eq(std::cref(literal))));
+              absl_testing::IsOkAndHolds(Eq(std::cref(literal))));
 }
 
 TEST_F(ReshardTest, BatchedWithDifferentDeviceLists) {
@@ -294,11 +294,11 @@ TEST_F(ReshardTest, BatchedWithDifferentDeviceLists) {
 
   EXPECT_EQ(dst_arrays[0]->sharding(), *array_specs[0].sharding);
   EXPECT_THAT(CopyArrayToLiteral(dst_arrays[0]),
-              IsOkAndHolds(Eq(std::cref(literal))));
+              absl_testing::IsOkAndHolds(Eq(std::cref(literal))));
 
   EXPECT_EQ(dst_arrays[1]->sharding(), *array_specs[1].sharding);
   EXPECT_THAT(CopyArrayToLiteral(dst_arrays[1]),
-              IsOkAndHolds(Eq(std::cref(literal))));
+              absl_testing::IsOkAndHolds(Eq(std::cref(literal))));
 }
 
 TEST_F(ReshardTest, PoisonedInput) {
@@ -365,11 +365,11 @@ TEST_F(ReshardTest, PoisonedInput) {
 
   EXPECT_EQ(dst_arrays[0]->sharding(), *array_specs[0].sharding);
   EXPECT_THAT(CopyArrayToLiteral(dst_arrays[0]),
-              IsOkAndHolds(Eq(std::cref(literal))));
+              absl_testing::IsOkAndHolds(Eq(std::cref(literal))));
 
   EXPECT_EQ(dst_arrays[1]->sharding(), *array_specs[1].sharding);
   EXPECT_THAT(dst_arrays[1]->GetReadyFuture().Await(),
-              StatusIs(error.code(), HasSubstr(error.message())));
+              absl_testing::StatusIs(error.code(), HasSubstr(error.message())));
 }
 
 TEST_F(ReshardTest, DifferentDestinationLayout) {
@@ -417,7 +417,7 @@ TEST_F(ReshardTest, DifferentDestinationLayout) {
   EXPECT_EQ(dst_layout->xla_layout(), dst_array_spec.layout->xla_layout());
 
   EXPECT_THAT(CopyArrayToLiteral(dst_array),
-              IsOkAndHolds(Eq(std::cref(literal))));
+              absl_testing::IsOkAndHolds(Eq(std::cref(literal))));
 }
 
 class ReshardMemoryKindTest : public ReshardTest,
@@ -456,7 +456,7 @@ TEST_P(ReshardMemoryKindTest, Int4) {
   const ArrayRef& dst_array = dst_arrays[0];
   EXPECT_EQ(dst_array->sharding(), *dst_array_spec.sharding);
   EXPECT_THAT(CopyArrayToLiteral(dst_array),
-              IsOkAndHolds(Eq(std::cref(literal))));
+              absl_testing::IsOkAndHolds(Eq(std::cref(literal))));
 }
 
 auto AllMemoryKinds() {
@@ -535,7 +535,7 @@ TEST_P(ReshardParameterizedTest, RoundTrip) {
 
     EXPECT_EQ(dst_array->sharding(), *array_spec.sharding);
     EXPECT_THAT(CopyArrayToLiteral(dst_array),
-                IsOkAndHolds(Eq(std::cref(literal))));
+                absl_testing::IsOkAndHolds(Eq(std::cref(literal))));
   }
 
   // Reshard from destination back to source.
@@ -556,7 +556,7 @@ TEST_P(ReshardParameterizedTest, RoundTrip) {
 
     EXPECT_EQ(src_array->sharding(), *array_spec.sharding);
     EXPECT_THAT(CopyArrayToLiteral(src_array),
-                IsOkAndHolds(Eq(std::cref(literal))));
+                absl_testing::IsOkAndHolds(Eq(std::cref(literal))));
   }
 }
 
