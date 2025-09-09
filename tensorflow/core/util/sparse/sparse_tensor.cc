@@ -250,9 +250,9 @@ absl::Status SparseTensor::IndicesValidHelper() const {
       }
     }
     if (TF_PREDICT_FALSE(!valid || !increasing || !different)) {
-      string index = strings::StrCat("indices[", n, "] = [");
+      string index = absl::StrCat("indices[", n, "] = [");
       for (int di = 0; di < dims_; ++di) {
-        strings::StrAppend(&index, ix_t(n, di), di < dims_ - 1 ? "," : "]");
+        absl::StrAppend(&index, ix_t(n, di), di < dims_ - 1 ? "," : "]");
       }
       if (!valid) {
         return errors::InvalidArgument(index,
