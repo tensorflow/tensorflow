@@ -39,6 +39,8 @@ TargetMachineFeatures::TargetMachineFeatures(
   if (target_machine_) {
     has_avx512bf16_ = absl::StrContains(
         target_machine_->getTargetFeatureString().str(), "+avx512bf16");
+    has_avx512fp16_ = absl::StrContains(
+        target_machine_->getTargetFeatureString().str(), "+avx512fp16");
   }
 }
 
