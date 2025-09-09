@@ -39,8 +39,8 @@ class CApiWhileLoopTest : public ::testing::Test {
     DCHECK_GT(ninputs, 0);
 
     for (int i = 0; i < ninputs; ++i) {
-      TF_Operation* placeholder = Placeholder(
-          graph_, s_, ::tensorflow::strings::StrCat("p", i).c_str());
+      TF_Operation* placeholder =
+          Placeholder(graph_, s_, absl::StrCat("p", i).c_str());
       DCHECK_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
       inputs_.push_back({placeholder, 0});
     }
@@ -183,10 +183,8 @@ TEST_F(CApiWhileLoopTest, BasicLoop) {
 
   // Check that cond and body inputs are not present
   for (int i = 0; i < params_->ninputs; ++i) {
-    string cond_name =
-        ::tensorflow::strings::StrCat(params_->name, "/cond/cond_input", i);
-    string body_name =
-        ::tensorflow::strings::StrCat(params_->name, "/body/body_input", i);
+    string cond_name = absl::StrCat(params_->name, "/cond/cond_input", i);
+    string body_name = absl::StrCat(params_->name, "/body/body_input", i);
     EXPECT_TRUE(TF_GraphOperationByName(graph_, cond_name.c_str()) == nullptr);
     EXPECT_TRUE(TF_GraphOperationByName(graph_, body_name.c_str()) == nullptr);
   }
