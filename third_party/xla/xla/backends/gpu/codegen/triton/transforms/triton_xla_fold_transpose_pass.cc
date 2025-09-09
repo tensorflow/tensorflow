@@ -25,7 +25,9 @@ limitations under the License.
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OperationSupport.h"
@@ -40,7 +42,6 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h"
 #include "xla/util.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
-#include "triton/Dialect/Triton/IR/Types.h"
 
 namespace mlir::triton::xla {
 
@@ -48,6 +49,14 @@ namespace mlir::triton::xla {
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h.inc"
 
 namespace {
+
+// Sets the insertion point at the given op and returns the guard.
+[[nodiscard]] OpBuilder::InsertionGuard SetInsertionPoint(OpBuilder& builder,
+                                                          Operation* op) {
+  OpBuilder::InsertionGuard guard(builder);
+  builder.setInsertionPoint(op);
+  return guard;
+}
 
 LogicalResult FoldTransposeOfExtract(TransOp op, PatternRewriter& rewriter) {
   auto extract = op.getSrc().getDefiningOp<ExtractOp>();
@@ -123,6 +132,49 @@ LogicalResult FoldTransposeOfExtract(TransOp op, PatternRewriter& rewriter) {
   return success();
 }
 
+LogicalResult PushTransposeUpThroughBroadcast(TransOp op,
+                                              PatternRewriter& rewriter) {
+  auto broadcast = op.getSrc().getDefiningOp<BroadcastOp>();
+  if (!broadcast) {
+    return rewriter.notifyMatchFailure(  //
+        op, "Transpose source is not a broadcast.");
+  }
+  Value new_trans = rewriter.create<TransOp>(op.getLoc(), broadcast.getSrc(),
+                                             op.getOrderAttr());
+  rewriter.replaceOpWithNewOp<BroadcastOp>(op, op.getType(), new_trans);
+  return success();
+}
+
+LogicalResult PushTransposeUpThroughExpandDims(TransOp op,
+                                               PatternRewriter& rewriter) {
+  auto expand_dims = op.getSrc().getDefiningOp<ExpandDimsOp>();
+  if (!expand_dims) {
+    return rewriter.notifyMatchFailure(
+        op, "Transpose source is not an expand_dims.");
+  }
+
+  unsigned new_axis = [&] {
+    for (auto [i, dim] : llvm::enumerate(op.getOrder())) {
+      if (dim == expand_dims.getAxis()) {
+        return i;
+      }
+    }
+    llvm_unreachable("Transpose order does not contain expand_dims axis");
+  }();
+
+  auto new_order = llvm::to_vector(op.getOrder());
+  new_order.erase(new_order.begin() + new_axis);
+  for (auto& dim : new_order) {
+    dim -= dim > expand_dims.getAxis();
+  }
+
+  Value new_trans =
+      rewriter.create<TransOp>(op.getLoc(), expand_dims.getSrc(), new_order);
+  rewriter.replaceOpWithNewOp<ExpandDimsOp>(op, op.getType(), new_trans,
+                                            new_axis);
+  return success();
+}
+
 LogicalResult PushTransposeUpThroughElementwise(TransOp op,
                                                 PatternRewriter& rewriter) {
   Operation* elementwise = op.getSrc().getDefiningOp();
@@ -146,6 +198,58 @@ LogicalResult PushTransposeUpThroughElementwise(TransOp op,
   new_op->setOperands(new_operands);
   new_op->getResult(0).setType(op.getType());
   rewriter.replaceOp(op, new_op->getResults());
+  return success();
+}
+
+// Pushes tt.trans up into scf.if.
+//
+// Example:
+//   %0 = scf.if %cond -> type1 {
+//     scf.yield %then : type1
+//   } else {
+//     scf.yield %else : type1
+//   }
+//   %1 = tt.trans %0 {order = [1, 0]}
+// is rewritten to:
+//   %0 = scf.if %cond -> type2 {
+//     %1 = tt.trans %then {order = [1, 0]}
+//     scf.yield %1 : type2
+//   } else {
+//     %2 = tt.trans %else {order = [1, 0]}
+//     scf.yield %2 : type2
+//   }
+LogicalResult PushTransposeUpIntoIf(TransOp op, PatternRewriter& rewriter) {
+  Value src = op.getSrc();
+  auto if_op = src.getDefiningOp<scf::IfOp>();
+  if (!if_op || !src.hasOneUse()) {
+    return rewriter.notifyMatchFailure(op, "Expected scf.if producer.");
+  }
+
+  // Compute the new types for the if op.
+  unsigned result_number = cast<OpResult>(op.getSrc()).getResultNumber();
+  auto new_types = llvm::to_vector(if_op.getResultTypes());
+  new_types[result_number] = op.getType();
+
+  auto new_if_op = rewriter.create<scf::IfOp>(
+      op.getLoc(), new_types, if_op.getCondition(), /*addThenBlock=*/false,
+      /*addElseBlock=*/false);
+
+  // Update then and else regions.
+  for (auto [old_region, new_region] :
+       llvm::zip(if_op.getRegions(), new_if_op.getRegions())) {
+    rewriter.inlineRegionBefore(*old_region, *new_region, new_region->end());
+    if (new_region->empty()) {
+      continue;
+    }
+    auto yield_op = new_region->front().getTerminator();
+    OpBuilder::InsertionGuard guard = SetInsertionPoint(rewriter, yield_op);
+    auto trans_op = rewriter.create<TransOp>(
+        op.getLoc(), op.getType(), yield_op->getOperand(result_number),
+        op.getOrderAttr());
+    yield_op->setOperand(result_number, trans_op);
+  }
+  rewriter.replaceOp(op, new_if_op.getResult(result_number));
+  rewriter.replaceOp(if_op, new_if_op);
   return success();
 }
 
@@ -216,7 +320,10 @@ class TritonXLAFoldTransposePass
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
     patterns.add(FoldTransposeOfExtract);
+    patterns.add(PushTransposeUpIntoIf);
+    patterns.add(PushTransposeUpThroughBroadcast);
     patterns.add(PushTransposeUpThroughElementwise);
+    patterns.add(PushTransposeUpThroughExpandDims);
     patterns.add(PushTransposeUpThroughReshape);
     if (failed(applyPatternsGreedily(getOperation(), std::move(patterns)))) {
       return signalPassFailure();

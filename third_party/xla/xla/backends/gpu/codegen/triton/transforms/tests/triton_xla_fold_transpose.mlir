@@ -13,10 +13,42 @@ func.func @fold_transpose_of_extract(%arg0: !tt.ptr<f32>, %arg1: i32) -> tensor<
   return %1 : tensor<8x4xf32>
 }
 
+// CHECK-LABEL: func @push_transpose_up_through_broadcast
+func.func @push_transpose_up_through_broadcast(%arg0: tensor<4x1xi1>) -> tensor<8x4xi1> {
+  // CHECK: %[[TRANS:.*]] = tt.trans %arg0 {order = array<i32: 1, 0>} : tensor<4x1xi1> -> tensor<1x4xi1>
+  // CHECK: tt.broadcast %[[TRANS]] : tensor<1x4xi1> -> tensor<8x4xi1>
+  %0 = tt.broadcast %arg0 : tensor<4x1xi1> -> tensor<4x8xi1>
+  %1 = tt.trans %0 {order = array<i32: 1, 0>} : tensor<4x8xi1> -> tensor<8x4xi1>
+  return %1 : tensor<8x4xi1>
+}
+
+// CHECK-LABEL: func @push_transpose_up_through_expand_dims
+func.func @push_transpose_up_through_expand_dims(%arg0: tensor<4x8xi1>) -> tensor<1x8x4xi1> {
+  // CHECK: %[[TRANS:.*]] = tt.trans %arg0 {order = array<i32: 1, 0>} : tensor<4x8xi1> -> tensor<8x4xi1>
+  // CHECK: tt.expand_dims %[[TRANS]] {axis = 0 : i32} : tensor<8x4xi1> -> tensor<1x8x4xi1>
+  %0 = tt.expand_dims %arg0 {axis = 1 : i32} : tensor<4x8xi1> -> tensor<4x1x8xi1>
+  %1 = tt.trans %0 {order = array<i32: 1, 2, 0>} : tensor<4x1x8xi1> -> tensor<1x8x4xi1>
+  return %1 : tensor<1x8x4xi1>
+}
+
 // CHECK-LABEL: func @push_transpose_up_through_elementwise
 func.func @push_transpose_up_through_elementwise(%arg0: tensor<4x8xf32>) -> tensor<8x4xf32> {
   // CHECK: arith.negf {{.*}} : tensor<8x4xf32>
   %0 = arith.negf %arg0 : tensor<4x8xf32>
+  %1 = tt.trans %0 {order = array<i32: 1, 0>} : tensor<4x8xf32> -> tensor<8x4xf32>
+  return %1 : tensor<8x4xf32>
+}
+
+// CHECK-LABEL: func @push_transpose_up_into_if
+func.func @push_transpose_up_into_if(%arg0: tensor<4x8xf32>, %arg1: tensor<4x8xf32>, %cond: i1) -> tensor<8x4xf32> {
+  %0 = scf.if %cond -> tensor<4x8xf32> {
+    // CHECK: tt.trans %arg0 {order = array<i32: 1, 0>} : tensor<4x8xf32> -> tensor<8x4xf32>
+    scf.yield %arg0 : tensor<4x8xf32>
+  } else {
+    // CHECK: tt.trans %arg1 {order = array<i32: 1, 0>} : tensor<4x8xf32> -> tensor<8x4xf32>
+    scf.yield %arg1 : tensor<4x8xf32>
+  }
+  // CHECK-NOT: tt.trans
   %1 = tt.trans %0 {order = array<i32: 1, 0>} : tensor<4x8xf32> -> tensor<8x4xf32>
   return %1 : tensor<8x4xf32>
 }
