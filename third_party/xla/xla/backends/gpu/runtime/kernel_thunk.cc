@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/STLExtras.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
@@ -168,30 +169,37 @@ absl::Status KernelThunk::Initialize(const InitializeParams& params) {
   return absl::OkStatus();
 }
 
+void PrintBufferContents(se::Stream*, int input_idx, se::TensorMap tensor_map) {
+  VLOG(100) << "TENSOR_MAP(" << input_idx << ") = ";
+  for (std::byte element : tensor_map.storage) {
+    VLOG(100) << absl::StrFormat("%x ", static_cast<unsigned>(element));
+  }
+}
+
+void PrintBufferContents(se::Stream* stream, int input_idx,
+                         se::DeviceMemoryBase buf) {
+  auto host_buffer = std::make_unique<char[]>(buf.size());
+  CHECK_OK(stream->Memcpy(host_buffer.get(), buf, buf.size()));
+  CHECK_OK(stream->BlockHostUntilDone());
+
+  std::string buffer_contents;
+  for (int i = 0; i < buf.size(); ++i) {
+    absl::StrAppendFormat(&buffer_contents, "%x ",
+                          static_cast<unsigned>(host_buffer[i]));
+  }
+  VLOG(100) << "BUF(" << input_idx << ") = " << buffer_contents;
+}
+
 static void PrintBufferContents(
     se::Stream* stream, absl::Span<const se::KernelArgument> kernel_args) {
-  int input_idx = 0;
-  for (const se::KernelArgument& arg : kernel_args) {
-    if (std::holds_alternative<se::DeviceMemoryBase>(arg)) {
-      se::DeviceMemoryBase buf = std::get<se::DeviceMemoryBase>(arg);
-
-      auto host_buffer = std::make_unique<char[]>(buf.size());
-      CHECK_OK(stream->Memcpy(host_buffer.get(), buf, buf.size()));
-      CHECK_OK(stream->BlockHostUntilDone());
-
-      std::string buffer_contents;
-      for (int i = 0; i < buf.size(); ++i) {
-        absl::StrAppendFormat(&buffer_contents, "%x ",
-                              static_cast<unsigned>(host_buffer[i]));
-      }
-      VLOG(100) << "BUF(" << input_idx++ << ") = " << buffer_contents;
-    } else {
-      se::TensorMap tensor_map = std::get<se::TensorMap>(arg);
-      VLOG(100) << "TENSOR_MAP(" << input_idx++ << ") = ";
-      for (std::byte element : tensor_map.storage) {
-        VLOG(100) << absl::StrFormat("%x ", static_cast<unsigned>(element));
-      }
-    }
+  for (const auto& [input_idx, arg] : llvm::enumerate(kernel_args)) {
+    // pre-cpp-20-compat(P0588R1): Capturing structured bindings in lambdas is
+    // ill-formed.
+    std::visit(
+        [&stream, &input_idx = input_idx](auto const& arg) {
+          PrintBufferContents(stream, input_idx, arg);
+        },
+        arg);
   }
 }
 
