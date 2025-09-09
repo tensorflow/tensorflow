@@ -154,7 +154,7 @@ class ClientCreationState : public ResourceBase {
   // false after the first call). This modifies internal state (i.e. the first
   // call clears `first_task_`).
   bool FirstThread() ABSL_LOCKS_EXCLUDED(mu_) {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     if (first_task_) {
       first_task_ = false;
       return true;
