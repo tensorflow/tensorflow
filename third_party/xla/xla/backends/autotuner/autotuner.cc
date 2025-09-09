@@ -67,30 +67,57 @@ absl::StatusOr<std::unique_ptr<Autotuner>> Autotuner::Create(
                     std::move(autotune_config), std::move(cache), thread_pool));
 }
 
+absl::Status Autotuner::Autotune(HloModule* module,
+                                 const InstructionFilterFn& should_autotune) {
+  InstructionsByFingerprint instrunctions_by_fingerprint =
+      GetAutotuningCandidates(module, should_autotune);
+  if (instrunctions_by_fingerprint.empty()) {
+    VLOG(1) << "No instructions to autotune.";
+    return absl::OkStatus();
+  }
+
+  VLOG(1) << "Autotuning " << instrunctions_by_fingerprint.size()
+          << " unique instructions.";
+  for (auto& [_, instructions] : instrunctions_by_fingerprint) {
+    CHECK(!instructions.empty());
+    VLOG(1) << "Autotuning instruction:" << instructions[0]->ToString();
+    TF_ASSIGN_OR_RETURN(Config best_config,
+                        GetCachedOrTuneBestConfig(instructions[0]));
+    CodegenBackend* best_codegen_backend = best_config.codegen_backend;
+    for (auto* instr : instructions) {
+      TF_RETURN_IF_ERROR(best_codegen_backend->ApplyConfig(
+          *instr, *best_config.backend_config));
+    }
+  }
+  return absl::OkStatus();
+}
+
 absl::Status Autotuner::Autotune(HloInstruction* instr) {
   VLOG(1) << "Autotuning HLO: " << instr->ToString();
-  TF_ASSIGN_OR_RETURN(auto best_config, GetBestConfig(instr));
+  TF_ASSIGN_OR_RETURN(Config best_config, GetCachedOrTuneBestConfig(instr));
   CodegenBackend* best_codegen_backend = best_config.codegen_backend;
   return best_codegen_backend->ApplyConfig(*instr, *best_config.backend_config);
 }
 
-absl::StatusOr<Autotuner::Config> Autotuner::GetBestConfig(
+absl::StatusOr<Autotuner::Config> Autotuner::GetCachedOrTuneBestConfig(
     HloInstruction* instr) {
-  if (cache_) {
-    auto cached_config = cache_->Lookup(instr);
-    if (cached_config.has_value()) {
-      VLOG(1) << "Found cached config for HLO: " << instr->ToString();
-      for (auto& codegen_backend : codegen_backends_) {
-        if (codegen_backend->name() == cached_config->codegen_backend_name) {
-          auto backend_config = std::make_unique<google::protobuf::Any>(
-              cached_config->backend_config);
-          return Config{codegen_backend.get(), std::move(backend_config)};
-        }
-      }
-      return absl::InternalError("Cached backend not found!");
+  std::optional<Config> cached_config = LookUp(instr);
+  Config best_config;
+  if (cached_config.has_value()) {
+    best_config = std::move(*cached_config);
+  } else {
+    if (autotune_config_.expect_all_instructions_in_cache) {
+      return absl::InternalError("No cached config found for HLO instr: " +
+                                 instr->ToString());
     }
+    TF_ASSIGN_OR_RETURN(best_config, TuneBestConfig(instr));
+    Insert(instr, best_config);
   }
+  return best_config;
+}
 
+absl::StatusOr<Autotuner::Config> Autotuner::TuneBestConfig(
+    HloInstruction* instr) {
   TF_ASSIGN_OR_RETURN(std::vector<Config> supported_configs,
                       GetSupportedConfigs(instr));
   if (supported_configs.empty()) {
@@ -114,7 +141,7 @@ absl::StatusOr<Autotuner::Config> Autotuner::GetBestConfig(
   VLOG(1) << "Successfully compiled " << executable_candidates.size()
           << " configs out of " << supported_configs.size() << " configs.";
 
-  return ProfileAndPickBest(instr, executable_candidates);
+  return ProfileAndPickBest(executable_candidates);
 }
 
 Autotuner::InstructionsByFingerprint Autotuner::GetAutotuningCandidates(
@@ -130,28 +157,34 @@ Autotuner::InstructionsByFingerprint Autotuner::GetAutotuningCandidates(
   return instrunctions_by_fingerprint;
 }
 
-absl::Status Autotuner::Autotune(HloModule* module,
-                                 const InstructionFilterFn& should_autotune) {
-  InstructionsByFingerprint instrunctions_by_fingerprint =
-      GetAutotuningCandidates(module, should_autotune);
-  if (instrunctions_by_fingerprint.empty()) {
-    VLOG(1) << "No instructions to autotune.";
-    return absl::OkStatus();
-  }
-
-  VLOG(1) << "Autotuning " << instrunctions_by_fingerprint.size()
-          << " unique instructions.";
-  for (auto& [_, instructions] : instrunctions_by_fingerprint) {
-    CHECK(!instructions.empty());
-    VLOG(1) << "Autotuning instruction:" << instructions[0]->ToString();
-    TF_ASSIGN_OR_RETURN(Config best_config, GetBestConfig(instructions[0]));
-    CodegenBackend* best_codegen_backend = best_config.codegen_backend;
-    for (auto* instr : instructions) {
-      TF_RETURN_IF_ERROR(best_codegen_backend->ApplyConfig(
-          *instr, *best_config.backend_config));
+std::optional<Autotuner::Config> Autotuner::LookUp(
+    const HloInstruction* instr) {
+  if (cache_) {
+    auto cached_config = cache_->Lookup(instr);
+    if (cached_config.has_value()) {
+      VLOG(1) << "Found cached config for HLO: " << instr->ToString();
+      for (auto& codegen_backend : codegen_backends_) {
+        if (codegen_backend->name() == cached_config->codegen_backend_name) {
+          auto backend_config = std::make_unique<google::protobuf::Any>(
+              cached_config->backend_config);
+          return Config{codegen_backend.get(), std::move(backend_config)};
+        }
+      }
+      LOG(WARNING) << "Cached config for HLO: " << instr->ToString()
+                   << " has unsupported backend "
+                   << cached_config->codegen_backend_name;
     }
   }
-  return absl::OkStatus();
+  return std::nullopt;
+}
+
+void Autotuner::Insert(const HloInstruction* instr, Autotuner::Config& config) {
+  if (cache_) {
+    AutotunerCacheInterface::Config cached_config;
+    cached_config.codegen_backend_name = config.codegen_backend->name();
+    cached_config.backend_config = *config.backend_config;
+    CHECK_OK(cache_->Insert(instr, cached_config));
+  }
 }
 
 absl::StatusOr<std::vector<Autotuner::Config>> Autotuner::GetSupportedConfigs(
@@ -196,7 +229,7 @@ std::vector<absl::StatusOr<std::unique_ptr<Executable>>> Autotuner::CompileAll(
 }
 
 absl::StatusOr<Autotuner::Config> Autotuner::ProfileAndPickBest(
-    HloInstruction* instr, std::vector<ExecutableCandidate>& candidates) {
+    std::vector<ExecutableCandidate>& candidates) {
   if (candidates.empty()) {
     return absl::InternalError("No executables to profile!");
   }
@@ -277,13 +310,6 @@ absl::StatusOr<Autotuner::Config> Autotuner::ProfileAndPickBest(
 
   VLOG(1) << "Picked config: " << best_config->codegen_backend->name() << " "
           << best_config->backend_config->ShortDebugString();
-
-  AutotunerCacheInterface::Config config;
-  config.codegen_backend_name = (best_config->codegen_backend->name());
-  config.backend_config = *best_config->backend_config;
-  if (cache_) {
-    TF_RETURN_IF_ERROR(cache_->Insert(instr, config));
-  }
   return std::move(*best_config);
 }
 

@@ -777,9 +777,11 @@ xla_cc_binary(
     deps = [
         ":factory",
         ":gpu_profiler",
+        ":legacy_cache",
         "//xla:debug_options_flags",
         "//xla:xla_proto_cc",
         "//xla/backends/autotuner",
+        "//xla/backends/autotuner:autotuner_cache_interface",
         "//xla/backends/autotuner:codegen_backend",
         "//xla/backends/autotuner:file_based_autotuner_cache",
         "//xla/backends/autotuner:profiler",

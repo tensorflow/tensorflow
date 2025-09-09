@@ -29,9 +29,9 @@ limitations under the License.
 #include "xla/backends/autotuner/autotuner.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
 #include "xla/backends/autotuner/codegen_backend.h"
-#include "xla/backends/autotuner/file_based_autotuner_cache.h"
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/backends/gpu/autotuner/gpu_profiler.h"
+#include "xla/backends/gpu/autotuner/legacy_cache.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/stream_executor/device_memory_allocator.h"
@@ -60,26 +60,9 @@ absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
   const std::string& cache_dir =
       debug_options.xla_gpu_experimental_autotuner_cache_dir();
   if (!cache_dir.empty()) {
-    FileBasedCacheConfig cache_config;
-    cache_config.autotune_cache_dir = cache_dir;
-    cache_config.device_desc = stream_executor->GetDeviceDescription();
-    switch (debug_options.xla_gpu_experimental_autotune_cache_mode()) {
-      case DebugOptions::AUTOTUNE_CACHE_MODE_READ:
-        cache_config.autotune_cache_mode =
-            FileBasedCacheConfig::CacheMode::READ;
-        break;
-      case DebugOptions::AUTOTUNE_CACHE_MODE_UPDATE:
-        cache_config.autotune_cache_mode =
-            FileBasedCacheConfig::CacheMode::READ_WRITE;
-        break;
-      default:
-        // Includes AUTOTUNE_CACHE_MODE_UNSPECIFIED
-        LOG(WARNING) << "Unknown autotune cache mode, defaulting to READ_WRITE";
-        cache_config.autotune_cache_mode =
-            FileBasedCacheConfig::CacheMode::READ_WRITE;
-        break;
-    }
-    TF_ASSIGN_OR_RETURN(cache, FileBasedAutotunerCache::Create(cache_config));
+    cache = std::make_unique<LegacyCache>(
+        cache_dir, debug_options.xla_gpu_experimental_autotune_cache_mode(),
+        stream_executor->GetDeviceDescription());
   }
 
   AutotuneConfig autotune_config;
