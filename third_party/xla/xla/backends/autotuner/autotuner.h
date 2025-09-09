@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_BACKENDS_AUTOTUNER_AUTOTUNER_H_
 
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -55,6 +56,9 @@ struct AutotuneConfig {
   bool optimize_scratch_bytes = false;
   // Window size in microseconds to consider for scratch bytes optimization.
   int scratch_bytes_window_size_us = 4;
+  // If true, the autotuner will return an error if the best config for a
+  // certain instruction is not in the cache.
+  bool expect_all_instructions_in_cache = false;
 };
 
 class Autotuner {
@@ -65,8 +69,10 @@ class Autotuner {
       std::unique_ptr<AutotunerCacheInterface> cache,
       tsl::thread::ThreadPool* thread_pool = nullptr);
 
-  // Try all supported configs from the registered codegen backends for the
-  // given HLO instruction and apply the best one.
+  // Autotune the given HLO instruction. If a cache is provided, the cached
+  // config will be used if the instruction is in the cache. Otherwise, the
+  // autotuner will try all supported configs from the registered codegen
+  // backends for the given HLO instruction and apply the best one.
   absl::Status Autotune(HloInstruction* instr);
 
   // Autotune all instructions in the module for which the filter function
@@ -102,7 +108,18 @@ class Autotuner {
   InstructionsByFingerprint GetAutotuningCandidates(
       const HloModule* module, const InstructionFilterFn& should_autotune);
 
-  absl::StatusOr<Config> GetBestConfig(HloInstruction* instr);
+  // Gets the best config for the given instruction either from cache or by
+  // tuning all supported configs if the instruction is not in the cache.
+  absl::StatusOr<Config> GetCachedOrTuneBestConfig(HloInstruction* instr);
+  // Gets the best config for the given instruction by compiling and profiling
+  // all supported configs.
+  absl::StatusOr<Config> TuneBestConfig(HloInstruction* instr);
+
+  // TODO: b/407494653 - Directly use cache api when the configs are unified.
+  // Translates from Autotuner::Config to AutotunerCacheInterface::Config and
+  // the other way around.
+  std::optional<Autotuner::Config> LookUp(const HloInstruction* instr);
+  void Insert(const HloInstruction* instr, Autotuner::Config& config);
 
   absl::StatusOr<std::vector<Config>> GetSupportedConfigs(
       HloInstruction* instr);
@@ -110,7 +127,7 @@ class Autotuner {
       HloInstruction* instr, std::vector<Config>& configs);
 
   absl::StatusOr<Config> ProfileAndPickBest(
-      HloInstruction* instr, std::vector<ExecutableCandidate>& candidates);
+      std::vector<ExecutableCandidate>& candidates);
 
   absl::StatusOr<ScopedShapedBuffer> GetReferenceOutput(
       std::vector<ExecutableCandidate>& candidates,
