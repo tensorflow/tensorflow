@@ -282,7 +282,7 @@ HloModule GatherWithBatchDims
 
 ENTRY main {
   operand = s32[5,2] parameter(0)
-  indices = s32[5,1] parameter(1)
+  indices = s64[5,1] parameter(1)
   ROOT gather = s32[5,1] gather(operand, indices),
       offset_dims={1},
       collapsed_slice_dims={},
@@ -294,17 +294,17 @@ ENTRY main {
 }
 )";
   const std::string expected = R"(
-  //CHECK: (s32[], s32[5,2], s32[5,1], s32[5,1])) -> (s32[], s32[5,2], s32[5,1], s32[5,1]) {
-  //CHECK: %[[PARAM:.*]] = (s32[], s32[5,2], s32[5,1], s32[5,1]) parameter(0)
-  //CHECK: %[[I:.*]] = s32[] get-tuple-element(%[[PARAM]]), index=
+  //CHECK: (s32[], s32[5,2], s64[5,1], s32[5,1])) -> (s32[], s32[5,2], s64[5,1], s32[5,1]) {
+  //CHECK: %[[PARAM:.*]] = (s32[], s32[5,2], s64[5,1], s32[5,1]) parameter(0)
+  //CHECK: %[[I_0:.*]] = s32[] get-tuple-element(%[[PARAM]]), index=0
   //CHECK: %[[CONSTANT1:.*]] = s32[] constant(1)
-  //CHECK: %[[I_PLUS_1:.*]] = s32[] add(%[[I]], %[[CONSTANT1]])
+  //CHECK: %[[I_PLUS_1:.*]] = s32[] add(%[[I_0]], %[[CONSTANT1]])
   //CHECK: %[[OPERAND:.*]] = s32[5,2] get-tuple-element(%[[PARAM]]), index=1
-  //CHECK: %[[START_INDICES:.*]] = s32[5,1] get-tuple-element(%[[PARAM]]), index=2
+  //CHECK: %[[START_INDICES:.*]] = s64[5,1] get-tuple-element(%[[PARAM]]), index=2
   //CHECK: %[[RESULT:.*]] = s32[5,1] get-tuple-element(%[[PARAM]]), index=3
-
-  //CHECK: %[[I_1D_1:.*]] = s32[1] broadcast(%[[I]])
-  //CHECK: %[[I_1D_2:.*]] = s32[1] broadcast(%[[I]])
+  //CHECK: %[[CONVERT:.*]] = s64[] convert(%[[I_0]])
+  //CHECK: %[[I_1D_1:.*]] = s64[1] broadcast(%[[CONVERT]])
+  //CHECK: %[[I_1D_2:.*]] = s32[1] broadcast(%[[I_0]])
 
   //CHECK: %[[START_INDICES_INDEX_D1_PAD:.*]] = s32[] constant(0)
   //CHECK: %[[START_INDICES_INDEX_VECTOR:.*]] = s32[2] pad(%[[I_1D_2]], %[[START_INDICES_INDEX_D1_PAD]]), padding=0_1
@@ -312,15 +312,15 @@ ENTRY main {
   //CHECK: %[[START_INDICES_INDEX_D0:.*]] = s32[] reshape(%[[START_INDICES_INDEX_D0_SLICE]])
   //CHECK: %[[START_INDICES_INDEX_D1_SLICE:.*]] = s32[1] slice(%[[START_INDICES_INDEX_VECTOR]]), slice={[1:2]}
   //CHECK: %[[START_INDICES_INDEX_D1:.*]] = s32[] reshape(%[[START_INDICES_INDEX_D1_SLICE]])
-  //CHECK: %[[INDEX_VECTOR:.*]] = s32[1,1] dynamic-slice(%[[START_INDICES]], %[[START_INDICES_INDEX_D0]], %[[START_INDICES_INDEX_D1]])
+  //CHECK: %[[INDEX_VECTOR:.*]] = s64[1,1] dynamic-slice(%[[START_INDICES]], %[[START_INDICES_INDEX_D0]], %[[START_INDICES_INDEX_D1]])
 
-  //CHECK: %[[OFFSET_RAW:.*]] = s32[1] reshape(%[[INDEX_VECTOR]])
-  //CHECK: %[[OFFSET:.*]] = s32[1] slice(%[[OFFSET_RAW]])
-  //CHECK: %[[OPERAND_INDEX:.*]] = s32[2] concatenate(%[[I_1D_1]], %[[OFFSET]])
-  //CHECK: %[[OPERAND_INDEX_D0_RAW:.*]] = s32[1] slice(%[[OPERAND_INDEX]]), slice={[0:1]}
-  //CHECK: %[[OPERAND_INDEX_D0:.*]] = s32[] reshape(%[[OPERAND_INDEX_D0_RAW]])
-  //CHECK: %[[OPERAND_INDEX_D1_RAW:.*]] = s32[1] slice(%[[OPERAND_INDEX]]), slice={[1:2]}
-  //CHECK: %[[OPERAND_INDEX_D1:.*]] = s32[] reshape(%[[OPERAND_INDEX_D1_RAW]])
+  //CHECK: %[[OFFSET_RAW:.*]] = s64[1] reshape(%[[INDEX_VECTOR]])
+  //CHECK: %[[OFFSET:.*]] = s64[1] slice(%[[OFFSET_RAW]])
+  //CHECK: %[[OPERAND_INDEX:.*]] = s64[2] concatenate(%[[I_1D_1]], %[[OFFSET]])
+  //CHECK: %[[OPERAND_INDEX_D0_RAW:.*]] = s64[1] slice(%[[OPERAND_INDEX]]), slice={[0:1]}
+  //CHECK: %[[OPERAND_INDEX_D0:.*]] = s64[] reshape(%[[OPERAND_INDEX_D0_RAW]])
+  //CHECK: %[[OPERAND_INDEX_D1_RAW:.*]] = s64[1] slice(%[[OPERAND_INDEX]]), slice={[1:2]}
+  //CHECK: %[[OPERAND_INDEX_D1:.*]] = s64[] reshape(%[[OPERAND_INDEX_D1_RAW]])
   //CHECK: %[[RESULT_SLICE_RAW0:.*]] = s32[1,1] dynamic-slice(%[[OPERAND]], %[[OPERAND_INDEX_D0]], %[[OPERAND_INDEX_D1]])
 
   //CHECK: %[[RESULT_SLICE_RAW1:.*]] = s32[1] reshape(%[[RESULT_SLICE_RAW0]])
@@ -333,7 +333,7 @@ ENTRY main {
   //CHECK: %[[RESULT_INDEX_D1:.*]] = s32[] reshape(%[[RESULT_INDEX_D1_SLICE]])
   //CHECK: %[[UPDATED_RESULT:.*]] = s32[5,1] dynamic-update-slice(%[[RESULT]], %[[RESULT_SLICE]], %[[RESULT_INDEX_D0]], %[[RESULT_INDEX_D1]])
 
-  //CHECK: ROOT %{{.*}} = (s32[], s32[5,2], s32[5,1], s32[5,1]) tuple(%[[I_PLUS_1]], %[[OPERAND]], %[[START_INDICES]], %[[UPDATED_RESULT]])
+  //CHECK: ROOT %{{.*}} = (s32[], s32[5,2], s64[5,1], s32[5,1]) tuple(%[[I_PLUS_1]], %[[OPERAND]], %[[START_INDICES]], %[[UPDATED_RESULT]])
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,

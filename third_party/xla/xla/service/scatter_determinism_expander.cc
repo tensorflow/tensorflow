@@ -368,6 +368,15 @@ static absl::StatusOr<HloInstruction*> CreateScanWithIndices(
     auto* indices_mask = parent->AddInstruction(HloInstruction::CreateCompare(
         ShapeUtil::MakeShape(PRED, {num_updates}), indices,
         concatenated_indices, ComparisonDirection::kEq));
+    auto* first_element_false = parent->AddInstruction(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR1<bool>({false})));
+    auto* remaining_mask = parent->AddInstruction(HloInstruction::CreateSlice(
+        ShapeUtil::MakeShape(PRED, {num_updates - 1}), indices_mask, {1},
+        {num_updates}, {1}));
+    indices_mask = parent->AddInstruction(HloInstruction::CreateConcatenate(
+        ShapeUtil::MakeShape(PRED, {num_updates}),
+        {first_element_false, remaining_mask}, 0));
+
     std::vector<HloInstruction*> map_operands = {current_updates,
                                                  concatenated_updates};
     TF_ASSIGN_OR_RETURN(HloInstruction * reduced_updates,
@@ -904,6 +913,10 @@ bool CheckOutputDependency(HloComputation* to_apply, int operand_size) {
   return true;
 }
 
+bool IsSupportedIndicesType(PrimitiveType primitive_type) {
+  return primitive_type == S32 || primitive_type == S64;
+}
+
 }  // namespace
 
 bool ScatterDeterminismExpander::InstructionMatchesPattern(
@@ -911,6 +924,9 @@ bool ScatterDeterminismExpander::InstructionMatchesPattern(
   auto* scatter = DynCast<HloScatterInstruction>(inst);
 
   return (scatter != nullptr) && !IsScatterDeterministic(scatter) &&
+         scatter->scatter_operand_count() == 1 &&
+         IsSupportedIndicesType(
+             scatter->scatter_indices()->shape().element_type()) &&
          CheckOutputDependency(scatter->to_apply(),
                                scatter->scatter_operands().size());
 }

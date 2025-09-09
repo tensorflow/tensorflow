@@ -50,7 +50,7 @@ def initialize_rbe_configs():
     # The `ml-build-rbe` image is identical to the `ml-build` image except for the base image.
     # The `ml-build`'s base image is a standard `ubuntu22.04` image.
     # The `ml-build-rbe`'s base image is `nvidia/cuda:12.3.2-base-ubuntu22.04` which has nvidia driver installed.
-    ml_build_rbe_config("docker://us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build-rbe@sha256:aaeb29799463729092c05f5ac8393113b3bb5d1ecf085f9f1f2016e3a1ece11c")
+    ml_build_rbe_config("docker://us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build-rbe@sha256:7bae9f7604645cbad40b11a22294f5058db16022315d52a130b832d07e54c9ef")
 
     # TF-Version-Specific SIG Build RBE Configs. The crosstool generated from these
     # configs are python-version-independent because they only care about the

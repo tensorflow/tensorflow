@@ -11,7 +11,7 @@ def if_cuda(if_true, if_false = []):
     })
 
 def if_cuda_clang(if_true, if_false = []):
-   """Shorthand for select()'ing on wheteher we're building with cuda-clang.
+   """Shorthand for select()'ing on whether we're building with cuda-clang.
 
     Returns a select statement which evaluates to if_true if we're building
     with cuda-clang.  Otherwise, the select statement evaluates to if_false.
@@ -31,7 +31,7 @@ def if_cuda_exec(if_true, if_false = []):
     return if_cuda(if_true, if_false)
 
 def cuda_compiler(if_cuda_clang, if_nvcc, neither = []):
-    """Shorthand for select()'ing on wheteher we're building with cuda-clang or nvcc.
+    """Shorthand for select()'ing on whether we're building with cuda-clang or nvcc.
 
      Returns a select statement which evaluates to if_cuda_clang if we're building
      with cuda-clang, if_nvcc if we're building with NVCC.
@@ -48,7 +48,7 @@ def cuda_compiler(if_cuda_clang, if_nvcc, neither = []):
         return neither
 
 def if_cuda_clang_opt(if_true, if_false = []):
-   """Shorthand for select()'ing on wheteher we're building with cuda-clang
+   """Shorthand for select()'ing on whether we're building with cuda-clang
    in opt mode.
 
     Returns a select statement which evaluates to if_true if we're building

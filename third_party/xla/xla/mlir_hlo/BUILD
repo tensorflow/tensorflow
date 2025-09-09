@@ -410,6 +410,7 @@ cc_library(
     strip_include_prefix = ".",
     deps = [
         ":mlir_hlo",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FuncTransforms",
         "@llvm-project//mlir:IR",

@@ -66,7 +66,6 @@ limitations under the License.
 #include "xla/core/host_offloading/hlo_host_device_type_call_wrapper.h"
 #include "xla/core/host_offloading/host_compute_asyncifier.h"
 #include "xla/hlo/analysis/alias_info.h"
-#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -514,9 +513,12 @@ GpuThunkAotCompilationResult::LoadExecutable(
       std::move(ir_emitter_context.constants());
   TF_ASSIGN_OR_RETURN(auto output_info,
                       GetOutputInfo(*hlo_module, *buffer_assignment));
-  const Shape& output_shape = hlo_module->result_shape();
+  ProgramShape program_shape =
+      hlo_module->entry_computation_layout().ComputeProgramShape();
+  *program_shape.mutable_result() = hlo_module->result_shape();
   DebugOptions debug_options = hlo_module->config().debug_options();
   std::string hlo_module_name = hlo_module->name();
+
   {
     tsl::profiler::TraceMe traceme("CreateGpuExecutable");
     std::unique_ptr<GpuAliasInfo> alias_info =
@@ -531,7 +533,7 @@ GpuThunkAotCompilationResult::LoadExecutable(
         /*constants=*/std::move(constants),
         /*output_info=*/std::move(output_info),
         /*module_name=*/std::move(hlo_module_name),
-        /*output_shape=*/std::move(output_shape),
+        /*program_shape=*/std::move(program_shape),
         /*mlir_allocations=*/std::nullopt,
         /*buffer_assignment=*/std::move(buffer_assignment),
         /*alias_info=*/std::move(alias_info),
@@ -1223,15 +1225,12 @@ constexpr int kCombineThresholdCount = 256;
 void AddCollectiveCombinerPasses(
     HloPassPipeline& pipeline, const HloModule& module,
     const se::DeviceDescription& device_description,
-    const GpuAliasInfo* alias_info, int pointer_size) {
+    const GpuAliasInfo* alias_info, int pointer_size,
+    const GpuCompiler::CompileOptions& options) {
   const DebugOptions& opts = module.config().debug_options();
 
-  bool enable_heuristic_collective_combining =
-      opts.xla_gpu_experimental_enable_heuristic_collective_combining() &&
-      GetTopologyType(module.config(), device_description) ==
-          GPUTopologyType::MULTI_HOST;
-
-  if (enable_heuristic_collective_combining) {
+  if (EnableHeuristicCollectiveCombining(module.config(), device_description,
+                                         options.slice_size)) {
     pipeline.AddPass<CollectiveCombinerAnnotator>(device_description,
                                                   alias_info, pointer_size);
   }
@@ -1257,11 +1256,12 @@ void AddCollectiveCombinerPasses(
 
 absl::Status RunPostFusionPasses(
     HloModule* hlo_module, const se::DeviceDescription& device_description,
-    const GpuAliasInfo* alias_info, int pointer_size) {
+    const GpuAliasInfo* alias_info, int pointer_size,
+    const GpuCompiler::CompileOptions& options) {
   HloPassPipeline pipeline("post-fusion optimization");
   pipeline.AddPass<RenameFusions>();
   AddCollectiveCombinerPasses(pipeline, *hlo_module, device_description,
-                              alias_info, pointer_size);
+                              alias_info, pointer_size, options);
 
   pipeline.AddPass<AllReduceContiguous>();
 
@@ -1580,7 +1580,7 @@ absl::Status GpuCompiler::OptimizeHloModule(
                                      thread_pool.get_mutable(),
                                      ShapeSizeBytesFunction()));
   TF_RETURN_IF_ERROR(RunPostFusionPasses(hlo_module, device_description,
-                                         alias_info, pointer_size_));
+                                         alias_info, pointer_size_, options));
   TF_RETURN_IF_ERROR(RunAsyncCollectivesConversionPasses(hlo_module));
   TF_RETURN_IF_ERROR(RunPostFusionSimplificationPasses(
       hlo_module,
@@ -1597,6 +1597,13 @@ absl::Status GpuCompiler::OptimizeHloModule(
       RunCollectiveScheduleLinearizerPasses(hlo_module, stream_exec));
 
   TF_RETURN_IF_ERROR(RunAsyncDotPasses(hlo_module));
+  {
+    HloPassPipeline pipeline("autotune-fusion-emitters");
+    TF_RETURN_IF_ERROR(AddFusionAutotuningPass(
+        &pipeline, hlo_module, options, thread_pool.get_mutable(), stream_exec,
+        ShapeSizeBytesFunction()));
+    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
+  }
 
   return absl::OkStatus();
 }  // NOLINT(readability/fn_size)
@@ -2675,7 +2682,8 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
           /*constants=*/std::move(res.compile_module_results.constants),
           /*output_info=*/std::move(res.compile_module_results.output_info),
           /*module_name=*/std::move(res.compile_module_results.module_name),
-          /*output_shape=*/std::move(res.compile_module_results.output_shape),
+          /*program_shape=*/
+          module->compute_computation_layout().ComputeProgramShape(),
           /*mlir_allocations=*/
           (res.compile_module_results.use_original_allocations
                ? std::optional<std::vector<BufferAllocation>>()
@@ -2922,8 +2930,18 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
       CreateHloAnalysisOpts(*module, gpu_device_info, ShapeSizeBytesFunction());
   HloCostAnalysis hlo_cost_analysis(hlo_cost_analysis_opts);
   // `HloRematerialization` options initialization.
+  // `scheduler_mem_limit` cannot directly be reused for HloRematerialization.
+  // It reduces the memory limit by the size of the output, which is done again
+  // in HloRematerialization. So to account for that, add back the size of the
+  // output.
+  int64_t remat_mem_limit = scheduler_mem_limit;
+  ShapeUtil::ForEachSubshape(
+      module->result_shape(),
+      [&](const Shape& subshape, const ShapeIndex& /*index*/) {
+        remat_mem_limit += ShapeSizeBytesFunction()(subshape);
+      });
   HloRematerialization::Options remat_opts = CreateRematOpts(
-      *module, gpu_device_info, hlo_cost_analysis, scheduler_mem_limit);
+      *module, gpu_device_info, hlo_cost_analysis, remat_mem_limit);
   {
     HloPassPipeline& pipeline =
         main_pipeline.AddPass<HloPassPipeline>("remat-pipeline");

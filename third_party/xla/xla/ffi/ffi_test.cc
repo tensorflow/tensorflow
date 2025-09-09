@@ -1046,7 +1046,7 @@ TEST(FfiTest, AsyncHandler) {
   auto fn = [&](const Eigen::ThreadPoolDevice* device) {
     auto async_value = tsl::MakeConstructedAsyncValueRef<tsl::Chain>();
 
-    device->enqueueNoNotification([&, async_value]() mutable {
+    device->enqueueNoNotification([&value, async_value]() {
       value = 42;
       async_value.SetStateConcrete();
     });

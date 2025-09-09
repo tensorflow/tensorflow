@@ -728,7 +728,6 @@ cc_library(
         "//xla/service:buffer_assignment",
         "//xla/service/gpu:buffer_allocations",
         "//xla/service/gpu:matmul_utils",
-        "//xla/service/gpu/autotuning:autotuner_util",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:stream",
         "//xla/stream_executor/gpu:gpu_blas_lt",
@@ -863,20 +862,22 @@ xla_cc_test(
 )
 
 cuda_library(
-    name = "raft_select_k_exec",
-    srcs = ["raft_select_k_exec.cc"],
-    hdrs = ["raft_select_k_exec.h"],
+    name = "select_k_exec_raft",
+    srcs = ["select_k_exec_raft.cc"],
+    hdrs = ["select_k_exec.h"],
     copts = [
         "-fexceptions",
         "-DLIBCUDACXX_ENABLE_EXPERIMENTAL_MEMORY_RESOURCE",
     ],
     tags = ["cuda-only"],
-    textual_hdrs = ["raft_vectorized_bf16.h"],
     deps = [
+        "//xla:status_macros",
+        "//xla:types",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:device_memory_allocator",
         "//xla/stream_executor:scratch_allocator",
         "//xla/stream_executor:stream",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
@@ -888,9 +889,22 @@ cuda_library(
     ],
 )
 
+cuda_library(
+    name = "select_k_exec_stub",
+    srcs = ["select_k_exec_stub.cc"],
+    hdrs = ["select_k_exec.h"],
+    deps = [
+        "//xla:types",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:device_memory_allocator",
+        "//xla/stream_executor:stream",
+        "@com_google_absl//absl/status",
+    ],
+)
+
 xla_test(
-    name = "raft_select_k_exec_test",
-    srcs = ["raft_select_k_exec_test.cc"],
+    name = "select_k_exec_raft_test",
+    srcs = ["select_k_exec_raft_test.cc"],
     backends = [
         "gpu",
     ],
@@ -898,7 +912,8 @@ xla_test(
         "cuda-only",
     ],
     deps = [
-        ":raft_select_k_exec",
+        ":select_k_exec_raft",
+        "//xla:types",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/service:platform_util",
@@ -916,8 +931,34 @@ xla_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
-        "@local_config_cuda//cuda:cuda_headers",
     ],
+)
+
+cc_library(
+    name = "select_k_thunk",
+    srcs = ["select_k_thunk.cc"],
+    hdrs = ["select_k_thunk.h"],
+    tags = ["gpu"],
+    deps = [
+        ":thunk",
+        ":thunk_proto_cc",
+        "//xla:shape_util",
+        "//xla:types",
+        "//xla/codegen/emitters:kernel_arguments",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:buffer_assignment",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:device_memory_allocator",
+        "//xla/stream_executor:stream",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ] + if_cuda_is_configured(
+        [":select_k_exec_raft"],
+        no_cuda = [":select_k_exec_stub"],
+    ),
 )
 
 cc_library(
@@ -1086,8 +1127,8 @@ cc_library(
         "//xla/backends/gpu/collectives:gpu_communicator",
         "//xla/core/collectives:communicator",
         "//xla/core/collectives:rank_id",
+        "//xla/hlo/ir:collective_op_group_mode",
         "//xla/hlo/ir:hlo",
-        "//xla/service:collective_ops_utils",
         "//xla/service:rendezvous",
         "//xla/service/gpu/transforms/collectives:collective_ops_utils",
         "//xla/stream_executor:device_memory",
@@ -2018,12 +2059,26 @@ tf_proto_library(
     ],
     protodeps = [
         # keep sorted
+        ":dynamic_slice_thunk_proto",
         "//xla:xla_data_proto",
         "//xla/service:buffer_assignment_proto",
         "//xla/service/gpu:launch_dimensions_proto",
         "//xla/stream_executor:launch_dim_proto",
         "//xla/stream_executor/gpu:gpu_blas_lt_proto",
         "//xla/stream_executor/gpu:tma_metadata_proto",
+    ],
+)
+
+tf_proto_library(
+    name = "dynamic_slice_thunk_proto",
+    srcs = [
+        "dynamic_slice_thunk.proto",
+    ],
+    protodeps = [
+        # keep sorted
+        "//xla:xla_data_proto",
+        "//xla/service:buffer_assignment_proto",
+        "//xla/service:hlo_proto",
     ],
 )
 

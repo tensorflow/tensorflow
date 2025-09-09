@@ -122,6 +122,9 @@ absl::StatusOr<Shape> Shape::FromProto(const ShapeProto& shape_proto) {
     }
     TF_ASSIGN_OR_RETURN(Shape buffer_shape,
                         Shape::FromProto(shape_proto.tuple_shapes(0)));
+    if (!buffer_shape.IsArrayExcludingBuffer()) {
+      return absl::InvalidArgumentError("Buffer shape must have array shape.");
+    }
     *state->buffer_shape = std::move(buffer_shape);
   }
   if (shape_proto.has_layout()) {

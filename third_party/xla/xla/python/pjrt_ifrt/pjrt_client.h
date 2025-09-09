@@ -67,6 +67,7 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/unbounded_work_queue.h"
 
 namespace xla {
 namespace ifrt {
@@ -219,6 +220,10 @@ class PjRtClient final
       const RemapPlan& plan, absl::Span<xla::ifrt::ArrayRef> arrays,
       ArrayCopySemantics semantics) override;
 
+  absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> ReshardArrays(
+      absl::Span<ArrayRef> arrays, absl::Span<const ArraySpec> specs,
+      ArrayCopySemantics semantics) override;
+
   Future<> GetReadyFuture(absl::Span<const ValueRef> values) override;
 
   absl::StatusOr<tsl::RCReference<Tuple>> MakeTuple(
@@ -361,7 +366,7 @@ class PjRtClient final
   // from a cross-host send onto device.
   absl::StatusOr<PjRtBuffers> CrossHostReceiveBuffers(
       absl::Span<const xla::Shape> shapes, xla::PjRtDevice* device,
-      const std::vector<int64_t>& keys);
+      std::vector<int64_t> keys);
 
   // Copies arrays from source to destination devices when at least one of the
   // (source, destination) pairs is cross-host using an experimental DCN
@@ -399,6 +404,10 @@ class PjRtClient final
   absl::Mutex shutting_down_mu_;
   bool shutting_down_ ABSL_GUARDED_BY(shutting_down_mu_) = false;
   std::unique_ptr<tsl::Thread> global_process_info_thread_;
+
+  // A work queue for dispatching background work. Enqueued work items can
+  // access the members of this class, so work_queue_ should be built last.
+  std::unique_ptr<tsl::UnboundedWorkQueue> work_queue_;
 
   friend class PjRtClientPeer;
 };

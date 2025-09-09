@@ -191,6 +191,10 @@ absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
 
 absl::StatusOr<ArrayRef> PjRtArray::FullyReplicatedShard(
     ArrayCopySemantics semantics) {
+  if (sharding_->devices()->AddressableDeviceList()->empty()) {
+    return FailedPrecondition(
+        "FullyReplicatedShard: Array has no addressable shards.");
+  }
   return PjRtArray::Create(client(), GetPjRtBuffer(semantics, 0));
 }
 
@@ -345,6 +349,13 @@ Future<> PjRtArray::CopyToHostBuffer(
     ArrayCopySemantics semantics) {
   DCHECK(this);
   if (sharding_->devices()->size() != 1) {
+    if (sharding_->IsFullyReplicated()) {
+      absl::StatusOr<ArrayRef> replicated = FullyReplicatedShard(semantics);
+      if (!replicated.ok()) {
+        return Future<>(std::move(replicated).status());
+      }
+      return (*replicated)->CopyToHostBuffer(data, byte_strides, semantics);
+    }
     return Future<>(
         InvalidArgument("Only single-shard is implemented, but got %d",
                         sharding_->devices()->size()));

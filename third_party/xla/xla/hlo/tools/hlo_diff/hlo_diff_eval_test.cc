@@ -91,7 +91,7 @@ TEST_F(HloDiffTest, SplitAllegianceWorks) {
   std::unique_ptr<const DiffResult> diff_result =
       ConstructDiffResult(*graph_l, *graph_r, mappings);
   std::unique_ptr<const DiffSummary> diff_summary =
-      ConstructDiffSummary(*module_l, *module_r, *diff_result);
+      ConstructDiffSummary(*graph_l, *graph_r, *diff_result);
   std::unique_ptr<const DiffEval> diff_eval = ComputeDiffEval(
       *graph_l, *graph_r, mappings, *diff_result, *diff_summary);
 

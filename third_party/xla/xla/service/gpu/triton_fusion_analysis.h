@@ -46,14 +46,20 @@ class TritonFusionAnalysis {
 
   // Execute the analysis of a dot instruction until it reaches the computation
   // boundaries.
-  static absl::StatusOr<TritonFusionAnalysis> Execute(
-      const HloDotInstruction& dot, int split_k = 1);
+  static absl::StatusOr<TritonFusionAnalysis> Execute(const HloInstruction& dot,
+                                                      int split_k = 1);
 
   // A scope is an HLO graph that can be tiled efficiently using same or
-  // compatible tile shapes on all operations. GEMM fusion has 3 or 4 scopes
-  // defined by left operand, right operand, optional meta (third operand) and
-  // output.
-  enum class Scope { LHS = 0, RHS = 1, META = 2, OUTPUT = 3 };
+  // compatible tile shapes on all operations. GEMM dot fusion has 3 scopes
+  // defined by left operand, right operand and output. GEMM scaled dot fusion
+  // has 5 scopes (also includes scale operands).
+  enum class Scope {
+    LHS = 0,
+    RHS = 1,
+    LHS_SCALE = 2,
+    RHS_SCALE = 3,
+    OUTPUT = 4,
+  };
 
   using IterationSpecByInstructionMap =
       ConstHloInstructionMap<TensorIterationSpec>;
@@ -91,10 +97,14 @@ class TritonFusionAnalysis {
   bool IsBatchDimMinorForInt4Parameter(const HloInstruction& dot,
                                        Scope scope) const;
 
+  bool is_scaled_dot() const { return is_scaled_dot_; }
+
  private:
   IterationSpecByInstructionByScopeMap iter_specs_;
   // HLO computation parameters per scope.
   std::map<Scope, ConstHloInstructionSet> parameters_;
+  // Scaled dot has additional scale scopes.
+  bool is_scaled_dot_ = false;
 };
 
 // The details of the Triton fusion / tiling propagation are in a separate

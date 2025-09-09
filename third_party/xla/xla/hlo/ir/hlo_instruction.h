@@ -60,11 +60,13 @@ limitations under the License.
 #include "xla/hlo/ir/ptrvec.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
+#include "xla/literal_pool.h"
 #include "xla/printer.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/mapped_ptr_container_sorter.h"
 #include "xla/service/name_uniquer.h"
 #include "xla/shape.h"
+#include "xla/shape_pool.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/gtl/iterator_range.h"
 #include "xla/tsl/platform/errors.h"
@@ -1208,10 +1210,34 @@ class HloInstruction {
   virtual bool HasSideEffect() const;
 
   // Returns the result shape of this instruction.
-  const Shape& shape() const;
+  const Shape& shape() const {
+    DCHECK(shape_) << "Instruction shape must be set";
+    return *shape_;
+  }
 
   // Returns the (mutable) result shape of this instruction.
-  Shape* mutable_shape() { return &shape_; }
+  Shape* mutable_shape() {
+    DCHECK(shape_) << "Instruction shape must be set";
+    if (shape_is_canonicalized_) {
+      shape_ = std::make_shared<Shape>(*shape_);
+      shape_is_canonicalized_ = false;
+    }
+    return &*shape_;
+  }
+
+  // Canonicalize instruction shape using the given shape pool.
+  bool Canonicalize(ShapePool* shape_pool) {
+    DCHECK(shape_) << "Instruction shape must be set";
+    if (shape_pool) {
+      std::shared_ptr<Shape> canonical = shape_pool->GetCanonicalShape(shape_);
+      shape_is_canonicalized_ = true;
+      if (canonical != shape_) {
+        shape_ = std::move(canonical);
+        return true;
+      }
+    }
+    return false;
+  }
 
   // Returns the ith operand to this instruction.
   const HloInstruction* operand(int64_t i) const;
@@ -2651,6 +2677,9 @@ class HloInstruction {
   // True if this instruction is the root of a computation.
   bool is_root_ : 1;
 
+  // True if the shape of this instruction has been canonicalized.
+  bool shape_is_canonicalized_ : 1;
+
   // Instruction operands.
   InstructionVector operands_;
 
@@ -2673,7 +2702,7 @@ class HloInstruction {
   std::shared_ptr<const HloSharding> sharding_;
 
   // Result shape of this instruction.
-  Shape shape_;
+  std::shared_ptr<Shape> shape_;
 
   // The backend-specific configuration for how a backend should compile this
   // HLO. See the documentation on backend_config().

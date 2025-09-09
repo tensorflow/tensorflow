@@ -127,6 +127,9 @@ message DebugOptions {
   //--------------------------------------------------------------------------//
   // go/keep-sorted start
 
+  // Return an error if HostOffloader would have automatically offloaded some
+  // compute to the host.
+  optional bool xla_disable_automatic_host_compute_offload = 408;
   // Perform hash-based cycle detection in fixed-point loops.
   optional bool xla_hlo_pass_fix_detect_cycles = 370;
   // Crash if HloPassFix can not converge after a fixed number of iterations.
@@ -241,9 +244,6 @@ message DebugOptions {
   // If set, XLA:CPU uses "fusion emitters" for codegen.
   optional bool xla_cpu_use_fusion_emitters = 376;
 
-  // When true, XLA:CPU uses the thunk runtime to execute compiled program.
-  optional bool xla_cpu_use_thunk_runtime = 298;
-
   // When true, XLA:CPU uses XNNPACK to execute supported operations.
   optional bool xla_cpu_use_xnnpack = 359;
 
@@ -251,6 +251,8 @@ message DebugOptions {
   optional bool xla_enable_fast_math = 335;
 
   // go/keep-sorted end
+
+  reserved 298;  // Was xla_cpu_use_thunk_runtime
 
   //--------------------------------------------------------------------------//
   // XLA:GPU options.
@@ -601,6 +603,9 @@ message DebugOptions {
 
   // Enables an experimental feature for command buffer conversion on thunks.
   optional bool xla_gpu_experimental_enable_command_buffer_on_thunks = 394;
+
+  // If true, enable autotuning between the native & triton fusion emitters.
+  optional bool xla_gpu_experimental_enable_fusion_autotuner = 409;
 
   // Enabling this flag will attempt to redirect every already-constructed
   // fusion possible to the Triton emitter.
@@ -1325,10 +1330,14 @@ message DebugOptions {
   // layouts.
   optional bool xla_early_exit_with_layouts = 397;
 
+  // If true, the triton fusion emitter will ignore IsTritonSupportedInstruction
+  // We need this to enable triton scaled dot emitter for testing.
+  optional bool xla_gpu_experimental_scaled_dot_with_triton = 410;
+
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 408
+  // Next id: 411
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

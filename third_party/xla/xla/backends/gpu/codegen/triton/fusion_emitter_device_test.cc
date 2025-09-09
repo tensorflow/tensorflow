@@ -59,7 +59,6 @@ limitations under the License.
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/types.h"
@@ -880,8 +879,7 @@ ENTRY main {
                                           "triton_softmax_computation", R"(
 CHECK:        func.func @triton_fn(%[[P0:.*]]: {{.*}}, %[[P1:.*]]: {{.*}})
 CHECK-DAG:        %[[PID:.*]] = tt.get_program_id x : i32
-CHECK-DAG:        %[[PID_I64:.*]] = arith.extsi %[[PID]] : i32 to i64
-CHECK-DAG:        %[[PID_INDEX:.*]] = arith.index_castui %[[PID_I64]] : i64 to index
+CHECK-DAG:        %[[PID_INDEX:.*]] = arith.index_cast %[[PID]] : i32 to index
 CHECK-NEXT:       triton_xla.extract from %[[P0]]
 CHECK-SAME:       [%[[PID_INDEX]], 0] [1, 128] [1, 1]
 CHECK:            tt.reduce
@@ -939,8 +937,7 @@ CHECK-SAME:                      %[[P0:[A-Za-z0-9_]*]]: !tt.ptr<f32>
 CHECK-SAME:                      %[[P1:[A-Za-z0-9_]*]]: !tt.ptr<f32>
 CHECK-SAME:                      %[[P2:[A-Za-z0-9_]*]]: !tt.ptr<f32>
 CHECK-DAG:        %[[PID:.*]] = tt.get_program_id x : i32
-CHECK-DAG:        %[[PID_I64:.*]] = arith.extsi %[[PID]] : i32 to i64
-CHECK-DAG:        %[[PID_INDEX:.*]] = arith.index_castui %[[PID_I64]] : i64 to index
+CHECK-DAG:        %[[PID_INDEX:.*]] = arith.index_cast %[[PID]] : i32 to index
 CHECK-DAG:        triton_xla.extract from %[[P0]] {{.*}} [%[[PID_INDEX]], 0] [1, 128] [1, 1] : tensor<1x128xf32>
 CHECK-DAG:        triton_xla.extract from %[[P1]] {{.*}} [0] [128] [1] : tensor<128xf32>
 CHECK:            tt.reduce
@@ -1000,8 +997,7 @@ CHECK:        #[[MAP:.*]] = #xla.indexing_map<"(pid_0) -> (pid_0 floordiv 125), 
 CHECK:        #[[MAP1:.*]] = #xla.indexing_map<"(pid_0) -> (pid_0 mod 125), domain: pid_0 in [0, 1249]">
 CHECK:        func.func @triton_fn(%[[P0:.*]]: {{.*}}, %[[P1:.*]]: {{.*}}, %[[P2:.*]]: {{.*}}, %[[P3:.*]]: {{.*}})
 CHECK-DAG:        %[[PID:.*]] = tt.get_program_id x : i32
-CHECK-DAG:        %[[PID_I64:.*]] = arith.extsi %[[PID]] : i32 to i64
-CHECK-DAG:        %[[PID_INDEX:.*]] = arith.index_castui %[[PID_I64]] : i64 to index
+CHECK-DAG:        %[[PID_INDEX:.*]] = arith.index_cast %[[PID]] : i32 to index
 CHECK-DAG:        %[[ROW_INDEX:.*]] = xla.apply_indexing #[[MAP]](%[[PID_INDEX]]
 CHECK-DAG:        %[[COL_INDEX:.*]] = xla.apply_indexing #[[MAP1]](%[[PID_INDEX]]
 CHECK:            triton_xla.extract from %[[P0]] {{.*}} [%[[ROW_INDEX]], %[[COL_INDEX]], 0] [1, 1, 128] [1, 1, 1] : tensor<1x1x128xf32>
@@ -1729,7 +1725,7 @@ ENTRY main {
 // CHECK-SAME:  : tensor<32xf32>
 
 // CHECK: %[[IOTA:.*]] = tt.make_range {end = 32 : i32, start = 0 : i32}
-// CHECK: %[[TILE_OFFSET_I32:.*]] = arith.index_castui %[[TILE_OFFSET]]
+// CHECK: %[[TILE_OFFSET_I32:.*]] = arith.index_cast %[[TILE_OFFSET]]
 // CHECK: %[[THRESHOLD:.*]] = arith.subi %[[C17]], %[[TILE_OFFSET_I32]]
 // CHECK: %[[THRESHOLD_SPLAT:.*]] = tt.splat %[[THRESHOLD]]
 // CHECK: %[[MASK:.*]] = arith.cmpi slt, %[[IOTA]], %[[THRESHOLD_SPLAT]]
@@ -1882,6 +1878,38 @@ backend_config={
  "kind":"__triton",
  "block_level_fusion_config":{
    "output_tiles":[{"sizes":["16","32"]}],
+   "num_warps":"1",
+   "num_ctas":"1",
+   "num_stages":"1",
+   "is_tma_allowed":"$0"}}}
+})";
+
+  const bool is_tma_allowed = GetParam();
+  const std::string hlo_text =
+      absl::Substitute(kHloTextTemplate, is_tma_allowed);
+  EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_text, kExactMatch));
+}
+
+// Parameterized the test to make sure that non-canonical layouts are handled
+// correctly when TMA is enabled.
+TEST_P(
+    TmaParameterizedTritonEmitterTest,
+    SimpleBitcastNonNormalizedOutputLayoutAndBitcastConvertIsLoweredCorrectly) {
+  constexpr absl::string_view kHloTextTemplate = R"(
+triton_computation {
+p = f32[64,15] parameter(0)
+bitcast = s32[15,64]{0,1} bitcast(p)
+ROOT negate = s32[15,64]{0,1} negate(bitcast)
+}
+
+ENTRY entry_computation {
+p = f32[64,15] parameter(0)
+ROOT fusion = s32[15,64]{0,1} fusion(p), kind=kCustom, calls=triton_computation,
+backend_config={
+"fusion_backend_config":{
+ "kind":"__triton",
+ "block_level_fusion_config":{
+   "output_tiles":[{"sizes":["15","32"]}],
    "num_warps":"1",
    "num_ctas":"1",
    "num_stages":"1",
@@ -2981,6 +3009,18 @@ ENTRY entry {
           "num_ctas":"1",
           "num_stages":"1"}}}
 })";
+
+  TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText, "fdot", R"(
+  // Ensure that masking is applied only conditionally to both operands.
+  CHECK:      %[[MASKED_OPERAND0:.*]] = scf.if
+  CHECK:        %[[SELECT0:.*]] = arith.select
+  CHECK-NEXT:   scf.yield %[[SELECT0]]
+  CHECK:      %[[MASKED_OPERAND1:.*]] = scf.if
+  CHECK:        %[[SELECT1:.*]] = arith.select
+  CHECK-NEXT:   scf.yield %[[SELECT1]]
+  CHECK:      tt.dot %[[MASKED_OPERAND0]], %[[MASKED_OPERAND1]]
+)"));
+
   EXPECT_TRUE(RunAndCompareNoHloPasses(
       kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
 }
@@ -3676,6 +3716,27 @@ INSTANTIATE_TEST_SUITE_P(
     ::testing::Combine(::testing::ValuesIn(AllXlaDataTypes()),
                        ::testing::ValuesIn(AllXlaDataTypes())),
     DotUnsetAlgorithmEmitterTest::ParamToString);
+
+TEST_F(TritonEmitterTest, ScaledDotIsSupportedByReferencePlatform) {
+  if (!std::get_if<se::CudaComputeCapability>(&GpuComputeCapability())) {
+    GTEST_SKIP() << "Ignore scaled dot test on ROCM.";
+  }
+  constexpr absl::string_view kHloText = R"(
+    HloModule ScaledDotIsSupportedByReferencePlatform
+
+    ENTRY entry {
+     lhs = bf16[4,4] parameter(0)
+     lhs_scale = bf16[1,1] parameter(1)
+     rhs = bf16[4,4] parameter(2)
+     rhs_scale = bf16[1,1] parameter(3)
+     ROOT dot = bf16[4,4] scaled-dot(lhs, lhs_scale, rhs, rhs_scale),
+         lhs_contracting_dims={1},
+         rhs_contracting_dims={1}
+    }
+  )";
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
 
 TEST_F(TritonEmitterTest, RocmWarpSizeIsSetCorrectly) {
   if (std::get_if<se::CudaComputeCapability>(&GpuComputeCapability())) {

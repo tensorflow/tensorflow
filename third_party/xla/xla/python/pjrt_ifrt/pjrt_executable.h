@@ -72,6 +72,9 @@ class PjRtCompatibleLoadedExecutable
     : public llvm::RTTIExtends<PjRtCompatibleLoadedExecutable,
                                LoadedExecutable> {
  public:
+  // Key for the call location attribute in the custom_options attribute map.
+  static constexpr absl::string_view kCallLocation = "call_location";
+
   // APIs that allow direct access to `xla::PjRtLoadedExecutable` for PjRt-only
   // operations.
   virtual xla::PjRtLoadedExecutable* pjrt_loaded_executable() = 0;

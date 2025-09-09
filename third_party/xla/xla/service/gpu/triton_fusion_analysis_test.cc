@@ -919,6 +919,38 @@ triton_gemm_dot {
                             /*broadcast_multiplier=*/1)));
 }
 
+TEST_F(TritonDotAnalysisTest, ScaledDotIsSupported) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule test
+
+scaled_dot {
+  %lhs = f32[4,128,1024] parameter(0)
+  %lhs_scale = f32[4,128,32] parameter(1)
+  %rhs = f32[4,1024,256] parameter(2)
+  %rhs_scale = f32[4,32,256] parameter(3)
+  ROOT %dot = f32[4,128,256] scaled-dot(%lhs, %lhs_scale, %rhs, %rhs_scale),
+      lhs_batch_dims={0}, lhs_contracting_dims={2},
+      rhs_batch_dims={0}, rhs_contracting_dims={1}
+})"));
+  const HloComputation* dot_computation = *module->computations().begin();
+  TF_ASSERT_OK_AND_ASSIGN(const auto analysis,
+                          TritonFusionAnalysis::Execute(*dot_computation));
+  const HloInstruction* lhs = dot_computation->parameter_instruction(0);
+  const HloInstruction* lhs_scale = dot_computation->parameter_instruction(1);
+  const HloInstruction* rhs = dot_computation->parameter_instruction(2);
+  const HloInstruction* rhs_scale = dot_computation->parameter_instruction(3);
+
+  using Scope = TritonFusionAnalysis::Scope;
+  EXPECT_EQ(*analysis.ScopeParameters(Scope::LHS).begin(), lhs);
+  EXPECT_EQ(*analysis.ScopeParameters(Scope::LHS_SCALE).begin(), lhs_scale);
+  EXPECT_EQ(*analysis.ScopeParameters(Scope::RHS).begin(), rhs);
+  EXPECT_EQ(*analysis.ScopeParameters(Scope::RHS_SCALE).begin(), rhs_scale);
+  for (const auto& hlo : dot_computation->instructions()) {
+    EXPECT_TRUE(analysis.QueryInstructionScope(*hlo).has_value());
+  }
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

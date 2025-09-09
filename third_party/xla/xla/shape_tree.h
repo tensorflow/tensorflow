@@ -293,17 +293,12 @@ class ShapeTree {
   }
 
   bool operator==(const ShapeTree<T>& other) const {
-    return *shape_ == *other.shape_ && tuple_tree_ == other.tuple_tree_;
+    return tuple_tree_ == other.tuple_tree_;
   }
   bool operator!=(const ShapeTree<T>& other) const { return !(*this == other); }
 
  private:
   explicit ShapeTree(std::shared_ptr<Shape> shape) : ShapeTree(shape.get()) {
-    shape_storage_.swap(shape);
-  }
-
-  ShapeTree(std::shared_ptr<Shape> shape, const T& init_value)
-      : ShapeTree(shape.get(), init_value) {
     shape_storage_.swap(shape);
   }
 
@@ -313,13 +308,15 @@ class ShapeTree {
         shape_storage_(shape_storage),
         shape_(shape) {}
 
-  // This constructor now always takes an init_value.
-  ShapeTree(absl::in_place_t, const Shape* shape, const T& init_value)
-      : tuple_tree_(*shape, init_value), shape_(shape) {}
+  template <typename... Args>
+  explicit ShapeTree(std::shared_ptr<Shape> shape, Args&&... args)
+      : ShapeTree(shape.get(), args...) {
+    shape_storage_.swap(shape);
+  }
 
-  template <typename... Ts>
-  ShapeTree(absl::in_place_t, const Shape* shape)
-      : tuple_tree_(TupleTree<T>::Node::FromShape(*shape)), shape_(shape) {}
+  template <typename... Args>
+  ShapeTree(absl::in_place_t, const Shape* shape, Args&&... args)
+      : tuple_tree_(*shape, args...), shape_(shape) {}
 
   TupleTree<T> tuple_tree_;
 

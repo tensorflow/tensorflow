@@ -155,6 +155,11 @@ bool WeightCacheBuilder::StartBuildStep() {
     XNNPACK_RETURN_CHECK(buffer_list_data.Map(fd_, header.buffer_list_offset,
                                               file_path_.c_str()),
                          "could not map buffer list mapping");
+    flatbuffers::Verifier verifier(
+        reinterpret_cast<const uint8_t*>(buffer_list_data.data()),
+        header.buffer_list_size);
+    XNNPACK_RETURN_CHECK(cache::schema::VerifyBufferListBuffer(verifier),
+                         "could not verify buffer list mapping");
     cache::schema::GetBufferList(buffer_list_data.data())->UnPackTo(&schema_);
   }
 

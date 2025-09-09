@@ -111,7 +111,6 @@ class IfrtBackendCompilerTest : public ::testing::Test {
 
 namespace {
 using ::testing::HasSubstr;
-using ::tsl::testing::StatusIs;
 
 struct IfrtBackendCompilerTestParams {
   std::string mlir_file_name;

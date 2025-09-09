@@ -98,6 +98,7 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
+#include "tsl/platform/unbounded_work_queue.h"
 
 namespace xla {
 namespace ifrt {
@@ -871,6 +872,9 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> PjRtClient::Create(
     }
   }
 
+  client->work_queue_ = std::make_unique<tsl::UnboundedWorkQueue>(
+      tsl::Env::Default(), "ifrt_pjrt_client_work_queue");
+
   LogDeviceSummary(client.get());
   return client;
 }
@@ -1337,7 +1341,8 @@ PjRtClient::CopyArraysForCrossHost(absl::Span<ArrayRef> arrays,
               "PjRtClient::CopyArraysForCrossHost");
         }
       }
-      TF_RETURN_IF_ERROR(CrossHostSendBuffers(send_buffers, transfer_keys));
+      TF_RETURN_IF_ERROR(
+          CrossHostSendBuffers(send_buffers, std::move(transfer_keys)));
       ++j;
     } else if (dst_devices->devices()[i]->IsAddressable()) {
       std::vector<xla::Shape> recv_shapes;
@@ -1362,9 +1367,9 @@ PjRtClient::CopyArraysForCrossHost(absl::Span<ArrayRef> arrays,
           GetPjRtGlobalDeviceId(dst_devices->devices()[i]->Id()));
       TF_ASSIGN_OR_RETURN(xla::PjRtDevice * pjrt_device,
                           pjrt_client_->LookupDevice(pjrt_global_device_id));
-      TF_ASSIGN_OR_RETURN(
-          recv_buffers.emplace_back(),
-          CrossHostReceiveBuffers(recv_shapes, pjrt_device, transfer_keys));
+      TF_ASSIGN_OR_RETURN(recv_buffers.emplace_back(),
+                          CrossHostReceiveBuffers(recv_shapes, pjrt_device,
+                                                  std::move(transfer_keys)));
     }
   }
 
@@ -1498,13 +1503,21 @@ absl::Status PjRtClient::CrossHostSendBuffers(
     return absl::InternalError(
         "CrossHostSendBuffers: keys must be the same size as buffers.");
   }
+  // TODO(emilyaf): Use an async version of KeyValueStore::Get or query batched
+  // keys together to reduce the number of threads used.
   for (int i = 0; i < keys.size(); ++i) {
     auto promise = PjRtFuture<std::string>::CreatePromise();
     PjRtFuture<std::string> descriptor_future(promise);
-    std::string key = absl::StrCat(kKeyPrefix, keys[i]);
-    TF_ASSIGN_OR_RETURN(std::string descriptor,
-                        kv_store_->Get(key, cross_host_transfer_timeout_));
-    promise.Set(std::move(descriptor));
+    work_queue_->Schedule([this, &promise, k = keys[i]] {
+      std::string key = absl::StrCat(kKeyPrefix, k);
+      absl::StatusOr<std::string> descriptor =
+          kv_store_->Get(key, cross_host_transfer_timeout_);
+      if (!descriptor.ok()) {
+        LOG(FATAL) << "Failed to get descriptor for key " << key << ": "
+                   << descriptor.status();
+      }
+      promise.Set(std::move(*descriptor));
+    });
     auto on_done = [](absl::Status status, bool sends_were_enqueued) {
       CHECK_OK(status);
     };
@@ -1515,8 +1528,8 @@ absl::Status PjRtClient::CrossHostSendBuffers(
 
 absl::StatusOr<PjRtArray::PjRtBuffers> PjRtClient::CrossHostReceiveBuffers(
     absl::Span<const xla::Shape> shapes, xla::PjRtDevice* device,
-    const std::vector<int64_t>& keys) {
-  auto notifier = [this, keys](
+    std::vector<int64_t> keys) {
+  auto notifier = [this, keys = std::move(keys)](
                       absl::StatusOr<xla::PjRtCrossHostRecvState> recv_state) {
     if (!recv_state.ok()) {
       LOG(FATAL) << "Invalid PjRtCrossHostRecvState passed to "
@@ -1544,7 +1557,7 @@ absl::StatusOr<PjRtArray::PjRtBuffers> PjRtClient::CrossHostReceiveBuffers(
       }
       return;
     }
-    for (int i = 0; i < keys.size(); ++i) {
+    for (int i = 0, n = keys.size(); i < n; ++i) {
       std::string key = absl::StrCat(kKeyPrefix, keys[i]);
       absl::Status kv_status = kv_store_->Set(
           key, recv_state->descriptors[i].serialized_descriptors.front());
@@ -1574,6 +1587,12 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> PjRtClient::RemapArrays(
     const RemapPlan& plan, absl::Span<xla::ifrt::ArrayRef> arrays,
     ArrayCopySemantics semantics) {
   return PjRtCompatibleClientRemapArrays(this, plan, arrays, semantics);
+}
+
+absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> PjRtClient::ReshardArrays(
+    absl::Span<ArrayRef> arrays, absl::Span<const ArraySpec> specs,
+    ArrayCopySemantics semantics) {
+  return Unimplemented("ReshardArrays not available with pjrt-ifrt client.");
 }
 
 Future<> PjRtClient::GetReadyFuture(absl::Span<const ValueRef> values) {

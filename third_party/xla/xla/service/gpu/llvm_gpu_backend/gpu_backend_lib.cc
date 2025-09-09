@@ -58,12 +58,14 @@ limitations under the License.
 #include "llvm/Transforms/IPO/AlwaysInliner.h"
 #include "llvm/Transforms/IPO/Internalize.h"
 #include "llvm/Transforms/Scalar.h"
+#include "xla/codegen/intrinsic/intrinsic.h"
 #include "xla/codegen/intrinsic/intrinsic_compiler_lib.h"
 #include "xla/codegen/intrinsic_lib.h"
 #include "xla/service/gpu/llvm_gpu_backend/load_ir_module.h"
 #include "xla/service/gpu/llvm_gpu_backend/utils.h"
 #include "xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -262,8 +264,18 @@ absl::Status LinkAndOptimizeModule(
   llvm::CGSCCAnalysisManager cgam;
   llvm::ModuleAnalysisManager mam;
 
+  xla::codegen::intrinsics::DeviceType device_type;
+  if (std::holds_alternative<se::CudaComputeCapability>(gpu_version)) {
+    device_type = xla::codegen::intrinsics::DeviceType::kNvidiaGpu;
+  } else if (std::holds_alternative<se::RocmComputeCapability>(gpu_version)) {
+    device_type = xla::codegen::intrinsics::DeviceType::kAmdGpu;
+  } else {
+    LOG(FATAL) << "Unsupported GPU type";
+  }
+
   codegen::IntrinsicFunctionLib intrinsic_lib(
       {target_machine ? target_machine->getTargetFeatureString().str() : "",
+       device_type,
        /*disable_platform_dependent_math=*/true});
 
   if (target_machine) {

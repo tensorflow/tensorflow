@@ -27,6 +27,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/status.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -649,17 +650,17 @@ int Main(int argc, char** argv) {
     }
     string pretty_flops;
     if (total_flops < 1000) {
-      pretty_flops = strings::StrCat(total_flops, " FLOPs");
+      pretty_flops = absl::StrCat(total_flops, " FLOPs");
     } else if (total_flops < (1000 * 1000)) {
       const float rounded_flops = (total_flops / 1000.0f);
-      pretty_flops = strings::StrCat(rounded_flops, "k FLOPs");
+      pretty_flops = absl::StrCat(rounded_flops, "k FLOPs");
     } else if (total_flops < (1000 * 1000 * 1000)) {
       const float rounded_flops = round(total_flops / 1000.0f) / 1000.0f;
-      pretty_flops = strings::StrCat(rounded_flops, " million FLOPs");
+      pretty_flops = absl::StrCat(rounded_flops, " million FLOPs");
     } else {
       const float rounded_flops =
           round(total_flops / (1000.0f * 1000.0f)) / 1000.0f;
-      pretty_flops = strings::StrCat(rounded_flops, " billion FLOPs");
+      pretty_flops = absl::StrCat(rounded_flops, " billion FLOPs");
     }
     LOG(INFO) << "FLOPs estimate: " << strings::HumanReadableNum(total_flops);
     const double mean_run_time = no_stat_wall_time / no_stat_num_runs;

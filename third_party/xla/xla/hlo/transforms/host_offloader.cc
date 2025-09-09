@@ -280,6 +280,13 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
           "to move the inputs to the device so that computation happens on the "
           "device.",
           instruction->name());
+      if (instruction->GetModule()
+              ->config()
+              .debug_options()
+              .xla_disable_automatic_host_compute_offload()) {
+        return absl::InvalidArgumentError(
+            "Automatic host compute offloading is disabled.");
+      }
       host_offload_utils::SetHostComputeFrontendAttribute(*instruction);
     }
     if (!already_saved_buffer) {

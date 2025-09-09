@@ -64,6 +64,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/service/gpu/transforms/pgle_accuracy_checker.h"
 #include "xla/service/gpu/transforms/scheduling_instruction_annotator.h"
+#include "xla/service/gpu/transforms/stream_attribute_async_wrapper.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/latency_hiding_scheduler.h"
 #include "xla/service/legalize_scheduling_annotations.h"
@@ -646,7 +647,9 @@ absl::StatusOr<HloSchedule> ScheduleGpuModuleWithMemoryScheduler(
   return ScheduleModule(
       module,
       DefaultMemoryScheduler(alias_info, size_func, PostProcessSchedule),
-      /*execution_threads=*/{HloInstruction::kMainExecutionThread},
+      /*execution_threads=*/
+      {HloInstruction::kMainExecutionThread,
+       StreamAttributeAsyncWrapper::kParallelExecutionThread},
       peak_memory_bytes);
 }
 

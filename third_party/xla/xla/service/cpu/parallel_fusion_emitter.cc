@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/functional/bind_front.h"
 #include "absl/functional/function_ref.h"
@@ -188,6 +189,12 @@ ParallelFusionEmitter::ConsumeKernels() {
   if (!kernels_status_.ok()) {
     return kernels_status_;
   }
+
+  // Sort the kernels by name to ensure a deterministic order.
+  absl::c_sort(kernels_, [](const LlvmKernelDefinition& lhs,
+                            const LlvmKernelDefinition& rhs) {
+    return lhs.spec().name() < rhs.spec().name();
+  });
 
   return std::move(kernels_);
 }

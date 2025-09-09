@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "xla/codegen/emitter_loc_op_builder.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "triton/Dialect/Triton/IR/Dialect.h"
 
 namespace xla {
 namespace gpu {
@@ -34,17 +35,40 @@ struct DotOperands {
   ::mlir::Value accumulator;
 };
 
+// Carries named `Value`s corresponding to `scaled-dot` operands. This includes
+// an accumulator and their respective scaling factors.
+struct ScaledDotOperands {
+  ::mlir::Value lhs;
+  ::mlir::Value lhs_scale;
+  ::mlir::Value rhs;
+  ::mlir::Value rhs_scale;
+  ::mlir::Value accumulator;
+};
+
 // Returns the type to use for accumulation for the given `dot` instruction.
 // This also handles the case where the algorithm is `ALG_UNSET`.
 absl::StatusOr<::mlir::Type> GetDotAccumulatorType(
-    EmitterLocOpBuilder& b, const HloDotInstruction& dot);
+    EmitterLocOpBuilder b, const HloDotInstruction& dot);
 
 // Emits a single-tile dot, considering the given `dot` instruction's algorithm
 // and operand precisions. Raises an `UnimplementedError` if the algorithm is
 // not supported.
-absl::StatusOr<::mlir::Value> EmitSingleTileDot(EmitterLocOpBuilder& b,
+absl::StatusOr<::mlir::Value> EmitSingleTileDot(EmitterLocOpBuilder b,
                                                 const HloDotInstruction& dot,
                                                 DotOperands dot_operands);
+
+// Emits a single-tile scaled-dot, considering the given `scaled-dot`
+// instruction's operand precisions. Raises an `InvalidArgumentError` if the
+// operand types are not supported.
+absl::StatusOr<::mlir::Value> EmitSingleTileScaledDot(
+    EmitterLocOpBuilder b, const HloScaledDotInstruction& scaled_dot,
+    ScaledDotOperands dot_operands);
+
+namespace internal {
+absl::StatusOr<mlir::triton::ScaleDotElemType> GetScaleDotElemType(
+    mlir::Type value);
+
+}  // namespace internal
 
 }  // namespace triton
 }  // namespace gpu

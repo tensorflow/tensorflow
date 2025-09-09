@@ -51,12 +51,11 @@ void addCommonPreImportPasses(mlir::OpPassManager& pm,
       mlir::stablehlo_ext::createStablehloCanonicalizeFromHloImportPass());
 }
 
-void addCommonPostImportPasses(mlir::OpPassManager& pm, bool importFuncCalls,
-                               bool importOnlyUninlineableFuncCalls) {
+void addCommonPostImportPasses(mlir::OpPassManager& pm, bool importFuncCalls) {
   pm.addPass(createImportSdyCustomCallsPass());
   pm.addNestedPass<FuncOp>(createOpenWhileFreeVarsShardingPass());
   if (importFuncCalls) {
-    pm.addPass(createImportFuncCallsPass(importOnlyUninlineableFuncCalls));
+    pm.addPass(createImportFuncCallsPass());
   }
 }
 

@@ -367,6 +367,13 @@ class BufferIntervalTree {
       int64_t start, int64_t end,
       absl::FunctionRef<void(const BufferIntervalTreeNode*)> fn) const;
 
+  // Apply fn to the nodes that overlap with the given time interval. It is
+  // guaranteed that fn is called for non-null nodes in order of non-decreasing
+  // start time. If fn returns true, then no more nodes are visited.
+  void ApplyToSortedNodesOverlapping(
+      int64_t start, int64_t end,
+      absl::FunctionRef<bool(const BufferIntervalTreeNode*)> fn) const;
+
   // Returns the number of allocated chunks that overlap with the given time
   // interval.
   int NumChunksOverlappingInTime(int64_t start, int64_t end) const;
@@ -898,6 +905,11 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   FreeChunks MakeFreeChunks(const BufferInterval& buffer_interval,
                             int64_t max_colocation_size) const;
 
+  // Finds the latest value <= buffer_interval.end such that that no chunk
+  // intersects [preferred_offset, preferred_offset + buffer_interval.size).
+  int64_t FindLatestEndWithFreeChunkAtPreferredOffset(
+      const BufferInterval& buffer_interval, int64_t preferred_offset) const;
+
   // These two methods below are exposed to other heap algorithms that inherit
   // from this class. The Finish() method tries to find a candidate chunk for
   // each BufferInterval, after calling GetSortedBufferIntervals. If a
@@ -969,6 +981,9 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   // returns all three of them.
   absl::flat_hash_set<const BufferType*> GetTransitiveColocations(
       const BufferInterval& interval) const;
+
+  // Returns the aligned chunk end.
+  int64_t ComputeAlignedChunkEnd(int64_t chunk_end) const;
 };
 
 // This class implements an algorithm that will produce multiple heaps, where

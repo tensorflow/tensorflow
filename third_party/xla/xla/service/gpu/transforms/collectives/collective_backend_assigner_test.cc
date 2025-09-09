@@ -126,7 +126,7 @@ TEST_F(CollectiveBackendAssignerTest, SmallCollectivePermuteUsesNvshmem) {
               absl_testing::IsOkAndHolds(CollectiveBackendConfig::NVSHMEM));
 }
 
-TEST_F(CollectiveBackendAssignerTest, LargeCollectivePermuteUsesDefault) {
+TEST_F(CollectiveBackendAssignerTest, LargeCollectivePermuteUsesNvshmem) {
   absl::string_view kHloText = R"(
     HloModule m
 
@@ -139,12 +139,12 @@ TEST_F(CollectiveBackendAssignerTest, LargeCollectivePermuteUsesDefault) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
   EXPECT_THAT(RunCollectiveBackendAssigner(module.get()),
-              absl_testing::IsOkAndHolds(false));
+              absl_testing::IsOkAndHolds(true));
 
   const HloInstruction* permute =
       module->entry_computation()->root_instruction();
   EXPECT_THAT(GetCollectiveBackendConfig(permute),
-              absl_testing::IsOkAndHolds(CollectiveBackendConfig::DEFAULT));
+              absl_testing::IsOkAndHolds(CollectiveBackendConfig::NVSHMEM));
 }
 
 }  // namespace

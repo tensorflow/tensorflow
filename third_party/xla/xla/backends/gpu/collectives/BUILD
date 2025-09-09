@@ -26,6 +26,27 @@ bool_flag(
     build_setting_default = True,
 )
 
+# NVSHMEM requires builtin functions since it uses printf's for debugging.
+config_setting(
+    name = "no_builtin_used",
+    values = {
+        "copt": "-fno-builtin",
+    },
+)
+
+cc_library(
+    name = "nvshmem_collectives_if_builtin_used",
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps =
+        select({
+            ":no_builtin_used": [],
+            "//conditions:default": [":nvshmem_collectives"],
+        }),
+)
+
 config_setting(
     name = "nvshmem_supported",
     constraint_values = [
@@ -45,7 +66,7 @@ cc_library(
     ],
     deps =
         select({
-            ":nvshmem_supported": [":nvshmem_collectives"],
+            ":nvshmem_supported": [":nvshmem_collectives_if_builtin_used"],
             "//conditions:default": [],
         }),
 )
@@ -351,6 +372,7 @@ cc_library(
         "//xla/service:global_device_id",
         "//xla/service/gpu:gpu_executable_run_options",
         "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:platform",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/gpu:gpu_stream",
@@ -360,7 +382,9 @@ cc_library(
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/debugging:leak_check",
         "@com_google_absl//absl/functional:any_invocable",

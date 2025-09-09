@@ -16,12 +16,15 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_PLUGIN_REGISTRY_H_
 #define XLA_STREAM_EXECUTOR_PLUGIN_REGISTRY_H_
 
-#include <map>
-#include <optional>
 #include <string>
+#include <utility>
+#include <variant>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/fft.h"
@@ -33,7 +36,6 @@ class StreamExecutor;
 
 // Enumeration to list the supported types of plugins / support libraries.
 enum class PluginKind {
-  kInvalid,
   kBlas,
   kDnn,
   kFft,
@@ -75,53 +77,20 @@ class PluginRegistry {
   // Retrieves the factory registered for the specified kind,
   // or a absl::Status on error.
   template <typename FactoryT>
-  absl::StatusOr<FactoryT> GetFactory(Platform::Id platform_id);
+  absl::StatusOr<FactoryT> GetFactory(Platform::Id platform_id) const;
 
  private:
-  // Containers for the sets of registered factories, by plugin kind.
-  struct Factories {
-    std::optional<BlasFactory> blas;
-    std::optional<DnnFactory> dnn;
-    std::optional<FftFactory> fft;
-  };
+  using AnyFactory = std::variant<BlasFactory, DnnFactory, FftFactory>;
 
-  PluginRegistry();
-
-  // Actually performs the work of registration.
-  template <typename FactoryT>
-  absl::Status RegisterFactoryInternal(const std::string& plugin_name,
-                                       FactoryT factory,
-                                       std::optional<FactoryT>* factories);
-
-  // Returns true if the specified plugin has been registered with the specified
-  // platform factories. Unlike the other overload of this method, this does
-  // not implicitly examine the default factory lists.
-  bool HasFactory(const Factories& factories, PluginKind plugin_kind) const;
-
-  // The singleton itself.
-  static PluginRegistry* instance_;
-
-  // The set of registered factories, keyed by platform ID.
-  std::map<Platform::Id, Factories> factories_;
-
+  PluginRegistry() = default;
   PluginRegistry(const PluginRegistry&) = delete;
   void operator=(const PluginRegistry&) = delete;
+
+  mutable absl::Mutex registry_mutex_;
+  // The set of registered factories, keyed by platform ID and plugin kind.
+  absl::flat_hash_map<std::pair<Platform::Id, PluginKind>, AnyFactory>
+      factories_ ABSL_GUARDED_BY(registry_mutex_);
 };
-
-// Explicit specializations are defined in plugin_registry.cc.
-#define DECLARE_PLUGIN_SPECIALIZATIONS(FACTORY_TYPE)                          \
-  template <>                                                                 \
-  absl::Status PluginRegistry::RegisterFactory<PluginRegistry::FACTORY_TYPE>( \
-      Platform::Id platform_id, const std::string& name,                      \
-      PluginRegistry::FACTORY_TYPE factory);                                  \
-  template <>                                                                 \
-  absl::StatusOr<PluginRegistry::FACTORY_TYPE> PluginRegistry::GetFactory(    \
-      Platform::Id platform_id)
-
-DECLARE_PLUGIN_SPECIALIZATIONS(BlasFactory);
-DECLARE_PLUGIN_SPECIALIZATIONS(DnnFactory);
-DECLARE_PLUGIN_SPECIALIZATIONS(FftFactory);
-#undef DECL_PLUGIN_SPECIALIZATIONS
 
 }  // namespace stream_executor
 

@@ -391,7 +391,7 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "com_google_protobuf",
-        patch_file = ["@local_xla//third_party/protobuf:protobuf-6.31.1.patch"],
+        patch_file = ["@local_xla//third_party/protobuf:protobuf.patch"],
         sha256 = "6e09bbc950ba60c3a7b30280210cd285af8d7d8ed5e0a6ed101c72aff22e8d88",
         strip_prefix = "protobuf-6.31.1",
         urls = tf_mirror_urls("https://github.com/protocolbuffers/protobuf/archive/refs/tags/v6.31.1.zip"),

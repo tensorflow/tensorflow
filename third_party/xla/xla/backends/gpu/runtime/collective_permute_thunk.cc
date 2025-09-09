@@ -283,7 +283,7 @@ absl::StatusOr<bool> CollectivePermuteStartThunk::RunCollective(
                         comm_handle.comm->NumRanks());
 
     auto rendezvous_name = absl::StrFormat(
-        "rendezvous before calling collective-permute; run_id=%d; op id:%d; "
+        "rendezvous before calling collective-permute; run_id=%ld; op id:%d; "
         "num_local_participants:%d",
         params.collective_params->run_id.ToInt(), config_.config.op_id,
         num_local_participants);
@@ -325,7 +325,7 @@ absl::StatusOr<bool> CollectivePermuteStartThunk::RunCollective(
                         comm_handle.comm->NumRanks());
 
     auto rendezvous_name = absl::StrFormat(
-        "rendezvous after calling collective-permute; run_id=%d; op id:%d; "
+        "rendezvous after calling collective-permute; run_id=%ld; op id:%d; "
         "num_local_participants:%d",
         params.collective_params->run_id.ToInt(), config_.config.op_id,
         num_local_participants);
@@ -380,10 +380,8 @@ absl::Status RunCollectivePermute(
   //
 
   int device_ordinal = stream.parent()->device_ordinal();
-  VLOG(3) << "Performing collective permute from device ordinal: "
-          << device_ordinal << " current_id " << current_id;
-  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(stream.parent(), buffers, comm,
-                                          use_symmetric_buffer));
+  VLOG(3) << "[" << device_ordinal
+          << "] Performing collective permute, current_id " << current_id;
 
   std::optional<int64_t> source_id = source_target.source;
   std::optional<int64_t> target_id = source_target.target;
@@ -424,6 +422,8 @@ absl::Status RunCollectivePermute(
         }
       }
     } else {
+      TF_RETURN_IF_ERROR(MaybeRegisterBuffers(stream.parent(), buffers, comm,
+                                              use_symmetric_buffer));
       auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(comm);
       tsl::AsyncValueRef<Communicator::Event> event = gpu_comm->GroupExecute(
           [source_rank, &buffers, &src_addrs, &dest_addrs, &target_ranks,

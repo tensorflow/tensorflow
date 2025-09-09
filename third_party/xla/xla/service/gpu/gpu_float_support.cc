@@ -40,6 +40,11 @@ bool GpuFloatSupport::SupportsMixedPrecisions(const HloInstruction& hlo) const {
 
   switch (hlo.opcode()) {
     // Handled by Triton GEMM or cuBLAS.
+    case HloOpcode::kScaledDot:
+      // We accept any scaled dot, because there is a rewrite pass that will
+      // lower it to a dot + multiply for unsupported types.
+      return true;
+    // Handled by Triton GEMM or cuBLAS.
     case HloOpcode::kDot: {
       const PrimitiveType lhs_type = hlo.operand(0)->shape().element_type();
       const PrimitiveType rhs_type = hlo.operand(1)->shape().element_type();
@@ -63,8 +68,11 @@ bool GpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
     case HloOpcode::kAllReduceStart:
     case HloOpcode::kAllReduceDone:
     case HloOpcode::kReduceScatter:
-    // Handled by Triton GEMM.
-    case HloOpcode::kDot:
+    case HloOpcode::kScaledDot:
+      // We accept any scaled dot, because there is a rewrite pass that will
+      // lower it to a dot + multiply for unsupported types.
+      return true;
+    case HloOpcode::kDot:  // Handled by Triton GEMM.
       using TypeAndCC =
           std::pair<PrimitiveType, stream_executor::CudaComputeCapability>;
       for (auto [type, cc] :

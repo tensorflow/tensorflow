@@ -194,7 +194,11 @@ absl::Status GpuHloCostAnalysis::FusionCalculateUtilizations(
     for (int operand_idx = 0; operand_idx < instr->operand_count();
          ++operand_idx) {
       const HloInstruction* operand = instr->operand(operand_idx);
-      if ((instr->IsElementwise()) || instr->opcode() == HloOpcode::kTuple ||
+      if ((instr->IsElementwise() ||
+           (instr->opcode() == HloOpcode::kBitcast &&
+            ShapeUtil::EqualIgnoringElementType(instr->operand(0)->shape(),
+                                                instr->shape()))) ||
+          instr->opcode() == HloOpcode::kTuple ||
           instr->opcode() == HloOpcode::kGetTupleElement) {
         for (const HloInstruction* r : elementwise_use_roots_[instr]) {
           elementwise_use_roots_[operand].insert(r);

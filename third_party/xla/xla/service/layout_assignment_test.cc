@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/computation_layout.h"
+#include "xla/service/hlo_verifier.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
@@ -68,6 +69,17 @@ class LayoutAssignmentTest : public HloTestBase {
     EXPECT_IS_OK(layout_assignment.Run(m).status());
   }
 
+  absl::StatusOr<bool> AssignLayoutsAndVerifyHlo(
+      HloModule* m, ComputationLayout* entry_computation_layout,
+      ChannelLayoutConstraints* channel_constraints = nullptr) {
+    LayoutAssignment layout_assignment(
+        entry_computation_layout,
+        /*channel_constraints=*/channel_constraints);
+    EXPECT_IS_OK(layout_assignment.Run(m).status());
+    HloVerifier verifier(/*layout_sensitive=*/true,
+                         /*allow_mixed_precision=*/false);
+    return verifier.Run(m);
+  }
   std::vector<int64_t> LayoutOf(HloModule* m, absl::string_view name) {
     HloInstruction* instr = FindInstruction(m, name);
     CHECK(instr != nullptr) << name;
@@ -2169,5 +2181,186 @@ TEST_F(LayoutAssignmentTest, CustomCallAliasingOperandToTupleResult) {
   ExpectLayoutIs(custom_call->shape().tuple_shapes(0), {0, 1});
   ExpectLayoutIs(custom_call->shape().tuple_shapes(1), {1, 0});
 }
+
+// This tests forward propagation in a buffer chain.
+TEST_F(LayoutAssignmentTest, BufferChainLayoutConstrainedComputationInput) {
+  const char* module_str = R"(
+  HloModule test
+  ENTRY test_computation {
+    init = s32[2,8] parameter(0)
+    b0 = b(s32[2,8]) custom-call(init), custom_call_target="Pin",
+      output_to_operand_aliasing={{}: (0, {})}
+    b1 = b(s32[2,8]) custom-call(b0), custom_call_target="CallBack_AddOne",
+      output_to_operand_aliasing={{}: (0, {})}
+    ROOT v = s32[2,8] custom-call(b1), custom_call_target="Unpin",
+      output_to_operand_aliasing={{}: (0, {})}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> m,
+      ParseAndReturnVerifiedModule(
+          module_str, /*config=*/{},
+          HloParserOptions().set_fill_missing_layouts(false)));
+  ComputationLayout* computation_layout = m->mutable_entry_computation_layout();
+  *computation_layout->mutable_parameter_layout(0) =
+      ShapeLayout(ShapeUtil::MakeShapeWithDenseLayout(S32, {2, 8}, {0, 1}));
+  auto status = AssignLayoutsAndVerifyHlo(m.get(), computation_layout);
+  EXPECT_TRUE(status.ok());
+  EXPECT_EQ(FindInstruction(m.get(), HloOpcode::kCopy), nullptr);
+  // Verify that Unpin custom-call gets the input parameter layout for its
+  // operand and result.
+  const HloInstruction* unpin = m->entry_computation()->root_instruction();
+  ExpectLayoutIs(unpin->shape(), {0, 1});
+  ExpectLayoutIs(unpin->operand(0)->shape(), {0, 1});
+}
+
+// This tests backward propagation in a buffer chain.
+TEST_F(LayoutAssignmentTest, BufferChainLayoutConstrainedComputationOutput) {
+  const char* module_str = R"(
+  HloModule test
+  ENTRY test_computation {
+    init = s32[2,8] parameter(0)
+    b0 = b(s32[2,8]) custom-call(init), custom_call_target="Pin",
+      output_to_operand_aliasing={{}: (0, {})}
+    b1 = b(s32[2,8]) custom-call(b0), custom_call_target="CallBack_AddOne",
+      output_to_operand_aliasing={{}: (0, {})}
+    ROOT v = s32[2,8] custom-call(b1), custom_call_target="Unpin",
+      output_to_operand_aliasing={{}: (0, {})}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> m,
+      ParseAndReturnVerifiedModule(
+          module_str, /*config=*/{},
+          HloParserOptions().set_fill_missing_layouts(false)));
+  ComputationLayout* computation_layout = m->mutable_entry_computation_layout();
+  *computation_layout->mutable_result_layout() =
+      ShapeLayout(ShapeUtil::MakeShapeWithDenseLayout(S32, {2, 8}, {0, 1}));
+  auto status = AssignLayoutsAndVerifyHlo(m.get(), computation_layout);
+  EXPECT_TRUE(status.ok());
+  EXPECT_EQ(FindInstruction(m.get(), HloOpcode::kCopy), nullptr);
+  // Verify that the Pin custom-call gets the computation result layout for its
+  // operand and result.
+  const HloInstruction* pin = FindInstruction(m.get(), "b0");
+  ExpectLayoutIs(pin->shape(), {0, 1});
+  ExpectLayoutIs(pin->operand(0)->shape(), {0, 1});
+}
+
+// This shows the correct way of specifying the layout of a buffer is to use
+// the operand_layout_constraints attribute on the Pin instruction. This is
+// because Pin is the starting point of a buffer chain, and layout assignment
+// inserts a copy when it sees an operand with layout constraints, regardless
+// whether the operand is a buffer or non-buffer.
+TEST_F(LayoutAssignmentTest, BufferChainLayoutConstrainedPin) {
+  const char* module_str = R"(
+  HloModule test
+  ENTRY test_computation {
+    init = s32[2,8] parameter(0)
+    b0 = b(s32[2,8]{0, 1}) custom-call(init), custom_call_target="Pin",
+      output_to_operand_aliasing={{}: (0, {})},
+      operand_layout_constraints={s32[2,8]{0,1}}
+    b1 = b(s32[2,8]) custom-call(b0), custom_call_target="CallBack_AddOne",
+      output_to_operand_aliasing={{}: (0, {})}
+    ROOT v = s32[2,8] custom-call(b1), custom_call_target="Unpin",
+      output_to_operand_aliasing={{}: (0, {})}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> m,
+      ParseAndReturnVerifiedModule(
+          module_str, /*config=*/{},
+          HloParserOptions().set_fill_missing_layouts(false)));
+  ComputationLayout* computation_layout = m->mutable_entry_computation_layout();
+  auto status = AssignLayoutsAndVerifyHlo(m.get(), computation_layout);
+  EXPECT_TRUE(status.ok());
+
+  // Verify that the operand_layout_constraints is propagated to the Unpin
+  // custom-call along the buffer chain.
+  const HloInstruction* unpin = m->entry_computation()->root_instruction();
+  ExpectLayoutIs(unpin->shape(), {0, 1});
+  ExpectLayoutIs(unpin->operand(0)->shape(), {0, 1});
+
+  // Verify that the operand of the Pin instruction is a copy with the needed
+  // layout change.
+  Layout layout01 = LayoutUtil::MakeLayout({0, 1});
+  Layout layout10 = LayoutUtil::MakeLayout({1, 0});
+
+  EXPECT_THAT(
+      FindInstruction(m.get(), "b0"),
+      GmockMatch(m::CustomCall(m::Copy(m::Parameter(0).WithShape(
+                                   m::Shape().WithLayoutEqualTo(&layout10))))
+                     .WithShape(m::Shape().WithLayoutEqualTo(&layout01))));
+}
+
+// This shows an incorrect way of specifying the layout of a buffer, causing a
+// copy of the buffer.
+TEST_F(LayoutAssignmentTest, BufferChainLayoutConstrainedNotPin) {
+  const char* module_str = R"(
+  HloModule test
+  ENTRY test_computation {
+    init = s32[2,8] parameter(0)
+    b0 = b(s32[2,8]) custom-call(init), custom_call_target="Pin",
+      output_to_operand_aliasing={{}: (0, {})}
+    b1 = b(s32[2,8]{0,1}) custom-call(b0), custom_call_target="CallBack_AddOne",
+      output_to_operand_aliasing={{}: (0, {})},
+      operand_layout_constraints={b(s32[2,8]{0,1})}
+    ROOT v = s32[2,8] custom-call(b1), custom_call_target="Unpin",
+      output_to_operand_aliasing={{}: (0, {})}
+  })";
+  // We can't user VerifiedHloModule as its destructor gives an error for an
+  // invalid HloModule..
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> m,
+      ParseAndReturnUnverifiedModule(
+          module_str, /*config=*/{},
+          HloParserOptions().set_fill_missing_layouts(false)));
+  HloVerifier verifier(/*layout_sensitive=*/false,
+                       /*allow_mixed_precision=*/false);
+  EXPECT_TRUE(verifier.Run(m.get()).ok());
+  ComputationLayout* computation_layout = m->mutable_entry_computation_layout();
+  auto status = AssignLayoutsAndVerifyHlo(m.get(), computation_layout);
+  EXPECT_FALSE(status.ok());
+  EXPECT_NE(FindInstruction(m.get(), HloOpcode::kCopy), nullptr);
+  EXPECT_THAT(status.status().message(),
+              ::testing::HasSubstr(
+                  "Seen buffers while buffers aren't allowed in this context"));
+}
+
+// This shows that in general, inconsistent layout constraints for a buffer
+// chain can cause a copy of the buffer and trigger verification errors.
+TEST_F(LayoutAssignmentTest, BufferChainLayoutInconsistentConstrains) {
+  const char* module_str = R"(
+  HloModule test
+  ENTRY test_computation {
+    init = s32[2,8] parameter(0)
+    b0 = b(s32[2,8]{0,1}) custom-call(init), custom_call_target="Pin",
+      output_to_operand_aliasing={{}: (0, {})},
+      operand_layout_constraints={s32[2,8]{0,1}}
+    b1 = b(s32[2,8]) custom-call(b0), custom_call_target="CallBack_AddOne",
+      output_to_operand_aliasing={{}: (0, {})}
+    ROOT v = s32[2,8] custom-call(b1), custom_call_target="Unpin",
+      output_to_operand_aliasing={{}: (0, {})}
+  })";
+  // We can't user VerifiedHloModule as its destructor gives an error for an
+  // invalid HloModule..
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> m,
+      ParseAndReturnUnverifiedModule(
+          module_str, /*config=*/{},
+          HloParserOptions().set_fill_missing_layouts(false)));
+  HloVerifier verifier(/*layout_sensitive=*/false,
+                       /*allow_mixed_precision=*/false);
+  EXPECT_TRUE(verifier.Run(m.get()).ok());
+  ComputationLayout computation_layout = m->entry_computation_layout();
+  // Create a layout constraint for the result that is inconsistent with the
+  // layout of buffer chain, to trigger a copy of the buffer.
+  *computation_layout.mutable_result_layout() =
+      ShapeLayout(ShapeUtil::MakeShapeWithDenseLayout(S32, {2, 8}, {1, 0}));
+
+  auto status = AssignLayoutsAndVerifyHlo(m.get(), &computation_layout);
+  EXPECT_FALSE(status.ok());
+  EXPECT_NE(FindInstruction(m.get(), HloOpcode::kCopy), nullptr);
+  EXPECT_THAT(status.status().message(),
+              ::testing::HasSubstr(
+                  "Seen buffers while buffers aren't allowed in this context"));
+}
+
 }  // namespace
 }  // namespace xla

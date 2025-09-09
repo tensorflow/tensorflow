@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/hlo/builder/lib/constants.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -53,6 +54,34 @@ absl::StatusOr<HloInstruction*> ExpandInstructionUsingBuilder(
       HloComputation * computation,
       XlaComputationToHloComputation(xla_computation,
                                      old_instruction->parent()->parent()));
+
+  // Fix broadcast layouts (they cannot be inferred correctly).
+  for (HloInstruction* instruction : computation->instructions()) {
+    auto broadcast = DynCast<HloBroadcastInstruction>(instruction);
+    if (broadcast != nullptr && !LayoutUtil::IsMonotonicWithDim0Major(
+                                    broadcast->operand(0)->shape().layout())) {
+      // Previous instruction is a convert, next one is a reshape.
+      int rank = broadcast->shape().dimensions().size();
+      const HloInstruction* convert = broadcast->operand(0);
+      CHECK(convert->opcode() == HloOpcode::kConvert &&
+            convert->shape().dimensions().size() == rank - 1);
+      HloInstruction* reshape = broadcast->users()[0];
+      CHECK(reshape->opcode() == HloOpcode::kReshape &&
+            reshape->shape().dimensions().size() == rank - 1);
+
+      // Increase the layout index of the dimensions after the last one.
+      // Example: {2,0,1} -> {3,0,2,1}
+      int last_idx = convert->shape().layout().minor_to_major().back();
+      auto broadcast_layout = broadcast->mutable_shape()->mutable_layout();
+      for (int i = 0; i < rank - 1; ++i) {
+        int idx = convert->shape().layout().minor_to_major(i);
+        broadcast_layout->set_minor_to_major(i, idx + (idx >= last_idx));
+      }
+      broadcast_layout->set_minor_to_major(rank - 1, last_idx);
+      *reshape->mutable_shape()->mutable_layout() = convert->shape().layout();
+    }
+  }
+
   return old_instruction->parent()->AddInstruction(HloInstruction::CreateCall(
       old_instruction->shape(), old_instruction->operands(), computation));
 }

@@ -80,8 +80,7 @@ class CollectiveInterpolationTest : public TestWithParam<ParametrizedTestCase> {
           space_spec.network_througput_bytes);
       *profiles.add_entries() = entry;
     }
-    device_info_ = TestGpuDeviceInfo::RTXA6000DeviceInfo(
-        stream_executor::CudaComputeCapability::Hopper());
+    device_info_ = TestGpuDeviceInfo::RTXA6000DeviceInfo();
     interpolator_ = *CollectiveInterpolator::Create(kNumGpusPerHost, profiles,
                                                     device_info_);
   }
@@ -1020,9 +1019,19 @@ INSTANTIATE_TEST_SUITE_P(
       return info.param.test_name;
     });
 
-TEST(CollectiveInterpolatorTest, LoadsDefaultProfile) {
-  auto device_info = TestGpuDeviceInfo::RTXA6000DeviceInfo(
-      stream_executor::CudaComputeCapability::Hopper());
+struct CollectiveInterpolationWithDefaultProfileTestCase {
+  std::string test_name;
+  stream_executor::GpuComputeCapability cc;
+  absl::Duration expected_duration;
+};
+
+class CollectiveInterpolationWithDefaultProfileTest
+    : public TestWithParam<CollectiveInterpolationWithDefaultProfileTestCase> {
+};
+
+TEST_P(CollectiveInterpolationWithDefaultProfileTest, LoadsDefaultProfile) {
+  const auto& [test_name, cc, expected_duration] = GetParam();
+  auto device_info = TestGpuDeviceInfo::RTXA6000DeviceInfo(cc);
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<CollectiveInterpolator> interpolator,
       CollectiveInterpolator::Create(kNumGpusPerHost, device_info));
@@ -1030,26 +1039,45 @@ TEST(CollectiveInterpolatorTest, LoadsDefaultProfile) {
     HloModule m, num_partitions=8
 
     wrapped_add {
-        a = f32[] parameter(0)
-        b = f32[] parameter(1)
-        ROOT _ = f32[] add(a,b)
+      a = f32[] parameter(0)
+      b = f32[] parameter(1)
+      ROOT _ = f32[] add(a,b)
     }
 
     ENTRY main {
-        p = f32[256] parameter(0)
-        ROOT _ = f32[256] all-reduce(p),
-        to_apply=wrapped_add,
-        replica_groups=[1,8]<=[8],
-        use_global_device_ids=true,
-        channel_id=1
+      p = f32[256] parameter(0)
+      ROOT _ = f32[256] all-reduce(p), to_apply=wrapped_add,
+          replica_groups=[1,8]<=[8], use_global_device_ids=true, channel_id=1
     }
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
   HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
       module->entry_computation()->root_instruction());
 
-  EXPECT_TRUE(interpolator->EstimatedRuntime(*instr).ok());
+  absl::StatusOr<absl::Duration> runtime =
+      interpolator->EstimatedRuntime(*instr);
+  EXPECT_TRUE(runtime.ok());
+  EXPECT_EQ(runtime.value(), expected_duration);
 }
+
+INSTANTIATE_TEST_SUITE_P(
+    CollectiveInterpolationWithDefaultProfileTestInstantiation,
+    CollectiveInterpolationWithDefaultProfileTest,
+    ValuesIn<CollectiveInterpolationWithDefaultProfileTestCase>(
+        {{
+             "H100",
+             se::CudaComputeCapability(9, 0),
+             absl::Microseconds(49.312),
+         },
+         {
+             "B200",
+             se::CudaComputeCapability(10, 0),
+             absl::Microseconds(45.024),
+         }}),
+    [](const TestParamInfo<
+        CollectiveInterpolationWithDefaultProfileTest::ParamType>& info) {
+      return info.param.test_name;
+    });
 
 }  // namespace
 }  // namespace xla::gpu

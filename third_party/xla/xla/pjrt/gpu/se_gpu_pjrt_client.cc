@@ -635,12 +635,14 @@ StreamExecutorGpuClient::StreamExecutorGpuClient(
           should_stage_host_to_device_transfers, std::move(gpu_run_options)),
       num_nodes_(num_nodes),
       abort_collectives_on_failure_(abort_collectives_on_failure),
-      topology_(xla::StreamExecutorGpuTopologyDescription(
-          tsl::Fingerprint64(platform_name), platform_name,
-          std::move(gpu_topology), GetAttrsForDevices(addressable_devices()),
-          GetTargetConfigForDevices(addressable_devices()))),
       kv_store_(std::move(kv_store)),
       distributed_client_(std::move(distributed_client)) {
+  if (gpu_topology != nullptr) {
+    topology_.emplace(tsl::Fingerprint64(platform_name), platform_name,
+                      std::move(gpu_topology),
+                      GetAttrsForDevices(addressable_devices()),
+                      GetTargetConfigForDevices(addressable_devices()));
+  }
   const int basePinnedId = device_count();
   for (auto* device : addressable_devices()) {
     // Use the device id to construct a globally unique memory space id. We do
@@ -941,11 +943,9 @@ absl::Status StreamExecutorGpuClient::UpdateCompileOptionsInternal(
     bool lookup_addressable_devices) {
   TF_RETURN_IF_ERROR(PjRtStreamExecutorClient::UpdateCompileOptionsInternal(
       options, returned_extras, lookup_addressable_devices));
-  // TODO: Fix null topology usage in TF.
-  // https://github.com/search?q=repo%3Atensorflow%2Ftensorflow%20%2F*gpu_topology%3D*%2Fnullptr&type=code
-  if (topology_.gpu_topology_ptr() != nullptr) {
+  if (topology_) {
     options->executable_build_options.set_slice_size(
-        topology_.gpu_topology().slice_size());
+        topology_->gpu_topology().slice_size());
   }
   return absl::OkStatus();
 }
@@ -1161,9 +1161,20 @@ StreamExecutorGpuClient::MakeCrossHostReceiveBuffers(
   return buffers;
 }
 
+absl::StatusOr<const xla::PjRtTopologyDescription*>
+StreamExecutorGpuClient::GetTopologyDescription() const {
+  if (!topology_.has_value()) {
+    return absl::FailedPreconditionError("GPU Topology is missing");
+  }
+  return &*topology_;
+}
+
 absl::StatusOr<Layout> StreamExecutorGpuClient::GetDefaultLayout(
     PrimitiveType element_type, absl::Span<const int64_t> dims) {
-  return topology_.GetDefaultLayout(element_type, dims);
+  if (!topology_.has_value()) {
+    return absl::FailedPreconditionError("GPU Topology is missing");
+  }
+  return topology_->GetDefaultLayout(element_type, dims);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
@@ -1836,9 +1847,8 @@ StreamExecutorGpuClient::RunAsync(
                                  ? run_options->device_ordinal()
                                  : executor->device_ordinal();
 
-  XLA_SCOPED_LOGGING_TIMER(
-      absl::StrCat("GpuExecutable::ExecuteAsyncOnStreamImpl(",
-                   gpu_exec->module_name(), ")"));
+  XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
+      "GpuExecutable::ExecuteAsyncOnStreamImpl(", gpu_exec->name(), ")"));
 
   // GpuExecutable always bound to a single GpuContext during its execution, so
   // we activate it once to skip expensive context activations later.
@@ -1924,7 +1934,7 @@ StreamExecutorGpuClient::RunAsync(
   std::set<se::DeviceMemoryBase> buffers_in_result;
 
   xla::ShapeTree<tsl::RCReference<RawSEDeviceMemory>> results(
-      gpu_exec->output_shape());
+      gpu_exec->result_shape());
 
   for (auto& p : results) {
     const ShapeIndex& index = p.first;
@@ -1960,7 +1970,7 @@ StreamExecutorGpuClient::RunAsync(
         input.is_donated = false;
         continue;
       } else if (!output_info.passthrough &&
-                 !ShapeUtil::GetSubshape(gpu_exec->output_shape(), index)
+                 !ShapeUtil::GetSubshape(gpu_exec->result_shape(), index)
                       .IsTuple()) {
         // The guard is above is not to insert copy-protection when aliasing
         // pass-through params, as we do not need to write into the output
@@ -1968,7 +1978,7 @@ StreamExecutorGpuClient::RunAsync(
         VLOG(3) << "Using copy-protection: aliasing is specified, but the "
                    "buffer is not donated; allocating a fresh buffer";
         int64_t allocation_size = ShapeUtil::ByteSizeOf(
-            ShapeUtil::GetSubshape(gpu_exec->output_shape(), index));
+            ShapeUtil::GetSubshape(gpu_exec->result_shape(), index));
         absl::StatusOr<se::OwningDeviceMemory> allocated_buffer =
             memory_allocator->Allocate(device_ordinal, allocation_size,
                                        /*retry_on_failure=*/true,

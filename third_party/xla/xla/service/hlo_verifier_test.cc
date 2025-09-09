@@ -3695,7 +3695,22 @@ ENTRY %entry_computation {
                           ParseAndReturnUnverifiedModule(hlo_string));
 
   auto status = verifier().Run(module.get()).status();
+  EXPECT_TRUE(status.ok());
+}
+
+TEST_F(HloVerifierTest, MismatchedTupleInOriginalValue) {
+  const std::string hlo_string = R"(
+HloModule module
+ENTRY %entry_computation {
+  ROOT op = f32[] parameter(0),  origin={(({}, {"v2"}), {"v3"})}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
   EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.message(), HasSubstr("Mismatched tuple structure"));
 }
 
 TEST_F(HloVerifierTest, RaggedAllToAllWithRank1OffsetsSizes) {
@@ -4325,9 +4340,11 @@ TEST_F(HloVerifierTestForCollectiveDeadlocks, VerifySendRecvDeadlockOnRecv) {
 
   ENTRY test_computation {
     after_all = token[] after-all()
-    recv1 = (f32[], u32[], token[]) recv(after_all), channel_id=1
+    recv1 = (f32[], u32[], token[]) recv(after_all), channel_id=1, frontend_attributes={
+            _xla_send_recv_source_target_pairs="{{3,0}}"}
     recv1-done = (f32[], token[]) recv-done(recv1), channel_id=1
-    recv2 = (f32[], u32[], token[]) recv(after_all), channel_id=2
+    recv2 = (f32[], u32[], token[]) recv(after_all), channel_id=2, frontend_attributes={
+            _xla_send_recv_source_target_pairs="{{0,1}}"}
     ROOT recv2-done = (f32[], token[]) recv-done(recv2), channel_id=2
   })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
@@ -4344,9 +4361,11 @@ TEST_F(HloVerifierTestForCollectiveDeadlocks, VerifySendRecvDeadlockOnSend) {
   ENTRY test_computation {
     c0 = f32[] constant(0)
     after_all = token[] after-all()
-    send1 = (f32[], u32[], token[]) send(c0, after_all), channel_id=1
+    send1 = (f32[], u32[], token[]) send(c0, after_all), channel_id=1, frontend_attributes={
+            _xla_send_recv_source_target_pairs="{{3,0}}"}
     send1-done = token[] send-done(send1), channel_id=1
-    send2 = (f32[], u32[], token[]) send(c0, after_all), channel_id=2
+    send2 = (f32[], u32[], token[]) send(c0, after_all), channel_id=2, frontend_attributes={
+            _xla_send_recv_source_target_pairs="{{0,1}}"}
     ROOT send2-done = token[] send-done(send2), channel_id=2
   })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
@@ -4364,7 +4383,8 @@ TEST_F(HloVerifierTestForCollectiveDeadlocks,
   ENTRY test_computation {
     c0 = f32[] constant(0)
     after_all = token[] after-all()
-    send1 = (f32[], u32[], token[]) send(c0, after_all), channel_id=1
+    send1 = (f32[], u32[], token[]) send(c0, after_all), channel_id=1, frontend_attributes={
+            _xla_send_recv_source_target_pairs="{{3,0}}"}
     send1-done = token[] send-done(send1), channel_id=1
     p0 = f32[10] parameter(0)
     p1 = bf16[10] parameter(1)
@@ -4372,9 +4392,12 @@ TEST_F(HloVerifierTestForCollectiveDeadlocks,
   })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnUnverifiedModule(hlo));
-  EXPECT_THAT(verifier().Run(module.get()),
-              StatusIs(absl::StatusCode::kInternal,
-                       HasSubstr("Expected send or recv")));
+  EXPECT_THAT(
+      verifier().Run(module.get()),
+      StatusIs(
+          absl::StatusCode::kInternal,
+          HasSubstr(
+              "Introducing the following instruction will cause a deadlock")));
 }
 
 TEST_F(HloVerifierTestForCollectiveDeadlocks,
@@ -4385,7 +4408,8 @@ TEST_F(HloVerifierTestForCollectiveDeadlocks,
   while_body {
     c0 = f32[] constant(0)
     after_all = token[] after-all()
-    send1 = (f32[], u32[], token[]) send(c0, after_all), channel_id=1
+    send1 = (f32[], u32[], token[]) send(c0, after_all), channel_id=1, frontend_attributes={
+            _xla_send_recv_source_target_pairs="{{3,0}}"}
     send1-done = token[] send-done(send1), channel_id=1
     params = (f32[10], bf16[10]) parameter(0)
     p0 = f32[10] get-tuple-element(params), index=0
@@ -4406,7 +4430,8 @@ TEST_F(HloVerifierTestForCollectiveDeadlocks,
 
   ENTRY test_computation {
     after_all = token[] after-all()
-    recv = (f32[], u32[], token[]) recv(after_all), channel_id=1
+    recv = (f32[], u32[], token[]) recv(after_all), channel_id=1, frontend_attributes={
+            _xla_send_recv_source_target_pairs="{{0,1},{1,2},{2,3}}"}
     recv_done = (f32[], token[]) recv-done(recv), channel_id=1
     p0 = f32[10] parameter(0)
     p1 = bf16[10] parameter(1)
@@ -4420,10 +4445,13 @@ TEST_F(HloVerifierTestForCollectiveDeadlocks,
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnUnverifiedModule(hlo));
-  EXPECT_THAT(verifier().Run(module.get()),
-              StatusIs(absl::StatusCode::kInternal,
-                       AnyOf(HasSubstr("Expected send or recv"),
-                             HasSubstr("Expected send to match recv"))));
+  EXPECT_THAT(
+      verifier().Run(module.get()),
+      StatusIs(
+          absl::StatusCode::kInternal,
+          HasSubstr(
+              "Expected send and recv instructions to have the same "
+              "source-target pairs, but could not match some instructions.")));
 }
 
 TEST_F(HloVerifierTestForCollectiveDeadlocks,
@@ -4563,6 +4591,173 @@ TEST_F(HloVerifierTestForCollectiveDeadlocks, VerifySendRecvNoDeadlocks) {
                           ParseAndReturnUnverifiedModule(hlo));
   EXPECT_THAT(verifier().Run(module.get()), IsOkAndHolds(false));
 }
+TEST_F(HloVerifierTestForCollectiveDeadlocks,
+       VerifySendRecvNoDeadlocksWithWhileLoop) {
+  const char* const hlo = R"(
+  HloModule module, is_scheduled=true
+
+  while_body {
+    c0 = f32[] parameter(0)
+    after_all = token[] after-all()
+    send1 = (f32[], u32[], token[]) send(c0, after_all), channel_id=1, frontend_attributes={
+            _xla_send_recv_source_target_pairs="{{0,1}}"}
+    send1-done = token[] send-done(send1), channel_id=1
+    recv1 = (f32[], u32[], token[]) recv(after_all), channel_id=1, frontend_attributes={
+            _xla_send_recv_source_target_pairs="{{1,0}}"}
+    recv1-done = (f32[], token[]) recv-done(recv1), channel_id=1
+    ROOT recv1_result = f32[] get-tuple-element(recv1-done), index=0
+  }
+
+  while_condition {
+    c0 = f32[] parameter(0)
+    ROOT infinite_loop = pred[] constant(true)
+  }
+
+  ENTRY test_computation {
+    c0 = f32[] constant(0)
+    after_all = token[] after-all()
+    recv1 = (f32[], u32[], token[]) recv(after_all), channel_id=1,
+          frontend_attributes={
+            _xla_send_recv_source_target_pairs="{{0,1}}"}
+    recv1-done = (f32[], token[]) recv-done(recv1), channel_id=1
+    ROOT while_res = f32[] while(c0), condition=while_condition, body=while_body
+    send1 = (f32[], u32[], token[]) send(c0, after_all), channel_id=1,
+          frontend_attributes={
+            _xla_send_recv_source_target_pairs="{{1,0}}"}
+    send1-done = token[] send-done(send1), channel_id=1
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnUnverifiedModule(hlo));
+  EXPECT_THAT(verifier().Run(module.get()), IsOkAndHolds(false));
+}
+
+TEST_F(HloVerifierTestForCollectiveDeadlocks,
+       VerifyAsyncComputationWithMultipleSendRecvs) {
+  const char* const hlo = R"(
+HloModule nccl_group_send_recv_no_loop_x4, is_scheduled=true
+
+wrapped_send_recv {
+  param0 = f32[] parameter(0)
+  param1 = token[] parameter(1)
+  send1 = (f32[], u32[], token[]) send(param0, param1), channel_id=0,
+    frontend_attributes={_xla_send_recv_source_target_pairs={{0,1},{1,2}}}
+  param2 = f32[] parameter(2)
+  param3 = token[] parameter(3)
+  send2 = (f32[], u32[], token[]) send(param2, param3), channel_id=0,
+    frontend_attributes={_xla_send_recv_source_target_pairs={{2,3}}}
+  param4 = token[] parameter(4)
+  recv1 = (f32[], u32[], token[]) recv(param4), channel_id=0,
+    frontend_attributes={_xla_send_recv_source_target_pairs={{0,1},{1,2}}}
+  param5 = token[] parameter(5)
+  recv2 = (f32[], u32[], token[]) recv(param5), channel_id=0,
+    frontend_attributes={_xla_send_recv_source_target_pairs={{2,3}}}
+  ROOT out = ((f32[], u32[], token[]), (f32[], u32[], token[]),
+    (f32[], u32[], token[]), (f32[], u32[], token[]))
+    tuple(send1, send2, recv1, recv2)
+}
+
+ENTRY main {
+  data1 = f32[] constant(10)
+  after-all1 = token[] after-all()
+  data2 = f32[] constant(20)
+  after-all2 = token[] after-all()
+  async-comp-start = ((f32[], token[], f32[], token[], token[], token[]),
+    ((f32[], u32[], token[]), (f32[], u32[], token[]), (f32[], u32[], token[]),
+    (f32[], u32[], token[])), s32[]) async-start(data1, after-all1,
+    data2, after-all2, after-all1, after-all2), calls=wrapped_send_recv
+  async-comp-done = ((f32[], u32[], token[]), (f32[], u32[], token[]),
+    (f32[], u32[], token[]), (f32[], u32[], token[])) async-done(async-comp-start)
+  unpack-recv-done1 = (f32[], u32[], token[]) get-tuple-element(async-comp-done), index=2
+  recv-done-data1 = f32[] get-tuple-element(unpack-recv-done1), index=0
+  recv-done-token1 = token[] get-tuple-element(unpack-recv-done1), index=2
+  recv-done1 = (f32[], token[]) tuple(recv-done-data1, recv-done-token1),
+    control-predecessors={async-comp-start}
+  data-out1 = f32[] get-tuple-element(recv-done1), index=0
+  unpack-recv-done2 = (f32[], u32[], token[]) get-tuple-element(async-comp-done), index=3
+  recv-done-data2 = f32[] get-tuple-element(unpack-recv-done2), index=0
+  recv-done-token2 = token[] get-tuple-element(unpack-recv-done2), index=2
+  recv-done2 = (f32[], token[]) tuple(recv-done-data2, recv-done-token2),
+    control-predecessors={async-comp-start}
+  data-out2 = f32[] get-tuple-element(recv-done2), index=0
+  ROOT out = (f32[], f32[]) tuple(data-out1, data-out2)
+  unpack-send-done1 = (f32[], u32[], token[]) get-tuple-element(async-comp-done), index=0
+  send-done1 = token[] get-tuple-element(unpack-send-done1), index=2
+  unpack-send-done2 = (f32[], u32[], token[]) get-tuple-element(async-comp-done), index=1
+  send-done2 = token[] get-tuple-element(unpack-send-done2), index=2
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnUnverifiedModule(hlo));
+  EXPECT_THAT(verifier().Run(module.get()), IsOkAndHolds(false));
+}
+
+TEST_F(HloVerifierTestForCollectiveDeadlocks,
+       VerifyAsyncComputationPartiallyPipelined) {
+  const char* const hlo = R"(
+HloModule nccl_group_send_recv_no_loop_x4, is_scheduled=true
+
+wrapped_send_recv {
+  param0 = f32[] parameter(0)
+  param1 = token[] parameter(1)
+  send1 = (f32[], u32[], token[]) send(param0, param1), channel_id=0,
+    frontend_attributes={_xla_send_recv_source_target_pairs={{0,1},{1,2}}}
+  param2 = f32[] parameter(2)
+  param3 = token[] parameter(3)
+  send2 = (f32[], u32[], token[]) send(param2, param3), channel_id=0,
+    frontend_attributes={_xla_send_recv_source_target_pairs={{2,3}}}
+  param4 = token[] parameter(4)
+  recv1 = (f32[], u32[], token[]) recv(param4), channel_id=0,
+    frontend_attributes={_xla_send_recv_source_target_pairs={{0,1},{1,2}}}
+  param5 = token[] parameter(5)
+  recv2 = (f32[], u32[], token[]) recv(param5), channel_id=0,
+    frontend_attributes={_xla_send_recv_source_target_pairs={{2,3}}}
+  ROOT out = ((f32[], u32[], token[]), (f32[], u32[], token[]),
+    (f32[], u32[], token[]), (f32[], u32[], token[]))
+    tuple(send1, send2, recv1, recv2)
+}
+
+ENTRY main {
+  data1 = f32[] constant(10)
+  after-all1 = token[] after-all()
+  data2 = f32[] constant(20)
+  after-all2 = token[] after-all()
+  data3 = f32[] constant(30)
+  after-all3 = token[] after-all()
+  bwd_send = (f32[], u32[], token[]) send(data3, after-all3), channel_id=0,
+    frontend_attributes={_xla_send_recv_source_target_pairs={{1,0}}}
+  bwd_send_done = token[] send-done(bwd_send), channel_id=0
+  async-comp-start = ((f32[], token[], f32[], token[], token[], token[]),
+    ((f32[], u32[], token[]), (f32[], u32[], token[]), (f32[], u32[], token[]),
+    (f32[], u32[], token[])), s32[]) async-start(data1, after-all1,
+    data2, after-all2, after-all1, after-all2), calls=wrapped_send_recv
+  async-comp-done = ((f32[], u32[], token[]), (f32[], u32[], token[]),
+    (f32[], u32[], token[]), (f32[], u32[], token[])) async-done(async-comp-start)
+  bwd_recv = (f32[], u32[], token[]) recv(after-all3), channel_id=0,
+    frontend_attributes={_xla_send_recv_source_target_pairs={{1,0}}}
+  bwd_recv_done = (f32[], token[]) recv-done(bwd_recv), channel_id=0
+  unpack-recv-done1 = (f32[], u32[], token[]) get-tuple-element(async-comp-done), index=2
+  recv-done-data1 = f32[] get-tuple-element(unpack-recv-done1), index=0
+  recv-done-token1 = token[] get-tuple-element(unpack-recv-done1), index=2
+  recv-done1 = (f32[], token[]) tuple(recv-done-data1, recv-done-token1),
+    control-predecessors={async-comp-start}
+  data-out1 = f32[] get-tuple-element(recv-done1), index=0
+  unpack-recv-done2 = (f32[], u32[], token[]) get-tuple-element(async-comp-done), index=3
+  recv-done-data2 = f32[] get-tuple-element(unpack-recv-done2), index=0
+  recv-done-token2 = token[] get-tuple-element(unpack-recv-done2), index=2
+  recv-done2 = (f32[], token[]) tuple(recv-done-data2, recv-done-token2),
+    control-predecessors={async-comp-start}
+  data-out2 = f32[] get-tuple-element(recv-done2), index=0
+  ROOT out = (f32[], f32[]) tuple(data-out1, data-out2)
+  unpack-send-done1 = (f32[], u32[], token[]) get-tuple-element(async-comp-done), index=0
+  send-done1 = token[] get-tuple-element(unpack-send-done1), index=2
+  unpack-send-done2 = (f32[], u32[], token[]) get-tuple-element(async-comp-done), index=1
+  send-done2 = token[] get-tuple-element(unpack-send-done2), index=2
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnUnverifiedModule(hlo));
+  EXPECT_THAT(verifier().Run(module.get()), IsOkAndHolds(false));
+}
 
 TEST_F(HloVerifierTest, VerifyMatchingSendSameChannel) {
   const char* const hlo = R"(
@@ -4695,10 +4890,10 @@ TEST_F(HloVerifierTest, ScaledDotWithBothScalesSucceeds) {
   static constexpr absl::string_view kScaledDotHloString = R"(
     HloModule module
     ENTRY entry_computation {
-      a = f32[2,10] parameter(0)
-      b = f32[10,2] parameter(1)
-      a_scale = f32[2,2] parameter(2)
-      b_scale = f32[2,2] parameter(3)
+      a = f8e5m2[2,10] parameter(0)
+      b = f8e8m0fnu[10,2] parameter(1)
+      a_scale = f8e5m2[2,2] parameter(2)
+      b_scale = f8e8m0fnu[2,2] parameter(3)
       ROOT dot = f32[2,2] scaled-dot(a, a_scale, b, b_scale),
         lhs_contracting_dims={1},
         rhs_contracting_dims={0}

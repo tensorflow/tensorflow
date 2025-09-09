@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/call_inliner.h"
 
+#include <algorithm>
 #include <memory>
 #include <optional>
 #include <string>
@@ -307,7 +308,7 @@ bool CallInliner::IsInlineableCallOp(HloInstruction* instruction) const {
   if (instruction->GetModule()->config().use_shardy_partitioner() &&
       (absl::StrContains(instruction->to_apply()->name(), "shmap_body") ||
        absl::StrContains(instruction->to_apply()->name(),
-                         sdy::kManualComputationBodyFuncName.str()))) {
+                         sdy::kManualComputationFuncName.str()))) {
     // TODO(b/436603025). Remove this special handling by marking the
     // instruction as uninlineable with the frontend attribute.
     //
@@ -317,7 +318,7 @@ bool CallInliner::IsInlineableCallOp(HloInstruction* instruction) const {
     // - shmap_body: We do not want to inline the bodies of JAX shard maps to
     //   import them into an `sdy.ManualComputationOp`. This is for the MHLO
     //   round-trip pipeline
-    // - kManualComputationBodyFuncName: Same as shmap_body except for the SDY
+    // - kManualComputationFuncName: Same as shmap_body except for the SDY
     //   round-trip pipeline.
     return false;
   }
@@ -395,11 +396,18 @@ absl::StatusOr<bool> CallInliner::InlineAndLegalize(
         HloInstructionSequence(inlined_instructions);
   }
   if (did_node_mutate && uniquify_channel_ids_) {
-    int unique_channel_id = 1;
     for (HloInstruction* instruction : computation->instructions()) {
-      if (dynamic_cast<HloChannelInstruction*>(instruction)) {
-        instruction->set_channel_id(unique_channel_id++);
+      if (!dynamic_cast<HloChannelInstruction*>(instruction)) {
+        continue;
       }
+      // Channel IDs for host transfers are part of the ABI, and can never be
+      // uniquified.
+      HloSendRecvInstruction* send_recv =
+          dynamic_cast<HloSendRecvInstruction*>(instruction);
+      if (send_recv && send_recv->is_host_transfer()) {
+        continue;
+      }
+      instruction->set_channel_id(next_unique_channel_id_++);
     }
   }
   return did_node_mutate;
@@ -409,6 +417,24 @@ absl::StatusOr<bool> CallInliner::RunWithInlineMap(
     HloModule* module, std::optional<InlinedInstructionMap*> inline_map,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
+  if (uniquify_channel_ids_) {
+    // If we're going to uniquify channel IDs, make sure the new IDs we assigned
+    // are not already used in the module. The easiest way is to just start at
+    // the top currently used ID.
+    for (HloComputation* computation : module->computations()) {
+      for (HloInstruction* instruction : computation->instructions()) {
+        HloChannelInstruction* channel_instruction =
+            dynamic_cast<HloChannelInstruction*>(instruction);
+        if (channel_instruction &&
+            channel_instruction->channel_id().has_value()) {
+          next_unique_channel_id_ =
+              std::max(next_unique_channel_id_,
+                       channel_instruction->channel_id().value() + 1);
+        }
+      }
+    }
+  }
+
   // Because call graph nodes are visited in post-order (callees before callers)
   // we'll always inline kCalls into their callers in the appropriate order.
   TF_ASSIGN_OR_RETURN(

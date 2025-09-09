@@ -147,9 +147,10 @@ std::string duplicateShardingsAtIndices(
     const llvm::BitVector& indicesToDuplicate);
 
 // Return all axes or sub-axes in the `mesh`, such that sub-axes are derived
-// from `shardingOrAxisList` and sorted by their order in the mesh. For example,
-// given mesh <"x"=2, "y"=16, "z"=4> and axis refs [{"x"}, {"y":2(2)}], we
-// would return ["x", "y":1(2), "y":2(2), "y":4(4), "z"].
+// from `shardingOrAxisList` (including unreduced axes but not replicated)
+// and sorted by their order in the mesh. For example, given mesh <"x"=2,
+// "y"=16, "z"=4> and axis refs [{"x"}, {"y":2(2)}], we would return ["x",
+// "y":1(2), "y":2(2), "y":4(4), "z"].
 mlir::SmallVector<mlir::sdy::AxisRefAttr> getOrderedAxisRefs(
     mlir::Attribute shardingOrAxisList, mlir::sdy::MeshAttr mesh);
 

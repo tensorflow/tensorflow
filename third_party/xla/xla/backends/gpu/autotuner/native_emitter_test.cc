@@ -22,12 +22,19 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "absl/status/statusor.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/service/compiler.h"
+#include "xla/service/executable.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/nvptx_compiler.h"
+#include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/platform_util.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -52,18 +59,11 @@ HloModule m
 
 ENTRY %entry_computation (p0: f32[32,4096,2048]) -> f32[32,2048] {
   %p0 = f32[32,4096,2048]{2,1,0} parameter(0)
-  ROOT %reduce_fusion = f32[32,2048]{1,0} fusion(%p0), kind=kCustom,
-    calls=%fused_reduce.clone,
-    backend_config={ "fusion_backend_config": {
-      "kind":"__triton",
-      "block_level_fusion_config":{
-        "num_warps":"8","output_tiles":[{"sizes":["1","4"]}],
-        "num_ctas":1,"num_stages":1,"is_tma_allowed":false
-      }
-    }}
+  ROOT %reduce_fusion = f32[32,2048]{1,0} fusion(%p0), kind=kInput,
+    calls=%fused_reduce.clone
 })";
 
-const char kMultiOutputFusionHlo[] = R"(
+const char kCustomFusionHlo[] = R"(
 HloModule m
 
 %fused_add_and_sub (p0: f32[32,16], p1: f32[32,16]) -> (f32[32,16], f32[32,16]) {
@@ -129,15 +129,15 @@ TEST_F(NativeEmitterBackendTest, GetSupportedConfigs) {
 }
 
 TEST_F(NativeEmitterBackendTest,
-       GetSupportedConfigsDoesNotSupportMultiOutputFusions) {
+       GetSupportedConfigsDoesNotSupportKCustomFusions) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kMultiOutputFusionHlo));
+                          ParseAndReturnVerifiedModule(kCustomFusionHlo));
   auto fusion_instruction = module->entry_computation()->root_instruction();
   // Call GetSupportedConfigs on the fusion instruction.
   TF_ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<BackendConfig>> configs,
                           backend_.GetSupportedConfigs(*(fusion_instruction)));
-  // GetSupportedConfigs should return an empty vector as it doesn't support
-  // multi-output fusions.
+  // GetSupportedConfigs should return an empty vector as it doesn't support the
+  // fusion.
   ASSERT_TRUE(configs.empty());
 }
 
@@ -181,6 +181,54 @@ TEST_F(NativeEmitterBackendTest, CompileForDefaultConfig) {
   auto maybe_executable = backend_.Compile(*fusion, *config);
   // Verify that compilation succeeded and returned a valid executable.
   EXPECT_THAT(maybe_executable, absl_testing::IsOk());
+}
+
+class MockCompiler : public Compiler {
+ public:
+  MOCK_METHOD(absl::StatusOr<std::unique_ptr<Executable>>, RunBackend,
+              (std::unique_ptr<HloModule> module, se::StreamExecutor* executor,
+               const CompileOptions& options),
+              (override));
+  MOCK_METHOD(se::Platform::Id, PlatformId, (), (const, override));
+  MOCK_METHOD(absl::StatusOr<std::unique_ptr<HloModule>>, RunHloPasses,
+              (std::unique_ptr<HloModule> module, se::StreamExecutor* executor,
+               const CompileOptions& options),
+              (override));
+  MOCK_METHOD(absl::StatusOr<std::vector<std::unique_ptr<Executable>>>, Compile,
+              (std::unique_ptr<HloModuleGroup> module_group,
+               std::vector<std::vector<se::StreamExecutor*>> stream_execs,
+               const CompileOptions& options),
+              (override));
+  MOCK_METHOD(
+      absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>,
+      CompileAheadOfTime,
+      (std::unique_ptr<HloModuleGroup> module_group,
+       const AotCompilationOptions& options),
+      (override));
+  MOCK_METHOD(HloCostAnalysis::ShapeSizeFunction, ShapeSizeBytesFunction, (),
+              (const, override));
+};
+
+TEST_F(NativeEmitterBackendTest, CompileSetsIsAutotuningCompilationOption) {
+  TF_ASSERT_OK_AND_ASSIGN(auto reduction_module,
+                          ParseAndReturnVerifiedModule(kReductionFusionHlo));
+  auto fusion = reduction_module->entry_computation()->root_instruction();
+  MockCompiler mock_compiler;
+  NativeEmitterBackend backend(
+      PlatformUtil::GetDefaultPlatform().value()->ExecutorForDevice(0).value(),
+      &debug_options_, &mock_compiler);
+  // Call GetDefaultConfig on the fusion instruction.
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<BackendConfig> config,
+                          backend.GetDefaultConfig(*(fusion)));
+  EXPECT_CALL(
+      mock_compiler,
+      RunBackend(
+          testing::_, testing::_,
+          testing::Field(&Compiler::CompileOptions::is_autotuning_compilation,
+                         true)))
+      .WillOnce(testing::Return(std::unique_ptr<Executable>()));
+  // Attempt to compile the fusion using the retrieved backend config.
+  EXPECT_THAT(backend.Compile(*fusion, *config), absl_testing::IsOk());
 }
 
 }  // namespace

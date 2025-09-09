@@ -211,6 +211,8 @@ absl::StatusOr<mlir::Value> EmitElementwise(
     const se::DeviceDescription& device_info, const HloInstruction& hlo,
     mlir::ValueRange inputs);
 
+mlir::Value Bitcast(EmitterLocOpBuilder& b, mlir::Value value, mlir::Type type);
+
 }  // namespace xla::gpu::triton
 
 #endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_EMITTER_HELPERS_H_

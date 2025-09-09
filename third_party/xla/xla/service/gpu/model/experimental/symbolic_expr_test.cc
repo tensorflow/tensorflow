@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "llvm/ADT/DenseMap.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
 
 namespace xla {
@@ -46,6 +47,18 @@ TEST_F(SymbolicExprTest, CreateAndPrint) {
   EXPECT_THAT(expr.ToString(),
               MatchIndexingString(
                   "((((v0 + 42) * max(min(v1, 2), 0)) floordiv 2) ceildiv 2)"));
+}
+
+TEST_F(SymbolicExprTest, PrintWithDifferentNumDimensions) {
+  SymbolicExpr expr = v0 * 2 + v1;
+
+  EXPECT_THAT(expr.ToString(), MatchIndexingString("((v0 * 2) + v1)"));
+  // Only symbols
+  EXPECT_THAT(expr.ToString(0), MatchIndexingString("((s0 * 2) + s1)"));
+  // One dimension and one symbol
+  EXPECT_THAT(expr.ToString(1), MatchIndexingString("((d0 * 2) + s0)"));
+  // Only dimensions
+  EXPECT_THAT(expr.ToString(2), MatchIndexingString("((d0 * 2) + d1)"));
 }
 
 TEST_F(SymbolicExprTest, ParseAndPrint) {
@@ -110,6 +123,35 @@ TEST_F(SymbolicExprTest, ReplaceVariables) {
   EXPECT_EQ(result.ToString(), "(v0 + (v2 * 10))");
 }
 
+TEST_F(SymbolicExprTest, ReplaceSymbols) {
+  SymbolicExpr d0 = ctx.CreateVariable(0);
+  SymbolicExpr s0 = ctx.CreateVariable(1);
+  SymbolicExpr s1 = ctx.CreateVariable(2);
+  SymbolicExpr c7 = ctx.CreateConstant(7);
+  SymbolicExpr expr_to_sub = (d0 + s0 * 2) * s1;
+  SymbolicExpr result = expr_to_sub.ReplaceSymbols({d0, c7}, /*num_dims=*/1);
+  EXPECT_EQ(result, ((d0 + (d0 * 2)) * c7));
+}
+
+TEST_F(SymbolicExprTest, ReplaceDimsAndSymbols) {
+  SymbolicExpr d0 = ctx.CreateVariable(0);
+  SymbolicExpr s0 = ctx.CreateVariable(1);
+  SymbolicExpr s1 = ctx.CreateVariable(2);
+  SymbolicExpr c7 = ctx.CreateConstant(7);
+  SymbolicExpr expr_to_sub = (d0 + s0 * 2) * s1;
+  SymbolicExpr result =
+      expr_to_sub.ReplaceDimsAndSymbols({s0}, {d0, c7}, /*num_dims=*/1);
+  EXPECT_EQ(result, ((s0 + (d0 * 2)) * c7));
+
+  SymbolicExpr replace_only_dims =
+      expr_to_sub.ReplaceDimsAndSymbols({s0}, {}, /*num_dims=*/1);
+  EXPECT_EQ(replace_only_dims, ((s0 + (s0 * 2)) * s1));
+
+  SymbolicExpr replace_only_symbols =
+      expr_to_sub.ReplaceDimsAndSymbols({}, {d0, c7}, /*num_dims=*/1);
+  EXPECT_EQ(replace_only_symbols, ((d0 + (d0 * 2)) * c7));
+}
+
 TEST_F(SymbolicExprTest, UniquingWorks) {
   SymbolicExpr c1 = ctx.CreateConstant(42);
   SymbolicExpr c2 = ctx.CreateConstant(42);
@@ -122,6 +164,49 @@ TEST_F(SymbolicExprTest, UniquingWorks) {
   EXPECT_EQ(add1, add2);
   SymbolicExpr add3 = v0 + 99;
   EXPECT_NE(add1, add3);
+}
+
+TEST_F(SymbolicExprTest, Replace) {
+  SymbolicExpr d0 = ctx.CreateVariable(0);
+  SymbolicExpr d1 = ctx.CreateVariable(1);
+  SymbolicExpr c2 = ctx.CreateConstant(2);
+  SymbolicExpr c5 = ctx.CreateConstant(5);
+
+  SymbolicExpr expr = (d0 + c2) * (d1 + c2);
+  EXPECT_EQ(expr.Replace(d0 + c2, c5), (c5 * (d1 + c2)));
+  EXPECT_EQ(expr.Replace(d1, d0), (d0 + c2) * (d0 + c2));
+  EXPECT_EQ(expr.Replace(c2, c5), (d0 + c5) * (d1 + c5));
+  EXPECT_EQ(expr.Replace(expr, c2), c2);
+  EXPECT_EQ(expr.Replace(d1, d1), expr);
+  EXPECT_EQ(expr.Replace(ctx.CreateConstant(42), d1), expr);
+}
+
+TEST_F(SymbolicExprTest, ReplaceWithMap) {
+  SymbolicExpr d0 = ctx.CreateVariable(0);
+  SymbolicExpr d1 = ctx.CreateVariable(1);
+  SymbolicExpr c2 = ctx.CreateConstant(2);
+  SymbolicExpr c5 = ctx.CreateConstant(5);
+  SymbolicExpr c10 = ctx.CreateConstant(10);
+
+  SymbolicExpr expr = (d0 + c2) * (d1 + c2);
+
+  llvm::DenseMap<SymbolicExpr, SymbolicExpr> replace_expression;
+  replace_expression[d0 + c2] = c5;
+  replace_expression[d1] = c10;
+  EXPECT_EQ(expr.Replace(replace_expression), c5 * (c10 + c2));
+
+  llvm::DenseMap<SymbolicExpr, SymbolicExpr> replace_constant;
+  replace_constant[c2] = d0;
+  EXPECT_EQ(expr.Replace(replace_constant), (d0 + d0) * (d1 + d0));
+
+  llvm::DenseMap<SymbolicExpr, SymbolicExpr> swap_variables;
+  swap_variables[d0] = d1;
+  swap_variables[d1] = d0;
+  EXPECT_EQ(expr.Replace(swap_variables), (d1 + c2) * (d0 + c2));
+
+  llvm::DenseMap<SymbolicExpr, SymbolicExpr> no_change;
+  no_change[ctx.CreateVariable(99)] = c5;
+  EXPECT_EQ(expr.Replace(no_change), expr);
 }
 
 TEST_F(SymbolicExprTest, Canonicalization_Basic) {
@@ -208,6 +293,15 @@ TEST_F(SymbolicExprTest, Canonicalization_DivMod) {
             "((v0 floordiv 2) * -1)");
   EXPECT_EQ(((v0 * 6).floorDiv(-3)).Canonicalize().ToString(), "(v0 * -2)");
   EXPECT_EQ(((v0 * 6).ceilDiv(-3)).Canonicalize().ToString(), "(v0 * -2)");
+}
+
+TEST_F(SymbolicExprTest, Walk) {
+  SymbolicExpr expr = (v0 + 42) * v1;
+  std::vector<std::string> visited_exprs;
+  expr.Walk([&](SymbolicExpr e) { visited_exprs.push_back(e.ToString()); });
+
+  EXPECT_THAT(visited_exprs, ::testing::ElementsAre("v0", "42", "(v0 + 42)",
+                                                    "v1", "((v0 + 42) * v1)"));
 }
 
 }  // namespace

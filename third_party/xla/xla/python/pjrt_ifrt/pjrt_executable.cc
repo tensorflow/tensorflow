@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -44,6 +45,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/primitive_util.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/basic_device_list.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
@@ -569,6 +571,20 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
   opts.use_major_to_minor_data_layout_for_callbacks = true;
   opts.non_donatable_input_indices = options.non_donatable_input_indices;
   opts.execution_stream_id = options.execution_stream_id;
+
+  if (options.custom_options.has_value()) {
+    const auto& attributes = options.custom_options->map();
+    // Check if the custom options contain a call location key.
+    if (auto it = attributes.find(
+            xla::ifrt::PjRtCompatibleLoadedExecutable::kCallLocation);
+        it != attributes.end()) {
+      const xla::ifrt::AttributeMap::Value& value = it->second;
+      if (const auto* call_location =
+              std::get_if<xla::ifrt::AttributeMap::StringValue>(&value)) {
+        opts.call_location = call_location->value;
+      }
+    }
+  }
 
   auto context = std::make_unique<xla::ExecuteContext>();
   auto platform_id = pjrt_loaded_executable_->client()->platform_id();

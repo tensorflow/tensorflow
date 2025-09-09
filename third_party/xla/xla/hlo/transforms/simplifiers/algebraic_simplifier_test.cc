@@ -11415,8 +11415,16 @@ TEST_F(AlgebraicSimplifierTest,
               GmockMatch(m::Bitcast()));
 }
 
-TEST_F(AlgebraicSimplifierTest,
-       DoNotSimplifyBitcastConvertIfDifferentBitwidth) {
+class SimplifyNoOpBitcastConvertTest : public AlgebraicSimplifierTest {
+  void SetUp() override {
+    AlgebraicSimplifierTest::SetUp();
+    default_options_.set_is_layout_sensitive(true);
+    default_options_.set_rewrite_no_op_bitcast_convert_to_bitcast(true);
+  }
+};
+
+TEST_F(SimplifyNoOpBitcastConvertTest,
+       SimplifyBitcastConvertToNarrowerBitwidth) {
   constexpr absl::string_view kModuleStr = R"(
     HloModule m
 
@@ -11426,10 +11434,49 @@ TEST_F(AlgebraicSimplifierTest,
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  AlgebraicSimplifierOptions options;
-  options.set_is_layout_sensitive(true);
-  options.set_rewrite_no_op_bitcast_convert_to_bitcast(true);
-  EXPECT_FALSE(AlgebraicSimplifier(options).Run(m.get()).value());
+  EXPECT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Bitcast()));
+}
+
+TEST_F(SimplifyNoOpBitcastConvertTest,
+       DoNotSimplifyBitcastConvertToNonMinorDim) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule m
+
+    ENTRY test {
+      p0 = s32[10]{0} parameter(0)
+      ROOT out = s16[10,2]{0,1} bitcast-convert(p0)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  EXPECT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+}
+
+TEST_F(SimplifyNoOpBitcastConvertTest,
+       DoNotSimplifyBitcastConvertFromNonPackedDim) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule m
+
+    ENTRY test {
+      p0 = s4[5,2]{1,0:E(8)} parameter(0)
+      ROOT out = s8[5]{0} bitcast-convert(p0)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  EXPECT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+}
+
+TEST_F(SimplifyNoOpBitcastConvertTest, SimplifyBitcastConvertToWiderBitwidth) {
+  constexpr absl::string_view kModuleStr = R"(
+m {
+  a = s4[3,5,2]{2,1,0:E(4)} parameter(0)
+  b = s8[3,5]{1,0} bitcast-convert(a)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  EXPECT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Bitcast()));
 }
 
 TEST_F(AlgebraicSimplifierTest, SimplifyBitcastConvertChain) {
@@ -11563,7 +11610,7 @@ TEST_F(AlgebraicSimplifierTest, DynamicSliceShapeLayout) {
   const Shape& slice_shape =
       m->entry_computation()->root_instruction()->operand(0)->shape();
   EXPECT_TRUE(slice_shape.has_layout());
-  EXPECT_EQ(slice_shape.layout().tiles_size(), 1);
+  EXPECT_EQ(slice_shape.layout().tiles().size(), 1);
 }
 
 // Fold a sequence of copy bitcast copy

@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/translate/attributes.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_utils.h"
 #include "xla/hlo/translate/hlo_to_mhlo/stack_location_utils.h"
 
@@ -32,10 +33,20 @@ mlir::Location GenerateInstructionLocation(
     const xla::HloInstruction* instruction, mlir::MLIRContext* context) {
   mlir::Builder b(context);
 
+  auto fuse_original_value_if_present = [&](mlir::Location loc) {
+    auto original_value = instruction->original_value();
+    if (original_value) {
+      return b.getFusedLoc({loc, mlir::NameLoc::get(b.getStringAttr(
+                                     std::string(kOriginalValueAttr) + "={" +
+                                     original_value->ToString() + "}"))});
+    }
+    return loc;
+  };
+
   const std::string& op_name = instruction->metadata().op_name();
   if (op_name.empty()) {
-    return mlir::NameLoc::get(
-        b.getStringAttr(xla::ToStringRef(instruction->name())));
+    return fuse_original_value_if_present(mlir::NameLoc::get(
+        b.getStringAttr(xla::ToStringRef(instruction->name()))));
   }
 
   if (instruction->metadata().stack_frame_id() != 0) {
@@ -44,20 +55,22 @@ mlir::Location GenerateInstructionLocation(
                                   instruction->parent()->parent());
 
     if (!isa<mlir::UnknownLoc>(frame_location)) {
-      return mlir::NameLoc::get(b.getStringAttr(op_name), frame_location);
+      return fuse_original_value_if_present(
+          mlir::NameLoc::get(b.getStringAttr(op_name), frame_location));
     }
   }
 
   mlir::Location op_name_loc = mlir::NameLoc::get(b.getStringAttr(op_name));
   const std::string& source_file = instruction->metadata().source_file();
+
   if (source_file.empty()) {
-    return op_name_loc;
+    return fuse_original_value_if_present(op_name_loc);
   }
 
-  return b.getFusedLoc(
+  return fuse_original_value_if_present(b.getFusedLoc(
       {op_name_loc,
        mlir::FileLineColLoc::get(b.getContext(), source_file,
-                                 instruction->metadata().source_line(), 0)});
+                                 instruction->metadata().source_line(), 0)}));
 }
 
 }  // namespace hlo

@@ -129,6 +129,11 @@ struct OutputTilingInfo {
   }
 };
 
+bool IsSomeDot(const HloInstruction* hlo) {
+  return hlo->opcode() == HloOpcode::kDot ||
+         hlo->opcode() == HloOpcode::kScaledDot;
+}
+
 llvm::SmallVector<int64_t> GetNumberOfTilesPerDimension(
     const TiledHloInstruction& tiled_hlo_instr) {
   llvm::SmallVector<int64_t> result;
@@ -605,7 +610,7 @@ bool ShouldDerivationSimplifyPointDimensions(const HloFusionAdaptor& fusion) {
       continue;
     }
 
-    if (instruction_adaptor.opcode() == HloOpcode::kDot) {
+    if (IsSomeDot(&instruction_adaptor.instruction())) {
       return false;
     }
 
@@ -671,7 +676,7 @@ absl::Status PopulateNestedParameters(
       continue;
     }
 
-    if (instruction_adaptor.opcode() == HloOpcode::kDot) {
+    if (IsSomeDot(&instruction_adaptor.instruction())) {
       int64_t num_parameters = instruction_adaptor.instruction()
                                    .dot_dimension_numbers()
                                    .lhs_contracting_dimensions()
@@ -894,7 +899,7 @@ std::vector<int64_t> InputSpaceForParameterMapping(
 
   for (const auto& [hlo, num_parameters] : parameter_mapping) {
     // TODO(b/419026602): handle reductions.
-    if (hlo->opcode() == HloOpcode::kDot) {
+    if (IsSomeDot(hlo)) {
       auto contracting_dimensions =
           hlo->dot_dimension_numbers().lhs_contracting_dimensions();
       // First, we need to add the contracting dimensions of the `dot`
@@ -1044,12 +1049,22 @@ IndexingMap InsertTilingParameterForContractingDimensions(
   // TODO(b/419026602): handle reductions here as well once priority fusion can
   // handle it. By adding a special path for reductions, we can handle them
   // here as well, even without nests.
-  if (consumer->opcode() == HloOpcode::kDot) {
-    CHECK(operand_index == 0 || operand_index == 1);
-    absl::Span<const int64_t> contracting_dimensions =
-        operand_index == 0
-            ? consumer->dot_dimension_numbers().lhs_contracting_dimensions()
-            : consumer->dot_dimension_numbers().rhs_contracting_dimensions();
+  if (IsSomeDot(consumer)) {
+    absl::Span<const int64_t> contracting_dimensions;
+    if (consumer->opcode() == HloOpcode::kScaledDot) {
+      CHECK(operand_index >= 0 && operand_index <= 3);
+      contracting_dimensions =
+          operand_index <= 1
+              ? consumer->dot_dimension_numbers().lhs_contracting_dimensions()
+              : consumer->dot_dimension_numbers().rhs_contracting_dimensions();
+    }
+    if (consumer->opcode() == HloOpcode::kDot) {
+      CHECK(operand_index == 0 || operand_index == 1);
+      contracting_dimensions =
+          operand_index == 0
+              ? consumer->dot_dimension_numbers().lhs_contracting_dimensions()
+              : consumer->dot_dimension_numbers().rhs_contracting_dimensions();
+    }
 
     absl::flat_hash_map<int64_t, int64_t> parameter_index_by_symbol_position;
     std::vector<int64_t> symbols_to_remove;
@@ -1057,9 +1072,13 @@ IndexingMap InsertTilingParameterForContractingDimensions(
     symbols_to_remove.reserve(contracting_dimensions.size());
     for (auto [parameter_index, contracting_dimension] :
          llvm::enumerate(contracting_dimensions)) {
-      auto symbol = mlir::dyn_cast<mlir::AffineSymbolExpr>(
-          outermost_fusion_root_to_operand.GetAffineMap().getResult(
-              contracting_dimension));
+      auto affine_map = outermost_fusion_root_to_operand.GetAffineMap();
+      auto result = affine_map.getResults()[contracting_dimension];
+      auto symbol = mlir::dyn_cast<mlir::AffineSymbolExpr>(result);
+      if (!symbol) {
+        auto binary_expr = mlir::cast<mlir::AffineBinaryOpExpr>(result);
+        symbol = mlir::dyn_cast<mlir::AffineSymbolExpr>(binary_expr.getLHS());
+      }
       // This can only occur if the wrong arguments were passed to this
       // function, and our traversal logic is broken.
       CHECK(symbol);  // Crash OK
@@ -1837,10 +1856,17 @@ std::string SymbolicTileAnalysis::ToString() const {
 namespace {
 
 // The possible tiles sizes for one dimension.
-std::vector<int64_t> PossibleTileSizesForOneDimension(int64_t dim_size) {
-  CHECK_GE(dim_size, 1);
-
+absl::StatusOr<std::vector<int64_t>> PossibleTileSizesForOneDimension(
+    int64_t dim_size) {
+  if (dim_size < 0) {
+    return absl::InvalidArgumentError("Dimension size must be non-negative.");
+  }
   std::vector<int64_t> result;
+  if (dim_size == 0) {
+    result.push_back(0);
+    return result;
+  }
+
   result.reserve(absl::bit_width(static_cast<uint64_t>(dim_size)));
   for (int64_t tile_size = 1; tile_size < dim_size; tile_size *= 2) {
     result.push_back(tile_size);
@@ -1853,13 +1879,13 @@ std::vector<int64_t> PossibleTileSizesForOneDimension(int64_t dim_size) {
 
 namespace detail {
 
-std::vector<FlatTiling> GetFlatTilingsForInputSpace(
+absl::StatusOr<std::vector<FlatTiling>> GetFlatTilingsForInputSpace(
     absl::Span<const int64_t> input_space) {
   std::vector<FlatTiling> flat_tilings;
   flat_tilings.push_back({});
   for (int parameter_size : input_space) {
-    std::vector<int64_t> possible_tile_sizes =
-        PossibleTileSizesForOneDimension(parameter_size);
+    TF_ASSIGN_OR_RETURN(std::vector<int64_t> possible_tile_sizes,
+                        PossibleTileSizesForOneDimension(parameter_size));
     std::vector<FlatTiling> extended_tilings;
     extended_tilings.reserve(flat_tilings.size() * possible_tile_sizes.size());
     for (const FlatTiling& flat_tile_sizes : flat_tilings) {
@@ -1883,8 +1909,10 @@ absl::StatusOr<std::vector<Tiling>> SymbolicTileAnalysis::GetValidTilings()
       tiling_specification_.parameter_mapping();
 
   std::vector<Tiling> tilings;
-  for (const FlatTiling& flat_tile_sizes : detail::GetFlatTilingsForInputSpace(
-           InputSpaceForParameterMapping(parameter_mapping))) {
+  TF_ASSIGN_OR_RETURN(std::vector<FlatTiling> flat_tilings,
+                      detail::GetFlatTilingsForInputSpace(
+                          InputSpaceForParameterMapping(parameter_mapping)));
+  for (const FlatTiling& flat_tile_sizes : flat_tilings) {
     TF_ASSIGN_OR_RETURN(
         Tiling tiling,
         Tiling::Unflatten(flat_tile_sizes, tiling_specification_));

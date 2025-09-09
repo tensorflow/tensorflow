@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <string>
 
-#include "absl/base/thread_annotations.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -33,7 +33,8 @@ namespace gpu {
 
 class CublasLtMatmulThunk : public Thunk {
  public:
-  CublasLtMatmulThunk(const HloInstruction* instr, GemmConfig gemm_config,
+  CublasLtMatmulThunk(Thunk::ThunkInfo thunk_info, std::string canonical_hlo,
+                      GemmConfig gemm_config,
                       se::gpu::BlasLt::Epilogue epilogue, int64_t algorithm_idx,
                       BufferAllocation::Slice a, BufferAllocation::Slice b,
                       BufferAllocation::Slice c, BufferAllocation::Slice d,
@@ -62,7 +63,6 @@ class CublasLtMatmulThunk : public Thunk {
   absl::StatusOr<se::gpu::BlasLt::MatmulPlan*> GetCachedMatmulPlan(
       const ExecuteParams& params);
 
- protected:
   GemmConfig gemm_config_;
   se::gpu::BlasLt::Epilogue epilogue_;
   int64_t algorithm_idx_;

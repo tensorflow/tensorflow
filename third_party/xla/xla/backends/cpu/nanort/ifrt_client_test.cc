@@ -320,7 +320,21 @@ int main(int argc, char** argv) {
       "ArrayImplTest."
       "MakeArraysFromHostBufferShardsAndCopyToHostBufferWithString:"
       // `MakeErrorArrays` is not supported in NanoIfrtClient.
-      "ArrayImplTest.MakeErrorArrays";
+      "ArrayImplTest.MakeErrorArrays:"
+      "ArrayImplTest.CopyPoisonedArray:"
+      // Sub-byte types are not supported in NanoIfrtClient.
+      "ArrayImplTest.HostBufferInt4:"
+      "ArrayImplTest.CopyArraysSubByteDType:"
+      // NanoRT does not handle zero-sized buffers correctly.
+      "ArrayImplTest.MakeAndCopyZeroSizedBuffers:"
+      // Executable returns a wrong number of devices.
+      "*LoadedExecutableImplTest.Properties*:"
+      // Incorrect deleted state of donated inputs.
+      "*LoadedExecutableImplTest.Donation*:"
+      // Analysis methods are not implemented.
+      "*LoadedExecutableImplTest.Analysis*:"
+      // Serialization is not implemented.
+      "*SerializeAndLoad*";
   xla::ifrt::test_util::SetTestFilterIfNotUserSpecified(kFilter);
 
   for (int i = 1; i < argc; i++) {

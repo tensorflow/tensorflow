@@ -75,6 +75,7 @@ cc_library(
         "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/pjrt/distributed:protocol_proto_cc",
         "//xla/pjrt/distributed:topology_util",
+        "//xla/pjrt/dump",
         "//xla/pjrt/gpu:gpu_helpers",
         "//xla/pjrt/gpu:gpu_topology",
         "//xla/pjrt/gpu:gpu_topology_proto_cc",

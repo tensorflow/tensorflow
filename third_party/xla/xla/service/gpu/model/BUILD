@@ -1,5 +1,6 @@
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
 
 # Libraries for performance modeling of HLO.
@@ -84,7 +85,6 @@ xla_cc_test(
     srcs = ["sol_latency_estimator_test.cc"],
     deps = [
         ":collective_interpolator",
-        ":gpu_performance_model_base",
         ":sol_gpu_cost_model",
         ":sol_latency_estimator",
         "//xla:literal_util",
@@ -100,6 +100,7 @@ xla_cc_test(
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -786,7 +787,6 @@ cc_library(
         ":symbolic_tiled_hlo_instruction",
         ":tiled_hlo_instruction_or_computation",
         "//xla:shape_util",
-        "//xla:status_macros",
         "//xla:util",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/ir:hlo",
@@ -808,7 +808,6 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -834,7 +833,6 @@ xla_cc_test(
         "//xla/service:instruction_fusion",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -975,10 +973,11 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_proto_cc",
         "//xla/stream_executor:device_description",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:protobuf",
     ],
 )
@@ -1019,6 +1018,8 @@ cc_library(
         "//xla/service:interpreter_plugin",
         "//xla/stream_executor:device_description",
         "//xla/tests:test_utils",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",

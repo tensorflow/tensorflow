@@ -1,6 +1,7 @@
 # Description:
 #    Tests for LLVM-based CPU backend for XLA.
 
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.bzl", "tsl_copts")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
@@ -152,6 +153,7 @@ xla_cc_test(
         "//xla/tests:pjrt_cpu_client_registry",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:test",
         "@com_google_absl//absl/status",
     ],
 )
@@ -181,8 +183,15 @@ xla_cc_test(
     srcs = ["tree_reduction_rewriter_test.cc"],
     deps = [
         ":cpu_codegen_test_main",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:filecheck",
+        "//xla/hlo/transforms/simplifiers:tree_reduction_rewriter",
         "//xla/service/cpu:cpu_compiler",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 

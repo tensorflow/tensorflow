@@ -52,6 +52,8 @@ limitations under the License.
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -850,6 +852,46 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
     TF_RETURN_IF_ERROR(dot_fusion->set_backend_config(gpu_config));
 
     TF_RETURN_IF_ERROR(ReplaceInstruction(ragged_dot, dot_fusion));
+    MarkAsChanged();
+    return absl::OkStatus();
+  }
+
+  absl::Status HandleScaledDot(HloInstruction* scaled_dot) override {
+    CHECK_EQ(scaled_dot->opcode(), HloOpcode::kScaledDot);
+    HloComputation::Builder builder(
+        absl::StrCat("fusion_", scaled_dot->name()));
+
+    auto create_parameter = [&](int64_t parameter_number,
+                                absl::string_view name) {
+      return builder.AddInstruction(HloInstruction::CreateParameter(
+          parameter_number, scaled_dot->operand(parameter_number)->shape(),
+          name));
+    };
+    std::vector<HloInstruction*> new_operands{
+        create_parameter(0, "lhs"),
+        create_parameter(1, "lhs_scale"),
+        create_parameter(2, "rhs"),
+        create_parameter(3, "rhs_scale"),
+    };
+    builder.AddInstruction(
+        scaled_dot->CloneWithNewOperands(scaled_dot->shape(), new_operands));
+
+    HloComputation* computation =
+        scaled_dot->GetModule()->AddComputationAndUnifyNamesAndIds(
+            builder.Build(),
+            /*is_entry=*/false);
+    HloInstruction* fusion = scaled_dot->parent()->AddInstruction(
+        HloInstruction::CreateFusion(computation->root_instruction()->shape(),
+                                     HloInstruction::FusionKind::kCustom,
+                                     scaled_dot->operands(), computation));
+
+    TF_ASSIGN_OR_RETURN(auto gpu_config,
+                        fusion->backend_config<GpuBackendConfig>());
+    FusionBackendConfig& backend_config =
+        *gpu_config.mutable_fusion_backend_config();
+    backend_config.set_kind(kTritonScaledDotFusionKind);
+    TF_RETURN_IF_ERROR(fusion->set_backend_config(gpu_config));
+    TF_RETURN_IF_ERROR(ReplaceInstruction(scaled_dot, fusion));
     MarkAsChanged();
     return absl::OkStatus();
   }

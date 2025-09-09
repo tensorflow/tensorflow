@@ -1,5 +1,7 @@
 """Provides build configuration for TSL"""
 
+load("@rules_cc//cc/common:cc_info.bzl", "CcInfo")
+load("@rules_cc//cc/common:cc_common.bzl", "cc_common")
 load("@rules_python//python:py_library.bzl", "py_library")
 load("@bazel_skylib//lib:new_sets.bzl", "sets")
 load(
@@ -497,9 +499,6 @@ def get_compatible_with_libtpu_portable():
 
 def filegroup(**kwargs):
     native.filegroup(**kwargs)
-
-def internal_hlo_deps():
-    return []
 
 # Config setting selector used when building for products
 # which requires restricted licenses to be avoided.

@@ -209,6 +209,11 @@ class CoordinationServiceAgent {
   //   - NotFound: the requested key does not exist.
   absl::StatusOr<std::string> TryGetKeyValue(absl::string_view key);
 
+  // Increment the value of a key if it is int convertible.
+  //   - FailedPrecondition: the key is not convertible to an int.
+  absl::StatusOr<int64_t> IncrementKeyValue(absl::string_view key,
+                                            int64_t increment);
+
   // Get all values under a directory (key).
   // A value is considered to be in the directory if its key is prefixed with
   // the directory.

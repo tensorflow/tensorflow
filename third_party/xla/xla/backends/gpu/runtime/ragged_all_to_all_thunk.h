@@ -22,13 +22,18 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
+#include "xla/core/collectives/rank_id.h"
+#include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/collective_ops_utils.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_handle.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/memory_allocation.h"
@@ -75,6 +80,46 @@ class RaggedAllToAllStartThunk : public CollectiveThunk {
                                      CommunicatorHandle comm) override;
 
  private:
+  struct StreamState {
+    int device_ordinal;
+    RankId rank;
+
+    // Host memory allocations for ragged metadata.
+    absl::InlinedVector<std::unique_ptr<se::MemoryAllocation>, 8>
+        host_buffer_allocs;
+
+    // Device memory buffer for output offsets.
+    se::DeviceMemoryHandle output_offsets_device_buffer;
+
+    // Device memory buffer for outputs on the local device.
+    se::DeviceMemoryBase local_output_buffer;
+
+    // Device memory buffers for outputs on all participating devices.
+    absl::InlinedVector<se::DeviceMemoryBase, 8> output_buffers;
+
+    // Events to notify before and after the kernel to synchronize with streams
+    // on other devices.
+    std::unique_ptr<se::Event> local_start_event;
+    std::unique_ptr<se::Event> local_end_event;
+
+    // Events collected from all participating devices. Need to be waited on
+    // before the start and after the end of the kernel.
+    absl::InlinedVector<se::Event*, 8> start_events;
+    absl::InlinedVector<se::Event*, 8> end_events;
+
+    StreamState(int device_ordinal, RankId rank)
+        : device_ordinal(device_ordinal), rank(rank) {}
+  };
+
+  absl::Status RunMemCpyRaggedAllToAll(
+      const GpuCliqueKey& clique_key, se::Stream& stream,
+      const StreamState& state, absl::Span<DeviceBufferPair const> buffers,
+      absl::Span<int64_t* const> ragged_metadata_allocs);
+
+  absl::Status RunOneShotRaggedAllToAll(
+      const GpuCliqueKey& clique_key, se::Stream& stream,
+      const StreamState& state, absl::Span<DeviceBufferPair const> buffers);
+
   bool is_local() const;
   bool should_use_memcpy() const { return p2p_memcpy_enabled_ && is_local(); }
 
@@ -85,21 +130,8 @@ class RaggedAllToAllStartThunk : public CollectiveThunk {
   const bool one_shot_kernel_enabled_;
 
   absl::Mutex mutex_;
-  absl::flat_hash_map<se::StreamExecutor*,
-                      std::vector<std::unique_ptr<se::MemoryAllocation>>>
-      host_buffer_allocs_ ABSL_GUARDED_BY(mutex_);
-
-  absl::flat_hash_map<se::StreamExecutor*, se::DeviceMemoryHandle>
-      device_buffer_allocs_ ABSL_GUARDED_BY(mutex_);
-
-  absl::Mutex events_mutex_;
-  // Events to synchronize steams on different devices at the start of the
-  // kernel.
-  absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<se::Event>>
-      start_events_ ABSL_GUARDED_BY(events_mutex_);
-  // Events to synchronize steams on different devices at the end of the kernel.
-  absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<se::Event>>
-      end_events_ ABSL_GUARDED_BY(events_mutex_);
+  absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<StreamState>>
+      per_stream_states_ ABSL_GUARDED_BY(mutex_);
 };
 
 }  // namespace gpu

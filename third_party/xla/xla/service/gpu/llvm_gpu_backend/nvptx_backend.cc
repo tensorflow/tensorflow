@@ -244,7 +244,7 @@ std::string GetSmName(se::CudaComputeCapability compute_capability) {
   // If the current compute capability isn't known, fallback to the
   // most recent version before it.
   constexpr stream_executor::CudaComputeCapability kSupportedVersions[] = {
-      {12, 1}, {12, 0}, {10, 3}, {10, 1}, {10, 0}, {9, 0}, {8, 9}, {8, 7},
+      {12, 1}, {12, 0}, {11, 0}, {10, 3}, {10, 0}, {9, 0}, {8, 9}, {8, 7},
       {8, 6},  {8, 0},  {7, 5},  {7, 2},  {7, 0},  {6, 2}, {6, 1}, {6, 0},
       {5, 3},  {5, 2},  {5, 0},  {3, 7},  {3, 5},  {3, 2}, {3, 0}};
   auto target_compute_capability = kSupportedVersions[0];

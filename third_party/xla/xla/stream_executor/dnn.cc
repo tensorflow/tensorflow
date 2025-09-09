@@ -902,7 +902,7 @@ std::string ConvolutionDescriptor::ToString() const {
   return absl::StrFormat(
       "{zero_padding: %s pad_alignment: %s filter_strides: %s dilation_rates: "
       "%s}",
-      padding, PadAlignmentString(pad_alignment()), strides, dilations);
+      padding, PadAlignmentString(PadAlignment::kDefault), strides, dilations);
 }
 
 // -- PoolingDescriptor

@@ -103,6 +103,7 @@ limitations under the License.
 #include "xla/service/dump.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -258,7 +259,8 @@ static FusionCompiler::Options FusionCompilerOptions(
   return FusionCompiler::Options{
       debug_options.xla_cpu_prefer_vector_width(),
       debug_options.xla_cpu_emitter_verification_level(),
-      debug_options.xla_cpu_enable_fast_min_max()};
+      debug_options.xla_cpu_enable_fast_min_max(),
+      llvm_ir::GetCpuFastMathFlags(config)};
 }
 
 static FusionCompiler FusionCompilerFactory(mlir::MLIRContext* context,

@@ -136,18 +136,28 @@ void RecordInputBatchSize(int32_t batch_size, const string& model_name,
   cell->GetCell(model_name, op_name)->Add(static_cast<double>(batch_size));
 }
 
-void RecordInputBatchSizeV2(int32_t batch_size, const string& model_name,
-                            const string& op_name) {
-  static auto* cell = tensorflow::monitoring::Sampler<2>::New(
+void RecordInputStatsV2(int32_t batch_size, const string& model_name,
+                        const string& op_name,
+                        const tsl::criticality::Criticality& criticality) {
+  static auto* cell = tensorflow::monitoring::Sampler<3>::New(
       {"/tensorflow/serving/batching/input_batch_size_v2",
        "Tracks the batch size distribution on the inputs by model_name (if "
        "available).",
-       "model_name", "op_name"},
+       "model_name", "op_name", "criticality"},
       // Buckets centered at powers of 2, and have bounds:
       // [(2/3) * 2^i, (4/3) * 2^i] for i = 0, ..., 13.
       // Largest bucket has range: [(2/3) *  2^14, DBL_MAX]
       monitoring::Buckets::Exponential(2.0 / 3.0, 2, 15));
-  cell->GetCell(model_name, op_name)->Add(static_cast<double>(batch_size));
+  const std::string criticality_str = absl::StrCat(criticality);
+  cell->GetCell(model_name, op_name, criticality_str)
+      ->Add(static_cast<double>(batch_size));
+
+  static auto* num_tasks_counter = tensorflow::monitoring::Counter<3>::New(
+      "/tensorflow/serving/batching/input_num_tasks",
+      "Tracks the number of batches submitted to the batching scheduler.",
+      "model_name", "op_name", "criticality");
+  num_tasks_counter->GetCell(model_name, op_name, criticality_str)
+      ->IncrementBy(1);
 }
 
 // Record the actual batch size without padding.
@@ -415,8 +425,9 @@ absl::Status BatchResourceBase::RegisterInput(
   }
   RecordInputBatchSize(tensors[0].shape().dim_size(0), GetModelName(context),
                        context->op_kernel().name());
-  RecordInputBatchSizeV2(tensors[0].shape().dim_size(0), GetModelName(context),
-                         context->op_kernel().name());
+  RecordInputStatsV2(tensors[0].shape().dim_size(0), GetModelName(context),
+                     context->op_kernel().name(),
+                     batch_components->criticality());
   if (batcher_) {
     RecordBatchParamBatchTimeoutMicros(
         batcher_queue_options_.batch_timeout_micros, GetModelName(context),

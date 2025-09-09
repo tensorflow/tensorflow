@@ -17,6 +17,7 @@ syntax = "proto3";
 
 package xla.gpu;
 
+import "xla/backends/gpu/runtime/dynamic_slice_thunk.proto";
 import "xla/service/buffer_assignment.proto";
 import "xla/service/gpu/launch_dimensions.proto";
 import "xla/stream_executor/gpu/gpu_blas_lt.proto";
@@ -117,6 +118,17 @@ message CudnnThunkProto {
 message HostExecuteStartThunkProto {}
 message HostExecuteDoneThunkProto {}
 
+message DynamicSliceThunkProto {
+  SequentialThunkProto embedded_thunk = 1;
+  repeated OptionalBufferAllocationSliceProto arguments = 2;
+  repeated OptionalDynamicSliceOffsetsProto offsets = 3;
+  repeated OptionalShapeProto orig_shapes = 4;
+  repeated OptionalShapeProto sliced_shapes = 5;
+  repeated OptionalInt64Proto offset_byte_sizes = 6;
+  optional OffsetAsFunctionOfIndvarModulesMetadataProto
+      offset_as_function_of_indvar_modules_metadata = 7;
+}
+
 message ThunkProto {
   ThunkInfoProto thunk_info = 1;
 
@@ -137,6 +149,7 @@ message ThunkProto {
     CudnnThunkProto cudnn_thunk = 15;
     HostExecuteStartThunkProto host_execute_start_thunk = 16;
     HostExecuteDoneThunkProto host_execute_done_thunk = 17;
+    DynamicSliceThunkProto dynamic_slice_thunk = 18;
   }
 }
 

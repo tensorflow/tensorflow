@@ -201,7 +201,7 @@ class CommonPjRtClient : public PjRtClient {
 class CommonPjRtBufferImpl : public CommonPjRtBuffer {
  public:
   CommonPjRtBufferImpl(
-      Shape on_device_shape,
+      const Shape& on_device_shape,
       std::unique_ptr<AbstractTrackedDeviceBuffer> tracked_device_buffer,
       PjRtMemorySpace* memory_space);
 

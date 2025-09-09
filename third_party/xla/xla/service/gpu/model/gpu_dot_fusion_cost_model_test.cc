@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/model/gpu_dot_fusion_cost_model.h"
 
+#include <cstdint>
 #include <memory>
 
 #include <gtest/gtest.h>
@@ -35,7 +36,6 @@ namespace {
 
 class GpuDotFusionCostModelTest : public HloHardwareIndependentTestBase {
  protected:
-  se::DeviceDescription dda6000_{TestGpuDeviceInfo::RTXA6000DeviceInfo()};
   se::DeviceDescription ddh100_{TestGpuDeviceInfo::RTXH100SXMDeviceInfo()};
 };
 
@@ -50,24 +50,13 @@ lhs_contracting_dims={1}, rhs_contracting_dims={0}, algorithm=dot_bf16_bf16_bf16
 })"));
 
   BlockLevelParameters block_params;
-  block_params.output_tile_sizes = {{16, 16}};
+  block_params.output_tile_sizes = {{64, 64}};
   block_params.num_warps = 4;
   block_params.num_ctas = 1;
   block_params.num_stages = 1;
   auto* dot =
       Cast<HloDotInstruction>(module->entry_computation()->root_instruction());
   ASSERT_IS_OK(GpuDotFusionCostModel::IsSupported(dot));
-  absl::Duration runtime_a6000 =
-      GpuDotFusionCostModel::EstimateRunTimeForDotOpWithBlockParameters(
-          dot, block_params, dda6000_)
-          .value();
-  absl::Duration expected_runtime_compute_bound_a6000 =
-      detail::CalculateComputeTimeWithTileAndWaveQuantization(
-          dot, block_params.output_tile_sizes[0], dda6000_)
-          .value();
-  ASSERT_EQ(runtime_a6000, expected_runtime_compute_bound_a6000);
-
-  block_params.output_tile_sizes = {{64, 64}};
   absl::Duration runtime_h100 =
       GpuDotFusionCostModel::EstimateRunTimeForDotOpWithBlockParameters(
           dot, block_params, ddh100_)
@@ -77,6 +66,36 @@ lhs_contracting_dims={1}, rhs_contracting_dims={0}, algorithm=dot_bf16_bf16_bf16
           dot, block_params.output_tile_sizes[0], ddh100_)
           .value();
   ASSERT_EQ(runtime_h100, expected_runtime_compute_bound_h100);
+}
+
+TEST_F(GpuDotFusionCostModelTest, GpuDotMemoryBoundBf16) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+p0 = bf16[4,4096] parameter(0)
+p1 = bf16[4096,4096] parameter(1)
+ROOT r = bf16[4,4096] dot(p0, p1),
+lhs_contracting_dims={1}, rhs_contracting_dims={0}, algorithm=dot_bf16_bf16_bf16
+})"));
+
+  BlockLevelParameters block_params;
+  block_params.output_tile_sizes = {{4, 32}};
+  block_params.num_warps = 4;
+  block_params.num_ctas = 1;
+  block_params.num_stages = 1;
+  auto* dot =
+      Cast<HloDotInstruction>(module->entry_computation()->root_instruction());
+  ASSERT_IS_OK(GpuDotFusionCostModel::IsSupported(dot));
+  absl::Duration runtime_h100 =
+      GpuDotFusionCostModel::EstimateRunTimeForDotOpWithBlockParameters(
+          dot, block_params, ddh100_)
+          .value();
+  int64_t approx_total_bytes = 2 /*BF16*/ * (4096 + 4 * 2) * 4096;
+  float approx_hbm_bandwidth =
+      detail::GetEffectiveHbmBandwidth(approx_total_bytes, ddh100_);
+  absl::Duration approx_hbm_time =
+      absl::Seconds(1.0f * approx_total_bytes / approx_hbm_bandwidth);
+  ASSERT_EQ(runtime_h100, approx_hbm_time);
 }
 
 }  // namespace

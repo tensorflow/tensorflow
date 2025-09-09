@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Support/LLVM.h"
@@ -42,6 +43,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/primitive_util.h"
 #include "xla/service/algorithm_util.h"
+#include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
@@ -75,7 +77,7 @@ struct PrecisionSpec {
   ttir::InputPrecision ttir_input_precision;
 };
 
-using AlgorithmEmitter = absl::StatusOr<Value> (*)(EmitterLocOpBuilder&,
+using AlgorithmEmitter = absl::StatusOr<Value> (*)(EmitterLocOpBuilder,
                                                    const DotOperands&,
                                                    const PrecisionSpec&);
 
@@ -86,7 +88,7 @@ using AlgorithmEmitter = absl::StatusOr<Value> (*)(EmitterLocOpBuilder&,
 // We would get the wrong result if we sum these partial products. Instead, we
 // must override any accumulated result if the last partial product is
 // non-finite. See b/115844437.
-Value ZeroNaNs(EmitterLocOpBuilder& b, Value input) {
+Value ZeroNaNs(EmitterLocOpBuilder b, Value input) {
   Value positive_inf =
       CreateConst<float>(b, b.getF32Type(),
                          std::numeric_limits<float>::infinity(),
@@ -128,6 +130,38 @@ std::vector<Value> SplitF32(EmitterLocOpBuilder b, Value input,
   return split_inputs;
 }
 
+absl::StatusOr<ttir::ScaleDotElemType> GetScaleDotElemType(Type value) {
+  auto type = getElementTypeOrSelf(value);
+  if (type == mlir::Float8E4M3FNType::get(value.getContext())) {
+    return ttir::ScaleDotElemType::E4M3;
+  }
+  if (type == mlir::Float8E5M2Type::get(value.getContext())) {
+    return ttir::ScaleDotElemType::E5M2;
+  }
+  if (type == mlir::Float4E2M1FNType::get(value.getContext())) {
+    return ttir::ScaleDotElemType::E2M1;
+  }
+  return absl::InvalidArgumentError(
+      absl::StrCat("Unsupported type: ", llvm_ir::DumpToString(type)));
+}
+
+absl::StatusOr<Value> ScaledDot(EmitterLocOpBuilder b,
+                                ScaledDotOperands& operands) {
+  TF_ASSIGN_OR_RETURN(auto lhs_dot_elem_type,
+                      GetScaleDotElemType(operands.lhs.getType()));
+  TF_ASSIGN_OR_RETURN(auto rhs_dot_elem_type,
+                      GetScaleDotElemType(operands.rhs.getType()));
+
+  auto lhs_scale = Bitcast(b, operands.lhs_scale, b.getI8Type());
+  auto rhs_scale = Bitcast(b, operands.rhs_scale, b.getI8Type());
+
+  // make type with the same shape as the scale but with i8 type
+  return b.create<ttir::DotScaledOp>(
+      operands.accumulator.getType(), operands.lhs, operands.rhs,
+      operands.accumulator, lhs_scale, rhs_scale, lhs_dot_elem_type,
+      rhs_dot_elem_type, true);
+}
+
 Value IEEEDot(EmitterLocOpBuilder b, Value lhs, Value rhs, Value acc) {
   return b.create<ttir::DotOp>(lhs, rhs, acc,
                                /*inputPrecision=*/ttir::InputPrecision::IEEE,
@@ -136,7 +170,7 @@ Value IEEEDot(EmitterLocOpBuilder b, Value lhs, Value rhs, Value acc) {
 
 // Leverages BF16 datatype for F32 matmul computation. It follows the guidance
 // from https://arxiv.org/pdf/1904.06376.pdf.
-absl::StatusOr<Value> EmitBF16x9Matmul(EmitterLocOpBuilder& b,
+absl::StatusOr<Value> EmitBF16x9Matmul(EmitterLocOpBuilder b,
                                        const DotOperands& dot_operands,
                                        const PrecisionSpec& precision_spec) {
   constexpr int kNumParts = 3;
@@ -174,7 +208,7 @@ absl::StatusOr<Value> EmitBF16x9Matmul(EmitterLocOpBuilder& b,
 
 // Leverages BF16 datatype for F32 matmul computation. It follows the guidance
 // from https://arxiv.org/pdf/1904.06376.pdf.
-absl::StatusOr<Value> EmitBF16x6Matmul(EmitterLocOpBuilder& b,
+absl::StatusOr<Value> EmitBF16x6Matmul(EmitterLocOpBuilder b,
                                        const DotOperands& dot_operands,
                                        const PrecisionSpec& precision_spec) {
   constexpr int kNumParts = 3;
@@ -208,7 +242,7 @@ absl::StatusOr<Value> EmitBF16x6Matmul(EmitterLocOpBuilder& b,
 
 // Compute F32 matmul with 3 BF16 dots. It is less accurate than
 // EmitBF16x6Matmul.
-absl::StatusOr<Value> EmitBF16x3Matmul(EmitterLocOpBuilder& b,
+absl::StatusOr<Value> EmitBF16x3Matmul(EmitterLocOpBuilder b,
                                        const DotOperands& dot_operands,
                                        const PrecisionSpec& precision_spec) {
   constexpr int kNumParts = 2;
@@ -252,7 +286,7 @@ ttir::InputPrecision InferDotPrecision(const HloDotInstruction& dot) {
                             : ttir::InputPrecision::IEEE;
 }
 
-absl::StatusOr<Type> GetAlgUnsetAccumulatorType(EmitterLocOpBuilder& b,
+absl::StatusOr<Type> GetAlgUnsetAccumulatorType(EmitterLocOpBuilder b,
                                                 const HloDotInstruction& dot) {
   TF_ASSIGN_OR_RETURN(Type lhs_type,
                       TritonType(b, dot.operand(0)->shape().element_type()));
@@ -279,7 +313,7 @@ absl::StatusOr<Type> GetAlgUnsetAccumulatorType(EmitterLocOpBuilder& b,
                                                         : b.getF32Type();
 }
 
-absl::StatusOr<Value> EmitDotAlgUnset(EmitterLocOpBuilder& b,
+absl::StatusOr<Value> EmitDotAlgUnset(EmitterLocOpBuilder b,
                                       const DotOperands& dot_operands,
                                       const PrecisionSpec& precision_spec) {
   // Execute matrix multiplication of input tiles and pass the accumulator.
@@ -305,7 +339,7 @@ absl::StatusOr<Value> EmitDotAlgUnset(EmitterLocOpBuilder& b,
       /*maxNumImpreciseAcc=*/max_num_imprecise_acc);
 }
 
-absl::StatusOr<Value> EmitRegularDot(EmitterLocOpBuilder& b,
+absl::StatusOr<Value> EmitRegularDot(EmitterLocOpBuilder b,
                                      const DotOperands& dot_operands,
                                      const PrecisionSpec& precision_spec) {
   Value lhs = dot_operands.lhs;
@@ -380,7 +414,7 @@ absl::StatusOr<AlgorithmEmitter> GetAlgorithmEmitter(
 // the operands do not already conform to any of them. Returns `std::nullopt` if
 // no casting is a priori needed.
 absl::StatusOr<std::optional<Type>> GetForceOperandsType(
-    EmitterLocOpBuilder& b, const HloDotInstruction& dot,
+    EmitterLocOpBuilder b, const HloDotInstruction& dot,
     const DotOperands& dot_operands) {
   PrecisionConfig::Algorithm algorithm = dot.precision_config().algorithm();
   if (algorithm == PrecisionConfig::ALG_UNSET) {
@@ -429,7 +463,7 @@ absl::StatusOr<std::optional<Type>> GetForceOperandsType(
 
 }  // namespace
 
-absl::StatusOr<Type> GetDotAccumulatorType(EmitterLocOpBuilder& b,
+absl::StatusOr<Type> GetDotAccumulatorType(EmitterLocOpBuilder b,
                                            const HloDotInstruction& dot) {
   const PrecisionConfig::Algorithm algorithm =
       dot.precision_config().algorithm();
@@ -443,7 +477,7 @@ absl::StatusOr<Type> GetDotAccumulatorType(EmitterLocOpBuilder& b,
   return TritonType(b, accumulator_type);
 }
 
-absl::StatusOr<Value> EmitSingleTileDot(EmitterLocOpBuilder& b,
+absl::StatusOr<Value> EmitSingleTileDot(EmitterLocOpBuilder b,
                                         const HloDotInstruction& dot,
                                         DotOperands dot_operands) {
   PrecisionConfig::Algorithm algorithm = dot.precision_config().algorithm();
@@ -486,6 +520,12 @@ absl::StatusOr<Value> EmitSingleTileDot(EmitterLocOpBuilder& b,
   }
 
   return result;
+}
+
+absl::StatusOr<Value> EmitSingleTileScaledDot(
+    EmitterLocOpBuilder b, const HloScaledDotInstruction& scaled_dot,
+    ScaledDotOperands dot_operands) {
+  return ScaledDot(b, dot_operands);
 }
 
 }  // namespace triton

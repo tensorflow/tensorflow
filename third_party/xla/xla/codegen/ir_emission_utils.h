@@ -1,7 +1,3 @@
-#include <optional>
-
-#include "absl/functional/any_invocable.h"
-#include "xla/hlo/utils/hlo_traversal.h"
 /* Copyright 2025 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,10 +17,20 @@ limitations under the License.
 #define XLA_CODEGEN_IR_EMISSION_UTILS_H_
 
 #include <cstdint>
+#include <functional>
+#include <optional>
+#include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/any_invocable.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
+#include "xla/codegen/hlo_fusion_spec.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/utils/hlo_traversal.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -75,6 +81,36 @@ bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count = 1);
 std::optional<HloInstructionAdaptor> FindHero(
     const HloInstructionAdaptor& root,
     absl::AnyInvocable<bool(const HloInstruction&)> predicate);
+
+// Should the given fusion be emitted using the DUS emitter.
+bool IsDynamicUpdateSliceFusion(const HloFusionSpec& fusion_spec);
+
+// Returns the dynamic-update-slice instructions defining the results of a
+// fusion node. A dynamic slice update is said to be "defining" of a result if
+// that result is the output of a dynamic slice update, or if that result is the
+// output of a bitcast of a dynamic slice update---since such bitcast may be
+// handled as a no-op.
+std::vector<HloInstructionAdaptor> GetOutputDefiningDynamicUpdateSlices(
+    absl::Span<HloInstructionAdaptor const> roots);
+
+// Returns whether the fusion represented by 'fusion_adaptor' can be emitted
+// with the dynamic update slice in-place emitter. If 'fusion_adaptor'
+// represents a single fusion computation, 'fusion' should provide the fusion
+// instruction corresponding to that fusion computation. 'get_allocation_slice'
+// is a callback for getting the allocated buffer slice, given an instruction
+// and a shape index. This is ignored in case 'fusion' is a nullptr.
+absl::StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlace(
+    const HloFusionAdaptor& fusion_adaptor,
+    std::function<absl::StatusOr<BufferAllocation::Slice>(
+        const HloInstruction* instr, const ShapeIndex& index)>
+        get_allocation_slice,
+    const HloInstruction* fusion = nullptr);
+
+// Same as above, but uses the buffer assignment to get the allocated buffer
+// slices.
+absl::StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlace(
+    const HloFusionAdaptor& fusion_adaptor,
+    const BufferAssignment* buffer_assignment, const HloInstruction* fusion);
 
 }  // namespace xla
 

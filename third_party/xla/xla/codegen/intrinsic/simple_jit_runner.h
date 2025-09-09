@@ -152,6 +152,22 @@ class JitRunner {
 
 std::unique_ptr<llvm::TargetMachine> CreateHostTargetMachine();
 
+// Creates a new LLVM function that wraps an existing function by
+// unrolling calls in a sequence.
+//
+// This function takes an `original_func` and generates a new function with an
+// identical signature. Instead of a loop, the new function's body consists of
+// an explicitly unrolled sequence of `unroll_factor` calls to the original
+// function. This avoids loop overhead and is suitable for small K.
+// This primarily serves as a knob to attempt to reduce the dependence of very
+// small kernels on memory bandwidth.
+//
+// `vector_size`: The size of the vectors being processed.
+// Returns a pointer to the newly created unrolled wrapper function.
+llvm::Function* CreateKTimesWrapper(llvm::Module* module,
+                                    llvm::Function* original_func,
+                                    int unroll_factor, size_t vector_size);
+
 }  // namespace xla::codegen::intrinsic
 
 #endif  // XLA_CODEGEN_INTRINSIC_SIMPLE_JIT_RUNNER_H_

@@ -278,5 +278,23 @@ TEST(CudaComputeCapabilityTest, GetPtxAsTargetName) {
       "sm_100f");
 }
 
+TEST(CudaComputeCapabilityTest, WithoutAnyFeatureExtension) {
+  EXPECT_EQ(CudaComputeCapability(
+                100, 52, CudaComputeCapability::FeatureExtension::kNone)
+                .WithoutAnyFeatureExtension(),
+            CudaComputeCapability(100, 52));
+  EXPECT_EQ(CudaComputeCapability(
+                100, 52,
+                CudaComputeCapability::FeatureExtension::kAcceleratedFeatures)
+                .WithoutAnyFeatureExtension(),
+            CudaComputeCapability(100, 52));
+  EXPECT_EQ(
+      CudaComputeCapability(
+          100, 52,
+          CudaComputeCapability::FeatureExtension::kForwardCompatibleFeatures)
+          .WithoutAnyFeatureExtension(),
+      CudaComputeCapability(100, 52));
+}
+
 }  // namespace
 }  // namespace stream_executor

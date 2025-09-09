@@ -32,7 +32,6 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/model/collective_interpolator.h"
-#include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/service/gpu/model/sol_gpu_cost_model.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_module_config.h"
@@ -42,6 +41,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
@@ -424,6 +424,19 @@ class IsSolLatencyEstimatorEnabledTest : public HloTestBase {
         shape, dummy_operand, /*source_target_pairs=*/{}, std::nullopt));
   }
 
+  absl::Status AddHostOffloaded(HloModule* module) {
+    HloComputation* entry = module->entry_computation();
+    Shape shape = ShapeUtil::MakeShape(F32, {2});
+    auto dummy_operand = entry->AddInstruction(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>({2})));
+    HloInstruction* call =
+        entry->AddInstruction(HloInstruction::CreateCall(shape, dummy_operand));
+    TF_ASSIGN_OR_RETURN(GpuBackendConfig new_backend_config,
+                        call->backend_config<GpuBackendConfig>());
+    new_backend_config.set_device_type(DEVICE_TYPE_HOST);
+    return call->set_backend_config(new_backend_config);
+  }
+
   se::DeviceDescription gpu_device_info_;
 };
 
@@ -444,6 +457,9 @@ TEST_F(IsSolLatencyEstimatorEnabledTest, DisabledIfFlagIsOffOnHopper) {
 
   gpu_device_info_.set_cuda_compute_capability(
       stream_executor::CudaComputeCapability::Hopper());
+
+  config.mutable_debug_options()
+      .set_xla_gpu_enable_analytical_sol_latency_estimator(false);
 
   auto module = CreateTestModule(config);
 
@@ -494,6 +510,21 @@ TEST_F(IsSolLatencyEstimatorEnabledTest, DisabledIfNotHopper) {
 
   auto module = CreateTestModule(config);
   AddAllReduce(module.get());  // Supported collective
+
+  EXPECT_FALSE(
+      SolLatencyEstimator::IsSupportedForModule(*module, gpu_device_info_));
+}
+
+TEST_F(IsSolLatencyEstimatorEnabledTest, DisabledForHopperWithHostOffloaded) {
+  HloModuleConfig config;
+  config.mutable_debug_options()
+      .set_xla_gpu_enable_analytical_sol_latency_estimator(true);
+
+  gpu_device_info_.set_cuda_compute_capability(
+      stream_executor::CudaComputeCapability::Hopper());
+
+  auto module = CreateTestModule(config);
+  TF_ASSERT_OK(AddHostOffloaded(module.get()));
 
   EXPECT_FALSE(
       SolLatencyEstimator::IsSupportedForModule(*module, gpu_device_info_));

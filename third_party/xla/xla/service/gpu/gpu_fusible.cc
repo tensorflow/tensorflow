@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instruction_utils.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/permutation_util.h"
@@ -391,6 +392,7 @@ bool IsUniversallyLoopFusible(const HloInstruction& instr) {
       return instr.fusion_kind() == HloInstruction::FusionKind::kLoop;
 
     case HloOpcode::kBitcast:
+      return hlo_instruction_utils::KeepsBitwidth(instr);
     case HloOpcode::kBroadcast:
     case HloOpcode::kConcatenate:
     case HloOpcode::kDynamicSlice:
@@ -423,18 +425,6 @@ bool IsLoopFusibleAsProducer(const HloInstruction& instr) {
     default:
       return IsUniversallyLoopFusible(instr);
   }
-}
-
-static bool AllSatisfy(const HloInstruction& instr,
-                       const HloPredicate& predicate) {
-  if (instr.opcode() != HloOpcode::kFusion) {
-    return predicate(&instr);
-  }
-
-  return absl::c_all_of(
-      instr.fused_instructions(), [&](const HloInstruction* i) {
-        return i->opcode() == HloOpcode::kParameter || predicate(i);
-      });
 }
 
 FusionDecision CanEmitInputFusedScatter(const HloInstruction& producer,

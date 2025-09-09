@@ -32,7 +32,9 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
@@ -49,6 +51,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_gpu_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_gpu_internal.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
+#include "xla/pjrt/c/pjrt_c_api_layouts_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_test.h"
 #include "xla/pjrt/c/pjrt_c_api_test_base.h"
 #include "xla/pjrt/c/pjrt_c_api_triton_extension.h"
@@ -76,7 +79,6 @@ namespace {
 using ::testing::ElementsAreArray;
 using ::testing::HasSubstr;
 using ::testing::IsNull;
-using ::tsl::testing::StatusIs;
 
 #ifdef TENSORFLOW_USE_ROCM
 const bool kUnused = (RegisterPjRtCApiTestFactory([]() { return GetPjrtApi(); },
@@ -960,6 +962,78 @@ TEST(PJRTGpuDeviceTopologyTest, CreateExplicitGpuTopology) {
   destroy_args.struct_size = PJRT_TopologyDescription_Destroy_Args_STRUCT_SIZE;
   destroy_args.extension_start = nullptr;
   destroy_args.topology = const_cast<PJRT_TopologyDescription*>(pjrt_topology);
+  PJRT_Error* destroy_error =
+      pjrt_api->PJRT_TopologyDescription_Destroy(&destroy_args);
+  EXPECT_EQ(destroy_error, nullptr) << destroy_error->status.message();
+}
+
+TEST(PJRTGpuDeviceTopologyTest, GetDefaultLayout) {
+  auto pjrt_api = gpu_plugin::GetGpuPjrtApi();
+
+  PJRT_TopologyDescription_Create_Args create_args;
+  create_args.struct_size = PJRT_TopologyDescription_Create_Args_STRUCT_SIZE;
+  create_args.extension_start = nullptr;
+  create_args.topology = nullptr;
+  create_args.num_options = 0;
+  create_args.create_options = nullptr;
+
+  PJRT_Error* error = pjrt_api->PJRT_TopologyDescription_Create(&create_args);
+  EXPECT_EQ(error, nullptr) << error->status.message();
+  auto* pjrt_topology =
+      reinterpret_cast<PJRT_TopologyDescription*>(create_args.topology);
+  ASSERT_NE(pjrt_topology, nullptr);
+
+  const PJRT_Layouts_Extension* layouts_extension =
+      pjrt::FindExtension<PJRT_Layouts_Extension>(
+          pjrt_api, PJRT_Extension_Type::PJRT_Extension_Type_Layouts);
+  ASSERT_NE(layouts_extension, nullptr);
+  ASSERT_NE(layouts_extension->PJRT_Layouts_PJRT_Topology_GetDefaultLayout,
+            nullptr);
+
+  PJRT_Layouts_PJRT_Topology_GetDefaultLayout_Args layout_args;
+  layout_args.struct_size =
+      PJRT_Layouts_PJRT_Topology_GetDefaultLayout_Args_STRUCT_SIZE;
+  layout_args.extension_start = nullptr;
+  layout_args.topology_description = pjrt_topology;
+  layout_args.type = PJRT_Buffer_Type::PJRT_Buffer_Type_F32;
+  int64_t dims[] = {2, 3};
+  layout_args.dims = dims;
+  layout_args.num_dims = 2;
+  layout_args.layout = nullptr;
+
+  error = layouts_extension->PJRT_Layouts_PJRT_Topology_GetDefaultLayout(
+      &layout_args);
+  EXPECT_EQ(error, nullptr);
+  ASSERT_NE(layout_args.layout, nullptr);
+
+  PJRT_Layouts_MemoryLayout_Serialize_Args serialize_args;
+  serialize_args.extension_start = nullptr;
+  serialize_args.struct_size =
+      PJRT_Layouts_MemoryLayout_Serialize_Args_STRUCT_SIZE;
+  serialize_args.layout = layout_args.layout;
+  error = PJRT_Layouts_MemoryLayout_Serialize(&serialize_args);
+  EXPECT_EQ(error, nullptr);
+  std::string serialized(serialize_args.serialized_bytes,
+                         serialize_args.serialized_bytes_size);
+  EXPECT_EQ(serialized, "{1,0}");
+
+  if (serialize_args.serialized_layout_deleter) {
+    serialize_args.serialized_layout_deleter(serialize_args.serialized_layout);
+  }
+
+  PJRT_Layouts_MemoryLayout_Destroy_Args destroy_layout_args;
+  destroy_layout_args.struct_size =
+      PJRT_Layouts_MemoryLayout_Destroy_Args_STRUCT_SIZE;
+  destroy_layout_args.extension_start = nullptr;
+  destroy_layout_args.layout = layout_args.layout;
+  error = layouts_extension->PJRT_Layouts_MemoryLayout_Destroy(
+      &destroy_layout_args);
+  EXPECT_EQ(error, nullptr);
+
+  PJRT_TopologyDescription_Destroy_Args destroy_args;
+  destroy_args.struct_size = PJRT_TopologyDescription_Destroy_Args_STRUCT_SIZE;
+  destroy_args.extension_start = nullptr;
+  destroy_args.topology = pjrt_topology;
   PJRT_Error* destroy_error =
       pjrt_api->PJRT_TopologyDescription_Destroy(&destroy_args);
   EXPECT_EQ(destroy_error, nullptr) << destroy_error->status.message();

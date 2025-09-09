@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/service/source_target_pairs.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/statusor.h"
@@ -581,10 +582,9 @@ absl::StatusOr<std::vector<int64_t>> GetPariticipantCountsForReplicaGroups(
     absl::Span<const ReplicaGroup> replica_groups,
     CollectiveOpGroupMode group_mode) {
   std::vector<int64_t> participant_counts;
-  std::vector<ReplicaGroup> participating_replica_groups =
-      SpanToVector(replica_groups);
 
   // If replica groups are empty, assume a group with all replicas.
+  std::optional<ReplicaGroup> all_replica_groups;
   if (replica_groups.empty()) {
     if (group_mode == CollectiveOpGroupMode::kFlattenedID) {
       // replica groups contain flattened-ids and cannot be empty.
@@ -601,16 +601,17 @@ absl::StatusOr<std::vector<int64_t>> GetPariticipantCountsForReplicaGroups(
       total_participant_count = num_replicas;
     }
 
-    ReplicaGroup replica_group = ReplicaGroup();
+    all_replica_groups.emplace();
+    all_replica_groups->mutable_replica_ids()->Reserve(total_participant_count);
     for (int id = 0; id < total_participant_count; id++) {
-      replica_group.add_replica_ids(id);
+      all_replica_groups->add_replica_ids(id);
     }
-    participating_replica_groups.push_back(replica_group);
+    replica_groups = absl::MakeConstSpan(&*all_replica_groups, 1);
   }
 
   switch (group_mode) {
     case CollectiveOpGroupMode::kCrossReplica: {
-      for (const auto& replica_group : participating_replica_groups) {
+      for (const auto& replica_group : replica_groups) {
         for (int partition_id = 0; partition_id < num_partitions;
              ++partition_id) {
           participant_counts.push_back(replica_group.replica_ids().size());
@@ -619,20 +620,20 @@ absl::StatusOr<std::vector<int64_t>> GetPariticipantCountsForReplicaGroups(
       return participant_counts;
     }
     case CollectiveOpGroupMode::kCrossPartition: {
-      for (const auto& replica_group : participating_replica_groups) {
+      for (const auto& replica_group : replica_groups) {
         participant_counts.push_back(replica_group.replica_ids().size());
       }
       return participant_counts;
     }
     case CollectiveOpGroupMode::kCrossReplicaAndPartition: {
-      for (const auto& replica_group : participating_replica_groups) {
+      for (const auto& replica_group : replica_groups) {
         participant_counts.push_back(replica_group.replica_ids().size() *
                                      num_partitions);
       }
       return participant_counts;
     }
     case CollectiveOpGroupMode::kFlattenedID: {
-      for (const auto& replica_group : participating_replica_groups) {
+      for (const auto& replica_group : replica_groups) {
         participant_counts.push_back(replica_group.replica_ids().size());
       }
       return participant_counts;
@@ -871,5 +872,18 @@ bool IsExclusivelyCrossReplica(absl::Span<const ReplicaGroup> replica_groups,
     }
   }
   return true;
+}
+
+bool HasDuplicateSourcesOrTargets(const SourceTargetPairs& pairs) {
+  std::set<int> sources;
+  std::set<int> targets;
+  for (int i = 0; i < pairs.size(); ++i) {
+    sources.insert(pairs[i].source);
+    targets.insert(pairs[i].target);
+  }
+  if (sources.size() != pairs.size() || targets.size() != pairs.size()) {
+    return true;
+  }
+  return false;
 }
 }  // end namespace xla

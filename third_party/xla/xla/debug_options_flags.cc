@@ -208,7 +208,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_use_acl(true);
 #endif
   opts.set_xla_cpu_use_fusion_emitters(true);
-  opts.set_xla_cpu_use_thunk_runtime(true);
   opts.set_xla_cpu_use_xnnpack(true);
   opts.set_xla_cpu_experimental_xnn_graph_fusion_mode(
       DebugOptions::XNN_GRAPH_FUSION_MODE_DISABLED);
@@ -425,6 +424,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_experimental_collective_perf_table_path("");
   opts.set_xla_gpu_experimental_matmul_perf_table_path("");
+  // TODO(b/366475196): Create XLA GPU without cuDNN, cuBLAS.
   opts.set_xla_gpu_experimental_disable_binary_libraries(false);
   // --xla_ignore_channel_id should be kept false by default while channel ids
   // are load-bearing.
@@ -433,7 +433,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_enable_fast_math(false);
   opts.set_xla_gpu_experimental_parallel_collective_overlap_limit(1);
   opts.set_xla_pjrt_allow_auto_layout_in_hlo(false);
-  opts.set_xla_gpu_enable_scatter_determinism_expander(true);
+  opts.set_xla_gpu_enable_scatter_determinism_expander(false);
   opts.set_xla_gpu_unsupported_enable_ragged_all_to_all_decomposer(false);
   opts.set_xla_gpu_unsupported_use_all_reduce_one_shot_kernel(false);
   opts.set_xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel(true);
@@ -444,12 +444,14 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_hlo_pass_fix_detect_cycles(false);
   opts.set_xla_gpu_experimental_enable_heuristic_collective_combining(true);
   opts.set_xla_unsupported_crash_on_hlo_pass_silent_hlo_change(false);
+  opts.set_xla_disable_automatic_host_compute_offload(false);
   opts.set_xla_unsupported_crash_on_hlo_pass_noop_change(false);
   opts.set_xla_gpu_experimental_enable_split_k_rewrite(false);
   opts.set_xla_gpu_experimental_enable_triton_tma(false);
   opts.set_xla_gpu_experimental_enable_command_buffer_on_thunks(true);
   opts.set_xla_detect_unstable_reductions(
       DebugOptions::UNSTABLE_REDUCTION_DETECTION_MODE_NONE);
+  opts.set_xla_gpu_experimental_scaled_dot_with_triton(false);
   return opts;
 }
 
@@ -1085,13 +1087,15 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       tsl::Flag("xla_cpu_use_fusion_emitters",
                 bool_setter_for(&DebugOptions::set_xla_cpu_use_fusion_emitters),
                 debug_options->xla_cpu_use_fusion_emitters(),
-                "Use fusion emitters for code generation in the CPU backend. "
-                "Note: only works with --xla_cpu_use_thunk_runtime=true."));
-  flag_list->push_back(
-      tsl::Flag("xla_cpu_use_thunk_runtime",
-                bool_setter_for(&DebugOptions::set_xla_cpu_use_thunk_runtime),
-                debug_options->xla_cpu_use_thunk_runtime(),
-                "Use Thunk-based runtime for the CPU backend."));
+                "Use fusion emitters for code generation in the CPU backend."));
+  flag_list->push_back(tsl::Flag(
+      "xla_cpu_use_thunk_runtime",
+      [](bool) {
+        LOG(WARNING) << "\"xla_cpu_use_thunk_runtime\" is no longer supported "
+                        "and will be removed in a future release.";
+        return true;
+      },
+      true, "Deprecated."));
   flag_list->push_back(
       tsl::Flag("xla_cpu_use_xnnpack",
                 bool_setter_for(&DebugOptions::set_xla_cpu_use_xnnpack),
@@ -2492,6 +2496,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "tables for collectives. Expects `xla.gpu.DeviceHloInstructionProfiles` "
       "proto."));
   flag_list->push_back(tsl::Flag(
+      "xla_unsupported_crash_on_hlo_pass_noop_change",
+      bool_setter_for(
+          &DebugOptions::set_xla_unsupported_crash_on_hlo_pass_noop_change),
+      debug_options->xla_unsupported_crash_on_hlo_pass_noop_change(),
+      "Crash if a pass reports that it did change the HLO but in fact it "
+      "did not."));
+  flag_list->push_back(tsl::Flag(
       "xla_unsupported_crash_on_hlo_pass_silent_hlo_change",
       bool_setter_for(
           &DebugOptions::
@@ -2500,12 +2511,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Crash if a pass reports that it did not change the HLO but in fact it "
       "did."));
   flag_list->push_back(tsl::Flag(
-      "xla_unsupported_crash_on_hlo_pass_noop_change",
+      "xla_disable_automatic_host_compute_offload",
       bool_setter_for(
-          &DebugOptions::set_xla_unsupported_crash_on_hlo_pass_noop_change),
-      debug_options->xla_unsupported_crash_on_hlo_pass_noop_change(),
-      "Crash if a pass reports that it did change the HLO but in fact it "
-      "did not."));
+          &DebugOptions::set_xla_disable_automatic_host_compute_offload),
+      debug_options->xla_disable_automatic_host_compute_offload(),
+      "Return an error if HostOffloader would have automatically offloaded some"
+      " compute to the host."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_matmul_perf_table_path",
       string_setter_for(

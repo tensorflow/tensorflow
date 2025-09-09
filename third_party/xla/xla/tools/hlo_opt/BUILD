@@ -2,6 +2,7 @@ load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
 )
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:lit.bzl", "enforce_glob", "lit_test_suite")
 load(
     "//xla/stream_executor:build_defs.bzl",
@@ -45,6 +46,7 @@ cc_library(
         "//xla/service:conditional_to_select",
         "//xla/service:executable",
         "//xla/service:gather_expander",
+        "//xla/service:hlo_graph_dumper",
         "//xla/service:map_inliner",
         "//xla/service:platform_util",
         "//xla/service:reduce_scatter_reassociate",

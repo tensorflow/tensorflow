@@ -72,6 +72,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/tools/hlo_diff:hlo_diff_result",
         "//xla/hlo/tools/hlo_diff:hlo_diff_summary",
+        "//xla/hlo/tools/hlo_diff/utils:text_diff",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/functional:function_ref",

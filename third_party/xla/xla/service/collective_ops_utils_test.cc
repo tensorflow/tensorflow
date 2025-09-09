@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/source_target_pairs.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -511,6 +512,25 @@ TEST(IsExclusivelyCrossReplicaTest, CrossModuleWithGlobalIds) {
       IsExclusivelyCrossReplica(replica_groups, /*use_global_ids=*/true,
                                 /*has_channel_id=*/true, device_assignment));
 }
+
+TEST(HasDuplicateSourcesOrTargetsTest, NoDuplicates) {
+  SourceTargetPairs pairs =
+      SourceTargetPairs::FromString("{{0, 1}, {2, 3}, {4, 5}}").value();
+  EXPECT_FALSE(HasDuplicateSourcesOrTargets(pairs));
+}
+
+TEST(HasDuplicateSourcesOrTargetsTest, DuplicateSources) {
+  SourceTargetPairs pairs =
+      SourceTargetPairs::FromString("{{0, 1}, {0, 3}, {4, 5}}").value();
+  EXPECT_TRUE(HasDuplicateSourcesOrTargets(pairs));
+}
+
+TEST(HasDuplicateSourcesOrTargetsTest, DuplicateTargets) {
+  SourceTargetPairs pairs =
+      SourceTargetPairs::FromString("{{0, 1}, {2, 1}, {4, 5}}").value();
+  EXPECT_TRUE(HasDuplicateSourcesOrTargets(pairs));
+}
+
 }  // namespace
 
 // Tests for GetCollectOpGroupMode

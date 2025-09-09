@@ -264,7 +264,6 @@ xla_cc_test(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/base:log_severity",
-        "@com_google_absl//absl/log:log_sink",
         "@com_google_absl//absl/log:scoped_mock_log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -474,6 +473,35 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:platform_port",
+    ],
+)
+
+cc_library(
+    name = "shape_pool",
+    srcs = ["shape_pool.cc"],
+    hdrs = ["shape_pool.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":shape_util",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+xla_cc_test(
+    name = "shape_pool_test",
+    srcs = ["shape_pool_test.cc"],
+    deps = [
+        ":literal_util",
+        ":shape_pool",
+        "//xla:shape_util",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_benchmark",
+        "//xla/tsl/platform:test_main",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -867,8 +895,7 @@ cc_library(
     visibility = internal_visibility([":friends"]),
     deps = [
         ":array",
-        ":types",
-        "//xla/tsl/platform:logging",
+        ":util",
     ],
 )
 
@@ -1477,6 +1504,7 @@ bzl_library(
     name = "lit_bzl",
     srcs = ["lit.bzl"],
     deps = [
+        "@rules_cc//cc/common",
         # copybara:uncomment "@rules_python//python:defs_bzl",
         "@bazel_skylib//lib:paths",
         "//xla/tsl:package_groups_bzl",

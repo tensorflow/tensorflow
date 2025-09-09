@@ -1297,8 +1297,7 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
       HloPosition position = value2->defining_position();
       for (const HloUse& use : value->GetUses()) {
         // We already handle the copy of pin custom-call operands and shouldn't
-        // add
-        // another copy here.
+        // add another copy here.
         if (!use.instruction->IsCustomCall(kPinCustomCallTarget) &&
             use.instruction == position.instruction) {
           VLOG(3) << "Same instruction: " << position.instruction->ToString();

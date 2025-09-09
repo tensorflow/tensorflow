@@ -47,6 +47,12 @@ constexpr uint32 kFirstNcclPlaneId =
     tsl::profiler::kMaxCustomPlaneDevicesPerHost - kMaxNcclPlanes;
 constexpr uint32 kLastNcclPlaneId = kFirstNcclPlaneId + kMaxNcclPlanes - 1;
 
+constexpr int kNumGpuOnDeviceCustomPlanesPerHost = 50;
+constexpr int kFirstGpuOnDeviceCustomPlaneId =
+    kFirstNcclPlaneId - kNumGpuOnDeviceCustomPlanesPerHost;
+constexpr int kLastGpuOnDeviceCustomPlaneId =
+    kFirstGpuOnDeviceCustomPlaneId + kNumGpuOnDeviceCustomPlanesPerHost - 1;
+
 // Constants used as trace_viewer TID (resource_id in trace_events.proto).
 constexpr int kThreadIdDerivedMin = 0xdeadbeef;
 constexpr int kThreadIdStepInfo = kThreadIdDerivedMin;
@@ -62,7 +68,10 @@ constexpr int kThreadIdHostOffloadOpEnd = kThreadIdDerivedMin + 48;
 // Space for derived lines for host XLA Ops
 constexpr int kThreadIdHostXlaRegionStart = kThreadIdDerivedMin + 49;
 constexpr int kThreadIdHostXlaRegionEnd = kThreadIdHostXlaRegionStart + 240;
-constexpr int kThreadIdDerivedMax = kThreadIdHostXlaRegionEnd;
+// Space for derived lines for device events.
+constexpr int kThreadIdDeviceDerivedMin = kThreadIdHostXlaRegionEnd + 1;
+constexpr int kThreadIdDeviceDerivedMax = kThreadIdDeviceDerivedMin + 99;
+constexpr int kThreadIdDerivedMax = kThreadIdDeviceDerivedMax;
 
 static inline bool IsDerivedThreadId(int thread_id) {
   return thread_id >= kThreadIdDerivedMin && thread_id <= kThreadIdDerivedMax;

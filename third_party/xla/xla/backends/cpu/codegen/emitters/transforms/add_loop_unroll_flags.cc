@@ -55,9 +55,9 @@ class AddLoopUnrollFlagsPass
     mlir::func::FuncOp func_op = getOperation();
     mlir::MLIRContext* context = func_op.getContext();
 
-    llvm::DenseMap<mlir::scf::ForOp, int64_t> nested_iteration_bits;
+    llvm::DenseMap<mlir::scf::ForOp, int64_t> nested_iteration_map;
     func_op->walk<mlir::WalkOrder::PreOrder>([&](mlir::scf::ForOp for_op) {
-      RecursiveWalk(for_op, nested_iteration_bits);
+      RecursiveWalk(for_op, nested_iteration_map);
       return mlir::WalkResult::skip();
     });
 
@@ -80,8 +80,8 @@ class AddLoopUnrollFlagsPass
         /*endLoc=*/nullptr,
         /*parallelAccesses=*/{});
 
-    for (auto& [for_op, bits] : nested_iteration_bits) {
-      if (bits >= max_nested_bits_) {
+    for (auto& [for_op, nested_iterations] : nested_iteration_map) {
+      if (nested_iterations > max_nested_iterations_) {
         for_op->setAttr(mlir::LLVM::LoopAnnotationAttr::getMnemonic(),
                         loop_annotation);
       }
@@ -89,39 +89,10 @@ class AddLoopUnrollFlagsPass
   }
 
  private:
-  // Get the minimum element size in bits of any tensor extract/insert that use
-  // the loops induction variable.
-  static int64_t MinElementBits(mlir::scf::ForOp& for_op) {
-    mlir::DataLayout data_layout = mlir::DataLayout::closest(for_op);
-    std::optional<int64_t> min_element_bits;
-
-    auto update_min_element_bits = [&](mlir::Type type) {
-      llvm::TypeSize size = data_layout.getTypeSizeInBits(type);
-      int64_t element_bits = size.getFixedValue();
-      if (!min_element_bits.has_value()) {
-        min_element_bits = element_bits;
-      } else if (element_bits < min_element_bits.value()) {
-        min_element_bits = element_bits;
-      }
-    };
-
-    for_op.walk([&](mlir::Operation* op) {
-      if (auto extract_op = mlir::dyn_cast<mlir::tensor::ExtractOp>(op)) {
-        update_min_element_bits(extract_op.getResult().getType());
-      }
-
-      if (auto insert_op = mlir::dyn_cast<mlir::tensor::InsertOp>(op)) {
-        update_min_element_bits(insert_op.getScalar().getType());
-      }
-    });
-
-    return min_element_bits ? *min_element_bits : 0;
-  }
-
   // Recursively insert the number of nested accessed bits for each loop.
   static int64_t RecursiveWalk(
       mlir::scf::ForOp for_op,
-      llvm::DenseMap<mlir::scf::ForOp, int64_t>& nested_iteration_bits) {
+      llvm::DenseMap<mlir::scf::ForOp, int64_t>& nested_iteration_map) {
     auto lb = for_op.getLowerBound();
     auto ub = for_op.getUpperBound();
     auto step = for_op.getStep();
@@ -133,17 +104,14 @@ class AddLoopUnrollFlagsPass
       return 0;
     }
 
-    int64_t min_element_bits = MinElementBits(for_op);
-
     int64_t nested_iterations = 0;
     for_op.getBody()->walk<mlir::WalkOrder::PreOrder>(
         [&](mlir::scf::ForOp for_op) {
-          nested_iterations += RecursiveWalk(for_op, nested_iteration_bits);
+          nested_iterations += RecursiveWalk(for_op, nested_iteration_map);
           return mlir::WalkResult::skip();
         });
 
-    nested_iteration_bits.insert(
-        {for_op, nested_iterations * min_element_bits});
+    nested_iteration_map.insert({for_op, nested_iterations});
 
     if (nested_iterations == 0) {
       return *this_trip_count;
@@ -156,9 +124,9 @@ class AddLoopUnrollFlagsPass
 }  // namespace
 
 std::unique_ptr<mlir::Pass> CreateAddLoopUnrollFlagsPass(
-    int32_t max_nested_bits) {
+    int32_t max_nested_iterations) {
   AddLoopUnrollFlagsPassOptions options;
-  options.max_nested_bits_ = max_nested_bits;
+  options.max_nested_iterations_ = max_nested_iterations;
   return std::make_unique<AddLoopUnrollFlagsPass>(options);
 }
 

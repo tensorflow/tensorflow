@@ -912,6 +912,9 @@ absl::Status HloSharding::ValidateNonTuple(
   if (proto.type() == OpSharding::MANUAL) {
     return std::move(Manual(metadata).SetShardGroupFromProto(proto));
   }
+  if (proto.type() == OpSharding::UNREDUCED) {
+    return std::move(Unreduced(metadata).SetShardGroupFromProto(proto));
+  }
   if (proto.type() == OpSharding::UNKNOWN) {
     return std::move(Unknown(metadata).SetShardGroupFromProto(proto));
   }
@@ -1040,6 +1043,8 @@ OpSharding HloSharding::ToProto() const {
     result.set_type(OpSharding::MAXIMAL);
   } else if (IsManual()) {
     result.set_type(OpSharding::MANUAL);
+  } else if (IsUnreduced()) {
+    result.set_type(OpSharding::UNREDUCED);
   } else if (IsUnknown()) {
     result.set_type(OpSharding::UNKNOWN);
   } else {

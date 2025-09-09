@@ -2367,12 +2367,13 @@ void HloInstruction::set_single_sharding(const HloSharding& sharding) {
 void HloInstruction::SetupDerivedInstruction(
     HloInstruction* derived_instruction) const {
   if (sharding_ != nullptr &&
-      ShapeUtil::CompatibleKind(shape_, derived_instruction->shape())) {
+      ShapeUtil::CompatibleKind(shape(), derived_instruction->shape())) {
     // Only copy sharding if the tuple tree shape of the two instruction is
     // compatible because copying it between differently shaped instructions
     // can produce invalid shardings.
     derived_instruction->set_sharding(*sharding_);
-  } else if (!ShapeUtil::CompatibleKind(shape_, derived_instruction->shape())) {
+  } else if (!ShapeUtil::CompatibleKind(shape(),
+                                        derived_instruction->shape())) {
     derived_instruction->clear_sharding();
   }
   derived_instruction->set_metadata(metadata());
@@ -2700,6 +2701,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kIota:
     case HloOpcode::kDot:
     case HloOpcode::kRaggedDot:
+    case HloOpcode::kScaledDot:
     case HloOpcode::kDomain:
     case HloOpcode::kGetDimensionSize:
     case HloOpcode::kSetDimensionSize:
@@ -2896,7 +2898,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewShape(
 std::unique_ptr<HloInstruction> HloInstruction::Clone(
     const std::string& suffix, HloCloneContext* context) const {
   std::unique_ptr<HloInstruction> clone =
-      CloneWithNewShape(shape_, suffix, context);
+      CloneWithNewShape(shape(), suffix, context);
   return clone;
 }
 
@@ -3869,7 +3871,7 @@ bool HloInstruction::IsElementwiseImpl(
     return operand_idx.has_value() && operand_idx.value() == 0;
   }
   if (opcode_ == HloOpcode::kBitcastConvert &&
-      primitive_util::BitWidth(shape_.element_type()) !=
+      primitive_util::BitWidth(shape().element_type()) !=
           primitive_util::BitWidth(operands_[0]->shape().element_type())) {
     return false;
   }
@@ -4373,7 +4375,7 @@ HloInstructionProto HloInstruction::ToProto() const {
   proto.set_id(unique_id_);
   proto.set_name(name_);
   *proto.mutable_opcode() = std::string(HloOpcodeString(opcode_));
-  *proto.mutable_shape() = shape_.ToProto();
+  *proto.mutable_shape() = shape().ToProto();
   for (const HloInstruction* operand : operands_) {
     proto.add_operand_ids(operand->unique_id_64_bits());
   }
@@ -4485,9 +4487,10 @@ HloInstruction::HloInstruction(HloOpcode opcode, const Shape& shape)
       cleaned_up_(false),
       marked_as_dead_(false),
       is_root_(false),
-      shape_(shape),
+      shape_is_canonicalized_(false),
+      shape_(std::make_shared<Shape>(shape)),
       name_(HloOpcodeString(opcode)) {
-  TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(shape_));
+  TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(*shape_));
 }
 
 template <typename HloInstructionPtr>
@@ -4922,8 +4925,6 @@ absl::Status HloInstruction::AcceptWithOperandOrder(
   return absl::OkStatus();
 }
 
-const Shape& HloInstruction::shape() const { return shape_; }
-
 absl::InlinedVector<int64_t, 4> HloInstruction::OperandIndices(
     const HloInstruction* operand) const {
   const size_t num_operands = operand_count();
@@ -5087,8 +5088,8 @@ HloInstruction::ReshapeMerelyInsertsOrDeletes1SizedDimensions() const {
   if (HloOpcode::kReshape != opcode_) {
     return std::nullopt;
   }
-  return ShapeUtil::InsertedOrDeleted1SizedDimensions(operand(0)->shape_,
-                                                      shape_);
+  return ShapeUtil::InsertedOrDeleted1SizedDimensions(operand(0)->shape(),
+                                                      shape());
 }
 
 absl::string_view ToString(HloInstruction::FusionKind kind) {
@@ -5406,6 +5407,9 @@ const PrecisionConfig& HloInstruction::precision_config() const {
   }
   if (auto* dot = DynCast<HloDotInstruction>(this)) {
     return dot->precision_config();
+  }
+  if (auto* scaled_dot = DynCast<HloScaledDotInstruction>(this)) {
+    return scaled_dot->precision_config();
   }
   if (auto* ragged_dot = DynCast<HloRaggedDotInstruction>(this)) {
     return ragged_dot->precision_config();

@@ -1123,11 +1123,11 @@ bool CommonPjRtBufferImpl::IsOnCpu() const {
 }
 
 CommonPjRtBufferImpl::CommonPjRtBufferImpl(
-    Shape on_device_shape,
+    const Shape& on_device_shape,
     std::unique_ptr<AbstractTrackedDeviceBuffer> tracked_device_buffer,
     PjRtMemorySpace* memory_space)
     : CommonPjRtBuffer(std::move(tracked_device_buffer), memory_space),
-      on_device_shape_(std::move(on_device_shape)) {}
+      on_device_shape_(on_device_shape) {}
 
 CommonPjRtBufferImpl::~CommonPjRtBufferImpl() { Delete(); }
 

@@ -28,14 +28,21 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/backends/gpu/codegen/triton/support.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/model/fusion_analysis_cache.h"
+#include "xla/service/gpu/model/gpu_indexing_performance_model.h"
+#include "xla/service/instruction_fusion.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/tsl/platform/errors.h"
@@ -46,43 +53,6 @@ namespace xla {
 namespace gpu {
 
 namespace {
-// Computes a tile size for a given dimension `dim` such that:
-// - It is a power of two,
-// - It is at least `dim` (i.e., ≥ dim),
-// - It does not exceed `max_tile_size`.
-//
-// - Special cases:
-//     - If dim is a power of two ≤ max_tile_size, it returns dim.
-//     - If dim is not a power of two, it returns the next power of two ≥ dim,
-//       capped at max_tile_size.
-//     - If dim <= 1, it returns dim.
-//     - If dim >= max_tile_size, it returns max_tile_size.
-//
-// Parameters:
-// - dim: the size of the dimension to tile (must be ≥ 0).
-// - max_tile_size: the maximum allowed tile size (must be ≥ 1).
-//
-// Returns:
-// - If dim <= 1: returns dim.
-// - If dim >= max_tile_size: returns max_tile_size.
-// - Otherwise: returns the smallest power of two ≥ dim, but ≤ max_tile_size.
-//
-// Examples:
-//   GetTileSize(1, 16)   => 1
-//   GetTileSize(7, 16)   => 8
-//   GetTileSize(8, 16)   => 8
-//   GetTileSize(16, 16)  => 16
-//   GetTileSize(20, 16)  => 16
-constexpr int64_t GetTileSize(int64_t dim, int max_tile_size) {
-  if (dim <= 1) {
-    return dim;
-  }
-  if (dim >= max_tile_size) {
-    return max_tile_size;
-  }
-  return 1LL << static_cast<int64_t>(std::ceil(std::log2(dim)));
-}
-
 // Helper: resets all variable dimensions after 'index' to zero
 void ResetTrailingDimensions(const std::vector<int64_t>& input,
                              std::vector<int64_t>& current, int64_t index) {
@@ -243,13 +213,14 @@ void ExtendConfigsWithTma(
 absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
 BlockLevelEmitterBackend::GetSupportedConfigs(const HloInstruction& instr) {
   // When use_default_config_ is true, we only return a single config for the
-  // autotuner to use. It is expected that the default config exists already
-  // in the HLO fusion and therefore fails if a default config cannot be
-  // constructed.
+  // autotuner to use. This is useful to autotune against other backends.
   if (use_default_config_) {
-    TF_ASSIGN_OR_RETURN(auto config, GetDefaultConfig(instr));
+    auto config = GetDefaultConfig(instr);
+    if (!config.ok()) {
+      return std::vector<std::unique_ptr<BackendConfig>>();
+    }
     std::vector<std::unique_ptr<BackendConfig>> configs;
-    configs.push_back(std::move(config));
+    configs.push_back(std::move(config.value()));
     return configs;
   }
 
@@ -328,6 +299,34 @@ BlockLevelEmitterBackend::GetSupportedConfigs(const HloInstruction& instr) {
   return configs;
 }
 
+absl::StatusOr<BlockLevelFusionConfig>
+BlockLevelEmitterBackend::GetCostModelConfig(
+    const HloInstruction& instr) const {
+  auto device_info = target_config().device_description;
+  HloFusionAnalysisCache fusion_analysis_cache(device_info);
+  mlir::MLIRContext ctx;
+  GpuPerformanceModelWithIndexingAnalysis indexing_performance_model(
+      &device_info, &fusion_analysis_cache, shape_size_fn_, &ctx);
+
+  auto fusion_adaptor =
+      HloFusionAdaptor::ForInstruction(Cast<HloFusionInstruction>(&instr));
+
+  TF_ASSIGN_OR_RETURN(
+      TiledRunTimeDataOrError tiled_runtime_data_or_error,
+      indexing_performance_model.TryFindBestTilingForFusion(*fusion_adaptor));
+
+  if (const auto* fusion_decision =
+          std::get_if<FusionDecision>(&tiled_runtime_data_or_error)) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Can't rewrite fusion ", instr.ToString(),
+        " because tiling search failed: ", fusion_decision->Explain()));
+  }
+  TiledRunTimeData tiled_runtime_data =
+      std::get<TiledRunTimeData>(std::move(tiled_runtime_data_or_error));
+
+  return tiled_runtime_data.block_level_parameters.ToBlockLevelFusionConfig();
+}
+
 absl::StatusOr<std::unique_ptr<BackendConfig>>
 BlockLevelEmitterBackend::GetDefaultConfig(const HloInstruction& instr) {
   if (!IsSupported(instr)) {
@@ -355,22 +354,9 @@ BlockLevelEmitterBackend::GetDefaultConfig(const HloInstruction& instr) {
       }
     }
   }
-  // No explicit config found - construct a default one.
-  BlockLevelFusionConfig config;
-  // Flatten the output shape(s) of the instruction.
-  const auto shapes = FlatListOfShapes(instr);
-  for (const absl::Span<const int64_t> shape : shapes) {
-    Tile* output_tile = config.add_output_tiles();
-    for (const int64_t dim : shape) {
-      // Choose a tile size as the nearest power-of-two <= `dim`, capped at 16.
-      output_tile->add_sizes(GetTileSize(dim, /*max_tile_size=*/16));
-    }
-  }
-  // Set default kernel execution parameters.
-  config.set_num_warps(1);           // Number of warps per block.
-  config.set_num_ctas(1);            // Number of thread blocks (CTAs).
-  config.set_num_stages(1);          // Number of pipeline stages.
-  config.set_is_tma_allowed(false);  // Can codegen attempt to use TMA?
+
+  // No explicit config found - create one from the cost model if possible.
+  TF_ASSIGN_OR_RETURN(BlockLevelFusionConfig config, GetCostModelConfig(instr));
   auto any = std::make_unique<google::protobuf::Any>();
   any->PackFrom(config);
   return any;
@@ -378,10 +364,6 @@ BlockLevelEmitterBackend::GetDefaultConfig(const HloInstruction& instr) {
 
 absl::Status BlockLevelEmitterBackend::ApplyConfig(
     HloInstruction& instr, const BackendConfig& config) {
-  if (!IsSupported(instr)) {
-    return absl::InvalidArgumentError(
-        "BlockLevelEmitterBackend does not support this instruction.");
-  }
   // Object nesting structure:
   // HloInstruction
   // └── GpuBackendConfig
@@ -399,11 +381,13 @@ absl::Status BlockLevelEmitterBackend::ApplyConfig(
                       instr.backend_config<GpuBackendConfig>());
   FusionBackendConfig& backend_config =
       *gpu_backend_config.mutable_fusion_backend_config();
+  backend_config.set_kind(kTritonFusionKind);
   // Overwrite the block-level fusion config with the new one provided.
   *backend_config.mutable_block_level_fusion_config() =
       block_level_fusion_config;
   // Re-attach the modified GPU config back to the instruction.
   TF_RETURN_IF_ERROR(instr.set_backend_config(std::move(gpu_backend_config)));
+  instr.set_fusion_kind(HloInstruction::FusionKind::kCustom);
   return absl::OkStatus();
 }
 
@@ -411,13 +395,12 @@ bool BlockLevelEmitterBackend::IsSupported(const HloInstruction& instr) {
   if (instr.opcode() != HloOpcode::kFusion) {
     return false;
   }
-  auto gpu_config = instr.backend_config<GpuBackendConfig>();
-  if (!gpu_config.ok()) {
-    return false;
-  }
-  const FusionBackendConfig& backend_config =
-      gpu_config->fusion_backend_config();
-  return backend_config.kind() == kTritonFusionKind;
+  const HloComputation* fusion_computation =
+      Cast<HloFusionInstruction>(&instr)->fused_instructions_computation();
+  return IsTritonSupportedComputation(
+             *fusion_computation,
+             target_config().device_description.gpu_compute_capability())
+      .CanFuse();
 }
 
 }  // namespace gpu

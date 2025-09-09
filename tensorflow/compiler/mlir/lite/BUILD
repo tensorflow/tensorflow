@@ -1886,6 +1886,7 @@ tf_cc_binary(
     srcs = [
         ":tf_tfl_translate_main",
     ],
+    # visibility = ["//visibility:public"], # copybara:uncomment
     deps = [
         ":common",
         ":converter_flags_proto_cc",

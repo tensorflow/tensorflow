@@ -53,7 +53,6 @@ namespace {
 
 namespace m = ::xla::match;
 using ::testing::NotNull;
-using ::tsl::testing::IsOkAndHolds;
 
 class LayoutAssignmentTest : public HloTestBase {
  public:
@@ -458,6 +457,51 @@ TEST_F(LayoutAssignmentTest, TopKLayout) {
                       .WithShape(F32, {6, 2048}, {1, 0}))));
 }
 
+TEST_F(LayoutAssignmentTest,
+       BitcastConvertFromNarrowerTypeGetsOptimalInputLayout) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+e {
+  a = s4[3,5,2]{0,1,2:E(4)} parameter(0)
+  b = s8[3,5]{0,1} bitcast-convert(a)
+})"));
+
+  ComputationLayout computation_layout(
+      module->entry_computation()->ComputeProgramShape(),
+      /*ignore_layouts=*/false);
+  GpuLayoutAssignment layout_assignment(
+      &computation_layout, GetGpuComputeCapability(), GetDnnVersion(),
+      GetDeviceDescription());
+  EXPECT_THAT(layout_assignment.Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::BitcastConvert(
+          m::Copy(m::Parameter()).WithShape(S4, {3, 5, 2}, {2, 0, 1}))));
+}
+
+TEST_F(LayoutAssignmentTest,
+       BitcastConvertToNarrowerTypeGetsOptimalOutputLayout) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+e {
+  a = s8[3,5] parameter(0)
+  b = s4[3,5,2]{0,1,2} bitcast-convert(a)
+})"));
+
+  ComputationLayout computation_layout(
+      module->entry_computation()->ComputeProgramShape(),
+      /*ignore_layouts=*/false);
+  GpuLayoutAssignment layout_assignment(
+      &computation_layout, GetGpuComputeCapability(), GetDnnVersion(),
+      GetDeviceDescription());
+  EXPECT_THAT(layout_assignment.Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Copy(m::BitcastConvert(m::Parameter())
+                                     .WithShape(S4, {3, 5, 2}, {2, 0, 1}))));
+}
+
 TEST_F(LayoutAssignmentTest, FftLayout) {
   const char* hlo_text = R"(
   HloModule Fft_module
@@ -650,83 +694,6 @@ ENTRY entry {
 // CHECK:     [[CONV:[^ ]+]] = {{.*}}{1,2,3,0}, {{.*}} custom-call([[COPY_P0]], [[COPY_P1]])
 )"),
       absl_testing::IsOkAndHolds(true));
-}
-
-TEST_F(LayoutAssignmentTest, ConvCuDNNF8) {
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::kHopper)) {
-    GTEST_SKIP() << "FP8 convolutions require HOPPER or newer archiecture.";
-  }
-
-  const char* hlo = R"(
-
-  HloModule jit_conv_general_dilated
-
-  ENTRY main.4 {
-    Arg_0 = f8e4m3fn[1,64,64,16]{3,2,1,0} parameter(0)
-    Arg_1 = f8e4m3fn[3,3,16,32]{3,2,1,0} parameter(1)
-    ROOT conv = f8e4m3fn[1,64,64,32]{3,2,1,0} convolution(Arg_0, Arg_1), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f
-  }
-)";
-
-  MatchOptimizedHlo(hlo, R"(
-  // CHECK: [[P0:%[^ ]+]] = f8e4m3fn[1,64,64,16]{3,2,1,0} parameter(0)
-  // CHECK: [[P1:%[^ ]+]] = f8e4m3fn[3,3,16,32]{3,2,1,0} parameter(1)
-  // CHECK-NEXT: [[P2:%[^ ]+]] = f8e4m3fn[32,3,3,16]{3,2,1,0} transpose([[P1]]), dimensions={3,0,1,2}
-  // CHECK-NEXT: [[CONV:%[^ ]+]] = (f8e4m3fn[1,64,64,32]{3,2,1,0}, u8[0]{0}) custom-call([[P0]], [[P2]]), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, custom_call_target="__cudnn$convForwardGraph"
-  )");
-}
-
-TEST_F(LayoutAssignmentTest, ConvCuDNNBF16) {
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::kAmpere)) {
-    GTEST_SKIP() << "Conv with Bfloat16 uses NHWC layout for "
-                    "architectures with Tensor Cores.";
-  }
-
-  const char* hlo = R"(
-
-  HloModule jit_conv_general_dilated
-
-  ENTRY main.4 {
-    Arg_0.1 = bf16[1,64,64,16]{3,2,1,0} parameter(0), sharding={replicated}
-    Arg_1.2 = bf16[3,3,16,32]{3,2,1,0} parameter(1), sharding={replicated}
-    ROOT convolution.3 = bf16[1,64,64,32]{3,2,1,0} convolution(Arg_0.1, Arg_1.2), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f, metadata={op_name="jit(conv_general_dilated)/jit(main)/conv_general_dilated[window_strides=(1, 1) padding=((1, 1), (1, 1)) lhs_dilation=(1, 1) rhs_dilation=(1, 1) dimension_numbers=ConvDimensionNumbers(lhs_spec=(0, 3, 1, 2), rhs_spec=(3, 2, 0, 1), out_spec=(0, 3, 1, 2)) feature_group_count=1 batch_group_count=1 lhs_shape=(1, 64, 64, 16) rhs_shape=(3, 3, 16, 32) precision=None preferred_element_type=None]" source_file="/usr/local/lib/python3.8/dist-packages/flax/linen/linear.py" source_line=438}
-  }
-)";
-
-  MatchOptimizedHlo(hlo, R"(
-  // CHECK: [[P0:%[^ ]+]] = bf16[1,64,64,16]{3,2,1,0} parameter(0), sharding={replicated}
-  // CHECK: [[P1:%[^ ]+]] = bf16[3,3,16,32]{3,2,1,0} parameter(1), sharding={replicated}
-  // CHECK-NEXT: [[P2:%[^ ]+]] = bf16[32,3,3,16]{3,2,1,0} transpose([[P1]]), dimensions={3,0,1,2}
-  // CHECK-NEXT: %cudnn-conv.1 = (bf16[1,64,64,32]{3,2,1,0}, u8[0]{0}) custom-call([[P0]], [[P2]]), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, custom_call_target="__cudnn$convForward"
-  )");
-}
-
-TEST_F(LayoutAssignmentTest, ConvCuDNNFP16) {
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::kVolta)) {
-    GTEST_SKIP() << "Conv with FP16 uses NHWC layout for "
-                    "architectures with Tensor Cores.";
-  }
-
-  const char* hlo = R"(
-
-  HloModule jit_conv_general_dilated
-
-  ENTRY main.4 {
-    Arg_0.1 = f16[1,64,64,16]{3,2,1,0} parameter(0), sharding={replicated}
-    Arg_1.2 = f16[3,3,16,32]{3,2,1,0} parameter(1), sharding={replicated}
-    ROOT convolution.3 = f16[1,64,64,32]{3,2,1,0} convolution(Arg_0.1, Arg_1.2), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f
-  }
-)";
-
-  MatchOptimizedHlo(hlo, R"(
-  // CHECK: [[P0:%[^ ]+]] = f16[1,64,64,16]{3,2,1,0} parameter(0), sharding={replicated}
-  // CHECK: [[P1:%[^ ]+]] = f16[3,3,16,32]{3,2,1,0} parameter(1), sharding={replicated}
-  // CHECK-NEXT: [[P2:%[^ ]+]] = f16[32,3,3,16]{3,2,1,0} transpose([[P1]]), dimensions={3,0,1,2}
-  // CHECK-NEXT: %cudnn-conv.1 = (f16[1,64,64,32]{3,2,1,0}, u8[0]{0}) custom-call([[P0]], [[P2]]), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, custom_call_target="__cudnn$convForward"
-  )");
 }
 
 TEST_F(LayoutAssignmentTest, ReduceOperandLayout) {

@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <memory>
 #include <optional>
-#include <vector>
 
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
@@ -35,15 +34,15 @@ struct ProfileOptions {
   // Whether to initialize the buffers with random data or leave them
   // uninitialized.
   bool should_init_buffers = false;
-  // Whether to populate the output_buffer in the ProfileResult with the result
-  // of the execution. This is to avoid data copies if the caller doesn't need
-  // the output buffer.
-  bool should_populate_output_buffer = true;
 };
 
 struct ProfileResult {
+  // The duration of the executable run.
   absl::Duration duration = absl::ZeroDuration();
+  // The output buffer of the executable., only captures the first buffer if
+  // the output is a tuple.
   std::optional<ScopedShapedBuffer> output_buffer = std::nullopt;
+  // The scratch bytes used by the executable, if any.
   int scratch_bytes = 0;
 };
 
@@ -63,26 +62,6 @@ class Profiler {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<InputBuffers> buffers,
                         CreateInputBuffers(executable.get()));
     return Profile(executable.get(), *buffers);
-  }
-
-  // Profiles multiple executables with shared buffers. This guarantees that
-  // the provided executables have same arguments. This is important for
-  // autotuning as we run same instruction with different configs.
-  // Note that an executable can still fail during runtime even if it compiled
-  // successfully, which is why the return type is a vector of StatusOr.
-  virtual absl::StatusOr<std::vector<absl::StatusOr<ProfileResult>>>
-  ProfileWithSharedBuffers(
-      std::vector<std::unique_ptr<Executable>> executables) {
-    std::vector<absl::StatusOr<ProfileResult>> results;
-    if (executables.empty()) {
-      return results;
-    }
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<InputBuffers> buffers,
-                        CreateInputBuffers(executables[0].get()));
-    for (auto& executable : executables) {
-      results.push_back(Profile(executable.get(), *buffers));
-    }
-    return results;
   }
 
   // Creates Input buffers for a given executable on the device. The buffers

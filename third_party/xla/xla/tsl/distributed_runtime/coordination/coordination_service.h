@@ -392,16 +392,16 @@ class CoordinationService {
   }
   // Initializes a new barrier. Returns false if the barrier should fail
   // immediately.
-  bool InitializeBarrier(
+  absl::Status InitializeBarrier(
       BarrierState* barrier, absl::string_view barrier_id, int64_t counter,
       absl::Duration timeout, const tensorflow::CoordinatedTask& task,
-      const std::vector<tensorflow::CoordinatedTask>& participating_tasks,
-      BarrierCallback done) ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
+      const std::vector<tensorflow::CoordinatedTask>& participating_tasks)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   // Initialize `BarrierState`'s tasks_at_barrier map.
-  bool InitializeTasksAtBarrier(
+  absl::Status InitializeTasksAtBarrier(
       BarrierState* barrier,
-      const std::vector<tensorflow::CoordinatedTask>& participating_tasks,
-      BarrierCallback done) ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
+      const std::vector<tensorflow::CoordinatedTask>& participating_tasks)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   // Adds a callback to be called when the barrier is done.
   // If there is an existing callback for that task, it will be overwritten,
   // cancelling the previous callback.

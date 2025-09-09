@@ -34,9 +34,9 @@ limitations under the License.
 #include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "xla/tsl/distributed_runtime/rpc/coordination/grpc_coordination_client.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/coordination_config.pb.h"
 #include "xla/tsl/protobuf/coordination_service.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -55,6 +55,8 @@ class DistributedRuntimeCoordinationServiceClient
   absl::StatusOr<std::string> BlockingKeyValueGet(
       absl::string_view key, absl::Duration timeout) override;
   absl::StatusOr<std::string> KeyValueTryGet(absl::string_view key) override;
+  absl::StatusOr<int64_t> KeyValueIncrement(absl::string_view key,
+                                            int64_t increment) override;
   absl::StatusOr<std::vector<std::pair<std::string, std::string>>>
   KeyValueDirGet(absl::string_view key) override;
   absl::Status KeyValueSet(absl::string_view key,
@@ -151,6 +153,12 @@ absl::StatusOr<std::string>
 DistributedRuntimeCoordinationServiceClient::KeyValueTryGet(
     absl::string_view key) {
   return coord_agent_->TryGetKeyValue(key);
+}
+
+absl::StatusOr<int64_t>
+DistributedRuntimeCoordinationServiceClient::KeyValueIncrement(
+    absl::string_view key, int64_t increment) {
+  return coord_agent_->IncrementKeyValue(key, increment);
 }
 
 absl::StatusOr<std::vector<std::pair<std::string, std::string>>>

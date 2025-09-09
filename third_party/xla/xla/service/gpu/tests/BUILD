@@ -5,6 +5,9 @@ load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
 )
+
+# copybara:uncomment load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:lit.bzl", "enforce_glob", "lit_test_suite")
 load(
     "//xla:xla.default.bzl",
@@ -75,6 +78,7 @@ xla_test(
     backends = ["gpu"],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     tags = [
+        "no-oneapi",  # TODO(intel-tf): Enable this test for SYCL when IntelGpuCompiler is implemented.
         "notsan",
         "test_migrated_to_hlo_runner_pjrt",
     ],  # TODO(b/345034145): Fix tsan error.
@@ -149,13 +153,18 @@ xla_test(
     name = "command_buffer_test",
     srcs = ["command_buffer_test.cc"],
     backends = ["gpu"],
+    # TSAN reports a false positive for the test due to noninstrumented CUDA library code.
+    env = {"TSAN_OPTIONS": "ignore_noninstrumented_modules=1"},
     tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
         "//xla:literal",
         "//xla:literal_util",
+        "//xla/service:hlo_module_config",
+        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
         "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:literal_test_util",
         "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],
@@ -649,15 +658,18 @@ lit_test_suite(
 #     srcs = ["xla-opt.cc"],
 #     deps = [
 #         "@llvm-project//mlir:AllExtensions",
+#         "@llvm-project//mlir:BuiltinToLLVMIRTranslation",
 #         "@llvm-project//mlir:FuncDialect",
+#         "@llvm-project//mlir:FuncExtensions",
+#         "@llvm-project//mlir:LLVMIRTransforms",
+#         "@llvm-project//mlir:LLVMToLLVMIRTranslation",
 #         "@llvm-project//mlir:MlirOptLib",
 #         "@llvm-project//mlir:RegisterAllExtensions",
 #         "@llvm-project//mlir:TensorDialect",
 #         "//xla/backends/gpu/codegen/emitters/transforms:passes",
 #         "//xla/backends/gpu/codegen/triton/ir:triton_xla",
 #         "//xla/backends/gpu/codegen/triton/transforms:passes",
-#         # Needed for xla_ops.h
-#         "//xla/codegen/emitters/ir:xla",  # buildcleaner: keep
+#         "//xla/codegen/emitters/ir:xla",
 #         "//xla/codegen/emitters/transforms:passes",
 #         "@triton//:AllPassesAndDialects",
 #         "@triton//third_party/amd:TestAMDAnalysis",

@@ -28,13 +28,16 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/transforms/library_matcher.h"
-#include "xla/backends/cpu/transforms/onednn_matcher.h"
 #include "xla/backends/cpu/transforms/xnn_matcher.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "tsl/platform/protobuf.h"
+
+#if XLA_ONEDNN_USE_GRAPH_API
+#include "xla/backends/cpu/transforms/onednn_matcher.h"
+#endif  // XLA_ONEDNN_USE_GRAPH_API
 
 namespace xla::cpu {
 
@@ -60,11 +63,13 @@ class DotLibraryRewriter : public HloModulePass {
       : target_machine_features_(target_machine_features),
         options_(std::move(options)) {
     // Initialize library matchers.
+#if XLA_ONEDNN_USE_GRAPH_API
     if (options_.use_onednn && options_.onednn_fusion_types != nullptr &&
         !options_.onednn_fusion_types->empty()) {
       libs_.push_back(std::make_unique<OneDnnMatcher>(
           target_machine_features_, options_.onednn_fusion_types));
     }
+#endif  // XLA_ONEDNN_USE_GRAPH_API
     if (options_.use_xnnpack && options_.xnn_fusion_types != nullptr &&
         !options_.xnn_fusion_types->empty()) {
       libs_.push_back(std::make_unique<XnnMatcher>(target_machine_features_,
@@ -77,6 +82,8 @@ class DotLibraryRewriter : public HloModulePass {
     // Check if any library supports each of the fusion types.
     fuse_dot_ =
         absl::c_any_of(libs_, [](const auto& lib) { return lib->fuse_dot(); });
+    fuse_reduce_ = absl::c_any_of(
+        libs_, [](const auto& lib) { return lib->fuse_reduce(); });
     fuse_eltwise_ = absl::c_any_of(
         libs_, [](const auto& lib) { return lib->fuse_eltwise(); });
   }
@@ -94,9 +101,9 @@ class DotLibraryRewriter : public HloModulePass {
   // Merges two fusions `main` and `neighbor` together. `main` is the current
   // fusion instruction we are growing. `neighbor` is a neighboring fusion node
   // found through BFS from `main`.
-  absl::Status MergeFusionInstructions(HloFusionInstruction* main,
-                                       HloFusionInstruction* neighbor,
-                                       FusionDirection dir);
+  absl::StatusOr<HloFusionInstruction*> MergeFusionInstructions(
+      HloFusionInstruction* main, HloFusionInstruction* neighbor,
+      FusionDirection dir);
 
   // Fuses `to_fuse` into the fusion `fusion` based on the specified direction.
   // Returns the pointer to the new `to_fuse` node in the fusion region.
@@ -125,6 +132,7 @@ class DotLibraryRewriter : public HloModulePass {
   absl::flat_hash_set<HloOpcode> supported_ops_;
   absl::flat_hash_set<HloInstruction*> fused_;
   bool fuse_dot_ = false;
+  bool fuse_reduce_ = false;
   bool fuse_eltwise_ = false;
 };
 

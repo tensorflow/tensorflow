@@ -19,7 +19,6 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
 #include "xla/backends/cpu/benchmarks/hlo_benchmark_runner.h"
 #include "xla/backends/cpu/benchmarks/multi_benchmark_config.h"
 #include "xla/literal.h"
@@ -75,7 +74,7 @@ static void BM_TanhF16(benchmark::State& state) {
 }
 
 static void BM_TanhF64(benchmark::State& state, HloBenchmarkOptions options) {
-  int64_t d0 = state.range(0);
+  const int64_t d0 = state.range(0);
 
   absl::string_view hlo = R"(
     HloModule tanh_f64_$d0
@@ -94,6 +93,9 @@ static void BM_TanhF64(benchmark::State& state, HloBenchmarkOptions options) {
   std::vector<const Literal*> args = {&p0};
   CHECK_OK(
       RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}, options));
+
+  state.SetItemsProcessed(state.iterations() * d0);
+  state.SetBytesProcessed(state.iterations() * d0 * sizeof(double));
 }
 
 #define REGISTER_TANH_BENCHMARK(NAME) \

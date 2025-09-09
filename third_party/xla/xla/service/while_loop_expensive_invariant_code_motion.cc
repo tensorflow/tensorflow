@@ -345,8 +345,8 @@ absl::StatusOr<bool> WhileLoopExpensiveInvariantCodeMotion::
 absl::StatusOr<bool> WhileLoopExpensiveInvariantCodeMotion::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  VLOG(2) << "HLO module before WhileLoopExpensiveInvariantCodeMotion:";
-  XLA_VLOG_LINES(2, module->ToString());
+  VLOG(3) << "HLO module before WhileLoopExpensiveInvariantCodeMotion:";
+  XLA_VLOG_LINES(3, module->ToString());
 
   bool changed = false;
   std::vector<HloInstruction*> while_instrs;
@@ -373,6 +373,17 @@ absl::StatusOr<bool> WhileLoopExpensiveInvariantCodeMotion::Run(
     // * We delete while loops that have a zero trip count, so this would have
     //   to be a while loop with a somewhat opaque condition expression.
 
+    if (while_instr->frontend_attributes().map().contains(
+            "_xla_disable_loop_instr_hoisting")) {
+      // If this frontend attr is present, we have knowledge from the framework
+      // to disable hoisting from this loop.
+      auto print_no_metadata = HloPrintOptions{}.set_print_metadata(false);
+      std::string while_instr_name = while_instr->ToString(print_no_metadata);
+      VLOG(2) << "Skipping hoisting from: " << while_instr_name
+              << " because it is disabled via xla metadata.";
+      continue;
+    }
+
     TF_ASSIGN_OR_RETURN(
         bool result,
         TryHoistingInvariantInstructionsFromWhileBody(while_instr));
@@ -380,10 +391,10 @@ absl::StatusOr<bool> WhileLoopExpensiveInvariantCodeMotion::Run(
   }
 
   if (changed) {
-    VLOG(2) << "HLO module after WhileLoopExpensiveInvariantCodeMotion:";
-    XLA_VLOG_LINES(2, module->ToString());
+    VLOG(3) << "HLO module after WhileLoopExpensiveInvariantCodeMotion:";
+    XLA_VLOG_LINES(3, module->ToString());
   } else {
-    VLOG(2)
+    VLOG(3)
         << "HLO module unchanged after WhileLoopExpensiveInvariantCodeMotion";
   }
 

@@ -76,6 +76,8 @@ bool isInlineableCallOp(CallOp callOp) {
 
 // Returns the first non-maximal mesh on the argument shardings, if there is
 // one. Otherwise returns `std::nullopt`.
+// TODO(enver): Move to utils and potentially with a common helper that takes an
+// std::function to get the sharding given an index.
 std::optional<mlir::Attribute> getMeshOrRefOnArguments(
     FuncOp funcOp, const SymbolTable& symbolTable) {
   for (int64_t argNum = 0; argNum < funcOp.getNumArguments(); ++argNum) {
@@ -110,6 +112,44 @@ TensorShardingPerValueAttr getFuncArgShardings(CallOp callOp, FuncOp funcOp,
   return TensorShardingPerValueAttr::get(funcOp.getContext(), argShardings);
 }
 
+// Returns the first non-maximal mesh on the result shardings, if there is
+// one. Otherwise returns `std::nullopt`.
+// TODO(enver): Move to utils and potentially with a common helper that takes an
+// std::function to get the sharding given an index.
+std::optional<mlir::Attribute> getMeshOrRefOnResults(
+    FuncOp funcOp, const SymbolTable& symbolTable) {
+  for (int64_t resultNum = 0; resultNum < funcOp.getNumResults(); ++resultNum) {
+    if (TensorShardingAttr sdySharding =
+            mlir::sdy::getFuncResultSharding(funcOp, resultNum);
+        sdySharding && !sdySharding.getMesh(symbolTable).isMaximal()) {
+      return std::make_optional(sdySharding.getMeshOrRef());
+    }
+  }
+  return std::nullopt;
+}
+
+TensorShardingPerValueAttr getFuncResultShardings(
+    CallOp callOp, FuncOp funcOp, const SymbolTable& symbolTable) {
+  std::optional<mlir::Attribute> meshOrRef =
+      getMeshOrRefOnResults(funcOp, symbolTable);
+  if (!meshOrRef) {
+    return nullptr;
+  }
+  mlir::SmallVector<TensorShardingAttr> resultShardings;
+  resultShardings.reserve(funcOp.getNumResults());
+  for (int64_t resultNum = 0; resultNum < funcOp.getNumResults(); ++resultNum) {
+    TensorShardingAttr sdySharding =
+        mlir::sdy::getFuncResultSharding(funcOp, resultNum);
+    resultShardings.push_back(
+        sdySharding
+            ? sdySharding
+            : TensorShardingAttr::getFullyOpen(
+                  funcOp.getContext(),
+                  getTensorRank(callOp.getResult(resultNum)), *meshOrRef));
+  }
+  return TensorShardingPerValueAttr::get(funcOp.getContext(), resultShardings);
+}
+
 void importCallOp(
     CallOp callOp,
     llvm::SmallDenseMap<StringRef, mlir::Region*>& calleeNameToMovedRegion,
@@ -126,6 +166,8 @@ void importCallOp(
   CHECK(funcOp) << "Failed to lookup function: " << calleeName.str();
 
   rewriter.setInsertionPoint(callOp);
+  TensorShardingPerValueAttr callOpResultShardings =
+      mlir::sdy::getShardingPerValue(callOp);
   auto namedCompOp = rewriter.create<NamedComputationOp>(
       callOp->getLoc(), callOp->getResultTypes(), calleeName,
       callOp.getOperands(),
@@ -133,7 +175,10 @@ void importCallOp(
       getFuncArgShardings(callOp, funcOp, symbolTable),
       // TODO(b/439018088): Take func result shardings if call op result
       // shardings are empty.
-      /*outShardings=*/mlir::sdy::getShardingPerValue(callOp));
+      /*outShardings=*/
+      callOpResultShardings
+          ? callOpResultShardings
+          : getFuncResultShardings(callOp, funcOp, symbolTable));
   namedCompOp->setAttrs(namedCompAttrs);
 
   mlir::Region& namedCompRegion = namedCompOp.getRegion();
@@ -182,9 +227,6 @@ class ImportFuncCallsPass
     for (mlir::CallGraphNode* node : llvm::reverse(rpo)) {
       if (node->isExternal()) continue;
       node->getCallableRegion()->walk([&](CallOp op) {
-        if (onlyUninlineable && isInlineableCallOp(op)) {
-          return;
-        }
         importCallOp(op, calleeNameToMovedRegion, rewriter, symbolTable);
       });
     }
@@ -199,10 +241,8 @@ class ImportFuncCallsPass
 
   StringRef getDescription() const override {
     return "Creates a pass to convert a CallOp to a NamedComputationOp with "
-           "the function body inlined and the name of the callee. If "
-           "onlyUninlineable is true, handle only CallOps with a "
-           "backend_config or inlineable=false frontend attr. Otherwise, "
-           "handle call CallOps.";
+           "the function body inlined and the name of the callee. Note that "
+           "the func bodies are cloned if the func is used by multiple calls.";
   }
 
   void getDependentDialects(mlir::DialectRegistry& registry) const final {
@@ -215,28 +255,16 @@ class ImportFuncCallsPass
   ImportFuncCallsPass(ImportFuncCallsPass&&) = delete;
   ImportFuncCallsPass& operator=(ImportFuncCallsPass&&) = delete;
   ~ImportFuncCallsPass() override = default;
-  ImportFuncCallsPass(bool onlyUninlineable) : ImportFuncCallsPass() {
-    this->onlyUninlineable = onlyUninlineable;
-  }
-
- protected:
-  ::mlir::Pass::Option<bool> onlyUninlineable{
-      *this, "only-uninlineable",
-      ::llvm::cl::desc(
-          "Whether to convert only unlineable func calls, that is, the ones "
-          "with a `backend_config` or `inlineable=false` frontend attr."),
-      ::llvm::cl::init(true)};
 };
 
 }  // namespace
 
-std::unique_ptr<mlir::Pass> createImportFuncCallsPass(bool onlyUninlineable) {
-  return std::make_unique<ImportFuncCallsPass>(onlyUninlineable);
+std::unique_ptr<mlir::Pass> createImportFuncCallsPass() {
+  return std::make_unique<ImportFuncCallsPass>();
 }
 
 void registerImportFuncCallsPass() {
-  mlir::registerPass(
-      [] { return createImportFuncCallsPass(/*onlyUninlineable=*/true); });
+  mlir::registerPass([] { return createImportFuncCallsPass(); });
 }
 
 }  // namespace sdy

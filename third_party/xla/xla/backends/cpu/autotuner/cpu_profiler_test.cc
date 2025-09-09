@@ -50,42 +50,9 @@ absl::StatusOr<std::unique_ptr<Executable>> CompileHloModule(
 
 class CpuProfilerTest : public HloHardwareIndependentTestBase {
  public:
-  CpuProfilerTest() { profile_options_.should_populate_output_buffer = false; }
+  CpuProfilerTest() = default;
   ProfileOptions profile_options_;
 };
-
-TEST_F(CpuProfilerTest, ProfileWithSharedBuffers) {
-  constexpr absl::string_view kHloModule = R"(
-        HloModule module
-        ENTRY main {
-          ROOT c = s32[] constant(1)
-        }
-      )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(kHloModule));
-
-  std::vector<std::unique_ptr<Executable>> executables;
-
-  TF_ASSERT_OK_AND_ASSIGN(executables.emplace_back(),
-                          CompileHloModule(std::move(hlo_module)));
-
-  auto profiler = CpuProfiler::Create(profile_options_);
-  TF_ASSERT_OK_AND_ASSIGN(auto profiles, profiler->ProfileWithSharedBuffers(
-                                             std::move(executables)));
-
-  // We expect only one profile because we only have one executable.
-  EXPECT_EQ(profiles.size(), 1);
-  TF_EXPECT_OK(profiles[0].status());
-}
-
-TEST_F(CpuProfilerTest, ProfileWithSharedBuffersWithoutExecutable) {
-  auto profiler = CpuProfiler::Create(profile_options_);
-  TF_ASSERT_OK_AND_ASSIGN(auto profiles,
-                          profiler->ProfileWithSharedBuffers({}));
-
-  // No executable means no profiles.
-  EXPECT_EQ(profiles.size(), 0);
-}
 
 TEST_F(CpuProfilerTest, CreateInputBuffersAndProfile) {
   constexpr absl::string_view kHloModule = R"(

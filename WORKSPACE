@@ -80,7 +80,13 @@ tf_workspace0()
 
 load(
     "@local_xla//third_party/py:python_wheel.bzl",
+    "nvidia_wheel_versions_repository",
     "python_wheel_version_suffix_repository",
+)
+
+nvidia_wheel_versions_repository(
+    name = "nvidia_wheel_versions",
+    versions_source = "//ci/official/requirements_updater:nvidia-requirements.txt",
 )
 
 python_wheel_version_suffix_repository(name = "tf_wheel_version_suffix")

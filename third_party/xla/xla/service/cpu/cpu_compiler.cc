@@ -30,6 +30,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+
 // IWYU pragma: no_include "llvm/Config/Disassemblers.def.inc"
 // IWYU pragma: no_include "llvm/Config/Targets.def.inc"
 
@@ -41,6 +43,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -131,6 +134,7 @@ limitations under the License.
 #include "xla/hlo/transforms/expanders/stochastic_convert_decomposer.h"
 #include "xla/hlo/transforms/literal_canonicalizer.h"
 #include "xla/hlo/transforms/operand_upcaster.h"
+#include "xla/hlo/transforms/shape_canonicalizer.h"
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
 #include "xla/hlo/transforms/simplifiers/batch_dot_simplification.h"
 #include "xla/hlo/transforms/simplifiers/broadcast_canonicalizer.h"
@@ -214,6 +218,7 @@ limitations under the License.
 #include "xla/service/sharding_propagation.h"
 #include "xla/service/sharding_remover.h"
 #include "xla/service/slow_operation_alarm.h"
+#include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/shardy/shardy_xla_pass.h"
 #include "xla/service/spmd/stateful_rng_spmd_partitioner.h"
 #include "xla/service/topk_rewriter.h"
@@ -223,6 +228,7 @@ limitations under the License.
 #include "xla/service/while_loop_invariant_code_motion.h"
 #include "xla/service/while_loop_simplifier.h"
 #include "xla/shape.h"
+#include "xla/shape_pool.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/host/host_platform_id.h"
@@ -486,9 +492,13 @@ std::unique_ptr<HloPassFix<HloPassPipeline>> CreateSimplificationPipeline(
   }
 
   if (module->config()
-          .debug_options()
-          .xla_cpu_experimental_xnn_graph_fusion_mode() !=
-      DebugOptions::XNN_GRAPH_FUSION_MODE_GREEDY_SLINKY) {
+              .debug_options()
+              .xla_cpu_experimental_xnn_graph_fusion_mode() ==
+          DebugOptions::XNN_GRAPH_FUSION_MODE_DISABLED &&
+      !absl::c_contains(module->config()
+                            .debug_options()
+                            .xla_cpu_experimental_xnn_fusion_type(),
+                        DebugOptions::LIBRARY_FUSION_TYPE_REDUCE)) {
     // Needs to happen after algebraic simplifier.
     pipeline->AddPass<TreeReductionRewriter>();
   }
@@ -522,10 +532,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     HloModule* module, bool is_aot_compile,
     TargetMachineFeatures* target_machine_features) {
   const int64_t num_partitions = module->config().num_partitions();
-  const bool is_thunk_runtime =
-      module->config().debug_options().xla_cpu_use_thunk_runtime();
   const bool is_fusion_emitters =
-      is_thunk_runtime &&
       module->config().debug_options().xla_cpu_use_fusion_emitters();
   bool use_shardy_partitioner = module->config().use_shardy_partitioner();
   bool is_onednn_compatible = false;
@@ -555,6 +562,16 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     }
     spmd_pipeline.AddPass<spmd::StatefulRngSpmdPartitioner>(
         num_partitions, module->config().replica_count());
+    spmd_pipeline.AddPass<xla::CallInliner>(
+        /*single_call_site=*/false,
+        /*update_domain=*/false,
+        /*composites_to_preserve=*/absl::flat_hash_set<std::string>{},
+        /*uniquify_channel_ids=*/false,
+        /*should_inline=*/
+        [](const xla::CallGraph& call_graph, xla::HloInstruction* instruction) {
+          return absl::StrContains(instruction->to_apply()->name(),
+                                   sdy::kInlineableManualComputationFuncName);
+        });
     TF_RETURN_IF_ERROR(spmd_pipeline.Run(module).status());
   } else {
     HloPassPipeline sharding_removal_pipeline("sharding-removal");
@@ -581,24 +598,6 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     subbyte_packer_pipeline.AddPass<SubByteNormalization>(
         SubByteNormalization::SET_ELEMENT_SIZE);
     TF_RETURN_IF_ERROR(subbyte_packer_pipeline.Run(module).status());
-  }
-
-  // Guard this experimental pipeline with flags until we make sure that
-  // calling `DotDecomposer` early is okay.
-  DotLibraryRewriterOptions options = {
-      /*use_onednn=*/module->config().debug_options().xla_cpu_use_onednn(),
-      /*use_xnnpack=*/module->config().debug_options().xla_cpu_use_xnnpack(),
-      /*onednn_fusion_types=*/
-      &module->config()
-           .debug_options()
-           .xla_cpu_experimental_onednn_fusion_type(),
-      /*xnn_fusion_types=*/
-      &module->config().debug_options().xla_cpu_experimental_xnn_fusion_type()};
-  if (options.use_onednn || options.use_xnnpack) {
-    HloPassPipeline lib_pipeline("dot-library-passes");
-    lib_pipeline.AddPass<DotDecomposer>();
-    lib_pipeline.AddPass<DotLibraryRewriter>(target_machine_features, options);
-    TF_RETURN_IF_ERROR(lib_pipeline.Run(module).status());
   }
 
   HloPassPipeline pipeline("HLO passes through layout assignment");
@@ -633,6 +632,10 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
                                 target_machine_features)
                 .value_or(false);
   };
+
+  // xla::cpu::GetDotImplementationStrategy (used by call_library_for_dot)
+  // relies on the canonical form of dots.
+  pipeline.AddPass<DotDecomposer>();
   pipeline.AddPass<OperandUpcaster>(upcaster_filter);
 
   // Expand random number generation.
@@ -670,6 +673,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   // Rewrite to custom calls with target as oneDNN library calls.
 #if defined(INTEL_MKL)
   // AOT compiled code runs in single thread.
+  bool is_thunk_runtime = true;
   is_onednn_compatible = !is_aot_compile && !is_thunk_runtime;
   if (is_onednn_compatible) {
     // Placing OneDnnOpsRewriter here to match the flax patterns
@@ -846,6 +850,9 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<SubByteNormalization>(
       SubByteNormalization::SET_ELEMENT_SIZE);
 
+  // Canonicalize all shapes in the module.
+  pipeline.AddPass<ShapeCanonicalizer>(ShapePool::Default());
+
   // Finally canonicalize all literals larger than 1024 bytes in the module to
   // reuse the same literal across multiple HLO modules.
   pipeline.AddPass<LiteralCanonicalizer>(LiteralPool::Default(),
@@ -859,9 +866,7 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     TargetMachineFeatures* target_machine_features,
     const CompileOptions& compile_options) {
   const auto& debug_options = module->config().debug_options();
-  const bool is_thunk_runtime = debug_options.xla_cpu_use_thunk_runtime();
-  const bool is_fusion_emitters =
-      is_thunk_runtime && debug_options.xla_cpu_use_fusion_emitters();
+  const bool is_fusion_emitters = debug_options.xla_cpu_use_fusion_emitters();
   bool is_onednn_compatible = false;
   bool flatten_after_fusion = options::FlattenAfterFusion(module->config());
   HloPassPipeline pipeline("HLO passes after layout assignment");
@@ -888,6 +893,7 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
 
 #if defined(INTEL_MKL)
   // AOT compiled code runs in single thread.
+  bool is_thunk_runtime = true;
   is_onednn_compatible = !is_aot_compile && !is_thunk_runtime;
   if (is_onednn_compatible) {
     // Run SimplifyFPConversions pass to simplify the BF16 pattern and make it
@@ -905,6 +911,28 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     }
   }
 #endif  // INTEL_MKL
+
+  // Guard this experimental pipeline with flags until we make sure that
+  // calling `DotDecomposer` early is okay.
+  //
+  // XNNPACK ops availability checks depend on the layout information,
+  // so until another solution is developed the passes creating XNNPACK fusions
+  // have to run after layout assignment.
+  DotLibraryRewriterOptions options = {
+      /*use_onednn=*/module->config().debug_options().xla_cpu_use_onednn(),
+      /*use_xnnpack=*/module->config().debug_options().xla_cpu_use_xnnpack(),
+      /*onednn_fusion_types=*/
+      &module->config()
+           .debug_options()
+           .xla_cpu_experimental_onednn_fusion_type(),
+      /*xnn_fusion_types=*/
+      &module->config().debug_options().xla_cpu_experimental_xnn_fusion_type()};
+  if (options.use_onednn || options.use_xnnpack) {
+    HloPassPipeline lib_pipeline("dot-library-passes");
+    lib_pipeline.AddPass<DotDecomposer>();
+    lib_pipeline.AddPass<DotLibraryRewriter>(target_machine_features, options);
+    TF_RETURN_IF_ERROR(lib_pipeline.Run(module).status());
+  }
 
   if (debug_options.xla_cpu_experimental_xnn_graph_fusion_mode() !=
       DebugOptions::XNN_GRAPH_FUSION_MODE_DISABLED) {
@@ -994,7 +1022,7 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
 
   // The hoisting of small while loops is only useful in the context of the
   // thunk runtime.
-  if (module->config().debug_options().xla_cpu_use_thunk_runtime()) {
+  {
     TF_ASSIGN_OR_RETURN(
         int64_t byte_threshold,
         xla::cpu::options::SmallWhileLoopByteThreshold(module->config()));
@@ -1943,11 +1971,6 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
     TF_RETURN_IF_ERROR(RunHloPasses(hlo_module.get(), /*is_aot_compile=*/true,
                                     target_machine.get(),
                                     /*dummy*/ CompileOptions{}));
-
-    if (!hlo_module->config().debug_options().xla_cpu_use_thunk_runtime()) {
-      return InvalidArgument(
-          "xla_cpu_use_thunk_runtime must be true for AOT compilation.");
-    }
 
     TF_ASSIGN_OR_RETURN(
         results.emplace_back(),

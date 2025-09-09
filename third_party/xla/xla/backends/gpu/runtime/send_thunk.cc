@@ -94,19 +94,17 @@ absl::StatusOr<bool> SendThunk::RunCollective(const ExecuteParams& params,
   // Determine the target IDs for this instance. The target ID is the ID
   // to which this instance will copy its data.
   int device_ordinal = stream.parent()->device_ordinal();
-  VLOG(3) << "Performing Send from device ordinal: " << device_ordinal
+  VLOG(3) << "[" << device_ordinal << "] Performing Send "
           << ", current_id: " << current_id << ", group mode: "
           << CollectiveOpGroupModeToString(config_.config.group_mode) << " ("
           << hlo_name_ << ")";
 
-  TF_RETURN_IF_ERROR(
-      MaybeRegisterBuffers(stream.parent(), {buffer}, comm_handle.comm));
-
   const std::optional<int64_t> target_id = source_target.target;
   se::DeviceMemoryBase src_addr = buffer.source_buffer;
 
-  VLOG(3) << absl::StreamFormat("%s : id = %d, target_id = %d", device_string,
-                                current_id, target_id.value_or(-1));
+  VLOG(3) << absl::StreamFormat("[%d] %s : id = %d, target_id = %d",
+                                device_ordinal, device_string, current_id,
+                                target_id.value_or(-1));
 
   // Send source buffer to target peer if needed.
   if (target_id) {
@@ -126,11 +124,14 @@ absl::StatusOr<bool> SendThunk::RunCollective(const ExecuteParams& params,
       if (*counter < it->second.first || *counter > it->second.second) {
         should_run = false;
       }
-      VLOG(3) << "RunCollective counter " << *counter << " " << should_run;
+      VLOG(3) << "[" << device_ordinal << "] RunCollective counter " << *counter
+              << " " << should_run;
       ++(*counter);
     }
 
     if (should_run) {
+      TF_RETURN_IF_ERROR(
+          MaybeRegisterBuffers(stream.parent(), {buffer}, comm_handle.comm));
       auto event = comm_handle.comm->Send(
           src_addr, buffer.element_type, buffer.element_count,
           RankId(*target_id), GpuCollectives::On(stream));
@@ -140,7 +141,7 @@ absl::StatusOr<bool> SendThunk::RunCollective(const ExecuteParams& params,
         return event.GetError();
       }
     } else {
-      VLOG(3) << "Skipping Send";
+      VLOG(3) << "[" << device_ordinal << "] Skipping Send";
     }
   }
 

@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -42,21 +43,15 @@ XLA_FFI_DEFINE_HANDLER(
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$io_callback", "Host",
                          kIOCallback);
 
-class CpuFFITest : public HloPjRtTestBase,
-                   public ::testing::WithParamInterface<bool> {
+class CpuFFITest : public HloPjRtTestBase {
  protected:
-  bool thunk_rt_val_;
-
-  CpuFFITest() { thunk_rt_val_ = GetParam(); }
-
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GetDebugOptionsFromFlags();
-    debug_options.set_xla_cpu_use_thunk_runtime(thunk_rt_val_);
     return debug_options;
   }
 };
 
-TEST_P(CpuFFITest, EmulateImpureCallbackWithTokens) {
+TEST_F(CpuFFITest, EmulateImpureCallbackWithTokens) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -73,12 +68,6 @@ TEST_P(CpuFFITest, EmulateImpureCallbackWithTokens) {
 
   TF_EXPECT_OK(Execute(std::move(module), {}).status());
 }
-
-INSTANTIATE_TEST_SUITE_P(
-    FFITest, CpuFFITest, ::testing::Values(true),
-    [](const ::testing::TestParamInfo<CpuFFITest::ParamType>& info) {
-      return info.param ? "ThunkRuntime" : "LegacyRuntime";
-    });
 
 }  // namespace
 }  // namespace xla

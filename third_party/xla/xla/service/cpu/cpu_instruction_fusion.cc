@@ -40,8 +40,7 @@ namespace {
 bool CanBeLoopFused(const HloInstruction& hlo) {
   // These are the only ones we fuse since we rely on effective elemental IR
   // generation.
-  return hlo.IsElementwise() ||  //
-         hlo.opcode() == HloOpcode::kBitcast ||
+  return hlo.IsElementwise() || hlo.opcode() == HloOpcode::kBitcast ||
          hlo.opcode() == HloOpcode::kBroadcast ||
          hlo.opcode() == HloOpcode::kConcatenate ||
          hlo.opcode() == HloOpcode::kDynamicSlice ||
@@ -86,7 +85,6 @@ bool BlockSubcomputationFusion(const HloInstruction* instruction,
                                const HloModuleConfig& config) {
   HloOpcode opcode = instruction->opcode();
   const bool is_fusion_emitters =
-      config.debug_options().xla_cpu_use_thunk_runtime() &&
       config.debug_options().xla_cpu_use_fusion_emitters();
 
   if (is_fusion_emitters && opcode == HloOpcode::kScatter) {

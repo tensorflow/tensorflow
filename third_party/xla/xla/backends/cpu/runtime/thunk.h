@@ -277,6 +277,8 @@ class Thunk {
     CollectiveExecuteParams* collective_params = nullptr;
     CustomCallExecuteParams* custom_call_params = nullptr;
     XnnParams* xnn_params = nullptr;
+    int64_t run_id = -1;          // -1 means no run id is set.
+    int64_t device_ordinal = -1;  // -1 means no device ordinal is set.
     ExecuteSession session = ExecuteSession(ExecuteSession::kMaxWorkers,
                                             ExecuteSession::kSplitThreshold);
   };
@@ -347,7 +349,7 @@ class Thunk {
 
   // Encodes thunk info into the TraceMe compatible format. Used by
   // ThunkExecutor to create TraceMe annotations for profiler.
-  std::string TraceMeEncode() const;
+  std::string TraceMeEncode(int64_t run_id, int64_t device_ordinal) const;
 
   Kind kind_;
   Info info_;

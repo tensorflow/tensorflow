@@ -288,8 +288,9 @@ absl::Status CollectiveKernelThunk::ExecuteOnStream(
       AllReduceLaunchDimensions(buffer.element_count, kNumRanks, strategy);
   // In case of two-shot we want to increment in multiples of 2.
   state->invocation_count += 1 + static_cast<uint32_t>(strategy);
-  VLOG(3) << "Performing one-shot all-reduce from device ordinal: "
-          << device_ordinal << " for clique " << clique_key.ToString();
+  VLOG(3) << "[" << device_ordinal
+          << "] Performing one-shot all-reduce for clique "
+          << clique_key.ToString();
   // TODO(b/407736956): Change this to emitted kernel.
   return RunAllReduceKernel(
       /*stream=*/stream,

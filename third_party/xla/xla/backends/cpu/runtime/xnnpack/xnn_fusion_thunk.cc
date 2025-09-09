@@ -107,7 +107,7 @@ XnnFusionThunk::XnnExecutable::Invoke(
     external_values.push_back(value);
   }
 
-  DCHECK_NE(runtime, nullptr) << "XNNPACK runtime is not initialized";
+  DCHECK_NE(runtime.get(), nullptr) << "XNNPACK runtime is not initialized";
   XNN_RETURN_IF_ERROR(xnn_setup_runtime_v2(
       runtime.get(), external_values.size(), external_values.data()));
 

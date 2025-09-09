@@ -51,6 +51,11 @@ toc:
     path: /xla/flags_guidance
   - title: XLA Tooling
     path: /xla/tools
+- title: Debugging
+  section:
+  # This is the default tab for the Debugging section.
+  - title: Dump HLO Computations
+    path: /xla/hlo_dumps
 - title: Contributing
   # These should be in alphabetical order unless otherwise noted.
   section:

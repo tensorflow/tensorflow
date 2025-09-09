@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/profiler/gpu/cupti_collector.h"
 
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <string>
 
@@ -149,6 +150,32 @@ TEST(CuptiCollectorTest, ExportCallbackActivityAndNvtxEvents) {
       ASSERT_EQ(plane.lines(0).events_size(), 1);
     }
   }
+}
+
+TEST(PmSamplesTest, PopulateCounterLineSkipsNan) {
+  tensorflow::profiler::XSpace space;
+  tsl::profiler::XPlaneBuilder plane_builder(space.add_planes());
+  PmSamples pm_samples({"metric1", "metric2"},
+                       {{/*range_index=*/0,
+                         /*start_timestamp_ns=*/100,
+                         /*end_timestamp_ns=*/200,
+                         {123.0, std::numeric_limits<double>::quiet_NaN()}}},
+                       /*device_id=*/0);
+
+  uint64_t start_gpu_time_ns = 50;
+  pm_samples.PopulateCounterLine(&plane_builder, start_gpu_time_ns);
+
+  const auto& plane = space.planes(0);
+  ASSERT_EQ(plane.lines_size(), 1);
+  const auto& line = plane.lines(0);
+
+  ASSERT_EQ(line.events_size(), 1);
+  const auto& event = line.events(0);
+  // metric2 is skipped because it's NaN.
+  ASSERT_EQ(event.stats_size(), 1);
+  const auto& stat = event.stats(0);
+  EXPECT_EQ(plane.stat_metadata().at(stat.metadata_id()).name(), "metric1");
+  EXPECT_EQ(stat.double_value(), 123.0);
 }
 
 }  // namespace

@@ -146,6 +146,10 @@ class AsyncValue {
 
   void SetError(absl::Status status);
 
+  // Returns true if and only if there are any waiters waiting for this value to
+  // become available.
+  bool HasWaiter() const;
+
   // If the value is available or becomes available, this invokes the waiter
   // immediately. Otherwise, adds the waiter to the waiter list and calls it
   // when the value becomes available.
@@ -1033,6 +1037,10 @@ inline const absl::Status& AsyncValue::GetError() const {
   auto* result = GetErrorIfPresent();
   DCHECK(result) << "Cannot call GetError() when error isn't available.";
   return *result;
+}
+
+inline bool AsyncValue::HasWaiter() const {
+  return waiters_and_state_.load(std::memory_order_acquire).waiter() != nullptr;
 }
 
 template <typename Waiter>

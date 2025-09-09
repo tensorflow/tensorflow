@@ -26,15 +26,14 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_execution_profile.h"
-#include "xla/service/hlo_graph_dumper.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/maybe_owning_device_memory.h"
 #include "xla/service/service_executable_run_options.h"
@@ -370,9 +369,21 @@ class Executable {
 
   // The shape (including layout) that results from this execution. This is the
   // shape of the DeviceMemoryBase result value in ExecuteOnStream above.
-  const Shape& result_shape() const {
+  virtual Shape result_shape() const {
     CHECK(hlo_module_ != nullptr);
     return hlo_module_->config().entry_computation_layout().result_shape();
+  }
+
+  virtual ComputationLayout compute_computation_layout() const {
+    CHECK(hlo_module_ != nullptr);
+    return hlo_module_->compute_computation_layout();
+  }
+
+  virtual absl::string_view name() const {
+    if (has_module()) {
+      return module().name();
+    }
+    return "<unknown executable>";
   }
 
   // Returns the size of the executable in bytes. Returns -1 if this query is

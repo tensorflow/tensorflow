@@ -109,7 +109,7 @@ namespace ir_emitter_triton_internal {
 
 // Computes the transformation from a 1-d program_id to a tile multi-index.
 llvm::SmallVector<mlir::Value, 3> ComputeDelinearizedTileIndex(
-    EmitterLocOpBuilder& b, absl::Span<const int64_t> num_output_tiles_per_dim);
+    EmitterLocOpBuilder b, absl::Span<const int64_t> num_output_tiles_per_dim);
 
 // Dumps the Triton IR to a string.
 //

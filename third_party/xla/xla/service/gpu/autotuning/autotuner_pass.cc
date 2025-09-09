@@ -29,61 +29,55 @@ limitations under the License.
 #include "xla/backends/autotuner/autotuner.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
 #include "xla/backends/autotuner/codegen_backend.h"
-#include "xla/backends/autotuner/file_based_autotuner_cache.h"
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/backends/gpu/autotuner/gpu_profiler.h"
+#include "xla/backends/gpu/autotuner/legacy_cache.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
 
 absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
     std::vector<std::unique_ptr<CodegenBackend>> backends,
-    const DebugOptions& debug_options, se::DeviceMemoryAllocator* allocator,
+    const DebugOptions& debug_options,
     stream_executor::StreamExecutor* stream_executor,
-    tsl::thread::ThreadPool* thread_pool) {
+    tsl::thread::ThreadPool* thread_pool, InstructionFilterFn should_autotune,
+    se::DeviceMemoryAllocator* allocator) {
+  // At least one of stream_executor or allocator must be provided.
+  CHECK(stream_executor != nullptr || allocator != nullptr);
+
   std::unique_ptr<GpuProfiler> profiler =
-      GpuProfiler::Create(stream_executor, allocator, ProfileOptions());
+      GpuProfiler::Create(stream_executor, ProfileOptions(), allocator);
 
   std::unique_ptr<AutotunerCacheInterface> cache = nullptr;
   const std::string& cache_dir =
       debug_options.xla_gpu_experimental_autotuner_cache_dir();
   if (!cache_dir.empty()) {
-    FileBasedCacheConfig cache_config;
-    cache_config.autotune_cache_dir = cache_dir;
-    cache_config.device_desc = stream_executor->GetDeviceDescription();
-    switch (debug_options.xla_gpu_experimental_autotune_cache_mode()) {
-      case DebugOptions::AUTOTUNE_CACHE_MODE_READ:
-        cache_config.autotune_cache_mode =
-            FileBasedCacheConfig::CacheMode::READ;
-        break;
-      case DebugOptions::AUTOTUNE_CACHE_MODE_UPDATE:
-        cache_config.autotune_cache_mode =
-            FileBasedCacheConfig::CacheMode::READ_WRITE;
-        break;
-      default:
-        // Includes AUTOTUNE_CACHE_MODE_UNSPECIFIED
-        LOG(WARNING) << "Unknown autotune cache mode, defaulting to READ_WRITE";
-        cache_config.autotune_cache_mode =
-            FileBasedCacheConfig::CacheMode::READ_WRITE;
-        break;
-    }
-    TF_ASSIGN_OR_RETURN(cache, FileBasedAutotunerCache::Create(cache_config));
+    cache = std::make_unique<LegacyCache>(
+        cache_dir, debug_options.xla_gpu_experimental_autotune_cache_mode(),
+        stream_executor->GetDeviceDescription());
   }
+
+  AutotuneConfig autotune_config;
+  autotune_config.check_buffers = debug_options.xla_gpu_autotune_level() >= 4;
+  autotune_config.relative_tolerance =
+      debug_options.xla_gpu_autotune_gemm_rtol();
+  autotune_config.crash_on_check_failure =
+      debug_options.xla_gpu_crash_on_verification_failures();
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Autotuner> autotuner,
       Autotuner::Create(std::move(backends), std::move(profiler),
-                        AutotuneConfig(), std::move(cache), thread_pool));
-  return absl::WrapUnique(new AutotunerPass(std::move(autotuner)));
+                        autotune_config, std::move(cache), thread_pool));
+  return absl::WrapUnique(
+      new AutotunerPass(std::move(autotuner), should_autotune));
 }
 
 absl::StatusOr<bool> AutotunerPass::Run(
@@ -91,12 +85,7 @@ absl::StatusOr<bool> AutotunerPass::Run(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(1) << "Running Autotuner Pass";
 
-  auto should_autotune = [](const HloInstruction& instruction) -> bool {
-    return instruction.opcode() == HloOpcode::kCustomCall &&
-           IsCublasGemm(instruction);
-  };
-
-  TF_RETURN_IF_ERROR(autotuner_->Autotune(module, should_autotune));
+  TF_RETURN_IF_ERROR(autotuner_->Autotune(module, should_autotune_));
   return true;
 }
 

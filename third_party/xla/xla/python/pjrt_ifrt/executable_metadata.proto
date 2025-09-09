@@ -38,6 +38,14 @@ message SerializedXlaExecutableMetadata {
   // Note: Also present within the serialized executable for PjRt TPU.
   bytes runtime_abi_version = 4;
 
+  // Name of the computation that this executable represents. This is not a
+  // unique identifier of the computation. Only to be used for debugging and
+  // logging purposes.
+  string computation_name = 7;
+
+  // Whether the executable is compiled to be portable.
+  bool portable = 8;
+
   // Below fields are artifacts gathered from the compiled executable required
   // for the IFRT runtimes to be able to construct an IFRT executable without a
   // local PjRtClient such that executions can be dispatched asynchronously.
@@ -49,6 +57,7 @@ message SerializedXlaExecutableMetadata {
 
   message OutputSpec {
     ifrt.ShapeProto shard_shape = 1;
+    ifrt.ShapeProto shape = 6;
     ifrt.DTypeProto dtype = 2;
     ifrt.LayoutProto layout = 3;
     string memory_kind = 4;
@@ -60,6 +69,7 @@ message SerializedXlaExecutableMetadata {
   message ParameterSpec {
     ifrt.LayoutProto layout = 1;
     xla.OpSharding op_sharding = 2;
+    bool donated_input = 3;
   }
 
   repeated ParameterSpec parameter_specs = 6;

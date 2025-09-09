@@ -144,6 +144,7 @@ cc_library(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",

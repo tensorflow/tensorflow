@@ -382,6 +382,29 @@ class IfrtRestoreVariableOpConversion
   }
 };
 
+class IfrtResourceDeserializeOpConversion
+    : public mlir::OpConversionPattern<mlir::TF::IfrtResourceDeserializeOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      mlir::TF::IfrtResourceDeserializeOp op, OpAdaptor adaptor,
+      mlir::ConversionPatternRewriter& rewriter) const override {
+    // Transfer the tensor_name attribute; drop the unused require_matching_crc.
+    auto tensor_name_attr = op->getAttr("tensor_name");
+    if (!tensor_name_attr) {
+      return op.emitError("tensor_name attribute not found");
+    }
+
+    auto new_op = rewriter.create<tf_mlrt::MlrtIfrtResourceDeserializeOp>(
+        op.getLoc(), adaptor.getResourceVar(), adaptor.getInputDir(),
+        llvm::cast<mlir::StringAttr>(tensor_name_attr));
+    rewriter.replaceOp(op, new_op);
+
+    return mlir::success();
+  }
+};
+
 std::optional<std::string> DecodeLongName(mlir::Location loc) {
   if (auto name_loc = mlir::dyn_cast<mlir::NameLoc>(loc)) {
     return name_loc.getName().str();
@@ -1278,7 +1301,8 @@ class TfToMlrtConversionPass
     patterns.add<WhileOpConversion>(&context, &type_converter_, &symbol_table);
     patterns.add<AsyncOpConversion, GetResourceOpConversion,
                  SetResourceOpConversion, IfrtRestoreVariableOpConversion,
-                 TFAwaitOpConversion, TFPromiseOpConversion>(&context);
+                 TFAwaitOpConversion, TFPromiseOpConversion,
+                 IfrtResourceDeserializeOpConversion>(&context);
     patterns.add<BatchFunctionOpConversion, CaseOpConversion, CondOpConversion,
                  TFAsyncWhileOpConversion, TFMapFnOpConversion>(type_converter_,
                                                                 &context);

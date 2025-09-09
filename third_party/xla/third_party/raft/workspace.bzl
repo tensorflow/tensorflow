@@ -15,6 +15,8 @@ def repo():
         urls = tf_mirror_urls("https://github.com/rapidsai/raft/archive/refs/tags/v{version}.tar.gz".format(version = RAFT_VERSION)),
         build_file = "//third_party/raft:raft.BUILD",
         patch_file = [
+            "//third_party/raft:cudart_utils.hpp.patch",
+            "//third_party/raft:vectorized.cuh.patch",
             "//third_party/raft:logger_macros.hpp.patch",
             "//third_party/raft:select_k_runner.hpp.patch",
             "//third_party/raft:select_k_runner.cu.cc.patch",

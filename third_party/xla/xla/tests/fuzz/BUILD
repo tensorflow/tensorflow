@@ -1,3 +1,4 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla/tests/fuzz:build_defs.bzl", "hlo_test")
 
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])

@@ -3827,6 +3827,17 @@ TEST_F(BreadthFirstMidpointIteratorTest, General2) {
   RunTest(0, 10, {5, 2, 8, 1, 4, 7, 10, 0, 3, 6, 9});
 }
 
+TEST_F(BreadthFirstMidpointIteratorTest, LargeValuesStackOverflow) {
+  // This test ensures that the iterator can be used with large values without
+  // overflowing the stack.
+  int start = 0;
+  int end = 1 << 12;
+  BreadthFirstMidpointIterator iterator(start, end);
+  for (; !iterator.End(); iterator.Next()) {
+    // No need to check values, just iterate.
+  }
+}
+
 class GlobalDecreasingSizeBestFitHeapBenchmark : public HeapAlgorithmTestBase {
  public:
   void TestBody() override {}

@@ -66,6 +66,11 @@ class InPlaceDynamicUpdateSliceFusion : public EmitterBase {
       mlir::MLIRContext* indexing_context) const override;
 
  protected:
+  absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateMLIRModule(
+      mlir::MLIRContext& context, const HloFusionInstruction& fusion,
+      const std::string& entry_function_name,
+      const BufferAssignment* buffer_assignment) const override;
+
   absl::Status EmitEntryFunction(
       const emitters::PartitionedComputations& computations,
       const emitters::CallTargetProvider& call_targets,
@@ -75,6 +80,8 @@ class InPlaceDynamicUpdateSliceFusion : public EmitterBase {
   std::vector<emitters::EpilogueSpecification> GetEpilogues(
       const HloFusionInstruction& fusion,
       mlir::MLIRContext* mlir_context) const override;
+
+  WorkDimensions GetWorkDimensions() const;
 
  private:
   const HloFusionAnalysis& analysis_;
