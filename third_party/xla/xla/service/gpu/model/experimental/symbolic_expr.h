@@ -26,6 +26,7 @@ limitations under the License.
 #include "llvm/ADT/DenseMapInfo.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/Hashing.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/StorageUniquer.h"
 
@@ -130,6 +131,12 @@ class SymbolicExpr {
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const SymbolicExpr expr) {
     sink.Append(expr.ToString());
+  }
+
+  friend llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
+                                       const SymbolicExpr expr) {
+    os << expr.ToString();
+    return os;
   }
 
  private:

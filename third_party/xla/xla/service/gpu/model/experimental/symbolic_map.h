@@ -33,6 +33,7 @@ class SymbolicExprContext;
 // Maps a set of input variables to a set of output SymbolicExpr trees.
 class SymbolicMap {
  public:
+  SymbolicMap() = default;
   static SymbolicMap Get(SymbolicExprContext* ctx, int64_t num_dimensions,
                          int64_t num_symbols,
                          llvm::SmallVector<SymbolicExpr> exprs);
