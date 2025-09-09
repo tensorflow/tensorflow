@@ -75,6 +75,7 @@ struct PyHloRunnerConfig {
   bool use_layouts_from_hlo_module = false;
   bool force_auto_layout = false;
   int32_t num_repeats = 1;
+  int32_t num_repeats_with_profiler = 1;
   std::string execution_options_path = "";
   int64_t gpu_client_initialization_timeout_sec = 300;
   float gpu_client_mem_fraction = GpuAllocatorConfig{}.memory_fraction;
@@ -104,6 +105,8 @@ absl::StatusOr<FunctionalHloRunner::RunningOptions> RunningOptionsFromFlags(
   out.module_argument_mode = opts.hlo_argument_mode;
   out.module_output_mode = opts.output_mode;
   out.num_repeats = static_cast<size_t>(opts.num_repeats);
+  out.num_repeats_with_profiler =
+      static_cast<size_t>(opts.num_repeats_with_profiler);
   out.log_input_output_mode =
       opts.log_output ? FunctionalHloRunner::LogOutputMode::kLogOutput
                       : FunctionalHloRunner::LogOutputMode::kNotLogOutput;
@@ -386,6 +389,8 @@ NB_MODULE(py_hlo_multihost_runner, m) {
               &PyHloRunnerConfig::use_layouts_from_hlo_module)
       .def_rw("force_auto_layout", &PyHloRunnerConfig::force_auto_layout)
       .def_rw("num_repeats", &PyHloRunnerConfig::num_repeats)
+      .def_rw("num_repeats_with_profiler",
+              &PyHloRunnerConfig::num_repeats_with_profiler)
       .def_rw("gpu_client_initialization_timeout_sec",
               &PyHloRunnerConfig::gpu_client_initialization_timeout_sec)
       .def_rw("gpu_client_mem_fraction",
