@@ -88,6 +88,44 @@ ENTRY main {
   RunTest(hlo_text, &operand, &scatter_indices, &updates);
 }
 
+TEST_F(ScatterTest, TensorFlowScatterV1_UpdateTwice) {
+  const std::string hlo_text = R"(
+HloModule TensorFlowScatterV1
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  ROOT rhs = s32[] parameter(1)
+}
+
+ENTRY main {
+  operand = s32[3,3] parameter(0)
+  indices = s32[2] parameter(1)
+  updates = s32[2,3] parameter(2)
+  ROOT scatter = s32[3,3] scatter(operand, indices, updates),
+      to_apply=update_s32,
+      update_window_dims={1},
+      inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0},
+      index_vector_dim=1
+}
+)";
+  Literal operand =
+      LiteralUtil::CreateR2<int32_t>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  Literal scatter_indices = LiteralUtil::CreateR1<int32_t>({0, 0});
+  Literal updates =
+      LiteralUtil::CreateR2<int32_t>({{10, 20, 30}, {70, 80, 90}});
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result,
+      Execute(std::move(module), {&operand, &scatter_indices, &updates}));
+  Literal expected_option_one =
+      LiteralUtil::CreateR2<int32_t>({{10, 20, 30}, {4, 5, 6}, {7, 8, 9}});
+  Literal expected_option_two =
+      LiteralUtil::CreateR2<int32_t>({{70, 80, 90}, {4, 5, 6}, {7, 8, 9}});
+  EXPECT_TRUE(result == expected_option_one || result == expected_option_two);
+}
+
 TEST_F(ScatterTest, TensorFlowScatterV1_WithFusedAdds) {
   const std::string hlo_text = R"(
 HloModule TensorFlowScatterV1
