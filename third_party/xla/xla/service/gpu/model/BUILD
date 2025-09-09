@@ -85,7 +85,6 @@ xla_cc_test(
     srcs = ["sol_latency_estimator_test.cc"],
     deps = [
         ":collective_interpolator",
-        ":gpu_performance_model_base",
         ":sol_gpu_cost_model",
         ":sol_latency_estimator",
         "//xla:literal_util",
@@ -101,6 +100,7 @@ xla_cc_test(
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",

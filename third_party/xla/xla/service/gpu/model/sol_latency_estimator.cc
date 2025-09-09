@@ -63,9 +63,18 @@ bool IsSupportedCollectiveOp(const HloInstruction& instr) {
                           HloOpcode::kAllGather>(&instr);
 }
 
+bool IsHostOffloaded(const HloInstruction& instr) {
+  auto backend_config = instr.backend_config<GpuBackendConfig>();
+  return backend_config.ok() &&
+         backend_config->device_type() == DEVICE_TYPE_HOST;
+}
+
 bool HasOnlySupportedCollectives(const HloModule& module) {
   for (const HloComputation* comp : module.computations()) {
     for (const HloInstruction* instr : comp->instructions()) {
+      if (IsHostOffloaded(*instr)) {
+        return false;
+      }
       if (hlo_query::IsCollectiveCommunicationOp(instr->opcode()) &&
           !IsSupportedCollectiveOp(*instr)) {
         return false;
