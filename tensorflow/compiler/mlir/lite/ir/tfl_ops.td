@@ -1620,7 +1620,7 @@ def TFL_DivOp : TFL_Op<"div", [
     // TODO(fengliuai): NoQuantizableResult is only correct for int8
     // quantization. update to handle Uint8 quantization.
     BinaryOpSameElementTypeConstraint,
-    TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 5>,
+    TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 6>,
     ResultsBroadcastableShape,
     Pure,
     QuantizableResult,

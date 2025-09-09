@@ -1996,12 +1996,19 @@ func.func @mul_with_int32_7d_inputs(%arg0: tensor<1x1x1x1x1x3x1xi32>, %arg1 : te
 
 // CHECK-LABEL: testDivWithBroadcastToOps
 func.func @testDivWithBroadcastToOps(%arg0: tensor<1x2x1x4x5x6xi32>, %arg1: tensor<1x2x3x4x5x1xi32>) -> tensor<1x2x3x4x5x6xi32> {
-  // CHECK: [[CST:%.*]] = arith.constant dense<[1, 2, 3, 4, 5, 6]> : tensor<6xi64>
-  // CHECK: [[BCAST:%.*]] = "tfl.broadcast_to"(%arg0, [[CST]])
-  // CHECK: [[BCAST_1:%.*]] = "tfl.broadcast_to"(%arg1, [[CST]])
-  // CHECK: tfl.div [[BCAST]], [[BCAST_1]] {fused_activation_function = "NONE"} : tensor<1x2x3x4x5x6xi32>
+  // CHECK: tfl.div(%arg0, %arg1) <{fused_activation_function = "NONE"}> : (tensor<1x2x1x4x5x6xi32>, tensor<1x2x3x4x5x1xi32>) -> tensor<1x2x3x4x5x6xi32>
   %0 = "tf.Div"(%arg0, %arg1) : (tensor<1x2x1x4x5x6xi32>, tensor<1x2x3x4x5x1xi32>) -> tensor<1x2x3x4x5x6xi32>
   func.return %0 : tensor<1x2x3x4x5x6xi32>
+}
+
+// CHECK-LABEL: testDivWithBroadcastToOps7D
+func.func @testDivWithBroadcastToOps7D(%arg0: tensor<1x2x1x4x5x6x7xi32>, %arg1: tensor<1x2x3x4x5x1x7xi32>) -> tensor<1x2x3x4x5x6x7xi32> {
+  // CHECK: [[CST:%.*]] = arith.constant dense<[1, 2, 3, 4, 5, 6, 7]> : tensor<7xi64>
+  // CHECK: [[BCAST:%.*]] = "tfl.broadcast_to"(%arg0, [[CST]])
+  // CHECK: [[BCAST_1:%.*]] = "tfl.broadcast_to"(%arg1, [[CST]])
+  // CHECK: tfl.div [[BCAST]], [[BCAST_1]] {fused_activation_function = "NONE"} : tensor<1x2x3x4x5x6x7xi32>
+  %0 = "tf.Div"(%arg0, %arg1) : (tensor<1x2x1x4x5x6x7xi32>, tensor<1x2x3x4x5x1x7xi32>) -> tensor<1x2x3x4x5x6x7xi32>
+  func.return %0 : tensor<1x2x3x4x5x6x7xi32>
 }
 
 // CHECK-LABEL: testFloorDivWithBroadcastToOps
