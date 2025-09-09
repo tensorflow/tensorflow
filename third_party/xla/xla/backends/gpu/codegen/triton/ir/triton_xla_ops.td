@@ -22,6 +22,7 @@ include "mlir/IR/OpAsmInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td" // Pure
 include "mlir/Interfaces/InferTypeOpInterface.td" // SameOperandsAndResultType
 include "mlir/Interfaces/ViewLikeInterface.td" // OffsetSizeAndStrideOpInterface
+include "xla/backends/gpu/codegen/triton/ir/triton_xla_attrs.td"
 include "xla/backends/gpu/codegen/triton/ir/triton_xla_dialect.td"
 include "triton/Dialect/Triton/IR/TritonAttrDefs.td" // TT_MemSemanticAttr, TT_MemSyncScopeAttr
 include "triton/Dialect/Triton/IR/TritonInterfaces.td"
@@ -265,6 +266,59 @@ def TTXLA_AtomicWriteOp : TTXLA_Op<"atomic_write", []> {
     $ptr `,` $value (`,` $mask^) ? attr-dict `:`
     functional-type(operands, results)
   }];
+}
+
+// NB: MemoryWrite is a workaround to prevent this op from being cleaned up
+// during dead code elimination.
+def TTXLA_AtomicSpinWaitOp : TTXLA_Op<"atomic_spin_wait",
+  [MemoryEffects<[MemWrite]>]> {
+    let summary = "Spin-wait while reading u32 value(s) atomically.";
+
+    let description = [{
+      Atomically read u32 value(s) from the memory location(s) specified by
+      $ptr. The memory ordering guarantees are specified by the
+      $mem_sync_(scope|semantic) attributes.
+
+      The loaded value is compared to $expected using the $comparator.
+      As long as the comparison returns true, the spin-wait loop continues.
+      If the comparison returns false, the spin-wait loop is finished.
+
+      NB: In the end only a single lane/thread within a program will
+      write to (or read from) a given memory location so the synchronization
+      happens between a single writing lane with a single reading lane. However,
+      the operation will wait until all lanes within the block have synchronized
+      so the end result is a block level memory synchronization.
+
+      For Memory Synchronization Scope, see comment on TTXLA_AtomicWriteOp.
+      The following memory synchronization semantics are allowed:
+        - relaxed: No memory ordering guarantees.
+        - acquire: No reads or writes in the current block/program can be
+          reordered before this wait. All writes in other programs that
+          `release` the same memory location are visible in the current block.
+
+      Internally this operation expands into elementwise
+      `ld.global.<semantic>.<scope>.u32` and a labelled loop.
+    }];
+
+    let arguments = (ins
+      Arg<TT_PtrLike, "", [MemRead<GlobalMemory>]>:$ptr,
+      TT_I32Like:$expected,
+      Optional<TT_BoolLike>:$mask,
+      TT_MemSyncScopeAttr:$mem_sync_scope,
+      TT_MemSemanticAttr:$mem_sync_semantic,
+      TTXLA_ComparatorAttr:$comparator
+    );
+
+    // An atomic spin-wait returns no results.
+    let results = (outs);
+
+    // See comment on TTXLA_AtomicWriteOp for why we explicitly add the mem sync
+    // attributes to the assembly format.
+    let assemblyFormat = [{
+      $mem_sync_scope `,` $mem_sync_semantic `,`
+      $ptr `,` $comparator `,` $expected (`,` $mask^) ?  attr-dict `:`
+      functional-type(operands, results)
+    }];
 }
 
 #endif // XLA_BACKENDS_GPU_CODEGEN_TRITON_IR_TRITON_XLA_OPS_TD_

@@ -62,11 +62,31 @@ absl::string_view GetMemSyncScopeStr(triton::MemSyncScope scope) {
   }
 }
 
+absl::string_view GetComparatorStr(Comparator comparator) {
+  switch (comparator) {
+    case Comparator::EQ:
+      return "eq";
+    case Comparator::LT:
+      return "lt";
+  }
+}
+
+mlir::Type GetResultType(mlir::Type ptr_type, PatternRewriter& rewriter) {
+  mlir::Type result_type = rewriter.getI32Type();
+  auto ranked_tensor_type = mlir::dyn_cast<mlir::RankedTensorType>(ptr_type);
+  // Tensor arguments must have tensor result type.
+  if (ranked_tensor_type) {
+    result_type = mlir::RankedTensorType::get(ranked_tensor_type.getShape(),
+                                              rewriter.getI32Type());
+  }
+  return result_type;
+}
+
 LogicalResult LowerAtomicWriteOp(AtomicWriteOp atomic_write,
                                  PatternRewriter& rewriter) {
   mlir::ImplicitLocOpBuilder builder(atomic_write.getLoc(), rewriter);
 
-  mlir::Value addr = atomic_write.getPtr();
+  mlir::Value ptr = atomic_write.getPtr();
   mlir::Value value = atomic_write.getValue();
   triton::MemSemantic semantic = atomic_write.getMemSyncSemantic();
   if (semantic != triton::MemSemantic::RELAXED &&
@@ -91,15 +111,7 @@ LogicalResult LowerAtomicWriteOp(AtomicWriteOp atomic_write,
     st.global.%s.%s.u32 [$1], $2;
   )";
 
-  const auto i32_type = rewriter.getI32Type();
-  mlir::Type result_type = i32_type;
-  auto ranked_tensor_type =
-      mlir::dyn_cast<mlir::RankedTensorType>(addr.getType());
-  if (ranked_tensor_type) {
-    // Tensor arguments must have tensor result type.
-    result_type =
-        mlir::RankedTensorType::get(ranked_tensor_type.getShape(), i32_type);
-  }
+  mlir::Type result_type = GetResultType(ptr.getType(), rewriter);
   mlir::Value mask = atomic_write.getMask();
   if (mask) {
     const std::string atomic_write_asm_with_mask = absl::StrFormat(
@@ -110,7 +122,7 @@ LogicalResult LowerAtomicWriteOp(AtomicWriteOp atomic_write,
         /*constraints=*/rewriter.getStringAttr("=r,l,r,r"),
         /*pure=*/rewriter.getBoolAttr(false),
         /*packed_element=*/rewriter.getI32IntegerAttr(1),
-        /*args=*/mlir::ValueRange{addr, value, mask});
+        /*args=*/mlir::ValueRange{ptr, value, mask});
   } else {
     const std::string atomic_write_asm =
         absl::StrFormat(kAtomicWriteAsmTemplate, scope, memory_semantic);
@@ -120,10 +132,73 @@ LogicalResult LowerAtomicWriteOp(AtomicWriteOp atomic_write,
         /*constraints=*/rewriter.getStringAttr("=r,l,r"),
         /*pure=*/rewriter.getBoolAttr(false),
         /*packed_element=*/rewriter.getI32IntegerAttr(1),
-        /*args=*/mlir::ValueRange{addr, value});
+        /*args=*/mlir::ValueRange{ptr, value});
   }
   // No results to replace; just erase the op.
   rewriter.eraseOp(atomic_write);
+  return success();
+}
+
+LogicalResult LowerAtomicSpinWaitOp(AtomicSpinWaitOp atomic_wait,
+                                    PatternRewriter& rewriter) {
+  mlir::ImplicitLocOpBuilder builder(atomic_wait.getLoc(), rewriter);
+
+  mlir::Value ptr = atomic_wait.getPtr();
+  mlir::Value expected = atomic_wait.getExpected();
+  triton::MemSemantic semantic = atomic_wait.getMemSyncSemantic();
+  if (semantic != triton::MemSemantic::RELAXED &&
+      semantic != triton::MemSemantic::ACQUIRE) {
+    return rewriter.notifyMatchFailure(
+        atomic_wait, absl::StrFormat("Unsupported memory semantic: %s",
+                                     stringifyMemSemantic(semantic)));
+  }
+  absl::string_view memory_semantic = GetMemorySemanticStr(semantic);
+  absl::string_view scope = GetMemSyncScopeStr(atomic_wait.getMemSyncScope());
+
+  absl::string_view comparator = GetComparatorStr(atomic_wait.getComparator());
+  constexpr absl::string_view kAtomicSpinWaitAsmTemplate = R"(
+    .reg .pred %%p<1>;
+    .reg .b32 %%r<1>;
+    wait:
+      ld.global.%s.%s.u32 %%r0, [$1];
+      setp.%s.u32 %%p0, %%r0, $2;
+      @%%p0 bra wait;
+  )";
+  constexpr absl::string_view kAtomicSpinWaitAsmWithMaskTemplate = R"(
+    .reg .pred %%p<2>;
+    .reg .b32 %%r<1>;
+    setp.ne.u32 %%p0, $3, 0;
+    @%%!p0 bra done;
+    wait:
+      ld.global.%s.%s.u32 %%r0, [$1];
+      setp.%s.u32 %%p1, %%r0, $2;
+      @%%p1 bra wait;
+    done:
+  )";
+  mlir::Type result_type = GetResultType(ptr.getType(), rewriter);
+  Value mask = atomic_wait.getMask();
+  if (mask) {
+    const std::string atomic_wait_asm_with_mask = absl::StrFormat(
+        kAtomicSpinWaitAsmWithMaskTemplate, scope, memory_semantic, comparator);
+    builder.create<triton::ElementwiseInlineAsmOp>(
+        /*result_types=*/result_type,
+        /*asm_string=*/rewriter.getStringAttr(atomic_wait_asm_with_mask),
+        /*constraints=*/rewriter.getStringAttr("=r,l,r,r"),
+        /*pure=*/rewriter.getBoolAttr(false),
+        /*packed_element=*/rewriter.getI32IntegerAttr(1),
+        /*args=*/mlir::ValueRange{ptr, expected, mask});
+  } else {
+    const std::string atomic_wait_asm = absl::StrFormat(
+        kAtomicSpinWaitAsmTemplate, scope, memory_semantic, comparator);
+    builder.create<triton::ElementwiseInlineAsmOp>(
+        /*result_types=*/result_type,
+        /*asm_string=*/rewriter.getStringAttr(atomic_wait_asm),
+        /*constraints=*/rewriter.getStringAttr("=r,l,r"),
+        /*pure=*/rewriter.getBoolAttr(false),
+        /*packed_element=*/rewriter.getI32IntegerAttr(1),
+        /*args=*/mlir::ValueRange{ptr, expected});
+  }
+  rewriter.eraseOp(atomic_wait);
   return success();
 }
 
@@ -136,6 +211,7 @@ class TritonXLALowerAtomicsPass
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
     patterns.add(LowerAtomicWriteOp);
+    patterns.add(LowerAtomicSpinWaitOp);
     if (failed(applyPatternsGreedily(getOperation(), std::move(patterns)))) {
       return signalPassFailure();
     }
