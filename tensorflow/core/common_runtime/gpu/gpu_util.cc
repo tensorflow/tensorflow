@@ -558,7 +558,7 @@ string GPUUtil::MemoryDebugString(const Device* device, Tensor* tensor) {
   if (num_bytes > 0) {
     auto* dev_info = device->tensorflow_accelerator_device_info();
     if (!dev_info) {
-      strings::StrAppend(
+      absl::StrAppend(
           &ret, PrintMemory(reinterpret_cast<const char*>(ptr), num_bytes));
     } else {
       string buf;
@@ -566,7 +566,7 @@ string GPUUtil::MemoryDebugString(const Device* device, Tensor* tensor) {
       DeviceMemoryBase gpu_ptr(ptr, num_bytes);
       auto s = dev_info->stream->parent()->SynchronousMemcpyD2H(
           gpu_ptr, num_bytes, &*buf.begin());
-      strings::StrAppend(&ret, PrintMemory(&*buf.begin(), num_bytes));
+      absl::StrAppend(&ret, PrintMemory(&*buf.begin(), num_bytes));
     }
   }
   return ret;
