@@ -1127,6 +1127,70 @@ e {
 )");
 }
 
+TEST_F(CuDnnFusionFileCheckTest, BlockScaledDotLowering) {
+  const std::string kHloText = R"(
+block_scaled_dot {
+  %lhs = f8e4m3fn[256,128] parameter(0)
+  %lhs_scale = f8e8m0fnu[256,4] parameter(1)
+  %rhs = f8e4m3fn[384,128] parameter(2)
+  %rhs_scale = f8e8m0fnu[384,4] parameter(3)
+  ROOT %result = f32[256,384] scaled-dot(%lhs, %lhs_scale, %rhs, %rhs_scale),
+      lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY main {
+  %lhs = f8e4m3fn[256,128] parameter(0)
+  %lhs_scale = f8e8m0fnu[256,4] parameter(1)
+  %rhs = f8e4m3fn[384,128] parameter(2)
+  %rhs_scale = f8e8m0fnu[384,4] parameter(3)
+  ROOT %result = f32[256,384] fusion(%lhs,%lhs_scale, %rhs, %rhs_scale),
+      kind=kCustom, calls=block_scaled_dot,
+      backend_config={"fusion_backend_config":{kind:"__cudnn$fusion"}}
+})";
+  EXPECT_TRUE(*RunCuDnnFileCheck(kHloText, R"(
+CHECK: "nodes"
+CHECK: {
+CHECK: "block_size": [{{[[:space:]]*32[[:space:]]*}}]
+CHECK: "X": "lhs"
+CHECK: "scale": "lhs_scale"
+CHECK: "Y": "result_lhs_dq"
+CHECK: "tag": "BLOCK_SCALE_DEQUANTIZE"
+CHECK: {
+CHECK: "block_size": [{{[[:space:]]*32[[:space:]]*}}]
+CHECK: "X": "rhs"
+CHECK: "scale": "rhs_scale"
+CHECK: "Y": "result_rhs_dq"
+CHECK: "tag": "BLOCK_SCALE_DEQUANTIZE"
+CHECK: {
+CHECK: "A": "result_lhs_dq"
+CHECK: "B": "result_rhs_dq"
+CHECK: "C": "result"
+CHECK: "tag": "MATMUL"
+CHECK: "tensors"
+CHECK: "lhs":
+CHECK: "dim": [{{[[:space:]]*1,[[:space:]]*256,[[:space:]]*128[[:space:]]*}}]
+CHECK: "stride": [{{[[:space:]]*1,[[:space:]]*128,[[:space:]]*1[[:space:]]*}}]
+CHECK: "lhs_scale":
+CHECK: "dim": [{{[[:space:]]*1,[[:space:]]*256,[[:space:]]*4[[:space:]]*}}]
+CHECK: "reordering_type": "F8_128x4"
+CHECK: "stride": [{{[[:space:]]*1,[[:space:]]*4,[[:space:]]*1[[:space:]]*}}]
+CHECK: "result":
+CHECK: "dim": [{{[[:space:]]*1,[[:space:]]*256,[[:space:]]*384[[:space:]]*}}]
+CHECK: "stride": [{{[[:space:]]*1,[[:space:]]*384,[[:space:]]*1[[:space:]]*}}]
+CHECK: "result_lhs_dq":
+CHECK: "is_virtual": true
+CHECK: "result_rhs_dq":
+CHECK: "is_virtual": true
+CHECK: "rhs":
+CHECK: "dim": [{{[[:space:]]*1,[[:space:]]*128,[[:space:]]*384[[:space:]]*}}]
+CHECK: "stride": [{{[[:space:]]*1,[[:space:]]*1,[[:space:]]*128[[:space:]]*}}]
+CHECK: "rhs_scale":
+CHECK: "dim": [{{[[:space:]]*1,[[:space:]]*4,[[:space:]]*384[[:space:]]*}}]
+CHECK: "reordering_type": "F8_128x4"
+CHECK: "stride": [{{[[:space:]]*1,[[:space:]]*1,[[:space:]]*4[[:space:]]*}}]
+)"));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
