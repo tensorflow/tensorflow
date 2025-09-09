@@ -372,16 +372,19 @@ std::vector<DotRewriteTestSpec> GetDotRewriteTestSpecs() {
       {{"xnn", "znver3"}, {{"f32", "f32"}, {"bf16", "f32"}}},
       {{"xnn", "sapphirerapids"},
        {{"f32", "f32"}, {"bf16", "f32"}, {"bf16", "bf16"}}},
-      {{"onednn", "sapphirerapids"}, {{"f32", "f32"}}},
   };
 
   // Fusion modes to test for each library.
   // We temporarily use XNN_GRAPH_FUSION_MODE_DISABLED to denote the dot fusion
   // mode (starting fusion nodes with dots).
   absl::flat_hash_map<std::string, std::vector<std::string>> fusion_modes = {
-      {"xnn", {"dot", "greedy"}},
-      {"onednn", {"dot"}},
-  };
+      {"xnn", {"dot", "greedy"}}};
+
+#if XLA_ONEDNN_USE_GRAPH_API
+  // Don't test oneDNN if we don't build with it.
+  dtype_map[{"onednn", "sapphirerapids"}] = {{"f32", "f32"}};
+  fusion_modes["onednn"] = {"dot"};
+#endif  // XLA_ONEDNN_USE_GRAPH_API
 
   std::vector<DotRewriteTestSpec> specs;
   for (auto& [lib_cpu, dtype_pairs] : dtype_map) {
