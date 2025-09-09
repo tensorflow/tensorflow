@@ -361,7 +361,7 @@ absl::Status NcclCommunicator::RegisterBufferOnce(
     bool use_symmetric_buffer) {
   bool need_reg = false;
   {
-    absl::MutexLock lock(&registered_buffers_.mu);
+    absl::MutexLock lock(registered_buffers_.mu);
     if (!registered_buffers_.range_to_handle.contains(buffer_range.opaque())) {
       need_reg = true;
     } else {
@@ -380,7 +380,7 @@ absl::Status NcclCommunicator::RegisterBufferOnce(
     TF_ASSIGN_OR_RETURN(
         auto handle,
         RegisterBuffer(buffer_range, device_ordinal, use_symmetric_buffer));
-    absl::MutexLock lock(&registered_buffers_.mu);
+    absl::MutexLock lock(registered_buffers_.mu);
     registered_buffers_.range_to_handle[buffer_range.opaque()] =
         std::move(handle);
   }

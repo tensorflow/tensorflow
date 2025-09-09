@@ -41,7 +41,7 @@ absl::StatusOr<std::unique_ptr<HostMemoryPool>> HostMemoryPool::Create(
 }
 
 absl::StatusOr<HostMemoryPool::Handle> HostMemoryPool::Acquire() {
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   if (free_list_.empty()) {
     return absl::ResourceExhaustedError(
         absl::StrCat("All ", kNumElems,

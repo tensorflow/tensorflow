@@ -387,7 +387,7 @@ absl::Status MaybeRegisterBuffers(se::StreamExecutor* executor,
 
 absl::Status CollectiveThunk::AsyncEvents::Initialize(
     se::StreamExecutor* executor) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   if (events_.contains(executor)) return absl::OkStatus();
 
   TF_ASSIGN_OR_RETURN(auto event, executor->CreateEvent());
@@ -398,7 +398,7 @@ absl::Status CollectiveThunk::AsyncEvents::Initialize(
 
 absl::StatusOr<se::Event*> CollectiveThunk::AsyncEvents::GetEvent(
     se::StreamExecutor* executor) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
 
   auto event = events_.find(executor);
   if (event == events_.end()) {

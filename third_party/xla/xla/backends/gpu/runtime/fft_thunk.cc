@@ -144,7 +144,7 @@ absl::Status RunFft(se::DeviceMemoryBase input, const Shape& input_shape,
 
   // CuFFT thread-safety requires that separate host threads not share plans;
   // protect each plan with a mutex.
-  absl::MutexLock lock(&fft_plan_ptr->mu);
+  absl::MutexLock lock(fft_plan_ptr->mu);
   std::unique_ptr<se::fft::Plan>& fft_plan = fft_plan_ptr->plan;
   TF_ASSIGN_OR_RETURN(auto fft, GetFft(stream));
   if (fft_plan == nullptr) {

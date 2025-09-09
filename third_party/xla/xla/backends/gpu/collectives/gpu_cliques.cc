@@ -156,7 +156,7 @@ static void GpuCliqueHeartBeatMonitorThread() {
   while (true) {
     absl::SleepFor(absl::Seconds(30));
     ProcessGpuCliques& cliques = GetProcessGpuCliques();
-    absl::MutexLock lock(&cliques.mu);
+    absl::MutexLock lock(cliques.mu);
     VLOG(5) << "Checking GPU communicators for errors"
             << "; num_cliques=" << cliques.map.size();
     for (auto& [clique_key, lockable_clique] : cliques.map) {
@@ -317,7 +317,7 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
         clique_ids.fingerprint(), peer_access_enabled);
 
     ProcessGpuCliques& cliques = GetProcessGpuCliques();
-    absl::MutexLock lock(&cliques.mu);
+    absl::MutexLock lock(cliques.mu);
 
     // Create a new clique with given clique key and communicators.
     auto emplaced =
@@ -491,7 +491,7 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
         absl::StrJoin(rank_mapping, ",", rank_mapping_formatter));
 
     ProcessGpuCliques& cliques = GetProcessGpuCliques();
-    absl::MutexLock lock(&cliques.mu);
+    absl::MutexLock lock(cliques.mu);
 
     // Create a new clique with given clique key and communicators.
     auto emplaced =
@@ -562,7 +562,7 @@ absl::StatusOr<std::shared_ptr<LockableGpuClique::Lock>> AcquireGpuClique(
 
             // Returns nullptr if we do not have a clique for `clique_key`.
             auto lockable_clique = [&]() -> LockableGpuClique* {
-              absl::MutexLock lock(&cliques.mu);
+              absl::MutexLock lock(cliques.mu);
               auto it = cliques.map.find(clique_key);
               return it == cliques.map.end() ? nullptr : &it->second;
             }();
@@ -627,7 +627,7 @@ absl::Status AbortCliquesWithIncarnations(
   const absl::flat_hash_set<IncarnationId> incarnation_set(incarnations.begin(),
                                                            incarnations.end());
   ProcessGpuCliques& cliques = GetProcessGpuCliques();
-  absl::MutexLock lock(&cliques.mu);
+  absl::MutexLock lock(cliques.mu);
   absl::Status result;
   for (auto it = cliques.map.begin(); it != cliques.map.end();) {
     auto copy = it++;

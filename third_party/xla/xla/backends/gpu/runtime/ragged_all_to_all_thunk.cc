@@ -468,7 +468,7 @@ absl::Status RaggedAllToAllStartThunk::Initialize(
   se::StreamExecutor* executor = params.executor;
 
   {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
 
     // If the stream state already exists, it means that the thunk has been
     // initialized for this executor.
@@ -509,7 +509,7 @@ absl::Status RaggedAllToAllStartThunk::Initialize(
   }
 
   {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     per_stream_states_.emplace(executor, std::move(state));
   }
 
@@ -546,7 +546,7 @@ absl::StatusOr<bool> RaggedAllToAllStartThunk::RunCollective(
 
   StreamState* state = nullptr;
   {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     state = per_stream_states_[stream.parent()].get();
   }
 

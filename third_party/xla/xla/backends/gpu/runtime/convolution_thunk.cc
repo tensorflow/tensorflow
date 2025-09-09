@@ -56,7 +56,7 @@ ConvolutionThunk::ConvolutionThunk(
 
 GenericConvRunner& ConvolutionThunk::GetOrCreateRunner(
     const stream_executor::Stream* stream, bool* runner_created) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   auto it = runner_cache_.find(stream);
   *runner_created = (it == runner_cache_.end());
   if (*runner_created) {

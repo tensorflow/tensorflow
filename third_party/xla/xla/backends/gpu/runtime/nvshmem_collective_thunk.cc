@@ -173,7 +173,7 @@ absl::Status IsValidNvshmemOperand(Shape shape, Thunk::Kind reduction_op) {
 
 absl::StatusOr<void*> NvshmemBufferAddresses::GetNvshmemPtr(
     int device_ordinal) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   auto it = buffer_addrs_.find(device_ordinal);
   if (it != buffer_addrs_.end()) {
     return it->second;
@@ -183,7 +183,7 @@ absl::StatusOr<void*> NvshmemBufferAddresses::GetNvshmemPtr(
 
 void NvshmemBufferAddresses::StoreNvshmemPtr(int device_ordinal,
                                              void* buffer_addr) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   buffer_addrs_[device_ordinal] = buffer_addr;
 }
 

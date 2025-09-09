@@ -49,7 +49,7 @@ class FftPlanCache {
  public:
   // Returnes Fft plan cached for the given device ordinal or creates a new one.
   FftPlan* GetOrCreate(int device_ordinal) {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     std::unique_ptr<FftPlan>& plan = fft_plans_[device_ordinal];
     if (!plan) plan = std::make_unique<FftPlan>();
     return plan.get();
