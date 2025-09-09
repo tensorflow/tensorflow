@@ -285,7 +285,7 @@ TEST_F(BlasAlgorithmTest, Algorithm_BF16_BF16_F32_X3) {
   )";
   // Single dot was replaced with 3 dots.
   constexpr absl::string_view kPattern = R"(
-    CHECK-COUNT-3: custom_call_target="__cublas$gemm"
+    CHECK-COUNT-3: custom_call_target="__cublas${{gemm|lt\$matmul}}"
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
@@ -352,7 +352,7 @@ TEST_F(BlasAlgorithmTest, Algorithm_BF16_BF16_F32_X6) {
   )";
   // Single dot was replaced with 3 dots.
   constexpr absl::string_view kPattern = R"(
-    CHECK-COUNT-6: custom_call_target="__cublas$gemm"
+    CHECK-COUNT-6: custom_call_target="__cublas${{gemm|lt\$matmul}}"
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
@@ -426,9 +426,9 @@ TEST_F(BlasAlgorithmTest, Algorithm_TF32_TF32_F32_X3) {
     }
   )";
   constexpr absl::string_view kPattern = R"(
-      CHECK: custom_call_target="__cublas$gemm"{{.*}}"algorithm":"ALG_DOT_TF32_TF32_F32"
-      CHECK: custom_call_target="__cublas$gemm"{{.*}}"algorithm":"ALG_DOT_TF32_TF32_F32"
-      CHECK: custom_call_target="__cublas$gemm"{{.*}}"algorithm":"ALG_DOT_TF32_TF32_F32"
+      CHECK: custom_call_target="__cublas${{gemm|lt\$matmul}}"{{.*}}"algorithm":"ALG_DOT_TF32_TF32_F32"
+      CHECK: custom_call_target="__cublas${{gemm|lt\$matmul}}"{{.*}}"algorithm":"ALG_DOT_TF32_TF32_F32"
+      CHECK: custom_call_target="__cublas${{gemm|lt\$matmul}}"{{.*}}"algorithm":"ALG_DOT_TF32_TF32_F32"
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
   TF_ASSERT_OK_AND_ASSIGN(auto ok, RunFileCheck(module->ToString(), kPattern));
@@ -991,7 +991,7 @@ class NumericTestsForBlas : public BlasAlgorithmTest,
   }
 
   static constexpr absl::string_view kCheckTritionNestedGemm =
-      R"(CHECK: __cublas$gemm)";
+      R"(CHECK: __cublas${{gemm|lt\$matmul}})";
 
   static constexpr absl::string_view kReferenceHloText = R"(
     HloModule %s
@@ -1370,7 +1370,8 @@ class TritonAndBlasSupportForDifferentTensorSizes
 
   std::string algorithm_;
 
-  static constexpr absl::string_view kBlasPattern = "__cublas$gemm";
+  static constexpr absl::string_view kBlasPattern =
+      "__cublas${{gemm|lt\\$matmul}}";
   static constexpr absl::string_view kTritonGemmPattern = "__triton_gemm";
   static constexpr int kMaxSize = 8192;
   static constexpr int kStepSize = 8;
@@ -1822,7 +1823,8 @@ class PrecisionTests
       TF_RETURN_IF_ERROR(CheckGemmPattern(
           *module, "CHECK: {{__triton_gemm|__triton_nested_gemm_fusion}}"));
     } else if (backend == Backend::kBlas) {
-      TF_RETURN_IF_ERROR(CheckGemmPattern(*module, "CHECK: __cublas$gemm"));
+      TF_RETURN_IF_ERROR(
+          CheckGemmPattern(*module, "CHECK: __cublas${{gemm|lt\\$matmul}}"));
     } else {
       return absl::InvalidArgumentError("Invalid backend");
     }
