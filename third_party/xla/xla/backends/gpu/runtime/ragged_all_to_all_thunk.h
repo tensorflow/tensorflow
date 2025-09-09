@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/hlo/ir/collective_op_group_mode.h"
@@ -99,6 +100,15 @@ class RaggedAllToAllStartThunk : public CollectiveThunk {
     StreamState(int device_ordinal, RankId rank)
         : device_ordinal(device_ordinal), rank(rank) {}
   };
+
+  absl::Status RunMemCpyRaggedAllToAll(
+      const GpuCliqueKey& clique_key, se::Stream& stream,
+      const StreamState& state, absl::Span<DeviceBufferPair const> buffers,
+      absl::Span<int64_t* const> ragged_metadata_allocs);
+
+  absl::Status RunOneShotRaggedAllToAll(
+      const GpuCliqueKey& clique_key, se::Stream& stream,
+      const StreamState& state, absl::Span<DeviceBufferPair const> buffers);
 
   bool is_local() const;
   bool should_use_memcpy() const { return p2p_memcpy_enabled_ && is_local(); }
