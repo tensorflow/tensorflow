@@ -70,6 +70,9 @@ class GpuCodegenBackend : public CodegenBackend {
     hlo_module->mutable_config().set_debug_options(debug_options_);
     hlo_module->mutable_config().mutable_debug_options().set_xla_enable_dumping(
         false);
+    hlo_module->mutable_config()
+        .mutable_debug_options()
+        .clear_xla_gpu_enable_command_buffer();
 
     Compiler::CompileOptions options;
     options.is_autotuning_compilation = true;
