@@ -367,7 +367,7 @@ absl::Status LowerWhileHelper::CreateSwitchNodes() {
     {
       const Node* input_node;
       TF_RETURN_IF_ERROR(while_op_->input_node(i, &input_node));
-      op_name = strings::StrCat(input_node->name(), "_switch");
+      op_name = absl::StrCat(input_node->name(), "_switch");
     }
     Node* merge_node = merge_nodes_[op_input_output_to_lowered_node_[i]];
     Node* switch_node;
@@ -570,7 +570,7 @@ absl::Status LowerWhileHelper::UpdateConsumers() {
 }
 
 string LowerWhileHelper::NewName(const string& infix) {
-  return graph_->NewName(strings::StrCat(name_, "/", infix));
+  return graph_->NewName(absl::StrCat(name_, "/", infix));
 }
 
 bool LowerWhileHelper::IsLoopCarriedResource(int index) {
