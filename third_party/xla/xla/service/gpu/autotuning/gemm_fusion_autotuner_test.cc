@@ -1824,6 +1824,38 @@ TEST_F(GemmFusionAutotunerEnableTma,
   EXPECT_TRUE(RunAndCompare(std::move(module),
                             ErrorSpec{/*aabs=*/5e-3, /*arel=*/5e-3}));
 }
+
+TEST_F(GemmFusionAutotunerEnableTma, TmaConfigsArePrunedWhenNotCompatible) {
+  if (isRocm()) {
+    GTEST_SKIP() << "Not supported on ROCm.";
+  }
+
+  std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
+    ENTRY e {
+      p0 = f32[11,11] parameter(0)
+      p1 = f32[11,11] parameter(1)
+      ROOT r = f32[11,11] dot(p0, p1),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    })")
+                                                  .value();
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      const std::vector<TritonGemmConfig> hopper_configs,
+      GetPossibleMatmulAutotuneTritonConfigs(
+          *Cast<HloDotInstruction>(
+              module->entry_computation()->root_instruction()),
+          se::CudaComputeCapability(se::CudaComputeCapability::kHopper, 0),
+          GetToolkitVersion(), GetDebugOptionsForTest()));
+
+  std::set<TritonGemmConfig> hopper_configs_set(hopper_configs.begin(),
+                                                hopper_configs.end());
+
+  // Because the global shape is not compatible with TMA, no configs should be
+  // marked as TMA allowed.
+  EXPECT_FALSE(absl::c_any_of(
+      hopper_configs,
+      [](const TritonGemmConfig& config) { return config.is_tma_allowed; }));
+}
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
