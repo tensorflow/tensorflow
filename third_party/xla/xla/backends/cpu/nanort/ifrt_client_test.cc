@@ -328,11 +328,13 @@ int main(int argc, char** argv) {
       // NanoRT does not handle zero-sized buffers correctly.
       "ArrayImplTest.MakeAndCopyZeroSizedBuffers:"
       // Executable returns a wrong number of devices.
-      "LoadedExecutableImplTest.Properties:"
+      "*LoadedExecutableImplTest.Properties*:"
       // Incorrect deleted state of donated inputs.
-      "LoadedExecutableImplTest.Donation:"
+      "*LoadedExecutableImplTest.Donation*:"
       // Analysis methods are not implemented.
-      "LoadedExecutableImplTest.Analysis";
+      "*LoadedExecutableImplTest.Analysis*:"
+      // Serialization is not implemented.
+      "*SerializeAndLoad*";
   xla::ifrt::test_util::SetTestFilterIfNotUserSpecified(kFilter);
 
   for (int i = 1; i < argc; i++) {

@@ -17,9 +17,11 @@ limitations under the License.
 #include <memory>
 #include <numeric>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
@@ -47,6 +49,7 @@ limitations under the License.
 #include "xla/python/ifrt/user_context.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
@@ -81,9 +84,12 @@ static const char* const module_add_one =
 
 // Compiles an MLIR module on specified devices. If devices is empty, compiles
 // it as a portable executable.
+// If `serialize` is true, serializes the compiled executable, deserializes it,
+// and returns the deserialized executable. This is to test correctness of
+// serialization round-trip of the executable.
 absl::StatusOr<LoadedExecutableRef> CompileOnDevices(
     Client* client, Compiler* compiler, absl::string_view mlir_module_str,
-    absl::Span<Device* const> devices, bool replicated) {
+    absl::Span<Device* const> devices, bool replicated, bool serialize) {
   mlir::MLIRContext context;
   TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                       xla::ParseMlirModuleString(mlir_module_str, context));
@@ -125,13 +131,37 @@ absl::StatusOr<LoadedExecutableRef> CompileOnDevices(
     }
     TF_ASSIGN_OR_RETURN(device_list, client->MakeDeviceList(devices));
   }
-  auto xla_compile_options = std::make_unique<XlaCompileOptions>(
-      compile_options, std::move(device_list));
-  return compiler->CompileAndLoad(std::make_unique<HloProgram>(*module),
-                                  std::move(xla_compile_options));
+  auto xla_compile_options =
+      std::make_unique<XlaCompileOptions>(compile_options, device_list);
+  TF_ASSIGN_OR_RETURN(
+      auto loaded_executable,
+      compiler->CompileAndLoad(std::make_unique<HloProgram>(*module),
+                               std::move(xla_compile_options)));
+  if (!serialize) {
+    return loaded_executable;
+  }
+  auto serialized_executable = loaded_executable->Serialize();
+  // If serialization is not supported, fall back to using the original
+  // executable.
+  if (false && absl::IsUnimplemented(serialized_executable.status())) {
+    LOG(INFO) << "Serialize() returned error: "
+              << serialized_executable.status()
+              << ". Falling back to using the original executable.";
+    return loaded_executable;
+  }
+  TF_RETURN_IF_ERROR(serialized_executable.status());
+  auto options = std::make_unique<XlaDeserializeExecutableOptions>();
+  options->devices = std::move(device_list);
+  return compiler->DeserializeLoadedExecutable(
+      *std::move(serialized_executable), std::move(options));
 }
 
-TEST(LoadedExecutableImplTest, Properties) {
+class LoadedExecutableImplTest
+    : public testing::TestWithParam</*serialize=*/bool> {};
+
+TEST_P(LoadedExecutableImplTest, Properties) {
+  bool serialize = GetParam();
+
   static constexpr absl::string_view kModule = R"(
 module @add_sub attributes {
   mhlo.num_replicas = 1 : i32,
@@ -157,7 +187,7 @@ module @add_sub attributes {
   TF_ASSERT_OK_AND_ASSIGN(
       const LoadedExecutableRef executable,
       CompileOnDevices(client.get(), compiler, kModule, devices,
-                       /*replicated=*/false));
+                       /*replicated=*/false, serialize));
 
   EXPECT_EQ(executable->name(), "add_sub");
   EXPECT_EQ(executable->num_devices(), devices.size());
@@ -187,7 +217,13 @@ module @add_sub attributes {
                     StatusIs(absl::StatusCode::kUnimplemented)));
 }
 
-TEST(LoadedExecutableImplTest, Analysis) {
+TEST_P(LoadedExecutableImplTest, Analysis) {
+  bool serialize = GetParam();
+
+  if (serialize) {
+    GTEST_SKIP() << "Analysis is not supported for serialized executables.";
+  }
+
   static constexpr absl::string_view kModule = R"(
 module @add attributes {
   mhlo.num_replicas = 1 : i32,
@@ -207,7 +243,7 @@ module @add attributes {
       const LoadedExecutableRef executable,
       CompileOnDevices(client.get(), compiler, kModule,
                        {client->addressable_devices().front()},
-                       /*replicated=*/false));
+                       /*replicated=*/false, serialize));
 
   TF_ASSERT_OK_AND_ASSIGN(const xla::CompiledMemoryStats compiled_memory_stats,
                           executable->GetCompiledMemoryStats());
@@ -224,7 +260,9 @@ module @add attributes {
   EXPECT_THAT(cost_analysis.map(), Not(IsEmpty()));
 }
 
-TEST(LoadedExecutableImplTest, GetDonatableInputIndices) {
+TEST_P(LoadedExecutableImplTest, GetDonatableInputIndices) {
+  bool serialize = GetParam();
+
   static const char* const multi_arg_add_all = R"(module {
     func.func @main(
         %arg0: tensor<2x3xf32> {jax.buffer_donor = true},
@@ -245,7 +283,7 @@ TEST(LoadedExecutableImplTest, GetDonatableInputIndices) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto loaded_executable,
       CompileOnDevices(client.get(), compiler, multi_arg_add_all, devices,
-                       /*replicated=*/false));
+                       /*replicated=*/false, serialize));
 
   absl::StatusOr<absl::Span<const int>> donatable_input_indices =
       loaded_executable->GetDonatableInputIndices();
@@ -259,7 +297,9 @@ TEST(LoadedExecutableImplTest, GetDonatableInputIndices) {
               IsOkAndHolds(UnorderedElementsAre(0, 2)));
 }
 
-TEST(LoadedExecutableImplTest, CompileAndExecute) {
+TEST_P(LoadedExecutableImplTest, CompileAndExecute) {
+  bool serialize = GetParam();
+
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
   Compiler* compiler = client->GetDefaultCompiler();
 
@@ -270,7 +310,7 @@ TEST(LoadedExecutableImplTest, CompileAndExecute) {
     TF_ASSERT_OK_AND_ASSIGN(
         loaded_executable,
         CompileOnDevices(client.get(), compiler, module_add_one, devices,
-                         /*replicated=*/false));
+                         /*replicated=*/false, serialize));
   }
   EXPECT_EQ(loaded_executable->user_context()->Fingerprint(), 20);
 
@@ -313,7 +353,9 @@ TEST(LoadedExecutableImplTest, CompileAndExecute) {
   EXPECT_THAT(out_data, ElementsAreArray(expected_out_data));
 }
 
-TEST(LoadedExecutableImplTest, CompileAndExecutePortable) {
+TEST_P(LoadedExecutableImplTest, CompileAndExecutePortable) {
+  bool serialize = GetParam();
+
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
   Compiler* compiler = client->GetDefaultCompiler();
 
@@ -324,7 +366,7 @@ TEST(LoadedExecutableImplTest, CompileAndExecutePortable) {
     TF_ASSERT_OK_AND_ASSIGN(
         loaded_executable,
         CompileOnDevices(client.get(), compiler, module_add_one, devices,
-                         /*replicated=*/false));
+                         /*replicated=*/false, serialize));
   }
   EXPECT_EQ(loaded_executable->user_context()->Fingerprint(), 20);
 
@@ -369,7 +411,9 @@ TEST(LoadedExecutableImplTest, CompileAndExecutePortable) {
   EXPECT_THAT(out_data, ElementsAreArray(expected_out_data));
 }
 
-TEST(LoadedExecutableImplTest, DoNotFillStatus) {
+TEST_P(LoadedExecutableImplTest, DoNotFillStatus) {
+  bool serialize = GetParam();
+
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
   Compiler* compiler = client->GetDefaultCompiler();
 
@@ -377,7 +421,7 @@ TEST(LoadedExecutableImplTest, DoNotFillStatus) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto loaded_executable,
       CompileOnDevices(client.get(), compiler, module_add_one, devices,
-                       /*replicated=*/false));
+                       /*replicated=*/false, serialize));
 
   DType dtype(DType::kF32);
   Shape shape({2, 3});
@@ -415,7 +459,9 @@ TEST(LoadedExecutableImplTest, DoNotFillStatus) {
   EXPECT_THAT(out_data, ElementsAreArray(expected_out_data));
 }
 
-TEST(LoadedExecutableImplTest, NoInputOutput) {
+TEST_P(LoadedExecutableImplTest, NoInputOutput) {
+  bool serialize = GetParam();
+
   static constexpr absl::string_view kModule = R"(
 module @nop attributes {
   mhlo.num_replicas = 1 : i32,
@@ -429,9 +475,10 @@ module @nop attributes {
   Compiler* compiler = client->GetDefaultCompiler();
 
   Device* const device = client->addressable_devices().front();
-  TF_ASSERT_OK_AND_ASSIGN(const LoadedExecutableRef executable,
-                          CompileOnDevices(client.get(), compiler, kModule,
-                                           {device}, /*replicated=*/false));
+  TF_ASSERT_OK_AND_ASSIGN(
+      const LoadedExecutableRef executable,
+      CompileOnDevices(client.get(), compiler, kModule, {device},
+                       /*replicated=*/false, serialize));
 
   ExecuteOptions options;
   options.fill_status = true;
@@ -442,7 +489,9 @@ module @nop attributes {
   TF_ASSERT_OK(result.status.Await());
 }
 
-TEST(LoadedExecutableImplTest, Donation) {
+TEST_P(LoadedExecutableImplTest, Donation) {
+  bool serialize = GetParam();
+
   static constexpr absl::string_view kModule = R"(
 module @add_sub {
   func.func @main(
@@ -458,9 +507,10 @@ module @add_sub {
   Compiler* compiler = client->GetDefaultCompiler();
 
   Device* const device = client->addressable_devices().front();
-  TF_ASSERT_OK_AND_ASSIGN(const LoadedExecutableRef executable,
-                          CompileOnDevices(client.get(), compiler, kModule,
-                                           {device}, /*replicated=*/false));
+  TF_ASSERT_OK_AND_ASSIGN(
+      const LoadedExecutableRef executable,
+      CompileOnDevices(client.get(), compiler, kModule, {device},
+                       /*replicated=*/false, serialize));
 
   // Create an input array.
   std::vector<ArrayRef> arrays;
@@ -530,6 +580,14 @@ module @add_sub {
     EXPECT_THAT(output, ElementsAre(0, 0, 0, 0, 0, 0));
   }
 }
+
+INSTANTIATE_TEST_SUITE_P(
+    LoadedExecutableImplTest, LoadedExecutableImplTest,
+    /*serialize=*/testing::Bool(),
+    [](const ::testing::TestParamInfo<LoadedExecutableImplTest::ParamType>&
+           info) {
+      return std::string(info.param ? "SerializeAndLoad" : "DirectLoad");
+    });
 
 }  // namespace
 }  // namespace ifrt
