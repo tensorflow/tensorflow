@@ -117,10 +117,10 @@ class GrpcRemoteMaster : public MasterInterface {
   // Start tracing, attaching a unique ID to both the trace and the RPC.
   tsl::profiler::TraceMe* NewTraceRpc(absl::string_view name,
                                       ::grpc::ClientContext* ctx) {
-    string trace_id = strings::StrCat(tsl::tracing::GetUniqueArg());
+    string trace_id = absl::StrCat(tsl::tracing::GetUniqueArg());
     ctx->AddMetadata(GrpcIdKey(), trace_id);
     return new tsl::profiler::TraceMe(
-        [&] { return strings::StrCat(name, ":", trace_id); },
+        [&] { return absl::StrCat(name, ":", trace_id); },
         tsl::profiler::TraceMeLevel::kInfo);
   }
 
