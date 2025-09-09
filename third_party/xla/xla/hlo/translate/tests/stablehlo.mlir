@@ -1951,21 +1951,6 @@ module {
 // -----
 
 // CHECK-LABEL: HloModule main
-
-// CHECK: ENTRY
-// CHECK: %[[ARG0:.*]] = f32[192] parameter(0)
-// CHECK: ROOT %[[RESULT:.*]] = f32[1,17,17,192] broadcast(%[[ARG0]]), dimensions={3}, origin={{[{][{]}}"broadcast.2342"{{[}][}]}}
-
-module {
-  func.func @main(%arg0: tensor<192xf32>) -> tensor<1x17x17x192xf32> {
-    %0 = stablehlo.broadcast_in_dim %arg0, dims = [3] {mhlo.original_value = "{{\22broadcast.2342\22}}"} : (tensor<192xf32>) -> tensor<1x17x17x192xf32>
-    return %0 : tensor<1x17x17x192xf32>
-  }
-}
-
-// -----
-
-// CHECK-LABEL: HloModule main
 // CHECK: ENTRY
 func.func @main() -> tensor<128x2048xf32> {
   // CHECK-NEXT: %after-all.1 = token[] after-all(), sharding={manual}

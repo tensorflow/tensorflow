@@ -223,6 +223,7 @@ cc_library(
         "stack_location_utils",
         ":hlo_utils",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/translate:attributes",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],

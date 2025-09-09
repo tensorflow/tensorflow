@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/hlo/translate/mhlo_to_hlo/location_exporter.h"
 
+#include <memory>
+#include <optional>
 #include <string>
 
 #include "llvm/ADT/STLExtras.h"
@@ -26,6 +28,9 @@ limitations under the License.
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/Visitors.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/hlo/ir/hlo_original_value.h"
+#include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/translate/attributes.h"
 #include "xla/hlo/translate/mhlo_to_hlo/stack_frame_index_builder.h"
 #include "xla/xla_data.pb.h"
 
@@ -45,6 +50,9 @@ static std::string GetNameFromLocImpl(Location loc) {
       // in functions where the op's name is first.
       auto name = name_loc.getName().strref().split('@').first;
       // Skip if the name is for op type.
+      if (name.starts_with(kOriginalValueAttr)) {
+        continue;
+      }
       if (name.ends_with(":")) {
         locs.push_back(name_loc.getChildLoc());
       } else {
@@ -76,6 +84,9 @@ static std::string GetOpTypeFromLoc(Location loc) {
       // Add name in NameLoc. For NameLoc we also account for names due to ops
       // in functions where the op's name is first.
       auto op_type = name_loc.getName().strref().split('@').first;
+      if (op_type.starts_with(kOriginalValueAttr)) {
+        continue;
+      }
       if (op_type.ends_with(":")) {
         op_type = op_type.substr(0, op_type.size() - 1);
         loc_op_types.push_back(op_type);
@@ -93,6 +104,38 @@ static std::string GetOpTypeFromLoc(Location loc) {
   }
 
   return llvm::join(loc_op_types.begin(), loc_op_types.end(), ";");
+}
+
+static std::shared_ptr<xla::OriginalValue> GetOriginalValueFromLoc(
+    Location loc) {
+  llvm::StringRef loc_original_value;
+  llvm::SmallVector<Location, 8> locs;
+  locs.push_back(loc);
+
+  while (!locs.empty()) {
+    Location curr_loc = locs.pop_back_val();
+
+    if (auto name_loc = mlir::dyn_cast<NameLoc>(curr_loc)) {
+      auto original_value = name_loc.getName().strref().split('@').first;
+      if (!original_value.starts_with(kOriginalValueAttr)) {
+        continue;
+      }
+      loc_original_value = original_value.split('=').second;
+      break;
+    }
+    if (auto fused_loc = mlir::dyn_cast<FusedLoc>(curr_loc)) {
+      // Push all locations in FusedLoc in reverse order, so locations are
+      // visited based on order in FusedLoc.
+      auto reversed_fused_locs = llvm::reverse(fused_loc.getLocations());
+      locs.append(reversed_fused_locs.begin(), reversed_fused_locs.end());
+    }
+  }
+
+  auto original_value = xla::ParseOriginalValue(loc_original_value);
+  if (!original_value.ok()) {
+    return nullptr;
+  }
+  return original_value.value();
 }
 
 static void SetSourceFileAndLine(Location loc, xla::OpMetadata& metadata) {
@@ -158,6 +201,26 @@ xla::OpMetadata CreateOpMetadataFromLocation(
 
 std::string GetDebugNameFromLocation(mlir::Location loc) {
   return GetNameFromLocImpl(loc);
+}
+
+std::optional<xla::OriginalValueProto> CreateOriginalValueFromOp(
+    mlir::Operation* op) {
+  mlir::Location loc = op->getLoc();
+  return CreateOriginalValueFromLocation(loc);
+}
+
+std::optional<xla::OriginalValueProto> CreateOriginalValueFromLocation(
+    mlir::Location loc) {
+  if (isa<mlir::UnknownLoc>(loc)) {
+    return std::nullopt;
+  }
+
+  if (std::shared_ptr<xla::OriginalValue> original_value =
+          GetOriginalValueFromLoc(loc)) {
+    return original_value->ToProto();
+  }
+
+  return std::nullopt;
 }
 
 }  // namespace mhlo

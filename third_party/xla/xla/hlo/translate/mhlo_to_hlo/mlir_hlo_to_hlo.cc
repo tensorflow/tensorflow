@@ -6182,6 +6182,8 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
         // debugging.
         xla::XlaScopedOpMetadataAssignment op_metadata(
             builder, GetOpNameMetadataFromLocation(arg));
+        xla::XlaScopedOriginalValueAssignment original_value(
+            builder, mlir::mhlo::CreateOriginalValueFromLocation(arg.getLoc()));
         // Use the user-specified op_name from the location if available,
         // otherwise use the default prefix.
         std::string name = mhlo::GetDebugNameFromLocation(arg.getLoc());
@@ -6474,16 +6476,6 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
   options.use_tuple_args = use_tuple_args;
   options.return_tuple = return_tuple;
   return ConvertMlirHloToHlo(module, hlo_proto, options);
-}
-
-std::optional<xla::OriginalValueProto> CreateOriginalValueFromOp(
-    mlir::Operation* op) {
-  auto original_value_attr =
-      op->getAttrOfType<mlir::StringAttr>(kOriginalValueAttr);
-  if (!original_value_attr) {
-    return std::nullopt;
-  }
-  return xla::ConvertOriginalValue(original_value_attr.getValue());
 }
 
 }  // namespace mlir
