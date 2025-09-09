@@ -135,7 +135,7 @@ absl::StatusOr<std::vector<std::unique_ptr<HloModule>>> GetModules(
             "'// ---'");
       } else {
         return absl::InternalError(
-            "'// ---' separator found in input, but -split-input-file not "
+            "'// ---' separator found in input, but --split-input-file not "
             "specified");
       }
     }

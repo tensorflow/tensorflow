@@ -235,7 +235,7 @@ HloInstruction* GetFinalFftUsingCollectivePermute(
       ShapeUtil::ChangeElementType(partition_id->shape(),
                                    hlo->shape().element_type()),
       partition_id));
-  // Buid while loop body.
+  // Build while loop body.
   SpmdBuilder body_b("fft_collective_permute_body", hlo);
   auto param = body_b.AddInstruction(HloInstruction::CreateParameter(
       /*parameter_number=*/0,
