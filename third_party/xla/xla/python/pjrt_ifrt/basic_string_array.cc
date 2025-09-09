@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -211,8 +212,8 @@ BasicStringArray::DisassembleIntoSingleDeviceArrays(
   on_done_with_buffer_callbacks.reserve(num_shards);
 
   for (int i = 0; i < num_shards; ++i) {
-    buffer_promises.push_back(Future<Buffers>::CreatePromise());
-    buffer_futures.push_back(Future<Buffers>(buffer_promises.back()));
+    std::tie(buffer_promises.emplace_back(), buffer_futures.emplace_back()) =
+        Future<Buffers>::MakePromise();
 
     auto current_shard_strings = std::make_shared<PerShardStringStore>();
     per_shard_strings.push_back(current_shard_strings);
@@ -328,8 +329,7 @@ absl::StatusOr<ArrayRef> BasicStringArray::Copy(
 
   auto string_store = std::make_shared<StringStore>();
   auto on_done_with_buffer = [string_store]() {};
-  auto buffers_promise = Future<Buffers>::CreatePromise();
-  auto buffers_future = Future<Buffers>(buffers_promise);
+  auto [buffers_promise, buffers_future] = Future<Buffers>::MakePromise();
 
   auto copier = [string_store = std::move(string_store),
                  buffers_promise = std::move(buffers_promise)](
@@ -378,8 +378,7 @@ absl::StatusOr<ArrayRef> BasicStringArray::FullyReplicatedShard(
 
   auto string_store = std::make_shared<StringStore>();
   auto on_done_with_buffer = [string_store]() {};
-  auto buffers_promise = Future<Buffers>::CreatePromise();
-  auto buffers_future = Future<Buffers>(buffers_promise);
+  auto [buffers_promise, buffers_future] = Future<Buffers>::MakePromise();
 
   auto copier = [string_store = std::move(string_store),
                  buffers_promise = std::move(buffers_promise)](

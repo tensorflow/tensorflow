@@ -202,15 +202,14 @@ absl::StatusOr<CompileFuture> MultiThreadedAtomProgramCompiler::CompileXla(
   auto hlo_program = std::make_unique<HloProgram>(
       /*context=*/nullptr,  // Shares the same long-living context.
       mlir::OwningOpRef<mlir::ModuleOp>(module_op.clone()));
-  Promise<AtomProgramCompileResult> promise = CompileFuture::CreatePromise();
-  CompileFuture future(promise);
+  auto [promise, future] = CompileFuture::MakePromise();
   ScheduleWork(thread_pool, [this, hlo_program = std::move(hlo_program),
                              compile_options = std::move(compile_options),
                              promise = std::move(promise)]() mutable {
     promise.Set(compiler_->CompileXla(std::move(hlo_program),
                                       std::move(compile_options)));
   });
-  return future;
+  return std::move(future);
 }
 
 absl::StatusOr<CompileFuture>
@@ -243,8 +242,7 @@ MultiThreadedAtomProgramCompiler::CompileMpmdReshard(mlir::ModuleOp module_op) {
         << "Unsupported return type `" << mlir::debugString(result_type) << "`";
     out_arrays_types.push_back(array_type);
   }
-  auto promise = CompileFuture::CreatePromise();
-  CompileFuture future(promise);
+  auto [promise, future] = CompileFuture::MakePromise();
   // No need to dispatch from a different thread because MpmdReshard uses its
   // own thread pool already.
   auto compile_result = compiler_->CompileMpmdReshard(

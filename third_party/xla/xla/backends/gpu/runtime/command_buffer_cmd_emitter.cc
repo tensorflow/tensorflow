@@ -114,8 +114,9 @@ static absl::StatusOr<Command> Convert(
       CommandBufferCmdExecutor body_cmds,
       ConvertToCommands(thunk.body_thunk_sequence()->thunks(), options));
 
-  return std::make_unique<WhileCmd>(thunk.condition_result_buffer(),
-                                    std::move(cond_cmds), std::move(body_cmds));
+  return std::make_unique<WhileCmd>(
+      thunk.condition_result_buffer(), std::move(cond_cmds),
+      std::move(body_cmds), thunk.trip_count(), options.enable_loop_unroll);
 }
 
 static absl::StatusOr<Command> Convert(const GemmThunk& thunk) {
