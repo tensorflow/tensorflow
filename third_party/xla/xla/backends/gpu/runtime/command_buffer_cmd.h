@@ -681,7 +681,7 @@ class LaunchCmd : public CommandBufferCmd {
 };
 
 //===----------------------------------------------------------------------===//
-// CustomKenelLaunchCmd
+// CustomKernelLaunchCmd
 //===----------------------------------------------------------------------===//
 
 class CustomKernelLaunchCmd : public CommandBufferCmd {

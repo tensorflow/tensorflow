@@ -87,8 +87,8 @@ int64_t GetPaddedTileSize(absl::Span<int64_t const> tile_sizes) {
 //
 // Spilling almost always causes significant performance regressions, so this
 // heuristic tries to be safe and increase recall at the cost of precision.
-bool DoesTileFitsInRegisters(int64_t tile_size,
-                             const se::DeviceDescription& device_info) {
+bool DoesTileFitInRegisters(int64_t tile_size,
+                            const se::DeviceDescription& device_info) {
   // This is a conservative estimate to make sure that we don't get a tile that
   // is too big and results in register spills.
   //
@@ -141,8 +141,8 @@ bool DoesComputationFitInRegisters(
     const se::DeviceDescription& device_info) {
   // Check that output tiles fit in registers.
   for (const TiledHloInstruction* root : tiled_hlo_computation.GetRoots()) {
-    if (!DoesTileFitsInRegisters(GetPaddedTileSize(root->tile_sizes()),
-                                 device_info)) {
+    if (!DoesTileFitInRegisters(GetPaddedTileSize(root->tile_sizes()),
+                                device_info)) {
       return false;
     }
   }
@@ -154,8 +154,8 @@ bool DoesComputationFitInRegisters(
     // Iota is not an operand, but usually needs to be materialized in
     // registers.
     if ((is_operand || tiled_hlo->hlo()->opcode() == HloOpcode::kIota) &&
-        !DoesTileFitsInRegisters(GetPaddedTileSize(tiled_hlo->tile_sizes()),
-                                 device_info)) {
+        !DoesTileFitInRegisters(GetPaddedTileSize(tiled_hlo->tile_sizes()),
+                                device_info)) {
       return false;
     }
   }
