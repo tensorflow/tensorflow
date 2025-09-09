@@ -1630,7 +1630,7 @@ TEST_F(MatmulTest, SimpleTestNoTransposeFusion2) {
   MatchOptimizedHlo(matmul_module_str,
                     R"(
     ; CHECK:     custom_call_target="__onednn$matmul",
-    ; CHECK:     call(%{{[a-z,A-Z,0-9,_,-]*}})
+    ; CHECK:     fusion(%{{[a-z,A-Z,0-9,_,-]*}})
     )");
 }
 
