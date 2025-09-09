@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/string_view.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tuple_tree.h"
 #include "xla/util.h"
@@ -68,6 +69,7 @@ class OriginalValue {
       : tree_(std::move(root_node)) {}
   explicit OriginalValue(TupleTree<std::optional<OriginalArray>>&& tree)
       : tree_(std::move(tree)) {}
+  explicit OriginalValue(const Shape& shape) : tree_(shape) {}
   std::string ToString() const;
   OriginalValueProto ToProto() const;
   static std::shared_ptr<OriginalValue> FromProto(
