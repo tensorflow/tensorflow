@@ -119,8 +119,8 @@ class AccumulateNV2RemovePass : public GraphOptimizationPass {
       return node_builder;
     };
     auto make_node = [n, g, &base_make_node](string op) {
-      return base_make_node(
-          op, g->NewName(strings::StrCat(n->name(), "/Internal")));
+      return base_make_node(op,
+                            g->NewName(absl::StrCat(n->name(), "/Internal")));
     };
 
     DataType dtype;
@@ -145,7 +145,7 @@ class AccumulateNV2RemovePass : public GraphOptimizationPass {
     Node* clean_up_accumulator = nullptr;          // DestroyTemporaryVariable
 
     const string accumulator_name =
-        strings::StrCat(n->name(), "/Internal/Accumulator");
+        absl::StrCat(n->name(), "/Internal/Accumulator");
     TensorShapeProto variable_shape;
     variable_shape.add_dim()->set_size(0);
     TF_RETURN_IF_ERROR(make_node("TemporaryVariable")
