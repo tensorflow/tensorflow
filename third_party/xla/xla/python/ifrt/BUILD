@@ -1130,6 +1130,37 @@ xla_cc_test(
     ],
 )
 
+cc_library(
+    name = "user_context_registry",
+    srcs = ["user_context_registry.cc"],
+    hdrs = ["user_context_registry.h"],
+    visibility = internal_visibility([
+        ":friends",
+        ":internal",
+    ]),
+    deps = [
+        ":user_context",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+xla_cc_test(
+    name = "user_context_registry_test",
+    srcs = ["user_context_registry_test.cc"],
+    deps = [
+        ":user_context",
+        ":user_context_registry",
+        "//xla/tsl/concurrency:ref_count",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
 xla_cc_test(
     name = "custom_call_program_serdes_test",
     srcs = ["custom_call_program_serdes_test.cc"],
