@@ -691,6 +691,12 @@ class Delegate {
 #endif
   }
 
+  bool disable_dynamically_quantized_ops() const {
+    return (options_.flags &
+            TFLITE_XNNPACK_DELEGATE_FLAG_DISABLE_DYNAMICALLY_QUANTIZED_OPS) !=
+           0;
+  }
+
   bool enable_latest_operators() const {
 #ifdef XNNPACK_DELEGATE_USE_LATEST_OPS
     return true;
@@ -3611,8 +3617,10 @@ class Subgraph {
         logging_context, output_tensor, 4, node->outputs->data[0],
         BuiltinOperator_CONV_2D, node_index));
 
-    bool dynamically_quantized = ((input_tensor.type == kTfLiteFloat32 &&
-                                   filter_tensor.type == kTfLiteInt8));
+    bool dynamically_quantized =
+        (!delegate.disable_dynamically_quantized_ops() &&
+         (input_tensor.type == kTfLiteFloat32 &&
+          filter_tensor.type == kTfLiteInt8));
     if (input_tensor.type != output_tensor.type ||
         ((input_tensor.type != filter_tensor.type) && !dynamically_quantized)) {
       TF_LITE_MAYBE_KERNEL_LOG(
@@ -4532,9 +4540,11 @@ class Subgraph {
         CheckTensorFloat32OrQUInt8Type(delegate, logging_context, output_tensor,
                                        node->outputs->data[0], node_index));
 
-    bool dynamically_quantized = ((input_tensor.type == kTfLiteFloat32 &&
-                                   (filter_tensor.type == kTfLiteInt4 ||
-                                    filter_tensor.type == kTfLiteInt8)));
+    bool dynamically_quantized =
+        (!delegate.disable_dynamically_quantized_ops() &&
+         (input_tensor.type == kTfLiteFloat32 &&
+          (filter_tensor.type == kTfLiteInt4 ||
+           filter_tensor.type == kTfLiteInt8)));
     bool supported_srq = (input_tensor.type == kTfLiteInt8 &&
                           (filter_tensor.type == kTfLiteInt4 ||
                            filter_tensor.type == kTfLiteInt8));
