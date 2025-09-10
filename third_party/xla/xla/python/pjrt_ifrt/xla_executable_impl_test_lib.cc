@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
@@ -42,17 +43,20 @@ limitations under the License.
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
+#include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/test_util.h"
 #include "xla/python/ifrt/user_context.h"
+#include "xla/python/pjrt_ifrt/executable_metadata.pb.h"
+#include "xla/python/pjrt_ifrt/pjrt_layout.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace ifrt {
@@ -79,6 +83,24 @@ static const char* const module_add_one =
     %1 = "stablehlo.broadcast_in_dim"(%0) {broadcast_dimensions = array<i64>} : (tensor<f32>) -> tensor<2x3xf32>
     %2 = stablehlo.add %arg0, %1 : tensor<2x3xf32>
     return %2 : tensor<2x3xf32>
+  }
+})";
+
+static const char* const module_add_sub = R"(
+module @add_sub attributes {
+  mhlo.num_replicas = 1 : i32,
+  mhlo.num_partitions = 2 : i32
+} {
+  func.func @main(
+    %arg0: tensor<2x3xi32> {mhlo.sharding = "{devices=[2,1]<=[2]}"},
+    %arg1: tensor<2x3xi32> {mhlo.sharding = "{replicated}"}
+  ) -> (
+    tensor<2x3xi32> {mhlo.sharding = "{replicated}"},
+    tensor<2x3xi32> {mhlo.sharding = "{devices=[2,1]<=[2]}"}
+  ) {
+    %0 = stablehlo.add %arg0, %arg1 : tensor<2x3xi32>
+    %1 = stablehlo.subtract %arg0, %arg1 : tensor<2x3xi32>
+    return %0, %1 : tensor<2x3xi32>, tensor<2x3xi32>
   }
 })";
 
@@ -580,6 +602,268 @@ INSTANTIATE_TEST_SUITE_P(
            info) {
       return std::string(info.param ? "SerializeAndLoad" : "DirectLoad");
     });
+
+TEST(ExecutableTest, ExecutableSerialization) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, xla::ifrt::test_util::GetClient());
+  xla::ifrt::Compiler* compiler = client->GetDefaultCompiler();
+
+  std::vector<xla::ifrt::Device*> devices = {
+      client->addressable_devices().at(0), client->addressable_devices().at(1)};
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto loaded_executable,
+      CompileOnDevices(client.get(), compiler, module_add_sub, devices,
+                       /*replicated=*/false, /*serialize=*/false));
+
+  auto serialized_executable = loaded_executable->Serialize();
+  if (absl::IsUnimplemented(serialized_executable.status())) {
+    GTEST_SKIP() << "Serialization is not supported on this platform.";
+  }
+  TF_ASSERT_OK(serialized_executable);
+
+  xla::ifrt::SerializedXlaExecutableMetadata metadata;
+  tsl::protobuf::io::ArrayInputStream input_stream(
+      serialized_executable->data(), serialized_executable->size());
+  ASSERT_TRUE(google::protobuf::util::ParseDelimitedFromZeroCopyStream(
+      &metadata, &input_stream, nullptr));
+
+  // TODO(b/409317760): Compare version number to the runtime version number
+  // when version query API is available.
+  EXPECT_EQ(metadata.ifrt_version_number(), 0);
+  EXPECT_FALSE(metadata.runtime_abi_version().empty());
+
+  EXPECT_NE(metadata.platform_id(), 0);
+  EXPECT_EQ(metadata.computation_name(), "add_sub");
+
+  int kNumOutputs = 2;
+  TF_ASSERT_OK_AND_ASSIGN(auto output_memory_kinds,
+                          loaded_executable->GetOutputMemoryKinds());
+  ASSERT_EQ(output_memory_kinds.size(), 1);
+  ASSERT_EQ(output_memory_kinds.at(0).size(), kNumOutputs);
+  ASSERT_EQ(metadata.output_specs_size(), kNumOutputs);
+
+  auto output_shardings = loaded_executable->GetOutputShardings();
+  ASSERT_TRUE(output_shardings.has_value());
+  ASSERT_EQ(output_shardings->size(), kNumOutputs);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto output_layouts,
+                          loaded_executable->GetOutputLayouts());
+  ASSERT_EQ(output_layouts.size(), kNumOutputs);
+
+  for (int i = 0; i < kNumOutputs; ++i) {
+    EXPECT_EQ(metadata.output_specs(i).memory_kind(),
+              output_memory_kinds.at(0).at(i));
+    EXPECT_EQ(static_cast<int32_t>(metadata.output_specs(i).dtype().kind()),
+              static_cast<int32_t>(xla::ifrt::DType::kS32));
+    EXPECT_THAT(metadata.output_specs(i).op_sharding(),
+                tsl::proto_testing::EqualsProto(output_shardings->at(i)));
+
+    // Verify that layout field behavior: if layout field is present,
+    // it should match the expected layout. Otherwise it represents a default
+    // layout.
+    if (metadata.output_specs(i).has_layout()) {
+      TF_ASSERT_OK_AND_ASSIGN(
+          xla::ifrt::CustomLayoutRef output_layout,
+          xla::ifrt::PjRtLayout::FromProto(metadata.output_specs(i).layout()));
+      TF_ASSERT_OK_AND_ASSIGN(
+          xla::ifrt::DType dtype,
+          xla::ifrt::DType::FromProto(metadata.output_specs(i).dtype()));
+      TF_ASSERT_OK_AND_ASSIGN(
+          xla::ifrt::Shape ifrt_shard_shape,
+          xla::ifrt::Shape::FromProto(metadata.output_specs(i).shard_shape()));
+      TF_ASSERT_OK_AND_ASSIGN(
+          auto pjrt_layout,
+          xla::ifrt::ToPjRtLayout(dtype, ifrt_shard_shape, output_layout));
+      EXPECT_EQ(pjrt_layout->ToString(), output_layouts[i]->ToString());
+    }
+  }
+
+  int kNumParameters = 2;
+  auto parameter_shardings = loaded_executable->GetParameterShardings();
+  ASSERT_TRUE(parameter_shardings.has_value());
+  ASSERT_EQ(parameter_shardings->size(), kNumParameters);
+  ASSERT_EQ(metadata.parameter_specs_size(), kNumParameters);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto parameter_layouts,
+                          loaded_executable->GetParameterLayouts());
+  ASSERT_EQ(parameter_layouts.size(), kNumParameters);
+  ASSERT_EQ(metadata.parameter_specs_size(), kNumParameters);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto donated_input_indices,
+                          loaded_executable->GetDonatableInputIndices());
+  absl::flat_hash_set<int> donated_input_indices_set(
+      donated_input_indices.begin(), donated_input_indices.end());
+
+  // Dummy shard shape and dtype for parameter layouts conversion.
+  xla::ifrt::DType dummy_dtype(xla::ifrt::DType::kInvalid);
+  xla::ifrt::Shape dummy_shape = xla::ifrt::Shape({});
+  for (int i = 0; i < kNumParameters; ++i) {
+    EXPECT_THAT(metadata.parameter_specs(i).op_sharding(),
+                tsl::proto_testing::EqualsProto(parameter_shardings->at(i)));
+    // Verify that layout field behavior: if layout field is present,
+    // it should match the expected layout. Otherwise it represents a default
+    // layout.
+    if (metadata.parameter_specs(i).has_layout()) {
+      TF_ASSERT_OK_AND_ASSIGN(xla::ifrt::CustomLayoutRef parameter_layout,
+                              xla::ifrt::PjRtLayout::FromProto(
+                                  metadata.parameter_specs(i).layout()));
+      TF_ASSERT_OK_AND_ASSIGN(
+          auto pjrt_layout,
+          xla::ifrt::ToPjRtLayout(dummy_dtype, dummy_shape, parameter_layout));
+      EXPECT_EQ(pjrt_layout->ToString(), parameter_layouts[i]->ToString());
+    }
+
+    // Verify donated_input field
+    bool expected_donated = donated_input_indices_set.contains(i);
+    EXPECT_EQ(metadata.parameter_specs(i).donated_input(), expected_donated);
+  }
+
+  absl::string_view serialized_pjrt_executable = *serialized_executable;
+  serialized_pjrt_executable.remove_prefix(input_stream.ByteCount());
+
+  ASSERT_FALSE(serialized_pjrt_executable.empty());
+
+  TF_ASSERT_OK_AND_ASSIGN(xla::ifrt::DeviceListRef device_list,
+                          client->MakeDeviceList(devices));
+  auto options = std::make_unique<xla::ifrt::XlaDeserializeExecutableOptions>();
+  options->devices = device_list;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto deserialized_executable,
+      client->GetDefaultCompiler()->DeserializeLoadedExecutable(
+          *serialized_executable, std::move(options)));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto loaded_output_layouts,
+                          loaded_executable->GetOutputLayouts());
+  TF_ASSERT_OK_AND_ASSIGN(auto deserialized_output_layouts,
+                          deserialized_executable->GetOutputLayouts());
+  ASSERT_EQ(loaded_output_layouts.size(), deserialized_output_layouts.size());
+  for (int i = 0; i < loaded_output_layouts.size(); ++i) {
+    EXPECT_EQ(loaded_output_layouts[i]->ToString(),
+              deserialized_output_layouts[i]->ToString());
+  }
+
+  auto loaded_output_shardings = loaded_executable->GetOutputShardings();
+  auto deserialized_output_shardings =
+      deserialized_executable->GetOutputShardings();
+  ASSERT_TRUE(loaded_output_shardings.has_value());
+  ASSERT_TRUE(deserialized_output_shardings.has_value());
+  ASSERT_EQ(loaded_output_shardings->size(),
+            deserialized_output_shardings->size());
+  for (int i = 0; i < loaded_output_shardings->size(); ++i) {
+    EXPECT_THAT(
+        (*loaded_output_shardings)[i],
+        tsl::proto_testing::EqualsProto((*deserialized_output_shardings)[i]));
+  }
+
+  auto loaded_parameter_shardings = loaded_executable->GetParameterShardings();
+  auto deserialized_parameter_shardings =
+      deserialized_executable->GetParameterShardings();
+  ASSERT_TRUE(loaded_parameter_shardings.has_value());
+  ASSERT_TRUE(deserialized_parameter_shardings.has_value());
+  ASSERT_EQ(loaded_parameter_shardings->size(),
+            deserialized_parameter_shardings->size());
+  for (int i = 0; i < loaded_parameter_shardings->size(); ++i) {
+    EXPECT_THAT((*loaded_parameter_shardings)[i],
+                tsl::proto_testing::EqualsProto(
+                    (*deserialized_parameter_shardings)[i]));
+  }
+  EXPECT_EQ(deserialized_executable->name(), "add_sub");
+
+  // Execute the deserialized executable.
+  xla::ifrt::DType dtype(xla::ifrt::DType::kS32);
+  xla::ifrt::Shape shard_shape({1, 3});
+  xla::ifrt::Shape shape({2, 3});
+  std::vector<int32_t> data(6);
+  std::iota(data.begin(), data.end(), 0);
+  std::vector<xla::ifrt::ArrayRef> input_arrays;
+
+  // Input 1 : [0, 1, 2, 3, 4, 5] sharded on device 0 and 1.
+  xla::ifrt::ShardingRef shard_sharding0 =
+      xla::ifrt::SingleDeviceSharding::Create(
+          client->addressable_devices().at(0), xla::ifrt::MemoryKind());
+  xla::ifrt::ShardingRef shard_sharding1 =
+      xla::ifrt::SingleDeviceSharding::Create(
+          client->addressable_devices().at(1), xla::ifrt::MemoryKind());
+  xla::ifrt::ShardingRef input1_sharding =
+      xla::ifrt::ConcreteEvenSharding::Create(
+          device_list, xla::ifrt::MemoryKind(), shape, shard_shape,
+          /*is_fully_replicated=*/false);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto array_shard0,
+      client->MakeArrayFromHostBuffer(
+          data.data(), dtype, shard_shape,
+          /*byte_strides=*/std::nullopt, shard_sharding0,
+          xla::ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+          /*on_done_with_host_buffer=*/{}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto array_shard1,
+      client->MakeArrayFromHostBuffer(
+          data.data() + 3, dtype, shard_shape,
+          /*byte_strides=*/std::nullopt, shard_sharding1,
+          xla::ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+          /*on_done_with_host_buffer=*/{}));
+  std::vector<xla::ifrt::ArrayRef> shards = {array_shard0, array_shard1};
+  TF_ASSERT_OK_AND_ASSIGN(input_arrays.emplace_back(),
+                          client->AssembleArrayFromSingleDeviceArrays(
+                              shape, input1_sharding, absl::MakeSpan(shards),
+                              xla::ifrt::ArrayCopySemantics::kDonateInput));
+
+  // Input 2 : [0, 1, 2, 3, 4, 5] replicated on device 0 and 1.
+  xla::ifrt::ShardingRef input2_sharding =
+      xla::ifrt::ConcreteEvenSharding::Create(
+          std::move(device_list), xla::ifrt::MemoryKind(), shape, shape,
+          /*is_fully_replicated=*/true);
+  TF_ASSERT_OK_AND_ASSIGN(
+      input_arrays.emplace_back(),
+      client->MakeArrayFromHostBuffer(
+          data.data(), dtype, shape,
+          /*byte_strides=*/std::nullopt, input2_sharding,
+          xla::ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+          /*on_done_with_host_buffer=*/nullptr));
+
+  xla::ifrt::LoadedExecutable::ExecuteOptions execute_options;
+  execute_options.fill_status = true;
+  TF_ASSERT_OK_AND_ASSIGN(xla::ifrt::LoadedExecutable::ExecuteResult result,
+                          deserialized_executable->Execute(
+                              absl::MakeSpan(input_arrays), execute_options,
+                              /*devices=*/std::nullopt));
+  TF_ASSERT_OK(result.status.Await());
+  EXPECT_THAT(result.outputs, SizeIs(2));
+
+  {
+    std::vector<int32_t> out_data(6);
+    xla::ifrt::Future<> future = result.outputs[0]->CopyToHostBuffer(
+        out_data.data(), /*byte_strides=*/std::nullopt,
+        xla::ifrt::ArrayCopySemantics::kAlwaysCopy);
+    TF_ASSERT_OK(future.Await());
+    EXPECT_THAT(out_data, ElementsAre(0, 2, 4, 6, 8, 10));
+  }
+
+  {
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto output_shards,
+        result.outputs[1]->DisassembleIntoSingleDeviceArrays(
+            xla::ifrt::ArrayCopySemantics::kDonateInput,
+            xla::ifrt::SingleDeviceShardSemantics::kAddressableShards));
+    ASSERT_THAT(output_shards, SizeIs(2));
+    {
+      std::vector<int32_t> out_data(3);
+      auto future = output_shards[0]->CopyToHostBuffer(
+          out_data.data(), /*byte_strides=*/std::nullopt,
+          xla::ifrt::ArrayCopySemantics::kAlwaysCopy);
+      TF_ASSERT_OK(future.Await());
+      EXPECT_THAT(out_data, testing::Each(0));
+    }
+    {
+      std::vector<float> out_data(3);
+      auto future = output_shards[1]->CopyToHostBuffer(
+          out_data.data(), /*byte_strides=*/std::nullopt,
+          xla::ifrt::ArrayCopySemantics::kAlwaysCopy);
+      TF_ASSERT_OK(future.Await());
+      EXPECT_THAT(out_data, testing::Each(0));
+    }
+  }
+}
 
 }  // namespace
 }  // namespace ifrt

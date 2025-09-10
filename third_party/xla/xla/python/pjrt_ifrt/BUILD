@@ -145,6 +145,8 @@ cc_library(
     testonly = True,
     srcs = ["xla_executable_impl_test_lib.cc"],
     deps = [
+        ":executable_metadata_proto_cc",
+        ":pjrt_layout",
         ":xla_ifrt",
         "//xla/client:executable_build_options",
         "//xla/pjrt:mlir_to_hlo",
@@ -154,10 +156,10 @@ cc_library(
         "//xla/python/ifrt:user_context",
         "//xla/python/ifrt/hlo:hlo_program",
         "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
@@ -165,6 +167,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/platform:protobuf",
     ],
     alwayslink = True,
 )
