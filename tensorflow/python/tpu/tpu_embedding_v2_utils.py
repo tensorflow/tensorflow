@@ -321,6 +321,7 @@ class CustomOptimizer(_Optimizer):
       slot_names: Optional[List[str]] = None,
       slot_initializers: Optional[List[init_ops_v2.Initializer]] = None,
       hyperparameters: Optional[List[Union[float, Callable[[], float]]]] = None,
+      slot_dims: Optional[List[int]] = None,
   ) -> Any:
     super().__init__(  # pytype: disable=wrong-arg-types
         learning_rate,
@@ -333,12 +334,11 @@ class CustomOptimizer(_Optimizer):
         slot_variable_creation_fn=None,
         low_dimensional_packing_status=False,
     )
-    # We need to convert the slot names and initializers to tuples to make
-    # them hashable.
     self._slot_names_attr = tuple(slot_names if slot_names else ())
     self._slot_initializers_attr = tuple(
         slot_initializers if slot_initializers else ()
     )
+    self._slot_dims_attr = tuple(slot_dims if slot_dims else ())
     num_slot_names = len(self._slot_names_attr)
     num_slot_initializers = len(self._slot_initializers_attr)
     if num_slot_names != num_slot_initializers:
@@ -347,6 +347,18 @@ class CustomOptimizer(_Optimizer):
           " the number of slot_initializers"
           f" ({num_slot_initializers})."
       )
+    if self._slot_dims_attr:
+      if len(self._slot_dims_attr) != num_slot_names:
+        raise ValueError(
+            f"The number of slot_dims ({len(self._slot_dims_attr)}) must match "
+            f"the number of slot_names ({num_slot_names})."
+        )
+      for i, dim in enumerate(self._slot_dims_attr):
+        if dim not in (1, 2):
+          raise ValueError(
+              f"Unsupported slot dim '{dim}' for slot"
+              f" '{self._slot_names_attr[i]}'. Only 1D and 2D are supported."
+          )
     self._hyperparameters = tuple(hyperparameters if hyperparameters else ())
     self._custom_computation = custom_computation
 
@@ -375,6 +387,15 @@ class CustomOptimizer(_Optimizer):
   @property
   def custom_computation(self) -> core.ConcreteFunction:
     return self._custom_computation
+
+  @property
+  def slot_dims(self) -> Tuple[int, ...]:
+    """Optional per-slot dimensions metadata for variable creation.
+
+    Each entry corresponds to the same-index item in `slot_names`. This is
+    consumed by the embedding layer when creating slot variables.
+    """
+    return self._slot_dims_attr
 
 
 @tf_export("tpu.experimental.embedding.SGD")
