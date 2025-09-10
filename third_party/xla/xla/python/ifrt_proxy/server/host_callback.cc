@@ -19,6 +19,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -163,8 +164,8 @@ absl::Status RemoteLoadedHostCallback::Execute(void** result_ptrs,
   to_buffer(host_callback().operands, operand_ptrs, request.operands);
   to_buffer(host_callback().results, result_ptrs, request.results);
 
-  request.status = Future<>::CreatePromise();
-  Future<> status(request.status);
+  Future<> status;
+  std::tie(request.status, status) = Future<>::MakePromise();
 
   // Enqueue the execution request. `IfrtBackend` retrieves this by calling
   // `PopExecutionRequest` and fulfills the `results` promise.
