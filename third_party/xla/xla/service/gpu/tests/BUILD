@@ -553,10 +553,12 @@ xla_test(
     name = "ragged_dot_test",
     srcs = ["ragged_dot_test.cc"],
     backends = ["gpu"],
+    tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
-        ":gpu_codegen_test",
         "//xla:error_spec",
         "//xla:literal_util",
+        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
+        "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:test_utils",
         "//xla/tsl/platform:statusor",
         "@com_google_googletest//:gtest_main",
