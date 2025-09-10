@@ -43,8 +43,6 @@ namespace xla {
 namespace gpu {
 namespace {
 
-using ::absl_testing::IsOkAndHolds;
-
 bool HasTritonBlockLevelFusionConfig(const HloInstruction* fusion) {
   return HloPredicateIsOp<HloOpcode::kFusion>(fusion) &&
          fusion->has_backend_config() &&
