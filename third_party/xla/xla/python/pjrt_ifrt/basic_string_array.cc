@@ -67,11 +67,8 @@ absl::StatusOr<tsl::RCReference<BasicStringArray>> BasicStringArray::Create(
     return absl::InvalidArgumentError("Got buffers_ future is invalid");
   }
 
-  auto buffers_promise = Future<Buffers>::CreatePromise();
-  auto buffers_future = Future<Buffers>(buffers_promise);
-
-  auto ready_promise = Future<>::CreatePromise();
-  auto ready_future = Future<>(ready_promise);
+  auto [buffers_promise, buffers_future] = Future<Buffers>::MakePromise();
+  auto [ready_promise, ready_future] = Future<>::MakePromise();
 
   // Buffers when the become ready must be consistent with the sharding. For
   // instance, Buffers.size() (the number of per-shard spans of absl::Cords)
