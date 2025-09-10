@@ -129,6 +129,10 @@ message DynamicSliceThunkProto {
       offset_as_function_of_indvar_modules_metadata = 7;
 }
 
+message MemzeroThunkProto {
+  xla.buffer_assignment.BufferAllocationSliceProto dest_buffer = 1;
+}
+
 message ThunkProto {
   ThunkInfoProto thunk_info = 1;
 
@@ -150,6 +154,7 @@ message ThunkProto {
     HostExecuteStartThunkProto host_execute_start_thunk = 16;
     HostExecuteDoneThunkProto host_execute_done_thunk = 17;
     DynamicSliceThunkProto dynamic_slice_thunk = 18;
+    MemzeroThunkProto memzero_thunk = 19;
   }
 }
 

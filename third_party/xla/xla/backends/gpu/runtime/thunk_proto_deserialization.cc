@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/cudnn_thunk.h"
 #include "xla/backends/gpu/runtime/gemm_thunk.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
+#include "xla/backends/gpu/runtime/memset_thunk.h"
 #include "xla/backends/gpu/runtime/replica_id_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -139,6 +140,10 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProto(
   if (thunk_proto.has_cudnn_thunk()) {
     return CuDnnThunk::FromProto(std::move(thunk_info),
                                  thunk_proto.cudnn_thunk(), buffer_allocations);
+  }
+  if (thunk_proto.has_memzero_thunk()) {
+    return MemzeroThunk::FromProto(
+        std::move(thunk_info), thunk_proto.memzero_thunk(), buffer_allocations);
   }
 
   std::optional<absl::string_view> unsupported_thunk_type =

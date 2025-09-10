@@ -39,6 +39,12 @@ class MemzeroThunk : public Thunk {
 
   const BufferAllocation::Slice& destination() const { return dest_; }
 
+  static absl::StatusOr<std::unique_ptr<MemzeroThunk>> FromProto(
+      ThunkInfo thunk_info, const MemzeroThunkProto& thunk_proto,
+      absl::Span<const BufferAllocation> buffer_allocations);
+
+  absl::StatusOr<ThunkProto> ToProto() const override;
+
  private:
   const BufferAllocation::Slice dest_;
 };
