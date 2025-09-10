@@ -186,6 +186,7 @@ cc_library(
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/builder/lib:approx_topk",
         "//xla/hlo/builder/lib:approx_topk_shape",
+        "//xla/hlo/builder/lib:math",
         "//xla/hlo/builder/lib:matrix",
         "//xla/hlo/builder/lib:quantize",
         "//xla/hlo/builder/lib:slicing",

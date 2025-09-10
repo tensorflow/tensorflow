@@ -2000,6 +2000,7 @@ cc_library(
     hdrs = ["elemental_ir_emitter.h"],
     deps = [
         ":elemental_math_emitter",
+        "//xla:util",
         "//xla/codegen/intrinsic",
         "//xla/codegen/intrinsic:exp",
         "//xla/codegen/intrinsic:rsqrt",

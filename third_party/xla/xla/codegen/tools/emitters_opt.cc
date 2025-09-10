@@ -70,8 +70,9 @@ int main(int argc, char** argv) {
       [=](mlir::OpPassManager& pm, llvm::StringRef options,
           llvm::function_ref<mlir::LogicalResult(const llvm::Twine&)>
               errorHandler) {
-        if (!options.empty()) return mlir::failure();
-
+        if (!options.empty()) {
+          return mlir::failure();
+        }
         xla::emitters::RegisterOptimizationPasses(pm);
         return mlir::success();
       },
@@ -83,8 +84,25 @@ int main(int argc, char** argv) {
       [=](mlir::OpPassManager& pm, llvm::StringRef options,
           llvm::function_ref<mlir::LogicalResult(const llvm::Twine&)>
               errorHandler) {
-        if (!options.empty()) return mlir::failure();
+        if (!options.empty()) {
+          return mlir::failure();
+        }
         xla::gpu::AddLoopTransformationPasses(
+            pm, xla::gpu::TestGpuDeviceInfo::RTXA6000DeviceInfo());
+        return mlir::success();
+      },
+      [](llvm::function_ref<void(const mlir::detail::PassOptions&)>) {});
+  mlir::registerPassPipeline(
+      "xla-gpu-test-to-llvm",
+      "Test pipeline for the lowering to LLVM. Should run after "
+      "xla-gpu-test-to-transform-loops.",
+      [=](mlir::OpPassManager& pm, llvm::StringRef options,
+          llvm::function_ref<mlir::LogicalResult(const llvm::Twine&)>
+              errorHandler) {
+        if (!options.empty()) {
+          return mlir::failure();
+        }
+        xla::gpu::AddLoweringPasses(
             pm, xla::gpu::TestGpuDeviceInfo::RTXA6000DeviceInfo());
         return mlir::success();
       },

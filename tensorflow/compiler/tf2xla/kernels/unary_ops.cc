@@ -54,7 +54,7 @@ XLAJIT_MAKE_UNARY(Conj, xla::Conj(x));
 // Return x if x>0, otherwise -x.
 REGISTER_XLA_OP(Name("Abs"), MlirXlaOpKernel);
 XLAJIT_MAKE_UNARY(Acos, xla::Acos(x));
-XLAJIT_MAKE_UNARY(Acosh, xla::Acosh(x));
+REGISTER_XLA_OP(Name("Acosh"), MlirXlaOpKernel);
 XLAJIT_MAKE_UNARY(Asin, xla::Asin(x))
 XLAJIT_MAKE_UNARY(Asinh, xla::Asinh(x));
 REGISTER_XLA_OP(Name("Atan"), MlirXlaOpKernel);

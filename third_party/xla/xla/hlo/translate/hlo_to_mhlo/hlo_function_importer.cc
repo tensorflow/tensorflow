@@ -2151,6 +2151,7 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
         ->create<mlir::mhlo::mlir_op>(loc, result_type, operands, attributes) \
         .getOperation();                                                      \
   }
+      NO_ATTRIBUTE_CASE_MHLO(kAcosh, AcoshOp);
       NO_ATTRIBUTE_CASE_MHLO(kAddDependency, AddDependencyOp);
       NO_ATTRIBUTE_CASE_MHLO(kCopy, CopyOp);
       NO_ATTRIBUTE_CASE_MHLO(kErf, ErfOp);
