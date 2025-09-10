@@ -98,12 +98,12 @@ TEST_F(PropagateOriginalValueTest, CallInlinerMultipleCallSites) {
                             CallInliner(/*single_call_site=*/false));
 }
 
-TEST_F(PropagateOriginalValueTest, CallInlinerNoCallInstructionName) {
+TEST_F(PropagateOriginalValueTest,
+       CallInlinerMissingOriginalValueInCallInstruction) {
   const absl::string_view hlo_string = R"(
 // CHECK-LABEL:test
-// CHECK: %[[LHS:.*]] =
-// CHECK:  %[[RHS:.*]] = f32[] constant(2), origin={{[{]}}{"/rhs"}
-// CHECK: %[[ADD:.*]] = f32[] add(%[[LHS]], %[[RHS]]), origin={{[{]}}{"/add"}
+// CHECK-NOT:origin
+// CHECK-NOT:call(
 
   HloModule test
 
@@ -116,6 +116,31 @@ TEST_F(PropagateOriginalValueTest, CallInlinerNoCallInstructionName) {
   ENTRY main () -> f32[] {
     lhs = f32[] constant(42)
     ROOT call = f32[] call(f32[] lhs), to_apply=incr
+  })";
+
+  RunAndFilecheckHloRewrite(hlo_string,
+                            CallInliner(/*single_call_site=*/false));
+}
+
+TEST_F(PropagateOriginalValueTest, CallInlinerSyntheticCallInstruction) {
+  const absl::string_view hlo_string = R"(
+// CHECK-LABEL:test
+// CHECK: %[[LHS:.*]] =
+// CHECK:  %[[RHS:.*]] = f32[] constant(2), origin={{[{]}}{"rhs"}
+// CHECK: %[[ADD:.*]] = f32[] add(%[[LHS]], %[[RHS]]), origin={{[{]}}{"add"}
+// CHECK-NOT:call(
+
+  HloModule test
+
+  incr (lhs: f32[]) -> f32[] {
+    lhs = f32[] parameter(0)
+    rhs = f32[] constant(2), origin={{"rhs"}}
+    ROOT add = f32[] add(f32[] lhs, f32[] rhs), origin={{"add"}}
+  }
+
+  ENTRY main () -> f32[] {
+    lhs = f32[] constant(42)
+    ROOT call = f32[] call(f32[] lhs), to_apply=incr, origin={[synthetic_call]}
   })";
 
   RunAndFilecheckHloRewrite(hlo_string,

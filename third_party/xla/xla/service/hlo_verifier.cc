@@ -2936,6 +2936,9 @@ absl::Status VerifyOriginalValue(const HloModule& module) {
       if (instruction->original_value()) {
         const auto& shape = instruction->shape();
         const auto& original_value = instruction->original_value();
+        if (original_value->is_synthetic_call()) {
+          continue;
+        }
         absl::flat_hash_set<ShapeIndex> shape_leaf_indices;
         ShapeUtil::ForEachLeafShape(
             shape, [&](const Shape& /*subshape*/, const ShapeIndex& index) {

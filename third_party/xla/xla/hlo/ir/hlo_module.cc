@@ -1537,7 +1537,8 @@ void HloModule::OriginalValueRecoveryTable::AddRecoveryComputation(
                                   replacing_inst->shape()));
   std::shared_ptr<OriginalValue> replaced_original_value =
       replaced_inst->original_value();
-  if (!replaced_original_value) {
+  if (!replaced_original_value ||
+      replaced_original_value->is_synthetic_call()) {
     return;
   }
   if (replacing_inst->original_value() == nullptr) {
