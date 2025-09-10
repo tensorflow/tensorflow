@@ -188,7 +188,7 @@ static const char *const kCublasNotInitializedExplanation =
     "not built with support for the GPU in your machine.";
 
 bool CUDABlas::Init() {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
 
   std::unique_ptr<ActivateContext> activation = parent_->Activate();
   cublasStatus_t ret = cublasCreate(&blas_);
@@ -244,7 +244,7 @@ bool CUDABlas::SetStream(Stream *stream) {
 }
 
 absl::StatusOr<bool> CUDABlas::IsMainStreamSet() const {
-  absl::MutexLock lock{&mu_};
+  absl::MutexLock lock{mu_};
   CHECK(blas_ != nullptr);
   CUstream handle{};
   if (auto ret = cublasGetStream(blas_, &handle);
@@ -368,7 +368,7 @@ absl::Status CUDABlas::DoBlasInternalImpl(FuncT cublas_func, Stream *stream,
                                           bool pointer_mode_host,
                                           cublasMath_t math_type,
                                           Args... args) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
 
   CHECK(blas_ != nullptr);
   if (!SetStream(stream)) {
@@ -1383,7 +1383,7 @@ bool CUDABlas::DoBlasTrsmBatched(Stream *stream, blas::Side side,
 }
 
 absl::Status CUDABlas::GetVersion(std::string *version) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
 
   int v;
   auto status = cublasGetVersion(blas_, &v);

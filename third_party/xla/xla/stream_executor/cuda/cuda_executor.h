@@ -114,7 +114,7 @@ class CudaExecutor : public GpuExecutor {
   absl::StatusOr<MemoryType> GetPointerMemorySpace(const void* ptr) override;
 
   Stream* FindAllocatedStream(void* gpu_stream) override {
-    absl::MutexLock lock(&alive_gpu_streams_mu_);
+    absl::MutexLock lock(alive_gpu_streams_mu_);
     auto it = alive_gpu_streams_.find(gpu_stream);
     if (it == alive_gpu_streams_.end()) {
       return nullptr;

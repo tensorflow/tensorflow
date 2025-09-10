@@ -263,7 +263,7 @@ class CudnnAccess {
   }
 
   ~CudnnAccess() {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     cudnnDestroy(handle_);
 
     if (compilation_handle_) {
@@ -311,7 +311,7 @@ class CudnnAccess {
   void NotifyStreamDestroyed(Stream* stream) {
     CUstream cu_stream =
         absl::bit_cast<CUstream>(stream->platform_specific_handle().stream);
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     if (current_stream_ && cu_stream == *current_stream_) {
       current_stream_.reset();
     }

@@ -821,7 +821,7 @@ absl::StatusOr<std::unique_ptr<Kernel>> CudaExecutor::LoadKernel(
   const std::string& kernel_name = spec.kernel_name();
 
   if (spec.has_cuda_cubin_in_memory()) {
-    absl::MutexLock lock{&in_memory_modules_mu_};
+    absl::MutexLock lock{in_memory_modules_mu_};
     const char* cubin = reinterpret_cast<const char*>(
         spec.cuda_cubin_in_memory()->cubin_bytes.data());
     TF_ASSIGN_OR_RETURN(ModuleHandle module_handle, LoadModuleFromCuBin(cubin));
@@ -842,7 +842,7 @@ absl::StatusOr<std::unique_ptr<Kernel>> CudaExecutor::LoadKernel(
                  << "] Loader spec has no ptx for kernel " << kernel_name;
     }
 
-    absl::MutexLock lock{&in_memory_modules_mu_};
+    absl::MutexLock lock{in_memory_modules_mu_};
     TF_ASSIGN_OR_RETURN(ModuleHandle module_handle, LoadModuleFromPtx(ptx));
     kernel_to_gpu_binary_[cuda_kernel.get()] = module_handle;
 
@@ -874,7 +874,7 @@ absl::StatusOr<std::unique_ptr<Kernel>> CudaExecutor::LoadKernel(
 
   {
     // Keep track of loaded kernels.
-    absl::MutexLock lock{&in_memory_modules_mu_};
+    absl::MutexLock lock{in_memory_modules_mu_};
     loaded_kernels_.insert(cuda_kernel.get());
   }
 
@@ -928,7 +928,7 @@ void CudaExecutor::UnloadKernel(const Kernel* kernel) {
   VLOG(3) << "[" << device_ordinal() << "] Unloading kernel " << kernel << " : "
           << kernel->name();
 
-  absl::MutexLock lock{&in_memory_modules_mu_};
+  absl::MutexLock lock{in_memory_modules_mu_};
   loaded_kernels_.erase(kernel);
 
   auto gpu_binary_it = kernel_to_gpu_binary_.find(kernel);
@@ -950,7 +950,7 @@ absl::StatusOr<ModuleHandle> CudaExecutor::LoadModule(
   // We store the pointer to the GPU binary (PTX or CUBIN) as
   // ModuleHandle::id().
   if (spec.has_cuda_cubin_in_memory()) {
-    absl::MutexLock lock{&in_memory_modules_mu_};
+    absl::MutexLock lock{in_memory_modules_mu_};
     return LoadModuleFromCuBin(
         reinterpret_cast<const char*>(spec.cuda_cubin_in_memory().data()));
   } else if (spec.has_cuda_ptx_in_memory()) {
@@ -958,14 +958,14 @@ absl::StatusOr<ModuleHandle> CudaExecutor::LoadModule(
       return absl::InternalError("PTX not found in spec");
     }
 
-    absl::MutexLock lock{&in_memory_modules_mu_};
+    absl::MutexLock lock{in_memory_modules_mu_};
     return LoadModuleFromPtx(spec.cuda_ptx_in_memory());
   }
   return absl::InternalError("No method of loading CUDA module provided");
 }
 
 bool CudaExecutor::UnloadModule(ModuleHandle module_handle) {
-  absl::MutexLock lock{&in_memory_modules_mu_};
+  absl::MutexLock lock{in_memory_modules_mu_};
   return UnloadGpuBinary(module_handle);
 }
 
@@ -993,7 +993,7 @@ int fpus_per_core(int cc_major, int cc_minor) {
 absl::StatusOr<std::shared_ptr<DeviceMemoryBase>>
 CudaExecutor::CreateOrShareConstant(Stream* stream,
                                     absl::Span<const uint8_t> content) {
-  absl::MutexLock lock{&shared_constants_mu_};
+  absl::MutexLock lock{shared_constants_mu_};
   // We assume all constants are uniquely identified by this hash. In the
   // (highly unlikely) event of a hash collision, the program will likely crash
   // (because the cached constant that will be returned by mistake is unlikely
@@ -1163,17 +1163,17 @@ absl::Status CudaExecutor::SynchronousMemcpy(void* host_dst,
 
 void CudaExecutor::DeallocateStream(Stream* stream) {
   {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     if (dnn_ != nullptr) {
       dnn_->NotifyStreamDestroyed(stream);
     }
   }
-  absl::MutexLock l(&alive_gpu_streams_mu_);
+  absl::MutexLock l(alive_gpu_streams_mu_);
   alive_gpu_streams_.erase(stream->platform_specific_handle().stream);
 }
 
 blas::BlasSupport* CudaExecutor::AsBlas() {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   if (blas_ != nullptr) {
     return blas_.get();
   }
@@ -1193,7 +1193,7 @@ blas::BlasSupport* CudaExecutor::AsBlas() {
 }
 
 dnn::DnnSupport* CudaExecutor::AsDnn() {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   if (dnn_ != nullptr) {
     return dnn_.get();
   }
@@ -1214,7 +1214,7 @@ dnn::DnnSupport* CudaExecutor::AsDnn() {
 }
 
 fft::FftSupport* CudaExecutor::AsFft() {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   if (fft_ != nullptr) {
     return fft_.get();
   }
@@ -1266,7 +1266,7 @@ absl::StatusOr<DeviceMemoryBase> CudaExecutor::GetSymbol(
   CHECK(static_cast<bool>(module_handle));
 
   {  // give limited scope to MutexLock
-    absl::MutexLock lock{&in_memory_modules_mu_};
+    absl::MutexLock lock{in_memory_modules_mu_};
     auto it = gpu_binary_to_module_.find(module_handle);
     CHECK(it != gpu_binary_to_module_.end());
 
@@ -1307,7 +1307,7 @@ absl::StatusOr<std::unique_ptr<Event>> CudaExecutor::CreateEvent() {
 absl::StatusOr<std::unique_ptr<Stream>> CudaExecutor::CreateStream(
     std::optional<std::variant<StreamPriority, int>> priority) {
   TF_ASSIGN_OR_RETURN(auto stream, CudaStream::Create(this, priority));
-  absl::MutexLock l(&alive_gpu_streams_mu_);
+  absl::MutexLock l(alive_gpu_streams_mu_);
   alive_gpu_streams_[stream->stream_handle()] = stream.get();
   return std::move(stream);
 }
@@ -1504,7 +1504,7 @@ absl::StatusOr<MemoryType> CudaExecutor::GetPointerMemorySpace(
 
 absl::StatusOr<const CudaKernel*> CudaExecutor::GetCudaKernel(
     const Kernel* kernel) {
-  absl::MutexLock lock{&in_memory_modules_mu_};
+  absl::MutexLock lock{in_memory_modules_mu_};
   auto it = loaded_kernels_.find(kernel);
   if (it == loaded_kernels_.end()) {
     return absl::NotFoundError("Kernel not loaded in this executor.");
