@@ -219,6 +219,7 @@ class WhereOutputIterator {
       iterator_category;  ///< The iterator category
 #endif  // THRUST_VERSION
 
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE
   WhereOutputIterator(int64* ptr, const Eigen::DenseIndex max_row)
       : ptr_(ptr), max_row_(max_row) {}
 
