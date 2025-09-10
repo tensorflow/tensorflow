@@ -1289,13 +1289,13 @@ async_call {
       "precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},
       "lhs_stride":"1024","rhs_stride":"1024"}}
   ROOT get-tuple-element = f32[32,32] get-tuple-element(gemm), index=0
-}, execution_thread="explicit"
+}
 
 ENTRY main {
   p0 = f32[32,32] parameter(0)
   p1 = f32[32,32] parameter(1)
   call-start = ((f32[32,32], f32[32,32]), f32[32,32]) call-start(p0, p1),
-    async_execution_thread="explicit", to_apply=async_call,
+    to_apply=async_call,
     frontend_attributes={_xla_stream_annotation="1"}
   ROOT call-done = f32[32,32]{1,0} call-done(call-start),
     frontend_attributes={_xla_stream_annotation="1"},
@@ -1636,7 +1636,6 @@ TEST_F(PassOrderTest, LHSRunsIfProfileDataIsAvailable) {
       "latency-hiding-scheduler",
   };
   CompileModule(config);
-  EXPECT_THAT(optimized_module_, Not(HasExpectedPasses(kExpectedPasses)));
 
   // Make sure we turn the LHS on with we schedule with profile data.
   const absl::string_view kProfile = R"pb(

@@ -290,7 +290,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_dump_latency_hiding_schedule(false);
   opts.set_xla_gpu_enable_latency_hiding_scheduler(false);
   opts.set_xla_gpu_enable_analytical_latency_estimator(false);
-  opts.set_xla_gpu_enable_analytical_sol_latency_estimator(false);
+  opts.set_xla_gpu_enable_analytical_sol_latency_estimator(true);
   auto* sol_estimator_defaults =
       opts.mutable_xla_gpu_analytical_latency_estimator_options();
   sol_estimator_defaults->emplace(kSolNcclOpLaunchUs, "-1");
