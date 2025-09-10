@@ -1093,8 +1093,10 @@ TEST_F(ClientServerTest, KeyValueIncrement) {
   auto client = GetClient(/*node_id=*/0);
   TF_ASSERT_OK(client->Connect());
   TF_ASSERT_OK(client->KeyValueSet("test_key", "10"));
-  EXPECT_THAT(client->KeyValueIncrement("test_key", 1), IsOkAndHolds(11));
-  EXPECT_THAT(client->KeyValueTryGet("test_key"), IsOkAndHolds("11"));
+  EXPECT_THAT(client->KeyValueIncrement("test_key", 1),
+              absl_testing::IsOkAndHolds(11));
+  EXPECT_THAT(client->KeyValueTryGet("test_key"),
+              absl_testing::IsOkAndHolds("11"));
 }
 
 TEST_F(ClientServerTest, KeyValueDelete) {
