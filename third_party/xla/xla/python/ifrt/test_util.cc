@@ -129,24 +129,25 @@ namespace {
 
 class TestUserContext : public llvm::RTTIExtends<TestUserContext, UserContext> {
  public:
-  explicit TestUserContext(uint64_t id) : id_(id) {}
+  explicit TestUserContext(UserContextId id) : id_(id) {}
 
-  uint64_t Fingerprint() const override { return id_; }
+  uint64_t Fingerprint() const override { return id_.value(); }
+  UserContextId Id() const override { return id_; }
 
   std::string DebugString() const override {
-    return absl::StrCat("TestUserContext(", id_, ")");
+    return absl::StrCat("TestUserContext(", id_.value(), ")");
   }
 
   // No new `ID` is not defined because tests below do not exercise RTTI.
 
  private:
-  uint64_t id_;
+  UserContextId id_;
 };
 
 }  // namespace
 
 UserContextRef MakeUserContext(uint64_t id) {
-  return tsl::MakeRef<TestUserContext>(id);
+  return tsl::MakeRef<TestUserContext>(UserContextId(id));
 }
 
 }  // namespace test_util

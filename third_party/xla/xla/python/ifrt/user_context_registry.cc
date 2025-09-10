@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/python/ifrt/user_context_registry.h"
 
-#include <cstdint>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -35,7 +34,7 @@ UserContextRegistry& UserContextRegistry::Get() {
 
 TrackedUserContextRef UserContextRegistry::Register(
     UserContextRef user_context) {
-  const uint64_t id = user_context->Fingerprint();
+  const UserContextId id = user_context->Id();
   absl::MutexLock lock(&mu_);
   auto it = registry_.find(id);
   if (it != registry_.end()) {
@@ -54,7 +53,7 @@ TrackedUserContextRef UserContextRegistry::Register(
   return tracked_user_context;
 }
 
-TrackedUserContextRef UserContextRegistry::Lookup(uint64_t id) const {
+TrackedUserContextRef UserContextRegistry::Lookup(UserContextId id) const {
   absl::MutexLock lock(&mu_);
   auto it = registry_.find(id);
   if (it != registry_.end()) {
@@ -79,7 +78,7 @@ std::vector<TrackedUserContextRef> UserContextRegistry::LookupAll() const {
   return tracked_user_contexts;
 }
 
-void UserContextRegistry::Unregister(uint64_t id) {
+void UserContextRegistry::Unregister(UserContextId id) {
   absl::MutexLock lock(&mu_);
   CHECK_EQ(registry_.erase(id), 1);
 }

@@ -36,6 +36,7 @@ class TestUserContext : public llvm::RTTIExtends<TestUserContext, UserContext> {
   static UserContextRef Create() { return tsl::MakeRef<TestUserContext>(); }
 
   uint64_t Fingerprint() const override { return 1; }
+  UserContextId Id() const override { return UserContextId(1); }
 
   std::string DebugString() const override { return ""; }
 
@@ -55,6 +56,7 @@ TEST(UserContextScopeTest, SingleScope) {
 TEST(UserContextScopeTest, SingleScopeWithInlineContextCreation) {
   UserContextScope scope(TestUserContext::Create());
   EXPECT_EQ(UserContextScope::current()->Fingerprint(), 1);
+  EXPECT_EQ(UserContextScope::current()->Id(), UserContextId(1));
 }
 
 TEST(UserContextScopeTest, NestedScopes) {
