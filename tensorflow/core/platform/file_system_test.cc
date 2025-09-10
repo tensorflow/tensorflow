@@ -178,7 +178,7 @@ string Match(InterPlanetaryFileSystem* ipfs, const string& suffix_pattern) {
     for (const string& result : results) {
       absl::string_view trimmed_result(result);
       EXPECT_TRUE(
-          absl::ConsumePrefix(&trimmed_result, strings::StrCat(kPrefix, "/")));
+          absl::ConsumePrefix(&trimmed_result, absl::StrCat(kPrefix, "/")));
       trimmed_results.push_back(trimmed_result);
     }
     return absl::StrJoin(trimmed_results, ",");
