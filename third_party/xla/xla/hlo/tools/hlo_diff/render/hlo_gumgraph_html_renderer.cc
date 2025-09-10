@@ -316,7 +316,8 @@ std::string PrintCss() {
 std::string PrintJavascript() {
   return R"html(
   <script defer>
-  function CopyToClipboard(text) {
+  function CopyToClipboard(id) {
+    const text = document.getElementById(id).textContent;
     navigator.clipboard.writeText(text);
     const tooltip = event.srcElement.querySelector('.tooltiptext');
     tooltip.textContent = 'Copied to clipboard';
@@ -611,11 +612,10 @@ std::string PrintTooltip(absl::string_view text, absl::string_view tooltip_text,
 
 // Print click to copy button.
 std::string PrintClickToCopyButton(absl::string_view text,
-                                   absl::string_view content) {
+                                   absl::string_view pre_id) {
   return absl::StrFormat(
-      R"html(<span class="click-to-copy" onclick="CopyToClipboard(`%s`)">%s</span>)html",
-      EscapeStringForHtmlAttribute(content),
-      PrintTooltip(text, "Click to copy", TooltipPosition::kLeft));
+      R"html(<span class="click-to-copy" onclick="CopyToClipboard('%s')">%s</span>)html",
+      pre_id, PrintTooltip(text, "Click to copy", TooltipPosition::kLeft));
 }
 
 // Print textbox with click to copy button.
@@ -625,7 +625,7 @@ std::string PrintTextbox(absl::string_view title, absl::string_view content,
       PrintDiv(title, {"title"}),
       PrintDiv(absl::StrCat(absl::StrFormat(R"html(<pre id="%s">%s</pre>)html",
                                             id, content),
-                            PrintClickToCopyButton("📋", content)),
+                            PrintClickToCopyButton("📋", id)),
                {"textbox"}));
 }
 
