@@ -39,7 +39,7 @@ class SliceHoisterTest : public HloHardwareIndependentTestBase {
   SliceHoisterTest()
       : HloHardwareIndependentTestBase(
             /*verifier_layout_sensitive=*/false,
-            /*allow_mixed_precision_in_hlo_verifier=*/true) {};
+            /*allow_mixed_precision_in_hlo_verifier=*/false) {};
 };
 
 TEST_F(SliceHoisterTest, HoistSliceThroughAdd) {
@@ -135,65 +135,6 @@ TEST_F(SliceHoisterTest, HoistSliceThroughMultipleElementwiseBinaryOperations) {
   check_slice_attributes(param_2_slice_1);
 }
 
-TEST_F(SliceHoisterTest, DoesNotHoistSliceThroughAddIfElementTypesDoNotMatch) {
-  absl::string_view module_str = R"(
-    HloModule module
-    ENTRY main {
-      add_op = f32[8,9] add(f16[8,9] parameter(0), f32[8,9] parameter(1))
-      ROOT slice_op = f32[2,9] slice(f32[8,9] add_op), slice={[0:2], [0:9]}
-    }
-  )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
-
-  SliceHoister slice_hoister;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunHloPass(&slice_hoister, module.get()));
-
-  SCOPED_TRACE(module->ToString());
-  EXPECT_FALSE(changed);
-}
-
-TEST_F(SliceHoisterTest,
-       DoesNotHoistSliceThroughAddIfAddTypeDoesNotMatchSliceType) {
-  absl::string_view module_str = R"(
-    HloModule module
-    ENTRY main {
-      add_op = f32[8,9] add(f32[8,9] parameter(0), f32[8,9] parameter(1))
-      ROOT slice_op = f16[2,9] slice(f32[8,9] add_op), slice={[0:2], [0:9]}
-    }
-  )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
-
-  SliceHoister slice_hoister;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunHloPass(&slice_hoister, module.get()));
-
-  SCOPED_TRACE(module->ToString());
-  EXPECT_FALSE(changed);
-}
-
-TEST_F(SliceHoisterTest,
-       DoesNotHoistSliceThroughAddIfAddTypeDoesNotMatchOperandsType) {
-  absl::string_view module_str = R"(
-    HloModule module
-    ENTRY main {
-      add_op = f32[8,9] add(f16[8,9] parameter(0), f16[8,9] parameter(1))
-      ROOT slice_op = f32[2,9] slice(f32[8,9] add_op), slice={[0:2], [0:9]}
-    }
-  )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
-
-  SliceHoister slice_hoister;
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunHloPass(&slice_hoister, module.get()));
-
-  SCOPED_TRACE(module->ToString());
-  EXPECT_FALSE(changed);
-}
-
 // Dot is not an element-wise operation.
 TEST_F(SliceHoisterTest, DoesNotHoistSliceThroughDot) {
   absl::string_view module_str = R"(
@@ -236,6 +177,73 @@ TEST_F(SliceHoisterTest, DoesNotHoistSliceThroughNegate) {
 
   SCOPED_TRACE(module->ToString());
   EXPECT_FALSE(changed);
+}
+
+TEST_F(SliceHoisterTest, HoistSliceThroughTranspose) {
+  const absl::string_view hlo_string = R"(
+    HloModule module
+    ENTRY main {
+      param_0 = f32[2,3,5] parameter(0)
+      transpose_op = f32[3,2,5] transpose(param_0), dimensions={1,0,2}
+      ROOT slice = f32[2,1,2] slice(transpose_op), slice={[1:3], [0:1:2], [0:4:3]}
+    }
+    )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  SliceHoister slice_hoister;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          RunHloPass(&slice_hoister, module.get()));
+
+  SCOPED_TRACE(module->ToString());
+  EXPECT_TRUE(changed);
+  const HloInstruction* transpose_op = nullptr;
+  const HloInstruction* slice_op = nullptr;
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Transpose(&transpose_op,
+                                      m::Slice(&slice_op, m::Parameter(0)))));
+  EXPECT_THAT(transpose_op->dimensions(), ElementsAre(1, 0, 2));
+  EXPECT_THAT(slice_op->slice_starts(), ElementsAre(0, 1, 0));
+  EXPECT_THAT(slice_op->slice_limits(), ElementsAre(1, 3, 4));
+  EXPECT_THAT(slice_op->slice_strides(), ElementsAre(2, 1, 3));
+}
+
+TEST_F(SliceHoisterTest, HoistSliceThroughTransposeAndAdd) {
+  const absl::string_view hlo_string = R"(
+    HloModule module
+    ENTRY main {
+      p0 = f32[2,3,5] parameter(0)
+      p1 = f32[2,3,5] parameter(1)
+      add_op = f32[2,3,5] add(p0, p1)
+      transpose_op = f32[3,2,5] transpose(add_op), dimensions={1,0,2}
+      ROOT slice_op = f32[2,1,2] slice(transpose_op), slice={[1:3], [0:1:2], [0:4:3]}
+    }
+    )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  SliceHoister slice_hoister;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          RunHloPass(&slice_hoister, module.get()));
+
+  SCOPED_TRACE(module->ToString());
+  EXPECT_TRUE(changed);
+  const HloInstruction* transpose_op = nullptr;
+  const HloInstruction* p0_slice = nullptr;
+  const HloInstruction* p1_slice = nullptr;
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Transpose(&transpose_op,
+                              m::Add(m::Slice(&p0_slice, m::Parameter(0)),
+                                     m::Slice(&p1_slice, m::Parameter(1))))));
+  EXPECT_THAT(transpose_op->dimensions(), ElementsAre(1, 0, 2));
+  auto check_slice_attributes = [](const HloInstruction* slice) {
+    EXPECT_THAT(slice->slice_starts(), ElementsAre(0, 1, 0));
+    EXPECT_THAT(slice->slice_limits(), ElementsAre(1, 3, 4));
+    EXPECT_THAT(slice->slice_strides(), ElementsAre(2, 1, 3));
+  };
+  check_slice_attributes(p0_slice);
+  check_slice_attributes(p1_slice);
 }
 
 }  // anonymous namespace

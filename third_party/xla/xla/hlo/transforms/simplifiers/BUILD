@@ -1711,6 +1711,8 @@ cc_library(
     srcs = ["slice_hoister.cc"],
     hdrs = ["slice_hoister.h"],
     deps = [
+        "//xla:permutation_util",
+        "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/tsl/platform:errors",
