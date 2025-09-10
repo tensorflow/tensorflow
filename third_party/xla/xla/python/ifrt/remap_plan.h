@@ -21,10 +21,12 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/remap_plan.pb.h"
 #include "xla/python/ifrt/serdes_default_version_accessor.h"
 #include "xla/python/ifrt/serdes_version.h"
@@ -80,6 +82,13 @@ struct RemapPlan {
     std::string DebugString() const;
   };
 
+  // List of devices that are used as the source shards for a given input array
+  // contributing to a given output array.
+  struct InputDeviceRange {
+    int in_array;
+    DeviceListRef input_devices;
+  };
+
   // Specification of inputs.
   std::vector<ArraySpec> input_specs;
 
@@ -88,6 +97,23 @@ struct RemapPlan {
 
   // Mappings.
   std::shared_ptr<std::vector<Mapping>> mappings;
+
+  // If a key K is present in `input_devices_for_output_map` then it describes
+  // all the inputs that contribute to the output with index K.
+  //
+  // The value lists all the input array indices that contribute to output K,
+  // and for each input array I a device list containing all of the devices that
+  // hold shards coming from I.
+  //
+  // Information must be consistent with the information in `mappings`, i.e.,
+  // `input_devices_for_output_map` must duplicate, not replace, information in
+  // `mappings`.
+  //
+  // Entries in `input_devices_for_output_map` are strictly optional, but their
+  // presence may allow some implementations to be more efficient since the
+  // implementation need not construct the device lists at execution time.
+  absl::flat_hash_map<int, std::vector<InputDeviceRange>>
+      input_devices_for_output_map;
 
   // Validates this plan against the requirements (see `RemapPlan` comment).
   // This is a slow operation. It should not be performed repeatedly.

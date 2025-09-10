@@ -893,6 +893,7 @@ tf_proto_library(
         ":internal",
         ":users",
     ]),
+    deps = [":device_proto"],
 )
 
 xla_cc_test(
