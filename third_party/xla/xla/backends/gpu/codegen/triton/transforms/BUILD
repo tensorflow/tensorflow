@@ -35,6 +35,7 @@ cc_library(
         "generalize_kernel_signature.cc",
         "int4_passes.cc",
         "round_f32_to_tf32_for_tf32_dot_pass.cc",
+        "triton_xla_convert_unsupported_types.cc",
         "triton_xla_extract_insert_to_triton_pass.cc",
         "triton_xla_fold_transpose_pass.cc",
         "triton_xla_lower_atomics_pass.cc",

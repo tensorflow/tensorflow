@@ -129,4 +129,25 @@ def TritonXLALowerAtomicsPass
   let constructor = "CreateTritonXLALowerAtomicsPass()";
 }
 
+def TritonXLAConvertUnsupportedTypesPass
+    : Pass<"convert-unsupported-types", "mlir::ModuleOp"> {
+  let summary = "Converts types unsupported by Triton into their supported equivalents.";
+  let description = [{
+    This pass converts types unsupported by Triton into their supported
+    equivalents.
+
+    This is essentially useful to support e.g. flavors of float8 types that
+    Triton decides to represent as int8s from the very beginning, but that have
+    both a proper representation in HLO and upstream MLIR.
+
+    The important invariant of this pass is that the types it converts to have
+    the same bitwidth as the original type.
+
+    This pass may not be replaced by a simple `TypeConverter`, because the type
+    replacement it performs do not preserve semantics in a vacuum (but may for
+    specific ops, such as loads, stores, or bitcasts).
+  }];
+  let constructor = "CreateTritonXLAConvertUnsupportedTypesPass()";
+}
+
 #endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_PASSES_TD_
