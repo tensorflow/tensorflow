@@ -1162,6 +1162,46 @@ xla_cc_test(
     ],
 )
 
+cc_library(
+    name = "user_context_status_util",
+    srcs = ["user_context_status_util.cc"],
+    hdrs = ["user_context_status_util.h"],
+    visibility = internal_visibility([
+        ":friends",
+        ":internal",
+        ":users",
+    ]),
+    deps = [
+        ":user_context",
+        ":user_context_registry",
+        "//xla/tsl/platform:errors",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:cord",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "user_context_status_util_test",
+    srcs = ["user_context_status_util_test.cc"],
+    deps = [
+        ":user_context",
+        ":user_context_registry",
+        ":user_context_status_util",
+        "//xla/tsl/concurrency:ref_count",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:status_to_from_proto",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:cord",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
 xla_cc_test(
     name = "custom_call_program_serdes_test",
     srcs = ["custom_call_program_serdes_test.cc"],
