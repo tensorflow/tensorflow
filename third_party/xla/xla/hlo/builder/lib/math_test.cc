@@ -219,18 +219,21 @@ class MathTypedTest : public MathTest {
     if (std::is_same_v<T, double> && !test::BackendSupportsFloat64()) {
       GTEST_SKIP();
     }
+
+    if (std::is_same_v<T, tsl::float4_e2m1fn> &&
+        test::DeviceTypeIs(test::kGpu) &&
+        !test::UsingStreamExecutorGpuClient()) {
+      // TODO: b/443805514 - Test float4_e2m1fn on TFRT GPU client.
+      GTEST_SKIP() << "TFRT GPU client does not support float4_e2m1fn.";
+    }
   }
 };
 
 using TestTypes =
     ::testing::Types<tsl::float8_e3m4, tsl::float8_e4m3, tsl::float8_e4m3fnuz,
                      tsl::float8_e4m3b11fnuz, tsl::float8_e5m2,
-                     tsl::float8_e5m2fnuz,
-                     Eigen::half,
-                     Eigen::bfloat16,
-                     double,
-                     tsl::float4_e2m1fn,
-                     float>;
+                     tsl::float8_e5m2fnuz, Eigen::half, Eigen::bfloat16, double,
+                     tsl::float4_e2m1fn, float>;
 
 TYPED_TEST_CASE(MathTypedTest, TestTypes);
 
