@@ -2130,6 +2130,21 @@ cuda_library(
 )
 
 cuda_library(
+    name = "collective_kernel_util_cuda",
+    srcs = [
+        "collective_kernel_util_cuda.cc",
+        "//xla/stream_executor/gpu:collective_kernel_util.cu.h",
+    ],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = ["@local_config_cuda//cuda:cuda_headers"],
+    alwayslink = 1,
+)
+
+cuda_library(
     name = "ragged_all_to_all_kernel_cuda",
     srcs = [
         "ragged_all_to_all_kernel_cuda.cc",
@@ -2154,6 +2169,7 @@ cuda_library(
     srcs = [
         "all_reduce_kernel_cuda.cc",
         "//xla/stream_executor/gpu:all_reduce_kernel_lib.cu.h",
+        "//xla/stream_executor/gpu:collective_kernel_util.cu.h",
     ],
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
     tags = [
@@ -2161,6 +2177,7 @@ cuda_library(
         "gpu",
     ],
     deps = [
+        ":collective_kernel_util_cuda",
         ":cuda_platform_id",
         "//xla:types",
         "//xla/service:collective_ops_utils",

@@ -38,23 +38,6 @@ union alignas(8) Vec<hip_bfloat16> {
   PackedType packed;
 };
 
-template <>
-__device__ __forceinline__ void PutSignalFlag<PlatformType::ROCM>(
-    uint32_t* addr, uint32_t val) {
-  __atomic_store_n(addr, val, __ATOMIC_RELEASE);
-  __threadfence_system();  // Ensure visibility across all GPUs
-}
-
-template <>
-__device__ __forceinline__ void WaitSignalFlag<PlatformType::ROCM>(
-    uint32_t* addr, uint32_t expected) {
-  uint32_t val;
-  do {
-    __threadfence_system();  // Ensure we see the latest value
-    val = __atomic_load_n(addr, __ATOMIC_ACQUIRE);
-  } while (val < expected);
-}
-
 }  // namespace stream_executor::gpu
 
 // C++ macros don't like commas in template arguments, so we need to use
