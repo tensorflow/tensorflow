@@ -34,7 +34,6 @@ limitations under the License.
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
@@ -42,9 +41,9 @@ namespace xla {
 namespace gpu {
 namespace {
 
+using ::absl_testing::IsOkAndHolds;
+using ::absl_testing::StatusIs;
 using ::testing::SizeIs;
-using ::tsl::testing::IsOkAndHolds;
-using ::tsl::testing::StatusIs;
 
 const char kTritonFusionHlo[] = R"(
   HloModule module
@@ -132,6 +131,9 @@ TEST_F(FissionBackendTest, GetDefaultConfigFails) {
 TEST_F(FissionBackendTest, ApplyCublasConfigToFusionInstruction) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                           ParseAndReturnVerifiedModule(kTritonFusionHlo));
+  hlo_module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_enable_cublaslt(false);
   AutotuneResult::GemmKey config;
   config.set_algorithm(3);
   google::protobuf::Any any;
@@ -139,8 +141,26 @@ TEST_F(FissionBackendTest, ApplyCublasConfigToFusionInstruction) {
   TF_EXPECT_OK(backend_.ApplyConfig(
       *hlo_module->entry_computation()->root_instruction(), any));
   EXPECT_THAT(RunFileCheck(hlo_module->ToString(),
+                           "CHECK: \"__cublas$gemm\"\n"
                            "CHECK: \"selected_algorithm\":\"3\""),
               IsOkAndHolds(true));
+}
+
+TEST_F(FissionBackendTest, ApplyCublasLtConfigToFusionInstruction) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(kTritonFusionHlo));
+  hlo_module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_enable_cublaslt(true);
+  AutotuneResult::GemmKey config;
+  config.set_algorithm(3);
+  google::protobuf::Any any;
+  any.PackFrom(config);
+  TF_EXPECT_OK(backend_.ApplyConfig(
+      *hlo_module->entry_computation()->root_instruction(), any));
+  EXPECT_THAT(
+      RunFileCheck(hlo_module->ToString(), "CHECK: \"__cublas$lt$matmul\""),
+      IsOkAndHolds(true));
 }
 
 TEST_F(FissionBackendTest, ApplyCustomKernelConfigToFusionInstruction) {
