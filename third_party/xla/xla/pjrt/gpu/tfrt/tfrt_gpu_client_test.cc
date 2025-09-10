@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/pjrt/gpu/gpu_topology.h"
 #include "xla/pjrt/gpu/gpu_topology.pb.h"
 #include "xla/pjrt/gpu/tfrt/gpu_event.h"
+#include "xla/pjrt/gpu/tfrt/tfrt_gpu_device.h"
 #include "xla/pjrt/gpu/tfrt/tfrt_gpu_executable.h"
 #include "xla/pjrt/gpu/tfrt/tracked_gpu_device_buffer.h"
 #include "xla/pjrt/host_memory_spaces.h"
@@ -137,9 +138,8 @@ absl::StatusOr<std::shared_ptr<xla::Literal>> ExtractSingleResult(
   TF_RET_CHECK(result->size() == 1);
   std::vector<std::unique_ptr<xla::PjRtBuffer>>& result_buffers = (*result)[0];
   TF_RET_CHECK(result_buffers.size() == 1);
-  auto literal_or = result_buffers[0]->ToLiteralSync();
-  if (!literal_or.status().ok()) return literal_or.status();
-  return *literal_or;
+  TF_ASSIGN_OR_RETURN(auto literal, result_buffers[0]->ToLiteralSync());
+  return literal;
 }
 
 static constexpr char const* kProgram = R"(HloModule HostTransfer
@@ -512,8 +512,7 @@ TEST(TfrtGpuClientTest, DonateWithControlDependency) {
       std::unique_ptr<PjRtBuffer> buffer,
       client->BufferFromHostLiteral(literal, client->memory_spaces()[0]));
 
-  PjRtFuture<>::Promise promise = PjRtFuture<>::CreatePromise();
-  PjRtFuture<> future(promise);
+  auto [promise, future] = PjRtFuture<>::MakePromise();
   auto blocked_buffer =
       std::move(*(buffer->DonateWithControlDependency(future)));
   EXPECT_TRUE(buffer->IsDeleted());
@@ -701,12 +700,11 @@ TEST(TfrtGpuClientTest, ToLiteralAsync) {
 
   Shape host_shape =
       ShapeUtil::DeviceShapeToHostShape(buffer->on_device_shape());
-  auto literal_promise = PjRtFuture<MutableLiteralBase*>::CreatePromise();
+  auto [literal_promise, literal_future] =
+      PjRtFuture<MutableLiteralBase*>::MakePromise();
 
   // Literal is not ready.
-  buffer
-      ->LazyToLiteral(
-          [&]() { return PjRtFuture<MutableLiteralBase*>(literal_promise); })
+  buffer->LazyToLiteral([f = std::move(literal_future)]() { return f; })
       .OnReady([&](absl::Status s) {
         absl::MutexLock l(&mu);
         TF_ASSERT_OK(s);
@@ -757,12 +755,11 @@ TEST(TfrtGpuClientTest, ToLiteralAsyncWithNonCompactLayout) {
 
   Shape host_shape =
       ShapeUtil::DeviceShapeToHostShape(buffer->on_device_shape());
-  auto literal_promise = PjRtFuture<MutableLiteralBase*>::CreatePromise();
+  auto [literal_promise, literal_future] =
+      PjRtFuture<MutableLiteralBase*>::MakePromise();
 
   absl::Notification n;
-  buffer
-      ->LazyToLiteral(
-          [&]() { return PjRtFuture<MutableLiteralBase*>(literal_promise); })
+  buffer->LazyToLiteral([f = std::move(literal_future)]() { return f; })
       .OnReady([&](absl::Status s) {
         TF_ASSERT_OK(s);
         n.Notify();
@@ -1236,8 +1233,7 @@ TEST(TfrtGpuClientTest, CopyRawToHostFuture) {
       std::unique_ptr<PjRtBuffer> buffer,
       client->BufferFromHostLiteral(literal, client->memory_spaces()[0]));
 
-  auto dst_promise = xla::PjRtFuture<void*>::CreatePromise();
-  xla::PjRtFuture<void*> dst_future(dst_promise);
+  auto [dst_promise, dst_future] = xla::PjRtFuture<void*>::MakePromise();
 
   TF_ASSERT_OK_AND_ASSIGN(int64_t size, buffer->GetOnDeviceSizeInBytes());
   auto ready = buffer->GetReadyFuture();
