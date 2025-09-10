@@ -194,6 +194,7 @@ void populateScalarHloToArithmeticConversionPatterns(
   // clang-format off
   patterns->add<
       ScalarHloToArithmeticPattern<mhlo::AbsOp>,
+      ScalarHloToArithmeticPattern<mhlo::AcoshOp>,
       ScalarHloToArithmeticPattern<mhlo::AddOp>,
       ScalarHloToArithmeticPattern<mhlo::AndOp>,
       ScalarHloToArithmeticPattern<mhlo::Atan2Op>,
