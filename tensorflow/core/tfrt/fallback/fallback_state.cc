@@ -62,7 +62,7 @@ DeviceAttributes BuildDeviceAttributes(absl::string_view name_prefix,
   const DeviceAttributes attrs = Device::BuildDeviceAttributes(
       DeviceName(name_prefix, device_type, task_id, device_id),
       DeviceType(device_type), Bytes(16ULL << 30), DeviceLocality(),
-      strings::StrCat("device: ", device_type, " device"));
+      absl::StrCat("device: ", device_type, " device"));
   return attrs;
 }
 
