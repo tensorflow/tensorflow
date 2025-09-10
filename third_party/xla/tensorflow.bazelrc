@@ -216,6 +216,10 @@ build:cuda_clang --host_linkopt="-lm"
 build:cuda_clang --linkopt="-fuse-ld=lld"
 build:cuda_clang --linkopt="-lm"
 
+build:cuda_clang_local --config=cuda_clang
+build:cuda_clang_local --config=clang_local
+build:cuda_clang_local --crosstool_top=@local_config_cuda//crosstool:toolchain
+
 # Set up compilation CUDA version and paths and use the CUDA Clang toolchain.
 build:cuda_clang_official --config=cuda_clang
 build:cuda_clang_official --config=cuda_version
@@ -228,6 +232,11 @@ build:cuda_nvcc --action_env=TF_NVCC_CLANG="1"
 build:cuda_nvcc --@local_config_cuda//:cuda_compiler=nvcc
 # Old config for backward compatibility
 build:nvcc_clang --config=cuda_nvcc
+
+# Deprecated cuda_nvcc config with non-hermetic toolchains
+build:cuda_nvcc_clang_local --config=cuda_nvcc
+build:cuda_nvcc_clang_local --config=clang_local
+build:cuda_nvcc_clang_local --crosstool_top=@local_config_cuda//crosstool:toolchain
 
 # Debug config. Enables Bazel's 'dbg' compilation mode, build with debugging enabled
 build:dbg -c dbg
