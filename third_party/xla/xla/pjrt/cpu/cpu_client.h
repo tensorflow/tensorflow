@@ -228,6 +228,7 @@ class PjRtCpuClient final : public CommonPjRtClient {
 
   absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> LinearizeInto(
       const LiteralSlice& literal, const xla::Layout& layout,
+      HostBufferSemantics host_buffer_semantics,
       tsl::RCReference<CommonPjRtRawBuffer> raw_buffer) override;
 
   absl::StatusOr<xla::Shape> MakeDefaultShapeForMemorySpace(
