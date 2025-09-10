@@ -29,7 +29,10 @@ limitations under the License.
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallBitVector.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/IR/AffineMap.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/service/gpu/model/experimental/symbolic_expr.h"
+#include "xla/service/gpu/model/experimental/symbolic_map_converter.h"
 
 namespace xla {
 namespace gpu {
@@ -71,6 +74,20 @@ SymbolicMap::SymbolicMap(SymbolicExprContext* ctx, int64_t num_dimensions,
                                         int64_t num_symbols,
                                         llvm::SmallVector<SymbolicExpr> exprs) {
   return SymbolicMap(ctx, num_dimensions, num_symbols, std::move(exprs));
+}
+
+SymbolicMap SymbolicMap::FromAffineMap(SymbolicExprContext* ctx,
+                                       const mlir::AffineMap& affine_map) {
+  llvm::SmallVector<SymbolicExpr> exprs =
+      AffineMapToSymbolicExprs(affine_map, ctx);
+  return SymbolicMap::Get(ctx, affine_map.getNumDims(),
+                          affine_map.getNumSymbols(), std::move(exprs));
+}
+
+mlir::AffineMap SymbolicMap::ToAffineMap(
+    mlir::MLIRContext* mlir_context) const {
+  return SymbolicExprsToAffineMap(exprs_, mlir_context, num_dimensions_,
+                                  num_symbols_);
 }
 
 std::string SymbolicMap::ToString() const {

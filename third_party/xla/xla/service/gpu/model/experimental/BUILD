@@ -216,11 +216,13 @@ cc_library(
     hdrs = ["symbolic_map.h"],
     deps = [
         ":symbolic_expr",
+        ":symbolic_map_converter",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -230,8 +232,10 @@ xla_cc_test(
     deps = [
         ":symbolic_expr",
         ":symbolic_map",
+        "//xla/hlo/analysis:indexing_test_utils",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -259,5 +263,32 @@ xla_cc_test(
         "//xla/hlo/analysis:indexing_test_utils",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "symbolic_map_converter",
+    srcs = ["symbolic_map_converter.cc"],
+    hdrs = ["symbolic_map_converter.h"],
+    deps = [
+        ":symbolic_expr",
+        "//xla/hlo/analysis:indexing_analysis",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+xla_cc_test(
+    name = "symbolic_map_converter_test",
+    srcs = ["symbolic_map_converter_test.cc"],
+    deps = [
+        ":symbolic_expr",
+        ":symbolic_map_converter",
+        "//xla/hlo/analysis:indexing_analysis",
+        "//xla/hlo/analysis:indexing_test_utils",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
     ],
 )
