@@ -378,8 +378,7 @@ TEST(PjRtFutureTest, TryMapMoveOnlyFutureCreateError) {
 }
 
 TEST(PjRtFutureTest, TryMapUnusedResult) {
-  auto promise = PjRtFuture<int>::CreatePromise();
-  PjRtFuture<int> future(promise);
+  auto [promise, future] = PjRtFuture<int>::MakePromise();
 
   bool called = false;
   future.TryMap([&](int) -> absl::StatusOr<int> {
@@ -391,8 +390,7 @@ TEST(PjRtFutureTest, TryMapUnusedResult) {
 }
 
 TEST(PjRtFutureTest, TryMapStatusUnusedResult) {
-  auto promise = PjRtFuture<>::CreatePromise();
-  PjRtFuture<> future(promise);
+  auto [promise, future] = PjRtFuture<>::MakePromise();
 
   bool called = false;
   future.TryMap([&]() -> absl::StatusOr<int> {
