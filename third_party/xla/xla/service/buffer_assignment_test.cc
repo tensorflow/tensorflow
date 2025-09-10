@@ -3579,10 +3579,10 @@ TEST(BufferAllocationSliceProtoTest, FromProtoErrorAllocationNotFound) {
   allocations.push_back(
       BufferAllocation(/*index=*/1, /*size=*/200, /*color=*/0));
 
-  EXPECT_THAT(
-      BufferAllocation::Slice::FromProto(proto, allocations),
-      StatusIs(absl::StatusCode::kOutOfRange,
-               HasSubstr("Buffer allocation index 2 is out of range.")));
+  EXPECT_THAT(BufferAllocation::Slice::FromProto(proto, allocations),
+              absl_testing::StatusIs(
+                  absl::StatusCode::kOutOfRange,
+                  HasSubstr("Buffer allocation index 2 is out of range.")));
 }
 
 TEST(BufferAllocationTest, ToProto) {
