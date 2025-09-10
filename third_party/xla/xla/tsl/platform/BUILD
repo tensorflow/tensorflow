@@ -868,3 +868,9 @@ cc_library(
     textual_hdrs = ["recordphase.h"],
     deps = tf_platform_deps("recordphase") + ["@com_google_absl//absl/strings:string_view"],
 )
+
+cc_library(
+    name = "debug_me_context",
+    hdrs = ["debug_me_context.h"],
+    deps = ["@com_google_absl//absl/container:flat_hash_map"],
+)
