@@ -401,12 +401,12 @@ xla::ifrt::Future<> Client::GetReadyFuture(
     }
   }
 
-  auto promise = Future<>::CreatePromise();
+  auto [promise, future] = Future<>::MakePromise();
   rpc_helper_->CheckValueReady(std::move(req))
-      .OnReady(
-          [promise](absl::StatusOr<std::shared_ptr<CheckValueReadyResponse>>
-                        resp) mutable { promise.Set(resp.status()); });
-  futures.push_back(Future<>(std::move(promise)));
+      .OnReady([promise = std::move(promise)](
+                   absl::StatusOr<std::shared_ptr<CheckValueReadyResponse>>
+                       resp) mutable { promise.Set(resp.status()); });
+  futures.push_back(std::move(future));
 
   return JoinFutures(futures);
 }
