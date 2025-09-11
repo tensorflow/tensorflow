@@ -40,9 +40,8 @@ absl::StatusOr<std::string> ProtoToHumanReadableJson(
     // Convert error_msg google::protobuf::StringPiece to
     // tsl::StringPiece.
     auto error_msg = status.message();
-    return errors::Internal(strings::StrCat(
-        "Could not convert proto to JSON string: ",
-        absl::string_view(error_msg.data(), error_msg.length())));
+    return errors::Internal(
+        absl::StrCat("Could not convert proto to JSON string: ", error_msg));
   }
   return std::move(result);
 }
@@ -60,9 +59,8 @@ absl::Status HumanReadableJsonToProto(const string& str,
     // Convert error_msg google::protobuf::StringPiece to
     // tsl::StringPiece.
     auto error_msg = status.message();
-    return errors::Internal(strings::StrCat(
-        "Could not convert JSON string to proto: ",
-        absl::string_view(error_msg.data(), error_msg.length())));
+    return errors::Internal(
+        absl::StrCat("Could not convert JSON string to proto: ", error_msg));
   }
   return absl::OkStatus();
 }
