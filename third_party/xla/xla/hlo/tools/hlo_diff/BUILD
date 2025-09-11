@@ -75,6 +75,7 @@ cc_library(
         "//xla/hlo/tools/hlo_diff/graph:hlo_gumgraph",
         "//xla/hlo/tools/hlo_diff/graph:hlo_gumgraph_node",
         "//xla/hlo/tools/hlo_diff/graph/utils:hlo_gumgraph_dfs",
+        "//xla/hlo/tools/hlo_diff/proto:diff_result_proto_cc",
         "//xla/hlo/tools/hlo_diff/utils:bidirectional_map",
         "//xla/hlo/tools/hlo_diff/utils:connected_components",
         "//xla/tsl/platform:statusor",

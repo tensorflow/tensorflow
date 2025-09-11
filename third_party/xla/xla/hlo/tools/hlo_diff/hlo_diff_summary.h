@@ -28,6 +28,7 @@
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph.h"
 #include "xla/hlo/tools/hlo_diff/hlo_diff_result.h"
+#include "xla/hlo/tools/hlo_diff/proto/diff_result.pb.h"
 
 namespace xla {
 namespace hlo_diff {
@@ -101,6 +102,9 @@ struct DiffSummary {
 
   // Summary of each instruction.
   InstructionSummaryMap instruction_summary;
+
+  // Converts the diff summary to a proto.
+  DiffSummaryProto ToProto() const;
 };
 
 // Constructs the diff summary from the diff result.

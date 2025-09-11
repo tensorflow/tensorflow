@@ -35,6 +35,8 @@ namespace xla {
 namespace hlo_diff {
 namespace {
 
+using ::testing::AllOf;
+using ::testing::ElementsAre;
 using ::testing::ExplainMatchResult;
 using ::testing::FieldsAre;
 using ::testing::IsEmpty;
@@ -618,6 +620,74 @@ TEST_F(HloDiffTest, DiffSummaryFromDiffResultProtoWorks) {
       diff_summary->computation_diff_patterns,
       UnorderedPointwise(EqualsComputationDiffPattern(),
                          expected_diff_summary->computation_diff_patterns));
+}
+
+TEST_F(HloDiffTest, DiffSummaryToProtoWorks) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_l,
+                          ParseAndReturnVerifiedModule(R"(
+  HloModule module, is_scheduled=true
+
+  ENTRY entry {
+    parameter.0 = f32[] parameter(0)
+    parameter.1 = f32[] parameter(1)
+    add.0 = f32[] add(parameter.0, parameter.1)
+  }
+  )"));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_l,
+                          HloGumgraph::Create(module_l.get()));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_r,
+                          ParseAndReturnVerifiedModule(R"(
+  HloModule module, is_scheduled=true
+
+  ENTRY entry {
+    parameter.0 = f32[] parameter(0)
+    parameter.1 = f32[] parameter(1)
+    add.0 = f32[] add(parameter.1, parameter.0)
+  }
+  )"));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_r,
+                          HloGumgraph::Create(module_r.get()));
+  HloGumgraphMappings mappings;
+  ASSERT_NO_FATAL_FAILURE(OverwriteMapInstructions(
+      GetNodeByName(*graph_l, "add.0"), GetNodeByName(*graph_r, "add.0"),
+      mappings, true));
+  std::unique_ptr<const DiffResult> diff_result =
+      ConstructDiffResult(*graph_l, *graph_r, mappings);
+  std::unique_ptr<const DiffSummary> diff_summary =
+      ConstructDiffSummary(*graph_l, *graph_r, *diff_result);
+
+  DiffSummaryProto proto = diff_summary->ToProto();
+
+  EXPECT_THAT(
+      proto.computation_diff_patterns(),
+      ElementsAre(AllOf(
+          Property(&ComputationDiffPatternProto::fingerprint,
+                   12418933386714070753U),
+          Property(
+              &ComputationDiffPatternProto::computation_group,
+              ElementsAre(AllOf(
+                  Property(
+                      &ComputationGroupProto::left_computations,
+                      ElementsAre(AllOf(
+                          Property(&ComputationDetailsProto::name, "entry"),
+                          Property(&ComputationDetailsProto::instructions,
+                                   ElementsAre("parameter.0", "parameter.1",
+                                               "add.0"))))),
+                  Property(
+                      &ComputationGroupProto::right_computations,
+                      ElementsAre(AllOf(
+                          Property(&ComputationDetailsProto::name, "entry"),
+                          Property(&ComputationDetailsProto::instructions,
+                                   ElementsAre("parameter.0", "parameter.1",
+                                               "add.0")))))))),
+          Property(&ComputationDiffPatternProto::changed_instruction_count, 0),
+          Property(
+              &ComputationDiffPatternProto::left_unmatched_instruction_count,
+              2),
+          Property(
+              &ComputationDiffPatternProto::right_unmatched_instruction_count,
+              2))));
 }
 
 }  // namespace

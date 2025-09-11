@@ -42,6 +42,7 @@
 #include "xla/hlo/tools/hlo_diff/graph/utils/hlo_gumgraph_dfs.h"
 #include "xla/hlo/tools/hlo_diff/hlo_diff_result.h"
 #include "xla/hlo/tools/hlo_diff/hlo_gumgraph_mappings.h"
+#include "xla/hlo/tools/hlo_diff/proto/diff_result.pb.h"
 #include "xla/hlo/tools/hlo_diff/utils/bidirectional_map.h"
 #include "xla/hlo/tools/hlo_diff/utils/connected_components.h"
 #include "xla/tsl/platform/statusor.h"
@@ -451,6 +452,44 @@ void PrintTo(const ComputationDiffPattern& diff_pattern, std::ostream* os) {
       << diff_pattern.diff_metrics.right_unmatched_instruction_count
       << " right unmatched }";
   *os << " }";
+}
+
+DiffSummaryProto DiffSummary::ToProto() const {
+  DiffSummaryProto proto;
+  for (const auto& diff_pattern : computation_diff_patterns) {
+    ComputationDiffPatternProto* diff_pattern_proto =
+        proto.add_computation_diff_patterns();
+    diff_pattern_proto->set_fingerprint(diff_pattern.fingerprint);
+    diff_pattern_proto->set_changed_instruction_count(
+        diff_pattern.diff_metrics.changed_instruction_count);
+    diff_pattern_proto->set_left_unmatched_instruction_count(
+        diff_pattern.diff_metrics.left_unmatched_instruction_count);
+    diff_pattern_proto->set_right_unmatched_instruction_count(
+        diff_pattern.diff_metrics.right_unmatched_instruction_count);
+    for (const auto& computation_group : diff_pattern.computation_groups) {
+      ComputationGroupProto* group_proto =
+          diff_pattern_proto->add_computation_group();
+      for (const HloComputation* computation :
+           computation_group.left_computations) {
+        ComputationDetailsProto* details_proto =
+            group_proto->add_left_computations();
+        details_proto->set_name(computation->name());
+        for (const HloInstruction* instruction : computation->instructions()) {
+          details_proto->add_instructions(instruction->name());
+        }
+      }
+      for (const HloComputation* computation :
+           computation_group.right_computations) {
+        ComputationDetailsProto* details_proto =
+            group_proto->add_right_computations();
+        details_proto->set_name(computation->name());
+        for (const HloInstruction* instruction : computation->instructions()) {
+          details_proto->add_instructions(instruction->name());
+        }
+      }
+    }
+  }
+  return proto;
 }
 
 }  // namespace hlo_diff
