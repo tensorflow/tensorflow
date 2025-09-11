@@ -464,7 +464,7 @@ class HloPrintOptions {
 // where <xxx> is an index starting from 0.
 class CanonicalNameMap {
  public:
-  const std::string& LookupOrInsert(int unique_id) {
+  const std::string& LookupOrInsert(int64_t unique_id) {
     std::string& canonical_name = canonical_name_map_[unique_id];
     if (canonical_name.empty()) {
       absl::StrAppend(&canonical_name, "tmp_", canonical_name_map_.size() - 1);
@@ -475,7 +475,7 @@ class CanonicalNameMap {
   void Reserve(size_t size) { canonical_name_map_.reserve(size); }
 
  private:
-  absl::flat_hash_map<int, std::string> canonical_name_map_;
+  absl::flat_hash_map<int64_t, std::string> canonical_name_map_;
 };
 
 }  // namespace xla

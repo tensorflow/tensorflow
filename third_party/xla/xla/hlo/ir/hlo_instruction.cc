@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/ascii.h"
@@ -1368,10 +1369,12 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       << "Instruction with negative id: " << proto.id();
   // TODO(b/399394039): Reinforce the condition on INT64_MAX when upgrading
   // unique_id_ to int64_t.
-  LOG_IF(INFO, proto.id() > INT_MAX)
-      << "Instruction with id > INT_MAX: " << proto.id()
-      << " this is not intended behavior and might indicate a bug in the HLO "
-         "proto serialization.";
+  if (proto.id() > INT_MAX) {
+    LOG_EVERY_N(WARNING, 10000)
+        << "Instruction with id > INT_MAX: " << proto.id()
+        << " this is not intended behavior and might indicate a bug in the HLO "
+           "proto serialization.";
+  }
   instruction->unique_id_ = proto.id();
 
   if (proto.has_sharding()) {
@@ -3920,7 +3923,7 @@ void HloInstruction::PrintWithCanonicalNameMap(
       // If we are canonicalizing instruction names and this is a top-level
       // HloInstruction::ToString() call, don't print an instruction name.
       DCHECK(!options.print_percent());  // no need to call PrintNameInternal
-      printer->Append(canonical_name_map->LookupOrInsert(unique_id()));
+      printer->Append(canonical_name_map->LookupOrInsert(unique_id_64_bits()));
       printer->Append(" = ");
     }
   } else {
@@ -4046,7 +4049,7 @@ void HloInstruction::PrintOperandsWithCanonicalNameMap(
           printer->Append(" ");
         }
         printer->Append(
-            canonical_name_map->LookupOrInsert(operand->unique_id()));
+            canonical_name_map->LookupOrInsert(operand->unique_id_64_bits()));
       }
     } else if (options.print_operand_names()) {
       if (add_space) {

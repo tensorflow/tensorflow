@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -25,8 +27,10 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
+#include "xla/printer.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -211,5 +215,40 @@ TEST_F(HloInstructionTest, PrintCompareOpWorksIfDead) {
   *module->mutable_entry_computation_layout() =
       module->compute_computation_layout();
 }
+
+TEST_F(HloInstructionTest, CanonicalPrintingSupportsInt64) {
+  std::unique_ptr<HloInstruction> param1 =
+      HloInstruction::CreateParameter(0, Shape(F32, {4}), "param1");
+  std::unique_ptr<HloInstruction> param2 =
+      HloInstruction::CreateParameter(0, Shape(F32, {2}), "param2");
+  std::unique_ptr<HloInstruction> param3 =
+      HloInstruction::CreateParameter(0, Shape(F32, {6}), "param3");
+
+  param1->SetUniqueId(1 + (static_cast<int64_t>(1) << 32));
+  param2->SetUniqueId(2 + (static_cast<int64_t>(2) << 32));
+  param3->SetUniqueId(3 + (static_cast<int64_t>(3) << 32));
+
+  xla::HloPrintOptions hlo_print_options =
+      xla::HloPrintOptions(xla::HloPrintOptions::Canonical());
+  hlo_print_options.set_is_in_nested_computation(true);
+
+  xla::CanonicalNameMap new_map;
+  xla::StringPrinter printer;
+  param1->PrintWithCanonicalNameMap(&printer, hlo_print_options, &new_map);
+  std::string param1_to_string = std::move(printer).ToString();
+
+  printer = StringPrinter();
+  param2->PrintWithCanonicalNameMap(&printer, hlo_print_options, &new_map);
+  std::string param2_to_string = std::move(printer).ToString();
+
+  printer = StringPrinter();
+  param3->PrintWithCanonicalNameMap(&printer, hlo_print_options, &new_map);
+  std::string param3_to_string = std::move(printer).ToString();
+
+  EXPECT_EQ(param1_to_string, "tmp_0 = f32[4] parameter(0)");
+  EXPECT_EQ(param2_to_string, "tmp_1 = f32[2] parameter(0)");
+  EXPECT_EQ(param3_to_string, "tmp_2 = f32[6] parameter(0)");
+}
+
 }  // namespace
 }  // namespace xla
