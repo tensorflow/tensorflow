@@ -509,13 +509,19 @@ ENTRY ReduceR3ToR2.v3 {
     }
   }
 
-  // Verify that the next unique ID which the module would have handed out is
-  // greater than the unique id of any instruction.
-  int next_id = module_copy->NewUniqueInstructionId();
+  // Verify that the next unique ID which any computation would have handed out
+  // is greater than the unique id of any existing instruction in that
+  // computation.
+  int32_t next_module_unique_id = module->next_unique_computation_id();
   for (const HloComputation* computation : module_copy->computations()) {
+    int32_t next_instruction_id_internal =
+        computation->next_unique_instruction_internal_id();
     for (const HloInstruction* instruction : computation->instructions()) {
-      EXPECT_GT(next_id, instruction->unique_id());
+      EXPECT_GT(next_instruction_id_internal, instruction->local_id());
     }
+    // Also verify that the next module unique id is greater than the module
+    // unique ids already present in the computation.
+    EXPECT_GT(next_module_unique_id, computation->unique_id());
   }
 }
 

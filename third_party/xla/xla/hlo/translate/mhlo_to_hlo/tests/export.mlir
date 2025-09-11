@@ -388,7 +388,7 @@ func.func @main(%arg0: tensor<2xi32>) -> tensor<2xf32> {
 // CHECK:  HloModule
 func.func @main(%arg0: tensor<4xi32>) -> tensor<1x2x3x4xi32> {
   // CHECK:  [[ARG:%.*]] = s32[4] parameter(0)
-  // CHECK-NEXT:  ROOT %broadcast.2 = s32[1,2,3,4] broadcast([[ARG]]), dimensions={3}
+  // CHECK-NEXT:  ROOT %broadcast.1 = s32[1,2,3,4] broadcast([[ARG]]), dimensions={3}
   %0 = "mhlo.broadcast"(%arg0) <{broadcast_sizes = dense<[1,2,3]> : tensor<3xi64>}> : (tensor<4xi32>) -> tensor<1x2x3x4xi32>
   func.return %0 : tensor<1x2x3x4xi32>
 }
@@ -405,7 +405,7 @@ func.func @main(%arg0: tensor<1xf32>) -> tensor<1x10xf32> {
 
 // CHECK:  ENTRY
 // CHECK:  [[ARG:%.*]] = f32[1] parameter(0)
-// CHECK:  ROOT %broadcast.2 = f32[1,10] broadcast([[ARG]]), dimensions={0}
+// CHECK:  ROOT %broadcast.1 = f32[1,10] broadcast([[ARG]]), dimensions={0}
 
 // -----
 
@@ -2132,7 +2132,7 @@ func.func @main(%arg0: tensor<2x17x31x7xi32>) -> tensor<2x5x8x7xi32> {
 // CHECK:  ENTRY
 // CHECK-DAG:  %[[ARG0:.*]] = s32[2,17,31,7] parameter(0)
 // CHECK-DAG:  %[[INIT:.*]] = s32[] constant(-2147483648)
-// CHECK:  ROOT %[[RESULT:.*]] = s32[2,5,8,7] reduce-window(%[[ARG0]], %constant.2),
+// CHECK:  ROOT %[[RESULT:.*]] = s32[2,5,8,7] reduce-window(%[[ARG0]], %constant.1),
 // CHECK-SAME:  window={size=1x2x2x1 stride=1x4x4x1 pad=0_0x2_0x0_2x0_0 rhs_dilate=1x2x2x1},
 // CHECK-SAME:  to_apply=%[[MAX_COMPUTATION]]
 
@@ -2468,7 +2468,7 @@ func.func @main(%arg: tensor<3x4xi32>, %start1: tensor<i64>, %start2: tensor<i64
 func.func @main(%arg0: tensor<1x2x3x4xi32>) -> tensor<2x1x4x3xi32> {
   // CHECK:  [[ARG:%.*]] = s32[1,2,3,4] parameter(0)
 
-  // CHECK-NEXT:  ROOT %transpose.2 = s32[2,1,4,3] transpose([[ARG]]), dimensions={1,0,3,2}
+  // CHECK-NEXT:  ROOT %transpose.1 = s32[2,1,4,3] transpose([[ARG]]), dimensions={1,0,3,2}
   %0 = "mhlo.transpose"(%arg0) <{permutation = dense<[1, 0, 3, 2]> : tensor<4xi64>}> : (tensor<1x2x3x4xi32>) -> tensor<2x1x4x3xi32>
   func.return %0 : tensor<2x1x4x3xi32>
 }
@@ -2546,7 +2546,7 @@ func.func @main(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
 // CHECK: %[[SORT_CMP:.*]] ([[ARG0:.*]]: f32[], [[ARG1:.*]]: f32[], {{.*}}: s32[], {{.*}}: s32[]) -> pred[] {
 // CHECK:   ROOT %compare.{{[0-9+]}} = pred[] compare(%[[ARG0]], %[[ARG1]]), direction=GT
 
-// CHECK: [[SORT:%.+]] = (f32[16,16], s32[16,16]) sort(%Arg_0.1, %Arg_1.2), dimensions={1}, is_stable=true, to_apply=%[[SORT_CMP]]
+// CHECK: [[SORT:%.+]] = (f32[16,16], s32[16,16]) sort(%Arg_0.3, %Arg_1.3), dimensions={1}, is_stable=true, to_apply=%[[SORT_CMP]]
 // CHECK: [[GET0:%.+]] = f32[16,16] get-tuple-element([[SORT]]), index=0
 // CHECK: [[GET1:%.+]] = s32[16,16] get-tuple-element([[SORT]]), index=1
 
@@ -2565,7 +2565,7 @@ func.func @main(%input0: tensor<16x16xf32>) {
 // CHECK: %[[SORT_CMP:.*]] ([[ARG0:.*]]: f32[], [[ARG1:.*]]: f32[]) -> pred[] {
 // CHECK:   ROOT %[[CMP:.*]] = pred[] compare(%[[ARG0]], %[[ARG1]]), direction=GT
 
-// CHECK: %[[RESULT:.*]] = f32[16,16] sort(%Arg_0.1), dimensions={1}, is_stable=true, to_apply=%[[SORT_CMP]]
+// CHECK: %[[RESULT:.*]] = f32[16,16] sort(%Arg_0.3), dimensions={1}, is_stable=true, to_apply=%[[SORT_CMP]]
 
 // -----
 

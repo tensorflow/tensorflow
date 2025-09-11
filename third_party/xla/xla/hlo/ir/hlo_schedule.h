@@ -63,7 +63,7 @@ class HloInstructionSequence {
   // Adds the instruction to the end of the sequence.
   void push_back(HloInstruction* instruction) {
     instruction_sequence_.push_back(instruction);
-    id_sequence_.push_back(instruction->unique_id_64_bits());
+    id_sequence_.push_back(instruction->unique_id());
   }
 
   void reserve(int64_t size) {
@@ -75,9 +75,10 @@ class HloInstructionSequence {
   void remove_instruction(HloInstruction* instruction) {
     auto instruction_it = std::find(instruction_sequence_.begin(),
                                     instruction_sequence_.end(), instruction);
-    if (instruction_it != instruction_sequence_.end()) {
+    if (instruction_it != instruction_sequence_.end() &&
+        instruction->parent() != nullptr) {
       auto id_it = std::find(id_sequence_.begin(), id_sequence_.end(),
-                             instruction->unique_id_64_bits());
+                             instruction->unique_id());
       instruction_sequence_.erase(instruction_it);
       id_sequence_.erase(id_it);
     }
@@ -90,13 +91,12 @@ class HloInstructionSequence {
         std::find(instruction_sequence_.begin(), instruction_sequence_.end(),
                   old_instruction);
     auto id_it = std::find(id_sequence_.begin(), id_sequence_.end(),
-                           old_instruction->unique_id_64_bits());
+                           old_instruction->unique_id());
     CHECK(instruction_it != instruction_sequence_.end())
-        << "Do not find instruction id "
-        << old_instruction->unique_id_64_bits();
+        << "Do not find instruction id " << old_instruction->unique_id();
     CHECK(id_it != id_sequence_.end());
     *instruction_it = new_instruction;
-    *id_it = new_instruction->unique_id_64_bits();
+    *id_it = new_instruction->unique_id();
   }
 
   // Adds the instruction to the sequence at a specified index,
@@ -104,8 +104,7 @@ class HloInstructionSequence {
     CHECK(0 <= index && index < size()) << "Index out of bounds";
     instruction_sequence_.insert(instruction_sequence_.begin() + index,
                                  instruction);
-    id_sequence_.insert(id_sequence_.begin() + index,
-                        instruction->unique_id_64_bits());
+    id_sequence_.insert(id_sequence_.begin() + index, instruction->unique_id());
   }
 
   bool contains(const HloInstruction* inst) const {
@@ -128,6 +127,16 @@ class HloInstructionSequence {
 
   // Returns the unique IDs of the instructions in the sequence (in order).
   const std::vector<int64_t>& ids() const { return id_sequence_; }
+
+  // Updates the sequence of unique IDs to match the sequence of instructions.
+  // This is required when the HLO Module calls Cleanup(), which invalidates
+  // the old unique IDs.
+  void update_id_sequence() {
+    id_sequence_.clear();
+    for (HloInstruction* instruction : instruction_sequence_) {
+      id_sequence_.push_back(instruction->unique_id());
+    }
+  }
 
  private:
   // The sequence as HloInstructions.

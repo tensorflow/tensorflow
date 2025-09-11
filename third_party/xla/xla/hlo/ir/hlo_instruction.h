@@ -42,6 +42,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/hash/hash.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -204,6 +205,8 @@ using HloInstructionUnwrappingIterator =
 using HloInstructionUnwrappingConstIterator =
     HloInstructionUnwrappingIteratorBase<HloInstructionConstIterator>;
 
+static constexpr uintptr_t kInstructionTypeMask = 0b111;
+
 // HLO instructions are the atomic unit of the high-level compiler's IR.
 //
 // HloInstructions live inside of an HloComputation, which is analogous to a
@@ -219,7 +222,8 @@ using HloInstructionUnwrappingConstIterator =
 // HLO is pure (mostly).  It has no concept of mutable state.  Instead, data
 // values are produced by one HLO and flow into consumers across dependency
 // edges.
-class HloInstruction {
+// Alignment must be explicitly specified due to ARM 32 platforms.
+class alignas(kInstructionTypeMask + 1) HloInstruction {
  public:
   // A fusion node computes the same value a call to its fusion computation
   // would compute.  However, the choice of fusion kind dictates codegen
@@ -311,8 +315,8 @@ class HloInstruction {
   // Creates an instruction from the given proto. Arguments:
   //
   //   proto: the proto to convert from.
-  //   instruction_map: a map from instruction id to HloInstruction*. This map
-  //     must contain all operands of the newly constructed instruction.
+  //   instruction_map: a map from local instruction id to HloInstruction*. This
+  //     map must contain all operands of the newly constructed instruction.
   //   computation_map: a map from computation id to HloComputation*. This map
   //     must contain all computations which the newly constructed instruction
   //     calls.
@@ -1858,40 +1862,30 @@ class HloInstruction {
   // instruction based on the instruction's existing name.
   void UniquifyName(HloModule* module);
 
-  // Use the `module`s `NewUniqueInstructionId` to set the id of this
-  // instruction.
-  void UniquifyId(HloModule* module);
+  // Return the unique ID assigned to this node via SetLocalId (or -1 if no id
+  // has been assigned yet) prefixed by the parent's unique ID. This is a
+  // concatenation of the parent's unique ID and the local ID. This is
+  // guaranteed to be unique across all instructions in a module.
+  int64_t unique_id() const;
 
-  // Clear the unique ID of the instruction so that it can be re-assigned, such
-  // as for the purpose of compacting the instruction unique IDs.
-  void ClearUniqueIdInternal() { unique_id_ = -1; }
+  // Returns the computation-specific ID assigned to this node. This is
+  // equivalent to the least significant 32 bits of the unique ID. This is not
+  // guaranteed to be unique across all instructions in a module, only within
+  // the computation.
+  int32_t local_id() const;
 
-  // Set the unique id for this instruction to "id"
-  // TODO(b/399394039): Remove this function once the bug is fixed.
-  void SetUniqueId(int id) { SetUniqueId(static_cast<int64_t>(id)); }
+  // Returns the unique ID that would be assigned to this instruction if it were
+  // inserted into the given parent without an internal ID change. Can be used
+  // to recreate the unique ID of an instruction that has been removed from its
+  // parent.
+  static int64_t CalculateUniqueId(int32_t computation_unique_id,
+                                   int32_t instruction_local_id);
 
-  // Set the unique id for this instruction to "id"
-  void SetUniqueId(int64_t id) {
-    CHECK_EQ(unique_id_, -1);  // Should not be assigned already
-    CHECK_GE(id, 0);
-    unique_id_ = id;
+  // Returns the local ID of the instruction by extracting it from the more
+  // general unique ID.
+  static int32_t CalculateLocalId(int64_t unique_id) {
+    return static_cast<int32_t>(unique_id & 0xFFFFFFFF);
   }
-
-  // Return the unique ID assigned to this node via SetUniqueId (or -1
-  // if no id has been assigned yet).
-  int unique_id() const {
-    CHECK_LT(unique_id_, INT32_MAX)
-        << "int32_t unique_id was requested but unique_id was written as a "
-           "64-bit integer: "
-        << unique_id_;
-    return static_cast<int>(unique_id_);
-  }
-
-  // Return the unique ID assigned to this node via SetUniqueId (or -1
-  // if no id has been assigned yet).Returns the entire unique ID as a 64-bit
-  // integer.
-  // TODO(b/399394039): Remove this function once the bug is fixed.
-  int64_t unique_id_64_bits() const { return unique_id_; }
 
   bool has_backend_config() const { return !backend_config_.empty(); }
 
@@ -2560,6 +2554,19 @@ class HloInstruction {
   // HloInstruction.
   bool IsMarkedAsDead() const { return marked_as_dead_; }
 
+  // Set the unique id for this instruction to "id". Should only be called by
+  // the instruction's parent computation to set an internal unique id that fits
+  // in an int32_t.
+  void SetLocalId(int32_t id) {
+    CHECK_EQ(local_id_, -1);  // Should not be assigned already
+    CHECK_GE(id, 0);
+    local_id_ = id;
+  }
+
+  // Clear the unique ID of the instruction so that it can be re-assigned, such
+  // as for the purpose of compacting the instruction unique IDs.
+  void ClearUniqueIdInternal() { local_id_ = -1; }
+
   // Rare is allocated lazily, only when any of its constituent fields are
   // non-empty.  This reduces the memory footprint of HloInstruction objects.
   struct Rare {
@@ -2656,8 +2663,9 @@ class HloInstruction {
         user_map_;
   };
 
-  int64_t unique_id_;  // Unique to this HloInstruction within a HloModule
-  uint32_t index_in_parent_;  // Index that identifies inst in HloComputation
+  int32_t local_id_;  // Unique to this HloInstruction within a HloComputation.
+                      // Index that identifies where the inst is stored in the
+                      // parent computation.
 
   // Opcode for this instruction.
   HloOpcode opcode_;
@@ -2787,8 +2795,21 @@ struct HloPtrComparator {
                   const HloInstruction* const& rhs) const;
 };
 
+// Same as HloPtrComparator but uses internal ids only, intended for use within
+// a computation only.
+struct HloPtrComparatorInternal {
+  bool operator()(const HloInstruction* const& lhs,
+                  const HloInstruction* const& rhs) const;
+};
+
 template <typename ValueT>
 using HloInstructionMap = std::map<HloInstruction*, ValueT, HloPtrComparator>;
+
+// Same as HloInstructionMap but uses internal ids, intended for use within a
+// computation only.
+template <typename ValueT>
+using HloInstructionMapInternal =
+    std::map<HloInstruction*, ValueT, HloPtrComparatorInternal>;
 
 template <typename ValueT>
 using ConstHloInstructionMap =

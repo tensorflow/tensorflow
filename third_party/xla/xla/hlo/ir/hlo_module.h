@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_HLO_IR_HLO_MODULE_H_
 #define XLA_HLO_IR_HLO_MODULE_H_
 
+#include <algorithm>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -27,6 +28,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
@@ -329,11 +331,16 @@ class HloModule {
   void CleanupComputations();
 
   // Runs HloModule::CleanupComputations() and HloComputation::Cleanup() on all
-  // computations.
+  // computations. Cleanup can cause instruction's unique ids to change so it
+  // will also update the schedule's ids.
   void Cleanup() {
     CleanupComputations();
     for (HloComputation* comp : computations()) {
       comp->Cleanup();
+      if (schedule_.has_value() && schedule_->is_computation_scheduled(comp)) {
+        // Update the schedule's instruction unique IDs.
+        schedule_->GetOrCreateSequence(comp).update_id_sequence();
+      }
     }
   }
 
@@ -457,6 +464,18 @@ class HloModule {
   // Returns a stable fingerprint of the module using the given print options.
   uint64_t ToFingerprint(const HloPrintOptions& options) const;
 
+  // Remaps the instruction ids in the proto to be consecutive. This is useful
+  // for loading a proto that had its ids manually created or created
+  // incorrectly.
+  static absl::StatusOr<HloModuleProto> RemapInstructionIds(
+      const HloModuleProto& proto);
+
+  // Updates the instruction ids in the module's schedules to match the new
+  // instruction ids as defined by the old_instr_id_to_new_id map.
+  static absl::Status UpdateIdsInSchedules(
+      HloModuleProto& proto,
+      absl::flat_hash_map<int64_t, int64_t>& old_instr_id_to_new_id);
+
   // Convert an HloModule to or from a proto.
   HloModuleProto ToProto() const;
   static absl::StatusOr<std::unique_ptr<HloModule>> CreateFromProto(
@@ -509,12 +528,10 @@ class HloModule {
         << "Can't get computation name uniquer after HloModule was finalized";
     return *computation_name_uniquer_;
   }
-
-  // Assign a new unique dense id for an instruction
-  int64_t NewUniqueInstructionId() {
-    int64_t result = next_unique_id_;
-    next_unique_id_++;
-    return result;
+  // Returns the next unique computation id that will be handed out by this
+  // module.
+  int64_t next_unique_computation_id() const {
+    return ReadNextUniqueComputationId();
   }
 
   // input_output_alias_config indicates the list of aliased buffers that are
@@ -565,10 +582,6 @@ class HloModule {
 
   HloComputation* AddComputationAndUnifyNamesAndIds(
       std::unique_ptr<HloComputation> computation, bool is_entry) {
-    computation->ClearUniqueIdInternal();
-    for (auto* instruction : computation->instructions()) {
-      instruction->ClearUniqueIdInternal();
-    }
     return AddComputationInternal(std::move(computation), is_entry,
                                   /*uniquify_identifiers=*/true,
                                   /*preserve_entry_layouts=*/true);
@@ -782,10 +795,40 @@ class HloModule {
   // unique per module. Will be reset to nullopt when Finalize() is called.
   std::optional<NameUniquer> computation_name_uniquer_{/*separator=*/"."};
   std::optional<NameUniquer> instruction_name_uniquer_{/*separator=*/"."};
-  int64_t next_unique_id_ = 0;
 
   // Used to keep track of the next unique module id that should be assigned.
   static std::atomic<int> next_unique_module_id_;
+
+  // Used to keep track of the next unique computation id that should be
+  // assigned to computations in this module.
+  mutable absl::Mutex next_unique_computation_id_mutex_;
+  int32_t next_unique_computation_id_
+      ABSL_GUARDED_BY(next_unique_computation_id_mutex_) = 0;
+
+  void SetNextUniqueComputationId(int32_t next_unique_computation_id)
+      ABSL_LOCKS_EXCLUDED(next_unique_computation_id_mutex_) {
+    absl::MutexLock mx_lock(&next_unique_computation_id_mutex_);
+    next_unique_computation_id_ = next_unique_computation_id;
+  }
+
+  void ResyncNextUniqueComputationId(int32_t last_assigned_unique_id)
+      ABSL_LOCKS_EXCLUDED(next_unique_computation_id_mutex_) {
+    absl::MutexLock mx_lock(&next_unique_computation_id_mutex_);
+    next_unique_computation_id_ =
+        std::max(next_unique_computation_id_, last_assigned_unique_id + 1);
+  }
+
+  int32_t ReadAndIncrementNextUniqueComputationId()
+      ABSL_LOCKS_EXCLUDED(next_unique_computation_id_mutex_) {
+    absl::MutexLock mx_lock(&next_unique_computation_id_mutex_);
+    return next_unique_computation_id_++;
+  }
+
+  int32_t ReadNextUniqueComputationId() const
+      ABSL_LOCKS_EXCLUDED(next_unique_computation_id_mutex_) {
+    absl::MutexLock mx_lock(&next_unique_computation_id_mutex_);
+    return next_unique_computation_id_;
+  }
   // A unique id to label modules with.
   const int unique_id_;
 
