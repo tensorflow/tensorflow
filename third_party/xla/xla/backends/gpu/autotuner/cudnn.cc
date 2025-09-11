@@ -78,7 +78,7 @@ absl::Status ApplyConfigAndUpdateWorkspaceInOutputTuple(
     new_call_element_shapes.emplace_back(instr.shape().tuple_shapes(i));
   }
   // The final element is the size of the workspace.
-  int workspace_size = config.workspace_size().value();
+  int64_t workspace_size = config.workspace_size().value();
   new_call_element_shapes.emplace_back(
       ShapeUtil::MakeShape(U8, {workspace_size}));
   Shape new_call_shape = ShapeUtil::MakeTupleShape(new_call_element_shapes);
