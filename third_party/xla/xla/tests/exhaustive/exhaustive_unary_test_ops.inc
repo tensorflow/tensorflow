@@ -197,7 +197,9 @@ DEFINE_UNARY_TEST_OP(
     SqrtOp, { return [](XlaOp x) { return Sqrt(x); }; }, { return std::sqrt; });
 DEFINE_UNARY_TEST_OP(
     CbrtOp, { return [](XlaOp x) { return Cbrt(x); }; }, { return std::cbrt; });
-DEFINE_UNARY_TEST_OP(AcoshOp, { return Acosh; }, { return std::acosh; });
+DEFINE_UNARY_TEST_OP(
+    AcoshOp, { return [](XlaOp x) { return Acosh(x); }; },
+    { return std::acosh; });
 DEFINE_UNARY_TEST_OP(AsinhOp, { return Asinh; }, { return std::asinh; });
 DEFINE_UNARY_TEST_OP(AtanhOp, { return Atanh; }, { return std::atanh; });
 DEFINE_UNARY_TEST_OP(AcosOp, { return Acos; }, { return std::acos; });

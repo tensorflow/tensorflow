@@ -352,7 +352,6 @@ cc_library(
     ],
     strip_include_prefix = ".",
     deps = [
-        ":chlo_legalize_to_hlo_inc_gen",
         ":hlo_legalize_to_stablehlo",
         ":legalize_to_linalg_utils",
         ":map_chlo_to_hlo_op",
@@ -572,16 +571,6 @@ cc_library(
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
     ],
-)
-
-gentbl_cc_library(
-    name = "chlo_legalize_to_hlo_inc_gen",
-    compatible_with = get_compatible_with_portable(),
-    strip_include_prefix = "mhlo/transforms",
-    tbl_outs = {"mhlo/transforms/chlo_legalize_to_hlo/generated_chlo_legalize_to_hlo.inc": ["-gen-rewriters"]},
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "mhlo/transforms/chlo_legalize_to_hlo/chlo_legalize_to_hlo_patterns.td",
-    deps = [":hlo_ops_td_files"],
 )
 
 cc_library(

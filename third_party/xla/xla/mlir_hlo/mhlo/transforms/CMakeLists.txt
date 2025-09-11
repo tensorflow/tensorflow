@@ -22,12 +22,6 @@ include_directories(BEFORE
     ${CMAKE_CURRENT_BINARY_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR})
 
-set(LLVM_TARGET_DEFINITIONS chlo_legalize_to_hlo/chlo_legalize_to_hlo_patterns.td)
-mlir_tablegen(chlo_legalize_to_hlo/generated_chlo_legalize_to_hlo.inc -gen-rewriters)
-add_public_tablegen_target(MLIRChloLegalizeToHloIncGen)
-
-
-
 add_mlir_library(MhloPasses
   collapse_elementwise_map/collapse_elementwise_map.cc
   convert_to_signless/convert_to_signless_pass.cc
@@ -116,7 +110,6 @@ add_mlir_library(ChloPasses
 
   DEPENDS
   MLIRhlo_opsIncGen
-  MLIRChloLegalizeToHloIncGen
   MLIRMhloPassIncGen
   PassesIncGen
 

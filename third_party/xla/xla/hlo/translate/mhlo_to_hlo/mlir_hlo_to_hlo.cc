@@ -5208,6 +5208,17 @@ LogicalResult ExportXlaOp(UniformDequantizeOp op, OpLoweringContext ctx) {
   return failure();
 }
 
+LogicalResult ExportXlaOp(AcoshOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::XlaOp operand;
+  if (failed(GetXlaOp(op.getOperand(), value_map, &operand, op)))
+    return failure();
+
+  value_map[op] =
+      xla::Acosh(operand, /*precision_config=*/std::nullopt, /*expand=*/false);
+  return success();
+}
+
 LogicalResult ExportXlaOp(TopKOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   xla::XlaOp operand;
