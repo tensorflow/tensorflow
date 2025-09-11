@@ -222,8 +222,7 @@ absl::Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   int device_ordinal = executor->device_ordinal();
   VLOG(3) << "[" << device_ordinal << "] Launching " << kernel->name();
-  absl::InlinedVector<std::variant<se::DeviceMemoryBase, se::TensorMap>, 4>
-      kernel_args;
+  absl::InlinedVector<se::KernelArgument, 4> kernel_args;
   stream_executor::gpu::TmaMetadata tma_metadata =
       tma_metadata_.value_or(stream_executor::gpu::TmaMetadata{});
   for (int idx = 0; idx < args_.size(); ++idx) {
@@ -254,8 +253,7 @@ absl::Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   return ExecuteKernelOnStream(
       *kernel,
-      absl::Span<std::variant<se::DeviceMemoryBase, se::TensorMap>>(
-          kernel_args.data(), kernel_args.size()),
+      absl::Span<se::KernelArgument>(kernel_args.data(), kernel_args.size()),
       launch_dimensions_, cluster_dim_, stream);
 }
 
