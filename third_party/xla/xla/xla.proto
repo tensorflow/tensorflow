@@ -395,6 +395,10 @@ message DebugOptions {
   optional CommandBufferSchedulingMode xla_gpu_command_buffer_scheduling_mode =
       404;
 
+  // During command buffer lowering, unroll the loop command if loop has known
+  // loop count and the loop body does not have unsupported commands.
+  optional bool xla_gpu_command_buffer_unroll_loops = 411;
+
   optional bool xla_gpu_copy_insertion_use_region_analysis = 236;
 
   // Crashes the program when any kind of verification fails, instead of just
@@ -1333,7 +1337,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 411
+  // Next id: 412
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
