@@ -16,9 +16,36 @@ message DiffResultProto {
   repeated MatchedInstructionPairProto changed_instructions = 4;
 }
 
+// Represents details about a computation, including its name and instructions.
+message ComputationDetailsProto {
+  string name = 1;
+  repeated string instructions = 2;
+}
+
+// Represents a group of matched computations from the left and right modules.
+message ComputationGroupProto {
+  repeated ComputationDetailsProto left_computations = 1;
+  repeated ComputationDetailsProto right_computations = 2;
+}
+
+message ComputationDiffPatternProto {
+  // The fingerprint of the computation group.
+  uint64 fingerprint = 1;
+  repeated ComputationGroupProto computation_group = 2;
+  uint64 changed_instruction_count = 3;
+  uint64 left_unmatched_instruction_count = 4;
+  uint64 right_unmatched_instruction_count = 5;
+}
+
+// Represents the summary of the diff between two HLO modules.
+message DiffSummaryProto {
+  repeated ComputationDiffPatternProto computation_diff_patterns = 1;
+}
+
 // Represents the result or error of computing the diff between two HLO modules.
 message DiffResultOrErrorProto {
   DiffResultProto diff_result = 1;
   int32 status = 2;
   string error = 3;
+  DiffSummaryProto diff_summary = 4;
 }
