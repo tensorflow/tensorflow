@@ -171,11 +171,20 @@ std::string PrintCss() {
       width: 100%;
       gap: 10px;
     }
+    .hlo-textboxes {
+      flex: 1;
+      display: flex;
+      min-width: 0;
+      flex-direction: column;
+      width: 100%;
+      max-height: 1200px;
+    }
     .hlo-textbox {
       flex: 1;
-      min-width: 0;
       display: flex;
       flex-direction: column;
+      padding: 10px 0px;
+      min-height: 0;
     }
     .hlo-textbox > .textbox {
       position: relative;
@@ -184,14 +193,15 @@ std::string PrintCss() {
       border-radius: 5px;
       height: 100%;
       box-sizing: border-box;
+      min-height: 0;
     }
     .hlo-textbox > .textbox > pre {
       width: 100%;
       margin: 0;
-      padding: 0;
+      padding: 2px;
       overflow: auto;
       white-space: pre-wrap;
-      max-height: 800px;
+      height: 100%;
     }
     .hlo-textbox > .textbox > .click-to-copy {
       position: absolute;
@@ -221,6 +231,7 @@ std::string PrintCss() {
     span.hlo-instruction {
       display: inline-block;
       cursor: pointer;
+      width: 100%;
     }
     span.hlo-instruction:hover {
       border: 2px solid #4285F4;
@@ -696,13 +707,13 @@ std::string PrintHloComputationToHtml(
   StringPrinter printer;
 
   // Mimic HloComputation::Print structure with default options.
-  printer.Append("%");
+  printer.Append("<b>%");
   printer.Append(comp->name());
   printer.Append(" ");
   ShapeUtil::PrintHumanString(&printer,
                               comp->ComputeProgramShape(/*include_ids=*/true));
   printer.Append(" ");
-  printer.Append("{\n");
+  printer.Append("{</b>\n");
 
   // Print instructions in this computation.
   {
@@ -792,7 +803,7 @@ std::string PrintHloComputationToHtml(
     }
   }
 
-  printer.Append("}");  // Closing brace for computation.
+  printer.Append("<b>}</b>");  // Closing brace for computation.
 
   // Default print_ids is true, so execution thread is printed if not main.
   if (!comp->IsMainThread()) {
@@ -804,62 +815,64 @@ std::string PrintHloComputationToHtml(
   return std::move(printer).ToString();
 }
 
+// Prints a single HLO instruction in a text box.
+template <typename T>
+std::string PrintHloTextbox(
+    const T* node, const absl::flat_hash_map<const HloInstruction*, Attributes>&
+                       span_attributes) {
+  std::string title = "None", text;
+  if (node != nullptr) {
+    title = node->name();
+    if constexpr (std::is_same_v<T, HloComputation>) {
+      text = PrintHloComputationToHtml(node, DiffSide::kLeft, span_attributes);
+    } else {
+      text = node->ToString();
+    }
+  }
+  uint64_t fingerprint = tsl::Fingerprint64(text);
+  return PrintDiv(
+      PrintTextbox(title, text, absl::StrFormat("%016x", fingerprint)),
+      {"hlo-textbox"});
+}
+
 // Prints a pair of instructions or computations in a text box.
 template <typename T>
 std::string PrintHloTextboxPair(
-    const T* left_node, const T* right_node,
+    absl::Span<const T* const> left_nodes,
+    absl::Span<const T* const> right_nodes,
     const absl::flat_hash_map<const HloInstruction*, Attributes>&
         span_attributes) {
-  std::string left_title = "None", right_title = "None", left_text, right_text;
-  if (left_node != nullptr) {
-    left_title = left_node->name();
-    if constexpr (std::is_same_v<T, HloComputation>) {
-      left_text = PrintHloComputationToHtml(left_node, DiffSide::kLeft,
-                                            span_attributes);
-    } else {
-      left_text = left_node->ToString();
-    }
+  std::string left_textbox, right_textbox;
+  for (const T* node : left_nodes) {
+    absl::StrAppend(&left_textbox, PrintHloTextbox(node, span_attributes));
   }
-  if (right_node != nullptr) {
-    right_title = right_node->name();
-    if constexpr (std::is_same_v<T, HloComputation>) {
-      right_text = PrintHloComputationToHtml(right_node, DiffSide::kRight,
-                                             span_attributes);
-    } else {
-      right_text = right_node->ToString();
-    }
+  for (const T* node : right_nodes) {
+    absl::StrAppend(&right_textbox, PrintHloTextbox(node, span_attributes));
   }
-
-  uint64_t fingerprint =
-      tsl::Fingerprint64(absl::StrCat(left_text, right_text));
-  return PrintDiv(
-      absl::StrCat(
-          PrintDiv(PrintTextbox(left_title, left_text,
-                                absl::StrFormat("%016x-left", fingerprint)),
-
-                   {"hlo-textbox"}),
-          PrintDiv(PrintTextbox(right_title, right_text,
-                                absl::StrFormat("%016x-right", fingerprint)),
-
-                   {"hlo-textbox"})),
-      {"hlo-textbox-pair"});
+  return PrintDiv(absl::StrCat(PrintDiv(left_textbox, {"hlo-textboxes"}),
+                               PrintDiv(right_textbox, {"hlo-textboxes"})),
+                  {"hlo-textbox-pair"});
 }
 
 template <typename T>
-using DecorationPrinter = std::string(const T*, const T*);
+using DecorationPrinter = std::string(absl::Span<const T* const>,
+                                      absl::Span<const T* const>);
 
 template <typename T>
 std::string PrintNodePairContent(
-    const T* left_node, const T* right_node,
+    absl::Span<const T* const> left_nodes,
+    absl::Span<const T* const> right_nodes,
     const absl::flat_hash_map<const HloInstruction*, Attributes>&
         span_attributes,
     GraphUrlGenerator* url_generator) {
   std::string url;
+  const T* left_node = left_nodes.empty() ? nullptr : left_nodes[0];
+  const T* right_node = right_nodes.empty() ? nullptr : right_nodes[0];
   if (url_generator != nullptr) {
     url = url_generator->GenerateWithSelectedNodes(left_node, right_node);
   }
   return absl::StrCat(
-      PrintHloTextboxPair(left_node, right_node, span_attributes),
+      PrintHloTextboxPair(left_nodes, right_nodes, span_attributes),
       url.empty()
           ? ""
           : PrintDiv(PrintLink("Model Explorer", url), {"model-explorer-url"}));
@@ -870,28 +883,55 @@ std::string PrintNodePairContent(
 // explorer will be printed.
 template <typename T>
 std::string PrintNodePair(
-    const T* left_node, const T* right_node,
+    absl::Span<const T* const> left_nodes,
+    absl::Span<const T* const> right_nodes,
     const absl::flat_hash_map<const HloInstruction*, Attributes>&
         span_attributes,
     GraphUrlGenerator* url_generator,
     std::optional<absl::FunctionRef<DecorationPrinter<T>>> decoration_printer =
         std::nullopt) {
   std::vector<std::string> nodes;
-  if (left_node != nullptr) {
-    nodes.push_back(std::string(left_node->name()));
+  if (!left_nodes.empty()) {
+    nodes.push_back(
+        absl::StrJoin(left_nodes, ", ", [](std::string* out, const T* node) {
+          absl::StrAppend(out, node->name());
+        }));
   }
-  if (right_node != nullptr) {
-    nodes.push_back(std::string(right_node->name()));
+  if (!right_nodes.empty()) {
+    nodes.push_back(
+        absl::StrJoin(right_nodes, ", ", [](std::string* out, const T* node) {
+          absl::StrAppend(out, node->name());
+        }));
   }
   std::string text = absl::StrJoin(nodes, " ↔ ");
   std::string decoration;
   if (decoration_printer.has_value()) {
-    decoration =
-        PrintSpan((*decoration_printer)(left_node, right_node), {"decoration"});
+    decoration = PrintSpan((*decoration_printer)(left_nodes, right_nodes),
+                           {"decoration"});
   }
   return PrintDetails(absl::StrCat(text, " ", decoration),
-                      PrintNodePairContent<T>(left_node, right_node,
+                      PrintNodePairContent<T>(left_nodes, right_nodes,
                                               span_attributes, url_generator));
+}
+
+template <typename T>
+std::string PrintNodePair(
+    const T* left_node, const T* right_node,
+    const absl::flat_hash_map<const HloInstruction*, Attributes>&
+        span_attributes,
+    GraphUrlGenerator* url_generator,
+    std::optional<absl::FunctionRef<DecorationPrinter<T>>> decoration_printer =
+        std::nullopt) {
+  std::vector<const T*> left_nodes;
+  if (left_node != nullptr) {
+    left_nodes.push_back(left_node);
+  }
+  std::vector<const T*> right_nodes;
+  if (right_node != nullptr) {
+    right_nodes.push_back(right_node);
+  }
+  return PrintNodePair<T>(left_nodes, right_nodes, span_attributes,
+                          url_generator, decoration_printer);
 }
 
 // The location of the instruction in the diff result.
@@ -1040,8 +1080,12 @@ std::string PrintChangedInstructions(
         instructions,
     GraphUrlGenerator* url_generator) {
   std::function<DecorationPrinter<HloInstruction>> decorated_printer =
-      [](const HloInstruction* left_inst,
-         const HloInstruction* right_inst) -> std::string {
+      [](absl::Span<const HloInstruction* const> left_insts,
+         absl::Span<const HloInstruction* const> right_insts) -> std::string {
+    CHECK_EQ(left_insts.size(), 1);
+    CHECK_EQ(right_insts.size(), 1);
+    const HloInstruction* left_inst = left_insts[0];
+    const HloInstruction* right_inst = right_insts[0];
     std::vector<ChangedInstructionDiffType> diff_types =
         GetChangedInstructionDiffTypes(*left_inst, *right_inst);
     return absl::StrCat(
@@ -1107,8 +1151,9 @@ std::string PrintUnmatchedMetricsDiff(
     }
     metrics_diff_list.push_back(PrintNodePair<HloInstruction>(
         left_inst, right_inst, /*span_attributes=*/{}, url_generator,
-        [&metrics_diff](const HloInstruction* inst,
-                        const HloInstruction*) -> std::string {
+        [&metrics_diff](absl::Span<const HloInstruction* const> left_insts,
+                        absl::Span<const HloInstruction* const> right_insts)
+            -> std::string {
           return absl::StrFormat("%.2f (us)", metrics_diff / 1e6);
         }));
   }
@@ -1146,8 +1191,9 @@ std::string PrintMatchedMetricsDiff(
     double metrics_diff = entry.second;
     metrics_diff_list.push_back(PrintNodePair<HloInstruction>(
         left_inst, right_inst, /*span_attributes=*/{}, url_generator,
-        [&metrics_diff](const HloInstruction* left_inst,
-                        const HloInstruction* right_inst) -> std::string {
+        [&metrics_diff](absl::Span<const HloInstruction* const> left_insts,
+                        absl::Span<const HloInstruction* const> right_insts)
+            -> std::string {
           return absl::StrFormat("%+.2f (us)", metrics_diff / 1e6);
         }));
   }
@@ -1219,35 +1265,19 @@ std::string PrintComputationSummary(
         span_attributes,
     GraphUrlGenerator* url_generator) {
   const ComputationGroup& sample = diff_pattern.computation_groups[0];
-  // We only support unmatched computation and one-to-one computation pairs.
-  if (sample.left_computations.size() > 1 ||
-      sample.right_computations.size() > 1) {
-    return "";
-  }
   std::vector<std::string> computation_pair_list(
       diff_pattern.computation_groups.size() - 1);
   for (int i = 1; i < diff_pattern.computation_groups.size(); ++i) {
     const ComputationGroup& computation_group =
         diff_pattern.computation_groups[i];
-    const HloComputation* left_computation =
-        computation_group.left_computations.empty()
-            ? nullptr
-            : computation_group.left_computations[0];
-    const HloComputation* right_computation =
-        computation_group.right_computations.empty()
-            ? nullptr
-            : computation_group.right_computations[0];
     computation_pair_list[i - 1] = PrintNodePair<HloComputation>(
-        left_computation, right_computation, span_attributes, url_generator);
+        computation_group.left_computations,
+        computation_group.right_computations, span_attributes, url_generator);
   }
-  const HloComputation* left_computation =
-      sample.left_computations.empty() ? nullptr : sample.left_computations[0];
-  const HloComputation* right_computation = sample.right_computations.empty()
-                                                ? nullptr
-                                                : sample.right_computations[0];
   std::vector<std::string> contents;
-  contents.push_back(PrintNodePairContent(left_computation, right_computation,
-                                          span_attributes, url_generator));
+  contents.push_back(PrintNodePairContent<HloComputation>(
+      sample.left_computations, sample.right_computations, span_attributes,
+      url_generator));
   if (!computation_pair_list.empty()) {
     contents.push_back(
         PrintDetails(absl::StrFormat("%d other similar computations",
