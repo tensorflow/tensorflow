@@ -33,7 +33,6 @@ cuda_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "@kokkos//:mdspan",
         "@rapids_logger",
         "@rmm",
     ],
