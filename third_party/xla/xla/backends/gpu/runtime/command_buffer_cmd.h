@@ -162,28 +162,31 @@ class CommandBufferCmd {
 
     template <typename ConcreteState>
     ConcreteState* GetOrNull(const CommandBufferCmd* cmd,
-                             const se::CommandBuffer* command_buffer) {
+                             const se::CommandBuffer* command_buffer,
+                             int64_t unroll_iteration = 0) {
       static_assert(std::is_base_of_v<State, ConcreteState>);
-      return static_cast<ConcreteState*>(
-          GetOrNull(cmd, command_buffer, GetTypeId<ConcreteState>()));
+      return static_cast<ConcreteState*>(GetOrNull(
+          cmd, command_buffer, GetTypeId<ConcreteState>(), unroll_iteration));
     }
 
     template <typename ConcreteState>
     ConcreteState* GetOrCreate(
         const CommandBufferCmd* cmd, const se::CommandBuffer* command_buffer,
-        absl::FunctionRef<std::unique_ptr<ConcreteState>()> create) {
+        absl::FunctionRef<std::unique_ptr<ConcreteState>()> create,
+        int64_t unroll_iteration = 0) {
       static_assert(std::is_base_of_v<State, ConcreteState>);
-      return static_cast<ConcreteState*>(GetOrCreate(cmd, command_buffer,
-                                                     GetTypeId<ConcreteState>(),
-                                                     [&] { return create(); }));
+      return static_cast<ConcreteState*>(
+          GetOrCreate(cmd, command_buffer, GetTypeId<ConcreteState>(),
+                      unroll_iteration, [&] { return create(); }));
     }
 
     template <typename ConcreteState>
     ConcreteState* GetOrCreate(const CommandBufferCmd* cmd,
-                               const se::CommandBuffer* command_buffer) {
-      return GetOrCreate<ConcreteState>(cmd, command_buffer, [] {
-        return std::make_unique<ConcreteState>();
-      });
+                               const se::CommandBuffer* command_buffer,
+                               int64_t unroll_iteration = 0) {
+      return GetOrCreate<ConcreteState>(
+          cmd, command_buffer, [] { return std::make_unique<ConcreteState>(); },
+          unroll_iteration);
     }
 
    private:
@@ -199,14 +202,16 @@ class CommandBufferCmd {
     static TypeId GetNextTypeId();
 
     State* GetOrNull(const CommandBufferCmd* cmd,
-                     const se::CommandBuffer* command_buffer, TypeId type_id);
+                     const se::CommandBuffer* command_buffer, TypeId type_id,
+                     int64_t unroll_iteration);
 
     State* GetOrCreate(const CommandBufferCmd* cmd,
                        const se::CommandBuffer* command_buffer, TypeId type_id,
+                       int64_t unroll_iteration,
                        absl::FunctionRef<std::unique_ptr<State>()> create);
 
-    using Key =
-        std::tuple<const CommandBufferCmd*, const se::CommandBuffer*, TypeId>;
+    using Key = std::tuple<const CommandBufferCmd*, const se::CommandBuffer*,
+                           TypeId, int64_t>;
     absl::flat_hash_map<Key, std::unique_ptr<State>> state_;
   };
 
@@ -224,6 +229,11 @@ class CommandBufferCmd {
     // A flag indicating whether we record comands at command buffer thunk
     // initialization time.
     bool is_initialization = false;
+
+    // The command sequence might be recorded in the loop unrolling pattern, so
+    // the command sequence might be instantiated multiple times, we uses
+    // unroll_iteration to locate the commands for current unroll iteration.
+    int64_t unroll_iteration = 0;
   };
 
   // Create new commands in the command buffer using the given dependencies.
@@ -283,6 +293,11 @@ class CommandBufferCmd {
   // deadlocks. By forcing the command update at thunk initialization time, we
   // ensure that all ranks execute NCCL command update.
   virtual bool requires_initialization() { return false; }
+
+  // Returns true if command supports loop unroll, the while loop can be
+  // unrolled only if it has pre-known trip count and also all commands from the
+  // body commands are unrollable..
+  virtual bool support_loop_unroll() { return true; }
 
   // This is only true for DynamicSliceCopyFusionCmd when offset is dependents
   // on loop iteration. As the command of slice operation is access the sliced
@@ -468,15 +483,20 @@ class CommandBufferCmdExecutor {
                           [](const auto& cmd) { return cmd->force_update(); });
   }
 
-  // Returns all source commands for current command executor.
-  std::vector<const se::CommandBuffer::Command*> SourceCommands(
-      const RecordParams& record_params,
-      se::CommandBuffer* command_buffer) const;
+  bool support_loop_unroll() const {
+    return absl::c_all_of(
+        commands_, [](const auto& cmd) { return cmd->support_loop_unroll(); });
+  }
 
-  // Returns all sink commands for current command executor.
+  // Returns all commands associated with the given ids on a certain unroll
+  // iteration.
+  std::vector<const se::CommandBuffer::Command*> SourceCommands(
+      const RecordParams& record_params, se::CommandBuffer* command_buffer,
+      int64_t unroll_iteration) const;
+
   std::vector<const se::CommandBuffer::Command*> SinkCommands(
-      const RecordParams& record_params,
-      se::CommandBuffer* command_buffer) const;
+      const RecordParams& record_params, se::CommandBuffer* command_buffer,
+      int64_t unroll_iteration) const;
 
   // Renders the execution graph using default renderer. Returns url of the
   // rendered graph, or an error if rendering failed.
@@ -796,6 +816,8 @@ class ChildCmd : public CommandBufferCmd {
 
   bool force_update() override;
 
+  bool support_loop_unroll() override { return false; }
+
   BufferUseVector buffers() const override;
 
  private:
@@ -829,6 +851,8 @@ class CaseCmd : public CommandBufferCmd {
 
   bool force_update() override;
 
+  bool support_loop_unroll() override { return false; }
+
   BufferUseVector buffers() const override;
 
  private:
@@ -844,7 +868,9 @@ class CaseCmd : public CommandBufferCmd {
 class WhileCmd : public CommandBufferCmd {
  public:
   WhileCmd(BufferAllocation::Slice pred, CommandBufferCmdExecutor cond_commands,
-           CommandBufferCmdExecutor body_commands);
+           CommandBufferCmdExecutor body_commands,
+           std::optional<int64_t> trip_count = std::nullopt,
+           bool enable_loop_unroll = false);
 
   absl::Status Initialize(const Thunk::InitializeParams& params,
                           StateManager& state) override;
@@ -858,12 +884,21 @@ class WhileCmd : public CommandBufferCmd {
 
   bool force_update() override;
 
+  // We have not tried unrolling the loop inside another loop, so marking it
+  // unsupported for now.
+  bool support_loop_unroll() override { return false; }
+
   BufferUseVector buffers() const override;
 
  private:
   BufferAllocation::Slice pred_;
   CommandBufferCmdExecutor cond_commands_;
   CommandBufferCmdExecutor body_commands_;
+  std::optional<int64_t> trip_count_;
+  bool enable_loop_unroll_ = false;
+  bool is_unrolled_loop_ = false;
+  std::unique_ptr<se::CommandBuffer>
+      child_command_buffer_;  // The body command buffer for unrolled loop.
 };
 
 //===----------------------------------------------------------------------===//
@@ -1209,6 +1244,8 @@ class DynamicSliceFusionCmd : public CommandBufferCmd {
 
   bool requires_initialization() override;
 
+  bool support_loop_unroll() override { return false; }
+
   bool IsNestedCommandBuffer() const final { return true; }
 
  private:
@@ -1253,6 +1290,8 @@ class DynamicSliceCopyFusionCmd : public CommandBufferCmd {
       se::CommandBuffer* command_buffer) override;
 
   bool force_update() override { return offsets_.depends_on_loop; }
+
+  bool support_loop_unroll() override { return false; }
 
   BufferUseVector buffers() const override;
 
