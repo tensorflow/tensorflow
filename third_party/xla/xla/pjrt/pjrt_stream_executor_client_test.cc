@@ -151,8 +151,7 @@ TEST(PjRtStreamExecutorClientTest, DonateWithControlDependency) {
       std::unique_ptr<PjRtBuffer> buffer,
       client->BufferFromHostLiteral(literal, client->memory_spaces()[0]));
 
-  PjRtFuture<>::Promise promise = PjRtFuture<>::CreatePromise();
-  PjRtFuture<> future(promise);
+  auto [promise, future] = PjRtFuture<>::MakePromise();
   auto blocked_buffer =
       std::move(*(buffer->DonateWithControlDependency(future)));
   EXPECT_TRUE(buffer->IsDeleted());
