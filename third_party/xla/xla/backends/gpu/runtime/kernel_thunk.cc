@@ -225,8 +225,7 @@ absl::Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
   absl::InlinedVector<se::KernelArgument, 4> kernel_args;
   stream_executor::gpu::TmaMetadata tma_metadata =
       tma_metadata_.value_or(stream_executor::gpu::TmaMetadata{});
-  for (int idx = 0; idx < args_.size(); ++idx) {
-    const BufferAllocation::Slice& arg = args_[idx];
+  for (const auto& [idx, arg] : llvm::enumerate(args_)) {
     se::DeviceMemoryBase buf = params.buffer_allocations->GetDeviceAddress(arg);
     VLOG(3) << "[" << device_ordinal << "] Arg: alloc #" << arg.index()
             << ", offset: " << arg.offset() << ": " << buf.opaque() << " ("
