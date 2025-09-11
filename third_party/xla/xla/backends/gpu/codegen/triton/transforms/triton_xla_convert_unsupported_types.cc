@@ -12,7 +12,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
-#include <optional>
 #include <utility>
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -23,7 +22,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Value.h"
-#include "mlir/IR/ValueRange.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
@@ -37,85 +35,20 @@ namespace mlir::triton::xla {
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h.inc"
 
 namespace {
-class UnsupportedTypesConverter : public TypeConverter {
- public:
-  UnsupportedTypesConverter() : TypeConverter() {
-    // Fallback to the no conversion for all other types.
-    addConversion([](Type type) -> std::optional<Type> { return type; });
 
-    // Convert F8E8M0FNUType to i8. This is a workaround for the fact that
-    // Triton doesn't support F8E8M0FNUType natively.
-    addConversion([](Float8E8M0FNUType type) -> std::optional<Type> {
-      return IntegerType::get(type.getContext(), 8);
-    });
-
-    // Helper conversions for the nontrivial types.
-    addConversion([this](Type type) -> std::optional<Type> {
-      if (auto shaped_type = dyn_cast<ShapedType>(type)) {
-        Type new_type = convertType(shaped_type.getElementType());
-        return shaped_type.clone(new_type);
-      }
-      return std::nullopt;
-    });
-    addConversion([this](Type type) -> std::optional<Type> {
-      if (auto pointer_type = dyn_cast<triton::PointerType>(type)) {
-        Type new_type = convertType(pointer_type.getPointeeType());
-        return triton::PointerType::get(new_type,
-                                        pointer_type.getAddressSpace());
-      }
-      return std::nullopt;
-    });
-    addConversion([this](Type type) -> std::optional<Type> {
-      if (auto func_type = dyn_cast<FunctionType>(type)) {
-        SmallVector<Type> new_inputs = convertTypes(func_type.getInputs());
-        SmallVector<Type> new_results = convertTypes(func_type.getResults());
-        if (new_inputs != func_type.getInputs() ||
-            new_results != func_type.getResults()) {
-          return FunctionType::get(func_type.getContext(), new_inputs,
-                                   new_results);
-        }
-      }
-      return std::nullopt;
-    });
-  }
-
-  // Helper method to convert a range of types.
-  SmallVector<Type> convertTypes(ArrayRef<Type> types) {
-    SmallVector<Type> new_types;
-    for (auto type : types) {
-      new_types.push_back(convertType(type));
-    }
-    return new_types;
-  }
-};
-
-struct RewriteF8ToI8ConversionPattern final : ConversionPattern {
-  RewriteF8ToI8ConversionPattern(const TypeConverter& converter,
-                                 MLIRContext* ctx)
-      : ConversionPattern::ConversionPattern(
-            converter, Pattern::MatchAnyOpTypeTag(), 1, ctx) {}
+template <typename OpType>
+struct GenericOpConversionPattern final : public OpConversionPattern<OpType> {
+  using OpConversionPattern<OpType>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      Operation* op, ArrayRef<Value> operands,
+      OpType op, typename OpType::Adaptor adaptor,
       ConversionPatternRewriter& rewriter) const override {
-    if (getTypeConverter()->isLegal(op)) {
-      return failure();
+    Operation* replacement = rewriter.clone(*op);
+    replacement->setOperands(adaptor.getOperands());
+    const TypeConverter* converter = this->getTypeConverter();
+    for (auto result : replacement->getResults()) {
+      result.setType(converter->convertType(result.getType()));
     }
-
-    if (!isa<ExtractOp, InsertOp, arith::BitcastOp>(op)) {
-      return failure();
-    }
-
-    const TypeConverter* converter = getTypeConverter();
-    SmallVector<Type> result_types;
-    if (failed(converter->convertTypes(op->getResultTypes(), result_types))) {
-      // Note to anyone looking for this error message: this is a "can't
-      // happen". If you're seeing it, there's a bug.
-      return op->emitOpError("The op is not legal but type conversion failed.");
-    }
-    Operation* replacement = rewriter.create(
-        op->getLoc(), op->getName().getIdentifier(), operands, result_types,
-        op->getAttrs(), op->getSuccessors(), /*regions=*/{});
     rewriter.replaceOp(op, replacement);
     return success();
   }
@@ -129,26 +62,46 @@ class TritonXLAConvertUnsupportedTypesPass
 
  private:
   void runOnOperation() override {
-    auto* ctx = &getContext();
-    auto module = getOperation();
-    UnsupportedTypesConverter converter;
-
-    ConversionTarget target(*ctx);
-    target.markUnknownOpDynamicallyLegal([&](Operation* op) {
-      if (auto func_op = dyn_cast<func::FuncOp>(op)) {
-        return converter.isLegal(func_op.getFunctionType());
-      }
-      return converter.isLegal(op);
+    TypeConverter converter;
+    converter.addConversion([](Type type) { return type; });
+    converter.addConversion([&](Float8E8M0FNUType type) {
+      return IntegerType::get(type.getContext(), 8);
+    });
+    converter.addConversion([&](ShapedType type) {
+      return type.clone(converter.convertType(type.getElementType()));
     });
 
-    RewritePatternSet patterns(ctx);
-    patterns.add<RewriteF8ToI8ConversionPattern>(converter,
-                                                 patterns.getContext());
-    scf::populateSCFStructuralTypeConversions(converter, patterns);
-    populateFunctionOpInterfaceTypeConversionPattern<mlir::func::FuncOp>(
-        patterns, converter);
+    converter.addConversion([&](triton::PointerType type) {
+      return triton::PointerType::get(
+          converter.convertType(type.getPointeeType()), type.getAddressSpace());
+    });
+    converter.addConversion([&](FunctionType type) -> Type {
+      SmallVector<Type> new_inputs, new_results;
+      if (failed(converter.convertTypes(type.getInputs(), new_inputs)) ||
+          failed(converter.convertTypes(type.getResults(), new_results))) {
+        return nullptr;
+      }
+      return type.clone(new_inputs, new_results);
+    });
 
-    if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
+    auto* ctx = &getContext();
+    ConversionTarget target(*ctx);
+    target.addDynamicallyLegalOp<func::FuncOp>([&](func::FuncOp op) {
+      return converter.isSignatureLegal(op.getFunctionType()) &&
+             converter.isLegal(&op.getBody());
+    });
+    target.markUnknownOpDynamicallyLegal(
+        [&](Operation* op) { return converter.isLegal(op); });
+
+    RewritePatternSet patterns(ctx);
+    patterns.add<GenericOpConversionPattern<ExtractOp>,
+                 GenericOpConversionPattern<InsertOp>,
+                 GenericOpConversionPattern<arith::BitcastOp>>(converter, ctx);
+    scf::populateSCFStructuralTypeConversions(converter, patterns);
+    populateFunctionOpInterfaceTypeConversionPattern<func::FuncOp>(patterns,
+                                                                   converter);
+    if (failed(applyPartialConversion(getOperation(), target,
+                                      std::move(patterns)))) {
       return signalPassFailure();
     }
   }

@@ -1,4 +1,4 @@
-// RUN: xla-opt --split-input-file --convert-unsupported-types --canonicalize  %s | FileCheck %s
+// RUN: xla-opt --convert-unsupported-types %s | FileCheck %s
 
 module {
   // CHECK:   func.func @triton_fn(%arg0: !tt.ptr<f8E4M3FN>, %arg1: !tt.ptr<i8>, %arg2: !tt.ptr<f8E4M3FN>, %arg3: !tt.ptr<i8>, %arg4: !tt.ptr<f32>) {
