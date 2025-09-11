@@ -84,8 +84,8 @@ void RegisterCustomCallPartitioner(
   auto [it, did_insert] =
       partitioners.try_emplace(custom_call_target, std::move(partitioner));
   if (!did_insert) {
-    LOG(ERROR) << "Failed to register custom call partitioner for "
-               << custom_call_target;
+    VLOG(1) << "Failed to register custom call partitioner for "
+            << custom_call_target;
   }
 }
 
