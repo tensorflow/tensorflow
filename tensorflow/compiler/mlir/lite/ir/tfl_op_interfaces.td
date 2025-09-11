@@ -38,17 +38,13 @@ def TFL_Dialect : Dialect {
 
   let useDefaultAttributePrinterParser = 1;
   let useDefaultTypePrinterParser = 1;
+  let hasConstantMaterializer = 1;
 
   let extraClassDeclaration = [{
     ParseResult parseOneResultSameOperandTypeOp(OpAsmParser &parser,
                                                 OperationState &result);
 
     void printOneResultOp(Operation *op, OpAsmPrinter &p);
-
-    // Registered hook to materialize a constant operation from a given
-    // attribute value with the desired resultant type.
-    Operation *materializeConstant(OpBuilder &builder, Attribute value,
-                                   Type type, Location loc) override;
   }];
 }
 

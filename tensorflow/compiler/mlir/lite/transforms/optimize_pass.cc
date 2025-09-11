@@ -1337,6 +1337,12 @@ struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
     Value bias = fc_op.getBias();
     ElementsAttr bias_value;
     if (fc_op.getFusedActivationFunction() != "NONE") return failure();
+    // This pattern is not safe for quantized types.
+    if (mlir::isa<quant::QuantizedType>(
+            getElementTypeOrSelf(add_op.getType()))) {
+      return rewriter.notifyMatchFailure(add_op,
+                                         "Skipping because of quantized types");
+    }
 
     auto fc_output_type =
         mlir::dyn_cast<RankedTensorType>(fc_op.getOutput()[0].getType());
