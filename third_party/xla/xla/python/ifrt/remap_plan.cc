@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/remap_plan.pb.h"
 #include "xla/python/ifrt/serdes_version.h"
+#include "xla/python/ifrt/sharding.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -168,6 +169,22 @@ bool CheckOneInputForOneOutput(const xla::ifrt::RemapPlan& plan) {
   return true;
 }
 
+absl::StatusOr<DeviceListRef> ComputeDeviceListFromIntervals(
+    Client* client, const DeviceListRef& device_list, int64_t count,
+    absl::Span<const RemapPlan::Interval> intervals) {
+  std::vector<Device*> devices;
+  devices.reserve(count);
+  for (const RemapPlan::Interval& interval : intervals) {
+    int64_t index = interval.start;
+    while (index < interval.end) {
+      TF_RET_CHECK(index < device_list->size());
+      devices.push_back(device_list->devices()[index]);
+      index += interval.step;
+    }
+  }
+  return client->MakeDeviceList(devices);
+}
+
 }  // namespace
 
 std::string RemapPlan::Interval::DebugString() const {
@@ -188,6 +205,60 @@ std::string RemapPlan::Mapping::DebugString() const {
   return absl::StrCat("Mapping(in_array=", in_array, ",",
                       "out_array=", out_array, ",from=", format_intervals(from),
                       ",to=", format_intervals(to), ")");
+}
+
+absl::Status RemapPlan::ComputeInputDevicesForOutputMap(Client* client) {
+  TF_RET_CHECK(mappings);
+  TF_RET_CHECK(input_devices_for_output_map.empty());
+  // A list of intervals along with the sum of entries across all the intervals.
+  struct IntervalsAndCount {
+    std::vector<Interval> intervals;
+    int64_t count = 0;
+  };
+
+  // Map from output array index to all its input contributors.
+  //
+  // The value is a map fron input array index to the intervals of that input
+  // array that contribute to the given output.
+  absl::flat_hash_map<int, absl::flat_hash_map<int, IntervalsAndCount>>
+      output_to_inputs_and_intervals;
+  for (const Mapping& mapping : *mappings) {
+    IntervalsAndCount& intervals =
+        output_to_inputs_and_intervals[mapping.out_array][mapping.in_array];
+    for (const Interval& interval : mapping.from) {
+      intervals.intervals.push_back(interval);
+      intervals.count += GetNumberOfSteps(interval);
+    }
+  }
+
+  for (const auto& [out_array, input_intervals] :
+       output_to_inputs_and_intervals) {
+    TF_RET_CHECK(out_array < output_specs.size());
+    const DeviceListRef& out_devices =
+        output_specs[out_array].sharding->devices();
+    auto [it, inserted] = input_devices_for_output_map.insert({out_array, {}});
+    TF_RET_CHECK(inserted);
+    for (const auto& [in_array, intervals] : input_intervals) {
+      TF_RET_CHECK(in_array < input_specs.size());
+      const DeviceListRef& in_devices =
+          input_specs[in_array].sharding->devices();
+      TF_RET_CHECK(intervals.count <= out_devices->size());
+      TF_RET_CHECK(intervals.count <= in_devices->size());
+      DeviceListRef interval_device_list;
+      if (intervals.count == in_devices->size()) {
+        interval_device_list = in_devices;
+      } else if (intervals.count == out_devices->size()) {
+        interval_device_list = out_devices;
+      } else {
+        TF_ASSIGN_OR_RETURN(
+            interval_device_list,
+            ComputeDeviceListFromIntervals(client, in_devices, intervals.count,
+                                           intervals.intervals));
+      }
+      it->second.push_back({in_array, interval_device_list});
+    }
+  }
+  return absl::OkStatus();
 }
 
 absl::Status RemapPlan::Validate() const {

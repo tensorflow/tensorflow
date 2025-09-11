@@ -121,6 +121,9 @@ struct RemapPlan {
   // plan's validity, delegating the role to this method.
   absl::Status Validate() const;
 
+  // Fills in `input_devices_for_output_map` from `mappings`.
+  absl::Status ComputeInputDevicesForOutputMap(Client* client);
+
   // Constructs `RemapPlan` from `RemapPlanProto`. Devices are looked up
   // using `lookup_device`. Device ids in the proto must be consistent with
   // the devices returned by `lookup_device`.

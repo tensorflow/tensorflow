@@ -41,7 +41,6 @@ limitations under the License.
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
@@ -52,7 +51,6 @@ namespace {
 using ::testing::ElementsAreArray;
 using ::testing::HasSubstr;
 using ::testing::SizeIs;
-using ::tsl::testing::StatusIs;
 
 class RemapPlanTest
     : public testing::TestWithParam<test_util::DeviceTestParam> {
@@ -135,6 +133,7 @@ TEST_P(RemapPlanTest, MixedDtype) {
                          /*from=*/{RemapPlan::Interval{0, 1, 1}},
                          /*to=*/{RemapPlan::Interval{0, 1, 1}}});
 
+  TF_EXPECT_OK(plan.ComputeInputDevicesForOutputMap(client()));
   TF_EXPECT_OK(plan.Validate());
 }
 
@@ -639,8 +638,7 @@ TEST_P(RemapPlanTest, InvalidInputDevicesForOutputMap) {
                              HasSubstr("does not reference that device")));
 
   plan.input_devices_for_output_map.clear();
-  plan.input_devices_for_output_map.insert(
-      {0, {{0, GetDevices({0})}, {1, GetDevices({1})}}});
+  TF_EXPECT_OK(plan.ComputeInputDevicesForOutputMap(client()));
   TF_EXPECT_OK(plan.Validate());
 }
 
