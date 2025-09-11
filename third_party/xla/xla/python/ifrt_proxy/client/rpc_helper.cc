@@ -251,8 +251,9 @@ Future<std::shared_ptr<Resp>> DoRpc(RpcHelper::Batcher* batcher,
   XFlowHelper x_flow_helper(profiling_name);
   auto traceme = x_flow_helper.Span<XFlowHelper::kSend>();
 
-  auto promise = Future<std::shared_ptr<Resp>>::CreatePromise();
-  auto on_ready = [promise, has_resp, get_resp, profiling_name, x_flow_helper](
+  auto [promise, future] = Future<std::shared_ptr<Resp>>::MakePromise();
+  auto on_ready = [promise = std::move(promise), has_resp, get_resp,
+                   profiling_name, x_flow_helper](
                       absl::StatusOr<std::shared_ptr<IfrtResponse>> r) mutable {
     if (!r.ok()) {
       VLOG(3) << profiling_name << " response: " << r.status();
@@ -307,9 +308,9 @@ Future<std::shared_ptr<Resp>> DoRpc(RpcHelper::Batcher* batcher,
     promise.Set(std::move(result));
   };
   VLOG(3) << ifrt_req->ShortDebugString();
-  batcher->Immediate(std::move(ifrt_req)).OnReady(on_ready);
+  batcher->Immediate(std::move(ifrt_req)).OnReady(std::move(on_ready));
 
-  return Future<std::shared_ptr<Resp>>(promise);
+  return std::move(future);
 }
 
 #define RPC(METHOD, PROPERTY)                                                 \

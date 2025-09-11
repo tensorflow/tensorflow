@@ -124,22 +124,25 @@ GrpcClientSession::GrpcClientSession(
 
 Future<std::shared_ptr<IfrtResponse>> GrpcClientSession::Enqueue(
     std::unique_ptr<IfrtRequest> request) {
-  auto promise = Future<std::shared_ptr<IfrtResponse>>::CreatePromise();
+  auto [promise, future] = Future<std::shared_ptr<IfrtResponse>>::MakePromise();
+  auto shared_promise = std::make_shared<decltype(promise)>(std::move(promise));
   absl::Status status = Enqueue(
       std::move(request),
-      [promise, queue = user_futures_work_queue_.get()](
+      [promise = std::move(shared_promise),
+       queue = user_futures_work_queue_.get()](
           absl::StatusOr<std::shared_ptr<IfrtResponse>> response) mutable {
         queue->Schedule([promise = std::move(promise),
                          response = std::move(response)]() mutable -> void {
-          promise.Set(std::move(response));
+          promise->Set(std::move(response));
         });
       });
   if (!status.ok()) {
-    user_futures_work_queue_->Schedule([promise, status]() mutable -> void {
-      promise.Set(std::move(status));
-    });
+    user_futures_work_queue_->Schedule(
+        [promise = std::move(shared_promise), status]() mutable -> void {
+          promise->Set(std::move(status));
+        });
   }
-  return Future<std::shared_ptr<IfrtResponse>>(std::move(promise));
+  return std::move(future);
 }
 
 absl::Status GrpcClientSession::Enqueue(std::unique_ptr<IfrtRequest> req,

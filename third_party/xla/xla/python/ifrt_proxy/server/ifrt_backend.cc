@@ -359,20 +359,19 @@ class IfrtBackend::InOrderRequestsProcessor {
 
   Future<Response> Push(std::unique_ptr<IfrtRequest> request) {
     VLOG(3) << "Enqueuing " << request->ShortDebugString();
-    auto promise = Future<Response>::CreatePromise();
-    Future<Response> result(promise);
+    auto [promise, future] = Future<Response>::MakePromise();
     absl::MutexLock l(&mu_);
     if (shutdown_msg_.has_value()) {
       promise.Set(absl::InternalError(absl::StrCat(
           "InOrderRequestsProcessor already stopped: ", *shutdown_msg_)));
-      return result;
+      return std::move(future);
     }
     absl::string_view req_name = GetRequestName(request.get());
     Entry entry{/*req=*/std::move(request), /*promise=*/std::move(promise),
                 XFlowHelper(req_name)};
     entry.xflow.InstantActivity<XFlowHelper::kSend>();
     entries_.push_back(std::move(entry));
-    return result;
+    return std::move(future);
   }
 
   ~InOrderRequestsProcessor() {
@@ -667,9 +666,12 @@ Future<BackendInterface::Response> IfrtBackend::AsyncExecute(
     absl::MutexLock lock(&in_flight_count_mutex_);
     ++in_flight_count_;
   }
-  auto promise = Future<Response>::CreatePromise();
-  auto f = [this, promise, handle_fn = std::move(handle_fn)]() mutable {
-    promise.Set(handle_fn());
+  auto [promise, future] = Future<Response>::MakePromise();
+  auto f = [this,
+            promise =
+                std::make_shared<Future<Response>::Promise>(std::move(promise)),
+            handle_fn = std::move(handle_fn)]() mutable {
+    promise->Set(handle_fn());
     {
       absl::MutexLock lock(&in_flight_count_mutex_);
       --in_flight_count_;
@@ -680,7 +682,7 @@ Future<BackendInterface::Response> IfrtBackend::AsyncExecute(
   } else {
     tsl::Env::Default()->SchedClosure(std::move(f));
   }
-  return Future<Response>(std::move(promise));
+  return std::move(future);
 }
 
 /////////////////////////////////////////////////////////////////////////////
@@ -784,11 +786,13 @@ Future<BackendInterface::Response> IfrtBackend::HandleCheckFutureRequest(
     futures_.erase(it);
   }
 
-  auto promise = Future<BackendInterface::Response>::CreatePromise();
+  auto [promise, resp_future] =
+      Future<BackendInterface::Response>::MakePromise();
   // With PjRtFuture, the `Future` needs to be owned by one or more owners until
   // `OnReady()`'s lambda gets executed. So, capture a copy of `future` in the
   // lambda, making the lambda itself an owner of `future`.
-  future.OnReady([op_id = request->request_metadata().op_id(), promise,
+  future.OnReady([op_id = request->request_metadata().op_id(),
+                  promise = std::move(promise),
                   hold = future](absl::Status status) mutable {
     if (!status.ok()) {
       promise.Set(std::move(status));
@@ -799,7 +803,7 @@ Future<BackendInterface::Response> IfrtBackend::HandleCheckFutureRequest(
     promise.Set(std::move(ifrt_resp));
   });
 
-  return Future<BackendInterface::Response>(std::move(promise));
+  return std::move(resp_future);
 }
 
 Future<BackendInterface::Response> IfrtBackend::HandleCheckValueReadyRequest(
@@ -817,10 +821,8 @@ Future<BackendInterface::Response> IfrtBackend::HandleCheckValueReadyRequest(
     values.push_back(*std::move(array));
   }
 
-  auto ifrt_response_promise =
-      Future<BackendInterface::Response>::CreatePromise();
-  Future<BackendInterface::Response> ifrt_response_future(
-      ifrt_response_promise);
+  auto [ifrt_response_promise, ifrt_response_future] =
+      Future<BackendInterface::Response>::MakePromise();
 
   client_->GetReadyFuture(values).OnReady(
       [op_id = request->request_metadata().op_id(),
@@ -834,7 +836,7 @@ Future<BackendInterface::Response> IfrtBackend::HandleCheckValueReadyRequest(
         ifrt_response->mutable_check_value_ready_response();
         promise.Set(std::move(ifrt_response));
       });
-  return ifrt_response_future;
+  return std::move(ifrt_response_future);
 }
 
 absl::StatusOr<BackendInterface::Response>
@@ -1103,8 +1105,8 @@ IfrtBackend::HandleCopyToStringHostBufferRequest(
       host_buffer->data(), /*byte_strides=*/std::nullopt,
       ArrayCopySemantics::kAlwaysCopy);
 
-  auto resp_promise = Future<BackendInterface::Response>::CreatePromise();
-  Future<BackendInterface::Response> resp_future(resp_promise);
+  auto [resp_promise, resp_future] =
+      Future<BackendInterface::Response>::MakePromise();
 
   // Make the response proto when the copy is done.
   auto response_maker =
@@ -1130,7 +1132,7 @@ IfrtBackend::HandleCopyToStringHostBufferRequest(
     promise.Set(response_maker(status));
   });
 
-  return resp_future;
+  return std::move(resp_future);
 }
 
 Future<BackendInterface::Response> IfrtBackend::HandleCopyToHostBufferRequest(
@@ -1180,8 +1182,8 @@ Future<BackendInterface::Response> IfrtBackend::HandleCopyToHostBufferRequest(
       (*array)->CopyToHostBuffer(mem_region->zeroth_element(), byte_strides,
                                  ArrayCopySemantics::kAlwaysCopy);
 
-  auto resp_promise = Future<BackendInterface::Response>::CreatePromise();
-  Future<BackendInterface::Response> resp_future(resp_promise);
+  auto [resp_promise, resp_future] =
+      Future<BackendInterface::Response>::MakePromise();
   auto on_ready = [this, op_id = request->request_metadata().op_id(),
                    host_buffer = std::move(host_buffer),
                    host_buffer_handle = copy_to_host.host_buffer_handle()](
@@ -1200,7 +1202,7 @@ Future<BackendInterface::Response> IfrtBackend::HandleCopyToHostBufferRequest(
       [promise = std::move(resp_promise), on_ready = std::move(on_ready)](
           absl::Status status) mutable { promise.Set(on_ready(status)); });
 
-  return resp_future;
+  return std::move(resp_future);
 }
 
 absl::StatusOr<BackendInterface::Response>

@@ -28,7 +28,6 @@
 #include "absl/strings/string_view.h"
 #include "grpcpp/client_context.h"
 #include "grpcpp/support/client_callback.h"
-#include "grpcpp/support/status.h"
 #include "grpcpp/support/sync_stream.h"
 #include "xla/pjrt/distributed/util.h"
 #include "xla/pjrt/semaphore.h"
@@ -195,14 +194,17 @@ Future<> GrpcClientHostBufferStore::Store(uint64_t handle,
 }
 
 Future<absl::Cord> GrpcClientHostBufferStore::Lookup(uint64_t handle) {
-  auto promise = Future<absl::Cord>::CreatePromise();
+  auto [promise, future] = Future<absl::Cord>::MakePromise();
 
   XFlowHelper flow("GrpcClientHostBufferStore::Lookup");
   flow.InstantActivity<XFlowHelper::kSend>();
 
   auto reservation = ScopedAcquireSemaphore(lookup_throttler_);
   work_queue_->Schedule([this, reservation = std::move(reservation), handle,
-                         promise, flow]() mutable -> void {
+                         promise =
+                             std::make_shared<Future<absl::Cord>::Promise>(
+                                 std::move(promise)),
+                         flow]() mutable -> void {
     auto span = flow.Span<XFlowHelper::kRecv>();
     GrpcHostBufferLookupRequest request;
     request.set_handle(handle);
@@ -223,15 +225,15 @@ Future<absl::Cord> GrpcClientHostBufferStore::Lookup(uint64_t handle) {
 
     absl::Status status = xla::FromGrpcStatus(stream->Finish());
     if (status.ok()) {
-      promise.Set(std::move(data));
+      promise->Set(std::move(data));
     } else {
-      promise.Set(status);
+      promise->Set(status);
     }
     VLOG(3) << "GrpcClientHostBufferStore::Lookup done "
             << request.ShortDebugString();
   });
 
-  return Future<absl::Cord>(promise);
+  return std::move(future);
 }
 
 Future<> GrpcClientHostBufferStore::Delete(uint64_t handle) {

@@ -66,42 +66,40 @@ absl::StatusOr<std::unique_ptr<Client>> AttemptConnection(
     absl::string_view server_address, int attempt_no,
     const ClientConnectionOptions& options) {
   std::unique_ptr<RpcHelper> rpc_helper;
-  auto init_response_promise =
-      Future<std::shared_ptr<InitResponse>>::CreatePromise();
+  auto [init_response_promise, init_response_future] =
+      Future<std::shared_ptr<InitResponse>>::MakePromise();
 
   // TODO(b/266635130): Move gRPC stub creation to be outside of `Client` so
   // that we can pass mock `ClientSession` to the client.
   auto control_path_stub = CreateGrpcStub(server_address);
 
-  auto session_disconnect_cb =
-      [init_response =
-           Future<std::shared_ptr<InitResponse>>(init_response_promise),
-       on_disconnect = options.on_disconnect,
-       attempt_no](absl::Status s) mutable {
-        // If the `rpc_helper->Init().OnReady(cb)` statement below has returned,
-        // the callback cb in that statement (which sets `init_response`) is
-        // guaranteed by `GrpcClientSession::Create()` to be called before
-        // `session_disconnect_cb`.
-        // TODO(madthanu): The above statement is false (even if we wanted to,
-        // we cannot meaningfully enforce or document the guarantee of
-        // the returned Future's OnReady being called before another callback),
-        // although the exact way init_response_promise is set below makes it
-        // work most of the time.
-        if (init_response.IsReady() && init_response.Await().ok()) {
-          // If the init RPC has already completed successfully, we have
-          // already or will be returning OK from the `AttemptConnection` call.
-          LOG(WARNING) << "IFRT proxy server disconnected: " << s
-                       << "; Stack trace: " << tsl::CurrentStackTrace();
-          if (on_disconnect != nullptr) {
-            on_disconnect(s);
-          }
-        } else {
-          // Otherwise, we are going to return an error from
-          // `AttemptConnection`. So do not invoke `on_disconnect`.
-          LOG(INFO) << "GrpcClientSession attempt " << attempt_no
-                    << " failed: " << s;
-        }
-      };
+  auto session_disconnect_cb = [init_response = init_response_future,
+                                on_disconnect = options.on_disconnect,
+                                attempt_no](absl::Status s) mutable {
+    // If the `rpc_helper->Init().OnReady(cb)` statement below has returned,
+    // the callback cb in that statement (which sets `init_response`) is
+    // guaranteed by `GrpcClientSession::Create()` to be called before
+    // `session_disconnect_cb`.
+    // TODO(madthanu): The above statement is false (even if we wanted to,
+    // we cannot meaningfully enforce or document the guarantee of
+    // the returned Future's OnReady being called before another callback),
+    // although the exact way init_response_promise is set below makes it
+    // work most of the time.
+    if (init_response.IsReady() && init_response.Await().ok()) {
+      // If the init RPC has already completed successfully, we have
+      // already or will be returning OK from the `AttemptConnection` call.
+      LOG(WARNING) << "IFRT proxy server disconnected: " << s
+                   << "; Stack trace: " << tsl::CurrentStackTrace();
+      if (on_disconnect != nullptr) {
+        on_disconnect(s);
+      }
+    } else {
+      // Otherwise, we are going to return an error from
+      // `AttemptConnection`. So do not invoke `on_disconnect`.
+      LOG(INFO) << "GrpcClientSession attempt " << attempt_no
+                << " failed: " << s;
+    }
+  };
 
   GrpcIfrtSessionMetadata metadata;
   {
@@ -143,11 +141,11 @@ absl::StatusOr<std::unique_ptr<Client>> AttemptConnection(
   // not, instead of combining it with the Request that will fetch device
   // information (which can take a while, depending on the IFRT backend).
   rpc_helper->Init(std::make_unique<InitRequest>())
-      .OnReady([&](auto resp) mutable { init_response_promise.Set(resp); });
+      .OnReady([promise = std::move(init_response_promise)](auto resp) mutable {
+        promise.Set(resp);
+      });
 
-  TF_ASSIGN_OR_RETURN(
-      auto init_response,
-      Future<std::shared_ptr<InitResponse>>(init_response_promise).Await());
+  TF_ASSIGN_OR_RETURN(auto init_response, init_response_future.Await());
 
   bool reuse_control_path_stub_for_data_path =
       GetGlobalClientFlags()->synchronous_host_buffer_store ||
