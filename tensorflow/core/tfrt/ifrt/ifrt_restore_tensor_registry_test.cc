@@ -56,8 +56,7 @@ TEST(IfrtRestoreTensorRegistryTest, SetNonExistedTensorAsUsedByHostFails) {
 TEST(IfrtRestoreTensorRegistryTest, RegisteredExistedTensorFails) {
   auto input_tensor =
       test::AsTensor<int32_t>({1, 2, 3, 4}, tensorflow::TensorShape({2, 2}));
-  auto promise = xla::ifrt::Future<tensorflow::Tensor>::CreatePromise();
-  auto future = xla::ifrt::Future<tensorflow::Tensor>(promise);
+  auto [promise, future] = xla::ifrt::Future<tensorflow::Tensor>::MakePromise();
 
   IfrtRestoreTensorRegistry::RestoredTensorInfo restored_tensor_info = {
       .used_by_host = false,
@@ -76,8 +75,7 @@ TEST(IfrtRestoreTensorRegistryTest, RegisteredExistedTensorFails) {
 }
 
 TEST(IfrtRestoreTensorRegistryTest, SetTensorAsUsedByHost) {
-  auto promise = xla::ifrt::Future<tensorflow::Tensor>::CreatePromise();
-  auto future = xla::ifrt::Future<tensorflow::Tensor>(promise);
+  auto [promise, future] = xla::ifrt::Future<tensorflow::Tensor>::MakePromise();
   IfrtRestoreTensorRegistry::RestoredTensorInfo restored_tensor_info = {
       .used_by_host = false,
       .dtype_and_shape =
@@ -95,8 +93,7 @@ TEST(IfrtRestoreTensorRegistryTest, SetTensorAsUsedByHost) {
 TEST(IfrtRestoreTensorRegistryTest, RegisteredTensorCanBeRetrieved) {
   auto input_tensor =
       test::AsTensor<int32_t>({1, 2, 3, 4}, tensorflow::TensorShape({2, 2}));
-  auto promise = xla::ifrt::Future<tensorflow::Tensor>::CreatePromise();
-  auto future = xla::ifrt::Future<tensorflow::Tensor>(promise);
+  auto [promise, future] = xla::ifrt::Future<tensorflow::Tensor>::MakePromise();
 
   IfrtRestoreTensorRegistry::RestoredTensorInfo restored_tensor_info = {
       .used_by_host = false,
@@ -124,8 +121,7 @@ TEST(IfrtRestoreTensorRegistryTest,
      RegisteredTensorDTypeAndShapeCanBeRetrieved) {
   auto input_tensor =
       test::AsTensor<int32_t>({1, 2, 3, 4}, tensorflow::TensorShape({2, 2}));
-  auto promise = xla::ifrt::Future<tensorflow::Tensor>::CreatePromise();
-  auto future = xla::ifrt::Future<tensorflow::Tensor>(promise);
+  auto [promise, future] = xla::ifrt::Future<tensorflow::Tensor>::MakePromise();
 
   IfrtRestoreTensorRegistry::RestoredTensorInfo restored_tensor_info = {
       .used_by_host = false,
@@ -148,10 +144,10 @@ TEST(IfrtRestoreTensorRegistryTest,
 TEST(IfrtRestoreTensorRegistryTest, FeezeTensorRegistry) {
   auto input_tensor =
       test::AsTensor<int32_t>({1, 2, 3, 4}, tensorflow::TensorShape({2, 2}));
-  auto promise1 = xla::ifrt::Future<tensorflow::Tensor>::CreatePromise();
-  auto future1 = xla::ifrt::Future<tensorflow::Tensor>(promise1);
-  auto promise2 = xla::ifrt::Future<tensorflow::Tensor>::CreatePromise();
-  auto future2 = xla::ifrt::Future<tensorflow::Tensor>(promise2);
+  auto [promise1, future1] =
+      xla::ifrt::Future<tensorflow::Tensor>::MakePromise();
+  auto [promise2, future2] =
+      xla::ifrt::Future<tensorflow::Tensor>::MakePromise();
 
   IfrtRestoreTensorRegistry::RestoredTensorInfo restored_tensor_info1 = {
       .used_by_host = false,
