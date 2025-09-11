@@ -27,6 +27,7 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/autotuner/cublas.h"
+#include "xla/backends/gpu/autotuner/cublaslt.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -266,6 +267,8 @@ absl::Status AMDGPUCompiler::AddConvAndGemmAutotuningPasses(
   // backend uses the same API as rocBLAS.
   backends.push_back(
       std::make_unique<CublasBackend>(stream_exec, &debug_options, this));
+  backends.push_back(
+      std::make_unique<CublasLtBackend>(stream_exec, &debug_options, this));
   auto should_autotune = [](const HloInstruction& instruction) -> bool {
     return instruction.opcode() == HloOpcode::kCustomCall &&
            IsCublasGemm(instruction);
