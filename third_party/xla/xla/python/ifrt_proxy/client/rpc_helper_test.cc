@@ -57,13 +57,13 @@ void PausePeriodicFlushes() {
   auto called_at_least_once = std::make_shared<AtomicBool>();
   auto periodic_flusher_pause_hook = [called_at_least_once](bool* paused) {
     *paused = true;
-    absl::MutexLock l(&called_at_least_once->mu);
+    absl::MutexLock l(called_at_least_once->mu);
     called_at_least_once->b = true;
   };
   TestHookSet(TestHookName::kRpcBatcherPausePeriodicFlush,
               std::move(periodic_flusher_pause_hook));
 
-  absl::MutexLock l(&called_at_least_once->mu);
+  absl::MutexLock l(called_at_least_once->mu);
   CHECK(called_at_least_once->mu.AwaitWithTimeout(
       absl::Condition(&called_at_least_once->b), kMaxFlushTimeout));
 }

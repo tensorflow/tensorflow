@@ -58,7 +58,7 @@ class BatchedOps {
   using BatchOperation = RpcHelper::BatchOperation;
 
   void Add(BatchOperation op, ArrayHandle handle) {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     batched_[op].push_back(handle);
   }
 
@@ -69,7 +69,7 @@ class BatchedOps {
 
   IfrtRequests Consume() {
     IfrtRequests result;
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     if (!batched_[BatchOperation::kDeleteArray].empty()) {
       result.delete_req = std::make_unique<IfrtRequest>();
       for (const auto& arr_handle : batched_[BatchOperation::kDeleteArray]) {
@@ -114,7 +114,7 @@ class RpcHelper::Batcher {
   // that have been previously enqueued.
   Future<ClientSession::Response> Immediate(
       std::unique_ptr<IfrtRequest> request) {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     if (finished_) {
       LOG(WARNING) << "After RpcHelper::Finish(): " << request->DebugString();
       return Future<ClientSession::Response>(
@@ -134,7 +134,7 @@ class RpcHelper::Batcher {
   void Finish(absl::Status s) {
     LOG(INFO) << "RpcHelper::Batcher::Finish() starting: " << s;
     {
-      absl::MutexLock l(&mu_);
+      absl::MutexLock l(mu_);
       finished_ = true;
       auto remaining = batched_.Consume();
       if (remaining.delete_req != nullptr) {
@@ -157,7 +157,7 @@ class RpcHelper::Batcher {
   void PeriodicFlusher() {
     while (true) {
       absl::SleepFor(kPeriodicFlushInterval);
-      absl::MutexLock l(&mu_);
+      absl::MutexLock l(mu_);
       if (finished_) {
         return;
       }

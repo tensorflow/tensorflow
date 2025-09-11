@@ -59,7 +59,7 @@ namespace proxy {
 class GrpcClientSession::ResponseCallbackTable {
  public:
   absl::Status Add(OpId op_id, ResponseCallback callback) {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     const bool inserted = table_.insert({op_id, std::move(callback)}).second;
     if (!inserted) {
       return absl::AlreadyExistsError(
@@ -69,7 +69,7 @@ class GrpcClientSession::ResponseCallbackTable {
   }
 
   std::optional<ResponseCallback> Pop(OpId op_id) {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     auto it = table_.find(op_id);
     if (it == table_.end()) {
       return std::nullopt;
@@ -81,7 +81,7 @@ class GrpcClientSession::ResponseCallbackTable {
 
   absl::flat_hash_map<OpId, ResponseCallback> PopAll() {
     absl::flat_hash_map<OpId, ResponseCallback> result;
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     result = std::move(table_);
     table_ = absl::flat_hash_map<OpId, ResponseCallback>();
     return result;
@@ -147,7 +147,7 @@ Future<std::shared_ptr<IfrtResponse>> GrpcClientSession::Enqueue(
 
 absl::Status GrpcClientSession::Enqueue(std::unique_ptr<IfrtRequest> req,
                                         ResponseCallback callback) {
-  absl::MutexLock l(&writer_mu_);
+  absl::MutexLock l(writer_mu_);
   const OpId op_id = writer_next_op_id_++;
 
   if (writes_stopped_) {
@@ -207,7 +207,7 @@ void GrpcClientSession::Finish(const absl::Status& client_status) {
 
     auto finish_stream_and_get_server_status = [&]() -> absl::Status {
       LOG(INFO) << "GrpClientSession: Attempting to call stream->Finish()";
-      absl::MutexLock l(&writer_mu_);
+      absl::MutexLock l(writer_mu_);
       // Note: stream_->Finish() counts as a write, and needs to be serialized
       // with stream->Write().
       LOG(INFO) << "GrpClientSession: Attempting to call stream->Finish(), "
