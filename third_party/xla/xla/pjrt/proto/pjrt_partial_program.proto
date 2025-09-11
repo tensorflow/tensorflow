@@ -16,14 +16,14 @@ message PjRtPartialProgramProto {
   // validation to ensure a phase consumes compatible inputs. It can be used
   // along with `program_name` to identify the program.
   string program_format = 2;
-  // The name of the compilation phase that generated this partial program
+  // The name of the compilation phase that produced this partial program
   // artifact.
-  string generating_phase = 3;
-  // A list of names of the next phases that are capable of consuming this
+  string producer_phase = 3;
+  // A list of phase names that are capable of consuming this
   // partial program artifact as their input.  This metadata is
   // used for plugin-agnostic validation to ensure phases are executed
   // in the intended sequence ("phase ordering").
-  repeated string next_phases = 4;
+  repeated string consumer_phases = 4;
   // The version of the program format. This can be used for compatibility
   // checks if program formats evolve over time.
   string version = 5;

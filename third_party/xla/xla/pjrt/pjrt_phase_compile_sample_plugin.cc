@@ -151,8 +151,8 @@ absl::StatusOr<std::vector<xla::PjRtPartialProgramProto>> PhaseCompiler(
     xla::PjRtPartialProgramProto serialized_output_object;
     serialized_output_object.set_program(serialized_output_status.value());
     serialized_output_object.set_program_format(kStablehloBytecodeFormat);
-    serialized_output_object.set_generating_phase(kPhaseName);
-    serialized_output_object.add_next_phases({std::string(kNextPhaseName)});
+    serialized_output_object.set_producer_phase(kPhaseName);
+    serialized_output_object.add_consumer_phases({std::string(kNextPhaseName)});
     serialized_output_object.set_version("1.0");
 
     serialized_output_objects.push_back(std::move(serialized_output_object));

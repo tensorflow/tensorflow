@@ -83,8 +83,8 @@ std::vector<xla::PjRtPartialProgramProto> PrepareInputPartialPrograms(
   xla::PjRtPartialProgramProto partial_program;
   partial_program.set_program(*bytecode_status);
   partial_program.set_program_format(program_format);
-  partial_program.set_generating_phase("n/a");
-  partial_program.add_next_phases({next_phase});
+  partial_program.set_producer_phase("n/a");
+  partial_program.add_consumer_phases({next_phase});
   partial_program.set_version("1.0");
 
   return {partial_program};
