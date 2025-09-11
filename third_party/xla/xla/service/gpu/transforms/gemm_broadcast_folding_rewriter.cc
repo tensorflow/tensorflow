@@ -95,7 +95,7 @@ class GemmBroadcastFoldingVisitor : public DfsHloRewriteVisitor {
       }
       TF_RETURN_IF_ERROR(existing_gemm->ReplaceOperandWithDifferentShape(
           bcast_operand_index, bcast->mutable_operand(0)));
-      TF_RETURN_IF_ERROR(existing_gemm->set_backend_config(gpu_config));
+      existing_gemm->set_backend_config(gpu_config);
       MarkAsChanged();
     }
     return absl::OkStatus();

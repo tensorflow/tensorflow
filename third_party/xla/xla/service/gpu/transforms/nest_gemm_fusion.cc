@@ -144,7 +144,7 @@ absl::Status FuseInstructionsForConsumer(HloInstruction& root,
                       fusion->backend_config<GpuBackendConfig>());
   gpu_config.mutable_fusion_backend_config()->set_kind(
       std::string(kTritonNestedGemmFusionKind));
-  TF_RETURN_IF_ERROR(fusion->set_backend_config(gpu_config));
+  fusion->set_backend_config(gpu_config);
 
   for (int64_t operand_index : consumer.OperandIndices(&root)) {
     TF_RETURN_IF_ERROR(consumer.ReplaceOperandWith(operand_index, fusion));
@@ -197,7 +197,7 @@ absl::Status AnnotateDotOperandNestedFusionImpl(
   *gpu_config.mutable_fusion_backend_config()
        ->mutable_block_level_fusion_config() =
       block_level_parameters.ToBlockLevelFusionConfig();
-  TF_RETURN_IF_ERROR(nested_fusion.set_backend_config(gpu_config));
+  nested_fusion.set_backend_config(gpu_config);
 
   return absl::OkStatus();
 }
@@ -297,7 +297,7 @@ absl::Status MakeNestedFusionFromGemmFusion(HloFusionInstruction* fusion,
 
   *backend_config.mutable_block_level_fusion_config() =
       block_level_parameters.ToBlockLevelFusionConfig();
-  TF_RETURN_IF_ERROR(fusion->set_backend_config(gpu_config));
+  fusion->set_backend_config(gpu_config);
 
   return absl::OkStatus();
 }

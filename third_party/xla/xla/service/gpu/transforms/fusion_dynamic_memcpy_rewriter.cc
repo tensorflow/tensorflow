@@ -304,7 +304,7 @@ absl::StatusOr<bool> FusionDynamicMemcpyRewriter::Run(
       }
     }
 
-    TF_RETURN_IF_ERROR(fusion->set_backend_config(backend_config));
+    fusion->set_backend_config(backend_config);
     has_changed = true;
   }
 
