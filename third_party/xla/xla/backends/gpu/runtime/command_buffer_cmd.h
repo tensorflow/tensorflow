@@ -37,7 +37,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
@@ -61,6 +60,7 @@ limitations under the License.
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/platform.h"
@@ -654,7 +654,9 @@ class LaunchCmd : public CommandBufferCmd {
   LaunchCmd(std::string kernel_name,
             absl::Span<const BufferAllocation::Slice> args,
             absl::Span<const BufferUse::MemoryAccess> args_access,
-            LaunchDimensions dims, int64_t shmem_bytes);
+            LaunchDimensions dims, int64_t shmem_bytes,
+            std::optional<stream_executor::gpu::TmaMetadata> tma_metadata =
+                std::nullopt);
 
   absl::Status Initialize(const Thunk::InitializeParams& params,
                           StateManager& state) override;
@@ -672,6 +674,7 @@ class LaunchCmd : public CommandBufferCmd {
   std::vector<BufferUse::MemoryAccess> args_access_;
   LaunchDimensions dims_;
   int64_t shmem_bytes_;
+  std::optional<stream_executor::gpu::TmaMetadata> tma_metadata_;
 
   // Command sequence can be recorded concurrently for multiple command buffers
   // on different stream executors and we need to synchronize mutable state.
