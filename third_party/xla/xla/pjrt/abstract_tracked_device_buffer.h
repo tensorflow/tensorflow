@@ -81,6 +81,12 @@ class AbstractTrackedDeviceBuffer {
         absl::StrCat("BlockForOperationsToComplete not supported for ",
                      memory_space->DebugString()));
   }
+
+  virtual absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> GetDefinitionEvent(
+      PjRtMemorySpace* memory_space) {
+    return absl::UnimplementedError(absl::StrCat(
+        "GetDefinitionEvent is not supported for ", memory_space->ToString()));
+  }
 };
 
 class CommonPjRtBuffer : public PjRtBuffer {
