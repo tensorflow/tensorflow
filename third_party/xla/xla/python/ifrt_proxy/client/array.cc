@@ -451,12 +451,12 @@ Future<> Array::GetReadyFuture() const {
   auto req = std::make_unique<CheckValueReadyRequest>();
   req->add_value_handles(handle_.handle);
 
-  auto promise = Future<>::CreatePromise();
+  auto [promise, future] = Future<>::MakePromise();
   rpc_helper_->CheckValueReady(std::move(req))
-      .OnReady(
-          [promise](absl::StatusOr<std::shared_ptr<CheckValueReadyResponse>>
-                        resp) mutable { promise.Set(resp.status()); });
-  ready_future_ = Future<>(std::move(promise));
+      .OnReady([promise = std::move(promise)](
+                   absl::StatusOr<std::shared_ptr<CheckValueReadyResponse>>
+                       resp) mutable { promise.Set(resp.status()); });
+  ready_future_ = std::move(future);
   return ready_future_;
 }
 
@@ -817,8 +817,8 @@ Future<> Array::CopyToStringHostBuffer(
 
   const uint64_t host_buffer_handle = rpc_helper_->NextHandle();
   req->set_host_buffer_handle(host_buffer_handle);
-  auto promise = Future<>::CreatePromise();
-  auto on_ready = [promise,
+  auto [promise, future] = Future<>::MakePromise();
+  auto on_ready = [promise = std::move(promise),
                    host_buffer_store = rpc_helper_->host_buffer_store(),
                    host_buffer_handle,
                    dst_buffer = static_cast<absl::Cord*>(data)](
@@ -829,7 +829,8 @@ Future<> Array::CopyToStringHostBuffer(
       return;
     }
     host_buffer_store->Lookup(host_buffer_handle)
-        .OnReady([promise, dst_buffer, host_buffer_store, host_buffer_handle](
+        .OnReady([promise = std::move(promise), dst_buffer, host_buffer_store,
+                  host_buffer_handle](
                      absl::StatusOr<absl::Cord> array_contents) mutable {
           absl::Cleanup cleanup = [&]() {
             host_buffer_store->Delete(host_buffer_handle)
@@ -854,7 +855,7 @@ Future<> Array::CopyToStringHostBuffer(
         });
   };
   rpc_helper_->CopyToHostBuffer(std::move(req)).OnReady(std::move(on_ready));
-  return Future<>(std::move(promise));
+  return std::move(future);
 }
 
 Future<> Array::CopyToHostBuffer(
@@ -882,9 +883,9 @@ Future<> Array::CopyToHostBuffer(
   const uint64_t host_buffer_handle = rpc_helper_->NextHandle();
   req->set_host_buffer_handle(host_buffer_handle);
 
-  auto promise = Future<>::CreatePromise();
+  auto [promise, future] = Future<>::MakePromise();
   auto on_ready = [host_buffer_store = rpc_helper_->host_buffer_store(),
-                   promise, host_buffer_handle,
+                   promise = std::move(promise), host_buffer_handle,
                    mem_region = mem_region->mem_region()](
                       absl::StatusOr<std::shared_ptr<CopyToHostBufferResponse>>
                           resp) mutable {
@@ -895,7 +896,7 @@ Future<> Array::CopyToHostBuffer(
 
     auto host_buffer = host_buffer_store->Lookup(host_buffer_handle);
     host_buffer.OnReady(
-        [promise, mem_region, host_buffer_store,
+        [promise = std::move(promise), mem_region, host_buffer_store,
          host_buffer_handle](absl::StatusOr<absl::Cord> data) mutable {
           absl::Cleanup cleanup = [&]() {
             host_buffer_store->Delete(host_buffer_handle)
@@ -930,7 +931,7 @@ Future<> Array::CopyToHostBuffer(
         });
   };
   rpc_helper_->CopyToHostBuffer(std::move(req)).OnReady(std::move(on_ready));
-  return Future<>(std::move(promise));
+  return std::move(future);
 }
 
 absl::StatusOr<std::shared_ptr<const PjRtLayout>> Array::pjrt_layout() const {

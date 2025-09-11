@@ -93,7 +93,7 @@ GrpcClientHostBufferStore::~GrpcClientHostBufferStore() {
 
 Future<> GrpcClientHostBufferStore::Store(uint64_t handle,
                                           absl::string_view data) {
-  auto promise = Future<>::CreatePromise();
+  auto [promise, future] = Future<>::MakePromise();
 
   XFlowHelper flow("GrpcClientHostBufferStore::StoreAsync");
   flow.InstantActivity<XFlowHelper::kSend>();
@@ -101,48 +101,50 @@ Future<> GrpcClientHostBufferStore::Store(uint64_t handle,
   std::unique_ptr<std::string> buffered_data;
 
   auto reservation = ScopedAcquireSemaphore(store_throttler_);
-  work_queue_->Schedule([this, reservation = std::move(reservation), handle,
-                         promise, data, flow]() mutable -> void {
-    auto span = flow.Span<XFlowHelper::kRecv>();
-    GrpcHostBufferStoreMetadata metadata;
-    metadata.set_session_id(session_id_);
-    metadata.set_handle(handle);
-    metadata.set_buffer_size(data.size());
-    VLOG(3) << "GrpcClientHostBufferStore::Store start "
-            << metadata.ShortDebugString();
+  work_queue_->Schedule(
+      [this, reservation = std::move(reservation), handle,
+       promise = std::make_shared<Future<>::Promise>(std::move(promise)), data,
+       flow]() mutable -> void {
+        auto span = flow.Span<XFlowHelper::kRecv>();
+        GrpcHostBufferStoreMetadata metadata;
+        metadata.set_session_id(session_id_);
+        metadata.set_handle(handle);
+        metadata.set_buffer_size(data.size());
+        VLOG(3) << "GrpcClientHostBufferStore::Store start "
+                << metadata.ShortDebugString();
 
-    ::grpc::ClientContext context;
-    context.AddMetadata("ifrt-proxy-grpc-host-buffer-store-metadata-bin",
-                        metadata.SerializeAsString());
+        ::grpc::ClientContext context;
+        context.AddMetadata("ifrt-proxy-grpc-host-buffer-store-metadata-bin",
+                            metadata.SerializeAsString());
 
-    GrpcHostBufferStoreResponse response;
-    auto writer = stub_->HostBufferStore(&context, &response);
+        GrpcHostBufferStoreResponse response;
+        auto writer = stub_->HostBufferStore(&context, &response);
 
-    {
-      tsl::profiler::TraceMe trace_me_send_data([size = data.size()]() {
-        return tsl::profiler::TraceMeEncode(
-            "GrpcClientHostBufferStore::StoreAsync_Send", {{"size", size}});
+        {
+          tsl::profiler::TraceMe trace_me_send_data([size = data.size()]() {
+            return tsl::profiler::TraceMeEncode(
+                "GrpcClientHostBufferStore::StoreAsync_Send", {{"size", size}});
+          });
+          for (int64_t offset = 0; offset < data.size(); offset += kChunkSize) {
+            GrpcHostBufferStoreRequest request;
+            SetDataFromStringView(request, data.substr(offset, kChunkSize));
+            writer->Write(request);
+          }
+
+          if (!writer->WritesDone()) {
+            absl::Status s = xla::FromGrpcStatus(writer->Finish());
+            promise->Set(absl::InternalError(absl::StrCat(
+                "Failed to write all host buffer chunks, Finish() returned: ",
+                s.ToString())));
+            return;
+          }
+        }
+
+        VLOG(3) << "GrpcClientHostBufferStore::Store done "
+                << metadata.ShortDebugString();
+        promise->Set(xla::FromGrpcStatus(writer->Finish()));
       });
-      for (int64_t offset = 0; offset < data.size(); offset += kChunkSize) {
-        GrpcHostBufferStoreRequest request;
-        SetDataFromStringView(request, data.substr(offset, kChunkSize));
-        writer->Write(request);
-      }
-
-      if (!writer->WritesDone()) {
-        absl::Status s = xla::FromGrpcStatus(writer->Finish());
-        promise.Set(absl::InternalError(absl::StrCat(
-            "Failed to write all host buffer chunks, Finish() returned: ",
-            s.ToString())));
-        return;
-      }
-    }
-
-    VLOG(3) << "GrpcClientHostBufferStore::Store done "
-            << metadata.ShortDebugString();
-    promise.Set(xla::FromGrpcStatus(writer->Finish()));
-  });
-  return Future<>(promise);
+  return std::move(future);
 }
 
 Future<> GrpcClientHostBufferStore::Store(uint64_t handle,

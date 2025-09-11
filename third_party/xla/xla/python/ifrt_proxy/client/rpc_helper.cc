@@ -352,13 +352,13 @@ Future<> RpcHelper::CheckFuture(uint64_t handle) {
   auto req = std::make_unique<CheckFutureRequest>();
   req->set_future_handle(handle);
 
-  auto promise = Future<>::CreatePromise();
+  auto [promise, future] = Future<>::MakePromise();
   CheckFuture(std::move(req))
-      .OnReady(
-          [promise](absl::StatusOr<std::shared_ptr<CheckFutureResponse>>
-                        response) mutable { promise.Set(response.status()); });
+      .OnReady([promise = std::move(promise)](
+                   absl::StatusOr<std::shared_ptr<CheckFutureResponse>>
+                       response) mutable { promise.Set(response.status()); });
 
-  return Future<>(std::move(promise));
+  return std::move(future);
 }
 
 RpcHelper::RpcHelper(IfrtProxyVersion version,

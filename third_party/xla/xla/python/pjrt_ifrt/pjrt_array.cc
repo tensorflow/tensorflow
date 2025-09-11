@@ -400,8 +400,7 @@ Future<> PjRtArray::CopyToHostBuffer(
         static_cast<char*>(data), xla_shape);
   }
   auto* literal_ptr = literal.get();
-  auto promise = Future<>::CreatePromise();
-  Future<> future(promise);
+  auto [promise, future] = Future<>::MakePromise();
   // TODO(hyeontaek): Handle semantics == kDonateInput.
   pjrt_buffer->ToLiteral(literal_ptr)
       .OnReady([literal = std::move(literal),

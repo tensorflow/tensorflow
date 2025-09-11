@@ -331,10 +331,10 @@ class SlicedRawBufferChunkDestination : public ChunkDestination {
 absl::StatusOr<std::pair<tsl::RCReference<ChunkDestination>, xla::PjRtFuture<>>>
 CreateSlicedRawBufferDest(tsl::RCReference<xla::PjRtRawBuffer> raw_buffer,
                           size_t offset, size_t size) {
-  auto promise = xla::PjRtFuture<>::CreatePromise();
-  auto dest = tsl::MakeRef<SlicedRawBufferChunkDestination>(raw_buffer, offset,
-                                                            size, promise);
-  return std::make_pair(std::move(dest), xla::PjRtFuture<>(std::move(promise)));
+  auto [promise, future] = xla::PjRtFuture<>::MakePromise();
+  auto dest = tsl::MakeRef<SlicedRawBufferChunkDestination>(
+      raw_buffer, offset, size, std::move(promise));
+  return std::make_pair(std::move(dest), std::move(future));
 }
 
 RawBufferEntry::RawBufferEntry(std::vector<BufferRef> arrs,

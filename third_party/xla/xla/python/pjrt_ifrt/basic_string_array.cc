@@ -275,8 +275,8 @@ Future<> BasicStringArray::CopyToHostBuffer(
         sharding_->devices()->size())));
   }
 
-  auto copy_completion_promise = Future<>::CreatePromise();
-  auto copy_completion_future = Future<>(copy_completion_promise);
+  auto [copy_completion_promise, copy_completion_future] =
+      Future<>::MakePromise();
 
   buffers_.OnReady(
       [copy_completion_promise = std::move(copy_completion_promise),
