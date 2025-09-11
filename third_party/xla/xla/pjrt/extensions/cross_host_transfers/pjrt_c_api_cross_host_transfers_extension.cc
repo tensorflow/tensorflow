@@ -91,10 +91,9 @@ void PJRT_Transfers_PJRT_Buffer_CopyToRemoteDevice(
     PJRT_Transfers_PJRT_Buffer_CopyToRemoteDevice_Args* args) {
   std::string serialized_descriptor = std::string(
       args->serialized_descriptor, args->serialized_descriptor_size);
-  xla::PjRtFuture<std::string>::Promise promise =
-      xla::PjRtFuture<std::string>::CreatePromise();
-  promise.Set(std::move(serialized_descriptor));
-  auto descriptor_future = xla::PjRtFuture<std::string>(std::move(promise));
+  xla::PjRtFuture<std::string> descriptor_future(
+      std::move(serialized_descriptor));
+
   // TODO(emilyaf): Support on_done callback.
   xla::PjRtBuffer::RemoteSendCallback on_done =
       [](absl::Status status, bool sends_were_enqueued) { CHECK_OK(status); };
