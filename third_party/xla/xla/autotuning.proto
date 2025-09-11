@@ -101,6 +101,7 @@ message AutotuneResult {
     CustomKernelFusionKey custom_kernel_fusion = 18;
     stream_executor.dnn.AlgorithmProto algorithm = 16;
   }
+  google.protobuf.Any backend_config = 19;  // For backend-agnostic autotuner.
 }
 
 message AutotuningLog {
