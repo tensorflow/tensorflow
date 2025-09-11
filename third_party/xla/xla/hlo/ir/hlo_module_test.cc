@@ -282,6 +282,36 @@ TEST(HloModuleTest, CloneWithNewConfig) {
             m1.config().device_memory_size());
 }
 
+TEST(HloModuleTest, UniqueIdProvidesComputationPrefix) {
+  HloModule m1("temp_module", HloModuleConfig());
+  HloSchedule schedule(&m1);
+  CreateComputation(m1, "TestComputation1", true, schedule);
+  CreateComputation(m1, "TestComputation2", false, schedule);
+  CreateComputation(m1, "TestComputation3", false, schedule);
+  TF_EXPECT_OK(m1.set_schedule(schedule));
+
+  EXPECT_EQ(m1.GetComputationWithName("TestComputation1")
+                ->GetInstructionWithName("p0")
+                ->unique_id(),
+            0);
+  EXPECT_EQ(m1.GetComputationWithName("TestComputation2")
+                ->GetInstructionWithName("p0.1")
+                ->unique_id(),
+            (static_cast<int64_t>(1) << 32) + 0);
+  EXPECT_EQ(m1.GetComputationWithName("TestComputation1")
+                ->GetInstructionWithName("call")
+                ->unique_id(),
+            1);
+  EXPECT_EQ(m1.GetComputationWithName("TestComputation3")
+                ->GetInstructionWithName("p0.2")
+                ->unique_id(),
+            (static_cast<int64_t>(2) << 32) + 0);
+  EXPECT_EQ(m1.GetComputationWithName("TestComputation1")
+                ->GetInstructionWithName("call.1")
+                ->unique_id(),
+            2);
+}
+
 TEST(HloModuleTest, ClonePreservesUniqueId) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnUnverifiedModule(R"(
@@ -709,20 +739,12 @@ TEST(HloModuleTest, TestUniqueIdIs64Bits) {
   HloInstruction* tparam = f->GetInstructionWithName("tparam");
   HloComputation* g = module->GetComputationWithName("g");
   HloInstruction* fparam = g->GetInstructionWithName("fparam");
-  int64_t new_tparam_unique_id = 1 + (static_cast<int64_t>(1) << 32);
-  int64_t new_fparam_unique_id = 1 + (static_cast<int64_t>(2) << 32);
 
-  tparam->ClearUniqueIdInternal();
-  tparam->SetUniqueId(new_tparam_unique_id);
-  fparam->ClearUniqueIdInternal();
-  fparam->SetUniqueId(new_fparam_unique_id);
-  // Upper 32 bits should be preserved
-  EXPECT_EQ(tparam->unique_id_64_bits(), new_tparam_unique_id);
-  EXPECT_EQ(fparam->unique_id_64_bits(), new_fparam_unique_id);
-  TF_EXPECT_OK(module->CheckUniqueNamesAndIdsForComputationsAndInstructions());
+  // Upper 32 bits should make them different
+  EXPECT_NE(tparam->unique_id(), fparam->unique_id());
   // Lower 32 bits should be preserved and therefore the same
-  EXPECT_EQ(tparam->unique_id_64_bits() & 0xFFFFFFFF,
-            fparam->unique_id_64_bits() & 0xFFFFFFFF);
+  EXPECT_EQ(tparam->unique_id() & 0xFFFFFFFF, fparam->unique_id() & 0xFFFFFFFF);
+  TF_EXPECT_OK(module->CheckUniqueNamesAndIdsForComputationsAndInstructions());
 }
 
 }  // namespace

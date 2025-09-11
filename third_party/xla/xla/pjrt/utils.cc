@@ -119,7 +119,8 @@ absl::StatusOr<std::pair<std::vector<Shape>, Shape>> GetShardedProgramShapes(
         TF_ASSIGN_OR_RETURN(arg_shapes[instr.parameter_number()],
                             GetShardedShape(instr));
       }
-      if (instr.id() == comp.root_id()) {
+      if (HloInstruction::CalculateLocalId(instr.id()) ==
+          HloInstruction::CalculateLocalId(comp.root_id())) {
         if (result_shape.element_type() != PRIMITIVE_TYPE_INVALID) {
           return InvalidArgument("Found multiple root instructions");
         }

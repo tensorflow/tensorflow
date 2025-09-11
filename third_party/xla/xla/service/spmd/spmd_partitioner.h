@@ -188,7 +188,7 @@ class SpmdBuilder : public HloComputation::Builder {
 
   // Map from the currently visiting (old) instruction to new instructions
   // created during SPMD partitioning.
-  HloInstructionMap<std::vector<HloInstruction*>> instructions_;
+  HloInstructionMapInternal<std::vector<HloInstruction*>> instructions_;
 
   // Maps from each created instruction to a set of dimensions that are from
   // broadcasts or elementwise ops over broadcasts. This means elements along

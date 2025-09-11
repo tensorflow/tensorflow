@@ -42,12 +42,12 @@ module @entry attributes {
 // CHECK-SAME:   s32[]
 // CHECK-SAME: )->f32[2,3,4]{2,0,1:T(2,128)}}
 
-// CHECK: ENTRY %main.6 (Arg_0.1: f32[2,3,4], Arg_1.2: f32[2,3,4], Arg_2.3: (f32[1,2], f32[1,2]), Arg_3.4: s32[]) -> f32[2,3,4] {
-// CHECK:   %Arg_2.3 = (f32[1,2]{1,0}, f32[1,2]{1,0}) parameter(2)
-// CHECK:   %Arg_3.4 = s32[] parameter(3)
+// CHECK: ENTRY %main.1 (Arg_0.1: f32[2,3,4], Arg_1.1: f32[2,3,4], Arg_2.1: (f32[1,2], f32[1,2]), Arg_3.1: s32[]) -> f32[2,3,4] {
+// CHECK:   %Arg_2.1 = (f32[1,2]{1,0}, f32[1,2]{1,0}) parameter(2)
+// CHECK:   %Arg_3.1 = s32[] parameter(3)
 // CHECK:   %Arg_0.1 = f32[2,3,4]{2,1,0} parameter(0)
-// CHECK:   %Arg_1.2 = f32[2,3,4]{2,1,0} parameter(1)
-// CHECK:   ROOT %add.5 = f32[2,3,4]{2,1,0} add(%Arg_0.1, %Arg_1.2)
+// CHECK:   %Arg_1.1 = f32[2,3,4]{2,1,0} parameter(1)
+// CHECK:   ROOT %add.1 = f32[2,3,4]{2,1,0} add(%Arg_0.1, %Arg_1.1)
 // CHECK: }
 
 // -----
@@ -71,7 +71,7 @@ module @entry attributes {
 // CHECK-SAME:   f32[2,3,4]{1,0,2}
 // CHECK-SAME: )->f32[2,3,4]{2,1,0}
 
-// CHECK: ENTRY %main.2 (Arg_0.1: f32[2,3,4]) -> f32[2,3,4] {
+// CHECK: ENTRY %main.1 (Arg_0.1: f32[2,3,4]) -> f32[2,3,4] {
 // CHECK:   ROOT %Arg_0.1 = f32[2,3,4]{2,1,0} parameter(0)
 // CHECK: }
 
@@ -89,7 +89,7 @@ module @entry attributes {} {
 // CHECK-SAME:   f32[2,3,4]{2,1,0}
 // CHECK-SAME: )->f32[2,3,4]{2,1,0}
 
-// CHECK: ENTRY %main.2 (Arg_0.1: f32[2,3,4]) -> f32[2,3,4] {
+// CHECK: ENTRY %main.1 (Arg_0.1: f32[2,3,4]) -> f32[2,3,4] {
 // CHECK:   ROOT %Arg_0.1 = f32[2,3,4]{2,1,0} parameter(0)
 // CHECK: }
 
@@ -110,7 +110,7 @@ module @entry attributes {
 // CHECK-SAME:   f32[2,3,4]
 // CHECK-SAME: )->f32[2,3,4]{2,1,0}
 
-// CHECK: ENTRY %main.2 (Arg_0.1: f32[2,3,4]) -> f32[2,3,4] {
+// CHECK: ENTRY %main.1 (Arg_0.1: f32[2,3,4]) -> f32[2,3,4] {
 // CHECK:   ROOT %Arg_0.1 = f32[2,3,4]{2,1,0} parameter(0)
 // CHECK: }
 
@@ -143,7 +143,7 @@ module @entry attributes {
 // CHECK-SAME:   )
 // CHECK-SAME: )->((f32[1,2]{1,0}, f32[1,2]{1,0}))}
 
-// CHECK: ENTRY %main.2 (Arg_0.1: ((f32[1,2], f32[1,2]))) -> ((f32[1,2], f32[1,2])) {
+// CHECK: ENTRY %main.1 (Arg_0.1: ((f32[1,2], f32[1,2]))) -> ((f32[1,2], f32[1,2])) {
 // CHECK:   ROOT %Arg_0.1 = ((f32[1,2]{1,0}, f32[1,2]{1,0})) parameter(0)
 // CHECK: }
 
@@ -169,9 +169,9 @@ module @entry attributes {
 // CHECK-SAME:   f32[2,3,4]{0,1,2}
 // CHECK-SAME: )->f32[2,3,4]{2,1,0}}
 
-// CHECK: ENTRY %main.3 (Arg_0.1: f32[2,3,4], Arg_1.2: f32[2,3,4]) -> f32[2,3,4] {
+// CHECK: ENTRY %main.1 (Arg_0.1: f32[2,3,4], Arg_1.1: f32[2,3,4]) -> f32[2,3,4] {
 // CHECK:   ROOT %Arg_0.1 = f32[2,3,4]{2,1,0} parameter(0)
-// CHECK:   %Arg_1.2 = f32[2,3,4]{2,1,0} parameter(1)
+// CHECK:   %Arg_1.1 = f32[2,3,4]{2,1,0} parameter(1)
 // CHECK: }
 
 // -----
@@ -195,7 +195,7 @@ module @entry attributes {
 // CHECK-SAME:   f32[1,2]{1,0:T(2,128)}
 // CHECK-SAME: )->f32[1,2]{1,0}}
 
-// CHECK: ENTRY %main.2 (Arg_0.1: f32[1,2]) -> f32[1,2] {
+// CHECK: ENTRY %main.1 (Arg_0.1: f32[1,2]) -> f32[1,2] {
 // CHECK:   ROOT %Arg_0.1 = f32[1,2]{1,0} parameter(0)
 // CHECK: }
 
@@ -216,7 +216,7 @@ module @entry attributes {
 // CHECK-SAME:   f32[1,2]{1,0}
 // CHECK-SAME: )->f32[1,2]{1,0}}
 
-// CHECK: ENTRY %main.2 (Arg_0.1: f32[1,2]) -> f32[1,2] {
+// CHECK: ENTRY %main.1 (Arg_0.1: f32[1,2]) -> f32[1,2] {
 // CHECK:   ROOT %Arg_0.1 = f32[1,2]{1,0} parameter(0)
 // CHECK: }
 
@@ -237,7 +237,7 @@ module @entry attributes {
 // CHECK-SAME:   f32[1,2]{1,0}
 // CHECK-SAME: )->f32[1,2]{1,0}}
 
-// CHECK: ENTRY %main.2 (Arg_0.1: f32[1,2]) -> f32[1,2] {
+// CHECK: ENTRY %main.1 (Arg_0.1: f32[1,2]) -> f32[1,2] {
 // CHECK:   ROOT %Arg_0.1 = f32[1,2]{1,0} parameter(0)
 // CHECK: }
 
@@ -268,7 +268,7 @@ module @entry attributes {
 // CHECK-SAME:   )
 // CHECK-SAME: )->((f32[1,2]{1,0}))}
 
-// CHECK: ENTRY %main.2 (Arg_0.1: ((f32[1,2]))) -> ((f32[1,2])) {
+// CHECK: ENTRY %main.1 (Arg_0.1: ((f32[1,2]))) -> ((f32[1,2])) {
 // CHECK:   ROOT %Arg_0.1 = ((f32[1,2]{1,0})) parameter(0)
 // CHECK: }
 
@@ -294,9 +294,9 @@ module @entry attributes {
 // CHECK-SAME:   f32[1,2]{1,0:T(4,128)}
 // CHECK-SAME: )->f32[1,2]{1,0}}
 
-// CHECK: ENTRY %main.3 (Arg_0.1: f32[1,2], Arg_1.2: f32[1,2]) -> f32[1,2] {
+// CHECK: ENTRY %main.1 (Arg_0.1: f32[1,2], Arg_1.1: f32[1,2]) -> f32[1,2] {
 // CHECK:   ROOT %Arg_0.1 = f32[1,2]{1,0} parameter(0)
-// CHECK:   %Arg_1.2 = f32[1,2]{1,0} parameter(1)
+// CHECK:   %Arg_1.1 = f32[1,2]{1,0} parameter(1)
 // CHECK: }
 
 // -----
@@ -316,7 +316,7 @@ module @entry attributes {
 // CHECK-SAME:   f32[1,2]{1,0:T(128)(2)}
 // CHECK-SAME: )->f32[1,2]{1,0}}
 
-// CHECK: ENTRY %main.2 (Arg_0.1: f32[1,2]) -> f32[1,2] {
+// CHECK: ENTRY %main.1 (Arg_0.1: f32[1,2]) -> f32[1,2] {
 // CHECK:   ROOT %Arg_0.1 = f32[1,2]{1,0} parameter(0)
 // CHECK: }
 
@@ -341,7 +341,7 @@ module @entry attributes {
 // CHECK-SAME:   f32[1,2]{1,0}
 // CHECK-SAME: )->f32[1,2]{0,1}}
 
-// CHECK: ENTRY %main.2 (Arg_0.1: f32[1,2]) -> f32[1,2] {
+// CHECK: ENTRY %main.1 (Arg_0.1: f32[1,2]) -> f32[1,2] {
 // CHECK:   ROOT %Arg_0.1 = f32[1,2]{1,0} parameter(0)
 // CHECK: }
 
@@ -374,7 +374,7 @@ module @entry attributes {
 // CHECK-SAME:   )->((f32[1,2]{1,0}, f32[1,2]{0,1}))
 // CHECK-SAME: }
 
-// CHECK: ENTRY %main.2 (Arg_0.1: ((f32[1,2], f32[1,2]))) -> ((f32[1,2], f32[1,2])) {
+// CHECK: ENTRY %main.1 (Arg_0.1: ((f32[1,2], f32[1,2]))) -> ((f32[1,2], f32[1,2])) {
 // CHECK:   ROOT %Arg_0.1 = ((f32[1,2]{1,0}, f32[1,2]{1,0})) parameter(0)
 // CHECK: }
 
@@ -399,7 +399,7 @@ module @entry attributes {
 // CHECK-SAME:   f32[1,2]{1,0}
 // CHECK-SAME: )->f32[1,2]{1,0:T(2,128)}}
 
-// CHECK: ENTRY %main.2 (Arg_0.1: f32[1,2]) -> f32[1,2] {
+// CHECK: ENTRY %main.1 (Arg_0.1: f32[1,2]) -> f32[1,2] {
 // CHECK:   ROOT %Arg_0.1 = f32[1,2]{1,0} parameter(0)
 // CHECK: }
 
@@ -432,6 +432,6 @@ module @entry attributes {
 // CHECK-SAME:   ))->((f32[1,2]{1,0:T(2,128)}, f32[1,2]{1,0:T(2,1)}))
 // CHECK-SAME: }
 
-// CHECK: ENTRY %main.2 (Arg_0.1: ((f32[1,2], f32[1,2]))) -> ((f32[1,2], f32[1,2])) {
+// CHECK: ENTRY %main.1 (Arg_0.1: ((f32[1,2], f32[1,2]))) -> ((f32[1,2], f32[1,2])) {
 // CHECK:   ROOT %Arg_0.1 = ((f32[1,2]{1,0}, f32[1,2]{1,0})) parameter(0)
 // CHECK: }
