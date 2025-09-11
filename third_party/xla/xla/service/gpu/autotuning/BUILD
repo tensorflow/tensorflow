@@ -629,66 +629,6 @@ xla_test(
     ],
 )
 
-cc_library(
-    name = "custom_kernel_fusion_autotuner",
-    srcs = ["custom_kernel_fusion_autotuner.cc"],
-    hdrs = ["custom_kernel_fusion_autotuner.h"],
-    tags = ["gpu"],
-    deps = [
-        ":autotuner_compile_util",
-        ":autotuner_util",
-        ":redzone_buffers",
-        "//xla:autotuning_proto_cc",
-        "//xla:status_macros",
-        "//xla:util",
-        "//xla:xla_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/pass:hlo_pass",
-        "//xla/service:executable",
-        "//xla/service:shaped_buffer",
-        "//xla/service/gpu:backend_configs_cc",
-        "//xla/service/gpu:ir_emission_utils",
-        "//xla/service/gpu/kernels:custom_kernel",
-        "//xla/service/gpu/kernels:custom_kernel_fusion",
-        "//xla/stream_executor:device_description",
-        "//xla/stream_executor:device_memory_allocator",
-        "//xla/stream_executor:stream",
-        "//xla/stream_executor:stream_executor_memory_allocator",
-        "//xla/tools:hlo_decomposer_lib",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/time",
-        "@local_tsl//tsl/platform:path",
-    ],
-)
-
-xla_test(
-    name = "custom_kernel_fusion_autotuner_test",
-    srcs = ["custom_kernel_fusion_autotuner_test.cc"],
-    backends = [
-        "gpu",
-    ],
-    tags = ["cuda-only"],
-    deps = [
-        ":autotuner_util",
-        ":custom_kernel_fusion_autotuner",
-        "//xla:xla_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/pass:hlo_pass_pipeline",
-        "//xla/tests:hlo_test_base",
-        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
-        "//xla/tsl/platform:test",
-        "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/platform:path",
-    ],
-)
-
 tf_proto_library(
     name = "gpu_autotuning_proto",
     srcs = ["gpu_autotuning.proto"],

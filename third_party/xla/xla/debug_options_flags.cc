@@ -271,7 +271,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_detailed_logging(true);
   opts.set_xla_enable_dumping(true);
 
-  opts.set_xla_gpu_enable_custom_fusions(false);
   opts.set_xla_gpu_nccl_termination_timeout_seconds(-1);
   opts.set_xla_gpu_enable_shared_constants(true);
   opts.set_xla_gpu_enable_nccl_user_buffers(false);
@@ -1686,11 +1685,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 bool_setter_for(&DebugOptions::set_xla_dump_full_hlo_config),
                 debug_options->xla_dump_full_hlo_config(),
                 "Enable dumping the full HloModuleConfig proto."));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_enable_custom_fusions",
-      bool_setter_for(&DebugOptions::set_xla_gpu_enable_custom_fusions),
-      debug_options->xla_gpu_enable_custom_fusions(),
-      "Whether to enable XLA custom fusions"));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_custom_fusions_re",
       string_setter_for(&DebugOptions::set_xla_gpu_enable_custom_fusions_re),
