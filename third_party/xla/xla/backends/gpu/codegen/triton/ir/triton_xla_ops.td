@@ -321,5 +321,73 @@ def TTXLA_AtomicSpinWaitOp : TTXLA_Op<"atomic_spin_wait",
     }];
 }
 
+def TTXLA_BlockBarrierOp : TTXLA_Op<"block_barrier", []> {
+  let summary = "A block-level barrier for inter-GPU synchronization.";
+
+  let description = [{
+    This operation implements a block-level barrier between multiple GPUs.
+    It takes a pointer of pointers to signal buffers (one from each
+    participating GPU), the rank of the current device, and a signal value to
+    write/wait for. The signal values on consequent calls to this operation must
+    increase monotonically for the same signal buffers pointer. A block on one
+    GPU synchronizes with blocks on other GPUs with the same block id.
+
+    *NOTE* Block orchestration order is not guaranteed across GPUs,
+    so there is a chance of a deadlock should the number of blocks be greater
+    than the number of SMs on a GPU. That is to say that if BlockN is launched
+    on GPU0 and BlockM on GPU1 and they both wait for each other to finish,
+    and there is no place to schedule more blocks on either GPU, then we
+    will have a deadlock. In general, the user of this operation should avoid
+    this by not oversubscribing the number of available SMs on a GPU. There is
+    also a secondary restriction that the number of threads per block must
+    exceed the number of participating GPUs. In the nominal case, where we are
+    within a single NV Link domain, this should not be an issue since the number
+    of participating GPUs would usually be much smaller than the number of
+    threads per block.
+
+    The synchronization logic is as follows:
+    1. Each GPU (identified by `device_rank`) writes the `signal` value to an
+       index `blockId * world_size + device_rank` in *every* buffer provided in
+       `$signal_buffers`.
+    2. After writing, GPU `r` polls its own buffer (`$signal_buffers[r]`).
+    3. It waits until the values at locations corresponding to all other ranks
+       (i.e., `blockId * world_size + [0..world_size)` are greater than or equal
+       to the `signal` value.
+    4. When the wait is over, all GPUs working on the same `blockId` have
+       successfully synchronized.
+
+    This operation ensures that GPUs in the same synchronization group do not
+    get more than one "wave" (or chunk) of data processing ahead of each other.
+    For clarity, a wave here is a set of work items that are processed together.
+    A single thread block for instance can process multiple waves. In such a
+    scenario, any given GPU can be at most 1 wave ahead of the other GPUs for
+    the same block id.
+
+    Internally, this operation uses TTXLA_Atomic(Write|SpinWait)Op on signal
+    buffers to synchronize all participating GPUs.
+  }];
+
+  let arguments = (ins
+    // Pointers of signal buffers (one from each participating GPU).
+    TT_PtrOf<[TT_PtrOf<[I32]>]>:$signal_buffers,
+    // The rank of the current device.
+    I32:$device_rank,
+    // The signal value to write/wait for.
+    I32:$signal_value,
+    // The number of devices participating in the barrier.
+    // The length of the first dimension of the signal buffers should be the
+    // same as this value.
+    I32Attr:$world_size
+  );
+
+  // This is a barrier op and produces no results.
+  let results = (outs);
+
+  let assemblyFormat = [{
+    $signal_buffers `,` $device_rank `,` $signal_value `,` attr-dict `:`
+    functional-type(operands, results)
+  }];
+}
+
 #endif // XLA_BACKENDS_GPU_CODEGEN_TRITON_IR_TRITON_XLA_OPS_TD_
 

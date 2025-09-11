@@ -129,6 +129,16 @@ def TritonXLALowerAtomicsPass
   let constructor = "CreateTritonXLALowerAtomicsPass()";
 }
 
+def TritonXLALowerBlockBarrierPass
+    : Pass<"triton-xla-block-barrier", "mlir::ModuleOp"> {
+  let summary = "Lower a block barrier to triton_xla/triton operations.";
+  let description = [{
+    This pass lowers a block barrier to Triton IR using atomic write and
+    spin-wait operations.
+  }];
+  let constructor = "CreateTritonXLALowerBlockBarrierPass()";
+}
+
 def TritonXLAConvertUnsupportedTypesPass
     : Pass<"convert-unsupported-types", "mlir::ModuleOp"> {
   let summary = "Converts types unsupported by Triton into their supported equivalents.";

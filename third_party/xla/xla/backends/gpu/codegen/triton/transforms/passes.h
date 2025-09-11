@@ -35,12 +35,14 @@ std::unique_ptr<mlir::Pass> CreateTritonXLAExtractInsertToTritonPass(
 std::unique_ptr<mlir::Pass> CreateTritonXLASqueezeDimsPass();
 std::unique_ptr<mlir::Pass> CreateTritonXLAFoldTransposePass();
 std::unique_ptr<mlir::Pass> CreateGeneralizeKernelSignaturePass();
+
 std::unique_ptr<mlir::Pass> CreateInt4ToPackedInt4RewritePass(
     const stream_executor::DeviceDescription& device_description);
 std::unique_ptr<mlir::Pass> CreateRoundF32ToTF32ForTf32DotRewritePass();
 std::unique_ptr<mlir::Pass> CreateExtractTmaInfoPass();
 std::unique_ptr<mlir::Pass> CreateTritonXLALowerGetTidPass();
 std::unique_ptr<mlir::Pass> CreateTritonXLALowerAtomicsPass();
+std::unique_ptr<mlir::Pass> CreateTritonXLALowerBlockBarrierPass();
 std::unique_ptr<mlir::Pass> CreateTritonXLAConvertUnsupportedTypesPass();
 
 // Returns true if the `op` contains an operation in it's regions that satisfies
