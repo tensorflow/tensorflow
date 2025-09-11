@@ -252,7 +252,7 @@ class GpuAsyncHostToDeviceTransferManager
       return transfers_in_flight_ == 0;
     };
     {
-      absl::MutexLock l(&mu_);
+      absl::MutexLock l(mu_);
       // Make sure we don't leave dangling pointers in cleanup routines even
       // if the client lets the object go out of scope.
       mu_.Await(absl::Condition(&transfers_finished));
@@ -288,7 +288,7 @@ class GpuAsyncHostToDeviceTransferManager
 
     tsl::RCReference<RawSEDeviceMemory> buffer;
     {
-      absl::MutexLock l(&mu_);
+      absl::MutexLock l(mu_);
 
       DCHECK_LT(buffer_index, buffer_ptrs_.size());
       if (last_transfer_started_[buffer_index]) {
@@ -384,7 +384,7 @@ class GpuAsyncHostToDeviceTransferManager
           });
     }
 
-    absl::ReleasableMutexLock l(&mu_);
+    absl::ReleasableMutexLock l(mu_);
     DCHECK_LT(buffer_index, buffer_ptrs_.size());
     if (last_transfer_started_[buffer_index]) {
       return InvalidArgument(
@@ -451,7 +451,7 @@ class GpuAsyncHostToDeviceTransferManager
   void SetBufferError(int buffer_index, absl::Status error) override {
     BufferSequencingEventRef event;
     {
-      absl::MutexLock l(&mu_);
+      absl::MutexLock l(mu_);
       // For a given buffer_index, SetBufferError can't be called twice, or
       // called after the last transfer has been enqueued.
       event = std::move(definition_events_[buffer_index]);
@@ -501,7 +501,7 @@ class GpuAsyncHostToDeviceTransferManager
                absl::AnyInvocable<void() &&> on_done) {
     BufferSequencingEventRef event;
     {
-      absl::MutexLock l(&mu_);
+      absl::MutexLock l(mu_);
 
       CHECK_GT(transfers_in_flight_, 0);
       --transfers_in_flight_;
@@ -701,7 +701,7 @@ void StreamExecutorGpuClient::UpdateGlobalProcessInfo(
     return;
   }
 
-  absl::MutexLock lock(&task_state_infos_mu_);
+  absl::MutexLock lock(task_state_infos_mu_);
   if (absl::Status s = AbortOnFailure(task_state_infos_, infos); !s.ok()) {
     LOG(ERROR) << s;
   }
