@@ -84,7 +84,7 @@ void GrpcCoordinationServiceImpl::HandleRPCsLoop() {
 }
 
 void GrpcCoordinationServiceImpl::Shutdown() {
-  absl::MutexLock l(&shutdown_mu_);
+  absl::MutexLock l(shutdown_mu_);
   shutdown_ = true;
   // This enqueues a special event (with a null tag) that causes the completion
   // queue to be shut down on the polling thread.

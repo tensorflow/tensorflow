@@ -218,3 +218,38 @@ xla_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+sycl_library(
+    name = "sycl_timer",
+    srcs = ["sycl_timer.cc"],
+    hdrs = ["sycl_timer.h"],
+    tags = [
+        "gpu",
+        "oneapi-only",
+    ],
+    deps = [
+        ":sycl_event",
+        "//xla/stream_executor:event_based_timer",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_h",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+xla_test(
+    name = "sycl_timer_test",
+    srcs = ["sycl_timer_test.cc"],
+    backends = ["gpu"],
+    tags = [
+        "gpu",
+        "oneapi-only",
+    ],
+    deps = [
+        ":sycl_timer",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:typed_kernel_factory",
+        "//xla/tsl/platform:status_matchers",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
