@@ -617,6 +617,34 @@ TEST(PjRtFutureTest, WithProfiling) {
   EXPECT_EQ(*update_profiling.Await(), 42);
 }
 
+TEST(PjRtFutureTest, MakeSharedPromise) {
+  {  // Stateless future.
+    auto [promise, future] = PjRtFuture<>::MakePromise();
+
+    auto shared_promise = std::move(promise).ToShared();
+    shared_promise->Set();
+
+    // NOLINTNEXTLINE(bugprone-use-after-move)
+    EXPECT_FALSE(static_cast<bool>(promise));
+
+    EXPECT_TRUE(future.IsReady());
+    EXPECT_EQ(future.Await(), absl::OkStatus());
+  }
+
+  {  // Stateful future.
+    auto [promise, future] = PjRtFuture<int32_t>::MakePromise();
+
+    auto shared_promise = std::move(promise).ToShared();
+    shared_promise->Set(42);
+
+    // NOLINTNEXTLINE(bugprone-use-after-move)
+    EXPECT_FALSE(static_cast<bool>(promise));
+
+    EXPECT_TRUE(future.IsReady());
+    EXPECT_EQ(*future.Await(), 42);
+  }
+}
+
 //===----------------------------------------------------------------------===//
 // Performance benchmarks.
 //===----------------------------------------------------------------------===//

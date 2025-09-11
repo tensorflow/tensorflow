@@ -494,6 +494,12 @@ class PjRtFuture : public internal::PjRtFutureBase<absl::StatusOr<T>> {
 
     MoveOnlyPromise(MoveOnlyPromise&&) = default;
     MoveOnlyPromise& operator=(MoveOnlyPromise&&) = default;
+
+    // A helper function to convert move-only Promise to shared_ptr, which is
+    // useful when the promise has to be captured by a std::function.
+    std::shared_ptr<MoveOnlyPromise> ToShared() && {
+      return std::make_shared<MoveOnlyPromise>(std::move(*this));
+    }
   };
 
   // Returns a Promise that can be used to construct a PjRtFuture, and then Set
@@ -767,6 +773,12 @@ class PjRtFuture<void> : public internal::PjRtFutureBase<absl::Status> {
 
     MoveOnlyPromise(MoveOnlyPromise&&) = default;
     MoveOnlyPromise& operator=(MoveOnlyPromise&&) = default;
+
+    // A helper function to convert move-only Promise to shared_ptr, which is
+    // useful when the promise has to be captured by a std::function.
+    std::shared_ptr<MoveOnlyPromise> ToShared() && {
+      return std::make_shared<MoveOnlyPromise>(std::move(*this));
+    }
   };
 
   // Returns a Promise that can be used to construct a PjRtFuture, and then Set
