@@ -4615,7 +4615,7 @@ bool VerifyStridedSliceOpInputRankConstraints(StridedSliceOp op) {
   const int num_input_dims = ranked_input_type.getRank();
 
   // The kernel will reshape the input tensor with new axis, it only supports
-  // this reshaped tensor up to 5D.
+  // this reshaped tensor up to 6D.
   const uint32_t ellipsis_mask = op.getEllipsisMask();
   const uint32_t new_axis_mask = op.getNewAxisMask();
   int num_added_axis = 0;
@@ -4624,7 +4624,7 @@ bool VerifyStridedSliceOpInputRankConstraints(StridedSliceOp op) {
       num_added_axis++;
     }
   }
-  return (num_input_dims + num_added_axis <= 5);
+  return (num_input_dims + num_added_axis <= 6);
 }
 
 LogicalResult StridedSliceOp::verify() {
