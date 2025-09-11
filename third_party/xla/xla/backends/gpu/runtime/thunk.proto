@@ -133,10 +133,6 @@ message MemzeroThunkProto {
   xla.buffer_assignment.BufferAllocationSliceProto dest_buffer = 1;
 }
 
-message SelectKThunkProto {
-  // TODO(upwind): Add fields for SelectKThunkProto.
-}
-
 message ThunkProto {
   ThunkInfoProto thunk_info = 1;
 
@@ -159,7 +155,6 @@ message ThunkProto {
     HostExecuteDoneThunkProto host_execute_done_thunk = 17;
     DynamicSliceThunkProto dynamic_slice_thunk = 18;
     MemzeroThunkProto memzero_thunk = 19;
-    SelectKThunkProto select_k_thunk = 20;
   }
 }
 

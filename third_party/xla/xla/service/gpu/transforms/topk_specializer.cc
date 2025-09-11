@@ -19,8 +19,6 @@ limitations under the License.
 
 #include <initializer_list>
 #include <string>
-#include <utility>
-#include <variant>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
@@ -39,24 +37,22 @@ limitations under the License.
 #include "xla/service/tuple_util.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/cuda/cuda_compute_capability.h"
-#include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
-namespace xla::gpu {
+namespace xla {
+namespace gpu {
 
 namespace {
 
 absl::StatusOr<HloInstruction*> SmallBufferOptimization(
-    HloCustomCallInstruction* topk, bool is_cuda,
-    bool xla_gpu_experimental_use_raft_select_k) {
+    HloCustomCallInstruction* topk) {
   Shape data_shape = topk->operand(0)->shape();
-  auto dtype = data_shape.element_type();
   auto supported_dtypes = {F32, BF16};
-  if (!absl::c_linear_search(supported_dtypes, dtype)) {
-    return InvalidArgument("Invalid Dtype: %s",
-                           primitive_util::LowercasePrimitiveTypeName(dtype));
+  if (!absl::c_linear_search(supported_dtypes, data_shape.element_type())) {
+    return InvalidArgument(
+        "Invalid Dtype: %s",
+        primitive_util::LowercasePrimitiveTypeName(data_shape.element_type()));
   }
   // We only support topk of the shape [x] or [batch, x].
   if (data_shape.dimensions().size() > 2) {
@@ -64,41 +60,10 @@ absl::StatusOr<HloInstruction*> SmallBufferOptimization(
                            data_shape.ToString());
   }
   bool has_batch = data_shape.dimensions().size() == 2;
-  size_t max_k = 16;  // CustomCall TopK requires k <= 16 and n >= 1024
-  size_t min_n = 1024;
-  size_t batch = 0;
-  if (has_batch) {
-    batch = data_shape.dimensions(0);
-  }
+  constexpr size_t max_k = 16;
+  constexpr size_t min_n = 1024;
   size_t n = data_shape.dimensions(has_batch ? 1 : 0);
   size_t k = topk->shape().tuple_shapes(0).dimensions(has_batch ? 1 : 0);
-  double ratio = static_cast<double>(k) / n;
-  if (ratio >= 0.85) {
-    return InvalidArgument(
-        "k/n ratio (%f) is too high for TopK. Falling back to sort + slice.",
-        ratio);
-  }
-  if (is_cuda && xla_gpu_experimental_use_raft_select_k) {
-    // The heuristic for deciding when to use Raft select_k versus Sort + Slice
-    // was developed as part of the initial research in b/409009349
-    if (dtype == F32) {
-      min_n = 1;
-      max_k = 128;
-      if (batch >= 64 && n >= 16384) {
-        max_k = 256;
-      }
-    } else if (dtype == BF16) {
-      min_n = 1;
-      max_k = 128;
-      if (batch >= 16 && n >= 65536) {
-        max_k = 256;
-      }
-      if (batch >= 64 && batch <= 128 && n >= 8192 && n <= 32768) {
-        max_k = 64;
-      }
-    }
-  }
-
   if (k > max_k) {
     return InvalidArgument("k too large (%d), must be <= %d", k, max_k);
   }
@@ -118,26 +83,14 @@ absl::StatusOr<HloInstruction*> SmallBufferOptimization(
 
 class SpecializeTopkVisitor : public DfsHloRewriteVisitor {
  public:
-  explicit SpecializeTopkVisitor(se::GpuComputeCapability compute_capability)
-      : compute_capability_(std::move(compute_capability)) {}
-
   absl::Status HandleCustomCall(HloInstruction* inst) override {
     HloCustomCallInstruction* topk = DynCast<HloCustomCallInstruction>(inst);
     if (topk == nullptr || topk->custom_call_target() != "TopK") {
       return absl::OkStatus();
     }
     TF_RET_CHECK(topk->operand_count() == 1);
-    bool is_cuda =
-        std::holds_alternative<stream_executor::CudaComputeCapability>(
-            compute_capability_);
 
-    if (auto small_topk = SmallBufferOptimization(
-            topk, is_cuda,
-            inst->GetModule()
-                ->config()
-                .debug_options()
-                .xla_gpu_experimental_use_raft_select_k());
-        small_topk.ok()) {
+    if (auto small_topk = SmallBufferOptimization(topk); small_topk.ok()) {
       return ReplaceInstruction(topk, *small_topk);
     } else {
       VLOG(2) << "Small TopK optimization doesn't match: "
@@ -146,9 +99,6 @@ class SpecializeTopkVisitor : public DfsHloRewriteVisitor {
 
     return absl::OkStatus();
   }
-
- private:
-  se::GpuComputeCapability compute_capability_;
 };
 
 }  // namespace
@@ -156,8 +106,8 @@ class SpecializeTopkVisitor : public DfsHloRewriteVisitor {
 absl::StatusOr<bool> TopkSpecializer::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  return SpecializeTopkVisitor(compute_capability_)
-      .RunOnModule(module, execution_threads);
+  return SpecializeTopkVisitor().RunOnModule(module, execution_threads);
 }
 
-}  // namespace xla::gpu
+}  // namespace gpu
+}  // namespace xla
