@@ -383,7 +383,9 @@ TEST_F(CudnnSimplifyPaddingTest, PaddedConstantWeight) {
                                   m::Op())));
     SetConstantValue<int8_t>(
         weights, [](absl::Span<const int64_t> dims, int8_t old_val) -> int8_t {
-          if (dims[3] < 6) return 1;
+          if (dims[3] < 6) {
+            return 1;
+          }
           return 0;
         });
   }

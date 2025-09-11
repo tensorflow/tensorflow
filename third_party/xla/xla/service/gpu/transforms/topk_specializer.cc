@@ -92,7 +92,7 @@ class SpecializeTopkVisitor : public DfsHloRewriteVisitor {
 
     if (auto small_topk = SmallBufferOptimization(topk); small_topk.ok()) {
       return ReplaceInstruction(topk, *small_topk);
-    } else {
+    } else {  // NOLINT(readability-else-after-return)
       VLOG(2) << "Small TopK optimization doesn't match: "
               << small_topk.status();
     }

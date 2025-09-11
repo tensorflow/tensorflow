@@ -122,15 +122,6 @@ ENTRY AddDotsFunc {
 }
 )";
 
-  ErrorSpec error_spec = [&] {
-    DebugOptions debug_options = GetDebugOptionsForTest();
-    if (debug_options.xla_gpu_enable_cublaslt()) {
-      return ErrorSpec{1e-3, 1e-3};
-    } else {
-      return ErrorSpec{1e-3, 1e-3};
-    }
-  }();
-
   auto get_module = [&]() {
     HloModuleConfig config;
     DebugOptions debug_options = GetDebugOptionsForTest();
@@ -153,7 +144,7 @@ ENTRY AddDotsFunc {
     )");
   TF_ASSERT_OK(filecheck_result.status());
   EXPECT_TRUE(filecheck_result.value());
-  EXPECT_TRUE(RunAndCompare(*get_module(), error_spec));
+  EXPECT_TRUE(RunAndCompare(*get_module(), ErrorSpec{1e-3, 1e-3}));
 }
 
 TEST_F(GemmRewriteTest, BF16GemmCodeGen) {

@@ -62,30 +62,38 @@ const HloSliceInstruction* FindUniqueSlice(const HloInstruction* parent,
                                            const HloInstruction* instr) {
   if (const auto* slice = DynCast<HloSliceInstruction>(instr)) {
     return slice;
-  } else if (const auto* fusion = DynCast<HloFusionInstruction>(instr)) {
+  }
+  if (const auto* fusion = DynCast<HloFusionInstruction>(instr)) {
     const HloSliceInstruction* result = nullptr;
     for (size_t i = 0; i < fusion->operand_count(); ++i) {
       if (fusion->operand(i) == parent) {
         // Parameter used more than once -> there's no unique slice.
-        if (result) return nullptr;
+        if (result) {
+          return nullptr;
+        }
 
         auto* called_param = fusion->fused_parameter(i);
-        if (called_param->user_count() != 1) return nullptr;
+        if (called_param->user_count() != 1) {
+          return nullptr;
+        }
 
         result = FindUniqueSlice(called_param, called_param->users()[0]);
-        if (!result) return nullptr;
+        if (!result) {
+          return nullptr;
+        }
       }
     }
     return result;
-  } else {
-    return nullptr;
   }
+  return nullptr;
 }
 
 FusionDecision ParameterSlicesAreNonOverlapping(const HloInstruction& instr1,
                                                 const HloInstruction& instr2,
                                                 const HloInstruction* parent) {
-  if (parent->shape().IsTuple()) return FusionDecision::Allow();
+  if (parent->shape().IsTuple()) {
+    return FusionDecision::Allow();
+  }
   // Allow MOF if the parameter is small, even if there's no overlap. 1024 bytes
   // were arbitrarily chosen as the threshold.
   if (ShapeUtil::ByteSizeOfElements(parent->shape()) < 1024) {
@@ -94,7 +102,9 @@ FusionDecision ParameterSlicesAreNonOverlapping(const HloInstruction& instr1,
 
   const HloSliceInstruction* slice1 = FindUniqueSlice(parent, &instr1);
   const HloSliceInstruction* slice2 = FindUniqueSlice(parent, &instr2);
-  if (!slice1 || !slice2) return FusionDecision::Allow();
+  if (!slice1 || !slice2) {
+    return FusionDecision::Allow();
+  }
 
   // TODO(jreiffers): Check strides as well.
   auto& starts1 = slice1->slice_starts();

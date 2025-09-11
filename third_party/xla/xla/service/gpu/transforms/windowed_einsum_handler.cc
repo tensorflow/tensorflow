@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
@@ -709,9 +710,8 @@ absl::Status PostProcessUnrolledLoop(HloInstruction* loop, int64_t stream_id) {
     }
   }
   if (partial_accumulations.size() > 0 &&
-      while_body->name().find(
-          WindowedEinsumHandler::kWindowedEinsumAgLoopName) !=
-          std::string::npos) {
+      absl::StrContains(while_body->name(),
+                        WindowedEinsumHandler::kWindowedEinsumAgLoopName)) {
     TF_RETURN_IF_ERROR(
         MoveAccumulationOutsideLoop(partial_accumulations, while_body, loop));
   }

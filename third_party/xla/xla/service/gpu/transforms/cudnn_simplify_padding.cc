@@ -176,9 +176,10 @@ std::optional<int64_t> NumTrailingZeroOutputFeatures(HloInstruction* conv) {
     VLOG(2) << "Success: Weights is a pad; padding on output feature dim is "
             << padding_config.edge_padding_high();
     return padding_config.edge_padding_high();
-  } else if (const HloInstruction * pad; Match(
-                 weights, m::Reshape(m::Pad(&pad, m::Op(),
-                                            m::ConstantEffectiveScalar(0))))) {
+  }
+  if (const HloInstruction* pad;
+      Match(weights,
+            m::Reshape(m::Pad(&pad, m::Op(), m::ConstantEffectiveScalar(0))))) {
     // Check that the reshape merely adds a VECT_C to the kernel input features.
     // That is, we reshape from [I,O,H,W] (in some order) to [I/k,k,O,H,W] (in
     // the same order) for some constant k (probably 32).  Then check how much
@@ -225,7 +226,8 @@ std::optional<int64_t> NumTrailingZeroOutputFeatures(HloInstruction* conv) {
                "feature dim is "
             << padding_config.edge_padding_high();
     return padding_config.edge_padding_high();
-  } else if (Match(weights, m::Constant())) {
+  }
+  if (Match(weights, m::Constant())) {
     // Iterate backwards over `weights` to find the index of the first nonzero
     // value.
     //

@@ -491,19 +491,21 @@ absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToBlockScaledDot(
 }
 
 absl::StatusOr<se::gpu::CudnnGraph> HloCustomCallToCuDnnGraph(
-    se::dnn::DnnSupport &dnn_support, HloCustomCallInstruction *custom_call) {
+    se::dnn::DnnSupport& dnn_support, HloCustomCallInstruction* custom_call) {
   if (IsFwdCustomCallTofMHA(*custom_call)) {
     return BuildGraphForCustomCallToForwardFMHA(dnn_support, custom_call);
-  } else if (IsFwdCustomCallTofMHAF8(*custom_call)) {
-    return BuildGraphForCustomCallToForwardFMHAF8(dnn_support, custom_call);
-  } else if (IsBwdCustomCallTofMHA(*custom_call)) {
-    return BuildGraphForCustomCallToBackwardFMHA(dnn_support, custom_call);
-  } else if (IsBwdCustomCallTofMHAF8(*custom_call)) {
-    return BuildGraphForCustomCallToBackwardFMHAF8(dnn_support, custom_call);
-  } else {
-    TF_RET_CHECK(IsCustomCallToBlockScaledDot(*custom_call));
-    return BuildGraphForCustomCallToBlockScaledDot(dnn_support, custom_call);
   }
+  if (IsFwdCustomCallTofMHAF8(*custom_call)) {
+    return BuildGraphForCustomCallToForwardFMHAF8(dnn_support, custom_call);
+  }
+  if (IsBwdCustomCallTofMHA(*custom_call)) {
+    return BuildGraphForCustomCallToBackwardFMHA(dnn_support, custom_call);
+  }
+  if (IsBwdCustomCallTofMHAF8(*custom_call)) {
+    return BuildGraphForCustomCallToBackwardFMHAF8(dnn_support, custom_call);
+  }
+  TF_RET_CHECK(IsCustomCallToBlockScaledDot(*custom_call));
+  return BuildGraphForCustomCallToBlockScaledDot(dnn_support, custom_call);
 }
 
 class CuDnnCustomCallVisitor : public DfsHloRewriteVisitor {

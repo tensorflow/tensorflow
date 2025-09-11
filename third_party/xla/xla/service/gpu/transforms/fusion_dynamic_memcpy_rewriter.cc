@@ -288,7 +288,7 @@ absl::StatusOr<bool> FusionDynamicMemcpyRewriter::Run(
     TF_ASSIGN_OR_RETURN(auto backend_config,
                         fusion->backend_config<GpuBackendConfig>());
     auto* fusion_config = backend_config.mutable_fusion_backend_config();
-    fusion_config->set_kind(std::string(kDynamicMemcpyFusionKind));
+    fusion_config->set_kind(kDynamicMemcpyFusionKind);
     auto* memcpy_config = fusion_config->mutable_dynamic_memcpy_config();
 
     if (descriptor->src_dynamic_offsets.size() +

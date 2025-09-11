@@ -151,19 +151,21 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
         // TODO(b/383560056): find the right filter for 3D convolutions. 3D
         // convolutions also have a much smaller surface of support. We filter
         // them out completely as well for now.
-      } else if (num_spatial_dimensions > 2) {
+      }
+      if (num_spatial_dimensions > 2) {
         VLOG(2) << "Using NHWC for " << num_spatial_dimensions << "D conv "
                 << instr->ToString() << " on " << cc->ToString();
         return kAllNCHW;
-      } else {
-        return kAllNHWC;
       }
+      return kAllNHWC;
     }
   }
 
   const auto* rocm_compute_capability =
       std::get_if<se::RocmComputeCapability>(&gpu_version);
-  if (rocm_compute_capability && input_ty == F16) return kAllNHWC;
+  if (rocm_compute_capability && input_ty == F16) {
+    return kAllNHWC;
+  }
 
   // If we're not Volta or not fp16/bfloat16, or not conv2D, the decision is
   // easy: Use NCHW.
@@ -747,7 +749,9 @@ absl::Status GpuLayoutAssignment::SetOperandMajorToMinorLayout(
     std::initializer_list<absl::Span<const int64_t>> dim_groups,
     bool mandatory) {
   size_t size = 0;
-  for (auto group : dim_groups) size += group.size();
+  for (auto group : dim_groups) {
+    size += group.size();
+  }
   std::vector<int64_t> major_to_minor;
   major_to_minor.reserve(size);
   for (const auto& group : dim_groups) {

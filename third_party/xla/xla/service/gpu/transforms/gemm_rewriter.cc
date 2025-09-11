@@ -221,8 +221,8 @@ std::optional<InstrPath> FindF8SubgraphRecursive(
       subgraph->emplace_back(std::make_pair(instr, 0));
     }
     return subgraph;
-  } else if (HloPredicateIsOp<HloOpcode::kMultiply, HloOpcode::kSelect>(
-                 instr)) {
+  }
+  if (HloPredicateIsOp<HloOpcode::kMultiply, HloOpcode::kSelect>(instr)) {
     for (int k = 0; k < 2; ++k) {
       // Iterate over operands 0 and 1 for multiply and operands 1 and 2 for
       // select.
@@ -501,7 +501,9 @@ auto BcastConstScalarNear(double value) {
             xla::Cast<const HloConstantInstruction>(instr)
                 ->literal()
                 .GetAsDouble({});
-        if (!actual.has_value()) return false;
+        if (!actual.has_value()) {
+          return false;
+        }
         double epsilon;
         switch (instr->shape().element_type()) {
           case F16:
@@ -1512,18 +1514,21 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       // since abs(ReLU(x)) = ReLU(x).
       TF_ASSIGN_OR_RETURN(auto gpu_config,
                           existing_gemm->backend_config<GpuBackendConfig>());
-      const GemmBackendConfig &config = gpu_config.gemm_backend_config();
+      const GemmBackendConfig& config = gpu_config.gemm_backend_config();
       for (int i = 0; i < gemm_users.size(); ++i) {
-        HloInstruction *maybe_reduce = nullptr;
+        HloInstruction* maybe_reduce = nullptr;
         if (gemm_users[i]->opcode() == HloOpcode::kAbs) {
-          if (gemm_users[i]->users().size() != 1) continue;
+          if (gemm_users[i]->users().size() != 1) {
+            continue;
+          }
           maybe_reduce = gemm_users[i]->users()[0];
         } else {
           // If there is no Abs instruction, relu is required as epilogue to
           // ensure all values are nonnegative.
           if (config.epilogue() != GemmBackendConfig::BIAS_RELU &&
-              config.epilogue() != GemmBackendConfig::RELU)
+              config.epilogue() != GemmBackendConfig::RELU) {
             continue;
+          }
           maybe_reduce = gemm_users[i];
         }
 
@@ -1563,12 +1568,11 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                    "conflicts with the existing fusion of the addition of a "
                    "matrix bias with element type other than BF16 or F16.";
         return absl::OkStatus();
-      } else {
-        // Turn off the output to operand aliasing, since the fp8 output and
-        // bf16/fp16 bias have different sizes.
-        xla::Cast<HloCustomCallInstruction>(existing_gemm)
-            ->set_output_to_operand_aliasing({});
       }
+      // Turn off the output to operand aliasing, since the fp8 output and
+      // bf16/fp16 bias have different sizes.
+      xla::Cast<HloCustomCallInstruction>(existing_gemm)
+          ->set_output_to_operand_aliasing({});
     }
 
     // If necessary, invert the scaling factor of D and convert to F32. When no
@@ -1843,7 +1847,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         if (bias_type == BF16) {
           return output_type == F8E4M3FN || output_type == F8E5M2 ||
                  output_type == F32 || output_type == BF16;
-        } else if (bias_type == F16) {
+        }
+        if (bias_type == F16) {
           return output_type == F16 || output_type == F8E4M3FN ||
                  output_type == F8E5M2;
         }
@@ -2097,7 +2102,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         PrimitiveType::C64, PrimitiveType::C128};
     // legacy cublas has a defined set of combinations of types that it
     // supports. Figure out the computeType and scaleType.
-    if (!absl::c_linear_search(supported_type, output_type)) return false;
+    if (!absl::c_linear_search(supported_type, output_type)) {
+      return false;
+    }
     TF_ASSIGN_OR_RETURN(const se::blas::DataType output_dtype,
                         se::gpu::AsBlasDataType(output_type));
     TF_ASSIGN_OR_RETURN(
@@ -2186,7 +2193,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         PrimitiveType::BF16,       PrimitiveType::F32,
         PrimitiveType::S32,        PrimitiveType::F64,
         PrimitiveType::C64,        PrimitiveType::C128};
-    if (!absl::c_linear_search(supported_type, output_type)) return false;
+    if (!absl::c_linear_search(supported_type, output_type)) {
+      return false;
+    }
     // cublasLt has a defined set of combinations of types that it supports.
     // Figure out the computeType and scaleType.
     TF_ASSIGN_OR_RETURN(const se::blas::DataType output_dtype,
@@ -2195,8 +2204,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         backend_config.precision_config().operand_precision());
     const PrecisionConfig::Algorithm algorithm =
         backend_config.precision_config().algorithm();
-    if (!algorithm_util::IsSupportedByCublasOrCublasLt(algorithm, gpu_version_))
+    if (!algorithm_util::IsSupportedByCublasOrCublasLt(algorithm,
+                                                       gpu_version_)) {
       return false;
+    }
 
     TF_ASSIGN_OR_RETURN(
         const se::blas::ComputationType compute_type,
@@ -2481,13 +2492,12 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       output_f16_shape.set_element_type(F16);
       HloInstruction *f16_dot =
           instr->AddInstruction(instr->CloneWithNewShape(output_f16_shape));
-      HloInstruction *convert_to_f8 = instr->AddInstruction(
+      HloInstruction* convert_to_f8 = instr->AddInstruction(
           HloInstruction::CreateConvert(instr->shape(), f16_dot));
       TF_RETURN_IF_ERROR(ReplaceInstruction(instr, convert_to_f8));
       return f16_dot;
-    } else {
-      return instr;
     }
+    return instr;
   }
 };
 
@@ -2584,11 +2594,10 @@ class GemmWorkspaceRewriteVisitor : public DfsHloRewriteVisitor {
         TF_RETURN_IF_ERROR(ReplaceInstruction(user_get_tuple, get_output));
       }
       return absl::OkStatus();
-    } else {
-      HloInstruction *get_output = instr->AddInstruction(
-          HloInstruction::CreateGetTupleElement(new_call, 0));
-      return ReplaceInstruction(instr, get_output);
     }
+    HloInstruction* get_output = instr->AddInstruction(
+        HloInstruction::CreateGetTupleElement(new_call, 0));
+    return ReplaceInstruction(instr, get_output);
   }
 
  private:

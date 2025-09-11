@@ -42,7 +42,9 @@ class AsyncWrapperTest : public HloTestBase {};
 int CountAsyncInstructions(HloComputation* computation) {
   int count = 0;
   for (const HloInstruction* instruction : computation->instructions()) {
-    if (instruction->IsAsynchronous()) ++count;
+    if (instruction->IsAsynchronous()) {
+      ++count;
+    }
   }
   return count;
 }

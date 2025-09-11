@@ -309,7 +309,9 @@ absl::StatusOr<HloInstruction*> SplitKDimensionOfDot(HloDotInstruction* src_dot,
   auto shift_dimension = [](tsl::protobuf::RepeatedField<int64_t>* dims,
                             int64_t idx) {
     absl::c_for_each(*dims, [idx](int64_t& dim) {
-      if (dim >= idx) dim++;
+      if (dim >= idx) {
+        dim++;
+      }
     });
   };
   shift_dimension(new_dnums.mutable_lhs_contracting_dimensions(), lhs_k_idx);

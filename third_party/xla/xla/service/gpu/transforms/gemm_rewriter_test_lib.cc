@@ -71,9 +71,8 @@ stream_executor::GpuComputeCapability
 GemmRewriteTestBase::CudaHopperOrRocmCapability() {
   if (IsCuda()) {
     return se::CudaComputeCapability::Hopper();
-  } else {
-    return std::get<se::RocmComputeCapability>(Capability());
   }
+  return std::get<se::RocmComputeCapability>(Capability());
 }
 
 DebugOptions GemmRewriteTestBase::GetDebugOptionsForTest() const {
