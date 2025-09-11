@@ -545,7 +545,9 @@ absl::StatusOr<ProgramShape> XlaBuilder::GetSubcomputationShape(
   TF_RETURN_IF_ERROR(first_error_);
   TF_ASSIGN_OR_RETURN(const HloComputationProto* computation_proto,
                       GetSubcomputation(id));
-  return ProgramShape(computation_proto->program_shape());
+  return ProgramShape(
+      ProgramShape::FromProto(computation_proto->program_shape())
+          .value_or(ProgramShape()));
 }
 
 absl::Status XlaBuilder::AddCalledComputation(XlaComputationId computation,
@@ -867,8 +869,10 @@ absl::StatusOr<XlaComputation> XlaBuilder::Build(
   }
   if (!input_output_aliases_.empty() || !buffer_donors_.empty()) {
     TF_RETURN_IF_ERROR(PopulateInputOutputAliasAndBufferDonor(
-        module, ProgramShape(entry.program_shape()), input_output_aliases_,
-        buffer_donors_));
+        module,
+        ProgramShape(ProgramShape::FromProto(entry.program_shape())
+                         .value_or(ProgramShape())),
+        input_output_aliases_, buffer_donors_));
   }
   module->add_computations()->Swap(&entry);
   embedded_.clear();
@@ -887,7 +891,9 @@ absl::StatusOr<XlaComputation> XlaBuilder::Build(XlaComputationId entry_id) {
   if (!computation.input_output_aliases.empty() ||
       !computation.buffer_donors.empty()) {
     TF_RETURN_IF_ERROR(PopulateInputOutputAliasAndBufferDonor(
-        &module, ProgramShape(entry.program_shape()),
+        &module,
+        ProgramShape(ProgramShape::FromProto(entry.program_shape())
+                         .value_or(ProgramShape())),
         computation.input_output_aliases, computation.buffer_donors));
   }
   for (auto& e : embedded_) {
