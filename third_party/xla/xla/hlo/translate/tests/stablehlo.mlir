@@ -2086,3 +2086,14 @@ func.func @main(%arg0: tensor<i1>, %arg1: memref<2xf32>) -> memref<2xf32> {
     }
   func.return %0#1: memref<2xf32>
 }
+
+// -----
+
+// CHECK-LABEL: HloModule main
+// CHECK: set-dimension-size
+// CHECK-NOT: cast
+func.func @main(%arg0: tensor<4xf32>, %arg1: tensor<i32>) -> tensor<?xf32> {
+  %0 = stablehlo.set_dimension_size %arg0, %arg1, dim = 0 : (tensor<4xf32>, tensor<i32>) -> tensor<?xf32, #stablehlo.bounds<4>>
+  %cast = tensor.cast %0 : tensor<?xf32, #stablehlo.bounds<4>> to tensor<?xf32>
+  return %cast : tensor<?xf32>
+}

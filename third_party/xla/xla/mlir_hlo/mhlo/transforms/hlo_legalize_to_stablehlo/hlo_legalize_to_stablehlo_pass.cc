@@ -128,6 +128,13 @@ struct HloLegalizeToStablehloPass
                         mhlo::XlaRngGetAndUpdateStateOp>();
       target.addDynamicallyLegalOp<mhlo::AddDependencyOp>(
           [](mhlo::AddDependencyOp op) { return !hasMhloOperand(op); });
+      target.addDynamicallyLegalOp<mhlo::CustomCallOp>(
+          [](mhlo::CustomCallOp op) {
+            return !!op.getCustomCallScheduleAttr();
+          });
+      // TODO: StableHLO AllToAll has different semantics than MHLO AllToAll.
+      target.addDynamicallyLegalOp<mhlo::AllToAllOp>(
+          [](mhlo::AllToAllOp op) { return op.getNumOperands() > 1; });
       patterns.add<AddDependencyOpToStablehloTokenConverter>(&getContext());
     }
 

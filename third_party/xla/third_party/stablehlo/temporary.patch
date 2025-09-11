@@ -5001,6 +5001,26 @@ diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.ml
    %0 = stablehlo.divide %cst, %cst : tensor<i32>
    %1 = stablehlo.divide %cst_1, %cst_1 : tensor<ui32>
    %2 = stablehlo.divide %cst_2, %cst_2 : tensor<f32>
+@@ -485,6 +748,19 @@
+   // CHECK-NEXT: return [[RESULT0]]
+   %0 = stablehlo.set_dimension_size %arg0, %c, dim = 0 : (tensor<10xf32>, tensor<i32>) -> tensor<?xf32, #stablehlo.bounds<10>>
+   return %0 : tensor<?xf32, #stablehlo.bounds<10>>
++}
++
++// -----
++
++// Don't fold when washing away a bounded dimension, not safe to replace with
++// operand when types mismatch.
++// CHECK-LABEL: func.func @no_fold_set_dimension_size_bounded_input
++func.func @no_fold_set_dimension_size_bounded_input(%arg0: tensor<?x4xf32, #stablehlo.bounds<8, ?>>) -> tensor<8x4xf32> {
++  %c = stablehlo.constant dense<8> : tensor<i32>
++  // CHECK: [[RESULT0:%.+]] = stablehlo.set_dimension_size
++  // CHECK-NEXT: return [[RESULT0]]
++  %0 = stablehlo.set_dimension_size %arg0, %c, dim = 0 : (tensor<?x4xf32, #stablehlo.bounds<8, ?>>, tensor<i32>) -> tensor<8x4xf32>
++  return %0 : tensor<8x4xf32>
+ }
+ 
+ // -----
 diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
 --- stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
 +++ stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
@@ -5536,7 +5556,19 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFold
      }
      APInt operator()(APInt lhs, APInt rhs) { return foldIntFn(lhs, rhs); }
      static APInt foldUint(APInt lhs, APInt rhs) { return lhs.urem(rhs); }
-@@ -963,8 +1051,16 @@
+@@ -925,6 +1013,11 @@
+     auto resultType = op.getType();
+     // No need to verify static shape or dtype here since we aren't evaluating
+     // dtype, just folding set_dim_size ops with no semantic meaning.
++
++    // Don't fold if the input is dynamic and we're washing away the bound.
++    if (op.getOperand().getType() != op.getType())
++      return rewriter.notifyMatchFailure(
++          op, "operand and result type must be the same");
+ 
+     SplatElementsAttr cstSplatAttr;
+     matchPattern(op.getSize(), m_Constant(&cstSplatAttr));
+@@ -963,8 +1056,16 @@
    struct FoldSign {
      FoldSign(Type elementType) : elementType(elementType) {}
      Type elementType;
@@ -5555,7 +5587,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFold
  
      APInt operator()(APInt operand) {
        // SignOp only supports signed integers.
-@@ -1220,13 +1316,9 @@
+@@ -1220,13 +1321,9 @@
  
      for (auto [inputValue, bodyArg] :
           llvm::zip_equal(op.getOperands(), body.getArguments())) {
@@ -5572,7 +5604,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFold
          return rewriter.notifyMatchFailure(op,
                                             "Input must be a splat constant.");
  
-@@ -1236,7 +1328,7 @@
+@@ -1236,7 +1333,7 @@
              op, "Could not get the shape of the body argument.");
  
        bodyArgConstantAttrs.push_back(DenseElementsAttr::get(

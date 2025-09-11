@@ -4441,6 +4441,9 @@ OpFoldResult SetDimensionSizeOp::fold(FoldAdaptor adaptor) {
   auto ty = dyn_cast<RankedTensorType>(getType());
   if (!ty) return {};
 
+  // If input is dynamic and output is not, we can't fold.
+  if (getOperand().getType() != getType()) return {};
+
   int64_t dimSize = ty.getDimSize(getDimension());
   if (dimSize == size.getSplatValue<IntegerAttr>().getInt())
     return getOperand();

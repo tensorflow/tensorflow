@@ -217,14 +217,24 @@ bool IsBoundedOrStatic(mlir::Type ty) {
 
   if (ranked_ty.hasStaticShape()) return true;
 
-  auto encoding = mlir::dyn_cast_or_null<mlir::mhlo::TypeExtensionsAttr>(
-      ranked_ty.getEncoding());
-  if (!encoding || encoding.getBounds().empty()) return false;
+  // Allow both StableHLO and MHLO type extensions.
+  std::optional<mlir::ArrayRef<int64_t>> bounds;
+  if (auto encoding =
+          mlir::dyn_cast_or_null<mlir::stablehlo::TypeExtensionsAttr>(
+              ranked_ty.getEncoding())) {
+    bounds = encoding.getBounds();
+  } else if (auto encoding =
+                 mlir::dyn_cast_or_null<mlir::mhlo::TypeExtensionsAttr>(
+                     ranked_ty.getEncoding())) {
+    bounds = encoding.getBounds();
+  }
 
+  if (!bounds.has_value() || bounds->empty()) return false;
+  mlir::ArrayRef<int64_t> bounds_ref = *bounds;
   int64_t rank = ranked_ty.getRank();
   for (int64_t dim = 0; dim < rank; ++dim) {
     if (ranked_ty.isDynamicDim(dim) &&
-        encoding.getBounds()[dim] == mlir::ShapedType::kDynamic)
+        bounds_ref[dim] == mlir::ShapedType::kDynamic)
       return false;
   }
   return true;
