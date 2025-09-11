@@ -357,19 +357,25 @@ std::string PrintJavascriptForHoverEvent() {
       }, 3000);
   }
 
-  const allSpans = document.querySelectorAll('span[data-diffid]');
+  const allSpans = document.querySelectorAll('span[data-diffid][data-diffid-mapped]');
   allSpans.forEach(span => {
       span.addEventListener('mouseover', handleMouseOver);
       span.addEventListener('mouseout', handleMouseOut);
       span.addEventListener('click', handleSpanClick);
       span.addEventListener('dblclick', handleSpanDoubleClick);
   });
+
+  function getRelatedSpans(diffId, mappedId) {
+    return document.querySelectorAll(`span[data-diffid="${diffId}"][data-diffid-mapped="${mappedId}"], span[data-diffid="${mappedId}"][data-diffid-mapped="${diffId}"]`);
+  }
+
   function handleMouseOver(event) {
       const diffId = event.target.getAttribute('data-diffid');
-      if (!diffId) {
+      const mappedId = event.target.getAttribute('data-diffid-mapped');
+      if (!diffId || !mappedId) {
           return;
       }
-      const relatedSpans = document.querySelectorAll(`span[data-diffid="${diffId}"]`);
+      const relatedSpans = getRelatedSpans(diffId, mappedId);
       relatedSpans.forEach(relatedSpan => {
           relatedSpan.classList.add('bordered');
       });
@@ -377,10 +383,11 @@ std::string PrintJavascriptForHoverEvent() {
 
   function handleMouseOut(event) {
       const diffId = event.target.getAttribute('data-diffid');
-      if (!diffId) {
+      const mappedId = event.target.getAttribute('data-diffid-mapped');
+      if (!diffId || !mappedId) {
           return;
       }
-      const relatedSpans = document.querySelectorAll(`span[data-diffid="${diffId}"]`);
+      const relatedSpans = getRelatedSpans(diffId, mappedId);
       relatedSpans.forEach(relatedSpan => {
           relatedSpan.classList.remove('bordered');
       });
@@ -388,101 +395,102 @@ std::string PrintJavascriptForHoverEvent() {
 
   function handleSpanClick(event) {
       const diffId = event.target.getAttribute('data-diffid');
-      if (!diffId) {
+      const mappedId = event.target.getAttribute('data-diffid-mapped');
+      if (!diffId || !mappedId) {
           return;
       }
 
       const clickedSpan = event.target;
-      const clickedPre = clickedSpan.closest('.hlo-textbox').querySelector('pre');
+      const clickedPre = clickedSpan.closest('pre');
       if (!clickedPre) return;
 
-      const idParts = clickedPre.id.split('-');
-      const fingerprint = idParts[0];
-      const isLeft = idParts[1] === 'left';
-      const siblingPreId = fingerprint + '-' + (isLeft ? 'right' : 'left');
-      const siblingPre = document.getElementById(siblingPreId);
+      const selfTextboxes = clickedSpan.closest('.hlo-textboxes');
+      if (!selfTextboxes) return;
+      const siblingTextboxes = selfTextboxes.nextElementSibling || selfTextboxes.previousElementSibling;
+      if (!siblingTextboxes || !siblingTextboxes.classList.contains('hlo-textboxes')) return;
 
-      if (siblingPre) {
-          const targetSpan = siblingPre.querySelector(`span[data-diffid="${diffId}"]`);
-          if (targetSpan) {
-              // Calculate the vertical offset of the clicked span from the top of its visible area.
-              const clickedSpanViewportOffset = clickedSpan.offsetTop - clickedPre.scrollTop;
+      const targetSpan = siblingTextboxes.querySelector(`span[data-diffid="${mappedId}"][data-diffid-mapped="${diffId}"]`);
 
-              // Calculate the percentage of this offset within the clickedPre's visible height.
-              const percentage = clickedPre.clientHeight > 0 ?
-                  clickedSpanViewportOffset / clickedPre.clientHeight : 0;
+      if (targetSpan) {
+          const siblingPre = targetSpan.closest('pre');
+          if (!siblingPre) return;
 
-              // Calculate the desired offset for the targetSpan within the siblingPre's visible area.
-              const desiredSiblingViewportOffset = percentage * siblingPre.clientHeight;
+          // Calculate the vertical offset of the clicked span from the top of its visible area.
+          const clickedSpanViewportOffset = clickedSpan.offsetTop - clickedPre.scrollTop;
 
-              // Calculate the new scrollTop for siblingPre to achieve this alignment.
-              const newScrollTop = targetSpan.offsetTop - desiredSiblingViewportOffset;
+          // Calculate the percentage of this offset within the clickedPre's visible height.
+          const percentage = clickedPre.clientHeight > 0 ?
+              clickedSpanViewportOffset / clickedPre.clientHeight : 0;
 
-              // Scroll the siblingPre element smoothly.
-              siblingPre.scrollTo({
-                  top: Math.max(0, newScrollTop),
-                  behavior: 'smooth'
-              });
+          // Calculate the desired offset for the targetSpan within the siblingPre's visible area.
+          const desiredSiblingViewportOffset = percentage * siblingPre.clientHeight;
 
-              // Temporarily highlight the target span
-              targetSpan.classList.add('temp-highlight');
-              setTimeout(() => {
-                  targetSpan.classList.remove('temp-highlight');
-              }, 2000); // Remove highlight after 2 seconds
-          } else {
-              ShowSystemMessage("Corresponding instruction is in another computation, double click to jump to it.");
-          }
+          // Calculate the new scrollTop for siblingPre to achieve this alignment.
+          const newScrollTop = targetSpan.offsetTop - desiredSiblingViewportOffset;
+
+          // Scroll the siblingPre element smoothly.
+          siblingPre.scrollTo({
+              top: Math.max(0, newScrollTop),
+              behavior: 'smooth'
+          });
+
+          // Temporarily highlight the target span
+          targetSpan.classList.add('temp-highlight');
+          setTimeout(() => {
+              targetSpan.classList.remove('temp-highlight');
+          }, 2000); // Remove highlight after 2 seconds
+      } else {
+          ShowSystemMessage("Corresponding instruction is in another computation, double click to jump to it.");
       }
   }
 
   function handleSpanDoubleClick(event) {
       const diffId = event.target.getAttribute('data-diffid');
-      if (!diffId) {
+      const mappedId = event.target.getAttribute('data-diffid-mapped');
+      if (!diffId || !mappedId) {
           return;
       }
 
       const clickedSpan = event.target;
-      const clickedPre = clickedSpan.closest('.hlo-textbox').querySelector('pre');
+      const clickedPre = clickedSpan.closest('pre');
       if (!clickedPre) return;
 
-      const idParts = clickedPre.id.split('-');
-      const fingerprint = idParts[0];
-      const isLeft = idParts[1] === 'left';
-      const siblingPreId = fingerprint + '-' + (isLeft ? 'right' : 'left');
-      const siblingPre = document.getElementById(siblingPreId);
+      const selfTextboxes = clickedSpan.closest('.hlo-textboxes');
+      if (!selfTextboxes) return;
+      const siblingTextboxes = selfTextboxes.nextElementSibling || selfTextboxes.previousElementSibling;
+      if (!siblingTextboxes || !siblingTextboxes.classList.contains('hlo-textboxes')) return;
 
-      if (siblingPre) {
-          const targetSpan = siblingPre.querySelector(`span[data-diffid="${diffId}"]`);
-          if (!targetSpan) {
-              // Case 2: Corresponding span NOT found in siblingPre.
-              // Search for the span with the same diffId in other hlo-textbox-pairs.
-              const allMatchingSpans = document.querySelectorAll(`span[data-diffid="${diffId}"]`);
-              let foundSpanInOtherPre = null;
-              allMatchingSpans.forEach(span => {
-                  if (span !== clickedSpan) {
-                      foundSpanInOtherPre = span;
+      const targetSpanInSibling = siblingTextboxes.querySelector(`span[data-diffid="${mappedId}"][data-diffid-mapped="${diffId}"]`);
+
+      if (!targetSpanInSibling) {
+          // Case 2: Corresponding span NOT found in sibling textboxes in same pair.
+          // Search for the span with the same diffId in other hlo-textbox-pairs.
+          const allMatchingSpans = document.querySelectorAll(`span[data-diffid="${mappedId}"][data-diffid-mapped="${diffId}"]`);
+          let foundSpanInOtherPre = null;
+          allMatchingSpans.forEach(span => {
+              if (span !== clickedSpan) {
+                  foundSpanInOtherPre = span;
+              }
+          });
+
+          if (foundSpanInOtherPre) {
+              const foundPre = foundSpanInOtherPre.closest('pre');
+              if (foundPre) {
+                  // Find ancestor detail and open it.
+                  let parentDetails = foundSpanInOtherPre.closest('details');
+                  while (parentDetails) {
+                      parentDetails.open = true;
+                      parentDetails = parentDetails.parentElement ? parentDetails.parentElement.closest('details') : null;
                   }
-              });
 
-              if (foundSpanInOtherPre) {
-                  const foundPre = foundSpanInOtherPre.closest('.hlo-textbox').querySelector('pre');
-                  if (foundPre) {
-                      // Find ancestor detail and open it.
-                      let parentDetails = foundSpanInOtherPre.closest('details');
-                      while (parentDetails) {
-                          parentDetails.open = true;
-                          parentDetails = parentDetails.parentElement ? parentDetails.parentElement.closest('details') : null;
-                      }
+                  // Scroll the foundPre to make the foundSpanInOtherPre visible.
+                  foundSpanInOtherPre.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
-                      // Scroll the foundPre to make the foundSpanInOtherPre visible.
-                      foundSpanInOtherPre.scrollIntoView({ behavior: 'smooth', block: 'center' });
-
-                      // Temporarily highlight the found span
-                      foundSpanInOtherPre.classList.add('temp-highlight');
-                      setTimeout(() => {
-                          foundSpanInOtherPre.classList.remove('temp-highlight');
-                      }, 3000);
-                  }
+                  // Temporarily highlight the found span
+                  foundSpanInOtherPre.classList.add('temp-highlight');
+                  setTimeout(() => {
+                      foundSpanInOtherPre.classList.remove('temp-highlight');
+                  }, 3000);
               }
           }
       }
@@ -647,8 +655,10 @@ std::string PrintTextbox(absl::string_view title, absl::string_view content,
 struct Attributes {
   // The class name of the highlight. Empty if no highlight.
   std::string highlight;
-  // The diffid attribute of the span. Empty if no mapping to another span.
+  // The diffid of instruction.
   std::string diffid;
+  // The diffid of mapped instruction. Empty if no mapping to another span.
+  std::string mapped_diffid;
   // The mapped instruction of the span. Null if no mapping to another span.
   const HloInstruction* mapped_instruction;
 };
@@ -658,40 +668,44 @@ absl::flat_hash_map<const HloInstruction*, Attributes> GenerateSpanAttributes(
     const DiffResult& diff_result) {
   absl::flat_hash_map<const HloInstruction*, Attributes> span_attributes;
   for (auto& instruction : diff_result.left_module_unmatched_instructions) {
-    span_attributes[instruction] = {.highlight = "red-highlight",
-                                    .diffid = "",
-                                    .mapped_instruction = nullptr};
+    span_attributes[instruction] =
+        Attributes{.highlight = "red-highlight",
+                   .diffid = std::string(instruction->name()),
+                   .mapped_diffid = "",
+                   .mapped_instruction = nullptr};
   }
   for (auto& instruction : diff_result.right_module_unmatched_instructions) {
-    span_attributes[instruction] = {.highlight = "green-highlight",
-                                    .diffid = "",
-                                    .mapped_instruction = nullptr};
+    span_attributes[instruction] =
+        Attributes{.highlight = "green-highlight",
+                   .diffid = std::string(instruction->name()),
+                   .mapped_diffid = "",
+                   .mapped_instruction = nullptr};
   }
   for (const auto& [l_instruction, r_instruction] :
        diff_result.changed_instructions) {
-    span_attributes[l_instruction] = {
-        .highlight = "yellow-highlight",
-        .diffid =
-            absl::StrCat(l_instruction->name(), "::", r_instruction->name()),
-        .mapped_instruction = r_instruction};
-    span_attributes[r_instruction] = {
-        .highlight = "yellow-highlight",
-        .diffid =
-            absl::StrCat(l_instruction->name(), "::", r_instruction->name()),
-        .mapped_instruction = l_instruction};
+    span_attributes[l_instruction] =
+        Attributes{.highlight = "yellow-highlight",
+                   .diffid = std::string(l_instruction->name()),
+                   .mapped_diffid = std::string(r_instruction->name()),
+                   .mapped_instruction = r_instruction};
+    span_attributes[r_instruction] =
+        Attributes{.highlight = "yellow-highlight",
+                   .diffid = std::string(r_instruction->name()),
+                   .mapped_diffid = std::string(l_instruction->name()),
+                   .mapped_instruction = l_instruction};
   }
   for (const auto& [l_instruction, r_instruction] :
        diff_result.unchanged_instructions) {
-    span_attributes[l_instruction] = {
-        .highlight = "",
-        .diffid =
-            absl::StrCat(l_instruction->name(), "::", r_instruction->name()),
-        .mapped_instruction = r_instruction};
-    span_attributes[r_instruction] = {
-        .highlight = "",
-        .diffid =
-            absl::StrCat(l_instruction->name(), "::", r_instruction->name()),
-        .mapped_instruction = l_instruction};
+    span_attributes[l_instruction] =
+        Attributes{.highlight = "",
+                   .diffid = std::string(l_instruction->name()),
+                   .mapped_diffid = std::string(r_instruction->name()),
+                   .mapped_instruction = r_instruction};
+    span_attributes[r_instruction] =
+        Attributes{.highlight = "",
+                   .diffid = std::string(r_instruction->name()),
+                   .mapped_diffid = std::string(l_instruction->name()),
+                   .mapped_instruction = l_instruction};
   }
   return span_attributes;
 };
@@ -737,14 +751,18 @@ std::string PrintHloComputationToHtml(
           it != span_attributes.end() && !it->second.highlight.empty()
               ? std::string(it->second.highlight) + " highlighted"
               : "";
-      std::string diffid =
-          it != span_attributes.end() && !it->second.diffid.empty()
-              ? absl::StrCat("data-diffid=\"",
-                             EscapeStringForHtmlAttribute(it->second.diffid),
-                             "\"")
-              : "";
+      std::string diffid_attrs;
+      if (it != span_attributes.end()) {
+        absl::StrAppend(&diffid_attrs, " data-diffid=\"",
+                        EscapeStringForHtmlAttribute(it->second.diffid), "\"");
+        if (!it->second.mapped_diffid.empty()) {
+          absl::StrAppend(
+              &diffid_attrs, " data-diffid-mapped=\"",
+              EscapeStringForHtmlAttribute(it->second.mapped_diffid), "\"");
+        }
+      }
       printer.Append(absl::StrCat("<span class=\"hlo-instruction ",
-                                  highlight_class, "\"", diffid, " >"));
+                                  highlight_class, "\"", diffid_attrs, " >"));
       printer.Append("  ");  // Instruction indentation (2 spaces)
       if (instruction == comp->root_instruction()) {
         printer.Append("ROOT ");
