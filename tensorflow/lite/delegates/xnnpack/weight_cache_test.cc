@@ -35,6 +35,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "experimental.h"  // from @XNNPACK
 #include "xnnpack.h"  // from @XNNPACK
 #include "flatbuffers/verifier.h"  // from @flatbuffers
 #include "tensorflow/lite/c/common.h"
@@ -948,35 +949,62 @@ TEST_P(MMapWeightCacheProviderTest, XnnpackCApiJourney) {
 class IsCompatibleCacheFileTest : public testing::Test {
  public:
   void SetUp() override {
-    header_.version = XNNPackCacheHeader::kVersion;
-    memcpy(header_.xnnpack_build_identifier,
-           xnn_experimental_get_build_identifier_data(),
-           xnn_experimental_get_build_identifier_size());
+    auto valid_config = xnn_get_test_config();
+    ASSERT_TRUE(builder_.Start(fd_.GetCPath(), fd_));
+    ASSERT_TRUE(builder_.StartBuildStep());
+    builder_.AddMicrokernelConfig(*valid_config);
+    ASSERT_TRUE(builder_.StopBuildStep());
+    fd_.SetPos(0);
+    ASSERT_TRUE(fd_.Read(&header_, sizeof(header_)));
   }
 
-  bool WriteHeaderAndReturnIsCompatibleCacheFile() {
-    const bool res = fd_.Write(&header_, sizeof(header_));
-    fd_.Close();
-    return res && IsCompatibleCacheFile(fd_.GetCPath());
+  void RewriteHeader() {
+    fd_.SetPos(0);
+    ASSERT_TRUE(fd_.Write(&header_, sizeof(header_)));
+  }
+
+  void AddUnsupportedConfig() {
+    auto valid_config = xnn_get_test_config();
+    xnn_config_identifier invalid_config = *valid_config;
+    invalid_config.identifier += 1;
+    ASSERT_TRUE(builder_.StartBuildStep());
+    builder_.AddMicrokernelConfig(invalid_config);
+    ASSERT_TRUE(builder_.StopBuildStep());
   }
 
   XNNPackCacheHeader header_{};
   TempFileDesc fd_;
+  WeightCacheBuilder builder_;
 };
 
 TEST_F(IsCompatibleCacheFileTest, ReturnsTrueForACorrectHeader) {
-  EXPECT_TRUE(WriteHeaderAndReturnIsCompatibleCacheFile());
+  fd_.Close();
+  EXPECT_TRUE(IsCompatibleCacheFile(fd_.GetCPath()));
 }
 
 TEST_F(IsCompatibleCacheFileTest, ReturnsFalseForWrongHeaderVersion) {
   header_.version += 1;
-  EXPECT_FALSE(WriteHeaderAndReturnIsCompatibleCacheFile());
+  RewriteHeader();
+  fd_.Close();
+  EXPECT_FALSE(IsCompatibleCacheFile(fd_.GetCPath()));
 }
 
+#if !defined(TFLITE_XNNPACK_EXPERIMENTAL_PER_KERNEL_FINGERPRINTING)
 TEST_F(IsCompatibleCacheFileTest, ReturnsFalseForWrongBuildIdentifier) {
   header_.xnnpack_build_identifier[0] += 1;
-  EXPECT_FALSE(WriteHeaderAndReturnIsCompatibleCacheFile());
+  RewriteHeader();
+  fd_.Close();
+  EXPECT_FALSE(IsCompatibleCacheFile(fd_.GetCPath()));
 }
+#else
+TEST_F(IsCompatibleCacheFileTest, ReturnsFalseIfFingerprintIsDifferent) {
+  AddUnsupportedConfig();
+  builder_ = WeightCacheBuilder();
+  fd_.Close();
+  MMapWeightCacheProvider cache_provider;
+  EXPECT_TRUE(cache_provider.Load(fd_.GetPath()));
+}
+#endif
 
 }  // namespace
 }  // namespace tflite::xnnpack
