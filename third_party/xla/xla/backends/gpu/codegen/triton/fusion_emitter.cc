@@ -2187,6 +2187,11 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
     pm.addPass(
         mlir::triton::xla::CreateInt4ToPackedInt4RewritePass(device_info));
   }
+  if (hlo_module.config()
+          .debug_options()
+          .xla_gpu_experimental_scaled_dot_with_triton()) {
+    pm.addPass(mlir::triton::xla::CreateTritonXLAConvertUnsupportedTypesPass());
+  }
 
   pm.addPass(mlir::triton::xla::CreateTritonXLAExtractInsertToTritonPass(
       block_level_parameters.is_tma_allowed &&
