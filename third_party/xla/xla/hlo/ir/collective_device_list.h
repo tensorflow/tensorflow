@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_HLO_IR_COLLECTIVE_DEVICE_LIST_H_
 #define XLA_HLO_IR_COLLECTIVE_DEVICE_LIST_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -64,6 +65,13 @@ class IotaReplicaGroupList {
            num_devices_per_group() == other.num_devices_per_group() &&
            reshape_dims() == other.reshape_dims() &&
            transpose_perm() == other.transpose_perm();
+  }
+
+  template <typename H>
+  friend H AbslHashValue(H h, const IotaReplicaGroupList& c) {
+    return H::combine(std::move(h), c.num_replica_groups_,
+                      c.num_devices_per_group_, c.reshape_dims(),
+                      c.transpose_perm());
   }
 
   int64_t num_replica_groups() const;
@@ -115,6 +123,36 @@ class CollectiveDeviceList {
   explicit CollectiveDeviceList(
       const IotaReplicaGroupList& iota_replica_group_list)
       : iota_replica_group_list_(iota_replica_group_list) {}
+
+  bool operator==(const CollectiveDeviceList& other) const {
+    if (iota_replica_group_list_.has_value() &&
+        other.iota_replica_group_list_.has_value()) {
+      return *iota_replica_group_list_ == *other.iota_replica_group_list_;
+    }
+    const auto& this_groups = replica_groups();
+    const auto& other_groups = other.replica_groups();
+    if (this_groups.size() != other_groups.size()) {
+      return false;
+    }
+    for (size_t i = 0; i < this_groups.size(); ++i) {
+      if (!tsl::protobuf::util::MessageDifferencer::Equals(this_groups[i],
+                                                           other_groups[i])) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  template <typename H>
+  friend H AbslHashValue(H h, const CollectiveDeviceList& c) {
+    const auto& groups = c.replica_groups();
+    h = H::combine(std::move(h), groups.size());
+    for (const auto& group : groups) {
+      h = H::combine_contiguous(std::move(h), group.replica_ids().data(),
+                                group.replica_ids().size());
+    }
+    return h;
+  }
 
   // Lazyly explands iota if applicable.
   const std::vector<ReplicaGroup>& replica_groups() const;
