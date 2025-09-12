@@ -890,7 +890,7 @@ cuda_library(
     ],
 )
 
-cuda_library(
+cc_library(
     name = "select_k_exec_stub",
     srcs = ["select_k_exec_stub.cc"],
     hdrs = ["select_k_exec.h"],
@@ -939,7 +939,6 @@ cc_library(
     name = "select_k_thunk",
     srcs = ["select_k_thunk.cc"],
     hdrs = ["select_k_thunk.h"],
-    tags = ["gpu"],
     deps = [
         ":thunk",
         ":thunk_proto_cc",
@@ -955,11 +954,30 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
     ] + if_cuda_is_configured(
         [":select_k_exec_raft"],
         no_cuda = [":select_k_exec_stub"],
     ),
+)
+
+xla_cc_test(
+    name = "select_k_thunk_test",
+    srcs = ["select_k_thunk_test.cc"],
+    deps = [
+        ":select_k_thunk",
+        ":thunk",
+        ":thunk_proto_cc",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla/codegen/emitters:kernel_arguments",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:buffer_assignment",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_googletest//:gtest_main",
+    ],
 )
 
 cc_library(
