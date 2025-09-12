@@ -1112,8 +1112,12 @@ cc_library(
         "//xla/tsl/lib/gtl:int_type",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
+        "@local_tsl//tsl/platform:fingerprint",
+        "@local_tsl//tsl/platform:random",
     ],
 )
 
@@ -1142,6 +1146,7 @@ cc_library(
         ":user_context",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/synchronization",
     ],

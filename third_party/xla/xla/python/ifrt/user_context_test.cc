@@ -38,7 +38,7 @@ class TestUserContext : public llvm::RTTIExtends<TestUserContext, UserContext> {
   uint64_t Fingerprint() const override { return 1; }
   UserContextId Id() const override { return UserContextId(1); }
 
-  std::string DebugString() const override { return ""; }
+  std::string DebugString() const override { return "test user context"; }
 
   // No new `ID` is not defined because tests below do not exercise RTTI.
 };
@@ -102,6 +102,23 @@ TEST(UserContextScopeTest, ThreadLocalScopes) {
     EXPECT_EQ(UserContextScope::current(), context);
     absl::SleepFor(absl::Microseconds(10));
   }
+}
+
+TEST(UserContextCatTest, EmptyUserContexts) {
+  EXPECT_EQ(UserContextCat("empty user context")->DebugString(),
+            "empty user context");
+}
+
+TEST(UserContextCatTest, NullptrUserContext) {
+  EXPECT_EQ(UserContextCat(UserContextRef())->DebugString(),
+            "(nullptr user context)");
+}
+
+TEST(UserContextCatTest, ConcatenatedUserContexts) {
+  EXPECT_EQ(UserContextCat(TestUserContext::Create(), "\n\n",
+                           TestUserContext::Create())
+                ->DebugString(),
+            "test user context\n\ntest user context");
 }
 
 }  // namespace

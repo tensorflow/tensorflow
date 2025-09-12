@@ -18,10 +18,16 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
+#include <tuple>
+#include <type_traits>
 
+#include "absl/base/nullability.h"
+#include "absl/strings/str_cat.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/lib/gtl/int_type.h"
+#include "tsl/platform/fingerprint.h"
+#include "tsl/platform/random.h"
 
 namespace xla {
 namespace ifrt {
@@ -81,7 +87,7 @@ class UserContextScope {
  public:
   // Sets up the current thread's `UserContextRef` to the given `context`.
   // `context` must be valid throughout the lifetime of the scope.
-  explicit UserContextScope(UserContextRef context);
+  explicit UserContextScope(absl_nullable UserContextRef context);
 
   // Restores the current thread's `UserContextRef` to the state before this
   // scope was created.
@@ -100,15 +106,108 @@ class UserContextScope {
   // `UserContextRef`.
   //
   // Returns `nullptr` if there is no `UserContextRef` in the scope.
-  static const UserContextRef& current();
+  static absl_nullable const UserContextRef& current();
 
  private:
   // The outer scope's `UserContext`. When this scope is destroyed, the current
   // scope's `UserContext` will be restored to it.
-  const UserContextRef* const outer_context_;  // Not owned.
+  absl_nullable const UserContextRef* const outer_context_;  // Not owned.
   // The current scope's `UserContext`.
-  const UserContextRef context_;
+  absl_nullable const UserContextRef context_;
 };
+
+namespace internal {
+
+template <typename... Args>
+class ConcatenatedUserContext
+    : public llvm::RTTIExtends<ConcatenatedUserContext<Args...>, UserContext> {
+ public:
+  explicit ConcatenatedUserContext(Args... args)
+      : id_(tsl::random::ThreadLocalNew64()),
+        args_(std::forward<Args>(args)...) {}
+
+  // Not copyable or movable.
+  ConcatenatedUserContext(const ConcatenatedUserContext&) = delete;
+  ConcatenatedUserContext& operator=(const ConcatenatedUserContext&) = delete;
+
+  // `UserContext` implementation.
+
+  uint64_t Fingerprint() const override {
+    uint64_t fingerprint = 0;
+    std::apply(
+        [&](const auto&... user_contexts) {
+          return InternalFingerprint(&fingerprint, user_contexts...);
+        },
+        args_);
+    return fingerprint;
+  }
+
+  UserContextId Id() const override { return id_; }
+
+  std::string DebugString() const override {
+    std::string debug_string;
+    std::apply(
+        [&](const Args&... args) {
+          InternalDebugString(&debug_string, args...);
+        },
+        args_);
+    return debug_string;
+  }
+
+  // No new `ID` is not defined to keep the class header-only and avoid
+  // potential ODR violations.
+
+ private:
+  template <typename Arg, typename... RestArgs>
+  static void InternalFingerprint(uint64_t* fingerprint, const Arg& arg,
+                                  const RestArgs&... rest_args) {
+    if constexpr (std::is_same_v<Arg, UserContextRef>) {
+      *fingerprint =
+          tsl::FingerprintCat64(*fingerprint, arg ? arg->Fingerprint() : 0);
+    } else {
+      *fingerprint = tsl::FingerprintCat64(
+          *fingerprint, tsl::Fingerprint64(absl::StrCat(arg)));
+    }
+    InternalFingerprint(fingerprint, rest_args...);
+  }
+  template <typename... RestArgs>
+  static void InternalFingerprint(uint64_t* fingerprint) {}
+
+  template <typename Arg, typename... RestArgs>
+  static void InternalDebugString(std::string* debug_string, const Arg& arg,
+                                  const RestArgs&... rest_args) {
+    if constexpr (std::is_same_v<Arg, UserContextRef>) {
+      if (arg) {
+        absl::StrAppend(debug_string, arg->DebugString());
+      } else {
+        absl::StrAppend(debug_string, "(nullptr user context)");
+      }
+    } else {
+      absl::StrAppend(debug_string, arg);
+    }
+    InternalDebugString(debug_string, rest_args...);
+  }
+  template <typename... RestArgs>
+  static void InternalDebugString(std::string* debug_string) {}
+
+  UserContextId id_;
+  std::tuple<std::decay_t<Args>...> args_;
+};
+
+}  // namespace internal
+
+// Returns a new `UserContextRef` that is a concatenation of zero or more user
+// contexts and strings (or objects convertible to strings using
+// `absl::StrCat()`). It behaves similarly to `absl::StrCat()` for the debug
+// string construction, except that the each `UserContextRef` would be formatted
+// using its `DebugString()` method.
+//
+// The returned `UserContextRef` will be assigned a new unique ID.
+template <typename... Args>
+UserContextRef UserContextCat(Args... args) {
+  return tsl::MakeRef<internal::ConcatenatedUserContext<Args...>>(
+      std::forward<Args>(args)...);
+}
 
 }  // namespace ifrt
 }  // namespace xla
