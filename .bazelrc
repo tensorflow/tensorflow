@@ -1017,5 +1017,3 @@ build:asan --config=opt
 # Optionally, add static ASan runtime if needed
 build:opt --copt=-O2
 
-# Added ASan config
-import .bazelrc.asan

@@ -7,7 +7,6 @@ exports_files(glob(["requirements*"]) + [
     "LICENSE"
 ])
 
-exports_files(["LICENSE"])
 
 # Config setting for AddressSanitizer (ASan)
 config_setting(
