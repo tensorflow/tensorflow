@@ -467,14 +467,15 @@ xla::PjRtFuture<> ConvertCEventToCppFuture(PJRT_Event* c_event,
   event_onready_args.extension_start = nullptr;
   event_onready_args.event = c_event;
 
-  PjRtFuture<>::Promise promise = PjRtFuture<>::CreatePromise();
+  auto [promise, future] = PjRtFuture<>::MakePromise();
   event_onready_args.user_arg = new std::function<void(PJRT_Error*)>(
-      [promise, c_event, c_api](PJRT_Error* error) mutable {
+      [promise = std::make_shared<PjRtFuture<>::Promise>(std::move(promise)),
+       c_event, c_api](PJRT_Error* error) mutable {
         if (error != nullptr) {
-          promise.Set(::pjrt::PjrtErrorToStatus(error, c_api));
+          promise->Set(::pjrt::PjrtErrorToStatus(error, c_api));
           ::pjrt::MakeErrorDeleter(c_api)(error);
         } else {
-          promise.Set();
+          promise->Set();
         }
         ::pjrt::MakeEventDeleter(c_api)(c_event);
       });
@@ -489,7 +490,7 @@ xla::PjRtFuture<> ConvertCEventToCppFuture(PJRT_Event* c_event,
   if (error != nullptr) {
     return PjRtFuture<>(::pjrt::PjrtErrorToStatus(error, c_api));
   }
-  return PjRtFuture<>(std::move(promise));
+  return std::move(future);
 }
 
 static absl::StatusOr<PJRT_NamedValue> ConvertToPjRtNamedValue(
