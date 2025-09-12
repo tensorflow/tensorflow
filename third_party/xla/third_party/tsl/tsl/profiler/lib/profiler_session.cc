@@ -57,13 +57,13 @@ ProfileOptions GetOptions(const ProfileOptions& opts) {
 }
 
 absl::Status ProfilerSession::Status() {
-  absl::MutexLock l(&mutex_);
+  absl::MutexLock l(mutex_);
   return status_;
 }
 
 #if !defined(IS_MOBILE_PLATFORM)
 absl::Status ProfilerSession::CollectDataInternal(XSpace* space) {
-  absl::MutexLock l(&mutex_);
+  absl::MutexLock l(mutex_);
   TF_RETURN_IF_ERROR(status_);
   LOG(INFO) << "Profiler session collecting data.";
   if (profilers_ != nullptr) {
