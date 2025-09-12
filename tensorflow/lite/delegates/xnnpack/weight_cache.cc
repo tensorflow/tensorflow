@@ -286,7 +286,6 @@ MMapWeightCacheProvider::MMapWeightCacheProvider(
       XNN_MOVE_CONSTRUCT_MEMBER(file_descriptor_),
       XNN_MOVE_CONSTRUCT_MEMBER(builder_),
       XNN_MOVE_CONSTRUCT_MEMBER(building_run_),
-      XNN_MOVE_CONSTRUCT_MEMBER(is_build_step_),
       XNN_MOVE_CONSTRUCT_MEMBER(offset_to_addr_) {
   // The contexts need to keep pointing to their owning object.
   cache_provider_.context = this;
@@ -310,7 +309,6 @@ MMapWeightCacheProvider& MMapWeightCacheProvider::operator=(
   XNN_MOVE_MEMBER(file_descriptor_);
   XNN_MOVE_MEMBER(builder_);
   XNN_MOVE_MEMBER(building_run_);
-  XNN_MOVE_MEMBER(is_build_step_);
   XNN_MOVE_MEMBER(offset_to_addr_);
 #undef XNN_MOVE_MEMBER
   return *this;
@@ -528,8 +526,7 @@ bool MMapWeightCacheProvider::StartBuildStep() {
   if (IsBuilding()) {
     return true;
   }
-  is_build_step_ = builder_.StartBuildStep();
-  return is_build_step_;
+  return builder_.StartBuildStep();
 }
 
 bool MMapWeightCacheProvider::StopBuildStep() {
@@ -543,7 +540,6 @@ bool MMapWeightCacheProvider::StopBuildStep() {
         file_descriptor_, /*offset=*/0, file_path_.c_str()));
   }
 #endif
-  is_build_step_ = false;
   return LoadLastBuildStep();
 }
 
