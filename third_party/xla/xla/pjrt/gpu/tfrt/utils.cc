@@ -108,10 +108,9 @@ limitations under the License.
 
 namespace xla {
 
-PjRtFuture<>::Promise CreatePromiseForEvent(
-    tsl::AsyncValueRef<xla::GpuEvent> event) {
-  PjRtFuture<>::Promise promise = PjRtFuture<>::CreatePromise();
-  auto done_fn = [promise, event]() mutable {
+PjRtFuture<> CreateFutureForEvent(tsl::AsyncValueRef<xla::GpuEvent> event) {
+  auto [promise, future] = PjRtFuture<>::MakePromise();
+  auto done_fn = [promise = std::move(promise), event]() mutable {
     if (const absl::Status* error = event.GetErrorIfPresent()) {
       VLOG(3) << "Setting future: " << *error;
       promise.Set(*error);
@@ -126,7 +125,7 @@ PjRtFuture<>::Promise CreatePromiseForEvent(
   } else {
     event.AndThen(std::move(done_fn));
   }
-  return promise;
+  return future;
 }
 
 absl::StatusOr<Shape> GetDestinationDeviceShape(const Shape& host_shape,

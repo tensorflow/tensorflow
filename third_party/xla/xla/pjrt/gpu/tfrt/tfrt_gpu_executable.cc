@@ -865,9 +865,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
   // Create output TFRT buffers.
   std::optional<PjRtFuture<>> future;
   if (fill_future) {
-    PjRtFuture<>::Promise complete_promise =
-        CreatePromiseForEvent(complete_event);
-    future = PjRtFuture<>(complete_promise);
+    future = CreateFutureForEvent(complete_event);
   }
   return Result({/*future=*/std::move(future),
                  /*buffers=*/std::move(outputs)});

@@ -65,8 +65,7 @@ limitations under the License.
 
 namespace xla {
 
-PjRtFuture<>::Promise CreatePromiseForEvent(
-    tsl::AsyncValueRef<xla::GpuEvent> event);
+PjRtFuture<> CreateFutureForEvent(tsl::AsyncValueRef<xla::GpuEvent> event);
 
 absl::StatusOr<Shape> GetDestinationDeviceShape(const Shape& host_shape,
                                                 TfrtGpuDevice* device,

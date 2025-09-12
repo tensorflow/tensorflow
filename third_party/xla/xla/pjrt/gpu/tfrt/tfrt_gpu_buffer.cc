@@ -174,12 +174,11 @@ PjRtFuture<> TfrtGpuBuffer::GetReadyFuture() {
     return PjRtFuture<>(InvalidArgument(
         "GetReadyFuture() called on deleted or donated buffer"));
   }
-  if (!ready_promise_) {
-    ready_promise_ =
-        CreatePromiseForEvent(tracked_device_buffer_->ready_event());
+  if (!ready_future_) {
+    ready_future_ = CreateFutureForEvent(tracked_device_buffer_->ready_event());
   }
-  return PjRtFuture<>(
-      ready_promise_,
+  return PjRtFutureHelpers::WithProfiling(
+      ready_future_,
       /*on_block_start=*/
       []() {
         tsl::profiler::TraceMeProducer traceme("TfrtGpuBuffer::Await");
