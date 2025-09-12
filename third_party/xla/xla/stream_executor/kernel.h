@@ -236,20 +236,13 @@ class Kernel {
   absl::Status Launch(const ThreadDim &thread_dims, const BlockDim &block_dims,
                       Stream *stream, const KernelArgs &args);
 
-  // Launches a data parallel kernel with the given thread/block
-  // dimensionality and already-packed args/sizes to pass to the underlying
-  // platform driver.
-  absl::Status Launch(const ThreadDim &thread_dims, const BlockDim &block_dims,
-                      const ClusterDim &cluster_dims, Stream *stream,
-                      const KernelArgs &args);
-
- private:
   // Helper method to launch a kernel with optional cluster dimensions.
   virtual absl::Status Launch(const ThreadDim &thread_dims,
                               const BlockDim &block_dims,
                               const std::optional<ClusterDim> &cluster_dims,
                               Stream *stream, const KernelArgs &args) = 0;
 
+ private:
   std::string name_;
 
   KernelMetadata metadata_;
@@ -260,13 +253,6 @@ inline absl::Status Kernel::Launch(const ThreadDim &thread_dims,
                                    const BlockDim &block_dims, Stream *stream,
                                    const KernelArgs &args) {
   return Launch(thread_dims, block_dims, std::nullopt, stream, args);
-}
-inline absl::Status Kernel::Launch(const ThreadDim &thread_dims,
-                                   const BlockDim &block_dims,
-                                   const ClusterDim &cluster_dims,
-                                   Stream *stream, const KernelArgs &args) {
-  return Launch(thread_dims, block_dims, std::make_optional(cluster_dims),
-                stream, args);
 }
 
 //===----------------------------------------------------------------------===//

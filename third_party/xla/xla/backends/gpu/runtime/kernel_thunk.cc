@@ -319,13 +319,9 @@ absl::Status CustomKernelThunk::ExecuteOnStream(const ExecuteParams& params) {
   se::KernelArgsDeviceMemoryArray args(buffer_args,
                                        custom_kernel_.shared_memory_bytes());
 
-  if (auto cluster = custom_kernel_.cluster_dims(); cluster.has_value()) {
-    return kernel->Launch(custom_kernel_.thread_dims(),
-                          custom_kernel_.block_dims(), *cluster, params.stream,
-                          args);
-  }
   return kernel->Launch(custom_kernel_.thread_dims(),
-                        custom_kernel_.block_dims(), params.stream, args);
+                        custom_kernel_.block_dims(),
+                        custom_kernel_.cluster_dims(), params.stream, args);
 }
 
 }  // namespace gpu

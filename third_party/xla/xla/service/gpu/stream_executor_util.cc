@@ -409,12 +409,8 @@ absl::Status ExecuteKernelOnStream(
       std::unique_ptr<se::KernelArgsPackedArrayBase> kernel_args,
       se::PackKernelArgs(args, kernel.metadata()));
 
-  if (cluster_dim.has_value()) {
-    return kernel.Launch(dims.thread_counts_per_block(), dims.block_counts(),
-                         cluster_dim.value(), stream, *kernel_args);
-  }
   return kernel.Launch(dims.thread_counts_per_block(), dims.block_counts(),
-                       stream, *kernel_args);
+                       cluster_dim, stream, *kernel_args);
 }
 
 // Unimplemented for integers yet.
