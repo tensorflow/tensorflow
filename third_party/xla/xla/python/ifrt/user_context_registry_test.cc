@@ -56,7 +56,13 @@ class TestUserContext : public llvm::RTTIExtends<TestUserContext, UserContext> {
   const UserContextId id_;
 };
 
-TEST(UserContextRegistryTest, GetAndLookup) {
+TEST(UserContextRegistryTest, NullptrUserContext) {
+  TrackedUserContextRef tracked_user_context =
+      UserContextRegistry::Get().Register(UserContextRef());
+  EXPECT_EQ(tracked_user_context, nullptr);
+}
+
+TEST(UserContextRegistryTest, RegisterAndLookup) {
   const UserContextId kUserContextId1(100);
   UserContextRef user_context1 = TestUserContext::Create(kUserContextId1);
   TrackedUserContextRef tracked_user_context1 =
