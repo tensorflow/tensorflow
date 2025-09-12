@@ -120,10 +120,10 @@ class MockAutotunerCache : public AutotunerCacheInterface {
               (override));
 };
 
+using absl_testing::IsOk;
+using absl_testing::StatusIs;
 using ::testing::_;
 using ::testing::Return;
-using tsl::testing::IsOk;
-using tsl::testing::StatusIs;
 
 se::DeviceDescription CreateDummyDeviceDescription() {
   se::DeviceDescription desc;
@@ -224,7 +224,7 @@ TEST_F(AutotunerTest, AutotuneButNoSupportedConfigs) {
                         std::move(cache_manager)));
   auto dummy_instr = HloInstruction::CreateConstant(LiteralUtil::CreateR0(1));
   EXPECT_THAT(autotuner->Autotune(dummy_instr.get()),
-              absl_testing::StatusIs(absl::StatusCode::kInternal));
+              StatusIs(absl::StatusCode::kInternal));
 }
 
 TEST_F(AutotunerTest, AutotuneButNoCompiledConfigs) {
@@ -252,7 +252,7 @@ TEST_F(AutotunerTest, AutotuneButNoCompiledConfigs) {
                         std::move(cache_manager)));
   auto dummy_instr = HloInstruction::CreateConstant(LiteralUtil::CreateR0(1));
   EXPECT_THAT(autotuner->Autotune(dummy_instr.get()),
-              absl_testing::StatusIs(absl::StatusCode::kInternal));
+              StatusIs(absl::StatusCode::kInternal));
 }
 
 TEST_F(AutotunerTest, AutotuneAppliesBestConfigAndSkipsNonCompilableConfig) {
@@ -500,6 +500,26 @@ TEST_F(AutotunerTest, AutotuneWithScratchBytesOptimization) {
                         std::make_unique<MockAutotunerCache>()));
   auto dummy_instr = HloInstruction::CreateConstant(LiteralUtil::CreateR0(1));
   EXPECT_THAT(autotuner->Autotune(dummy_instr.get()), IsOk());
+}
+
+TEST_F(AutotunerTest, ExpectAllInstructionsInCache) {
+  auto cache_manager = std::make_unique<MockAutotunerCache>();
+  EXPECT_CALL(*cache_manager, Lookup(_)).WillOnce(Return(std::nullopt));
+  EXPECT_CALL(*cache_manager, Insert(_, _)).Times(0);
+
+  config_.expect_all_instructions_in_cache = true;
+
+  auto backend = std::make_unique<MockCodegenBackend>();
+  EXPECT_CALL(*backend, GetSupportedConfigs).Times(0);
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  backends.push_back(std::move(backend));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto autotuner, Autotuner::Create(std::move(backends), nullptr, config_,
+                                        std::move(cache_manager)));
+  auto dummy_instr = HloInstruction::CreateConstant(LiteralUtil::CreateR0(1));
+  EXPECT_THAT(autotuner->Autotune(dummy_instr.get()),
+              StatusIs(absl::StatusCode::kNotFound));
 }
 
 }  // namespace

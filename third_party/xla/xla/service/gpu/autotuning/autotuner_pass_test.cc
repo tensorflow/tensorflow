@@ -197,41 +197,23 @@ TEST_F(AutotunerPassTest, CublasGemmIsAutotunedAndCached) {
   ASSERT_TRUE(gpu_backend_config_after_first_run.gemm_backend_config()
                   .has_selected_algorithm());
 
-  // Find the cache file and make sure it's not empty.
-  std::vector<std::string> children;
-  TF_ASSERT_OK(tsl::Env::Default()->GetChildren(cache_dir, &children));
-  std::string cache_file;
-  for (const auto& child : children) {
-    std::string filename = tsl::io::JoinPath(cache_dir, child);
-    if (!tsl::Env::Default()->IsDirectory(filename).ok()) {
-      uint64_t file_size;
-      TF_ASSERT_OK(tsl::Env::Default()->GetFileSize(filename, &file_size));
-      if (file_size > 0) {
-        cache_file = filename;
-        break;
-      }
-    }
-  }
-  ASSERT_FALSE(cache_file.empty());
+  // Run the pass on the same original HLO reusing the cache
+  // Make sure it hits the cache by setting
+  // xla_gpu_require_complete_aot_autotune_results to true.
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module_2,
+                          ParseAndReturnVerifiedModule(kCublasCustomCallHlo));
 
-  // Clear the selected algorithm to simulate a pre-autotuning state.
-  HloInstruction* custom_call =
-      module->entry_computation()->GetInstructionWithName("custom-call.1");
-  TF_ASSERT_OK_AND_ASSIGN(auto gpu_backend_config_before_second_run,
-                          custom_call->backend_config<GpuBackendConfig>());
-  GemmBackendConfig gemm_config =
-      gpu_backend_config_before_second_run.gemm_backend_config();
-  gemm_config.clear_selected_algorithm();
-  *gpu_backend_config_before_second_run.mutable_gemm_backend_config() =
-      gemm_config;
-  TF_ASSERT_OK(
-      custom_call->set_backend_config(gpu_backend_config_before_second_run));
-
-  // Run the pass for the second time, this should hit the cache.
+  module_2->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_autotuner_cache_dir(cache_dir);
+  module_2->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_require_complete_aot_autotune_results(true);
   {
     std::vector<std::unique_ptr<CodegenBackend>> backends2;
     backends2.push_back(std::make_unique<CublasBackend>(
         stream_executor_, &module->config().debug_options(), &compiler_));
+
     TF_ASSERT_OK_AND_ASSIGN(
         std::unique_ptr<AutotunerPass> pass2,
         AutotunerPass::Create(std::move(backends2),

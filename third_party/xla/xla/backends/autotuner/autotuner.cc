@@ -107,7 +107,7 @@ absl::StatusOr<Autotuner::Config> Autotuner::GetCachedOrTuneBestConfig(
     best_config = std::move(*cached_config);
   } else {
     if (autotune_config_.expect_all_instructions_in_cache) {
-      return absl::InternalError("No cached config found for HLO instr: " +
+      return absl::NotFoundError("No cached config found for HLO instr: " +
                                  instr->ToString());
     }
     TF_ASSIGN_OR_RETURN(best_config, TuneBestConfig(instr));
