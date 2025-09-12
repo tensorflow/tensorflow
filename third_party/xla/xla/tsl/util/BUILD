@@ -387,6 +387,17 @@ cc_library(
     hdrs = ["safe_reinterpret_cast.h"],
 )
 
+cc_library(
+    name = "onednn_threadpool",
+    hdrs = ["onednn_threadpool.h"],
+    deps = [
+        "//xla/tsl/mkl:onednn",
+        "//xla/tsl/platform:env",
+        "@com_google_absl//absl/synchronization",
+        "@local_tsl//tsl/platform:platform_port",
+    ],
+)
+
 tsl_cc_test(
     name = "safe_reinterpret_cast_test",
     srcs = ["safe_reinterpret_cast_test.cc"],
