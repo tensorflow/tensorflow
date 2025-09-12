@@ -38,7 +38,7 @@ UserContextRegistry::Register(absl_nullable UserContextRef user_context) {
     return nullptr;
   }
   const UserContextId id = user_context->Id();
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   auto it = registry_.find(id);
   if (it != registry_.end()) {
     // If the user context is already registered, return the existing
@@ -63,7 +63,7 @@ UserContextRegistry::Register(absl_nullable UserContextRef user_context) {
 
 absl_nullable TrackedUserContextRef
 UserContextRegistry::Lookup(UserContextId id) const {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   auto it = registry_.find(id);
   if (it != registry_.end()) {
     // This may return `nullptr` if the `TrackedUserContext` has been destroyed
@@ -76,7 +76,7 @@ UserContextRegistry::Lookup(UserContextId id) const {
 
 std::vector<absl_nonnull TrackedUserContextRef> UserContextRegistry::LookupAll()
     const {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   std::vector<absl_nonnull TrackedUserContextRef> tracked_user_contexts;
   tracked_user_contexts.reserve(registry_.size());
   for (auto it = registry_.begin(); it != registry_.end(); ++it) {
@@ -90,7 +90,7 @@ std::vector<absl_nonnull TrackedUserContextRef> UserContextRegistry::LookupAll()
 
 void UserContextRegistry::Unregister(
     UserContextId id, const TrackedUserContext* tracked_user_context) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   auto it = registry_.find(id);
   if (it != registry_.end() && it->second.second == tracked_user_context) {
     registry_.erase(it);
