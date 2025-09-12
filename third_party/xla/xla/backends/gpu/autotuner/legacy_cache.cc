@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/autotuning/autotune_cache_key.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
+#include "xla/tsl/protobuf/dnn.pb.h"
 
 namespace xla {
 
@@ -76,9 +77,9 @@ std::optional<LegacyCache::Config> LegacyCache::GetConfig(
   } else if (result.has_gemm()) {
     config.codegen_backend_name = "Cublas";
     config.backend_config.PackFrom(result.gemm());
-  } else if (result.has_conv()) {
+  } else if (result.has_algorithm()) {
     config.codegen_backend_name = "Cudnn";
-    config.backend_config.PackFrom(result.conv());
+    config.backend_config.PackFrom(result.algorithm());
   } else {
     return std::nullopt;
   }
@@ -93,7 +94,7 @@ std::optional<AutotuneResult> LegacyCache::GetAutotuneResult(
   } else if (config.codegen_backend_name == "Cublas") {
     config.backend_config.UnpackTo(result.mutable_gemm());
   } else if (config.codegen_backend_name == "Cudnn") {
-    config.backend_config.UnpackTo(result.mutable_conv());
+    config.backend_config.UnpackTo(result.mutable_algorithm());
   } else {
     return std::nullopt;
   }
