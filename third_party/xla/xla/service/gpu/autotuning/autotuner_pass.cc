@@ -55,6 +55,7 @@ AutotuneConfig GetAutotuneConfig(const DebugOptions& debug_options) {
       debug_options.xla_gpu_crash_on_verification_failures();
   autotune_config.expect_all_instructions_in_cache =
       debug_options.xla_gpu_require_complete_aot_autotune_results();
+  autotune_config.dump_logs_to = debug_options.xla_gpu_dump_autotune_logs_to();
   return autotune_config;
 }
 
