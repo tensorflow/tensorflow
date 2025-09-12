@@ -926,7 +926,7 @@ absl::Status XlaBuilder::BuildComputationProto(int64_t root_id,
   SetProtoIdAndName(&proto, name_, kNameSeparator, computation_id);
   TF_ASSIGN_OR_RETURN(ProgramShape program_shape, GetProgramShape(root_id));
   *proto.mutable_program_shape() = program_shape.ToProto();
-  proto.set_root_id(root_id);
+  proto.set_root_id(HloInstruction::CalculateUniqueId(computation_id, root_id));
 
   for (auto& instruction : instructions_) {
     // Ensures that the instruction names are unique among the whole graph.

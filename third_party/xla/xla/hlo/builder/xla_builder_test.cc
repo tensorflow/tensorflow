@@ -70,6 +70,7 @@ namespace m = ::xla::match;
 
 using ::testing::_;
 using ::testing::HasSubstr;
+using ::testing::Property;
 using ::testing::Test;
 using ::tsl::testing::StatusIs;
 
@@ -4029,6 +4030,39 @@ TEST(XlaBuilderTest, InstructionNameFromMetadataWithDot) {
   HloInstruction* constant = module->entry_computation()->root_instruction();
   EXPECT_EQ(constant->name().substr(0, constant->name().find_first_of('.')),
             "inputs_x");
+}
+
+TEST(XlaBuilderTest, BuildProtoWritesFullRootId) {
+  XlaBuilder b_root(TestName());
+
+  auto b_call = b_root.CreateSubBuilder("the_only_to_apply");
+  auto p0 = Parameter(b_call.get(), 0, ShapeUtil::MakeShape(F32, {}), "p0");
+  auto p1 = Parameter(b_call.get(), 1, ShapeUtil::MakeShape(F32, {}), "p1");
+  Add(p0, p1);
+  TF_ASSERT_OK_AND_ASSIGN(XlaComputationId call, b_call->BuildSubComputation());
+
+  std::unique_ptr<XlaBuilder> b = b_root.CreateSubBuilder("main");
+
+  auto x = Parameter(b.get(), 0, ShapeUtil::MakeShape(F32, {}), "x");
+  auto y = Parameter(b.get(), 1, ShapeUtil::MakeShape(F32, {}), "y");
+  auto one = ConstantR0<float>(b.get(), 1);
+  auto two = ConstantR0<float>(b.get(), 2);
+  Add(Call(b.get(), call, {x, y}), Call(b.get(), call, {one, two}));
+  TF_ASSERT_OK_AND_ASSIGN(XlaComputationId main, b->BuildSubComputation());
+
+  TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation, b_root.Build(main));
+  const HloModuleProto& proto = computation.proto();
+
+  EXPECT_EQ(proto.computations_size(), 2);
+  // Root ids should be full unique ids and match the unique id of an
+  // instruction.
+  for (const HloComputationProto& computation_proto : proto.computations()) {
+    EXPECT_THAT(computation_proto.instructions(),
+                Contains(Property(
+                    &HloInstructionProto::id,
+                    HloInstruction::CalculateUniqueId(
+                        computation_proto.id(), computation_proto.root_id()))));
+  }
 }
 
 }  // namespace
