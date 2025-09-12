@@ -974,11 +974,10 @@ PJRT_Error* PJRT_Client_BufferFromHostBuffer(
     }
   }
 
-  xla::PjRtFuture<>::Promise promise = xla::PjRtFuture<>::CreatePromise();
+  auto [promise, future] = xla::PjRtFuture<>::MakePromise();
 
-  absl::AnyInvocable<void() &&> on_done_with_host_buffer = [promise]() mutable {
-    promise.Set();
-  };
+  absl::AnyInvocable<void() &&> on_done_with_host_buffer =
+      [promise = std::move(promise)]() mutable { promise.Set(); };
 
   std::unique_ptr<xla::PjRtBuffer> buffer;
   bool has_layout_and_memory = layout.has_value() && args->memory != nullptr;
@@ -1029,8 +1028,7 @@ PJRT_Error* PJRT_Client_BufferFromHostBuffer(
   }
 
   args->buffer = new PJRT_Buffer{std::move(buffer), args->client};
-  args->done_with_host_buffer =
-      new PJRT_Event{xla::PjRtFuture<>(std::move(promise))};
+  args->done_with_host_buffer = new PJRT_Event{std::move(future)};
 
   return nullptr;
 }

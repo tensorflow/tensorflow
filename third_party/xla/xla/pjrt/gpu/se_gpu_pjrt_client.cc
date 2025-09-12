@@ -798,7 +798,7 @@ PjRtFuture<> StreamExecutorGpuClient::CopyRawSubBufferToHost(
         InvalidArgument("Copy raw buffer called on an invalid buffer"));
   }
 
-  auto promise = PjRtFuture<>::CreatePromise();
+  auto [promise, future] = PjRtFuture<>::MakePromise();
   auto usage_event = BufferSequencingEvent::Create(this->thread_pool());
 
   auto definition_events = hold->definition_events();
@@ -813,7 +813,8 @@ PjRtFuture<> StreamExecutorGpuClient::CopyRawSubBufferToHost(
   // stall the compute stream.
   hold.ConvertUsageHold(stream, usage_event, /*reference_held=*/true);
 
-  auto async_copy = [this, promise, offset, transfer_size, stream, local_device,
+  auto async_copy = [this, promise = std::move(promise).ToShared(), offset,
+                     transfer_size, stream, local_device,
                      owning_device_memory = std::move(device_memory),
                      definition_events = std::move(definition_events),
                      usage_event = std::move(usage_event)](
@@ -821,20 +822,20 @@ PjRtFuture<> StreamExecutorGpuClient::CopyRawSubBufferToHost(
     absl::StatusOr<EventPool::Handle> event =
         local_device->event_pool().AllocateEvent(stream->parent());
     if (!event.ok()) {
-      promise.Set(event.status());
+      promise->Set(event.status());
       return;
     }
 
     absl::Status defined_status = definition_events[0]->GetDefinedStatus();
     if (!defined_status.ok()) {
-      promise.Set(defined_status);
+      promise->Set(defined_status);
       return;
     }
 
     auto& device_memory = owning_device_memory->mem();
     if (offset < 0 || offset > device_memory.size() ||
         device_memory.size() - offset < transfer_size) {
-      promise.Set(
+      promise->Set(
           InvalidArgument("Copy raw buffer called on buffer size %lld with "
                           "invalid offset %lld, transfer size %lld",
                           device_memory.size(), offset, transfer_size));
@@ -856,7 +857,7 @@ PjRtFuture<> StreamExecutorGpuClient::CopyRawSubBufferToHost(
       if (should_stage_host_to_device_transfers() &&
           !IsDmaMapped(dst.value(), transfer_size)) {
         if (host_memory_allocator() == nullptr) {
-          promise.Set(
+          promise->Set(
               InvalidArgument("host_memory_allocator should be initialized for "
                               "staging buffer transfer."));
           return;
@@ -871,7 +872,7 @@ PjRtFuture<> StreamExecutorGpuClient::CopyRawSubBufferToHost(
         if (auto status = stream->Memcpy(staging_buffer.get(), *sub_buffer,
                                          transfer_size);
             !status.ok()) {
-          promise.Set(std::move(status));
+          promise->Set(std::move(status));
           return;
         }
         auto copy_to_staging_buffer = [dst, transfer_size,
@@ -880,7 +881,7 @@ PjRtFuture<> StreamExecutorGpuClient::CopyRawSubBufferToHost(
         };
         if (auto status = stream->DoHostCallback(copy_to_staging_buffer);
             !status.ok()) {
-          promise.Set(std::move(status));
+          promise->Set(std::move(status));
           return;
         }
       } else {
@@ -889,7 +890,7 @@ PjRtFuture<> StreamExecutorGpuClient::CopyRawSubBufferToHost(
         // invoked.
         auto status = stream->Memcpy(*dst, *sub_buffer, transfer_size);
         if (!status.ok()) {
-          promise.Set(std::move(status));
+          promise->Set(std::move(status));
           return;
         }
       }
@@ -901,10 +902,10 @@ PjRtFuture<> StreamExecutorGpuClient::CopyRawSubBufferToHost(
     auto callback_status = local_device->ThenExecuteCallback(
         stream, [promise, owning_device_memory =
                               std::move(owning_device_memory)]() mutable {
-          promise.Set();
+          promise->Set();
         });
     if (!callback_status.ok()) {
-      promise.Set(std::move(callback_status));
+      promise->Set(std::move(callback_status));
       return;
     }
   };
@@ -920,8 +921,8 @@ PjRtFuture<> StreamExecutorGpuClient::CopyRawSubBufferToHost(
         });
       });
 
-  return PjRtFuture<>(
-      std::move(promise),
+  return PjRtFutureHelpers::WithProfiling(
+      std::move(future),
       /*on_block_start=*/
       []() {
         tsl::profiler::TraceMeProducer traceme(
