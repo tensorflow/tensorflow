@@ -44,6 +44,30 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+namespace {
+
+AutotuneConfig GetAutotuneConfig(const DebugOptions& debug_options) {
+  AutotuneConfig autotune_config;
+  autotune_config.check_buffers = debug_options.xla_gpu_autotune_level() >= 4;
+  autotune_config.relative_tolerance =
+      debug_options.xla_gpu_autotune_gemm_rtol();
+  autotune_config.crash_on_check_failure =
+      debug_options.xla_gpu_crash_on_verification_failures();
+  autotune_config.expect_all_instructions_in_cache =
+      debug_options.xla_gpu_require_complete_aot_autotune_results();
+  autotune_config.dump_logs_to = debug_options.xla_gpu_dump_autotune_logs_to();
+  return autotune_config;
+}
+
+ProfileOptions GetProfileOptions(const DebugOptions& debug_options) {
+  ProfileOptions profile_options;
+  profile_options.redzone_padding_bytes =
+      debug_options.xla_gpu_redzone_padding_bytes();
+  return profile_options;
+}
+
+}  // namespace
+
 absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
     std::vector<std::unique_ptr<CodegenBackend>> backends,
     const DebugOptions& debug_options,
@@ -53,29 +77,20 @@ absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
   // At least one of stream_executor or allocator must be provided.
   CHECK(stream_executor != nullptr || allocator != nullptr);
 
-  std::unique_ptr<GpuProfiler> profiler =
-      GpuProfiler::Create(stream_executor, ProfileOptions(), allocator);
+  std::unique_ptr<GpuProfiler> profiler = GpuProfiler::Create(
+      stream_executor, GetProfileOptions(debug_options), allocator);
 
-  std::unique_ptr<AutotunerCacheInterface> cache = nullptr;
-  const std::string& cache_dir =
-      debug_options.xla_gpu_experimental_autotuner_cache_dir();
-  if (!cache_dir.empty()) {
-    cache = std::make_unique<LegacyCache>(
-        cache_dir, debug_options.xla_gpu_experimental_autotune_cache_mode(),
-        stream_executor->GetDeviceDescription());
-  }
-
-  AutotuneConfig autotune_config;
-  autotune_config.check_buffers = debug_options.xla_gpu_autotune_level() >= 4;
-  autotune_config.relative_tolerance =
-      debug_options.xla_gpu_autotune_gemm_rtol();
-  autotune_config.crash_on_check_failure =
-      debug_options.xla_gpu_crash_on_verification_failures();
+  std::unique_ptr<AutotunerCacheInterface> cache =
+      std::make_unique<LegacyCache>(
+          debug_options.xla_gpu_experimental_autotuner_cache_dir(),
+          debug_options.xla_gpu_experimental_autotune_cache_mode(),
+          stream_executor->GetDeviceDescription());
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Autotuner> autotuner,
       Autotuner::Create(std::move(backends), std::move(profiler),
-                        autotune_config, std::move(cache), thread_pool));
+                        GetAutotuneConfig(debug_options), std::move(cache),
+                        thread_pool));
   return absl::WrapUnique(
       new AutotunerPass(std::move(autotuner), should_autotune));
 }

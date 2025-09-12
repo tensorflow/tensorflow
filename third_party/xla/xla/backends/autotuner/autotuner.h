@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -25,6 +26,9 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/time/time.h"
+#include "xla/autotune_results.pb.h"
+#include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/autotuner/profiler.h"
@@ -59,6 +63,9 @@ struct AutotuneConfig {
   // If true, the autotuner will return an error if the best config for a
   // certain instruction is not in the cache.
   bool expect_all_instructions_in_cache = false;
+  // If not empty, detailed logs will be written to the specified file path
+  // as a textproto representation of an `AutotuningLogs` proto message.
+  std::string dump_logs_to = "";
 };
 
 class Autotuner {
@@ -94,6 +101,33 @@ class Autotuner {
     Config config;
     std::unique_ptr<Executable> executable;
   };
+  enum class FailureKind {
+    kCompilationFailed,
+    kExecutionFailed,
+    kRedzoneCheckFailed,
+    kWrongResults,
+  };
+
+  struct Failure {
+    FailureKind kind;
+    std::string message;
+
+    std::string ToString() const;
+    AutotuneResult::FailureResult ToProto() const;
+  };
+  // The result of profiling a single config for a given instruction. If the
+  // profiling failed, as indicated by the failures of kind kCompilationFailed
+  // or kExecutionFailed, the duration and scratch_bytes fields won't be set,
+  // retaining the default values of 0.
+  struct ConfigResult {
+    Config config;
+    std::optional<Failure> failure;
+    absl::Duration duration = absl::ZeroDuration();
+    int scratch_bytes = 0;
+
+    std::string ToString(bool verbose = false) const;
+    AutotuneResult ToProto() const;
+  };
 
   Autotuner(std::vector<std::unique_ptr<CodegenBackend>> codegen_backends,
             std::unique_ptr<Profiler> profiler, AutotuneConfig autotune_config,
@@ -125,23 +159,29 @@ class Autotuner {
       HloInstruction* instr);
   std::vector<absl::StatusOr<std::unique_ptr<Executable>>> CompileAll(
       HloInstruction* instr, std::vector<Config>& configs);
-
-  absl::StatusOr<Config> ProfileAndPickBest(
+  absl::StatusOr<std::vector<ConfigResult>> ProfileAll(
       std::vector<ExecutableCandidate>& candidates);
+  absl::StatusOr<ConfigResult> PickBestConfig(
+      std::vector<ConfigResult>& results);
 
   absl::StatusOr<ScopedShapedBuffer> GetReferenceOutput(
       std::vector<ExecutableCandidate>& candidates,
       InputBuffers& input_buffers);
 
-  absl::Status CheckBuffers(InputBuffers& input_buffers,
-                            ScopedShapedBuffer& output,
-                            ScopedShapedBuffer& reference);
+  std::optional<Failure> CheckBuffers(InputBuffers& input_buffers,
+                                      ScopedShapedBuffer& output,
+                                      ScopedShapedBuffer& reference);
+
+  void LogConfigResults(const HloInstruction& instr,
+                        const std::vector<ConfigResult>& results);
+  absl::Status DumpLogsToFile();
 
   std::vector<std::unique_ptr<CodegenBackend>> codegen_backends_;
   std::unique_ptr<Profiler> profiler_;
   AutotuneConfig autotune_config_;
   std::unique_ptr<AutotunerCacheInterface> cache_;
   tsl::thread::ThreadPool* thread_pool_;
+  AutotuningLogs logs_;
 };
 }  // namespace xla
 
