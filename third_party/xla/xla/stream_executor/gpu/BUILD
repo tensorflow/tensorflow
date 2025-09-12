@@ -514,8 +514,6 @@ cc_library(
     deps = [
         ":gpu_kernel_registry",
         ":gpu_test_kernel_traits",
-        "//xla/stream_executor:device_memory",
-        "//xla/stream_executor:kernel",
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:stream_executor_h",
@@ -573,7 +571,9 @@ xla_test(
     deps = [
         ":gpu_test_kernels",
         ":gpu_test_kernels_fatbin",
+        ":tma_metadata",
         "//xla/service:platform_util",
+        "//xla/stream_executor:command_buffer",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:kernel",
         "//xla/stream_executor:kernel_spec",
@@ -593,6 +593,7 @@ xla_test(
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 

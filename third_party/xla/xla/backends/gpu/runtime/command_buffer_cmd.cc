@@ -53,6 +53,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/annotation.h"
 #include "xla/backends/gpu/runtime/collective_broadcast_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
+#include "xla/backends/gpu/runtime/copy_thunk.h"
 #include "xla/backends/gpu/runtime/dynamic_slice_thunk.h"
 #include "xla/backends/gpu/runtime/gpublas_lt_matmul_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -80,6 +81,7 @@ limitations under the License.
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/platform.h"
@@ -1001,16 +1003,18 @@ absl::StatusOr<const se::CommandBuffer::Command*> ComputationIdCmd::Record(
 // LaunchCmd
 //===----------------------------------------------------------------------===//
 
-LaunchCmd::LaunchCmd(std::string kernel_name,
-                     absl::Span<const BufferAllocation::Slice> args,
-                     absl::Span<const MemoryAccess> args_access,
-                     LaunchDimensions dims, int64_t shmem_bytes)
+LaunchCmd::LaunchCmd(
+    std::string kernel_name, absl::Span<const BufferAllocation::Slice> args,
+    absl::Span<const MemoryAccess> args_access, LaunchDimensions dims,
+    int64_t shmem_bytes,
+    std::optional<stream_executor::gpu::TmaMetadata> tma_metadata)
     : CommandBufferCmd(CommandBufferCmdType::kLaunchCmd),
       kernel_name_(std::move(kernel_name)),
       args_(args.begin(), args.end()),
       args_access_(args_access.begin(), args_access.end()),
       dims_(dims),
-      shmem_bytes_(shmem_bytes) {}
+      shmem_bytes_(shmem_bytes),
+      tma_metadata_(std::move(tma_metadata)) {}
 
 absl::Status LaunchCmd::Initialize(const Thunk::InitializeParams& params,
                                    StateManager& state) {
@@ -1045,9 +1049,10 @@ absl::StatusOr<const se::CommandBuffer::Command*> LaunchCmd::Record(
   VLOG(5) << "LaunchCmd: kernel=" << kernel_name_
           << "; shmem_bytes=" << shmem_bytes_;
 
+  se::StreamExecutor* executor = execute_params.stream->parent();
   se::Kernel* kernel = [&] {
     absl::MutexLock lock(&mutex_);
-    return kernels_[execute_params.stream->parent()].get();
+    return kernels_[executor].get();
   }();
 
   if (kernel == nullptr) {
@@ -1055,17 +1060,35 @@ absl::StatusOr<const se::CommandBuffer::Command*> LaunchCmd::Record(
         "Kernel not loaded on a command buffer executor: ", kernel_name_));
   }
 
-  absl::InlinedVector<se::DeviceMemoryBase, 4> buffers;
-  for (const BufferAllocation::Slice& arg : args_) {
+  absl::InlinedVector<std::variant<se::DeviceMemoryBase, se::TensorMap>, 4>
+      kernel_args_variant;
+  stream_executor::gpu::TmaMetadata tma_metadata =
+      tma_metadata_.value_or(se::gpu::TmaMetadata{});
+  for (int idx = 0; idx < args_.size(); ++idx) {
+    const BufferAllocation::Slice& arg = args_[idx];
     se::DeviceMemoryBase buf =
         execute_params.buffer_allocations->GetDeviceAddress(arg);
     VLOG(5) << "  Arg: " << arg << ": " << buf.opaque();
-    buffers.push_back(buf);
+
+    if (auto it = tma_metadata.arg_index_to_tma_info.find(idx);
+        it != tma_metadata.arg_index_to_tma_info.end()) {
+      // TMA descriptor argument.
+      stream_executor::gpu::TmaDescriptor tma_desc = it->second;
+      TF_ASSIGN_OR_RETURN(se::TensorMap tensor_map,
+                          executor->CreateTensorMap(tma_desc, buf.opaque()));
+      VLOG(5) << "  Using TensorMap for arg #" << idx << ": "
+              << tma_desc.ToString();
+      kernel_args_variant.push_back(std::move(tensor_map));
+    } else {
+      // Buffer argument.
+      kernel_args_variant.push_back(buf);
+    }
   }
 
   TF_ASSIGN_OR_RETURN(
       auto kernel_args,
-      se::PackKernelArgs<se::DeviceMemoryBase>(buffers, shmem_bytes_));
+      se::PackKernelArgs(absl::MakeConstSpan(kernel_args_variant),
+                         shmem_bytes_));
 
   return Handle(
       std::move(record_action),
