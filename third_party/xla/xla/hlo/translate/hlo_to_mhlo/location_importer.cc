@@ -22,9 +22,9 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/translate/attributes.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_utils.h"
 #include "xla/hlo/translate/hlo_to_mhlo/stack_location_utils.h"
+#include "xla/mlir_hlo/utils/unregistered_attributes.h"
 
 namespace mlir {
 namespace hlo {
@@ -36,9 +36,10 @@ mlir::Location GenerateInstructionLocation(
   auto fuse_original_value_if_present = [&](mlir::Location loc) {
     auto original_value = instruction->original_value();
     if (original_value) {
-      return b.getFusedLoc({loc, mlir::NameLoc::get(b.getStringAttr(
-                                     std::string(kOriginalValueAttr) + "={" +
-                                     original_value->ToString() + "}"))});
+      return b.getFusedLoc(
+          {loc, mlir::NameLoc::get(
+                    b.getStringAttr(std::string(xla::kMhloOriginalValueAttr) +
+                                    "={" + original_value->ToString() + "}"))});
     }
     return loc;
   };

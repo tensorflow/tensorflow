@@ -30,9 +30,9 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/parser/hlo_parser.h"
-#include "xla/hlo/translate/attributes.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_utils.h"
 #include "xla/hlo/translate/mhlo_to_hlo/stack_frame_index_builder.h"
+#include "xla/mlir_hlo/utils/unregistered_attributes.h"
 #include "xla/xla_data.pb.h"
 
 namespace mlir {
@@ -51,7 +51,7 @@ static std::string GetNameFromLocImpl(Location loc) {
       // in functions where the op's name is first.
       auto name = name_loc.getName().strref().split('@').first;
       // Skip if the name is for op type.
-      if (name.starts_with(kOriginalValueAttr)) {
+      if (name.starts_with(xla::kMhloOriginalValueAttr)) {
         continue;
       }
       if (name.ends_with(":")) {
@@ -85,7 +85,7 @@ static std::string GetOpTypeFromLoc(Location loc) {
       // Add name in NameLoc. For NameLoc we also account for names due to ops
       // in functions where the op's name is first.
       auto op_type = name_loc.getName().strref().split('@').first;
-      if (op_type.starts_with(kOriginalValueAttr)) {
+      if (op_type.starts_with(xla::kMhloOriginalValueAttr)) {
         continue;
       }
       if (op_type.ends_with(":")) {
@@ -118,7 +118,7 @@ static std::shared_ptr<xla::OriginalValue> GetOriginalValueFromLoc(
 
     if (auto name_loc = mlir::dyn_cast<NameLoc>(curr_loc)) {
       auto original_value = name_loc.getName().strref().split('@').first;
-      if (!original_value.starts_with(kOriginalValueAttr)) {
+      if (!original_value.starts_with(xla::kMhloOriginalValueAttr)) {
         continue;
       }
       loc_original_value = original_value.split('=').second;
