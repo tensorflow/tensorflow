@@ -604,10 +604,13 @@ absl::Status IrEmitterUnnested::EmitCommandBufferThunk(
       return Internal("Unsupported command buffer scheduling mode: %d", mode);
   }
 
+  bool enable_loop_unroll = ir_emitter_context_->debug_options()
+                                .xla_gpu_command_buffer_unroll_loops();
   TF_ASSIGN_OR_RETURN(
       CommandBufferCmdExecutor cmd_executor,
-      ConvertToCommands(thunk_sequence->thunks(),
-                        ConvertToCommandsOptions{synchronization_mode}));
+      ConvertToCommands(
+          thunk_sequence->thunks(),
+          ConvertToCommandsOptions{synchronization_mode, enable_loop_unroll}));
 
   AddThunkToThunkSequence(std::make_unique<CommandBufferThunk>(
       std::move(cmd_executor), Thunk::ThunkInfo::WithProfileAnnotation(instr),

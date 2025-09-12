@@ -683,13 +683,15 @@ TEST(CommandBufferCmdTest, RecordExecutorsWithDependencies) {
                              CommandBufferCmd::RecordCreate{},
                              command_buffer.get(), /*finalize=*/false));
 
-  auto a_sinks = exec_a.SinkCommands(record_params, command_buffer.get());
+  auto a_sinks = exec_a.SinkCommands(record_params, command_buffer.get(),
+                                     /*unroll_iteration=*/0);
   TF_ASSERT_OK(
       exec_b.Record(exec_params, record_params,
                     CommandBufferCmd::RecordCreate{absl::MakeSpan(a_sinks)},
                     command_buffer.get(), /*finalize=*/false));
 
-  auto b_sinks = exec_b.SinkCommands(record_params, command_buffer.get());
+  auto b_sinks = exec_b.SinkCommands(record_params, command_buffer.get(),
+                                     /*unroll_iteration=*/0);
   TF_ASSERT_OK(
       exec_c.Record(exec_params, record_params,
                     CommandBufferCmd::RecordCreate{absl::MakeSpan(b_sinks)},
