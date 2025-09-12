@@ -19,6 +19,7 @@ limitations under the License.
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <iostream>
 #include <memory>
 #include <random>
 #include <string>
@@ -496,7 +497,13 @@ absl::StatusOr<DeviceHloInstructionProfiles> MatmulPerfTableGen::Merge(
 GemmPerfTable MatmulPerfTableGen::Merge(std::vector<GemmPerfTable> tables) {
   GemmPerfTable result;
   for (GemmPerfTable& table : tables) {
-    result.MergeFrom(table);
+    for (auto& [key, entries] : *table.mutable_entries()) {
+      if (result.entries().contains(key)) {
+        result.mutable_entries()->at(key).MergeFrom(entries);
+      } else {
+        result.mutable_entries()->insert({key, entries});
+      }
+    }
   }
   return result;
 }
@@ -638,7 +645,7 @@ absl::Status MatmulPerfTableGen::Dump(
 
 absl::Status MatmulPerfTableGen::Dump(const GemmPerfTable& table) {
   if (config_.output.empty()) {
-    LOG(INFO) << table.DebugString();
+    std::cout << table.DebugString();
     return absl::OkStatus();
   }
   if (absl::StrContains(config_.output, ".pbtxt")) {

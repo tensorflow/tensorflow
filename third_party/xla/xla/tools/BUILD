@@ -709,6 +709,7 @@ xla_test(
         "//xla/service/gpu/model:hlo_op_profile_proto_cc",
         "//xla/stream_executor:device_description",
         "//xla/tests:hlo_test_base",
+        "//xla/tsl/platform:env",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/strings:string_view",
