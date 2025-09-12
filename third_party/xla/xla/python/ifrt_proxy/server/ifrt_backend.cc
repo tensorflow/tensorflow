@@ -667,9 +667,7 @@ Future<BackendInterface::Response> IfrtBackend::AsyncExecute(
     ++in_flight_count_;
   }
   auto [promise, future] = Future<Response>::MakePromise();
-  auto f = [this,
-            promise =
-                std::make_shared<Future<Response>::Promise>(std::move(promise)),
+  auto f = [this, promise = std::move(promise).ToShared(),
             handle_fn = std::move(handle_fn)]() mutable {
     promise->Set(handle_fn());
     {

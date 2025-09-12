@@ -2656,8 +2656,7 @@ void PjRtCApiBuffer::MakePromiseTrackEvent() {
 PjRtFuture<> PjRtCApiBuffer::GetReadyFuture() {
   if (readiness_promise_ == nullptr) {
     auto [promise, future] = PjRtFuture<>::MakePromise();
-    readiness_promise_ =
-        std::make_shared<PjRtFuture<>::Promise>(std::move(promise));
+    readiness_promise_ = std::move(promise).ToShared();
     readiness_future_ = std::move(future);
     MakePromiseTrackEvent();
   }

@@ -660,8 +660,7 @@ absl::StatusOr<ArrayRef> AssembleStringArrayFromSingleDeviceStringArrays(
       Future<BasicStringArray::Buffers>::MakePromise();
 
   auto buffer_copier = [state = buffer_copying_state,
-                        promise = std::make_shared<decltype(buffers_promise)>(
-                            std::move(buffers_promise))](
+                        promise = std::move(buffers_promise).ToShared()](
                            absl::StatusOr<BasicStringArray::Buffers> strbuf,
                            int shard_index) mutable {
     absl::MutexLock lock(&state->mu);
@@ -1508,18 +1507,17 @@ absl::Status PjRtClient::CrossHostSendBuffers(
   // keys together to reduce the number of threads used.
   for (int i = 0; i < keys.size(); ++i) {
     auto [promise, descriptor_future] = PjRtFuture<std::string>::MakePromise();
-    work_queue_->Schedule([this, k = keys[i],
-                           promise = std::make_shared<decltype(promise)>(
-                               std::move(promise))]() mutable {
-      std::string key = absl::StrCat(kKeyPrefix, k);
-      absl::StatusOr<std::string> descriptor =
-          kv_store_->Get(key, cross_host_transfer_timeout_);
-      if (!descriptor.ok()) {
-        LOG(FATAL) << "Failed to get descriptor for key " << key << ": "
-                   << descriptor.status();
-      }
-      promise->Set(std::move(*descriptor));
-    });
+    work_queue_->Schedule(
+        [this, k = keys[i], promise = std::move(promise).ToShared()]() mutable {
+          std::string key = absl::StrCat(kKeyPrefix, k);
+          absl::StatusOr<std::string> descriptor =
+              kv_store_->Get(key, cross_host_transfer_timeout_);
+          if (!descriptor.ok()) {
+            LOG(FATAL) << "Failed to get descriptor for key " << key << ": "
+                       << descriptor.status();
+          }
+          promise->Set(std::move(*descriptor));
+        });
     auto on_done = [](absl::Status status, bool sends_were_enqueued) {
       CHECK_OK(status);
     };

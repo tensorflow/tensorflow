@@ -125,7 +125,7 @@ GrpcClientSession::GrpcClientSession(
 Future<std::shared_ptr<IfrtResponse>> GrpcClientSession::Enqueue(
     std::unique_ptr<IfrtRequest> request) {
   auto [promise, future] = Future<std::shared_ptr<IfrtResponse>>::MakePromise();
-  auto shared_promise = std::make_shared<decltype(promise)>(std::move(promise));
+  auto shared_promise = std::move(promise).ToShared();
   absl::Status status = Enqueue(
       std::move(request),
       [promise = std::move(shared_promise),
