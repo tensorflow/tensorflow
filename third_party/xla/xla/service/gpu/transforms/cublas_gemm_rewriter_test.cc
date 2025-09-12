@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/service/gpu/transforms/gemm_rewriter.h"
@@ -3403,6 +3404,46 @@ ENTRY test {
 ; CHECK-DAG: [[BIAS:%[^ ]+]] = bf16[] {{.+}}([[P_2]])
 ; CHECK: custom-call([[LHS]], [[RHS]], [[BIAS]]), custom_call_target="__cublas$lt$matmul"
 )");
+}
+
+TEST_F(CublasLtGemmRewriteTest, CublasLtRewriteWithBias) {
+  // The bias has shape [7], which doesn't match the non-contracting rhs
+  // dimension ([35]. It's reshaped from [5,7] but cuBLASlt is not aware of
+  // that).
+
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY %test (x: f32[2,3,4], y: f32[4,5,7], z: f32[7]) -> f32[2,3,5,7] {
+  %x = f32[2,3,4]{2,1,0} parameter(0)
+  %bitcast = f32[6,4]{1,0} bitcast(%x)
+  %y = f32[4,5,7]{2,1,0} parameter(1)
+  %bitcast.1 = f32[4,35]{1,0} bitcast(%y)
+  %dot = f32[6,35]{1,0} dot(%bitcast, %bitcast.1), lhs_contracting_dims={1},
+         rhs_contracting_dims={0}, operand_precision={highest,highest}
+  %bitcast.2 = f32[2,3,5,7]{3,2,1,0} bitcast(%dot)
+  %z = f32[7]{0} parameter(2)
+  %z_bcast = f32[2,3,5,7]{3,2,1,0} broadcast(%z), dimensions={3}
+  ROOT %out = f32[2,3,5,7]{3,2,1,0} add(%bitcast.2, %z_bcast)
+}
+)";
+
+  HloModuleConfig config;
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  config.set_debug_options(debug_options);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text, config));
+
+  GemmRewriter pass(Capability(), GetToolkitVersion());
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&pass, module.get()));
+  EXPECT_TRUE(changed);
+
+  TF_ASSERT_OK_AND_ASSIGN(bool filecheck_result,
+                          RunFileCheck(module->ToString(), R"(
+; CHECK:           custom_call_target="__cublas$lt$matmul",
+; CHECK-DAG:         "epilogue":"DEFAULT"
+      )"));
+  EXPECT_TRUE(filecheck_result);
 }
 
 }  // namespace
