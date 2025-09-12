@@ -335,6 +335,7 @@ cc_library(
     hdrs = ["safe_static_init.h"],
     copts = ["-fexceptions"],
     features = ["-use_header_modules"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         "@com_google_absl//absl/synchronization",
         "@nanobind",
