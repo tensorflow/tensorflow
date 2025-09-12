@@ -374,7 +374,7 @@ class GpuThunkAotCompilationResult : public AotCompilationResult {
     CompilationResultProto proto;
     *proto.mutable_hlo_module_with_config() = hlo_module->ToProtoWithConfig();
     *proto.mutable_buffer_assignment() = buffer_assignment->ToProto();
-    proto.set_asm_text(std::string(asm_text));
+    proto.set_asm_text(asm_text);
     proto.set_binary(binary.data(), binary.size());
     proto.mutable_dnn_compiled_graphs()->insert(dnn_compiled_graphs.cbegin(),
                                                 dnn_compiled_graphs.cend());
