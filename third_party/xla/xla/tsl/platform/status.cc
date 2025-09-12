@@ -162,22 +162,6 @@ std::vector<StackFrame> GetStackTrace(const absl::Status& status) {
 
 }  // namespace errors
 
-// NB: This Windows-only implementation is exists only to avoid a linker error.
-// Remove if this is resolved.
-#ifdef _WIN32
-const char* NullTerminatedMessage(const absl::Status& status) {
-  return absl::StatusMessageAsCStr(status);
-}
-#endif
-
-std::string* TfCheckOpHelperOutOfLine(const absl::Status& v, const char* msg) {
-  std::stringstream ss;
-  ss << "Non-OK-status: " << msg << "\nStatus: " << v;
-
-  // Leaks string but this is only to be used in a fatal error message
-  return new std::string(ss.str());
-}
-
 StatusGroup::StatusGroup() {}
 
 StatusGroup::StatusGroup(std::initializer_list<absl::Status> statuses) {
