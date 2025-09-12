@@ -333,23 +333,21 @@ PjRtFuture<> TfrtGpuBuffer::ToLiteral(MutableLiteralBase* literal) {
 PjRtFuture<> TfrtGpuBuffer::ToLiteralHelper(
     PjRtFuture<MutableLiteralBase*> literal) {
   tsl::profiler::TraceMe traceme("TfrtGpuBuffer::ToLiteral");
-  auto promise = PjRtFuture<>::CreatePromise();
+  auto [promise, future] = PjRtFuture<>::MakePromise();
   auto usage_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
   auto* device_buffer = AcquireUsage(usage_event);
   if (device_buffer == nullptr) {
     promise.Set(
         InvalidArgument("ToLiteral() called on deleted or donated buffer"));
-    return PjRtFuture<>(promise);
+    return future;
   }
 
   bool unpack_subbyte_types =
       client_->xla_client()->backend().transfer_manager()->PackSubbyteTypes();
 
-  auto literal_and_transpose_promise =
+  auto [literal_and_transpose_promise, literal_and_transpose_future] =
       PjRtFuture<std::pair<MutableLiteralBase*,
-                           std::shared_ptr<TransposePlan>>>::CreatePromise();
-  PjRtFuture<std::pair<MutableLiteralBase*, std::shared_ptr<TransposePlan>>>
-      literal_and_transpose_future(literal_and_transpose_promise);
+                           std::shared_ptr<TransposePlan>>>::MakePromise();
   literal.OnReady(
       [client = client_, on_device_shape{on_device_shape_},
        promise = std::move(literal_and_transpose_promise)](
@@ -406,9 +404,9 @@ PjRtFuture<> TfrtGpuBuffer::ToLiteralHelper(
       });
 
   auto d2h_copy = [device(device_), device_buffer,
-                   usage_event(std::move(usage_event)), promise,
-                   client = client_, on_device_shape{on_device_shape_},
-                   unpack_subbyte_types,
+                   usage_event(std::move(usage_event)),
+                   promise = std::move(promise), client = client_,
+                   on_device_shape{on_device_shape_}, unpack_subbyte_types,
                    literal_and_transpose =
                        std::move(literal_and_transpose_future)]() mutable {
     tsl::profiler::TraceMe traceme("ToLiteral::D2H_copy");
@@ -522,8 +520,8 @@ PjRtFuture<> TfrtGpuBuffer::ToLiteralHelper(
                        {device_buffer->definition_event().CopyRCRef()},
                        std::move(d2h_copy));
 
-  return PjRtFuture<>(
-      std::move(promise),
+  return PjRtFutureHelpers::WithProfiling(
+      std::move(future),
       /*on_block_start=*/
       []() {
         tsl::profiler::TraceMeProducer traceme("TfrtGpuBuffer::ToLiteral");
@@ -550,7 +548,7 @@ PjRtFuture<> TfrtGpuBuffer::CopyRawToHostFuture(PjRtFuture<void*> dst_future,
                                                 int64_t transfer_size) {
   VLOG(3) << "TfrtGpuBuffer::CopyRawToHostFuture";
   tsl::profiler::TraceMe traceme("TfrtGpuBuffer::CopyRawToHostFuture");
-  auto promise = PjRtFuture<>::CreatePromise();
+  auto [promise, future] = PjRtFuture<>::MakePromise();
   auto usage_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
   auto* device_buffer = AcquireUsage(usage_event);
   MarkGpuEventReadyOnExit usage_event_holder(std::move(usage_event));
@@ -558,9 +556,10 @@ PjRtFuture<> TfrtGpuBuffer::CopyRawToHostFuture(PjRtFuture<void*> dst_future,
     return PjRtFuture<>(
         InvalidArgument("ToLiteral() called on deleted or donated buffer"));
   }
-  auto d2h_copy = [device(device_), device_buffer, promise,
+  auto d2h_copy = [device(device_), device_buffer,
                    usage_event_holder = std::move(usage_event_holder),
-                   client = client_, offset, transfer_size](void* dst) mutable {
+                   client = client_, offset, transfer_size](
+                      PjRtFuture<>::Promise promise, void* dst) mutable {
     if (device_buffer->definition_event().IsError()) {
       LOG(ERROR) << "device_buffer->definition_event().GetError(): "
                  << device_buffer->definition_event().GetError();
@@ -611,7 +610,7 @@ PjRtFuture<> TfrtGpuBuffer::CopyRawToHostFuture(PjRtFuture<void*> dst_future,
     if (use_staging) {
       status = stream->DoHostCallback(
           [dst, staging_buffer = std::move(staging_buffer), transfer_size,
-           promise,
+           promise = std::move(promise),
            usage_event_holder = std::move(usage_event_holder)]() mutable {
             tsl::profiler::TraceMe traceme3(
                 "CopyRawToHostFuture::D2H_staging_copy");
@@ -622,7 +621,7 @@ PjRtFuture<> TfrtGpuBuffer::CopyRawToHostFuture(PjRtFuture<void*> dst_future,
           });
     } else {
       status = stream->DoHostCallback(
-          [promise,
+          [promise = std::move(promise),
            usage_event_holder = std::move(usage_event_holder)]() mutable {
             promise.Set(absl::OkStatus());
           });
@@ -635,23 +634,24 @@ PjRtFuture<> TfrtGpuBuffer::CopyRawToHostFuture(PjRtFuture<void*> dst_future,
   };
 
   dst_future.OnReady(
-      [client(client_), promise, device_buffer,
+      [client(client_), promise = std::move(promise), device_buffer,
        d2h_copy = std::move(d2h_copy)](absl::StatusOr<void*> dst_or) mutable {
         if (!dst_or.ok()) {
           promise.Set(dst_or.status());
           LOG(ERROR) << "dst resolved to an error: " << dst_or.status();
           return;
         }
-        EnqueueWorkWhenReady(client->blocking_thread_pool(),
-                             {device_buffer->definition_event().CopyRCRef()},
-                             [dst = std::move(dst_or.value()),
-                              d2h_copy = std::move(d2h_copy)]() mutable {
-                               std::move(d2h_copy)(dst);
-                             });
+        EnqueueWorkWhenReady(
+            client->blocking_thread_pool(),
+            {device_buffer->definition_event().CopyRCRef()},
+            [dst = std::move(dst_or.value()), promise = std::move(promise),
+             d2h_copy = std::move(d2h_copy)]() mutable {
+              std::move(d2h_copy)(std::move(promise), dst);
+            });
       });
 
-  return PjRtFuture<>(
-      std::move(promise),
+  return PjRtFutureHelpers::WithProfiling(
+      std::move(future),
       /*on_block_start=*/
       []() {
         tsl::profiler::TraceMeProducer traceme(
