@@ -222,6 +222,13 @@ class BufferAllocation {
              end > other.offset_;
     }
 
+    bool Contains(const Slice& other) const {
+      const int64_t end = offset_ + size_;
+      const int64_t other_end = other.offset_ + other.size_;
+      return index() == other.index() && offset_ <= other.offset_ &&
+             other_end <= end;
+    }
+
     template <typename H>
     friend H AbslHashValue(H h, const Slice& s) {
       return H::combine(std::move(h), s.index(), s.offset(), s.size());
