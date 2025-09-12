@@ -71,7 +71,7 @@ absl::Status CollectivesRegistry::Register(
                       PlatformUtil::CanonicalPlatformName(platform_name));
 
   auto& registry = GetCollectivesRegistry();
-  absl::MutexLock lock(&registry.mu);
+  absl::MutexLock lock(registry.mu);
 
   registry.platform_collectives[canonical_platform_name][priority] =
       collectives.get();
@@ -88,7 +88,7 @@ absl::StatusOr<Collectives*> CollectivesRegistry::Default(
                       PlatformUtil::CanonicalPlatformName(platform_name));
 
   auto& registry = GetCollectivesRegistry();
-  absl::MutexLock lock(&registry.mu);
+  absl::MutexLock lock(registry.mu);
 
   if (!registry.platform_collectives.contains(canonical_platform_name)) {
     return Internal(
@@ -105,7 +105,7 @@ absl::StatusOr<Collectives*> CollectivesRegistry::Get(
                       PlatformUtil::CanonicalPlatformName(platform_name));
 
   auto& registry = GetCollectivesRegistry();
-  absl::MutexLock lock(&registry.mu);
+  absl::MutexLock lock(registry.mu);
 
   for (const auto& registration : registry.collectives) {
     if (registration.platform_name == canonical_platform_name &&
