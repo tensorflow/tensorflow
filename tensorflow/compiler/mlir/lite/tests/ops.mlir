@@ -1209,6 +1209,40 @@ func.func @testEqualInt16(tensor<? x i16>, tensor<? x i16>) -> tensor<? x i1> {
   func.return %0#0 : tensor<? x i1>
 }
 
+// CHECK-LABEL: testEqualQuant
+func.func @testEqualQuant(%arg0: tensor<1x80x1x!quant.uniform<i8:f32, 0.04:-128>>, %arg1: tensor<1x80x1x!quant.uniform<i8:f32, 0.04:-128>>) -> tensor<1x80x1xi1> {
+  %0 = "tfl.equal"(%arg0, %arg1) : (tensor<1x80x1x!quant.uniform<i8:f32, 0.04:-128>>, tensor<1x80x1x!quant.uniform<i8:f32, 0.04:-128>>) -> tensor<1x80x1xi1>
+  func.return %0 : tensor<1x80x1xi1>
+}
+
+// CHECK-LABEL: testEqualQuantWithQI16
+func.func @testEqualQuantWithQI16(%arg0: tensor<1x80x1x!quant.uniform<i16:f32, 0.04:0>>, %arg1: tensor<1x80x1x!quant.uniform<i16:f32, 0.04:0>>) -> tensor<1x80x1xi1> {
+  %0 = "tfl.equal"(%arg0, %arg1) : (tensor<1x80x1x!quant.uniform<i16:f32, 0.04:0>>, tensor<1x80x1x!quant.uniform<i16:f32, 0.04:0>>) -> tensor<1x80x1xi1>
+  func.return %0 : tensor<1x80x1xi1>
+}
+
+// -----
+
+// CHECK-LABEL: testNotEqual
+func.func @testNotEqual(tensor<? x f32>, tensor<? x f32>) -> tensor<? x i1> {
+^bb0(%arg0: tensor<? x f32>, %arg1: tensor<? x f32>):
+  // CHECK: tfl.not_equal(%arg0, %arg1)
+  %0 = "tfl.not_equal"(%arg0, %arg1) : (tensor<? x f32>, tensor<? x f32>) -> tensor<? x i1>
+  func.return %0#0 : tensor<? x i1>
+}
+
+// CHECK-LABEL: testNotEqualQuant
+func.func @testNotEqualQuant(%arg0: tensor<1x80x1x!quant.uniform<i8:f32, 0.04:-128>>, %arg1: tensor<1x80x1x!quant.uniform<i8:f32, 0.04:-128>>) -> tensor<1x80x1xi1> {
+  %0 = "tfl.not_equal"(%arg0, %arg1) : (tensor<1x80x1x!quant.uniform<i8:f32, 0.04:-128>>, tensor<1x80x1x!quant.uniform<i8:f32, 0.04:-128>>) -> tensor<1x80x1xi1>
+  func.return %0 : tensor<1x80x1xi1>
+}
+
+// CHECK-LABEL: testNotEqualQuantWithQI16
+func.func @testNotEqualQuantWithQI16(%arg0: tensor<1x80x1x!quant.uniform<i16:f32, 0.04:0>>, %arg1: tensor<1x80x1x!quant.uniform<i16:f32, 0.04:0>>) -> tensor<1x80x1xi1> {
+  %0 = "tfl.not_equal"(%arg0, %arg1) : (tensor<1x80x1x!quant.uniform<i16:f32, 0.04:0>>, tensor<1x80x1x!quant.uniform<i16:f32, 0.04:0>>) -> tensor<1x80x1xi1>
+  func.return %0 : tensor<1x80x1xi1>
+}
+
 // -----
 
 // CHECK-LABEL: testPad
