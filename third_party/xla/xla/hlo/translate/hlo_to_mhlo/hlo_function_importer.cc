@@ -69,7 +69,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/hlo_sharding_metadata.h"
-#include "xla/hlo/translate/attributes.h"
 #include "xla/hlo/translate/hlo_to_mhlo/async_importer.h"
 #include "xla/hlo/translate/hlo_to_mhlo/attribute_importer.h"
 #include "xla/hlo/translate/hlo_to_mhlo/custom_call_importer.h"
@@ -78,6 +77,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/mlir_hlo/utils/unregistered_attributes.h"
 #include "xla/primitive_util.h"
 #include "xla/protobuf_util.h"
 #include "xla/service/hlo.pb.h"
@@ -440,7 +440,7 @@ absl::StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
       for (int i = 0; i < leaf_count; ++i) {
         if (!flattened_shardings.empty()) {
           function.setArgAttr(
-              arg_index, kShardingAttr,
+              arg_index, xla::kMhloSharding,
               ConvertSharding(flattened_shardings[i], builder_));
         }
         if (frontend_attributes) {
@@ -449,12 +449,12 @@ absl::StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
                 "A tuple parameter that is being flattened shouldn't have "
                 "frontend attributes");
           }
-          function.setArgAttr(arg_index, kFrontendAttributesAttr,
+          function.setArgAttr(arg_index, xla::kMhloFrontendAttributes,
                               frontend_attributes);
         }
         if (parameter->parameter_replicated_at_leaf_buffers() &&
             parameter->parameter_replicated_at_leaf_buffers()->at(i)) {
-          function.setArgAttr(arg_index, kParameterReplicationAttr,
+          function.setArgAttr(arg_index, xla::kMhloParameterReplication,
                               builder_->getBoolArrayAttr({true}));
         }
         // NOTE: since we are flattening args, all arguments will share the same
@@ -465,12 +465,12 @@ absl::StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
       }
     } else {
       if (parameter->has_sharding()) {
-        function.setArgAttr(arg_index, kShardingAttr,
+        function.setArgAttr(arg_index, xla::kMhloSharding,
                             ConvertSharding(parameter->sharding(), builder_));
       }
       if (frontend_attributes) {
         function.setArgAttr(
-            arg_index, kFrontendAttributesAttr,
+            arg_index, xla::kMhloFrontendAttributes,
             GetFrontendAttributes(*builder_, parameter->frontend_attributes()));
       }
       if (parameter->parameter_replicated_at_leaf_buffers().has_value()) {
@@ -483,7 +483,7 @@ absl::StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
         }
         if (nontrival) {
           function.setArgAttr(
-              arg_index, kParameterReplicationAttr,
+              arg_index, xla::kMhloParameterReplication,
               builder_->getBoolArrayAttr(replicated_at_leaf_buffers));
         }
       }
@@ -497,7 +497,7 @@ absl::StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
   bool is_token = computation.root_instruction()->shape().IsToken();
   if (is_token && computation.root_instruction()->has_sharding()) {
     function.setResultAttr(
-        0, kShardingAttr,
+        0, xla::kMhloSharding,
         ConvertSharding(computation.root_instruction()->sharding(), builder_));
   }
   if (!is_token && computation.root_instruction()->has_sharding()) {
@@ -512,13 +512,13 @@ absl::StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
     }
     for (const auto& [ret_index, ret_sharding] :
          llvm::enumerate(ret_shardings)) {
-      function.setResultAttr(ret_index, kShardingAttr,
+      function.setResultAttr(ret_index, xla::kMhloSharding,
                              ConvertSharding(ret_sharding, builder_));
     }
   }
   if (computation.execution_thread() != "main") {
     function->setAttr(
-        "execution_thread",
+        kExecutionThread,
         builder_->getStringAttr(ToStringRef(computation.execution_thread())));
   }
 
@@ -713,7 +713,8 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
   llvm::SmallVector<NamedAttribute, 10> attributes;
   if (instruction->has_sharding()) {
     attributes.push_back(builder_->getNamedAttr(
-        kShardingAttr, ConvertSharding(instruction->sharding(), builder_)));
+        xla::kMhloSharding,
+        ConvertSharding(instruction->sharding(), builder_)));
   }
 
   llvm::SmallVector<NamedAttribute, 4> frontend_attributes;
@@ -726,7 +727,7 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
   if (!frontend_attributes.empty()) {
     frontend_attributes_index = attributes.size();
     attributes.push_back(builder_->getNamedAttr(
-        kFrontendAttributesAttr,
+        xla::kMhloFrontendAttributes,
         builder_->getDictionaryAttr(frontend_attributes)));
   }
 
@@ -772,7 +773,7 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       auto execution_thread = ToStringRef(async_op->async_execution_thread());
       attributes.push_back(builder_->getNamedAttr(
           "execution_thread", builder_->getStringAttr(execution_thread)));
-      function->setAttr("execution_thread",
+      function->setAttr(xla::kExecutionThread,
                         builder_->getStringAttr(execution_thread));
 
       if (instruction->opcode() == HloOpcode::kAsyncStart) {
@@ -955,7 +956,7 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           attributes.erase(attributes.begin() + frontend_attributes_index);
         } else {
           attributes[frontend_attributes_index] = builder_->getNamedAttr(
-              kFrontendAttributesAttr,
+              xla::kMhloFrontendAttributes,
               builder_->getDictionaryAttr(fe_attrs_without_composite_attrs));
         }
 
@@ -998,11 +999,11 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           if (frontend_attributes.size() == 1) {
             frontend_attributes_index = attributes.size();
             attributes.push_back(builder_->getNamedAttr(
-                kFrontendAttributesAttr,
+                xla::kMhloFrontendAttributes,
                 builder_->getDictionaryAttr(frontend_attributes)));
           } else {
             attributes[frontend_attributes_index] = builder_->getNamedAttr(
-                kFrontendAttributesAttr,
+                xla::kMhloFrontendAttributes,
                 builder_->getDictionaryAttr(frontend_attributes));
           }
         }
@@ -1740,9 +1741,9 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
               {rng_op->operand(0)->shape(), instruction->shape()});
           HloSharding tuple_sharding = HloSharding::Tuple(
               tuple_shape, {HloSharding::Replicate(), instruction->sharding()});
-          CHECK_EQ(attributes.front().getName().str(), kShardingAttr);
+          CHECK_EQ(attributes.front().getName().str(), xla::kMhloSharding);
           attributes.front() = builder_->getNamedAttr(
-              kShardingAttr, ConvertSharding(tuple_sharding, builder_));
+              xla::kMhloSharding, ConvertSharding(tuple_sharding, builder_));
         }
       }
       CHECK_EQ(flattened_ret_types.size(), 2);
@@ -2250,7 +2251,7 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
 }
 
 void SetXlaShape(mlir::Operation* op, const Shape& shape) {
-  op->setAttr("xla_shape",
+  op->setAttr(xla::kXlaShape,
               mlir::Builder(op->getContext())
                   .getStringAttr(shape.ToString(/*print_layout=*/true)));
 }

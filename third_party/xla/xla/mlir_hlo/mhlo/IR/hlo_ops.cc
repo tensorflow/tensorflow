@@ -89,6 +89,7 @@ limitations under the License.
 #include "stablehlo/dialect/TypeInference.h"
 #include "utils/convert_op_folder.h"
 #include "utils/hlo_utils.h"
+#include "utils/unregistered_attributes.h"
 
 namespace mlir {
 #include "hlo_patterns.cc.inc"
@@ -7631,7 +7632,7 @@ LogicalResult MhloDialect::verifyOperationAttribute(Operation* op,
              << "attribute " << attr.getName()
              << " can only be used on function-like operations";
   }
-  if (attr.getName() == "mhlo.cross_program_prefetches") {
+  if (attr.getName() == xla::kMhloCrossProgramPrefetches) {
     auto arrayAttr = dyn_cast<ArrayAttr>(attr.getValue());
     if (!arrayAttr)
       return op->emitOpError() << "cross_program_prefetches must be an array";
@@ -7648,7 +7649,7 @@ LogicalResult MhloDialect::verifyOperationAttribute(Operation* op,
       if (failed(res)) return res;
     }
   }
-  if (attr.getName() == "mhlo.spmd_parameters_sharding") {
+  if (attr.getName() == xla::kMhloSpmdParametersShardings) {
     auto arrayAttr = dyn_cast<ArrayAttr>(attr.getValue());
     if (!arrayAttr)
       return op->emitOpError() << "spmd_parameters_sharding: must be an array";
