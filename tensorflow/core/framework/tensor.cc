@@ -927,22 +927,6 @@ absl::Status Tensor::BitcastFrom(const Tensor& other, DataType dtype,
   return absl::OkStatus();
 }
 
-// Notice that buf_ either points to a regular TensorBuffer or a SubBuffer.
-// For the latter case, we have to make sure that the refcount is
-// one both for the SubBuffer _and_ the underlying TensorBuffer.
-bool Tensor::RefCountIsOne() const {
-  return buf_ != nullptr && buf_->RefCountIsOne() &&
-         buf_->root_buffer()->RefCountIsOne() && buf_->OwnsMemory();
-}
-
-int Tensor::RefCount() const {
-  if (buf_->root_buffer() != buf_) {
-    LOG(ERROR) << "Tensor RefCount not reliable if buf_ points to a SubBuffer.";
-    return -1;
-  }
-  return buf_->RefCount();
-}
-
 // The macro CASES() expands to a switch statement conditioned on
 // TYPE_ENUM. Each case expands the STMTS after a typedef for T.
 #define SINGLE_ARG(...) __VA_ARGS__
