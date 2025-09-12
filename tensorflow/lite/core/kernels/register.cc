@@ -246,10 +246,10 @@ BuiltinOpResolver::BuiltinOpResolver() {
              /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_EQUAL, Register_EQUAL(),
              /* min_version = */ 1,
-             /* max_version = */ 4);
+             /* max_version = */ 5);
   AddBuiltin(BuiltinOperator_NOT_EQUAL, Register_NOT_EQUAL(),
              /* min_version = */ 1,
-             /* max_version = */ 3);
+             /* max_version = */ 4);
   AddBuiltin(BuiltinOperator_SQRT, Register_SQRT(),
              /* min_version = */ 1,
              /* max_version = */ 2);
