@@ -49,6 +49,9 @@ class HloReachabilityMap {
   explicit HloReachabilityMap(
       absl::Span<const HloInstruction* const> instructions);
 
+  HloReachabilityMap(const HloReachabilityMap& b) noexcept = delete;
+  HloReachabilityMap& operator=(HloReachabilityMap& b) noexcept = delete;
+
   // Computes and returns the reachability between HLO instructions in the
   // computation. The returned HloReachabilityMap is constructed such that
   // HloReachabilityMap::IsReachable(a, b) returns true iff there exists a
@@ -105,7 +108,7 @@ class HloReachabilityMap {
   void SetReachable(const HloInstruction* a, const HloInstruction* b) {
     SetReachable(GetIndex(a), GetIndex(b));
   }
-  void SetReachable(Index a, Index b) { bit_sets_[b].Set(a); }
+  void SetReachable(Index a, Index b) { BitSetFromIndex(b).Set(a); }
 
   // Updates the given reachability map after the immediate predecessor set
   // (operands and control predecessors) of 'instruction' has changed.
@@ -118,7 +121,7 @@ class HloReachabilityMap {
   bool IsReachable(const HloInstruction* a, const HloInstruction* b) const {
     return IsReachable(GetIndex(a), GetIndex(b));
   }
-  bool IsReachable(Index a, Index b) const { return bit_sets_[b].Get(a); }
+  bool IsReachable(Index a, Index b) const { return BitSetFromIndex(b).Get(a); }
 
   // Returns true if "b" is reachable from "a" or "a" is reachable from "b"
   //
@@ -148,56 +151,94 @@ class HloReachabilityMap {
                const HloInstruction* replacement);
 
  private:
-  // A dynamically sized bit-set implementation specialized for this use case
-  // providing fast bitwise OR (not available in tsl::gtl::BitMap).
+  // A BitSet is a view over a contiguous region of member that holds a bitset
+  // as an array of words.
   class BitSet {
    public:
-    BitSet() = default;
-    explicit BitSet(size_t size)
-        : size_(size), vector_((size + kBits - 1) / kBits, 0) {}
+    using Word = uint64_t;
+    static constexpr size_t kBits = 64;
+
+    BitSet() : ptr_(nullptr), bits_(0) {}
+    // Create a BitSet view of "num_bits" starting at "ptr".  The memory backing
+    // the bit set must be rounded up to the nearest word boundary (for
+    // efficiency, we sometimes write full words at the ragged edges of bitsets
+    // that are not exactly multiples of kBits in size).
+    explicit BitSet(Word* ptr, size_t num_bits) : ptr_(ptr), bits_(num_bits) {}
 
     // Returns the bit at the given index.
     bool Get(Index index) const {
-      DCHECK(index >= 0 && index < size_);
-      return vector_[index / kBits] & (1ull << (index % kBits));
+      DCHECK(index >= 0 && index < bits_);
+      return ptr_[index / kBits] & (1ull << (index % kBits));
     }
 
     // Sets the bit at the given index.
     void Set(Index index) {
-      DCHECK(index >= 0 && index < size_);
-      vector_[index / kBits] |= 1ull << (index % kBits);
+      DCHECK(index >= 0 && index < bits_);
+      ptr_[index / kBits] |= 1ull << (index % kBits);
     }
 
     // Sets this bit-set to union of this bit-set and `other`.
     void operator|=(const BitSet& other) {
-      if (this == &other) return;
-      DCHECK(size_ == other.size_);
+      DCHECK(bits_ == other.bits_);
+      if (ptr_ == other.ptr_) {
+        return;
+      }
 
       // Ease the work of the auto-vectorizer.
-      const Word* a = vector_.data();
-      const Word* b = other.vector_.data();
-      Word* __restrict out = vector_.data();
-      size_t num_words = vector_.size();
+      const Word* a = ptr_;
+      const Word* b = other.ptr_;
+      Word* __restrict out = ptr_;
+      size_t num_words = NumWords();
       for (size_t i = 0; i < num_words; ++i) {
         out[i] = a[i] | b[i];
       }
     }
+    // Copy the bitset contents of "other" into "this".
+    void CopyBitSet(const BitSet& other) {
+      DCHECK(bits_ == other.bits_);
+      if (ptr_ == other.ptr_) {
+        return;
+      }
+
+      // Ease the work of the auto-vectorizer.
+      const Word* b = other.ptr_;
+      Word* __restrict out = ptr_;
+      size_t num_words = NumWords();
+      for (size_t i = 0; i < num_words; ++i) {
+        out[i] = b[i];
+      }
+    }
+
+    size_t NumWords() const { return (bits_ + kBits - 1) / kBits; }
+    size_t NumBytes() const {
+      return NumWords() * sizeof(Word) / sizeof(uint8_t);
+    }
 
     // Sets the bitvector to all zeros.
-    void SetToZero() { absl::c_fill(vector_, 0); }
+    void SetToZero() { memset(ptr_, 0, NumBytes()); }
 
     bool operator==(const BitSet& other) const {
-      return vector_ == other.vector_;
+      if (bits_ != other.bits_) {
+        return false;
+      }
+      absl::Span<Word> aspan(ptr_, NumWords());
+      absl::Span<Word> bspan(other.ptr_, other.NumWords());
+      return aspan == bspan;
     }
     bool operator!=(const BitSet& other) const { return !(*this == other); }
 
    private:
-    using Word = uint64_t;
-    static constexpr size_t kBits = 64;
-
-    size_t size_;  // Number of bits in the set.
-    std::vector<Word> vector_;
+    Word* ptr_;
+    size_t bits_;  // Number of bits in the set.
   };
+
+  BitSet BitSetFromIndex(Index i) const {
+    const int block = i / kRowsPerAllocation;
+    const int row_within_block = i % kRowsPerAllocation;
+    return BitSet(
+        bit_storage_[block].get() + row_within_block * words_per_bitset_,
+        bits_per_bitset_);
+  }
 
   friend class HloReachabilityMapBitSetBenchmark;
 
@@ -216,9 +257,24 @@ class HloReachabilityMap {
   // within a BitSet.
   absl::flat_hash_map<Key, Index> indices_;
 
-  // Bit-sets holding the reachability to each instruction. The bit-set for
-  // instruction X includes ones for each instruction which X is reachable from.
-  std::vector<BitSet> bit_sets_;
+  // We allocate an (instructions.size() + 1) * (roundup(instructions.size(),
+  // 64) bit matrix to hold the adjacency information.  We round up one
+  // dimension so that each bit matrix starts on its own word boundary.  We
+  // allocate one extra so that we have one bit vector worth of temporary
+  // storage for use during the reachability computation.
+
+  // To avoid allocating a single giant block of memory in one allocation, we
+  // allocate groups of up to kRowsPerAllocation bitsets at a time.  These
+  // groups of rows are stored in the elements of "bit_storage_".
+  //
+  // BitSetFromIndex(i) abstracts away this representation to give the proper
+  // pointer to the "i"th row.
+  static constexpr int kRowsPerAllocation = 1024;
+
+  size_t bits_per_bitset_;
+  size_t words_per_bitset_;
+  size_t total_words_;  // Total allocated words in bit_storage_
+  std::vector<std::unique_ptr<BitSet::Word[]>> bit_storage_;
 
   // A temporary used by SetReachabilityToUnion to avoid an allocation with each
   // call to the method.
