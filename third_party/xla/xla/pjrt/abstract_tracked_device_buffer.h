@@ -18,15 +18,21 @@ limitations under the License.
 
 #include <array>
 #include <memory>
+#include <vector>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/pjrt/device_event.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/raw_buffer.h"
+#include "xla/tsl/concurrency/async_value.h"
+#include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
 
@@ -224,9 +230,8 @@ class CommonPjRtBuffer : public PjRtBuffer {
 
   absl::Status AcquireScopedRawBuffer(
       absl::AnyInvocable<absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>(
-                             tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
-                             std::vector<tsl::RCReference<tsl::AsyncValue>>
-                                 definition_events) &&>
+          tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
+          std::vector<tsl::RCReference<tsl::AsyncValue>> definition_events) &&>
           scoped_acquire,
       const char* caller_name = "AcquireScopedRawBuffer");
 
@@ -294,7 +299,7 @@ class CommonPjRtBuffer : public PjRtBuffer {
   }
 
   mutable absl::Mutex mu_;
-  PjRtFuture<>::Promise definition_promise_ ABSL_GUARDED_BY(mu_);
+  PjRtFuture<> definition_future_ ABSL_GUARDED_BY(mu_);
   PjRtMemorySpace* const memory_space_;
 
  private:

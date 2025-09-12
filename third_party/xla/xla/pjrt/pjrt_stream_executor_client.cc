@@ -2194,18 +2194,20 @@ void PjRtStreamExecutorBuffer::CopyToRemoteDevice(
 
 PjRtFuture<> PjRtStreamExecutorBuffer::GetReadyFuture() {
   absl::InlinedVector<BufferSequencingEventRef, 2> definition_events;
-  PjRtFuture<>::Promise definition_promise;
+  PjRtFuture<>::MoveOnlyPromise definition_promise;
+  PjRtFuture<> definition_future;
   {
     absl::MutexLock lock(&mu_);
     if (device_buffer() == nullptr) {
       return PjRtFuture<>(InvalidArgument(
           "GetReadyFuture() called on deleted or donated buffer"));
     }
-    if (!definition_promise_) {
+    if (!definition_future_) {
       definition_events = device_buffer()->definition_events();
-      definition_promise_ = PjRtFuture<>::CreatePromise();
+      std::tie(definition_promise, definition_future_) =
+          PjRtFuture<>::MakePromise();
     }
-    definition_promise = definition_promise_;
+    definition_future = definition_future_;
   }
 
   if (!definition_events.empty()) {
@@ -2214,12 +2216,13 @@ PjRtFuture<> PjRtStreamExecutorBuffer::GetReadyFuture() {
     auto async_wait_for_events =
         [definition_events = std::move(definition_events),
          local_device_state = std::move(local_device_state),
-         definition_promise]() mutable {
+         definition_promise = std::make_shared<PjRtFuture<>::Promise>(
+             std::move(definition_promise))]() mutable {
           std::unique_ptr<se::Stream> stream;
           absl::Status defined_status =
               definition_events[0]->GetDefinedStatus();
           if (!defined_status.ok()) {
-            definition_promise.Set(defined_status);
+            definition_promise->Set(defined_status);
             return;
           }
           for (auto& event : definition_events) {
@@ -2242,17 +2245,18 @@ PjRtFuture<> PjRtStreamExecutorBuffer::GetReadyFuture() {
                  event_with_status = definition_events[0]]() mutable {
                   local_device_state->ReturnStreamToPool(
                       std::unique_ptr<se::Stream>(stream_ptr));
-                  definition_promise.Set(event_with_status->GetDefinedStatus());
+                  definition_promise->Set(
+                      event_with_status->GetDefinedStatus());
                 });
             if (!status.ok()) {
-              definition_promise.Set(status);
+              definition_promise->Set(status);
               return;
             }
           } else {
             // All events are already complete; set the `definition_promise`
             // with the status of the buffer's first definition event which may
             // have error status to propagate.
-            definition_promise.Set(definition_events[0]->GetDefinedStatus());
+            definition_promise->Set(definition_events[0]->GetDefinedStatus());
           }
         };
     first_definition_event->ExecuteOrAddToFutureTasks(
@@ -2260,10 +2264,10 @@ PjRtFuture<> PjRtStreamExecutorBuffer::GetReadyFuture() {
         std::move(async_wait_for_events));
   }
 
-  return PjRtFuture<>(
-      std::move(definition_promise),
+  return PjRtFutureHelpers::WithProfiling(
+      std::move(definition_future),
       /*on_block_start=*/
-      []() {
+      [] {
         tsl::profiler::TraceMeProducer traceme(
             "PjRtStreamExecutorBuffer::Await");
         VLOG(3) << "PjRtStreamExecutorBuffer::Await";

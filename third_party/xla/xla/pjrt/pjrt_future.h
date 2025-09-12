@@ -217,6 +217,8 @@ class PjRtFutureBase : public PjRtFutureMoveControl<is_move_only> {
     }
   }
 
+  explicit operator bool() const { return static_cast<bool>(promise_); }
+
  protected:
   static constexpr bool IsMoveOnly() { return is_move_only; }
 

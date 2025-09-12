@@ -1194,12 +1194,12 @@ PjRtFuture<> CommonPjRtBufferImpl::GetReadyFuture() {
     return PjRtFuture<>(InvalidArgument(
         "GetReadyFuture() called on deleted or donated buffer"));
   }
-  if (!definition_promise_) {
-    definition_promise_ =
-        device_buffer()->GetReadyFuturePromise(memory_space());
+  if (!definition_future_) {
+    auto promise = device_buffer()->GetReadyFuturePromise(memory_space());
+    definition_future_ = client()->CreateFutureFromUserPromise(
+        memory_space(), "CommonPjRtBuffer", "Await", std::move(promise));
   }
-  return client()->CreateFutureFromUserPromise(
-      memory_space(), "CommonPjRtBuffer", "Await", definition_promise_);
+  return definition_future_;
 }
 
 }  // namespace xla
