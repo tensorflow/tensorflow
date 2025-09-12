@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
@@ -822,6 +823,12 @@ bool HloRunner::HasProperty(const HloRunnerPropertyTag::Type tag) const {
   }
   if (tag == HloRunnerPropertyTag::kCpu) {
     return backend().platform()->Name() == "Host";
+  }
+  if (tag == HloRunnerPropertyTag::kUsingGpuCuda) {
+    const stream_executor::DeviceDescription& device_description =
+        backend().default_stream_executor()->GetDeviceDescription();
+    return std::holds_alternative<stream_executor::CudaComputeCapability>(
+        device_description.gpu_compute_capability());
   }
   return false;
 }

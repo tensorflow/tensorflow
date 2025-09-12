@@ -78,6 +78,8 @@ class HloRunnerPropertyTag final {
   static constexpr Type kUsingGpuRocm = 1;
   // Indicates that this runner is a CPU runner.
   static constexpr Type kCpu = 2;
+  // Indicates that the runner is using CUDA.
+  static constexpr Type kUsingGpuCuda = 3;
 
  private:
   HloRunnerPropertyTag() = default;

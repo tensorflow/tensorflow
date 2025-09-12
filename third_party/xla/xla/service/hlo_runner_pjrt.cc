@@ -825,10 +825,13 @@ absl::string_view HloRunnerPjRt::Name() const { return "HloRunnerPjRt"; }
 
 bool HloRunnerPjRt::HasProperty(const HloRunnerPropertyTag::Type tag) const {
   if (tag == HloRunnerPropertyTag::kUsingGpuRocm) {
-    return pjrt_client_->platform_name() == xla::RocmName();
+    return pjrt_client_->platform_name() == RocmName();
   }
   if (tag == HloRunnerPropertyTag::kCpu) {
-    return pjrt_client_->platform_name() == xla::CpuName();
+    return pjrt_client_->platform_name() == CpuName();
+  }
+  if (tag == HloRunnerPropertyTag::kUsingGpuCuda) {
+    return pjrt_client_->platform_name() == CudaName();
   }
   return false;
 }

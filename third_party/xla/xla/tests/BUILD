@@ -3756,7 +3756,11 @@ cc_library(
         )[0],
     ]),
     visibility = if_google(
-        xla_internal(["tests:__pkg__"]),
+        xla_internal([
+            "tests:__pkg__",
+        ]) + [
+            "//xla/tests/exhaustive:__pkg__",
+        ],
         ["//visibility:public"],
     ),
     deps = [

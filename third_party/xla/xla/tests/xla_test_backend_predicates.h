@@ -54,6 +54,8 @@ inline constexpr const absl::string_view kGpu = "gpu";
 inline constexpr const absl::string_view kA100 = "a100";
 inline constexpr const absl::string_view kH100 = "h100";
 inline constexpr const absl::string_view kB100 = "b100";
+inline constexpr const absl::string_view kP100 = "p100";
+inline constexpr const absl::string_view kV100 = "v100";
 
 inline constexpr const absl::string_view kInterpreter = "interpreter";
 
