@@ -34,6 +34,9 @@ __global__ void UnaryClipCustomKernel(const int32 size_in,
     out[i] = value < in1[0] ? in1[0] : value;
     // Ensure clipped zero is always positive zero
     if (out[i] == static_cast<T>(0.0)) out[i] = static_cast<T>(0.0);
+  // See: https://github.com/tensorflow/tensorflow/issues/67279
+  // See also: https://github.com/tensorflow/tensorflow/issues/99759
+  // These bugs caused tf.clip_by_value to return -0.0 on GPU for clipped values.
   }
 }
 
