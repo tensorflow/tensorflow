@@ -378,29 +378,30 @@ class BaseResourceVariable(variables.Variable, core.Tensor):
   """A python variable from an existing handle."""
 
   # TODO(wangpeng): Deprecate `constraint` when callers no long pass it in.
-  def __init__(  # pylint: disable=super-init-not-called
-      self,
-      trainable=None,
-      shape=None,
-      dtype=None,
-      handle=None,
-      constraint=None,
-      synchronization=None,
-      aggregation=None,
-      distribute_strategy=None,
-      name=None,
-      unique_id=None,
-      handle_name=None,
-      graph_element=None,
-      initial_value=None,
-      initializer_op=None,
-      is_initialized_op=None,
-      cached_value=None,
-      save_slice_info=None,
-      caching_device=None,
-      in_graph_mode=None,
-      validate_shape=True,
-      **unused_kwargs):
+  def __init__(
+    self,
+    trainable: bool = None,
+    shape: "tensor_shape.TensorShape" = None,
+    dtype: "dtypes.DType" = None,
+    handle: Any = None,
+    constraint: Any = None,
+    synchronization: Any = None,
+    aggregation: Any = None,
+    distribute_strategy: Any = None,
+    name: str = None,
+    unique_id: Any = None,
+    handle_name: str = None,
+    graph_element: Any = None,
+    initial_value: Any = None,
+    initializer_op: Any = None,
+    is_initialized_op: Any = None,
+    cached_value: Any = None,
+    save_slice_info: Any = None,
+    caching_device: Any = None,
+    in_graph_mode: bool = None,
+    validate_shape: bool = True,
+    **unused_kwargs: Any
+  ) -> None:
     """Creates a variable from a handle.
 
     Args:
@@ -489,10 +490,10 @@ class BaseResourceVariable(variables.Variable, core.Tensor):
     self._xla_sharding = None
     self._variable_read = False
 
-  def _get_xla_sharding(self):
+  def _get_xla_sharding(self) -> Any:
     return self._xla_sharding
 
-  def _set_xla_sharding(self, xla_sharding):
+  def _set_xla_sharding(self, xla_sharding: Any) -> None:
     """Annotates this `ResourceVariable` with `xla_sharding`.
 
     `xla_sharding` will be used to create an `XlaShardingOp` whenever a
@@ -512,7 +513,7 @@ class BaseResourceVariable(variables.Variable, core.Tensor):
       )
     self._xla_sharding = xla_sharding
 
-  def __repr__(self):
+  def __repr__(self) -> str:
     if context.executing_eagerly() and not self._in_graph_mode:
       # If we cannot read the value for any reason (e.g. variable uninitialized
       # during tf.function tracing), still produce a __repr__. Note that for
@@ -531,7 +532,7 @@ class BaseResourceVariable(variables.Variable, core.Tensor):
       return "<tf.Variable '%s' shape=%s dtype=%s>" % (
           self.name, self.get_shape(), self.dtype.name)
 
-  def __tf_tracing_type__(self, signature_context):
+  def __tf_tracing_type__(self, signature_context: Any) -> Any:
     alias_id = signature_context.alias_global_id(self._handle._id)  # pylint:disable=protected-access
     # TODO(xjun): Create variable placeholders directly from VariableSpec
     # without using original values.
@@ -556,7 +557,7 @@ class BaseResourceVariable(variables.Variable, core.Tensor):
     else:
       yield
 
-  def __array__(self, dtype=None):
+  def __array__(self, dtype: Any = None) -> "np.ndarray":
     """Allows direct conversion to a numpy array.
 
     >>> np.array(tf.Variable([1.0]))
@@ -573,16 +574,16 @@ class BaseResourceVariable(variables.Variable, core.Tensor):
     # scenes to make `np.array(tf.constant(1))` work.
     return numpy_compat.np_asarray(self.numpy(), dtype=dtype)
 
-  def __nonzero__(self):
+  def __nonzero__(self) -> bool:
     return self.__bool__()
 
-  def __bool__(self):
+  def __bool__(self) -> bool:
     return bool(self.read_value())
 
-  def __copy__(self):
+  def __copy__(self) -> "BaseResourceVariable":
     return self
 
-  def __deepcopy__(self, memo):
+  def __deepcopy__(self, memo: dict) -> "BaseResourceVariable":
     if not context.executing_eagerly():
       raise NotImplementedError(
           "__deepcopy__() is only available when eager execution is enabled.")
@@ -599,46 +600,46 @@ class BaseResourceVariable(variables.Variable, core.Tensor):
     return copied_variable
 
   @property
-  def dtype(self):
+  def dtype(self) -> "dtypes.DType":
     """The dtype of this variable."""
     return self._dtype
 
   @property
-  def device(self):
+  def device(self) -> str:
     """The device this variable is on."""
     return self.handle.device
 
   @property
-  def graph(self):
+  def graph(self) -> Any:
     """The `Graph` of this variable."""
     return self.handle.graph
 
   @property
-  def name(self):
+  def name(self) -> str:
     """The name of the handle for this variable."""
     return self._handle_name
 
   @property
-  def shape(self):
+  def shape(self) -> "tensor_shape.TensorShape":
     """The shape of this variable."""
     return self._shape
 
-  def set_shape(self, shape):
+  def set_shape(self, shape: "tensor_shape.TensorShape") -> None:
     self._shape = self._shape.merge_with(shape)
 
-  def _shape_as_list(self):
+  def _shape_as_list(self) -> Any:
     if self.shape.ndims is None:
       return None
     return [dim.value for dim in self.shape.dims]
 
-  def _shape_tuple(self):
+  def _shape_tuple(self) -> Any:
     shape = self._shape_as_list()
     if shape is None:
       return None
     return tuple(shape)
 
   @property
-  def create(self):
+  def create(self) -> Any:
     """The op responsible for initializing this variable."""
     if not self._in_graph_mode:
       raise RuntimeError("This operation is not supported "
@@ -646,28 +647,28 @@ class BaseResourceVariable(variables.Variable, core.Tensor):
     return self._initializer_op
 
   @property
-  def handle(self):
+  def handle(self) -> Any:
     """The handle by which this variable can be accessed."""
     return self._handle
 
-  def value(self):
+  def value(self) -> Any:
     """A cached operation which reads the value of this variable."""
     if self._cached_value is not None:
       return self._cached_value
     with ops.colocate_with(None, ignore_existing=True):
       return self._read_variable_op()
 
-  def _as_graph_element(self):
+  def _as_graph_element(self) -> Any:
     """Conversion function for Graph.as_graph_element()."""
     return self._graph_element
 
   @property
-  def initializer(self):
+  def initializer(self) -> Any:
     """The op responsible for initializing this variable."""
     return self._initializer_op
 
   @property
-  def initial_value(self):
+  def initial_value(self) -> Any:
     """Returns the Tensor used as the initial value for the variable."""
     if context.executing_eagerly():
       raise RuntimeError("This property is not supported "
@@ -675,7 +676,7 @@ class BaseResourceVariable(variables.Variable, core.Tensor):
     return self._initial_value
 
   @property
-  def constraint(self):
+  def constraint(self) -> Any:
     """Returns the constraint function associated with this variable.
 
     Returns:
@@ -690,18 +691,18 @@ class BaseResourceVariable(variables.Variable, core.Tensor):
     return self.handle.op
 
   @property
-  def trainable(self):
+  def trainable(self) -> bool:
     return self._trainable
 
   @property
-  def synchronization(self):
+  def synchronization(self) -> Any:
     return self._synchronization
 
   @property
-  def aggregation(self):
+  def aggregation(self) -> Any:
     return self._aggregation
 
-  def eval(self, session=None):
+  def eval(self, session: Any = None) -> Any:
     """Evaluates and returns the value of this variable."""
     if context.executing_eagerly():
       raise RuntimeError("This operation is not supported "
@@ -719,7 +720,7 @@ class BaseResourceVariable(variables.Variable, core.Tensor):
         "numpy() is only available when eager execution is enabled.")
 
   @deprecated(None, "Prefer Dataset.range instead.")
-  def count_up_to(self, limit):
+  def count_up_to(self, limit: int) -> Any:
     """Increments this variable until it reaches `limit`.
 
     When that Op is run it tries to increment the variable by `1`. If
@@ -742,7 +743,7 @@ class BaseResourceVariable(variables.Variable, core.Tensor):
     return gen_state_ops.resource_count_up_to(
         self.handle, limit=limit, T=self.dtype)
 
-  def _copy_trackable_to_cpu(self, object_map):
+  def _copy_trackable_to_cpu(self, object_map: dict) -> None:
     """For implementing `Trackable`."""
     if self not in object_map:
       # If not populated, initialize the cpu copy first.
@@ -765,8 +766,8 @@ class BaseResourceVariable(variables.Variable, core.Tensor):
       # like `ShardedVariable`
       destination_var.assign(self.read_value())
 
-  def _export_to_saved_model_graph(self, object_map=None, tensor_map=None,
-                                   options=None, **kwargs):
+  def _export_to_saved_model_graph(self, object_map: dict = None, tensor_map: dict = None,
+                                   options: Any = None, **kwargs: Any) -> Any:
     """For implementing `Trackable`."""
     new_variable = None
     if options.experimental_variable_policy._save_variable_devices():  # pylint:disable=protected-access
