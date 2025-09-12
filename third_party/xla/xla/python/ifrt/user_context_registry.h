@@ -79,14 +79,20 @@ class UserContextRegistry {
  private:
   friend TrackedUserContext;
 
-  // Removes a `TrackedUserContext` entry identified by `id` from the
-  // registry.
-  void Unregister(UserContextId id);
+  // Removes a `TrackedUserContext` entry identified by `id` from the registry.
+  // If the existing entry does not point to `tracked_user_context`, this is a
+  // no-op.
+  void Unregister(UserContextId id,
+                  const TrackedUserContext* tracked_user_context);
 
   mutable absl::Mutex mu_;
   // A map from `UserContext::Fingerprint()` to a weak reference of
-  // `TrackedUserContext`.
-  absl::flat_hash_map<UserContextId, std::weak_ptr<TrackedUserContext>>
+  // `TrackedUserContext`. The raw pointer is used for handling a race condition
+  // between `Register()` and destruction of `TrackedUserContext` for the same
+  // ID.
+  absl::flat_hash_map<
+      UserContextId,
+      std::pair<std::weak_ptr<TrackedUserContext>, const TrackedUserContext*>>
       registry_ ABSL_GUARDED_BY(mu_);
 };
 
@@ -98,7 +104,7 @@ class TrackedUserContext {
   TrackedUserContext(const TrackedUserContext&) = delete;
   TrackedUserContext(TrackedUserContext&&) = delete;
 
-  ~TrackedUserContext() { UserContextRegistry::Get().Unregister(id_); }
+  ~TrackedUserContext() { UserContextRegistry::Get().Unregister(id_, this); }
 
   const UserContextRef& user_context() const { return user_context_; }
 

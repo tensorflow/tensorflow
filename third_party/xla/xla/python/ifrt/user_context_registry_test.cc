@@ -16,14 +16,20 @@ limitations under the License.
 #include "xla/python/ifrt/user_context_registry.h"
 
 #include <cstdint>
+#include <memory>
 #include <string>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
+#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
+#include "absl/synchronization/barrier.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/user_context.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/env.h"
 
 namespace xla {
 namespace ifrt {
@@ -95,6 +101,58 @@ TEST(UserContextRegistryTest, Unregister) {
     EXPECT_NE(UserContextRegistry::Get().Lookup(kUserContextId), nullptr);
   }
   EXPECT_EQ(UserContextRegistry::Get().Lookup(kUserContextId), nullptr);
+}
+
+TEST(UserContextRegistryTest, ConcurrentAccess) {
+  const int kNumThreads = 4;
+  const int kRepeats = 100000;
+
+  absl::Barrier barrier(kNumThreads);
+  std::vector<std::unique_ptr<tsl::Thread>> threads;
+
+  const UserContextId kUserContextId(100);
+  for (int i = 0; i < 2; ++i) {
+    threads.push_back(absl::WrapUnique(
+        tsl::Env::Default()->StartThread(tsl::ThreadOptions(), "test", [&]() {
+          barrier.Block();
+          for (int i = 0; i < kRepeats; ++i) {
+            UserContextRef user_context =
+                TestUserContext::Create(kUserContextId);
+            TrackedUserContextRef tracked_user_context =
+                UserContextRegistry::Get().Register(user_context);
+            CHECK_NE(tracked_user_context, nullptr);
+            CHECK_EQ(tracked_user_context->user_context()->Id(),
+                     kUserContextId);
+          }
+        })));
+  }
+  threads.push_back(absl::WrapUnique(
+      tsl::Env::Default()->StartThread(tsl::ThreadOptions(), "test", [&]() {
+        barrier.Block();
+        for (int i = 0; i < kRepeats; ++i) {
+          TrackedUserContextRef tracked_user_context =
+              UserContextRegistry::Get().Lookup(kUserContextId);
+          if (tracked_user_context != nullptr) {
+            CHECK_EQ(tracked_user_context->user_context()->Id(),
+                     kUserContextId);
+          }
+        }
+      })));
+  threads.push_back(absl::WrapUnique(
+      tsl::Env::Default()->StartThread(tsl::ThreadOptions(), "test", [&]() {
+        barrier.Block();
+        for (int i = 0; i < kRepeats; ++i) {
+          std::vector<TrackedUserContextRef> tracked_user_contexts =
+              UserContextRegistry::Get().LookupAll();
+          if (!tracked_user_contexts.empty()) {
+            CHECK_EQ(tracked_user_contexts.size(), 1);
+            CHECK_EQ(tracked_user_contexts.front()->user_context()->Id(),
+                     kUserContextId);
+          }
+        }
+      })));
+  CHECK_EQ(threads.size(), kNumThreads);
+  threads.clear();  // Join all threads.
 }
 
 }  // namespace
