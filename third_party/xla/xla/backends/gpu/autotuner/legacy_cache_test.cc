@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
+#include "xla/tsl/protobuf/dnn.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -100,7 +101,7 @@ class LegacyCacheTest : public ::testing::Test {
   Config CreateDummyCudnnConfig() {
     Config config;
     config.codegen_backend_name = "Cudnn";
-    config.backend_config.PackFrom(AutotuneResult::ConvKey());
+    config.backend_config.PackFrom(stream_executor::dnn::AlgorithmProto());
     return config;
   }
 };
