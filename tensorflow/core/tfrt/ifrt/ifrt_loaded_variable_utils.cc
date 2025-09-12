@@ -110,10 +110,8 @@ absl::Status AsyncLoadRestoredTensorAsIfrtLoadedVariable(
     return absl::InternalError(absl::StrCat(
         "LoadVariableOp: failed to fetch variable tensor: ", tensor_name));
   }
-  auto loaded_variable_promise =
-      xla::ifrt::Future<xla::ifrt::ArrayRef>::CreatePromise();
-  auto loaded_variable_future =
-      xla::ifrt::Future<xla::ifrt::ArrayRef>(loaded_variable_promise);
+  auto [loaded_variable_promise, loaded_variable_future] =
+      xla::ifrt::Future<xla::ifrt::ArrayRef>::MakePromise();
   TF_ASSIGN_OR_RETURN(
       absl::StatusOr<ifrt_serving::DtypeAndShape> dtype_and_shape,
       restore_tensor_registry.GetDtypeAndShape(tensor_name));

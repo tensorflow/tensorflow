@@ -504,10 +504,8 @@ TEST_P(KernelTest, IfrtLoadVariableOp) {
   tensorflow::Tensor input_tensor;
   TF_CHECK_OK(tensorflow::Tensor::BuildTensor(DT_INT32, {}, &input_tensor));
   input_tensor.scalar<int32_t>()() = 1234;
-  auto input_tensor_promise =
-      xla::ifrt::Future<tensorflow::Tensor>::CreatePromise();
-  auto input_tensor_future =
-      xla::ifrt::Future<tensorflow::Tensor>(input_tensor_promise);
+  auto [input_tensor_promise, input_tensor_future] =
+      xla::ifrt::Future<tensorflow::Tensor>::MakePromise();
   ifrt_serving::IfrtRestoreTensorRegistry::RestoredTensorInfo
       restore_tensor_info{.dtype_and_shape = {.dtype = input_tensor.dtype(),
                                               .shape = input_tensor.shape()},
@@ -556,10 +554,8 @@ TEST_P(KernelTest, DuplicateIfrtLoadVariableOpShallSucceed) {
   tensorflow::Tensor input_tensor;
   TF_CHECK_OK(tensorflow::Tensor::BuildTensor(DT_INT32, {}, &input_tensor));
   input_tensor.scalar<int32_t>()() = 1234;
-  auto input_tensor_promise =
-      xla::ifrt::Future<tensorflow::Tensor>::CreatePromise();
-  auto input_tensor_future =
-      xla::ifrt::Future<tensorflow::Tensor>(input_tensor_promise);
+  auto [input_tensor_promise, input_tensor_future] =
+      xla::ifrt::Future<tensorflow::Tensor>::MakePromise();
   ifrt_serving::IfrtRestoreTensorRegistry::RestoredTensorInfo
       restore_tensor_info{.dtype_and_shape = {.dtype = input_tensor.dtype(),
                                               .shape = input_tensor.shape()},

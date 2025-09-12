@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -598,8 +599,8 @@ IfrtServingExecutable::LookUpOrCreateExecutable(
     }
 
     // Only create promise and future when cache missed.
-    promise = xla::ifrt::Future<SharedCachedExecutableBundle>::CreatePromise();
-    future = xla::ifrt::Future<SharedCachedExecutableBundle>(promise);
+    std::tie(promise, future) =
+        xla::ifrt::Future<SharedCachedExecutableBundle>::MakePromise();
 
     executable_bundles_.emplace(key, future);
     // Clone the module to avoid race condition between Freeze() and
