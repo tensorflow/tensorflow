@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
+#include "absl/base/nullability.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/lib/gtl/int_type.h"
@@ -81,7 +82,7 @@ class UserContextScope {
  public:
   // Sets up the current thread's `UserContextRef` to the given `context`.
   // `context` must be valid throughout the lifetime of the scope.
-  explicit UserContextScope(UserContextRef context);
+  explicit UserContextScope(absl_nullable UserContextRef context);
 
   // Restores the current thread's `UserContextRef` to the state before this
   // scope was created.
@@ -100,14 +101,14 @@ class UserContextScope {
   // `UserContextRef`.
   //
   // Returns `nullptr` if there is no `UserContextRef` in the scope.
-  static const UserContextRef& current();
+  static absl_nullable const UserContextRef& current();
 
  private:
   // The outer scope's `UserContext`. When this scope is destroyed, the current
   // scope's `UserContext` will be restored to it.
-  const UserContextRef* const outer_context_;  // Not owned.
+  absl_nullable const UserContextRef* const outer_context_;  // Not owned.
   // The current scope's `UserContext`.
-  const UserContextRef context_;
+  absl_nullable const UserContextRef context_;
 };
 
 }  // namespace ifrt
