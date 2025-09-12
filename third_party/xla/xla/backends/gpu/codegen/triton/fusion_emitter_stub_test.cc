@@ -17,7 +17,6 @@ limitations under the License.
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Pass/PassManager.h"
-#include "xla/backends/gpu/codegen/triton/compilation_pipeline.h"
 #include "xla/backends/gpu/codegen/triton/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/triton/fusion_emitter_legacy_matmul.h"
 #include "xla/codegen/emitter_loc_op_builder.h"
@@ -28,13 +27,6 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/gpu/model/tiled_hlo_instruction.h"
 #include "xla/service/hlo_module_config.h"
-
-namespace mlir::triton::nvidia_gpu {
-// We define ClusterInfo here in order to avoid having to import a GPU-only
-// header.
-struct ClusterInfo {};
-
-}  // namespace mlir::triton::nvidia_gpu
 
 namespace xla::gpu {
 namespace {
@@ -51,9 +43,7 @@ TEST(TritonStub, CallStubApi) {
                    .ok());
 
   mlir::OpPassManager pm;
-  ::mlir::triton::nvidia_gpu::ClusterInfo cluster_info;
 
-  EXPECT_FALSE(CreateTritonPipeline(&pm, "", 1, 1, 1, cluster_info).ok());
   EXPECT_EQ(GetLibdevicePath({}, {}), "");
 
   HloConstantInstruction constant(LiteralUtil::CreateR1<int>({1, 1}));

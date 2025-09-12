@@ -36,6 +36,7 @@ limitations under the License.
 #include "llvm/Linker/Linker.h"
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Support/CodeGen.h"
+#include "llvm/Support/LogicalResult.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/raw_ostream.h"
@@ -60,6 +61,8 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Export.h"
 #include "xla/backends/gpu/codegen/triton/compilation_pipeline.h"
 #include "xla/pjrt/triton.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
@@ -73,20 +76,6 @@ limitations under the License.
 namespace xla::triton {
 
 namespace {
-
-absl::Status TritonToLLVM(
-    mlir::ModuleOp module, absl::string_view arch_name, int num_warps,
-    int num_ctas, int num_stages,
-    mlir::triton::nvidia_gpu::ClusterInfo* out_cluster_info) {
-  mlir::PassManager pm(module.getContext());
-  pm.enableVerifier();
-  TF_RETURN_IF_ERROR(
-      xla::gpu::CreateTritonPipeline(&pm, std::string(arch_name), num_warps,
-                                     num_ctas, num_stages, *out_cluster_info));
-  return pm.run(module).succeeded()
-             ? absl::OkStatus()
-             : absl::InternalError("Failed to compile Triton IR to LLVM IR");
-}
 
 absl::StatusOr<std::unique_ptr<llvm::TargetMachine>> CreateTargetMachine(
     llvm::Module* module, absl::string_view arch_name, bool enable_fp_fusion,
@@ -237,9 +226,18 @@ absl::StatusOr<CompilationResult> Compile(absl::string_view module,
   if (!module_op) {
     return absl::InvalidArgumentError("Failed to parse Triton module");
   }
+
+  mlir::PassManager pm(&context);
+  pm.enableVerifier();
   mlir::triton::nvidia_gpu::ClusterInfo cluster_info;
-  TF_RETURN_IF_ERROR(TritonToLLVM(*module_op, arch_name, num_warps, num_ctas,
-                                  num_stages, &cluster_info));
+  TF_ASSIGN_OR_RETURN(
+      auto cuda_cc,
+      stream_executor::CudaComputeCapability::FromString(arch_name));
+  xla::gpu::CreateTritonPipeline(&pm, cuda_cc, num_warps, num_ctas, num_stages,
+                                 cluster_info);
+  if (failed(pm.run(*module_op))) {
+    return absl::InternalError("Failed to compile Triton IR to LLVM IR");
+  }
 
   auto shared_mem_bytes =
       (*module_op)->getAttrOfType<mlir::IntegerAttr>("ttg.shared").getInt();

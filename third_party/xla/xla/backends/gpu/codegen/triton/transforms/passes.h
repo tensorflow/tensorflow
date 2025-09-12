@@ -22,7 +22,6 @@ limitations under the License.
 #include "mlir/IR/Operation.h"
 #include "mlir/Pass/Pass.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"  // IWYU pragma: keep
-#include "xla/stream_executor/device_description.h"
 
 namespace mlir::triton::xla {
 
@@ -37,7 +36,7 @@ std::unique_ptr<mlir::Pass> CreateTritonXLAFoldTransposePass();
 std::unique_ptr<mlir::Pass> CreateGeneralizeKernelSignaturePass();
 
 std::unique_ptr<mlir::Pass> CreateInt4ToPackedInt4RewritePass(
-    const stream_executor::DeviceDescription& device_description);
+    bool enable_bf16x2);
 std::unique_ptr<mlir::Pass> CreateRoundF32ToTF32ForTf32DotRewritePass();
 std::unique_ptr<mlir::Pass> CreateExtractTmaInfoPass();
 std::unique_ptr<mlir::Pass> CreateTritonXLALowerGetTidPass();
