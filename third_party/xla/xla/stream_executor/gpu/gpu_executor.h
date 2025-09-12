@@ -45,12 +45,12 @@ class GpuExecutor : public StreamExecutorCommon {
   int device_ordinal() const override { return device_ordinal_; };
 
   absl::StatusOr<std::vector<ApiTrace>> ExtractApiTrace() override {
-    absl::MutexLock lock(&logger_mu_);
+    absl::MutexLock lock(logger_mu_);
     return std::move(argument_logs_);
   }
 
   absl::Status RecordApiTrace(ApiTrace call) override {
-    absl::MutexLock lock(&logger_mu_);
+    absl::MutexLock lock(logger_mu_);
     if (std::holds_alternative<GemmCallTrace>(call) &&
         (argument_logging_mode_ & kLogGemm)) {
       argument_logs_.push_back(call);
@@ -59,7 +59,7 @@ class GpuExecutor : public StreamExecutorCommon {
   }
 
   bool SetArgumentLoggingMode(uint64_t mode) override {
-    absl::MutexLock lock(&logger_mu_);
+    absl::MutexLock lock(logger_mu_);
     argument_logging_mode_ = mode;
     return true;
   }

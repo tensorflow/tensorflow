@@ -288,7 +288,7 @@ DataType GetScaleType(DataType c_type, ComputationType computation_type) {
 
 absl::StatusOr<BlasLt::MatmulPlan*> BlasLt::GetOrCreateMatmulPlan(
     const std::string& key, PlanCreateFunc create) {
-  absl::MutexLock lock(&plan_cache_mu_);  // double mutex ???
+  absl::MutexLock lock(plan_cache_mu_);  // double mutex ???
   auto res = plan_cache_.emplace(key, MatmulPlanPtr{});
   // New entry inserted: always create a new matmul plan if key is empty,
   // this is used by command_buffer_thunk test.
@@ -301,12 +301,12 @@ absl::StatusOr<BlasLt::MatmulPlan*> BlasLt::GetOrCreateMatmulPlan(
 }
 
 void BlasLt::ClearMatmulPlanCache() {
-  absl::MutexLock lock(&plan_cache_mu_);
+  absl::MutexLock lock(plan_cache_mu_);
   plan_cache_.clear();
 }
 
 size_t BlasLt::GetMatmulPlanCacheSize() const {
-  absl::MutexLock lock(&plan_cache_mu_);
+  absl::MutexLock lock(plan_cache_mu_);
   return plan_cache_.size();
 }
 

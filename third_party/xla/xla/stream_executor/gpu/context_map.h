@@ -40,7 +40,7 @@ class ContextMap {
       : find_device_ordinal_(std::move(find_device_ordinal)) {}
   // Returns whether context is a member of the live set.
   bool Has(GpuContext context) {
-    absl::ReaderMutexLock lock(&mutex_);
+    absl::ReaderMutexLock lock(mutex_);
     return gpu_context_to_context_type_map_.find(context) !=
            gpu_context_to_context_type_map_.end();
   }
@@ -48,7 +48,7 @@ class ContextMap {
   // Adds context to the live set, or returns it if it's already present.
   ContextType* Add(GpuContext context, int device_ordinal) {
     CHECK_NE(context, nullptr);
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
 
     auto insert_result = gpu_context_to_context_type_map_.insert(
         std::make_pair(context, nullptr));
@@ -63,7 +63,7 @@ class ContextMap {
 
   // Removes context from the live set.
   void Remove(GpuContext context) {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     CHECK_NE(context, nullptr);
     auto it = gpu_context_to_context_type_map_.find(context);
     CHECK(it != gpu_context_to_context_type_map_.end()) << context;
@@ -82,7 +82,7 @@ class ContextMap {
 
   // Returns the context associated to that ptr.
   GpuContext GetAnyContext(void* ptr) {
-    absl::ReaderMutexLock lock(&mutex_);
+    absl::ReaderMutexLock lock(mutex_);
     int device_ordinal = find_device_ordinal_(ptr);
     CHECK_EQ(ordinal_to_type_map_.count(device_ordinal), 1);
     CHECK(!ordinal_to_type_map_.at(device_ordinal).empty())
