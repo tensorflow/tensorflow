@@ -705,10 +705,13 @@ xla_test(
     deps = [
         ":matmul_perf_table_gen",
         "//xla:xla_data_proto_cc",
+        "//xla/hlo/testlib:pattern_matcher_gmock",
         "//xla/service/gpu/model:hlo_op_profile_proto_cc",
         "//xla/stream_executor:device_description",
         "//xla/tests:hlo_test_base",
         "//xla/tsl/platform:statusor",
+        "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],
 )

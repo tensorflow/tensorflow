@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/tools/matmul_perf_table_gen.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "tsl/platform/init_main.h"
 
@@ -326,10 +327,25 @@ int main(int argc, char* argv[]) {
     return 0;
   }
 
+  // Compute new profiling data.
   xla::gpu::DeviceHloInstructionProfiles result = table_gen.ComputeTable();
   auto compact_result = MatmulPerfTableGen::Compact(result);
   CHECK_OK(compact_result.status());
-  CHECK_OK(table_gen.Dump(*compact_result));
+
+  // Merge with previous results if any.
+  xla::GemmPerfTable perf_table;
+  if (tsl::Env::Default()->FileExists(out).ok()) {
+    xla::GemmPerfTable previous_perf_table;
+    CHECK_OK(tsl::ReadTextOrBinaryProto(tsl::Env::Default(), out,
+                                        &previous_perf_table));
+    perf_table =
+        MatmulPerfTableGen::Merge({previous_perf_table, *compact_result});
+  } else {
+    perf_table = *compact_result;
+  }
+
+  // Dump results.
+  CHECK_OK(table_gen.Dump(perf_table));
 
   return 0;
 }

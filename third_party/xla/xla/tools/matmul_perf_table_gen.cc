@@ -493,6 +493,14 @@ absl::StatusOr<DeviceHloInstructionProfiles> MatmulPerfTableGen::Merge(
   return result;
 }
 
+GemmPerfTable MatmulPerfTableGen::Merge(std::vector<GemmPerfTable> tables) {
+  GemmPerfTable result;
+  for (GemmPerfTable& table : tables) {
+    result.MergeFrom(table);
+  }
+  return result;
+}
+
 DeviceHloInstructionProfiles MatmulPerfTableGen::ComputeTable() {
   gpu::DeviceHloInstructionProfiles device_profiles;
   gpu::HloInstructionProfileList profile_list;
