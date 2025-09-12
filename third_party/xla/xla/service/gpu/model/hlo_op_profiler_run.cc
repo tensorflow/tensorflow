@@ -89,7 +89,6 @@ int RunProfiler(int argc, char** argv) {
   };
   const std::vector<HloOpcode> ops = {
       // Unary
-      HloOpcode::kAcosh,
       HloOpcode::kCbrt,
       HloOpcode::kCos,
       HloOpcode::kErf,
@@ -113,8 +112,8 @@ int RunProfiler(int argc, char** argv) {
 
   HloInstructionProfileList instr_profiles;
 
-  for (const PrimitiveType data_type : dtypes) {
-    for (const HloOpcode op : ops) {
+  for (const PrimitiveType data_type : HloOpProfiler::AllSupportedDtypes()) {
+    for (const HloOpcode op : HloOpProfiler::AllSupportedOps()) {
       auto result = profiler.MeasureClockCyclesPerOp(op, data_type);
       if (result.ok()) {
         instr_profiles.add_entries()->Swap(&*result);
