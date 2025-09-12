@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
 #include "xla/primitive_util.h"
-#include "xla/service/executable.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner.h"
@@ -51,6 +50,9 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 #ifdef GOOGLE_CUDA
+#include <algorithm>  // IWYU pragma: keep
+
+#include "xla/backends/profiler/gpu/cupti_buffer_events.h"
 #include "xla/backends/profiler/gpu/cupti_collector.h"
 #include "xla/backends/profiler/gpu/cupti_tracer.h"
 #endif
@@ -169,6 +171,7 @@ static const std::unordered_set<HloOpcode> UnsupportedOps = {
     // used for profiling. They are not created by HloInstruction::CreateUnary
     // or HloInstruction::CreateBinary functions.
 
+    // TODO(444503555): Add support for these Opcodes by using custom APIs.
     // Unary
     // go/keep-sorted start
     HloOpcode::kBitcastConvert,
@@ -250,7 +253,7 @@ class CuptiKernelTracer : public HloOpProfiler::KernelTracer,
       return 0;
     }
     std::sort(kernel_times_ns_.begin(), kernel_times_ns_.end());
-    size_t i = kernel_times_ns_.size() / 2;
+    auto i = kernel_times_ns_.size() / 2;
     // Return median value if number of values is odd.
     if (kernel_times_ns_.size() % 2 != 0) {
       return kernel_times_ns_[i];

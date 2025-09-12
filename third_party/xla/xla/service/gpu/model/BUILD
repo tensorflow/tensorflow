@@ -1029,6 +1029,7 @@ cc_library(
         "@local_tsl//tsl/platform:statusor",
     ] + if_cuda([
         # keep sorted
+        "//xla/backends/profiler/gpu:cupti_buffer_events",
         "//xla/backends/profiler/gpu:cupti_collector",
         "//xla/backends/profiler/gpu:cupti_tracer",
     ]),
@@ -1063,11 +1064,9 @@ xla_test(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/platform:status",
     ],
 )
 
