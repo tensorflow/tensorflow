@@ -233,6 +233,16 @@ class WhereOutputIterator {
     return *(ptr_ + (valid ? (NDIM * n) : 0));
   }
 
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE reference operator*() const {
+    // Dereference the current pointer
+    return *ptr_;
+  }
+
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE self_type
+  operator+(std::ptrdiff_t n) const {
+    return self_type(ptr_ + NDIM * n, max_row_);
+  }
+
  private:
   int64* ptr_;
   const Eigen::DenseIndex max_row_;
