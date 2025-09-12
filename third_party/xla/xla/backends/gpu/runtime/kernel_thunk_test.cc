@@ -66,7 +66,7 @@ TEST(KernelThunkTest, CreateWithDefaultValues) {
                     /*launch_dimensions=*/LaunchDimensions(),
                     /*cluster_dim=*/se::ClusterDim(),
                     /*shmem_bytes=*/0,
-                    /*tma_metadata=*/std::nullopt);
+                    /*tma_metadata=*/se::gpu::TmaMetadata());
   EXPECT_EQ(thunk.kind(), Kind::kKernel);
   EXPECT_TRUE(thunk.kernel_name().empty());
   EXPECT_TRUE(thunk.arguments().empty());
@@ -108,7 +108,7 @@ TEST(KernelThunkTest, CreateAndGettersAndToString) {
                     /*launch_dimensions=*/launch_dimensions,
                     /*cluster_dim=*/se::ClusterDim(8, 7, 6),
                     /*shmem_bytes=*/1024,
-                    /*tma_metadata=*/std::nullopt);
+                    /*tma_metadata=*/se::gpu::TmaMetadata());
   EXPECT_EQ(thunk.kind(), Kind::kKernel);
   EXPECT_EQ(thunk.kernel_name(), "kernel123");
   EXPECT_EQ(thunk.arguments(),

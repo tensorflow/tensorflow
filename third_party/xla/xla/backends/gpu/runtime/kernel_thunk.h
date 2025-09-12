@@ -76,8 +76,7 @@ class KernelThunk : public Thunk {
               const emitters::KernelArguments& kernel_arguments,
               LaunchDimensions launch_dimensions,
               std::optional<se::ClusterDim> cluster_dim, int64_t shmem_bytes,
-              std::optional<stream_executor::gpu::TmaMetadata> tma_metadata =
-                  std::nullopt);
+              stream_executor::gpu::TmaMetadata tma_metadata);
   KernelThunk(const KernelThunk&) = delete;
   KernelThunk& operator=(const KernelThunk&) = delete;
   ~KernelThunk() override = default;
@@ -107,7 +106,7 @@ class KernelThunk : public Thunk {
   // The shared memory required by the kernel.
   int64_t shmem_bytes() const { return shmem_bytes_; }
 
-  const std::optional<stream_executor::gpu::TmaMetadata>& tma_metadata() const {
+  const stream_executor::gpu::TmaMetadata& tma_metadata() const {
     return tma_metadata_;
   }
 
@@ -131,7 +130,7 @@ class KernelThunk : public Thunk {
 
   // Map of argument index to TmaDescriptor used to create arguments to the
   // kernel.
-  const std::optional<stream_executor::gpu::TmaMetadata> tma_metadata_;
+  stream_executor::gpu::TmaMetadata tma_metadata_;
 
   // Loaded kernels for each `StreamExecutor`.
   mutable absl::Mutex mutex_;

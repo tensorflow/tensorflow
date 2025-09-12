@@ -56,12 +56,12 @@ namespace gpu {
 // KernelThunk
 //===----------------------------------------------------------------------===//
 
-KernelThunk::KernelThunk(
-    Thunk::ThunkInfo thunk_info, std::string kernel_name,
-    const emitters::KernelArguments& kernel_arguments,
-    LaunchDimensions launch_dimensions,
-    std::optional<se::ClusterDim> cluster_dim, int64_t shmem_bytes,
-    std::optional<stream_executor::gpu::TmaMetadata> tma_metadata)
+KernelThunk::KernelThunk(Thunk::ThunkInfo thunk_info, std::string kernel_name,
+                         const emitters::KernelArguments& kernel_arguments,
+                         LaunchDimensions launch_dimensions,
+                         std::optional<se::ClusterDim> cluster_dim,
+                         int64_t shmem_bytes,
+                         stream_executor::gpu::TmaMetadata tma_metadata)
     : Thunk(Kind::kKernel, std::move(thunk_info)),
       args_(kernel_arguments.GetArgumentBufferSlices()),
       written_(kernel_arguments.GetArgumentOutputFlags()),
@@ -95,9 +95,7 @@ absl::StatusOr<ThunkProto> KernelThunk::ToProto() const {
     *kernel_proto->mutable_cluster_dim() = cluster_dim_->ToProto();
   }
   kernel_proto->set_shmem_bytes(shmem_bytes_);
-  if (tma_metadata_.has_value()) {
-    *kernel_proto->mutable_tma_metadata() = tma_metadata_->ToProto();
-  }
+  *kernel_proto->mutable_tma_metadata() = tma_metadata_.ToProto();
   return proto;
 }
 
@@ -129,12 +127,9 @@ absl::StatusOr<std::unique_ptr<KernelThunk>> KernelThunk::FromProto(
     arguments.push_back(std::move(argument));
   }
 
-  std::optional<stream_executor::gpu::TmaMetadata> tma_metadata;
-  if (proto.has_tma_metadata()) {
-    TF_ASSIGN_OR_RETURN(
-        tma_metadata,
-        stream_executor::gpu::TmaMetadata::FromProto(proto.tma_metadata()));
-  }
+  TF_ASSIGN_OR_RETURN(
+      stream_executor::gpu::TmaMetadata tma_metadata,
+      stream_executor::gpu::TmaMetadata::FromProto(proto.tma_metadata()));
 
   return std::make_unique<KernelThunk>(
       thunk_info, proto.kernel_name(),
@@ -223,16 +218,14 @@ absl::Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
   int device_ordinal = executor->device_ordinal();
   VLOG(3) << "[" << device_ordinal << "] Launching " << kernel->name();
   absl::InlinedVector<se::KernelArgument, 4> kernel_args;
-  stream_executor::gpu::TmaMetadata tma_metadata =
-      tma_metadata_.value_or(stream_executor::gpu::TmaMetadata{});
   for (const auto& [idx, arg] : llvm::enumerate(args_)) {
     se::DeviceMemoryBase buf = params.buffer_allocations->GetDeviceAddress(arg);
     VLOG(3) << "[" << device_ordinal << "] Arg: alloc #" << arg.index()
             << ", offset: " << arg.offset() << ": " << buf.opaque() << " ("
             << buf.size() << "B)";
 
-    if (auto it = tma_metadata.arg_index_to_tma_info.find(idx);
-        it != tma_metadata.arg_index_to_tma_info.end()) {
+    if (auto it = tma_metadata_.arg_index_to_tma_info.find(idx);
+        it != tma_metadata_.arg_index_to_tma_info.end()) {
       // TMA descriptor argument.
       stream_executor::gpu::TmaDescriptor tma_desc = it->second;
       TF_ASSIGN_OR_RETURN(se::TensorMap tensor_map,

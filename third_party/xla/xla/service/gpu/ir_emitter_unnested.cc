@@ -174,6 +174,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
+#include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/gpu_solver_context.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
@@ -1578,7 +1579,7 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
   AddThunkToThunkSequence(std::make_unique<KernelThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(instr), entry->kernel_name,
       kernel_arguments, entry->launch_dimensions, entry->cluster_dim,
-      entry->shmem_bytes));
+      entry->shmem_bytes, entry->tma_metadata));
   return absl::OkStatus();
 }
 
@@ -2606,7 +2607,8 @@ IrEmitterUnnested::BuildKernelThunkForNonFusionOp(
       Thunk::ThunkInfo::WithProfileAnnotation(instr), kernel->getName().str(),
       kernel_arguments, launch_dimensions,
       /*cluster_dim=*/std::nullopt,
-      /*shmem_bytes=*/0));
+      /*shmem_bytes=*/0,
+      /*tma_metadata=*/se::gpu::TmaMetadata()));
 
   std::vector<llvm_ir::IrArray> ir_arrays;
   ir_arrays.reserve(kernel_arguments.args().size());
