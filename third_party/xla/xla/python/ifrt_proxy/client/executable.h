@@ -72,6 +72,10 @@ class LoadedExecutable final
   xla::ifrt::Client* client() const override;
   absl::string_view name() const override;
   absl::StatusOr<std::optional<std::string>> Fingerprint() const override;
+  absl::StatusOr<std::unique_ptr<xla::ifrt::ExecutableVersion>>
+  executable_version() const override {
+    return absl::UnimplementedError("Not implemented");
+  }
   absl::StatusOr<std::string> Serialize() const override;
   xla::ifrt::UserContextRef user_context() const override {
     return user_context_;

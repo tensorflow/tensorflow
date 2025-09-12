@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/executable_metadata.pb.h"
 #include "xla/python/pjrt_ifrt/pjrt_layout.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
+#include "xla/python/pjrt_ifrt/xla_executable_version.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
@@ -73,6 +74,7 @@ using ::testing::Not;
 using ::testing::Optional;
 using ::testing::SizeIs;
 using ::testing::UnorderedElementsAre;
+using ::tsl::proto_testing::EqualsProto;
 using ::tsl::proto_testing::EquivToProto;
 
 // Serialized `ModuleOp` that does add 1.
@@ -626,12 +628,16 @@ TEST(ExecutableTest, ExecutableSerialization) {
   ASSERT_TRUE(google::protobuf::util::ParseDelimitedFromZeroCopyStream(
       &metadata, &input_stream, nullptr));
 
-  // TODO(b/409317760): Compare version number to the runtime version number
-  // when version query API is available.
-  EXPECT_EQ(metadata.ifrt_version_number(), 0);
-  EXPECT_FALSE(metadata.runtime_abi_version().empty());
+  TF_ASSERT_OK_AND_ASSIGN(auto executable_version,
+                          loaded_executable->executable_version());
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto xla_executable_version,
+      xla::ifrt::ToXlaExecutableVersion(std::move(executable_version)));
+  TF_ASSERT_OK_AND_ASSIGN(auto serialized_xla_executable_version,
+                          xla_executable_version->ToProto());
+  EXPECT_THAT(metadata.executable_version(),
+              EqualsProto(serialized_xla_executable_version));
 
-  EXPECT_NE(metadata.platform_id(), 0);
   EXPECT_EQ(metadata.computation_name(), "add_sub");
 
   int kNumOutputs = 2;

@@ -22,6 +22,17 @@ import "xla/python/ifrt/layout.proto";
 import "xla/python/ifrt/shape.proto";
 import "xla/xla_data.proto";
 
+// Proto equivalent of C++ `XlaExecutableVersion`.
+message SerializedXlaExecutableVersion {
+  // Serialization and deserialization version.
+  int32 version_number = 1;
+  // ID that identifies the platform (CPU/GPU/TPU). This corresponds to
+  // xla::PjRtPlatformId.
+  fixed64 platform_id = 2;
+  // Opaque string that identifies the runtime ABI version.
+  bytes runtime_abi_version = 3;
+}
+
 // This is the definition of a standard format for serializing XLA executables
 // in IFRT in a way that is portable across IFRT runtimes that support XLA.
 //
@@ -46,20 +57,17 @@ import "xla/xla_data.proto";
 // runtimes are validated in
 // tensorflow/compiler/xla/python/pjrt_ifrt/xla_executable_impl_test_lib.cc.
 message SerializedXlaExecutableMetadata {
+  reserved 3, 4;
+
   // IFRT version
   int32 ifrt_version_number = 1;
+
+  // The runtime ABI version at the time this executable was created.
+  SerializedXlaExecutableVersion executable_version = 9;
 
   // IFRT runtime that created this executable. Loading executables across
   // runtimes are supported.
   string runtime_name = 2;
-
-  // ID that identifies the platform (CPU/GPU/TPU). This corresponds to
-  // xla::PjRtPlatformId.
-  fixed64 platform_id = 3;
-
-  // ABI version of the runtime that this executable is compatible with.
-  // Note: Also present within the serialized executable for PjRt TPU.
-  bytes runtime_abi_version = 4;
 
   // Name of the computation that this executable represents. This is not a
   // unique identifier of the computation. Only to be used for debugging and
