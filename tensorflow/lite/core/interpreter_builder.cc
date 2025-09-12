@@ -416,7 +416,9 @@ TfLiteStatus InterpreterBuilder::ParseQuantization(
         reinterpret_cast<TfLiteBlockwiseQuantization*>(
             malloc(sizeof(TfLiteBlockwiseQuantization)));
     blockwise_quantization->scale = src_quant->scales();
-    blockwise_quantization->quantized_dimension = 0;
+    blockwise_quantization->zero_point = src_quant->zero_points();
+    blockwise_quantization->quantized_dimension =
+        src_quantization->quantized_dimension();
     blockwise_quantization->blocksize = src_quant->block_size();
     quantization->params = reinterpret_cast<void*>(blockwise_quantization);
     return kTfLiteOk;
