@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/no_destructor.h"
+#include "absl/base/nullability.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/python/ifrt/user_context.h"
 
@@ -31,8 +32,11 @@ UserContextRegistry& UserContextRegistry::Get() {
   return *registry;
 }
 
-TrackedUserContextRef UserContextRegistry::Register(
-    UserContextRef user_context) {
+absl_nullable TrackedUserContextRef
+UserContextRegistry::Register(absl_nullable UserContextRef user_context) {
+  if (user_context == nullptr) {
+    return nullptr;
+  }
   const UserContextId id = user_context->Id();
   absl::MutexLock lock(&mu_);
   auto it = registry_.find(id);
@@ -57,7 +61,8 @@ TrackedUserContextRef UserContextRegistry::Register(
   return tracked_user_context;
 }
 
-TrackedUserContextRef UserContextRegistry::Lookup(UserContextId id) const {
+absl_nullable TrackedUserContextRef
+UserContextRegistry::Lookup(UserContextId id) const {
   absl::MutexLock lock(&mu_);
   auto it = registry_.find(id);
   if (it != registry_.end()) {
@@ -69,9 +74,10 @@ TrackedUserContextRef UserContextRegistry::Lookup(UserContextId id) const {
   return nullptr;
 }
 
-std::vector<TrackedUserContextRef> UserContextRegistry::LookupAll() const {
+std::vector<absl_nonnull TrackedUserContextRef> UserContextRegistry::LookupAll()
+    const {
   absl::MutexLock lock(&mu_);
-  std::vector<TrackedUserContextRef> tracked_user_contexts;
+  std::vector<absl_nonnull TrackedUserContextRef> tracked_user_contexts;
   tracked_user_contexts.reserve(registry_.size());
   for (auto it = registry_.begin(); it != registry_.end(); ++it) {
     TrackedUserContextRef tracked_user_context = it->second.first.lock();
