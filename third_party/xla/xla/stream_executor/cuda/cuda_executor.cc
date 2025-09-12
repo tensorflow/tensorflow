@@ -1512,8 +1512,8 @@ absl::StatusOr<const CudaKernel*> CudaExecutor::GetCudaKernel(
   return static_cast<const CudaKernel*>(*it);
 }
 
-absl::StatusOr<TensorMap> CudaExecutor::CreateTensorMap(TmaDescriptor tma_desc,
-                                                        void* global_address) {
+absl::StatusOr<TensorMap> CudaExecutor::CreateTensorMap(
+    const TmaDescriptor& tma_desc, void* global_address) {
   TF_ASSIGN_OR_RETURN(CUtensorMapDataType data_type,
                       GetTensorMapDataType(tma_desc.element_size()));
   CUtensorMapSwizzle swizzle = GetTensorMapSwizzle(tma_desc.swizzle());

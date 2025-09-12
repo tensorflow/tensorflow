@@ -227,7 +227,7 @@ absl::Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
     if (auto it = tma_metadata_.arg_index_to_tma_info.find(idx);
         it != tma_metadata_.arg_index_to_tma_info.end()) {
       // TMA descriptor argument.
-      stream_executor::gpu::TmaDescriptor tma_desc = it->second;
+      const se::gpu::TmaDescriptor& tma_desc = it->second;
       TF_ASSIGN_OR_RETURN(se::TensorMap tensor_map,
                           executor->CreateTensorMap(tma_desc, buf.opaque()));
       VLOG(3) << "[" << device_ordinal << "]  Using TensorMap for arg #" << idx

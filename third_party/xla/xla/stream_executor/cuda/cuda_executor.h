@@ -132,7 +132,7 @@ class CudaExecutor : public GpuExecutor {
   // Creates, allocates, and copies a CUtensorMap object for the given TMA
   // descriptor. Returns a TensorMap, which is 128 bytes of storage, to be
   // passed by value to the kernel.
-  absl::StatusOr<TensorMap> CreateTensorMap(TmaDescriptor tma_desc,
+  absl::StatusOr<TensorMap> CreateTensorMap(const TmaDescriptor& tma_desc,
                                             void* global_address) override;
   absl::StatusOr<std::unique_ptr<MemoryAllocator>> CreateMemoryAllocator(
       MemoryType type) override;

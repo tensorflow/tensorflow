@@ -341,8 +341,8 @@ class StreamExecutor {
   // descriptor. Returns a TensorMap, which is 128 bytes of storage, to be
   // passed by value to the kernel.
   // Only implemented on CUDA GPUs.
-  virtual absl::StatusOr<TensorMap> CreateTensorMap(gpu::TmaDescriptor tma_desc,
-                                                    void* global_address) {
+  virtual absl::StatusOr<TensorMap> CreateTensorMap(
+      const gpu::TmaDescriptor& tma_desc, void* global_address) {
     return absl::UnimplementedError("Not Implemented");
   }
 
