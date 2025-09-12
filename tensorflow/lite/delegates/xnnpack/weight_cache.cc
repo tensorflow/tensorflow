@@ -589,9 +589,6 @@ size_t MMapWeightCacheProvider::LookUpOrInsert(
     return offset_it->second.offset;
   }
 
-  XNNPACK_ABORT_CHECK(
-      IsBuilding(), "Cannot insert a buffer in a cache that is not building.");
-
   const BufferLocation location = builder_.Append(pack_id, ptr, size);
   XNNPACK_ABORT_CHECK(!location.IsInvalid(),
                       "Inserting data in the cache failed.");
