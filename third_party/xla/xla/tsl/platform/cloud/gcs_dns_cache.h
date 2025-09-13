@@ -43,7 +43,7 @@ class GcsDnsCache {
   GcsDnsCache(Env* env, int64_t refresh_rate_secs);
 
   ~GcsDnsCache() {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     cancelled_ = true;
     cond_var_.Signal();
   }
