@@ -87,7 +87,7 @@ void ScopedLoggingTimer::StopAndLog() {
     double secs = elapsed_micros / 1000000.0;
 
     TimerStats& stats = *timer_stats_;
-    absl::MutexLock lock(&stats.stats_mutex);
+    absl::MutexLock lock(stats.stats_mutex);
     stats.cumulative_secs += secs;
     if (secs > stats.max_secs) {
       stats.max_secs = secs;
@@ -316,7 +316,7 @@ void LogLines(absl::LogSeverity sev, absl::string_view text, const char* fname,
   // Protect calls with a mutex so we don't interleave calls to LogLines from
   // multiple threads.
   static absl::Mutex log_lines_mu(absl::kConstInit);
-  absl::MutexLock lock(&log_lines_mu);
+  absl::MutexLock lock(log_lines_mu);
 
   size_t cur = 0;
   while (cur < text.size()) {
