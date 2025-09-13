@@ -45,7 +45,6 @@ using ::testing::SizeIs;
 using ::testing::StrEq;
 using ::testing::TempDir;
 using ::tsl::protobuf::TextFormat;
-using ::tsl::testing::IsOk;
 
 using QuantizationReportTest = ::mlir::quant::QuantizationTestBase;
 
