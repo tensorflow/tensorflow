@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/model/tiled_hlo_computation.h"
+#include "xla/codegen/tiling/tiled_hlo_computation.h"
 
 #include <sstream>
 #include <string>
@@ -22,13 +22,12 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "xla/codegen/tiling/tiled_hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/gpu/model/tiled_hlo_instruction.h"
 #include "xla/service/name_uniquer.h"
 #include "xla/util.h"
 
 namespace xla {
-namespace gpu {
 
 std::string TiledHloComputation::ToString() const {
   std::stringstream ss;
@@ -53,5 +52,4 @@ std::string TiledHloComputation::ToString() const {
   return ss.str();
 }
 
-}  // namespace gpu
 }  // namespace xla

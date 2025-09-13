@@ -26,7 +26,7 @@ limitations under the License.
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
-#include "xla/service/gpu/model/tiled_hlo_computation.h"
+#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
 
