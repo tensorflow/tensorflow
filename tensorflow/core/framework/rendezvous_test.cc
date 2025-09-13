@@ -61,8 +61,7 @@ TEST(RendezvousTest, Key) {
                                     "/job:mnist/replica:1/task:2/device:GPU:0;",
                                     &parsed)
                    .ok());
-  EXPECT_FALSE(
-      Rendezvous::ParseKey(strings::StrCat(key, ";", key), &parsed).ok());
+  EXPECT_FALSE(Rendezvous::ParseKey(absl::StrCat(key, ";", key), &parsed).ok());
 }
 
 class LocalRendezvousTest : public ::testing::Test {
@@ -300,14 +299,14 @@ TEST_F(LocalRendezvousTest, RandomSendRecv) {
     SchedClosure([this, i, micros]() {
       Env::Default()->SleepForMicroseconds(micros);
       Rendezvous::Args args;
-      TF_ASSERT_OK(rendez_->Send(MakeKey(strings::StrCat(i)), args,
-                                 V(strings::StrCat(i)), false));
+      TF_ASSERT_OK(rendez_->Send(MakeKey(absl::StrCat(i)), args,
+                                 V(absl::StrCat(i)), false));
     });
     auto recv_done = [this, &state, i](const absl::Status& status,
                                        const Rendezvous::Args& sender_args,
                                        const Rendezvous::Args& recver_args,
                                        const Tensor& val, const bool val_dead) {
-      EXPECT_EQ(strings::StrCat(i), V(val));
+      EXPECT_EQ(absl::StrCat(i), V(val));
       bool done = false;
       {
         mutex_lock l(state.lock);
@@ -323,7 +322,7 @@ TEST_F(LocalRendezvousTest, RandomSendRecv) {
     micros = 100 + rnd.Uniform(1000);
     SchedClosure([this, i, micros, recv_done]() {
       Env::Default()->SleepForMicroseconds(micros);
-      rendez_->RecvAsync(MakeKey(strings::StrCat(i)), Rendezvous::Args(),
+      rendez_->RecvAsync(MakeKey(absl::StrCat(i)), Rendezvous::Args(),
                          recv_done);
     });
   }
@@ -343,7 +342,7 @@ TEST_F(LocalRendezvousTest, MultiSends) {
   Rendezvous::Args args;
   SchedClosure([=]() {
     for (int i = 0; i < N; ++i) {
-      TF_ASSERT_OK(rendez_->Send(key_foo, args, V(strings::StrCat(i)), false));
+      TF_ASSERT_OK(rendez_->Send(key_foo, args, V(absl::StrCat(i)), false));
       RandomSleep();
     }
   });

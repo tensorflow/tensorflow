@@ -53,7 +53,7 @@ TEST(TypesTest, kDataTypeRefOffset) {
     absl::string_view enum_name = enum_descriptor->FindValueByNumber(e)->name();
     absl::string_view enum_ref_name =
         enum_descriptor->FindValueByNumber(e_ref)->name();
-    EXPECT_EQ(strings::StrCat(enum_name, "_REF"), enum_ref_name)
+    EXPECT_EQ(absl::StrCat(enum_name, "_REF"), enum_ref_name)
         << enum_name << "_REF should have value " << e_ref << " not "
         << enum_ref_name;
     // Validate DataTypeString() as well.

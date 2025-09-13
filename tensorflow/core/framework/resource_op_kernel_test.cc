@@ -88,7 +88,7 @@ class ResourceOpKernelTest : public ::testing::Test {
                                                  const string& shared_name) {
     static std::atomic<int64_t> count(0);
     NodeDef node_def;
-    TF_CHECK_OK(NodeDefBuilder(strings::StrCat("test-node", count.fetch_add(1)),
+    TF_CHECK_OK(NodeDefBuilder(absl::StrCat("test-node", count.fetch_add(1)),
                                "StubResourceOp")
                     .Attr("code", code)
                     .Attr("shared_name", shared_name)

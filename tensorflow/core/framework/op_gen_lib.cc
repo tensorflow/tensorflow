@@ -34,12 +34,12 @@ string WordWrap(absl::string_view prefix, absl::string_view str, int width) {
   const string indent_next_line = "\n" + Spaces(prefix.size());
   width -= prefix.size();
   string result;
-  strings::StrAppend(&result, prefix);
+  absl::StrAppend(&result, prefix);
 
   while (!str.empty()) {
     if (static_cast<int>(str.size()) <= width) {
       // Remaining text fits on one line.
-      strings::StrAppend(&result, str);
+      absl::StrAppend(&result, str);
       break;
     }
     auto space = str.rfind(' ', width);
@@ -47,7 +47,7 @@ string WordWrap(absl::string_view prefix, absl::string_view str, int width) {
       // Rather make a too-long line and break at a space.
       space = str.find(' ');
       if (space == absl::string_view::npos) {
-        strings::StrAppend(&result, str);
+        absl::StrAppend(&result, str);
         break;
       }
     }
@@ -62,8 +62,8 @@ string WordWrap(absl::string_view prefix, absl::string_view str, int width) {
     }
 
     // Go on to the next line.
-    strings::StrAppend(&result, to_append);
-    if (!str.empty()) strings::StrAppend(&result, indent_next_line);
+    absl::StrAppend(&result, to_append);
+    if (!str.empty()) absl::StrAppend(&result, indent_next_line);
   }
 
   return result;
@@ -150,16 +150,16 @@ static bool ConvertLine(absl::string_view line,
   // Find a string to mark the end that isn't in unescaped.
   string end = "END";
   for (int s = 0; unescaped.find(end) != string::npos; ++s) {
-    end = strings::StrCat("END", s);
+    end = absl::StrCat("END", s);
   }
 
   // Actually start writing the converted output.
   strings::StrAppend(ml, up_to_colon, ": <<", end, "\n", unescaped, "\n", end);
   if (!suffix.empty()) {
     // Output suffix, in case there was a trailing comment in the source.
-    strings::StrAppend(ml, suffix);
+    absl::StrAppend(ml, suffix);
   }
-  strings::StrAppend(ml, "\n");
+  absl::StrAppend(ml, "\n");
   return true;
 }
 
@@ -175,7 +175,7 @@ string PBTxtToMultiline(absl::string_view pbtxt,
     SplitAt('\n', &pbtxt, &line);
     // Convert line or output it unchanged
     if (!ConvertLine(line, multi_line_fields, &ml)) {
-      strings::StrAppend(&ml, line, "\n");
+      absl::StrAppend(&ml, line, "\n");
     }
   }
   return ml;
@@ -205,7 +205,7 @@ string PBTxtFromMultiline(absl::string_view multiline_pbtxt) {
   while (!multiline_pbtxt.empty()) {
     // Split multiline_pbtxt into its first line and everything after.
     if (!SplitAt('\n', &multiline_pbtxt, &line)) {
-      strings::StrAppend(&pbtxt, line);
+      absl::StrAppend(&pbtxt, line);
       break;
     }
 
@@ -213,7 +213,7 @@ string PBTxtFromMultiline(absl::string_view multiline_pbtxt) {
     auto colon = line.find(':');
     if (!FindMultiline(line, colon, &end)) {
       // Normal case: not a multi-line string, just output the line as-is.
-      strings::StrAppend(&pbtxt, line, "\n");
+      absl::StrAppend(&pbtxt, line, "\n");
       continue;
     }
 
@@ -226,7 +226,7 @@ string PBTxtFromMultiline(absl::string_view multiline_pbtxt) {
     //     something: "xx\nyy"
 
     // Output everything up to the colon ("    something:").
-    strings::StrAppend(&pbtxt, line.substr(0, colon + 1));
+    absl::StrAppend(&pbtxt, line.substr(0, colon + 1));
 
     // Add every line to unescaped until we see the "END" string.
     string unescaped;
@@ -239,7 +239,7 @@ string PBTxtFromMultiline(absl::string_view multiline_pbtxt) {
       } else {
         unescaped.push_back('\n');
       }
-      strings::StrAppend(&unescaped, line);
+      absl::StrAppend(&unescaped, line);
       line = absl::string_view();
     }
 
@@ -273,8 +273,8 @@ static void StringReplace(const string& from, const string& to, string* s) {
 
 static void RenameInDocs(const string& from, const string& to,
                          ApiDef* api_def) {
-  const string from_quoted = strings::StrCat("`", from, "`");
-  const string to_quoted = strings::StrCat("`", to, "`");
+  const string from_quoted = absl::StrCat("`", from, "`");
+  const string to_quoted = absl::StrCat("`", to, "`");
   for (int i = 0; i < api_def->in_arg_size(); ++i) {
     if (!api_def->in_arg(i).description().empty()) {
       StringReplace(from_quoted, to_quoted,
@@ -459,11 +459,11 @@ absl::Status MergeApiDefs(ApiDef* base_api_def, const ApiDef& new_api_def) {
 
   if (!new_api_def.description_prefix().empty()) {
     description =
-        strings::StrCat(new_api_def.description_prefix(), "\n", description);
+        absl::StrCat(new_api_def.description_prefix(), "\n", description);
   }
   if (!new_api_def.description_suffix().empty()) {
     description =
-        strings::StrCat(description, "\n", new_api_def.description_suffix());
+        absl::StrCat(description, "\n", new_api_def.description_suffix());
   }
   base_api_def->set_description(description);
   return absl::OkStatus();
@@ -496,8 +496,8 @@ absl::Status ApiDefMap::LoadFile(Env* env, const string& filename) {
   if (!status.ok()) {
     // Return failed status annotated with filename to aid in debugging.
     return errors::CreateWithUpdatedMessage(
-        status, strings::StrCat("Error parsing ApiDef file ", filename, ": ",
-                                status.message()));
+        status, absl::StrCat("Error parsing ApiDef file ", filename, ": ",
+                             status.message()));
   }
   return absl::OkStatus();
 }

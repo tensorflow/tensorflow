@@ -37,7 +37,7 @@ namespace tensorflow {
 namespace {
 
 string AttrError(absl::string_view orig, const string& op_name) {
-  return strings::StrCat(" from Attr(\"", orig, "\") for Op ", op_name);
+  return absl::StrCat(" from Attr(\"", orig, "\") for Op ", op_name);
 }
 
 bool ConsumeAttrName(absl::string_view* sp, absl::string_view* out) {
@@ -247,7 +247,7 @@ void FinalizeAttr(absl::string_view spec, bool allow_attr_type_any,
     VERIFY(absl::ConsumePrefix(&spec, ")"),
            "Expected ) to close 'list(', not: '", spec, "'");
     str_util::RemoveLeadingWhitespace(&spec);
-    attr->set_type(strings::StrCat("list(", type, ")"));
+    attr->set_type(absl::StrCat("list(", type, ")"));
   } else {
     attr->set_type(type);
   }
@@ -427,8 +427,7 @@ void FinalizeInputOrOutput(absl::string_view spec, bool is_output,
 #undef VERIFY
 
 string ControlOutError(absl::string_view orig, const string& op_name) {
-  return strings::StrCat(" from ControlOutput(\"", orig, "\") for Op ",
-                         op_name);
+  return absl::StrCat(" from ControlOutput(\"", orig, "\") for Op ", op_name);
 }
 
 void FinalizeControlOutput(absl::string_view name, OpDef* op_def,
@@ -438,8 +437,8 @@ void FinalizeControlOutput(absl::string_view name, OpDef* op_def,
   // Parse control output name.
   absl::string_view tmp_name;
   if (!ConsumeControlOutName(&orig, &tmp_name)) {
-    errors->push_back(strings::StrCat("Trouble parsing 'name:'",
-                                      ControlOutError(orig, op_def->name())));
+    errors->push_back(absl::StrCat("Trouble parsing 'name:'",
+                                   ControlOutError(orig, op_def->name())));
   }
 
   *op_def->add_control_output() = string(tmp_name.data(), tmp_name.size());
@@ -552,9 +551,9 @@ void FinalizeDoc(const string& text, OpDef* op_def,
       }
     }
     if (!found) {
-      errors->push_back(
-          strings::StrCat("No matching input/output/attr for name '", name,
-                          "' from Doc() for Op ", op_def->name()));
+      errors->push_back(absl::StrCat("No matching input/output/attr for name '",
+                                     name, "' from Doc() for Op ",
+                                     op_def->name()));
       return;
     }
   }
@@ -590,7 +589,7 @@ OpDefBuilder& OpDefBuilder::Doc(string text) {
 #ifndef TF_LEAN_BINARY
   if (!doc_.empty()) {
     errors_.push_back(
-        strings::StrCat("Extra call to Doc() for Op ", op_def()->name()));
+        absl::StrCat("Extra call to Doc() for Op ", op_def()->name()));
   } else {
     doc_ = std::move(text);
   }
@@ -626,7 +625,7 @@ OpDefBuilder& OpDefBuilder::SetIsDistributedCommunication() {
 OpDefBuilder& OpDefBuilder::Deprecated(int version, string explanation) {
   if (op_def()->has_deprecation()) {
     errors_.push_back(
-        strings::StrCat("Deprecated called twice for Op ", op_def()->name()));
+        absl::StrCat("Deprecated called twice for Op ", op_def()->name()));
   } else {
     OpDeprecation* deprecation = op_def()->mutable_deprecation();
     deprecation->set_version(version);
@@ -655,7 +654,7 @@ OpDefBuilder& OpDefBuilder::SetReverseTypeFn(int input_number,
 OpDefBuilder& OpDefBuilder::SetShapeFn(OpShapeInferenceFn fn) {
   if (op_reg_data_.shape_inference_fn != nullptr) {
     errors_.push_back(
-        strings::StrCat("SetShapeFn called twice for Op ", op_def()->name()));
+        absl::StrCat("SetShapeFn called twice for Op ", op_def()->name()));
   } else {
     op_reg_data_.shape_inference_fn = OpShapeInferenceFn(fn);
   }

@@ -148,7 +148,7 @@ TEST(PartialTensorShapeTest, PartialTensorShapeIsValidShape) {
 
   proto.add_dim()->set_size(1);
   EXPECT_THAT(PartialTensorShape::IsValidShape(proto),
-              testing::StatusIs(
+              absl_testing::StatusIs(
                   error::Code::INVALID_ARGUMENT,
                   ::testing::ContainsRegex(
                       "An unknown shape must not have any dimensions set.")));
@@ -156,13 +156,14 @@ TEST(PartialTensorShapeTest, PartialTensorShapeIsValidShape) {
   proto.set_unknown_rank(false);
   proto.add_dim()->set_size(-1);
   proto.add_dim()->set_size(-2);
-  EXPECT_THAT(PartialTensorShape::IsValidShape(proto),
-              testing::StatusIs(error::Code::INVALID_ARGUMENT,
-                                ::testing::ContainsRegex(
-                                    "has dimensions with values below -1")));
+  EXPECT_THAT(
+      PartialTensorShape::IsValidShape(proto),
+      absl_testing::StatusIs(
+          error::Code::INVALID_ARGUMENT,
+          ::testing::ContainsRegex("has dimensions with values below -1")));
 
   EXPECT_THAT(TensorShape::IsValidShape(proto),
-              testing::StatusIs(
+              absl_testing::StatusIs(
                   error::Code::INVALID_ARGUMENT,
                   ::testing::ContainsRegex("Shape.*is not fully defined")));
 }
@@ -181,11 +182,11 @@ TEST(PartialTensorShapeTest, BuildPartialTensorShape) {
   EXPECT_EQ(s4.AsProto().DebugString(), sp3.DebugString());
 
   sp3.add_dim()->set_size(std::numeric_limits<int64_t>::max());
-  EXPECT_THAT(
-      PartialTensorShape::BuildPartialTensorShape(sp3, &s4),
-      testing::StatusIs(error::Code::INVALID_ARGUMENT,
-                        ::testing::ContainsRegex(
-                            "Encountered overflow when multiplying shape")));
+  EXPECT_THAT(PartialTensorShape::BuildPartialTensorShape(sp3, &s4),
+              absl_testing::StatusIs(
+                  error::Code::INVALID_ARGUMENT,
+                  ::testing::ContainsRegex(
+                      "Encountered overflow when multiplying shape")));
 }
 
 TEST(PartialTensorShapeTest, PartialShapeFullyDefined) {
@@ -347,17 +348,18 @@ TEST(PartialTensorShapeTest, PartialShapeMergeWithInvalidData) {
   const PartialTensorShape d({-1, std::numeric_limits<int64_t>::max(), -1});
 
   EXPECT_THAT(a.MergeWith(b, &a),
-              testing::StatusIs(
+              absl_testing::StatusIs(
                   error::Code::INTERNAL,
                   ::testing::ContainsRegex("Cannot output result to itself")));
   EXPECT_THAT(b.MergeWith(c, &a),
-              testing::StatusIs(error::Code::INVALID_ARGUMENT,
-                                ::testing::ContainsRegex(
-                                    "Incompatible shapes during merge")));
-  EXPECT_THAT(c.MergeWith(d, &a),
-              testing::StatusIs(error::Code::INVALID_ARGUMENT,
-                                ::testing::ContainsRegex(
-                                    "Encountered overflow when multiplying")));
+              absl_testing::StatusIs(error::Code::INVALID_ARGUMENT,
+                                     ::testing::ContainsRegex(
+                                         "Incompatible shapes during merge")));
+  EXPECT_THAT(
+      c.MergeWith(d, &a),
+      absl_testing::StatusIs(
+          error::Code::INVALID_ARGUMENT,
+          ::testing::ContainsRegex("Encountered overflow when multiplying")));
 }
 
 TEST(PartialTensorShapeTest, MakePartialShapeEmpty) {

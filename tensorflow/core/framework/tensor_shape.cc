@@ -757,36 +757,36 @@ string TensorShapeRep::DebugString() const {
   if (shape.unknown_rank()) return "<unknown>";
   string s = "[";
   for (int i = 0; i < shape.dims(); i++) {
-    if (i > 0) strings::StrAppend(&s, ",");
+    if (i > 0) absl::StrAppend(&s, ",");
     int64_t dim = shape.dim_size(i);
     if (dim < 0) {
-      strings::StrAppend(&s, "?");
+      absl::StrAppend(&s, "?");
     } else {
-      strings::StrAppend(&s, dim);
+      absl::StrAppend(&s, dim);
     }
   }
-  strings::StrAppend(&s, "]");
+  absl::StrAppend(&s, "]");
   return s;
 }
 
 string TensorShapeRep::DebugString(const TensorShapeProto& proto) {
   string s;
   if (proto.unknown_rank()) {
-    strings::StrAppend(&s, "<unknown>");
+    absl::StrAppend(&s, "<unknown>");
     if (proto.dim_size() == 0) return s;
   }
-  strings::StrAppend(&s, "[");
+  absl::StrAppend(&s, "[");
   bool first = true;
   for (const auto& d : proto.dim()) {
-    if (!first) strings::StrAppend(&s, ",");
+    if (!first) absl::StrAppend(&s, ",");
     if (d.size() == -1) {
-      strings::StrAppend(&s, "?");
+      absl::StrAppend(&s, "?");
     } else {
-      strings::StrAppend(&s, d.size());
+      absl::StrAppend(&s, d.size());
     }
     first = false;
   }
-  strings::StrAppend(&s, "]");
+  absl::StrAppend(&s, "]");
   return s;
 }
 
@@ -869,10 +869,10 @@ string TensorShapeUtils::ShapeListString(
   string result = "[";
   bool first = true;
   for (const TensorShape& shape : shapes) {
-    strings::StrAppend(&result, (first ? "" : ", "), shape.DebugString());
+    absl::StrAppend(&result, first ? "" : ", ", shape.DebugString());
     first = false;
   }
-  strings::StrAppend(&result, "]");
+  absl::StrAppend(&result, "]");
   return result;
 }
 
@@ -990,10 +990,10 @@ string PartialTensorShapeUtils::PartialShapeListString(
   string result = "[";
   bool first = true;
   for (const PartialTensorShape& shape : shapes) {
-    strings::StrAppend(&result, (first ? "" : ", "), shape.DebugString());
+    absl::StrAppend(&result, first ? "" : ", ", shape.DebugString());
     first = false;
   }
-  strings::StrAppend(&result, "]");
+  absl::StrAppend(&result, "]");
   return result;
 }
 

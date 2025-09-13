@@ -49,8 +49,8 @@ std::vector<RegistrationInfo>* MutableCollectiveRegistry() {
 }  // namespace
 
 string CollGroupRuntimeDetails::ToString() const {
-  return strings::StrCat("CollGroupRuntimeDetails {communicator_key=",
-                         absl::CEscape(communicator_key), "}");
+  return absl::StrCat("CollGroupRuntimeDetails {communicator_key=",
+                      absl::CEscape(communicator_key), "}");
 }
 
 string CollGroupParams::ToString() const {
@@ -59,13 +59,13 @@ string CollGroupParams::ToString() const {
       " device_type=", device_type.type_string(), " num_tasks=", num_tasks,
       " runtime_details=", runtime_details.ToString(), " devices {");
   for (const auto& m : members) {
-    strings::StrAppend(&v, m.device.name(), ",");
+    absl::StrAppend(&v, m.device.name(), ",");
   }
-  strings::StrAppend(&v, "} num_devices_per_task={");
+  absl::StrAppend(&v, "} num_devices_per_task={");
   for (const auto& dpt : num_devices_per_task) {
-    strings::StrAppend(&v, dpt.first, ": ", dpt.second, ", ");
+    absl::StrAppend(&v, dpt.first, ": ", dpt.second, ", ");
   }
-  strings::StrAppend(&v, "}");
+  absl::StrAppend(&v, "}");
   return v;
 }
 
@@ -99,51 +99,51 @@ string CollInstanceParams::ToString() const {
       strings::StrCat("CollInstanceParams { instance_key=", instance_key,
                       " type=", type, " data_type=", DataTypeString(data_type),
                       " shape=", shape.DebugString(), " devices {");
-  strings::StrAppend(&v, "}, collective_name=", impl_details.collective_name,
-                     ", subdiv_offsets={");
-  strings::StrAppend(&v, "}, subdiv_offsets={");
+  absl::StrAppend(&v, "}, collective_name=", impl_details.collective_name,
+                  ", subdiv_offsets={");
+  absl::StrAppend(&v, "}, subdiv_offsets={");
   for (const auto& d : impl_details.subdiv_offsets) {
-    strings::StrAppend(&v, d, ",");
+    absl::StrAppend(&v, d, ",");
   }
-  strings::StrAppend(&v, "}, subdiv_perms={");
+  absl::StrAppend(&v, "}, subdiv_perms={");
   for (const auto& p : impl_details.subdiv_permutations) {
-    strings::StrAppend(&v, "{");
+    absl::StrAppend(&v, "{");
     for (const auto& i : p) {
-      strings::StrAppend(&v, i, ",");
+      absl::StrAppend(&v, i, ",");
     }
-    strings::StrAppend(&v, "}");  // one subdiv
+    absl::StrAppend(&v, "}");  // one subdiv
   }
   if (!impl_details.subdiv_source_rank.empty()) {
-    strings::StrAppend(&v, " subdiv_source_rank={");
+    absl::StrAppend(&v, " subdiv_source_rank={");
     for (const auto& r : impl_details.subdiv_source_rank) {
-      strings::StrAppend(&v, r, ",");
+      absl::StrAppend(&v, r, ",");
     }
-    strings::StrAppend(&v, "}");
+    absl::StrAppend(&v, "}");
   }  // all subdivs
   if (type == PERMUTE_COLLECTIVE) {
-    strings::StrAppend(&v, "}, permute_devices {");
+    absl::StrAppend(&v, "}, permute_devices {");
     for (const auto& d : devices) {
-      strings::StrAppend(&v, d, ",");
+      absl::StrAppend(&v, d, ",");
     }
-    strings::StrAppend(&v, "}, permute_permutation {");
+    absl::StrAppend(&v, "}, permute_permutation {");
     for (const auto& p : permutation) {
-      strings::StrAppend(&v, p, ",");
+      absl::StrAppend(&v, p, ",");
     }
-    strings::StrAppend(&v, "}");
+    absl::StrAppend(&v, "}");
   }
   return v;
 }
 
 string CollectiveParams::ToString() const {
-  string v = strings::StrCat("CollectiveParams ", name, " {", group.ToString());
-  strings::StrAppend(&v, " ", instance.ToString());
+  string v = absl::StrCat("CollectiveParams ", name, " {", group.ToString());
+  absl::StrAppend(&v, " ", instance.ToString());
   strings::StrAppend(&v, " default_rank=", default_rank,
                      " is_source=", is_source, " source_rank=", source_rank,
                      " subdiv_rank={");
   for (const auto& r : subdiv_rank) {
-    strings::StrAppend(&v, r, ",");
+    absl::StrAppend(&v, r, ",");
   }
-  strings::StrAppend(&v, "}}");
+  absl::StrAppend(&v, "}}");
   return v;
 }
 

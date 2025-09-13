@@ -413,7 +413,7 @@ class Node {
   }
 
   // Returns a longer node name that is guaranteed to be unique.
-  string long_name() const { return strings::StrCat(name_, "(id:", id_, ")"); }
+  string long_name() const { return absl::StrCat(name_, "(id:", id_, ")"); }
 
   // Returns the node name.
   const string& name() const { return name_; }
