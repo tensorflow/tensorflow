@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/executable_run_options.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/buffer_allocations.h"
@@ -429,5 +430,24 @@ ThunkInfoProto Thunk::ThunkInfo::ToProto() const {
   proto.set_execution_stream_id(execution_stream_id.value());
   return proto;
 }
+
+absl::StatusOr<ShapedSlice> ShapedSlice::FromProto(
+    const ShapedSliceProto& proto,
+    absl::Span<const BufferAllocation> buffer_allocations) {
+  ShapedSlice shaped_slice;
+  TF_ASSIGN_OR_RETURN(
+      shaped_slice.slice,
+      BufferAllocation::Slice::FromProto(proto.slice(), buffer_allocations));
+  TF_ASSIGN_OR_RETURN(shaped_slice.shape, Shape::FromProto(proto.shape()));
+  return shaped_slice;
+}
+
+absl::StatusOr<ShapedSliceProto> ShapedSlice::ToProto() const {
+  ShapedSliceProto proto;
+  TF_ASSIGN_OR_RETURN(*proto.mutable_slice(), slice.ToProto());
+  *proto.mutable_shape() = shape.ToProto();
+  return proto;
+}
+
 }  // namespace gpu
 }  // namespace xla

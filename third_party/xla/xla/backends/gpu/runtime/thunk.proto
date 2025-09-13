@@ -133,6 +133,15 @@ message MemzeroThunkProto {
   xla.buffer_assignment.BufferAllocationSliceProto dest_buffer = 1;
 }
 
+message ShapedSliceProto {
+  xla.buffer_assignment.BufferAllocationSliceProto slice = 1;
+  xla.ShapeProto shape = 2;
+}
+
+message InfeedThunkProto {
+  repeated ShapedSliceProto dest_slices = 1;
+}
+
 message ThunkProto {
   ThunkInfoProto thunk_info = 1;
 
@@ -155,6 +164,7 @@ message ThunkProto {
     HostExecuteDoneThunkProto host_execute_done_thunk = 17;
     DynamicSliceThunkProto dynamic_slice_thunk = 18;
     MemzeroThunkProto memzero_thunk = 19;
+    InfeedThunkProto infeed_thunk = 21;
   }
 }
 
