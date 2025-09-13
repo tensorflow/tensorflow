@@ -513,6 +513,9 @@ bool OneDnnContractionRewriter::ShouldRewriteDot(
 
 bool OneDnnContractionRewriter::ShouldRewriteConv(
     const HloInstruction* conv_instr) {
+  // TODO(intel-tf): remove this restriction after enabling oneDNN convolution
+  // support in thunk runtime.
+  return false;
   if (conv_instr->opcode() != HloOpcode::kConvolution) return false;
   if (conv_instr->HasControlDependencies()) return false;
   if (!IsSupportedType(conv_instr->shape().element_type())) return false;

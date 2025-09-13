@@ -132,6 +132,36 @@ dnnl::memory::desc ShapeToMemDesc(const Shape& shape);
 
 Shape MemDescToXlaShapeFlattened(const dnnl::memory::desc& md);
 
+// Define a struct to encapsulate oneDNN memory and primitive objects.
+struct OneDnnResources {
+  // Primitive object
+  dnnl::primitive primitive;
+
+  // Memory objects
+  dnnl::memory src_mem;
+  dnnl::memory wei_mem;
+  dnnl::memory dst_mem;
+  dnnl::memory scratch_mem;
+
+  // Post-operation arguments
+  std::vector<std::pair<int, dnnl::memory>> postop_args;
+
+  // Memory reference handlers for arguments and results.
+  std::vector<MemrefInfoHandler> arg_memrefs;
+  std::vector<MemrefInfoHandler> result_memrefs;
+
+  // Constructor to initialize all members to default values.
+  OneDnnResources()
+      : primitive(dnnl::primitive()),
+        src_mem(dnnl::memory()),
+        wei_mem(dnnl::memory()),
+        dst_mem(dnnl::memory()),
+        scratch_mem(dnnl::memory()),
+        postop_args(),
+        arg_memrefs(),
+        result_memrefs() {}
+};
+
 }  // namespace cpu
 }  // namespace xla
 

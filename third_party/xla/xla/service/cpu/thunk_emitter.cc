@@ -61,6 +61,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/infeed_thunk.h"
 #include "xla/backends/cpu/runtime/kernel_thunk.h"
 #include "xla/backends/cpu/runtime/logical_id_thunk.h"
+#include "xla/backends/cpu/runtime/onednn/onednn_op_thunk.h"
 #include "xla/backends/cpu/runtime/outfeed_thunk.h"
 #include "xla/backends/cpu/runtime/reduce_scatter_thunk.h"
 #include "xla/backends/cpu/runtime/rng_state_thunk.h"
@@ -1256,7 +1257,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFftThunk(
       /*output_shape=*/instruction->shape());
 }
 
-static absl::StatusOr<CustomCallThunk::OpBuffers> GetCustomCallOpBuffers(
+// Generic helper to collect argument/result slices for different OpBuffers
+template <typename OpBuffers>
+static absl::StatusOr<OpBuffers> GetOpBuffers(
     const HloInstruction* instruction,
     const BufferAssignment& buffer_assignment) {
   // Collect buffer slices for all operands.
@@ -1281,13 +1284,47 @@ static absl::StatusOr<CustomCallThunk::OpBuffers> GetCustomCallOpBuffers(
     results_shapes.push_back(indexed.shape);
   }
 
-  return CustomCallThunk::OpBuffers{
+  return OpBuffers{
       /*arguments_buffers=*/std::move(arguments_buffers),
       /*arguments_shapes=*/std::move(arguments_shapes),
       /*results_buffers=*/std::move(results_buffers),
       /*results_shapes=*/std::move(results_shapes),
       /*is_tuple_result=*/instruction->shape().IsTuple(),
   };
+}
+
+static absl::StatusOr<CustomCallThunk::OpBuffers> GetCustomCallOpBuffers(
+    const HloInstruction* instruction,
+    const BufferAssignment& buffer_assignment) {
+  return GetOpBuffers<CustomCallThunk::OpBuffers>(instruction,
+                                                  buffer_assignment);
+}
+
+static absl::StatusOr<OneDnnOpThunk::OpBuffers> GetOneDnnOpBuffers(
+    const HloInstruction* instruction,
+    const BufferAssignment& buffer_assignment) {
+  return GetOpBuffers<OneDnnOpThunk::OpBuffers>(instruction, buffer_assignment);
+}
+
+absl::StatusOr<ThunkSequence> ThunkEmitter::EmitOneDnnOpThunk(
+    const HloInstruction* instruction) {
+  auto custom_call = Cast<HloCustomCallInstruction>(instruction);
+  auto custom_call_target = custom_call->custom_call_target();
+  auto backend_config = custom_call->backend_config<BackendConfig>();
+
+  OneDnnOpThunk::OneDnnOpConfig config;
+  if (custom_call_target == "__onednn$matmul") {
+    config = backend_config->onednn_matmul_config();
+  } else {
+    return Unimplemented(
+        "Custom call target %s is not supported in thunk runtime",
+        custom_call_target);
+  }
+
+  TF_ASSIGN_OR_RETURN(auto op_buffers,
+                      GetOneDnnOpBuffers(instruction, buffer_assignment_));
+  return ThunkSequence::Of<OneDnnOpThunk>(
+      custom_call_target, ThunkInfo(custom_call), op_buffers, config);
 }
 
 static bool IsValidCustomCallApiVersion(CustomCallApiVersion api_version) {
@@ -1309,10 +1346,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCustomCallThunk(
   // TODO(penporn): Support these existing targets.
   auto custom_call_target = custom_call->custom_call_target();
   if (custom_call_target == "PadToStatic" ||
-      custom_call_target == "__onednn$matmul" ||
+      custom_call_target == "__onednn$convolution" ||
       custom_call_target == "__onednn$softmax" ||
-      custom_call_target == "__onednn$layernorm" ||
-      custom_call_target == "__onednn$matmul_reorder") {
+      custom_call_target == "__onednn$layernorm") {
     return Unimplemented("Custom call target %s is not implemented.",
                          custom_call_target);
   }
@@ -1320,6 +1356,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCustomCallThunk(
     return EmitTopKThunk(custom_call);
   } else if (custom_call_target == "SliceToDynamic") {
     return EmitSliceToDynamicThunk(instruction);
+  } else if (absl::StartsWith(custom_call->custom_call_target(), "__onednn$")) {
+    return EmitOneDnnOpThunk(instruction);
   }
 
   // Check the API version.
