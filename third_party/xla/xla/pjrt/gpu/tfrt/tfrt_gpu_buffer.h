@@ -171,7 +171,7 @@ class TfrtGpuBuffer final : public PjRtBuffer {
       ABSL_LOCKS_EXCLUDED(mu_);
 
   tsl::AsyncValueRef<bool> GetDonationEvent() {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     return donation_event_;
   }
 
