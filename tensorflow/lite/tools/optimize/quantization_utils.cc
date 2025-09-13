@@ -414,7 +414,7 @@ void SymmetricPerBlockQuantizeValues(
         for (indices[3] = 0; indices[3] < tensor_dims.Dims(3); indices[3]++) {
           int index = Offset(tensor_dims, indices);
           int scale_indices[4] = {indices[0], indices[1], indices[2],
-                                  indices[3] % blocksize};
+                                  indices[3] / blocksize};
           int scale_index = Offset(scale_dims, scale_indices);
           const float val = input[index];
           const int32_t quantized_value =
