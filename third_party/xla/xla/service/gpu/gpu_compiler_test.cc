@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
@@ -2132,6 +2133,109 @@ TEST_F(GpuCompilerTest, NoCudnnVectorizationOnHopperAndBeyond) {
               absl_testing::IsOkAndHolds(true));
 }
 
+// Define a test-specific enum for expected TopK implementations.
+enum class TopKImpl {
+  kCustomKernel,  // Custom GPU kernel
+  kSelectK,       // raft::select_k
+  kSort           // Fallback Sort+Slice
+};
+
+// Test fixture for verifying GPU TopK lowering to SelectK or custom kernel.
+class GpuCompilerSelectKTest
+    : public GpuCompilerTest,
+      public ::testing::WithParamInterface<std::tuple<int, int, TopKImpl>> {};
+
+TEST_P(GpuCompilerSelectKTest, SelectKOrCustomKernelThunk) {
+  int n = std::get<0>(GetParam());
+  int k = std::get<1>(GetParam());
+  TopKImpl expected_impl = std::get<2>(GetParam());
+
+  // Generate HLO text with parameters substituted.
+  std::string hlo_text = absl::Substitute(R"(
+HloModule m
+
+ENTRY main {
+  p = f32[8,$0]{1,0} parameter(0)
+  ROOT t = (f32[8,$1]{1,0}, s32[8,$1]{1,0}) topk(p), k=$1, largest=true
+}
+)",
+                                          n, k);
+
+  // Configure module with debug options for experimental raft select_k.
+  HloModuleConfig config;
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_gpu_experimental_use_raft_select_k(true);
+  config.set_debug_options(debug_options);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_text, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> compiled_module,
+      backend().compiler()->RunHloPasses(module->Clone(),
+                                         backend().default_stream_executor(),
+                                         /*device_allocator=*/nullptr));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Executable> executable,
+      backend().compiler()->RunBackend(std::move(compiled_module),
+                                       backend().default_stream_executor(),
+                                       {/*device_allocator=*/nullptr,
+                                        /*thread_pool=*/nullptr,
+                                        /*layout_canonicalization_callback=*/{},
+                                        /*is_autotuning_compilation=*/false}));
+
+  // Downcast to GPU executable
+  xla::gpu::GpuExecutable* gpu_executable =
+      tensorflow::down_cast<xla::gpu::GpuExecutable*>(executable.get());
+  ASSERT_NE(gpu_executable, nullptr);
+
+  // Get the thunk sequence and check its size and type
+  const SequentialThunk& seq_thunk = gpu_executable->GetThunk();
+  switch (expected_impl) {
+    case TopKImpl::kCustomKernel: {
+      ASSERT_EQ(seq_thunk.thunks().size(), 1);
+      EXPECT_EQ(seq_thunk.thunks().front()->kind(), Thunk::Kind::kCustomKernel);
+      break;
+    }
+    case TopKImpl::kSelectK: {
+      ASSERT_EQ(seq_thunk.thunks().size(), 1);
+      EXPECT_EQ(seq_thunk.thunks().front()->kind(), Thunk::Kind::kSelectK);
+      break;
+    }
+    case TopKImpl::kSort: {
+      ASSERT_GE(seq_thunk.thunks().size(), 1);
+      if (seq_thunk.thunks().size() == 1) {
+        EXPECT_EQ(seq_thunk.thunks().front()->kind(),
+                  Thunk::Kind::kCommandBuffer);
+      } else if (seq_thunk.thunks().size() == 4) {
+        EXPECT_EQ(seq_thunk.thunks()[1]->kind(), Thunk::Kind::kCubSort);
+      } else {
+        FAIL() << "Unexpected thunk sequence size: "
+               << seq_thunk.thunks().size();
+      }
+      break;
+    }
+    default:
+      FAIL() << "Unexpected TopKImpl";
+  }
+}
+
+auto SelectKTestParams() {
+  // Depending on N and K, XLA chooses different TopK implementations:
+  // CustomKernel, raft::select_k, or Sort+Slice.
+  // The heuristic for selecting between TopK CustomKernel and
+  // raft::matrix::select_k was developed as part of the initial research
+  // described in b/409009349.
+  return ::testing::Values(std::make_tuple(1023, 4, TopKImpl::kSelectK),
+                           std::make_tuple(1024, 4, TopKImpl::kCustomKernel),
+                           std::make_tuple(1024, 16, TopKImpl::kSelectK),
+                           std::make_tuple(8192, 24, TopKImpl::kSelectK),
+                           std::make_tuple(8192, 512, TopKImpl::kSort));
+}
+// Instantiate the test suite with (n, k, expected_kind) pairs.
+INSTANTIATE_TEST_SUITE_P(SelectKOrCustomKernel, GpuCompilerSelectKTest,
+                         SelectKTestParams());
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
