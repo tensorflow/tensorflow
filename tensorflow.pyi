@@ -1,0 +1,6 @@
+# Minimal type stub for Pyright to recognize tf.Variable and its numpy method
+import numpy as np
+
+class Variable:
+    def __init__(self, initial_value): ...
+    def numpy(self) -> np.ndarray: ...
