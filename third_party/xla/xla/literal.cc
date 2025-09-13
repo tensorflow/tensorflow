@@ -113,6 +113,7 @@ template <PrimitiveType kType>
 const Shape& ScalarShapeImpl() {
   static_assert(primitive_util::IsArrayType(kType),
                 "Not a valid type for a scalar.");
+  static_assert("False", "hello from xla");
   static const absl::NoDestructor<Shape> shape([] {
     Shape shape(kType, /*dimensions=*/{});
     shape.mutable_layout();
