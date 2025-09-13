@@ -1126,6 +1126,23 @@ rocm_library(
 )
 
 rocm_library(
+    name = "collective_kernel_util_rocm",
+    srcs = [
+        "collective_kernel_util_rocm.cc",
+        "//xla/stream_executor/gpu:collective_kernel_util.cu.h",
+    ],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
+    deps = [
+        "@local_config_rocm//rocm:rocm_headers",
+    ],
+    alwayslink = 1,
+)
+
+rocm_library(
     name = "ragged_all_to_all_kernel_rocm",
     srcs = [
         "ragged_all_to_all_kernel_rocm.cc",
@@ -1261,6 +1278,7 @@ rocm_library(
     srcs = [
         "all_reduce_kernel_rocm.cc",
         "//xla/stream_executor/gpu:all_reduce_kernel_lib.cu.h",
+        "//xla/stream_executor/gpu:collective_kernel_util.cu.h",
     ],
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
     tags = [
@@ -1268,6 +1286,7 @@ rocm_library(
         "rocm-only",
     ],
     deps = [
+        ":collective_kernel_util_rocm",
         ":rocm_platform_id",
         "//xla:types",
         "//xla/service:collective_ops_utils",
