@@ -5024,7 +5024,49 @@ diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.ml
 diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
 --- stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
 +++ stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
-@@ -1633,17 +1633,17 @@
+@@ -27,6 +27,14 @@
+   // CHECK-NOT: stablehlo.constant
+   // CHECK: return %arg0
+   return %1 : tensor<f32>
++}
++
++// CHECK-LABEL: @add_cst_on_rhs_with_attrs
++func.func @add_cst_on_rhs_with_attrs(%arg0: tensor<f32>) -> tensor<f32> {
++  %cst = stablehlo.constant dense<1.0> : tensor<f32>
++  // CHECK: stablehlo.add %arg0, %cst {mhlo.frontend_attributes = {foo = "1"}} : tensor<f32>
++  %0 = stablehlo.add %cst, %arg0 {mhlo.frontend_attributes = {foo = "1"}} : tensor<f32>
++  return %0 : tensor<f32>
+ }
+ 
+ // -----
+@@ -927,6 +935,26 @@
+   // CHECK-NOT: stablehlo.constant
+   // CHECK: return %arg0 : tensor<f32>
+   return %0 : tensor<f32>
++}
++
++// CHECK-LABEL: @multiply_by_one_merge_attrs
++func.func @multiply_by_one_merge_attrs(%arg0: tensor<f32>) -> tensor<f32> {
++  %cst = stablehlo.constant dense<1.0> : tensor<f32>
++  %0 = stablehlo.add %arg0, %arg0 {mhlo.frontend_attributes = {bar = "1"}} : tensor<f32>
++  %1 = stablehlo.multiply %0, %cst {mhlo.frontend_attributes = {foo = "1"}} : tensor<f32>
++  // CHECK: %[[ADD:.*]] = stablehlo.add %arg0, %arg0 {mhlo.frontend_attributes = {bar = "1", foo = "1"}} : tensor<f32>
++  // CHECK: return %[[ADD]] : tensor<f32>
++  return %1 : tensor<f32>
++}
++
++// CHECK-LABEL: @multiply_by_one_merge_attrs_conflict
++func.func @multiply_by_one_merge_attrs_conflict(%arg0: tensor<f32>) -> tensor<f32> {
++  %cst = stablehlo.constant dense<1.0> : tensor<f32>
++  %0 = stablehlo.add %arg0, %arg0 {mhlo.frontend_attributes = {bar = "1", foo = "0"}} : tensor<f32>
++  %1 = stablehlo.multiply %0, %cst {mhlo.frontend_attributes = {foo = "1"}} : tensor<f32>
++  // CHECK: %[[ADD:.*]] = stablehlo.add %arg0, %arg0 {mhlo.frontend_attributes = {bar = "1", foo = "1"}} : tensor<f32>
++  // CHECK: return %[[ADD]] : tensor<f32>
++  return %1 : tensor<f32>
+ }
+ 
+ // -----
+@@ -1633,17 +1661,17 @@
    %s4 = stablehlo.select %4, %arg1, %arg2 : (tensor<2xi1>, tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
    %s5 = stablehlo.select %5, %arg1, %arg3 : (tensor<2xi1>, tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
  
@@ -5053,7 +5095,7 @@ diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplific
    return %s0, %s1, %s2, %s3, %s4, %s5 :
           tensor<2xi32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>
  }
-@@ -1674,23 +1674,23 @@
+@@ -1674,23 +1702,23 @@
    %s6 = stablehlo.select %6, %arg3, %arg2 : (tensor<i1>, tensor<i32>, tensor<i32>) -> tensor<i32>
    %s7 = stablehlo.select %7, %arg2, %arg3 : (tensor<i1>, tensor<i32>, tensor<i32>) -> tensor<i32>
  
@@ -5094,7 +5136,7 @@ diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplific
    return %s0, %s1, %s2, %s3, %s4, %s5, %s6, %s7 : tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>,
                                                    tensor<i32>, tensor<i32>, tensor<i32>, tensor<i32>
  }
-@@ -2040,12 +2040,12 @@
+@@ -2040,12 +2068,12 @@
  
  // CHECK-LABEL: @push_shape_ops_to_end
  func.func @push_shape_ops_to_end(%arg0 : tensor<12xf32>) -> tensor<3x4x2x1xf32> {
@@ -5113,7 +5155,7 @@ diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplific
    %0 = stablehlo.reshape %arg0 : (tensor<12xf32>) -> tensor<3x4xf32>
    %1 = stablehlo.broadcast %0, sizes = [1, 2] : (tensor<3x4xf32>) -> tensor<1x2x3x4xf32>
    %2 = stablehlo.cosine %1 : (tensor<1x2x3x4xf32>) -> tensor<1x2x3x4xf32>
-@@ -2059,9 +2059,9 @@
+@@ -2059,9 +2087,9 @@
  
  // CHECK-LABEL: @reorder_with_type_change
  func.func @reorder_with_type_change(%arg0 : tensor<3x4xi32>) -> tensor<12xi64> {
@@ -5616,7 +5658,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFold
 diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
 --- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
 +++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
-@@ -64,7 +64,7 @@
+@@ -64,28 +64,76 @@
  static constexpr StablehloAggressiveSimplificationPassOptions kDefaultOptions;
  
  static bool isIotaRange(ArrayRef<int64_t> dims) {
@@ -5625,7 +5667,55 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
      return static_cast<int64_t>(it.index()) == it.value();
    });
  }
-@@ -72,20 +72,20 @@
+ 
++bool mergeDiscardableAttributes(ValueRange sourceValues,
++                                ValueRange destValues) {
++  if (sourceValues.size() != destValues.size()) return false;
++  bool changed = false;
++  for (auto [source, dest] : llvm::zip(sourceValues, destValues)) {
++    if (mergeDiscardableAttributes(source, dest)) changed = true;
++  }
++  return changed;
++}
++
++bool mergeDiscardableAttributes(Value sourceValue, Value destValue) {
++  Operation* sourceOp = sourceValue.getDefiningOp();
++  Operation* destOp = destValue.getDefiningOp();
++  if (!sourceOp || !destOp) return false;
++
++  auto sourceAttrs = sourceOp->getDiscardableAttrDictionary();
++  if (!sourceAttrs) return true;
++
++  auto destAttrs = destOp->getDiscardableAttrDictionary();
++  if (!destAttrs) {
++    destOp->setDiscardableAttrs(sourceAttrs);
++    return true;
++  }
++
++  NamedAttrList mergedAttrs(destAttrs);
++  for (auto attr : sourceAttrs.getValue()) {
++    if (attr.getName() == "mhlo.frontend_attributes" &&
++        mergedAttrs.get("mhlo.frontend_attributes")) {
++      // Merge frontend attributes, prioritizing source attributes.
++      auto destFrontendAttrs =
++          cast<DictionaryAttr>(mergedAttrs.get("mhlo.frontend_attributes"));
++      auto sourceFrontendAttrs = cast<DictionaryAttr>(attr.getValue());
++      NamedAttrList frontendAttrs(destFrontendAttrs);
++      for (auto sourceAttr : sourceFrontendAttrs) {
++        frontendAttrs.set(sourceAttr.getName(), sourceAttr.getValue());
++      }
++      mergedAttrs.set("mhlo.frontend_attributes",
++                      frontendAttrs.getDictionary(destOp->getContext()));
++    } else {
++      // Otherwise prioritize source attributes
++      mergedAttrs.set(attr.getName(), attr.getValue());
++    }
++  }
++
++  destOp->setDiscardableAttrs(mergedAttrs.getDictionary(destOp->getContext()));
++  return true;
++}
++
  template <typename OpType>
  struct SimplifyOpRewritePattern : OpRewritePattern<OpType> {
    SimplifyOpRewritePattern(
@@ -5651,7 +5741,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
  };
  
  /// Matches when either of the submatchers match.
-@@ -93,7 +93,7 @@
+@@ -93,7 +141,7 @@
  struct m_AnyOf {
    m_AnyOf(MatcherA a, MatcherB b) : matcherA(a), matcherB(b) {}
  
@@ -5660,7 +5750,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
  
    MatcherA matcherA;
    MatcherB matcherB;
-@@ -146,7 +146,7 @@
+@@ -146,7 +194,7 @@
    using SimplifyOpRewritePattern::SimplifyOpRewritePattern;
  
    LogicalResult matchAndRewrite(CompareOp op,
@@ -5669,7 +5759,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
      RankedTensorType type = op.getType();
  
      // Bail out on non-integer comparison.
-@@ -211,7 +211,7 @@
+@@ -211,7 +259,7 @@
   public:
    using SimplifyOpRewritePattern::SimplifyOpRewritePattern;
    LogicalResult matchAndRewrite(ConcatenateOp op,
@@ -5678,7 +5768,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
      if (op.getInputs().size() != 1 ||
          op.getInputs().front().getType() != op.getType())
        return rewriter.notifyMatchFailure(op, "not single operand noop-concat");
-@@ -227,7 +227,7 @@
+@@ -227,7 +275,7 @@
   public:
    using SimplifyOpRewritePattern::SimplifyOpRewritePattern;
    LogicalResult matchAndRewrite(ConcatenateOp op,
@@ -5687,7 +5777,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
      auto axis = op.getDimension();
      llvm::SmallVector<Value> newOperands = llvm::to_vector(
          llvm::make_filter_range(op.getOperands(), [&](Value operand) {
-@@ -249,8 +249,8 @@
+@@ -249,8 +297,8 @@
  class ConcatenateOpFlatten : public SimplifyOpRewritePattern<ConcatenateOp> {
    using SimplifyOpRewritePattern::SimplifyOpRewritePattern;
    LogicalResult matchAndRewrite(ConcatenateOp op,
@@ -5698,7 +5788,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
        auto definingOp = dyn_cast_or_null<ConcatenateOp>(val.getDefiningOp());
        // To avoid inflate the memory footprint, only flatten the
        // ConcatenateOp when it has only one use.
-@@ -293,7 +293,7 @@
+@@ -293,7 +341,7 @@
    using SimplifyOpRewritePattern::SimplifyOpRewritePattern;
  
    LogicalResult matchAndRewrite(CustomCallOp op,
@@ -5707,7 +5797,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
      constexpr StringRef kMhloBackendConfigAttrName = "mhlo.backend_config";
  
      if (op.getApiVersion() != CustomCallApiVersion::API_VERSION_ORIGINAL)
-@@ -327,7 +327,7 @@
+@@ -327,7 +375,7 @@
  /////////////////////////////////
  
  // Used in DRR file.
@@ -5716,7 +5806,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
                                                 ArrayRef<int64_t> dims,
                                                 ArrayRef<int64_t> dimsParent) {
    auto mergedDims = llvm::map_to_vector(
-@@ -350,8 +350,8 @@
+@@ -350,8 +398,8 @@
  /// the op is used outside of the HLO dialect (e.g. in func.return). In these
  /// cases, we insert a stablehlo.convert to smooth things out.
  template <typename OpTy, typename... Args>
@@ -5727,7 +5817,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
    auto newOp = rewriter.create<OpTy>(op->getLoc(), std::forward<Args>(args)...);
  
    llvm::SmallVector<Value> replacementResults;
-@@ -360,7 +360,7 @@
+@@ -360,7 +408,7 @@
    for (auto [opResult, newOpResult] :
         llvm::zip(op->getResults(), newOp->getResults())) {
      Value replacementResult = newOpResult;
@@ -5736,7 +5826,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
            return user->getDialect() != op->getDialect();
          }))
        replacementResult = rewriter.create<ConvertOp>(
-@@ -379,7 +379,7 @@
+@@ -379,7 +427,7 @@
    using SimplifyOpRewritePattern::SimplifyOpRewritePattern;
  
    LogicalResult matchAndRewrite(DynamicBroadcastInDimOp op,
@@ -5745,7 +5835,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
      RankedTensorType operandType = op.getOperand().getType();
      if (!operandType.hasStaticShape())
        return rewriter.notifyMatchFailure(op, "requires operand static shape");
-@@ -410,7 +410,7 @@
+@@ -410,7 +458,7 @@
  // DynamicGatherOp
  /////////////////////////////////
  
@@ -5754,7 +5844,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
    auto denseAttr = cast<ElementsAttr>(attr);
    SmallVector<int64_t> result;
    result.reserve(denseAttr.getNumElements());
-@@ -427,7 +427,7 @@
+@@ -427,7 +475,7 @@
    using SimplifyOpRewritePattern<DynamicIotaOp>::SimplifyOpRewritePattern;
  
    LogicalResult matchAndRewrite(DynamicIotaOp iota,
@@ -5763,7 +5853,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
      // Result type has static shape, replace with iota.
      auto resultTy = cast<ShapedType>(iota.getType());
      if (!resultTy.hasStaticShape())
-@@ -447,7 +447,7 @@
+@@ -447,7 +495,7 @@
    using SimplifyOpRewritePattern<DynamicIotaOp>::SimplifyOpRewritePattern;
  
    LogicalResult matchAndRewrite(DynamicIotaOp iota,
@@ -5772,7 +5862,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
      auto resultType = cast<ShapedType>(iota.getType());
      if (resultType.getRank() < 2)
        return rewriter.notifyMatchFailure(iota, "requires rank >= 2");
-@@ -496,7 +496,7 @@
+@@ -496,7 +544,7 @@
    using SimplifyOpRewritePattern::SimplifyOpRewritePattern;
  
    LogicalResult matchAndRewrite(DynamicReshapeOp op,
@@ -5781,7 +5871,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
      // This is a noop when the output type is already a static shape.
      RankedTensorType type = op.getType();
      if (!type.hasStaticShape())
-@@ -516,8 +516,8 @@
+@@ -516,8 +564,8 @@
    using SimplifyOpRewritePattern::SimplifyOpRewritePattern;
  
    LogicalResult matchAndRewrite(DynamicReshapeOp op,
@@ -5792,7 +5882,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
      if (!defOp ||
          !defOp->hasTrait<mlir::OpTrait::SameOperandsAndResultShape>()) {
        return rewriter.notifyMatchFailure(
-@@ -549,7 +549,7 @@
+@@ -549,7 +597,7 @@
    using SimplifyOpRewritePattern<DynamicSliceOp>::SimplifyOpRewritePattern;
  
    LogicalResult matchAndRewrite(DynamicSliceOp dynamicSlice,
@@ -5801,7 +5891,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
      Value input = dynamicSlice.getOperand();
      auto inputType = cast<ShapedType>(input.getType());
      if (!inputType.hasStaticShape())
-@@ -558,7 +558,7 @@
+@@ -558,7 +606,7 @@
  
      auto sliceSizes = dynamicSlice.getSliceSizes();
      SmallVector<int64_t, 4> tempStartIndices;
@@ -5810,7 +5900,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
           llvm::enumerate(dynamicSlice.getStartIndices())) {
        APInt val;
        Value start = indexAndSliceStart.value();
-@@ -579,7 +579,7 @@
+@@ -579,7 +627,7 @@
      // pack them into a single tensor.
      auto sliceStartIndices = rewriter.getDenseI64ArrayAttr(tempStartIndices);
      SmallVector<int64_t, 4> tempSliceLimits;
@@ -5819,7 +5909,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
        tempSliceLimits.push_back(start + size);
      }
      auto sliceLimits = rewriter.getDenseI64ArrayAttr(tempSliceLimits);
-@@ -605,7 +605,7 @@
+@@ -605,7 +653,7 @@
    using SimplifyOpRewritePattern<RealDynamicSliceOp>::SimplifyOpRewritePattern;
  
    LogicalResult matchAndRewrite(RealDynamicSliceOp op,
@@ -5828,7 +5918,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
      // This rewrite only works for unit strides because DynamicSliceOp
      // doesn't support strides (i.e. it implicitly has unit strides).
      DenseIntElementsAttr stridesAttr;
-@@ -670,11 +670,11 @@
+@@ -670,11 +718,11 @@
    using SimplifyOpRewritePattern::SimplifyOpRewritePattern;
  
    LogicalResult matchAndRewrite(ReduceOp op,
@@ -5842,7 +5932,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
        if (llvm::any_of(retOp.getResults(), [retRegion](Value result) {
              return result.getParentRegion() == retRegion;
            }))
-@@ -693,7 +693,7 @@
+@@ -693,7 +741,7 @@
    using SimplifyOpRewritePattern::SimplifyOpRewritePattern;
  
    LogicalResult matchAndRewrite(ReduceOp op,
@@ -5851,7 +5941,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
      // We require all reduce shapes to be the same, up to the element types, so
      // we can just use the first operand and the first result as
      // representatives.
-@@ -733,7 +733,7 @@
+@@ -733,7 +781,7 @@
    using SimplifyOpRewritePattern::SimplifyOpRewritePattern;
  
    LogicalResult matchAndRewrite(ReduceOp op,
@@ -5860,7 +5950,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
      SmallVector<OpResult, 4> usedResults;
      llvm::copy_if(op.getResults(), std::back_inserter(usedResults),
                    [](OpResult result) { return !result.use_empty(); });
-@@ -745,7 +745,7 @@
+@@ -745,7 +793,7 @@
      const auto numOperands = op.getNumOperands();
      const auto numOperandPairs = numOperands / pairSize;
  
@@ -5869,7 +5959,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
      auto retOp = cast<ReturnOp>(reducerBlock.getTerminator());
  
      assert(numOperandPairs == op.getNumResults() &&
-@@ -757,10 +757,10 @@
+@@ -757,10 +805,10 @@
        if (v.getParentRegion() == reducerBody) workList.push_back(v);
      };
  
@@ -5882,7 +5972,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
        auto resultNo = usedResult.getResultNumber();
        usedReturnOperands.set(resultNo);
  
-@@ -774,9 +774,9 @@
+@@ -774,9 +822,9 @@
            const auto pairNo = blockArg.getArgNumber() % numOperandPairs;
            usedArgs.set(pairNo);
            usedArgs.set(pairNo + numOperandPairs);
@@ -5894,7 +5984,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
              addToWorkList(operand);
          }
        }
-@@ -785,7 +785,7 @@
+@@ -785,7 +833,7 @@
      const auto newNumOperandPairs = usedResults.size();
      const auto newNumOperands = newNumOperandPairs * pairSize;
      if (newNumOperands != usedArgs.count()) {
@@ -5903,7 +5993,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
          diag << "non-conservative case: " << newNumOperandPairs
               << " return results should be matched with " << newNumOperands
               << " operands, but got " << usedArgs.count();
-@@ -809,7 +809,7 @@
+@@ -809,7 +857,7 @@
      auto newOp =
          rewriter.create<ReduceOp>(op.getLoc(), newInputs, newInitVals,
                                    op.getDimensionsAttr(), newElementTypes);
@@ -5912,7 +6002,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
  
      IRMapping mapper;
      for (auto arg : reducerBlock.getArguments())
-@@ -818,11 +818,11 @@
+@@ -818,11 +866,11 @@
                     newReducerBlock->addArgument(arg.getType(), arg.getLoc()));
  
      rewriter.setInsertionPointToStart(newReducerBlock);
@@ -5926,7 +6016,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
        if (usedReturnOperands[en.index()])
          newReturnOperands.push_back(mapper.lookup(en.value()));
  
-@@ -830,7 +830,7 @@
+@@ -830,7 +878,7 @@
  
      // Build new results list (unused entries will be null).
      SmallVector<Value> newResults(op.getNumResults());
@@ -5935,7 +6025,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
        newResults[result.getResultNumber()] = newOp.getResult(i);
      }
  
-@@ -851,7 +851,7 @@
+@@ -851,7 +899,7 @@
    using SimplifyOpRewritePattern::SimplifyOpRewritePattern;
  
    LogicalResult matchAndRewrite(GetDimensionSizeOp op,
@@ -5944,7 +6034,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
      // Fold get_dimension_size when the queried dim is statically known.
      RankedTensorType operandTy = op.getOperand().getType();
  
-@@ -877,7 +877,7 @@
+@@ -877,7 +925,7 @@
    using SimplifyOpRewritePattern::SimplifyOpRewritePattern;
  
    LogicalResult matchAndRewrite(GatherOp gather,
@@ -5953,7 +6043,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
      DenseIntElementsAttr index;
      if (!matchPattern(gather.getStartIndices(), m_Constant(&index)))
        return failure();
-@@ -952,7 +952,7 @@
+@@ -952,7 +1000,7 @@
    using SimplifyOpRewritePattern<IotaOp>::SimplifyOpRewritePattern;
  
    LogicalResult matchAndRewrite(IotaOp iota,
@@ -5962,7 +6052,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
      auto resultTy = cast<ShapedType>(iota.getType());
      if (resultTy.getRank() < 2)
        return rewriter.notifyMatchFailure(iota, "itoa not broadcastable");
-@@ -989,7 +989,7 @@
+@@ -989,7 +1037,7 @@
    using SimplifyOpRewritePattern<PadOp>::SimplifyOpRewritePattern;
  
    LogicalResult matchAndRewrite(PadOp op,
@@ -5971,7 +6061,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
      auto operand = op.getOperand();
      auto padVal = op.getPaddingValue();
  
-@@ -1028,7 +1028,7 @@
+@@ -1028,7 +1076,7 @@
    using SimplifyOpRewritePattern::SimplifyOpRewritePattern;
  
    LogicalResult matchAndRewrite(SelectOp op,
@@ -5980,7 +6070,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
      RankedTensorType type = op.getType();
  
      Value trueVal = op.getOnTrue();
-@@ -1079,7 +1079,7 @@
+@@ -1079,7 +1127,7 @@
    using SimplifyOpRewritePattern::SimplifyOpRewritePattern;
  
    LogicalResult matchAndRewrite(SelectOp op,
@@ -5989,7 +6079,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
      Value pred = op.getPred();
      Value trueVal = op.getOnTrue();
      Value falseVal = op.getOnFalse();
-@@ -1133,7 +1133,7 @@
+@@ -1133,7 +1181,7 @@
    using SimplifyOpRewritePattern<SliceOp>::SimplifyOpRewritePattern;
  
    LogicalResult matchAndRewrite(SliceOp slice,
@@ -5998,7 +6088,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
      auto resultTy = cast<ShapedType>(slice.getType());
      if (!resultTy.hasStaticShape())
        return rewriter.notifyMatchFailure(slice, "result shape not static");
-@@ -1228,12 +1228,12 @@
+@@ -1228,12 +1276,12 @@
    using SimplifyOpRewritePattern<SortOp>::SimplifyOpRewritePattern;
  
    LogicalResult matchAndRewrite(SortOp op,
@@ -6013,7 +6103,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
        if (!block.getArgument(i * 2).use_empty()) continue;
        if (!block.getArgument(i * 2 + 1).use_empty()) continue;
        erasedArgs.insert(i);
-@@ -1242,7 +1242,7 @@
+@@ -1242,7 +1290,7 @@
  
      SmallVector<Value> newOperands;
      BitVector erasedBlockArgs(op.getNumOperands() * 2);
@@ -6022,7 +6112,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
        if (erasedArgs.contains(en.index())) {
          erasedBlockArgs.set(en.index() * 2);
          erasedBlockArgs.set(en.index() * 2 + 1);
-@@ -1253,7 +1253,7 @@
+@@ -1253,7 +1301,7 @@
  
      auto newOp = rewriter.create<SortOp>(op.getLoc(), newOperands,
                                           op.getDimension(), op.getIsStable());
@@ -6031,7 +6121,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
      rewriter.inlineRegionBefore(op.getComparator(), region, region.end());
      region.front().eraseArguments(erasedBlockArgs);
  
-@@ -1278,7 +1278,7 @@
+@@ -1278,7 +1326,7 @@
    using SimplifyOpRewritePattern<SortOp>::SimplifyOpRewritePattern;
  
    LogicalResult matchAndRewrite(SortOp op,
@@ -6040,7 +6130,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
      if (op.getResults().empty() ||
          static_cast<int64_t>(op.getDimension()) != -1)
        return rewriter.notifyMatchFailure(op,
-@@ -1304,7 +1304,7 @@
+@@ -1304,7 +1352,7 @@
    using SimplifyOpRewritePattern::SimplifyOpRewritePattern;
  
    LogicalResult matchAndRewrite(TransposeOp op,
@@ -6049,7 +6139,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
      auto input = op.getOperand();
      auto permutation = op.getPermutation();
  
-@@ -1340,7 +1340,7 @@
+@@ -1340,7 +1388,7 @@
    using SimplifyOpRewritePattern<TupleOp>::SimplifyOpRewritePattern;
  
    LogicalResult matchAndRewrite(TupleOp op,
@@ -6058,7 +6148,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
      if (op.getVal().empty())
        return rewriter.notifyMatchFailure(op, "empty tuple");
  
-@@ -1356,7 +1356,7 @@
+@@ -1356,7 +1404,7 @@
            op, "tuple predecessor type does not match");
  
      // Check that this is a repacking of the parent tuple.
@@ -6067,7 +6157,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
        auto elementOp = elementAndIdx.value().getDefiningOp<GetTupleElementOp>();
        if (!elementOp ||
            elementOp.getIndexAttr().getInt() !=
-@@ -1385,9 +1385,9 @@
+@@ -1385,9 +1433,9 @@
    using SimplifyOpRewritePattern<WhileOp>::SimplifyOpRewritePattern;
  
    LogicalResult matchAndRewrite(WhileOp whileOp,
@@ -6080,7 +6170,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
      auto bodyReturnOp = cast<ReturnOp>(body->getTerminator());
      if (!llvm::any_of(llvm::zip(whileOp->getOperands(), body->getArguments(),
                                  bodyReturnOp->getOperands()),
-@@ -1400,10 +1400,10 @@
+@@ -1400,10 +1448,10 @@
      SmallVector<Value> newOperands, resultsToReplace;
      SmallVector<unsigned> invariantArgIdxs;
      BitVector invariantArgIdxBitVector(cond->getNumArguments());
@@ -6093,7 +6183,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
        Value whileOperand = std::get<0>(operands);
        BlockArgument condBlockArg = std::get<1>(operands);
        BlockArgument bodyBlockArg = std::get<2>(operands);
-@@ -1455,14 +1455,14 @@
+@@ -1455,14 +1503,14 @@
  // Pattern: op(X : zero_extent_tensor) -> constant([])
  struct ZeroExtentToEmptyConstant final : RewritePattern {
    explicit ZeroExtentToEmptyConstant(
@@ -6111,7 +6201,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
      auto loc = op->getLoc();
  
      if (!isa_and_present<StablehloDialect>(op->getDialect()))
-@@ -1492,10 +1492,10 @@
+@@ -1492,10 +1540,10 @@
  
      // If one of the operands is a zero-extent tensor, replace the operand with
      // an empty tensor.
@@ -6124,7 +6214,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
        int operandNum = operand.getOperandNumber();
        auto emptyConstantOp = rewriter.create<ConstantOp>(
            loc, operandType.value(),
-@@ -1514,13 +1514,13 @@
+@@ -1514,13 +1562,13 @@
  struct ReorderElementwiseAndShapeOp final
      : OpTraitRewritePattern<OpTrait::Elementwise> {
    explicit ReorderElementwiseAndShapeOp(
@@ -6141,7 +6231,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
      if (op->getOperands().size() != 1)
        return rewriter.notifyMatchFailure(op, "expected to be unary");
  
-@@ -1575,7 +1575,7 @@
+@@ -1575,7 +1623,7 @@
        : StablehloAggressiveSimplificationPassBase() {}
  
    void runOnOperation() override {
@@ -6150,7 +6240,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
      RewritePatternSet patterns(context);
  
      StablehloAggressiveSimplificationPassOptions options{
-@@ -1597,12 +1597,13 @@
+@@ -1597,12 +1645,13 @@
  }  // namespace
  
  void populateStablehloCanonicalizationPatterns(
@@ -6167,7 +6257,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
        ConcatenateOpNoop, ConcatenateOpRemoveEmpty,
        CustomCallUnregisteredBackendConfigToFfi, DynamicIotaOpToBroadcast,
        DynamicReshapeOpSameOperandAndResultShape, DynamicSliceOpToSlice,
-@@ -1614,8 +1615,11 @@
+@@ -1614,8 +1663,11 @@
        context, options, benefit);
  
    // Generic patterns
@@ -6181,7 +6271,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
  
    // TODO: Dynamism Refinements, consider merging with canonicalize dynamism
    patterns
-@@ -1623,22 +1627,22 @@
+@@ -1623,22 +1675,22 @@
              DynamicReshapeOpIsStatic, DynamicIotaIsStatic>(context, options);
  }
  
@@ -6212,7 +6302,80 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
 diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
 --- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
 +++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
-@@ -234,7 +234,7 @@
+@@ -118,6 +118,8 @@
+ 
+ def MergeBroadcastDims : NativeCodeCall<"getMergedBroadcastDimensions($_builder, $0, $1)">;
+ 
++def MergeDiscardableAttributes : NativeCodeCall<"mergeDiscardableAttributes($0, $1)">;
++
+ def StableHLO_ConvertOpWithShape : NativeCodeCall<
+     "$_builder.create<stablehlo::ConvertOp>($_loc, $0.getType(), $1)">;
+ 
+@@ -133,8 +135,9 @@
+ // op(cst, X) -> op(X, cst)
+ class CanonicalizeConstantToRhs<Op StableHLO_OpType>
+   : Pat<(StableHLO_OpType:$op (StableHLO_ConstantOp:$lhs $value), $rhs),
+-        (StableHLO_OpType $rhs, $lhs),
+-        [(NotConstantOp $rhs), (CommutativeOp $op)]>;
++        (StableHLO_OpType:$new_op $rhs, $lhs),
++        [(NotConstantOp $rhs), (CommutativeOp $op)],
++        [(MergeDiscardableAttributes $op, $new_op)]>;
+ 
+ ////////
+ // AddOp
+@@ -145,8 +148,9 @@
+ 
+ // Pattern: add(X, 0) -> X
+ def AddOp_RemoveNoop
+-  : Pat<(StableHLO_AddOp $lhs, (ConstantLikeMatcher AnyZero:$value)),
+-        (replaceWithValue $lhs)>;
++  : Pat<(StableHLO_AddOp:$op $lhs, (ConstantLikeMatcher AnyZero:$value)),
++        (replaceWithValue $lhs), [],
++        [(MergeDiscardableAttributes $op, $lhs)]>;
+ 
+ ////////
+ // AndOp
+@@ -157,13 +161,15 @@
+ 
+ // Pattern: and(X, 0) -> 0
+ def AndOp_FoldToZero
+-  : Pat<(StableHLO_AndOp $lhs, (StableHLO_ConstantOp:$zero IntZero:$value)),
+-        (replaceWithValue $zero)>;
++  : Pat<(StableHLO_AndOp:$op $lhs, (StableHLO_ConstantOp:$zero IntZero:$value)),
++        (replaceWithValue $zero), [],
++        [(MergeDiscardableAttributes $op, $zero)]>;
+ 
+ // Pattern: and(X, 1) -> X
+ def AndOp_RemoveNoop
+-  : Pat<(StableHLO_AndOp $lhs, (StableHLO_ConstantOp:$one IntAllOnes:$value)),
+-        (replaceWithValue $lhs)>;
++  : Pat<(StableHLO_AndOp:$op $lhs, (StableHLO_ConstantOp:$one IntAllOnes:$value)),
++        (replaceWithValue $lhs), [],
++        [(MergeDiscardableAttributes $op, $lhs)]>;
+ 
+ ////////
+ // BroadcastInDimOp
+@@ -172,7 +178,8 @@
+ def BroadcastInDimOp_RemoveNoop
+   : Pat<(StableHLO_BroadcastInDimOp:$op $operand, IotaDims:$dims),
+         (replaceWithValue $operand),
+-        [(TypesEqual $op, $operand)]>;
++        [(TypesEqual $op, $operand)],
++        [(MergeDiscardableAttributes $op, $operand)]>;
+ 
+ // Pattern: broadcast_in_dim(broadcast_in_dim(X, [dimsA...]), [dimsB...])
+ //       -> broadcast_in_dim(X, merge(dimsA, dimsB))
+@@ -203,7 +210,8 @@
+ def ConvertOp_RemoveNoop
+   : Pat<(StableHLO_ConvertOp:$convert $operand),
+         (replaceWithValue $operand),
+-        [(TypesEqual $convert, $operand)]>;
++        [(TypesEqual $convert, $operand)],
++        [(MergeDiscardableAttributes $convert, $operand)]>;
+ 
+ ////////
+ // DynamicBroadcastInDimOp
+@@ -234,7 +242,7 @@
  //
  // No-op, but wrap in ConvertOp to preserve dynamic output shape. This can be
  // important if the result is returned, in which case refining the type would
@@ -6221,7 +6384,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
  def DynamicBroadcastInDimOp_ReplaceNoopWithConvert
    : Pat<(StableHLO_DynamicBroadcastInDimOp:$op
              $operand, $shape, IotaDims:$dims, $expanding, $nonexpanding),
-@@ -387,9 +387,10 @@
+@@ -387,15 +395,18 @@
  
  // Pattern: multiply(X, 0i) -> 0i
  //
@@ -6230,8 +6393,51 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimp
 +// so we currently only enable it for ints.
  def MulOp_FoldToZero
 -  : Pat<(StableHLO_MulOp $lhs, (StableHLO_ConstantOp:$zero AnyZero:$value)),
-+  : Pat<(StableHLO_MulOp $lhs, (StableHLO_ConstantOp:$zero IntZero:$value)),
-         (replaceWithValue $zero)>;
+-        (replaceWithValue $zero)>;
++  : Pat<(StableHLO_MulOp:$mul_op $lhs, (StableHLO_ConstantOp:$zero IntZero:$value)),
++        (replaceWithValue $zero), [],
++        [(MergeDiscardableAttributes $mul_op, $zero)]>;
  
  // Pattern: multiply(X, 1i) -> X
+ def MulOp_RemoveNoop
+-  : Pat<(StableHLO_MulOp $lhs, (StableHLO_ConstantOp AnyOne:$value)),
+-        (replaceWithValue $lhs)>;
++  : Pat<(StableHLO_MulOp:$mul_op $lhs, (StableHLO_ConstantOp AnyOne:$value)),
++        (replaceWithValue $lhs), [],
++        [(MergeDiscardableAttributes $mul_op, $lhs)]>;
+ 
+ ////////
+ // OrOp
+@@ -405,13 +416,15 @@
+ 
+ // Pattern: or(X, 1) -> 1
+ def OrOp_FoldToOne
+-  : Pat<(StableHLO_OrOp $lhs, (StableHLO_ConstantOp:$one IntAllOnes:$value)),
+-        (replaceWithValue $one)>;
++  : Pat<(StableHLO_OrOp:$op $lhs, (StableHLO_ConstantOp:$one IntAllOnes:$value)),
++        (replaceWithValue $one), [],
++        [(MergeDiscardableAttributes $op, $one)]>;
+ 
+ // Pattern: or(X, 0) -> X
+ def OrOp_RemoveNoop
+-  : Pat<(StableHLO_OrOp $lhs, (StableHLO_ConstantOp:$zero IntZero:$value)),
+-        (replaceWithValue $lhs)>;
++  : Pat<(StableHLO_OrOp:$op $lhs, (StableHLO_ConstantOp:$zero IntZero:$value)),
++        (replaceWithValue $lhs), [],
++        [(MergeDiscardableAttributes $op, $lhs)]>;
+ 
+ ////////
+ // PadOp
+@@ -512,8 +525,9 @@
+ 
+ // Pattern: subtract(X, 0) -> X
+ def SubtractOp_RemoveNoop
+-  : Pat<(StableHLO_SubtractOp $lhs, (StableHLO_ConstantOp AnyZero:$value)),
+-        (replaceWithValue $lhs)>;
++  : Pat<(StableHLO_SubtractOp:$op $lhs, (StableHLO_ConstantOp AnyZero:$value)),
++        (replaceWithValue $lhs), [],
++        [(MergeDiscardableAttributes $op, $lhs)]>;
+ 
+ ////////
+ // SliceOp
 
