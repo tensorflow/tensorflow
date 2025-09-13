@@ -19,6 +19,8 @@ limitations under the License.
 // Textproto below is generated via
 //
 //   bazel run --config=cuda -- //xla/tools:collective_perf_table_gen_main
+//
+// BEGIN_DEFAULT_PERF_TABLE
 constexpr char kDefaultCollectivePTable[] = R"pb(
   entries {
     key: "sm_90"
@@ -13891,5 +13893,6 @@ constexpr char kDefaultCollectivePTable[] = R"pb(
     }
   }
 )pb";
+// END_DEFAULT_PERF_TABLE
 
 #endif  // XLA_SERVICE_GPU_MODEL_COLLECTIVE_INTERPOLATOR_DATA_H_
