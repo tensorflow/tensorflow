@@ -125,7 +125,7 @@ absl::Status DistributedTPURewriteHelpers::GetHostSystemDevices(
     // job, so take all hosts in the system. There will be a runtime
     // error if some of those hosts don't contain TPU devices.
     CHECK(DeviceNameUtils::ParseFullName(
-        strings::StrCat("/device:", DEVICE_TPU_SYSTEM, ":0"), &host_spec));
+        absl::StrCat("/device:", DEVICE_TPU_SYSTEM, ":0"), &host_spec));
   }
   device_set.FindMatchingDevices(host_spec, host_system_devices);
 
