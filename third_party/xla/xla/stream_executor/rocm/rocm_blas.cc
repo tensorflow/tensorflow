@@ -183,7 +183,7 @@ bool ROCMBlas::SetStream(Stream *stream) {
 }
 
 absl::StatusOr<bool> ROCMBlas::IsMainStreamSet() const {
-  absl::MutexLock lock{&mu_};
+  absl::MutexLock lock{mu_};
   CHECK(blas_ != nullptr);
   hipStream_t handle{};
   if (auto ret = wrap::rocblas_get_stream(blas_, &handle);
@@ -365,7 +365,7 @@ template <typename FuncT, typename... Args>
 absl::Status ROCMBlas::DoBlasInternalImpl(FuncT rocblas_func, Stream *stream,
                                           bool pointer_mode_host,
                                           bool err_on_failure, Args &&...args) {
-  absl::MutexLock lock{&mu_};
+  absl::MutexLock lock{mu_};
 
   CHECK(blas_ != nullptr);
   std::unique_ptr<ActivateContext> activation = parent_->Activate();
@@ -1260,7 +1260,7 @@ IMPL_DoBlasGemmBatched(float, wrap::rocblas_sgemm_strided_batched)
 }
 
 absl::Status ROCMBlas::GetVersion(std::string *version) {
-  absl::MutexLock lock{&mu_};
+  absl::MutexLock lock{mu_};
   size_t len = 0;
   if (auto res = wrap::rocblas_get_version_string_size(&len);
       res != rocblas_status_success) {
