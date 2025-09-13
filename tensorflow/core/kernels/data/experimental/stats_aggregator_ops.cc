@@ -104,7 +104,7 @@ class StatsAggregatorImpl : public StatsAggregator {
           monitoring::Counter<1>::New(
               /*streamz name*/ name,
               /*streamz description*/
-              strings::StrCat(name, " generated or consumed by the component."),
+              absl::StrCat(name, " generated or consumed by the component."),
               /*streamz label name*/ "component_descriptor"));
     }
     counters_map->at(name)->GetCell(label)->IncrementBy(val);

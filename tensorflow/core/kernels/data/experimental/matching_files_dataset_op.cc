@@ -64,7 +64,7 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::make_unique<Iterator>(
-          Iterator::Params{this, strings::StrCat(prefix, "::MatchingFiles")});
+          Iterator::Params{this, absl::StrCat(prefix, "::MatchingFiles")});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -219,11 +219,11 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
           int i = 0;
           while (!filepath_queue_.empty()) {
             TF_RETURN_IF_ERROR(
-                writer->WriteScalar(full_name(strings::StrCat("path_", i)),
+                writer->WriteScalar(full_name(absl::StrCat("path_", i)),
                                     filepath_queue_.top().first));
-            TF_RETURN_IF_ERROR(writer->WriteScalar(
-                full_name(strings::StrCat("path_status_", i)),
-                filepath_queue_.top().second));
+            TF_RETURN_IF_ERROR(
+                writer->WriteScalar(full_name(absl::StrCat("path_status_", i)),
+                                    filepath_queue_.top().second));
             filepath_queue_.pop();
             i++;
           }
@@ -262,10 +262,10 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
           for (int i = 0; i < queue_size; i++) {
             tstring path;
             int64_t path_status;
+            TF_RETURN_IF_ERROR(
+                reader->ReadScalar(full_name(absl::StrCat("path_", i)), &path));
             TF_RETURN_IF_ERROR(reader->ReadScalar(
-                full_name(strings::StrCat("path_", i)), &path));
-            TF_RETURN_IF_ERROR(reader->ReadScalar(
-                full_name(strings::StrCat("path_status_", i)), &path_status));
+                full_name(absl::StrCat("path_status_", i)), &path_status));
             filepath_queue_.push(
                 PathStatus(path, static_cast<bool>(path_status)));
           }
