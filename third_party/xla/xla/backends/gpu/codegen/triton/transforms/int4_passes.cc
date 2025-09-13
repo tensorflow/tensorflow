@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <algorithm>
-#include <cmath>
 #include <cstdint>
 #include <functional>
 #include <iterator>
@@ -21,7 +20,6 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -54,9 +52,8 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
+#include "xla/backends/gpu/codegen/triton/transforms/passes.h"
 #include "xla/service/llvm_ir/llvm_util.h"
-#include "xla/stream_executor/cuda/cuda_compute_capability.h"
-#include "xla/stream_executor/device_description.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/Triton/IR/Types.h"
 
@@ -743,25 +740,12 @@ LogicalResult SitofpToExtFpSitofpRewrite(ma::SIToFPOp sitofp_op,
   return success();
 }
 
-class PlainInt4ToPackedInt4RewritePass
-    : public impl::LoadInt4RewritePassBase<PlainInt4ToPackedInt4RewritePass> {
+class LoadInt4RewritePass
+    : public impl::LoadInt4RewritePassBase<LoadInt4RewritePass> {
  public:
   using Base::Base;
-  PlainInt4ToPackedInt4RewritePass(
-      const PlainInt4ToPackedInt4RewritePass &other) = default;
-  explicit PlainInt4ToPackedInt4RewritePass(
-      const stream_executor::DeviceDescription &device_description)
-      : bf16x2_enabled_(IsBF16x2Enabled(device_description)) {}
 
  private:
-  static bool IsBF16x2Enabled(
-      const stream_executor::DeviceDescription &device_description) {
-    bool is_cuda =
-        std::holds_alternative<stream_executor::CudaComputeCapability>(
-            device_description.gpu_compute_capability());
-    return is_cuda &&
-           device_description.cuda_compute_capability().IsAtLeastHopper();
-  }
   // The pass converts the types like tensor<AxBxi4> to tensor<AxB/2xi8>
   // (assuming B is the packed dimension) in the Triton dialect and replaces
   // the ExtSIOp with the unpack sequence that accepts twice smaller i8 tensor
@@ -815,7 +799,7 @@ class PlainInt4ToPackedInt4RewritePass
     });
     RewritePatternSet patterns(ctx);
     scf::populateSCFStructuralTypeConversions(converter, patterns);
-    patterns.add<ExtSIInt4ToInt8Pattern>(converter, ctx, bf16x2_enabled_);
+    patterns.add<ExtSIInt4ToInt8Pattern>(converter, ctx, enable_bf16x2_);
 
     // TODO(b/393299275): LoadOp, AdvanceOp, AddPtrOp, and MakeTensorPtrOp will
     // not be emitted by the generic Triton emitter. Remove these once the
@@ -839,18 +823,10 @@ class PlainInt4ToPackedInt4RewritePass
       return signalPassFailure();
     }
   }
-  // The default value is true, which means that bf16x2 instructions are used
-  // when the device supports them. We need this for the mlir lit tests to pass.
-  const bool bf16x2_enabled_ = true;
 };
 
-std::unique_ptr<mlir::Pass> CreateInt4ToPackedInt4RewritePass() {
-  return std::make_unique<PlainInt4ToPackedInt4RewritePass>();
-}
-
-std::unique_ptr<Pass> CreateInt4ToPackedInt4RewritePass(
-    const stream_executor::DeviceDescription &device_description) {
-  return std::make_unique<PlainInt4ToPackedInt4RewritePass>(device_description);
+std::unique_ptr<Pass> CreateInt4ToPackedInt4RewritePass(bool enable_bf16x2) {
+  return createLoadInt4RewritePass(LoadInt4RewritePassOptions{enable_bf16x2});
 }
 
 }  // namespace mlir::triton::xla
