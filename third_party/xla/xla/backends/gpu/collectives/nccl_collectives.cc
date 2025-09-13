@@ -327,7 +327,7 @@ class NcclIdStore {
     // unique keys, otherwise the global key-value store may hold the wrong
     // value.
     {
-      absl::MutexLock lock(&mu_);
+      absl::MutexLock lock(mu_);
       auto it = cache_.find(*gpu_key);
       if (it != cache_.end()) {
         return it->second;
@@ -346,7 +346,7 @@ class NcclIdStore {
           kv_store_->Get(gpu_key->ToString(), absl::Minutes(10)));
       clique_id = CliqueId(id_str);
     }
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     auto result = cache_.emplace(*gpu_key, std::move(clique_id));
     TF_RET_CHECK(result.second) << "Unique ID already in cache.";
     return result.first->second;
