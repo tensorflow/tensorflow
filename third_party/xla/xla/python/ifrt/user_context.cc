@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "absl/base/no_destructor.h"
+#include "absl/base/nullability.h"
 #include "absl/log/check.h"
 
 namespace xla {
@@ -30,11 +31,12 @@ namespace {
 
 const auto kNullContext = absl::NoDestructor<UserContextRef>(UserContextRef());
 
-ABSL_CONST_INIT thread_local const UserContextRef* current_context = nullptr;
+ABSL_CONST_INIT thread_local
+    absl_nullable const UserContextRef* current_context = nullptr;
 
 }  // namespace
 
-UserContextScope::UserContextScope(UserContextRef context)
+UserContextScope::UserContextScope(absl_nullable UserContextRef context)
     : outer_context_(current_context), context_(std::move(context)) {
   current_context = &context_;
 }
@@ -44,7 +46,7 @@ UserContextScope::~UserContextScope() {
   current_context = outer_context_;
 }
 
-const UserContextRef& UserContextScope::current() {
+absl_nullable const UserContextRef& UserContextScope::current() {
   if (current_context == nullptr) {
     return *kNullContext;
   }
