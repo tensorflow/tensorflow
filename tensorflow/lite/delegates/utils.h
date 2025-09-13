@@ -36,7 +36,7 @@ namespace delegates {
 // with a different type. Note that this might void existing references to
 // tensors.
 TfLiteStatus CreateNewTensorWithDifferentType(TfLiteContext* context,
-                                              const int original_tensor_index,
+                                              int original_tensor_index,
                                               TfLiteType new_type,
                                               TfLiteTensor** new_tensor,
                                               int* new_tensor_index);

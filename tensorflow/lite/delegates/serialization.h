@@ -79,7 +79,7 @@ namespace delegates {
 //    GetEntryForKernel.
 // 2. TFLite clients, to fingerprint a model flatbuffer & get a unique
 //    model_token.
-std::string StrFingerprint(const void* data, const size_t num_bytes);
+std::string StrFingerprint(const void* data, size_t num_bytes);
 
 // Encapsulates a unique blob of data serialized by a delegate.
 // Needs to be initialized with a Serialization instance.
@@ -110,7 +110,7 @@ class SerializationEntry {
   // NOTE: We use a temp file & rename it as file renaming is an atomic
   // operation in most systems.
   TfLiteStatus SetData(TfLiteContext* context, const char* data,
-                       const size_t size) const;
+                       size_t size) const;
 
   // Get `data` corresponding to this key, if available.
   //
@@ -127,8 +127,7 @@ class SerializationEntry {
 
  protected:
   SerializationEntry(const std::string& cache_dir,
-                     const std::string& model_token,
-                     const uint64_t fingerprint_64);
+                     const std::string& model_token, uint64_t fingerprint_64);
 
   // Caching directory.
   const std::string cache_dir_;
