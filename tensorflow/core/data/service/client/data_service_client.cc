@@ -133,7 +133,7 @@ absl::Status DataServiceClient::Initialize(
             params_.target_workers, job_id_);
       },
       /*description=*/
-      strings::StrCat("get or create job with dispatcher at ", params_.address),
+      absl::StrCat("get or create job with dispatcher at ", params_.address),
       deadline_micros));
   TF_RETURN_IF_ERROR(grpc_util::Retry(
       [&]() {
@@ -141,8 +141,8 @@ absl::Status DataServiceClient::Initialize(
                                                  iteration_client_id_);
       },
       /*description=*/
-      strings::StrCat("get or create iteration with dispatcher at ",
-                      params_.address),
+      absl::StrCat("get or create iteration with dispatcher at ",
+                   params_.address),
       deadline_micros));
   initialized_ = true;
   return absl::OkStatus();
