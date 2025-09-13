@@ -1456,6 +1456,21 @@ struct FuseAddAndFullyConnected
         return failure();
     }
 
+    // Checks the constant requirements. Only apply this optimization if rhs,
+    // filter, and bias are constant foldable. Otherwise, the generated FC bias
+    // operand will not be folded to a single vector.
+    if (!matchPattern(add_op.getRhs(), m_Constant())) {
+      return failure();
+    }
+
+    if (!matchPattern(fc_op.getFilter(), m_Constant())) {
+      return failure();
+    }
+
+    if (!matchPattern(old_bias, m_Constant())) {
+      return failure();
+    }
+
     auto new_bias = rewriter.create<TFL::FullyConnectedOp>(
         fc_op.getLoc(), old_bias.getType(),
         /*input=*/add_op.getRhs(),

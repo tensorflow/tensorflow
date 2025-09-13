@@ -531,6 +531,55 @@ func.func @doNotFuseAddIntoFollowingFullyConnected(%arg0: tensor<4x2xf32>, %arg1
 // CHECK: "tfl.fully_connected"
 }
 
+// CHECK-LABEL: @doNotFuseAddIntoFollowingWeightOnlyQuantizedFullyConnected
+func.func @doNotFuseAddIntoFollowingWeightOnlyQuantizedFullyConnected(%arg0: tensor<4x2xf32>) -> tensor<4x2xf32> {
+  %cst = arith.constant dense<1.5> : tensor<2xf32>
+  %0 = "tfl.add"(%arg0, %cst) {fused_activation_function = "NONE"} : (tensor<4x2xf32>, tensor<2xf32>) -> tensor<4x2xf32>
+  %1 = "tfl.pseudo_qconst"() <{qtype = tensor<2x2x!quant.uniform<i8:f32:0, {1.0, 1.1}>>, value = dense<1> : tensor<2x2xi8>}> : () -> tensor<2x2x!quant.uniform<i8:f32:0, {1.0, 1.1}>>
+  %2 = "tfl.dequantize"(%1) : (tensor<2x2x!quant.uniform<i8:f32:0, {1.0, 1.1}>>) -> tensor<2x2xf32>
+  %cst0 = arith.constant dense<2.0> : tensor<2xf32>
+  %3 = "tfl.fully_connected"(%0, %2, %cst0) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<4x2xf32>, tensor<2x2xf32>, tensor<2xf32>) -> tensor<4x2xf32>
+  func.return %3 : tensor<4x2xf32>
+
+// CHECK-DAG: %[[ADD_CST:.*]] = arith.constant dense<1.500000e+00> : tensor<2xf32>
+// CHECK-DAG: %[[ADD:.*]] = tfl.add(%arg0, %[[ADD_CST]]) <{fused_activation_function = "NONE"}> : (tensor<4x2xf32>, tensor<2xf32>) -> tensor<4x2xf32>
+// CHECK-DAG: %[[FILTER_QUANT:.*]] = "tfl.pseudo_qconst"() <{qtype = tensor<2x2x!quant.uniform<i8:f32:0, {1.000000e+00,1.100000e+00}>>, value = dense<1> : tensor<2x2xi8>}> : () -> tensor<2x2x!quant.uniform<i8:f32:0, {1.000000e+00,1.100000e+00}>>
+// CHECK-DAG: %[[FILTER:.*]] = "tfl.dequantize"(%[[FILTER_QUANT]]) : (tensor<2x2x!quant.uniform<i8:f32:0, {1.000000e+00,1.100000e+00}>>) -> tensor<2x2xf32>
+// CHECK-DAG: %[[BIAS:.*]] = arith.constant dense<2.000000e+00> : tensor<2xf32>
+// CHECK-NEXT: %[[RESULT:.*]] = "tfl.fully_connected"(%[[ADD]], %[[FILTER]], %[[BIAS]]) <{fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"}> : (tensor<4x2xf32>, tensor<2x2xf32>, tensor<2xf32>) -> tensor<4x2xf32>
+// CHECK-NEXT: return %[[RESULT]] : tensor<4x2xf32>
+}
+
+// CHECK-LABEL: @doNotFuseRhsNonConstAddIntoFollowingFullyConnected
+func.func @doNotFuseRhsNonConstAddIntoFollowingFullyConnected(%arg0: tensor<4x2xf32>, %arg1: tensor<2xf32>) -> tensor<4x2xf32> {
+  %0 = "tfl.add"(%arg0, %arg1) {fused_activation_function = "NONE"} : (tensor<4x2xf32>, tensor<2xf32>) -> tensor<4x2xf32>
+  %cst = arith.constant dense<1.5> : tensor<2x2xf32>
+  %cst0 = arith.constant dense<2.0> : tensor<2xf32>
+  %1 = "tfl.fully_connected"(%0, %cst, %cst0) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<4x2xf32>, tensor<2x2xf32>, tensor<2xf32>) -> tensor<4x2xf32>
+  func.return %1 : tensor<4x2xf32>
+
+// CHECK-DAG: %[[ADD:.*]] = tfl.add(%arg0, %arg1) <{fused_activation_function = "NONE"}> : (tensor<4x2xf32>, tensor<2xf32>) -> tensor<4x2xf32>
+// CHECK-DAG: %[[FILTER:.*]] = arith.constant dense<1.500000e+00> : tensor<2x2xf32>
+// CHECK-DAG: %[[BIAS:.*]] = arith.constant dense<2.000000e+00> : tensor<2xf32>
+// CHECK-NEXT: %[[RESULT:.*]] = "tfl.fully_connected"(%[[ADD]], %[[FILTER]], %[[BIAS]]) <{fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"}> : (tensor<4x2xf32>, tensor<2x2xf32>, tensor<2xf32>) -> tensor<4x2xf32>
+// CHECK-NEXT: return %[[RESULT]] : tensor<4x2xf32>
+}
+
+// CHECK-LABEL: @doNotFuseAddIntoFollowingFullyConnectedWithNonConstBias
+func.func @doNotFuseAddIntoFollowingFullyConnectedWithNonConstBias(%arg0: tensor<4x2xf32>, %arg1: tensor<2xf32>) -> tensor<4x2xf32> {
+  %cst = arith.constant dense<1.5> : tensor<2xf32>
+  %0 = "tfl.add"(%arg0, %cst) {fused_activation_function = "NONE"} : (tensor<4x2xf32>, tensor<2xf32>) -> tensor<4x2xf32>
+  %cst0 = arith.constant dense<1.5> : tensor<2x2xf32>
+  %1 = "tfl.fully_connected"(%0, %cst0, %arg1) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<4x2xf32>, tensor<2x2xf32>, tensor<2xf32>) -> tensor<4x2xf32>
+  func.return %1 : tensor<4x2xf32>
+
+// CHECK-DAG: %[[ADD_CST:.*]] = arith.constant dense<1.500000e+00> : tensor<2xf32>
+// CHECK-DAG: %[[ADD:.*]] = tfl.add(%arg0, %[[ADD_CST]]) <{fused_activation_function = "NONE"}> : (tensor<4x2xf32>, tensor<2xf32>) -> tensor<4x2xf32>
+// CHECK-DAG: %[[FILTER:.*]] = arith.constant dense<1.500000e+00> : tensor<2x2xf32>
+// CHECK-NEXT: %[[RESULT:.*]] = "tfl.fully_connected"(%[[ADD]], %[[FILTER]], %arg1) <{fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"}> : (tensor<4x2xf32>, tensor<2x2xf32>, tensor<2xf32>) -> tensor<4x2xf32>
+// CHECK-NEXT: return %[[RESULT]] : tensor<4x2xf32>
+}
+
 // CHECK-LABEL: @fuseMulIntoFollowingFullyConnected
 func.func @fuseMulIntoFollowingFullyConnected(%arg0: tensor<4x2xf32>) -> tensor<4x2xf32> {
   %cst2 = arith.constant dense<1.5> : tensor<f32>
