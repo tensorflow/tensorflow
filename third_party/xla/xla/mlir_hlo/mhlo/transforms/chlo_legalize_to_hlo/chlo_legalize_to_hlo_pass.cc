@@ -13,11 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <optional>
 #include <utility>
 #include <vector>
 
 #include "mhlo/IR/hlo_ops.h"
+#include "mhlo/transforms/passes.h"
 #include "mhlo/transforms/rewriters.h"
 #include "mhlo/utils/type_conversion.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -27,8 +29,11 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/BuiltinTypeInterfaces.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/TypeUtilities.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
@@ -46,25 +51,56 @@ namespace mhlo {
 
 namespace {
 
+ChloLegalizeToHighLevelMhloPassOptions FromPassOptions(bool enableAcosh,
+                                                       bool enableErf,
+                                                       bool enableRaggedDot,
+                                                       bool enableTopk) {
+  ChloLegalizeToHighLevelMhloPassOptions options;
+  options.enable_acosh_ = enableAcosh;
+  options.enable_erf_ = enableErf;
+  options.enable_ragged_dot_ = enableRaggedDot;
+  options.enable_topk_ = enableTopk;
+  return options;
+}
+
+bool isLegalAcosh(chlo::AcoshOp op) {
+  return !llvm::isa<FloatType>(getElementTypeOrSelf(op.getType()));
+}
+
 struct ChloLegalizeToHighLevelMhloPass
     : public impl::ChloLegalizeToHighLevelMhloPassBase<
           ChloLegalizeToHighLevelMhloPass> {
-  using ChloLegalizeToHighLevelMhloPassBase::
-      ChloLegalizeToHighLevelMhloPassBase;
+  ChloLegalizeToHighLevelMhloPass() = default;
+  explicit ChloLegalizeToHighLevelMhloPass(
+      ChloLegalizeToHighLevelMhloPassOptions options)
+      : impl::ChloLegalizeToHighLevelMhloPassBase<
+            ChloLegalizeToHighLevelMhloPass>(options) {}
 
   void runOnOperation() override {
     MLIRContext &context = getContext();
     ConversionTarget conversionTarget(context);
     RewritePatternSet conversionPatterns(&context);
 
-    chlo::populateChloToHighLevelMhloOpPatterns(&context, &conversionPatterns);
+    chlo::populateChloToHighLevelMhloOpPatterns(
+        &context, &conversionPatterns,
+        FromPassOptions(enable_acosh_, enable_erf_, enable_ragged_dot_,
+                        enable_topk_));
 
     // Consider the mhlo dialect legal for tests. Also add helper dialects
     // that are needed by the patterns.
     conversionTarget.addLegalDialect<chlo::ChloDialect, mhlo::MhloDialect>();
-    conversionTarget
-        .addIllegalOp<chlo::TopKOp, chlo::ErfOp, chlo::RaggedDotOp>();
-
+    if (enable_acosh_) {
+      conversionTarget.addDynamicallyLegalOp<chlo::AcoshOp>(isLegalAcosh);
+    }
+    if (enable_erf_) {
+      conversionTarget.addIllegalOp<chlo::ErfOp>();
+    }
+    if (enable_ragged_dot_) {
+      conversionTarget.addIllegalOp<chlo::RaggedDotOp>();
+    }
+    if (enable_topk_) {
+      conversionTarget.addIllegalOp<chlo::TopKOp>();
+    }
     if (failed(applyPartialConversion(getOperation(), conversionTarget,
                                       std::move(conversionPatterns)))) {
       return signalPassFailure();
@@ -100,90 +136,127 @@ struct ChloLegalizeToHloPass
   }
 };
 
-struct RaggedDotChloToMhlo : public OpRewritePattern<chlo::RaggedDotOp> {
-  using OpRewritePattern<chlo::RaggedDotOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(chlo::RaggedDotOp raggedDotOp,
-                                PatternRewriter &rewriter) const override {
-    auto moduleOp = raggedDotOp->getParentOfType<ModuleOp>();
-
-    OpBuilder builder(moduleOp.getBodyRegion());
-    builder.setInsertionPointToStart(&moduleOp.getBodyRegion().front());
-
-    auto chloRaggedDotDimNums = raggedDotOp.getRaggedDotDimensionNumbers();
-    auto dotDimNums = mhlo::DotDimensionNumbersAttr::get(
-        builder.getContext(), chloRaggedDotDimNums.getLhsBatchingDimensions(),
-        chloRaggedDotDimNums.getRhsBatchingDimensions(),
-        chloRaggedDotDimNums.getLhsContractingDimensions(),
-        chloRaggedDotDimNums.getRhsContractingDimensions());
-    auto raggedDotDimNums = mhlo::RaggedDotDimensionNumbersAttr::get(
-        builder.getContext(), dotDimNums,
-        chloRaggedDotDimNums.getLhsRaggedDimensions(),
-        chloRaggedDotDimNums.getRhsGroupDimensions());
-
-    auto mhloPrecision =
-        [](chlo::Precision precision) -> std::optional<mhlo::Precision> {
-      switch (precision) {
-        case chlo::Precision::DEFAULT:
-          return mhlo::Precision::DEFAULT;
-        case chlo::Precision::HIGH:
-          return mhlo::Precision::HIGH;
-        case chlo::Precision::HIGHEST:
-          return mhlo::Precision::HIGHEST;
-      }
-    };
-    ArrayAttr precisionConfig = rewriter.getArrayAttr({});
-    if (raggedDotOp.getPrecisionConfig().has_value()) {
-      SmallVector<Attribute> vector;
-      for (auto configValue : raggedDotOp.getPrecisionConfig()
-                                  .value()
-                                  .getAsRange<chlo::PrecisionAttr>()) {
-        vector.push_back(
-            PrecisionAttr::get(raggedDotOp.getContext(),
-                               mhloPrecision(configValue.getValue()).value()));
-      }
-      precisionConfig = rewriter.getArrayAttr(vector);
-    }
-
-    mhlo::RaggedDotOp mhloOp = rewriter.create<mhlo::RaggedDotOp>(
-        raggedDotOp.getLoc(), raggedDotOp.getResult().getType(),
-        raggedDotOp.getLhs(), raggedDotOp.getRhs(), raggedDotOp.getGroupSizes(),
-        raggedDotDimNums, precisionConfig);
-    std::optional<NamedAttribute> frontendAttributes =
-        raggedDotOp->getAttrDictionary().getNamed("mhlo.frontend_attributes");
-    if (frontendAttributes.has_value()) {
-      std::vector<NamedAttribute> attributes =
-          mhloOp->getDiscardableAttrDictionary().getValue().vec();
-      attributes.push_back(frontendAttributes.value());
-      mhloOp->setDiscardableAttrs(rewriter.getDictionaryAttr(attributes));
-    }
-
-    rewriter.replaceOp(raggedDotOp, mhloOp.getOperation());
-    return success();
-  }
-};
-
 }  // namespace
+
+ChloLegalizeToHighLevelMhloPassOptions getDefaultChloToHighLevelMhloOptions() {
+  ChloLegalizeToHighLevelMhloPassOptions opts;
+  opts.enable_acosh_ = false;
+  opts.enable_erf_ = true;
+  opts.enable_ragged_dot_ = true;
+  opts.enable_topk_ = true;
+  return opts;
+}
 
 }  // namespace mhlo
 
 namespace chlo {
 namespace {
-#include "chlo_legalize_to_hlo/generated_chlo_legalize_to_hlo.inc"
+
+LogicalResult RaggedDotChloToMhlo(chlo::RaggedDotOp raggedDotOp,
+                                  PatternRewriter& rewriter) {
+  auto moduleOp = raggedDotOp->getParentOfType<ModuleOp>();
+
+  OpBuilder builder(moduleOp.getBodyRegion());
+  builder.setInsertionPointToStart(&moduleOp.getBodyRegion().front());
+
+  auto chloRaggedDotDimNums = raggedDotOp.getRaggedDotDimensionNumbers();
+  auto dotDimNums = mhlo::DotDimensionNumbersAttr::get(
+      builder.getContext(), chloRaggedDotDimNums.getLhsBatchingDimensions(),
+      chloRaggedDotDimNums.getRhsBatchingDimensions(),
+      chloRaggedDotDimNums.getLhsContractingDimensions(),
+      chloRaggedDotDimNums.getRhsContractingDimensions());
+  auto raggedDotDimNums = mhlo::RaggedDotDimensionNumbersAttr::get(
+      builder.getContext(), dotDimNums,
+      chloRaggedDotDimNums.getLhsRaggedDimensions(),
+      chloRaggedDotDimNums.getRhsGroupDimensions());
+
+  auto mhloPrecision =
+      [](chlo::Precision precision) -> std::optional<mhlo::Precision> {
+    switch (precision) {
+      case chlo::Precision::DEFAULT:
+        return mhlo::Precision::DEFAULT;
+      case chlo::Precision::HIGH:
+        return mhlo::Precision::HIGH;
+      case chlo::Precision::HIGHEST:
+        return mhlo::Precision::HIGHEST;
+    }
+  };
+  ArrayAttr precisionConfig = rewriter.getArrayAttr({});
+  if (raggedDotOp.getPrecisionConfig().has_value()) {
+    SmallVector<Attribute> vector;
+    for (auto configValue : raggedDotOp.getPrecisionConfig()
+                                .value()
+                                .getAsRange<chlo::PrecisionAttr>()) {
+      vector.push_back(mhlo::PrecisionAttr::get(
+          raggedDotOp.getContext(),
+          mhloPrecision(configValue.getValue()).value()));
+    }
+    precisionConfig = rewriter.getArrayAttr(vector);
+  }
+
+  mhlo::RaggedDotOp mhloOp = rewriter.create<mhlo::RaggedDotOp>(
+      raggedDotOp.getLoc(), raggedDotOp.getResult().getType(),
+      raggedDotOp.getLhs(), raggedDotOp.getRhs(), raggedDotOp.getGroupSizes(),
+      raggedDotDimNums, precisionConfig);
+  std::optional<NamedAttribute> frontendAttributes =
+      raggedDotOp->getAttrDictionary().getNamed("mhlo.frontend_attributes");
+  if (frontendAttributes.has_value()) {
+    std::vector<NamedAttribute> attributes =
+        mhloOp->getDiscardableAttrDictionary().getValue().vec();
+    attributes.push_back(frontendAttributes.value());
+    mhloOp->setDiscardableAttrs(rewriter.getDictionaryAttr(attributes));
+  }
+
+  rewriter.replaceOp(raggedDotOp, mhloOp.getOperation());
+  return success();
+}
+
+LogicalResult AcoshChloToMhlo(chlo::AcoshOp op, PatternRewriter& rewriter) {
+  if (mhlo::isLegalAcosh(op)) {
+    return failure();
+  }
+  rewriter.replaceOpWithNewOp<mhlo::AcoshOp>(op, op->getOperands());
+  return success();
+}
+
+LogicalResult ErfChloToMhlo(chlo::ErfOp op, PatternRewriter& rewriter) {
+  rewriter.replaceOpWithNewOp<mhlo::ErfOp>(op, op->getOperands());
+  return success();
+}
+
+LogicalResult TopKChloToMhlo(chlo::TopKOp op, PatternRewriter& rewriter) {
+  if (!mlir::isa<RankedTensorType>(op.getResult(0).getType())) {
+    return failure();
+  }
+  rewriter.replaceOpWithNewOp<mhlo::TopKOp>(op, op.getOperand(), op.getK());
+  return success();
+}
 
 }  // namespace
 
-void populateChloToHighLevelMhloOpPatterns(MLIRContext *,
-                                           RewritePatternSet *patterns) {
-  patterns->add<mhlo::RaggedDotChloToMhlo>(patterns->getContext(),
-                                           /*benefit=*/10);
-  populateWithGenerated(*patterns);
+void populateChloToHighLevelMhloOpPatterns(
+    MLIRContext*, RewritePatternSet* patterns,
+    const mhlo::ChloLegalizeToHighLevelMhloPassOptions& options) {
+  constexpr unsigned kBenefit = 10;
+  if (options.enable_acosh_) {
+    patterns->add(AcoshChloToMhlo, kBenefit);
+  }
+  if (options.enable_erf_) {
+    patterns->add(ErfChloToMhlo, kBenefit);
+  }
+  if (options.enable_ragged_dot_) {
+    patterns->add(RaggedDotChloToMhlo, kBenefit);
+  }
+  if (options.enable_topk_) {
+    patterns->add(TopKChloToMhlo, kBenefit);
+  }
 }
 
-void populateChloToHloPatterns(MLIRContext *context,
-                               TypeConverter *typeConverter,
-                               RewritePatternSet *patterns) {
-  chlo::populateChloToHighLevelMhloOpPatterns(context, patterns);
+void populateChloToHloPatterns(MLIRContext* context,
+                               TypeConverter* typeConverter,
+                               RewritePatternSet* patterns) {
+  populateChloToHighLevelMhloOpPatterns(
+      context, patterns, mhlo::getDefaultChloToHighLevelMhloOptions());
   stablehlo::populateChloToStablehloPatterns(context, patterns);
   stablehlo::populateStablehloToHloPatterns(patterns, typeConverter, context);
 }

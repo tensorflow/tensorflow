@@ -123,7 +123,8 @@ absl::Status MlirToXlaComputation(mlir::ModuleOp module,
         mlir::stablehlo_ext::createChloRecomposeOpsPass());
     pm.addPass(mlir::createSymbolDCEPass());
     pm.addNestedPass<mlir::func::FuncOp>(
-        mlir::mhlo::createChloLegalizeToHighLevelMhloPass());
+        mlir::mhlo::createChloLegalizeToHighLevelMhloPass(
+            mlir::mhlo::getDefaultChloToHighLevelMhloOptions()));
     pm.addNestedPass<mlir::func::FuncOp>(
         mlir::stablehlo::createChloLegalizeToStablehloPass());
 
