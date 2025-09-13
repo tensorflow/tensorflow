@@ -1,3 +1,16 @@
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+cc_library(
+    name = "array_grad",
+    srcs = ["array_grad.cc"],
+    linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
+    deps = [
+        ":array_ops_op_lib",
+        "//tensorflow/c/kernels:bitcast_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+    alwayslink = 1,
+)
 # Description:
 # Tensorflow default op definitions.
 
@@ -360,18 +373,6 @@ cc_library(
     alwayslink = 1,
 )
 
-cc_library(
-    name = "array_grad",
-    srcs = ["array_grad.cc"],
-    linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
-    deps = [
-        ":array_ops_op_lib",
-        "//tensorflow/c/kernels:bitcast_op_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-    ],
-    alwayslink = 1,
-)
 
 cc_library(
     name = "functional_grad",

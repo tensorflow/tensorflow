@@ -217,6 +217,14 @@ tf_cc_binary(
     name = "offset_counter",
     srcs = ["offset_counter.cc"],
     visibility = ["//visibility:public"],
+    copts = select({
+        "//tensorflow:asan": ["-fsanitize=address"],
+        "//conditions:default": [],
+    }),
+    linkopts = select({
+        "//tensorflow:asan": ["-fsanitize=address"],
+        "//conditions:default": [],
+    }),
     deps = [
         ":offset_counter_helper",
         ":op_reg_offset_proto_cc",
