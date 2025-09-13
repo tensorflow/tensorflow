@@ -33,8 +33,7 @@ using ::tensorflow::string;
 void ReplaceTaskInServerDef(tensorflow::ServerDef* server_def, int task_index) {
   tensorflow::JobDef* job_def = server_def->mutable_cluster()->mutable_job(0);
   int port = tensorflow::testing::PickUnusedPortOrDie();
-  job_def->mutable_tasks()->at(task_index) =
-      tensorflow::strings::StrCat("localhost:", port);
+  job_def->mutable_tasks()->at(task_index) = absl::StrCat("localhost:", port);
 }
 
 void CheckTFE_TensorHandleHasFloats(TFE_TensorHandle* handle,
@@ -379,8 +378,7 @@ void TestRemoteExecuteUpdateServerDefWithFailures(bool async) {
   tensorflow::ClusterDef* cluster_def = server_def.mutable_cluster();
   tensorflow::JobDef* job_def = cluster_def->mutable_job(0);
   int port = tensorflow::testing::PickUnusedPortOrDie();
-  job_def->mutable_tasks()->insert(
-      {2, tensorflow::strings::StrCat("localhost:", port)});
+  job_def->mutable_tasks()->insert({2, absl::StrCat("localhost:", port)});
   server_def.set_task_index(0);
   string serialized_update = server_def.SerializeAsString();
   TFE_ContextUpdateServerDef(ctx, 0, serialized_update.data(),
