@@ -114,32 +114,6 @@ bool IsSingleDevice(
          compile_metadata.num_cores_per_replica() == 1;
 }
 
-absl::StatusOr<std::vector<DtypeAndShape>> BuildDtypeAndShape(
-    absl::Span<const tensorflow::Tensor> inputs,
-    absl::Span<const int> variable_arg_indices,
-    const IfrtRestoreTensorRegistry& ifrt_restore_tensor_registry) {
-  std::vector<DtypeAndShape> dtypes_and_shapes;
-  dtypes_and_shapes.reserve(inputs.size());
-
-  int variable_arg_index = 0;
-  for (int i = 0; i < inputs.size(); i++) {
-    if (variable_arg_index < variable_arg_indices.size() &&
-        i == variable_arg_indices[variable_arg_index]) {
-      // Get already loaded variable tensor.
-      TF_ASSIGN_OR_RETURN(auto dtype_and_shape,
-                          ifrt_restore_tensor_registry.GetDtypeAndShape(
-                              inputs[i].scalar<tsl::tstring>()()));
-      dtypes_and_shapes.push_back(std::move(dtype_and_shape));
-
-      variable_arg_index++;
-    } else {
-      dtypes_and_shapes.push_back(DtypeAndShape{.dtype = inputs[i].dtype(),
-                                                .shape = inputs[i].shape()});
-    }
-  }
-  return dtypes_and_shapes;
-}
-
 // Returns the device assignment from the given IFRT devices list.
 absl::StatusOr<xla::DeviceAssignment> GetRuntimeXlaDeviceAssignment(
     const xla::ifrt::DeviceListRef& device_list, int num_replicas,
@@ -227,6 +201,46 @@ GetHostCallbackModulesAndRemoveHostFuncs(mlir::ModuleOp module) {
 }
 
 }  // namespace
+
+absl::StatusOr<std::vector<DtypeAndShape>>
+IfrtServingExecutable::BuildDtypeAndShape(
+    absl::Span<const tensorflow::Tensor> inputs,
+    absl::Span<const int> variable_arg_indices) {
+  std::vector<DtypeAndShape> dtypes_and_shapes;
+  dtypes_and_shapes.reserve(inputs.size());
+
+  int variable_arg_index = 0;
+  absl::MutexLock lock(&mutex_);
+  for (int i = 0; i < inputs.size(); i++) {
+    if (variable_arg_index < variable_arg_indices.size() &&
+        i == variable_arg_indices[variable_arg_index]) {
+      bool find = false;
+      {
+        if (auto it = loaded_variables_metadata_.find(i);
+            (it != loaded_variables_metadata_.end() &&
+             it->second.dtype_and_shape.has_value())) {
+          find = true;
+          dtypes_and_shapes.push_back(it->second.dtype_and_shape.value());
+        }
+      }
+      if (!find) {
+        // Get already loaded variable tensor.
+        TF_ASSIGN_OR_RETURN(auto dtype_and_shape,
+                            ifrt_restore_tensor_registry_.GetDtypeAndShape(
+                                inputs[i].scalar<tsl::tstring>()()));
+        {
+          loaded_variables_metadata_[i].dtype_and_shape = dtype_and_shape;
+        }
+        dtypes_and_shapes.push_back(std::move(dtype_and_shape));
+      }
+      variable_arg_index++;
+    } else {
+      dtypes_and_shapes.push_back(DtypeAndShape{.dtype = inputs[i].dtype(),
+                                                .shape = inputs[i].shape()});
+    }
+  }
+  return dtypes_and_shapes;
+}
 
 absl::StatusOr<std::unique_ptr<IfrtServingExecutable>>
 IfrtServingExecutable::Create(
@@ -570,15 +584,10 @@ IfrtServingExecutable::CreateExecutableSynchronously(
 
 xla::ifrt::Future<IfrtServingExecutable::SharedCachedExecutableBundle>
 IfrtServingExecutable::LookUpOrCreateExecutable(
+    const Key& key,
     const tensorflow::tpu::TPUCompileMetadataProto& compile_metadata,
     absl::Span<const DtypeAndShape> dtypes_and_shapes,
     absl::Span<const int> variable_arg_indices) {
-  std::vector<tensorflow::TensorShape> input_shapes;
-  for (const auto& dtype_and_shape : dtypes_and_shapes) {
-    input_shapes.push_back(dtype_and_shape.shape);
-  }
-  Key key = {.input_shapes = std::move(input_shapes)};
-
   xla::ifrt::Promise<SharedCachedExecutableBundle> promise;
   xla::ifrt::Future<SharedCachedExecutableBundle> future;
   mlir::OwningOpRef<mlir::ModuleOp> module_copy;
@@ -634,53 +643,88 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
     absl::Span<const tensorflow::Tensor> inputs,
     absl::Span<const int> variable_arg_indices) {
   tsl::profiler::TraceMe traceme("IfrtServingExecutable::Execute");
-  for (int i = 1; i < variable_arg_indices.size(); i++) {
-    if (variable_arg_indices[i] <= variable_arg_indices[i - 1]) {
-      return absl::FailedPreconditionError(absl::StrCat(
-          "Expected variable_arg_indices in ascending order. But subsequence "
-          "starting at ",
-          i - 1, ": (", variable_arg_indices[i - 1], ", ",
-          variable_arg_indices[i], ")", " is not in ascending order"));
+  if (VLOG_IS_ON(1)) {
+    for (int i = 1; i < variable_arg_indices.size(); i++) {
+      if (variable_arg_indices[i] <= variable_arg_indices[i - 1]) {
+        return absl::FailedPreconditionError(absl::StrCat(
+            "Expected variable_arg_indices in ascending order. But subsequence "
+            "starting at ",
+            i - 1, ": (", variable_arg_indices[i - 1], ", ",
+            variable_arg_indices[i], ")", " is not in ascending order"));
+      }
     }
-  }
 
-  if (!variable_arg_indices.empty() &&
-      inputs.size() <= variable_arg_indices.back()) {
-    return absl::FailedPreconditionError(absl::StrCat(
-        "Expected at most ", inputs.size(), " inputs, but got up to ",
-        variable_arg_indices.back(), " variables."));
-  }
+    if (!variable_arg_indices.empty() &&
+        inputs.size() <= variable_arg_indices.back()) {
+      return absl::FailedPreconditionError(absl::StrCat(
+          "Expected at most ", inputs.size(), " inputs, but got up to ",
+          variable_arg_indices.back(), " variables."));
+    }
 
-  // Ensure the variable tensor holds a valid key: a scalar string tensor.
-  for (const int i : variable_arg_indices) {
-    if (inputs[i].dtype() != tensorflow::DT_STRING ||
-        !tensorflow::TensorShapeUtils::IsScalar(inputs[i].shape())) {
-      return absl::FailedPreconditionError(
-          absl::StrCat("Expected a scalar tensor as loaded variable array key, "
-                       "but got type ",
-                       inputs[i].dtype(), " and shape ",
-                       inputs[i].shape().DebugString(), " at index ", i));
+    // Ensure the variable tensor holds a valid key: a scalar string tensor.
+    for (const int i : variable_arg_indices) {
+      if (inputs[i].dtype() != tensorflow::DT_STRING ||
+          !tensorflow::TensorShapeUtils::IsScalar(inputs[i].shape())) {
+        return absl::FailedPreconditionError(absl::StrCat(
+            "Expected a scalar tensor as loaded variable array key, "
+            "but got type ",
+            inputs[i].dtype(), " and shape ", inputs[i].shape().DebugString(),
+            " at index ", i));
+      }
     }
   }
 
   TF_ASSIGN_OR_RETURN(std::vector<DtypeAndShape> dtypes_and_shapes,
-                      BuildDtypeAndShape(inputs, variable_arg_indices,
-                                         ifrt_restore_tensor_registry_));
+                      BuildDtypeAndShape(inputs, variable_arg_indices));
 
-  tensorflow::tpu::TPUCompileMetadataProto compile_metadata =
-      original_compile_metadata_;
-  TF_RETURN_IF_ERROR(
-      UpdateCompileMetadata(compile_metadata, dtypes_and_shapes));
+  std::vector<tensorflow::TensorShape> input_shapes;
+  input_shapes.reserve(dtypes_and_shapes.size());
+  for (const auto& dtype_and_shape : dtypes_and_shapes) {
+    input_shapes.push_back(dtype_and_shape.shape);
+  }
+  Key key = {.input_shapes = std::move(input_shapes)};
+
+  // Use shared_ptr to avoid data race in async compilation. In parallel
+  // compilation, a new key may be inserted into `compiled_metadata_cache_` and
+  // may cause the map rehashing and invalidate the original memory location.
+  std::shared_ptr<tensorflow::tpu::TPUCompileMetadataProto>
+      compile_metadata_ptr = nullptr;
+
+  {
+    absl::MutexLock lock(&mutex_);
+    if (auto it = compiled_metadata_cache_.find(key);
+        it != compiled_metadata_cache_.end()) {
+      compile_metadata_ptr =
+          std::make_shared<tensorflow::tpu::TPUCompileMetadataProto>(
+              it->second);
+    }
+    // Encounter new shapes
+    if (compile_metadata_ptr == nullptr) {
+      tensorflow::tpu::TPUCompileMetadataProto compile_metadata =
+          original_compile_metadata_;
+      TF_RETURN_IF_ERROR(
+          UpdateCompileMetadata(compile_metadata, dtypes_and_shapes));
+      if (UsePortableExecution(compile_metadata)) {
+        // Clear device_assignment because portable execution doesn't allow
+        // device assignment.
+        compile_metadata.clear_device_assignment();
+      }
+      auto [it, _] = compiled_metadata_cache_.insert({key, compile_metadata});
+      compile_metadata_ptr =
+          std::make_shared<tensorflow::tpu::TPUCompileMetadataProto>(
+              it->second);
+    }
+  }
+
+  LOG(INFO) << "compile_metadata_ptr: " << compile_metadata_ptr->DebugString()
+            << " " << UsePortableExecution(*compile_metadata_ptr);
 
   // `device_reservation` should be alive before the end of the execution.
   tsl::DeviceReservation device_reservation(kNoCoreSelectedIndex, nullptr);
   xla::ifrt::DeviceListRef device_list;
-  if (UsePortableExecution(compile_metadata)) {
+  if (UsePortableExecution(*compile_metadata_ptr)) {
     device_reservation =
         ifrt_serving_core_selector_->ReserveDevice(program_id_);
-    // Clear device_assignment because portable execution doesn't allow device
-    // assignment.
-    compile_metadata.clear_device_assignment();
     TF_ASSIGN_OR_RETURN(xla::ifrt::Device * device,
                         ifrt_client_->LookupDevice(xla::ifrt::DeviceId(
                             device_reservation.device_index())));
@@ -690,7 +734,7 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
   }
   TF_ASSIGN_OR_RETURN(
       SharedCachedExecutableBundle executable_bundle,
-      LookUpOrCreateExecutable(compile_metadata, dtypes_and_shapes,
+      LookUpOrCreateExecutable(key, *compile_metadata_ptr, dtypes_and_shapes,
                                variable_arg_indices)
           .Await());
 
@@ -702,7 +746,6 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
   }
 
   {
-    tsl::profiler::TraceMe traceme("AsyncRestoreVariables");
     absl::ReaderMutexLock lock(&mutex_);
     if (!is_frozen_) {
       // Asynchronously load the restored variable tensors to Ifrt array.
@@ -721,45 +764,64 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
   std::vector<xla::ifrt::ArrayRef> args;
   args.reserve(inputs.size());
   int variable_arg_index = 0;
-  for (int i = 0; i < inputs.size(); i++) {
-    if (variable_arg_index < variable_arg_indices.size() &&
-        i == variable_arg_indices[variable_arg_index]) {
-      TF_ASSIGN_OR_RETURN(
-          xla::HloSharding hlo_sharding,
-          xla::HloSharding::FromProto(
-              executable_bundle->compile_metadata.args()[i].sharding()));
-      IfrtLoadedVariableRegistry::Key key{
-          .device_ids = device_ids,
-          .input_name = inputs[i].scalar<tsl::tstring>()(),
-          .hlo_sharding = std::move(hlo_sharding),
-      };
-      TF_ASSIGN_OR_RETURN(
-          auto loaded_variable,
-          ifrt_loaded_variable_registry_.GetLoadedVariable(key));
-      TF_ASSIGN_OR_RETURN(xla::ifrt::ArrayRef single_array,
-                          loaded_variable.array.Await());
-      args.push_back(std::move(single_array));
-      variable_arg_index++;
-    } else {
-      // If the input shape is not the same as the shape after Tf2Hlo
-      // compilation, reshape the input tensor to the expected shape. Note that
-      // the tensor assignment here won't create a copy.
-      tensorflow::Tensor reshaped = inputs[i];
-      TF_ASSIGN_OR_RETURN(
-          tensorflow::TensorShape reshaped_shape,
-          tensorflow::TensorShape::BuildTensorShape(
-              executable_bundle->compile_metadata.args()[i].shape()));
-      if (reshaped.shape() != reshaped_shape &&
-          !reshaped.CopyFrom(inputs[i], reshaped_shape)) {
-        return absl::InternalError("Failed to reshape tensor");
-      }
+  {
+    absl::MutexLock lock(&mutex_);
+    LOG(INFO) << "debug start";
+    for (int i = 0; i < inputs.size(); i++) {
+      if (variable_arg_index < variable_arg_indices.size() &&
+          i == variable_arg_indices[variable_arg_index]) {
+        bool find_cached_variable = false;
+        {
+          if (auto it = loaded_variables_metadata_.find(i);
+              (it != loaded_variables_metadata_.end() &&
+               it->second.array_ref.has_value() &&
+               !UsePortableExecution(executable_bundle->compile_metadata))) {
+            find_cached_variable = true;
+            args.push_back(it->second.array_ref.value());
+          }
+        }
+        if (!find_cached_variable) {
+          TF_ASSIGN_OR_RETURN(
+              xla::HloSharding hlo_sharding,
+              xla::HloSharding::FromProto(
+                  executable_bundle->compile_metadata.args()[i].sharding()));
+          IfrtLoadedVariableRegistry::Key key{
+              .device_ids = device_ids,
+              .input_name = inputs[i].scalar<tsl::tstring>()(),
+              .hlo_sharding = std::move(hlo_sharding),
+          };
+          TF_ASSIGN_OR_RETURN(
+              auto loaded_variable,
+              ifrt_loaded_variable_registry_.GetLoadedVariable(key));
+          TF_ASSIGN_OR_RETURN(xla::ifrt::ArrayRef single_array,
+                              loaded_variable.array.Await());
+          {
+            loaded_variables_metadata_[i].array_ref = single_array;
+            args.push_back(std::move(single_array));
+          }
+        }
+        variable_arg_index++;
+      } else {
+        // If the input shape is not the same as the shape after Tf2Hlo
+        // compilation, reshape the input tensor to the expected shape. Note
+        // that the tensor assignment here won't create a copy.
+        tensorflow::Tensor reshaped = inputs[i];
+        TF_ASSIGN_OR_RETURN(
+            tensorflow::TensorShape reshaped_shape,
+            tensorflow::TensorShape::BuildTensorShape(
+                executable_bundle->compile_metadata.args()[i].shape()));
+        if (reshaped.shape() != reshaped_shape &&
+            !reshaped.CopyFrom(inputs[i], reshaped_shape)) {
+          return absl::InternalError("Failed to reshape tensor");
+        }
 
-      TF_ASSIGN_OR_RETURN(
-          auto single_array,
-          ConvertTensorToArray(
-              reshaped, device_list,
-              executable_bundle->compile_metadata.args()[i].sharding()));
-      args.push_back(single_array);
+        TF_ASSIGN_OR_RETURN(
+            auto single_array,
+            ConvertTensorToArray(
+                reshaped, device_list,
+                executable_bundle->compile_metadata.args()[i].sharding()));
+        args.push_back(single_array);
+      }
     }
   }
   DCHECK_EQ(args.size(), executable_bundle->compile_metadata.args().size());
@@ -767,7 +829,7 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
   VLOG(2) << "Start Execution";
 
   std::optional<xla::ifrt::DeviceListRef> execution_device_list;
-  if (UsePortableExecution(compile_metadata)) {
+  if (UsePortableExecution(executable_bundle->compile_metadata)) {
     execution_device_list = device_list;
   }
 

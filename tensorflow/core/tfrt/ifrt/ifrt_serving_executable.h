@@ -21,10 +21,12 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/base/call_once.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
@@ -109,6 +111,13 @@ class IfrtServingExecutable {
 
  private:
   friend class IfrtBackendCompilerTest;
+  struct VariableMetadata {
+    // Use `std::optional` here because when a `VariableMetadata` is found in
+    // cache, it doesn't mean all the fields are set. So, we need to use
+    // `std::optional` to further indicate whether the fields are set.
+    std::optional<xla::ifrt::ArrayRef> array_ref;
+    std::optional<DtypeAndShape> dtype_and_shape;
+  };
   // In memory cache key.
   struct Key {
     std::vector<tensorflow::TensorShape> input_shapes;
@@ -220,6 +229,18 @@ class IfrtServingExecutable {
   // disabled at ifrt serving level.
   IfrtPersistentCompilationCache* persistent_compilation_cache_;
 
+  absl::once_flag compile_metadata_update_once_;
+
+  absl::flat_hash_map<int64_t, VariableMetadata> loaded_variables_metadata_
+      ABSL_GUARDED_BY(mutex_);
+
+  absl::flat_hash_map<Key, tensorflow::tpu::TPUCompileMetadataProto>
+      compiled_metadata_cache_ ABSL_GUARDED_BY(mutex_);
+
+  absl::StatusOr<std::vector<DtypeAndShape>> BuildDtypeAndShape(
+      absl::Span<const tensorflow::Tensor> inputs,
+      absl::Span<const int> variable_arg_indices);
+
   // Asynchronously load the restored variable tensors to Ifrt array.
   absl::Status AsyncLoadIfrtArray(
       absl::Span<const tensorflow::Tensor> inputs,
@@ -233,6 +254,7 @@ class IfrtServingExecutable {
       const xla::OpSharding& sharding);
 
   xla::ifrt::Future<SharedCachedExecutableBundle> LookUpOrCreateExecutable(
+      const Key& key,
       const tensorflow::tpu::TPUCompileMetadataProto& compile_metadata,
       absl::Span<const DtypeAndShape> dtypes_and_shapes,
       absl::Span<const int> variable_arg_indices);
