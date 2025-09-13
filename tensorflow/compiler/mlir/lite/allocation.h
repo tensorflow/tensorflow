@@ -33,7 +33,7 @@ class Allocation {
  public:
   using Ptr = std::unique_ptr<Allocation>;
 
-  virtual ~Allocation() {}
+  virtual ~Allocation() = default;
 
   enum class Type {
     kMMap,
