@@ -1105,10 +1105,8 @@ class SingleOpModel {
     flatbuffers::Offset<QuantizationParameters> q_params = 0;
     q_params = CreateQuantizationParameters(
         builder_, /*min=*/0, /*max=*/0,
-        /*scale=*/
-        0,
-        /*zero point=*/
-        0, QuantizationDetails_BlockwiseQuantization,
+        /*scale=*/0,
+        /*zero point=*/0, QuantizationDetails_BlockwiseQuantization,
         *reinterpret_cast<flatbuffers::Offset<void>*>(&blockwise_quant_params),
         t.shape.size() - 1);
     int buffer_id = 0;
