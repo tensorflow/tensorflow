@@ -173,6 +173,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
 
     // Expensive instructions or unusual instructions for which fusion is
     // nonsensical.
+    case HloOpcode::kAcos:
     case HloOpcode::kAcosh:
     case HloOpcode::kAddDependency:
     case HloOpcode::kAfterAll:

@@ -45,6 +45,7 @@ class OpcodeCollector : public ConstDfsHloVisitorWithDefault {
         break;
       // Unary
       case HloOpcode::kAbs:
+      case HloOpcode::kAcos:
       case HloOpcode::kAcosh:
       case HloOpcode::kCbrt:
       case HloOpcode::kCeil:

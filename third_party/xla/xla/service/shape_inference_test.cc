@@ -6014,6 +6014,7 @@ INSTANTIATE_TEST_SUITE_P(
 INSTANTIATE_TEST_SUITE_P(UnboundedDynamism, UnboundedUnaryOpShapeInferenceTest,
                          ::testing::ValuesIn<UnaryOpTestCase>(
                              {{"f32[?]", "f32[?]", HloOpcode::kAbs},
+                              {"f32[?]", "f32[?]", HloOpcode::kAcos},
                               {"f32[?]", "f32[?]", HloOpcode::kAcosh},
                               {"f32[?]", "f32[?]", HloOpcode::kCbrt},
                               {"f32[?]", "f32[?]", HloOpcode::kCeil},

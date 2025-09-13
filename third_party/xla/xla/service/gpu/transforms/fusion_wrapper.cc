@@ -24,6 +24,7 @@ namespace gpu {
 bool FusionWrapper::MustWrapInstruction(HloOpcode opcode) {
   switch (opcode) {
     case HloOpcode::kAbs:
+    case HloOpcode::kAcos:
     case HloOpcode::kAcosh:
     case HloOpcode::kAdd:
     case HloOpcode::kAnd:

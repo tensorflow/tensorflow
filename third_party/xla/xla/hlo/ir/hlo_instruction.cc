@@ -1303,6 +1303,7 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
             output_to_operand_aliasing());
       }
       break;
+      case HloOpcode::kAcos:
       case HloOpcode::kAcosh:
       case HloOpcode::kCos:
       case HloOpcode::kErf:
@@ -1493,6 +1494,7 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
     case HloOpcode::kReal:
     case HloOpcode::kSign:
       return CreateNary(shape, opcode, {operand});
+    case HloOpcode::kAcos:
     case HloOpcode::kAcosh:
     case HloOpcode::kCos:
     case HloOpcode::kErf:
@@ -2716,6 +2718,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       break;
     // Unary ops.
     case HloOpcode::kAbs:
+    case HloOpcode::kAcos:
     case HloOpcode::kAcosh:
     case HloOpcode::kAllGatherDone:
     case HloOpcode::kAllReduceDone:
@@ -3181,6 +3184,7 @@ bool HloInstruction::IdenticalSlowPath(
     // The result of these instructions only depend upon their opcode and
     // operands.
     case HloOpcode::kAbs:
+    case HloOpcode::kAcos:
     case HloOpcode::kAcosh:
     case HloOpcode::kAllGatherDone:
     case HloOpcode::kAllReduceDone:
@@ -3809,6 +3813,7 @@ bool HloInstruction::IsOpElementwise(HloOpcode opcode) {
   switch (opcode) {
     // Unary elementwise operations.
     case HloOpcode::kAbs:
+    case HloOpcode::kAcos:
     case HloOpcode::kAcosh:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kRoundNearestEven:
@@ -4505,6 +4510,8 @@ absl::Status HloInstruction::Visit(
   switch (opcode_) {
     case HloOpcode::kAbs:
       return visitor->HandleAbs(this);
+    case HloOpcode::kAcos:
+      return visitor->HandleAcos(this);
     case HloOpcode::kAcosh:
       return visitor->HandleAcosh(this);
     case HloOpcode::kAtan2:
@@ -5210,13 +5217,14 @@ bool IsValidResultAccuracy(const ResultAccuracy& accuracy) {
 }
 
 bool IsUnaryOpWithResultAccuracy(HloOpcode opcode) {
-  return opcode == HloOpcode::kAcosh || opcode == HloOpcode::kExp ||
-         opcode == HloOpcode::kExpm1 || opcode == HloOpcode::kLog ||
-         opcode == HloOpcode::kLog1p || opcode == HloOpcode::kRsqrt ||
-         opcode == HloOpcode::kSqrt || opcode == HloOpcode::kCbrt ||
-         opcode == HloOpcode::kTanh || opcode == HloOpcode::kCos ||
-         opcode == HloOpcode::kSin || opcode == HloOpcode::kTan ||
-         opcode == HloOpcode::kErf || opcode == HloOpcode::kLogistic;
+  return opcode == HloOpcode::kAcos || opcode == HloOpcode::kAcosh ||
+         opcode == HloOpcode::kExp || opcode == HloOpcode::kExpm1 ||
+         opcode == HloOpcode::kLog || opcode == HloOpcode::kLog1p ||
+         opcode == HloOpcode::kRsqrt || opcode == HloOpcode::kSqrt ||
+         opcode == HloOpcode::kCbrt || opcode == HloOpcode::kTanh ||
+         opcode == HloOpcode::kCos || opcode == HloOpcode::kSin ||
+         opcode == HloOpcode::kTan || opcode == HloOpcode::kErf ||
+         opcode == HloOpcode::kLogistic;
 }
 
 std::string AlgorithmToString(const PrecisionConfig::Algorithm& algorithm) {
