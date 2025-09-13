@@ -236,7 +236,7 @@ class RendezvousMap {
   using State = RendezvousState<R, V>;
 
   std::shared_ptr<State> Join(const K& key, size_t num_threads) {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
 
     // Erase expired rendezvous from the map.
     absl::erase_if(state_, [](const auto& e) { return e.second.expired(); });
@@ -254,7 +254,7 @@ class RendezvousMap {
   }
 
   void Complete(const K& key) {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     state_.erase(key);
   }
 
