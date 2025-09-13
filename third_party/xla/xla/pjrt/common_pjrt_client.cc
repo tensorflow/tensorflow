@@ -39,6 +39,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/layout.h"
+#include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/pjrt/abstract_tracked_device_buffer.h"
 #include "xla/pjrt/device_event.h"
@@ -68,14 +69,21 @@ PjRtFuture<>::Promise CommonPjRtClient::CreateUserPromise(
     PjRtMemorySpace* memory_space, absl::string_view debug_info) {
   return PjRtFuture<>::CreatePromise();
 }
+
 PjRtFuture<> CommonPjRtClient::CreateFutureFromUserPromise(
     PjRtMemorySpace* memory_space, const char* callee_type,
     const char* callee_method, PjRtFuture<>::Promise promise) {
-  return PjRtFuture<>(
-      promise,
+  return CreateTrackedFuture(memory_space, callee_type, callee_method,
+                             PjRtFuture<>(std::move(promise)));
+}
+
+PjRtFuture<> CommonPjRtClient::CreateTrackedFuture(
+    PjRtMemorySpace* memory_space, const char* callee_type,
+    const char* callee_method, PjRtFuture<> future) {
+  return PjRtFutureHelpers::WithProfiling(
+      std::move(future),
       /*on_block_start=*/
-      [ready_event = FormRef(promise.async_value()), callee_type,
-       callee_method]() {
+      [callee_type, callee_method] {
         tsl::profiler::TraceMeProducer traceme(
             [&] { return absl::StrCat(callee_type, "::", callee_method); });
         VLOG(1) << callee_type << "::" << callee_method;
