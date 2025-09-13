@@ -1334,6 +1334,9 @@ message DebugOptions {
   // We need this to enable triton scaled dot emitter for testing.
   optional bool xla_gpu_experimental_scaled_dot_with_triton = 410;
 
+  // If true, use third-party library raft::matrix::select_k to implement TopK.
+  optional bool xla_gpu_experimental_use_raft_select_k = 411;
+
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 

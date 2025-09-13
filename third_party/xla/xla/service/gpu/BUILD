@@ -407,6 +407,7 @@ cc_library(
         "//xla/backends/gpu/runtime:ragged_all_to_all_thunk",
         "//xla/backends/gpu/runtime:recv_thunk",
         "//xla/backends/gpu/runtime:replica_id_thunk",
+        "//xla/backends/gpu/runtime:select_k_thunk",
         "//xla/backends/gpu/runtime:send_thunk",
         "//xla/backends/gpu/runtime:sequential_thunk",
         "//xla/backends/gpu/runtime:thunk",

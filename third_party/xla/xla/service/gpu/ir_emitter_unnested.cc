@@ -110,6 +110,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/ragged_all_to_all_thunk.h"
 #include "xla/backends/gpu/runtime/recv_thunk.h"
 #include "xla/backends/gpu/runtime/replica_id_thunk.h"
+#include "xla/backends/gpu/runtime/select_k_thunk.h"
 #include "xla/backends/gpu/runtime/send_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -1432,25 +1433,53 @@ absl::Status IrEmitterUnnested::EmitTopKCustomCall(
           : std::tuple<size_t, size_t, size_t>{
                 1, data_shape.dimensions(0), top_elements_shape.dimensions(0)};
 
-  auto wavefront_size =
-      ir_emitter_context_->gpu_device_info().threads_per_warp();
-
-  // Load TopK custom kernel.
-  TF_ASSIGN_OR_RETURN(
-      CustomKernel kernel,
-      kernel::topk::GetTopKKernel("topk", data_shape.element_type(), n, k,
-                                  batch_size, platform_name(), wavefront_size));
-
   // Prepare kernel arguments.
   TF_ASSIGN_OR_RETURN(auto kernel_arguments,
                       emitters::KernelArguments::Create(
                           ir_emitter_context_->buffer_assignment(),
                           GetDefaultBufferAlignment(), instr));
 
-  auto thunk = std::make_unique<CustomKernelThunk>(instr, std::move(kernel),
-                                                   kernel_arguments);
-  AddThunkToThunkSequence(std::move(thunk));
+  auto dtype = data_shape.element_type();
+  bool is_cuda = std::holds_alternative<stream_executor::CudaComputeCapability>(
+      ir_emitter_context_->gpu_compute_capability());
+  if (is_cuda && instr->GetModule()
+                     ->config()
+                     .debug_options()
+                     .xla_gpu_experimental_use_raft_select_k()) {
+    // The heuristic for deciding when to use TopK Custom Kernel versus
+    // Raft::matrix::select_k was developed as part of the initial research
+    // in b/409009349.
+    // CustomCall TopK requires k <= 16 and n >= 1024
+    bool use_raft_select_k = false;
+    if (dtype == PrimitiveType::F32) {
+      use_raft_select_k =
+          (n < 1024) || (n == 1024 && k > 12) || (n > 1024 && k >= 8);
+    } else if (dtype == PrimitiveType::BF16) {
+      use_raft_select_k = n < 1024 || k >= 8;
+    }
 
+    VLOG(3) << "EmitTopKCustomCall: dtype=" << dtype << ", n=" << n
+            << ", k=" << k << ", use_raft_select_k=" << use_raft_select_k;
+
+    if (use_raft_select_k) {
+      AddThunkToThunkSequence(std::make_unique<SelectKThunk>(
+          instr, batch_size, n, k, dtype, kernel_arguments));
+      return absl::OkStatus();
+    }
+  }
+
+  auto wavefront_size =
+      ir_emitter_context_->gpu_device_info().threads_per_warp();
+
+  TF_RET_CHECK(k <= 16) << "CustomCall TopK requires k <= 16";
+  // Load TopK custom kernel.
+  TF_ASSIGN_OR_RETURN(
+      CustomKernel kernel,
+      kernel::topk::GetTopKKernel("topk", dtype, n, k, batch_size,
+                                  platform_name(), wavefront_size));
+
+  AddThunkToThunkSequence(std::make_unique<CustomKernelThunk>(
+      instr, std::move(kernel), kernel_arguments));
   return absl::OkStatus();
 }
 

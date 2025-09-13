@@ -724,6 +724,8 @@ absl::Status RunOptimizationPasses(
     const AlgebraicSimplifierOptions& layout_insensitive_algsimp_opts,
     absl::string_view platform_name) {
   const DebugOptions& debug_options = hlo_module->config().debug_options();
+  se::GpuComputeCapability gpu_version =
+      gpu_target_config.device_description.gpu_compute_capability();
 
   HloPassPipeline pipeline("optimization");
   AddHloVerifier(&pipeline, !debug_options.xla_ignore_channel_id());
@@ -738,7 +740,7 @@ absl::Status RunOptimizationPasses(
     pipeline.AddPass<WindowedEinsumHandler>();
   }
   pipeline.AddPass<TopKSplitter>();
-  pipeline.AddPass<TopkSpecializer>();
+  pipeline.AddPass<TopkSpecializer>(gpu_version);
   pipeline.AddPass<TopkDecomposer>();
 
   pipeline.AddPass<DotDimensionSorter>();
@@ -875,9 +877,6 @@ absl::Status RunOptimizationPasses(
 
   // Expand the sort op to support stable sorting if required.
   pipeline.AddPass<StableSortExpander>();
-
-  se::GpuComputeCapability gpu_version =
-      gpu_target_config.device_description.gpu_compute_capability();
 
   // Build simplification pipeline.  The passes in here are run to a fixed
   // point.
