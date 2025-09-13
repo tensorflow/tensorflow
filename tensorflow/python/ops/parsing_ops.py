@@ -1045,6 +1045,7 @@ def decode_csv(records,
     na_value: Additional string to recognize as NA/NaN.
     select_cols: Optional sorted list of column indices to select. If specified,
       only this subset of columns will be parsed and returned.
+      It only works on `records` except for `record_defaults`.
 
   Returns:
     A list of `Tensor` objects. Has the same type as `record_defaults`.
@@ -1093,6 +1094,7 @@ def decode_csv_v2(records,
     na_value: Additional string to recognize as NA/NaN.
     select_cols: Optional sorted list of column indices to select. If specified,
       only this subset of columns will be parsed and returned.
+      It only works on `records` except for `record_defaults`.
     name: A name for the operation (optional).
 
   Returns:
