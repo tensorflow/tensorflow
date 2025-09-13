@@ -46,7 +46,6 @@ using ::tensorflow::test::ExpectEqual;
 using ::testing::IsEmpty;
 using ::testing::Not;
 using ::testing::UnorderedElementsAre;
-using ::tsl::testing::IsOk;
 
 // This fixture simply wraps the Env and MLIRContext.
 class SaveVariablesToCheckpointTest : public ::testing::Test {
