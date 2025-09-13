@@ -20,6 +20,13 @@ limitations under the License.
 
 namespace tf_tracking {
 
+struct WeightedDelta {
+  float weight;
+  float delta;
+};
+
+int WeightedDeltaCompare(const void*, const void*);
+
 // A class that records keypoint correspondences from pairs of
 // consecutive frames.
 class FramePair {
