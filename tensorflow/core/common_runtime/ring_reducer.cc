@@ -75,10 +75,10 @@ void RingReducer::Run(StatusCallback done) {
     for (int sd = 0;
          sd < col_params_->instance.impl_details.subdiv_permutations.size();
          ++sd) {
-      strings::StrAppend(&buf, "\nsubdiv ", sd, " perm: ");
+      absl::StrAppend(&buf, "\nsubdiv ", sd, " perm: ");
       for (auto x :
            col_params_->instance.impl_details.subdiv_permutations[sd]) {
-        strings::StrAppend(&buf, x, ", ");
+        absl::StrAppend(&buf, x, ", ");
       }
     }
     VLOG(1) << "RingReducer::Run for device " << col_ctx_->device_name
