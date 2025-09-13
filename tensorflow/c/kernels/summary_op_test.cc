@@ -64,8 +64,8 @@ void TestScalarSummaryOp(Tensor* tags, Tensor* values, string expected_output,
   SetAttrValue(values->dtype(), &valuesTypeAttr);
   (*def.mutable_attr())["T"] = valuesTypeAttr;
 
-  def.add_input(strings::StrCat("input1: ", DataTypeString(tags->dtype())));
-  def.add_input(strings::StrCat("input2: ", DataTypeString(values->dtype())));
+  def.add_input(absl::StrCat("input1: ", DataTypeString(tags->dtype())));
+  def.add_input(absl::StrCat("input2: ", DataTypeString(values->dtype())));
 
   std::unique_ptr<OpKernel> kernel =
       CreateOpKernel(DeviceType(DEVICE_CPU), nullptr, nullptr, def, 1, &status);
