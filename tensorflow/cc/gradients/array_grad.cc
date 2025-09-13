@@ -220,7 +220,7 @@ absl::Status CheckNumericsGrad(const Scope& scope, const Operation& op,
                                std::vector<Output>* grad_outputs) {
   string message;
   TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->attrs(), "message", &message));
-  string err_msg = strings::StrCat(
+  string err_msg = absl::StrCat(
       "Not a number (NaN) or infinity (Inf) values detected in gradient. ",
       message);
   grad_outputs->push_back(CheckNumerics(scope, grad_inputs[0], err_msg));
