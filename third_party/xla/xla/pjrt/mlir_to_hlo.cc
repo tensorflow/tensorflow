@@ -302,6 +302,7 @@ absl::StatusOr<std::string> SerializeUsingVersionedStablehlo(
       mlir::stablehlo::createStablehloCompatibilityExpanderPass({target}));
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::stablehlo::createChloLegalizeToStablehloPass());
+  pm.addPass(mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::stablehlo::createShapeLegalizeToStablehloPass());
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());

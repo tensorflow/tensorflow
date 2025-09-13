@@ -46,6 +46,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/test.h"
@@ -1879,6 +1880,58 @@ TEST(TfrtGpuClientTest, HostExecuteRuntimeTest) {
                           ExtractSingleResult(result));
   EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR0<float>(0.2f),
                                      *result_literal));
+}
+
+TEST(TfrtGpuClientTest, CreateAliasBuffer) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtGpuClient(GpuClientOptions()));
+
+  std::vector<int32_t> data{1, 2, 3, 4, 5, 6};
+  Shape shape = ShapeUtil::MakeShape(S32, {2, 3});
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto alias_buffer,
+      client->CreateAliasBuffer(shape, client->memory_spaces()[0]));
+
+  // Create a buffer from host data.
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto param,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
+
+  // Define a simple "add one" kernel.
+  XlaBuilder builder("add_one");
+  auto input = Parameter(&builder, 0, shape, "input");
+  auto one = ConstantR0<int32_t>(&builder, 1);
+  auto add = Add(input, one);
+  auto computation = builder.Build(add).value();
+
+  // Compile and load the executable.
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtLoadedExecutable> executable,
+      client->CompileAndLoad(computation, CompileOptions()));
+
+  // Execute the kernel.
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> results,
+      executable->Execute({{param.get()}}, ExecuteOptions()));
+  ASSERT_EQ(results.size(), 1);
+  ASSERT_EQ(results[0].size(), 1);
+  std::unique_ptr<PjRtBuffer>& result_buffer = results[0][0];
+
+  // Wait for the result buffer to be ready.
+  TF_ASSERT_OK(result_buffer->GetReadyFuture().Await());
+
+  // Fulfill the alias buffer with the result of the add one kernel.
+  ASSERT_NE(alias_buffer.second, nullptr);
+  TF_ASSERT_OK(std::move(alias_buffer.second)(result_buffer.get()));
+  TF_ASSERT_OK_AND_ASSIGN(auto alias_literal,
+                          alias_buffer.first->ToLiteralSync());
+
+  // Expected result: data + 1
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      LiteralUtil::CreateR2<int32_t>({{2, 3, 4}, {5, 6, 7}}), *alias_literal));
 }
 
 }  // namespace
