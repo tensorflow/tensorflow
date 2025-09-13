@@ -155,11 +155,14 @@ xla_test(
         "amdgpu_any",
     ],
     tags =
-        if_google([
-            # TODO(b/414617899): Reenable once NVML works
-            "manual",
-            "notap",
-        ]),
+        if_google(
+            [
+                # TODO(b/414617899): Reenable once NVML works
+                "manual",
+                "notap",
+            ],
+            ["no_oss"],
+        ),
     deps = [
         ":analytical_latency_estimator",
         "//xla:shape_util",

@@ -474,6 +474,7 @@ xla_test(
         # go/cuda#memorysanitizer
         "nomsan",
         "no-oneapi",
+        "no_oss",
     ],
     visibility = ["//visibility:private"],
     deps = [
