@@ -52,7 +52,7 @@ absl::Status CreateWeakHandle(OpKernelContext* ctx, T* resource,
                               ResourceHandle* handle) {
   static std::atomic<int64_t> resource_id_counter(0);
   string unique_name =
-      strings::StrCat(container_name, resource_id_counter.fetch_add(1));
+      absl::StrCat(container_name, resource_id_counter.fetch_add(1));
   ResourceMgr* mgr = ctx->resource_manager();
   TF_RETURN_IF_ERROR(mgr->Create<T>(container_name, unique_name, resource));
 

@@ -279,7 +279,7 @@ absl::Status VariantTensorDataReader::ReadScalarInternal(absl::string_view n,
 absl::Status VariantTensorDataReader::ReadTensorInternal(
     FunctionLibraryRuntime* flr, absl::string_view n, absl::string_view key,
     Tensor* val) const {
-  if (Contains(n, strings::StrCat(key, kIsDataset))) {
+  if (Contains(n, absl::StrCat(key, kIsDataset))) {
     return ReadDatasetInternal(flr, n, key, val);
   }
   string name(n);
@@ -305,9 +305,8 @@ absl::Status VariantTensorDataReader::ReadDatasetInternal(
   }
   tstring output_node, serialized_graph_def;
   TF_RETURN_IF_ERROR(
-      ReadScalar(n, strings::StrCat(key, kOutputNode), &output_node));
-  TF_RETURN_IF_ERROR(
-      ReadScalar(n, strings::StrCat(key), &serialized_graph_def));
+      ReadScalar(n, absl::StrCat(key, kOutputNode), &output_node));
+  TF_RETURN_IF_ERROR(ReadScalar(n, key, &serialized_graph_def));
   GraphDef graph_def;
   graph_def.ParseFromString(serialized_graph_def);
   TF_RETURN_IF_ERROR(FromGraphDef(flr, graph_def, {}, output_node, val));
@@ -373,7 +372,7 @@ void VariantTensorDataWriter::MaybeFlush() {
     const string name = keys.first;
     string metadata = name;
     for (size_t i = 0; i < keys_[name].size(); ++i) {
-      strings::StrAppend(&metadata, kDelimiter, keys_[name][i]);
+      absl::StrAppend(&metadata, kDelimiter, keys_[name][i]);
     }
     data_[name]->set_metadata(metadata);
   }
@@ -454,9 +453,9 @@ absl::Status VariantTensorDataWriter::WriteDatasetInternal(
   }
   string result;
   graph_def.SerializeToString(&result);
-  TF_RETURN_IF_ERROR(WriteScalar(n, strings::StrCat(key, kIsDataset), ""));
+  TF_RETURN_IF_ERROR(WriteScalar(n, absl::StrCat(key, kIsDataset), ""));
   TF_RETURN_IF_ERROR(
-      WriteScalar(n, strings::StrCat(key, kOutputNode), output_node));
+      WriteScalar(n, absl::StrCat(key, kOutputNode), output_node));
   TF_RETURN_IF_ERROR(WriteScalar(n, key, result));
   return absl::OkStatus();
 }
@@ -537,9 +536,9 @@ const CompressedElement* IteratorStateVariant::GetCompressedElement(
 
 std::string IteratorStateVariant::DebugString() const {
   if (data_) {
-    return strings::StrCat("IteratorStateVariant<", data_->DebugString(), ">");
+    return absl::StrCat("IteratorStateVariant<", data_->DebugString(), ">");
   } else {
-    return strings::StrCat("IteratorStateVariant<empty>");
+    return absl::StrCat("IteratorStateVariant<empty>");
   }
 }
 
