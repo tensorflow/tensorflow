@@ -90,7 +90,7 @@ class StreamCommon : public Stream {
 
  protected:
   bool InErrorState() const TF_LOCKS_EXCLUDED(mu_) {
-    absl::ReaderMutexLock lock(&mu_);
+    absl::ReaderMutexLock lock(mu_);
     return !status_.ok();
   }
 
