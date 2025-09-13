@@ -22,6 +22,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "llvm/ADT/SmallVector.h"
 #include "xla/iterator_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -44,6 +46,21 @@ struct BlockLevelParameters {
   int num_ctas = 1;
   int num_stages = 1;
   bool is_tma_allowed = false;
+
+  std::string ToString() const {
+    std::vector<std::string> all_tile_sizes;
+    all_tile_sizes.reserve(output_tile_sizes.size());
+    for (const auto& tile_sizes : output_tile_sizes) {
+      std::string values = absl::StrJoin(tile_sizes, ",");
+      all_tile_sizes.push_back(absl::StrCat("[", values, "]"));
+    }
+
+    return absl::StrCat(
+        "\toutput_tile_sizes: [\n", absl::StrJoin(all_tile_sizes, ","), "\n]",
+        ",\n\tnum_warps: ", num_warps, ",\n\tnum_ctas: ", num_ctas,
+        ",\n\tnum_stages: ", num_stages,
+        ",\n\tis_tma_allowed: ", is_tma_allowed ? "true" : "false");
+  }
 
   // Returns a BlockLevelParameters struct from a BlockLevelFusionConfig proto.
   static BlockLevelParameters FromBlockLevelFusionConfig(
