@@ -18,6 +18,22 @@ func.func private @chlo.erf.impl(%arg0: tensor<3x20x20xbf16>) -> tensor<?x20x20x
 
 // -----
 
+// CHECK-LABEL: func @acosh_recompose_composite
+func.func @acosh_recompose_composite(%arg0: tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16> {
+  // CHECK-NEXT: chlo.acosh
+  // CHECK-NOT: stablehlo.composite
+  %0 = stablehlo.composite "chlo.acosh" %arg0 {decomposition = @chlo.acosh.impl, version = 1 : i32} : (tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16>
+  return %0 : tensor<?x20x20xbf16>
+}
+// CHECK-NOT: @chlo.acosh.imp
+func.func private @chlo.acosh.impl(%arg0: tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16> {
+  %0 = chlo.acosh %arg0 : tensor<3x20x20xbf16> -> tensor<?x20x20xbf16>
+  return %0 : tensor<?x20x20xbf16>
+}
+
+// -----
+
+
 // CHECK-LABEL: func @ragged_dot_recompose_composite
 func.func @ragged_dot_recompose_composite(%arg0: tensor<2x11x5xf32>, %arg1: tensor<3x2x5x7xf32>, %arg2: tensor<3xi64>) -> tensor<2x11x7xf32> {
   // CHECK: "chlo.ragged_dot"(%arg0, %arg1, %arg2) <{precision_config = [#chlo<precision DEFAULT>, #chlo<precision DEFAULT>], ragged_dot_dimension_numbers = #chlo.ragged_dot<lhs_batching_dimensions = [0], rhs_batching_dimensions = [1], lhs_contracting_dimensions = [2], rhs_contracting_dimensions = [2], lhs_ragged_dimensions = [1], rhs_group_dimensions = [0]>}> : (tensor<2x11x5xf32>, tensor<3x2x5x7xf32>, tensor<3xi64>) -> tensor<2x11x7xf32>
@@ -57,6 +73,20 @@ func.func @erf_recompose_cc(%arg0: tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16>
   %0 = "stablehlo.custom_call"(%arg0) {
     backend_config = "",
     call_target_name = "mhlo.erf",
+    mhlo.attributes = {},
+    mhlo.version = 1 : i64
+  } : (tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16>
+  func.return %0 : tensor<?x20x20xbf16>
+}
+
+// -----
+
+// CHECK-LABEL: @acosh_recompose_cc
+func.func @acosh_recompose_cc(%arg0: tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16> {
+  // CHECK: %0 = chlo.acosh %arg0 : tensor<3x20x20xbf16> -> tensor<?x20x20xbf16>
+  %0 = "stablehlo.custom_call"(%arg0) {
+    backend_config = "",
+    call_target_name = "mhlo.acosh",
     mhlo.attributes = {},
     mhlo.version = 1 : i64
   } : (tensor<3x20x20xbf16>) -> tensor<?x20x20xbf16>

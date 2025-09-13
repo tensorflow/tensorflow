@@ -49,6 +49,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/xla_legalize_targets.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"  // IWYU pragma: keep, dependent dialect
+#include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/mlir_hlo/mhlo/transforms/rewriters.h"
 #include "xla/mlir_hlo/mhlo/utils/type_conversion.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
@@ -228,7 +229,8 @@ LogicalResult legalizeTF(Operation *op, bool legalize_chlo,
   stablehlo::StablehloToHloTypeConverter hlo_converter;
   stablehlo::populateStablehloToHloPatterns(&patterns, &hlo_converter, context);
   if (legalize_chlo) {
-    chlo::populateChloToHighLevelMhloOpPatterns(context, &patterns);
+    chlo::populateChloToHighLevelMhloOpPatterns(
+        context, &patterns, mhlo::getDefaultChloToHighLevelMhloOptions());
     stablehlo::populateChloToStablehloPatterns(context, &patterns);
   }
   // ConstantLike op is convenient to create splat constants, but is

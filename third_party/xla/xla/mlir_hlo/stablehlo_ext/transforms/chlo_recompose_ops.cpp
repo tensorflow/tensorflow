@@ -243,6 +243,20 @@ struct TopKOpRecomposePattern
   }
 };
 
+struct AcoshOpRecomposePattern
+    : public OpRewritePattern<stablehlo::CompositeOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(stablehlo::CompositeOp op,
+                                PatternRewriter& rewriter) const override {
+    if (op.getName() != "chlo.acosh")
+      return rewriter.notifyMatchFailure(op, "not a chlo.acosh");
+    if (op.getVersion() != 1)
+      return rewriter.notifyMatchFailure(
+          op, "unsupported version for chlo.acosh composite");
+    return recomposeChloOpFromCompositeOp<chlo::AcoshOp>(op, rewriter);
+  }
+};
+
 struct ErfOpRecomposePattern : public OpRewritePattern<stablehlo::CompositeOp> {
   using OpRewritePattern::OpRewritePattern;
   LogicalResult matchAndRewrite(stablehlo::CompositeOp op,
@@ -330,6 +344,16 @@ struct ErfOpCustomCallRecomposePattern
   }
 };
 
+struct AcoshOpCustomCallRecomposePattern
+    : public OpRewritePattern<stablehlo::CustomCallOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(stablehlo::CustomCallOp op,
+                                PatternRewriter& rewriter) const override {
+    return recomposeChloOpFromCustomCall<chlo::AcoshOp>(
+        op, {"mhlo.acosh", "chlo.acosh"}, rewriter);
+  }
+};
+
 }  // namespace
 
 struct ChloRecomposeOpsPass
@@ -345,17 +369,24 @@ struct ChloRecomposeOpsPass
         .setMaxNumRewrites(GreedyRewriteConfig::kNoLimit)
         .setStrictness(GreedyRewriteStrictness::ExistingOps);
 
-    RewritePatternSet patterns(&getContext());
+    auto ctx = &getContext();
+    RewritePatternSet patterns(ctx);
+    // clang-format off
     // CustomCall Patterns
-    patterns.add<ErfOpCustomCallRecomposePattern>(&getContext());
-    patterns.add<RaggedDotOpCustomCallRecomposePattern>(&getContext());
-    patterns.add<TanOpCustomCallRecomposePattern>(&getContext());
-    patterns.add<TopKOpCustomCallRecomposePattern>(&getContext());
+    patterns.add<
+      AcoshOpCustomCallRecomposePattern,
+      ErfOpCustomCallRecomposePattern,
+      RaggedDotOpCustomCallRecomposePattern,
+      TanOpCustomCallRecomposePattern,
+      TopKOpCustomCallRecomposePattern>(ctx);
 
     // Composite Patterns
-    patterns.add<ErfOpRecomposePattern>(&getContext());
-    patterns.add<RaggedDotOpRecomposePattern>(&getContext());
-    patterns.add<TopKOpRecomposePattern>(&getContext());
+    patterns.add<
+      AcoshOpRecomposePattern,
+      ErfOpRecomposePattern,
+      RaggedDotOpRecomposePattern,
+      TopKOpRecomposePattern>(ctx);
+    // clang-format on
 
     // Only apply to CustomCallOps
     auto moduleOp = getOperation();
