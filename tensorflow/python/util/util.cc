@@ -66,10 +66,9 @@ PyObject* GetRegisteredPyObject(const string& name) {
   const auto* m = RegisteredPyObjectMap();
   auto it = m->find(name);
   if (it == m->end()) {
-    PyErr_SetString(PyExc_TypeError,
-                    tensorflow::strings::StrCat("No object with name ", name,
-                                                " has been registered.")
-                        .c_str());
+    PyErr_SetString(PyExc_TypeError, absl::StrCat("No object with name ", name,
+                                                  " has been registered.")
+                                         .c_str());
     return nullptr;
   }
   return it->second;
@@ -84,18 +83,17 @@ PyObject* RegisterPyObject(PyObject* name, PyObject* value) {
     key = PyUnicode_AsUTF8(name);
 #endif
   } else {
-    PyErr_SetString(PyExc_TypeError, tensorflow::strings::StrCat(
-                                         "Expected name to be a str, got",
-                                         PyObjectToString(name))
-                                         .c_str());
+    PyErr_SetString(
+        PyExc_TypeError,
+        absl::StrCat("Expected name to be a str, got", PyObjectToString(name))
+            .c_str());
     return nullptr;
   }
 
   auto* m = RegisteredPyObjectMap();
   if (m->find(key) != m->end()) {
-    PyErr_SetString(PyExc_TypeError, tensorflow::strings::StrCat(
-                                         "Value already registered for ", key)
-                                         .c_str());
+    PyErr_SetString(PyExc_TypeError,
+                    absl::StrCat("Value already registered for ", key).c_str());
     return nullptr;
   }
 
@@ -150,7 +148,7 @@ string PyObjectToString(PyObject* o) {
     string s(PyUnicode_AsUTF8(str));
 #endif
     Py_DECREF(str);
-    return tensorflow::strings::StrCat("type=", GetClassName(o), " str=", s);
+    return absl::StrCat("type=", GetClassName(o), " str=", s);
   } else {
     return "<failed to execute str() on object>";
   }
@@ -806,7 +804,7 @@ void SetDifferentKeysError(PyObject* dict1, PyObject* dict2, string* error_msg,
     return;
   }
   *is_type_error = false;
-  *error_msg = tensorflow::strings::StrCat(
+  *error_msg = absl::StrCat(
       "The two dictionaries don't have the same set of keys. "
       "First structure has keys ",
       PyObjectToString(k1.get()), ", while second structure has keys ",
@@ -987,10 +985,9 @@ bool AssertSameStructureHelper(
     }
     if (struct_compatible.get() == Py_None) {
       *is_type_error = false;
-      *error_msg = tensorflow::strings::StrCat(
-          "Incompatible CompositeTensor TypeSpecs: ",
-          PyObjectToString(type_spec_1), " vs. ",
-          PyObjectToString(type_spec_2));
+      *error_msg = absl::StrCat("Incompatible CompositeTensor TypeSpecs: ",
+                                PyObjectToString(type_spec_1), " vs. ",
+                                PyObjectToString(type_spec_2));
       return true;
     }
   }
