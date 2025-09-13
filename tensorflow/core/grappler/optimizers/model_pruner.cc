@@ -277,7 +277,7 @@ string NewIdentityFromIdentityN(int pos, const NodeDef& identity_n,
   // TODO(lyandy): Migrate over to GrapplerOptimizerStage and use
   // OptimizedNodeName for new node name.
   string new_node_name =
-      strings::StrCat(identity_n.name(), "-", pos, "-grappler-ModelPruner");
+      absl::StrCat(identity_n.name(), "-", pos, "-grappler-ModelPruner");
   if (node_map->NodeExists(new_node_name)) {
     return "";
   }
@@ -348,7 +348,7 @@ absl::Status RewriteIdentityNAndInputsOutputs(
           // inputs.
           int new_pos = terminal_input_pos[input_tensor.index()];
           string updated_input_name =
-              new_pos > 0 ? strings::StrCat(node->name(), ":", new_pos)
+              new_pos > 0 ? absl::StrCat(node->name(), ":", new_pos)
                           : node->name();
           output->set_input(i, updated_input_name);
         }

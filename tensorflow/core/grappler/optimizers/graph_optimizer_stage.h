@@ -167,7 +167,7 @@ class GraphOptimizerStage {
   }
   const string OptimizedNodeName(const NodeScopeAndName& node,
                                  const string& rewrite_rule) const {
-    const string prefix = strings::StrCat(stage_name_, "_", rewrite_rule);
+    const string prefix = absl::StrCat(stage_name_, "_", rewrite_rule);
     return MakeOptimizedNodeName(node, optimizer_name_, prefix);
   }
 
