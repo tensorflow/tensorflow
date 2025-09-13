@@ -24,7 +24,7 @@ namespace tsl {
 CallOptions::CallOptions() = default;
 
 void CallOptions::StartCancel() {
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   if (cancel_func_ != nullptr) {
     // NOTE: We must call the cancel_func_ with mu_ held. This ensure
     // that ClearCancelCallback() does not race with StartCancel().
@@ -34,22 +34,22 @@ void CallOptions::StartCancel() {
 }
 
 void CallOptions::SetCancelCallback(CancelFunction cancel_func) {
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   cancel_func_ = std::move(cancel_func);
 }
 
 void CallOptions::ClearCancelCallback() {
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   cancel_func_ = nullptr;
 }
 
 int64_t CallOptions::GetTimeout() {
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   return timeout_in_ms_;
 }
 
 void CallOptions::SetTimeout(int64_t ms) {
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   timeout_in_ms_ = ms;
 }
 
