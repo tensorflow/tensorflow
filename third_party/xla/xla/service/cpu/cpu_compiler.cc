@@ -673,8 +673,10 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   // Rewrite to custom calls with target as oneDNN library calls.
 #if defined(INTEL_MKL)
   // AOT compiled code runs in single thread.
-  bool is_thunk_runtime = true;
-  is_onednn_compatible = !is_aot_compile && !is_thunk_runtime;
+  bool use_onednn_custom_call = module->config()
+                                    .debug_options()
+                                    .xla_cpu_experimental_onednn_custom_call();
+  is_onednn_compatible = !is_aot_compile && use_onednn_custom_call;
   if (is_onednn_compatible) {
     // Placing OneDnnOpsRewriter here to match the flax patterns
     // TODO: Decide where would be the appropriate place for this pass to make
@@ -893,8 +895,9 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
 
 #if defined(INTEL_MKL)
   // AOT compiled code runs in single thread.
-  bool is_thunk_runtime = true;
-  is_onednn_compatible = !is_aot_compile && !is_thunk_runtime;
+  bool use_onednn_custom_call =
+      debug_options.xla_cpu_experimental_onednn_custom_call();
+  is_onednn_compatible = !is_aot_compile && use_onednn_custom_call;
   if (is_onednn_compatible) {
     // Run SimplifyFPConversions pass to simplify the BF16 pattern and make it
     // easier to match.

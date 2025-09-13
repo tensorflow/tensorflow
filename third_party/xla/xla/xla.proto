@@ -193,6 +193,9 @@ message DebugOptions {
   // below!
   optional bool xla_cpu_enable_fast_min_max = 140;
 
+  // Call oneDNN custom call thunks in the CPU backend
+  optional bool xla_cpu_experimental_onednn_custom_call = 411;
+
   // Stores the fusion types enabled for oneDNN in DotLibraryRewriter pass.
   repeated LibraryFusionType xla_cpu_experimental_onednn_fusion_type = 399;
 
