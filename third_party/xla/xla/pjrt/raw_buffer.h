@@ -110,6 +110,23 @@ class CommonPjRtRawBuffer : public PjRtRawBuffer {
   PjRtFuture<> CopyRawDeviceToHost(void* dst, int64_t offset,
                                    int64_t transfer_size) override;
 
+  // A sliced buffer is a view into the offset and range of this buffer.
+  //
+  // Note that the underlying driver may have requirements
+  // on the alignment of `offset`. Look at implementations of
+  // this method for specific alignment requirements.
+  absl::StatusOr<tsl::RCReference<CommonPjRtRawBuffer>> Slice(int64_t offset,
+                                                              int64_t size);
+
+  struct SliceInfo {
+    int64_t offset;
+    int64_t size;
+  };
+
+  // Batched version of Slice(). May be faster on some implementations.
+  virtual absl::StatusOr<std::vector<tsl::RCReference<CommonPjRtRawBuffer>>>
+  MultiSlice(absl::Span<const SliceInfo> slices);
+
   // Creates an event which signals when the allocation is complete.
   virtual absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
   MakeAllocationReadyEvent() = 0;
