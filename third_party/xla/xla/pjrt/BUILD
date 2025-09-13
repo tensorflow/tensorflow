@@ -1236,6 +1236,7 @@ cc_library(
 cc_library(
     name = "device_event",
     hdrs = ["device_event.h"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         ":pjrt_future",
         "//xla/tsl/concurrency:async_value",
@@ -1251,6 +1252,7 @@ cc_library(
     name = "raw_buffer",
     srcs = ["raw_buffer.cc"],
     hdrs = ["raw_buffer.h"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         ":async_work_runner",
         ":device_event",
