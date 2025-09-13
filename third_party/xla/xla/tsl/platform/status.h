@@ -113,10 +113,9 @@ ABSL_DEPRECATE_AND_INLINE() inline absl::Status OkStatus() {
 #ifdef _WIN32
 const char* NullTerminatedMessage(const absl::Status& status);
 #else
-ABSL_DEPRECATE_AND_INLINE()
-inline const char* NullTerminatedMessage(const absl::Status& status) {
-  return absl::StatusMessageAsCStr(status);
-}
+// The non-Windows version of NullTerminatedMessage has been removed as all
+// call sites were migrated away from the ABSL_DEPRECATE_AND_INLINE version to
+// absl::StatusMessageAsCStr.
 #endif
 
 // TODO(b/197552541) Move this namespace to errors.h.
