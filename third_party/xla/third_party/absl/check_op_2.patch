@@ -1,0 +1,49 @@
+# Drop this once cl/805835426 makes it to a release.
+diff --git a/absl/log/internal/check_op.h b/absl/log/internal/check_op.h
+index c6078640..3cff5ca5 100644
+--- a/absl/log/internal/check_op.h
++++ b/absl/log/internal/check_op.h
+@@ -367,6 +367,21 @@ std::enable_if_t<std::negation_v<std::disjunction<
+                  UnprintableWrapper>
+ Detect(...);
+ 
++// Helper to select the underlying type for enum conversions, to be used in
++// SFINAE contexts. This avoids eager instantiation of std::underlying_type for
++// non-enum types which can be a problem when working with compilers not
++// conformant with cpp20.
++template <typename T, typename EnableT = void>
++struct UnderlyingType {};
++
++// Specialization for enum types.
++template <typename T>
++struct UnderlyingType<T, std::enable_if_t<std::is_enum_v<T>>> {
++  using type = std::underlying_type_t<T>;
++};
++template <typename T>
++using UnderlyingTypeT = typename UnderlyingType<T>::type;
++
+ // This overload triggers when T is a scoped enum that has not defined an output
+ // stream operator (operator<<) or AbslStringify. It causes the enum value to be
+ // converted to a type that can be streamed. For consistency with other enums, a
+@@ -378,14 +393,13 @@ std::enable_if_t<
+                        std::negation<std::is_convertible<T, int>>,
+                        std::negation<HasOstreamOperator<T>>,
+                        std::negation<HasAbslStringify<T>>>,
+-    std::conditional_t<
+-        std::is_same_v<std::underlying_type_t<T>, bool> ||
+-            std::is_same_v<std::underlying_type_t<T>, char> ||
+-            std::is_same_v<std::underlying_type_t<T>, signed char> ||
+-            std::is_same_v<std::underlying_type_t<T>, unsigned char>,
+-        std::underlying_type_t<T>,
+-        std::conditional_t<std::is_signed_v<std::underlying_type_t<T>>, int64_t,
+-                           uint64_t>>>
++    std::conditional_t<std::is_same_v<UnderlyingTypeT<T>, bool> ||
++                           std::is_same_v<UnderlyingTypeT<T>, char> ||
++                           std::is_same_v<UnderlyingTypeT<T>, signed char> ||
++                           std::is_same_v<UnderlyingTypeT<T>, unsigned char>,
++                       UnderlyingTypeT<T>,
++                       std::conditional_t<std::is_signed_v<UnderlyingTypeT<T>>,
++                                          int64_t, uint64_t>>>
+ Detect(...);
+ }  // namespace detect_specialization
+ 
