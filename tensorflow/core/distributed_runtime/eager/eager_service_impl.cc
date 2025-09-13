@@ -305,8 +305,7 @@ absl::Status EagerServiceImpl::CreateContext(
 
   tsl::core::RefCountPtr<RemoteRendezvous> r =
       env_->rendezvous_mgr->Find(request->context_id());
-  auto session_name =
-      tensorflow::strings::StrCat("eager_", request->context_id());
+  auto session_name = absl::StrCat("eager_", request->context_id());
   if (VLOG_IS_ON(2)) {
     VLOG(2) << "Creating context on /job:" << request->server_def().job_name()
             << "/task:" << request->server_def().task_index();
@@ -489,8 +488,7 @@ absl::Status EagerServiceImpl::UpdateContext(
     return absl::OkStatus();
   }
 
-  auto session_name =
-      tensorflow::strings::StrCat("eager_", request->context_id());
+  auto session_name = absl::StrCat("eager_", request->context_id());
 
   TF_RETURN_IF_ERROR(
       env_->session_mgr->UpdateSession(session_name, request->server_def(),
