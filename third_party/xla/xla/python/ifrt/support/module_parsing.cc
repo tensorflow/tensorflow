@@ -20,6 +20,8 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
@@ -38,9 +40,8 @@ namespace ifrt {
 namespace support {
 
 void InitializeMlirDialectRegistry(mlir::DialectRegistry& registry) {
-  registry.insert<xla::ifrt::IfrtDialect>();
-  registry.insert<xla::ifrt::VifrtDialect>();
-  mlir::registerAllDialects(registry);
+  registry.insert<IfrtDialect, VifrtDialect, mlir::func::FuncDialect,
+                  mlir::shape::ShapeDialect>();
   mlir::func::registerAllExtensions(registry);
   mlir::mhlo::registerAllMhloDialects(registry);
   mlir::sdy::registerAllDialects(registry);

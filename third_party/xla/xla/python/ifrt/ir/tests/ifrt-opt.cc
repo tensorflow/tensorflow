@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/InitAllPasses.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
@@ -153,6 +154,8 @@ int main(int argc, char** argv) {
       compiler, compile_options, atom_executable_map, bound_executable_map);
   mlir::DialectRegistry registry;
   xla::ifrt::support::InitializeMlirDialectRegistry(registry);
+  // Register dialects that are only used in the MLIR lit tests.
+  registry.insert<mlir::math::MathDialect>();
 
   return mlir::asMainReturnCode(
       mlir::MlirOptMain(argc, argv, "IFRT IR dialect driver\n", registry));
