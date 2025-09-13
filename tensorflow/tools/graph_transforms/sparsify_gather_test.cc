@@ -50,7 +50,7 @@ class SparsifyGatherTest : public ::testing::Test {
       });
     } else {
       std::for_each(inputs.begin(), inputs.end(), [&node_def](NodeDef* input) {
-        node_def->add_input(strings::StrCat("^", input->name()));
+        node_def->add_input(absl::StrCat("^", input->name()));
       });
     }
     return node_def;
@@ -60,7 +60,7 @@ class SparsifyGatherTest : public ::testing::Test {
                   NodeDef* indices, GraphDef* graph_def) {
     if (gather_v2) {
       NodeDef* axis_node =
-          CreateNode(strings::StrCat(name, "_axis"), "Const", {}, graph_def);
+          CreateNode(absl::StrCat(name, "_axis"), "Const", {}, graph_def);
       Tensor axis_t(DT_INT32, TensorShape({}));
       axis_t.scalar<int32>()() = 0;
       SetNodeTensorAttr<int32>("value", axis_t, axis_node);
