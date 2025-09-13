@@ -204,12 +204,12 @@ class TensorArrayOp : public TensorArrayCreationOp {
 
     auto handle = tensor_array_output_handle->flat<tstring>();
     string unique_tensor_array_name =
-        strings::StrCat(tensor_array_name_, "_",
-                        TensorArray::tensor_array_counter.fetch_add(1));
+        absl::StrCat(tensor_array_name_, "_",
+                     TensorArray::tensor_array_counter.fetch_add(1));
     handle(0) = "_tensor_arrays";
     handle(1) = unique_tensor_array_name;
 
-    auto key = strings::StrCat(handle(0), unique_tensor_array_name);
+    auto key = absl::StrCat(handle(0), unique_tensor_array_name);
 
     TensorArray* tensor_array = new TensorArray(
         key, dtype_, *tensor_array_output_handle, size, element_shape_,
@@ -337,11 +337,11 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
 
     auto output_handle = tensor_array_output_handle->flat<tstring>();
     output_handle(0) = "_tensor_array_grads";
-    output_handle(1) = strings::StrCat(tensor_array_name, "@", source_);
+    output_handle(1) = absl::StrCat(tensor_array_name, "@", source_);
 
     TensorArray* tensor_array;
     TF_RETURN_IF_ERROR(ctx->step_container()->Lookup(
-        rm, strings::StrCat(container, tensor_array_name), &tensor_array));
+        rm, absl::StrCat(container, tensor_array_name), &tensor_array));
     core::ScopedUnref unref(tensor_array);
 
     // Once gradients are being calculated, the forward TensorArray
@@ -383,7 +383,7 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
       element_shape = tensor_array->ElemShape();
     }
 
-    const auto key = strings::StrCat(output_handle(0), output_handle(1));
+    const auto key = absl::StrCat(output_handle(0), output_handle(1));
     auto creator = [key, tensor_array, array_size, marked_size, element_shape,
                     shape_to_prepend, tensor_array_output_handle](
                        TensorArray** ret) -> absl::Status {

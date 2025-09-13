@@ -82,10 +82,10 @@ string QueueBase::ShapeListString(const absl::Span<const TensorShape>& shapes) {
   string result = "[";
   bool first = true;
   for (const TensorShape& shape : shapes) {
-    strings::StrAppend(&result, (first ? "" : ", "), shape.DebugString());
+    absl::StrAppend(&result, first ? "" : ", ", shape.DebugString());
     first = false;
   }
-  strings::StrAppend(&result, "]");
+  absl::StrAppend(&result, "]");
   return result;
 }
 

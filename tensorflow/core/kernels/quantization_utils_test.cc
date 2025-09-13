@@ -60,7 +60,7 @@ void TestRequantizeMany(Eigen::ThreadPoolDevice* eigen_device, float input_min,
         &o_tensor);
   }
 
-  const string tolerance_str = strings::StrCat("+-", tolerance);
+  const string tolerance_str = absl::StrCat("+-", tolerance);
   for (size_t value_index = 0; value_index < values_count; ++value_index) {
     int e = expected_values[value_index];
     int v = output_values(value_index);
@@ -96,7 +96,7 @@ void TestRequantizeMany8To32Bit(float input_min, float input_max,
                            input_max, output_min, output_max,
                            output_values.data());
 
-  const string tolerance_str = strings::StrCat("+-", tolerance);
+  const string tolerance_str = absl::StrCat("+-", tolerance);
   for (int value_index = 0; value_index < values_count; ++value_index) {
     const qint32 e = expected_values[value_index];
     const qint32 v = output_values(value_index);

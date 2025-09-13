@@ -54,8 +54,8 @@ class LegacyVar : public ResourceBase {
   Tensor* tensor() { return &tensor_; }
 
   string DebugString() const override {
-    return strings::StrCat(DataTypeString(tensor_.dtype()), "/",
-                           tensor_.shape().DebugString());
+    return absl::StrCat(DataTypeString(tensor_.dtype()), "/",
+                        tensor_.shape().DebugString());
   }
 
  private:

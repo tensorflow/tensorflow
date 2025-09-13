@@ -184,13 +184,13 @@ absl::Status ValidateSparseTensorShape(const Tensor& indices,
 template <typename IndexTensor>
 string CreateIndexString(const IndexTensor& indices, int64_t row) {
   const int64_t ndims = indices.dimension(1);
-  string index_str = strings::StrCat("indices[", row, ", :] = [");
+  string index_str = absl::StrCat("indices[", row, ", :] = [");
   for (int64_t dim = 0; dim < ndims; ++dim) {
     strings::StrAppend(&index_str, indices(row, dim),
                        dim < ndims - 1 ? ", " : "]");
   }
   if (ndims == 0) {
-    strings::StrAppend(&index_str, "]");
+    absl::StrAppend(&index_str, "]");
   }
   return index_str;
 }
