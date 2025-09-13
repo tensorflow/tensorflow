@@ -123,7 +123,7 @@ gtl::FlatMap<string, string> GetUniqueNames(const Iterable& first_iterable,
 
     while (first_names.count(name) ||
            (changed_name && second_names.count(name))) {
-      name = strings::StrCat(name_before, "/_", id);
+      name = absl::StrCat(name_before, "/_", id);
       changed_name = true;
       ++id;
     }
@@ -342,7 +342,7 @@ FunctionDef* CreateFalsePredicate(
   for (const auto& fake_arg : fake_args) {
     auto* arg = false_predicate->mutable_signature()->add_input_arg();
     arg->set_type(fake_arg.type());
-    arg->set_name(strings::StrCat("fake_arg", num));
+    arg->set_name(absl::StrCat("fake_arg", num));
     num++;
   }
 

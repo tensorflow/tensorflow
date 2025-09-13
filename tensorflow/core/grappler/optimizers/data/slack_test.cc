@@ -133,23 +133,23 @@ TEST(SlackTest, TestFunctionNotOptimized) {
                               {std::make_pair("output_shapes", shapes_attr),
                                std::make_pair("Toutput_types", types_attr)},
                               fdef);
-  NodeDef *prefetch_node = function_utils::AddNode(
+  NodeDef* prefetch_node = function_utils::AddNode(
       "PrefetchDataset", "PrefetchDataset",
-      {strings::StrCat(tensor_dataset_node->name(), ":handle:0"), "args_0"},
+      {absl::StrCat(tensor_dataset_node->name(), ":handle:0"), "args_0"},
       {std::make_pair("output_shapes", shapes_attr),
        std::make_pair("output_types", types_attr)},
       fdef);
 
   AttrValue variant_type_attr;
   SetAttrValue(DT_VARIANT, &variant_type_attr);
-  NodeDef *identity_node = function_utils::AddNode(
-      "Identity", "Identity",
-      {strings::StrCat(prefetch_node->name(), ":handle:0"),
-       strings::StrCat("^", tensor_dataset_node->name())},
-      {std::make_pair("T", variant_type_attr)}, fdef);
+  NodeDef* identity_node =
+      function_utils::AddNode("Identity", "Identity",
+                              {absl::StrCat(prefetch_node->name(), ":handle:0"),
+                               absl::StrCat("^", tensor_dataset_node->name())},
+                              {std::make_pair("T", variant_type_attr)}, fdef);
 
   (*fdef->mutable_ret())["identity"] =
-      strings::StrCat(identity_node->name(), ":output:0");
+      absl::StrCat(identity_node->name(), ":output:0");
   (*fdef->mutable_control_ret())[tensor_dataset_node->name()] =
       tensor_dataset_node->name();
   fdef->mutable_signature()->add_control_output(tensor_dataset_node->name());
