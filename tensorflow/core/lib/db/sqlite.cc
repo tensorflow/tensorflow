@@ -104,7 +104,7 @@ absl::Status SetPragma(Sqlite* db, const char* pragma,
   }
   SqliteStatement stmt;
   TF_RETURN_IF_ERROR(  // We can't use Bind*() pragma statements.
-      db->Prepare(strings::StrCat("PRAGMA ", pragma, "=", value), &stmt));
+      db->Prepare(absl::StrCat("PRAGMA ", pragma, "=", value), &stmt));
   bool unused_done;
   return stmt.Step(&unused_done);
 }
