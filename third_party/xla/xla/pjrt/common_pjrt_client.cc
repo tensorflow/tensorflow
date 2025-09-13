@@ -1189,7 +1189,7 @@ CommonPjRtBufferImpl::DonateWithControlDependency(PjRtFuture<> dependency) {
 }
 
 PjRtFuture<> CommonPjRtBufferImpl::GetReadyFuture() {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   if (!device_buffer()) {
     return PjRtFuture<>(InvalidArgument(
         "GetReadyFuture() called on deleted or donated buffer"));
