@@ -18,12 +18,17 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "llvm/ADT/SmallBitVector.h"
+#include "mlir/IR/AffineMap.h"
+#include "mlir/IR/MLIRContext.h"
+#include "xla/hlo/analysis/indexing_test_utils.h"
 #include "xla/service/gpu/model/experimental/symbolic_expr.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
+using ::mlir::AffineMap;
+using ::mlir::MLIRContext;
 using ::testing::ElementsAre;
 
 TEST(SymbolicMapTest, GetSymbolAndDimExpressions) {
@@ -37,6 +42,41 @@ TEST(SymbolicMapTest, GetSymbolAndDimExpressions) {
   EXPECT_EQ(map.GetSymbolExpression(1), s1);
   EXPECT_EQ(map.GetDimExpression(0), d0);
   EXPECT_EQ(map.GetDimExpression(1), d1);
+}
+
+TEST(SymbolicMapTest, AffineMapRoundTrip) {
+  MLIRContext mlir_context;
+  SymbolicExprContext symbolic_context;
+
+  AffineMap affine_map = ParseAffineMap(
+      "(d0, d1)[s0, s1] -> (d0 + s1 * 2, d1 - s0, d0 floordiv 3, d1 mod 4)",
+      &mlir_context);
+
+  SymbolicMap symbolic_map =
+      SymbolicMap::FromAffineMap(&symbolic_context, affine_map);
+
+  EXPECT_EQ(symbolic_map.GetNumDims(), 2);
+  EXPECT_EQ(symbolic_map.GetNumSymbols(), 2);
+  EXPECT_EQ(symbolic_map.GetNumResults(), 4);
+
+  AffineMap round_trip_map = symbolic_map.ToAffineMap(&mlir_context);
+  EXPECT_EQ(affine_map, round_trip_map);
+}
+
+TEST(SymbolicMapTest, ToAffineMapFailure) {
+  MLIRContext mlir_context;
+  SymbolicExprContext symbolic_context;
+
+  SymbolicExpr d0 = symbolic_context.CreateVariable(0);
+  SymbolicExpr c1 = symbolic_context.CreateConstant(1);
+  // kMax is not representable in AffineExpr.
+  SymbolicExpr max_expr = d0.max(c1);
+
+  SymbolicMap symbolic_map =
+      SymbolicMap::Get(&symbolic_context, 1, 0, {max_expr});
+
+  AffineMap affine_map = symbolic_map.ToAffineMap(&mlir_context);
+  EXPECT_FALSE(affine_map);
 }
 
 TEST(SymbolicMapTest, ToString) {
