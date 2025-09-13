@@ -1781,7 +1781,7 @@ PjRtFuture<> PjRtStreamExecutorBuffer::ToLiteralHelper(
                         device_buffer.status().ToString()));
   }
 
-  auto promise = PjRtFuture<>::CreatePromise();
+  auto [promise, future] = PjRtFuture<>::MakePromise();
   auto usage_event = BufferSequencingEvent::Create(client_->thread_pool());
 
   TransferManager* transfer_manager =
@@ -1804,11 +1804,9 @@ PjRtFuture<> PjRtStreamExecutorBuffer::ToLiteralHelper(
   // to ToLiteral.
   device_buffer.ConvertUsageHold(stream, usage_event, /*reference_held=*/true);
 
-  auto literal_and_transpose_promise =
+  auto [literal_and_transpose_promise, literal_and_transpose_future] =
       PjRtFuture<std::pair<MutableLiteralBase*,
-                           std::shared_ptr<TransposePlan>>>::CreatePromise();
-  PjRtFuture<std::pair<MutableLiteralBase*, std::shared_ptr<TransposePlan>>>
-      literal_and_transpose_future(literal_and_transpose_promise);
+                           std::shared_ptr<TransposePlan>>>::MakePromise();
 
   literal.OnReady(
       [client = client_, on_device_shape{on_device_shape_},
@@ -1873,17 +1871,18 @@ PjRtFuture<> PjRtStreamExecutorBuffer::ToLiteralHelper(
                            on_device_shape{on_device_shape_},
                            literal_and_transpose =
                                std::move(literal_and_transpose_future),
-                           promise, local_device]() mutable {
+                           promise = std::move(promise).ToShared(),
+                           local_device]() mutable {
     absl::StatusOr<EventPool::Handle> event_or =
         local_device->event_pool().AllocateEvent(stream->parent());
     if (!event_or.ok()) {
-      promise.Set(event_or.status());
+      promise->Set(event_or.status());
       return;
     }
 
     absl::Status defined_status = definition_events[0]->GetDefinedStatus();
     if (!defined_status.ok()) {
-      promise.Set(defined_status);
+      promise->Set(defined_status);
       return;
     }
 
@@ -1900,7 +1899,7 @@ PjRtFuture<> PjRtStreamExecutorBuffer::ToLiteralHelper(
                 std::pair<MutableLiteralBase*, std::shared_ptr<TransposePlan>>>&
                 value) mutable {
           if (!value.ok()) {
-            promise.Set(value.status());
+            promise->Set(value.status());
             return;
           }
 
@@ -1939,14 +1938,14 @@ PjRtFuture<> PjRtStreamExecutorBuffer::ToLiteralHelper(
                     transpose->Execute(staged->untyped_data(),
                                        literal->untyped_data());
                   }
-                  promise.Set(std::move(status));
+                  promise->Set(std::move(status));
                 },
                 transfer_metadata_ptr);
           } else {
             transfer_manager->TransferLiteralFromDevice(
                 stream, shaped_buffer, literal,
                 [promise](absl::Status status) mutable {
-                  promise.Set(std::move(status));
+                  promise->Set(std::move(status));
                 },
                 transfer_metadata_ptr);
           }
@@ -1957,7 +1956,7 @@ PjRtFuture<> PjRtStreamExecutorBuffer::ToLiteralHelper(
           absl::Status defined_status =
               local_device->ThenRelease(stream, device_memory);
           if (!defined_status.ok()) {
-            promise.Set(defined_status);
+            promise->Set(defined_status);
           }
         });
   };
@@ -1965,8 +1964,8 @@ PjRtFuture<> PjRtStreamExecutorBuffer::ToLiteralHelper(
   first_definition_event->ExecuteOrAddToFutureTasks(
       "async_to_literal", std::move(async_to_literal));
 
-  return PjRtFuture<>(
-      std::move(promise),
+  return PjRtFutureHelpers::WithProfiling(
+      std::move(future),
       /*on_block_start=*/
       []() {
         tsl::profiler::TraceMeProducer traceme(
@@ -3354,10 +3353,10 @@ PjRtStreamExecutorLoadedExecutable::ExecuteHelper(
     }
   }
 
-  std::optional<PjRtFuture<>> future;
+  std::optional<PjRtFuture<>> maybe_future;
   if (fill_future) {
-    auto promise = PjRtFuture<>::CreatePromise();
-    future = PjRtFuture<>(promise);
+    auto [promise, future] = PjRtFuture<>::MakePromise();
+    maybe_future = std::move(future);
     compute_callbacks.push_back(
         [promise = std::move(promise)]() mutable { promise.Set(); });
   }
@@ -3371,7 +3370,8 @@ PjRtStreamExecutorLoadedExecutable::ExecuteHelper(
       });
   metrics::ReportExecutableEnqueueTime(tsl::Env::Default()->NowMicros() -
                                        start_time_usecs);
-  return Result({/*future=*/std::move(future), /*buffers=*/std::move(outputs)});
+  return Result(
+      {/*future=*/std::move(maybe_future), /*buffers=*/std::move(outputs)});
 }
 
 absl::Status PjRtStreamExecutorLoadedExecutable::VerifyCompatibleDevices()
