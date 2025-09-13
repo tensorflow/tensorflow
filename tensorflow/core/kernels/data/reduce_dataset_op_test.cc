@@ -61,10 +61,10 @@ class ReduceDatasetParams : public DatasetParams {
     input_names->clear();
     input_names->emplace_back("input_dataset");
     for (int i = 0; i < initial_state_.size(); ++i) {
-      input_names->emplace_back(strings::StrCat("initial_state_", i));
+      input_names->emplace_back(absl::StrCat("initial_state_", i));
     }
     for (int i = 0; i < other_arguments_.size(); ++i) {
-      input_names->emplace_back(strings::StrCat("other_arguments_", i));
+      input_names->emplace_back(absl::StrCat("other_arguments_", i));
     }
     return absl::OkStatus();
   }

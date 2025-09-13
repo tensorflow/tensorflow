@@ -83,14 +83,14 @@ class OptionalVariant {
 
   string DebugString() const {
     if (values_) {
-      return strings::StrCat("OptionalVariant<", "values: (",
-                             absl::StrJoin(*values_, ", ",
-                                           [](string* s, const Tensor& elem) {
-                                             *s = elem.DebugString();
-                                           }),
-                             ")>");
+      return absl::StrCat("OptionalVariant<", "values: (",
+                          absl::StrJoin(*values_, ", ",
+                                        [](string* s, const Tensor& elem) {
+                                          *s = elem.DebugString();
+                                        }),
+                          ")>");
     } else {
-      return strings::StrCat("OptionalVariant<None>");
+      return absl::StrCat("OptionalVariant<None>");
     }
   }
 
