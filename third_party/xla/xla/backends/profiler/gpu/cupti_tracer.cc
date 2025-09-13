@@ -1107,7 +1107,7 @@ absl::Status CuptiTracer::Enable(
     return status;
   }
 
-  EnableActivityTracing().IgnoreError();
+  TF_RETURN_IF_ERROR(EnableActivityTracing());
   tsl::profiler::AnnotationStack::Enable(true);
 
   int num_gpus_requested = xplanes.size();
