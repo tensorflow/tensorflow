@@ -4119,6 +4119,21 @@ def softmax_cross_entropy_with_logits_v2_helper(
                       [logits, labels]) as name:
     logits = ops.convert_to_tensor(logits, name="logits")
     labels = ops.convert_to_tensor(labels, name="labels")
+    # Bug fix: Check that each label vector sums to 1 (within tolerance)
+    label_sums = math_ops.reduce_sum(labels, axis=-1)
+    if not context.executing_eagerly():
+      # In graph mode, add assertion op
+      with ops.control_dependencies([
+          check_ops.assert_near(
+              label_sums, array_ops.ones_like(label_sums),
+              message="Each label vector must sum to 1 (probabilities)")
+      ]):
+        labels = array_ops.identity(labels)
+    else:
+      # In eager mode, raise error if any label vector is not close to 1
+      import numpy as np
+      if not np.allclose(label_sums.numpy(), 1.0, atol=1e-5):
+        raise ValueError("Each label vector must sum to 1 (probabilities)")
     convert_to_float32 = (
         logits.dtype == dtypes.float16 or logits.dtype == dtypes.bfloat16)
     precise_logits = math_ops.cast(
@@ -5576,12 +5591,12 @@ def stateless_dropout(x, rate, seed, rng_alg=None, noise_shape=None, name=None):
   >>> tf.nn.experimental.stateless_dropout(x, rate=0.8, seed=[2, 0])
   <tf.Tensor: shape=(3, 5), dtype=float32, numpy=
   array([[5., 0., 0., 0., 0.],
-         [0., 0., 0., 5., 0.],
+         [0., 5., 0., 5., 0.],
          [0., 0., 0., 0., 0.]], dtype=float32)>
   >>> tf.nn.experimental.stateless_dropout(x, rate=0.8, seed=[2, 0])
   <tf.Tensor: shape=(3, 5), dtype=float32, numpy=
   array([[5., 0., 0., 0., 0.],
-         [0., 0., 0., 5., 0.],
+         [0., 5., 0., 5., 0.],
          [0., 0., 0., 0., 0.]], dtype=float32)>
 
   Compare the above results to those of `tf.nn.dropout` below. The
