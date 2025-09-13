@@ -729,7 +729,7 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicatedImpl(
                 VLOG(1) << "Infeed step " << step;
               }
             }
-            absl::MutexLock lock(&infeed_outfeed_status_mu);
+            absl::MutexLock lock(infeed_outfeed_status_mu);
             infeed_outfeed_status.Update(per_feed_status);
           });
     }
@@ -757,7 +757,7 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicatedImpl(
             VLOG(1) << "Outfeed step " << step;
           }
         }
-        absl::MutexLock lock(&infeed_outfeed_status_mu);
+        absl::MutexLock lock(infeed_outfeed_status_mu);
         infeed_outfeed_status.Update(per_feed_status);
       });
     }
