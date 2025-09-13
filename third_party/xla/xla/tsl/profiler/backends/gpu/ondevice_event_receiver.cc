@@ -36,13 +36,13 @@ GpuOnDeviceTraceEventReceiver* GpuOnDeviceTraceEventReceiver::GetSingleton() {
 }
 
 size_t GpuOnDeviceTraceEventReceiver::ActiveVersion() {
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   return (collector_ != nullptr) ? version_ : 0;
 }
 
 absl::Status GpuOnDeviceTraceEventReceiver::Inject(
     size_t version, GpuOnDeviceTraceEvent&& event) {
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   if (collector_ != nullptr && version == version_) {
     if (event.injection_instance_id > current_injection_id_ ||
         event.injection_instance_id <= 0) {
@@ -63,7 +63,7 @@ absl::StatusOr<size_t> GpuOnDeviceTraceEventReceiver::StartWith(
   if (max_injection_instance <= 0) {
     return absl::InternalError("Max injection instance must be positive.");
   }
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   if (collector_ != nullptr && collector_ != collector) {
     return absl::InternalError(
         "GpuOnDeviceTraceEventReceiver already bind with another collector.");
@@ -79,7 +79,7 @@ absl::StatusOr<size_t> GpuOnDeviceTraceEventReceiver::StartWith(
 
 // Return and increment the injection instance id if successful.
 int32_t GpuOnDeviceTraceEventReceiver::StartInjectionInstance(size_t version) {
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   if (collector_ == nullptr || version != version_ ||
       current_injection_id_ >= max_injection_instance_) {
     return 0;
@@ -88,7 +88,7 @@ int32_t GpuOnDeviceTraceEventReceiver::StartInjectionInstance(size_t version) {
 }
 
 absl::Status GpuOnDeviceTraceEventReceiver::Stop() {
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   if (collector_ != nullptr) {
     collector_ = nullptr;
     version_++;
