@@ -195,7 +195,7 @@ FlatMapRandomAccessHandler::MakeInputDatasets() const {
           absl::StatusOr<DatasetBase*> dataset =
               MakeInputDataset(std::move(input_tensors), *map_func);
           if (!dataset.ok()) {
-            absl::MutexLock l(&mu);
+            absl::MutexLock l(mu);
             status.Update(dataset.status());
             return;
           }
