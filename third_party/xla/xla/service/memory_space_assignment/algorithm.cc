@@ -3826,6 +3826,7 @@ void MsaAlgorithm::UpdateAllocationRequirementForUseAliases(
   VLOG(4) << "Aliased allocation at time " << use_time << ": "
           << (aliased_allocation ? aliased_allocation->ToString()
                                  : "couldn't find the aliased allocation");
+  if (!aliased_allocation) return;
 
   for (const HloPosition& aliased_position : use.aliases) {
     AddAliasedRequiredAssignment(aliased_position.instruction,
