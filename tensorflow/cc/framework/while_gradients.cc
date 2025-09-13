@@ -50,7 +50,7 @@ std::vector<Output> ToOutputVector(
 // backprop while loops.
 // TODO(skyewm): make sure this is unique among existing frame names
 string BackPropFrameName(const string& forward_frame_name) {
-  return strings::StrCat(forward_frame_name, "_backprop");
+  return absl::StrCat(forward_frame_name, "_backprop");
 }
 
 // Creates a loop that counts the number of iterations performed by the
