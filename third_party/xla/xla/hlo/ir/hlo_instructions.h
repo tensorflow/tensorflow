@@ -2239,7 +2239,7 @@ class HloCustomCallInstruction : public HloCallableInstruction {
 
   void SetPerInstructionStorage(
       std::unique_ptr<PerInstructionStorage> per_instruction_storage) {
-    absl::MutexLock lock(&per_instruction_storage_mutex_);
+    absl::MutexLock lock(per_instruction_storage_mutex_);
     if (per_instruction_storage_ != nullptr) {
       LOG(WARNING) << "Not Overwriting existing per-instruction storage.";
       return;
