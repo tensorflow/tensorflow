@@ -23,6 +23,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_set.h"
+#include "third_party/protobuf/repeated_field.h"
 
 namespace xla {
 namespace spmd {
