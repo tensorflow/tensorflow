@@ -741,7 +741,7 @@ template <class PropagatorStateType>
 void ExecutorState<PropagatorStateType>::ProcessInline(
     TaggedNodeReadyQueue* inline_ready, int64_t scheduled_nsec) {
   WithContext wc(context_);
-  auto ready = std::make_unique<TaggedNodeSeq>();
+  TaggedNodeSeq ready;
 
   // Parameters passed to OpKernel::Compute.
   auto inputs = std::make_unique<TensorValueVec>();
@@ -908,7 +908,7 @@ void ExecutorState<PropagatorStateType>::ProcessInline(
         propagator_.MaybeMarkCompleted(tagged_node);
         activity_watcher::ActivityEnd(activity_id);
         // Continue to process the nodes in 'inline_ready'.
-        completed = NodeDone(s, ready.get(), stats, inline_ready);
+        completed = NodeDone(s, &ready, stats, inline_ready);
         continue;
       }
 
@@ -949,7 +949,7 @@ void ExecutorState<PropagatorStateType>::ProcessInline(
       activity_watcher::ActivityEnd(activity_id);
       // Propagates outputs.
       if (s.ok()) {
-        propagator_.PropagateOutputs(tagged_node, &outputs, ready.get());
+        propagator_.PropagateOutputs(tagged_node, &outputs, &ready);
       }
 
       // Clear outputs without deallocating the `outputs` vector.
@@ -962,7 +962,7 @@ void ExecutorState<PropagatorStateType>::ProcessInline(
         scheduled_nsec = nodestats::NowInNsec();
       }
       // Postprocess.
-      completed = NodeDone(s, ready.get(), stats, inline_ready);
+      completed = NodeDone(s, &ready, stats, inline_ready);
     }
   }  // while !inline_ready.empty()
 
