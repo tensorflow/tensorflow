@@ -16,11 +16,13 @@ limitations under the License.
 #ifndef XLA_HLO_IR_DFS_HLO_VISITOR_WITH_DEFAULT_H_
 #define XLA_HLO_IR_DFS_HLO_VISITOR_WITH_DEFAULT_H_
 
+#include <functional>
 #include <memory>
 #include <utility>
 
 #include "absl/base/optimization.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
@@ -391,6 +393,26 @@ class DfsHloRewriteVisitor : public DfsHloVisitorWithDefault {
 
  private:
   bool changed_ = false;
+};
+
+// A visitor that visits only HLO instructions that match the filter.
+class FilteredDfsHloVisitor : public DfsHloVisitorWithDefault {
+ public:
+  FilteredDfsHloVisitor(DfsHloVisitorBase<HloInstruction*>* visitor,
+                        std::function<bool(const HloInstruction*)> filter)
+      : visitor_(visitor), filter_(std::move(filter)) {}
+
+  // Filter and call the child visitor if appropriate.
+  absl::Status DefaultAction(HloInstruction* hlo_instruction) override {
+    if (filter_(hlo_instruction)) {
+      return hlo_instruction->Visit(visitor_);
+    }
+    return absl::OkStatus();
+  }
+
+ private:
+  DfsHloVisitorBase<HloInstruction*>* visitor_;
+  std::function<bool(const HloInstruction*)> filter_;
 };
 
 // (Const)FunctionVisitor lets you transform an
