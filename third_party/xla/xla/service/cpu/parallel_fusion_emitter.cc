@@ -80,7 +80,7 @@ class ParallelFusionEmitter::FusionCompilerPool {
 ParallelFusionEmitter::FusionCompilerPool::~FusionCompilerPool() {
   // We must wait for all instances to be returned to the pool before
   // destroying it.
-  absl::MutexLock lock(&instances_mutex_);
+  absl::MutexLock lock(instances_mutex_);
   instances_mutex_.Await(absl::Condition(
       +[](int64_t* outstanding_instances) {
         return *outstanding_instances == 0;
@@ -90,7 +90,7 @@ ParallelFusionEmitter::FusionCompilerPool::~FusionCompilerPool() {
 
 auto ParallelFusionEmitter::FusionCompilerPool::GetInstance()
     -> std::shared_ptr<CompilerInstance> {
-  absl::MutexLock lock(&instances_mutex_);
+  absl::MutexLock lock(instances_mutex_);
   if (!instances_.empty()) {
     CompilerInstance instance = std::move(instances_.top());
     instances_.pop();
@@ -115,7 +115,7 @@ auto ParallelFusionEmitter::FusionCompilerPool::CreateSharedInstance(
 
 void ParallelFusionEmitter::FusionCompilerPool::RecycleCompilerInstance(
     CompilerInstance* instance) {
-  absl::MutexLock lock(&instances_mutex_);
+  absl::MutexLock lock(instances_mutex_);
   outstanding_instances_--;
   instances_.push(std::move(*instance));
   delete instance;
@@ -163,7 +163,7 @@ absl::StatusOr<KernelSpec> ParallelFusionEmitter::AddFusion(
                                        buffer_assignment_, use_unique_c_name_));
 
   {
-    absl::MutexLock lock(&kernels_mutex_);
+    absl::MutexLock lock(kernels_mutex_);
     outstanding_kernels_++;
   }
 
@@ -180,7 +180,7 @@ absl::StatusOr<KernelSpec> ParallelFusionEmitter::AddFusion(
 
 absl::StatusOr<std::vector<LlvmKernelDefinition>>
 ParallelFusionEmitter::ConsumeKernels() {
-  absl::MutexLock lock(&kernels_mutex_);
+  absl::MutexLock lock(kernels_mutex_);
 
   kernels_mutex_.Await(absl::Condition(
       +[](int64_t* outstanding_kernels) { return *outstanding_kernels == 0; },
@@ -206,7 +206,7 @@ void ParallelFusionEmitter::CompileFusion(
   absl::StatusOr<LlvmIrKernelSource> llvm_kernel_source =
       compiler_instance->compiler->Compile(std::move(source));
 
-  absl::MutexLock lock(&kernels_mutex_);
+  absl::MutexLock lock(kernels_mutex_);
   outstanding_kernels_--;
 
   if (!llvm_kernel_source.ok()) {
