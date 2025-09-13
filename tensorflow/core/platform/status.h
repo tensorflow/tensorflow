@@ -40,11 +40,6 @@ using tsl::TfCheckOpHelper;
 using tsl::TfCheckOpHelperOutOfLine;
 
 namespace errors {
-#ifdef SWIG
-using tsl::errors::Code;
-#else
-using Code ABSL_DEPRECATE_AND_INLINE() = ::absl::StatusCode;
-#endif
 using tsl::errors::GetStackTrace;
 using tsl::errors::SetStackTrace;
 }  // namespace errors

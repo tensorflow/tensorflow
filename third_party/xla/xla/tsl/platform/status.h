@@ -50,15 +50,11 @@ namespace tsl {
 // Since April 2023, tensorflow::Status is an alias to absl::Status. The first
 // TF release including this change will be TF 2.14 (the latest release in
 // April 2023 is 2.13).
-// At the same time `tsl::errors::Code` aliases `absl::StatusCode`.
 //
 // Here is a set of correspondences:
 // - Use `absl::OkStatus()` instead of `tsl::OkStatus()`.
 typedef absl::Status Status ABSL_DEPRECATE_AND_INLINE();
 
-namespace errors {
-typedef absl::StatusCode Code ABSL_DEPRECATE_AND_INLINE();
-}  // namespace errors
 namespace error {
 typedef ::tensorflow::error::Code Code;
 }  // namespace error
