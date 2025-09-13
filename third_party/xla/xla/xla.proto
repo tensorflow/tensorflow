@@ -818,9 +818,6 @@ message DebugOptions {
   // scratch), so this can be multiplied by quite a lot.
   optional int64 xla_gpu_redzone_padding_bytes = 228;
 
-  // Size threshold (in megabytes) for the GPU redzone scratch allocator.
-  optional int64 xla_gpu_redzone_scratch_max_megabytes = 167;
-
   // If true, will require complete AOT autotuning results; in the case of
   // missing AOT result, the model will not be compiled or executed, a
   // `NotFound` error will be returned.
@@ -919,6 +916,7 @@ message DebugOptions {
 
   // go/keep-sorted end
 
+  reserved 167;  // xla_gpu_redzone_scratch_max_megabytes
   reserved 276;  // xla_gpu_enable_nccl_per_stream_comms
   reserved 226;  // xla_gpu_triton_gemm_disable_reduced_precision_reduction
   reserved 385;  // xla_gpu_experimental_enable_dynamic_dot_search_space
