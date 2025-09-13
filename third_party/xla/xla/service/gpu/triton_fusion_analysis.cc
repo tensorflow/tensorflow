@@ -217,20 +217,28 @@ bool TritonFusionAnalysis::IsBatchDimMinorForInt4Parameter(
   const auto& batch_dims = (scope == Scope::LHS) ? dims.lhs_batch_dimensions()
                                                  : dims.rhs_batch_dimensions();
 
-  if (batch_dims.empty()) return true;
+  if (batch_dims.empty()) {
+    return true;
+  }
 
   int32_t batch_dim = batch_dims.Get(0);
   CHECK_EQ(batch_dims.size(), 1);
   const auto& params = parameters_.at(scope);
   for (const auto& param : params) {
-    if (param->shape().element_type() != S4) continue;
+    if (param->shape().element_type() != S4) {
+      continue;
+    }
 
     const auto* strides = IterSpec(scope, param, batch_dim);
-    if (strides == nullptr) continue;
+    if (strides == nullptr) {
+      continue;
+    }
     // The hacky way to check if the batch dimension is minor.
     // It also covers the case when the batch dimension is second to last but
     // the minor dimension is equal to 1.
-    if (strides->front().stride == 1) return false;
+    if (strides->front().stride == 1) {
+      return false;
+    }
   }
   return true;
 }
