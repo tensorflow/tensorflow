@@ -497,6 +497,7 @@ EXPORTS
   ?Lookup@PyExceptionRegistry@tensorflow@@SAPEAU_object@@W4TSL_Code@@@Z
   ?Main@tfcompile@tensorflow@@YA?AVStatus@lts_20250512@absl@@AEBUMainFlags@12@@Z
   ?MainOpsFanin@GrapplerItem@grappler@tensorflow@@QEBA?AV?$vector@PEBVNodeDef@tensorflow@@V?$allocator@PEBVNodeDef@tensorflow@@@std@@@std@@XZ
+  ?MakeCheckFailString@status_internal@lts_20250512@absl@@YAPEBDPEBVStatus@23@PEBD@Z
   ?MakeEagerContextThreadLocalData@tensorflow@@YAXPEAU_object@@00@Z
   ?MakeFingerprintJson@metrics@tensorflow@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@VFingerprintDef@2@@Z
   ?MakeRefCountingHandle@ResourceHandle@tensorflow@@SA?AV12@PEAVResourceBase@2@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBVTypeIndex@2@AEBV?$vector@UDtypeAndPartialTensorShape@tensorflow@@V?$allocator@UDtypeAndPartialTensorShape@tensorflow@@@std@@@5@AEBV?$optional@VManagedStackTrace@tensorflow@@@5@@Z
@@ -531,7 +532,6 @@ EXPORTS
   ?NewWorkerServer@data@tensorflow@@YA?AVStatus@lts_20250512@absl@@AEBVWorkerConfig@experimental@12@AEAV?$unique_ptr@VWorkerGrpcDataServer@data@tensorflow@@U?$default_delete@VWorkerGrpcDataServer@data@tensorflow@@@std@@@std@@@Z
   ?NewWritableFile@Env@tsl@@QEAA?AVStatus@lts_20250512@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAV?$unique_ptr@VWritableFile@tsl@@U?$default_delete@VWritableFile@tsl@@@std@@@7@@Z
   ?NotFoundError@lts_20250512@absl@@YA?AVStatus@12@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
-  ?NullTerminatedMessage@tsl@@YAPEBDAEBVStatus@lts_20250512@absl@@@Z
   ?NumCheckpointShardsWritten@metrics@tensorflow@@YAAEAVCounterCell@monitoring@tsl@@XZ
   ?NumTasks@WorkerGrpcDataServer@data@tensorflow@@QEAA?AVStatus@lts_20250512@absl@@PEAH@Z
   ?NumWorkers@DispatchGrpcDataServer@data@tensorflow@@QEAA?AVStatus@lts_20250512@absl@@PEAH@Z
@@ -732,7 +732,6 @@ EXPORTS
   ?TPUCoreLocationsToIDs@dtensor@tensorflow@@YA?AV?$vector@HV?$allocator@H@std@@@std@@PEAUTFE_Context@@AEBV?$vector@V?$vector@HV?$allocator@H@std@@@std@@V?$allocator@V?$vector@HV?$allocator@H@std@@@std@@@2@@4@PEAX@Z
   ?TensorToNdarray@tensorflow@@YA?AVStatus@lts_20250512@absl@@AEBVTensor@1@PEAPEAU_object@@@Z
   ?TestCounter@metrics@tensorflow@@YAPEBVCounterCell@monitoring@tsl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@0@Z
-  ?TfCheckOpHelperOutOfLine@tsl@@YAPEAV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBVStatus@lts_20250512@absl@@PEBD@Z
   ?ThrowBadStatusOrAccess@internal_statusor@lts_20250512@absl@@YAXVStatus@23@@Z
   ?ThrowStdOutOfRange@base_internal@lts_20250512@absl@@YAXPEBD@Z
   ?ToDeviceType@Mesh@dtensor@tensorflow@@QEBA?AV?$StatusOr@VMesh@dtensor@tensorflow@@@lts_20250512@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
