@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "dnnl.hpp"
 #include "xla/service/cpu/backend_config.pb.h"
+#include "xla/service/cpu/onednn_memory_util.h"
 #include "xla/service/cpu/onednn_util.h"
 #include "xla/shape.h"
 
@@ -33,6 +34,13 @@ Shape OneDnnMatMulOptWeightsShape(const Shape& input_shape,
                                   const Shape& bias_shape,
                                   const Shape& output_shape,
                                   const OneDnnMatMulConfig* matmul_config);
+
+void ExecuteOneDnnMatMul(absl::Span<MemrefInfoHandler> arguments,
+                         absl::Span<MemrefInfoHandler> results,
+                         OneDnnMatMulConfig matmul_config,
+                         const dnnl::engine& cpu_engine,
+                         dnnl::stream& onednn_stream,
+                         OneDnnResources& resources);
 
 extern "C" {
 extern void __xla_cpu_runtime_OneDnnMatMul(void* result, void* scratch,

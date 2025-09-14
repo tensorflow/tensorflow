@@ -1,3 +1,4 @@
+load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.bzl", "tsl_copts")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load(
@@ -5,6 +6,7 @@ load(
     "onednn_graph_cc_library",
     "onednn_graph_cc_test",
 )
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -76,9 +78,10 @@ onednn_graph_cc_library(
     ],
 )
 
-onednn_graph_cc_library(
+cc_library(
     name = "onednn_threadpool",
     hdrs = ["onednn_threadpool.h"],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
     deps = [
         ":onednn_interop",
         "//xla/backends/cpu/runtime:work_queue",
@@ -107,6 +110,54 @@ onednn_graph_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
+        "@eigen_archive//:eigen3",
+    ],
+)
+
+cc_library(
+    name = "onednn_op_thunk",
+    srcs = ["onednn_op_thunk.cc"],
+    hdrs = ["onednn_op_thunk.h"],
+    copts = tsl_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":onednn_threadpool",
+        "//xla:status_macros",
+        "//xla/backends/cpu/runtime:thunk",
+        "//xla/runtime:buffer_use",
+        "//xla/runtime:object_pool",
+        "//xla/service/cpu:onednn_matmul",
+        "//xla/service/cpu:onednn_memory_util",
+        "//xla/service/cpu:onednn_util",
+        "//xla/stream_executor:device_memory",
+        "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "onednn_op_thunk_test",
+    srcs = ["onednn_op_thunk_test.cc"],
+    copts = tsl_copts(),
+    fail_if_no_test_linked = False,  # NOLINT=No tests if we don't build with oneDNN.
+    fail_if_no_test_selected = False,  # NOLINT=No tests to select if we don't build with oneDNN.
+    deps = [
+        ":onednn_op_thunk",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla/backends/cpu/runtime:thunk_testlib",
+        "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/platform:env",
+        "@com_google_googletest//:gtest_main",
         "@eigen_archive//:eigen3",
     ],
 )

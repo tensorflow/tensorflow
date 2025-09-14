@@ -116,6 +116,10 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "tsl/profiler/lib/traceme.h"
 
+#ifdef INTEL_MKL
+#include "xla/backends/cpu/runtime/onednn/onednn_op_thunk.h"
+#endif  // INTEL_MKL
+
 #if XLA_ONEDNN_USE_GRAPH_API
 #include "xla/backends/cpu/onednn_emitter.h"
 #include "xla/backends/cpu/onednn_support.h"
@@ -1257,7 +1261,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFftThunk(
       /*output_shape=*/instruction->shape());
 }
 
-static absl::StatusOr<CustomCallThunk::OpBuffers> GetCustomCallOpBuffers(
+// Generic helper to collect argument/result slices for different OpBuffers
+template <typename OpBuffers>
+static absl::StatusOr<OpBuffers> GetOpBuffers(
     const HloInstruction* instruction,
     const BufferAssignment& buffer_assignment) {
   // Collect buffer slices for all operands.
@@ -1282,7 +1288,7 @@ static absl::StatusOr<CustomCallThunk::OpBuffers> GetCustomCallOpBuffers(
     results_shapes.push_back(indexed.shape);
   }
 
-  return CustomCallThunk::OpBuffers{
+  return OpBuffers{
       /*arguments_buffers=*/std::move(arguments_buffers),
       /*arguments_shapes=*/std::move(arguments_shapes),
       /*results_buffers=*/std::move(results_buffers),
@@ -1290,6 +1296,29 @@ static absl::StatusOr<CustomCallThunk::OpBuffers> GetCustomCallOpBuffers(
       /*is_tuple_result=*/instruction->shape().IsTuple(),
   };
 }
+
+#ifdef INTEL_MKL
+absl::StatusOr<ThunkSequence> ThunkEmitter::EmitOneDnnOpThunk(
+    const HloInstruction* instruction) {
+  auto custom_call = Cast<HloCustomCallInstruction>(instruction);
+  auto custom_call_target = custom_call->custom_call_target();
+  auto backend_config = custom_call->backend_config<BackendConfig>();
+
+  OneDnnOpThunk::OneDnnOpConfig config;
+  if (custom_call_target == "__onednn$matmul") {
+    config = backend_config->onednn_matmul_config();
+  } else {
+    return Unimplemented(
+        "Custom call target %s is not supported in thunk runtime",
+        custom_call_target);
+  }
+
+  TF_ASSIGN_OR_RETURN(auto op_buffers, GetOpBuffers<OneDnnOpThunk::OpBuffers>(
+                                           instruction, buffer_assignment_));
+  return ThunkSequence::Of<OneDnnOpThunk>(
+      custom_call_target, ThunkInfo(custom_call), op_buffers, config);
+}
+#endif  // INTEL_MKL
 
 static bool IsValidCustomCallApiVersion(CustomCallApiVersion api_version) {
   switch (api_version) {
@@ -1310,10 +1339,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCustomCallThunk(
   // TODO(penporn): Support these existing targets.
   auto custom_call_target = custom_call->custom_call_target();
   if (custom_call_target == "PadToStatic" ||
-      custom_call_target == "__onednn$matmul" ||
+      custom_call_target == "__onednn$convolution" ||
       custom_call_target == "__onednn$softmax" ||
-      custom_call_target == "__onednn$layernorm" ||
-      custom_call_target == "__onednn$matmul_reorder") {
+      custom_call_target == "__onednn$layernorm") {
     return Unimplemented("Custom call target %s is not implemented.",
                          custom_call_target);
   }
@@ -1321,6 +1349,12 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCustomCallThunk(
     return EmitTopKThunk(custom_call);
   } else if (custom_call_target == "SliceToDynamic") {
     return EmitSliceToDynamicThunk(instruction);
+  } else if (absl::StartsWith(custom_call->custom_call_target(), "__onednn$")) {
+#ifdef INTEL_MKL
+    return EmitOneDnnOpThunk(instruction);
+#else
+    return Unimplemented("XLA is not built with oneDNN.");
+#endif  // INTEL_MKL
   }
 
   // Check the API version.
@@ -1344,8 +1378,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCustomCallThunk(
           : ((version == API_VERSION_TYPED_FFI)
                  ? backend_config->custom_call_config().attributes()
                  : backend_config->custom_call_config().opaque());
-  TF_ASSIGN_OR_RETURN(auto op_buffers,
-                      GetCustomCallOpBuffers(instruction, buffer_assignment_));
+  TF_ASSIGN_OR_RETURN(auto op_buffers, GetOpBuffers<CustomCallThunk::OpBuffers>(
+                                           instruction, buffer_assignment_));
 
   return ThunkSequence::Of<CustomCallThunk>(ThunkInfo(instruction),
                                             custom_call_target, op_buffers,
