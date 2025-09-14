@@ -48,6 +48,11 @@ struct MhloToScalarOp {
 };
 
 template <>
+struct MhloToScalarOp<mhlo::AcosOp> {
+  using FOp = ::mlir::math::AcosOp;
+};
+
+template <>
 struct MhloToScalarOp<mhlo::AcoshOp> {
   using FOp = ::mlir::math::AcoshOp;
 };

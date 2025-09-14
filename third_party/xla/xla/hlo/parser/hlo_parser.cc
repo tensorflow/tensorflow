@@ -118,6 +118,7 @@ HloSchedule ScheduleFromInstructionOrder(HloModule* module) {
 bool CanInferShape(HloOpcode code) {
   switch (code) {
     case HloOpcode::kAbs:
+    case HloOpcode::kAcos:
     case HloOpcode::kAcosh:
     case HloOpcode::kAdd:
     case HloOpcode::kAddDependency:
@@ -1643,6 +1644,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           *shape, operands[0], *k, (largest.has_value() ? *largest : true)));
     }
     // Unary ops with result accuracy.
+    case HloOpcode::kAcos:
     case HloOpcode::kAcosh:
     case HloOpcode::kExpm1:
     case HloOpcode::kLog:
