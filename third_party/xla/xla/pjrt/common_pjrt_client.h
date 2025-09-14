@@ -16,17 +16,35 @@ limitations under the License.
 #ifndef XLA_PJRT_COMMON_PJRT_CLIENT_H_
 #define XLA_PJRT_COMMON_PJRT_CLIENT_H_
 
+#include <cstddef>
+#include <cstdint>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <string>
+#include <type_traits>
+#include <utility>
+#include <vector>
+
+#include "absl/base/attributes.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/layout.h"
+#include "xla/literal.h"
 #include "xla/pjrt/abstract_tracked_device_buffer.h"
 #include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/raw_buffer.h"
+#include "xla/shape.h"
+#include "xla/tsl/concurrency/async_value.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -107,17 +125,27 @@ class CommonPjRtClient : public PjRtClient {
   // event_tracking_enabled()).
   virtual PjRtFuture<>::Promise CreateUserPromise(PjRtMemorySpace* memory_space,
                                                   absl::string_view debug_info);
+
   // Creates a future from a promise PjRtFuture<>(promise) but with event
   // tracking and traceme scopes.
   virtual PjRtFuture<> CreateFutureFromUserPromise(
       PjRtMemorySpace* memory_space, const char* callee_type,
       const char* callee_method, PjRtFuture<>::Promise promise);
+
+  // Creates a future from a user-provided future with event tracking and
+  // traceme scopes.
+  virtual PjRtFuture<> CreateTrackedFuture(PjRtMemorySpace* memory_space,
+                                           const char* callee_type,
+                                           const char* callee_method,
+                                           PjRtFuture<> future);
+
   // Create a linked PjRtFuture<> and ::Promise pair for operations on
   // buffers in memory_space which populates debug information like linked
   // tracmes.
   std::pair<PjRtFuture<>::Promise, PjRtFuture<>> CreateLinkedUserPromise(
       PjRtMemorySpace* memory_space, const char* callee_type,
       const char* callee_method, absl::string_view debug_info);
+
   template <typename T, std::enable_if_t<std::is_invocable_v<T>, bool> = true>
   absl::StatusOr<std::pair<tsl::RCReference<PjRtDeviceEventPromise>,
                            tsl::RCReference<PjRtDeviceEvent>>>
