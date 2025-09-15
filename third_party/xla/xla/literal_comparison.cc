@@ -183,7 +183,8 @@ int64_t RecursiveElementCount(const Shape& shape) {
       total += RecursiveElementCount(ShapeUtil::GetTupleElementShape(shape, i));
     }
     return total;
-  } else if (shape.IsArray()) {
+  }
+  if (shape.IsArray()) {
     return ShapeUtil::ElementsIn(shape);
   } else {
     return 0;
@@ -307,7 +308,8 @@ class NearComparator {
 
     if (num_mismatches_ == 0) {
       return absl::OkStatus();
-    } else if (!VLOG_IS_ON(1) && miscompare_callback_ != nullptr) {
+    }
+    if (!VLOG_IS_ON(1) && miscompare_callback_ != nullptr) {
       miscompare_callback_(
           expected_, actual_, mismatches_, shape_index_,
           ErrorBuckets(abs_error_buckets_, rel_error_buckets_));
@@ -349,8 +351,9 @@ class NearComparator {
   template <typename T>
   int CalculateFloatDistance(T expected, T actual) {
     if (error_.low_precision_fp_error_spec.type ==
-        PrimitiveType::PRIMITIVE_TYPE_INVALID)
+        PrimitiveType::PRIMITIVE_TYPE_INVALID) {
       return -1;
+    }
     return primitive_util::FloatingPointTypeSwitch(
         [&](const auto kType) -> int {
           using NarrowNativeT = primitive_util::NativeTypeOf<kType>;

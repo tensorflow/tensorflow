@@ -36,8 +36,6 @@ namespace {
 
 using ::testing::ContainsRegex;
 using ::testing::HasSubstr;
-using ::tsl::testing::IsOk;
-using ::tsl::testing::StatusIs;
 
 class LayoutUtilTest : public ::testing::Test {
  protected:

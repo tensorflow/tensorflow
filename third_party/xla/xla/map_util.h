@@ -82,7 +82,9 @@ const typename Collection::value_type::second_type& FindOrDefault(
     const typename Collection::value_type::first_type& key,
     const typename Collection::value_type::second_type& value) {
   auto it = collection.find(key);
-  if (it != collection.end()) return it->second;
+  if (it != collection.end()) {
+    return it->second;
+  }
   return value;
 }
 

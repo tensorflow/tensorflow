@@ -432,7 +432,9 @@ class LiteralBase {
             elem_size * IndexUtil::MultidimensionalIndexToLinearIndex(
                             subshape, minor_to_major, elem_index);
         state = H::combine(std::move(state), data.subspan(offset, elem_size));
-        if (!IndexUtil::BumpIndices(subshape, elem_index_span)) return;
+        if (!IndexUtil::BumpIndices(subshape, elem_index_span)) {
+          return;
+        }
         bytes_hashed += elem_size;
       }
     });
@@ -1168,8 +1170,12 @@ class LiteralBase {
 
      private:
       const char* dense_data() const {
-        if (auto* rep = GetDenseRep()) return rep->data;
-        if (auto* rep = GetDenseInlinedRep()) return rep->data;
+        if (auto* rep = GetDenseRep()) {
+          return rep->data;
+        }
+        if (auto* rep = GetDenseInlinedRep()) {
+          return rep->data;
+        }
         return nullptr;
       }
 
@@ -2007,7 +2013,9 @@ TF_ATTRIBUTE_NOINLINE bool LiteralBase::EachCellUntilFailure(
     shape_dynamic.set_dimensions(i, GetDynamicSize(i));
   }
   do {
-    if (!per_cell(indices, Get<NativeT>(indices))) return false;
+    if (!per_cell(indices, Get<NativeT>(indices))) {
+      return false;
+    }
   } while (IndexUtil::BumpIndices(shape_dynamic, absl::MakeSpan(indices)));
   return true;
 }

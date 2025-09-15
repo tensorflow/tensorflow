@@ -48,14 +48,15 @@ TYPED_TEST(LiteralComparisonTest, CompareNear_NotEqual_1ulp) {
   PrimitiveType type = primitive_util::NativeToPrimitiveType<TypeParam>();
   auto actual = LiteralUtil::CreateR0<TypeParam>(TypeParam(1.0));
   float expV = 1.125;  // F8E4M3*
-  if (type == F8E5M2 || type == F8E5M2FNUZ)
+  if (type == F8E5M2 || type == F8E5M2FNUZ) {
     expV = 1.25;
-  else if (type == F8E3M4)
+  } else if (type == F8E3M4) {
     expV = 1.0625;
-  else if (type == F4E2M1FN)
+  } else if (type == F4E2M1FN) {
     expV = 1.5;
-  else if (type == F8E8M0FNU)
+  } else if (type == F8E8M0FNU) {
     expV = 2.0;
+  }
   auto expected = LiteralUtil::CreateR0<TypeParam>(TypeParam{expV});
   auto error_spec = ErrorSpec(0.0, 0.0);
   EXPECT_IS_NOT_OK(literal_comparison::Near(expected, actual, error_spec,
@@ -72,14 +73,15 @@ TYPED_TEST(LiteralComparisonTest, CompareNear_NotEqual_4ulps) {
   PrimitiveType type = primitive_util::NativeToPrimitiveType<TypeParam>();
   auto actual = LiteralUtil::CreateR0<TypeParam>(TypeParam(1.0));
   float expV = 1.5;  // F8E4M3*
-  if (type == F8E5M2 || type == F8E5M2FNUZ)
+  if (type == F8E5M2 || type == F8E5M2FNUZ) {
     expV = 2.0;
-  else if (type == F8E3M4)
+  } else if (type == F8E3M4) {
     expV = 1.25;
-  else if (type == F4E2M1FN)
+  } else if (type == F4E2M1FN) {
     expV = 4.0;
-  else if (type == F8E8M0FNU)
+  } else if (type == F8E8M0FNU) {
     expV = 16.0;
+  }
   auto expected = LiteralUtil::CreateR0<TypeParam>(TypeParam{expV});
   auto error_spec = ErrorSpec(0.0, 0.0);
   error_spec.low_precision_fp_error_spec.type = type;
@@ -98,14 +100,15 @@ TYPED_TEST(LiteralComparisonTest, FloatUsingCompareNear_NotEqual_4ulps) {
   PrimitiveType type = primitive_util::NativeToPrimitiveType<TypeParam>();
   auto actual = LiteralUtil::CreateR0<float>(1.0);
   float expV = 1.51;  // F8E4M3*
-  if (type == F8E5M2 || type == F8E5M2FNUZ)
+  if (type == F8E5M2 || type == F8E5M2FNUZ) {
     expV = 2.01;
-  else if (type == F8E3M4)
+  } else if (type == F8E3M4) {
     expV = 1.26;
-  else if (type == F4E2M1FN)
+  } else if (type == F4E2M1FN) {
     expV = 4.1;
-  else if (type == F8E8M0FNU)
+  } else if (type == F8E8M0FNU) {
     expV = 16.5;
+  }
   auto expected = LiteralUtil::CreateR0<float>(expV);
   auto error_spec = ErrorSpec(0.0, 0.0);
   error_spec.low_precision_fp_error_spec.type = type;

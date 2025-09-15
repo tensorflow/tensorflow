@@ -137,8 +137,8 @@ class MetricTableReport {
   void AppendEntryTable();
 
   // Appends a row of a table to the report.
-  void AppendTableRow(const std::string& text, const double metric,
-                      const double running_metric_sum);
+  void AppendTableRow(const std::string& text, double metric,
+                      double running_metric_sum);
 
   // Returns the discrepancy between the expected sum of the metric of the
   // entries and the actual sum.

@@ -85,7 +85,8 @@ namespace xla {
   for (int64_t dim = 0; dim < rank; ++dim) {
     if (lhs[dim] < rhs[dim]) {
       return -1;
-    } else if (lhs[dim] > rhs[dim]) {
+    }
+    if (lhs[dim] > rhs[dim]) {
       return 1;
     }
   }
