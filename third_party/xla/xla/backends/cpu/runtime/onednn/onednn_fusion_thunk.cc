@@ -49,9 +49,10 @@ struct OneDnnFusionThunk::OneDnnRuntime {
   OneDnnRuntime(OneDnnRuntime&&) = default;
   OneDnnRuntime& operator=(OneDnnRuntime&&) = default;
 
-  absl::Status Invoke(Eigen::ThreadPoolInterface* thread_pool,
-                      absl::Span<se::DeviceMemoryBase> arguments,
-                      absl::Span<se::DeviceMemoryBase> results);
+  tsl::AsyncValueRef<OneDnnFusionThunk::ExecuteEvent> Invoke(
+      Eigen::ThreadPoolInterface* thread_pool,
+      absl::Span<se::DeviceMemoryBase> arguments,
+      absl::Span<se::DeviceMemoryBase> results);
 
   OneDnnFusion fusion;
 
@@ -65,11 +66,13 @@ struct OneDnnFusionThunk::OneDnnRuntime {
 OneDnnFusionThunk::OneDnnRuntime::OneDnnRuntime(
     OneDnnFusion fusion, Eigen::ThreadPoolInterface* thread_pool)
     : fusion(std::move(fusion)),
-      threadpool(std::make_unique<OneDnnThreadPool>(thread_pool)),
+      threadpool(
+          std::make_unique<OneDnnThreadPool>(thread_pool, /*is_async=*/true)),
       engine(dnnl::engine::kind::cpu, 0),
       stream(dnnl::threadpool_interop::make_stream(engine, threadpool.get())) {}
 
-absl::Status OneDnnFusionThunk::OneDnnRuntime::Invoke(
+tsl::AsyncValueRef<OneDnnFusionThunk::ExecuteEvent>
+OneDnnFusionThunk::OneDnnRuntime::Invoke(
     Eigen::ThreadPoolInterface* thread_pool,
     absl::Span<se::DeviceMemoryBase> arguments,
     absl::Span<se::DeviceMemoryBase> results) {
@@ -103,7 +106,7 @@ absl::Status OneDnnFusionThunk::OneDnnRuntime::Invoke(
     partition.execute(stream, argument_data, result_data);
   }
 
-  return absl::OkStatus();
+  return threadpool->done_event();
 }
 
 absl::StatusOr<OneDnnFusionThunk::OneDnnRuntime>
@@ -208,11 +211,13 @@ tsl::AsyncValueRef<OneDnnFusionThunk::ExecuteEvent> OneDnnFusionThunk::Execute(
   // Borrow oneDNN runtime from the pool.
   TF_ASSIGN_OR_RETURN(auto runtime,
                       onednn_runtime_pool_.GetOrCreate(thread_pool));
-  TF_RETURN_IF_ERROR(runtime->Invoke(thread_pool,
-                                     absl::MakeSpan(arguments_buffers),
-                                     absl::MakeSpan(results_buffers)));
+  auto executed =
+      runtime->Invoke(thread_pool, absl::MakeSpan(arguments_buffers),
+                      absl::MakeSpan(results_buffers));
+  // Destroy the runtime after the task is done.
+  executed.AndThen([runtime = std::move(runtime)] {});
 
-  return OkExecuteEvent();
+  return executed;
 }
 
 }  // namespace xla::cpu
