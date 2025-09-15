@@ -67,9 +67,9 @@ tensorflow::tpu::TpuCoreLocationExternal TpuExecutor::GetCoreLocationExternal()
 void TpuExecutor::DeallocateStream(Stream* stream) {
   ExecutorApiFn()->TpuExecutor_DeallocateStreamFn(executor_,
                                                   get_stream(stream));
-  tpu_platform().mutex().Lock();
+  tpu_platform().mutex().lock();
   stream_map().erase(stream);
-  tpu_platform().mutex().Unlock();
+  tpu_platform().mutex().unlock();
 }
 
 absl::StatusOr<std::unique_ptr<Stream>> TpuExecutor::CreateStream(
@@ -77,9 +77,9 @@ absl::StatusOr<std::unique_ptr<Stream>> TpuExecutor::CreateStream(
   SE_Stream* tpu_stream = ExecutorApiFn()->TpuStream_NewFn(executor_);
   auto stream = std::make_unique<tensorflow::tpu::TpuStream>(
       tpu_stream, this, executor_, &tpu_platform());
-  tpu_platform().mutex().Lock();
+  tpu_platform().mutex().lock();
   stream_map()[stream.get()] = tpu_stream;
-  tpu_platform().mutex().Unlock();
+  tpu_platform().mutex().unlock();
   return std::move(stream);
 }
 
