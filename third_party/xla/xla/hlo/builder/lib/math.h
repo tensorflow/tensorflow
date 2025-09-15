@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_HLO_BUILDER_LIB_MATH_H_
 #define XLA_HLO_BUILDER_LIB_MATH_H_
 
+#include <optional>
+
 #include "xla/hlo/builder/xla_builder.h"
 
 namespace xla {
@@ -93,7 +95,9 @@ XlaOp Atan(XlaOp x);
 // Hyperbolic trigonometric functions
 
 // Computes the inverse hyperbolic cosine of 'x'.
-XlaOp Acosh(XlaOp x);
+XlaOp Acosh(XlaOp x,
+            const std::optional<ResultAccuracy>& result_accuracy = std::nullopt,
+            bool expand = true);
 
 // Computes the inverse hyperbolic sine of 'x'.
 XlaOp Asinh(XlaOp x);

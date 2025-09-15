@@ -340,10 +340,12 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> TfrtGpuClient::Compile(
     bool lookup_addressable_devices) {
   XlaComputation xla_computation;
   ExecutableBuildOptions& exec_build_options = options.executable_build_options;
+  auto chlo_opts = mlir::mhlo::getDefaultChloToHighLevelMhloOptions();
+  chlo_opts.enable_acosh_ = true;
   TF_RETURN_IF_ERROR(MlirToXlaComputation(
       module, xla_computation,
       /*use_tuple_args=*/options.parameter_is_tupled_arguments,
-      /*return_tuple=*/false, &exec_build_options));
+      /*return_tuple=*/false, &exec_build_options, chlo_opts));
 
   // If the compile options specify argument layout, then let's
   // fall back to using the options to determine layouts.
