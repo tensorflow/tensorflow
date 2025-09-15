@@ -108,7 +108,6 @@ class PluggableDevice::StreamGroupFactory {
                    << " with status: " << stream_or_status.status();
         return group;
       }
-      group->compute = stream_or_status->get();
       group->host_to_device = stream_or_status->get();
       allocated_streams_.emplace_back(std::move(stream_or_status.value()));
       VLOG(2) << "Created host_to_device_stream[" << stream_group_within_device
@@ -121,7 +120,6 @@ class PluggableDevice::StreamGroupFactory {
                    << " with status: " << stream_or_status.status();
         return group;
       }
-      group->compute = stream_or_status->get();
       group->device_to_host = stream_or_status->get();
       allocated_streams_.emplace_back(std::move(stream_or_status.value()));
       VLOG(2) << "Created device_to_host_stream[" << stream_group_within_device
@@ -144,7 +142,6 @@ class PluggableDevice::StreamGroupFactory {
                      << " with status: " << stream_or_status.status();
           return group;
         }
-        group->compute = stream_or_status->get();
         group->device_to_device.push_back(stream_or_status->get());
         allocated_streams_.emplace_back(std::move(stream_or_status.value()));
         VLOG(2) << "Created device_to_device_stream["
