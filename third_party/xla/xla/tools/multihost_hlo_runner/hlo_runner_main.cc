@@ -92,6 +92,7 @@ struct HloRunnerConfig {
   bool run_xla_backend_only = false;
   bool disable_all_hlo_passes = false;
   bool use_spmd_partitioning = false;
+  bool use_shardy_partitioner = false;
   bool is_spmd_partitioned_module = false;
   std::string xla_dump_to = "";
   bool xla_dump_as_text = false;
@@ -188,9 +189,12 @@ RawCompileOptionsFromFlags(const HloRunnerConfig& opts) {
           : (opts.disable_all_hlo_passes
                  ? FunctionalHloRunner::HloPassesMode::kDisableAllHloPasses
                  : FunctionalHloRunner::HloPassesMode::kStandardCompile);
-  out.spmd_mode = opts.use_spmd_partitioning
-                      ? FunctionalHloRunner::SpmdMode::kUseSpmdPartitioning
-                      : FunctionalHloRunner::SpmdMode::kNotUseSpmdPartitioning;
+  out.spmd_mode =
+      opts.use_spmd_partitioning
+          ? (opts.use_shardy_partitioner
+                 ? FunctionalHloRunner::SpmdMode::kUseShardyPartitioning
+                 : FunctionalHloRunner::SpmdMode::kUseSpmdPartitioning)
+          : FunctionalHloRunner::SpmdMode::kNotUseSpmdPartitioning;
   if (!opts.execution_options_path.empty()) {
     TF_ASSIGN_OR_RETURN(
         out.execution_options,
@@ -371,6 +375,8 @@ int main(int argc, char** argv) {
                 "Disable HLO passes or not."),
       tsl::Flag("use_spmd_partitioning", &opts.use_spmd_partitioning,
                 "Partition the module using SPMD."),
+      tsl::Flag("use_shardy_partitioner", &opts.use_shardy_partitioner,
+                "Partition the module using Shardy."),
       tsl::Flag("is_spmd_partitioned_module", &opts.is_spmd_partitioned_module,
                 "The module is the partitioned result of SPMD. Setting this "
                 "flag also "
