@@ -59,11 +59,17 @@ if [ -z "$TARGET_ARCHS" ]; then
     exit 1
 fi
 
+if [ ! -d /tf ];then
+    # The bazelrc files in /usertools expect /tf to exist
+        mkdir /tf
+fi
+
 # Run bazel test command. Double test timeouts to avoid flakes.
-bazel test \
+bazel --bazelrc=tensorflow/tools/tf_sig_build_dockerfiles/devel.usertools/rocm.bazelrc test \
     --config=rocm \
+    --config=sigbuild_local_cache \
+    --config=pycpp \
     -k \
-    --test_tag_filters=gpu,-no_oss,-oss_excluded,-oss_serial,-no_gpu,-cuda-only,-benchmark-test,-rocm_multi_gpu,-tpu,-v1only \
     --jobs=${N_BUILD_JOBS} \
     --local_test_jobs=${N_TEST_JOBS} \
     --test_env=TF_GPU_COUNT=$TF_GPU_COUNT \
@@ -73,11 +79,6 @@ bazel test \
     --repo_env="TF_ROCM_AMDGPU_TARGETS=$TARGET_ARCHS" \
     --build_tests_only \
     --test_output=errors \
+    --verbose_failures \
     --test_sharding_strategy=disabled \
-    --test_size_filters=small,medium,large \
-    --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute \
-    -- \
-    //tensorflow/... \
-    -//tensorflow/core/tpu/... \
-    -//tensorflow/lite/... \
-    -//tensorflow/compiler/tf2tensorrt/... \
+    --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute 
