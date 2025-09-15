@@ -13,20 +13,72 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+
+#include "llvm/Support/CommandLine.h"
 #include "mlir/Dialect/Func/Extensions/InlinerExtension.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/Transforms/InlinerInterfaceImpl.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/InitAllExtensions.h"
+#include "mlir/Pass/PassOptions.h"
+#include "mlir/Pass/PassRegistry.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 #include "xla/backends/gpu/codegen/emitters/transforms/passes.h"
+#include "xla/backends/gpu/codegen/triton/compilation_pipeline.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h"
 #include "xla/codegen/emitters/ir/xla_dialect.h"
 #include "xla/codegen/emitters/transforms/passes.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/device_description.h"
 #include "third_party/triton/bin/RegisterTritonDialects.h"
+#include "triton/Dialect/TritonNvidiaGPU/Transforms/Passes.h"
+
+namespace {
+
+mlir::triton::nvidia_gpu::ClusterInfo cluster_info;
+
+struct TritonPipelineOptions
+    : public mlir::PassPipelineOptions<TritonPipelineOptions> {
+  Option<std::string> target{*this, "target", llvm::cl::init("8.0")};
+  Option<bool> rewrite_int4{*this, "rewrite-int4", llvm::cl::init(true)};
+  Option<bool> allow_tma{*this, "allow-tma", llvm::cl::init(false)};
+  Option<bool> convert_unsupported_types{*this, "convert-unsupported-types",
+                                         llvm::cl::init(true)};
+  Option<int> num_warps{*this, "num-warps", llvm::cl::init(4)};
+  Option<int> num_ctas{*this, "num-ctas", llvm::cl::init(1)};
+  Option<int> num_stages{*this, "num-stages", llvm::cl::init(3)};
+};
+
+mlir::PassPipelineRegistration<TritonPipelineOptions>
+    register_triton_xla_pipeline(
+        "triton-xla-pipeline",
+        "Runs all Triton passes, including the ones from XLA.",
+        [](mlir::OpPassManager& pm, const TritonPipelineOptions& options) {
+          stream_executor::GpuComputeCapability gpu_cc;
+          if (auto cuda_cc =
+                  stream_executor::CudaComputeCapability().FromString(
+                      options.target);
+              cuda_cc.ok()) {
+            gpu_cc = *cuda_cc;
+          }
+          if (stream_executor::RocmComputeCapability rocm_cc(options.target);
+              rocm_cc.is_supported_gfx_version()) {
+            gpu_cc = rocm_cc;
+          }
+          xla::gpu::CreateTritonXlaPipeline(&pm, gpu_cc, options.rewrite_int4,
+                                            options.allow_tma,
+                                            options.convert_unsupported_types);
+          xla::gpu::CreateTritonPipeline(&pm, gpu_cc, options.num_warps,
+                                         options.num_ctas, options.num_stages,
+                                         cluster_info);
+        });
+
+}  // namespace
 
 int main(int argc, char **argv) {
   mlir::DialectRegistry registry;
