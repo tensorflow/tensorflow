@@ -2254,7 +2254,7 @@ TEST_F(LayoutAssignmentTest, BufferChainLayoutConstrainedPin) {
   HloModule test
   ENTRY test_computation {
     init = s32[2,8] parameter(0)
-    b0 = b(s32[2,8]{0, 1}) custom-call(init), custom_call_target="Pin",
+    b0 = b(s32[2,8]{0,1}) custom-call(init), custom_call_target="Pin",
       output_to_operand_aliasing={{}: (0, {})},
       operand_layout_constraints={s32[2,8]{0,1}}
     b1 = b(s32[2,8]) custom-call(b0), custom_call_target="CallBack_AddOne",
@@ -2280,12 +2280,11 @@ TEST_F(LayoutAssignmentTest, BufferChainLayoutConstrainedPin) {
   // Verify that the operand of the Pin instruction is a copy with the needed
   // layout change.
   Layout layout01 = LayoutUtil::MakeLayout({0, 1});
-  Layout layout10 = LayoutUtil::MakeLayout({1, 0});
 
   EXPECT_THAT(
       FindInstruction(m.get(), "b0"),
       GmockMatch(m::CustomCall(m::Copy(m::Parameter(0).WithShape(
-                                   m::Shape().WithLayoutEqualTo(&layout10))))
+                                   m::Shape().WithLayoutEqualTo(&layout01))))
                      .WithShape(m::Shape().WithLayoutEqualTo(&layout01))));
 }
 
