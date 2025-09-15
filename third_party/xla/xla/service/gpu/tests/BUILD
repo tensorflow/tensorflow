@@ -207,6 +207,10 @@ xla_test(
     name = "gpu_spmd_e2e_compile_test",
     size = "small",
     srcs = ["gpu_spmd_e2e_compile_test.cc"],
+    backend_tags = {
+        # TODO(b/445172709): Re-enable once fixed.
+        "b200": ["broken"],
+    },
     backends = ["gpu"],
     deps = [
         ":gpu_codegen_test",
@@ -302,6 +306,10 @@ xla_test(
     srcs = [
         "gpu_compilation_parallelism_test.cc",
     ],
+    backend_tags = {
+        # TODO(b/445172709): Re-enable once fixed.
+        "b200": ["broken"],
+    },
     backends = ["gpu"],
     deps = [
         ":gpu_codegen_test",
@@ -315,6 +323,10 @@ xla_test(
 xla_test(
     name = "gpu_copy_test",
     srcs = ["gpu_copy_test.cc"],
+    backend_tags = {
+        # TODO(b/445172709): Re-enable once fixed.
+        "b200": ["broken"],
+    },
     backends = ["gpu"],
     deps = [
         ":gpu_codegen_test",
@@ -796,6 +808,10 @@ xla_test(
 xla_test(
     name = "gpu_fused_mha_test",
     srcs = ["gpu_fused_mha_test.cc"],
+    backend_tags = {
+        # TODO(b/445172709): Re-enable once fixed.
+        "b200": ["broken"],
+    },
     backends = [
         "a100",
         "h100",

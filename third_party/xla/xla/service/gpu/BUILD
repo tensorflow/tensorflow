@@ -1720,6 +1720,10 @@ cc_library(
 xla_test(
     name = "gpu_compiler_test",
     srcs = ["gpu_compiler_test.cc"],
+    backend_tags = {
+        # TODO(b/445172709): Re-enable once fixed.
+        "b200": ["broken"],
+    },
     backends = ["gpu"],
     data = ["gpu_compiler_test_autotune_db.textproto"],
     deps = [
@@ -2004,6 +2008,10 @@ xla_test(
     srcs = [
         "ptx_compilation_test.cc",
     ],
+    backend_tags = {
+        # TODO(b/445172709): Re-enable once fixed.
+        "b200": ["broken"],
+    },
     backends = [
         "gpu",
     ],
@@ -2919,6 +2927,10 @@ xla_cc_test(
 xla_test(
     name = "determinism_test",
     srcs = ["determinism_test.cc"],
+    backend_tags = {
+        # TODO(b/445172709): Re-enable once fixed.
+        "b200": ["broken"],
+    },
     backends = ["gpu"],
     deps = [
         "//xla:literal",

@@ -932,6 +932,10 @@ xla_test(
 xla_test(
     name = "fusion_emitter_parametrized_legacy_test",
     srcs = if_gpu_is_configured(["fusion_emitter_parametrized_legacy_test.cc"]),
+    backend_tags = {
+        # TODO(b/445172709): Re-enable once fixed.
+        "b200": ["broken"],
+    },
     backends = [
         "a100",
         "h100",

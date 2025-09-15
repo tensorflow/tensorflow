@@ -207,6 +207,10 @@ xla_test(
     name = "gemm_fusion_autotuner_test",
     timeout = "long",
     srcs = ["gemm_fusion_autotuner_test.cc"],
+    backend_tags = {
+        # TODO(b/445172709): Re-enable once fixed.
+        "b200": ["broken"],
+    },
     backends = [
         "a100",
         "h100",

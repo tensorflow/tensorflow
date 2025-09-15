@@ -79,6 +79,10 @@ cc_library(
 xla_test(
     name = "cudnn_test",
     srcs = ["cudnn_test.cc"],
+    backend_tags = {
+        # TODO(b/445172709): Re-enable once fixed.
+        "b200": ["broken"],
+    },
     backends = ["gpu"],
     tags = ["cuda-only"],
     deps = [

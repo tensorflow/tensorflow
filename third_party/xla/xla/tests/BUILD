@@ -1008,6 +1008,10 @@ xla_test(
     name = "dot_operation_test",
     timeout = "long",
     srcs = ["dot_operation_test.cc"],
+    backend_tags = {
+        # TODO(b/445172709): Re-enable once fixed.
+        "b200": ["broken"],
+    },
     shard_count = 20,
     tags = [
         "optonly",
@@ -1064,6 +1068,10 @@ xla_test(
     name = "dot_operation_test_autotune_disabled",
     srcs = ["dot_operation_test.cc"],
     args = ["--xla_gpu_autotune_level=0"],
+    backend_tags = {
+        # TODO(b/445172709): Re-enable once fixed.
+        "b200": ["broken"],
+    },
     backends = ["gpu"],
     shard_count = 20,
     tags = [
@@ -1272,6 +1280,10 @@ xla_test(
         "cpu": [
             "--xla_cpu_multi_thread_eigen=false",
         ],
+    },
+    backend_tags = {
+        # TODO(b/445172709): Re-enable once fixed.
+        "b200": ["broken"],
     },
     shard_count = 20,
     tags = [

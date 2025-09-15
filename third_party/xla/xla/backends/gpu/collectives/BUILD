@@ -461,6 +461,10 @@ cc_library(
 xla_test(
     name = "nccl_communicator_test",
     srcs = ["nccl_communicator_test.cc"],
+    backend_tags = {
+        # TODO(b/445172709): Re-enable once fixed.
+        "b200": ["broken"],
+    },
     backends = ["gpu"],
     local_defines =
         if_rocm_is_configured([

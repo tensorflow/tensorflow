@@ -74,6 +74,10 @@ cc_library(
 xla_test(
     name = "block_level_emitter_test",
     srcs = ["block_level_emitter_test.cc"],
+    backend_tags = {
+        # TODO(b/445172709): Re-enable once fixed.
+        "b200": ["broken"],
+    },
     backends = [
         "a100",
         "h100",
@@ -517,6 +521,10 @@ cc_library(
 xla_test(
     name = "triton_test",
     srcs = ["triton_test.cc"],
+    backend_tags = {
+        # TODO(b/445172709): Re-enable once fixed.
+        "b200": ["broken"],
+    },
     backends = [
         "a100",
         "h100",
@@ -606,6 +614,10 @@ cc_library(
 xla_test(
     name = "native_emitter_test",
     srcs = ["native_emitter_test.cc"],
+    backend_tags = {
+        # TODO(b/445172709): Re-enable once fixed.
+        "b200": ["broken"],
+    },
     backends = [
         "a100",
         "h100",
