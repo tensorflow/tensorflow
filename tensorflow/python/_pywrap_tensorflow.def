@@ -21,21 +21,21 @@
 
 ; go/keep-sorted start skip_lines=1
 EXPORTS
-  ??$Accept@PEAVHloInstruction@xla@@@HloInstruction@xla@@QEAA?AVStatus@lts_20250512@absl@@PEAV?$DfsHloVisitorBase@PEAVHloInstruction@xla@@@1@_N11@Z
-  ??$Accept@PEBVHloInstruction@xla@@@HloInstruction@xla@@QEAA?AVStatus@lts_20250512@absl@@PEAV?$DfsHloVisitorBase@PEBVHloInstruction@xla@@@1@_N11@Z
-  ??$CopyToEncodedBuffer@$0A@@LogMessage@log_internal@lts_20250512@absl@@AEAAXV?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
-  ??$Dispatch@H@FormatArgImpl@str_format_internal@lts_20250512@absl@@CA_NTData@0123@VFormatConversionSpecImpl@123@PEAX@Z
-  ??$Dispatch@PEBD@FormatArgImpl@str_format_internal@lts_20250512@absl@@CA_NTData@0123@VFormatConversionSpecImpl@123@PEAX@Z
-  ??$Dispatch@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@FormatArgImpl@str_format_internal@lts_20250512@absl@@CA_NTData@0123@VFormatConversionSpecImpl@123@PEAX@Z
-  ??$Dispatch@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@FormatArgImpl@str_format_internal@lts_20250512@absl@@CA_NTData@0123@VFormatConversionSpecImpl@123@PEAX@Z
-  ??$GrowSooTableToNextCapacityAndPrepareInsert@$07$00@container_internal@lts_20250512@absl@@YA_KAEAVCommonFields@012@AEBUPolicyFunctions@012@_KW4ctrl_t@012@@Z
-  ??$GrowSooTableToNextCapacityAndPrepareInsert@$0A@$0A@@container_internal@lts_20250512@absl@@YA_KAEAVCommonFields@012@AEBUPolicyFunctions@012@_KW4ctrl_t@012@@Z
-  ??$GrowSooTableToNextCapacityAndPrepareInsert@$0BA@$00@container_internal@lts_20250512@absl@@YA_KAEAVCommonFields@012@AEBUPolicyFunctions@012@_KW4ctrl_t@012@@Z
-  ??$Visit@PEAVHloInstruction@xla@@@HloInstruction@xla@@QEAA?AVStatus@lts_20250512@absl@@PEAV?$DfsHloVisitorBase@PEAVHloInstruction@xla@@@1@@Z
-  ??$Visit@PEBVHloInstruction@xla@@@HloInstruction@xla@@QEAA?AVStatus@lts_20250512@absl@@PEAV?$DfsHloVisitorBase@PEBVHloInstruction@xla@@@1@@Z
+  ??$Accept@PEAVHloInstruction@xla@@@HloInstruction@xla@@QEAA?AVStatus@lts_20250814@absl@@PEAV?$DfsHloVisitorBase@PEAVHloInstruction@xla@@@1@_N11@Z
+  ??$Accept@PEBVHloInstruction@xla@@@HloInstruction@xla@@QEAA?AVStatus@lts_20250814@absl@@PEAV?$DfsHloVisitorBase@PEBVHloInstruction@xla@@@1@_N11@Z
+  ??$CopyToEncodedBuffer@$0A@@LogMessage@log_internal@lts_20250814@absl@@AEAAXV?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
+  ??$Dispatch@H@FormatArgImpl@str_format_internal@lts_20250814@absl@@CA_NTData@0123@VFormatConversionSpecImpl@123@PEAX@Z
+  ??$Dispatch@PEBD@FormatArgImpl@str_format_internal@lts_20250814@absl@@CA_NTData@0123@VFormatConversionSpecImpl@123@PEAX@Z
+  ??$Dispatch@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@FormatArgImpl@str_format_internal@lts_20250814@absl@@CA_NTData@0123@VFormatConversionSpecImpl@123@PEAX@Z
+  ??$Dispatch@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@FormatArgImpl@str_format_internal@lts_20250814@absl@@CA_NTData@0123@VFormatConversionSpecImpl@123@PEAX@Z
+  ??$GrowSooTableToNextCapacityAndPrepareInsert@$07$00@container_internal@lts_20250814@absl@@YA_KAEAVCommonFields@012@AEBUPolicyFunctions@012@V?$FunctionRef@$$A6A_K_K@Z@12@_N@Z
+  ??$GrowSooTableToNextCapacityAndPrepareInsert@$0A@$0A@@container_internal@lts_20250814@absl@@YA_KAEAVCommonFields@012@AEBUPolicyFunctions@012@V?$FunctionRef@$$A6A_K_K@Z@12@_N@Z
+  ??$GrowSooTableToNextCapacityAndPrepareInsert@$0BA@$00@container_internal@lts_20250814@absl@@YA_KAEAVCommonFields@012@AEBUPolicyFunctions@012@V?$FunctionRef@$$A6A_K_K@Z@12@_N@Z
+  ??$Visit@PEAVHloInstruction@xla@@@HloInstruction@xla@@QEAA?AVStatus@lts_20250814@absl@@PEAV?$DfsHloVisitorBase@PEAVHloInstruction@xla@@@1@@Z
+  ??$Visit@PEBVHloInstruction@xla@@@HloInstruction@xla@@QEAA?AVStatus@lts_20250814@absl@@PEAV?$DfsHloVisitorBase@PEBVHloInstruction@xla@@@1@@Z
   ??$eigen_device@UThreadPoolDevice@Eigen@@@OpKernelContext@tensorflow@@QEBAAEBUThreadPoolDevice@Eigen@@XZ
   ??0?$TensorShapeBase@VPartialTensorShape@tensorflow@@@tensorflow@@QEAA@XZ
-  ??0?$TensorShapeBase@VTensorShape@tensorflow@@@tensorflow@@QEAA@V?$Span@$$CB_J@lts_20250512@absl@@@Z
+  ??0?$TensorShapeBase@VTensorShape@tensorflow@@@tensorflow@@QEAA@V?$Span@$$CB_J@lts_20250814@absl@@@Z
   ??0?$TensorShapeBase@VTensorShape@tensorflow@@@tensorflow@@QEAA@XZ
   ??0ArithDialect@arith@mlir@@AEAA@PEAVMLIRContext@2@@Z
   ??0AttrSlice@tensorflow@@QEAA@AEBVNodeDef@1@@Z
@@ -48,7 +48,7 @@ EXPORTS
   ??0ConfigProto@tensorflow@@IEAA@PEAVArena@protobuf@google@@@Z
   ??0ConfigProto@tensorflow@@IEAA@PEAVArena@protobuf@google@@AEBV01@@Z
   ??0CoordinatedTask@tensorflow@@IEAA@PEAVArena@protobuf@google@@@Z
-  ??0Cord@lts_20250512@absl@@AEAA@V?$basic_string_view@DU?$char_traits@D@std@@@std@@W4MethodIdentifier@CordzUpdateTracker@cord_internal@12@@Z
+  ??0Cord@lts_20250814@absl@@AEAA@V?$basic_string_view@DU?$char_traits@D@std@@@std@@W4MethodIdentifier@CordzUpdateTracker@cord_internal@12@@Z
   ??0CostAnalyzer@grappler@tensorflow@@QEAA@AEBUGrapplerItem@12@PEAVCluster@12@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
   ??0DataServiceMetadata@data@tensorflow@@IEAA@PEAVArena@protobuf@google@@@Z
   ??0DeviceAttributes@tensorflow@@IEAA@PEAVArena@protobuf@google@@AEBV01@@Z
@@ -60,11 +60,11 @@ EXPORTS
   ??0FileCheck@llvm@@QEAA@UFileCheckRequest@1@@Z
   ??0FingerprintDef@tensorflow@@IEAA@PEAVArena@protobuf@google@@@Z
   ??0FingerprintDef@tensorflow@@IEAA@PEAVArena@protobuf@google@@AEBV01@@Z
-  ??0FrozenStackTrace@tensorflow@@QEAA@V?$Span@$$CBUStackFrame@tsl@@@lts_20250512@absl@@0@Z
+  ??0FrozenStackTrace@tensorflow@@QEAA@V?$Span@$$CBUStackFrame@tsl@@@lts_20250814@absl@@0@Z
   ??0FuncDialect@func@mlir@@AEAA@PEAVMLIRContext@2@@Z
   ??0FunctionDef@tensorflow@@IEAA@PEAVArena@protobuf@google@@@Z
-  ??0FunctionParameterCanonicalizer@tensorflow@@QEAA@V?$Span@PEBD@lts_20250512@absl@@V?$Span@PEAU_object@@@34@@Z
-  ??0FunctionRecord@tensorflow@@QEAA@$$QEAVFunctionDef@1@$$QEAV?$flat_hash_map@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$shared_ptr@VAbstractStackTrace@tensorflow@@@2@UStringHash@container_internal@lts_20250512@absl@@UStringEq@567@V?$allocator@U?$pair@$$CBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$shared_ptr@VAbstractStackTrace@tensorflow@@@2@@std@@@2@@lts_20250512@absl@@_N@Z
+  ??0FunctionParameterCanonicalizer@tensorflow@@QEAA@V?$Span@PEBD@lts_20250814@absl@@V?$Span@PEAU_object@@@34@@Z
+  ??0FunctionRecord@tensorflow@@QEAA@$$QEAVFunctionDef@1@$$QEAV?$flat_hash_map@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$shared_ptr@VAbstractStackTrace@tensorflow@@@2@UStringHash@container_internal@lts_20250814@absl@@UStringEq@567@V?$allocator@U?$pair@$$CBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$shared_ptr@VAbstractStackTrace@tensorflow@@@2@@std@@@2@@lts_20250814@absl@@_N@Z
   ??0GraphDebugInfoBuilder@tensorflow@@QEAA@XZ
   ??0GraphDef@tensorflow@@IEAA@PEAVArena@protobuf@google@@@Z
   ??0GraphDef@tensorflow@@IEAA@PEAVArena@protobuf@google@@AEBV01@@Z
@@ -72,9 +72,9 @@ EXPORTS
   ??0Impl@MakeErrorStream@status_macros@xla@@QEAA@PEBDHW4Code@error@tensorflow@@PEAV123@_N@Z
   ??0LayoutProto@dtensor@tensorflow@@IEAA@PEAVArena@protobuf@google@@@Z
   ??0LayoutProto@dtensor@tensorflow@@IEAA@PEAVArena@protobuf@google@@AEBV012@@Z
-  ??0LogMessage@log_internal@lts_20250512@absl@@QEAA@PEBDHUInfoTag@0123@@Z
-  ??0LogMessageFatal@log_internal@lts_20250512@absl@@QEAA@PEBDH0@Z
-  ??0LogMessageFatal@log_internal@lts_20250512@absl@@QEAA@PEBDH@Z
+  ??0LogMessage@log_internal@lts_20250814@absl@@QEAA@PEBDHUInfoTag@0123@@Z
+  ??0LogMessageFatal@log_internal@lts_20250814@absl@@QEAA@PEBDH0@Z
+  ??0LogMessageFatal@log_internal@lts_20250814@absl@@QEAA@PEBDH@Z
   ??0MLIRContext@mlir@@QEAA@AEBVDialectRegistry@1@W4Threading@01@@Z
   ??0MeasuringCostEstimator@grappler@tensorflow@@QEAA@PEAVCluster@12@HH@Z
   ??0MeshProto@dtensor@tensorflow@@IEAA@PEAVArena@protobuf@google@@@Z
@@ -92,10 +92,10 @@ EXPORTS
   ??0OpKernel@tensorflow@@QEAA@PEAVOpKernelConstruction@1@@Z
   ??0OpLevelCostEstimator@grappler@tensorflow@@QEAA@XZ
   ??0OpPerformanceList@tensorflow@@IEAA@PEAVArena@protobuf@google@@@Z
-  ??0OstreamView@LogMessage@log_internal@lts_20250512@absl@@QEAA@AEAULogMessageData@1234@@Z
+  ??0OstreamView@LogMessage@log_internal@lts_20250814@absl@@QEAA@AEAULogMessageData@1234@@Z
   ??0PyInstanceChecker@py_dispatch@tensorflow@@QEAA@AEBV?$vector@PEAU_object@@V?$allocator@PEAU_object@@@std@@@std@@@Z
   ??0PySignatureChecker@py_dispatch@tensorflow@@QEAA@V?$vector@U?$pair@HV?$shared_ptr@VPyTypeChecker@py_dispatch@tensorflow@@@std@@@std@@V?$allocator@U?$pair@HV?$shared_ptr@VPyTypeChecker@py_dispatch@tensorflow@@@std@@@std@@@2@@std@@@Z
-  ??0PythonAPIDispatcher@py_dispatch@tensorflow@@QEAA@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$Span@PEBD@lts_20250512@absl@@V?$Span@PEAU_object@@@67@@Z
+  ??0PythonAPIDispatcher@py_dispatch@tensorflow@@QEAA@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$Span@PEBD@lts_20250814@absl@@V?$Span@PEAU_object@@@67@@Z
   ??0PythonAPIInfo@tensorflow@@QEAA@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
   ??0QuantizationConfig@quantization@stablehlo@@IEAA@PEAVArena@protobuf@google@@@Z
   ??0QuantizationOptions@quantization@tensorflow@@IEAA@PEAVArena@protobuf@google@@@Z
@@ -116,7 +116,7 @@ EXPORTS
   ??0SrcBuffer@SourceMgr@llvm@@QEAA@$$QEAU012@@Z
   ??0StatSummarizer@tensorflow@@QEAA@AEBUStatSummarizerOptions@tsl@@@Z
   ??0StatSummarizer@tensorflow@@QEAA@AEBVGraphDef@1@@Z
-  ??0Status@lts_20250512@absl@@QEAA@W4StatusCode@12@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
+  ??0Status@lts_20250814@absl@@QEAA@W4StatusCode@12@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
   ??0StepStats@tensorflow@@IEAA@PEAVArena@protobuf@google@@@Z
   ??0TFRDialect@TFR@mlir@@QEAA@PEAVMLIRContext@2@@Z
   ??0TapeContext@gradients@tensorflow@@QEAA@PEAVAbstractContext@2@PEAVTape@12@AEBVGradientRegistry@12@@Z
@@ -148,8 +148,8 @@ EXPORTS
   ??1Impl@MakeErrorStream@status_macros@xla@@QEAA@XZ
   ??1KernelDefBuilder@tensorflow@@QEAA@XZ
   ??1LayoutProto@dtensor@tensorflow@@UEAA@XZ
-  ??1LogMessage@log_internal@lts_20250512@absl@@QEAA@XZ
-  ??1LogMessageFatal@log_internal@lts_20250512@absl@@QEAA@XZ
+  ??1LogMessage@log_internal@lts_20250814@absl@@QEAA@XZ
+  ??1LogMessageFatal@log_internal@lts_20250814@absl@@QEAA@XZ
   ??1MLIRContext@mlir@@QEAA@XZ
   ??1MeshProto@dtensor@tensorflow@@UEAA@XZ
   ??1MessageDifferencer@util@protobuf@google@@QEAA@XZ
@@ -160,7 +160,7 @@ EXPORTS
   ??1OpInfo_TensorProperties@tensorflow@@UEAA@XZ
   ??1OpKernel@tensorflow@@UEAA@XZ
   ??1OpPerformanceList@tensorflow@@UEAA@XZ
-  ??1OstreamView@LogMessage@log_internal@lts_20250512@absl@@UEAA@XZ
+  ??1OstreamView@LogMessage@log_internal@lts_20250814@absl@@UEAA@XZ
   ??1ProfilerServer@profiler@tsl@@QEAA@XZ
   ??1ProfilerSession@tsl@@QEAA@XZ
   ??1PyContextManager@tensorflow@@QEAA@XZ
@@ -184,27 +184,27 @@ EXPORTS
   ??1ThreadPool@thread@tsl@@QEAA@XZ
   ??1Variant@tensorflow@@QEAA@XZ
   ??1WorkerConfig@experimental@data@tensorflow@@UEAA@XZ
-  ??6LogMessage@log_internal@lts_20250512@absl@@QEAAAEAV0123@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
+  ??6LogMessage@log_internal@lts_20250814@absl@@QEAAAEAV0123@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
   ??8Layout@dtensor@tensorflow@@QEBA_NAEBV012@@Z
   ??8Mesh@dtensor@tensorflow@@QEBA_NAEBV012@@Z
-  ??BCord@lts_20250512@absl@@QEBA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@XZ
+  ??BCord@lts_20250814@absl@@QEBA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@XZ
   ??ROpDefBuilderWrapper@register_op@tensorflow@@QEAA?AUInitOnStartupMarker@2@XZ
   ?AccumulateStackTrace@GraphDebugInfoBuilder@tensorflow@@QEAAXV?$shared_ptr@VAbstractStackTrace@tensorflow@@@std@@V?$basic_string_view@DU?$char_traits@D@std@@@4@AEBUOptions@12@@Z
-  ?Add@InferenceContext@shape_inference@tensorflow@@QEAA?AVStatus@lts_20250512@absl@@VDimensionHandle@23@UDimensionOrConstant@23@PEAV723@@Z
+  ?Add@InferenceContext@shape_inference@tensorflow@@QEAA?AVStatus@lts_20250814@absl@@VDimensionHandle@23@UDimensionOrConstant@23@PEAV723@@Z
   ?Add@ThreadSafeHistogram@histogram@tsl@@QEAAXN@Z
   ?AddControlEdge@Graph@tensorflow@@QEAAPEBVEdge@2@PEAVNode@2@0_N@Z
-  ?AddDevices@DeviceFactory@tensorflow@@SA?AVStatus@lts_20250512@absl@@AEBUSessionOptions@2@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAV?$vector@V?$unique_ptr@VDevice@tensorflow@@U?$default_delete@VDevice@tensorflow@@@std@@@std@@V?$allocator@V?$unique_ptr@VDevice@tensorflow@@U?$default_delete@VDevice@tensorflow@@@std@@@std@@@2@@8@@Z
+  ?AddDevices@DeviceFactory@tensorflow@@SA?AVStatus@lts_20250814@absl@@AEBUSessionOptions@2@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAV?$vector@V?$unique_ptr@VDevice@tensorflow@@U?$default_delete@VDevice@tensorflow@@@std@@@std@@V?$allocator@V?$unique_ptr@VDevice@tensorflow@@U?$default_delete@VDevice@tensorflow@@@std@@@std@@@2@@8@@Z
   ?AddMesh@dtensor@tensorflow@@YAXAEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAX_NPEAUTSL_Status@@@Z
   ?AddRegisterer@gradients@tensorflow@@YAPEAVGradientFunction@12@AEBUForwardOperation@12@@Z
   ?AddStep@tfprof@tensorflow@@YAN_JPEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@11@Z
-  ?AddTable@SparseCoreLayoutStacker@tpu@tensorflow@@QEAA?AVStatus@lts_20250512@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@_J101@Z
-  ?AddV2@ops@tensorflow@@YA?AVStatus@lts_20250512@absl@@PEAVAbstractContext@2@QEAVAbstractTensorHandle@2@1PEAPEAV72@PEBD3@Z
+  ?AddTable@SparseCoreLayoutStacker@tpu@tensorflow@@QEAA?AVStatus@lts_20250814@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@_J101@Z
+  ?AddV2@ops@tensorflow@@YA?AVStatus@lts_20250814@absl@@PEAVAbstractContext@2@QEAVAbstractTensorHandle@2@1PEAPEAV72@PEBD3@Z
   ?AddWhileInputHack@tensorflow@@YAXPEAUTF_Graph@@UTF_Output@@PEAUTF_Operation@@PEAUTSL_Status@@@Z
   ?AllocateDTensorDevice@dtensor@tensorflow@@YAXV?$basic_string_view@DU?$char_traits@D@std@@@std@@PEAUTFE_CustomDevice@@PEAPEAX_NHPEAUTSL_Status@@@Z
   ?AllowSoftPlacement@Cluster@grappler@tensorflow@@QEAAX_N@Z
-  ?AlreadyExistsError@lts_20250512@absl@@YA?AVStatus@12@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
-  ?AppendGraphDebugInfoStr@GraphDebugInfoBuilder@tensorflow@@QEAA?AVStatus@lts_20250512@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@0@Z
-  ?AppendPieces@strings_internal@lts_20250512@absl@@YAXPEAV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$initializer_list@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@5@@Z
+  ?AlreadyExistsError@lts_20250814@absl@@YA?AVStatus@12@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
+  ?AppendGraphDebugInfoStr@GraphDebugInfoBuilder@tensorflow@@QEAA?AVStatus@lts_20250814@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@0@Z
+  ?AppendPieces@strings_internal@lts_20250814@absl@@YAXPEAV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$initializer_list@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@5@@Z
   ?AreCompatibleDevNames@DeviceNameUtils@tsl@@SA_NAEBUParsedName@12@0@Z
   ?AssertSameStructure@swig@tensorflow@@YAPEAU_object@@PEAU3@0_N1@Z
   ?AssertSameStructureForData@swig@tensorflow@@YAPEAU_object@@PEAU3@0_N@Z
@@ -215,60 +215,60 @@ EXPORTS
   ?BatchShardedOnMesh@Layout@dtensor@tensorflow@@SA?AV123@AEBVMesh@23@HAEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@H@Z
   ?BoundPort@GrpcDataServerBase@data@tensorflow@@QEAAHXZ
   ?Build@KernelDefBuilder@tensorflow@@QEAAPEBVKernelDef@2@XZ
-  ?Canonicalize@FunctionParameterCanonicalizer@tensorflow@@QEAA_NPEAU_object@@0V?$Span@PEAU_object@@@lts_20250512@absl@@@Z
+  ?Canonicalize@FunctionParameterCanonicalizer@tensorflow@@QEAA_NPEAU_object@@0V?$Span@PEAU_object@@@lts_20250814@absl@@@Z
   ?Capture@StackTrace@tensorflow@@SA?AV?$shared_ptr@VStackTrace@tensorflow@@@std@@H@Z
-  ?CatPieces@strings_internal@lts_20250512@absl@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$initializer_list@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@5@@Z
+  ?CatPieces@strings_internal@lts_20250814@absl@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$initializer_list@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@5@@Z
   ?Check@PyListChecker@py_dispatch@tensorflow@@UEAA?AW4MatchType@PyTypeChecker@23@PEAU_object@@@Z
   ?Check@PyUnionChecker@py_dispatch@tensorflow@@UEAA?AW4MatchType@PyTypeChecker@23@PEAU_object@@@Z
-  ?CheckCanonicalizedArgs@PySignatureChecker@py_dispatch@tensorflow@@QEBA_NV?$Span@PEAU_object@@@lts_20250512@absl@@@Z
+  ?CheckCanonicalizedArgs@PySignatureChecker@py_dispatch@tensorflow@@QEBA_NV?$Span@PEAU_object@@@lts_20250814@absl@@@Z
   ?CheckDimsEqual@TensorShape@tensorflow@@AEBAXH@Z
   ?CheckIsAlignedAndSingleElement@Tensor@tensorflow@@AEBAXXZ
   ?CheckNotDone@MakeErrorStream@status_macros@xla@@AEBAXXZ
   ?CheckNotInComputeAsync@tensorflow@@YAXPEAVOpKernelContext@1@PEBD@Z
-  ?CheckOpDeprecation@tensorflow@@YA?AVStatus@lts_20250512@absl@@AEBVOpDef@1@H@Z
+  ?CheckOpDeprecation@tensorflow@@YA?AVStatus@lts_20250814@absl@@AEBVOpDef@1@H@Z
   ?CheckTypeAndIsAligned@Tensor@tensorflow@@AEBAXW4DataType@2@@Z
   ?CheckpointReadDuration@metrics@tensorflow@@YAAEAVSamplerCell@monitoring@tsl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
   ?CheckpointSize@metrics@tensorflow@@YAAEAVCounterCell@monitoring@tsl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@_J@Z
   ?CheckpointWriteDuration@metrics@tensorflow@@YAAEAVSamplerCell@monitoring@tsl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
   ?Clear@TFE_TensorHandleCache@tensorflow@@QEAAXXZ
   ?ClearAttr@tensorflow@@YAXPEAUTF_Graph@@PEAUTF_Operation@@PEBDPEAUTSL_Status@@@Z
-  ?ClearBackingArray@container_internal@lts_20250512@absl@@YAXAEAVCommonFields@123@AEBUPolicyFunctions@123@PEAX_N3@Z
+  ?ClearBackingArray@container_internal@lts_20250814@absl@@YAXAEAVCommonFields@123@AEBUPolicyFunctions@123@PEAX_N3@Z
   ?ClearTPUCoreIDs@dtensor@tensorflow@@YAXPEAX@Z
-  ?Close@DebugEventsWriter@tfdbg@tensorflow@@QEAA?AVStatus@lts_20250512@absl@@XZ
-  ?Close@EventsWriter@tensorflow@@QEAA?AVStatus@lts_20250512@absl@@XZ
-  ?Close@RecordWriter@io@tsl@@QEAA?AVStatus@lts_20250512@absl@@XZ
+  ?Close@DebugEventsWriter@tfdbg@tensorflow@@QEAA?AVStatus@lts_20250814@absl@@XZ
+  ?Close@EventsWriter@tensorflow@@QEAA?AVStatus@lts_20250814@absl@@XZ
+  ?Close@RecordWriter@io@tsl@@QEAA?AVStatus@lts_20250814@absl@@XZ
   ?CollectUnreachableRoots@HloComputation@xla@@AEBA?AV?$vector@PEAVHloInstruction@xla@@V?$allocator@PEAVHloInstruction@xla@@@std@@@std@@XZ
   ?CommittedChunksDirectory@data@tensorflow@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$basic_string_view@DU?$char_traits@D@std@@@4@@Z
   ?Compare@DefaultFieldComparator@util@protobuf@google@@UEAA?AW4ComparisonResult@FieldComparator@234@AEBVMessage@34@0PEBVFieldDescriptor@34@HHPEBVFieldContext@234@@Z
   ?Compare@MessageDifferencer@util@protobuf@google@@QEAA_NAEBVMessage@34@0@Z
   ?Compute@AsyncOpKernel@tensorflow@@UEAAXPEAVOpKernelContext@2@@Z
-  ?ComputeGradient@Tape@gradients@tensorflow@@QEAA?AVStatus@lts_20250512@absl@@PEAVAbstractContext@3@V?$Span@QEAVAbstractTensorHandle@tensorflow@@@56@11V?$Span@PEAVAbstractTensorHandle@tensorflow@@@56@@Z
+  ?ComputeGradient@Tape@gradients@tensorflow@@QEAA?AVStatus@lts_20250814@absl@@PEAVAbstractContext@3@V?$Span@QEAVAbstractTensorHandle@tensorflow@@@56@11V?$Span@PEAVAbstractTensorHandle@tensorflow@@@56@@Z
   ?Convert@PythonTensorConverter@tensorflow@@QEBA?AV?$unique_ptr@U_object@@UPyDecrefDeleter@detail@tensorflow@@@std@@PEAU_object@@AEAW4DataType@2@PEA_N@Z
   ?Convert@tflite@@YAPEAU_object@@PEAU2@00_N0PEBVPyFunctionLibrary@quantization@tensorflow@@@Z
   ?ConvertPyObjectToAttributeType@tensorflow@@YA?AV?$unique_ptr@U_object@@UPyDecrefDeleter@detail@tensorflow@@@std@@PEAU_object@@W4AttributeType@1@@Z
-  ?ConvertPythonAPIParameters@tensorflow@@YA_NAEBVPythonAPIInfo@1@AEBVPythonTensorConverter@1@V?$Span@PEAU_object@@@lts_20250512@absl@@PEAUInferredAttributes@21@@Z
+  ?ConvertPythonAPIParameters@tensorflow@@YA_NAEBVPythonAPIInfo@1@AEBVPythonTensorConverter@1@V?$Span@PEAU_object@@@lts_20250814@absl@@PEAUInferredAttributes@21@@Z
   ?ConvertToEagerTensor@tensorflow@@YAPEAUTFE_TensorHandle@@PEAUTFE_Context@@PEAU_object@@W4DataType@1@PEBD@Z
-  ?Copy@container_internal@lts_20250512@absl@@YAXAEAVCommonFields@123@AEBUPolicyFunctions@123@AEBV4123@V?$FunctionRef@$$A6AXPEAXPEBX@Z@23@@Z
-  ?CopyFile@Env@tsl@@QEAA?AVStatus@lts_20250512@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@0@Z
+  ?Copy@container_internal@lts_20250814@absl@@YAXAEAVCommonFields@123@AEBUPolicyFunctions@123@AEBV4123@V?$FunctionRef@$$A6AXPEAXPEBX@Z@23@@Z
+  ?CopyFile@Env@tsl@@QEAA?AVStatus@lts_20250814@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@0@Z
   ?CopyFrom@AttrValue@tensorflow@@QEAAXAEBV12@@Z
   ?CopyFrom@ConfigProto@tensorflow@@QEAAXAEBV12@@Z
   ?CopyFrom@DeviceProperties@tensorflow@@QEAAXAEBV12@@Z
   ?CopyFrom@FunctionDef@tensorflow@@QEAAXAEBV12@@Z
   ?CopyFrom@NodeDef@tensorflow@@QEAAXAEBV12@@Z
   ?CopyFrom@StepStats@tensorflow@@QEAAXAEBV12@@Z
-  ?CopyPythonAPITensorLists@tensorflow@@YA_NAEBVPythonAPIInfo@1@V?$Span@PEAU_object@@@lts_20250512@absl@@@Z
+  ?CopyPythonAPITensorLists@tensorflow@@YA_NAEBVPythonAPIInfo@1@V?$Span@PEAU_object@@@lts_20250814@absl@@@Z
   ?CostGraphToOpPerformanceData@grappler@tensorflow@@YA?AVOpPerformanceList@2@AEBVCostGraphDef@2@AEBVGraphDef@2@@Z
-  ?Crash@Helper@internal_statusor@lts_20250512@absl@@SAXAEBVStatus@34@@Z
+  ?Crash@Helper@internal_statusor@lts_20250814@absl@@SAXAEBVStatus@34@@Z
   ?Create@PtrOpKernelFactory@OpKernelRegistrar@kernel_factory@tensorflow@@UEAAPEAVOpKernel@4@PEAVOpKernelConstruction@4@@Z
-  ?CreateDir@Env@tsl@@QEAA?AVStatus@lts_20250512@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
-  ?CreateFingerprintDef@fingerprinting@saved_model@tensorflow@@YA?AV?$StatusOr@VFingerprintDef@tensorflow@@@lts_20250512@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
+  ?CreateDir@Env@tsl@@QEAA?AVStatus@lts_20250814@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
+  ?CreateFingerprintDef@fingerprinting@saved_model@tensorflow@@YA?AV?$StatusOr@VFingerprintDef@tensorflow@@@lts_20250814@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
   ?CreateMesh@Mesh@dtensor@tensorflow@@SA?AV123@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBV?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@5@AEBV?$vector@_JV?$allocator@_J@std@@@5@2121_N@Z
   ?CreateRecordReaderOptions@RecordReaderOptions@io@tsl@@SA?AU123@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
   ?CreateRecordWriterOptions@RecordWriterOptions@io@tsl@@SA?AU123@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
-  ?CtxFailure@OpKernelConstruction@tensorflow@@QEAAXPEBDHAEBVStatus@lts_20250512@absl@@@Z
-  ?CtxFailure@OpKernelContext@tensorflow@@QEAAXPEBDHAEBVStatus@lts_20250512@absl@@@Z
-  ?CtxFailureWithWarning@OpKernelConstruction@tensorflow@@QEAAXPEBDHAEBVStatus@lts_20250512@absl@@@Z
-  ?CtxFailureWithWarning@OpKernelContext@tensorflow@@QEAAXPEBDHAEBVStatus@lts_20250512@absl@@@Z
+  ?CtxFailure@OpKernelConstruction@tensorflow@@QEAAXPEBDHAEBVStatus@lts_20250814@absl@@@Z
+  ?CtxFailure@OpKernelContext@tensorflow@@QEAAXPEBDHAEBVStatus@lts_20250814@absl@@@Z
+  ?CtxFailureWithWarning@OpKernelConstruction@tensorflow@@QEAAXPEBDHAEBVStatus@lts_20250814@absl@@@Z
+  ?CtxFailureWithWarning@OpKernelContext@tensorflow@@QEAAXPEBDHAEBVStatus@lts_20250814@absl@@@Z
   ?DataTypeSize@tensorflow@@YAHW4DataType@1@@Z
   ?DataTypeString@tensorflow@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@W4DataType@1@@Z
   ?DataTypeToPyObject@tensorflow@@YA?AV?$unique_ptr@U_object@@UPyDecrefDeleter@detail@tensorflow@@@std@@AEBW4DataType@1@@Z
@@ -285,33 +285,34 @@ EXPORTS
   ?DebugString@TensorShapeRep@tensorflow@@QEBA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@XZ
   ?Default@Env@tsl@@SAPEAV12@XZ
   ?DefaultProtocol@data@tensorflow@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@XZ
-  ?DeleteFile@Env@tsl@@QEAA?AVStatus@lts_20250512@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
+  ?DeleteFile@Env@tsl@@QEAA?AVStatus@lts_20250814@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
   ?DeleteProfiler@tfprof@tensorflow@@YAXXZ
-  ?DeleteRecursively@Env@tsl@@QEAA?AVStatus@lts_20250512@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEA_J1@Z
-  ?DestroyCordSlow@Cord@lts_20250512@absl@@AEAAXXZ
+  ?DeleteRecursively@Env@tsl@@QEAA?AVStatus@lts_20250814@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEA_J1@Z
+  ?DestroyCordSlow@Cord@lts_20250814@absl@@AEAAXXZ
   ?DestroyEagerContextThreadLocalData@tensorflow@@YAXPEAU_object@@@Z
   ?DestructorOutOfLine@TensorShapeRep@tensorflow@@AEAAXXZ
   ?DetailedStatsEnabled@Cluster@grappler@tensorflow@@QEBA_NXZ
   ?Device@KernelDefBuilder@tensorflow@@QEAAAEAV12@PEBD@Z
   ?DisableDetailedStats@Cluster@grappler@tensorflow@@QEAAX_N@Z
   ?Dispatch@PythonAPIDispatcher@py_dispatch@tensorflow@@QEAA?AV?$unique_ptr@U_object@@UPyDecrefDeleter@detail@tensorflow@@@std@@PEAU_object@@0@Z
-  ?DivNoNan@ops@tensorflow@@YA?AVStatus@lts_20250512@absl@@PEAVAbstractContext@2@QEAVAbstractTensorHandle@2@1PEAPEAV72@PEBD3@Z
+  ?DivNoNan@ops@tensorflow@@YA?AVStatus@lts_20250814@absl@@PEAVAbstractContext@2@QEAVAbstractTensorHandle@2@1PEAPEAV72@PEBD3@Z
   ?DivNoNanRegisterer@gradients@tensorflow@@YAPEAVGradientFunction@12@AEBUForwardOperation@12@@Z
-  ?Divide@InferenceContext@shape_inference@tensorflow@@QEAA?AVStatus@lts_20250512@absl@@VDimensionHandle@23@UDimensionOrConstant@23@_NPEAV723@@Z
-  ?DoQuantizeTrainingOnSerializedGraphDef@tensorflow@@YA?AVStatus@lts_20250512@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@H0PEAV56@@Z
+  ?Divide@InferenceContext@shape_inference@tensorflow@@QEAA?AVStatus@lts_20250814@absl@@VDimensionHandle@23@UDimensionOrConstant@23@_NPEAV723@@Z
+  ?DoQuantizeTrainingOnSerializedGraphDef@tensorflow@@YA?AVStatus@lts_20250814@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@H0PEAV56@@Z
   ?Doc@OpDefBuilder@tensorflow@@QEAAAEAV12@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
   ?EagerTensorFromHandle@@YAPEAU_object@@PEAUTFE_TensorHandle@@_N@Z
   ?EagerTensor_CheckExact@@YA_NPEBU_object@@@Z
   ?EagerTensor_Handle@@YAPEAUTFE_TensorHandle@@PEBU_object@@@Z
-  ?EinsumShape@shape_inference@tensorflow@@YA?AVStatus@lts_20250512@absl@@PEAVInferenceContext@12@@Z
+  ?EinsumShape@shape_inference@tensorflow@@YA?AVStatus@lts_20250814@absl@@PEAVInferenceContext@12@@Z
   ?EnableOpDeterminism@tsl@@YAX_N@Z
   ?EncodeToProto@ThreadSafeHistogram@histogram@tsl@@QEBAXPEAVHistogramProto@tensorflow@@_N@Z
   ?EnqueueOpsFanin@GrapplerItem@grappler@tensorflow@@QEBA?AV?$vector@PEBVNodeDef@tensorflow@@V?$allocator@PEBVNodeDef@tensorflow@@@std@@@std@@XZ
-  ?EnsureInitialized@DataServiceDispatcherClient@data@tensorflow@@MEAA?AVStatus@lts_20250512@absl@@XZ
+  ?EnsureInitialized@DataServiceDispatcherClient@data@tensorflow@@MEAA?AVStatus@lts_20250814@absl@@XZ
   ?Enter@PyContextManager@tensorflow@@QEAA_NPEAU_object@@@Z
   ?EqualAttrValueWrapper@tensorflow@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBV23@0@Z
   ?EqualGraphDefWrapper@tensorflow@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBV23@0@Z
-  ?EraseMetaOnly@container_internal@lts_20250512@absl@@YAXAEAVCommonFields@123@_K1@Z
+  ?EraseMetaOnlyLarge@container_internal@lts_20250814@absl@@YAXAEAVCommonFields@123@PEBW4ctrl_t@123@_K@Z
+  ?EraseMetaOnlySmall@container_internal@lts_20250814@absl@@YAXAEAVCommonFields@123@_N_K@Z
   ?ExpRegisterer@gradients@tensorflow@@YAPEAVGradientFunction@12@AEBUForwardOperation@12@@Z
   ?ExperimentalClearDefaultLayout@dtensor@tensorflow@@YAXPEAXPEAUTSL_Status@@@Z
   ?ExperimentalClearDefaultMesh@dtensor@tensorflow@@YAXPEAXPEAUTSL_Status@@@Z
@@ -322,53 +323,50 @@ EXPORTS
   ?ExperimentalSetDefaultLayout@dtensor@tensorflow@@YAXAEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAXPEAUTSL_Status@@@Z
   ?ExperimentalSetDefaultMesh@dtensor@tensorflow@@YAXAEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAXPEAUTSL_Status@@@Z
   ?ExperimentalWriteBytecode@tensorflow@@YAXAEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@0PEAUTSL_Status@@@Z
-  ?ExportToTensorBoard@ProfilerSessionWrapper@pywrap@profiler@tensorflow@@QEAA?AVStatus@lts_20250512@absl@@XZ
+  ?ExportToTensorBoard@ProfilerSessionWrapper@pywrap@profiler@tensorflow@@QEAA?AVStatus@lts_20250814@absl@@XZ
   ?ExtendSession@tensorflow@@YAXPEAUTF_Session@@PEAUTSL_Status@@@Z
-  ?FailedPreconditionError@lts_20250512@absl@@YA?AVStatus@12@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
-  ?FastInt32ToBufferLeft@strings@tsl@@YA_KHPEAD@Z
-  ?FastInt64ToBufferLeft@strings@tsl@@YA_K_JPEAD@Z
-  ?FastIntToBuffer@numbers_internal@lts_20250512@absl@@YAPEADHPEAD@Z
-  ?FastIntToBuffer@numbers_internal@lts_20250512@absl@@YAPEAD_JPEAD@Z
-  ?FastIntToBuffer@numbers_internal@lts_20250512@absl@@YAPEAD_KPEAD@Z
-  ?FastUInt64ToBufferLeft@strings@tsl@@YA_K_KPEAD@Z
+  ?FailedPreconditionError@lts_20250814@absl@@YA?AVStatus@12@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
+  ?FastIntToBuffer@numbers_internal@lts_20250814@absl@@YAPEADHPEAD@Z
+  ?FastIntToBuffer@numbers_internal@lts_20250814@absl@@YAPEAD_JPEAD@Z
+  ?FastIntToBuffer@numbers_internal@lts_20250814@absl@@YAPEAD_KPEAD@Z
   ?FetchLayout@dtensor@tensorflow@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAUTFE_Context@@PEAUTFE_TensorHandle@@PEAXPEAUTSL_Status@@@Z
-  ?FileExists@Env@tsl@@QEAA?AVStatus@lts_20250512@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
+  ?FileExists@Env@tsl@@QEAA?AVStatus@lts_20250814@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
   ?FileName@EventsWriter@tensorflow@@QEAA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@XZ
-  ?Find@ByChar@lts_20250512@absl@@QEBA?AV?$basic_string_view@DU?$char_traits@D@std@@@std@@V45@_K@Z
-  ?FindKernelDef@tensorflow@@YA?AVStatus@lts_20250512@absl@@AEBVDeviceType@tsl@@AEBVNodeDef@1@PEAPEBVKernelDef@1@PEAV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
+  ?Find@ByChar@lts_20250814@absl@@QEBA?AV?$basic_string_view@DU?$char_traits@D@std@@@std@@V45@_K@Z
+  ?FindKernelDef@tensorflow@@YA?AVStatus@lts_20250814@absl@@AEBVDeviceType@tsl@@AEBVNodeDef@1@PEAPEBVKernelDef@1@PEAV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
   ?FlatBufferFileToMlir@tflite@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBV23@_N@Z
   ?Flatten@swig@tensorflow@@YAPEAU_object@@PEAU3@_N@Z
   ?FlattenDictItems@tensorflow@@YAPEAU_object@@PEAU2@@Z
   ?FlattenForData@swig@tensorflow@@YAPEAU_object@@PEAU3@@Z
-  ?Flush@EventsWriter@tensorflow@@QEAA?AVStatus@lts_20250512@absl@@XZ
-  ?Flush@LogMessage@log_internal@lts_20250512@absl@@QEAAXXZ
-  ?Flush@RecordWriter@io@tsl@@QEAA?AVStatus@lts_20250512@absl@@XZ
-  ?FlushExecutionFiles@DebugEventsWriter@tfdbg@tensorflow@@QEAA?AVStatus@lts_20250512@absl@@XZ
-  ?FlushNonExecutionFiles@DebugEventsWriter@tfdbg@tensorflow@@QEAA?AVStatus@lts_20250512@absl@@XZ
-  ?ForEachPayload@StatusRep@status_internal@lts_20250512@absl@@QEBAXV?$FunctionRef@$$A6AXV?$basic_string_view@DU?$char_traits@D@std@@@std@@AEBVCord@lts_20250512@absl@@@Z@34@@Z
-  ?FormatConvertImpl@str_format_internal@lts_20250512@absl@@YA?AU?$ArgConvertResult@$0IAAAE@@123@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@VFormatConversionSpecImpl@123@PEAVFormatSinkImpl@123@@Z
-  ?FormatPack@str_format_internal@lts_20250512@absl@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@VUntypedFormatSpecImpl@123@V?$Span@$$CBVFormatArgImpl@str_format_internal@lts_20250512@absl@@@23@@Z
-  ?FromProto@Layout@dtensor@tensorflow@@SA?AV?$StatusOr@VLayout@dtensor@tensorflow@@@lts_20250512@absl@@AEBVLayoutProto@23@@Z
-  ?FromString@Layout@dtensor@tensorflow@@SA?AV?$StatusOr@VLayout@dtensor@tensorflow@@@lts_20250512@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
-  ?FromString@Mesh@dtensor@tensorflow@@SA?AV?$StatusOr@VMesh@dtensor@tensorflow@@@lts_20250512@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
-  ?GenerateReport@CostAnalyzer@grappler@tensorflow@@QEAA?AVStatus@lts_20250512@absl@@AEAV?$basic_ostream@DU?$char_traits@D@std@@@std@@_N1@Z
-  ?GenerateReport@ModelAnalyzer@grappler@tensorflow@@QEAA?AVStatus@lts_20250512@absl@@_N0AEAV?$basic_ostream@DU?$char_traits@D@std@@@std@@@Z
+  ?Flush@EventsWriter@tensorflow@@QEAA?AVStatus@lts_20250814@absl@@XZ
+  ?Flush@LogMessage@log_internal@lts_20250814@absl@@QEAAXXZ
+  ?Flush@RecordWriter@io@tsl@@QEAA?AVStatus@lts_20250814@absl@@XZ
+  ?FlushExecutionFiles@DebugEventsWriter@tfdbg@tensorflow@@QEAA?AVStatus@lts_20250814@absl@@XZ
+  ?FlushNonExecutionFiles@DebugEventsWriter@tfdbg@tensorflow@@QEAA?AVStatus@lts_20250814@absl@@XZ
+  ?ForEachPayload@StatusRep@status_internal@lts_20250814@absl@@QEBAXV?$FunctionRef@$$A6AXV?$basic_string_view@DU?$char_traits@D@std@@@std@@AEBVCord@lts_20250814@absl@@@Z@34@@Z
+  ?FormatConvertImpl@str_format_internal@lts_20250814@absl@@YA?AU?$ArgConvertResult@$0IAAAE@@123@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@VFormatConversionSpecImpl@123@PEAVFormatSinkImpl@123@@Z
+  ?FormatPack@str_format_internal@lts_20250814@absl@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@VUntypedFormatSpecImpl@123@V?$Span@$$CBVFormatArgImpl@str_format_internal@lts_20250814@absl@@@23@@Z
+  ?FromProto@Layout@dtensor@tensorflow@@SA?AV?$StatusOr@VLayout@dtensor@tensorflow@@@lts_20250814@absl@@AEBVLayoutProto@23@@Z
+  ?FromString@Layout@dtensor@tensorflow@@SA?AV?$StatusOr@VLayout@dtensor@tensorflow@@@lts_20250814@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
+  ?FromString@Mesh@dtensor@tensorflow@@SA?AV?$StatusOr@VMesh@dtensor@tensorflow@@@lts_20250814@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
+  ?GenerateReport@CostAnalyzer@grappler@tensorflow@@QEAA?AVStatus@lts_20250814@absl@@AEAV?$basic_ostream@DU?$char_traits@D@std@@@std@@_N1@Z
+  ?GenerateReport@ModelAnalyzer@grappler@tensorflow@@QEAA?AVStatus@lts_20250814@absl@@_N0AEAV?$basic_ostream@DU?$char_traits@D@std@@@std@@@Z
   ?GenericProtoCast@pybind11_protobuf@@YA?AVhandle@pybind11@@PEAVMessage@protobuf@google@@W4return_value_policy@3@V23@_N@Z
   ?Get@TFE_TensorHandleCache@tensorflow@@SAPEAU12@XZ
-  ?GetAnyDeviceDetails@DeviceFactory@tensorflow@@SA?AVStatus@lts_20250512@absl@@HPEAV?$unordered_map@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V12@U?$hash@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@U?$equal_to@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V12@@std@@@2@@std@@@Z
-  ?GetChildren@Env@tsl@@QEAA?AVStatus@lts_20250512@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAV?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@7@@Z
-  ?GetCompilerIr@tensorflow@@YA?AV?$StatusOr@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@lts_20250512@absl@@W4IrExportStage@1@PEAVProcessFunctionLibraryRuntime@1@V?$basic_string_view@DU?$char_traits@D@std@@@std@@2PEAVEagerContext@1@V?$Span@$$CBUArgShapeAndDType@tensorflow@@@34@V?$Span@QEBVTensorHandle@tensorflow@@@34@W4CompilerArgSource@1@@Z
-  ?GetCompilerIr@tensorflow@@YA?AV?$StatusOr@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@lts_20250512@absl@@W4IrExportStage@1@PEAVProcessFunctionLibraryRuntime@1@V?$basic_string_view@DU?$char_traits@D@std@@@std@@PEAVDevice@1@PEAVEagerContext@1@V?$Span@$$CBUArgShapeAndDType@tensorflow@@@34@V?$Span@QEBVTensorHandle@tensorflow@@@34@W4CompilerArgSource@1@@Z
+  ?GetAnyDeviceDetails@DeviceFactory@tensorflow@@SA?AVStatus@lts_20250814@absl@@HPEAV?$unordered_map@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V12@U?$hash@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@U?$equal_to@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V12@@std@@@2@@std@@@Z
+  ?GetChildren@Env@tsl@@QEAA?AVStatus@lts_20250814@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAV?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@7@@Z
+  ?GetCompilerIr@tensorflow@@YA?AV?$StatusOr@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@lts_20250814@absl@@W4IrExportStage@1@PEAVProcessFunctionLibraryRuntime@1@V?$basic_string_view@DU?$char_traits@D@std@@@std@@2PEAVEagerContext@1@V?$Span@$$CBUArgShapeAndDType@tensorflow@@@34@V?$Span@QEBVTensorHandle@tensorflow@@@34@W4CompilerArgSource@1@@Z
+  ?GetCompilerIr@tensorflow@@YA?AV?$StatusOr@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@lts_20250814@absl@@W4IrExportStage@1@PEAVProcessFunctionLibraryRuntime@1@V?$basic_string_view@DU?$char_traits@D@std@@@std@@PEAVDevice@1@PEAVEagerContext@1@V?$Span@$$CBUArgShapeAndDType@tensorflow@@@34@V?$Span@QEBVTensorHandle@tensorflow@@@34@W4CompilerArgSource@1@@Z
   ?GetCurrentTimeNanos@profiler@tsl@@YA_JXZ
-  ?GetDataServiceMetadata@DataServiceDispatcherClient@data@tensorflow@@QEAA?AVStatus@lts_20250512@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEAVDataServiceMetadata@23@@Z
+  ?GetDataServiceMetadata@DataServiceDispatcherClient@data@tensorflow@@QEAA?AVStatus@lts_20250814@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEAVDataServiceMetadata@23@@Z
   ?GetDebugEventsWriter@DebugEventsWriter@tfdbg@tensorflow@@SAPEAV123@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@0_J@Z
   ?GetDeviceInfo@OpLevelCostEstimator@grappler@tensorflow@@UEBA?AUDeviceInfo@23@AEBVDeviceProperties@3@@Z
   ?GetDeviceInfo@grappler@tensorflow@@YA?AVDeviceProperties@2@AEBUParsedName@DeviceNameUtils@tsl@@@Z
   ?GetEagerContextThreadLocalData@tensorflow@@YAPEAUEagerContextThreadLocalData@1@PEAU_object@@@Z
-  ?GetFileSize@Env@tsl@@QEAA?AVStatus@lts_20250512@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEA_K@Z
+  ?GetFileSize@Env@tsl@@QEAA?AVStatus@lts_20250814@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEA_K@Z
   ?GetHandleShapeAndType@tensorflow@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAUTF_Graph@@UTF_Output@@@Z
-  ?GetLayout@Layout@dtensor@tensorflow@@SA?AV?$StatusOr@VLayout@dtensor@tensorflow@@@lts_20250512@absl@@W4LayoutType@123@AEBV?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@std@@AEBVMesh@23@@Z
-  ?GetLayouts@SparseCoreLayoutStacker@tpu@tensorflow@@QEAA?AV?$StatusOr@VSparseCoreTableLayouts@tpu@tensorflow@@@lts_20250512@absl@@XZ
+  ?GetLayout@Layout@dtensor@tensorflow@@SA?AV?$StatusOr@VLayout@dtensor@tensorflow@@@lts_20250814@absl@@W4LayoutType@123@AEBV?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@std@@AEBVMesh@23@@Z
+  ?GetLayouts@SparseCoreLayoutStacker@tpu@tensorflow@@QEAA?AV?$StatusOr@VSparseCoreTableLayouts@tpu@tensorflow@@@lts_20250814@absl@@XZ
   ?GetLinkedTensorRTVersion@tensorrt@tensorflow@@YA?AV?$tuple@HHH@std@@XZ
   ?GetLoadedTensorRTVersion@tensorrt@tensorflow@@YA?AV?$tuple@HHH@std@@XZ
   ?GetMetadata@FunctionDef@tensorflow@@QEBA?AUMetadata@protobuf@google@@XZ
@@ -378,31 +376,31 @@ EXPORTS
   ?GetMetadata@MeshProto@dtensor@tensorflow@@QEBA?AUMetadata@protobuf@google@@XZ
   ?GetMetadata@MetaGraphDef@tensorflow@@QEBA?AUMetadata@protobuf@google@@XZ
   ?GetMlirCommonFlags@tensorflow@@YAPEAUMlirCommonFlags@1@XZ
-  ?GetNodeAttr@tensorflow@@YA?AVStatus@lts_20250512@absl@@AEBVAttrSlice@1@V?$basic_string_view@DU?$char_traits@D@std@@@std@@PEAH@Z
-  ?GetNodeAttr@tensorflow@@YA?AVStatus@lts_20250512@absl@@AEBVAttrSlice@1@V?$basic_string_view@DU?$char_traits@D@std@@@std@@PEAM@Z
-  ?GetNodeAttr@tensorflow@@YA?AVStatus@lts_20250512@absl@@AEBVAttrSlice@1@V?$basic_string_view@DU?$char_traits@D@std@@@std@@PEAV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@7@@Z
-  ?GetNodeAttr@tensorflow@@YA?AVStatus@lts_20250512@absl@@AEBVAttrSlice@1@V?$basic_string_view@DU?$char_traits@D@std@@@std@@PEAV?$vector@VPartialTensorShape@tensorflow@@V?$allocator@VPartialTensorShape@tensorflow@@@std@@@7@@Z
-  ?GetNodeAttr@tensorflow@@YA?AVStatus@lts_20250512@absl@@AEBVAttrSlice@1@V?$basic_string_view@DU?$char_traits@D@std@@@std@@PEAV?$vector@VTensorShape@tensorflow@@V?$allocator@VTensorShape@tensorflow@@@std@@@7@@Z
-  ?GetNodeAttr@tensorflow@@YA?AVStatus@lts_20250512@absl@@AEBVAttrSlice@1@V?$basic_string_view@DU?$char_traits@D@std@@@std@@PEAV?$vector@_JV?$allocator@_J@std@@@7@@Z
-  ?GetNodeAttr@tensorflow@@YA?AVStatus@lts_20250512@absl@@AEBVAttrSlice@1@V?$basic_string_view@DU?$char_traits@D@std@@@std@@PEAVTensorShape@1@@Z
-  ?GetNodeAttr@tensorflow@@YA?AVStatus@lts_20250512@absl@@AEBVAttrSlice@1@V?$basic_string_view@DU?$char_traits@D@std@@@std@@PEAW4DataType@1@@Z
-  ?GetNodeAttr@tensorflow@@YA?AVStatus@lts_20250512@absl@@AEBVAttrSlice@1@V?$basic_string_view@DU?$char_traits@D@std@@@std@@PEA_J@Z
-  ?GetNodeAttr@tensorflow@@YA?AVStatus@lts_20250512@absl@@AEBVAttrSlice@1@V?$basic_string_view@DU?$char_traits@D@std@@@std@@PEA_N@Z
+  ?GetNodeAttr@tensorflow@@YA?AVStatus@lts_20250814@absl@@AEBVAttrSlice@1@V?$basic_string_view@DU?$char_traits@D@std@@@std@@PEAH@Z
+  ?GetNodeAttr@tensorflow@@YA?AVStatus@lts_20250814@absl@@AEBVAttrSlice@1@V?$basic_string_view@DU?$char_traits@D@std@@@std@@PEAM@Z
+  ?GetNodeAttr@tensorflow@@YA?AVStatus@lts_20250814@absl@@AEBVAttrSlice@1@V?$basic_string_view@DU?$char_traits@D@std@@@std@@PEAV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@7@@Z
+  ?GetNodeAttr@tensorflow@@YA?AVStatus@lts_20250814@absl@@AEBVAttrSlice@1@V?$basic_string_view@DU?$char_traits@D@std@@@std@@PEAV?$vector@VPartialTensorShape@tensorflow@@V?$allocator@VPartialTensorShape@tensorflow@@@std@@@7@@Z
+  ?GetNodeAttr@tensorflow@@YA?AVStatus@lts_20250814@absl@@AEBVAttrSlice@1@V?$basic_string_view@DU?$char_traits@D@std@@@std@@PEAV?$vector@VTensorShape@tensorflow@@V?$allocator@VTensorShape@tensorflow@@@std@@@7@@Z
+  ?GetNodeAttr@tensorflow@@YA?AVStatus@lts_20250814@absl@@AEBVAttrSlice@1@V?$basic_string_view@DU?$char_traits@D@std@@@std@@PEAV?$vector@_JV?$allocator@_J@std@@@7@@Z
+  ?GetNodeAttr@tensorflow@@YA?AVStatus@lts_20250814@absl@@AEBVAttrSlice@1@V?$basic_string_view@DU?$char_traits@D@std@@@std@@PEAVTensorShape@1@@Z
+  ?GetNodeAttr@tensorflow@@YA?AVStatus@lts_20250814@absl@@AEBVAttrSlice@1@V?$basic_string_view@DU?$char_traits@D@std@@@std@@PEAW4DataType@1@@Z
+  ?GetNodeAttr@tensorflow@@YA?AVStatus@lts_20250814@absl@@AEBVAttrSlice@1@V?$basic_string_view@DU?$char_traits@D@std@@@std@@PEA_J@Z
+  ?GetNodeAttr@tensorflow@@YA?AVStatus@lts_20250814@absl@@AEBVAttrSlice@1@V?$basic_string_view@DU?$char_traits@D@std@@@std@@PEA_N@Z
   ?GetNumAvailableGPUs@grappler@tensorflow@@YAHAEBU?$pair@HH@std@@@Z
   ?GetNumAvailableLogicalCPUCores@grappler@tensorflow@@YAHXZ
   ?GetOperationInputs@tensorflow@@YA?AV?$vector@UTF_Output@@V?$allocator@UTF_Output@@@std@@@std@@PEAUTF_Operation@@@Z
   ?GetOutputProperties@GraphProperties@grappler@tensorflow@@QEBAAEBV?$vector@VOpInfo_TensorProperties@tensorflow@@V?$allocator@VOpInfo_TensorProperties@tensorflow@@@std@@@std@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@5@@Z
   ?GetOutputString@StatsCalculator@tsl@@QEBA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@XZ
   ?GetPythonWrappers@tensorflow@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEBD_K@Z
-  ?GetRefForEmptyClass@container_internal@lts_20250512@absl@@YAPEAXAEAVCommonFields@123@@Z
+  ?GetRefForEmptyClass@container_internal@lts_20250814@absl@@YAPEAXAEAVCommonFields@123@@Z
   ?GetRegisteredOpConverters@tensorrt@tensorflow@@YA?AV?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@std@@XZ
   ?GetRegisteredOps@OpRegistry@tensorflow@@QEAAXPEAV?$vector@VOpDef@tensorflow@@V?$allocator@VOpDef@tensorflow@@@std@@@std@@@Z
-  ?GetRegisteredXlaOpsForDevice@tensorflow@@YA?AV?$StatusOr@V?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@std@@@lts_20250512@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
-  ?GetScalarFromTensor@InferenceContext@shape_inference@tensorflow@@QEAA?AVStatus@lts_20250512@absl@@PEBVTensor@3@_JPEA_J@Z
-  ?GetSingleDeviceMesh@Mesh@dtensor@tensorflow@@SA?AV?$StatusOr@VMesh@dtensor@tensorflow@@@lts_20250512@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
-  ?GetSnapshotSplit@DataServiceDispatcherClient@data@tensorflow@@UEAA?AVStatus@lts_20250512@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@0_J11AEAVTensor@3@AEA_JAEA_N@Z
+  ?GetRegisteredXlaOpsForDevice@tensorflow@@YA?AV?$StatusOr@V?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@std@@@lts_20250814@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
+  ?GetScalarFromTensor@InferenceContext@shape_inference@tensorflow@@QEAA?AVStatus@lts_20250814@absl@@PEBVTensor@3@_JPEA_J@Z
+  ?GetSingleDeviceMesh@Mesh@dtensor@tensorflow@@SA?AV?$StatusOr@VMesh@dtensor@tensorflow@@@lts_20250814@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
+  ?GetSnapshotSplit@DataServiceDispatcherClient@data@tensorflow@@UEAA?AVStatus@lts_20250814@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@0_J11AEAVTensor@3@AEA_JAEA_N@Z
   ?GetStats@dtensor@tensorflow@@YA?AV?$unordered_map@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@HU?$hash@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@U?$equal_to@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@H@std@@@2@@std@@PEAUTFE_Context@@PEAXPEAUTSL_Status@@@Z
-  ?GetStatus@Impl@MakeErrorStream@status_macros@xla@@QEAA?AVStatus@lts_20250512@absl@@XZ
+  ?GetStatus@Impl@MakeErrorStream@status_macros@xla@@QEAA?AVStatus@lts_20250814@absl@@XZ
   ?GetTableStacks@tensorflow@@YA?AV?$vector@V?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@std@@V?$allocator@V?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@std@@@2@@std@@AEBV?$vector@_JV?$allocator@_J@std@@@3@000AEBV?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@3@_J@Z
   ?GetTensor@CheckpointReader@checkpoint@tensorflow@@QEBAXAEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAV?$unique_ptr@VTensor@tensorflow@@U?$default_delete@VTensor@tensorflow@@@std@@@5@PEAUTSL_Status@@@Z
   ?GetUserFrames@FrozenStackTrace@tensorflow@@UEBA?AV?$vector@UStackFrame@tsl@@V?$allocator@UStackFrame@tsl@@@std@@@std@@H@Z
@@ -411,11 +409,11 @@ EXPORTS
   ?GetXlaDeviceFlags@tensorflow@@YAPEAUXlaDeviceFlags@1@XZ
   ?Global@OpRegistry@tensorflow@@SAPEAV12@XZ
   ?Global@flags@tensorflow@@YAAEAVFlags@12@XZ
-  ?GlobalShapeFromLocalShape@Layout@dtensor@tensorflow@@QEBA?AV?$vector@_JV?$allocator@_J@std@@@std@@V?$Span@$$CB_J@lts_20250512@absl@@PEBV?$vector@V?$vector@_JV?$allocator@_J@std@@@std@@V?$allocator@V?$vector@_JV?$allocator@_J@std@@@std@@@2@@5@@Z
+  ?GlobalShapeFromLocalShape@Layout@dtensor@tensorflow@@QEBA?AV?$vector@_JV?$allocator@_J@std@@@std@@V?$Span@$$CB_J@lts_20250814@absl@@PEBV?$vector@V?$vector@_JV?$allocator@_J@std@@@std@@V?$allocator@V?$vector@_JV?$allocator@_J@std@@@std@@@2@@5@@Z
   ?GpuSupportsHalfMatMulAndConv@tensorflow@@YA_NXZ
   ?GrapplerItemFromMetaGraphDef@grappler@tensorflow@@YA?AV?$unique_ptr@UGrapplerItem@grappler@tensorflow@@U?$default_delete@UGrapplerItem@grappler@tensorflow@@@std@@@std@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@4@AEBVMetaGraphDef@2@AEBUItemConfig@12@@Z
-  ?HandleInvalidStatusCtorArg@Helper@internal_statusor@lts_20250512@absl@@SAXPEAVStatus@34@@Z
-  ?HasAtomicMove@Env@tsl@@QEAA?AVStatus@lts_20250512@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEA_N@Z
+  ?HandleInvalidStatusCtorArg@Helper@internal_statusor@lts_20250814@absl@@SAXPEAVStatus@34@@Z
+  ?HasAtomicMove@Env@tsl@@QEAA?AVStatus@lts_20250814@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEA_N@Z
   ?HasTensor@CheckpointReader@checkpoint@tensorflow@@QEBA_NAEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
   ?Hash64@tsl@@YA_KPEBD_K1@Z
   ?ImportFunction@tensorflow@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBV23@0_NPEAUTFE_Context@@PEAUTSL_Status@@@Z
@@ -423,28 +421,28 @@ EXPORTS
   ?ImportGraphDef@tensorflow@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBV23@0_NV?$basic_string_view@DU?$char_traits@D@std@@@3@222PEAUTSL_Status@@@Z
   ?ImportNumpy@tsl@@YAXXZ
   ?ImportStatusModule@google@pybind11@@YA?AVmodule_@2@_N@Z
-  ?InferDynamically@GraphMemory@grappler@tensorflow@@QEAA?AVStatus@lts_20250512@absl@@PEAVCluster@23@@Z
-  ?InferStatically@GraphMemory@grappler@tensorflow@@QEAA?AVStatus@lts_20250512@absl@@AEBV?$unordered_map@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@VDeviceProperties@tensorflow@@U?$hash@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@U?$equal_to@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@VDeviceProperties@tensorflow@@@std@@@2@@std@@@Z
-  ?InferStatically@GraphProperties@grappler@tensorflow@@QEAA?AVStatus@lts_20250512@absl@@_N000@Z
+  ?InferDynamically@GraphMemory@grappler@tensorflow@@QEAA?AVStatus@lts_20250814@absl@@PEAVCluster@23@@Z
+  ?InferStatically@GraphMemory@grappler@tensorflow@@QEAA?AVStatus@lts_20250814@absl@@AEBV?$unordered_map@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@VDeviceProperties@tensorflow@@U?$hash@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@U?$equal_to@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@VDeviceProperties@tensorflow@@@std@@@2@@std@@@Z
+  ?InferStatically@GraphProperties@grappler@tensorflow@@QEAA?AVStatus@lts_20250814@absl@@_N000@Z
   ?InfoAboutUnusedCPUFeatures@port@tensorflow@@YAXXZ
-  ?Init@DebugEventsWriter@tfdbg@tensorflow@@QEAA?AVStatus@lts_20250512@absl@@XZ
+  ?Init@DebugEventsWriter@tfdbg@tensorflow@@QEAA?AVStatus@lts_20250814@absl@@XZ
   ?Init@PyExceptionRegistry@tensorflow@@SAXPEAU_object@@@Z
   ?InitInternal@OpKernelRegistrar@kernel_factory@tensorflow@@AEAAXPEBVKernelDef@3@V?$basic_string_view@DU?$char_traits@D@std@@@std@@V?$unique_ptr@VOpKernelFactory@kernel_factory@tensorflow@@U?$default_delete@VOpKernelFactory@kernel_factory@tensorflow@@@std@@@6@@Z
-  ?InitWithSuffix@EventsWriter@tensorflow@@QEAA?AVStatus@lts_20250512@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
-  ?Initialize@AnalyticalCostEstimator@grappler@tensorflow@@UEAA?AVStatus@lts_20250512@absl@@AEBUGrapplerItem@23@@Z
-  ?Initialize@DataServiceDispatcherClient@data@tensorflow@@UEAA?AVStatus@lts_20250512@absl@@XZ
-  ?Initialize@MeasuringCostEstimator@grappler@tensorflow@@UEAA?AVStatus@lts_20250512@absl@@AEBUGrapplerItem@23@@Z
-  ?InitializeFromParamSpecs@PythonAPIInfo@tensorflow@@QEAA?AVStatus@lts_20250512@absl@@AEBV?$map@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V12@U?$less@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V12@@std@@@2@@std@@0V?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@7@PEAU_object@@@Z
-  ?InitializeFromRegisteredOp@PythonAPIInfo@tensorflow@@QEAA?AVStatus@lts_20250512@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
+  ?InitWithSuffix@EventsWriter@tensorflow@@QEAA?AVStatus@lts_20250814@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
+  ?Initialize@AnalyticalCostEstimator@grappler@tensorflow@@UEAA?AVStatus@lts_20250814@absl@@AEBUGrapplerItem@23@@Z
+  ?Initialize@DataServiceDispatcherClient@data@tensorflow@@UEAA?AVStatus@lts_20250814@absl@@XZ
+  ?Initialize@MeasuringCostEstimator@grappler@tensorflow@@UEAA?AVStatus@lts_20250814@absl@@AEBUGrapplerItem@23@@Z
+  ?InitializeFromParamSpecs@PythonAPIInfo@tensorflow@@QEAA?AVStatus@lts_20250814@absl@@AEBV?$map@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V12@U?$less@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V12@@std@@@2@@std@@0V?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@7@PEAU_object@@@Z
+  ?InitializeFromRegisteredOp@PythonAPIInfo@tensorflow@@QEAA?AVStatus@lts_20250814@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
   ?InitializePyTrampoline@tensorflow@@YAXPEAU_object@@@Z
   ?InitializePybindProtoCastUtil@pybind11_protobuf@@YAXXZ
   ?Input@OpDefBuilder@tensorflow@@QEAAAEAV12@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
   ?InstallStacktraceHandler@testing@tsl@@YAXXZ
-  ?InternalError@lts_20250512@absl@@YA?AVStatus@12@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
-  ?InvalidArgumentError@lts_20250512@absl@@YA?AVStatus@12@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
+  ?InternalError@lts_20250814@absl@@YA?AVStatus@12@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
+  ?InvalidArgumentError@lts_20250814@absl@@YA?AVStatus@12@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
   ?IsAArch32Available@tensorflow@@YA_NXZ
   ?IsAArch64Available@tensorflow@@YA_NXZ
-  ?IsAlreadyExists@lts_20250512@absl@@YA_NAEBVStatus@12@@Z
+  ?IsAlreadyExists@lts_20250814@absl@@YA_NAEBVStatus@12@@Z
   ?IsAttrs@swig@tensorflow@@YA_NPEAU_object@@@Z
   ?IsBatchParallel@Layout@dtensor@tensorflow@@QEBA_NXZ
   ?IsBuiltWithNvcc@tensorflow@@YA_NXZ
@@ -454,9 +452,9 @@ EXPORTS
   ?IsCoreTypeValue@swig@tensorflow@@YA_NPEAU_object@@@Z
   ?IsDTensor@dtensor@tensorflow@@YA_NPEAUTFE_Context@@PEAUTFE_TensorHandle@@PEAXPEAUTSL_Status@@@Z
   ?IsDataTypeSupportedByOneDNNOnThisCPU@tensorflow@@YA_NAEBW4DataType@1@@Z
-  ?IsDirectory@Env@tsl@@QEAA?AVStatus@lts_20250512@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
+  ?IsDirectory@Env@tsl@@QEAA?AVStatus@lts_20250814@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
   ?IsEagerTensorSlow@swig@tensorflow@@YA_NPEAU_object@@@Z
-  ?IsFailedPrecondition@lts_20250512@absl@@YA_NAEBVStatus@12@@Z
+  ?IsFailedPrecondition@lts_20250814@absl@@YA_NAEBVStatus@12@@Z
   ?IsFullyReplicated@Layout@dtensor@tensorflow@@QEBA_NXZ
   ?IsGoogleCudaEnabled@tensorflow@@YA_NXZ
   ?IsGoogleTensorRTEnabled@tensorrt@tensorflow@@YA_NXZ
@@ -469,7 +467,7 @@ EXPORTS
   ?IsNested@swig@tensorflow@@YA_NPEAU_object@@@Z
   ?IsNestedForData@swig@tensorflow@@YA_NPEAU_object@@@Z
   ?IsNestedOrComposite@swig@tensorflow@@YA_NPEAU_object@@@Z
-  ?IsOutOfRange@lts_20250512@absl@@YA_NAEBVStatus@12@@Z
+  ?IsOutOfRange@lts_20250814@absl@@YA_NAEBVStatus@12@@Z
   ?IsPowerPCAvailable@tensorflow@@YA_NXZ
   ?IsResourceVariable@swig@tensorflow@@YA_NPEAU_object@@@Z
   ?IsSameAddressSpace@DeviceNameUtils@tsl@@SA_NV?$basic_string_view@DU?$char_traits@D@std@@@std@@0@Z
@@ -482,75 +480,75 @@ EXPORTS
   ?IsTypeSpec@swig@tensorflow@@YA_NPEAU_object@@@Z
   ?IsVariable@swig@tensorflow@@YA_NPEAU_object@@@Z
   ?IsX86Available@tensorflow@@YA_NXZ
-  ?IterateOverFullSlots@container_internal@lts_20250512@absl@@YAXAEBVCommonFields@123@_KV?$FunctionRef@$$A6AXPEBW4ctrl_t@container_internal@lts_20250512@absl@@PEAX@Z@23@@Z
+  ?IterateOverFullSlots@container_internal@lts_20250814@absl@@YAXAEBVCommonFields@123@_KV?$FunctionRef@$$A6AXPEBW4ctrl_t@container_internal@lts_20250814@absl@@PEAX@Z@23@@Z
   ?Join@GrpcDataServerBase@data@tensorflow@@QEAAXXZ
   ?LastUserFrame@FrozenStackTrace@tensorflow@@UEBA?AUStackFrame@tsl@@XZ
-  ?ListAllPhysicalDevices@DeviceFactory@tensorflow@@SA?AVStatus@lts_20250512@absl@@PEAV?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@std@@@Z
-  ?ListPluggablePhysicalDevices@DeviceFactory@tensorflow@@SA?AVStatus@lts_20250512@absl@@PEAV?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@std@@@Z
-  ?LoadTracesFromDebugInfoStr@tensorflow@@YA?AV?$StatusOr@V?$flat_hash_map@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$shared_ptr@VAbstractStackTrace@tensorflow@@@2@UStringHash@container_internal@lts_20250512@absl@@UStringEq@567@V?$allocator@U?$pair@$$CBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$shared_ptr@VAbstractStackTrace@tensorflow@@@2@@std@@@2@@lts_20250512@absl@@@lts_20250512@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
-  ?LocalShapeFromGlobalShape@Layout@dtensor@tensorflow@@QEBA?AV?$vector@_JV?$allocator@_J@std@@@std@@V?$Span@$$CB_J@lts_20250512@absl@@@Z
-  ?Lock@Mutex@lts_20250512@absl@@QEAAXXZ
-  ?Log1p@ops@tensorflow@@YA?AVStatus@lts_20250512@absl@@PEAVAbstractContext@2@QEAVAbstractTensorHandle@2@PEAPEAV72@PEBD3@Z
+  ?ListAllPhysicalDevices@DeviceFactory@tensorflow@@SA?AVStatus@lts_20250814@absl@@PEAV?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@std@@@Z
+  ?ListPluggablePhysicalDevices@DeviceFactory@tensorflow@@SA?AVStatus@lts_20250814@absl@@PEAV?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@std@@@Z
+  ?LoadTracesFromDebugInfoStr@tensorflow@@YA?AV?$StatusOr@V?$flat_hash_map@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$shared_ptr@VAbstractStackTrace@tensorflow@@@2@UStringHash@container_internal@lts_20250814@absl@@UStringEq@567@V?$allocator@U?$pair@$$CBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$shared_ptr@VAbstractStackTrace@tensorflow@@@2@@std@@@2@@lts_20250814@absl@@@lts_20250814@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
+  ?LocalShapeFromGlobalShape@Layout@dtensor@tensorflow@@QEBA?AV?$vector@_JV?$allocator@_J@std@@@std@@V?$Span@$$CB_J@lts_20250814@absl@@@Z
+  ?Log1p@ops@tensorflow@@YA?AVStatus@lts_20250814@absl@@PEAVAbstractContext@2@QEAVAbstractTensorHandle@2@PEAPEAV72@PEBD3@Z
   ?Log1pRegisterer@gradients@tensorflow@@YAPEAVGradientFunction@12@AEBUForwardOperation@12@@Z
-  ?LookUpDebugEventsWriter@DebugEventsWriter@tfdbg@tensorflow@@SA?AVStatus@lts_20250512@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAPEAV123@@Z
-  ?LookUpOpDef@OpRegistryInterface@tensorflow@@QEBA?AVStatus@lts_20250512@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAPEBVOpDef@2@@Z
+  ?LookUpDebugEventsWriter@DebugEventsWriter@tfdbg@tensorflow@@SA?AVStatus@lts_20250814@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAPEAV123@@Z
+  ?LookUpOpDef@OpRegistryInterface@tensorflow@@QEBA?AVStatus@lts_20250814@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAPEBVOpDef@2@@Z
   ?Lookup@PyExceptionRegistry@tensorflow@@SAPEAU_object@@W4TSL_Code@@@Z
-  ?Main@tfcompile@tensorflow@@YA?AVStatus@lts_20250512@absl@@AEBUMainFlags@12@@Z
+  ?Main@tfcompile@tensorflow@@YA?AVStatus@lts_20250814@absl@@AEBUMainFlags@12@@Z
   ?MainOpsFanin@GrapplerItem@grappler@tensorflow@@QEBA?AV?$vector@PEBVNodeDef@tensorflow@@V?$allocator@PEBVNodeDef@tensorflow@@@std@@@std@@XZ
-  ?MakeCheckFailString@status_internal@lts_20250512@absl@@YAPEBDPEBVStatus@23@PEBD@Z
+  ?MakeCheckFailString@status_internal@lts_20250814@absl@@YAPEBDPEBVStatus@23@PEBD@Z
   ?MakeEagerContextThreadLocalData@tensorflow@@YAXPEAU_object@@00@Z
   ?MakeFingerprintJson@metrics@tensorflow@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@VFingerprintDef@2@@Z
   ?MakeRefCountingHandle@ResourceHandle@tensorflow@@SA?AV12@PEAVResourceBase@2@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBVTypeIndex@2@AEBV?$vector@UDtypeAndPartialTensorShape@tensorflow@@V?$allocator@UDtypeAndPartialTensorShape@tensorflow@@@std@@@5@AEBV?$optional@VManagedStackTrace@tensorflow@@@5@@Z
-  ?MakeSavedModelPathAndSingleprint@metrics@tensorflow@@YA?AV?$StatusOr@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@lts_20250512@absl@@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@0@Z
+  ?MakeSavedModelPathAndSingleprint@metrics@tensorflow@@YA?AV?$StatusOr@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@lts_20250814@absl@@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@0@Z
   ?MakeShape@InferenceContext@shape_inference@tensorflow@@QEAA?AVShapeHandle@23@AEBV?$vector@VDimensionHandle@shape_inference@tensorflow@@V?$allocator@VDimensionHandle@shape_inference@tensorflow@@@std@@@std@@@Z
   ?MakeShape@InferenceContext@shape_inference@tensorflow@@QEAA?AVShapeHandle@23@V?$initializer_list@UDimensionOrConstant@shape_inference@tensorflow@@@std@@@Z
-  ?MakeShapeFromPartialTensorShape@InferenceContext@shape_inference@tensorflow@@QEAA?AVStatus@lts_20250512@absl@@AEBVPartialTensorShape@3@PEAVShapeHandle@23@@Z
-  ?MakeShapeFromShapeTensor@InferenceContext@shape_inference@tensorflow@@QEAA?AVStatus@lts_20250512@absl@@HPEAVShapeHandle@23@@Z
-  ?MakeShapeFromTensorShape@InferenceContext@shape_inference@tensorflow@@QEAA?AVStatus@lts_20250512@absl@@AEBVTensorShape@3@PEAVShapeHandle@23@@Z
-  ?MapToLocalCode@status_internal@lts_20250512@absl@@YA?AW4StatusCode@23@H@Z
-  ?MatMul@ops@tensorflow@@YA?AVStatus@lts_20250512@absl@@PEAVAbstractContext@2@QEAVAbstractTensorHandle@2@1PEAPEAV72@_N3PEBD4@Z
+  ?MakeShapeFromPartialTensorShape@InferenceContext@shape_inference@tensorflow@@QEAA?AVStatus@lts_20250814@absl@@AEBVPartialTensorShape@3@PEAVShapeHandle@23@@Z
+  ?MakeShapeFromShapeTensor@InferenceContext@shape_inference@tensorflow@@QEAA?AVStatus@lts_20250814@absl@@HPEAVShapeHandle@23@@Z
+  ?MakeShapeFromTensorShape@InferenceContext@shape_inference@tensorflow@@QEAA?AVStatus@lts_20250814@absl@@AEBVTensorShape@3@PEAVShapeHandle@23@@Z
+  ?MapToLocalCode@status_internal@lts_20250814@absl@@YA?AW4StatusCode@23@H@Z
+  ?MatMul@ops@tensorflow@@YA?AVStatus@lts_20250814@absl@@PEAVAbstractContext@2@QEAVAbstractTensorHandle@2@1PEAPEAV72@_N3PEBD4@Z
   ?MatMulRegisterer@gradients@tensorflow@@YAPEAVGradientFunction@12@AEBUForwardOperation@12@@Z
-  ?MatchSignature@OpKernelContext@tensorflow@@QEAA?AVStatus@lts_20250512@absl@@V?$Span@$$CBW4DataType@tensorflow@@@45@0@Z
+  ?MatchSignature@OpKernelContext@tensorflow@@QEAA?AVStatus@lts_20250814@absl@@V?$Span@$$CBW4DataType@tensorflow@@@45@0@Z
   ?Matrix@InferenceContext@shape_inference@tensorflow@@QEAA?AVShapeHandle@23@UDimensionOrConstant@23@0@Z
   ?MaybeRaiseExceptionFromTFStatus@tensorflow@@YAHPEAUTSL_Status@@PEAU_object@@@Z
-  ?MemoryTypesForNode@tensorflow@@YA?AVStatus@lts_20250512@absl@@PEBVOpRegistryInterface@1@AEBVDeviceType@tsl@@AEBVNodeDef@1@PEAV?$InlinedVector@W4MemoryType@tensorflow@@$03V?$allocator@W4MemoryType@tensorflow@@@std@@@34@3@Z
-  ?Merge@InferenceContext@shape_inference@tensorflow@@QEAA?AVStatus@lts_20250512@absl@@VDimensionHandle@23@0PEAV723@@Z
-  ?Merge@InferenceContext@shape_inference@tensorflow@@QEAA?AVStatus@lts_20250512@absl@@VShapeHandle@23@0PEAV723@@Z
+  ?MemoryTypesForNode@tensorflow@@YA?AVStatus@lts_20250814@absl@@PEBVOpRegistryInterface@1@AEBVDeviceType@tsl@@AEBVNodeDef@1@PEAV?$InlinedVector@W4MemoryType@tensorflow@@$03V?$allocator@W4MemoryType@tensorflow@@@std@@@34@3@Z
+  ?Merge@InferenceContext@shape_inference@tensorflow@@QEAA?AVStatus@lts_20250814@absl@@VDimensionHandle@23@0PEAV723@@Z
+  ?Merge@InferenceContext@shape_inference@tensorflow@@QEAA?AVStatus@lts_20250814@absl@@VShapeHandle@23@0PEAV723@@Z
   ?MeshDimNames@Mesh@dtensor@tensorflow@@QEBA?AV?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@std@@XZ
   ?MlirQuantizeModel@tflite@@YAPEAU_object@@PEAU2@_N1HHH1100110@Z
   ?MlirSparsifyModel@tflite@@YAPEAU_object@@PEAU2@@Z
-  ?Mul@ops@tensorflow@@YA?AVStatus@lts_20250512@absl@@PEAVAbstractContext@2@QEAVAbstractTensorHandle@2@1PEAPEAV72@PEBD3@Z
+  ?Mul@ops@tensorflow@@YA?AVStatus@lts_20250814@absl@@PEAVAbstractContext@2@QEAVAbstractTensorHandle@2@1PEAPEAV72@PEBD3@Z
   ?MulRegisterer@gradients@tensorflow@@YAPEAVGradientFunction@12@AEBUForwardOperation@12@@Z
-  ?Multiply@InferenceContext@shape_inference@tensorflow@@QEAA?AVStatus@lts_20250512@absl@@VDimensionHandle@23@UDimensionOrConstant@23@PEAV723@@Z
-  ?NameRangesForNode@tensorflow@@YA?AVStatus@lts_20250512@absl@@AEBVAttrSlice@1@AEBVOpDef@1@PEAV?$FlatMap@V?$basic_string_view@DU?$char_traits@D@std@@@std@@U?$pair@HH@2@U?$hash@V?$basic_string_view@DU?$char_traits@D@std@@@std@@X@tsl@@U?$equal_to@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@2@@gtl@tsl@@2@Z
-  ?Neg@ops@tensorflow@@YA?AVStatus@lts_20250512@absl@@PEAVAbstractContext@2@QEAVAbstractTensorHandle@2@PEAPEAV72@PEBD3@Z
+  ?Multiply@InferenceContext@shape_inference@tensorflow@@QEAA?AVStatus@lts_20250814@absl@@VDimensionHandle@23@UDimensionOrConstant@23@PEAV723@@Z
+  ?NameRangesForNode@tensorflow@@YA?AVStatus@lts_20250814@absl@@AEBVAttrSlice@1@AEBVOpDef@1@PEAV?$FlatMap@V?$basic_string_view@DU?$char_traits@D@std@@@std@@U?$pair@HH@2@U?$hash@V?$basic_string_view@DU?$char_traits@D@std@@@std@@X@tsl@@U?$equal_to@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@2@@gtl@tsl@@2@Z
+  ?Neg@ops@tensorflow@@YA?AVStatus@lts_20250814@absl@@PEAVAbstractContext@2@QEAVAbstractTensorHandle@2@PEAPEAV72@PEBD3@Z
   ?NegRegisterer@gradients@tensorflow@@YAPEAVGradientFunction@12@AEBUForwardOperation@12@@Z
-  ?NewAppendableFile@Env@tsl@@QEAA?AVStatus@lts_20250512@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAV?$unique_ptr@VWritableFile@tsl@@U?$default_delete@VWritableFile@tsl@@@std@@@7@@Z
-  ?NewDispatchServer@data@tensorflow@@YA?AVStatus@lts_20250512@absl@@AEBVDispatcherConfig@experimental@12@AEAV?$unique_ptr@VDispatchGrpcDataServer@data@tensorflow@@U?$default_delete@VDispatchGrpcDataServer@data@tensorflow@@@std@@@std@@@Z
+  ?NewAppendableFile@Env@tsl@@QEAA?AVStatus@lts_20250814@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAV?$unique_ptr@VWritableFile@tsl@@U?$default_delete@VWritableFile@tsl@@@std@@@7@@Z
+  ?NewDispatchServer@data@tensorflow@@YA?AVStatus@lts_20250814@absl@@AEBVDispatcherConfig@experimental@12@AEAV?$unique_ptr@VDispatchGrpcDataServer@data@tensorflow@@U?$default_delete@VDispatchGrpcDataServer@data@tensorflow@@@std@@@std@@@Z
   ?NewProfiler@tfprof@tensorflow@@YA_NPEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@0@Z
-  ?NewRandomAccessFile@Env@tsl@@QEAA?AVStatus@lts_20250512@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAV?$unique_ptr@VRandomAccessFile@tsl@@U?$default_delete@VRandomAccessFile@tsl@@@std@@@7@@Z
-  ?NewWorkerServer@data@tensorflow@@YA?AVStatus@lts_20250512@absl@@AEBVWorkerConfig@experimental@12@AEAV?$unique_ptr@VWorkerGrpcDataServer@data@tensorflow@@U?$default_delete@VWorkerGrpcDataServer@data@tensorflow@@@std@@@std@@@Z
-  ?NewWritableFile@Env@tsl@@QEAA?AVStatus@lts_20250512@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAV?$unique_ptr@VWritableFile@tsl@@U?$default_delete@VWritableFile@tsl@@@std@@@7@@Z
-  ?NotFoundError@lts_20250512@absl@@YA?AVStatus@12@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
+  ?NewRandomAccessFile@Env@tsl@@QEAA?AVStatus@lts_20250814@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAV?$unique_ptr@VRandomAccessFile@tsl@@U?$default_delete@VRandomAccessFile@tsl@@@std@@@7@@Z
+  ?NewWorkerServer@data@tensorflow@@YA?AVStatus@lts_20250814@absl@@AEBVWorkerConfig@experimental@12@AEAV?$unique_ptr@VWorkerGrpcDataServer@data@tensorflow@@U?$default_delete@VWorkerGrpcDataServer@data@tensorflow@@@std@@@std@@@Z
+  ?NewWritableFile@Env@tsl@@QEAA?AVStatus@lts_20250814@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAV?$unique_ptr@VWritableFile@tsl@@U?$default_delete@VWritableFile@tsl@@@std@@@7@@Z
+  ?NotFoundError@lts_20250814@absl@@YA?AVStatus@12@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
   ?NumCheckpointShardsWritten@metrics@tensorflow@@YAAEAVCounterCell@monitoring@tsl@@XZ
-  ?NumTasks@WorkerGrpcDataServer@data@tensorflow@@QEAA?AVStatus@lts_20250512@absl@@PEAH@Z
-  ?NumWorkers@DispatchGrpcDataServer@data@tensorflow@@QEAA?AVStatus@lts_20250512@absl@@PEAH@Z
+  ?NumTasks@WorkerGrpcDataServer@data@tensorflow@@QEAA?AVStatus@lts_20250814@absl@@PEAH@Z
+  ?NumWorkers@DispatchGrpcDataServer@data@tensorflow@@QEAA?AVStatus@lts_20250814@absl@@PEAH@Z
   ?OpDeterminismRequired@tsl@@YA_NXZ
-  ?OptimizeConsumeItem@MetaOptimizer@grappler@tensorflow@@QEAA?AVStatus@lts_20250512@absl@@PEAVCluster@23@$$QEAUGrapplerItem@23@PEAVGraphDef@3@@Z
+  ?OptimizeConsumeItem@MetaOptimizer@grappler@tensorflow@@QEAA?AVStatus@lts_20250814@absl@@PEAVCluster@23@$$QEAUGrapplerItem@23@PEAVGraphDef@3@@Z
   ?Output@OpDefBuilder@tensorflow@@QEAAAEAV12@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
   ?Pack@dtensor@tensorflow@@YAPEAUTFE_TensorHandle@@PEAUTFE_Context@@HPEAPEAU3@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAXPEAUTSL_Status@@@Z
-  ?ParseFromProto@Mesh@dtensor@tensorflow@@SA?AV?$StatusOr@VMesh@dtensor@tensorflow@@@lts_20250512@absl@@AEBVMeshProto@23@@Z
+  ?ParseFromProto@Mesh@dtensor@tensorflow@@SA?AV?$StatusOr@VMesh@dtensor@tensorflow@@@lts_20250814@absl@@AEBVMeshProto@23@@Z
   ?ParseFullName@DeviceNameUtils@tsl@@SA_NV?$basic_string_view@DU?$char_traits@D@std@@@std@@PEAUParsedName@12@@Z
   ?ParseFullOrLocalName@DeviceNameUtils@tsl@@SA_NV?$basic_string_view@DU?$char_traits@D@std@@@std@@PEAUParsedName@12@@Z
-  ?ParseSavedModelPathAndSingleprint@metrics@tensorflow@@YA?AV?$StatusOr@U?$pair@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V12@@std@@@lts_20250512@absl@@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
+  ?ParseSavedModelPathAndSingleprint@metrics@tensorflow@@YA?AV?$StatusOr@U?$pair@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V12@@std@@@lts_20250814@absl@@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
   ?ParseTensorName@tensorflow@@YA?AUTensorId@1@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
-  ?ParseTransformParameters@graph_transforms@tensorflow@@YA?AVStatus@lts_20250512@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAV?$vector@U?$pair@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$map@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@2@U?$less@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@2@@std@@@2@@2@@std@@V?$allocator@U?$pair@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$map@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@2@U?$less@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@2@@std@@@2@@2@@std@@@2@@7@@Z
-  ?PermissionDeniedError@lts_20250512@absl@@YA?AVStatus@12@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
-  ?PredictCosts@AnalyticalCostEstimator@grappler@tensorflow@@UEBA?AVStatus@lts_20250512@absl@@AEBVGraphDef@3@PEAVRunMetadata@3@PEAUCosts@23@@Z
-  ?PredictCosts@MeasuringCostEstimator@grappler@tensorflow@@UEBA?AVStatus@lts_20250512@absl@@AEBVGraphDef@3@PEAVRunMetadata@3@PEAUCosts@23@@Z
+  ?ParseTransformParameters@graph_transforms@tensorflow@@YA?AVStatus@lts_20250814@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAV?$vector@U?$pair@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$map@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@2@U?$less@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@2@@std@@@2@@2@@std@@V?$allocator@U?$pair@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$map@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@2@U?$less@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@2@@std@@@2@@2@@std@@@2@@7@@Z
+  ?PermissionDeniedError@lts_20250814@absl@@YA?AVStatus@12@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
+  ?PredictCosts@AnalyticalCostEstimator@grappler@tensorflow@@UEBA?AVStatus@lts_20250814@absl@@AEBVGraphDef@3@PEAVRunMetadata@3@PEAUCosts@23@@Z
+  ?PredictCosts@MeasuringCostEstimator@grappler@tensorflow@@UEBA?AVStatus@lts_20250814@absl@@AEBVGraphDef@3@PEAVRunMetadata@3@PEAUCosts@23@@Z
   ?PredictCosts@OpLevelCostEstimator@grappler@tensorflow@@UEBA?AUCosts@23@AEBUOpContext@23@@Z
-  ?PrepareInsertNonSoo@container_internal@lts_20250512@absl@@YA_KAEAVCommonFields@123@AEBUPolicyFunctions@123@_KUFindInfo@123@@Z
-  ?PrepareToModify@Status@lts_20250512@absl@@CAPEAVStatusRep@status_internal@23@_K@Z
+  ?PrepareInsertLarge@container_internal@lts_20250814@absl@@YA_KAEAVCommonFields@123@AEBUPolicyFunctions@123@_KUFindInfo@123@@Z
+  ?PrepareInsertSmallNonSoo@container_internal@lts_20250814@absl@@YA?AU?$pair@PEAW4ctrl_t@container_internal@lts_20250814@absl@@PEAX@std@@AEAVCommonFields@123@AEBUPolicyFunctions@123@V?$FunctionRef@$$A6A_K_K@Z@23@@Z
+  ?PrepareToModify@Status@lts_20250814@absl@@CAPEAVStatusRep@status_internal@23@_K@Z
   ?PrintModelAnalysis@tfprof@tensorflow@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEBV34@0000@Z
   ?PrintResult@MetaOptimizer@grappler@tensorflow@@QEAAXXZ
   ?PrintStepStats@StatSummarizer@tensorflow@@QEBAXXZ
@@ -564,39 +562,39 @@ EXPORTS
   ?PyProtoSerializePartialToString@pybind11_protobuf@@YA?AVbytes@pybind11@@Vhandle@3@_N@Z
   ?PywrapExpandPresets@pywrap@quantization@stablehlo@@YA?AVQuantizationConfig@23@AEBV423@@Z
   ?PywrapPopulateDefaults@pywrap@quantization@stablehlo@@YA?AVQuantizationConfig@23@AEBV423@@Z
-  ?PywrapQuantizeStaticRangePtq@pywrap@quantization@stablehlo@@YA?AVStatus@lts_20250512@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@0AEBVQuantizationConfig@23@AEBV?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@8@AEBV?$flat_hash_map@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@VSignatureDef@tensorflow@@UStringHash@container_internal@lts_20250512@absl@@UStringEq@678@V?$allocator@U?$pair@$$CBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@VSignatureDef@tensorflow@@@std@@@2@@56@AEBVPyFunctionLibrary@2tensorflow@@@Z
-  ?PywrapQuantizeWeightOnlyPtq@pywrap@quantization@stablehlo@@YA?AVStatus@lts_20250512@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@0AEBVQuantizationConfig@23@AEBV?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@8@AEBV?$flat_hash_map@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@VSignatureDef@tensorflow@@UStringHash@container_internal@lts_20250512@absl@@UStringEq@678@V?$allocator@U?$pair@$$CBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@VSignatureDef@tensorflow@@@std@@@2@@56@AEBVPyFunctionLibrary@2tensorflow@@@Z
-  ?PywrapSavedModelToStablehlo@pywrap@tensorflow_to_stablehlo@mlir@@YA?AV?$StatusOr@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@lts_20250512@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@AEBV?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@8@10@Z
-  ?PywrapTfModuleToStablehlo@pywrap@tensorflow_to_stablehlo@mlir@@YA?AV?$StatusOr@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@lts_20250512@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@0@Z
-  ?QuantizeDynamicRangePtq@quantization@tensorflow@@YA?AV?$StatusOr@VExportedModel@quantization@tensorflow@@@lts_20250512@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@AEBV?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@7@AEBV?$unordered_set@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@U?$hash@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@U?$equal_to@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@7@AEBVQuantizationOptions@12@@Z
-  ?QuantizeQatModel@quantization@tensorflow@@YA?AV?$StatusOr@VExportedModel@quantization@tensorflow@@@lts_20250512@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@AEBV?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@7@AEBV?$unordered_set@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@U?$hash@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@U?$equal_to@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@7@AEBVQuantizationOptions@12@@Z
-  ?QuantizeStaticRangePtq@quantization@tensorflow@@YA?AV?$StatusOr@VExportedModel@quantization@tensorflow@@@lts_20250512@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@AEBV?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@7@AEBV?$unordered_set@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@U?$hash@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@U?$equal_to@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@7@AEBVQuantizationOptions@12@AEBV?$flat_hash_map@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@VSignatureDef@tensorflow@@UStringHash@container_internal@lts_20250512@absl@@UStringEq@678@V?$allocator@U?$pair@$$CBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@VSignatureDef@tensorflow@@@std@@@2@@45@AEBVPyFunctionLibrary@12@AEBV?$flat_hash_map@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@VRepresentativeDatasetFile@quantization@tensorflow@@UStringHash@container_internal@lts_20250512@absl@@UStringEq@789@V?$allocator@U?$pair@$$CBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@VRepresentativeDatasetFile@quantization@tensorflow@@@std@@@2@@45@@Z
-  ?QuantizeWeightOnly@quantization@tensorflow@@YA?AV?$StatusOr@VExportedModel@quantization@tensorflow@@@lts_20250512@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@AEBVQuantizationOptions@12@@Z
-  ?ReadFileToString@tsl@@YA?AVStatus@lts_20250512@absl@@PEAVEnv@1@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAV67@@Z
+  ?PywrapQuantizeStaticRangePtq@pywrap@quantization@stablehlo@@YA?AVStatus@lts_20250814@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@0AEBVQuantizationConfig@23@AEBV?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@8@AEBV?$flat_hash_map@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@VSignatureDef@tensorflow@@UStringHash@container_internal@lts_20250814@absl@@UStringEq@678@V?$allocator@U?$pair@$$CBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@VSignatureDef@tensorflow@@@std@@@2@@56@AEBVPyFunctionLibrary@2tensorflow@@@Z
+  ?PywrapQuantizeWeightOnlyPtq@pywrap@quantization@stablehlo@@YA?AVStatus@lts_20250814@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@0AEBVQuantizationConfig@23@AEBV?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@8@AEBV?$flat_hash_map@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@VSignatureDef@tensorflow@@UStringHash@container_internal@lts_20250814@absl@@UStringEq@678@V?$allocator@U?$pair@$$CBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@VSignatureDef@tensorflow@@@std@@@2@@56@AEBVPyFunctionLibrary@2tensorflow@@@Z
+  ?PywrapSavedModelToStablehlo@pywrap@tensorflow_to_stablehlo@mlir@@YA?AV?$StatusOr@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@lts_20250814@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@AEBV?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@8@10@Z
+  ?PywrapTfModuleToStablehlo@pywrap@tensorflow_to_stablehlo@mlir@@YA?AV?$StatusOr@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@lts_20250814@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@0@Z
+  ?QuantizeDynamicRangePtq@quantization@tensorflow@@YA?AV?$StatusOr@VExportedModel@quantization@tensorflow@@@lts_20250814@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@AEBV?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@7@AEBV?$unordered_set@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@U?$hash@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@U?$equal_to@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@7@AEBVQuantizationOptions@12@@Z
+  ?QuantizeQatModel@quantization@tensorflow@@YA?AV?$StatusOr@VExportedModel@quantization@tensorflow@@@lts_20250814@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@AEBV?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@7@AEBV?$unordered_set@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@U?$hash@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@U?$equal_to@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@7@AEBVQuantizationOptions@12@@Z
+  ?QuantizeStaticRangePtq@quantization@tensorflow@@YA?AV?$StatusOr@VExportedModel@quantization@tensorflow@@@lts_20250814@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@AEBV?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@7@AEBV?$unordered_set@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@U?$hash@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@U?$equal_to@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@7@AEBVQuantizationOptions@12@AEBV?$flat_hash_map@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@VSignatureDef@tensorflow@@UStringHash@container_internal@lts_20250814@absl@@UStringEq@678@V?$allocator@U?$pair@$$CBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@VSignatureDef@tensorflow@@@std@@@2@@45@AEBVPyFunctionLibrary@12@AEBV?$flat_hash_map@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@VRepresentativeDatasetFile@quantization@tensorflow@@UStringHash@container_internal@lts_20250814@absl@@UStringEq@789@V?$allocator@U?$pair@$$CBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@VRepresentativeDatasetFile@quantization@tensorflow@@@std@@@2@@45@@Z
+  ?QuantizeWeightOnly@quantization@tensorflow@@YA?AV?$StatusOr@VExportedModel@quantization@tensorflow@@@lts_20250814@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@AEBVQuantizationOptions@12@@Z
+  ?ReadFileToString@tsl@@YA?AVStatus@lts_20250814@absl@@PEAVEnv@1@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAV67@@Z
   ?ReadLineAsString@BufferedInputStream@io@tsl@@QEAA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@XZ
-  ?ReadRecord@RecordReader@io@tsl@@QEAA?AVStatus@lts_20250512@absl@@PEA_KPEAVtstring@3@@Z
-  ?ReadSavedModelFingerprint@fingerprinting@saved_model@tensorflow@@YA?AV?$StatusOr@VFingerprintDef@tensorflow@@@lts_20250512@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
+  ?ReadRecord@RecordReader@io@tsl@@QEAA?AVStatus@lts_20250814@absl@@PEA_KPEAVtstring@3@@Z
+  ?ReadSavedModelFingerprint@fingerprinting@saved_model@tensorflow@@YA?AV?$StatusOr@VFingerprintDef@tensorflow@@@lts_20250814@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
   ?Record@TraceMeRecorder@profiler@tsl@@SAX$$QEAUEvent@123@@Z
   ?RecordMutation@tensorflow@@YAXPEAUTF_Graph@@AEBUTF_Operation@@PEBD@Z
-  ?RecursivelyCreateDir@Env@tsl@@QEAA?AVStatus@lts_20250512@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
-  ?ReduceScatterShape@shape_inference@tensorflow@@YA?AVStatus@lts_20250512@absl@@PEAVInferenceContext@12@@Z
-  ?Register@GradientRegistry@gradients@tensorflow@@QEAA?AVStatus@lts_20250512@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$function@$$A6APEAVGradientFunction@gradients@tensorflow@@AEBUForwardOperation@23@@Z@8@@Z
+  ?RecursivelyCreateDir@Env@tsl@@QEAA?AVStatus@lts_20250814@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
+  ?ReduceScatterShape@shape_inference@tensorflow@@YA?AVStatus@lts_20250814@absl@@PEAVInferenceContext@12@@Z
+  ?Register@GradientRegistry@gradients@tensorflow@@QEAA?AVStatus@lts_20250814@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$function@$$A6APEAVGradientFunction@gradients@tensorflow@@AEBUForwardOperation@23@@Z@8@@Z
   ?Register@PythonAPIDispatcher@py_dispatch@tensorflow@@QEAAXVPySignatureChecker@23@PEAU_object@@@Z
   ?RegisterCustomOpdefs@tflite@@YAPEAU_object@@PEAU2@@Z
   ?RegisterDeviceAndGetId@DebugEventsWriter@tfdbg@tensorflow@@QEAAHAEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
   ?RegisterDispatchableType@py_dispatch@tensorflow@@YA_NPEAU_object@@@Z
   ?RegisterPyObject@swig@tensorflow@@YAPEAU_object@@PEAU3@0@Z
-  ?Relu@ops@tensorflow@@YA?AVStatus@lts_20250512@absl@@PEAVAbstractContext@2@QEAVAbstractTensorHandle@2@PEAPEAV72@PEBD3@Z
+  ?Relu@ops@tensorflow@@YA?AVStatus@lts_20250814@absl@@PEAVAbstractContext@2@QEAVAbstractTensorHandle@2@PEAPEAV72@PEBD3@Z
   ?ReluRegisterer@gradients@tensorflow@@YAPEAVGradientFunction@12@AEBUForwardOperation@12@@Z
   ?RemoveControlEdge@Graph@tensorflow@@QEAAXPEBVEdge@2@@Z
   ?RemoveNonDeprecationDescriptionsFromOpDef@tensorflow@@YAXPEAVOpDef@1@@Z
-  ?RenameFile@Env@tsl@@QEAA?AVStatus@lts_20250512@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@0@Z
+  ?RenameFile@Env@tsl@@QEAA?AVStatus@lts_20250814@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@0@Z
   ?ReplicatedOnMesh@Layout@dtensor@tensorflow@@SA?AV123@AEBVMesh@23@H@Z
-  ?ReserveEmptyNonAllocatedTableToFitBucketCount@container_internal@lts_20250512@absl@@YAXAEAVCommonFields@123@AEBUPolicyFunctions@123@_K@Z
-  ?ReserveTableToFitNewSize@container_internal@lts_20250512@absl@@YAXAEAVCommonFields@123@AEBUPolicyFunctions@123@_K@Z
+  ?ReserveEmptyNonAllocatedTableToFitBucketCount@container_internal@lts_20250814@absl@@YAXAEAVCommonFields@123@AEBUPolicyFunctions@123@_K@Z
+  ?ReserveTableToFitNewSize@container_internal@lts_20250814@absl@@YAXAEAVCommonFields@123@AEBUPolicyFunctions@123@_K@Z
   ?ResetJitCompilerFlags@tensorflow@@YAXXZ
   ?RetrieveCollectedErrors@tflite@@YA?AV?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@std@@XZ
-  ?Retry@grpc_util@data@tensorflow@@YA?AVStatus@lts_20250512@absl@@AEBV?$function@$$A6A?AVStatus@lts_20250512@absl@@XZ@std@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@8@_J@Z
+  ?Retry@grpc_util@data@tensorflow@@YA?AVStatus@lts_20250814@absl@@AEBV?$function@$$A6A?AVStatus@lts_20250814@absl@@XZ@std@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@8@_J@Z
   ?SameNamedtuples@swig@tensorflow@@YAPEAU_object@@PEAU3@0@Z
   ?SavedModelFoundFingerprintOnLoad@metrics@tensorflow@@YAAEAV?$GaugeCell@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@monitoring@tsl@@XZ
   ?SavedModelReadApi@metrics@tensorflow@@YAAEAVCounterCell@monitoring@tsl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
@@ -611,63 +609,59 @@ EXPORTS
   ?SavedModelWritePathAndSingleprint@metrics@tensorflow@@YAAEAV?$GaugeCell@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@monitoring@tsl@@XZ
   ?Scalar@InferenceContext@shape_inference@tensorflow@@QEAA?AVShapeHandle@23@XZ
   ?Schedule@ThreadPool@thread@tsl@@QEAAXV?$function@$$A6AXXZ@std@@@Z
-  ?Seek@BufferedInputStream@io@tsl@@QEAA?AVStatus@lts_20250512@absl@@_J@Z
+  ?Seek@BufferedInputStream@io@tsl@@QEAA?AVStatus@lts_20250814@absl@@_J@Z
   ?SerializeToString@tfprof@tensorflow@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@XZ
   ?SetAttr@tensorflow@@YAXPEAUTF_Graph@@PEAUTF_Operation@@PEBDPEAUTF_Buffer@@PEAUTSL_Status@@@Z
   ?SetCEagerContext@tensorflow@@YAXPEAVEagerContext@1@@Z
-  ?SetDimWithStatus@?$TensorShapeBase@VPartialTensorShape@tensorflow@@@tensorflow@@QEAA?AVStatus@lts_20250512@absl@@H_J@Z
+  ?SetDimWithStatus@?$TensorShapeBase@VPartialTensorShape@tensorflow@@@tensorflow@@QEAA?AVStatus@lts_20250814@absl@@H_J@Z
   ?SetFullType@tensorflow@@YAXPEAUTF_Graph@@PEAUTF_Operation@@PEBUTF_Buffer@@@Z
   ?SetHandleShapeAndType@tensorflow@@YAXPEAUTF_Graph@@UTF_Output@@PEBX_KPEAUTSL_Status@@@Z
   ?SetIsStateful@OpDefBuilder@tensorflow@@QEAAAEAV12@XZ
   ?SetIteratorElementLayouts@dtensor@tensorflow@@YAXPEAUTFE_Context@@PEAUTFE_TensorHandle@@AEBV?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@std@@PEAXPEAUTSL_Status@@@Z
   ?SetNumWarmupSteps@Cluster@grappler@tensorflow@@QEAAXH@Z
-  ?SetPayload@StatusRep@status_internal@lts_20250512@absl@@QEAAXV?$basic_string_view@DU?$char_traits@D@std@@@std@@VCord@34@@Z
-  ?SetShapeFn@OpDefBuilder@tensorflow@@QEAAAEAV12@V?$function@$$A6A?AVStatus@lts_20250512@absl@@PEAVInferenceContext@shape_inference@tensorflow@@@Z@std@@@Z
+  ?SetPayload@StatusRep@status_internal@lts_20250814@absl@@QEAAXV?$basic_string_view@DU?$char_traits@D@std@@@std@@VCord@34@@Z
+  ?SetShapeFn@OpDefBuilder@tensorflow@@QEAAAEAV12@V?$function@$$A6A?AVStatus@lts_20250814@absl@@PEAVInferenceContext@shape_inference@tensorflow@@@Z@std@@@Z
   ?SetTPUCoreIDs@dtensor@tensorflow@@YAXAEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBV?$vector@HV?$allocator@H@std@@@4@PEAXPEAUTSL_Status@@@Z
   ?SetVisited@?$DfsHloVisitorBase@PEAVHloInstruction@xla@@@xla@@QEAAXAEBVHloInstruction@2@@Z
   ?SetVisited@?$DfsHloVisitorBase@PEBVHloInstruction@xla@@@xla@@QEAAXAEBVHloInstruction@2@@Z
-  ?Set_TF_Status_from_Status@tsl@@YAXPEAUTSL_Status@@AEBVStatus@lts_20250512@absl@@@Z
+  ?Set_TF_Status_from_Status@tsl@@YAXPEAUTSL_Status@@AEBVStatus@lts_20250814@absl@@@Z
   ?ShardingCallbackDescription@metrics@tensorflow@@YAAEAV?$GaugeCell@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@monitoring@tsl@@XZ
   ?ShardingCallbackDuration@metrics@tensorflow@@YAAEAVCounterCell@monitoring@tsl@@XZ
-  ?Signal@CondVar@lts_20250512@absl@@QEAAXXZ
-  ?Singleprint@fingerprinting@saved_model@tensorflow@@YA?AV?$StatusOr@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@lts_20250512@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
+  ?Signal@CondVar@lts_20250814@absl@@QEAAXXZ
+  ?Singleprint@fingerprinting@saved_model@tensorflow@@YA?AV?$StatusOr@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@lts_20250814@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
   ?Singleprint@fingerprinting@saved_model@tensorflow@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBVFingerprintDef@3@@Z
   ?Singleprint@fingerprinting@saved_model@tensorflow@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@_K000@Z
   ?SlowCopyFrom@TensorShapeRep@tensorflow@@AEAAXAEBV12@@Z
-  ?SlowIsEnabled3@VLogSite@log_internal@lts_20250512@absl@@AEAA_NH@Z
+  ?SlowIsEnabled3@VLogSite@log_internal@lts_20250814@absl@@AEAA_NH@Z
   ?SnapshotDoneFilePath@data@tensorflow@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$basic_string_view@DU?$char_traits@D@std@@@4@@Z
   ?SnapshotErrorFilePath@data@tensorflow@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$basic_string_view@DU?$char_traits@D@std@@@4@@Z
   ?SnapshotMetadataFilePath@data@tensorflow@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$basic_string_view@DU?$char_traits@D@std@@@4@@Z
-  ?SnapshotStreams@DispatchGrpcDataServer@data@tensorflow@@QEAA?AVStatus@lts_20250512@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAV?$vector@USnapshotStreamInfoWrapper@data@tensorflow@@V?$allocator@USnapshotStreamInfoWrapper@data@tensorflow@@@std@@@8@@Z
-  ?SnapshotTaskProgresses@WorkerGrpcDataServer@data@tensorflow@@QEAA?AVStatus@lts_20250512@absl@@PEAV?$vector@USnapshotTaskProgressWrapper@data@tensorflow@@V?$allocator@USnapshotTaskProgressWrapper@data@tensorflow@@@std@@@std@@@Z
+  ?SnapshotStreams@DispatchGrpcDataServer@data@tensorflow@@QEAA?AVStatus@lts_20250814@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAV?$vector@USnapshotStreamInfoWrapper@data@tensorflow@@V?$allocator@USnapshotStreamInfoWrapper@data@tensorflow@@@std@@@8@@Z
+  ?SnapshotTaskProgresses@WorkerGrpcDataServer@data@tensorflow@@QEAA?AVStatus@lts_20250814@absl@@PEAV?$vector@USnapshotTaskProgressWrapper@data@tensorflow@@V?$allocator@USnapshotTaskProgressWrapper@data@tensorflow@@@std@@@std@@@Z
   ?SparsePack@dtensor@tensorflow@@YAPEAUTFE_TensorHandle@@PEAUTFE_Context@@HPEAPEAU3@11AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAXPEAUTSL_Status@@@Z
-  ?SparseSoftmaxCrossEntropyWithLogits@ops@tensorflow@@YA?AVStatus@lts_20250512@absl@@PEAVAbstractContext@2@QEAVAbstractTensorHandle@2@1PEAPEAV72@2PEBD3@Z
+  ?SparseSoftmaxCrossEntropyWithLogits@ops@tensorflow@@YA?AVStatus@lts_20250814@absl@@PEAVAbstractContext@2@QEAVAbstractTensorHandle@2@1PEAPEAV72@2PEBD3@Z
   ?SparseSoftmaxCrossEntropyWithLogitsRegisterer@gradients@tensorflow@@YAPEAVGradientFunction@12@AEBUForwardOperation@12@@Z
-  ?Start@GrpcDataServerBase@data@tensorflow@@QEAA?AVStatus@lts_20250512@absl@@XZ
-  ?Start@ProfilerSessionWrapper@pywrap@profiler@tensorflow@@QEAA?AVStatus@lts_20250512@absl@@PEBDAEBV?$flat_hash_map@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$variant@_NHV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@UStringHash@container_internal@lts_20250512@absl@@UStringEq@567@V?$allocator@U?$pair@$$CBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$variant@_NHV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@std@@@2@@67@@Z
+  ?Start@GrpcDataServerBase@data@tensorflow@@QEAA?AVStatus@lts_20250814@absl@@XZ
+  ?Start@ProfilerSessionWrapper@pywrap@profiler@tensorflow@@QEAA?AVStatus@lts_20250814@absl@@PEBDAEBV?$flat_hash_map@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$variant@_NHV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@UStringHash@container_internal@lts_20250814@absl@@UStringEq@567@V?$allocator@U?$pair@$$CBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$variant@_NHV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@std@@@2@@67@@Z
   ?StartCancel@CancellationManager@tsl@@QEAAXXZ
   ?StartProfilerServer@ProfilerServer@profiler@tsl@@QEAAXH@Z
-  ?Stat@Env@tsl@@QEAA?AVStatus@lts_20250512@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAUFileStatistics@2@@Z
+  ?Stat@Env@tsl@@QEAA?AVStatus@lts_20250814@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAUFileStatistics@2@@Z
   ?Stop@GrpcDataServerBase@data@tensorflow@@QEAAXXZ
-  ?Stop@ProfilerSessionWrapper@pywrap@profiler@tensorflow@@QEAA?AVStatus@lts_20250512@absl@@PEAV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
-  ?StrAppend@lts_20250512@absl@@YAXPEAV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBVAlphaNum@12@111@Z
-  ?StrAppend@lts_20250512@absl@@YAXPEAV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBVAlphaNum@12@11@Z
-  ?StrAppend@lts_20250512@absl@@YAXPEAV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBVAlphaNum@12@@Z
-  ?StrCat@lts_20250512@absl@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBVAlphaNum@12@000@Z
-  ?StrCat@lts_20250512@absl@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBVAlphaNum@12@00@Z
-  ?StrCat@lts_20250512@absl@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBVAlphaNum@12@0@Z
-  ?StrCat@strings@tsl@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBVAlphaNum@lts_20250512@absl@@000@Z
-  ?StrCat@strings@tsl@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBVAlphaNum@lts_20250512@absl@@00@Z
-  ?StrCat@strings@tsl@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBVAlphaNum@lts_20250512@absl@@0@Z
-  ?StrCat@strings@tsl@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBVAlphaNum@lts_20250512@absl@@@Z
+  ?Stop@ProfilerSessionWrapper@pywrap@profiler@tensorflow@@QEAA?AVStatus@lts_20250814@absl@@PEAV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
+  ?StrAppend@lts_20250814@absl@@YAXPEAV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBVAlphaNum@12@111@Z
+  ?StrAppend@lts_20250814@absl@@YAXPEAV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBVAlphaNum@12@11@Z
+  ?StrAppend@lts_20250814@absl@@YAXPEAV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBVAlphaNum@12@@Z
+  ?StrCat@lts_20250814@absl@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBVAlphaNum@12@000@Z
+  ?StrCat@lts_20250814@absl@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBVAlphaNum@12@00@Z
+  ?StrCat@lts_20250814@absl@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBVAlphaNum@12@0@Z
   ?StripDefaultAttributes@tensorflow@@YAXAEBVOpRegistryInterface@1@PEAV?$RepeatedPtrField@VNodeDef@tensorflow@@@protobuf@google@@@Z
-  ?Sub@ops@tensorflow@@YA?AVStatus@lts_20250512@absl@@PEAVAbstractContext@2@QEAVAbstractTensorHandle@2@1PEAPEAV72@PEBD3@Z
+  ?Sub@ops@tensorflow@@YA?AVStatus@lts_20250814@absl@@PEAVAbstractContext@2@QEAVAbstractTensorHandle@2@1PEAPEAV72@PEBD3@Z
   ?SubRegisterer@gradients@tensorflow@@YAPEAVGradientFunction@12@AEBUForwardOperation@12@@Z
-  ?Subtract@InferenceContext@shape_inference@tensorflow@@QEAA?AVStatus@lts_20250512@absl@@VDimensionHandle@23@UDimensionOrConstant@23@PEAV723@@Z
+  ?Subtract@InferenceContext@shape_inference@tensorflow@@QEAA?AVStatus@lts_20250814@absl@@VDimensionHandle@23@UDimensionOrConstant@23@PEAV723@@Z
   ?TFE_DeleteContextCapsule@@YAXPEAU_object@@@Z
   ?TFE_GetPythonString@@YAPEBDPEAU_object@@@Z
   ?TFE_Py_EnableInteractivePythonLogging@@YAXXZ
-  ?TFE_Py_ExecuteCancelable@@YAXPEAUTFE_Context@@PEBD1PEAV?$InlinedVector@PEAUTFE_TensorHandle@@$03V?$allocator@PEAUTFE_TensorHandle@@@std@@@lts_20250512@absl@@PEAU_object@@PEAUTFE_CancellationManager@@PEAV?$InlinedVector@PEAUTFE_TensorHandle@@$01V?$allocator@PEAUTFE_TensorHandle@@@std@@@34@PEAUTSL_Status@@@Z
+  ?TFE_Py_ExecuteCancelable@@YAXPEAUTFE_Context@@PEBD1PEAV?$InlinedVector@PEAUTFE_TensorHandle@@$03V?$allocator@PEAUTFE_TensorHandle@@@std@@@lts_20250814@absl@@PEAU_object@@PEAUTFE_CancellationManager@@PEAV?$InlinedVector@PEAUTFE_TensorHandle@@$01V?$allocator@PEAUTFE_TensorHandle@@@std@@@34@PEAUTSL_Status@@@Z
   ?TFE_Py_FastPathExecute_C@@YAPEAU_object@@PEAU1@@Z
   ?TFE_Py_ForwardAccumulatorJVP@@YAPEAU_object@@PEAU1@0@Z
   ?TFE_Py_ForwardAccumulatorNew@@YAPEAU_object@@_N@Z
@@ -713,70 +707,69 @@ EXPORTS
   ?TFE_Py_VariableWatcherWatchedVariables@@YAPEAU_object@@PEAU1@@Z
   ?TFE_TensorHandleToNumpy@tensorflow@@YAPEAU_object@@PEAUTFE_TensorHandle@@PEAUTSL_Status@@@Z
   ?TF_CreatePlaceholders@tensorflow@@YA?AV?$vector@UTF_Output@@V?$allocator@UTF_Output@@@std@@@std@@PEAUTF_Graph@@PEAU_object@@PEBDPEAUTSL_Status@@@Z
-  ?TF_GraphGetTensorShapeHelper@tensorflow@@YA?AV?$InlinedVector@_J$05V?$allocator@_J@std@@@lts_20250512@absl@@PEAUTF_Graph@@UTF_Output@@PEAUTSL_Status@@PEA_N@Z
+  ?TF_GraphGetTensorShapeHelper@tensorflow@@YA?AV?$InlinedVector@_J$05V?$allocator@_J@std@@@lts_20250814@absl@@PEAUTF_Graph@@UTF_Output@@PEAUTSL_Status@@PEA_N@Z
   ?TF_GraphSetOutputHandleShapesAndTypes_wrapper@tensorflow@@YAXPEAUTF_Graph@@UTF_Output@@AEBV?$vector@V?$vector@_JV?$allocator@_J@std@@@std@@V?$allocator@V?$vector@_JV?$allocator@_J@std@@@std@@@2@@std@@AEBV?$vector@HV?$allocator@H@std@@@5@AEBV?$vector@W4TF_DataType@@V?$allocator@W4TF_DataType@@@std@@@5@PEAUTSL_Status@@@Z
   ?TF_GraphSetTensorShape_wrapper@tensorflow@@YAXPEAUTF_Graph@@UTF_Output@@AEBV?$vector@_JV?$allocator@_J@std@@@std@@_NPEAUTSL_Status@@@Z
-  ?TF_GraphToFunction_wrapper@tensorflow@@YAPEAUTF_Function@@PEBUTF_Graph@@PEBD_NPEBV?$vector@PEAUTF_Operation@@V?$allocator@PEAUTF_Operation@@@std@@@std@@AEBV?$vector@UTF_Output@@V?$allocator@UTF_Output@@@std@@@5@4AEBV?$InlinedVector@PEBD$07V?$allocator@PEBD@std@@@lts_20250512@absl@@35PEBUTF_FunctionOptions@@1PEAUTSL_Status@@@Z
+  ?TF_GraphToFunction_wrapper@tensorflow@@YAPEAUTF_Function@@PEBUTF_Graph@@PEBD_NPEBV?$vector@PEAUTF_Operation@@V?$allocator@PEAUTF_Operation@@@std@@@std@@AEBV?$vector@UTF_Output@@V?$allocator@UTF_Output@@@std@@@5@4AEBV?$InlinedVector@PEBD$07V?$allocator@PEBD@std@@@lts_20250814@absl@@35PEBUTF_FunctionOptions@@1PEAUTSL_Status@@@Z
   ?TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper@tensorflow@@YA?AV?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@std@@PEAUTF_ImportGraphDefResults@@@Z
   ?TF_NewSessionRef@tensorflow@@YAPEAUTF_Session@@PEAUTF_Graph@@PEBUTF_SessionOptions@@PEAUTSL_Status@@@Z
   ?TF_OperationGetControlOutputs_wrapper@tensorflow@@YA?AV?$vector@PEAUTF_Operation@@V?$allocator@PEAUTF_Operation@@@std@@@std@@PEAUTF_Operation@@@Z
-  ?TF_Reset_wrapper@tensorflow@@YAXPEBUTF_SessionOptions@@AEBV?$InlinedVector@PEBD$07V?$allocator@PEBD@std@@@lts_20250512@absl@@PEAUTSL_Status@@@Z
+  ?TF_Reset_wrapper@tensorflow@@YAXPEBUTF_SessionOptions@@AEBV?$InlinedVector@PEBD$07V?$allocator@PEBD@std@@@lts_20250814@absl@@PEAUTSL_Status@@@Z
   ?TF_SessionMakeCallable@tensorflow@@YAXPEAUTF_Session@@PEBUTF_Buffer@@PEA_JPEAUTSL_Status@@@Z
   ?TF_SessionPRunSetup_wrapper@tensorflow@@YAXPEAUTF_Session@@AEBV?$vector@UTF_Output@@V?$allocator@UTF_Output@@@std@@@std@@1AEBV?$vector@PEAUTF_Operation@@V?$allocator@PEAUTF_Operation@@@std@@@4@PEAPEBDPEAUTSL_Status@@@Z
   ?TF_SessionPRun_wrapper@tensorflow@@YAXPEAUTF_Session@@PEBDAEBV?$vector@UTF_Output@@V?$allocator@UTF_Output@@@std@@@std@@AEBV?$vector@PEAU_object@@V?$allocator@PEAU_object@@@std@@@4@2PEAUTSL_Status@@PEAV54@@Z
   ?TF_SessionReleaseCallable@tensorflow@@YAXPEAUTF_Session@@_JPEAUTSL_Status@@@Z
-  ?TF_SessionRunCallable@tensorflow@@YAXPEAUTF_Session@@_JPEAU_object@@PEAV?$InlinedVector@PEAU_object@@$07V?$allocator@PEAU_object@@@std@@@lts_20250512@absl@@PEAUTF_Buffer@@PEAUTSL_Status@@@Z
+  ?TF_SessionRunCallable@tensorflow@@YAXPEAUTF_Session@@_JPEAU_object@@PEAV?$InlinedVector@PEAU_object@@$07V?$allocator@PEAU_object@@@std@@@lts_20250814@absl@@PEAUTF_Buffer@@PEAUTSL_Status@@@Z
   ?TF_SessionRun_wrapper@tensorflow@@YAXPEAUTF_Session@@PEBUTF_Buffer@@AEBV?$vector@UTF_Output@@V?$allocator@UTF_Output@@@std@@@std@@AEBV?$vector@PEAU_object@@V?$allocator@PEAU_object@@@std@@@5@2AEBV?$vector@PEAUTF_Operation@@V?$allocator@PEAUTF_Operation@@@std@@@5@PEAU3@PEAUTSL_Status@@PEAV65@@Z
   ?TF_TryEvaluateConstant_wrapper@tensorflow@@YAPEAU_object@@PEAUTF_Graph@@UTF_Output@@PEAUTSL_Status@@@Z
   ?TPUCoreIDsToLocations@dtensor@tensorflow@@YA?AV?$vector@V?$vector@HV?$allocator@H@std@@@std@@V?$allocator@V?$vector@HV?$allocator@H@std@@@std@@@2@@std@@PEAUTFE_Context@@AEBV?$vector@HV?$allocator@H@std@@@4@PEAX@Z
   ?TPUCoreLocationsToIDs@dtensor@tensorflow@@YA?AV?$vector@HV?$allocator@H@std@@@std@@PEAUTFE_Context@@AEBV?$vector@V?$vector@HV?$allocator@H@std@@@std@@V?$allocator@V?$vector@HV?$allocator@H@std@@@std@@@2@@4@PEAX@Z
-  ?TensorToNdarray@tensorflow@@YA?AVStatus@lts_20250512@absl@@AEBVTensor@1@PEAPEAU_object@@@Z
+  ?TensorToNdarray@tensorflow@@YA?AVStatus@lts_20250814@absl@@AEBVTensor@1@PEAPEAU_object@@@Z
   ?TestCounter@metrics@tensorflow@@YAPEBVCounterCell@monitoring@tsl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@0@Z
-  ?ThrowBadStatusOrAccess@internal_statusor@lts_20250512@absl@@YAXVStatus@23@@Z
-  ?ThrowStdOutOfRange@base_internal@lts_20250512@absl@@YAXPEBD@Z
-  ?ToDeviceType@Mesh@dtensor@tensorflow@@QEBA?AV?$StatusOr@VMesh@dtensor@tensorflow@@@lts_20250512@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
-  ?ToFrames@FrozenStackTrace@tensorflow@@UEBA?AV?$Span@$$CBUStackFrame@tsl@@@lts_20250512@absl@@XZ
+  ?ThrowBadStatusOrAccess@internal_statusor@lts_20250814@absl@@YAXVStatus@23@@Z
+  ?ThrowStdOutOfRange@base_internal@lts_20250814@absl@@YAXPEBD@Z
+  ?ToDeviceType@Mesh@dtensor@tensorflow@@QEBA?AV?$StatusOr@VMesh@dtensor@tensorflow@@@lts_20250814@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
+  ?ToFrames@FrozenStackTrace@tensorflow@@UEBA?AV?$Span@$$CBUStackFrame@tsl@@@lts_20250814@absl@@XZ
   ?ToGraphDebugInfoStr@GraphDebugInfoBuilder@tensorflow@@QEBA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@XZ
   ?ToGraphDef@Graph@tensorflow@@QEBAXPEAVGraphDef@2@_N1@Z
-  ?ToProto@Layout@dtensor@tensorflow@@QEBA?AV?$StatusOr@VLayoutProto@dtensor@tensorflow@@@lts_20250512@absl@@XZ
-  ?ToProto@Mesh@dtensor@tensorflow@@QEBA?AV?$StatusOr@VMeshProto@dtensor@tensorflow@@@lts_20250512@absl@@XZ
+  ?ToProto@Layout@dtensor@tensorflow@@QEBA?AV?$StatusOr@VLayoutProto@dtensor@tensorflow@@@lts_20250814@absl@@XZ
+  ?ToProto@Mesh@dtensor@tensorflow@@QEBA?AV?$StatusOr@VMeshProto@dtensor@tensorflow@@@lts_20250814@absl@@XZ
   ?ToString@FrozenStackTrace@tensorflow@@UEBA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBUTracePrintingOptions@AbstractStackTrace@2@@Z
   ?ToString@HloInstruction@xla@@QEBA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@XZ
   ?ToString@Layout@dtensor@tensorflow@@QEBA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@XZ
   ?ToString@Mesh@dtensor@tensorflow@@QEBA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@XZ
-  ?ToStringSlow@Status@lts_20250512@absl@@CA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@_KW4StatusToStringMode@23@@Z
+  ?ToStringSlow@Status@lts_20250814@absl@@CA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@_KW4StatusToStringMode@23@@Z
   ?ToUncachedFrames@FrozenStackTrace@tensorflow@@UEBA?AV?$vector@UStackFrame@tsl@@V?$allocator@UStackFrame@tsl@@@std@@@std@@XZ
   ?TocoConvert@toco@@YAPEAU_object@@PEAU2@00_N@Z
-  ?TopologicalSort@grappler@tensorflow@@YA?AVStatus@lts_20250512@absl@@PEAVGraphDef@2@@Z
+  ?TopologicalSort@grappler@tensorflow@@YA?AVStatus@lts_20250814@absl@@PEAVGraphDef@2@@Z
   ?TraceString@OpKernel@tensorflow@@UEBA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBVOpKernelContext@2@_N@Z
   ?TrainingTimeSaved@metrics@tensorflow@@YAAEAVCounterCell@monitoring@tsl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
-  ?TransformGraph@graph_transforms@tensorflow@@YA?AVStatus@lts_20250512@absl@@AEBV?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@std@@0AEBV?$vector@U?$pair@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$map@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@2@U?$less@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@2@@std@@@2@@2@@std@@V?$allocator@U?$pair@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$map@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@2@U?$less@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@2@@std@@@2@@2@@std@@@2@@7@PEAVGraphDef@2@@Z
+  ?TransformGraph@graph_transforms@tensorflow@@YA?AVStatus@lts_20250814@absl@@AEBV?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@std@@0AEBV?$vector@U?$pair@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$map@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@2@U?$less@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@2@@std@@@2@@2@@std@@V?$allocator@U?$pair@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$map@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@2@U?$less@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@2@@std@@@2@@2@@std@@@2@@7@PEAVGraphDef@2@@Z
   ?TreatAsSet@MessageDifferencer@util@protobuf@google@@QEAAXPEBVFieldDescriptor@34@@Z
   ?TryFindKernelClass@swig@tensorflow@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBV34@@Z
   ?TypeConstraint@KernelDefBuilder@tensorflow@@QEAAAEAV12@PEBDW4DataType@2@@Z
-  ?UnchangedShape@shape_inference@tensorflow@@YA?AVStatus@lts_20250512@absl@@PEAVInferenceContext@12@@Z
-  ?UnimplementedError@lts_20250512@absl@@YA?AVStatus@12@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
+  ?UnchangedShape@shape_inference@tensorflow@@YA?AVStatus@lts_20250814@absl@@PEAVInferenceContext@12@@Z
+  ?UnimplementedError@lts_20250814@absl@@YA?AVStatus@12@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
   ?UnknownShape@InferenceContext@shape_inference@tensorflow@@QEAA?AVShapeHandle@23@XZ
-  ?UnknownShape@shape_inference@tensorflow@@YA?AVStatus@lts_20250512@absl@@PEAVInferenceContext@12@@Z
+  ?UnknownShape@shape_inference@tensorflow@@YA?AVStatus@lts_20250814@absl@@PEAVInferenceContext@12@@Z
   ?UnknownShapeOfRank@InferenceContext@shape_inference@tensorflow@@QEAA?AVShapeHandle@23@_J@Z
-  ?Unlock@Mutex@lts_20250512@absl@@QEAAXXZ
   ?Unpack@dtensor@tensorflow@@YA?AV?$vector@PEAUTFE_TensorHandle@@V?$allocator@PEAUTFE_TensorHandle@@@std@@@std@@PEAUTFE_Context@@PEAUTFE_TensorHandle@@PEAXPEAUTSL_Status@@@Z
-  ?Unref@StatusRep@status_internal@lts_20250512@absl@@QEBAXXZ
+  ?Unref@StatusRep@status_internal@lts_20250814@absl@@QEBAXXZ
   ?Unregister@CollectionRegistry@monitoring@tsl@@AEAAXPEBVAbstractMetricDef@23@@Z
   ?Unregister@PythonAPIDispatcher@py_dispatch@tensorflow@@QEAAXPEAU_object@@@Z
   ?UpdateEdge@tensorflow@@YAXPEAUTF_Graph@@UTF_Output@@UTF_Input@@PEAUTSL_Status@@@Z
-  ?ValidateType@ResourceHandle@tensorflow@@QEBA?AVStatus@lts_20250512@absl@@AEBVTypeIndex@2@@Z
+  ?ValidateType@ResourceHandle@tensorflow@@QEBA?AVStatus@lts_20250814@absl@@AEBVTypeIndex@2@@Z
   ?Vector@InferenceContext@shape_inference@tensorflow@@QEAA?AVShapeHandle@23@UDimensionOrConstant@23@@Z
-  ?WaitCommon@CondVar@lts_20250512@absl@@AEAA_NPEAVMutex@23@VKernelTimeout@synchronization_internal@23@@Z
+  ?WaitCommon@CondVar@lts_20250814@absl@@AEAA_NPEAVMutex@23@VKernelTimeout@synchronization_internal@23@@Z
   ?Watch@Tape@gradients@tensorflow@@QEAAXPEBVAbstractTensorHandle@3@@Z
-  ?WithRank@InferenceContext@shape_inference@tensorflow@@QEAA?AVStatus@lts_20250512@absl@@VShapeHandle@23@_JPEAV723@@Z
-  ?WithVerbosity@LogMessage@log_internal@lts_20250512@absl@@QEAAAEAV1234@H@Z
+  ?WithRank@InferenceContext@shape_inference@tensorflow@@QEAA?AVStatus@lts_20250814@absl@@VShapeHandle@23@_JPEAV723@@Z
+  ?WithVerbosity@LogMessage@log_internal@lts_20250814@absl@@QEAAAEAV1234@H@Z
   ?WriteProfile@tfprof@tensorflow@@YAXPEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
-  ?WriteRecord@RecordWriter@io@tsl@@QEAA?AVStatus@lts_20250512@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
+  ?WriteRecord@RecordWriter@io@tsl@@QEAA?AVStatus@lts_20250814@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
   ?WriteSerializedEvent@EventsWriter@tensorflow@@QEAAXV?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
   ?WriteSerializedExecutionDebugEvent@DebugEventsWriter@tfdbg@tensorflow@@QEAAXAEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@W4DebugEventFileType@23@@Z
   ?WriteSerializedNonExecutionDebugEvent@DebugEventsWriter@tfdbg@tensorflow@@QEAAXAEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@W4DebugEventFileType@23@@Z
-  ?WriteStringToFile@tsl@@YA?AVStatus@lts_20250512@absl@@PEAVEnv@1@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$basic_string_view@DU?$char_traits@D@std@@@7@@Z
+  ?WriteStringToFile@tsl@@YA?AVStatus@lts_20250814@absl@@PEAVEnv@1@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$basic_string_view@DU?$char_traits@D@std@@@7@@Z
   ?_AttrValue_ListValue_default_instance_@tensorflow@@3UAttrValue_ListValueDefaultTypeInternal@1@A
   ?_FunctionDefLibrary_default_instance_@tensorflow@@3UFunctionDefLibraryDefaultTypeInternal@1@A
   ?_FunctionDef_default_instance_@tensorflow@@3UFunctionDefDefaultTypeInternal@1@A
@@ -792,12 +785,12 @@ EXPORTS
   ?create@ModuleOp@mlir@@SA?AV12@AEAVOpBuilder@2@VLocation@2@V?$optional@VStringRef@llvm@@@std@@@Z
   ?deallocate_buffer@llvm@@YAXPEAX_K1@Z
   ?def@Node@tensorflow@@QEBAAEBVNodeDef@2@XZ
-  ?device_location@Mesh@dtensor@tensorflow@@QEBA?AV?$StatusOr@$$CBV?$InlinedVector@_J$03V?$allocator@_J@std@@@lts_20250512@absl@@@lts_20250512@absl@@H@Z
+  ?device_location@Mesh@dtensor@tensorflow@@QEBA?AV?$StatusOr@$$CBV?$InlinedVector@_J$03V?$allocator@_J@std@@@lts_20250814@absl@@@lts_20250814@absl@@H@Z
   ?device_type@Mesh@dtensor@tensorflow@@QEBA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@XZ
   ?dim_size@?$TensorShapeBase@VPartialTensorShape@tensorflow@@@tensorflow@@QEBA_JH@Z
   ?dim_size@?$TensorShapeBase@VTensorShape@tensorflow@@@tensorflow@@QEBA_JH@Z
-  ?dim_size@Mesh@dtensor@tensorflow@@QEBA?AV?$StatusOr@_J@lts_20250512@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
-  ?dim_sizes@?$TensorShapeBase@VPartialTensorShape@tensorflow@@@tensorflow@@QEBA?AV?$InlinedVector@_J$03V?$allocator@_J@std@@@lts_20250512@absl@@XZ
+  ?dim_size@Mesh@dtensor@tensorflow@@QEBA?AV?$StatusOr@_J@lts_20250814@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
+  ?dim_sizes@?$TensorShapeBase@VPartialTensorShape@tensorflow@@@tensorflow@@QEBA?AV?$InlinedVector@_J$03V?$allocator@_J@std@@@lts_20250814@absl@@XZ
   ?dim_sizes@Mesh@dtensor@tensorflow@@QEBA?AV?$vector@_JV?$allocator@_J@std@@@std@@XZ
   ?emitError@OpState@mlir@@QEAA?AVInFlightDiagnostic@2@AEBVTwine@llvm@@@Z
   ?enable_tensor_float_32_execution@tsl@@YAX_N@Z
@@ -811,11 +804,12 @@ EXPORTS
   ?id@?$TypeIDResolver@VModuleOp@mlir@@X@detail@mlir@@0VSelfOwningTypeID@3@A
   ?id@?$TypeIDResolver@VSCFDialect@scf@mlir@@X@detail@mlir@@0VSelfOwningTypeID@3@A
   ?id@?$TypeIDResolver@VShapeDialect@shape@mlir@@X@detail@mlir@@0VSelfOwningTypeID@3@A
-  ?input@InferenceContext@shape_inference@tensorflow@@QEBA?AVStatus@lts_20250512@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@PEAV?$vector@VShapeHandle@shape_inference@tensorflow@@V?$allocator@VShapeHandle@shape_inference@tensorflow@@@std@@@8@@Z
-  ?input@OpKernelContext@tensorflow@@QEAA?AVStatus@lts_20250512@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@PEAPEBVTensor@2@@Z
+  ?input@InferenceContext@shape_inference@tensorflow@@QEBA?AVStatus@lts_20250814@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@PEAV?$vector@VShapeHandle@shape_inference@tensorflow@@V?$allocator@VShapeHandle@shape_inference@tensorflow@@@std@@@8@@Z
+  ?input@OpKernelContext@tensorflow@@QEAA?AVStatus@lts_20250814@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@PEAPEBVTensor@2@@Z
   ?input@OpKernelContext@tensorflow@@QEBAAEBVTensor@2@H@Z
   ?insert@DialectRegistry@mlir@@QEAAXVTypeID@2@VStringRef@llvm@@AEBV?$function@$$A6APEAVDialect@mlir@@PEAVMLIRContext@2@@Z@std@@@Z
   ?loadAllAvailableDialects@MLIRContext@mlir@@QEAAXXZ
+  ?lock@Mutex@lts_20250814@absl@@QEAAXXZ
   ?make_safe@tensorflow@@YA?AV?$unique_ptr@UTF_Buffer@@UTFBufferDeleter@detail@tensorflow@@@std@@PEAUTF_Buffer@@@Z
   ?make_safe@tensorflow@@YA?AV?$unique_ptr@UTSL_Status@@UTFStatusDeleter@detail@tensorflow@@@std@@PEAUTSL_Status@@@Z
   ?make_safe@tensorflow@@YA?AV?$unique_ptr@U_object@@UPyDecrefDeleter@detail@tensorflow@@@std@@PEAU_object@@@Z
@@ -831,17 +825,18 @@ EXPORTS
   ?report@InFlightDiagnostic@mlir@@QEAAXXZ
   ?requested_device@Node@tensorflow@@QEBAAEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@XZ
   ?set_field_comparator@MessageDifferencer@util@protobuf@google@@QEAAXPEAVDefaultFieldComparator@234@@Z
-  ?set_output@InferenceContext@shape_inference@tensorflow@@QEAA?AVStatus@lts_20250512@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@AEBV?$vector@VShapeHandle@shape_inference@tensorflow@@V?$allocator@VShapeHandle@shape_inference@tensorflow@@@std@@@8@@Z
+  ?set_output@InferenceContext@shape_inference@tensorflow@@QEAA?AVStatus@lts_20250814@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@AEBV?$vector@VShapeHandle@shape_inference@tensorflow@@V?$allocator@VShapeHandle@shape_inference@tensorflow@@@std@@@8@@Z
   ?set_output@OpKernelContext@tensorflow@@QEAAXHAEBVTensor@2@@Z
   ?set_requested_device@Node@tensorflow@@QEAAXAEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
   ?set_tf2_execution@tensorflow@@YAX_N@Z
   ?sharding_spec_strs@Layout@dtensor@tensorflow@@QEBA?AV?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@std@@XZ
-  ?stream@OstreamView@LogMessage@log_internal@lts_20250512@absl@@QEAAAEAV?$basic_ostream@DU?$char_traits@D@std@@@std@@XZ
+  ?stream@OstreamView@LogMessage@log_internal@lts_20250814@absl@@QEAAAEAV?$basic_ostream@DU?$char_traits@D@std@@@std@@XZ
   ?tensor_data@Tensor@tensorflow@@QEBA?AV?$basic_string_view@DU?$char_traits@D@std@@@std@@XZ
   ?tensor_float_32_execution_enabled@tsl@@YA_NXZ
   ?tf2_execution_enabled@tensorflow@@YA_NXZ
   ?transferNodesFromList@?$ilist_traits@VOperation@mlir@@@llvm@@QEAAXAEAU12@V?$ilist_iterator@U?$node_options@VOperation@mlir@@$0A@$0A@X$0A@X@ilist_detail@llvm@@$0A@$0A@@2@1@Z
   ?type_string@Node@tensorflow@@QEBAAEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@XZ
+  ?unlock@Mutex@lts_20250814@absl@@QEAAXXZ
   ?verify@mlir@@YA?AULogicalResult@llvm@@PEAVOperation@1@_N@Z
   ?verifyInvariants@ModuleOp@mlir@@QEAA?AULogicalResult@llvm@@XZ
   ?versions@Graph@tensorflow@@QEBAAEBVVersionDef@2@XZ
