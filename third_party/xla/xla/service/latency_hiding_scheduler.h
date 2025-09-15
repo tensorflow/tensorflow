@@ -1697,12 +1697,34 @@ class DefaultSchedulerCore : public SchedulerCore {
     this->config_.memory_limit = new_limit;
   }
   int64_t GetRerunTimes() override { return config_.rerun; }
-  bool SchedulingAnnotationCrossesOverlapLimit(
-      const SchedulingState& sched_state, int64_t annotation);
+
+  // Returns the amount of resources an annotation group needs. The amount of
+  // resources needed is schedule-order dependent. This function returns the
+  // minimum or the maximum amount of resources needed for the given annotation
+  // group based on the value of get_max_resources.
   absl::flat_hash_map<int64_t, int64_t> GetNumResourcesNeededForAnnotation(
-      const SchedulingState& sched_state, int64_t annotation);
+      const SchedulingState& sched_state, int64_t annotation,
+      bool get_max_resources = false);
+
+  // Returns true if the given annotation group crosses the overlap limit.
+  // If use_max_resources is true, the maximum amount of resources needed for
+  // the annotation group is used to compare against the overlap limit.
+  // Otherwise, the minimum amount of resources needed for the annotation group
+  // is used.
+  bool SchedulingAnnotationCrossesOverlapLimit(
+      const SchedulingState& sched_state, int64_t annotation,
+      bool use_max_resources = false);
+
   int64_t GetNumSuccessorsForAnnotation(const SchedulingState& sched_state,
                                         int64_t annotation) const;
+
+  // Tries to schedule any of the ready annotation groups using either the
+  // maximum or minimum amount of resources needed for the annotation group
+  // based on value of use_max_resources. Returns true if any annotation group
+  // is scheduled, false otherwise.
+  absl::StatusOr<bool> TryScheduleOneAnnotationGroup(
+      DefaultSchedulerCore::SchedulingState* sched_state,
+      const HloComputation* computation, bool use_max_resources);
 
   ScheduleProto::ComputationScheduleProto ComputationScheduleToProto(
       const HloComputation* computation, const SchedulingState& sched_state,
