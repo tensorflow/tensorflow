@@ -159,7 +159,12 @@ class Build:
 
   def __post_init__(self):
     # pylint: disable=protected-access
-    assert self.type_ not in self.__class__._builds
+    assert (
+        self.type_ not in self.__class__._builds
+    ), "Can't have multiple builds of same BuildType!"
+    assert (
+        self.repo == "openxla/xla" or self.override_repository
+    ), "Must override repo if repo under test isn't XLA!"
     self.__class__._builds[self.type_] = self
 
   @classmethod
