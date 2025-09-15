@@ -322,24 +322,6 @@ void TrackedCpuDeviceBuffer::Delete(PjRtMemorySpace* memory_space) {
   });
 }
 
-PjRtFuture<>::Promise TrackedCpuDeviceBuffer::GetReadyFuturePromise(
-    PjRtMemorySpace* memory_space) {
-  PjRtFuture<>::Promise promise =
-      tensorflow::down_cast<CommonPjRtClient*>(memory_space->client())
-          ->CreateUserPromise(memory_space, "BufferDefinitionEvent");
-  definition_event().AndThen(
-      [definition_event = definition_event().AsPtr(), promise]() mutable {
-        if (definition_event.IsError()) {
-          const absl::Status& s = definition_event.GetError();
-          promise.Set(tsl::errors::CreateWithUpdatedMessage(
-              s, absl::StrCat("Buffer Definition Event: ", s.message())));
-        } else {
-          promise.Set();
-        }
-      });
-  return promise;
-}
-
 absl::Status TrackedCpuDeviceBuffer::BlockForOperationsToComplete(
     PjRtMemorySpace* memory_space) {
   // Block the host until all usage events have completed. We do not return
