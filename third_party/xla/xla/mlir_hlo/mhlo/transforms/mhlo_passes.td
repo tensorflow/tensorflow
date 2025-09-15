@@ -22,6 +22,17 @@ def ChloLegalizeToHighLevelMhloPass : Pass<"chlo-legalize-to-high-level-mhlo", "
     ops with XLA support. These are MHLO ops that directly model the CHLO op,
     such as TopK and Erf.
   }];
+  let options = [
+    Option<"enable_acosh_", "enable-acosh", "bool", /*default=*/"false",
+           "Enable chlo.acosh to mhlo.acosh lowering.">,
+    Option<"enable_erf_", "enable-erf", "bool", /*default=*/"false",
+           "Enable chlo.erf to mhlo.erf lowering.">,
+    Option<"enable_ragged_dot_", "enable-ragged-dot", "bool",
+           /*default=*/"false",
+           "Enable chlo.ragged_dot to mhlo.ragged_dot lowering.">,
+    Option<"enable_topk_", "enable-topk", "bool", /*default=*/"false",
+           "Enable chlo.topk to mhlo.topk lowering.">
+  ];
   let dependentDialects = ["mhlo::MhloDialect"];
 }
 
