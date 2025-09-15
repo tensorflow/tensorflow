@@ -160,4 +160,21 @@ def TritonXLAConvertUnsupportedTypesPass
   let constructor = "CreateTritonXLAConvertUnsupportedTypesPass()";
 }
 
+def TritonXLAUnswitchLoopsPass :
+   Pass<"triton-xla-unswitch-loops", "mlir::ModuleOp"> {
+  let summary = "Hoists scf.if out of scf.for.";
+
+  let description = [{
+      Hoists a single scf.if out of scf.for when the condition is loop invariant.
+      That removes conditional from the loop body but increases code size.
+      Pass expects to run after loop-invariant-code-motion.
+  }];
+
+  let dependentDialects = [
+    "mlir::func::FuncDialect", "mlir::scf::SCFDialect"
+  ];
+
+  let constructor = "CreateTritonXLAUnswitchLoopsPass()";
+}
+
 #endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_PASSES_TD_
