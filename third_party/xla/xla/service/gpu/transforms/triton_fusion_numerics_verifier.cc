@@ -26,12 +26,16 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/buffer_comparator.h"
+#include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
+#include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/transforms/simplifiers/hlo_dce.h"
+#include "xla/service/call_inliner.h"
 #include "xla/service/dump.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/autotuning/autotuner_compile_util.h"
@@ -45,6 +49,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/priority_fusion.h"
 #include "xla/service/gpu/transforms/tree_reduction_rewriter.h"
 #include "xla/service/hlo_cost_analysis.h"
+#include "xla/service/hlo_cse.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
@@ -82,6 +87,37 @@ absl::StatusOr<const HloFusionInstruction*> AsTritonFusion(
   return nullptr;
 }
 
+class FusionToCallVisitor : public DfsHloRewriteVisitor {
+ public:
+  absl::Status HandleFusion(HloInstruction* hlo) override {
+    auto* fusion = Cast<HloFusionInstruction>(hlo);
+
+    std::unique_ptr<HloInstruction> new_call =
+        HloInstruction::CreateCall(fusion->shape(), fusion->operands(),
+                                   fusion->fused_instructions_computation());
+    return ReplaceWithNewInstruction(fusion, std::move(new_call));
+  }
+};
+
+absl::Status InlineModuleFusions(HloModule* hlo_module) {
+  // HLO module for the triton emitter might contain multiple nested fusions.
+  // Other emitters might not support them, thus we need to inline all fusions.
+  while (true) {
+    FusionToCallVisitor visitor;
+    TF_RETURN_IF_ERROR(hlo_module->entry_computation()->Accept(&visitor));
+    if (!visitor.changed()) {
+      return absl::OkStatus();
+    }
+    HloPassPipeline pipeline("inline-fusions");
+    pipeline.AddPass<CallInliner>();
+    pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
+    pipeline.AddPass<HloDCE>();
+    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
+    VLOG(2) << "After inline call: " << hlo_module->ToString();
+  }
+  return absl::OkStatus();
+}
+
 // Extracts the fusion computation and re-runs the fusion pass in order to make
 // sure that the fusions are suitable for the MLIR emitters and will be
 // reasonably fast. Without this the generated code can be extremely slow (e.g.
@@ -92,17 +128,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> NewHloModuleFromFusionComputation(
   std::unique_ptr<HloModule> new_module =
       ExtractComputationIntoNewModule(*fusion.fused_instructions_computation());
   new_module->mutable_config().set_debug_options(debug_opts);
-  // Make sure that nested fusions do not trigger the generic triton emitter. We
-  // can do that by clearing the backend config and setting the fusion kind to
-  // loop.
-  for (HloComputation* computation : new_module->computations()) {
-    for (HloInstruction* instruction : computation->instructions()) {
-      if (instruction->opcode() == HloOpcode::kFusion) {
-        instruction->clear_backend_config();
-        instruction->set_fusion_kind(HloInstruction::FusionKind::kLoop);
-      }
-    }
-  }
+  TF_RETURN_IF_ERROR(InlineModuleFusions(new_module.get()));
   TreeReductionRewriter tree_reduction_rewriter(gpu_device_info);
   TF_RETURN_IF_ERROR(tree_reduction_rewriter.Run(new_module.get()).status());
   TF_RETURN_IF_ERROR(DotAlgorithmRewriter().Run(new_module.get()).status());
