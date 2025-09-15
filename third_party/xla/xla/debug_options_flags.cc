@@ -204,6 +204,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_unsupported_annotate_with_emitter_loc(false);
   opts.set_xla_debug_buffer_assignment_show_max(15);
   opts.set_xla_cpu_use_onednn(false);
+  opts.set_xla_cpu_experimental_onednn_custom_call(false);
 #ifdef XLA_CPU_USE_ACL
   opts.set_xla_cpu_use_acl(true);
 #endif
@@ -1046,6 +1047,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 debug_options->xla_cpu_use_onednn(),
                 "Call oneDNN thunks for matmul and convolution fusions in the "
                 "CPU backend."));
+  flag_list->push_back(
+      tsl::Flag("xla_cpu_experimental_onednn_custom_call",
+                bool_setter_for(
+                    &DebugOptions::set_xla_cpu_experimental_onednn_custom_call),
+                debug_options->xla_cpu_experimental_onednn_custom_call(),
+                "Call oneDNN custom call thunks in the CPU backend."));
   flag_list->push_back(tsl::Flag(
       "xla_cpu_experimental_onednn_fusion_type",
       SetterForRepeatedEnum<DebugOptions::LibraryFusionType>(

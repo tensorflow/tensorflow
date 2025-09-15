@@ -679,12 +679,14 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
 
   // Rewrite to custom calls with target as oneDNN library calls.
 #if defined(INTEL_MKL)
-  // AOT compiled code runs in single thread.
+  // This pass is not supported in the thunk runtime yet.
   bool is_thunk_runtime = true;
-  // TODO(intel-tf): Use IsOneDnnCompatible function to determine whether to
-  // enable OneDnnOpsRewriter after enabling the OneDnnOpsRewriter with thunk
-  // runtime.
-  if (!is_thunk_runtime) {
+  bool use_onednn_custom_call =
+      module->config()
+          .debug_options()
+          .xla_cpu_experimental_onednn_custom_call() &&
+      is_onednn_compatible;
+  if (use_onednn_custom_call && !is_thunk_runtime) {
     // Placing OneDnnOpsRewriter here to match the flax patterns
     // TODO: Decide where would be the appropriate place for this pass to make
     // it more generic
@@ -902,7 +904,10 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
 
 #if defined(INTEL_MKL)
   // AOT compiled code runs in single thread.
-  if (is_onednn_compatible) {
+  bool use_onednn_custom_call =
+      debug_options.xla_cpu_experimental_onednn_custom_call() &&
+      is_onednn_compatible;
+  if (use_onednn_custom_call) {
     // Run SimplifyFPConversions pass to simplify the BF16 pattern and make it
     // easier to match.
     // Remove `f32 -> bf16 -> f32` casts inserted by bf16 normalization.
