@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/model/tiled_hlo_instruction.h"
+#include "xla/codegen/tiling/tiled_hlo_instruction.h"
 
 #include <cstdint>
 #include <memory>
@@ -32,12 +32,9 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
 
 namespace xla {
-namespace gpu {
 
 namespace {
 
@@ -149,38 +146,4 @@ std::string TiledHloInstruction::ToString() const {
   return ss.str();
 }
 
-/*static*/
-absl::StatusOr<std::unique_ptr<TiledHloFusionInstruction>>
-TiledHloFusionInstruction::Create(
-    const HloInstruction* hlo,
-    llvm::SmallVector<const TiledHloInstruction*> operands,
-    llvm::SmallVector<const TiledHloInstruction*> runtime_variables,
-    std::unique_ptr<TiledHloComputation> called_computation,
-    llvm::SmallVector<int64_t> tile_sizes,
-    llvm::SmallVector<int64_t> tile_strides,
-    std::optional<IndexingMap> tile_offsets_indexing) {
-  TF_RETURN_IF_ERROR(VerifyTiledHloInstructionConstructorPreconditions(
-      hlo, tile_sizes, tile_strides, tile_offsets_indexing, runtime_variables));
-
-  return absl::WrapUnique(new TiledHloFusionInstruction(
-      hlo, std::move(operands), std::move(runtime_variables),
-      std::move(called_computation), std::move(tile_sizes),
-      std::move(tile_strides), std::move(tile_offsets_indexing)));
-}
-
-TiledHloFusionInstruction::TiledHloFusionInstruction(
-    const HloInstruction* hlo,
-    llvm::SmallVector<const TiledHloInstruction*> operands,
-    llvm::SmallVector<const TiledHloInstruction*> runtime_variables,
-    std::unique_ptr<TiledHloComputation> called_computation,
-    llvm::SmallVector<int64_t> tile_sizes,
-    llvm::SmallVector<int64_t> tile_strides,
-    std::optional<IndexingMap> tile_offsets_indexing)
-    : TiledHloInstruction(hlo, std::move(operands),
-                          std::move(runtime_variables), std::move(tile_sizes),
-                          std::move(tile_strides),
-                          std::move(tile_offsets_indexing)),
-      called_computation_(std::move(called_computation)) {}
-
-}  // namespace gpu
 }  // namespace xla
