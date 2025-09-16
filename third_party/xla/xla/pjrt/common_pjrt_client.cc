@@ -65,18 +65,6 @@ limitations under the License.
 
 namespace xla {
 
-PjRtFuture<>::Promise CommonPjRtClient::CreateUserPromise(
-    PjRtMemorySpace* memory_space, absl::string_view debug_info) {
-  return PjRtFuture<>::CreatePromise();
-}
-
-PjRtFuture<> CommonPjRtClient::CreateFutureFromUserPromise(
-    PjRtMemorySpace* memory_space, const char* callee_type,
-    const char* callee_method, PjRtFuture<>::Promise promise) {
-  return CreateProfiledFuture(memory_space, callee_type, callee_method,
-                              PjRtFuture<>(std::move(promise)));
-}
-
 void CommonPjRtClient::TrackFuture(PjRtMemorySpace* memory_space,
                                    absl::string_view debug_info,
                                    const PjRtFuture<>& future) {}
@@ -103,15 +91,16 @@ PjRtFuture<> CommonPjRtClient::CreateProfiledFuture(
       });
 }
 
-std::pair<PjRtFuture<>::Promise, PjRtFuture<>>
+std::pair<PjRtFuture<>::MoveOnlyPromise, PjRtFuture<>>
 CommonPjRtClient::CreateLinkedUserPromise(PjRtMemorySpace* memory_space,
                                           const char* callee_type,
                                           const char* callee_method,
                                           absl::string_view debug_info) {
-  PjRtFuture<>::Promise promise = CreateUserPromise(memory_space, debug_info);
-  auto result = CreateFutureFromUserPromise(memory_space, callee_type,
-                                            callee_method, promise);
-  return std::make_pair(std::move(promise), std::move(result));
+  auto [promise, future] = PjRtFuture<>::MakePromise();
+  auto profiled_future = CreateProfiledFuture(memory_space, callee_type,
+                                              callee_method, std::move(future));
+  TrackFuture(memory_space, debug_info, profiled_future);
+  return std::make_pair(std::move(promise), std::move(profiled_future));
 }
 
 tsl::AsyncValueRef<bool> CommonPjRtClient::CreateAllocationEventForTransfers(
