@@ -991,6 +991,7 @@ absl::StatusOr<bool> CommandBufferScheduling::Run(
   auto order = module->MakeComputationPostOrder();
   std::reverse(order.begin(), order.end());
   absl::flat_hash_set<HloComputation*> processed_command_buffers;
+  std::vector<HloComputation*> command_buffer_computations;
 
   auto changed = false;
   for (HloComputation* comp : order) {
@@ -1023,6 +1024,9 @@ absl::StatusOr<bool> CommandBufferScheduling::Run(
           RewriteCommandBuffer(comp, seq, std::move(command_buffer)));
       changed = true;
 
+      // Track created command buffer computations for diagnostics.
+      command_buffer_computations.push_back(command_buffer_computation);
+
       // All computations reachable from a command buffer computation are nested
       // command buffers (i.e. body computations attached to a while operation).
       for (HloComputation* called :
@@ -1032,6 +1036,59 @@ absl::StatusOr<bool> CommandBufferScheduling::Run(
     }
   }
   TF_RETURN_IF_ERROR(module->schedule().Update());
+
+  if (VLOG_IS_ON(3)) {
+    // Collect all instructions that are part of any created command buffer
+    // computations (including their embedded computations).
+    absl::flat_hash_set<const HloInstruction*> in_command_buffers;
+    for (HloComputation* cb_comp : command_buffer_computations) {
+      for (HloInstruction* inst : cb_comp->instructions()) {
+        if (inst != nullptr && !IsNoOp(inst)) in_command_buffers.insert(inst);
+      }
+      for (HloComputation* embedded : cb_comp->MakeEmbeddedComputationsList()) {
+        for (HloInstruction* inst : embedded->instructions()) {
+          if (inst != nullptr && !IsNoOp(inst)) in_command_buffers.insert(inst);
+        }
+      }
+    }
+
+    // Build a set of command buffer computations to identify their call sites.
+    absl::flat_hash_set<HloComputation*> cb_comps(
+        command_buffer_computations.begin(), command_buffer_computations.end());
+
+    // Compute coverage and log instructions not captured by any command buffer.
+    int64_t total_insts = 0;
+    int64_t not_in_cb_count = 0;
+    for (HloComputation* comp_all : module->computations()) {
+      for (HloInstruction* inst : comp_all->instructions()) {
+        if (inst == nullptr) continue;
+        // Skip no-op instructions from coverage and diagnostics.
+        if (IsNoOp(inst)) continue;
+        // Ignore the kCall that invokes a command buffer computation.
+        if (inst->opcode() == HloOpcode::kCall) {
+          bool is_cb_call = false;
+          for (HloComputation* called : inst->called_computations()) {
+            if (cb_comps.contains(called)) {
+              is_cb_call = true;
+              break;
+            }
+          }
+          if (is_cb_call) continue;
+        }
+        total_insts++;
+        if (!in_command_buffers.contains(inst)) {
+          not_in_cb_count++;
+          VLOG(3) << "Not in command buffer: module=" << module->name()
+                  << " computation=" << comp_all->name()
+                  << " instruction:" << inst->ToString();
+        }
+      }
+    }
+
+    VLOG(3) << "Command buffer coverage: " << (total_insts - not_in_cb_count)
+            << "/" << total_insts << " instructions captured; "
+            << not_in_cb_count << " not captured.";
+  }
 
   return changed;
 }
