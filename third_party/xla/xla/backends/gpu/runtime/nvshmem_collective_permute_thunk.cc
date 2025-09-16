@@ -135,7 +135,7 @@ absl::Status NvshmemCollectivePermuteStartThunk::RunNvshmemCollective(
                              config_.config.operand_element_type));
   TF_ASSIGN_OR_RETURN(
       const int64_t current_id,
-      GetCollectiveCurrentId(params.collective_params, config_));
+      GetCollectiveCurrentId(params.collective_params, config_.config));
   std::string device_string =
       CollectiveThunk::GetDeviceString(*params.collective_params);
 
