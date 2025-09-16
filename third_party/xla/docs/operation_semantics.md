@@ -37,17 +37,26 @@ See also
 Performs concatenation across replicas.
 
 **`AllGather(operand, all_gather_dim, shard_count, replica_group_ids,
-channel_id)`**
+channel_id, layout, use_global_device_ids)`**
 
-| Arguments        | Type                 | Semantics                   |
-| ---------------- | -------------------- | --------------------------- |
-| `operand`        | `XlaOp`              | Array to concatenate across |
-:                  :                      : replicas                    :
-| `all_gather_dim` | `int64`              | Concatenation dimension     |
-| `replica_groups` | vector of vectors of | Groups between which the    |
-:                  : `int64`              : concatenation is performed  :
-| `channel_id`     | optional `int64`     | Optional channel ID for     |
-:                  :                      : cross-module communication  :
+| Arguments               | Type                 | Semantics                   |
+| ----------------------- | -------------------- | --------------------------- |
+| `operand`               | `XlaOp`              | Array to concatenate across |
+:                         :                      : replicas                    :
+| `all_gather_dim`        | `int64`              | Concatenation dimension     |
+| `shard_count`           | `int64`              | The size of each replica    |
+:                         :                      : group                       :
+| `replica_groups`        | vector of vectors of | Groups between which the    |
+:                         : `int64`              : concatenation is performed  :
+| `channel_id`            | optional `int64`     | Optional channel ID for     |
+:                         :                      : cross-module communication  :
+| `layout`                | optional `Layout`    | Creates a layout pattern    |
+:                         :                      : that will capture the       :
+:                         :                      : matched layout in the       :
+:                         :                      : argument                    :
+| `use_global_device_ids` | optional `bool`      | Returns true if the ids in  |
+:                         :                      : the ReplicaGroup config     :
+:                         :                      : represent a global id       :
 
 -   `replica_groups` is a list of replica groups between which the concatenation
     is performed (replica id for the current replica can be retrieved using
@@ -61,6 +70,10 @@ channel_id)`**
     `replica_groups` are empty.
 -   `channel_id` is used for cross-module communication: only `all-gather`
     operations with the same `channel_id` can communicate to each other.
+-   `use_global_device_ids` Returns true if the ids in the ReplicaGroup config
+    represent a global id of (replica_id * partition_count + partition_id)
+    instead of a replica id. This enables more flexible grouping of devices if
+    this all-reduce is both cross-partition and cross-replica.
 
 The output shape is the input shape with the `all_gather_dim` made `shard_count`
 times larger. For example, if there are two replicas and the operand has the
@@ -75,17 +88,24 @@ See also
 
 Performs a custom computation across replicas.
 
-**`AllReduce(operand, computation, replica_group_ids, channel_id)`**
+**`AllReduce(operand, computation, replica_groups, channel_id,
+shape_with_layout, use_global_device_ids)`**
 
-| Arguments        | Type                 | Semantics                        |
-| ---------------- | -------------------- | -------------------------------- |
-| `operand`        | `XlaOp`              | Array or a non-empty tuple of    |
-:                  :                      : arrays to reduce across replicas :
-| `computation`    | `XlaComputation`     | Reduction computation            |
-| `replica_groups` | vector of vectors of | Groups between which the         |
-:                  : `int64`              : reductions are performed         :
-| `channel_id`     | optional `int64`     | Optional channel ID for          |
-:                  :                      : cross-module communication       :
+| Arguments               | Type                 | Semantics                  |
+| ----------------------- | -------------------- | -------------------------- |
+| `operand`               | `XlaOp`              | Array or a non-empty tuple |
+:                         :                      : of arrays to reduce across :
+:                         :                      : replicas                   :
+| `computation`           | `XlaComputation`     | Reduction computation      |
+| `replica_groups`        | vector of vectors of | Groups between which the   |
+:                         : `int64`              : reductions are performed   :
+| `channel_id`            | optional `int64`     | Optional channel ID for    |
+:                         :                      : cross-module communication :
+| `shape_with_layout`     | optional `Layout`    | Defines the layout of the  |
+:                         :                      : data transferred           :
+| `use_global_device_ids` | optional `bool`      | Returns true if the ids in |
+:                         :                      : the ReplicaGroup config    :
+:                         :                      : represent a global id      :
 
 -   When `operand` is a tuple of arrays, the all-reduce is performed on each
     element of the tuple.
@@ -98,6 +118,13 @@ Performs a custom computation across replicas.
     `3`.
 -   `channel_id` is used for cross-module communication: only `all-reduce`
     operations with the same `channel_id` can communicate to each other.
+-   `shape_with_layout`: forces the layout of the AllReduce to the given layout.
+    This is used to guarantee the same layout for a group of AllReduce ops
+    compiled separately.
+-   `use_global_device_ids` Returns true if the ids in the ReplicaGroup config
+    represent a global id of (replica_id * partition_count + partition_id)
+    instead of a replica id. This enables more flexible grouping of devices if
+    this all-reduce is both cross-partition and cross-replica.
 
 The output shape is the same as the input shape. For example, if there are two
 replicas and the operand has the value `[1.0, 2.5]` and `[3.0, 5.25]`
@@ -650,12 +677,19 @@ See also
 CollectivePermute is a collective operation that sends and receives data cross
 replicas.
 
-**`CollectivePermute(operand, source_target_pairs)`**
+**`CollectivePermute(operand, source_target_pairs, channel_id)`**
 
 | Arguments             | Type                    | Semantics                  |
 | --------------------- | ----------------------- | -------------------------- |
 | `operand`             | `XlaOp`                 | n dimensional input array  |
-| `source_target_pairs` | `<int64, int64>` vector | A list of (source_replica_id, target_replica_id) pairs. For each pair, the operand is sent from source replica to target replica. |
+| `source_target_pairs` | `<int64, int64>` vector | A list of                  |
+:                       :                         : (source_replica_id,        :
+:                       :                         : target_replica_id) pairs.  :
+:                       :                         : For each pair, the operand :
+:                       :                         : is sent from source        :
+:                       :                         : replica to target replica. :
+| `channel_id`          | optional `int64`        | Optional channel ID for    |
+:                       :                         : cross-module communication :
 
 Note that there are the following restrictions on the `source_target_pair`:
 
@@ -1129,6 +1163,19 @@ then b == f32[3]{0.0, 1.0, 2.0}
 
 Performs `AllReduce` with a summation computation.
 
+**`CrossReplicaSum(operand, replica_groups)`**
+
+| Arguments        | Type                 | Semantics                        |
+| ---------------- | -------------------- | -------------------------------- |
+| `operand`        | `XlaOp`              | Array or a non-empty tuple of    |
+:                  :                      : arrays to reduce across replicas :
+| `replica_groups` | vector of vectors of | Groups between which the         |
+:                  : `int64`              : reductions are performed         :
+
+Returns the sum of the operand value within each subgroup of replicas. All
+replicas supply one input to the sum and all replicas receive the resulting sum
+for each subgroup.
+
 ## CustomCall
 
 See also
@@ -1136,55 +1183,8 @@ See also
 
 Call a user-provided function within a computation.
 
-**`CustomCall(target_name, args..., shape)`**
-
-| Arguments     | Type                   | Semantics                         |
-| ------------- | ---------------------- | --------------------------------- |
-| `target_name` | `string`               | Name of the function. A call instruction will be emitted which targets this symbol name. |
-| `args`        | sequence of N `XlaOp`s | N arguments of arbitrary type, which will be passed to the function. |
-| `shape`       | `Shape`                | Output shape of the function      |
-
-The function signature is the same, regardless of the arity or type of args:
-
-```cpp
-extern "C" void target_name(void* out, void** in);
-```
-
-For example, if CustomCall is used as follows:
-
-```cpp
-let x = f32[2] {1,2};
-let y = f32[2x3] {{10, 20, 30}, {40, 50, 60}};
-
-CustomCall("myfunc", {x, y}, f32[3x3])
-```
-
-Here is an example of an implementation of `myfunc`:
-
-```cpp
-extern "C" void myfunc(void* out, void** in) {
-  float (&x)[2] = *static_cast<float(*)[2]>(in[0]);
-  float (&y)[2][3] = *static_cast<float(*)[2][3]>(in[1]);
-  EXPECT_EQ(1, x[0]);
-  EXPECT_EQ(2, x[1]);
-  EXPECT_EQ(10, y[0][0]);
-  EXPECT_EQ(20, y[0][1]);
-  EXPECT_EQ(30, y[0][2]);
-  EXPECT_EQ(40, y[1][0]);
-  EXPECT_EQ(50, y[1][1]);
-  EXPECT_EQ(60, y[1][2]);
-  float (&z)[3][3] = *static_cast<float(*)[3][3]>(out);
-  z[0][0] = x[1] + y[1][0];
-  // ...
-}
-```
-
-The user-provided function must not have side-effects and its execution must be
-idempotent.
-
-> Note: The opaque nature of the user-provided function restricts optimization
-> opportunities for the compiler. Try to express your computation in terms of
-> native XLA ops whenever possible; only use CustomCall as a last resort.
+CustomCall documentation is provided in \
+[Developer details - XLA Custom Calls](https://openxla.org/xla/custom_call)
 
 ## Dot
 
@@ -1728,6 +1728,9 @@ CPU FFT is backed by Eigen's TensorFFT. GPU FFT uses cuFFT.
 The XLA gather operation stitches together several slices (each slice at a
 potentially different runtime offset) of an input array.
 
+See also
+[`Gather`](https://github.com/openxla/stablehlo/blob/main/docs/spec.md#gather)
+
 ### General Semantics
 
 See also
@@ -1991,6 +1994,10 @@ let element_1: s32 = gettupleelement(t, 1);  // Inferred shape matches s32.
 ```
 
 See also `tf.tuple`.
+
+**`GetTupleElement(tuple_data, index)`** | Argument | Type | Semantics |
+| ------------ | ----- | -------------------- | | `tuple_data` | XlaOP | The
+tuple | | `index` | int64 | Index of tuple shape |
 
 ## Infeed
 
@@ -2570,6 +2577,20 @@ vice versa. For example,
 Reshape(f32[1x1] {{5}}, {}) == 5;
 Reshape(5, {1,1}) == f32[1x1] {{5}};
 ```
+
+See also
+[StabloHLO reshape](https://github.com/openxla/stablehlo/blob/main/docs/spec.md#reshape)
+
+### Reshape (explicit)
+
+**`Reshape(shape, operand)`**
+
+Reshape op that uses an explicit target shape.
+
+Arguments | Type    | Semantics
+--------- | ------- | ----------------------
+`shape`   | `Shape` | Output shape of type T
+`operand` | `XlaOp` | array of type T
 
 ## Rev (reverse)
 
