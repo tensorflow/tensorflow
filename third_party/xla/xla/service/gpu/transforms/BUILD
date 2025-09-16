@@ -2007,6 +2007,63 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "hoist_fused_bitcasts",
+    srcs = ["hoist_fused_bitcasts.cc"],
+    hdrs = ["hoist_fused_bitcasts.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/hlo/utils:hlo_query",
+        "//xla/service:call_graph",
+        "//xla/service:matmul_indexing_utils",
+        "//xla/service/gpu:matmul_utils",
+        "//xla/service/gpu/model:tiled_hlo_instruction_or_computation",
+        "//xla/stream_executor:device_description",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+xla_cc_test(
+    name = "hoist_fused_bitcasts_test",
+    srcs = ["hoist_fused_bitcasts_test.cc"],
+    tags = [
+        "nomsan",
+    ],
+    deps = [
+        ":hoist_fused_bitcasts",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:filecheck",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/testlib:pattern_matcher_gmock",
+        "//xla/service:pattern_matcher",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu:gpu_device_info_for_tests",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "nest_gemm_fusion",
     srcs = ["nest_gemm_fusion.cc"],
     hdrs = ["nest_gemm_fusion.h"],
@@ -2055,11 +2112,13 @@ xla_cc_test(
         "nomsan",
     ],
     deps = [
+        ":hoist_fused_bitcasts",
         ":nest_gemm_fusion",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:pattern_matcher_gmock",
+        "//xla/hlo/testlib:verified_hlo_module",
         "//xla/service:pattern_matcher",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:gpu_device_info_for_tests",
