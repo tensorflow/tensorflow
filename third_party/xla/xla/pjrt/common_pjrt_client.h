@@ -132,12 +132,18 @@ class CommonPjRtClient : public PjRtClient {
       PjRtMemorySpace* memory_space, const char* callee_type,
       const char* callee_method, PjRtFuture<>::Promise promise);
 
-  // Creates a future from a user-provided future with event tracking and
+  // Track a user-provided future with attached debug_info (if
+  // event_tracking_enabled()).
+  virtual void TrackFuture(PjRtMemorySpace* memory_space,
+                           absl::string_view debug_info,
+                           const PjRtFuture<>& future);
+
+  // Creates a future from a user-provided future with profiling and
   // traceme scopes.
-  virtual PjRtFuture<> CreateTrackedFuture(PjRtMemorySpace* memory_space,
-                                           const char* callee_type,
-                                           const char* callee_method,
-                                           PjRtFuture<> future);
+  virtual PjRtFuture<> CreateProfiledFuture(PjRtMemorySpace* memory_space,
+                                            const char* callee_type,
+                                            const char* callee_method,
+                                            PjRtFuture<> future);
 
   // Create a linked PjRtFuture<> and ::Promise pair for operations on
   // buffers in memory_space which populates debug information like linked

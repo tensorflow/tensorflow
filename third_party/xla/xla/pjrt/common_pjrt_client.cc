@@ -73,11 +73,15 @@ PjRtFuture<>::Promise CommonPjRtClient::CreateUserPromise(
 PjRtFuture<> CommonPjRtClient::CreateFutureFromUserPromise(
     PjRtMemorySpace* memory_space, const char* callee_type,
     const char* callee_method, PjRtFuture<>::Promise promise) {
-  return CreateTrackedFuture(memory_space, callee_type, callee_method,
-                             PjRtFuture<>(std::move(promise)));
+  return CreateProfiledFuture(memory_space, callee_type, callee_method,
+                              PjRtFuture<>(std::move(promise)));
 }
 
-PjRtFuture<> CommonPjRtClient::CreateTrackedFuture(
+void CommonPjRtClient::TrackFuture(PjRtMemorySpace* memory_space,
+                                   absl::string_view debug_info,
+                                   const PjRtFuture<>& future) {}
+
+PjRtFuture<> CommonPjRtClient::CreateProfiledFuture(
     PjRtMemorySpace* memory_space, const char* callee_type,
     const char* callee_method, PjRtFuture<> future) {
   return PjRtFutureHelpers::WithProfiling(
@@ -1203,9 +1207,9 @@ PjRtFuture<> CommonPjRtBufferImpl::GetReadyFuture() {
         "GetReadyFuture() called on deleted or donated buffer"));
   }
   if (!definition_future_) {
-    auto promise = device_buffer()->GetReadyFuturePromise(memory_space());
-    definition_future_ = client()->CreateFutureFromUserPromise(
-        memory_space(), "CommonPjRtBuffer", "Await", std::move(promise));
+    auto future = device_buffer()->GetReadyFuture(memory_space());
+    definition_future_ = client()->CreateProfiledFuture(
+        memory_space(), "CommonPjRtBuffer", "Await", std::move(future));
   }
   return definition_future_;
 }

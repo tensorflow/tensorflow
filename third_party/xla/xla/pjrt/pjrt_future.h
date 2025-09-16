@@ -219,6 +219,11 @@ class PjRtFutureBase : public PjRtFutureMoveControl<is_move_only> {
 
   explicit operator bool() const { return static_cast<bool>(promise_); }
 
+  // Returns a pointer to the underlying AsyncValue that can be used to
+  // track completion of a future. It is undefined behavior to access the
+  // value stored in the AsyncValue.
+  tsl::AsyncValue* async_value() const { return promise_.GetAsyncValue(); }
+
  protected:
   static constexpr bool IsMoveOnly() { return is_move_only; }
 
