@@ -38,15 +38,13 @@ namespace gpu {
 
 class AutotunerPass : public HloModulePass {
  public:
-  // If 'cache_only' is true, tuning is disabled and only cache lookups are
-  // performed. In this mode, 'stream_executor' and 'allocator' can be null.
-  // target_config must outlive the pass.
+  // Note: the target_config must outlive the pass.
   static absl::StatusOr<std::unique_ptr<AutotunerPass>> Create(
       std::vector<std::unique_ptr<CodegenBackend>> backends,
       const DebugOptions& debug_options, se::StreamExecutor* stream_executor,
       tsl::thread::ThreadPool* thread_pool, InstructionFilterFn should_autotune,
       const Compiler::TargetConfig* target_config,
-      se::DeviceMemoryAllocator* allocator = nullptr, bool cache_only = false);
+      se::DeviceMemoryAllocator* allocator = nullptr);
 
   absl::string_view name() const override { return "autotuner"; }
 
