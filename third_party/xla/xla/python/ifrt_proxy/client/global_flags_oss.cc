@@ -44,7 +44,7 @@ int GetIntFromEnv(const char* key) {
     QCHECK(absl::SimpleAtoi(val, &result)) << " " << key << ": '" << val << "'";
     return result;
   }
-  return false;
+  return 0;
 }
 
 }  // namespace
