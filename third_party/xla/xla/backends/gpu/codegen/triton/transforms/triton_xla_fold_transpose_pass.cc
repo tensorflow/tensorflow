@@ -226,7 +226,7 @@ LogicalResult PushTransposeUpIntoIf(TransOp op, PatternRewriter& rewriter) {
   }
 
   // Compute the new types for the if op.
-  unsigned result_number = cast<OpResult>(op.getSrc()).getResultNumber();
+  unsigned result_number = cast<OpResult>(src).getResultNumber();
   auto new_types = llvm::to_vector(if_op.getResultTypes());
   new_types[result_number] = op.getType();
 
@@ -250,6 +250,19 @@ LogicalResult PushTransposeUpIntoIf(TransOp op, PatternRewriter& rewriter) {
   }
   rewriter.replaceOp(op, new_if_op.getResult(result_number));
   rewriter.replaceOp(if_op, new_if_op);
+  return success();
+}
+
+LogicalResult HoistTransposeUpFromIf(TransOp op, PatternRewriter& rewriter) {
+  scf::IfOp if_op = dyn_cast<scf::IfOp>(op->getParentOp());
+  if (!if_op) {
+    return rewriter.notifyMatchFailure(op, "Not a child of scf.if.");
+  }
+  if (!op.getSrc().getParentRegion()->isAncestor(if_op->getParentRegion())) {
+    return rewriter.notifyMatchFailure(op, "Operand defined inside scf.if.");
+  }
+
+  op->moveBefore(if_op);
   return success();
 }
 
@@ -321,6 +334,7 @@ class TritonXLAFoldTransposePass
     RewritePatternSet patterns(&getContext());
     patterns.add(FoldTransposeOfExtract);
     patterns.add(PushTransposeUpIntoIf);
+    patterns.add(HoistTransposeUpFromIf, /*benefit=*/2);
     patterns.add(PushTransposeUpThroughBroadcast);
     patterns.add(PushTransposeUpThroughElementwise);
     patterns.add(PushTransposeUpThroughExpandDims);

@@ -39,13 +39,15 @@ func.func @push_transpose_up_through_elementwise(%arg0: tensor<4x8xf32>) -> tens
   return %1 : tensor<8x4xf32>
 }
 
-// CHECK-LABEL: func @push_transpose_up_into_if
-func.func @push_transpose_up_into_if(%arg0: tensor<4x8xf32>, %arg1: tensor<4x8xf32>, %cond: i1) -> tensor<8x4xf32> {
+// CHECK-LABEL: func @push_transpose_up_through_if
+func.func @push_transpose_up_through_if(%arg0: tensor<4x8xf32>, %arg1: tensor<4x8xf32>, %cond: i1) -> tensor<8x4xf32> {
+  // CHECK-DAG: %[[TRANS0:.*]] = tt.trans %arg0 {order = array<i32: 1, 0>} : tensor<4x8xf32> -> tensor<8x4xf32>
+  // CHECK-DAG: %[[TRANS1:.*]] = tt.trans %arg1 {order = array<i32: 1, 0>} : tensor<4x8xf32> -> tensor<8x4xf32>
   %0 = scf.if %cond -> tensor<4x8xf32> {
-    // CHECK: tt.trans %arg0 {order = array<i32: 1, 0>} : tensor<4x8xf32> -> tensor<8x4xf32>
+    // CHECK: scf.yield %[[TRANS0]] : tensor<8x4xf32>
     scf.yield %arg0 : tensor<4x8xf32>
   } else {
-    // CHECK: tt.trans %arg1 {order = array<i32: 1, 0>} : tensor<4x8xf32> -> tensor<8x4xf32>
+    // CHECK: scf.yield %[[TRANS1]] : tensor<8x4xf32>
     scf.yield %arg1 : tensor<4x8xf32>
   }
   // CHECK-NOT: tt.trans
