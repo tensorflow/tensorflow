@@ -1,0 +1,22 @@
+
+--- a/third_party/amd/lib/TritonAMDGPUTransforms/CanonicalizePointers.cpp	2025-07-31 00:13:23.000000000 -0700
++++ b/third_party/amd/lib/TritonAMDGPUTransforms/CanonicalizePointers.cpp	2025-09-15 18:51:17.000000000 -0700
+@@ -1415,7 +1415,8 @@
+     if (auto integerAttr =
+             llvm::dyn_cast_or_null<mlir::IntegerAttr>(maybeAttr)) {
+       if (integerAttr.getValue() == 0) {
+-        rewriter.replaceAllUsesWith(castOp.getResult(0), fatPtrBase);
++        rewriter.RewriterBase::replaceAllUsesWith(
++          castOp.getResult(0), fatPtrBase);
+         rewriter.eraseOp(castOp);
+         return success();
+       }
+@@ -1425,7 +1426,7 @@
+         fatPtrs.at({fatPtrBase, fatPtrOffset});
+     auto newPtr = createTensorPointer(rewriter, fatPtrBase, fatPtrOffset,
+                                       castOp.getLoc(), fatPtrAttrs);
+-    rewriter.replaceAllUsesWith(newPtr, fatPtrBase);
++    rewriter.RewriterBase::replaceAllUsesWith(newPtr, fatPtrBase);
+     rewriter.eraseOp(castOp);
+     return success();
+   }
