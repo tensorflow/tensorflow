@@ -261,3 +261,30 @@ xla_cc_test(
         "@llvm-project//llvm:Support",
     ],
 )
+
+cc_library(
+    name = "symbolic_map_converter",
+    srcs = ["symbolic_map_converter.cc"],
+    hdrs = ["symbolic_map_converter.h"],
+    deps = [
+        ":symbolic_expr",
+        ":symbolic_map",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+xla_cc_test(
+    name = "symbolic_map_converter_test",
+    srcs = ["symbolic_map_converter_test.cc"],
+    deps = [
+        ":symbolic_expr",
+        ":symbolic_map",
+        ":symbolic_map_converter",
+        "//xla/hlo/analysis:indexing_test_utils",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+    ],
+)
