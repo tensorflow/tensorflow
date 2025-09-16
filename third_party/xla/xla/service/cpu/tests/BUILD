@@ -3,6 +3,7 @@
 
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
+load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "tsl_copts")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
 load("//xla/tsl/mkl:build_defs.bzl", "if_graph_api")
@@ -139,9 +140,11 @@ xla_cc_test(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "cpu_ffi_test",
     srcs = ["cpu_ffi_test.cc"],
+    backends = ["cpu"],
+    tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
         "//xla:debug_options_flags",
         "//xla:shape_util",
@@ -150,7 +153,6 @@ xla_cc_test(
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/ir:hlo",
         "//xla/tests:hlo_pjrt_test_base",
-        "//xla/tests:pjrt_cpu_client_registry",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:test",
