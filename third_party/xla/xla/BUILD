@@ -1470,33 +1470,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "debug_me_context_util",
-    srcs = ["debug_me_context_util.cc"],
-    hdrs = ["debug_me_context_util.h"],
-    deps = [
-        "//xla/hlo/pass:hlo_pass",
-        "//xla/tsl/platform:debug_me_context",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-xla_cc_test(
-    name = "debug_me_context_util_test",
-    srcs = ["debug_me_context_util_test.cc"],
-    deps = [
-        ":debug_me_context_util",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/ir:hlo_module_group",
-        "//xla/hlo/pass:hlo_pass",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
 xla_cc_test(
     name = "tuple_tree_test",
     srcs = ["tuple_tree_test.cc"],

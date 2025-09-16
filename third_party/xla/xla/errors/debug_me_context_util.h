@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_DEBUG_ME_CONTEXT_UTIL_H_
-#define XLA_DEBUG_ME_CONTEXT_UTIL_H_
+#ifndef XLA_ERRORS_DEBUG_ME_CONTEXT_UTIL_H_
+#define XLA_ERRORS_DEBUG_ME_CONTEXT_UTIL_H_
 
 #include <string>
 
@@ -35,7 +35,7 @@ namespace xla {
 // Foward declaration
 class HloPassInterface;
 
-namespace debug_me_context_util {
+namespace error {
 
 enum class DebugMeContextKey {
   kCompiler,
@@ -56,7 +56,7 @@ class HloPassDebugMeContext : public tsl::DebugMeContext<DebugMeContextKey> {
   explicit HloPassDebugMeContext(const HloPassInterface* pass);
 };
 
-}  // namespace debug_me_context_util
+}  // namespace error
 }  // namespace xla
 
-#endif  // XLA_DEBUG_ME_CONTEXT_UTIL_H_
+#endif  // XLA_ERRORS_DEBUG_ME_CONTEXT_UTIL_H_

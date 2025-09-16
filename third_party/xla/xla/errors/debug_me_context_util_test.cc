@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/debug_me_context_util.h"
+#include "xla/errors/debug_me_context_util.h"
 
 #include <string>
 
@@ -48,9 +48,9 @@ TEST(DebugMeContextUtil, BasicHloPass) {
   };
 
   TestPass test_pass;
-  debug_me_context_util::HloPassDebugMeContext ctx(&test_pass);
+  error::HloPassDebugMeContext ctx(&test_pass);
   const std::string error_message =
-      debug_me_context_util::DebugMeContextToErrorMessageString();
+      error::DebugMeContextToErrorMessageString();
 
   EXPECT_TRUE(absl::StrContains(error_message, test_pass.name()));
 }
