@@ -6164,7 +6164,12 @@ absl::StatusOr<bool> SpmdPartitioner::PreprocessCallSites(
 void SpmdPartitioningVisitor::SetPartitionedHlo(
     const HloInstruction* hlo, PartitionedHlo&& partitioned_hlo) {
   CHECK_EQ(partitioned_instructions_.count(hlo), 0);
-  if (!partitioned_hlo.sharding().IsReplicated()) {
+  const HloSharding& sharding = partitioned_hlo.sharding();
+  if (sharding.IsManual()) {
+    // Skip manual sharding because our toolings currently don't support it.
+    // TODO(b/444750067): handle manual sharding.
+    partitioned_hlo.hlo()->set_original_value(nullptr);
+  } else if (!sharding.IsReplicated()) {
     // Adds recovery computation to the original value recovery table.
     auto* module = const_cast<HloModule*>(hlo->parent()->parent());
     module->mutable_original_value_recovery_table().AddRecoveryComputation(
@@ -6177,11 +6182,10 @@ void SpmdPartitioningVisitor::SetPartitionedHlo(
           auto* param =
               builder.AddInstruction(xla::HloInstruction::CreateParameter(
                   0, replacing_array_shape, "param"));
-          if (partitioned_hlo.sharding().IsTuple()) {
-            param->set_sharding(
-                partitioned_hlo.sharding().GetSubSharding(hlo->shape(), index));
+          if (sharding.IsTuple()) {
+            param->set_sharding(sharding.GetSubSharding(hlo->shape(), index));
           } else {
-            param->set_sharding(partitioned_hlo.sharding());
+            param->set_sharding(sharding);
           }
           xla::HloModuleConfig config;
           auto recovery_module =
