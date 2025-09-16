@@ -2842,9 +2842,11 @@ absl::StatusOr<bool> LayoutAssignment::Run(
 bool LayoutAssignment::InstructionCanChangeLayout(
     const HloInstruction* instruction) {
   switch (instruction->opcode()) {
+#define CASE_STMT(name, ...) case HloOpcode::k##name:
+    UNARY_OPS_WITH_ACCURACY(CASE_STMT)
+#undef CASE_STMT
+
     case HloOpcode::kAbs:
-    case HloOpcode::kAcos:
-    case HloOpcode::kAcosh:
     case HloOpcode::kAdd:
     case HloOpcode::kAddDependency:
     case HloOpcode::kAnd:
@@ -2857,7 +2859,6 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kComplex:
     case HloOpcode::kConcatenate:
     case HloOpcode::kConvert:
-    case HloOpcode::kCos:
     case HloOpcode::kAllGather:
     case HloOpcode::kAllGatherStart:
     case HloOpcode::kAllGatherDone:
@@ -2867,16 +2868,10 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kDivide:
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kDynamicUpdateSlice:
-    case HloOpcode::kErf:
-    case HloOpcode::kExp:
-    case HloOpcode::kExpm1:
     case HloOpcode::kFft:
     case HloOpcode::kFloor:
     case HloOpcode::kImag:
     case HloOpcode::kIsFinite:
-    case HloOpcode::kLog:
-    case HloOpcode::kLog1p:
-    case HloOpcode::kLogistic:
     case HloOpcode::kMap:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
@@ -2895,7 +2890,6 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kReverse:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kRoundNearestEven:
-    case HloOpcode::kRsqrt:
     case HloOpcode::kScatter:
     case HloOpcode::kSelect:
     case HloOpcode::kSelectAndScatter:
@@ -2903,16 +2897,11 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
     case HloOpcode::kSign:
-    case HloOpcode::kSin:
     case HloOpcode::kSlice:
     case HloOpcode::kSort:
     case HloOpcode::kTopK:
-    case HloOpcode::kSqrt:
-    case HloOpcode::kCbrt:
     case HloOpcode::kSubtract:
     case HloOpcode::kStochasticConvert:
-    case HloOpcode::kTan:
-    case HloOpcode::kTanh:
     case HloOpcode::kPopulationCount:
     case HloOpcode::kTriangularSolve:
     case HloOpcode::kCholesky:
