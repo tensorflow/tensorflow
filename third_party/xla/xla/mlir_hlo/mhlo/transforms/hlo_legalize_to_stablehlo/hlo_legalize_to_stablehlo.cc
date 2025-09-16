@@ -113,6 +113,11 @@ std::optional<int64_t> getPublicFeaturesNotInStablehlo(HloOpTy hloOp) {
     // Version 1: Initial version for ErfOp.
     return 1;
   }
+  // StableHLO doesn't support Acosh yet.
+  if constexpr (std::is_same<HloOpTy, mhlo::AcoshOp>::value) {
+    // Version 1: Initial version for AcoshOp.
+    return 1;
+  }
   return std::nullopt;
 }
 
@@ -439,7 +444,8 @@ LogicalResult convertAttributes(ConversionPatternRewriter& rewriter,
     }
 
     // Handle DenseElements --> DenseArray for certain StableHLO ops
-    if constexpr (!std::is_same<HloOpTy, mhlo::ErfOp>::value &&
+    if constexpr (!std::is_same<HloOpTy, mhlo::AcoshOp>::value &&
+                  !std::is_same<HloOpTy, mhlo::ErfOp>::value &&
                   !std::is_same<HloOpTy, mhlo::TopKOp>::value) {
       if (!stablehloAttr)
         stablehloAttr = convertDenseArray<HloToStablehloOp<HloOpTy>>(
@@ -707,7 +713,8 @@ void populateHloToStablehloPatterns(RewritePatternSet* patterns,
 #include "stablehlo/dialect/StablehloOps.cpp.inc"
       >(patterns, converter, context, allowExperimentalFeatures);
 
-  populateHloToStablehloCustomCallPatterns<mhlo::TopKOp, mhlo::ErfOp>(
+  populateHloToStablehloCustomCallPatterns<mhlo::AcoshOp, mhlo::ErfOp,
+                                           mhlo::TopKOp>(
       patterns, converter, context, allowExperimentalFeatures);
 }
 

@@ -230,6 +230,15 @@ struct ErfOpToCustomCallPattern : public OpRewritePattern<chlo::ErfOp> {
   }
 };
 
+struct AcoshOpToCustomCallPattern : public OpRewritePattern<chlo::AcoshOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(chlo::AcoshOp op,
+                                PatternRewriter& rewriter) const override {
+    return wrapChloOperationInCustomCall(rewriter, op, "mhlo.acosh",
+                                         /*version=*/1);
+  }
+};
+
 ///////
 // CHLO to CompositeOp Patterns
 ///////
@@ -273,6 +282,14 @@ struct ErfOpToCompositePattern : public OpRewritePattern<chlo::ErfOp> {
   }
 };
 
+struct AcoshOpToCompositePattern : public OpRewritePattern<chlo::AcoshOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(chlo::AcoshOp op,
+                                PatternRewriter& rewriter) const override {
+    return wrapChloOpInComposite(op, /*version=*/1, rewriter);
+  }
+};
+
 }  // namespace
 
 struct ChloPreserveHighLevelOpsPass
@@ -290,17 +307,24 @@ struct ChloPreserveHighLevelOpsPass
         .setMaxNumRewrites(GreedyRewriteConfig::kNoLimit)
         .setStrictness(GreedyRewriteStrictness::ExistingOps);
 
+    auto* ctx = &getContext();
     RewritePatternSet patterns(&getContext());
+    // clang-format off
     if (useDeprecatedCustomCallEncoding) {
       // Deprecated CustomCall encoding.
-      patterns.add<RaggedDotOpToCustomCallPattern>(patterns.getContext());
-      patterns.add<TopKOpToCustomCallPattern>(&getContext());
-      patterns.add<ErfOpToCustomCallPattern>(&getContext());
+      patterns.add<
+        AcoshOpToCustomCallPattern,
+        ErfOpToCustomCallPattern,
+        RaggedDotOpToCustomCallPattern,
+        TopKOpToCustomCallPattern>(ctx);
     } else {
-      patterns.add<RaggedDotOpToCompositePattern>(patterns.getContext());
-      patterns.add<TopKOpToCompositePattern>(&getContext());
-      patterns.add<ErfOpToCompositePattern>(&getContext());
+      patterns.add<
+        AcoshOpToCompositePattern,
+        ErfOpToCompositePattern,
+        RaggedDotOpToCompositePattern,
+        TopKOpToCompositePattern>(ctx);
     }
+    // clang-format on
 
     // Only apply to CustomCallOps
     auto moduleOp = getOperation();

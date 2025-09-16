@@ -78,6 +78,9 @@ limitations under the License.
 #include "xla/util.h"
 
 namespace xla {
+namespace {
+using mlir::mhlo::ChloLegalizeToHighLevelMhloPassOptions;
+}
 
 void RegisterAllHloDialects(mlir::DialectRegistry& registry) {
   registry.insert<mlir::arith::ArithDialect>();
@@ -90,10 +93,10 @@ void RegisterAllHloDialects(mlir::DialectRegistry& registry) {
   mlir::stablehlo::registerAllDialects(registry);
 }
 
-absl::Status MlirToXlaComputation(mlir::ModuleOp module,
-                                  XlaComputation& xla_computation,
-                                  bool use_tuple_args, bool return_tuple,
-                                  ExecutableBuildOptions* exec_build_options) {
+absl::Status MlirToXlaComputation(
+    mlir::ModuleOp module, XlaComputation& xla_computation, bool use_tuple_args,
+    bool return_tuple, ExecutableBuildOptions* exec_build_options,
+    const ChloLegalizeToHighLevelMhloPassOptions& chlo_opts) {
   mlir::MLIRContext* context = module->getContext();
   mlir::BaseScopedDiagnosticHandler diagnostic_handler(context);
   {
@@ -123,7 +126,7 @@ absl::Status MlirToXlaComputation(mlir::ModuleOp module,
         mlir::stablehlo_ext::createChloRecomposeOpsPass());
     pm.addPass(mlir::createSymbolDCEPass());
     pm.addNestedPass<mlir::func::FuncOp>(
-        mlir::mhlo::createChloLegalizeToHighLevelMhloPass());
+        mlir::mhlo::createChloLegalizeToHighLevelMhloPass(chlo_opts));
     pm.addNestedPass<mlir::func::FuncOp>(
         mlir::stablehlo::createChloLegalizeToStablehloPass());
 

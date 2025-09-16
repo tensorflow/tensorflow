@@ -49,6 +49,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/xla_legalize_targets.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"  // IWYU pragma: keep, dependent dialect
+#include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/mlir_hlo/mhlo/transforms/rewriters.h"
 #include "xla/mlir_hlo/mhlo/utils/type_conversion.h"
 #include "tensorflow/core/lib/monitoring/counter.h"

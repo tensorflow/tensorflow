@@ -37,6 +37,13 @@ namespace mhlo {
 #define GEN_PASS_DECL
 #include "mhlo/transforms/mhlo_passes.h.inc"
 
+/// Returns the default options for the ChloLegalizeToHighLevelMhloPass. These
+/// options specify the ops that are supported by all XLA backends.
+ChloLegalizeToHighLevelMhloPassOptions getDefaultChloToHighLevelMhloOptions();
+
+/// Returns options for the ChloLegalizeToHighLevelMhloPass for the GPU backend.
+ChloLegalizeToHighLevelMhloPassOptions getGpuChloToHighLevelMhloOptions();
+
 /// Lowers from HLO dialect to Arithmetic dialect.
 std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToArithmeticPass();
 

@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <limits>
+#include <optional>
 #include <type_traits>
 #include <vector>
 
@@ -35,6 +36,7 @@ limitations under the License.
 #include "xla/hlo/builder/lib/loops.h"
 #include "xla/hlo/builder/lib/math_impl.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
@@ -1223,7 +1225,11 @@ XlaOp Atan(XlaOp x) { return Atan2(x, ScalarLike(x, 1.0)); }
 // If x^2 will overflow, we approximate sqrt(x^2 - 1) == x and compute as
 // log(2*x) = log(2) + log(x).  (Note this works because negative x never
 // overflows; x < -1 simply yields nan.  This is quite different than asinh!)
-XlaOp Acosh(XlaOp x) {
+XlaOp Acosh(XlaOp x, const std::optional<ResultAccuracy>& result_accuracy,
+            bool expand) {
+  if (!expand) {
+    return x.builder()->UnaryOp(HloOpcode::kAcosh, x, result_accuracy);
+  }
   XlaBuilder* b = x.builder();
   return b->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(auto shape, b->GetShape(x));
