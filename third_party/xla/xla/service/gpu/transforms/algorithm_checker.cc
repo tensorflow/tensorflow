@@ -78,15 +78,9 @@ class AlgorithmCheckerVisitor : public ConstDfsHloVisitorWithDefault {
     PrimitiveType rhs_storage_type = hlo->operand(1)->shape().element_type();
     PrimitiveType output_storage_type = hlo->shape().element_type();
 
-    if (lhs_storage_type != rhs_storage_type) {
-      return absl::UnimplementedError(absl::StrFormat(
-          "Dot operands must have the same type when using an algorithm: %s",
-          hlo->ToString()));
-    }
-
     return algorithm_util::IsSupportedDotAlgorithmOnGpu(
                config.algorithm(), gpu_compute_capability_, lhs_storage_type,
-               output_storage_type)
+               rhs_storage_type, output_storage_type)
                ? absl::OkStatus()
                : absl::UnimplementedError(absl::StrFormat(
                      "Unsupported algorithm on the current device(s): %s",

@@ -15,14 +15,17 @@ limitations under the License.
 
 #include "xla/service/algorithm_util.h"
 
+#include <cstdint>
 #include <variant>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/primitive_util.h"
 #include "xla/stream_executor/blas.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"
@@ -216,7 +219,8 @@ bool IsSupportedByElementalIrEmitter(PrecisionConfig::Algorithm algorithm) {
 bool IsSupportedDotAlgorithmOnGpu(
     PrecisionConfig::Algorithm algorithm,
     const stream_executor::GpuComputeCapability& gpu_compute_capability,
-    PrimitiveType input_storage_type, PrimitiveType output_storage_type) {
+    PrimitiveType lhs_storage_type, PrimitiveType rhs_storage_type,
+    PrimitiveType output_storage_type) {
   // Note: We may want to add some complex types here if people request that.
   const bool is_cuda_ge_ampere =
       std::holds_alternative<se::CudaComputeCapability>(
@@ -245,18 +249,35 @@ bool IsSupportedDotAlgorithmOnGpu(
   switch (algorithm) {
     case PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32:
     case PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32_FAST_ACCUM:
+      if (!is_cuda_ge_ada && !is_rocm_mi100_and_above) {
+        return false;
+      }
+      if (output_storage_type != BF16 && output_storage_type != F16 &&
+          output_storage_type != F32 && output_storage_type != F8E4M3FN &&
+          output_storage_type != F8E5M2) {
+        return false;
+      }
       // Other F8 types are actually not supported by NVIDIA GPUs.
-      return (is_cuda_ge_ada || is_rocm_mi100_and_above) &&
-             (input_storage_type == F8E5M2 || input_storage_type == F8E4M3FN) &&
-             (output_storage_type == F8E5M2 ||
-              output_storage_type == F8E4M3FN || output_storage_type == F16 ||
-              output_storage_type == BF16 || output_storage_type == F32);
+      // Reference: https://docs.nvidia.com/cuda/cublas/#cublasltmatmul
+      if (lhs_storage_type == F8E5M2 && rhs_storage_type == F8E4M3FN) {
+        return true;
+      }
+      if (lhs_storage_type == F8E4M3FN &&
+          (rhs_storage_type == F8E5M2 || rhs_storage_type == F8E4M3FN)) {
+        return true;
+      }
+      return false;
     case PrecisionConfig::ALG_DOT_F16_F16_F32:
-      return input_storage_type == F16 &&
+      return lhs_storage_type == rhs_storage_type && lhs_storage_type == F16 &&
              (output_storage_type == F16 || output_storage_type == F32);
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32:
-      if (!is_cuda_ge_ampere && !is_rocm_bf16) return false;
-      switch (input_storage_type) {
+      if (!is_cuda_ge_ampere && !is_rocm_bf16) {
+        return false;
+      }
+      if (lhs_storage_type != rhs_storage_type) {
+        return false;
+      }
+      switch (lhs_storage_type) {
         case BF16:
           return output_storage_type == BF16 || output_storage_type == F32;
         case F32:
@@ -267,16 +288,20 @@ bool IsSupportedDotAlgorithmOnGpu(
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3:
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6:
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9:
-      return (is_cuda_ge_ampere || is_rocm_bf16) && input_storage_type == F32 &&
+      return (is_cuda_ge_ampere || is_rocm_bf16) &&
+             lhs_storage_type == rhs_storage_type && lhs_storage_type == F32 &&
              output_storage_type == F32;
     case PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3:
     case PrecisionConfig::ALG_DOT_TF32_TF32_F32:
       return (is_cuda_ge_ampere || is_rocm_mi100_and_above) &&
-             input_storage_type == F32 && output_storage_type == F32;
+             lhs_storage_type == rhs_storage_type && lhs_storage_type == F32 &&
+             output_storage_type == F32;
     case PrecisionConfig::ALG_DOT_F32_F32_F32:
-      return input_storage_type == F32 && output_storage_type == F32;
+      return lhs_storage_type == rhs_storage_type && lhs_storage_type == F32 &&
+             output_storage_type == F32;
     case PrecisionConfig::ALG_DOT_F64_F64_F64:
-      return input_storage_type == F64 && output_storage_type == F64;
+      return lhs_storage_type == rhs_storage_type && lhs_storage_type == F64 &&
+             output_storage_type == F64;
     default:
       return false;
   }
