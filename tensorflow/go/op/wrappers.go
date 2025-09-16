@@ -11735,6 +11735,10 @@ func DecodeCSVNaValue(value string) DecodeCSVAttr {
 }
 
 // DecodeCSVSelectCols sets the optional select_cols attribute to value.
+//
+// value: Optional sorted list of column indices to select. If specified,
+// only this subset of columns will be parsed and returned.
+// It only works on `records` except for `record_defaults`.
 // If not specified, defaults to {}
 func DecodeCSVSelectCols(value []int64) DecodeCSVAttr {
 	return func(m optionalAttr) {
