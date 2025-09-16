@@ -1026,7 +1026,7 @@ LaunchCmd::LaunchCmd(
 absl::Status LaunchCmd::Initialize(const Thunk::InitializeParams& params,
                                    StateManager& state) {
   {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     if (kernels_.contains(params.executor)) {
       return absl::OkStatus();
     }
@@ -1044,7 +1044,7 @@ absl::Status LaunchCmd::Initialize(const Thunk::InitializeParams& params,
                              params.executor, shmem_bytes_));
   }
 
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   kernels_.emplace(params.executor, std::move(kernel));
   return absl::OkStatus();
 }
@@ -1058,7 +1058,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> LaunchCmd::Record(
 
   se::StreamExecutor* executor = execute_params.stream->parent();
   se::Kernel* kernel = [&] {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     return kernels_[executor].get();
   }();
 
@@ -1134,7 +1134,7 @@ CustomKernelLaunchCmd::CustomKernelLaunchCmd(
 absl::Status CustomKernelLaunchCmd::Initialize(
     const Thunk::InitializeParams& params, StateManager& state) {
   {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     if (kernels_.contains(params.executor)) {
       return absl::OkStatus();
     }
@@ -1144,7 +1144,7 @@ absl::Status CustomKernelLaunchCmd::Initialize(
       std::unique_ptr<se::Kernel> kernel,
       params.executor->LoadKernel(custom_kernel_.kernel_spec()));
 
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   kernels_.emplace(params.executor, std::move(kernel));
   return absl::OkStatus();
 }
@@ -1156,7 +1156,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> CustomKernelLaunchCmd::Record(
   VLOG(5) << "CustomKernelLaunchCmd: custom_kernel=" << custom_kernel_.name();
 
   se::Kernel* kernel = [&] {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     return kernels_[execute_params.stream->parent()].get();
   }();
 
@@ -2398,7 +2398,7 @@ bool DynamicSliceFusionCmd::requires_initialization() {
 absl::Status DynamicSliceFusionCmd::Initialize(
     const Thunk::InitializeParams& params, StateManager& state) {
   TF_RETURN_IF_ERROR(embedded_commands_.Initialize(params, state));
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   if (offsets_allocs_.contains(params.executor)) {
     return absl::OkStatus();
   }
@@ -2449,7 +2449,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> DynamicSliceFusionCmd::Record(
 
   // Get memory allocation for copying offsets from device.
   int64_t* offsets_alloc = [&] {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     return reinterpret_cast<int64_t*>(
         offsets_allocs_.at(stream.parent())->opaque());
   }();

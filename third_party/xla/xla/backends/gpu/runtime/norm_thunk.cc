@@ -52,7 +52,7 @@ NormThunk::NormThunk(ThunkInfo thunk_info, GpuNormConfig config,
 
 NormRunner& NormThunk::GetOrCreateRunner(
     const stream_executor::Stream* stream) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   auto it = runner_cache_.find(stream);
   if (it == runner_cache_.end()) {
     it = runner_cache_.insert({stream, std::make_unique<NormRunner>(config_)})

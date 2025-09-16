@@ -201,7 +201,7 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
       GetAllReduceStrategy(GetInputSizeBytes()));
   StreamState* state = nullptr;
   {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     if (!per_stream_state_.contains(params.executor)) {
       // Step1: Allocate local buffer
       TF_ASSIGN_OR_RETURN(
@@ -276,7 +276,7 @@ absl::Status CollectiveKernelThunk::ExecuteOnStream(
       << "is not in the clique.";
   StreamState* state = nullptr;
   {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     auto it = per_stream_state_.find(stream->parent());
     TF_RET_CHECK(it != per_stream_state_.end())
         << "Stream not found in per_stream_state_";

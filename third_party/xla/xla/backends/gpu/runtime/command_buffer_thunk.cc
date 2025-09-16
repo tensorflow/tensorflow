@@ -146,7 +146,7 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
 
   TF_ASSIGN_OR_RETURN(std::shared_ptr<ExecutorCommandBuffer> cmd_buffer,
                       GetOrCreateCommandBuffer(params.executor));
-  absl::MutexLock lock(&cmd_buffer->mutex);
+  absl::MutexLock lock(cmd_buffer->mutex);
 
   // Initialize commands.
   TF_RETURN_IF_ERROR(commands_.Initialize(params, cmd_buffer->state));
@@ -236,7 +236,7 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
   TF_ASSIGN_OR_RETURN(std::shared_ptr<ExecutorCommandBuffer> cmd_buffer,
                       GetOrCreateCommandBuffer(executor));
 
-  absl::MutexLock lock(&cmd_buffer->mutex);
+  absl::MutexLock lock(cmd_buffer->mutex);
 
   // Update buffer allocations and collect all allocations that changed since
   // the last command buffer execution.
@@ -289,7 +289,7 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
 
 absl::StatusOr<std::shared_ptr<CommandBufferThunk::ExecutorCommandBuffer>>
 CommandBufferThunk::GetOrCreateCommandBuffer(se::StreamExecutor* executor) {
-  absl::MutexLock lock(&state_->mutex);
+  absl::MutexLock lock(state_->mutex);
 
   // Check if command buffer already exists
   if (auto it = state_->command_buffers.find(executor);
@@ -326,7 +326,7 @@ CommandBufferThunk::GlobalState* CommandBufferThunk::GetGlobalState() {
 void CommandBufferThunk::TrackCommandBuffers(
     std::weak_ptr<CommandBufferThunk::State> state) {
   auto* global_state = GetGlobalState();
-  absl::MutexLock global_state_lock(&global_state->mutex);
+  absl::MutexLock global_state_lock(global_state->mutex);
   global_state->state.push_back(state);
 }
 
@@ -334,7 +334,7 @@ void CommandBufferThunk::EvictCommandBuffers() {
   TraceMe trace([&] { return "EvictCommandBuffers"; });
 
   auto* global_state = GetGlobalState();
-  absl::MutexLock global_state_lock(&global_state->mutex);
+  absl::MutexLock global_state_lock(global_state->mutex);
   VLOG(3) << "Evict command buffer thunk command buffers; tracked thunks = "
           << global_state->state.size();
 
@@ -353,7 +353,7 @@ void CommandBufferThunk::EvictCommandBuffers() {
     }
 
     // Evict all command buffers.
-    absl::MutexLock state_lock(&ptr->mutex);
+    absl::MutexLock state_lock(ptr->mutex);
     num_evicted += ptr->command_buffers.size();
     ptr->command_buffers.clear();
   }

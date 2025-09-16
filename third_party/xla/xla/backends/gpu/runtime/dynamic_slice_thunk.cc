@@ -151,7 +151,7 @@ absl::Status DynamicSliceThunk::Prepare(
 absl::Status DynamicSliceThunk::Initialize(const InitializeParams& params) {
   TF_RETURN_IF_ERROR(embedded_thunk_->Initialize(params));
 
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   if (offsets_allocs_.contains(params.executor)) return absl::OkStatus();
 
   VLOG(2) << "Allocate " << offsets_allocs_size_
@@ -173,7 +173,7 @@ absl::Status DynamicSliceThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   // Get memory allocation for copying offsets from device.
   int64_t* offsets_alloc = [&] {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     return reinterpret_cast<int64_t*>(
         offsets_allocs_.at(stream.parent())->opaque());
   }();

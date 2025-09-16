@@ -76,7 +76,7 @@ absl::Status ConditionalThunk::Initialize(const InitializeParams& params) {
     TF_RETURN_IF_ERROR(branch_thunk->Initialize(params));
   }
 
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
 
   if (!host_memory_pools_.contains(params.executor)) {
     PrimitiveType type =
@@ -94,7 +94,7 @@ absl::Status ConditionalThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   HostMemoryPool* pool;
   {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     pool = host_memory_pools_.at(stream.parent()).get();
   }
   TF_ASSIGN_OR_RETURN(HostMemoryPool::Handle handle, pool->Acquire());

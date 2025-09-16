@@ -396,7 +396,7 @@ absl::Status RaggedAllToAllStartThunk::Initialize(
 
   StreamState* state = nullptr;
   {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
 
     // If the stream state already exists, it means that the thunk has been
     // initialized for this executor.
@@ -497,7 +497,7 @@ absl::StatusOr<bool> RaggedAllToAllStartThunk::RunCollective(
 
   StreamState* state = nullptr;
   {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     state = per_stream_states_[stream.parent()].get();
   }
 

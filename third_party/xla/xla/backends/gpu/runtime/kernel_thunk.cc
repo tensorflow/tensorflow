@@ -138,7 +138,7 @@ absl::StatusOr<std::unique_ptr<KernelThunk>> KernelThunk::FromProto(
 }
 
 absl::Status KernelThunk::Initialize(const InitializeParams& params) {
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
 
   // Load the kernel into the device if necessary.
   //
@@ -208,7 +208,7 @@ absl::Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
       GetStreamForExecution(Thunk::execution_stream_id(), params));
 
   {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     auto it = kernel_cache_.find(executor);
     CHECK(it != kernel_cache_.end())
         << "Initialize() not called for StreamExecutor " << executor;
@@ -267,7 +267,7 @@ std::string CustomKernelThunk::ToString(int indent) const {
 }
 
 absl::Status CustomKernelThunk::Initialize(const InitializeParams& params) {
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
 
   if (!kernel_cache_.contains(params.executor)) {
     TF_ASSIGN_OR_RETURN(
@@ -283,7 +283,7 @@ absl::Status CustomKernelThunk::ExecuteOnStream(const ExecuteParams& params) {
   se::StreamExecutor* executor = params.stream->parent();
 
   se::Kernel* kernel = [&] {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     return kernel_cache_[executor].get();
   }();
 
