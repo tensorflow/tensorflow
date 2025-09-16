@@ -17,40 +17,13 @@ limitations under the License.
 
 #include <stdio.h>
 
-#include <cstdint>
-#include <iosfwd>
-#include <limits>
 #include <memory>
-#include <set>
-#include <unordered_set>
 
-#include "absl/base/attributes.h"
-#include "absl/log/check.h"
-#include "absl/log/log.h"
 #include "absl/status/status.h"
-#include "absl/strings/ascii.h"
-#include "absl/strings/match.h"
-#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
-#include "absl/strings/str_split.h"
-#include "absl/strings/string_view.h"
-#include "absl/strings/strip.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "absl/types/span.h"
-#include "xla/tsl/platform/cloud/auth_provider.h"
-#include "xla/tsl/platform/cloud/compute_engine_metadata_client.h"
-#include "xla/tsl/platform/cloud/compute_engine_zone_provider.h"
-#include "xla/tsl/platform/cloud/expiring_lru_cache.h"
-#include "xla/tsl/platform/cloud/gcs_dns_cache.h"
-#include "xla/tsl/platform/cloud/gcs_throttle.h"
-#include "xla/tsl/platform/cloud/http_request.h"
-#include "xla/tsl/platform/cloud/zone_provider.h"
-#include "xla/tsl/platform/file_system.h"
-#include "xla/tsl/platform/status.h"
-#include "xla/tsl/platform/types.h"
 #include "tsl/platform/retrying_file_system.h"
 
 #ifndef _WIN32
@@ -2013,7 +1986,7 @@ absl::Status GcsFileSystem::CreateDir(const string& dirname,
   if (FileExists(dirname_with_slash, token).ok()) {
     // Use the original name for a correct error here.
     VLOG(3) << "CreateDir: directory already exists, not uploading " << dirname;
-    return absl::AlreadyExistsError(dirname);
+    return errors::AlreadyExists(dirname);
   }
 
   std::unique_ptr<HttpRequest> request;
