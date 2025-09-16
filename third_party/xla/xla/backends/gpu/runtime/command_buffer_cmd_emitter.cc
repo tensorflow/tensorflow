@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/all_reduce_thunk.h"
 #include "xla/backends/gpu/runtime/all_to_all_thunk.h"
 #include "xla/backends/gpu/runtime/collective_broadcast_thunk.h"
+#include "xla/backends/gpu/runtime/collective_permute_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd.h"
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
@@ -185,6 +186,13 @@ static absl::StatusOr<Command> Convert(const AllGatherStartThunk& thunk) {
 }
 
 static absl::StatusOr<Command> Convert(
+    const CollectivePermuteStartThunk& thunk) {
+  return std::make_unique<CollectivePermuteCmd>(
+      thunk.GetP2PConfig(), thunk.P2PMemcpyEnabled(), thunk.buffers(),
+      thunk.async_events());
+}
+
+static absl::StatusOr<Command> Convert(
     const CollectiveBroadcastStartThunk& thunk) {
   return std::make_unique<CollectiveBroadcastCmd>(
       thunk.config(), thunk.buffers(), thunk.async_events());
@@ -296,6 +304,8 @@ static absl::Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,
       return append(Convert<AllToAllStartThunk>(thunk));
     case Thunk::Kind::kCollectiveBroadcastStart:
       return append(Convert<CollectiveBroadcastStartThunk>(thunk));
+    case Thunk::Kind::kCollectivePermuteStart:
+      return append(Convert<CollectivePermuteStartThunk>(thunk));
     case Thunk::Kind::kPartitionId:
       return append(Convert<PartitionIdThunk>(thunk));
     case Thunk::Kind::kReplicaId:
@@ -319,6 +329,7 @@ static absl::Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,
     case Thunk::Kind::kAllToAllDone:
     case Thunk::Kind::kCollectiveBroadcastDone:
     case Thunk::Kind::kReduceScatterDone:
+    case Thunk::Kind::kCollectivePermuteDone:
       if (options.synchronization_mode ==
           CommandBufferCmdExecutor::SynchronizationMode::kLHS) {
         return append(absl::StatusOr<Command>(std::make_unique<AsyncDoneCmd>(

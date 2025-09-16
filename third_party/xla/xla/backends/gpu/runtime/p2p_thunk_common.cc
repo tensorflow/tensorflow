@@ -196,13 +196,13 @@ AsyncStreamKind GetStreamKindForP2P(const HloInstruction* instr) {
 // executing device.
 absl::StatusOr<const int64_t> GetCollectiveCurrentId(
     Thunk::CollectiveExecuteParams* collective_params,
-    const P2PConfig& config) {
+    const CollectiveConfig& config) {
   GlobalDeviceId global_device_id = collective_params->global_device_id;
   TF_ASSIGN_OR_RETURN(
       const DeviceAssignment::LogicalID current_logical_id,
       collective_params->device_assn->LogicalIdForDevice(global_device_id));
   const int64_t current_id =
-      config.config.group_mode ==
+      config.group_mode ==
               CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA
           ? current_logical_id.replica_id
           : current_logical_id.computation_id;

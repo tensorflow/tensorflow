@@ -108,8 +108,14 @@ class CollectivePermuteStartThunk : public CollectiveThunk {
 
   static const char* GetHloOpName() { return "collective-permute-start"; }
 
- protected:
   const CollectiveConfig& config() const override { return config_.config; }
+
+  absl::Span<const Buffer> buffers() const { return buffers_; }
+
+  const P2PConfig& GetP2PConfig() const { return config_; }
+  bool P2PMemcpyEnabled() const { return p2p_memcpy_enabled_; }
+
+ protected:
   absl::StatusOr<bool> RunCollective(const ExecuteParams& params,
                                      se::Stream& stream,
                                      CommunicatorHandle comm_handle) override;
@@ -132,7 +138,7 @@ absl::Status RunCollectivePermute(
     P2PConfig::SourceTargetMapEntry source_target,
     std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
     Communicator* comm, absl::string_view device_string, int64_t current_id,
-    bool use_memcpy, CollectivePermuteStartThunk::RecvPtrMap& recv_ptr_map,
+    bool use_memcpy, CollectivePermuteStartThunk::RecvPtrMap* recv_ptr_map,
     bool use_symmetric_buffer = false);
 
 }  // namespace gpu
