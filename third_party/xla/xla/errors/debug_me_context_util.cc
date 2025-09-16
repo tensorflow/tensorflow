@@ -25,29 +25,41 @@ limitations under the License.
 
 namespace xla::error {
 
+namespace {
+
+// Use the X-Macro to generate an iterable list of all enum values.
+#define XLA_DEBUG_ME_CONTEXT_KEY_LIST_ENTRY(name) DebugMeContextKey::k##name,
+constexpr DebugMeContextKey kAllDebugMeContextKeys[] = {
+    XLA_DEBUG_ME_CONTEXT_KEY_LIST(XLA_DEBUG_ME_CONTEXT_KEY_LIST_ENTRY)};
+#undef XLA_DEBUG_ME_CONTEXT_KEY_LIST_ENTRY
+
+}  // namespace
+
+// Use the X-Macro to generate the string conversion function.
+// The '#' operator string-izes the 'name' argument.
+#define XLA_DEBUG_ME_CONTEXT_KEY_TO_STRING_CASE(name) \
+  case DebugMeContextKey::k##name:                    \
+    return #name;
+
+std::string DebugMeContextKeyToString(DebugMeContextKey key) {
+  switch (key) {
+    XLA_DEBUG_ME_CONTEXT_KEY_LIST(XLA_DEBUG_ME_CONTEXT_KEY_TO_STRING_CASE)
+  }
+
+  return "Unknown DebugMeContextKey";
+}
+#undef XLA_DEBUG_ME_CONTEXT_KEY_TO_STRING_CASE
+
 std::string DebugMeContextToErrorMessageString() {
   std::string error_message = "DebugMeContext:\n";
-  {
-    const std::vector<std::string> compiler_values =
-        tsl::DebugMeContext<DebugMeContextKey>::GetValues(
-            DebugMeContextKey::kCompiler);
-    absl::StrAppend(&error_message,
-                    "Compiler: ", absl::StrJoin(compiler_values, "/"), "\n");
+
+  for (DebugMeContextKey key : kAllDebugMeContextKeys) {
+    const std::vector<std::string> values =
+        tsl::DebugMeContext<DebugMeContextKey>::GetValues(key);
+    absl::StrAppend(&error_message, DebugMeContextKeyToString(key), ": ",
+                    absl::StrJoin(values, "/"), "\n");
   }
-  {
-    const std::vector<std::string> hlo_pass_values =
-        tsl::DebugMeContext<DebugMeContextKey>::GetValues(
-            DebugMeContextKey::kHloPass);
-    absl::StrAppend(&error_message,
-                    "HLO Passes: ", absl::StrJoin(hlo_pass_values, "/"), "\n");
-  }
-  {
-    const std::vector<std::string> hlo_instruction_values =
-        tsl::DebugMeContext<DebugMeContextKey>::GetValues(
-            DebugMeContextKey::kHloInstruction);
-    absl::StrAppend(&error_message, "HLO Instructions: ",
-                    absl::StrJoin(hlo_instruction_values, "/"), "\n");
-  }
+
   return error_message;
 }
 

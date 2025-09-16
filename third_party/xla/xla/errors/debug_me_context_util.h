@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_ERRORS_DEBUG_ME_CONTEXT_UTIL_H_
 #define XLA_ERRORS_DEBUG_ME_CONTEXT_UTIL_H_
 
+#include <cstdint>
 #include <string>
 
 #include "xla/tsl/platform/debug_me_context.h"
@@ -23,8 +24,9 @@ limitations under the License.
 // This file provides XLA-specific specializations and utilities for the
 // thread-local debugging context system.
 //
-// The primary goal is to capture the XLA compiler's state (e.g., which HLO
-// pass is running) to provide more insightful diagnostic and error messages.
+// The primary goal is to capture XLA's state (e.g., during
+// compilation - which HLO pass is running, during execution - which program is
+// running) to provide more insightful diagnostic and error messages.
 //
 // This system is built on the generic `tsl::DebugMeContext` class. For a
 // detailed explanation of the underlying RAII mechanism and thread-local
@@ -37,16 +39,32 @@ class HloPassInterface;
 
 namespace error {
 
-enum class DebugMeContextKey {
-  kCompiler,
-  kHloPass,
-  kHloInstruction,
+// An X-Macro list of DebugMeContextKey entries.
+//
+// The macro X takes one argument: the enum/string basename.
+// Used to generate the enumeration of different types of debug context keys.
+// These keys are used to identify the type of context being stored in the
+// thread-local DebugMeContext.
+#define XLA_DEBUG_ME_CONTEXT_KEY_LIST(X) \
+  X(Compiler)                            \
+  X(HloPass)                             \
+  X(HloInstruction)
+
+// Generate the enum using the X-Macro.
+#define XLA_DEBUG_ME_CONTEXT_KEY_ENUM(name) k##name,
+enum class DebugMeContextKey : std::uint8_t {
+  XLA_DEBUG_ME_CONTEXT_KEY_LIST(XLA_DEBUG_ME_CONTEXT_KEY_ENUM)
 };
+#undef XLA_DEBUG_ME_CONTEXT_KEY_ENUM
 
 // This function extracts all relevant context from the DebugMeContext and
 // formats it in a way which is meant to be used when creating error messages in
 // XLA.
 std::string DebugMeContextToErrorMessageString();
+
+// Returns the string representation for a given key, e.g. "HloPass" for the
+// kHloPass key.
+std::string DebugMeContextKeyToString(DebugMeContextKey key);
 
 // This class is a specialization of the RAII DebugMeContext specifically for
 // HloPasses. The details of its constructor dictate what information from the
