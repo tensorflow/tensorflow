@@ -43,8 +43,6 @@ using InstructionFilterFn = absl::FunctionRef<bool(const xla::HloInstruction&)>;
 namespace xla {
 
 struct AutotuneConfig {
-  // Whether to skip configs that failed to compile.
-  bool skip_failing_configs = true;
   // Whether to check the correctness of the output buffers and OOM reads on
   // Input Buffers.
   bool check_buffers = true;

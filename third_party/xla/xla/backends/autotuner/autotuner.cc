@@ -296,6 +296,9 @@ absl::StatusOr<std::vector<Autotuner::ConfigResult>> Autotuner::ProfileAll(
         failure =
             CheckBuffers(*input_buffers, profile_result->output_buffer.value(),
                          reference_output.value());
+        if (failure.has_value()) {
+          CHECK(!autotune_config_.crash_on_check_failure);
+        }
       }
     }
     results_vec.push_back(
@@ -360,7 +363,6 @@ std::optional<Autotuner::Failure> Autotuner::CheckBuffers(
     ScopedShapedBuffer& reference_output) {
   absl::Status status = profiler_->CheckInputBuffers(input_buffers);
   if (!status.ok()) {
-    CHECK(!autotune_config_.crash_on_check_failure);
     return Failure{FailureKind::kRedzoneCheckFailed, status.ToString()};
   }
   status = profiler_->CheckOutputBuffer(output_buffer, reference_output,
