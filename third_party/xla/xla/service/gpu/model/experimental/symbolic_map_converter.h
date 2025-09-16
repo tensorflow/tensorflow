@@ -16,8 +16,12 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_MODEL_EXPERIMENTAL_SYMBOLIC_MAP_CONVERTER_H_
 #define XLA_SERVICE_GPU_MODEL_EXPERIMENTAL_SYMBOLIC_MAP_CONVERTER_H_
 
+#include "llvm/ADT/MapVector.h"
+#include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/hlo/analysis/indexing_map.h"
+#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/gpu/model/experimental/symbolic_map.h"
 
 namespace xla {
@@ -31,6 +35,12 @@ SymbolicMap AffineMapToSymbolicMap(const mlir::AffineMap& affine_map,
 // Returns a null AffineMap if the conversion is not possible.
 mlir::AffineMap SymbolicMapToAffineMap(SymbolicMap symbolic_map,
                                        mlir::MLIRContext* context);
+
+// Converts AffineExpr-based constraints to SymbolicExpr-based constraints.
+llvm::MapVector<SymbolicExpr, Interval>
+ConvertAffineConstraintsToSymbolicConstraints(
+    const llvm::MapVector<mlir::AffineExpr, Interval>& affine_constraints,
+    SymbolicExprContext* context, int num_dims);
 
 }  // namespace gpu
 }  // namespace xla

@@ -16,10 +16,12 @@ limitations under the License.
 #include "xla/service/gpu/model/experimental/symbolic_map_converter.h"
 
 #include <gtest/gtest.h>
+#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
 #include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/service/gpu/model/experimental/symbolic_map.h"
@@ -79,6 +81,33 @@ TEST(SymbolicMapConverterTest, SymbolicToAffineNestedFailure) {
       SymbolicMap::Get(&symbolic_context, 1, 0, {nested_max_expr}),
       &mlir_context);
   EXPECT_FALSE(affine_map);
+}
+
+TEST(SymbolicMapConverterTest, ConvertAffineConstraintsToSymbolicConstraints) {
+  MLIRContext mlir_context;
+  SymbolicExprContext symbolic_context;
+
+  mlir::AffineExpr d0 = mlir::getAffineDimExpr(0, &mlir_context);
+  mlir::AffineExpr s0 = mlir::getAffineSymbolExpr(0, &mlir_context);
+  mlir::AffineExpr c1 = mlir::getAffineConstantExpr(1, &mlir_context);
+
+  llvm::MapVector<mlir::AffineExpr, Interval> affine_constraints;
+  affine_constraints[d0 + s0] = {0, 127};
+  affine_constraints[s0 * 2] = {0, 63};
+  affine_constraints[d0 - c1] = {10, 20};
+
+  llvm::MapVector<SymbolicExpr, Interval> symbolic_constraints =
+      ConvertAffineConstraintsToSymbolicConstraints(
+          affine_constraints, &symbolic_context, /*num_dims=*/1);
+
+  SymbolicExpr sym_d0 = symbolic_context.CreateVariable(0);
+  SymbolicExpr sym_s0 = symbolic_context.CreateVariable(1);
+  SymbolicExpr sym_c1 = symbolic_context.CreateConstant(1);
+
+  EXPECT_EQ(symbolic_constraints.size(), 3);
+  EXPECT_EQ(symbolic_constraints[sym_d0 + sym_s0], (Interval{0, 127}));
+  EXPECT_EQ(symbolic_constraints[sym_s0 * 2], (Interval{0, 63}));
+  EXPECT_EQ(symbolic_constraints[sym_d0 - sym_c1], (Interval{10, 20}));
 }
 
 }  // namespace

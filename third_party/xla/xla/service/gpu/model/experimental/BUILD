@@ -269,6 +269,7 @@ cc_library(
     deps = [
         ":symbolic_expr",
         ":symbolic_map",
+        "//xla/hlo/analysis:indexing_analysis",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
@@ -282,6 +283,7 @@ xla_cc_test(
         ":symbolic_expr",
         ":symbolic_map",
         ":symbolic_map_converter",
+        "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/analysis:indexing_test_utils",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
