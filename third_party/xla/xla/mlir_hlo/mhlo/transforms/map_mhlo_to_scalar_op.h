@@ -26,6 +26,7 @@ limitations under the License.
 #include "mhlo/transforms/transformation_helpers.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Complex/IR/Complex.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -479,6 +480,27 @@ inline Value mapMhloOpToStdScalarOp<mhlo::CompareOp>(
   if (auto complexType = mlir::dyn_cast<ComplexType>(elementType))
     return cmpComplex(loc, lhs, rhs, comparisonDirection, b);
   return nullptr;
+}
+
+template <>
+inline Value mapMhloOpToStdScalarOp<mhlo::Exp10Op>(
+    Location loc, ArrayRef<Type> resultTypes, ArrayRef<Type> argTypes,
+    mhlo::Exp10Op::Adaptor adaptor, ArrayRef<NamedAttribute> /*attributes*/,
+    OpBuilder* b) {
+  Type elementType = getElementTypeOrSelf(argTypes.front());
+  if (mlir::isa<FloatType>(elementType)) {
+    // Use the LLVM intrinsic for exp10.
+    return b->create<mlir::LLVM::Exp10Op>(loc, resultTypes[0],
+                                          adaptor.getOperands()[0]);
+  }
+
+  // Expand using exp10(x) = exp(x * ln(10))
+  Value log10 = getConstantOrSplat(
+      b, loc, resultTypes[0],
+      b->getFloatAttr(elementType, 2.3025850929940456840179914546844));
+  Value x = adaptor.getOperands()[0];
+  Value xLog10 = b->create<mlir::arith::MulFOp>(loc, x, log10);
+  return b->create<mlir::math::ExpOp>(loc, xLog10);
 }
 
 static bool HasDefaultMantissaBits(Type type, uint32_t mantissa_bits) {

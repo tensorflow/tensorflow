@@ -5177,6 +5177,17 @@ LogicalResult ExportXlaOp(UniformDequantizeOp op, OpLoweringContext ctx) {
   return failure();
 }
 
+LogicalResult ExportXlaOp(AcosOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::XlaOp operand;
+  if (failed(GetXlaOp(op.getOperand(), value_map, &operand, op))) {
+    return failure();
+  }
+  value_map[op] =
+      xla::Acos(operand, /*result_accuracy=*/std::nullopt, /*expand=*/false);
+  return success();
+}
+
 LogicalResult ExportXlaOp(AcoshOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   xla::XlaOp operand;
@@ -5185,6 +5196,16 @@ LogicalResult ExportXlaOp(AcoshOp op, OpLoweringContext ctx) {
   }
   value_map[op] =
       xla::Acosh(operand, /*result_accuracy=*/std::nullopt, /*expand=*/false);
+  return success();
+}
+
+LogicalResult ExportXlaOp(Exp10Op op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::XlaOp operand;
+  if (failed(GetXlaOp(op.getOperand(), value_map, &operand, op))) {
+    return failure();
+  }
+  value_map[op] = xla::Exp10(operand, /*result_accuracy=*/std::nullopt);
   return success();
 }
 

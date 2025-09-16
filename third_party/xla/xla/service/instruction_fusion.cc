@@ -205,6 +205,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kDot:
     case HloOpcode::kErf:
     case HloOpcode::kExp:
+    case HloOpcode::kExp10:
     case HloOpcode::kExpm1:
     case HloOpcode::kFft:
     case HloOpcode::kFusion:

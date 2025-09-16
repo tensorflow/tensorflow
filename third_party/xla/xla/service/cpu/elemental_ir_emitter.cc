@@ -60,6 +60,11 @@ absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAcos(
   return Unimplemented("acos");
 }
 
+absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitExp10(
+    PrimitiveType prim_type, llvm::Value* value) {
+  return Unimplemented("exp10");
+}
+
 absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAcosh(
     PrimitiveType prim_type, llvm::Value* value) {
   return Unimplemented("acosh");

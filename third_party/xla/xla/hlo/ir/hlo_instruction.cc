@@ -1308,6 +1308,7 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       case HloOpcode::kCos:
       case HloOpcode::kErf:
       case HloOpcode::kExp:
+      case HloOpcode::kExp10:
       case HloOpcode::kExpm1:
       case HloOpcode::kLog:
       case HloOpcode::kLog1p:
@@ -1499,6 +1500,7 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
     case HloOpcode::kCos:
     case HloOpcode::kErf:
     case HloOpcode::kExp:
+    case HloOpcode::kExp10:
     case HloOpcode::kExpm1:
     case HloOpcode::kLog:
     case HloOpcode::kLog1p:
@@ -2734,6 +2736,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kCos:
     case HloOpcode::kErf:
     case HloOpcode::kExp:
+    case HloOpcode::kExp10:
     case HloOpcode::kExpm1:
     case HloOpcode::kImag:
     case HloOpcode::kIsFinite:
@@ -3206,6 +3209,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kErf:
     case HloOpcode::kExp:
+    case HloOpcode::kExp10:
     case HloOpcode::kExpm1:
     case HloOpcode::kFloor:
     case HloOpcode::kImag:
@@ -3825,6 +3829,7 @@ bool HloInstruction::IsOpElementwise(HloOpcode opcode) {
     case HloOpcode::kCos:
     case HloOpcode::kErf:
     case HloOpcode::kExp:
+    case HloOpcode::kExp10:
     case HloOpcode::kExpm1:
     case HloOpcode::kFloor:
     case HloOpcode::kImag:
@@ -4638,6 +4643,8 @@ absl::Status HloInstruction::Visit(
       return visitor->HandleNegate(this);
     case HloOpcode::kExp:
       return visitor->HandleExp(this);
+    case HloOpcode::kExp10:
+      return visitor->HandleExp10(this);
     case HloOpcode::kExpm1:
       return visitor->HandleExpm1(this);
     case HloOpcode::kFloor:
@@ -5218,13 +5225,13 @@ bool IsValidResultAccuracy(const ResultAccuracy& accuracy) {
 
 bool IsUnaryOpWithResultAccuracy(HloOpcode opcode) {
   return opcode == HloOpcode::kAcos || opcode == HloOpcode::kAcosh ||
-         opcode == HloOpcode::kExp || opcode == HloOpcode::kExpm1 ||
-         opcode == HloOpcode::kLog || opcode == HloOpcode::kLog1p ||
-         opcode == HloOpcode::kRsqrt || opcode == HloOpcode::kSqrt ||
-         opcode == HloOpcode::kCbrt || opcode == HloOpcode::kTanh ||
-         opcode == HloOpcode::kCos || opcode == HloOpcode::kSin ||
-         opcode == HloOpcode::kTan || opcode == HloOpcode::kErf ||
-         opcode == HloOpcode::kLogistic;
+         opcode == HloOpcode::kExp || opcode == HloOpcode::kExp10 ||
+         opcode == HloOpcode::kExpm1 || opcode == HloOpcode::kLog ||
+         opcode == HloOpcode::kLog1p || opcode == HloOpcode::kRsqrt ||
+         opcode == HloOpcode::kSqrt || opcode == HloOpcode::kCbrt ||
+         opcode == HloOpcode::kTanh || opcode == HloOpcode::kCos ||
+         opcode == HloOpcode::kSin || opcode == HloOpcode::kTan ||
+         opcode == HloOpcode::kErf || opcode == HloOpcode::kLogistic;
 }
 
 std::string AlgorithmToString(const PrecisionConfig::Algorithm& algorithm) {

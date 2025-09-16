@@ -1056,6 +1056,8 @@ absl::StatusOr<SmallVector<Value, 1>> HloToMlir(
       return MapElementwiseOp<mhlo::DivOp>(arg_types, operands, builder);
     case HloOpcode::kErf:
       return MapElementwiseOp<mhlo::ErfOp>(arg_types, operands, builder);
+    case HloOpcode::kExp10:
+      return MapElementwiseOp<mhlo::Exp10Op>(arg_types, operands, builder);
     case HloOpcode::kExp:
       if (element_type == F16 || element_type == BF16) {
         attributes.emplace_back(

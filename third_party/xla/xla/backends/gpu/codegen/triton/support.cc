@@ -107,10 +107,10 @@ absl::flat_hash_set<HloOpcode> TritonSupportedUnaryElementwiseOps(
     absl::flat_hash_set<HloOpcode> additional_opcodes{
         HloOpcode::kCos,   HloOpcode::kFloor, HloOpcode::kLog1p,
         HloOpcode::kSqrt,  HloOpcode::kTanh,  HloOpcode::kAcos,
-        HloOpcode::kAcosh, HloOpcode::kExp,   HloOpcode::kExpm1,
-        HloOpcode::kCbrt,  HloOpcode::kErf,   HloOpcode::kLog,
-        HloOpcode::kTan,   HloOpcode::kCeil,  HloOpcode::kRsqrt,
-        HloOpcode::kSin};
+        HloOpcode::kAcosh, HloOpcode::kExp,   HloOpcode::kExp10,
+        HloOpcode::kExpm1, HloOpcode::kCbrt,  HloOpcode::kErf,
+        HloOpcode::kLog,   HloOpcode::kTan,   HloOpcode::kCeil,
+        HloOpcode::kRsqrt, HloOpcode::kSin};
     ret.insert(additional_opcodes.begin(), additional_opcodes.end());
   }
 

@@ -1164,7 +1164,11 @@ XlaOp RoundToEven(XlaOp x) {
 //           pi                                if x == -1
 // For complex:
 // acos(x) = -(i * log(x + i * sqrt((1 + x) * (1 - x))))
-XlaOp Acos(XlaOp x) {
+XlaOp Acos(XlaOp x, const std::optional<ResultAccuracy>& result_accuracy,
+           bool expand) {
+  if (!expand) {
+    return x.builder()->UnaryOp(HloOpcode::kAcos, x, result_accuracy);
+  }
   XlaBuilder* b = x.builder();
   return b->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(auto shape, b->GetShape(x));
@@ -2103,6 +2107,17 @@ XlaOp Zeta(XlaOp x, XlaOp q) {
       result = ConvertElementType(result, x_shape.element_type());
     }
     return result;
+  });
+}
+
+XlaOp Exp10(XlaOp op, const std::optional<ResultAccuracy>& result_accuracy,
+            bool expand) {
+  if (!expand) {
+    return op.builder()->UnaryOp(HloOpcode::kExp10, op, result_accuracy);
+  }
+  XlaBuilder* b = op.builder();
+  return b->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
+    return Exp(op * ScalarLike(op, std::log(10.0)));
   });
 }
 

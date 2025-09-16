@@ -58,6 +58,9 @@ class CpuElementalIrEmitter final : public ElementalIrEmitter {
   absl::StatusOr<llvm::Value*> EmitAcos(PrimitiveType prim_type,
                                         llvm::Value* value) override;
 
+  absl::StatusOr<llvm::Value*> EmitExp10(PrimitiveType prim_type,
+                                         llvm::Value* value) override;
+
   absl::StatusOr<llvm::Value*> EmitAcosh(PrimitiveType prim_type,
                                          llvm::Value* value) override;
 

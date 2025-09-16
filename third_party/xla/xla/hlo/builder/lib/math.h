@@ -84,7 +84,9 @@ XlaOp RoundToEven(XlaOp x);
 // Trigonometric functions
 
 // Computes the arc cosine of 'x'.
-XlaOp Acos(XlaOp x);
+XlaOp Acos(XlaOp x,
+           const std::optional<ResultAccuracy>& result_accuracy = std::nullopt,
+           bool expand = true);
 
 // Computes the arc sine of 'x'.
 XlaOp Asin(XlaOp x);
@@ -125,6 +127,9 @@ XlaOp BesselI1e(XlaOp x);
 
 // Computes the Regularized Incomplete Beta function.
 XlaOp RegularizedIncompleteBeta(XlaOp a, XlaOp b, XlaOp x);
+
+XlaOp Exp10(XlaOp operand, const std::optional<ResultAccuracy>& result_accuracy,
+            bool expand = true);
 
 }  // namespace xla
 

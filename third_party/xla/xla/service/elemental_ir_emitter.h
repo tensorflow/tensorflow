@@ -146,6 +146,9 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
   virtual absl::StatusOr<llvm::Value*> EmitAcos(PrimitiveType prim_type,
                                                 llvm::Value* value);
 
+  virtual absl::StatusOr<llvm::Value*> EmitExp10(PrimitiveType prim_type,
+                                                 llvm::Value* value);
+
   virtual absl::StatusOr<llvm::Value*> EmitAcosh(PrimitiveType prim_type,
                                                  llvm::Value* value);
 

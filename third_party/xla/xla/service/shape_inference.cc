@@ -349,6 +349,7 @@ absl::StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
   switch (opcode) {
     case HloOpcode::kAcos:
     case HloOpcode::kAcosh:
+    case HloOpcode::kExp10:
     case HloOpcode::kFloor:
     case HloOpcode::kCbrt:  // Complex cbrt is not implemented in either of the
                             // backends.
