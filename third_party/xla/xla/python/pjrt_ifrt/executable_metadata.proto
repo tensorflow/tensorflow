@@ -99,6 +99,8 @@ message SerializedXlaExecutableMetadata {
   repeated OutputSpec output_specs = 5;
 
   message ParameterSpec {
+    ifrt.ShapeProto shape = 4;
+    ifrt.DTypeProto dtype = 5;
     // Layout can be absent when the parameter uses the default layout.
     ifrt.LayoutProto layout = 1;
     xla.OpSharding op_sharding = 2;
