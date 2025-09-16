@@ -38,6 +38,12 @@ class InfeedThunk : public Thunk {
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
+  static absl::StatusOr<std::unique_ptr<InfeedThunk>> FromProto(
+      ThunkInfo thunk_info, const InfeedThunkProto& thunk_proto,
+      absl::Span<const BufferAllocation> buffer_allocations);
+
+  absl::StatusOr<ThunkProto> ToProto() const override;
+
  private:
   const std::vector<ShapedSlice> dest_slices_;
 };
