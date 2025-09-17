@@ -299,7 +299,9 @@ class CopyAllocation final : public Allocation {
       int64_t copy_start_schedule_after_time,
       int64_t copy_done_schedule_before_time, int64_t end_time,
       std::optional<int64_t> cross_program_prefetch_index = std::nullopt,
-      HloInstruction* sync_mem_op = nullptr);
+      HloInstruction* sync_mem_op = nullptr,
+      HloInstruction* async_mem_op_start = nullptr,
+      HloInstruction* async_mem_op_done = nullptr);
 
   // Overridden methods
   //
