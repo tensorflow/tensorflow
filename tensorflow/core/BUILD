@@ -61,6 +61,8 @@
 # //tensorflow/tensorflow.bzl) will include the necessary symbols in binary
 # build targets.
 
+load("@com_google_protobuf//bazel:java_proto_library.bzl", "java_proto_library")
+
 # Placeholder: load py_proto_library
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
@@ -68,8 +70,6 @@ load(
     "@local_xla//xla/tsl/mkl:build_defs.bzl",
     "if_mkl",
 )
-
-# Placeholder: load java_proto_library
 load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
