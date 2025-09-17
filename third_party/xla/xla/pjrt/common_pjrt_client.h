@@ -121,17 +121,6 @@ class CommonPjRtClient : public PjRtClient {
         "CreateLinkedEventPromise is not supported");
   }
 
-  // Create a promise with potentially attached debug_info (if
-  // event_tracking_enabled()).
-  virtual PjRtFuture<>::Promise CreateUserPromise(PjRtMemorySpace* memory_space,
-                                                  absl::string_view debug_info);
-
-  // Creates a future from a promise PjRtFuture<>(promise) but with event
-  // tracking and traceme scopes.
-  virtual PjRtFuture<> CreateFutureFromUserPromise(
-      PjRtMemorySpace* memory_space, const char* callee_type,
-      const char* callee_method, PjRtFuture<>::Promise promise);
-
   // Track a user-provided future with attached debug_info (if
   // event_tracking_enabled()).
   virtual void TrackFuture(PjRtMemorySpace* memory_space,
@@ -148,9 +137,10 @@ class CommonPjRtClient : public PjRtClient {
   // Create a linked PjRtFuture<> and ::Promise pair for operations on
   // buffers in memory_space which populates debug information like linked
   // tracmes.
-  std::pair<PjRtFuture<>::Promise, PjRtFuture<>> CreateLinkedUserPromise(
-      PjRtMemorySpace* memory_space, const char* callee_type,
-      const char* callee_method, absl::string_view debug_info);
+  std::pair<PjRtFuture<>::MoveOnlyPromise, PjRtFuture<>>
+  CreateLinkedUserPromise(PjRtMemorySpace* memory_space,
+                          const char* callee_type, const char* callee_method,
+                          absl::string_view debug_info);
 
   template <typename T, std::enable_if_t<std::is_invocable_v<T>, bool> = true>
   absl::StatusOr<std::pair<tsl::RCReference<PjRtDeviceEventPromise>,
