@@ -455,21 +455,16 @@ absl::Status CollectivePerfTableGen::Dump(
 }
 
 DeviceHloInstructionProfiles CollectivePerfTableGen::Merge(
-    absl::string_view merge_path) {
+    const std::vector<std::string>& files) {
   DeviceHloInstructionProfiles result;
-  std::vector<std::string> filenames;
-  CHECK_OK(
-      tsl::Env::Default()->GetChildren(std::string(merge_path), &filenames));
 
   absl::flat_hash_set<ProfilingResult, ProfilingResult::Hash,
                       ProfilingResult::Eq>
       profiling_results;
   uint64_t profiling_results_counter = 0;
-  for (const std::string& filename : filenames) {
+  for (const std::string& profile_path : files) {
     // Read file.
-    std::string profile_path = absl::StrCat(merge_path, "/", filename);
     DeviceHloInstructionProfiles partial_profile;
-
     CHECK_OK(tsl::Env::Default()->FileExists(profile_path));
     if (!tsl::ReadTextOrBinaryProto(tsl::Env::Default(), profile_path,
                                     &partial_profile)
@@ -527,6 +522,19 @@ DeviceHloInstructionProfiles CollectivePerfTableGen::Merge(
   }
 
   return result;
+}
+
+DeviceHloInstructionProfiles CollectivePerfTableGen::Merge(
+    absl::string_view merge_path) {
+  std::vector<std::string> file_paths;
+  std::vector<std::string> filenames;
+  CHECK_OK(
+      tsl::Env::Default()->GetChildren(std::string(merge_path), &filenames));
+  for (const std::string& fname : filenames) {
+    std::string file_path = absl::StrCat(merge_path, "/", fname);
+    file_paths.push_back(file_path);
+  }
+  return Merge(file_paths);
 }
 
 }  // namespace xla::gpu
