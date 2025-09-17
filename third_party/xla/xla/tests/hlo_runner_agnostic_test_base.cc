@@ -199,9 +199,14 @@ HloRunnerAgnosticTestBase::ExecuteReplicated(
 
 ::testing::AssertionResult HloRunnerAgnosticTestBase::Run(
     std::unique_ptr<HloModule> module, const bool run_hlo_passes,
-    const std::function<void(HloModule*)>& test_preprocessor) {
-  const std::vector<Literal> fake_arguments =
-      MakeFakeArguments(module.get()).value();
+    const std::function<void(HloModule*)>& test_preprocessor,
+    std::vector<Literal>* arguments) {
+  std::vector<Literal> fake_arguments;
+  if (arguments == nullptr) {
+    auto fake_arguments = MakeFakeArguments(module.get()).value();
+    arguments = &fake_arguments;
+  }
+
   if (const absl::StatusOr<bool> change = verifier().Run(module.get());
       !change.ok()) {
     return ::testing::AssertionFailure() << change.status();
@@ -215,7 +220,7 @@ HloRunnerAgnosticTestBase::ExecuteReplicated(
   }
 
   const absl::StatusOr<Literal> output =
-      test_runner_->Execute(std::move(module), fake_arguments, run_hlo_passes);
+      test_runner_->Execute(std::move(module), *arguments, run_hlo_passes);
   return swallow_execution_errors_ || output.ok()
              ? ::testing::AssertionSuccess()
              : ::testing::AssertionFailure() << output.status().message();
