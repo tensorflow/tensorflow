@@ -1101,12 +1101,11 @@ absl::Status ExecutorState<PropagatorStateType>::ProcessOutputs(
       if (stats_collector_) {
         string err =
             stats_collector_->ReportAllocsOnResourceExhausted(s.message());
-        s = errors::CreateWithUpdatedMessage(s,
-                                             strings::StrCat(s.message(), err));
+        s = errors::CreateWithUpdatedMessage(s, absl::StrCat(s.message(), err));
       } else {
         s = errors::CreateWithUpdatedMessage(
             s,
-            strings::StrCat(
+            absl::StrCat(
                 s.message(),
                 "\nHint: If you want to see a list of allocated tensors when "
                 "OOM happens, add report_tensor_allocations_upon_oom "
