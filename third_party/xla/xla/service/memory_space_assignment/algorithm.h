@@ -334,22 +334,30 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
 
   absl::StatusOr<HeapSimulator::Result<HloValue>> Finish() override;
 
+  // Processes existing/explicit block prefetched copy start-done instructions.
+  absl::Status ProcessCustomCallBlockPrefetches();
+
   // Processes all block prefetches.
-  void ProcessBlockPrefetches();
+  absl::Status ProcessBlockPrefetches();
 
   // Returns the maximum amount of scoped memory that is reserved at any time in
   // the program.
   int64_t MaxReservedScopedMemory();
 
-  // Returns the earliest time that chunk can be reserved for a block prefetch
-  // where the start time is between [definition_time, use_time] and use_time
-  // and the end time is the use_time. The chunk.end() should be within the
-  // block_prefetching_limit_bytes.
+  // Finds and returns the earliest chunk_start_time (block prefetch start time)
+  // for which we can reserve a chunk of size buffer_size where the
+  // chunk_start_time lies between [definition_time, first_use_time], the
+  // chunk_end_time is equal to last_use_time, the chunk.chunk_end() is lesser
+  // than or equal to block_prefetching_limit_bytes and number of concurrent
+  // prefetches is lesser than or equal to max_in_flight_prefetches_allowed. If
+  // no such chunk_start_time exists, returns std::nullopt.
   std::optional<int64_t> EarliestBlockPrefetchStartTime(
-      int64_t earliest_start_time_candidate, int64_t first_use_time,
-      int64_t last_use_time, int64_t buffer_size,
+      int64_t previous_block_start_time, int64_t definition_time,
+      int64_t first_use_time, int64_t last_use_time, int64_t buffer_size,
       int64_t block_prefetching_limit_bytes,
-      std::vector<int64_t>& prefetch_end_times);
+      int64_t max_in_flight_prefetches_allowed,
+      std::vector<int64_t>& copy_done_schedule_before_times,
+      std::vector<int64_t>& block_prefetch_allocation_end_times);
 
  protected:
   // Given a buffer interval, returns the colocated intervals. Unlike the
@@ -974,7 +982,9 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
       AllocationSequence* allocations, AliasedOffset* aliased_offset,
       float resource,
       std::optional<int> cross_program_prefetch_index = std::nullopt,
-      HloInstruction* sync_mem_op = nullptr);
+      HloInstruction* sync_mem_op = nullptr,
+      HloInstruction* async_mem_op_start = nullptr,
+      HloInstruction* async_mem_op_done = nullptr);
 
   // For prefetching, adds a SlicedCopyAllocation to allocations. Also updates
   // asynchronous copy data structures, prefetch_interval_tree_, and aliasing
