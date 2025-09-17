@@ -117,6 +117,17 @@ class OriginalValue {
     return mutable_tree()->leaves();
   }
 
+  bool IsEmpty() const {
+    if (is_synthetic_call()) {
+      return true;
+    }
+    return std::all_of(
+        tree().leaves().begin(), tree().leaves().end(),
+        [](const auto& pair) { return !pair.second.has_value(); });
+  }
+
+  bool IsCompatibleWith(const Shape& shape) const;
+
   bool operator==(const OriginalValue& other) const;
 
   bool operator!=(const OriginalValue& other) const {

@@ -299,4 +299,11 @@ OriginalValue::EmptyOriginalValueTupleTree() {
   return *kEmptyTupleTree;
 }
 
+bool OriginalValue::IsCompatibleWith(const Shape& shape) const {
+  if (is_synthetic_call()) {
+    return true;
+  }
+  return tree().IsStructurallyCompatible(shape);
+}
+
 }  // namespace xla
