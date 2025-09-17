@@ -316,7 +316,7 @@ InstructionSummaryMap GetInstructionSummary(const HloGumgraph& left_graph,
     InstructionSummary summary;
     summary.side = side;
     summary.subgraph_unchanged = true;
-    absl::flat_hash_map<const HloInstruction*, DiffType> diff_codes =
+    const absl::flat_hash_map<const HloInstruction*, DiffType>& diff_codes =
         side == DiffSide::kLeft ? diff_result.left_diff_codes
                                 : diff_result.right_diff_codes;
     if (auto it = diff_codes.find(node.instruction);
