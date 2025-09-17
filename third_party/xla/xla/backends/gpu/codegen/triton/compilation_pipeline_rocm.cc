@@ -84,28 +84,30 @@ static void MakeTTGIR(mlir::OpPassManager* pm,
         {num_stages, /*global_prefetch=*/0, /*local_prefetch=*/0,
          /*use_async_copy=*/false, /*use_block_pingpong=*/false}));
     // TODO(ROCm) Modify when corresponding run time flags are introduced.
-    if (/*use_async_copy=*/false) {  // Not enabled by default.
+    if (/*use_async_copy=*//* DISABLES CODE */ (
+        false)) {  // Not enabled by default.
       pm->addPass(mlir::createTritonAMDGPUCoalesceAsyncCopy());
     }
     pm->addPass(mlir::createCanonicalizerPass());
   }
-  if (/*(instruction_sched_variant=="none") == */ false) {
+  if (/*(instruction_sched_variant=="none") == */ /* DISABLES CODE */ (false)) {
     pm->addPass(mt::createTritonAMDGPUInsertInstructionSchedHintsPass("none"));
   }
   pm->addPass(mt::gpu::createTritonGPUOptimizeDotOperands({true}));
   pm->addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
   pm->addPass(mt::gpu::createTritonGPUReduceDataDuplication());
-  if (/*(instruction_sched_variant=="none") == */ false) {
+  if (/*(instruction_sched_variant=="none") == */ /* DISABLES CODE */ (false)) {
     pm->addPass(mlir::createTritonAMDGPUInThreadTranspose());
     pm->addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
   }
   if (rocm_cc.has_amd_matrix_core()) {
     pm->addPass(mt::gpu::createTritonGPUReorderInstructions());
   }
-  if (/*use_block_pingpong=*/false) {
+  if (/*use_block_pingpong=*//* DISABLES CODE */ (false)) {
     pm->addPass(mlir::createTritonAMDGPUBlockPingpong({num_stages}));
   }
-  if (/*use_buffer_ops=*/false) {  // Not enabled by default.
+  if (/*use_buffer_ops=*//* DISABLES CODE */ (
+      false)) {  // Not enabled by default.
     pm->addPass(mlir::createTritonAMDGPUCanonicalizePointers());
     pm->addPass(mlir::createCanonicalizerPass());
     pm->addPass(mlir::createTritonAMDGPUConvertToBufferOps({arch_name}));
@@ -137,7 +139,7 @@ static void MakeLLIR(mlir::OpPassManager* pm,
   pm->addPass(mlir::createCanonicalizerPass());
   pm->addPass(mlir::createCSEPass());
   pm->addPass(mlir::createSymbolDCEPass());
-  if (/*(instruction_sched_variant=="none") == */ false) {
+  if (/*(instruction_sched_variant=="none") == */ /* DISABLES CODE */ (false)) {
     pm->addPass(mt::createTritonAMDGPULowerInstructionSchedHintsPass(
         rocm_cc.gfx_version(), num_stages));
   }
