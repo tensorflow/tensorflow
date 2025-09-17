@@ -451,6 +451,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_detect_unstable_reductions(
       DebugOptions::UNSTABLE_REDUCTION_DETECTION_MODE_NONE);
   opts.set_xla_gpu_experimental_scaled_dot_with_triton(false);
+  opts.set_xla_gpu_experimental_use_raft_select_k(false);
   return opts;
 }
 
@@ -2542,6 +2543,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 "that checks for unstable reductions in HLO computations. "
                 "Acceptable values are: 'none', 'log', and 'crash'. 'none' is "
                 "the default."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_use_raft_select_k",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_experimental_use_raft_select_k),
+      debug_options->xla_gpu_experimental_use_raft_select_k(),
+      "If true, use the raft::matrix::select_k implementation of TopK."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more
