@@ -851,7 +851,7 @@ absl::StatusOr<int64_t> BufferAssignment::ComputeTotalFragmentationBytes(
     TF_ASSIGN_OR_RETURN(
         const int64_t min_size,
         HeapSimulator::MinimumMemoryForModule(schedule, alias_analysis(),
-                                              alias_info, buffer_size_));
+                                              alias_info, &buffer_size_));
     return stats_.total_allocation_bytes - min_size;
   }
   return -1;
@@ -1972,7 +1972,7 @@ absl::Status BufferAssigner::AssignBuffersWithSequentialOrdering(
               HeapSimulator::Run(
                   get_heap_algorithm(alignment), *private_stack_computation,
                   *instruction_sequence, assignment->alias_analysis(),
-                  alias_info_, assignment->buffer_size_, &schedule, options));
+                  alias_info_, &assignment->buffer_size_, &schedule, options));
           TF_RETURN_IF_ERROR(AssignBuffersFromHeapSimulator(
               result, assignment, color, isolation_options));
         }
@@ -1983,7 +1983,7 @@ absl::Status BufferAssigner::AssignBuffersWithSequentialOrdering(
             HeapSimulator::Run(get_heap_algorithm(alignment),
                                assignment->module(), schedule,
                                assignment->alias_analysis(), alias_info_,
-                               assignment->buffer_size_, options));
+                               &assignment->buffer_size_, options));
         TF_RETURN_IF_ERROR(AssignBuffersFromHeapSimulator(
             result, assignment, color, isolation_options));
       }
@@ -2017,7 +2017,7 @@ absl::Status BufferAssigner::AssignBuffersWithSequentialOrdering(
             HeapSimulator::Run(get_heap_algorithm(alignment), *computation,
                                *instruction_sequence,
                                assignment->alias_analysis(), alias_info_,
-                               assignment->buffer_size_, options));
+                               &assignment->buffer_size_, options));
         TF_RETURN_IF_ERROR(AssignBuffersFromHeapSimulator(
             result, assignment, color, isolation_options));
       }

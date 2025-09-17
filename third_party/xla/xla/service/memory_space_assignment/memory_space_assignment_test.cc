@@ -215,7 +215,7 @@ TEST_F(MemorySpaceAssignmentTest, Simple) {
 
   Options options = DefaultMemorySpaceOptions();
   options.post_module_scoped_alternate_memory_size_in_bytes = 10;
-  auto preset_assignments = AssignMemorySpace(module.get(), options);
+  auto preset_assignments = AssignMemorySpace(module.get(), std::move(options));
 
   // Check that the post-module scoped alternate memory chunk is set correctly.
   ASSERT_TRUE(preset_assignments->post_module_scoped_alternate_memory_chunk()
@@ -298,7 +298,7 @@ TEST_F(MemorySpaceAssignmentTest, BasicSplit) {
     return std::nullopt;
   };
 
-  auto preset_assignments = AssignMemorySpace(module.get(), options);
+  auto preset_assignments = AssignMemorySpace(module.get(), std::move(options));
 
   // Inputs and outputs are currently placed in the default memory. Everything
   // else should be in the alternate memory.
@@ -462,7 +462,7 @@ ENTRY entry {
                           ParseAndReturnVerifiedModule(hlo_string));
   Options options = DefaultMemorySpaceOptions();
   options.enable_sync_copy_replacement = true;
-  AssignMemorySpace(module.get(), options);
+  AssignMemorySpace(module.get(), std::move(options));
   HloInstruction* add0 = FindInstruction(module.get(), "add0");
   ASSERT_NE(add0, nullptr);
   HloInstruction* p0 = FindInstruction(module.get(), "p0");
@@ -496,7 +496,7 @@ ENTRY entry {
                           ParseAndReturnVerifiedModule(hlo_string));
   Options options = DefaultMemorySpaceOptions();
   options.enable_sync_copy_replacement = true;
-  AssignMemorySpace(module.get(), options);
+  AssignMemorySpace(module.get(), std::move(options));
   HloInstruction* add0 = FindInstruction(module.get(), "add0");
   ASSERT_NE(add0, nullptr);
   HloInstruction* p0 = FindInstruction(module.get(), "p0");
@@ -560,7 +560,7 @@ ENTRY entry {
                           ParseAndReturnVerifiedModule(hlo_string));
   Options options = DefaultMemorySpaceOptions();
   options.enable_sync_copy_replacement = true;
-  AssignMemorySpace(module.get(), options);
+  AssignMemorySpace(module.get(), std::move(options));
   HloInstruction* p0 = FindInstruction(module.get(), "p0");
 
   HloInstruction* dynamic_update_slice_0 =
@@ -606,7 +606,7 @@ ENTRY entry {
                           ParseAndReturnVerifiedModule(hlo_string));
   Options options = DefaultMemorySpaceOptions();
   options.enable_sync_copy_replacement = true;
-  AssignMemorySpace(module.get(), options);
+  AssignMemorySpace(module.get(), std::move(options));
   HloInstruction* p0 = FindInstruction(module.get(), "p0");
   HloInstruction* add0 = FindInstruction(module.get(), "add0");
   HloInstruction* p0_negate0 = FindInstruction(module.get(), "p0_negate0");
@@ -650,7 +650,7 @@ TEST_F(MemorySpaceAssignmentTest, SyncSliceReplacementAfterPrefetch) {
   options.enable_sync_slice_replacement = true;
   options.is_async_slice_implemented_fn =
       [](const HloInstruction* instruction) { return true; };
-  AssignMemorySpace(module.get(), options);
+  AssignMemorySpace(module.get(), std::move(options));
   HloInstruction* concat = FindInstruction(module.get(), "concat");
   ASSERT_NE(concat, nullptr);
   HloInstruction* p0 = FindInstruction(module.get(), "p0");
@@ -692,11 +692,14 @@ TEST_F(MemorySpaceAssignmentTest,
                           ParseAndReturnVerifiedModule(hlo_string));
   auto module_copy = module->Clone();
 
-  Options options = DefaultMemorySpaceOptions();
-  options.max_size_in_bytes = 512;  // Ensure p0_data can be prefetched
-  options.enable_sync_slice_replacement = true;
-  options.is_async_slice_implemented_fn =
-      [](const HloInstruction* instruction) { return true; };
+  const auto kMakeOptions = [this]() {
+    Options options = DefaultMemorySpaceOptions();
+    options.max_size_in_bytes = 512;  // Ensure p0_data can be prefetched
+    options.enable_sync_slice_replacement = true;
+    options.is_async_slice_implemented_fn =
+        [](const HloInstruction* instruction) { return true; };
+    return options;
+  };
 
   // The index operand is not available until the dynamic-slice instruction
   // itself which pushes earliest_prefetch_time to right before the
@@ -705,7 +708,8 @@ TEST_F(MemorySpaceAssignmentTest,
   //   The dynamic slice is NOT replaced by an async. This is because we
   //   require at least 2 instructions to be overlapped (including the
   //   dynamic-slice).
-  AssignMemorySpace(module.get(), options, /*max_prefetch_interval=*/10,
+  AssignMemorySpace(module.get(), kMakeOptions(),
+                    /*max_prefetch_interval=*/10,
                     /*min_prefetch_interval=*/2);
   HloInstruction* root = module->entry_computation()->root_instruction();
   ASSERT_NE(root, nullptr);
@@ -713,7 +717,8 @@ TEST_F(MemorySpaceAssignmentTest,
 
   // Case 2 - min_prefetch_interval = 1:
   //   The dynamic slice is replaced by an async.
-  AssignMemorySpace(module_copy.get(), options, /*max_prefetch_interval=*/10,
+  AssignMemorySpace(module_copy.get(), kMakeOptions(),
+                    /*max_prefetch_interval=*/10,
                     /*min_prefetch_interval=*/1);
   root = module_copy->entry_computation()->root_instruction();
   ASSERT_NE(root, nullptr);
@@ -750,7 +755,7 @@ TEST_F(MemorySpaceAssignmentTest, SyncDynamicSliceReplacementAfterPrefetch) {
   options.enable_sync_slice_replacement = true;
   options.is_async_slice_implemented_fn =
       [](const HloInstruction* instruction) { return true; };
-  AssignMemorySpace(module.get(), options);
+  AssignMemorySpace(module.get(), std::move(options));
   HloInstruction* concat = FindInstruction(module.get(), "concat");
   ASSERT_NE(concat, nullptr);
   HloInstruction* p0 = FindInstruction(module.get(), "p0");
@@ -791,7 +796,7 @@ TEST_F(MemorySpaceAssignmentTest, SyncSliceReplacementIgnoredTrivials) {
   options.enable_sync_slice_replacement = true;
   options.is_async_slice_implemented_fn =
       [](const HloInstruction* instruction) { return true; };
-  AssignMemorySpace(module.get(), options);
+  AssignMemorySpace(module.get(), std::move(options));
   HloInstruction* concat = FindInstruction(module.get(), "concat");
   ASSERT_NE(concat, nullptr);
   HloInstruction* p0 = FindInstruction(module.get(), "p0");
@@ -832,7 +837,7 @@ TEST_F(MemorySpaceAssignmentTest, SyncDynamicSliceReplacementIgnoredTrivials) {
   options.enable_sync_slice_replacement = true;
   options.is_async_slice_implemented_fn =
       [](const HloInstruction* instruction) { return true; };
-  AssignMemorySpace(module.get(), options);
+  AssignMemorySpace(module.get(), std::move(options));
   HloInstruction* concat = FindInstruction(module.get(), "concat");
   ASSERT_NE(concat, nullptr);
   HloInstruction* p0 = FindInstruction(module.get(), "p0");
@@ -878,7 +883,7 @@ TEST_F(MemorySpaceAssignmentTest, SyncSliceReplacementAfterEviction) {
   options.is_async_slice_implemented_fn =
       [](const HloInstruction* instruction) { return true; };
 
-  AssignMemorySpace(module.get(), options);
+  AssignMemorySpace(module.get(), std::move(options));
 
   HloInstruction* negate_p0 = FindInstruction(module.get(), "negate_p0");
   ASSERT_NE(negate_p0, nullptr);
@@ -925,7 +930,7 @@ TEST_F(MemorySpaceAssignmentTest, SyncDynamicSliceReplacementAfterEviction) {
   options.is_async_slice_implemented_fn =
       [](const HloInstruction* instruction) { return true; };
 
-  AssignMemorySpace(module.get(), options);
+  AssignMemorySpace(module.get(), std::move(options));
   HloInstruction* negate_p0 = FindInstruction(module.get(), "negate_p0");
   ASSERT_NE(negate_p0, nullptr);
   HloInstruction* concat = FindInstruction(module.get(), "concat");
@@ -968,7 +973,7 @@ TEST_F(MemorySpaceAssignmentTest, SyncSliceReplacementTwoSlices) {
   options.enable_sync_slice_replacement = true;
   options.is_async_slice_implemented_fn =
       [](const HloInstruction* instruction) { return true; };
-  AssignMemorySpace(module.get(), options);
+  AssignMemorySpace(module.get(), std::move(options));
   HloInstruction* add = FindInstruction(module.get(), "add");
   ASSERT_NE(add, nullptr);
   HloInstruction* p0 = FindInstruction(module.get(), "p0");
@@ -1009,7 +1014,7 @@ TEST_F(MemorySpaceAssignmentTest, SyncDynamicSliceReplacementTwoSlices) {
   options.enable_sync_slice_replacement = true;
   options.is_async_slice_implemented_fn =
       [](const HloInstruction* instruction) { return true; };
-  AssignMemorySpace(module.get(), options);
+  AssignMemorySpace(module.get(), std::move(options));
   HloInstruction* add = FindInstruction(module.get(), "add");
   ASSERT_NE(add, nullptr);
   HloInstruction* p0 = FindInstruction(module.get(), "p0");
@@ -1057,7 +1062,7 @@ TEST_F(MemorySpaceAssignmentTest, SyncSliceReplacementNestedSlices) {
   options.enable_sync_slice_replacement = true;
   options.is_async_slice_implemented_fn =
       [](const HloInstruction* instruction) { return true; };
-  AssignMemorySpace(module.get(), options);
+  AssignMemorySpace(module.get(), std::move(options));
   HloInstruction* p0 = FindInstruction(module.get(), "p0");
   ASSERT_NE(p0, nullptr);
   HloInstruction* concat = FindInstruction(module.get(), "concat");
@@ -1101,7 +1106,7 @@ TEST_F(MemorySpaceAssignmentTest, SyncDynamicSliceReplacementNestedSlices) {
   options.enable_sync_slice_replacement = true;
   options.is_async_slice_implemented_fn =
       [](const HloInstruction* instruction) { return true; };
-  AssignMemorySpace(module.get(), options);
+  AssignMemorySpace(module.get(), std::move(options));
   HloInstruction* p0 = FindInstruction(module.get(), "p0");
   HloInstruction* index = FindInstruction(module.get(), "index");
   HloInstruction* zero = FindInstruction(module.get(), "zero");
@@ -1143,7 +1148,7 @@ TEST_F(MemorySpaceAssignmentTest, SyncSliceReplacementOneFails) {
   options.enable_sync_slice_replacement = true;
   options.is_async_slice_implemented_fn =
       [](const HloInstruction* instruction) { return true; };
-  AssignMemorySpace(module.get(), options);
+  AssignMemorySpace(module.get(), std::move(options));
   HloInstruction* p0 = FindInstruction(module.get(), "p0");
   ASSERT_NE(p0, nullptr);
   HloInstruction* add0 = FindInstruction(module.get(), "add.0");
@@ -1187,7 +1192,7 @@ TEST_F(MemorySpaceAssignmentTest, SyncDynamicSliceReplacementOneFails) {
   options.enable_sync_slice_replacement = true;
   options.is_async_slice_implemented_fn =
       [](const HloInstruction* instruction) { return true; };
-  AssignMemorySpace(module.get(), options);
+  AssignMemorySpace(module.get(), std::move(options));
   HloInstruction* p0 = FindInstruction(module.get(), "p0");
   HloInstruction* index = FindInstruction(module.get(), "index");
   HloInstruction* zero = FindInstruction(module.get(), "zero");
@@ -1226,15 +1231,19 @@ ENTRY entry {
   }
   )";
 
-  Options options = DefaultMemorySpaceOptions();
-  options.is_async_slice_implemented_fn =
-      [](const HloInstruction* instruction) { return true; };
-  options.max_size_in_bytes = 64;
+  const auto kMakeOptions = [this](bool enable_sync_slice_replacement) {
+    Options options = DefaultMemorySpaceOptions();
+    options.is_async_slice_implemented_fn =
+        [](const HloInstruction* instruction) { return true; };
+    options.max_size_in_bytes = 64;
+    options.enable_sync_slice_replacement = enable_sync_slice_replacement;
+    return options;
+  };
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module1,
                           ParseAndReturnVerifiedModule(hlo_string));
-  options.enable_sync_slice_replacement = false;
-  AssignMemorySpace(module1.get(), options);
+  AssignMemorySpace(module1.get(),
+                    kMakeOptions(/*enable_sync_slice_replacement=*/false));
   HloInstruction* p0 = FindInstruction(module1.get(), "p0");
   ASSERT_NE(p0, nullptr);
   HloInstruction* concat = FindInstruction(module1.get(), "concat");
@@ -1243,8 +1252,8 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module2,
                           ParseAndReturnVerifiedModule(hlo_string));
-  options.enable_sync_slice_replacement = true;
-  AssignMemorySpace(module2.get(), options);
+  AssignMemorySpace(module2.get(),
+                    kMakeOptions(/*enable_sync_slice_replacement=*/true));
   p0 = FindInstruction(module2.get(), "p0");
   ASSERT_NE(p0, nullptr);
   concat = FindInstruction(module2.get(), "concat");
@@ -1281,7 +1290,7 @@ ENTRY entry {
   options.enable_sync_slice_replacement = true;
   options.is_async_slice_implemented_fn =
       [](const HloInstruction* instruction) { return true; };
-  AssignMemorySpace(module.get(), options);
+  AssignMemorySpace(module.get(), std::move(options));
   HloInstruction* p0 = FindInstruction(module.get(), "p0");
   ASSERT_NE(p0, nullptr);
   HloInstruction* concat = FindInstruction(module.get(), "concat");
@@ -1348,7 +1357,7 @@ ENTRY %entry (p0.2: f32[10,2,3], p1: f32[10,2,3], p2: pred[]) -> f32[10,2,3] {
   options.enable_sync_slice_replacement = true;
   options.is_async_slice_implemented_fn =
       [](const HloInstruction* instruction) { return true; };
-  AssignMemorySpace(module.get(), options);
+  AssignMemorySpace(module.get(), std::move(options));
   HloInstruction* while_instruction = FindInstruction(module.get(), "while.1");
   ASSERT_NE(while_instruction, nullptr);
   const HloInstruction* tuple = while_instruction->operand(0);
@@ -1391,7 +1400,7 @@ TEST_F(MemorySpaceAssignmentTest, ConditionalCopyReplacement) {
                           ParseAndReturnVerifiedModule(hlo_string));
   Options options = DefaultMemorySpaceOptions();
   options.enable_sync_copy_replacement = true;
-  AssignMemorySpace(module.get(), options);
+  AssignMemorySpace(module.get(), std::move(options));
   auto conditional =
       module->GetComputationWithName("entry")->GetInstructionWithName(
           "conditional");
@@ -1426,8 +1435,7 @@ ENTRY entry {
   // The baseline behavior is to prefetch p0 at add0.
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> baseline_module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  Options options = DefaultMemorySpaceOptions();
-  AssignMemorySpace(baseline_module.get(), options);
+  AssignMemorySpace(baseline_module.get(), DefaultMemorySpaceOptions());
   HloInstruction* add0 = FindInstruction(baseline_module.get(), "add0");
   ASSERT_NE(add0, nullptr);
   HloInstruction* p0 = FindInstruction(baseline_module.get(), "p0");
@@ -1440,9 +1448,10 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<VerifiedHloModule> result_modifier_module,
       ParseAndReturnVerifiedModule(hlo_string));
-  options.max_retries = 1;
-  options.allocation_request_modifier_testing_fn = nullptr;
-  options.allocation_result_modifier_testing_fn =
+  Options options_result_modifier = DefaultMemorySpaceOptions();
+  options_result_modifier.max_retries = 1;
+  options_result_modifier.allocation_request_modifier_testing_fn = nullptr;
+  options_result_modifier.allocation_result_modifier_testing_fn =
       [](const AllocationRequest& request, AllocationResult& result) {
         if (request.allocation_value_to_update->defining_instruction()
                     ->name() == "p0" &&
@@ -1450,7 +1459,8 @@ ENTRY entry {
           result = AllocationResult::kFailRequiresUncommit;
         }
       };
-  AssignMemorySpace(result_modifier_module.get(), options);
+  AssignMemorySpace(result_modifier_module.get(),
+                    std::move(options_result_modifier));
   add0 = FindInstruction(result_modifier_module.get(), "add0");
   ASSERT_NE(add0, nullptr);
   p0 = FindInstruction(result_modifier_module.get(), "p0");
@@ -1462,8 +1472,9 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<VerifiedHloModule> request_modifier_module,
       ParseAndReturnVerifiedModule(hlo_string));
-  options.max_retries = 1;
-  options
+  Options options_request_modifier = DefaultMemorySpaceOptions();
+  options_request_modifier.max_retries = 1;
+  options_request_modifier
       .allocation_request_modifier_testing_fn = [](AllocationRequest& request) {
     if (request.allocation_value_to_update->defining_instruction()->name() ==
             "p0" &&
@@ -1472,8 +1483,9 @@ ENTRY entry {
       request.latest_prefetch_time = 6;
     }
   };
-  options.allocation_result_modifier_testing_fn = nullptr;
-  AssignMemorySpace(request_modifier_module.get(), options);
+  options_request_modifier.allocation_result_modifier_testing_fn = nullptr;
+  AssignMemorySpace(request_modifier_module.get(),
+                    std::move(options_request_modifier));
   add0 = FindInstruction(request_modifier_module.get(), "add0");
   CHECK_NE(add0, nullptr);
   p0 = FindInstruction(request_modifier_module.get(), "p0");
@@ -1547,7 +1559,7 @@ ENTRY entry {
   // options.inefficient_use_to_copy_ratio must be greater than 0 and the cost
   // model must be set to trigger the inefficient allocation site logic.
   options.inefficient_use_to_copy_ratio = 1.0;
-  AssignMemorySpaceUsingCostAnalysis(module.get(), options);
+  AssignMemorySpaceUsingCostAnalysis(module.get(), std::move(options));
 
   HloInstruction* p0_copy = FindInstruction(module.get(), "p0_copy");
   ASSERT_NE(p0_copy, nullptr);
@@ -1614,7 +1626,7 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(auto msa_sort_order_overrides,
                           ParseTextProto<MsaSortOrderOverrides>(text_proto));
   auto preset_assignments = AssignMemorySpaceUsingCostAnalysis(
-      module.get(), options,
+      module.get(), std::move(options),
       /*cost_analysis_options_override=*/std::nullopt,
       /*hlo_cost_options_override=*/std::nullopt,
       /*optional_msa_sort_order_overrides=*/msa_sort_order_overrides);
@@ -1658,7 +1670,7 @@ ENTRY entry {
                           ParseAndReturnVerifiedModule(hlo_string));
   Options options = DefaultMemorySpaceOptions();
   options.always_spill_to_default_memory = true;
-  AssignMemorySpace(module.get(), options);
+  AssignMemorySpace(module.get(), std::move(options));
   const HloInstructionSequence& sequence =
       module->schedule().sequence(module->entry_computation());
   for (int i = 0; i < sequence.instructions().size(); ++i) {
@@ -1714,7 +1726,7 @@ ENTRY entry {
                           ParseAndReturnVerifiedModule(hlo_string));
   Options options = DefaultMemorySpaceOptions();
   options.always_spill_to_default_memory = true;
-  AssignMemorySpace(module.get(), options);
+  AssignMemorySpace(module.get(), std::move(options));
   const HloInstructionSequence& sequence =
       module->schedule().sequence(module->entry_computation());
   for (int i = 0; i < sequence.instructions().size(); ++i) {
@@ -1795,7 +1807,7 @@ ENTRY entry {
                           ParseAndReturnVerifiedModule(hlo_string));
   Options options = DefaultMemorySpaceOptions();
   options.always_spill_to_default_memory = true;
-  AssignMemorySpace(module.get(), options);
+  AssignMemorySpace(module.get(), std::move(options));
   const HloInstructionSequence& sequence =
       module->schedule().sequence(module->entry_computation());
   for (int i = 0; i < sequence.instructions().size(); ++i) {
@@ -1879,7 +1891,7 @@ TEST_F(MemorySpaceAssignmentTest, FilterUpdatePreferredPrefetchTest) {
       options.preferred_prefetch_overrides,
       ParseTextProto<PreferredPrefetchOverrides>(text_proto));
 
-  AssignMemorySpace(module.get(), options);
+  AssignMemorySpace(module.get(), std::move(options));
 
   EXPECT_THAT(add, op::Add(op::Negate(), op::AsyncCopy(kAlternateMemorySpace,
                                                        kDefaultMemorySpace,
@@ -1957,7 +1969,7 @@ TEST_F(MemorySpaceAssignmentTest, FilterUpdateConfigExactMatchBeforeTest) {
       options.preferred_prefetch_overrides,
       ParseTextProto<PreferredPrefetchOverrides>(text_proto));
 
-  AssignMemorySpace(module.get(), options);
+  AssignMemorySpace(module.get(), std::move(options));
 
   EXPECT_THAT(add, op::Add(op::Negate(), op::AsyncCopy(kAlternateMemorySpace,
                                                        kDefaultMemorySpace,
@@ -2035,7 +2047,7 @@ TEST_F(MemorySpaceAssignmentTest, FilterUpdateConfigExactMatchAfterTest) {
       options.preferred_prefetch_overrides,
       ParseTextProto<PreferredPrefetchOverrides>(text_proto));
 
-  AssignMemorySpace(module.get(), options);
+  AssignMemorySpace(module.get(), std::move(options));
 
   EXPECT_THAT(add, op::Add(op::Negate(), op::AsyncCopy(kAlternateMemorySpace,
                                                        kDefaultMemorySpace,
@@ -2113,7 +2125,7 @@ TEST_F(MemorySpaceAssignmentTest, FilterUpdateConfigExactMatchTooLateTest) {
       options.preferred_prefetch_overrides,
       ParseTextProto<PreferredPrefetchOverrides>(text_proto));
 
-  AssignMemorySpace(module.get(), options);
+  AssignMemorySpace(module.get(), std::move(options));
 
   // Ensure the Async copy is not scheduled.
   EXPECT_THAT(add, op::Add(op::Negate(), op::Parameter(1)));
@@ -2187,7 +2199,7 @@ TEST_F(MemorySpaceAssignmentTest, FilterUpdateConfigPrecedenceTest) {
       options.preferred_prefetch_overrides,
       ParseTextProto<PreferredPrefetchOverrides>(text_proto));
 
-  AssignMemorySpace(module.get(), options);
+  AssignMemorySpace(module.get(), std::move(options));
 
   EXPECT_THAT(add, op::Add(op::Negate(), op::AsyncCopy(kAlternateMemorySpace,
                                                        kDefaultMemorySpace,
@@ -2270,7 +2282,7 @@ TEST_F(MemorySpaceAssignmentTest, FilterUpdateConfigExactMatchPrecedenceTest) {
       options.preferred_prefetch_overrides,
       ParseTextProto<PreferredPrefetchOverrides>(text_proto));
 
-  AssignMemorySpace(module.get(), options);
+  AssignMemorySpace(module.get(), std::move(options));
 
   EXPECT_THAT(add, op::Add(op::Negate(), op::AsyncCopy(kAlternateMemorySpace,
                                                        kDefaultMemorySpace,
@@ -2347,7 +2359,7 @@ TEST_F(MemorySpaceAssignmentTest, FilterUpdatePreferredPrefetchNoMatchTest) {
       options.preferred_prefetch_overrides,
       ParseTextProto<PreferredPrefetchOverrides>(text_proto));
 
-  AssignMemorySpace(module.get(), options);
+  AssignMemorySpace(module.get(), std::move(options));
 
   EXPECT_THAT(add, op::Add(op::Negate(), op::AsyncCopy(kAlternateMemorySpace,
                                                        kDefaultMemorySpace,
@@ -5541,9 +5553,9 @@ ENTRY entry {
                           ParseTextProto<MsaSortOrderOverrides>(text_proto));
 
   XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
-  AssignMemorySpaceUsingCostAnalysis(module.get(), memory_space_options,
-                                     std::nullopt, std::nullopt,
-                                     msa_sort_order_overrides);
+  AssignMemorySpaceUsingCostAnalysis(
+      module.get(), std::move(memory_space_options), std::nullopt, std::nullopt,
+      msa_sort_order_overrides);
   XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
   EXPECT_EQ(
       FindInstruction(module.get(), "tanh0")->shape().layout().memory_space(),
@@ -5590,9 +5602,9 @@ ENTRY entry {
                           ParseTextProto<MsaSortOrderOverrides>(text_proto));
 
   XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
-  AssignMemorySpaceUsingCostAnalysis(module.get(), memory_space_options,
-                                     std::nullopt, std::nullopt,
-                                     msa_sort_order_overrides);
+  AssignMemorySpaceUsingCostAnalysis(
+      module.get(), std::move(memory_space_options), std::nullopt, std::nullopt,
+      msa_sort_order_overrides);
   XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
   EXPECT_EQ(FindInstruction(module.get(), "negate4")
                 ->operand(1)
@@ -5646,9 +5658,9 @@ ENTRY entry {
                           ParseTextProto<MsaSortOrderOverrides>(text_proto));
 
   XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
-  AssignMemorySpaceUsingCostAnalysis(module.get(), memory_space_options,
-                                     std::nullopt, std::nullopt,
-                                     msa_sort_order_overrides);
+  AssignMemorySpaceUsingCostAnalysis(
+      module.get(), std::move(memory_space_options), std::nullopt, std::nullopt,
+      msa_sort_order_overrides);
   XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
   EXPECT_EQ(
       FindInstruction(module.get(), "tanh0")->shape().layout().memory_space(),
@@ -5705,9 +5717,9 @@ ROOT tuple = (f32[3,4]{1,0}, f32[3,4]{1,0}) tuple(tanh4, negate4)
                           ParseTextProto<MsaSortOrderOverrides>(text_proto));
 
   XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
-  AssignMemorySpaceUsingCostAnalysis(module.get(), memory_space_options,
-                                     std::nullopt, std::nullopt,
-                                     msa_sort_order_overrides);
+  AssignMemorySpaceUsingCostAnalysis(
+      module.get(), std::move(memory_space_options), std::nullopt, std::nullopt,
+      msa_sort_order_overrides);
   XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
   EXPECT_EQ(
       FindInstruction(module.get(), "tanh0")->shape().layout().memory_space(),
@@ -5770,9 +5782,9 @@ ROOT tuple = (f32[3,4]{1,0}, f32[3,4]{1,0}) tuple(tanh4, negate4)
                           ParseTextProto<MsaSortOrderOverrides>(text_proto));
 
   XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
-  AssignMemorySpaceUsingCostAnalysis(module.get(), memory_space_options,
-                                     std::nullopt, std::nullopt,
-                                     msa_sort_order_overrides);
+  AssignMemorySpaceUsingCostAnalysis(
+      module.get(), std::move(memory_space_options), std::nullopt, std::nullopt,
+      msa_sort_order_overrides);
   XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
   EXPECT_EQ(
       FindInstruction(module.get(), "negate0")->shape().layout().memory_space(),
@@ -5848,7 +5860,7 @@ ENTRY main {
   options.buffer_colorings = {{negate1_position, kAlternateMemorySpace}};
 
   XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
-  AssignMemorySpaceUsingCostAnalysis(module.get(), options);
+  AssignMemorySpaceUsingCostAnalysis(module.get(), std::move(options));
   XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
 
   EXPECT_EQ(
@@ -5949,7 +5961,7 @@ ENTRY main {
   options.buffer_colorings = {{negate1_position, kAlternateMemorySpace}};
 
   XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
-  AssignMemorySpaceUsingCostAnalysis(module.get(), options);
+  AssignMemorySpaceUsingCostAnalysis(module.get(), std::move(options));
   XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
 
   EXPECT_EQ(
@@ -6162,7 +6174,7 @@ TEST_F(MemorySpaceAssignmentTest,
   // to alternate memory.
   memory_space_options.max_size_in_bytes = 120;
   AssignMemorySpaceUsingCostAnalysis(
-      module.get(), memory_space_options,
+      module.get(), std::move(memory_space_options),
       /*cost_analysis_options_override=*/std::nullopt,
       /*hlo_cost_options_override=*/std::nullopt,
       /*optional_msa_sort_order_overrides=*/msa_sort_order_overrides);
@@ -6238,7 +6250,7 @@ TEST_F(MemorySpaceAssignmentTest,
   // tanh3.
   memory_space_options.max_size_in_bytes = 160;
   AssignMemorySpaceUsingCostAnalysis(
-      module.get(), memory_space_options,
+      module.get(), std::move(memory_space_options),
       /*cost_analysis_options_override=*/std::nullopt,
       /*hlo_cost_options_override=*/std::nullopt,
       /*optional_msa_sort_order_overrides=*/msa_sort_order_overrides);
@@ -6604,7 +6616,7 @@ TEST_F(MemorySpaceAssignmentTest,
   };
   XLA_VLOG_LINES(3, module->ToString());
   std::unique_ptr<PresetAssignments> preset_assignments =
-      AssignMemorySpace(module.get(), options);
+      AssignMemorySpace(module.get(), std::move(options));
   // Check that the post-module scoped alternate memory chunk is set correctly.
   ASSERT_TRUE(preset_assignments->post_module_scoped_alternate_memory_chunk()
                   .has_value());
@@ -6822,7 +6834,7 @@ TEST_F(MemorySpaceAssignmentTest, DisallowedUseBug) {
   options.is_use_allowed_in_alternate_mem_fn = [](const HloUse& use) {
     return use.instruction->opcode() != HloOpcode::kTanh;
   };
-  AssignMemorySpace(module.get(), options, buffer_interval_compare,
+  AssignMemorySpace(module.get(), std::move(options), buffer_interval_compare,
                     &prefetch_interval_picker);
 }
 
@@ -6885,7 +6897,7 @@ TEST_F(MemorySpaceAssignmentTest, DisallowedUseBugInWhile) {
   options.is_use_allowed_in_alternate_mem_fn = [](const HloUse& use) {
     return use.instruction->opcode() != HloOpcode::kTanh;
   };
-  AssignMemorySpace(module.get(), options);
+  AssignMemorySpace(module.get(), std::move(options));
 }
 
 TEST_F(MemorySpaceAssignmentTest, TwoLiveAllocationValuesBase) {
@@ -6928,8 +6940,8 @@ TEST_F(MemorySpaceAssignmentTest, TwoLiveAllocationValuesBase) {
       CreateBufferIntervalCompareFnFromInstructionNames({"negate.0"});
   InstructionCountPrefetchIntervalPicker prefetch_interval_picker(1, 10);
   std::unique_ptr<PresetAssignments> preset_assignments =
-      AssignMemorySpace(module.get(), options, buffer_interval_compare,
-                        &prefetch_interval_picker);
+      AssignMemorySpace(module.get(), std::move(options),
+                        buffer_interval_compare, &prefetch_interval_picker);
   VLOG(1) << "Module after MSA:\n" << module->ToString();
 
   HloInstruction* copy0 = FindInstruction(module.get(), "negate.0");
@@ -6978,8 +6990,8 @@ TEST_F(MemorySpaceAssignmentTest,
       CreateBufferIntervalCompareFnFromInstructionNames({"negate.0"});
   InstructionCountPrefetchIntervalPicker prefetch_interval_picker(1, 10);
   std::unique_ptr<PresetAssignments> preset_assignments =
-      AssignMemorySpace(module.get(), options, buffer_interval_compare,
-                        &prefetch_interval_picker);
+      AssignMemorySpace(module.get(), std::move(options),
+                        buffer_interval_compare, &prefetch_interval_picker);
   VLOG(1) << "Module after MSA:\n" << module->ToString();
 
   HloInstruction* copy0 = FindInstruction(module.get(), "negate.0");
@@ -7031,8 +7043,8 @@ TEST_F(MemorySpaceAssignmentTest,
       CreateBufferIntervalCompareFnFromInstructionNames({"negate.0"});
   InstructionCountPrefetchIntervalPicker prefetch_interval_picker(1, 10);
   std::unique_ptr<PresetAssignments> preset_assignments =
-      AssignMemorySpace(module.get(), options, buffer_interval_compare,
-                        &prefetch_interval_picker);
+      AssignMemorySpace(module.get(), std::move(options),
+                        buffer_interval_compare, &prefetch_interval_picker);
   VLOG(1) << "Module after MSA:\n" << module->ToString();
 
   HloInstruction* copy0 = FindInstruction(module.get(), "negate.0");
@@ -7085,8 +7097,8 @@ TEST_F(MemorySpaceAssignmentTest,
       CreateBufferIntervalCompareFnFromInstructionNames({"v.2", "negate.0"});
   InstructionCountPrefetchIntervalPicker prefetch_interval_picker(1, 10);
   std::unique_ptr<PresetAssignments> preset_assignments =
-      AssignMemorySpace(module.get(), options, buffer_interval_compare,
-                        &prefetch_interval_picker);
+      AssignMemorySpace(module.get(), std::move(options),
+                        buffer_interval_compare, &prefetch_interval_picker);
   VLOG(1) << "Module after MSA:\n" << module->ToString();
 
   HloInstruction* v2 = FindInstruction(module.get(), "v.2");
@@ -7761,7 +7773,7 @@ TEST_F(MemorySpaceAssignmentTest,
     }
     return {};
   };
-  AssignMemorySpace(module.get(), options);
+  AssignMemorySpace(module.get(), std::move(options));
 }
 
 TEST_F(MemorySpaceAssignmentTest, DisablePrefetch) {
@@ -7789,7 +7801,7 @@ TEST_F(MemorySpaceAssignmentTest, DisablePrefetch) {
 
   Options options = DefaultMemorySpaceOptions();
   options.max_outstanding_prefetches = 0;
-  AssignMemorySpace(module.get(), options);
+  AssignMemorySpace(module.get(), std::move(options));
 
   EXPECT_THAT(module->entry_computation()->root_instruction()->operand(1),
               op::Parameter());
@@ -7893,8 +7905,8 @@ TEST_F(MemorySpaceAssignmentTest, PrecoloredBuffer) {
   InstructionCountPrefetchIntervalPicker prefetch_interval_picker(2, 10);
   Options options = DefaultMemorySpaceOptions();
   std::unique_ptr<PresetAssignments> preset_assignments =
-      AssignMemorySpace(module.get(), options, buffer_interval_compare,
-                        &prefetch_interval_picker);
+      AssignMemorySpace(module.get(), std::move(options),
+                        buffer_interval_compare, &prefetch_interval_picker);
 
   const HloInstruction* r = FindInstruction(module.get(), "r");
   const HloInstruction* d = FindInstruction(module.get(), "d");
@@ -7968,9 +7980,9 @@ TEST_F(MemorySpaceAssignmentTest, PrecoloredBufferOOM) {
 
   InstructionCountPrefetchIntervalPicker prefetch_interval_picker(2, 10);
   Options options = DefaultMemorySpaceOptions();
-  auto status_or = AssignMemorySpaceAndReturnStatus(module.get(), options,
-                                                    buffer_interval_compare,
-                                                    &prefetch_interval_picker);
+  auto status_or = AssignMemorySpaceAndReturnStatus(
+      module.get(), std::move(options), buffer_interval_compare,
+      &prefetch_interval_picker);
   EXPECT_THAT(
       status_or.status(),
       absl_testing::StatusIs(
@@ -8432,7 +8444,7 @@ ENTRY entry {
         }
         return 0;
       };
-  AssignMemorySpace(module.get(), options);
+  AssignMemorySpace(module.get(), std::move(options));
   auto get_memory_space = [&](absl::string_view instruction_name) {
     return module->entry_computation()
         ->GetInstructionWithName(instruction_name)
@@ -8618,7 +8630,7 @@ TEST_F(MemorySpaceAssignmentTest, Repack) {
   Options options = DefaultMemorySpaceOptions();
   options.max_repacks = 1;
   options.repacker = &repacker;
-  AssignMemorySpace(module.get(), options, buffer_interval_compare,
+  AssignMemorySpace(module.get(), std::move(options), buffer_interval_compare,
                     &prefetch_interval_picker);
 
   // If repacking succeeds, we should find the buffer for d in alternate memory.
@@ -8731,7 +8743,7 @@ TEST_F(MemorySpaceAssignmentTest, RepackExportsAliasedOffsets) {
   Options options = DefaultMemorySpaceOptions();
   options.max_repacks = 1;
   options.repacker = &repacker;
-  AssignMemorySpace(module.get(), options, buffer_interval_compare,
+  AssignMemorySpace(module.get(), std::move(options), buffer_interval_compare,
                     &prefetch_interval_picker);
 }
 
@@ -8779,7 +8791,7 @@ ENTRY entry {
   FakeMemorySpaceAssignmentRepacker repacker =
       FakeMemorySpaceAssignmentRepacker(repack_map, check_fun);
   options.repacker = &repacker;
-  AssignMemorySpace(module.get(), options);
+  AssignMemorySpace(module.get(), std::move(options));
   EXPECT_TRUE(repacker_ran);
 }
 
@@ -8859,7 +8871,7 @@ TEST_F(MemorySpaceAssignmentTest,
       FakeMemorySpaceAssignmentRepacker(repack_map, nullptr);
   options.repacker = &repacker;
   std::unique_ptr<PresetAssignments> assignments =
-      AssignMemorySpace(module.get(), options);
+      AssignMemorySpace(module.get(), std::move(options));
   // This lambda checks if an instruction's operand has been assigned in
   // alternate memory.
   auto instruction_consumes_assignment_fn =
@@ -8980,7 +8992,7 @@ TEST_F(MemorySpaceAssignmentTest, ScopedAllocationWithDifferentOffset) {
   options.max_repacks = 1;
   options.repacker = &repacker;
   options.allocate_reserved_scoped_memory_at_same_offset = false;
-  AssignMemorySpace(module.get(), options);
+  AssignMemorySpace(module.get(), std::move(options));
 }
 
 TEST_F(MemorySpaceAssignmentTest,
@@ -9042,7 +9054,7 @@ TEST_F(MemorySpaceAssignmentTest,
   FakeMemorySpaceAssignmentRepacker repacker =
       FakeMemorySpaceAssignmentRepacker(repack_map, nullptr);
   options.repacker = &repacker;
-  AssignMemorySpace(module.get(), options);
+  AssignMemorySpace(module.get(), std::move(options));
 }
 
 TEST_F(MemorySpaceAssignmentTest,
@@ -9090,7 +9102,7 @@ TEST_F(MemorySpaceAssignmentTest,
   options.repacker = &repacker;
   options.repack_after_every_allocation = true;
   InstructionCountPrefetchIntervalPicker prefetch_interval_picker(2, 10);
-  AssignMemorySpace(module.get(), options,
+  AssignMemorySpace(module.get(), std::move(options),
                     /*buffer_interval_compare=*/{}, &prefetch_interval_picker);
 }
 
@@ -9237,7 +9249,7 @@ ENTRY entry {
            pos.instruction->opcode() != HloOpcode::kAsyncDone &&
            pos.instruction->parent()->IsMainThread();
   };
-  AssignMemorySpace(module.get(), options);
+  AssignMemorySpace(module.get(), std::move(options));
   auto has_alternate_memory_allocation =
       [&](const HloInstruction* instruction) {
         bool result = false;
@@ -9327,13 +9339,14 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  Options options = DefaultMemorySpaceOptions();
-  options.enable_cross_program_prefetch = false;
+  Options options0 = DefaultMemorySpaceOptions();
+  options0.enable_cross_program_prefetch = false;
   // Disable inefficiency check. Expect that the fusion output and operand are
   // in the alternate memory.
-  options.inefficient_use_to_copy_ratio = 0.0;
-  AssignMemorySpaceUsingCostAnalysis(module.get(),
-                                     /*memory_space_options_override=*/options);
+  options0.inefficient_use_to_copy_ratio = 0.0;
+  AssignMemorySpaceUsingCostAnalysis(
+      module.get(),
+      /*memory_space_options_override=*/std::move(options0));
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
       op::Tuple(op::AsyncCopy(kDefaultMemorySpace, kAlternateMemorySpace,
@@ -9346,9 +9359,12 @@ ENTRY entry {
   // 8B of data (f32[2,1]) but copies 48B of data (prefetch and eviction of
   // f32[2,3]), so this should be considered inefficient (8/48 < 0.5).
   TF_ASSERT_OK_AND_ASSIGN(module, ParseAndReturnVerifiedModule(hlo_string));
-  options.inefficient_use_to_copy_ratio = 0.5;
-  AssignMemorySpaceUsingCostAnalysis(module.get(),
-                                     /*memory_space_options_override=*/options);
+  Options options1 = DefaultMemorySpaceOptions();
+  options1.enable_cross_program_prefetch = false;
+  options1.inefficient_use_to_copy_ratio = 0.5;
+  AssignMemorySpaceUsingCostAnalysis(
+      module.get(),
+      /*memory_space_options_override=*/std::move(options1));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Tuple(op::Fusion(op::Parameter()), op::Negate()));
 }
@@ -9422,7 +9438,7 @@ ENTRY entry {
   hlo_cost_options.set_transcendentals_per_second(0.4);
 
   AssignMemorySpaceUsingCostAnalysis(
-      module.get(), /*memory_space_options_override=*/options,
+      module.get(), /*memory_space_options_override=*/std::move(options),
       /*cost_analysis_options_override=*/std::nullopt,
       /*hlo_cost_options_override=*/hlo_cost_options);
 }
@@ -9481,7 +9497,7 @@ TEST_F(MemorySpaceAssignmentTest,
   hlo_cost_options.set_transcendentals_per_second(0.4);
 
   AssignMemorySpaceUsingCostAnalysis(
-      module.get(), /*memory_space_options_override=*/options,
+      module.get(), /*memory_space_options_override=*/std::move(options),
       /*cost_analysis_options_override=*/std::nullopt,
       /*hlo_cost_options_override=*/hlo_cost_options);
 }
@@ -9567,7 +9583,7 @@ ENTRY entry {
 
   InstructionCountPrefetchIntervalPicker prefetch_interval_picker(2, 10);
   Options options = DefaultMemorySpaceOptions();
-  AssignMemorySpace(module.get(), options, buffer_interval_compare,
+  AssignMemorySpace(module.get(), std::move(options), buffer_interval_compare,
                     &prefetch_interval_picker);
 }
 
@@ -9637,7 +9653,7 @@ ENTRY main {
         }
         return false;
       };
-  AssignMemorySpace(module.get(), options);
+  AssignMemorySpace(module.get(), std::move(options));
 
   HloInstruction* fusion1 =
       module->entry_computation()->GetInstructionWithName("fusion1");
@@ -9743,7 +9759,7 @@ ENTRY main {
         }
         return false;
       };
-  AssignMemorySpace(module.get(), options);
+  AssignMemorySpace(module.get(), std::move(options));
 
   HloInstruction* fusion1 =
       module->entry_computation()->GetInstructionWithName("fusion1");
@@ -9866,7 +9882,7 @@ ENTRY main {
         }
         return false;
       };
-  AssignMemorySpace(module.get(), options);
+  AssignMemorySpace(module.get(), std::move(options));
 }
 
 // This test seeks to test that MSA will schedule async copy operations with
@@ -9903,7 +9919,7 @@ TEST_F(MemorySpaceAssignmentTest, HoistCopyStart) {
   options.post_module_scoped_alternate_memory_size_in_bytes = 64;
   options.enable_cross_program_prefetch = true;
   std::unique_ptr<PresetAssignments> preset_assignments =
-      AssignMemorySpace(module.get(), options);
+      AssignMemorySpace(module.get(), std::move(options));
 
   // Ensure that get-tuple-element.1 is chosen for cross-program prefetch.
   auto cross_program_prefetches = module->CrossProgramPrefetches();
@@ -9964,7 +9980,7 @@ TEST_F(MemorySpaceAssignmentTest,
                           ParseAndReturnVerifiedModule(hlo_string));
   Options options = DefaultMemorySpaceOptions();
   options.enable_cross_program_prefetch = true;
-  AssignMemorySpace(module.get(), options);
+  AssignMemorySpace(module.get(), std::move(options));
 
   // Ensure that get-tuple-element.1 is chosen for cross-program prefetch.
   auto cross_program_prefetches = module->CrossProgramPrefetches();
@@ -9999,7 +10015,8 @@ entry {
   options.op_span_size_fn =
       [&](HloInstruction* original_hlo, HloInstruction* cloned_hlo,
           int64_t operand_index) -> int64_t { return 32; };
-  AssignMemorySpace(module.get(), options, /*max_prefetch_interval=*/10,
+  AssignMemorySpace(module.get(), std::move(options),
+                    /*max_prefetch_interval=*/10,
                     /*min_prefetch_interval=*/0);
   const HloInstruction* fusion = FindInstruction(module.get(), "fusion");
   // The fusion instruction should have 9 operands: the 3 original operands
@@ -10070,7 +10087,8 @@ entry {
   options.enable_window_prefetch = true;
   options.op_span_size_fn = op_span_size_fn;
   options.reserved_scoped_memory_fn = reserved_scoped_memory_fn;
-  AssignMemorySpace(module.get(), options, /*max_prefetch_interval=*/10,
+  AssignMemorySpace(module.get(), std::move(options),
+                    /*max_prefetch_interval=*/10,
                     /*min_prefetch_interval=*/0);
   const HloInstruction* fusion = FindInstruction(module.get(), "t3");
   // Verify that the fusion instruction is window prefetched. If the fusion
@@ -10703,7 +10721,7 @@ TEST_F(MemorySpaceAssignmentTest, MultiCrossProgramPrefetchTest) {
   options.max_size_in_bytes = 256;
   options.alignment_in_bytes = 8;
   options.verify = true;
-  AssignMemorySpace(module.get(), options);
+  AssignMemorySpace(module.get(), std::move(options));
 
   auto cross_program_prefetches = module->CrossProgramPrefetches();
   EXPECT_EQ(cross_program_prefetches.size(), 2);
@@ -11120,7 +11138,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchPinnedTest) {
     return true;
   };
   std::unique_ptr<PresetAssignments> preset_assignments =
-      AssignMemorySpace(module.get(), options);
+      AssignMemorySpace(module.get(), std::move(options));
 
   auto cross_program_prefetches = module->CrossProgramPrefetches();
   EXPECT_GT(cross_program_prefetches.size(), 0);
@@ -11167,7 +11185,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchPinnedTupleTest) {
     return true;
   };
   std::unique_ptr<PresetAssignments> preset_assignments =
-      AssignMemorySpace(module.get(), options);
+      AssignMemorySpace(module.get(), std::move(options));
 
   auto cross_program_prefetches = module->CrossProgramPrefetches();
   EXPECT_GT(cross_program_prefetches.size(), 0);
@@ -11369,7 +11387,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchNoReuse) {
   auto options = DefaultMemorySpaceOptions();
   // Enough space to fit the cross-program prefetch for both p0 and p1.
   options.max_size_in_bytes = 512;
-  auto preset_assignments = AssignMemorySpace(module.get(), options,
+  auto preset_assignments = AssignMemorySpace(module.get(), std::move(options),
                                               /*max_prefetch_interval=*/5,
                                               /*min_prefetch_interval=*/2);
 
@@ -11461,7 +11479,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchWithOverrideNoReuse) {
   TF_ASSERT_OK_AND_ASSIGN(options.msa_sort_order_overrides,
                           ParseTextProto<MsaSortOrderOverrides>(text_proto));
   options.max_size_in_bytes = 256;
-  auto preset_assignments = AssignMemorySpace(module.get(), options,
+  auto preset_assignments = AssignMemorySpace(module.get(), std::move(options),
                                               /*max_prefetch_interval=*/5,
                                               /*min_prefetch_interval=*/2);
 
@@ -11542,7 +11560,7 @@ TEST_F(MemorySpaceAssignmentTest, UserAnnotatedCrossProgramPrefetchNoReuse) {
                           ParseAndReturnVerifiedModule(hlo_string));
   auto options = DefaultMemorySpaceOptions();
   options.max_size_in_bytes = 256;
-  auto preset_assignments = AssignMemorySpace(module.get(), options,
+  auto preset_assignments = AssignMemorySpace(module.get(), std::move(options),
                                               /*max_prefetch_interval=*/5,
                                               /*min_prefetch_interval=*/2);
 
@@ -11641,7 +11659,7 @@ TEST_F(MemorySpaceAssignmentTest,
                           ParseAndReturnVerifiedModule(hlo_string));
   auto options = DefaultMemorySpaceOptions();
   options.max_size_in_bytes = 256;
-  auto preset_assignments = AssignMemorySpace(module.get(), options,
+  auto preset_assignments = AssignMemorySpace(module.get(), std::move(options),
                                               /*max_prefetch_interval=*/5,
                                               /*min_prefetch_interval=*/2);
 
@@ -12047,7 +12065,7 @@ ENTRY entry {
                           ParseAndReturnVerifiedModule(hlo_string));
   Options options = DefaultMemorySpaceOptions();
   options.cross_program_prefetch_permissive_mode = true;
-  AssignMemorySpace(module.get(), options);
+  AssignMemorySpace(module.get(), std::move(options));
   auto cross_program_prefetches = module->CrossProgramPrefetches();
   EXPECT_EQ(cross_program_prefetches.size(), 1);
 }
@@ -12135,7 +12153,8 @@ ENTRY main {
   };
 
   // Run test.
-  AssignMemorySpace(module.get(), options, compare, &prefetch_interval_picker);
+  AssignMemorySpace(module.get(), std::move(options), compare,
+                    &prefetch_interval_picker);
 
   // - Make sure the setup occurred, i.e., that p0 is prefetched to alternate
   //   memory for use by c.
@@ -12242,8 +12261,8 @@ TEST_F(MemorySpaceAssignmentTest, ExpandScopedAlternateMemory) {
       ExpandedScopedAlternateMemoryMode::ENABLED;
   options.alignment_in_bytes = 10;
   std::unique_ptr<PresetAssignments> preset_assignments =
-      AssignMemorySpace(module.get(), options, buffer_interval_compare,
-                        &prefetch_interval_picker);
+      AssignMemorySpace(module.get(), std::move(options),
+                        buffer_interval_compare, &prefetch_interval_picker);
 
   VLOG(1) << "Post-MSA module:\n" << module->ToString();
 
@@ -13223,17 +13242,7 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
   SlicedPrefetchTest() {
     // Force tests to fail if ProposeSlices is unexpectedly called.
     EXPECT_CALL(slice_proposer_, ProposeSlices(_, _)).Times(0);
-
-    options_.max_size_in_bytes = 1024;
-    options_.sliced_prefetch_options.set_max_slices(2);
-    options_.sliced_prefetch_options.set_min_bytes(8);
-    options_.propose_slice_fn = [&](const Shape& shape,
-                                    const SlicedPrefetchOptions& options) {
-      return slice_proposer_.ProposeSlices(shape, options);
-    };
-    options_.get_equivalent_s8_shape_fn = [](const Shape& original_shape) {
-      return ShapeUtil::MakeShape(S8, {ShapeSize(original_shape)});
-    };
+    options_ = MakeDefaultOptions();
   }
 
   // Optional method to setup common ProposeSlices expectations for several
@@ -13241,7 +13250,7 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
   void SetupProposeSlicesToExpect2SlicesOfF32x8x8() {
     EXPECT_CALL(slice_proposer_,
                 ProposeSlices(f32_8_8_, EqualsSlicedPrefetchOptions(
-                                            options_.sliced_prefetch_options)))
+                                            options().sliced_prefetch_options)))
         .WillRepeatedly(Return(SliceProposalCollection({
             SliceProposal({f32_4_8_, std::vector<SliceParam>({{0, 4}, {0, 8}}),
                            ShapeSize(f32_4_8_)}),
@@ -13250,10 +13259,29 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
         })));
   }
 
+  Options MakeDefaultOptions() {
+    Options options = DefaultMemorySpaceOptions();
+    options.max_size_in_bytes = 1024;
+    options.sliced_prefetch_options.set_max_slices(2);
+    options.sliced_prefetch_options.set_min_bytes(8);
+    options.propose_slice_fn = [&](const Shape& shape,
+                                   const SlicedPrefetchOptions& options) {
+      return slice_proposer_.ProposeSlices(shape, options);
+    };
+    options.get_equivalent_s8_shape_fn = [](const Shape& original_shape) {
+      return ShapeUtil::MakeShape(S8, {ShapeSize(original_shape)});
+    };
+    return options;
+  }
+
+  const Options& options() const { return options_; }
+
   const Shape f32_8_8_ = ShapeUtil::MakeShape(F32, {8, 8});
   const Shape f32_4_8_ = ShapeUtil::MakeShape(F32, {4, 8});
   MockSliceProposer slice_proposer_;
-  Options options_ = DefaultMemorySpaceOptions();
+
+ private:
+  Options options_;
 };
 
 TEST_F(SlicedPrefetchTest, TwoSlices) {
@@ -13278,7 +13306,7 @@ ENTRY main {
           << module->ToString(HloPrintOptions::ShortParsable());
 
   std::unique_ptr<PresetAssignments> assignments = AssignMemorySpace(
-      module.get(), options_,
+      module.get(), MakeDefaultOptions(),
       /*max_prefetch_interval=*/10, /*min_prefetch_interval=*/1);
 
   VLOG(1) << "Post-MSA module:\n"
@@ -13323,7 +13351,7 @@ ENTRY main {
 
   ROOT r = f32[8,8] add(r1, r2)
 })zz";
-  Options options = options_;
+  Options options = MakeDefaultOptions();
   options.enable_sync_copy_replacement = true;
   SetupProposeSlicesToExpect2SlicesOfF32x8x8();
 
@@ -13332,7 +13360,7 @@ ENTRY main {
           << module->ToString(HloPrintOptions::ShortParsable());
 
   std::unique_ptr<PresetAssignments> assignments = AssignMemorySpace(
-      module.get(), options,
+      module.get(), std::move(options),
       /*max_prefetch_interval=*/10, /*min_prefetch_interval=*/1);
 
   VLOG(1) << "Post-MSA module:\n"
@@ -13356,11 +13384,12 @@ ENTRY main {
   const Shape f32_3_8 = ShapeUtil::MakeShape(F32, {3, 8});
   const Shape f32_2_8 = ShapeUtil::MakeShape(F32, {2, 8});
 
-  options_.sliced_prefetch_options.set_max_slices(3);
+  Options options = MakeDefaultOptions();
+  options.sliced_prefetch_options.set_max_slices(3);
 
   EXPECT_CALL(slice_proposer_,
               ProposeSlices(f32_8_8_, EqualsSlicedPrefetchOptions(
-                                          options_.sliced_prefetch_options)))
+                                          options.sliced_prefetch_options)))
       .WillRepeatedly(Return(SliceProposalCollection({
           SliceProposal({f32_3_8, std::vector<SliceParam>({{0, 3}, {0, 8}}),
                          ShapeSize(f32_3_8)}),
@@ -13375,7 +13404,7 @@ ENTRY main {
           << module->ToString(HloPrintOptions::ShortParsable());
 
   std::unique_ptr<PresetAssignments> assignments = AssignMemorySpace(
-      module.get(), options_,
+      module.get(), std::move(options),
       /*max_prefetch_interval=*/10, /*min_prefetch_interval=*/1);
 
   VLOG(1) << "Post-MSA module:\n"
@@ -13417,14 +13446,15 @@ ENTRY main {
   ROOT r = f32[8,8] add(c, p1)
 })zz";
 
-  options_.sliced_prefetch_options.set_max_slices(0);
+  Options options = MakeDefaultOptions();
+  options.sliced_prefetch_options.set_max_slices(0);
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
   VLOG(1) << "Original module:\n"
           << module->ToString(HloPrintOptions::ShortParsable());
 
   std::unique_ptr<PresetAssignments> assignments = AssignMemorySpace(
-      module.get(), options_,
+      module.get(), std::move(options),
       /*max_prefetch_interval=*/10, /*min_prefetch_interval=*/1);
 
   VLOG(1) << "Post-MSA module:\n"
@@ -13455,14 +13485,15 @@ ENTRY main {
   ROOT r = f32[8,8] add(c, p1)
 })zz";
 
-  options_.sliced_prefetch_options.set_min_bytes(1000000000);
+  Options options = MakeDefaultOptions();
+  options.sliced_prefetch_options.set_min_bytes(1000000000);
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
   VLOG(1) << "Original module:\n"
           << module->ToString(HloPrintOptions::ShortParsable());
 
   std::unique_ptr<PresetAssignments> assignments = AssignMemorySpace(
-      module.get(), options_,
+      module.get(), std::move(options),
       /*max_prefetch_interval=*/10, /*min_prefetch_interval=*/1);
 
   VLOG(1) << "Post-MSA module:\n"
@@ -13494,9 +13525,10 @@ ENTRY main {
   ROOT r = f32[8,8] add(c, p1)
 })zz";
 
+  Options options = MakeDefaultOptions();
   EXPECT_CALL(slice_proposer_,
               ProposeSlices(f32_8_8_, EqualsSlicedPrefetchOptions(
-                                          options_.sliced_prefetch_options)))
+                                          options.sliced_prefetch_options)))
       .WillRepeatedly(Return(absl::StatusOr<SliceProposalCollection>(
           FailedPrecondition("%s", "Cannot slice."))));
 
@@ -13505,7 +13537,7 @@ ENTRY main {
           << module->ToString(HloPrintOptions::ShortParsable());
 
   std::unique_ptr<PresetAssignments> assignments = AssignMemorySpace(
-      module.get(), options_,
+      module.get(), std::move(options),
       /*max_prefetch_interval=*/10, /*min_prefetch_interval=*/1);
 
   VLOG(1) << "Post-MSA module:\n"
@@ -13545,7 +13577,7 @@ ENTRY main {
 
   std::unique_ptr<PresetAssignments> assignments =
       AssignMemorySpaceUsingCostAnalysis(
-          module.get(), /*memory_space_options_override=*/options_);
+          module.get(), /*memory_space_options_override=*/MakeDefaultOptions());
 
   VLOG(1) << "Post-MSA module:\n"
           << module->ToString(HloPrintOptions::ShortParsable());
@@ -13622,7 +13654,7 @@ ENTRY main {
 
   std::unique_ptr<PresetAssignments> assignments =
       AssignMemorySpaceUsingCostAnalysis(
-          module.get(), /*memory_space_options_override=*/options_);
+          module.get(), /*memory_space_options_override=*/MakeDefaultOptions());
 
   VLOG(1) << "Post-MSA module:\n"
           << module->ToString(HloPrintOptions::ShortParsable());
@@ -13756,11 +13788,11 @@ ENTRY main {
   Shape f32_32_16 = ShapeUtil::MakeShape(F32, {32, 16});
   EXPECT_CALL(slice_proposer_,
               ProposeSlices(f32_16_16, EqualsSlicedPrefetchOptions(
-                                           options_.sliced_prefetch_options)))
+                                           options().sliced_prefetch_options)))
       .WillRepeatedly(Return(SliceProposalCollection({})));
   EXPECT_CALL(slice_proposer_,
               ProposeSlices(f32_32_16, EqualsSlicedPrefetchOptions(
-                                           options_.sliced_prefetch_options)))
+                                           options().sliced_prefetch_options)))
       .WillRepeatedly(Return(SliceProposalCollection({
           SliceProposal({f32_16_16, std::vector<SliceParam>({{0, 16}, {0, 16}}),
                          ShapeSize(f32_16_16)}),
@@ -13794,13 +13826,14 @@ ENTRY main {
 
   // Configure MSA.
   InstructionCountPrefetchIntervalPicker prefetch_interval_picker(2, 50);
-  options_.max_size_in_bytes = 4 * 1024;
-  options_.max_repacks = 0;
+  Options options_no_repacking = MakeDefaultOptions();
+  options_no_repacking.max_size_in_bytes = 4 * 1024;
+  options_no_repacking.max_repacks = 0;
 
   // Run MSA without repacking
-  std::unique_ptr<PresetAssignments> assignments =
-      AssignMemorySpace(module_no_repacking.get(), options_,
-                        buffer_interval_compare, &prefetch_interval_picker);
+  std::unique_ptr<PresetAssignments> assignments = AssignMemorySpace(
+      module_no_repacking.get(), std::move(options_no_repacking),
+      buffer_interval_compare, &prefetch_interval_picker);
   VLOG(1) << "Post-MSA module (no repacking):\n"
           << module_no_repacking->ToString(HloPrintOptions::ShortParsable());
 
@@ -13859,11 +13892,14 @@ ENTRY main {
 
         return true;
       });
-  options_.max_repacks = 1;
-  options_.repacker = &repacker;
-  assignments =
-      AssignMemorySpace(module_with_repacking.get(), options_,
-                        buffer_interval_compare, &prefetch_interval_picker);
+  Options options_with_repacking = MakeDefaultOptions();
+  options_with_repacking.max_size_in_bytes = 4 * 1024;
+  options_with_repacking.max_repacks = 0;
+  options_with_repacking.max_repacks = 1;
+  options_with_repacking.repacker = &repacker;
+  assignments = AssignMemorySpace(
+      module_with_repacking.get(), std::move(options_with_repacking),
+      buffer_interval_compare, &prefetch_interval_picker);
   VLOG(1) << "Post-MSA module (with repacking):\n"
           << module_with_repacking->ToString(HloPrintOptions::ShortParsable());
 
@@ -14031,21 +14067,23 @@ ENTRY main {
   // We set the minimum prefetch interval to a large enough value (32) to force
   // us to prefetch around both while loops, and not just 1.
   InstructionCountPrefetchIntervalPicker prefetch_interval_picker(32, 100);
-  options_.max_size_in_bytes = 4 * 64;
+  Options options0 = MakeDefaultOptions();
+  options0.max_size_in_bytes = 4 * 64;
 
   // Define a lambda for running MSA on the specified HLO, with the
   // configuration above.
   auto run_msa =
-      [&](absl::string_view hlo_text) -> absl::StatusOr<ModuleAndAssignments> {
+      [&](Options options,
+          absl::string_view hlo_text) -> absl::StatusOr<ModuleAndAssignments> {
     ModuleAndAssignments module_and_assignments;
     TF_ASSIGN_OR_RETURN(module_and_assignments.module,
                         ParseAndReturnVerifiedModule(hlo_text));
     VLOG(1) << "Original module:\n"
             << module_and_assignments.module->ToString(
                    HloPrintOptions::ShortParsable());
-    module_and_assignments.assignments =
-        AssignMemorySpace(module_and_assignments.module.get(), options_,
-                          buffer_interval_compare, &prefetch_interval_picker);
+    module_and_assignments.assignments = AssignMemorySpace(
+        module_and_assignments.module.get(), std::move(options),
+        buffer_interval_compare, &prefetch_interval_picker);
     VLOG(1) << "Post-MSA module:\n"
             << module_and_assignments.module->ToString(
                    HloPrintOptions::ShortParsable());
@@ -14057,7 +14095,8 @@ ENTRY main {
   // rather than during the second while loop.
   TF_ASSERT_OK_AND_ASSIGN(
       ModuleAndAssignments module_and_assignments1,
-      run_msa(gen_hlo(while_computation_cheap, while_computation_expensive)));
+      run_msa(std::move(options0),
+              gen_hlo(while_computation_cheap, while_computation_expensive)));
   auto root1 =
       module_and_assignments1.module->entry_computation()->root_instruction();
   EXPECT_THAT(root1, op::Add(_, op::Tanh(IsAsyncSlicedCopy(
@@ -14093,13 +14132,17 @@ ENTRY main {
       absl::c_is_sorted<std::vector<int>>(
           {start_indices[1], first_while, start_indices[0], second_while}));
 
+  Options options1 = MakeDefaultOptions();
+  options1.max_size_in_bytes = 4 * 64;
+
   // In this case, more time elapses during the first while loop than the
   // second. This should push us to use a normal prefetch, rather than slicing,
   // since the ideal time to start the second slice will get pushed before
   // both while loops.
   TF_ASSERT_OK_AND_ASSIGN(
       ModuleAndAssignments module_and_assignments2,
-      run_msa(gen_hlo(while_computation_expensive, while_computation_cheap)));
+      run_msa(std::move(options1),
+              gen_hlo(while_computation_expensive, while_computation_cheap)));
   auto root2 =
       module_and_assignments2.module->entry_computation()->root_instruction();
   EXPECT_THAT(root2, op::Add(_, op::Tanh(op::AsyncCopy(kAlternateMemorySpace,
@@ -14193,12 +14236,13 @@ ENTRY main {
   const Shape f32_8_16 = ShapeUtil::MakeShape(F32, {8, 16});
   const Shape s8_128 = ShapeUtil::MakeShape(S8, {128});
 
-  options_.sliced_prefetch_options.set_max_slices(100000);
-  options_.sliced_prefetch_options.set_preferred_slice_size(4 * 8 * 4);
+  Options options = MakeDefaultOptions();
+  options.sliced_prefetch_options.set_max_slices(100000);
+  options.sliced_prefetch_options.set_preferred_slice_size(4 * 8 * 4);
 
   EXPECT_CALL(slice_proposer_,
               ProposeSlices(f32_8_8_, EqualsSlicedPrefetchOptions(
-                                          options_.sliced_prefetch_options)))
+                                          options.sliced_prefetch_options)))
       .WillRepeatedly(Return(SliceProposalCollection({
           SliceProposal(
               {s8_128, std::vector<SliceParam>({{0, 128}}), ShapeSize(s8_128)}),
@@ -14208,7 +14252,7 @@ ENTRY main {
 
   EXPECT_CALL(slice_proposer_,
               ProposeSlices(f32_8_16, EqualsSlicedPrefetchOptions(
-                                          options_.sliced_prefetch_options)))
+                                          options.sliced_prefetch_options)))
       .WillRepeatedly(Return(SliceProposalCollection({
           SliceProposal(
               {s8_128, std::vector<SliceParam>({{0, 128}}), ShapeSize(s8_128)}),
@@ -14225,7 +14269,7 @@ ENTRY main {
           << module->ToString(HloPrintOptions::ShortParsable());
 
   std::unique_ptr<PresetAssignments> assignments = AssignMemorySpace(
-      module.get(), options_,
+      module.get(), std::move(options),
       /*max_prefetch_interval=*/100, /*min_prefetch_interval=*/1);
 
   VLOG(1) << "Post-MSA module:\n"
@@ -14362,7 +14406,8 @@ ENTRY %main.13 (Arg_0.1: f32[8,128]) -> (f32[8,128], f32[8,128]) {
       };
 
   XLA_VLOG_LINES(3, "Before MSA: \n" + module->ToString());
-  AssignMemorySpaceUsingCostAnalysis(module.get(), memory_space_options);
+  AssignMemorySpaceUsingCostAnalysis(module.get(),
+                                     std::move(memory_space_options));
   XLA_VLOG_LINES(3, "After MSA: \n" + module->ToString());
 
   EXPECT_EQ(FindInstruction(module.get(), "copy_done.2")
@@ -14504,7 +14549,8 @@ ENTRY %main.28_spmd (param.1: bf16[1024,512], param.2: bf16[2,512,4096], param: 
   memory_space_options.repacker = &best_fit_repacker;
 
   XLA_VLOG_LINES(3, "Before MSA: \n" + module->ToString());
-  AssignMemorySpaceUsingCostAnalysis(module.get(), memory_space_options);
+  AssignMemorySpaceUsingCostAnalysis(module.get(),
+                                     std::move(memory_space_options));
   XLA_VLOG_LINES(3, "After MSA: \n" + module->ToString());
   auto latency_optimized_reduce_scatter_kernel = FindInstruction(
       module.get(),
@@ -14548,7 +14594,8 @@ TEST_F(MemorySpaceAssignmentTest, TestColoringMultipleOperands) {
   memory_space_options.max_size_in_bytes = 48;
 
   XLA_VLOG_LINES(3, "Before MSA: \n" + module->ToString());
-  AssignMemorySpaceUsingCostAnalysis(module.get(), memory_space_options);
+  AssignMemorySpaceUsingCostAnalysis(module.get(),
+                                     std::move(memory_space_options));
   XLA_VLOG_LINES(3, "After MSA: \n" + module->ToString());
 
   HloInstruction* add_after_msa = FindInstruction(module.get(), "add");
@@ -14591,7 +14638,7 @@ TEST_F(MemorySpaceAssignmentTest,
         return 10;
       };
   std::unique_ptr<PresetAssignments> preset_assignments =
-      AssignMemorySpace(module.get(), options);
+      AssignMemorySpace(module.get(), std::move(options));
   EXPECT_THAT(preset_assignments->scoped_allocation_chunks(),
               ::testing::Each(::testing::ResultOf(
                   "instruction->name()",
@@ -14653,7 +14700,8 @@ ENTRY entry {
                                                      p4_position, p5_position};
 
   XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
-  AssignMemorySpaceUsingCostAnalysis(module.get(), memory_space_options);
+  AssignMemorySpaceUsingCostAnalysis(module.get(),
+                                     std::move(memory_space_options));
   XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
 
   HloInstruction* negate0 = FindInstruction(module.get(), "negate0");
@@ -14732,7 +14780,8 @@ ENTRY entry {
   memory_space_options.max_outstanding_block_prefetches = 2;
   memory_space_options.max_outstanding_prefetches = 0;
   XLA_LOG_LINES(INFO, "Before MSA: \n" + module->ToString());
-  AssignMemorySpaceUsingCostAnalysis(module.get(), memory_space_options);
+  AssignMemorySpaceUsingCostAnalysis(module.get(),
+                                     std::move(memory_space_options));
   XLA_LOG_LINES(INFO, "After MSA: \n" + module->ToString());
 
   HloInstruction* negate0 = FindInstruction(module.get(), "negate0");
@@ -14812,7 +14861,8 @@ ENTRY entry {
                                                      p1_position, p0_position};
   memory_space_options.max_outstanding_block_prefetches = 10;
   XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
-  AssignMemorySpaceUsingCostAnalysis(module.get(), memory_space_options);
+  AssignMemorySpaceUsingCostAnalysis(module.get(),
+                                     std::move(memory_space_options));
   XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
 
   HloInstruction* negate0 = FindInstruction(module.get(), "negate0");
@@ -14889,7 +14939,8 @@ ENTRY entry {
                                                      p1_position, p0_position};
   memory_space_options.max_outstanding_block_prefetches = 10;
   XLA_LOG_LINES(INFO, "Before MSA: \n" + module->ToString());
-  AssignMemorySpaceUsingCostAnalysis(module.get(), memory_space_options);
+  AssignMemorySpaceUsingCostAnalysis(module.get(),
+                                     std::move(memory_space_options));
   XLA_LOG_LINES(INFO, "After MSA: \n" + module->ToString());
 
   HloInstruction* negate0 = FindInstruction(module.get(), "negate0");
@@ -14962,7 +15013,8 @@ ENTRY entry {
                                                      p1_position, p0_position};
   memory_space_options.max_outstanding_block_prefetches = 10;
   XLA_VLOG_LINES(3, "Before MSA: \n" + module->ToString());
-  AssignMemorySpaceUsingCostAnalysis(module.get(), memory_space_options);
+  AssignMemorySpaceUsingCostAnalysis(module.get(),
+                                     std::move(memory_space_options));
   XLA_VLOG_LINES(3, "After MSA: \n" + module->ToString());
   HloInstruction* negate0 = FindInstruction(module.get(), "negate0");
   EXPECT_EQ(negate0->operand(0)->shape().layout().memory_space(),
@@ -15039,7 +15091,8 @@ ENTRY entry {
                                                      p1_position, p0_position};
   memory_space_options.max_outstanding_block_prefetches = 10;
   XLA_VLOG_LINES(3, "Before MSA: \n" + module->ToString());
-  AssignMemorySpaceUsingCostAnalysis(module.get(), memory_space_options);
+  AssignMemorySpaceUsingCostAnalysis(module.get(),
+                                     std::move(memory_space_options));
   XLA_VLOG_LINES(3, "After MSA: \n" + module->ToString());
   HloInstruction* negate0 = FindInstruction(module.get(), "negate0");
   const HloInstruction* negate0_operand0 = negate0->operand(0);
@@ -15136,7 +15189,8 @@ ENTRY entry {
   memory_space_options.buffer_colorings = {
       {add15_negate14_use, kAlternateMemorySpace}};
   XLA_VLOG_LINES(3, "Before MSA: \n" + module->ToString());
-  AssignMemorySpaceUsingCostAnalysis(module.get(), memory_space_options);
+  AssignMemorySpaceUsingCostAnalysis(module.get(),
+                                     std::move(memory_space_options));
   XLA_VLOG_LINES(3, "After MSA: \n" + module->ToString());
   HloInstruction* negate0 = FindInstruction(module.get(), "negate0");
   EXPECT_EQ(negate0->operand(0)->shape().layout().memory_space(),
@@ -15229,7 +15283,8 @@ ENTRY entry {
   memory_space_options.buffer_colorings = {
       {add15_negate14_use, kAlternateMemorySpace}};
   XLA_VLOG_LINES(3, "Before MSA: \n" + module->ToString());
-  AssignMemorySpaceUsingCostAnalysis(module.get(), memory_space_options);
+  AssignMemorySpaceUsingCostAnalysis(module.get(),
+                                     std::move(memory_space_options));
   XLA_VLOG_LINES(3, "After MSA: \n" + module->ToString());
   HloInstruction* negate0 = FindInstruction(module.get(), "negate0");
   EXPECT_EQ(negate0->operand(0)->shape().layout().memory_space(),
@@ -15304,7 +15359,8 @@ ENTRY entry {
                                                      p2_position};
 
   XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
-  AssignMemorySpaceUsingCostAnalysis(module.get(), memory_space_options);
+  AssignMemorySpaceUsingCostAnalysis(module.get(),
+                                     std::move(memory_space_options));
   XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
 
   HloInstruction* negate0 = FindInstruction(module.get(), "negate0");
@@ -15405,7 +15461,8 @@ ENTRY entry {
                                                      p2_position};
 
   XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
-  AssignMemorySpaceUsingCostAnalysis(module.get(), memory_space_options);
+  AssignMemorySpaceUsingCostAnalysis(module.get(),
+                                     std::move(memory_space_options));
   XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
 
   HloInstruction* negate0 = FindInstruction(module.get(), "negate0");
@@ -15526,7 +15583,8 @@ ENTRY entry {
                                                      p2_position};
 
   XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
-  AssignMemorySpaceUsingCostAnalysis(module.get(), memory_space_options);
+  AssignMemorySpaceUsingCostAnalysis(module.get(),
+                                     std::move(memory_space_options));
   XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
 
   HloInstruction* negate0 = FindInstruction(module.get(), "negate0");
@@ -15607,7 +15665,8 @@ ENTRY %NegateChain (p0: f32[2,3], p1: f32[2,3]) -> f32[2,3] {
   memory_space_options.async_instruction_bw_adjustment_factor_fn =
       async_instruction_bw_adjustment_factor_fn;
   XLA_VLOG_LINES(3, "Before MSA: \n" + module->ToString());
-  AssignMemorySpaceUsingCostAnalysis(module.get(), memory_space_options);
+  AssignMemorySpaceUsingCostAnalysis(module.get(),
+                                     std::move(memory_space_options));
   XLA_VLOG_LINES(3, "After MSA: \n" + module->ToString());
   HloInstruction* add = FindInstruction(module.get(), "add");
   EXPECT_EQ(add->operand(1)->shape().layout().memory_space(),
@@ -15647,7 +15706,8 @@ ENTRY %NegateChain (p0: f32[2,3], p1: f32[2,3]) -> f32[2,3] {
   memory_space_options.async_instruction_bw_adjustment_factor_fn =
       async_instruction_bw_adjustment_factor_fn;
   XLA_VLOG_LINES(3, "Before MSA: \n" + module->ToString());
-  AssignMemorySpaceUsingCostAnalysis(module.get(), memory_space_options);
+  AssignMemorySpaceUsingCostAnalysis(module.get(),
+                                     std::move(memory_space_options));
   XLA_VLOG_LINES(3, "After MSA: \n" + module->ToString());
   HloInstruction* add = FindInstruction(module.get(), "add");
   EXPECT_EQ(add->operand(1)->shape().layout().memory_space(),

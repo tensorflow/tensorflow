@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/base/attributes.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/hlo.pb.h"
@@ -92,7 +93,7 @@ class BufferValue {
   using Id = int64_t;
 
   // Functions which return the size and alignment of a logical buffer in bytes.
-  using SizeFunction = std::function<int64_t(const BufferValue&)>;
+  using SizeFunction = absl::AnyInvocable<int64_t(const BufferValue&) const>;
   using AlignmentFunction = std::function<int64_t(BufferValue::Color)>;
 
   // Prevent value being copied, allowing comparison by pointer,

@@ -203,7 +203,7 @@ int64_t EstimateFragmentationSize(HloModule* module,
   // Run heap simulator on the whole module to estimate the fragmentation size.
   auto algorithm = std::make_unique<GlobalDecreasingSizeBestFitHeap<HloValue>>(
       /*alignment=*/1);
-  auto size_fn = [](const BufferValue& buffer) -> int64_t {
+  BufferValue::SizeFunction size_fn = [](const BufferValue& buffer) -> int64_t {
     const Shape& shape = buffer.shape();
     if (!shape.IsArray()) {
       return 0;
@@ -212,7 +212,7 @@ int64_t EstimateFragmentationSize(HloModule* module,
   };
   auto result =
       HeapSimulator::Run(std::move(algorithm), *module, module->schedule(),
-                         alias_analysis, alias_info, size_fn);
+                         alias_analysis, alias_info, &size_fn);
   CHECK_OK(result.status());
   int64_t fragmentation_size = result.value().fragmentation_size;
   VLOG(3) << module->name() << ": Heap simulator estimated fragmentation size: "

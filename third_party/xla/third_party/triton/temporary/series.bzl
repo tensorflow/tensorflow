@@ -19,5 +19,6 @@ temporary_patch_list = [
     "//third_party/triton:temporary/launcher_overflow_fix.patch",
     "//third_party/triton:temporary/convert_layout_op_to_llvm_small_width.patch",
     "//third_party/triton:temporary/convert_layout_op_to_llvm_small_width_2.patch",
+    "//third_party/triton:temporary/cherrypick_dominance_fix.patch",
     # Add new patches just above this line
 ]
