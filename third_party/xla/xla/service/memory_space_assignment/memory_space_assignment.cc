@@ -1054,6 +1054,20 @@ absl::Status MemorySpaceAssignment::FixSchedule() {
   absl::flat_hash_map<const HloComputation*, ComputationStats>
       computation_to_stats;
 
+  absl::flat_hash_set<HloInstruction*> pass_over_instructions;
+  for (const auto& [_, custom_call_prefetch_details] :
+       options_.hlo_position_to_custom_call_prefetch_details) {
+    for (const auto& custom_call_prefetch_detail :
+         custom_call_prefetch_details) {
+      pass_over_instructions.insert(custom_call_prefetch_detail.prefetch_start);
+      pass_over_instructions.insert(custom_call_prefetch_detail.prefetch_done);
+      for (const auto& intermediate_instruction :
+           custom_call_prefetch_detail.intermediate_instructions) {
+        pass_over_instructions.insert(intermediate_instruction);
+      }
+    }
+  }
+
   for (const HloComputation* computation :
        module_->MakeNonfusionComputations()) {
     // Parallel computations aren't in the schedule and don't need to be
@@ -1106,7 +1120,8 @@ absl::Status MemorySpaceAssignment::FixSchedule() {
       // dependencies.
       if (instruction != nullptr &&
           instruction->opcode() != HloOpcode::kBitcast &&
-          instruction->opcode() != HloOpcode::kTuple) {
+          instruction->opcode() != HloOpcode::kTuple &&
+          !pass_over_instructions.contains(instruction)) {
         HloComputation* computation = instruction->parent();
         if (computation_to_stats.contains(computation)) {
           ComputationStats& stats = computation_to_stats[computation];
