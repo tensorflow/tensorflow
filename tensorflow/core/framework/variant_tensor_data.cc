@@ -94,7 +94,7 @@ string VariantTensorData::DebugString() const {
   string repeated_field = "";
   for (const auto& t : tensors_) {
     repeated_field =
-        strings::StrCat(repeated_field, " tensors: ", t.DebugString());
+        absl::StrCat(repeated_field, " tensors: ", t.DebugString());
   }
   return strings::StrCat("type_name: ", type_name(), " metadata: ", metadata_,
                          repeated_field);

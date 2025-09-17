@@ -407,7 +407,9 @@ RocmBandwidthSettings CreateSettings(
     if (*se.functor == nullptr) {
       const char* dlsym_error = dlerror();
       if (dlsym_error) {
-        LOG(WARNING) << dlsym_error;
+        VLOG(0) << "Failed to load symbol " << se.name << ": " << dlsym_error;
+        VLOG(0) << "This is likely caused by insufficient CUDA driver version. "
+                   "Please upgrade CUDA driver to 550 or higher.";
       }
     }
   }

@@ -59,7 +59,7 @@ static std::unordered_set<string>* get_dataset_op_registry() {
 
 std::string UniqueNodeName(const std::string& base) {
   static std::atomic<int64_t> counter(0);
-  return strings::StrCat(base, "/", counter.fetch_add(1));
+  return absl::StrCat(base, "/", counter.fetch_add(1));
 }
 
 // A wrapper class for storing a `DatasetBase` instance in a DT_VARIANT tensor.
@@ -780,7 +780,7 @@ void DatasetBase::Initialize(const Metadata& metadata) {
   if (metadata_.name() == "") {
     static std::atomic<int64_t> id_counter(0);
     *metadata_.mutable_name() =
-        strings::StrCat(type_string(), ":", id_counter.fetch_add(1));
+        absl::StrCat(type_string(), ":", id_counter.fetch_add(1));
   }
 }
 
@@ -886,7 +886,7 @@ absl::Status DatasetBase::MakeIterator(
   tsl::profiler::TraceMe traceme(
       [&] {
         return tsl::profiler::TraceMeEncode(
-            strings::StrCat("MakeIterator::", type_string()), {});
+            absl::StrCat("MakeIterator::", type_string()), {});
       },
       tsl::profiler::TraceMeLevel::kInfo);
   *iterator = MakeIteratorInternal(output_prefix);
@@ -1079,22 +1079,22 @@ DatasetBaseIterator::DatasetBaseIterator(const BaseParams& params)
     : params_(params) {
   params_.dataset->Ref();
   VLOG(2) << prefix() << " constructor";
-  strings::StrAppend(&traceme_metadata_, "name=", dataset()->metadata().name());
-  strings::StrAppend(&traceme_metadata_, ",shapes=");
+  absl::StrAppend(&traceme_metadata_, "name=", dataset()->metadata().name());
+  absl::StrAppend(&traceme_metadata_, ",shapes=");
   auto& shapes = output_shapes();
   for (int i = 0; i < shapes.size(); ++i) {
     if (i > 0) {
-      strings::StrAppend(&traceme_metadata_, " ");
+      absl::StrAppend(&traceme_metadata_, " ");
     }
-    strings::StrAppend(&traceme_metadata_, shapes.at(i).DebugString());
+    absl::StrAppend(&traceme_metadata_, shapes.at(i).DebugString());
   }
-  strings::StrAppend(&traceme_metadata_, ",types=");
+  absl::StrAppend(&traceme_metadata_, ",types=");
   auto& types = output_dtypes();
   for (int i = 0; i < types.size(); ++i) {
     if (i > 0) {
-      strings::StrAppend(&traceme_metadata_, " ");
+      absl::StrAppend(&traceme_metadata_, " ");
     }
-    strings::StrAppend(&traceme_metadata_, DataTypeString(types.at(i)));
+    absl::StrAppend(&traceme_metadata_, DataTypeString(types.at(i)));
   }
 }
 
@@ -1107,24 +1107,24 @@ string DatasetBaseIterator::BuildTraceMeName() {
   string result =
       strings::StrCat(params_.prefix, "#", traceme_metadata_, ",id=", id_);
   if (parent_) {
-    strings::StrAppend(&result, ",parent_id=", parent_id_);
+    absl::StrAppend(&result, ",parent_id=", parent_id_);
   }
   TraceMeMetadata metadata = GetTraceMeMetadata();
   for (const auto& pair : metadata) {
-    strings::StrAppend(&result, ",", pair.first, "=", pair.second);
+    absl::StrAppend(&result, ",", pair.first, "=", pair.second);
   }
   if (model_node() != nullptr) {
     if (model_node()->buffered_elements() > 0) {
-      strings::StrAppend(
+      absl::StrAppend(
           &result, ",buffered_elements=",
           static_cast<long long>(model_node()->buffered_elements()));
-      strings::StrAppend(
+      absl::StrAppend(
           &result, ",buffered_bytes_MB=",
           static_cast<long long>(
               static_cast<double>(model_node()->buffered_bytes()) * 1e-6));
     }
   }
-  strings::StrAppend(&result, "#");
+  absl::StrAppend(&result, "#");
   return result;
 }
 

@@ -273,7 +273,7 @@ TEST(TensorUtil, Split) {
 TEST(TensorUtil, ConcatSplitStrings) {
   Tensor x(DT_STRING, TensorShape({4, 3}));
   for (int i = 0; i < 4 * 3; ++i) {
-    x.flat<tstring>()(i) = strings::StrCat("foo_", i);
+    x.flat<tstring>()(i) = absl::StrCat("foo_", i);
   }
 
   std::vector<Tensor> split;
@@ -287,7 +287,7 @@ TEST(TensorUtil, ConcatSplitStrings) {
 
   // Ensure that no memory is being shared between 'x' and 'x_round_tripped'.
   for (int i = 0; i < 4 * 3; ++i) {
-    x_round_tripped.flat<tstring>()(i) = strings::StrCat("bar_", i);
+    x_round_tripped.flat<tstring>()(i) = absl::StrCat("bar_", i);
   }
   for (int i = 0; i < 4 * 3; ++i) {
     EXPECT_NE(x.flat<tstring>()(i), x_round_tripped.flat<tstring>()(i));

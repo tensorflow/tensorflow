@@ -229,10 +229,10 @@ string OpKernel::ShapeTraceString(const OpKernelContext& ctx) const {
       tensor_shapes.emplace_back();  // Placeholder
       continue;
     }
-    tensor_shapes.emplace_back(strings::StrCat(
+    tensor_shapes.emplace_back(absl::StrCat(
         DataTypeString(input_dtype), ctx.input(i).shape().DebugString()));
   }
-  return strings::StrCat("(", absl::StrJoin(tensor_shapes, ";"), ")");
+  return absl::StrCat("(", absl::StrJoin(tensor_shapes, ";"), ")");
 }
 
 string OpKernel::TraceString(const OpKernelContext& ctx, bool verbose) const {
@@ -1649,16 +1649,16 @@ string KernelsRegisteredForOp(absl::string_view op_name) {
   if (kernel_list.kernel_size() == 0) return "  <no registered kernels>\n";
   string ret;
   for (const auto& kernel_def : kernel_list.kernel()) {
-    strings::StrAppend(&ret, "  device='", kernel_def.device_type(), "'");
+    absl::StrAppend(&ret, "  device='", kernel_def.device_type(), "'");
     if (!kernel_def.label().empty()) {
-      strings::StrAppend(&ret, "; label='", kernel_def.label(), "'");
+      absl::StrAppend(&ret, "; label='", kernel_def.label(), "'");
     }
     for (int i = 0; i < kernel_def.constraint_size(); ++i) {
-      strings::StrAppend(
+      absl::StrAppend(
           &ret, "; ", kernel_def.constraint(i).name(), " in ",
           SummarizeAttrValue(kernel_def.constraint(i).allowed_values()));
     }
-    strings::StrAppend(&ret, "\n");
+    absl::StrAppend(&ret, "\n");
   }
   return ret;
 }

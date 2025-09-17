@@ -58,7 +58,7 @@ class NodeDefBuilderTest : public ::testing::Test {
     TF_EXPECT_OK(status);
     if (!status.ok()) return;
     NodeDef expected;
-    protobuf::TextFormat::ParseFromString(strings::StrCat("name: 'n' ", proto),
+    protobuf::TextFormat::ParseFromString(absl::StrCat("name: 'n' ", proto),
                                           &expected);
     EXPECT_EQ(node_def.DebugString(), expected.DebugString());
 
