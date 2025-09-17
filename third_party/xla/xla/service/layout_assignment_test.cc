@@ -59,6 +59,18 @@ namespace {
 namespace m = xla::match;
 using ::testing::ElementsAre;
 
+absl::Status AssignLayoutsToComputation(
+    HloModule* m, ChannelLayoutConstraints* channel_constraints = nullptr) {
+  if (!m->entry_computation_layout().result_layout().LayoutIsSet()) {
+    m->mutable_entry_computation_layout()
+        ->mutable_result_layout()
+        ->SetToDefaultLayout();
+  }
+  LayoutAssignment layout_assignment(m->mutable_entry_computation_layout(),
+                                     channel_constraints);
+  return layout_assignment.Run(m).status();
+}
+
 class LayoutAssignmentTest : public HloTestBase {
  protected:
   void AssignLayouts(HloModule* m, ComputationLayout* entry_computation_layout,
@@ -990,6 +1002,34 @@ TEST_F(LayoutAssignmentTest, CopySliceOperandToAvoidImplicitLayoutChange) {
           m::Slice(m::Copy(m::Parameter(1)).WithShapeEqualTo(&shape_copy)))));
 }
 
+TEST_F(LayoutAssignmentTest, BitcastConvertAddingDimensionDoesNotChangeLayout) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+e {
+  a = f32[2,64]{0,1} parameter(0)
+  b = u4[2,64,8]{1,2,0:E(4)} bitcast-convert(a)
+})"));
+  TF_ASSERT_OK(AssignLayoutsToComputation(module.get()));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::BitcastConvert(
+                  m::Copy(m::Parameter()).WithShape(F32, {2, 64}, {1, 0}))));
+}
+
+TEST_F(LayoutAssignmentTest,
+       BitcastConvertRemovingDimensionDoesNotChangeLayout) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+e {
+  a = s8[16,3,2]{2,1,0} parameter(0)
+  b = u16[16,3]{0,1} bitcast-convert(a)
+})"));
+  TF_ASSERT_OK(AssignLayoutsToComputation(module.get()));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::BitcastConvert(
+          m::Copy(m::Parameter()).WithShape(S8, {16, 3, 2}, {2, 0, 1}))));
+}
+
 TEST_F(LayoutAssignmentTest, CopyDSliceOperandToAvoidImplicitLayoutChange) {
   const char* module_str = R"(
     HloModule CopyDSliceOperandToAvoidImplicitLayoutChange
@@ -1467,18 +1507,6 @@ ENTRY %MixedHostDeviceResult {
             Layout::kDefaultMemorySpace);
 
   ExpectTupleLayoutIs(result_shape, {{1, 0}, {0, 1}});
-}
-
-absl::Status AssignLayoutsToComputation(
-    HloModule* m, ChannelLayoutConstraints* channel_constraints = nullptr) {
-  if (!m->entry_computation_layout().result_layout().LayoutIsSet()) {
-    m->mutable_entry_computation_layout()
-        ->mutable_result_layout()
-        ->SetToDefaultLayout();
-  }
-  LayoutAssignment layout_assignment(m->mutable_entry_computation_layout(),
-                                     channel_constraints);
-  return layout_assignment.Run(m).status();
 }
 
 TEST_F(LayoutAssignmentTest, OverwriteDiamondShapedConstraintsX) {

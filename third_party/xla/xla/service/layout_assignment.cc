@@ -1150,8 +1150,8 @@ absl::StatusOr<HloInstruction*> LayoutAssignment::CreateCopyWithNewLayout(
     return copy;
   }
 
-    return FailedPrecondition(
-        "Can only copy array and tuple shaped instructions");
+  return FailedPrecondition(
+      "Can only copy array and tuple shaped instructions");
 }
 
 // Creates a copy of the given operand if the operand's layout does not match
@@ -1935,13 +1935,28 @@ absl::Status LayoutAssignment::PropagateBufferConstraintToOperands(
     }
     if (!InstructionCanChangeLayoutInstance(instruction)) {
       // Copy the layout to the operand.
-      if (buffer.IsArray() && operand->shape().IsArray() &&
-          operand->shape().dimensions().size() ==
-              LayoutUtil::MinorToMajor(buffer_constraint.layout()).size()) {
-        TF_RETURN_IF_ERROR(SetArrayOperandLayout(
-            buffer_constraint.layout(), instruction, operand_no,
-            /*mandatory=*/true, /*dfs=*/true, current_priority_));
+      if (buffer.IsArray() && operand->shape().IsArray()) {
+        if (operand->shape().dimensions().size() ==
+            LayoutUtil::MinorToMajor(buffer_constraint.layout()).size()) {
+          TF_RETURN_IF_ERROR(SetArrayOperandLayout(
+              buffer_constraint.layout(), instruction, operand_no,
+              /*mandatory=*/true, /*dfs=*/true, current_priority_));
+        } else if (instruction->opcode() == HloOpcode::kBitcastConvert) {
+          Shape shape = instruction->shape();
+          if (operand->shape().dimensions().size() <
+              instruction->shape().dimensions().size()) {
+            shape = ShapeUtil::DeleteDimension(shape.dimensions().size() - 1,
+                                               shape);
+          } else {
+            ShapeUtil::AppendMinorDimension(
+                operand->shape().dimensions().back(), &shape);
+          }
+          TF_RETURN_IF_ERROR(SetArrayOperandLayout(
+              shape.layout(), instruction, operand_no,
+              /*mandatory=*/true, /*dfs=*/true, current_priority_));
+        }
       }
+
     } else if (instruction->opcode() == HloOpcode::kBroadcast) {
       Layout layout =
           GetBroadcastLayoutFromOutput(buffer_constraint.layout(), instruction);
