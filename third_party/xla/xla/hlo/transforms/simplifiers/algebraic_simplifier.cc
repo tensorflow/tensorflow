@@ -5106,6 +5106,10 @@ absl::Status AlgebraicSimplifierVisitor::HandleGetTupleElement(
 
 absl::Status AlgebraicSimplifierVisitor::HandleOptimizationBarrier(
     HloInstruction* barrier) {
+  if (!options_.enable_opt_barrier_simplification()) {
+    return absl::OkStatus();
+  }
+
   if (!barrier->shape().IsTuple() ||
       barrier == computation_->root_instruction()) {
     return absl::OkStatus();
@@ -5118,12 +5122,11 @@ absl::Status AlgebraicSimplifierVisitor::HandleOptimizationBarrier(
   // optimization barrier. Additionally if the operand is a tuple producing
   // instruction it should also be safe to create a sub tuple of only the used
   // components to enable module level dce.
-  std::vector<bool> used_elements(barrier->shape().tuple_shapes().size());
-  bool has_non_gte_use = false;
+  std::vector<bool> used_elements(barrier->shape().tuple_shapes().size(),
+                                  false);
   for (auto use : barrier->users()) {
     if (use->opcode() != HloOpcode::kGetTupleElement) {
-      has_non_gte_use = true;
-      break;
+      return absl::OkStatus();
     }
     used_elements[use->tuple_index()] = true;
   }
@@ -5142,7 +5145,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleOptimizationBarrier(
     }
   }
 
-  if (has_non_gte_use || !absl::c_linear_search(used_elements, false)) {
+  if (absl::c_all_of(used_elements, [](bool v) { return v; })) {
     return absl::OkStatus();
   }
 
