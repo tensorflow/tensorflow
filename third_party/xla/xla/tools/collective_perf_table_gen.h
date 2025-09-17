@@ -94,6 +94,11 @@ class CollectivePerfTableGen {
   // content (but not deduplicating).
   absl::Status Dump(const DeviceHloInstructionProfiles& table);
 
+  // Merges all of the profile files, deduplicates them
+  // based on fingerprint and writes them to a single
+  // `DeviceHloInstructionProfiles` proto.
+  DeviceHloInstructionProfiles Merge(const std::vector<std::string>& files);
+
   // Merges all of the profiled files under `merge_path`, deduplicates them
   // based on fingerprint and writes them to a single
   // `DeviceHloInstructionProfiles` proto.
