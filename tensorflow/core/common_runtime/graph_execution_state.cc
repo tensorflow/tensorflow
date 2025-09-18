@@ -336,8 +336,8 @@ class TensorConnectionPruneRewrite : public subgraph::PruneRewrite {
     TF_RETURN_IF_ERROR(s);
 
     TF_RETURN_IF_ERROR(
-        NodeBuilder(strings::StrCat("_identity_", feed_tensor.node->name(), "_",
-                                    feed_tensor.index),
+        NodeBuilder(absl::StrCat("_identity_", feed_tensor.node->name(), "_",
+                                 feed_tensor.index),
                     "Identity")
             .Input(from_tensor_)
             .Attr("T",

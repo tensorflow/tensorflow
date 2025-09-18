@@ -173,7 +173,7 @@ absl::Status CondBuilder::CreatePivotNodes() {
 }
 
 string CondBuilder::NewName(const string& infix) {
-  return graph_->NewName(strings::StrCat(name_, "/", infix));
+  return graph_->NewName(absl::StrCat(name_, "/", infix));
 }
 
 absl::Status CondBuilder::AddInput(Node* src, int src_output) {
