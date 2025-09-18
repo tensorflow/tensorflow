@@ -873,8 +873,8 @@ PjRtFuture<> CommonPjRtBufferImpl::ToLiteralImpl(
                 }
               }
 
-              raw_buffer->CopyToLiteralAsync(promise, device_promise, literal,
-                                             std::move(shape));
+              raw_buffer->CopyToLiteralAsync(std::move(promise), device_promise,
+                                             literal, std::move(shape));
             };
 
         if (literal != nullptr) {
