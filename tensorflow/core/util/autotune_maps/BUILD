@@ -2,7 +2,7 @@
 # The autotuning results can be serialized as a string, allowing you to save
 # and later restore them.
 
-# Placeholder: load py_proto_library
+load("@rules_python//python:proto.bzl", "py_proto_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",

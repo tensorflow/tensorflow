@@ -15,6 +15,7 @@ load(
 load("@local_xla//third_party/py:python_wheel.bzl", "collect_data_files", "transitive_py_deps")
 load("@local_xla//xla/tsl/mkl:build_defs.bzl", "if_enable_mkl", "if_mkl", "if_mkl_ml")
 load("@nvidia_wheel_versions//:versions.bzl", "NVIDIA_WHEEL_VERSIONS")
+load("//tensorflow:py.default.bzl", "py_binary", "py_test")
 load("//tensorflow:tensorflow.bzl", "if_wheel_dependency", "if_with_tpu_support", "transitive_hdrs")
 load("//tensorflow:tf_version.bzl", "TF_SEMANTIC_VERSION_SUFFIX", "TF_VERSION")
 load(

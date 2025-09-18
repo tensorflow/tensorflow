@@ -1,8 +1,7 @@
 # Tests of tf.io.*proto.
 
+load("@rules_python//python:proto.bzl", "py_proto_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library")
-
-# Placeholder: load py_proto_library
 load("//tensorflow:tensorflow.bzl", "if_oss", "tf_cc_shared_object")
 load("//tensorflow:tensorflow.default.bzl", "stripped_cc_info", "tf_py_strict_test")
 load("//tensorflow/core/platform:build_config.bzl", "tf_additional_all_protos", "tf_proto_library")
