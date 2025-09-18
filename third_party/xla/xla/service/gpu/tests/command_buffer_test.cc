@@ -643,6 +643,92 @@ TEST_P(CommandBufferUnrollTest, WhileLoop) {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
+TEST_P(CommandBufferUnrollTest, WhileLoopMultiDevice) {
+  se::StreamExecutor* stream_executor = GpuExecutor();
+
+  if (!IsAtLeastCuda12900(stream_executor)) {
+    GTEST_SKIP() << "Child command is not supported for CUDA < 12.9";
+  }
+
+  // Require at least two visible GPU devices for multi-device execution.
+  auto name =
+      absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value());
+  auto* platform = se::PlatformManager::PlatformWithName(name).value();
+  if (platform->VisibleDeviceCount() < 2) {
+    GTEST_SKIP() << "Test requires >= 2 visible GPU devices";
+  }
+
+  constexpr absl::string_view hlo_text = R"(
+  HloModule m, is_scheduled=true
+
+  compare_fusion {
+    p0 = s32[] parameter(0)
+    ten = s32[] constant(10)
+    ROOT compare = compare(p0, ten), direction=LT
+  }
+
+  add_one {
+    p0 = s32[] parameter(0)
+    one = s32[] constant(1)
+    ROOT add = add(p0, one)
+  }
+
+  add_two {
+    p0 = f32[] parameter(0)
+    two = f32[] constant(2.0)
+    ROOT add = add(p0, two)
+  }
+
+  body {
+    p0 = (s32[], f32[]) parameter(0)
+    cnt = get-tuple-element(p0), index=0
+    val = get-tuple-element(p0), index=1
+    add_cnt = s32[] fusion(cnt), kind=kLoop, calls=add_one
+    add_val = f32[] fusion(val), kind=kLoop, calls=add_two
+    ROOT tuple = (s32[], f32[]) tuple(add_cnt, add_val)
+  }
+
+  cond {
+    p0 = (s32[], f32[]) parameter(0)
+    cnt = get-tuple-element(p0), index=0
+    ROOT compare = pred[] fusion(cnt), kind=kLoop, calls=compare_fusion
+  }
+
+  command_buffer {
+    a = s32[] parameter(0)
+    b = f32[] parameter(1)
+    tuple = (s32[], f32[]) tuple(a, b)
+    ROOT while = while(tuple), condition=cond, body=body, backend_config={"known_trip_count":{"n":"10"}}
+  }
+
+  ENTRY main {
+    a = s32[] parameter(0)
+    b = f32[] parameter(1)
+    ROOT call = (s32[], f32[]) call(a, b), to_apply=command_buffer
+  })";
+
+  // Parse with replica_count=2 to run on two devices.
+  HloModuleConfig config = GetModuleConfigForTest(/*replica_count=*/2);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_text, config));
+
+  Literal cnt = LiteralUtil::CreateR0<int32_t>(0);
+  Literal value = LiteralUtil::CreateR0<float>(0.0);
+
+  Literal expected_cnt = LiteralUtil::CreateR0<int32_t>(10);
+  Literal expected_value = LiteralUtil::CreateR0<float>(20.0);
+  Literal expected = LiteralUtil::MakeTuple({&expected_cnt, &expected_value});
+
+  // Flatten tuple parameter into individual leaves for PJRT replicated execute.
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), {&cnt, &value}, /*num_replicas=*/2,
+                        /*use_threads=*/true, /*run_hlo_passes=*/false));
+  ASSERT_EQ(results.size(), 2);
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, results[0]));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, results[1]));
+}
+
 INSTANTIATE_TEST_SUITE_P(CommandBufferTests, CommandBufferTest,
                          ::testing::Values(DebugOptions::LHS,
                                            DebugOptions::CONCURRENT));

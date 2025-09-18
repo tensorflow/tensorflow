@@ -609,6 +609,7 @@ lit_test_suite(
     name = "hlo_lit_tests",
     srcs = enforce_glob(
         [
+            "bitcast-convert.hlo",
             "calling_convention.hlo",
             "dot_bf16.hlo",
             "kernel_reuse.hlo",

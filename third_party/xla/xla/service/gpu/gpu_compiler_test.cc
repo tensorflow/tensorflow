@@ -2132,6 +2132,34 @@ TEST_F(GpuCompilerTest, NoCudnnVectorizationOnHopperAndBeyond) {
               absl_testing::IsOkAndHolds(true));
 }
 
+TEST_F(GpuCompilerTest, BitcastConvertSimplificationToBitcastIsValid) {
+  const std::string kHloText = R"(
+m {
+  a = s4[3,5,2]{2,1,0} parameter(0)
+  b = s8[3,5]{1,0} bitcast-convert(a)
+  c = s8[3,5]{1,0} copy(b)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                          GetOptimizedModule(kHloText));
+  EXPECT_THAT(optimized_module->entry_computation()->root_instruction(),
+              GmockMatch(m::Copy(m::Bitcast(m::Parameter()))));
+
+  HloModuleConfig config;
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.add_xla_disable_hlo_passes("algsimp");
+  config.set_debug_options(debug_options);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> ref_module,
+                          ParseAndReturnVerifiedModule(kHloText, config));
+  TF_ASSERT_OK_AND_ASSIGN(ref_module,
+                          GetOptimizedModule(std::move(ref_module)));
+  EXPECT_THAT(ref_module->entry_computation()->root_instruction(),
+              GmockMatch(m::Fusion(m::Parameter())));
+
+  EXPECT_TRUE(RunAndCompareTwoModules(std::move(optimized_module),
+                                      std::move(ref_module), std::nullopt,
+                                      /*run_hlo_passes=*/false));
+}
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

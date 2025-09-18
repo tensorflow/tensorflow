@@ -1347,11 +1347,6 @@ CommandBufferCmd::BufferUseVector ChildCmd::buffers() const {
 absl::Status ChildCmd::Initialize(const Thunk::InitializeParams& params,
                                   StateManager& state) {
   TF_RETURN_IF_ERROR(child_commands_.Initialize(params, state));
-  if (child_command_buffer_ == nullptr) {
-    TF_ASSIGN_OR_RETURN(child_command_buffer_,
-                        params.stream->parent()->CreateCommandBuffer(
-                            se::CommandBuffer::Mode::kNested));
-  }
   return absl::OkStatus();
 }
 
@@ -1360,20 +1355,21 @@ absl::StatusOr<const se::CommandBuffer::Command*> ChildCmd::Record(
     const RecordParams& record_params, RecordAction record_action,
     se::CommandBuffer* command_buffer) {
   VLOG(5) << "Record ChildCmd " << child_commands_.size() << " commands";
-  CHECK(child_command_buffer_ != nullptr);
-  TF_RETURN_IF_ERROR(child_commands_.Record(execute_params, record_params,
-                                            CommandBufferCmd::RecordCreate{},
-                                            child_command_buffer_.get()));
+  auto record_fn = [&](se::CommandBuffer* command_buffer) -> absl::Status {
+    return child_commands_.Record(execute_params, record_params,
+                                  CommandBufferCmd::RecordCreate{},
+                                  command_buffer);
+  };
   return Handle(
       std::move(record_action),
       [&](absl::Span<const se::CommandBuffer::Command* const> dependencies) {
         return command_buffer->CreateChildCommand(
-            se::CommandBuffer::ChildCommandType::kMoved, *child_command_buffer_,
-            dependencies);
+            se::CommandBuffer::ChildCommandType::kMoved,
+            execute_params.stream->parent(), record_fn, dependencies);
       },
       [&](const se::CommandBuffer::Command* command) {
-        // Moved child command does not need to be updated.
-        return absl::OkStatus();
+        return command_buffer->UpdateChildCommand(
+            se::CommandBuffer::ChildCommandType::kMoved, command, record_fn);
       });
 }
 
@@ -1470,13 +1466,10 @@ absl::Status WhileCmd::Initialize(const Thunk::InitializeParams& params,
                                   StateManager& state) {
   TF_RETURN_IF_ERROR(cond_commands_.Initialize(params, state));
   TF_RETURN_IF_ERROR(body_commands_.Initialize(params, state));
+  enable_loop_unroll_ = true;
   if (enable_loop_unroll_ && body_commands_.support_loop_unroll() &&
-      cond_commands_.support_loop_unroll() && trip_count_ != std::nullopt &&
-      child_command_buffer_ == nullptr) {
+      cond_commands_.support_loop_unroll() && trip_count_ != std::nullopt) {
     is_unrolled_loop_ = true;
-    TF_ASSIGN_OR_RETURN(child_command_buffer_,
-                        params.stream->parent()->CreateCommandBuffer(
-                            se::CommandBuffer::Mode::kNested));
   }
   VLOG(3) << "while command trip_count: " << trip_count_.value_or(-1);
   return absl::OkStatus();
@@ -1493,55 +1486,57 @@ absl::StatusOr<const se::CommandBuffer::Command*> WhileCmd::Record(
           << " body_commands=" << body_commands_.size();
   VLOG(5) << "  pred: " << pred_ << " (" << pred.opaque() << ")";
   if (is_unrolled_loop_) {
-    // When the loop is unrolled, we need to record the body commands for
-    // `trip_count` times into child_command_buffer_, and implement the While
-    // command as a child command.
-    VLOG(3) << "Recording unrolled loop with trip_count: "
-            << trip_count_.value();
-    CHECK(child_command_buffer_ != nullptr);
+    auto record_fn =
+        [&](se::CommandBuffer* child_command_buffer) -> absl::Status {
+      // When the loop is unrolled, we need to record the body commands for
+      // `trip_count` times into child_command_buffer, and implement the While
+      // command as a child command.
+      VLOG(3) << "Recording unrolled loop with trip_count: "
+              << trip_count_.value();
 
-    // Unroll the while loop body for `trip_count` times.
-    // Unrolled execution sequence: cond -> body -> cond -> body -> ...
-    // In the unrolled pattern, we still need to run the cond commands because
-    // body commands might depends on the value of index variable that is
-    // updated by condition commands.
-    auto new_record_params = record_params;
-    for (int64_t i = 0; i < trip_count_.value(); ++i) {
-      new_record_params.unroll_iteration = i;
-      if (i == 0) {
-        // First iteration, cond_commands_ will not have dependencies.
-        TF_RETURN_IF_ERROR(cond_commands_.Record(
-            execute_params, new_record_params, CommandBufferCmd::RecordCreate{},
-            child_command_buffer_.get(), false));
-      } else {
-        // Other iterations, cond_commands_ will have dependencies on the sink
-        // commands from previous iteration's body.
-        auto body_sink_commands = body_commands_.SinkCommands(
-            new_record_params, child_command_buffer_.get(), i - 1);
-        TF_RETURN_IF_ERROR(cond_commands_.Record(
+      // Unroll the while loop body for `trip_count` times.
+      // Unrolled execution sequence: cond -> body -> cond -> body -> ...
+      // In the unrolled pattern, we still need to run the cond commands because
+      // body commands might depends on the value of index variable that is
+      // updated by condition commands.
+      auto new_record_params = record_params;
+      for (int64_t i = 0; i < trip_count_.value(); ++i) {
+        new_record_params.unroll_iteration = i;
+        if (i == 0) {
+          // First iteration, cond_commands_ will not have dependencies.
+          TF_RETURN_IF_ERROR(cond_commands_.Record(
+              execute_params, new_record_params,
+              CommandBufferCmd::RecordCreate{}, child_command_buffer, false));
+        } else {
+          // Other iterations, cond_commands_ will have dependencies on the sink
+          // commands from previous iteration's body.
+          auto body_sink_commands = body_commands_.SinkCommands(
+              new_record_params, child_command_buffer, i - 1);
+          TF_RETURN_IF_ERROR(
+              cond_commands_.Record(execute_params, new_record_params,
+                                    CommandBufferCmd::RecordCreate{
+                                        absl::MakeSpan(body_sink_commands)},
+                                    child_command_buffer, false));
+        }
+        auto cond_sink_commands = cond_commands_.SinkCommands(
+            new_record_params, child_command_buffer, i);
+        TF_RETURN_IF_ERROR(body_commands_.Record(
             execute_params, new_record_params,
-            CommandBufferCmd::RecordCreate{absl::MakeSpan(body_sink_commands)},
-            child_command_buffer_.get(), false));
+            CommandBufferCmd::RecordCreate{absl::MakeSpan(cond_sink_commands)},
+            child_command_buffer, i == trip_count_.value() - 1 ? true : false));
       }
-      auto cond_sink_commands = cond_commands_.SinkCommands(
-          new_record_params, child_command_buffer_.get(), i);
-      TF_RETURN_IF_ERROR(body_commands_.Record(
-          execute_params, new_record_params,
-          CommandBufferCmd::RecordCreate{absl::MakeSpan(cond_sink_commands)},
-          child_command_buffer_.get(),
-          i == trip_count_.value() - 1 ? true : false));
-    }
+      return absl::OkStatus();
+    };
     return Handle(
         std::move(record_action),
         [&](absl::Span<const se::CommandBuffer::Command* const> dependencies) {
           return command_buffer->CreateChildCommand(
               se::CommandBuffer::ChildCommandType::kMoved,
-              *child_command_buffer_, dependencies);
+              execute_params.stream->parent(), record_fn, dependencies);
         },
         [&](const se::CommandBuffer::Command* command) {
-          // We do not need to update the child node here, and sub-graph has
-          // been updated above in the unrooled pattern.
-          return absl::OkStatus();
+          return command_buffer->UpdateChildCommand(
+              se::CommandBuffer::ChildCommandType::kMoved, command, record_fn);
         });
   } else {
     return Handle(
