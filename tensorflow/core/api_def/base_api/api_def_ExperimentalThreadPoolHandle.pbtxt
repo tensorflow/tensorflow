@@ -1,16 +1,16 @@
 op {
   graph_op_name: "ExperimentalThreadPoolHandle"
-  out_arg {
-    name: "handle"
-    description: <<END
-A resource that can be consumed by one or more ExperimentalThreadPoolDataset
-ops.
-END
-  }
   attr {
     name: "num_threads"
     description: <<END
 The number of threads in the thread pool.
+END
+  }
+  attr {
+    name: "display_name"
+    description: <<END
+A human-readable name for the threads that may be visible in some
+visualizations.
 END
   }
   attr {
@@ -21,11 +21,10 @@ threadpool.
 END
   }
   attr {
-    name: "display_name"
+    name: "container"
     description: <<END
-A human-readable name for the threads that may be visible in some
-visualizations.
-threadpool.
+The name of `container` should start with `'.'` or `letter` or `digit`,
+with ['-', '.', '/'] or `letter` or `digit` follows several times.
 END
   }
   summary: <<END
