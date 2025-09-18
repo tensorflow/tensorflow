@@ -1,0 +1,45 @@
+
+--- a/test/Conversion/tritongpu_to_llvm.mlir	2025-08-22 04:02:56.000000000 -0700
++++ b/test/Conversion/tritongpu_to_llvm.mlir	2025-09-17 07:59:30.000000000 -0700
+@@ -1,4 +1,7 @@
+-// RUN: triton-opt %s -split-input-file --allocate-shared-memory-nv --convert-triton-gpu-to-llvm 2>/dev/null | FileCheck %s --dump-input-context 20
++// RUN: triton-opt %s -split-input-file \
++// RUN:   --allocate-shared-memory-nv --convert-triton-gpu-to-llvm \
++// RUN:   --reconcile-unrealized-casts 2>/dev/null \
++// RUN:   | FileCheck %s --dump-input-context 20
+ 
+ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
+   // CHECK: llvm.func @test_empty_kernel(%arg0: i32, %arg1: !llvm.ptr<1>, %arg2: !llvm.ptr<1>)
+
+--- a/test/Conversion/tritonnvidiagpu_to_llvm.mlir	2025-07-31 00:13:23.000000000 -0700
++++ b/test/Conversion/tritonnvidiagpu_to_llvm.mlir	2025-09-17 07:59:30.000000000 -0700
+@@ -1,4 +1,7 @@
+-// RUN: triton-opt %s -split-input-file --convert-triton-gpu-to-llvm=compute-capability=90 | FileCheck %s
++// RUN: triton-opt %s -split-input-file \
++// RUN: --convert-triton-gpu-to-llvm=compute-capability=90 \
++// RUN: --reconcile-unrealized-casts \
++// RUN: | FileCheck %s
+ 
+ #shared0 = #ttg.swizzled_shared<{vec = 1, perPhase = 1, maxPhase = 1, order = [0], CTAsPerCGA = [1], CTASplitNum = [1], CTAOrder = [0]}>
+ #smem = #ttg.shared_memory
+
+--- a/third_party/amd/lib/TritonAMDGPUTransforms/CanonicalizePointers.cpp	2025-07-31 00:13:23.000000000 -0700
++++ b/third_party/amd/lib/TritonAMDGPUTransforms/CanonicalizePointers.cpp	2025-09-17 07:59:30.000000000 -0700
+@@ -1415,7 +1415,7 @@
+     if (auto integerAttr =
+             llvm::dyn_cast_or_null<mlir::IntegerAttr>(maybeAttr)) {
+       if (integerAttr.getValue() == 0) {
+-        rewriter.replaceAllUsesWith(castOp.getResult(0), fatPtrBase);
++        rewriter.RewriterBase::replaceAllUsesWith(castOp.getResult(0), fatPtrBase);
+         rewriter.eraseOp(castOp);
+         return success();
+       }
+@@ -1425,7 +1425,7 @@
+         fatPtrs.at({fatPtrBase, fatPtrOffset});
+     auto newPtr = createTensorPointer(rewriter, fatPtrBase, fatPtrOffset,
+                                       castOp.getLoc(), fatPtrAttrs);
+-    rewriter.replaceAllUsesWith(newPtr, fatPtrBase);
++    rewriter.RewriterBase::replaceAllUsesWith(newPtr, fatPtrBase);
+     rewriter.eraseOp(castOp);
+     return success();
+   }

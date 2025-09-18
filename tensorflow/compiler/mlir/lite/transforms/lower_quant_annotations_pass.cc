@@ -109,7 +109,6 @@ class RewriteQuantizeCompositeOp
                                 /*qtype=*/TypeAttr::get(output_type));
 
     rewriter.replaceAllOpUsesWith(op, tfl_quantize_op.getOutput());
-    rewriter.eraseOp(op);
     return success();
   }
 };
@@ -247,7 +246,6 @@ class RewriteDequantizeCompositeOp
         TFL::DequantizeOp::create(rewriter, composite_op.getLoc(), output_type,
                                   /*input=*/tfl_quantize_input);
     rewriter.replaceAllOpUsesWith(composite_op, tfl_dequantize_op.getOutput());
-    rewriter.eraseOp(composite_op);
 
     return success();
   }
@@ -321,8 +319,6 @@ class RewriteFakeQuantCompositeOp
         rewriter, op.getLoc(), output_type, /*input=*/tfl_quantize_op);
 
     rewriter.replaceAllOpUsesWith(op, tfl_dequantize_op.getOutput());
-    rewriter.eraseOp(op);
-
     return success();
   }
 };
@@ -333,7 +329,6 @@ class RemovePreventGradient : public OpRewritePattern<TF::PreventGradientOp> {
   LogicalResult matchAndRewrite(TF::PreventGradientOp op,
                                 PatternRewriter& rewriter) const final {
     rewriter.replaceAllOpUsesWith(op, op.getInput());
-    rewriter.eraseOp(op);
     return success();
   }
 };
@@ -344,7 +339,6 @@ class RemoveIdentity : public OpRewritePattern<TF::IdentityOp> {
   LogicalResult matchAndRewrite(TF::IdentityOp op,
                                 PatternRewriter& rewriter) const final {
     rewriter.replaceAllOpUsesWith(op, op.getInput());
-    rewriter.eraseOp(op);
     return success();
   }
 };

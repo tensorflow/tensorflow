@@ -121,7 +121,7 @@ Value GetDestinationBuffer(Value dest) {
       break;
     } else if (auto transfer_write =
                    dest.getDefiningOp<vector::TransferWriteOp>()) {
-      dest = transfer_write.getSource();
+      dest = transfer_write.getBase();
     } else {
       dest.getDefiningOp()->emitOpError("unsupported dest type");
       return nullptr;
@@ -441,8 +441,8 @@ struct RewriteTransferRead : OpRewritePattern<vector::TransferReadOp> {
       mlir::PatternRewriter& rewriter) const override {
     assert(IsSupportedTransfer(op));
 
-    auto source = mlir::dyn_cast<mlir::TypedValue<mlir::RankedTensorType>>(
-        op.getSource());
+    auto source =
+        mlir::dyn_cast<mlir::TypedValue<mlir::RankedTensorType>>(op.getBase());
     mlir::Type source_element_type = source.getType().getElementType();
 
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
@@ -465,7 +465,7 @@ struct RewriteTransferRead : OpRewritePattern<vector::TransferReadOp> {
     mlir::LLVMTypeConverter converter(b.getContext());
     auto llvm_vector_type = converter.convertType(vector_type);
     auto load = b.create<ml::LoadOp>(llvm_vector_type, gep);
-    if (auto alignment = GetAlignmentFromArg(op.getSource(), op.getIndices())) {
+    if (auto alignment = GetAlignmentFromArg(op.getBase(), op.getIndices())) {
       load.setAlignment(*alignment);
     } else {
       auto data_layout = mlir::DataLayout::closest(op);
@@ -592,7 +592,7 @@ struct RewriteTransferWrite : OpRewritePattern<vector::TransferWriteOp> {
       vector::TransferWriteOp op,
       mlir::PatternRewriter& rewriter) const override {
     assert(IsSupportedTransfer(op));
-    Value dest = GetDestinationBuffer(op.getSource());
+    Value dest = GetDestinationBuffer(op.getBase());
 
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
     auto tensor_dest = mlir::cast<TypedValue<mlir::RankedTensorType>>(dest);
@@ -619,7 +619,7 @@ struct RewriteTransferWrite : OpRewritePattern<vector::TransferWriteOp> {
     vector_value = b.create<UnrealizedConversionCastOp>(llvm_type, vector_value)
                        .getResult(0);
     auto store = b.create<ml::StoreOp>(vector_value, gep);
-    if (auto alignment = GetAlignmentFromArg(op.getSource(), op.getIndices())) {
+    if (auto alignment = GetAlignmentFromArg(op.getBase(), op.getIndices())) {
       store.setAlignment(*alignment);
     } else {
       auto data_layout = mlir::DataLayout::closest(op);
@@ -630,7 +630,7 @@ struct RewriteTransferWrite : OpRewritePattern<vector::TransferWriteOp> {
           data_layout.getTypePreferredAlignment(vector_element_type));
     }
 
-    rewriter.replaceOp(op, mlir::ValueRange{op.getSource()});
+    rewriter.replaceOp(op, mlir::ValueRange{op.getBase()});
     return success();
   }
 };
