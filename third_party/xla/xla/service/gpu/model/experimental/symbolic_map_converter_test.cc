@@ -110,6 +110,40 @@ TEST(SymbolicMapConverterTest, ConvertAffineConstraintsToSymbolicConstraints) {
   EXPECT_EQ(symbolic_constraints[sym_d0 - sym_c1], (Interval{10, 20}));
 }
 
+TEST(AffineToSymbolicExprTest, ConvertAffineToSymbolicExpr) {
+  MLIRContext mlir_context;
+  SymbolicExprContext symbolic_context;
+
+  mlir::AffineExpr d0 = mlir::getAffineDimExpr(0, &mlir_context);
+  mlir::AffineExpr d1 = mlir::getAffineDimExpr(1, &mlir_context);
+  mlir::AffineExpr s0 = mlir::getAffineSymbolExpr(0, &mlir_context);
+  mlir::AffineExpr c1 = mlir::getAffineConstantExpr(1, &mlir_context);
+  mlir::AffineExpr c2 = mlir::getAffineConstantExpr(2, &mlir_context);
+  mlir::AffineExpr c3 = mlir::getAffineConstantExpr(3, &mlir_context);
+
+  mlir::AffineExpr affine_expr =
+      mlir::getAffineBinaryOpExpr(
+          mlir::AffineExprKind::Mod,
+          mlir::getAffineBinaryOpExpr(mlir::AffineExprKind::FloorDiv,
+                                      d0 * c2 + s0 - c1, c2),
+          c3) +
+      d1;  // ((d0 * 2 + s0 - 1) floordiv 2) mod 3 + d1
+
+  SymbolicExpr exp_d0 = symbolic_context.CreateVariable(0);
+  SymbolicExpr exp_d1 = symbolic_context.CreateVariable(1);
+  SymbolicExpr exp_s0 = symbolic_context.CreateVariable(2);
+  SymbolicExpr exp_c1 = symbolic_context.CreateConstant(1);
+  SymbolicExpr exp_c2 = symbolic_context.CreateConstant(2);
+  SymbolicExpr exp_c3 = symbolic_context.CreateConstant(3);
+
+  SymbolicExpr expected_symbolic_expr =
+      ((exp_d0 * exp_c2 + exp_s0 - exp_c1) / exp_c2) % exp_c3 + exp_d1;
+
+  EXPECT_EQ(
+      AffineToSymbolicExpr(affine_expr, &symbolic_context, /*num_dims=*/2),
+      expected_symbolic_expr);
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
