@@ -38,12 +38,12 @@ class OpSegmentTest : public ::testing::Test {
   OpSegmentTest() : device_(Env::Default()) {
     for (int i = 0; i < 10; ++i) {
       NodeDef def;
-      TF_CHECK_OK(NodeDefBuilder(strings::StrCat("op", i), "Mul")
+      TF_CHECK_OK(NodeDefBuilder(absl::StrCat("op", i), "Mul")
                       .Input("x", 0, DT_INT32)
                       .Input("y", 0, DT_INT32)
                       .Finalize(&def));
       int32_nodedefs_.push_back(def);
-      TF_CHECK_OK(NodeDefBuilder(strings::StrCat("op", i), "Mul")
+      TF_CHECK_OK(NodeDefBuilder(absl::StrCat("op", i), "Mul")
                       .Input("x", 0, DT_FLOAT)
                       .Input("y", 0, DT_FLOAT)
                       .Finalize(&def));
@@ -97,13 +97,11 @@ TEST_F(OpSegmentTest, Basic) {
   };
   for (int i = 0; i < 10; ++i) {
     // Lookup op in session A.
-    TF_EXPECT_OK(
-        opseg.FindOrCreate("A", strings::StrCat("op", i), &op, reterr));
+    TF_EXPECT_OK(opseg.FindOrCreate("A", absl::StrCat("op", i), &op, reterr));
     ValidateOpAndTypes(op, float_nodedefs_[i], DT_FLOAT);
 
     // Lookup op in session B.
-    TF_EXPECT_OK(
-        opseg.FindOrCreate("B", strings::StrCat("op", i), &op, reterr));
+    TF_EXPECT_OK(opseg.FindOrCreate("B", absl::StrCat("op", i), &op, reterr));
     ValidateOpAndTypes(op, int32_nodedefs_[i], DT_INT32);
   }
 

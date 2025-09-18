@@ -200,7 +200,7 @@ string OpRegistry::DebugString(bool include_internal) const {
   Export(include_internal, &op_list);
   string ret;
   for (const auto& op : op_list.op()) {
-    strings::StrAppend(&ret, SummarizeOpDef(op), "\n");
+    absl::StrAppend(&ret, SummarizeOpDef(op), "\n");
   }
   return ret;
 }

@@ -50,7 +50,7 @@ ResourceHandle MakeResourceHandle(
   result.set_definition_stack_trace(definition_stack_trace);
   if (name == ResourceHandle::ANONYMOUS_NAME) {
     result.set_name(
-        strings::StrCat("_AnonymousVar", ResourceHandle::GenerateUniqueId()));
+        absl::StrCat("_AnonymousVar", ResourceHandle::GenerateUniqueId()));
   } else {
     result.set_name(name);
   }
@@ -406,7 +406,7 @@ absl::Status ContainerInfo::Init(ResourceMgr* rmgr, const NodeDef& ndef,
   } else {
     resource_is_private_to_kernel_ = true;
     static std::atomic<int64_t> counter(0);
-    name_ = strings::StrCat("_", counter.fetch_add(1), "_", ndef.name());
+    name_ = absl::StrCat("_", counter.fetch_add(1), "_", ndef.name());
   }
   return absl::OkStatus();
 }
