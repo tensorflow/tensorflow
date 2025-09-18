@@ -254,7 +254,7 @@ absl::Status PluggableDevice::Init(const SessionOptions& options) {
     if (device_thread_mode == "gpu_private") {
       thread_pool_ = std::make_unique<thread::ThreadPool>(
           options.env, ThreadOptions(),
-          strings::StrCat("gpu_private_", tf_device_id_.value()),
+          absl::StrCat("gpu_private_", tf_device_id_.value()),
           static_cast<int32>(device_thread_count),
           !options.config.experimental().disable_thread_spinning(),
           /*allocator=*/nullptr);
@@ -268,7 +268,7 @@ absl::Status PluggableDevice::Init(const SessionOptions& options) {
       set_tensorflow_device_thread_pool(thread_pool);
     } else {
       string error_message =
-          strings::StrCat("Invalid gpu_thread_mode: ", device_thread_mode);
+          absl::StrCat("Invalid gpu_thread_mode: ", device_thread_mode);
       LOG(WARNING) << error_message;
       return errors::InvalidArgument(error_message);
     }
