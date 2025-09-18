@@ -55,9 +55,9 @@ std::vector<Node*> ToNodes(const std::vector<Output>& outputs) {
 string NextIterationName(const Scope& scope, int loop_var_idx) {
   string result;
   const string& prefix = scope.impl()->name();
-  if (!prefix.empty()) strings::StrAppend(&result, prefix, "/");
-  strings::StrAppend(&result, "NextIteration");
-  if (loop_var_idx > 0) strings::StrAppend(&result, "_", loop_var_idx);
+  if (!prefix.empty()) absl::StrAppend(&result, prefix, "/");
+  absl::StrAppend(&result, "NextIteration");
+  if (loop_var_idx > 0) absl::StrAppend(&result, "_", loop_var_idx);
   return result;
 }
 
