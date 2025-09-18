@@ -953,6 +953,14 @@ def separable_conv2d(input,
       example, with data_format="NHWC", shape is [batch, out_height,
       out_width, out_channels].
   """
+  
+    if not all(isinstance(s, int) for s in strides):
+        raise TypeError("All elements of strides must be integers, got %s" % strides)
+    if any(s <= 0 for s in strides):
+        raise ValueError("All stride values must be positive, got %s" % strides)
+    if any(s > 2**31 - 1 for s in strides):
+        raise ValueError("Stride value too large, must fit in int32, got %s" % strides)
+    
   rate = deprecated_argument_lookup("dilations", dilations, "rate", rate)
   with ops.name_scope(name, "separable_conv2d",
                       [input, depthwise_filter, pointwise_filter]) as name:
@@ -1061,6 +1069,14 @@ def separable_conv2d_v2(
       example, with data_format="NHWC", shape is [batch, out_height,
       out_width, out_channels].
   """
+  
+    if not all(isinstance(s, int) for s in strides):
+        raise TypeError(f"All elements of strides must be integers, got {strides}")
+    if any(s <= 0 for s in strides):
+        raise ValueError(f"All stride values must be positive, got {strides}")
+    if any(s > 2**31 - 1 for s in strides):
+        raise ValueError(f"Stride value too large, must fit in int32, got {strides}")
+
   return separable_conv2d(
       input,
       depthwise_filter,
