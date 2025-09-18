@@ -1,1616 +1,1588 @@
-diff --git a/docs/sdy_export_passes.md b/docs/sdy_export_passes.md
-index d2ba813..b6fce17 100755
---- a/docs/sdy_export_passes.md
-+++ b/docs/sdy_export_passes.md
-@@ -75,14 +75,6 @@ operation has compatible shardings.
- -enable-full-version : Enable full version.
- ```
- 
--### `-sdy-remove-all-gather-reduce-scatter-for-cmv1`
--
--_Removes sdy.all_gather and sdy.reduce_scatter for CMV1._
--
--Removes all-gather in the pattern all-gather + dot. Removes reduce-scatter
--in the pattern dot + reduce-scatter. This pass is for compatibility with
--collective matmul V1 (CMV1). It is a temporary solution for b/432019089.
--
- ### `-sdy-remove-propagation-debug-info`
- 
- _Removes propagation debug info (propagation edges and origin shardings) during export._
-diff --git a/shardy/dialect/sdy/transforms/export/explicit_reshards_util.cc b/shardy/dialect/sdy/transforms/export/explicit_reshards_util.cc
-index e47bd62..2db97de 100644
---- a/shardy/dialect/sdy/transforms/export/explicit_reshards_util.cc
-+++ b/shardy/dialect/sdy/transforms/export/explicit_reshards_util.cc
-@@ -963,10 +963,6 @@ bool differentOperandShardingFromFirstResult(Operation* op) {
-   });
- }
- 
--ArrayRef<AxisRefAttr> getUnreducedAxes(TensorShardingAttr sharding) {
--  return sharding ? sharding.getUnreducedAxes() : ArrayRef<AxisRefAttr>();
--}
--
- void insertExplicitReshardsOnOp(Operation* op,
-                                 ArrayRef<TensorShardingAttr> inShardings,
-                                 ArrayRef<TensorShardingAttr> outShardings,
-diff --git a/shardy/dialect/sdy/transforms/export/explicit_reshards_util.h b/shardy/dialect/sdy/transforms/export/explicit_reshards_util.h
-index 28406a3..4d0d438 100644
---- a/shardy/dialect/sdy/transforms/export/explicit_reshards_util.h
-+++ b/shardy/dialect/sdy/transforms/export/explicit_reshards_util.h
-@@ -82,10 +82,6 @@ std::optional<ArrayRef<AxisRefAttr>> getFactorSharding(
- // operand shardings. If `op` does not have any results, returns false;
- bool differentOperandShardingFromFirstResult(Operation* op);
- 
--// Returns unreduced axes of given `sharding`. If `sharding` is null, returns
--// empty axes.
--ArrayRef<AxisRefAttr> getUnreducedAxes(TensorShardingAttr sharding);
--
- // Inserts explicit reshards on the operands and results of `op` such that the
- // sharding of `op` is compatible with its sharding rule.
- //
-diff --git a/shardy/dialect/sdy/transforms/export/insert_explicit_reshards.cc b/shardy/dialect/sdy/transforms/export/insert_explicit_reshards.cc
-index 64a2d85..51cea14 100644
---- a/shardy/dialect/sdy/transforms/export/insert_explicit_reshards.cc
-+++ b/shardy/dialect/sdy/transforms/export/insert_explicit_reshards.cc
-@@ -333,17 +333,6 @@ void insertAllReduceOnOpIfUnreducedToReplicated(
-     return;
-   }
- 
--  TensorShardingAttr firstResultSharding = getSharding(op->getResult(0));
--  if (op->getNumResults() > 1) {
--    ArrayRef<AxisRefAttr> firstResultUnreducedAxes =
--        getUnreducedAxes(firstResultSharding);
--    for (OpResult result : op->getResults().drop_front()) {
--      SDY_CHECK(firstResultUnreducedAxes ==
--                getUnreducedAxes(getSharding(result)))
--          << "Unreduced axes mismatch between results for multi-result op.";
--    }
--  }
--
-   // For each operand that has unreduced axes, insert an all-reduce if
-   // any of the unreduced axes isn't unreduced in the target sharding.
-   //
-@@ -352,8 +341,9 @@ void insertAllReduceOnOpIfUnreducedToReplicated(
-   rewriter.setInsertionPoint(op);
-   for (OpOperand& operand : op->getOpOperands()) {
-     if (TensorShardingAttr inSharding = getSharding(operand.get())) {
--      insertAllReduceIfUnreducedToReplicated(
--          operand, inSharding, firstResultSharding, symbolTable, rewriter);
-+      insertAllReduceIfUnreducedToReplicated(operand, inSharding,
-+                                             getSharding(op->getResult(0)),
-+                                             symbolTable, rewriter);
-     }
-   }
- }
-diff --git a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/unreduced.mlir b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/unreduced.mlir
-index 1799ca0..df70908 100644
---- a/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/unreduced.mlir
-+++ b/shardy/dialect/sdy/transforms/export/test/insert_explicit_reshards/unreduced.mlir
-@@ -134,17 +134,16 @@ func.func @reduce_multiple_results_unreduced(
-     %arg0: tensor<2x64x13xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x", "y"}, {}, {}]>},
-     %arg1: tensor<2x64x13xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"x", "y"}, {}, {}]>})
-     -> (tensor<64xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}], unreduced={"x"}>},
--        tensor<64xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}], unreduced={"x":(1)2}>}) {
-+        tensor<64xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}], unreduced={"y"}>}) {
-   %0 = stablehlo.constant dense<0.000000e+00> : tensor<f32>
-   %1 = stablehlo.constant dense<0> : tensor<i32>
-   // CHECK:      %[[REDUCE:.*]]:2 = stablehlo.reduce(%arg0 init: %cst), (%arg1 init: %c) across dimensions = [0, 2]
--  // CHECK-SAME:   {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}], unreduced={"x"}>, <@mesh, [{}], unreduced={"x"}>]>}
-+  // CHECK-SAME:   {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}], unreduced={"x"}>, <@mesh, [{}], unreduced={"y"}>]>}
-   // CHECK:      %[[ALL_REDUCE1:.*]] = sdy.all_reduce {"y"} %[[REDUCE]]#0 out_sharding=<@mesh, [{}], unreduced={"x"}> : tensor<64xf32>
--  // CHECK-NEXT: %[[ALL_REDUCE2:.*]] = sdy.all_reduce {"y"} %[[REDUCE]]#1 out_sharding=<@mesh, [{}], unreduced={"x"}> : tensor<64xi32>
--  // CHECK-NEXT: %[[ALL_REDUCE3:.*]] = sdy.all_reduce {"x":(2)2} %[[ALL_REDUCE2]] out_sharding=<@mesh, [{}], unreduced={"x":(1)2}> : tensor<64xi32>
--  // CHECK-NEXT: return %[[ALL_REDUCE1]], %[[ALL_REDUCE3]] : tensor<64xf32>, tensor<64xi32>
-+  // CHECK-NEXT: %[[ALL_REDUCE2:.*]] = sdy.all_reduce {"x"} %[[REDUCE]]#1 out_sharding=<@mesh, [{}], unreduced={"y"}> : tensor<64xi32>
-+  // CHECK-NEXT: return %[[ALL_REDUCE1]], %[[ALL_REDUCE2]] : tensor<64xf32>, tensor<64xi32>
-   %2:2 = stablehlo.reduce(%arg0 init: %0), (%arg1 init: %1) across dimensions = [0, 2]
--    {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}], unreduced={"x"}>, <@mesh, [{}], unreduced={"x"}>]>} :
-+    {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}], unreduced={"x"}>, <@mesh, [{}], unreduced={"y"}>]>} :
-     (tensor<2x64x13xf32>, tensor<2x64x13xi32>, tensor<f32>, tensor<i32>) -> (tensor<64xf32>, tensor<64xi32>)
-     reducer(%arg2: tensor<f32>, %arg4: tensor<f32>) (%arg3: tensor<i32>, %arg5: tensor<i32>)  {
-       %3 = stablehlo.add %arg2, %arg4 : tensor<f32>
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index 09d0f82..3980556 100644
+index 3980556..32c7036 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -34,18 +34,6 @@ diff -ruN --strip-trailing-cr a/clang/include/clang/Analysis/FlowSensitive/Stora
-    llvm::iterator_range<FieldToLoc::const_iterator> children() const {
-      return {Children.begin(), Children.end()};
-    }
--diff -ruN --strip-trailing-cr a/clang/include/clang/AST/DeclCXX.h b/clang/include/clang/AST/DeclCXX.h
----- a/clang/include/clang/AST/DeclCXX.h
--+++ b/clang/include/clang/AST/DeclCXX.h
--@@ -3826,7 +3826,7 @@
-- 
-- public:
--   EnumDecl *getEnumDecl() const {
---    return cast<clang::EnumType>(EnumType->getType())->getOriginalDecl();
--+    return EnumType->getType()->castAs<clang::EnumType>()->getOriginalDecl();
+@@ -1,1001 +1,382 @@
+ Auto generated patch. Do not edit or delete it, even if empty.
+-diff -ruN --strip-trailing-cr a/clang/include/clang/Analysis/FlowSensitive/StorageLocation.h b/clang/include/clang/Analysis/FlowSensitive/StorageLocation.h
+---- a/clang/include/clang/Analysis/FlowSensitive/StorageLocation.h
+-+++ b/clang/include/clang/Analysis/FlowSensitive/StorageLocation.h
+-@@ -17,7 +17,6 @@
+- #include "clang/AST/Decl.h"
+- #include "clang/AST/Type.h"
+- #include "llvm/ADT/DenseMap.h"
+--#include "llvm/ADT/StringRef.h"
+- #include "llvm/Support/Debug.h"
+- #include <cassert>
++diff -ruN --strip-trailing-cr a/clang/lib/CodeGen/CGExpr.cpp b/clang/lib/CodeGen/CGExpr.cpp
++--- a/clang/lib/CodeGen/CGExpr.cpp
+++++ b/clang/lib/CodeGen/CGExpr.cpp
++@@ -6496,11 +6496,8 @@
++     SanitizerDebugLocation SanScope(this, {CheckOrdinal}, CheckHandler);
++     EmitSanitizerStatReport(llvm::SanStat_CFI_ICall);
++ 
++-    llvm::Metadata *MD;
++-    if (CGM.getCodeGenOpts().SanitizeCfiICallGeneralizePointers)
++-      MD = CGM.CreateMetadataIdentifierGeneralized(QualType(FnType, 0));
++-    else
++-      MD = CGM.CreateMetadataIdentifierForType(QualType(FnType, 0));
+++    llvm::Metadata *MD =
+++        CGM.CreateMetadataIdentifierForFnType(QualType(FnType, 0));
++ 
++     llvm::Value *TypeId = llvm::MetadataAsValue::get(getLLVMContext(), MD);
++ 
++diff -ruN --strip-trailing-cr a/clang/lib/CodeGen/CodeGenModule.cpp b/clang/lib/CodeGen/CodeGenModule.cpp
++--- a/clang/lib/CodeGen/CodeGenModule.cpp
+++++ b/clang/lib/CodeGen/CodeGenModule.cpp
++@@ -2339,12 +2339,28 @@
++   return llvm::ConstantInt::get(Int64Ty, llvm::MD5Hash(MDS->getString()));
++ }
+  
+-@@ -153,11 +152,6 @@
+-     return {SyntheticFields.begin(), SyntheticFields.end()};
 -   }
-- 
--   static UsingEnumDecl *Create(ASTContext &C, DeclContext *DC,
- diff -ruN --strip-trailing-cr a/clang/lib/Analysis/FlowSensitive/Transfer.cpp b/clang/lib/Analysis/FlowSensitive/Transfer.cpp
- --- a/clang/lib/Analysis/FlowSensitive/Transfer.cpp
- +++ b/clang/lib/Analysis/FlowSensitive/Transfer.cpp
-@@ -165,326 +153,19 @@ diff -ruN --strip-trailing-cr a/clang/lib/Analysis/FlowSensitive/Transfer.cpp b/
-    void VisitConditionalOperator(const ConditionalOperator *S) {
-      const Environment *TrueEnv = StmtToEnv.getEnvironment(*S->getTrueExpr());
-      const Environment *FalseEnv = StmtToEnv.getEnvironment(*S->getFalseExpr());
--diff -ruN --strip-trailing-cr a/clang/lib/AST/ASTImporter.cpp b/clang/lib/AST/ASTImporter.cpp
----- a/clang/lib/AST/ASTImporter.cpp
--+++ b/clang/lib/AST/ASTImporter.cpp
--@@ -1740,10 +1740,21 @@
-- }
-- 
-- ExpectedType ASTNodeImporter::VisitTagType(const TagType *T) {
---  Expected<TagDecl *> ToDeclOrErr = import(T->getOriginalDecl());
--+  TagDecl *DeclForType = T->getOriginalDecl();
--+  Expected<TagDecl *> ToDeclOrErr = import(DeclForType);
--   if (!ToDeclOrErr)
--     return ToDeclOrErr.takeError();
-- 
--+  if (DeclForType->isUsed()) {
--+    // If there is a definition of the 'OriginalDecl', it should be imported to
--+    // have all information for the type in the "To" AST. (In some cases no
--+    // other reference may exist to the definition decl and it would not be
--+    // imported otherwise.)
--+    Expected<TagDecl *> ToDefDeclOrErr = import(DeclForType->getDefinition());
--+    if (!ToDefDeclOrErr)
--+      return ToDefDeclOrErr.takeError();
--+  }
--+
--   if (T->isCanonicalUnqualified())
--     return Importer.getToContext().getCanonicalTagType(*ToDeclOrErr);
-- 
--diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaDecl.cpp b/clang/lib/Sema/SemaDecl.cpp
----- a/clang/lib/Sema/SemaDecl.cpp
--+++ b/clang/lib/Sema/SemaDecl.cpp
--@@ -5291,10 +5291,8 @@
--     //   UNION_TYPE;   <- where UNION_TYPE is a typedef union.
--     if ((Tag && Tag->getDeclName()) ||
--         DS.getTypeSpecType() == DeclSpec::TST_typename) {
---      RecordDecl *Record = dyn_cast_or_null<RecordDecl>(Tag);
---      if (!Record)
---        Record = DS.getRepAsType().get()->getAsRecordDecl();
++-// Generalize pointer types to a void pointer with the qualifiers of the
++-// originally pointed-to type, e.g. 'const char *' and 'char * const *'
++-// generalize to 'const void *' while 'char *' and 'const char **' generalize to
++-// 'void *'.
++-static QualType GeneralizeType(ASTContext &Ctx, QualType Ty) {
++-  if (!Ty->isPointerType())
+++static QualType GeneralizeTransparentUnion(QualType Ty) {
+++  const RecordType *UT = Ty->getAsUnionType();
+++  if (!UT)
+++    return Ty;
+++  const RecordDecl *UD = UT->getOriginalDecl()->getDefinitionOrSelf();
+++  if (!UD->hasAttr<TransparentUnionAttr>())
+++    return Ty;
+++  for (const auto *it : UD->fields()) {
+++    return it->getType();
+++  }
+++  return Ty;
+++}
+++
+++// If `GeneralizePointers` is true, generalizes types to a void pointer with the
+++// qualifiers of the originally pointed-to type, e.g. 'const char *' and 'char *
+++// const *' generalize to 'const void *' while 'char *' and 'const char **'
+++// generalize to 'void *'.
+++static QualType GeneralizeType(ASTContext &Ctx, QualType Ty,
+++                               bool GeneralizePointers) {
+++  Ty = GeneralizeTransparentUnion(Ty);
+++
+++  if (!GeneralizePointers || !Ty->isPointerType())
++     return Ty;
+  
+--  /// Add a synthetic field, if none by that name is already present.
+--  void addSyntheticField(llvm::StringRef Name, StorageLocation &Loc) {
+--    SyntheticFields.insert({Name, &Loc});
+--  }
 --
--+      RecordDecl *Record = Tag ? dyn_cast<RecordDecl>(Tag)
--+                               : DS.getRepAsType().get()->getAsRecordDecl();
--       if (Record && getLangOpts().MicrosoftExt) {
--         Diag(DS.getBeginLoc(), diag::ext_ms_anonymous_record)
--             << Record->isUnion() << DS.getSourceRange();
--@@ -18052,7 +18050,8 @@
--           }
--         }
--       } else if (auto *RD = dyn_cast<CXXRecordDecl>(PrevDecl);
---                 RD && RD->isInjectedClassName()) {
--+                 TUK == TagUseKind::Reference && RD &&
--+                 RD->isInjectedClassName()) {
--         // If lookup found the injected class name, the previous declaration is
--         // the class being injected into.
--         PrevDecl = cast<TagDecl>(RD->getDeclContext());
--@@ -18544,8 +18543,14 @@
--   if (PrevDecl)
--     CheckRedeclarationInModule(New, PrevDecl);
+-   /// Changes the child storage location for a field `D` of reference type.
+-   /// All other fields cannot change their storage location and always retain
+-   /// the storage location passed to the `RecordStorageLocation` constructor.
+-@@ -170,11 +164,6 @@
+-     Children[&D] = Loc;
+-   }
++   return Ctx.getPointerType(
++@@ -2353,26 +2369,29 @@
++ }
+  
+--  /// Add a child storage location for a field `D`, if not already present.
+--  void addChild(const ValueDecl &D, StorageLocation *Loc) {
+--    Children.insert({&D, Loc});
+--  }
+--
+-   llvm::iterator_range<FieldToLoc::const_iterator> children() const {
+-     return {Children.begin(), Children.end()};
+-   }
+-diff -ruN --strip-trailing-cr a/clang/lib/Analysis/FlowSensitive/Transfer.cpp b/clang/lib/Analysis/FlowSensitive/Transfer.cpp
+---- a/clang/lib/Analysis/FlowSensitive/Transfer.cpp
+-+++ b/clang/lib/Analysis/FlowSensitive/Transfer.cpp
+-@@ -20,17 +20,14 @@
+- #include "clang/AST/OperationKinds.h"
+- #include "clang/AST/Stmt.h"
+- #include "clang/AST/StmtVisitor.h"
+--#include "clang/AST/Type.h"
+- #include "clang/Analysis/FlowSensitive/ASTOps.h"
+- #include "clang/Analysis/FlowSensitive/AdornedCFG.h"
+- #include "clang/Analysis/FlowSensitive/DataflowAnalysisContext.h"
+- #include "clang/Analysis/FlowSensitive/DataflowEnvironment.h"
+- #include "clang/Analysis/FlowSensitive/NoopAnalysis.h"
+- #include "clang/Analysis/FlowSensitive/RecordOps.h"
+--#include "clang/Analysis/FlowSensitive/StorageLocation.h"
+- #include "clang/Analysis/FlowSensitive/Value.h"
+- #include "clang/Basic/Builtins.h"
+--#include "clang/Basic/LLVM.h"
+- #include "clang/Basic/OperatorKinds.h"
+- #include "llvm/Support/Casting.h"
+- #include <assert.h>
+-@@ -290,7 +287,7 @@
+-     }
++ // Apply type generalization to a FunctionType's return and argument types
++-static QualType GeneralizeFunctionType(ASTContext &Ctx, QualType Ty) {
+++static QualType GeneralizeFunctionType(ASTContext &Ctx, QualType Ty,
+++                                       bool GeneralizePointers) {
++   if (auto *FnType = Ty->getAs<FunctionProtoType>()) {
++     SmallVector<QualType, 8> GeneralizedParams;
++     for (auto &Param : FnType->param_types())
++-      GeneralizedParams.push_back(GeneralizeType(Ctx, Param));
+++      GeneralizedParams.push_back(
+++          GeneralizeType(Ctx, Param, GeneralizePointers));
++ 
++-    return Ctx.getFunctionType(GeneralizeType(Ctx, FnType->getReturnType()),
++-                               GeneralizedParams, FnType->getExtProtoInfo());
+++    return Ctx.getFunctionType(
+++        GeneralizeType(Ctx, FnType->getReturnType(), GeneralizePointers),
+++        GeneralizedParams, FnType->getExtProtoInfo());
+    }
+  
+--  void VisitCastExpr(const CastExpr *S) {
+-+  void VisitImplicitCastExpr(const ImplicitCastExpr *S) {
+-     const Expr *SubExpr = S->getSubExpr();
+-     assert(SubExpr != nullptr);
 - 
---  if (TUK == TagUseKind::Definition && (!SkipBody || !SkipBody->ShouldSkip))
---    New->startDefinition();
--+  if (TUK == TagUseKind::Definition) {
--+    if (!SkipBody || !SkipBody->ShouldSkip) {
--+      New->startDefinition();
--+    } else {
--+      New->setCompleteDefinition();
--+      New->demoteThisDefinitionToDeclaration();
+-@@ -320,60 +317,6 @@
+-       break;
+-     }
++   if (auto *FnType = Ty->getAs<FunctionNoProtoType>())
++     return Ctx.getFunctionNoProtoType(
++-        GeneralizeType(Ctx, FnType->getReturnType()));
+++        GeneralizeType(Ctx, FnType->getReturnType(), GeneralizePointers));
+  
+--    case CK_BaseToDerived: {
+--      // This is a cast of (single-layer) pointer or reference to a record type.
+--      // We should now model the fields for the derived type.
+--
+--      // Get the RecordStorageLocation for the record object underneath.
+--      RecordStorageLocation *Loc = nullptr;
+--      if (S->getType()->isPointerType()) {
+--        auto *PV = Env.get<PointerValue>(*SubExpr);
+--        assert(PV != nullptr);
+--        if (PV == nullptr)
+--          break;
+--        Loc = cast<RecordStorageLocation>(&PV->getPointeeLoc());
+--      } else {
+--        assert(S->getType()->isRecordType());
+--        if (SubExpr->isGLValue()) {
+--          Loc = Env.get<RecordStorageLocation>(*SubExpr);
+--        } else {
+--          Loc = &Env.getResultObjectLocation(*SubExpr);
+--        }
+--      }
+--      if (!Loc) {
+--        // Nowhere to add children or propagate from, so we're done.
+--        break;
+--      }
+--
+--      // Get the derived record type underneath the reference or pointer.
+--      QualType Derived = S->getType().getNonReferenceType();
+--      if (Derived->isPointerType()) {
+--        Derived = Derived->getPointeeType();
+--      }
+--
+--      // Add children to the storage location for fields (including synthetic
+--      // fields) of the derived type and initialize their values.
+--      for (const FieldDecl *Field :
+--           Env.getDataflowAnalysisContext().getModeledFields(Derived)) {
+--        assert(Field != nullptr);
+--        QualType FieldType = Field->getType();
+--        if (FieldType->isReferenceType()) {
+--          Loc->addChild(*Field, nullptr);
+--        } else {
+--          Loc->addChild(*Field, &Env.createStorageLocation(FieldType));
+--        }
+--
+--        for (const auto &Entry :
+--             Env.getDataflowAnalysisContext().getSyntheticFields(Derived)) {
+--          Loc->addSyntheticField(Entry.getKey(),
+--                                 Env.createStorageLocation(Entry.getValue()));
+--        }
+--      }
+--      Env.initializeFieldsWithValues(*Loc, Derived);
+--
+--      // Fall through to propagate SubExpr's StorageLocation to the CastExpr.
+--      [[fallthrough]];
+--    }
+-     case CK_IntegralCast:
+-       // FIXME: This cast creates a new integral value from the
+-       // subexpression. But, because we don't model integers, we don't
+-@@ -381,9 +324,10 @@
+-       // modeling is added, then update this code to create a fresh location and
+-       // value.
+-     case CK_UncheckedDerivedToBase:
+--    case CK_DerivedToBase:
+-     case CK_ConstructorConversion:
+-     case CK_UserDefinedConversion:
+-+      // FIXME: Add tests that excercise CK_UncheckedDerivedToBase,
+-+      // CK_ConstructorConversion, and CK_UserDefinedConversion.
+-     case CK_NoOp: {
+-       // FIXME: Consider making `Environment::getStorageLocation` skip noop
+-       // expressions (this and other similar expressions in the file) instead
+-@@ -740,6 +684,15 @@
+-     propagateValue(*SubExpr, *S, Env);
+-   }
++   llvm_unreachable("Encountered unknown FunctionType");
++ }
+  
+-+  void VisitCXXStaticCastExpr(const CXXStaticCastExpr *S) {
+-+    if (S->getCastKind() == CK_NoOp) {
+-+      const Expr *SubExpr = S->getSubExpr();
+-+      assert(SubExpr != nullptr);
+-+
+-+      propagateValueOrStorageLocation(*SubExpr, *S, Env);
 -+    }
 -+  }
-- 
--   ProcessDeclAttributeList(S, New, Attrs);
--   AddPragmaAttributes(S, New);
--diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaType.cpp b/clang/lib/Sema/SemaType.cpp
----- a/clang/lib/Sema/SemaType.cpp
--+++ b/clang/lib/Sema/SemaType.cpp
--@@ -9878,7 +9878,14 @@
--   S.DiagnoseUseOfDecl(ED, Loc);
-- 
--   QualType Underlying = ED->getIntegerType();
---  assert(!Underlying.isNull());
--+  if (Underlying.isNull()) {
--+    // This is an enum without a fixed underlying type which we skipped parsing
--+    // the body because we saw its definition previously in another module.
--+    // Use the definition's integer type in that case.
--+    assert(ED->isThisDeclarationADemotedDefinition());
--+    Underlying = ED->getDefinition()->getIntegerType();
--+    assert(!Underlying.isNull());
--+  }
-- 
--   return Underlying;
-- }
--diff -ruN --strip-trailing-cr a/clang/lib/Serialization/ASTReaderDecl.cpp b/clang/lib/Serialization/ASTReaderDecl.cpp
----- a/clang/lib/Serialization/ASTReaderDecl.cpp
--+++ b/clang/lib/Serialization/ASTReaderDecl.cpp
--@@ -2107,6 +2107,8 @@
--     auto *Def = DD.Definition;
--     DD = std::move(MergeDD);
--     DD.Definition = Def;
--+    while ((Def = Def->getPreviousDecl()))
--+      cast<CXXRecordDecl>(Def)->DefinitionData = &DD;
--     return;
-+diff -ruN --strip-trailing-cr a/clang/lib/AST/ASTContext.cpp b/clang/lib/AST/ASTContext.cpp
-+--- a/clang/lib/AST/ASTContext.cpp
-++++ b/clang/lib/AST/ASTContext.cpp
-+@@ -5316,7 +5316,8 @@
-    }
-  
--diff -ruN --strip-trailing-cr a/clang/test/Analysis/ctu-import-type-decl-definition.c b/clang/test/Analysis/ctu-import-type-decl-definition.c
----- a/clang/test/Analysis/ctu-import-type-decl-definition.c
--+++ b/clang/test/Analysis/ctu-import-type-decl-definition.c
--@@ -0,0 +1,43 @@
--+// RUN: rm -rf %t
--+// RUN: mkdir -p %t
--+// RUN: split-file %s %t
--+
--+// RUN: %clang_cc1 -emit-pch -o %t/import.c.ast %t/import.c
--+
--+// RUN: %clang_extdef_map -- -x c %t/import.c >> %t/externalDefMap.txt
--+// RUN: sed -i 's/$/.ast/' %t/externalDefMap.txt
--+
--+// RUN: %clang_cc1 -analyze \
--+// RUN:   -analyzer-checker=core \
--+// RUN:   -analyzer-config experimental-enable-naive-ctu-analysis=true \
--+// RUN:   -analyzer-config display-ctu-progress=true \
--+// RUN:   -analyzer-config ctu-dir=%t \
--+// RUN:   -verify %t/main.c
--+
--+//--- main.c
--+
--+// expected-no-diagnostics
--+
--+typedef struct X_s X_t;
--+unsigned long f_import(struct X_s *xPtr);
--+
--+static void freeWriteFileResources(struct X_s *xPtr) {
--+  f_import(xPtr);
--+}
--+
--+//--- import.c
--+
--+typedef struct Y_s Y_t;
--+
--+struct Y_s {
--+};
--+
--+struct X_s {
--+  Y_t y;
--+};
--+
--+unsigned long f_import(struct X_s *xPtr) {
--+  if (xPtr != 0) {
--+  }
--+  return 0;
--+}
--diff -ruN --strip-trailing-cr a/clang/test/AST/ast-dump-decl.cpp b/clang/test/AST/ast-dump-decl.cpp
----- a/clang/test/AST/ast-dump-decl.cpp
--+++ b/clang/test/AST/ast-dump-decl.cpp
--@@ -990,3 +990,18 @@
--   // CHECK-NEXT:    `-RecordType [[TestInjectedClassName_RT]] 'A' injected
--   // CHECK-NEXT:      `-CXXRecord [[TestInjectedClassName_RD]] 'A'
-- } // namespace InjectedClassName
--+
--+namespace TestGH155936 {
--+  struct Foo {
--+    struct A {
--+      struct Foo {};
--+    };
--+  };
--+  // CHECK-LABEL: Dumping TestGH155936:
--+  // CHECK: CXXRecordDecl 0x{{.+}} <{{.+}}> line:[[@LINE-6]]:10 struct Foo definition
--+  // CHECK: CXXRecordDecl 0x{{.+}} <col:3, col:10> col:10 implicit struct Foo
--+  // CHECK: CXXRecordDecl 0x{{.+}} <{{.+}}> line:[[@LINE-7]]:12 struct A definition
--+  // CHECK: CXXRecordDecl 0x{{.+}} <col:5, col:12> col:12 implicit struct A
--+  // CHECK: CXXRecordDecl 0x{{.+}} <line:[[@LINE-8]]:7, col:19> col:14 struct Foo definition
--+  // CHECH: CXXRecordDecl 0x{{.+}} <col:9, col:16> col:16 implicit struct Foo
--+} // namspace GH155936
--diff -ruN --strip-trailing-cr a/clang/test/Modules/GH154840.cpp b/clang/test/Modules/GH154840.cpp
----- a/clang/test/Modules/GH154840.cpp
--+++ b/clang/test/Modules/GH154840.cpp
--@@ -0,0 +1,97 @@
--+// RUN: rm -rf %t
--+// RUN: mkdir -p %t
--+// RUN: split-file %s %t
--+// RUN: cd %t
--+//
--+// RUN: %clang_cc1 -fmodule-name=A -fno-cxx-modules -emit-module -fmodules -xc++ A.cppmap -o A.pcm
--+// RUN: %clang_cc1 -fmodule-name=B -fno-cxx-modules -emit-module -fmodules -xc++ B.cppmap -o B.pcm -fmodule-file=A.pcm
--+// RUN: %clang_cc1 -fmodule-name=C -fno-cxx-modules -emit-module -fmodules -xc++ C.cppmap -o C.pcm -fmodule-file=A.pcm
--+// RUN: %clang_cc1 -fmodule-name=D -fno-cxx-modules -emit-module -fmodules -xc++ D.cppmap -o D.pcm -fmodule-file=A.pcm
--+// RUN: %clang_cc1 -fmodule-name=E -fno-cxx-modules -emit-module -fmodules -xc++ E.cppmap -o E.pcm -fmodule-file=D.pcm -fmodule-file=B.pcm -fmodule-file=C.pcm
--+// RUN: %clang_cc1 -fno-cxx-modules -fmodules -fmodule-file=B.pcm -fmodule-file=E.pcm -emit-llvm -o /dev/null S.cpp
--+
--+//--- A.h
--+namespace std {
--+
--+template <class T> void zz(T);
--+
--+template <class> struct vec {
--+  struct w {};
--+  struct xx {};
--+
--+  vec(vec &) { init(); }
--+  constexpr vec &operator=(const vec &);
--+  template <class U> constexpr void pb(U);
--+  constexpr void init();
--+
--+  w s;
--+};
--+
--+template <class T> constexpr void vec<T>::init() {
--+  xx yy;
--+  zz(yy);
--+}
--+
--+template <class T> constexpr vec<T> &vec<T>::operator=(const vec &) {
--+  pb(s);
--+  return *this;
--+}
--+
--+template <class T> template <class U> constexpr void vec<T>::pb(U) { init(); }
--+} // namespace std
--+
--+//--- A.cppmap
--+module "A" {
--+  header "A.h"
--+}
--+
--+//--- X.h
--+#pragma clang module import A
--+
--+namespace project {
--+  class thing : std::vec<thing> {};
--+} // namespace project
--+
--+//--- B.h
--+#include "X.h"
--+
--+//--- B.cppmap
--+module "B" {
--+  header "B.h"
--+}
--+
--+//--- C.h
--+#include "X.h"
--+
--+//--- C.cppmap
--+module "C" {
--+  header "C.h"
--+}
--+
--+//--- D.h
--+#include "X.h"
--+
--+//--- D.cppmap
--+module "D" {
--+  header "D.h"
--+}
--+
--+//--- Y.h
--+#include "X.h"
--+struct other {
--+  other() : data(data) {}
--+  std::vec<project::thing> data;
--+};
--+
--+//--- E.h
--+#include "Y.h"
--+
--+//--- E.cppmap
--+module "E" {
--+  header "E.h"
--+}
--+
--+//--- S.cpp
--+#pragma clang module import A
--+#pragma clang module import E
--+void func(std::vec<project::thing> *a, std::vec<project::thing> *b) { *a = *b; }
--diff -ruN --strip-trailing-cr a/clang/test/Modules/GH155028-1.cpp b/clang/test/Modules/GH155028-1.cpp
----- a/clang/test/Modules/GH155028-1.cpp
--+++ b/clang/test/Modules/GH155028-1.cpp
--@@ -0,0 +1,17 @@
--+// RUN: %clang_cc1 -std=c++20 -verify %s
--+// expected-no-diagnostics
--+
--+#pragma clang module build M
--+module "M" {
--+  module "A" {}
--+  module "B" {}
--+}
--+#pragma clang module contents
--+#pragma clang module begin M.A
--+enum E1 {};
--+#pragma clang module end
--+#pragma clang module begin M.B
--+enum E1 {};
--+using T = __underlying_type(E1);
--+#pragma clang module end
--+#pragma clang module endbuild
--diff -ruN --strip-trailing-cr a/clang/test/Sema/GH155794.c b/clang/test/Sema/GH155794.c
----- a/clang/test/Sema/GH155794.c
--+++ b/clang/test/Sema/GH155794.c
--@@ -0,0 +1,6 @@
--+// RUN: %clang_cc1 -fsyntax-only -verify -Wno-everything %s
--+
--+struct S {
--+  enum e1 {} // expected-error {{use of empty enum}} expected-error {{expected ';' after enum}}
--+  enum e2 {} // expected-error {{use of empty enum}}
--+}; // expected-error {{expected member name or ';' after declaration specifiers}}
--diff -ruN --strip-trailing-cr a/clang/test/SemaTemplate/using-decl.cpp b/clang/test/SemaTemplate/using-decl.cpp
----- a/clang/test/SemaTemplate/using-decl.cpp
--+++ b/clang/test/SemaTemplate/using-decl.cpp
--@@ -14,3 +14,15 @@
--   }
--   void e() { c<int>(); }
-- }
--+
--+namespace UsingUsingEnum {
--+  namespace foo {
--+    enum class EnumOne {};
--+  }
--+  using foo::EnumOne;
--+
--+  template <class> void t() {
--+    using enum EnumOne;
--+  }
--+  template void t<void>();
--+} // namespace UsingUsingEnum
-+   llvm::FoldingSetNodeID ID;
-+-  TypedefType::Profile(ID, Keyword, Qualifier, Decl, UnderlyingType);
-++  TypedefType::Profile(ID, Keyword, Qualifier, Decl,
-++                       *TypeMatchesDeclOrNone ? QualType() : UnderlyingType);
++ llvm::ConstantInt *CodeGenModule::CreateKCFITypeId(QualType T, StringRef Salt) {
++-  if (getCodeGenOpts().SanitizeCfiICallGeneralizePointers)
++-    T = GeneralizeFunctionType(getContext(), T);
+++  T = GeneralizeFunctionType(
+++      getContext(), T, getCodeGenOpts().SanitizeCfiICallGeneralizePointers);
++   if (auto *FnType = T->getAs<FunctionProtoType>())
++     T = getContext().getFunctionType(
++         FnType->getReturnType(), FnType->getParamTypes(),
++@@ -3041,9 +3060,14 @@
++   if (isa<CXXMethodDecl>(FD) && !cast<CXXMethodDecl>(FD)->isStatic())
++     return;
 + 
-+   void *InsertPos = nullptr;
-+   if (FoldingSetPlaceholder<TypedefType> *Placeholder =
- diff -ruN --strip-trailing-cr a/clang/unittests/Analysis/FlowSensitive/TransferTest.cpp b/clang/unittests/Analysis/FlowSensitive/TransferTest.cpp
- --- a/clang/unittests/Analysis/FlowSensitive/TransferTest.cpp
- +++ b/clang/unittests/Analysis/FlowSensitive/TransferTest.cpp
-@@ -814,151 +495,824 @@ diff -ruN --strip-trailing-cr a/clang/unittests/Analysis/FlowSensitive/TransferT
-  TEST(TransferTest, IntegralCast) {
-    std::string Code = R"(
-      void target(int Foo) {
--diff -ruN --strip-trailing-cr a/clang-tools-extra/test/clang-tidy/check_clang_tidy.py b/clang-tools-extra/test/clang-tidy/check_clang_tidy.py
----- a/clang-tools-extra/test/clang-tidy/check_clang_tidy.py
--+++ b/clang-tools-extra/test/clang-tidy/check_clang_tidy.py
--@@ -391,9 +391,7 @@
--     args, extra_args = parser.parse_known_args()
--     if args.std is None:
--         _, extension = os.path.splitext(args.assume_filename or args.input_file_name)
---        args.std = [
---            "c++11-or-later" if extension in [".cpp", ".hpp", ".mm"] else "c99-or-later"
---        ]
--+        args.std = ["c99-or-later" if extension in [".c", ".m"] else "c++11-or-later"]
-- 
--     return (args, extra_args)
-- 
--diff -ruN --strip-trailing-cr a/lldb/source/Plugins/SymbolFile/NativePDB/SymbolFileNativePDB.cpp b/lldb/source/Plugins/SymbolFile/NativePDB/SymbolFileNativePDB.cpp
----- a/lldb/source/Plugins/SymbolFile/NativePDB/SymbolFileNativePDB.cpp
--+++ b/lldb/source/Plugins/SymbolFile/NativePDB/SymbolFileNativePDB.cpp
--@@ -1735,11 +1735,11 @@
--   }
-+diff -ruN --strip-trailing-cr a/llvm/include/llvm/Linker/IRMover.h b/llvm/include/llvm/Linker/IRMover.h
-+--- a/llvm/include/llvm/Linker/IRMover.h
-++++ b/llvm/include/llvm/Linker/IRMover.h
-+@@ -10,6 +10,7 @@
-+ #define LLVM_LINKER_IRMOVER_H
-  
--   // Sort them before value searching is working properly.
---  m_func_full_names.Sort();
--+  m_func_full_names.Sort(std::less<uint32_t>());
--   m_func_full_names.SizeToFit();
---  m_func_method_names.Sort();
--+  m_func_method_names.Sort(std::less<uint32_t>());
--   m_func_method_names.SizeToFit();
---  m_func_base_names.Sort();
--+  m_func_base_names.Sort(std::less<uint32_t>());
--   m_func_base_names.SizeToFit();
-- }
-+ #include "llvm/ADT/ArrayRef.h"
-++#include "llvm/ADT/DenseMap.h"
-+ #include "llvm/ADT/DenseSet.h"
-+ #include "llvm/ADT/FunctionExtras.h"
-+ #include "llvm/Support/Compiler.h"
-+@@ -19,6 +20,8 @@
-+ class Error;
-+ class GlobalValue;
-+ class Metadata;
-++class MDNode;
-++class NamedMDNode;
-+ class Module;
-+ class StructType;
-+ class TrackingMDRef;
-+@@ -67,6 +70,8 @@
-+   using LazyCallback =
-+       llvm::unique_function<void(GlobalValue &GV, ValueAdder Add)>;
-  
--@@ -2426,7 +2426,7 @@
-++  using NamedMDNodesT = DenseMap<const NamedMDNode *, DenseSet<const MDNode *>>;
-++
-+   /// Move in the provide values in \p ValuesToLink from \p Src.
-+   ///
-+   /// - \p AddLazyFor is a call back that the IRMover will call when a global
-+@@ -86,6 +91,7 @@
-+   Module &Composite;
-+   IdentifiedStructTypeSet IdentifiedStructTypes;
-+   MDMapT SharedMDs; ///< A Metadata map to use for all calls to \a move().
-++  NamedMDNodesT NamedMDNodes; ///< Cache for IRMover::linkNamedMDNodes().
-+ };
-  
--   // After calling Append(), the type-name map needs to be sorted again to be
--   // able to look up a type by its name.
---  m_type_base_names.Sort();
--+  m_type_base_names.Sort(std::less<uint32_t>());
-+ } // End llvm namespace
-+diff -ruN --strip-trailing-cr a/llvm/lib/Linker/IRMover.cpp b/llvm/lib/Linker/IRMover.cpp
-+--- a/llvm/lib/Linker/IRMover.cpp
-++++ b/llvm/lib/Linker/IRMover.cpp
-+@@ -293,7 +293,7 @@
-+   std::unique_ptr<Module> SrcM;
-  
--   // Now that we know the forward -> full mapping of all type indices, we can
--   // re-write all the indices.  At the end of this process, we want a mapping
--diff -ruN --strip-trailing-cr a/lldb/tools/lldb-dap/Handler/ModuleSymbolsRequestHandler.cpp b/lldb/tools/lldb-dap/Handler/ModuleSymbolsRequestHandler.cpp
----- a/lldb/tools/lldb-dap/Handler/ModuleSymbolsRequestHandler.cpp
--+++ b/lldb/tools/lldb-dap/Handler/ModuleSymbolsRequestHandler.cpp
--@@ -60,7 +60,7 @@
--     if (!symbol.IsValid())
--       continue;
-+   // Lookup table to optimize IRMover::linkNamedMDNodes().
-+-  DenseMap<StringRef, DenseSet<MDNode *>> NamedMDNodes;
-++  IRMover::NamedMDNodesT &NamedMDNodes;
-  
---    Symbol dap_symbol;
--+    Symbol dap_symbol = {};
--     dap_symbol.id = symbol.GetID();
--     dap_symbol.type = symbol.GetType();
--     dap_symbol.isDebug = symbol.IsDebug();
--diff -ruN --strip-trailing-cr a/lldb/tools/lldb-dap/src-ts/ui/symbols-provider.ts b/lldb/tools/lldb-dap/src-ts/ui/symbols-provider.ts
----- a/lldb/tools/lldb-dap/src-ts/ui/symbols-provider.ts
--+++ b/lldb/tools/lldb-dap/src-ts/ui/symbols-provider.ts
--@@ -61,18 +61,18 @@
--       return;
--     }
-+   /// See IRMover::move().
-+   IRMover::LazyCallback AddLazyFor;
-+@@ -440,10 +440,12 @@
-+   IRLinker(Module &DstM, MDMapT &SharedMDs,
-+            IRMover::IdentifiedStructTypeSet &Set, std::unique_ptr<Module> SrcM,
-+            ArrayRef<GlobalValue *> ValuesToLink,
-+-           IRMover::LazyCallback AddLazyFor, bool IsPerformingImport)
-+-      : DstM(DstM), SrcM(std::move(SrcM)), AddLazyFor(std::move(AddLazyFor)),
-+-        TypeMap(Set), GValMaterializer(*this), LValMaterializer(*this),
-+-        SharedMDs(SharedMDs), IsPerformingImport(IsPerformingImport),
-++           IRMover::LazyCallback AddLazyFor, bool IsPerformingImport,
-++           IRMover::NamedMDNodesT &NamedMDNodes)
-++      : DstM(DstM), SrcM(std::move(SrcM)), NamedMDNodes(NamedMDNodes),
-++        AddLazyFor(std::move(AddLazyFor)), TypeMap(Set),
-++        GValMaterializer(*this), LValMaterializer(*this), SharedMDs(SharedMDs),
-++        IsPerformingImport(IsPerformingImport),
-+         Mapper(ValueMap, RF_ReuseAndMutateDistinctMDs | RF_IgnoreMissingLocals,
-+                &TypeMap, &GValMaterializer),
-+         IndirectSymbolMCID(Mapper.registerAlternateMappingContext(
-+@@ -1138,7 +1140,7 @@
-  
---    this.showSymbolsForModule(session, selectedModule.module);
--+    await this.showSymbolsForModule(session, selectedModule.module);
--   }
-+     NamedMDNode *DestNMD = DstM.getOrInsertNamedMetadata(NMD.getName());
-  
--   private async showSymbolsForModule(session: vscode.DebugSession, module: DebugProtocol.Module) {
--     try {
--       const symbols = await this.getSymbolsForModule(session, module.id.toString());
---      this.showSymbolsInNewTab(module.name.toString(), symbols);
--+      await this.showSymbolsInNewTab(module.name.toString(), symbols);
--     } catch (error) {
--       if (error instanceof Error) {
---        vscode.window.showErrorMessage("Failed to retrieve symbols: " + error.message);
--+        await vscode.window.showErrorMessage("Failed to retrieve symbols: " + error.message);
-+-    auto &Inserted = NamedMDNodes[DestNMD->getName()];
-++    auto &Inserted = NamedMDNodes[DestNMD];
-+     if (Inserted.empty()) {
-+       // Must be the first module, copy everything from DestNMD.
-+       Inserted.insert(DestNMD->operands().begin(), DestNMD->operands().end());
-+@@ -1683,6 +1685,6 @@
-+                     LazyCallback AddLazyFor, bool IsPerformingImport) {
-+   IRLinker TheIRLinker(Composite, SharedMDs, IdentifiedStructTypes,
-+                        std::move(Src), ValuesToLink, std::move(AddLazyFor),
-+-                       IsPerformingImport);
-++                       IsPerformingImport, NamedMDNodes);
-+   return TheIRLinker.run();
-+ }
-+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
-+--- a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
-++++ b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
-+@@ -5574,7 +5574,23 @@
-+       if (auto *SD = dyn_cast<ScheduleData>(Data)) {
-+         SD->setScheduled(/*Scheduled=*/true);
-+         LLVM_DEBUG(dbgs() << "SLP:   schedule " << *SD << "\n");
-+-        ProcessBundleMember(SD, {});
-++        SmallVector<std::unique_ptr<ScheduleBundle>> PseudoBundles;
-++        SmallVector<ScheduleBundle *> Bundles;
-++        Instruction *In = SD->getInst();
-++        if (R.isVectorized(In)) {
-++          ArrayRef<TreeEntry *> Entries = R.getTreeEntries(In);
-++          for (TreeEntry *TE : Entries) {
-++            if (!isa<ExtractValueInst, ExtractElementInst, CallBase>(In) &&
-++                In->getNumOperands() != TE->getNumOperands())
-++              continue;
-++            auto &BundlePtr =
-++                PseudoBundles.emplace_back(std::make_unique<ScheduleBundle>());
-++            BundlePtr->setTreeEntry(TE);
-++            BundlePtr->add(SD);
-++            Bundles.push_back(BundlePtr.get());
-++          }
-++        }
-++        ProcessBundleMember(SD, Bundles);
-        } else {
---        vscode.window.showErrorMessage("Failed to retrieve symbols due to an unknown error.");
--+        await vscode.window.showErrorMessage("Failed to retrieve symbols due to an unknown error.");
--       }
--       
--       return;
--@@ -106,7 +106,7 @@
--     const symbolsTableScriptPath = panel.webview.asWebviewUri(vscode.Uri.joinPath(this.getExtensionResourcePath(), "symbols-table-view.js"));
-- 
--     panel.webview.html = getSymbolsTableHTMLContent(tabulatorJsPath, tabulatorCssPath, symbolsTableScriptPath);
---    panel.webview.postMessage({ command: "updateSymbols", symbols: symbols });
--+    await panel.webview.postMessage({ command: "updateSymbols", symbols: symbols });
--   }
-+         ScheduleBundle &Bundle = *cast<ScheduleBundle>(Data);
-+         Bundle.setScheduled(/*Scheduled=*/true);
-+@@ -20772,6 +20788,14 @@
-+           continue;
-+         }
-+         auto *SD = cast<ScheduleData>(SE);
-++        if (SD->hasValidDependencies() &&
-++            (!S.areInstructionsWithCopyableElements() ||
-++             !S.isCopyableElement(SD->getInst())) &&
-++            !getScheduleCopyableData(SD->getInst()).empty() && EI.UserTE &&
-++            EI.UserTE->hasState() &&
-++            (!EI.UserTE->hasCopyableElements() ||
-++             !EI.UserTE->isCopyableElement(SD->getInst())))
-++          SD->clearDirectDependencies();
-+         for (const Use &U : SD->getInst()->operands()) {
-+           unsigned &NumOps =
-+               UserOpToNumOps
-+@@ -20853,23 +20877,7 @@
-+   for (Value *V : VL) {
-+     if (S.isNonSchedulable(V))
-+       continue;
-+-    // For copybales with parent nodes, which do not need to be scheduled, the
-+-    // parents should not be commutative, otherwise may incorrectly handle deps
-+-    // because of the potential reordering of commutative operations.
-+-    if ((S.isCopyableElement(V) && EI.UserTE && !EI.UserTE->isGather() &&
-+-         EI.UserTE->hasState() && EI.UserTE->doesNotNeedToSchedule() &&
-+-         any_of(EI.UserTE->Scalars,
-+-                [&](Value *V) {
-+-                  if (isa<PoisonValue>(V))
-+-                    return false;
-+-                  auto *I = dyn_cast<Instruction>(V);
-+-                  return isCommutative(
-+-                      (I && EI.UserTE->isAltShuffle())
-+-                          ? EI.UserTE->getMatchingMainOpOrAltOp(I)
-+-                          : EI.UserTE->getMainOp(),
-+-                      V);
-+-                })) ||
-+-        !extendSchedulingRegion(V, S)) {
-++    if (!extendSchedulingRegion(V, S)) {
-+       // If the scheduling region got new instructions at the lower end (or it
-+       // is a new region for the first bundle). This makes it necessary to
-+       // recalculate all dependencies.
-+@@ -21889,6 +21897,10 @@
-+     return TryProcessInstruction(BitWidth);
-+   case Instruction::ZExt:
-+   case Instruction::SExt:
-++    if (E.UserTreeIndex.UserTE && E.UserTreeIndex.UserTE->hasState() &&
-++        E.UserTreeIndex.UserTE->getOpcode() == Instruction::BitCast &&
-++        E.UserTreeIndex.UserTE->getMainOp()->getType()->isFPOrFPVectorTy())
-++      return false;
-+     IsProfitableToDemote = true;
-+     return TryProcessInstruction(BitWidth);
-+ 
-+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/copyable-with-non-scheduled-parent-node.ll b/llvm/test/Transforms/SLPVectorizer/X86/copyable-with-non-scheduled-parent-node.ll
-+--- a/llvm/test/Transforms/SLPVectorizer/X86/copyable-with-non-scheduled-parent-node.ll
-++++ b/llvm/test/Transforms/SLPVectorizer/X86/copyable-with-non-scheduled-parent-node.ll
-+@@ -4,20 +4,15 @@
-+ define i64 @test(ptr %a) {
-+ ; CHECK-LABEL: define i64 @test(
-+ ; CHECK-SAME: ptr [[A:%.*]]) #[[ATTR0:[0-9]+]] {
-+-; CHECK-NEXT:    [[TMP1:%.*]] = add i64 0, 0
-+ ; CHECK-NEXT:    [[TMP2:%.*]] = load i64, ptr [[A]], align 4
-+-; CHECK-NEXT:    [[TMP3:%.*]] = add i64 [[TMP2]], 0
-+-; CHECK-NEXT:    [[TMP4:%.*]] = add i64 1, [[TMP1]]
-+-; CHECK-NEXT:    [[TMP5:%.*]] = ashr i64 0, 1
-+-; CHECK-NEXT:    [[TMP6:%.*]] = ashr i64 0, 0
-++; CHECK-NEXT:    [[TMP7:%.*]] = insertelement <4 x i64> <i64 poison, i64 0, i64 0, i64 0>, i64 [[TMP2]], i32 0
-++; CHECK-NEXT:    [[TMP3:%.*]] = add <4 x i64> zeroinitializer, [[TMP7]]
-++; CHECK-NEXT:    [[TMP4:%.*]] = add <4 x i64> <i64 0, i64 0, i64 0, i64 1>, [[TMP3]]
-++; CHECK-NEXT:    [[TMP5:%.*]] = shufflevector <4 x i64> [[TMP4]], <4 x i64> poison, <6 x i32> <i32 0, i32 1, i32 2, i32 3, i32 poison, i32 poison>
-++; CHECK-NEXT:    [[TMP6:%.*]] = shufflevector <6 x i64> [[TMP5]], <6 x i64> <i64 0, i64 0, i64 undef, i64 undef, i64 undef, i64 undef>, <6 x i32> <i32 0, i32 1, i32 2, i32 3, i32 6, i32 7>
-+ ; CHECK-NEXT:    br label %[[BB7:.*]]
-+ ; CHECK:       [[BB7]]:
-+-; CHECK-NEXT:    [[TMP8:%.*]] = phi i64 [ [[TMP3]], [[TMP0:%.*]] ]
-+-; CHECK-NEXT:    [[TMP9:%.*]] = phi i64 [ 0, [[TMP0]] ]
-+-; CHECK-NEXT:    [[TMP10:%.*]] = phi i64 [ [[TMP6]], [[TMP0]] ]
-+-; CHECK-NEXT:    [[TMP11:%.*]] = phi i64 [ [[TMP5]], [[TMP0]] ]
-+-; CHECK-NEXT:    [[TMP12:%.*]] = phi i64 [ 0, [[TMP0]] ]
-+-; CHECK-NEXT:    [[TMP13:%.*]] = phi i64 [ [[TMP4]], [[TMP0]] ]
-++; CHECK-NEXT:    [[TMP8:%.*]] = phi <6 x i64> [ [[TMP6]], [[TMP0:%.*]] ]
-+ ; CHECK-NEXT:    ret i64 0
-+ ;
-+   %1 = add i64 0, 0
-+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/original-inst-scheduled-after-copyable.ll b/llvm/test/Transforms/SLPVectorizer/X86/original-inst-scheduled-after-copyable.ll
-+--- a/llvm/test/Transforms/SLPVectorizer/X86/original-inst-scheduled-after-copyable.ll
-++++ b/llvm/test/Transforms/SLPVectorizer/X86/original-inst-scheduled-after-copyable.ll
-+@@ -0,0 +1,89 @@
-++; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --version 5
-++; RUN: opt -S --passes=slp-vectorizer -mtriple=x86_64-unknown-linux-gnu -slp-threshold=-10 < %s | FileCheck %s
-++
-++define void @test(ptr %0, i32 %1, i32 %2) {
-++; CHECK-LABEL: define void @test(
-++; CHECK-SAME: ptr [[TMP0:%.*]], i32 [[TMP1:%.*]], i32 [[TMP2:%.*]]) {
-++; CHECK-NEXT:  [[ENTRY:.*:]]
-++; CHECK-NEXT:    [[TMP3:%.*]] = getelementptr i8, ptr [[TMP0]], i64 48
-++; CHECK-NEXT:    [[TMP5:%.*]] = getelementptr i8, ptr [[TMP0]], i64 56
-++; CHECK-NEXT:    [[TMP7:%.*]] = and i32 [[TMP2]], [[TMP1]]
-++; CHECK-NEXT:    [[ADD_NARROWED_I_I:%.*]] = shl i32 [[TMP1]], 1
-++; CHECK-NEXT:    [[TMP10:%.*]] = lshr i32 [[TMP7]], 1
-++; CHECK-NEXT:    [[TMP18:%.*]] = zext i32 [[ADD_NARROWED_I_I]] to i64
-++; CHECK-NEXT:    [[TMP19:%.*]] = add i64 [[TMP18]], -1
-++; CHECK-NEXT:    [[TMP21:%.*]] = trunc i64 [[TMP19]] to i32
-++; CHECK-NEXT:    [[TMP28:%.*]] = insertelement <2 x i32> poison, i32 [[TMP21]], i32 0
-++; CHECK-NEXT:    [[TMP11:%.*]] = shufflevector <2 x i32> [[TMP28]], <2 x i32> poison, <2 x i32> zeroinitializer
-++; CHECK-NEXT:    [[TMP12:%.*]] = and <2 x i32> [[TMP11]], splat (i32 -2)
-++; CHECK-NEXT:    [[TMP13:%.*]] = insertelement <2 x i32> <i32 poison, i32 -2>, i32 [[TMP1]], i32 0
-++; CHECK-NEXT:    [[TMP14:%.*]] = or <2 x i32> [[TMP13]], [[TMP12]]
-++; CHECK-NEXT:    [[TMP15:%.*]] = xor <2 x i32> [[TMP13]], [[TMP12]]
-++; CHECK-NEXT:    [[TMP16:%.*]] = shufflevector <2 x i32> [[TMP14]], <2 x i32> [[TMP15]], <2 x i32> <i32 0, i32 3>
-++; CHECK-NEXT:    [[TMP17:%.*]] = load <2 x i32>, ptr [[TMP5]], align 8
-++; CHECK-NEXT:    [[TMP32:%.*]] = insertelement <2 x i32> <i32 1, i32 poison>, i32 [[TMP1]], i32 1
-++; CHECK-NEXT:    [[TMP33:%.*]] = and <2 x i32> [[TMP17]], [[TMP32]]
-++; CHECK-NEXT:    call void @llvm.stackrestore.p0(ptr null)
-++; CHECK-NEXT:    [[TMP20:%.*]] = shufflevector <2 x i32> [[TMP33]], <2 x i32> poison, <2 x i32> <i32 poison, i32 0>
-++; CHECK-NEXT:    [[TMP34:%.*]] = insertelement <2 x i32> [[TMP20]], i32 [[TMP10]], i32 0
-++; CHECK-NEXT:    [[TMP22:%.*]] = zext <2 x i32> [[TMP34]] to <2 x i64>
-++; CHECK-NEXT:    [[TMP23:%.*]] = zext <2 x i32> [[TMP33]] to <2 x i64>
-++; CHECK-NEXT:    [[TMP35:%.*]] = shl <2 x i64> [[TMP23]], splat (i64 1)
-++; CHECK-NEXT:    [[TMP25:%.*]] = or <2 x i64> [[TMP35]], [[TMP22]]
-++; CHECK-NEXT:    [[TMP26:%.*]] = trunc <2 x i64> [[TMP25]] to <2 x i32>
-++; CHECK-NEXT:    [[TMP27:%.*]] = trunc <2 x i64> [[TMP25]] to <2 x i32>
-++; CHECK-NEXT:    [[TMP24:%.*]] = tail call i32 asm sideeffect "", "=r,0,~{dirflag},~{fpsr},~{flags}"(i32 0)
-++; CHECK-NEXT:    store <2 x i32> [[TMP16]], ptr [[TMP3]], align 16
-++; CHECK-NEXT:    [[TMP29:%.*]] = shufflevector <2 x i32> [[TMP32]], <2 x i32> poison, <2 x i32> <i32 1, i32 1>
-++; CHECK-NEXT:    [[TMP30:%.*]] = and <2 x i32> [[TMP29]], [[TMP26]]
-++; CHECK-NEXT:    [[TMP31:%.*]] = or <2 x i32> [[TMP30]], [[TMP27]]
-++; CHECK-NEXT:    store <2 x i32> [[TMP31]], ptr [[TMP5]], align 8
-++; CHECK-NEXT:    ret void
-++;
-++entry:
-++  %3 = getelementptr i8, ptr %0, i64 48
-++  %4 = getelementptr i8, ptr %0, i64 52
-++  %5 = getelementptr i8, ptr %0, i64 56
-++  %6 = getelementptr i8, ptr %0, i64 60
-++  %.pre21.i = load i32, ptr %5, align 8
-++  %.pre23.i = load i32, ptr %6, align 4
-++  %7 = and i32 %2, %1
-++  %8 = and i32 %.pre21.i, 1
-++  %9 = and i32 %1, %.pre23.i
-++  call void @llvm.stackrestore.p0(ptr null)
-++  %add.narrowed.i.i = shl i32 %1, 1
-++  %10 = lshr i32 %7, 1
-++  %11 = zext i32 %10 to i64
-++  %12 = zext i32 %8 to i64
-++  %reass.add1.i = shl i64 %12, 1
-++  %13 = or i64 %reass.add1.i, %11
-++  %14 = trunc i64 %13 to i32
-++  %15 = zext i32 %9 to i64
-++  %reass.add2.i = shl i64 %15, 1
-++  %16 = or i64 %reass.add2.i, %12
-++  %17 = trunc i64 %16 to i32
-++  %18 = zext i32 %add.narrowed.i.i to i64
-++  %19 = add i64 %18, -1
-++  %20 = trunc i64 %19 to i32
-++  %21 = trunc i64 %19 to i32
-++  %22 = trunc i64 %13 to i32
-++  %23 = trunc i64 %16 to i32
-++  %24 = tail call i32 asm sideeffect "", "=r,0,~{dirflag},~{fpsr},~{flags}"(i32 0)
-++  %25 = and i32 %20, -2
-++  %26 = or i32 %1, %25
-++  store i32 %26, ptr %3, align 16
-++  %27 = and i32 %21, -2
-++  %28 = xor i32 %27, -2
-++  store i32 %28, ptr %4, align 4
-++  %29 = and i32 %1, %14
-++  %30 = or i32 %29, %22
-++  store i32 %30, ptr %5, align 8
-++  %31 = and i32 %1, %17
-++  %32 = or i32 %31, %23
-++  store i32 %32, ptr %6, align 4
-++  ret void
-++}
-++
-++declare void @llvm.stackrestore.p0(ptr) #0
-++
-++attributes #0 = { nocallback nofree nosync nounwind willreturn }
-+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/parent-bitcast-with-fp.ll b/llvm/test/Transforms/SLPVectorizer/X86/parent-bitcast-with-fp.ll
-+--- a/llvm/test/Transforms/SLPVectorizer/X86/parent-bitcast-with-fp.ll
-++++ b/llvm/test/Transforms/SLPVectorizer/X86/parent-bitcast-with-fp.ll
-+@@ -0,0 +1,36 @@
-++; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --version 5
-++; RUN: opt -S --passes=slp-vectorizer -mtriple=x86_64-unknown-linux-gnu < %s | FileCheck %s
-++
-++define i1 @test(i32 %0) {
-++; CHECK-LABEL: define i1 @test(
-++; CHECK-SAME: i32 [[TMP0:%.*]]) {
-++; CHECK-NEXT:  [[ENTRY:.*:]]
-++; CHECK-NEXT:    [[CONV22_I_I:%.*]] = sext i32 [[TMP0]] to i64
-++; CHECK-NEXT:    [[TMP1:%.*]] = bitcast i64 [[CONV22_I_I]] to double
-++; CHECK-NEXT:    [[TMP2:%.*]] = fadd double [[TMP1]], 0.000000e+00
-++; CHECK-NEXT:    [[ADD_I_I_I:%.*]] = select i1 false, double 0.000000e+00, double [[TMP2]]
-++; CHECK-NEXT:    [[TMP3:%.*]] = bitcast double [[ADD_I_I_I]] to i64
-++; CHECK-NEXT:    [[CMP3998_I_I:%.*]] = icmp ne i64 [[TMP3]], [[CONV22_I_I]]
-++; CHECK-NEXT:    [[CONV22_1_I_I:%.*]] = sext i32 0 to i64
-++; CHECK-NEXT:    [[TMP4:%.*]] = bitcast i64 [[CONV22_1_I_I]] to double
-++; CHECK-NEXT:    [[TMP5:%.*]] = fadd double [[TMP4]], 0.000000e+00
-++; CHECK-NEXT:    [[ADD_I_1_I_I:%.*]] = select i1 false, double 0.000000e+00, double [[TMP5]]
-++; CHECK-NEXT:    [[TMP6:%.*]] = bitcast double [[ADD_I_1_I_I]] to i64
-++; CHECK-NEXT:    [[CMP3998_1_I_I:%.*]] = icmp ne i64 [[TMP6]], [[CONV22_1_I_I]]
-++; CHECK-NEXT:    ret i1 [[CMP3998_1_I_I]]
-++;
-++entry:
-++  %conv22.i.i = sext i32 %0 to i64
-++  %1 = bitcast i64 %conv22.i.i to double
-++  %2 = fadd double %1, 0.000000e+00
-++  %add.i.i.i = select i1 false, double 0.000000e+00, double %2
-++  %3 = bitcast double %add.i.i.i to i64
-++  %cmp3998.i.i = icmp ne i64 %3, %conv22.i.i
-++  %conv22.1.i.i = sext i32 0 to i64
-++  %4 = bitcast i64 %conv22.1.i.i to double
-++  %5 = fadd double %4, 0.000000e+00
-++  %add.i.1.i.i = select i1 false, double 0.000000e+00, double %5
-++  %6 = bitcast double %add.i.1.i.i to i64
-++  %cmp3998.1.i.i = icmp ne i64 %6, %conv22.1.i.i
-++  ret i1 %cmp3998.1.i.i
-++}
-+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/parent-node-non-schedulable.ll b/llvm/test/Transforms/SLPVectorizer/X86/parent-node-non-schedulable.ll
-+--- a/llvm/test/Transforms/SLPVectorizer/X86/parent-node-non-schedulable.ll
-++++ b/llvm/test/Transforms/SLPVectorizer/X86/parent-node-non-schedulable.ll
-+@@ -0,0 +1,172 @@
-++; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --version 5
-++; RUN: opt -S --passes=slp-vectorizer -S -mtriple=i686-unknown-linux-android29 -mattr=+sse2 < %s | FileCheck %s
-++
-++define void @test(ptr %0, i64 %1, i64 %2, i1 %3, i64 %4, i64 %5) {
-++; CHECK-LABEL: define void @test(
-++; CHECK-SAME: ptr [[TMP0:%.*]], i64 [[TMP1:%.*]], i64 [[TMP2:%.*]], i1 [[TMP3:%.*]], i64 [[TMP4:%.*]], i64 [[TMP5:%.*]]) #[[ATTR0:[0-9]+]] {
-++; CHECK-NEXT:    [[TMP7:%.*]] = getelementptr i8, ptr [[TMP0]], i32 240
-++; CHECK-NEXT:    [[TMP8:%.*]] = getelementptr i8, ptr [[TMP0]], i32 128
-++; CHECK-NEXT:    [[TMP9:%.*]] = insertelement <4 x i64> poison, i64 [[TMP1]], i32 0
-++; CHECK-NEXT:    [[TMP10:%.*]] = shufflevector <4 x i64> [[TMP9]], <4 x i64> poison, <4 x i32> zeroinitializer
-++; CHECK-NEXT:    [[TMP11:%.*]] = insertelement <4 x i64> <i64 1, i64 1, i64 1, i64 poison>, i64 [[TMP2]], i32 3
-++; CHECK-NEXT:    [[TMP12:%.*]] = add <4 x i64> [[TMP10]], [[TMP11]]
-++; CHECK-NEXT:    [[TMP13:%.*]] = load <2 x i64>, ptr [[TMP7]], align 4
-++; CHECK-NEXT:    [[TMP14:%.*]] = load i64, ptr null, align 4
-++; CHECK-NEXT:    [[TMP15:%.*]] = load <2 x i64>, ptr [[TMP8]], align 4
-++; CHECK-NEXT:    [[TMP16:%.*]] = shufflevector <2 x i64> [[TMP13]], <2 x i64> [[TMP15]], <6 x i32> <i32 0, i32 1, i32 poison, i32 3, i32 2, i32 2>
-++; CHECK-NEXT:    [[TMP17:%.*]] = insertelement <6 x i64> poison, i64 [[TMP14]], i32 0
-++; CHECK-NEXT:    [[TMP18:%.*]] = shufflevector <6 x i64> [[TMP17]], <6 x i64> poison, <6 x i32> <i32 poison, i32 poison, i32 0, i32 poison, i32 poison, i32 poison>
-++; CHECK-NEXT:    [[TMP19:%.*]] = shufflevector <6 x i64> [[TMP16]], <6 x i64> [[TMP18]], <6 x i32> <i32 0, i32 1, i32 8, i32 3, i32 4, i32 5>
-++; CHECK-NEXT:    [[TMP20:%.*]] = shufflevector <4 x i64> [[TMP10]], <4 x i64> poison, <6 x i32> <i32 0, i32 1, i32 2, i32 3, i32 poison, i32 0>
-++; CHECK-NEXT:    [[TMP21:%.*]] = shufflevector <6 x i64> [[TMP20]], <6 x i64> <i64 0, i64 0, i64 0, i64 0, i64 0, i64 poison>, <6 x i32> <i32 6, i32 7, i32 8, i32 9, i32 10, i32 0>
-++; CHECK-NEXT:    [[TMP22:%.*]] = add <6 x i64> [[TMP19]], [[TMP21]]
-++; CHECK-NEXT:    [[TMP23:%.*]] = shufflevector <2 x i64> [[TMP13]], <2 x i64> poison, <4 x i32> <i32 0, i32 1, i32 0, i32 1>
-++; CHECK-NEXT:    [[TMP24:%.*]] = shufflevector <4 x i64> [[TMP10]], <4 x i64> [[TMP23]], <4 x i32> <i32 0, i32 1, i32 4, i32 5>
-++; CHECK-NEXT:    [[TMP25:%.*]] = sub <4 x i64> zeroinitializer, [[TMP24]]
-++; CHECK-NEXT:    [[TMP26:%.*]] = sub <6 x i64> zeroinitializer, [[TMP22]]
-++; CHECK-NEXT:    [[TMP27:%.*]] = shufflevector <6 x i64> [[TMP19]], <6 x i64> poison, <2 x i32> <i32 2, i32 2>
-++; CHECK-NEXT:    [[TMP28:%.*]] = add <2 x i64> [[TMP27]], splat (i64 1)
-++; CHECK-NEXT:    [[TMP29:%.*]] = ashr <2 x i64> [[TMP28]], splat (i64 14)
-++; CHECK-NEXT:    [[TMP30:%.*]] = shufflevector <6 x i64> [[TMP26]], <6 x i64> poison, <14 x i32> <i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 0, i32 1, i32 2, i32 3, i32 4, i32 5, i32 poison, i32 poison>
-++; CHECK-NEXT:    [[TMP31:%.*]] = shufflevector <4 x i64> [[TMP12]], <4 x i64> poison, <14 x i32> <i32 0, i32 1, i32 2, i32 3, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison>
-++; CHECK-NEXT:    [[TMP32:%.*]] = shufflevector <14 x i64> [[TMP30]], <14 x i64> [[TMP31]], <14 x i32> <i32 14, i32 15, i32 16, i32 17, i32 poison, i32 poison, i32 6, i32 7, i32 8, i32 9, i32 10, i32 11, i32 poison, i32 poison>
-++; CHECK-NEXT:    [[TMP33:%.*]] = shufflevector <4 x i64> [[TMP25]], <4 x i64> poison, <14 x i32> <i32 0, i32 1, i32 2, i32 3, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison>
-++; CHECK-NEXT:    [[TMP34:%.*]] = shufflevector <14 x i64> [[TMP32]], <14 x i64> [[TMP33]], <14 x i32> <i32 0, i32 1, i32 2, i32 3, i32 14, i32 15, i32 16, i32 17, i32 8, i32 9, i32 10, i32 11, i32 poison, i32 poison>
-++; CHECK-NEXT:    [[TMP35:%.*]] = shufflevector <2 x i64> [[TMP29]], <2 x i64> poison, <14 x i32> <i32 0, i32 1, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison>
-++; CHECK-NEXT:    [[TMP36:%.*]] = shufflevector <14 x i64> [[TMP34]], <14 x i64> [[TMP35]], <14 x i32> <i32 0, i32 1, i32 2, i32 3, i32 4, i32 5, i32 6, i32 7, i32 8, i32 9, i32 10, i32 11, i32 14, i32 15>
-++; CHECK-NEXT:    br i1 [[TMP3]], label %[[BB52:.*]], label %[[BB37:.*]]
-++; CHECK:       [[BB37]]:
-++; CHECK-NEXT:    [[TMP38:%.*]] = add <4 x i64> [[TMP10]], splat (i64 1)
-++; CHECK-NEXT:    [[TMP39:%.*]] = shufflevector <4 x i64> [[TMP10]], <4 x i64> poison, <2 x i32> zeroinitializer
-++; CHECK-NEXT:    [[TMP40:%.*]] = add <2 x i64> [[TMP39]], splat (i64 1)
-++; CHECK-NEXT:    [[TMP41:%.*]] = lshr <2 x i64> [[TMP39]], splat (i64 1)
-++; CHECK-NEXT:    [[TMP42:%.*]] = add <2 x i64> [[TMP40]], [[TMP41]]
-++; CHECK-NEXT:    [[TMP43:%.*]] = shufflevector <4 x i64> [[TMP10]], <4 x i64> [[TMP11]], <10 x i32> <i32 0, i32 7, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison>
-++; CHECK-NEXT:    [[TMP44:%.*]] = insertelement <10 x i64> [[TMP43]], i64 [[TMP4]], i32 6
-++; CHECK-NEXT:    [[TMP45:%.*]] = insertelement <10 x i64> [[TMP44]], i64 [[TMP5]], i32 7
-++; CHECK-NEXT:    [[TMP46:%.*]] = shufflevector <4 x i64> [[TMP38]], <4 x i64> poison, <10 x i32> <i32 poison, i32 poison, i32 poison, i32 poison, i32 0, i32 1, i32 2, i32 3, i32 poison, i32 poison>
-++; CHECK-NEXT:    [[TMP47:%.*]] = shufflevector <2 x i64> [[TMP42]], <2 x i64> poison, <10 x i32> <i32 0, i32 1, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison>
-++; CHECK-NEXT:    [[TMP48:%.*]] = shufflevector <10 x i64> [[TMP46]], <10 x i64> [[TMP47]], <10 x i32> <i32 poison, i32 poison, i32 poison, i32 poison, i32 4, i32 5, i32 6, i32 7, i32 10, i32 11>
-++; CHECK-NEXT:    [[TMP49:%.*]] = shufflevector <10 x i64> [[TMP48]], <10 x i64> [[TMP45]], <10 x i32> <i32 10, i32 11, i32 4, i32 5, i32 6, i32 7, i32 16, i32 17, i32 8, i32 9>
-++; CHECK-NEXT:    [[TMP50:%.*]] = shufflevector <10 x i64> [[TMP49]], <10 x i64> poison, <14 x i32> <i32 0, i32 1, i32 0, i32 2, i32 0, i32 3, i32 4, i32 5, i32 6, i32 7, i32 8, i32 9, i32 0, i32 0>
-++; CHECK-NEXT:    [[TMP51:%.*]] = ashr <14 x i64> [[TMP50]], splat (i64 2)
-++; CHECK-NEXT:    br label %[[BB52]]
-++; CHECK:       [[BB52]]:
-++; CHECK-NEXT:    [[TMP53:%.*]] = phi <14 x i64> [ [[TMP51]], %[[BB37]] ], [ [[TMP36]], [[TMP6:%.*]] ]
-++; CHECK-NEXT:    [[TMP54:%.*]] = extractelement <14 x i64> [[TMP53]], i32 0
-++; CHECK-NEXT:    [[TMP55:%.*]] = extractelement <14 x i64> [[TMP53]], i32 13
-++; CHECK-NEXT:    [[TMP56:%.*]] = or i64 [[TMP54]], [[TMP55]]
-++; CHECK-NEXT:    [[TMP57:%.*]] = extractelement <14 x i64> [[TMP53]], i32 4
-++; CHECK-NEXT:    [[TMP58:%.*]] = extractelement <14 x i64> [[TMP53]], i32 12
-++; CHECK-NEXT:    [[TMP59:%.*]] = or i64 [[TMP57]], [[TMP58]]
-++; CHECK-NEXT:    [[TMP60:%.*]] = extractelement <14 x i64> [[TMP53]], i32 1
-++; CHECK-NEXT:    [[TMP61:%.*]] = extractelement <14 x i64> [[TMP53]], i32 2
-++; CHECK-NEXT:    [[TMP62:%.*]] = or i64 [[TMP60]], [[TMP61]]
-++; CHECK-NEXT:    [[TMP63:%.*]] = or i64 [[TMP59]], [[TMP56]]
-++; CHECK-NEXT:    [[TMP64:%.*]] = extractelement <14 x i64> [[TMP53]], i32 5
-++; CHECK-NEXT:    [[TMP65:%.*]] = extractelement <14 x i64> [[TMP53]], i32 8
-++; CHECK-NEXT:    [[TMP66:%.*]] = or i64 [[TMP64]], [[TMP65]]
-++; CHECK-NEXT:    [[TMP67:%.*]] = extractelement <14 x i64> [[TMP53]], i32 3
-++; CHECK-NEXT:    [[TMP68:%.*]] = or i64 [[TMP67]], [[TMP62]]
-++; CHECK-NEXT:    [[TMP69:%.*]] = extractelement <14 x i64> [[TMP53]], i32 9
-++; CHECK-NEXT:    [[TMP70:%.*]] = or i64 [[TMP69]], [[TMP66]]
-++; CHECK-NEXT:    [[TMP71:%.*]] = extractelement <14 x i64> [[TMP53]], i32 6
-++; CHECK-NEXT:    [[TMP72:%.*]] = or i64 [[TMP71]], [[TMP70]]
-++; CHECK-NEXT:    [[TMP73:%.*]] = or i64 [[TMP63]], [[TMP72]]
-++; CHECK-NEXT:    [[TMP74:%.*]] = extractelement <14 x i64> [[TMP53]], i32 10
-++; CHECK-NEXT:    [[TMP75:%.*]] = or i64 [[TMP74]], [[TMP73]]
-++; CHECK-NEXT:    store i64 [[TMP68]], ptr [[TMP0]], align 4
-++; CHECK-NEXT:    [[TMP76:%.*]] = extractelement <14 x i64> [[TMP53]], i32 11
-++; CHECK-NEXT:    store i64 [[TMP76]], ptr null, align 4
-++; CHECK-NEXT:    [[TMP77:%.*]] = extractelement <14 x i64> [[TMP53]], i32 7
-++; CHECK-NEXT:    store i64 [[TMP77]], ptr [[TMP0]], align 4
-++; CHECK-NEXT:    store i64 [[TMP75]], ptr null, align 4
-++; CHECK-NEXT:    ret void
-++;
-++  %7 = getelementptr i8, ptr %0, i32 248
-++  %8 = load i64, ptr %7, align 4
-++  %9 = getelementptr i8, ptr %0, i32 240
-++  %10 = load i64, ptr %9, align 4
-++  %11 = load i64, ptr null, align 4
-++  %12 = add i64 %1, 1
-++  %13 = add i64 %1, 1
-++  %14 = add i64 %1, %2
-++  %15 = getelementptr i8, ptr %0, i32 136
-++  %16 = load i64, ptr %15, align 4
-++  %17 = getelementptr i8, ptr %0, i32 128
-++  %18 = load i64, ptr %17, align 4
-++  %19 = add i64 %18, %1
-++  %20 = sub i64 0, %18
-++  %21 = sub i64 0, %16
-++  %22 = sub i64 0, %11
-++  %23 = add i64 %1, 1
-++  %24 = sub i64 0, %1
-++  %25 = sub i64 0, %1
-++  %26 = sub i64 0, %10
-++  %27 = sub i64 0, %8
-++  %28 = sub i64 0, %19
-++  %29 = add i64 %11, 1
-++  %30 = ashr i64 %29, 14
-++  %31 = add i64 %11, 1
-++  %32 = ashr i64 %31, 14
-++  br i1 %3, label %58, label %33
-++
-++33:
-++  %34 = ashr i64 %2, 2
-++  %35 = ashr i64 %1, 2
-++  %36 = add i64 %1, 1
-++  %37 = ashr i64 %36, 2
-++  %38 = add i64 %1, 1
-++  %39 = lshr i64 %1, 1
-++  %40 = add i64 %38, %39
-++  %41 = ashr i64 %40, 2
-++  %42 = add i64 %1, 1
-++  %43 = lshr i64 %1, 1
-++  %44 = add i64 %42, %43
-++  %45 = ashr i64 %44, 2
-++  %46 = ashr i64 %5, 2
-++  %47 = ashr i64 %4, 2
-++  %48 = ashr i64 %1, 2
-++  %49 = ashr i64 %1, 2
-++  %50 = ashr i64 %1, 2
-++  %51 = ashr i64 %1, 2
-++  %52 = add i64 %1, 1
-++  %53 = ashr i64 %52, 2
-++  %54 = add i64 %1, 1
-++  %55 = ashr i64 %54, 2
-++  %56 = add i64 %1, 1
-++  %57 = ashr i64 %56, 2
-++  br label %58
-++
-++58:
-++  %59 = phi i64 [ %51, %33 ], [ %24, %6 ]
-++  %60 = phi i64 [ %50, %33 ], [ %32, %6 ]
-++  %61 = phi i64 [ %53, %33 ], [ %25, %6 ]
-++  %62 = phi i64 [ %55, %33 ], [ %26, %6 ]
-++  %63 = phi i64 [ %57, %33 ], [ %27, %6 ]
-++  %64 = phi i64 [ %49, %33 ], [ %30, %6 ]
-++  %65 = phi i64 [ %48, %33 ], [ %23, %6 ]
-++  %66 = phi i64 [ %47, %33 ], [ %22, %6 ]
-++  %67 = phi i64 [ %46, %33 ], [ %21, %6 ]
-++  %68 = phi i64 [ %45, %33 ], [ %20, %6 ]
-++  %69 = phi i64 [ %41, %33 ], [ %28, %6 ]
-++  %70 = phi i64 [ %34, %33 ], [ %12, %6 ]
-++  %71 = phi i64 [ %35, %33 ], [ %13, %6 ]
-++  %72 = phi i64 [ %37, %33 ], [ %14, %6 ]
-++  %73 = or i64 %65, %64
-++  %74 = or i64 %59, %60
-++  %75 = or i64 %70, %71
-++  %76 = or i64 %74, %73
-++  %77 = or i64 %61, %66
-++  %78 = or i64 %72, %75
-++  %79 = or i64 %67, %77
-++  %80 = or i64 %62, %79
-++  %81 = or i64 %76, %80
-++  %82 = or i64 %68, %81
-++  store i64 %78, ptr %0, align 4
-++  store i64 %69, ptr null, align 4
-++  store i64 %63, ptr %0, align 4
-++  store i64 %82, ptr null, align 4
-++  ret void
-++}
-++
-+diff -ruN --strip-trailing-cr a/mlir/lib/Bindings/Python/IRCore.cpp b/mlir/lib/Bindings/Python/IRCore.cpp
-+--- a/mlir/lib/Bindings/Python/IRCore.cpp
-++++ b/mlir/lib/Bindings/Python/IRCore.cpp
-+@@ -1079,23 +1079,38 @@
-+ PyModule::PyModule(PyMlirContextRef contextRef, MlirModule module)
-+     : BaseContextObject(std::move(contextRef)), module(module) {}
-+ 
-+-PyModule::~PyModule() { mlirModuleDestroy(module); }
-++PyModule::~PyModule() {
-++  nb::gil_scoped_acquire acquire;
-++  auto &liveModules = getContext()->liveModules;
-++  assert(liveModules.count(module.ptr) == 1 &&
-++         "destroying module not in live map");
-++  liveModules.erase(module.ptr);
-++  mlirModuleDestroy(module);
-++}
-+ 
-+ PyModuleRef PyModule::forModule(MlirModule module) {
-+   MlirContext context = mlirModuleGetContext(module);
-+   PyMlirContextRef contextRef = PyMlirContext::forContext(context);
-+ 
-+-  // Create.
-+-  PyModule *unownedModule = new PyModule(std::move(contextRef), module);
-+-  // Note that the default return value policy on cast is `automatic_reference`,
-+-  // which means "does not take ownership, does not call delete/dtor".
-+-  // We use `take_ownership`, which means "Python will call the C++ destructor
-+-  // and delete operator when the Python wrapper is garbage collected", because
-+-  // MlirModule actually wraps OwningOpRef<ModuleOp> (see mlirModuleCreateParse
-+-  // etc).
-+-  nb::object pyRef = nb::cast(unownedModule, nb::rv_policy::take_ownership);
-+-  unownedModule->handle = pyRef;
-+-  return PyModuleRef(unownedModule, std::move(pyRef));
-++  nb::gil_scoped_acquire acquire;
-++  auto &liveModules = contextRef->liveModules;
-++  auto it = liveModules.find(module.ptr);
-++  if (it == liveModules.end()) {
-++    // Create.
-++    PyModule *unownedModule = new PyModule(std::move(contextRef), module);
-++    // Note that the default return value policy on cast is automatic_reference,
-++    // which does not take ownership (delete will not be called).
-++    // Just be explicit.
-++    nb::object pyRef = nb::cast(unownedModule, nb::rv_policy::take_ownership);
-++    unownedModule->handle = pyRef;
-++    liveModules[module.ptr] =
-++        std::make_pair(unownedModule->handle, unownedModule);
-++    return PyModuleRef(unownedModule, std::move(pyRef));
-++  }
-++  // Use existing.
-++  PyModule *existing = it->second.second;
-++  nb::object pyRef = nb::borrow<nb::object>(it->second.first);
-++  return PyModuleRef(existing, std::move(pyRef));
-+ }
-+ 
-+ nb::object PyModule::createFromCapsule(nb::object capsule) {
-+@@ -2019,7 +2034,7 @@
-+ // PyInsertionPoint.
-+ //------------------------------------------------------------------------------
-+ 
-+-PyInsertionPoint::PyInsertionPoint(PyBlock &block) : block(block) {}
-++PyInsertionPoint::PyInsertionPoint(const PyBlock &block) : block(block) {}
-  
--   private getExtensionResourcePath(): vscode.Uri {
--diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/clang/BUILD.bazel b/utils/bazel/llvm-project-overlay/clang/BUILD.bazel
----- a/utils/bazel/llvm-project-overlay/clang/BUILD.bazel
--+++ b/utils/bazel/llvm-project-overlay/clang/BUILD.bazel
--@@ -58,6 +58,7 @@
--         "Refactoring",
--         "Sema",
--         "Serialization",
--+        "Trap",
--     ] for out in [
--         (
--             "include/clang/Basic/Diagnostic%sKinds.inc" % c,
--diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
----- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
--+++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
--@@ -4167,6 +4167,7 @@
--         ":VectorToSCF",
--         ":VectorToSPIRV",
--         ":VectorToXeGPU",
--+        ":XeGPUToXeVM",
--         ":XeVMToLLVM",
--     ],
-+ PyInsertionPoint::PyInsertionPoint(PyOperationBase &beforeOperationBase)
-+     : refOperation(beforeOperationBase.getOperation().getRef()),
-+@@ -2073,6 +2088,19 @@
-+   return PyInsertionPoint{block, std::move(terminatorOpRef)};
-+ }
-+ 
-++PyInsertionPoint PyInsertionPoint::after(PyOperationBase &op) {
-++  PyOperation &operation = op.getOperation();
-++  PyBlock block = operation.getBlock();
-++  MlirOperation nextOperation = mlirOperationGetNextInBlock(operation);
-++  if (mlirOperationIsNull(nextOperation))
-++    return PyInsertionPoint(block);
-++  PyOperationRef nextOpRef = PyOperation::forOperation(
-++      block.getParentOperation()->getContext(), nextOperation);
-++  return PyInsertionPoint{block, std::move(nextOpRef)};
-++}
-++
-++size_t PyMlirContext::getLiveModuleCount() { return liveModules.size(); }
-++
-+ nb::object PyInsertionPoint::contextEnter(nb::object insertPoint) {
-+   return PyThreadContextEntry::pushInsertionPoint(insertPoint);
-+ }
-+@@ -2912,6 +2940,7 @@
-+              PyMlirContextRef ref = PyMlirContext::forContext(self.get());
-+              return ref.releaseObject();
-+            })
-++      .def("_get_live_module_count", &PyMlirContext::getLiveModuleCount)
-+       .def_prop_ro(MLIR_PYTHON_CAPI_PTR_ATTR, &PyMlirContext::getCapsule)
-+       .def(MLIR_PYTHON_CAPI_FACTORY_ATTR, &PyMlirContext::createFromCapsule)
-+       .def("__enter__", &PyMlirContext::contextEnter)
-+@@ -3861,6 +3890,8 @@
-+                   nb::arg("block"), "Inserts at the beginning of the block.")
-+       .def_static("at_block_terminator", &PyInsertionPoint::atBlockTerminator,
-+                   nb::arg("block"), "Inserts before the block terminator.")
-++      .def_static("after", &PyInsertionPoint::after, nb::arg("operation"),
-++                  "Inserts after the operation.")
-+       .def("insert", &PyInsertionPoint::insert, nb::arg("operation"),
-+            "Inserts an operation.")
-+       .def_prop_ro(
-+diff -ruN --strip-trailing-cr a/mlir/lib/Bindings/Python/IRModule.h b/mlir/lib/Bindings/Python/IRModule.h
-+--- a/mlir/lib/Bindings/Python/IRModule.h
-++++ b/mlir/lib/Bindings/Python/IRModule.h
-+@@ -218,6 +218,10 @@
-+   /// Gets the count of live context objects. Used for testing.
-+   static size_t getLiveCount();
-+ 
-++  /// Gets the count of live modules associated with this context.
-++  /// Used for testing.
-++  size_t getLiveModuleCount();
-++
-+   /// Enter and exit the context manager.
-+   static nanobind::object contextEnter(nanobind::object context);
-+   void contextExit(const nanobind::object &excType,
-+@@ -244,6 +248,14 @@
-+   static nanobind::ft_mutex live_contexts_mutex;
-+   static LiveContextMap &getLiveContexts();
-+ 
-++  // Interns all live modules associated with this context. Modules tracked
-++  // in this map are valid. When a module is invalidated, it is removed
-++  // from this map, and while it still exists as an instance, any
-++  // attempt to access it will raise an error.
-++  using LiveModuleMap =
-++      llvm::DenseMap<const void *, std::pair<nanobind::handle, PyModule *>>;
-++  LiveModuleMap liveModules;
-++
-+   bool emitErrorDiagnostics = false;
-+ 
-+   MlirContext context;
-+@@ -821,7 +833,7 @@
-+ public:
-+   /// Creates an insertion point positioned after the last operation in the
-+   /// block, but still inside the block.
-+-  PyInsertionPoint(PyBlock &block);
-++  PyInsertionPoint(const PyBlock &block);
-+   /// Creates an insertion point positioned before a reference operation.
-+   PyInsertionPoint(PyOperationBase &beforeOperationBase);
-+ 
-+@@ -829,6 +841,9 @@
-+   static PyInsertionPoint atBlockBegin(PyBlock &block);
-+   /// Shortcut to create an insertion point before the block terminator.
-+   static PyInsertionPoint atBlockTerminator(PyBlock &block);
-++  /// Shortcut to create an insertion point to the node after the specified
-++  /// operation.
-++  static PyInsertionPoint after(PyOperationBase &op);
-+ 
-+   /// Inserts an operation.
-+   void insert(PyOperationBase &operationBase);
-+diff -ruN --strip-trailing-cr a/mlir/test/python/ir/insertion_point.py b/mlir/test/python/ir/insertion_point.py
-+--- a/mlir/test/python/ir/insertion_point.py
-++++ b/mlir/test/python/ir/insertion_point.py
-+@@ -63,6 +63,34 @@
-+ run(test_insert_before_operation)
-+ 
-+ 
-++# CHECK-LABEL: TEST: test_insert_after_operation
-++def test_insert_after_operation():
-++    ctx = Context()
-++    ctx.allow_unregistered_dialects = True
-++    with Location.unknown(ctx):
-++        module = Module.parse(
-++            r"""
-++      func.func @foo() -> () {
-++        "custom.op1"() : () -> ()
-++        "custom.op2"() : () -> ()
-++      }
-++    """
-++        )
-++        entry_block = module.body.operations[0].regions[0].blocks[0]
-++        custom_op1 = entry_block.operations[0]
-++        custom_op2 = entry_block.operations[1]
-++        InsertionPoint.after(custom_op1).insert(Operation.create("custom.op3"))
-++        InsertionPoint.after(custom_op2).insert(Operation.create("custom.op4"))
-++        # CHECK: "custom.op1"
-++        # CHECK: "custom.op3"
-++        # CHECK: "custom.op2"
-++        # CHECK: "custom.op4"
-++        module.operation.print()
-++
-++
-++run(test_insert_after_operation)
-++
-++
-+ # CHECK-LABEL: TEST: test_insert_at_block_begin
-+ def test_insert_at_block_begin():
-+     ctx = Context()
-+@@ -111,14 +139,24 @@
-+     """
-+         )
-+         entry_block = module.body.operations[0].regions[0].blocks[0]
-++        return_op = entry_block.operations[1]
-+         ip = InsertionPoint.at_block_terminator(entry_block)
-+         assert ip.block == entry_block
-+-        assert ip.ref_operation == entry_block.operations[1]
-+-        ip.insert(Operation.create("custom.op2"))
-++        assert ip.ref_operation == return_op
-++        custom_op2 = Operation.create("custom.op2")
-++        ip.insert(custom_op2)
-++        InsertionPoint.after(custom_op2).insert(Operation.create("custom.op3"))
-+         # CHECK: "custom.op1"
-+         # CHECK: "custom.op2"
-++        # CHECK: "custom.op3"
-+         module.operation.print()
-+ 
-++        try:
-++            InsertionPoint.after(return_op).insert(Operation.create("custom.op4"))
-++        except IndexError as e:
-++            # CHECK: ERROR: Cannot insert operation at the end of a block that already has a terminator.
-++            print(f"ERROR: {e}")
-++
-+ 
-+ run(test_insert_at_terminator)
-+ 
-+@@ -187,10 +225,16 @@
-+         with InsertionPoint(entry_block):
-+             Operation.create("custom.op2")
-+             with InsertionPoint.at_block_begin(entry_block):
-+-                Operation.create("custom.opa")
-++                custom_opa = Operation.create("custom.opa")
-+                 Operation.create("custom.opb")
-+             Operation.create("custom.op3")
-++            with InsertionPoint.after(custom_opa):
-++                Operation.create("custom.op4")
-++                Operation.create("custom.op5")
-++
-+         # CHECK: "custom.opa"
-++        # CHECK: "custom.op4"
-++        # CHECK: "custom.op5"
-+         # CHECK: "custom.opb"
-+         # CHECK: "custom.op1"
-+         # CHECK: "custom.op2"
-+diff -ruN --strip-trailing-cr a/mlir/test/python/ir/module.py b/mlir/test/python/ir/module.py
-+--- a/mlir/test/python/ir/module.py
-++++ b/mlir/test/python/ir/module.py
-+@@ -121,6 +121,7 @@
-+ def testModuleOperation():
-+     ctx = Context()
-+     module = Module.parse(r"""module @successfulParse {}""", ctx)
-++    assert ctx._get_live_module_count() == 1
-+     op1 = module.operation
-+     # CHECK: module @successfulParse
-+     print(op1)
-+@@ -145,6 +146,7 @@
-+     op1 = None
-+     op2 = None
-+     gc.collect()
-++    assert ctx._get_live_module_count() == 0
-+ 
-+ 
-+ # CHECK-LABEL: TEST: testModuleCapsule
-+@@ -152,17 +154,17 @@
-+ def testModuleCapsule():
-+     ctx = Context()
-+     module = Module.parse(r"""module @successfulParse {}""", ctx)
-++    assert ctx._get_live_module_count() == 1
-+     # CHECK: "mlir.ir.Module._CAPIPtr"
-+     module_capsule = module._CAPIPtr
-+     print(module_capsule)
-+     module_dup = Module._CAPICreate(module_capsule)
-+-    assert module is not module_dup
-++    assert module is module_dup
-+     assert module == module_dup
-+-    module._clear_mlir_module()
-+-    assert module != module_dup
-+     assert module_dup.context is ctx
-+     # Gc and verify destructed.
-+     module = None
-+     module_capsule = None
-+     module_dup = None
-+     gc.collect()
-++    assert ctx._get_live_module_count() == 0
-+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
-+--- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
-++++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
-+@@ -3749,6 +3749,14 @@
-  )
--@@ -13945,6 +13946,37 @@
-+ 
-+ libc_math_function(
-++    name = "fmodbf16",
-++    additional_deps = [
-++        ":__support_fputil_bfloat16",
-++        ":__support_fputil_generic_fmod",
-++    ],
-++)
-++
-++libc_math_function(
-+     name = "fmodf",
-+     additional_deps = [
-+         ":__support_fputil_generic_fmod",
-+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/test/src/math/smoke/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/test/src/math/smoke/BUILD.bazel
-+--- a/utils/bazel/llvm-project-overlay/libc/test/src/math/smoke/BUILD.bazel
-++++ b/utils/bazel/llvm-project-overlay/libc/test/src/math/smoke/BUILD.bazel
-+@@ -739,6 +739,16 @@
-  )
-  
-- cc_library(
--+    name = "XeGPUToXeVM",
--+    srcs = glob([
--+        "lib/Conversion/XeGPUToXeVM/*.cpp",
--+    ]),
--+    hdrs = glob([
--+        "include/mlir/Conversion/XeGPUToXeVM/*.h",
--+    ]),
--+    includes = ["include"],
-+ math_test(
-++    name = "fmodbf16",
-++    hdrs = [
-++        "FModTest.h",
-++    ],
- +    deps = [
--+        ":ArithDialect",
--+        ":ConversionPassIncGen",
--+        ":ConvertToLLVMInterface",
--+        ":GPUDialect",
--+        ":IR",
--+        ":IndexDialect",
--+        ":LLVMCommonConversion",
--+        ":LLVMDialect",
--+        ":MemRefDialect",
--+        ":Pass",
--+        ":SCFDialect",
--+        ":SCFTransforms",
--+        ":Support",
--+        ":TransformUtils",
--+        ":VectorDialect",
--+        ":XeGPUDialect",
--+        ":XeVMDialect",
--+        "//llvm:Support",
-++        "//libc:__support_fputil_bfloat16",
- +    ],
- +)
++-  llvm::Metadata *MD = CreateMetadataIdentifierForType(FD->getType());
+++  QualType FnType = GeneralizeFunctionType(getContext(), FD->getType(),
+++                                           /*GeneralizePointers=*/false);
+++  llvm::Metadata *MD = CreateMetadataIdentifierForType(FnType);
++   F->addTypeMetadata(0, MD);
++-  F->addTypeMetadata(0, CreateMetadataIdentifierGeneralized(FD->getType()));
  +
--+cc_library(
--     name = "XeVMToLLVM",
--     srcs = glob([
--         "lib/Conversion/XeVMToLLVM/*.cpp",
-++math_test(
-+     name = "fmodf",
-+     hdrs = ["FModTest.h"],
-+ )
-+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
-+--- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
-++++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
-+@@ -2223,7 +2223,6 @@
-+             "lib/Target/AArch64/AArch64GenDisassemblerTables.inc": [
-+                 "-gen-disassembler",
-+                 "-ignore-non-decodable-operands",
-+-                "-ignore-fully-defined-operands",
-+             ],
-+             "lib/Target/AArch64/AArch64GenSystemOperands.inc": ["-gen-searchable-tables"],
-+             "lib/Target/AArch64/AArch64GenExegesis.inc": ["-gen-exegesis"],
+-   void VisitConditionalOperator(const ConditionalOperator *S) {
+-     const Environment *TrueEnv = StmtToEnv.getEnvironment(*S->getTrueExpr());
+-     const Environment *FalseEnv = StmtToEnv.getEnvironment(*S->getFalseExpr());
+-diff -ruN --strip-trailing-cr a/clang/lib/AST/ASTContext.cpp b/clang/lib/AST/ASTContext.cpp
+---- a/clang/lib/AST/ASTContext.cpp
+-+++ b/clang/lib/AST/ASTContext.cpp
+-@@ -5316,7 +5316,8 @@
+-   }
+- 
+-   llvm::FoldingSetNodeID ID;
+--  TypedefType::Profile(ID, Keyword, Qualifier, Decl, UnderlyingType);
+-+  TypedefType::Profile(ID, Keyword, Qualifier, Decl,
+-+                       *TypeMatchesDeclOrNone ? QualType() : UnderlyingType);
+- 
+-   void *InsertPos = nullptr;
+-   if (FoldingSetPlaceholder<TypedefType> *Placeholder =
+-diff -ruN --strip-trailing-cr a/clang/unittests/Analysis/FlowSensitive/TransferTest.cpp b/clang/unittests/Analysis/FlowSensitive/TransferTest.cpp
+---- a/clang/unittests/Analysis/FlowSensitive/TransferTest.cpp
+-+++ b/clang/unittests/Analysis/FlowSensitive/TransferTest.cpp
+-@@ -9,25 +9,17 @@
+- #include "TestingSupport.h"
+- #include "clang/AST/ASTContext.h"
+- #include "clang/AST/Decl.h"
+--#include "clang/AST/Expr.h"
+--#include "clang/AST/ExprCXX.h"
+--#include "clang/AST/OperationKinds.h"
+--#include "clang/ASTMatchers/ASTMatchFinder.h"
+- #include "clang/ASTMatchers/ASTMatchers.h"
+--#include "clang/Analysis/FlowSensitive/DataflowAnalysis.h"
+- #include "clang/Analysis/FlowSensitive/DataflowAnalysisContext.h"
+- #include "clang/Analysis/FlowSensitive/DataflowEnvironment.h"
+- #include "clang/Analysis/FlowSensitive/NoopAnalysis.h"
+--#include "clang/Analysis/FlowSensitive/NoopLattice.h"
+- #include "clang/Analysis/FlowSensitive/RecordOps.h"
+- #include "clang/Analysis/FlowSensitive/StorageLocation.h"
+- #include "clang/Analysis/FlowSensitive/Value.h"
+- #include "clang/Basic/LangStandard.h"
+- #include "clang/Testing/TestAST.h"
+- #include "llvm/ADT/SmallVector.h"
+--#include "llvm/ADT/StringMap.h"
+- #include "llvm/ADT/StringRef.h"
+--#include "llvm/Support/Casting.h"
+- #include "llvm/Testing/Support/Error.h"
+- #include "gmock/gmock.h"
+- #include "gtest/gtest.h"
+-@@ -35,7 +27,6 @@
+- #include <string>
+- #include <string_view>
+- #include <utility>
+--#include <vector>
+- 
+- namespace clang {
+- namespace dataflow {
+-@@ -3550,7 +3541,7 @@
+-   testFunction(Code, "noexceptTarget");
+++  QualType GenPtrFnType = GeneralizeFunctionType(getContext(), FD->getType(),
+++                                                 /*GeneralizePointers=*/true);
+++  F->addTypeMetadata(0, CreateMetadataIdentifierGeneralized(GenPtrFnType));
++ 
++   // Emit a hash-based bit set entry for cross-DSO calls.
++   if (CodeGenOpts.SanitizeCfiCrossDso)
++@@ -7934,6 +7958,15 @@
++   return InternalId;
+  }
+  
+--TEST(TransferTest, StaticCastNoOp) {
+-+TEST(TransferTest, StaticCast) {
+-   std::string Code = R"(
+-     void target(int Foo) {
+-       int Bar = static_cast<int>(Foo);
+-@@ -3570,13 +3561,6 @@
+-         const ValueDecl *BarDecl = findValueDecl(ASTCtx, "Bar");
+-         ASSERT_THAT(BarDecl, NotNull());
+- 
+--        const auto *Cast = ast_matchers::selectFirst<CXXStaticCastExpr>(
+--            "cast",
+--            ast_matchers::match(ast_matchers::cxxStaticCastExpr().bind("cast"),
+--                                ASTCtx));
+--        ASSERT_THAT(Cast, NotNull());
+--        ASSERT_EQ(Cast->getCastKind(), CK_NoOp);
+--
+-         const auto *FooVal = Env.getValue(*FooDecl);
+-         const auto *BarVal = Env.getValue(*BarDecl);
+-         EXPECT_TRUE(isa<IntegerValue>(FooVal));
+-@@ -3585,268 +3569,6 @@
+-       });
+++llvm::Metadata *CodeGenModule::CreateMetadataIdentifierForFnType(QualType T) {
+++  assert(isa<FunctionType>(T));
+++  T = GeneralizeFunctionType(
+++      getContext(), T, getCodeGenOpts().SanitizeCfiICallGeneralizePointers);
+++  if (getCodeGenOpts().SanitizeCfiICallGeneralizePointers)
+++    return CreateMetadataIdentifierGeneralized(T);
+++  return CreateMetadataIdentifierForType(T);
+++}
+++
++ llvm::Metadata *CodeGenModule::CreateMetadataIdentifierForType(QualType T) {
++   return CreateMetadataIdentifierImpl(T, MetadataIdMap, "");
++ }
++@@ -7944,8 +7977,8 @@
+  }
+  
+--TEST(TransferTest, StaticCastBaseToDerived) {
+--  std::string Code = R"cc(
+--    struct Base {
+--      char C;
+--    };
+--    struct Intermediate : public Base {
+--      bool B;
+--    };
+--    struct Derived : public Intermediate {
+--      int I;
+--    };
+--    Base& getBaseRef();
+--    void target(Base* BPtr) {
+--      Derived* DPtr = static_cast<Derived*>(BPtr);
+--      DPtr->C;
+--      DPtr->B;
+--      DPtr->I;
+--      Derived& DRef = static_cast<Derived&>(*BPtr);
+--      DRef.C;
+--      DRef.B;
+--      DRef.I;
+--      Derived& DRefFromFunc = static_cast<Derived&>(getBaseRef());
+--      DRefFromFunc.C;
+--      DRefFromFunc.B;
+--      DRefFromFunc.I;
+--      // [[p]]
+--    }
+--  )cc";
+--  runDataflow(
+--      Code,
+--      [](const llvm::StringMap<DataflowAnalysisState<NoopLattice>> &Results,
+--         ASTContext &ASTCtx) {
+--        ASSERT_THAT(Results.keys(), UnorderedElementsAre("p"));
+--        const Environment &Env = getEnvironmentAtAnnotation(Results, "p");
+--
+--        const ValueDecl *BPtrDecl = findValueDecl(ASTCtx, "BPtr");
+--        ASSERT_THAT(BPtrDecl, NotNull());
+--
+--        const ValueDecl *DPtrDecl = findValueDecl(ASTCtx, "DPtr");
+--        ASSERT_THAT(DPtrDecl, NotNull());
+--
+--        const ValueDecl *DRefDecl = findValueDecl(ASTCtx, "DRef");
+--        ASSERT_THAT(DRefDecl, NotNull());
+--
+--        const ValueDecl *DRefFromFuncDecl =
+--            findValueDecl(ASTCtx, "DRefFromFunc");
+--        ASSERT_THAT(DRefFromFuncDecl, NotNull());
+--
+--        const auto *Cast = ast_matchers::selectFirst<CXXStaticCastExpr>(
+--            "cast",
+--            ast_matchers::match(ast_matchers::cxxStaticCastExpr().bind("cast"),
+--                                ASTCtx));
+--        ASSERT_THAT(Cast, NotNull());
+--        ASSERT_EQ(Cast->getCastKind(), CK_BaseToDerived);
+--
+--        EXPECT_EQ(Env.getValue(*BPtrDecl), Env.getValue(*DPtrDecl));
+--        EXPECT_EQ(&Env.get<PointerValue>(*BPtrDecl)->getPointeeLoc(),
+--                  Env.getStorageLocation(*DRefDecl));
+--        // For DRefFromFunc, not crashing when analyzing the field accesses is
+--        // enough.
+--      });
+--}
+--
+--TEST(TransferTest, ExplicitDerivedToBaseCast) {
+--  std::string Code = R"cc(
+--    struct Base {};
+--    struct Derived : public Base {};
+--    void target(Derived D) {
+--      (Base*)&D;
+--      // [[p]]
+--    }
+--)cc";
+--  runDataflow(
+--      Code,
+--      [](const llvm::StringMap<DataflowAnalysisState<NoopLattice>> &Results,
+--         ASTContext &ASTCtx) {
+--        ASSERT_THAT(Results.keys(), UnorderedElementsAre("p"));
+--        const Environment &Env = getEnvironmentAtAnnotation(Results, "p");
+--
+--        auto *Cast = ast_matchers::selectFirst<ImplicitCastExpr>(
+--            "cast", ast_matchers::match(
+--                        ast_matchers::implicitCastExpr().bind("cast"), ASTCtx));
+--        ASSERT_THAT(Cast, NotNull());
+--        ASSERT_EQ(Cast->getCastKind(), CK_DerivedToBase);
+--
+--        auto *AddressOf = ast_matchers::selectFirst<UnaryOperator>(
+--            "addressof",
+--            ast_matchers::match(ast_matchers::unaryOperator().bind("addressof"),
+--                                ASTCtx));
+--        ASSERT_THAT(AddressOf, NotNull());
+--        ASSERT_EQ(AddressOf->getOpcode(), UO_AddrOf);
+--
+--        EXPECT_EQ(Env.getValue(*Cast), Env.getValue(*AddressOf));
+--      });
+--}
+--
+--TEST(TransferTest, ConstructorConversion) {
+--  std::string Code = R"cc(
+--    struct Base {};
+--    struct Derived : public Base {};
+--    void target(Derived D) {
+--      Base B = (Base)D;
+--      // [[p]]
+--    }
+--)cc";
+--  runDataflow(
+--      Code,
+--      [](const llvm::StringMap<DataflowAnalysisState<NoopLattice>> &Results,
+--         ASTContext &ASTCtx) {
+--        ASSERT_THAT(Results.keys(), UnorderedElementsAre("p"));
+--        const Environment &Env = getEnvironmentAtAnnotation(Results, "p");
+--
+--        auto *Cast = ast_matchers::selectFirst<CStyleCastExpr>(
+--            "cast", ast_matchers::match(
+--                        ast_matchers::cStyleCastExpr().bind("cast"), ASTCtx));
+--        ASSERT_THAT(Cast, NotNull());
+--        ASSERT_EQ(Cast->getCastKind(), CK_ConstructorConversion);
+--
+--        auto &DLoc = getLocForDecl<StorageLocation>(ASTCtx, Env, "D");
+--        auto &BLoc = getLocForDecl<StorageLocation>(ASTCtx, Env, "B");
+--        EXPECT_NE(&BLoc, &DLoc);
+--      });
+--}
+--
+--TEST(TransferTest, UserDefinedConversion) {
+--  std::string Code = R"cc(
+--    struct To {};
+--    struct From {
+--        operator To();
+--    };
+--    void target(From F) {
+--        To T = (To)F;
+--        // [[p]]
+--    }
+--)cc";
+--  runDataflow(
+--      Code,
+--      [](const llvm::StringMap<DataflowAnalysisState<NoopLattice>> &Results,
+--         ASTContext &ASTCtx) {
+--        ASSERT_THAT(Results.keys(), UnorderedElementsAre("p"));
+--        const Environment &Env = getEnvironmentAtAnnotation(Results, "p");
+--
+--        auto *Cast = ast_matchers::selectFirst<ImplicitCastExpr>(
+--            "cast", ast_matchers::match(
+--                        ast_matchers::implicitCastExpr().bind("cast"), ASTCtx));
+--        ASSERT_THAT(Cast, NotNull());
+--        ASSERT_EQ(Cast->getCastKind(), CK_UserDefinedConversion);
+--
+--        auto &FLoc = getLocForDecl<StorageLocation>(ASTCtx, Env, "F");
+--        auto &TLoc = getLocForDecl<StorageLocation>(ASTCtx, Env, "T");
+--        EXPECT_NE(&TLoc, &FLoc);
+--      });
+--}
+--
+--TEST(TransferTest, ImplicitUncheckedDerivedToBaseCast) {
+--  std::string Code = R"cc(
+--    struct Base {
+--      void method();
+--    };
+--    struct Derived : public Base {};
+--    void target(Derived D) {
+--      D.method();
+--      // [[p]]
+--    }
+--)cc";
+--  runDataflow(
+--      Code,
+--      [](const llvm::StringMap<DataflowAnalysisState<NoopLattice>> &Results,
+--         ASTContext &ASTCtx) {
+--        ASSERT_THAT(Results.keys(), UnorderedElementsAre("p"));
+--        const Environment &Env = getEnvironmentAtAnnotation(Results, "p");
+--
+--        auto *Cast = ast_matchers::selectFirst<ImplicitCastExpr>(
+--            "cast", ast_matchers::match(
+--                        ast_matchers::implicitCastExpr().bind("cast"), ASTCtx));
+--        ASSERT_THAT(Cast, NotNull());
+--        ASSERT_EQ(Cast->getCastKind(), CK_UncheckedDerivedToBase);
+--
+--        auto &DLoc = getLocForDecl<StorageLocation>(ASTCtx, Env, "D");
+--        EXPECT_EQ(Env.getStorageLocation(*Cast), &DLoc);
+--      });
+--}
+--
+--TEST(TransferTest, ImplicitDerivedToBaseCast) {
+--  std::string Code = R"cc(
+--    struct Base {};
+--    struct Derived : public Base {};
+--    void target() {
+--      Base* B = new Derived();
+--      // [[p]]
+--    }
+--)cc";
+--  runDataflow(
+--      Code,
+--      [](const llvm::StringMap<DataflowAnalysisState<NoopLattice>> &Results,
+--         ASTContext &ASTCtx) {
+--        ASSERT_THAT(Results.keys(), UnorderedElementsAre("p"));
+--        const Environment &Env = getEnvironmentAtAnnotation(Results, "p");
+--
+--        auto *Cast = ast_matchers::selectFirst<ImplicitCastExpr>(
+--            "cast", ast_matchers::match(
+--                        ast_matchers::implicitCastExpr().bind("cast"), ASTCtx));
+--        ASSERT_THAT(Cast, NotNull());
+--        ASSERT_EQ(Cast->getCastKind(), CK_DerivedToBase);
+--
+--        auto *New = ast_matchers::selectFirst<CXXNewExpr>(
+--            "new", ast_matchers::match(ast_matchers::cxxNewExpr().bind("new"),
+--                                       ASTCtx));
+--        ASSERT_THAT(New, NotNull());
+--
+--        EXPECT_EQ(Env.getValue(*Cast), Env.getValue(*New));
+--      });
+--}
+--
+--TEST(TransferTest, ReinterpretCast) {
+--  std::string Code = R"cc(
+--    struct S {
+--        int I;
+--    };
+--
+--    void target(unsigned char* Bytes) {
+--        S& SRef = reinterpret_cast<S&>(Bytes);
+--        SRef.I;
+--        S* SPtr = reinterpret_cast<S*>(Bytes);
+--        SPtr->I;
+--        // [[p]]
+--    }
+--  )cc";
+--  runDataflow(Code, [](const llvm::StringMap<DataflowAnalysisState<NoopLattice>>
+--                           &Results,
+--                       ASTContext &ASTCtx) {
+--    ASSERT_THAT(Results.keys(), UnorderedElementsAre("p"));
+--    const Environment &Env = getEnvironmentAtAnnotation(Results, "p");
+--    const ValueDecl *I = findValueDecl(ASTCtx, "I");
+--    ASSERT_THAT(I, NotNull());
+--
+--    // No particular knowledge of I's value is modeled, but for both casts,
+--    // the fields of S are modeled.
+--
+--    {
+--      auto &Loc = getLocForDecl<RecordStorageLocation>(ASTCtx, Env, "SRef");
+--      std::vector<const ValueDecl *> Children;
+--      for (const auto &Entry : Loc.children()) {
+--        Children.push_back(Entry.getFirst());
+--      }
+--
+--      EXPECT_THAT(Children, UnorderedElementsAre(I));
+--    }
+--
+--    {
+--      auto &Loc = cast<RecordStorageLocation>(
+--          getValueForDecl<PointerValue>(ASTCtx, Env, "SPtr").getPointeeLoc());
+--      std::vector<const ValueDecl *> Children;
+--      for (const auto &Entry : Loc.children()) {
+--        Children.push_back(Entry.getFirst());
+--      }
+--
+--      EXPECT_THAT(Children, UnorderedElementsAre(I));
+--    }
+--  });
+--}
+--
+- TEST(TransferTest, IntegralCast) {
+-   std::string Code = R"(
+-     void target(int Foo) {
+-diff -ruN --strip-trailing-cr a/llvm/include/llvm/Linker/IRMover.h b/llvm/include/llvm/Linker/IRMover.h
+---- a/llvm/include/llvm/Linker/IRMover.h
+-+++ b/llvm/include/llvm/Linker/IRMover.h
+-@@ -10,6 +10,7 @@
+- #define LLVM_LINKER_IRMOVER_H
++ llvm::Metadata *CodeGenModule::CreateMetadataIdentifierGeneralized(QualType T) {
++-  return CreateMetadataIdentifierImpl(GeneralizeFunctionType(getContext(), T),
++-                                      GeneralizedMetadataIdMap, ".generalized");
+++  return CreateMetadataIdentifierImpl(T, GeneralizedMetadataIdMap,
+++                                      ".generalized");
++ }
+  
+- #include "llvm/ADT/ArrayRef.h"
+-+#include "llvm/ADT/DenseMap.h"
+- #include "llvm/ADT/DenseSet.h"
+- #include "llvm/ADT/FunctionExtras.h"
+- #include "llvm/Support/Compiler.h"
+-@@ -19,6 +20,8 @@
+- class Error;
+- class GlobalValue;
+- class Metadata;
+-+class MDNode;
+-+class NamedMDNode;
+- class Module;
+- class StructType;
+- class TrackingMDRef;
+-@@ -67,6 +70,8 @@
+-   using LazyCallback =
+-       llvm::unique_function<void(GlobalValue &GV, ValueAdder Add)>;
++ /// Returns whether this module needs the "all-vtables" type identifier.
++diff -ruN --strip-trailing-cr a/clang/lib/CodeGen/CodeGenModule.h b/clang/lib/CodeGen/CodeGenModule.h
++--- a/clang/lib/CodeGen/CodeGenModule.h
+++++ b/clang/lib/CodeGen/CodeGenModule.h
++@@ -1623,6 +1623,9 @@
++   /// Generate a KCFI type identifier for T.
++   llvm::ConstantInt *CreateKCFITypeId(QualType T, StringRef Salt);
+  
+-+  using NamedMDNodesT = DenseMap<const NamedMDNode *, DenseSet<const MDNode *>>;
+++  /// Create a metadata identifier for the given function type.
+++  llvm::Metadata *CreateMetadataIdentifierForFnType(QualType T);
+ +
+-   /// Move in the provide values in \p ValuesToLink from \p Src.
+-   ///
+-   /// - \p AddLazyFor is a call back that the IRMover will call when a global
+-@@ -86,6 +91,7 @@
+-   Module &Composite;
+-   IdentifiedStructTypeSet IdentifiedStructTypes;
+-   MDMapT SharedMDs; ///< A Metadata map to use for all calls to \a move().
+-+  NamedMDNodesT NamedMDNodes; ///< Cache for IRMover::linkNamedMDNodes().
+- };
+- 
+- } // End llvm namespace
+-diff -ruN --strip-trailing-cr a/llvm/lib/Linker/IRMover.cpp b/llvm/lib/Linker/IRMover.cpp
+---- a/llvm/lib/Linker/IRMover.cpp
+-+++ b/llvm/lib/Linker/IRMover.cpp
+-@@ -293,7 +293,7 @@
+-   std::unique_ptr<Module> SrcM;
+- 
+-   // Lookup table to optimize IRMover::linkNamedMDNodes().
+--  DenseMap<StringRef, DenseSet<MDNode *>> NamedMDNodes;
+-+  IRMover::NamedMDNodesT &NamedMDNodes;
+- 
+-   /// See IRMover::move().
+-   IRMover::LazyCallback AddLazyFor;
+-@@ -440,10 +440,12 @@
+-   IRLinker(Module &DstM, MDMapT &SharedMDs,
+-            IRMover::IdentifiedStructTypeSet &Set, std::unique_ptr<Module> SrcM,
+-            ArrayRef<GlobalValue *> ValuesToLink,
+--           IRMover::LazyCallback AddLazyFor, bool IsPerformingImport)
+--      : DstM(DstM), SrcM(std::move(SrcM)), AddLazyFor(std::move(AddLazyFor)),
+--        TypeMap(Set), GValMaterializer(*this), LValMaterializer(*this),
+--        SharedMDs(SharedMDs), IsPerformingImport(IsPerformingImport),
+-+           IRMover::LazyCallback AddLazyFor, bool IsPerformingImport,
+-+           IRMover::NamedMDNodesT &NamedMDNodes)
+-+      : DstM(DstM), SrcM(std::move(SrcM)), NamedMDNodes(NamedMDNodes),
+-+        AddLazyFor(std::move(AddLazyFor)), TypeMap(Set),
+-+        GValMaterializer(*this), LValMaterializer(*this), SharedMDs(SharedMDs),
+-+        IsPerformingImport(IsPerformingImport),
+-         Mapper(ValueMap, RF_ReuseAndMutateDistinctMDs | RF_IgnoreMissingLocals,
+-                &TypeMap, &GValMaterializer),
+-         IndirectSymbolMCID(Mapper.registerAlternateMappingContext(
+-@@ -1138,7 +1140,7 @@
+- 
+-     NamedMDNode *DestNMD = DstM.getOrInsertNamedMetadata(NMD.getName());
++   /// Create a metadata identifier for the given type. This may either be an
++   /// MDString (for external identifiers) or a distinct unnamed MDNode (for
++   /// internal identifiers).
++diff -ruN --strip-trailing-cr a/clang/test/CodeGen/cfi-icall-generalize.c b/clang/test/CodeGen/cfi-icall-generalize.c
++--- a/clang/test/CodeGen/cfi-icall-generalize.c
+++++ b/clang/test/CodeGen/cfi-icall-generalize.c
++@@ -15,5 +15,21 @@
++   fp(0, 0);
++ }
+  
+--    auto &Inserted = NamedMDNodes[DestNMD->getName()];
+-+    auto &Inserted = NamedMDNodes[DestNMD];
+-     if (Inserted.empty()) {
+-       // Must be the first module, copy everything from DestNMD.
+-       Inserted.insert(DestNMD->operands().begin(), DestNMD->operands().end());
+-@@ -1683,6 +1685,6 @@
+-                     LazyCallback AddLazyFor, bool IsPerformingImport) {
+-   IRLinker TheIRLinker(Composite, SharedMDs, IdentifiedStructTypes,
+-                        std::move(Src), ValuesToLink, std::move(AddLazyFor),
+--                       IsPerformingImport);
+-+                       IsPerformingImport, NamedMDNodes);
+-   return TheIRLinker.run();
+++union Union {
+++  char *c;
+++  long *n;
+++} __attribute__((transparent_union));
+++
+++// CHECK: define{{.*}} void @uni({{.*}} !type [[TYPE2:![0-9]+]] !type [[TYPE2_GENERALIZED:![0-9]+]]
+++void uni(void (*fn)(union Union), union Union arg1) {
+++  // UNGENERALIZED: call i1 @llvm.type.test(ptr {{.*}}, metadata !"_ZTSFvPcE")
+++  // GENERALIZED: call i1 @llvm.type.test(ptr {{.*}}, metadata !"_ZTSFvPvE.generalized")
+++    fn(arg1);
+++}
+++
++ // CHECK: [[TYPE]] = !{i64 0, !"_ZTSFPPiPKcPS2_E"}
++ // CHECK: [[TYPE_GENERALIZED]] = !{i64 0, !"_ZTSFPvPKvS_E.generalized"}
+++
+++// CHECK: [[TYPE2]] = !{i64 0, !"_ZTSFvPFv5UnionEPcE"}
+++// CHECK: [[TYPE2_GENERALIZED]] = !{i64 0, !"_ZTSFvPvS_E.generalized"}
+++
++diff -ruN --strip-trailing-cr a/clang/test/CodeGen/cfi-icall-normalize2.c b/clang/test/CodeGen/cfi-icall-normalize2.c
++--- a/clang/test/CodeGen/cfi-icall-normalize2.c
+++++ b/clang/test/CodeGen/cfi-icall-normalize2.c
++@@ -24,6 +24,20 @@
++     fn(arg1, arg2, arg3);
+  }
+-diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
+---- a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
+-+++ b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
+-@@ -5574,7 +5574,23 @@
+-       if (auto *SD = dyn_cast<ScheduleData>(Data)) {
+-         SD->setScheduled(/*Scheduled=*/true);
+-         LLVM_DEBUG(dbgs() << "SLP:   schedule " << *SD << "\n");
+--        ProcessBundleMember(SD, {});
+-+        SmallVector<std::unique_ptr<ScheduleBundle>> PseudoBundles;
+-+        SmallVector<ScheduleBundle *> Bundles;
+-+        Instruction *In = SD->getInst();
+-+        if (R.isVectorized(In)) {
+-+          ArrayRef<TreeEntry *> Entries = R.getTreeEntries(In);
+-+          for (TreeEntry *TE : Entries) {
+-+            if (!isa<ExtractValueInst, ExtractElementInst, CallBase>(In) &&
+-+                In->getNumOperands() != TE->getNumOperands())
+-+              continue;
+-+            auto &BundlePtr =
+-+                PseudoBundles.emplace_back(std::make_unique<ScheduleBundle>());
+-+            BundlePtr->setTreeEntry(TE);
+-+            BundlePtr->add(SD);
+-+            Bundles.push_back(BundlePtr.get());
+-+          }
+-+        }
+-+        ProcessBundleMember(SD, Bundles);
+-       } else {
+-         ScheduleBundle &Bundle = *cast<ScheduleBundle>(Data);
+-         Bundle.setScheduled(/*Scheduled=*/true);
+-@@ -20772,6 +20788,14 @@
+-           continue;
+-         }
+-         auto *SD = cast<ScheduleData>(SE);
+-+        if (SD->hasValidDependencies() &&
+-+            (!S.areInstructionsWithCopyableElements() ||
+-+             !S.isCopyableElement(SD->getInst())) &&
+-+            !getScheduleCopyableData(SD->getInst()).empty() && EI.UserTE &&
+-+            EI.UserTE->hasState() &&
+-+            (!EI.UserTE->hasCopyableElements() ||
+-+             !EI.UserTE->isCopyableElement(SD->getInst())))
+-+          SD->clearDirectDependencies();
+-         for (const Use &U : SD->getInst()->operands()) {
+-           unsigned &NumOps =
+-               UserOpToNumOps
+-@@ -20853,23 +20877,7 @@
+-   for (Value *V : VL) {
+-     if (S.isNonSchedulable(V))
+-       continue;
+--    // For copybales with parent nodes, which do not need to be scheduled, the
+--    // parents should not be commutative, otherwise may incorrectly handle deps
+--    // because of the potential reordering of commutative operations.
+--    if ((S.isCopyableElement(V) && EI.UserTE && !EI.UserTE->isGather() &&
+--         EI.UserTE->hasState() && EI.UserTE->doesNotNeedToSchedule() &&
+--         any_of(EI.UserTE->Scalars,
+--                [&](Value *V) {
+--                  if (isa<PoisonValue>(V))
+--                    return false;
+--                  auto *I = dyn_cast<Instruction>(V);
+--                  return isCommutative(
+--                      (I && EI.UserTE->isAltShuffle())
+--                          ? EI.UserTE->getMatchingMainOpOrAltOp(I)
+--                          : EI.UserTE->getMainOp(),
+--                      V);
+--                })) ||
+--        !extendSchedulingRegion(V, S)) {
+-+    if (!extendSchedulingRegion(V, S)) {
+-       // If the scheduling region got new instructions at the lower end (or it
+-       // is a new region for the first bundle). This makes it necessary to
+-       // recalculate all dependencies.
+-@@ -21889,6 +21897,10 @@
+-     return TryProcessInstruction(BitWidth);
+-   case Instruction::ZExt:
+-   case Instruction::SExt:
+-+    if (E.UserTreeIndex.UserTE && E.UserTreeIndex.UserTE->hasState() &&
+-+        E.UserTreeIndex.UserTE->getOpcode() == Instruction::BitCast &&
+-+        E.UserTreeIndex.UserTE->getMainOp()->getType()->isFPOrFPVectorTy())
+-+      return false;
+-     IsProfitableToDemote = true;
+-     return TryProcessInstruction(BitWidth);
+  
+-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/copyable-with-non-scheduled-parent-node.ll b/llvm/test/Transforms/SLPVectorizer/X86/copyable-with-non-scheduled-parent-node.ll
+---- a/llvm/test/Transforms/SLPVectorizer/X86/copyable-with-non-scheduled-parent-node.ll
+-+++ b/llvm/test/Transforms/SLPVectorizer/X86/copyable-with-non-scheduled-parent-node.ll
+-@@ -4,20 +4,15 @@
+- define i64 @test(ptr %a) {
+- ; CHECK-LABEL: define i64 @test(
+- ; CHECK-SAME: ptr [[A:%.*]]) #[[ATTR0:[0-9]+]] {
+--; CHECK-NEXT:    [[TMP1:%.*]] = add i64 0, 0
+- ; CHECK-NEXT:    [[TMP2:%.*]] = load i64, ptr [[A]], align 4
+--; CHECK-NEXT:    [[TMP3:%.*]] = add i64 [[TMP2]], 0
+--; CHECK-NEXT:    [[TMP4:%.*]] = add i64 1, [[TMP1]]
+--; CHECK-NEXT:    [[TMP5:%.*]] = ashr i64 0, 1
+--; CHECK-NEXT:    [[TMP6:%.*]] = ashr i64 0, 0
+-+; CHECK-NEXT:    [[TMP7:%.*]] = insertelement <4 x i64> <i64 poison, i64 0, i64 0, i64 0>, i64 [[TMP2]], i32 0
+-+; CHECK-NEXT:    [[TMP3:%.*]] = add <4 x i64> zeroinitializer, [[TMP7]]
+-+; CHECK-NEXT:    [[TMP4:%.*]] = add <4 x i64> <i64 0, i64 0, i64 0, i64 1>, [[TMP3]]
+-+; CHECK-NEXT:    [[TMP5:%.*]] = shufflevector <4 x i64> [[TMP4]], <4 x i64> poison, <6 x i32> <i32 0, i32 1, i32 2, i32 3, i32 poison, i32 poison>
+-+; CHECK-NEXT:    [[TMP6:%.*]] = shufflevector <6 x i64> [[TMP5]], <6 x i64> <i64 0, i64 0, i64 undef, i64 undef, i64 undef, i64 undef>, <6 x i32> <i32 0, i32 1, i32 2, i32 3, i32 6, i32 7>
+- ; CHECK-NEXT:    br label %[[BB7:.*]]
+- ; CHECK:       [[BB7]]:
+--; CHECK-NEXT:    [[TMP8:%.*]] = phi i64 [ [[TMP3]], [[TMP0:%.*]] ]
+--; CHECK-NEXT:    [[TMP9:%.*]] = phi i64 [ 0, [[TMP0]] ]
+--; CHECK-NEXT:    [[TMP10:%.*]] = phi i64 [ [[TMP6]], [[TMP0]] ]
+--; CHECK-NEXT:    [[TMP11:%.*]] = phi i64 [ [[TMP5]], [[TMP0]] ]
+--; CHECK-NEXT:    [[TMP12:%.*]] = phi i64 [ 0, [[TMP0]] ]
+--; CHECK-NEXT:    [[TMP13:%.*]] = phi i64 [ [[TMP4]], [[TMP0]] ]
+-+; CHECK-NEXT:    [[TMP8:%.*]] = phi <6 x i64> [ [[TMP6]], [[TMP0:%.*]] ]
+- ; CHECK-NEXT:    ret i64 0
+- ;
+-   %1 = add i64 0, 0
+-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/original-inst-scheduled-after-copyable.ll b/llvm/test/Transforms/SLPVectorizer/X86/original-inst-scheduled-after-copyable.ll
+---- a/llvm/test/Transforms/SLPVectorizer/X86/original-inst-scheduled-after-copyable.ll
+-+++ b/llvm/test/Transforms/SLPVectorizer/X86/original-inst-scheduled-after-copyable.ll
+-@@ -0,0 +1,89 @@
+-+; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --version 5
+-+; RUN: opt -S --passes=slp-vectorizer -mtriple=x86_64-unknown-linux-gnu -slp-threshold=-10 < %s | FileCheck %s
+++union Union {
+++  char *c;
+++  long *n;
+++} __attribute__((transparent_union));
+ +
+-+define void @test(ptr %0, i32 %1, i32 %2) {
+-+; CHECK-LABEL: define void @test(
+-+; CHECK-SAME: ptr [[TMP0:%.*]], i32 [[TMP1:%.*]], i32 [[TMP2:%.*]]) {
+-+; CHECK-NEXT:  [[ENTRY:.*:]]
+-+; CHECK-NEXT:    [[TMP3:%.*]] = getelementptr i8, ptr [[TMP0]], i64 48
+-+; CHECK-NEXT:    [[TMP5:%.*]] = getelementptr i8, ptr [[TMP0]], i64 56
+-+; CHECK-NEXT:    [[TMP7:%.*]] = and i32 [[TMP2]], [[TMP1]]
+-+; CHECK-NEXT:    [[ADD_NARROWED_I_I:%.*]] = shl i32 [[TMP1]], 1
+-+; CHECK-NEXT:    [[TMP10:%.*]] = lshr i32 [[TMP7]], 1
+-+; CHECK-NEXT:    [[TMP18:%.*]] = zext i32 [[ADD_NARROWED_I_I]] to i64
+-+; CHECK-NEXT:    [[TMP19:%.*]] = add i64 [[TMP18]], -1
+-+; CHECK-NEXT:    [[TMP21:%.*]] = trunc i64 [[TMP19]] to i32
+-+; CHECK-NEXT:    [[TMP28:%.*]] = insertelement <2 x i32> poison, i32 [[TMP21]], i32 0
+-+; CHECK-NEXT:    [[TMP11:%.*]] = shufflevector <2 x i32> [[TMP28]], <2 x i32> poison, <2 x i32> zeroinitializer
+-+; CHECK-NEXT:    [[TMP12:%.*]] = and <2 x i32> [[TMP11]], splat (i32 -2)
+-+; CHECK-NEXT:    [[TMP13:%.*]] = insertelement <2 x i32> <i32 poison, i32 -2>, i32 [[TMP1]], i32 0
+-+; CHECK-NEXT:    [[TMP14:%.*]] = or <2 x i32> [[TMP13]], [[TMP12]]
+-+; CHECK-NEXT:    [[TMP15:%.*]] = xor <2 x i32> [[TMP13]], [[TMP12]]
+-+; CHECK-NEXT:    [[TMP16:%.*]] = shufflevector <2 x i32> [[TMP14]], <2 x i32> [[TMP15]], <2 x i32> <i32 0, i32 3>
+-+; CHECK-NEXT:    [[TMP17:%.*]] = load <2 x i32>, ptr [[TMP5]], align 8
+-+; CHECK-NEXT:    [[TMP32:%.*]] = insertelement <2 x i32> <i32 1, i32 poison>, i32 [[TMP1]], i32 1
+-+; CHECK-NEXT:    [[TMP33:%.*]] = and <2 x i32> [[TMP17]], [[TMP32]]
+-+; CHECK-NEXT:    call void @llvm.stackrestore.p0(ptr null)
+-+; CHECK-NEXT:    [[TMP20:%.*]] = shufflevector <2 x i32> [[TMP33]], <2 x i32> poison, <2 x i32> <i32 poison, i32 0>
+-+; CHECK-NEXT:    [[TMP34:%.*]] = insertelement <2 x i32> [[TMP20]], i32 [[TMP10]], i32 0
+-+; CHECK-NEXT:    [[TMP22:%.*]] = zext <2 x i32> [[TMP34]] to <2 x i64>
+-+; CHECK-NEXT:    [[TMP23:%.*]] = zext <2 x i32> [[TMP33]] to <2 x i64>
+-+; CHECK-NEXT:    [[TMP35:%.*]] = shl <2 x i64> [[TMP23]], splat (i64 1)
+-+; CHECK-NEXT:    [[TMP25:%.*]] = or <2 x i64> [[TMP35]], [[TMP22]]
+-+; CHECK-NEXT:    [[TMP26:%.*]] = trunc <2 x i64> [[TMP25]] to <2 x i32>
+-+; CHECK-NEXT:    [[TMP27:%.*]] = trunc <2 x i64> [[TMP25]] to <2 x i32>
+-+; CHECK-NEXT:    [[TMP24:%.*]] = tail call i32 asm sideeffect "", "=r,0,~{dirflag},~{fpsr},~{flags}"(i32 0)
+-+; CHECK-NEXT:    store <2 x i32> [[TMP16]], ptr [[TMP3]], align 16
+-+; CHECK-NEXT:    [[TMP29:%.*]] = shufflevector <2 x i32> [[TMP32]], <2 x i32> poison, <2 x i32> <i32 1, i32 1>
+-+; CHECK-NEXT:    [[TMP30:%.*]] = and <2 x i32> [[TMP29]], [[TMP26]]
+-+; CHECK-NEXT:    [[TMP31:%.*]] = or <2 x i32> [[TMP30]], [[TMP27]]
+-+; CHECK-NEXT:    store <2 x i32> [[TMP31]], ptr [[TMP5]], align 8
+-+; CHECK-NEXT:    ret void
+-+;
+-+entry:
+-+  %3 = getelementptr i8, ptr %0, i64 48
+-+  %4 = getelementptr i8, ptr %0, i64 52
+-+  %5 = getelementptr i8, ptr %0, i64 56
+-+  %6 = getelementptr i8, ptr %0, i64 60
+-+  %.pre21.i = load i32, ptr %5, align 8
+-+  %.pre23.i = load i32, ptr %6, align 4
+-+  %7 = and i32 %2, %1
+-+  %8 = and i32 %.pre21.i, 1
+-+  %9 = and i32 %1, %.pre23.i
+-+  call void @llvm.stackrestore.p0(ptr null)
+-+  %add.narrowed.i.i = shl i32 %1, 1
+-+  %10 = lshr i32 %7, 1
+-+  %11 = zext i32 %10 to i64
+-+  %12 = zext i32 %8 to i64
+-+  %reass.add1.i = shl i64 %12, 1
+-+  %13 = or i64 %reass.add1.i, %11
+-+  %14 = trunc i64 %13 to i32
+-+  %15 = zext i32 %9 to i64
+-+  %reass.add2.i = shl i64 %15, 1
+-+  %16 = or i64 %reass.add2.i, %12
+-+  %17 = trunc i64 %16 to i32
+-+  %18 = zext i32 %add.narrowed.i.i to i64
+-+  %19 = add i64 %18, -1
+-+  %20 = trunc i64 %19 to i32
+-+  %21 = trunc i64 %19 to i32
+-+  %22 = trunc i64 %13 to i32
+-+  %23 = trunc i64 %16 to i32
+-+  %24 = tail call i32 asm sideeffect "", "=r,0,~{dirflag},~{fpsr},~{flags}"(i32 0)
+-+  %25 = and i32 %20, -2
+-+  %26 = or i32 %1, %25
+-+  store i32 %26, ptr %3, align 16
+-+  %27 = and i32 %21, -2
+-+  %28 = xor i32 %27, -2
+-+  store i32 %28, ptr %4, align 4
+-+  %29 = and i32 %1, %14
+-+  %30 = or i32 %29, %22
+-+  store i32 %30, ptr %5, align 8
+-+  %31 = and i32 %1, %17
+-+  %32 = or i32 %31, %23
+-+  store i32 %32, ptr %6, align 4
+-+  ret void
+++void uni(void (*fn)(union Union), union Union arg1) {
+++    // CHECK-LABEL: define{{.*}}uni
+++    // CHECK-SAME: {{.*}}!type ![[TYPE4:[0-9]+]] !type !{{[0-9]+}}
+++    // CHECK: call i1 @llvm.type.test({{i8\*|ptr}} {{%f|%0}}, metadata !"_ZTSFvPu2i8E.normalized")
+++    fn(arg1);
+ +}
+ +
+-+declare void @llvm.stackrestore.p0(ptr) #0
++ // CHECK: ![[TYPE1]] = !{i64 0, !"_ZTSFvPFvu3i32ES_E.normalized"}
++ // CHECK: ![[TYPE2]] = !{i64 0, !"_ZTSFvPFvu3i32S_ES_S_E.normalized"}
++ // CHECK: ![[TYPE3]] = !{i64 0, !"_ZTSFvPFvu3i32S_S_ES_S_S_E.normalized"}
+++// CHECK: ![[TYPE4]] = !{i64 0, !"_ZTSFvPFv5UnionEPu2i8E.normalized"}
+ +
+-+attributes #0 = { nocallback nofree nosync nounwind willreturn }
+-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/parent-bitcast-with-fp.ll b/llvm/test/Transforms/SLPVectorizer/X86/parent-bitcast-with-fp.ll
+---- a/llvm/test/Transforms/SLPVectorizer/X86/parent-bitcast-with-fp.ll
+-+++ b/llvm/test/Transforms/SLPVectorizer/X86/parent-bitcast-with-fp.ll
+-@@ -0,0 +1,36 @@
+-+; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --version 5
+-+; RUN: opt -S --passes=slp-vectorizer -mtriple=x86_64-unknown-linux-gnu < %s | FileCheck %s
++diff -ruN --strip-trailing-cr a/clang/test/CodeGen/kcfi-generalize.c b/clang/test/CodeGen/kcfi-generalize.c
++--- a/clang/test/CodeGen/kcfi-generalize.c
+++++ b/clang/test/CodeGen/kcfi-generalize.c
++@@ -26,8 +26,23 @@
++   fp(0, 0);
++ }
++ 
+++union Union {
+++  char *c;
+++  long *n;
+++} __attribute__((transparent_union));
+ +
+-+define i1 @test(i32 %0) {
+-+; CHECK-LABEL: define i1 @test(
+-+; CHECK-SAME: i32 [[TMP0:%.*]]) {
+-+; CHECK-NEXT:  [[ENTRY:.*:]]
+-+; CHECK-NEXT:    [[CONV22_I_I:%.*]] = sext i32 [[TMP0]] to i64
+-+; CHECK-NEXT:    [[TMP1:%.*]] = bitcast i64 [[CONV22_I_I]] to double
+-+; CHECK-NEXT:    [[TMP2:%.*]] = fadd double [[TMP1]], 0.000000e+00
+-+; CHECK-NEXT:    [[ADD_I_I_I:%.*]] = select i1 false, double 0.000000e+00, double [[TMP2]]
+-+; CHECK-NEXT:    [[TMP3:%.*]] = bitcast double [[ADD_I_I_I]] to i64
+-+; CHECK-NEXT:    [[CMP3998_I_I:%.*]] = icmp ne i64 [[TMP3]], [[CONV22_I_I]]
+-+; CHECK-NEXT:    [[CONV22_1_I_I:%.*]] = sext i32 0 to i64
+-+; CHECK-NEXT:    [[TMP4:%.*]] = bitcast i64 [[CONV22_1_I_I]] to double
+-+; CHECK-NEXT:    [[TMP5:%.*]] = fadd double [[TMP4]], 0.000000e+00
+-+; CHECK-NEXT:    [[ADD_I_1_I_I:%.*]] = select i1 false, double 0.000000e+00, double [[TMP5]]
+-+; CHECK-NEXT:    [[TMP6:%.*]] = bitcast double [[ADD_I_1_I_I]] to i64
+-+; CHECK-NEXT:    [[CMP3998_1_I_I:%.*]] = icmp ne i64 [[TMP6]], [[CONV22_1_I_I]]
+-+; CHECK-NEXT:    ret i1 [[CMP3998_1_I_I]]
+-+;
+-+entry:
+-+  %conv22.i.i = sext i32 %0 to i64
+-+  %1 = bitcast i64 %conv22.i.i to double
+-+  %2 = fadd double %1, 0.000000e+00
+-+  %add.i.i.i = select i1 false, double 0.000000e+00, double %2
+-+  %3 = bitcast double %add.i.i.i to i64
+-+  %cmp3998.i.i = icmp ne i64 %3, %conv22.i.i
+-+  %conv22.1.i.i = sext i32 0 to i64
+-+  %4 = bitcast i64 %conv22.1.i.i to double
+-+  %5 = fadd double %4, 0.000000e+00
+-+  %add.i.1.i.i = select i1 false, double 0.000000e+00, double %5
+-+  %6 = bitcast double %add.i.1.i.i to i64
+-+  %cmp3998.1.i.i = icmp ne i64 %6, %conv22.1.i.i
+-+  ret i1 %cmp3998.1.i.i
+++// CHECK: define{{.*}} void @uni({{.*}} !kcfi_type [[TYPE4:![0-9]+]]
+++void uni(void (*fn)(union Union), union Union arg1) {
+++  // UNGENERALIZED: call {{.*}} [ "kcfi"(i32 -587217045) ]
+++  // GENERALIZED: call {{.*}} [ "kcfi"(i32 2139530422) ]
+++    fn(arg1);
+ +}
+-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/X86/parent-node-non-schedulable.ll b/llvm/test/Transforms/SLPVectorizer/X86/parent-node-non-schedulable.ll
+---- a/llvm/test/Transforms/SLPVectorizer/X86/parent-node-non-schedulable.ll
+-+++ b/llvm/test/Transforms/SLPVectorizer/X86/parent-node-non-schedulable.ll
+-@@ -0,0 +1,172 @@
+-+; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --version 5
+-+; RUN: opt -S --passes=slp-vectorizer -S -mtriple=i686-unknown-linux-android29 -mattr=+sse2 < %s | FileCheck %s
+ +
+-+define void @test(ptr %0, i64 %1, i64 %2, i1 %3, i64 %4, i64 %5) {
+-+; CHECK-LABEL: define void @test(
+-+; CHECK-SAME: ptr [[TMP0:%.*]], i64 [[TMP1:%.*]], i64 [[TMP2:%.*]], i1 [[TMP3:%.*]], i64 [[TMP4:%.*]], i64 [[TMP5:%.*]]) #[[ATTR0:[0-9]+]] {
+-+; CHECK-NEXT:    [[TMP7:%.*]] = getelementptr i8, ptr [[TMP0]], i32 240
+-+; CHECK-NEXT:    [[TMP8:%.*]] = getelementptr i8, ptr [[TMP0]], i32 128
+-+; CHECK-NEXT:    [[TMP9:%.*]] = insertelement <4 x i64> poison, i64 [[TMP1]], i32 0
+-+; CHECK-NEXT:    [[TMP10:%.*]] = shufflevector <4 x i64> [[TMP9]], <4 x i64> poison, <4 x i32> zeroinitializer
+-+; CHECK-NEXT:    [[TMP11:%.*]] = insertelement <4 x i64> <i64 1, i64 1, i64 1, i64 poison>, i64 [[TMP2]], i32 3
+-+; CHECK-NEXT:    [[TMP12:%.*]] = add <4 x i64> [[TMP10]], [[TMP11]]
+-+; CHECK-NEXT:    [[TMP13:%.*]] = load <2 x i64>, ptr [[TMP7]], align 4
+-+; CHECK-NEXT:    [[TMP14:%.*]] = load i64, ptr null, align 4
+-+; CHECK-NEXT:    [[TMP15:%.*]] = load <2 x i64>, ptr [[TMP8]], align 4
+-+; CHECK-NEXT:    [[TMP16:%.*]] = shufflevector <2 x i64> [[TMP13]], <2 x i64> [[TMP15]], <6 x i32> <i32 0, i32 1, i32 poison, i32 3, i32 2, i32 2>
+-+; CHECK-NEXT:    [[TMP17:%.*]] = insertelement <6 x i64> poison, i64 [[TMP14]], i32 0
+-+; CHECK-NEXT:    [[TMP18:%.*]] = shufflevector <6 x i64> [[TMP17]], <6 x i64> poison, <6 x i32> <i32 poison, i32 poison, i32 0, i32 poison, i32 poison, i32 poison>
+-+; CHECK-NEXT:    [[TMP19:%.*]] = shufflevector <6 x i64> [[TMP16]], <6 x i64> [[TMP18]], <6 x i32> <i32 0, i32 1, i32 8, i32 3, i32 4, i32 5>
+-+; CHECK-NEXT:    [[TMP20:%.*]] = shufflevector <4 x i64> [[TMP10]], <4 x i64> poison, <6 x i32> <i32 0, i32 1, i32 2, i32 3, i32 poison, i32 0>
+-+; CHECK-NEXT:    [[TMP21:%.*]] = shufflevector <6 x i64> [[TMP20]], <6 x i64> <i64 0, i64 0, i64 0, i64 0, i64 0, i64 poison>, <6 x i32> <i32 6, i32 7, i32 8, i32 9, i32 10, i32 0>
+-+; CHECK-NEXT:    [[TMP22:%.*]] = add <6 x i64> [[TMP19]], [[TMP21]]
+-+; CHECK-NEXT:    [[TMP23:%.*]] = shufflevector <2 x i64> [[TMP13]], <2 x i64> poison, <4 x i32> <i32 0, i32 1, i32 0, i32 1>
+-+; CHECK-NEXT:    [[TMP24:%.*]] = shufflevector <4 x i64> [[TMP10]], <4 x i64> [[TMP23]], <4 x i32> <i32 0, i32 1, i32 4, i32 5>
+-+; CHECK-NEXT:    [[TMP25:%.*]] = sub <4 x i64> zeroinitializer, [[TMP24]]
+-+; CHECK-NEXT:    [[TMP26:%.*]] = sub <6 x i64> zeroinitializer, [[TMP22]]
+-+; CHECK-NEXT:    [[TMP27:%.*]] = shufflevector <6 x i64> [[TMP19]], <6 x i64> poison, <2 x i32> <i32 2, i32 2>
+-+; CHECK-NEXT:    [[TMP28:%.*]] = add <2 x i64> [[TMP27]], splat (i64 1)
+-+; CHECK-NEXT:    [[TMP29:%.*]] = ashr <2 x i64> [[TMP28]], splat (i64 14)
+-+; CHECK-NEXT:    [[TMP30:%.*]] = shufflevector <6 x i64> [[TMP26]], <6 x i64> poison, <14 x i32> <i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 0, i32 1, i32 2, i32 3, i32 4, i32 5, i32 poison, i32 poison>
+-+; CHECK-NEXT:    [[TMP31:%.*]] = shufflevector <4 x i64> [[TMP12]], <4 x i64> poison, <14 x i32> <i32 0, i32 1, i32 2, i32 3, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison>
+-+; CHECK-NEXT:    [[TMP32:%.*]] = shufflevector <14 x i64> [[TMP30]], <14 x i64> [[TMP31]], <14 x i32> <i32 14, i32 15, i32 16, i32 17, i32 poison, i32 poison, i32 6, i32 7, i32 8, i32 9, i32 10, i32 11, i32 poison, i32 poison>
+-+; CHECK-NEXT:    [[TMP33:%.*]] = shufflevector <4 x i64> [[TMP25]], <4 x i64> poison, <14 x i32> <i32 0, i32 1, i32 2, i32 3, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison>
+-+; CHECK-NEXT:    [[TMP34:%.*]] = shufflevector <14 x i64> [[TMP32]], <14 x i64> [[TMP33]], <14 x i32> <i32 0, i32 1, i32 2, i32 3, i32 14, i32 15, i32 16, i32 17, i32 8, i32 9, i32 10, i32 11, i32 poison, i32 poison>
+-+; CHECK-NEXT:    [[TMP35:%.*]] = shufflevector <2 x i64> [[TMP29]], <2 x i64> poison, <14 x i32> <i32 0, i32 1, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison>
+-+; CHECK-NEXT:    [[TMP36:%.*]] = shufflevector <14 x i64> [[TMP34]], <14 x i64> [[TMP35]], <14 x i32> <i32 0, i32 1, i32 2, i32 3, i32 4, i32 5, i32 6, i32 7, i32 8, i32 9, i32 10, i32 11, i32 14, i32 15>
+-+; CHECK-NEXT:    br i1 [[TMP3]], label %[[BB52:.*]], label %[[BB37:.*]]
+-+; CHECK:       [[BB37]]:
+-+; CHECK-NEXT:    [[TMP38:%.*]] = add <4 x i64> [[TMP10]], splat (i64 1)
+-+; CHECK-NEXT:    [[TMP39:%.*]] = shufflevector <4 x i64> [[TMP10]], <4 x i64> poison, <2 x i32> zeroinitializer
+-+; CHECK-NEXT:    [[TMP40:%.*]] = add <2 x i64> [[TMP39]], splat (i64 1)
+-+; CHECK-NEXT:    [[TMP41:%.*]] = lshr <2 x i64> [[TMP39]], splat (i64 1)
+-+; CHECK-NEXT:    [[TMP42:%.*]] = add <2 x i64> [[TMP40]], [[TMP41]]
+-+; CHECK-NEXT:    [[TMP43:%.*]] = shufflevector <4 x i64> [[TMP10]], <4 x i64> [[TMP11]], <10 x i32> <i32 0, i32 7, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison>
+-+; CHECK-NEXT:    [[TMP44:%.*]] = insertelement <10 x i64> [[TMP43]], i64 [[TMP4]], i32 6
+-+; CHECK-NEXT:    [[TMP45:%.*]] = insertelement <10 x i64> [[TMP44]], i64 [[TMP5]], i32 7
+-+; CHECK-NEXT:    [[TMP46:%.*]] = shufflevector <4 x i64> [[TMP38]], <4 x i64> poison, <10 x i32> <i32 poison, i32 poison, i32 poison, i32 poison, i32 0, i32 1, i32 2, i32 3, i32 poison, i32 poison>
+-+; CHECK-NEXT:    [[TMP47:%.*]] = shufflevector <2 x i64> [[TMP42]], <2 x i64> poison, <10 x i32> <i32 0, i32 1, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison>
+-+; CHECK-NEXT:    [[TMP48:%.*]] = shufflevector <10 x i64> [[TMP46]], <10 x i64> [[TMP47]], <10 x i32> <i32 poison, i32 poison, i32 poison, i32 poison, i32 4, i32 5, i32 6, i32 7, i32 10, i32 11>
+-+; CHECK-NEXT:    [[TMP49:%.*]] = shufflevector <10 x i64> [[TMP48]], <10 x i64> [[TMP45]], <10 x i32> <i32 10, i32 11, i32 4, i32 5, i32 6, i32 7, i32 16, i32 17, i32 8, i32 9>
+-+; CHECK-NEXT:    [[TMP50:%.*]] = shufflevector <10 x i64> [[TMP49]], <10 x i64> poison, <14 x i32> <i32 0, i32 1, i32 0, i32 2, i32 0, i32 3, i32 4, i32 5, i32 6, i32 7, i32 8, i32 9, i32 0, i32 0>
+-+; CHECK-NEXT:    [[TMP51:%.*]] = ashr <14 x i64> [[TMP50]], splat (i64 2)
+-+; CHECK-NEXT:    br label %[[BB52]]
+-+; CHECK:       [[BB52]]:
+-+; CHECK-NEXT:    [[TMP53:%.*]] = phi <14 x i64> [ [[TMP51]], %[[BB37]] ], [ [[TMP36]], [[TMP6:%.*]] ]
+-+; CHECK-NEXT:    [[TMP54:%.*]] = extractelement <14 x i64> [[TMP53]], i32 0
+-+; CHECK-NEXT:    [[TMP55:%.*]] = extractelement <14 x i64> [[TMP53]], i32 13
+-+; CHECK-NEXT:    [[TMP56:%.*]] = or i64 [[TMP54]], [[TMP55]]
+-+; CHECK-NEXT:    [[TMP57:%.*]] = extractelement <14 x i64> [[TMP53]], i32 4
+-+; CHECK-NEXT:    [[TMP58:%.*]] = extractelement <14 x i64> [[TMP53]], i32 12
+-+; CHECK-NEXT:    [[TMP59:%.*]] = or i64 [[TMP57]], [[TMP58]]
+-+; CHECK-NEXT:    [[TMP60:%.*]] = extractelement <14 x i64> [[TMP53]], i32 1
+-+; CHECK-NEXT:    [[TMP61:%.*]] = extractelement <14 x i64> [[TMP53]], i32 2
+-+; CHECK-NEXT:    [[TMP62:%.*]] = or i64 [[TMP60]], [[TMP61]]
+-+; CHECK-NEXT:    [[TMP63:%.*]] = or i64 [[TMP59]], [[TMP56]]
+-+; CHECK-NEXT:    [[TMP64:%.*]] = extractelement <14 x i64> [[TMP53]], i32 5
+-+; CHECK-NEXT:    [[TMP65:%.*]] = extractelement <14 x i64> [[TMP53]], i32 8
+-+; CHECK-NEXT:    [[TMP66:%.*]] = or i64 [[TMP64]], [[TMP65]]
+-+; CHECK-NEXT:    [[TMP67:%.*]] = extractelement <14 x i64> [[TMP53]], i32 3
+-+; CHECK-NEXT:    [[TMP68:%.*]] = or i64 [[TMP67]], [[TMP62]]
+-+; CHECK-NEXT:    [[TMP69:%.*]] = extractelement <14 x i64> [[TMP53]], i32 9
+-+; CHECK-NEXT:    [[TMP70:%.*]] = or i64 [[TMP69]], [[TMP66]]
+-+; CHECK-NEXT:    [[TMP71:%.*]] = extractelement <14 x i64> [[TMP53]], i32 6
+-+; CHECK-NEXT:    [[TMP72:%.*]] = or i64 [[TMP71]], [[TMP70]]
+-+; CHECK-NEXT:    [[TMP73:%.*]] = or i64 [[TMP63]], [[TMP72]]
+-+; CHECK-NEXT:    [[TMP74:%.*]] = extractelement <14 x i64> [[TMP53]], i32 10
+-+; CHECK-NEXT:    [[TMP75:%.*]] = or i64 [[TMP74]], [[TMP73]]
+-+; CHECK-NEXT:    store i64 [[TMP68]], ptr [[TMP0]], align 4
+-+; CHECK-NEXT:    [[TMP76:%.*]] = extractelement <14 x i64> [[TMP53]], i32 11
+-+; CHECK-NEXT:    store i64 [[TMP76]], ptr null, align 4
+-+; CHECK-NEXT:    [[TMP77:%.*]] = extractelement <14 x i64> [[TMP53]], i32 7
+-+; CHECK-NEXT:    store i64 [[TMP77]], ptr [[TMP0]], align 4
+-+; CHECK-NEXT:    store i64 [[TMP75]], ptr null, align 4
+-+; CHECK-NEXT:    ret void
+-+;
+-+  %7 = getelementptr i8, ptr %0, i32 248
+-+  %8 = load i64, ptr %7, align 4
+-+  %9 = getelementptr i8, ptr %0, i32 240
+-+  %10 = load i64, ptr %9, align 4
+-+  %11 = load i64, ptr null, align 4
+-+  %12 = add i64 %1, 1
+-+  %13 = add i64 %1, 1
+-+  %14 = add i64 %1, %2
+-+  %15 = getelementptr i8, ptr %0, i32 136
+-+  %16 = load i64, ptr %15, align 4
+-+  %17 = getelementptr i8, ptr %0, i32 128
+-+  %18 = load i64, ptr %17, align 4
+-+  %19 = add i64 %18, %1
+-+  %20 = sub i64 0, %18
+-+  %21 = sub i64 0, %16
+-+  %22 = sub i64 0, %11
+-+  %23 = add i64 %1, 1
+-+  %24 = sub i64 0, %1
+-+  %25 = sub i64 0, %1
+-+  %26 = sub i64 0, %10
+-+  %27 = sub i64 0, %8
+-+  %28 = sub i64 0, %19
+-+  %29 = add i64 %11, 1
+-+  %30 = ashr i64 %29, 14
+-+  %31 = add i64 %11, 1
+-+  %32 = ashr i64 %31, 14
+-+  br i1 %3, label %58, label %33
++ // UNGENERALIZED: [[TYPE]] = !{i32 1296635908}
++ // GENERALIZED: [[TYPE]] = !{i32 -49168686}
++ 
++ // UNGENERALIZED: [[TYPE3]] = !{i32 874141567}
++ // GENERALIZED: [[TYPE3]] = !{i32 954385378}
+ +
+-+33:
+-+  %34 = ashr i64 %2, 2
+-+  %35 = ashr i64 %1, 2
+-+  %36 = add i64 %1, 1
+-+  %37 = ashr i64 %36, 2
+-+  %38 = add i64 %1, 1
+-+  %39 = lshr i64 %1, 1
+-+  %40 = add i64 %38, %39
+-+  %41 = ashr i64 %40, 2
+-+  %42 = add i64 %1, 1
+-+  %43 = lshr i64 %1, 1
+-+  %44 = add i64 %42, %43
+-+  %45 = ashr i64 %44, 2
+-+  %46 = ashr i64 %5, 2
+-+  %47 = ashr i64 %4, 2
+-+  %48 = ashr i64 %1, 2
+-+  %49 = ashr i64 %1, 2
+-+  %50 = ashr i64 %1, 2
+-+  %51 = ashr i64 %1, 2
+-+  %52 = add i64 %1, 1
+-+  %53 = ashr i64 %52, 2
+-+  %54 = add i64 %1, 1
+-+  %55 = ashr i64 %54, 2
+-+  %56 = add i64 %1, 1
+-+  %57 = ashr i64 %56, 2
+-+  br label %58
+++// UNGENERALIZED: [[TYPE4]] = !{i32 -1619636625}
+++// GENERALIZED: [[TYPE4]] = !{i32 -125078496}
++diff -ruN --strip-trailing-cr a/clang/test/CodeGen/kcfi-normalize.c b/clang/test/CodeGen/kcfi-normalize.c
++--- a/clang/test/CodeGen/kcfi-normalize.c
+++++ b/clang/test/CodeGen/kcfi-normalize.c
++@@ -1,5 +1,5 @@
++-// RUN: %clang_cc1 -triple x86_64-unknown-linux-gnu -emit-llvm -fsanitize=kcfi -fsanitize-cfi-icall-experimental-normalize-integers -o - %s | FileCheck %s
++-// RUN: %clang_cc1 -triple x86_64-unknown-linux-gnu -emit-llvm -fsanitize=kcfi -fsanitize-cfi-icall-experimental-normalize-integers -x c++ -o - %s | FileCheck %s
+++// RUN: %clang_cc1 -triple x86_64-unknown-linux-gnu -emit-llvm -fsanitize=kcfi -fsanitize-cfi-icall-experimental-normalize-integers -o - %s | FileCheck %s --check-prefixes=CHECK,C
+++// RUN: %clang_cc1 -triple x86_64-unknown-linux-gnu -emit-llvm -fsanitize=kcfi -fsanitize-cfi-icall-experimental-normalize-integers -x c++ -o - %s | FileCheck %s --check-prefixes=CHECK,CPP
++ #if !__has_feature(kcfi)
++ #error Missing kcfi?
++ #endif
++@@ -28,7 +28,22 @@
++     fn(arg1, arg2, arg3);
++ }
++ 
+++union Union {
+++  char *c;
+++  long *n;
+++} __attribute__((transparent_union));
+ +
+-+58:
+-+  %59 = phi i64 [ %51, %33 ], [ %24, %6 ]
+-+  %60 = phi i64 [ %50, %33 ], [ %32, %6 ]
+-+  %61 = phi i64 [ %53, %33 ], [ %25, %6 ]
+-+  %62 = phi i64 [ %55, %33 ], [ %26, %6 ]
+-+  %63 = phi i64 [ %57, %33 ], [ %27, %6 ]
+-+  %64 = phi i64 [ %49, %33 ], [ %30, %6 ]
+-+  %65 = phi i64 [ %48, %33 ], [ %23, %6 ]
+-+  %66 = phi i64 [ %47, %33 ], [ %22, %6 ]
+-+  %67 = phi i64 [ %46, %33 ], [ %21, %6 ]
+-+  %68 = phi i64 [ %45, %33 ], [ %20, %6 ]
+-+  %69 = phi i64 [ %41, %33 ], [ %28, %6 ]
+-+  %70 = phi i64 [ %34, %33 ], [ %12, %6 ]
+-+  %71 = phi i64 [ %35, %33 ], [ %13, %6 ]
+-+  %72 = phi i64 [ %37, %33 ], [ %14, %6 ]
+-+  %73 = or i64 %65, %64
+-+  %74 = or i64 %59, %60
+-+  %75 = or i64 %70, %71
+-+  %76 = or i64 %74, %73
+-+  %77 = or i64 %61, %66
+-+  %78 = or i64 %72, %75
+-+  %79 = or i64 %67, %77
+-+  %80 = or i64 %62, %79
+-+  %81 = or i64 %76, %80
+-+  %82 = or i64 %68, %81
+-+  store i64 %78, ptr %0, align 4
+-+  store i64 %69, ptr null, align 4
+-+  store i64 %63, ptr %0, align 4
+-+  store i64 %82, ptr null, align 4
+-+  ret void
+++void uni(void (*fn)(union Union), union Union arg1) {
+++    // CHECK-LABEL: define{{.*}}uni
+++    // CHECK-SAME: {{.*}}!kcfi_type ![[TYPE4:[0-9]+]]
+++    // C: call void %0(ptr %1) [ "kcfi"(i32 1819770848) ]
+++    // CPP: call void %0(ptr %1) [ "kcfi"(i32 -1430221633) ]
+++    fn(arg1);
+ +}
+ +
++ // CHECK: ![[#]] = !{i32 4, !"cfi-normalize-integers", i32 1}
++ // CHECK: ![[TYPE1]] = !{i32 -1143117868}
++ // CHECK: ![[TYPE2]] = !{i32 -460921415}
++ // CHECK: ![[TYPE3]] = !{i32 -333839615}
+++// C: ![[TYPE4]] = !{i32 -650530463}
+++// CPP: ![[TYPE4]] = !{i32 1766237188}
++diff -ruN --strip-trailing-cr a/llvm/lib/Analysis/ScalarEvolution.cpp b/llvm/lib/Analysis/ScalarEvolution.cpp
++--- a/llvm/lib/Analysis/ScalarEvolution.cpp
+++++ b/llvm/lib/Analysis/ScalarEvolution.cpp
++@@ -3217,26 +3217,18 @@
++       }
++ 
++       // Try to fold (C1 * D /u C2) -> C1/C2 * D, if C1 and C2 are powers-of-2,
++-      // D is a multiple of C2, and C1 is a multiple of C2. If C2 is a multiple
++-      // of C1, fold to (D /u (C2 /u C1)).
+++      // D is a multiple of C2, and C1 is a multiple of C2.
++       const SCEV *D;
++       APInt C1V = LHSC->getAPInt();
++-      // (C1 * D /u C2) == -1 * -C1 * D /u C2 when C1 != INT_MIN. Don't treat -1
++-      // as -1 * 1, as it won't enable additional folds.
++-      if (C1V.isNegative() && !C1V.isMinSignedValue() && !C1V.isAllOnes())
+++      // (C1 * D /u C2) == -1 * -C1 * D /u C2 when C1 != INT_MIN.
+++      if (C1V.isNegative() && !C1V.isMinSignedValue())
++         C1V = C1V.abs();
++       const SCEVConstant *C2;
++       if (C1V.isPowerOf2() &&
++           match(Ops[1], m_scev_UDiv(m_SCEV(D), m_SCEVConstant(C2))) &&
++-          C2->getAPInt().isPowerOf2() &&
+++          C2->getAPInt().isPowerOf2() && C1V.uge(C2->getAPInt()) &&
++           C1V.logBase2() <= getMinTrailingZeros(D)) {
++-        const SCEV *NewMul;
++-        if (C1V.uge(C2->getAPInt())) {
++-          NewMul = getMulExpr(getUDivExpr(getConstant(C1V), C2), D);
++-        } else {
++-          assert(C1V.ugt(1) && "C1 <= 1 should have been folded earlier");
++-          NewMul = getUDivExpr(D, getUDivExpr(C2, getConstant(C1V)));
++-        }
+++        const SCEV *NewMul = getMulExpr(getUDivExpr(getConstant(C1V), C2), D);
++         return C1V == LHSC->getAPInt() ? NewMul : getNegativeSCEV(NewMul);
++       }
++     }
++diff -ruN --strip-trailing-cr a/llvm/test/Analysis/ScalarEvolution/mul-udiv-folds.ll b/llvm/test/Analysis/ScalarEvolution/mul-udiv-folds.ll
++--- a/llvm/test/Analysis/ScalarEvolution/mul-udiv-folds.ll
+++++ b/llvm/test/Analysis/ScalarEvolution/mul-udiv-folds.ll
++@@ -21,7 +21,7 @@
++ ; CHECK-NEXT:    %gep.8 = getelementptr i8, ptr %A, i64 %iv
++ ; CHECK-NEXT:    --> {(((zext i32 %start to i64) /u 4) + %A),+,1}<%loop> U: full-set S: full-set Exits: (((zext i32 %start to i64) /u 2) + %A) LoopDispositions: { %loop: Computable }
++ ; CHECK-NEXT:    %gep.16 = getelementptr i16, ptr %A, i64 %iv
++-; CHECK-NEXT:    --> {(((zext i32 %start to i64) /u 2) + %A),+,2}<%loop> U: full-set S: full-set Exits: ((zext i32 %start to i64) + %A) LoopDispositions: { %loop: Computable }
+++; CHECK-NEXT:    --> {((2 * ((zext i32 %start to i64) /u 4))<nuw><nsw> + %A),+,2}<%loop> U: full-set S: full-set Exits: ((zext i32 %start to i64) + %A) LoopDispositions: { %loop: Computable }
++ ; CHECK-NEXT:    %gep.32 = getelementptr i32, ptr %A, i64 %iv
++ ; CHECK-NEXT:    --> {((zext i32 %start to i64) + %A),+,4}<%loop> U: full-set S: full-set Exits: ((2 * (zext i32 %start to i64))<nuw><nsw> + %A) LoopDispositions: { %loop: Computable }
++ ; CHECK-NEXT:    %gep.40 = getelementptr <{ i32, i8 }>, ptr %A, i64 %iv
++diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopStrengthReduce/duplicated-phis.ll b/llvm/test/Transforms/LoopStrengthReduce/duplicated-phis.ll
++--- a/llvm/test/Transforms/LoopStrengthReduce/duplicated-phis.ll
+++++ b/llvm/test/Transforms/LoopStrengthReduce/duplicated-phis.ll
++@@ -18,7 +18,8 @@
++ ; CHECK:       [[FOR_BODY_PREHEADER_NEW]]:
++ ; CHECK-NEXT:    [[UNROLL_ITER:%.*]] = and i64 [[MUL]], -4
++ ; CHECK-NEXT:    [[TMP4:%.*]] = add i64 [[UNROLL_ITER]], -4
++-; CHECK-NEXT:    [[TMP3:%.*]] = lshr i64 [[TMP4]], 1
+++; CHECK-NEXT:    [[TMP5:%.*]] = lshr i64 [[TMP4]], 2
+++; CHECK-NEXT:    [[TMP3:%.*]] = shl nuw nsw i64 [[TMP5]], 1
++ ; CHECK-NEXT:    [[LSR_IV_NEXT:%.*]] = sub i64 -3, [[TMP3]]
++ ; CHECK-NEXT:    br label %[[FOR_BODY:.*]]
++ ; CHECK:       [[FOR_BODY]]:
++diff -ruN --strip-trailing-cr a/llvm/test/Verifier/llvm.loop.estimated_trip_count.ll b/llvm/test/Verifier/llvm.loop.estimated_trip_count.ll
++--- a/llvm/test/Verifier/llvm.loop.estimated_trip_count.ll
+++++ b/llvm/test/Verifier/llvm.loop.estimated_trip_count.ll
++@@ -26,36 +26,43 @@
++ 
++ ; No value.
++ ; RUN: cp %s %t
+++; RUN: chmod u+w %t
++ ; RUN: echo '!1 = !{!"llvm.loop.estimated_trip_count"}' >> %t
++ ; RUN: not %{RUN} TOO-FEW
++ 
++ ; i16 value.
++ ; RUN: cp %s %t
+++; RUN: chmod u+w %t
++ ; RUN: echo '!1 = !{!"llvm.loop.estimated_trip_count", i16 5}' >> %t
++ ; RUN: %{RUN} GOOD
++ 
++ ; i32 value.
++ ; RUN: cp %s %t
+++; RUN: chmod u+w %t
++ ; RUN: echo '!1 = !{!"llvm.loop.estimated_trip_count", i32 5}' >> %t
++ ; RUN: %{RUN} GOOD
++ 
++ ; i64 value.
++ ; RUN: cp %s %t
+++; RUN: chmod u+w %t
++ ; RUN: echo '!1 = !{!"llvm.loop.estimated_trip_count", i64 5}' >> %t
++ ; RUN: not %{RUN} BAD-VALUE
++ 
++ ; MDString value.
++ ; RUN: cp %s %t
+++; RUN: chmod u+w %t
++ ; RUN: echo '!1 = !{!"llvm.loop.estimated_trip_count", !"5"}' >> %t
++ ; RUN: not %{RUN} BAD-VALUE
++ 
++ ; MDNode value.
++ ; RUN: cp %s %t
+++; RUN: chmod u+w %t
++ ; RUN: echo '!1 = !{!"llvm.loop.estimated_trip_count", !2}' >> %t
++ ; RUN: echo '!2 = !{i32 5}' >> %t
++ ; RUN: not %{RUN} BAD-VALUE
++ 
++ ; Too many values.
++ ; RUN: cp %s %t
+++; RUN: chmod u+w %t
++ ; RUN: echo '!1 = !{!"llvm.loop.estimated_trip_count", i32 5, i32 5}' >> %t
++ ; RUN: not %{RUN} TOO-MANY
++diff -ruN --strip-trailing-cr a/mlir/include/mlir/Tools/mlir-opt/MlirOptMain.h b/mlir/include/mlir/Tools/mlir-opt/MlirOptMain.h
++--- a/mlir/include/mlir/Tools/mlir-opt/MlirOptMain.h
+++++ b/mlir/include/mlir/Tools/mlir-opt/MlirOptMain.h
++@@ -264,7 +264,7 @@
++   bool allowUnregisteredDialectsFlag = false;
++ 
++   /// Remark format
++-  RemarkFormat remarkFormatFlag;
+++  RemarkFormat remarkFormatFlag = REMARK_FORMAT_STDOUT;
++   /// Remark file to output to
++   std::string remarksOutputFileFlag = "";
++   /// Remark filters
+ diff -ruN --strip-trailing-cr a/mlir/lib/Bindings/Python/IRCore.cpp b/mlir/lib/Bindings/Python/IRCore.cpp
+ --- a/mlir/lib/Bindings/Python/IRCore.cpp
+ +++ b/mlir/lib/Bindings/Python/IRCore.cpp
+@@ -1050,36 +431,16 @@ diff -ruN --strip-trailing-cr a/mlir/lib/Bindings/Python/IRCore.cpp b/mlir/lib/B
+  }
+  
+  nb::object PyModule::createFromCapsule(nb::object capsule) {
+-@@ -2019,7 +2034,7 @@
+- // PyInsertionPoint.
+- //------------------------------------------------------------------------------
+- 
+--PyInsertionPoint::PyInsertionPoint(PyBlock &block) : block(block) {}
+-+PyInsertionPoint::PyInsertionPoint(const PyBlock &block) : block(block) {}
+- 
+- PyInsertionPoint::PyInsertionPoint(PyOperationBase &beforeOperationBase)
+-     : refOperation(beforeOperationBase.getOperation().getRef()),
+-@@ -2073,6 +2088,19 @@
+-   return PyInsertionPoint{block, std::move(terminatorOpRef)};
++@@ -2084,6 +2099,8 @@
++   return PyInsertionPoint{block, std::move(nextOpRef)};
+  }
+  
+-+PyInsertionPoint PyInsertionPoint::after(PyOperationBase &op) {
+-+  PyOperation &operation = op.getOperation();
+-+  PyBlock block = operation.getBlock();
+-+  MlirOperation nextOperation = mlirOperationGetNextInBlock(operation);
+-+  if (mlirOperationIsNull(nextOperation))
+-+    return PyInsertionPoint(block);
+-+  PyOperationRef nextOpRef = PyOperation::forOperation(
+-+      block.getParentOperation()->getContext(), nextOperation);
+-+  return PyInsertionPoint{block, std::move(nextOpRef)};
+-+}
+-+
+ +size_t PyMlirContext::getLiveModuleCount() { return liveModules.size(); }
+ +
+  nb::object PyInsertionPoint::contextEnter(nb::object insertPoint) {
+    return PyThreadContextEntry::pushInsertionPoint(insertPoint);
+  }
+-@@ -2912,6 +2940,7 @@
++@@ -2923,6 +2940,7 @@
+               PyMlirContextRef ref = PyMlirContext::forContext(self.get());
+               return ref.releaseObject();
+             })
+@@ -1087,15 +448,6 @@ diff -ruN --strip-trailing-cr a/mlir/lib/Bindings/Python/IRCore.cpp b/mlir/lib/B
+        .def_prop_ro(MLIR_PYTHON_CAPI_PTR_ATTR, &PyMlirContext::getCapsule)
+        .def(MLIR_PYTHON_CAPI_FACTORY_ATTR, &PyMlirContext::createFromCapsule)
+        .def("__enter__", &PyMlirContext::contextEnter)
+-@@ -3861,6 +3890,8 @@
+-                   nb::arg("block"), "Inserts at the beginning of the block.")
+-       .def_static("at_block_terminator", &PyInsertionPoint::atBlockTerminator,
+-                   nb::arg("block"), "Inserts before the block terminator.")
+-+      .def_static("after", &PyInsertionPoint::after, nb::arg("operation"),
+-+                  "Inserts after the operation.")
+-       .def("insert", &PyInsertionPoint::insert, nb::arg("operation"),
+-            "Inserts an operation.")
+-       .def_prop_ro(
+ diff -ruN --strip-trailing-cr a/mlir/lib/Bindings/Python/IRModule.h b/mlir/lib/Bindings/Python/IRModule.h
+ --- a/mlir/lib/Bindings/Python/IRModule.h
+ +++ b/mlir/lib/Bindings/Python/IRModule.h
+@@ -1125,108 +477,6 @@ diff -ruN --strip-trailing-cr a/mlir/lib/Bindings/Python/IRModule.h b/mlir/lib/B
+    bool emitErrorDiagnostics = false;
+  
+    MlirContext context;
+-@@ -821,7 +833,7 @@
+- public:
+-   /// Creates an insertion point positioned after the last operation in the
+-   /// block, but still inside the block.
+--  PyInsertionPoint(PyBlock &block);
+-+  PyInsertionPoint(const PyBlock &block);
+-   /// Creates an insertion point positioned before a reference operation.
+-   PyInsertionPoint(PyOperationBase &beforeOperationBase);
+- 
+-@@ -829,6 +841,9 @@
+-   static PyInsertionPoint atBlockBegin(PyBlock &block);
+-   /// Shortcut to create an insertion point before the block terminator.
+-   static PyInsertionPoint atBlockTerminator(PyBlock &block);
+-+  /// Shortcut to create an insertion point to the node after the specified
+-+  /// operation.
+-+  static PyInsertionPoint after(PyOperationBase &op);
+- 
+-   /// Inserts an operation.
+-   void insert(PyOperationBase &operationBase);
+-diff -ruN --strip-trailing-cr a/mlir/test/python/ir/insertion_point.py b/mlir/test/python/ir/insertion_point.py
+---- a/mlir/test/python/ir/insertion_point.py
+-+++ b/mlir/test/python/ir/insertion_point.py
+-@@ -63,6 +63,34 @@
+- run(test_insert_before_operation)
+- 
+- 
+-+# CHECK-LABEL: TEST: test_insert_after_operation
+-+def test_insert_after_operation():
+-+    ctx = Context()
+-+    ctx.allow_unregistered_dialects = True
+-+    with Location.unknown(ctx):
+-+        module = Module.parse(
+-+            r"""
+-+      func.func @foo() -> () {
+-+        "custom.op1"() : () -> ()
+-+        "custom.op2"() : () -> ()
+-+      }
+-+    """
+-+        )
+-+        entry_block = module.body.operations[0].regions[0].blocks[0]
+-+        custom_op1 = entry_block.operations[0]
+-+        custom_op2 = entry_block.operations[1]
+-+        InsertionPoint.after(custom_op1).insert(Operation.create("custom.op3"))
+-+        InsertionPoint.after(custom_op2).insert(Operation.create("custom.op4"))
+-+        # CHECK: "custom.op1"
+-+        # CHECK: "custom.op3"
+-+        # CHECK: "custom.op2"
+-+        # CHECK: "custom.op4"
+-+        module.operation.print()
+-+
+-+
+-+run(test_insert_after_operation)
+-+
+-+
+- # CHECK-LABEL: TEST: test_insert_at_block_begin
+- def test_insert_at_block_begin():
+-     ctx = Context()
+-@@ -111,14 +139,24 @@
+-     """
+-         )
+-         entry_block = module.body.operations[0].regions[0].blocks[0]
+-+        return_op = entry_block.operations[1]
+-         ip = InsertionPoint.at_block_terminator(entry_block)
+-         assert ip.block == entry_block
+--        assert ip.ref_operation == entry_block.operations[1]
+--        ip.insert(Operation.create("custom.op2"))
+-+        assert ip.ref_operation == return_op
+-+        custom_op2 = Operation.create("custom.op2")
+-+        ip.insert(custom_op2)
+-+        InsertionPoint.after(custom_op2).insert(Operation.create("custom.op3"))
+-         # CHECK: "custom.op1"
+-         # CHECK: "custom.op2"
+-+        # CHECK: "custom.op3"
+-         module.operation.print()
+- 
+-+        try:
+-+            InsertionPoint.after(return_op).insert(Operation.create("custom.op4"))
+-+        except IndexError as e:
+-+            # CHECK: ERROR: Cannot insert operation at the end of a block that already has a terminator.
+-+            print(f"ERROR: {e}")
+-+
+- 
+- run(test_insert_at_terminator)
+- 
+-@@ -187,10 +225,16 @@
+-         with InsertionPoint(entry_block):
+-             Operation.create("custom.op2")
+-             with InsertionPoint.at_block_begin(entry_block):
+--                Operation.create("custom.opa")
+-+                custom_opa = Operation.create("custom.opa")
+-                 Operation.create("custom.opb")
+-             Operation.create("custom.op3")
+-+            with InsertionPoint.after(custom_opa):
+-+                Operation.create("custom.op4")
+-+                Operation.create("custom.op5")
+-+
+-         # CHECK: "custom.opa"
+-+        # CHECK: "custom.op4"
+-+        # CHECK: "custom.op5"
+-         # CHECK: "custom.opb"
+-         # CHECK: "custom.op1"
+-         # CHECK: "custom.op2"
+ diff -ruN --strip-trailing-cr a/mlir/test/python/ir/module.py b/mlir/test/python/ir/module.py
+ --- a/mlir/test/python/ir/module.py
+ +++ b/mlir/test/python/ir/module.py
+@@ -1267,52 +517,3 @@ diff -ruN --strip-trailing-cr a/mlir/test/python/ir/module.py b/mlir/test/python
+      module_dup = None
+      gc.collect()
+ +    assert ctx._get_live_module_count() == 0
+-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+---- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+-+++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+-@@ -3749,6 +3749,14 @@
+- )
+- 
+- libc_math_function(
+-+    name = "fmodbf16",
+-+    additional_deps = [
+-+        ":__support_fputil_bfloat16",
+-+        ":__support_fputil_generic_fmod",
+-+    ],
+-+)
+-+
+-+libc_math_function(
+-     name = "fmodf",
+-     additional_deps = [
+-         ":__support_fputil_generic_fmod",
+-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/test/src/math/smoke/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/test/src/math/smoke/BUILD.bazel
+---- a/utils/bazel/llvm-project-overlay/libc/test/src/math/smoke/BUILD.bazel
+-+++ b/utils/bazel/llvm-project-overlay/libc/test/src/math/smoke/BUILD.bazel
+-@@ -739,6 +739,16 @@
+- )
+- 
+- math_test(
+-+    name = "fmodbf16",
+-+    hdrs = [
+-+        "FModTest.h",
+-+    ],
+-+    deps = [
+-+        "//libc:__support_fputil_bfloat16",
+-+    ],
+-+)
+-+
+-+math_test(
+-     name = "fmodf",
+-     hdrs = ["FModTest.h"],
+- )
+-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+---- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+-+++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+-@@ -2223,7 +2223,6 @@
+-             "lib/Target/AArch64/AArch64GenDisassemblerTables.inc": [
+-                 "-gen-disassembler",
+-                 "-ignore-non-decodable-operands",
+--                "-ignore-fully-defined-operands",
+-             ],
+-             "lib/Target/AArch64/AArch64GenSystemOperands.inc": ["-gen-searchable-tables"],
+-             "lib/Target/AArch64/AArch64GenExegesis.inc": ["-gen-exegesis"],
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 983f65d..f671196 100644
+index f671196..3bdff1c 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "5bca8f2f97d23c3562544e959702826eb20696af"
--    LLVM_SHA256 = "d0e5d52ce939c396f3fa8533d7a1f911ed059e072d4797e3f9cb15043a6fd113"
-+    LLVM_COMMIT = "a1de9aca1150bd749a3cdad1d1e26eb6a8855fe2"
-+    LLVM_SHA256 = "4b99bf2c212bcd27ac90315f6d8ce82f2d0aeaea257c9b49ddf29ef7a1bba175"
+-    LLVM_COMMIT = "a1de9aca1150bd749a3cdad1d1e26eb6a8855fe2"
+-    LLVM_SHA256 = "4b99bf2c212bcd27ac90315f6d8ce82f2d0aeaea257c9b49ddf29ef7a1bba175"
++    LLVM_COMMIT = "f3b712f6e4e9afed735962c6b96e0a2cadb03dc1"
++    LLVM_SHA256 = "3c1a7a3156635a35e33da13a93a4dd8f2e48ac7280b5674061a951a4aa8475c3"
  
      tf_http_archive(
          name = name,
-diff --git a/third_party/stablehlo/temporary.patch b/third_party/stablehlo/temporary.patch
-index 3079fad..a8075e2 100755
---- a/third_party/stablehlo/temporary.patch
-+++ b/third_party/stablehlo/temporary.patch
-@@ -1,3 +1,168 @@
-+diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/legalize_quant_ops_to_tosa_rescale.mlir b/stablehlo/stablehlo/conversions/tosa/tests/legalize_quant_ops_to_tosa_rescale.mlir
-+--- stablehlo/stablehlo/conversions/tosa/tests/legalize_quant_ops_to_tosa_rescale.mlir
-++++ stablehlo/stablehlo/conversions/tosa/tests/legalize_quant_ops_to_tosa_rescale.mlir
-+@@ -11,10 +11,10 @@
-+   // CHECK-DAG: %[[MULTIPLIER_2:.+]] = "tosa.const"() <{values = dense<1431655765> : tensor<1xi32>}>
-+   // CHECK-DAG: %[[ZP_MINUS_1:.+]] = "tosa.const"() <{values = dense<-1> : tensor<1xi8>}>
-+   // CHECK-DAG: %[[ZP_0:.+]] = "tosa.const"() <{values = dense<0> : tensor<1xi32>}>
-+-  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT13]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "SINGLE_ROUND", scale32 = true}
-+-  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT11]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "SINGLE_ROUND", scale32 = true}
-++  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT13]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
-++  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT11]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
-+   // CHECK: %[[V2:.+]] = stablehlo.add %[[V0]], %[[V1]] : tensor<2x2xi32>
-+-  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]], %[[MULTIPLIER_1]], %[[SHIFT50]], %[[ZP_0]], %[[ZP_MINUS_1]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "SINGLE_ROUND", scale32 = true}
-++  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]], %[[MULTIPLIER_1]], %[[SHIFT50]], %[[ZP_0]], %[[ZP_MINUS_1]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
-+   // CHECK: return %[[V3]] : tensor<2x2x!quant.uniform<i8:f32, 1.500000e-01:-1>>
-+   %0 = "stablehlo.add"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>, tensor<2x2x!quant.uniform<i8:f32, 0.075:-1>>)
-+             -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-1>>
-+@@ -32,10 +32,10 @@
-+   // CHECK-DAG: %[[MULTIPLIER_2:.+]] = "tosa.const"() <{values = dense<1431655765> : tensor<1xi32>}>
-+   // CHECK-DAG: %[[ZP_MINUS_1:.+]] = "tosa.const"() <{values = dense<-1> : tensor<1xi8>}>
-+   // CHECK-DAG: %[[ZP_0:.+]] = "tosa.const"() <{values = dense<0> : tensor<1xi32>}>
-+-  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT13]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "SINGLE_ROUND", scale32 = true}
-+-  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT11]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "SINGLE_ROUND", scale32 = true}
-++  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT13]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
-++  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT11]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
-+   // CHECK: %[[V2:.+]] = stablehlo.subtract %[[V0]], %[[V1]] : tensor<2x2xi32>
-+-  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]], %[[MULTIPLIER_1]], %[[SHIFT50]], %[[ZP_0]], %[[ZP_MINUS_1]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "SINGLE_ROUND", scale32 = true}
-++  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]], %[[MULTIPLIER_1]], %[[SHIFT50]], %[[ZP_0]], %[[ZP_MINUS_1]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
-+   // CHECK: return %[[V3]] : tensor<2x2x!quant.uniform<i8:f32, 1.500000e-01:-1>>
-+   %0 = "stablehlo.subtract"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>, tensor<2x2x!quant.uniform<i8:f32, 0.075:-1>>)
-+             -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-1>>
-+@@ -52,10 +52,10 @@
-+   // CHECK-DAG: %[[MULTIPLIER_2:.+]] = "tosa.const"() <{values = dense<1717986918> : tensor<1xi32>}>
-+   // CHECK-DAG: %[[ZP_MINUS_1:.+]] = "tosa.const"() <{values = dense<-1> : tensor<1xi8>}>
-+   // CHECK-DAG: %[[ZP_0:.+]] = "tosa.const"() <{values = dense<0> : tensor<1xi32>}>
-+-  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_1]], %[[SHIFT30]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "SINGLE_ROUND", scale32 = true}
-+-  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT30]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "SINGLE_ROUND", scale32 = true}
-++  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_1]], %[[SHIFT30]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
-++  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT30]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
-+   // CHECK: %[[V2:.+]] = stablehlo.multiply %[[V0]], %[[V1]] : tensor<2x2xi32>
-+-  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]], %[[MULTIPLIER_2]], %[[SHIFT37]], %[[ZP_0]], %[[ZP_MINUS_1]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "SINGLE_ROUND", scale32 = true}
-++  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]], %[[MULTIPLIER_2]], %[[SHIFT37]], %[[ZP_0]], %[[ZP_MINUS_1]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
-+   // CHECK: return %[[V3]] : tensor<2x2x!quant.uniform<i8:f32, 1.500000e-01:-1>>
-+   %0 = "stablehlo.multiply"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>, tensor<2x2x!quant.uniform<i8:f32, 0.075:-1>>)
-+             -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-1>>
-+@@ -74,10 +74,10 @@
-+   // CHECK-DAG: %[[ZP_MINUS_2:.+]] = "tosa.const"() <{values = dense<-2> : tensor<1xi8>}>
-+   // CHECK-DAG: %[[ZP_MINUS_1:.+]] = "tosa.const"() <{values = dense<-1> : tensor<1xi8>}>
-+   // CHECK-DAG: %[[ZP_0:.+]] = "tosa.const"() <{values = dense<0> : tensor<1xi32>}>
-+-  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_1]], %[[SHIFT30]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "SINGLE_ROUND", scale32 = true}
-+-  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT30]], %[[ZP_MINUS_2]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "SINGLE_ROUND", scale32 = true}
-++  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_1]], %[[SHIFT30]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
-++  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT30]], %[[ZP_MINUS_2]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
-+   // CHECK: %[[V2:.+]] = stablehlo.divide %[[V0]], %[[V1]] : tensor<2x2xi32>
-+-  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]], %[[MULTIPLIER_2]], %[[SHIFT37]], %[[ZP_0]], %[[ZP_MINUS_3]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "SINGLE_ROUND", scale32 = true}
-++  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]], %[[MULTIPLIER_2]], %[[SHIFT37]], %[[ZP_0]], %[[ZP_MINUS_3]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
-+   // CHECK: return %[[V3]] : tensor<2x2x!quant.uniform<i8:f32, 1.500000e-01:-3>>
-+   %0 = "stablehlo.divide"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>, tensor<2x2x!quant.uniform<i8:f32, 0.075:-2>>)
-+             -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-3>>
-+@@ -97,10 +97,10 @@
-+   // CHECK-DAG: %[[SHIFT12:.+]] = "tosa.const"() <{values = dense<12> : tensor<1xi8>}>
-+   // CHECK-DAG: %[[ZP_MINUS_1:.+]] = "tosa.const"() <{values = dense<-1> : tensor<1xi8>}>
-+   // CHECK-DAG: %[[ZP_0:.+]] = "tosa.const"() <{values = dense<0> : tensor<1xi32>}>
-+-  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT12]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "SINGLE_ROUND", scale32 = true}
-+-  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT10]], %[[ZP_MINUS_2]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "SINGLE_ROUND", scale32 = true}
-++  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT12]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
-++  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT10]], %[[ZP_MINUS_2]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
-+   // CHECK: %[[V2:.+]] = stablehlo.maximum %[[V0]], %[[V1]] : tensor<2x2xi32>
-+-  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]], %[[MULTIPLIER_1]], %[[SHIFT51]], %[[ZP_0]], %[[ZP_MINUS_3]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "SINGLE_ROUND", scale32 = true}
-++  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]], %[[MULTIPLIER_1]], %[[SHIFT51]], %[[ZP_0]], %[[ZP_MINUS_3]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
-+   // CHECK: return %[[V3]] : tensor<2x2x!quant.uniform<i8:f32, 1.500000e-01:-3>>
-+   %0 = "stablehlo.maximum"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>, tensor<2x2x!quant.uniform<i8:f32, 0.075:-2>>)
-+             -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-3>>
-+@@ -120,10 +120,10 @@
-+   // CHECK-DAG: %[[SHIFT12:.+]] = "tosa.const"() <{values = dense<12> : tensor<1xi8>}>
-+   // CHECK-DAG: %[[ZP_MINUS_1:.+]] = "tosa.const"() <{values = dense<-1> : tensor<1xi8>}>
-+   // CHECK-DAG: %[[ZP_0:.+]] = "tosa.const"() <{values = dense<0> : tensor<1xi32>}>
-+-  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT12]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "SINGLE_ROUND", scale32 = true}
-+-  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT10]], %[[ZP_MINUS_2]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "SINGLE_ROUND", scale32 = true}
-++  // CHECK-DAG: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT12]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
-++  // CHECK-DAG: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT10]], %[[ZP_MINUS_2]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
-+   // CHECK: %[[V2:.+]] = stablehlo.minimum %[[V0]], %[[V1]] : tensor<2x2xi32>
-+-  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]], %[[MULTIPLIER_1]], %[[SHIFT51]], %[[ZP_0]], %[[ZP_MINUS_3]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "SINGLE_ROUND", scale32 = true}
-++  // CHECK: %[[V3:.+]] = tosa.rescale %[[V2]], %[[MULTIPLIER_1]], %[[SHIFT51]], %[[ZP_0]], %[[ZP_MINUS_3]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
-+   // CHECK: return %[[V3]] : tensor<2x2x!quant.uniform<i8:f32, 1.500000e-01:-3>>
-+   %0 = "stablehlo.minimum"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>, tensor<2x2x!quant.uniform<i8:f32, 0.075:-2>>)
-+             -> tensor<2x2x!quant.uniform<i8:f32, 1.5e-01:-3>>
-+@@ -140,9 +140,9 @@
-+   // CHECK-DAG: %[[SHIFT30:.+]] = "tosa.const"() <{values = dense<30> : tensor<1xi8>}>
-+   // CHECK-DAG: %[[ZP_MINUS_1:.+]] = "tosa.const"() <{values = dense<-1> : tensor<1xi8>}>
-+   // CHECK-DAG: %[[ZP_0:.+]] = "tosa.const"() <{values = dense<0> : tensor<1xi32>}>
-+-  // CHECK: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT30]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "SINGLE_ROUND", scale32 = true}
-++  // CHECK: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT30]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
-+   // CHECK: %[[V1:.+]] = stablehlo.abs %[[V0]] : tensor<20x20xi32>
-+-  // CHECK: %[[V3:.+]] = tosa.rescale %[[V1]], %[[MULTIPLIER_1]], %[[SHIFT33]], %[[ZP_0]], %[[ZP_MINUS_128]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "SINGLE_ROUND", scale32 = true}
-++  // CHECK: %[[V3:.+]] = tosa.rescale %[[V1]], %[[MULTIPLIER_1]], %[[SHIFT33]], %[[ZP_0]], %[[ZP_MINUS_128]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
-+   // CHECK: return %[[V3]] : tensor<20x20x!quant.uniform<i8:f32, 1.500000e-01:-128>>
-+   %0 = "stablehlo.abs"(%arg0) : (tensor<20x20x!quant.uniform<i8:f32, 0.025:-1>>) -> tensor<20x20x!quant.uniform<i8:f32, 1.5e-01:-128>>
-+   return %0 : tensor<20x20x!quant.uniform<i8:f32, 1.5e-01:-128>>
-+@@ -159,8 +159,8 @@
-+   // CHECK-DAG: %[[SHIFT12:.+]] = "tosa.const"() <{values = dense<12> : tensor<1xi8>}>
-+   // CHECK-DAG: %[[ZP_MINUS_1:.+]] = "tosa.const"() <{values = dense<-1> : tensor<1xi8>}>
-+   // CHECK-DAG: %[[ZP_0:.+]] = "tosa.const"() <{values = dense<0> : tensor<1xi32>}>
-+-  // CHECK: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT12]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "SINGLE_ROUND", scale32 = true}
-+-  // CHECK: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT10]], %[[ZP_MINUS_2]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "SINGLE_ROUND", scale32 = true}
-++  // CHECK: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT12]], %[[ZP_MINUS_1]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
-++  // CHECK: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT10]], %[[ZP_MINUS_2]], %[[ZP_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
-+   // CHECK: %[[V2:.+]] = stablehlo.compare GE, %[[V0]], %[[V1]], TOTALORDER :
-+   // CHECK: return %[[V2]]
-+   %0 = stablehlo.compare GE, %arg0, %arg1, TOTALORDER : (tensor<20x20x!quant.uniform<i8:f32, 0.025:-1>>, tensor<20x20x!quant.uniform<i8:f32, 0.075:-2>>) -> tensor<20x20xi1>
-+@@ -177,8 +177,8 @@
-+   // CHECK-DAG: %[[SHIFT15:.+]] = "tosa.const"() <{values = dense<15> : tensor<1xi8>}>
-+   // CHECK-DAG: %[[ZP16_0:.+]] = "tosa.const"() <{values = dense<0> : tensor<1xi16>}>
-+   // CHECK-DAG: %[[ZP32_0:.+]] = "tosa.const"() <{values = dense<0> : tensor<1xi32>}>
-+-  // CHECK: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT17]], %[[ZP16_0]], %[[ZP32_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "SINGLE_ROUND", scale32 = true}
-+-  // CHECK: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT15]], %[[ZP16_0]], %[[ZP32_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "SINGLE_ROUND", scale32 = true}
-++  // CHECK: %[[V0:.+]] = tosa.rescale %arg0, %[[MULTIPLIER_2]], %[[SHIFT17]], %[[ZP16_0]], %[[ZP32_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
-++  // CHECK: %[[V1:.+]] = tosa.rescale %arg1, %[[MULTIPLIER_1]], %[[SHIFT15]], %[[ZP16_0]], %[[ZP32_0]] {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true}
-+   // CHECK: %[[V2:.+]] = stablehlo.compare LT, %[[V0]], %[[V1]], TOTALORDER :
-+   // CHECK: return %[[V2]]
-+   %0 = stablehlo.compare LT, %arg0, %arg1, TOTALORDER : (tensor<20x20x!quant.uniform<i16:f32, 0.025:0>>, tensor<20x20x!quant.uniform<i16:f32, 0.075:0>>) -> tensor<20x20xi1>
-+diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/legalize_tosa_rescale_to_stablehlo.mlir b/stablehlo/stablehlo/conversions/tosa/tests/legalize_tosa_rescale_to_stablehlo.mlir
-+--- stablehlo/stablehlo/conversions/tosa/tests/legalize_tosa_rescale_to_stablehlo.mlir
-++++ stablehlo/stablehlo/conversions/tosa/tests/legalize_tosa_rescale_to_stablehlo.mlir
-+@@ -7,7 +7,7 @@
-+   %shift = "tosa.const"() {values = dense<13> : tensor<1xi8>} : () -> tensor<1xi8>
-+   %input_zp = "tosa.const"() {values = dense<-1> : tensor<1xi8>} : () -> tensor<1xi8>
-+   %output_zp = "tosa.const"() {values = dense<0> : tensor<1xi32>} : () -> tensor<1xi32>
-+-  %0 = tosa.rescale %arg0, %multiplier, %shift, %input_zp, %output_zp {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = "SINGLE_ROUND", scale32 = true} :
-++  %0 = tosa.rescale %arg0, %multiplier, %shift, %input_zp, %output_zp {input_unsigned = false, output_unsigned = false, per_channel = false, rounding_mode = SINGLE_ROUND, scale32 = true} :
-+             (tensor<2x2x!quant.uniform<i8:f32, 0.025:-1>>, tensor<1xi32>, tensor<1xi8>, tensor<1xi8>, tensor<1xi32>) -> tensor<2x2xi32>
-+ 
-+   // convert input quantized type to storage type
-+diff --ruN a/stablehlo/stablehlo/conversions/tosa/transforms/StablehloQuantLegalizeToTosaRescale.cpp b/stablehlo/stablehlo/conversions/tosa/transforms/StablehloQuantLegalizeToTosaRescale.cpp
-+--- stablehlo/stablehlo/conversions/tosa/transforms/StablehloQuantLegalizeToTosaRescale.cpp
-++++ stablehlo/stablehlo/conversions/tosa/transforms/StablehloQuantLegalizeToTosaRescale.cpp
-+@@ -70,12 +70,14 @@
-+       outputZpVal.has_value() &&
-+       "buildRescale: Failed to create output zero-point tensor for RescaleOp.");
-+ 
-+-  std::string roundingMode = doubleRound ? "DOUBLE_ROUND" : "SINGLE_ROUND";
-++  auto roundingMode =
-++      doubleRound ? RoundingMode::DOUBLE_ROUND : RoundingMode::SINGLE_ROUND;
-+ 
-+   auto rescale_op = rewriter.create<RescaleOp>(
-+       loc, outputType, inputVal, multiplierVal, shiftVal, inputZpVal.value(),
-+       outputZpVal.value(), rewriter.getBoolAttr(scale32),
-+-      rewriter.getStringAttr(roundingMode), rewriter.getBoolAttr(perChannel),
-++      RoundingModeAttr::get(rewriter.getContext(), roundingMode),
-++      rewriter.getBoolAttr(perChannel),
-+       /*input_unsigned=*/rewriter.getBoolAttr(false),
-+       /*output_unsigned=*/rewriter.getBoolAttr(false));
-+ 
-+diff --ruN a/stablehlo/stablehlo/conversions/tosa/transforms/TosaRescaleLegalizeToStablehlo.cpp b/stablehlo/stablehlo/conversions/tosa/transforms/TosaRescaleLegalizeToStablehlo.cpp
-+--- stablehlo/stablehlo/conversions/tosa/transforms/TosaRescaleLegalizeToStablehlo.cpp
-++++ stablehlo/stablehlo/conversions/tosa/transforms/TosaRescaleLegalizeToStablehlo.cpp
-+@@ -68,7 +68,7 @@
-+   auto roundingMode = op.getRoundingMode();
-+   bool perChannel = op.getPerChannel();
-+ 
-+-  if (perChannel || roundingMode != "SINGLE_ROUND" || !scale32) {
-++  if (perChannel || roundingMode != RoundingMode::SINGLE_ROUND || !scale32) {
-+     return rewriter.notifyMatchFailure(
-+         op,
-+         "per_channel, double_round, or scale32=false are not yet supported");
- diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
- --- stablehlo/stablehlo/dialect/StablehloOps.cpp
- +++ stablehlo/stablehlo/dialect/StablehloOps.cpp
