@@ -263,12 +263,12 @@ std::string DrawAllReduceDependencies(
   }
   std::string output = "digraph all_reduces {\n";
   for (int i = 0; i < dependents.size(); i++) {
-    strings::StrAppend(&output, i);
-    strings::StrAppend(&output, "\n");
+    absl::StrAppend(&output, i);
+    absl::StrAppend(&output, "\n");
   }
   for (int i = 0; i < dependents.size(); i++) {
     for (int j : dependents[i]) {
-      strings::StrAppend(&output, i, " -> ", j, "\n");
+      absl::StrAppend(&output, i, " -> ", j, "\n");
     }
   }
   output += "}";
