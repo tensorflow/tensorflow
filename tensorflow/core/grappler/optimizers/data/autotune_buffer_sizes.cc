@@ -114,7 +114,7 @@ absl::Status AutotuneBufferSizes::OptimizeAndCollectStats(
   for (const NodeDef* async_dataset_node : async_datasets) {
     NodeDef prefetch_node;
     graph_utils::SetUniqueGraphNodeName(
-        strings::StrCat("inject/prefetch_", async_dataset_node->name()),
+        absl::StrCat("inject/prefetch_", async_dataset_node->name()),
         graph.graph(), &prefetch_node);
     prefetch_node.set_op(kPrefetchDataset);
     // `input_dataset` input
