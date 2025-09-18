@@ -23,9 +23,10 @@ OverridableFetchContent_Declare(
   flatbuffers
   GIT_REPOSITORY https://github.com/google/flatbuffers
   # Sync with tensorflow/third_party/flatbuffers/workspace.bzl
-  GIT_TAG e6463926479bd6b330cbcf673f7e917803fd5831
+  # Match converter/schema/schema_generated.h which expects 25.2.10
+  GIT_TAG v25.2.10
   # NOTE: b/340264458 - `GIT_SHALLOW TRUE` works for tag name only.
-  GIT_SHALLOW FALSE
+  GIT_SHALLOW TRUE
   GIT_PROGRESS TRUE
   SOURCE_DIR "${CMAKE_BINARY_DIR}/flatbuffers"
 )
@@ -61,7 +62,7 @@ endif()
 
 # In case of a standalone (native) build of flatc for unit test cross-compilation
 # purposes the FLATC_INSTALL_PREFIX is already in cache and is just used in this module.
-# In case of standard flatbuffers build (as a dependency) the variable needs to be set. 
+# In case of standard flatbuffers build (as a dependency) the variable needs to be set.
 if(NOT DEFINED FLATC_INSTALL_PREFIX)
   set(FLATC_INSTALL_PREFIX <INSTALL_DIR> CACHE PATH "Flatc installation directory")
 endif()
