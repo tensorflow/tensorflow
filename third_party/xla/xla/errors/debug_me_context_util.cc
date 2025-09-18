@@ -18,6 +18,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
@@ -25,7 +27,21 @@ limitations under the License.
 
 namespace xla::error {
 
+void AttachDebugMeContextPayload(absl::Status& status) {
+  if (!status.ok()) {
+    std::string error_message_string = DebugMeContextToErrorMessageString();
+    if (!error_message_string.empty()) {
+      status.SetPayload(kDebugContextPayloadUrl,
+                        absl::Cord(error_message_string));
+    }
+  }
+}
+
 std::string DebugMeContextToErrorMessageString() {
+  if (!tsl::DebugMeContext<DebugMeContextKey>::HasAnyValues()) {
+    return "";
+  }
+
   std::string error_message = "DebugMeContext:\n";
   {
     const std::vector<std::string> compiler_values =

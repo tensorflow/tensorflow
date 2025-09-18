@@ -16,8 +16,11 @@ limitations under the License.
 #ifndef XLA_ERRORS_DEBUG_ME_CONTEXT_UTIL_H_
 #define XLA_ERRORS_DEBUG_ME_CONTEXT_UTIL_H_
 
+#include <cstdint>
 #include <string>
 
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/debug_me_context.h"
 
 // This file provides XLA-specific specializations and utilities for the
@@ -37,7 +40,14 @@ class HloPassInterface;
 
 namespace error {
 
-enum class DebugMeContextKey {
+// The canonical type URL for the DebugContextPayload.
+// This URL is used to attach the payload to an absl::Status.
+constexpr absl::string_view kDebugContextPayloadUrl =
+    "types.googleapis.com/xla.errors.DebugContextPayload";
+
+// Enumerate different types of debug context keys. These keys are used to
+// identify the type of context being stored in the thread-local DebugMeContext.
+enum class DebugMeContextKey : std::uint8_t {
   kCompiler,
   kHloPass,
   kHloInstruction,
@@ -47,6 +57,10 @@ enum class DebugMeContextKey {
 // formats it in a way which is meant to be used when creating error messages in
 // XLA.
 std::string DebugMeContextToErrorMessageString();
+
+// Attaches the DebugMeContextToErrorMessageString as a payload to the given
+// status, if the context is not empty and the status is not OK.
+void AttachDebugMeContextPayload(absl::Status& status);
 
 // This class is a specialization of the RAII DebugMeContext specifically for
 // HloPasses. The details of its constructor dictate what information from the

@@ -85,6 +85,9 @@ class DebugMeContext {
     std::vector<std::string>& value_stack = context_.key_value_stack_map[key_];
     value_stack.pop_back();
   }
+
+  // Returns the values associated with the given key. If the key does not
+  // exist, returns an empty vector.
   static std::vector<std::string> GetValues(KeyType key) {
     // Here we use a const reference of `context_` to try to minimize the chance
     // of this function modifying `context_`.
@@ -95,6 +98,18 @@ class DebugMeContext {
       return {};
     }
     return it->second;
+  }
+
+  // Returns true if any key has a non-empty stack.
+  static bool HasAnyValues() {
+    const Context& const_context = context_;
+    for (const auto& pair : const_context.key_value_stack_map) {
+      if (!pair.second.empty()) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
  private:

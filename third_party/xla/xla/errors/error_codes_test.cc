@@ -17,11 +17,16 @@ limitations under the License.
 
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "xla/errors/debug_me_context_util.h"
+#include "xla/tsl/platform/debug_me_context.h"
 
 namespace xla::error {
 namespace {
+
+using ::testing::HasSubstr;
 
 // We will use kInvalidArgument for all single-value tests.
 constexpr ErrorCode kTestCode = ErrorCode::kInvalidArgument;
@@ -57,6 +62,24 @@ TEST(ErrorCodesTest, FactoryFunction) {
   // Check the full formatted error message.
   EXPECT_EQ(status.message(),
             "E0002: InvalidArgument: Test error: Something was wrong");
+}
+
+TEST(ErrorCodesTest, FactoryFunctionNoDebugPayloadIfContextIsEmpty) {
+  absl::Status status_no_context = InvalidArgument("Test error no context");
+  EXPECT_FALSE(
+      status_no_context.GetPayload(kDebugContextPayloadUrl).has_value());
+}
+
+TEST(ErrorCodesTest, FactoryFunctionAttachesDebugPayloadIfContextIsActive) {
+  tsl::DebugMeContext<DebugMeContextKey> context(DebugMeContextKey::kHloPass,
+                                                 "MyTestPass");
+  absl::Status status_with_context = InvalidArgument("Test error with context");
+
+  auto payload = status_with_context.GetPayload(kDebugContextPayloadUrl);
+  EXPECT_TRUE(payload.has_value());
+  std::string payload_str(payload.value());
+  EXPECT_THAT(payload_str, HasSubstr("HLO Passes"));
+  EXPECT_THAT(payload_str, HasSubstr("MyTestPass"));
 }
 
 }  // namespace

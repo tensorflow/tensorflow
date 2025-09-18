@@ -10,6 +10,7 @@ cc_library(
     name = "error_codes",
     hdrs = ["error_codes.h"],
     deps = [
+        ":debug_me_context_util",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -20,7 +21,9 @@ xla_cc_test(
     name = "error_codes_test",
     srcs = ["error_codes_test.cc"],
     deps = [
+        ":debug_me_context_util",
         ":error_codes",
+        "//xla/tsl/platform:debug_me_context",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
     ],
@@ -33,7 +36,9 @@ cc_library(
     deps = [
         "//xla/hlo/pass:hlo_pass",
         "//xla/tsl/platform:debug_me_context",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:cord",
     ],
 )
 
