@@ -115,7 +115,8 @@ GpuCommandBuffer::ToGraphNodeDependencies(
 
     } else if (auto* gpu_command = dynamic_cast<const GpuWhileCommand*>(dep)) {
       handles.push_back(gpu_command->conditional_node.handle);
-
+    } else if (auto* gpu_command = dynamic_cast<const GpuChildCommand*>(dep)) {
+      handles.push_back(gpu_command->handle);
     } else {
       LOG(FATAL) << "Unsupported command type";  // Crash OK
     }
@@ -237,6 +238,31 @@ absl::Status GpuCommandBuffer::UpdateChildCommand(ChildCommandType type,
   auto* gpu_command = tsl::down_cast<const GpuCommand*>(command);
   VLOG(5) << "UpdateChildCommand: " << reinterpret_cast<const void*>(command);
   return UpdateChildNode(type, gpu_command->handle, nested);
+}
+
+absl::StatusOr<const CommandBuffer::Command*>
+GpuCommandBuffer::CreateChildCommand(
+    ChildCommandType type, StreamExecutor* executor,
+    absl::AnyInvocable<absl::Status(stream_executor::CommandBuffer*)> record_fn,
+    absl::Span<const Command* const> dependencies) {
+  TF_RETURN_IF_ERROR(CheckInState(State::kCreate));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<CommandBuffer> nested,
+                      executor->CreateCommandBuffer(Mode::kNested));
+  TF_RETURN_IF_ERROR(record_fn(nested.get()));
+  TF_ASSIGN_OR_RETURN(
+      GraphNodeHandle handle,
+      CreateChildNode(type, ToGraphNodeDependencies(dependencies), *nested));
+  return AppendCommand(GpuChildCommand{handle, std::move(nested)});
+}
+
+absl::Status GpuCommandBuffer::UpdateChildCommand(
+    ChildCommandType type, const Command* command,
+    absl::AnyInvocable<absl::Status(stream_executor::CommandBuffer*)>
+        record_fn) {
+  TF_RETURN_IF_ERROR(CheckInState(State::kUpdate));
+  auto* gpu_command = dynamic_cast<const GpuChildCommand*>(command);
+  CHECK(gpu_command) << "Command must be a GpuChildCommand";
+  return record_fn(gpu_command->command_buffer.get());
 }
 
 absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::CreateMemcpyD2D(
