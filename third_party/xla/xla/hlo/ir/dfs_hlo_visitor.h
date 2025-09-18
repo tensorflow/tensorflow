@@ -165,6 +165,9 @@ class DfsHloVisitorBase {
   virtual absl::Status HandleAbs(HloInstructionPtr hlo) {
     return HandleElementwiseUnary(hlo);
   }
+  virtual absl::Status HandleExp10(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
+  }
   virtual absl::Status HandleAcos(HloInstructionPtr hlo) {
     return HandleElementwiseUnary(hlo);
   }

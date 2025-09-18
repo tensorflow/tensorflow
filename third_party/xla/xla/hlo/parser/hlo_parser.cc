@@ -146,6 +146,7 @@ bool CanInferShape(HloOpcode code) {
     case HloOpcode::kDot:
     case HloOpcode::kErf:
     case HloOpcode::kExp:
+    case HloOpcode::kExp10:
     case HloOpcode::kExpm1:
     case HloOpcode::kFft:
     case HloOpcode::kFloor:
@@ -1647,6 +1648,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
     case HloOpcode::kAcos:
     case HloOpcode::kAcosh:
     case HloOpcode::kExpm1:
+    case HloOpcode::kExp10:
     case HloOpcode::kLog:
     case HloOpcode::kLog1p:
     case HloOpcode::kLogistic:

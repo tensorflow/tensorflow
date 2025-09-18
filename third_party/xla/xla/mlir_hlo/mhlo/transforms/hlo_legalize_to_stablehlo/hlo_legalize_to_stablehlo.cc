@@ -108,7 +108,6 @@ std::optional<int64_t> getPublicFeaturesNotInStablehlo(HloOpTy hloOp) {
     return 1;
   }
   // StableHLO doesn't support TopK yet.
-  // Proposal: https://github.com/openxla/stablehlo/pull/1593
   if constexpr (std::is_same<HloOpTy, mhlo::ErfOp>::value) {
     // Version 1: Initial version for ErfOp.
     return 1;
@@ -116,6 +115,11 @@ std::optional<int64_t> getPublicFeaturesNotInStablehlo(HloOpTy hloOp) {
   // StableHLO doesn't support Acosh yet.
   if constexpr (std::is_same<HloOpTy, mhlo::AcoshOp>::value) {
     // Version 1: Initial version for AcoshOp.
+    return 1;
+  }
+  // StableHLO doesn't support Acos yet.
+  if constexpr (std::is_same<HloOpTy, mhlo::AcosOp>::value) {
+    // Version 1: Initial version for AcosOp.
     return 1;
   }
   return std::nullopt;
@@ -444,7 +448,8 @@ LogicalResult convertAttributes(ConversionPatternRewriter& rewriter,
     }
 
     // Handle DenseElements --> DenseArray for certain StableHLO ops
-    if constexpr (!std::is_same<HloOpTy, mhlo::AcoshOp>::value &&
+    if constexpr (!std::is_same<HloOpTy, mhlo::AcosOp>::value &&
+                  !std::is_same<HloOpTy, mhlo::AcoshOp>::value &&
                   !std::is_same<HloOpTy, mhlo::ErfOp>::value &&
                   !std::is_same<HloOpTy, mhlo::TopKOp>::value) {
       if (!stablehloAttr)
@@ -713,8 +718,8 @@ void populateHloToStablehloPatterns(RewritePatternSet* patterns,
 #include "stablehlo/dialect/StablehloOps.cpp.inc"
       >(patterns, converter, context, allowExperimentalFeatures);
 
-  populateHloToStablehloCustomCallPatterns<mhlo::AcoshOp, mhlo::ErfOp,
-                                           mhlo::TopKOp>(
+  populateHloToStablehloCustomCallPatterns<mhlo::AcosOp, mhlo::AcoshOp,
+                                           mhlo::ErfOp, mhlo::TopKOp>(
       patterns, converter, context, allowExperimentalFeatures);
 }
 

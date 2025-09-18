@@ -878,6 +878,8 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerUnaryOp(
 absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
     const HloInstruction* op, llvm::Value* operand_value) {
   switch (op->opcode()) {
+    case HloOpcode::kExp10:
+      return EmitExp10(op->shape().element_type(), operand_value);
     case HloOpcode::kAcos:
       return EmitAcos(op->shape().element_type(), operand_value);
     case HloOpcode::kAcosh:
@@ -2373,6 +2375,11 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitTanh(
   return Unimplemented("tanh");
 }
 
+absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitExp10(
+    PrimitiveType prim_type, llvm::Value* value) {
+  return Unimplemented("exp10");
+}
+
 absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitAcos(
     PrimitiveType prim_type, llvm::Value* value) {
   return Unimplemented("acos");
@@ -3333,6 +3340,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     const ElementalIrEmitter::HloToElementGeneratorMap& operand_to_generator) {
   switch (hlo->opcode()) {
     case HloOpcode::kAbs:
+    case HloOpcode::kExp10:
     case HloOpcode::kAcos:
     case HloOpcode::kAcosh:
     case HloOpcode::kRoundNearestAfz:

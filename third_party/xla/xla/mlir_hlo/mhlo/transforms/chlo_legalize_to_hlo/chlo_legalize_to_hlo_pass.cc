@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -30,7 +29,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
-#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
@@ -51,13 +49,19 @@ namespace mhlo {
 
 namespace {
 
-ChloLegalizeToHighLevelMhloPassOptions FromPassOptions(bool enableAcosh) {
+ChloLegalizeToHighLevelMhloPassOptions FromPassOptions(bool enableAcosh,
+                                                       bool enableAcos) {
   ChloLegalizeToHighLevelMhloPassOptions options;
   options.enable_acosh_ = enableAcosh;
+  options.enable_acos_ = enableAcos;
   return options;
 }
 
-bool isLegalAcosh(chlo::AcoshOp op) {
+static bool isLegalAcosh(chlo::AcoshOp op) {
+  return !llvm::isa<FloatType>(getElementTypeOrSelf(op.getType()));
+}
+
+static bool isLegalAcos(chlo::AcosOp op) {
   return !llvm::isa<FloatType>(getElementTypeOrSelf(op.getType()));
 }
 
@@ -71,18 +75,22 @@ struct ChloLegalizeToHighLevelMhloPass
             ChloLegalizeToHighLevelMhloPass>(options) {}
 
   void runOnOperation() override {
-    MLIRContext &context = getContext();
+    MLIRContext& context = getContext();
     ConversionTarget conversionTarget(context);
     RewritePatternSet conversionPatterns(&context);
 
-    chlo::populateChloToHighLevelMhloOpPatterns(&context, &conversionPatterns,
-                                                FromPassOptions(enable_acosh_));
+    chlo::populateChloToHighLevelMhloOpPatterns(
+        &context, &conversionPatterns,
+        FromPassOptions(enable_acosh_, enable_acos_));
 
     // Consider the mhlo dialect legal for tests. Also add helper dialects
     // that are needed by the patterns.
     conversionTarget.addLegalDialect<chlo::ChloDialect, mhlo::MhloDialect>();
     if (enable_acosh_) {
       conversionTarget.addDynamicallyLegalOp<chlo::AcoshOp>(isLegalAcosh);
+    }
+    if (enable_acos_) {
+      conversionTarget.addDynamicallyLegalOp<chlo::AcosOp>(isLegalAcos);
     }
     conversionTarget
         .addIllegalOp<chlo::TopKOp, chlo::ErfOp, chlo::RaggedDotOp>();
@@ -99,7 +107,7 @@ struct ChloLegalizeToHloPass
   using ChloLegalizeToHloPassBase::ChloLegalizeToHloPassBase;
 
   void runOnOperation() override {
-    MLIRContext &context = getContext();
+    MLIRContext& context = getContext();
     ConversionTarget conversionTarget(context);
     RewritePatternSet conversionPatterns(&context);
 
@@ -190,6 +198,15 @@ LogicalResult convertAcoshChloToMhlo(chlo::AcoshOp op,
   return success();
 }
 
+LogicalResult convertAcosChloToMhlo(chlo::AcosOp op,
+                                    PatternRewriter& rewriter) {
+  if (mhlo::isLegalAcos(op)) {
+    return failure();
+  }
+  rewriter.replaceOpWithNewOp<mhlo::AcosOp>(op, op->getOperands());
+  return success();
+}
+
 }  // namespace
 
 ChloLegalizeToHighLevelMhloPassOptions getDefaultChloToHighLevelMhloOptions() {
@@ -199,6 +216,7 @@ ChloLegalizeToHighLevelMhloPassOptions getDefaultChloToHighLevelMhloOptions() {
 ChloLegalizeToHighLevelMhloPassOptions getGpuChloToHighLevelMhloOptions() {
   ChloLegalizeToHighLevelMhloPassOptions opts;
   opts.enable_acosh_ = true;
+  opts.enable_acos_ = true;
   return opts;
 }
 
@@ -207,7 +225,6 @@ ChloLegalizeToHighLevelMhloPassOptions getGpuChloToHighLevelMhloOptions() {
 namespace chlo {
 namespace {
 #include "chlo_legalize_to_hlo/generated_chlo_legalize_to_hlo.inc"
-
 }  // namespace
 
 void populateChloToHighLevelMhloOpPatterns(
@@ -216,6 +233,9 @@ void populateChloToHighLevelMhloOpPatterns(
   constexpr unsigned kBenefit = 10;
   if (options.enable_acosh_) {
     patterns->add(mhlo::convertAcoshChloToMhlo, kBenefit);
+  }
+  if (options.enable_acos_) {
+    patterns->add(mhlo::convertAcosChloToMhlo, kBenefit);
   }
   patterns->add(mhlo::convertRaggedDotChloToMhlo, kBenefit);
   populateWithGenerated(*patterns);

@@ -372,6 +372,7 @@ INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(DivOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(DomainOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(ErfOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(ExpOp)
+INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(Exp10Op)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(Expm1Op)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(FloorOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(LogOp)
@@ -5053,6 +5054,8 @@ static double rsqrt(double d) { return 1.0 / std::sqrt(d); }
 
 static double logistic(double d) { return 1.0 / (1.0 + std::exp(-d)); }
 
+static double exp10(double d) { return std::pow(10.0, d); }
+
 // NOLINTBEGIN(bugprone-macro-parentheses)
 #define UNARY_FOLDER(Op, Func)                                                \
   OpFoldResult Op::fold(FoldAdaptor adaptor) {                                \
@@ -5122,6 +5125,7 @@ UNARY_FOLDER_UPCAST_TO_F64(AcoshOp, std::acosh, AnyValue)
 UNARY_FOLDER_UPCAST_TO_F64(CosineOp, std::cos, AnyValue)
 UNARY_FOLDER_UPCAST_TO_F64(ErfOp, std::erf, AnyValue)
 UNARY_FOLDER_UPCAST_TO_F64(ExpOp, std::exp, AnyValue)
+UNARY_FOLDER_UPCAST_TO_F64(Exp10Op, exp10, AnyValue)
 UNARY_FOLDER_UPCAST_TO_F64(LogisticOp, logistic, AnyValue)
 UNARY_FOLDER_UPCAST_TO_F64(LogOp, std::log, PositiveValue)
 UNARY_FOLDER_UPCAST_TO_F64(RsqrtOp, rsqrt, PositiveValue)

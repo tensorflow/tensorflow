@@ -239,6 +239,19 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     return HandleAbs<ElementwiseT>(abs);
   }
 
+  absl::Status HandleExp10(const HloInstruction* exp10) override {
+    if constexpr (!is_complex_v<ReturnT>) {
+      TF_ASSIGN_OR_RETURN(
+          Literal literal,
+          ElementWiseUnaryOp(exp10, [](ElementwiseT elem_operand) {
+            return std::pow(static_cast<ElementwiseT>(10), elem_operand);
+          }));
+      parent_->SetEvaluatedLiteralFor(exp10, std::move(literal));
+      return absl::OkStatus();
+    }
+    return UnsupportedTypeError(exp10);
+  }
+
   absl::Status HandleAcos(const HloInstruction* acos) override {
     if constexpr (!is_complex_v<ReturnT>) {
       TF_ASSIGN_OR_RETURN(

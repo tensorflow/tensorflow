@@ -338,6 +338,7 @@ HLO_MATCHER(DynamicSlice);
 HLO_MATCHER(DynamicUpdateSlice);
 HLO_MATCHER(Erf);
 HLO_MATCHER(Exp);
+HLO_MATCHER(Exp10);
 HLO_MATCHER(Fft);
 HLO_MATCHER(Floor);
 HLO_MATCHER(Fusion);

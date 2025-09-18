@@ -101,6 +101,7 @@ namespace xla {
   V(kDynamicUpdateSlice, "dynamic-update-slice", kHloOpcodeIsVariadic)         \
   V(kErf, "erf", 1)                                                            \
   V(kExp, "exponential", 1)                                                    \
+  V(kExp10, "exp10", 1)                                                        \
   V(kExpm1, "exponential-minus-one", 1)                                        \
   V(kFft, "fft", 1)                                                            \
   V(kFloor, "floor", 1)                                                        \

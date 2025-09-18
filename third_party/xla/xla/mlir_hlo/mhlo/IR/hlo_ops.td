@@ -234,6 +234,17 @@ def MHLO_AcosOp : MHLO_UnaryElementwiseOp<"acos",
   let hasFolder = 1;
 }
 
+def MHLO_Exp10Op : MHLO_UnaryElementwiseOp<"exp10",
+    [HLO_CompatibleOperandsAndResultType], HLO_AnyFpOrComplexTensor> {
+  let summary = "Exp10 operation";
+
+  let description = [{
+    Performs element-wise base-10 exponentiation of `operand` tensor and
+    produces a `result` tensor.
+  }];
+  let hasFolder = 1;
+}
+
 def MHLO_AcoshOp : MHLO_UnaryElementwiseOp<"acosh",
     [HLO_CompatibleOperandsAndResultType], HLO_AnyFpOrComplexTensor> {
   let summary = "Acosh operation";
