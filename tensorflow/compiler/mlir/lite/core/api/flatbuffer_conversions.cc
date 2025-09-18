@@ -2396,7 +2396,7 @@ absl::Status ParseStablehloReduceWindow(const Operator* op,
       op->builtin_options_2_as_StablehloReduceWindowOptions();
   if (schema_params) {
     if (!schema_params->window_dimensions() ||
-        schema_params->window_dimensions()->size() == 0) {
+        schema_params->window_dimensions()->empty()) {
       auto error_message =
           "'window_dimensions' attribute is not optional for "
           "'stablehlo.reduce_window' and cannot be empty.";
@@ -2410,7 +2410,7 @@ absl::Status ParseStablehloReduceWindow(const Operator* op,
                        const flatbuffers::Vector<int64_t>* flatbuffer_vector,
                        const char* attr_name, const size_t expected_size,
                        const int64_t fill_value) -> absl::Status {
-      if (flatbuffer_vector && flatbuffer_vector->size()) {
+      if (flatbuffer_vector && !flatbuffer_vector->empty()) {
         if (expected_size != 0 && flatbuffer_vector->size() != expected_size) {
           auto error_message = absl::StrFormat(
               "'%s' attribute of 'stablehlo.reduce_window' does not have the "
