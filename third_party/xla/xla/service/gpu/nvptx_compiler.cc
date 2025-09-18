@@ -361,14 +361,17 @@ absl::Status NVPTXCompiler::AddConvAndGemmAutotuningPasses(
           .debug_options()
           .xla_gpu_experimental_disable_binary_libraries() ||
       debug_options.xla_gpu_autotune_level() == 0 ||
-      debug_options.xla_gpu_exclude_nondeterministic_ops() ||
-      stream_exec == nullptr) {
+      debug_options.xla_gpu_exclude_nondeterministic_ops()) {
     return absl::OkStatus();
   }
 
   // TODO(b/407495801): Cached Gemm as well as Conv autotuning results are
   // loaded in the GpuConvAlgorithmPicker but should be loaded in the autotuner.
   pipeline->AddPass<GpuConvAlgorithmPicker>(autotune_config);
+
+  if (stream_exec == nullptr) {
+    return absl::OkStatus();
+  }
 
   std::vector<std::unique_ptr<CodegenBackend>> backends;
   backends.push_back(
