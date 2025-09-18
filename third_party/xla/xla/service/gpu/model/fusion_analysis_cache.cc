@@ -27,7 +27,7 @@ namespace xla::gpu {
 const HloFusionAnalysis& HloFusionAnalysisCache::Get(
     const HloInstruction& instruction) {
   {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     auto it = analyses_.find(instruction.unique_id());
     if (it != analyses_.end()) {
       return it->second;
@@ -36,7 +36,7 @@ const HloFusionAnalysis& HloFusionAnalysisCache::Get(
 
   HloFusionAnalysis analysis =
       HloFusionAnalysis::Create(instruction, device_info_);
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
 
   // If some other thread created an entry for this key concurrently, return
   // that instead (the other thread is likely using the instance).
@@ -53,7 +53,7 @@ const HloFusionAnalysis& HloFusionAnalysisCache::Get(
     const HloInstruction& producer, const HloInstruction& consumer) {
   std::pair<int64_t, int64_t> key{producer.unique_id(), consumer.unique_id()};
   {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     auto it = producer_consumer_analyses_.find(key);
     if (it != producer_consumer_analyses_.end()) {
       return it->second;
@@ -62,7 +62,7 @@ const HloFusionAnalysis& HloFusionAnalysisCache::Get(
 
   HloFusionAnalysis analysis =
       HloFusionAnalysis::Create(producer, consumer, device_info_);
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
 
   // If some other thread created an entry for this key concurrently, return
   // that instead (the other thread is likely using the instance).
