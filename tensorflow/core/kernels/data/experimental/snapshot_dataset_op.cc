@@ -366,8 +366,7 @@ class SnapshotDatasetV2Op::Dataset : public DatasetBase {
           dataset()->shard_func_->Instantiate(ctx, &instantiated_shard_func_));
 
       return dataset()->input_->MakeIterator(
-          ctx, this, strings::StrCat(prefix(), "::WriterIterator"),
-          &input_impl_);
+          ctx, this, absl::StrCat(prefix(), "::WriterIterator"), &input_impl_);
     }
 
     absl::Status GetNextInternal(IteratorContext* ctx,
@@ -513,8 +512,8 @@ class SnapshotDatasetV2Op::Dataset : public DatasetBase {
 
       experimental::SnapshotMetadataRecord metadata;
       metadata.set_creation_timestamp(EnvTime::NowMicros());
-      metadata.set_graph_hash(strings::StrCat(dataset()->hash_));
-      metadata.set_run_id(strings::StrCat(run_id_));
+      metadata.set_graph_hash(absl::StrCat(dataset()->hash_));
+      metadata.set_run_id(absl::StrCat(run_id_));
       metadata.set_version(kFileFormatVersion);
       for (const auto& output_dtype : dataset()->output_dtypes()) {
         metadata.add_dtype(output_dtype);
@@ -1108,9 +1107,9 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         if (dataset()->snapshot_name_.empty()) {
           hash_dir_ = io::JoinPath(dataset()->dir_, dataset()->graph_hash_);
         } else {
-          hash_dir_ = io::JoinPath(
-              dataset()->dir_,
-              strings::StrCat("custom-", dataset()->snapshot_name_));
+          hash_dir_ =
+              io::JoinPath(dataset()->dir_,
+                           absl::StrCat("custom-", dataset()->snapshot_name_));
         }
       }
 
@@ -1393,16 +1392,16 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           TF_RETURN_IF_ERROR(
               writer->WriteScalar(full_name(kVersionStr), version_));
           TF_RETURN_IF_ERROR(writer->WriteScalar(
-              full_name(strings::StrCat(kFilenames, kSizeSuffix)),
+              full_name(absl::StrCat(kFilenames, kSizeSuffix)),
               filenames_.size()));
           for (size_t i = 0; i < filenames_.size(); ++i) {
             TF_RETURN_IF_ERROR(writer->WriteScalar(
-                full_name(strings::StrCat(kFilenames, "[", i, "]")),
+                full_name(absl::StrCat(kFilenames, "[", i, "]")),
                 filenames_[i]));
           }
           for (auto i = 0; i < dataset()->num_reader_threads_; ++i) {
             TF_RETURN_IF_ERROR(writer->WriteScalar(
-                full_name(strings::StrCat(kCurrentFilenames, "[", i, "]")),
+                full_name(absl::StrCat(kCurrentFilenames, "[", i, "]")),
                 curr_filenames_[i]));
           }
           TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kElementsProduced),
@@ -1442,14 +1441,14 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           for (auto i = 0; i < dataset()->num_reader_threads_; ++i) {
             curr_filenames_.emplace_back();
             TF_RETURN_IF_ERROR(reader->ReadScalar(
-                full_name(strings::StrCat(kCurrentFilenames, "[", i, "]")),
+                full_name(absl::StrCat(kCurrentFilenames, "[", i, "]")),
                 &curr_filenames_.back()));
           }
           size_t filenames_size;
           {
             int64_t temp;
             TF_RETURN_IF_ERROR(reader->ReadScalar(
-                full_name(strings::StrCat(kFilenames, kSizeSuffix)), &temp));
+                full_name(absl::StrCat(kFilenames, kSizeSuffix)), &temp));
             filenames_size = static_cast<size_t>(temp);
           }
           if (filenames_.size() != filenames_size) {
@@ -1461,7 +1460,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           for (size_t i = 0; i < filenames_size; ++i) {
             filenames_.emplace_back();
             TF_RETURN_IF_ERROR(reader->ReadScalar(
-                full_name(strings::StrCat(kFilenames, "[", i, "]")),
+                full_name(absl::StrCat(kFilenames, "[", i, "]")),
                 &filenames_.back()));
           }
           {
@@ -1811,8 +1810,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kElementsProduced),
                                                  elements_produced_));
           TF_RETURN_IF_ERROR(writer->WriteScalar(
-              full_name(strings::StrCat(kBuffer, kSizeSuffix)),
-              buffer_.size()));
+              full_name(absl::StrCat(kBuffer, kSizeSuffix)), buffer_.size()));
           for (size_t i = 0; i < buffer_.size(); ++i) {
             auto& buffer_element = buffer_[i];
             if (buffer_element.end_of_sequence) {
@@ -1834,15 +1832,14 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                                                  num_elements_written_));
           if (next_elem_.end_of_sequence) {
             TF_RETURN_IF_ERROR(writer->WriteScalar(
-                full_name(strings::StrCat(kNextElem, ".", kEndOfSequence)),
-                ""));
+                full_name(absl::StrCat(kNextElem, ".", kEndOfSequence)), ""));
           }
           TF_RETURN_IF_ERROR(writer->WriteScalar(
-              full_name(strings::StrCat(kNextElem, kSizeSuffix)),
+              full_name(absl::StrCat(kNextElem, kSizeSuffix)),
               next_elem_.value.size()));
           for (size_t i = 0; i < next_elem_.value.size(); i++) {
             TF_RETURN_IF_ERROR(writer->WriteTensor(
-                full_name(strings::StrCat(kNextElem, "[", i, "]")),
+                full_name(absl::StrCat(kNextElem, "[", i, "]")),
                 next_elem_.value[i]));
           }
           VLOG(2) << "Saving SnapshotWriterIterator: " << num_elements_written_
@@ -1882,7 +1879,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           {
             int64_t temp;
             TF_RETURN_IF_ERROR(reader->ReadScalar(
-                full_name(strings::StrCat(kBuffer, kSizeSuffix)), &temp));
+                full_name(absl::StrCat(kBuffer, kSizeSuffix)), &temp));
             buffer_size = static_cast<size_t>(temp);
           }
           for (size_t i = 0; i < buffer_size; i++) {
@@ -1936,11 +1933,11 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           {
             int64_t temp;
             TF_RETURN_IF_ERROR(reader->ReadScalar(
-                full_name(strings::StrCat(kNextElem, kSizeSuffix)), &temp));
+                full_name(absl::StrCat(kNextElem, kSizeSuffix)), &temp));
             next_elem_size = static_cast<size_t>(temp);
           }
           if (reader->Contains(
-                  full_name(strings::StrCat(kNextElem, ".", kEndOfSequence)))) {
+                  full_name(absl::StrCat(kNextElem, ".", kEndOfSequence)))) {
             next_elem_.end_of_sequence = true;
           } else {
             next_elem_.end_of_sequence = false;
@@ -1949,7 +1946,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           for (size_t i = 0; i < next_elem_size; i++) {
             next_elem_.value.emplace_back();
             TF_RETURN_IF_ERROR(reader->ReadTensor(
-                ctx->flr(), full_name(strings::StrCat(kNextElem, "[", i, "]")),
+                ctx->flr(), full_name(absl::StrCat(kNextElem, "[", i, "]")),
                 &next_elem_.value.back()));
           }
           VLOG(2) << "Restoring SnapshotWriterIterator: "

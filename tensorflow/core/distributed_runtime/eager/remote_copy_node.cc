@@ -70,7 +70,7 @@ string GetUniqueWireID() {
   static tensorflow::uint64 random_seed = random::New64();
   static tensorflow::mutex wireid_mutex(tensorflow::LINKER_INITIALIZED);
   static std::atomic<int64_t> wire_id;
-  return strings::StrCat(random_seed, "_", wire_id++);
+  return absl::StrCat(random_seed, "_", wire_id++);
 }
 
 }  // namespace
