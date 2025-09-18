@@ -87,7 +87,7 @@ class StatusLogSink : public absl::LogSink {
   }
 
   void GetMessages(std::vector<std::string>* logs) TF_LOCKS_EXCLUDED(mu_) {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
 
     for (auto& msg : messages_) {
       logs->push_back(msg);
@@ -97,7 +97,7 @@ class StatusLogSink : public absl::LogSink {
   void Send(const absl::LogEntry& entry) override TF_LOCKS_EXCLUDED(mu_) {
     if (entry.log_severity() < absl::LogSeverity::kWarning) return;
 
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     messages_.emplace_back(entry.text_message_with_prefix());
     if (messages_.size() > static_cast<size_t>(num_messages_)) {
       messages_.pop_front();
