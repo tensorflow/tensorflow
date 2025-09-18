@@ -160,7 +160,7 @@ TEST(CreateProtoDebugStringLibTest, ValidSimpleTypes) {
     proto.mutable_optional_string()->push_back(static_cast<char>(i));
     proto.mutable_optional_bytes()->push_back(static_cast<char>(i));
   }
-  strings::StrAppend(proto.mutable_optional_string(), "¢€𐍈");
+  absl::StrAppend(proto.mutable_optional_string(), "¢€𐍈");
   proto.set_optional_cord(proto.optional_string());
   EXPECT_TEXT_TRANSFORMS_MATCH();
 
