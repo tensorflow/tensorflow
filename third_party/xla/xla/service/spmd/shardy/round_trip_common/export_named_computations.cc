@@ -24,6 +24,7 @@ limitations under the License.
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/CommandLine.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -107,13 +108,17 @@ StringAttr createFuncOpOrGetFromCache(
     mlir::IRRewriter& rewriter, SymbolTable& symbolTable,
     ManualAxesAttr manualAxesAttr,
     std::optional<TensorShardingPerValueAttr> inShardings,
-    std::optional<TensorShardingPerValueAttr> outShardings) {
-  auto key = std::make_tuple(namedComputationOp.getName(),
-                             namedComputationOp.getInShardings().value_or(
-                                 TensorShardingPerValueAttr()),
-                             namedComputationOp.getOutShardings().value_or(
-                                 TensorShardingPerValueAttr()),
-                             manualAxesAttr);
+    std::optional<TensorShardingPerValueAttr> outShardings,
+    bool deduplicateFunctionsFully) {
+  auto key =
+      std::make_tuple(namedComputationOp.getName(),
+                      deduplicateFunctionsFully
+                          ? TensorShardingPerValueAttr()
+                          : inShardings.value_or(TensorShardingPerValueAttr()),
+                      deduplicateFunctionsFully
+                          ? TensorShardingPerValueAttr()
+                          : outShardings.value_or(TensorShardingPerValueAttr()),
+                      manualAxesAttr);
   if (auto it = funcCache.find(key); it != funcCache.end()) {
     return it->second;
   }
@@ -130,6 +135,17 @@ class ExportNamedComputationsPass
                                mlir::OperationPass<ModuleOp>> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ExportNamedComputationsPass)
+
+  explicit ExportNamedComputationsPass(bool deduplicateFunctionsFully) {
+    this->deduplicateFunctionsFully = deduplicateFunctionsFully;
+  }
+
+  ExportNamedComputationsPass() = default;
+
+  explicit ExportNamedComputationsPass(
+      const ExportNamedComputationsPass& other) {
+    this->deduplicateFunctionsFully = other.deduplicateFunctionsFully;
+  }
 
   llvm::SmallDenseMap<ComputationKey, StringAttr> funcCache;
 
@@ -156,7 +172,7 @@ class ExportNamedComputationsPass
       }
       StringAttr funcSymName = createFuncOpOrGetFromCache(
           namedComputationOp, funcCache, rewriter, symbolTable, manualAxesAttr,
-          inShardings, outShardings);
+          inShardings, outShardings, deduplicateFunctionsFully);
 
       // Replace the `NamedComputationOp` with a `CallOp`.
       rewriter.setInsertionPoint(namedComputationOp);
@@ -187,16 +203,27 @@ class ExportNamedComputationsPass
            "`FuncOp` and `CallOp` have the same shardings as the original "
            "`NamedComputationOp`s operands/results.";
   }
+
+  Option<bool> deduplicateFunctionsFully{
+      *this, "deduplicate-functions-fully",
+      llvm::cl::desc(
+          "Whether to deduplicate functions fully, regardless of the input and "
+          "output shardings of functions, and it keeps one function for each "
+          "input function. The default is false, meaning it will deduplicate "
+          "only if the input and output shardings are the same."),
+      llvm::cl::init(false)};
 };
 
 }  // namespace
 
-std::unique_ptr<mlir::Pass> createExportNamedComputationsPass() {
-  return std::make_unique<ExportNamedComputationsPass>();
+std::unique_ptr<mlir::Pass> createExportNamedComputationsPass(
+    bool deduplicateFunctionsFully) {
+  return std::make_unique<ExportNamedComputationsPass>(
+      deduplicateFunctionsFully);
 }
 
 void registerExportNamedComputationsPass() {
-  mlir::registerPass(createExportNamedComputationsPass);
+  mlir::registerPass(std::make_unique<ExportNamedComputationsPass>);
 }
 
 }  // namespace sdy
