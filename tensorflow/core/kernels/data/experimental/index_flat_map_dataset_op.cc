@@ -252,7 +252,7 @@ class IndexFlatMapDatasetOp::Dataset::Iterator
 
   absl::Status Initialize(IteratorContext* ctx) override
       ABSL_LOCKS_EXCLUDED(mu_) {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     TF_RETURN_IF_ERROR(
         dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_));
     TF_RETURN_IF_ERROR(dataset()->captured_map_func_->Instantiate(
@@ -270,7 +270,7 @@ class IndexFlatMapDatasetOp::Dataset::Iterator
       return Get(ctx, out_tensors, end_of_sequence);
     }
 
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     absl::StatusOr<std::tuple<size_t, size_t>> next_input_index_and_offset =
         GetUnflattenedIndex(ctx, element_count_);
     TF_RETURN_IF_ERROR(next_input_index_and_offset.status());
@@ -304,7 +304,7 @@ class IndexFlatMapDatasetOp::Dataset::Iterator
           cardinality, " for dataset ", dataset()->DebugString(), "."));
     }
 
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     size_t offset = 0;
     IteratorContext ctx_with_index_mapper =
         GetContextWithIndexMapper(ctx, offset);
@@ -384,7 +384,7 @@ class IndexFlatMapDatasetOp::Dataset::Iterator
   absl::Status SaveInternal(SerializationContext* ctx,
                             IteratorStateWriter* writer) override
       ABSL_LOCKS_EXCLUDED(mu_) {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     TF_RETURN_IF_ERROR(
         writer->WriteScalar(prefix(), kElementCount, element_count_));
     TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kInputElementCount,
@@ -403,7 +403,7 @@ class IndexFlatMapDatasetOp::Dataset::Iterator
   absl::Status RestoreInternal(IteratorContext* ctx,
                                IteratorStateReader* reader) override
       ABSL_LOCKS_EXCLUDED(mu_) {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     if (ctx->restored_element_count().has_value()) {
       return RestoreInput(ctx, reader, input_impl_);
     }
