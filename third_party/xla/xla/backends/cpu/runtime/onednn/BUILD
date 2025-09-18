@@ -31,6 +31,7 @@ onednn_graph_cc_library(
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -83,8 +84,8 @@ cc_library(
     hdrs = ["onednn_threadpool.h"],
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
     deps = [
-        ":onednn_interop",
         "//xla/backends/cpu/runtime:work_queue",
+        "//xla/tsl/concurrency:async_value",
         "//xla/tsl/mkl:onednn",
         "@eigen_archive//:eigen3",
     ],

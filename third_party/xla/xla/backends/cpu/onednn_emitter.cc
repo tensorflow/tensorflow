@@ -17,14 +17,15 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 
-#include "oneapi/dnnl/dnnl_common.hpp"
-#include "oneapi/dnnl/dnnl_graph.hpp"
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "oneapi/dnnl/dnnl_common.hpp"
+#include "oneapi/dnnl/dnnl_graph.hpp"  // NOLINT
 #include "xla/backends/cpu/onednn_fusion.h"
 #include "xla/backends/cpu/onednn_support.h"
 #include "xla/backends/cpu/runtime/dot_lib.h"

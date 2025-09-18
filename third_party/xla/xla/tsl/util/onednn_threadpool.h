@@ -27,9 +27,9 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "dnnl_threadpool.hpp"
 #include "absl/synchronization/blocking_counter.h"
 #include "dnnl.hpp"
+#include "oneapi/dnnl/dnnl_threadpool.hpp"
 #include "xla/tsl/platform/threadpool.h"
 #include "tsl/platform/cpu_info.h"
 
