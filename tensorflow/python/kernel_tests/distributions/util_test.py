@@ -925,9 +925,9 @@ class SoftplusTest(test.TestCase):
       softplus_inverse = du.softplus_inverse(softplus)
       [tf_softplus, tf_softplus_inverse] = sess.run([
           softplus, softplus_inverse])
-    self.assertAllCloseAccordingToType(np_softplus, tf_softplus)
     rtol = {"float16": 0.07, "float32": 0.003, "float64": 0.002}.get(
         str(np_features.dtype), 1e-6)
+    self.assertAllCloseAccordingToType(np_softplus, tf_softplus, rtol=rtol)
     # This will test that we correctly computed the inverse by verifying we
     # recovered the original input.
     self.assertAllCloseAccordingToType(

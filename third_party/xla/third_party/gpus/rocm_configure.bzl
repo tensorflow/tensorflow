@@ -295,6 +295,7 @@ def _find_libs(repository_ctx, rocm_config, miopen_path, rccl_path, bash_bin):
             ("hipsparse", rocm_config.rocm_toolkit_path),
             ("roctracer64", rocm_config.rocm_toolkit_path),
             ("rocsolver", rocm_config.rocm_toolkit_path),
+            ("rocprofiler-sdk", rocm_config.rocm_toolkit_path),
         ]
     ]
     if int(rocm_config.rocm_version_number) >= 40500:
