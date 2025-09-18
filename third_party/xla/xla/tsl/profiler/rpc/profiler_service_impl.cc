@@ -101,7 +101,7 @@ class ProfilerServiceImpl : public tensorflow::grpc::ProfilerService::Service {
         return ::grpc::Status::CANCELLED;
       }
       if (TF_PREDICT_FALSE(IsStopped(req->session_id()))) {
-        absl::MutexLock lock(&mutex_);
+        absl::MutexLock lock(mutex_);
         stop_signals_per_session_.erase(req->session_id());
         break;
       }
@@ -119,14 +119,14 @@ class ProfilerServiceImpl : public tensorflow::grpc::ProfilerService::Service {
   ::grpc::Status Terminate(::grpc::ServerContext* ctx,
                            const TerminateRequest* req,
                            TerminateResponse* response) override {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     stop_signals_per_session_[req->session_id()] = true;
     return ::grpc::Status::OK;
   }
 
  private:
   bool IsStopped(const std::string& session_id) {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     auto it = stop_signals_per_session_.find(session_id);
     return it != stop_signals_per_session_.end() && it->second;
   }
