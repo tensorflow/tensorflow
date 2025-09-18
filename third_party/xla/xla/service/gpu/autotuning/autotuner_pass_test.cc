@@ -118,7 +118,7 @@ TEST_F(AutotunerPassTest, CublasGemmIsAutotuned) {
                             &thread_pool, IsCublasGemmInstruction,
                             allocator_.get()));
   EXPECT_THAT(pass->Run(module.get(), /*execution_threads=*/{}),
-              tsl::testing::IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
   // Verify that the backend config has been updated in the HLO.
   auto gemm =
       module->entry_computation()->GetInstructionWithName("custom-call.1");
@@ -147,7 +147,7 @@ TEST_F(AutotunerPassTest, CublasGemmIsNotAutotunedWhenFilterReturnsFalse) {
                             module->config().debug_options(), stream_executor_,
                             &thread_pool, should_autotune, allocator_.get()));
   EXPECT_THAT(pass->Run(module.get(), /*execution_threads=*/{}),
-              tsl::testing::IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
   // Verify that the backend config has *not* been updated in the HLO.
   auto gemm =
       module->entry_computation()->GetInstructionWithName("custom-call.1");
@@ -183,7 +183,7 @@ TEST_F(AutotunerPassTest, CublasGemmIsAutotunedAndCached) {
                               stream_executor_, &thread_pool,
                               IsCublasGemmInstruction, allocator_.get()));
     EXPECT_THAT(pass->Run(module.get(), /*execution_threads=*/{}),
-                tsl::testing::IsOkAndHolds(true));
+                absl_testing::IsOkAndHolds(true));
   }
 
   // Verify that the backend config has been updated in the HLO.
@@ -221,7 +221,7 @@ TEST_F(AutotunerPassTest, CublasGemmIsAutotunedAndCached) {
                               stream_executor_, &thread_pool,
                               IsCublasGemmInstruction, allocator_.get()));
     EXPECT_THAT(pass2->Run(module.get(), /*execution_threads=*/{}),
-                tsl::testing::IsOkAndHolds(true));
+                absl_testing::IsOkAndHolds(true));
   }
 
   // Verify that the backend config in the HLO matches the cache.
