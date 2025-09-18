@@ -48,6 +48,11 @@ namespace {
 // NOLINTNEXTLINE(llvm-prefer-static-over-anonymous-namespace)
 LogicalResult verifyNoSdyAttributes(Operation* op, NamedAttribute attr) {
   auto name = attr.getName();
+  if (name.getValue() == "sdy.sharding_rule") {
+    // TODO: b/445482443 - Figure out why sharding rule fails to convert,
+    // currently dropped on the way to HLO.
+    return success();
+  }
   if (name.getValue().starts_with("sdy.")) {
     return op->emitError("SDY attribute encountered: ")
            << name
