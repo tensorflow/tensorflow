@@ -6174,14 +6174,13 @@ void SpmdPartitioningVisitor::SetPartitionedHlo(
     auto* module = const_cast<HloModule*>(hlo->parent()->parent());
     module->mutable_original_value_recovery_table().AddRecoveryComputation(
         hlo, partitioned_hlo.hlo(),
-        [&](const ShapeIndex& index,
-            const OriginalArray& replaced_original_array,
-            const xla::Shape& replaced_array_shape,
-            const xla::Shape& replacing_array_shape) {
+        [&](const ShapeIndex& index, const OriginalArray& old_original_array,
+            const xla::Shape& old_array_shape,
+            const xla::Shape& new_array_shape) {
           SpmdBuilder builder("recovery_computation", nullptr);
           auto* param =
               builder.AddInstruction(xla::HloInstruction::CreateParameter(
-                  0, replacing_array_shape, "param"));
+                  0, new_array_shape, "param"));
           if (sharding.IsTuple()) {
             param->set_sharding(sharding.GetSubSharding(hlo->shape(), index));
           } else {
@@ -6203,7 +6202,7 @@ void SpmdPartitioningVisitor::SetPartitionedHlo(
           partitioning_state.next_channel_id = &next_channel_id;
           partitioning_state.reshard_cache = &reshard_cache;
 
-          PartitionedHlo param_partitioned_hlo(param, replaced_array_shape,
+          PartitionedHlo param_partitioned_hlo(param, old_array_shape,
                                                partitioning_state);
           // Creates computation to recover the partitioned value.
           param_partitioned_hlo.Replicate();

@@ -926,47 +926,47 @@ class HloModule {
             original_value_recovery_table);
 
     // Populates the original value recovery table for a transformation that
-    // replaces `replaced_inst` with `replacing_inst`.
+    // replaces `old_inst` with `new_inst`.
     //
     // This method facilitates tracking of "original values" across HLO passes.
     // When an instruction is replaced, this method helps establish the link
     // between the original values of the old instruction and the new one.
     //
     // It iterates through each `OriginalArray` associated with the
-    // `replaced_inst`. For each, it invokes the `build_recovery_computation`
+    // `old_inst`. For each, it invokes the `build_recovery_computation`
     // callback to determine how to recover the original value. The callback can
     // either provide a recovery computation (as an `HloModule`), indicate that
-    // the original value can be directly propagated, or indicate that it cannot
-    // be recovered. If the callback is not provided, the original value is
-    // propagated by default. This is the same as if the callback always
+    // the original value can be directly propagated, or that it cannot be
+    // recovered. If the callback is not provided, the original value is
+    // passed through unchanged. This is the same as if the callback always
     // returns `nullptr` (see below).
     //
-    // Precondition: `replaced_inst` and `replacing_inst` must have shapes with
+    // Precondition: `old_inst` and `new_inst` must have shapes with
     // identical tuple structures.
     //
     // The `build_recovery_computation` callback has the following signature:
     // `std::optional<std::unique_ptr<HloModule>>(
     //     const ShapeIndex& index,
-    //     const OriginalArray& replaced_original_array,
-    //     const xla::Shape& replaced_array_shape,
-    //     const xla::Shape& replacing_array_shape)`
+    //     const OriginalArray& old_original_array,
+    //     const xla::Shape& old_array_shape,
+    //     const xla::Shape& new_array_shape)`
     //
-    // It is called for each `OriginalArray` in `replaced_inst` and should
+    // It is called for each `OriginalArray` in `old_inst` and should
     // return one of the following:
     //
     //  - A valid `std::unique_ptr<HloModule>`: This HLO module represents the
     //    recovery computation. Its entry computation must take one parameter
-    //    (the value corresponding to the `OriginalArray` in `replacing_inst`)
-    //    and return the recovered value (which should match the value of the
-    //    `OriginalArray` in `replaced_inst`). An entry will be added to the
+    //    (the value corresponding to the `OriginalArray` in `new_inst`)
+    //    and return the recovered value (which should produce the value of the
+    //    `OriginalArray` in `old_inst`). An entry will be added to the
     //    recovery table.
     //
     //  - `nullptr` (as a `std::unique_ptr<HloModule>`): This indicates that the
-    //    original value is preserved identically.
-    //    - If `replacing_inst` does not have an `OriginalArray` at this
-    //      `ShapeIndex`, the `OriginalArray` from `replaced_inst` is directly
+    //    original value should be passed through unchanged.
+    //    - If `new_inst` does not have an `OriginalArray` at this
+    //      `ShapeIndex`, the `OriginalArray` from `old_inst` is directly
     //      propagated to it. No entry is added to the recovery table.
-    //    - If `replacing_inst` already has an `OriginalArray`, an entry is
+    //    - If `new_inst` already has an `OriginalArray`, an entry is
     //      added to the table mapping the old `OriginalArray` to the new one
     //      with a `nullptr` recovery module, signifying they are equivalent.
     //
@@ -974,35 +974,33 @@ class HloModule {
     //    recovered and should be dropped.
     //
     // This method will create `OriginalValue` and placeholder `OriginalArray`s
-    // for `replacing_inst` if they don't already exist and a recovery is
+    // for `new_inst` if they don't already exist and a recovery is
     // established.
     void AddRecoveryComputation(
-        const HloInstruction* replaced_inst, HloInstruction* replacing_inst,
+        const HloInstruction* old_inst, HloInstruction* new_inst,
         std::function<std::optional<std::unique_ptr<HloModule>>(
-            const ShapeIndex& index,
-            const OriginalArray& replaced_original_array,
-            const xla::Shape& replaced_array_shape,
-            const xla::Shape& replacing_array_shape)>&&
-            build_recovery_computation = nullptr);
+            const ShapeIndex& index, const OriginalArray& old_original_array,
+            const xla::Shape& old_array_shape,
+            const xla::Shape& new_array_shape)>&& build_recovery_computation =
+            nullptr);
 
     // Similar to `AddRecoveryComputation`, but the callback is provided an
     // HLO module builder so that caller can directly build the recovery
     // computation with less boilerplate.
     void BuildAndAddRecoveryComputation(
-        const HloInstruction* replaced_inst, HloInstruction* replacing_inst,
+        const HloInstruction* old_inst, HloInstruction* new_inst,
         std::function<std::optional<HloInstruction*>(
             xla::HloComputation::Builder& builder, const ShapeIndex& index,
-            const OriginalArray& replaced_original_array,
-            const xla::Shape& replaced_array_shape,
-            const xla::Shape& replacing_array_shape)>&&
-            build_recovery_computation);
+            const OriginalArray& old_original_array,
+            const xla::Shape& old_array_shape,
+            const xla::Shape& new_array_shape)>&& build_recovery_computation);
 
     bool empty() const { return table_.empty(); }
 
-    void emplace(const OriginalArray& replaced_original_array,
+    void emplace(const OriginalArray& old_original_array,
                  std::pair<OriginalArray, std::unique_ptr<HloModule>>&&
                      recovery_computation) {
-      table_.emplace(replaced_original_array, std::move(recovery_computation));
+      table_.emplace(old_original_array, std::move(recovery_computation));
     }
 
     iterator begin() { return table_.begin(); }

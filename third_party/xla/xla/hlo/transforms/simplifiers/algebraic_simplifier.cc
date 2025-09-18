@@ -5268,14 +5268,12 @@ absl::Status AlgebraicSimplifierVisitor::HandleBroadcast(
           .BuildAndAddRecoveryComputation(
               operand, operand->mutable_operand(0),
               [](xla::HloComputation::Builder& builder, const ShapeIndex& index,
-                 const OriginalArray& replaced_original_array,
-                 const xla::Shape& replaced_shape,
-                 const xla::Shape& replacing_shape) {
-                xla::HloInstruction* param =
-                    builder.AddInstruction(xla::HloInstruction::CreateParameter(
-                        0, replacing_shape, "p"));
+                 const OriginalArray& old_original_array,
+                 const xla::Shape& old_shape, const xla::Shape& new_shape) {
+                xla::HloInstruction* param = builder.AddInstruction(
+                    xla::HloInstruction::CreateParameter(0, new_shape, "p"));
                 return builder.AddInstruction(
-                    xla::HloInstruction::CreateReshape(replaced_shape, param));
+                    xla::HloInstruction::CreateReshape(old_shape, param));
               });
       return ReplaceWithNewInstruction(
           broadcast,
