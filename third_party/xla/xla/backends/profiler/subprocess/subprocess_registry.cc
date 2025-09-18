@@ -71,7 +71,7 @@ absl::Status RegisterSubprocess(SubprocessInfo&& subprocess_info) {
   subprocess_info.profiler_stub =
       tensorflow::grpc::ProfilerService::NewStub(channel);
   {
-    absl::MutexLock l(&registry().mu);
+    absl::MutexLock l(registry().mu);
     if (!registry().subprocesses.insert(subprocess_info).second) {
       return absl::AlreadyExistsError(
           absl::StrCat(subprocess_info.DebugString(), " already registered"));
@@ -96,7 +96,7 @@ absl::Status RegisterSubprocess(pid_t pid,
 }
 
 absl::Status UnregisterSubprocess(pid_t pid) {
-  absl::MutexLock l(&registry().mu);
+  absl::MutexLock l(registry().mu);
   if (registry().subprocesses.erase({pid, ""}) == 0) {
     LOG(WARNING) << "Subprocess " << pid << " not found";
     return absl::NotFoundError(absl::StrCat(pid, " not found"));
@@ -105,7 +105,7 @@ absl::Status UnregisterSubprocess(pid_t pid) {
 }
 
 std::vector<SubprocessInfo> GetRegisteredSubprocesses() {
-  absl::MutexLock l(&registry().mu);
+  absl::MutexLock l(registry().mu);
   std::vector<SubprocessInfo> subprocesses;
   subprocesses.reserve(registry().subprocesses.size());
   for (const SubprocessInfo& subprocess_info : registry().subprocesses) {
