@@ -2232,14 +2232,15 @@ void MsaAlgorithm::ProcessBlockPrefetches() {
         std::upper_bound(prefetch_end_times.begin(), prefetch_end_times.end(),
                          start_time) -
         prefetch_end_times.begin();
-    int64_t n_in_flight_prefetches =
+    int64_t n_prefetches_already_in_flight =
         n_prefetches_scheduled - n_prefetches_finished;
 
-    if (n_in_flight_prefetches > max_in_flight_prefetches_allowed) {
+    if (n_prefetches_already_in_flight >= max_in_flight_prefetches_allowed) {
       LOG(WARNING)
           << "block prefetched value exceeds max prefetches in flight: "
           << maybe_sliced_value->defining_position().ToString() << " "
-          << n_in_flight_prefetches << " " << max_in_flight_prefetches_allowed;
+          << n_prefetches_already_in_flight << " "
+          << max_in_flight_prefetches_allowed;
       continue;
     }
 
