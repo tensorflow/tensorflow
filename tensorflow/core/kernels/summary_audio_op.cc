@@ -69,9 +69,9 @@ class SummaryAudioOp : public OpKernel {
     for (int i = 0; i < N; ++i) {
       Summary::Value* v = s.add_value();
       if (max_outputs_ > 1) {
-        v->set_tag(strings::StrCat(base_tag, "/audio/", i));
+        v->set_tag(absl::StrCat(base_tag, "/audio/", i));
       } else {
-        v->set_tag(strings::StrCat(base_tag, "/audio"));
+        v->set_tag(absl::StrCat(base_tag, "/audio"));
       }
 
       Summary::Audio* sa = v->mutable_audio();
