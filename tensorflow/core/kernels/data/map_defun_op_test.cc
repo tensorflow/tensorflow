@@ -52,12 +52,11 @@ class MapDefunOpParams : public DatasetParams {
 
     input_names->reserve(arguments_.size() + captured_inputs_.size());
     for (int i = 0; i < arguments_.size(); ++i) {
-      input_names->emplace_back(
-          strings::StrCat(MapDefunOp::kArguments, "_", i));
+      input_names->emplace_back(absl::StrCat(MapDefunOp::kArguments, "_", i));
     }
     for (int i = 0; i < captured_inputs_.size(); ++i) {
       input_names->emplace_back(
-          strings::StrCat(MapDefunOp::kCapturedInputs, "_", i));
+          absl::StrCat(MapDefunOp::kCapturedInputs, "_", i));
     }
     return absl::OkStatus();
   }
