@@ -28,16 +28,6 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 
-// Convenient helper to choose the current `UserContextRef` in a uniform way.
-//
-// * If `UserContextScope::current() != nullptr`, `UserContextScope::current()`
-//   is returned.
-// * Otherwise, `client->CreateUserContext()` is returned.
-//
-// TODO(hyeontaek): Remove this helper and use `UserContextScope::current()`
-// when there is no plural way of getting the current `UserContextRef`.
-UserContextRef GetUserContext(Client* client);
-
 // Portable adapter for `MakeArraysFromHostBufferShards`. It breaks downs
 // requests into `MakeArrayFromHostBuffer` calls followed by
 // `AssembleArrayFromSingleDeviceArrays`.

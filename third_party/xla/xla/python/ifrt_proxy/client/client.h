@@ -154,10 +154,6 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
       xla::ifrt::Device* device,
       xla::ifrt::MemoryKind memory_kind) const override;
 
-  tsl::RCReference<xla::ifrt::UserContext> CreateUserContext() override {
-    return tsl::RCReference<xla::ifrt::UserContext>();
-  }
-
   // For llvm::RTTIExtends.
   static char ID;  // NOLINT
 
