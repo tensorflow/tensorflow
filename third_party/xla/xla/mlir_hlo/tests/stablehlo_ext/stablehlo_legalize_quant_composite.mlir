@@ -18,8 +18,7 @@ func.func private @quant.fake_quant.impl(%arg0: tensor<2x2xf32>) -> tensor<2x2xf
 
 // CHECK-LABEL: func @quantize_feed_to_return
 func.func @quantize_feed_to_return(%arg0: tensor<2x2xf32>) -> tensor<2x2xi8> {
-  // CHECK: %[[TEMP_0:.*]] = stablehlo.uniform_quantize %arg0 : (tensor<2x2xf32>) -> tensor<2x2x!quant.uniform<i8:f32:1, {0.0016193275805562735,0.0016197443474084139}>>
-  // CHECK: return %[[TEMP_2:.*]]
+  // CHECK: "quant.quantize"
   %0 = stablehlo.composite "quant.quantize" %arg0 {composite_attributes = {dtype = i8, quantization_dimension = 1 : i32, scale = dense<[0.00161932758, 0.0016197443]> : tensor<2xf32>, zero_point = dense<0> : tensor<2xi64>, storage_type_min=-128, storage_type_max=127}, decomposition = @quant.quant.impl} : (tensor<2x2xf32>) -> tensor<2x2xi8>
   return %0 : tensor<2x2xi8>
 }
@@ -33,10 +32,8 @@ func.func private @quant.quant.impl(%arg0: tensor<2x2xf32>) -> tensor<2x2xi8> {
 // -----
 
 // CHECK-LABEL: func @args_feeding_dequantize
-// CHECK-SAME:      arg0: tensor<2x2x!quant.uniform
 func.func @args_feeding_dequantize(%arg0: tensor<2x2xi8>) -> tensor<2x2xf32> {
-  // CHECK:         %[[TEMP_0:.*]] = stablehlo.uniform_dequantize %arg0
-  // CHECK-NEXT:    return %[[TEMP_1:.*]] : tensor<2x2xf32>
+  // CHECK: quant.dequantize
   %0 = stablehlo.composite "quant.dequantize" %arg0 {composite_attributes = {dtype = i8, quantization_dimension = 1 : i32, scale = dense<[0.00161932758, 0.0016197443]> : tensor<2xf32>, zero_point = dense<0> : tensor<2xi64>, storage_type_min=-128, storage_type_max=127}, decomposition = @quant.dequant.impl} : (tensor<2x2xi8>) -> tensor<2x2xf32>
   return %0 : tensor<2x2xf32>
 }
@@ -109,9 +106,10 @@ func.func private @quant.dequant.impl(%arg0: tensor<2x2xi8>) -> tensor<2x2xf32> 
 
 // CHECK-LABEL: func @quantize_feeding_dequantize_and_return
 func.func @quantize_feeding_dequantize_and_return(%arg0: tensor<2x2xf32>) -> (tensor<2x2xf32> , tensor<2x2xi8>) {
+  // CHECK: %[[COMP:.*]] = stablehlo.composite "quant.quantize"
   // CHECK: %[[TEMP_0:.*]] = stablehlo.uniform_quantize %arg0
   // CHECK: %[[TEMP_1:.*]] = stablehlo.uniform_dequantize %[[TEMP_0]]
-  // CHECK: return %[[TEMP_1]], %[[TEMP_0]] : tensor<2x2xf32>, tensor<2x2x!quant.uniform
+  // CHECK: return %[[TEMP_1]], %[[COMP]] : tensor<2x2xf32>, tensor<2x2xi8>
   %0 = stablehlo.composite "quant.quantize" %arg0 {composite_attributes = {dtype = i8, quantization_dimension = 1 : i32, scale = dense<[0.00161932758, 0.0016197443]> : tensor<2xf32>, zero_point = dense<0> : tensor<2xi64>, storage_type_min=-128, storage_type_max=127}, decomposition = @quant.quant.impl} : (tensor<2x2xf32>) -> tensor<2x2xi8>
   %1 = stablehlo.composite "quant.dequantize" %0 {composite_attributes = {dtype = i8, quantization_dimension = 1 : i32, scale = dense<[0.00161932758, 0.0016197443]> : tensor<2xf32>, zero_point = dense<0> : tensor<2xi64>, storage_type_min=-128, storage_type_max=127}, decomposition = @quant.dequant.impl} : (tensor<2x2xi8>) -> tensor<2x2xf32>
   return %1, %0 : tensor<2x2xf32> , tensor<2x2xi8>
