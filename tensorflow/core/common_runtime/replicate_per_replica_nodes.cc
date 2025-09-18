@@ -53,8 +53,8 @@ class ReplicateHelper {
     }
     const auto& device = allowed_devices.at(allowed_device_index);
     NodeDef node_def = node->def();
-    const string suffix = strings::StrCat("/R", allowed_device_index);
-    node_def.set_name(graph->NewName(strings::StrCat(node_def.name(), suffix)));
+    const string suffix = absl::StrCat("/R", allowed_device_index);
+    node_def.set_name(graph->NewName(absl::StrCat(node_def.name(), suffix)));
     TF_ASSIGN_OR_RETURN(Node * replicated_node, graph->AddNode(node_def));
     replicated_node->set_assigned_device_name(device);
     if (replicated_node->IsArg()) {
