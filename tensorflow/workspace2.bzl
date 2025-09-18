@@ -3,6 +3,7 @@
 load("@bazel_features//:deps.bzl", "bazel_features_deps")
 load("@bazel_skylib//lib:versions.bzl", "versions")
 load("@bazel_tools//tools/build_defs/repo:java.bzl", "java_import_external")
+load("@bazel_tools//tools/build_defs/repo:utils.bzl", "maybe")
 load("@local_xla//third_party/absl:workspace.bzl", absl = "repo")
 load("@local_xla//third_party/benchmark:workspace.bzl", benchmark = "repo")
 load("@local_xla//third_party/clang_toolchain:cc_configure_clang.bzl", "cc_download_clang_toolchain")
@@ -391,7 +392,8 @@ def _tf_repositories():
         urls = tf_mirror_urls("https://github.com/abseil/abseil-py/archive/refs/tags/v2.1.0.tar.gz"),
     )
 
-    tf_http_archive(
+    maybe(
+        tf_http_archive,
         name = "com_google_protobuf",
         patch_file = ["@local_xla//third_party/protobuf:protobuf.patch"],
         sha256 = "6e09bbc950ba60c3a7b30280210cd285af8d7d8ed5e0a6ed101c72aff22e8d88",

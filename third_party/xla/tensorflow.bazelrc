@@ -64,7 +64,12 @@ build --host_copt=-DGRPC_BAZEL_BUILD
 build --action_env=GRPC_BAZEL_RUNTIME=1
 build --repo_env=PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=upb
 build --action_env=PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=upb
-build --repo_env=RULES_PYTHON_ENABLE_PYSTAR=0
+# Some targets have the same py source file, but use different
+# configurations via `requires-` tags. This results in an action
+# conflict when precompiling. Disable to avoid that problem.
+# See https://github.com/bazel-contrib/rules_python/issues/2445
+build --@rules_python//python/config_settings:precompile=force_disabled
+
 # Do not do this. This is how gRPC builds itself by default, but we don't want
 # that as it would link protobuf into its own set of dynamic libraries, which
 # would conflict with our protobuf linkage.

@@ -1,6 +1,6 @@
 # TPU Kernel Implementations
 
-# Placeholder: load py_proto_library
+load("@rules_python//python:proto.bzl", "py_proto_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_google",

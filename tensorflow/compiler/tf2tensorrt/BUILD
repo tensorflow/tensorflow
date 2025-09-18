@@ -8,9 +8,8 @@ load(
     "@local_xla//xla/tsl/platform/default:cuda_build_defs.bzl",
     "cuda_rpath_flags",
 )
+load("@rules_python//python:proto.bzl", "py_proto_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library")
-
-# Placeholder: load py_proto_library
 load(
     "//tensorflow:tensorflow.bzl",
     "VERSION",
