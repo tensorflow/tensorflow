@@ -439,9 +439,9 @@ BundleWriter::BundleWriter(Env* env, absl::string_view prefix,
   data_path_ = DataFilename(prefix_, 0, 1);
   metadata_path_ = MetaFilename(prefix_);
   if (use_temp_file_) {
-    data_path_ = strings::StrCat(data_path_, ".tempstate", random::New64());
+    data_path_ = absl::StrCat(data_path_, ".tempstate", random::New64());
     metadata_path_ =
-        strings::StrCat(metadata_path_, ".tempstate", random::New64());
+        absl::StrCat(metadata_path_, ".tempstate", random::New64());
   }
 
   status_ = env_->CreateDir(string(io::Dirname(prefix_)));
@@ -1230,7 +1230,7 @@ string BundleReader::DebugString() {
 
     strings::StrAppend(&shape_str, key(), " (", DataType_Name(entry.dtype()),
                        ") ", TensorShape(entry.shape()).DebugString());
-    strings::StrAppend(&shape_str, "\n");
+    absl::StrAppend(&shape_str, "\n");
   }
   return shape_str;
 }
