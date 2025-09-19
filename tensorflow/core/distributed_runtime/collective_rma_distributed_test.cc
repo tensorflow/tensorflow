@@ -249,7 +249,7 @@ class CollRMADistTest
     string device_type = "CPU";
     string dev0_worker_name;
     for (int w = 0; w < num_workers; ++w) {
-      string name = strings::StrCat("/job:worker/replica:0/task:", w);
+      string name = absl::StrCat("/job:worker/replica:0/task:", w);
       if (w == 0) {
         dev0_worker_name = name;
       }

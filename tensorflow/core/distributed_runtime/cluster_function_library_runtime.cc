@@ -74,7 +74,7 @@ absl::Status ClusterFunctionLibraryRuntime::ConstructFunctionGraph(
     }
 
     auto input_node_builder =
-        NodeDefBuilder(strings::StrCat("_recv_", in.name(), "_", i), "_Recv")
+        NodeDefBuilder(absl::StrCat("_recv_", in.name(), "_", i), "_Recv")
             .Attr("tensor_type", dtypes[0])
             .Attr("tensor_name", in.name())
             .Attr("send_device", target)
@@ -125,7 +125,7 @@ absl::Status ClusterFunctionLibraryRuntime::ConstructFunctionGraph(
     }
 
     auto output_node_builder =
-        NodeDefBuilder(strings::StrCat("_send_", out.name(), "_", i), "_Send")
+        NodeDefBuilder(absl::StrCat("_send_", out.name(), "_", i), "_Send")
             .Input(func_name, i, dtypes[0])
             .Attr("tensor_name", out.name())
             .Attr("send_device", target)
