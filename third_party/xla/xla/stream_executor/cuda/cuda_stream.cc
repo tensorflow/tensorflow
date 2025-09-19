@@ -260,7 +260,7 @@ CudaStream::~CudaStream() {
 
 absl::Status CudaStream::BlockHostUntilDone() {
   TF_RETURN_IF_ERROR(SynchronizeStream(executor_, stream_handle_));
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   mutex_.Await(absl::Condition(&no_pending_host_callbacks_));
   return absl::OkStatus();
 }
@@ -339,7 +339,7 @@ absl::Status CudaStream::DoHostCallbackWithStatus(
         // callback gets executed before we increase the counter on the main
         // thread.
         if (num_pending_host_callbacks == 0) {
-          absl::MutexLock lock(&mutex_);
+          absl::MutexLock lock(mutex_);
           no_pending_host_callbacks_ = num_pending_host_callbacks_ <= 0;
         }
       });
@@ -350,7 +350,7 @@ absl::Status CudaStream::DoHostCallbackWithStatus(
   if (num_pending_host_callbacks == 1) {
     // num_pending_host_callbacks == 1 means we had no pending host callbacks
     // before this one.
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     no_pending_host_callbacks_ = num_pending_host_callbacks_ <= 0;
   }
   return absl::OkStatus();
