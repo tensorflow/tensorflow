@@ -116,7 +116,8 @@ void ShapeLayout::ResetLayout(const Layout& layout,
                               ShapeIndexView shape_index) {
   *ShapeUtil::GetMutableSubshape(&shape_, shape_index)->mutable_layout() =
       layout;
-  TF_DCHECK_OK(ShapeUtil::ValidateShape(shape_));
+  TF_DCHECK_OK(
+      ShapeUtil::ValidateShape(ShapeUtil::GetSubshape(shape_, shape_index)));
 }
 
 bool ShapeLayout::operator==(const ShapeLayout& other) const {
