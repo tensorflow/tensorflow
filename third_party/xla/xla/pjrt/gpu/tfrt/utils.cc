@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
@@ -61,6 +62,7 @@ limitations under the License.
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
 #include "xla/pjrt/gpu/tfrt/gpu_event.h"
 #include "xla/pjrt/gpu/tfrt/tfrt_gpu_client.h"
+#include "xla/pjrt/gpu/tfrt/tfrt_gpu_device.h"
 #include "xla/pjrt/gpu/tfrt/tracked_gpu_device_buffer.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -107,6 +109,26 @@ limitations under the License.
 #endif
 
 namespace xla {
+
+std::unique_ptr<se::Stream> MaybeCreateStream(se::StreamExecutor* executor) {
+  if (executor == nullptr) {
+    return nullptr;
+  }
+  return executor->CreateStream().value();
+}
+
+absl::Status WaitForEventOnStream(se::Stream* stream, se::Event* event) {
+  if (!event) {
+    return absl::OkStatus();
+  }
+  return stream->WaitFor(event);
+}
+
+absl::StatusOr<std::shared_ptr<se::Event>> CreateCudaEvent(
+    TfrtGpuDevice* device) {
+  TF_ASSIGN_OR_RETURN(auto cuda_event, device->executor()->CreateEvent());
+  return absl::ShareUniquePtr(std::move(cuda_event));
+}
 
 PjRtFuture<> CreateFutureForEvent(tsl::AsyncValueRef<xla::GpuEvent> event) {
   auto [promise, future] = PjRtFuture<>::MakePromise();

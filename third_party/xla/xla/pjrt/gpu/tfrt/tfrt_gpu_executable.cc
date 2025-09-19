@@ -513,6 +513,8 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
     input_deps.push_back(std::move(ordering_event));
   }
 
+  TF_ASSIGN_OR_RETURN(auto output_cuda_execute_event, CreateCudaEvent(device));
+
   std::vector<tsl::AsyncValueRef<GpuDeviceMemory>> output_buffers;
   std::vector<std::unique_ptr<PjRtBuffer>> outputs;
   auto gpu_executable = executables_[executable_idx];
@@ -531,7 +533,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
       auto leaf_tracked_device_buffer =
           std::make_unique<TrackedGpuDeviceBuffer>(
               output_buffers.back().CopyRef(), scheduled_event.CopyRef(),
-              complete_event.CopyRef());
+              complete_event.CopyRef(), nullptr, output_cuda_execute_event);
       VLOG(4) << "created leaf_tracked_device_buffer: "
               << leaf_tracked_device_buffer.get();
 
@@ -556,7 +558,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
     auto tracked_device_buffer = std::make_unique<TrackedGpuDeviceBuffer>(
         output_buffers.back().CopyRef(),
         /*definition_event=*/scheduled_event.CopyRef(),
-        complete_event.CopyRef());
+        complete_event.CopyRef(), nullptr, output_cuda_execute_event);
     VLOG(4) << "created tracked_device_buffer: " << tracked_device_buffer.get();
 
     const Shape& shape = result_shape;
@@ -598,6 +600,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
        execution_profile(options.execution_profile),
        send_device_memory(std::move(send_device_memory)),
        recv_device_memory(std::move(recv_device_memory)),
+       output_cuda_execute_event(std::move(output_cuda_execute_event)),
        compute_reservation(std::move(compute_reservation)),
        client = client_](std::vector<ExecutionInput> execution_inputs) mutable {
         VLOG(1) << "execute_fn for " << executable_name
@@ -711,6 +714,15 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
                      << device->DebugString()
                      << ", status = " << result_buffer_or_status.status();
           set_error(result_buffer_or_status.status());
+          return;
+        }
+
+        auto record_event_status =
+            stream->RecordEvent(output_cuda_execute_event.get());
+        if (!record_event_status.ok()) {
+          LOG(ERROR) << "Failed to record cuda event: " << record_event_status;
+          scheduled_event.SetError(record_event_status);
+          complete_event.SetError(record_event_status);
           return;
         }
 

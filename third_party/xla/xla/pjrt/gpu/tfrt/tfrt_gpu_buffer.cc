@@ -231,7 +231,8 @@ TfrtGpuBuffer::DonateWithControlDependency(PjRtFuture<> dependency) {
   auto new_tracked_buffer = std::make_unique<TrackedGpuDeviceBuffer>(
       tracked_buffer->buffer(), std::move(new_definition_event),
       tracked_buffer->ready_event(),
-      std::move(tracked_buffer->on_delete_callback_));
+      std::move(tracked_buffer->on_delete_callback_),
+      std::move(tracked_buffer->cuda_event_));
 
   auto new_pjrt_buffer = std::make_unique<TfrtGpuBuffer>(
       on_device_shape_, std::move(new_tracked_buffer), client_, device_,
@@ -461,19 +462,28 @@ PjRtFuture<> TfrtGpuBuffer::ToLiteralHelper(
             });
             MarkGpuEventReadyOnExit ready_on_exit(std::move(usage_event));
 
-            auto stream = device->stream();
+            auto d2h_stream = device->d2h_stream();
+
+            absl::Status cuda_event_wait_status =
+                WaitForEventOnStream(d2h_stream, device_buffer->GetCudaEvent());
+            if (!cuda_event_wait_status.ok()) {
+              LOG(ERROR) << "Failed to wait for cuda event: "
+                         << cuda_event_wait_status;
+              promise.Set(cuda_event_wait_status);
+              return;
+            }
 
             VLOG(3) << "D2H copy: "
                     << device_buffer->buffer()->buffer().opaque() << " -> "
                     << buffer_ptr << " (" << byte_size << " bytes)";
-            CHECK_OK(stream->Memcpy(
+            CHECK_OK(d2h_stream->Memcpy(
                 buffer_ptr, device_buffer->buffer()->buffer(), byte_size))
                 << "stream->Memcpy failed copying from GPU to host";
 
             absl::Status status;
             {
               tsl::profiler::TraceMe traceme("BlockHostUntilDone");
-              status = stream->BlockHostUntilDone();
+              status = d2h_stream->BlockHostUntilDone();
             }
             VLOG(3) << "D2H copy done. " << status;
             if (!status.ok()) {
@@ -596,41 +606,39 @@ PjRtFuture<> TfrtGpuBuffer::CopyRawToHostFuture(PjRtFuture<void*> dst_future,
 
     void* host_ptr = use_staging ? staging_buffer.get() : dst;
 
-    auto stream = device->stream();
+    auto d2h_stream = device->d2h_stream();
+    absl::Status cuda_event_wait_status =
+        WaitForEventOnStream(d2h_stream, device_buffer->GetCudaEvent());
+    if (!cuda_event_wait_status.ok()) {
+      LOG(ERROR) << "Failed to wait for cuda event: " << cuda_event_wait_status;
+      promise.Set(cuda_event_wait_status);
+      return;
+    }
 
     VLOG(3) << "D2H copy: " << sub_buffer.opaque() << " -> " << host_ptr << " ("
             << transfer_size << " bytes)";
-    absl::Status status = stream->Memcpy(host_ptr, sub_buffer, transfer_size);
+    absl::Status status =
+        d2h_stream->Memcpy(host_ptr, sub_buffer, transfer_size);
     if (!status.ok()) {
       LOG(ERROR) << "stream->Memcpy failed: " << status;
       promise.Set(status);
       return;
     }
 
-    if (use_staging) {
-      status = stream->DoHostCallback(
-          [dst, staging_buffer = std::move(staging_buffer), transfer_size,
-           promise = std::move(promise),
-           usage_event_holder = std::move(usage_event_holder)]() mutable {
-            tsl::profiler::TraceMe traceme3(
-                "CopyRawToHostFuture::D2H_staging_copy");
-            std::memcpy(dst, staging_buffer.get(), transfer_size);
-            VLOG(3) << "D2H staging copy done: " << staging_buffer.get()
-                    << " -> " << dst << " (" << transfer_size << " bytes)";
-            promise.Set(absl::OkStatus());
-          });
-    } else {
-      status = stream->DoHostCallback(
-          [promise = std::move(promise),
-           usage_event_holder = std::move(usage_event_holder)]() mutable {
-            promise.Set(absl::OkStatus());
-          });
-    }
+    status = d2h_stream->BlockHostUntilDone();
 
     if (!status.ok()) {
-      LOG(ERROR) << "stream->DoHostCallback failed: " << status;
+      LOG(ERROR) << "d2h_stream->BlockHostUntilDone() failed: " << status;
       promise.Set(status);
+      return;
     }
+    if (use_staging) {
+      tsl::profiler::TraceMe traceme3("CopyRawToHostFuture::D2H_staging_copy");
+      std::memcpy(dst, staging_buffer.get(), transfer_size);
+      VLOG(3) << "D2H staging copy done: " << staging_buffer.get() << " -> "
+              << dst << " (" << transfer_size << " bytes)";
+    }
+    promise.Set(absl::OkStatus());
   };
 
   dst_future.OnReady(
