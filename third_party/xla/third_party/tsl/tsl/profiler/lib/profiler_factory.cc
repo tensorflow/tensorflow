@@ -38,14 +38,14 @@ std::vector<ProfilerFactory>* GetFactories() {
 }  // namespace
 
 void RegisterProfilerFactory(ProfilerFactory factory) {
-  absl::MutexLock lock(&mu);
+  absl::MutexLock lock(mu);
   GetFactories()->push_back(std::move(factory));
 }
 
 std::vector<std::unique_ptr<profiler::ProfilerInterface>> CreateProfilers(
     const tensorflow::ProfileOptions& options) {
   std::vector<std::unique_ptr<profiler::ProfilerInterface>> result;
-  absl::MutexLock lock(&mu);
+  absl::MutexLock lock(mu);
   for (const auto& factory : *GetFactories()) {
     auto profiler = factory(options);
     // A factory might return nullptr based on options.
@@ -57,7 +57,7 @@ std::vector<std::unique_ptr<profiler::ProfilerInterface>> CreateProfilers(
 }
 
 void ClearRegisteredProfilersForTest() {
-  absl::MutexLock lock(&mu);
+  absl::MutexLock lock(mu);
   GetFactories()->clear();
 }
 
