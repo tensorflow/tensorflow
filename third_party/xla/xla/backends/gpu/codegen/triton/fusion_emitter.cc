@@ -1887,7 +1887,8 @@ absl::Status CreateInternalError(absl::string_view message,
 void AppendFuncArgType(absl::Span<const int64_t> dims, Type ir_type,
                        SmallVector<Type>& fn_arg_types) {
   fn_arg_types.push_back(ttir::PointerType::get(
-      StorageType(ir_type), mlir::NVVM::kGlobalMemorySpace));
+      StorageType(ir_type),
+      static_cast<unsigned>(mlir::NVVM::NVVMMemorySpace::Global)));
 }
 
 // Legacy emitter works with tt.func. New emitter works with func.func.
