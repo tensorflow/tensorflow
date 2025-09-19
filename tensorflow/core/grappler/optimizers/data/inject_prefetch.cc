@@ -110,7 +110,7 @@ absl::Status InjectPrefetch::OptimizeAndCollectStats(Cluster* cluster,
   // Insert `prefetch(AUTOTUNE)` after the last node.
   NodeDef prefetch_node;
   graph_utils::SetUniqueGraphNodeName(
-      strings::StrCat("inject/prefetch_", last_node->name()), graph.graph(),
+      absl::StrCat("inject/prefetch_", last_node->name()), graph.graph(),
       &prefetch_node);
   prefetch_node.set_op(kPrefetchDataset);
   // `input_dataset` input

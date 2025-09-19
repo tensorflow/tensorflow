@@ -91,7 +91,7 @@ void AddFunctionOutputWithUniqueName(absl::string_view prefix,
   string name = string(prefix);
   int id = fdef->signature().output_arg_size();
   while (ContainsFunctionOutputWithName(name, *fdef)) {
-    name = strings::StrCat(prefix, "/_", id);
+    name = absl::StrCat(prefix, "/_", id);
     ++id;
   }
   auto* output = fdef->mutable_signature()->mutable_output_arg()->Add();
@@ -177,7 +177,7 @@ void SetUniqueFunctionNodeName(absl::string_view prefix, FunctionDef* function,
   string name = string(prefix);
   int id = function->node_def_size();
   while (ContainsFunctionNodeWithName(name, *function)) {
-    name = strings::StrCat(prefix, "/_", id);
+    name = absl::StrCat(prefix, "/_", id);
     ++id;
   }
   node->set_name(std::move(name));
