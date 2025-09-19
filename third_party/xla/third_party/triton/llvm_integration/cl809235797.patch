@@ -1,0 +1,24 @@
+
+--- a/third_party/amd/lib/TritonAMDGPUToLLVM/TritonGPUToLLVM.cpp	2025-07-31 00:13:23.000000000 -0700
++++ b/third_party/amd/lib/TritonAMDGPUToLLVM/TritonGPUToLLVM.cpp	2025-09-19 16:56:07.000000000 -0700
+@@ -257,7 +257,7 @@
+         loc, arrayTy, /*isConstant=*/false, LLVM::Linkage::External,
+         "global_smem", /*value=*/Attribute(), /*alignment=*/16,
+         // Add ROCm support.
+-        static_cast<unsigned>(NVVM::NVVMMemorySpace::kSharedMemorySpace));
++        static_cast<unsigned>(NVVM::NVVMMemorySpace::Shared));
+   }
+ };
+ 
+
+--- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TritonGPUToLLVM.cpp	2025-08-22 04:02:56.000000000 -0700
++++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TritonGPUToLLVM.cpp	2025-09-19 16:56:08.000000000 -0700
+@@ -223,7 +223,7 @@
+         loc, arrayTy, /*isConstant=*/false, LLVM::Linkage::External,
+         "global_smem", /*value=*/Attribute(), /*alignment=*/16,
+         // Add ROCm support.
+-        static_cast<unsigned>(NVVM::NVVMMemorySpace::kSharedMemorySpace));
++        static_cast<unsigned>(NVVM::NVVMMemorySpace::Shared));
+   }
+ };
+ 
