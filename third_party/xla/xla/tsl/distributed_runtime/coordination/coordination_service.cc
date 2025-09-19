@@ -524,26 +524,26 @@ CoordinationService::BarrierCallback
 CoordinationService::ConnectAfterBarrierPasses(absl::string_view task_name,
                                                IncarnationId incarnation,
                                                StatusCallback done) {
-  return [this, task = std::string(task_name), incarnation,
-          done = std::move(done)](absl::Status s,
-                                  int64_t unused_counter) mutable {
-    state_mu_.AssertHeld();
-    const std::unique_ptr<TaskState>& task_state = cluster_state_[task];
-    if (s.ok() && incarnation == task_state->GetTaskIncarnation()) {
-      // Connect task to service.
-      task_state->Connect();
-      done(absl::OkStatus());
-      ClusterStateUpdated();
-    } else if (s.ok() || absl::IsCancelled(s)) {
-      // Avoid using `AbortedError` which typically has retry semantics.
-      done(MakeCoordinationError(
-          absl::AlreadyExistsError("Aborted connect attempt as there is a "
-                                   "request from a newer incarnation.")));
-    } else {
-      // Non-cancellation error.
-      done(s);
-    }
-  };
+  return
+      [this, task = std::string(task_name), incarnation,
+       done = std::move(done)](absl::Status s, int64_t unused_counter) mutable {
+        state_mu_.AssertHeld();
+        const std::unique_ptr<TaskState>& task_state = cluster_state_[task];
+        if (s.ok() && incarnation == task_state->GetTaskIncarnation()) {
+          // Connect task to service.
+          task_state->Connect();
+          done(absl::OkStatus());
+          ClusterStateUpdated();
+        } else if (s.ok() || absl::IsCancelled(s)) {
+          // Avoid using `AbortedError` which typically has retry semantics.
+          done(MakeCoordinationError(
+              absl::AlreadyExistsError("Aborted connect attempt as there is a "
+                                       "request from a newer incarnation.")));
+        } else {
+          // Non-cancellation error.
+          done(s);
+        }
+      };
 }
 
 void CoordinationService::ConnectTask(const CoordinatedTask& task,
@@ -1560,7 +1560,6 @@ void CoordinationService::RefreshAliveness() {
       // the same set of alive tasks (alive_tasks) to every task in the barrier.
       std::vector<CoordinatedTask> v{alive_tasks.begin(), alive_tasks.end()};
       std::vector<IncarnationId> incarnation_ids = IncarnationIds(v);
-      absl::c_sort(incarnation_ids);
       for (const GetAliveTasksCallback& done : it->dones) {
         done(absl::OkStatus(), v, incarnation_ids);
       }
@@ -1612,7 +1611,6 @@ void CoordinationService::GetAliveTasksAsync(
   if (TaskSetSubset(alive_tasks, it->in_barrier)) {
     std::vector<CoordinatedTask> v{alive_tasks.begin(), alive_tasks.end()};
     std::vector<IncarnationId> incarnation_ids = IncarnationIds(v);
-    absl::c_sort(incarnation_ids);
     for (const GetAliveTasksCallback& done : it->dones) {
       done(absl::OkStatus(), v, incarnation_ids);
     }

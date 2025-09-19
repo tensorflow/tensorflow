@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "grpcpp/channel.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
+#include "xla/service/global_device_id.h"
 #include "xla/tsl/platform/env.h"
 
 namespace tsl {
@@ -149,8 +151,15 @@ class DistributedRuntimeClient {
       std::string barrier_id, absl::Duration timeout,
       std::optional<absl::Span<const int32_t>> nodes) = 0;
 
+  // Returns the subset of live nodes, along with their incarnations. See
+  // CoordinationService.GetAliveTasks for detailed semantics.
+  virtual absl::StatusOr<absl::flat_hash_map<int32_t, IncarnationId>>
+  GetLiveNodesWithIncarnations(absl::Span<const int32_t> nodes) = 0;
+
   // Returns the subset of live nodes. See CoordinationService.GetAliveTasks for
   // detailed semantics.
+  //
+  // TODO: mwhittaker - Remove this function.
   virtual absl::StatusOr<std::vector<int32_t>> GetLiveNodes(
       absl::Span<const int32_t> nodes) = 0;
 
