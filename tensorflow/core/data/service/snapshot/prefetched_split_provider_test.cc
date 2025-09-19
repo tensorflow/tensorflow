@@ -181,7 +181,7 @@ TEST_P(PrefetchedSplitProviderParamTest, ConcurrentGetSplits) {
               std::vector<int64_t> splits_per_thread,
               GetSplits<int64_t>(prefetched_split_provider, test_dirs[1 + i]));
           EXPECT_TRUE(absl::c_is_sorted(splits_per_thread));
-          absl::MutexLock l(&mu);
+          absl::MutexLock l(mu);
           absl::c_move(splits_per_thread, std::back_inserter(splits));
         })));
   }
@@ -227,7 +227,7 @@ TEST_P(PrefetchedSplitProviderParamTest, ConcurrentGetSplitsAndReset) {
           TF_ASSERT_OK_AND_ASSIGN(
               std::vector<int64_t> splits_per_thread,
               GetSplits<int64_t>(prefetched_split_provider, test_dirs[1 + i]));
-          absl::MutexLock l(&mu);
+          absl::MutexLock l(mu);
           absl::c_move(splits_per_thread, std::back_inserter(splits));
         })));
   }
