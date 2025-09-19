@@ -480,11 +480,12 @@ class PjRtCpuExecutable final : public PjRtLoadedExecutable {
   std::unique_ptr<HloModule> unoptimized_hlo_module_;
 };
 
-absl::StatusOr<std::unique_ptr<PjRtClient>> ABSL_DEPRECATED(
-    "Use public XLA:CPU GetXlaPjRtCpuClient instead")
-    GetPjRtCpuClient(CpuClientOptions options);
+// Internal function to create a PjRtCpuClient. External users should use
+// xla::GetXlaPjRtCpuClient() to obtain a PjRtClient for XLA:CPU.
+absl::StatusOr<std::unique_ptr<PjRtClient>> GetPjRtCpuClient(
+    CpuClientOptions options);
 
-// Deprecated. Use the overload that takes 'options' instead.
+// Deprecated. Use xla::GetXlaPjRtCpuClient() instead.
 inline absl::StatusOr<std::unique_ptr<PjRtClient>> ABSL_DEPRECATED(
     "Use public XLA:CPU GetXlaPjRtCpuClient instead")
     GetPjRtCpuClient(bool asynchronous) {
@@ -493,10 +494,11 @@ inline absl::StatusOr<std::unique_ptr<PjRtClient>> ABSL_DEPRECATED(
   return GetPjRtCpuClient(std::move(options));
 }
 
-// Deprecated. Use the overload that takes 'options' instead.
-inline absl::StatusOr<std::unique_ptr<PjRtClient>> GetPjRtCpuClient(
-    bool asynchronous, int cpu_device_count,
-    int max_inflight_computations_per_device = 32) {
+// Deprecated. Use xla::GetXlaPjRtCpuClient() instead.
+inline absl::StatusOr<std::unique_ptr<PjRtClient>> ABSL_DEPRECATED(
+    "Use public XLA:CPU GetXlaPjRtCpuClient instead")
+    GetPjRtCpuClient(bool asynchronous, int cpu_device_count,
+                     int max_inflight_computations_per_device = 32) {
   CpuClientOptions options;
   options.asynchronous = asynchronous;
   options.cpu_device_count = cpu_device_count;
