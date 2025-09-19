@@ -167,6 +167,8 @@ struct SchedulerConfig {
   // If true, estimate the fragmentation size of the module by running the heap
   // simulator.
   bool estimate_fragmentation_size = false;
+  // If true, track the resource usage of sync ops in latency hiding scheduler.
+  bool track_sync_op_resource_usage = false;
 };
 
 // Class used estimate latency between instructions and cost of HLOs.
