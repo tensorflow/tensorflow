@@ -214,7 +214,7 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
   virtual DebugOptions GetDebugOptionsForTest() const;
 
   void TearDown() override {
-    absl::MutexLock ml(&device_assignment_mu_);
+    absl::MutexLock ml(device_assignment_mu_);
     default_device_assignment_.reset();
   }
   // Gets an HloModuleConfig with options appropriate for tests.
@@ -228,7 +228,7 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
     if (device_assignment.has_value()) {
       config.set_static_device_assignment(*device_assignment);
     } else {
-      absl::MutexLock ml(&device_assignment_mu_);
+      absl::MutexLock ml(device_assignment_mu_);
       default_device_assignment_ = std::make_unique<DeviceAssignment>(
           GetDefaultDeviceAssignment(replica_count, num_partitions));
       config.set_static_device_assignment(*default_device_assignment_);
