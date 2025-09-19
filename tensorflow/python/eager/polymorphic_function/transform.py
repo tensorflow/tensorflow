@@ -14,10 +14,12 @@
 # ==============================================================================
 """tf.function transformations implementation."""
 
+from typing import List, Callable
+
 # TODO(fmuham): Move this logic to core/function when layered.
 # TODO(fmuham): Deprecate and migrate these as AtomicFunction transformations.
-FUNC_GRAPH_TRANSFORMS = []
-CONCRETE_FUNCTION_CALLBACKS = []
+FUNC_GRAPH_TRANSFORMS: List[Callable] = []
+CONCRETE_FUNCTION_CALLBACKS: List[Callable] = []
 
 
 def apply_func_graph_transforms(func_graph):
