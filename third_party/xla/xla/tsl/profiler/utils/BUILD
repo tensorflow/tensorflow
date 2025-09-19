@@ -341,10 +341,13 @@ tsl_cc_test(
     srcs = ["group_events_test.cc"],
     deps = [
         ":group_events",
+        ":preprocess_xplane",
         ":tf_xplane_visitor",
+        ":timespan",
         ":xplane_builder",
         ":xplane_schema",
         ":xplane_test_utils",
+        ":xplane_utils",
         ":xplane_visitor",
         "//xla/tsl/platform:env_impl",
         "//xla/tsl/platform:test",
