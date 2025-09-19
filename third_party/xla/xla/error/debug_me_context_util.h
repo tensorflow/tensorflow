@@ -35,9 +35,6 @@ limitations under the License.
 
 namespace xla {
 
-// Foward declaration
-class HloPassInterface;
-
 namespace error {
 
 // The canonical type URL for the DebugContextPayload.
@@ -61,14 +58,6 @@ std::string DebugMeContextToErrorMessageString();
 // Attaches the DebugMeContextToErrorMessageString as a payload to the given
 // status, if the context is not empty and the status is not OK.
 void AttachDebugMeContextPayload(absl::Status& status);
-
-// This class is a specialization of the RAII DebugMeContext specifically for
-// HloPasses. The details of its constructor dictate what information from the
-// HloPass is stored in the context.
-class HloPassDebugMeContext : public tsl::DebugMeContext<DebugMeContextKey> {
- public:
-  explicit HloPassDebugMeContext(const HloPassInterface* pass);
-};
 
 }  // namespace error
 }  // namespace xla

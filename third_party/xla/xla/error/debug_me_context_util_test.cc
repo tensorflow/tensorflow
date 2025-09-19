@@ -18,41 +18,23 @@ limitations under the License.
 #include <string>
 
 #include <gtest/gtest.h>
-#include "absl/container/flat_hash_set.h"
-#include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_module_group.h"
-#include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/tsl/platform/debug_me_context.h"
 
 namespace xla {
 namespace {
 
-TEST(DebugMeContextUtil, BasicHloPass) {
-  // Define a custom HLO pass.
-  class TestPass : public HloPassInterface {
-   public:
-    absl::string_view name() const override { return "hello123123"; }
-    absl::StatusOr<bool> Run(HloModule* module,
-                             const absl::flat_hash_set<absl::string_view>&
-                                 execution_threads) override {
-      return false;
-    }
-    absl::StatusOr<bool> RunOnModuleGroup(
-        HloModuleGroup* module_group,
-        const absl::flat_hash_set<absl::string_view>& execution_threads)
-        override {
-      return false;
-    }
-  };
+TEST(DebugMeContextUtil, StringCheck) {
+  constexpr absl::string_view kCompilerName{"MyCompiler"};
 
-  TestPass test_pass;
-  error::HloPassDebugMeContext ctx(&test_pass);
+  tsl::DebugMeContext<error::DebugMeContextKey> ctx(
+      error::DebugMeContextKey::kCompiler, std::string(kCompilerName));
+
   const std::string error_message =
       error::DebugMeContextToErrorMessageString();
 
-  EXPECT_TRUE(absl::StrContains(error_message, test_pass.name()));
+  EXPECT_TRUE(absl::StrContains(error_message, kCompilerName));
 }
 
 }  // namespace
