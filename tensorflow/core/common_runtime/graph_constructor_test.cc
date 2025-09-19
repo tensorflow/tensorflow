@@ -232,7 +232,7 @@ REGISTER_OP("RequiresCurrentGraphVersion")
 
 TEST_F(GraphConstructorTest, InvalidNodeName) {
   auto expect_invalid_name = [this](const char* name) {
-    ExpectError(strings::StrCat("node { name: '", name, "' op: 'ABC' }"),
+    ExpectError(absl::StrCat("node { name: '", name, "' op: 'ABC' }"),
                 {"Node name contains invalid characters"});
   };
 
@@ -862,7 +862,7 @@ TEST_F(GraphConstructorTest, NoForwardCompatError) {
 }
 
 TEST_F(GraphConstructorTest, LowVersion) {
-  ExpectError(strings::StrCat("versions { producer: ", -1, " }"),
+  ExpectError(absl::StrCat("versions { producer: ", -1, " }"),
               {strings::StrCat("GraphDef producer version -1 below min "
                                "producer ",
                                TF_GRAPH_DEF_VERSION_MIN_PRODUCER,
@@ -872,7 +872,7 @@ TEST_F(GraphConstructorTest, LowVersion) {
 
 TEST_F(GraphConstructorTest, HighVersion) {
   const int version = TF_GRAPH_DEF_VERSION + 1;
-  ExpectError(strings::StrCat("versions { min_consumer: ", version, " }"),
+  ExpectError(absl::StrCat("versions { min_consumer: ", version, " }"),
               {strings::StrCat("GraphDef min consumer version ", version,
                                " above current version ", TF_GRAPH_DEF_VERSION,
                                " for TensorFlow ", TF_VERSION_STRING,
@@ -885,7 +885,7 @@ TEST_F(GraphConstructorTest, BadVersion) {
   ExpectError(
       strings::StrCat("versions { producer: ", version, " bad_consumers: ", bad,
                       " }"),
-      {strings::StrCat(
+      {absl::StrCat(
           "GraphDef disallows consumer version ", bad,
           ".  Please upgrade TensorFlow: this version is likely buggy.")});
 }
@@ -2835,16 +2835,16 @@ TEST_F(GraphConstructorTest, CopyGraph) {
 // Confirms that graph def version in the graph reaches the shape inference
 // function.
 TEST_F(GraphConstructorTest, GraphDefVersionUsedForShapeInference) {
-  string gdef_ascii = strings::StrCat(R"EOF(
+  string gdef_ascii = absl::StrCat(R"EOF(
       node{ name:"A" op:"RequiresCurrentGraphVersion" }
       versions { producer: )EOF",
-                                      TF_GRAPH_DEF_VERSION - 1, "}");
+                                   TF_GRAPH_DEF_VERSION - 1, "}");
   ImportGraphDefOptions opts;
   ExpectError(gdef_ascii, opts, {"Wrong graph version for shape"});
-  gdef_ascii = strings::StrCat(R"EOF(
+  gdef_ascii = absl::StrCat(R"EOF(
       node{ name:"A" op:"RequiresCurrentGraphVersion" }
       versions { producer: )EOF",
-                               TF_GRAPH_DEF_VERSION, "}");
+                            TF_GRAPH_DEF_VERSION, "}");
   ExpectOK(gdef_ascii, opts);
 }
 
@@ -2973,7 +2973,7 @@ versions {
 })EOF");
 
 #else
-  gdef_ascii = strings::StrCat(R"EOF(
+  gdef_ascii = R"EOF(
 node {
   name: "Sum/input"
   op: "Const"
@@ -3054,7 +3054,7 @@ node {
 }
 versions {
   producer: 20
-})EOF");
+})EOF";
 #endif
   // Create a shape refiner with the latest TF_GRAPH_DEF_VERSION.
   // Importing the graphdef with an existing refiner should
@@ -3098,7 +3098,7 @@ versions {
 })EOF");
 
 #else
-  gdef_ascii = strings::StrCat(R"EOF(
+  gdef_ascii = R"EOF(
 node {
   name: "RandomConst"
   op: "Const"
@@ -3128,7 +3128,7 @@ node {
 }
 versions {
   producer: 21
-})EOF");
+})EOF";
 #endif
 
   ExpectOK(gdef_ascii, opts, &refiner);
@@ -3171,7 +3171,7 @@ versions {
 })EOF");
 
 #else
-  gdef_ascii = strings::StrCat(R"EOF(
+  gdef_ascii = R"EOF(
 node {
   name: "RandomConst2"
   op: "Const"
@@ -3201,7 +3201,7 @@ node {
 }
 versions {
   producer: 17
-})EOF");
+})EOF";
 #endif
   ExpectOK(gdef_ascii, opts, &refiner);
 

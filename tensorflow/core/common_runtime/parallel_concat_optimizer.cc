@@ -58,8 +58,8 @@ class ParallelConcatRemovePass : public GraphOptimizationPass {
         return node_builder;
       };
       auto make_node = [n, g, &base_make_node](string op) {
-        return base_make_node(
-            op, g->NewName(strings::StrCat(n->name(), "/Internal")));
+        return base_make_node(op,
+                              g->NewName(absl::StrCat(n->name(), "/Internal")));
       };
       DataType dtype;
       TF_RETURN_IF_ERROR(GetNodeAttr(n_attrs, "T", &dtype));
