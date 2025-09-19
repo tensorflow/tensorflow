@@ -218,6 +218,14 @@ absl::Status IsTmaCompatible(absl::Span<const int64_t> global_shape,
                              absl::Span<const int64_t> minor_to_major_layout,
                              int element_byte_size);
 
+// Checks TMA's physical constraints for the given tensor's global shape. This
+// is checked as part of IsTmaCompatible, but we sometimes want to check
+// compatibility before we consider tiling.
+absl::Status IsGlobalShapeTmaCompatible(
+    absl::Span<const int64_t> global_shape,
+    absl::Span<const int64_t> minor_to_major_layout, int element_byte_size,
+    TmaDescriptor::TmaInterleave interleave);
+
 }  // namespace gpu
 }  // namespace stream_executor
 
