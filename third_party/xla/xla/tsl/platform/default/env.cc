@@ -84,7 +84,7 @@ class PThread : public Thread {
     CHECK_EQ(ret, 0) << "Thread " << name
                      << " creation via pthread_create() failed.";
     pthread_attr_destroy(&attributes);
-#if !defined(__APPLE__)
+#if !defined(__APPLE__) && !defined(__EMSCRIPTEN__)
     pthread_setname_np(thread_, name.c_str());
 #endif
   }
