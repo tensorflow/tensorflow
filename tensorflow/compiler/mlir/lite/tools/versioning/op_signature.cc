@@ -73,7 +73,7 @@ std::vector<OpSignatureTensorSpec> GetOpSignatureTensorSpecs(
         // Check if the tensor is a constant tensor.
         if (buffer_idx != 0 && buffer_idx < model->buffers()->size()) {
           auto* buffer = model->buffers()->Get(buffer_idx);
-          if (buffer->data() && buffer->data()->size() != 0) {
+          if (buffer->data() && !buffer->data()->empty()) {
             tensor_spec.is_const = true;
           }
         }
@@ -143,8 +143,8 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
       const QuantizationParameters* weight_quant =
           weight_tensor->quantization();
       if (weight_quant && weight_quant->scale() &&
-          weight_quant->scale()->size() && weight_tensor->shape() &&
-          weight_tensor->shape()->size()) {
+          !weight_quant->scale()->empty() && weight_tensor->shape() &&
+          !weight_tensor->shape()->empty()) {
         op_sig.ext_options.fully_connected.is_per_channel_quantized =
             IsTensorSizeEqual(weight_quant->scale()->size(),
                               weight_tensor->shape()->Get(0));
@@ -152,7 +152,7 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
     } break;
 
     case BuiltinOperator_MUL: {
-      if (op->inputs()->size() < 2 || op->outputs()->size() < 1) {
+      if (op->inputs()->size() < 2 || op->outputs()->empty()) {
         break;
       }
       const Tensor* input1_tensor =
@@ -167,10 +167,10 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
       const QuantizationParameters* output_quant =
           output_tensor->quantization();
       if (input1_quant && input1_quant->scale() &&
-          input1_quant->scale()->size() && input2_qunt &&
-          input2_qunt->scale() && input2_qunt->scale()->size() &&
+          !input1_quant->scale()->empty() && input2_qunt &&
+          input2_qunt->scale() && !input2_qunt->scale()->empty() &&
           output_quant && output_quant->scale() &&
-          output_quant->scale()->size()) {
+          !output_quant->scale()->empty()) {
         op_sig.ext_options.mul.input1_scale = input1_quant->scale()->Get(0);
         op_sig.ext_options.mul.input2_scale = input2_qunt->scale()->Get(0);
         op_sig.ext_options.mul.output_scale = output_quant->scale()->Get(0);
@@ -192,7 +192,7 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
           filter_quant->scale()->size() == static_cast<size_t>(num_filters)) {
         op_sig.ext_options.conv_2d.is_per_channel_quantized = true;
       }
-      if (input_tensor->shape() && input_tensor->shape()->size()) {
+      if (input_tensor->shape() && !input_tensor->shape()->empty()) {
         int num_input_channels = input_tensor->shape()->Get(3);
         int num_filter_input_channels = filter_tensor->shape()->Get(3);
         op_sig.ext_options.conv_2d.is_grouped_convolution =
@@ -249,8 +249,9 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
       const Tensor* table_tensor =
           subgraph->tensors()->Get(op->inputs()->Get(1));
       const QuantizationParameters* table_quant = table_tensor->quantization();
-      if (table_quant && table_quant->scale() && table_quant->scale()->size() &&
-          table_tensor->shape() && table_tensor->shape()->size()) {
+      if (table_quant && table_quant->scale() &&
+          !table_quant->scale()->empty() && table_tensor->shape() &&
+          !table_tensor->shape()->empty()) {
         op_sig.ext_options.embedding_lookup.is_per_channel_quantized =
             table_quant->scale()->size() > 1 &&
             IsTensorSizeEqual(table_quant->scale()->size(),
