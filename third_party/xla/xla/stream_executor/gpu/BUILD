@@ -606,7 +606,6 @@ xla_test(
     srcs = ["gpu_command_buffer_test.cc"],
     backends = ["gpu"],
     deps = [
-        ":gpu_command_buffer",
         ":gpu_test_kernels",
         "//xla/service:platform_util",
         "//xla/stream_executor:command_buffer",
@@ -620,18 +619,13 @@ xla_test(
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor:trace_command_buffer_factory",
-        "//xla/stream_executor:typed_kernel_factory",
         "//xla/stream_executor/cuda:cuda_platform_id",
-        "//xla/stream_executor/rocm:rocm_platform_id",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status",
-        "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_benchmark",
         "//xla/tsl/platform:test_main",
-        "@com_google_absl//absl/base",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
@@ -694,8 +688,6 @@ xla_test(
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -828,12 +820,14 @@ cc_library(
 )
 
 exports_files([
-    "buffer_comparator_kernel_lib.cu.h",
     "all_reduce_kernel_lib.cu.h",
-    "ragged_all_to_all_kernel_lib.cu.h",
-    "repeat_buffer_kernel.cu.h",
-    "redzone_allocator_kernel_lib.cu.h",
+    "buffer_comparator_kernel_lib.cu.h",
+    "collective_permute_kernel_lib.cu.h",
+    "collective_kernel_util.cu.h",
     "gpu_test_kernels_lib.cu.h",
+    "ragged_all_to_all_kernel_lib.cu.h",
+    "redzone_allocator_kernel_lib.cu.h",
+    "repeat_buffer_kernel.cu.h",
 ])
 
 cc_library(
