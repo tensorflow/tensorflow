@@ -199,7 +199,7 @@ absl::Status TransferManager::ReadDynamicShapes(
 /* static */ void TransferManager::RegisterTransferManager(
     se::Platform::Id platform_id,
     TransferManagerCreationFunction creation_function) {
-  absl::MutexLock lock(&TransferManager::platform_transfer_manager_mutex_);
+  absl::MutexLock lock(TransferManager::platform_transfer_manager_mutex_);
   auto* managers = GetPlatformTransferManagers();
   CHECK(managers->find(platform_id) == managers->end());
   (*managers)[platform_id].creation_function = creation_function;
@@ -207,7 +207,7 @@ absl::Status TransferManager::ReadDynamicShapes(
 
 /* static */ absl::StatusOr<TransferManager*> TransferManager::GetForPlatform(
     const se::Platform* platform) {
-  absl::MutexLock lock(&TransferManager::platform_transfer_manager_mutex_);
+  absl::MutexLock lock(TransferManager::platform_transfer_manager_mutex_);
   auto* managers = GetPlatformTransferManagers();
 
   auto it = managers->find(platform->id());
