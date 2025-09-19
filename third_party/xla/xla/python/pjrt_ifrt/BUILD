@@ -181,6 +181,7 @@ cc_library(
     deps = [
         ":executable_metadata_proto_cc",
         ":pjrt_layout",
+        ":xla_executable_version",
         ":xla_ifrt",
         "//xla/client:executable_build_options",
         "//xla/pjrt:mlir_to_hlo",
@@ -189,7 +190,6 @@ cc_library(
         "//xla/python/ifrt:test_util",
         "//xla/python/ifrt:user_context",
         "//xla/python/ifrt/hlo:hlo_program",
-        "//xla/python/pjrt_ifrt:xla_executable_version",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",

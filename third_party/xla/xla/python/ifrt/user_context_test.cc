@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/python/ifrt/user_context.h"
 
-#include <cstdint>
 #include <string>
 
 #include <gtest/gtest.h>
@@ -38,7 +37,6 @@ class TestUserContext : public llvm::RTTIExtends<TestUserContext, UserContext> {
     return tsl::TakeRef<TestUserContext>(new TestUserContext(id));
   }
 
-  uint64_t Fingerprint() const override { return id_.value(); }
   UserContextId Id() const override { return id_; }
 
   std::string DebugString() const override {
@@ -70,25 +68,6 @@ TEST(AnnotatedUserContextTest, Id) {
   EXPECT_NE(annotated_context3->Id(), annotated_context1->Id());
 }
 
-TEST(AnnotatedUserContextTest, Fingerprint) {
-  const UserContextId kUserContextId(100);
-  UserContextRef context = TestUserContext::Create(kUserContextId);
-
-  UserContextRef annotated_context1 =
-      AnnotatedUserContext::Create(context, "test annotation");
-  EXPECT_NE(annotated_context1->Fingerprint(), context->Fingerprint());
-
-  UserContextRef annotated_context2 =
-      AnnotatedUserContext::Create(context, "test annotation 2");
-  EXPECT_NE(annotated_context2->Fingerprint(),
-            annotated_context1->Fingerprint());
-
-  UserContextRef annotated_context3 =
-      AnnotatedUserContext::Create(UserContextRef(), "test annotation");
-  EXPECT_NE(annotated_context3->Fingerprint(),
-            annotated_context1->Fingerprint());
-}
-
 TEST(AnnotatedUserContextTest, DebugString) {
   {
     const UserContextId kUserContextId(100);
@@ -117,20 +96,6 @@ TEST(ChainedUserContextTest, Id) {
   EXPECT_NE(chained_context->Id(), context2->Id());
 }
 
-TEST(ChainedUserContextTest, Fingerprint) {
-  const UserContextId kUserContextId1(100);
-  const UserContextId kUserContextId2(200);
-  UserContextRef context1 = TestUserContext::Create(kUserContextId1);
-  UserContextRef context2 = TestUserContext::Create(kUserContextId2);
-  UserContextRef chained_context1 =
-      ChainedUserContext::Create({context1, UserContextRef(), context2});
-  EXPECT_NE(chained_context1->Fingerprint(), context1->Fingerprint());
-  EXPECT_NE(chained_context1->Fingerprint(), context2->Fingerprint());
-  UserContextRef chained_context2 =
-      ChainedUserContext::Create({context2, UserContextRef(), context1});
-  EXPECT_NE(chained_context2->Fingerprint(), chained_context1->Fingerprint());
-}
-
 TEST(ChainedUserContextTest, DebugString) {
   const UserContextId kUserContextId1(100);
   const UserContextId kUserContextId2(200);
@@ -152,20 +117,6 @@ TEST(FusedUserContextTest, Id) {
       FusedUserContext::Create({context1, UserContextRef(), context2});
   EXPECT_NE(fused_context->Id(), context1->Id());
   EXPECT_NE(fused_context->Id(), context2->Id());
-}
-
-TEST(FusedUserContextTest, Fingerprint) {
-  const UserContextId kUserContextId1(100);
-  const UserContextId kUserContextId2(200);
-  UserContextRef context1 = TestUserContext::Create(kUserContextId1);
-  UserContextRef context2 = TestUserContext::Create(kUserContextId2);
-  UserContextRef fused_context1 =
-      FusedUserContext::Create({context1, UserContextRef(), context2});
-  EXPECT_NE(fused_context1->Fingerprint(), context1->Fingerprint());
-  EXPECT_NE(fused_context1->Fingerprint(), context2->Fingerprint());
-  UserContextRef fused_context2 =
-      FusedUserContext::Create({context2, UserContextRef(), context1});
-  EXPECT_EQ(fused_context2->Fingerprint(), fused_context1->Fingerprint());
 }
 
 TEST(FusedUserContextTest, DebugString) {
@@ -194,7 +145,6 @@ TEST(UserContextScopeTest, SingleScope) {
 TEST(UserContextScopeTest, SingleScopeWithInlineContextCreation) {
   const UserContextId kUserContextId(100);
   UserContextScope scope(TestUserContext::Create(kUserContextId));
-  EXPECT_EQ(UserContextScope::current()->Fingerprint(), kUserContextId.value());
   EXPECT_EQ(UserContextScope::current()->Id(), kUserContextId);
 }
 

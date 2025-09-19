@@ -131,7 +131,6 @@ class TestUserContext : public llvm::RTTIExtends<TestUserContext, UserContext> {
  public:
   explicit TestUserContext(UserContextId id) : id_(id) {}
 
-  uint64_t Fingerprint() const override { return id_.value(); }
   UserContextId Id() const override { return id_; }
 
   std::string DebugString() const override {

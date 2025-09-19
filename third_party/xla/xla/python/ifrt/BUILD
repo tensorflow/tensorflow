@@ -1110,7 +1110,6 @@ cc_library(
     deps = [
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/lib/gtl:int_type",
-        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/base:nullability",
@@ -1119,7 +1118,6 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
-        "@local_tsl//tsl/platform:fingerprint",
         "@local_tsl//tsl/platform:random",
     ],
 )
