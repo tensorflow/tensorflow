@@ -17,8 +17,11 @@ limitations under the License.
 
 #include <algorithm>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/base/no_destructor.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 namespace xla::hlo_diff {
 
@@ -147,9 +150,18 @@ void ComputeDiffRecursive(absl::string_view left, absl::string_view right,
 
 std::vector<TextDiffChunk> ComputeTextDiff(absl::string_view left,
                                            absl::string_view right) {
+  static absl::NoDestructor<absl::flat_hash_map<
+      std::pair<std::string, std::string>, std::vector<TextDiffChunk>>>
+      cache;
+  std::pair<std::string, std::string> key{std::string(left),
+                                          std::string(right)};
+  auto it = cache->find(key);
+  if (it != cache->end()) {
+    return it->second;
+  }
   std::vector<TextDiffChunk> diff_chunks;
   ComputeDiffRecursive(left, right, diff_chunks);
-  return diff_chunks;
+  return cache->emplace(key, diff_chunks).first->second;
 }
 
 }  // namespace xla::hlo_diff
