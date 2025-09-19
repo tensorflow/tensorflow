@@ -1317,6 +1317,7 @@ func AsStringPrecision(value int64) AsStringAttr {
 // AsStringScientific sets the optional scientific attribute to value.
 //
 // value: Use scientific notation for floating point numbers.
+// Can't be specified to `True` when `shortest` is set to `True`.
 // If not specified, defaults to false
 func AsStringScientific(value bool) AsStringAttr {
 	return func(m optionalAttr) {
@@ -1328,6 +1329,7 @@ func AsStringScientific(value bool) AsStringAttr {
 //
 // value: Use shortest representation (either scientific or standard) for
 // floating point numbers.
+// Can't be specified to `True` when `scientific` is set to `True`.
 // If not specified, defaults to false
 func AsStringShortest(value bool) AsStringAttr {
 	return func(m optionalAttr) {
@@ -16494,6 +16496,9 @@ func ExperimentalThreadPoolHandleMaxIntraOpParallelism(value int64) Experimental
 }
 
 // ExperimentalThreadPoolHandleContainer sets the optional container attribute to value.
+//
+// value: The name of `container` should start with `'.'` or `letter` or `digit`,
+// with ['-', '.', '/'] or `letter` or `digit` follows several times.
 // If not specified, defaults to ""
 func ExperimentalThreadPoolHandleContainer(value string) ExperimentalThreadPoolHandleAttr {
 	return func(m optionalAttr) {
@@ -16517,10 +16522,6 @@ func ExperimentalThreadPoolHandleSharedName(value string) ExperimentalThreadPool
 //	display_name: A human-readable name for the threads that may be visible in some
 //
 // visualizations.
-// threadpool.
-//
-// Returns A resource that can be consumed by one or more ExperimentalThreadPoolDataset
-// ops.
 func ExperimentalThreadPoolHandle(scope *Scope, num_threads int64, display_name string, optional ...ExperimentalThreadPoolHandleAttr) (handle tf.Output) {
 	if scope.Err() != nil {
 		return
