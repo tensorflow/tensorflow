@@ -104,7 +104,7 @@ TEST(SerializationUtilsTest, VariantTensorDataRoundtrip) {
 
 TEST(SerializationUtilsTest, VariantTensorDataNonExistentKey) {
   VariantTensorData data;
-  strings::StrAppend(&data.metadata_, "key1", "@@");
+  absl::StrAppend(&data.metadata_, "key1", "@@");
   data.tensors_.push_back(Tensor(DT_INT64, {1}));
   std::vector<const VariantTensorData*> reader_data;
   reader_data.push_back(&data);
@@ -141,7 +141,7 @@ TEST(SerializationUtilsTest, VariantTensorDataRoundtripIteratorName) {
 
 TEST(SerializationUtilsTest, VariantTensorDataNonExistentKeyIteratorName) {
   VariantTensorData data;
-  strings::StrAppend(&data.metadata_, "key1", "@@");
+  absl::StrAppend(&data.metadata_, "key1", "@@");
   data.tensors_.push_back(Tensor(DT_INT64, {1}));
   std::vector<const VariantTensorData*> reader_data;
   reader_data.push_back(&data);

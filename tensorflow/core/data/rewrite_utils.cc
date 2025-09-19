@@ -85,13 +85,13 @@ void AddFakeSinks(FunctionDef* function_def) {
   for (const auto& output : function_def->signature().output_arg()) {
     NodeDef* node = function_def->add_node_def();
     tensorflow::grappler::function_utils::SetUniqueFunctionNodeName(
-        strings::StrCat("FakeSink", counter++), function_def, node);
+        absl::StrCat("FakeSink", counter++), function_def, node);
     node->set_op("Identity");
     node->add_input(function_def->ret().at(output.name()));
     (*node->mutable_attr())["T"].set_type(output.type());
 
     (*function_def->mutable_ret())[output.name()] =
-        strings::StrCat(node->name(), ":output:0");
+        absl::StrCat(node->name(), ":output:0");
   }
 }
 
