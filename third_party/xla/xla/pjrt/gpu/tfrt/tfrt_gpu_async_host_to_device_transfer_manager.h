@@ -85,7 +85,7 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
   PjRtDevice* device() const override { return device_; }
 
   std::unique_ptr<PjRtBuffer> RetrieveBuffer(int buffer_index) override {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     DCHECK_LT(buffer_index, buffers_.size());
     return std::move(buffers_[buffer_index]);
   };
