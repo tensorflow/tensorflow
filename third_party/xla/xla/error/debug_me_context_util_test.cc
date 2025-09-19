@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/errors/debug_me_context_util.h"
+#include "xla/error/debug_me_context_util.h"
 
 #include <string>
 

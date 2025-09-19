@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_ERRORS_DEBUG_ME_CONTEXT_UTIL_H_
-#define XLA_ERRORS_DEBUG_ME_CONTEXT_UTIL_H_
+#ifndef XLA_ERROR_DEBUG_ME_CONTEXT_UTIL_H_
+#define XLA_ERROR_DEBUG_ME_CONTEXT_UTIL_H_
 
 #include <cstdint>
 #include <string>
@@ -73,4 +73,4 @@ class HloPassDebugMeContext : public tsl::DebugMeContext<DebugMeContextKey> {
 }  // namespace error
 }  // namespace xla
 
-#endif  // XLA_ERRORS_DEBUG_ME_CONTEXT_UTIL_H_
+#endif  // XLA_ERROR_DEBUG_ME_CONTEXT_UTIL_H_
