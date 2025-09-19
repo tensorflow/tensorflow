@@ -57,6 +57,7 @@ namespace xla {
 namespace {
 
 using ::testing::IsEmpty;
+using ::testing::Key;
 using ::testing::Matches;
 using ::testing::Pair;
 using ::testing::UnorderedElementsAre;
@@ -1001,10 +1002,10 @@ TEST_F(ClientServerTest, GetLiveTasksSucceeds) {
       TF_ASSERT_OK(client->Connect());
 
       // Get the set of live nodes. All three nodes should be live.
-      absl::StatusOr<std::vector<int32_t>> live_nodes =
-          client->GetLiveNodes(std::vector<int>{0, 1, 2});
+      absl::StatusOr<absl::flat_hash_map<int32_t, IncarnationId>> live_nodes =
+          client->GetLiveNodesWithIncarnations(std::vector<int>{0, 1, 2});
       TF_ASSERT_OK(live_nodes.status());
-      EXPECT_THAT(*live_nodes, UnorderedElementsAre(0, 1, 2));
+      EXPECT_THAT(*live_nodes, UnorderedElementsAre(Key(0), Key(1), Key(2)));
     });
   }
 }
@@ -1023,7 +1024,7 @@ TEST_F(ClientServerTest, GetLiveTasksWithoutBeingAMember) {
       // Get the set of live nodes but don't include ourselves.
       std::vector<int> nodes{0, 1, 2};
       nodes.erase(nodes.begin() + i);
-      EXPECT_THAT(client->GetLiveNodes(nodes),
+      EXPECT_THAT(client->GetLiveNodesWithIncarnations(nodes),
                   absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
     });
   }

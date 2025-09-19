@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/pjrt/proto/execute_options.pb.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/compiler.h"
+#include "xla/service/global_device_id.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
@@ -291,6 +292,9 @@ struct ExecuteOptions {
   // null-terminated string. It is only valid for the duration of the C API
   // call. The plugin must copy the string if it needs to be stored.
   std::string call_location = "";
+
+  // The latest known incarnation ids for all alive tasks, keyed by task id.
+  absl::flat_hash_map<int, IncarnationId> incarnations;
 
   absl::StatusOr<ExecuteOptionsProto> ToProto() const;
   static absl::StatusOr<ExecuteOptions> FromProto(

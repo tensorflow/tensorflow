@@ -1062,8 +1062,8 @@ TEST_F(ClientServerTest, GetAliveTasks_Succeed) {
   auto thread_fn = [&](int node_id) -> absl::Status {
     auto client = GetClient(node_id);
     TF_RETURN_IF_ERROR(client->Connect());
-    absl::StatusOr<std::vector<tensorflow::CoordinatedTask>> alive_tasks =
-        client->GetAliveTasks({GetTask(0), GetTask(1)});
+    absl::StatusOr<std::vector<CoordinationServiceAgent::AliveTask>>
+        alive_tasks = client->GetAliveTasks({GetTask(0), GetTask(1)});
     if (!alive_tasks.ok()) {
       return alive_tasks.status();
     }
