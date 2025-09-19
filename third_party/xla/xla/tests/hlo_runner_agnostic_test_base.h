@@ -183,11 +183,12 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
       std::vector<std::vector<Literal*>> arguments, int64_t num_replicas,
       bool run_hlo_passes, DeviceAssignment* device_assignment = nullptr);
 
-  // Executes an hlo module with fake inputs and checks that the execution is
-  // successful.
+  // Executes an hlo module with provided orfake inputs and checks that the
+  // execution is successful.
   ::testing::AssertionResult Run(
       std::unique_ptr<HloModule> module, bool run_hlo_passes,
-      const std::function<void(HloModule*)>& test_preprocessor = nullptr);
+      const std::function<void(HloModule*)>& test_preprocessor = nullptr,
+      std::vector<Literal>* arguments = nullptr);
 
   // Convenient wrapper for executing and comparing an hlo module with fake
   // input. Module can be passed in directly, or parsed from an hlo_string,
