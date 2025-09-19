@@ -274,6 +274,18 @@ std::string PrintCss() {
     div.hlo-instruction.has-overflow:not(.expanded):hover button.hlo-expand-btn {
       visibility: visible;
     }
+    button.hlo-program-shape-btn {
+      background: #e8eaf6;
+      color: #3f51b5;
+      padding: 0 4px;
+      border: 1px solid #c5cae9;
+      box-shadow: none;
+      font-weight: bold;
+      margin-left: 4px;
+      height: 1.3em;
+      line-height: 1.1;
+      cursor: pointer;
+    }
     div.bordered {
       border: 2px solid #4285F4;
     }
@@ -412,6 +424,23 @@ std::string PrintJavascriptForHoverEvent() {
           e.stopPropagation();
         });
       }
+  });
+
+  const allProgramShapeButtons = document.querySelectorAll('.hlo-program-shape-btn');
+  allProgramShapeButtons.forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const shapeSpan = btn.nextElementSibling;
+      if (shapeSpan && shapeSpan.classList.contains('hlo-program-shape')) {
+        if (shapeSpan.style.display === 'none') {
+          shapeSpan.style.display = 'inline';
+          btn.textContent = 'hide program shape';
+        } else {
+          shapeSpan.style.display = 'none';
+          btn.textContent = 'show program shape';
+        }
+      }
+      e.stopPropagation();
+    });
   });
 
   function getRelatedDivs(diffId, mappedId) {
@@ -829,8 +858,12 @@ std::string PrintHloComputationToHtml(
   printer.Append("<b>%");
   printer.Append(comp->name());
   printer.Append(" ");
+  printer.Append(
+      "<button class='hlo-program-shape-btn'>show program shape</button>");
+  printer.Append("<span class='hlo-program-shape' style='display: none;'>");
   ShapeUtil::PrintHumanString(&printer,
                               comp->ComputeProgramShape(/*include_ids=*/true));
+  printer.Append("</span>");
   printer.Append(" ");
   printer.Append("{</b>\n");
 
