@@ -774,7 +774,6 @@ cc_library(
 
 cc_library(
     name = "collective_perf_table_gen_main_lib",
-    testonly = True,
     srcs = ["collective_perf_table_gen_main.cc"],
     compatible_with = None,
     tags = [
@@ -862,7 +861,6 @@ xla_test(
 
 xla_cc_binary(
     name = "collective_perf_table_gen_main",
-    testonly = True,
     tags = [
         "no_mac",
     ],
