@@ -165,16 +165,16 @@ TEST_P(ParameterizedFp8GemmRewriteTest, SupportsF8NonMajorBatchDim) {
 HloModule t
 
 ENTRY main {
-  %bitcast.73421 = f8e4m3fn[16,8,160]{2,1,0} parameter(0)
-  %parameter_1.5 = f8e4m3fn[8,160,1280]{2,1,0} parameter(1)
-  %parameter_2 = f8e4m3fn[8,160,1280]{2,1,0} parameter(2)
-  %concatenate.2145 = f8e4m3fn[8,160,2560]{2,1,0} concatenate(
-      f8e4m3fn[8,160,1280]{2,1,0} %parameter_1.5,
-      f8e4m3fn[8,160,1280]{2,1,0} %parameter_2),
+  %bitcast.73421 = <<F8E4M3>>[16,8,160]{2,1,0} parameter(0)
+  %parameter_1.5 = <<F8E4M3>>[8,160,1280]{2,1,0} parameter(1)
+  %parameter_2 = <<F8E4M3>>[8,160,1280]{2,1,0} parameter(2)
+  %concatenate.2145 = <<F8E4M3>>[8,160,2560]{2,1,0} concatenate(
+      <<F8E4M3>>[8,160,1280]{2,1,0} %parameter_1.5,
+      <<F8E4M3>>[8,160,1280]{2,1,0} %parameter_2),
         dimensions={2}
   %dot.6237 = f32[8,16,2560]{2,1,0} dot(
-      f8e4m3fn[16,8,160]{2,1,0} %bitcast.73421,
-      f8e4m3fn[8,160,2560]{2,1,0} %concatenate.2145),
+      <<F8E4M3>>[16,8,160]{2,1,0} %bitcast.73421,
+      <<F8E4M3>>[8,160,2560]{2,1,0} %concatenate.2145),
         lhs_batch_dims={1},
         lhs_contracting_dims={2},
         rhs_batch_dims={0},
@@ -182,7 +182,8 @@ ENTRY main {
   ROOT %convert.20480 = bf16[8,16,2560]{2,1,0} convert(
       f32[8,16,2560]{2,1,0} %dot.6237)
 })";
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-2, 1e-2}));
+  EXPECT_TRUE(RunAndCompare(absl::StrReplaceAll(hlo_text, replacements_),
+                            ErrorSpec{1e-2, 1e-2}));
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, DoNotRewriteToF8OnPreAda) {
@@ -2950,8 +2951,8 @@ TEST_P(ParameterizedFp8GemmRewriteTest, FnuzTypeF8) {
     HloModule test
 
     ENTRY test {
-      x = f8e4m3fnuz[16,32] parameter(0)
-      y = f8e4m3fnuz[32,16] parameter(1)
+      x = <<F8E4M3>>[16,32] parameter(0)
+      y = <<F8E4M3>>[32,16] parameter(1)
       x_f32 = f32[16,32] convert(x)
       y_f32 = f32[32,16] convert(y)
       x_scale = f32[] parameter(2)
@@ -2965,25 +2966,26 @@ TEST_P(ParameterizedFp8GemmRewriteTest, FnuzTypeF8) {
 )";
   if (IsRocm() && std::get<se::RocmComputeCapability>(Capability())
                       .has_nanoo_fp8_support()) {
-    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-2, 1e-2}));
+    EXPECT_TRUE(RunAndCompare(absl::StrReplaceAll(hlo_text, replacements_),
+                              ErrorSpec{1e-2, 1e-2}));
     RunAndFilecheckHloRewrite(
-        hlo_text,
+        absl::StrReplaceAll(hlo_text, replacements_),
         GemmRewriter(CudaHopperOrRocmCapability(), GetToolkitVersion(),
                      GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only}),
         R"(
-; CHECK-LABEL: ENTRY %test ({{.*}}: f8e4m3fnuz[16,32], {{.*}}: f8e4m3fnuz[32,16], {{.*}}: f32[], {{.*}}: f32[]) -> f32[16,16] {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fnuz[16,32]{1,0} parameter(0)
+; CHECK-LABEL: ENTRY %test ({{.*}}: <<F8E4M3>>[16,32], {{.*}}: <<F8E4M3>>[32,16], {{.*}}: f32[], {{.*}}: f32[]) -> f32[16,16] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = <<F8E4M3>>[16,32]{1,0} parameter(0)
 ; CHECK-PTX-NEXT:    [[P0_CV:%[^ ]+]] = f32[16,32]{1,0} convert([[P0]])
 ; CHECK-PTX-NEXT:    [[P2:%[^ ]+]] = f32[] parameter(2)
 ; CHECK-PTX-NEXT:    [[P2_B:%[^ ]+]] = f32[16,32]{1,0} broadcast([[P2]]), dimensions={}
 ; CHECK-PTX-NEXT:    [[P0_UNSCALED:%[^ ]+]] = f32[16,32]{1,0} multiply([[P0_CV]], [[P2_B]])
-; CHECK-PTX-NEXT:    [[P1:%[^ ]+]] = f8e4m3fnuz[32,16]{1,0} parameter(1)
+; CHECK-PTX-NEXT:    [[P1:%[^ ]+]] = <<F8E4M3>>[32,16]{1,0} parameter(1)
 ; CHECK-PTX-NEXT:    [[P1_CV:%[^ ]+]] = f32[32,16]{1,0} convert([[P1]])
 ; CHECK-PTX-NEXT:    [[P3:%[^ ]+]] = f32[] parameter(3)
 ; CHECK-PTX-NEXT:    [[P3_B:%[^ ]+]] = f32[32,16]{1,0} broadcast([[P3]]), dimensions={}
 ; CHECK-PTX-NEXT:    [[P1_UNSCALED:%[^ ]+]] = f32[32,16]{1,0} multiply([[P1_CV]], [[P3_B]])
 ; CHECK-PTX-NEXT:    [[GEMM:%[^ ]+]] = {{.*}} custom-call([[P0_UNSCALED]], [[P1_UNSCALED]]),
-; CHECK-GCN-NEXT:    [[P1:%[^ ]+]] = f8e4m3fnuz[32,16]{1,0} parameter(1)
+; CHECK-GCN-NEXT:    [[P1:%[^ ]+]] = <<F8E4M3>>[32,16]{1,0} parameter(1)
 ; CHECK-GCN-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = <<F8E4M3>>[16,32]{1,0} transpose([[P1]])
 ; CHECK-GCN-NEXT:    [[P2:%[^ ]+]] = f32[] parameter(2)
 ; CHECK-GCN-NEXT:    [[P3:%[^ ]+]] = f32[] parameter(3)
