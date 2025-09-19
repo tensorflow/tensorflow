@@ -804,12 +804,6 @@ class PjRtFuture<void> : public internal::PjRtFutureBase<absl::Status> {
     }
   };
 
-  // Returns a Promise that can be used to construct a PjRtFuture, and then Set
-  // later.
-  static Promise CreatePromise() {
-    return Promise(tsl::MakeUnconstructedAsyncValueRef<absl::Status>());
-  }
-
   // Returns a pair of connected Promise and PjRtFuture<>. Setting the returned
   // promise will fulfill the connected future.
   static std::pair<MoveOnlyPromise, PjRtFuture<>> MakePromise() {
