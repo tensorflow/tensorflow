@@ -140,6 +140,7 @@ bool CanInferShape(HloOpcode code) {
     case HloOpcode::kConvolution:
     case HloOpcode::kCopy:
     case HloOpcode::kCos:
+    case HloOpcode::kCosh:
     case HloOpcode::kOptimizationBarrier:
     case HloOpcode::kDivide:
     case HloOpcode::kDomain:
@@ -1657,6 +1658,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
     case HloOpcode::kErf:
     case HloOpcode::kSin:
     case HloOpcode::kCos:
+    case HloOpcode::kCosh:
     case HloOpcode::kTan:
     case HloOpcode::kExp: {
       return create_unary_instruction_with_result_accuracy();

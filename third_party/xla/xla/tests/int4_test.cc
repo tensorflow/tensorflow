@@ -344,6 +344,7 @@ class ElementwiseTest : public HloTestBase,
       case HloOpcode::kCeil:
       case HloOpcode::kComplex:
       case HloOpcode::kCos:
+      case HloOpcode::kCosh:
       case HloOpcode::kSin:
       case HloOpcode::kErf:
       case HloOpcode::kExp:
