@@ -854,8 +854,8 @@ absl::Status RunOptimizationPasses(
         auto created = Cast<HloCustomCallInstruction>(
             inst->parent()->AddInstruction(HloInstruction::CreateCustomCall(
                 ShapeUtil::MakeTokenShape(), {inst}, kXlaGpuAssertCustomCallTag,
-                "Buffers have different size at runtime",
-                API_VERSION_STATUS_RETURNING)));
+                "{error_msg = \"Buffers have different size at runtime\"}",
+                API_VERSION_TYPED_FFI)));
         created->set_custom_call_has_side_effect(true);
       };
       break;
