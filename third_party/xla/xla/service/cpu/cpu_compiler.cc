@@ -955,13 +955,16 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
       options::UseMultiOutputFusion(module->config());
   pipeline.AddPass<CpuInstructionFusion>(
       /*may_duplicate=*/!use_multi_output_fusion);
+
+  if (is_fusion_emitters) {
+    bool use_experimental_loop_fusion =
+        options::UseExperimentalLoopFusion(module->config());
+    pipeline.AddPass<FusionWrapper>(use_experimental_loop_fusion);
+  }
+
   if (use_multi_output_fusion) {
     pipeline.AddPass<CpuMultiOutputFusion>();
     pipeline.AddPass<TupleSimplifier>();
-  }
-
-  if (is_fusion_emitters) {
-    pipeline.AddPass<FusionWrapper>();
   }
 
   if (flatten_after_fusion) {
