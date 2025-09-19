@@ -2509,6 +2509,44 @@ PJRT_Error* PJRT_TopologyDescription_Deserialize(
   return nullptr;
 }
 
+PJRT_Error* PJRT_LoadedExecutable_GetDeviceAssignment(
+    PJRT_LoadedExecutable_GetDeviceAssignment_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_LoadedExecutable_GetDeviceAssignment_Args",
+      PJRT_LoadedExecutable_GetDeviceAssignment_Args_STRUCT_SIZE,
+      args->struct_size));
+
+  const xla::DeviceAssignment& device_assignment =
+      args->executable->executable->device_assignment();
+
+  xla::DeviceAssignmentProto proto;
+  device_assignment.Serialize(&proto);
+
+  std::string serialized_proto;
+  if (!proto.SerializeToString(&serialized_proto)) {
+    return new PJRT_Error{xla::ResourceExhausted(
+        "%s: Device assignment serialization failed, likely due to exceeding "
+        "the max supported protobuf size of 2 GiB.",
+        __func__)};
+  }
+
+  PJRT_DeviceAssignmentSerialized* serialized_da =
+      new PJRT_DeviceAssignmentSerialized;
+  if (serialized_da == nullptr) {
+    return new PJRT_Error{xla::ResourceExhausted(
+        "Out of memory for `PJRT_LoadedExecutable_GetDeviceAssignment()`")};
+  }
+  serialized_da->serialized = std::move(serialized_proto);
+  args->serialized_device_assignment = serialized_da;
+  args->serialized_bytes = serialized_da->serialized.data();
+  args->serialized_bytes_size = serialized_da->serialized.size();
+  args->serialized_device_assignment_deleter =
+      +[](PJRT_DeviceAssignmentSerialized* serialized_device_assignment) {
+        delete serialized_device_assignment;
+      };
+  return nullptr;
+}
+
 // ---------------------------------- Layouts ----------------------------------
 
 PJRT_Error* PJRT_Layouts_MemoryLayout_Destroy(
@@ -2968,6 +3006,8 @@ PJRT_Api CreatePjrtApi(PJRT_Client_Create* create_fn,
       pjrt::PJRT_Client_UpdateGlobalProcessInfo,
       /*PJRT_TopologyDescription_Deserialize=*/
       pjrt::PJRT_TopologyDescription_Deserialize,
+      /*PJRT_LoadedExecutable_GetDeviceAssignment=*/
+      pjrt::PJRT_LoadedExecutable_GetDeviceAssignment,
   };
 }
 
