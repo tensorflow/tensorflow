@@ -405,6 +405,20 @@ xla_cc_test(
 )
 
 xla_cc_test(
+    name = "dfs_hlo_visitor_test",
+    srcs = ["dfs_hlo_visitor_test.cc"],
+    deps = [
+        ":hlo",
+        "//xla:literal_util",
+        "//xla/service:hlo_module_config",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_cc_test(
     name = "hlo_original_value_test",
     srcs = ["hlo_original_value_test.cc"],
     deps = [
