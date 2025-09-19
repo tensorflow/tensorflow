@@ -151,7 +151,7 @@ absl::Status WriteResultFile(const absl::string_view result_output_file,
   if (result_output_file.empty()) {
     return absl::OkStatus();
   }
-  absl::MutexLock ml(&stats.stats_mutex);
+  absl::MutexLock ml(stats.stats_mutex);
   const double secs = std::floor(stats.cumulative_secs);
   const double nanos =
       (stats.cumulative_secs - secs) * tsl::EnvTime::kSecondsToNanos;
