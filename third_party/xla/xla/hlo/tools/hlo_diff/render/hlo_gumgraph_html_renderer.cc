@@ -239,6 +239,8 @@ std::string PrintCss() {
       display: flex;
       width: 100%;
       align-items: flex-start;
+      border: 2px solid transparent;
+      box-sizing: border-box;
     }
     div.hlo-instruction.expanded {
       max-width: unset;
@@ -286,7 +288,7 @@ std::string PrintCss() {
       line-height: 1.1;
       cursor: pointer;
     }
-    div.bordered {
+    div.hlo-instruction.bordered {
       border: 2px solid #4285F4;
     }
 
@@ -804,42 +806,42 @@ absl::flat_hash_map<const HloInstruction*, Attributes> GenerateSpanAttributes(
   for (auto& instruction : diff_result.left_module_unmatched_instructions) {
     span_attributes[instruction] =
         Attributes{.highlight = "red-highlight",
-                   .diffid = std::string(instruction->name()),
+                   .diffid = absl::StrCat("left:", instruction->name()),
                    .mapped_diffid = "",
                    .mapped_instruction = nullptr};
   }
   for (auto& instruction : diff_result.right_module_unmatched_instructions) {
     span_attributes[instruction] =
         Attributes{.highlight = "green-highlight",
-                   .diffid = std::string(instruction->name()),
+                   .diffid = absl::StrCat("right:", instruction->name()),
                    .mapped_diffid = "",
                    .mapped_instruction = nullptr};
   }
   for (const auto& [l_instruction, r_instruction] :
        diff_result.changed_instructions) {
-    span_attributes[l_instruction] =
-        Attributes{.highlight = "yellow-highlight",
-                   .diffid = std::string(l_instruction->name()),
-                   .mapped_diffid = std::string(r_instruction->name()),
-                   .mapped_instruction = r_instruction};
-    span_attributes[r_instruction] =
-        Attributes{.highlight = "yellow-highlight",
-                   .diffid = std::string(r_instruction->name()),
-                   .mapped_diffid = std::string(l_instruction->name()),
-                   .mapped_instruction = l_instruction};
+    span_attributes[l_instruction] = Attributes{
+        .highlight = "yellow-highlight",
+        .diffid = absl::StrCat("left:", l_instruction->name()),
+        .mapped_diffid = absl::StrCat("right:", r_instruction->name()),
+        .mapped_instruction = r_instruction};
+    span_attributes[r_instruction] = Attributes{
+        .highlight = "yellow-highlight",
+        .diffid = absl::StrCat("right:", r_instruction->name()),
+        .mapped_diffid = absl::StrCat("left:", l_instruction->name()),
+        .mapped_instruction = l_instruction};
   }
   for (const auto& [l_instruction, r_instruction] :
        diff_result.unchanged_instructions) {
-    span_attributes[l_instruction] =
-        Attributes{.highlight = "",
-                   .diffid = std::string(l_instruction->name()),
-                   .mapped_diffid = std::string(r_instruction->name()),
-                   .mapped_instruction = r_instruction};
-    span_attributes[r_instruction] =
-        Attributes{.highlight = "",
-                   .diffid = std::string(r_instruction->name()),
-                   .mapped_diffid = std::string(l_instruction->name()),
-                   .mapped_instruction = l_instruction};
+    span_attributes[l_instruction] = Attributes{
+        .highlight = "",
+        .diffid = absl::StrCat("left:", l_instruction->name()),
+        .mapped_diffid = absl::StrCat("right:", r_instruction->name()),
+        .mapped_instruction = r_instruction};
+    span_attributes[r_instruction] = Attributes{
+        .highlight = "",
+        .diffid = absl::StrCat("right:", r_instruction->name()),
+        .mapped_diffid = absl::StrCat("left:", l_instruction->name()),
+        .mapped_instruction = l_instruction};
   }
   return span_attributes;
 };
