@@ -13,7 +13,7 @@ load(
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "internal_visibility", "tsl_copts")
 load("//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
-load("//xla/tsl/mkl:build_defs.bzl", "if_graph_api")
+load("//xla/tsl/mkl:build_defs.bzl", "if_graph_api", "if_onednn")
 load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
 load(
     "//xla/tsl/platform:build_config_root.bzl",
@@ -203,9 +203,6 @@ cc_library(
         ":ir_emitter",
         ":ir_emitter2",
         ":metrics",
-        ":onednn_contraction_rewriter",
-        ":onednn_float_support",
-        ":onednn_ops_rewriter",
         ":parallel_task_assignment",
         ":runtime_symbol_generator",
         ":small_while_loop_hoisting_pass",
@@ -417,6 +414,10 @@ cc_library(
         "@llvm-project//llvm:SystemZCodeGen",  # fixdeps: keep
     ]) + if_llvm_x86_available([
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
+    ]) + if_onednn([
+        ":onednn_contraction_rewriter",
+        ":onednn_float_support",
+        ":onednn_ops_rewriter",
     ]),
 )
 
@@ -584,10 +585,6 @@ cc_library(
     copts = if_enable_acl(["-DXLA_CPU_USE_ACL=1"]) + tsl_copts(),
     deps = [
         ":cpu_runtime",
-        ":onednn_convolution",
-        ":onednn_layer_norm",
-        ":onednn_matmul",
-        ":onednn_softmax",
         ":runtime_conv2d",
         ":runtime_conv2d_acl",
         ":runtime_conv3d",
@@ -610,7 +607,12 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:mlir_c_runner_utils",
         "@local_tsl//tsl/platform:logging",
-    ],
+    ] + if_onednn([
+        ":onednn_convolution",
+        ":onednn_layer_norm",
+        ":onednn_matmul",
+        ":onednn_softmax",
+    ]),
 )
 
 cc_library(
@@ -981,7 +983,6 @@ cc_library(
         "//xla/backends/cpu/runtime:topk_thunk",
         "//xla/backends/cpu/runtime:while_thunk",
         "//xla/backends/cpu/runtime/onednn:onednn_fusion_thunk",
-        "//xla/backends/cpu/runtime/onednn:onednn_op_thunk",
         "//xla/backends/cpu/runtime/xnnpack:xnn_dot_thunk",
         "//xla/backends/cpu/runtime/xnnpack:xnn_fusion_thunk",
         "//xla/codegen:kernel_definition",
@@ -1020,7 +1021,9 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@local_tsl//tsl/profiler/lib:traceme",
-    ],
+    ] + if_onednn([
+        "//xla/backends/cpu/runtime/onednn:onednn_op_thunk",
+    ]),
 )
 
 cc_library(

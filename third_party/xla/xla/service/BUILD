@@ -19,6 +19,7 @@ load("//xla/stream_executor:build_defs.bzl", "if_cuda_or_rocm_is_configured", "i
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "if_google", "if_libtpu", "internal_visibility", "tsl_copts")
 load("//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
+load("//xla/tsl/mkl:build_defs.bzl", "if_onednn")
 load(
     "//xla/tsl/platform:build_config.bzl",
     "tf_proto_library",
@@ -5694,8 +5695,9 @@ cc_library(
     deps = [
         ":hlo_creation_utils",
         "//xla/hlo/pass:hlo_pass",
+    ] + if_onednn([
         "//xla/service/cpu:onednn_contraction_rewriter",
-    ],
+    ]),
 )
 
 cc_library(
