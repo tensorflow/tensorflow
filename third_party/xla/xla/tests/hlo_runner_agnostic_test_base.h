@@ -187,7 +187,8 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
   // successful.
   ::testing::AssertionResult Run(
       std::unique_ptr<HloModule> module, bool run_hlo_passes,
-      const std::function<void(HloModule*)>& test_preprocessor = nullptr);
+      const std::function<void(HloModule*)>& test_preprocessor = nullptr,
+      std::vector<Literal>* arguments = nullptr);
 
   // Convenient wrapper for executing and comparing an hlo module with fake
   // input. Module can be passed in directly, or parsed from an hlo_string,
