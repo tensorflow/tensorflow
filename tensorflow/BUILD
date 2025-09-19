@@ -1163,6 +1163,7 @@ tf_cc_shared_library(
         ],
         "//conditions:default": [
             "-Wl,--version-script,$(location //tensorflow:tf_framework_version_script.lds)",
+            "-Wl,-Bsymbolic-functions",
             # copybara:uncomment_begin(google-only)
             # "-Wl,--undefined-version",
             # copybara:uncomment_end(google-only)
@@ -1311,6 +1312,7 @@ tf_cc_shared_library(
         "//conditions:default": [
             "-Wl,-z,defs",
             "-Wl,--version-script,$(location //tensorflow:tf_version_script.lds)",
+            "-Wl,-Bsymbolic-functions",
         ],
     }),
     per_os_targets = True,
@@ -1576,6 +1578,7 @@ exports_files(
         "tf_version_script.lds",
         "tf_exported_symbols.lds",
         "tf_private_symbols.lds",
+        "tf_framework_version_script.lds",
     ],
 )
 
