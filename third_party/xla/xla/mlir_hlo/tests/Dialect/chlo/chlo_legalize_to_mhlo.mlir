@@ -1,5 +1,5 @@
 // RUN: mlir-hlo-opt --chlo-legalize-to-hlo --split-input-file -verify-diagnostics %s | FileCheck %s --dump-input-context=20
-// RUN: mlir-hlo-opt --chlo-legalize-to-high-level-mhlo="enable-acosh" --split-input-file -verify-diagnostics %s | FileCheck %s --check-prefix=CHECK-HIGH-LEVEL
+// RUN: mlir-hlo-opt --chlo-legalize-to-high-level-mhlo="enable-acosh enable-acos" --split-input-file -verify-diagnostics %s | FileCheck %s --check-prefix=CHECK-HIGH-LEVEL
 
 // CHECK-LABEL: func.func @asin_bf16(
 // CHECK-SAME:    %[[TMP_arg0:.*]]: tensor<bf16>
@@ -701,6 +701,15 @@ func.func @erf_bf16(%arg : tensor<bf16>) -> tensor<bf16> {
   // CHECK: return %[[RESULT]]
   %1 = "chlo.erf"(%arg) : (tensor<bf16>) -> tensor<bf16>
   func.return %1 : tensor<bf16>
+}
+
+// -----
+
+// CHECK-LABEL: @acos
+func.func @acos(%arg : tensor<f64>) -> tensor<f64> {
+  // CHECK-HIGH-LEVEL: mhlo.acos
+  %1 = "chlo.acos"(%arg) : (tensor<f64>) -> tensor<f64>
+  func.return %1 : tensor<f64>
 }
 
 // -----

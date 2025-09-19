@@ -1593,6 +1593,8 @@ XlaBuilder supports these element-wise unary functions:
 
 <b>`Acosh(operand)`</b> Element-wise inverse hyperbolic cosine `x -> acosh(x)`.
 
+<b>`ACos(operand)`</b> Element-wise arc cosine `x -> acos(x)`.
+
 <b>`Erf(operand)`</b> Element-wise error function `x -> erf(x)` where
 
 $$\text{erf}(x) = \frac{2}{\sqrt{\pi}}\int_0^x e^{-t^2} \, dt$$.
@@ -1671,6 +1673,8 @@ cbrt(x)`.
 
 <b>`Acosh(operand, result_accuracy)`</b> Element-wise inverse hyperbolic cosine
 `x -> acosh(x)`.
+
+<b>`ACos(operand, result_accuracy)`</b> Element-wise arc cosine `x -> acos(x)`.
 
 <b>`Erf(operand, result_accuracy)`</b> Element-wise error function `x -> erf(x)`
 where
