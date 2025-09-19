@@ -205,7 +205,8 @@ Layout CreateDefaultLayoutForRank(int64_t num_dims) {
           ValidateLayoutInShape(element_shape, allow_missing_layouts));
     }
     return absl::OkStatus();
-  } else if (shape.IsArray()) {
+  }
+  if (shape.IsArray()) {
     if (!shape.has_layout()) {
       if (allow_missing_layouts) {
         return absl::OkStatus();
@@ -370,7 +371,8 @@ Layout CreateDefaultLayoutForRank(int64_t num_dims) {
   if (shape.IsTuple()) {
     return absl::c_any_of(shape.tuple_shapes(),
                           LayoutUtil::HasCustomElementSizeInBits);
-  } else if (!shape.IsArray()) {
+  }
+  if (!shape.IsArray()) {
     // Opaque or token types have no custom element size in bits.
     return false;
   }
@@ -494,7 +496,9 @@ absl::Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src, Shape* dst) {
 
 /*static*/ Layout LayoutUtil::MoveDimToMajor(const Layout& layout,
                                              int64_t dim) {
-  if (dim == MinorToMajor(layout).back()) return layout;
+  if (dim == MinorToMajor(layout).back()) {
+    return layout;
+  }
   Layout ret = layout;
   ret.clear_minor_to_major();
   for (auto d : MinorToMajor(layout)) {
@@ -627,7 +631,7 @@ Layout LayoutUtil::MoveDimToMinor(const Layout& layout, const int64_t dim) {
 /*static*/ std::optional<SplitConfig> LayoutUtil::GetSplitConfig(
     const Shape& shape) {
   CHECK_LE(shape.layout().split_configs().size(), 1);
-  return shape.layout().split_configs().size() > 0
+  return !shape.layout().split_configs().empty()
              ? std::make_optional(shape.layout().split_configs(0))
              : std::nullopt;
 }

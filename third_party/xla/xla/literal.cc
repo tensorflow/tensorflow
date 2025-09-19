@@ -138,11 +138,11 @@ const Shape& NilShape() {
 // Returns the interned shape pointer in static storage if it's a scalar shape
 // or nil shape.
 const Shape* TryInternShape(const Shape& shape) {
-  if (shape.IsTuple() && shape.tuple_shapes().size() == 0) {
+  if (shape.IsTuple() && shape.tuple_shapes().empty()) {
     return &NilShape();
   }
-  if (shape.IsArray() && shape.dimensions().size() == 0 && shape.is_static() &&
-      shape.has_layout() && shape.layout().tiles().size() == 0 &&
+  if (shape.IsArray() && shape.dimensions().empty() && shape.is_static() &&
+      shape.has_layout() && shape.layout().tiles().empty() &&
       shape.layout().memory_space() == 0 &&
       shape.layout().element_size_in_bits() == 0) {
     return &ScalarShape(shape.element_type());
@@ -431,8 +431,8 @@ absl::Status MutableLiteralBase::CopySliceFromInternal(
   // `this->` is needed to workaround MSVC bug: #16882
   NativeT* dest_data = this->data<NativeT>().data();
   const NativeT* src_data = src_literal.data<NativeT>().data();
-  if (src_literal.shape().dimensions().size() == 0 ||
-      shape().dimensions().size() == 0) {
+  if (src_literal.shape().dimensions().empty() ||
+      shape().dimensions().empty()) {
     // If any of the two shapes are scalars, just assign the value once.
     TF_RET_CHECK(copy_size.empty());
     dest_data[linear_index(shape(), dest_base)] =
@@ -560,9 +560,8 @@ Literal Literal::SubLiteral(ShapeIndexView shape_index) {
     auto decomposed = this->DecomposeTuple();
     return decomposed.at(shape_index.front())
         .SubLiteral(shape_index.subspan(1));
-  } else {
-    return std::move(*this);
   }
+  return std::move(*this);
 }
 
 std::vector<Literal> Literal::DecomposeTuple() {
@@ -709,14 +708,13 @@ absl::Status LiteralBase::Piece::CopyFrom(const LiteralBase::Piece& src,
     }
     array_value_state_ = src.array_value_state_;
     return absl::OkStatus();
-  } else {
-    CHECK(src.array_value_state_ == ArrayValueState::kKnown);
-    if (array_value_state_ == ArrayValueState::kUndetermined ||
-        array_value_state_ == ArrayValueState::kUnknown) {
-      TF_RETURN_IF_ERROR(AllocateBuffers());
-    }
-    array_value_state_ = src.array_value_state_;
   }
+  CHECK(src.array_value_state_ == ArrayValueState::kKnown);
+  if (array_value_state_ == ArrayValueState::kUndetermined ||
+      array_value_state_ == ArrayValueState::kUnknown) {
+    TF_RETURN_IF_ERROR(AllocateBuffers());
+  }
+  array_value_state_ = src.array_value_state_;
 
   if (ShapeUtil::Equal(subshape(), src.subshape())) {
     // If the layouts are equal it's faster just to memcpy.
@@ -950,7 +948,9 @@ void MutableLiteralBase::PopulateLinearInplaceInternal(
   char* const dest_base = static_cast<char*>(untyped_data());
 
   const int64_t num_elements = ShapeUtil::ElementsIn(shape());
-  if (num_elements == 0) return;
+  if (num_elements == 0) {
+    return;
+  }
 
   if (rank > 0) {
     // Compute initialization function partitioning.
@@ -1072,7 +1072,9 @@ Literal LiteralBase::ToStatic() const {
         for (int64_t i = 0; i < subshape->dimensions().size(); ++i) {
           // GetDynamicSize has a 32-bit return type and may truncate static
           // dimensions, so make sure to skip.
-          if (!subshape->is_dynamic_dimension(i)) continue;
+          if (!subshape->is_dynamic_dimension(i)) {
+            continue;
+          }
           subshape->set_dynamic_dimension(i, false);
           subshape->set_dimensions(i, GetDynamicSize(i, index));
         }
@@ -1125,7 +1127,9 @@ absl::StatusOr<Literal> BroadcastHelper(const LiteralBase& src,
   // Each scalar in the source literal is broadcasted to this shape, we'll use
   // this shape to iterate over all indices and copy data from source to result.
   Shape broadcast_shape = result_shape;
-  for (int64_t d : dimensions) broadcast_shape.set_dimensions(d, 1);
+  for (int64_t d : dimensions) {
+    broadcast_shape.set_dimensions(d, 1);
+  }
 
   auto src_minor_to_major = LayoutUtil::MinorToMajor(src_shape);
   auto result_minor_to_major = LayoutUtil::MinorToMajor(result_shape);
@@ -1510,7 +1514,9 @@ void TuplePrintHelper(const LiteralBase& literal, const ShapeIndex& shape_index,
   for (int i = 0; i < ShapeUtil::TupleElementCount(subshape); ++i) {
     ShapeIndex element_index = shape_index;
     element_index.push_back(i);
-    if (i > 0) printer->Append(oneline ? ", " : ",\n");
+    if (i > 0) {
+      printer->Append(oneline ? ", " : ",\n");
+    }
     PrintHelper(literal, element_index, print_shape, print_layout, oneline,
                 printer);
   }
@@ -1956,7 +1962,9 @@ bool LiteralBase::Piece::EqualElements(const LiteralBase::Piece& other) const {
           primitive_util::BitWidth(subshape().element_type());
       const uint8_t mask = LsbMask<uint8_t>(bits_per_element);
       for (int64_t i = 0; i < size_bytes_dense(); ++i) {
-        if ((one_array[i] & mask) != (two_array[i] & mask)) return false;
+        if ((one_array[i] & mask) != (two_array[i] & mask)) {
+          return false;
+        }
       }
       return true;
     }
