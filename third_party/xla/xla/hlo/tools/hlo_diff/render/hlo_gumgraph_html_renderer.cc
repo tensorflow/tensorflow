@@ -977,13 +977,14 @@ std::string PrintHloComputationToHtml(
 // Prints a single HLO instruction in a text box.
 template <typename T>
 std::string PrintHloTextbox(
-    const T* node, const absl::flat_hash_map<const HloInstruction*, Attributes>&
-                       span_attributes) {
+    const T* node, DiffSide side,
+    const absl::flat_hash_map<const HloInstruction*, Attributes>&
+        span_attributes) {
   std::string title = "None", text;
   if (node != nullptr) {
     title = node->name();
     if constexpr (std::is_same_v<T, HloComputation>) {
-      text = PrintHloComputationToHtml(node, DiffSide::kLeft, span_attributes);
+      text = PrintHloComputationToHtml(node, side, span_attributes);
     } else {
       text = node->ToString();
     }
@@ -1003,10 +1004,12 @@ std::string PrintHloTextboxPair(
         span_attributes) {
   std::string left_textbox, right_textbox;
   for (const T* node : left_nodes) {
-    absl::StrAppend(&left_textbox, PrintHloTextbox(node, span_attributes));
+    absl::StrAppend(&left_textbox,
+                    PrintHloTextbox(node, DiffSide::kLeft, span_attributes));
   }
   for (const T* node : right_nodes) {
-    absl::StrAppend(&right_textbox, PrintHloTextbox(node, span_attributes));
+    absl::StrAppend(&right_textbox,
+                    PrintHloTextbox(node, DiffSide::kRight, span_attributes));
   }
   return PrintDiv(absl::StrCat(PrintDiv(left_textbox, {"hlo-textboxes"}),
                                PrintDiv(right_textbox, {"hlo-textboxes"})),
