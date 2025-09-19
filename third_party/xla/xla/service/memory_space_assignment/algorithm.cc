@@ -2027,34 +2027,56 @@ int64_t MsaAlgorithm::MaxReservedScopedMemory() {
 }
 
 std::optional<int64_t> MsaAlgorithm::EarliestBlockPrefetchStartTime(
-    int64_t earliest_start_time_candidate, int64_t first_use_time,
-    int64_t last_use_time, int64_t buffer_size,
+    int64_t previous_block_start_time, int64_t definition_time,
+    int64_t first_use_time, int64_t last_use_time, int64_t buffer_size,
     int64_t block_prefetching_limit_bytes,
-    std::vector<int64_t>& prefetch_end_times) {
+    int64_t max_in_flight_prefetches_allowed,
+    std::vector<int64_t>& copy_done_schedule_before_times,
+    std::vector<int64_t>& block_prefetch_allocation_end_times) {
   auto can_find_chunk_within_limit =
       [&](int64_t start_time, int64_t end_time, int64_t buffer_size,
-          int64_t block_prefetching_limit_bytes) {
-        MsaBufferInterval interval =
-            MsaBufferInterval{/*buffer=*/nullptr,
-                              /*size=*/buffer_size,
-                              /*start=*/start_time,
-                              /*end=*/end_time,
-                              /*colocations=*/{},
-                              /*need_allocation=*/true};
-        Chunk chunk_candidate = FindChunkCandidate(interval);
-        return chunk_candidate.chunk_end() <= block_prefetching_limit_bytes;
-      };
+          int64_t block_prefetching_limit_bytes) -> bool {
+    MsaBufferInterval interval = MsaBufferInterval{/*buffer=*/nullptr,
+                                                   /*size=*/buffer_size,
+                                                   /*start=*/start_time,
+                                                   /*end=*/end_time,
+                                                   /*colocations=*/{},
+                                                   /*need_allocation=*/true};
+    Chunk chunk_candidate = FindChunkCandidate(interval);
+    return chunk_candidate.chunk_end() <= block_prefetching_limit_bytes;
+  };
+  CHECK_LE(previous_block_start_time, first_use_time);
+  int64_t earliest_start_time_candidate =
+      std::max(definition_time, previous_block_start_time);
+  int64_t total_prefetches = copy_done_schedule_before_times.size();
+  if (total_prefetches >= max_in_flight_prefetches_allowed) {
+    earliest_start_time_candidate = std::max(
+        earliest_start_time_candidate,
+        copy_done_schedule_before_times[total_prefetches -
+                                        max_in_flight_prefetches_allowed]);
+  }
   if (can_find_chunk_within_limit(earliest_start_time_candidate, last_use_time,
                                   buffer_size, block_prefetching_limit_bytes)) {
     return earliest_start_time_candidate;
   }
-  // Find the first start_time = end_time + 1, where end_time comes from the
-  // prefetch_end_times list.
-  auto it_begin =
-      std::upper_bound(prefetch_end_times.begin(), prefetch_end_times.end(),
-                       earliest_start_time_candidate - 1);
-  auto it_end = std::upper_bound(prefetch_end_times.begin(),
-                                 prefetch_end_times.end(), first_use_time - 1);
+
+  // We couldn't find a chunk using earliest_start_time_candidate as our start
+  // So, we need to search for a valid start time in
+  // [earliest_start_time_candidate + 1, first_use_time], at the boundaries of
+  // the previous end times, which free up memory.
+
+  // `it_begin` will point to the first element in the prefetch_end_times list
+  // that is strictly greater than (earliest_start_time_candidate - 1). Note, in
+  // the loop below, we add one to start time candidates.
+  auto it_begin = std::upper_bound(block_prefetch_allocation_end_times.begin(),
+                                   block_prefetch_allocation_end_times.end(),
+                                   earliest_start_time_candidate - 1);
+
+  // `it_end` will point to the first element in the prefetch_end_times list
+  // that is strictly greater than (first_use_time - 1).
+  auto it_end = std::upper_bound(block_prefetch_allocation_end_times.begin(),
+                                 block_prefetch_allocation_end_times.end(),
+                                 first_use_time - 1);
   for (auto it = it_begin; it != it_end; ++it) {
     int64_t start_time = *it + 1;
     if (can_find_chunk_within_limit(start_time, last_use_time, buffer_size,
@@ -2191,6 +2213,7 @@ void MsaAlgorithm::ProcessBlockPrefetches() {
   int64_t max_in_flight_prefetches_allowed =
       options_.max_outstanding_block_prefetches;
   std::vector<int64_t> prefetch_end_times;
+  std::vector<int64_t> copy_done_schedule_before_times;
 
   absl::flat_hash_map<const HloValue*, Allocation*> value_to_pinned_allocation;
 
@@ -2209,14 +2232,13 @@ void MsaAlgorithm::ProcessBlockPrefetches() {
         instruction_schedule.at(original_value->defining_instruction());
     int64_t end_time = last_use_time;
     int64_t buffer_size = buffer_intervals_.at(maybe_sliced_value).size;
-    int64_t earliest_start_time_candidate =
-        std::max(definition_time, previous_start_time);
-    CHECK_LE(earliest_start_time_candidate, first_use_time);
     // Find the earliest start time for which a chunk can be allocated for the
     // block prefetched value.
     std::optional<int64_t> optional_start_time = EarliestBlockPrefetchStartTime(
-        earliest_start_time_candidate, first_use_time, end_time, buffer_size,
-        block_prefetching_limit_bytes, prefetch_end_times);
+        previous_start_time, definition_time, first_use_time, end_time,
+        buffer_size, block_prefetching_limit_bytes,
+        max_in_flight_prefetches_allowed, copy_done_schedule_before_times,
+        prefetch_end_times);
 
     if (!optional_start_time.has_value()) {
       LOG(WARNING) << "Could not find a chunk for block prefetched value: "
@@ -2226,23 +2248,6 @@ void MsaAlgorithm::ProcessBlockPrefetches() {
       continue;
     }
     int64_t start_time = optional_start_time.value();
-
-    int64_t n_prefetches_scheduled = prefetch_end_times.size();
-    int64_t n_prefetches_finished =
-        std::upper_bound(prefetch_end_times.begin(), prefetch_end_times.end(),
-                         start_time) -
-        prefetch_end_times.begin();
-    int64_t n_prefetches_already_in_flight =
-        n_prefetches_scheduled - n_prefetches_finished;
-
-    if (n_prefetches_already_in_flight >= max_in_flight_prefetches_allowed) {
-      LOG(WARNING)
-          << "block prefetched value exceeds max prefetches in flight: "
-          << maybe_sliced_value->defining_position().ToString() << " "
-          << n_prefetches_already_in_flight << " "
-          << max_in_flight_prefetches_allowed;
-      continue;
-    }
 
     MsaBufferInterval interval = MsaBufferInterval{/*buffer=*/original_value,
                                                    /*size=*/buffer_size,
@@ -2294,6 +2299,7 @@ void MsaAlgorithm::ProcessBlockPrefetches() {
     auto const sorted_position = std::lower_bound(
         prefetch_end_times.begin(), prefetch_end_times.end(), end_time);
     prefetch_end_times.insert(sorted_position, end_time);
+    copy_done_schedule_before_times.push_back(first_use_time);
 
     // Bookkeeping Checklist:
     // Commit the chunk to the alternate memory.
