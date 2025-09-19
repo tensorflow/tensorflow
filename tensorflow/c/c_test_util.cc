@@ -285,8 +285,8 @@ TF_Operation* RandomUniform(TF_Operation* shape, TF_DataType dtype,
 
 void Split3Helper(TF_Operation* input, TF_Graph* graph, TF_Status* s,
                   const char* name, TF_Operation** op) {
-  TF_Operation* zero = ScalarConst(
-      0, graph, s, ::tensorflow::strings::StrCat(name, "_const0").c_str());
+  TF_Operation* zero =
+      ScalarConst(0, graph, s, absl::StrCat(name, "_const0").c_str());
   TF_OperationDescription* desc = TF_NewOperation(graph, "Split", name);
   TF_AddInput(desc, {zero, 0});
   TF_AddInput(desc, {input, 0});
