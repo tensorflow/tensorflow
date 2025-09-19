@@ -72,7 +72,7 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::make_unique<Iterator>(
-          Iterator::Params{this, strings::StrCat(prefix, "::TakeWhile")});
+          Iterator::Params{this, absl::StrCat(prefix, "::TakeWhile")});
     }
 
     const DataTypeVector& output_dtypes() const override {

@@ -196,7 +196,7 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::make_unique<Iterator>(
-          Iterator::Params{this, strings::StrCat(prefix, "::ThreadPool")});
+          Iterator::Params{this, absl::StrCat(prefix, "::ThreadPool")});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -318,7 +318,7 @@ class MaxIntraOpParallelismDatasetOp::Dataset : public DatasetBase {
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
     return std::make_unique<Iterator>(Iterator::Params{
-        this, strings::StrCat(prefix, "::MaxIntraOpParallelism")});
+        this, absl::StrCat(prefix, "::MaxIntraOpParallelism")});
   }
 
   const DataTypeVector& output_dtypes() const override {
@@ -462,7 +462,7 @@ class PrivateThreadPoolDatasetOp::Dataset : public DatasetBase {
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
     return std::make_unique<Iterator>(
-        Iterator::Params{this, strings::StrCat(prefix, "::PrivateThreadPool")});
+        Iterator::Params{this, absl::StrCat(prefix, "::PrivateThreadPool")});
   }
 
   const DataTypeVector& output_dtypes() const override {

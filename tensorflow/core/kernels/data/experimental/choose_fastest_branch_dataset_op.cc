@@ -77,7 +77,7 @@ class WrapperDataset : public DatasetBase {
     bool error = iterator_created_;
     iterator_created_ = true;
     return std::make_unique<WrapperIterator>(
-        WrapperIterator::Params{this, strings::StrCat(prefix, "::Wrapper")},
+        WrapperIterator::Params{this, absl::StrCat(prefix, "::Wrapper")},
         error);
   }
 
@@ -225,7 +225,7 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
         const string& prefix) const override {
       return std::make_unique<ChooseFastestIterator>(
           ChooseFastestIterator::Params{
-              this, strings::StrCat(prefix, "::ChooseFastestBranch")});
+              this, absl::StrCat(prefix, "::ChooseFastestBranch")});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -511,7 +511,7 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
 
         DatasetContext::Params params;
         params.type_string = "ChooseFastestBranch_Wrapper";
-        params.node_name = strings::StrCat(params.type_string, branch_index);
+        params.node_name = absl::StrCat(params.type_string, branch_index);
         DatasetBase* temp_dataset = new WrapperDataset(
             std::move(params), &input_impl_->output_dtypes(),
             &input_impl_->output_shapes(), input_impl_.get());
@@ -524,7 +524,7 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
           DatasetContext::Params take_dataset_params;
           take_dataset_params.type_string = "ChooseFastestBranch_Take";
           take_dataset_params.node_name =
-              strings::StrCat(take_dataset_params.type_string, branch_index);
+              absl::StrCat(take_dataset_params.type_string, branch_index);
           int64_t count = dataset()->num_elements_per_branch_ *
                           dataset()->ratio_numerator_ /
                           dataset()->ratio_denominator_;
