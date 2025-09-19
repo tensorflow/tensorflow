@@ -78,6 +78,14 @@ std::string PrintCss() {
     .section > .content {
       font-size: 14px;
     }
+    .section > .content ul {
+      margin-top: 5px;
+      margin-bottom: 5px;
+      padding-left: 20px;
+    }
+    .section > .content li {
+      margin-bottom: 3px;
+    }
 
     details {
       margin: 0;
@@ -624,6 +632,59 @@ std::string PrintSectionWithHeader(absl::string_view header,
   return PrintDiv(absl::StrCat(PrintDiv(header, {"header"}),
                                PrintDiv(content, {"content"})),
                   {"section"});
+}
+
+// Prints overview section.
+std::string PrintOverviewSection(const DiffResult& diff_result) {
+  std::string content = absl::StrFormat(
+      R"html(
+        <p>This report highlights the differences between two HLO modules.</p>
+        <p>
+          <b>Diff Statistics:</b>
+          <span>%d unchanged</span>,
+          <span class="yellow">%d changed</span>,
+          <span class="red">%d left unmatched</span>,
+          <span class="green">%d right unmatched</span> instruction(s).
+        </p>
+      )html",
+      diff_result.unchanged_instructions.size(),
+      diff_result.changed_instructions.size(),
+      diff_result.left_module_unmatched_instructions.size(),
+      diff_result.right_module_unmatched_instructions.size());
+  return PrintSectionWithHeader("Overview", content);
+}
+
+// Prints the "How to use this report" section.
+std::string PrintHowToUseSection() {
+  std::string content = R"html(
+        <p>
+          <b>Highlights:</b>
+          <ul>
+            <li><span class="red-highlight">&nbsp;Red&nbsp;</span>: Instruction only present in the left module.</li>
+            <li><span class="green-highlight">&nbsp;Green&nbsp;</span>: Instruction only present in the right module.</li>
+            <li><span class="yellow-highlight">&nbsp;Yellow&nbsp;</span>: Instruction present in both modules but with differences.</li>
+            <li>Instructions without highlights are identical in both modules.</li>
+          </ul>
+        </p>
+        <p>
+          <b>Interactions:</b>
+          <ul>
+            <li><b>Hover</b> over an instruction to highlight its counterpart in the other module.</li>
+            <li><b>Click</b> on an instruction to scroll its counterpart into view within the same computation diff.</li>
+            <li><b>Double-click</b> on an instruction to jump to its counterpart if it resides in a different computation diff.</li>
+            <li>Click the <b>[+]</b> button on an instruction to expand/collapse overflowing text.</li>
+          </ul>
+        </p>
+        <p>
+          <b>Sections:</b>
+          <ul>
+            <li><b>XProf Op Metrics Diff</b>: Shows instructions with the largest execution time differences based on XProf data (if available).</li>
+            <li><b>Diffs grouped by computation</b>: Groups computations with similar diff patterns to help identify repetitive changes.</li>
+            <li><b>Full Diff Results</b>: A flat list of all instructions that are unmatched or have changed.</li>
+          </ul>
+        </p>
+      )html";
+  return PrintSectionWithHeader("How to use this report", content);
 }
 
 // Prints a system message placeholder.
@@ -1414,6 +1475,12 @@ void RenderHtml(const DiffResult& diff_result, const DiffSummary& diff_summary,
       GenerateSpanAttributes(diff_result);
 
   out << PrintCss() << PrintJavascript();
+
+  // Print overview section
+  out << PrintOverviewSection(filtered_diff_result);
+
+  // Print "How to use this report" section
+  out << PrintHowToUseSection();
 
   // Print profile metrics diff
   if (left_op_metric_getter != nullptr && right_op_metric_getter != nullptr) {
