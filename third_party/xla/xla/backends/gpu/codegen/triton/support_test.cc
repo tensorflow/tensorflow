@@ -177,6 +177,10 @@ auto AllDevicesToTest() {
 #endif
 }
 
+stream_executor::GpuComputeCapability DefaultDeviceForTesting() {
+  return AllDevicesToTest()[0];
+}
+
 // Generates all the possible test combinations for a given opcodes. A test
 // combination is a tuple of the form (data_type, opcode, compute_capability).
 auto AllTestCombinationsForOpcodes(absl::Span<const HloOpcode> opcodes) {
@@ -532,16 +536,17 @@ ENTRY triton_computation {
         any_is(PrimitiveType::F8E4M3FN) && any_is(PrimitiveType::F8E5M2);
   }
 
-  // Crashes due to unsupported/unspecified rounding mode.
-  crashes_on_failure |= (data_type_in == PrimitiveType::F64 &&
-                         (data_type_out == PrimitiveType::F8E4M3FN ||
-                          data_type_out == PrimitiveType::F8E5M2));
+  if (std::holds_alternative<se::CudaComputeCapability>(cc)) {
+    // Crashes due to unsupported/unspecified rounding mode.
+    crashes_on_failure |= (data_type_in == PrimitiveType::F64 &&
+                           (data_type_out == PrimitiveType::F8E4M3FN ||
+                            data_type_out == PrimitiveType::F8E5M2));
 
-  // Crashes due to unsupported conversion.
-  crashes_on_failure |= (data_type_out == PrimitiveType::F64 &&
-                         (data_type_in == PrimitiveType::F8E4M3FN ||
-                          data_type_in == PrimitiveType::F8E5M2));
-
+    // Crashes due to unsupported conversion.
+    crashes_on_failure |= (data_type_out == PrimitiveType::F64 &&
+                           (data_type_in == PrimitiveType::F8E4M3FN ||
+                            data_type_in == PrimitiveType::F8E5M2));
+  }
   RunSupportTest(
       std::move(ti), /*output_tile_sizes=*/{1, 32}, cc,
       crashes_on_failure ? ExpectedFailMode::kCrash : ExpectedFailMode::kFail);
@@ -582,12 +587,22 @@ ENTRY triton_computation {
                                      data_type, opcode));
 
   ExpectedFailMode fail_mode = ExpectedFailMode::kFail;
-  if (opcode == HloOpcode::kDivide &&
-      (data_type == PrimitiveType::BF16 || data_type == PrimitiveType::F16 ||
-       data_type == PrimitiveType::F8E5M2 ||
-       data_type == PrimitiveType::F8E4M3FN)) {
-    fail_mode = ExpectedFailMode::kCrash;
-  };
+  if (std::holds_alternative<se::CudaComputeCapability>(cc)) {
+    if (opcode == HloOpcode::kDivide &&
+        (data_type == PrimitiveType::BF16 || data_type == PrimitiveType::F16 ||
+         data_type == PrimitiveType::F8E5M2 ||
+         data_type == PrimitiveType::F8E4M3FN)) {
+      fail_mode = ExpectedFailMode::kCrash;
+    }
+  } else {
+    if (((opcode == HloOpcode::kMaximum || opcode == HloOpcode::kMinimum) &&
+         (data_type == PrimitiveType::F8E5M2 ||
+          data_type == PrimitiveType::F8E4M3FN ||
+          data_type == PrimitiveType::F8E5M2FNUZ ||
+          data_type == PrimitiveType::F8E4M3FNUZ))) {
+      fail_mode = ExpectedFailMode::kCrash;
+    }
+  }
 
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 32}, cc, fail_mode);
 }
@@ -616,11 +631,21 @@ ENTRY triton_computation {
                                      data_type, opcode));
 
   ExpectedFailMode fail_mode = ExpectedFailMode::kFail;
-  if (opcode == HloOpcode::kDivide &&
-      (data_type == PrimitiveType::BF16 || data_type == PrimitiveType::F16 ||
-       data_type == PrimitiveType::F8E5M2 ||
-       data_type == PrimitiveType::F8E4M3FN)) {
-    fail_mode = ExpectedFailMode::kCrash;
+  if (std::holds_alternative<se::CudaComputeCapability>(cc)) {
+    if (opcode == HloOpcode::kDivide &&
+        (data_type == PrimitiveType::BF16 || data_type == PrimitiveType::F16 ||
+         data_type == PrimitiveType::F8E5M2 ||
+         data_type == PrimitiveType::F8E4M3FN)) {
+      fail_mode = ExpectedFailMode::kCrash;
+    }
+  } else {
+    if (((opcode == HloOpcode::kMaximum || opcode == HloOpcode::kMinimum) &&
+         (data_type == PrimitiveType::F8E5M2 ||
+          data_type == PrimitiveType::F8E4M3FN ||
+          data_type == PrimitiveType::F8E5M2FNUZ ||
+          data_type == PrimitiveType::F8E4M3FNUZ))) {
+      fail_mode = ExpectedFailMode::kCrash;
+    }
   }
 
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{}, cc, fail_mode);
@@ -674,7 +699,20 @@ ENTRY triton_computation {
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(hlo_text, data_type, opcode));
-  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 32}, cc);
+
+  bool skip_failure_branch_to_avoid_crash = false;
+  if (std::holds_alternative<se::RocmComputeCapability>(cc)) {
+    skip_failure_branch_to_avoid_crash =
+        (opcode == HloOpcode::kClamp || opcode == HloOpcode::kSelect) &&
+        (data_type == PrimitiveType::F8E5M2 ||
+         data_type == PrimitiveType::F8E4M3FN ||
+         data_type == PrimitiveType::F8E5M2FNUZ ||
+         data_type == PrimitiveType::F8E4M3FNUZ);
+  }
+
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 32}, cc,
+                 skip_failure_branch_to_avoid_crash ? ExpectedFailMode::kCrash
+                                                    : ExpectedFailMode::kFail);
 }
 
 constexpr std::array kTestedOpsTernaryElementwise = {HloOpcode::kSelect,
@@ -717,7 +755,9 @@ ENTRY triton_computation {
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
   bool crashes_on_failure = data_type == PrimitiveType::F8E4M3FN ||
-                            data_type == PrimitiveType::F8E5M2;
+                            data_type == PrimitiveType::F8E5M2 ||
+                            data_type == PrimitiveType::F8E5M2FNUZ ||
+                            data_type == PrimitiveType::F8E4M3FNUZ;
   RunSupportTest(
       std::move(ti), /*output_tile_sizes=*/{1}, cc,
       crashes_on_failure ? ExpectedFailMode::kCrash : ExpectedFailMode::kFail);
@@ -741,7 +781,7 @@ ENTRY triton_computation {
                           ParseTemplateAndGetInstruction(kHloTestTemplate, F32,
                                                          HloOpcode::kReduce));
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{3, 4},
-                 se::CudaComputeCapability::Ampere());
+                 DefaultDeviceForTesting());
 }
 
 TEST_P(
@@ -788,7 +828,9 @@ ENTRY triton_computation {
       ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
 
   bool crashes_on_failure = data_type == PrimitiveType::F8E4M3FN ||
-                            data_type == PrimitiveType::F8E5M2;
+                            data_type == PrimitiveType::F8E5M2 ||
+                            data_type == PrimitiveType::F8E5M2FNUZ ||
+                            data_type == PrimitiveType::F8E4M3FNUZ;
   RunSupportTest(
       std::move(ti), /*output_tile_sizes=*/{1}, cc,
       crashes_on_failure ? ExpectedFailMode::kCrash : ExpectedFailMode::kFail);
@@ -824,7 +866,7 @@ ENTRY triton_computation {
 }
 
 TEST_F(ReduceTest, ReduceWithNonConstReduceValueIsSupportedWithTriton) {
-  const se::GpuComputeCapability cc = se::CudaComputeCapability::Ampere();
+  const se::GpuComputeCapability cc = DefaultDeviceForTesting();
   const std::string kHloTestTemplate = R"(
 add {
   Arg_0 = $0[] parameter(0)
@@ -907,9 +949,12 @@ ENTRY triton_computation {
   if (opcode == HloOpcode::kDivide && (data_type == BF16 || data_type == F16)) {
     fail_mode = ExpectedFailMode::kCrash;
   }
-  if (data_type == F8E4M3FN || data_type == F8E5M2) {
+  if (data_type == F8E4M3FN || data_type == F8E5M2 ||
+      data_type == PrimitiveType::F8E5M2FNUZ ||
+      data_type == PrimitiveType::F8E4M3FNUZ) {
     fail_mode = ExpectedFailMode::kFailOrCrash;
   }
+
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1}, cc, fail_mode);
 }
 
@@ -1853,6 +1898,16 @@ TEST_P(DotTypesTest, Dot) {
       fail_mode = ExpectedFailMode::kFailOrCrash;
     }
   }
+  if (std::holds_alternative<se::RocmComputeCapability>(cc)) {
+    if (absl::c_linear_search(std::vector{F8E5M2FNUZ, F8E4M3FNUZ, F8E4M3FN},
+                              input_type) ||
+        absl::c_linear_search(std::vector{F8E5M2FNUZ, F8E4M3FNUZ, F8E4M3FN},
+                              result_type) ||
+        input_type == F64) {
+      // Hits llvm::report_fatal_error during Triton compilation.
+      fail_mode = ExpectedFailMode::kFailOrCrash;
+    }
+  }
 
   std::string hlo_text = R"(
 flhs {
@@ -1928,7 +1983,7 @@ ENTRY triton_computation {
       ParseTemplateAndGetInstruction(kHloTestTemplate, F32, HloOpcode::kDot,
                                      /* use_nested_gemm_fusions=*/true));
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{16, 32},
-                 se::CudaComputeCapability::Ampere());
+                 DefaultDeviceForTesting());
 }
 
 TEST_F(DotTest, NonFusionLhs) {
@@ -1956,7 +2011,7 @@ ENTRY triton_computation {
       ParseTemplateAndGetInstruction(kHloTestTemplate, F32, HloOpcode::kDot,
                                      /* use_nested_gemm_fusions=*/true));
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{16, 32},
-                 se::CudaComputeCapability::Ampere());
+                 DefaultDeviceForTesting());
 }
 
 TEST_F(DotTest, SingleBatchDim) {
@@ -1996,7 +2051,7 @@ ENTRY triton_computation {
       ParseTemplateAndGetInstruction(kHloTestTemplate, F32, HloOpcode::kDot,
                                      /* use_nested_gemm_fusions=*/true));
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 16, 32},
-                 se::CudaComputeCapability::Ampere());
+                 DefaultDeviceForTesting());
 }
 
 TEST_F(DotTest, MultipleNonContractingDimensions) {
@@ -2035,7 +2090,7 @@ ENTRY triton_computation {
       ParseTemplateAndGetInstruction(kHloTestTemplate, F32, HloOpcode::kDot,
                                      /* use_nested_gemm_fusions=*/true));
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 16, 1, 32},
-                 se::CudaComputeCapability::Ampere());
+                 DefaultDeviceForTesting());
 }
 
 TEST_F(DotTest, MultipleContractingDimensions) {
@@ -2075,7 +2130,7 @@ ENTRY triton_computation {
       ParseTemplateAndGetInstruction(kHloTestTemplate, F32, HloOpcode::kDot,
                                      /* use_nested_gemm_fusions=*/true));
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{16, 32},
-                 se::CudaComputeCapability::Ampere());
+                 DefaultDeviceForTesting());
 }
 
 TEST_F(DotTest, NonDefaultDimensionOrder_kmkn) {
@@ -2116,7 +2171,7 @@ ENTRY triton_computation {
       ParseTemplateAndGetInstruction(kHloTestTemplate, F32, HloOpcode::kDot,
                                      /* use_nested_gemm_fusions=*/true));
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{16, 32},
-                 se::CudaComputeCapability::Ampere());
+                 DefaultDeviceForTesting());
 }
 
 TEST_F(DotTest, NonDefaultDimensionOrder_mknk) {
@@ -2157,7 +2212,7 @@ ENTRY triton_computation {
       ParseTemplateAndGetInstruction(kHloTestTemplate, F32, HloOpcode::kDot,
                                      /* use_nested_gemm_fusions=*/true));
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{16, 32},
-                 se::CudaComputeCapability::Ampere());
+                 DefaultDeviceForTesting());
 }
 
 class DotPrecisionTest
@@ -2219,6 +2274,12 @@ ENTRY triton_computation {
   ExpectedFailMode fail_mode = ExpectedFailMode::kFail;
   if (absl::c_linear_search(std::vector{F8E5M2, F8E4M3FN, S8}, data_type)) {
     fail_mode = ExpectedFailMode::kFailOrCrash;
+  }
+  if (std::holds_alternative<se::RocmComputeCapability>(cc)) {
+    if (absl::c_linear_search(
+            std::vector{F8E4M3FNUZ, F8E5M2FNUZ, F8E4M3FN, F64}, data_type)) {
+      fail_mode = ExpectedFailMode::kFailOrCrash;
+    }
   }
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
@@ -2313,6 +2374,15 @@ ENTRY triton_computation {
   if (absl::c_linear_search(std::vector{F8E5M2, F8E4M3FN, F8E4M3, S8},
                             data_type)) {
     fail_mode = ExpectedFailMode::kFailOrCrash;
+  }
+  if (std::holds_alternative<se::RocmComputeCapability>(cc)) {
+    if (absl::c_linear_search(
+            std::vector{F8E4M3FN, F8E5M2FNUZ, F8E4M3FNUZ, F64}, data_type) ||
+        (absl::c_linear_search(std::vector{S64, S32, S16, BF16, F16, F32},
+                               data_type) &&
+         algorithm == xla::PrecisionConfig::ALG_DOT_F64_F64_F64)) {
+      fail_mode = ExpectedFailMode::kFailOrCrash;
+    }
   }
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{16, 32}, cc, fail_mode);
 }
@@ -2485,7 +2555,7 @@ ENTRY triton_computation {
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(hlo_text, F32, HloOpcode::kFusion,
                                      /*use_nested_gemm_fusions=*/true));
-  se::GpuComputeCapability cc = se::CudaComputeCapability::Ampere();
+  se::GpuComputeCapability cc = DefaultDeviceForTesting();
   ASSERT_FALSE(IsTritonSupportedInstruction(ti.Instruction(), cc));
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{64, 32}, cc);
 }
