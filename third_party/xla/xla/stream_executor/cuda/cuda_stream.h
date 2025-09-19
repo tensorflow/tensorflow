@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "xla/stream_executor/cuda/cuda_blas.h"
 #include "xla/stream_executor/cuda/cuda_event.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/event.h"
@@ -64,6 +65,8 @@ class CudaStream : public StreamCommon {
 
   void SetName(std::string name) override;
 
+  cuda::CUDABlas* AsBlas() const override { return blas_.get(); };
+
   Stream::PlatformSpecificHandle platform_specific_handle() const override {
     return {stream_handle_};
   }
@@ -87,6 +90,7 @@ class CudaStream : public StreamCommon {
              CUstream stream_handle)
       : StreamCommon(executor, priority),
         executor_(executor),
+        blas_(nullptr),
         completed_event_(std::move(completed_event)),
         stream_handle_(stream_handle) {}
 
@@ -99,6 +103,7 @@ class CudaStream : public StreamCommon {
                             int64_t shmem_bytes) override;
 
   StreamExecutor* executor_;
+  std::unique_ptr<cuda::CUDABlas> blas_;
   CudaEvent completed_event_;
   CUstream stream_handle_;
   absl::Mutex mutex_;

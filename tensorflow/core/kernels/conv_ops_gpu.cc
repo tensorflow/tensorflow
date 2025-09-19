@@ -124,8 +124,8 @@ StatusOr<AutotuneEntry<se::dnn::FusedConvOp>> AutotuneFusedConv(
     LogFusedConvForwardAutotuneResults(
         se::dnn::ToDataType<T>::value, input_ptr, filter_ptr, output_ptr,
         bias_ptr, side_input_ptr, input_desc, filter_desc, output_desc,
-        conv_desc, conv_scale, side_input_scale, activation_mode,
-        stream->parent(), results);
+        conv_desc, conv_scale, side_input_scale, activation_mode, stream,
+        results);
 
     // Two-level autotuning: Cudnn frontend supports two engine lists:
     // heuristics and fallback. Heuristics engines are normally faster.
@@ -165,8 +165,8 @@ StatusOr<AutotuneEntry<se::dnn::FusedConvOp>> AutotuneFusedConv(
       LogFusedConvForwardAutotuneResults(
           se::dnn::ToDataType<T>::value, input_ptr, filter_ptr, output_ptr,
           bias_ptr, side_input_ptr, input_desc, filter_desc, output_desc,
-          conv_desc, conv_scale, side_input_scale, activation_mode,
-          stream->parent(), fallback_results);
+          conv_desc, conv_scale, side_input_scale, activation_mode, stream,
+          fallback_results);
 
       TF_ASSIGN_OR_RETURN(autotune_entry,
                           BestCudnnConvAlgorithm<se::dnn::FusedConvOp>(
@@ -306,7 +306,7 @@ StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv(
 
     LogConvAutotuneResults(kind, se::dnn::ToDataType<T>::value, input_ptr,
                            filter_ptr, output_ptr, input_desc, filter_desc,
-                           output_desc, conv_desc, stream->parent(), results);
+                           output_desc, conv_desc, stream, results);
 
     // Two-level autotuning: Cudnn frontend supports two engine lists:
     // heuristics and fallback. Heuristics engines are normally faster.
@@ -343,8 +343,7 @@ StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv(
 
       LogConvAutotuneResults(kind, se::dnn::ToDataType<T>::value, input_ptr,
                              filter_ptr, output_ptr, input_desc, filter_desc,
-                             output_desc, conv_desc, stream->parent(),
-                             fallback_results);
+                             output_desc, conv_desc, stream, fallback_results);
 
       TF_ASSIGN_OR_RETURN(autotune_entry,
                           BestCudnnConvAlgorithm<se::dnn::ConvOp>(
@@ -421,7 +420,7 @@ StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv(
     }
     LogConvAutotuneResults(kind, se::dnn::ToDataType<T>::value, input_ptr,
                            filter_ptr, output_ptr, input_desc, filter_desc,
-                           output_desc, conv_desc, stream->parent(), results);
+                           output_desc, conv_desc, stream, results);
 
     TF_ASSIGN_OR_RETURN(auto algo_desc, BestCudnnConvAlgorithm(results));
     autotune_entry = AutotuneEntry<se::dnn::ConvOp>(algo_desc);
