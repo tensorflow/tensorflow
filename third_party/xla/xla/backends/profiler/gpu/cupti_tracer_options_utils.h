@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef XLA_BACKENDS_PROFILER_GPU_CUPTI_TRACER_OPTIONS_UTILS_H_
 #define XLA_BACKENDS_PROFILER_GPU_CUPTI_TRACER_OPTIONS_UTILS_H_
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "xla/backends/profiler/gpu/cupti_collector.h"
 #include "xla/backends/profiler/gpu/cupti_tracer.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
@@ -30,6 +32,11 @@ absl::Status UpdateCuptiTracerOptionsFromProfilerOptions(
     const tensorflow::ProfileOptions& profile_options,
     CuptiTracerOptions& tracer_options,
     CuptiTracerCollectorOptions& collector_options);
+
+absl::Status SetPmSamplingCounterOptions(
+    const tensorflow::ProfileOptions& profile_options,
+    absl::flat_hash_set<absl::string_view>& input_keys,
+    CuptiTracerOptions& tracer_options);
 
 }  // namespace profiler
 }  // namespace xla

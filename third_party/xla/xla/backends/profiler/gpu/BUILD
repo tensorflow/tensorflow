@@ -15,6 +15,11 @@ package(
     default_visibility = internal_visibility(["//xla:internal"]),
 )
 
+exports_files(
+    ["h100_default_pm_sample_config.txtpb"],
+    visibility = ["//visibility:public"],
+)
+
 cc_library(
     name = "device_tracer",
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
@@ -69,11 +74,6 @@ cc_library(
         "//xla/tsl/platform:env_time",
         "//xla/tsl/platform:errors",
         "//xla/tsl/profiler/backends/cpu:annotation_stack",
-        "//xla/tsl/profiler/utils:parse_annotation",
-        "//xla/tsl/profiler/utils:trace_utils",
-        "//xla/tsl/profiler/utils:xplane_builder",
-        "//xla/tsl/profiler/utils:xplane_schema",
-        "//xla/tsl/profiler/utils:xplane_utils",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
@@ -315,6 +315,7 @@ cc_library(
         ":cupti_status",
         ":cupti_utils",
         "//xla/stream_executor/cuda:cuda_status",
+        "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
@@ -327,6 +328,8 @@ cc_library(
         "@com_google_absl//absl/time",
         "@local_config_cuda//cuda:cupti_headers",
         "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:protobuf",
+        "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
     ],
 )
 
@@ -590,11 +593,7 @@ xla_cc_test(
         ":ondevice_event_exporter",
         "//xla/tsl/profiler/backends/gpu:ondevice_event_receiver",
         "//xla/tsl/profiler/backends/gpu:ondevice_trace_event",
-        "//xla/tsl/profiler/utils:xplane_builder",
-        "//xla/tsl/profiler/utils:xplane_schema",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )
 
@@ -712,10 +711,13 @@ xla_test(
         ":cupti_utils",
         ":cupti_wrapper",
         ":profile_with_cuda_kernels",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:status",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:path",
     ],
 )
 
@@ -731,13 +733,38 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":cupti_collector",
+        ":cupti_pm_sampler_stub",
         ":cupti_tracer",
         "//xla/tsl/platform:errors",
         "//xla/tsl/profiler/utils:profiler_options_util",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
         "@local_config_cuda//cuda:cuda_headers",
+        "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
+    ],
+)
+
+xla_cc_test(
+    name = "cupti_tracer_options_utils_test",
+    srcs = ["cupti_tracer_options_utils_test.cc"],
+    tags = [
+        "cuda-only",
+        "gpu",
+        "no_mac",
+    ],
+    deps = [
+        ":cupti_pm_sampler_factory",
+        ":cupti_tracer",
+        ":cupti_tracer_options_utils",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:status",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
     ],
 )
