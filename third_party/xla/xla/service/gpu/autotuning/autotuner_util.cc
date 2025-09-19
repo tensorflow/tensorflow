@@ -101,7 +101,7 @@ absl::StatusOr<std::string> GetCacheFilePath(absl::string_view cache_dir,
 ResultAndInserted AddResultToInMemoryCache(const AutotuneCacheKey& key,
                                            AutotuneResult result)
     ABSL_LOCKS_EXCLUDED(autotune_cache_mu) {
-  absl::MutexLock lock(&autotune_cache_mu);
+  absl::MutexLock lock(autotune_cache_mu);
   auto [it, inserted] = autotune_cache.emplace(key, std::move(result));
   return {it->second, inserted};
 }
@@ -151,7 +151,7 @@ absl::Status AddResultToFileBasedCacheIfEnabled(
 
 std::optional<AutotuneResult> TryToFindInInMemoryCache(
     const AutotuneCacheKey& key) ABSL_LOCKS_EXCLUDED(autotune_cache_mu) {
-  absl::MutexLock lock(&autotune_cache_mu);
+  absl::MutexLock lock(autotune_cache_mu);
   auto it = autotune_cache.find(key);
   if (it == autotune_cache.end()) {
     return std::nullopt;
@@ -230,7 +230,7 @@ void SerializeAutotuneEntry(AutotuneResults* results, const AutotuneCacheKey& k,
 
 /*static*/ absl::Status AutotunerUtil::SerializeAutotuneResults(
     AutotuneResults* results, std::optional<const AutotuneCacheKeySet*> keys) {
-  absl::MutexLock lock(&autotune_cache_mu);
+  absl::MutexLock lock(autotune_cache_mu);
   for (const auto& [k, result] : autotune_cache) {
     if (!keys.has_value() || keys.value()->contains(k)) {
       SerializeAutotuneEntry(results, k, &result);
@@ -245,7 +245,7 @@ void SerializeAutotuneEntry(AutotuneResults* results, const AutotuneCacheKey& k,
 
 /*static*/ absl::Status AutotunerUtil::LoadAutotuneResults(
     const AutotuneResults& results, bool allow_override) {
-  absl::MutexLock lock(&autotune_cache_mu);
+  absl::MutexLock lock(autotune_cache_mu);
   for (const AutotuneResults::Entry& result : results.results()) {
     AutotuneCacheKey key(result.device(), result.hlo(), result.version());
     if (allow_override) {
@@ -262,12 +262,12 @@ void SerializeAutotuneEntry(AutotuneResults* results, const AutotuneCacheKey& k,
 }
 
 /*static*/ void AutotunerUtil::ClearAutotuneResults() {
-  absl::MutexLock lock(&autotune_cache_mu);
+  absl::MutexLock lock(autotune_cache_mu);
   autotune_cache.clear();
 }
 
 /*static*/ bool AutotunerUtil::ResultCacheIsEmpty() {
-  absl::MutexLock lock(&autotune_cache_mu);
+  absl::MutexLock lock(autotune_cache_mu);
   return autotune_cache.empty();
 }
 
@@ -391,7 +391,7 @@ absl::StatusOr<std::optional<AutotuneResult>> AutotunerUtil::TryFindInCache(
 
   {
     auto cache_hit = cached.second.has_value();
-    absl::MutexLock lock(&autotune_cache_mu);
+    absl::MutexLock lock(autotune_cache_mu);
     autotune_cache_stats.cache_hits += cache_hit ? 1 : 0;
     autotune_cache_stats.cache_misses += cache_hit ? 0 : 1;
   }
@@ -507,12 +507,12 @@ bool IsTextProtoPath(absl::string_view file_path) {
 }
 
 /*static*/ AutotunerUtil::CacheStats AutotunerUtil::GetCacheStats() {
-  absl::MutexLock lock(&autotune_cache_mu);
+  absl::MutexLock lock(autotune_cache_mu);
   return autotune_cache_stats;
 }
 
 /*static*/ void AutotunerUtil::ClearCacheStats() {
-  absl::MutexLock lock(&autotune_cache_mu);
+  absl::MutexLock lock(autotune_cache_mu);
   autotune_cache_stats = CacheStats();
 }
 
