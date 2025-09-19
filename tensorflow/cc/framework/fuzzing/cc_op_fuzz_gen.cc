@@ -61,13 +61,13 @@ string DefaultValue(OpDef_AttrDef attr) {
     } else if (attr.type() == "list(int)") {
       std::vector<int> v(attr.minimum());
       for (int i = 0; i < v.size(); ++i) v[i] = i;
-      std::string s = strings::StrCat("{", absl::StrJoin(v, ","), "}");
+      std::string s = absl::StrCat("{", absl::StrJoin(v, ","), "}");
       return s;
     }
   }
   if (attr.has_allowed_values()) {
     if (!attr.allowed_values().list().s().empty()) {
-      return strings::StrCat("\"", attr.allowed_values().list().s(0), "\"");
+      return absl::StrCat("\"", attr.allowed_values().list().s(0), "\"");
     } else if (!attr.allowed_values().list().type().empty()) {
       return DataType_Name(attr.allowed_values().list().type(0));
     }
@@ -85,11 +85,11 @@ string WriteClassFuzzDef(const OpInfo& op_info) {
       "class Fuzz$0 : public FuzzSession<$1> {\n", op_info.op_name,
       absl::StrJoin(op_info.graph_op_def.input_arg(), ", ",
                     [](string* out, const auto arg) {
-                      strings::StrAppend(out, "Tensor");
-                      if (ArgIsList(arg)) strings::StrAppend(out, ", Tensor");
+                      absl::StrAppend(out, "Tensor");
+                      if (ArgIsList(arg)) absl::StrAppend(out, ", Tensor");
                     }));
 
-  string build_graph_body = strings::StrCat(
+  string build_graph_body = absl::StrCat(
       absl::StrJoin(
           op_info.graph_op_def.input_arg(), "",
           [op_info](string* out, const OpDef_ArgDef arg) {
@@ -142,7 +142,7 @@ string WriteClassFuzzDef(const OpInfo& op_info) {
   string constructor_call_str = absl::Substitute(
       "    tensorflow::ops::$0(scope.WithOpName(\"output\")$1);\n",
       op_info.op_name,
-      strings::StrCat(
+      absl::StrCat(
           op_info.api_def.arg_order().empty()
               ? absl::StrJoin(op_info.api_def.in_arg(), "",
                               [](string* out, const auto api_def_arg) {
@@ -199,9 +199,8 @@ string WriteFuzzTest(const OpInfo& op_info) {
       "FUZZ_TEST_F(Fuzz$0, Fuzz).WithDomains($1);\n", op_info.op_name,
       absl::StrJoin(op_info.graph_op_def.input_arg(), ", ",
                     [](string* out, const auto arg) {
-                      strings::StrAppend(out, "AnyTensor()");
-                      if (ArgIsList(arg))
-                        strings::StrAppend(out, ", AnyTensor()");
+                      absl::StrAppend(out, "AnyTensor()");
+                      if (ArgIsList(arg)) absl::StrAppend(out, ", AnyTensor()");
                     }));
 }
 
@@ -212,15 +211,15 @@ namespace fuzzing {
 
 )namespace";
 
-  const string fuzz_header = strings::StrCat(
-      R"include(// This file is MACHINE GENERATED! Do not edit.
+  const string fuzz_header =
+      absl::StrCat(R"include(// This file is MACHINE GENERATED! Do not edit.
 
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/security/fuzzing/cc/fuzz_session.h"
 #include "third_party/mediapipe/framework/port/parse_text_proto.h"
 )include",
-      fuzz_namespace_begin);
+                   fuzz_namespace_begin);
 
   return fuzz_header;
 }
