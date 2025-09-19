@@ -99,6 +99,7 @@ int RunProfiler(int argc, char** argv) {
       HloOpcode::kLogistic,
       HloOpcode::kRsqrt,
       HloOpcode::kSin,
+      HloOpcode::kSinh,
       HloOpcode::kSqrt,
       HloOpcode::kTanh,
       // Binary

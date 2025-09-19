@@ -6039,8 +6039,8 @@ INSTANTIATE_TEST_SUITE_P(UnboundedDynamism, UnboundedUnaryOpShapeInferenceTest,
                               {"f32[?]", "f32[?]", HloOpcode::kRsqrt},
                               {"f32[?]", "f32[?]", HloOpcode::kSign},
                               {"f32[?]", "f32[?]", HloOpcode::kSin},
+                              {"f32[?]", "f32[?]", HloOpcode::kSinh},
                               {"f32[?]", "f32[?]", HloOpcode::kSqrt},
                               {"f32[?]", "f32[?]", HloOpcode::kTanh}}));
-
 }  // namespace
 }  // namespace xla

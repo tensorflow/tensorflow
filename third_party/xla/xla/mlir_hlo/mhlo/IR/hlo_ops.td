@@ -709,6 +709,22 @@ def MHLO_SineOp: MHLO_UnaryElementwiseOp<"sine",
   let hasCustomHLOConverter = 1;
 }
 
+def MHLO_SinhOp : MHLO_UnaryElementwiseOp<"sinh",
+    [HLO_CompatibleOperandsAndResultType], HLO_AnyFpOrComplexTensor> {
+  let summary = "Sinh operation";
+
+  let description = [{
+     Performs element-wise sinh operation on `operand` tensor and produces a
+    `result` tensor.
+
+    Example:
+    ```mlir
+    %result = mhlo.sinh %operand : tensor<2x2xf32>
+    ```
+  }];
+  let hasFolder = 1;
+}
+
 def MHLO_TanOp: MHLO_UnaryElementwiseOp<"tan",
     [Pure, HLO_CompatibleOperandsAndResultType], MHLO_FpOrComplexTensor> {
   let summary = "Tan operation";

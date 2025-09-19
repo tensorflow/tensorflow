@@ -262,6 +262,7 @@ const HloInstruction* PickRepresentativeOperand(
     case HloOpcode::kSelect:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
+    case HloOpcode::kSinh:
     case HloOpcode::kTopK:
     case HloOpcode::kSort:
     case HloOpcode::kSqrt:

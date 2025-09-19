@@ -219,6 +219,9 @@ class DfsHloVisitorBase {
   virtual absl::Status HandleSin(HloInstructionPtr hlo) {
     return HandleElementwiseUnary(hlo);
   }
+  virtual absl::Status HandleSinh(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
+  }
   virtual absl::Status HandleTan(HloInstructionPtr hlo) {
     return HandleElementwiseUnary(hlo);
   }

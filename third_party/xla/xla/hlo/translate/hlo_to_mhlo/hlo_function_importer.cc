@@ -2157,6 +2157,7 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       NO_ATTRIBUTE_CASE_MHLO(kAddDependency, AddDependencyOp);
       NO_ATTRIBUTE_CASE_MHLO(kCopy, CopyOp);
       NO_ATTRIBUTE_CASE_MHLO(kErf, ErfOp);
+      NO_ATTRIBUTE_CASE_MHLO(kSinh, SinhOp);
       NO_ATTRIBUTE_CASE_MHLO(kStochasticConvert, StochasticConvertOp);
 
 #undef NO_ATTRIBUTE_CASE_MHLO

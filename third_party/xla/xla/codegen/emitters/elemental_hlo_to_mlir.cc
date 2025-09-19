@@ -1159,6 +1159,8 @@ absl::StatusOr<SmallVector<Value, 1>> HloToMlir(
       return MapElementwiseOp<mhlo::SignOp>(arg_types, operands, builder);
     case HloOpcode::kSin:
       return MapElementwiseOp<mhlo::SineOp>(arg_types, operands, builder);
+    case HloOpcode::kSinh:
+      return MapElementwiseOp<mhlo::SinhOp>(arg_types, operands, builder);
     case HloOpcode::kSqrt:
       return MapElementwiseOp<mhlo::SqrtOp>(arg_types, operands, builder);
     case HloOpcode::kSubtract:

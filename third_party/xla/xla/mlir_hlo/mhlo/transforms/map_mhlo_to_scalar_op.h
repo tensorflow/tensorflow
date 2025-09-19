@@ -168,6 +168,10 @@ struct MhloToScalarOp<mhlo::SineOp> {
   using COp = ::mlir::complex::SinOp;
 };
 template <>
+struct MhloToScalarOp<mhlo::SinhOp> {
+  using FOp = ::mlir::math::SinhOp;
+};
+template <>
 struct MhloToScalarOp<mhlo::TanOp> {
   using FOp = ::mlir::math::TanOp;
   using COp = ::mlir::complex::TanOp;

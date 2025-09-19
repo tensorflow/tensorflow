@@ -1314,6 +1314,7 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       case HloOpcode::kRsqrt:
       case HloOpcode::kLogistic:
       case HloOpcode::kSin:
+      case HloOpcode::kSinh:
       case HloOpcode::kSqrt:
       case HloOpcode::kCbrt:
       case HloOpcode::kTanh:
@@ -1505,6 +1506,7 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
     case HloOpcode::kRsqrt:
     case HloOpcode::kLogistic:
     case HloOpcode::kSin:
+    case HloOpcode::kSinh:
     case HloOpcode::kSqrt:
     case HloOpcode::kCbrt:
     case HloOpcode::kTanh:
@@ -3239,6 +3241,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kLogistic:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
+    case HloOpcode::kSinh:
     case HloOpcode::kSqrt:
     case HloOpcode::kStochasticConvert:
     case HloOpcode::kCbrt:
@@ -3840,6 +3843,7 @@ bool HloInstruction::IsOpElementwise(HloOpcode opcode) {
     case HloOpcode::kLogistic:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
+    case HloOpcode::kSinh:
     case HloOpcode::kSqrt:
     case HloOpcode::kCbrt:
     case HloOpcode::kTan:
@@ -4658,6 +4662,8 @@ absl::Status HloInstruction::Visit(
       return visitor->HandleCos(this);
     case HloOpcode::kSin:
       return visitor->HandleSin(this);
+    case HloOpcode::kSinh:
+      return visitor->HandleSinh(this);
     case HloOpcode::kSqrt:
       return visitor->HandleSqrt(this);
     case HloOpcode::kCbrt:
@@ -5224,7 +5230,7 @@ bool IsUnaryOpWithResultAccuracy(HloOpcode opcode) {
          opcode == HloOpcode::kCbrt || opcode == HloOpcode::kTanh ||
          opcode == HloOpcode::kCos || opcode == HloOpcode::kSin ||
          opcode == HloOpcode::kTan || opcode == HloOpcode::kErf ||
-         opcode == HloOpcode::kLogistic;
+         opcode == HloOpcode::kLogistic || opcode == HloOpcode::kSinh;
 }
 
 std::string AlgorithmToString(const PrecisionConfig::Algorithm& algorithm) {

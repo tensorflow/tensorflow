@@ -160,6 +160,7 @@ namespace xla {
   V(kShiftRightLogical, "shift-right-logical", 2)                              \
   V(kSign, "sign", 1)                                                          \
   V(kSin, "sine", 1)                                                           \
+  V(kSinh, "sinh", 1)                                                          \
   V(kSlice, "slice", 1)                                                        \
   V(kSort, "sort", kHloOpcodeIsVariadic)                                       \
   V(kSqrt, "sqrt", 1)                                                          \

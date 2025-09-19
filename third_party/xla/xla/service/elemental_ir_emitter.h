@@ -153,6 +153,8 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
                                                  llvm::Value* lhs,
                                                  llvm::Value* rhs,
                                                  absl::string_view name);
+  virtual absl::StatusOr<llvm::Value*> EmitSinh(PrimitiveType prim_type,
+                                                llvm::Value* value);
 
   virtual absl::StatusOr<llvm::Value*> EmitLog(PrimitiveType prim_type,
                                                llvm::Value* value);

@@ -152,7 +152,7 @@ absl::Status HloCostAnalysis::HandleElementwiseOp(
       opcode == HloOpcode::kTanh || opcode == HloOpcode::kSin ||
       opcode == HloOpcode::kCos || opcode == HloOpcode::kExpm1 ||
       opcode == HloOpcode::kLog1p || opcode == HloOpcode::kAtan2 ||
-      opcode == HloOpcode::kTan) {
+      opcode == HloOpcode::kTan || opcode == HloOpcode::kSinh) {
     current_properties_[kTranscendentalsKey] = computation_count;
   } else {
     // Note: transcendental operations are considered a separate category from

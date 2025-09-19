@@ -188,6 +188,7 @@ bool CanInferShape(HloOpcode code) {
     case HloOpcode::kShiftRightLogical:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
+    case HloOpcode::kSinh:
     case HloOpcode::kSqrt:
     case HloOpcode::kCbrt:
     case HloOpcode::kReduceWindow:
@@ -1656,6 +1657,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
     case HloOpcode::kTanh:
     case HloOpcode::kErf:
     case HloOpcode::kSin:
+    case HloOpcode::kSinh:
     case HloOpcode::kCos:
     case HloOpcode::kTan:
     case HloOpcode::kExp: {

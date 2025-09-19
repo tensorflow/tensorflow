@@ -277,6 +277,9 @@ struct TargetDeviceFunction GetDeviceFunctionRoot(
     case TargetDeviceFunctionID::kSin: {
       return {"__nv_sin", "__ocml_sin", "_Z15__spirv_ocl_sin"};
     }
+    case TargetDeviceFunctionID::kSinh: {
+      return {"__nv_sinh", "__ocml_sinh", "_Z15__spirv_ocl_sinh"};
+    }
     case TargetDeviceFunctionID::kSqrt: {
       return {"__nv_sqrt", "__ocml_sqrt", "_Z16__spirv_ocl_sqrt"};
     }
@@ -321,6 +324,8 @@ std::optional<TargetDeviceFunctionID> GetTargetDeviceFunctionID(HloOpcode op) {
       return TargetDeviceFunctionID::kRsqrt;
     case HloOpcode::kSin:
       return TargetDeviceFunctionID::kSin;
+    case HloOpcode::kSinh:
+      return TargetDeviceFunctionID::kSinh;
     case HloOpcode::kSqrt:
       return TargetDeviceFunctionID::kSqrt;
     case HloOpcode::kTan:

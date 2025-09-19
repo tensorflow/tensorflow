@@ -157,6 +157,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kCos:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
+    case HloOpcode::kSinh:
     case HloOpcode::kTan:
       return ShapeUtil::ElementIsComplex(instruction.shape());
 

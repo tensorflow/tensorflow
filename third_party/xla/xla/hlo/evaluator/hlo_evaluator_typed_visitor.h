@@ -1831,6 +1831,19 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     return UnsupportedTypeError(sin);
   }
 
+  absl::Status HandleSinh(const HloInstruction* sinh) override {
+    if constexpr (!is_complex_v<ReturnT>) {
+      TF_ASSIGN_OR_RETURN(
+          Literal literal,
+          ElementWiseUnaryOp(sinh, [](ElementwiseT elem_operand) {
+            return std::sinh(elem_operand);
+          }));
+      parent_->SetEvaluatedLiteralFor(sinh, std::move(literal));
+      return absl::OkStatus();
+    }
+    return UnsupportedTypeError(sinh);
+  }
+
   absl::Status HandleCos(const HloInstruction* cos) override {
     if constexpr (std::is_floating_point_v<ElementwiseT> ||
                   is_complex_v<ElementwiseT>) {

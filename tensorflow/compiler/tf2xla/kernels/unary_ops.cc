@@ -91,7 +91,7 @@ REGISTER_XLA_OP(Name("Sigmoid"), MlirXlaOpKernel);
 
 // Returns NaN if x is NaN, 0 if x is 0, -1 if x < 0 and 1 if x > 0.
 REGISTER_XLA_OP(Name("Sign"), MlirXlaOpKernel);
-XLAJIT_MAKE_UNARY(Sinh, xla::Sinh(x));
+REGISTER_XLA_OP(Name("Sinh"), MlirXlaOpKernel);
 
 static xla::XlaOp Softplus(xla::XlaBuilder* b, xla::XlaOp features) {
   return b->ReportErrorOrReturn([&]() -> absl::StatusOr<xla::XlaOp> {
