@@ -15,13 +15,13 @@
  #include "triton/Tools/LayoutUtils.h"
 -#include "llvm/Support/Casting.h"
 -#include "llvm/Support/LogicalResult.h"
- 
+
  // Provide custom directive handlers for declarative assemblyFormat.
  // They must be visible before including the generated op classes.
-@@ -517,10 +518,47 @@
+@@ -517,10 +518,47 @@ LogicalResult MemDescReshapeOp::verify() {
    return success();
  }
- 
+
 -static LogicalResult inferMemDescReshapeOpEncoding(ArrayRef<int64_t> srcShape,
 +// Verification copied from nvmmaSharedToLinearLayout().
 +LogicalResult verifyNVMMASharedEncoding(std::optional<Location> loc,
@@ -68,7 +68,7 @@
    if (auto mmaEncoding = dyn_cast<NVMMASharedEncodingAttr>(srcEnc)) {
      // TODO: supporting reshape of CTA layouts is non-trivial.
      if (getNumCTAs(mmaEncoding) > 1)
-@@ -544,6 +582,11 @@
+@@ -544,6 +582,11 @@ static LogicalResult inferMemDescReshapeOpEncoding(ArrayRef<int64_t> srcShape,
          ctx, mmaEncoding.getSwizzlingByteWidth(), mmaEncoding.getTransposed(),
          mmaEncoding.getElementBitWidth(), mmaEncoding.getFp4Padded(),
          CTALayout);
@@ -79,9 +79,9 @@
 +    }
      // Big guns, check linear layouts are equivalent
      // We disallow reshaping memdesc_subslice in the verifier
-     auto srcLL = toLinearLayout(srcShape, srcEnc, srcShape);
-@@ -565,8 +608,8 @@
- 
+     // so allocShape == shape
+@@ -566,8 +609,8 @@ LogicalResult MemDescReshapeOp::inferReturnTypes(
+
    Attribute dstEncoding;
    if (Attribute srcEnc = srcTy.getEncoding()) {
 -    if (failed(inferMemDescReshapeOpEncoding(srcTy.getShape(), srcEnc, dstShape,
@@ -90,4 +90,4 @@
 +                                             dstShape, dstEncoding)))
        return failure();
    }
- 
+
