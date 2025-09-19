@@ -86,7 +86,7 @@ using RocBlasType_t =
 // Thread-safe post-initialization.
 class ROCMBlas : public blas::BlasSupport {
  public:
-  explicit ROCMBlas(StreamExecutor *parent);
+  explicit ROCMBlas(Stream* stream);
 
   // Allocates a rocBLAS handle.
   bool Init();
@@ -184,9 +184,9 @@ class ROCMBlas : public blas::BlasSupport {
   // mutex that guards the rocBLAS handle for this device.
   mutable absl::Mutex mu_;
 
-  // StreamExecutor which instantiated this ROCMBlas.
+  // Stream which instantiated this ROCMBlas.
   // Immutable post-initialization.
-  StreamExecutor *parent_;
+  Stream* stream_;
 
   // rocBLAS library handle on the device.
   rocblas_handle blas_ ABSL_GUARDED_BY(mu_);

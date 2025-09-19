@@ -94,7 +94,7 @@ class GpuBlasLtMatmulThunkTest : public HloTestBase {
     }
   }
 
-  void CreateExecuteThunksFromHLO(se::StreamExecutor* executor,
+  void CreateExecuteThunksFromHLO(se::Stream* stream,
                                   absl::string_view hlo_string);
 };
 
@@ -182,10 +182,11 @@ class GpuBlasLtThunkBuilder {
 };
 
 void GpuBlasLtMatmulThunkTest::CreateExecuteThunksFromHLO(
-    se::StreamExecutor* executor, absl::string_view hlo_string) {
+    se::Stream* stream, absl::string_view hlo_string) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           this->ParseAndReturnVerifiedModule(hlo_string));
 
+  se::StreamExecutor* executor = stream->parent();
   TF_ASSERT_OK_AND_ASSIGN(
       bool changed,
       RunHloPass(
@@ -206,42 +207,16 @@ void GpuBlasLtMatmulThunkTest::CreateExecuteThunksFromHLO(
   auto allocs = builder.buffer_allocations();
   ServiceExecutableRunOptions run_options;
 
-  auto thread_func = [&](se::Stream* stream) -> absl::Status {
-    auto thunk_params = Thunk::ExecuteParams::Create(
-        run_options, *allocs, stream, stream, nullptr, nullptr);
+  auto thunk_params = Thunk::ExecuteParams::Create(run_options, *allocs, stream,
+                                                   stream, nullptr, nullptr);
 
-    Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
-    for (auto& thunk : gemm_thunks) {
-      TF_RETURN_IF_ERROR(
-          thunk->Initialize({executor, source, allocs.get(), stream, stream}));
-      TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(thunk_params));
-    }
-    TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
-    return absl::OkStatus();
-  };
-
-  // Running BlasLt thunks across multiple streams with shared matmul plan
-  int num_streams = 10;
-  struct StreamInfo {
-    std::unique_ptr<se::Stream> stream;
-    absl::Status result;
-  };
-  std::vector<StreamInfo> threads(num_streams);
-  {
-    tsl::thread::ThreadPool pool(tsl::Env::Default(), "test_streams",
-                                 num_streams);
-    // use two different loops to make sure all threads start at the same time
-    for (auto& [s, _] : threads) {
-      TF_ASSERT_OK_AND_ASSIGN(s, executor->CreateStream());
-    }
-    // some compilers complain about lambda capture of structured bindings
-    for (auto& info : threads) {
-      pool.Schedule([&] { info.result = thread_func(info.stream.get()); });
-    }
+  Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
+  for (auto& thunk : gemm_thunks) {
+    TF_ASSERT_OK(
+        thunk->Initialize({executor, source, allocs.get(), stream, stream}));
+    TF_ASSERT_OK(thunk->ExecuteOnStream(thunk_params));
   }
-  for (const auto& [_, res] : threads) {
-    TF_ASSERT_OK(res);
-  }
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
 }
 
 const absl::string_view hlo_single_plan = R"(
@@ -283,35 +258,57 @@ ENTRY test {
   ROOT abc = f32[101,400] subtract(mul_ab, dot_c)
 })";
 
-TEST_F(GpuBlasLtMatmulThunkTest, SharedMatmulPlansUnit) {
+TEST_F(GpuBlasLtMatmulThunkTest, MatmulPlansUnit) {
   auto* exec = default_exec();
-  auto* blas_lt = exec->AsBlas()->GetBlasLt();
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, exec->CreateStream());
+  auto* blas_lt = stream->AsBlas()->GetBlasLt();
   EXPECT_NE(blas_lt, nullptr);
   blas_lt->ClearMatmulPlanCache();
 
-  CreateExecuteThunksFromHLO(exec, hlo_single_plan);
+  CreateExecuteThunksFromHLO(stream.get(), hlo_single_plan);
   // Assert that only one matmul plan was created
   EXPECT_EQ(blas_lt->GetMatmulPlanCacheSize(), 1);
 
-  CreateExecuteThunksFromHLO(exec, hlo_two_plans);
+  CreateExecuteThunksFromHLO(stream.get(), hlo_two_plans);
   // Assert that we have now 2 MatmulPlans (one more created for ReLu epilogue).
   EXPECT_EQ(blas_lt->GetMatmulPlanCacheSize(), 2);
 }
 
-// Same as above but instead of creating thunks manually, we use XLA runtime
-TEST_F(GpuBlasLtMatmulThunkTest, SharedMatmulPlansFunctional) {
+TEST_F(GpuBlasLtMatmulThunkTest, PerStreamCacheIsolation) {
   auto* exec = default_exec();
-  auto* blas_lt = exec->AsBlas()->GetBlasLt();
+  TF_ASSERT_OK_AND_ASSIGN(auto stream1, exec->CreateStream());
+  TF_ASSERT_OK_AND_ASSIGN(auto stream2, exec->CreateStream());
+
+  auto* blas_lt1 = stream1->AsBlas()->GetBlasLt();
+  auto* blas_lt2 = stream2->AsBlas()->GetBlasLt();
+  EXPECT_NE(blas_lt1, nullptr);
+  EXPECT_NE(blas_lt2, nullptr);
+  EXPECT_NE(blas_lt1, blas_lt2);
+
+  blas_lt1->ClearMatmulPlanCache();
+  blas_lt2->ClearMatmulPlanCache();
+
+  // Run on stream1
+  CreateExecuteThunksFromHLO(stream1.get(), hlo_single_plan);
+  EXPECT_EQ(blas_lt1->GetMatmulPlanCacheSize(), 1);
+  EXPECT_EQ(blas_lt2->GetMatmulPlanCacheSize(), 0);
+
+  // Run on stream2
+  CreateExecuteThunksFromHLO(stream2.get(), hlo_two_plans);
+  EXPECT_EQ(blas_lt1->GetMatmulPlanCacheSize(), 1);
+  EXPECT_EQ(blas_lt2->GetMatmulPlanCacheSize(), 2);
+}
+
+// Instead of creating thunks manually, we use XLA runtime
+TEST_F(GpuBlasLtMatmulThunkTest, MatmulPlansFunctional) {
+  auto* exec = default_exec();
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, exec->CreateStream());
+  auto* blas_lt = stream->AsBlas()->GetBlasLt();
   EXPECT_NE(blas_lt, nullptr);
   blas_lt->ClearMatmulPlanCache();
 
   EXPECT_TRUE(RunAndCompare(hlo_single_plan, ErrorSpec{1e-3, 1e-3}));
-  // Assert that only one MatmulPlan cache entry was created.
-  EXPECT_EQ(blas_lt->GetMatmulPlanCacheSize(), 1);
-
   EXPECT_TRUE(RunAndCompare(hlo_two_plans, ErrorSpec{1e-3, 1e-3}));
-  // Assert that we have now 2 MatmulPlans (one more created for ReLu epilogue).
-  EXPECT_EQ(blas_lt->GetMatmulPlanCacheSize(), 2);
 }
 
 // Mock BlasLt interface to test only the cache function

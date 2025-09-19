@@ -547,7 +547,7 @@ absl::Status DoGemmWithAlgorithm(const se::gpu::MatrixDescriptor& lhs,
   se::DeviceMemory<Output> output_data(output.data);
 
   // Set a workspace for all Blas operations launched below.
-  auto* blas = stream->parent()->AsBlas();
+  auto* blas = stream->AsBlas();
   if (blas == nullptr) {
     return absl::InternalError("No Blas support for stream");
   }
@@ -584,7 +584,7 @@ absl::Status DoGemm(const se::gpu::MatrixDescriptor& lhs,
                     se::blas::CallContext context) {
   CHECK(output.transpose == se::blas::Transpose::kNoTranspose);
   se::DeviceMemory<Output> output_data(output.data);
-  auto* blas = stream->parent()->AsBlas();
+  auto* blas = stream->AsBlas();
   if (blas == nullptr) {
     return absl::InternalError("No Blas support for stream");
   }

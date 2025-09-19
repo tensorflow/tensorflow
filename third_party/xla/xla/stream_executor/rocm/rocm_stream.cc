@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/rocm/rocm_blas.h"
 #include "xla/stream_executor/rocm/rocm_driver_wrapper.h"
 #include "xla/stream_executor/rocm/rocm_event.h"
 #include "xla/stream_executor/rocm/rocm_kernel.h"
@@ -199,8 +200,18 @@ absl::StatusOr<std::unique_ptr<RocmStream>> RocmStream::Create(
                       RocmEvent::Create(executor,
                                         /*allow_timing=*/false));
 
-  return std::unique_ptr<RocmStream>(new RocmStream(
+  auto stream = std::unique_ptr<RocmStream>(new RocmStream(
       executor, std::move(completed_event), priority, stream_handle));
+  // We initialize BLAS interfaces early here since otherwise it might create
+  // us problems during hipBlasLt initialization under graph capture.
+  // There is no real advantage of explicitly using 'lazy initialization' on
+  // ROCM platform because rocBLAS/hipBlasLt already use 'lazy initialization'
+  // internally
+  stream->blas_ = std::make_unique<ROCMBlas>(stream.get());
+  if (!stream->blas_->Init()) {
+    return absl::InternalError("Failed to initialize BLAS support");
+  }
+  return stream;
 }
 
 absl::Status RocmStream::WaitFor(Stream* other) {
