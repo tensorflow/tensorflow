@@ -46,6 +46,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"
 #include "mlir/IR/BuiltinOps.h"
+#include "xla/backends/gpu/collectives/gpu_cliques.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/client/local_client.h"
 #include "xla/debug_options_flags.h"
@@ -86,6 +87,7 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/executable.h"
+#include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/shaped_buffer.h"
@@ -147,6 +149,7 @@ TfrtGpuClient::TfrtGpuClient(
     std::string platform_name, int process_index, xla::LocalClient* xla_client,
     std::vector<std::unique_ptr<TfrtGpuDevice>> devices,
     bool should_stage_host_to_device_transfers,
+    bool abort_collectives_on_failure,
     MaybeOwning<se::DeviceMemoryAllocator> allocator,
     std::unique_ptr<tsl::Allocator> host_memory_allocator,
     std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options,
@@ -157,6 +160,7 @@ TfrtGpuClient::TfrtGpuClient(
       xla_client_(CHECK_NOTNULL(xla_client)),
       should_stage_host_to_device_transfers_(
           should_stage_host_to_device_transfers),
+      abort_collectives_on_failure_(abort_collectives_on_failure),
       allocator_(std::move(allocator)),
       host_memory_allocator_(std::make_unique<HostMemoryAllocator>(
           std::move(host_memory_allocator))),
@@ -227,6 +231,17 @@ absl::StatusOr<PjRtDevice*> TfrtGpuClient::LookupAddressableDevice(
   }
   return InvalidArgument("No matching device found for local_hardware_id %d",
                          local_device_id.value());
+}
+
+void TfrtGpuClient::UpdateGlobalProcessInfo(
+    absl::Span<tensorflow::CoordinatedTaskStateInfo> infos) {
+  if (!abort_collectives_on_failure_) {
+    return;
+  }
+  absl::Status s = ::xla::gpu::UpdateGlobalProcessInfo(infos);
+  if (!s.ok()) {
+    LOG(WARNING) << s;
+  }
 }
 
 absl::StatusOr<Layout> TfrtGpuClient::GetDefaultLayout(
@@ -1163,9 +1178,9 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtGpuClient(
   return std::unique_ptr<PjRtClient>(std::make_unique<TfrtGpuClient>(
       std::move(pjrt_platform_name), options.node_id, xla_client,
       std::move(devices), options.should_stage_host_to_device_transfers,
-      std::move(allocator), std::move(host_memory_allocator),
-      std::move(gpu_run_options), std::move(kv_store),
-      std::move(gpu_topology)));
+      options.abort_collectives_on_failure, std::move(allocator),
+      std::move(host_memory_allocator), std::move(gpu_run_options),
+      std::move(kv_store), std::move(gpu_topology)));
 }
 
 }  // namespace xla

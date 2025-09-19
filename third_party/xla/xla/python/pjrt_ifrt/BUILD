@@ -343,6 +343,7 @@ cc_library(
         "//xla/python/ifrt:user_context",
         "//xla/python/ifrt/hlo:hlo_program",
         "//xla/service:computation_placer_hdr",
+        "//xla/service:global_device_id",
         "//xla/service:hlo_proto_cc",
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/distributed_runtime:call_options",
