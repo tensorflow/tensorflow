@@ -53,24 +53,24 @@ class PollEventLoopImpl : public PollEventLoop {
   }
 
   void RegisterHandler(Handler* handler) override {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     inserts_.push_back(handler);
     WakeInternal();
   }
   void SendWake(Handler* handler) override {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     wakes_.insert(handler);
     WakeInternal();
   }
 
   void Schedule(absl::AnyInvocable<void() &&> cb) override {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     cbs_.push_back(std::move(cb));
     WakeInternal();
   }
 
   void ScheduleAt(absl::Time t, absl::AnyInvocable<void() &&> cb) override {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     bool needs_wake = timeout_cbs_.empty() || timeout_cbs_.top().t > t;
     timeout_cbs_.push({t, std::move(cb)});
     if (needs_wake) {
@@ -111,7 +111,7 @@ class PollEventLoopImpl : public PollEventLoop {
         eventfd_read(event_fd_, &counter);
       }
       {
-        absl::MutexLock l(&mu_);
+        absl::MutexLock l(mu_);
         std::swap(wakes_, wakes);
         std::swap(inserts, inserts_);
         std::swap(cbs, cbs_);

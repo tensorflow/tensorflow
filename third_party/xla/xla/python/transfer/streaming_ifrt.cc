@@ -131,7 +131,7 @@ void PremappedCopierState::ScheduleCopy(
                            on_done) {
   WorkList work_list;
   {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     work_queue_.push_back(WorkQueueItem{std::move(blob),
                                         nullptr,
                                         base_seq_id_ + work_queue_.size(),
@@ -146,7 +146,7 @@ void PremappedCopierState::ScheduleCopy(
 void PremappedCopierState::ReturnBuffer(void* buffer) {
   WorkList work_list;
   {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     available_copy_offsets_.push_back(buffer);
     work_list = FindWorkLocked();
   }
@@ -176,7 +176,7 @@ void PremappedCopierState::StartWorkUnlocked(const WorkList& work_list) {
                   work_item](absl::Status s) {
           WorkList work_list2;
           {
-            absl::MutexLock l(&mu_);
+            absl::MutexLock l(mu_);
             --num_parallel_copies_;
             work_item->is_ready = true;
             work_item->result_status = s;
@@ -278,7 +278,7 @@ class SlicedRawBufferChunkDestination : public ChunkDestination {
           offset, size, slice_size_));
     }
     {
-      absl::MutexLock l(&mu_);
+      absl::MutexLock l(mu_);
       TF_RETURN_IF_ERROR(saved_status_);
       sent_bytes_ += size;
     }
@@ -287,7 +287,7 @@ class SlicedRawBufferChunkDestination : public ChunkDestination {
     future.OnReady([state = tsl::FormRef(this), on_done = std::move(on_done),
                     size](absl::Status s) mutable {
       {
-        absl::MutexLock l(&state->mu_);
+        absl::MutexLock l(state->mu_);
         state->copied_bytes_ += size;
         state->SendResultsIfDone(std::move(s));
       }
@@ -308,7 +308,7 @@ class SlicedRawBufferChunkDestination : public ChunkDestination {
   }
 
   void Poison(absl::Status s) override {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     if (slice_size_ == sent_bytes_) {
       return;
     }

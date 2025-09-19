@@ -125,7 +125,7 @@ void CopyIntoDest(tsl::RCReference<ChunkDestination> dest,
                             absl::StatusOr<void*> buf,
                             const DmaCopyChunk& chunk) {
           CHECK_OK(buf.status());
-          absl::MutexLock l(&mu);
+          absl::MutexLock l(mu);
           local_queue.push_back(LocalQueueInfo{*buf, chunk.offset, chunk.size});
         });
   }
@@ -134,7 +134,7 @@ void CopyIntoDest(tsl::RCReference<ChunkDestination> dest,
     mu.LockWhen(absl::Condition(&cond));
     auto state = local_queue.front();
     local_queue.pop_front();
-    mu.Unlock();
+    mu.unlock();
     TF_ASSERT_OK(
         dest->Put(state.buff, state.offset, state.size,
                   [cstate, buf = state.buff]() { cstate->ReturnBuffer(buf); }));
@@ -246,10 +246,10 @@ TEST(Semaphore, Async) {
   auto thread_wait_flip = [&thread_id, &mu](size_t my_thread_id) {
     auto cond = [&] { return thread_id == my_thread_id; };
     mu.LockWhen(absl::Condition(&cond));
-    mu.Unlock();
+    mu.unlock();
   };
   auto thread_flip = [&thread_id, &mu](size_t my_thread_id) {
-    absl::MutexLock l(&mu);
+    absl::MutexLock l(mu);
     thread_id = 1 - thread_id;
   };
 
