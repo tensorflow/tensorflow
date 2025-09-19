@@ -413,7 +413,7 @@ void PythonHookContext::ProfileFast(PyFrameObject* frame, int what,
     auto trace_module = py::module::import(kModuleName);
     trace_module.attr("enabled") = py::bool_(enable);
   } catch (const py::error_already_set& e) {
-    LOG(ERROR) << "Can't import " << kModuleName;
+    LOG(INFO) << "Can't import " << kModuleName;
   }
 }
 
