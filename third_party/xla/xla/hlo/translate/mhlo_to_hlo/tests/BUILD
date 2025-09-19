@@ -12,6 +12,7 @@ lit_test_suite(
         [
             "acosh.mlir",
             "add.mlir",
+            "atanh.mlir",
             "attributes.mlir",
             "call.mlir",
             "case.mlir",

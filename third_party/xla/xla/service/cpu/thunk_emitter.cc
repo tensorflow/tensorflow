@@ -416,6 +416,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kAdd:
     case HloOpcode::kAnd:
     case HloOpcode::kAtan2:
+    case HloOpcode::kAtanh:
     case HloOpcode::kBroadcast:
     case HloOpcode::kBitcastConvert:
     case HloOpcode::kCbrt:

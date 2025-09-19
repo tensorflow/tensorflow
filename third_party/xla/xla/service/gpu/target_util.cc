@@ -244,6 +244,9 @@ struct TargetDeviceFunction GetDeviceFunctionRoot(
     case TargetDeviceFunctionID::kAtan2: {
       return {"__nv_atan2", "__ocml_atan2", "_Z17__spirv_ocl_atan2"};
     }
+    case TargetDeviceFunctionID::kAtanh: {
+      return {"__nv_atanh", "__ocml_atanh", "_Z15__spirv_ocl_atanh"};
+    }
     case TargetDeviceFunctionID::kCos: {
       return {"__nv_cos", "__ocml_cos", "_Z15__spirv_ocl_cos"};
     }

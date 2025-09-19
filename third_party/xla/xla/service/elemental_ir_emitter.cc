@@ -882,6 +882,8 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       return EmitAcos(op->shape().element_type(), operand_value);
     case HloOpcode::kAcosh:
       return EmitAcosh(op->shape().element_type(), operand_value);
+    case HloOpcode::kAtanh:
+      return EmitAtanh(op->shape().element_type(), operand_value);
     case HloOpcode::kConvert: {
       PrimitiveType from_type = op->operand(0)->shape().element_type();
       PrimitiveType to_type = op->shape().element_type();
@@ -2366,6 +2368,11 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitAtan2(
     PrimitiveType prim_type, llvm::Value* lhs, llvm::Value* /*rhs*/,
     absl::string_view /*name*/) {
   return Unimplemented("atan2");
+}
+
+absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitAtanh(
+    PrimitiveType prim_type, llvm::Value* value) {
+  return Unimplemented("atanh");
 }
 
 absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitTanh(

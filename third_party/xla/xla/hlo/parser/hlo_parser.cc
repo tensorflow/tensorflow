@@ -124,6 +124,7 @@ bool CanInferShape(HloOpcode code) {
     case HloOpcode::kAddDependency:
     case HloOpcode::kAfterAll:
     case HloOpcode::kAtan2:
+    case HloOpcode::kAtanh:
     case HloOpcode::kBatchNormGrad:
     case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormTraining:
@@ -1646,6 +1647,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
     // Unary ops with result accuracy.
     case HloOpcode::kAcos:
     case HloOpcode::kAcosh:
+    case HloOpcode::kAtanh:
     case HloOpcode::kExpm1:
     case HloOpcode::kLog:
     case HloOpcode::kLog1p:

@@ -154,6 +154,9 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
                                                  llvm::Value* rhs,
                                                  absl::string_view name);
 
+  virtual absl::StatusOr<llvm::Value*> EmitAtanh(PrimitiveType prim_type,
+                                                 llvm::Value* value);
+
   virtual absl::StatusOr<llvm::Value*> EmitLog(PrimitiveType prim_type,
                                                llvm::Value* value);
 
