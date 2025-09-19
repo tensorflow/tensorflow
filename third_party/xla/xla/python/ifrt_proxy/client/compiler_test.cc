@@ -166,9 +166,9 @@ TEST_F(CompilerTest, Compile) {
   auto device_list = BasicDeviceList::Create({&devices[0], &devices[1]});
 
   MockClient client;
-  ON_CALL(client, LookupDevice(_)).WillByDefault(Invoke([&](DeviceId id) {
+  ON_CALL(client, LookupDevice(_)).WillByDefault([&](DeviceId id) {
     return &devices[id.value()];
-  }));
+  });
   ON_CALL(client, MakeDeviceList(_)).WillByDefault(Return(device_list));
 
   Compiler compiler(&client, rpc_helper_);
