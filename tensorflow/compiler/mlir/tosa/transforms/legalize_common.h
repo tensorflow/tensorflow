@@ -19,8 +19,9 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 
+#include "mlir/Dialect/Tosa/IR/TosaOps.h"
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"     // from @llvm-project
 
 // This file contains legalizations common to mapping both TensorFlow and
 // TensorFlow Lite to TOSA.
@@ -191,22 +192,16 @@ std::optional<Value> convertReduceAnyOp(PatternRewriter& rewriter,
                                         bool keep_dims);
 
 // Lowers ReduceMin to a sequence of TOSA ops.
-std::optional<Value> convertReduceMinOp(PatternRewriter& rewriter,
-                                        Operation* op,
-                                        RankedTensorType output_type,
-                                        Value input_value,
-                                        ElementsAttr axes_elems,
-                                        bool keep_dims,
-                                        StringRef nan_mode = "PROPAGATE");
+std::optional<Value> convertReduceMinOp(
+    PatternRewriter& rewriter, Operation* op, RankedTensorType output_type,
+    Value input_value, ElementsAttr axes_elems, bool keep_dims,
+    NanPropagationMode nan_mode = NanPropagationMode::PROPAGATE);
 
 // Lowers ReduceMax to a sequence of TOSA ops.
-std::optional<Value> convertReduceMaxOp(PatternRewriter& rewriter,
-                                        Operation* op,
-                                        RankedTensorType output_type,
-                                        Value input_value,
-                                        ElementsAttr axes_elems,
-                                        bool keep_dims,
-                                        StringRef nan_mode = "PROPAGATE");
+std::optional<Value> convertReduceMaxOp(
+    PatternRewriter& rewriter, Operation* op, RankedTensorType output_type,
+    Value input_value, ElementsAttr axes_elems, bool keep_dims,
+    NanPropagationMode nan_mode = NanPropagationMode::PROPAGATE);
 
 // Lowers ReduceProd to a sequence of TOSA ops.
 std::optional<Value> convertReduceProdOp(PatternRewriter& rewriter,
@@ -235,7 +230,7 @@ std::optional<Value> convertReduceMeanOp(PatternRewriter& rewriter,
 // Lowers ResizeBilinear and ResizeNearestNeighbor to TOSA resize.
 std::optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
                                      RankedTensorType output_type,
-                                     Value input_value, StringRef mode,
+                                     Value input_value, ResizeMode resize_mode,
                                      bool align_corners,
                                      bool half_pixel_centers);
 

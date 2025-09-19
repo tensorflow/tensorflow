@@ -524,11 +524,9 @@ LogicalResult ConvertTFArgMaxOp::matchAndRewrite(
     return rewriter.notifyMatchFailure(op, "invalid axis value");
   }
 
-  IntegerAttr axis_attr = rewriter.getI32IntegerAttr(axis);
-
   CreateReplaceOpAndInfer<tosa::ArgMaxOp>(rewriter, op, output_type,
-                                          tf_argmax_op.getInput(), axis_attr,
-                                          rewriter.getStringAttr("PROPAGATE"));
+                                          tf_argmax_op.getInput(), axis,
+                                          NanPropagationMode::PROPAGATE);
 
   return success();
 }
@@ -1846,8 +1844,8 @@ LogicalResult ConvertTFResizeBilinearOp::matchAndRewrite(
   if (!output_type) return failure();
 
   std::optional<Value> result = convertResizeOp(
-      rewriter, op, output_type, tf_resize_op.getImages(),
-      StringRef("BILINEAR"), tf_resize_op.getAlignCornersAttr().getValue(),
+      rewriter, op, output_type, tf_resize_op.getImages(), ResizeMode::BILINEAR,
+      tf_resize_op.getAlignCornersAttr().getValue(),
       tf_resize_op.getHalfPixelCentersAttr().getValue());
 
   if (!result) return failure();
@@ -1868,7 +1866,7 @@ LogicalResult ConvertTFResizeNearestNeighborOp::matchAndRewrite(
 
   std::optional<Value> result =
       convertResizeOp(rewriter, op, output_type, tf_resize_op.getImages(),
-                      StringRef("NEAREST_NEIGHBOR"),
+                      ResizeMode::NEAREST_NEIGHBOR,
                       tf_resize_op.getAlignCornersAttr().getValue(),
                       tf_resize_op.getHalfPixelCentersAttr().getValue());
 

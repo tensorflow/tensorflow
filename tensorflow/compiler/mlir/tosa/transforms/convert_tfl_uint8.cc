@@ -234,11 +234,12 @@ LogicalResult convert_graph_uint8_tensor(mlir::MLIRContext &context,
       auto rescale_op = builder.create<tosa::RescaleOp>(
           loc, rescaled_type, arg, multiplier, shift, rescale_input_zp,
           rescale_output_zp,
-          /* scale32 = */ builder.getBoolAttr(true),
-          /* rounding_mode = */ builder.getStringAttr("SINGLE_ROUND"),
-          /* per_channel = */ builder.getBoolAttr(false),
-          /* input_unsigned = */ builder.getBoolAttr(true),     // uint8_t ->
-          /* output_unsigned = */ builder.getBoolAttr(false));  // int8_t
+          /* scale32 = */ true,
+          /* rounding_mode = */ RoundingMode::SINGLE_ROUND,
+          /* per_channel = */ false,
+          /* input_unsigned = */ true,
+          // uint8_t ->
+          /* output_unsigned = */ false);  // int8_t
 
       Operation *op_rescale_op = static_cast<Operation *>(rescale_op);
       bb.push_front(op_rescale_op);
@@ -327,11 +328,11 @@ LogicalResult convert_graph_uint8_tensor(mlir::MLIRContext &context,
       auto rescale_op = builder.create<tosa::RescaleOp>(
           loc, uint8_output_type, input_val, multiplier, shift,
           rescale_input_zp, rescale_output_zp,
-          /* scale32 = */ builder.getBoolAttr(true),
-          /* rounding_mode = */ builder.getStringAttr("SINGLE_ROUND"),
-          /* per_channel = */ builder.getBoolAttr(false),
-          /* input_unsigned = */ builder.getBoolAttr(false),   // int8_t ->
-          /* output_unsigned = */ builder.getBoolAttr(true));  // uint8_t
+          /* scale32 = */ true,
+          /* rounding_mode = */ RoundingMode::SINGLE_ROUND,
+          /* per_channel = */ false,
+          /* input_unsigned = */ false,   // int8_t ->
+          /* output_unsigned = */ true);  // uint8_t
 
       Operation *op_rescale_op = static_cast<Operation *>(rescale_op);
       bb.push_back(op_rescale_op);

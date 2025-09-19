@@ -353,8 +353,8 @@ Value buildRescaleMultiplier(bool scale32, OpBuilder& builder, Location loc,
 Value buildRescale(PatternRewriter& rewriter, Operation* op,
                    ShapedType output_type, Value input_val,
                    int32_t scale_multiplier, int32_t scale_shift,
-                   int64_t input_zp, int64_t output_zp, StringRef rounding_mode,
-                   bool scale32) {
+                   int64_t input_zp, int64_t output_zp,
+                   RoundingMode rounding_mode, bool scale32) {
   bool input_unsigned = input_val.getType().isUnsignedInteger();
   bool output_unsigned = output_type.isUnsignedInteger();
   auto loc = op->getLoc();
@@ -379,10 +379,8 @@ Value buildRescale(PatternRewriter& rewriter, Operation* op,
 
   auto rescale_op = CreateOpAndInfer<tosa::RescaleOp>(
       rewriter, loc, output_type, input_val, multiplier_val, shift_val,
-      input_zp_val.value(), output_zp_val.value(),
-      rewriter.getBoolAttr(scale32), rewriter.getStringAttr(rounding_mode),
-      rewriter.getBoolAttr(false), rewriter.getBoolAttr(input_unsigned),
-      rewriter.getBoolAttr(output_unsigned));
+      input_zp_val.value(), output_zp_val.value(), scale32, rounding_mode,
+      false, input_unsigned, output_unsigned);
 
   return rescale_op.getResult();
 }
@@ -390,8 +388,8 @@ Value buildRescale(PatternRewriter& rewriter, Operation* op,
 // Create a TOSA rescale op from TFLite scaling, zero points and rounding mode
 Value buildRescale(PatternRewriter& rewriter, Operation* op,
                    ShapedType output_type, Value input_val, double scale,
-                   int64_t input_zp, int64_t output_zp, StringRef rounding_mode,
-                   bool scale32) {
+                   int64_t input_zp, int64_t output_zp,
+                   RoundingMode rounding_mode, bool scale32) {
   int32_t multiplier;
   int32_t shift;
 
@@ -420,8 +418,9 @@ Value buildRescaleToInt32(PatternRewriter& rewriter, Operation* op,
   assert(input_type);
   auto output_type = input_type.clone(rewriter.getI32Type());
 
-  std::string rounding_mode =
-      IsTFLDoubleRoundingMode() ? "DOUBLE_ROUND" : "SINGLE_ROUND";
+  RoundingMode rounding_mode = IsTFLDoubleRoundingMode()
+                                   ? RoundingMode::DOUBLE_ROUND
+                                   : RoundingMode::SINGLE_ROUND;
 
   return buildRescale(rewriter, op, output_type, input_val,
                       input_scale_multiplier, input_scale_shift, input_zp,
@@ -453,8 +452,9 @@ Value buildRescaleFromInt32(PatternRewriter& rewriter, Operation* op,
   assert(input_type && input_type.getElementType().isInteger(32) &&
          "expected rescale input element type to be i32");
 
-  std::string rounding_mode =
-      IsTFLDoubleRoundingMode() ? "DOUBLE_ROUND" : "SINGLE_ROUND";
+  RoundingMode rounding_mode = IsTFLDoubleRoundingMode()
+                                   ? RoundingMode::DOUBLE_ROUND
+                                   : RoundingMode::SINGLE_ROUND;
 
   // Potentially check input_shape == output_shape here
   return buildRescale(rewriter, op, output_type, input_val, output_scale,
@@ -479,7 +479,8 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
   bool scale32 = isScale32(output_qtype);
   int32_t scale_width = scale32 ? 32 : 16;
   // Only use double round if we are doing 32 bit scaling
-  std::string rounding_mode = scale32 ? "DOUBLE_ROUND" : "SINGLE_ROUND";
+  RoundingMode rounding_mode =
+      scale32 ? RoundingMode::DOUBLE_ROUND : RoundingMode::SINGLE_ROUND;
 
   bool input_unsigned = input_qtype.isUnsignedInteger();
   bool output_unsigned = output_qtype.isUnsignedInteger();
@@ -518,10 +519,8 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
 
     auto rescale_op = CreateOpAndInfer<tosa::RescaleOp>(
         rewriter, loc, output_type, conv_val, multiplier_val, shift_val,
-        input_zp_val.value(), output_zp_val.value(),
-        rewriter.getBoolAttr(scale32), rewriter.getStringAttr(rounding_mode),
-        rewriter.getBoolAttr(false), rewriter.getBoolAttr(input_unsigned),
-        rewriter.getBoolAttr(output_unsigned));
+        input_zp_val.value(), output_zp_val.value(), scale32, rounding_mode,
+        false, input_unsigned, output_unsigned);
 
     return rescale_op.getResult();
 
@@ -570,10 +569,8 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
 
     auto rescale_op = CreateOpAndInfer<tosa::RescaleOp>(
         rewriter, loc, output_type, conv_val, multiplier_val, shift_val,
-        input_zp_val.value(), output_zp_val.value(),
-        rewriter.getBoolAttr(scale32), rewriter.getStringAttr(rounding_mode),
-        rewriter.getBoolAttr(true), rewriter.getBoolAttr(input_unsigned),
-        rewriter.getBoolAttr(output_unsigned));
+        input_zp_val.value(), output_zp_val.value(), scale32, rounding_mode,
+        true, input_unsigned, output_unsigned);
 
     return rescale_op.getResult();
 
