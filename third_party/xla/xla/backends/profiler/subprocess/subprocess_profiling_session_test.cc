@@ -92,7 +92,7 @@ class SubprocessProfilingSessionTest : public ::testing::Test {
           IsOk());
     }
     // Wait for connections to be established.
-    absl::SleepFor(absl::Seconds(1));
+    absl::SleepFor(absl::Seconds(num_subprocesses + 1));
   }
 
   void TearDown() override {
