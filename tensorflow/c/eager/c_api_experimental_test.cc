@@ -587,7 +587,7 @@ TEST(CAPI, CreateLocalContextAsReset) {
   client_job->set_name("localhost");
   int client_port = tensorflow::testing::PickUnusedPortOrDie();
   client_job->mutable_tasks()->insert(
-      {0, strings::StrCat("localhost:", client_port)});
+      {0, absl::StrCat("localhost:", client_port)});
   server_def.set_job_name("localhost");
   auto serialized = server_def.SerializeAsString();
   TFE_ContextSetServerDef(ctx, 0, serialized.data(), serialized.size(), status);
@@ -599,8 +599,7 @@ TEST(CAPI, CreateLocalContextAsReset) {
   tensorflow::ClusterDef* cluster_def = server_def.mutable_cluster();
   tensorflow::JobDef* job_def = cluster_def->mutable_job(0);
   int worker_port = tensorflow::testing::PickUnusedPortOrDie();
-  job_def->mutable_tasks()->at(0) =
-      tensorflow::strings::StrCat("localhost:", worker_port);
+  job_def->mutable_tasks()->at(0) = absl::StrCat("localhost:", worker_port);
   serialized = server_def.SerializeAsString();
   TFE_InitializeLocalOnlyContext(ctx, 0, serialized.data(), serialized.size(),
                                  status);
