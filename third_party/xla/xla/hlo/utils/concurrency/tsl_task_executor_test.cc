@@ -91,7 +91,7 @@ TEST(TaskExecutor, OnFailureNotAllWorkFinishes) {
   std::vector<Task> actions;
   for (int i = 0; i < kBeforeCount; ++i) {
     actions.push_back([&]() {
-      absl::MutexLock lock{&mu_finish_counter};
+      absl::MutexLock lock{mu_finish_counter};
       ++finish_counter;
       absl::SleepFor(absl::Milliseconds(10));
       return absl::OkStatus();
@@ -103,7 +103,7 @@ TEST(TaskExecutor, OnFailureNotAllWorkFinishes) {
 
   for (int i = 0; i < kAfterCount; ++i) {
     actions.push_back([&]() {
-      absl::MutexLock lock{&mu_finish_counter};
+      absl::MutexLock lock{mu_finish_counter};
       ++finish_counter;
       absl::SleepFor(absl::Milliseconds(10));
       return absl::OkStatus();
