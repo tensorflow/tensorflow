@@ -866,6 +866,11 @@ def _create_example_string(example_dict):
     if not isinstance(feature_list, list):
       raise ValueError('feature value must be a list, but %s: "%s" is %s' %
                        (feature_name, feature_list, type(feature_list)))
+    # --- Early validation: empty feature lists are not allowed
+    if not feature_list:
+      raise ValueError(
+          f'Feature "{feature_name}" must contain at least one value.'
+      )
     if isinstance(feature_list[0], float):
       example.features.feature[feature_name].float_list.value.extend(
           feature_list)
