@@ -452,10 +452,15 @@ absl::Status HostExecuteStartThunk::ExecuteOnStream(
     auto execute_event = executable_->Execute(
         call_frame->parameters(), call_frame->result(), execute_options);
 
-    tsl::BlockUntilReady(execute_event);
-    if (execute_event.IsError()) {
-      shared_execute_event.SetError(execute_event.GetError());
-      return;
+    {
+      tsl::profiler::TraceMe block_until_ready_trace(
+          "HostExecuteStartThunk::ExecuteOnStream::execute BlockUntilReady");
+
+      tsl::BlockUntilReady(execute_event);
+      if (execute_event.IsError()) {
+        shared_execute_event.SetError(execute_event.GetError());
+        return;
+      }
     }
     auto publish_result_status = std::move(*call_frame).PublishResult();
     if (!publish_result_status.ok()) {
