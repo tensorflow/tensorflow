@@ -1034,7 +1034,7 @@ GemmFusionAutotunerImpl::CompileAll(AutotunerCompileUtil& compile_util,
               << fusion->fused_instructions_computation()->ToString();
           log(*executable != nullptr);
           if (*executable != nullptr) {
-            absl::MutexLock lock(&results_mu);
+            absl::MutexLock lock(results_mu);
             results[fusion].push_back({config, std::move(*executable)});
           } else {
             VLOG(10) << "no executable for config: " << ConfigToString(config);
