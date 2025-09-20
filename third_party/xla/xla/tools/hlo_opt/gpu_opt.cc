@@ -220,12 +220,14 @@ class GpuOptProvider : public CompiledOptProvider {
     }
 
     llvm::LLVMContext llvm_context;
+    BufferValue::SizeFunction buffer_size_bytes_function =
+        gpu_compiler->BufferSizeBytesFunction();
     TF_ASSIGN_OR_RETURN(
         xla::gpu::CompileModuleResults results,
         xla::gpu::CompileModuleToLlvmIr(
             optimized_module, &llvm_context, gpu_compiler->GetTargetTriple(),
             gpu_compiler->GetDataLayout(), platform, device_description,
-            alias_info.get(), gpu_compiler->BufferSizeBytesFunction()));
+            alias_info.get(), std::move(buffer_size_bytes_function)));
     return llvm_ir::DumpToString(results.llvm_module.get());
   }
 };

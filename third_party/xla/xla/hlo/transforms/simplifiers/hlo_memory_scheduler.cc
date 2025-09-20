@@ -26,9 +26,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/log/die_if_null.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -95,7 +97,7 @@ class ListScheduler {
   static absl::StatusOr<HloInstructionSequence> Run(
       HloComputation* computation,
       const TuplePointsToAnalysis& points_to_analysis,
-      const BufferValue::SizeFunction& size_function) {
+      const BufferValue::SizeFunction* absl_nonnull size_function) {
     ListScheduler scheduler(computation, points_to_analysis, size_function);
     return scheduler.CreateSchedule();
   }
@@ -117,10 +119,10 @@ class ListScheduler {
 
   ListScheduler(HloComputation* computation,
                 const TuplePointsToAnalysis& points_to_analysis,
-                const BufferValue::SizeFunction& size_function)
+                const BufferValue::SizeFunction* absl_nonnull size_function)
       : computation_(computation),
         points_to_analysis_(points_to_analysis),
-        size_function_(size_function) {
+        size_function_(ABSL_DIE_IF_NULL(size_function)) {
     // Create a map containing the LogicalBuffer uses for each HLO
     // instruction. An HLO instruction "uses" a LogicalBuffer if the
     // LogicalBuffer is in an operand of the instruction as indicated by
@@ -194,7 +196,7 @@ class ListScheduler {
     for (auto* buffer :
          points_to_analysis_.GetBuffersDefinedByInstruction(instruction)) {
       if (!IgnoreBuffer(*buffer)) {
-        entry.bytes_defined += size_function_(*buffer);
+        entry.bytes_defined += (*size_function_)(*buffer);
       }
     }
 
@@ -238,7 +240,7 @@ class ListScheduler {
       auto buffer = kv->first;
       auto use_count = kv->second;
       if (use_count == 1) {
-        freed_bytes += size_function_(*buffer);
+        freed_bytes += (*size_function_)(*buffer);
       }
     }
     return freed_bytes - entry.bytes_defined;
@@ -368,7 +370,7 @@ class ListScheduler {
 
   HloComputation* computation_;
   const TuplePointsToAnalysis& points_to_analysis_;
-  const BufferValue::SizeFunction& size_function_;
+  const BufferValue::SizeFunction* absl_nonnull size_function_;
 
   // A map containing the LogicalBuffers that each instruction uses.
   absl::flat_hash_map<const HloInstruction*, std::vector<const LogicalBuffer*>>
@@ -450,7 +452,7 @@ absl::StatusOr<HloInstructionSequence> DFSMemoryScheduler::Run(
     HloValueSet value_set =
         alias_analysis.dataflow_analysis().GetFlattenedValueSet(hlo);
     int64_t logical_buffer_size =
-        SumBufferSizes(hlo, value_set, size_function_);
+        SumBufferSizes(hlo, value_set, *size_function_);
     stats.total_sizes = logical_buffer_size;
     cumulative_total_size += logical_buffer_size;
     absl::flat_hash_set<const HloInstruction*> unique_operands(
@@ -647,12 +649,12 @@ absl::StatusOr<HloSchedule> ScheduleModule(
 
 absl::StatusOr<HloSchedule> ScheduleModule(
     const HloModule* module, const AliasInfo* alias_info,
-    const BufferValue::SizeFunction& size_function,
+    BufferValue::SizeFunction size_function,
     const absl::flat_hash_set<absl::string_view>& execution_threads,
     int64_t* peak_memory) {
-  return ScheduleModule(module,
-                        DefaultMemoryScheduler(alias_info, size_function),
-                        execution_threads, peak_memory);
+  return ScheduleModule(
+      module, DefaultMemoryScheduler(alias_info, std::move(size_function)),
+      execution_threads, peak_memory);
 }
 
 absl::StatusOr<bool> HloMemoryScheduler::Run(
