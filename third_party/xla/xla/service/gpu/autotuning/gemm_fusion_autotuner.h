@@ -136,6 +136,8 @@ class GemmFusionAutotunerImpl {
       const HloFusionInstruction& fusion);
   absl::StatusOr<std::vector<TritonGemmConfig>> GenerateTritonConfigs(
       const HloDotInstruction& dot);
+  absl::StatusOr<std::vector<TritonGemmConfig>> GenerateTritonConfigs(
+      const HloScaledDotInstruction& dot);
 
   // Compile all executables for all fusions.
   absl::StatusOr<absl::flat_hash_map<const HloFusionInstruction*,
@@ -160,6 +162,11 @@ class GemmFusionAutotunerImpl {
   static const int64_t BLAS_GEMM_DEFAULT;
 
  private:
+  absl::StatusOr<std::vector<BackendConfig>> GenerateDotConfigs(
+      const HloFusionInstruction& fusion, const HloDotInstruction* dot);
+  absl::StatusOr<std::vector<BackendConfig>> GenerateScaledDotConfigs(
+      const HloFusionInstruction& fusion, const HloScaledDotInstruction* dot);
+
   // Measures the performance of a single executable candidate.
   //
   // If required and the candidate is cuBLAS, this will save the output to the

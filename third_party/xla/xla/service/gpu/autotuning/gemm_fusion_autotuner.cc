@@ -175,7 +175,8 @@ class GemmFusionCollector : public ConstDfsHloVisitorWithDefault {
         gpu_config.fusion_backend_config();
     if (backend_config.kind() != kTritonGemmFusionKind &&
         backend_config.kind() != kCuDnnFusionKind &&
-        backend_config.kind() != kCustomFusionKind) {
+        backend_config.kind() != kCustomFusionKind &&
+        backend_config.kind() != kTritonScaledDotFusionKind) {
       return absl::OkStatus();
     }
 
@@ -829,9 +830,26 @@ static std::vector<BackendConfig> GenerateCustomKernelFusionConfigs(
 absl::StatusOr<std::vector<BackendConfig>>
 GemmFusionAutotunerImpl::GenerateConfigs(const HloFusionInstruction& fusion) {
   tsl::profiler::TraceMe traceme("GenerateConfigs");
-  const HloDotInstruction* dot =
-      Cast<HloDotInstruction>(hlo_query::GetFirstInstructionWithOpcode(
-          *fusion.called_computation(), HloOpcode::kDot));
+  auto* computation = fusion.called_computation();
+  auto* dot =
+      hlo_query::GetFirstInstructionWithOpcode(*computation, HloOpcode::kDot);
+  if (dot) {
+    return GenerateDotConfigs(fusion, Cast<HloDotInstruction>(dot));
+  }
+  auto* scaled_dot = hlo_query::GetFirstInstructionWithOpcode(
+      *computation, HloOpcode::kScaledDot);
+  if (scaled_dot) {
+    return GenerateScaledDotConfigs(
+        fusion, DynCast<HloScaledDotInstruction>(scaled_dot));
+  }
+  return absl::InternalError(
+      absl::StrCat("No dot or scaled dot instruction found in fusion: %s",
+                   fusion.ToString()));
+}
+
+absl::StatusOr<std::vector<BackendConfig>>
+GemmFusionAutotunerImpl::GenerateDotConfigs(const HloFusionInstruction& fusion,
+                                            const HloDotInstruction* dot) {
   std::vector<BackendConfig> configs;
 
   if (!debug_options_.xla_gpu_experimental_disable_binary_libraries()) {
@@ -867,6 +885,38 @@ GemmFusionAutotunerImpl::GenerateConfigs(const HloFusionInstruction& fusion) {
                       GenerateTritonConfigs(*dot));
   for (TritonGemmConfig& config : triton_configs) {
     configs.push_back(std::move(config));
+  }
+  return configs;
+}
+
+absl::StatusOr<std::vector<BackendConfig>>
+GemmFusionAutotunerImpl::GenerateScaledDotConfigs(
+    const HloFusionInstruction& fusion, const HloScaledDotInstruction* dot) {
+  std::vector<BackendConfig> configs;
+  // Add triton configs.
+  TF_ASSIGN_OR_RETURN(std::vector<TritonGemmConfig> triton_configs,
+                      GenerateTritonConfigs(*dot));
+  configs.reserve(triton_configs.size());
+  for (TritonGemmConfig& config : triton_configs) {
+    configs.push_back(std::move(config));
+  }
+  return configs;
+}
+
+absl::StatusOr<std::vector<TritonGemmConfig>>
+GemmFusionAutotunerImpl::GenerateTritonConfigs(
+    const HloScaledDotInstruction& dot) {
+  tsl::profiler::TraceMe traceme("GenerateTritonConfigs");
+  // TODO(b/421858850): Restricting configs for dots from broadcasts is a
+  // temporary solution. We should remove this once we have a fix for the error.
+  auto configs = GetDefaultTritonConfigs();
+  if (HasBroadcastProducer(dot)) {
+    RestrictTmaConfigs(configs);
+  }
+
+  if (!IsAutotuningEnabled()) {
+    // Keep the first config, which likely does not spill registers.
+    configs.resize(1);
   }
   return configs;
 }
