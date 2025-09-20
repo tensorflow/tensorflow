@@ -198,7 +198,7 @@ class IsLastSemaphore {
   auto DoWork(size_t value, T&& cb) -> absl::Status {
     bool is_last;
     {
-      absl::MutexLock l(&mu_);
+      absl::MutexLock l(mu_);
       if (is_done_) {
         return absl::OkStatus();
       }
@@ -213,7 +213,7 @@ class IsLastSemaphore {
       }
     }
     auto cleanup = absl::MakeCleanup([&]() {
-      absl::MutexLock l(&mu_);
+      absl::MutexLock l(mu_);
       counter_ -= value;
     });
     return cb(is_last);
@@ -221,7 +221,7 @@ class IsLastSemaphore {
 
   // Return true if this is the first call to poison.
   bool Poison() {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     if (is_done_) {
       return false;
     }
