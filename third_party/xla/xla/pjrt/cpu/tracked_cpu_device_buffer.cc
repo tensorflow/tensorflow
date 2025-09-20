@@ -343,6 +343,16 @@ PjRtFuture<> TrackedCpuDeviceBuffer::GetReadyFuture(
   return future;
 }
 
+absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
+TrackedCpuDeviceBuffer::GetDefinitionEvent(PjRtMemorySpace* memory_space) {
+  if (!definition_event_) {
+    return absl::InternalError(
+        "GetDefinitionEvent only supported on CPU for buffers with "
+        "exactly 1 definition event.");
+  }
+  return tsl::MakeRef<CpuTrackedDeviceEvent>(definition_event_);
+}
+
 absl::Status TrackedCpuDeviceBuffer::BlockForOperationsToComplete(
     PjRtMemorySpace* memory_space) {
   // Block the host until all usage events have completed. We do not return

@@ -562,6 +562,96 @@ PjRtCApiClient::CreateUninitializedBuffer(const Shape& shape,
   return buffer;
 }
 
+absl::Status FulfillAliasBuffer(
+    const PJRT_Api* pjrt_c_api, absl::StatusOr<PjRtBuffer*> real_buffer_or,
+    PJRT_FulfillAliasBufferCallback* fulfill_alias_buffer_cb) {
+  if (pjrt_c_api->pjrt_api_version.major_version == 0 &&
+      pjrt_c_api->pjrt_api_version.minor_version < 76) {
+    return absl::UnimplementedError(
+        "PJRT_Client_FulfillAliasBuffer requires PJRT C API version 0.76 or "
+        "higher.");
+  }
+  PJRT_Client_FulfillAliasBuffer_Args args;
+  args.struct_size = PJRT_Client_FulfillAliasBuffer_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.fulfill_alias_buffer_cb = fulfill_alias_buffer_cb;
+
+  if (real_buffer_or.ok()) {
+    // We have a real buffer, make sure it's a PjRtCApiBuffer and pass it to the
+    // C API.
+    PjRtCApiBuffer* c_buffer =
+        tensorflow::down_cast<PjRtCApiBuffer*>(real_buffer_or.value());
+    args.buffer = c_buffer->c_buffer();
+    args.status_code = PJRT_Error_Code_OK;
+    args.error_message = nullptr;
+    args.error_message_size = 0;
+  } else {
+    // If the real buffer is an error, then we need to fulfill that alias
+    // buffer with a nullptr.
+    args.buffer = nullptr;
+    args.status_code =
+        pjrt::StatusCodeToPjrtErrorCode(real_buffer_or.status().code());
+    args.error_message = real_buffer_or.status().message().data();
+    args.error_message_size = real_buffer_or.status().message().size();
+  }
+
+  PJRT_Error* error = pjrt_c_api->PJRT_Client_FulfillAliasBuffer(&args);
+  if (error != nullptr) {
+    return pjrt::PjrtErrorToStatus(error, pjrt_c_api);
+  }
+  return absl::OkStatus();
+}
+
+absl::StatusOr<
+    std::pair<std::unique_ptr<PjRtBuffer>, PjRtFulfillAliasBufferCallback>>
+PjRtCApiClient::CreateAliasBuffer(const Shape& shape,
+                                  PjRtMemorySpace* memory_space) {
+  if (pjrt_c_api()->pjrt_api_version.major_version == 0 &&
+      pjrt_c_api()->pjrt_api_version.minor_version < 76) {
+    return absl::UnimplementedError(
+        "PJRT_Client_CreateBufferAlias requires PJRT C API version 0.76 or "
+        "higher.");
+  }
+
+  PJRT_Client_CreateAliasBuffer_Args args;
+  args.struct_size = PJRT_Client_CreateAliasBuffer_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.client = c_client_.get();
+
+  args.shape_dims = shape.dimensions().data();
+  args.shape_num_dims = shape.dimensions().size();
+  args.shape_element_type = pjrt::ConvertToPjRtBufferType(shape.element_type());
+
+  pjrt::BufferMemoryLayoutData c_layout_data;
+  if (shape.has_layout()) {
+    TF_ASSIGN_OR_RETURN(c_layout_data,
+                        pjrt::ConvertToBufferMemoryLayoutData(shape.layout()));
+    args.shape_layout = &c_layout_data.c_layout;
+  } else {
+    args.shape_layout = nullptr;
+  }
+
+  args.memory =
+      tensorflow::down_cast<PjRtCApiMemorySpace*>(memory_space)->c_memory();
+  args.alias_buffer = nullptr;
+
+  RETURN_STATUS_IF_PJRT_ERROR(c_api_->PJRT_Client_CreateAliasBuffer(&args),
+                              c_api_);
+
+  std::unique_ptr<PjRtBuffer> alias_buffer(
+      std::make_unique<PjRtCApiBuffer>(this, args.alias_buffer));
+
+  PjRtFulfillAliasBufferCallback fulfill_alias_buffer_cb =
+      [pjrt_c_api = pjrt_c_api(),
+       fulfill_alias_buffer_cb = args.fulfill_alias_buffer_cb](
+          absl::StatusOr<PjRtBuffer*> real_buffer) -> absl::Status {
+    return FulfillAliasBuffer(pjrt_c_api, real_buffer, fulfill_alias_buffer_cb);
+  };
+
+  return std::make_pair(std::move(alias_buffer),
+                        std::move(fulfill_alias_buffer_cb));
+}
+
 absl::StatusOr<const PjRtTopologyDescription*>
 PjRtCApiClient::GetTopologyDescription() const {
   if (!topo_desc_.ok()) {
