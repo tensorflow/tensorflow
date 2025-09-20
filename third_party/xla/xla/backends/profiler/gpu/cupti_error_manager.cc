@@ -58,7 +58,7 @@ CuptiErrorManager::CuptiErrorManager(std::unique_ptr<CuptiInterface> interface)
 
 void CuptiErrorManager::RegisterUndoFunction(
     const CuptiErrorManager::UndoFunction& func) {
-  absl::MutexLock lock(&undo_stack_mu_);
+  absl::MutexLock lock(undo_stack_mu_);
   undo_stack_.push_back(func);
 }
 
@@ -234,7 +234,7 @@ void CuptiErrorManager::UndoAndDisable() {
     return;
   }
   // Iterates undo log and call undo APIs one by one.
-  absl::MutexLock lock(&undo_stack_mu_);
+  absl::MutexLock lock(undo_stack_mu_);
   undo_disabled_ = true;
   while (!undo_stack_.empty()) {
     LOG(ERROR) << "CuptiErrorManager is disabling profiling automatically.";
@@ -679,7 +679,7 @@ void CuptiErrorManager::CleanUp() {
   if (undo_disabled_) {  // prevent deadlock
     return;
   }
-  absl::MutexLock lock(&undo_stack_mu_);
+  absl::MutexLock lock(undo_stack_mu_);
   undo_disabled_ = true;
   while (!undo_stack_.empty()) {
     undo_stack_.pop_back();

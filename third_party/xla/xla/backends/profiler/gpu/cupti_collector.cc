@@ -470,14 +470,14 @@ class PerDeviceCollector {
   }
 
   void AddEvent(CuptiTracerEvent&& event) {
-    absl::MutexLock l(&m_);
+    absl::MutexLock l(m_);
     events_.emplace_back(std::move(event));
   }
 
   size_t Flush(uint64_t start_gpu_ns, uint64_t end_gpu_ns,
                XPlaneBuilder* device_plane, XPlaneBuilder* host_plane,
                XPlaneBuilder* nvtx_plane) {
-    absl::MutexLock l(&m_);
+    absl::MutexLock l(m_);
     // Tracking event types per line.
     absl::flat_hash_map<int64_t, absl::flat_hash_set<CuptiTracerEventType>>
         events_types_per_line;
