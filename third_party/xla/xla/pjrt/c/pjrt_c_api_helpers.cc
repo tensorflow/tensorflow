@@ -187,6 +187,7 @@ absl::StatusCode PjrtErrorToStatusCode(const PJRT_Error* error,
 
 absl::StatusCode PjrtErrorCodeToStatusCode(PJRT_Error_Code code) {
   switch (code) {
+    case PJRT_Error_Code_OK:
     case PJRT_Error_Code_CANCELLED:
     case PJRT_Error_Code_UNKNOWN:
     case PJRT_Error_Code_INVALID_ARGUMENT:

@@ -101,7 +101,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 76
+#define PJRT_API_MINOR 77
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -149,6 +149,7 @@ typedef void PJRT_Error_Message(PJRT_Error_Message_Args* args);
 
 // Codes are based on https://abseil.io/docs/cpp/guides/status-codes
 typedef enum {
+  PJRT_Error_Code_OK = 0,
   PJRT_Error_Code_CANCELLED = 1,
   PJRT_Error_Code_UNKNOWN = 2,
   PJRT_Error_Code_INVALID_ARGUMENT = 3,
@@ -335,14 +336,15 @@ typedef struct PJRT_TopologyDescription PJRT_TopologyDescription;
 typedef struct PJRT_Executable PJRT_Executable;
 typedef struct PJRT_LoadedExecutable PJRT_LoadedExecutable;
 typedef struct PJRT_Buffer PJRT_Buffer;
+typedef struct PJRT_FulfillAliasBufferCallback PJRT_FulfillAliasBufferCallback;
 typedef struct PJRT_AsyncHostToDeviceTransferManager
     PJRT_AsyncHostToDeviceTransferManager;
 typedef struct PJRT_PhaseCompiler PJRT_PhaseCompiler;
 
 // The caller of PJRT_Client_Create can optionally provide a key-value store
-// accessible across nodes and/or processes. KV store access may be necessary to
-// create some multi-node/multi-process clients. The caller can provide the two
-// callbacks below to access the key-value store.
+// accessible across nodes and/or processes. KV store access may be necessary
+// to create some multi-node/multi-process clients. The caller can provide the
+// two callbacks below to access the key-value store.
 
 // A callback to delete the value returned by PJRT_KeyValueGetCallback.
 typedef void (*PJRT_KeyValueGetCallback_ValueDeleter)(char* value);
@@ -988,6 +990,46 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Client_CreateUninitializedBuffer_Args, buffer);
 
 typedef PJRT_Error* PJRT_Client_CreateUninitializedBuffer(
     PJRT_Client_CreateUninitializedBuffer_Args* args);
+
+struct PJRT_Client_CreateAliasBuffer_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  PJRT_Client* client;
+
+  // Destination memory space for the buffer alias.
+  PJRT_Memory* memory;
+
+  // Shape fields.
+  const int64_t* shape_dims;
+  size_t shape_num_dims;
+  PJRT_Buffer_Type shape_element_type;
+  PJRT_Buffer_MemoryLayout* shape_layout;
+
+  PJRT_Buffer* alias_buffer;                                 // out
+  PJRT_FulfillAliasBufferCallback* fulfill_alias_buffer_cb;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Client_CreateAliasBuffer_Args,
+                          fulfill_alias_buffer_cb);
+
+typedef PJRT_Error* PJRT_Client_CreateAliasBuffer(
+    PJRT_Client_CreateAliasBuffer_Args* args);
+
+struct PJRT_Client_FulfillAliasBuffer_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  PJRT_Client* client;
+
+  PJRT_Buffer* buffer;                                       // in
+  PJRT_Error_Code status_code;                               // in
+  const char* error_message;                                 // in
+  size_t error_message_size;                                 // in
+  PJRT_FulfillAliasBufferCallback* fulfill_alias_buffer_cb;  // in
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Client_FulfillAliasBuffer_Args,
+                          fulfill_alias_buffer_cb);
+
+typedef PJRT_Error* PJRT_Client_FulfillAliasBuffer(
+    PJRT_Client_FulfillAliasBuffer_Args* args);
 
 struct PJRT_Client_BufferFromHostBuffer_Args {
   size_t struct_size;
@@ -2596,11 +2638,13 @@ typedef struct PJRT_Api {
   _PJRT_API_STRUCT_FIELD(PJRT_Client_CreateUninitializedBuffer);
   _PJRT_API_STRUCT_FIELD(PJRT_Client_UpdateGlobalProcessInfo);
   _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_Deserialize);
+  _PJRT_API_STRUCT_FIELD(PJRT_Client_CreateAliasBuffer);
+  _PJRT_API_STRUCT_FIELD(PJRT_Client_FulfillAliasBuffer);
 } PJRT_Api;
 
 enum {
   PJRT_Api_STRUCT_SIZE =
-      PJRT_STRUCT_SIZE(PJRT_Api, PJRT_TopologyDescription_Deserialize)
+      PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Client_FulfillAliasBuffer)
 };
 
 #undef _PJRT_API_STRUCT_FIELD
