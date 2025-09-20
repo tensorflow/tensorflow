@@ -42,6 +42,7 @@ cc_library(
         "triton_xla_lower_block_barrier_pass.cc",
         "triton_xla_lower_get_tid_pass.cc",
         "triton_xla_squeeze_dims_pass.cc",
+        "triton_xla_unswitch_loops_pass.cc",
     ],
     hdrs = ["passes.h"],
     deps = [
