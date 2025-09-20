@@ -425,6 +425,40 @@ cuda_library(
 )
 
 cc_library(
+    name = "sdc_log",
+    srcs = ["sdc_log.cc"],
+    hdrs = ["sdc_log.h"],
+    tags = ["gpu"],
+    deps = [
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:device_memory_allocator",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+xla_test(
+    name = "sdc_log_test",
+    srcs = ["sdc_log_test.cc"],
+    backends = ["gpu"],
+    deps = [
+        ":sdc_log",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor:stream_executor_memory_allocator",
+        "//xla/tsl/platform:statusor",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "cudnn_plugin",
     srcs = ["cuda_dnn.cc"],
     hdrs = ["cuda_dnn.h"],
