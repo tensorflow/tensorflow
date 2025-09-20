@@ -18,12 +18,14 @@ limitations under the License.
 
 #include <optional>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/literal.h"
 #include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/shape.h"
+#include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
@@ -167,6 +169,13 @@ class CommonPjRtRawBuffer : public PjRtRawBuffer {
       tsl::RCReference<PjRtDeviceEventPromise> definition_event_promise,
       tsl::RCReference<PjRtDeviceEventPromise> src_usage_event_promise,
       ::tsl::AsyncValueRef<bool> allocation_event);
+
+  // Returns the async value associated with the buffer.
+  virtual absl::StatusOr<tsl::RCReference<tsl::AsyncValue>>
+  GetRawBufferAsyncValue() {
+    return absl::UnimplementedError(
+        "GetRawBufferAsyncValue is not implemented.");
+  }
 };
 
 class RegisterRawBufferFactory {

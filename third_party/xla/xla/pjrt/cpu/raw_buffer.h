@@ -159,6 +159,11 @@ class CpuRawBuffer : public CommonPjRtRawBuffer {
               tsl::RCReference<PjRtDeviceEventPromise> src_usage_event_promise,
               ::tsl::AsyncValueRef<bool> allocation_event) override;
 
+  absl::StatusOr<tsl::RCReference<tsl::AsyncValue>> GetRawBufferAsyncValue()
+      override {
+    return buffer_.CopyRCRef();
+  }
+
  private:
   PjRtMemorySpace* const memory_space_;
   tsl::AsyncValueRef<CpuDeviceMemory> buffer_;

@@ -22,6 +22,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -34,6 +35,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
@@ -60,6 +62,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/pjrt/proto/topology_description.pb.h"
+#include "xla/pjrt/raw_buffer.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
@@ -933,6 +936,66 @@ PJRT_Error* PJRT_Client_CreateUninitializedBuffer(
                                     shape, memory_space));
 
   args->buffer = new PJRT_Buffer{std::move(buffer), args->client};
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Client_CreateAliasBuffer(
+    PJRT_Client_CreateAliasBuffer_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Client_CreateAliasBuffer_Args",
+      PJRT_Client_CreateAliasBuffer_Args_STRUCT_SIZE, args->struct_size));
+  int64_t traceme_context_id = pjrt::GetTracemeContextId(args);
+  tsl::profiler::TraceMeConsumer consumer(
+      "PJRT_Client_CreateBufferAlias",
+      tsl::profiler::ContextType::kPjrtLibraryCall, traceme_context_id);
+
+  PJRT_ASSIGN_OR_RETURN(
+      xla::Shape shape,
+      pjrt::BuildXlaShapeFromC(args->shape_element_type, args->shape_dims,
+                               args->shape_num_dims, args->shape_layout));
+
+  PJRT_ASSIGN_OR_RETURN(auto alias_buffer,
+                        args->client->client->CreateAliasBuffer(
+                            shape, args->memory->memory_space));
+
+  args->fulfill_alias_buffer_cb =
+      new PJRT_FulfillAliasBufferCallback{std::move(alias_buffer.second)};
+  args->alias_buffer =
+      new PJRT_Buffer{std::move(alias_buffer.first), args->client};
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Client_FulfillAliasBuffer(
+    PJRT_Client_FulfillAliasBuffer_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Client_FulfillAliasBuffer_Args",
+      PJRT_Client_FulfillAliasBuffer_Args_STRUCT_SIZE, args->struct_size));
+  if (args->fulfill_alias_buffer_cb == nullptr) {
+    return new PJRT_Error{absl::InvalidArgumentError(
+        "PJRT_Client_FulfillAliasBuffer_Args.fulfill_alias_buffer_cb is null")};
+  }
+  std::unique_ptr<PJRT_FulfillAliasBufferCallback>
+      fulfill_alias_buffer_cb_owner(args->fulfill_alias_buffer_cb);
+  xla::PjRtFulfillAliasBufferCallback fulfill_alias_buffer_cb =
+      std::move(fulfill_alias_buffer_cb_owner->fulfill_alias_buffer_cb);
+
+  absl::StatusOr<xla::PjRtBuffer*> real_buffer_or;
+  if (args->status_code == 0) {  // PJRT_Error_Code_OK
+    if (args->buffer == nullptr) {
+      return new PJRT_Error{absl::InvalidArgumentError(
+          "Buffer passed to fulfillment callback is null")};
+    }
+    real_buffer_or = args->buffer->buffer.get();
+  } else {
+    real_buffer_or = absl::Status(
+        pjrt::PjrtErrorCodeToStatusCode(args->status_code),
+        absl::string_view(args->error_message, args->error_message_size));
+  }
+
+  absl::Status status = std::move(fulfill_alias_buffer_cb)(real_buffer_or);
+  if (!status.ok()) {
+    return new PJRT_Error{status};
+  }
   return nullptr;
 }
 
@@ -2968,6 +3031,10 @@ PJRT_Api CreatePjrtApi(PJRT_Client_Create* create_fn,
       pjrt::PJRT_Client_UpdateGlobalProcessInfo,
       /*PJRT_TopologyDescription_Deserialize=*/
       pjrt::PJRT_TopologyDescription_Deserialize,
+      /*PJRT_Client_CreateAliasBuffer=*/
+      pjrt::PJRT_Client_CreateAliasBuffer,
+      /*PJRT_Client_FulfillAliasBuffer=*/
+      pjrt::PJRT_Client_FulfillAliasBuffer,
   };
 }
 

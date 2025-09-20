@@ -67,11 +67,15 @@ limitations under the License.
 // PjRt stands for "Pretty much Just another RunTime".
 namespace xla {
 
+class PjRtBuffer;
 class PjRtClient;
 class PjRtDevice;
 class PjRtLoadedExecutable;
 class PjRtExecutableForwarder;
 struct CompileOptions;
+
+typedef absl::AnyInvocable<absl::Status(absl::StatusOr<PjRtBuffer*>)>
+    PjRtFulfillAliasBufferCallback;
 
 class PjRtMemorySpace {
  public:
@@ -252,9 +256,6 @@ class PjRtDevice {
     return absl::UnimplementedError("PoisonExecution is not supported");
   }
 };
-
-// Forward declaration.
-class PjRtBuffer;
 
 // Helper struct for cross host transfers, returned by the callback from a call
 // to PjRtBuffer::MakeCrossHostReceiveBuffers or
@@ -675,6 +676,14 @@ class PjRtClient {
       const Shape& shape, PjRtMemorySpace* memory_space) {
     return absl::UnimplementedError(
         "CreateUninitializedBuffer is not supported.");
+  }
+
+  // Creates a buffer that is an alias of another buffer. The alias buffer
+  // is initially uninitialized and must be fulfilled later.
+  virtual absl::StatusOr<
+      std::pair<std::unique_ptr<PjRtBuffer>, PjRtFulfillAliasBufferCallback>>
+  CreateAliasBuffer(const Shape& shape, PjRtMemorySpace* memory_space) {
+    return absl::UnimplementedError("CreateAliasBuffer is not supported.");
   }
 
   // Creates buffer in the given memory space that carries an error future

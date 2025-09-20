@@ -68,6 +68,7 @@ limitations under the License.
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
+#include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -198,6 +199,11 @@ class PjRtCpuClient final : public CommonPjRtClient {
       const override {
     return &topology_;
   }
+
+  absl::StatusOr<tsl::RCReference<CommonPjRtRawBuffer>>
+  CreateRawBufferAsyncValue(
+      PjRtMemorySpace* memory_space,
+      tsl::RCReference<tsl::IndirectAsyncValue> buffer_promise) override;
 
   absl::StatusOr<tsl::RCReference<CommonPjRtRawBuffer>> AllocateRawBuffer(
       PjRtMemorySpace* memory_space, size_t on_device_bytes_count,
