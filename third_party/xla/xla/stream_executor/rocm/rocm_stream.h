@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/rocm/rocm_blas.h"
 #include "xla/stream_executor/rocm/rocm_event.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_common.h"
@@ -55,6 +56,8 @@ class RocmStream : public StreamCommon {
   absl::Status DoHostCallbackWithStatus(
       absl::AnyInvocable<absl::Status() &&> callback) override;
   absl::Status BlockHostUntilDone() override;
+
+  ROCMBlas* AsBlas() const override { return blas_.get(); }
 
   Stream::PlatformSpecificHandle platform_specific_handle() const override {
     return {stream_handle_};
@@ -93,6 +96,7 @@ class RocmStream : public StreamCommon {
   StreamExecutor* executor_;
   RocmEvent completed_event_;
   hipStream_t stream_handle_;
+  std::unique_ptr<ROCMBlas> blas_;
 };
 
 }  // namespace gpu

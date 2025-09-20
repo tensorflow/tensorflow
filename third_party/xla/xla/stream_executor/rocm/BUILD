@@ -347,7 +347,6 @@ cc_library(
         "rocm-only",
     ],
     deps = [
-        ":rocm_executor",
         "//xla/tsl/platform:env",
         "//xla/tsl/util:determinism_for_kernels",
         "@local_config_rocm//rocm:rocm_headers",
@@ -371,7 +370,6 @@ cc_library(
         ":rocblas_if_static",
         ":rocblas_wrapper",
         ":rocm_complex_converters",
-        ":rocm_executor",
         ":rocm_helpers",
         ":rocm_platform_id",
         "//xla/stream_executor:activate_context",
@@ -900,6 +898,7 @@ cc_library(
         "rocm-only",
     ],
     deps = [
+        ":rocblas_plugin",
         ":rocm_driver_wrapper",
         ":rocm_event",
         ":rocm_kernel",
