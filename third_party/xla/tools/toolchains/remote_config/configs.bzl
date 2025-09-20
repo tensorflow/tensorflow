@@ -47,10 +47,11 @@ def initialize_rbe_configs():
         python_bin_path = "C:/Python37/python.exe",
     )
 
-    # The `ml-build-rbe` image is identical to the `ml-build` image except for the base image.
     # The `ml-build`'s base image is a standard `ubuntu22.04` image.
-    # The `ml-build-rbe`'s base image is `nvidia/cuda:12.3.2-base-ubuntu22.04` which has nvidia driver installed.
-    ml_build_rbe_config("docker://us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build-rbe@sha256:468a498a1f1f49daa257dcf8ee2f653c8c54e7621da511ce3ab7c14fcbd92d6f")
+    # Note that in order to use this image with RBE GPU builds, you need to have hermetic CUDA
+    # toolchain integrated into your project, and pass
+    # `--@cuda_driver//:enable_forward_compatibility=true` to Bazel command.
+    ml_build_rbe_config("docker://us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build@sha256:ea67e8453d8b09c2ba48853da5e79efef4b65804b4a48dfae4b4da89ffd38405")
 
     # TF-Version-Specific SIG Build RBE Configs. The crosstool generated from these
     # configs are python-version-independent because they only care about the
