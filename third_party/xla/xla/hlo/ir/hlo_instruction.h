@@ -2410,8 +2410,12 @@ class alignas(kInstructionTypeMask + 1) HloInstruction {
 
   // Delegates to
   // HloCallableInstruction::RecursivelySetComputationsThreadName().
+  // If always_overwrite is true, the execution thread of all called
+  // computations will be set to async_execution_thread. Otherwise, the
+  // execution thread of the called computation will only be set if the
+  // CallContext is not CallContext::kEmbedded.
   void set_called_computations_execution_thread(
-      absl::string_view async_execution_thread);
+      absl::string_view async_execution_thread, bool always_overwrite = false);
 
   // Delegates to HloCopyStartInstruction::is_cross_program_prefetch_index().
   std::optional<int> cross_program_prefetch_index() const;

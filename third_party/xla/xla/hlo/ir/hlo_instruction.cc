@@ -5955,8 +5955,9 @@ void HloInstruction::set_async_execution_thread(
 }
 
 void HloInstruction::set_called_computations_execution_thread(
-    absl::string_view async_execution_thread) {
-  if (GetInstructionCallContext(this->opcode()) == CallContext::kEmbedded) {
+    absl::string_view async_execution_thread, bool always_overwrite) {
+  if (!always_overwrite &&
+      GetInstructionCallContext(this->opcode()) == CallContext::kEmbedded) {
     // There is no need to set the thread name for embedded computations
     // recursively, because they cannot be executed asynchronously.
     return;
