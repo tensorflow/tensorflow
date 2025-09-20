@@ -40,6 +40,20 @@ py_strict_library(
     ],
 )
 
+load("//tensorflow:tensorflow.bzl", "tf_py_test")
+
+tf_py_test(
+    name = "saved_model_cli_empty_feature_test",
+    size = "small",
+    srcs = ["saved_model_cli_empty_feature_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":saved_model_cli",
+        "//tensorflow/python/platform:client_testlib",  # ← doğru etiket
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 py_strict_library(
     name = "saved_model_utils",
     srcs = ["saved_model_utils.py"],
