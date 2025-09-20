@@ -92,7 +92,7 @@ class Lockable {
 
   ~Lockable() {
     VLOG(2) << "Destroy " << LockableName::ToString(value_);
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     CHECK_EQ(is_unlocked_, true);  // NOLINT
   }
 
@@ -102,7 +102,7 @@ class Lockable {
                                           {{"lockable", ToString()}});
     });
 
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     mutex_.Await(absl::Condition(&is_unlocked_));
     VLOG(2) << "Acquired " << LockableName::ToString(value_);
     is_unlocked_ = false;
@@ -111,7 +111,7 @@ class Lockable {
   }
 
   Lock TryAcquire() {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
 
     // Someone already locked this object, return an empty lock.
     if (is_unlocked_ == false) {
@@ -134,7 +134,7 @@ class Lockable {
   friend class Lock;
 
   void Release() {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     VLOG(2) << "Released " << LockableName::ToString(value_);
     CHECK(!is_unlocked_);  // NOLINT
     is_unlocked_ = true;
