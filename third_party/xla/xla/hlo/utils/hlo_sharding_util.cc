@@ -976,6 +976,10 @@ std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
 
     if (s_size == t_size) {
       // Same dimension size.
+      if (inplace_add_sharding_dim && s_size % s_partitions != 0) {
+        append_target_sharding_dim(std::gcd(s_size, s_partitions));
+        break;
+      }
       append_target_sharding_dim(s_partitions);
     } else if (t_size == 1) {
       // Trivial dimension added.
