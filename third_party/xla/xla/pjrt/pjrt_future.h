@@ -771,6 +771,9 @@ class PjRtFuture<void> : public internal::PjRtFutureBase<absl::Status> {
  public:
   class Promise : public Base::Promise {
    public:
+    Promise(Promise&&) = default;
+    Promise& operator=(Promise&&) = default;
+
     using Base::Promise::async_value;
     using Base::Promise::Promise;
 
