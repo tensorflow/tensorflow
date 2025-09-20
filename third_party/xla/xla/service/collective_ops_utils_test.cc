@@ -1250,5 +1250,13 @@ INSTANTIATE_TEST_SUITE_P(
       return info.param.test_name;
     });
 
+TEST(GetReductionIdentity, NoCrashForComplexType) {
+  std::optional<Literal> identity =
+      GetReductionIdentity(ReductionKind::MIN, C64);
+  EXPECT_FALSE(identity.has_value());
+  identity = GetReductionIdentity(ReductionKind::MAX, C128);
+  EXPECT_FALSE(identity.has_value());
+}
+
 }  // namespace GetPariticipantCountsForReplicaGroupsTest
 }  // namespace xla

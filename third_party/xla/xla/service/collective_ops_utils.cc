@@ -140,8 +140,14 @@ std::optional<Literal> GetReductionIdentity(ReductionKind kind,
     case ReductionKind::PRODUCT:
       return LiteralUtil::One(type);
     case ReductionKind::MIN:
+      if (primitive_util::IsComplexType(type)) {
+        return std::nullopt;
+      }
       return LiteralUtil::MaxValue(type);
     case ReductionKind::MAX:
+      if (primitive_util::IsComplexType(type)) {
+        return std::nullopt;
+      }
       return LiteralUtil::MinValue(type);
     default:
       return std::nullopt;
