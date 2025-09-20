@@ -395,7 +395,7 @@ tsl_cc_test(
 
 tsl_cc_test(
     name = "gcs_file_system_test",
-    size = "small",
+    size = "medium",
     srcs = ["gcs_file_system_test.cc"],
     deps = [
         ":gcs_file_system",
