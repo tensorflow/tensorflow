@@ -31,6 +31,8 @@ toc:
     path: /xla/hermetic_cuda
   - title: Indexing Analysis
     path: /xla/indexing
+  - title: LHS Cost Model
+    path: /xla/lhs_cost_model
   - title: Multi-host HLO runner
     path: /xla/tools_multihost_hlo_runner
   - title: Persisted autotuning
