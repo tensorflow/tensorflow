@@ -81,16 +81,16 @@ limitations under the License.
 
 namespace xla {
 
-HloModule::HloModule(const std::string& name, HloModuleConfig config)
+HloModule::HloModule(absl::string_view name, HloModuleConfig config)
     : HloModule(name, std::move(config),
                 std::make_unique<CompilationEnvironments>()) {}
 
-HloModule::HloModule(const std::string& name, HloModuleConfig config,
+HloModule::HloModule(absl::string_view name, HloModuleConfig config,
                      std::unique_ptr<CompilationEnvironments> comp_envs)
     : HloModule(name, std::make_shared<HloModuleConfig>(std::move(config)),
                 std::move(comp_envs)) {}
 
-HloModule::HloModule(const std::string& name,
+HloModule::HloModule(absl::string_view name,
                      std::shared_ptr<const HloModuleConfig> config,
                      std::unique_ptr<CompilationEnvironments> comp_envs)
     : name_(NameUniquer::GetSanitizedName(name)),
