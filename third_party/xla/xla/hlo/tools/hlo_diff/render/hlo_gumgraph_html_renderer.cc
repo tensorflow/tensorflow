@@ -693,7 +693,7 @@ std::string PrintHowToUseSection() {
           <ul>
             <li><span class="red-highlight">&nbsp;Red&nbsp;</span>: Instruction only present in the left module.</li>
             <li><span class="green-highlight">&nbsp;Green&nbsp;</span>: Instruction only present in the right module.</li>
-            <li><span class="yellow-highlight">&nbsp;Yellow&nbsp;</span>: Instruction present in both modules but with differences.</li>
+            <li><span class="yellow-highlight">&nbsp;Yellow&nbsp;</span>: Instruction present in both modules but with differences. Character-level differences are highlighted in <span class="darker-yellow-highlight">&nbsp;darker yellow&nbsp;</span> (this is skipped for instructions with >10k characters due to performance concern).</li>
             <li>Instructions without highlights are identical in both modules.</li>
           </ul>
         </p>
@@ -928,33 +928,38 @@ std::string PrintHloComputationToHtml(
         std::string current_str = std::move(current_printer).ToString();
         std::string mapped_str = std::move(mapped_printer).ToString();
 
-        std::vector<TextDiffChunk> diff_chunks;
-        if (is_left_node) {
-          // Left side: diff current (left) vs mapped (right).
-          diff_chunks = ComputeTextDiff(current_str, mapped_str);
+        // Skip text diff if the two strings are longer than 10000 characters.
+        if (current_str.size() > 10000 || mapped_str.size() > 10000) {
+          printer.Append(current_str);
         } else {
-          // Right side: diff mapped (left) vs current (right).
-          diff_chunks = ComputeTextDiff(mapped_str, current_str);
-        }
-
-        for (const auto& chunk : diff_chunks) {
-          if (chunk.type == TextDiffType::kUnchanged) {
-            printer.Append(EscapeStringForHtmlAttribute(chunk.text));
-          } else if (is_left_node && chunk.type == TextDiffType::kRemoved) {
-            // On the left side, highlight text REMOVED from left compared to
-            // right.
-            printer.Append("<span class=\"darker-yellow-highlight\">");
-            printer.Append(EscapeStringForHtmlAttribute(chunk.text));
-            printer.Append("</span>");
-          } else if (!is_left_node && chunk.type == TextDiffType::kAdded) {
-            // On the right side, highlight text ADDED to right compared to
-            // left.
-            printer.Append("<span class=\"darker-yellow-highlight\">");
-            printer.Append(EscapeStringForHtmlAttribute(chunk.text));
-            printer.Append("</span>");
+          std::vector<TextDiffChunk> diff_chunks;
+          if (is_left_node) {
+            // Left side: diff current (left) vs mapped (right).
+            diff_chunks = ComputeTextDiff(current_str, mapped_str);
           } else {
-            printer.Append("<span class=\"darker-yellow-highlight\">");
-            printer.Append("</span>");
+            // Right side: diff mapped (left) vs current (right).
+            diff_chunks = ComputeTextDiff(mapped_str, current_str);
+          }
+
+          for (const auto& chunk : diff_chunks) {
+            if (chunk.type == TextDiffType::kUnchanged) {
+              printer.Append(EscapeStringForHtmlAttribute(chunk.text));
+            } else if (is_left_node && chunk.type == TextDiffType::kRemoved) {
+              // On the left side, highlight text REMOVED from left compared to
+              // right.
+              printer.Append("<span class=\"darker-yellow-highlight\">");
+              printer.Append(EscapeStringForHtmlAttribute(chunk.text));
+              printer.Append("</span>");
+            } else if (!is_left_node && chunk.type == TextDiffType::kAdded) {
+              // On the right side, highlight text ADDED to right compared to
+              // left.
+              printer.Append("<span class=\"darker-yellow-highlight\">");
+              printer.Append(EscapeStringForHtmlAttribute(chunk.text));
+              printer.Append("</span>");
+            } else {
+              printer.Append("<span class=\"darker-yellow-highlight\">");
+              printer.Append("</span>");
+            }
           }
         }
       }
