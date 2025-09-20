@@ -53,11 +53,10 @@ bool DebugNodeKey::operator!=(const DebugNodeKey& other) const {
 }
 
 const string DebugNodeKey::DeviceNameToDevicePath(const string& device_name) {
-  return strings::StrCat(
-      kMetadataFilePrefix, kDeviceTag,
-      str_util::StringReplace(
-          str_util::StringReplace(device_name, ":", "_", true), "/", ",",
-          true));
+  return absl::StrCat(kMetadataFilePrefix, kDeviceTag,
+                      str_util::StringReplace(
+                          str_util::StringReplace(device_name, ":", "_", true),
+                          "/", ",", true));
 }
 
 }  // namespace tensorflow
