@@ -210,6 +210,7 @@ std::string PrintCss() {
       overflow: auto;
       white-space: pre-wrap;
       height: 100%;
+      counter-reset: instruction;
     }
     .hlo-textbox > .textbox > .click-to-copy {
       position: absolute;
@@ -241,6 +242,19 @@ std::string PrintCss() {
       align-items: flex-start;
       border: 2px solid transparent;
       box-sizing: border-box;
+      counter-increment: instruction;
+      position: relative;
+      padding-left: 3.5em;
+    }
+    div.hlo-instruction::before {
+      content: counter(instruction);
+      position: absolute;
+      left: 0;
+      width: 3em;
+      text-align: right;
+      padding-right: 0.5em;
+      color: #888;
+      user-select: none;
     }
     div.hlo-instruction.expanded {
       max-width: unset;
