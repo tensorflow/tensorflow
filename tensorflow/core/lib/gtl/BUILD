@@ -21,6 +21,8 @@ package(
         "//tensorflow/core/tfrt/utils:__pkg__",
         # tensorflow/examples/custom_ops_doc/simple_hash_table uses map_util
         "//tensorflow/examples/custom_ops_doc/simple_hash_table:__pkg__",
+        # tensorflow/lite/kernels/parse_example uses inlined_vector
+        "//tensorflow/lite/kernels/parse_example:__pkg__",
         # tensorflow/core/profiler/convert uses map_util
         "@org_xprof//xprof/convert:__pkg__",
     ],
