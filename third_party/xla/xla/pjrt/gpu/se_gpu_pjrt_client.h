@@ -111,7 +111,6 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
       bool should_stage_host_to_device_transfers,
       std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options,
       std::shared_ptr<KeyValueStoreInterface> kv_store,
-      std::shared_ptr<DistributedRuntimeClient> distributed_client,
       bool abort_collectives_on_failure,
       std::shared_ptr<const GpuTopology> gpu_topology,
       std::optional<int> num_nodes);
@@ -121,7 +120,8 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
     return kv_store_;
   }
 
-  gpu::GpuExecutableRunOptions* gpu_run_options() override;
+  gpu::GpuExecutableRunOptions* gpu_run_options(
+      const ExecuteOptions& options) override;
 
   absl::StatusOr<xla::DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
@@ -180,13 +180,12 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
 
  private:
   absl::StatusOr<absl::flat_hash_map<GlobalDeviceId, IncarnationId>>
-  GetLatestIncarnations();
+  GetLatestIncarnations(const ExecuteOptions& options);
 
   std::optional<int> num_nodes_;
   const bool abort_collectives_on_failure_ = false;
   std::optional<xla::StreamExecutorGpuTopologyDescription> topology_;
   std::shared_ptr<KeyValueStoreInterface> kv_store_;
-  std::shared_ptr<DistributedRuntimeClient> distributed_client_;
 
   absl::Mutex task_state_infos_mu_;
   std::vector<tensorflow::CoordinatedTaskStateInfo> task_state_infos_

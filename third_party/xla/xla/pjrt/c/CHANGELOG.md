@@ -1,5 +1,9 @@
 # PJRT C API changelog
 
+## 0.77
+
+* Add incarnations to `PJRT_ExecuteOptions`.
+
 ## 0.76
 
 * Added `call_location` to `PJRT_ExecuteOptions`
