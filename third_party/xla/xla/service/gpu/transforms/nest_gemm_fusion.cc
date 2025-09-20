@@ -19,9 +19,9 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <limits>
 #include <memory>
 #include <optional>
-#include <string>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -1089,45 +1089,26 @@ class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
  private:
   absl::Status AcceptDotOperand(const HloInstruction* operand,
                                 absl::Span<const int64_t> batch_dims,
-                                absl::Span<const int64_t> contracting_dims,
-                                bool is_lhs) {
+                                absl::Span<const int64_t> contracting_dims) {
     if (contracting_dims.size() != 1) {
-      return absl::InternalError(
-          absl::StrCat("Expected ", is_lhs ? "LHS" : "RHS",
-                       " operand with exactly one contracting dimension, got ",
-                       contracting_dims.size()));
+      return absl::InternalError(absl::StrCat(
+          "Expected operand with exactly one contracting dimension, got ",
+          contracting_dims.size()));
     }
 
     TF_ASSIGN_OR_RETURN(
         std::vector<int64_t> non_contracting_dimensions,
         GetNonContractingDims(operand->shape(), batch_dims, contracting_dims));
-
     if (non_contracting_dimensions.size() != 1) {
       return absl::InternalError(absl::StrCat(
-          "Expected ", is_lhs ? "LHS" : "RHS",
-          " operand with exactly one non-contracting dimension, got ",
+          "Expected operand with exactly one non-contracting dimension, got ",
           non_contracting_dimensions.size()));
     }
 
-    if (is_lhs) {
-      if (non_contracting_dimensions[0] >= contracting_dims[0]) {
-        return absl::InternalError(absl::StrCat(
-            "Expected LHS non-contracting dimension to be before contracting "
-            "dimension, got ",
-            non_contracting_dimensions[0], " >= ", contracting_dims[0]));
-      }
-    } else {
-      if (non_contracting_dimensions[0] <= contracting_dims[0]) {
-        return absl::InternalError(absl::StrCat(
-            "Expected RHS non-contracting dimension to be after contracting "
-            "dimension, got ",
-            non_contracting_dimensions[0], " <= ", contracting_dims[0]));
-      }
-    }
     return absl::OkStatus();
   }
 
-  absl::Status AcceptDotInstruction(const HloDotInstruction* dot) {
+  absl::Status AcceptDotInstruction(const HloDotInstruction* dot, int split_k) {
     if (IsFeatureEnabled(
             dot->GetModule(),
             DebugOptions::GENERIC_TRITON_EMITTER_ALLOW_ALL_GEMM_SHAPES)) {
@@ -1137,28 +1118,63 @@ class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
     const HloInstruction* rhs = dot->operand(1);
     auto dims = dot->dot_dimension_numbers();
     TF_RETURN_IF_ERROR(AcceptDotOperand(lhs, dims.lhs_batch_dimensions(),
-                                        dims.lhs_contracting_dimensions(),
-                                        /*is_lhs=*/true));
+                                        dims.lhs_contracting_dimensions()));
     TF_RETURN_IF_ERROR(AcceptDotOperand(rhs, dims.rhs_batch_dimensions(),
-                                        dims.rhs_contracting_dimensions(),
-                                        /*is_lhs=*/false));
+                                        dims.rhs_contracting_dimensions()));
+
+    /*
+    The code below filters out cases when the legacy emitter pipelines the loads
+    but the generic emitter cannot.
+    */
+
+    if (split_k == 1) {
+      return absl::OkStatus();
+    }
+    if (dims.lhs_contracting_dimensions(0) !=
+            lhs->shape().layout().minor_to_major(0) &&
+        dims.rhs_contracting_dimensions(0) !=
+            rhs->shape().layout().minor_to_major(0)) {
+      return absl::OkStatus();
+    }
+
+    // Check that the split contracting dimension size is divisible by 16.
+    // Otherwise, the offset is not 16-byte aligned, which results in slow
+    // non-pipelined loads. The legacy emitter is not truthful to the HLO and
+    // splits the contracting dimension differently, resulting in faster code.
+    // See b/443948535.
+    auto min_element_size_bits = std::numeric_limits<int64_t>::max();
+    for (const HloInstruction* param :
+         dot->parent()->parameter_instructions()) {
+      auto bit_size = param->shape().layout().element_size_in_bits();
+      min_element_size_bits = std::min(min_element_size_bits, bit_size);
+    }
+    int64_t contracting_dim_size_bytes =
+        lhs->shape().dimensions(dims.lhs_contracting_dimensions(0)) *
+        min_element_size_bits / 8;
+    if (contracting_dim_size_bytes % 16 != 0) {
+      return absl::InternalError(
+          "Split contracting dim size bytes must be divisible by 16.");
+    }
+
     return absl::OkStatus();
   }
 
-  absl::Status AcceptNestedInstruction(const HloInstruction* instruction) {
+  absl::Status AcceptNestedInstruction(const HloInstruction* instruction,
+                                       int split_k) {
     if (instruction->IsElementwise()) {
       return absl::OkStatus();
     }
     switch (instruction->opcode()) {
-      case HloOpcode::kParameter:
-      case HloOpcode::kConstant:
-        return absl::OkStatus();
       case HloOpcode::kBroadcast:
+      case HloOpcode::kConstant:
+      case HloOpcode::kParameter:
         return absl::OkStatus();
       case HloOpcode::kFusion:
-        return AcceptResultingFusion(Cast<HloFusionInstruction>(instruction));
+        return AcceptResultingFusion(Cast<HloFusionInstruction>(instruction),
+                                     split_k);
       case HloOpcode::kDot:
-        return AcceptDotInstruction(Cast<HloDotInstruction>(instruction));
+        return AcceptDotInstruction(Cast<HloDotInstruction>(instruction),
+                                    split_k);
       default:
         if (!IsFeatureEnabled(
                 instruction->GetModule(),
@@ -1177,16 +1193,17 @@ class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
   // That enables a progressive rollout of the new emitter. Eventually we should
   // remove this check completely as all computations will be supported by the
   // generic emitter and performance regressions will be addressed.
-  absl::Status AcceptResultingFusion(const HloFusionInstruction* fusion) {
+  absl::Status AcceptResultingFusion(const HloFusionInstruction* fusion,
+                                     int split_k) {
     const HloComputation* computation = fusion->called_computation();
     for (const HloInstruction* instruction : computation->instructions()) {
-      TF_RETURN_IF_ERROR(AcceptNestedInstruction(instruction));
+      TF_RETURN_IF_ERROR(AcceptNestedInstruction(instruction, split_k));
     }
     return absl::OkStatus();
   }
 
   absl::Status RewriteFusion(HloFusionInstruction* fusion,
-                             CallGraph* call_graph) {
+                             CallGraph* call_graph, int split_k) {
     HloComputation* computation = fusion->called_computation();
     HloInstruction* instr =
         hlo_query::GetFirstInstructionWithOpcode(*computation, HloOpcode::kDot);
@@ -1210,7 +1227,7 @@ class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
           " is not supported by Triton: ", can_codegen_computation.Explain()));
     }
 
-    return AcceptResultingFusion(fusion);
+    return AcceptResultingFusion(fusion, split_k);
   }
 
   absl::Status HandleFusion(HloInstruction* instruction) override {
@@ -1248,8 +1265,8 @@ class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
       }
       std::unique_ptr<CallGraph> cloned_call_graph =
           CallGraph::Build(extracted_module.get(), {});
-      absl::Status status =
-          RewriteFusion(extracted_fusion, cloned_call_graph.get());
+      absl::Status status = RewriteFusion(
+          extracted_fusion, cloned_call_graph.get(), config->split_k);
       if (!status.ok()) {
         VLOG(2) << "Failed to rewrite the fusion " << fusion->ToString()
                 << " in a cloned module: " << status;
@@ -1263,7 +1280,7 @@ class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
         return absl::OkStatus();
       }
     }
-    absl::Status status = RewriteFusion(fusion, call_graph_);
+    absl::Status status = RewriteFusion(fusion, call_graph_, config->split_k);
     VLOG(2) << "RewriteFusion " << fusion->name() << ": " << status;
     return status;
   }
