@@ -71,8 +71,9 @@ namespace xgt = xg::triton;
 namespace {
 
 PointerType GetTensorPtrType(Type type) {
-  return PointerType::get(xgt::StorageType(type),
-                          mlir::NVVM::kGlobalMemorySpace);
+  return PointerType::get(
+      xgt::StorageType(type),
+      static_cast<unsigned>(mlir::NVVM::NVVMMemorySpace::Global));
 }
 
 SmallVector<Value> IndexCast(::xla::EmitterLocOpBuilder& builder, Type type,

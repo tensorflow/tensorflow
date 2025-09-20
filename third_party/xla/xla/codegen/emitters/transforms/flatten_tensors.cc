@@ -350,7 +350,7 @@ struct RewriteVectorExtract : OpRewritePattern<mv::ExtractOp> {
 
   LogicalResult matchAndRewrite(mv::ExtractOp op,
                                 PatternRewriter& rewriter) const override {
-    auto vector = op.getVector();
+    auto vector = op.getSource();
     auto vector_type = vector.getType();
     if (vector_type.getRank() < 2) {
       return rewriter.notifyMatchFailure(op, "the vector is already flat");
