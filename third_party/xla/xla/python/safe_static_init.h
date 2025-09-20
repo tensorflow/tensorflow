@@ -64,7 +64,7 @@ T& SafeStaticInit(F init_fn) {
   // mutex before any critical sections because release_gil releases
   // all critical sections.
   nanobind::gil_scoped_release release_gil;
-  absl::MutexLock lock(&mutex);
+  absl::MutexLock lock(mutex);
   // Second check under the lock.
   if (T* result = output.load()) {
     return *result;
