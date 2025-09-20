@@ -49,10 +49,11 @@ limitations under the License.
 namespace tflite {
 
 std::unique_ptr<Allocation> GetAllocationFromFile(
-    const char* filename, ErrorReporter* error_reporter);
+    const char* filename, ErrorReporter* error_reporter,
+    bool allow_modifications = false);
 
 std::unique_ptr<Allocation> GetAllocationFromFile(
-    int fd, ErrorReporter* error_reporter);
+    int fd, ErrorReporter* error_reporter, bool allow_modifications = false);
 
 namespace impl {
 
