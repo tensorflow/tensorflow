@@ -34,7 +34,7 @@ namespace internal {
 // rendezvous is ready, false if the timeout is exceeded.
 static bool WaitForReadyWithTimeout(RendezvousStateSynchronization& state,
                                     absl::Duration timeout) {
-  absl::MutexLock lock(&state.mutex);
+  absl::MutexLock lock(state.mutex);
 
   // Keep checking if the rendezvous is ready inside a loop and update TraceMe
   // annotation to track the rendezvous progress.
