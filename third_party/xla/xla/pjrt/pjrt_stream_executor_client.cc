@@ -1967,7 +1967,7 @@ void PjRtStreamExecutorBuffer::CopyToRemoteDevice(
 
 PjRtFuture<> PjRtStreamExecutorBuffer::GetReadyFuture() {
   absl::InlinedVector<BufferSequencingEventRef, 2> definition_events;
-  PjRtFuture<>::MoveOnlyPromise definition_promise;
+  PjRtFuture<>::Promise definition_promise;
   PjRtFuture<> definition_future;
   {
     absl::MutexLock lock(&mu_);

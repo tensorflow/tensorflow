@@ -91,7 +91,7 @@ PjRtFuture<> CommonPjRtClient::CreateProfiledFuture(
       });
 }
 
-std::pair<PjRtFuture<>::MoveOnlyPromise, PjRtFuture<>>
+std::pair<PjRtFuture<>::Promise, PjRtFuture<>>
 CommonPjRtClient::CreateLinkedUserPromise(PjRtMemorySpace* memory_space,
                                           const char* callee_type,
                                           const char* callee_method,

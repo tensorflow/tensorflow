@@ -137,10 +137,9 @@ class CommonPjRtClient : public PjRtClient {
   // Create a linked PjRtFuture<> and ::Promise pair for operations on
   // buffers in memory_space which populates debug information like linked
   // tracmes.
-  std::pair<PjRtFuture<>::MoveOnlyPromise, PjRtFuture<>>
-  CreateLinkedUserPromise(PjRtMemorySpace* memory_space,
-                          const char* callee_type, const char* callee_method,
-                          absl::string_view debug_info);
+  std::pair<PjRtFuture<>::Promise, PjRtFuture<>> CreateLinkedUserPromise(
+      PjRtMemorySpace* memory_space, const char* callee_type,
+      const char* callee_method, absl::string_view debug_info);
 
   template <typename T, std::enable_if_t<std::is_invocable_v<T>, bool> = true>
   absl::StatusOr<std::pair<tsl::RCReference<PjRtDeviceEventPromise>,
