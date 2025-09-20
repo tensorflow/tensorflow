@@ -149,9 +149,6 @@ absl::StatusOr<std::unique_ptr<Executable>>
 CpuAotCompilationResult::LoadExecutable(
     [[maybe_unused]] Compiler* compiler,
     const se::StreamExecutor* stream_exec) const&& {
-  // Compiler would be used only to get the BufferSizeBytesFunction. Doing this
-  // we ensure the user doesn't expect a different function to be used.
-  CHECK(compiler == nullptr);
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> module,
       HloModule::CreateFromProtoWithConfig(proto_.hlo_module()));
@@ -160,7 +157,7 @@ CpuAotCompilationResult::LoadExecutable(
 
   // Copied from cpu_compiler.cc in order to avoid dependency on cpu_compiler.
   std::function<int64_t(const BufferValue&)> buffer_size_bytes_function_getter =
-      []() {
+      compiler ? compiler->BufferSizeBytesFunction() : []() {
         HloCostAnalysis::ShapeSizeFunction shape_size =
             CpuExecutable::ShapeSizeBytes;
         return [shape_size](const BufferValue& buffer) {
@@ -187,31 +184,6 @@ CpuAotCompilationResult::LoadExecutable(
                       thunk_sequence_serdes.FromProto(proto_.thunk_sequence()));
 
   VLOG(3) << "Loaded " << thunks->size() << " thunks.";
-
-  std::vector<FunctionLibrary::Symbol> compiled_symbols;
-
-  for (const auto& symbol_proto : proto_.compiled_symbols()) {
-    switch (symbol_proto.function_type_id()) {
-      case SymbolProto::KERNEL:
-        compiled_symbols.push_back(
-            FunctionLibrary::Sym<FunctionLibrary::Kernel>(symbol_proto.name()));
-        break;
-      case SymbolProto::COMPARATOR:
-        compiled_symbols.push_back(
-            FunctionLibrary::Sym<FunctionLibrary::Comparator>(
-                symbol_proto.name()));
-        break;
-      default:
-        return Internal(
-            "Unknown function type id %s",
-            SymbolProto_FunctionTypeId_Name(symbol_proto.function_type_id()));
-    }
-  }
-
-  VLOG(3) << "Collected " << compiled_symbols.size() << " compiled symbols";
-  for (const auto& symbol : compiled_symbols) {
-    VLOG(3) << " Symbol: " << symbol.name;
-  }
 
   // Create constant allocations from the buffer assignment.
   TF_ASSIGN_OR_RETURN(std::vector<ConstantAllocation> constants,

@@ -155,6 +155,16 @@ class CpuAotCompilationResult : public AotCompilationResult {
     return hlo_profile_printer_data_.get();
   }
 
+  static absl::StatusOr<std::unique_ptr<CpuAotCompilationResult>> FromProto(
+      CompilationResultProto proto, FunctionLibrary* function_library) {
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<HloModule> module,
+        HloModule::CreateFromProtoWithConfig(proto.hlo_module()));
+
+    return std::unique_ptr<CpuAotCompilationResult>(new CpuAotCompilationResult(
+        proto, std::move(module), std::move(function_library)));
+  }
+
   static absl::StatusOr<std::unique_ptr<CpuAotCompilationResult>> FromString(
       const std::string& serialized, FunctionLibrary* function_library) {
     CompilationResultProto proto;
@@ -162,12 +172,7 @@ class CpuAotCompilationResult : public AotCompilationResult {
       return Internal("Failed to parse serialized CpuAotCompilationResult.");
     }
 
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<HloModule> module,
-        HloModule::CreateFromProtoWithConfig(proto.hlo_module()));
-
-    return std::unique_ptr<CpuAotCompilationResult>(new CpuAotCompilationResult(
-        proto, std::move(module), std::move(function_library)));
+    return FromProto(std::move(proto), function_library);
   }
 
  private:
