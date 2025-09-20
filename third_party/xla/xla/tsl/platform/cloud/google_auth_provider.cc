@@ -89,8 +89,8 @@ absl::Status GetEnvironmentVariableFileName(string* filename) {
   }
   const char* result = std::getenv(kGoogleApplicationCredentials);
   if (!result || !IsFile(result)) {
-    return errors::NotFound(strings::StrCat("$", kGoogleApplicationCredentials,
-                                            " is not set or corrupt."));
+    return errors::NotFound(absl::StrCat("$", kGoogleApplicationCredentials,
+                                         " is not set or corrupt."));
   }
   *filename = result;
   return absl::OkStatus();
@@ -166,8 +166,8 @@ absl::Status GoogleAuthProvider::GetToken(string* t) {
   if (skip_gce_check) {
     token_from_gce_status =
         absl::Status(absl::StatusCode::kCancelled,
-                     strings::StrCat("GCE check skipped due to presence of $",
-                                     kNoGceCheck, " environment variable."));
+                     absl::StrCat("GCE check skipped due to presence of $",
+                                  kNoGceCheck, " environment variable."));
   } else {
     token_from_gce_status = GetTokenFromGce();
   }
