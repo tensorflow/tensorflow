@@ -69,6 +69,25 @@ ifrt_proxy_cc_test(
 )
 
 ifrt_proxy_cc_test(
+    name = "array_impl_test_tfrt_cpu_with_grpc_large_transfer_optimization",
+    srcs = ["array_impl_test_tfrt_cpu.cc"],
+    args = [
+        "--ifrt_proxy_grpc_large_transfer_optimization_threshold_bytes=0",
+    ],
+    env = {
+        "IFRT_PROXY_GRPC_LARGE_TRANSFER_OPTIMIZATION_DIRECTORY": "$$$$TEST_TMPDIR$$$$",
+    },
+    # TODO(b/396205547): Remove `linkstatic = False`.
+    linkstatic = False,
+    deps = [
+        ":register_pjrt_cpu_for_ifrt_api_tests",
+        "//xla/python/ifrt:array_impl_test_lib",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+ifrt_proxy_cc_test(
     name = "executable_impl_test_tfrt_cpu",
     timeout = "moderate",
     srcs = ["executable_impl_test_tfrt_cpu.cc"],

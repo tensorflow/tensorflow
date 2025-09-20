@@ -269,6 +269,19 @@ namespace proxy {
   return xla::ToGrpcStatus((*store)->Delete(request->handle()));
 }
 
+::grpc::Status GrpcServiceImpl::HostBufferReadFromDisk(
+    ::grpc::ServerContext* context,
+    const GrpcHostBufferReadFromDiskRequest* request,
+    GrpcHostBufferReadFromDiskResponse* response) {
+  tsl::profiler::TraceMe traceme("HostBufferReadFromDisk");
+  auto store = GetHostBufferStore(request->metadata().session_id());
+  if (!store.ok()) {
+    return xla::ToGrpcStatus(store.status());
+  }
+  return xla::ToGrpcStatus(
+      (*store)->ReadFromDisk(request->metadata().handle()));
+}
+
 bool GrpcServiceImpl::Test_InsertHostBufferStore(
     uint64_t session_id,
     std::shared_ptr<xla::ifrt::proxy::HostBufferStore> store) {

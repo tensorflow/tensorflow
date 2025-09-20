@@ -50,6 +50,8 @@ class GrpcClientHostBufferStore : public ClientHostBufferStore {
   Future<> Delete(uint64_t handle) override;
 
  private:
+  Future<> StoreToDisk(uint64_t handle, absl::string_view data);
+
   const std::shared_ptr<grpc::GrpcIfrtService::StubInterface> stub_;
   const IfrtProxyVersion version_;
   const uint64_t session_id_;

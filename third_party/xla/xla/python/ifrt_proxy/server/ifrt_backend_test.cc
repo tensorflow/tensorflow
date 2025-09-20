@@ -1613,7 +1613,7 @@ TEST_P(IfrtBackendHandlerTest, LoadedHostCallbackExecute) {
         poll_response.host_callback_execution_handle();
 
     TF_ASSERT_OK_AND_ASSIGN(
-        const std::shared_ptr<const std::string> operands,
+        const std::shared_ptr<absl::string_view> operands,
         host_buffer_store_->Lookup(operand_host_buffer_handle));
     EXPECT_EQ(xla::BorrowingLiteral(operands->data(),
                                     xla::ShapeUtil::MakeShape(xla::F32, {})),
