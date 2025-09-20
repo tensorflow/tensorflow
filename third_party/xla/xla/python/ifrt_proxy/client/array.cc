@@ -442,7 +442,7 @@ Future<> Array::GetReadyFuture() const {
     return Future<>(absl::InvalidArgumentError("Already deleted array."));
   }
 
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
 
   if (ready_future_.IsValid()) {
     return ready_future_;
@@ -462,7 +462,7 @@ Future<> Array::GetReadyFuture() const {
 
 Future<> Array::Delete() {
   {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     deleted_ = DeletionState::kDeleted;
   }
   if (rpc_helper_->protocol_version() >= 5) {
@@ -490,7 +490,7 @@ bool Array::IsDeleted() const {
   tsl::profiler::TraceMe traceme_ifrt_entrypoint(
       "IfrtProxyEntrypointIsDeleted");
   {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     if (deleted_ == DeletionState::kDeleted) {
       return true;
     }
@@ -507,7 +507,7 @@ bool Array::IsDeleted() const {
   absl::StatusOr<std::shared_ptr<IsArrayDeletedResponse>> response =
       rpc_helper_->IsArrayDeleted(std::move(req)).Await();
   if (response.ok()) {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     if ((*response)->deleted()) {
       deleted_ = DeletionState::kDeleted;
     } else {
@@ -935,7 +935,7 @@ Future<> Array::CopyToHostBuffer(
 }
 
 absl::StatusOr<std::shared_ptr<const PjRtLayout>> Array::pjrt_layout() const {
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   if (custom_layout_ != nullptr) {
     return custom_layout_;
   }
@@ -951,7 +951,7 @@ xla::ifrt::Client* Array::client() const { return client_; }
 std::string Array::DebugString() const {
   std::string is_deleted;
   {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     switch (deleted_) {
       case DeletionState::kUnknown:
         is_deleted = "unknown";

@@ -132,7 +132,7 @@ class SimpleIfrtService : public grpc::GrpcIfrtService::Service {
     }
 
     {
-      absl::MutexLock l(&mu_);
+      absl::MutexLock l(mu_);
       CHECK(contexts_.insert(context).second);
     }
 
@@ -154,7 +154,7 @@ class SimpleIfrtService : public grpc::GrpcIfrtService::Service {
       }
     }
     {
-      absl::MutexLock l(&mu_);
+      absl::MutexLock l(mu_);
       CHECK_EQ(contexts_.erase(context), 1);
     }
 
@@ -163,7 +163,7 @@ class SimpleIfrtService : public grpc::GrpcIfrtService::Service {
   }
 
   void CancelAllServerSessions() {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     for (const auto& context : contexts_) {
       context->TryCancel();
     }
