@@ -370,7 +370,8 @@ enum StatType {
   kCudaGraphMapValueId,
   kCudaGraphNodeMapId,
   kGraphMetadataLineId,
-  kLastStatType = kGraphMetadataLineId,
+  kFingerprint,
+  kLastStatType = kFingerprint,
 };
 
 enum MegaScaleStatType : uint8_t {

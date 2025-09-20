@@ -18,16 +18,18 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/hash/hash.h"
+#include "absl/log/check.h"
+#include "absl/strings/str_cat.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/profiler/utils/tf_xplane_visitor.h"
 #include "xla/tsl/profiler/utils/xplane_builder.h"
 #include "xla/tsl/profiler/utils/xplane_schema.h"
 #include "xla/tsl/profiler/utils/xplane_test_utils.h"
 #include "xla/tsl/profiler/utils/xplane_visitor.h"
-#include "tsl/profiler/lib/connected_traceme.h"
+#include "tsl/profiler/lib/context_types.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tsl {
@@ -290,6 +292,92 @@ TEST(PreprocessXPlane, ThreadPoolPreprocessorTest) {
     });
   });
   EXPECT_TRUE(new_event_added);
+}
+
+TEST(PreprocessXPlane, NormalizeGpuHloModuleIdsTest) {
+  XSpace space;
+  XPlane* plane1 = space.add_planes();
+  plane1->set_id(0);
+  plane1->set_name("plane0");
+  XPlaneBuilder plane_builder1(plane1);
+
+  // Add stat metadata for kHloProto
+  XStatMetadata& hlo_proto_stat_metadata =
+      (*plane1->mutable_stat_metadata())[1];
+  hlo_proto_stat_metadata.set_id(1);
+  hlo_proto_stat_metadata.set_name(GetStatTypeStr(StatType::kHloProto));
+  // Add stat metadata for kFingerprint
+  XStatMetadata& fingerprint_stat_metadata =
+      (*plane1->mutable_stat_metadata())[2];
+  fingerprint_stat_metadata.set_id(2);
+  fingerprint_stat_metadata.set_name(GetStatTypeStr(StatType::kFingerprint));
+
+  // Add event metadata with an HLO proto stat
+  int64_t old_event_metadata_id1 = 123;
+  std::string hlo_proto_str = "hlo_module";
+  const uint64_t fingerprint = 999;
+  XEventMetadata* event_metadata1 =
+      plane_builder1.GetOrCreateEventMetadata(old_event_metadata_id1);
+  event_metadata1->set_name("my_hlo_event");
+  {
+    XStat* stat = event_metadata1->add_stats();
+    stat->set_metadata_id(1);
+    stat->set_bytes_value(hlo_proto_str);
+  }
+  {
+    XStat* stat = event_metadata1->add_stats();
+    stat->set_metadata_id(2);
+    stat->set_uint64_value(fingerprint);
+  }
+
+  // Add an event that uses this metadata
+  auto line_builder1 = plane_builder1.GetOrCreateLine(0);
+  XEventBuilder event_builder1 = line_builder1.AddEvent(*event_metadata1);
+  event_builder1.SetOffsetPs(1000);
+  event_builder1.SetDurationPs(2000);
+
+  // Also add an event that doesn't have an HLO proto, it should be unchanged.
+  int64_t other_event_metadata_id = 789;
+  XEventMetadata* other_event_metadata =
+      plane_builder1.GetOrCreateEventMetadata(other_event_metadata_id);
+  other_event_metadata->set_name("other_event");
+  XEventBuilder other_event_builder =
+      line_builder1.AddEvent(*other_event_metadata);
+  other_event_builder.SetOffsetPs(5000);
+  other_event_builder.SetDurationPs(1000);
+
+  PreprocessXSpace(&space);
+
+  // Verification
+  XPlaneVisitor plane_visitor1 = CreateTfXPlaneVisitor(&space.planes(0));
+  uint64_t new_program_id1 =
+      absl::HashOf(absl::StrCat(hlo_proto_str, 0, fingerprint));
+  EXPECT_NE(new_program_id1, old_event_metadata_id1);
+  // Check event metadata is remapped
+  EXPECT_EQ(plane_visitor1.GetEventMetadata(old_event_metadata_id1),
+            &XEventMetadata::default_instance());
+  const XEventMetadata* new_event_metadata1 =
+      plane_visitor1.GetEventMetadata(new_program_id1);
+  ASSERT_NE(new_event_metadata1, &XEventMetadata::default_instance());
+  EXPECT_EQ(new_event_metadata1->id(), new_program_id1);
+  EXPECT_EQ(new_event_metadata1->name(), "my_hlo_event");
+
+  // Check event is remapped
+  bool hlo_event_found1 = false;
+  bool other_event_found1 = false;
+  plane_visitor1.ForEachLine([&](const XLineVisitor& line) {
+    line.ForEachEvent([&](const XEventVisitor& event) {
+      if (event.OffsetPs() == 1000) {
+        hlo_event_found1 = true;
+        EXPECT_EQ(event.metadata()->id(), new_program_id1);
+      } else if (event.OffsetPs() == 5000) {
+        other_event_found1 = true;
+        EXPECT_EQ(event.metadata()->id(), other_event_metadata_id);
+      }
+    });
+  });
+  EXPECT_TRUE(hlo_event_found1);
+  EXPECT_TRUE(other_event_found1);
 }
 
 TEST(PreprocessXPlane, XContextStatsAccessorNPETest) {
