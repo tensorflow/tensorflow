@@ -4088,6 +4088,8 @@ std::optional<Value> convertGatherOp(PatternRewriter& rewriter, Operation* op,
   int params_rank = params_type.getRank();
   int indices_rank = indices_type.getRank();
 
+  if (axis < 0) axis += params_rank;
+
   if (axis < 0 || axis >= params_rank) {
     (void)rewriter.notifyMatchFailure(
         op, llvm::formatv("axis {} must be within range of params rank", axis));
