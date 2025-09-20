@@ -134,10 +134,14 @@ namespace stablehlo {
 // Also see `stablehlo::registerFuncOpsForTypeConversion` for helper patterns
 // which make sure `func.func`, `func.call` and `func.return` which involve
 // illegal types also get converted.
-void populateHloToStablehloPatterns(RewritePatternSet *patterns,
-                                    TypeConverter *converter,
-                                    MLIRContext *context,
-                                    bool allowExperimentalFeatures);
+//
+// allowXlaFeatures: If true, allows ops that are not in StableHLO to remain as
+// MHLO ops.
+void populateHloToStablehloPatterns(RewritePatternSet* patterns,
+                                    TypeConverter* converter,
+                                    MLIRContext* context,
+                                    bool allowExperimentalFeatures,
+                                    bool allowXlaFeatures);
 
 // Populates StableHLO ops to MHLO ops rewriting patterns.
 // Also see `stablehlo::registerFuncOpsForTypeConversion` for helper patterns

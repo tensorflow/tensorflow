@@ -1,23 +1,19 @@
 // RUN: mlir-hlo-opt %s -hlo-legalize-to-stablehlo=allow-xla-features --split-input-file | FileCheck %s
 
-func.func @async_ops(%arg1: tensor<128x32xf32>) -> tensor<128x128xf32> attributes {execution_thread = "main"} {
-  // CHECK: stablehlo.all_gather
-  %0 = "mhlo.all_gather"(%arg1) {
-    all_gather_dim = 1 : i64,
-    channel_handle = #mhlo.channel_handle<handle = 1, type = 0>,
-    shard_count = 4,
-    replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>,
-    use_global_device_ids
-  } : (tensor<128x32xf32>) -> tensor<128x128xf32>
-  return %0 : tensor<128x128xf32>
+// CHECK-LABEL: @recv
+func.func @recv(%arg0: !mhlo.token) -> (tensor<3x4xi32>, !mhlo.token) attributes {execution_thread = "main"} {
+  // CHECK: stablehlo.recv{{.*}}!stablehlo.token
+  %0:2 = "mhlo.recv"(%arg0) <{channel_handle = #mhlo.channel_handle<handle = 5, type = 3>, is_host_transfer = true}> : (!mhlo.token) -> (tensor<3x4xi32>, !mhlo.token)
+  return %0#0, %0#1 : tensor<3x4xi32>, !mhlo.token
 }
 
-func.func @main(%arg0: tensor<128x32xf32>) -> tensor<128x128xf32> {
-  // CHECK: mhlo.async_start
-  %0 = "mhlo.async_start"(%arg0) {called_computation = @async_ops, execution_thread = "main"} : (tensor<128x32xf32>) -> !mhlo.async_bundle<tensor<128x32xf32>, tensor<128x128xf32>>
-  // CHECK: mhlo.async_done
-  %1 = "mhlo.async_done"(%0) : (!mhlo.async_bundle<tensor<128x32xf32>, tensor<128x128xf32>>) -> tensor<128x128xf32>
-  return %1 : tensor<128x128xf32>
+// CHECK-LABEL: @async_ops_with_token
+func.func @async_ops_with_token(%arg0: !mhlo.token) -> (tensor<3x4xi32>, !mhlo.token) {
+  // CHECK: mhlo.async_start{{.*}} !mhlo.async_bundle<!stablehlo.token, tuple<tensor<3x4xi32>, !stablehlo.token>, tensor<i32>>
+  %0 = "mhlo.async_start"(%arg0) <{called_computation = @recv, execution_thread = "main"}> : (!mhlo.token) -> !mhlo.async_bundle<!mhlo.token, tuple<tensor<3x4xi32>, !mhlo.token>, tensor<i32>>
+  // CHECK: mhlo.async_done{{.*}} -> (tensor<3x4xi32>, !stablehlo.token)
+  %1:2 = "mhlo.async_done"(%0) : (!mhlo.async_bundle<!mhlo.token, tuple<tensor<3x4xi32>, !mhlo.token>, tensor<i32>>) -> (tensor<3x4xi32>, !mhlo.token)
+  return %1#0, %1#1 : tensor<3x4xi32>, !mhlo.token
 }
 
 // -----
