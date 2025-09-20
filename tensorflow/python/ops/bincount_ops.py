@@ -165,6 +165,11 @@ def bincount(arr,
     array_is_nonempty = array_ops.size(arr) > 0
     output_size = math_ops.cast(array_is_nonempty, arr.dtype) * (
         math_ops.reduce_max(arr) + 1)
+    if maxlength is not None and minlength is not None \
+      and gen_math_ops.less(maxlength, minlength):
+      raise ValueError("Argument `maxlength` must be at least `minlength`,"
+                       f"received minlength={minlength}"
+                       f" and maxlength={maxlength}.")
     if minlength is not None:
       minlength = ops.convert_to_tensor(
           minlength, name="minlength", dtype=arr.dtype)
