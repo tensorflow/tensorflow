@@ -6287,6 +6287,8 @@ absl::Status AlgebraicSimplifierVisitor::HandleReshape(
     }
   }
 
+  // reshape(broadcast(x)) -> new_broadcast(x) if x's dimensions are unmodified
+  // by reshape.
   if (HloOpcode::kBroadcast == operand->opcode()) {
     auto opt_dims =
         ReshapeLeavesDimensionsUnmodified(reshape, operand->dimensions());
