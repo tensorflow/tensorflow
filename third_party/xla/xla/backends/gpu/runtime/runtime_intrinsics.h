@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_RUNTIME_INTRINSICS_H_
-#define XLA_SERVICE_GPU_RUNTIME_INTRINSICS_H_
+#ifndef XLA_BACKENDS_GPU_RUNTIME_RUNTIME_INTRINSICS_H_
+#define XLA_BACKENDS_GPU_RUNTIME_RUNTIME_INTRINSICS_H_
 
 #include "absl/strings/string_view.h"
 
@@ -25,4 +25,4 @@ inline constexpr absl::string_view kXlaGpuAssertCustomCallTag =
 
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_RUNTIME_INTRINSICS_H_
+#endif  // XLA_BACKENDS_GPU_RUNTIME_RUNTIME_INTRINSICS_H_

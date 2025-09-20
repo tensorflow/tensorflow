@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/runtime_intrinsics.h"
+#include "xla/backends/gpu/runtime/runtime_intrinsics.h"
 
 #include <cstdint>
 #include <string>
