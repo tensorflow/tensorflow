@@ -247,6 +247,26 @@ class MockDevice : public Device {
   Device* const delegated_ = nullptr;
 };
 
+// device_list.h
+
+class MockDeviceList : public DeviceList {
+ public:
+  MockDeviceList() = default;
+  ~MockDeviceList() override = default;
+
+  MOCK_METHOD(absl::Span<Device* const>, devices, (), (const final));
+  MOCK_METHOD(DeviceList*, AddressableDeviceList, (), (const final));
+
+  MOCK_METHOD(bool, EqualEqualOperator, (const DeviceList& other),
+              (const final));
+  bool operator==(const DeviceList& other) const override {
+    return EqualEqualOperator(other);
+  }
+  MOCK_METHOD(uint64_t, hash, (), (const final));
+  MOCK_METHOD(uint64_t, fingerprint, (), (const final));
+  MOCK_METHOD(std::string, ToString, (), (const final));
+};
+
 // memory.h
 
 class MockMemory : public Memory {
