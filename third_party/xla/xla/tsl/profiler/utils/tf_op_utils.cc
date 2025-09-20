@@ -131,7 +131,8 @@ TfOp ParseTfOpFullname(absl::string_view tf_op_fullname, Category category,
   // For op types below, they all have the format "<op_name>:<op_type>", though
   // op_type could be empty.
   TfOp tf_op = {category, tf_op_fullname, type, id};
-  if (category != Category::kUnknown && type != kUnknownOp) {
+  if ((category != Category::kUnknown && type != kUnknownOp) ||
+      tf_op_fullname.empty()) {
     return tf_op;
   }
 
