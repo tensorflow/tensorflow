@@ -22,12 +22,12 @@ limitations under the License.
 #include <string>
 
 #include "absl/base/attributes.h"
+#include "absl/log/check.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"
 
 namespace xla {
 
