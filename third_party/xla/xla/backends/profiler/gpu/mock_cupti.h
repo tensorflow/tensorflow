@@ -99,6 +99,8 @@ class MockCupti : public xla::profiler::CuptiInterface {
   MOCK_METHOD(CUptiResult, SetThreadIdType, (CUpti_ActivityThreadIdType type),
               (override));
 
+  MOCK_METHOD(CUptiResult, ActivityEnableHWTrace, (bool enable), (override));
+
   MOCK_METHOD(CUptiResult, GetGraphExecId,
               (CUgraphExec graph_exec, uint32_t* graph_id), (override));
 

@@ -16,9 +16,10 @@ limitations under the License.
 #include "xla/backends/profiler/gpu/cupti_wrapper.h"
 
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_profiler_target.h"
 #include "third_party/gpus/cuda/include/cuda.h"
-#include "xla/backends/profiler/gpu/cupti_interface.h"
+#include "xla/backends/profiler/gpu/cupti_api_version_backward.h"
 
 #if CUPTI_API_VERSION >= 24
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_pmsampling.h"
@@ -156,6 +157,12 @@ CUptiResult CuptiWrapper::GetGraphExecId(CUgraphExec graph_exec,
 
 CUptiResult CuptiWrapper::SetThreadIdType(CUpti_ActivityThreadIdType type) {
   return cuptiSetThreadIdType(type);
+}
+
+CUptiResult CuptiWrapper::ActivityEnableHWTrace(bool enable) {
+  // DUMMY implementation for backward compatibility provided in
+  // cupti_api_before_12_8.cc.
+  return cuptiActivityEnableHWTrace(enable ? 1 : 0);
 }
 
 CUptiResult CuptiWrapper::GetStreamIdEx(CUcontext context, CUstream stream,

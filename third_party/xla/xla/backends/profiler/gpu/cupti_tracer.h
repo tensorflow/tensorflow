@@ -56,6 +56,9 @@ struct CuptiTracerOptions {
   // Only read during creation of a PM sampling object, later changes have
   // no effect
   CuptiPmSamplerOptions pm_sampler_options;
+  // Whether to enable activity hardware events tracing using HES. see:
+  // https://docs.nvidia.com/cupti/release-notes/release-notes.html?highlight=cuptiActivityEnableHWTrace#updates-in-cuda-12-8
+  bool enable_activity_hardware_tracing = false;
 };
 
 class CuptiTracer;
