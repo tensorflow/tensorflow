@@ -73,9 +73,9 @@ class CopyToDeviceNode : public EagerNode {
 
   string DebugString() const override {
     string out = "[CopyToDeviceNode]";
-    strings::StrAppend(&out, " src_tensor: ", src_->DebugString());
-    strings::StrAppend(&out, ", dst_tensor: ", dst_->DebugString());
-    strings::StrAppend(&out, ", dst_device: ", dstd_ ? dstd_->name() : "[]");
+    absl::StrAppend(&out, " src_tensor: ", src_->DebugString());
+    absl::StrAppend(&out, ", dst_tensor: ", dst_->DebugString());
+    absl::StrAppend(&out, ", dst_device: ", dstd_ ? dstd_->name() : "[]");
     return out;
   }
 

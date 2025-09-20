@@ -1762,8 +1762,8 @@ absl::Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
   TF_RETURN_IF_ERROR(ValidateInputTypeAndPlacement(&ctx, op, kernel));
 
   if (ctx.LogDevicePlacement() || VLOG_IS_ON(1)) {
-    string msg = strings::StrCat("Executing op ", op->Name(), " in device ",
-                                 kernel->device()->name());
+    string msg = absl::StrCat("Executing op ", op->Name(), " in device ",
+                              kernel->device()->name());
     if (!logging::LogToListeners(msg)) {
       LOG(INFO) << msg;
     }
@@ -2048,7 +2048,7 @@ absl::Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
       {retvals, num_outputs}));
 
   if (op->EagerContext().LogDevicePlacement() || VLOG_IS_ON(1)) {
-    string msg = strings::StrCat(
+    string msg = absl::StrCat(
         "Executing op ", op->Name(), " on task ",
         DeviceNameUtils::ParsedNameToString(op->GetDeviceParsedName()));
     if (!logging::LogToListeners(msg)) {
@@ -2523,8 +2523,8 @@ void EagerLocalExecuteAsync(EagerOperation* op, TensorHandle** retvals,
   }
 
   if (ctx.LogDevicePlacement() || VLOG_IS_ON(1)) {
-    string msg = strings::StrCat("Executing op ", op->Name(), " in device ",
-                                 kernel->device()->name());
+    string msg = absl::StrCat("Executing op ", op->Name(), " in device ",
+                              kernel->device()->name());
     if (!logging::LogToListeners(msg)) {
       LOG(INFO) << msg;
     }
