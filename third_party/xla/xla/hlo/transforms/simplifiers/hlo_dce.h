@@ -49,7 +49,8 @@ class HloDCE : public HloModulePass {
 
   // Run DCE on a computation.
   static absl::StatusOr<bool> RunOnComputation(
-      HloComputation* computation, bool remove_cross_partition_collective_ops,
+      HloComputation* computation,
+      bool remove_cross_partition_collective_ops = false,
       CallGraph* call_graph = nullptr);
 
   // Run the pass on the given module. Returns whether the module was changed
