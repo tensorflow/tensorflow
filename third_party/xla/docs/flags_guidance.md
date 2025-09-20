@@ -80,6 +80,8 @@ Flag                                            | Type                 | Notes
 | Flag | Type | Notes |
 | :---- | :---- | :----- |
 | `xla_gpu_enable_latency_hiding_scheduler` | Boolean (true/false) |This flag enables latency hiding schedulers to overlap asynchronous communication with computation efficiently. The default value is False. |
+| `xla_gpu_enable_analytical_sol_latency_estimator` | Boolean (true/false) | Enables platform specific scheduling decisions, which in turn improve compute-communication overlap. The default value is True. |
+| `xla_gpu_analytical_latency_estimator_options` | Structured string | Configures parameters for the `xla_gpu_enable_analytical_sol_latency_estimator`. Adjust by setting `nic_speed_gbps=$NIC_SPEED`. The default value depends on a detected platform. |
 | `xla_gpu_enable_triton_gemm` | Boolean (true/false) | Use Triton-based matrix multiplication. |
 | `xla_gpu_enable_command_buffer` | List of CommandBufferCmdType | Which kind of commands should be captured in command buffers. |
 | `xla_gpu_all_reduce_combine_threshold_bytes` | Integer (bytes) | These flags tune when to combine multiple small AllGather / ReduceScatter / AllReduce into one big AllGather / ReduceScatter / AllReduce to reduce time spent on cross-device communication. For example, for the AllGather / ReduceScatter thresholds on a Transformer-based workload, consider tuning them high enough so as to combine at least a Transformer Layer’s weight AllGather / ReduceScatter. By default, the combine_threshold_bytes is set to 256. |
