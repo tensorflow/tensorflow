@@ -69,7 +69,6 @@ EXPORTS
   ??0GraphDef@tensorflow@@IEAA@PEAVArena@protobuf@google@@@Z
   ??0GraphDef@tensorflow@@IEAA@PEAVArena@protobuf@google@@AEBV01@@Z
   ??0HistogramProto@tensorflow@@IEAA@PEAVArena@protobuf@google@@@Z
-  ??0Impl@MakeErrorStream@status_macros@xla@@QEAA@PEBDHW4Code@error@tensorflow@@PEAV123@_N@Z
   ??0LayoutProto@dtensor@tensorflow@@IEAA@PEAVArena@protobuf@google@@@Z
   ??0LayoutProto@dtensor@tensorflow@@IEAA@PEAVArena@protobuf@google@@AEBV012@@Z
   ??0LogMessage@log_internal@lts_20250814@absl@@QEAA@PEBDHUInfoTag@0123@@Z
