@@ -2,6 +2,12 @@
 # TensorFlow is a computational framework, primarily for use in machine
 # learning applications.
 
+# Config setting for AddressSanitizer (ASan)
+config_setting(
+    name = "asan",
+    values = {"compilation_mode": "opt"},
+)
+
 load("@rules_cc//cc:cc_import.bzl", "cc_import")
 
 # buildifier: disable=out-of-order-load
