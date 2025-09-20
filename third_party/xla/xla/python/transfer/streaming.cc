@@ -51,7 +51,7 @@ class StringFutureChunkDestination : public aux::ChunkDestination {
   absl::Status Put(const void* data, int64_t offset, size_t size,
                    absl::AnyInvocable<void() &&> on_done) override {
     {
-      absl::MutexLock l(&mu_);
+      absl::MutexLock l(mu_);
       chunks_.emplace_back(
           offset, std::string(reinterpret_cast<const char*>(data), size));
     }
@@ -62,7 +62,7 @@ class StringFutureChunkDestination : public aux::ChunkDestination {
   void Poison(absl::Status s) override { CHECK_OK(s); }
 
   absl::StatusOr<std::string> ConsumeFinalResult() {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     std::sort(chunks_.begin(), chunks_.end());
 
     std::string result;
@@ -102,11 +102,11 @@ class LocalBulkTransport : public BulkTransportInterface {
       : send_q_(std::move(send_q)), recv_q_(std::move(recv_q)) {}
 
   ~LocalBulkTransport() override {
-    absl::MutexLock l(&send_q_->mu);
+    absl::MutexLock l(send_q_->mu);
     send_q_->status = absl::InternalError("Connection failure for local bond.");
   }
   void Send(SendMessage msg) override {
-    absl::MutexLock l(&send_q_->mu);
+    absl::MutexLock l(send_q_->mu);
     std::move(msg.on_send)(0, msg.size);
     send_q_->buffers.push_back(std::move(msg));
   }
@@ -115,7 +115,7 @@ class LocalBulkTransport : public BulkTransportInterface {
       override {
     absl::StatusOr<Message> result;
     {
-      absl::MutexLock l(&recv_q_->mu);
+      absl::MutexLock l(recv_q_->mu);
       auto cond = [&]() {
         return !recv_q_->buffers.empty() || !recv_q_->status.ok();
       };
@@ -161,7 +161,7 @@ class LocalBulkTransportFactory : public BulkTransportFactory {
  public:
   BulkTransportInitResult InitBulkTransport() override {
     BulkTransportInitResult out;
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     out.request.set_bulk_transport_impl_kind(
         SocketTransferEstablishBulkTransport::LOCAL);
     out.request.add_bulk_transport_uuid(next_bulk_transport_id_);
@@ -182,7 +182,7 @@ class LocalBulkTransportFactory : public BulkTransportFactory {
       const SocketTransferEstablishBulkTransport& remote_bulk_transport_info)
       override {
     BulkTransportRecvResult out;
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     CHECK_EQ(remote_bulk_transport_info.bulk_transport_impl_kind(),
              SocketTransferEstablishBulkTransport::LOCAL);
     CHECK_EQ(remote_bulk_transport_info.bulk_transport_uuid_size(), 1);
@@ -236,10 +236,10 @@ SlabAllocator::Allocation SlabAllocator::Allocate(size_t size) {
   state_->slots.pop_back();
   result.on_done =
       absl::AnyInvocable<void() &&>([state = state_, data = result.data]() {
-        absl::MutexLock l(&state->mu);
+        absl::MutexLock l(state->mu);
         state->slots.push_back(data);
       });
-  state_->mu.Unlock();
+  state_->mu.unlock();
   return result;
 }
 
@@ -287,7 +287,7 @@ absl::StatusOr<std::shared_ptr<absl::Span<uint8_t>>> AllocateAlignedMemory(
 void PullTable::AwaitPull(uint64_t uuid, tsl::RCReference<Entry> entry) {
   std::vector<PausedFetch> paused_fetches;
   {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     auto it = paused_fetches_.find(uuid);
     if (it != paused_fetches_.end()) {
       paused_fetches = std::move(it->second);
@@ -305,7 +305,7 @@ void PullTable::Handle(tsl::RCReference<ConnectionState> state,
                        size_t base_req_id) {
   tsl::RCReference<Entry> entry;
   {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     auto it = entries_.find(req.uuid());
     if (it == entries_.end()) {
       PausedFetch fetch;
@@ -318,7 +318,7 @@ void PullTable::Handle(tsl::RCReference<ConnectionState> state,
     entry = it->second;
   }
   if (entry->Handle(std::move(state), req, base_req_id)) {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     auto it = entries_.find(req.uuid());
     entries_.erase(it);
   }

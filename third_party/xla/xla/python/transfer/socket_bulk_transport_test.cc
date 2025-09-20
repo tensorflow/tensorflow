@@ -125,7 +125,7 @@ TEST(SendQueue, SendAndRecvQueuesArtificialLimit) {
     msg.size = txt_msg.size();
     msg.on_send = [](int id, size_t size) {};
     msg.on_done = [&mu, &send_count]() {
-      absl::MutexLock l(&mu);
+      absl::MutexLock l(mu);
       --send_count;
     };
     msg_queue->ScheduleSendWork(std::move(msg));
@@ -149,7 +149,7 @@ TEST(SendQueue, SendAndRecvQueuesArtificialLimit) {
     std::move(recv_msg->on_done)();
   }
   {
-    absl::MutexLock l(&mu);
+    absl::MutexLock l(mu);
     auto cond = [&]() { return send_count == 0; };
     mu.Await(absl::Condition(&cond));
   }
@@ -204,11 +204,11 @@ TEST(SocketBulkTransportFactoryTest, SendAndRecvWithFactory) {
     msg.data = txt_msgs[i].data();
     msg.size = txt_msgs[i].size();
     msg.on_send = [&, i](int id, size_t size) {
-      absl::MutexLock l(&mu);
+      absl::MutexLock l(mu);
       send_queue.push_back({i, id});
     };
     msg.on_done = [&mu, &send_count]() {
-      absl::MutexLock l(&mu);
+      absl::MutexLock l(mu);
       --send_count;
     };
     bulk_transporta->Send(std::move(msg));
@@ -220,7 +220,7 @@ TEST(SocketBulkTransportFactoryTest, SendAndRecvWithFactory) {
     int bond_id = -1;
     int msg_id = -1;
     {
-      absl::MutexLock l(&mu);
+      absl::MutexLock l(mu);
       auto cond = [&]() { return !send_queue.empty(); };
       mu.Await(absl::Condition(&cond));
       std::tie(msg_id, bond_id) = send_queue.front();
@@ -241,7 +241,7 @@ TEST(SocketBulkTransportFactoryTest, SendAndRecvWithFactory) {
     std::move(recv_msg->on_done)();
   }
   {
-    absl::MutexLock l(&mu);
+    absl::MutexLock l(mu);
     auto cond = [&]() { return send_count == 0; };
     mu.Await(absl::Condition(&cond));
   }
