@@ -1566,6 +1566,7 @@ pywrap_library(
                 "-lpthread",
                 "-ldl",
                 "-lm",
+                "-Wl,-Bsymbolic-functions",
             ],
         }),
         "tensorflow/tensorflow_cc": select({
@@ -1586,12 +1587,18 @@ pywrap_library(
                 "-lpthread",
                 "-ldl",
                 "-lm",
+                "-Wl,-Bsymbolic-functions",
             ],
         }),
     },
     # buildifier: disable=unsorted-dict-items
     # @unsorted-dict-items
     common_lib_version_scripts = {
+        "tensorflow/tensorflow_framework": select({
+            "//tensorflow:windows": None,
+            "//tensorflow:macos": None,
+            "//conditions:default": "//tensorflow:tf_framework_version_script.lds",
+        }),
         "tensorflow/tensorflow_cc": select({
             "//tensorflow:windows": None,
             "//tensorflow:macos": "//tensorflow:tf_exported_symbols.lds",
