@@ -176,22 +176,22 @@ class RocmTracer {
    public:
     // add a correlation id to the pending set
     void Add(uint32_t correlation_id) {
-      absl::MutexLock lock(&mutex);
+      absl::MutexLock lock(mutex);
       pending_set.insert(correlation_id);
     }
     // remove a correlation id from the pending set
     void Remove(uint32_t correlation_id) {
-      absl::MutexLock lock(&mutex);
+      absl::MutexLock lock(mutex);
       pending_set.erase(correlation_id);
     }
     // clear the pending set
     void Clear() {
-      absl::MutexLock lock(&mutex);
+      absl::MutexLock lock(mutex);
       pending_set.clear();
     }
     // count the number of correlation ids in the pending set
     size_t Count() {
-      absl::MutexLock lock(&mutex);
+      absl::MutexLock lock(mutex);
       return pending_set.size();
     }
 

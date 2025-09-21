@@ -68,7 +68,7 @@ void AnnotationMap::Add(uint32_t correlation_id,
   VLOG(3) << "Add annotation: "
           << " correlation_id=" << correlation_id
           << ", annotation: " << annotation;
-  absl::MutexLock lock(&map_.mutex);
+  absl::MutexLock lock(map_.mutex);
   if (map_.annotations.size() < max_size_) {
     absl::string_view annotation_str =
         *map_.annotations.insert(annotation).first;
@@ -77,7 +77,7 @@ void AnnotationMap::Add(uint32_t correlation_id,
 }
 
 absl::string_view AnnotationMap::LookUp(uint32_t correlation_id) {
-  absl::MutexLock lock(&map_.mutex);
+  absl::MutexLock lock(map_.mutex);
   auto it = map_.correlation_map.find(correlation_id);
   return it != map_.correlation_map.end() ? it->second : absl::string_view();
 }
@@ -391,7 +391,7 @@ class PerDeviceCollector {
   }
 
   void SortByStartTime() {
-    absl::MutexLock lock(&events_mutex);
+    absl::MutexLock lock(events_mutex);
     std::sort(events.begin(), events.end(),
               [](const RocmTracerEvent& event1, const RocmTracerEvent& event2) {
                 return event1.start_time_ns < event2.start_time_ns;
@@ -436,7 +436,7 @@ class PerDeviceCollector {
               uint64_t end_gputime_ns, XPlaneBuilder* device_plane,
               XPlaneBuilder* host_plane) {
     int host_ev_cnt = 0, dev_ev_cnt = 0;
-    absl::MutexLock l(&events_mutex);
+    absl::MutexLock l(events_mutex);
     // Tracking event types per line.
     absl::flat_hash_map<tsl::int64, absl::flat_hash_set<RocmTracerEventType>>
         events_types_per_line;
@@ -479,7 +479,7 @@ class PerDeviceCollector {
   PerDeviceCollector() = default;
 
   void AddEvent(const RocmTracerEvent& event) {
-    absl::MutexLock l(&events_mutex);
+    absl::MutexLock l(events_mutex);
     if (event.source == RocmTracerEventSource::ApiCallback) {
       // Cupti api callback events were used to populate launch times etc.
       if (event.correlation_id != RocmTracerEvent::kInvalidCorrelationId) {
@@ -621,7 +621,7 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
 
 void RocmTraceCollectorImpl::AddEvent(RocmTracerEvent&& event,
                                       bool is_auxiliary) {
-  absl::MutexLock lock(&event_maps_mutex_);
+  absl::MutexLock lock(event_maps_mutex_);
 
   if (event.source == RocmTracerEventSource::ApiCallback && !is_auxiliary) {
     if (num_callback_events_ > options_.max_callback_api_events) {
@@ -663,7 +663,7 @@ void RocmTraceCollectorImpl::AddEvent(RocmTracerEvent&& event,
 }
 
 void RocmTraceCollectorImpl::Flush() {
-  absl::MutexLock lock(&event_maps_mutex_);
+  absl::MutexLock lock(event_maps_mutex_);
   auto& aggregated_events_ = ApiActivityInfoExchange();
 
   VLOG(3) << "RocmTraceCollector collected " << num_callback_events_
