@@ -188,7 +188,7 @@ class PjRtCpuClient final : public CommonPjRtClient {
   CollectiveLaunchEvent GetLastCollectiveLaunchEvent(
       size_t num_addressable_devices) {
     tsl::CountDownAsyncValueRef<CpuEvent> count_down(num_addressable_devices);
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     auto last_launch = std::move(last_collective_launch_event_);
     last_collective_launch_event_ = count_down.AsRef();
     return std::make_pair(std::move(last_launch), std::move(count_down));
