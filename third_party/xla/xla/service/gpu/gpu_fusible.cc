@@ -549,7 +549,7 @@ static int64_t SharedMemoryUsageNoCache(
 
 int64_t FusionInfoCache::GetSharedMemoryUsage(const HloInstruction& instr) {
   {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     auto it = shared_memory_usage_.find(&instr);
     if (it != shared_memory_usage_.end()) {
       return it->second;
@@ -562,7 +562,7 @@ int64_t FusionInfoCache::GetSharedMemoryUsage(const HloInstruction& instr) {
   // SharedMemoryUsageNoCache and use the cache *within* the fusion.
   int64_t shared_memory_usage = SharedMemoryUsageNoCache(instr, device_info_);
 
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   shared_memory_usage_.emplace(&instr, shared_memory_usage);
   return shared_memory_usage;
 }
@@ -599,7 +599,7 @@ static int64_t NumUnnestedReductionsNoCache(
 
 int64_t FusionInfoCache::GetNumUnnestedReductions(const HloInstruction& instr) {
   {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     auto it = num_unnested_reductions_.find(&instr);
     if (it != num_unnested_reductions_.end()) {
       return it->second;
@@ -613,7 +613,7 @@ int64_t FusionInfoCache::GetNumUnnestedReductions(const HloInstruction& instr) {
   int64_t num_unnested_reductions =
       NumUnnestedReductionsNoCache(instr, device_info_);
 
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   num_unnested_reductions_.emplace(&instr, num_unnested_reductions);
   return num_unnested_reductions;
 }
