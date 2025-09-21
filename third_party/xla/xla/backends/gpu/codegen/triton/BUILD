@@ -1,3 +1,7 @@
+load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm_is_configured",
+)
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load(
@@ -7,6 +11,10 @@ load(
 )
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "if_google")
+load(
+    "//xla/tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -262,9 +270,6 @@ cc_library(
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu:launch_dimensions",
-        "//xla/service/gpu/llvm_gpu_backend:amdgpu_backend",
-        "//xla/service/gpu/llvm_gpu_backend:nvptx_backend",
-        "//xla/service/gpu/llvm_gpu_backend:nvptx_libdevice_path",
         "//xla/service/gpu:matmul_utils",
         "//xla/service/gpu:triton_fusion_analysis",
         "//xla/service/gpu/model:triton_emitter_constraints",
@@ -272,12 +277,17 @@ cc_library(
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tools:hlo_decomposer_lib",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:rocm_rocdl_path",
         "//xla/tsl/platform:statusor",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:statusor",
         "@triton//:TritonTransforms",
+    ]) + if_cuda_is_configured([
+        "//xla/service/gpu/llvm_gpu_backend:nvptx_backend",
+        "//xla/service/gpu/llvm_gpu_backend:nvptx_libdevice_path",
+    ]) + if_rocm_is_configured([
+        "//xla/service/gpu/llvm_gpu_backend:amdgpu_backend",
+        "//xla/tsl/platform:rocm_rocdl_path",
     ]),
 )
 

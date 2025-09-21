@@ -117,8 +117,16 @@ limitations under the License.
 #include "xla/service/dump.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+
+#ifdef TENSORFLOW_USE_ROCM
 #include "xla/service/gpu/llvm_gpu_backend/amdgpu_backend.h"
+#include "xla/tsl/platform/rocm_rocdl_path.h"
+#endif
+
+#ifdef GOOGLE_CUDA
 #include "xla/service/gpu/llvm_gpu_backend/nvptx_libdevice_path.h"
+#endif
+
 #include "xla/service/gpu/model/symbolic_tile_analysis.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/gpu/model/tiled_hlo_instruction.h"
@@ -136,7 +144,6 @@ limitations under the License.
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tools/hlo_decomposer.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/rocm_rocdl_path.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -2293,13 +2300,18 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
 
 std::string GetLibdevicePath(const HloModuleConfig& hlo_config,
                              const se::DeviceDescription& device_info) {
+#ifdef GOOGLE_CUDA
   if (std::holds_alternative<se::CudaComputeCapability>(
           device_info.gpu_compute_capability())) {
     return nvptx::LibDevicePath(
         hlo_config.debug_options().xla_gpu_cuda_data_dir());
   }
+#elif defined(TENSORFLOW_USE_ROCM)
   return amdgpu::LibDevicePath(
       device_info.rocm_compute_capability().gcn_arch_name(), tsl::RocdlRoot());
+#else
+  return "";
+#endif
 }
 
 }  // namespace gpu
