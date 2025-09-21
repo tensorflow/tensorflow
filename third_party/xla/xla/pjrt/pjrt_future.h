@@ -786,32 +786,20 @@ class PjRtFuture<void> : public internal::PjRtFutureBase<absl::Status> {
       Base::Promise::emplace(std::move(status));
     }
 
+    // A helper function to convert move-only Promise to shared_ptr, which is
+    // useful when the promise has to be captured by a std::function.
+    std::shared_ptr<Promise> ToShared() && {
+      return std::make_shared<Promise>(std::move(*this));
+    }
+
    private:
     friend class PjRtFuture<void>;
   };
 
-  // This is a temporary class to support migration from CreatePromise() to
-  // MakePromise() and an end goal of making Promise move-only type.
-  class MoveOnlyPromise : public Promise {
-   public:
-    using Promise::Promise;
-    using Promise::Set;
-
-    MoveOnlyPromise(MoveOnlyPromise&&) = default;
-    MoveOnlyPromise& operator=(MoveOnlyPromise&&) = default;
-
-    // A helper function to convert move-only Promise to shared_ptr, which is
-    // useful when the promise has to be captured by a std::function.
-    std::shared_ptr<MoveOnlyPromise> ToShared() && {
-      return std::make_shared<MoveOnlyPromise>(std::move(*this));
-    }
-  };
-
   // Returns a pair of connected Promise and PjRtFuture<>. Setting the returned
   // promise will fulfill the connected future.
-  static std::pair<MoveOnlyPromise, PjRtFuture<>> MakePromise() {
-    MoveOnlyPromise promise(
-        tsl::MakeUnconstructedAsyncValueRef<absl::Status>());
+  static std::pair<Promise, PjRtFuture<>> MakePromise() {
+    Promise promise(tsl::MakeUnconstructedAsyncValueRef<absl::Status>());
     PjRtFuture<> future(promise);
     return std::make_pair(std::move(promise), std::move(future));
   }
