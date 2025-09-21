@@ -160,7 +160,7 @@ absl::Status TfrtGpuDevice::TransferFromOutfeed(
 }
 
 int TfrtGpuDevice::GetNewPrngSeed() {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   int x = 0;
   do {
     x = prng_seed_distribution_(prng_seed_generator_);
@@ -245,7 +245,7 @@ absl::StatusOr<tsl::AllocatorStats> TfrtGpuDevice::GetAllocatorStats() const {
 
 tsl::AsyncValueRef<GpuEvent> TfrtGpuDevice::SetLastCollectiveLaunchEvent(
     tsl::AsyncValueRef<GpuEvent> event) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   VLOG(3) << "SetLastCollectiveLaunchEvent: IsAvailable: "
           << event.IsAvailable() << "; pointer: " << event.GetAsyncValue()
           << "Old Event: IsAvailable: "

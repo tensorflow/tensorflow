@@ -813,7 +813,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
     options.dims = dims;
     options.permutation = permutation;
     options.input_layout = TransposePlan::Striding{*byte_strides};
-    absl::MutexLock lock(&transpose_mu_);
+    absl::MutexLock lock(transpose_mu_);
     TF_ASSIGN_OR_RETURN(transpose, transpose_cache_.GetOrCreate(options));
   }
 
@@ -1070,7 +1070,7 @@ absl::Status TfrtGpuClient::DmaMap(void* data, size_t buffer_size) {
     return absl::InternalError(absl::StrFormat(
         "Failed to register host memory at address: %ps", data));
   }
-  absl::MutexLock lock(&dma_maps_mutex_);
+  absl::MutexLock lock(dma_maps_mutex_);
   dma_maps_.insert({data, buffer_size});
   return absl::OkStatus();
 }
@@ -1086,13 +1086,13 @@ absl::Status TfrtGpuClient::DmaUnmap(void* data) {
     return absl::InternalError(absl::StrFormat(
         "Failed to unregister host memory at address: %ps", data));
   }
-  absl::MutexLock lock(&dma_maps_mutex_);
+  absl::MutexLock lock(dma_maps_mutex_);
   dma_maps_.erase(data);
   return absl::OkStatus();
 }
 
 bool TfrtGpuClient::IsDmaMapped(const void* data_start, int64_t transfer_size) {
-  absl::MutexLock lock(&dma_maps_mutex_);
+  absl::MutexLock lock(dma_maps_mutex_);
   if (dma_maps_.empty()) {
     return false;
   }

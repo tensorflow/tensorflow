@@ -114,7 +114,7 @@ class TfrtGpuCopyToDeviceStream : public CopyToDeviceStream {
                                           {{"channel_id", channel_id_}});
     });
 
-    absl::ReleasableMutexLock lock(&mu_);
+    absl::ReleasableMutexLock lock(mu_);
 
     VLOG(4) << "Add chunk to a H2D channel #" << channel_id_ << ": "
             << "size=" << chunk.size() << ", "
@@ -978,7 +978,7 @@ TfrtGpuExecutable::Execute(
               }
             }
 
-            absl::MutexLock lock(&mu);
+            absl::MutexLock lock(mu);
             --running;
             if (!statusor.ok()) {
               if (failed == 0) {
@@ -1000,7 +1000,7 @@ TfrtGpuExecutable::Execute(
         mu.AssertHeld();
         return running == 0;
       };
-      absl::MutexLock lock(&mu);
+      absl::MutexLock lock(mu);
       mu.Await(absl::Condition(&done_running));
     }
 

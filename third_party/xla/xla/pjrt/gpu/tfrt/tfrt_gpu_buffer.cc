@@ -110,7 +110,7 @@ absl::StatusOr<size_t> TfrtGpuBuffer::GetOnDeviceSizeInBytes() const {
 
 TrackedGpuDeviceBuffer* TfrtGpuBuffer::AcquireUsage(
     tsl::AsyncValueRef<GpuEvent> usage_event) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   if (!tracked_device_buffer_) {
     return nullptr;
   }
@@ -169,7 +169,7 @@ absl::StatusOr<Shape> TfrtGpuBuffer::logical_on_device_shape() {
 
 PjRtFuture<> TfrtGpuBuffer::GetReadyFuture() {
   VLOG(4) << "TfrtGpuBuffer::GetReadyFuture";
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   if (!tracked_device_buffer_) {
     return PjRtFuture<>(InvalidArgument(
         "GetReadyFuture() called on deleted or donated buffer"));
@@ -259,7 +259,7 @@ bool TfrtGpuBuffer::IsOnCpu() const {
 }
 
 const tsl::AsyncValueRef<GpuDeviceMemory>& TfrtGpuBuffer::GetBufferPtr() const {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   return tracked_device_buffer_->buffer();
 }
 
@@ -283,7 +283,7 @@ TfrtGpuBuffer::AcquireExternalReference() {
     tsl::AsyncValueRef<GpuDeviceMemory> data_;
   };
 
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   if (tracked_device_buffer_ == nullptr) {
     return InvalidArgument("Buffer has been deleted or donated.");
   }
@@ -390,7 +390,7 @@ PjRtFuture<> TfrtGpuBuffer::ToLiteralHelper(
             options.permutation = permutation;
             options.input_layout = TransposePlan::Striding{byte_strides};
             {
-              absl::MutexLock lock(&client->transpose_mu_);
+              absl::MutexLock lock(client->transpose_mu_);
               absl::StatusOr<std::shared_ptr<TransposePlan>> t =
                   client->transpose_cache_.GetOrCreate(options);
               if (!t.ok()) {
@@ -681,7 +681,7 @@ void TfrtGpuBuffer::Delete() {
   std::unique_ptr<TrackedGpuDeviceBuffer> device_buffer;
   tsl::AsyncValueRef<GpuEvent> external_references_dropped_event;
   {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     device_buffer = ReleaseBufferLocked();
     if (device_buffer == nullptr) {
       return;
@@ -724,7 +724,7 @@ void TfrtGpuBuffer::Delete() {
 }
 
 bool TfrtGpuBuffer::IsDeleted() const {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   return tracked_device_buffer_ == nullptr;
 }
 
@@ -852,7 +852,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuBuffer::CopyToMemorySpace(
 }
 
 void TfrtGpuBuffer::DropExternalReference() {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   CHECK_GT(external_reference_counter_, 0);
   --external_reference_counter_;
   if (external_reference_counter_ == 0) {
@@ -866,7 +866,7 @@ absl::StatusOr<std::unique_ptr<TrackedGpuDeviceBuffer>> TfrtGpuBuffer::Release(
   tsl::BlockUntilReady(donation_event);
   std::unique_ptr<TrackedGpuDeviceBuffer> device_buffer;
   {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     device_buffer = ReleaseBufferLocked();
   }
   if (device_buffer == nullptr) {
@@ -906,7 +906,7 @@ std::unique_ptr<TrackedGpuDeviceBuffer> TfrtGpuBuffer::ReleaseBufferLocked() {
 
 absl::StatusOr<TfrtGpuBuffer::DonationTransaction>
 TfrtGpuBuffer::AcquireDonation() {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
 
   if (tracked_device_buffer_ == nullptr) {
     return InvalidArgument("Donation requested for invalid buffer");
