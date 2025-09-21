@@ -35,7 +35,7 @@ namespace proxy {
 
 absl::Status HostBufferStore::Store(uint64_t handle, std::string data) {
   VLOG(3) << "HostBuffer::Store " << handle << " " << data.size();
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   if (shutdown_msg_.has_value()) {
     return absl::CancelledError(*shutdown_msg_);
   }
@@ -55,7 +55,7 @@ absl::StatusOr<std::shared_ptr<const std::string>> HostBufferStore::Lookup(
           << " start, timeout=" << timeout;
   tsl::profiler::TraceMe traceme("HostBufferStore::Lookup");
   auto result = [&]() -> absl::StatusOr<std::shared_ptr<const std::string>> {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     auto cond = [&]() ABSL_SHARED_LOCKS_REQUIRED(mu_) {
       return shutdown_msg_.has_value() || buffers_.contains(handle);
     };
@@ -84,7 +84,7 @@ absl::StatusOr<std::shared_ptr<const std::string>> HostBufferStore::Lookup(
 }
 
 absl::Status HostBufferStore::Delete(uint64_t handle) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   VLOG(3) << "HostBufferStore::Delete " << handle;
   if (buffers_.erase(handle) == 0) {
     return absl::NotFoundError(
@@ -95,7 +95,7 @@ absl::Status HostBufferStore::Delete(uint64_t handle) {
 
 void HostBufferStore::Shutdown(std::string reason) {
   VLOG(0) << "HostBufferStore::Shutdown " << reason;
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   if (!shutdown_msg_.has_value()) {
     shutdown_msg_ = std::move(reason);
   }

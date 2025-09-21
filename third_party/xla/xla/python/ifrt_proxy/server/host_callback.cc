@@ -51,7 +51,7 @@ namespace proxy {
 RemoteLoadedHostCallbackQueue::~RemoteLoadedHostCallbackQueue() { Close(); }
 
 absl::Status RemoteLoadedHostCallbackQueue::Push(ExecutionRequest request) {
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   if (closed_) {
     return absl::CancelledError(
         "RemoteLoadedHostCallback has stopped accepting new execution "
@@ -66,7 +66,7 @@ RemoteLoadedHostCallbackQueue::Pop() {
   auto not_empty = [this]() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     return !requests_.empty() || closed_;
   };
-  absl::MutexLock l(&mu_, absl::Condition(&not_empty));
+  absl::MutexLock l(mu_, absl::Condition(&not_empty));
   if (closed_) {
     return std::nullopt;
   }
@@ -78,7 +78,7 @@ RemoteLoadedHostCallbackQueue::Pop() {
 void RemoteLoadedHostCallbackQueue::Close() {
   std::deque<ExecutionRequest> requests;
   {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     if (!closed_) {
       requests.swap(requests_);
     }
