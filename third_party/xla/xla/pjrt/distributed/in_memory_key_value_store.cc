@@ -28,7 +28,7 @@ namespace xla {
 
 absl::StatusOr<std::string> InMemoryKeyValueStore::Get(absl::string_view key,
                                                        absl::Duration timeout) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   auto cond = [&]() {
     mu_.AssertHeld();
     return kv_store_.find(key) != kv_store_.end();
@@ -43,7 +43,7 @@ absl::StatusOr<std::string> InMemoryKeyValueStore::Get(absl::string_view key,
 
 absl::StatusOr<std::string> InMemoryKeyValueStore::TryGet(
     absl::string_view key) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   auto it = kv_store_.find(key);
   if (it == kv_store_.end()) {
     return absl::NotFoundError(
@@ -54,7 +54,7 @@ absl::StatusOr<std::string> InMemoryKeyValueStore::TryGet(
 
 absl::Status InMemoryKeyValueStore::Set(absl::string_view key,
                                         absl::string_view value) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   if (!allow_overwrite_) {
     if (kv_store_.contains(key)) {
       return absl::AlreadyExistsError(
