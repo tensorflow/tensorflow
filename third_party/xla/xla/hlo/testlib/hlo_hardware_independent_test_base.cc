@@ -154,7 +154,7 @@ HloHardwareIndependentTestBase::ParseAndReturnVerifiedModule(
     std::function<int64_t(const xla::Shape&)> shape_size_fn) const {
   HloModuleConfig config_with_device_assignment = config;
   if (!config.has_static_device_assignment()) {
-    absl::MutexLock ml(&device_assignment_mu_);
+    absl::MutexLock ml(device_assignment_mu_);
     default_device_assignment_ =
         std::make_unique<DeviceAssignment>(GetDefaultDeviceAssignment(
             config.replica_count(), config.num_partitions()));
