@@ -871,6 +871,47 @@ GemmFusionAutotunerImpl::GenerateConfigs(const HloFusionInstruction& fusion) {
   return configs;
 }
 
+bool IsGlobalShapeTmaCompatible(const HloDotInstruction& dot) {
+  // Evaluate output.
+  const Shape& output_shape = dot.parent()->root_instruction()->shape();
+  auto output_layout = LayoutUtil::MinorToMajor(output_shape);
+  if (stream_executor::gpu::IsGlobalShapeTmaCompatible(
+          output_shape.dimensions(), output_layout,
+          primitive_util::BitWidth(output_shape.element_type()) / 8,
+          stream_executor::gpu::TmaDescriptor::TmaInterleave::kNone)
+          .ok()) {
+    return true;
+  }
+
+  // Evaluate inputs.
+  std::vector<const HloInstruction*> inputs =
+      HloBfsFindAll({&dot}, [](const HloInstruction* hlo) {
+        return hlo->opcode() == HloOpcode::kParameter;
+      });
+  std::vector<Shape> input_shapes;
+  input_shapes.reserve(inputs.size());
+  for (const HloInstruction* in : inputs) {
+    input_shapes.push_back(in->shape());
+  }
+  std::vector<std::vector<int64_t>> input_layouts;
+  input_layouts.reserve(input_shapes.size());
+  for (const Shape& input_shape : input_shapes) {
+    auto minor_to_major = LayoutUtil::MinorToMajor(input_shape);
+    input_layouts.push_back(
+        std::vector<int64_t>(minor_to_major.begin(), minor_to_major.end()));
+  }
+  for (int i = 0; i < input_shapes.size(); ++i) {
+    if (stream_executor::gpu::IsGlobalShapeTmaCompatible(
+            input_shapes[i].dimensions(), input_layouts[i],
+            primitive_util::BitWidth(input_shapes[i].element_type()) / 8,
+            stream_executor::gpu::TmaDescriptor::TmaInterleave::kNone)
+            .ok()) {
+      return true;
+    }
+  }
+  return false;
+}
+
 absl::StatusOr<std::vector<TritonGemmConfig>>
 GemmFusionAutotunerImpl::GenerateTritonConfigs(const HloDotInstruction& dot) {
   tsl::profiler::TraceMe traceme("GenerateTritonConfigs");
@@ -888,6 +929,10 @@ GemmFusionAutotunerImpl::GenerateTritonConfigs(const HloDotInstruction& dot) {
   bool autotune_tma = debug_options_.xla_gpu_experimental_enable_triton_tma() &&
                       stream_executor::gpu::IsTmaAvailableForDevice(
                           config_.GetDeviceDescription());
+
+  if (!IsGlobalShapeTmaCompatible(dot)) {
+    autotune_tma = false;
+  }
   TritonDotFusionSearchSpace search_space(config_.GetDeviceDescription(), &dot);
   VLOG(1) << "Generating configs from search space: "
           << search_space.ToString();

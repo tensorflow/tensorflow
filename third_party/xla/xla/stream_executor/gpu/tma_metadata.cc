@@ -531,5 +531,41 @@ absl::Status IsTmaCompatible(absl::Span<const int64_t> global_shape,
   return absl::OkStatus();
 }
 
+absl::Status IsGlobalShapeTmaCompatible(
+    absl::Span<const int64_t> global_shape,
+    absl::Span<const int64_t> minor_to_major_layout, int element_byte_size,
+    TmaDescriptor::TmaInterleave interleave) {
+  // Validate element byte size.
+  if (!absl::c_linear_search(kValidElementByteWidths, element_byte_size)) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("unsupported element size: %d", element_byte_size));
+  }
+
+  int rank = global_shape.size();
+  if (rank < kMinRank || rank > kMaxRank) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("unsupported rank for TMA: %d. Must be 1-5", rank));
+  }
+
+  llvm::SmallVector<uint64_t, 5> normalized_global_shape;
+  for (auto layout_dim : minor_to_major_layout) {
+    normalized_global_shape.push_back(global_shape[layout_dim]);
+  }
+
+  llvm::SmallVector<uint64_t, 4> global_strides;
+  if (normalized_global_shape.size() >= 2) {
+    global_strides.push_back(normalized_global_shape[0] * element_byte_size);
+    for (int64_t i = 1; i < normalized_global_shape.size() - 1; ++i) {
+      global_strides.push_back(global_strides[i - 1] *
+                               normalized_global_shape[i]);
+    }
+  }
+
+  TF_RETURN_IF_ERROR(ValidateGlobalDims(normalized_global_shape));
+  TF_RETURN_IF_ERROR(ValidateGlobalStrides(normalized_global_shape,
+                                           global_strides, interleave));
+  return absl::OkStatus();
+}
+
 }  // namespace gpu
 }  // namespace stream_executor
