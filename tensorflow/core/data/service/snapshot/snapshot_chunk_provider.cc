@@ -82,7 +82,7 @@ absl::Status SnapshotChunkProvider::GetNext(Tensor* split, bool* end_of_splits)
     ABSL_LOCKS_EXCLUDED(mu_) {
   for (int num_retries = 0;; ++num_retries) {
     Backoff(num_retries, env_);
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     TF_RETURN_IF_ERROR(snapshot_state_.status);
     if (!chunks_unread_.empty()) {
       std::string next_chunk = *chunks_unread_.begin();
@@ -147,7 +147,7 @@ SnapshotChunkProvider::GetAvailableChunks() {
 }
 
 absl::Status SnapshotChunkProvider::Reset() {
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   chunks_read_.clear();
   chunks_unread_.clear();
   return UpdateSnapshot();
@@ -156,7 +156,7 @@ absl::Status SnapshotChunkProvider::Reset() {
 absl::Status SnapshotChunkProvider::Save(
     std::function<std::string(std::string)> full_name,
     IteratorStateWriter* writer) {
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   TF_RETURN_IF_ERROR(
       writer->WriteScalar(full_name(kChunksRead), SetToString(chunks_read_)));
   return absl::OkStatus();
@@ -165,7 +165,7 @@ absl::Status SnapshotChunkProvider::Save(
 absl::Status SnapshotChunkProvider::Restore(
     std::function<std::string(std::string)> full_name,
     IteratorStateReader* reader) {
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   tsl::tstring chunks_read;
   TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kChunksRead), &chunks_read));
   chunks_read_ = SetFromString(chunks_read);
@@ -177,7 +177,7 @@ int64_t SnapshotChunkProvider::Cardinality() const {
 }
 
 void SnapshotChunkProvider::Cancel() {
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   if (snapshot_state_.snapshot_is_done || !snapshot_state_.status.ok()) {
     return;
   }

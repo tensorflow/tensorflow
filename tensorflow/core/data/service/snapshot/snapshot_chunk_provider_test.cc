@@ -200,12 +200,12 @@ TEST(SnapshotChunkProviderTest, WaitForSnapshot) {
                                                           tsl::Env::Default());
             TF_ASSERT_OK_AND_ASSIGN(std::vector<std::string> chunks,
                                     GetAllChunks(snapshot_chunk_provider));
-            absl::MutexLock l(&mu);
+            absl::MutexLock l(mu);
             result = std::move(chunks);
           }));
 
   {  // The reader should wait when there are no chunks.
-    absl::MutexLock l(&mu);
+    absl::MutexLock l(mu);
     EXPECT_TRUE(result.empty());
   }
 
@@ -216,7 +216,7 @@ TEST(SnapshotChunkProviderTest, WaitForSnapshot) {
 
   // The reader should be able to get chunks now.
   reader_thread.reset();
-  absl::MutexLock l(&mu);
+  absl::MutexLock l(mu);
   EXPECT_THAT(result,
               ElementsAreArray(JoinPaths(snapshot_path, {"chunk_0_0_0"})));
 }
@@ -243,7 +243,7 @@ TEST(SnapshotChunkProviderTest, ConcurrentReadWrite) {
             if (end_of_splits) {
               break;
             }
-            absl::MutexLock l(&mu);
+            absl::MutexLock l(mu);
             result.push_back(split.unaligned_flat<tsl::tstring>().data()[0]);
           }
         })));
